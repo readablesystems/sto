@@ -28,7 +28,7 @@ public:
     t.write(ArrayWrite(this, i, v));
   }
 
-  class ArrayRead : Reader {
+  class ArrayRead : public Reader {
   public:
     bool check() {
       return a_->elem(i_).version == version_;
@@ -39,18 +39,20 @@ public:
     Key i_;
     Version version_;
 
+    friend class Array;
+
     ArrayRead(Array *a, Key i, Version v) : a_(a), i_(i), version_(v) {}
   };
 
-  class ArrayWrite : Writer {
+  class ArrayWrite : public Writer {
   public:
 
     void lock() {
       // TODO: double writes to same place will double (dead) lock
-      a_->elem(i_).mutex.lock();
+      a_->lock(i_).lock();
     }
     void unlock() {
-      a_->elem(i_).mutex.unlock();
+      a_->lock(i_).unlock();
     }
 
     uint64_t UID() {
@@ -69,21 +71,27 @@ public:
     Key i_;
     Value val_;
 
+    friend class Array;
+
     ArrayWrite(Array *a, Key i, Value v) : a_(a), i_(i), val_(v) {}
   };
 
 private:
 
   struct internal_elem {
-    std::mutex mutex;
     Version version;
     T val;
   };
 
+  std::mutex locks_[N];
   internal_elem data_[N];
 
   internal_elem& elem(Key i) {
     return data_[i];
+  }
+
+ std::mutex& lock(Key i) {
+    return locks_[i];
   }
 
 };
