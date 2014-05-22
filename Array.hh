@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <mutex>
+#include <iostream>
 
 #include "TransState.hh"
 #include "Interface.hh"
@@ -17,20 +18,31 @@ public:
     memset(data_, 0, N*sizeof(internal_elem));
   }
 
+  T read(Key i) {
+    return data_[i].val;
+  }
+
+  void write(Key i, Value v) {
+    mutex(i).lock();
+    data_[i].val = v;
+    mutex(i).unlock();
+  }
+
   T transRead(TransState& t, Key i) {
     // assumes atomic read (probably not actually true)
     internal_elem cur = data_[i];
-    t.read(ArrayRead(this, i, cur.version));
+    // TODO: memory leaks
+    t.read(new ArrayRead(this, i, cur.version));
     return cur.val;
   }
 
   void transWrite(TransState& t, Key i, Value v) {
-    t.write(ArrayWrite(this, i, v));
+    t.write(new ArrayWrite(this, i, v));
   }
 
   class ArrayRead : public Reader {
   public:
-    bool check() {
+    virtual bool check() {
       return a_->elem(i_).version == version_;
     }
 
@@ -47,19 +59,19 @@ public:
   class ArrayWrite : public Writer {
   public:
 
-    void lock() {
+    virtual void lock() {
       // TODO: double writes to same place will double (dead) lock
-      a_->lock(i_).lock();
+      a_->mutex(i_).lock();
     }
-    void unlock() {
-      a_->lock(i_).unlock();
+    virtual void unlock() {
+      a_->mutex(i_).unlock();
     }
 
-    uint64_t UID() {
+    virtual uint64_t UID() {
       return i_;
     }
 
-    void install() {
+    virtual void install() {
       a_->elem(i_).val = val_;
       a_->elem(i_).version++;
       // unlock here or leave it to transaction mechanism?
@@ -90,7 +102,7 @@ private:
     return data_[i];
   }
 
- std::mutex& lock(Key i) {
+ std::mutex& mutex(Key i) {
     return locks_[i];
   }
 
