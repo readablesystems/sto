@@ -19,7 +19,9 @@ public:
     writeSet_.push_back(w);
   }
 
-  void commit() {
+  bool commit() {
+    bool success = true;
+
     //phase1
     std::vector<Writer*> sortedWrites(writeSet_);
     std::sort(sortedWrites.begin(), sortedWrites.end(), [] (Writer *w1, Writer *w2) {
@@ -31,6 +33,7 @@ public:
     //phase2
     for (Reader *r : readSet_) {
       if (!r->check()) {
+        success = false;
         goto end;
       }
     }
@@ -46,8 +49,7 @@ public:
       w->unlock();
     }
 
-    readSet_.clear();
-    writeSet_.clear();
+    return success;
 
   }
 
