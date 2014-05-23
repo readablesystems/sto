@@ -1,11 +1,19 @@
 #include <iostream>
 #include <assert.h>
+#include <random>
 
 #include "Array.hh"
 #include "TransState.hh"
 
+// size of array
 #define N 100
-#define NTHREADS 10
+#define NTHREADS 4
+
+// only used for randomRWs test
+#define NTRANS (1000000 / NTHREADS)
+#define NPERTRANS 10
+
+#define GLOB_SEED 0
 
 //#define DEBUG
 
@@ -18,6 +26,45 @@
 Array<int, N> a;
 
 using namespace std;
+
+
+void *randomRWs(void *p) {
+  int me = (intptr_t)p;
+  
+  std::uniform_int_distribution<> slotdist(0, N-1);
+  std::uniform_int_distribution<> booldist(0,1);
+  std::uniform_int_distribution<> seeddist(0, INT_MAX);
+  std::mt19937 gen(me + GLOB_SEED);
+
+  for (int i = 0; i < NTRANS; ++i) {
+    // so that retries of this transaction do the same thing
+    auto transseed = seeddist(gen);
+
+    bool done = false;
+    while (!done) {
+      std::mt19937 transgen(transseed);
+
+      TransState t;
+      for (int j = 0; j < NPERTRANS; ++j) {
+        int slot = slotdist(transgen);
+        int r = booldist(transgen);
+        if (r)
+          a.transRead(t, slot);
+        else
+          a.transWrite(t, slot, j);
+      }
+      done = t.commit();
+      if (!done) {
+        debug("thread%d retrying\n", me);
+      }
+    }
+  }
+  return NULL;
+}
+
+// each thread's ops are deterministic but thread interleavings are not
+// (could use only read-then-write operations (e.g. counters) to make verifiable random test)
+void checkRandomRWs() {}
 
 void checkIsolatedWrites() {
   for (int i = 0; i < NTHREADS; ++i) {
@@ -52,14 +99,14 @@ void *blindWrites(void *p) {
   while (!done) {
     TransState t;
 
-    if (a.transRead(t, 0) == 0 || me == 7) {
+    if (a.transRead(t, 0) == 0 || me == NTHREADS-1) {
       for (int i = 1; i < N; ++i) {
         a.transWrite(t, i, me);
       }
     }
 
-    // 7 always wins
-    if (me == 7) {
+    // NTHREADS-1 always wins
+    if (me == NTHREADS-1) {
       a.transWrite(t, 0, me);
     }
 
@@ -72,7 +119,8 @@ void *blindWrites(void *p) {
 
 void checkBlindWrites() {
   for (int i = 0; i < N; ++i) {
-    assert(a.read(i) == 7);
+    debug("read %d\n", a.read(i));
+    assert(a.read(i) == NTHREADS-1);
   }
 }
 
@@ -121,19 +169,21 @@ struct Test {
 enum {
   Isolated,
   Blind,
-  Interfering
+  Interfering,
+  Random
 };
 
 Test tests[] = {
   {isolatedWrites, checkIsolatedWrites},
   {blindWrites, checkBlindWrites},
-  {interferingRWs, checkInterferingRWs}
+  {interferingRWs, checkInterferingRWs},
+  {randomRWs, checkRandomRWs}
 };
 
 
 
 int main() {
-  auto test = Blind;
+  auto test = Random;
   startAndWait(NTHREADS, tests[test].threadfunc);
   tests[test].checkfunc();
 }
