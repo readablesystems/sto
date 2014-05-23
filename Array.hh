@@ -54,7 +54,6 @@ public:
   }
 
   void lock(void *data1, void *data2) {
-    // TODO: double writes to same place will double (dead) lock
     mutex(unpack<Key>(data1)).lock();
   }
 

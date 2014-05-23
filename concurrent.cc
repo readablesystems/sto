@@ -6,11 +6,11 @@
 #include "TransState.hh"
 
 // size of array
-#define N 100
+#define N 1000000
 #define NTHREADS 4
 
 // only used for randomRWs test
-#define NTRANS (1000000 / NTHREADS)
+#define NTRANS 1000000
 #define NPERTRANS 10
 
 #define GLOB_SEED 0
@@ -36,7 +36,7 @@ void *randomRWs(void *p) {
   std::uniform_int_distribution<> seeddist(0, INT_MAX);
   std::mt19937 gen(me + GLOB_SEED);
 
-  for (int i = 0; i < NTRANS; ++i) {
+  for (int i = 0; i < (NTRANS/NTHREADS); ++i) {
     // so that retries of this transaction do the same thing
     auto transseed = seeddist(gen);
 
