@@ -6,7 +6,7 @@
 #include "TransState.hh"
 
 // size of array
-#define N 1000000
+#define N 100
 #define NTHREADS 4
 
 // only used for randomRWs test
@@ -182,8 +182,12 @@ Test tests[] = {
 
 
 
-int main() {
-  auto test = Random;
+int main(int argc, char *argv[]) {
+  if (argc != 2) {
+    cout << "Usage: " << argv[0] << " test#" << endl;
+    return 1;
+  }
+  auto test = atoi(argv[1]);
   startAndWait(NTHREADS, tests[test].threadfunc);
   tests[test].checkfunc();
 }

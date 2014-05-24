@@ -1,11 +1,15 @@
+#pragma once
+
 #include <stdint.h>
 #include <mutex>
 #include <iostream>
 
+#include "compiler.hh"
+
 #include "TransState.hh"
 #include "Interface.hh"
 
-#pragma once
+#define SPIN_LOCK
 
 template <typename T>
 void *pack(T v) {
@@ -22,9 +26,11 @@ T unpack(void *vp) {
 template <typename T, unsigned N>
 class Array : public Reader, public Writer {
 public:
-  typedef uint32_t Version;
+  typedef unsigned Version;
   typedef unsigned Key;
   typedef T Value;
+
+  const Version lock_bit = 1<<(sizeof(Version)*8 - 1);
 
   Array() : data_() {}
 
@@ -33,9 +39,9 @@ public:
   }
 
   void write(Key i, Value v) {
-    mutex(i).lock();
+    lock(i);
     data_[i].val = v;
-    mutex(i).unlock();
+    unlock(i);
   }
 
   T transRead(TransState& t, Key i) {
@@ -49,23 +55,60 @@ public:
     t.write(this, pack(i), pack(v));
   }
 
+  bool is_locked(Key i) {
+    return (elem(i).version & lock_bit) != 0;
+  }
+
+  void lock(Key i) {
+#ifdef SPIN_LOCK
+    internal_elem *pos = &elem(i);
+    while (1) {
+      Version cur = pos->version;
+      if (!(cur&lock_bit) && bool_cmpxchg(&pos->version, cur, cur|lock_bit)) {
+        break;
+      }
+    }
+#else
+    mutex(i).lock();
+    // so we can quickly check is_locked
+    elem(i).version |= lock_bit;
+#endif
+  }
+
+  void unlock(Key i) {
+#ifdef SPIN_LOCK
+    Version cur = elem(i).version;
+    assert(cur & lock_bit);
+    cur &= ~lock_bit;
+    elem(i).version = cur;
+#else
+    elem(i).version &= ~lock_bit;
+    mutex(i).unlock();
+#endif
+  }
+
   bool check(void *data1, void *data2) {
-    return elem(unpack<Key>(data1)).version == unpack<Version>(data2);
+    return (elem(unpack<Key>(data1)).version ^ unpack<Version>(data2)) <= lock_bit;
+  }
+
+  bool is_locked(void *data1, void *data2) {
+    return is_locked(unpack<Key>(data1));
   }
 
   void lock(void *data1, void *data2) {
-    mutex(unpack<Key>(data1)).lock();
+    lock(unpack<Key>(data1));
   }
 
-  virtual void unlock(void *data1, void *data2) {
-    mutex(unpack<Key>(data1)).unlock();
+  void unlock(void *data1, void *data2) {
+    unlock(unpack<Key>(data1));
   }
 
-  virtual uint64_t UID(void *data1, void *data2) const {
+  uint64_t UID(void *data1, void *data2) const {
     return unpack<Key>(data1);
   }
 
-  virtual void install(void *data1, void *data2) {
+  void install(void *data1, void *data2) {
+    assert(is_locked(unpack<Key>(data1)));
     elem(unpack<Key>(data1)).val = unpack<Value>(data2);
     elem(unpack<Key>(data1)).version++;
   }
@@ -77,15 +120,18 @@ private:
     T val;
   };
 
-  std::mutex locks_[N];
   internal_elem data_[N];
   
   internal_elem& elem(Key i) {
     return data_[i];
   }
 
+#ifndef SPIN_LOCK
+  std::mutex locks_[N];
+
   std::mutex& mutex(Key i) {
     return locks_[i];
   }
+#endif
 
 };

@@ -1,4 +1,5 @@
 #include <vector>
+#include <algorithm>
 
 #include "Interface.hh"
 
@@ -23,6 +24,9 @@ public:
     }
     bool operator==(const WriterItem& w2) const {
       return writer->UID(data1, data2) == w2.writer->UID(w2.data1, w2.data2);
+    }
+    bool operator==(const ReaderItem& r2) const {
+      return writer->UID(data1, data2) == r2.reader->UID(r2.data1, r2.data2);      
     }
   };
 
@@ -52,7 +56,8 @@ public:
     }
     //phase2
     for (ReaderItem& r : readSet_) {
-      if (!r.reader->check(r.data1,r.data2)) {
+      // TODO: binary search?
+      if (!r.reader->check(r.data1,r.data2) || (r.reader->is_locked(r.data1,r.data2) && std::find(sortedWrites.begin(), sortedWrites.end(), r) == sortedWrites.end())) {
         success = false;
         goto end;
       }
