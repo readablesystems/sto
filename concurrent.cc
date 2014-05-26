@@ -10,7 +10,7 @@
 #define NTHREADS 4
 
 // only used for randomRWs test
-#define NTRANS 1000000
+#define NTRANS 10000000
 #define NPERTRANS 10
 
 #define GLOB_SEED 0
@@ -27,22 +27,41 @@ Array<int, N> a;
 
 using namespace std;
 
+struct Rand {
+  typedef unsigned result_type;
+
+  result_type u,v;
+  Rand(unsigned u, unsigned v) : u(u+1), v(v+1) {}
+
+  inline unsigned operator()() {
+    v = 36969*(v & 65535) + (v >> 16);
+    u = 18000*(u & 65535) + (u >> 16);
+    return (v << 16) + u;
+  }
+
+  static constexpr unsigned max() {
+    return (uint32_t)-1;
+  }
+
+  static constexpr unsigned min() {
+    return 0;
+  }
+  
+};
 
 void *randomRWs(void *p) {
   int me = (intptr_t)p;
   
   std::uniform_int_distribution<> slotdist(0, N-1);
   std::uniform_int_distribution<> booldist(0,1);
-  std::uniform_int_distribution<> seeddist(0, INT_MAX);
-  std::mt19937 gen(me + GLOB_SEED);
 
   for (int i = 0; i < (NTRANS/NTHREADS); ++i) {
     // so that retries of this transaction do the same thing
-    auto transseed = seeddist(gen);
+    auto transseed = i;
 
     bool done = false;
     while (!done) {
-      std::mt19937 transgen(transseed);
+      Rand transgen(transseed, me + GLOB_SEED);
 
       TransState t;
       for (int j = 0; j < NPERTRANS; ++j) {
