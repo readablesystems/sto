@@ -1,13 +1,14 @@
 #include <iostream>
 #include <assert.h>
 #include <random>
+#include <climits>
 
 #include "Array.hh"
 #include "TransState.hh"
 
 // size of array
 #define N 100
-#define NTHREADS 4
+#define NTHREADS 1
 
 // only used for randomRWs test
 #define NTRANS 1000000
