@@ -128,10 +128,13 @@ private:
   struct internal_elem {
     Version version;
     T val;
+    internal_elem()
+        : version(0), val() {
+    }
   };
 
   internal_elem data_[N];
-  
+
   internal_elem& elem(Key i) {
     return data_[i];
   }
