@@ -72,6 +72,7 @@ public:
       if (!(cur&lock_bit) && bool_cmpxchg(&pos->version, cur, cur|lock_bit)) {
         break;
       }
+      relax_fence();
     }
 #else
     mutex(i).lock();
