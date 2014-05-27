@@ -50,6 +50,7 @@ public:
     // if version stays the same across these reads then .val should match up with .version
     do {
       v = data_[i].version;
+      fence();
       cur = data_[i];
     } while (cur.version != v);
     t.read(this, pack(i), pack(cur.version));
