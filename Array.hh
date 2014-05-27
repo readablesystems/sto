@@ -30,7 +30,7 @@ public:
   typedef unsigned Key;
   typedef T Value;
 
-  const Version lock_bit = 1<<(sizeof(Version)*8 - 1);
+  const Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
 
   Array() : data_() {}
 
@@ -72,6 +72,7 @@ public:
       if (!(cur&lock_bit) && bool_cmpxchg(&pos->version, cur, cur|lock_bit)) {
         break;
       }
+      relax_fence();
     }
 #else
     mutex(i).lock();
@@ -93,7 +94,8 @@ public:
   }
 
   bool check(void *data1, void *data2) {
-    return (elem(unpack<Key>(data1)).version ^ unpack<Version>(data2)) <= lock_bit;
+    return ((elem(unpack<Key>(data1)).version ^ unpack<Version>(data2))
+            & ~lock_bit) == 0;
   }
 
   bool is_locked(void *data1, void *data2) {
@@ -128,10 +130,13 @@ private:
   struct internal_elem {
     Version version;
     T val;
+    internal_elem()
+        : version(0), val() {
+    }
   };
 
   internal_elem data_[N];
-  
+
   internal_elem& elem(Key i) {
     return data_[i];
   }

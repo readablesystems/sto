@@ -19,6 +19,8 @@
 
 #define BLIND_RANDOM_WRITE 1
 
+#define MAINTAIN_TRUE_ARRAY_STATE 1
+
 //#define DEBUG
 
 #ifdef DEBUG
@@ -31,6 +33,11 @@ typedef Array<int, N> ArrayType;
 ArrayType *a;
 
 using namespace std;
+
+#if MAINTAIN_TRUE_ARRAY_STATE
+bool maintain_true_array_state = true;
+int true_array_state[N];
+#endif
 
 struct Rand {
   typedef uint32_t result_type;
@@ -62,10 +69,16 @@ void *randomRWs(void *p) {
   for (int i = 0; i < (NTRANS/NTHREADS); ++i) {
     // so that retries of this transaction do the same thing
     auto transseed = i;
+#if MAINTAIN_TRUE_ARRAY_STATE
+    int slots_written[NPERTRANS], nslots_written;
+#endif
 
     bool done = false;
     while (!done) {
       Rand transgen(transseed, me + GLOB_SEED);
+#if MAINTAIN_TRUE_ARRAY_STATE
+      nslots_written = 0;
+#endif
 
       TransState t;
       for (int j = 0; j < NPERTRANS; ++j) {
@@ -82,6 +95,9 @@ void *randomRWs(void *p) {
           a->transWrite(t, slot, v0+1);
           ++j; // because we've done a read and a write
 #endif
+#if MAINTAIN_TRUE_ARRAY_STATE
+          slots_written[nslots_written++] = slot;
+#endif
         }
       }
       done = t.commit();
@@ -89,6 +105,14 @@ void *randomRWs(void *p) {
         debug("thread%d retrying\n", me);
       }
     }
+#if MAINTAIN_TRUE_ARRAY_STATE
+    if (maintain_true_array_state) {
+        std::sort(slots_written, slots_written + nslots_written);
+        auto itend = std::unique(slots_written, slots_written + nslots_written);
+        for (auto it = slots_written; it != itend; ++it)
+            __sync_add_and_fetch(&true_array_state[*it], 1);
+    }
+#endif
   }
   return NULL;
 }
@@ -99,14 +123,26 @@ void checkRandomRWs() {
 #if !BLIND_RANDOM_WRITE
   ArrayType *old = a;
   ArrayType check;
-  a = &check;
+
   // rerun transactions one-by-one
+  maintain_true_array_state = false;
+  a = &check;
   for (int i = 0; i < NTHREADS; ++i) {
     randomRWs((void*)i);
   }
+  maintain_true_array_state = true;
+  a = old;
 
   for (int i = 0; i < N; ++i) {
-    assert(old->read(i) == a->read(i));
+# if MAINTAIN_TRUE_ARRAY_STATE
+    if (a->read(i) != true_array_state[i])
+        fprintf(stderr, "index [%d]: parallel %d, atomic %d\n",
+                i, a->read(i), true_array_state[i]);
+# endif
+    if (a->read(i) != check.read(i))
+        fprintf(stderr, "index [%d]: parallel %d, sequential %d\n",
+                i, a->read(i), check.read(i));
+    assert(check.read(i) == a->read(i));
   }
 #endif
 }
