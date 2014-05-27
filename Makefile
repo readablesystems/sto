@@ -1,5 +1,5 @@
 CXX := $(shell which g++) -std=c++11
-CXXFLAGS := #-O3
+CXXFLAGS := -O3
 
 ifeq ($(PROFILE),1)
 CXXFLAGS += -emit-llvm -g

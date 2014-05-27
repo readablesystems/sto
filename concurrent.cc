@@ -6,16 +6,17 @@
 #include "TransState.hh"
 
 // size of array
-#define N 10
-#define NTHREADS 2
+#define N 100
+#define NTHREADS 4
 
 // only used for randomRWs test
 #define NTRANS 1000000
 #define NPERTRANS 10
+#define WRITE_PROB .5
 
 #define GLOB_SEED 0
 
-#define BLIND_RANDOM_WRITE 0
+#define BLIND_RANDOM_WRITE 1
 
 //#define DEBUG
 
@@ -55,7 +56,7 @@ void *randomRWs(void *p) {
   int me = (intptr_t)p;
   
   std::uniform_int_distribution<> slotdist(0, N-1);
-  std::uniform_int_distribution<> booldist(0,1);
+  std::uniform_real_distribution<> rwdist(0.,1.);
 
   for (int i = 0; i < (NTRANS/NTHREADS); ++i) {
     // so that retries of this transaction do the same thing
@@ -68,8 +69,8 @@ void *randomRWs(void *p) {
       TransState t;
       for (int j = 0; j < NPERTRANS; ++j) {
         int slot = slotdist(transgen);
-        int r = booldist(transgen);
-        if (r) {
+        double r = rwdist(transgen);
+        if (r > WRITE_PROB) {
           a->transRead(t, slot);
         } else {
 #if BLIND_RANDOM_WRITE

@@ -39,7 +39,6 @@ public:
   }
 
   void write(Key i, Value v) {
-    assert(0);
     lock(i);
     data_[i].val = v;
     unlock(i);
@@ -121,7 +120,6 @@ public:
       return;
     }
     elem(i).version++;
-    assert((elem(i).version & ~lock_bit) == v);
     elem(i).val = v;
   }
 
