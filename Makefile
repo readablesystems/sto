@@ -6,6 +6,10 @@ ifeq ($(PROFILE),1)
 CXXFLAGS += -g -pg -fno-inline
 endif
 
+ifeq ($(DEBUG),1)
+CXXFLAGS += -g
+endif
+
 %.o: %.cc
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
