@@ -8,16 +8,15 @@
 
 // size of array
 #define N 100
-#define NTHREADS 1
+#define NTHREADS 4
 
 // only used for randomRWs test
-#define NTRANS 1000000
+#define NTRANS 10000
 #define NPERTRANS 10
 #define WRITE_PROB .5
+#define GLOBAL_SEED 0
+#define BLIND_RANDOM_WRITE 0
 
-#define GLOB_SEED 0
-
-#define BLIND_RANDOM_WRITE 1
 
 #define MAINTAIN_TRUE_ARRAY_STATE 1
 
@@ -75,10 +74,10 @@ void *randomRWs(void *p) {
 
     bool done = false;
     while (!done) {
-      Rand transgen(transseed, me + GLOB_SEED);
 #if MAINTAIN_TRUE_ARRAY_STATE
       nslots_written = 0;
 #endif
+      Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
 
       TransState t;
       for (int j = 0; j < NPERTRANS; ++j) {
@@ -117,20 +116,22 @@ void *randomRWs(void *p) {
   return NULL;
 }
 
-// each thread's ops are deterministic but thread interleavings are not
-// (could use only read-then-write operations (e.g. counters) to make verifiable random test)
 void checkRandomRWs() {
 #if !BLIND_RANDOM_WRITE
   ArrayType *old = a;
   ArrayType check;
 
   // rerun transactions one-by-one
+#if MAINTAIN_TRUE_ARRAY_STATE
   maintain_true_array_state = false;
+#endif
   a = &check;
   for (int i = 0; i < NTHREADS; ++i) {
     randomRWs((void*)i);
   }
+#if MAINTAIN_TRUE_ARRAY_STATE
   maintain_true_array_state = true;
+#endif
   a = old;
 
   for (int i = 0; i < N; ++i) {
