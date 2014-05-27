@@ -94,7 +94,8 @@ public:
   }
 
   bool check(void *data1, void *data2) {
-    return (elem(unpack<Key>(data1)).version ^ unpack<Version>(data2)) <= lock_bit;
+    return ((elem(unpack<Key>(data1)).version ^ unpack<Version>(data2))
+            & ~lock_bit) == 0;
   }
 
   bool is_locked(void *data1, void *data2) {
