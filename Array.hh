@@ -30,7 +30,7 @@ public:
   typedef unsigned Key;
   typedef T Value;
 
-  const Version lock_bit = 1<<(sizeof(Version)*8 - 1);
+  const Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
 
   Array() : data_() {}
 
