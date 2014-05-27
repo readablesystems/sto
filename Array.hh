@@ -12,13 +12,13 @@
 #define SPIN_LOCK
 
 template <typename T>
-void *pack(T v) {
+inline void *pack(T v) {
   static_assert(sizeof(T) <= sizeof(void*), "Can't fit type into void*");
   return reinterpret_cast<void*>(v);
 }
 
 template <typename T>
-T unpack(void *vp) {
+inline T unpack(void *vp) {
   static_assert(sizeof(T) <= sizeof(void*), "Can't fit type into void*");
   return (T)(intptr_t)vp;
 }
@@ -39,14 +39,20 @@ public:
   }
 
   void write(Key i, Value v) {
+    assert(0);
     lock(i);
     data_[i].val = v;
     unlock(i);
   }
 
   T transRead(TransState& t, Key i) {
-    // "atomic read"
-    internal_elem cur = data_[i];
+    internal_elem cur;
+    Version v;
+    // if version stays the same across these reads then .val should match up with .version
+    do {
+      v = data_[i].version;
+      cur = data_[i];
+    } while (cur.version != v);
     t.read(this, pack(i), pack(cur.version));
     return cur.val;
   }
@@ -108,9 +114,15 @@ public:
   }
 
   void install(void *data1, void *data2) {
-    assert(is_locked(unpack<Key>(data1)));
-    elem(unpack<Key>(data1)).val = unpack<Value>(data2);
-    elem(unpack<Key>(data1)).version++;
+    Key i = unpack<Key>(data1);
+    Value v = unpack<Value>(data2);
+    assert(is_locked(i));
+    if (elem(i).val == v) {
+      return;
+    }
+    elem(i).version++;
+    assert((elem(i).version & ~lock_bit) == v);
+    elem(i).val = v;
   }
 
 private:
