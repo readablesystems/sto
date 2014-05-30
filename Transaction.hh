@@ -18,13 +18,13 @@ public:
     TransData data;
 
     bool operator<(const WriterItem& w2) const {
-      return writer->UID(data) < w2.writer->UID(w2.data);
+      return data < w2.data;
     }
     bool operator==(const WriterItem& w2) const {
-      return writer->UID(data) == w2.writer->UID(w2.data);
+      return data == w2.data;
     }
     bool operator==(const ReaderItem& r2) const {
-      return writer->UID(data) == r2.reader->UID(r2.data);
+      return data == r2.data;
     }
   };
 
@@ -64,7 +64,8 @@ public:
     //phase2
     for (ReaderItem& r : readSet_) {
       // TODO: binary search?
-      if (!r.reader->check(r.data) || (r.reader->is_locked(r.data) && std::find(sortedWrites.begin(), sortedWrites.end(), r) == sortedWrites.end())) {
+      bool isRW = std::find(sortedWrites.begin(), sortedWrites.end(), r) != sortedWrites.end();
+      if (!r.reader->check(r.data, isRW)) {
         success = false;
         goto end;
       }

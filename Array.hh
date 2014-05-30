@@ -86,13 +86,10 @@ public:
 #endif
   }
 
-  bool check(TransData data) {
-    return ((elem(unpack<Key>(data.key)).version ^ unpack<Version>(data.data))
-            & ~lock_bit) == 0;
-  }
-
-  bool is_locked(TransData data) {
-    return is_locked(unpack<Key>(data.key));
+  bool check(TransData data, bool isReadWrite) {
+    bool versionOK = ((elem(unpack<Key>(data.key)).version ^ unpack<Version>(data.data)) 
+                      & ~lock_bit) == 0;
+    return versionOK && (isReadWrite || !is_locked(unpack<Key>(data.key)));
   }
 
   void lock(TransData data) {
