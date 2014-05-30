@@ -11,7 +11,7 @@
 #define NTHREADS 4
 
 // only used for randomRWs test
-#define NTRANS 10000
+#define NTRANS 1000000
 #define NPERTRANS 10
 #define WRITE_PROB .5
 #define GLOBAL_SEED 0

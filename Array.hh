@@ -45,16 +45,20 @@ public:
   }
 
   T transRead(TransState& t, Key i) {
-    internal_elem cur;
     Version v;
+    Version v2;
+    Value val;
     // if version stays the same across these reads then .val should match up with .version
     do {
       v = data_[i].version;
       fence();
-      cur = data_[i];
-    } while (cur.version != v);
-    t.read(this, pack(i), pack(cur.version));
-    return cur.val;
+      val = data_[i].val;
+      fence();
+      // make sure version didn't change after we read the value
+      v2 = data_[i].version;
+    } while (v != v2);
+    t.read(this, pack(i), pack(v));
+    return val;
   }
 
   void transWrite(TransState& t, Key i, Value v) {
@@ -122,8 +126,13 @@ public:
     if (elem(i).val == v) {
       return;
     }
-    elem(i).version++;
+    // TODO: updating version then value leads to incorrect behavior
+    // updating value then version means atomic read isn't a real thing
+    // maybe transRead should just spin on is_locked? (because it essentially guarantees 
+    // transaction failure anyway)
     elem(i).val = v;
+    fence();
+    elem(i).version++;
   }
 
 private:
