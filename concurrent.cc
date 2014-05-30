@@ -127,7 +127,7 @@ void checkRandomRWs() {
 #endif
   a = &check;
   for (int i = 0; i < NTHREADS; ++i) {
-    randomRWs((void*)i);
+    randomRWs((void*)(intptr_t)i);
   }
 #if MAINTAIN_TRUE_ARRAY_STATE
   maintain_true_array_state = true;
@@ -235,7 +235,7 @@ void checkInterferingRWs() {
 void startAndWait(int n, void *(*start_routine) (void *)) {
   pthread_t tids[n];
   for (int i = 0; i < n; ++i) {
-    pthread_create(&tids[i], NULL, start_routine, (void*)i);
+    pthread_create(&tids[i], NULL, start_routine, (void*)(intptr_t)i);
   }
 
   for (int i = 0; i < n; ++i) {
