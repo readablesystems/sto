@@ -122,7 +122,10 @@ public:
     // transaction failure anyway)
     elem(i).val = val;
     fence();
-    elem(i).version++;
+    Version cur = elem(i).version & ~lock_bit;
+    // addition mod 2^(word_size-1)
+    cur = (cur+1) & ~lock_bit;
+    elem(i).version = cur | lock_bit;
   }
 
 private:
