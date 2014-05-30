@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include <stdint.h>
@@ -17,10 +18,10 @@ inline T unpack(void *vp) {
 struct TransData {
   template <typename K, typename D>
   TransData(K k, D d) : key(pack(k)), data(pack(d)) {}
-  bool operator==(const TransData& d2) const {
+  inline bool operator==(const TransData& d2) const {
     return key == d2.key;
   }
-  bool operator<(const TransData& d2) const {
+  inline bool operator<(const TransData& d2) const {
     return key < d2.key;
   }
   // this word must be unique (to a particular item) and consistently ordered across transactions

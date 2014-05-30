@@ -17,13 +17,13 @@ public:
     Writer *writer;
     TransData data;
 
-    bool operator<(const WriterItem& w2) const {
+    inline bool operator<(const WriterItem& w2) const {
       return data < w2.data;
     }
-    bool operator==(const WriterItem& w2) const {
+    inline bool operator==(const WriterItem& w2) const {
       return data == w2.data;
     }
-    bool operator==(const ReaderItem& r2) const {
+    inline bool operator==(const ReaderItem& r2) const {
       return data == r2.data;
     }
   };
