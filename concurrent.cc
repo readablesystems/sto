@@ -7,7 +7,7 @@
 #include "Transaction.hh"
 
 // size of array
-#define N 100
+#define ARRAY_SZ 100
 #define NTHREADS 4
 
 // only used for randomRWs test
@@ -28,14 +28,14 @@
 #define debug(...) /* */
 #endif
 
-typedef Array<int, N> ArrayType;
+typedef Array<int, ARRAY_SZ> ArrayType;
 ArrayType *a;
 
 using namespace std;
 
 #if MAINTAIN_TRUE_ARRAY_STATE
 bool maintain_true_array_state = true;
-int true_array_state[N];
+int true_array_state[ARRAY_SZ];
 #endif
 
 struct Rand {
@@ -62,7 +62,7 @@ struct Rand {
 void *randomRWs(void *p) {
   int me = (intptr_t)p;
   
-  std::uniform_int_distribution<> slotdist(0, N-1);
+  std::uniform_int_distribution<> slotdist(0, ARRAY_SZ-1);
   std::uniform_real_distribution<> rwdist(0.,1.);
 
   for (int i = 0; i < (NTRANS/NTHREADS); ++i) {
@@ -134,7 +134,7 @@ void checkRandomRWs() {
 #endif
   a = old;
 
-  for (int i = 0; i < N; ++i) {
+  for (int i = 0; i < ARRAY_SZ; ++i) {
 # if MAINTAIN_TRUE_ARRAY_STATE
     if (a->read(i) != true_array_state[i])
         fprintf(stderr, "index [%d]: parallel %d, atomic %d\n",
@@ -182,7 +182,7 @@ void *blindWrites(void *p) {
     Transaction t;
 
     if (a->transRead(t, 0) == 0 || me == NTHREADS-1) {
-      for (int i = 1; i < N; ++i) {
+      for (int i = 1; i < ARRAY_SZ; ++i) {
         a->transWrite(t, i, me);
       }
     }
@@ -200,7 +200,7 @@ void *blindWrites(void *p) {
 }
 
 void checkBlindWrites() {
-  for (int i = 0; i < N; ++i) {
+  for (int i = 0; i < ARRAY_SZ; ++i) {
     debug("read %d\n", a->read(i));
     assert(a->read(i) == NTHREADS-1);
   }
@@ -213,7 +213,7 @@ void *interferingRWs(void *p) {
   while (!done) {
     Transaction t;
 
-    for (int i = 0; i < N; ++i) {
+    for (int i = 0; i < ARRAY_SZ; ++i) {
       if ((i % NTHREADS) >= me) {
         auto cur = a->transRead(t, i);
         a->transWrite(t, i, cur+1);
@@ -227,7 +227,7 @@ void *interferingRWs(void *p) {
 }
 
 void checkInterferingRWs() {
-  for (int i = 0; i < N; ++i) {
+  for (int i = 0; i < ARRAY_SZ; ++i) {
     assert(a->read(i) == (i % NTHREADS)+1);
   }
 }
