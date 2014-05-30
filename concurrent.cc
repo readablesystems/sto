@@ -4,7 +4,7 @@
 #include <climits>
 
 #include "Array.hh"
-#include "TransState.hh"
+#include "Transaction.hh"
 
 // size of array
 #define N 100
@@ -79,7 +79,7 @@ void *randomRWs(void *p) {
 #endif
       Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
 
-      TransState t;
+      Transaction t;
       for (int j = 0; j < NPERTRANS; ++j) {
         int slot = slotdist(transgen);
         double r = rwdist(transgen);
@@ -159,7 +159,7 @@ void *isolatedWrites(void *p) {
 
   bool done = false;
   while (!done) {
-    TransState t;
+    Transaction t;
 
     for (int i = 0; i < NTHREADS; ++i) {
       a->transRead(t, i);
@@ -179,7 +179,7 @@ void *blindWrites(void *p) {
 
   bool done = false;
   while (!done) {
-    TransState t;
+    Transaction t;
 
     if (a->transRead(t, 0) == 0 || me == NTHREADS-1) {
       for (int i = 1; i < N; ++i) {
@@ -211,7 +211,7 @@ void *interferingRWs(void *p) {
 
   bool done = false;
   while (!done) {
-    TransState t;
+    Transaction t;
 
     for (int i = 0; i < N; ++i) {
       if ((i % NTHREADS) >= me) {

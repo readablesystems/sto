@@ -1,7 +1,7 @@
 #include <iostream>
 
 #include "Array.hh"
-#include "TransState.hh"
+#include "Transaction.hh"
 
 #define N 100
 
@@ -10,7 +10,7 @@ using namespace std;
 int main() {
   Array<int, N> a;
 
-  TransState t;
+  Transaction t;
 
   auto v0 = a.transRead(t, 0);
   auto v1 = a.transRead(t, 1);

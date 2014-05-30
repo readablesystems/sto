@@ -1,22 +1,25 @@
+#pragma once
+
 #include <stdint.h>
 
-#pragma once
+struct ReaderData;
+struct WriterData;
 
 class Reader {
 public:
   virtual ~Reader() {}
 
-  virtual bool check(void *data1, void *data2) = 0;
-  virtual bool is_locked(void *data1, void *data2) = 0;
-  virtual uint64_t UID(void *data1, void *data2) const = 0;
+  virtual bool check(ReaderData data) = 0;
+  virtual bool is_locked(ReaderData data) = 0;
+  virtual uint64_t UID(ReaderData data) const = 0;
 };
 
 class Writer {
 public:
   virtual ~Writer() {}
 
-  virtual void lock(void *data1, void *data2) = 0;
-  virtual void unlock(void *data1, void *data2) = 0;
-  virtual uint64_t UID(void *data1, void *data2) const = 0;
-  virtual void install(void *data1, void *data2) = 0;
+  virtual void lock(WriterData data) = 0;
+  virtual void unlock(WriterData data) = 0;
+  virtual uint64_t UID(WriterData data) const = 0;
+  virtual void install(WriterData data) = 0;
 };
