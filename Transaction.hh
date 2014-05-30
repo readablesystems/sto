@@ -5,31 +5,6 @@
 
 #pragma once
 
-template <typename T>
-inline void *pack(T v) {
-  static_assert(sizeof(T) <= sizeof(void*), "Can't fit type into void*");
-  return reinterpret_cast<void*>(v);
-}
-
-template <typename T>
-inline T unpack(void *vp) {
-  static_assert(sizeof(T) <= sizeof(void*), "Can't fit type into void*");
-  return (T)(intptr_t)vp;
-}
-
-struct ReaderData {
-  template <typename T, typename U>
-  ReaderData(T t,  U u) : data1(pack(t)), data2(pack(u)) {}
-  void *data1;
-  void *data2;
-};
-struct WriterData {
-  template <typename T, typename U>
-  WriterData(T t, U u) : data1(pack(t)), data2(pack(u)) {}
-  void *data1;
-  void *data2;
-};
-
 class Transaction {
 public:
   struct ReaderItem {
@@ -56,7 +31,7 @@ public:
   typedef std::vector<ReaderItem> ReadSet;
   typedef std::vector<WriterItem> WriteSet;
 
-  Transaction() : readSet_(), writeSet_() {}
+  Transaction() : readSet_(), writeSet_(), abortSet_(), commitSet_() {}
 
   void read(Reader *r, ReaderData data) {
     readSet_.emplace_back(r, data);
@@ -64,6 +39,15 @@ public:
 
   void write(Writer *w, WriterData data) {
     writeSet_.emplace_back(w, data);
+  }
+
+  // TODO: should this be a different virtual object or?
+  void onAbort(Writer *w, WriterData data) {
+    abortSet_.emplace_back(w, data);
+  }
+
+  void onCommit(Writer *w, WriterData data) {
+    commitSet_.emplace_back(w, data);
   }
 
   bool commit() {
@@ -99,12 +83,32 @@ public:
       w.writer->unlock(w.data);
     }
 
+    if (success) {
+      commitSuccess();
+    } else {
+      abort();
+    }
+
     return success;
 
   }
 
+  void abort() {
+    for (WriterItem& w : abortSet_) {
+      w.writer->undo(w.data);
+    }
+  }
+
 private:
+  void commitSuccess() {
+    for (WriterItem& w : commitSet_) {
+      w.writer->afterT(w.data);
+    }
+  }
+  
   ReadSet readSet_;
   WriteSet writeSet_;
+  WriteSet abortSet_;
+  WriteSet commitSet_;
 
 };
