@@ -45,12 +45,12 @@ public:
       // make sure version didn't change after we read the value
       v2 = data_[i].version;
     } while (v != v2);
-    t.read(this, ReaderData(i, v));
+    t.read(this, TransData(i, v));
     return val;
   }
 
   void transWrite(Transaction& t, Key i, Value v) {
-    t.write(this, WriterData(i, v));
+    t.write(this, TransData(i, v));
   }
 
   bool is_locked(Key i) {
@@ -86,35 +86,30 @@ public:
 #endif
   }
 
-  bool check(ReaderData data) {
-    return ((elem(unpack<Key>(data.data1)).version ^ unpack<Version>(data.data2))
+  bool check(TransData data) {
+    return ((elem(unpack<Key>(data.key)).version ^ unpack<Version>(data.data))
             & ~lock_bit) == 0;
   }
 
-  bool is_locked(ReaderData data) {
-    return is_locked(unpack<Key>(data.data1));
+  bool is_locked(TransData data) {
+    return is_locked(unpack<Key>(data.key));
   }
 
-  void lock(WriterData data) {
-    lock(unpack<Key>(data.data1));
+  void lock(TransData data) {
+    lock(unpack<Key>(data.key));
   }
 
-  void unlock(WriterData data) {
-    unlock(unpack<Key>(data.data1));
+  void unlock(TransData data) {
+    unlock(unpack<Key>(data.key));
   }
 
-  uint64_t UID(WriterData data) const {
-    return unpack<Key>(data.data1);
+  uint64_t UID(TransData data) const {
+    return unpack<Key>(data.key);
   }
 
-  // eh...
-  uint64_t UID(ReaderData data) const {
-    return unpack<Key>(data.data1);
-  }
-
-  void install(WriterData data) {
-    Key i = unpack<Key>(data.data1);
-    Value val = unpack<Value>(data.data2);
+  void install(TransData data) {
+    Key i = unpack<Key>(data.key);
+    Value val = unpack<Value>(data.data);
     assert(is_locked(i));
     // TODO: updating version then value leads to incorrect behavior
     // updating value then version means atomic read isn't a real thing

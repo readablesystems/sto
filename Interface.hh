@@ -14,38 +14,32 @@ inline T unpack(void *vp) {
   return (T)(intptr_t)vp;
 }
 
-struct ReaderData {
-  template <typename T, typename U>
-  ReaderData(T t,  U u) : data1(pack(t)), data2(pack(u)) {}
-  void *data1;
-  void *data2;
-};
-struct WriterData {
-  template <typename T, typename U>
-  WriterData(T t, U u) : data1(pack(t)), data2(pack(u)) {}
-  void *data1;
-  void *data2;
+struct TransData {
+  template <typename K, typename D>
+  TransData(K k, D d) : key(pack(k)), data(pack(d)) {}
+  void *key;
+  void *data;
 };
 
 class Reader {
 public:
   virtual ~Reader() {}
 
-  virtual bool check(ReaderData data) = 0;
-  virtual bool is_locked(ReaderData data) = 0;
-  virtual uint64_t UID(ReaderData data) const = 0;
+  virtual bool check(TransData data) = 0;
+  virtual bool is_locked(TransData data) = 0;
+  virtual uint64_t UID(TransData data) const = 0;
 };
 
 class Writer {
 public:
   virtual ~Writer() {}
 
-  virtual void lock(WriterData data) = 0;
-  virtual void unlock(WriterData data) = 0;
-  virtual uint64_t UID(WriterData data) const = 0;
-  virtual void install(WriterData data) = 0;
+  virtual void lock(TransData data) = 0;
+  virtual void unlock(TransData data) = 0;
+  virtual uint64_t UID(TransData data) const = 0;
+  virtual void install(TransData data) = 0;
 
   // optional
-  virtual void undo(WriterData data) {}
-  virtual void afterT(WriterData data) {}
+  virtual void undo(TransData data) {}
+  virtual void afterT(TransData data) {}
 };

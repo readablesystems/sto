@@ -8,14 +8,14 @@
 class Transaction {
 public:
   struct ReaderItem {
-    ReaderItem(Reader *r, ReaderData data) : reader(r), data(data) {}
+    ReaderItem(Reader *r, TransData data) : reader(r), data(data) {}
     Reader *reader;
-    ReaderData data;
+    TransData data;
   };
   struct WriterItem {
-    WriterItem(Writer *r, WriterData data) : writer(r), data(data) {}
+    WriterItem(Writer *r, TransData data) : writer(r), data(data) {}
     Writer *writer;
-    WriterData data;
+    TransData data;
 
     bool operator<(const WriterItem& w2) const {
       return writer->UID(data) < w2.writer->UID(w2.data);
@@ -33,20 +33,20 @@ public:
 
   Transaction() : readSet_(), writeSet_(), abortSet_(), commitSet_() {}
 
-  void read(Reader *r, ReaderData data) {
+  void read(Reader *r, TransData data) {
     readSet_.emplace_back(r, data);
   }
 
-  void write(Writer *w, WriterData data) {
+  void write(Writer *w, TransData data) {
     writeSet_.emplace_back(w, data);
   }
 
   // TODO: should this be a different virtual object or?
-  void onAbort(Writer *w, WriterData data) {
+  void onAbort(Writer *w, TransData data) {
     abortSet_.emplace_back(w, data);
   }
 
-  void onCommit(Writer *w, WriterData data) {
+  void onCommit(Writer *w, TransData data) {
     commitSet_.emplace_back(w, data);
   }
 
