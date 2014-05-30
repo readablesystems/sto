@@ -16,7 +16,7 @@
 #define WRITE_PROB .5
 #define GLOBAL_SEED 0
 #define BLIND_RANDOM_WRITE 0
-
+#define CHECK_RANDOM_WRITES 1
 
 #define MAINTAIN_TRUE_ARRAY_STATE 1
 
@@ -117,7 +117,7 @@ void *randomRWs(void *p) {
 }
 
 void checkRandomRWs() {
-#if !BLIND_RANDOM_WRITE
+#if !BLIND_RANDOM_WRITE && CHECK_RANDOM_WRITES
   ArrayType *old = a;
   ArrayType check;
 

@@ -64,6 +64,7 @@ public:
     }
     //phase3
     // we install in the original order (NOT sorted) so that writes to the same key happen in order
+    // TODO: could use stable sort above and then avoid applying duplicate writes to the same location
     for (WriterItem& w : writeSet_) {
       w.writer->install(w.data1,w.data2);
     }

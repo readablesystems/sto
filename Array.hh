@@ -9,7 +9,7 @@
 #include "TransState.hh"
 #include "Interface.hh"
 
-#define SPIN_LOCK
+#define SPIN_LOCK 1
 
 template <typename T>
 inline void *pack(T v) {
@@ -70,7 +70,7 @@ public:
   }
 
   void lock(Key i) {
-#ifdef SPIN_LOCK
+#if SPIN_LOCK
     internal_elem *pos = &elem(i);
     while (1) {
       Version cur = pos->version;
@@ -87,7 +87,7 @@ public:
   }
 
   void unlock(Key i) {
-#ifdef SPIN_LOCK
+#if SPIN_LOCK
     Version cur = elem(i).version;
     assert(cur & lock_bit);
     cur &= ~lock_bit;
@@ -121,16 +121,13 @@ public:
 
   void install(void *data1, void *data2) {
     Key i = unpack<Key>(data1);
-    Value v = unpack<Value>(data2);
+    Value val = unpack<Value>(data2);
     assert(is_locked(i));
-    if (elem(i).val == v) {
-      return;
-    }
     // TODO: updating version then value leads to incorrect behavior
     // updating value then version means atomic read isn't a real thing
     // maybe transRead should just spin on is_locked? (because it essentially guarantees 
     // transaction failure anyway)
-    elem(i).val = v;
+    elem(i).val = val;
     fence();
     elem(i).version++;
   }
@@ -151,7 +148,7 @@ private:
     return data_[i];
   }
 
-#ifndef SPIN_LOCK
+#if !SPIN_LOCK
   std::mutex locks_[N];
 
   std::mutex& mutex(Key i) {
