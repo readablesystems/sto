@@ -100,10 +100,6 @@ public:
     unlock(unpack<Key>(data.key));
   }
 
-  uint64_t UID(TransData data) const {
-    return unpack<Key>(data.key);
-  }
-
   void install(TransData data) {
     Key i = unpack<Key>(data.key);
     Value val = unpack<Value>(data.data);
