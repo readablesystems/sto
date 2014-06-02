@@ -8,7 +8,7 @@
 
 // size of array
 #define ARRAY_SZ 100
-#define NTHREADS 1
+#define NTHREADS 4
 
 // only used for randomRWs test
 #define NTRANS 1000000
@@ -17,6 +17,7 @@
 #define GLOBAL_SEED 0
 #define BLIND_RANDOM_WRITE 0
 #define CHECK_RANDOM_WRITES 1
+#define TEST_READ_MY_WRITES 1
 
 #define MAINTAIN_TRUE_ARRAY_STATE 0
 
@@ -91,8 +92,16 @@ void *randomRWs(void *p) {
 #else
           // increment current value (this lets us verify transaction correctness)
           auto v0 = a->transRead(t, slot);
-          a->transWrite(t, slot, v0+1);
+          a->transWrite(t, slot, v0+2);
           ++j; // because we've done a read and a write
+#if TEST_READ_MY_WRITES
+          // read my own writes
+          assert(a->transRead(t,slot) == v0+2);
+          a->transWrite(t, slot, v0+1);
+          // read my own second writes
+          assert(a->transRead(t,slot) == v0+1);
+#endif
+
 #endif
 #if MAINTAIN_TRUE_ARRAY_STATE
           slots_written[nslots_written++] = slot;
