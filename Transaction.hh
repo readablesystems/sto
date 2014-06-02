@@ -5,6 +5,8 @@
 
 #pragma once
 
+#define INIT_SET_SIZE 8
+
 #define READER_BIT 1<<0
 #define WRITER_BIT 1<<1
 
@@ -36,6 +38,7 @@ public:
   struct TransItem {
     TransData data;
     TransItem(Shared *s, TransData data) : shared(s), data(data) {}
+    TransItem() : shared(NULL), data(NULL,NULL,NULL) {}
 
     Shared *sharedObj() {
       return untag(shared);
@@ -84,7 +87,7 @@ public:
 
   typedef std::vector<TransItem> TransSet;
 
-  Transaction() : transSet_() {}
+  Transaction() : transSet_(INIT_SET_SIZE) {}
 
   template <typename T>
   TransItem& item(Shared *s, T key) {
