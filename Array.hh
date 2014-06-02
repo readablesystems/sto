@@ -12,7 +12,7 @@
 #define SPIN_LOCK 1
 
 template <typename T, unsigned N>
-class Array : public Reader, public Writer {
+class Array : public Shared {
 public:
   typedef unsigned Version;
   typedef unsigned Key;
@@ -32,10 +32,8 @@ public:
     unlock(i);
   }
 
-  T transRead(Transaction& t, Key i) {
-    Version v;
+  inline void atomicRead(Key i, Version& v, Value& val) {
     Version v2;
-    Value val;
     // if version stays the same across these reads then .val should match up with .version
     do {
       v = data_[i].version;
@@ -45,12 +43,27 @@ public:
       // make sure version didn't change after we read the value
       v2 = data_[i].version;
     } while (v != v2);
-    t.read(this, TransData(i, v));
-    return val;
   }
 
-  void transWrite(Transaction& t, Key i, Value v) {
-    t.write(this, TransData(i, v));
+  T transRead(Transaction& t, Key i) {
+    auto& item = t.item(this, i);
+    if (item.has_write()) {
+      return item.template write_value<Value>();
+    } else {
+      Version v;
+      Value val;
+      atomicRead(i, v, val);
+      if (!item.has_read()) {
+        item.add_read(v);
+      }
+      return val;
+    }
+  }
+
+  void transWrite(Transaction& t, Key i, Value val) {
+    auto& item = t.item(this, i);
+    // can just do this blindly
+    item.add_write(val);
   }
 
   bool is_locked(Key i) {
@@ -87,7 +100,7 @@ public:
   }
 
   bool check(TransData data, bool isReadWrite) {
-    bool versionOK = ((elem(unpack<Key>(data.key)).version ^ unpack<Version>(data.data)) 
+    bool versionOK = ((elem(unpack<Key>(data.key)).version ^ unpack<Version>(data.rdata)) 
                       & ~lock_bit) == 0;
     return versionOK && (isReadWrite || !is_locked(unpack<Key>(data.key)));
   }
@@ -102,7 +115,7 @@ public:
 
   void install(TransData data) {
     Key i = unpack<Key>(data.key);
-    Value val = unpack<Value>(data.data);
+    Value val = unpack<Value>(data.wdata);
     assert(is_locked(i));
     // TODO: updating version then value leads to incorrect behavior
     // updating value then version means atomic read isn't a real thing

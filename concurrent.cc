@@ -8,7 +8,7 @@
 
 // size of array
 #define ARRAY_SZ 100
-#define NTHREADS 4
+#define NTHREADS 1
 
 // only used for randomRWs test
 #define NTRANS 1000000
@@ -18,7 +18,7 @@
 #define BLIND_RANDOM_WRITE 0
 #define CHECK_RANDOM_WRITES 1
 
-#define MAINTAIN_TRUE_ARRAY_STATE 1
+#define MAINTAIN_TRUE_ARRAY_STATE 0
 
 //#define DEBUG
 

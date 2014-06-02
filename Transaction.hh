@@ -5,42 +5,111 @@
 
 #pragma once
 
+#define READER_BIT 1<<0
+#define WRITER_BIT 1<<1
+
+template <typename T>
+T* readObj(T* obj) {
+  //assert(!isReadObj(obj));
+  return (T*)((intptr_t)obj | READER_BIT);
+}
+template <typename T>
+T* writeObj(T* obj) {
+  //  assert(!isWriteObj(obj));
+  return (T*)((intptr_t)obj | WRITER_BIT);
+}
+template <typename T>
+T* untag(T* obj) {
+  return (T*)((intptr_t)obj & ~(WRITER_BIT|READER_BIT));
+}
+template <typename T>
+bool isReadObj(T* obj) {
+  return (intptr_t)obj & READER_BIT;
+}
+template <typename T>
+bool isWriteObj(T* obj) {
+  return (intptr_t)obj & WRITER_BIT;
+}
+
 class Transaction {
 public:
-  struct ReaderItem {
-    ReaderItem(Reader *r, TransData data) : reader(r), data(data) {}
-    Reader *reader;
+  struct TransItem {
     TransData data;
+    TransItem(Shared *s, TransData data) : shared(s), data(data) {}
+
+    Shared *sharedObj() {
+      return untag(shared);
+    }
+
+    bool has_write() {
+      return isWriteObj(shared);
+    }
+    bool has_read() {
+      return isReadObj(shared);
+    }
+
+    template <typename T>
+    T write_value() {
+      assert(isWriteObj(shared));
+      return unpack<T>(data.wdata);
+    }
+    template <typename T>
+    T read_value() {
+      assert(isReadObj(shared));
+      return unpack<T>(data.rdata);
+    }
+
+    template <typename T>
+    void add_write(T wdata) {
+      shared = writeObj(shared);
+      data.wdata = pack(wdata);
+    }
+    template <typename T>
+    void add_read(T rdata) {
+      shared = readObj(shared);
+      data.rdata = pack(rdata);
+    }
+
+    inline bool operator<(const TransItem& t2) const {
+      return data < t2.data;
+    }
+    inline bool operator==(const TransItem& t2) const {
+      return data == t2.data;
+    }
+
+  private:
+    typedef Shared TaggedShared;
+    TaggedShared *shared;
   };
-  struct WriterItem {
-    WriterItem(Writer *r, TransData data) : writer(r), data(data) {}
-    Writer *writer;
-    TransData data;
 
-    inline bool operator<(const WriterItem& w2) const {
-      return data < w2.data;
+  typedef std::vector<TransItem> TransSet;
+
+  Transaction() : transSet_() {}
+
+  template <typename T>
+  TransItem& item(Shared *s, T key) {
+    void *k = pack(key);
+    for (TransItem& ti : transSet_) {
+      if (ti.sharedObj() == s && ti.data.key == k) {
+        return ti;
+      }
     }
-    inline bool operator==(const WriterItem& w2) const {
-      return data == w2.data;
-    }
-    inline bool operator==(const ReaderItem& r2) const {
-      return data == r2.data;
-    }
-  };
-
-  typedef std::vector<ReaderItem> ReadSet;
-  typedef std::vector<WriterItem> WriteSet;
-
-  Transaction() : readSet_(), writeSet_(), abortSet_(), commitSet_() {}
-
-  void read(Reader *r, TransData data) {
-    readSet_.emplace_back(r, data);
+    // TODO: if user of this forgets to do add_read or add_write, we end up with a non-read, non-write, weirdo item
+    transSet_.emplace_back(s, TransData(k, NULL, NULL));
+    return transSet_[transSet_.size()-1];
   }
 
-  void write(Writer *w, TransData data) {
-    writeSet_.emplace_back(w, data);
+#if 0
+  void read(Shared *s, TransData data) {
+    transSet_.emplace_back(readObj(r), data);
   }
 
+  void write(Shared *s, TransData data) {
+    transSet_.emplace_back(writeObj(w), data);
+  }
+#endif
+
+#if 0
   // TODO: should this be a different virtual object or?
   void onAbort(Writer *w, TransData data) {
     abortSet_.emplace_back(w, data);
@@ -49,51 +118,58 @@ public:
   void onCommit(Writer *w, TransData data) {
     commitSet_.emplace_back(w, data);
   }
+#endif
 
   bool commit() {
     bool success = true;
 
     //phase1
-    WriteSet sortedWrites(writeSet_);
-    std::sort(sortedWrites.begin(), sortedWrites.end());
-    sortedWrites.erase(std::unique(sortedWrites.begin(), sortedWrites.end()), sortedWrites.end());
+    std::sort(transSet_.begin(), transSet_.end());
 
-    for (WriterItem& w : sortedWrites) {
-      w.writer->lock(w.data);
+    for (TransItem& ti : transSet_) {
+      if (ti.has_write()) {
+        ti.sharedObj()->lock(ti.data);
+      }
     }
     //phase2
-    for (ReaderItem& r : readSet_) {
-      // TODO: binary search?
-      bool isRW = std::find(sortedWrites.begin(), sortedWrites.end(), r) != sortedWrites.end();
-      if (!r.reader->check(r.data, isRW)) {
-        success = false;
-        goto end;
+    for (TransItem& ti : transSet_) {
+      if (ti.has_read()) {
+        bool isRW = ti.has_write();
+        if (!ti.sharedObj()->check(ti.data, isRW)) {
+          success = false;
+          goto end;
+        }
       }
     }
     //phase3
-    // we install in the original order (NOT sorted) so that writes to the same key happen in order
-    // TODO: could use stable sort above and then avoid applying duplicate writes to the same location
-    for (WriterItem& w : writeSet_) {
-      w.writer->install(w.data);
+    for (TransItem& ti : transSet_) {
+      if (ti.has_write()) {
+        ti.sharedObj()->install(ti.data);
+      }
     }
 
   end:
 
     // important to iterate through sortedWrites (has no duplicates) so we don't double unlock something
-    for (WriterItem& w : sortedWrites) {
-      w.writer->unlock(w.data);
+    for (TransItem& ti : transSet_) {
+      if (ti.has_write()) {
+        ti.sharedObj()->unlock(ti.data);
+      }
     }
 
+#if 0
     if (success) {
       commitSuccess();
     } else {
       abort();
     }
+#endif
 
     return success;
 
   }
 
+#if 0
   void abort() {
     for (WriterItem& w : abortSet_) {
       w.writer->undo(w.data);
@@ -106,10 +182,9 @@ private:
       w.writer->afterT(w.data);
     }
   }
-  
-  ReadSet readSet_;
-  WriteSet writeSet_;
-  WriteSet abortSet_;
-  WriteSet commitSet_;
+#endif
+
+private:
+  TransSet transSet_;
 
 };

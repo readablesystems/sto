@@ -16,8 +16,8 @@ inline T unpack(void *vp) {
 }
 
 struct TransData {
-  template <typename K, typename D>
-  TransData(K k, D d) : key(pack(k)), data(pack(d)) {}
+  template <typename K, typename RD, typename WD>
+  TransData(K k, RD rd, WD wd) : key(pack(k)), rdata(pack(rd)), wdata(pack(wd)) {}
   inline bool operator==(const TransData& d2) const {
     return key == d2.key;
   }
@@ -26,19 +26,15 @@ struct TransData {
   }
   // this word must be unique (to a particular item) and consistently ordered across transactions
   void *key;
-  void *data;
+  void *rdata;
+  void *wdata;
 };
 
-class Reader {
+class Shared {
 public:
-  virtual ~Reader() {}
+  virtual ~Shared() {}
 
   virtual bool check(TransData data, bool isReadWrite) = 0;
-};
-
-class Writer {
-public:
-  virtual ~Writer() {}
 
   virtual void lock(TransData data) = 0;
   virtual void unlock(TransData data) = 0;
