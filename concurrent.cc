@@ -65,6 +65,7 @@ void *randomRWs(void *p) {
   
   std::uniform_int_distribution<> slotdist(0, ARRAY_SZ-1);
   std::uniform_real_distribution<> rwdist(0.,1.);
+  uint32_t write_thresh = (uint32_t) (WRITE_PROB * Rand::max());
 
   for (int i = 0; i < (NTRANS/NTHREADS); ++i) {
     // so that retries of this transaction do the same thing
@@ -83,8 +84,8 @@ void *randomRWs(void *p) {
       Transaction t;
       for (int j = 0; j < NPERTRANS; ++j) {
         int slot = slotdist(transgen);
-        double r = rwdist(transgen);
-        if (r > WRITE_PROB) {
+        auto r = transgen();
+        if (r > write_thresh) {
           a->transRead(t, slot);
         } else {
 #if BLIND_RANDOM_WRITE
