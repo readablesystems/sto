@@ -37,7 +37,6 @@ class Transaction {
 public:
   struct TransItem {
     TransItem(Shared *s, TransData data) : shared(s), data(data) {}
-    TransItem() : shared(NULL), data(NULL,NULL,NULL) {}
 
     Shared *sharedObj() const {
       return untag(shared);
@@ -92,13 +91,14 @@ public:
 
   typedef std::vector<TransItem> TransSet;
 
-  Transaction() : transSet_() {
+  Transaction() : transSet_(), readMyWritesOnly_(true) {
     transSet_.reserve(INIT_SET_SIZE);
   }
 
   // adds item without checking its presence in the array
   template <typename T>
   TransItem& add_item(Shared *s, T key) {
+    readMyWritesOnly_ = false;
     void *k = pack(key);
     // TODO: if user of this forgets to do add_read or add_write, we end up with a non-read, non-write, weirdo item
     transSet_.emplace_back(s, TransData(k, NULL, NULL));
@@ -142,7 +142,11 @@ public:
     bool success = true;
 
     //phase1
-    std::stable_sort(transSet_.begin(), transSet_.end());
+    if (readMyWritesOnly_) {
+      std::sort(transSet_.begin(), transSet_.end());
+    } else {
+      std::stable_sort(transSet_.begin(), transSet_.end());
+    }
     TransItem* trans_first = transSet_.data();
     TransItem* trans_last = trans_first + transSet_.size();
     for (TransItem* it = trans_first; it != trans_last; )
@@ -221,5 +225,6 @@ private:
 
 private:
   TransSet transSet_;
+  bool readMyWritesOnly_;
 
 };
