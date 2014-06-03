@@ -1,4 +1,4 @@
-CXX := $(shell which g++) -std=c++11
+CXX := $(shell which g++) -std=c++11 -W -Wall
 CXXFLAGS := 
 LDFLAGS := -pthread
 

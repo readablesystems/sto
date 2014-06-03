@@ -45,7 +45,21 @@ public:
     } while (v != v2);
   }
 
-  T transRead(Transaction& t, Key i) {
+  Value transRead_nocheck(Transaction& t, Key i) {
+    auto& item = t.add_item(this, i);
+    Version v;
+    Value val;
+    atomicRead(i, v, val);
+    item.add_read(v);
+    return val;
+  }
+
+  void transWrite_nocheck(Transaction& t, Key i, Value val) {
+    auto& item = t.add_item(this, i);
+    item.add_write(val);
+  }
+
+  Value transRead(Transaction& t, Key i) {
     auto& item = t.item(this, i);
     if (item.has_write()) {
       return item.template write_value<Value>();

@@ -11,14 +11,14 @@
 #define NTHREADS 4
 
 // only used for randomRWs test
-#define NTRANS 1000000
+#define NTRANS 10000000
 #define NPERTRANS 10
 #define WRITE_PROB .5
 #define GLOBAL_SEED 0
+#define READ_MY_WRITES 0
 #define BLIND_RANDOM_WRITE 0
 #define CHECK_RANDOM_WRITES 0
 #define TEST_READ_MY_WRITES 0
-
 #define MAINTAIN_TRUE_ARRAY_STATE 0
 
 //#define DEBUG
@@ -70,13 +70,17 @@ void *randomRWs(void *p) {
   for (int i = 0; i < (NTRANS/NTHREADS); ++i) {
     // so that retries of this transaction do the same thing
     auto transseed = i;
-#if MAINTAIN_TRUE_ARRAY_STATE
+#if MAINTAIN_TRUE_ARRAY_STATE && !READ_MY_WRITES
     int slots_written[NPERTRANS], nslots_written;
+#endif
+#if MAINTAIN_TRUE_ARRAY_STATE && READ_MY_WRITES
+    bool slotWasWritten[ARRAY_SZ] = {false};
+    bool retry = false;
 #endif
 
     bool done = false;
     while (!done) {
-#if MAINTAIN_TRUE_ARRAY_STATE
+#if MAINTAIN_TRUE_ARRAY_STATE && !READ_MY_WRITES
       nslots_written = 0;
 #endif
       Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
@@ -86,35 +90,51 @@ void *randomRWs(void *p) {
         int slot = slotdist(transgen);
         auto r = transgen();
         if (r > write_thresh) {
+#if READ_MY_WRITES
           a->transRead(t, slot);
+#else
+          a->transRead_nocheck(t, slot);
+#endif
         } else {
 #if BLIND_RANDOM_WRITE
           a->transWrite(t, slot, j);
 #else
           // increment current value (this lets us verify transaction correctness)
+#if READ_MY_WRITES
           auto v0 = a->transRead(t, slot);
-          a->transWrite(t, slot, v0+2);
+          a->transWrite(t, slot, v0+1);
+#else
+          auto v0 = a->transRead_nocheck(t, slot);
+          a->transWrite_nocheck(t, slot, v0+1);
+#endif
           ++j; // because we've done a read and a write
 #if TEST_READ_MY_WRITES
           // read my own writes
-          assert(a->transRead(t,slot) == v0+2);
-          a->transWrite(t, slot, v0+1);
-          // read my own second writes
           assert(a->transRead(t,slot) == v0+1);
+          a->transWrite(t, slot, v0+2);
+          // read my own second writes
+          assert(a->transRead(t,slot) == v0+2);
 #endif
 
 #endif
-#if MAINTAIN_TRUE_ARRAY_STATE
+#if MAINTAIN_TRUE_ARRAY_STATE && !READ_MY_WRITES
           slots_written[nslots_written++] = slot;
+#endif
+#if MAINTAIN_TRUE_ARRAY_STATE && READ_MY_WRITES
+          if (maintain_true_array_state && !retry)
+            __sync_add_and_fetch(&true_array_state[slot], 1);
 #endif
         }
       }
       done = t.commit();
       if (!done) {
+#if MAINTAIN_TRUE_ARRAY_STATE && READ_MY_WRITES
+        retry = true;
+#endif
         debug("thread%d retrying\n", me);
       }
     }
-#if MAINTAIN_TRUE_ARRAY_STATE
+#if MAINTAIN_TRUE_ARRAY_STATE && !READ_MY_WRITES
     if (maintain_true_array_state) {
         std::sort(slots_written, slots_written + nslots_written);
         auto itend = std::unique(slots_written, slots_written + nslots_written);
