@@ -366,9 +366,9 @@ int main(int argc, char *argv[]) {
   printf("utime: "); print_time(ru1.ru_utime, ru2.ru_utime);
   printf("stime: "); print_time(ru1.ru_stime, ru2.ru_stime);
   printf("Ran test %d with: ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f write probability\n\
- SPIN_LOCK: %d, INIT_SET_SIZE: %d, MAINTAIN_TRUE_ARRAY_STATE: %d, GLOBAL_SEED: %d, BLIND_RANDOM_WRITE: %d, TRY_READ_MY_WRITES: %d\n",
-         test, ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_prob, SPIN_LOCK, INIT_SET_SIZE, MAINTAIN_TRUE_ARRAY_STATE, GLOBAL_SEED,
-         BLIND_RANDOM_WRITE, TRY_READ_MY_WRITES);
+ MAINTAIN_TRUE_ARRAY_STATE: %d, LOCAL_VECTOR: %d, SPIN_LOCK: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, BLIND_RANDOM_WRITE: %d, TRY_READ_MY_WRITES: %d\n",
+         test, ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_prob, 
+         MAINTAIN_TRUE_ARRAY_STATE, LOCAL_VECTOR, SPIN_LOCK, INIT_SET_SIZE, GLOBAL_SEED, BLIND_RANDOM_WRITE, TRY_READ_MY_WRITES);
 
   if (runCheck)
     tests[test].checkfunc();

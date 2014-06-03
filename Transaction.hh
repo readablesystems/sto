@@ -1,11 +1,17 @@
 #include <vector>
 #include <algorithm>
 
+#define LOCAL_VECTOR 1
+
+#if LOCAL_VECTOR
+#include "local_vector.hh"
+#endif
+
 #include "Interface.hh"
 
 #pragma once
 
-#define INIT_SET_SIZE 8
+#define INIT_SET_SIZE 16
 
 #define READER_BIT (1<<0)
 #define WRITER_BIT (1<<1)
@@ -89,10 +95,16 @@ public:
     TransData data;
   };
 
+#if LOCAL_VECTOR
+  typedef local_vector<TransItem, INIT_SET_SIZE> TransSet;
+#else
   typedef std::vector<TransItem> TransSet;
+#endif
 
   Transaction() : transSet_(), readMyWritesOnly_(true) {
+#if !LOCAL_VECTOR
     transSet_.reserve(INIT_SET_SIZE);
+#endif
   }
 
   // adds item without checking its presence in the array
@@ -149,9 +161,9 @@ public:
     } else {
       std::stable_sort(transSet_.begin(), transSet_.end());
     }
-    TransItem* trans_first = transSet_.data();
+    TransItem* trans_first = &transSet_[0];
     TransItem* trans_last = trans_first + transSet_.size();
-    for (TransItem* it = trans_first; it != trans_last; )
+    for (auto it = trans_first; it != trans_last; )
         if (it->has_write()) {
             TransItem* me = it;
             me->sharedObj()->lock(me->data);
@@ -165,11 +177,11 @@ public:
     /* fence(); */
 
     //phase2
-    for (TransItem* it = trans_first; it != trans_last; ++it)
+    for (auto it = trans_first; it != trans_last; ++it)
         if (it->has_read()) {
             bool has_write = it->has_write();
             if (!has_write && !readMyWritesOnly_)
-                for (TransItem* it2 = it + 1;
+                for (auto it2 = it + 1;
                      it2 != trans_last && it2->same_item(*it);
                      ++it2)
                     if (it2->has_write()) {
@@ -191,7 +203,7 @@ public:
 
   end:
 
-    for (TransItem* it = trans_first; it != trans_last; )
+    for (auto it = trans_first; it != trans_last; )
         if (it->has_write()) {
             TransItem* me = it;
             me->sharedObj()->unlock(me->data);
