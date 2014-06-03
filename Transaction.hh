@@ -87,8 +87,20 @@ public:
 
   typedef std::vector<TransItem> TransSet;
 
-  Transaction() : transSet_(INIT_SET_SIZE) {}
+  Transaction() : transSet_() {
+    transSet_.reserve(INIT_SET_SIZE);
+  }
 
+  // adds item without checking its presence in the array
+  template <typename T>
+  TransItem& add_item(Shared *s, T key) {
+    void *k = pack(key);
+    // TODO: if user of this forgets to do add_read or add_write, we end up with a non-read, non-write, weirdo item
+    transSet_.emplace_back(s, TransData(k, NULL, NULL));
+    return transSet_[transSet_.size()-1];
+  }
+
+  // tries to find an existing item with this key, otherwise adds it
   template <typename T>
   TransItem& item(Shared *s, T key) {
     void *k = pack(key);
@@ -97,9 +109,7 @@ public:
         return ti;
       }
     }
-    // TODO: if user of this forgets to do add_read or add_write, we end up with a non-read, non-write, weirdo item
-    transSet_.emplace_back(s, TransData(k, NULL, NULL));
-    return transSet_[transSet_.size()-1];
+    return add_item(s, key);
   }
 
 #if 0
@@ -127,9 +137,23 @@ public:
     bool success = true;
 
     //phase1
-    std::sort(transSet_.begin(), transSet_.end());
+    TransSet nodupes(transSet_);
+    std::sort(nodupes.begin(), nodupes.end());
+    // TODO: key can legitimately have this value
+    void *lastWriteKey = (void*)-1;
+    auto first = nodupes.begin();
+    auto result = first;
+    while (first != nodupes.end()) {
+      if (first->has_write() && lastWriteKey != first->data.key) {
+        lastWriteKey = first->data.key;
+        assert(first->has_write());
+        *(result++) = *first;
+      }
+      ++first;
+    }
+    nodupes.erase(result, nodupes.end());
 
-    for (TransItem& ti : transSet_) {
+    for (TransItem& ti : nodupes) {
       if (ti.has_write()) {
         ti.sharedObj()->lock(ti.data);
       }
@@ -137,7 +161,13 @@ public:
     //phase2
     for (TransItem& ti : transSet_) {
       if (ti.has_read()) {
-        bool isRW = ti.has_write();
+        bool isRW = false; //= ti.has_write();
+        for (auto& ti2 : transSet_) {
+          if (ti == ti2 && ti2.has_write()) {
+            isRW = true;
+            break;
+          }
+        }
         if (!ti.sharedObj()->check(ti.data, isRW)) {
           success = false;
           goto end;
@@ -153,8 +183,7 @@ public:
 
   end:
 
-    // important to iterate through sortedWrites (has no duplicates) so we don't double unlock something
-    for (TransItem& ti : transSet_) {
+    for (TransItem& ti : nodupes) {
       if (ti.has_write()) {
         ti.sharedObj()->unlock(ti.data);
       }
