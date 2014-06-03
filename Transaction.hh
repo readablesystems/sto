@@ -96,9 +96,11 @@ public:
   }
 
   // adds item without checking its presence in the array
-  template <typename T>
+  template <typename T, bool NOCHECK = true>
   TransItem& add_item(Shared *s, T key) {
-    readMyWritesOnly_ = false;
+    if (NOCHECK) {
+      readMyWritesOnly_ = false;
+    }
     void *k = pack(key);
     // TODO: if user of this forgets to do add_read or add_write, we end up with a non-read, non-write, weirdo item
     transSet_.emplace_back(s, TransData(k, NULL, NULL));
@@ -114,7 +116,7 @@ public:
         return ti;
       }
     }
-    return add_item(s, key);
+    return add_item<T, false>(s, key);
   }
 
 #if 0
@@ -153,7 +155,9 @@ public:
         if (it->has_write()) {
             TransItem* me = it;
             me->sharedObj()->lock(me->data);
-            for (++it; it != trans_last && it->same_item(*me); ++it)
+            ++it;
+            if (!readMyWritesOnly_)
+              for (; it != trans_last && it->same_item(*me); ++it)
                 /* do nothing */;
         } else
             ++it;
@@ -164,7 +168,7 @@ public:
     for (TransItem* it = trans_first; it != trans_last; ++it)
         if (it->has_read()) {
             bool has_write = it->has_write();
-            if (!has_write)
+            if (!has_write && !readMyWritesOnly_)
                 for (TransItem* it2 = it + 1;
                      it2 != trans_last && it2->same_item(*it);
                      ++it2)
@@ -191,7 +195,9 @@ public:
         if (it->has_write()) {
             TransItem* me = it;
             me->sharedObj()->unlock(me->data);
-            for (++it; it != trans_last && it->same_item(*me); ++it)
+            ++it;
+            if (!readMyWritesOnly_)
+              for (; it != trans_last && it->same_item(*me); ++it)
                 /* do nothing */;
         } else
             ++it;

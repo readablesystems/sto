@@ -11,11 +11,11 @@
 #define NTHREADS 4
 
 // only used for randomRWs test
-#define NTRANS 1000000
+#define NTRANS 10000000
 #define NPERTRANS 10
 #define WRITE_PROB .5
 #define GLOBAL_SEED 0
-#define READ_MY_WRITES 1
+#define READ_MY_WRITES 0
 #define BLIND_RANDOM_WRITE 0
 #define CHECK_RANDOM_WRITES 0
 #define TEST_READ_MY_WRITES 0
