@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <random>
 #include <climits>
+#include <sys/time.h>
 
 #include "Array.hh"
 #include "Transaction.hh"
@@ -13,7 +14,7 @@
 // only used for randomRWs test
 #define GLOBAL_SEED 0
 #define BLIND_RANDOM_WRITE 0
-#define TEST_READ_MY_WRITES 0
+#define TRY_READ_MY_WRITES 0
 #define MAINTAIN_TRUE_ARRAY_STATE 0
 
 //#define DEBUG
@@ -107,7 +108,7 @@ void *randomRWs(void *p) {
             a->transWrite_nocheck(t, slot, v0+1);
           }
           ++j; // because we've done a read and a write
-#if TEST_READ_MY_WRITES
+#if TRY_READ_MY_WRITES
           // read my own writes
           assert(a->transRead(t,slot) == v0+1);
           a->transWrite(t, slot, v0+2);
@@ -271,16 +272,13 @@ void startAndWait(int n, void *(*start_routine) (void *)) {
   }
 }
 
+void print_time(struct timeval tv1, struct timeval tv2) {
+  printf("%fs\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
+}
+
 struct Test {
   void *(*threadfunc) (void *);
   void (*checkfunc) (void);
-};
-
-enum {
-  Isolated,
-  Blind,
-  Interfering,
-  Random
 };
 
 Test tests[] = {
@@ -357,7 +355,21 @@ int main(int argc, char *argv[]) {
 
   ArrayType stack_arr;
   a = &stack_arr;
+  struct timeval tv1,tv2;
+  struct rusage ru1,ru2;
+  gettimeofday(&tv1, NULL);
+  getrusage(RUSAGE_SELF, &ru1);
   startAndWait(nthreads, tests[test].threadfunc);
+  gettimeofday(&tv2, NULL);
+  getrusage(RUSAGE_SELF, &ru2);
+  printf("real time: "); print_time(tv1,tv2);
+  printf("utime: "); print_time(ru1.ru_utime, ru2.ru_utime);
+  printf("stime: "); print_time(ru1.ru_stime, ru2.ru_stime);
+  printf("Ran test %d with: ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f write probability\n\
+ SPIN_LOCK: %d, INIT_SET_SIZE: %d, MAINTAIN_TRUE_ARRAY_STATE: %d, GLOBAL_SEED: %d, BLIND_RANDOM_WRITE: %d, TRY_READ_MY_WRITES: %d\n",
+         test, ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_prob, SPIN_LOCK, INIT_SET_SIZE, MAINTAIN_TRUE_ARRAY_STATE, GLOBAL_SEED,
+         BLIND_RANDOM_WRITE, TRY_READ_MY_WRITES);
+
   if (runCheck)
     tests[test].checkfunc();
 }
