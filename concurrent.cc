@@ -79,7 +79,6 @@ void *randomRWs(void *p) {
 #endif
 
     bool done = false;
-    int k = 0;
     while (!done) {
 #if MAINTAIN_TRUE_ARRAY_STATE && !READ_MY_WRITES
       nslots_written = 0;

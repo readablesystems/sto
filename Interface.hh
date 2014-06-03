@@ -41,6 +41,6 @@ public:
   virtual void install(TransData data) = 0;
 
   // optional
-  virtual void undo(TransData data) {}
-  virtual void afterT(TransData data) {}
+  virtual void undo(TransData data) { (void)data; }
+  virtual void afterT(TransData data) { (void)data; }
 };
