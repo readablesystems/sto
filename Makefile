@@ -29,7 +29,10 @@ DEPSFLAGS = -MD -MF $(DEPSFILE) #-MP
 %.o: %.cc
 	$(CXX) $(CXXFLAGS) $(DEPSFLAGS) -c -o $@ $<
 
-concurrent: concurrent.o
+%.o: %.c
+	$(CXX) $(CXXFLAGS) $(DEPSFLAGS) -c -o $@ $<
+
+concurrent: concurrent.o clp.o
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
 clean:

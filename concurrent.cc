@@ -5,19 +5,14 @@
 
 #include "Array.hh"
 #include "Transaction.hh"
+#include "clp.h"
 
 // size of array
 #define ARRAY_SZ 100
-#define NTHREADS 4
 
 // only used for randomRWs test
-#define NTRANS 10000000
-#define NPERTRANS 10
-#define WRITE_PROB .5
 #define GLOBAL_SEED 0
-#define READ_MY_WRITES 0
 #define BLIND_RANDOM_WRITE 0
-#define CHECK_RANDOM_WRITES 0
 #define TEST_READ_MY_WRITES 0
 #define MAINTAIN_TRUE_ARRAY_STATE 0
 
@@ -31,6 +26,14 @@
 
 typedef Array<int, ARRAY_SZ> ArrayType;
 ArrayType *a;
+
+bool readMyWrites = true;
+bool runCheck = false;
+int nthreads = 4;
+int ntrans = 1000000;
+int opspertrans = 10;
+double write_prob = 0.5;
+
 
 using namespace std;
 
@@ -65,48 +68,44 @@ void *randomRWs(void *p) {
   
   std::uniform_int_distribution<> slotdist(0, ARRAY_SZ-1);
   std::uniform_real_distribution<> rwdist(0.,1.);
-  uint32_t write_thresh = (uint32_t) (WRITE_PROB * Rand::max());
+  uint32_t write_thresh = (uint32_t) (write_prob * Rand::max());
 
-  for (int i = 0; i < (NTRANS/NTHREADS); ++i) {
+  for (int i = 0; i < (ntrans/nthreads); ++i) {
     // so that retries of this transaction do the same thing
     auto transseed = i;
-#if MAINTAIN_TRUE_ARRAY_STATE && !READ_MY_WRITES
-    int slots_written[NPERTRANS], nslots_written;
-#endif
-#if MAINTAIN_TRUE_ARRAY_STATE && READ_MY_WRITES
-    bool slotWasWritten[ARRAY_SZ] = {false};
+#if MAINTAIN_TRUE_ARRAY_STATE
+    int slots_written[opspertrans], nslots_written;
     bool retry = false;
 #endif
 
     bool done = false;
     while (!done) {
-#if MAINTAIN_TRUE_ARRAY_STATE && !READ_MY_WRITES
+#if MAINTAIN_TRUE_ARRAY_STATE
       nslots_written = 0;
 #endif
       Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
 
       Transaction t;
-      for (int j = 0; j < NPERTRANS; ++j) {
+      for (int j = 0; j < opspertrans; ++j) {
         int slot = slotdist(transgen);
         auto r = transgen();
         if (r > write_thresh) {
-#if READ_MY_WRITES
-          a->transRead(t, slot);
-#else
-          a->transRead_nocheck(t, slot);
-#endif
+          if (readMyWrites)
+            a->transRead(t, slot);
+          else
+            a->transRead_nocheck(t, slot);
         } else {
 #if BLIND_RANDOM_WRITE
           a->transWrite(t, slot, j);
 #else
           // increment current value (this lets us verify transaction correctness)
-#if READ_MY_WRITES
-          auto v0 = a->transRead(t, slot);
-          a->transWrite(t, slot, v0+1);
-#else
-          auto v0 = a->transRead_nocheck(t, slot);
-          a->transWrite_nocheck(t, slot, v0+1);
-#endif
+          if (readMyWrites) {
+            auto v0 = a->transRead(t, slot);
+            a->transWrite(t, slot, v0+1);
+          } else {
+            auto v0 = a->transRead_nocheck(t, slot);
+            a->transWrite_nocheck(t, slot, v0+1);
+          }
           ++j; // because we've done a read and a write
 #if TEST_READ_MY_WRITES
           // read my own writes
@@ -117,25 +116,24 @@ void *randomRWs(void *p) {
 #endif
 
 #endif
-#if MAINTAIN_TRUE_ARRAY_STATE && !READ_MY_WRITES
-          slots_written[nslots_written++] = slot;
-#endif
-#if MAINTAIN_TRUE_ARRAY_STATE && READ_MY_WRITES
-          if (maintain_true_array_state && !retry)
+#if MAINTAIN_TRUE_ARRAY_STATE
+          if (!readMyWrites)
+            slots_written[nslots_written++] = slot;
+          else if (maintain_true_array_state && !retry)
             __sync_add_and_fetch(&true_array_state[slot], 1);
 #endif
         }
       }
       done = t.commit();
       if (!done) {
-#if MAINTAIN_TRUE_ARRAY_STATE && READ_MY_WRITES
+#if MAINTAIN_TRUE_ARRAY_STATE
         retry = true;
 #endif
         debug("thread%d retrying\n", me);
       }
     }
-#if MAINTAIN_TRUE_ARRAY_STATE && !READ_MY_WRITES
-    if (maintain_true_array_state) {
+#if MAINTAIN_TRUE_ARRAY_STATE
+    if (!readMyWrites && maintain_true_array_state) {
         std::sort(slots_written, slots_written + nslots_written);
         auto itend = std::unique(slots_written, slots_written + nslots_written);
         for (auto it = slots_written; it != itend; ++it)
@@ -147,7 +145,7 @@ void *randomRWs(void *p) {
 }
 
 void checkRandomRWs() {
-#if !BLIND_RANDOM_WRITE && CHECK_RANDOM_WRITES
+#if !BLIND_RANDOM_WRITE
   ArrayType *old = a;
   ArrayType check;
 
@@ -156,7 +154,7 @@ void checkRandomRWs() {
   maintain_true_array_state = false;
 #endif
   a = &check;
-  for (int i = 0; i < NTHREADS; ++i) {
+  for (int i = 0; i < nthreads; ++i) {
     randomRWs((void*)(intptr_t)i);
   }
 #if MAINTAIN_TRUE_ARRAY_STATE
@@ -179,7 +177,7 @@ void checkRandomRWs() {
 }
 
 void checkIsolatedWrites() {
-  for (int i = 0; i < NTHREADS; ++i) {
+  for (int i = 0; i < nthreads; ++i) {
     assert(a->read(i) == i+1);
   }
 }
@@ -191,7 +189,7 @@ void *isolatedWrites(void *p) {
   while (!done) {
     Transaction t;
 
-    for (int i = 0; i < NTHREADS; ++i) {
+    for (int i = 0; i < nthreads; ++i) {
       a->transRead(t, i);
     }
 
@@ -211,14 +209,14 @@ void *blindWrites(void *p) {
   while (!done) {
     Transaction t;
 
-    if (a->transRead(t, 0) == 0 || me == NTHREADS-1) {
+    if (a->transRead(t, 0) == 0 || me == nthreads-1) {
       for (int i = 1; i < ARRAY_SZ; ++i) {
         a->transWrite(t, i, me);
       }
     }
 
-    // NTHREADS-1 always wins
-    if (me == NTHREADS-1) {
+    // nthreads-1 always wins
+    if (me == nthreads-1) {
       a->transWrite(t, 0, me);
     }
 
@@ -232,7 +230,7 @@ void *blindWrites(void *p) {
 void checkBlindWrites() {
   for (int i = 0; i < ARRAY_SZ; ++i) {
     debug("read %d\n", a->read(i));
-    assert(a->read(i) == NTHREADS-1);
+    assert(a->read(i) == nthreads-1);
   }
 }
 
@@ -244,7 +242,7 @@ void *interferingRWs(void *p) {
     Transaction t;
 
     for (int i = 0; i < ARRAY_SZ; ++i) {
-      if ((i % NTHREADS) >= me) {
+      if ((i % nthreads) >= me) {
         auto cur = a->transRead(t, i);
         a->transWrite(t, i, cur+1);
       }
@@ -258,7 +256,7 @@ void *interferingRWs(void *p) {
 
 void checkInterferingRWs() {
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    assert(a->read(i) == (i % NTHREADS)+1);
+    assert(a->read(i) == (i % nthreads)+1);
   }
 }
 
@@ -292,16 +290,74 @@ Test tests[] = {
   {randomRWs, checkRandomRWs}
 };
 
+enum {
+  opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writeprob
+};
 
+static const Clp_Option options[] = {
+  { "no-readmywrites", 'n', opt_nrmyw, 0, 0 },
+  { "check", 'c', opt_check, 0, Clp_Negate },
+  { "nthreads", 0, opt_nthreads, Clp_ValInt, Clp_Optional },
+  { "ntrans", 0, opt_ntrans, Clp_ValInt, Clp_Optional },
+  { "opspertrans", 0, opt_opspertrans, Clp_ValInt, Clp_Optional },
+  { "writeprob", 0, opt_writeprob, Clp_ValDouble, Clp_Optional },
+};
+
+static void help(const char *name) {
+  printf("Usage: %s test-number [OPTIONS]\n\
+Options:\n\
+ -n, --no-readmywrites\n\
+ -c, --check, run a check of the results afterwards\n\
+ --nthreads=NTHREADS (default %d)\n\
+ --ntrans=NTRANS, how many total transactions to run (they'll be split between threads) (default %d)\n\
+ --opspertrans=OPSPERTRANS, how many operations to run per transaction (default %d)\n\
+ --writeprob=WRITEPROB, probability with which to do writes versus reads (default %f)\n",
+         name, nthreads, ntrans, opspertrans, write_prob);
+  exit(1);
+}
 
 int main(int argc, char *argv[]) {
-  if (argc != 2) {
-    cout << "Usage: " << argv[0] << " test#" << endl;
-    return 1;
+  Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
+
+  int test = -1;
+
+  int opt;
+  while ((opt = Clp_Next(clp)) != Clp_Done) {
+    switch (opt) {
+    case Clp_NotOption:
+      test = atoi(clp->vstr);
+      break;
+    case opt_nrmyw:
+      readMyWrites = false;
+      break;
+    case opt_check:
+      runCheck = !clp->negated;
+      break;
+    case opt_nthreads:
+      nthreads = clp->val.i;
+      break;
+    case opt_ntrans:
+      ntrans = clp->val.i;
+      break;
+    case opt_opspertrans:
+      opspertrans = clp->val.i;
+      break;
+    case opt_writeprob:
+      write_prob = clp->val.d;
+      break;
+    default:
+      help(argv[0]);
+    }
   }
+  Clp_DeleteParser(clp);
+
+  if (test == -1) {
+    help(argv[0]);
+  }
+
   ArrayType stack_arr;
   a = &stack_arr;
-  auto test = atoi(argv[1]);
-  startAndWait(NTHREADS, tests[test].threadfunc);
-  tests[test].checkfunc();
+  startAndWait(nthreads, tests[test].threadfunc);
+  if (runCheck)
+    tests[test].checkfunc();
 }
