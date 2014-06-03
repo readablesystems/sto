@@ -7,8 +7,8 @@
 
 #define INIT_SET_SIZE 8
 
-#define READER_BIT 1<<0
-#define WRITER_BIT 1<<1
+#define READER_BIT (1<<0)
+#define WRITER_BIT (1<<1)
 
 template <typename T>
 T* readObj(T* obj) {
@@ -36,28 +36,30 @@ bool isWriteObj(T* obj) {
 class Transaction {
 public:
   struct TransItem {
-    TransData data;
     TransItem(Shared *s, TransData data) : shared(s), data(data) {}
     TransItem() : shared(NULL), data(NULL,NULL,NULL) {}
 
-    Shared *sharedObj() {
+    Shared *sharedObj() const {
       return untag(shared);
     }
 
-    bool has_write() {
+    bool has_write() const {
       return isWriteObj(shared);
     }
-    bool has_read() {
+    bool has_read() const {
       return isReadObj(shared);
+    }
+    bool same_item(const TransItem& x) const {
+      return sharedObj() == x.sharedObj() && data.key == x.data.key;
     }
 
     template <typename T>
-    T write_value() {
+    T write_value() const {
       assert(isWriteObj(shared));
       return unpack<T>(data.wdata);
     }
     template <typename T>
-    T read_value() {
+    T read_value() const {
       assert(isReadObj(shared));
       return unpack<T>(data.rdata);
     }
@@ -74,7 +76,8 @@ public:
     }
 
     inline bool operator<(const TransItem& t2) const {
-      return data < t2.data;
+      return data < t2.data
+                    || (data == t2.data && shared < t2.shared);
     }
     inline bool operator==(const TransItem& t2) const {
       return data == t2.data;
@@ -83,6 +86,8 @@ public:
   private:
     typedef Shared TaggedShared;
     TaggedShared *shared;
+  public:
+    TransData data;
   };
 
   typedef std::vector<TransItem> TransSet;
@@ -137,43 +142,38 @@ public:
     bool success = true;
 
     //phase1
-    TransSet nodupes(transSet_);
-    std::sort(nodupes.begin(), nodupes.end());
-    // TODO: key can legitimately have this value
-    void *lastWriteKey = (void*)-1;
-    auto first = nodupes.begin();
-    auto result = first;
-    while (first != nodupes.end()) {
-      if (first->has_write() && lastWriteKey != first->data.key) {
-        lastWriteKey = first->data.key;
-        assert(first->has_write());
-        *(result++) = *first;
-      }
-      ++first;
-    }
-    nodupes.erase(result, nodupes.end());
+    std::stable_sort(transSet_.begin(), transSet_.end());
+    TransItem* trans_first = transSet_.data();
+    TransItem* trans_last = trans_first + transSet_.size();
+    for (TransItem* it = trans_first; it != trans_last; )
+        if (it->has_write()) {
+            TransItem* me = it;
+            me->sharedObj()->lock(me->data);
+            for (++it; it != trans_last && it->same_item(*me); ++it)
+                /* do nothing */;
+        } else
+            ++it;
 
-    for (TransItem& ti : nodupes) {
-      if (ti.has_write()) {
-        ti.sharedObj()->lock(ti.data);
-      }
-    }
+    /* fence(); */
+
     //phase2
-    for (TransItem& ti : transSet_) {
-      if (ti.has_read()) {
-        bool isRW = false; //= ti.has_write();
-        for (auto& ti2 : transSet_) {
-          if (ti == ti2 && ti2.has_write()) {
-            isRW = true;
-            break;
-          }
+    for (TransItem* it = trans_first; it != trans_last; ++it)
+        if (it->has_read()) {
+            bool has_write = it->has_write();
+            if (!has_write)
+                for (TransItem* it2 = it + 1;
+                     it2 != trans_last && it2->same_item(*it);
+                     ++it2)
+                    if (it2->has_write()) {
+                        has_write = true;
+                        break;
+                    }
+            if (!it->sharedObj()->check(it->data, has_write)) {
+                success = false;
+                goto end;
+            }
         }
-        if (!ti.sharedObj()->check(ti.data, isRW)) {
-          success = false;
-          goto end;
-        }
-      }
-    }
+
     //phase3
     for (TransItem& ti : transSet_) {
       if (ti.has_write()) {
@@ -183,11 +183,14 @@ public:
 
   end:
 
-    for (TransItem& ti : nodupes) {
-      if (ti.has_write()) {
-        ti.sharedObj()->unlock(ti.data);
-      }
-    }
+    for (TransItem* it = trans_first; it != trans_last; )
+        if (it->has_write()) {
+            TransItem* me = it;
+            me->sharedObj()->unlock(me->data);
+            for (++it; it != trans_last && it->same_item(*me); ++it)
+                /* do nothing */;
+        } else
+            ++it;
 
 #if 0
     if (success) {
