@@ -87,7 +87,9 @@ public:
 
   typedef std::vector<TransItem> TransSet;
 
-  Transaction() : transSet_(INIT_SET_SIZE) {}
+  Transaction() : transSet_() {
+    transSet_.reserve(INIT_SET_SIZE);
+  }
 
   template <typename T>
   TransItem& item(Shared *s, T key) {
