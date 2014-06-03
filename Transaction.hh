@@ -80,7 +80,7 @@ public:
                     || (data == t2.data && shared < t2.shared);
     }
     inline bool operator==(const TransItem& t2) const {
-      return data == t2.data;
+      return data == t2.data && shared == t2.shared;
     }
 
   private:
@@ -141,38 +141,51 @@ public:
   bool commit() {
     bool success = true;
 
+    int N = transSet_.size();
     //phase1
-    std::stable_sort(transSet_.begin(), transSet_.end());
+    unsigned perm[N];
+    for (int i = 0; i < N; ++i) {
+      perm[i] = i;
+    }
+    std::sort(perm, perm+N, [&] (unsigned i, unsigned j) {
+        return transSet_[i] < transSet_[j] || (transSet_[i] == transSet_[j] && i < j);
+      });
+    //    std::stable_sort(transSet_.begin(), transSet_.end());
     TransItem* trans_first = transSet_.data();
     TransItem* trans_last = trans_first + transSet_.size();
-    for (TransItem* it = trans_first; it != trans_last; )
-        if (it->has_write()) {
-            TransItem* me = it;
+    for (int i = 0; i < N; ) {
+      if (trans_first[perm[i]].has_write()) {
+            TransItem* me = &trans_first[perm[i]];
             me->sharedObj()->lock(me->data);
-            for (++it; it != trans_last && it->same_item(*me); ++it)
+            for (++i; i != N && trans_first[perm[i]].same_item(*me); ++i)
                 /* do nothing */;
         } else
-            ++it;
+            ++i;
+    }
 
     /* fence(); */
 
     //phase2
-    for (TransItem* it = trans_first; it != trans_last; ++it)
-        if (it->has_read()) {
-            bool has_write = it->has_write();
-            if (!has_write)
-                for (TransItem* it2 = it + 1;
-                     it2 != trans_last && it2->same_item(*it);
-                     ++it2)
-                    if (it2->has_write()) {
-                        has_write = true;
-                        break;
-                    }
-            if (!it->sharedObj()->check(it->data, has_write)) {
-                success = false;
-                goto end;
+    for (int i = 0; i < N; ++i) {
+        if (trans_first[perm[i]].has_read()) {
+          TransItem* me = &trans_first[perm[i]];
+          bool has_write = me->has_write();
+          if (!has_write) {
+            for (int j = i;
+                 j != N && trans_first[perm[j]].same_item(*me);
+                 ++j) {
+              if (trans_first[perm[j]].has_write()) {
+                has_write = true;
+                break;
+              }
             }
+          }
+          if (!me->sharedObj()->check(me->data, has_write)) {
+            success = false;
+            goto end;
+          }
         }
+    }
 
     //phase3
     for (TransItem& ti : transSet_) {
@@ -183,14 +196,14 @@ public:
 
   end:
 
-    for (TransItem* it = trans_first; it != trans_last; )
-        if (it->has_write()) {
-            TransItem* me = it;
+    for (int i = 0; i != N; )
+        if (trans_first[perm[i]].has_write()) {
+            TransItem* me = &trans_first[perm[i]];
             me->sharedObj()->unlock(me->data);
-            for (++it; it != trans_last && it->same_item(*me); ++it)
+            for (++i; i != N && trans_first[perm[i]].same_item(*me); ++i)
                 /* do nothing */;
         } else
-            ++it;
+            ++i;
 
 #if 0
     if (success) {
