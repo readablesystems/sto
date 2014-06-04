@@ -65,6 +65,86 @@ struct Rand {
   }
 };
 
+void *readThenWrite(void *p) {
+  int me = (intptr_t)p;
+  
+  std::uniform_int_distribution<> slotdist(0, ARRAY_SZ-1);
+
+  int N = ntrans/nthreads;
+  for (int i = 0; i < N; ++i) {
+    auto read = i < N/2;
+    // so that retries of this transaction do the same thing
+    auto transseed = i;
+#if MAINTAIN_TRUE_ARRAY_STATE
+    int slots_written[opspertrans], nslots_written;
+    bool retry = false;
+#endif
+
+    bool done = false;
+    while (!done) {
+#if MAINTAIN_TRUE_ARRAY_STATE
+      nslots_written = 0;
+#endif
+      Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
+
+      Transaction t;
+      for (int j = 0; j < opspertrans; ++j) {
+        int slot = slotdist(transgen);
+        if (read) {
+          if (readMyWrites)
+            a->transRead(t, slot);
+          else
+            a->transRead_nocheck(t, slot);
+        } else {
+#if BLIND_RANDOM_WRITE
+          a->transWrite(t, slot, j);
+#else
+          // increment current value (this lets us verify transaction correctness)
+          if (readMyWrites) {
+            auto v0 = a->transRead(t, slot);
+            a->transWrite(t, slot, v0+1);
+          } else {
+            auto v0 = a->transRead_nocheck(t, slot);
+            a->transWrite_nocheck(t, slot, v0+1);
+          }
+          ++j; // because we've done a read and a write
+#if TRY_READ_MY_WRITES
+          // read my own writes
+          assert(a->transRead(t,slot) == v0+1);
+          a->transWrite(t, slot, v0+2);
+          // read my own second writes
+          assert(a->transRead(t,slot) == v0+2);
+#endif
+
+#endif
+#if MAINTAIN_TRUE_ARRAY_STATE
+          if (!readMyWrites)
+            slots_written[nslots_written++] = slot;
+          else if (maintain_true_array_state && !retry)
+            __sync_add_and_fetch(&true_array_state[slot], 1);
+#endif
+        }
+      }
+      done = t.commit();
+      if (!done) {
+#if MAINTAIN_TRUE_ARRAY_STATE
+        retry = true;
+#endif
+        debug("thread%d retrying\n", me);
+      }
+    }
+#if MAINTAIN_TRUE_ARRAY_STATE
+    if (!readMyWrites && maintain_true_array_state) {
+        std::sort(slots_written, slots_written + nslots_written);
+        auto itend = std::unique(slots_written, slots_written + nslots_written);
+        for (auto it = slots_written; it != itend; ++it)
+            __sync_add_and_fetch(&true_array_state[*it], 1);
+    }
+#endif
+  }
+  return NULL;
+}
+
 void *randomRWs(void *p) {
   int me = (intptr_t)p;
   
@@ -72,7 +152,8 @@ void *randomRWs(void *p) {
   std::uniform_real_distribution<> rwdist(0.,1.);
   uint32_t write_thresh = (uint32_t) (write_prob * Rand::max());
 
-  for (int i = 0; i < (ntrans/nthreads); ++i) {
+  int N = ntrans/nthreads;
+  for (int i = 0; i < N; ++i) {
     // so that retries of this transaction do the same thing
     auto transseed = i;
 #if MAINTAIN_TRUE_ARRAY_STATE
@@ -286,7 +367,8 @@ Test tests[] = {
   {isolatedWrites, checkIsolatedWrites},
   {blindWrites, checkBlindWrites},
   {interferingRWs, checkInterferingRWs},
-  {randomRWs, checkRandomRWs}
+  {randomRWs, checkRandomRWs},
+  {readThenWrite, NULL},
 };
 
 enum {
