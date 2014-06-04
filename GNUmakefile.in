@@ -3,23 +3,23 @@
 AR = ar
 CC = @CC@
 CXX = @CXX@
-CXXFLAGS = -W -Wall
+CFLAGS = -W -Wall
 DEPSDIR := .deps
 DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
 LIBS = @LIBS@ -lpthread -lm
 LDFLAGS = @LDFLAGS@
 
 ifeq ($(PROFILE),1)
-CXXFLAGS += -g -pg -fno-inline
+CFLAGS += -g -pg -fno-inline
 endif
 
 ifneq ($(OPT),0)
-CXXFLAGS += -O3
+CFLAGS += -O3
 endif
 
 # debugging on by default
 ifneq ($(NDEBUG),1)
-CXXFLAGS += -g
+CFLAGS += -g
 endif
 
 all: concurrent
