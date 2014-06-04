@@ -1,0 +1,15 @@
+*.o
+*.d
+*.a
+*.swp
+*~
+/.deps
+/GNUmakefile
+/autom4te.cache
+/config.h
+/config.h.in
+/config.log
+/config.status
+/configure
+/concurrent
+/stamp-h

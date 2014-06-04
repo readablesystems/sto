@@ -18,8 +18,6 @@
 
 // HAX
 #define CACHE_LINE_SIZE 64
-#define HAVE_CXX_STATIC_ASSERT 1
-#define HAVE_CXX_CONSTEXPR 1
 
 #include <stdint.h>
 #define __STDC_FORMAT_MACROS
