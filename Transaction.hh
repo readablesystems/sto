@@ -16,6 +16,9 @@
 #define READER_BIT (1<<0)
 #define WRITER_BIT (1<<1)
 
+uint64_t total_n = 0;
+uint64_t total_r, total_w;
+
 template <typename T>
 T* readObj(T* obj) {
   //assert(!isReadObj(obj));
@@ -153,6 +156,8 @@ public:
   bool commit() {
     bool success = true;
 
+    total_n += transSet_.size();
+
     //phase1
     if (readMyWritesOnly_) {
       std::sort(transSet_.begin(), transSet_.end());
@@ -177,6 +182,7 @@ public:
     //phase2
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
+        total_r++;
         bool has_write = it->has_write();
         if (!has_write && !readMyWritesOnly_)
           for (auto it2 = it + 1;
@@ -195,6 +201,7 @@ public:
     //phase3
     for (TransItem& ti : transSet_) {
       if (ti.has_write()) {
+        total_w++;
         ti.sharedObj()->install(ti.data);
       }
     }
