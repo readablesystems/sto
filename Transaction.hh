@@ -76,12 +76,12 @@ public:
     
   private:
     template <typename T>
-    void add_write(T wdata) {
+    void _addwrite(T wdata) {
       shared = writeObj(shared);
       data.wdata = pack(wdata);
     }
     template <typename T>
-    void add_read(T rdata) {
+    void _addread(T rdata) {
       shared = readObj(shared);
       data.rdata = pack(rdata);
     }
@@ -100,7 +100,7 @@ public:
   typedef std::vector<TransItem> TransSet;
 #endif
 
-  Transaction() : transSet_(), readMyWritesOnly_(true) {
+  Transaction() : transSet_(), firstWrite_(-1), readMyWritesOnly_(true) {
 #if !LOCAL_VECTOR
     transSet_.reserve(INIT_SET_SIZE);
 #endif
@@ -119,12 +119,17 @@ public:
   }
 
   // tries to find an existing item with this key, otherwise adds it
+  // reference is only guaranteed valid til the next call of item/add_item!!
   template <typename T>
   TransItem& item(Shared *s, T key) {
     void *k = pack(key);
-    for (TransItem& ti : transSet_) {
-      if (ti.sharedObj() == s && ti.data.key == k) {
-        return ti;
+    if (firstWrite_ != -1) {
+      auto end = transSet_.end();
+      for (auto it = transSet_.begin()+firstWrite_; it != end; ++it) {
+        auto& ti = *it;
+        if (ti.sharedObj() == s && ti.data.key == k) {
+          return ti;
+        }
       }
     }
     return add_item<T, false>(s, key);
@@ -132,11 +137,13 @@ public:
 
   template <typename T>
   void add_write(TransItem& ti, T wdata) {
-    ti.add_write(wdata);
+    if (firstWrite_ == -1)
+      firstWrite_ = &ti - &transSet_[0];
+    ti._addwrite(wdata);
   }
   template <typename T>
   void add_read(TransItem& ti, T rdata) {
-    ti.add_read(rdata);
+    ti._addread(rdata);
   }
 
 #if 0
@@ -178,7 +185,7 @@ public:
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
         bool has_write = it->has_write();
-        if (!has_write && !readMyWritesOnly_)
+        if (!has_write)
           for (auto it2 = it + 1;
                it2 != trans_last && it2->same_item(*it);
                ++it2)
@@ -241,6 +248,7 @@ private:
 
 private:
   TransSet transSet_;
+  int32_t firstWrite_;
   bool readMyWritesOnly_;
 
 };
