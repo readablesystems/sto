@@ -69,6 +69,12 @@ public:
       return unpack<T>(data.rdata);
     }
 
+    inline bool operator<(const TransItem& t2) const {
+      return data < t2.data
+        || (data == t2.data && shared < t2.shared);
+    }
+    
+  private:
     template <typename T>
     void add_write(T wdata) {
       shared = writeObj(shared);
@@ -80,12 +86,8 @@ public:
       data.rdata = pack(rdata);
     }
 
-    inline bool operator<(const TransItem& t2) const {
-      return data < t2.data
-        || (data == t2.data && shared < t2.shared);
-    }
-
   private:
+    friend class Transaction;
     typedef Shared TaggedShared;
     TaggedShared *shared;
   public:

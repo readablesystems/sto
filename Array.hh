@@ -50,13 +50,13 @@ public:
     Version v;
     Value val;
     atomicRead(i, v, val);
-    item.add_read(v);
+    t.add_read(item, v);
     return val;
   }
 
   void transWrite_nocheck(Transaction& t, Key i, Value val) {
     auto& item = t.add_item(this, i);
-    item.add_write(val);
+    t.add_write(item, val);
   }
 
   Value transRead(Transaction& t, Key i) {
@@ -68,7 +68,7 @@ public:
       Value val;
       atomicRead(i, v, val);
       if (!item.has_read()) {
-        t.add_read(item,v);
+        t.add_read(item, v);
       }
       return val;
     }
