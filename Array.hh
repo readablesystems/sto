@@ -68,7 +68,7 @@ public:
       Value val;
       atomicRead(i, v, val);
       if (!item.has_read()) {
-        item.add_read(v);
+        t.add_read(item,v);
       }
       return val;
     }
@@ -77,7 +77,7 @@ public:
   void transWrite(Transaction& t, Key i, Value val) {
     auto& item = t.item(this, i);
     // can just do this blindly
-    item.add_write(val);
+    t.add_write(item, val);
   }
 
   bool is_locked(Key i) {
