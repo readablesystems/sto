@@ -82,10 +82,7 @@ public:
 
     inline bool operator<(const TransItem& t2) const {
       return data < t2.data
-                    || (data == t2.data && shared < t2.shared);
-    }
-    inline bool operator==(const TransItem& t2) const {
-      return data == t2.data;
+        || (data == t2.data && shared < t2.shared);
     }
 
   private:
@@ -132,17 +129,7 @@ public:
   }
 
 #if 0
-  void read(Shared *s, TransData data) {
-    transSet_.emplace_back(readObj(r), data);
-  }
-
-  void write(Shared *s, TransData data) {
-    transSet_.emplace_back(writeObj(w), data);
-  }
-#endif
-
-#if 0
-  // TODO: should this be a different virtual object or?
+  // TODO: need to reimplement this...
   void onAbort(Writer *w, TransData data) {
     abortSet_.emplace_back(w, data);
   }
@@ -164,56 +151,56 @@ public:
     TransItem* trans_first = &transSet_[0];
     TransItem* trans_last = trans_first + transSet_.size();
     for (auto it = trans_first; it != trans_last; )
-        if (it->has_write()) {
-            TransItem* me = it;
-            me->sharedObj()->lock(me->data);
-            ++it;
-            if (!readMyWritesOnly_)
-              for (; it != trans_last && it->same_item(*me); ++it)
-                /* do nothing */;
-        } else
-            ++it;
+      if (it->has_write()) {
+        TransItem* me = it;
+        me->sharedObj()->lock(me->data);
+        ++it;
+        if (!readMyWritesOnly_)
+          for (; it != trans_last && it->same_item(*me); ++it)
+            /* do nothing */;
+      } else
+        ++it;
 
     /* fence(); */
 
     //phase2
     for (auto it = trans_first; it != trans_last; ++it)
-        if (it->has_read()) {
-            bool has_write = it->has_write();
-            if (!has_write && !readMyWritesOnly_)
-                for (auto it2 = it + 1;
-                     it2 != trans_last && it2->same_item(*it);
-                     ++it2)
-                    if (it2->has_write()) {
-                        has_write = true;
-                        break;
-                    }
-            if (!it->sharedObj()->check(it->data, has_write)) {
-                success = false;
-                goto end;
+      if (it->has_read()) {
+        bool has_write = it->has_write();
+        if (!has_write && !readMyWritesOnly_)
+          for (auto it2 = it + 1;
+               it2 != trans_last && it2->same_item(*it);
+               ++it2)
+            if (it2->has_write()) {
+              has_write = true;
+              break;
             }
+        if (!it->sharedObj()->check(it->data, has_write)) {
+          success = false;
+          goto end;
         }
-
+      }
+    
     //phase3
     for (TransItem& ti : transSet_) {
       if (ti.has_write()) {
         ti.sharedObj()->install(ti.data);
       }
     }
-
+    
   end:
 
     for (auto it = trans_first; it != trans_last; )
-        if (it->has_write()) {
-            TransItem* me = it;
-            me->sharedObj()->unlock(me->data);
-            ++it;
-            if (!readMyWritesOnly_)
-              for (; it != trans_last && it->same_item(*me); ++it)
-                /* do nothing */;
-        } else
-            ++it;
-
+      if (it->has_write()) {
+        TransItem* me = it;
+        me->sharedObj()->unlock(me->data);
+        ++it;
+        if (!readMyWritesOnly_)
+          for (; it != trans_last && it->same_item(*me); ++it)
+            /* do nothing */;
+      } else
+        ++it;
+    
 #if 0
     if (success) {
       commitSuccess();
