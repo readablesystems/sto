@@ -128,6 +128,15 @@ public:
     return add_item<T, false>(s, key);
   }
 
+  template <typename T>
+  void add_write(TransItem& ti, T wdata) {
+    ti.add_write(wdata);
+  }
+  template <typename T>
+  void add_read(TransItem& ti, T rdata) {
+    ti.add_read(rdata);
+  }
+
 #if 0
   // TODO: need to reimplement this...
   void onAbort(Writer *w, TransData data) {
