@@ -17,6 +17,8 @@
 #define TRY_READ_MY_WRITES 0
 #define MAINTAIN_TRUE_ARRAY_STATE 0
 
+#define DATA_COLLECT 1
+
 //#define DEBUG
 
 #ifdef DEBUG
@@ -33,7 +35,7 @@ bool runCheck = false;
 int nthreads = 4;
 int ntrans = 1000000;
 int opspertrans = 10;
-double write_prob = 0.5;
+double write_percent = 0.5;
 bool blindRandomWrite = false;
 
 
@@ -114,23 +116,16 @@ void *readThenWrite(void *p) {
   for (int i = 0; i < N; ++i) {
     // so that retries of this transaction do the same thing
     auto transseed = i;
-#if MAINTAIN_TRUE_ARRAY_STATE
-    int slots_written[opspertrans], nslots_written;
-    bool retry = false;
-#endif
 
     bool done = false;
     while (!done) {
-#if MAINTAIN_TRUE_ARRAY_STATE
-      nslots_written = 0;
-#endif
       Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
 
       auto gen = [&]() { return slotdist(transgen); };
 
       Transaction t;
-      nreads(OPS/2, t, gen);
-      nwrites(OPS/2, t, gen);
+      nreads(OPS - OPS*write_percent, t, gen);
+      nwrites(OPS*write_percent, t, gen);
 
       done = t.commit();
       if (!done) {
@@ -145,7 +140,7 @@ void *randomRWs(void *p) {
   int me = (intptr_t)p;
   
   std::uniform_int_distribution<> slotdist(0, ARRAY_SZ-1);
-  uint32_t write_thresh = (uint32_t) (write_prob * Rand::max());
+  uint32_t write_thresh = (uint32_t) (write_percent * Rand::max());
 
   int N = ntrans/nthreads;
   int OPS = opspertrans;
@@ -334,7 +329,7 @@ void startAndWait(int n, void *(*start_routine) (void *)) {
 }
 
 void print_time(struct timeval tv1, struct timeval tv2) {
-  printf("%fs\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
+  printf("%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
 }
 
 struct Test {
@@ -351,7 +346,7 @@ Test tests[] = {
 };
 
 enum {
-  opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writeprob, opt_blindrandwrites,
+  opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_blindrandwrites,
 };
 
 static const Clp_Option options[] = {
@@ -360,7 +355,7 @@ static const Clp_Option options[] = {
   { "nthreads", 0, opt_nthreads, Clp_ValInt, Clp_Optional },
   { "ntrans", 0, opt_ntrans, Clp_ValInt, Clp_Optional },
   { "opspertrans", 0, opt_opspertrans, Clp_ValInt, Clp_Optional },
-  { "writeprob", 0, opt_writeprob, Clp_ValDouble, Clp_Optional },
+  { "writepercent", 0, opt_writepercent, Clp_ValDouble, Clp_Optional },
   { "blindrandwrites", 0, opt_blindrandwrites, 0, Clp_Negate },
 };
 
@@ -372,9 +367,9 @@ Options:\n\
  --nthreads=NTHREADS (default %d)\n\
  --ntrans=NTRANS, how many total transactions to run (they'll be split between threads) (default %d)\n\
  --opspertrans=OPSPERTRANS, how many operations to run per transaction (default %d)\n\
- --writeprob=WRITEPROB, probability with which to do writes versus reads (default %f)\n\
- --blindrandwrites, do blind random writes for random tests. makes checking impossible",
-         name, nthreads, ntrans, opspertrans, write_prob);
+ --writepercent=WRITEPERCENT, probability with which to do writes versus reads (default %f)\n\
+ --blindrandwrites, do blind random writes for random tests. makes checking impossible\n",
+         name, nthreads, ntrans, opspertrans, write_percent);
   exit(1);
 }
 
@@ -404,8 +399,8 @@ int main(int argc, char *argv[]) {
     case opt_opspertrans:
       opspertrans = clp->val.i;
       break;
-    case opt_writeprob:
-      write_prob = clp->val.d;
+    case opt_writepercent:
+      write_percent = clp->val.d;
       break;
     case opt_blindrandwrites:
       blindRandomWrite = !clp->negated;
@@ -429,13 +424,20 @@ int main(int argc, char *argv[]) {
   startAndWait(nthreads, tests[test].threadfunc);
   gettimeofday(&tv2, NULL);
   getrusage(RUSAGE_SELF, &ru2);
-  printf("real time: "); print_time(tv1,tv2);
-  printf("utime: "); print_time(ru1.ru_utime, ru2.ru_utime);
-  printf("stime: "); print_time(ru1.ru_stime, ru2.ru_stime);
-  printf("Ran test %d with: ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f write probability, blindrandwrites: %d\n\
+#if !DATA_COLLECT
+  printf("real time: ");
+#endif
+  print_time(tv1,tv2);
+#if !DATA_COLLECT
+  printf("utime: ");
+  print_time(ru1.ru_utime, ru2.ru_utime);
+  printf("stime: ");
+  print_time(ru1.ru_stime, ru2.ru_stime);
+  printf("Ran test %d with: ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f%% writes, blindrandwrites: %d\n\
  MAINTAIN_TRUE_ARRAY_STATE: %d, LOCAL_VECTOR: %d, SPIN_LOCK: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, TRY_READ_MY_WRITES: %d, PERF_LOGGING: %d\n",
-         test, ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_prob, blindRandomWrite,
+         test, ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, blindRandomWrite,
          MAINTAIN_TRUE_ARRAY_STATE, LOCAL_VECTOR, SPIN_LOCK, INIT_SET_SIZE, GLOBAL_SEED, TRY_READ_MY_WRITES, PERF_LOGGING);
+#endif
 
 #if PERF_LOGGING
   printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu\n", total_n, total_r, total_w, total_searched);
