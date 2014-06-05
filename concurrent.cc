@@ -449,11 +449,13 @@ int main(int argc, char *argv[]) {
   printf("utime: "); print_time(ru1.ru_utime, ru2.ru_utime);
   printf("stime: "); print_time(ru1.ru_stime, ru2.ru_stime);
   printf("Ran test %d with: ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f write probability\n\
- MAINTAIN_TRUE_ARRAY_STATE: %d, LOCAL_VECTOR: %d, SPIN_LOCK: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, BLIND_RANDOM_WRITE: %d, TRY_READ_MY_WRITES: %d\n",
+ MAINTAIN_TRUE_ARRAY_STATE: %d, LOCAL_VECTOR: %d, SPIN_LOCK: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, BLIND_RANDOM_WRITE: %d, TRY_READ_MY_WRITES: %d, PERF_LOGGING: %d\n",
          test, ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_prob, 
-         MAINTAIN_TRUE_ARRAY_STATE, LOCAL_VECTOR, SPIN_LOCK, INIT_SET_SIZE, GLOBAL_SEED, BLIND_RANDOM_WRITE, TRY_READ_MY_WRITES);
+         MAINTAIN_TRUE_ARRAY_STATE, LOCAL_VECTOR, SPIN_LOCK, INIT_SET_SIZE, GLOBAL_SEED, BLIND_RANDOM_WRITE, TRY_READ_MY_WRITES, PERF_LOGGING);
 
-  printf("total_n: %d, total_r: %d, total_w: %d, total_searched: %d\n", total_n, total_r, total_w, total_searched);
+#if PERF_LOGGING
+  printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu\n", total_n, total_r, total_w, total_searched);
+#endif
 
   if (runCheck)
     tests[test].checkfunc();
