@@ -10,7 +10,7 @@
 #include "clp.h"
 
 // size of array
-#define ARRAY_SZ 100
+#define ARRAY_SZ 1000000
 
 // only used for randomRWs test
 #define GLOBAL_SEED 0
@@ -65,6 +65,45 @@ struct Rand {
   }
 };
 
+
+static void doRead(Transaction& t, int slot) {
+  if (readMyWrites)
+    a->transRead(t, slot);
+  else
+    a->transRead_nocheck(t, slot);
+}
+
+static void doWrite(Transaction& t, int slot, int& ctr) {
+  if (blindRandomWrite) {
+    if (readMyWrites) {
+      a->transWrite(t, slot, ctr);
+    } else {
+      a->transWrite_nocheck(t, slot, ctr);
+    }
+  } else {
+    // increment current value (this lets us verify transaction correctness)                                   
+    if (readMyWrites) {
+      auto v0 = a->transRead(t, slot);
+      a->transWrite(t, slot, v0+1);
+    } else {
+      auto v0 = a->transRead_nocheck(t, slot);
+      a->transWrite_nocheck(t, slot, v0+1);
+    }
+    ++ctr; // because we've done a read and a write
+  }
+}
+  
+static inline void nreads(int n, Transaction& t, std::function<int(void)> slotgen) {
+  for (int i = 0; i < n; ++i) {
+    doRead(t, slotgen());
+  }
+}
+static inline void nwrites(int n, Transaction& t, std::function<int(void)> slotgen) {
+  for (int i = 0; i < n; ++i) {
+    doWrite(t, slotgen(), i);
+  }
+}
+
 void *readThenWrite(void *p) {
   int me = (intptr_t)p;
   
@@ -73,7 +112,6 @@ void *readThenWrite(void *p) {
   int N = ntrans/nthreads;
   int OPS = opspertrans;
   for (int i = 0; i < N; ++i) {
-    auto read = i < N/2;
     // so that retries of this transaction do the same thing
     auto transseed = i;
 #if MAINTAIN_TRUE_ARRAY_STATE
@@ -88,64 +126,17 @@ void *readThenWrite(void *p) {
 #endif
       Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
 
-      Transaction t;
-      for (int j = 0; j < OPS; ++j) {
-        int slot = slotdist(transgen);
-        if (read) {
-          if (readMyWrites)
-            a->transRead(t, slot);
-          else
-            a->transRead_nocheck(t, slot);
-        } else {
-          if (blindRandomWrite) {
-            if (readMyWrites) {
-              a->transWrite(t, slot, j);
-            } else {
-              a->transWrite_nocheck(t, slot, j);
-            }
-          } else {
-            // increment current value (this lets us verify transaction correctness)
-            if (readMyWrites) {
-              auto v0 = a->transRead(t, slot);
-              a->transWrite(t, slot, v0+1);
-            } else {
-              auto v0 = a->transRead_nocheck(t, slot);
-              a->transWrite_nocheck(t, slot, v0+1);
-            }
-            ++j; // because we've done a read and a write
-#if TRY_READ_MY_WRITES
-            // read my own writes
-            assert(a->transRead(t,slot) == v0+1);
-            a->transWrite(t, slot, v0+2);
-            // read my own second writes
-            assert(a->transRead(t,slot) == v0+2);
-#endif
+      auto gen = [&]() { return slotdist(transgen); };
 
-#if MAINTAIN_TRUE_ARRAY_STATE
-          if (!readMyWrites)
-            slots_written[nslots_written++] = slot;
-          else if (maintain_true_array_state && !retry)
-            __sync_add_and_fetch(&true_array_state[slot], 1);
-#endif
-          }
-        }
-      }
+      Transaction t;
+      nreads(OPS/2, t, gen);
+      nwrites(OPS/2, t, gen);
+
       done = t.commit();
       if (!done) {
-#if MAINTAIN_TRUE_ARRAY_STATE
-        retry = true;
-#endif
         debug("thread%d retrying\n", me);
       }
     }
-#if MAINTAIN_TRUE_ARRAY_STATE
-    if (!readMyWrites && maintain_true_array_state) {
-        std::sort(slots_written, slots_written + nslots_written);
-        auto itend = std::unique(slots_written, slots_written + nslots_written);
-        for (auto it = slots_written; it != itend; ++it)
-            __sync_add_and_fetch(&true_array_state[*it], 1);
-    }
-#endif
   }
   return NULL;
 }
@@ -178,42 +169,23 @@ void *randomRWs(void *p) {
         int slot = slotdist(transgen);
         auto r = transgen();
         if (r > write_thresh) {
-          if (readMyWrites)
-            a->transRead(t, slot);
-          else
-            a->transRead_nocheck(t, slot);
+          doRead(t, slot);
         } else {
-          if (blindRandomWrite) {
-            if (readMyWrites) {
-              a->transWrite(t, slot, j);
-            } else {
-              a->transWrite_nocheck(t, slot, j);
-            }
-          } else {
-            // increment current value (this lets us verify transaction correctness)
-            if (readMyWrites) {
-              auto v0 = a->transRead(t, slot);
-              a->transWrite(t, slot, v0+1);
-            } else {
-              auto v0 = a->transRead_nocheck(t, slot);
-              a->transWrite_nocheck(t, slot, v0+1);
-            }
-            ++j; // because we've done a read and a write
+          doWrite(t, slot, j);
 #if TRY_READ_MY_WRITES
-            // read my own writes
-            assert(a->transRead(t,slot) == v0+1);
-            a->transWrite(t, slot, v0+2);
-            // read my own second writes
-            assert(a->transRead(t,slot) == v0+2);
+          // read my own writes
+          assert(a->transRead(t,slot) == v0+1);
+          a->transWrite(t, slot, v0+2);
+          // read my own second writes
+          assert(a->transRead(t,slot) == v0+2);
 #endif
-
+          
 #if MAINTAIN_TRUE_ARRAY_STATE
-            if (!readMyWrites)
-              slots_written[nslots_written++] = slot;
-            else if (maintain_true_array_state && !retry)
-              __sync_add_and_fetch(&true_array_state[slot], 1);
+          if (!readMyWrites)
+            slots_written[nslots_written++] = slot;
+          else if (maintain_true_array_state && !retry)
+            __sync_add_and_fetch(&true_array_state[slot], 1);
 #endif
-          }
         }
       }
       done = t.commit();
