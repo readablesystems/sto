@@ -114,23 +114,16 @@ void *readThenWrite(void *p) {
   for (int i = 0; i < N; ++i) {
     // so that retries of this transaction do the same thing
     auto transseed = i;
-#if MAINTAIN_TRUE_ARRAY_STATE
-    int slots_written[opspertrans], nslots_written;
-    bool retry = false;
-#endif
 
     bool done = false;
     while (!done) {
-#if MAINTAIN_TRUE_ARRAY_STATE
-      nslots_written = 0;
-#endif
       Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
 
       auto gen = [&]() { return slotdist(transgen); };
 
       Transaction t;
-      nreads(OPS/2, t, gen);
-      nwrites(OPS/2, t, gen);
+      nreads(OPS - OPS*write_prob, t, gen);
+      nwrites(OPS*write_prob, t, gen);
 
       done = t.commit();
       if (!done) {
