@@ -453,7 +453,7 @@ int main(int argc, char *argv[]) {
          test, ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_prob, 
          MAINTAIN_TRUE_ARRAY_STATE, LOCAL_VECTOR, SPIN_LOCK, INIT_SET_SIZE, GLOBAL_SEED, BLIND_RANDOM_WRITE, TRY_READ_MY_WRITES);
 
-  printf("total_n: %d, total_r: %d, total_w: %d\n", total_n, total_r, total_w);
+  printf("total_n: %d, total_r: %d, total_w: %d, total_searched: %d\n", total_n, total_r, total_w, total_searched);
 
   if (runCheck)
     tests[test].checkfunc();

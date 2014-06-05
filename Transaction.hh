@@ -16,8 +16,9 @@
 #define READER_BIT (1<<0)
 #define WRITER_BIT (1<<1)
 
-uint64_t total_n = 0;
+uint64_t total_n;
 uint64_t total_r, total_w;
+uint64_t total_searched;
 
 template <typename T>
 T* readObj(T* obj) {
@@ -126,6 +127,7 @@ public:
   TransItem& item(Shared *s, T key) {
     void *k = pack(key);
     for (TransItem& ti : transSet_) {
+      total_searched++;
       if (ti.sharedObj() == s && ti.data.key == k) {
         return ti;
       }
