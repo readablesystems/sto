@@ -17,7 +17,7 @@
 #define TRY_READ_MY_WRITES 0
 #define MAINTAIN_TRUE_ARRAY_STATE 0
 
-#define DATA_COLLECT 1
+#define DATA_COLLECT 0
 
 //#define DEBUG
 
