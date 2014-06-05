@@ -2,6 +2,7 @@
 #include <algorithm>
 
 #define LOCAL_VECTOR 1
+#define PERF_LOGGING 0
 
 #if LOCAL_VECTOR
 #include "local_vector.hh"
@@ -15,6 +16,12 @@
 
 #define READER_BIT (1<<0)
 #define WRITER_BIT (1<<1)
+
+#if PERF_LOGGING
+uint64_t total_n;
+uint64_t total_r, total_w;
+uint64_t total_searched;
+#endif
 
 template <typename T>
 T* readObj(T* obj) {
@@ -126,6 +133,9 @@ public:
     if (firstWrite_ != -1) {
       auto end = transSet_.end();
       for (auto it = transSet_.begin()+firstWrite_; it != end; ++it) {
+#if PERF_LOGGING
+      total_searched++;
+#endif
         auto& ti = *it;
         if (ti.sharedObj() == s && ti.data.key == k) {
           return ti;
@@ -160,6 +170,10 @@ public:
   bool commit() {
     bool success = true;
 
+#if PERF_LOGGING
+    total_n += transSet_.size();
+#endif
+
     //phase1
     if (readMyWritesOnly_) {
       std::sort(transSet_.begin(), transSet_.end());
@@ -184,6 +198,9 @@ public:
     //phase2
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
+#if PERF_LOGGING
+        total_r++;
+#endif
         bool has_write = it->has_write();
         if (!has_write)
           for (auto it2 = it + 1;
@@ -202,6 +219,9 @@ public:
     //phase3
     for (TransItem& ti : transSet_) {
       if (ti.has_write()) {
+#if PERF_LOGGING
+        total_w++;
+#endif
         ti.sharedObj()->install(ti.data);
       }
     }
