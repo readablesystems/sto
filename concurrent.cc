@@ -71,6 +71,7 @@ void *readThenWrite(void *p) {
   std::uniform_int_distribution<> slotdist(0, ARRAY_SZ-1);
 
   int N = ntrans/nthreads;
+  int OPS = opspertrans;
   for (int i = 0; i < N; ++i) {
     auto read = i < N/2;
     // so that retries of this transaction do the same thing
@@ -88,7 +89,7 @@ void *readThenWrite(void *p) {
       Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
 
       Transaction t;
-      for (int j = 0; j < opspertrans; ++j) {
+      for (int j = 0; j < OPS; ++j) {
         int slot = slotdist(transgen);
         if (read) {
           if (readMyWrites)
@@ -153,6 +154,7 @@ void *randomRWs(void *p) {
   uint32_t write_thresh = (uint32_t) (write_prob * Rand::max());
 
   int N = ntrans/nthreads;
+  int OPS = opspertrans;
   for (int i = 0; i < N; ++i) {
     // so that retries of this transaction do the same thing
     auto transseed = i;
@@ -169,7 +171,7 @@ void *randomRWs(void *p) {
       Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
 
       Transaction t;
-      for (int j = 0; j < opspertrans; ++j) {
+      for (int j = 0; j < OPS; ++j) {
         int slot = slotdist(transgen);
         auto r = transgen();
         if (r > write_thresh) {
