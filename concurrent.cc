@@ -97,9 +97,13 @@ void *readThenWrite(void *p) {
           else
             a->transRead_nocheck(t, slot);
         } else {
-          if (blindRandomWrite)
-            a->transWrite(t, slot, j);
-          else {
+          if (blindRandomWrite) {
+            if (readMyWrites) {
+              a->transWrite(t, slot, j);
+            } else {
+              a->transWrite_nocheck(t, slot, j);
+            }
+          } else {
             // increment current value (this lets us verify transaction correctness)
             if (readMyWrites) {
               auto v0 = a->transRead(t, slot);
@@ -179,9 +183,13 @@ void *randomRWs(void *p) {
           else
             a->transRead_nocheck(t, slot);
         } else {
-          if (blindRandomWrite)
-            a->transWrite(t, slot, j);
-          else {
+          if (blindRandomWrite) {
+            if (readMyWrites) {
+              a->transWrite(t, slot, j);
+            } else {
+              a->transWrite_nocheck(t, slot, j);
+            }
+          } else {
             // increment current value (this lets us verify transaction correctness)
             if (readMyWrites) {
               auto v0 = a->transRead(t, slot);
