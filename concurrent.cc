@@ -14,7 +14,6 @@
 
 // only used for randomRWs test
 #define GLOBAL_SEED 0
-#define BLIND_RANDOM_WRITE 0
 #define TRY_READ_MY_WRITES 0
 #define MAINTAIN_TRUE_ARRAY_STATE 0
 
@@ -35,6 +34,7 @@ int nthreads = 4;
 int ntrans = 1000000;
 int opspertrans = 10;
 double write_prob = 0.5;
+bool blindRandomWrite = false;
 
 
 using namespace std;
@@ -97,33 +97,33 @@ void *readThenWrite(void *p) {
           else
             a->transRead_nocheck(t, slot);
         } else {
-#if BLIND_RANDOM_WRITE
-          a->transWrite(t, slot, j);
-#else
-          // increment current value (this lets us verify transaction correctness)
-          if (readMyWrites) {
-            auto v0 = a->transRead(t, slot);
-            a->transWrite(t, slot, v0+1);
-          } else {
-            auto v0 = a->transRead_nocheck(t, slot);
-            a->transWrite_nocheck(t, slot, v0+1);
-          }
-          ++j; // because we've done a read and a write
+          if (blindRandomWrite)
+            a->transWrite(t, slot, j);
+          else {
+            // increment current value (this lets us verify transaction correctness)
+            if (readMyWrites) {
+              auto v0 = a->transRead(t, slot);
+              a->transWrite(t, slot, v0+1);
+            } else {
+              auto v0 = a->transRead_nocheck(t, slot);
+              a->transWrite_nocheck(t, slot, v0+1);
+            }
+            ++j; // because we've done a read and a write
 #if TRY_READ_MY_WRITES
-          // read my own writes
-          assert(a->transRead(t,slot) == v0+1);
-          a->transWrite(t, slot, v0+2);
-          // read my own second writes
-          assert(a->transRead(t,slot) == v0+2);
+            // read my own writes
+            assert(a->transRead(t,slot) == v0+1);
+            a->transWrite(t, slot, v0+2);
+            // read my own second writes
+            assert(a->transRead(t,slot) == v0+2);
 #endif
 
-#endif
 #if MAINTAIN_TRUE_ARRAY_STATE
           if (!readMyWrites)
             slots_written[nslots_written++] = slot;
           else if (maintain_true_array_state && !retry)
             __sync_add_and_fetch(&true_array_state[slot], 1);
 #endif
+          }
         }
       }
       done = t.commit();
@@ -150,7 +150,6 @@ void *randomRWs(void *p) {
   int me = (intptr_t)p;
   
   std::uniform_int_distribution<> slotdist(0, ARRAY_SZ-1);
-  std::uniform_real_distribution<> rwdist(0.,1.);
   uint32_t write_thresh = (uint32_t) (write_prob * Rand::max());
 
   int N = ntrans/nthreads;
@@ -180,33 +179,33 @@ void *randomRWs(void *p) {
           else
             a->transRead_nocheck(t, slot);
         } else {
-#if BLIND_RANDOM_WRITE
-          a->transWrite(t, slot, j);
-#else
-          // increment current value (this lets us verify transaction correctness)
-          if (readMyWrites) {
-            auto v0 = a->transRead(t, slot);
-            a->transWrite(t, slot, v0+1);
-          } else {
-            auto v0 = a->transRead_nocheck(t, slot);
-            a->transWrite_nocheck(t, slot, v0+1);
-          }
-          ++j; // because we've done a read and a write
+          if (blindRandomWrite)
+            a->transWrite(t, slot, j);
+          else {
+            // increment current value (this lets us verify transaction correctness)
+            if (readMyWrites) {
+              auto v0 = a->transRead(t, slot);
+              a->transWrite(t, slot, v0+1);
+            } else {
+              auto v0 = a->transRead_nocheck(t, slot);
+              a->transWrite_nocheck(t, slot, v0+1);
+            }
+            ++j; // because we've done a read and a write
 #if TRY_READ_MY_WRITES
-          // read my own writes
-          assert(a->transRead(t,slot) == v0+1);
-          a->transWrite(t, slot, v0+2);
-          // read my own second writes
-          assert(a->transRead(t,slot) == v0+2);
+            // read my own writes
+            assert(a->transRead(t,slot) == v0+1);
+            a->transWrite(t, slot, v0+2);
+            // read my own second writes
+            assert(a->transRead(t,slot) == v0+2);
 #endif
 
-#endif
 #if MAINTAIN_TRUE_ARRAY_STATE
-          if (!readMyWrites)
-            slots_written[nslots_written++] = slot;
-          else if (maintain_true_array_state && !retry)
-            __sync_add_and_fetch(&true_array_state[slot], 1);
+            if (!readMyWrites)
+              slots_written[nslots_written++] = slot;
+            else if (maintain_true_array_state && !retry)
+              __sync_add_and_fetch(&true_array_state[slot], 1);
 #endif
+          }
         }
       }
       done = t.commit();
@@ -230,7 +229,6 @@ void *randomRWs(void *p) {
 }
 
 void checkRandomRWs() {
-#if !BLIND_RANDOM_WRITE
   ArrayType *old = a;
   ArrayType check;
 
@@ -258,7 +256,6 @@ void checkRandomRWs() {
                 i, a->read(i), check.read(i));
     assert(check.read(i) == a->read(i));
   }
-#endif
 }
 
 void checkIsolatedWrites() {
@@ -374,7 +371,7 @@ Test tests[] = {
 };
 
 enum {
-  opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writeprob
+  opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writeprob, opt_blindrandwrites,
 };
 
 static const Clp_Option options[] = {
@@ -384,6 +381,7 @@ static const Clp_Option options[] = {
   { "ntrans", 0, opt_ntrans, Clp_ValInt, Clp_Optional },
   { "opspertrans", 0, opt_opspertrans, Clp_ValInt, Clp_Optional },
   { "writeprob", 0, opt_writeprob, Clp_ValDouble, Clp_Optional },
+  { "blindrandwrites", 0, opt_blindrandwrites, 0, Clp_Negate },
 };
 
 static void help(const char *name) {
@@ -394,7 +392,8 @@ Options:\n\
  --nthreads=NTHREADS (default %d)\n\
  --ntrans=NTRANS, how many total transactions to run (they'll be split between threads) (default %d)\n\
  --opspertrans=OPSPERTRANS, how many operations to run per transaction (default %d)\n\
- --writeprob=WRITEPROB, probability with which to do writes versus reads (default %f)\n",
+ --writeprob=WRITEPROB, probability with which to do writes versus reads (default %f)\n\
+ --blindrandwrites, do blind random writes for random tests. makes checking impossible",
          name, nthreads, ntrans, opspertrans, write_prob);
   exit(1);
 }
@@ -428,6 +427,9 @@ int main(int argc, char *argv[]) {
     case opt_writeprob:
       write_prob = clp->val.d;
       break;
+    case opt_blindrandwrites:
+      blindRandomWrite = !clp->negated;
+      break;
     default:
       help(argv[0]);
     }
@@ -450,10 +452,10 @@ int main(int argc, char *argv[]) {
   printf("real time: "); print_time(tv1,tv2);
   printf("utime: "); print_time(ru1.ru_utime, ru2.ru_utime);
   printf("stime: "); print_time(ru1.ru_stime, ru2.ru_stime);
-  printf("Ran test %d with: ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f write probability\n\
- MAINTAIN_TRUE_ARRAY_STATE: %d, LOCAL_VECTOR: %d, SPIN_LOCK: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, BLIND_RANDOM_WRITE: %d, TRY_READ_MY_WRITES: %d, PERF_LOGGING: %d\n",
-         test, ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_prob, 
-         MAINTAIN_TRUE_ARRAY_STATE, LOCAL_VECTOR, SPIN_LOCK, INIT_SET_SIZE, GLOBAL_SEED, BLIND_RANDOM_WRITE, TRY_READ_MY_WRITES, PERF_LOGGING);
+  printf("Ran test %d with: ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f write probability, blindrandwrites: %d\n\
+ MAINTAIN_TRUE_ARRAY_STATE: %d, LOCAL_VECTOR: %d, SPIN_LOCK: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, TRY_READ_MY_WRITES: %d, PERF_LOGGING: %d\n",
+         test, ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_prob, blindRandomWrite,
+         MAINTAIN_TRUE_ARRAY_STATE, LOCAL_VECTOR, SPIN_LOCK, INIT_SET_SIZE, GLOBAL_SEED, TRY_READ_MY_WRITES, PERF_LOGGING);
 
 #if PERF_LOGGING
   printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu\n", total_n, total_r, total_w, total_searched);
