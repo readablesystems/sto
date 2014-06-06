@@ -16,6 +16,7 @@
 
 #define READER_BIT (1<<0)
 #define WRITER_BIT (1<<1)
+#define UNDO_BIT (1<<2)
 
 #if PERF_LOGGING
 uint64_t total_n;
@@ -34,8 +35,12 @@ T* writeObj(T* obj) {
   return (T*)((intptr_t)obj | WRITER_BIT);
 }
 template <typename T>
+T* undoObj(T* obj) {
+  return (T*)((intptr_t)obj | UNDO_BIT);
+}
+template <typename T>
 T* untag(T* obj) {
-  return (T*)((intptr_t)obj & ~(WRITER_BIT|READER_BIT));
+  return (T*)((intptr_t)obj & ~(WRITER_BIT|READER_BIT|UNDO_BIT));
 }
 template <typename T>
 bool isReadObj(T* obj) {
@@ -45,11 +50,14 @@ template <typename T>
 bool isWriteObj(T* obj) {
   return (intptr_t)obj & WRITER_BIT;
 }
+bool isUndoObj(T* obj) {
+  return (intptr_t)obj & UNDO_BIT;
+}
 
 class Transaction {
 public:
   struct TransItem {
-    TransItem(Shared *s, TransData data) : shared(s), data(data) {}
+    TransItem(Shared *s, TransData data) : shared(s), data(data) {assert(untag(s)==s);}
 
     Shared *sharedObj() const {
       return untag(shared);
@@ -60,6 +68,9 @@ public:
     }
     bool has_read() const {
       return isReadObj(shared);
+    }
+    bool has_undo() const {
+      return isUndoObj(shared);
     }
     bool same_item(const TransItem& x) const {
       return sharedObj() == x.sharedObj() && data.key == x.data.key;
@@ -91,6 +102,9 @@ public:
     void add_read(T rdata) {
       shared = readObj(shared);
       data.rdata = pack(rdata);
+    }
+    void add_undo() {
+      shared = undoObj(shared);
     }
 
   private:
@@ -148,19 +162,15 @@ public:
   void add_read(TransItem& ti, T rdata) {
     ti.add_read(rdata);
   }
-
-#if 0
-  // TODO: need to reimplement this...
-  void onAbort(Writer *w, TransData data) {
-    abortSet_.emplace_back(w, data);
+  template <typename T>
+  void add_undo(TransItem& ti) {
+    ti.add_undo()
   }
-
-  void onCommit(Writer *w, TransData data) {
-    commitSet_.emplace_back(w, data);
-  }
-#endif
 
   bool commit() {
+    if (isAborted_)
+      return false;
+
     bool success = true;
 
 #if PERF_LOGGING
@@ -232,35 +242,39 @@ public:
       } else
         ++it;
     
-#if 0
     if (success) {
       commitSuccess();
     } else {
       abort();
     }
-#endif
 
     return success;
-
   }
 
-#if 0
+
   void abort() {
-    for (WriterItem& w : abortSet_) {
-      w.writer->undo(w.data);
+    isAborted_ = true;
+    for (auto& ti : transSet_) {
+      if (ti.has_undo()) {
+        ti.sharedObj()->undo(ti.data);
+      }
     }
   }
 
 private:
+
   void commitSuccess() {
+#if 0
     for (WriterItem& w : commitSet_) {
       w.writer->afterT(w.data);
     }
-  }
 #endif
+  }
+
 
 private:
   TransSet transSet_;
   bool readMyWritesOnly_;
+  bool isAborted_;
 
 };

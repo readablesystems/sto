@@ -1,0 +1,347 @@
+#pragma once
+
+template <typename K, typename V>
+class Hashtable : public Reader, public Writer {
+public:
+  typedef unsigned Version;
+  typedef K Key;
+  typedef V Value;
+
+  unsigned N = 127;
+
+  const Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
+  const intptr_t bucket_bit = 1U<<0;
+
+  Hashtable(unsigned size) : map_(size) {
+    map_.max_load_factor(FLT_MAX);
+  }
+  
+  inline size_t hash(Key k) {
+    return std::hash<Key>(k);
+  }
+
+  inline size_t nbuckets() {
+    return N;
+  }
+
+  inline size_t bucket(Key k) {
+    return hash(k) % nbuckets();
+  }
+
+  // invariants:
+  // if bucket list is different, version number is different
+  // if bucket is locked, can still do everything but insert/delete
+  // one way to rehash would be to lock every bucket...
+  // could also potentially just check every bucket's version number after rehash (transaction)
+
+  // transaction time!
+  // key is either a pointer to entry in hashtable (if actually in hashtable)
+  // or a bucket index where the key would be, if not in hashtable
+  // TODO: could be relatively common that insert/delete happens in same bucket as a key but the key itself
+  // was not inserted or deleted. would need to store key in the transaction as well to check this case
+
+  bool read(Key k, Value& retval) {
+    auto e = elem(k);
+    if (e)
+      retval = e->value;
+    return !!e;
+  }
+
+  void put(Key k, Value val) {
+    bucket_entry& buck = bucket_entry(k);
+    lock(&buck.version);
+    if ((internal_elem *e = find(buck, k))) {
+      set(e, val);
+    } else {
+      insert_locked(buck, k, val);
+    }
+    unlock(&buck.version);
+  }
+
+  void set(internal_elem *e, Value val) {
+    assert(e);
+    lock(&e->version);
+    e->value = val;
+    inc_version(e->version);
+    unlock(&e->version);
+  }
+  
+  bool is_bucket(void *key) {
+    return (uintptr_t)key & bucket_bit;
+  }
+  unsigned bucket_value(void *key) {
+    assert(is_bucket(key));
+    return (uintptr_t)key >> 1;
+  }
+  void *pack_bucket(unsigned bucket) {
+    return pack((bucket << 1) | bucket_bit);
+  }
+
+  void inc_version(Version& v) {
+    // TODO: work with lock bit
+    v++;
+  }
+
+  void is_locked(Version v) {
+    return v & lock_bit;
+  }
+  void lock(Version *v) {
+    while (1) {
+      Version cur = *v;
+      if (!(cur&lock_bit) && bool_cmpxchg(v, cur, cur|lock_bit)) {
+        break;
+      }
+      relax_fence();
+    }
+  }
+  void unlock(Version *v) {
+    assert(is_locked(*v));
+    Version cur = *v;
+    cur &= ~lock_bit;
+    *v = cur;
+  }
+
+  void insert_locked(bucket_entry& buck, Key k, Value val) {
+    assert(is_locked(buck.version));
+    auto new_head = new internal_elem(k, val);
+    internal_elem *cur_head = buck.head;
+    new_head->next() = cur_head;
+    buck.head = new_head;
+    //inc_version(buck.version);
+  }
+
+  void atomicRead(internal_elem *e, Version& vers, Value& val) {
+    Version v2;
+    do {
+      vers = e->version;
+      fence();
+      val = e->value;
+      fence();
+      v2 = e->version;
+    } while (vers != v2);
+  }
+
+  bool transGet(Transaction& t, Key k, Value& retval) {
+    bucket_entry& buck = bucket_entry(k);
+    Version buck_version = buck.version;
+    fence();
+    if ((internal_elem *e = find(buck, k))) {
+#if 0
+      if (!e->valid) {
+        t.abort();
+      }
+#endif
+      auto& item = t.add_item(this, e);
+      Version elem_vers;
+      atomicRead(e, elem_vers, retval);
+      t.add_read(item, elem_vers);
+      return true;
+    } else {
+      auto& item = t.add_item(this, pack_bucket(bucket(k)));
+      t.add_read(item, buck_version);
+      return false;
+    }
+  }
+
+  bool transInsert(Transaction& t, Key k, Value v) {
+    bucket_entry& buck = bucket_entry(k);
+    lock(&buck.version);
+    bool ret;
+    if ((internal_elem *e = find(buck, k))) {
+      if (!e->valid) {
+        t.abort();
+      } else {
+#if DELETE
+        auto& item = t.add_item(this, pack_bucket(bucket(k)));
+        t.add_read(item, buck.version);
+#endif
+      }
+      ret = false;
+    } else {
+      // not there so need to insert
+      insert_locked(buck, k, v); // marked as invalid
+      auto& item = t.add_item(this, buck.head);
+      // don't actually need to store anything for the write, just mark as valid on install
+      // easiest way (possibly less efficient) to do this is to have writes for insert and set both just install value and then mark valid
+      t.add_write(item, v);
+      // need to remove this item if we abort
+      t.add_undo(item);
+      ret = true;
+    }
+    unlock(&buck.version);
+    return ret;
+  }
+
+  // aka putIfAbsent
+  bool transSet(Transaction& t, Key k, Value v) {
+    bucket_entry& buck = bucket_entry(k);
+    // TODO: do we actually need to hold this?
+    lock(&buck.version);
+    bool ret;
+    if ((internal_elem *e = find(buck, k))) {
+      if (!e->valid) {
+        t.abort();
+        ret = false;
+      } else {
+#if DELETE
+        // TODO: what if item gets deleted
+#endif
+        auto& item = t.add_item(this, e);
+        // blind write
+        t.add_write(item, v);
+        ret = true;
+      }
+    } else {
+      auto& item = t.add_item(this, pack_bucket(bucket(k)));
+      t.add_read(item, buck.version);
+      ret = false;
+    }
+    unlock(&buck.version);
+    return ret;
+  }
+
+  void transPut(Transaction& t, Key k, Value v) {
+    // TODO: technically puts don't need to look into the table at all until lock time
+    bucket_entry& buck = bucket_entry(k);
+    lock(&buck.version);
+    if ((internal_elem *e = find(buck, k))) {
+      if (!e->valid) {
+        t.abort();
+      } else {
+#if DELETE
+        // we need to make sure this bucket didn't change (e.g. what was once there got removed)
+        auto& itemr = t.add_item(this, bucket(k));
+        t.add_read(itemr, buck.version);
+#endif
+        auto& item = t.add_item(this, e);
+        t.add_write(item, v);
+    } else {
+      // not there so need to insert
+      insert_locked(buck, k, v); // marked as invalid
+      auto& item = t.add_item(this, buck.head);
+      // don't actually need to store anything for the write, just mark as valid on install
+      // (for now insert and set will just do the same thing, set a value and then mark valid)
+      t.add_write(item, v);
+      // need to remove this item if we abort
+      t.add_undo(item);
+    }
+    unlock(&buck.version);
+  }
+
+  void lock(internal_elem *el) {
+    lock(&el->version);
+  }
+
+  void lock(Key k) {
+    lock(&elem(k));
+  }
+  
+  void unlock(internal_elem *el) {
+    Version cur = el->version;
+    assert(cur & lock_bit);
+    cur &= ~lock_bit;
+    el->version = cur;
+  }
+
+  void unlock(Key k) {
+    unlock(&elem(k));
+  }
+
+  bool is_locked(internal_elem *el) {
+    return is_locked(el->version);
+  }
+
+  bool versionCheck(Version v1, Version v2) {
+    return ((v1 ^ v2) & ~lock_bit) == 0;
+  }
+
+  bool check(TransData data, bool isReadWrite) {
+    if (is_bucket(data.key)) {
+      bucket_entry& buck = map_[bucket_value(data.key)];
+      Version vcur = unpack<Version>(data.rdata);
+      return versionCheck(unpack<Version>(data.rdata), buck.version) && !is_locked(buck.version);
+    }
+    auto el = unpack<internal_elem*>(data.key);
+    return versionCheck(unpack<Version>(data.rdata), el->version) && (isReadWrite || !is_locked(el->version));
+  }
+
+  void lock(TransData data) {
+    assert(!is_bucket(data.key));
+    auto el = unpack<internal_elem*>(data.key);
+    lock(el);
+  }
+  void unlock(TransData data) {
+    assert(!is_bucket(data.key));
+    auto el = unpack<internal_elem*>(data.key);
+    unlock(el);
+  }
+  void install(TransData data) {
+    assert(!is_bucket(data.key));
+    auto el = unpack<internal_elem*>(data.key);
+    assert(is_locked(el));
+    el->value = unpack<Value>(data.wdata);
+    el->version++;
+    el->valid = true;
+  }
+  void undo(TransData data) {
+    auto el = unpack<internal_elem*>(data.key);
+    // TODO: can do this in O(1) with doubly linked list (once we implement delete proper)
+    bucket_entry& buck = bucket_entry(el->key);
+    lock(&buck.version);
+    internal_elem *prev = NULL;
+    internal_elem *cur = buck.head;
+    while (cur != NULL && cur != el) {
+      prev = cur;
+      cur = cur->next();
+    }
+    assert(cur);
+    if (prev) {
+      prev->next() = cur->next();
+    } else {
+      buck.head = cur->next();
+    }
+    unlock(&buck.version);
+    free(cur);
+  }
+
+private:
+  struct bucket_entry {
+    internal_elem *head;
+    Version version;
+  };
+
+  struct internal_elem {
+    Key key;
+    internal_elem *next;
+    Version version;
+    bool valid;
+    Value val;
+    internal_elem(Key k, Value val) : k(k), next(NULL), version(0), valid(false), val(val) {}
+    bool valid() {
+      return valid;
+    }
+    internal_elem *&next() {
+      return next;
+    }
+  };
+
+  typedef std::vector<bucket_entry> MapType;
+  MapType map_;
+
+  bucket_entry& bucket_entry(Key k) {
+    return map_[bucket(k)];
+  }
+
+  internal_elem* find(bucket_entry& buck, Key k) {
+    internal_elem *list = buck.head;
+    while (list && !(list->key == k)) {
+      list = list->next();
+    }
+    return list;
+  }
+
+  internal_elem* elem(Key k) {
+    return find(bucket_entry(k), k);
+  }
+
+};
