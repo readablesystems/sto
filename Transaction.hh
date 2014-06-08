@@ -50,6 +50,7 @@ template <typename T>
 bool isWriteObj(T* obj) {
   return (intptr_t)obj & WRITER_BIT;
 }
+template <typename T>
 bool isUndoObj(T* obj) {
   return (intptr_t)obj & UNDO_BIT;
 }
@@ -121,7 +122,7 @@ public:
   typedef std::vector<TransItem> TransSet;
 #endif
 
-  Transaction() : transSet_(), readMyWritesOnly_(true) {
+  Transaction() : transSet_(), readMyWritesOnly_(true), isAborted_(false) {
 #if !LOCAL_VECTOR
     transSet_.reserve(INIT_SET_SIZE);
 #endif
@@ -162,9 +163,8 @@ public:
   void add_read(TransItem& ti, T rdata) {
     ti.add_read(rdata);
   }
-  template <typename T>
   void add_undo(TransItem& ti) {
-    ti.add_undo()
+    ti.add_undo();
   }
 
   bool commit() {

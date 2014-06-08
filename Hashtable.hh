@@ -1,23 +1,46 @@
 #pragma once
 
 template <typename K, typename V>
-class Hashtable : public Reader, public Writer {
+class Hashtable : public Shared {
 public:
   typedef unsigned Version;
   typedef K Key;
   typedef V Value;
 
+private:
+  struct internal_elem {
+    Key key;
+    internal_elem *next;
+    Version version;
+    bool valid_;
+    Value value;
+    internal_elem(Key k, Value val) : key(k), next(NULL), version(0), valid_(false), value(val) {}
+    bool& valid() {
+      return valid_;
+    }
+  };
+
+  struct bucket_entry {
+    internal_elem *head;
+    Version version;
+  };
+
+  typedef std::vector<bucket_entry> MapType;
+  MapType map_;
+
+public:
   unsigned N = 127;
 
   const Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
   const intptr_t bucket_bit = 1U<<0;
 
-  Hashtable(unsigned size) : map_(size) {
-    map_.max_load_factor(FLT_MAX);
+  Hashtable() : map_() {
+    map_.reserve(N);
   }
   
   inline size_t hash(Key k) {
-    return std::hash<Key>(k);
+    std::hash<Key> hash_fn;
+    return hash_fn(k);
   }
 
   inline size_t nbuckets() {
@@ -48,9 +71,10 @@ public:
   }
 
   void put(Key k, Value val) {
-    bucket_entry& buck = bucket_entry(k);
+    bucket_entry& buck = buck_entry(k);
     lock(&buck.version);
-    if ((internal_elem *e = find(buck, k))) {
+    internal_elem *e = find(buck, k);
+    if (e) {
       set(e, val);
     } else {
       insert_locked(buck, k, val);
@@ -82,7 +106,7 @@ public:
     v++;
   }
 
-  void is_locked(Version v) {
+  bool is_locked(Version v) {
     return v & lock_bit;
   }
   void lock(Version *v) {
@@ -105,7 +129,7 @@ public:
     assert(is_locked(buck.version));
     auto new_head = new internal_elem(k, val);
     internal_elem *cur_head = buck.head;
-    new_head->next() = cur_head;
+    new_head->next = cur_head;
     buck.head = new_head;
     //inc_version(buck.version);
   }
@@ -122,12 +146,13 @@ public:
   }
 
   bool transGet(Transaction& t, Key k, Value& retval) {
-    bucket_entry& buck = bucket_entry(k);
+    bucket_entry& buck = buck_entry(k);
     Version buck_version = buck.version;
     fence();
-    if ((internal_elem *e = find(buck, k))) {
+    internal_elem *e = find(buck, k);
+    if (e) {
 #if 0
-      if (!e->valid) {
+      if (!e->valid()) {
         t.abort();
       }
 #endif
@@ -144,11 +169,12 @@ public:
   }
 
   bool transInsert(Transaction& t, Key k, Value v) {
-    bucket_entry& buck = bucket_entry(k);
+    bucket_entry& buck = buck_entry(k);
     lock(&buck.version);
     bool ret;
-    if ((internal_elem *e = find(buck, k))) {
-      if (!e->valid) {
+    internal_elem *e = find(buck, k);
+    if (e) {
+      if (!e->valid()) {
         t.abort();
       } else {
 #if DELETE
@@ -174,24 +200,28 @@ public:
 
   // aka putIfAbsent
   bool transSet(Transaction& t, Key k, Value v) {
-    bucket_entry& buck = bucket_entry(k);
+    bucket_entry& buck = buck_entry(k);
     // TODO: do we actually need to hold this?
     lock(&buck.version);
     bool ret;
-    if ((internal_elem *e = find(buck, k))) {
-      if (!e->valid) {
+    internal_elem *e = find(buck, k);
+    if (e) {
+      if (!e->valid()) {
+        printf("transSet invalid\n");
         t.abort();
         ret = false;
       } else {
 #if DELETE
         // TODO: what if item gets deleted
 #endif
+        printf("transSet found\n");
         auto& item = t.add_item(this, e);
         // blind write
         t.add_write(item, v);
         ret = true;
       }
     } else {
+      printf("transSet not found\n");
       auto& item = t.add_item(this, pack_bucket(bucket(k)));
       t.add_read(item, buck.version);
       ret = false;
@@ -202,10 +232,11 @@ public:
 
   void transPut(Transaction& t, Key k, Value v) {
     // TODO: technically puts don't need to look into the table at all until lock time
-    bucket_entry& buck = bucket_entry(k);
+    bucket_entry& buck = buck_entry(k);
     lock(&buck.version);
-    if ((internal_elem *e = find(buck, k))) {
-      if (!e->valid) {
+    internal_elem *e = find(buck, k);
+    if (e) {
+      if (!e->valid()) {
         t.abort();
       } else {
 #if DELETE
@@ -215,6 +246,7 @@ public:
 #endif
         auto& item = t.add_item(this, e);
         t.add_write(item, v);
+      }
     } else {
       // not there so need to insert
       insert_locked(buck, k, v); // marked as invalid
@@ -256,9 +288,9 @@ public:
   }
 
   bool check(TransData data, bool isReadWrite) {
+    printf("check: %d\n", isReadWrite);
     if (is_bucket(data.key)) {
       bucket_entry& buck = map_[bucket_value(data.key)];
-      Version vcur = unpack<Version>(data.rdata);
       return versionCheck(unpack<Version>(data.rdata), buck.version) && !is_locked(buck.version);
     }
     auto el = unpack<internal_elem*>(data.key);
@@ -280,68 +312,48 @@ public:
     auto el = unpack<internal_elem*>(data.key);
     assert(is_locked(el));
     el->value = unpack<Value>(data.wdata);
-    el->version++;
-    el->valid = true;
+    printf("%d\n", el->value);
+    inc_version(el->version);
+    el->valid() = true;
+    assert(el->valid());
   }
   void undo(TransData data) {
+    printf("undo\n");
     auto el = unpack<internal_elem*>(data.key);
     // TODO: can do this in O(1) with doubly linked list (once we implement delete proper)
-    bucket_entry& buck = bucket_entry(el->key);
+    bucket_entry& buck = buck_entry(el->key);
     lock(&buck.version);
     internal_elem *prev = NULL;
     internal_elem *cur = buck.head;
     while (cur != NULL && cur != el) {
       prev = cur;
-      cur = cur->next();
+      cur = cur->next;
     }
     assert(cur);
     if (prev) {
-      prev->next() = cur->next();
+      prev->next = cur->next;
     } else {
-      buck.head = cur->next();
+      buck.head = cur->next;
     }
     unlock(&buck.version);
     free(cur);
   }
 
-private:
-  struct bucket_entry {
-    internal_elem *head;
-    Version version;
-  };
-
-  struct internal_elem {
-    Key key;
-    internal_elem *next;
-    Version version;
-    bool valid;
-    Value val;
-    internal_elem(Key k, Value val) : k(k), next(NULL), version(0), valid(false), val(val) {}
-    bool valid() {
-      return valid;
-    }
-    internal_elem *&next() {
-      return next;
-    }
-  };
-
-  typedef std::vector<bucket_entry> MapType;
-  MapType map_;
-
-  bucket_entry& bucket_entry(Key k) {
+  private:
+  bucket_entry& buck_entry(Key k) {
     return map_[bucket(k)];
   }
 
   internal_elem* find(bucket_entry& buck, Key k) {
     internal_elem *list = buck.head;
     while (list && !(list->key == k)) {
-      list = list->next();
+      list = list->next;
     }
     return list;
   }
 
   internal_elem* elem(Key k) {
-    return find(bucket_entry(k), k);
+    return find(buck_entry(k), k);
   }
 
 };

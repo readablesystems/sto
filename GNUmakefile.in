@@ -22,7 +22,7 @@ ifneq ($(NDEBUG),1)
 CFLAGS += -g
 endif
 
-all: concurrent
+all: concurrent single
 
 %.o: %.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
@@ -43,6 +43,9 @@ KVTREES = query_masstree.o \
 	string_slice.o
 
 concurrent: concurrent.o clp.o
+	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
+single: single.o
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 config.h: stamp-h

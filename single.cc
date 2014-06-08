@@ -1,6 +1,8 @@
 #include <iostream>
+#include <assert.h>
 
 #include "Array.hh"
+#include "Hashtable.hh"
 #include "Transaction.hh"
 
 #define N 100
@@ -8,20 +10,43 @@
 using namespace std;
 
 int main() {
-  Array<int, N> a;
+  typedef int Key;
+  typedef int Value;
+  Hashtable<Key, Value> h;
 
   Transaction t;
 
-  auto v0 = a.transRead(t, 0);
-  auto v1 = a.transRead(t, 1);
+  Value v1,v2;
+    assert(!h.transGet(t, 0, v1));
 
-  a.transWrite(t, 0, 1<<0);
-  a.transWrite(t, 1, 1<<1);
+    assert(h.transInsert(t, 0, 1));
+    h.transPut(t, 1, 3);
+  
+  assert(t.commit());
 
-  t.commit();
+  Transaction tm;
+  assert(h.transSet(tm, 1, 2));
+  assert(tm.commit());
 
-  a.write(2, 1<<2);
+  Transaction t2;
+  assert(h.transGet(t2, 1, v1));
+  assert(t2.commit());
 
-  cout << a.read(0) << " " << a.read(1) << " " << a.read(2) << endl;
+  Transaction t3;
+  h.transPut(t3, 0, 4);
+  assert(t3.commit());
+  Transaction t4;
+  assert(h.transGet(t4, 0, v2));
+  assert(t4.commit());
+
+  Transaction t5;
+  assert(!h.transInsert(t5, 0, 5));
+  assert(t5.commit());
+
+  Transaction t6;
+  assert(!h.transSet(t6, 2, 1));
+  assert(t6.commit());
+
+  cout << v1 << " " << v2 << endl;
   
 }
