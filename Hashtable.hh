@@ -151,11 +151,10 @@ public:
     fence();
     internal_elem *e = find(buck, k);
     if (e) {
-#if 0
       if (!e->valid()) {
         t.abort();
+        return false;
       }
-#endif
       auto& item = t.add_item(this, e);
       Version elem_vers;
       atomicRead(e, elem_vers, retval);
@@ -175,7 +174,9 @@ public:
     internal_elem *e = find(buck, k);
     if (e) {
       if (!e->valid()) {
+        unlock(&buck.version);
         t.abort();
+        return false;
       } else {
 #if DELETE
         auto& item = t.add_item(this, pack_bucket(bucket(k)));
@@ -208,8 +209,9 @@ public:
     if (e) {
       if (!e->valid()) {
         printf("transSet invalid\n");
+        unlock(&buck.version);
         t.abort();
-        ret = false;
+        return false;
       } else {
 #if DELETE
         // TODO: what if item gets deleted
@@ -237,7 +239,9 @@ public:
     internal_elem *e = find(buck, k);
     if (e) {
       if (!e->valid()) {
+        unlock(&buck.version);
         t.abort();
+        return false;
       } else {
 #if DELETE
         // we need to make sure this bucket didn't change (e.g. what was once there got removed)
