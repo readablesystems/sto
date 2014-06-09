@@ -23,6 +23,7 @@ private:
   struct bucket_entry {
     internal_elem *head;
     Version version;
+    bucket_entry() : head(NULL), version(0) {}
   };
 
   typedef std::vector<bucket_entry> MapType;
@@ -131,7 +132,7 @@ public:
     internal_elem *cur_head = buck.head;
     new_head->next = cur_head;
     buck.head = new_head;
-    //inc_version(buck.version);
+    inc_version(buck.version);
   }
 
   void atomicRead(internal_elem *e, Version& vers, Value& val) {
@@ -241,7 +242,7 @@ public:
       if (!e->valid()) {
         unlock(&buck.version);
         t.abort();
-        return false;
+        return;
       } else {
 #if DELETE
         // we need to make sure this bucket didn't change (e.g. what was once there got removed)
@@ -341,6 +342,22 @@ public:
     }
     unlock(&buck.version);
     free(cur);
+  }
+
+  void print() {
+    printf("Hashtable:\n");
+    for (unsigned i = 0; i < N; ++i) {
+      bucket_entry& buck = map_[i];
+      if (!buck.head)
+        continue;
+      printf("bucket %d (version %d): ", i, buck.version);
+      internal_elem *list = buck.head;
+      while (list) {
+        printf("key: %d, val: %d, version: %d, valid: %d ; ", list->key, list->value, list->version, list->valid());
+        list = list->next;
+      }
+      printf("\n");
+    }
   }
 
   private:
