@@ -143,16 +143,26 @@ public:
   // tries to find an existing item with this key, otherwise adds it
   template <typename T>
   TransItem& item(Shared *s, T key) {
+    TransItem *ti;
+    if ((ti = has_item(s, key)))
+      return *ti;
+
+    return add_item<T, false>(s, key);
+  }
+
+  // tries to find an existing item with this key, returns NULL if not found
+  template <typename T>
+  TransItem* has_item(Shared *s, T key) {
     void *k = pack(key);
     for (TransItem& ti : transSet_) {
 #if PERF_LOGGING
       total_searched++;
 #endif
       if (ti.sharedObj() == s && ti.data.key == k) {
-        return ti;
+        return &ti;
       }
     }
-    return add_item<T, false>(s, key);
+    return NULL;
   }
 
   template <typename T>
@@ -259,6 +269,10 @@ public:
         ti.sharedObj()->undo(ti.data);
       }
     }
+  }
+
+  bool aborted() {
+    return isAborted_;
   }
 
 private:

@@ -188,6 +188,18 @@ public:
     } else {
       // not there so need to insert
       insert_locked(buck, k, v); // marked as invalid
+      // see if this item was previously read
+      auto bucket_item = t.has_item(this, pack_bucket(bucket(k)));
+      if (bucket_item) {
+        auto new_version = buck.version;
+        if (bucket_item->has_read() && 
+            versionCheck(bucket_item->template read_value<Version>(), new_version - 1)) {
+          // looks like we're the only ones to have updated the version number, so update read's version number
+          // to still be valid
+          t.add_read(*bucket_item, new_version);
+        }
+        // else could abort transaction now
+      }
       auto& item = t.add_item(this, buck.head);
       // don't actually need to store anything for the write, just mark as valid on install
       // easiest way (possibly less efficient) to do this is to have writes for insert and set both just install value and then mark valid
@@ -246,7 +258,7 @@ public:
       } else {
 #if DELETE
         // we need to make sure this bucket didn't change (e.g. what was once there got removed)
-        auto& itemr = t.add_item(this, bucket(k));
+        auto& itemr = t.add_item(this, pack_bucket(bucket(k)));
         t.add_read(itemr, buck.version);
 #endif
         auto& item = t.add_item(this, e);
@@ -255,6 +267,19 @@ public:
     } else {
       // not there so need to insert
       insert_locked(buck, k, v); // marked as invalid
+      // see if this item was previously read
+      auto bucket_item = t.has_item(this, pack_bucket(bucket(k)));
+      if (bucket_item) {
+        printf("found old item\n");
+        auto new_version = buck.version;
+        if (versionCheck(bucket_item->template read_value<Version>(), new_version - 1)) {
+          // looks like we're the only ones to have updated the version number, so update read's version number
+          // to still be valid
+          printf("updating version\n");
+          t.add_read(*bucket_item, new_version);
+        }
+        // else could abort transaction now
+      }
       auto& item = t.add_item(this, buck.head);
       // don't actually need to store anything for the write, just mark as valid on install
       // (for now insert and set will just do the same thing, set a value and then mark valid)
@@ -293,7 +318,6 @@ public:
   }
 
   bool check(TransData data, bool isReadWrite) {
-    printf("check: %d\n", isReadWrite);
     if (is_bucket(data.key)) {
       bucket_entry& buck = map_[bucket_value(data.key)];
       return versionCheck(unpack<Version>(data.rdata), buck.version) && !is_locked(buck.version);
@@ -358,6 +382,23 @@ public:
       }
       printf("\n");
     }
+  }
+
+  void transWrite(Transaction& t, Key k, Value v) {
+    transPut(t, k, v);
+  }
+  Value transRead(Transaction& t, Key k) {
+    Value v;
+    if (!transGet(t, k, v)) {
+      return 0;
+    }
+    return v;
+  }
+  Value transRead_nocheck(Transaction& t, Key k) { return 0; }
+  void transWrite_nocheck(Transaction& t, Key k, Value v) {}
+  Value read(Key k) {
+    Transaction t;
+    return transRead(t, k);
   }
 
   private:
