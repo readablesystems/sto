@@ -176,24 +176,43 @@ public:
     }
   }
 
-  bool transInsert(Transaction& t, Key k, Value v) {
+  // returns true if item already existed, false if it did not
+  template <bool INSERT = true, bool SET = true>
+  bool transPut(Transaction& t, Key k, Value v) {
+    // TODO: technically puts don't need to look into the table at all until lock time
     bucket_entry& buck = buck_entry(k);
     lock(&buck.version);
     bool ret;
     internal_elem *e = find(buck, k);
     if (e) {
-      if (!e->valid()) {
+      auto& item = t.item(this, e);
+      if (!item.has_write() && !e->valid()) {
         unlock(&buck.version);
         t.abort();
+        // unreachable (t.abort() raises an exception)
         return false;
       } else {
 #if DELETE
-        auto& item = t.add_item(this, pack_bucket(bucket(k)));
-        t.add_read(item, buck.version);
+        // we need to make sure this bucket didn't change (e.g. what was once there got removed)
+        auto& itemr = t.item(this, pack_bucket(bucket(k)));
+        if (!item.has_read())
+          t.add_read(itemr, buck.version);
 #endif
+        if (SET) {
+          t.add_write(item, v);
+        }
+        ret = true;
       }
-      ret = false;
     } else {
+      if (!INSERT) {
+        // add a read that yes this element doesn't exist
+        auto& item = t.item(this, pack_bucket(bucket(k)));
+        if (!item.has_read())
+          t.add_read(item, buck.version);
+        unlock(&buck.version);
+        return false;
+      }
+
       // not there so need to insert
       insert_locked(buck, k, v); // marked as invalid
       // see if this item was previously read
@@ -206,11 +225,12 @@ public:
           // to still be valid
           t.add_read(*bucket_item, new_version);
         }
-        // else could abort transaction now
+        //} else { could abort transaction now
       }
-      auto& item = t.add_item(this, buck.head);
+      // use add_item because we know there are no collisions
+      auto& item = t.add_item<false>(this, buck.head);
       // don't actually need to store anything for the write, just mark as valid on install
-      // easiest way (possibly less efficient) to do this is to have writes for insert and set both just install value and then mark valid
+      // (for now insert and set will just do the same thing on install, set a value and then mark valid)
       t.add_write(item, v);
       // need to remove this item if we abort
       t.add_undo(item);
@@ -220,79 +240,16 @@ public:
     return ret;
   }
 
-  // aka putIfAbsent
-  bool transSet(Transaction& t, Key k, Value v) {
-    bucket_entry& buck = buck_entry(k);
-    // TODO: do we actually need to hold this?
-    lock(&buck.version);
-    bool ret;
-    internal_elem *e = find(buck, k);
-    if (e) {
-      if (!e->valid()) {
-        unlock(&buck.version);
-        t.abort();
-        return false;
-      } else {
-#if DELETE
-        // TODO: what if item gets deleted
-#endif
-        auto& item = t.add_item(this, e);
-        // blind write
-        t.add_write(item, v);
-        ret = true;
-      }
-    } else {
-      auto& item = t.add_item(this, pack_bucket(bucket(k)));
-      t.add_read(item, buck.version);
-      ret = false;
-    }
-    unlock(&buck.version);
-    return ret;
+  // returns true if successful
+  bool transInsert(Transaction& t, Key k, Value v) {
+    return !transPut</*insert*/true, /*set*/false>(t, k, v);
   }
 
-  void transPut(Transaction& t, Key k, Value v) {
-    // TODO: technically puts don't need to look into the table at all until lock time
-    bucket_entry& buck = buck_entry(k);
-    lock(&buck.version);
-    internal_elem *e = find(buck, k);
-    if (e) {
-      auto& item = t.item(this, e);
-      if (!item.has_write() && !e->valid()) {
-        unlock(&buck.version);
-        t.abort();
-        return;
-      } else {
-#if DELETE
-        // we need to make sure this bucket didn't change (e.g. what was once there got removed)
-        auto& itemr = t.add_item(this, pack_bucket(bucket(k)));
-        t.add_read(itemr, buck.version);
-#endif
-        t.add_write(item, v);
-      }
-    } else {
-      // not there so need to insert
-      insert_locked(buck, k, v); // marked as invalid
-      // see if this item was previously read
-      auto bucket_item = t.has_item(this, pack_bucket(bucket(k)));
-      if (bucket_item) {
-        auto new_version = buck.version;
-        if (versionCheck(bucket_item->template read_value<Version>(), new_version - 1)) {
-          // looks like we're the only ones to have updated the version number, so update read's version number
-          // to still be valid
-          t.add_read(*bucket_item, new_version);
-        }
-        // else could abort transaction now
-      }
-      // use add_item because we know there are no collisions
-      auto& item = t.add_item<false>(this, buck.head);
-      // don't actually need to store anything for the write, just mark as valid on install
-      // (for now insert and set will just do the same thing, set a value and then mark valid)
-      t.add_write(item, v);
-      // need to remove this item if we abort
-      t.add_undo(item);
-    }
-    unlock(&buck.version);
+  // aka putIfAbsent (returns true if successful)
+  bool transSet(Transaction& t, Key k, Value v) {
+    return transPut</*insert*/false, /*set*/true>(t, k, v);
   }
+
 
   void lock(internal_elem *el) {
     lock(&el->version);
