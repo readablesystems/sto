@@ -36,7 +36,7 @@ public:
   const intptr_t bucket_bit = 1U<<0;
 
   Hashtable() : map_() {
-    map_.reserve(N);
+    map_.resize(N);
   }
   
   inline size_t hash(Key k) {
@@ -351,6 +351,7 @@ public:
   }
   void undo(TransData data) {
     auto el = unpack<internal_elem*>(data.key);
+    assert(!el->valid());
     // TODO: can do this in O(1) with doubly linked list (once we implement delete proper)
     bucket_entry& buck = buck_entry(el->key);
     lock(&buck.version);
@@ -367,7 +368,8 @@ public:
       buck.head = cur->next;
     }
     unlock(&buck.version);
-    free(cur);
+    // TODO: gc
+    //free(cur);
   }
 
   void print() {
