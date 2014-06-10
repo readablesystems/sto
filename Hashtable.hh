@@ -234,7 +234,7 @@ public:
       t.add_write(item, v);
       // need to remove this item if we abort
       t.add_undo(item);
-      ret = true;
+      ret = false;
     }
     unlock(&buck.version);
     return ret;
