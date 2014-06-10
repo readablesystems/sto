@@ -152,18 +152,26 @@ public:
     fence();
     internal_elem *e = find(buck, k);
     if (e) {
+      auto& item = t.item(this, e);
+      if (item.has_write()) {
+        // TODO: what if element is marked invalid because of a delete, not
+        // us doing an insert
+        retval = item.template write_value<Value>();
+        return true;
+      }
       if (!e->valid()) {
         t.abort();
         return false;
       }
-      auto& item = t.add_item(this, e);
       Version elem_vers;
       atomicRead(e, elem_vers, retval);
       t.add_read(item, elem_vers);
       return true;
     } else {
-      auto& item = t.add_item(this, pack_bucket(bucket(k)));
-      t.add_read(item, buck_version);
+      auto& item = t.item(this, pack_bucket(bucket(k)));
+      if (!item.has_read()) {
+        t.add_read(item, buck_version);
+      }
       return false;
     }
   }
@@ -251,7 +259,8 @@ public:
     lock(&buck.version);
     internal_elem *e = find(buck, k);
     if (e) {
-      if (!e->valid()) {
+      auto& item = t.item(this, e);
+      if (!item.has_write() && !e->valid()) {
         unlock(&buck.version);
         t.abort();
         return;
@@ -261,7 +270,6 @@ public:
         auto& itemr = t.add_item(this, pack_bucket(bucket(k)));
         t.add_read(itemr, buck.version);
 #endif
-        auto& item = t.add_item(this, e);
         t.add_write(item, v);
       }
     } else {
@@ -280,6 +288,8 @@ public:
         }
         // else could abort transaction now
       }
+      // use add_item because we know there are no collisions
+      // (TODO: maybe not do this, since it'll mark readMyWrites_ == false?)
       auto& item = t.add_item(this, buck.head);
       // don't actually need to store anything for the write, just mark as valid on install
       // (for now insert and set will just do the same thing, set a value and then mark valid)
@@ -341,7 +351,6 @@ public:
     auto el = unpack<internal_elem*>(data.key);
     assert(is_locked(el));
     el->value = unpack<Value>(data.wdata);
-    printf("%d\n", el->value);
     inc_version(el->version);
     el->valid() = true;
     assert(el->valid());
