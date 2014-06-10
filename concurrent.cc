@@ -6,18 +6,20 @@
 #include <sys/resource.h>
 
 #include "Array.hh"
+#include "Hashtable.hh"
 #include "Transaction.hh"
 #include "clp.h"
 
 // size of array
-#define ARRAY_SZ 1000000
+#define ARRAY_SZ 1000
 
 // only used for randomRWs test
 #define GLOBAL_SEED 0
 #define TRY_READ_MY_WRITES 0
-#define MAINTAIN_TRUE_ARRAY_STATE 0
+#define MAINTAIN_TRUE_ARRAY_STATE 1
 
 #define DATA_COLLECT 0
+#define HASHTABLE 1
 
 //#define DEBUG
 
@@ -27,8 +29,13 @@
 #define debug(...) /* */
 #endif
 
+#if !HASHTABLE
 typedef Array<int, ARRAY_SZ> ArrayType;
 ArrayType *a;
+#else
+typedef Hashtable<int, int> ArrayType;
+ArrayType *a;
+#endif
 
 bool readMyWrites = true;
 bool runCheck = false;
@@ -83,10 +90,17 @@ static void doWrite(Transaction& t, int slot, int& ctr) {
       a->transWrite_nocheck(t, slot, ctr);
     }
   } else {
-    // increment current value (this lets us verify transaction correctness)                                   
+    // increment current value (this lets us verify transaction correctness)
     if (readMyWrites) {
       auto v0 = a->transRead(t, slot);
       a->transWrite(t, slot, v0+1);
+#if TRY_READ_MY_WRITES
+          // read my own writes
+          assert(a->transRead(t,slot) == v0+1);
+          a->transWrite(t, slot, v0+2);
+          // read my own second writes
+          assert(a->transRead(t,slot) == v0+2);
+#endif
     } else {
       auto v0 = a->transRead_nocheck(t, slot);
       a->transWrite_nocheck(t, slot, v0+1);
@@ -148,12 +162,12 @@ void *randomRWs(void *p) {
     // so that retries of this transaction do the same thing
     auto transseed = i;
 #if MAINTAIN_TRUE_ARRAY_STATE
-    int slots_written[opspertrans], nslots_written;
-    bool retry = false;
+    int slots_written[OPS], nslots_written;
 #endif
 
     bool done = false;
     while (!done) {
+      try{
 #if MAINTAIN_TRUE_ARRAY_STATE
       nslots_written = 0;
 #endif
@@ -167,34 +181,22 @@ void *randomRWs(void *p) {
           doRead(t, slot);
         } else {
           doWrite(t, slot, j);
-#if TRY_READ_MY_WRITES
-          // read my own writes
-          assert(a->transRead(t,slot) == v0+1);
-          a->transWrite(t, slot, v0+2);
-          // read my own second writes
-          assert(a->transRead(t,slot) == v0+2);
-#endif
-          
+
 #if MAINTAIN_TRUE_ARRAY_STATE
-          if (!readMyWrites)
-            slots_written[nslots_written++] = slot;
-          else if (maintain_true_array_state && !retry)
-            __sync_add_and_fetch(&true_array_state[slot], 1);
+          slots_written[nslots_written++] = slot;
 #endif
         }
       }
       done = t.commit();
+      } catch (Transaction::Abort E) {}
       if (!done) {
-#if MAINTAIN_TRUE_ARRAY_STATE
-        retry = true;
-#endif
         debug("thread%d retrying\n", me);
       }
     }
 #if MAINTAIN_TRUE_ARRAY_STATE
-    if (!readMyWrites && maintain_true_array_state) {
+    if (maintain_true_array_state) {
         std::sort(slots_written, slots_written + nslots_written);
-        auto itend = std::unique(slots_written, slots_written + nslots_written);
+        auto itend = readMyWrites ? slots_written + nslots_written : std::unique(slots_written, slots_written + nslots_written);
         for (auto it = slots_written; it != itend; ++it)
             __sync_add_and_fetch(&true_array_state[*it], 1);
     }
@@ -209,14 +211,14 @@ void checkRandomRWs() {
 
   // rerun transactions one-by-one
 #if MAINTAIN_TRUE_ARRAY_STATE
-  maintain_true_array_state = false;
+  maintain_true_array_state = !maintain_true_array_state;
 #endif
   a = &check;
   for (int i = 0; i < nthreads; ++i) {
     randomRWs((void*)(intptr_t)i);
   }
 #if MAINTAIN_TRUE_ARRAY_STATE
-  maintain_true_array_state = true;
+  maintain_true_array_state = !maintain_true_array_state;
 #endif
   a = old;
 
@@ -244,6 +246,7 @@ void *isolatedWrites(void *p) {
 
   bool done = false;
   while (!done) {
+    try{
     Transaction t;
 
     for (int i = 0; i < nthreads; ++i) {
@@ -253,6 +256,7 @@ void *isolatedWrites(void *p) {
     a->transWrite(t, me, me+1);
     
     done = t.commit();
+    } catch (Transaction::Abort E) {}
     debug("iter: %d %d\n", me, done);
   }
   return NULL;
@@ -264,6 +268,7 @@ void *blindWrites(void *p) {
 
   bool done = false;
   while (!done) {
+    try{
     Transaction t;
 
     if (a->transRead(t, 0) == 0 || me == nthreads-1) {
@@ -278,6 +283,7 @@ void *blindWrites(void *p) {
     }
 
     done = t.commit();
+    } catch (Transaction::Abort E) {}
     debug("thread %d %d\n", me, done);
   }
 
@@ -296,6 +302,7 @@ void *interferingRWs(void *p) {
 
   bool done = false;
   while (!done) {
+    try{
     Transaction t;
 
     for (int i = 0; i < ARRAY_SZ; ++i) {
@@ -306,6 +313,7 @@ void *interferingRWs(void *p) {
     }
 
     done = t.commit();
+    } catch (Transaction::Abort E) {}
     debug("thread %d %d\n", me, done);
   }
   return NULL;
