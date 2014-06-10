@@ -289,8 +289,7 @@ public:
         // else could abort transaction now
       }
       // use add_item because we know there are no collisions
-      // (TODO: maybe not do this, since it'll mark readMyWrites_ == false?)
-      auto& item = t.add_item(this, buck.head);
+      auto& item = t.add_item<false>(this, buck.head);
       // don't actually need to store anything for the write, just mark as valid on install
       // (for now insert and set will just do the same thing, set a value and then mark valid)
       t.add_write(item, v);

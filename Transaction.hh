@@ -129,7 +129,7 @@ public:
   }
 
   // adds item without checking its presence in the array
-  template <typename T, bool NOCHECK = true>
+  template <bool NOCHECK = true, typename T>
   TransItem& add_item(Shared *s, T key) {
     if (NOCHECK) {
       readMyWritesOnly_ = false;
@@ -147,7 +147,7 @@ public:
     if ((ti = has_item(s, key)))
       return *ti;
 
-    return add_item<T, false>(s, key);
+    return add_item<false>(s, key);
   }
 
   // tries to find an existing item with this key, returns NULL if not found
@@ -269,11 +269,14 @@ public:
         ti.sharedObj()->undo(ti.data);
       }
     }
+    throw Abort();
   }
 
   bool aborted() {
     return isAborted_;
   }
+
+  class Abort {};
 
 private:
 
@@ -284,7 +287,6 @@ private:
     }
 #endif
   }
-
 
 private:
   TransSet transSet_;
