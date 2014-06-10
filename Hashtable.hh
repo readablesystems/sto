@@ -229,7 +229,6 @@ public:
     internal_elem *e = find(buck, k);
     if (e) {
       if (!e->valid()) {
-        printf("transSet invalid\n");
         unlock(&buck.version);
         t.abort();
         return false;
@@ -237,14 +236,12 @@ public:
 #if DELETE
         // TODO: what if item gets deleted
 #endif
-        printf("transSet found\n");
         auto& item = t.add_item(this, e);
         // blind write
         t.add_write(item, v);
         ret = true;
       }
     } else {
-      printf("transSet not found\n");
       auto& item = t.add_item(this, pack_bucket(bucket(k)));
       t.add_read(item, buck.version);
       ret = false;
@@ -278,12 +275,10 @@ public:
       // see if this item was previously read
       auto bucket_item = t.has_item(this, pack_bucket(bucket(k)));
       if (bucket_item) {
-        printf("found old item\n");
         auto new_version = buck.version;
         if (versionCheck(bucket_item->template read_value<Version>(), new_version - 1)) {
           // looks like we're the only ones to have updated the version number, so update read's version number
           // to still be valid
-          printf("updating version\n");
           t.add_read(*bucket_item, new_version);
         }
         // else could abort transaction now
@@ -355,7 +350,6 @@ public:
     assert(el->valid());
   }
   void undo(TransData data) {
-    printf("undo\n");
     auto el = unpack<internal_elem*>(data.key);
     // TODO: can do this in O(1) with doubly linked list (once we implement delete proper)
     bucket_entry& buck = buck_entry(el->key);
