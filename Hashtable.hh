@@ -1,6 +1,6 @@
 #pragma once
 
-template <typename K, typename V>
+template <typename K, typename V, unsigned INIT_SIZE = 129>
 class Hashtable : public Shared {
 public:
   typedef unsigned Version;
@@ -30,13 +30,11 @@ private:
   MapType map_;
 
 public:
-  unsigned N = 127;
-
   const Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
   const intptr_t bucket_bit = 1U<<0;
 
   Hashtable() : map_() {
-    map_.resize(N);
+    map_.resize(INIT_SIZE);
   }
   
   inline size_t hash(Key k) {
@@ -45,7 +43,7 @@ public:
   }
 
   inline size_t nbuckets() {
-    return N;
+    return INIT_SIZE;
   }
 
   inline size_t bucket(Key k) {
@@ -331,7 +329,7 @@ public:
 
   void print() {
     printf("Hashtable:\n");
-    for (unsigned i = 0; i < N; ++i) {
+    for (unsigned i = 0; i < map_.size(); ++i) {
       bucket_entry& buck = map_[i];
       if (!buck.head)
         continue;

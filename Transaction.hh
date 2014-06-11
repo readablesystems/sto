@@ -22,6 +22,7 @@
 uint64_t total_n;
 uint64_t total_r, total_w;
 uint64_t total_searched;
+uint64_t total_aborts;
 #endif
 
 template <typename T>
@@ -263,6 +264,9 @@ public:
 
 
   void abort() {
+#if PERF_LOGGING
+    __sync_add_and_fetch(&total_aborts, 1);
+#endif
     isAborted_ = true;
     for (auto& ti : transSet_) {
       if (ti.has_undo()) {

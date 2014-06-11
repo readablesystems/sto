@@ -11,7 +11,7 @@
 #include "clp.h"
 
 // size of array
-#define ARRAY_SZ 1000
+#define ARRAY_SZ 100000
 
 // only used for randomRWs test
 #define GLOBAL_SEED 0
@@ -33,7 +33,8 @@
 typedef Array<int, ARRAY_SZ> ArrayType;
 ArrayType *a;
 #else
-typedef Hashtable<int, int> ArrayType;
+// hashtable from int to int
+typedef Hashtable<int, int, ARRAY_SZ> ArrayType;
 ArrayType *a;
 #endif
 
@@ -448,7 +449,7 @@ int main(int argc, char *argv[]) {
 #endif
 
 #if PERF_LOGGING
-  printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu\n", total_n, total_r, total_w, total_searched);
+  printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu\n", total_n, total_r, total_w, total_searched, total_aborts);
 #endif
 
   if (runCheck)
