@@ -17,6 +17,9 @@
 #define READER_BIT (1<<0)
 #define WRITER_BIT (1<<1)
 #define UNDO_BIT (1<<2)
+// for now at least we mark the highest bit of the pointer for this.
+// this is probably incompatible with some 32-bit platforms
+#define AFTERC_BIT (((uintptr_t)1) << (sizeof(uintptr_t)*8 - 1))
 
 #if PERF_LOGGING
 uint64_t total_n;
@@ -28,32 +31,40 @@ uint64_t total_aborts;
 template <typename T>
 T* readObj(T* obj) {
   //assert(!isReadObj(obj));
-  return (T*)((intptr_t)obj | READER_BIT);
+  return (T*)((uintptr_t)obj | READER_BIT);
 }
 template <typename T>
 T* writeObj(T* obj) {
   //  assert(!isWriteObj(obj));
-  return (T*)((intptr_t)obj | WRITER_BIT);
+  return (T*)((uintptr_t)obj | WRITER_BIT);
 }
 template <typename T>
 T* undoObj(T* obj) {
-  return (T*)((intptr_t)obj | UNDO_BIT);
+  return (T*)((uintptr_t)obj | UNDO_BIT);
+}
+template <typename T>
+T* afterCObj(T* obj) {
+  return (T*)((uintptr_t)obj | AFTERC_BIT);
 }
 template <typename T>
 T* untag(T* obj) {
-  return (T*)((intptr_t)obj & ~(WRITER_BIT|READER_BIT|UNDO_BIT));
+  return (T*)((uintptr_t)obj & ~(WRITER_BIT|READER_BIT|UNDO_BIT|AFTERC_BIT));
 }
 template <typename T>
 bool isReadObj(T* obj) {
-  return (intptr_t)obj & READER_BIT;
+  return (uintptr_t)obj & READER_BIT;
 }
 template <typename T>
 bool isWriteObj(T* obj) {
-  return (intptr_t)obj & WRITER_BIT;
+  return (uintptr_t)obj & WRITER_BIT;
 }
 template <typename T>
 bool isUndoObj(T* obj) {
-  return (intptr_t)obj & UNDO_BIT;
+  return (uintptr_t)obj & UNDO_BIT;
+}
+template <typename T>
+bool isAfterCObj(T* obj) {
+  return (uintptr_t)obj & AFTERC_BIT;
 }
 
 class Transaction {
@@ -73,6 +84,9 @@ public:
     }
     bool has_undo() const {
       return isUndoObj(shared);
+    }
+    bool has_afterC() const {
+      return isAfterCObj(shared);
     }
     bool same_item(const TransItem& x) const {
       return sharedObj() == x.sharedObj() && data.key == x.data.key;
@@ -107,6 +121,9 @@ public:
     }
     void add_undo() {
       shared = undoObj(shared);
+    }
+    void add_afterC() {
+      shared = afterCObj(shared);
     }
 
   private:

@@ -157,12 +157,15 @@ public:
         retval = item.template write_value<Value>();
         return true;
       }
+      // we do this before checking validity because a validity change will change the version number
+      Version elem_vers;
+      atomicRead(e, elem_vers, retval);
+      fence();
       if (!e->valid()) {
         t.abort();
         return false;
       }
-      Version elem_vers;
-      atomicRead(e, elem_vers, retval);
+      // elem_vers changes on delete so we'll also abort this transaction if we're deleted
       t.add_read(item, elem_vers);
       return true;
     } else {
@@ -174,11 +177,48 @@ public:
     }
   }
 
+#if DELETE
+  // returns true if successful
+  bool transDelete(Transaction& t, Key k) {
+    bucket_entry& buck = buck_entry(k);
+    Version buck_version = buck.version;
+    fence();
+    internal_elem *e = find(buck, k);
+    if (e) {
+      auto& item = t.item(this, e);
+      lock(&e->version);
+      if (!item.has_write() && !e->valid()) {
+        unlock(&e->version);
+        t.abort();
+        return false;
+      }
+      e->valid = false;
+      inc_version(e->version);
+      Version newv = e->version;
+      unlock(&e->version);
+      // delete shouldn't invalidate any of our own prior reads
+      if (item.has_read() && versionCheck(item.template read_value<Version>(), newv-1)) {
+        item.add_read(newv);
+      }
+      // probably need to mark deletes in a separate manner from insert/set
+      // TODO: currently just mark afterC. how do we handle delete-then-insert in the same transaction then??
+      item.add_afterC();
+      return true;
+    } else {
+      // add a read that yes this element doesn't exist
+      auto& item = t.item(this, pack_bucket(bucket(k)));
+      if (!item.has_read())
+        t.add_read(item, buck_version);
+      return false;
+  }
+#endif
+
   // returns true if item already existed, false if it did not
   template <bool INSERT = true, bool SET = true>
   bool transPut(Transaction& t, Key k, Value v) {
     // TODO: technically puts don't need to look into the table at all until lock time
     bucket_entry& buck = buck_entry(k);
+    // TODO: update doesn't need to lock the table
     lock(&buck.version);
     bool ret;
     internal_elem *e = find(buck, k);
@@ -244,10 +284,9 @@ public:
   }
 
   // aka putIfAbsent (returns true if successful)
-  bool transSet(Transaction& t, Key k, Value v) {
+  bool transUpdate(Transaction& t, Key k, Value v) {
     return transPut</*insert*/false, /*set*/true>(t, k, v);
   }
-
 
   void lock(internal_elem *el) {
     lock(&el->version);
@@ -302,12 +341,23 @@ public:
     el->value = unpack<Value>(data.wdata);
     inc_version(el->version);
     el->valid() = true;
-    assert(el->valid());
   }
+
   void undo(TransData data) {
     auto el = unpack<internal_elem*>(data.key);
     assert(!el->valid());
-    // TODO: can do this in O(1) with doubly linked list (once we implement delete proper)
+    remove(el);
+  }
+
+  void afterC(TransData data) {
+#if DELETE
+    auto el = unpack<internal_elem*>(data.key);
+    assert(!el->valid());
+    remove(el);
+#endif
+  }
+  
+  void remove(internal_elem *el) {
     bucket_entry& buck = buck_entry(el->key);
     lock(&buck.version);
     internal_elem *prev = NULL;

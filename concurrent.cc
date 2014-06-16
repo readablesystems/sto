@@ -20,6 +20,7 @@
 
 #define DATA_COLLECT 0
 #define HASHTABLE 1
+#define HASHTABLE_LOAD_FACTOR 2
 
 //#define DEBUG
 
@@ -34,7 +35,7 @@ typedef Array<int, ARRAY_SZ> ArrayType;
 ArrayType *a;
 #else
 // hashtable from int to int
-typedef Hashtable<int, int, ARRAY_SZ> ArrayType;
+typedef Hashtable<int, int, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> ArrayType;
 ArrayType *a;
 #endif
 

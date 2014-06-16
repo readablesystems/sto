@@ -25,7 +25,7 @@ int main() {
   assert(t.commit());
 
   Transaction tm;
-  assert(h.transSet(tm, 1, 2));
+  assert(h.transUpdate(tm, 1, 2));
   assert(tm.commit());
 
   Transaction t2;
@@ -44,7 +44,7 @@ int main() {
   assert(t5.commit());
 
   Transaction t6;
-  assert(!h.transSet(t6, 2, 1));
+  assert(!h.transUpdate(t6, 2, 1));
   assert(t6.commit());
 
   Transaction t7;
@@ -64,7 +64,7 @@ int main() {
   assert(h.transInsert(t10, 4, 4));
   try{
     // t9 inserted invalid node, so we are forced to abort
-    h.transSet(t10, 3, v3);
+    h.transUpdate(t10, 3, v3);
     assert(0);
   } catch (Transaction::Abort E) {}
   assert(t9.commit());
