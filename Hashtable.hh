@@ -33,8 +33,8 @@ public:
   const Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
   const intptr_t bucket_bit = 1U<<0;
 
-  Hashtable() : map_() {
-    map_.resize(INIT_SIZE);
+  Hashtable(unsigned size = INIT_SIZE) : map_() {
+    map_.resize(size);
   }
   
   inline size_t hash(Key k) {
@@ -43,7 +43,7 @@ public:
   }
 
   inline size_t nbuckets() {
-    return INIT_SIZE;
+    return map_.size();
   }
 
   inline size_t bucket(Key k) {
