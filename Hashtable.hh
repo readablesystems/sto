@@ -409,6 +409,49 @@ public:
     return transRead(t, k);
   }
 
+  void insert(Key k, Value v) {
+    Transaction t;
+    transInsert(t, k, v);
+    t.commit();
+  }
+
+  void erase(Key k) {}
+
+  void update(Key k, Value v) {
+    Transaction t;
+    transUpdate(t, k, v);
+    t.commit();
+  }
+
+  template <typename F>
+  void update_fn(Key k, F f) {
+    Transaction t;
+    transUpdate(t, k, f(transRead(t, k)));
+    t.commit();
+  }
+
+  template <typename F>
+  void upsert(Key k, F f, Value v) {
+    Transaction t;
+    Value cur;
+    if (transGet(t, k, cur)) {
+      transUpdate(t, k, f(cur));
+    } else {
+      transInsert(t, k, v);
+    }
+    t.commit();
+  }
+
+  void find(Key k, Value& v) {
+    Transaction t;
+    transGet(t, k, v);
+  }
+  Value find(Key k) {
+    return read(k);
+  }
+  void rehash(unsigned n) {}
+  void reserve(unsigned n) {}
+  
   private:
   bucket_entry& buck_entry(Key k) {
     return map_[bucket(k)];
