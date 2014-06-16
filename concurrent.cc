@@ -154,6 +154,7 @@ void *readThenWrite(void *p) {
 
 void *randomRWs(void *p) {
   int me = (intptr_t)p;
+  Transaction::threadid = me;
   
   std::uniform_int_distribution<> slotdist(0, ARRAY_SZ-1);
   uint32_t write_thresh = (uint32_t) (write_percent * Rand::max());
@@ -332,6 +333,9 @@ void startAndWait(int n, void *(*start_routine) (void *)) {
   for (int i = 0; i < n; ++i) {
     pthread_create(&tids[i], NULL, start_routine, (void*)(intptr_t)i);
   }
+  pthread_t advancer;
+  pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
+  pthread_detach(advancer);
 
   for (int i = 0; i < n; ++i) {
     pthread_join(tids[i], NULL);

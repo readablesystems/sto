@@ -1,8 +1,11 @@
 #include <vector>
 #include <algorithm>
+#include <unistd.h>
 
 #define LOCAL_VECTOR 1
 #define PERF_LOGGING 0
+
+#define MAX_THREADS 4
 
 #if LOCAL_VECTOR
 #include "local_vector.hh"
@@ -67,8 +70,46 @@ bool isAfterCObj(T* obj) {
   return (uintptr_t)obj & AFTERC_BIT;
 }
 
+struct threadinfo {
+  int epoch;
+  std::vector<std::pair<int, std::function<void(void)>>> callbacks;
+};
+
 class Transaction {
 public:
+  static threadinfo tinfo[MAX_THREADS];
+  static __thread int threadid;
+  static int global_epoch;
+
+  static void* epoch_advancer(void*) {
+    while (1) {
+      usleep(100000);
+      auto g = global_epoch;
+      for (auto&& t : tinfo) {
+        if (t.epoch < g)
+          g = t.epoch;
+      }
+
+      global_epoch = ++g;
+
+      for (auto&& t : tinfo) {
+        if (t.epoch == 0) continue;
+        for (auto it = t.callbacks.begin(); it != t.callbacks.end(); ) {
+          if (it->first < g-2) {
+            it->second();
+            it = t.callbacks.erase(it);
+          } else {
+            ++it;
+          }
+        }
+      }
+    }
+  }
+
+  static void cleanup(std::function<void(void)> callback) {
+    tinfo[threadid].callbacks.emplace_back(global_epoch, callback);
+  }
+
   struct TransItem {
     TransItem(Shared *s, TransData data) : shared(s), data(data) {assert(untag(s)==s);}
 
@@ -144,7 +185,11 @@ public:
 #if !LOCAL_VECTOR
     transSet_.reserve(INIT_SET_SIZE);
 #endif
+    // TODO: assumes this thread is constantly running transactions
+    tinfo[threadid].epoch = global_epoch;
   }
+
+  ~Transaction() { tinfo[threadid].epoch = 0; }
 
   // adds item without checking its presence in the array
   template <bool NOCHECK = true, typename T>
@@ -315,3 +360,8 @@ private:
   bool isAborted_;
 
 };
+
+threadinfo Transaction::tinfo[MAX_THREADS];
+__thread int Transaction::threadid;
+int Transaction::global_epoch;
+

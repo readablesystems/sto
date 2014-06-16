@@ -373,8 +373,7 @@ public:
       buck.head = cur->next;
     }
     unlock(&buck.version);
-    // TODO: gc
-    //free(cur);
+    Transaction::cleanup([=] () { free(cur); });
   }
 
   void print() {
