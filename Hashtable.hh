@@ -1,5 +1,7 @@
 #pragma once
 
+#include "compiler.hh"
+
 template <typename K, typename V, unsigned INIT_SIZE = 129>
 class Hashtable : public Shared {
 public:
