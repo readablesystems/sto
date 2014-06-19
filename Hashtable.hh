@@ -33,7 +33,10 @@ private:
 
 public:
   const Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
-  const intptr_t bucket_bit = 1U<<0;
+  // if set we check only node validity, not the node's version number
+  const Version valid_check_only_bit = 1U<<(sizeof(Version)*8 - 2);
+  const Version version_mask = ~(lock_bit|valid_check_only_bit);
+  const uintptr_t bucket_bit = 1U<<0;
 
   Hashtable(unsigned size = INIT_SIZE) : map_() {
     map_.resize(size);
@@ -102,9 +105,19 @@ public:
     return pack((bucket << 1) | bucket_bit);
   }
 
+#if 0
+  template <typename T>
+  void *pack_valid_check(T* ptr) {
+    return pack((uintptr_t)ptr | validity_check_bit);
+  }
+#endif
+
   void inc_version(Version& v) {
+    assert(is_locked(v));
     // TODO: work with lock bit
-    v++;
+    Version cur = v & version_mask;
+    cur = (cur+1) & version_mask;
+    v = cur | (v & ~version_mask);
   }
 
   bool is_locked(Version v) {
@@ -146,6 +159,7 @@ public:
     } while (vers != v2);
   }
 
+  // returns true if found false if not
   bool transGet(Transaction& t, Key k, Value& retval) {
     bucket_entry& buck = buck_entry(k);
     Version buck_version = buck.version;
@@ -153,22 +167,25 @@ public:
     internal_elem *e = find(buck, k);
     if (e) {
       auto& item = t.item(this, e);
+      // deleted
+      if (item.has_afterC()) {
+        return false;
+      }
       if (item.has_write()) {
-        // TODO: what if element is marked invalid because of a delete, not
-        // us doing an insert
         retval = item.template write_value<Value>();
         return true;
       }
-      // we do this before checking validity because a validity change will change the version number
-      Version elem_vers;
-      atomicRead(e, elem_vers, retval);
-      fence();
       if (!e->valid()) {
         t.abort();
         return false;
       }
-      // elem_vers changes on delete so we'll also abort this transaction if we're deleted
-      t.add_read(item, elem_vers);
+      Version elem_vers;
+      // "atomic" read of both the current value and the version #
+      atomicRead(e, elem_vers, retval);
+      // abort both on node change and node delete
+      if (!item.has_read() || item.template read_value<Version>() & valid_check_only_bit) {
+        t.add_read(item, elem_vers);
+      }
       return true;
     } else {
       auto& item = t.item(this, pack_bucket(bucket(k)));
@@ -179,6 +196,30 @@ public:
     }
   }
 
+#if 0
+  unsigned transCount(Transaction& t, Key k) {
+    bucket_entry& buck = buck_entry(k);
+    Version buck_version = buck.version;
+    fence();
+    internal_elem *e = find(buck, k);
+    if (e) {
+      auto& item = t.item(this, e);
+      if (!item.has_write() && !e->valid()) {
+        t.abort();
+        return false;
+      }
+      if (!item.has_read()) {
+        t.add_item(pack_presence(e)).add_read(0);
+      }
+    } else {
+      auto& item = t.item(this, pack_bucket(bucket(k)));
+      if (!item.has_read()) {
+        t.add_read(item, buck_version);
+      }
+    }
+  }
+#endif
+
 #if DELETE
   // returns true if successful
   bool transDelete(Transaction& t, Key k) {
@@ -188,23 +229,35 @@ public:
     internal_elem *e = find(buck, k);
     if (e) {
       auto& item = t.item(this, e);
-      lock(&e->version);
       if (!item.has_write() && !e->valid()) {
-        unlock(&e->version);
         t.abort();
         return false;
+      } else if (item.has_undo() && !e->valid()) {
+        // we're deleting our own insert. special case this to just remove element and just check for no insert at commit
+        remove(e);
+        // no way to remove an item (would be pretty inefficient)
+        // so we just unmark all attributes so the item is ignored
+        item.remove_read();
+        item.remove_write();
+        item.remove_undo();
+        item.remove_afterC();
+        // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
+        auto& itemb = t.item(this, pack_bucket(bucket(k)));
+        if (!itemb.has_read()) {
+          t.add_read(itemb, buck_version);
+        }
+        return true;
       }
-      e->valid = false;
-      inc_version(e->version);
-      Version newv = e->version;
-      unlock(&e->version);
-      // delete shouldn't invalidate any of our own prior reads
-      if (item.has_read() && versionCheck(item.template read_value<Version>(), newv-1)) {
-        item.add_read(newv);
-      }
-      // probably need to mark deletes in a separate manner from insert/set
-      // TODO: currently just mark afterC. how do we handle delete-then-insert in the same transaction then??
-      item.add_afterC();
+      assert(e->valid());
+      // we need to make sure this bucket didn't change (e.g. what was once there got removed)
+      if (!item.has_read())
+        // we only need to check validity, not presence
+        t.add_read(item, valid_check_only_bit);
+      // we use has_afterC() to detect deletes so we don't need any other data for deletes, just to mark it as
+      // a write
+      if (!item.has_write())
+        t.add_write(item, 0);
+      t.add_afterC(item);
       return true;
     } else {
       // add a read that yes this element doesn't exist
@@ -222,43 +275,57 @@ public:
     bucket_entry& buck = buck_entry(k);
     // TODO: update doesn't need to lock the table
     lock(&buck.version);
-    bool ret;
     internal_elem *e = find(buck, k);
     if (e) {
+      unlock(&buck.version);
       auto& item = t.item(this, e);
+      if (item.has_afterC()) {
+        // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
+        // if user can't read v#)
+        if (INSERT) {
+          item.remove_afterC();
+          t.add_write(item, v);
+        } else {
+          // delete-then-update == not found
+          // delete will check for other deletes so we don't need to re-log that check
+        }
+        return false;
+      }
+
       if (!item.has_write() && !e->valid()) {
-        unlock(&buck.version);
         t.abort();
         // unreachable (t.abort() raises an exception)
         return false;
-      } else {
-#if DELETE
-        // we need to make sure this bucket didn't change (e.g. what was once there got removed)
-        auto& itemr = t.item(this, pack_bucket(bucket(k)));
-        if (!item.has_read())
-          t.add_read(itemr, buck.version);
-#endif
-        if (SET) {
-          t.add_write(item, v);
-        }
-        ret = true;
       }
+#if DELETE
+      // we need to make sure this item stays here
+      if (!item.has_read())
+        // we only need to check validity, not presence
+        t.add_read(item, valid_check_only_bit);
+#endif
+      if (SET) {
+        t.add_write(item, v);
+      }
+      return true;
     } else {
       if (!INSERT) {
-        // add a read that yes this element doesn't exist
-        auto& item = t.item(this, pack_bucket(bucket(k)));
-        if (!item.has_read())
-          t.add_read(item, buck.version);
+        auto buck_version = buck.version;
         unlock(&buck.version);
+        auto& item = t.item(this, pack_bucket(bucket(k)));
+        if (!item.has_read()) {
+          t.add_read(item, buck_version);
+        }
         return false;
       }
 
       // not there so need to insert
       insert_locked(buck, k, v); // marked as invalid
+      auto new_version = buck.version;
+      auto new_head = buck.head;
+      unlock(&buck.version);
       // see if this item was previously read
       auto bucket_item = t.has_item(this, pack_bucket(bucket(k)));
       if (bucket_item) {
-        auto new_version = buck.version;
         if (bucket_item->has_read() && 
             versionCheck(bucket_item->template read_value<Version>(), new_version - 1)) {
           // looks like we're the only ones to have updated the version number, so update read's version number
@@ -268,16 +335,14 @@ public:
         //} else { could abort transaction now
       }
       // use add_item because we know there are no collisions
-      auto& item = t.add_item<false>(this, buck.head);
+      auto& item = t.add_item<false>(this, new_head);
       // don't actually need to store anything for the write, just mark as valid on install
       // (for now insert and set will just do the same thing on install, set a value and then mark valid)
       t.add_write(item, v);
       // need to remove this item if we abort
       t.add_undo(item);
-      ret = false;
+      return false;
     }
-    unlock(&buck.version);
-    return ret;
   }
 
   // returns true if successful
@@ -314,46 +379,59 @@ public:
   }
 
   bool versionCheck(Version v1, Version v2) {
-    return ((v1 ^ v2) & ~lock_bit) == 0;
+    return ((v1 ^ v2) & version_mask) == 0;
   }
 
-  bool check(TransData data, bool isReadWrite) {
-    if (is_bucket(data.key)) {
-      bucket_entry& buck = map_[bucket_value(data.key)];
-      return versionCheck(unpack<Version>(data.rdata), buck.version) && !is_locked(buck.version);
+  bool check(TransItem item, bool isReadWrite) {
+    if (is_bucket(item.key())) {
+      bucket_entry& buck = map_[bucket_value(item.key())];
+      return versionCheck(item.template read_value<Version>(), buck.version) && !is_locked(buck.version);
     }
-    auto el = unpack<internal_elem*>(data.key);
-    return versionCheck(unpack<Version>(data.rdata), el->version) && (isReadWrite || !is_locked(el->version));
+    auto el = unpack<internal_elem*>(item.key());
+    auto read_version = item.template read_value<Version>();
+    // if item has undo then its an insert so no validity check needed.
+    // otherwise we check that it is both valid and not locked
+    bool validity_check = item.has_undo() || (el->valid() && (isReadWrite || !is_locked(el->version)));
+    return validity_check && ((read_version & valid_check_only_bit) ||
+                              versionCheck(read_version, el->version));
   }
 
-  void lock(TransData data) {
-    assert(!is_bucket(data.key));
-    auto el = unpack<internal_elem*>(data.key);
+  void lock(TransItem item) {
+    assert(!is_bucket(item.key()));
+    auto el = unpack<internal_elem*>(item.key());
     lock(el);
   }
-  void unlock(TransData data) {
-    assert(!is_bucket(data.key));
-    auto el = unpack<internal_elem*>(data.key);
+  void unlock(TransItem item) {
+    assert(!is_bucket(item.key()));
+    auto el = unpack<internal_elem*>(item.key());
     unlock(el);
   }
-  void install(TransData data) {
-    assert(!is_bucket(data.key));
-    auto el = unpack<internal_elem*>(data.key);
+  void install(TransItem item) {
+    assert(!is_bucket(item.key()));
+    auto el = unpack<internal_elem*>(item.key());
     assert(is_locked(el));
-    el->value = unpack<Value>(data.wdata);
+    // delete
+    if (item.has_afterC()) {
+      assert(el->valid());
+      el->valid() = false;
+      // we wait to remove the node til afterC() (unclear that this is actually necessary)
+      return;
+    }
+    // else must be insert/update
+    el->value = item.template write_value<Value>();
     inc_version(el->version);
     el->valid() = true;
   }
 
-  void undo(TransData data) {
-    auto el = unpack<internal_elem*>(data.key);
+  void undo(TransItem item) {
+    auto el = unpack<internal_elem*>(item.key());
     assert(!el->valid());
     remove(el);
   }
 
-  void afterC(TransData data) {
+  void afterC(TransItem item) {
 #if DELETE
-    auto el = unpack<internal_elem*>(data.key);
+    auto el = unpack<internal_elem*>(item.key());
     assert(!el->valid());
     remove(el);
 #endif

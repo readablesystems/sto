@@ -1,3 +1,5 @@
+#pragma once
+
 #include <vector>
 #include <algorithm>
 #include <unistd.h>
@@ -12,17 +14,9 @@
 #endif
 
 #include "Interface.hh"
-
-#pragma once
+#include "TransItem.hh"
 
 #define INIT_SET_SIZE 16
-
-#define READER_BIT (1<<0)
-#define WRITER_BIT (1<<1)
-#define UNDO_BIT (1<<2)
-// for now at least we mark the highest bit of the pointer for this.
-// this is probably incompatible with some 32-bit platforms
-#define AFTERC_BIT (((uintptr_t)1) << (sizeof(uintptr_t)*8 - 1))
 
 #if PERF_LOGGING
 uint64_t total_n;
@@ -30,45 +24,6 @@ uint64_t total_r, total_w;
 uint64_t total_searched;
 uint64_t total_aborts;
 #endif
-
-template <typename T>
-T* readObj(T* obj) {
-  //assert(!isReadObj(obj));
-  return (T*)((uintptr_t)obj | READER_BIT);
-}
-template <typename T>
-T* writeObj(T* obj) {
-  //  assert(!isWriteObj(obj));
-  return (T*)((uintptr_t)obj | WRITER_BIT);
-}
-template <typename T>
-T* undoObj(T* obj) {
-  return (T*)((uintptr_t)obj | UNDO_BIT);
-}
-template <typename T>
-T* afterCObj(T* obj) {
-  return (T*)((uintptr_t)obj | AFTERC_BIT);
-}
-template <typename T>
-T* untag(T* obj) {
-  return (T*)((uintptr_t)obj & ~(WRITER_BIT|READER_BIT|UNDO_BIT|AFTERC_BIT));
-}
-template <typename T>
-bool isReadObj(T* obj) {
-  return (uintptr_t)obj & READER_BIT;
-}
-template <typename T>
-bool isWriteObj(T* obj) {
-  return (uintptr_t)obj & WRITER_BIT;
-}
-template <typename T>
-bool isUndoObj(T* obj) {
-  return (uintptr_t)obj & UNDO_BIT;
-}
-template <typename T>
-bool isAfterCObj(T* obj) {
-  return (uintptr_t)obj & AFTERC_BIT;
-}
 
 struct threadinfo {
   int epoch;
@@ -109,71 +64,6 @@ public:
   static void cleanup(std::function<void(void)> callback) {
     tinfo[threadid].callbacks.emplace_back(global_epoch, callback);
   }
-
-  struct TransItem {
-    TransItem(Shared *s, TransData data) : shared(s), data(data) {assert(untag(s)==s);}
-
-    Shared *sharedObj() const {
-      return untag(shared);
-    }
-
-    bool has_write() const {
-      return isWriteObj(shared);
-    }
-    bool has_read() const {
-      return isReadObj(shared);
-    }
-    bool has_undo() const {
-      return isUndoObj(shared);
-    }
-    bool has_afterC() const {
-      return isAfterCObj(shared);
-    }
-    bool same_item(const TransItem& x) const {
-      return sharedObj() == x.sharedObj() && data.key == x.data.key;
-    }
-
-    template <typename T>
-    T write_value() const {
-      assert(isWriteObj(shared));
-      return unpack<T>(data.wdata);
-    }
-    template <typename T>
-    T read_value() const {
-      assert(isReadObj(shared));
-      return unpack<T>(data.rdata);
-    }
-
-    inline bool operator<(const TransItem& t2) const {
-      return data < t2.data
-        || (data == t2.data && shared < t2.shared);
-    }
-    
-  private:
-    template <typename T>
-    void add_write(T wdata) {
-      shared = writeObj(shared);
-      data.wdata = pack(wdata);
-    }
-    template <typename T>
-    void add_read(T rdata) {
-      shared = readObj(shared);
-      data.rdata = pack(rdata);
-    }
-    void add_undo() {
-      shared = undoObj(shared);
-    }
-    void add_afterC() {
-      shared = afterCObj(shared);
-    }
-
-  private:
-    friend class Transaction;
-    typedef Shared TaggedShared;
-    TaggedShared *shared;
-  public:
-    TransData data;
-  };
 
 #if LOCAL_VECTOR
   typedef local_vector<TransItem, INIT_SET_SIZE> TransSet;
@@ -240,6 +130,10 @@ public:
     ti.add_undo();
   }
 
+  void add_afterC(TransItem& ti) {
+    ti.add_afterC();
+  }
+
   bool commit() {
     if (isAborted_)
       return false;
@@ -261,7 +155,7 @@ public:
     for (auto it = trans_first; it != trans_last; )
       if (it->has_write()) {
         TransItem* me = it;
-        me->sharedObj()->lock(me->data);
+        me->sharedObj()->lock(*me);
         ++it;
         if (!readMyWritesOnly_)
           for (; it != trans_last && it->same_item(*me); ++it)
@@ -286,7 +180,7 @@ public:
               has_write = true;
               break;
             }
-        if (!it->sharedObj()->check(it->data, has_write)) {
+        if (!it->sharedObj()->check(*it, has_write)) {
           success = false;
           goto end;
         }
@@ -298,7 +192,7 @@ public:
 #if PERF_LOGGING
         total_w++;
 #endif
-        ti.sharedObj()->install(ti.data);
+        ti.sharedObj()->install(ti);
       }
     }
     
@@ -307,7 +201,7 @@ public:
     for (auto it = trans_first; it != trans_last; )
       if (it->has_write()) {
         TransItem* me = it;
-        me->sharedObj()->unlock(me->data);
+        me->sharedObj()->unlock(*me);
         ++it;
         if (!readMyWritesOnly_)
           for (; it != trans_last && it->same_item(*me); ++it)
@@ -332,7 +226,7 @@ public:
     isAborted_ = true;
     for (auto& ti : transSet_) {
       if (ti.has_undo()) {
-        ti.sharedObj()->undo(ti.data);
+        ti.sharedObj()->undo(ti);
       }
     }
     throw Abort();
@@ -347,11 +241,10 @@ public:
 private:
 
   void commitSuccess() {
-#if 0
-    for (WriterItem& w : commitSet_) {
-      w.writer->afterT(w.data);
+    for (TransItem& ti : transSet_) {
+      if (ti.has_afterC())
+        ti.sharedObj()->afterC(ti);
     }
-#endif
   }
 
 private:
