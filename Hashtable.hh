@@ -32,11 +32,11 @@ private:
   MapType map_;
 
 public:
-  const Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
+  static const Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
   // if set we check only node validity, not the node's version number
-  const Version valid_check_only_bit = 1U<<(sizeof(Version)*8 - 2);
-  const Version version_mask = ~(lock_bit|valid_check_only_bit);
-  const uintptr_t bucket_bit = 1U<<0;
+  static const Version valid_check_only_bit = 1U<<(sizeof(Version)*8 - 2);
+  static const Version version_mask = ~(lock_bit|valid_check_only_bit);
+  static const uintptr_t bucket_bit = 1U<<0;
 
   Hashtable(unsigned size = INIT_SIZE) : map_() {
     map_.resize(size);
