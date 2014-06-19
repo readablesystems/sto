@@ -428,6 +428,11 @@ int main(int argc, char *argv[]) {
   if (test == -1) {
     help(argv[0]);
   }
+  
+  if (nthreads > MAX_THREADS) {
+    printf("Asked for %d threads but MAX_THREADS is %d\n", nthreads, MAX_THREADS);
+    exit(1);
+  }
 
   ArrayType stack_arr;
   a = &stack_arr;
