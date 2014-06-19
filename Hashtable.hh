@@ -2,6 +2,8 @@
 
 #include "compiler.hh"
 
+#define HASHTABLE_DELETE 1
+
 template <typename K, typename V, unsigned INIT_SIZE = 129>
 class Hashtable : public Shared {
 public:
@@ -220,7 +222,7 @@ public:
   }
 #endif
 
-#if DELETE
+#if HASHTABLE_DELETE
   // returns true if successful
   bool transDelete(Transaction& t, Key k) {
     bucket_entry& buck = buck_entry(k);
@@ -229,6 +231,10 @@ public:
     internal_elem *e = find(buck, k);
     if (e) {
       auto& item = t.item(this, e);
+      // already deleted!
+      if (item.has_afterC()) {
+        return false;
+      }
       if (!item.has_write() && !e->valid()) {
         t.abort();
         return false;
@@ -253,8 +259,8 @@ public:
       if (!item.has_read())
         // we only need to check validity, not presence
         t.add_read(item, valid_check_only_bit);
-      // we use has_afterC() to detect deletes so we don't need any other data for deletes, just to mark it as
-      // a write
+      // we use has_afterC() to detect deletes so we don't need any other data 
+      // for deletes, just to mark it as a write
       if (!item.has_write())
         t.add_write(item, 0);
       t.add_afterC(item);
@@ -265,6 +271,7 @@ public:
       if (!item.has_read())
         t.add_read(item, buck_version);
       return false;
+    }
   }
 #endif
 
@@ -297,7 +304,7 @@ public:
         // unreachable (t.abort() raises an exception)
         return false;
       }
-#if DELETE
+#if HASHTABLE_DELETE
       // we need to make sure this item stays here
       if (!item.has_read())
         // we only need to check validity, not presence
@@ -430,7 +437,7 @@ public:
   }
 
   void afterC(TransItem item) {
-#if DELETE
+#if HASHTABLE_DELETE
     auto el = unpack<internal_elem*>(item.key());
     assert(!el->valid());
     remove(el);

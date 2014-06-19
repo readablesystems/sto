@@ -16,7 +16,7 @@ int main() {
 
   Transaction t;
 
-  Value v1,v2,v3;
+  Value v1,v2,vunused;
   //  assert(!h.transGet(t, 0, v1));
 
   assert(h.transInsert(t, 0, 1));
@@ -48,7 +48,7 @@ int main() {
   assert(t6.commit());
 
   Transaction t7;
-  assert(!h.transGet(t7, 2, v3));
+  assert(!h.transGet(t7, 2, vunused));
   Transaction t8;
   assert(h.transInsert(t8, 2, 2));
   assert(t8.commit());
@@ -64,14 +64,68 @@ int main() {
   assert(h.transInsert(t10, 4, 4));
   try{
     // t9 inserted invalid node, so we are forced to abort
-    h.transUpdate(t10, 3, v3);
+    h.transUpdate(t10, 3, vunused);
+    assert(0);
+  } catch (Transaction::Abort E) {}
+  Transaction t10_2;
+  try {
+    // deletes should also force abort from invalid nodes
+    h.transDelete(t10_2, 3);
     assert(0);
   } catch (Transaction::Abort E) {}
   assert(t9.commit());
-  assert(!t10.commit());
+  assert(!t10.commit() && !t10_2.commit());
+
   Transaction t11;
   assert(h.transInsert(t11, 4, 5));
   assert(t11.commit());
+
+  // basic delete
+  Transaction t12;
+  assert(!h.transDelete(t12, 5));
+  assert(h.transUpdate(t12, 4, 0));
+  assert(h.transDelete(t12, 4));
+  assert(!h.transGet(t12, 4, vunused));
+  assert(!h.transUpdate(t12, 4, 0));
+  assert(!h.transDelete(t12, 4));
+  assert(t12.commit());
+
+  // delete-then-insert
+  Transaction t13;
+  assert(h.transGet(t13, 3, vunused));
+  assert(h.transDelete(t13, 3));
+  assert(h.transInsert(t13, 3, 1));
+  assert(h.transGet(t13, 3, vunused));
+  assert(t13.commit());
+
+  // insert-then-delete
+  Transaction t14;
+  assert(!h.transGet(t14, 4, vunused));
+  assert(h.transInsert(t14, 4, 14));
+  assert(h.transGet(t14, 4, vunused));
+  assert(h.transDelete(t14, 4));
+  assert(!h.transGet(t14, 4, vunused));
+  assert(t14.commit());
+
+  // blind update success
+  Transaction t15;
+  assert(h.transUpdate(t15, 3, 15));
+  Transaction t16;
+  assert(h.transUpdate(t16, 3, 16));
+  assert(t16.commit());
+  assert(t15.commit());
+
+  // update aborts after delete
+  Transaction t17;
+  Transaction t18;
+  assert(h.transUpdate(t17, 3, 17));
+  assert(h.transDelete(t18, 3));
+  assert(t18.commit());
+  try {
+    t17.commit();
+    assert(0);
+  } catch (Transaction::Abort E) {}
+  
 
   h.print();
 
