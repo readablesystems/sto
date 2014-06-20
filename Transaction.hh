@@ -27,6 +27,7 @@ uint64_t total_aborts;
 
 struct threadinfo {
   int epoch;
+  unsigned spin_lock;
   std::vector<std::pair<int, std::function<void(void)>>> callbacks;
 };
 
@@ -36,33 +37,56 @@ public:
   static __thread int threadid;
   static int global_epoch;
 
+  static void acquire_spinlock(unsigned& spin_lock) {
+    unsigned cur;
+    while (1) {
+      cur = spin_lock;
+      if (cur == 0 && bool_cmpxchg(&spin_lock, cur, 1)) {
+        break;
+      }
+      relax_fence();
+    }
+  }
+  static void release_spinlock(unsigned& spin_lock) {
+    spin_lock = 0;
+    fence();
+  }
+
   static void* epoch_advancer(void*) {
     while (1) {
       usleep(100000);
       auto g = global_epoch;
       for (auto&& t : tinfo) {
-        if (t.epoch < g)
+        if (t.epoch != 0 && t.epoch < g)
           g = t.epoch;
       }
 
       global_epoch = ++g;
 
       for (auto&& t : tinfo) {
-        if (t.epoch == 0) continue;
-        for (auto it = t.callbacks.begin(); it != t.callbacks.end(); ) {
-          if (it->first < g-2) {
+        acquire_spinlock(t.spin_lock);
+        auto deletetil = t.callbacks.begin();
+        for (auto it = t.callbacks.begin(); it != t.callbacks.end(); ++it) {
+          if (it->first <= g-2) {
             it->second();
-            it = t.callbacks.erase(it);
+            ++deletetil;
           } else {
-            ++it;
+            // callbacks are in ascending order so if this one is too soon of an epoch the rest will be too
+            break;
           }
         }
+        if (t.callbacks.begin() != deletetil) {
+          t.callbacks.erase(t.callbacks.begin(), deletetil);
+        }
+        release_spinlock(t.spin_lock);
       }
     }
   }
 
   static void cleanup(std::function<void(void)> callback) {
+    acquire_spinlock(tinfo[threadid].spin_lock);
     tinfo[threadid].callbacks.emplace_back(global_epoch, callback);
+    release_spinlock(tinfo[threadid].spin_lock);
   }
 
 #if LOCAL_VECTOR

@@ -21,6 +21,7 @@
 #define DATA_COLLECT 0
 #define HASHTABLE 1
 #define HASHTABLE_LOAD_FACTOR 2
+#define HASHTABLE_RAND_DELETES 0
 
 //#define DEBUG
 
@@ -180,6 +181,11 @@ void *randomRWs(void *p) {
       for (int j = 0; j < OPS; ++j) {
         int slot = slotdist(transgen);
         auto r = transgen();
+#if HASHTABLE_RAND_DELETES
+        if (r > (write_thresh+write_thresh/2)) {
+          a->transDelete(t, slot);
+        }else
+#endif
         if (r > write_thresh) {
           doRead(t, slot);
         } else {
@@ -238,6 +244,38 @@ void checkRandomRWs() {
   }
 }
 
+void *kingOfTheDelete(void *p) {
+  assert(HASHTABLE);
+  int me = (intptr_t)p;
+  Transaction::threadid = me;
+
+  bool done = false;
+  while (!done) {
+    try {
+      Transaction t;
+      for (int i = 0; i < nthreads; ++i) {
+        if (i != me) {
+          a->transDelete(t, i);
+        } else {
+          a->transPut(t, i, i+1);
+        }
+      }
+      done = t.commit();
+    } catch (Transaction::Abort E) {}
+  }
+  return NULL;
+}
+
+void checkKingOfTheDelete() {
+  int count = 0;
+  for (int i = 0; i < nthreads; ++i) {
+    if (a->read(i)) {
+      count++;
+    }
+  }
+  assert(count==1);
+}
+
 void checkIsolatedWrites() {
   for (int i = 0; i < nthreads; ++i) {
     assert(a->read(i) == i+1);
@@ -245,7 +283,7 @@ void checkIsolatedWrites() {
 }
 
 void *isolatedWrites(void *p) {
-  int me = (long long)p;
+  int me = (intptr_t)p;
 
   bool done = false;
   while (!done) {
@@ -301,7 +339,7 @@ void checkBlindWrites() {
 }
 
 void *interferingRWs(void *p) {
-  int me = (long long)p;
+  int me = (intptr_t)p;
 
   bool done = false;
   while (!done) {
@@ -357,6 +395,7 @@ Test tests[] = {
   {interferingRWs, checkInterferingRWs},
   {randomRWs, checkRandomRWs},
   {readThenWrite, NULL},
+  {kingOfTheDelete, checkKingOfTheDelete},
 };
 
 enum {

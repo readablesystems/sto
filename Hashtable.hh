@@ -235,10 +235,11 @@ public:
       if (item.has_afterC()) {
         return false;
       }
-      if (!item.has_write() && !e->valid()) {
+      bool valid = e->valid();
+      if (!item.has_write() && !valid) {
         t.abort();
         return false;
-      } else if (item.has_undo() && !e->valid()) {
+      } else if (item.has_undo() && !valid) {
         // we're deleting our own insert. special case this to just remove element and just check for no insert at commit
         remove(e);
         // no way to remove an item (would be pretty inefficient)
@@ -254,7 +255,7 @@ public:
         }
         return true;
       }
-      assert(e->valid());
+      assert(valid);
       // we need to make sure this bucket didn't change (e.g. what was once there got removed)
       if (!item.has_read())
         // we only need to check validity, not presence
@@ -460,7 +461,7 @@ public:
       buck.head = cur->next;
     }
     unlock(&buck.version);
-    Transaction::cleanup([=] () { free(cur); });
+    Transaction::cleanup([cur] () { free(cur); });
   }
 
   void print() {
