@@ -34,11 +34,11 @@ private:
   MapType map_;
 
 public:
-  static const Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
+  static constexpr Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
   // if set we check only node validity, not the node's version number
-  static const Version valid_check_only_bit = 1U<<(sizeof(Version)*8 - 2);
-  static const Version version_mask = ~(lock_bit|valid_check_only_bit);
-  static const uintptr_t bucket_bit = 1U<<0;
+  static constexpr Version valid_check_only_bit = 1U<<(sizeof(Version)*8 - 2);
+  static constexpr Version version_mask = ~(lock_bit|valid_check_only_bit);
+  static constexpr uintptr_t bucket_bit = 1U<<0;
 
   Hashtable(unsigned size = INIT_SIZE) : map_() {
     map_.resize(size);
@@ -94,6 +94,18 @@ public:
     e->value = val;
     inc_version(e->version);
     unlock(&e->version);
+  }
+
+  bool has_delete(TransItem& item) {
+    return item.has_afterC();
+  }
+  
+  bool has_insert(TransItem& item) {
+    return item.has_undo();
+  }
+
+  bool validity_check(TransItem& item, internal_elem *e) {
+    return has_insert(item) || e->valid();
   }
   
   bool is_bucket(void *key) {
@@ -169,12 +181,12 @@ public:
     internal_elem *e = find(buck, k);
     if (e) {
       auto& item = t.item(this, e);
-      if (!item.has_undo() && !e->valid()) {
+      if (!validity_check(item, e)) {
         t.abort();
         return false;
       }
       // deleted
-      if (item.has_afterC()) {
+      if (has_delete(item)) {
         return false;
       }
       if (item.has_write()) {
@@ -232,7 +244,7 @@ public:
     if (e) {
       auto& item = t.item(this, e);
       bool valid = e->valid();
-      if (!valid && item.has_undo()) {
+      if (!valid && has_insert(item)) {
         // we're deleting our own insert. special case this to just remove element and just check for no insert at commit
         remove(e);
         // no way to remove an item (would be pretty inefficient)
@@ -253,7 +265,7 @@ public:
       }
       assert(valid);
       // we already deleted!
-      if (item.has_afterC()) {
+      if (has_delete(item)) {
         return false;
       }
       // we need to make sure this bucket didn't change (e.g. what was once there got removed)
@@ -288,13 +300,13 @@ public:
     if (e) {
       unlock(&buck.version);
       auto& item = t.item(this, e);
-      if (!item.has_undo() && !e->valid()) {
+      if (!validity_check(item, e)) {
         t.abort();
         // unreachable (t.abort() raises an exception)
         return false;
       }
 
-      if (item.has_afterC()) {
+      if (has_delete(item)) {
         // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
         // if user can't read v#)
         if (INSERT) {
