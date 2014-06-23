@@ -169,6 +169,10 @@ public:
     internal_elem *e = find(buck, k);
     if (e) {
       auto& item = t.item(this, e);
+      if (!item.has_undo() && !e->valid()) {
+        t.abort();
+        return false;
+      }
       // deleted
       if (item.has_afterC()) {
         return false;
@@ -176,10 +180,6 @@ public:
       if (item.has_write()) {
         retval = item.template write_value<Value>();
         return true;
-      }
-      if (!e->valid()) {
-        t.abort();
-        return false;
       }
       Version elem_vers;
       // "atomic" read of both the current value and the version #
@@ -231,15 +231,8 @@ public:
     internal_elem *e = find(buck, k);
     if (e) {
       auto& item = t.item(this, e);
-      // already deleted!
-      if (item.has_afterC()) {
-        return false;
-      }
       bool valid = e->valid();
-      if (!item.has_write() && !valid) {
-        t.abort();
-        return false;
-      } else if (item.has_undo() && !valid) {
+      if (!valid && item.has_undo()) {
         // we're deleting our own insert. special case this to just remove element and just check for no insert at commit
         remove(e);
         // no way to remove an item (would be pretty inefficient)
@@ -254,12 +247,20 @@ public:
           t.add_read(itemb, buck_version);
         }
         return true;
+      } else if (!valid) {
+        t.abort();
+        return false;
       }
       assert(valid);
+      // we already deleted!
+      if (item.has_afterC()) {
+        return false;
+      }
       // we need to make sure this bucket didn't change (e.g. what was once there got removed)
-      if (!item.has_read())
+      if (!item.has_read()) {
         // we only need to check validity, not presence
         t.add_read(item, valid_check_only_bit);
+      }
       // we use has_afterC() to detect deletes so we don't need any other data 
       // for deletes, just to mark it as a write
       if (!item.has_write())
@@ -287,6 +288,12 @@ public:
     if (e) {
       unlock(&buck.version);
       auto& item = t.item(this, e);
+      if (!item.has_undo() && !e->valid()) {
+        t.abort();
+        // unreachable (t.abort() raises an exception)
+        return false;
+      }
+
       if (item.has_afterC()) {
         // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
         // if user can't read v#)
@@ -300,11 +307,6 @@ public:
         return false;
       }
 
-      if (!item.has_write() && !e->valid()) {
-        t.abort();
-        // unreachable (t.abort() raises an exception)
-        return false;
-      }
 #if HASHTABLE_DELETE
       // we need to make sure this item stays here
       if (!item.has_read())

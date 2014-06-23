@@ -11,7 +11,7 @@
 #include "clp.h"
 
 // size of array
-#define ARRAY_SZ 100000
+#define ARRAY_SZ 10000
 
 // only used for randomRWs test
 #define GLOBAL_SEED 0
@@ -276,6 +276,81 @@ void checkKingOfTheDelete() {
   assert(count==1);
 }
 
+void *xorDelete(void *p) {
+  int me = (intptr_t)p;
+  Transaction::threadid = me;
+
+  // we never pick slot 0 so we can detect if table is populated
+  std::uniform_int_distribution<> slotdist(1, ARRAY_SZ-1);
+  uint32_t delete_thresh = (uint32_t) (write_percent * Rand::max());
+
+  int N = ntrans/nthreads;
+  int OPS = opspertrans;
+
+  if (me == 0) {
+    // populate
+    Transaction t;
+    for (int i = 1; i < ARRAY_SZ; ++i) {
+      a->transPut(t, i, i+1);
+    }
+    a->transPut(t, 0, 1);
+    assert(t.commit());
+  } else {
+    // wait for populated
+    while (1) {
+      try {
+        Transaction t;
+        if (a->transRead(t, 0) && t.commit()) {
+          break;
+        }
+        t.commit();
+      } catch (Transaction::Abort E) {}
+    }
+  }
+
+  for (int i = 0; i < N; ++i) {
+    auto transseed = i;
+    bool done = false;
+    while (!done) {
+      Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
+      try {
+        Transaction t;
+        for (int j = 0; j < OPS; ++j) {
+          int slot = slotdist(transgen);
+          auto r = transgen();
+          if (r > delete_thresh) {
+            // can't do put/insert because that makes the results ordering dependent
+            // (these updates don't actually affect the final state at all)
+            a->transUpdate(t, slot, slot+1);
+          } else if (!a->transInsert(t, slot, slot+1)) {
+            // we delete if the element is there and insert if it's not
+            // this is essentially xor'ing the slot, so ordering won't matter
+            a->transDelete(t, slot);
+          }
+        }
+        done = t.commit();
+      } catch (Transaction::Abort E) {}
+    }
+  }
+  
+  return NULL;
+}
+
+void checkXorDelete() {
+  ArrayType *old = a;
+  ArrayType check;
+  a = &check;
+  
+  for (int i = 0; i < nthreads; ++i) {
+    xorDelete((void*)(intptr_t)i);
+  }
+  a = old;
+  
+  for (int i = 0; i < ARRAY_SZ; ++i) {
+    assert(a->read(i) == check.read(i));
+  }
+}
+
 void checkIsolatedWrites() {
   for (int i = 0; i < nthreads; ++i) {
     assert(a->read(i) == i+1);
@@ -396,6 +471,7 @@ Test tests[] = {
   {randomRWs, checkRandomRWs},
   {readThenWrite, NULL},
   {kingOfTheDelete, checkKingOfTheDelete},
+  {xorDelete, checkXorDelete},
 };
 
 enum {
