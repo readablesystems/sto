@@ -128,7 +128,6 @@ public:
 
   void inc_version(Version& v) {
     assert(is_locked(v));
-    // TODO: work with lock bit
     Version cur = v & version_mask;
     cur = (cur+1) & version_mask;
     v = cur | (v & ~version_mask);
@@ -404,7 +403,7 @@ public:
     return ((v1 ^ v2) & version_mask) == 0;
   }
 
-  bool check(TransItem item, bool isReadWrite) {
+  bool check(TransItem& item, bool isReadWrite) {
     if (is_bucket(item.key())) {
       bucket_entry& buck = map_[bucket_value(item.key())];
       return versionCheck(item.template read_value<Version>(), buck.version) && !is_locked(buck.version);
@@ -418,17 +417,17 @@ public:
                               versionCheck(read_version, el->version));
   }
 
-  void lock(TransItem item) {
+  void lock(TransItem& item) {
     assert(!is_bucket(item.key()));
     auto el = unpack<internal_elem*>(item.key());
     lock(el);
   }
-  void unlock(TransItem item) {
+  void unlock(TransItem& item) {
     assert(!is_bucket(item.key()));
     auto el = unpack<internal_elem*>(item.key());
     unlock(el);
   }
-  void install(TransItem item) {
+  void install(TransItem& item) {
     assert(!is_bucket(item.key()));
     auto el = unpack<internal_elem*>(item.key());
     assert(is_locked(el));
@@ -445,13 +444,13 @@ public:
     el->valid() = true;
   }
 
-  void undo(TransItem item) {
+  void undo(TransItem& item) {
     auto el = unpack<internal_elem*>(item.key());
     assert(!el->valid());
     remove(el);
   }
 
-  void afterC(TransItem item) {
+  void afterC(TransItem& item) {
 #if HASHTABLE_DELETE
     auto el = unpack<internal_elem*>(item.key());
     assert(!el->valid());
