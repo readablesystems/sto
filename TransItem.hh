@@ -1,66 +1,11 @@
 #pragma once
 
+#include "Tagged64.hh"
+
 #define READER_BIT (1<<0)
 #define WRITER_BIT (1<<1)
 #define UNDO_BIT (1<<2)
-// for now at least we mark the highest bit of the pointer for this.
-// this is probably incompatible with some 32-bit platforms
-#define AFTERC_BIT (((uintptr_t)1) << (sizeof(uintptr_t)*8 - 1))
-
-template <typename T>
-T* readObj(T* obj) {
-  //assert(!isReadObj(obj));
-  return (T*)((uintptr_t)obj | READER_BIT);
-}
-template <typename T>
-T* writeObj(T* obj) {
-  //  assert(!isWriteObj(obj));
-  return (T*)((uintptr_t)obj | WRITER_BIT);
-}
-template <typename T>
-T* undoObj(T* obj) {
-  return (T*)((uintptr_t)obj | UNDO_BIT);
-}
-template <typename T>
-T* afterCObj(T* obj) {
-  return (T*)((uintptr_t)obj | AFTERC_BIT);
-}
-template <typename T>
-T* notReadObj(T* obj) {
-  return (T*)((uintptr_t)obj & ~READER_BIT);
-}
-template <typename T>
-T* notWriteObj(T* obj) {
-  return (T*)((uintptr_t)obj & ~WRITER_BIT);
-}
-template <typename T>
-T* notUndoObj(T* obj) {
-  return (T*)((uintptr_t)obj & ~UNDO_BIT);
-}
-template <typename T>
-T* notAfterCObj(T* obj) {
-  return (T*)((uintptr_t)obj & ~AFTERC_BIT);
-}
-template <typename T>
-T* untag(T* obj) {
-  return (T*)((uintptr_t)obj & ~(WRITER_BIT|READER_BIT|UNDO_BIT|AFTERC_BIT));
-}
-template <typename T>
-bool isReadObj(T* obj) {
-  return (uintptr_t)obj & READER_BIT;
-}
-template <typename T>
-bool isWriteObj(T* obj) {
-  return (uintptr_t)obj & WRITER_BIT;
-}
-template <typename T>
-bool isUndoObj(T* obj) {
-  return (uintptr_t)obj & UNDO_BIT;
-}
-template <typename T>
-bool isAfterCObj(T* obj) {
-  return (uintptr_t)obj & AFTERC_BIT;
-}
+#define AFTERC_BIT (1<<3)
 
 template <typename T>
 inline void *pack(T v) {
@@ -92,23 +37,23 @@ struct TransData {
 class Shared;
 
 struct TransItem {
-  TransItem(Shared *s, TransData data) : shared(s), data(data) {assert(untag(s)==s);}
+  TransItem(Shared *s, TransData data) : shared(s), data(data) {}
 
   Shared *sharedObj() const {
-    return untag(shared);
+    return shared.ptr();
   }
 
   bool has_write() const {
-    return isWriteObj(shared);
+    return shared.has_flags(WRITER_BIT);
   }
   bool has_read() const {
-    return isReadObj(shared);
+    return shared.has_flags(READER_BIT);
   }
   bool has_undo() const {
-    return isUndoObj(shared);
+    return shared.has_flags(UNDO_BIT);
   }
   bool has_afterC() const {
-    return isAfterCObj(shared);
+    return shared.has_flags(AFTERC_BIT);
   }
   bool same_item(const TransItem& x) const {
     return sharedObj() == x.sharedObj() && data.key == x.data.key;
@@ -116,12 +61,12 @@ struct TransItem {
 
   template <typename T>
   T write_value() const {
-    assert(isWriteObj(shared));
+    assert(has_write());
     return unpack<T>(data.wdata);
   }
   template <typename T>
   T read_value() const {
-    assert(isReadObj(shared));
+    assert(has_read());
     return unpack<T>(data.rdata);
   }
 
@@ -136,40 +81,39 @@ struct TransItem {
 
   // TODO: should these be done Transaction methods like their add_ equivalents?
   void remove_write() {
-    shared = notWriteObj(shared);
+    shared.rm_flags(WRITER_BIT);
   }
   void remove_read() {
-    shared = notReadObj(shared);
+    shared.rm_flags(READER_BIT);
   }
   void remove_undo() {
-    shared = notUndoObj(shared);
+    shared.rm_flags(UNDO_BIT);
   }
   void remove_afterC() {
-    shared = notAfterCObj(shared);
+    shared.rm_flags(AFTERC_BIT);
   }
     
 private:
   template <typename T>
   void add_write(T wdata) {
-    shared = writeObj(shared);
+    shared.or_flags(WRITER_BIT);
     data.wdata = pack(wdata);
   }
   template <typename T>
   void add_read(T rdata) {
-    shared = readObj(shared);
+    shared.or_flags(READER_BIT);
     data.rdata = pack(rdata);
   }
   void add_undo() {
-    shared = undoObj(shared);
+    shared.or_flags(UNDO_BIT);
   }
   void add_afterC() {
-    shared = afterCObj(shared);
+    shared.or_flags(AFTERC_BIT);
   }
 
 private:
   friend class Transaction;
-  typedef Shared TaggedShared;
-  TaggedShared *shared;
+  Tagged64<Shared> shared;
 public:
   TransData data;
 };

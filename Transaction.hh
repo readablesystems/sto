@@ -112,7 +112,7 @@ public:
       readMyWritesOnly_ = false;
     }
     void *k = pack(key);
-    // TODO: if user of this forgets to do add_read or add_write, we end up with a non-read, non-write, weirdo item
+    // TODO: if user of this forgets to do add_read or add_write, we end up with a non-read, non-write, weirdo item (who cares?)
     transSet_.emplace_back(s, TransData(k, NULL, NULL));
     return transSet_[transSet_.size()-1];
   }

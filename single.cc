@@ -9,6 +9,17 @@
 
 using namespace std;
 
+void stringKeyTests() {
+#if 0
+  Hashtable<std::string, std::string> h;
+  Transaction t;
+  assert(h.transInsert(t, "foo", "bar"));
+  std::string s;
+  assert(h.transGet(t, "foo", s));
+  assert(t.commit());
+#endif
+}
+
 int main() {
   typedef int Key;
   typedef int Value;
@@ -130,5 +141,8 @@ int main() {
   h.print();
 
   cout << v1 << " " << v2 << endl;
+
+  // string key testing
+  stringKeyTests();
   
 }
