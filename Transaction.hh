@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include <vector>
@@ -112,7 +113,7 @@ public:
       readMyWritesOnly_ = false;
     }
     void *k = pack(key);
-    // TODO: if user of this forgets to do add_read or add_write, we end up with a non-read, non-write, weirdo item (who cares?)
+    // TODO: TransData packs its arguments so we're technically double packing here (void* packs to void* though)
     transSet_.emplace_back(s, TransData(k, NULL, NULL));
     return transSet_[transSet_.size()-1];
   }
@@ -268,6 +269,7 @@ private:
     for (TransItem& ti : transSet_) {
       if (ti.has_afterC())
         ti.sharedObj()->afterC(ti);
+      ti.sharedObj()->cleanup(ti);
     }
   }
 

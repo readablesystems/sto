@@ -16,4 +16,6 @@ public:
   // optional
   virtual void undo(TransItem& item) { (void)item; }
   virtual void afterC(TransItem& item) { (void)item; }
+  // probably just needs to call destructor
+  virtual void cleanup(TransItem& item) { (void)item; }
 };

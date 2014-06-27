@@ -10,13 +10,22 @@
 using namespace std;
 
 void stringKeyTests() {
-#if 0
+#if 1
   Hashtable<std::string, std::string> h;
   Transaction t;
-  assert(h.transInsert(t, "foo", "bar"));
+  {
+  std::string s1("bar");
+  assert(h.transInsert(t, "foo", s1));
+  }
   std::string s;
   assert(h.transGet(t, "foo", s));
+  assert(s == "bar");
   assert(t.commit());
+
+  Transaction t2;
+  assert(h.transGet(t2, "foo", s));
+  assert(s == "bar");
+  assert(t2.commit());
 #endif
 }
 

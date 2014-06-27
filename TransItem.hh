@@ -1,22 +1,69 @@
 #pragma once
 
+#include <type_traits>
+
 #include "Tagged64.hh"
 
-#define READER_BIT (1<<0)
-#define WRITER_BIT (1<<1)
-#define UNDO_BIT (1<<2)
-#define AFTERC_BIT (1<<3)
+enum {
+  READER_BIT = 1<<0,
+  WRITER_BIT = 1<<1,
+  UNDO_BIT = 1<<2,
+  AFTERC_BIT = 1<<3,
+};
+
+template <bool B> struct packer {};
+
+template <> struct packer<true> {
+  template <typename T>
+  void* pack(T value) {
+    void* x;
+    memcpy(&x, &value, sizeof(T));
+    return x;
+  }
+
+  template <typename T>
+  T& unpack(void*& packed) {
+    return reinterpret_cast<T&>(packed);
+  }
+
+  template <typename T>
+  void free_packed(void*& packed) { (void)packed; }
+};
+
+template <> struct packer<false> {
+  template <typename T>
+  void* pack(T value) {
+    return new T(std::move(value));
+  }
+
+  template <typename T>
+  T& unpack(void*& packed) {
+    return *reinterpret_cast<T*>(packed);
+  }
+
+  template <typename T>
+  void free_packed(void*& packed) {
+    delete reinterpret_cast<T*>(packed);
+  }
+};
+
 
 template <typename T>
 inline void *pack(T v) {
-  static_assert(sizeof(T) <= sizeof(void*), "Can't fit type into void*");
-  return reinterpret_cast<void*>(v);
+  return packer<std::is_trivially_copy_constructible<T>::value
+    && sizeof(T) <= sizeof(void*)>().pack(std::move(v));
 }
 
 template <typename T>
-inline T unpack(void *vp) {
-  static_assert(sizeof(T) <= sizeof(void*), "Can't fit type into void*");
-  return (T)(intptr_t)vp;
+inline T& unpack(void *&vp) {
+  return packer<std::is_trivially_copy_constructible<T>::value
+    && sizeof(T) <= sizeof(void*)>().template unpack<T>(vp);
+}
+
+template <typename T>
+inline void free_packed(void *&vp) {
+  packer<std::is_trivially_copy_constructible<T>::value
+    && sizeof(T) <= sizeof(void*)>().template free_packed<T>(vp);
 }
 
 struct TransData {
@@ -60,17 +107,17 @@ struct TransItem {
   }
 
   template <typename T>
-  T write_value() const {
+  T& write_value() {
     assert(has_write());
     return unpack<T>(data.wdata);
   }
   template <typename T>
-  T read_value() const {
+  T& read_value() {
     assert(has_read());
     return unpack<T>(data.rdata);
   }
 
-  void *key() {
+  void *&key() {
     return data.key;
   }
 
@@ -115,5 +162,6 @@ private:
   friend class Transaction;
   Tagged64<Shared> shared;
 public:
+  // TODO: should this even really be public now that we have write_value() etc. methods?
   TransData data;
 };

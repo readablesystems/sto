@@ -152,7 +152,7 @@ public:
     *v = cur;
   }
 
-  void insert_locked(bucket_entry& buck, Key k, Value val) {
+  void insert_locked(bucket_entry& buck, Key k, const Value& val) {
     assert(is_locked(buck.version));
     auto new_head = new internal_elem(k, val);
     internal_elem *cur_head = buck.head;
@@ -290,7 +290,7 @@ public:
 
   // returns true if item already existed, false if it did not
   template <bool INSERT = true, bool SET = true>
-  bool transPut(Transaction& t, Key k, Value v) {
+  bool transPut(Transaction& t, Key k, const Value& v) {
     // TODO: technically puts don't need to look into the table at all until lock time
     bucket_entry& buck = buck_entry(k);
     // TODO: update doesn't need to lock the table
@@ -367,12 +367,12 @@ public:
   }
 
   // returns true if successful
-  bool transInsert(Transaction& t, Key k, Value v) {
+  bool transInsert(Transaction& t, Key k, const Value& v) {
     return !transPut</*insert*/true, /*set*/false>(t, k, v);
   }
 
   // aka putIfAbsent (returns true if successful)
-  bool transUpdate(Transaction& t, Key k, Value v) {
+  bool transUpdate(Transaction& t, Key k, const Value& v) {
     return transPut</*insert*/false, /*set*/true>(t, k, v);
   }
 
@@ -439,7 +439,7 @@ public:
       return;
     }
     // else must be insert/update
-    el->value = item.template write_value<Value>();
+    el->value = std::move(item.template write_value<Value>());
     inc_version(el->version);
     el->valid() = true;
   }
@@ -456,6 +456,14 @@ public:
     assert(!el->valid());
     remove(el);
 #endif
+  }
+
+  void cleanup(TransItem& item) {
+    free_packed<internal_elem*>(item.key());
+    if (item.has_read())
+      free_packed<Version>(item.data.rdata);
+    if (item.has_write())
+      free_packed<Value>(item.data.wdata);
   }
   
   void remove(internal_elem *el) {
