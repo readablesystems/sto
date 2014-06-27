@@ -144,11 +144,17 @@ private:
   template <typename T>
   void add_write(T wdata) {
     shared.or_flags(WRITER_BIT);
+    // TODO: this assumes that a given writer data always has the same type.
+    // this is certainly true now but we probably shouldn't assume this in general
+    // (hopefully we'll have a system that can automatically call destructors and such
+    // which will make our lives much easier)
+    free_packed<T>(data.wdata);
     data.wdata = pack(wdata);
   }
   template <typename T>
   void add_read(T rdata) {
     shared.or_flags(READER_BIT);
+    free_packed<T>(data.rdata);
     data.rdata = pack(rdata);
   }
   void add_undo() {
