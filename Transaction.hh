@@ -26,7 +26,7 @@ uint64_t total_searched;
 uint64_t total_aborts;
 #endif
 
-struct threadinfo {
+struct threadinfo_t {
   int epoch;
   unsigned spin_lock;
   std::vector<std::pair<int, std::function<void(void)>>> callbacks;
@@ -34,7 +34,7 @@ struct threadinfo {
 
 class Transaction {
 public:
-  static threadinfo tinfo[MAX_THREADS];
+  static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static int global_epoch;
 
@@ -280,7 +280,7 @@ private:
 
 };
 
-threadinfo Transaction::tinfo[MAX_THREADS];
+threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int Transaction::threadid;
 int Transaction::global_epoch;
 

@@ -10,6 +10,8 @@
 #include "Transaction.hh"
 #include "clp.h"
 
+#include "../MassTrans.hh"
+
 // size of array
 #define ARRAY_SZ 10000
 
@@ -19,11 +21,20 @@
 #define MAINTAIN_TRUE_ARRAY_STATE 1
 
 #define DATA_COLLECT 0
-#define HASHTABLE 1
+#define HASHTABLE 0
 #define HASHTABLE_LOAD_FACTOR 2
 #define HASHTABLE_RAND_DELETES 0
 
+#define MASSTREE 1
 
+#define PREPOPULATE 0
+
+#if MASSTREE
+kvepoch_t global_log_epoch = 0;
+volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly                    
+kvtimestamp_t initial_timestamp;
+volatile bool recovering = false; // so don't add log entries, and free old value immediately        
+#endif
 
 //#define DEBUG
 
@@ -34,8 +45,13 @@
 #endif
 
 #if !HASHTABLE
+#if !MASSTREE
 typedef Array<int, ARRAY_SZ> ArrayType;
 ArrayType *a;
+#else
+typedef Masstree::MassTrans<int> ArrayType;
+ArrayType *a;
+#endif
 #else
 // hashtable from int to int
 typedef Hashtable<int, int, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> ArrayType;
@@ -225,6 +241,13 @@ void checkRandomRWs() {
   maintain_true_array_state = !maintain_true_array_state;
 #endif
   a = &check;
+
+#if PREPOPULATE
+  for (int i = 0; i < ARRAY_SZ; ++i) {
+    a->put(i, 0);
+  }
+#endif
+
   for (int i = 0; i < nthreads; ++i) {
     randomRWs((void*)(intptr_t)i);
   }
@@ -245,6 +268,8 @@ void checkRandomRWs() {
     assert(check.read(i) == a->read(i));
   }
 }
+
+#if HASHTABLE
 
 void *kingOfTheDelete(void *p) {
   assert(HASHTABLE);
@@ -352,6 +377,7 @@ void checkXorDelete() {
     assert(a->read(i) == check.read(i));
   }
 }
+#endif
 
 void checkIsolatedWrites() {
   for (int i = 0; i < nthreads; ++i) {
@@ -472,8 +498,10 @@ Test tests[] = {
   {interferingRWs, checkInterferingRWs},
   {randomRWs, checkRandomRWs},
   {readThenWrite, NULL},
+#if HASHTABLE
   {kingOfTheDelete, checkKingOfTheDelete},
   {xorDelete, checkXorDelete},
+#endif
 };
 
 enum {
@@ -553,6 +581,13 @@ int main(int argc, char *argv[]) {
 
   ArrayType stack_arr;
   a = &stack_arr;
+
+#if PREPOPULATE
+  for (int i = 0; i < ARRAY_SZ; ++i) {
+    a->put(i, 0);
+  }
+#endif
+
   struct timeval tv1,tv2;
   struct rusage ru1,ru2;
   gettimeofday(&tv1, NULL);

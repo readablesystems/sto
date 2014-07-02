@@ -38,11 +38,11 @@ libjson.a: json.o string.o straccum.o str.o msgpack.o \
 	@/bin/rm -f $@
 	$(AR) cru $@ $^
 
-KVTREES = query_masstree.o \
-	value_string.o value_array.o value_versioned_array.o \
-	string_slice.o
+KVTREES = ../query_masstree.o \
+	../value_string.o ../value_array.o ../value_versioned_array.o \
+	../string_slice.o
 
-concurrent: concurrent.o clp.o
+concurrent: concurrent.o clp.o ../kvio.o ../libjson.a ../misc.o ../checkpoint.o $(KVTREES)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 single: single.o
