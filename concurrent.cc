@@ -20,6 +20,9 @@
 #define TRY_READ_MY_WRITES 0
 #define MAINTAIN_TRUE_ARRAY_STATE 1
 
+// if true, each operation of a transaction will act on a different slot
+#define ALL_UNIQUE_SLOTS 0
+
 #define DATA_COLLECT 0
 #define HASHTABLE 0
 #define HASHTABLE_LOAD_FACTOR 2
@@ -194,10 +197,17 @@ void *randomRWs(void *p) {
       nslots_written = 0;
 #endif
       Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
+#if ALL_UNIQUE_SLOTS
+      bool used[ARRAY_SZ] = {false};
+#endif
 
       Transaction t;
       for (int j = 0; j < OPS; ++j) {
         int slot = slotdist(transgen);
+#if ALL_UNIQUE_SLOTS
+        while (used[slot]) slot = slotdist(transgen);
+        used[slot]=true;
+#endif
         auto r = transgen();
 #if HASHTABLE_RAND_DELETES
         if (r > (write_thresh+write_thresh/2)) {
