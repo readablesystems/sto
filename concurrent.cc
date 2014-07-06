@@ -10,7 +10,7 @@
 #include "Transaction.hh"
 #include "clp.h"
 
-#include "../MassTrans.hh"
+#include "MassTrans.hh"
 
 // size of array
 #define ARRAY_SZ 10000
