@@ -52,7 +52,7 @@ volatile bool recovering = false; // so don't add log entries, and free old valu
 typedef Array<int, ARRAY_SZ> ArrayType;
 ArrayType *a;
 #else
-typedef Masstree::MassTrans<int> ArrayType;
+typedef MassTrans<int> ArrayType;
 ArrayType *a;
 #endif
 #else
