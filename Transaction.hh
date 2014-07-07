@@ -27,16 +27,20 @@ uint64_t total_aborts;
 #endif
 
 struct threadinfo_t {
-  int epoch;
+  unsigned epoch;
   unsigned spin_lock;
   std::vector<std::pair<int, std::function<void(void)>>> callbacks;
+  std::function<void(void)> trans_start_callback;
+  std::function<void(void)> trans_end_callback;
 };
 
 class Transaction {
 public:
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
-  static int global_epoch;
+  static unsigned global_epoch;
+
+  static std::function<void(unsigned)> epoch_advance_callback;
 
   static void acquire_spinlock(unsigned& spin_lock) {
     unsigned cur;
@@ -63,6 +67,9 @@ public:
       }
 
       global_epoch = ++g;
+
+      if (epoch_advance_callback)
+        epoch_advance_callback(global_epoch);
 
       for (auto&& t : tinfo) {
         acquire_spinlock(t.spin_lock);
@@ -102,9 +109,13 @@ public:
 #endif
     // TODO: assumes this thread is constantly running transactions
     tinfo[threadid].epoch = global_epoch;
+    if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
   }
 
-  ~Transaction() { tinfo[threadid].epoch = 0; }
+  ~Transaction() {
+    tinfo[threadid].epoch = 0;
+    if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
+  }
 
   // adds item without checking its presence in the array
   template <bool NOCHECK = true, typename T>
@@ -282,5 +293,5 @@ private:
 
 threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int Transaction::threadid;
-int Transaction::global_epoch;
-
+unsigned Transaction::global_epoch;
+std::function<void(unsigned)> Transaction::epoch_advance_callback;

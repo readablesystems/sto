@@ -177,6 +177,22 @@ void *readThenWrite(void *p) {
 void *randomRWs(void *p) {
   int me = (intptr_t)p;
   Transaction::threadid = me;
+#if MASSTREE
+  // TODO: ideally this code should go somewhere else (maybe some sort of thread_init()?)
+  auto* ti = threadinfo::make(threadinfo::TI_PROCESS, me);
+  a->mythreadinfo.ti = ti;
+  Transaction::epoch_advance_callback = [] (unsigned) {
+    // just advance blindly because of the way Masstree uses epochs
+    globalepoch++;
+  };
+
+  Transaction::tinfo[Transaction::threadid].trans_start_callback = [ti] () {
+    ti->rcu_start();
+  };
+  Transaction::tinfo[Transaction::threadid].trans_end_callback = [ti] () {
+    ti->rcu_stop();
+  };
+#endif
   
   std::uniform_int_distribution<> slotdist(0, ARRAY_SZ-1);
   uint32_t write_thresh = (uint32_t) (write_percent * Rand::max());

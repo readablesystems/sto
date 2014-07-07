@@ -9,7 +9,7 @@
 #include "masstree-beta/string.hh"
 #include "Transaction.hh"
 
-#if 1
+#if 0
 class debug_threadinfo {
 public:
 #if 0
@@ -135,8 +135,12 @@ private:
 template <typename V>
 class MassTrans : public Shared {
 public:
+  struct ti_wrapper {
+    threadinfo *ti;
+  };
+
   typedef V value_type;
-  typedef debug_threadinfo threadinfo;
+  typedef ti_wrapper threadinfo_type;
   typedef Masstree::Str Str;
 
 private:
@@ -154,13 +158,13 @@ private:
 
 public:
 
-  MassTrans() { table_.initialize(mythreadinfo); }
+  MassTrans() { table_.initialize(*mythreadinfo.ti); }
 
-  static __thread threadinfo mythreadinfo;
+  static __thread threadinfo_type mythreadinfo;
 
-  bool put(Str key, value_type value, threadinfo& ti = mythreadinfo) {
+  bool put(Str key, value_type value, threadinfo_type& ti = mythreadinfo) {
     cursor_type lp(table_, key);
-    bool found = lp.find_insert(ti);
+    bool found = lp.find_insert(*ti.ti);
     if (found) {
       // deallocate_rcu value
       lock(&lp.value()->version);
@@ -174,22 +178,22 @@ public:
     } else {
       lp.value()->version = 0;
     }
-    lp.finish(1, ti);
+    lp.finish(1, *ti.ti);
     return found;
   }
 
-  bool get(Str key, value_type& value, threadinfo& ti = mythreadinfo) {
+  bool get(Str key, value_type& value, threadinfo_type& ti = mythreadinfo) {
     unlocked_cursor_type lp(table_, key);
-    bool found = lp.find_unlocked(ti);
+    bool found = lp.find_unlocked(*ti.ti);
     if (found)
       value = lp.value()->value;
     return found;
   }
 
 #if 1
-  bool transGet(Transaction& t, Str key, value_type& retval, threadinfo& ti = mythreadinfo) {
+  bool transGet(Transaction& t, Str key, value_type& retval, threadinfo_type& ti = mythreadinfo) {
     unlocked_cursor_type lp(table_, key);
-    bool found = lp.find_unlocked(ti);
+    bool found = lp.find_unlocked(*ti.ti);
     if (found) {
       versioned_value *e = lp.value();
       auto& item = t.item(this, e);
@@ -214,12 +218,13 @@ public:
   }
 
   template <bool INSERT = true, bool SET = true>
-  bool transPut(Transaction& t, Str key, const value_type& value, threadinfo& ti = mythreadinfo) {
+  bool transPut(Transaction& t, Str key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
     cursor_type lp(table_, key);
-    bool found = lp.find_insert(ti);
+    bool found = lp.find_insert(*ti.ti);
     if (found) {
       versioned_value *e = lp.value();
-      lp.finish(0, ti);
+      // TODO: should really just do an unlocked lookup for updates
+      lp.finish(0, *ti.ti);
       auto& item = t.item(this, e);
       if (!validityCheck(item, e)) {
         t.abort();
@@ -238,7 +243,7 @@ public:
         // TODO: previous_full_version_value is not correct here
         assert(0);
         ensureNotFound(t, lp.node(), lp.previous_full_version_value());
-        lp.finish(0, ti);
+        lp.finish(0, *ti.ti);
         return found;
       }
 
@@ -247,7 +252,7 @@ public:
       val->version = invalid_bit;
       fence();
       lp.value() = val;
-      lp.finish(1, ti);
+      lp.finish(1, *ti.ti);
       fence();
 
       auto old_node = lp.old_node();
@@ -281,11 +286,11 @@ public:
     }
   }
 
-  bool transUpdate(Transaction& t, Str k, const value_type& v, threadinfo& ti = mythreadinfo) {
+  bool transUpdate(Transaction& t, Str k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
     return transPut</*insert*/false, /*set*/true>(t, k, v, ti);
   }
 
-  bool transInsert(Transaction& t, Str k, const value_type& v, threadinfo&ti = mythreadinfo) {
+  bool transInsert(Transaction& t, Str k, const value_type& v, threadinfo_type&ti = mythreadinfo) {
     return !transPut</*insert*/true, /*set*/false>(t, k, v, ti);
   }
 
@@ -345,11 +350,10 @@ public:
       free_packed<value_type>(item.data.wdata);
   }
 
-  bool remove(const Str& key) {
-    auto ti = mythreadinfo;
+  bool remove(const Str& key, threadinfo_type& ti = mythreadinfo) {
     cursor_type lp(table_, key);
-    bool found = lp.find_locked(ti);
-    lp.finish(found ? -1 : 0, ti);
+    bool found = lp.find_locked(*ti.ti);
+    lp.finish(found ? -1 : 0, *ti.ti);
     // rcu the value
     return found;
   }
@@ -469,7 +473,7 @@ private:
   struct table_params : public Masstree::nodeparams<15,15> {
     typedef versioned_value* value_type;
     typedef Masstree::value_print<value_type> value_print_type;
-    typedef debug_threadinfo threadinfo_type;
+    typedef threadinfo threadinfo_type;
   };
   typedef Masstree::basic_table<table_params> table_type;
   typedef Masstree::unlocked_tcursor<table_params> unlocked_cursor_type;
@@ -478,5 +482,5 @@ private:
   table_type table_;
 };
 
-  template <typename V>
-  __thread typename MassTrans<V>::threadinfo MassTrans<V>::mythreadinfo;
+template <typename V>
+__thread typename MassTrans<V>::threadinfo_type MassTrans<V>::mythreadinfo;
