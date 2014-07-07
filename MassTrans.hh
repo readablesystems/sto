@@ -158,7 +158,10 @@ private:
 
 public:
 
-  MassTrans() { table_.initialize(*mythreadinfo.ti); }
+  MassTrans() {
+    // TODO: kludgy! should probably just give the main thread a slot in the tinfo array
+    table_.initialize(*threadinfo::make(threadinfo::TI_MAIN, -1));
+  }
 
   static __thread threadinfo_type mythreadinfo;
 

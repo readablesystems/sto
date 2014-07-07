@@ -181,10 +181,6 @@ void *randomRWs(void *p) {
   // TODO: ideally this code should go somewhere else (maybe some sort of thread_init()?)
   auto* ti = threadinfo::make(threadinfo::TI_PROCESS, me);
   a->mythreadinfo.ti = ti;
-  Transaction::epoch_advance_callback = [] (unsigned) {
-    // just advance blindly because of the way Masstree uses epochs
-    globalepoch++;
-  };
 
   Transaction::tinfo[Transaction::threadid].trans_start_callback = [ti] () {
     ti->rcu_start();
@@ -604,6 +600,13 @@ int main(int argc, char *argv[]) {
     printf("Asked for %d threads but MAX_THREADS is %d\n", nthreads, MAX_THREADS);
     exit(1);
   }
+
+#if MASSTREE
+  Transaction::epoch_advance_callback = [] (unsigned) {
+    // just advance blindly because of the way Masstree uses epochs
+    globalepoch++;
+  };
+#endif
 
   ArrayType stack_arr;
   a = &stack_arr;

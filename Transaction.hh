@@ -29,7 +29,7 @@ uint64_t total_aborts;
 struct threadinfo_t {
   unsigned epoch;
   unsigned spin_lock;
-  std::vector<std::pair<int, std::function<void(void)>>> callbacks;
+  std::vector<std::pair<unsigned, std::function<void(void)>>> callbacks;
   std::function<void(void)> trans_start_callback;
   std::function<void(void)> trans_end_callback;
 };
