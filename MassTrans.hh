@@ -250,17 +250,17 @@ public:
       lp.finish(1, ti);
       fence();
 
-      auto old_node = lp.old_node();
-      auto old_version = lp.old_version_value();
-      auto new_version = lp.new_version_value();
+      auto orig_node = lp.original_node();
+      auto orig_version = lp.original_version_value();
+      auto upd_version = lp.updated_version_value();
 
-      auto node_item = t.has_item(this, tag_inter(old_node));
+      auto node_item = t.has_item(this, tag_inter(orig_node));
       if (node_item) {
         if (node_item->has_read() && 
-            old_version == node_item->template read_value<typename unlocked_cursor_type::nodeversion_value_type>()) {
-          t.add_read(*node_item, new_version);
+            orig_version == node_item->template read_value<typename unlocked_cursor_type::nodeversion_value_type>()) {
+          t.add_read(*node_item, upd_version);
           // add any new nodes as a result of splits, etc. to the read/absent set
-          for (auto&& pair : lp.newnodes()) {
+          for (auto&& pair : lp.new_nodes()) {
             t.add_read(t.add_item<false>(this, tag_inter(pair.first)), pair.second);
           }
         } else {
