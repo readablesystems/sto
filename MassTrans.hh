@@ -165,15 +165,15 @@ public:
 
   static __thread threadinfo_type mythreadinfo;
 
-  bool put(Str key, value_type value, threadinfo_type& ti = mythreadinfo) {
+  bool put(Str key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
     cursor_type lp(table_, key);
     bool found = lp.find_insert(*ti.ti);
     if (found) {
-      // deallocate_rcu value
       lock(&lp.value()->version);
     } else {
-      lp.value() = new versioned_value;
+      lp.value() = ti.ti->allocate(sizeof(versioned_value), memtag_value);
     }
+    // this will uses value's copy constructor (TODO: just doing this may be unsafe and we should be using rcu for dealloc)
     lp.value()->value = value;
     if (found) {
       inc_version(lp.value()->version);
@@ -250,7 +250,7 @@ public:
         return found;
       }
 
-      auto val = new versioned_value;
+      versioned_value* val = (versioned_value*)ti.ti->allocate(sizeof(versioned_value), memtag_value);
       val->value = value;
       val->version = invalid_bit;
       fence();
@@ -356,6 +356,7 @@ public:
   bool remove(const Str& key, threadinfo_type& ti = mythreadinfo) {
     cursor_type lp(table_, key);
     bool found = lp.find_locked(*ti.ti);
+    ti.ti->deallocate_rcu(lp.value(), sizeof(versioned_value), memtag_value);
     lp.finish(found ? -1 : 0, *ti.ti);
     // rcu the value
     return found;
