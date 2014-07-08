@@ -178,16 +178,7 @@ void *randomRWs(void *p) {
   int me = (intptr_t)p;
   Transaction::threadid = me;
 #if MASSTREE
-  // TODO: ideally this code should go somewhere else (maybe some sort of thread_init()?)
-  auto* ti = threadinfo::make(threadinfo::TI_PROCESS, me);
-  a->mythreadinfo.ti = ti;
-
-  Transaction::tinfo[Transaction::threadid].trans_start_callback = [ti] () {
-    ti->rcu_start();
-  };
-  Transaction::tinfo[Transaction::threadid].trans_end_callback = [ti] () {
-    ti->rcu_stop();
-  };
+  a->thread_init();
 #endif
   
   std::uniform_int_distribution<> slotdist(0, ARRAY_SZ-1);

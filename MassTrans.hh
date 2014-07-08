@@ -9,129 +9,6 @@
 #include "masstree-beta/string.hh"
 #include "Transaction.hh"
 
-#if 0
-class debug_threadinfo {
-public:
-#if 0
-  debug_threadinfo()
-    : ts_(0) { // XXX?
-  }
-#endif
-
-  class rcu_callback {
-  public:
-    virtual void operator()(debug_threadinfo& ti) = 0;
-  };
-
-private:
-  static inline void rcu_callback_function(void* p) {
-    debug_threadinfo ti;
-    static_cast<rcu_callback*>(p)->operator()(ti);
-  }
-
-
-public:
-  // XXX Correct node timstamps are needed for recovery, but for no other
-  // reason.
-  kvtimestamp_t operation_timestamp() const {
-    return 0;
-  }
-  kvtimestamp_t update_timestamp() const {
-    return ts_;
-  }
-  kvtimestamp_t update_timestamp(kvtimestamp_t x) const {
-    if (circular_int<kvtimestamp_t>::less_equal(ts_, x))
-      // x might be a marker timestamp; ensure result is not
-      ts_ = (x | 1) + 1;
-    return ts_;
-  }
-  kvtimestamp_t update_timestamp(kvtimestamp_t x, kvtimestamp_t y) const {
-    if (circular_int<kvtimestamp_t>::less(x, y))
-      x = y;
-    if (circular_int<kvtimestamp_t>::less_equal(ts_, x))
-      // x might be a marker timestamp; ensure result is not
-      ts_ = (x | 1) + 1;
-    return ts_;
-  }
-  void increment_timestamp() {
-    ts_ += 2;
-  }
-  void advance_timestamp(kvtimestamp_t x) {
-    if (circular_int<kvtimestamp_t>::less(ts_, x))
-      ts_ = x;
-  }
-
-  // event counters
-  void mark(threadcounter) {
-  }
-  void mark(threadcounter, int64_t) {
-  }
-  bool has_counter(threadcounter) const {
-    return false;
-  }
-  uint64_t counter(threadcounter ci) const {
-    return 0;
-  }
-
-  /** @brief Return a function object that calls mark(ci); relax_fence().
-   *
-   * This function object can be used to count the number of relax_fence()s
-   * executed. */
-  relax_fence_function accounting_relax_fence(threadcounter) {
-    return relax_fence_function();
-  }
-
-  class accounting_relax_fence_function {
-  public:
-    template <typename V>
-    void operator()(V) {
-      relax_fence();
-    }
-  };
-  /** @brief Return a function object that calls mark(ci); relax_fence().
-   *
-   * This function object can be used to count the number of relax_fence()s
-   * executed. */
-  accounting_relax_fence_function stable_fence() {
-    return accounting_relax_fence_function();
-  }
-
-  relax_fence_function lock_fence(threadcounter) {
-    return relax_fence_function();
-  }
-
-  void* allocate(size_t sz, memtag) {
-    return malloc(sz);
-  }
-  void deallocate(void* p, size_t sz, memtag) {
-    // in C++ allocators, 'p' must be nonnull
-    free(p);
-  }
-  void deallocate_rcu(void *p, size_t sz, memtag) {
-  }
-
-  void* pool_allocate(size_t sz, memtag) {
-    int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
-    return malloc(nl * CACHE_LINE_SIZE);
-  }
-  void pool_deallocate(void* p, size_t sz, memtag) {
-  }
-  void pool_deallocate_rcu(void* p, size_t sz, memtag) {
-  }
-
-  // RCU
-  void rcu_register(rcu_callback *cb) {
-    //    scoped_rcu_base<false> guard;
-    //rcu::s_instance.free_with_fn(cb, rcu_callback_function);
-  }
-
-private:
-  mutable kvtimestamp_t ts_;
-};
-
-
-#endif
-
 template <typename V>
 class MassTrans : public Shared {
 public:
@@ -142,6 +19,8 @@ public:
   typedef V value_type;
   typedef ti_wrapper threadinfo_type;
   typedef Masstree::Str Str;
+
+  static __thread threadinfo_type mythreadinfo;
 
 private:
   typedef uint32_t Version;
@@ -154,23 +33,39 @@ private:
                char* suffix) {
       fprintf(f, "%s%*s%.*s = %d%s (version %d)\n", prefix, indent, "", key.len, key.s, value, suffix, version);
     }
-
+    
+    // rcu_callback method to self-destruct ourself
     void operator()(threadinfo& ti) override {
       // this will call value's destructor
       this->versioned_value::~versioned_value();
-      // and free ourself too
+      // and free our memory too
       ti.deallocate(this, sizeof(versioned_value), memtag_value);
     }
   };
 
 public:
-
   MassTrans() {
-    // TODO: kludgy! should probably just give the main thread a slot in the tinfo array
-    table_.initialize(*threadinfo::make(threadinfo::TI_MAIN, -1));
+    if (!mythreadinfo.ti) {
+      auto* ti = threadinfo::make(threadinfo::TI_MAIN, -1);
+      mythreadinfo.ti = ti;
+    }
+    table_.initialize(*mythreadinfo.ti);
+    // TODO: technically we could probably free this threadinfo at this point since we won't use it again,
+    // but doesn't seem to be possible
   }
 
-  static __thread threadinfo_type mythreadinfo;
+  void thread_init() {
+    if (!mythreadinfo.ti) {
+      auto* ti = threadinfo::make(threadinfo::TI_PROCESS, Transaction::threadid);
+      mythreadinfo.ti = ti;
+    }
+    Transaction::tinfo[Transaction::threadid].trans_start_callback = [] () {
+      mythreadinfo.ti->rcu_start();
+    };
+    Transaction::tinfo[Transaction::threadid].trans_end_callback = [] () {
+      mythreadinfo.ti->rcu_stop();
+    };
+  }
 
   bool put(Str key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
     cursor_type lp(table_, key);
