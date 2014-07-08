@@ -145,7 +145,7 @@ public:
 
 private:
   typedef uint32_t Version;
-  struct versioned_value {
+  struct versioned_value : public threadinfo::rcu_callback {
     Version version;
     value_type value;
 
@@ -153,6 +153,13 @@ private:
                int indent, Str key, kvtimestamp_t initial_timestamp,
                char* suffix) {
       fprintf(f, "%s%*s%.*s = %d%s (version %d)\n", prefix, indent, "", key.len, key.s, value, suffix, version);
+    }
+
+    void operator()(threadinfo& ti) override {
+      // this will call value's destructor
+      this->versioned_value::~versioned_value();
+      // and free ourself too
+      ti.deallocate(this, sizeof(versioned_value), memtag_value);
     }
   };
 
@@ -171,7 +178,8 @@ public:
     if (found) {
       lock(&lp.value()->version);
     } else {
-      lp.value() = ti.ti->allocate(sizeof(versioned_value), memtag_value);
+      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
+      lp.value() = new(p) versioned_value;
     }
     // this will uses value's copy constructor (TODO: just doing this may be unsafe and we should be using rcu for dealloc)
     lp.value()->value = value;
@@ -250,7 +258,8 @@ public:
         return found;
       }
 
-      versioned_value* val = (versioned_value*)ti.ti->allocate(sizeof(versioned_value), memtag_value);
+      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
+      versioned_value* val = new(p) versioned_value;
       val->value = value;
       val->version = invalid_bit;
       fence();
@@ -340,6 +349,7 @@ public:
   void undo(TransItem& item) {
     // remove node
     auto& stdstr = item.template write_value<std::string>();
+    // does not copy
     Str s(stdstr);
     bool success = remove(s);
     assert(success);
@@ -349,6 +359,8 @@ public:
     free_packed<versioned_value*>(item.key());
     if (item.has_read())
       free_packed<Version>(item.data.rdata);
+    if (has_insert(item))
+      free_packed<std::string>(item.data.wdata);
     if (item.has_write())
       free_packed<value_type>(item.data.wdata);
   }
@@ -356,7 +368,7 @@ public:
   bool remove(const Str& key, threadinfo_type& ti = mythreadinfo) {
     cursor_type lp(table_, key);
     bool found = lp.find_locked(*ti.ti);
-    ti.ti->deallocate_rcu(lp.value(), sizeof(versioned_value), memtag_value);
+    ti.ti->rcu_register(lp.value());
     lp.finish(found ? -1 : 0, *ti.ti);
     // rcu the value
     return found;
