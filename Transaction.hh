@@ -6,7 +6,7 @@
 #include <unistd.h>
 
 #define LOCAL_VECTOR 1
-#define PERF_LOGGING 1
+#define PERF_LOGGING 0
 
 #define MAX_THREADS 8
 

@@ -47,6 +47,7 @@ int main() {
   Hashtable<Key, Value> h;
 #else
   MassTrans<Value> h;
+  h.thread_init();
 #endif
 
   Transaction t;
