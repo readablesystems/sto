@@ -3,15 +3,26 @@
 
 #include "Array.hh"
 #include "Hashtable.hh"
+#include "MassTrans.hh"
 #include "Transaction.hh"
 
 #define N 100
+
+#define HASHTABLE 0
+
+#if !HASHTABLE
+kvepoch_t global_log_epoch = 0;
+volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly
+kvtimestamp_t initial_timestamp;
+volatile bool recovering = false; // so don't add log entries, and free old value immediately
+#endif
 
 using namespace std;
 
 void stringKeyTests() {
 #if 1
   Hashtable<std::string, std::string> h;
+  
   Transaction t;
   {
   std::string s1("bar");
@@ -32,7 +43,11 @@ void stringKeyTests() {
 int main() {
   typedef int Key;
   typedef int Value;
+#if HASHTABLE
   Hashtable<Key, Value> h;
+#else
+  MassTrans<Value> h;
+#endif
 
   Transaction t;
 

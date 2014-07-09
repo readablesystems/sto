@@ -107,6 +107,9 @@ public:
         t.abort();
         return false;
       }
+      if (has_delete(item)) {
+        return false;
+      }
       if (item.has_write()) {
         // read directly from the element if we're inserting it
         retval = has_insert(item) ? e->value : item.template write_value<value_type>();
@@ -114,13 +117,85 @@ public:
       }
       Version elem_vers;
       atomicRead(e, elem_vers, retval);
-      if (!item.has_read()) {
+      if (!item.has_read() || item.template read_value<Version>() & valid_check_only_bit) {
         t.add_read(item, elem_vers);
       }
     } else {
       ensureNotFound(t, lp.node(), lp.full_version_value());
     }
     return found;
+  }
+
+  bool transDelete(Transaction& t, Str key, threadinfo_type& ti = mythreadinfo) {
+    unlocked_cursor_type lp(table_, key);
+    bool found = lp.find_unlocked(*ti.ti);
+    if (found) {
+      versioned_value *e = lp.value();
+      auto& item = t.item(this, e);
+      bool valid = !(e->version & invalid_bit);
+      if (!valid && has_insert(item)) {
+        // we're deleting our own insert. special case this to just remove now
+        bool success = remove(key, ti);
+        assert(success); // because node is marked invalid this should never fail
+
+        // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
+        // TODO: usually/maybe always we can get this information while we're removing the key instead of doing a relookup,
+        // but insert-then-delete should be relatively rare anyway so for now we don't optimize this case
+        unlocked_cursor_type lp2(table_, key);
+        bool found = lp2.find_unlocked(*ti.ti);
+        if (found) {
+          // someone reinserted between when we removed it and now, so abort!
+          t.abort();
+          return false;
+        }
+        ensureNotFound(t, lp2.node(), lp2.full_version_value());
+
+        if (lp.node() == lp2.node()) {
+          updateNodeVersion(t, lp.node(), lp.full_version_value(), lp2.full_version_value());
+        }
+
+        // no way to remove an item (would be pretty inefficient)
+        // so we just unmark all attributes so the item is ignored
+        item.remove_read();
+        item.remove_write();
+        item.remove_undo();
+        item.remove_afterC();
+        item.set_flags(0);
+        return true;
+      } else if (!valid) {
+        t.abort();
+        return false;
+      }
+      assert(valid);
+      // already deleted!
+      if (has_delete(item)) {
+        return false;
+      }
+      if (!item.has_read()) {
+        // we only need to check validity, not if the item has changed
+        t.add_read(item, valid_check_only_bit);
+      }
+      // same as inserts we need to store (copy) key so we can lookup to remove later
+      t.add_write(item, std::string(key));
+      item.set_flags(delete_bit);
+      return found;
+    } else {
+      ensureNotFound(t, lp.node(), lp.full_version_value());
+      return found;
+    }
+  }
+
+  template <typename NODE, typename VERSION>
+  bool updateNodeVersion(Transaction& t, NODE *node, VERSION prev_version, VERSION new_version) {
+    auto node_item = t.has_item(this, tag_inter(node));
+    if (node_item) {
+      if (node_item->has_read() &&
+          prev_version == node_item->template read_value<VERSION>()) {
+        t.add_read(*node_item, new_version);
+        return true;
+      }
+    }
+    return false;
   }
 
   template <bool INSERT = true, bool SET = true>
@@ -136,6 +211,22 @@ public:
         t.abort();
         return false;
       }
+      if (has_delete(item)) {
+        // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
+        // if user can't read v#)
+        if (INSERT) {
+          item.set_flags(0);
+          t.add_write(item, value);
+        } else {
+          // delete-then-update == not found
+          // delete will check for other deletes so we don't need to re-log that check 
+        }
+        return false;
+      }
+      // make sure this item doesn't get deleted (we don't care about other updates to it though)
+      if (!item.has_read()) {
+        t.add_read(item, valid_check_only_bit);
+      }
       if (SET) {
         // if we're inserting this element already we can just update the value we're inserting
         if (has_insert(item))
@@ -146,9 +237,7 @@ public:
       return found;
     } else {
       if (!INSERT) {
-        // TODO: previous_full_version_value is not correct here
-        assert(0);
-        ensureNotFound(t, lp.node(), lp.previous_full_version_value());
+        // TODO: for !INSERT we should really just be doing an unlocked lookup
         lp.finish(0, *ti.ti);
         return found;
       }
@@ -166,24 +255,12 @@ public:
       auto orig_version = lp.original_version_value();
       auto upd_version = lp.updated_version_value();
 
-      auto node_item = t.has_item(this, tag_inter(orig_node));
-      if (node_item) {
-        if (node_item->has_read() && 
-            orig_version == node_item->template read_value<typename unlocked_cursor_type::nodeversion_value_type>()) {
-          t.add_read(*node_item, upd_version);
-          // add any new nodes as a result of splits, etc. to the read/absent set
-          for (auto&& pair : lp.new_nodes()) {
-            t.add_read(t.add_item<false>(this, tag_inter(pair.first)), pair.second);
-          }
-        } else {
-          //printf("couldn't find old version: %u vs %u\n", old_version, node_item->template read_value<typename unlocked_cursor_type::nodeversion_value_type>());
-          //auto& item = t.add_item<false>(this, val);
-          //t.add_write(item, key);
-          //t.add_undo(item);
-          //t.abort();
-          //return false;
+      if (updateNodeVersion(t, orig_node, orig_version, upd_version)) {
+        // add any new nodes as a result of splits, etc. to the read/absent set
+        for (auto&& pair : lp.new_nodes()) {
+          t.add_read(t.add_item<false>(this, tag_inter(pair.first)), pair.second);
         }
-      }// else printf("couldn't find node\n");
+      }
       auto& item = t.add_item<false>(this, val);
       // TODO: this isn't great because it's going to require an extra alloc (because Str/std::string is 2 words)...
       // we convert to std::string because Str objects are not copied!!
@@ -229,12 +306,30 @@ public:
     auto read_version = item.template read_value<Version>();
     //    if (read_version != e->version)
     //printf("leaf versions disagree: %d vs %d\n", e->version, read_version);
-    return validityCheck(item, e) && versionCheck(read_version, e->version) && (isReadWrite || !is_locked(e->version));
+    bool valid = validityCheck(item, e);
+    bool lockedCheck = isReadWrite || !is_locked(e->version);
+    bool valid_check_only = (read_version & valid_check_only_bit);
+    bool vCheck = versionCheck(read_version, e->version);
+    bool ret = valid && lockedCheck && (valid_check_only || vCheck);
+    return ret;
   }
   void install(TransItem& item) {
     assert(!is_inter(item.key()));
     auto e = unpack<versioned_value*>(item.key());
     assert(is_locked(e->version));
+    if (has_delete(item)) {
+      assert(!(e->version & invalid_bit));
+      e->version |= invalid_bit;
+      fence();
+      // TODO: hashtable did this in afterC, we're doing this now, unclear really which is better
+      // (if we do it now, we take more time while holding other locks, if we wait, we make other transactions abort more
+      // from looking up an invalid node)
+      auto &s = item.template write_value<std::string>();
+      bool success = remove(Str(s));
+      // no one should be able to remove since we hold the lock
+      assert(success);
+      return;
+    }
     if (!has_insert(item))
       e->value = item.template write_value<value_type>();
     // also marks valid if needed
@@ -254,9 +349,9 @@ public:
     free_packed<versioned_value*>(item.key());
     if (item.has_read())
       free_packed<Version>(item.data.rdata);
-    if (has_insert(item))
+    if (has_insert(item) || has_delete(item))
       free_packed<std::string>(item.data.wdata);
-    if (item.has_write())
+    else if (item.has_write())
       free_packed<value_type>(item.data.wdata);
   }
 
@@ -290,6 +385,31 @@ public:
     }
     return v;
   }
+  bool transGet(Transaction& t, int k, value_type& v) {
+    char s[16];
+    sprintf(s, "%d", k);
+    return transGet(t, s, v);
+  }
+  bool transPut(Transaction& t, int k, value_type v) {
+    char s[16];
+    sprintf(s, "%d", k);
+    return transPut(t, s, v);
+  }
+  bool transUpdate(Transaction& t, int k, value_type v) {
+    char s[16];
+    sprintf(s, "%d", k);
+    return transUpdate(t, s, v);
+  }
+  bool transInsert(Transaction& t, int k, value_type v) {
+    char s[16];
+    sprintf(s, "%d", k);
+    return transInsert(t, s, v);
+  }
+  bool transDelete(Transaction& t, int k) {
+    char s[16];
+    sprintf(s, "%d", k);
+    return transDelete(t, s);
+  }
   value_type transRead_nocheck(Transaction& t, int k) { return value_type(); }
   void transWrite_nocheck(Transaction& t, int k, value_type v) {}
   value_type read(int k) {
@@ -307,6 +427,7 @@ public:
 private:
   template <typename NODE, typename VERSION>
   void ensureNotFound(Transaction& t, NODE n, VERSION v) {
+    // TODO: could be more efficient to use add_item here, but that will also require more work for read-then-insert
     auto& item = t.item(this, tag_inter(n));
     if (!item.has_read()) {
       t.add_read(item, v);
@@ -316,6 +437,9 @@ private:
   bool has_insert(TransItem& item) {
     return item.has_undo();
   }
+  bool has_delete(TransItem& item) {
+    return item.has_flags(delete_bit);
+  }
 
   bool validityCheck(TransItem& item, versioned_value *e) {
     return has_insert(item) || !(e->version & invalid_bit);
@@ -323,9 +447,12 @@ private:
 
   static constexpr Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
   static constexpr Version invalid_bit = 1U<<(sizeof(Version)*8 - 2);
-  static constexpr Version version_mask = ~(lock_bit|invalid_bit);
+  static constexpr Version valid_check_only_bit = 1U<<(sizeof(Version)*8 - 3);
+  static constexpr Version version_mask = ~(lock_bit|invalid_bit|valid_check_only_bit);
 
   static constexpr uintptr_t internode_bit = 1<<0;
+
+  static constexpr uint8_t delete_bit = 1<<0;
 
   template <typename T>
   T* tag_inter(T* p) {

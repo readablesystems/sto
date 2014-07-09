@@ -139,7 +139,24 @@ struct TransItem {
   void remove_afterC() {
     shared.rm_flags(AFTERC_BIT);
   }
-    
+
+  // these methods are all for user flags (currently we give them 8 bits, the high 8 of the 16 total flag bits we have)
+  uint8_t flags() {
+    return shared.flags() >> 8;
+  }
+  void set_flags(uint8_t flags) {
+    shared.set_flags(((uint16_t)flags << 8) | (shared.flags() & 0xff));
+  }
+  void rm_flags(uint8_t flags) {
+    shared.rm_flags((uint16_t)flags << 8);
+  }
+  void or_flags(uint8_t flags) {
+    shared.or_flags((uint16_t)flags << 8);
+  }
+  bool has_flags(uint8_t flags) {
+    return shared.has_flags((uint16_t)flags << 8);
+  }
+
 private:
   template <typename T>
   void add_write(T wdata) {
@@ -148,13 +165,13 @@ private:
     // this is certainly true now but we probably shouldn't assume this in general
     // (hopefully we'll have a system that can automatically call destructors and such
     // which will make our lives much easier)
-    free_packed<T>(data.wdata);
+    //free_packed<T>(data.wdata);
     data.wdata = pack(wdata);
   }
   template <typename T>
   void add_read(T rdata) {
     shared.or_flags(READER_BIT);
-    free_packed<T>(data.rdata);
+    //free_packed<T>(data.rdata);
     data.rdata = pack(rdata);
   }
   void add_undo() {

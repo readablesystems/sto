@@ -26,7 +26,7 @@
 #define DATA_COLLECT 0
 #define HASHTABLE 0
 #define HASHTABLE_LOAD_FACTOR 2
-#define HASHTABLE_RAND_DELETES 0
+#define HASHTABLE_RAND_DELETES 1
 
 #define MASSTREE 1
 
@@ -282,10 +282,9 @@ void checkRandomRWs() {
   }
 }
 
-#if HASHTABLE
+#if HASHTABLE || MASSTREE
 
 void *kingOfTheDelete(void *p) {
-  assert(HASHTABLE);
   int me = (intptr_t)p;
   Transaction::threadid = me;
 
@@ -511,7 +510,7 @@ Test tests[] = {
   {interferingRWs, checkInterferingRWs},
   {randomRWs, checkRandomRWs},
   {readThenWrite, NULL},
-#if HASHTABLE
+#if HASHTABLE || MASSTREE
   {kingOfTheDelete, checkKingOfTheDelete},
   {xorDelete, checkXorDelete},
 #endif
