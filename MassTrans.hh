@@ -250,7 +250,7 @@ public:
       }
       if (item.has_write()) {
         // read directly from the element if we're inserting it
-        retval = has_insert(item) ? e->value : item.template write_value<value_type>();
+        retval = we_inserted(item) ? e->value : item.template write_value<value_type>();
         return true;
       }
       Version elem_vers;
@@ -271,34 +271,14 @@ public:
       versioned_value *e = lp.value();
       auto& item = t.item(this, e);
       bool valid = !(e->version & invalid_bit);
-      if (!valid && has_insert(item)) {
-        // we're deleting our own insert. special case this to just remove now
-        bool success = remove(key, ti);
-        assert(success); // because node is marked invalid this should never fail
-
-        // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
-        // TODO: usually/maybe always we can get this information while we're removing the key instead of doing a relookup,
-        // but insert-then-delete should be relatively rare anyway so for now we don't optimize this case
-        unlocked_cursor_type lp2(table_, key);
-        bool found = lp2.find_unlocked(*ti.ti);
-        if (found) {
-          // someone reinserted between when we removed it and now, so abort!
-          t.abort();
+      if (!valid && we_inserted(item)) {
+        if (has_delete(item)) {
+          // insert-then-delete then delete, so second delete should return false
           return false;
         }
-        ensureNotFound(t, lp2.node(), lp2.full_version_value());
-
-        if (lp.node() == lp2.node()) {
-          updateNodeVersion(t, lp.node(), lp.full_version_value(), lp2.full_version_value());
-        }
-
-        // no way to remove an item (would be pretty inefficient)
-        // so we just unmark all attributes so the item is ignored
-        item.remove_read();
-        item.remove_write();
-        item.remove_undo();
-        item.remove_afterC();
-        item.set_flags(0);
+        // otherwise this is an insert-then-delete
+        item.set_flags(delete_bit);
+        // key is already in write data since this used to be an insert
         return true;
       } else if (!valid) {
         t.abort();
@@ -348,7 +328,11 @@ public:
       // if user can't read v#)
       if (INSERT) {
         item.set_flags(0);
-        t.add_write(item, value);
+        assert(!has_delete(item));
+        if (we_inserted(item))
+          e->value = value;
+        else
+          t.add_write(item, value);
       } else {
         // delete-then-update == not found
         // delete will check for other deletes so we don't need to re-log that check
@@ -356,12 +340,12 @@ public:
       return false;
     }
     // make sure this item doesn't get deleted (we don't care about other updates to it though)
-    if (!item.has_read()) {
+    if (!item.has_read() && !we_inserted(item)) {
       t.add_read(item, valid_check_only_bit);
     }
     if (SET) {
       // if we're inserting this element already we can just update the value we're inserting
-      if (has_insert(item))
+      if (we_inserted(item))
         e->value = value;
       else
         t.add_write(item, value);
@@ -455,19 +439,20 @@ public:
     //printf("leaf versions disagree: %d vs %d\n", e->version, read_version);
     bool valid = validityCheck(item, e);
     bool lockedCheck = isReadWrite || !is_locked(e->version);
-    bool valid_check_only = (read_version & valid_check_only_bit);
-    bool vCheck = versionCheck(read_version, e->version);
-    bool ret = valid && lockedCheck && (valid_check_only || vCheck);
-    return ret;
+    if (!(valid && lockedCheck))
+      return false;
+    return (read_version & valid_check_only_bit) || versionCheck(read_version, e->version);
   }
   void install(TransItem& item) {
     assert(!is_inter(item.key()));
     auto e = unpack<versioned_value*>(item.key());
     assert(is_locked(e->version));
     if (has_delete(item)) {
-      assert(!(e->version & invalid_bit));
-      e->version |= invalid_bit;
-      fence();
+      if (!we_inserted(item)) {
+        assert(!(e->version & invalid_bit));
+        e->version |= invalid_bit;
+        fence();
+      }
       // TODO: hashtable did this in afterC, we're doing this now, unclear really which is better
       // (if we do it now, we take more time while holding other locks, if we wait, we make other transactions abort more
       // from looking up an invalid node)
@@ -477,7 +462,7 @@ public:
       assert(success);
       return;
     }
-    if (!has_insert(item))
+    if (!we_inserted(item))
       e->value = item.template write_value<value_type>();
     // also marks valid if needed
     inc_version(e->version);
@@ -496,7 +481,7 @@ public:
     free_packed<versioned_value*>(item.key());
     if (item.has_read())
       free_packed<Version>(item.data.rdata);
-    if (has_insert(item) || has_delete(item))
+    if (we_inserted(item) || has_delete(item))
       free_packed<std::string>(item.data.wdata);
     else if (item.has_write())
       free_packed<value_type>(item.data.wdata);
@@ -581,7 +566,7 @@ private:
     }
   }
 
-  bool has_insert(TransItem& item) {
+  bool we_inserted(TransItem& item) {
     return item.has_undo();
   }
   bool has_delete(TransItem& item) {
@@ -589,7 +574,7 @@ private:
   }
 
   bool validityCheck(TransItem& item, versioned_value *e) {
-    return has_insert(item) || !(e->version & invalid_bit);
+    return we_inserted(item) || !(e->version & invalid_bit);
   }
 
   static constexpr Version lock_bit = 1U<<(sizeof(Version)*8 - 1);

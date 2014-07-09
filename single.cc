@@ -40,7 +40,7 @@ void stringKeyTests() {
 #endif
 }
 
-void insertDeleteTest() {
+void insertDeleteTest(bool shouldAbort) {
   MassTrans<int> h;
   Transaction t;
   for (int i = 10; i < 25; ++i) {
@@ -55,7 +55,18 @@ void insertDeleteTest() {
   assert(!h.transGet(t2, 26, x));
 
   assert(h.transDelete(t2, 25));
-  assert(t2.commit());
+
+  if (shouldAbort) {
+    Transaction t3;
+    assert(h.transInsert(t3, 26, 27));
+    assert(t3.commit());
+
+    try {
+      t2.commit();
+      assert(0);
+    } catch (Transaction::Abort E) {}
+  } else
+    assert(t2.commit());
 }
 
 int main() {
@@ -181,7 +192,8 @@ int main() {
   } catch (Transaction::Abort E) {}
 
   // insert-then-delete node test
-  insertDeleteTest();
+  insertDeleteTest(false);
+  insertDeleteTest(true);
 
   h.print();
 
