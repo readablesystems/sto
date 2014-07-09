@@ -328,50 +328,59 @@ public:
     return false;
   }
 
+  template <bool INSERT=true, bool SET=true>
+  bool handlePutFound(Transaction& t, versioned_value *e, const value_type& value) {
+    auto& item = t.item(this, e);
+    if (!validityCheck(item, e)) {
+      t.abort();
+      return false;
+    }
+    if (has_delete(item)) {
+      // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
+      // if user can't read v#)
+      if (INSERT) {
+        item.set_flags(0);
+        t.add_write(item, value);
+      } else {
+        // delete-then-update == not found
+        // delete will check for other deletes so we don't need to re-log that check
+      }
+      return false;
+    }
+    // make sure this item doesn't get deleted (we don't care about other updates to it though)
+    if (!item.has_read()) {
+      t.add_read(item, valid_check_only_bit);
+    }
+    if (SET) {
+      // if we're inserting this element already we can just update the value we're inserting
+      if (has_insert(item))
+        e->value = value;
+      else
+        t.add_write(item, value);
+    }
+    return true;
+  }
+
   template <bool INSERT = true, bool SET = true>
   bool transPut(Transaction& t, Str key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
+    if (!INSERT) {
+      unlocked_cursor_type lp(table_, key);
+      bool found = lp.find_unlocked(*ti.ti);
+      if (found) {
+        return handlePutFound<INSERT, SET>(t, lp.value(), value);
+      } else {
+        ensureNotFound(t, lp.node(), lp.full_version_value());
+        return false;
+      }
+    }
+
     cursor_type lp(table_, key);
     bool found = lp.find_insert(*ti.ti);
     if (found) {
       versioned_value *e = lp.value();
-      // TODO: should really just do an unlocked lookup for updates
       lp.finish(0, *ti.ti);
-      auto& item = t.item(this, e);
-      if (!validityCheck(item, e)) {
-        t.abort();
-        return false;
-      }
-      if (has_delete(item)) {
-        // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
-        // if user can't read v#)
-        if (INSERT) {
-          item.set_flags(0);
-          t.add_write(item, value);
-        } else {
-          // delete-then-update == not found
-          // delete will check for other deletes so we don't need to re-log that check 
-        }
-        return false;
-      }
-      // make sure this item doesn't get deleted (we don't care about other updates to it though)
-      if (!item.has_read()) {
-        t.add_read(item, valid_check_only_bit);
-      }
-      if (SET) {
-        // if we're inserting this element already we can just update the value we're inserting
-        if (has_insert(item))
-          e->value = value;
-        else
-          t.add_write(item, value);
-      }
-      return found;
+      return handlePutFound<INSERT, SET>(t, e, value);
     } else {
-      if (!INSERT) {
-        // TODO: for !INSERT we should really just be doing an unlocked lookup
-        lp.finish(0, *ti.ti);
-        return found;
-      }
-
       auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
       versioned_value* val = new(p) versioned_value;
       val->value = value;
