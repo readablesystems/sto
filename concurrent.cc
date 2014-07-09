@@ -13,7 +13,7 @@
 #include "MassTrans.hh"
 
 // size of array
-#define ARRAY_SZ 10000
+#define ARRAY_SZ 100000000
 
 // only used for randomRWs test
 #define GLOBAL_SEED 0
@@ -30,7 +30,7 @@
 
 #define MASSTREE 1
 
-#define PREPOPULATE 0
+#define RANDOM_REPORT 0
 
 kvepoch_t global_log_epoch = 0;
 volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly                    
@@ -64,6 +64,7 @@ bool runCheck = false;
 int nthreads = 4;
 int ntrans = 1000000;
 int opspertrans = 10;
+int prepopulate = ARRAY_SZ/10;
 double write_percent = 0.5;
 bool blindRandomWrite = false;
 
@@ -79,7 +80,7 @@ struct Rand {
   typedef uint32_t result_type;
 
   result_type u, v;
-  Rand(result_type u, result_type v) : u(u+1), v(v+1) {}
+  Rand(result_type u, result_type v) : u(u|1), v(v|1) {}
 
   inline result_type operator()() {
     v = 36969*(v & 65535) + (v >> 16);
@@ -185,6 +186,11 @@ void *randomRWs(void *p) {
   std::uniform_int_distribution<> slotdist(0, ARRAY_SZ-1);
   uint32_t write_thresh = (uint32_t) (write_percent * Rand::max());
 
+#if RANDOM_REPORT
+  int *slot_spread = (int*)calloc(sizeof(*slot_spread) * ARRAY_SZ, 1);
+  int firstretry = 0;
+#endif
+
   int N = ntrans/nthreads;
   int OPS = opspertrans;
   for (int i = 0; i < N; ++i) {
@@ -200,7 +206,10 @@ void *randomRWs(void *p) {
 #if MAINTAIN_TRUE_ARRAY_STATE
       nslots_written = 0;
 #endif
-      Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
+      uint32_t seed = transseed*3 + (uint32_t)me*N*7 + (uint32_t)GLOBAL_SEED*MAX_THREADS*N*11;
+      auto seedlow = seed & 0xffff;
+      auto seedhigh = seed >> 16;
+      Rand transgen(seed, seedlow << 16 | seedhigh);
 #if ALL_UNIQUE_SLOTS
       bool used[ARRAY_SZ] = {false};
 #endif
@@ -231,6 +240,9 @@ void *randomRWs(void *p) {
       done = t.commit();
       } catch (Transaction::Abort E) {}
       if (!done) {
+#if RANDOM_REPORT
+        if (i==0) firstretry++;
+#endif
         debug("thread%d retrying\n", me);
       }
     }
@@ -238,11 +250,48 @@ void *randomRWs(void *p) {
     if (maintain_true_array_state) {
         std::sort(slots_written, slots_written + nslots_written);
         auto itend = readMyWrites ? slots_written + nslots_written : std::unique(slots_written, slots_written + nslots_written);
-        for (auto it = slots_written; it != itend; ++it)
+        for (auto it = slots_written; it != itend; ++it) {
             __sync_add_and_fetch(&true_array_state[*it], 1);
+#if RANDOM_REPORT
+            slot_spread[*it]++;
+#endif
+        }
     }
 #endif
   }
+
+#if RANDOM_REPORT
+  printf("firstretry: %d\n", firstretry);
+  printf("slot distribution (%d trans, %d per trans): \n", N, OPS);
+  uint64_t sum = 0;
+  uint64_t total = 0;
+  for (uint64_t i = 0; i < ARRAY_SZ; ++i) {
+    total += slot_spread[i];
+    sum += i*slot_spread[i];
+  }
+  int64_t avg = sum / total;
+  printf("avg: %llu\n", avg);
+  long double var = 0;
+  for (int64_t i = 0; i < ARRAY_SZ; ++i) {
+    var += slot_spread[i] * (i - avg) * (i - avg);
+  }
+  printf("stddev: %Lf\n", sqrt(var / total));
+
+  int cur = 0;
+  for (int i = 0; i < ARRAY_SZ; ++i) {
+    cur += slot_spread[i];
+    if (i % (ARRAY_SZ/100) == (ARRAY_SZ/100 - 1)) {
+      printf("section %d has: %d elems\n", i / (ARRAY_SZ/100), cur);
+      cur = 0;
+    }
+  }
+
+  for (int i = 0; i < 1000; ++i) {
+    if (slot_spread[i] > 0)
+      printf("insertat: %d (%d)\n", i, slot_spread[i]);
+  }
+#endif
+
   return NULL;
 }
 
@@ -256,11 +305,9 @@ void checkRandomRWs() {
 #endif
   a = &check;
 
-#if PREPOPULATE
-  for (int i = 0; i < ARRAY_SZ; ++i) {
+  for (int i = 0; i < prepopulate; ++i) {
     a->put(i, 0);
   }
-#endif
 
   for (int i = 0; i < nthreads; ++i) {
     randomRWs((void*)(intptr_t)i);
@@ -533,7 +580,7 @@ Test tests[] = {
 };
 
 enum {
-  opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_blindrandwrites,
+  opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_blindrandwrites, opt_prepopulate
 };
 
 static const Clp_Option options[] = {
@@ -544,6 +591,7 @@ static const Clp_Option options[] = {
   { "opspertrans", 0, opt_opspertrans, Clp_ValInt, Clp_Optional },
   { "writepercent", 0, opt_writepercent, Clp_ValDouble, Clp_Optional },
   { "blindrandwrites", 0, opt_blindrandwrites, 0, Clp_Negate },
+  { "prepopulate", 0, opt_prepopulate, Clp_ValInt, Clp_Optional },
 };
 
 static void help(const char *name) {
@@ -555,8 +603,9 @@ Options:\n\
  --ntrans=NTRANS, how many total transactions to run (they'll be split between threads) (default %d)\n\
  --opspertrans=OPSPERTRANS, how many operations to run per transaction (default %d)\n\
  --writepercent=WRITEPERCENT, probability with which to do writes versus reads (default %f)\n\
- --blindrandwrites, do blind random writes for random tests. makes checking impossible\n",
-         name, nthreads, ntrans, opspertrans, write_percent);
+ --blindrandwrites, do blind random writes for random tests. makes checking impossible\n\
+ --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n",
+         name, nthreads, ntrans, opspertrans, write_percent, prepopulate);
   exit(1);
 }
 
@@ -592,6 +641,9 @@ int main(int argc, char *argv[]) {
     case opt_blindrandwrites:
       blindRandomWrite = !clp->negated;
       break;
+    case opt_prepopulate:
+      prepopulate = clp->val.i;
+      break;
     default:
       help(argv[0]);
     }
@@ -617,11 +669,9 @@ int main(int argc, char *argv[]) {
   ArrayType stack_arr;
   a = &stack_arr;
 
-#if PREPOPULATE
-  for (int i = 0; i < ARRAY_SZ; ++i) {
+  for (int i = 0; i < prepopulate; ++i) {
     a->put(i, 0);
   }
-#endif
 
   struct timeval tv1,tv2;
   struct rusage ru1,ru2;
@@ -646,7 +696,10 @@ int main(int argc, char *argv[]) {
 #endif
 
 #if PERF_LOGGING
-  printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu\n", total_n, total_r, total_w, total_searched, total_aborts);
+  printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", total_n, total_r, total_w, total_searched, total_aborts, commit_time_aborts);
+#if MASSTREE
+  printf("node aborts: %llu\n", node_aborts);
+#endif
 #endif
 
   if (runCheck)

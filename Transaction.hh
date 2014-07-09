@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <vector>
@@ -6,7 +5,7 @@
 #include <unistd.h>
 
 #define LOCAL_VECTOR 1
-#define PERF_LOGGING 0
+#define PERF_LOGGING 1
 
 #define MAX_THREADS 8
 
@@ -24,6 +23,7 @@ uint64_t total_n;
 uint64_t total_r, total_w;
 uint64_t total_searched;
 uint64_t total_aborts;
+uint64_t commit_time_aborts;
 #endif
 
 struct threadinfo_t {
@@ -248,6 +248,9 @@ public:
     if (success) {
       commitSuccess();
     } else {
+#if PERF_LOGGING
+      __sync_add_and_fetch(&commit_time_aborts, 1);
+#endif
       abort();
     }
 

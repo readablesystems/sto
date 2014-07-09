@@ -10,6 +10,11 @@
 #include "Transaction.hh"
 
 #define RCU 1
+#define ABORT_ON_WRITE_READ_CONFLICT 0
+
+#if PERF_LOGGING
+uint64_t node_aborts;
+#endif
 
 #if !RCU
 class debug_threadinfo {
@@ -379,18 +384,27 @@ public:
       val->version = invalid_bit;
       fence();
       lp.value() = val;
+#if ABORT_ON_WRITE_READ_CONFLICT
+      auto orig_node = lp.node();
+      auto orig_version = lp.previous_full_version_value();
+      auto upd_version = lp.next_full_version_value(1);
+#endif
       lp.finish(1, *ti.ti);
       fence();
 
+#if !ABORT_ON_WRITE_READ_CONFLICT
       auto orig_node = lp.original_node();
       auto orig_version = lp.original_version_value();
       auto upd_version = lp.updated_version_value();
+#endif
 
       if (updateNodeVersion(t, orig_node, orig_version, upd_version)) {
         // add any new nodes as a result of splits, etc. to the read/absent set
+#if !ABORT_ON_WRITE_READ_CONFLICT
         for (auto&& pair : lp.new_nodes()) {
           t.add_read(t.add_item<false>(this, tag_inter(pair.first)), pair.second);
         }
+#endif
       }
       auto& item = t.add_item<false>(this, val);
       // TODO: this isn't great because it's going to require an extra alloc (because Str/std::string is 2 words)...
@@ -429,6 +443,10 @@ public:
       auto read_version = item.template read_value<typename unlocked_cursor_type::nodeversion_value_type>();
       //      if (cur_version != read_version)
       //printf("node versions disagree: %d vs %d\n", cur_version, read_version);
+#if PERF_LOGGING
+      if (cur_version != read_version)
+        __sync_add_and_fetch(&node_aborts, 1);
+#endif
       return cur_version == read_version;
         //&& !(cur_version & (unlocked_cursor_type::nodeversion_type::traits_type::lock_bit));
       
