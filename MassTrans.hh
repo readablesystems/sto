@@ -9,7 +9,9 @@
 #include "masstree-beta/string.hh"
 #include "Transaction.hh"
 
-#if 1
+#define RCU 1
+
+#if !RCU
 class debug_threadinfo {
 public:
 #if 0
@@ -129,14 +131,17 @@ private:
   mutable kvtimestamp_t ts_;
 };
 
-
 #endif
 
 template <typename V>
 class MassTrans : public Shared {
 public:
+#if !RCU
+  typedef debug_threadinfo threadinfo;
+#endif
+
   struct ti_wrapper {
-    debug_threadinfo *ti;
+    threadinfo *ti;
   };
 
   typedef V value_type;
@@ -147,7 +152,7 @@ public:
 
 private:
   typedef uint32_t Version;
-  struct versioned_value : public debug_threadinfo::rcu_callback {
+  struct versioned_value : public threadinfo::rcu_callback {
     Version version;
     value_type value;
 
@@ -158,7 +163,7 @@ private:
     }
     
     // rcu_callback method to self-destruct ourself
-    void operator()(debug_threadinfo& ti) override {
+    void operator()(threadinfo& ti) override {
       // this will call value's destructor
       this->versioned_value::~versioned_value();
       // and free our memory too
@@ -168,11 +173,13 @@ private:
 
 public:
   MassTrans() {
-#if 0
+#if RCU
     if (!mythreadinfo.ti) {
       auto* ti = threadinfo::make(threadinfo::TI_MAIN, -1);
       mythreadinfo.ti = ti;
     }
+#else
+    mythreadinfo.ti = new threadinfo;
 #endif
     table_.initialize(*mythreadinfo.ti);
     // TODO: technically we could probably free this threadinfo at this point since we won't use it again,
@@ -180,10 +187,11 @@ public:
   }
 
   void thread_init() {
-    mythreadinfo.ti = new debug_threadinfo;
+#if !RCU
+    mythreadinfo.ti = new threadinfo;
     return;
+#else
 
-#if 0
     if (!mythreadinfo.ti) {
       auto* ti = threadinfo::make(threadinfo::TI_PROCESS, Transaction::threadid);
       mythreadinfo.ti = ti;
@@ -650,7 +658,7 @@ private:
   struct table_params : public Masstree::nodeparams<15,15> {
     typedef versioned_value* value_type;
     typedef Masstree::value_print<value_type> value_print_type;
-    typedef debug_threadinfo threadinfo_type;
+    typedef threadinfo threadinfo_type;
   };
   typedef Masstree::basic_table<table_params> table_type;
   typedef Masstree::unlocked_tcursor<table_params> unlocked_cursor_type;
