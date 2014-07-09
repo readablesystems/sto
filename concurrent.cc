@@ -26,18 +26,16 @@
 #define DATA_COLLECT 0
 #define HASHTABLE 0
 #define HASHTABLE_LOAD_FACTOR 2
-#define HASHTABLE_RAND_DELETES 1
+#define HASHTABLE_RAND_DELETES 0
 
 #define MASSTREE 1
 
 #define PREPOPULATE 0
 
-#if MASSTREE
 kvepoch_t global_log_epoch = 0;
 volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly                    
 kvtimestamp_t initial_timestamp;
 volatile bool recovering = false; // so don't add log entries, and free old value immediately        
-#endif
 
 //#define DEBUG
 
@@ -146,6 +144,9 @@ static inline void nwrites(int n, Transaction& t, std::function<int(void)> slotg
 
 void *readThenWrite(void *p) {
   int me = (intptr_t)p;
+#if MASSTREE
+  a->thread_init();
+#endif
   
   std::uniform_int_distribution<> slotdist(0, ARRAY_SZ-1);
 
@@ -287,6 +288,9 @@ void checkRandomRWs() {
 void *kingOfTheDelete(void *p) {
   int me = (intptr_t)p;
   Transaction::threadid = me;
+#if MASSTREE
+  a->thread_init();
+#endif
 
   bool done = false;
   while (!done) {
@@ -318,6 +322,9 @@ void checkKingOfTheDelete() {
 void *xorDelete(void *p) {
   int me = (intptr_t)p;
   Transaction::threadid = me;
+#if MASSTREE
+  a->thread_init();
+#endif
 
   // we never pick slot 0 so we can detect if table is populated
   std::uniform_int_distribution<> slotdist(1, ARRAY_SZ-1);
@@ -399,6 +406,9 @@ void checkIsolatedWrites() {
 
 void *isolatedWrites(void *p) {
   int me = (intptr_t)p;
+#if MASSTREE
+  a->thread_init();
+#endif
 
   bool done = false;
   while (!done) {
@@ -421,6 +431,9 @@ void *isolatedWrites(void *p) {
 
 void *blindWrites(void *p) {
   int me = (long long)p;
+#if MASSTREE
+  a->thread_init();
+#endif
 
   bool done = false;
   while (!done) {
@@ -455,6 +468,9 @@ void checkBlindWrites() {
 
 void *interferingRWs(void *p) {
   int me = (intptr_t)p;
+#if MASSTREE
+  a->thread_init();
+#endif
 
   bool done = false;
   while (!done) {
