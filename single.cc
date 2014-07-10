@@ -90,6 +90,23 @@ void insertDeleteSeparateTest() {
     t.commit();
     assert(0);
   } catch (Transaction::Abort E) {}
+
+
+  Transaction t3;
+  assert(!h.transGet(t3, 13, x));
+  
+  Transaction t4;
+  assert(h.transInsert(t4, 10, 11));
+  assert(h.transInsert(t4, 13, 14));
+  assert(h.transDelete(t4, 11));
+  assert(h.transDelete(t4, 12));
+  assert(t4.commit());
+
+  try {
+    t3.commit();
+    assert(0);
+  } catch (Transaction::Abort E) {}
+
 }
 
 int main() {
