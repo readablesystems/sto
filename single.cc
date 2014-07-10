@@ -216,6 +216,7 @@ int main() {
 
   Transaction t19;
   h.transQuery(t19, "0", "4", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); });
+  h.transQuery(t19, "4", "4", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); });
   assert(t19.commit());
 
   // insert-then-delete node test
