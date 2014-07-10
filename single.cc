@@ -191,6 +191,10 @@ int main() {
     assert(0);
   } catch (Transaction::Abort E) {}
 
+  Transaction t19;
+  h.transQuery(t19, "0", "4", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); });
+  assert(t19.commit());
+
   // insert-then-delete node test
   insertDeleteTest(false);
   insertDeleteTest(true);

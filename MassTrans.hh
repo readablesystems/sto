@@ -6,6 +6,7 @@
 #include "masstree-beta/masstree_insert.hh"
 #include "masstree-beta/masstree_print.hh"
 #include "masstree-beta/masstree_remove.hh"
+#include "masstree-beta/masstree_scan.hh"
 #include "masstree-beta/string.hh"
 #include "Transaction.hh"
 
@@ -239,7 +240,6 @@ public:
     return found;
   }
 
-#if 1
   bool transGet(Transaction& t, Str key, value_type& retval, threadinfo_type& ti = mythreadinfo) {
     unlocked_cursor_type lp(table_, key);
     bool found = lp.find_unlocked(*ti.ti);
@@ -308,56 +308,6 @@ public:
     }
   }
 
-  template <typename NODE, typename VERSION>
-  bool updateNodeVersion(Transaction& t, NODE *node, VERSION prev_version, VERSION new_version) {
-    auto node_item = t.has_item(this, tag_inter(node));
-    if (node_item) {
-      if (node_item->has_read() &&
-          prev_version == node_item->template read_value<VERSION>()) {
-        t.add_read(*node_item, new_version);
-        return true;
-      }
-    }
-    return false;
-  }
-
-  template <bool INSERT=true, bool SET=true>
-  bool handlePutFound(Transaction& t, versioned_value *e, const value_type& value) {
-    auto& item = t.item(this, e);
-    if (!validityCheck(item, e)) {
-      t.abort();
-      return false;
-    }
-    if (has_delete(item)) {
-      // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
-      // if user can't read v#)
-      if (INSERT) {
-        item.set_flags(0);
-        assert(!has_delete(item));
-        if (we_inserted(item))
-          e->value = value;
-        else
-          t.add_write(item, value);
-      } else {
-        // delete-then-update == not found
-        // delete will check for other deletes so we don't need to re-log that check
-      }
-      return false;
-    }
-    // make sure this item doesn't get deleted (we don't care about other updates to it though)
-    if (!item.has_read() && !we_inserted(item)) {
-      t.add_read(item, valid_check_only_bit);
-    }
-    if (SET) {
-      // if we're inserting this element already we can just update the value we're inserting
-      if (we_inserted(item))
-        e->value = value;
-      else
-        t.add_write(item, value);
-    }
-    return true;
-  }
-
   template <bool INSERT = true, bool SET = true>
   bool transPut(Transaction& t, Str key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
     if (!INSERT) {
@@ -419,9 +369,81 @@ public:
     return transPut</*insert*/false, /*set*/true>(t, k, v, ti);
   }
 
-  bool transInsert(Transaction& t, Str k, const value_type& v, threadinfo_type&ti = mythreadinfo) {
+  bool transInsert(Transaction& t, Str k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
     return !transPut</*insert*/true, /*set*/false>(t, k, v, ti);
   }
+
+
+  // range queries
+#if 1
+  template <typename Callback>
+  void transQuery(Transaction& t, Str begin, Str end, Callback callback, threadinfo_type& ti = mythreadinfo) {
+    auto node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
+      ensureNotFound(t, node, version);
+    };
+    auto value_callback = [&] (Str key, versioned_value* value) {
+      auto& item = t.item(this, value);
+      if (!item.has_read())
+        t.add_read(item, value->version);
+      callback(key, value->value);
+    };
+
+    range_scanner<decltype(node_callback), decltype(value_callback)> scanner(end, node_callback, value_callback);
+    table_.scan(begin, true, scanner, *ti.ti);
+  }
+
+private:
+  template <typename Nodecallback, typename Valuecallback, bool Reverse = false>
+  class range_scanner {
+  public:
+    range_scanner(Str upper, Nodecallback nodecallback, Valuecallback valuecallback) : boundary_(upper), boundary_compar_(false),
+                                                                                       nodecallback_(nodecallback), valuecallback_(valuecallback) {}
+
+    template <typename ITER, typename KEY>
+    void check(const ITER& iter,
+               const KEY& key) {
+      int min = std::min(boundary_.length(), key.prefix_length());
+      int cmp = memcmp(boundary_.data(), key.full_string().data(), min);
+      if (!Reverse) {
+        if (cmp < 0 || (cmp == 0 && boundary_.length() <= key.prefix_length()))
+          boundary_compar_ = true;
+        else if (cmp == 0) {
+          uint64_t last_ikey = iter.node()->ikey0_[iter.permutation()[iter.permutation().size() - 1]];
+          uint64_t slice = string_slice<uint64_t>::make_comparable(boundary_.data() + key.prefix_length(), std::min(boundary_.length() - key.prefix_length(), 8));
+          boundary_compar_ = slice <= last_ikey;
+        }
+      } else {
+        if (cmp >= 0)
+          boundary_compar_ = true;
+      }
+    }
+
+    template <typename ITER>
+    void visit_leaf(const ITER& iter, const Masstree::key<uint64_t>& key, threadinfo& ) {
+      nodecallback_(iter.node(), iter.full_version_value());
+      if (this->boundary_) {
+        check(iter, key);
+      }
+    }
+    bool visit_value(const Masstree::key<uint64_t>& key, versioned_value *value, threadinfo&) {
+      if (this->boundary_compar_) {
+        if ((!Reverse && boundary_ <= key.full_string()) ||
+            ( Reverse && boundary_ >= key.full_string()))
+          return false;
+      }
+      
+      valuecallback_(key.full_string(), value);
+      return true;
+    }
+
+    Str boundary_;
+    bool boundary_compar_;
+    Nodecallback nodecallback_;
+    Valuecallback valuecallback_;
+  };
+public:
+
+#endif
 
   void lock(versioned_value *e) {
     lock(&e->version);
@@ -514,8 +536,6 @@ public:
     return found;
   }
 
-#endif
-
   void print() {
     table_.print();
   }
@@ -575,6 +595,43 @@ public:
 
 
 private:
+  template <bool INSERT=true, bool SET=true>
+  bool handlePutFound(Transaction& t, versioned_value *e, const value_type& value) {
+    auto& item = t.item(this, e);
+    if (!validityCheck(item, e)) {
+      t.abort();
+      return false;
+    }
+    if (has_delete(item)) {
+      // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
+      // if user can't read v#)
+      if (INSERT) {
+        item.set_flags(0);
+        assert(!has_delete(item));
+        if (we_inserted(item))
+          e->value = value;
+        else
+          t.add_write(item, value);
+      } else {
+        // delete-then-update == not found
+        // delete will check for other deletes so we don't need to re-log that check
+      }
+      return false;
+    }
+    // make sure this item doesn't get deleted (we don't care about other updates to it though)
+    if (!item.has_read() && !we_inserted(item)) {
+      t.add_read(item, valid_check_only_bit);
+    }
+    if (SET) {
+      // if we're inserting this element already we can just update the value we're inserting
+      if (we_inserted(item))
+        e->value = value;
+      else
+        t.add_write(item, value);
+    }
+    return true;
+  }
+
   template <typename NODE, typename VERSION>
   void ensureNotFound(Transaction& t, NODE n, VERSION v) {
     // TODO: could be more efficient to use add_item here, but that will also require more work for read-then-insert
@@ -582,6 +639,19 @@ private:
     if (!item.has_read()) {
       t.add_read(item, v);
     }
+  }
+
+  template <typename NODE, typename VERSION>
+  bool updateNodeVersion(Transaction& t, NODE *node, VERSION prev_version, VERSION new_version) {
+    auto node_item = t.has_item(this, tag_inter(node));
+    if (node_item) {
+      if (node_item->has_read() &&
+          prev_version == node_item->template read_value<VERSION>()) {
+        t.add_read(*node_item, new_version);
+        return true;
+      }
+    }
+    return false;
   }
 
   bool we_inserted(TransItem& item) {
