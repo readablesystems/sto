@@ -224,7 +224,7 @@ int main() {
   insertDeleteTest(true);
 
   // insert-then-delete problems with masstree version numbers (currently fails)
-  //insertDeleteSeparateTest();
+  insertDeleteSeparateTest();
 
   h.print();
 
