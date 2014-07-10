@@ -69,6 +69,29 @@ void insertDeleteTest(bool shouldAbort) {
     assert(t2.commit());
 }
 
+void insertDeleteSeparateTest() {
+  MassTrans<int> h;
+  Transaction t_init;
+  for (int i = 10; i < 12; ++i) {
+    assert(h.transInsert(t_init, i, i+1));
+  }
+  assert(t_init.commit());
+
+  Transaction t;
+  int x;
+  assert(!h.transGet(t, 12, x));
+
+  Transaction t2;
+  assert(h.transInsert(t2, 12, 13));
+  assert(h.transDelete(t2, 10));
+  assert(t2.commit());
+  
+  try {
+    t.commit();
+    assert(0);
+  } catch (Transaction::Abort E) {}
+}
+
 int main() {
   typedef int Key;
   typedef int Value;
@@ -198,6 +221,9 @@ int main() {
   // insert-then-delete node test
   insertDeleteTest(false);
   insertDeleteTest(true);
+
+  // insert-then-delete problems with masstree version numbers (currently fails)
+  //insertDeleteSeparateTest();
 
   h.print();
 
