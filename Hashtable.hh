@@ -511,8 +511,8 @@ public:
     }
     return v;
   }
-  Value transRead_nocheck(Transaction& t, Key k) { return 0; }
-  void transWrite_nocheck(Transaction& t, Key k, Value v) {}
+  Value transRead_nocheck(Transaction& , Key ) { return Value(); }
+  void transWrite_nocheck(Transaction& , Key , Value ) {}
   Value read(Key k) {
     Transaction t;
     return transRead(t, k);
@@ -524,7 +524,7 @@ public:
     t.commit();
   }
 
-  void erase(Key k) {}
+  void erase(Key ) {}
 
   void update(Key k, Value v) {
     Transaction t;
@@ -558,8 +558,8 @@ public:
   Value find(Key k) {
     return read(k);
   }
-  void rehash(unsigned n) {}
-  void reserve(unsigned n) {}
+  void rehash(unsigned ) {}
+  void reserve(unsigned ) {}
   
   private:
   bucket_entry& buck_entry(Key k) {
