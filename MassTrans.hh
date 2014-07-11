@@ -374,6 +374,12 @@ public:
   }
 
 
+  size_t approx_size() {
+    // looks like if we want to implement this we have to tree walkers and all sorts of annoying things like that. could also possibly
+    // do a range query and just count keys
+    return 0;
+  }
+
   // range queries
 #if 1
   template <typename Callback>
