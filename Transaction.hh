@@ -89,6 +89,7 @@ public:
         release_spinlock(t.spin_lock);
       }
     }
+    return NULL;
   }
 
   static void cleanup(std::function<void(void)> callback) {

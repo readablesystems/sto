@@ -1,6 +1,7 @@
 #pragma once
 
 #include <type_traits>
+#include <string.h>
 
 #include "Tagged64.hh"
 
@@ -50,19 +51,20 @@ template <> struct packer<false> {
 
 template <typename T>
 inline void *pack(T v) {
-  return packer<std::is_trivially_copy_constructible<T>::value
+  // TODO: probably better to use std::is_trivially_copyable or copy_constructible but gcc sucks :(
+  return packer<__has_trivial_copy(T)
     && sizeof(T) <= sizeof(void*)>().pack(std::move(v));
 }
 
 template <typename T>
 inline T& unpack(void *&vp) {
-  return packer<std::is_trivially_copy_constructible<T>::value
+  return packer<__has_trivial_copy(T)
     && sizeof(T) <= sizeof(void*)>().template unpack<T>(vp);
 }
 
 template <typename T>
 inline void free_packed(void *&vp) {
-  packer<std::is_trivially_copy_constructible<T>::value
+  packer<__has_trivial_copy(T)
     && sizeof(T) <= sizeof(void*)>().template free_packed<T>(vp);
 }
 

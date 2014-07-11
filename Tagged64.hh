@@ -6,8 +6,8 @@
 #define IS64BIT
 #elif INTPTR_MAX == INT32_MAX
 #define IS32BIT
-#else "Only support 32 and 64 bit systems"
-#error
+#else
+#error "Only support 32 and 64 bit systems"
 #endif
 
 // 64 bits including a pointer and 16 bits of flags

@@ -163,7 +163,7 @@ private:
     value_type value;
 
     void print(FILE* f, const char* prefix,
-               int indent, Str key, kvtimestamp_t initial_timestamp,
+               int indent, Str key, kvtimestamp_t,
                char* suffix) {
       fprintf(f, "%s%*s%.*s = %d%s (version %d)\n", prefix, indent, "", key.len, key.s, value, suffix, version);
     }
@@ -379,7 +379,7 @@ public:
   template <typename Callback>
   void transQuery(Transaction& t, Str begin, Str end, Callback callback, threadinfo_type& ti = mythreadinfo) {
     auto node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
-      ensureNotFound(t, node, version);
+      this->ensureNotFound(t, node, version);
     };
     auto value_callback = [&] (Str key, versioned_value* value) {
       auto& item = t.item(this, value);
@@ -580,8 +580,8 @@ public:
     sprintf(s, "%d", k);
     return transDelete(t, s);
   }
-  value_type transRead_nocheck(Transaction& t, int k) { return value_type(); }
-  void transWrite_nocheck(Transaction& t, int k, value_type v) {}
+  value_type transRead_nocheck(Transaction& , int ) { return value_type(); }
+  void transWrite_nocheck(Transaction&, int , value_type ) {}
   value_type read(int k) {
     Transaction t;
     return transRead(t, k);

@@ -696,10 +696,12 @@ int main(int argc, char *argv[]) {
 #endif
 
 #if PERF_LOGGING
-  printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", total_n, total_r, total_w, total_searched, total_aborts, commit_time_aborts);
+#define LLU(x) ((long long unsigned)x)
+  printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", LLU(total_n), LLU(total_r), LLU(total_w), LLU(total_searched), LLU(total_aborts), LLU(commit_time_aborts));
 #if MASSTREE
-  printf("node aborts: %llu\n", node_aborts);
+  printf("node aborts: %llu\n", LLU(node_aborts));
 #endif
+#undef LLU
 #endif
 
   if (runCheck)
