@@ -573,7 +573,7 @@ public:
     sprintf(s, "%d", k);
     value_type v;
     if (!transGet(t, s, v)) {
-      return 0;
+      return value_type();
     }
     return v;
   }

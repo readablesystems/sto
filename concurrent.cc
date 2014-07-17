@@ -115,7 +115,7 @@ inline value_type val(int v) {
 #endif
 }
 
-inline int unval(value_type v) {
+inline int unval(const value_type& v) {
 #if STRING_VALUES
   return atoi(v.c_str());
 #else
@@ -331,7 +331,7 @@ void checkRandomRWs() {
   a = &check;
 
   for (int i = 0; i < prepopulate; ++i) {
-    a->put(i, 0);
+    a->put(i, val(0));
   }
 
   for (int i = 0; i < nthreads; ++i) {
@@ -695,7 +695,7 @@ int main(int argc, char *argv[]) {
   a = &stack_arr;
 
   for (int i = 0; i < prepopulate; ++i) {
-    a->put(i, 0);
+    a->put(i, val(0));
   }
 
   struct timeval tv1,tv2;
