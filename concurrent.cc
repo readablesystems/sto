@@ -32,6 +32,8 @@
 
 #define RANDOM_REPORT 0
 
+#define STRING_VALUES 1
+
 kvepoch_t global_log_epoch = 0;
 volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly                    
 kvtimestamp_t initial_timestamp;
@@ -45,17 +47,23 @@ volatile bool recovering = false; // so don't add log entries, and free old valu
 #define debug(...) /* */
 #endif
 
+#if STRING_VALUES
+typedef std::string value_type;
+#else
+typedef int value_type;
+#endif
+
 #if !HASHTABLE
 #if !MASSTREE
-typedef Array<int, ARRAY_SZ> ArrayType;
+typedef Array<value_type, ARRAY_SZ> ArrayType;
 ArrayType *a;
 #else
-typedef MassTrans<int> ArrayType;
+typedef MassTrans<value_type> ArrayType;
 ArrayType *a;
 #endif
 #else
 // hashtable from int to int
-typedef Hashtable<int, int, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> ArrayType;
+typedef Hashtable<int, value_type, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> ArrayType;
 ArrayType *a;
 #endif
 
@@ -97,6 +105,23 @@ struct Rand {
   }
 };
 
+inline value_type val(int v) {
+#if STRING_VALUES
+  char s[64];
+  sprintf(s, "%d", v);
+  return std::move(std::string(s));
+#else
+  return v;
+#endif
+}
+
+inline int unval(value_type v) {
+#if STRING_VALUES
+  return atoi(v.c_str());
+#else
+  return v;
+#endif
+}
 
 static void doRead(Transaction& t, int slot) {
   if (readMyWrites)
@@ -108,15 +133,15 @@ static void doRead(Transaction& t, int slot) {
 static void doWrite(Transaction& t, int slot, int& ctr) {
   if (blindRandomWrite) {
     if (readMyWrites) {
-      a->transWrite(t, slot, ctr);
+      a->transWrite(t, slot, val(ctr));
     } else {
-      a->transWrite_nocheck(t, slot, ctr);
+      a->transWrite_nocheck(t, slot, val(ctr));
     }
   } else {
     // increment current value (this lets us verify transaction correctness)
     if (readMyWrites) {
       auto v0 = a->transRead(t, slot);
-      a->transWrite(t, slot, v0+1);
+      a->transWrite(t, slot, val(unval(v0)+1));
 #if TRY_READ_MY_WRITES
           // read my own writes
           assert(a->transRead(t,slot) == v0+1);
@@ -126,7 +151,7 @@ static void doWrite(Transaction& t, int slot, int& ctr) {
 #endif
     } else {
       auto v0 = a->transRead_nocheck(t, slot);
-      a->transWrite_nocheck(t, slot, v0+1);
+      a->transWrite_nocheck(t, slot, val(unval(v0)+1));
     }
     ++ctr; // because we've done a read and a write
   }
@@ -319,14 +344,14 @@ void checkRandomRWs() {
 
   for (int i = 0; i < ARRAY_SZ; ++i) {
 # if MAINTAIN_TRUE_ARRAY_STATE
-    if (a->read(i) != true_array_state[i])
+    if (unval(a->read(i)) != true_array_state[i])
         fprintf(stderr, "index [%d]: parallel %d, atomic %d\n",
-                i, a->read(i), true_array_state[i]);
+                i, unval(a->read(i)), true_array_state[i]);
 # endif
-    if (a->read(i) != check.read(i))
+    if (unval(a->read(i)) != unval(check.read(i)))
         fprintf(stderr, "index [%d]: parallel %d, sequential %d\n",
-                i, a->read(i), check.read(i));
-    assert(check.read(i) == a->read(i));
+                i, unval(a->read(i)), unval(check.read(i)));
+    assert(unval(check.read(i)) == unval(a->read(i)));
   }
 }
 
@@ -347,7 +372,7 @@ void *kingOfTheDelete(void *p) {
         if (i != me) {
           a->transDelete(t, i);
         } else {
-          a->transPut(t, i, i+1);
+          a->transPut(t, i, val(i+1));
         }
       }
       done = t.commit();
@@ -359,7 +384,7 @@ void *kingOfTheDelete(void *p) {
 void checkKingOfTheDelete() {
   int count = 0;
   for (int i = 0; i < nthreads; ++i) {
-    if (a->read(i)) {
+    if (unval(a->read(i))) {
       count++;
     }
   }
@@ -384,16 +409,16 @@ void *xorDelete(void *p) {
     // populate
     Transaction t;
     for (int i = 1; i < ARRAY_SZ; ++i) {
-      a->transPut(t, i, i+1);
+      a->transPut(t, i, val(i+1));
     }
-    a->transPut(t, 0, 1);
+    a->transPut(t, 0, val(1));
     assert(t.commit());
   } else {
     // wait for populated
     while (1) {
       try {
         Transaction t;
-        if (a->transRead(t, 0) && t.commit()) {
+        if (unval(a->transRead(t, 0)) && t.commit()) {
           break;
         }
         t.commit();
@@ -414,8 +439,8 @@ void *xorDelete(void *p) {
           if (r > delete_thresh) {
             // can't do put/insert because that makes the results ordering dependent
             // (these updates don't actually affect the final state at all)
-            a->transUpdate(t, slot, slot+1);
-          } else if (!a->transInsert(t, slot, slot+1)) {
+            a->transUpdate(t, slot, val(slot+1));
+          } else if (!a->transInsert(t, slot, val(slot+1))) {
             // we delete if the element is there and insert if it's not
             // this is essentially xor'ing the slot, so ordering won't matter
             a->transDelete(t, slot);
@@ -440,14 +465,14 @@ void checkXorDelete() {
   a = old;
   
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    assert(a->read(i) == check.read(i));
+    assert(unval(a->read(i)) == unval(check.read(i)));
   }
 }
 #endif
 
 void checkIsolatedWrites() {
   for (int i = 0; i < nthreads; ++i) {
-    assert(a->read(i) == i+1);
+    assert(unval(a->read(i)) == i+1);
   }
 }
 
@@ -466,7 +491,7 @@ void *isolatedWrites(void *p) {
       a->transRead(t, i);
     }
 
-    a->transWrite(t, me, me+1);
+    a->transWrite(t, me, val(me+1));
     
     done = t.commit();
     } catch (Transaction::Abort E) {}
@@ -487,15 +512,15 @@ void *blindWrites(void *p) {
     try{
     Transaction t;
 
-    if (a->transRead(t, 0) == 0 || me == nthreads-1) {
+    if (unval(a->transRead(t, 0)) == 0 || me == nthreads-1) {
       for (int i = 1; i < ARRAY_SZ; ++i) {
-        a->transWrite(t, i, me);
+        a->transWrite(t, i, val(me));
       }
     }
 
     // nthreads-1 always wins
     if (me == nthreads-1) {
-      a->transWrite(t, 0, me);
+      a->transWrite(t, 0, val(me));
     }
 
     done = t.commit();
@@ -509,7 +534,7 @@ void *blindWrites(void *p) {
 void checkBlindWrites() {
   for (int i = 0; i < ARRAY_SZ; ++i) {
     debug("read %d\n", a->read(i));
-    assert(a->read(i) == nthreads-1);
+    assert(unval(a->read(i)) == nthreads-1);
   }
 }
 
@@ -527,7 +552,7 @@ void *interferingRWs(void *p) {
     for (int i = 0; i < ARRAY_SZ; ++i) {
       if ((i % nthreads) >= me) {
         auto cur = a->transRead(t, i);
-        a->transWrite(t, i, cur+1);
+        a->transWrite(t, i, val(unval(cur)+1));
       }
     }
 
@@ -540,7 +565,7 @@ void *interferingRWs(void *p) {
 
 void checkInterferingRWs() {
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    assert(a->read(i) == (i % nthreads)+1);
+    assert(unval(a->read(i)) == (i % nthreads)+1);
   }
 }
 
