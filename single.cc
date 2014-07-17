@@ -109,6 +109,46 @@ void insertDeleteSeparateTest() {
 
 }
 
+void rangeQueryTest() {
+  MassTrans<int> h;
+  
+  Transaction t_init;
+  int n = 99;
+  char ns[64];
+  sprintf(ns, "%d", n);
+  for (int i = 10; i <= n; ++i) {
+    assert(h.transInsert(t_init, i, i+1));
+  }
+  assert(t_init.commit());
+
+  Transaction t;
+  int x = 0;
+  h.transQuery(t, "10", Masstree::Str(), [&] (Masstree::Str , int ) { x++; });
+  assert(x == n-10+1);
+  
+  x = 0;
+  h.transQuery(t, "10", ns, [&] (Masstree::Str , int) { x++; });
+  assert(x == n-10);
+
+  x = 0;
+  h.transRQuery(t, ns, Masstree::Str(), [&] (Masstree::Str , int ) { x++; });
+  assert(x == n-10+1);
+  
+  x = 0;
+  h.transRQuery(t, ns, "90", [&] (Masstree::Str , int ) { x++; });
+  assert(x == n-90);
+
+  x = 0;
+  h.transQuery(t, "10", "25", [&] (Masstree::Str , int ) { x++; });
+  assert(x == 25-10);
+
+  x = 0;
+  h.transQuery(t, "10", "26", [&] (Masstree::Str , int ) { x++; });
+  assert(x == 26-10);
+
+  assert(t.commit());
+}
+
 int main() {
   typedef int Key;
   typedef int Value;
@@ -232,7 +272,7 @@ int main() {
   } catch (Transaction::Abort E) {}
 
   Transaction t19;
-  h.transQuery(t19, "0", "4", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); });
+  h.transQuery(t19, "0", "2", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); });
   h.transQuery(t19, "4", "4", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); });
   assert(t19.commit());
 
@@ -242,6 +282,8 @@ int main() {
 
   // insert-then-delete problems with masstree version numbers (currently fails)
   insertDeleteSeparateTest();
+
+  rangeQueryTest();
 
   h.print();
 

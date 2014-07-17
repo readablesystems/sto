@@ -398,6 +398,22 @@ public:
     table_.scan(begin, true, scanner, *ti.ti);
   }
 
+  template <typename Callback>
+  void transRQuery(Transaction& t, Str begin, Str end, Callback callback, threadinfo_type& ti = mythreadinfo) {
+    auto node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
+      this->ensureNotFound(t, node, version);
+    };
+    auto value_callback = [&] (Str key, versioned_value* value) {
+      auto& item = t.item(this, value);
+      if (!item.has_read())
+        t.add_read(item, value->version);
+      callback(key, value->value);
+    };
+
+    range_scanner<decltype(node_callback), decltype(value_callback), /*Reverse*/true> scanner(end, node_callback, value_callback);
+    table_.rscan(begin, true, scanner, *ti.ti);
+  }
+
 private:
   template <typename Nodecallback, typename Valuecallback, bool Reverse = false>
   class range_scanner {
