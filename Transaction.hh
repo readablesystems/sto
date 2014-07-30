@@ -5,7 +5,9 @@
 #include <unistd.h>
 
 #define LOCAL_VECTOR 1
-#define PERF_LOGGING 1
+#define PERF_LOGGING 0
+
+#define NOSORT 0
 
 #define MAX_THREADS 8
 
@@ -16,7 +18,7 @@
 #include "Interface.hh"
 #include "TransItem.hh"
 
-#define INIT_SET_SIZE 16
+#define INIT_SET_SIZE 512
 
 #if PERF_LOGGING
 uint64_t total_n;
@@ -104,7 +106,7 @@ public:
   typedef std::vector<TransItem> TransSet;
 #endif
 
-  Transaction() : transSet_(), readMyWritesOnly_(true), isAborted_(false) {
+  Transaction() : transSet_(), readMyWritesOnly_(true), isAborted_(false), firstWrite_(-1) {
 #if !LOCAL_VECTOR
     transSet_.reserve(INIT_SET_SIZE);
 #endif
@@ -126,7 +128,7 @@ public:
     }
     void *k = pack(key);
     // TODO: TransData packs its arguments so we're technically double packing here (void* packs to void* though)
-    transSet_.emplace_back(s, TransData(k, NULL, NULL));
+    transSet_.emplace_back(s, k, NULL, NULL);
     return transSet_[transSet_.size()-1];
   }
 
@@ -143,8 +145,15 @@ public:
   // tries to find an existing item with this key, returns NULL if not found
   template <typename T>
   TransItem* has_item(Shared *s, T key) {
+    // ehhh
+    if (firstWrite_ == -1) return NULL;
+    // TODO: the semantics here are wrong. this all works fine if key if just some opaque pointer (which it sorta has to be anyway)
+    // but if it wasn't, we'd be doing silly copies here, AND have totally incorrect behavior anyway because k would be a unique
+    // pointer and thus not comparable to anything in the transSet. We should either actually support custom key comparisons
+    // or enforce that key is in fact trivially copyable/one word
     void *k = pack(key);
-    for (TransItem& ti : transSet_) {
+    for (auto it = transSet_.begin() + firstWrite_; it != transSet_.end(); ++it) {
+      TransItem& ti = *it;
 #if PERF_LOGGING
       total_searched++;
 #endif
@@ -157,18 +166,47 @@ public:
 
   template <typename T>
   void add_write(TransItem& ti, T wdata) {
-    ti.add_write(wdata);
+    if (firstWrite_ < 0)
+      firstWrite_ = &ti - &transSet_[0];
+    // TODO: add firstWrites optimization again
+    ti._add_write(std::move(wdata));
   }
   template <typename T>
   void add_read(TransItem& ti, T rdata) {
-    ti.add_read(rdata);
+    ti._add_read(std::move(rdata));
   }
   void add_undo(TransItem& ti) {
-    ti.add_undo();
+    ti._add_undo();
   }
 
   void add_afterC(TransItem& ti) {
-    ti.add_afterC();
+    ti._add_afterC();
+  }
+
+  bool check_for_write(TransItem& item) {
+    auto it = &item;
+    bool has_write = it->has_write();
+    if (!has_write /*&& (!readMyWritesOnly_ || ((unsigned)firstWrite_ != transSet_.size() && it - &transSet_[0] < (unsigned)firstWrite_))*/) {
+      has_write = std::binary_search(permute, permute + perm_size, -1, [&] (const int& i, const int& j) {
+	  auto& e1 = unlikely(i < 0) ? item : transSet_[i];
+	  auto& e2 = likely(j < 0) ? item : transSet_[j];
+	  auto ret = likely(e1.data < e2.data) || (unlikely(e1.data == e2.data) && unlikely(e1.sharedObj() < e2.sharedObj()));
+#if 0
+	  if (likely(i >= 0)) {
+	    auto cur = &i;
+	    int idx;
+	    if (ret) {
+	      idx = (cur - permute) / 2;
+	    } else {
+	      idx = (permute + perm_size - cur) / 2;
+	    }
+	    __builtin_prefetch(&transSet_[idx]);
+	  }
+#endif
+	  return ret;
+	});
+    }
+    return has_write;
   }
 
   bool commit() {
@@ -181,24 +219,39 @@ public:
     total_n += transSet_.size();
 #endif
 
-    //phase1
-    if (readMyWritesOnly_) {
-      std::sort(transSet_.begin(), transSet_.end());
-    } else {
-      std::stable_sort(transSet_.begin(), transSet_.end());
+    if (firstWrite_ == -1) firstWrite_ = transSet_.size();
+
+    //    int permute[transSet_.size() - firstWrite_];
+    /*int*/ perm_size = 0;
+    auto begin = &transSet_[0];
+    auto end = begin + transSet_.size();
+    for (auto it = begin + firstWrite_; it != end; ++it) {
+      if (it->has_write()) {
+	permute[perm_size++] = it - begin;
+      }
     }
+
+    //phase1
+#if !NOSORT
+    std::sort(permute, permute + perm_size, [&] (int i, int j) {
+	return transSet_[i] < transSet_[j];
+      });
+#endif
     TransItem* trans_first = &transSet_[0];
     TransItem* trans_last = trans_first + transSet_.size();
-    for (auto it = trans_first; it != trans_last; )
-      if (it->has_write()) {
-        TransItem* me = it;
+
+    auto perm_end = permute + perm_size;
+    for (auto it = permute; it != perm_end; ) {
+      TransItem *me = &transSet_[*it];
+      if (me->has_write()) {
         me->sharedObj()->lock(*me);
         ++it;
         if (!readMyWritesOnly_)
-          for (; it != trans_last && it->same_item(*me); ++it)
+          for (; it != perm_end && transSet_[*it].same_item(*me); ++it)
             /* do nothing */;
       } else
         ++it;
+    }
 
     /* fence(); */
 
@@ -208,23 +261,15 @@ public:
 #if PERF_LOGGING
         total_r++;
 #endif
-        bool has_write = it->has_write();
-        if (!has_write && !readMyWritesOnly_)
-          for (auto it2 = it + 1;
-               it2 != trans_last && it2->same_item(*it);
-               ++it2)
-            if (it2->has_write()) {
-              has_write = true;
-              break;
-            }
-        if (!it->sharedObj()->check(*it, has_write)) {
+        if (!it->sharedObj()->check(*it, *this)) {
           success = false;
           goto end;
         }
       }
     
     //phase3
-    for (TransItem& ti : transSet_) {
+    for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
+      TransItem& ti = *it;
       if (ti.has_write()) {
 #if PERF_LOGGING
         total_w++;
@@ -235,16 +280,17 @@ public:
     
   end:
 
-    for (auto it = trans_first; it != trans_last; )
-      if (it->has_write()) {
-        TransItem* me = it;
+    for (auto it = permute; it != perm_end; ) {
+      TransItem *me = &transSet_[*it];
+      if (me->has_write()) {
         me->sharedObj()->unlock(*me);
         ++it;
         if (!readMyWritesOnly_)
-          for (; it != trans_last && it->same_item(*me); ++it)
+          for (; it != perm_end && transSet_[*it].same_item(*me); ++it)
             /* do nothing */;
       } else
         ++it;
+    }
     
     if (success) {
       commitSuccess();
@@ -290,9 +336,11 @@ private:
 
 private:
   TransSet transSet_;
+  int permute[INIT_SET_SIZE];
+  int perm_size;
   bool readMyWritesOnly_;
   bool isAborted_;
-
+  int16_t firstWrite_;
 };
 
 threadinfo_t Transaction::tinfo[MAX_THREADS];

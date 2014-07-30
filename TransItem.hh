@@ -18,7 +18,9 @@ template <> struct packer<true> {
   template <typename T>
   void* pack(T value) {
     void* x;
-    memcpy(&x, &value, sizeof(T));
+    // yuck. we need to force T's copy constructor to be called at some point so we do this...
+    new (&x) T(value);
+
     return x;
   }
 
@@ -28,7 +30,7 @@ template <> struct packer<true> {
   }
 
   template <typename T>
-  void free_packed(void*& packed) { (void)packed; }
+  void free_packed(void*& packed) { if (!__has_trivial_copy(T)) { this->unpack<T>(packed).T::~T(); } }
 };
 
 template <> struct packer<false> {
@@ -52,20 +54,17 @@ template <> struct packer<false> {
 template <typename T>
 inline void *pack(T v) {
   // TODO: probably better to use std::is_trivially_copyable or copy_constructible but gcc sucks :(
-  return packer<__has_trivial_copy(T)
-    && sizeof(T) <= sizeof(void*)>().pack(std::move(v));
+  return packer<sizeof(T) <= sizeof(void*)>().pack(std::move(v));
 }
 
 template <typename T>
 inline T& unpack(void *&vp) {
-  return packer<__has_trivial_copy(T)
-    && sizeof(T) <= sizeof(void*)>().template unpack<T>(vp);
+  return packer<sizeof(T) <= sizeof(void*)>().template unpack<T>(vp);
 }
 
 template <typename T>
 inline void free_packed(void *&vp) {
-  packer<__has_trivial_copy(T)
-    && sizeof(T) <= sizeof(void*)>().template free_packed<T>(vp);
+  packer<sizeof(T) <= sizeof(void*)>().template free_packed<T>(vp);
 }
 
 struct TransData {
@@ -77,7 +76,7 @@ struct TransData {
   inline bool operator<(const TransData& d2) const {
     return key < d2.key;
   }
-  // this word must be unique (to a particular item) and consistently ordered across transactions                
+  // this word must be unique (to a particular item) and consistently ordered across transactions
   void *key;
   void *rdata;
   void *wdata;
@@ -86,7 +85,8 @@ struct TransData {
 class Shared;
 
 struct TransItem {
-  TransItem(Shared *s, TransData data) : shared(s), data(data) {}
+  template <typename K, typename RD, typename WD>
+  TransItem(Shared *s, K k, RD rd, WD wd) : shared(s), data(k, rd, wd) {}
 
   Shared *sharedObj() const {
     return shared.ptr();
@@ -124,8 +124,10 @@ struct TransItem {
   }
 
   inline bool operator<(const TransItem& t2) const {
-      return data < t2.data
-        || (data == t2.data && shared < t2.shared);
+    // we compare keys and THEN shared objects here so that read and write keys with the same value
+    // are next to each other
+    return data < t2.data
+      || (data == t2.data && shared < t2.shared);
   }
 
   // TODO: should these be done Transaction methods like their add_ equivalents?
@@ -161,25 +163,25 @@ struct TransItem {
 
 private:
   template <typename T>
-  void add_write(T wdata) {
+  void _add_write(T wdata) {
     shared.or_flags(WRITER_BIT);
     // TODO: this assumes that a given writer data always has the same type.
     // this is certainly true now but we probably shouldn't assume this in general
     // (hopefully we'll have a system that can automatically call destructors and such
     // which will make our lives much easier)
     //free_packed<T>(data.wdata);
-    data.wdata = pack(wdata);
+    data.wdata = pack(std::move(wdata));
   }
   template <typename T>
-  void add_read(T rdata) {
+  void _add_read(T rdata) {
     shared.or_flags(READER_BIT);
     //free_packed<T>(data.rdata);
-    data.rdata = pack(rdata);
+    data.rdata = pack(std::move(rdata));
   }
-  void add_undo() {
+  void _add_undo() {
     shared.or_flags(UNDO_BIT);
   }
-  void add_afterC() {
+  void _add_afterC() {
     shared.or_flags(AFTERC_BIT);
   }
 
