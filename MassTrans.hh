@@ -895,6 +895,7 @@ private:
     do {
       do {
 	vers = e->version();
+	relax_fence();
       } while (is_locked(vers));
       fence();
 #if PERF_LOGGING
