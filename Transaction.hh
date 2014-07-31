@@ -239,6 +239,9 @@ public:
 
     if (firstWrite_ == -1) firstWrite_ = transSet_.size();
 
+    int permute_alloc[transSet_.size() - firstWrite_];
+    permute = permute_alloc;
+
     //    int permute[transSet_.size() - firstWrite_];
     /*int*/ perm_size = 0;
     auto begin = &transSet_[0];
@@ -354,7 +357,7 @@ private:
 
 private:
   TransSet transSet_;
-  int permute[INIT_SET_SIZE];
+  int *permute;
   int perm_size;
   bool readMyWritesOnly_;
   bool isAborted_;
