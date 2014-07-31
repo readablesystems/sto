@@ -122,7 +122,7 @@ public:
 
   // adds item without checking its presence in the array
   template <bool NOCHECK = true, typename T>
-  TransItem& add_item(Shared *s, T key) {
+  TransItem& add_item(Shared *s, const T& key) {
     if (NOCHECK) {
       readMyWritesOnly_ = false;
     }
@@ -134,9 +134,12 @@ public:
 
   // tries to find an existing item with this key, otherwise adds it
   template <typename T>
-  TransItem& item(Shared *s, T key) {
+  TransItem& item(Shared *s, const T& key) {
     TransItem *ti;
-    if ((ti = has_item(s, key)))
+    // we use the firstwrite optimization when checking for item(), but do a full check if they call has_item.
+    // kinda jank, ideal I think would be we'd figure out when it's the first write, and at that point consolidate
+    // the set to be doing rmw (and potentially even combine any duplicate reads from earlier)
+    if ((ti = _firstwrite_has_item(s, key)))
       return *ti;
 
     return add_item<false>(s, key);
@@ -144,15 +147,13 @@ public:
 
   // tries to find an existing item with this key, returns NULL if not found
   template <typename T>
-  TransItem* has_item(Shared *s, T key) {
-    // ehhh
-    if (firstWrite_ == -1) return NULL;
+  TransItem* has_item(Shared *s, const T& key) {
     // TODO: the semantics here are wrong. this all works fine if key if just some opaque pointer (which it sorta has to be anyway)
     // but if it wasn't, we'd be doing silly copies here, AND have totally incorrect behavior anyway because k would be a unique
     // pointer and thus not comparable to anything in the transSet. We should either actually support custom key comparisons
     // or enforce that key is in fact trivially copyable/one word
     void *k = pack(key);
-    for (auto it = transSet_.begin() + firstWrite_; it != transSet_.end(); ++it) {
+    for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
       TransItem& ti = *it;
 #if PERF_LOGGING
       total_searched++;
@@ -161,7 +162,14 @@ public:
         return &ti;
       }
     }
-    return NULL;
+    return NULL;    
+  }
+
+  template <typename T>
+  TransItem* _firstwrite_has_item(Shared *s, const T& key) {
+    // ehhh
+    //    if (firstWrite_ == -1) return NULL;
+    return has_item(s, key);
   }
 
   template <typename T>

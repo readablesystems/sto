@@ -15,7 +15,7 @@
 #define RCU 0
 #define ABORT_ON_WRITE_READ_CONFLICT 0
 
-#define READ_MY_WRITES 0
+#define READ_MY_WRITES 1
 
 #if PERF_LOGGING
 uint64_t node_aborts;
@@ -158,11 +158,18 @@ typedef stuffed_str<uint32_t> versioned_str;
       return new versioned_value_struct<T>();
     }
 
+    template <typename Unused>
+    static versioned_value_struct* make(Unused...) {
+      assert(0);
+      return NULL;
+    }
+
     inline void set_value(const T& v) {
       value = v;
     }
 
-    inline void read_value(T& v, size_t) {
+    inline void read_value(T& v, size_t unused = (size_t)-1) {
+      (void)unused;
       v = value;
     }
 
@@ -190,20 +197,20 @@ typedef stuffed_str<uint32_t> versioned_str;
   template <>
   struct versioned_value_struct<versioned_str> : versioned_str {
     // we define this so we can compile with code that uses default versioned_value_struct
-    static versioned_value_struct<versioned_str>* make() { ALWAYS_ASSERT(0); return NULL; }
+    static versioned_value_struct<versioned_str>* make() { assert(0); return NULL; }
 
     template <typename StringType>
     inline void set_value(const StringType& v) {
       auto ptr = this->replace(v.data(), v.length(), malloc);
       if (ptr) {
-	//	ALWAYS_ASSERT(0);
+	assert(0);
       }
     }
 
     // responsibility is on the caller of this method to make sure this read is atomic
     template <typename StringType>
-    inline void read_value(StringType &v, size_t max_read) {
-      v.assign(this->data(), std::min(this->length(), max_read));
+    inline void read_value(StringType &v, size_t max_read = (size_t)-1) {
+      v.assign(this->data(), std::min((size_t)this->length(), max_read));
     }
     
     inline uint32_t& version() {
@@ -270,17 +277,23 @@ public:
   }
 
   bool put(Str key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
-#if 0
     cursor_type lp(table_, key);
     bool found = lp.find_insert(*ti.ti);
     if (found) {
       lock(&lp.value()->version());
+      // this will uses value's copy constructor (TODO: just doing this may be unsafe and we should be using rcu for dealloc)
+      lp.value()->set_value(value);
     } else {
-      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
-      lp.value() = new(p) versioned_value<V>;
+      versioned_value* val;
+      if (is_versioned_str()) {
+	val = (versioned_value*)versioned_value::make(value, invalid_bit, malloc);
+      } else {
+	val = versioned_value::make();
+	val->set_value(value);
+	val->version() = invalid_bit;
+      }
+      lp.value() = val;
     }
-    // this will uses value's copy constructor (TODO: just doing this may be unsafe and we should be using rcu for dealloc)
-    lp.value()->value = value;
     if (found) {
       inc_version(lp.value()->version());
       unlock(&lp.value()->version());
@@ -289,15 +302,13 @@ public:
     }
     lp.finish(1, *ti.ti);
     return found;
-#endif
-    return false;
   }
 
   bool get(Str key, value_type& value, threadinfo_type& ti = mythreadinfo) {
     unlocked_cursor_type lp(table_, key);
     bool found = lp.find_unlocked(*ti.ti);
     if (found)
-      value = lp.value()->value;
+      lp.value()->read_value(value);
     return found;
   }
 
@@ -381,7 +392,11 @@ public:
 #if PERF_LOGGING
       key_mallocs++;
 #endif
-      t.add_write(item, std::move(key));
+      if (std::is_same<std::string, StringType>::value)
+	t.add_write(item, key);
+      else
+	// force a copy if e.g. string type is Str
+	t.add_write(item, std::string(key));
       item.set_flags(delete_bit);
       return found;
     } else {
@@ -421,7 +436,7 @@ public:
       //      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
       versioned_value* val;
       if (is_versioned_str()) {
-	val = (versioned_value*)versioned_str::make(value.data(), value.length(), invalid_bit, malloc);
+	val = (versioned_value*)versioned_value::make(value, invalid_bit, malloc);
       } else {
 	val = versioned_value::make();
 	val->set_value(value);
@@ -452,7 +467,11 @@ public:
 #endif
       }
       auto& item = t.add_item<false>(this, val);
-      t.add_write(item, std::move(key));
+      if (std::is_same<std::string, StringType>::value)
+	t.add_write(item, key);
+      else
+	// force a copy
+	t.add_write(item, std::string(key));
       t.add_undo(item);
       return found;
     }
@@ -463,7 +482,7 @@ public:
     return transPut</*insert*/false, /*set*/true>(t, k, v, ti);
   }
 
-  template <typename KeyType>
+  template <typename StringType>
   bool transInsert(Transaction& t, StringType k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
     return !transPut</*insert*/true, /*set*/false>(t, k, v, ti);
   }
@@ -486,7 +505,7 @@ public:
       auto& item = this->t_item(t, value);
       if (!item.has_read())
         t.add_read(item, value->version());
-      return callback(key, value);
+      return callback(key, is_versioned_str() ? value : value->value);
     };
 
     range_scanner<decltype(node_callback), decltype(value_callback)> scanner(end, node_callback, value_callback);
@@ -677,7 +696,7 @@ public:
     sprintf(s, "%d", k);
     value_type v;
     if (!transGet(t, s, v)) {
-      return 0;
+      return value_type();
     }
     return v;
   }
@@ -765,11 +784,9 @@ private:
 	  // TODO: none of these are right anymore
 	ref_mallocs++;
 #endif
-      if (is_versioned_str() && e->needs_resize(value.length())) {
-	//	printf("need: %lu have: %d\n", value.length(), e->capacity());
-      }
+	// TODO: if (is_versioned_str() && e->needs_resize(value.length()))
       // TODO: what exactly is different between using std::move here vs not??
-      t.add_write(item, std::move(value));
+      t.add_write(item, value);
 	}
     }
     return true;
@@ -909,5 +926,3 @@ __thread typename MassTrans<V>::threadinfo_type MassTrans<V>::mythreadinfo;
 template <typename V>
 constexpr typename MassTrans<V>::Version MassTrans<V>::invalid_bit;
 
-volatile uint64_t globalepoch;
-volatile bool recovering;

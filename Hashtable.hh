@@ -403,7 +403,7 @@ public:
     return ((v1 ^ v2) & version_mask) == 0;
   }
 
-  bool check(TransItem& item, bool isReadWrite) {
+  bool check(TransItem& item, Transaction& t) {
     if (is_bucket(item.key())) {
       bucket_entry& buck = map_[bucket_value(item.key())];
       return versionCheck(item.template read_value<Version>(), buck.version) && !is_locked(buck.version);
@@ -412,7 +412,7 @@ public:
     auto read_version = item.template read_value<Version>();
     // if item has undo then its an insert so no validity check needed.
     // otherwise we check that it is both valid and not locked
-    bool validity_check = item.has_undo() || (el->valid() && (isReadWrite || !is_locked(el->version)));
+    bool validity_check = item.has_undo() || (el->valid() && (!is_locked(el->version) || t.check_for_write(item)));
     return validity_check && ((read_version & valid_check_only_bit) ||
                               versionCheck(read_version, el->version));
   }
