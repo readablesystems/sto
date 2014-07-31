@@ -139,15 +139,28 @@ public:
     // we use the firstwrite optimization when checking for item(), but do a full check if they call has_item.
     // kinda jank, ideal I think would be we'd figure out when it's the first write, and at that point consolidate
     // the set to be doing rmw (and potentially even combine any duplicate reads from earlier)
-    if ((ti = _firstwrite_has_item(s, key)))
+    if ((ti = has_item(s, key)))
+      return *ti;
+
+    return add_item<false>(s, key);
+  }
+
+  // gets an item that is intended to be read only. this method essentially allows for duplicate items
+  // in the set in some cases
+  template <typename T>
+  TransItem& read_only_item(Shared *s, const T& key) {
+    TransItem *ti;
+    if ((ti = has_item<true>(s, key)))
       return *ti;
 
     return add_item<false>(s, key);
   }
 
   // tries to find an existing item with this key, returns NULL if not found
-  template <typename T>
+  template <bool read_only = false, typename T>
   TransItem* has_item(Shared *s, const T& key) {
+    if (read_only && firstWrite_ == -1) return NULL;
+
     // TODO: the semantics here are wrong. this all works fine if key if just some opaque pointer (which it sorta has to be anyway)
     // but if it wasn't, we'd be doing silly copies here, AND have totally incorrect behavior anyway because k would be a unique
     // pointer and thus not comparable to anything in the transSet. We should either actually support custom key comparisons
@@ -162,21 +175,18 @@ public:
         return &ti;
       }
     }
-    return NULL;    
+    return NULL;
   }
 
-  template <typename T>
-  TransItem* _firstwrite_has_item(Shared *s, const T& key) {
-    // ehhh
-    //    if (firstWrite_ == -1) return NULL;
-    return has_item(s, key);
+  int item_index(TransItem& ti) {
+    return &ti - &transSet_[0];
   }
 
   template <typename T>
   void add_write(TransItem& ti, T wdata) {
-    if (firstWrite_ < 0)
-      firstWrite_ = &ti - &transSet_[0];
-    // TODO: add firstWrites optimization again
+    auto idx = item_index(ti);
+    if (firstWrite_ < 0 || idx < firstWrite_)
+      firstWrite_ = idx;
     ti._add_write(std::move(wdata));
   }
   template <typename T>
