@@ -893,7 +893,9 @@ private:
   void atomicRead(versioned_value *e, Version& vers, value_type& val, size_t max_read = (size_t)-1) {
     Version v2;
     do {
-      vers = e->version();
+      do {
+	vers = e->version();
+      } while (is_locked(vers));
       fence();
 #if PERF_LOGGING
       read_mallocs++;
