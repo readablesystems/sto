@@ -123,27 +123,27 @@ void rangeQueryTest() {
 
   Transaction t;
   int x = 0;
-  h.transQuery(t, "10", Masstree::Str(), [&] (Masstree::Str , int ) { x++; });
+  h.transQuery(t, "10", Masstree::Str(), [&] (Masstree::Str , int ) { x++; return true; });
   assert(x == n-10+1);
   
   x = 0;
-  h.transQuery(t, "10", ns, [&] (Masstree::Str , int) { x++; });
+  h.transQuery(t, "10", ns, [&] (Masstree::Str , int) { x++; return true; });
   assert(x == n-10);
 
   x = 0;
-  h.transRQuery(t, ns, Masstree::Str(), [&] (Masstree::Str , int ) { x++; });
+  h.transRQuery(t, ns, Masstree::Str(), [&] (Masstree::Str , int ) { x++; return true; });
   assert(x == n-10+1);
   
   x = 0;
-  h.transRQuery(t, ns, "90", [&] (Masstree::Str , int ) { x++; });
+  h.transRQuery(t, ns, "90", [&] (Masstree::Str , int ) { x++; return true; });
   assert(x == n-90);
 
   x = 0;
-  h.transQuery(t, "10", "25", [&] (Masstree::Str , int ) { x++; });
+  h.transQuery(t, "10", "25", [&] (Masstree::Str , int ) { x++; return true; });
   assert(x == 25-10);
 
   x = 0;
-  h.transQuery(t, "10", "26", [&] (Masstree::Str , int ) { x++; });
+  h.transQuery(t, "10", "26", [&] (Masstree::Str , int ) { x++; return true; });
   assert(x == 26-10);
 
   assert(t.commit());
@@ -272,8 +272,8 @@ int main() {
   } catch (Transaction::Abort E) {}
 
   Transaction t19;
-  h.transQuery(t19, "0", "2", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); });
-  h.transQuery(t19, "4", "4", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); });
+  h.transQuery(t19, "0", "2", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
+  h.transQuery(t19, "4", "4", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
   assert(t19.commit());
 
   // insert-then-delete node test

@@ -119,24 +119,24 @@ public:
   void* allocate(size_t sz, memtag) {
     return malloc(sz);
   }
-  void deallocate(void* p, size_t sz, memtag) {
+  void deallocate(void* , size_t , memtag) {
     // in C++ allocators, 'p' must be nonnull
     //free(p);
   }
-  void deallocate_rcu(void *p, size_t sz, memtag) {
+  void deallocate_rcu(void *, size_t , memtag) {
   }
 
   void* pool_allocate(size_t sz, memtag) {
     int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
     return malloc(nl * CACHE_LINE_SIZE);
   }
-  void pool_deallocate(void* p, size_t sz, memtag) {
+  void pool_deallocate(void* , size_t , memtag) {
   }
-  void pool_deallocate_rcu(void* p, size_t sz, memtag) {
+  void pool_deallocate_rcu(void* , size_t , memtag) {
   }
 
   // RCU
-  void rcu_register(rcu_callback *cb) {
+  void rcu_register(rcu_callback *) {
     //    scoped_rcu_base<false> guard;
     //rcu::s_instance.free_with_fn(cb, rcu_callback_function);
   }
@@ -180,7 +180,8 @@ typedef stuffed_str<uint32_t> versioned_str;
     void print(FILE* f, const char* prefix,
                int indent, lcdf::Str key, kvtimestamp_t,
                char* suffix) {
-      fprintf(f, "%s%*s%.*s = %s%s (version %d)\n", prefix, indent, "", key.len, key.s, value.data(), suffix, version);
+      //      int fprintf(FILE * , const char * , ...);
+      fprintf(f, "%s%*s%.*s = %d%s (version %d)\n", prefix, indent, "", key.len, key.s, value, suffix, version_);
     }
     
 #if 0
@@ -494,6 +495,17 @@ public:
     return 0;
   }
 
+  // goddammit templates
+  template <typename Callback, typename V2>
+  static bool query_callback_overload(Str key, versioned_value_struct<V2> *val, Callback c) {
+    return c(key, val->value);
+  }
+
+  template <typename Callback>
+  static bool query_callback_overload(Str key, versioned_value_struct<versioned_str> *val, Callback c) {
+    return c(key, val);
+  }
+
   // range queries
   template <typename Callback>
   void transQuery(Transaction& t, Str begin, Str end, Callback callback, threadinfo_type& ti = mythreadinfo) {
@@ -505,7 +517,7 @@ public:
       auto& item = this->t_item(t, value);
       if (!item.has_read())
         t.add_read(item, value->version());
-      return callback(key, is_versioned_str() ? value : value->value);
+      return query_callback_overload(key, value, callback);
     };
 
     range_scanner<decltype(node_callback), decltype(value_callback)> scanner(end, node_callback, value_callback);
@@ -521,7 +533,7 @@ public:
       auto& item = this->t_item(t, value);
       if (!item.has_read())
         t.add_read(item, value->version());
-      return callback(key, value);
+      return query_callback_overload(key, value, callback);
     };
 
     range_scanner<decltype(node_callback), decltype(value_callback), true> scanner(end, node_callback, value_callback);
