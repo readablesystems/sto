@@ -13,7 +13,7 @@
 #include "MassTrans.hh"
 
 // size of array
-#define ARRAY_SZ 1000
+#define ARRAY_SZ 100000
 
 // only used for randomRWs test
 #define GLOBAL_SEED 0
@@ -32,7 +32,7 @@
 
 #define RANDOM_REPORT 0
 
-#define STRING_VALUES 1
+#define STRING_VALUES 0
 
 kvepoch_t global_log_epoch = 0;
 volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly                    

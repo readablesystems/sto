@@ -906,8 +906,8 @@ private:
     Version v2;
     do {
       do {
-	vers = e->version();
 	relax_fence();
+	vers = e->version();
       } while (is_locked(vers));
       fence();
 #if PERF_LOGGING
