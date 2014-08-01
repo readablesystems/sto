@@ -83,7 +83,7 @@ public:
     if (e) {
       set(e, val);
     } else {
-      insert_locked(buck, k, val);
+      insert_locked<true>(buck, k, val);
     }
     unlock(&buck.version);
   }
@@ -152,11 +152,15 @@ public:
     *v = cur;
   }
 
+  template <bool markValid = false>
   void insert_locked(bucket_entry& buck, Key k, const Value& val) {
     assert(is_locked(buck.version));
     auto new_head = new internal_elem(k, val);
     internal_elem *cur_head = buck.head;
     new_head->next = cur_head;
+    if (markValid) {
+      new_head->valid() = true;
+    }
     buck.head = new_head;
     inc_version(buck.version);
   }
@@ -507,7 +511,7 @@ public:
   Value transRead(Transaction& t, Key k) {
     Value v;
     if (!transGet(t, k, v)) {
-      return 0;
+      return Value();
     }
     return v;
   }

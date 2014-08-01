@@ -10,12 +10,10 @@
 
 #define HASHTABLE 0
 
-#if !HASHTABLE
 kvepoch_t global_log_epoch = 0;
 volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly
 kvtimestamp_t initial_timestamp;
 volatile bool recovering = false; // so don't add log entries, and free old value immediately
-#endif
 
 using namespace std;
 
@@ -271,10 +269,12 @@ int main() {
     assert(0);
   } catch (Transaction::Abort E) {}
 
+#if !HASHTABLE
   Transaction t19;
   h.transQuery(t19, "0", "2", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
   h.transQuery(t19, "4", "4", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
   assert(t19.commit());
+#endif
 
   // insert-then-delete node test
   insertDeleteTest(false);

@@ -478,6 +478,7 @@ void checkIsolatedWrites() {
 
 void *isolatedWrites(void *p) {
   int me = (intptr_t)p;
+  Transaction::threadid = me;
 #if MASSTREE
   a->thread_init();
 #endif
@@ -503,6 +504,7 @@ void *isolatedWrites(void *p) {
 
 void *blindWrites(void *p) {
   int me = (long long)p;
+  Transaction::threadid = me;
 #if MASSTREE
   a->thread_init();
 #endif
@@ -540,6 +542,7 @@ void checkBlindWrites() {
 
 void *interferingRWs(void *p) {
   int me = (intptr_t)p;
+  Transaction::threadid = me;
 #if MASSTREE
   a->thread_init();
 #endif
