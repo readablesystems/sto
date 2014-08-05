@@ -120,6 +120,16 @@ public:
     if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
   }
 
+  void consolidateReads() {
+    // TODO: should be stable sort technically, but really we want to use insertion sort
+    auto first = transSet_.begin();
+    auto last = transSet_.end();
+    std::sort(first, last);
+    // takes the first element of any duplicates which is what we want. that is, we want to verify
+    // only the oldest read
+    transSet_.resize(std::unique(first, last) - first);
+  }
+
   // adds item without checking its presence in the array
   template <bool NOCHECK = true, typename T>
   TransItem& add_item(Shared *s, const T& key) {
@@ -135,14 +145,14 @@ public:
   // tries to find an existing item with this key, otherwise adds it
   template <typename T>
   TransItem& item(Shared *s, const T& key) {
-    TransItem *ti;
+    TransItem *ti = has_item(s, key);
     // we use the firstwrite optimization when checking for item(), but do a full check if they call has_item.
     // kinda jank, ideal I think would be we'd figure out when it's the first write, and at that point consolidate
     // the set to be doing rmw (and potentially even combine any duplicate reads from earlier)
-    if ((ti = has_item(s, key)))
-      return *ti;
 
-    return add_item<false>(s, key);
+    if (!ti)
+      ti = &add_item<false>(s, key);
+    return *ti;
   }
 
   // gets an item that is intended to be read only. this method essentially allows for duplicate items
@@ -161,6 +171,10 @@ public:
   TransItem* has_item(Shared *s, const T& key) {
     if (read_only && firstWrite_ == -1) return NULL;
 
+    if (!read_only && firstWrite_ == -1) {
+      consolidateReads();
+    }
+
     // TODO: the semantics here are wrong. this all works fine if key if just some opaque pointer (which it sorta has to be anyway)
     // but if it wasn't, we'd be doing silly copies here, AND have totally incorrect behavior anyway because k would be a unique
     // pointer and thus not comparable to anything in the transSet. We should either actually support custom key comparisons
@@ -172,9 +186,13 @@ public:
       total_searched++;
 #endif
       if (ti.sharedObj() == s && ti.data.key == k) {
+        if (!read_only && firstWrite_ == -1)
+          firstWrite_ = item_index(ti);
         return &ti;
       }
     }
+    if (!read_only && firstWrite_ == -1)
+      firstWrite_ = transSet_.size();
     return NULL;
   }
 
@@ -204,7 +222,7 @@ public:
   bool check_for_write(TransItem& item) {
     auto it = &item;
     bool has_write = it->has_write();
-    if (!has_write /*&& (!readMyWritesOnly_ || ((unsigned)firstWrite_ != transSet_.size() && it - &transSet_[0] < (unsigned)firstWrite_))*/) {
+    if (!has_write && !readMyWritesOnly_) {
       has_write = std::binary_search(permute, permute + perm_size, -1, [&] (const int& i, const int& j) {
 	  auto& e1 = unlikely(i < 0) ? item : transSet_[i];
 	  auto& e2 = likely(j < 0) ? item : transSet_[j];

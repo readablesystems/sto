@@ -123,6 +123,10 @@ struct TransItem {
     return data.key;
   }
 
+  inline bool operator==(const TransItem& t2) const {
+    return data == t2.data && sharedObj() == t2.sharedObj();
+  }
+
   inline bool operator<(const TransItem& t2) const {
     // we compare keys and THEN shared objects here so that read and write keys with the same value
     // are next to each other

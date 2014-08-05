@@ -320,7 +320,7 @@ public:
     if (found) {
       versioned_value *e = lp.value();
       //      __builtin_prefetch(&e->version);
-      auto& item = t_item(t, e);
+      auto& item = t_read_only_item(t, e);
       if (!validityCheck(item, e)) {
         t.abort();
         return false;
@@ -333,12 +333,12 @@ public:
       }
       if (item.has_write()) {
         // read directly from the element if we're inserting it
-	if (we_inserted(item)) {
-	  e->read_value(retval);
-	} else {
-	  // TODO: should we refcount, copy, or...?
-	  retval = item.template write_value<value_type>();
-	}
+        if (we_inserted(item)) {
+          e->read_value(retval);
+        } else {
+          // TODO: should we refcount, copy, or...?
+          retval = item.template write_value<value_type>();
+        }
         return true;
       }
 #endif
@@ -415,10 +415,10 @@ public:
       if (found) {
         return handlePutFound<INSERT, SET>(t, lp.value(), value);
       } else {
-	if (!INSERT) {
-	  ensureNotFound(t, lp.node(), lp.full_version_value());
-	  return false;
-	}
+        if (!INSERT) {
+          ensureNotFound(t, lp.node(), lp.full_version_value());
+          return false;
+        }
       }
     }
 
@@ -437,11 +437,11 @@ public:
       //      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
       versioned_value* val;
       if (is_versioned_str()) {
-	val = (versioned_value*)versioned_value::make(value, invalid_bit, malloc);
+        val = (versioned_value*)versioned_value::make(value, invalid_bit, malloc);
       } else {
-	val = versioned_value::make();
-	val->set_value(value);
-	val->version() = invalid_bit;
+        val = versioned_value::make();
+        val->set_value(value);
+        val->version() = invalid_bit;
       }
       fence();
       lp.value() = val;
@@ -469,10 +469,10 @@ public:
       }
       auto& item = t.add_item<false>(this, val);
       if (std::is_same<std::string, StringType>::value)
-	t.add_write(item, key);
+        t.add_write(item, key);
       else
-	// force a copy
-	t.add_write(item, std::string(key));
+        // force a copy
+        t.add_write(item, std::string(key));
       t.add_undo(item);
       return found;
     }
@@ -514,7 +514,7 @@ public:
     };
     auto value_callback = [&] (Str key, versioned_value* value) {
       // TODO: this needs to read my writes
-      auto& item = this->t_item(t, value);
+      auto& item = this->t_read_only_item(t, value);
       if (!item.has_read())
         t.add_read(item, value->version());
       return query_callback_overload(key, value, callback);
@@ -530,7 +530,7 @@ public:
       this->ensureNotFound(t, node, version);
     };
     auto value_callback = [&] (Str key, versioned_value* value) {
-      auto& item = this->t_item(t, value);
+      auto& item = this->t_read_only_item(t, value);
       if (!item.has_read())
         t.add_read(item, value->version());
       return query_callback_overload(key, value, callback);
@@ -807,7 +807,7 @@ private:
   template <typename NODE, typename VERSION>
   void ensureNotFound(Transaction& t, NODE n, VERSION v) {
     // TODO: could be more efficient to use add_item here, but that will also require more work for read-then-insert
-    auto& item = t_item(t, tag_inter(n));
+    auto& item = t_read_only_item(t, tag_inter(n));
     if (!item.has_read()) {
       t.add_read(item, v);
     }
@@ -837,6 +837,14 @@ private:
 #endif
   }
 
+  template <typename T>
+  TransItem& t_read_only_item(Transaction& t, T e) {
+#if READ_MY_WRITES
+    return t.read_only_item(this, e);
+#else
+    return t.add_item(this, e);
+#endif
+  }
 
   bool we_inserted(TransItem& item) {
     return item.has_undo();

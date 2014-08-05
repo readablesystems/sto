@@ -51,6 +51,8 @@ class local_vector {
     template <typename... Args> inline void emplace_back(Args&&... args);
     inline void pop_back();
 
+    inline void resize(size_type n);
+
     inline local_vector<T, N, A>& operator=(const local_vector<T, N, A>& x);
     template <int NN, typename AA>
     inline local_vector<T, N, A>& operator=(const local_vector<T, NN, AA>& x);
@@ -260,6 +262,14 @@ inline void local_vector<T, N, A>::clear() {
     for (size_type i = 0; i != r_.size_; ++i)
         r_.destroy(&r_.v_[i]);
     r_.size_ = 0;
+}
+
+template <typename T, int N, typename A>
+inline void local_vector<T, N, A>::resize(size_type n) {
+    // don't currently support making the vector larger, only shrinking
+    assert(r_.size_ >= n);
+    // TODO: we really should be destroying elements here
+    r_.size_ = n;
 }
 
 template <typename T, int N, typename A>
