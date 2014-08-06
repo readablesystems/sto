@@ -269,7 +269,7 @@ template<typename T> using versioned_value_struct = versioned_value_struct_defau
     }
   };
 
-template <typename V, template<class> class Box = versioned_value_struct>
+template <typename V, typename Box = versioned_value_struct_default<V>>
 class MassTrans : public Shared {
 public:
 #if !RCU
@@ -280,17 +280,17 @@ public:
     threadinfo *ti;
   };
 
-  typedef typename Box<V>::value_type value_type;
+  typedef V value_type;
   typedef ti_wrapper threadinfo_type;
   typedef Masstree::Str Str;
 
-  typedef typename Box<V>::version_type Version;
+  typedef typename Box::version_type Version;
 
   static __thread threadinfo_type mythreadinfo;
 
 private:
 
-  typedef Box<V> versioned_value;
+  typedef Box versioned_value;
   
 public:
 
@@ -522,12 +522,12 @@ public:
 
   // goddammit templates/hax
   template <typename Callback, typename V2>
-  static bool query_callback_overload(Str key, Box<V2> *val, Callback c) {
+  static bool query_callback_overload(Str key, versioned_value_struct<V2> *val, Callback c) {
     return c(key, val->read_value());
   }
 
   template <typename Callback>
-  static bool query_callback_overload(Str key, Box<versioned_str> *val, Callback c) {
+  static bool query_callback_overload(Str key, versioned_str_struct *val, Callback c) {
     return c(key, val);
   }
 
@@ -995,9 +995,9 @@ private:
   table_type table_;
 };
 
-template <typename V, template<class> class Box>
+template <typename V, typename Box>
 __thread typename MassTrans<V, Box>::threadinfo_type MassTrans<V, Box>::mythreadinfo;
 
-template <typename V, template<class> class Box>
+template <typename V, typename Box>
 constexpr typename MassTrans<V, Box>::Version MassTrans<V, Box>::invalid_bit;
 
