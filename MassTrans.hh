@@ -146,19 +146,19 @@ private:
 typedef stuffed_str<uint32_t> versioned_str;
 
 template <typename T, typename=void>
-struct versioned_value_struct_default /*: public threadinfo::rcu_callback*/ {
+struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
   typedef T value_type;
   typedef uint32_t version_type;
   
-  static versioned_value_struct_default* make(const value_type& val, version_type version) {
-    return new versioned_value_struct_default<T>(val, version);
+  static versioned_value_struct* make(const value_type& val, version_type version) {
+    return new versioned_value_struct<T>(val, version);
   }
   
   bool needsResize(const value_type&) {
     return false;
   }
   
-  versioned_value_struct_default* resizeIfNeeded(const value_type&) {
+  versioned_value_struct* resizeIfNeeded(const value_type&) {
     return NULL;
   }
   
@@ -192,7 +192,7 @@ struct versioned_value_struct_default /*: public threadinfo::rcu_callback*/ {
 #endif
   
 private:
-  versioned_value_struct_default(const value_type& val, version_type v) : version_(v), value_(val) {}
+  versioned_value_struct(const value_type& val, version_type v) : version_(v), value_(val) {}
   
   version_type version_;
   value_type value_;
@@ -200,19 +200,19 @@ private:
 
 // double box for non trivially copyable types!
 template<typename T>
-struct versioned_value_struct_default<T, typename std::enable_if<!__has_trivial_copy(T)>::type> {
+struct versioned_value_struct<T, typename std::enable_if<!__has_trivial_copy(T)>::type> {
 public:
   typedef T value_type;
   typedef uint32_t version_type;
 
-  static versioned_value_struct_default* make(const value_type& val, version_type version) {
-    return new versioned_value_struct_default(val, version);
+  static versioned_value_struct* make(const value_type& val, version_type version) {
+    return new versioned_value_struct(val, version);
   }
 
   bool needsResize(const value_type&) {
     return false;
   }
-  versioned_value_struct_default* resizeIfNeeded(const value_type&) {
+  versioned_value_struct* resizeIfNeeded(const value_type&) {
     return this;
   }
 
@@ -231,13 +231,11 @@ public:
   }
   
 private:
-  versioned_value_struct_default(const value_type& val, version_type version) : version_(version), valueptr_(new value_type(std::move(val))) {}
+  versioned_value_struct(const value_type& val, version_type version) : version_(version), valueptr_(new value_type(std::move(val))) {}
 
   version_type version_;
   value_type* valueptr_;
 };
-
-template<typename T> using versioned_value_struct = versioned_value_struct_default<T>;
 
   struct versioned_str_struct : public versioned_str {
     typedef Masstree::Str value_type;
@@ -269,7 +267,7 @@ template<typename T> using versioned_value_struct = versioned_value_struct_defau
     }
   };
 
-template <typename V, typename Box = versioned_value_struct_default<V>>
+template <typename V, typename Box = versioned_value_struct<V>>
 class MassTrans : public Shared {
 public:
 #if !RCU
