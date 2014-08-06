@@ -19,10 +19,6 @@
 
 #if PERF_LOGGING
 uint64_t node_aborts;
-uint64_t version_mallocs;
-uint64_t key_mallocs;
-uint64_t ref_mallocs;
-uint64_t read_mallocs;
 #endif
 
 #if !RCU
@@ -151,29 +147,30 @@ typedef stuffed_str<uint32_t> versioned_str;
 
   template <typename T>
   struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
-    uint32_t version_;
-    T value;
+    typedef T value_type;
+    typedef uint32_t version_type;
 
-    static versioned_value_struct* make() {
-      return new versioned_value_struct<T>();
+    static versioned_value_struct* make(const value_type& val, version_type version) {
+      return new versioned_value_struct<T>(val, version);
     }
 
-    template <typename Unused>
-    static versioned_value_struct* make(Unused...) {
-      assert(0);
+    bool needsResize(const value_type&) {
+      return false;
+    }
+
+    versioned_value_struct* resizeIfNeeded(const value_type&) {
       return NULL;
     }
 
-    inline void set_value(const T& v) {
-      value = v;
+    inline void set_value(const value_type& v) {
+      value_ = v;
     }
 
-    inline void read_value(T& v, size_t unused = (size_t)-1) {
-      (void)unused;
-      v = value;
+    inline const value_type& read_value() {
+      return value_;
     }
 
-    inline uint32_t& version() {
+    inline version_type& version() {
       return version_;
     }
 
@@ -181,7 +178,7 @@ typedef stuffed_str<uint32_t> versioned_str;
                int indent, lcdf::Str key, kvtimestamp_t,
                char* suffix) {
       //      int fprintf(FILE * , const char * , ...);
-      fprintf(f, "%s%*s%.*s = %d%s (version %d)\n", prefix, indent, "", key.len, key.s, value, suffix, version_);
+      fprintf(f, "%s%*s%.*s = %d%s (version %d)\n", prefix, indent, "", key.len, key.s, value_, suffix, version_);
     }
     
 #if 0
@@ -193,28 +190,41 @@ typedef stuffed_str<uint32_t> versioned_str;
       ti.deallocate(this, sizeof(versioned_value_struct), memtag_value);
     }
 #endif
+
+  private:
+    versioned_value_struct(const value_type& val, version_type v) : version_(v), value_(val) {}
+    
+    version_type version_;
+    value_type value_;
   };
   
   template <>
   struct versioned_value_struct<versioned_str> : versioned_str {
-    // we define this so we can compile with code that uses default versioned_value_struct
-    static versioned_value_struct<versioned_str>* make() { assert(0); return NULL; }
+    typedef Masstree::Str value_type;
+    typedef versioned_str::stuff_type version_type;
+
+    bool needsResize(const value_type& v) {
+      return needs_resize(v.length());
+    }
+
+    versioned_value_struct* resizeIfNeeded(const value_type& potential_new_value) {
+      // TODO: this cast is only safe because we have no ivars or virtual methods
+      return (versioned_value_struct*)this->reserve(versioned_str::size_for(potential_new_value.length()));
+    }
 
     template <typename StringType>
     inline void set_value(const StringType& v) {
-      auto ptr = this->replace(v.data(), v.length(), malloc);
-      if (ptr) {
-	assert(0);
-      }
+      auto *ret = this->replace(v.data(), v.length());
+      // we should already be the proper size at this point
+      assert(ret == this);
     }
 
     // responsibility is on the caller of this method to make sure this read is atomic
-    template <typename StringType>
-    inline void read_value(StringType &v, size_t max_read = (size_t)-1) {
-      v.assign(this->data(), std::min((size_t)this->length(), max_read));
+    value_type read_value() {
+      return Masstree::Str(this->data(), this->length());
     }
     
-    inline uint32_t& version() {
+    inline version_type& version() {
       return stuff();
     }
   };
@@ -285,21 +295,12 @@ public:
       // this will uses value's copy constructor (TODO: just doing this may be unsafe and we should be using rcu for dealloc)
       lp.value()->set_value(value);
     } else {
-      versioned_value* val;
-      if (is_versioned_str()) {
-	val = (versioned_value*)versioned_value::make(value, invalid_bit, malloc);
-      } else {
-	val = versioned_value::make();
-	val->set_value(value);
-	val->version() = invalid_bit;
-      }
+      versioned_value* val = versioned_value::make(value, 0);
       lp.value() = val;
     }
     if (found) {
       inc_version(lp.value()->version());
       unlock(&lp.value()->version());
-    } else {
-      lp.value()->version() = 0;
     }
     lp.finish(1, *ti.ti);
     return found;
@@ -313,8 +314,8 @@ public:
     return found;
   }
 
-  template <typename StringType>
-  /*__attribute__((flatten))*/ bool transGet(Transaction& t, Str key, StringType& retval, size_t max_read = (size_t)-1, threadinfo_type& ti = mythreadinfo) {
+  template <typename ValType>
+  /*__attribute__((flatten))*/ bool transGet(Transaction& t, Str key, ValType& retval, size_t max_read = (size_t)-1, threadinfo_type& ti = mythreadinfo) {
     unlocked_cursor_type lp(table_, key);
     bool found = lp.find_unlocked(*ti.ti);
     if (found) {
@@ -334,7 +335,7 @@ public:
       if (item.has_write()) {
         // read directly from the element if we're inserting it
         if (we_inserted(item)) {
-          e->read_value(retval);
+          retval = e->read_value();
         } else {
           // TODO: should we refcount, copy, or...?
           retval = item.template write_value<value_type>();
@@ -390,9 +391,6 @@ public:
         t.add_read(item, valid_check_only_bit);
       }
       // same as inserts we need to store (copy) key so we can lookup to remove later
-#if PERF_LOGGING
-      key_mallocs++;
-#endif
       if (std::is_same<std::string, StringType>::value)
 	t.add_write(item, key);
       else
@@ -413,7 +411,7 @@ public:
       unlocked_cursor_type lp(table_, key);
       bool found = lp.find_unlocked(*ti.ti);
       if (found) {
-        return handlePutFound<INSERT, SET>(t, lp.value(), value);
+        return handlePutFound<INSERT, SET>(t, lp.value(), key, value);
       } else {
         if (!INSERT) {
           ensureNotFound(t, lp.node(), lp.full_version_value());
@@ -427,23 +425,10 @@ public:
     if (found) {
       versioned_value *e = lp.value();
       lp.finish(0, *ti.ti);
-      return handlePutFound<INSERT, SET>(t, e, value);
+      return handlePutFound<INSERT, SET>(t, e, key, value);
     } else {
-#if PERF_LOGGING
-      version_mallocs++;
-      key_mallocs++;
-      ref_mallocs++;
-#endif
       //      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
-      versioned_value* val;
-      if (is_versioned_str()) {
-        val = (versioned_value*)versioned_value::make(value, invalid_bit, malloc);
-      } else {
-        val = versioned_value::make();
-        val->set_value(value);
-        val->version() = invalid_bit;
-      }
-      fence();
+      versioned_value* val = versioned_value::make(value, invalid_bit);
       lp.value() = val;
 #if ABORT_ON_WRITE_READ_CONFLICT
       auto orig_node = lp.node();
@@ -498,7 +483,7 @@ public:
   // goddammit templates
   template <typename Callback, typename V2>
   static bool query_callback_overload(Str key, versioned_value_struct<V2> *val, Callback c) {
-    return c(key, val->value);
+    return c(key, val->read_value());
   }
 
   template <typename Callback>
@@ -752,8 +737,54 @@ public:
 
 
 private:
+  void reallyHandlePutFound(Transaction& t, TransItem& item, versioned_value *e, Str key, const value_type& value) {
+    // resizing takes a lot of effort, so we first check if we'll need to
+    // (values never shrink in size, so if we don't need to resize, we'll never need to)
+    auto *new_location = e;
+    bool needsResize = e->needsResize(value);
+    if (needsResize) {
+      if (!we_inserted(item)) {
+        // TODO: might be faster to do this part at commit time but easiest to just do it now
+        lock(e);
+        // fuck, we had a weird race condition and now this element is gone. just abort at this point
+        if (e->version() & invalid_bit) {
+          unlock(e);
+          t.abort();
+          return;
+        }
+        e->version() |= invalid_bit;
+        // should be ok to unlock now because any attempted writes will be forced to abort
+        unlock(e);
+      }
+      // does the actual realloc. at this point e is marked invalid so we don't have to worry about
+      // other threads changing e's value
+      new_location = e->resizeIfNeeded(value);
+      // e can't get bigger so this should always be true
+      assert(new_location != e);
+      if (!we_inserted(item)) {
+        // copied version is going to be invalid because we just had to mark e invalid
+        new_location->version() &= ~invalid_bit;
+      }
+      cursor_type lp(table_, key);
+      // TODO: not even trying to pass around threadinfo here
+      bool found = lp.find_locked(*mythreadinfo.ti);
+      assert(found);
+      lp.value() = new_location;
+      lp.finish(0, *mythreadinfo.ti);
+    }
+#if READ_MY_WRITES
+    if (we_inserted(item)) {
+      new_location->set_value(value);
+    } else
+#endif
+    {
+      t.add_write(new_location == e ? item : t.add_item<false>(this, new_location), value);
+    }
+  }
+
+  // returns true if already in tree, false otherwise
   template <bool INSERT=true, bool SET=true>
-  bool handlePutFound(Transaction& t, versioned_value *e, const value_type& value) {
+  bool handlePutFound(Transaction& t, versioned_value *e, Str key, const value_type& value) {
     auto& item = t_item(t, e);
     if (!validityCheck(item, e)) {
       t.abort();
@@ -766,10 +797,7 @@ private:
       if (INSERT) {
         item.set_flags(0);
         assert(!has_delete(item));
-        if (we_inserted(item))
-          e->set_value(value);
-        else
-          t.add_write(item, value);
+        reallyHandlePutFound(t, item, e, key, value);
       } else {
         // delete-then-update == not found
         // delete will check for other deletes so we don't need to re-log that check
@@ -783,23 +811,7 @@ private:
       t.add_read(item, valid_check_only_bit);
     }
     if (SET) {
-#if READ_MY_WRITES
-      // if we're inserting this element already we can just update the value we're inserting
-      if (we_inserted(item))
-	// copy
-        e->set_value(value);
-      else
-#endif
-	{
-	// copy
-#if PERF_LOGGING
-	  // TODO: none of these are right anymore
-	ref_mallocs++;
-#endif
-	// TODO: if (is_versioned_str() && e->needs_resize(value.length()))
-      // TODO: what exactly is different between using std::move here vs not??
-      t.add_write(item, value);
-	}
+      reallyHandlePutFound(t, item, e, key, value);
     }
     return true;
   }
@@ -911,21 +923,20 @@ private:
   }
 
   void atomicRead(versioned_value *e, Version& vers, value_type& val, size_t max_read = (size_t)-1) {
+    (void)max_read;
     Version v2;
     do {
       do {
-	relax_fence();
-	vers = e->version();
+        relax_fence();
+        vers = e->version();
       } while (is_locked(vers));
       fence();
-#if PERF_LOGGING
-      read_mallocs++;
-#endif
-      e->read_value(val, max_read);
+      // TODO: max_read
+      val = e->read_value();
       fence();
       v2 = e->version();
     } while (vers != v2);
-  }
+   }
 
   static constexpr bool is_versioned_str() {
     return std::is_same<V, versioned_str>::value;

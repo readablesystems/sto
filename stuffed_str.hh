@@ -2,19 +2,27 @@
 template <typename Stuff>
 class stuffed_str {
 public:
+  typedef Stuff stuff_type;
 
-  template <typename Malloc>
-  static stuffed_str *make(const char *str, int len, const Stuff& val, Malloc m) {
-    int alloc_size = size_for(len);
+  struct StandardMalloc {
+    void *operator()(size_t s) {
+      return malloc(s);
+    }
+  };
+
+  template <typename Malloc = StandardMalloc>
+  static stuffed_str *make(const char *str, int len, int capacity, const Stuff& val, Malloc m = Malloc()) {
+    // TODO: it might be better if we just take the max of size_for() and capacity
+    assert(size_for(len) <= capacity);
     //    printf("%d from %lu\n", alloc_size, len + sizeof(stuffed_str));
-    auto vs = (stuffed_str*)m(alloc_size);
-    new (vs) stuffed_str(val, len, alloc_size - sizeof(stuffed_str), str);
+    auto vs = (stuffed_str*)m(capacity);
+    new (vs) stuffed_str(val, len, capacity - sizeof(stuffed_str), str);
     return vs;
   }
 
-  template <typename StringType, typename Malloc>
-  static stuffed_str *make(const StringType& s, const Stuff& val, Malloc m) {
-    return make(s.data(), s.length(), val, m);
+  template <typename StringType, typename Malloc = StandardMalloc>
+  static stuffed_str *make(const StringType& s, const Stuff& val, Malloc m = Malloc()) {
+    return make(s.data(), s.length(), size_for(s.length()), val, m);
   }
 
   static unsigned pad(unsigned v)
@@ -39,20 +47,28 @@ public:
     return pad(len + sizeof(stuffed_str));
   }
 
-  int needs_resize(int len) {
+  bool needs_resize(int len) {
     return len > (int)capacity_;
+  }
+
+  template <typename Malloc = StandardMalloc>
+  stuffed_str* reserve(int len, Malloc m = Malloc()) {
+    if (likely(!needs_resize(len))) {
+      return this;
+    }
+    return stuffed_str::make(buf_, size_, len, stuff_, m);
   }
 
   // returns NULL if replacement could happen without a new malloc, otherwise returns new stuffed_str*
   // malloc should be a functor that takes a size and returns a buffer of that size
-  template <typename Malloc>
-  stuffed_str* replace(const char *str, int len, Malloc m) {
+  template <typename Malloc = StandardMalloc>
+  stuffed_str* replace(const char *str, int len, Malloc m = Malloc()) {
     if (likely(!needs_resize(len))) {
       size_ = len;
       memcpy(buf_, str, len);
-      return NULL;
+      return this;
     }
-    return stuffed_str::make(str, len, stuff_, m);
+    return stuffed_str::make(str, len, size_for(len), stuff_, m);
   }
 
   const char *data() {
