@@ -229,7 +229,7 @@ typedef stuffed_str<uint32_t> versioned_str;
     }
   };
 
-template <typename V>
+template <typename V, template<class> class Box = versioned_value_struct>
 class MassTrans : public Shared {
 public:
 #if !RCU
@@ -240,17 +240,17 @@ public:
     threadinfo *ti;
   };
 
-  typedef typename std::conditional<std::is_same<V,versioned_str>::value, std::string, V>::type value_type;
+  typedef typename Box<V>::value_type value_type;
   typedef ti_wrapper threadinfo_type;
   typedef Masstree::Str Str;
 
-  typedef uint32_t Version;
+  typedef typename Box<V>::version_type Version;
 
   static __thread threadinfo_type mythreadinfo;
 
 private:
 
-  typedef versioned_value_struct<V> versioned_value;
+  typedef Box<V> versioned_value;
   
 public:
 
@@ -480,14 +480,14 @@ public:
     return 0;
   }
 
-  // goddammit templates
+  // goddammit templates/hax
   template <typename Callback, typename V2>
-  static bool query_callback_overload(Str key, versioned_value_struct<V2> *val, Callback c) {
+  static bool query_callback_overload(Str key, Box<V2> *val, Callback c) {
     return c(key, val->read_value());
   }
 
   template <typename Callback>
-  static bool query_callback_overload(Str key, versioned_value_struct<versioned_str> *val, Callback c) {
+  static bool query_callback_overload(Str key, Box<versioned_str> *val, Callback c) {
     return c(key, val);
   }
 
@@ -954,9 +954,9 @@ private:
   table_type table_;
 };
 
-template <typename V>
-__thread typename MassTrans<V>::threadinfo_type MassTrans<V>::mythreadinfo;
+template <typename V, template<class> class Box>
+__thread typename MassTrans<V, Box>::threadinfo_type MassTrans<V, Box>::mythreadinfo;
 
-template <typename V>
-constexpr typename MassTrans<V>::Version MassTrans<V>::invalid_bit;
+template <typename V, template<class> class Box>
+constexpr typename MassTrans<V, Box>::Version MassTrans<V, Box>::invalid_bit;
 
