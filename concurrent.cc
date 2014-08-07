@@ -32,7 +32,7 @@
 
 #define RANDOM_REPORT 0
 
-#define STRING_VALUES 1
+#define STRING_VALUES 0
 #define UNBOXED_STRINGS 0
 
 kvepoch_t global_log_epoch = 0;
