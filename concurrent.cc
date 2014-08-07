@@ -32,7 +32,8 @@
 
 #define RANDOM_REPORT 0
 
-#define STRING_VALUES 0
+#define STRING_VALUES 1
+#define UNBOXED_STRINGS 0
 
 kvepoch_t global_log_epoch = 0;
 volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly                    
@@ -58,7 +59,11 @@ typedef int value_type;
 typedef Array<value_type, ARRAY_SZ> ArrayType;
 ArrayType *a;
 #else
-typedef MassTrans<value_type> ArrayType;
+typedef MassTrans<value_type
+#if STRING_VALUES && UNBOXED_STRINGS
+, versioned_str_struct
+#endif
+> ArrayType;
 ArrayType *a;
 #endif
 #else

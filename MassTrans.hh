@@ -333,7 +333,7 @@ public:
       // this will uses value's copy constructor (TODO: just doing this may be unsafe and we should be using rcu for dealloc)
       lp.value()->set_value(value);
     } else {
-      versioned_value* val = versioned_value::make(value, 0);
+      versioned_value* val = (versioned_value*)versioned_value::make(value, 0);
       lp.value() = val;
     }
     if (found) {
@@ -466,7 +466,7 @@ public:
       return handlePutFound<INSERT, SET>(t, e, key, value);
     } else {
       //      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
-      versioned_value* val = versioned_value::make(value, invalid_bit);
+      versioned_value* val = (versioned_value*)versioned_value::make(value, invalid_bit);
       lp.value() = val;
 #if ABORT_ON_WRITE_READ_CONFLICT
       auto orig_node = lp.node();
