@@ -10,6 +10,7 @@
 #include "masstree-beta/string.hh"
 #include "Transaction.hh"
 
+#include "versioned_value.hh"
 #include "stuffed_str.hh"
 
 #define RCU 0
@@ -145,130 +146,49 @@ private:
 
 typedef stuffed_str<uint32_t> versioned_str;
 
-template <typename T, typename=void>
-struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
-  typedef T value_type;
-  typedef uint32_t version_type;
+#if 0
+// TODO: ughhh
+void print(FILE* f, const char* prefix,
+           int indent, lcdf::Str key, kvtimestamp_t,
+           char* suffix) {
+  //      int fprintf(FILE * , const char * , ...);                                                                                                
+  fprintf(f, "%s%*s%.*s = %d%s (version %d)\n", prefix, indent, "", key.len, key.s, value_, suffix, version_);
+}
+
+#endif
+
+struct versioned_str_struct : public versioned_str {
+  typedef Masstree::Str value_type;
+  typedef versioned_str::stuff_type version_type;
   
-  static versioned_value_struct* make(const value_type& val, version_type version) {
-    return new versioned_value_struct<T>(val, version);
+  bool needsResize(const value_type& v) {
+    return needs_resize(v.length());
   }
   
-  bool needsResize(const value_type&) {
-    return false;
+  versioned_str_struct* resizeIfNeeded(const value_type& potential_new_value) {
+    // TODO: this cast is only safe because we have no ivars or virtual methods
+    return (versioned_str_struct*)this->reserve(versioned_str::size_for(potential_new_value.length()));
   }
   
-  versioned_value_struct* resizeIfNeeded(const value_type&) {
-    return NULL;
+  template <typename StringType>
+  inline void set_value(const StringType& v) {
+    auto *ret = this->replace(v.data(), v.length());
+    // we should already be the proper size at this point
+    assert(ret == this);
   }
   
-  inline void set_value(const value_type& v) {
-    value_ = v;
-  }
-  
-  inline const value_type& read_value() {
-    return value_;
+  // responsibility is on the caller of this method to make sure this read is atomic
+  value_type read_value() {
+    return Masstree::Str(this->data(), this->length());
   }
   
   inline version_type& version() {
-    return version_;
+    return stuff();
   }
-  
-  void print(FILE* f, const char* prefix,
-             int indent, lcdf::Str key, kvtimestamp_t,
-             char* suffix) {
-    //      int fprintf(FILE * , const char * , ...);
-    fprintf(f, "%s%*s%.*s = %d%s (version %d)\n", prefix, indent, "", key.len, key.s, value_, suffix, version_);
-  }
-  
-#if 0
-  // rcu_callback method to self-destruct ourself
-  void operator()(threadinfo& ti) {
-    // this will call value's destructor
-    this->versioned_value_struct::~versioned_value_struct();
-    // and free our memory too
-    ti.deallocate(this, sizeof(versioned_value_struct), memtag_value);
-  }
-#endif
-  
-private:
-  versioned_value_struct(const value_type& val, version_type v) : version_(v), value_(val) {}
-  
-  version_type version_;
-  value_type value_;
 };
-
-// double box for non trivially copyable types!
-template<typename T>
-struct versioned_value_struct<T, typename std::enable_if<!__has_trivial_copy(T)>::type> {
-public:
-  typedef T value_type;
-  typedef uint32_t version_type;
-
-  static versioned_value_struct* make(const value_type& val, version_type version) {
-    return new versioned_value_struct(val, version);
-  }
-
-  bool needsResize(const value_type&) {
-    return false;
-  }
-  versioned_value_struct* resizeIfNeeded(const value_type&) {
-    return this;
-  }
-
-  void set_value(const value_type& v) {
-    auto *old = valueptr_;
-    valueptr_ = new value_type(std::move(v));
-    // rcu free old (HOW without threadinfo access??)
-  }
-
-  const value_type& read_value() {
-    return *valueptr_;
-  }
-
-  version_type& version() {
-    return version_;
-  }
-  
-private:
-  versioned_value_struct(const value_type& val, version_type version) : version_(version), valueptr_(new value_type(std::move(val))) {}
-
-  version_type version_;
-  value_type* valueptr_;
-};
-
-  struct versioned_str_struct : public versioned_str {
-    typedef Masstree::Str value_type;
-    typedef versioned_str::stuff_type version_type;
-
-    bool needsResize(const value_type& v) {
-      return needs_resize(v.length());
-    }
-
-    versioned_str_struct* resizeIfNeeded(const value_type& potential_new_value) {
-      // TODO: this cast is only safe because we have no ivars or virtual methods
-      return (versioned_str_struct*)this->reserve(versioned_str::size_for(potential_new_value.length()));
-    }
-
-    template <typename StringType>
-    inline void set_value(const StringType& v) {
-      auto *ret = this->replace(v.data(), v.length());
-      // we should already be the proper size at this point
-      assert(ret == this);
-    }
-
-    // responsibility is on the caller of this method to make sure this read is atomic
-    value_type read_value() {
-      return Masstree::Str(this->data(), this->length());
-    }
-    
-    inline version_type& version() {
-      return stuff();
-    }
-  };
 
 template <typename V, typename Box = versioned_value_struct<V>>
-class MassTrans : public Shared {
+  class MassTrans : public Shared {
 public:
 #if !RCU
   typedef debug_threadinfo threadinfo;
@@ -717,7 +637,7 @@ public:
   }
 
   void print() {
-    table_.print();
+    //    table_.print();
   }
   
 

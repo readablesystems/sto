@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <algorithm>
+#include <functional>
 #include <unistd.h>
 
 #define LOCAL_VECTOR 1

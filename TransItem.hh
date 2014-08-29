@@ -2,6 +2,7 @@
 
 #include <type_traits>
 #include <string.h>
+#include <assert.h>
 
 #include "Tagged64.hh"
 

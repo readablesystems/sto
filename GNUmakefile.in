@@ -51,6 +51,9 @@ concurrent: concurrent.o clp.o $(MASSTREE_OBJS)
 single: single.o clp.o $(MASSTREE_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
+singleelems: singleelems.o clp.o
+	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
 $(MASSTREE_OBJS): masstree ;
 
 .PHONY: masstree

@@ -3,6 +3,7 @@
 #include "compiler.hh"
 #include <memory>
 #include <iterator>
+#include <assert.h>
 
 template <typename T, int N, typename A = std::allocator<T> >
 class local_vector {
