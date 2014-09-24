@@ -1,22 +1,11 @@
 #pragma once
 
+#include "TaggedLow.hh"
 #include "Transaction.hh"
-
-#if 0
-typedef long (*Comp)(const void*, const void*);
-
-list_t* list_alloc(COMP compare) {
-  
-}
-
-TM_CALLABLE
-bool_t TMlist_isEmpty(TM_ARGDECL list_t *listPtr) {
-
-}
-#endif
 
 template<typename T>
 class DefaultCompare {
+public:
   int operator()(const T& t1, const T& t2) {
     if (t1 < t2)
       return -1;
@@ -30,16 +19,15 @@ public:
   List(Compare comp = Compare()) : comp_(comp) {
   }
 
-  static constexpr invalid_bit = 1<<0;
+  typedef uint32_t Version;
+  static constexpr Version invalid_bit = 1<<0;
   // we need this to protect deletes (could just do a CAS on invalid_bit, but it's unclear
   // how to make that work with the lock, check, install, unlock protocol
-  static constexpr node_lock_bit = 1<<1;
+  static constexpr Version node_lock_bit = 1<<1;
 
-  static constexpr delete_bit = 1<<0;
+  static constexpr Version delete_bit = 1<<0;
 
-  typedef uint32_t Version;
-
-  static constexpr list_lock_bit = 1<<(sizeof(Version) - 1);
+  static constexpr Version list_lock_bit = 1<<(sizeof(Version) - 1);
 
   struct list_node {
     list_node(const T& val, list_node *next, bool valid) 
@@ -70,7 +58,7 @@ public:
     }
 
     T val;
-    Tagged<list_node> next;
+    TaggedLow<list_node> next;
   };
 
   bool find(const T& elem, T& val) {
@@ -83,7 +71,6 @@ public:
 
   T* transFind(Transaction& t, const T& elem) {
     auto listv = listversion_;
-    // read list version #
     fence();
     auto *n = _find(elem);
     if (n) {
@@ -93,6 +80,7 @@ public:
       // log list v#
       ensureNotFound(t, listv);
     }
+    return &n->val;
   }
 
   list_node* _find(const T& elem) {
@@ -141,9 +129,12 @@ public:
 
   bool transInsert(Transaction& t, const T& elem) {
     auto *node = _insert<true>(elem);
+    if (!node)
+      return false;
     auto& item = t_item(t, node);
     t.add_write(item, 0);
     t.add_undo(item);
+    return true;
   }
 
   bool transDelete(Transaction& t, const T& elem) {
@@ -226,7 +217,7 @@ public:
       unpack<list_node*>(item.key())->lock();
   }
 
-  bool check(TransItem& item, Transaction& t) {
+  bool check(TransItem& item, Transaction&) {
     if (item.key() == (void*)this) {
       return listversion_ == item.template read_value<Version>();
     }
@@ -244,7 +235,8 @@ public:
     }
   }
 
-  TransItem& t_item(Transaction& t, list_node *node) {
+  template <typename PTR>
+  TransItem& t_item(Transaction& t, PTR *node) {
     // can switch this to add_item to not read our writes
     return t.item(this, node);
   }

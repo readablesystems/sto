@@ -4,6 +4,7 @@
 #include "Array.hh"
 #include "Hashtable.hh"
 #include "MassTrans.hh"
+#include "List.hh"
 #include "Transaction.hh"
 
 #define N 100
@@ -16,6 +17,26 @@ kvtimestamp_t initial_timestamp;
 volatile bool recovering = false; // so don't add log entries, and free old value immediately
 
 using namespace std;
+
+void linkedListTests() {
+  List<int> l;
+  
+  {
+    Transaction t;
+    assert(l.transInsert(t, 5));
+    int *p = l.transFind(t, 5);
+    assert(*p == 5);
+    assert(t.commit());
+  }
+
+  {
+    Transaction t;
+    assert(!l.transInsert(t, 5));
+    assert(*l.transFind(t, 5) == 5);
+    assert(!l.transFind(t, 7));
+    assert(t.commit());
+  }
+}
 
 void stringKeyTests() {
 #if 1
@@ -291,5 +312,7 @@ int main() {
 
   // string key testing
   stringKeyTests();
+
+  linkedListTests();
   
 }
