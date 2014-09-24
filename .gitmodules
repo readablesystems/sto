@@ -1,0 +1,3 @@
+[submodule "masstree-beta"]
+	path = masstree-beta
+	url = git@github.com:kohler/masstree-beta.git
