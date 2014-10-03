@@ -131,17 +131,22 @@ inline int unval(const value_type& v) {
 static void doRead(Transaction& t, int slot) {
   if (readMyWrites)
     a->transRead(t, slot);
+#if 0
   else
     a->transRead_nocheck(t, slot);
+#endif
 }
 
 static void doWrite(Transaction& t, int slot, int& ctr) {
   if (blindRandomWrite) {
     if (readMyWrites) {
       a->transWrite(t, slot, val(ctr));
-    } else {
+    } 
+#if 0
+else {
       a->transWrite_nocheck(t, slot, val(ctr));
     }
+#endif
   } else {
     // increment current value (this lets us verify transaction correctness)
     if (readMyWrites) {
@@ -155,8 +160,10 @@ static void doWrite(Transaction& t, int slot, int& ctr) {
           assert(a->transRead(t,slot) == v0+2);
 #endif
     } else {
+#if 0
       auto v0 = a->transRead_nocheck(t, slot);
       a->transWrite_nocheck(t, slot, val(unval(v0)+1));
+#endif
     }
     ++ctr; // because we've done a read and a write
   }
