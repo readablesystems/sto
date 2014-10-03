@@ -6,6 +6,7 @@
 #include <sys/resource.h>
 
 #include "Array.hh"
+#include "Array1.hh"
 #include "Hashtable.hh"
 #include "Transaction.hh"
 #include "clp.h"
@@ -56,7 +57,7 @@ typedef int value_type;
 
 #if !HASHTABLE
 #if !MASSTREE
-typedef Array<value_type, ARRAY_SZ> ArrayType;
+typedef Array1<value_type, ARRAY_SZ> ArrayType;
 ArrayType *a;
 #else
 typedef MassTrans<value_type
@@ -505,8 +506,8 @@ void *isolatedWrites(void *p) {
     for (int i = 0; i < nthreads; ++i) {
       a->transRead(t, i);
     }
-
-    a->transWrite(t, me, val(me+1));
+		
+		a->transWrite(t, me, val(me+1));
     
     done = t.commit();
     } catch (Transaction::Abort E) {}

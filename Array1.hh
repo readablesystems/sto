@@ -10,6 +10,15 @@ class Array1 : public Shared {
     typedef uint32_t Version;
     typedef VersionFunctions<Version, 0> Versioning;
     public: 
+				T read(Key i) {
+						return data_[i].read_value();
+				}
+
+				void write(Key i, T v) {
+						lock(i);
+						data_[i].set_value(v);
+						unlock(i);
+				}
         inline void atomicRead(Key i, Version& v, T& val){
             Version v2;
             Elem& elem = data_[i];
@@ -53,7 +62,7 @@ class Array1 : public Shared {
         bool check(TransItem& item, Transaction&){
             Key i = unpack<Key>(item.key());
             return Versioning::versionCheck(data_[i].version(), item.template read_value<Version>()) &&
-                (!Versioning::is_locked(data_[i].version()) || !item.has_write());
+                (!Versioning::is_locked(data_[i].version()) || item.has_write());
         }
 
         void lock(TransItem& item){
