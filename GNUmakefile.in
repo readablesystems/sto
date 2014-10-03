@@ -60,10 +60,13 @@ array1: array1.o clp.o
 $(MASSTREE_OBJS): masstree ;
 
 .PHONY: masstree
-masstree: masstree/configure
+masstree: masstree-beta/config.status
 	$(MAKE) -C masstree-beta
 
-masstree/configure: masstree-beta/configure.ac
+masstree-beta/configure masstree-beta/config.h.in: masstree-beta/configure.ac
+	cd masstree-beta && autoreconf -i && touch config.h.in
+
+masstree-beta/config.status: masstree-beta/configure
 	cd masstree-beta && ./configure @ac_configure_args@
 
 config.h: stamp-h
