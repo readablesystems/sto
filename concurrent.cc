@@ -28,7 +28,7 @@
 #define HASHTABLE_LOAD_FACTOR 2
 #define HASHTABLE_RAND_DELETES 0
 
-#define MASSTREE 1
+#define MASSTREE 0
 
 #define RANDOM_REPORT 0
 
@@ -336,7 +336,9 @@ void checkRandomRWs() {
   a = &check;
 
   for (int i = 0; i < prepopulate; ++i) {
-    a->put(i, val(0));
+    Transaction t;
+    a->transWrite(t, i, val(0));
+    t.commit();
   }
 
   for (int i = 0; i < nthreads; ++i) {
@@ -703,7 +705,9 @@ int main(int argc, char *argv[]) {
   a = &stack_arr;
 
   for (int i = 0; i < prepopulate; ++i) {
-    a->put(i, val(0));
+    Transaction t;
+    a->transWrite(t, i, val(0));
+    t.commit();
   }
 
   struct timeval tv1,tv2;
