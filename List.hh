@@ -179,6 +179,46 @@ public:
     return false;
   }
 
+  struct ListIter {
+    bool transHasNext(Transaction& t) {
+      return !!cur;
+    }
+
+    void transReset(Transaction& t) {
+      cur = us->head_;
+    }
+
+    T* transNext(Transaction& t) {
+      auto ret = cur ? &cur->val : NULL;
+      if (cur)
+        cur = cur->next;
+      return ret;
+    }
+
+  private:
+    ListIter(List *us, list_node *cur) : us(us), cur(cur) {}
+
+    friend class List;
+    List *us;
+    list_node *cur;
+  };
+
+  ListIter transIter(Transaction& t) {
+    ensureNotFound(t, listversion_);//TODO: rename
+    return ListIter(this);
+  }
+
+  size_t transSize(Transaction& t) {
+    auto it = this->transIter(t);
+    size_t sz = 0;
+    while (it->transHasNext(t)) {
+      it->transNext(t);
+      sz++;
+    }
+    return sz;
+  }
+
+
   void ensureNotFound(Transaction& t, Version readv) {
     auto& item = t_item(t, this);
     if (!item.has_read())
