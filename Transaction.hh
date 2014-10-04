@@ -383,7 +383,7 @@ private:
   int16_t firstWrite_;
 };
 
-#if 1
+#ifndef STO
 threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int Transaction::threadid;
 unsigned Transaction::global_epoch;
