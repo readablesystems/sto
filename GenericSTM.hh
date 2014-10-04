@@ -27,7 +27,6 @@ public:
     // if value is ever used outside of transactional context)
     t.add_write(item, new_val);
     item.data.rdata = (void*)sizeof(T);
-    printf("%lu\n", (size_t)item.data.rdata);
   }
 
   // Hashtable handles all of this
