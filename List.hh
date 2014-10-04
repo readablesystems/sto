@@ -16,7 +16,7 @@ public:
 template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true>
 class List : public Shared {
 public:
-  List(Compare comp = Compare()) : comp_(comp) {
+  List(Compare comp = Compare()) : head_(NULL), size_(0), listversion_(0), comp_(comp) {
   }
 
   typedef uint32_t Version;
@@ -286,6 +286,7 @@ public:
   }
 
   list_node *head_;
+  // TODO: unused
   long size_;
   Version listversion_;
   Compare comp_;
