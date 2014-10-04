@@ -1,6 +1,8 @@
 #pragma once
 
+#include "config.h"
 #include "compiler.hh"
+#include "Transaction.hh"
 
 #define HASHTABLE_DELETE 1
 
