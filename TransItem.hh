@@ -27,6 +27,8 @@ template <> struct packer<true> {
 
   template <typename T>
   T& unpack(void*& packed) {
+    // TODO: this won't work on big endian
+    // could use memcpy but then can't return a reference
     return reinterpret_cast<T&>(packed);
   }
 
