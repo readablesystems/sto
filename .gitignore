@@ -3,6 +3,7 @@
 *.a
 *.swp
 *~
+*#
 /.deps
 /GNUmakefile
 /autom4te.cache
@@ -11,7 +12,8 @@
 /config.log
 /config.status
 /configure
-/concurrent
 /stamp-h
 /single
 /array1
+/concurrent
+/singleelems

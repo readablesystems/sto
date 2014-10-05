@@ -22,7 +22,7 @@ ifneq ($(NDEBUG),1)
 CFLAGS += -g
 endif
 
-all: concurrent single array1
+all: concurrent single singleelems array1
 
 %.o: %.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<

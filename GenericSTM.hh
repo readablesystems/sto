@@ -1,30 +1,32 @@
+#pragma once
+
 #include "Hashtable.hh"
 #include "Transaction.hh"
 
-template <typename T>
 class GenericSTM : public Shared {
 public:
-  template <typename T2>
-  T2 transRead(Transaction& t, T2* word) {
-    static_assert(sizeof(T2)==sizeof(T), "should only use words that are same size as templated type");
-    T ret;
+  template <typename T>
+  T transRead(Transaction& t, T* word) {
+    static_assert(sizeof(T) <= sizeof(void*), "don't support words larger than pointer size");
+    void* ret;
     if (!table_.transGet(t, word, ret)) {
       // this should be safe because if someone does do a write of this key,
       // whole transaction will end up aborting
       return *word;
     }
-    return *(T2*)&ret;
+    return *(T*)&ret;
   }
 
-  template <typename T2>
-  void transWrite(Transaction& t, T2* word, const T2& new_val) {
-    static_assert(sizeof(T2)==sizeof(T), "should only use words that are same size as templated type");
-    table_.transPut(t, word, *(T*)&new_val);
+  template <typename T>
+  void transWrite(Transaction& t, T* word, const T& new_val) {
+    static_assert(sizeof(T) <= sizeof(void*), "don't support words larger than pointer size");
+    table_.transPut(t, word, pack(new_val));
     auto& item = t.add_item(this, word);
     // we also add it ourselves because we want to actually change the
     // memory location (not strictly necessary, but probably a good idea
     // if value is ever used outside of transactional context)
     t.add_write(item, new_val);
+    item.data.rdata = (void*)sizeof(T);
   }
 
   // Hashtable handles all of this
@@ -32,11 +34,13 @@ public:
   void unlock(TransItem&) {}
   bool check(TransItem&, Transaction&) { assert(0); return false; }
   void install(TransItem& item) {
-    T* word = (T*)item.key();
+    void* word = item.key();
+
     // Hashtable implementation has already locked this word for us
-    *word = item.template write_value<T>();
+    void *data = item.template write_value<void*>();
+    memcpy(word, &data, (size_t)item.data.rdata);
   }
 
 private:
-  Hashtable<void*, T> table_;
+  Hashtable<void*, void*, 1000000> table_;
 };
