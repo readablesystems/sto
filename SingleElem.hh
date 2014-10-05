@@ -11,19 +11,39 @@ public:
   typedef uint32_t Version;
   typedef VersionFunctions<Version, 0> Versioning;
 
+	T read(){
+		return s_.read_value();
+	}
+
+	T write(T v){
+		lock();
+		s_.set_value(v);
+		unlock();
+	}
+
+	inline void atomicRead(Version& v, T& val){
+		Version v2;
+		do{
+			v = s_.version();
+			fence();
+			val = s_.read_value();
+			fence();
+			v2 = s_.version();
+		}while(v!=v2);
+	}
+
   T transRead(Transaction& t) {
-    // TODO: depending on what we're really going for some of this we could just make
-    // the Structure do
-    Version v = s_.version();
-    fence();
-    // TODO: do we actually need to do so called "atomic" read?? (check v# after value read too)
-    auto val = s_.read_value();
     auto& item = t.item(this, this);
     if (item.has_write())
       return item.template write_value<T>();
-    if (!item.has_read())
-      t.add_read(item, v);
-    return val;
+		else{
+			Version v;
+			T val;
+			atomicRead(v, val);
+			if (!item.has_read())
+				t.add_read(item, v);
+			return val;
+		}
   }
 
   void transWrite(Transaction& t, const T& v) {
@@ -31,19 +51,32 @@ public:
     t.add_write(item, v);
   }
 
+	void lock(){
+		Versioning::lock(s_.version());
+	}
+
+	void unlock(){
+		Versioning::unlock(s_.version());
+	}
+
   void lock(TransItem&) {
-    Versioning::lock(s_.version());
+		lock();
   }
+
   void unlock(TransItem&) {
-    Versioning::unlock(s_.version());
+		unlock();
   }
+
   bool check(TransItem& item, Transaction&) {
     return Versioning::versionCheck(s_.version(), item.template read_value<Version>()) &&
-      (!Versioning::is_locked(s_.version()) || !item.has_write());
+      (!Versioning::is_locked(s_.version()) || item.has_write());
   }
+
   void install(TransItem& item) {
     s_.set_value(item.template write_value<T>());
+		Versioning::inc_version(s_.version());
   }
+
   void cleanup(TransItem& item) {
     if (item.has_write())
       free_packed<T>(item.data.wdata);

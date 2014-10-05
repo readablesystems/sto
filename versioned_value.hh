@@ -70,7 +70,7 @@ public:
   }
 
   void set_value(const value_type& v) {
-    auto *old = valueptr_;
+    //auto *old = valueptr_;
     valueptr_ = new value_type(std::move(v));
     // rcu free old (HOW without threadinfo access??)
   }
