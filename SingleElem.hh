@@ -15,7 +15,7 @@ public:
 		return s_.read_value();
 	}
 
-	T write(T v){
+	void write(T v){
 		lock();
 		s_.set_value(v);
 		unlock();
