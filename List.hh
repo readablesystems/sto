@@ -16,7 +16,7 @@ public:
 template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true>
 class List : public Shared {
 public:
-  List(Compare comp = Compare()) : head_(NULL), size_(0), listversion_(0), comp_(comp) {
+  List(Compare comp = Compare()) : head_(NULL), listsize_(0), listversion_(0), comp_(comp) {
   }
 
   typedef uint32_t Version;
@@ -139,6 +139,8 @@ public:
     } else {
       head_ = ret;
     }
+    // TODO: incorrect...
+    listsize_++;
     unlock(listversion_);
     return ret;
   }
@@ -263,13 +265,8 @@ public:
   }
 
   size_t transSize(Transaction& t) {
-    auto it = this->transIter(t);
-    size_t sz = 0;
-    while (it.transHasNext(t)) {
-      it.transNext(t);
-      sz++;
-    }
-    return sz;
+    ensureNotFound(t, listversion_);
+    return listsize_;
   }
 
 
@@ -348,8 +345,7 @@ public:
   }
 
   list_node *head_;
-  // TODO: unused
-  long size_;
+  long listsize_;
   Version listversion_;
   Compare comp_;
 };
