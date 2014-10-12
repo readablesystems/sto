@@ -75,10 +75,18 @@ public:
     auto *n = _find(elem);
     if (n) {
       auto& item = t_item(t, n);
+      if (!validityCheck(n, item)) {
+        t.abort();
+        return NULL;
+      }
+      if (has_delete(item)) {
+        return NULL;
+      }
       t.add_read(item, 0);
     } else {
       // log list v#
       ensureNotFound(t, listv);
+      return NULL;
     }
     return &n->val;
   }
@@ -99,10 +107,14 @@ public:
   }
 
   template <bool Txnal = false>
-  list_node* _insert(const T& elem) {
+  list_node* _insert(const T& elem, bool *inserted = NULL) {
+    if (inserted)
+      *inserted = true;
+    lock(listversion_);
     if (!Sorted && !Duplicates) {
-      list_node *new_head = new list_node(elem, head_, !Txnal);
+      list_node *new_head = new list_node(elem, head_, Txnal);
       head_ = new_head;
+      unlock(listversion_);
       return head_;
     }
 
@@ -111,27 +123,47 @@ public:
     while (cur != NULL) {
       int c = comp_(cur->val, elem);
       if (!Duplicates && c == 0) {
-        return NULL;
+        unlock(listversion_);
+        if (inserted)
+          *inserted = false;
+        return cur;
       } else if (Sorted && c >= 0) {
         break;
       }
       prev = cur;
       cur = cur->next;
     }
-    auto ret = new list_node(elem, cur, !Txnal);
+    auto ret = new list_node(elem, cur, Txnal);
     if (prev) {
       prev->next = ret;
     } else {
       head_ = ret;
     }
+    unlock(listversion_);
     return ret;
   }
 
   bool transInsert(Transaction& t, const T& elem) {
-    auto *node = _insert<true>(elem);
-    if (!node)
-      return false;
+    bool inserted;
+    auto *node = _insert<true>(elem, &inserted);
     auto& item = t_item(t, node);
+    if (!inserted) {
+      if (!validityCheck(node, item)) {
+        t.abort();
+        return false;
+      }
+      // intertransactional insert-then-insert = failed insert
+      if (has_insert(item)) {
+        return false;
+      }
+      // delete-then-insert...
+      if (has_delete(item)) {
+        item.set_flags(0);
+        return true;
+      }
+      // "normal" insert-then-insert = failed insert
+      return false;
+    }
     t.add_write(item, 0);
     t.add_undo(item);
     return true;
@@ -161,12 +193,12 @@ public:
     return _remove([n] (list_node *n2) { return n == n2; });
   }
 
-  template <typename Found>
-  bool _remove(Found found) {
+  template <typename FoundFunc>
+  bool _remove(FoundFunc found_f) {
     list_node *prev = NULL;
     list_node *cur = head_;
     while (cur != NULL) {
-      if (found(cur)) {
+      if (found_f(cur)) {
         cur->mark_invalid();
         if (prev) {
           prev->next = cur->next;
@@ -180,23 +212,45 @@ public:
   }
 
   struct ListIter {
-    bool transHasNext(Transaction& t) {
+    ListIter() : us(NULL), cur(NULL) {}
+
+    bool valid() const {
+      return us != NULL;
+    }
+
+    bool transHasNext(Transaction& t) const {
       return !!cur;
     }
 
     void transReset(Transaction& t) {
       cur = us->head_;
+      ensureValid(t);
     }
 
     T* transNext(Transaction& t) {
       auto ret = cur ? &cur->val : NULL;
       if (cur)
         cur = cur->next;
+      ensureValid(t);
       return ret;
     }
 
   private:
-    ListIter(List *us, list_node *cur) : us(us), cur(cur) {}
+    ListIter(List *us, list_node *cur, Transaction& t) : us(us), cur(cur) {
+      ensureValid(t);
+    }
+
+    void ensureValid(Transaction& t) {
+      while (cur) {
+        if (!cur->is_valid()) {
+          auto& item = us->t_item(t, cur);
+          if (!us->has_insert(item))
+            // TODO: do we continue in this situation or abort?
+            continue;
+        }
+        break;
+      }
+    }
 
     friend class List;
     List *us;
@@ -205,14 +259,14 @@ public:
 
   ListIter transIter(Transaction& t) {
     ensureNotFound(t, listversion_);//TODO: rename
-    return ListIter(this);
+    return ListIter(this, head_, t);
   }
 
   size_t transSize(Transaction& t) {
     auto it = this->transIter(t);
     size_t sz = 0;
-    while (it->transHasNext(t)) {
-      it->transNext(t);
+    while (it.transHasNext(t)) {
+      it.transNext(t);
       sz++;
     }
     return sz;
@@ -262,7 +316,7 @@ public:
       return listversion_ == item.template read_value<Version>();
     }
     auto n = unpack<list_node*>(item.key());
-    return n->is_valid() && (has_delete(item) || !n->is_locked());
+    return (n->is_valid() || has_insert(item)) && (has_delete(item) || !n->is_locked());
   }
 
   void install(TransItem& item) {
@@ -274,13 +328,21 @@ public:
       n->mark_valid();
     }
   }
+  
+  bool validityCheck(list_node *n, TransItem& item) {
+    return n->is_valid() || has_insert(item);
+  }
 
   template <typename PTR>
   TransItem& t_item(Transaction& t, PTR *node) {
     // can switch this to add_item to not read our writes
     return t.item(this, node);
   }
-
+  
+  bool has_insert(TransItem& item) {
+    return item.has_write() && !has_delete(item);
+  }
+  
   bool has_delete(TransItem& item) {
     return item.has_flags(delete_bit);
   }

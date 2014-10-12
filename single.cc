@@ -23,6 +23,7 @@ void linkedListTests() {
   
   {
     Transaction t;
+    assert(!l.transFind(t, 5));
     assert(l.transInsert(t, 5));
     int *p = l.transFind(t, 5);
     assert(*p == 5);
@@ -34,7 +35,27 @@ void linkedListTests() {
     assert(!l.transInsert(t, 5));
     assert(*l.transFind(t, 5) == 5);
     assert(!l.transFind(t, 7));
+    assert(l.transInsert(t, 7));
     assert(t.commit());
+  }
+
+  {
+    Transaction t;
+    assert(l.transSize(t) == 2);
+    assert(l.transInsert(t, 10));
+    assert(l.transSize(t) == 3);
+    auto it = l.transIter(t);
+    int i = 0;
+    int elems[] = {5,7,10};
+    while (it.transHasNext(t)) {
+      assert(*it.transNext(t) == elems[i++]);
+    }
+    assert(t.commit());
+  }
+
+
+  {
+    Transaction t;
   }
 }
 
