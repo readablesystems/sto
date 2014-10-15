@@ -207,8 +207,11 @@ public:
         } else {
           head_ = cur->next;
         }
-        // rcu free
+        // TODO: rcu free
+        return true;
       }
+      prev = cur;
+      cur = cur->next;
     }
     return false;
   }
@@ -324,6 +327,11 @@ public:
     } else {
       n->mark_valid();
     }
+  }
+
+  void undo(TransItem& item) {
+    list_node *n = unpack<list_node*>(item.key());
+    remove(n);
   }
   
   bool validityCheck(list_node *n, TransItem& item) {
