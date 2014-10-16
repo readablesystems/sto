@@ -249,9 +249,11 @@ public:
       while (cur) {
         if (!cur->is_valid()) {
           auto& item = us->t_item(t, cur);
-          if (!us->has_insert(item))
+          if (!us->has_insert(item)) {
             // TODO: do we continue in this situation or abort?
+            cur = cur->next;
             continue;
+          }
         }
         break;
       }
