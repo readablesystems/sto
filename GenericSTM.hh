@@ -12,14 +12,17 @@ public:
     if (!table_.transGet(t, word, ret)) {
       // this should be safe because if someone does do a write of this key,
       // whole transaction will end up aborting
+      t.check_reads();
       return *word;
     }
+    t.check_reads();
     return *(T*)&ret;
   }
 
   template <typename T>
   void transWrite(Transaction& t, T* word, const T& new_val) {
     static_assert(sizeof(T) <= sizeof(void*), "don't support words larger than pointer size");
+    t.check_reads();
     table_.transPut(t, word, pack(new_val));
     auto& item = t.add_item(this, word);
     // we also add it ourselves because we want to actually change the
@@ -27,6 +30,7 @@ public:
     // if value is ever used outside of transactional context)
     t.add_write(item, new_val);
     item.data.rdata = (void*)sizeof(T);
+    t.check_reads();
   }
 
   // Hashtable handles all of this

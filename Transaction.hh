@@ -107,7 +107,7 @@ public:
   typedef std::vector<TransItem> TransSet;
 #endif
 
-  Transaction() : transSet_(), readMyWritesOnly_(true), isAborted_(false), firstWrite_(-1) {
+  Transaction() : transSet_(), permute(NULL), perm_size(0), readMyWritesOnly_(true), isAborted_(false), firstWrite_(-1) {
 #if !LOCAL_VECTOR
     transSet_.reserve(INIT_SET_SIZE);
 #endif
@@ -221,6 +221,10 @@ public:
   }
 
   bool check_for_write(TransItem& item) {
+    // if permute is NULL, we're not in commit (just an opacity check), so no need to check our writes (we
+    // haven't locked anything yet)
+    if (!permute)
+      return false;
     auto it = &item;
     bool has_write = it->has_write();
     if (!has_write && !readMyWritesOnly_) {
@@ -244,6 +248,25 @@ public:
 	});
     }
     return has_write;
+  }
+
+  void check_reads() {
+    if (!check_reads(&transSet_[0], &transSet_[transSet_.size()])) {
+      abort();
+    }
+  }
+
+  bool check_reads(TransItem *trans_first, TransItem *trans_last) {
+    for (auto it = trans_first; it != trans_last; ++it)
+      if (it->has_read()) {
+#if PERF_LOGGING
+        total_r++;
+#endif
+        if (!it->sharedObj()->check(*it, *this)) {
+          return false;
+        }
+      }
+    return true;
   }
 
   bool commit() {
@@ -296,17 +319,11 @@ public:
     /* fence(); */
 
     //phase2
-    for (auto it = trans_first; it != trans_last; ++it)
-      if (it->has_read()) {
-#if PERF_LOGGING
-        total_r++;
-#endif
-        if (!it->sharedObj()->check(*it, *this)) {
-          success = false;
-          goto end;
-        }
-      }
-    
+    if (!check_reads(trans_first, trans_last)) {
+      success = false;
+      goto end;
+    }
+
     //phase3
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
       TransItem& ti = *it;
