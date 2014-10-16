@@ -139,8 +139,8 @@ public:
     } else {
       head_ = ret;
     }
-    // TODO: incorrect...
-    listsize_++;
+    if (!Txnal)
+      listsize_++;
     unlock(listversion_);
     return ret;
   }
@@ -161,11 +161,13 @@ public:
       // delete-then-insert...
       if (has_delete(item)) {
         item.set_flags(0);
+        add_trans_size_offs(t, 1);
         return true;
       }
       // "normal" insert-then-insert = failed insert
       return false;
     }
+    add_trans_size_offs(t, 1);
     t.add_write(item, 0);
     t.add_undo(item);
     return true;
@@ -180,6 +182,7 @@ public:
       auto& item = t_item(t, n);
       item.set_flags(delete_bit);
       t.add_write(item, 0);
+      add_trans_size_offs(t, -1);
       return true;
     } else {
       ensureNotFound(t, listv);
@@ -271,7 +274,7 @@ public:
 
   size_t transSize(Transaction& t) {
     ensureNotFound(t, listversion_);
-    return listsize_;
+    return listsize_ + trans_size_offs(t);
   }
 
 
@@ -314,6 +317,9 @@ public:
   }
 
   bool check(TransItem& item, Transaction&) {
+    if (item.key() == (void*)0) {
+      return true;
+    }
     if (item.key() == (void*)this) {
       return listversion_ == item.template read_value<Version>();
     }
@@ -326,8 +332,11 @@ public:
     if (has_delete(item)) {
       n->mark_invalid();
       remove(n);
+      // TODO: this is probably not safe?? (transSize disagrees with # of elements momentarily)
+      __sync_add_and_fetch(&listsize_, -1);
     } else {
       n->mark_valid();
+      __sync_add_and_fetch(&listsize_, 1);
     }
   }
 
@@ -352,6 +361,23 @@ public:
   
   bool has_delete(TransItem& item) {
     return item.has_flags(delete_bit);
+  }
+
+  void add_trans_size_offs(Transaction& t, int size_offs) {
+    // TODO: it would be more efficient to store this directly in Transaction,
+    // since the "key" is fixed (rather than having to search the transset each time)
+    auto& item = t_item(t, (void*)0);
+    int cur_offs = 0;
+    if (item.has_read())
+      cur_offs = item.template read_value<int>();
+    t.add_read(item, cur_offs + size_offs);
+  }
+
+  int trans_size_offs(Transaction& t) {
+    auto& item = t_item(t, (void*)0);
+    if (item.has_read())
+      return item.template read_value<int>();
+    return 0;
   }
 
   list_node *head_;
