@@ -223,7 +223,7 @@ public:
       return us != NULL;
     }
 
-    bool transHasNext(Transaction& t) const {
+    bool transHasNext(Transaction&) const {
       return !!cur;
     }
 

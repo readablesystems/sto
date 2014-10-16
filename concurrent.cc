@@ -7,6 +7,7 @@
 
 #include "Array.hh"
 #include "Array1.hh"
+#include "GenericSTMArray.hh"
 #include "Hashtable.hh"
 #include "Transaction.hh"
 #include "clp.h"
@@ -30,6 +31,8 @@
 #define HASHTABLE_RAND_DELETES 0
 
 #define MASSTREE 0
+
+#define GENSTM_ARRAY 1
 
 #define RANDOM_REPORT 0
 
@@ -57,8 +60,13 @@ typedef int value_type;
 
 #if !HASHTABLE
 #if !MASSTREE
+#if !GENSTM_ARRAY
 typedef Array1<value_type, ARRAY_SZ> ArrayType;
 ArrayType *a;
+#else
+typedef GenericSTMArray<value_type, ARRAY_SZ> ArrayType;
+ArrayType *a;
+#endif
 #else
 typedef MassTrans<value_type
 #if STRING_VALUES && UNBOXED_STRINGS
@@ -261,6 +269,7 @@ void *randomRWs(void *p) {
 #endif
         auto r = transgen();
 #if HASHTABLE_RAND_DELETES
+        // TODO: this doesn't make that much sense if write_percent != 50%
         if (r > (write_thresh+write_thresh/2)) {
           a->transDelete(t, slot);
         }else
