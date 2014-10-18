@@ -200,22 +200,25 @@ public:
 
   template <typename FoundFunc>
   bool _remove(FoundFunc found_f) {
+    lock(listversion_);
     list_node *prev = NULL;
     list_node *cur = head_;
     while (cur != NULL) {
       if (found_f(cur)) {
         cur->mark_invalid();
         if (prev) {
-          prev->next = cur->next;
+          prev->next = (list_node*)cur->next;
         } else {
           head_ = cur->next;
         }
         // TODO: rcu free
+        unlock(listversion_);
         return true;
       }
       prev = cur;
       cur = cur->next;
     }
+    unlock(listversion_);
     return false;
   }
 
