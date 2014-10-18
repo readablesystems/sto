@@ -246,6 +246,17 @@ public:
       return ret;
     }
 
+    T* transNthNext(Transaction& t, int n) {
+      T* ret = NULL;
+      while (n > 0 && transHasNext(t)) {
+        ret = transNext(t);
+        n--;
+      }
+      if (n == 0)
+        return ret;
+      return NULL;
+    }
+
   private:
     ListIter(List *us, list_node *cur, Transaction& t) : us(us), cur(cur) {
       ensureValid(t);
@@ -256,6 +267,7 @@ public:
         if (!cur->is_valid()) {
           auto& item = us->t_item(t, cur);
           if (!us->has_insert(item)) {
+            t.abort();
             // TODO: do we continue in this situation or abort?
             cur = cur->next;
             continue;
@@ -338,8 +350,10 @@ public:
       // TODO: this is probably not safe?? (transSize disagrees with # of elements momentarily)
       __sync_add_and_fetch(&listsize_, -1);
     } else {
+      lock(listversion_);
       n->mark_valid();
       __sync_add_and_fetch(&listsize_, 1);
+      unlock(listversion_);
     }
   }
 

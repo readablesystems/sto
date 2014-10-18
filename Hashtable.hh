@@ -201,7 +201,7 @@ public:
       Version elem_vers;
       // "atomic" read of both the current value and the version #
       atomicRead(e, elem_vers, retval);
-      // abort both on node change and node delete
+      // check both node changes and node deletes
       if (!item.has_read() || item.template read_value<Version>() & valid_check_only_bit) {
         t.add_read(item, elem_vers);
       }

@@ -8,6 +8,7 @@
 #include "Array.hh"
 #include "Array1.hh"
 #include "GenericSTMArray.hh"
+#include "ListArray.hh"
 #include "Hashtable.hh"
 #include "Transaction.hh"
 #include "clp.h"
@@ -15,7 +16,7 @@
 #include "MassTrans.hh"
 
 // size of array
-#define ARRAY_SZ 100000
+#define ARRAY_SZ 1000000
 
 // only used for randomRWs test
 #define GLOBAL_SEED 0
@@ -32,7 +33,8 @@
 
 #define MASSTREE 0
 
-#define GENSTM_ARRAY 1
+#define GENSTM_ARRAY 0
+#define LIST_ARRAY 1
 
 #define RANDOM_REPORT 0
 
@@ -40,9 +42,9 @@
 #define UNBOXED_STRINGS 0
 
 kvepoch_t global_log_epoch = 0;
-volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly                    
+volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly
 kvtimestamp_t initial_timestamp;
-volatile bool recovering = false; // so don't add log entries, and free old value immediately        
+volatile bool recovering = false; // so don't add log entries, and free old value immediately
 
 //#define DEBUG
 
@@ -61,8 +63,13 @@ typedef int value_type;
 #if !HASHTABLE
 #if !MASSTREE
 #if !GENSTM_ARRAY
+#if !LIST_ARRAY
 typedef Array1<value_type, ARRAY_SZ> ArrayType;
 ArrayType *a;
+#else
+typedef ListArray<value_type> ArrayType;
+ArrayType *a;
+#endif
 #else
 typedef GenericSTMArray<value_type, ARRAY_SZ> ArrayType;
 ArrayType *a;
@@ -195,7 +202,7 @@ void *readThenWrite(void *p) {
   a->thread_init();
 #endif
   
-  std::uniform_int_distribution<> slotdist(0, ARRAY_SZ-1);
+  std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
 
   int N = ntrans/nthreads;
   int OPS = opspertrans;
@@ -229,7 +236,7 @@ void *randomRWs(void *p) {
   a->thread_init();
 #endif
   
-  std::uniform_int_distribution<> slotdist(0, ARRAY_SZ-1);
+  std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
   uint32_t write_thresh = (uint32_t) (write_percent * Rand::max());
 
 #if RANDOM_REPORT
@@ -423,7 +430,7 @@ void *xorDelete(void *p) {
 #endif
 
   // we never pick slot 0 so we can detect if table is populated
-  std::uniform_int_distribution<> slotdist(1, ARRAY_SZ-1);
+  std::uniform_int_distribution<long> slotdist(1, ARRAY_SZ-1);
   uint32_t delete_thresh = (uint32_t) (write_percent * Rand::max());
 
   int N = ntrans/nthreads;

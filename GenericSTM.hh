@@ -22,7 +22,6 @@ public:
   template <typename T>
   void transWrite(Transaction& t, T* word, const T& new_val) {
     static_assert(sizeof(T) <= sizeof(void*), "don't support words larger than pointer size");
-    t.check_reads();
     table_.transPut(t, word, pack(new_val));
     auto& item = t.add_item(this, word);
     // we also add it ourselves because we want to actually change the
