@@ -5,28 +5,28 @@
 
 class GenericSTM : public Shared {
 public:
+
   template <typename T>
   T transRead(Transaction& t, T* word) {
     static_assert(sizeof(T) <= sizeof(void*), "don't support words larger than pointer size");
-    void* ret;
-    if (!table_.transGet(t, word, ret)) {
-      // this should be safe because if someone does do a write of this key,
-      // whole transaction will end up aborting
-      t.check_reads();
-      return *word;
+    int unused;
+    auto& item = t.item(this, word);
+    if (item.has_write()) {
+      return item.template write_value<T>();
     }
+    // ensures version doesn't change
+    table_.transGet(t, word, unused);
     t.check_reads();
-    return *(T*)&ret;
+    return *word;
   }
 
   template <typename T>
   void transWrite(Transaction& t, T* word, const T& new_val) {
     static_assert(sizeof(T) <= sizeof(void*), "don't support words larger than pointer size");
-    table_.transPut(t, word, pack(new_val));
-    auto& item = t.add_item(this, word);
-    // we also add it ourselves because we want to actually change the
-    // memory location (not strictly necessary, but probably a good idea
-    // if value is ever used outside of transactional context)
+    // just makes the version number change, i.e., makes conflicting reads abort
+    // (and locks this word for us)
+    table_.transPut(t, word, 0);
+    auto& item = t.item(this, word);
     t.add_write(item, new_val);
     item.data.rdata = (void*)sizeof(T);
     t.check_reads();
@@ -45,5 +45,6 @@ public:
   }
 
 private:
-  Hashtable<void*, void*, 1000000> table_;
+  // value is actually unused!
+  Hashtable<void*, int, 1000000> table_;
 };
