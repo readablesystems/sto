@@ -52,9 +52,9 @@ void genericSTMTests() {
     
     assert(stm.transRead(t, &y) - 1.1 < 0.01);
     
-    assert(stm.transRead(t, z) == 0xffffffffffULL);
-    stm.transWrite(t, z, 0x7777777777ULL);
-    assert(stm.transRead(t, z) == 0x7777777777ULL);
+    assert(stm.transRead(t, z) == (uint64_t)0xffffffffffULL);
+    stm.transWrite(t, z, (uint64_t)0x7777777777ULL);
+    assert(stm.transRead(t, z) == (uint64_t)0x7777777777ULL);
 
     assert(t.commit());
   }
@@ -64,7 +64,7 @@ void genericSTMTests() {
   {Transaction t;
     assert(stm.transRead(t, &x) == 5);
     assert(stm.transRead(t, &y) - 1.1 < 0.01);
-    assert(stm.transRead(t, z) == 0x7777777777ULL);
+    assert(stm.transRead(t, z) == (uint64_t)0x7777777777ULL);
     assert(t.commit());
   }
 }
