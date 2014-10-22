@@ -1,4 +1,4 @@
-#import "List.hh"
+#include "List.hh"
 
 // implememnts abstraction of a transactional array using our linked list
 // not particularly fast or useful, except for testing purposes

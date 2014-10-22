@@ -40,7 +40,7 @@ public:
     void* word = item.key();
 
     // Hashtable implementation has already locked this word for us
-    void *data = item.template write_value<void*>();
+    void *data = item.write_value<void*>();
     memcpy(word, &data, (size_t)item.data.rdata);
   }
 
