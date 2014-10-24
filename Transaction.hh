@@ -119,6 +119,9 @@ public:
   ~Transaction() {
     tinfo[threadid].epoch = 0;
     if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
+    if (!isAborted_ && transSet_.size() != 0) {
+      silent_abort();
+    }
   }
 
   void consolidateReads() {
@@ -358,11 +361,14 @@ public:
       abort();
     }
 
+    transSet_.resize(0);
+
     return success;
   }
 
-
-  void abort() {
+  void silent_abort() {
+    if (isAborted_)
+      return;
 #if PERF_LOGGING
     __sync_add_and_fetch(&total_aborts, 1);
 #endif
@@ -372,6 +378,10 @@ public:
         ti.sharedObj()->undo(ti);
       }
     }
+  }
+
+  void abort() {
+    silent_abort();
     throw Abort();
   }
 

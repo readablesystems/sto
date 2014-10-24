@@ -12,6 +12,7 @@ public:
     int unused;
     auto& item = t.item(this, word);
     if (item.has_write()) {
+      t.check_reads();
       return item.template write_value<T>();
     }
     // ensures version doesn't change
