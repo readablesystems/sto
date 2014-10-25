@@ -337,7 +337,7 @@ public:
         ti.sharedObj()->install(ti);
       }
     }
-    
+
   end:
 
     for (auto it = permute; it != perm_end; ) {

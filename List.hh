@@ -32,7 +32,6 @@ public:
   static constexpr Version delete_bit = 1<<0;
 
   static constexpr void* size_key = (void*)0;
-  static constexpr intptr_t lock_list_key = 1;
 
   struct list_node {
     list_node(const T& val, list_node *next, bool valid) 
@@ -325,14 +324,14 @@ public:
     // only lock we need to maybe do is for deletes
     if (has_delete(item))
       unpack<list_node*>(item.key())->lock();
-    else if (item.key() == (void*)lock_list_key)
+    else if (item.key() == (void*)this)
       lock(listversion_);
   }
 
   void unlock(TransItem& item) {
     if (has_delete(item))
-      unpack<list_node*>(item.key())->lock();
-    else if (item.key() == (void*)lock_list_key)
+      unpack<list_node*>(item.key())->unlock();
+    else if (item.key() == (void*)this)
       unlock(listversion_);
   }
 
@@ -341,17 +340,17 @@ public:
       return true;
     }
     if (item.key() == (void*)this) {
+      auto lv = listversion_;
       return 
-        ListVersioning::versionCheck(listversion_, item.template read_value<Version>())
-        // TODO: this is sorta inefficient...
-        && (!is_locked(listversion_) || t.has_item(this, (void*)lock_list_key));
+        ListVersioning::versionCheck(lv, item.template read_value<Version>())
+        && (!is_locked(lv) || t.check_for_write(item));
     }
     auto n = unpack<list_node*>(item.key());
     return (n->is_valid() || has_insert(item)) && (has_delete(item) || !n->is_locked());
   }
 
   void install(TransItem& item) {
-    if (item.key() == (void*)lock_list_key)
+    if (item.key() == (void*)this)
       return;
     list_node *n = unpack<list_node*>(item.key());
     if (has_delete(item)) {
@@ -368,7 +367,7 @@ public:
 
   void undo(TransItem& item) {
     list_node *n = unpack<list_node*>(item.key());
-    remove(n, true);
+    remove(n);
   }
   
   bool validityCheck(list_node *n, TransItem& item) {
@@ -390,7 +389,7 @@ public:
   }
 
   void add_lock_list_item(Transaction& t) {
-    auto& item = t_item(t, (void*)lock_list_key);
+    auto& item = t_item(t, (void*)this);
     t.add_write(item, 0);
   }
 
