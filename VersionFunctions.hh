@@ -1,3 +1,5 @@
+#pragma once
+
 template <typename Version,
           Version invalid_bit = 1<<(sizeof(Version)*8-2),
           Version lock_bit = ((Version)1)<<(sizeof(Version)*8-1),

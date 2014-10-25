@@ -2,6 +2,7 @@
 
 #include "TaggedLow.hh"
 #include "Transaction.hh"
+#include "VersionFunctions.hh"
 
 template<typename T>
 class DefaultCompare {
@@ -13,6 +14,7 @@ public:
   }
 };
 
+static __thread bool list_locked;
 template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true>
 class List : public Shared {
 public:
@@ -20,6 +22,8 @@ public:
   }
 
   typedef uint32_t Version;
+  typedef VersionFunctions<Version, 0> ListVersioning;
+
   static constexpr Version invalid_bit = 1<<0;
   // we need this to protect deletes (could just do a CAS on invalid_bit, but it's unclear
   // how to make that work with the lock, check, install, unlock protocol
@@ -27,7 +31,8 @@ public:
 
   static constexpr Version delete_bit = 1<<0;
 
-  static constexpr Version list_lock_bit = 1<<(sizeof(Version) - 1);
+  static constexpr void* size_key = (void*)0;
+  static constexpr intptr_t lock_list_key = 1;
 
   struct list_node {
     list_node(const T& val, list_node *next, bool valid) 
@@ -168,6 +173,8 @@ public:
       return false;
     }
     add_trans_size_offs(t, 1);
+    // we lock the list for inserts
+    add_lock_list_item(t);
     t.add_write(item, 0);
     t.add_undo(item);
     return true;
@@ -190,17 +197,18 @@ public:
     }
   }
 
-  bool remove(const T& elem) {
-    return _remove([&] (list_node *n2) { return comp_(n2->val, elem) == 0; });
+  bool remove(const T& elem, bool locked = false) {
+    return _remove([&] (list_node *n2) { return comp_(n2->val, elem) == 0; }, locked);
   }
 
-  bool remove(list_node *n) {
-    return _remove([n] (list_node *n2) { return n == n2; });
+  bool remove(list_node *n, bool locked = false) {
+    return _remove([n] (list_node *n2) { return n == n2; }, locked);
   }
 
   template <typename FoundFunc>
-  bool _remove(FoundFunc found_f) {
-    lock(listversion_);
+  bool _remove(FoundFunc found_f, bool locked = false) {
+    if (!locked)
+      lock(listversion_);
     list_node *prev = NULL;
     list_node *cur = head_;
     while (cur != NULL) {
@@ -212,13 +220,15 @@ public:
           head_ = cur->next;
         }
         // TODO: rcu free
-        unlock(listversion_);
+        if (!locked)
+          unlock(listversion_);
         return true;
       }
       prev = cur;
       cur = cur->next;
     }
-    unlock(listversion_);
+    if (!locked)
+      unlock(listversion_);
     return false;
   }
 
@@ -300,66 +310,65 @@ public:
   }
 
   void lock(Version& v) {
-    while (1) {
-      auto cur = v;
-      if (!(cur&list_lock_bit) && bool_cmpxchg(&v, cur, cur|list_lock_bit)) {
-        break;
-      }
-      relax_fence();
-    }
+    ListVersioning::lock(v);
   }
 
   void unlock(Version& v) {
-    assert(is_locked(v));
-    auto cur = v;
-    cur &= ~list_lock_bit;
-    v = cur;
+    ListVersioning::unlock(v);
   }
 
   bool is_locked(Version& v) {
-    return v & list_lock_bit;
+    return ListVersioning::is_locked(v);
   }
 
   void lock(TransItem& item) {
     // only lock we need to maybe do is for deletes
     if (has_delete(item))
       unpack<list_node*>(item.key())->lock();
+    else if (item.key() == (void*)lock_list_key)
+      lock(listversion_);
   }
 
   void unlock(TransItem& item) {
     if (has_delete(item))
       unpack<list_node*>(item.key())->lock();
+    else if (item.key() == (void*)lock_list_key)
+      unlock(listversion_);
   }
 
-  bool check(TransItem& item, Transaction&) {
-    if (item.key() == (void*)0) {
+  bool check(TransItem& item, Transaction& t) {
+    if (item.key() == size_key) {
       return true;
     }
     if (item.key() == (void*)this) {
-      return listversion_ == item.template read_value<Version>();
+      return 
+        ListVersioning::versionCheck(listversion_, item.template read_value<Version>())
+        // TODO: this is sorta inefficient...
+        && (!is_locked(listversion_) || t.has_item(this, (void*)lock_list_key));
     }
     auto n = unpack<list_node*>(item.key());
     return (n->is_valid() || has_insert(item)) && (has_delete(item) || !n->is_locked());
   }
 
   void install(TransItem& item) {
+    if (item.key() == (void*)lock_list_key)
+      return;
     list_node *n = unpack<list_node*>(item.key());
     if (has_delete(item)) {
       n->mark_invalid();
       remove(n);
       // TODO: this is probably not safe?? (transSize disagrees with # of elements momentarily)
-      __sync_add_and_fetch(&listsize_, -1);
+      listsize_--;
     } else {
-      lock(listversion_);
+      ListVersioning::inc_version(listversion_);
       n->mark_valid();
-      __sync_add_and_fetch(&listsize_, 1);
-      unlock(listversion_);
+      listsize_++;
     }
   }
 
   void undo(TransItem& item) {
     list_node *n = unpack<list_node*>(item.key());
-    remove(n);
+    remove(n, true);
   }
   
   bool validityCheck(list_node *n, TransItem& item) {
@@ -380,10 +389,15 @@ public:
     return item.has_flags(delete_bit);
   }
 
+  void add_lock_list_item(Transaction& t) {
+    auto& item = t_item(t, (void*)lock_list_key);
+    t.add_write(item, 0);
+  }
+
   void add_trans_size_offs(Transaction& t, int size_offs) {
     // TODO: it would be more efficient to store this directly in Transaction,
     // since the "key" is fixed (rather than having to search the transset each time)
-    auto& item = t_item(t, (void*)0);
+    auto& item = t_item(t, size_key);
     int cur_offs = 0;
     if (item.has_read())
       cur_offs = item.template read_value<int>();
@@ -391,7 +405,7 @@ public:
   }
 
   int trans_size_offs(Transaction& t) {
-    auto& item = t_item(t, (void*)0);
+    auto& item = t_item(t, size_key);
     if (item.has_read())
       return item.template read_value<int>();
     return 0;
