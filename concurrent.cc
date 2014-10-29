@@ -33,8 +33,8 @@
 
 #define MASSTREE 0
 
-#define GENSTM_ARRAY 0
-#define LIST_ARRAY 1
+#define GENSTM_ARRAY 1
+#define LIST_ARRAY 0
 
 #define RANDOM_REPORT 0
 
@@ -351,13 +351,13 @@ void *randomRWs(void *p) {
 
 void checkRandomRWs() {
   ArrayType *old = a;
-  ArrayType check;
+  a = new ArrayType();
+  ArrayType& check = *a;
 
   // rerun transactions one-by-one
 #if MAINTAIN_TRUE_ARRAY_STATE
   maintain_true_array_state = !maintain_true_array_state;
 #endif
-  a = &check;
 
   for (int i = 0; i < prepopulate; ++i) {
     Transaction t;
@@ -725,8 +725,7 @@ int main(int argc, char *argv[]) {
   };
 #endif
 
-  ArrayType stack_arr;
-  a = &stack_arr;
+  a = new ArrayType();
 
   for (int i = 0; i < prepopulate; ++i) {
     Transaction t;
