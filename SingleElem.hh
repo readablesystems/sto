@@ -82,7 +82,7 @@ public:
       free_packed<T>(item.data.wdata);
   }
 
-private:
+protected:
   // we store the versioned_value inlined (no added boxing)
   Structure s_;
 };
