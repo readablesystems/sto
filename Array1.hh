@@ -47,10 +47,10 @@ class Array1 : public Shared {
             unlock(unpack<Key>(item.key()));
         }
 
-        void install(TransItem& item){
+        void install(TransItem& item, uint64_t tid){
             //install value
             Key i = unpack<Key>(item.key());
-            data_[i].install(item);
+            data_[i].install(item, tid);
         }
 
     private:

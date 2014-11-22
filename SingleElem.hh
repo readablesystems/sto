@@ -72,7 +72,7 @@ public:
       (!Versioning::is_locked(s_.version()) || item.has_write());
   }
 
-  void install(TransItem& item) {
+  void install(TransItem& item, uint64_t tid) {
     s_.set_value(item.template write_value<T>());
 		Versioning::inc_version(s_.version());
   }

@@ -127,7 +127,7 @@ public:
     unlock(unpack<Key>(item.data.key));
   }
 
-  void install(TransItem& item) {
+  void install(TransItem& item, uint64_t tid) {
     Key i = unpack<Key>(item.data.key);
     Value val = unpack<Value>(item.data.wdata);
     assert(is_locked(i));

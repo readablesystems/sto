@@ -19,7 +19,11 @@
 #include "Interface.hh"
 #include "TransItem.hh"
 
+#include "Util.hh"
+
 #define INIT_SET_SIZE 512
+
+typedef uint64_t tid_t;
 
 #if PERF_LOGGING
 uint64_t total_n;
@@ -35,6 +39,7 @@ struct threadinfo_t {
   std::vector<std::pair<unsigned, std::function<void(void)>>> callbacks;
   std::function<void(void)> trans_start_callback;
   std::function<void(void)> trans_end_callback;
+  tid_t last_commit_tid;
 };
 
 class Transaction {
@@ -271,12 +276,44 @@ public:
       }
     return true;
   }
+  
+  // Generate a tid for this transaction
+  tid_t genCommitTid(TransSet transSet) {
+    threadinfo_t &ctx = tinfo[threadid];
+    uint64_t commit_epoch;
+    
+    // Get the current global epoch
+    fence();
+    commit_epoch = global_epoch;
+    fence();
+    
+    tid_t ret = ctx.last_commit_tid;
+    if (commit_epoch != epochId(ret))
+      ret = makeTID(threadid, 0, commit_epoch);
+    
+    {
+      TransItem* trans_first = &transSet[0];
+      TransItem* trans_last = trans_first + transSet.size();
+      
+      for (auto it = trans_first; it != trans_last; ++it) {
+        // Need to get the tid from the underlying shared object.
+        const tid_t t = it->sharedObj()->getTid(*it);
+        
+        if (t > ret)
+          ret = t;
+      }
+      
+      ret = makeTID(threadid, numId(ret) + 1, commit_epoch);
+    }
+    return (ctx.last_commit_tid = ret);
+  }
 
   bool commit() {
     if (isAborted_)
       return false;
 
     bool success = true;
+    tid_t commit_tid = 0;
 
 #if PERF_LOGGING
     total_n += transSet_.size();
@@ -320,6 +357,8 @@ public:
     }
 
     /* fence(); */
+    //Generata a commit tid right after phase 1
+    commit_tid = genCommitTid(transSet_);
 
     //phase2
     if (!check_reads(trans_first, trans_last)) {
@@ -334,7 +373,7 @@ public:
 #if PERF_LOGGING
         total_w++;
 #endif
-        ti.sharedObj()->install(ti);
+        ti.sharedObj()->install(ti, commit_tid);
       }
     }
 

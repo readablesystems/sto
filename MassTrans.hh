@@ -577,7 +577,7 @@ public:
 #endif
     return lockedCheck && ((read_version & valid_check_only_bit) || versionCheck(read_version, e->version()));
   }
-  void install(TransItem& item) {
+  void install(TransItem& item, uint64_t tid) {
     assert(!is_inter(item.key()));
     auto e = unpack<versioned_value*>(item.key());
     assert(is_locked(e->version()));

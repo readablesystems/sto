@@ -31,7 +31,7 @@
 #define HASHTABLE_LOAD_FACTOR 2
 #define HASHTABLE_RAND_DELETES 0
 
-#define MASSTREE 0
+#define MASSTREE 1
 
 #define GENSTM_ARRAY 0
 #define LIST_ARRAY 1

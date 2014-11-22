@@ -37,7 +37,7 @@ public:
   void lock(TransItem&) {}
   void unlock(TransItem&) {}
   bool check(TransItem&, Transaction&) { assert(0); return false; }
-  void install(TransItem& item) {
+  void install(TransItem& item, uint64_t tid) {
     void* word = item.key();
 
     // Hashtable implementation has already locked this word for us

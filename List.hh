@@ -349,7 +349,7 @@ public:
     return (n->is_valid() || has_insert(item)) && (has_delete(item) || !n->is_locked());
   }
 
-  void install(TransItem& item) {
+  void install(TransItem& item, uint64_t tid) {
     if (item.key() == (void*)this)
       return;
     list_node *n = unpack<list_node*>(item.key());

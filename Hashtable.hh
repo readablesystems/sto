@@ -433,7 +433,7 @@ public:
     auto el = unpack<internal_elem*>(item.key());
     unlock(el);
   }
-  void install(TransItem& item) {
+  void install(TransItem& item, uint64_t tid) {
     assert(!is_bucket(item.key()));
     auto el = unpack<internal_elem*>(item.key());
     assert(is_locked(el));
