@@ -18,6 +18,8 @@
 
 #define READ_MY_WRITES 1
 
+#define USE_TID_AS_VERSION 1
+
 #if PERF_LOGGING
 uint64_t node_aborts;
 #endif
@@ -601,10 +603,23 @@ public:
       value_type& v = item.template write_value<value_type>();
       e->set_value(v);
     }
+#if USE_TID_AS_VERSION
+    set_version_to_tid(e->version(), tid);
+#else
     // also marks valid if needed
     inc_version(e->version());
+#endif
   }
 
+    uint64_t getTid(TransItem& item) {
+      auto e = unpack<versioned_value*>(item.key());
+#if USE_TID_AS_VERSION
+      return (e->version() & version_mask) >> tid_shift;
+#else 
+      return 0;
+#endif
+    }
+    
   void undo(TransItem& item) {
     // remove node
     auto& stdstr = item.template write_value<std::string>();
@@ -833,7 +848,10 @@ private:
   static constexpr Version invalid_bit = 1U<<(sizeof(Version)*8 - 2);
   static constexpr Version valid_check_only_bit = 1U<<(sizeof(Version)*8 - 3);
   static constexpr Version version_mask = ~(lock_bit|invalid_bit|valid_check_only_bit);
-
+    
+  static constexpr uint8_t tid_shift = 1;
+  static constexpr uint8_t tid_extra_bits = (64 - ((sizeof(Version)*8) - 4));
+    
   static constexpr uintptr_t internode_bit = 1<<0;
 
   static constexpr uint8_t delete_bit = 1<<0;
@@ -862,6 +880,13 @@ private:
     // set new version and ensure invalid bit is off
     v = (cur | (v & ~version_mask)) & ~invalid_bit;
   }
+    
+  void set_version_to_tid(Version& v, Version tid) {
+    assert(is_locked(v));
+    assert(((tid << tid_extra_bits) >> tid_extra_bits) == tid);
+    v = ((tid << tid_shift) | (v & ~version_mask) | (v & 1)) & ~invalid_bit; // Should we preserve the internode bit?
+  }
+    
   bool is_locked(Version v) {
     return v & lock_bit;
   }
