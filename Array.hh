@@ -14,7 +14,7 @@
 template <typename T, unsigned N>
 class Array : public Shared {
 public:
-  typedef unsigned Version;
+  typedef uint64_t Version;
   typedef unsigned Key;
   typedef T Value;
 

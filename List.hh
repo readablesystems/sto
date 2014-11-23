@@ -21,7 +21,7 @@ public:
   List(Compare comp = Compare()) : head_(NULL), listsize_(0), listversion_(0), comp_(comp) {
   }
 
-  typedef uint32_t Version;
+  typedef uint64_t Version;
   typedef VersionFunctions<Version, 0> ListVersioning;
 
   static constexpr Version invalid_bit = 1<<0;

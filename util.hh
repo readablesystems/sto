@@ -34,10 +34,10 @@ static inline uint64_t makeTID(uint64_t threadId, uint64_t numId, uint64_t epoch
   static_assert((THREAD_MASK | NUMID_MASK | EPOCH_MASK) == ((uint64_t)-1), "dsew");
   static_assert((THREAD_MASK & NUMID_MASK) == 0, "weq");
   static_assert((NUMID_MASK & EPOCH_MASK) == 0, "xx");
-  std::cout <<"Thread id " << threadId<<std::endl;
-  std::cout <<" Num id "<<numId<< std::endl;
-  std::cout <<"Epoch id "<<epochId<<std::endl;
-  std::cout<<"tid " <<((threadId) | (numId << NUMID_SHIFT) | (epochId << EPOCH_SHIFT)) << std::endl;
+  //std::cout <<"Thread id " << threadId<<std::endl;
+  //std::cout <<" Num id "<<numId<< std::endl;
+  //std::cout <<"Epoch id "<<epochId<<std::endl;
+  //std::cout<<"tid " <<((threadId) | (numId << NUMID_SHIFT) | (epochId << EPOCH_SHIFT)) << std::endl;
   return (threadId) | (numId << NUMID_SHIFT) | (epochId << EPOCH_SHIFT);
 
 }

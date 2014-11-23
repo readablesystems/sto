@@ -6,7 +6,7 @@
 template <typename T, unsigned N, typename Elem = SingleElem<T>>
 class Array1 : public Shared {
     typedef unsigned Key;
-    typedef uint32_t Version;
+    typedef uint64_t Version;
     typedef VersionFunctions<Version, 0> Versioning;
     public: 
 				T read(Key i) {

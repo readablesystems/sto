@@ -66,9 +66,10 @@ public:
   }
 
   static void* epoch_advancer(void*) {
-    std::cout << "Called epoch advancer" << std::endl;
     while (1) {
       usleep(100000);
+      //std::cout << "epoch advancing" << std::endl;
+      
       auto g = global_epoch;
       for (auto&& t : tinfo) {
         if (t.epoch != 0 && t.epoch < g)
@@ -286,7 +287,7 @@ public:
     // Get the current global epoch
     fence();
     commit_epoch = global_epoch;
-    std::cout<<"Commit epoch "<<commit_epoch<<std::endl;
+    //std::cout<<"Commit epoch "<<commit_epoch<<std::endl;
     fence();
     
     tid_t ret = ctx.last_commit_tid;
@@ -300,7 +301,7 @@ public:
       for (auto it = trans_first; it != trans_last; ++it) {
         // Need to get the tid from the underlying shared object.
         const tid_t t = it->sharedObj()->getTid(*it);
-        std::cout<<t<<std::endl;
+        //std::cout<<t<<std::endl;
         if (t > ret)
           ret = t;
       }
