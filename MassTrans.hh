@@ -12,13 +12,14 @@
 
 #include "versioned_value.hh"
 #include "stuffed_str.hh"
+#include <iostream>
 
 #define RCU 0
 #define ABORT_ON_WRITE_READ_CONFLICT 0
 
 #define READ_MY_WRITES 1
 
-#define USE_TID_AS_VERSION 1
+#define USE_TID_AS_VERSION 0
 
 #if PERF_LOGGING
 uint64_t node_aborts;
@@ -146,7 +147,7 @@ private:
 
 #endif
 
-typedef stuffed_str<uint32_t> versioned_str;
+typedef stuffed_str<uint64_t> versioned_str;
 
 #if 0
 // TODO: ughhh
@@ -614,6 +615,7 @@ public:
     uint64_t getTid(TransItem& item) {
       auto e = unpack<versioned_value*>(item.key());
 #if USE_TID_AS_VERSION
+      std::cout << ((e->version() & version_mask) >> tid_shift) << std::endl;
       return (e->version() & version_mask) >> tid_shift;
 #else 
       return 0;
@@ -881,10 +883,15 @@ private:
     v = (cur | (v & ~version_mask)) & ~invalid_bit;
   }
     
-  void set_version_to_tid(Version& v, Version tid) {
+  void set_version_to_tid(Version& v, uint64_t tid) {
     assert(is_locked(v));
-    assert(((tid << tid_extra_bits) >> tid_extra_bits) == tid);
+    std::cout<<tid_extra_bits<<std::endl;
+    std::cout<<"Transaction id "<<tid<<std::endl;
+    assert(((tid << 36) >> 36) == tid);
+     std::cout<<"old version number "<<v<<std::endl;
     v = ((tid << tid_shift) | (v & ~version_mask) | (v & 1)) & ~invalid_bit; // Should we preserve the internode bit?
+    std::cout<<"New version number "<<v<<std::endl;
+    assert(((v & version_mask) >> tid_shift )== tid);
   }
     
   bool is_locked(Version v) {

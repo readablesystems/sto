@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <functional>
 #include <unistd.h>
-
+#include <iostream>
 #define LOCAL_VECTOR 1
 #define PERF_LOGGING 0
 
@@ -66,6 +66,7 @@ public:
   }
 
   static void* epoch_advancer(void*) {
+    std::cout << "Called epoch advancer" << std::endl;
     while (1) {
       usleep(100000);
       auto g = global_epoch;
@@ -285,6 +286,7 @@ public:
     // Get the current global epoch
     fence();
     commit_epoch = global_epoch;
+    std::cout<<"Commit epoch "<<commit_epoch<<std::endl;
     fence();
     
     tid_t ret = ctx.last_commit_tid;
@@ -298,7 +300,7 @@ public:
       for (auto it = trans_first; it != trans_last; ++it) {
         // Need to get the tid from the underlying shared object.
         const tid_t t = it->sharedObj()->getTid(*it);
-        
+        std::cout<<t<<std::endl;
         if (t > ret)
           ret = t;
       }
@@ -357,7 +359,8 @@ public:
     }
 
     /* fence(); */
-    //Generata a commit tid right after phase 1
+    
+    //Generate a commit tid right after phase 1
     commit_tid = genCommitTid(transSet_);
 
     //phase2
