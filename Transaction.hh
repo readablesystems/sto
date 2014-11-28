@@ -20,6 +20,7 @@
 #include "TransItem.hh"
 
 #include "Util.hh"
+#include "Logger.hh"
 
 #define INIT_SET_SIZE 512
 
@@ -42,8 +43,11 @@ struct threadinfo_t {
   tid_t last_commit_tid;
 };
 
+class Transaction_Persist;
+
 class Transaction {
 public:
+  friend class Transaction_Persist;
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static unsigned global_epoch;
@@ -309,6 +313,90 @@ public:
     }
     return (ctx.last_commit_tid = ret);
   }
+  
+  void on_tid_finish(tid_t commit_tid) {
+    if (isAborted_) {
+      return;
+    } else if (!Logger::IsPersistenceEnabled()) {
+      return;
+    }
+    
+    Logger::persist_ctx &ctx = Logger::persist_ctx_for(threadid, Logger::INITMODE_REG);
+    
+    Logger::pbuffer_circbuf &pull_buf = ctx.all_buffers_;
+    Logger::pbuffer_circbuf &push_buf = ctx.persist_buffers_;
+    
+    //compute how much space is necessary
+    uint64_t space_needed = 0;
+    
+    //8 bytes to indicate TID
+    space_needed += sizeof(uint64_t);
+    const unsigned nwrites = perm_size;
+    space_needed += sizeof(nwrites);
+    
+    // each record needs to be recorded
+    TransItem* trans_first = &transSet_[0];
+    TransItem* trans_last = trans_first + transSet_.size();
+    for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
+      TransItem& ti = *it;
+      if (ti.has_write()) {
+        space_needed += 1; // TODO: is this required?
+        // Call the shared object to get square required
+        space_needed += ti.sharedObj()->spaceRequired(ti);
+      }
+    }
+    
+    assert(space_needed <= Logger::g_horizon_buffer_size);
+    assert(space_needed <= Logger::g_buffer_size);
+    
+    //TODO: deal with compression later
+    
+  retry:
+    Logger::pbuffer *px = Logger::wait_for_head(pull_buf);
+    assert(px && px->thread_id_ == threadid);
+    
+    bool tidChanged = false;
+    if (px->space_remaining() < space_needed || (tidChanged = !px->can_hold_tid(commit_tid))) {
+      assert(px->header()->nentries_);
+      // Send the buffer to logger's queue
+      Logger::pbuffer *px0 = pull_buf.deq();
+      assert(px == px0);
+      assert(px0->header()->nentries_);
+      push_buf.enq(px0);
+      goto retry;
+    }
+    
+    const uint64_t written = write_current_txn_into_buffer(px, commit_tid);
+    assert(written == space_needed);
+  }
+  
+  inline uint64_t write_current_txn_into_buffer(Logger::pbuffer *px, uint64_t commit_tid) {
+    assert(px->can_hold_tid(commit_tid));
+    
+    uint8_t* p = px->pointer();
+    uint8_t *porig = p;
+    
+    const unsigned nwrites = perm_size;
+    
+    p = write(p, commit_tid);
+    p = write(p, nwrites);
+    
+    TransItem* trans_first = &transSet_[0];
+    TransItem* trans_last = trans_first + transSet_.size();
+    for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
+      TransItem& ti = *it;
+      if (ti.has_write()) {
+        p = write(p, ti.sharedObj()->getLogData(ti));
+        
+      }
+    }
+    
+    px->cur_offset_ += (p - porig);
+    px->header()->nentries_++;
+    px->header()->last_tid_ = commit_tid;
+    
+    return uint64_t(p - porig);
+  }
 
   bool commit() {
     if (isAborted_)
@@ -404,7 +492,9 @@ public:
     }
 
     transSet_.resize(0);
-
+    
+    on_tid_finish(commit_tid);
+    
     return success;
   }
 
@@ -451,3 +541,4 @@ private:
   bool isAborted_;
   int16_t firstWrite_;
 };
+

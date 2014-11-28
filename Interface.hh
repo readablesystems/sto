@@ -22,4 +22,10 @@ public:
   virtual void cleanup(TransItem& item) { (void)item; }
   
   virtual uint64_t getTid(TransItem& item) { return 0; }
+  
+  // Get space required to encode the write data
+  virtual uint64_t spaceRequired(TransItem & item) { return 0;}
+  // Get the log data inorder to do logging
+  
+  virtual uint64_t getLogData(TransItem & item) {return 0;}
 };

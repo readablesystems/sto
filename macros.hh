@@ -14,4 +14,6 @@ char __XCONCAT(__padout, __COUNTER__)[0] __attribute__((aligned(CACHELINE_SIZE))
 
 #define PACKED __attribute__((packed))
 
+#define nop_pause __asm volatile("pause" : :)
+
 #endif

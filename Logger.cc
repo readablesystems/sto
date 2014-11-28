@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <sys/uio.h>
 
+#include "Transaction.hh"
 
 
 std::string root_folder = "/silo_log"; // this folder stores pepoch, cepoch and other information

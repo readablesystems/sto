@@ -57,6 +57,13 @@ static std::vector<T> MakeRange(T start, T end) {
   return ret;
 }
 
+template <typename T>
+static inline uint8_t * write(uint8_t* buf, const T &obj) {
+  T *p = (T *) buf;
+  *p = obj;
+  return (uint8_t *)(p + 1);
+}
+
 namespace util {
   
   //Padded aligned primitives

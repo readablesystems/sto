@@ -625,6 +625,15 @@ public:
 #endif
     }
     
+    // Get space required to encode the write data
+    uint64_t spaceRequired(TransItem & item) {
+      return 0;
+    }
+    
+    // Get the log data inorder to do logging
+    virtual uint64_t getLogData(TransItem & item) {return 0;}
+
+    
   void afterC(TransItem& item, uint64_t tid) {
       
   }

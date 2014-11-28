@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Transaction.hh"
 #include <iostream>
 #include <atomic>
 #include "util.hh"
@@ -12,6 +11,7 @@
 class Logger {
   
 public:
+  friend class Transaction;
   static const size_t g_nmax_loggers = 16;
   static const size_t g_perthread_buffers = 512; // Outstanding buffers
   static const size_t g_buffer_size = (1 << 20); // in bytes
@@ -23,6 +23,14 @@ public:
   struct logbuf_header {
     uint64_t nentries_; // > 0 for all valid log buffers
     uint64_t last_tid_; // TID of the last commit
+    
+    /*inline void set_entries(uint64_t entries) {
+      nentries_ = entries;
+    }
+    
+    inline void set_last_tid(uint64_t last_tid) {
+      last_tid_ = last_tid;
+    }*/
   } PACKED;
   
   // Buffer
@@ -58,6 +66,26 @@ public:
       return reinterpret_cast<logbuf_header*>(&buffer_start_[0]);
     }
     
+    inline const logbuf_header* header() const{
+      return reinterpret_cast<const logbuf_header*>(&buffer_start_[0]);
+    }
+    
+    inline size_t space_remaining() const {
+      assert(cur_offset_ >= sizeof(logbuf_header));
+      assert(cur_offset_ <= buffer_size_);
+      return buffer_size_ - cur_offset_;
+    }
+    
+    inline bool can_hold_tid(uint64_t tid) const {
+      return !header()->nentries_ || epochId(header()->last_tid_) == epochId(tid);
+    }
+    
+    inline uint8_t* pointer() {
+      assert(cur_offset_ >= sizeof(logbuf_header));
+      assert(cur_offset_ <= buffer_size_);
+      return &buffer_start_[0] + cur_offset_;
+    }
+    
   };
   
   // init the logging subsystem.
@@ -73,7 +101,9 @@ public:
   static inline bool IsCompressionEnabled() {
     return g_use_compression;
   }
-
+  
+  typedef circbuf<pbuffer, g_perthread_buffers> pbuffer_circbuf;
+  
   
 private:
   // data structures
@@ -129,7 +159,19 @@ private:
     return ctx;
   }
   
+public:
   
+  // Spin until there is something in the queue
+  static inline pbuffer* wait_for_head(pbuffer_circbuf &pull_buf) {
+    pbuffer* px;
+    while(!(px = pull_buf.peek())) {
+      nop_pause;
+    }
+    assert(!px->io_scheduled_);
+    return px;
+  }
+  
+private:
   // State variables
   static bool g_persist; // whether or not logging is enabled.
   static bool g_call_fsync; // whether or not fsync() needs to be called
