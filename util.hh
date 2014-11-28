@@ -5,6 +5,12 @@
 
 #include "compiler.hh"
 #include <iostream>
+#include <assert.h>
+#include <vector>
+#include <sys/time.h>
+#include "macros.hh"
+
+/// Some macros related to epochs
 #define THREAD_BITS 9
 #define MAX_THREADS_ (1 << THREAD_BITS)
 
@@ -39,7 +45,41 @@ static inline uint64_t makeTID(uint64_t threadId, uint64_t numId, uint64_t epoch
   //std::cout <<"Epoch id "<<epochId<<std::endl;
   //std::cout<<"tid " <<((threadId) | (numId << NUMID_SHIFT) | (epochId << EPOCH_SHIFT)) << std::endl;
   return (threadId) | (numId << NUMID_SHIFT) | (epochId << EPOCH_SHIFT);
+  
+}
 
+template <typename T>
+static std::vector<T> MakeRange(T start, T end) {
+  std::vector<T> ret;
+  for (T i = start; i < end; i++) {
+    ret.push_back(i);
+  }
+  return ret;
+}
+
+namespace util {
+  
+  //Padded aligned primitives
+  template <typename T, bool Pedantic = true>
+  class aligned_padded_elem {
+  public:
+    
+    template <class... Args>
+    aligned_padded_elem(Args &&... args) : elem(std::forward<Args>(args)...) {
+      if (Pedantic) {
+        assert(((uintptr_t)this % CACHELINE_SIZE) == 0);
+      }
+    }
+    
+    T elem;
+    CACHE_PADOUT;
+    
+    inline T & operator*() {return elem;}
+    inline const T & operator*() const {return elem; }
+    inline T * operator->() {return &elem; }
+    inline const T * operator->() const { return &elem;}
+    
+  } CACHE_ALIGNED;
 }
 
 

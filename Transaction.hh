@@ -68,7 +68,6 @@ public:
   static void* epoch_advancer(void*) {
     while (1) {
       usleep(100000);
-      //std::cout << "epoch advancing" << std::endl;
       
       auto g = global_epoch;
       for (auto&& t : tinfo) {
@@ -452,10 +451,3 @@ private:
   bool isAborted_;
   int16_t firstWrite_;
 };
-
-#ifndef STO
-threadinfo_t Transaction::tinfo[MAX_THREADS];
-__thread int Transaction::threadid;
-unsigned Transaction::global_epoch;
-std::function<void(unsigned)> Transaction::epoch_advance_callback;
-#endif

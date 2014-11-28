@@ -3,6 +3,7 @@
 
 #include "Array.hh"
 #include "MassTrans.hh"
+#include "Logger.hh"
 #include "Transaction.hh"
 
 kvepoch_t global_log_epoch = 0;
@@ -14,6 +15,10 @@ int main() {
   typedef int Key;
   typedef int Value;
   
+  std::string log("./disk1");
+  const std::vector<std::string> logfiles({log});
+  const std::vector<std::vector<unsigned> > assignments_given;
+  Logger::Init(1,logfiles, assignments_given, NULL, true, false, false);
   MassTrans<Value> h;
   h.thread_init();
   int threadid = Transaction::threadid;

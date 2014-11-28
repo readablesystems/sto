@@ -13,6 +13,7 @@
 #include "versioned_value.hh"
 #include "stuffed_str.hh"
 #include <iostream>
+//#include "Logger.hh"
 
 #define RCU 0
 #define ABORT_ON_WRITE_READ_CONFLICT 0
@@ -20,6 +21,7 @@
 #define READ_MY_WRITES 1
 
 #define USE_TID_AS_VERSION 1
+
 
 #if PERF_LOGGING
 uint64_t node_aborts;
@@ -230,6 +232,7 @@ public:
   }
 
   void thread_init() {
+    // TODO: change this for persistence
 #if !RCU
     mythreadinfo.ti = new threadinfo;
     return;
@@ -621,6 +624,10 @@ public:
       return 0;
 #endif
     }
+    
+  void afterC(TransItem& item, uint64_t tid) {
+      
+  }
     
   void undo(TransItem& item) {
     // remove node
