@@ -192,7 +192,7 @@ struct versioned_str_struct : public versioned_str {
   }
 };
 
-template <typename V, typename Box = versioned_value_struct<V>>
+template <typename V, typename Box = versioned_value_struct_logging<V, Masstree::Str>>
   class MassTrans : public Shared {
 public:
 #if !RCU
@@ -231,6 +231,14 @@ public:
     // but doesn't seem to be possible
   }
 
+  void set_tree_id(uint64_t new_tree_id) {
+      tree_id = new_tree_id;
+    }
+    
+  uint64_t get_tree_id() {
+      return tree_id;
+  }
+    
   void thread_init() {
     // TODO: change this for persistence
 #if !RCU
@@ -392,7 +400,7 @@ public:
       return handlePutFound<INSERT, SET>(t, e, key, value);
     } else {
       //      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
-      versioned_value* val = (versioned_value*)versioned_value::make(value, invalid_bit);
+      versioned_value* val = (versioned_value*)versioned_value::make(key, value, invalid_bit);
       lp.value() = val;
 #if ABORT_ON_WRITE_READ_CONFLICT
       auto orig_node = lp.node();
@@ -416,7 +424,7 @@ public:
         }
 #endif
       }
-      auto& item = t.add_item<false>(this, val);
+      auto& item = t.add_item<false>(this, val); // TODO: val should also include key and tree id
       if (std::is_same<std::string, StringType>::value)
         t.add_write(item, key);
       else
@@ -446,7 +454,7 @@ public:
 
   // goddammit templates/hax
   template <typename Callback, typename V2>
-  static bool query_callback_overload(Str key, versioned_value_struct<V2> *val, Callback c) {
+  static bool query_callback_overload(Str key, versioned_value_struct_logging<V2, Str> *val, Callback c) {
     return c(key, val->read_value());
   }
 
@@ -605,6 +613,7 @@ public:
     }
     if (!we_inserted(item)) {
       value_type& v = item.template write_value<value_type>();
+      std::cout<<"value in install is "<<v<<std::endl;
       e->set_value(v);
     }
 #if USE_TID_AS_VERSION
@@ -627,11 +636,59 @@ public:
     
     // Get space required to encode the write data
     uint64_t spaceRequired(TransItem & item) {
-      return 0;
+      assert(item.has_write());
+      uint64_t space_needed = 0;
+      space_needed += 1; // this if for the tree id TODO: What is this for?
+      auto e = unpack<versioned_value*>(item.key());
+      std::string s = (std::string) e->read_key();
+      std::cout<<"Key "<<s<<std::endl;
+      const uint32_t k_nbytes = s.size();
+      std::cout<<"Key size "<<k_nbytes<<std::endl;
+      space_needed += sizeof(k_nbytes);
+      std::cout<<"bytes Key size "<<sizeof(k_nbytes)<<std::endl;
+      
+      value_type value;
+      if (we_inserted(item)) {
+        value = e->read_value();
+      } else {
+        value = item.template write_value<value_type>();
+      }
+      
+      std::cout<<"value "<<value<<std::endl;
+
+      const uint32_t v_nbytes = sizeof(value);
+      std::cout<<v_nbytes<<std::endl;
+      space_needed += sizeof(v_nbytes);
+      space_needed += v_nbytes;
+      return space_needed;
+    
     }
     
     // Get the log data inorder to do logging
-    virtual uint64_t getLogData(TransItem & item) {return 0;}
+    uint8_t* writeLogData(TransItem & item, uint8_t* p) {
+      auto e = unpack<versioned_value*>(item.key());
+      std::string s = (std::string) e->read_key();
+      const uint32_t k_nbytes = s.size();
+      p = write(p, k_nbytes);
+      memcpy(p, s.data(), k_nbytes);
+      p += k_nbytes;
+      
+      value_type value;
+      if (we_inserted(item)) {
+        value = e->read_value();
+      } else {
+        value = item.template write_value<value_type>();
+      }
+      
+      const uint32_t v_nbytes = sizeof(value);
+      p = write(p, v_nbytes);
+      if (v_nbytes) {
+        memcpy(p, &value, v_nbytes);
+        p += v_nbytes;
+      }
+      return p;
+      
+    }
 
     
   void afterC(TransItem& item, uint64_t tid) {
@@ -959,6 +1016,7 @@ private:
   typedef Masstree::tcursor<table_params> cursor_type;
   typedef Masstree::leaf<table_params> leaf_type;
   table_type table_;
+  uint64_t tree_id;
 };
 
 template <typename V, typename Box>

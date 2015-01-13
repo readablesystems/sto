@@ -1,6 +1,66 @@
 #include <iostream>
 #pragma once
 
+//versioned_value_struct suitable for logging
+template <typename T, typename S, typename=void>
+struct versioned_value_struct_logging /*: public threadinfo::rcu_callback*/ {
+  typedef T value_type;
+  typedef uint64_t version_type;
+  typedef S key_type;
+  
+  versioned_value_struct_logging() : version_(), value_(), key_() {}
+  
+  static versioned_value_struct_logging* make(const key_type& key, const value_type& val, version_type version) {
+    return new versioned_value_struct_logging<T, S>(val, version, key);
+  }
+  
+  bool needsResize(const value_type&) {
+    return false;
+  }
+  
+  versioned_value_struct_logging* resizeIfNeeded(const value_type&) {
+    return NULL;
+  }
+  
+  inline void set_value(const value_type& v) {
+    value_ = v;
+  }
+  
+  inline const value_type& read_value() {
+    return value_;
+  }
+  
+  inline void set_key(const key_type& k) {
+    key_ = k;
+  }
+  
+  inline const key_type& read_key() {
+    return key_;
+  }
+  
+  inline version_type& version() {
+    return version_;
+  }
+  
+#if 0
+  // rcu_callback method to self-destruct ourself
+  void operator()(threadinfo& ti) {
+    // this will call value's destructor
+    this->versioned_value_struct::~versioned_value_struct();
+    // and free our memory too
+    ti.deallocate(this, sizeof(versioned_value_struct), memtag_value);
+  }
+#endif
+  
+private:
+  versioned_value_struct_logging(const value_type& val, version_type v, key_type k) : version_(v), value_(val), key_(k) {}
+  
+  version_type version_;
+  value_type value_;
+  key_type key_;
+};
+
+
 template <typename T, typename=void>
 struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
   typedef T value_type;

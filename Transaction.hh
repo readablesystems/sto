@@ -331,21 +331,21 @@ public:
     
     //8 bytes to indicate TID
     space_needed += sizeof(uint64_t);
+    std::cout<<"Space needed after tid "<<space_needed<<std::endl;
     const unsigned nwrites = perm_size;
     space_needed += sizeof(nwrites);
-    
+    std::cout<<"Space needed after nwrites "<<space_needed<<std::endl;
     // each record needs to be recorded
     TransItem* trans_first = &transSet_[0];
     TransItem* trans_last = trans_first + transSet_.size();
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
       TransItem& ti = *it;
       if (ti.has_write()) {
-        space_needed += 1; // TODO: is this required?
+       // space_needed += 1; // TODO: is this required?
         // Call the shared object to get square required
         space_needed += ti.sharedObj()->spaceRequired(ti);
-      }
+        std::cout<<"Space needed after write "<<space_needed<<std::endl;      }
     }
-    
     assert(space_needed <= Logger::g_horizon_buffer_size);
     assert(space_needed <= Logger::g_buffer_size);
     
@@ -367,6 +367,7 @@ public:
     }
     
     const uint64_t written = write_current_txn_into_buffer(px, commit_tid);
+    std::cout<<"Written = "<<written<<" and space needed = "<<space_needed<<std::endl;
     assert(written == space_needed);
   }
   
@@ -379,14 +380,16 @@ public:
     const unsigned nwrites = perm_size;
     
     p = write(p, commit_tid);
+    std::cout<<"After tid "<<uint64_t(p-porig)<<std::endl;
     p = write(p, nwrites);
-    
+    std::cout<<"After nwrites "<<uint64_t(p-porig)<<std::endl;
     TransItem* trans_first = &transSet_[0];
     TransItem* trans_last = trans_first + transSet_.size();
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
       TransItem& ti = *it;
       if (ti.has_write()) {
-        p = write(p, ti.sharedObj()->getLogData(ti));
+        p = ti.sharedObj()->writeLogData(ti, p);
+        std::cout<<"After write "<<uint64_t(p-porig)<<std::endl;
         
       }
     }
@@ -481,6 +484,9 @@ public:
       } else
         ++it;
     }
+    // Do logging at this point after releasing all locks
+    // TODO: do this only if logging is enabled
+    on_tid_finish(commit_tid);
     
     if (success) {
       commitSuccess();
@@ -492,8 +498,6 @@ public:
     }
 
     transSet_.resize(0);
-    
-    on_tid_finish(commit_tid);
     
     return success;
   }

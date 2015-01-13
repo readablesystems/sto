@@ -27,5 +27,5 @@ public:
   virtual uint64_t spaceRequired(TransItem & item) { return 0;}
   // Get the log data inorder to do logging
   
-  virtual uint64_t getLogData(TransItem & item) {return 0;}
+  virtual uint8_t* writeLogData(TransItem & item, uint8_t* p) {return 0;}
 };
