@@ -43,11 +43,8 @@ struct threadinfo_t {
   tid_t last_commit_tid;
 };
 
-class Transaction_Persist;
-
 class Transaction {
 public:
-  friend class Transaction_Persist;
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static unsigned global_epoch;
@@ -331,20 +328,21 @@ public:
     
     //8 bytes to indicate TID
     space_needed += sizeof(uint64_t);
-    std::cout<<"Space needed after tid "<<space_needed<<std::endl;
+    //std::cout<<"Space needed after tid "<<space_needed<<std::endl;
     const unsigned nwrites = perm_size;
     space_needed += sizeof(nwrites);
-    std::cout<<"Space needed after nwrites "<<space_needed<<std::endl;
+    //std::cout<<"Space needed after nwrites "<<space_needed<<std::endl;
     // each record needs to be recorded
     TransItem* trans_first = &transSet_[0];
     TransItem* trans_last = trans_first + transSet_.size();
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
       TransItem& ti = *it;
       if (ti.has_write()) {
-       // space_needed += 1; // TODO: is this required?
+        // space_needed += 1; // TODO: is this required? FIX THIS
         // Call the shared object to get square required
         space_needed += ti.sharedObj()->spaceRequired(ti);
-        std::cout<<"Space needed after write "<<space_needed<<std::endl;      }
+        //std::cout<<"Space needed after write "<<space_needed<<std::endl;
+      }
     }
     assert(space_needed <= Logger::g_horizon_buffer_size);
     assert(space_needed <= Logger::g_buffer_size);
@@ -380,16 +378,16 @@ public:
     const unsigned nwrites = perm_size;
     
     p = write(p, commit_tid);
-    std::cout<<"After tid "<<uint64_t(p-porig)<<std::endl;
+    //std::cout<<"After tid "<<uint64_t(p-porig)<<std::endl;
     p = write(p, nwrites);
-    std::cout<<"After nwrites "<<uint64_t(p-porig)<<std::endl;
+    //std::cout<<"After nwrites "<<uint64_t(p-porig)<<std::endl;
     TransItem* trans_first = &transSet_[0];
     TransItem* trans_last = trans_first + transSet_.size();
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
       TransItem& ti = *it;
       if (ti.has_write()) {
         p = ti.sharedObj()->writeLogData(ti, p);
-        std::cout<<"After write "<<uint64_t(p-porig)<<std::endl;
+        //std::cout<<"After write "<<uint64_t(p-porig)<<std::endl;
         
       }
     }
@@ -545,4 +543,6 @@ private:
   bool isAborted_;
   int16_t firstWrite_;
 };
+
+
 

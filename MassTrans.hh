@@ -192,8 +192,10 @@ struct versioned_str_struct : public versioned_str {
   }
 };
 
-template <typename V, typename Box = versioned_value_struct_logging<V, Masstree::Str>>
+template <typename V, typename Box = versioned_value_struct_logging<V, std::string>>
   class MassTrans : public Shared {
+    
+    friend class Checkpointer;
 public:
 #if !RCU
   typedef debug_threadinfo threadinfo;
@@ -231,11 +233,11 @@ public:
     // but doesn't seem to be possible
   }
 
-  void set_tree_id(uint64_t new_tree_id) {
+  void set_tree_id(uint8_t new_tree_id) {
       tree_id = new_tree_id;
     }
     
-  uint64_t get_tree_id() {
+  uint8_t get_tree_id() {
       return tree_id;
   }
     
@@ -454,7 +456,7 @@ public:
 
   // goddammit templates/hax
   template <typename Callback, typename V2>
-  static bool query_callback_overload(Str key, versioned_value_struct_logging<V2, Str> *val, Callback c) {
+    static bool query_callback_overload(Str key, versioned_value_struct_logging<V2, std::string> *val, Callback c) {
     return c(key, val->read_value());
   }
 
@@ -545,6 +547,7 @@ private:
     Nodecallback nodecallback_;
     Valuecallback valuecallback_;
   };
+  
 public:
 
   void lock(versioned_value *e) {
@@ -638,15 +641,15 @@ public:
     uint64_t spaceRequired(TransItem & item) {
       assert(item.has_write());
       uint64_t space_needed = 0;
-      space_needed += 1; // this if for the tree id TODO: What is this for?
+      space_needed += 1;
       auto e = unpack<versioned_value*>(item.key());
       std::string s = (std::string) e->read_key();
-      std::cout<<"Key "<<s<<std::endl;
+      std::cout<<"Key "<<s.data()<<std::endl;
       const uint32_t k_nbytes = s.size();
-      std::cout<<"Key size "<<k_nbytes<<std::endl;
+      //std::cout<<"Key size "<<k_nbytes<<std::endl;
       space_needed += sizeof(k_nbytes);
-      std::cout<<"bytes Key size "<<sizeof(k_nbytes)<<std::endl;
-      
+      //std::cout<<"bytes Key size "<<sizeof(k_nbytes)<<std::endl;
+      space_needed += k_nbytes;
       value_type value;
       if (we_inserted(item)) {
         value = e->read_value();
@@ -654,10 +657,12 @@ public:
         value = item.template write_value<value_type>();
       }
       
-      std::cout<<"value "<<value<<std::endl;
+      //std::cout<<"value "<<value<<std::endl;
 
       const uint32_t v_nbytes = sizeof(value);
-      std::cout<<v_nbytes<<std::endl;
+      //std::cout<<"value size "<<v_nbytes<<std::endl;
+      //std::cout<<"bytes value size "<<sizeof(v_nbytes)<<std::endl;
+
       space_needed += sizeof(v_nbytes);
       space_needed += v_nbytes;
       return space_needed;
@@ -666,11 +671,19 @@ public:
     
     // Get the log data inorder to do logging
     uint8_t* writeLogData(TransItem & item, uint8_t* p) {
+      uint8_t tree_id = (uint8_t) get_tree_id();
+      memcpy(p, (char *) &tree_id, 1);
+      p += 1;
+      
       auto e = unpack<versioned_value*>(item.key());
       std::string s = (std::string) e->read_key();
       const uint32_t k_nbytes = s.size();
+      uint8_t* p2 = p;
       p = write(p, k_nbytes);
+      assert(p-p2 == sizeof(k_nbytes));
       memcpy(p, s.data(), k_nbytes);
+       //std::cout<<"Key size while writing "<<k_nbytes<<std::endl;
+       //std::cout<<"bytes Key size while writing "<<sizeof(k_nbytes)<<std::endl;
       p += k_nbytes;
       
       value_type value;
@@ -681,7 +694,12 @@ public:
       }
       
       const uint32_t v_nbytes = sizeof(value);
+      //std::cout<<"value size while writing"<<v_nbytes<<std::endl;
+      //std::cout<<"bytes value size while writing"<<sizeof(v_nbytes)<<std::endl;
+
+      uint8_t* p1 = p;
       p = write(p, v_nbytes);
+      assert(p-p1 == sizeof(v_nbytes));
       if (v_nbytes) {
         memcpy(p, &value, v_nbytes);
         p += v_nbytes;
@@ -782,7 +800,6 @@ public:
     sprintf(s, "%d", k);
     put(s, v);
   }
-
 
 private:
   void reallyHandlePutFound(Transaction& t, TransItem& item, versioned_value *e, Str key, const value_type& value) {
@@ -1005,7 +1022,7 @@ private:
   static constexpr bool is_versioned_str() {
     return std::is_same<V, versioned_str>::value;
   }
-
+ 
   struct table_params : public Masstree::nodeparams<15,15> {
     typedef versioned_value* value_type;
     typedef Masstree::value_print<value_type> value_print_type;
@@ -1014,10 +1031,197 @@ private:
   typedef Masstree::basic_table<table_params> table_type;
   typedef Masstree::unlocked_tcursor<table_params> unlocked_cursor_type;
   typedef Masstree::tcursor<table_params> cursor_type;
-  typedef Masstree::leaf<table_params> leaf_type;
   table_type table_;
-  uint64_t tree_id;
+  uint8_t tree_id;
+    
+  public:
+    typedef Masstree::node_base<table_params> node_base_type;
+    typedef Masstree::internode<table_params> internode_type;
+    typedef Masstree::leaf<table_params> leaf_type;
+    typedef Masstree::leaf<table_params> node_type;
+    typedef typename node_base_type::nodeversion_type nodeversion_type;
+    typedef Masstree::Str key_type;
+    typedef uint64_t key_slice;
+    typedef versioned_value versioned_value_type;
+    
+    
+    // Tree walk related algorithms
+    
+    /**
+     * The low level callback interface is as follows:
+     *
+     * Consider a scan in the range [a, b):
+     *   1) on_resp_node() is called at least once per node which
+     *      has a responibility range that overlaps with the scan range
+     *   2) invoke() is called per <k, v>-pair such that k is in [a, b)
+     *
+     * The order of calling on_resp_node() and invoke() is up to the implementation.
+     */
+    class low_level_search_range_callback {
+    public:
+      virtual ~low_level_search_range_callback() {}
+      
+      /**
+       * This node lies within the search range (at version v)
+       */
+      virtual void on_resp_node(const node_base_type* n, uint64_t version) = 0;
+      
+      /**
+       * This key/value pair was read from node n @ version
+       */
+      virtual bool invoke(const key_type &k, versioned_value v, const node_base_type* n, uint64_t version ) = 0;
+    };
+    
+    template <bool Reverse>
+    class low_level_search_range_scanner {
+    public:
+      low_level_search_range_scanner(const Str* upper,
+                                     low_level_search_range_callback& callback)
+      : boundary_(upper), boundary_compar_(false), callback_(callback) {}
+      
+      template <typename ITER, typename KEY>
+      void check(const ITER& iter,
+                 const KEY& key) {
+        int min = std::min(boundary_->length(), key.prefix_length());
+        int cmp = memcmp(boundary_->data(), key.full_string().data(), min);
+        if (!Reverse) {
+          if (cmp < 0 || (cmp == 0 && boundary_->length() <= key.prefix_length()))
+            boundary_compar_ = true;
+          else if (cmp == 0) {
+            uint64_t last_ikey = iter.node()->ikey0_[iter.permutation()[iter.permutation().size() - 1]];
+            uint64_t slice = string_slice<uint64_t>::make_comparable(boundary_->data() + key.prefix_length(), std::min(boundary_->length() - key.prefix_length(), 8));
+            boundary_compar_ = slice <= last_ikey;
+          }
+        } else {
+          if (cmp >= 0)
+            boundary_compar_ = true;
+        }
+      }
+  
+      void visit_leaf(const Masstree::scanstackelt<table_params>& iter,
+                      const Masstree::key<uint64_t>& key, threadinfo&) {
+        this->n_ = iter.node();
+        this->v_ = iter.full_version_value();
+        callback_.on_resp_node(this->n_, this->v_);
+        if (this->boundary_)
+          this->check(iter, key);
+      }
+      
+      bool visit_value(const Masstree::key<uint64_t>& key,
+                       versioned_value* value, threadinfo&) {
+        if (this->boundary_compar_) {
+          lcdf::Str bs(this->boundary_->data(), this->boundary_->length());
+          if ((!Reverse && bs <= key.full_string()) ||
+              ( Reverse && bs >= key.full_string()))
+            return false;
+        }
+        return callback_.invoke(key.full_string(), *value, this->n_, this->v_);
+      }
+    private:
+      const Str* boundary_;
+      bool boundary_compar_;
+      Masstree::leaf<table_params>* n_;
+      uint64_t v_;
+      low_level_search_range_callback& callback_;
+    };
+    
+    /**
+     * For all keys in [lower, *upper), invoke callback in ascending order.
+     * If upper is NULL, then there is no upper bound
+     *
+     
+     * This function by default provides a weakly consistent view of the b-tree. For
+     * instance, consider the following tree, where n = 3 is the max number of
+     * keys in a node:
+     *
+     *              [D|G]
+     *             /  |  \
+     *            /   |   \
+     *           /    |    \
+     *          /     |     \
+     *   [A|B|C]<->[D|E|F]<->[G|H|I]
+     *
+     * Suppose we want to scan [A, inf), so we traverse to the leftmost leaf node
+     * and start a left-to-right walk. Suppose we have emitted keys A, B, and C,
+     * and we are now just about to scan the middle leaf node.  Now suppose
+     * another thread concurrently does delete(A), followed by a delete(H).  Now
+     * the scaning thread resumes and emits keys D, E, F, G, and I, omitting H
+     * because H was deleted. This is an inconsistent view of the b-tree, since
+     * the scanning thread has observed the deletion of H but did not observe the
+     * deletion of A, but we know that delete(A) happens before delete(H).
+     *
+     * The weakly consistent guarantee provided is the following: all keys
+     * which, at the time of invocation, are known to exist in the btree
+     * will be discovered on a scan (provided the key falls within the scan's range),
+     * and provided there are no concurrent modifications/removals of that key
+     *
+     * Note that scans within a single node are consistent
+     *
+     * XXX: add other modes which provide better consistency:
+     * A) locking mode
+     * B) optimistic validation mode
+     *
+     * the last string parameter is an optional string buffer to use:
+     * if null, a stack allocated string will be used. if not null, must
+     * ensure:
+     *   A) buf->empty() at the beginning
+     *   B) no concurrent mutation of string
+     * note that string contents upon return are arbitrary
+     */
+    void
+    search_range_call(const key_type &lower,
+                      const key_type *upper,
+                      low_level_search_range_callback &callback,
+                      std::string *buf = nullptr) const {
+      low_level_search_range_scanner<false> scanner(upper, callback);
+      threadinfo ti;
+      table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, ti);
+    }
+    
+    // (lower, upper]
+    void
+    rsearch_range_call(const key_type &upper,
+                       const key_type *lower,
+                       low_level_search_range_callback &callback,
+                       std::string *buf = nullptr) const;
+    
+    
+    class search_range_callback : public low_level_search_range_callback {
+    public:
+      virtual void on_resp_node(const node_type* n, uint64_t version) {}
+      virtual bool invoke (const Str &k, versioned_value v, const node_type* n, uint64_t version) {
+        return invoke(k, v);
+      }
+      virtual bool invoke(const Str &k, versioned_value v) = 0;
+    };
+    
+    /**
+     * [lower, *upper)
+     *
+     * Callback is expected to implement bool operator()(key_slice k, value_type v),
+     * where the callback returns true if it wants to keep going, false otherwise
+     */
+    template <typename F>
+    inline void search_range(const key_type &lower,
+                 const key_type *upper,
+                 F& callback,
+                 std::string *buf = nullptr) const;
+    
+    /**
+     * (*lower, upper]
+     *
+     * Callback is expected to implement bool operator()(key_slice k, value_type v),
+     * where the callback returns true if it wants to keep going, false otherwise
+     */
+    template <typename F>
+    inline void rsearch_range(const key_type &upper,
+                  const key_type *lower,
+                  F& callback,
+                  std::string *buf = nullptr) const;
+
 };
+    
+typedef MassTrans<int> concurrent_btree;
 
 template <typename V, typename Box>
 __thread typename MassTrans<V, Box>::threadinfo_type MassTrans<V, Box>::mythreadinfo;

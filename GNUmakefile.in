@@ -24,8 +24,11 @@ endif
 
 SRCFILES = Logger.cc \
   Transaction.cc
+  
+SRCFILESCKP = Checkpointer.cc
 
 OBJFILES := $(patsubst %.cc, %.o, $(SRCFILES))
+OBJFILESCKP := $(patsubst %.cc, %.o, $(SRCFILESCKP))
 
 all: concurrent single singleelems array1 committid
 
@@ -62,7 +65,7 @@ singleelems: singleelems.o clp.o $(OBJFILES)
 array1: array1.o clp.o $(OBJFILES)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
   
-committid: committid.o clp.o $(OBJFILES) $(MASSTREE_OBJS) 
+committid: committid.o clp.o $(OBJFILES) $(OBJFILESCKP) $(MASSTREE_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;

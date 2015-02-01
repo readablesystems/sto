@@ -12,6 +12,7 @@ class Logger {
   
 public:
   friend class Transaction;
+  friend class Checkpointer;
   static const size_t g_nmax_loggers = 16;
   static const size_t g_perthread_buffers = 512; // Outstanding buffers
   static const size_t g_buffer_size = (1 << 20); // in bytes
