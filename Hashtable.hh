@@ -457,28 +457,26 @@ public:
     el->valid() = true;
   }
 
-  void undo(TransItem& item) {
-    auto el = unpack<internal_elem*>(item.key());
-    assert(!el->valid());
-    remove(el);
-  }
-
-  void afterC(TransItem& item) {
+    void cleanup(TransItem& item, bool committed) {
+        auto el = unpack<internal_elem*>(item.key());
+        if (!committed && item.has_undo()) {
+            assert(!el->valid());
+            remove(el);
+        } else if (committed && item.has_afterC()) {
 #if HASHTABLE_DELETE
-    auto el = unpack<internal_elem*>(item.key());
-    assert(!el->valid());
-    remove(el);
+            auto el = unpack<internal_elem*>(item.key());
+            assert(!el->valid());
+            remove(el);
 #endif
-  }
+        }
 
-  void cleanup(TransItem& item) {
-    free_packed<internal_elem*>(item.key());
-    if (item.has_read())
-      item.template remove_read<Version>();
-    if (item.has_write())
-      item.template remove_write<Value>();
-  }
-  
+        free_packed<internal_elem*>(item.key());
+        if (item.has_read())
+            item.template remove_read<Version>();
+        if (item.has_write())
+            item.template remove_write<Value>();
+    }
+
   void remove(internal_elem *el) {
     bucket_entry& buck = buck_entry(el->key);
     lock(&buck.version);

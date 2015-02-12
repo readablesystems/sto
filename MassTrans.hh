@@ -605,25 +605,24 @@ public:
     inc_version(e->version());
   }
 
-  void undo(TransItem& item) {
-    // remove node
-    auto& stdstr = item.template write_value<std::string>();
-    // does not copy
-    Str s(stdstr);
-    bool success = remove(s);
-    (void)success;
-    assert(success);
-  }
-
-  void cleanup(TransItem& item) {
+  void cleanup(TransItem& item, bool committed) {
+      if (!committed && item.has_undo()) {
+          // remove node
+          auto& stdstr = item.template write_value<std::string>();
+          // does not copy
+          Str s(stdstr);
+          bool success = remove(s);
+          (void)success;
+          assert(success);
+      }
 #if 0
-    free_packed<versioned_value*>(item.key());
-    item.template remove_read<Version>();
+      free_packed<versioned_value*>(item.key());
+      item.template remove_read<Version>();
 #endif
-    if (we_inserted(item) || has_delete(item))
-      item.template remove_write<std::string>();
-    else if (item.has_write())
-      item.template remove_write<value_type>();
+      if (we_inserted(item) || has_delete(item))
+          item.template remove_write<std::string>();
+      else if (item.has_write())
+          item.template remove_write<value_type>();
   }
 
   bool remove(const Str& key, threadinfo_type& ti = mythreadinfo) {

@@ -364,11 +364,12 @@ public:
     }
   }
 
-  void undo(TransItem& item) {
+  void cleanup(TransItem& item, bool committed) {
     list_node *n = unpack<list_node*>(item.key());
-    remove(n);
+    if (!committed && item.has_undo())
+        remove(n);
   }
-  
+
   bool validityCheck(list_node *n, TransProxy& item) {
     return n->is_valid() || has_insert(item);
   }

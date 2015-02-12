@@ -185,30 +185,6 @@ struct TransItem {
   }
 
 private:
-  template <typename T>
-  void _add_write(T wdata) {
-    shared.or_flags(WRITER_BIT);
-    // TODO: this assumes that a given writer data always has the same type.
-    // this is certainly true now but we probably shouldn't assume this in general
-    // (hopefully we'll have a system that can automatically call destructors and such
-    // which will make our lives much easier)
-    //free_packed<T>(data.wdata);
-    data.wdata = pack(std::move(wdata));
-  }
-  template <typename T>
-  void _add_read(T rdata) {
-    shared.or_flags(READER_BIT);
-    //free_packed<T>(data.rdata);
-    data.rdata = pack(std::move(rdata));
-  }
-  void _add_undo() {
-    shared.or_flags(UNDO_BIT);
-  }
-  void _add_afterC() {
-    shared.or_flags(AFTERC_BIT);
-  }
-
-private:
   friend class Transaction;
   friend struct TransProxy;
   Tagged64<Shared> shared;
