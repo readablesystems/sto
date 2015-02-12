@@ -138,44 +138,52 @@ public:
 
   // adds item without checking its presence in the array
   template <bool NOCHECK = true, typename T>
-  TransItem& add_item(Shared *s, const T& key) {
+  TransProxy add_item(Shared *s, const T& key) {
     if (NOCHECK) {
       readMyWritesOnly_ = false;
     }
     void *k = pack(key);
     // TODO: TransData packs its arguments so we're technically double packing here (void* packs to void* though)
     transSet_.emplace_back(s, k, NULL, NULL);
-    return transSet_[transSet_.size()-1];
+    return TransProxy(*this, transSet_[transSet_.size()-1]);
   }
 
   // tries to find an existing item with this key, otherwise adds it
   template <typename T>
-  TransItem& item(Shared *s, const T& key) {
-    TransItem *ti = has_item(s, key);
+  TransProxy item(Shared *s, const T& key) {
+    TransItem* ti = has_item(s, key);
     // we use the firstwrite optimization when checking for item(), but do a full check if they call has_item.
     // kinda jank, ideal I think would be we'd figure out when it's the first write, and at that point consolidate
     // the set to be doing rmw (and potentially even combine any duplicate reads from earlier)
 
     if (!ti)
-      ti = &add_item<false>(s, key);
-    return *ti;
+      ti = &add_item<false>(s, key).i_;
+    return TransProxy(*this, *ti);
   }
 
   // gets an item that is intended to be read only. this method essentially allows for duplicate items
   // in the set in some cases
   template <typename T>
-  TransItem& read_only_item(Shared *s, const T& key) {
+  TransProxy read_only_item(Shared *s, const T& key) {
     TransItem *ti;
     if ((ti = has_item<true>(s, key)))
-      return *ti;
+      return TransProxy(*this, *ti);
 
     return add_item<false>(s, key);
   }
 
   // tries to find an existing item with this key, returns NULL if not found
   template <bool read_only = false, typename T>
+  OptionalTransProxy check_item(Shared *s, const T& key) {
+      return OptionalTransProxy(*this, has_item(s, key));
+  }
+
+private:
+  // tries to find an existing item with this key, returns NULL if not found
+  template <bool read_only = false, typename T>
   TransItem* has_item(Shared *s, const T& key) {
-    if (read_only && firstWrite_ == -1) return NULL;
+    if (read_only && firstWrite_ == -1)
+      return nullptr;
 
     if (!read_only && firstWrite_ == -1) {
       consolidateReads();
@@ -199,31 +207,20 @@ public:
     }
     if (!read_only && firstWrite_ == -1)
       firstWrite_ = transSet_.size();
-    return NULL;
+    return nullptr;
   }
 
-  int item_index(TransItem& ti) {
+  typedef int item_index_type;
+  item_index_type item_index(TransItem& ti) {
     return &ti - &transSet_[0];
   }
 
-  template <typename T>
-  void add_write(TransItem& ti, T wdata) {
-    auto idx = item_index(ti);
-    if (firstWrite_ < 0 || idx < firstWrite_)
-      firstWrite_ = idx;
-    ti._add_write(std::move(wdata));
+  void mark_write(TransItem& ti) {
+      item_index_type idx = item_index(ti);
+      if (firstWrite_ < 0 || idx < firstWrite_)
+          firstWrite_ = idx;
   }
-  template <typename T>
-  void add_read(TransItem& ti, T rdata) {
-    ti._add_read(std::move(rdata));
-  }
-  void add_undo(TransItem& ti) {
-    ti._add_undo();
-  }
-
-  void add_afterC(TransItem& ti) {
-    ti._add_afterC();
-  }
+public:
 
   bool check_for_write(TransItem& item) {
     // if permute is NULL, we're not in commit (just an opacity check), so no need to check our writes (we
@@ -353,7 +350,7 @@ public:
       } else
         ++it;
     }
-    
+
     if (success) {
       commitSuccess();
     } else {
@@ -410,4 +407,21 @@ private:
   bool readMyWritesOnly_;
   bool isAborted_;
   int16_t firstWrite_;
+  friend struct TransItem;
+  friend struct TransProxy;
 };
+
+
+template <typename T>
+TransProxy& TransProxy::add_write(T wdata) {
+    assert(!has_write());
+    i_.shared.or_flags(WRITER_BIT);
+    // TODO: this assumes that a given writer data always has the same type.
+    // this is certainly true now but we probably shouldn't assume this in general
+    // (hopefully we'll have a system that can automatically call destructors and such
+    // which will make our lives much easier)
+    //free_packed<T>(data.wdata);
+    i_.data.wdata = pack(std::move(wdata));
+    t_.mark_write(i_);
+    return *this;
+}

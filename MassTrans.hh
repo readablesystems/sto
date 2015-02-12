@@ -279,7 +279,7 @@ public:
     if (found) {
       versioned_value *e = lp.value();
       //      __builtin_prefetch(&e->version);
-      auto& item = t_read_only_item(t, e);
+      auto item = t_read_only_item(t, e);
       if (!validityCheck(item, e)) {
         t.abort();
         return false;
@@ -304,7 +304,7 @@ public:
       Version elem_vers;
       atomicRead(e, elem_vers, retval, max_read);
       if (!item.has_read() || item.template read_value<Version>() & valid_check_only_bit) {
-        t.add_read(item, elem_vers);
+        item.add_read(elem_vers);
       }
     } else {
       ensureNotFound(t, lp.node(), lp.full_version_value());
@@ -318,7 +318,7 @@ public:
     bool found = lp.find_unlocked(*ti.ti);
     if (found) {
       versioned_value *e = lp.value();
-      auto& item = t_item(t, e);
+      auto item = t_item(t, e);
       bool valid = !(e->version() & invalid_bit);
 #if READ_MY_WRITES
       if (!valid && we_inserted(item)) {
@@ -346,14 +346,14 @@ public:
 #endif
 	{
         // we only need to check validity, not if the item has changed
-        t.add_read(item, valid_check_only_bit);
+        item.add_read(valid_check_only_bit);
       }
       // same as inserts we need to store (copy) key so we can lookup to remove later
       if (std::is_same<std::string, StringType>::value)
-	t.add_write(item, key);
+	item.add_write(key);
       else
 	// force a copy if e.g. string type is Str
-	t.add_write(item, std::string(key));
+	item.add_write(std::string(key));
       item.set_flags(delete_bit);
       return found;
     } else {
@@ -406,17 +406,17 @@ public:
         // add any new nodes as a result of splits, etc. to the read/absent set
 #if !ABORT_ON_WRITE_READ_CONFLICT
         for (auto&& pair : lp.new_nodes()) {
-          t.add_read(t.add_item<false>(this, tag_inter(pair.first)), pair.second);
+          t.add_item<false>(this, tag_inter(pair.first)).add_read(pair.second);
         }
 #endif
       }
-      auto& item = t.add_item<false>(this, val);
+      auto item = t.add_item<false>(this, val);
       if (std::is_same<std::string, StringType>::value)
-        t.add_write(item, key);
+        item.add_write(key);
       else
         // force a copy
-        t.add_write(item, std::string(key));
-      t.add_undo(item);
+        item.add_write(std::string(key));
+      item.add_undo();
       return found;
     }
   }
@@ -457,9 +457,9 @@ public:
     };
     auto value_callback = [&] (Str key, versioned_value* value) {
       // TODO: this needs to read my writes
-      auto& item = this->t_read_only_item(t, value);
+      auto item = this->t_read_only_item(t, value);
       if (!item.has_read())
-        t.add_read(item, value->version());
+        item.add_read(value->version());
       return query_callback_overload(key, value, callback);
     };
 
@@ -473,9 +473,9 @@ public:
       this->ensureNotFound(t, node, version);
     };
     auto value_callback = [&] (Str key, versioned_value* value) {
-      auto& item = this->t_read_only_item(t, value);
+      auto item = this->t_read_only_item(t, value);
       if (!item.has_read())
-        t.add_read(item, value->version());
+        item.add_read(value->version());
       return query_callback_overload(key, value, callback);
     };
 
@@ -618,13 +618,12 @@ public:
   void cleanup(TransItem& item) {
 #if 0
     free_packed<versioned_value*>(item.key());
-    if (item.has_read())
-      free_packed<Version>(item.data.rdata);
+    item.template remove_read<Version>();
 #endif
     if (we_inserted(item) || has_delete(item))
-      free_packed<std::string>(item.data.wdata);
+      item.template remove_write<std::string>();
     else if (item.has_write())
-      free_packed<value_type>(item.data.wdata);
+      item.template remove_write<value_type>();
   }
 
   bool remove(const Str& key, threadinfo_type& ti = mythreadinfo) {
@@ -695,7 +694,7 @@ public:
 
 
 private:
-  void reallyHandlePutFound(Transaction& t, TransItem& item, versioned_value *e, Str key, const value_type& value) {
+  void reallyHandlePutFound(Transaction& t, TransProxy item, versioned_value *e, Str key, const value_type& value) {
     // resizing takes a lot of effort, so we first check if we'll need to
     // (values never shrink in size, so if we don't need to resize, we'll never need to)
     auto *new_location = e;
@@ -737,14 +736,17 @@ private:
     } else
 #endif
     {
-      t.add_write(new_location == e ? item : t.add_item<false>(this, new_location), value);
+      if (new_location == e)
+          item.add_write(value);
+      else
+          t.add_item<false>(this, new_location).add_write(value);
     }
   }
 
   // returns true if already in tree, false otherwise
   template <bool INSERT=true, bool SET=true>
   bool handlePutFound(Transaction& t, versioned_value *e, Str key, const value_type& value) {
-    auto& item = t_item(t, e);
+    auto item = t_item(t, e);
     if (!validityCheck(item, e)) {
       t.abort();
       return false;
@@ -767,7 +769,7 @@ private:
     if (!item.has_read() && !we_inserted(item))
 #endif
       {
-      t.add_read(item, valid_check_only_bit);
+      item.add_read(valid_check_only_bit);
     }
     if (SET) {
       reallyHandlePutFound(t, item, e, key, value);
@@ -778,20 +780,20 @@ private:
   template <typename NODE, typename VERSION>
   void ensureNotFound(Transaction& t, NODE n, VERSION v) {
     // TODO: could be more efficient to use add_item here, but that will also require more work for read-then-insert
-    auto& item = t_read_only_item(t, tag_inter(n));
+    auto item = t_read_only_item(t, tag_inter(n));
     if (!item.has_read()) {
-      t.add_read(item, v);
+      item.add_read(v);
     }
   }
 
   template <typename NODE, typename VERSION>
   bool updateNodeVersion(Transaction& t, NODE *node, VERSION prev_version, VERSION new_version) {
 #if READ_MY_WRITES
-    auto node_item = t.has_item(this, tag_inter(node));
+    auto node_item = t.check_item(this, tag_inter(node));
     if (node_item) {
       if (node_item->has_read() &&
           prev_version == node_item->template read_value<VERSION>()) {
-        t.add_read(*node_item, new_version);
+        node_item->add_read(new_version);
         return true;
       }
     }
@@ -800,7 +802,7 @@ private:
   }
 
   template <typename T>
-  TransItem& t_item(Transaction& t, T e) {
+  TransProxy t_item(Transaction& t, T e) {
 #if READ_MY_WRITES
     return t.item(this, e);
 #else
@@ -809,7 +811,7 @@ private:
   }
 
   template <typename T>
-  TransItem& t_read_only_item(Transaction& t, T e) {
+  TransProxy t_read_only_item(Transaction& t, T e) {
 #if READ_MY_WRITES
     return t.read_only_item(this, e);
 #else
@@ -820,11 +822,22 @@ private:
   bool we_inserted(TransItem& item) {
     return item.has_undo();
   }
+  bool we_inserted(TransProxy& item) {
+    return item.has_undo();
+  }
+
   bool has_delete(TransItem& item) {
+    return item.has_flags(delete_bit);
+  }
+  bool has_delete(TransProxy& item) {
     return item.has_flags(delete_bit);
   }
 
   bool validityCheck(TransItem& item, versioned_value *e) {
+    return //likely(we_inserted(item)) || !(e->version & invalid_bit);
+      likely(!(e->version() & invalid_bit)) || we_inserted(item);
+  }
+  bool validityCheck(TransProxy& item, versioned_value *e) {
     return //likely(we_inserted(item)) || !(e->version & invalid_bit);
       likely(!(e->version() & invalid_bit)) || we_inserted(item);
   }

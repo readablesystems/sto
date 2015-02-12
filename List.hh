@@ -78,7 +78,7 @@ public:
     fence();
     auto *n = _find(elem);
     if (n) {
-      auto& item = t_item(t, n);
+      auto item = t_item(t, n);
       if (!validityCheck(n, item)) {
         t.abort();
         return NULL;
@@ -86,7 +86,7 @@ public:
       if (has_delete(item)) {
         return NULL;
       }
-      t.add_read(item, 0);
+      item.add_read(0);
     } else {
       // log list v#
       ensureNotFound(t, listv);
@@ -152,7 +152,7 @@ public:
   bool transInsert(Transaction& t, const T& elem) {
     bool inserted;
     auto *node = _insert<true>(elem, &inserted);
-    auto& item = t_item(t, node);
+    auto item = t_item(t, node);
     if (!inserted) {
       if (!validityCheck(node, item)) {
         t.abort();
@@ -174,8 +174,7 @@ public:
     add_trans_size_offs(t, 1);
     // we lock the list for inserts
     add_lock_list_item(t);
-    t.add_write(item, 0);
-    t.add_undo(item);
+    item.add_write(0).add_undo();
     return true;
   }
 
@@ -185,9 +184,9 @@ public:
     // read list version
     auto *n = _find(elem);
     if (n) {
-      auto& item = t_item(t, n);
+      auto item = t_item(t, n);
       item.set_flags(delete_bit);
-      t.add_write(item, 0);
+      item.add_write(0);
       add_trans_size_offs(t, -1);
       return true;
     } else {
@@ -274,7 +273,7 @@ public:
     void ensureValid(Transaction& t) {
       while (cur) {
         if (!cur->is_valid()) {
-          auto& item = us->t_item(t, cur);
+          auto item = us->t_item(t, cur);
           if (!us->has_insert(item)) {
             t.abort();
             // TODO: do we continue in this situation or abort?
@@ -303,9 +302,9 @@ public:
 
 
   void ensureNotFound(Transaction& t, Version readv) {
-    auto& item = t_item(t, this);
+    auto item = t_item(t, this);
     if (!item.has_read())
-      t.add_read(item, readv);
+      item.add_read(readv);
   }
 
   void lock(Version& v) {
@@ -370,41 +369,46 @@ public:
     remove(n);
   }
   
-  bool validityCheck(list_node *n, TransItem& item) {
+  bool validityCheck(list_node *n, TransProxy& item) {
     return n->is_valid() || has_insert(item);
   }
 
   template <typename PTR>
-  TransItem& t_item(Transaction& t, PTR *node) {
+  TransProxy t_item(Transaction& t, PTR *node) {
     // can switch this to add_item to not read our writes
     return t.item(this, node);
   }
   
+  bool has_insert(TransProxy& item) {
+    return item.has_write() && !has_delete(item);
+  }
   bool has_insert(TransItem& item) {
     return item.has_write() && !has_delete(item);
   }
   
+  bool has_delete(TransProxy& item) {
+    return item.has_flags(delete_bit);
+  }
   bool has_delete(TransItem& item) {
     return item.has_flags(delete_bit);
   }
 
   void add_lock_list_item(Transaction& t) {
-    auto& item = t_item(t, (void*)this);
-    t.add_write(item, 0);
+    t_item(t, (void*) this).add_write(0);
   }
 
   void add_trans_size_offs(Transaction& t, int size_offs) {
     // TODO: it would be more efficient to store this directly in Transaction,
     // since the "key" is fixed (rather than having to search the transset each time)
-    auto& item = t_item(t, size_key);
+    auto item = t_item(t, size_key);
     int cur_offs = 0;
     if (item.has_read())
       cur_offs = item.template read_value<int>();
-    t.add_read(item, cur_offs + size_offs);
+    item.add_read(cur_offs + size_offs);
   }
 
   int trans_size_offs(Transaction& t) {
-    auto& item = t_item(t, size_key);
+    auto item = t_item(t, size_key);
     if (item.has_read())
       return item.template read_value<int>();
     return 0;
