@@ -406,11 +406,11 @@ public:
         // add any new nodes as a result of splits, etc. to the read/absent set
 #if !ABORT_ON_WRITE_READ_CONFLICT
         for (auto&& pair : lp.new_nodes()) {
-          t.add_item<false>(this, tag_inter(pair.first)).add_read(pair.second);
+          t.insert_item(this, tag_inter(pair.first)).add_read(pair.second);
         }
 #endif
       }
-      auto item = t.add_item<false>(this, val);
+      auto item = t.insert_item(this, val);
       if (std::is_same<std::string, StringType>::value)
         item.add_write(key);
       else
@@ -739,7 +739,7 @@ private:
       if (new_location == e)
           item.add_write(value);
       else
-          t.add_item<false>(this, new_location).add_write(value);
+          t.insert_item(this, new_location).add_write(value);
     }
   }
 
@@ -806,16 +806,16 @@ private:
 #if READ_MY_WRITES
     return t.item(this, e);
 #else
-    return t.add_item(this, e);
+    return t.fresh_item(this, e);
 #endif
   }
 
   template <typename T>
   TransProxy t_read_only_item(Transaction& t, T e) {
 #if READ_MY_WRITES
-    return t.read_only_item(this, e);
+    return t.read_item(this, e);
 #else
-    return t.add_item(this, e);
+    return t.fresh_item(this, e);
 #endif
   }
 

@@ -109,7 +109,7 @@ public:
   typedef std::vector<TransItem> TransSet;
 #endif
 
-  Transaction() : transSet_(), permute(NULL), perm_size(0), readMyWritesOnly_(true), isAborted_(false), firstWrite_(-1) {
+  Transaction() : transSet_(), permute(NULL), perm_size(0), may_duplicate_items_(false), isAborted_(false), firstWrite_(-1) {
 #if !LOCAL_VECTOR
     transSet_.reserve(INIT_SET_SIZE);
 #endif
@@ -126,6 +126,7 @@ public:
     }
   }
 
+ private:
   void consolidateReads() {
     // TODO: should be stable sort technically, but really we want to use insertion sort
     auto first = transSet_.begin();
@@ -134,20 +135,10 @@ public:
     // takes the first element of any duplicates which is what we want. that is, we want to verify
     // only the oldest read
     transSet_.resize(std::unique(first, last) - first);
+    firstWrite_ = transSet_.size();
   }
 
-  // adds item without checking its presence in the array
-  template <bool NOCHECK = true, typename T>
-  TransProxy add_item(Shared *s, const T& key) {
-    if (NOCHECK) {
-      readMyWritesOnly_ = false;
-    }
-    void *k = pack(key);
-    // TODO: TransData packs its arguments so we're technically double packing here (void* packs to void* though)
-    transSet_.emplace_back(s, k, NULL, NULL);
-    return TransProxy(*this, transSet_[transSet_.size()-1]);
-  }
-
+ public:
   // tries to find an existing item with this key, otherwise adds it
   template <typename T>
   TransProxy item(Shared *s, const T& key) {
@@ -155,25 +146,40 @@ public:
     // we use the firstwrite optimization when checking for item(), but do a full check if they call has_item.
     // kinda jank, ideal I think would be we'd figure out when it's the first write, and at that point consolidate
     // the set to be doing rmw (and potentially even combine any duplicate reads from earlier)
-
     if (!ti)
-      ti = &add_item<false>(s, key).i_;
+      ti = &insert_item(s, key).i_;
     return TransProxy(*this, *ti);
+  }
+
+  // adds item for a key that is known to be inserted
+  // (the new key MUST NOT exist in the set)
+  template <typename T>
+  TransProxy insert_item(Shared *s, const T& key) {
+    void *k = pack(key);
+    // TODO: TransData packs its arguments so we're technically double packing here (void* packs to void* though)
+    transSet_.emplace_back(s, k, NULL, NULL);
+    return TransProxy(*this, transSet_[transSet_.size()-1]);
+  }
+
+  // adds item without checking its presence in the array
+  template <typename T>
+  TransProxy fresh_item(Shared *s, const T& key) {
+    may_duplicate_items_ = true;
+    return insert_item(s, key);
   }
 
   // gets an item that is intended to be read only. this method essentially allows for duplicate items
   // in the set in some cases
   template <typename T>
-  TransProxy read_only_item(Shared *s, const T& key) {
+  TransProxy read_item(Shared *s, const T& key) {
     TransItem *ti;
     if ((ti = has_item<true>(s, key)))
       return TransProxy(*this, *ti);
-
-    return add_item<false>(s, key);
+    return insert_item(s, key);
   }
 
   // tries to find an existing item with this key, returns NULL if not found
-  template <bool read_only = false, typename T>
+  template <typename T>
   OptionalTransProxy check_item(Shared *s, const T& key) {
       return OptionalTransProxy(*this, has_item(s, key));
   }
@@ -184,29 +190,24 @@ private:
   TransItem* has_item(Shared *s, const T& key) {
     if (read_only && firstWrite_ == -1)
       return nullptr;
-
-    if (!read_only && firstWrite_ == -1) {
+    if (!read_only && firstWrite_ == -1)
       consolidateReads();
-    }
 
     // TODO: the semantics here are wrong. this all works fine if key if just some opaque pointer (which it sorta has to be anyway)
     // but if it wasn't, we'd be doing silly copies here, AND have totally incorrect behavior anyway because k would be a unique
     // pointer and thus not comparable to anything in the transSet. We should either actually support custom key comparisons
     // or enforce that key is in fact trivially copyable/one word
+    // XXXXXXXX E Shouldn't we search the list backwards?
     void *k = pack(key);
-    for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
+    for (auto it = transSet_.begin() + (read_only ? firstWrite_ : 0);
+         it != transSet_.end(); ++it) {
       TransItem& ti = *it;
 #if PERF_LOGGING
       total_searched++;
 #endif
-      if (ti.sharedObj() == s && ti.data.key == k) {
-        if (!read_only && firstWrite_ == -1)
-          firstWrite_ = item_index(ti);
+      if (ti.sharedObj() == s && ti.data.key == k)
         return &ti;
-      }
     }
-    if (!read_only && firstWrite_ == -1)
-      firstWrite_ = transSet_.size();
     return nullptr;
   }
 
@@ -229,7 +230,7 @@ public:
       return false;
     auto it = &item;
     bool has_write = it->has_write();
-    if (!has_write && !readMyWritesOnly_) {
+    if (!has_write && may_duplicate_items_) {
       has_write = std::binary_search(permute, permute + perm_size, -1, [&] (const int& i, const int& j) {
 	  auto& e1 = unlikely(i < 0) ? item : transSet_[i];
 	  auto& e2 = likely(j < 0) ? item : transSet_[j];
@@ -311,7 +312,7 @@ public:
       if (me->has_write()) {
         me->sharedObj()->lock(*me);
         ++it;
-        if (!readMyWritesOnly_)
+        if (may_duplicate_items_)
           for (; it != perm_end && transSet_[*it].same_item(*me); ++it)
             /* do nothing */;
       } else
@@ -344,7 +345,7 @@ public:
       if (me->has_write()) {
         me->sharedObj()->unlock(*me);
         ++it;
-        if (!readMyWritesOnly_)
+        if (may_duplicate_items_)
           for (; it != perm_end && transSet_[*it].same_item(*me); ++it)
             /* do nothing */;
       } else
@@ -404,7 +405,7 @@ private:
   TransSet transSet_;
   int *permute;
   int perm_size;
-  bool readMyWritesOnly_;
+  bool may_duplicate_items_;
   bool isAborted_;
   int16_t firstWrite_;
   friend struct TransItem;

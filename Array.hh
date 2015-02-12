@@ -49,12 +49,12 @@ public:
     Version v;
     Value val;
     atomicRead(i, v, val);
-    t.add_item(this, i).add_read(v);
+    t.fresh_item(this, i).add_read(v);
     return val;
   }
 
   void transWrite_nocheck(Transaction& t, Key i, Value val) {
-      t.add_item(this, i).add_write(val);
+      t.fresh_item(this, i).add_write(val);
   }
 
   Value transRead(Transaction& t, Key i) {
