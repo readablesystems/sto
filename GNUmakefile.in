@@ -92,6 +92,7 @@ stamp-h: config.h.in config.status
 clean:
 	rm -f concurrent array single singleelems *.o libjson.a
 	rm -rf .deps
+	$(MAKE) -C masstree-beta clean
 
 DEPFILES := $(wildcard $(DEPSDIR)/*.d)
 ifneq ($(DEPFILES),)
