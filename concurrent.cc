@@ -758,7 +758,7 @@ int main(int argc, char *argv[]) {
 
 #if PERF_LOGGING
 #define LLU(x) ((long long unsigned)x)
-  printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", LLU(total_n), LLU(total_r), LLU(total_w), LLU(total_searched), LLU(total_aborts), LLU(commit_time_aborts));
+  printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", LLU(Transaction::total_n), LLU(Transaction::total_r), LLU(Transaction::total_w), LLU(Transaction::total_searched), LLU(Transaction::total_aborts), LLU(Transaction::commit_time_aborts));
 #if MASSTREE
   printf("node aborts: %llu\n", LLU(node_aborts));
 #endif

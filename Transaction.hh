@@ -21,14 +21,6 @@
 
 #define INIT_SET_SIZE 512
 
-#if PERF_LOGGING
-extern uint64_t total_n;
-extern uint64_t total_r, total_w;
-extern uint64_t total_searched;
-extern uint64_t total_aborts;
-extern uint64_t commit_time_aborts;
-#endif
-
 void reportPerf();
 #define STO_SHUTDOWN() reportPerf()
 
@@ -45,6 +37,13 @@ public:
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static unsigned global_epoch;
+
+#if PERF_LOGGING
+  static uint64_t total_n, total_r, total_w;
+  static uint64_t total_searched;
+  static uint64_t total_aborts;
+  static uint64_t commit_time_aborts;
+#endif
 
   static std::function<void(unsigned)> epoch_advance_callback;
 
@@ -412,10 +411,3 @@ private:
   bool isAborted_;
   int16_t firstWrite_;
 };
-
-#ifndef STO
-threadinfo_t Transaction::tinfo[MAX_THREADS];
-__thread int Transaction::threadid;
-unsigned Transaction::global_epoch;
-std::function<void(unsigned)> Transaction::epoch_advance_callback;
-#endif
