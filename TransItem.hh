@@ -146,7 +146,7 @@ struct TransItem {
   TransItem& remove_write() {
       if (shared.has_flags(WRITER_BIT)) {
           free_packed<T>(data.wdata);
-          shared.rm_flags(READER_BIT);
+          shared.rm_flags(WRITER_BIT);
       }
       return *this;
   }
