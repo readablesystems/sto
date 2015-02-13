@@ -6,7 +6,7 @@
 #include <unistd.h>
 
 #define LOCAL_VECTOR 1
-#define PERF_LOGGING 0
+#define PERF_LOGGING 1
 
 #define NOSORT 0
 
@@ -22,12 +22,15 @@
 #define INIT_SET_SIZE 512
 
 #if PERF_LOGGING
-uint64_t total_n;
-uint64_t total_r, total_w;
-uint64_t total_searched;
-uint64_t total_aborts;
-uint64_t commit_time_aborts;
+extern uint64_t total_n;
+extern uint64_t total_r, total_w;
+extern uint64_t total_searched;
+extern uint64_t total_aborts;
+extern uint64_t commit_time_aborts;
 #endif
+
+void reportPerf();
+#define STO_SHUTDOWN() reportPerf()
 
 struct threadinfo_t {
   unsigned epoch;
