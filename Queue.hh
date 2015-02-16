@@ -110,8 +110,8 @@ private:
     bool check(TransItem& item, Transaction& t) {
 	    //if transaction assumed queue was empty, check if still empty
         auto qv = queueversion_;
-        if (item.has_read())
-           return QueueVersioning::versionCheck(qv, item.template read_value<Version>());//&& (!is_locked(lv));  ?????
+        //check to ensure that no other thread has locked head/tail, or that we were the ones to lock
+        return (QueueVersioning::versionCheck(qv, item.template read_value<Version>()) && (!is_locked(head || item.has_read()) && (!is_locked(tail) || t.check_for_write(item)));
     }
 
     void install(TransItem& item) {
