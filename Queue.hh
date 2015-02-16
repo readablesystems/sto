@@ -8,7 +8,7 @@ template <typename T, unsigned BUF_SIZE = 256>
 class Queue: public Shared {
 public:
     // is this like a constructor???????
-    Queue() : head_(0), tail_(0), queuesize_(0), queueversion_(0) {}
+    Queue() : head_(NULL), tail_(NULL), queuesize_(0), queueversion_(0) {}
 
     typedef uint32_t Version;
     typedef VersionFunctions<Version, 0> QueueVersioning;
@@ -34,10 +34,11 @@ public:
             if has_write(t.item(this,-1)) then remove first item off list (need to check that queue is still empty at commit time?)
             else fail
         */
-        long index = head;
+        ptrdiff_t index = get_index(head);
+        ptrdiff_t tail_index = get_index(tail);
         auto& item = t.item(this, index);
         while (has_delete(item)) {
-            if (index = tail)
+            if (index = tail_index)
                 assert fail; 
             item = t.item(this, index);
             index = (index + 1) % buf_size;
@@ -53,11 +54,11 @@ public:
             if has_write(t.item(this,-1)) then reference first item off list (need to check that queue is still empty at commit time?)
             else fail
         */
-        long index = head;
+        ptrdiff_t index = get_index(head);
+        ptrdiff_t tail_index = get_index(tail);
         auto& item = t.item(this, index);
         while (has_delete(item)) {
-            if (index = tail)
-                //assert fail; ??
+            if (index = tail_index)
             item = t.item(this, index);
             index = (index + 1) % buf_size;
         }
@@ -67,6 +68,11 @@ public:
     }
     
 private:
+    ptrdiff_t get_index(T *ptr) {
+        if (ptr) return ptr - queueSlots;
+        else return 0;
+    }
+    
     bool has_delete(TransItem& item) {
         return item.has_flags(delete_bit);
     }
@@ -108,25 +114,30 @@ private:
 
     void install(TransItem& item) {
 	    if (has_delete(item)) {
-            assert(item.key() == head index);
-            head_index = (head_index+1) % BUF_SIZE;
+            auto index = get_index(head);
+            assert(item.key() == index);
+            head = &queueSlots(index+1 % BUF_SIZE);
             QueueVersioning::inc_version(queueversion_);
         }
         else if (item.has_write()) {
             write_list = unpack<list<T>>(item.key());
+            auto head_index = get_index(head);
+            auto index = get_index(tail);
             while (!write_list.empty()) {
-                tail = (tail+1) % BUF_SIZE; 
-                if (tail != head)
-                    queue[tail] = write_list.front();
+                if (index != head_index) {
+                    index = (index+1) % BUF_SIZE;
+                    queue[index] = write_list.front();
                     write_list.pop_front();
+                }
                 //else return "fail"; ?????
             }
+            tail = &queueSlots(index % BUF_SIZE);
         }
     }
 
     // not sure if taggedlow is the correct way to implement????
-    TaggedLow<long> head_;
-    TaggedLow<long> tail_;
+    TaggedLow<T> head_;
+    TaggedLow<T> tail_;
     long queuesize_;
     Version queueversion_;
 };
