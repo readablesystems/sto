@@ -266,7 +266,7 @@ public:
       return NULL;
     }
 
-  private:
+private:
     ListIter(List *us, list_node *cur, Transaction& t) : us(us), cur(cur) {
       ensureValid(t);
     }
