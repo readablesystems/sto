@@ -5,6 +5,7 @@
 #include "Hashtable.hh"
 #include "MassTrans.hh"
 #include "List.hh"
+#include "Queue.hh"
 #include "Transaction.hh"
 
 #define N 100
@@ -17,6 +18,27 @@ kvtimestamp_t initial_timestamp;
 volatile bool recovering = false; // so don't add log entries, and free old value immediately
 
 using namespace std;
+
+void queueTests() {
+    Queue<int> q;
+
+    {
+        Transaction t;
+        q.transPush(t, 1);
+        q.transPush(t, 2);
+        assert(t.commit());
+    }
+
+    {
+        Transaction t;
+        assert(*q.transFront(t) == 1);
+        assert(t.commit());
+    }
+
+    {
+        Transaction t;
+    }
+}
 
 void linkedListTests() {
   List<int> l;
@@ -334,6 +356,7 @@ int main() {
   // string key testing
   stringKeyTests();
 
-  linkedListTests();
+  //linkedListTests();
+  queueTests();
   
 }
