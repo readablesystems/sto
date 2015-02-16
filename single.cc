@@ -1,9 +1,9 @@
 #include <iostream>
 #include <assert.h>
 
-//#include "Array.hh"
-//#include "Hashtable.hh"
-//#include "MassTrans.hh"
+#include "Array.hh"
+#include "Hashtable.hh"
+#include "MassTrans.hh"
 #include "List.hh"
 #include "Queue.hh"
 #include "Transaction.hh"
@@ -40,7 +40,6 @@ void queueTests() {
     }
 }
 
-/*
 void linkedListTests() {
   List<int> l;
   
@@ -211,9 +210,8 @@ void rangeQueryTest() {
 
   assert(t.commit());
 }
-*/
+
 int main() {
-/*
   typedef int Key;
   typedef int Value;
 #if HASHTABLE
@@ -357,8 +355,9 @@ int main() {
 
   // string key testing
   stringKeyTests();
-*/
-  //linkedListTests();
+
+  linkedListTests();
+  
   queueTests();
   
 }
