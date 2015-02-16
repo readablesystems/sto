@@ -356,7 +356,8 @@ int main() {
   // string key testing
   stringKeyTests();
 
-  //linkedListTests();
+  linkedListTests();
+
   queueTests();
   
 }
