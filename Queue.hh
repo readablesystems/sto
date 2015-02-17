@@ -111,7 +111,8 @@ private:
 	    //if transaction assumed queue was empty, check if still empty
         auto qv = queueversion_;
         //check to ensure that no other thread has locked head/tail, or that we were the ones to lock
-        return (QueueVersioning::versionCheck(qv, item.template read_value<Version>()) && (!is_locked(head || item.has_read()) && (!is_locked(tail) || t.check_for_write(item)));
+        // only need to check if another transaction is about to change the version number if this is a read????
+        return (QueueVersioning::versionCheck(qv, item.template read_value<Version>()) && (!is_locked(tail) || item.has_write()));
     }
 
     void install(TransItem& item) {
@@ -121,6 +122,7 @@ private:
             head_ = &queueSlots[index+1 % BUF_SIZE];
             QueueVersioning::inc_version(queueversion_);
         }
+        // another transaction inserting onto tail = don't need to increment queueversion????
         else if (item.has_write()) {
             auto write_list = unpack<std::list<T>>(item.key());
             auto head_index = get_index(head_);
