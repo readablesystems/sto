@@ -1,3 +1,4 @@
+#pragma once
 #include "List.hh"
 
 // implememnts abstraction of a transactional array using our linked list
