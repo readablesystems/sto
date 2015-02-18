@@ -14,7 +14,6 @@ public:
   }
 };
 
-static __thread bool list_locked;
 template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true>
 class List : public Shared {
 public:
@@ -266,7 +265,7 @@ public:
       return NULL;
     }
 
-  private:
+private:
     ListIter(List *us, list_node *cur, Transaction& t) : us(us), cur(cur) {
       ensureValid(t);
     }
