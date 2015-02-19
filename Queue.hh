@@ -1,5 +1,4 @@
 // atomic check_empty -- check empty, check version, check empty again
-// tailversion -- lock instead of tail, check version# if empty
 
 #pragma once
 
@@ -37,15 +36,19 @@ public:
         auto& item = t.item(this, index);
         while (has_delete(item)) {
             if (index == tail_) {
-                auto& pushitem = t.item(this,-1);
-                if (pushitem.has_write()) {
-                    auto& write_list = unpack<std::list<T>>(pushitem.key());
-                    // if there is an element to be pushed on the queue, return addr of queue element
-                    if (!write_list.empty()) {
-                        write_list.pop_front();
-                        // must ensure that tail_ is not modified at check
-                        if (!item.has_read())
-                            t.add_read(pushitem, tailversion_);
+                Version tv = tailversion_;
+                // if someone has pushed onto tail, can successfully do a front read, so skip reading from our pushes -- check?????
+                if (index == tail_) {
+                    auto& pushitem = t.item(this,-1);
+                    if (pushitem.has_write()) {
+                        auto& write_list = unpack<std::list<T>>(pushitem.key());
+                        // if there is an element to be pushed on the queue, return addr of queue element
+                        if (!write_list.empty()) {
+                            write_list.pop_front();
+                            // must ensure that tail_ is not modified at check
+                            if (!item.has_read())
+                                t.add_read(pushitem, tailversion_);
+                        }
                     }
                 } 
                 return false; 
@@ -67,15 +70,19 @@ public:
         while (has_delete(item)) {
             // empty queue
             if (index == tail_) {
-                auto& pushitem = t.item(this,-1);
-                if (pushitem.has_write()) {
-                    auto& write_list = unpack<std::list<T>>(pushitem.key());
-                    // if there is an element to be pushed on the queue, return addr of queue element
-                    if (!write_list.empty()) {
-                        return &queueSlots[tail_];
-                        // must ensure that tail_ is not modified at check
-                        if (!item.has_read())
-                            t.add_read(pushitem, tailversion_);
+                Version tv = tailversion_;
+                // if someone has pushed onto tail, can successfully do a front read, so skip reading from our pushes -- check?????
+                if (index == tail_) {
+                    auto& pushitem = t.item(this,-1);
+                    if (pushitem.has_write()) {
+                        auto& write_list = unpack<std::list<T>>(pushitem.key());
+                        // if there is an element to be pushed on the queue, return addr of queue element
+                        if (!write_list.empty()) {
+                            return &queueSlots[tail_];
+                            // must ensure that tail_ is not modified at check
+                            if (!item.has_read())
+                                t.add_read(pushitem, tv);
+                        }
                     }
                 }
                 return NULL;
@@ -91,7 +98,7 @@ public:
     }
     
 private:
-    bool is_front(TransItem& item) {
+  bool is_front(TransItem& item) {
         return item.has_flags(front_bit);
     }
 
