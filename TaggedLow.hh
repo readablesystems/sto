@@ -12,8 +12,6 @@ public:
     set_flags(flgs);
   }
 
-  TaggedLow(T* ptr) : ptr_(ptr) {}
-
   operator T*() {
     return (T*)ptr();
   }
