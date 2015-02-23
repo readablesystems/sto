@@ -157,8 +157,9 @@ private:
                     queueSlots[tail_] = write_list.front();
                     write_list.pop_front();
                 }
-                //else return "fail"; ?????
+                // else return fail???? or expand buffer size? 
             }
+            QueueVersioning::inc_version(tailversion_);
         }
     }
     
