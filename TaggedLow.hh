@@ -13,8 +13,6 @@ public:
   
   TaggedLow(T* ptr) : ptr_(ptr) {}
 
-  TaggedLow(T* ptr) : ptr_(ptr) {}
-
   operator T*() {
     return (T*)ptr();
   }

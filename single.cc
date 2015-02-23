@@ -31,7 +31,8 @@ void queueTests() {
 
     {
         Transaction t;
-        assert(*q.transFront(t) == 1);
+        int *p = q.transFront(t);
+        assert(*p == 1);
         assert(t.commit());
     }
 
@@ -212,6 +213,7 @@ void rangeQueryTest() {
 }
 
 int main() {
+/*
   typedef int Key;
   typedef int Value;
 #if HASHTABLE
@@ -357,7 +359,7 @@ int main() {
   stringKeyTests();
 
   linkedListTests();
-  
+*/  
   queueTests();
   
 }
