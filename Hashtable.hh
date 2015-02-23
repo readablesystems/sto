@@ -14,6 +14,8 @@ public:
   typedef V Value;
 
 private:
+  // our hashtable is an array of linked lists. 
+  // an internal_elem is the node type for these linked lists
   struct internal_elem {
     Key key;
     internal_elem *next;
@@ -28,18 +30,27 @@ private:
 
   struct bucket_entry {
     internal_elem *head;
+    // this is the bucket version number, which is incremented on insert
+    // we use it to make sure that an unsuccessful key lookup will still be
+    // unsuccessful at commit time (because this will always be true if no
+    // new inserts have occurred in this bucket)
     Version version;
     bucket_entry() : head(NULL), version(0) {}
   };
 
   typedef std::vector<bucket_entry> MapType;
+  // this is the hashtable itself, an array of bucket_entry's
   MapType map_;
 
 public:
   static constexpr Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
   // if set we check only node validity, not the node's version number
+  // (for deletes we need to make sure the node is still there/valid, but 
+  // not that its value is the same)
   static constexpr Version valid_check_only_bit = 1U<<(sizeof(Version)*8 - 2);
   static constexpr Version version_mask = ~(lock_bit|valid_check_only_bit);
+  // used to mark whether a key is a bucket (for bucket version checks)
+  // or a pointer (which will always have the lower 3 bits as 0)
   static constexpr uintptr_t bucket_bit = 1U<<0;
 
   Hashtable(unsigned size = INIT_SIZE) : map_() {
@@ -57,125 +68,6 @@ public:
 
   inline size_t bucket(Key k) {
     return hash(k) % nbuckets();
-  }
-
-  // invariants:
-  // if bucket list is different, version number is different
-  // if bucket is locked, can still do everything but insert/delete
-  // one way to rehash would be to lock every bucket...
-  // could also potentially just check every bucket's version number after rehash (transaction)
-
-  // transaction time!
-  // key is either a pointer to entry in hashtable (if actually in hashtable)
-  // or a bucket index where the key would be, if not in hashtable
-  // TODO: could be relatively common that insert/delete happens in same bucket as a key but the key itself
-  // was not inserted or deleted. would need to store key in the transaction as well to check this case
-
-  bool read(Key k, Value& retval) {
-    auto e = elem(k);
-    if (e)
-      retval = e->value;
-    return !!e;
-  }
-
-  void put(Key k, Value val) {
-    bucket_entry& buck = buck_entry(k);
-    lock(&buck.version);
-    internal_elem *e = find(buck, k);
-    if (e) {
-      set(e, val);
-    } else {
-      insert_locked<true>(buck, k, val);
-    }
-    unlock(&buck.version);
-  }
-
-  void set(internal_elem *e, Value val) {
-    assert(e);
-    lock(&e->version);
-    e->value = val;
-    inc_version(e->version);
-    unlock(&e->version);
-  }
-
-  bool has_delete(TransItem& item) {
-    return item.has_afterC();
-  }
-  
-  bool has_insert(TransItem& item) {
-    return item.has_undo();
-  }
-
-  bool validity_check(TransItem& item, internal_elem *e) {
-    return has_insert(item) || e->valid();
-  }
-  
-  bool is_bucket(void *key) {
-    return (uintptr_t)key & bucket_bit;
-  }
-  unsigned bucket_value(void *key) {
-    assert(is_bucket(key));
-    return (uintptr_t)key >> 1;
-  }
-  void *pack_bucket(unsigned bucket) {
-    return pack((bucket << 1) | bucket_bit);
-  }
-
-#if 0
-  template <typename T>
-  void *pack_valid_check(T* ptr) {
-    return pack((uintptr_t)ptr | validity_check_bit);
-  }
-#endif
-
-  void inc_version(Version& v) {
-    assert(is_locked(v));
-    Version cur = v & version_mask;
-    cur = (cur+1) & version_mask;
-    v = cur | (v & ~version_mask);
-  }
-
-  bool is_locked(Version v) {
-    return v & lock_bit;
-  }
-  void lock(Version *v) {
-    while (1) {
-      Version cur = *v;
-      if (!(cur&lock_bit) && bool_cmpxchg(v, cur, cur|lock_bit)) {
-        break;
-      }
-      relax_fence();
-    }
-  }
-  void unlock(Version *v) {
-    assert(is_locked(*v));
-    Version cur = *v;
-    cur &= ~lock_bit;
-    *v = cur;
-  }
-
-  template <bool markValid = false>
-  void insert_locked(bucket_entry& buck, Key k, const Value& val) {
-    assert(is_locked(buck.version));
-    auto new_head = new internal_elem(k, val);
-    internal_elem *cur_head = buck.head;
-    new_head->next = cur_head;
-    if (markValid) {
-      new_head->valid() = true;
-    }
-    buck.head = new_head;
-    inc_version(buck.version);
-  }
-
-  void atomicRead(internal_elem *e, Version& vers, Value& val) {
-    Version v2;
-    do {
-      vers = e->version;
-      fence();
-      val = e->value;
-      fence();
-      v2 = e->version;
-    } while (vers != v2);
   }
 
   // returns true if found false if not
@@ -507,6 +399,37 @@ public:
     }
   }
 
+
+  // non-transactional get/put/etc.
+  // not very interesting
+  bool read(Key k, Value& retval) {
+    auto e = elem(k);
+    if (e)
+      retval = e->value;
+    return !!e;
+  }
+
+  void put(Key k, Value val) {
+    bucket_entry& buck = buck_entry(k);
+    lock(&buck.version);
+    internal_elem *e = find(buck, k);
+    if (e) {
+      set(e, val);
+    } else {
+      insert_locked<true>(buck, k, val);
+    }
+    unlock(&buck.version);
+  }
+
+  void set(internal_elem *e, Value val) {
+    assert(e);
+    lock(&e->version);
+    e->value = val;
+    inc_version(e->version);
+    unlock(&e->version);
+  }
+
+  // these are wrappers for concurrent.cc
   void transWrite(Transaction& t, Key k, Value v) {
     transPut(t, k, v);
   }
@@ -523,28 +446,23 @@ public:
     Transaction t;
     return transRead(t, k);
   }
-
   void insert(Key k, Value v) {
     Transaction t;
     transInsert(t, k, v);
     t.commit();
   }
-
   void erase(Key ) {}
-
   void update(Key k, Value v) {
     Transaction t;
     transUpdate(t, k, v);
     t.commit();
   }
-
   template <typename F>
   void update_fn(Key k, F f) {
     Transaction t;
     transUpdate(t, k, f(transRead(t, k)));
     t.commit();
   }
-
   template <typename F>
   void upsert(Key k, F f, Value v) {
     Transaction t;
@@ -556,7 +474,6 @@ public:
     }
     t.commit();
   }
-
   void find(Key k, Value& v) {
     Transaction t;
     transGet(t, k, v);
@@ -567,11 +484,12 @@ public:
   void rehash(unsigned ) {}
   void reserve(unsigned ) {}
   
-  private:
+private:
   bucket_entry& buck_entry(Key k) {
     return map_[bucket(k)];
   }
 
+  // looks up a key's internal_elem, given its bucket
   internal_elem* find(bucket_entry& buck, Key k) {
     internal_elem *list = buck.head;
     while (list && !(list->key == k)) {
@@ -580,8 +498,83 @@ public:
     return list;
   }
 
+  // looks up a key's internal_elem
   internal_elem* elem(Key k) {
     return find(buck_entry(k), k);
   }
+
+  bool has_delete(TransItem& item) {
+    return item.has_afterC();
+  }
+  
+  bool has_insert(TransItem& item) {
+    return item.has_undo();
+  }
+
+  bool validity_check(TransItem& item, internal_elem *e) {
+    return has_insert(item) || e->valid();
+  }
+  
+  bool is_bucket(void *key) {
+    return (uintptr_t)key & bucket_bit;
+  }
+  unsigned bucket_value(void *key) {
+    assert(is_bucket(key));
+    return (uintptr_t)key >> 1;
+  }
+  void *pack_bucket(unsigned bucket) {
+    return pack((bucket << 1) | bucket_bit);
+  }
+
+  void inc_version(Version& v) {
+    assert(is_locked(v));
+    Version cur = v & version_mask;
+    cur = (cur+1) & version_mask;
+    v = cur | (v & ~version_mask);
+  }
+
+  bool is_locked(Version v) {
+    return v & lock_bit;
+  }
+  void lock(Version *v) {
+    while (1) {
+      Version cur = *v;
+      if (!(cur&lock_bit) && bool_cmpxchg(v, cur, cur|lock_bit)) {
+        break;
+      }
+      relax_fence();
+    }
+  }
+  void unlock(Version *v) {
+    assert(is_locked(*v));
+    Version cur = *v;
+    cur &= ~lock_bit;
+    *v = cur;
+  }
+
+  template <bool markValid = false>
+  void insert_locked(bucket_entry& buck, Key k, const Value& val) {
+    assert(is_locked(buck.version));
+    auto new_head = new internal_elem(k, val);
+    internal_elem *cur_head = buck.head;
+    new_head->next = cur_head;
+    if (markValid) {
+      new_head->valid() = true;
+    }
+    buck.head = new_head;
+    inc_version(buck.version);
+  }
+
+  void atomicRead(internal_elem *e, Version& vers, Value& val) {
+    Version v2;
+    do {
+      vers = e->version;
+      fence();
+      val = e->value;
+      fence();
+      v2 = e->version;
+    } while (vers != v2);
+  }
+
 
 };

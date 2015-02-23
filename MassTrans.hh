@@ -18,135 +18,15 @@
 
 #define READ_MY_WRITES 1
 
+#include "Debug_rcu.hh"
+
 #if PERF_LOGGING
 uint64_t node_aborts;
 #endif
 
-#if !RCU
-class debug_threadinfo {
-public:
-#if 0
-  debug_threadinfo()
-    : ts_(0) { // XXX?
-  }
-#endif
-
-  class rcu_callback {
-  public:
-    virtual void operator()(debug_threadinfo& ti) = 0;
-  };
-
-private:
-  static inline void rcu_callback_function(void* p) {
-    debug_threadinfo ti;
-    static_cast<rcu_callback*>(p)->operator()(ti);
-  }
-
-
-public:
-  // XXX Correct node timstamps are needed for recovery, but for no other
-  // reason.
-  kvtimestamp_t operation_timestamp() const {
-    return 0;
-  }
-  kvtimestamp_t update_timestamp() const {
-    return ts_;
-  }
-  kvtimestamp_t update_timestamp(kvtimestamp_t x) const {
-    if (circular_int<kvtimestamp_t>::less_equal(ts_, x))
-      // x might be a marker timestamp; ensure result is not
-      ts_ = (x | 1) + 1;
-    return ts_;
-  }
-  kvtimestamp_t update_timestamp(kvtimestamp_t x, kvtimestamp_t y) const {
-    if (circular_int<kvtimestamp_t>::less(x, y))
-      x = y;
-    if (circular_int<kvtimestamp_t>::less_equal(ts_, x))
-      // x might be a marker timestamp; ensure result is not
-      ts_ = (x | 1) + 1;
-    return ts_;
-  }
-  void increment_timestamp() {
-    ts_ += 2;
-  }
-  void advance_timestamp(kvtimestamp_t x) {
-    if (circular_int<kvtimestamp_t>::less(ts_, x))
-      ts_ = x;
-  }
-
-  // event counters
-  void mark(threadcounter) {
-  }
-  void mark(threadcounter, int64_t) {
-  }
-  bool has_counter(threadcounter) const {
-    return false;
-  }
-  uint64_t counter(threadcounter) const {
-    return 0;
-  }
-
-  /** @brief Return a function object that calls mark(ci); relax_fence().
-   *
-   * This function object can be used to count the number of relax_fence()s
-   * executed. */
-  relax_fence_function accounting_relax_fence(threadcounter) {
-    return relax_fence_function();
-  }
-
-  class accounting_relax_fence_function {
-  public:
-    template <typename V>
-    void operator()(V) {
-      relax_fence();
-    }
-  };
-  /** @brief Return a function object that calls mark(ci); relax_fence().
-   *
-   * This function object can be used to count the number of relax_fence()s
-   * executed. */
-  accounting_relax_fence_function stable_fence() {
-    return accounting_relax_fence_function();
-  }
-
-  relax_fence_function lock_fence(threadcounter) {
-    return relax_fence_function();
-  }
-
-  void* allocate(size_t sz, memtag) {
-    return malloc(sz);
-  }
-  void deallocate(void* , size_t , memtag) {
-    // in C++ allocators, 'p' must be nonnull
-    //free(p);
-  }
-  void deallocate_rcu(void *, size_t , memtag) {
-  }
-
-  void* pool_allocate(size_t sz, memtag) {
-    int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
-    return malloc(nl * CACHE_LINE_SIZE);
-  }
-  void pool_deallocate(void* , size_t , memtag) {
-  }
-  void pool_deallocate_rcu(void* , size_t , memtag) {
-  }
-
-  // RCU
-  void rcu_register(rcu_callback *) {
-    //    scoped_rcu_base<false> guard;
-    //rcu::s_instance.free_with_fn(cb, rcu_callback_function);
-  }
-
-private:
-  mutable kvtimestamp_t ts_;
-};
-
-#endif
-
 typedef stuffed_str<uint32_t> versioned_str;
 
-#if 0
+/*
 // TODO: ughhh
 void print(FILE* f, const char* prefix,
            int indent, lcdf::Str key, kvtimestamp_t,
@@ -155,7 +35,7 @@ void print(FILE* f, const char* prefix,
   fprintf(f, "%s%*s%.*s = %d%s (version %d)\n", prefix, indent, "", key.len, key.s, value_, suffix, version_);
 }
 
-#endif
+*/
 
 struct versioned_str_struct : public versioned_str {
   typedef Masstree::Str value_type;
@@ -188,7 +68,7 @@ struct versioned_str_struct : public versioned_str {
 };
 
 template <typename V, typename Box = versioned_value_struct<V>>
-  class MassTrans : public Shared {
+class MassTrans : public Shared {
 public:
 #if !RCU
   typedef debug_threadinfo threadinfo;
@@ -245,35 +125,8 @@ public:
 #endif
   }
 
-  bool put(Str key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
-    cursor_type lp(table_, key);
-    bool found = lp.find_insert(*ti.ti);
-    if (found) {
-      lock(&lp.value()->version());
-      // this will uses value's copy constructor (TODO: just doing this may be unsafe and we should be using rcu for dealloc)
-      lp.value()->set_value(value);
-    } else {
-      versioned_value* val = (versioned_value*)versioned_value::make(value, 0);
-      lp.value() = val;
-    }
-    if (found) {
-      inc_version(lp.value()->version());
-      unlock(&lp.value()->version());
-    }
-    lp.finish(1, *ti.ti);
-    return found;
-  }
-
-  bool get(Str key, value_type& value, threadinfo_type& ti = mythreadinfo) {
-    unlocked_cursor_type lp(table_, key);
-    bool found = lp.find_unlocked(*ti.ti);
-    if (found)
-      lp.value()->read_value(value);
-    return found;
-  }
-
   template <typename ValType>
-  /*__attribute__((flatten))*/ bool transGet(Transaction& t, Str key, ValType& retval, size_t max_read = (size_t)-1, threadinfo_type& ti = mythreadinfo) {
+  bool transGet(Transaction& t, Str key, ValType& retval, size_t max_read = (size_t)-1, threadinfo_type& ti = mythreadinfo) {
     unlocked_cursor_type lp(table_, key);
     bool found = lp.find_unlocked(*ti.ti);
     if (found) {
@@ -484,6 +337,7 @@ public:
   }
 
 private:
+  // range query class thang
   template <typename Nodecallback, typename Valuecallback, bool Reverse = false>
   class range_scanner {
   public:
@@ -531,7 +385,25 @@ private:
     Nodecallback nodecallback_;
     Valuecallback valuecallback_;
   };
+
 public:
+
+  // non-transaction put/get. These just wrap a transaction get/put
+  bool put(Str key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
+    Transaction t;
+    auto ret = transPut(t, key, value, ti);
+    t.commit();
+    return ret;
+  }
+
+  bool get(Str key, value_type& value, threadinfo_type& ti = mythreadinfo) {
+    Transaction t;
+    auto ret = transGet(t, key, value, ti);
+    t.commit();
+    return ret;
+  }
+
+  // implementation of Shared object methods
 
   void lock(versioned_value *e) {
 #if NOSORT
@@ -641,6 +513,7 @@ public:
   }
   
 
+  // these are mostly for concurrent.cc (which currently requires specifically named methods)
   void transWrite(Transaction& t, int k, value_type v) {
     char s[16];
     sprintf(s, "%d", k);
@@ -695,6 +568,7 @@ public:
 
 
 private:
+  // called once we've checked our own writes for a found put()
   void reallyHandlePutFound(Transaction& t, TransItem& item, versioned_value *e, Str key, const value_type& value) {
     // resizing takes a lot of effort, so we first check if we'll need to
     // (values never shrink in size, so if we don't need to resize, we'll never need to)
@@ -704,7 +578,7 @@ private:
       if (!we_inserted(item)) {
         // TODO: might be faster to do this part at commit time but easiest to just do it now
         lock(e);
-        // fuck, we had a weird race condition and now this element is gone. just abort at this point
+        // we had a weird race condition and now this element is gone. just abort at this point
         if (e->version() & invalid_bit) {
           unlock(e);
           t.abort();
@@ -742,6 +616,7 @@ private:
   }
 
   // returns true if already in tree, false otherwise
+  // handles a transactional put when the given key is already in the tree
   template <bool INSERT=true, bool SET=true>
   bool handlePutFound(Transaction& t, versioned_value *e, Str key, const value_type& value) {
     auto& item = t_item(t, e);
@@ -766,7 +641,7 @@ private:
     // make sure this item doesn't get deleted (we don't care about other updates to it though)
     if (!item.has_read() && !we_inserted(item))
 #endif
-      {
+    {
       t.add_read(item, valid_check_only_bit);
     }
     if (SET) {
