@@ -45,16 +45,18 @@ KVTREES = masstree-beta/query_masstree.o \
 
 MASSTREE_OBJS = masstree-beta/kvio.o masstree-beta/misc.o masstree-beta/checkpoint.o $(KVTREES) masstree-beta/libjson.a
 
-concurrent: concurrent.o clp.o $(MASSTREE_OBJS)
+STO_OBJS = Transaction.o
+
+concurrent: concurrent.o clp.o $(STO_OBJS) $(MASSTREE_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
-single: single.o clp.o $(MASSTREE_OBJS)
+single: single.o clp.o $(STO_OBJS) $(MASSTREE_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
-singleelems: singleelems.o clp.o
+singleelems: singleelems.o clp.o $(STO_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
-array1: array1.o clp.o
+array1: array1.o clp.o $(STO_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;

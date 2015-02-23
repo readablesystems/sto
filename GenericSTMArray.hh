@@ -1,4 +1,5 @@
-#include "GenericSTM.hh"
+#pragma once
+#include "GenericBitSTM.hh"
 
 // wraps an array transactionally with our GenericSTM class
 // not all that useful/fast, but mostly useful for testing

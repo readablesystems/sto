@@ -1,3 +1,4 @@
+#pragma once
 #include <iostream>
 #include "Interface.hh"
 #include "Transaction.hh"

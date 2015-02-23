@@ -1,3 +1,4 @@
+#pragma once
 
 // Tagged pointer which uses lower 3 bits of pointer for tag bits
 // (so, requires pointer is one returned by malloc, i.e. 8-byte aligned)
@@ -6,9 +7,12 @@ template <typename T>
 class TaggedLow {
 public:
 
+  TaggedLow(T* ptr) : ptr_(ptr) {}
   TaggedLow(T* ptr, uint8_t flgs) : ptr_(ptr) {
     set_flags(flgs);
   }
+
+  TaggedLow(T* ptr) : ptr_(ptr) {}
 
   operator T*() {
     return (T*)ptr();

@@ -1,4 +1,4 @@
-
+#pragma once
 #include "Interface.hh"
 #include "versioned_value.hh"
 #include "VersionFunctions.hh"
