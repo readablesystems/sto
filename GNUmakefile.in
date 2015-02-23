@@ -22,7 +22,7 @@ ifneq ($(NDEBUG),1)
 CFLAGS += -g
 endif
 
-all: concurrent single singleelems array1
+all: concurrent single singleelems array1 genericTest
 
 %.o: %.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
@@ -58,6 +58,9 @@ singleelems: singleelems.o clp.o $(STO_OBJS)
 
 array1: array1.o clp.o $(STO_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+  
+genericTest: genericTest.o clp.o $(STO_OBJS)
+	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;
 
@@ -92,7 +95,7 @@ stamp-h: config.h.in config.status
 	echo > stamp-h
 
 clean:
-	rm -f concurrent array single singleelems *.o libjson.a
+	rm -f concurrent array single singleelems genericTest *.o libjson.a
 	rm -rf .deps
 	$(MAKE) -C masstree-beta clean
 

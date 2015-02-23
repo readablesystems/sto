@@ -1,4 +1,4 @@
-
+#pragma once
 // Tagged pointer which uses lower 3 bits of pointer for tag bits
 // (so, requires pointer is one returned by malloc, i.e. 8-byte aligned)
 // does not require extra space on 32-bit architectures

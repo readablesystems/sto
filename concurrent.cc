@@ -6,8 +6,8 @@
 #include <sys/resource.h>
 
 #include "Array.hh"
-#include "Array1.hh"
 #include "GenericSTMArray.hh"
+#include "Array1.hh"
 #include "ListArray.hh"
 #include "Hashtable.hh"
 #include "Transaction.hh"

@@ -1,5 +1,8 @@
+#pragma once 
+
+#include "config.h"
+#include "compiler.hh"
 #include <iostream>
-#include "Interface.hh"
 #include "Transaction.hh"
 #include "SingleElem.hh"
 
