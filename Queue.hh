@@ -33,8 +33,10 @@ public:
     bool transPop(Transaction& t) {
         auto index = head_;
         auto item = &t.item(this, index);
+        // mark only the first item popped so we only lock headversion once
         if (!has_delete(*item))
             item->or_flags(pop_bit);
+
         while (1) {
            if (index == tail_) { 
                Version tv = tailversion_;
@@ -46,10 +48,11 @@ public:
                         // if there is an element to be pushed on the queue, return addr of queue element
                         if (!write_list.empty()) {
                             write_list.pop_front();
-                            // must ensure that tail_ is not modified at check
+                            tail_ = (tail_ + 1) % BUF_SIZE;
                         }
+                        else return false;
                     }
-                    // fail because trying to read from an empty queue
+                    // fail if trying to read from an empty queue
                     else return false; 
                     
                     if (!pushitem.has_read())
@@ -89,9 +92,10 @@ public:
                             // install tail elements immediately
                             queueSlots[tail_] = write_list.front();
                             write_list.pop_front();
-                            tail_++;
+                            tail_ = (tail_ + 1) % BUF_SIZE;
                             return &queueSlots[index];
                         }
+                        else return NULL;
                     }
                     if (!pushitem.has_read())
                         t.add_read(pushitem, tailversion_);
@@ -170,6 +174,7 @@ private:
 	    if (has_delete(item)) {
             head_ = (head_+1) % BUF_SIZE;
             QueueVersioning::inc_version(headversion_);
+                assert(tail_ >= head_);
         }
         else {
             auto& write_list = item.template write_value<std::list<T>>();

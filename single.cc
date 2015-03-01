@@ -106,6 +106,7 @@ void queueTests() {
         assert(t.commit());
     }
 
+    // EMPTY TESTS
     {
         // front with empty queue
         Transaction t;
@@ -141,6 +142,26 @@ void queueTests() {
        
         q.transPush(t, 1);
         assert(q.transPop(t));
+        assert(!q.transPop(t));
+        assert(t.commit());
+    }
+
+    {
+        // pop and front with empty queue
+        Transaction t;
+        
+        int* p = q.transFront(t);
+        assert(!p);
+       
+        q.transPush(t, 1);
+        p = q.transFront(t);
+        assert(*p == 1);
+        assert(q.transPop(t));
+       
+        q.transPush(t, 1);
+        assert(q.transPop(t));
+        p = q.transFront(t);
+        assert(!p); 
         assert(!q.transPop(t));
         assert(t.commit());
     }
