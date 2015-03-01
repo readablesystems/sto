@@ -10,11 +10,15 @@ public:
   template <typename T>
   T transRead(Transaction& t, T* word) {
     static_assert(sizeof(T) <= sizeof(void*), "don't support words larger than pointer size");
-    auto& item = t.item(this, word);
-    if (item.has_write()) {
-      t.check_reads();
-      return item.template write_value<T>();
+    auto it = t.has_item(this, word);
+    if (it) {
+      auto& item = *it;
+      if (item.has_write()) {
+        t.check_reads();
+        return item.template write_value<T>();
+      }
     }
+    
     size_t key = bucket(word);
     // ensures version doesn't change
     table_.transRead(t, key);
@@ -28,7 +32,6 @@ public:
     // just makes the version number change, i.e., makes conflicting reads abort
     // (and locks this word for us)
     size_t key = bucket(word);
-    std::cout << "Key " << key << std::endl;
     table_.transWrite(t, key, 0);
     auto& item = t.item(this, word);
     t.add_write(item, new_val);
