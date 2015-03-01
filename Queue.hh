@@ -83,10 +83,14 @@ public:
                 if (index == tail_) {
                     auto& pushitem = t.item(this,-1);
                     if (pushitem.has_write()) {
-                        auto& write_list = item->template write_value<std::list<T>>();
+                        auto& write_list = pushitem.template write_value<std::list<T>>();
                         // if there is an element to be pushed on the queue, return addr of queue element
                         if (!write_list.empty()) {
-                            return &queueSlots[tail_];
+                            // install tail elements immediately
+                            queueSlots[tail_] = write_list.front();
+                            write_list.pop_front();
+                            tail_++;
+                            return &queueSlots[index];
                         }
                     }
                     if (!pushitem.has_read())
@@ -170,18 +174,15 @@ private:
         else {
             auto& write_list = item.template write_value<std::list<T>>();
             auto head_index = head_;
-            bool list_empty = write_list.empty();
-            assert(!list_empty);
-            
+            // write all the elements that have not yet been installed 
             while (!write_list.empty()) {
-                // queue out of space            
+                // assert queue is not out of space            
                 assert(tail_ != (head_index-1) % BUF_SIZE);
                 queueSlots[tail_] = write_list.front();
                 write_list.pop_front();
                 tail_ = (tail_+1) % BUF_SIZE;
             }
-            if (!list_empty)
-                QueueVersioning::inc_version(tailversion_);
+            QueueVersioning::inc_version(tailversion_);
         }
     }
     

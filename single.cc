@@ -94,26 +94,35 @@ void queueTests() {
         // q = [1 2 3 4]
         Transaction t;
         assert(q.transPop(t));
-        // q = [2 3 4 5]
         int *p = q.transFront(t);
         assert(*p == 2);
         q.transPush(t, 5);
+        // q = [2 3 4 5]
         assert(q.transPop(t));
-        // q = [3 4 5 6]
         p = q.transFront(t);
         assert(*p == 3);
         q.transPush(t, 6);
+        // q = [3 4 5 6]
         assert(t.commit());
     }
 
     {
-        // test reading own pushes
+        // front with empty queue
         Transaction t;
-        q.transPush(t, 1);
+        
+        // empty the queue
+        assert(q.transPop(t));
+        assert(q.transPop(t));
+        assert(q.transPop(t));
         assert(q.transPop(t));
         assert(!q.transPop(t));
+        
         int* p = q.transFront(t);
         assert(!p);
+       
+        q.transPush(t, 1);
+        p = q.transFront(t);
+        assert(*p == 1);
         assert(t.commit());
     }
 
