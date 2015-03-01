@@ -1,5 +1,3 @@
-// atomic check_empty -- check empty, check version, check empty again
-
 #pragma once
 
 #include <list>
