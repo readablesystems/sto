@@ -126,6 +126,11 @@ struct TransItem {
     return data.key;
   }
 
+  template <typename T>
+  T& key() {
+    return unpack<T>(data.key);
+  }
+
   inline bool operator==(const TransItem& t2) const {
     return data == t2.data && sharedObj() == t2.sharedObj();
   }

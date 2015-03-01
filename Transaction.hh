@@ -5,6 +5,8 @@
 #include <functional>
 #include <unistd.h>
 
+#include "config.h"
+
 #define LOCAL_VECTOR 1
 #define PERF_LOGGING 1
 
@@ -42,6 +44,7 @@ public:
   static uint64_t total_n, total_r, total_w;
   static uint64_t total_searched;
   static uint64_t total_aborts;
+  static uint64_t total_starts;
   static uint64_t commit_time_aborts;
 #endif
 
@@ -116,6 +119,9 @@ public:
     // TODO: assumes this thread is constantly running transactions
     tinfo[threadid].epoch = global_epoch;
     if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
+#if PERF_LOGGING
+    __sync_add_and_fetch(&total_starts, 1);
+#endif
   }
 
   ~Transaction() {
