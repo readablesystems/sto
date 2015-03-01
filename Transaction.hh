@@ -5,6 +5,8 @@
 #include <functional>
 #include <unistd.h>
 
+#include "config.h"
+
 #define LOCAL_VECTOR 1
 #define PERF_LOGGING 1
 

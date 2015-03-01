@@ -28,6 +28,10 @@ struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
   inline const value_type& read_value() {
     return value_;
   }
+
+  inline value_type& writeable_value() {
+    return value_;
+  }
   
   inline version_type& version() {
     return version_;
