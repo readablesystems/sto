@@ -1,5 +1,6 @@
 #include <iostream>
 #include <assert.h>
+#include <stdio.h>
 
 #include "Array.hh"
 #include "Hashtable.hh"
@@ -22,6 +23,7 @@ using namespace std;
 void queueTests() {
     Queue<int> q;
 
+    // NONEMPTY TESTS
     {
         Transaction t;
         q.transPush(t, 1);
@@ -30,9 +32,88 @@ void queueTests() {
     }
 
     {
+        // front with no pops
         Transaction t;
         int *p = q.transFront(t);
         assert(*p == 1);
+        int *s = q.transFront(t);
+        assert(*s == 1);
+        assert(t.commit());
+    }
+
+    {
+        // pop until empty
+        Transaction t;
+        assert(q.transPop(t));
+        assert(q.transPop(t));
+        assert (!q.transPop(t));
+        
+        // prepare pushes for next test
+        q.transPush(t, 1);
+        q.transPush(t, 2);
+        q.transPush(t, 3); 
+        assert(t.commit());
+    }
+
+    {
+        // fronts intermixed with pops
+        Transaction t;
+        int *p = q.transFront(t);
+        assert(*p == 1);
+        assert(q.transPop(t));
+        p = q.transFront(t);
+        assert(*p == 2);
+        assert(q.transPop(t));
+        p = q.transFront(t);
+        assert(*p == 3);
+        assert(q.transPop(t));
+        assert(!q.transPop(t));
+        
+        // set up for next test
+        q.transPush(t, 1);
+        q.transPush(t, 2);
+        q.transPush(t, 3);  
+        assert(t.commit());
+    }
+
+    {
+        // front intermixed with pushes on nonempty
+        Transaction t;
+        int *p = q.transFront(t);
+        assert(*p == 1);
+        p = q.transFront(t);
+        assert(*p == 1);
+        q.transPush(t,4);
+        p = q.transFront(t);
+        assert(*p == 1);
+        assert(t.commit());
+    }
+
+    {
+        // pops intermixed with pushes and front on nonempty
+        // q = [1 2 3 4]
+        Transaction t;
+        assert(q.transPop(t));
+        // q = [2 3 4 5]
+        int *p = q.transFront(t);
+        assert(*p == 2);
+        q.transPush(t, 5);
+        assert(q.transPop(t));
+        // q = [3 4 5 6]
+        p = q.transFront(t);
+        assert(*p == 3);
+        q.transPush(t, 6);
+        assert(t.commit());
+    }
+
+    {
+        // test reading own pushes
+        Transaction t;
+        q.transPush(t, 1);
+        assert(q.transPop(t));
+        assert(!q.transPop(t));
+        int* p = q.transFront(t);
+        assert(!p);
         assert(t.commit());
     }
 
