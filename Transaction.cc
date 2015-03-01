@@ -4,6 +4,7 @@
 uint64_t Transaction::total_n, Transaction::total_r, Transaction::total_w;
 uint64_t Transaction::total_searched;
 uint64_t Transaction::total_aborts;
+uint64_t Transaction::total_starts;
 uint64_t Transaction::commit_time_aborts;
 #endif
 
