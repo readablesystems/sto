@@ -18,7 +18,7 @@ template <bool B> struct packer {};
 template <> struct packer<true> {
   template <typename T>
   void* pack(T value) {
-    void* x;
+    void* x = NULL;
     // yuck. we need to force T's copy constructor to be called at some point so we do this...
     new (&x) T(value);
 
