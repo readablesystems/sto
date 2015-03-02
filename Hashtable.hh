@@ -6,7 +6,7 @@
 
 #define HASHTABLE_DELETE 1
 
-template <typename K, typename V, unsigned INIT_SIZE = 129>
+template <typename K, typename V, unsigned Init_size = 129, typename Hash = std::hash<K>>
 class Hashtable : public Shared {
 public:
   typedef unsigned Version;
@@ -41,6 +41,7 @@ private:
   typedef std::vector<bucket_entry> MapType;
   // this is the hashtable itself, an array of bucket_entry's
   MapType map_;
+  Hash hasher_;
 
 public:
   static constexpr Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
@@ -53,13 +54,12 @@ public:
   // or a pointer (which will always have the lower 3 bits as 0)
   static constexpr uintptr_t bucket_bit = 1U<<0;
 
-  Hashtable(unsigned size = INIT_SIZE) : map_() {
+  Hashtable(unsigned size = Init_size, Hash h = Hash()) : map_(), hasher_(h) {
     map_.resize(size);
   }
   
   inline size_t hash(Key k) {
-    std::hash<Key> hash_fn;
-    return hash_fn(k);
+    return hasher_(k);
   }
 
   inline size_t nbuckets() {
@@ -399,6 +399,50 @@ public:
     }
   }
 
+  // non-transactional const iteration
+  // (we don't have current support for transactional iteration)
+  class const_iterator {
+  public:
+    std::pair<Key, Value> operator*() const {
+      return std::make_pair(node->key, node->value);
+    }
+
+    const_iterator& operator++() {
+      if (node) {
+        node = node->next;
+      } else {
+        bucket++;
+        while (!node && bucket != table->map_.size()) {
+          node = table->map_[bucket].head;
+          bucket++;
+        }
+      }
+      return *this;
+    }
+    
+    bool operator!=(const const_iterator& it) const {
+      return node != it.node || bucket != it.bucket;
+    }
+  private:
+    const Hashtable *table;
+    int bucket;
+    internal_elem *node;
+    friend class Hashtable;
+  };
+
+  const_iterator begin() const {
+    const_iterator begin;
+    begin.table = this;
+    begin.bucket = -1;
+    begin.node = NULL;
+    return ++begin; //eh
+  }
+  const_iterator end() const {
+    const_iterator end;
+    end.bucket = map_.size();
+    end.node = NULL;
+    return end;
+  }
 
   // non-transactional get/put/etc.
   // not very interesting
