@@ -410,12 +410,10 @@ public:
     const_iterator& operator++() {
       if (node) {
         node = node->next;
-      } else {
+      }
+      while (!node && bucket != table->map_.size()) {
+        node = table->map_[bucket].head;
         bucket++;
-        while (!node && bucket != table->map_.size()) {
-          node = table->map_[bucket].head;
-          bucket++;
-        }
       }
       return *this;
     }
