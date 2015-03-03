@@ -300,6 +300,15 @@ private:
     return listsize_ + trans_size_offs(t);
   }
 
+  size_t size() const {
+      return listsize_;
+  }
+
+  void clear() {
+      while (auto item = head_)
+          remove(head_, true);
+  }
+
 
   void ensureNotFound(Transaction& t, Version readv) {
     auto& item = t_item(t, this);
