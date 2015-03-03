@@ -34,9 +34,9 @@ struct __attribute__((aligned(128))) threadinfo_t {
   std::function<void(void)> trans_end_callback;
   enum { p_total_n = 0, p_total_r = 1, p_total_w = 2,
          p_total_searched = 3, p_total_aborts = 4, p_total_starts = 5,
-         p_commit_time_aborts = 6 };
+         p_commit_time_aborts = 6, p_max_set = 7 };
 #if PERF_LOGGING
-  enum { p_count = 7 };
+  enum { p_count = 8 };
   uint64_t p[p_count];
 #endif
   threadinfo_t() : epoch(), spin_lock() {
@@ -68,10 +68,14 @@ public:
 
   static threadinfo_t tinfo_combined() {
     threadinfo_t out;
+    out.p[threadinfo_t::p_max_set] = 0;
 #if PERF_LOGGING
-    for (int i = 0; i != MAX_THREADS; ++i)
-        for (int p = 0; p != threadinfo_t::p_count; ++p)
+    for (int i = 0; i != MAX_THREADS; ++i) {
+        for (int p = 0; p != threadinfo_t::p_count - 1; ++p)
             out.p[p] += tinfo[i].p[p];
+        if (tinfo[i].p[threadinfo_t::p_max_set] > out.p[threadinfo_t::p_max_set])
+        	out.p[threadinfo_t::p_max_set] = tinfo[i].p[threadinfo_t::p_max_set];
+    }
 #endif
     return out;
   }
@@ -308,12 +312,17 @@ public:
   }
 
   bool commit() {
+    add_p(threadinfo_t::p_total_n, transSet_.size());
+    if (transSet_.size() > tinfo[threadid].p[threadinfo_t::p_max_set]) {
+    	tinfo[threadid].p[threadinfo_t::p_max_set] = transSet_.size();
+    }
+
     if (isAborted_)
       return false;
 
     bool success = true;
 
-    add_p(threadinfo_t::p_total_n, transSet_.size());
+    //add_p(threadinfo_t::p_total_n, transSet_.size());
 
     if (firstWrite_ == -1) firstWrite_ = transSet_.size();
 
