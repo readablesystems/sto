@@ -78,7 +78,25 @@ void linkedListTests() {
 
   {
     Transaction t;
+    assert(l.transDelete(t, 7));
+    assert(!l.transDelete(t, 1000));
+    assert(l.transSize(t) == 2);
+    assert(!l.transFind(t, 7));
+    auto it = l.transIter(t);
+    assert(*it.transNext(t) == 5);
+    assert(*it.transNext(t) == 10);
+    assert(t.commit());
   }
+
+  {
+    Transaction t;
+    assert(l.transInsert(t, 7));
+    assert(l.transDelete(t, 7));
+    assert(l.transSize(t) == 2);
+    assert(!l.transFind(t, 7));
+    assert(t.commit());
+  }
+
 }
 
 void stringKeyTests() {

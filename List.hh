@@ -161,13 +161,18 @@ public:
       if (has_insert(item)) {
         return false;
       }
-      // delete-then-insert...
+      // delete-then-insert... (should really become an update...)
       if (has_delete(item)) {
         item.set_flags(0);
+        // TODO: should really become an update, but for now it's better
+        // we just don't do anything
+        item.remove_write();
         add_trans_size_offs(t, 1);
         return true;
       }
       // "normal" insert-then-insert = failed insert
+      // need to make sure it's still there at commit time
+      t.add_read(item, 0);
       return false;
     }
     add_trans_size_offs(t, 1);
@@ -181,12 +186,37 @@ public:
   bool transDelete(Transaction& t, const T& elem) {
     auto listv = listversion_;
     fence();
-    // read list version
     auto *n = _find(elem);
     if (n) {
       auto& item = t_item(t, n);
+      if (!validityCheck(n, item)) {
+        t.abort();
+        return false;
+      }
+      if (has_delete(item)) {
+        // we're deleting our delete
+        return false;
+      }
+      // insert-then-delete becomes nothing
+      if (has_insert(item)) {
+        remove(n);
+        item.remove_read();
+        item.remove_write();
+        item.remove_undo();
+        item.remove_afterC();
+        add_trans_size_offs(t, -1);
+        // TODO: should have a count on add_lock_list_item so we can cancel that here
+        // still need to make sure no one else inserts something
+        ensureNotFound(t, listv);
+        return true;
+      }
       item.set_flags(delete_bit);
+      // mark as a write
       t.add_write(item, 0);
+      // we also need to check that it's still valid at commit time (not 
+      // bothering with valid_check_only_bit optimization right now)
+      t.add_read(item, 0);
+      add_lock_list_item(t);
       add_trans_size_offs(t, -1);
       return true;
     } else {
@@ -200,6 +230,8 @@ public:
   }
 
   bool remove(list_node *n, bool locked = false) {
+    // TODO: doing this remove means we don't have to value compare, but we also
+    // have to go through the whole list (possibly). Unclear which is better.
     return _remove([n] (list_node *n2) { return n == n2; }, locked);
   }
 
@@ -272,14 +304,18 @@ private:
 
     void ensureValid(Transaction& t) {
       while (cur) {
+        auto& item = us->t_item(t, cur);
         if (!cur->is_valid()) {
-          auto& item = us->t_item(t, cur);
           if (!us->has_insert(item)) {
             t.abort();
             // TODO: do we continue in this situation or abort?
             cur = cur->next;
             continue;
           }
+        }
+        if (us->has_delete(item)) {
+          cur = cur->next;
+          continue;
         }
         break;
       }
@@ -353,18 +389,15 @@ private:
       return;
     list_node *n = unpack<list_node*>(item.key());
     if (has_delete(item)) {
-      n->mark_invalid();
-      remove(n);
-      // TODO: this is probably not safe?? (transSize disagrees with # of elements momentarily)
+      remove(n, true);
       listsize_--;
-    } else {
-      if (item.has_undo()) {
+      // not super ideal that we have to change version
+      // but we need to invalidate transSize() calls
       ListVersioning::inc_version(listversion_);
+    } else {
       n->mark_valid();
       listsize_++;
-      } else {
-        // This is delete then insert - so, shouldn't do anything
-      }
+      ListVersioning::inc_version(listversion_);
     }
   }
 
