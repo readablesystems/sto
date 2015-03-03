@@ -26,13 +26,15 @@
 void reportPerf();
 #define STO_SHUTDOWN() reportPerf()
 
-struct threadinfo_t {
+struct __attribute__((aligned(128))) threadinfo_t {
   unsigned epoch;
   unsigned spin_lock;
   std::vector<std::pair<unsigned, std::function<void(void)>>> callbacks;
   std::function<void(void)> trans_start_callback;
   std::function<void(void)> trans_end_callback;
 };
+
+
 
 class Transaction {
 public:
