@@ -358,9 +358,13 @@ private:
       // TODO: this is probably not safe?? (transSize disagrees with # of elements momentarily)
       listsize_--;
     } else {
+      if (item.has_undo()) {
       ListVersioning::inc_version(listversion_);
       n->mark_valid();
       listsize_++;
+      } else {
+        // This is delete then insert - so, shouldn't do anything
+      }
     }
   }
 
