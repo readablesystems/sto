@@ -32,6 +32,28 @@ struct __attribute__((aligned(128))) threadinfo_t {
   std::vector<std::pair<unsigned, std::function<void(void)>>> callbacks;
   std::function<void(void)> trans_start_callback;
   std::function<void(void)> trans_end_callback;
+  enum { p_total_n = 0, p_total_r = 1, p_total_w = 2,
+         p_total_searched = 3, p_total_aborts = 4, p_total_starts = 5,
+         p_commit_time_aborts = 6 };
+#if PERF_LOGGING
+  enum { p_count = 7 };
+  uint64_t p[p_count];
+#endif
+  threadinfo_t() : epoch(), spin_lock() {
+#if PERF_LOGGING
+      for (int i = 0; i != p_count; ++i)
+          p[i] = 0;
+#endif
+  }
+  void inc_p(int p) {
+      add_p(p, 1);
+  }
+  void add_p(int p, uint64_t n) {
+#if PERF_LOGGING
+      this->p[p] += n;
+#endif
+      (void) p, (void) n;
+  }
 };
 
 
@@ -42,15 +64,17 @@ public:
   static __thread int threadid;
   static unsigned global_epoch;
 
-#if PERF_LOGGING
-  static uint64_t total_n, total_r, total_w;
-  static uint64_t total_searched;
-  static uint64_t total_aborts;
-  static uint64_t total_starts;
-  static uint64_t commit_time_aborts;
-#endif
-
   static std::function<void(unsigned)> epoch_advance_callback;
+
+  static threadinfo_t tinfo_combined() {
+    threadinfo_t out;
+#if PERF_LOGGING
+    for (int i = 0; i != MAX_THREADS; ++i)
+        for (int p = 0; p != threadinfo_t::p_count; ++p)
+            out.p[p] += tinfo[i].p[p];
+#endif
+    return out;
+  }
 
   static void acquire_spinlock(unsigned& spin_lock) {
     unsigned cur;
@@ -114,6 +138,13 @@ public:
   typedef std::vector<TransItem> TransSet;
 #endif
 
+  static void inc_p(int p) {
+      add_p(p, 1);
+  }
+  static void add_p(int p, uint64_t n) {
+      tinfo[threadid].add_p(p, n);
+  }
+
   Transaction() : transSet_(), permute(NULL), perm_size(0), readMyWritesOnly_(true), isAborted_(false), firstWrite_(-1) {
 #if !LOCAL_VECTOR
     transSet_.reserve(INIT_SET_SIZE);
@@ -121,9 +152,7 @@ public:
     // TODO: assumes this thread is constantly running transactions
     tinfo[threadid].epoch = global_epoch;
     if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
-#if PERF_LOGGING
-    __sync_add_and_fetch(&total_starts, 1);
-#endif
+    inc_p(threadinfo_t::p_total_starts);
   }
 
   ~Transaction() {
@@ -196,9 +225,7 @@ public:
     void *k = pack(key);
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
       TransItem& ti = *it;
-#if PERF_LOGGING
-      total_searched++;
-#endif
+      inc_p(threadinfo_t::p_total_searched);
       if (ti.sharedObj() == s && ti.data.key == k) {
         if (!read_only && firstWrite_ == -1)
           firstWrite_ = item_index(ti);
@@ -272,9 +299,7 @@ public:
   bool check_reads(TransItem *trans_first, TransItem *trans_last) {
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
-#if PERF_LOGGING
-        total_r++;
-#endif
+        inc_p(threadinfo_t::p_total_r);
         if (!it->sharedObj()->check(*it, *this)) {
           return false;
         }
@@ -288,9 +313,7 @@ public:
 
     bool success = true;
 
-#if PERF_LOGGING
-    total_n += transSet_.size();
-#endif
+    add_p(threadinfo_t::p_total_n, transSet_.size());
 
     if (firstWrite_ == -1) firstWrite_ = transSet_.size();
 
@@ -341,9 +364,7 @@ public:
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
       TransItem& ti = *it;
       if (ti.has_write()) {
-#if PERF_LOGGING
-        total_w++;
-#endif
+        inc_p(threadinfo_t::p_total_w);
         ti.sharedObj()->install(ti);
       }
     }
@@ -361,13 +382,11 @@ public:
       } else
         ++it;
     }
-    
+
     if (success) {
       commitSuccess();
     } else {
-#if PERF_LOGGING
-      __sync_add_and_fetch(&commit_time_aborts, 1);
-#endif
+      inc_p(threadinfo_t::p_commit_time_aborts);
       abort();
     }
 
@@ -379,9 +398,7 @@ public:
   void silent_abort() {
     if (isAborted_)
       return;
-#if PERF_LOGGING
-    __sync_add_and_fetch(&total_aborts, 1);
-#endif
+    inc_p(threadinfo_t::p_total_aborts);
     isAborted_ = true;
     for (auto& ti : transSet_) {
       if (ti.has_undo()) {
