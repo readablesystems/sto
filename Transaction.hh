@@ -1,22 +1,24 @@
 #pragma once
 
-#define ASSERT_TX_SIZE 1
-
 #include <vector>
 #include <algorithm>
 #include <functional>
 #include <unistd.h>
 
-#if ASSERT_TX_SIZE
-#define TX_SIZE_LIMIT 20000
-#include <iostream>
-#include <cassert>
+#define PERF_LOGGING 1
+
+#if PERF_LOGGING
+#  define ASSERT_TX_SIZE 1
+#    if ASSERT_TX_SIZE
+#    define TX_SIZE_LIMIT 20000
+#    include <iostream>
+#    include <cassert>
+#  endif
 #endif
 
 #include "config.h"
 
 #define LOCAL_VECTOR 1
-#define PERF_LOGGING 1
 
 #define NOSORT 0
 
@@ -76,8 +78,8 @@ public:
 
   static threadinfo_t tinfo_combined() {
     threadinfo_t out;
-    out.p[threadinfo_t::p_max_set] = 0;
 #if PERF_LOGGING
+    out.p[threadinfo_t::p_max_set] = 0;
     for (int i = 0; i != MAX_THREADS; ++i) {
         for (int p = 0; p != threadinfo_t::p_count - 1; ++p)
             out.p[p] += tinfo[i].p[p];
@@ -321,14 +323,16 @@ public:
 
   bool commit() {
 #if ASSERT_TX_SIZE
-  	if (transSet_.size() > TX_SIZE_LIMIT) {
-  		assert(false);
-  	}
-#endif
-    add_p(threadinfo_t::p_total_n, transSet_.size());
     if (transSet_.size() > tinfo[threadid].p[threadinfo_t::p_max_set]) {
     	tinfo[threadid].p[threadinfo_t::p_max_set] = transSet_.size();
     }
+    if (transSet_.size() > TX_SIZE_LIMIT) {
+        std::cerr << "transSet_ size at " << transSet_.size()
+            << ", abort." << std::endl;
+        assert(false);
+    }
+#endif
+    add_p(threadinfo_t::p_total_n, transSet_.size());
 
     if (isAborted_)
       return false;
