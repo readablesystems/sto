@@ -6,14 +6,24 @@
 #include <unistd.h>
 
 #define PERF_LOGGING 1
+#define DETAILED_LOGGING 0
+#define ASSERT_TX_SIZE 0
 
+#if ASSERT_TX_SIZE
+#if DETAILED_LOGGING
+#  define TX_SIZE_LIMIT 20000
+#  include <iostream>
+#  include <cassert>
+#else
+#  error "ASSERT_TX_SIZE requires DETAILED_LOGGING!"
+#endif
+#endif
+
+#if DETAILED_LOGGING
 #if PERF_LOGGING
-#  define ASSERT_TX_SIZE 1
-#    if ASSERT_TX_SIZE
-#    define TX_SIZE_LIMIT 20000
-#    include <iostream>
-#    include <cassert>
-#  endif
+#else
+#  error "DETAILED_LOGGING requires PERF_LOGGING!"
+#endif
 #endif
 
 #include "config.h"
@@ -239,7 +249,9 @@ public:
     void *k = pack(key);
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
       TransItem& ti = *it;
+#if DETAILED_LOGGING
       inc_p(threadinfo_t::p_total_searched);
+#endif
       if (ti.sharedObj() == s && ti.data.key == k) {
         if (!read_only && firstWrite_ == -1)
           firstWrite_ = item_index(ti);
@@ -313,7 +325,9 @@ public:
   bool check_reads(TransItem *trans_first, TransItem *trans_last) {
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
+#if DETAILED_LOGGING
         inc_p(threadinfo_t::p_total_r);
+#endif
         if (!it->sharedObj()->check(*it, *this)) {
           return false;
         }
@@ -332,14 +346,14 @@ public:
         assert(false);
     }
 #endif
+#if DETAILED_LOGGING
     add_p(threadinfo_t::p_total_n, transSet_.size());
+#endif
 
     if (isAborted_)
       return false;
 
     bool success = true;
-
-    //add_p(threadinfo_t::p_total_n, transSet_.size());
 
     if (firstWrite_ == -1) firstWrite_ = transSet_.size();
 
@@ -390,7 +404,9 @@ public:
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
       TransItem& ti = *it;
       if (ti.has_write()) {
+#if DETAILED_LOGGING
         inc_p(threadinfo_t::p_total_w);
+#endif
         ti.sharedObj()->install(ti);
       }
     }
