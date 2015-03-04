@@ -169,7 +169,7 @@ public:
       tinfo[threadid].add_p(p, n);
   }
 
-  Transaction() : transSet_(), permute(NULL), perm_size(0), readMyWritesOnly_(true), isAborted_(false), firstWrite_(-1) {
+  Transaction() : transSet_(), permute(NULL), perm_size(0), may_duplicate_items_(false), isAborted_(false), firstWrite_(-1) {
 #if !LOCAL_VECTOR
     transSet_.reserve(INIT_SET_SIZE);
 #endif
@@ -201,7 +201,7 @@ public:
   template <bool NOCHECK = true, typename T>
   TransItem& add_item(Shared *s, const T& key) {
     if (NOCHECK) {
-      readMyWritesOnly_ = false;
+      may_duplicate_items_ = true;
     }
     void *k = pack(key);
     // TODO: TransData packs its arguments so we're technically double packing here (void* packs to void* though)
@@ -293,7 +293,7 @@ public:
       return false;
     auto it = &item;
     bool has_write = it->has_write();
-    if (!has_write && !readMyWritesOnly_) {
+    if (!has_write && may_duplicate_items_) {
       has_write = std::binary_search(permute, permute + perm_size, -1, [&] (const int& i, const int& j) {
 	  auto& e1 = unlikely(i < 0) ? item : transSet_[i];
 	  auto& e2 = likely(j < 0) ? item : transSet_[j];
@@ -385,7 +385,7 @@ public:
       if (me->has_write()) {
         me->sharedObj()->lock(*me);
         ++it;
-        if (!readMyWritesOnly_)
+        if (may_duplicate_items_)
           for (; it != perm_end && transSet_[*it].same_item(*me); ++it)
             /* do nothing */;
       } else
@@ -418,7 +418,7 @@ public:
       if (me->has_write()) {
         me->sharedObj()->unlock(*me);
         ++it;
-        if (!readMyWritesOnly_)
+        if (may_duplicate_items_)
           for (; it != perm_end && transSet_[*it].same_item(*me); ++it)
             /* do nothing */;
       } else
@@ -474,7 +474,7 @@ private:
   TransSet transSet_;
   int *permute;
   int perm_size;
-  bool readMyWritesOnly_;
+  bool may_duplicate_items_;
   bool isAborted_;
   int16_t firstWrite_;
 };
