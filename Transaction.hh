@@ -1,9 +1,17 @@
 #pragma once
 
+#define ASSERT_TX_SIZE 1
+
 #include <vector>
 #include <algorithm>
 #include <functional>
 #include <unistd.h>
+
+#if ASSERT_TX_SIZE
+#define TX_SIZE_LIMIT 20000
+#include <iostream>
+#include <cassert>
+#endif
 
 #include "config.h"
 
@@ -312,6 +320,11 @@ public:
   }
 
   bool commit() {
+#if ASSERT_TX_SIZE
+  	if (transSet_.size() > TX_SIZE_LIMIT) {
+  		assert(false);
+  	}
+#endif
     add_p(threadinfo_t::p_total_n, transSet_.size());
     if (transSet_.size() > tinfo[threadid].p[threadinfo_t::p_max_set]) {
     	tinfo[threadid].p[threadinfo_t::p_max_set] = transSet_.size();
