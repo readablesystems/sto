@@ -71,7 +71,7 @@ public:
   template <typename T>
   T transRead(Transaction& t, T* word) {
     static_assert(sizeof(T) <= sizeof(void*), "don't support words larger than pointer size");
-    auto& item = t.item(this, word);
+    auto item = t.item(this, word);
     if (item.has_write()) {
       t.check_reads();
       return item.template write_value<T>();
@@ -79,7 +79,7 @@ public:
     T ret = *word;
     if (!item.has_read()) {
       // TODO: this could be a pointer so can we get ABA problems?
-      t.add_read(item, ret);
+      item.add_read(ret);
       item.set_flags(sizeof(T));
     } else if (item.template read_value<T>() != ret) {
       // this prevents problems where we read a value twice, get different values each time, then end up back at the original val
@@ -93,8 +93,8 @@ public:
   template <typename T>
   void transWrite(Transaction& t, T* word, const T& new_val) {
     static_assert(sizeof(T) <= sizeof(void*), "don't support words larger than pointer size");
-    auto& item = t.item(this, word);
-    t.add_write(item, new_val);
+    auto item = t.item(this, word);
+    item.add_write(new_val);
     // we need to store sizeof the data type somewhere. 
     // this is 1, 2, 4, or 8, so we can fit it in our 8 flag bits
     item.set_flags(sizeof(T));
@@ -116,7 +116,7 @@ public:
   bool check(TransItem& item, Transaction& t) {
     size_t sz = item.flags();
     uintptr_t cur = 0, old = 0;
-    memcpy(&cur, &item.data.rdata, sz);
+    memcpy(&cur, &item.read_value<void*>(), sz);
     memcpy(&old, item.key(), sz);
     // TODO: will eventually need to check for false conflicts, too...
     return cur == old && (!table_.get(hash(item.key()) % table_.size()) || t.check_for_write(item));

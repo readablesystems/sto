@@ -33,22 +33,21 @@ public:
 	}
 
   T transRead(Transaction& t) {
-    auto& item = t.item(this, this);
+    auto item = t.item(this, this);
     if (item.has_write())
       return item.template write_value<T>();
-		else{
+    else{
 			Version v;
 			T val;
 			atomicRead(v, val);
 			if (!item.has_read())
-				t.add_read(item, v);
+				item.add_read(v);
 			return val;
-		}
+    }
   }
 
   void transWrite(Transaction& t, const T& v) {
-    auto& item = t.item(this, this);
-    t.add_write(item, v);
+      t.item(this, this).add_write(v);
   }
 
 	void lock(){
@@ -78,8 +77,7 @@ public:
   }
 
   void cleanup(TransItem& item, bool) {
-    if (item.has_write())
-      free_packed<T>(item.data.wdata);
+      item.cleanup_write<T>();
   }
 
 protected:

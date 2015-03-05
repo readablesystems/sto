@@ -98,7 +98,7 @@ public:
   }
   
 private:
-  TransItem& t_item(Transaction& t, int key) {
+  TransProxy t_item(Transaction& t, int key) {
     // to disable read-my-writes: return t.fresh_item(this, key);
     return t.item(this, key);
   }

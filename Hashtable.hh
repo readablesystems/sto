@@ -77,7 +77,7 @@ public:
     fence();
     internal_elem *e = find(buck, k);
     if (e) {
-      auto& item = t.item(this, e);
+      auto item = t.item(this, e);
       if (!validity_check(item, e)) {
         t.abort();
         return false;
@@ -95,13 +95,13 @@ public:
       atomicRead(e, elem_vers, retval);
       // check both node changes and node deletes
       if (!item.has_read() || item.template read_value<Version>() & valid_check_only_bit) {
-        t.add_read(item, elem_vers);
+        item.add_read(elem_vers);
       }
       return true;
     } else {
-      auto& item = t.item(this, pack_bucket(bucket(k)));
+      auto item = t.item(this, pack_bucket(bucket(k)));
       if (!item.has_read()) {
-        t.add_read(item, buck_version);
+        item.add_read(buck_version);
       }
       return false;
     }
@@ -125,7 +125,7 @@ public:
     } else {
       auto& item = t.item(this, pack_bucket(bucket(k)));
       if (!item.has_read()) {
-        t.add_read(item, buck_version);
+        item.add_read(buck_version);
       }
     }
   }
@@ -148,9 +148,9 @@ public:
         // so we just unmark all attributes so the item is ignored
         item.remove_read().remove_write().remove_undo().remove_afterC();
         // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
-        auto& itemb = t.item(this, pack_bucket(bucket(k)));
+        auto itemb = t.item(this, pack_bucket(bucket(k)));
         if (!itemb.has_read()) {
-          t.add_read(itemb, buck_version);
+          itemb.add_read(buck_version);
         }
         return true;
       } else if (!valid) {
@@ -165,19 +165,19 @@ public:
       // we need to make sure this bucket didn't change (e.g. what was once there got removed)
       if (!item.has_read()) {
         // we only need to check validity, not presence
-        t.add_read(item, valid_check_only_bit);
+        item.add_read(valid_check_only_bit);
       }
       // we use has_afterC() to detect deletes so we don't need any other data 
       // for deletes, just to mark it as a write
       if (!item.has_write())
-        t.add_write(item, 0);
-      t.add_afterC(item);
+        item.add_write(0);
+      item.add_afterC();
       return true;
     } else {
       // add a read that yes this element doesn't exist
       auto& item = t.item(this, pack_bucket(bucket(k)));
       if (!item.has_read())
-        t.add_read(item, buck_version);
+        item.add_read(buck_version);
       return false;
     }
   }
@@ -193,7 +193,7 @@ public:
     internal_elem *e = find(buck, k);
     if (e) {
       unlock(&buck.version);
-      auto& item = t.item(this, e);
+      auto item = t.item(this, e);
       if (!validity_check(item, e)) {
         t.abort();
         // unreachable (t.abort() raises an exception)
@@ -205,7 +205,7 @@ public:
         // if user can't read v#)
         if (INSERT) {
           item.remove_afterC();
-          t.add_write(item, v);
+          item.add_write(v);
         } else {
           // delete-then-update == not found
           // delete will check for other deletes so we don't need to re-log that check
@@ -217,19 +217,19 @@ public:
       // we need to make sure this item stays here
       if (!item.has_read())
         // we only need to check validity, not presence
-        t.add_read(item, valid_check_only_bit);
+        item.add_read(valid_check_only_bit);
 #endif
       if (SET) {
-        t.add_write(item, v);
+        item.add_write(v);
       }
       return true;
     } else {
       if (!INSERT) {
         auto buck_version = buck.version;
         unlock(&buck.version);
-        auto& item = t.item(this, pack_bucket(bucket(k)));
+        auto item = t.item(this, pack_bucket(bucket(k)));
         if (!item.has_read()) {
-          t.add_read(item, buck_version);
+          item.add_read(buck_version);
         }
         return false;
       }
@@ -240,23 +240,23 @@ public:
       auto new_head = buck.head;
       unlock(&buck.version);
       // see if this item was previously read
-      auto bucket_item = t.has_item<false>(this, pack_bucket(bucket(k)));
+      auto bucket_item = t.check_item(this, pack_bucket(bucket(k)));
       if (bucket_item) {
         if (bucket_item->has_read() && 
             versionCheck(bucket_item->template read_value<Version>(), new_version - 1)) {
           // looks like we're the only ones to have updated the version number, so update read's version number
           // to still be valid
-          t.add_read(*bucket_item, new_version);
+          bucket_item->add_read(new_version);
         }
         //} else { could abort transaction now
       }
       // use new_item because we know there are no collisions
-      auto& item = t.new_item(this, new_head);
+      auto item = t.new_item(this, new_head);
       // don't actually need to store anything for the write, just mark as valid on install
       // (for now insert and set will just do the same thing on install, set a value and then mark valid)
-      t.add_write(item, v);
+      item.add_write(v);
       // need to remove this item if we abort
-      t.add_undo(item);
+      item.add_undo();
       return false;
     }
   }
@@ -347,10 +347,7 @@ public:
     }
 
     free_packed<internal_elem*>(item.key());
-    if (item.has_read())
-      free_packed<Version>(item.data.rdata);
-    if (item.has_write())
-      free_packed<Value>(item.data.wdata);
+    item.cleanup_read<Version>().cleanup_write<Value>();
   }
 
   void remove(internal_elem *el) {
