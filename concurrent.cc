@@ -33,7 +33,7 @@
 
 #define MASSTREE 0
 
-#define GENSTM_ARRAY 1
+#define GENSTM_ARRAY 0
 #define LIST_ARRAY 0
 
 #define RANDOM_REPORT 0
