@@ -490,9 +490,7 @@ public:
     inc_p(txp_total_aborts);
     isAborted_ = true;
     for (auto& ti : transSet_) {
-      if (ti.has_undo()) {
-        ti.sharedObj()->undo(ti);
-      }
+      ti.sharedObj()->cleanup(ti, false);
     }
   }
 
@@ -511,9 +509,7 @@ private:
 
   void commitSuccess() {
     for (TransItem& ti : transSet_) {
-      if (ti.has_afterC())
-        ti.sharedObj()->afterC(ti);
-      ti.sharedObj()->cleanup(ti);
+      ti.sharedObj()->cleanup(ti, true);
     }
   }
 

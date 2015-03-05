@@ -477,17 +477,17 @@ public:
     inc_version(e->version());
   }
 
-  void undo(TransItem& item) {
-    // remove node
-    auto& stdstr = item.template write_value<std::string>();
-    // does not copy
-    Str s(stdstr);
-    bool success = remove(s);
-    (void)success;
-    assert(success);
-  }
+  void cleanup(TransItem& item, bool committed) {
+    if (!committed && item.has_undo()) {
+        // remove node
+        auto& stdstr = item.template write_value<std::string>();
+        // does not copy
+        Str s(stdstr);
+        bool success = remove(s);
+        (void)success;
+        assert(success);
+    }
 
-  void cleanup(TransItem& item) {
 #if 0
     free_packed<versioned_value*>(item.key());
     if (item.has_read())

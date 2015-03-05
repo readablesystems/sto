@@ -342,28 +342,20 @@ public:
     el->valid() = true;
   }
 
-  void undo(TransItem& item) {
-    auto el = unpack<internal_elem*>(item.key());
-    assert(!el->valid());
-    remove(el);
-  }
+  void cleanup(TransItem& item, bool committed) {
+    if (committed ? item.has_afterC() : item.has_undo()) {
+        auto el = unpack<internal_elem*>(item.key());
+        assert(!el->valid());
+        remove(el);
+    }
 
-  void afterC(TransItem& item) {
-#if HASHTABLE_DELETE
-    auto el = unpack<internal_elem*>(item.key());
-    assert(!el->valid());
-    remove(el);
-#endif
-  }
-
-  void cleanup(TransItem& item) {
     free_packed<internal_elem*>(item.key());
     if (item.has_read())
       free_packed<Version>(item.data.rdata);
     if (item.has_write())
       free_packed<Value>(item.data.wdata);
   }
-  
+
   void remove(internal_elem *el) {
     bucket_entry& buck = buck_entry(el->key);
     lock(&buck.version);

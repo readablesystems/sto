@@ -410,11 +410,13 @@ private:
     }
   }
 
-  void undo(TransItem& item) {
-    list_node *n = unpack<list_node*>(item.key());
-    remove(n);
+  void cleanup(TransItem& item, bool committed) {
+      if (!committed && item.has_undo()) {
+          list_node *n = unpack<list_node*>(item.key());
+          remove(n);
+      }
   }
-  
+
   bool validityCheck(list_node *n, TransItem& item) {
     return n->is_valid() || has_insert(item);
   }
