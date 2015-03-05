@@ -269,7 +269,7 @@ public:
   // tries to find an existing item with this key, otherwise adds it
   template <typename T>
   TransItem& item(Shared *s, const T& key) {
-    TransItem *ti = has_item(s, key);
+    TransItem *ti = has_item<false>(s, key);
     // we use the firstwrite optimization when checking for item(), but do a full check if they call has_item.
     // kinda jank, ideal I think would be we'd figure out when it's the first write, and at that point consolidate
     // the set to be doing rmw (and potentially even combine any duplicate reads from earlier)
@@ -291,7 +291,7 @@ public:
   }
 
   // tries to find an existing item with this key, returns NULL if not found
-  template <bool read_only = false, typename T>
+  template <bool read_only, typename T>
   TransItem* has_item(Shared *s, const T& key) {
     if (read_only && firstWrite_ == -1) return NULL;
 

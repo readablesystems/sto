@@ -240,7 +240,7 @@ public:
       auto new_head = buck.head;
       unlock(&buck.version);
       // see if this item was previously read
-      auto bucket_item = t.has_item(this, pack_bucket(bucket(k)));
+      auto bucket_item = t.has_item<false>(this, pack_bucket(bucket(k)));
       if (bucket_item) {
         if (bucket_item->has_read() && 
             versionCheck(bucket_item->template read_value<Version>(), new_version - 1)) {

@@ -662,7 +662,7 @@ private:
   template <typename NODE, typename VERSION>
   bool updateNodeVersion(Transaction& t, NODE *node, VERSION prev_version, VERSION new_version) {
 #if READ_MY_WRITES
-    auto node_item = t.has_item(this, tag_inter(node));
+    auto node_item = t.has_item<false>(this, tag_inter(node));
     if (node_item) {
       if (node_item->has_read() &&
           prev_version == node_item->template read_value<VERSION>()) {
