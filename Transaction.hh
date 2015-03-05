@@ -52,11 +52,21 @@ struct __attribute__((aligned(128))) threadinfo_t {
   std::vector<std::pair<unsigned, std::function<void(void)>>> callbacks;
   std::function<void(void)> trans_start_callback;
   std::function<void(void)> trans_end_callback;
-  enum { p_total_n = 0, p_total_r = 1, p_total_w = 2,
-         p_total_searched = 3, p_total_aborts = 4, p_total_starts = 5,
-         p_commit_time_aborts = 6, p_max_set = 7 };
-#if PERF_LOGGING
+  enum {
+      // all logging levels
+      p_total_aborts = 0, p_total_starts = 1,
+      p_commit_time_aborts = 2, p_max_set = 3,
+      // DETAILED_LOGGING only
+      p_total_n = 4, p_total_r = 5, p_total_w = 6, p_total_searched = 7
+  };
+#if !PERF_LOGGING
+  enum { p_count = 0 };
+#else
+# if DETAILED_LOGGING
   enum { p_count = 8 };
+# else
+  enum { p_count = 4 };
+# endif
   uint64_t p[p_count];
 #endif
   threadinfo_t() : epoch(), spin_lock() {
@@ -70,7 +80,8 @@ struct __attribute__((aligned(128))) threadinfo_t {
   }
   void add_p(int p, uint64_t n) {
 #if PERF_LOGGING
-      this->p[p] += n;
+      if ((unsigned) p < (unsigned) p_count)
+          this->p[p] += n;
 #endif
       (void) p, (void) n;
   }
@@ -268,9 +279,7 @@ public:
     void *k = pack(key);
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
       TransItem& ti = *it;
-#if DETAILED_LOGGING
       inc_p(threadinfo_t::p_total_searched);
-#endif
       if (ti.sharedObj() == s && ti.data.key == k) {
         if (!read_only && firstWrite_ == -1)
           firstWrite_ = item_index(ti);
@@ -344,9 +353,7 @@ public:
   bool check_reads(TransItem *trans_first, TransItem *trans_last) {
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
-#if DETAILED_LOGGING
         inc_p(threadinfo_t::p_total_r);
-#endif
         if (!it->sharedObj()->check(*it, *this)) {
           return false;
         }
@@ -365,9 +372,7 @@ public:
         assert(false);
     }
 #endif
-#if DETAILED_LOGGING
     add_p(threadinfo_t::p_total_n, transSet_.size());
-#endif
 
     if (isAborted_)
       return false;
@@ -423,9 +428,7 @@ public:
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
       TransItem& ti = *it;
       if (ti.has_write()) {
-#if DETAILED_LOGGING
         inc_p(threadinfo_t::p_total_w);
-#endif
         ti.sharedObj()->install(ti);
       }
     }
