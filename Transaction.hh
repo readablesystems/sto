@@ -5,10 +5,30 @@
 #include <functional>
 #include <unistd.h>
 
+#define PERF_LOGGING 1
+#define DETAILED_LOGGING 0
+#define ASSERT_TX_SIZE 0
+
+#if ASSERT_TX_SIZE
+#if DETAILED_LOGGING
+#  define TX_SIZE_LIMIT 20000
+#  include <iostream>
+#  include <cassert>
+#else
+#  error "ASSERT_TX_SIZE requires DETAILED_LOGGING!"
+#endif
+#endif
+
+#if DETAILED_LOGGING
+#if PERF_LOGGING
+#else
+#  error "DETAILED_LOGGING requires PERF_LOGGING!"
+#endif
+#endif
+
 #include "config.h"
 
 #define LOCAL_VECTOR 1
-#define PERF_LOGGING 1
 
 #define NOSORT 0
 
@@ -34,9 +54,9 @@ struct __attribute__((aligned(128))) threadinfo_t {
   std::function<void(void)> trans_end_callback;
   enum { p_total_n = 0, p_total_r = 1, p_total_w = 2,
          p_total_searched = 3, p_total_aborts = 4, p_total_starts = 5,
-         p_commit_time_aborts = 6 };
+         p_commit_time_aborts = 6, p_max_set = 7 };
 #if PERF_LOGGING
-  enum { p_count = 7 };
+  enum { p_count = 8 };
   uint64_t p[p_count];
 #endif
   threadinfo_t() : epoch(), spin_lock() {
@@ -78,9 +98,13 @@ public:
   static threadinfo_t tinfo_combined() {
     threadinfo_t out;
 #if PERF_LOGGING
-    for (int i = 0; i != MAX_THREADS; ++i)
-        for (int p = 0; p != threadinfo_t::p_count; ++p)
+    out.p[threadinfo_t::p_max_set] = 0;
+    for (int i = 0; i != MAX_THREADS; ++i) {
+        for (int p = 0; p != threadinfo_t::p_count - 1; ++p)
             out.p[p] += tinfo[i].p[p];
+        if (tinfo[i].p[threadinfo_t::p_max_set] > out.p[threadinfo_t::p_max_set])
+        	out.p[threadinfo_t::p_max_set] = tinfo[i].p[threadinfo_t::p_max_set];
+    }
 #endif
     return out;
   }
@@ -154,7 +178,7 @@ public:
       tinfo[threadid].add_p(p, n);
   }
 
-  Transaction() : transSet_(), permute(NULL), perm_size(0), readMyWritesOnly_(true), isAborted_(false), firstWrite_(-1) {
+  Transaction() : transSet_(), permute(NULL), perm_size(0), may_duplicate_items_(false), isAborted_(false), firstWrite_(-1) {
 #if !LOCAL_VECTOR
     transSet_.reserve(INIT_SET_SIZE);
 #endif
@@ -196,7 +220,7 @@ public:
   template <bool NOCHECK = true, typename T>
   TransItem& add_item(Shared *s, const T& key) {
     if (NOCHECK) {
-      readMyWritesOnly_ = false;
+      may_duplicate_items_ = true;
     }
     void *k = pack(key);
     // TODO: TransData packs its arguments so we're technically double packing here (void* packs to void* though)
@@ -244,7 +268,9 @@ public:
     void *k = pack(key);
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
       TransItem& ti = *it;
+#if DETAILED_LOGGING
       inc_p(threadinfo_t::p_total_searched);
+#endif
       if (ti.sharedObj() == s && ti.data.key == k) {
         if (!read_only && firstWrite_ == -1)
           firstWrite_ = item_index(ti);
@@ -286,7 +312,7 @@ public:
       return false;
     auto it = &item;
     bool has_write = it->has_write();
-    if (!has_write && !readMyWritesOnly_) {
+    if (!has_write && may_duplicate_items_) {
       has_write = std::binary_search(permute, permute + perm_size, -1, [&] (const int& i, const int& j) {
 	  auto& e1 = unlikely(i < 0) ? item : transSet_[i];
 	  auto& e2 = likely(j < 0) ? item : transSet_[j];
@@ -318,7 +344,9 @@ public:
   bool check_reads(TransItem *trans_first, TransItem *trans_last) {
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
+#if DETAILED_LOGGING
         inc_p(threadinfo_t::p_total_r);
+#endif
         if (!it->sharedObj()->check(*it, *this)) {
           return false;
         }
@@ -327,12 +355,24 @@ public:
   }
 
   bool commit() {
+#if ASSERT_TX_SIZE
+    if (transSet_.size() > tinfo[threadid].p[threadinfo_t::p_max_set]) {
+    	tinfo[threadid].p[threadinfo_t::p_max_set] = transSet_.size();
+    }
+    if (transSet_.size() > TX_SIZE_LIMIT) {
+        std::cerr << "transSet_ size at " << transSet_.size()
+            << ", abort." << std::endl;
+        assert(false);
+    }
+#endif
+#if DETAILED_LOGGING
+    add_p(threadinfo_t::p_total_n, transSet_.size());
+#endif
+
     if (isAborted_)
       return false;
 
     bool success = true;
-
-    add_p(threadinfo_t::p_total_n, transSet_.size());
 
     if (firstWrite_ == -1) firstWrite_ = transSet_.size();
 
@@ -364,7 +404,7 @@ public:
       if (me->has_write()) {
         me->sharedObj()->lock(*me);
         ++it;
-        if (!readMyWritesOnly_)
+        if (may_duplicate_items_)
           for (; it != perm_end && transSet_[*it].same_item(*me); ++it)
             /* do nothing */;
       } else
@@ -383,7 +423,9 @@ public:
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
       TransItem& ti = *it;
       if (ti.has_write()) {
+#if DETAILED_LOGGING
         inc_p(threadinfo_t::p_total_w);
+#endif
         ti.sharedObj()->install(ti);
       }
     }
@@ -395,7 +437,7 @@ public:
       if (me->has_write()) {
         me->sharedObj()->unlock(*me);
         ++it;
-        if (!readMyWritesOnly_)
+        if (may_duplicate_items_)
           for (; it != perm_end && transSet_[*it].same_item(*me); ++it)
             /* do nothing */;
       } else
@@ -451,7 +493,7 @@ private:
   TransSet transSet_;
   int *permute;
   int perm_size;
-  bool readMyWritesOnly_;
+  bool may_duplicate_items_;
   bool isAborted_;
   int16_t firstWrite_;
 };
