@@ -201,7 +201,7 @@ public:
     transSet_.resize(0);
     permute = NULL;
     perm_size = 0;
-    readMyWritesOnly_ = true;
+    may_duplicate_items_ = false;
     isAborted_ = false;
     firstWrite_ = -1;
   }
