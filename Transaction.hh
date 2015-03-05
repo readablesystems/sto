@@ -63,6 +63,15 @@ public:
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static unsigned global_epoch;
+  static __thread Transaction *__transaction;
+
+  static Transaction& get_transaction() {
+    if (!__transaction)
+      __transaction = new Transaction();
+    else
+      __transaction->reset();
+    return *__transaction;
+  }
 
   static std::function<void(unsigned)> epoch_advance_callback;
 
@@ -161,6 +170,16 @@ public:
     if (!isAborted_ && transSet_.size() != 0) {
       silent_abort();
     }
+  }
+
+  // reset data so we can be reused for another transaction
+  void reset() {
+    transSet_.resize(0);
+    permute = NULL;
+    perm_size = 0;
+    readMyWritesOnly_ = true;
+    isAborted_ = false;
+    firstWrite_ = -1;
   }
 
   void consolidateReads() {

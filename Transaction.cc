@@ -3,6 +3,7 @@
 threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int Transaction::threadid;
 unsigned Transaction::global_epoch;
+__thread Transaction *Transaction::__transaction;
 std::function<void(unsigned)> Transaction::epoch_advance_callback;
 
 static void __attribute__((used)) check_static_assertions() {
