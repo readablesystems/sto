@@ -77,7 +77,7 @@ public:
 		Versioning::inc_version(s_.version());
   }
 
-  void cleanup(TransItem& item) {
+  void cleanup(TransItem& item, bool) {
     if (item.has_write())
       free_packed<T>(item.data.wdata);
   }
