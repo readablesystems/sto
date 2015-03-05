@@ -146,10 +146,7 @@ public:
         remove(e);
         // no way to remove an item (would be pretty inefficient)
         // so we just unmark all attributes so the item is ignored
-        item.remove_read();
-        item.remove_write();
-        item.remove_undo();
-        item.remove_afterC();
+        item.remove_read().remove_write().remove_undo().remove_afterC();
         // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
         auto& itemb = t.item(this, pack_bucket(bucket(k)));
         if (!itemb.has_read()) {

@@ -200,10 +200,7 @@ public:
       // insert-then-delete becomes nothing
       if (has_insert(item)) {
         remove(n);
-        item.remove_read();
-        item.remove_write();
-        item.remove_undo();
-        item.remove_afterC();
+        item.remove_read().remove_write().remove_undo().remove_afterC();
         add_trans_size_offs(t, -1);
         // TODO: should have a count on add_lock_list_item so we can cancel that here
         // still need to make sure no one else inserts something

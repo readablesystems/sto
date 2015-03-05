@@ -143,31 +143,38 @@ struct TransItem {
   }
 
   // TODO: should these be done Transaction methods like their add_ equivalents?
-  void remove_write() {
+  TransItem& remove_write() {
     shared.rm_flags(WRITER_BIT);
+    return *this;
   }
-  void remove_read() {
+  TransItem& remove_read() {
     shared.rm_flags(READER_BIT);
+    return *this;
   }
-  void remove_undo() {
+  TransItem& remove_undo() {
     shared.rm_flags(UNDO_BIT);
+    return *this;
   }
-  void remove_afterC() {
+  TransItem& remove_afterC() {
     shared.rm_flags(AFTERC_BIT);
+    return *this;
   }
 
   // these methods are all for user flags (currently we give them 8 bits, the high 8 of the 16 total flag bits we have)
   uint8_t flags() {
     return shared.flags() >> 8;
   }
-  void set_flags(uint8_t flags) {
+  TransItem& set_flags(uint8_t flags) {
     shared.set_flags(((uint16_t)flags << 8) | (shared.flags() & 0xff));
+    return *this;
   }
-  void rm_flags(uint8_t flags) {
+  TransItem& rm_flags(uint8_t flags) {
     shared.rm_flags((uint16_t)flags << 8);
+    return *this;
   }
-  void or_flags(uint8_t flags) {
+  TransItem& or_flags(uint8_t flags) {
     shared.or_flags((uint16_t)flags << 8);
+    return *this;
   }
   bool has_flags(uint8_t flags) {
     return shared.has_flags((uint16_t)flags << 8);
