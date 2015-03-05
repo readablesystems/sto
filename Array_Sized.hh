@@ -99,7 +99,7 @@ public:
   
 private:
   TransItem& t_item(Transaction& t, int key) {
-    // to disable read-my-writes: return t.add_item(this, key);
+    // to disable read-my-writes: return t.fresh_item(this, key);
     return t.item(this, key);
   }
 

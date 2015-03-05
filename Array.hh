@@ -46,7 +46,7 @@ public:
   }
 
   Value transRead_nocheck(Transaction& t, Key i) {
-    auto& item = t.add_item(this, i);
+    auto& item = t.fresh_item(this, i);
     Version v;
     Value val;
     atomicRead(i, v, val);
@@ -55,7 +55,7 @@ public:
   }
 
   void transWrite_nocheck(Transaction& t, Key i, Value val) {
-    auto& item = t.add_item(this, i);
+    auto& item = t.fresh_item(this, i);
     t.add_write(item, val);
   }
 

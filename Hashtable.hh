@@ -120,7 +120,7 @@ public:
         return false;
       }
       if (!item.has_read()) {
-        t.add_item(pack_presence(e)).add_read(0);
+        t.fresh_item(pack_presence(e)).add_read(0);
       }
     } else {
       auto& item = t.item(this, pack_bucket(bucket(k)));
@@ -250,8 +250,8 @@ public:
         }
         //} else { could abort transaction now
       }
-      // use add_item because we know there are no collisions
-      auto& item = t.add_item<false>(this, new_head);
+      // use new_item because we know there are no collisions
+      auto& item = t.new_item(this, new_head);
       // don't actually need to store anything for the write, just mark as valid on install
       // (for now insert and set will just do the same thing on install, set a value and then mark valid)
       t.add_write(item, v);

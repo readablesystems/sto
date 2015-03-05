@@ -254,16 +254,20 @@ public:
     transSet_.resize(std::unique(first, last) - first);
   }
 
-  // adds item without checking its presence in the array
-  template <bool NOCHECK = true, typename T>
-  TransItem& add_item(Shared *s, const T& key) {
-    if (NOCHECK) {
-      may_duplicate_items_ = true;
-    }
-    void *k = pack(key);
+  // adds item for a key that is known to be new (must NOT exist in the set)
+  template <typename T>
+  TransItem& new_item(Shared* s, const T& key) {
+    void* k = pack(key);
     // TODO: TransData packs its arguments so we're technically double packing here (void* packs to void* though)
     transSet_.emplace_back(s, k, NULL, NULL);
-    return transSet_[transSet_.size()-1];
+    return transSet_.back();
+  }
+
+  // adds item without checking its presence in the array
+  template <typename T>
+  TransItem& fresh_item(Shared *s, const T& key) {
+    may_duplicate_items_ = true;
+    return new_item(s, key);
   }
 
   // tries to find an existing item with this key, otherwise adds it
@@ -275,19 +279,18 @@ public:
     // the set to be doing rmw (and potentially even combine any duplicate reads from earlier)
 
     if (!ti)
-      ti = &add_item<false>(s, key);
+      ti = &new_item(s, key);
     return *ti;
   }
 
   // gets an item that is intended to be read only. this method essentially allows for duplicate items
   // in the set in some cases
   template <typename T>
-  TransItem& read_only_item(Shared *s, const T& key) {
+  TransItem& read_item(Shared *s, const T& key) {
     TransItem *ti;
     if ((ti = has_item<true>(s, key)))
       return *ti;
-
-    return add_item<false>(s, key);
+    return new_item(s, key);
   }
 
   // tries to find an existing item with this key, returns NULL if not found

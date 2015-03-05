@@ -259,11 +259,11 @@ public:
         // add any new nodes as a result of splits, etc. to the read/absent set
 #if !ABORT_ON_WRITE_READ_CONFLICT
         for (auto&& pair : lp.new_nodes()) {
-          t.add_read(t.add_item<false>(this, tag_inter(pair.first)), pair.second);
+          t.add_read(t.new_item(this, tag_inter(pair.first)), pair.second);
         }
 #endif
       }
-      auto& item = t.add_item<false>(this, val);
+      auto& item = t.new_item(this, val);
       if (std::is_same<std::string, StringType>::value)
         t.add_write(item, key);
       else
@@ -611,7 +611,7 @@ private:
     } else
 #endif
     {
-      t.add_write(new_location == e ? item : t.add_item<false>(this, new_location), value);
+      t.add_write(new_location == e ? item : t.new_item(this, new_location), value);
     }
   }
 
@@ -652,7 +652,7 @@ private:
 
   template <typename NODE, typename VERSION>
   void ensureNotFound(Transaction& t, NODE n, VERSION v) {
-    // TODO: could be more efficient to use add_item here, but that will also require more work for read-then-insert
+    // TODO: could be more efficient to use fresh_item here, but that will also require more work for read-then-insert
     auto& item = t_read_only_item(t, tag_inter(n));
     if (!item.has_read()) {
       t.add_read(item, v);
@@ -679,16 +679,16 @@ private:
 #if READ_MY_WRITES
     return t.item(this, e);
 #else
-    return t.add_item(this, e);
+    return t.fresh_item(this, e);
 #endif
   }
 
   template <typename T>
   TransItem& t_read_only_item(Transaction& t, T e) {
 #if READ_MY_WRITES
-    return t.read_only_item(this, e);
+    return t.read_item(this, e);
 #else
-    return t.add_item(this, e);
+    return t.fresh_item(this, e);
 #endif
   }
 

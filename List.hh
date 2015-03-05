@@ -420,7 +420,7 @@ private:
 
   template <typename PTR>
   TransItem& t_item(Transaction& t, PTR *node) {
-    // can switch this to add_item to not read our writes
+    // can switch this to fresh_item to not read our writes
     return t.item(this, node);
   }
   
