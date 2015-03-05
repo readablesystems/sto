@@ -34,6 +34,38 @@
 
 #define MAX_THREADS 8
 
+// transaction performance counters
+enum txp {
+    // all logging levels
+    txp_total_aborts = 0, txp_total_starts = 1,
+    txp_commit_time_aborts = 2, txp_max_set = 3,
+    // DETAILED_LOGGING only
+    txp_total_n = 4, txp_total_r = 5, txp_total_w = 6, txp_total_searched = 7,
+
+#if !PERF_LOGGING
+    txp_count = 0
+#elif !DETAILED_LOGGING
+    txp_count = 4
+#else
+    txp_count = 8
+#endif
+};
+
+template <int N> struct has_txp_struct {
+    static bool test(int p) {
+        return unsigned(p) < unsigned(N);
+    }
+};
+template <> struct has_txp_struct<0> {
+    static bool test(int) {
+        return false;
+    }
+};
+inline bool has_txp(int p) {
+    return has_txp_struct<txp_count>::test(p);
+}
+
+
 #if LOCAL_VECTOR
 #include "local_vector.hh"
 #endif
@@ -52,38 +84,35 @@ struct __attribute__((aligned(128))) threadinfo_t {
   std::vector<std::pair<unsigned, std::function<void(void)>>> callbacks;
   std::function<void(void)> trans_start_callback;
   std::function<void(void)> trans_end_callback;
-  enum {
-      // all logging levels
-      p_total_aborts = 0, p_total_starts = 1,
-      p_commit_time_aborts = 2, p_max_set = 3,
-      // DETAILED_LOGGING only
-      p_total_n = 4, p_total_r = 5, p_total_w = 6, p_total_searched = 7
-  };
-#if !PERF_LOGGING
-  enum { p_count = 0 };
-#else
-# if DETAILED_LOGGING
-  enum { p_count = 8 };
-# else
-  enum { p_count = 4 };
-# endif
-  uint64_t p[p_count];
-#endif
+  uint64_t p_[txp_count];
   threadinfo_t() : epoch(), spin_lock() {
-#if PERF_LOGGING
-      for (int i = 0; i != p_count; ++i)
-          p[i] = 0;
-#endif
+      for (int i = 0; i != txp_count; ++i)
+          p_[i] = 0;
+  }
+  static bool p_is_max(int p) {
+      return p == txp_max_set;
+  }
+  unsigned long long p(int p) {
+      return has_txp(p) ? p_[p] : 0;
   }
   void inc_p(int p) {
       add_p(p, 1);
   }
   void add_p(int p, uint64_t n) {
-#if PERF_LOGGING
-      if ((unsigned) p < (unsigned) p_count)
-          this->p[p] += n;
-#endif
-      (void) p, (void) n;
+      if (has_txp(p))
+          p_[p] += n;
+  }
+  void max_p(int p, unsigned long long n) {
+      if (has_txp(p) && n > p_[p])
+          p_[p] = n;
+  }
+  void combine_p(int p, unsigned long long n) {
+      if (has_txp(p)) {
+          if (!p_is_max(p))
+              p_[p] += n;
+          else if (n > p_[p])
+              p_[p] = n;
+      }
   }
 };
 
@@ -108,15 +137,10 @@ public:
 
   static threadinfo_t tinfo_combined() {
     threadinfo_t out;
-#if PERF_LOGGING
-    out.p[threadinfo_t::p_max_set] = 0;
     for (int i = 0; i != MAX_THREADS; ++i) {
-        for (int p = 0; p != threadinfo_t::p_count - 1; ++p)
-            out.p[p] += tinfo[i].p[p];
-        if (tinfo[i].p[threadinfo_t::p_max_set] > out.p[threadinfo_t::p_max_set])
-        	out.p[threadinfo_t::p_max_set] = tinfo[i].p[threadinfo_t::p_max_set];
+        for (int p = 0; p != txp_count; ++p)
+            out.combine_p(p, tinfo[i].p(p));
     }
-#endif
     return out;
   }
 
@@ -188,6 +212,9 @@ public:
   static void add_p(int p, uint64_t n) {
       tinfo[threadid].add_p(p, n);
   }
+  static void max_p(int p, unsigned long long n) {
+      tinfo[threadid].max_p(p, n);
+  }
 
   Transaction() : transSet_(), permute(NULL), perm_size(0), may_duplicate_items_(false), isAborted_(false), firstWrite_(-1) {
 #if !LOCAL_VECTOR
@@ -196,7 +223,7 @@ public:
     // TODO: assumes this thread is constantly running transactions
     tinfo[threadid].epoch = global_epoch;
     if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
-    inc_p(threadinfo_t::p_total_starts);
+    inc_p(txp_total_starts);
   }
 
   ~Transaction() {
@@ -279,7 +306,7 @@ public:
     void *k = pack(key);
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
       TransItem& ti = *it;
-      inc_p(threadinfo_t::p_total_searched);
+      inc_p(txp_total_searched);
       if (ti.sharedObj() == s && ti.data.key == k) {
         if (!read_only && firstWrite_ == -1)
           firstWrite_ = item_index(ti);
@@ -353,7 +380,7 @@ public:
   bool check_reads(TransItem *trans_first, TransItem *trans_last) {
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
-        inc_p(threadinfo_t::p_total_r);
+        inc_p(txp_total_r);
         if (!it->sharedObj()->check(*it, *this)) {
           return false;
         }
@@ -363,16 +390,14 @@ public:
 
   bool commit() {
 #if ASSERT_TX_SIZE
-    if (transSet_.size() > tinfo[threadid].p[threadinfo_t::p_max_set]) {
-    	tinfo[threadid].p[threadinfo_t::p_max_set] = transSet_.size();
-    }
     if (transSet_.size() > TX_SIZE_LIMIT) {
         std::cerr << "transSet_ size at " << transSet_.size()
             << ", abort." << std::endl;
         assert(false);
     }
 #endif
-    add_p(threadinfo_t::p_total_n, transSet_.size());
+    max_p(txp_max_set, transSet_.size());
+    add_p(txp_total_n, transSet_.size());
 
     if (isAborted_)
       return false;
@@ -428,7 +453,7 @@ public:
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
       TransItem& ti = *it;
       if (ti.has_write()) {
-        inc_p(threadinfo_t::p_total_w);
+        inc_p(txp_total_w);
         ti.sharedObj()->install(ti);
       }
     }
@@ -450,7 +475,7 @@ public:
     if (success) {
       commitSuccess();
     } else {
-      inc_p(threadinfo_t::p_commit_time_aborts);
+      inc_p(txp_commit_time_aborts);
       abort();
     }
 
@@ -462,7 +487,7 @@ public:
   void silent_abort() {
     if (isAborted_)
       return;
-    inc_p(threadinfo_t::p_total_aborts);
+    inc_p(txp_total_aborts);
     isAborted_ = true;
     for (auto& ti : transSet_) {
       if (ti.has_undo()) {

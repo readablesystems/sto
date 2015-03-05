@@ -764,12 +764,10 @@ int main(int argc, char *argv[]) {
   {
       using thd = threadinfo_t;
       thd tc = Transaction::tinfo_combined();
-#define LLU(x) ((long long unsigned)x)
-      printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", LLU(tc.p[thd::p_total_n]), LLU(tc.p[thd::p_total_r]), LLU(tc.p[thd::p_total_w]), LLU(tc.p[thd::p_total_searched]), LLU(tc.p[thd::p_total_aborts]), LLU(tc.p[thd::p_commit_time_aborts]));
+      printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
 #if MASSTREE
       printf("node aborts: %llu\n", LLU(node_aborts));
 #endif
-#undef LLU
   }
 #endif
 
