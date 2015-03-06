@@ -303,7 +303,6 @@ public:
       return OptionalTransProxy(*this, has_item<false>(s, key));
   }
 
-private:
   // tries to find an existing item with this key, returns NULL if not found
   template <bool read_only, typename T>
   TransItem* has_item(Shared *s, const T& key) {
