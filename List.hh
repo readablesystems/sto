@@ -148,6 +148,12 @@ public:
     return ret;
   }
 
+  bool insert(const T& elem) {
+    bool inserted;
+    _insert<false>(elem, &inserted);
+    return inserted;
+  }
+
   bool transInsert(Transaction& t, const T& elem) {
     bool inserted;
     auto *node = _insert<true>(elem, &inserted);
@@ -266,6 +272,21 @@ public:
       return us != NULL;
     }
 
+    bool hasNext() const {
+      return !!cur;
+    }
+
+    void reset() {
+      cur = us->head_;
+    }
+
+    T* next() {
+      auto ret = cur ? &cur->val : NULL;
+      if (cur)
+        cur = cur->next;
+      return ret;      
+    }
+
     bool transHasNext(Transaction&) const {
       return !!cur;
     }
@@ -299,6 +320,8 @@ private:
       ensureValid(t);
     }
 
+    ListIter(List *us, list_node *cur) : us(us), cur(cur) {}
+
     void ensureValid(Transaction& t) {
       while (cur) {
         auto item = us->t_item(t, cur);
@@ -322,6 +345,10 @@ private:
     List *us;
     list_node *cur;
   };
+
+  ListIter iter() {
+    return ListIter(this, head_);
+  }
 
   ListIter transIter(Transaction& t) {
     ensureNotFound(t, listversion_);//TODO: rename
