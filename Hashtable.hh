@@ -6,14 +6,17 @@
 
 #define HASHTABLE_DELETE 1
 
-template <typename K, typename V, unsigned INIT_SIZE = 129>
+template <typename K, typename V, unsigned Init_size = 129, typename Hash = std::hash<K>>
 class Hashtable : public Shared {
 public:
-  typedef unsigned Version;
-  typedef K Key;
-  typedef V Value;
+    typedef unsigned Version;
+    typedef K Key;
+    typedef K key_type;
+    typedef V Value;
 
 private:
+  // our hashtable is an array of linked lists. 
+  // an internal_elem is the node type for these linked lists
   struct internal_elem {
     Key key;
     internal_elem *next;
@@ -28,27 +31,36 @@ private:
 
   struct bucket_entry {
     internal_elem *head;
+    // this is the bucket version number, which is incremented on insert
+    // we use it to make sure that an unsuccessful key lookup will still be
+    // unsuccessful at commit time (because this will always be true if no
+    // new inserts have occurred in this bucket)
     Version version;
     bucket_entry() : head(NULL), version(0) {}
   };
 
   typedef std::vector<bucket_entry> MapType;
+  // this is the hashtable itself, an array of bucket_entry's
   MapType map_;
+  Hash hasher_;
 
 public:
-  static constexpr Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
+  static constexpr Version lock_bit = ((Version)1U)<<(sizeof(Version)*8 - 1);
   // if set we check only node validity, not the node's version number
-  static constexpr Version valid_check_only_bit = 1U<<(sizeof(Version)*8 - 2);
+  // (for deletes we need to make sure the node is still there/valid, but 
+  // not that its value is the same)
+  static constexpr Version valid_check_only_bit = ((Version)1U)<<(sizeof(Version)*8 - 2);
   static constexpr Version version_mask = ~(lock_bit|valid_check_only_bit);
+  // used to mark whether a key is a bucket (for bucket version checks)
+  // or a pointer (which will always have the lower 3 bits as 0)
   static constexpr uintptr_t bucket_bit = 1U<<0;
 
-  Hashtable(unsigned size = INIT_SIZE) : map_() {
+  Hashtable(unsigned size = Init_size, Hash h = Hash()) : map_(), hasher_(h) {
     map_.resize(size);
   }
   
   inline size_t hash(Key k) {
-    std::hash<Key> hash_fn;
-    return hash_fn(k);
+    return hasher_(k);
   }
 
   inline size_t nbuckets() {
@@ -59,125 +71,6 @@ public:
     return hash(k) % nbuckets();
   }
 
-  // invariants:
-  // if bucket list is different, version number is different
-  // if bucket is locked, can still do everything but insert/delete
-  // one way to rehash would be to lock every bucket...
-  // could also potentially just check every bucket's version number after rehash (transaction)
-
-  // transaction time!
-  // key is either a pointer to entry in hashtable (if actually in hashtable)
-  // or a bucket index where the key would be, if not in hashtable
-  // TODO: could be relatively common that insert/delete happens in same bucket as a key but the key itself
-  // was not inserted or deleted. would need to store key in the transaction as well to check this case
-
-  bool read(Key k, Value& retval) {
-    auto e = elem(k);
-    if (e)
-      retval = e->value;
-    return !!e;
-  }
-
-  void put(Key k, Value val) {
-    bucket_entry& buck = buck_entry(k);
-    lock(&buck.version);
-    internal_elem *e = find(buck, k);
-    if (e) {
-      set(e, val);
-    } else {
-      insert_locked<true>(buck, k, val);
-    }
-    unlock(&buck.version);
-  }
-
-  void set(internal_elem *e, Value val) {
-    assert(e);
-    lock(&e->version);
-    e->value = val;
-    inc_version(e->version);
-    unlock(&e->version);
-  }
-
-  bool has_delete(TransItem& item) {
-    return item.has_afterC();
-  }
-  
-  bool has_insert(TransItem& item) {
-    return item.has_undo();
-  }
-
-  bool validity_check(TransItem& item, internal_elem *e) {
-    return has_insert(item) || e->valid();
-  }
-  
-  bool is_bucket(void *key) {
-    return (uintptr_t)key & bucket_bit;
-  }
-  unsigned bucket_value(void *key) {
-    assert(is_bucket(key));
-    return (uintptr_t)key >> 1;
-  }
-  void *pack_bucket(unsigned bucket) {
-    return pack((bucket << 1) | bucket_bit);
-  }
-
-#if 0
-  template <typename T>
-  void *pack_valid_check(T* ptr) {
-    return pack((uintptr_t)ptr | validity_check_bit);
-  }
-#endif
-
-  void inc_version(Version& v) {
-    assert(is_locked(v));
-    Version cur = v & version_mask;
-    cur = (cur+1) & version_mask;
-    v = cur | (v & ~version_mask);
-  }
-
-  bool is_locked(Version v) {
-    return v & lock_bit;
-  }
-  void lock(Version *v) {
-    while (1) {
-      Version cur = *v;
-      if (!(cur&lock_bit) && bool_cmpxchg(v, cur, cur|lock_bit)) {
-        break;
-      }
-      relax_fence();
-    }
-  }
-  void unlock(Version *v) {
-    assert(is_locked(*v));
-    Version cur = *v;
-    cur &= ~lock_bit;
-    *v = cur;
-  }
-
-  template <bool markValid = false>
-  void insert_locked(bucket_entry& buck, Key k, const Value& val) {
-    assert(is_locked(buck.version));
-    auto new_head = new internal_elem(k, val);
-    internal_elem *cur_head = buck.head;
-    new_head->next = cur_head;
-    if (markValid) {
-      new_head->valid() = true;
-    }
-    buck.head = new_head;
-    inc_version(buck.version);
-  }
-
-  void atomicRead(internal_elem *e, Version& vers, Value& val) {
-    Version v2;
-    do {
-      vers = e->version;
-      fence();
-      val = e->value;
-      fence();
-      v2 = e->version;
-    } while (vers != v2);
-  }
-
   // returns true if found false if not
   bool transGet(Transaction& t, Key k, Value& retval) {
     bucket_entry& buck = buck_entry(k);
@@ -185,7 +78,7 @@ public:
     fence();
     internal_elem *e = find(buck, k);
     if (e) {
-      auto& item = t.item(this, e);
+      auto item = t.item(this, e);
       if (!validity_check(item, e)) {
         t.abort();
         return false;
@@ -202,42 +95,13 @@ public:
       // "atomic" read of both the current value and the version #
       atomicRead(e, elem_vers, retval);
       // check both node changes and node deletes
-      if (!item.has_read() || item.template read_value<Version>() & valid_check_only_bit) {
-        t.add_read(item, elem_vers);
-      }
+      item.clear_read(valid_check_only_bit).add_read(elem_vers);
       return true;
     } else {
-      auto& item = t.item(this, pack_bucket(bucket(k)));
-      if (!item.has_read()) {
-        t.add_read(item, buck_version);
-      }
+      t.item(this, pack_bucket(bucket(k))).add_read(unlocked(buck_version));
       return false;
     }
   }
-
-#if 0
-  unsigned transCount(Transaction& t, Key k) {
-    bucket_entry& buck = buck_entry(k);
-    Version buck_version = buck.version;
-    fence();
-    internal_elem *e = find(buck, k);
-    if (e) {
-      auto& item = t.item(this, e);
-      if (!item.has_write() && !e->valid()) {
-        t.abort();
-        return false;
-      }
-      if (!item.has_read()) {
-        t.add_item(pack_presence(e)).add_read(0);
-      }
-    } else {
-      auto& item = t.item(this, pack_bucket(bucket(k)));
-      if (!item.has_read()) {
-        t.add_read(item, buck_version);
-      }
-    }
-  }
-#endif
 
 #if HASHTABLE_DELETE
   // returns true if successful
@@ -247,22 +111,16 @@ public:
     fence();
     internal_elem *e = find(buck, k);
     if (e) {
-      auto& item = t.item(this, e);
+      auto item = t.item(this, e);
       bool valid = e->valid();
       if (!valid && has_insert(item)) {
         // we're deleting our own insert. special case this to just remove element and just check for no insert at commit
         remove(e);
         // no way to remove an item (would be pretty inefficient)
         // so we just unmark all attributes so the item is ignored
-        item.remove_read();
-        item.remove_write();
-        item.remove_undo();
-        item.remove_afterC();
+        item.remove_read().remove_write().remove_undo().remove_afterC();
         // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
-        auto& itemb = t.item(this, pack_bucket(bucket(k)));
-        if (!itemb.has_read()) {
-          t.add_read(itemb, buck_version);
-        }
+        t.item(this, pack_bucket(bucket(k))).add_read(unlocked(buck_version));
         return true;
       } else if (!valid) {
         t.abort();
@@ -274,21 +132,16 @@ public:
         return false;
       }
       // we need to make sure this bucket didn't change (e.g. what was once there got removed)
-      if (!item.has_read()) {
-        // we only need to check validity, not presence
-        t.add_read(item, valid_check_only_bit);
-      }
-      // we use has_afterC() to detect deletes so we don't need any other data 
+      item.add_read(valid_check_only_bit);
+      // we use has_afterC() to detect deletes so we don't need any other data
       // for deletes, just to mark it as a write
       if (!item.has_write())
-        t.add_write(item, 0);
-      t.add_afterC(item);
+          item.add_write(0); // XXX is this the right type?
+      item.add_afterC();
       return true;
     } else {
       // add a read that yes this element doesn't exist
-      auto& item = t.item(this, pack_bucket(bucket(k)));
-      if (!item.has_read())
-        t.add_read(item, buck_version);
+      t.item(this, pack_bucket(bucket(k))).add_read(unlocked(buck_version));
       return false;
     }
   }
@@ -304,7 +157,7 @@ public:
     internal_elem *e = find(buck, k);
     if (e) {
       unlock(&buck.version);
-      auto& item = t.item(this, e);
+      auto item = t.item(this, e);
       if (!validity_check(item, e)) {
         t.abort();
         // unreachable (t.abort() raises an exception)
@@ -316,7 +169,7 @@ public:
         // if user can't read v#)
         if (INSERT) {
           item.remove_afterC();
-          t.add_write(item, v);
+          item.add_write(v);
         } else {
           // delete-then-update == not found
           // delete will check for other deletes so we don't need to re-log that check
@@ -326,48 +179,37 @@ public:
 
 #if HASHTABLE_DELETE
       // we need to make sure this item stays here
-      if (!item.has_read())
-        // we only need to check validity, not presence
-        t.add_read(item, valid_check_only_bit);
+      // we only need to check validity, not presence
+      item.add_read(valid_check_only_bit);
 #endif
       if (SET) {
-        t.add_write(item, v);
+        item.add_write(v);
       }
       return true;
     } else {
       if (!INSERT) {
-        auto buck_version = buck.version;
-        unlock(&buck.version);
-        auto& item = t.item(this, pack_bucket(bucket(k)));
-        if (!item.has_read()) {
-          t.add_read(item, buck_version);
-        }
+        auto buck_version = unlock(&buck.version);
+        t.item(this, pack_bucket(bucket(k))).add_read(buck_version);
         return false;
       }
 
       // not there so need to insert
       insert_locked(buck, k, v); // marked as invalid
-      auto new_version = buck.version;
       auto new_head = buck.head;
-      unlock(&buck.version);
+      auto new_version = unlock(&buck.version);
       // see if this item was previously read
-      auto bucket_item = t.has_item(this, pack_bucket(bucket(k)));
+      auto bucket_item = t.check_item(this, pack_bucket(bucket(k)));
       if (bucket_item) {
-        if (bucket_item->has_read() && 
-            versionCheck(bucket_item->template read_value<Version>(), new_version - 1)) {
-          // looks like we're the only ones to have updated the version number, so update read's version number
-          // to still be valid
-          t.add_read(*bucket_item, new_version);
-        }
+        bucket_item->update_read(new_version - 1, new_version);
         //} else { could abort transaction now
       }
-      // use add_item because we know there are no collisions
-      auto& item = t.add_item<false>(this, new_head);
+      // use new_item because we know there are no collisions
+      auto item = t.new_item(this, new_head);
       // don't actually need to store anything for the write, just mark as valid on install
       // (for now insert and set will just do the same thing on install, set a value and then mark valid)
-      t.add_write(item, v);
+      item.add_write(v);
       // need to remove this item if we abort
-      t.add_undo(item);
+      item.add_undo();
       return false;
     }
   }
@@ -389,7 +231,6 @@ public:
   void lock(Key k) {
     lock(&elem(k));
   }
-  
   void unlock(internal_elem *el) {
     Version cur = el->version;
     assert(cur & lock_bit);
@@ -450,28 +291,17 @@ public:
     el->valid() = true;
   }
 
-  void undo(TransItem& item) {
-    auto el = unpack<internal_elem*>(item.key());
-    assert(!el->valid());
-    remove(el);
-  }
+  void cleanup(TransItem& item, bool committed) {
+    if (committed ? item.has_afterC() : item.has_undo()) {
+        auto el = unpack<internal_elem*>(item.key());
+        assert(!el->valid());
+        remove(el);
+    }
 
-  void afterC(TransItem& item) {
-#if HASHTABLE_DELETE
-    auto el = unpack<internal_elem*>(item.key());
-    assert(!el->valid());
-    remove(el);
-#endif
-  }
-
-  void cleanup(TransItem& item) {
     free_packed<internal_elem*>(item.key());
-    if (item.has_read())
-      free_packed<Version>(item.data.rdata);
-    if (item.has_write())
-      free_packed<Value>(item.data.wdata);
+    item.cleanup_read<Version>().cleanup_write<Value>();
   }
-  
+
   void remove(internal_elem *el) {
     bucket_entry& buck = buck_entry(el->key);
     lock(&buck.version);
@@ -507,6 +337,79 @@ public:
     }
   }
 
+  // non-transactional const iteration
+  // (we don't have current support for transactional iteration)
+  class const_iterator {
+  public:
+    std::pair<Key, Value> operator*() const {
+      return std::make_pair(node->key, node->value);
+    }
+
+    const_iterator& operator++() {
+      if (node) {
+        node = node->next;
+      }
+      while (!node && bucket != table->map_.size()) {
+        node = table->map_[bucket].head;
+        bucket++;
+      }
+      return *this;
+    }
+    
+    bool operator!=(const const_iterator& it) const {
+      return node != it.node || bucket != it.bucket;
+    }
+  private:
+    const Hashtable *table;
+    int bucket;
+    internal_elem *node;
+    friend class Hashtable;
+  };
+
+  const_iterator begin() const {
+    const_iterator begin;
+    begin.table = this;
+    begin.bucket = -1;
+    begin.node = NULL;
+    return ++begin; //eh
+  }
+  const_iterator end() const {
+    const_iterator end;
+    end.bucket = map_.size();
+    end.node = NULL;
+    return end;
+  }
+
+  // non-transactional get/put/etc.
+  // not very interesting
+  bool read(Key k, Value& retval) {
+    auto e = elem(k);
+    if (e)
+      retval = e->value;
+    return !!e;
+  }
+
+  void put(Key k, Value val) {
+    bucket_entry& buck = buck_entry(k);
+    lock(&buck.version);
+    internal_elem *e = find(buck, k);
+    if (e) {
+      set(e, val);
+    } else {
+      insert_locked<true>(buck, k, val);
+    }
+    unlock(&buck.version);
+  }
+
+  void set(internal_elem *e, Value val) {
+    assert(e);
+    lock(&e->version);
+    e->value = val;
+    inc_version(e->version);
+    unlock(&e->version);
+  }
+
+  // these are wrappers for concurrent.cc
   void transWrite(Transaction& t, Key k, Value v) {
     transPut(t, k, v);
   }
@@ -523,28 +426,23 @@ public:
     Transaction t;
     return transRead(t, k);
   }
-
   void insert(Key k, Value v) {
     Transaction t;
     transInsert(t, k, v);
     t.commit();
   }
-
   void erase(Key ) {}
-
   void update(Key k, Value v) {
     Transaction t;
     transUpdate(t, k, v);
     t.commit();
   }
-
   template <typename F>
   void update_fn(Key k, F f) {
     Transaction t;
     transUpdate(t, k, f(transRead(t, k)));
     t.commit();
   }
-
   template <typename F>
   void upsert(Key k, F f, Value v) {
     Transaction t;
@@ -556,7 +454,6 @@ public:
     }
     t.commit();
   }
-
   void find(Key k, Value& v) {
     Transaction t;
     transGet(t, k, v);
@@ -567,11 +464,12 @@ public:
   void rehash(unsigned ) {}
   void reserve(unsigned ) {}
   
-  private:
+private:
   bucket_entry& buck_entry(Key k) {
     return map_[bucket(k)];
   }
 
+  // looks up a key's internal_elem, given its bucket
   internal_elem* find(bucket_entry& buck, Key k) {
     internal_elem *list = buck.head;
     while (list && !(list->key == k)) {
@@ -580,8 +478,86 @@ public:
     return list;
   }
 
+  // looks up a key's internal_elem
   internal_elem* elem(Key k) {
     return find(buck_entry(k), k);
   }
+
+  bool has_delete(TransItem& item) {
+    return item.has_afterC();
+  }
+  
+  bool has_insert(TransItem& item) {
+    return item.has_undo();
+  }
+
+  bool validity_check(TransItem& item, internal_elem *e) {
+    return has_insert(item) || e->valid();
+  }
+  
+  bool is_bucket(void *key) {
+    return (uintptr_t)key & bucket_bit;
+  }
+  unsigned bucket_value(void *key) {
+    assert(is_bucket(key));
+    return (uintptr_t)key >> 1;
+  }
+  void *pack_bucket(unsigned bucket) {
+    return pack((bucket << 1) | bucket_bit);
+  }
+
+  static void inc_version(Version& v) {
+    assert(is_locked(v));
+    Version cur = v & version_mask;
+    cur = (cur+1) & version_mask;
+    v = cur | (v & ~version_mask);
+  }
+
+  static bool is_locked(Version v) {
+    return v & lock_bit;
+  }
+  static void lock(Version *v) {
+    while (1) {
+      Version cur = *v;
+      if (!(cur&lock_bit) && bool_cmpxchg(v, cur, cur|lock_bit)) {
+        break;
+      }
+      relax_fence();
+    }
+  }
+  static Version unlock(Version *v) {
+    assert(is_locked(*v));
+    Version cur = *v;
+    cur &= ~lock_bit;
+    return *v = cur;
+  }
+  static constexpr Version unlocked(Version v) {
+    return v & ~lock_bit;
+  }
+
+  template <bool markValid = false>
+  void insert_locked(bucket_entry& buck, Key k, const Value& val) {
+    assert(is_locked(buck.version));
+    auto new_head = new internal_elem(k, val);
+    internal_elem *cur_head = buck.head;
+    new_head->next = cur_head;
+    if (markValid) {
+      new_head->valid() = true;
+    }
+    buck.head = new_head;
+    inc_version(buck.version);
+  }
+
+  void atomicRead(internal_elem *e, Version& vers, Value& val) {
+    Version v2;
+    do {
+      vers = e->version;
+      fence();
+      val = e->value;
+      fence();
+      v2 = e->version;
+    } while (vers != v2);
+  }
+
 
 };

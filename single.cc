@@ -19,7 +19,8 @@ volatile bool recovering = false; // so don't add log entries, and free old valu
 
 using namespace std;
 
-/*void queueTests() {
+#if 0
+void queueTests() {
     Queue<int> q;
 
     {
@@ -38,7 +39,8 @@ using namespace std;
     {
         Transaction t;
     }
-}*/
+}
+#endif
 
 void linkedListTests() {
   List<int> l;
@@ -230,9 +232,9 @@ void rangeQueryTest() {
 }
 
 int main() {
-  typedef int Key;
   typedef int Value;
 #if HASHTABLE
+  typedef int Key;
   Hashtable<Key, Value> h;
 #else
   MassTrans<Value> h;

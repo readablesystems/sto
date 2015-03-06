@@ -1,3 +1,4 @@
+
 #pragma once 
 
 #include "config.h"
@@ -8,54 +9,56 @@
 
 template <typename T, unsigned N, typename Elem = SingleElem<T>>
 class Array1 : public Shared {
-    typedef unsigned Key;
     typedef uint32_t Version;
     typedef VersionFunctions<Version, 0> Versioning;
-    public: 
-				T read(Key i) {
-						return data_[i].read();
-				}
+  public:
+    typedef unsigned key_type;
+    typedef T value_type;
 
-				void write(Key i, T v) {
-						lock(i);
-						data_[i].set_value(v);
-						unlock(i);
-				}
+    T read(key_type i) {
+        return data_[i].read();
+    }
 
-        T transRead(Transaction& t, const Key& i){
-					return data_[i].transRead(t);
-        }
+    void write(key_type i, value_type v) {
+        lock(i);
+        data_[i].set_value(std::move(v));
+        unlock(i);
+    }
 
-        void transWrite(Transaction& t, const Key& i, const T& v){
-            data_[i].transWrite(t, v);					
-        }
+    value_type transRead(Transaction& t, const key_type& i){
+        return data_[i].transRead(t);
+    }
 
-        void lock(Key i){
-            data_[i].lock();
-        }
+    void transWrite(Transaction& t, const key_type& i, value_type v) {
+        data_[i].transWrite(t, std::move(v));
+    }
 
-        void unlock(Key i){
-            data_[i].unlock();
-        }
+    void lock(key_type i) {
+        data_[i].lock();
+    }
 
-        bool check(TransItem& item, Transaction& trans){
-            Key i = unpack<Key>(item.key());
-						return data_[i].check(item, trans);
-        }
+    void unlock(key_type i) {
+        data_[i].unlock();
+    }
 
-        void lock(TransItem& item){
-            lock(unpack<Key>(item.key()));
-        }
-        void unlock(TransItem& item){
-            unlock(unpack<Key>(item.key()));
-        }
+    bool check(TransItem& item, Transaction& trans){
+        key_type i = unpack<key_type>(item.key());
+        return data_[i].check(item, trans);
+    }
 
-        void install(TransItem& item){
-            //install value
-            Key i = unpack<Key>(item.key());
-            data_[i].install(item);
-        }
+    void lock(TransItem& item){
+        lock(unpack<key_type>(item.key()));
+    }
+    void unlock(TransItem& item){
+        unlock(unpack<key_type>(item.key()));
+    }
 
-    private:
-        Elem data_[N];
-}; 
+    void install(TransItem& item){
+        //install value
+        key_type i = unpack<key_type>(item.key());
+        data_[i].install(item);
+    }
+
+  private:
+    Elem data_[N];
+};

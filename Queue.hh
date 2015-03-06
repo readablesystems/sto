@@ -1,3 +1,5 @@
+// atomic check_empty -- check empty, check version, check empty again
+
 #pragma once
 
 #include <list>
@@ -8,79 +10,100 @@
 template <typename T, unsigned BUF_SIZE = 256> 
 class Queue: public Shared {
 public:
-    // is this like a constructor???????
-    Queue() : head_(NULL), tail_(NULL), queuesize_(0), queueversion_(0) {}
+    Queue() : head_(0), tail_(0), queuesize_(0), tailversion_(0), headversion_(0) {}
 
     typedef uint32_t Version;
     typedef VersionFunctions<Version, 0> QueueVersioning;
     
-    static constexpr Version lock_bit = 1<<1;
-
     static constexpr Version delete_bit = 1<<0;
-
-    T queueSlots[BUF_SIZE];
+    static constexpr Version front_bit = 1<<1;
 
     void transPush(Transaction& t, const T& v) {
         auto& item = t.item(this, -1);
-        std::list<T> write_list;
-        if (item.has_write())
-            // unsure if correct way to create list??????
-            write_list = unpack<std::list<T>>(item.key());
-        else write_list.push_back(v);
-        t.add_write(item, write_list);
+        if (item.has_write()) {
+            auto& write_list = unpack<std::list<T>>(item.key());
+            write_list.push_back(v);
+        }
+        else {
+            std::list<T> write_list;
+            write_list.push_back(v);
+            t.add_write(item, write_list);
+        }
     }
 
-    void transPop(Transaction& t) {
-        /*
-        if empty_queue:
-            if has_write(t.item(this,-1)) then remove first item off list (need to check that queue is still empty at commit time?)
-            else fail
-        */
-        std::ptrdiff_t index = get_index(head_);
-        std::ptrdiff_t tail_index = get_index(tail_);
+    bool transPop(Transaction& t) {
+        unsigned index = head_;
         auto& item = t.item(this, index);
         while (has_delete(item)) {
-            if (index = tail_index);
-                //assert fail; 
+            if (index == tail_) {
+                Version tv = tailversion_;
+                // if someone has pushed onto tail, can successfully do a front read, so skip reading from our pushes -- check?????
+                if (index == tail_) {
+                    auto& pushitem = t.item(this,-1);
+                    if (pushitem.has_write()) {
+                        auto& write_list = unpack<std::list<T>>(pushitem.key());
+                        // if there is an element to be pushed on the queue, return addr of queue element
+                        if (!write_list.empty()) {
+                            write_list.pop_front();
+                            // must ensure that tail_ is not modified at check
+                            if (!item.has_read())
+                                t.add_read(pushitem, tailversion_);
+                        }
+                    }
+                } 
+                return false; 
+            }
             item = t.item(this, index);
             index = (index + 1) % BUF_SIZE;
         }
         item.set_flags(delete_bit);
-        if (!item.has_read())
-           t.add_read(item, queueversion_);
+        if (!item.has_read()) {
+           t.add_read(item, headversion_);
+           t.add_write(item, 0);
+        }
+        return true;
     }
 
     T* transFront(Transaction& t) {
-        /*
-        if empty_queue:
-            if has_write(t.item(this,-1)) then reference first item off list (need to check that queue is still empty at commit time?)
-            else fail
-        */
-        std::ptrdiff_t index = get_index(head_);
-        std::ptrdiff_t tail_index = get_index(tail_);
+        unsigned index = head_;
         auto& item = t.item(this, index);
         while (has_delete(item)) {
-            if (index = tail_index)
+            // empty queue
+            if (index == tail_) {
+                Version tv = tailversion_;
+                // if someone has pushed onto tail, can successfully do a front read, so skip reading from our pushes -- check?????
+                if (index == tail_) {
+                    auto& pushitem = t.item(this,-1);
+                    if (pushitem.has_write()) {
+                        auto& write_list = unpack<std::list<T>>(pushitem.key());
+                        // if there is an element to be pushed on the queue, return addr of queue element
+                        if (!write_list.empty()) {
+                            return &queueSlots[tail_];
+                            // must ensure that tail_ is not modified at check
+                            if (!item.has_read())
+                                t.add_read(pushitem, tv);
+                        }
+                    }
+                }
+                return NULL;
+            }
             item = t.item(this, index);
             index = (index + 1) % BUF_SIZE;
         }
+        //check that head was not modified at time of commit
         if (!item.has_read())
-           t.add_read(item, queueversion_);
+           t.add_read(item, headversion_);
+        item.set_flags(front_bit);
         return &queueSlots[index];
     }
     
 private:
-    std::ptrdiff_t get_index(T *ptr) {
-        if (ptr) return ptr - queueSlots;
-        else return 0;
-    }
-    
-    bool has_delete(TransItem& item) {
-        return item.has_flags(delete_bit);
+  bool is_front(TransItem& item) {
+        return item.has_flags(front_bit);
     }
 
-    bool is_locked(T *index) {
-        return index.has_flags(lock_bit);
+    bool has_delete(TransItem& item) {
+        return item.has_flags(delete_bit);
     }
     
     void lock(Version& v) {
@@ -92,56 +115,58 @@ private:
     }
      
     void lock(TransItem& item) {
+        // only lock headversion for pops 
         if (has_delete(item))
-            head_.atomic_add_flags(lock_bit);
-        else if (item.has_write())
-            tail_.atomic_add_flags(lock_bit);
-        lock(queueversion_);
+            lock(headversion_);
+        // only lock tailversion for pushes and front on empty queue
+        else if (item.has_write() || item.has_read())
+            lock(tailversion_);
     }
 
     void unlock(TransItem& item) {
-        if (has_delete(item))
-            head_.set_flags(head_.flags() & ~lock_bit);
-        else if (item.has_write())
-            tail_.set_flags(head_.flags() & ~lock_bit);
-        unlock(queueversion_);
+        if (has_delete(item)) 
+            unlock(headversion_);
+        else if (item.has_write() || item.has_read())
+            unlock(tailversion_);
     }
   
     bool check(TransItem& item, Transaction& t) {
-	    //if transaction assumed queue was empty, check if still empty
-        auto qv = queueversion_;
-        //check to ensure that no other thread has locked head/tail, or that we were the ones to lock
-        // only need to check if another transaction is about to change the version number if this is a read????
-        return (QueueVersioning::versionCheck(qv, item.template read_value<Version>()) && (!is_locked(tail) || item.has_write()));
+        (void) t;
+        auto hv = headversion_;
+        auto tv = tailversion_;
+        // check if was a pop or front (without dealing with empty queue)
+        bool head_check = (QueueVersioning::versionCheck(hv, item.template read_value<Version>()) && (!QueueVersioning::is_locked(hv) || !has_delete(item)));
+    
+        // check if we read off the write_list (and locked tailversion)
+        bool tail_check = (QueueVersioning::versionCheck(tv, item.template read_value<Version>()) && (!QueueVersioning::is_locked(tv) || has_delete(item) || is_front(item)));
+
+        return head_check && tail_check;
     }
 
     void install(TransItem& item) {
 	    if (has_delete(item)) {
-            auto index = get_index(head_);
-            assert(item.key() == (void*)index);
-            head_ = &queueSlots[index+1 % BUF_SIZE];
-            QueueVersioning::inc_version(queueversion_);
+            head_ = head_+1 % BUF_SIZE;
+            QueueVersioning::inc_version(headversion_);
         }
-        // another transaction inserting onto tail = don't need to increment queueversion????
-        else if (item.has_write()) {
+        else {
             auto write_list = unpack<std::list<T>>(item.key());
-            auto head_index = get_index(head_);
-            auto index = get_index(tail_);
+            auto head_index = head_;
             while (!write_list.empty()) {
-                if (index != head_index) {
-                    index = (index+1) % BUF_SIZE;
-                    queueSlots[index] = write_list.front();
+                if (tail_ != head_index) {
+                    tail_ = (tail_ +1) % BUF_SIZE;
+                    queueSlots[tail_] = write_list.front();
                     write_list.pop_front();
                 }
                 //else return "fail"; ?????
             }
-            tail_ = &queueSlots[index % BUF_SIZE];
         }
     }
+    
+    T queueSlots[BUF_SIZE];
 
-    // not sure if taggedlow is the correct way to implement????
-    TaggedLow<T> head_;
-    TaggedLow<T> tail_;
-    long queuesize_;
-    Version queueversion_;
+    unsigned head_;
+    unsigned tail_;
+    unsigned queuesize_;
+    Version tailversion_;
+    Version headversion_;
 };

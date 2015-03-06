@@ -1,3 +1,4 @@
+#pragma once
 
 template <typename Stuff>
 class stuffed_str {

@@ -1,5 +1,6 @@
-#include <iostream>
 #pragma once
+#include <iostream>
+
 
 template <typename T, typename=void>
 struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
@@ -25,6 +26,10 @@ struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
   }
   
   inline const value_type& read_value() {
+    return value_;
+  }
+
+  inline value_type& writeable_value() {
     return value_;
   }
   

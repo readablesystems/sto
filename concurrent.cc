@@ -6,8 +6,8 @@
 #include <sys/resource.h>
 
 #include "Array.hh"
-#include "GenericSTMArray.hh"
 #include "Array1.hh"
+#include "GenericSTMArray.hh"
 #include "ListArray.hh"
 #include "Hashtable.hh"
 #include "Transaction.hh"
@@ -15,39 +15,65 @@
 
 #include "MassTrans.hh"
 
-// size of array
+// size of array (for hashtables or other non-array structures, this is the
+// size of the key space)
 #define ARRAY_SZ 1000000
 
-// only used for randomRWs test
-#define GLOBAL_SEED 0
-#define TRY_READ_MY_WRITES 0
-#define MAINTAIN_TRUE_ARRAY_STATE 1
+#define USE_ARRAY 0
+#define USE_HASHTABLE 1
+#define USE_MASSTREE 2
+#define USE_GENSTMARRAY 3
+#define USE_LISTARRAY 4
+
+// set this to USE_DATASTRUCTUREYOUWANT
+#define DATA_STRUCTURE USE_ARRAY
 
 // if true, each operation of a transaction will act on a different slot
 #define ALL_UNIQUE_SLOTS 0
 
-#define DATA_COLLECT 0
-#define HASHTABLE 0
-#define HASHTABLE_LOAD_FACTOR 2
-#define HASHTABLE_RAND_DELETES 0
-
-#define MASSTREE 0
-
-#define GENSTM_ARRAY 0
-#define LIST_ARRAY 1
-
-#define RANDOM_REPORT 0
-
+// use string values rather than ints
 #define STRING_VALUES 0
+
+// use unboxed strings in Masstree (only used if STRING_VALUES is set)
 #define UNBOXED_STRINGS 0
 
+// if 1 we just print the runtime, no diagnostic information or strings 
+// (makes it easier to collect data using a script)
+#define DATA_COLLECT 0
+
+// If we have N keys, we make our hashtable have size N/HASHTABLE_LOAD_FACTOR
+#define HASHTABLE_LOAD_FACTOR 2
+
+// additional seed to randomness used in tests (otherwise each run of
+// ./concurrent does the exact same operations)
+#define GLOBAL_SEED 0
+
+/* Track the array state during concurrent execution using atomic increments.
+ * Turn off if you want the most accurate performance results.
+ *
+ * When on, a validation check of our random test is much stronger, because
+ * we are checking our concurrent run not only with a single-threaded run
+ * but also with a guaranteed correct implementation
+ */
+#define MAINTAIN_TRUE_ARRAY_STATE 1
+
+// assert reading our writes works
+#define TRY_READ_MY_WRITES 0
+
+// whether to also do random deletes in the randomRWs test (for performance 
+// only, we can't verify correctness from this)
+#define RAND_DELETES 0
+
+// track/report diagnostics on how good our randomness is
+#define RANDOM_REPORT 0
+
+// Masstree globals
 kvepoch_t global_log_epoch = 0;
 volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly
 kvtimestamp_t initial_timestamp;
 volatile bool recovering = false; // so don't add log entries, and free old value immediately
 
 //#define DEBUG
-
 #ifdef DEBUG
 #define debug(...) printf(__VA_ARGS__)
 #else
@@ -60,33 +86,82 @@ typedef std::string value_type;
 typedef int value_type;
 #endif
 
-#if !HASHTABLE
-#if !MASSTREE
-#if !GENSTM_ARRAY
-#if !LIST_ARRAY
-typedef Array1<value_type, ARRAY_SZ> ArrayType;
-ArrayType *a;
-#else
-typedef ListArray<value_type> ArrayType;
-ArrayType *a;
-#endif
-#else
-typedef GenericSTMArray<value_type, ARRAY_SZ> ArrayType;
-ArrayType *a;
-#endif
-#else
-typedef MassTrans<value_type
+
+struct ContainerBase_arraylike {
+    static constexpr bool has_delete = false;
+    template <typename T, typename K, typename V>
+    static bool transInsert(T&, Transaction&, K, V) {
+        return false;
+    }
+    template <typename T, typename K>
+    static bool transDelete(T&, Transaction&, K) {
+        return false;
+    }
+    template <typename T, typename K, typename V>
+    static bool transUpdate(T&, Transaction&, K, V) {
+        return false;
+    }
+    template <typename T>
+    static void thread_init(T&) {
+    }
+};
+
+struct ContainerBase_maplike {
+    static constexpr bool has_delete = true;
+    template <typename T, typename K, typename V>
+    static bool transInsert(T& c, Transaction& txn, K key, V value) {
+        return c.transInsert(txn, key, value);
+    }
+    template <typename T, typename K>
+    static bool transDelete(T& c, Transaction& txn, K key) {
+        return c.transDelete(txn, key);
+    }
+    template <typename T, typename K, typename V>
+    static bool transUpdate(T& c, Transaction& txn, K key, V value) {
+        return c.transUpdate(txn, key, value);
+    }
+    template <typename T>
+    static void thread_init(T&) {
+    }
+};
+
+
+template <int DS> struct Container {};
+
+template <> struct Container<USE_ARRAY> : public ContainerBase_arraylike {
+    typedef Array1<value_type, ARRAY_SZ> type;
+};
+
+template <> struct Container<USE_LISTARRAY> : public ContainerBase_maplike {
+    typedef ListArray<value_type> type;
+    template <typename K, typename V>
+    static bool transUpdate(type&, Transaction&, K, V) {
+        return false;
+    }
+};
+
+template <> struct Container<USE_GENSTMARRAY> : public ContainerBase_arraylike {
+    typedef GenericSTMArray<value_type, ARRAY_SZ> type;
+};
+
+template <> struct Container<USE_MASSTREE> : public ContainerBase_maplike {
 #if STRING_VALUES && UNBOXED_STRINGS
-, versioned_str_struct
-#endif
-> ArrayType;
-ArrayType *a;
-#endif
+    typedef MassTrans<value_type, versioned_str_struct> type;
 #else
-// hashtable from int to int
-typedef Hashtable<int, value_type, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> ArrayType;
-ArrayType *a;
+    typedef MassTrans<value_type> type;
 #endif
+    static void thread_init(type& c) {
+        c.thread_init();
+    }
+};
+
+template <> struct Container<USE_HASHTABLE> : public ContainerBase_maplike {
+    typedef Hashtable<int, value_type, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
+};
+
+typedef Container<DATA_STRUCTURE> ContainerType;
+typedef Container<DATA_STRUCTURE>::type ArrayType;
+ArrayType* a;
 
 bool readMyWrites = true;
 bool runCheck = false;
@@ -144,64 +219,66 @@ inline int unval(const value_type& v) {
 #endif
 }
 
-static void doRead(Transaction& t, int slot) {
+template <typename T>
+static void doRead(T& a, Transaction& t, int slot) {
   if (readMyWrites)
-    a->transRead(t, slot);
+    a.transRead(t, slot);
 #if 0
   else
-    a->transRead_nocheck(t, slot);
+    a.transRead_nocheck(t, slot);
 #endif
 }
 
-static void doWrite(Transaction& t, int slot, int& ctr) {
+template <typename T>
+static void doWrite(T& a, Transaction& t, int slot, int& ctr) {
   if (blindRandomWrite) {
     if (readMyWrites) {
-      a->transWrite(t, slot, val(ctr));
+      a.transWrite(t, slot, val(ctr));
     } 
 #if 0
 else {
-      a->transWrite_nocheck(t, slot, val(ctr));
+      a.transWrite_nocheck(t, slot, val(ctr));
     }
 #endif
   } else {
     // increment current value (this lets us verify transaction correctness)
     if (readMyWrites) {
-      auto v0 = a->transRead(t, slot);
-      a->transWrite(t, slot, val(unval(v0)+1));
+      auto v0 = a.transRead(t, slot);
+      a.transWrite(t, slot, val(unval(v0)+1));
 #if TRY_READ_MY_WRITES
           // read my own writes
-          assert(a->transRead(t,slot) == v0+1);
-          a->transWrite(t, slot, v0+2);
+          assert(a.transRead(t,slot) == v0+1);
+          a.transWrite(t, slot, v0+2);
           // read my own second writes
-          assert(a->transRead(t,slot) == v0+2);
+          assert(a.transRead(t,slot) == v0+2);
 #endif
     } else {
 #if 0
-      auto v0 = a->transRead_nocheck(t, slot);
-      a->transWrite_nocheck(t, slot, val(unval(v0)+1));
+      auto v0 = a.transRead_nocheck(t, slot);
+      a.transWrite_nocheck(t, slot, val(unval(v0)+1));
 #endif
     }
     ++ctr; // because we've done a read and a write
   }
 }
-  
-static inline void nreads(int n, Transaction& t, std::function<int(void)> slotgen) {
+
+template <typename T>
+static inline void nreads(T& a, int n, Transaction& t, std::function<int(void)> slotgen) {
   for (int i = 0; i < n; ++i) {
-    doRead(t, slotgen());
+    doRead(a, t, slotgen());
   }
 }
-static inline void nwrites(int n, Transaction& t, std::function<int(void)> slotgen) {
+template <typename T>
+static inline void nwrites(T& a, int n, Transaction& t, std::function<int(void)> slotgen) {
   for (int i = 0; i < n; ++i) {
-    doWrite(t, slotgen(), i);
+    doWrite(a, t, slotgen(), i);
   }
 }
 
 void *readThenWrite(void *p) {
   int me = (intptr_t)p;
-#if MASSTREE
-  a->thread_init();
-#endif
-  
+  ContainerType::thread_init(*a);
+
   std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
 
   int N = ntrans/nthreads;
@@ -217,8 +294,8 @@ void *readThenWrite(void *p) {
       auto gen = [&]() { return slotdist(transgen); };
 
       Transaction t;
-      nreads(OPS - OPS*write_percent, t, gen);
-      nwrites(OPS*write_percent, t, gen);
+      nreads(*a, OPS - OPS*write_percent, t, gen);
+      nwrites(*a, OPS*write_percent, t, gen);
 
       done = t.commit();
       if (!done) {
@@ -229,13 +306,12 @@ void *readThenWrite(void *p) {
   return NULL;
 }
 
-void *randomRWs(void *p) {
-  int me = (intptr_t)p;
+
+template <bool do_delete, typename C>
+void random_rws(int me, typename C::type& a) {
   Transaction::threadid = me;
-#if MASSTREE
-  a->thread_init();
-#endif
-  
+  C::thread_init(a);
+
   std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
   uint32_t write_thresh = (uint32_t) (write_percent * Rand::max());
 
@@ -275,16 +351,13 @@ void *randomRWs(void *p) {
         used[slot]=true;
 #endif
         auto r = transgen();
-#if HASHTABLE_RAND_DELETES
-        // TODO: this doesn't make that much sense if write_percent != 50%
-        if (r > (write_thresh+write_thresh/2)) {
-          a->transDelete(t, slot);
-        }else
-#endif
-        if (r > write_thresh) {
-          doRead(t, slot);
+        if (do_delete && r > (write_thresh+write_thresh/2)) {
+          // TODO: this doesn't make that much sense if write_percent != 50%
+          C::transDelete(a, t, slot);
+        } else if (r > write_thresh) {
+          doRead(a, t, slot);
         } else {
-          doWrite(t, slot, j);
+          doWrite(a, t, slot, j);
 
 #if MAINTAIN_TRUE_ARRAY_STATE
           slots_written[nslots_written++] = slot;
@@ -345,19 +418,30 @@ void *randomRWs(void *p) {
       printf("insertat: %d (%d)\n", i, slot_spread[i]);
   }
 #endif
+}
 
+
+void *randomRWs_delete(void *p) {
+  int me = (intptr_t)p;
+  random_rws<ContainerType::has_delete, ContainerType>(me, *a);
+  return NULL;
+}
+
+void *randomRWs_nodelete(void *p) {
+  int me = (intptr_t)p;
+  random_rws<false, ContainerType>(me, *a);
   return NULL;
 }
 
 void checkRandomRWs() {
   ArrayType *old = a;
-  ArrayType check;
+  a = new ArrayType();
+  ArrayType& check = *a;
 
   // rerun transactions one-by-one
 #if MAINTAIN_TRUE_ARRAY_STATE
   maintain_true_array_state = !maintain_true_array_state;
 #endif
-  a = &check;
 
   for (int i = 0; i < prepopulate; ++i) {
     Transaction t;
@@ -366,7 +450,7 @@ void checkRandomRWs() {
   }
 
   for (int i = 0; i < nthreads; ++i) {
-    randomRWs((void*)(intptr_t)i);
+    randomRWs_delete((void*)(intptr_t)i);
   }
 #if MAINTAIN_TRUE_ARRAY_STATE
   maintain_true_array_state = !maintain_true_array_state;
@@ -386,14 +470,11 @@ void checkRandomRWs() {
   }
 }
 
-#if HASHTABLE || MASSTREE || LIST_ARRAY
 
 void *kingOfTheDelete(void *p) {
   int me = (intptr_t)p;
   Transaction::threadid = me;
-#if MASSTREE
-  a->thread_init();
-#endif
+  ContainerType::thread_init(*a);
 
   bool done = false;
   while (!done) {
@@ -401,7 +482,7 @@ void *kingOfTheDelete(void *p) {
       Transaction t;
       for (int i = 0; i < nthreads; ++i) {
         if (i != me) {
-          a->transDelete(t, i);
+          ContainerType::transDelete(*a, t, i);
         } else {
           a->transWrite(t, i, val(i+1));
         }
@@ -422,12 +503,11 @@ void checkKingOfTheDelete() {
   assert(count==1);
 }
 
+
 void *xorDelete(void *p) {
   int me = (intptr_t)p;
   Transaction::threadid = me;
-#if MASSTREE
-  a->thread_init();
-#endif
+  ContainerType::thread_init(*a);
 
   // we never pick slot 0 so we can detect if table is populated
   std::uniform_int_distribution<long> slotdist(1, ARRAY_SZ-1);
@@ -470,13 +550,11 @@ void *xorDelete(void *p) {
           if (r > delete_thresh) {
             // can't do put/insert because that makes the results ordering dependent
             // (these updates don't actually affect the final state at all)
-#if !LIST_ARRAY
-            a->transUpdate(t, slot, val(slot+1));
-#endif
-          } else if (!a->transInsert(t, slot, val(slot+1))) {
+            ContainerType::transUpdate(*a, t, slot, val(slot + 1));
+          } else if (!ContainerType::transInsert(*a, t, slot, val(slot+1))) {
             // we delete if the element is there and insert if it's not
             // this is essentially xor'ing the slot, so ordering won't matter
-            a->transDelete(t, slot);
+            ContainerType::transDelete(*a, t, slot);
           }
         }
         done = t.commit();
@@ -491,17 +569,17 @@ void checkXorDelete() {
   ArrayType *old = a;
   ArrayType check;
   a = &check;
-  
+
   for (int i = 0; i < nthreads; ++i) {
     xorDelete((void*)(intptr_t)i);
   }
   a = old;
-  
+
   for (int i = 0; i < ARRAY_SZ; ++i) {
     assert(unval(a->read(i)) == unval(check.read(i)));
   }
 }
-#endif
+
 
 void checkIsolatedWrites() {
   for (int i = 0; i < nthreads; ++i) {
@@ -512,9 +590,7 @@ void checkIsolatedWrites() {
 void *isolatedWrites(void *p) {
   int me = (intptr_t)p;
   Transaction::threadid = me;
-#if MASSTREE
-  a->thread_init();
-#endif
+  ContainerType::thread_init(*a);
 
   bool done = false;
   while (!done) {
@@ -524,9 +600,8 @@ void *isolatedWrites(void *p) {
     for (int i = 0; i < nthreads; ++i) {
       a->transRead(t, i);
     }
-		
-		a->transWrite(t, me, val(me+1));
-    
+    a->transWrite(t, me, val(me+1));
+
     done = t.commit();
     } catch (Transaction::Abort E) {}
     debug("iter: %d %d\n", me, done);
@@ -538,9 +613,7 @@ void *isolatedWrites(void *p) {
 void *blindWrites(void *p) {
   int me = (long long)p;
   Transaction::threadid = me;
-#if MASSTREE
-  a->thread_init();
-#endif
+  ContainerType::thread_init(*a);
 
   bool done = false;
   while (!done) {
@@ -576,9 +649,7 @@ void checkBlindWrites() {
 void *interferingRWs(void *p) {
   int me = (intptr_t)p;
   Transaction::threadid = me;
-#if MASSTREE
-  a->thread_init();
-#endif
+  ContainerType::thread_init(*a);
 
   bool done = false;
   while (!done) {
@@ -624,20 +695,21 @@ void print_time(struct timeval tv1, struct timeval tv2) {
 }
 
 struct Test {
+  const char* name;
   void *(*threadfunc) (void *);
   void (*checkfunc) (void);
+  bool prepopulate;
 };
 
 Test tests[] = {
-  {isolatedWrites, checkIsolatedWrites},
-  {blindWrites, checkBlindWrites},
-  {interferingRWs, checkInterferingRWs},
-  {randomRWs, checkRandomRWs},
-  {readThenWrite, NULL},
-#if HASHTABLE || MASSTREE || LIST_ARRAY
-  {kingOfTheDelete, checkKingOfTheDelete},
-  {xorDelete, checkXorDelete},
-#endif
+    {"isolated", isolatedWrites, checkIsolatedWrites, true},
+    {"blind", blindWrites, checkBlindWrites, true},
+    {"interfering", interferingRWs, checkInterferingRWs, true},
+    {"random", randomRWs_delete, checkRandomRWs, true},
+    {"readthenwrite", readThenWrite, NULL, true},
+    {"delete", kingOfTheDelete, checkKingOfTheDelete, true},
+    {"xor", xorDelete, checkXorDelete, false},
+    {"random-nd", randomRWs_nodelete, checkRandomRWs, true},
 };
 
 enum {
@@ -667,6 +739,10 @@ Options:\n\
  --blindrandwrites, do blind random writes for random tests. makes checking impossible\n\
  --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n",
          name, nthreads, ntrans, opspertrans, write_percent, prepopulate);
+  printf("\nTests:");
+  for (size_t ti = 0; ti != sizeof(tests)/sizeof(tests[0]); ++ti)
+      printf(" %s", tests[ti].name);
+  printf("\n");
   exit(1);
 }
 
@@ -679,8 +755,17 @@ int main(int argc, char *argv[]) {
   while ((opt = Clp_Next(clp)) != Clp_Done) {
     switch (opt) {
     case Clp_NotOption:
-      test = atoi(clp->vstr);
-      break;
+        if (isdigit((unsigned char) clp->vstr[0]))
+            test = atoi(clp->vstr);
+        else {
+            test = -1;
+            for (size_t ti = 0; ti != sizeof(tests) / sizeof(tests[0]); ++ti)
+                if (strcmp(tests[ti].name, clp->vstr) == 0) {
+                    test = (int) ti;
+                    break;
+                }
+        }
+        break;
     case opt_nrmyw:
       readMyWrites = false;
       break;
@@ -720,19 +805,16 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-#if MASSTREE
+#if DATA_STRUCTURE == USE_MASSTREE
   Transaction::epoch_advance_callback = [] (unsigned) {
     // just advance blindly because of the way Masstree uses epochs
     globalepoch++;
   };
 #endif
 
-  ArrayType stack_arr;
-  a = &stack_arr;
+  a = new ArrayType();
 
-#if HASHTABLE || MASSTREEE || LIST_ARRAY
-  if (tests[test].threadfunc != xorDelete)
-#endif
+  if (tests[test].prepopulate)
     for (int i = 0; i < prepopulate; ++i) {
       Transaction t;
       a->transWrite(t, i, val(0));
@@ -762,12 +844,15 @@ int main(int argc, char *argv[]) {
 #endif
 
 #if PERF_LOGGING
-#define LLU(x) ((long long unsigned)x)
-  printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", LLU(Transaction::total_n), LLU(Transaction::total_r), LLU(Transaction::total_w), LLU(Transaction::total_searched), LLU(Transaction::total_aborts), LLU(Transaction::commit_time_aborts));
-#if MASSTREE
-  printf("node aborts: %llu\n", LLU(node_aborts));
+  Transaction::print_stats();
+  {
+      using thd = threadinfo_t;
+      thd tc = Transaction::tinfo_combined();
+      printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+#if DATA_STRUCTURE == USE_MASSTREE
+      printf("node aborts: %llu\n", (unsigned long long) node_aborts);
 #endif
-#undef LLU
+  }
 #endif
 
   if (runCheck)

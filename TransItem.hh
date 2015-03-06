@@ -18,7 +18,7 @@ template <bool B> struct packer {};
 template <> struct packer<true> {
   template <typename T>
   void* pack(T value) {
-    void* x;
+    void* x = NULL;
     // yuck. we need to force T's copy constructor to be called at some point so we do this...
     new (&x) T(value);
 
@@ -86,6 +86,8 @@ struct TransData {
 };
 
 class Shared;
+class Transaction;
+class TransProxy;
 
 struct TransItem {
   template <typename K, typename RD, typename WD>
@@ -126,6 +128,11 @@ struct TransItem {
     return data.key;
   }
 
+  template <typename T>
+  T& key() {
+    return unpack<T>(data.key);
+  }
+
   inline bool operator==(const TransItem& t2) const {
     return data == t2.data && sharedObj() == t2.sharedObj();
   }
@@ -137,65 +144,201 @@ struct TransItem {
       || (data == t2.data && sharedObj() < t2.sharedObj());
   }
 
-  // TODO: should these be done Transaction methods like their add_ equivalents?
-  void remove_write() {
-    shared.rm_flags(WRITER_BIT);
+  template <typename T>
+  TransItem& cleanup_write() {
+      if (has_write())
+          free_packed<T>(data.wdata);
+      return *this;
   }
-  void remove_read() {
-    shared.rm_flags(READER_BIT);
-  }
-  void remove_undo() {
-    shared.rm_flags(UNDO_BIT);
-  }
-  void remove_afterC() {
-    shared.rm_flags(AFTERC_BIT);
+  template <typename T>
+  TransItem& cleanup_read() {
+      if (has_read())
+          free_packed<T>(data.rdata);
+      return *this;
   }
 
   // these methods are all for user flags (currently we give them 8 bits, the high 8 of the 16 total flag bits we have)
   uint8_t flags() {
     return shared.flags() >> 8;
   }
-  void set_flags(uint8_t flags) {
+  TransItem& set_flags(uint8_t flags) {
     shared.set_flags(((uint16_t)flags << 8) | (shared.flags() & 0xff));
+    return *this;
   }
-  void rm_flags(uint8_t flags) {
+  TransItem& rm_flags(uint8_t flags) {
     shared.rm_flags((uint16_t)flags << 8);
+    return *this;
   }
-  void or_flags(uint8_t flags) {
+  TransItem& or_flags(uint8_t flags) {
     shared.or_flags((uint16_t)flags << 8);
+    return *this;
   }
   bool has_flags(uint8_t flags) {
     return shared.has_flags((uint16_t)flags << 8);
   }
 
 private:
-  template <typename T>
-  void _add_write(T wdata) {
-    shared.or_flags(WRITER_BIT);
-    // TODO: this assumes that a given writer data always has the same type.
-    // this is certainly true now but we probably shouldn't assume this in general
-    // (hopefully we'll have a system that can automatically call destructors and such
-    // which will make our lives much easier)
-    //free_packed<T>(data.wdata);
-    data.wdata = pack(std::move(wdata));
-  }
-  template <typename T>
-  void _add_read(T rdata) {
-    shared.or_flags(READER_BIT);
-    //free_packed<T>(data.rdata);
-    data.rdata = pack(std::move(rdata));
-  }
-  void _add_undo() {
-    shared.or_flags(UNDO_BIT);
-  }
-  void _add_afterC() {
-    shared.or_flags(AFTERC_BIT);
-  }
-
-private:
   friend class Transaction;
+  friend class TransProxy;
   Tagged64<Shared> shared;
-public:
-  // TODO: should this even really be public now that we have write_value() etc. methods?
   TransData data;
+};
+
+
+class TransProxy {
+  public:
+    TransProxy* operator->() { // make OptionalTransProxy work
+        return this;
+    }
+    operator TransItem&() {
+        return i_;
+    }
+
+    bool has_write() const {
+        return i_.shared.has_flags(WRITER_BIT);
+    }
+    bool has_read() const {
+        return i_.shared.has_flags(READER_BIT);
+    }
+    bool has_undo() const {
+        return i_.shared.has_flags(UNDO_BIT);
+    }
+    bool has_afterC() const {
+        return i_.shared.has_flags(AFTERC_BIT);
+    }
+
+    template <typename T>
+    TransProxy& add_read(T rdata) {
+        if (!i_.shared.has_flags(READER_BIT)) {
+            i_.shared.or_flags(READER_BIT);
+            i_.data.rdata = pack(std::move(rdata));
+        }
+        return *this;
+    }
+    template <typename T>
+    TransProxy& clear_read() {
+        if (i_.shared.has_flags(READER_BIT)) {
+            free_packed<T>(i_.data.rdata);
+            i_.shared.rm_flags(READER_BIT);
+        }
+        return *this;
+    }
+    template <typename T>
+    TransProxy& clear_read(T rdata) {
+        if (i_.shared.has_flags(READER_BIT)
+            && this->read_value<T>() == rdata) {
+            free_packed<T>(i_.data.rdata);
+            i_.shared.rm_flags(READER_BIT);
+        }
+        return *this;
+    }
+    template <typename T, typename U>
+    TransProxy& update_read(T old_rdata, U new_rdata) {
+        if (i_.shared.has_flags(READER_BIT)
+            && this->read_value<T>() == old_rdata) {
+            free_packed<T>(i_.data.rdata);
+            i_.data.rdata = pack(std::move(new_rdata));
+        }
+        return *this;
+    }
+
+    template <typename T>
+    inline TransProxy& add_write(T wdata);
+    template <typename T>
+    TransProxy& clear_write() {
+        if (i_.shared.has_flags(WRITER_BIT)) {
+            free_packed<T>(i_.data.wdata);
+            i_.shared.rm_flags(WRITER_BIT);
+        }
+        return *this;
+    }
+
+    TransProxy& add_undo() {
+        i_.shared.or_flags(UNDO_BIT);
+        return *this;
+    }
+    TransProxy& add_afterC() {
+        i_.shared.or_flags(AFTERC_BIT);
+        return *this;
+    }
+
+    template <typename T>
+    T& read_value() {
+        assert(has_read());
+        return unpack<T>(i_.data.rdata);
+    }
+    template <typename T>
+    T& write_value() {
+        assert(has_write());
+        return unpack<T>(i_.data.wdata);
+    }
+
+    TransProxy& remove_write() { // XXX should also cleanup_write
+        i_.shared.rm_flags(WRITER_BIT);
+        return *this;
+    }
+    TransProxy& remove_read() { // XXX should also cleanup_read
+        i_.shared.rm_flags(READER_BIT);
+        return *this;
+    }
+    TransProxy& remove_undo() {
+        i_.shared.rm_flags(UNDO_BIT);
+        return *this;
+    }
+    TransProxy& remove_afterC() {
+        i_.shared.rm_flags(AFTERC_BIT);
+        return *this;
+    }
+
+    // these methods are all for user flags (currently we give them 8 bits, the high 8 of the 16 total flag bits we have)
+    uint8_t flags() {
+        return i_.shared.flags() >> 8;
+    }
+    TransProxy& set_flags(uint8_t flags) {
+        i_.shared.set_flags(((uint16_t)flags << 8) | (i_.shared.flags() & 0xff));
+        return *this;
+    }
+    TransProxy& rm_flags(uint8_t flags) {
+        i_.shared.rm_flags((uint16_t)flags << 8);
+        return *this;
+    }
+    TransProxy& or_flags(uint8_t flags) {
+        i_.shared.or_flags((uint16_t)flags << 8);
+        return *this;
+    }
+    bool has_flags(uint8_t flags) {
+        return i_.shared.has_flags((uint16_t)flags << 8);
+    }
+
+  private:
+    Transaction& t_;
+    TransItem& i_;
+    TransProxy(Transaction& t, TransItem& i)
+        : t_(t), i_(i) {
+    }
+    friend class Transaction;
+    friend struct OptionalTransProxy;
+};
+
+
+struct OptionalTransProxy {
+  public:
+    typedef TransProxy (OptionalTransProxy::*unspecified_bool_type)() const;
+    operator unspecified_bool_type() const {
+        return i_ ? &OptionalTransProxy::get : 0;
+    }
+    TransProxy get() const {
+        assert(i_);
+        return TransProxy(t_, *i_);
+    }
+    TransProxy operator->() const {
+        return get();
+    }
+  private:
+    Transaction& t_;
+    TransItem* i_;
+    OptionalTransProxy(Transaction& t, TransItem* i)
+        : t_(t), i_(i) {
+    }
+    friend class Transaction;
 };

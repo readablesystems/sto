@@ -1,13 +1,31 @@
 #include "Transaction.hh"
 
-#if PERF_LOGGING
-uint64_t Transaction::total_n, Transaction::total_r, Transaction::total_w;
-uint64_t Transaction::total_searched;
-uint64_t Transaction::total_aborts;
-uint64_t Transaction::commit_time_aborts;
-#endif
-
 threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int Transaction::threadid;
 unsigned Transaction::global_epoch;
+__thread Transaction *Transaction::__transaction;
 std::function<void(unsigned)> Transaction::epoch_advance_callback;
+
+static void __attribute__((used)) check_static_assertions() {
+    static_assert(sizeof(threadinfo_t) % 128 == 0, "threadinfo is 2-cache-line aligned");
+}
+
+void Transaction::print_stats() {
+    threadinfo_t out = tinfo_combined();
+    if (txp_count >= 4) {
+        fprintf(stderr, "$ %llu starts, %llu max read set, %llu commits",
+                out.p(txp_total_starts),
+                out.p(txp_max_set),
+                out.p(txp_total_starts) - out.p(txp_total_aborts));
+        if (out.p(txp_total_aborts)) {
+            fprintf(stderr, ", %llu (%.3f%%) aborts",
+                    out.p(txp_total_aborts),
+                    100.0 * (double) out.p(txp_total_aborts) / out.p(txp_total_starts));
+            if (out.p(txp_commit_time_aborts))
+                fprintf(stderr, "\n$ %llu (%.3f%%) of aborts at commit time",
+                        out.p(txp_commit_time_aborts),
+                        100.0 * (double) out.p(txp_commit_time_aborts) / out.p(txp_total_aborts));
+        }
+        fprintf(stderr, "\n");
+    }
+}
