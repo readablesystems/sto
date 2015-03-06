@@ -232,9 +232,9 @@ void rangeQueryTest() {
 }
 
 int main() {
-  typedef int Key;
   typedef int Value;
 #if HASHTABLE
+  typedef int Key;
   Hashtable<Key, Value> h;
 #else
   MassTrans<Value> h;

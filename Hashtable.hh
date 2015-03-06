@@ -9,9 +9,10 @@
 template <typename K, typename V, unsigned Init_size = 129, typename Hash = std::hash<K>>
 class Hashtable : public Shared {
 public:
-  typedef unsigned Version;
-  typedef K Key;
-  typedef V Value;
+    typedef unsigned Version;
+    typedef K Key;
+    typedef K key_type;
+    typedef V Value;
 
 private:
   // our hashtable is an array of linked lists. 

@@ -27,7 +27,7 @@ public:
     // just makes the version number change, i.e., makes conflicting reads abort
     // (and locks this word for us)
     table_.transPut(t, word, 0);
-    auto item = t.item(this, word).add_write(new_val).set_flags((int) sizeof(T));
+    t.item(this, word).add_write(new_val).set_flags((int) sizeof(T));
     t.check_reads();
   }
 
