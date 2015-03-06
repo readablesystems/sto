@@ -26,7 +26,7 @@
 #define USE_LISTARRAY 4
 
 // set this to USE_DATASTRUCTUREYOUWANT
-#define DATA_STRUCTURE USE_HASHTABLE
+#define DATA_STRUCTURE USE_ARRAY
 
 // if true, each operation of a transaction will act on a different slot
 #define ALL_UNIQUE_SLOTS 0

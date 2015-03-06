@@ -244,6 +244,14 @@ class TransProxy {
 
     template <typename T>
     inline TransProxy& add_write(T wdata);
+    template <typename T>
+    TransProxy& clear_write() {
+        if (i_.shared.has_flags(WRITER_BIT)) {
+            free_packed<T>(i_.data.wdata);
+            i_.shared.rm_flags(WRITER_BIT);
+        }
+        return *this;
+    }
 
     TransProxy& add_undo() {
         i_.shared.or_flags(UNDO_BIT);

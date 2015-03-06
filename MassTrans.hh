@@ -156,9 +156,7 @@ public:
 #endif
       Version elem_vers;
       atomicRead(e, elem_vers, retval, max_read);
-      if (!item.has_read() || item.template read_value<Version>() & valid_check_only_bit) {
-        item.add_read(elem_vers);
-      }
+      item.clear_read(valid_check_only_bit).add_read(elem_vers);
     } else {
       ensureNotFound(t, lp.node(), lp.full_version_value());
     }
@@ -195,13 +193,12 @@ public:
       if (has_delete(item)) {
         return false;
       }
-      if (!item.has_read()) 
 #endif
-	{
-        // we only need to check validity, not if the item has changed
-        item.add_read(valid_check_only_bit);
-      }
+      // XXX deleting something we put?
+      // we only need to check validity, not if the item has changed
+      item.add_read(valid_check_only_bit);
       // same as inserts we need to store (copy) key so we can lookup to remove later
+      item.template clear_write<value_type>();
       if (std::is_same<std::string, StringType>::value)
 	item.add_write(key);
       else
@@ -428,10 +425,8 @@ public:
       auto read_version = item.template read_value<typename unlocked_cursor_type::nodeversion_value_type>();
       //      if (cur_version != read_version)
       //printf("node versions disagree: %d vs %d\n", cur_version, read_version);
-#if PERF_LOGGING
-      if (cur_version != read_version)
-        __sync_add_and_fetch(&node_aborts, 1);
-#endif
+      // XXXXXX node_aborts
+      assert(cur_version == read_version);
       return cur_version == read_version;
         //&& !(cur_version & (unlocked_cursor_type::nodeversion_type::traits_type::lock_bit));
     }
@@ -668,7 +663,8 @@ private:
     if (auto node_item = t.check_item(this, tag_inter(node))) {
       if (node_item->has_read() &&
           prev_version == node_item->template read_value<VERSION>()) {
-        node_item->add_read(new_version);
+        node_item->update_read(node_item->template read_value<VERSION>(),
+                               new_version);
         return true;
       }
     }
