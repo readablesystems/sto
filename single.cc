@@ -10,8 +10,6 @@
 
 #define N 100
 
-#define HASHTABLE 0
-
 kvepoch_t global_log_epoch = 0;
 volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly
 kvtimestamp_t initial_timestamp;
@@ -231,15 +229,21 @@ void rangeQueryTest() {
   assert(t.commit());
 }
 
-int main() {
+template <typename K, typename V>
+void basicQueryTests(MassTrans<K, V>& h) {
+  Transaction t19;
+  h.transQuery(t19, "0", "2", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
+  h.transQuery(t19, "4", "4", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
+  assert(t19.commit());
+}
+
+template <typename T>
+void basicQueryTests(T&) {}
+
+template <typename MapType>
+void basicMapTests(MapType& h) {
   typedef int Key;
   typedef int Value;
-#if HASHTABLE
-  Hashtable<Key, Value> h;
-#else
-  MassTrans<Value> h;
-  h.thread_init();
-#endif
 
   Transaction t;
 
@@ -353,12 +357,17 @@ int main() {
     assert(0);
   } catch (Transaction::Abort E) {}
 
-#if !HASHTABLE
-  Transaction t19;
-  h.transQuery(t19, "0", "2", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
-  h.transQuery(t19, "4", "4", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
-  assert(t19.commit());
-#endif
+  basicQueryTests(h);
+}
+
+int main() {
+
+  // run on both Hashtable and MassTrans
+  Hashtable<int, int> h;
+  basicMapTests(h);
+  MassTrans<int> m;
+  m.thread_init();
+  basicMapTests(m);
 
   // insert-then-delete node test
   insertDeleteTest(false);
@@ -368,10 +377,6 @@ int main() {
   insertDeleteSeparateTest();
 
   rangeQueryTest();
-
-  h.print();
-
-  cout << v1 << " " << v2 << endl;
 
   // string key testing
   stringKeyTests();
