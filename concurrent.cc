@@ -220,6 +220,15 @@ inline int unval(const value_type& v) {
 }
 
 template <typename T>
+void prepopulate_func(T& a) {
+  for (int i = 0; i < prepopulate; ++i) {
+    Transaction t;
+    a.transWrite(t, i, val(i+1));
+    t.commit();
+  }
+}
+
+template <typename T>
 static void doRead(T& a, Transaction& t, int slot) {
   if (readMyWrites)
     a.transRead(t, slot);
@@ -443,11 +452,7 @@ void checkRandomRWs() {
   maintain_true_array_state = !maintain_true_array_state;
 #endif
 
-  for (int i = 0; i < prepopulate; ++i) {
-    Transaction t;
-    a->transWrite(t, i, val(0));
-    t.commit();
-  }
+  prepopulate_func(check);
 
   for (int i = 0; i < nthreads; ++i) {
     randomRWs_delete((void*)(intptr_t)i);
@@ -516,27 +521,6 @@ void *xorDelete(void *p) {
   int N = ntrans/nthreads;
   int OPS = opspertrans;
 
-  if (me == 0) {
-    // populate
-    Transaction t;
-    for (int i = 1; i < ARRAY_SZ; ++i) {
-      a->transWrite(t, i, val(i+1));
-    }
-    a->transWrite(t, 0, val(1));
-    assert(t.commit());
-  } else {
-    // wait for populated
-    while (1) {
-      try {
-        Transaction t;
-        if (unval(a->transRead(t, 0)) && t.commit()) {
-          break;
-        }
-        t.commit();
-      } catch (Transaction::Abort E) {}
-    }
-  }
-
   for (int i = 0; i < N; ++i) {
     auto transseed = i;
     bool done = false;
@@ -569,6 +553,8 @@ void checkXorDelete() {
   ArrayType *old = a;
   ArrayType check;
   a = &check;
+
+  prepopulate_func(*a);
 
   for (int i = 0; i < nthreads; ++i) {
     xorDelete((void*)(intptr_t)i);
@@ -702,14 +688,14 @@ struct Test {
 };
 
 Test tests[] = {
-    {"isolated", isolatedWrites, checkIsolatedWrites, true},
-    {"blind", blindWrites, checkBlindWrites, true},
-    {"interfering", interferingRWs, checkInterferingRWs, true},
-    {"random", randomRWs_delete, checkRandomRWs, true},
+    {"isolatedwrites", isolatedWrites, checkIsolatedWrites, true},
+    {"blindwrites", blindWrites, checkBlindWrites, true},
+    {"interferingwrites", interferingRWs, checkInterferingRWs, true},
+    {"randomreadwrites (usually you want this)", randomRWs_nodelete, checkRandomRWs, true},
     {"readthenwrite", readThenWrite, NULL, true},
-    {"delete", kingOfTheDelete, checkKingOfTheDelete, true},
-    {"xor", xorDelete, checkXorDelete, false},
-    {"random-nd", randomRWs_nodelete, checkRandomRWs, true},
+    {"kingofthedelete", kingOfTheDelete, checkKingOfTheDelete, true},
+    {"xordelete", xorDelete, checkXorDelete, true},
+    {"randomreadwrites-delete (uncheckable, use for benchmarking only)", randomRWs_delete, checkRandomRWs, true},
 };
 
 enum {
@@ -739,9 +725,9 @@ Options:\n\
  --blindrandwrites, do blind random writes for random tests. makes checking impossible\n\
  --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n",
          name, nthreads, ntrans, opspertrans, write_percent, prepopulate);
-  printf("\nTests:");
+  printf("\nTests:\n");
   for (size_t ti = 0; ti != sizeof(tests)/sizeof(tests[0]); ++ti)
-      printf(" %s", tests[ti].name);
+    printf(" %zu: %s\n", ti, tests[ti].name);
   printf("\n");
   exit(1);
 }
@@ -815,11 +801,7 @@ int main(int argc, char *argv[]) {
   a = new ArrayType();
 
   if (tests[test].prepopulate)
-    for (int i = 0; i < prepopulate; ++i) {
-      Transaction t;
-      a->transWrite(t, i, val(0));
-      t.commit();
-    }
+    prepopulate_func(*a);
 
   struct timeval tv1,tv2;
   struct rusage ru1,ru2;
