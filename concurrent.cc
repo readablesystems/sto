@@ -26,7 +26,7 @@
 #define USE_LISTARRAY 4
 
 // set this to USE_DATASTRUCTUREYOUWANT
-#define DATA_STRUCTURE USE_ARRAY
+#define DATA_STRUCTURE USE_HASHTABLE
 
 // if true, each operation of a transaction will act on a different slot
 #define ALL_UNIQUE_SLOTS 0
@@ -88,7 +88,7 @@ typedef int value_type;
 
 
 struct ContainerBase_arraylike {
-    static const bool has_delete = false;
+    static constexpr bool has_delete = false;
     template <typename T, typename K, typename V>
     static bool transInsert(T&, Transaction&, K, V) {
         return false;
@@ -107,7 +107,7 @@ struct ContainerBase_arraylike {
 };
 
 struct ContainerBase_maplike {
-    static const bool has_delete = true;
+    static constexpr bool has_delete = true;
     template <typename T, typename K, typename V>
     static bool transInsert(T& c, Transaction& txn, K key, V value) {
         return c.transInsert(txn, key, value);
@@ -219,55 +219,59 @@ inline int unval(const value_type& v) {
 #endif
 }
 
-static void doRead(Transaction& t, int slot) {
+template <typename T>
+static void doRead(T& a, Transaction& t, int slot) {
   if (readMyWrites)
-    a->transRead(t, slot);
+    a.transRead(t, slot);
 #if 0
   else
-    a->transRead_nocheck(t, slot);
+    a.transRead_nocheck(t, slot);
 #endif
 }
 
-static void doWrite(Transaction& t, int slot, int& ctr) {
+template <typename T>
+static void doWrite(T& a, Transaction& t, int slot, int& ctr) {
   if (blindRandomWrite) {
     if (readMyWrites) {
-      a->transWrite(t, slot, val(ctr));
+      a.transWrite(t, slot, val(ctr));
     } 
 #if 0
 else {
-      a->transWrite_nocheck(t, slot, val(ctr));
+      a.transWrite_nocheck(t, slot, val(ctr));
     }
 #endif
   } else {
     // increment current value (this lets us verify transaction correctness)
     if (readMyWrites) {
-      auto v0 = a->transRead(t, slot);
-      a->transWrite(t, slot, val(unval(v0)+1));
+      auto v0 = a.transRead(t, slot);
+      a.transWrite(t, slot, val(unval(v0)+1));
 #if TRY_READ_MY_WRITES
           // read my own writes
-          assert(a->transRead(t,slot) == v0+1);
-          a->transWrite(t, slot, v0+2);
+          assert(a.transRead(t,slot) == v0+1);
+          a.transWrite(t, slot, v0+2);
           // read my own second writes
-          assert(a->transRead(t,slot) == v0+2);
+          assert(a.transRead(t,slot) == v0+2);
 #endif
     } else {
 #if 0
-      auto v0 = a->transRead_nocheck(t, slot);
-      a->transWrite_nocheck(t, slot, val(unval(v0)+1));
+      auto v0 = a.transRead_nocheck(t, slot);
+      a.transWrite_nocheck(t, slot, val(unval(v0)+1));
 #endif
     }
     ++ctr; // because we've done a read and a write
   }
 }
-  
-static inline void nreads(int n, Transaction& t, std::function<int(void)> slotgen) {
+
+template <typename T>
+static inline void nreads(T& a, int n, Transaction& t, std::function<int(void)> slotgen) {
   for (int i = 0; i < n; ++i) {
-    doRead(t, slotgen());
+    doRead(a, t, slotgen());
   }
 }
-static inline void nwrites(int n, Transaction& t, std::function<int(void)> slotgen) {
+template <typename T>
+static inline void nwrites(T& a, int n, Transaction& t, std::function<int(void)> slotgen) {
   for (int i = 0; i < n; ++i) {
-    doWrite(t, slotgen(), i);
+    doWrite(a, t, slotgen(), i);
   }
 }
 
@@ -290,8 +294,8 @@ void *readThenWrite(void *p) {
       auto gen = [&]() { return slotdist(transgen); };
 
       Transaction t;
-      nreads(OPS - OPS*write_percent, t, gen);
-      nwrites(OPS*write_percent, t, gen);
+      nreads(*a, OPS - OPS*write_percent, t, gen);
+      nwrites(*a, OPS*write_percent, t, gen);
 
       done = t.commit();
       if (!done) {
@@ -302,10 +306,11 @@ void *readThenWrite(void *p) {
   return NULL;
 }
 
-void *randomRWs(void *p) {
-  int me = (intptr_t)p;
+
+template <bool do_delete, typename C>
+void random_rws(int me, typename C::type& a) {
   Transaction::threadid = me;
-  ContainerType::thread_init(*a);
+  C::thread_init(a);
 
   std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
   uint32_t write_thresh = (uint32_t) (write_percent * Rand::max());
@@ -346,13 +351,13 @@ void *randomRWs(void *p) {
         used[slot]=true;
 #endif
         auto r = transgen();
-        if (ContainerType::has_delete && r > (write_thresh+write_thresh/2)) {
+        if (do_delete && r > (write_thresh+write_thresh/2)) {
           // TODO: this doesn't make that much sense if write_percent != 50%
-          ContainerType::transDelete(*a, t, slot);
+          C::transDelete(a, t, slot);
         } else if (r > write_thresh) {
-          doRead(t, slot);
+          doRead(a, t, slot);
         } else {
-          doWrite(t, slot, j);
+          doWrite(a, t, slot, j);
 
 #if MAINTAIN_TRUE_ARRAY_STATE
           slots_written[nslots_written++] = slot;
@@ -413,7 +418,18 @@ void *randomRWs(void *p) {
       printf("insertat: %d (%d)\n", i, slot_spread[i]);
   }
 #endif
+}
 
+
+void *randomRWs_delete(void *p) {
+  int me = (intptr_t)p;
+  random_rws<ContainerType::has_delete, ContainerType>(me, *a);
+  return NULL;
+}
+
+void *randomRWs_nodelete(void *p) {
+  int me = (intptr_t)p;
+  random_rws<false, ContainerType>(me, *a);
   return NULL;
 }
 
@@ -434,7 +450,7 @@ void checkRandomRWs() {
   }
 
   for (int i = 0; i < nthreads; ++i) {
-    randomRWs((void*)(intptr_t)i);
+    randomRWs_delete((void*)(intptr_t)i);
   }
 #if MAINTAIN_TRUE_ARRAY_STATE
   maintain_true_array_state = !maintain_true_array_state;
@@ -679,19 +695,21 @@ void print_time(struct timeval tv1, struct timeval tv2) {
 }
 
 struct Test {
+  const char* name;
   void *(*threadfunc) (void *);
   void (*checkfunc) (void);
   bool prepopulate;
 };
 
 Test tests[] = {
-    {isolatedWrites, checkIsolatedWrites, true},
-    {blindWrites, checkBlindWrites, true},
-    {interferingRWs, checkInterferingRWs, true},
-    {randomRWs, checkRandomRWs, true},
-    {readThenWrite, NULL, true},
-    {kingOfTheDelete, checkKingOfTheDelete, true},
-    {xorDelete, checkXorDelete, false},
+    {"isolated", isolatedWrites, checkIsolatedWrites, true},
+    {"blind", blindWrites, checkBlindWrites, true},
+    {"interfering", interferingRWs, checkInterferingRWs, true},
+    {"random", randomRWs_delete, checkRandomRWs, true},
+    {"readthenwrite", readThenWrite, NULL, true},
+    {"delete", kingOfTheDelete, checkKingOfTheDelete, true},
+    {"xor", xorDelete, checkXorDelete, false},
+    {"random-nd", randomRWs_nodelete, checkRandomRWs, true},
 };
 
 enum {
@@ -721,6 +739,10 @@ Options:\n\
  --blindrandwrites, do blind random writes for random tests. makes checking impossible\n\
  --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n",
          name, nthreads, ntrans, opspertrans, write_percent, prepopulate);
+  printf("\nTests:");
+  for (size_t ti = 0; ti != sizeof(tests)/sizeof(tests[0]); ++ti)
+      printf(" %s", tests[ti].name);
+  printf("\n");
   exit(1);
 }
 
@@ -733,8 +755,17 @@ int main(int argc, char *argv[]) {
   while ((opt = Clp_Next(clp)) != Clp_Done) {
     switch (opt) {
     case Clp_NotOption:
-      test = atoi(clp->vstr);
-      break;
+        if (isdigit((unsigned char) clp->vstr[0]))
+            test = atoi(clp->vstr);
+        else {
+            test = -1;
+            for (size_t ti = 0; ti != sizeof(tests) / sizeof(tests[0]); ++ti)
+                if (strcmp(tests[ti].name, clp->vstr) == 0) {
+                    test = (int) ti;
+                    break;
+                }
+        }
+        break;
     case opt_nrmyw:
       readMyWrites = false;
       break;
@@ -813,6 +844,7 @@ int main(int argc, char *argv[]) {
 #endif
 
 #if PERF_LOGGING
+  Transaction::print_stats();
   {
       using thd = threadinfo_t;
       thd tc = Transaction::tinfo_combined();

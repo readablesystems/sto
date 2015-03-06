@@ -45,11 +45,11 @@ private:
   Hash hasher_;
 
 public:
-  static constexpr Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
+  static constexpr Version lock_bit = ((Version)1U)<<(sizeof(Version)*8 - 1);
   // if set we check only node validity, not the node's version number
   // (for deletes we need to make sure the node is still there/valid, but 
   // not that its value is the same)
-  static constexpr Version valid_check_only_bit = 1U<<(sizeof(Version)*8 - 2);
+  static constexpr Version valid_check_only_bit = ((Version)1U)<<(sizeof(Version)*8 - 2);
   static constexpr Version version_mask = ~(lock_bit|valid_check_only_bit);
   // used to mark whether a key is a bucket (for bucket version checks)
   // or a pointer (which will always have the lower 3 bits as 0)
@@ -95,15 +95,10 @@ public:
       // "atomic" read of both the current value and the version #
       atomicRead(e, elem_vers, retval);
       // check both node changes and node deletes
-      if (!item.has_read() || item.template read_value<Version>() & valid_check_only_bit) {
-        item.add_read(elem_vers);
-      }
+      item.clear_read(valid_check_only_bit).add_read(elem_vers);
       return true;
     } else {
-      auto item = t.item(this, pack_bucket(bucket(k)));
-      if (!item.has_read()) {
-        item.add_read(buck_version);
-      }
+      t.item(this, pack_bucket(bucket(k))).add_read(unlocked(buck_version));
       return false;
     }
   }
@@ -125,7 +120,7 @@ public:
         // so we just unmark all attributes so the item is ignored
         item.remove_read().remove_write().remove_undo().remove_afterC();
         // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
-        t.item(this, pack_bucket(bucket(k))).add_read(buck_version);
+        t.item(this, pack_bucket(bucket(k))).add_read(unlocked(buck_version));
         return true;
       } else if (!valid) {
         t.abort();
@@ -137,21 +132,16 @@ public:
         return false;
       }
       // we need to make sure this bucket didn't change (e.g. what was once there got removed)
-      if (!item.has_read()) {
-        // we only need to check validity, not presence
-        item.add_read(valid_check_only_bit);
-      }
+      item.add_read(valid_check_only_bit);
       // we use has_afterC() to detect deletes so we don't need any other data
       // for deletes, just to mark it as a write
       if (!item.has_write())
-        item.add_write(0);
+          item.add_write(0); // XXX is this the right type?
       item.add_afterC();
       return true;
     } else {
       // add a read that yes this element doesn't exist
-      auto item = t.item(this, pack_bucket(bucket(k)));
-      if (!item.has_read())
-        item.add_read(buck_version);
+      t.item(this, pack_bucket(bucket(k))).add_read(unlocked(buck_version));
       return false;
     }
   }
@@ -189,9 +179,8 @@ public:
 
 #if HASHTABLE_DELETE
       // we need to make sure this item stays here
-      if (!item.has_read())
-        // we only need to check validity, not presence
-        item.add_read(valid_check_only_bit);
+      // we only need to check validity, not presence
+      item.add_read(valid_check_only_bit);
 #endif
       if (SET) {
         item.add_write(v);
@@ -199,29 +188,19 @@ public:
       return true;
     } else {
       if (!INSERT) {
-        auto buck_version = buck.version;
-        unlock(&buck.version);
-        auto item = t.item(this, pack_bucket(bucket(k)));
-        if (!item.has_read()) {
-          item.add_read(buck_version);
-        }
+        auto buck_version = unlock(&buck.version);
+        t.item(this, pack_bucket(bucket(k))).add_read(buck_version);
         return false;
       }
 
       // not there so need to insert
       insert_locked(buck, k, v); // marked as invalid
-      auto new_version = buck.version;
       auto new_head = buck.head;
-      unlock(&buck.version);
+      auto new_version = unlock(&buck.version);
       // see if this item was previously read
       auto bucket_item = t.check_item(this, pack_bucket(bucket(k)));
       if (bucket_item) {
-        if (bucket_item->has_read() && 
-            versionCheck(bucket_item->template read_value<Version>(), new_version - 1)) {
-          // looks like we're the only ones to have updated the version number, so update read's version number
-          // to still be valid
-          bucket_item->add_read(new_version);
-        }
+        bucket_item->update_read(new_version - 1, new_version);
         //} else { could abort transaction now
       }
       // use new_item because we know there are no collisions
@@ -252,7 +231,6 @@ public:
   void lock(Key k) {
     lock(&elem(k));
   }
-  
   void unlock(internal_elem *el) {
     Version cur = el->version;
     assert(cur & lock_bit);
@@ -528,17 +506,17 @@ private:
     return pack((bucket << 1) | bucket_bit);
   }
 
-  void inc_version(Version& v) {
+  static void inc_version(Version& v) {
     assert(is_locked(v));
     Version cur = v & version_mask;
     cur = (cur+1) & version_mask;
     v = cur | (v & ~version_mask);
   }
 
-  bool is_locked(Version v) {
+  static bool is_locked(Version v) {
     return v & lock_bit;
   }
-  void lock(Version *v) {
+  static void lock(Version *v) {
     while (1) {
       Version cur = *v;
       if (!(cur&lock_bit) && bool_cmpxchg(v, cur, cur|lock_bit)) {
@@ -547,11 +525,14 @@ private:
       relax_fence();
     }
   }
-  void unlock(Version *v) {
+  static Version unlock(Version *v) {
     assert(is_locked(*v));
     Version cur = *v;
     cur &= ~lock_bit;
-    *v = cur;
+    return *v = cur;
+  }
+  static constexpr Version unlocked(Version v) {
+    return v & ~lock_bit;
   }
 
   template <bool markValid = false>

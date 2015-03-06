@@ -144,6 +144,9 @@ public:
     return out;
   }
 
+  static void print_stats();
+
+
   static void acquire_spinlock(unsigned& spin_lock) {
     unsigned cur;
     while (1) {
@@ -216,15 +219,14 @@ public:
       tinfo[threadid].max_p(p, n);
   }
 
-  Transaction() : transSet_(), permute(NULL), perm_size(0),
-                  firstWrite_(-1), may_duplicate_items_(false), isAborted_(false) {
+  Transaction() : transSet_() {
 #if !LOCAL_VECTOR
     transSet_.reserve(INIT_SET_SIZE);
 #endif
     // TODO: assumes this thread is constantly running transactions
     tinfo[threadid].epoch = global_epoch;
     if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
-    inc_p(txp_total_starts);
+    reset();
   }
 
   ~Transaction() {
@@ -243,6 +245,9 @@ public:
     may_duplicate_items_ = false;
     isAborted_ = false;
     firstWrite_ = -1;
+    if (tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
+        print_stats();
+    inc_p(txp_total_starts);
   }
 
   void consolidateReads() {

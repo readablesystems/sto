@@ -208,8 +208,6 @@ class TransProxy {
     }
 
     template <typename T>
-    inline TransProxy& add_write(T wdata);
-    template <typename T>
     TransProxy& add_read(T rdata) {
         if (!i_.shared.has_flags(READER_BIT)) {
             i_.shared.or_flags(READER_BIT);
@@ -217,6 +215,36 @@ class TransProxy {
         }
         return *this;
     }
+    template <typename T>
+    TransProxy& clear_read() {
+        if (i_.shared.has_flags(READER_BIT)) {
+            free_packed<T>(i_.data.rdata);
+            i_.shared.rm_flags(READER_BIT);
+        }
+        return *this;
+    }
+    template <typename T>
+    TransProxy& clear_read(T rdata) {
+        if (i_.shared.has_flags(READER_BIT)
+            && this->read_value<T>() == rdata) {
+            free_packed<T>(i_.data.rdata);
+            i_.shared.rm_flags(READER_BIT);
+        }
+        return *this;
+    }
+    template <typename T, typename U>
+    TransProxy& update_read(T old_rdata, U new_rdata) {
+        if (i_.shared.has_flags(READER_BIT)
+            && this->read_value<T>() == old_rdata) {
+            free_packed<T>(i_.data.rdata);
+            i_.data.rdata = pack(std::move(new_rdata));
+        }
+        return *this;
+    }
+
+    template <typename T>
+    inline TransProxy& add_write(T wdata);
+
     TransProxy& add_undo() {
         i_.shared.or_flags(UNDO_BIT);
         return *this;
@@ -227,14 +255,14 @@ class TransProxy {
     }
 
     template <typename T>
-    T& write_value() {
-        assert(has_write());
-        return unpack<T>(i_.data.wdata);
-    }
-    template <typename T>
     T& read_value() {
         assert(has_read());
         return unpack<T>(i_.data.rdata);
+    }
+    template <typename T>
+    T& write_value() {
+        assert(has_write());
+        return unpack<T>(i_.data.wdata);
     }
 
     TransProxy& remove_write() { // XXX should also cleanup_write
