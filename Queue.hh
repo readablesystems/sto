@@ -16,6 +16,7 @@ public:
     static constexpr Version delete_bit = 1<<0;
     static constexpr Version front_bit = 1<<1;
     static constexpr Version pop_bit = 1<<2;
+    static constexpr Version read_writes = 1<<3;
 
     void transPush(Transaction& t, const T& v) {
         auto& item = t.item(this, -1);
@@ -48,7 +49,7 @@ public:
                         // if there is an element to be pushed on the queue, return addr of queue element
                         if (!write_list.empty()) {
                             write_list.pop_front();
-                            tail_ = (tail_ + 1) % BUF_SIZE;
+                            item->or_flags(read_writes);
                         }
                         else return false;
                     }
@@ -74,10 +75,9 @@ public:
         return true;
     }
 
-    T* transFront(Transaction& t) {
+    bool transFront(Transaction& t, T& val) {
         unsigned index = head_;
         auto item = &t.item(this, index);
-//dowhile
         while (1) {
             // empty queue
             if (index == tail_) {
@@ -93,14 +93,15 @@ public:
                             queueSlots[tail_] = write_list.front();
                             write_list.pop_front();
                             tail_ = (tail_ + 1) % BUF_SIZE;
-                            return &queueSlots[index];
+                            val = queueSlots[index];
+                            return true;
                         }
-                        else return NULL;
+                        else return false;
                     }
                     if (!pushitem.has_read())
                         t.add_read(pushitem, tailversion_);
                 }
-                return NULL;
+                return false;
             }
             if (has_delete(*item)) {
                 index = (index + 1) % BUF_SIZE;
@@ -112,7 +113,8 @@ public:
         if (!item->has_read())
            t.add_read(*item, headversion_);
         item->or_flags(front_bit);
-        return &queueSlots[index];
+        val = queueSlots[index];
+        return true;
     }
     
 private:
@@ -123,7 +125,11 @@ private:
     bool has_delete(TransItem& item) {
         return item.has_flags(delete_bit);
     }
- 
+    
+    bool is_rw(TransItem& item) {
+        return item.has_flags(read_writes);
+    }
+
     bool first_pop(TransItem& item) {
         return item.has_flags(pop_bit);
     }
@@ -172,9 +178,10 @@ private:
 
     void install(TransItem& item) {
 	    if (has_delete(item)) {
-            head_ = (head_+1) % BUF_SIZE;
+            // only increment head if item popped from actual q
+            if (!is_rw(item))
+                head_ = (head_+1) % BUF_SIZE;
             QueueVersioning::inc_version(headversion_);
-                assert(tail_ >= head_);
         }
         else {
             auto& write_list = item.template write_value<std::list<T>>();
