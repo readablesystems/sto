@@ -216,7 +216,8 @@ public:
       tinfo[threadid].max_p(p, n);
   }
 
-  Transaction() : transSet_(), permute(NULL), perm_size(0), may_duplicate_items_(false), isAborted_(false), firstWrite_(-1) {
+  Transaction() : transSet_(), permute(NULL), perm_size(0),
+                  firstWrite_(-1), may_duplicate_items_(false), isAborted_(false) {
 #if !LOCAL_VECTOR
     transSet_.reserve(INIT_SET_SIZE);
 #endif
@@ -515,9 +516,9 @@ private:
   TransSet transSet_;
   int *permute;
   int perm_size;
+  int firstWrite_;
   bool may_duplicate_items_;
   bool isAborted_;
-  int16_t firstWrite_;
 };
 
 
