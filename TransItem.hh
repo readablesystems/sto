@@ -144,34 +144,17 @@ struct TransItem {
       || (data == t2.data && sharedObj() < t2.sharedObj());
   }
 
-  // TODO: should these be done Transaction methods like their add_ equivalents?
-  TransItem& remove_write() {
-    shared.rm_flags(WRITER_BIT);
-    return *this;
-  }
   template <typename T>
   TransItem& cleanup_write() {
       if (has_write())
           free_packed<T>(data.wdata);
       return *this;
   }
-  TransItem& remove_read() {
-    shared.rm_flags(READER_BIT);
-    return *this;
-  }
   template <typename T>
   TransItem& cleanup_read() {
       if (has_read())
           free_packed<T>(data.rdata);
       return *this;
-  }
-  TransItem& remove_undo() {
-    shared.rm_flags(UNDO_BIT);
-    return *this;
-  }
-  TransItem& remove_afterC() {
-    shared.rm_flags(AFTERC_BIT);
-    return *this;
   }
 
   // these methods are all for user flags (currently we give them 8 bits, the high 8 of the 16 total flag bits we have)
@@ -254,30 +237,20 @@ class TransProxy {
         return unpack<T>(i_.data.rdata);
     }
 
-    TransProxy& remove_write() {
-        i_.remove_write();
+    TransProxy& remove_write() { // XXX should also cleanup_write
+        i_.shared.rm_flags(WRITER_BIT);
         return *this;
     }
-    template <typename T>
-    TransProxy& cleanup_write() {
-        i_.cleanup_write<T>();
-        return *this;
-    }
-    TransProxy& remove_read() {
-        i_.remove_read();
-        return *this;
-    }
-    template <typename T>
-    TransProxy& cleanup_read() {
-        i_.cleanup_read<T>();
+    TransProxy& remove_read() { // XXX should also cleanup_read
+        i_.shared.rm_flags(READER_BIT);
         return *this;
     }
     TransProxy& remove_undo() {
-        i_.remove_undo();
+        i_.shared.rm_flags(UNDO_BIT);
         return *this;
     }
     TransProxy& remove_afterC() {
-        i_.remove_afterC();
+        i_.shared.rm_flags(AFTERC_BIT);
         return *this;
     }
 

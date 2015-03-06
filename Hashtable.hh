@@ -124,10 +124,7 @@ public:
         // so we just unmark all attributes so the item is ignored
         item.remove_read().remove_write().remove_undo().remove_afterC();
         // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
-        auto itemb = t.item(this, pack_bucket(bucket(k)));
-        if (!itemb.has_read()) {
-          itemb.add_read(buck_version);
-        }
+        t.item(this, pack_bucket(bucket(k))).add_read(buck_version);
         return true;
       } else if (!valid) {
         t.abort();
@@ -143,7 +140,7 @@ public:
         // we only need to check validity, not presence
         item.add_read(valid_check_only_bit);
       }
-      // we use has_afterC() to detect deletes so we don't need any other data 
+      // we use has_afterC() to detect deletes so we don't need any other data
       // for deletes, just to mark it as a write
       if (!item.has_write())
         item.add_write(0);
