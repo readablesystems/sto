@@ -2,10 +2,12 @@ Run single-threaded tests:
 ./single
 
 Multi-threaded test:
-(Change the DATA_STRUCTURE define in concurrent.cc to desired data structure)
+(Change the DATA_STRUCTURE define in concurrent.cc to desired data structure 
+and re-make concurrent)
 Check multithreaded correctness:
 ./concurrent 3 -c
-*runs with 4 threads, 1 million total transactions of size 10 each, half of which are read-writes
+^ runs with 4 threads, 1 million total transactions of size 10 each, half of 
+which are read-writes
 If this is too fast:
 ./concurrent 3 --ntrans=10000000 -c
 Check delete multithreaded correctness (not applicable for arrays):
@@ -15,8 +17,8 @@ Benchmark singlethreaded:
 ./concurrent 3 --nthreads=1
 or
 ./concurrent 3 --nthreads=1 --ntrans=10000000
-Or if you want to test transaction system overhead, read-my-writes overhead, etc.
-(larger transactions):
+Or if you want to test transaction system overhead, read-my-writes overhead, 
+etc. (larger transactions):
 ./concurrent 3 --nthreads=1 --opspertrans=100
 
-(and benchmarking multithreaded just involves changing the --nthreads argument).
+(and benchmarking multithreaded just involves changing the --nthreads argument)
