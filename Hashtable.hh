@@ -107,30 +107,6 @@ public:
     }
   }
 
-#if 0
-  unsigned transCount(Transaction& t, Key k) {
-    bucket_entry& buck = buck_entry(k);
-    Version buck_version = buck.version;
-    fence();
-    internal_elem *e = find(buck, k);
-    if (e) {
-      auto& item = t.item(this, e);
-      if (!item.has_write() && !e->valid()) {
-        t.abort();
-        return false;
-      }
-      if (!item.has_read()) {
-        t.fresh_item(pack_presence(e)).add_read(0);
-      }
-    } else {
-      auto& item = t.item(this, pack_bucket(bucket(k)));
-      if (!item.has_read()) {
-        item.add_read(buck_version);
-      }
-    }
-  }
-#endif
-
 #if HASHTABLE_DELETE
   // returns true if successful
   bool transDelete(Transaction& t, Key k) {
@@ -139,7 +115,7 @@ public:
     fence();
     internal_elem *e = find(buck, k);
     if (e) {
-      auto& item = t.item(this, e);
+      auto item = t.item(this, e);
       bool valid = e->valid();
       if (!valid && has_insert(item)) {
         // we're deleting our own insert. special case this to just remove element and just check for no insert at commit
@@ -175,7 +151,7 @@ public:
       return true;
     } else {
       // add a read that yes this element doesn't exist
-      auto& item = t.item(this, pack_bucket(bucket(k)));
+      auto item = t.item(this, pack_bucket(bucket(k)));
       if (!item.has_read())
         item.add_read(buck_version);
       return false;

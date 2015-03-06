@@ -15,39 +15,79 @@
 
 #include "MassTrans.hh"
 
-// size of array
+// size of array (for hashtables or other non-array structures, this is the
+// size of the key space)
 #define ARRAY_SZ 1000000
 
-// only used for randomRWs test
-#define GLOBAL_SEED 0
-#define TRY_READ_MY_WRITES 0
-#define MAINTAIN_TRUE_ARRAY_STATE 1
+#define USE_ARRAY 0
+#define USE_HASHTABLE 1
+#define USE_MASSTREE 2
+#define USE_GENSTMARRAY 3
+#define USE_LISTARRAY 4
+
+// set this to USE_DATASTRUCTUREYOUWANT
+#define DATA_STRUCTURE USE_ARRAY
+
+#undef HASHTABLE
+#undef MASSTREE
+#undef GENSTM_ARRAY
+#undef LIST_ARRAY
+#if DATA_STRUCTURE == USE_HASHTABLE
+#define HASHTABLE 1
+#elif DATA_STRUCTURE == USE_MASSTREE
+#define MASSTREE 1
+#elif DATA_STRUCTURE == USE_GENSTMARRAY
+#define GENSTM_ARRAY 1
+#elif DATA_STRUCTURE == USE_LISTARRAY
+#define LIST_ARRAY 1
+#endif
 
 // if true, each operation of a transaction will act on a different slot
 #define ALL_UNIQUE_SLOTS 0
 
-#define DATA_COLLECT 0
-#define HASHTABLE 0
-#define HASHTABLE_LOAD_FACTOR 2
-#define HASHTABLE_RAND_DELETES 0
-
-#define MASSTREE 0
-
-#define GENSTM_ARRAY 0
-#define LIST_ARRAY 0
-
-#define RANDOM_REPORT 0
-
+// use string values rather than ints
 #define STRING_VALUES 0
+
+// use unboxed strings in Masstree (only used if STRING_VALUES is set)
 #define UNBOXED_STRINGS 0
 
+// if 1 we just print the runtime, no diagnostic information or strings 
+// (makes it easier to collect data using a script)
+#define DATA_COLLECT 0
+
+// If we have N keys, we make our hashtable have size N/HASHTABLE_LOAD_FACTOR
+#define HASHTABLE_LOAD_FACTOR 2
+
+// additional seed to randomness used in tests (otherwise each run of
+// ./concurrent does the exact same operations)
+#define GLOBAL_SEED 0
+
+/* Track the array state during concurrent execution using atomic increments.
+ * Turn off if you want the most accurate performance results.
+ *
+ * When on, a validation check of our random test is much stronger, because
+ * we are checking our concurrent run not only with a single-threaded run
+ * but also with a guaranteed correct implementation
+ */
+#define MAINTAIN_TRUE_ARRAY_STATE 1
+
+// assert reading our writes works
+#define TRY_READ_MY_WRITES 0
+
+// whether to also do random deletes in the randomRWs test (for performance 
+// only, we can't verify correctness from this)
+#define RAND_DELETES 0
+
+// track/report diagnostics on how good our randomness is
+#define RANDOM_REPORT 0
+
+// Masstree globals
 kvepoch_t global_log_epoch = 0;
 volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly
 kvtimestamp_t initial_timestamp;
 volatile bool recovering = false; // so don't add log entries, and free old value immediately
 
 //#define DEBUG
-
 #ifdef DEBUG
 #define debug(...) printf(__VA_ARGS__)
 #else
@@ -60,29 +100,23 @@ typedef std::string value_type;
 typedef int value_type;
 #endif
 
-#if !HASHTABLE
-#if !MASSTREE
-#if !GENSTM_ARRAY
-#if !LIST_ARRAY
+#if DATA_STRUCTURE == USE_ARRAY
 typedef Array1<value_type, ARRAY_SZ> ArrayType;
 ArrayType *a;
-#else
+#elif DATA_STRUCTURE == USE_LISTARRAY
 typedef ListArray<value_type> ArrayType;
 ArrayType *a;
-#endif
-#else
+#elif DATA_STRUCTURE == USE_GENSTMARRAY
 typedef GenericSTMArray<value_type, ARRAY_SZ> ArrayType;
 ArrayType *a;
-#endif
-#else
+#elif DATA_STRUCTURE == USE_MASSTREE
 typedef MassTrans<value_type
 #if STRING_VALUES && UNBOXED_STRINGS
 , versioned_str_struct
 #endif
 > ArrayType;
 ArrayType *a;
-#endif
-#else
+#elif DATA_STRUCTURE == USE_HASHTABLE
 // hashtable from int to int
 typedef Hashtable<int, value_type, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> ArrayType;
 ArrayType *a;
@@ -275,7 +309,7 @@ void *randomRWs(void *p) {
         used[slot]=true;
 #endif
         auto r = transgen();
-#if HASHTABLE_RAND_DELETES
+#if RAND_DELETES && (MASSTREE || HASHTABLE || LIST_ARRAY)
         // TODO: this doesn't make that much sense if write_percent != 50%
         if (r > (write_thresh+write_thresh/2)) {
           a->transDelete(t, slot);
@@ -766,7 +800,7 @@ int main(int argc, char *argv[]) {
       thd tc = Transaction::tinfo_combined();
       printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
 #if MASSTREE
-      printf("node aborts: %llu\n", LLU(node_aborts));
+      printf("node aborts: %llu\n", node_aborts);
 #endif
   }
 #endif
