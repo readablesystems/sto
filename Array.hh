@@ -46,21 +46,21 @@ public:
   }
 
   Value transRead_nocheck(Transaction& t, Key i) {
-    auto& item = t.add_item(this, i);
+    auto item = t.fresh_item(this, i);
     Version v;
     Value val;
     atomicRead(i, v, val);
-    t.add_read(item, v);
+    item.add_read(v);
     return val;
   }
 
   void transWrite_nocheck(Transaction& t, Key i, Value val) {
-    auto& item = t.add_item(this, i);
-    t.add_write(item, val);
+    auto item = t.fresh_item(this, i);
+    item.add_write(val);
   }
 
   Value transRead(Transaction& t, Key i) {
-    auto& item = t.item(this, i);
+    auto item = t.item(this, i);
     if (item.has_write()) {
       return item.template write_value<Value>();
     } else {
@@ -68,16 +68,16 @@ public:
       Value val;
       atomicRead(i, v, val);
       if (!item.has_read()) {
-        t.add_read(item, v);
+        item.add_read(v);
       }
       return val;
     }
   }
 
   void transWrite(Transaction& t, Key i, Value val) {
-    auto& item = t.item(this, i);
+    auto item = t.item(this, i);
     // can just do this blindly
-    t.add_write(item, val);
+    item.add_write(val);
   }
 
   bool is_locked(Key i) {

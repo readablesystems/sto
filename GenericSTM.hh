@@ -10,7 +10,7 @@ public:
   T transRead(Transaction& t, T* word) {
     static_assert(sizeof(T) <= sizeof(void*), "don't support words larger than pointer size");
     int unused;
-    auto& item = t.item(this, word);
+    auto item = t.item(this, word);
     if (item.has_write()) {
       t.check_reads();
       return item.template write_value<T>();
@@ -27,9 +27,7 @@ public:
     // just makes the version number change, i.e., makes conflicting reads abort
     // (and locks this word for us)
     table_.transPut(t, word, 0);
-    auto& item = t.item(this, word);
-    t.add_write(item, new_val);
-    item.data.rdata = (void*)sizeof(T);
+    auto item = t.item(this, word).add_write(new_val).set_flags((int) sizeof(T));
     t.check_reads();
   }
 
@@ -42,7 +40,7 @@ public:
 
     // Hashtable implementation has already locked this word for us
     void *data = item.write_value<void*>();
-    memcpy(word, &data, (size_t)item.data.rdata);
+    memcpy(word, &data, item.flags());
   }
 
 private:

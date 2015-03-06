@@ -33,7 +33,7 @@
 
 #define MASSTREE 0
 
-#define GENSTM_ARRAY 1
+#define GENSTM_ARRAY 0
 #define LIST_ARRAY 0
 
 #define RANDOM_REPORT 0
@@ -386,7 +386,7 @@ void checkRandomRWs() {
   }
 }
 
-#if HASHTABLE || MASSTREE
+#if HASHTABLE || MASSTREE || LIST_ARRAY
 
 void *kingOfTheDelete(void *p) {
   int me = (intptr_t)p;
@@ -403,7 +403,7 @@ void *kingOfTheDelete(void *p) {
         if (i != me) {
           a->transDelete(t, i);
         } else {
-          a->transPut(t, i, val(i+1));
+          a->transWrite(t, i, val(i+1));
         }
       }
       done = t.commit();
@@ -440,9 +440,9 @@ void *xorDelete(void *p) {
     // populate
     Transaction t;
     for (int i = 1; i < ARRAY_SZ; ++i) {
-      a->transPut(t, i, val(i+1));
+      a->transWrite(t, i, val(i+1));
     }
-    a->transPut(t, 0, val(1));
+    a->transWrite(t, 0, val(1));
     assert(t.commit());
   } else {
     // wait for populated
@@ -470,7 +470,9 @@ void *xorDelete(void *p) {
           if (r > delete_thresh) {
             // can't do put/insert because that makes the results ordering dependent
             // (these updates don't actually affect the final state at all)
+#if !LIST_ARRAY
             a->transUpdate(t, slot, val(slot+1));
+#endif
           } else if (!a->transInsert(t, slot, val(slot+1))) {
             // we delete if the element is there and insert if it's not
             // this is essentially xor'ing the slot, so ordering won't matter
@@ -632,7 +634,7 @@ Test tests[] = {
   {interferingRWs, checkInterferingRWs},
   {randomRWs, checkRandomRWs},
   {readThenWrite, NULL},
-#if HASHTABLE || MASSTREE
+#if HASHTABLE || MASSTREE || LIST_ARRAY
   {kingOfTheDelete, checkKingOfTheDelete},
   {xorDelete, checkXorDelete},
 #endif
@@ -727,11 +729,14 @@ int main(int argc, char *argv[]) {
 
   a = new ArrayType();
 
-  for (int i = 0; i < prepopulate; ++i) {
-    Transaction t;
-    a->transWrite(t, i, val(0));
-    t.commit();
-  }
+#if HASHTABLE || MASSTREEE || LIST_ARRAY
+  if (tests[test].threadfunc != xorDelete)
+#endif
+    for (int i = 0; i < prepopulate; ++i) {
+      Transaction t;
+      a->transWrite(t, i, val(0));
+      t.commit();
+    }
 
   struct timeval tv1,tv2;
   struct rusage ru1,ru2;
@@ -756,12 +761,14 @@ int main(int argc, char *argv[]) {
 #endif
 
 #if PERF_LOGGING
-#define LLU(x) ((long long unsigned)x)
-  printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", LLU(Transaction::total_n), LLU(Transaction::total_r), LLU(Transaction::total_w), LLU(Transaction::total_searched), LLU(Transaction::total_aborts), LLU(Transaction::commit_time_aborts));
+  {
+      using thd = threadinfo_t;
+      thd tc = Transaction::tinfo_combined();
+      printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
 #if MASSTREE
-  printf("node aborts: %llu\n", LLU(node_aborts));
+      printf("node aborts: %llu\n", LLU(node_aborts));
 #endif
-#undef LLU
+  }
 #endif
 
   if (runCheck)

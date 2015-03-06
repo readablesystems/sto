@@ -21,6 +21,14 @@ public:
     assert(inserted);
   }
 
+  bool transDelete(Transaction& t, int k) {
+    return list_.transDelete(t, KV(k, T()));
+  }
+
+  bool transInsert(Transaction& t, int k, const T& value) {
+    return list_.transInsert(t, KV(k, value));
+  }
+
   T read(int k) {
     Transaction t;
     auto ret = transRead(t, k);

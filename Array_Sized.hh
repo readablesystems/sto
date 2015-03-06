@@ -25,13 +25,22 @@ public:
     if (item.has_write())
       return item.template write_value<T>();
     else {
-      Version v;
-      T val;
-      atomicRead(i, v, val);
+      //      Version v;
+      //T val;
+      //atomicRead(i, v, val);
+      Version v = arr_[i].version();
+      fence();
       if (!item.has_read())
         t.add_read(item, v);
-      return val;
+      // TODO: nothing close to opacity here, but probably faster
+      return arr_[i].read_value();
     }
+  }
+
+  T transRead_safe(Transaction& t, int i) {
+    // TODO: this still isn't really that safe, 
+    // since our read of the value could be non-atomic
+    return transRead(t, i);
   }
 
   void transWrite(Transaction& t, int i, const T& val) {
@@ -62,7 +71,7 @@ public:
     Versioning::inc_version(arr_[i].version());
   }
 
-  void cleanup(TransItem& item) {
+  void cleanup(TransItem& item, bool) {
     if (item.has_write())
       free_packed<T>(item.data.wdata);
   }
@@ -89,8 +98,8 @@ public:
   }
   
 private:
-  TransItem& t_item(Transaction& t, int key) {
-    // to disable read-my-writes: return t.add_item(this, key);
+  TransProxy t_item(Transaction& t, int key) {
+    // to disable read-my-writes: return t.fresh_item(this, key);
     return t.item(this, key);
   }
 
