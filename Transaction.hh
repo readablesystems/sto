@@ -144,6 +144,9 @@ public:
     return out;
   }
 
+  static void print_stats();
+
+
   static void acquire_spinlock(unsigned& spin_lock) {
     unsigned cur;
     while (1) {
@@ -216,14 +219,14 @@ public:
       tinfo[threadid].max_p(p, n);
   }
 
-  Transaction() : transSet_(), permute(NULL), perm_size(0), may_duplicate_items_(false), isAborted_(false), firstWrite_(-1) {
+  Transaction() : transSet_() {
 #if !LOCAL_VECTOR
     transSet_.reserve(INIT_SET_SIZE);
 #endif
     // TODO: assumes this thread is constantly running transactions
     tinfo[threadid].epoch = global_epoch;
     if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
-    inc_p(txp_total_starts);
+    reset();
   }
 
   ~Transaction() {
@@ -242,6 +245,9 @@ public:
     may_duplicate_items_ = false;
     isAborted_ = false;
     firstWrite_ = -1;
+    if (tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
+        print_stats();
+    inc_p(txp_total_starts);
   }
 
   void consolidateReads() {
@@ -277,7 +283,6 @@ public:
     // we use the firstwrite optimization when checking for item(), but do a full check if they call has_item.
     // kinda jank, ideal I think would be we'd figure out when it's the first write, and at that point consolidate
     // the set to be doing rmw (and potentially even combine any duplicate reads from earlier)
-
     if (!ti)
       ti = &new_item(s, key).i_;
     return TransProxy(*this, *ti);
@@ -316,14 +321,9 @@ private:
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
       TransItem& ti = *it;
       inc_p(txp_total_searched);
-      if (ti.sharedObj() == s && ti.data.key == k) {
-        if (!read_only && firstWrite_ == -1)
-          firstWrite_ = item_index(ti);
+      if (ti.sharedObj() == s && ti.data.key == k)
         return &ti;
-      }
     }
-    if (!read_only && firstWrite_ == -1)
-      firstWrite_ = transSet_.size();
     return NULL;
   }
 
@@ -515,9 +515,9 @@ private:
   TransSet transSet_;
   int *permute;
   int perm_size;
+  int firstWrite_;
   bool may_duplicate_items_;
   bool isAborted_;
-  int16_t firstWrite_;
 };
 
 

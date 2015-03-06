@@ -6,6 +6,8 @@
 template <typename T>
 class ListArray {
 public:
+    typedef int key_type;
+
   T transRead(Transaction& t, int k) {
     KV* kv = list_.transFind(t, KV(k, T()));
     if (kv) {

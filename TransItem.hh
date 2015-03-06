@@ -144,34 +144,17 @@ struct TransItem {
       || (data == t2.data && sharedObj() < t2.sharedObj());
   }
 
-  // TODO: should these be done Transaction methods like their add_ equivalents?
-  TransItem& remove_write() {
-    shared.rm_flags(WRITER_BIT);
-    return *this;
-  }
   template <typename T>
   TransItem& cleanup_write() {
       if (has_write())
           free_packed<T>(data.wdata);
       return *this;
   }
-  TransItem& remove_read() {
-    shared.rm_flags(READER_BIT);
-    return *this;
-  }
   template <typename T>
   TransItem& cleanup_read() {
       if (has_read())
           free_packed<T>(data.rdata);
       return *this;
-  }
-  TransItem& remove_undo() {
-    shared.rm_flags(UNDO_BIT);
-    return *this;
-  }
-  TransItem& remove_afterC() {
-    shared.rm_flags(AFTERC_BIT);
-    return *this;
   }
 
   // these methods are all for user flags (currently we give them 8 bits, the high 8 of the 16 total flag bits we have)
@@ -192,30 +175,6 @@ struct TransItem {
   }
   bool has_flags(uint8_t flags) {
     return shared.has_flags((uint16_t)flags << 8);
-  }
-
-private:
-  template <typename T>
-  void _add_write(T wdata) {
-    shared.or_flags(WRITER_BIT);
-    // TODO: this assumes that a given writer data always has the same type.
-    // this is certainly true now but we probably shouldn't assume this in general
-    // (hopefully we'll have a system that can automatically call destructors and such
-    // which will make our lives much easier)
-    //free_packed<T>(data.wdata);
-    data.wdata = pack(std::move(wdata));
-  }
-  template <typename T>
-  void _add_read(T rdata) {
-    shared.or_flags(READER_BIT);
-    //free_packed<T>(data.rdata);
-    data.rdata = pack(std::move(rdata));
-  }
-  void _add_undo() {
-    shared.or_flags(UNDO_BIT);
-  }
-  void _add_afterC() {
-    shared.or_flags(AFTERC_BIT);
   }
 
 private:
@@ -249,17 +208,51 @@ class TransProxy {
     }
 
     template <typename T>
-    inline TransProxy& add_write(T wdata);
-    template <typename T>
     TransProxy& add_read(T rdata) {
         if (!i_.shared.has_flags(READER_BIT)) {
             i_.shared.or_flags(READER_BIT);
-            // XXXXXXXX
-            //free_packed<T>(data.rdata);
             i_.data.rdata = pack(std::move(rdata));
         }
         return *this;
     }
+    template <typename T>
+    TransProxy& clear_read() {
+        if (i_.shared.has_flags(READER_BIT)) {
+            free_packed<T>(i_.data.rdata);
+            i_.shared.rm_flags(READER_BIT);
+        }
+        return *this;
+    }
+    template <typename T>
+    TransProxy& clear_read(T rdata) {
+        if (i_.shared.has_flags(READER_BIT)
+            && this->read_value<T>() == rdata) {
+            free_packed<T>(i_.data.rdata);
+            i_.shared.rm_flags(READER_BIT);
+        }
+        return *this;
+    }
+    template <typename T, typename U>
+    TransProxy& update_read(T old_rdata, U new_rdata) {
+        if (i_.shared.has_flags(READER_BIT)
+            && this->read_value<T>() == old_rdata) {
+            free_packed<T>(i_.data.rdata);
+            i_.data.rdata = pack(std::move(new_rdata));
+        }
+        return *this;
+    }
+
+    template <typename T>
+    inline TransProxy& add_write(T wdata);
+    template <typename T>
+    TransProxy& clear_write() {
+        if (i_.shared.has_flags(WRITER_BIT)) {
+            free_packed<T>(i_.data.wdata);
+            i_.shared.rm_flags(WRITER_BIT);
+        }
+        return *this;
+    }
+
     TransProxy& add_undo() {
         i_.shared.or_flags(UNDO_BIT);
         return *this;
@@ -270,47 +263,30 @@ class TransProxy {
     }
 
     template <typename T>
-    TransProxy& overwrite_read_value(T value) {
-        // special purposes only
-        i_.data.rdata = pack(std::move(value));
-        return *this;
+    T& read_value() {
+        assert(has_read());
+        return unpack<T>(i_.data.rdata);
     }
-
     template <typename T>
     T& write_value() {
         assert(has_write());
         return unpack<T>(i_.data.wdata);
     }
-    template <typename T>
-    T& read_value() {
-        assert(has_read());
-        return unpack<T>(i_.data.rdata);
-    }
 
-    TransProxy& remove_write() {
-        i_.remove_write();
+    TransProxy& remove_write() { // XXX should also cleanup_write
+        i_.shared.rm_flags(WRITER_BIT);
         return *this;
     }
-    template <typename T>
-    TransProxy& cleanup_write() {
-        i_.cleanup_write<T>();
-        return *this;
-    }
-    TransProxy& remove_read() {
-        i_.remove_read();
-        return *this;
-    }
-    template <typename T>
-    TransProxy& cleanup_read() {
-        i_.cleanup_read<T>();
+    TransProxy& remove_read() { // XXX should also cleanup_read
+        i_.shared.rm_flags(READER_BIT);
         return *this;
     }
     TransProxy& remove_undo() {
-        i_.remove_undo();
+        i_.shared.rm_flags(UNDO_BIT);
         return *this;
     }
     TransProxy& remove_afterC() {
-        i_.remove_afterC();
+        i_.shared.rm_flags(AFTERC_BIT);
         return *this;
     }
 
