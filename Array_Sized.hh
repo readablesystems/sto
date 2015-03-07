@@ -71,11 +71,6 @@ public:
     Versioning::inc_version(arr_[i].version());
   }
 
-  void cleanup(TransItem& item, bool) {
-    if (item.has_write())
-      free_packed<T>(item.data.wdata);
-  }
-
   int capacity() {
     return capacity_;
   }

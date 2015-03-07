@@ -95,7 +95,9 @@ public:
       // "atomic" read of both the current value and the version #
       atomicRead(e, elem_vers, retval);
       // check both node changes and node deletes
-      item.clear_read(valid_check_only_bit).add_read(elem_vers);
+      if (item.has_read((Version) valid_check_only_bit))
+          item.clear_read();
+      item.add_read(elem_vers);
       return true;
     } else {
       t.item(this, pack_bucket(bucket(k))).add_read(unlocked(buck_version));
@@ -132,7 +134,7 @@ public:
         return false;
       }
       // we need to make sure this bucket didn't change (e.g. what was once there got removed)
-      item.add_read(valid_check_only_bit);
+      item.add_read((Version) valid_check_only_bit);
       // we use has_afterC() to detect deletes so we don't need any other data
       // for deletes, just to mark it as a write
       if (!item.has_write())
@@ -180,7 +182,7 @@ public:
 #if HASHTABLE_DELETE
       // we need to make sure this item stays here
       // we only need to check validity, not presence
-      item.add_read(valid_check_only_bit);
+      item.add_read((Version) valid_check_only_bit);
 #endif
       if (SET) {
         item.add_write(v);
@@ -247,7 +249,7 @@ public:
   }
 
   bool versionCheck(Version v1, Version v2) {
-    return ((v1 ^ v2) & version_mask) == 0;
+      return ((v1 ^ v2) & version_mask) == 0;
   }
 
   bool check(TransItem& item, Transaction& t) {
@@ -297,9 +299,6 @@ public:
         assert(!el->valid());
         remove(el);
     }
-
-    item.cleanup_key<internal_elem*>();
-    item.cleanup_read<Version>().cleanup_write<Value>();
   }
 
   void remove(internal_elem *el) {
@@ -505,8 +504,8 @@ private:
       assert(is_bucket(item));
       return (uintptr_t) item.key<void*>() >> 1;
   }
-  void *pack_bucket(unsigned bucket) {
-    return pack((bucket << 1) | bucket_bit);
+  void* pack_bucket(unsigned bucket) {
+      return (void*) ((bucket << 1) | bucket_bit);
   }
 
   static void inc_version(Version& v) {

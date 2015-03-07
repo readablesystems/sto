@@ -11,13 +11,10 @@ public:
   T transRead(Transaction& t, T* word) {
     static_assert(sizeof(T) <= sizeof(void*), "don't support words larger than pointer size");
 
-    auto it = t.has_item<false>(this, word);
-    if (it) {
-      auto item = *it;
-      if (item.has_write()) {
+    auto it = t.check_item(this, word);
+    if (it && it->has_write()) {
         t.check_reads();
-        return item.template write_value<T>();
-      }
+        return it->template write_value<T>();
     }
     
     size_t key = bucket(word);

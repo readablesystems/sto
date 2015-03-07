@@ -13,71 +13,50 @@ enum {
   AFTERC_BIT = 1<<3,
 };
 
-template <bool B> struct packer {};
-
-template <> struct packer<true> {
-  template <typename T>
-  void* pack(T value) {
-    void* x = NULL;
-    // yuck. we need to force T's copy constructor to be called at some point so we do this...
-    new (&x) T(value);
-
-    return x;
-  }
-
-  template <typename T>
-  T& unpack(void*& packed) {
-    // TODO: this won't work on big endian
-    // could use memcpy but then can't return a reference
-    return reinterpret_cast<T&>(packed);
-  }
-
-  template <typename T>
-  void free_packed(void*& packed) { if (!__has_trivial_copy(T)) { this->unpack<T>(packed).T::~T(); } }
+// Packer
+template <typename T>
+struct __attribute__((may_alias)) Aliasable {
+    T x __attribute__((may_alias));
 };
 
-template <> struct packer<false> {
-  template <typename T>
-  void* pack(T value) {
-    return new T(std::move(value));
-  }
-
-  template <typename T>
-  T& unpack(void*& packed) {
-    return *reinterpret_cast<T*>(packed);
-  }
-
-  template <typename T>
-  void free_packed(void*& packed) {
-    delete reinterpret_cast<T*>(packed);
-  }
+template <typename T,
+          bool simple = (__has_trivial_copy(T) && sizeof(T) <= sizeof(void*))>
+  struct Packer {};
+template <typename T> struct Packer<T, true> {
+    typedef T type;
+    typedef int is_simple_type;
+    static constexpr bool is_simple = true;
+    typedef const T& argument_type;
+    typedef T& return_type;
+    static void* pack(const T& x) {
+        void* v = 0;
+        memcpy(&v, &x, sizeof(T));
+        return v;
+    }
+    static T& unpack(void*& x) {
+        return *(T*) &x;
+    }
+    static const T& unpack(void* const& x) {
+        return *(const T*) &x;
+    }
+};
+template <typename T> struct Packer<T, false> {
+    typedef T type;
+    typedef void* is_simple_type;
+    static constexpr bool is_simple = false;
+    static T& unpack(void* x) {
+        return *(T*) x;
+    }
 };
 
-
-template <typename T>
-inline void *pack(T v) {
-  // TODO: probably better to use std::is_trivially_copyable or copy_constructible but gcc sucks :(
-  return packer<sizeof(T) <= sizeof(void*)>().pack(std::move(v));
-}
-
-template <typename T>
-inline T& unpack(void *&vp) {
-  return packer<sizeof(T) <= sizeof(void*)>().template unpack<T>(vp);
-}
-
-template <typename T>
-inline void free_packed(void *&vp) {
-  packer<sizeof(T) <= sizeof(void*)>().template free_packed<T>(vp);
-}
 
 class Shared;
 class Transaction;
 class TransProxy;
 
 struct TransItem {
-  template <typename K>
-  TransItem(Shared *s, K k)
-      : shared(s), key_(pack(std::move(k))) {
+  TransItem(Shared* s, void* k)
+      : shared(s), key_(k) {
   }
 
   Shared *sharedObj() const {
@@ -101,19 +80,29 @@ struct TransItem {
   }
 
   template <typename T>
-  T& write_value() {
-    assert(has_write());
-    return unpack<T>(wdata_);
-  }
-  template <typename T>
-  T& read_value() {
-    assert(has_read());
-    return unpack<T>(rdata_);
+  const T& key() const {
+      return Packer<T>::unpack(key_);
   }
 
   template <typename T>
-  const T& key() {
-    return unpack<T>(key_);
+  T& read_value() {
+    assert(has_read());
+    return Packer<T>::unpack(rdata_);
+  }
+  template <typename T>
+  const T& read_value() const {
+    assert(has_read());
+    return Packer<T>::unpack(rdata_);
+  }
+  template <typename T>
+  T& write_value() {
+    assert(has_write());
+    return Packer<T>::unpack(wdata_);
+  }
+  template <typename T>
+  const T& write_value() const {
+    assert(has_write());
+    return Packer<T>::unpack(wdata_);
   }
 
   inline bool operator==(const TransItem& t2) const {
@@ -125,24 +114,6 @@ struct TransItem {
     // are next to each other
     return key_ < t2.key_
       || (key_ == t2.key_ && sharedObj() < t2.sharedObj());
-  }
-
-  template <typename T>
-  TransItem& cleanup_key() {
-      free_packed<T>(key_);
-      return *this;
-  }
-  template <typename T>
-  TransItem& cleanup_read() {
-      if (has_read())
-          free_packed<T>(rdata_);
-      return *this;
-  }
-  template <typename T>
-  TransItem& cleanup_write() {
-      if (has_write())
-          free_packed<T>(wdata_);
-      return *this;
   }
 
   // these methods are all for user flags (currently we give them 8 bits, the high 8 of the 16 total flag bits we have)
@@ -185,11 +156,15 @@ class TransProxy {
         return i_;
     }
 
-    bool has_write() const {
-        return i_.shared.has_flags(WRITER_BIT);
-    }
     bool has_read() const {
         return i_.shared.has_flags(READER_BIT);
+    }
+    template <typename T>
+    bool has_read(const T& value) const {
+        return has_read() && this->template read_value<T>() == value;
+    }
+    bool has_write() const {
+        return i_.shared.has_flags(WRITER_BIT);
     }
     bool has_undo() const {
         return i_.shared.has_flags(UNDO_BIT);
@@ -199,48 +174,18 @@ class TransProxy {
     }
 
     template <typename T>
-    TransProxy& add_read(T rdata) {
-        if (!i_.shared.has_flags(READER_BIT)) {
-            i_.shared.or_flags(READER_BIT);
-            i_.rdata_ = pack(std::move(rdata));
-        }
-        return *this;
-    }
-    template <typename T>
-    TransProxy& clear_read() {
-        if (i_.shared.has_flags(READER_BIT)) {
-            free_packed<T>(i_.rdata_);
-            i_.shared.rm_flags(READER_BIT);
-        }
-        return *this;
-    }
-    template <typename T>
-    TransProxy& clear_read(T rdata) {
-        if (i_.shared.has_flags(READER_BIT)
-            && this->read_value<T>() == rdata) {
-            free_packed<T>(i_.rdata_);
-            i_.shared.rm_flags(READER_BIT);
-        }
+    inline TransProxy& add_read(T rdata);
+    inline TransProxy& clear_read() {
+        i_.shared.rm_flags(READER_BIT);
         return *this;
     }
     template <typename T, typename U>
-    TransProxy& update_read(T old_rdata, U new_rdata) {
-        if (i_.shared.has_flags(READER_BIT)
-            && this->read_value<T>() == old_rdata) {
-            free_packed<T>(i_.rdata_);
-            i_.rdata_ = pack(std::move(new_rdata));
-        }
-        return *this;
-    }
+    inline TransProxy& update_read(T old_rdata, U new_rdata);
 
     template <typename T>
     inline TransProxy& add_write(T wdata);
-    template <typename T>
-    TransProxy& clear_write() {
-        if (i_.shared.has_flags(WRITER_BIT)) {
-            free_packed<T>(i_.wdata_);
-            i_.shared.rm_flags(WRITER_BIT);
-        }
+    inline TransProxy& clear_write() {
+        i_.shared.rm_flags(WRITER_BIT);
         return *this;
     }
 
@@ -255,13 +200,19 @@ class TransProxy {
 
     template <typename T>
     T& read_value() {
-        assert(has_read());
-        return unpack<T>(i_.rdata_);
+        return i_.read_value<T>();
+    }
+    template <typename T>
+    const T& read_value() const {
+        return i_.read_value<T>();
     }
     template <typename T>
     T& write_value() {
-        assert(has_write());
-        return unpack<T>(i_.wdata_);
+        return i_.write_value<T>();
+    }
+    template <typename T>
+    const T& write_value() const {
+        return i_.write_value<T>();
     }
 
     TransProxy& remove_write() { // XXX should also cleanup_write

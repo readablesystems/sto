@@ -3,6 +3,8 @@
 #include <vector>
 #include <algorithm>
 #include <functional>
+#include <memory>
+#include <type_traits>
 #include <unistd.h>
 
 #define PERF_LOGGING 1
@@ -116,6 +118,124 @@ struct __attribute__((aligned(128))) threadinfo_t {
   }
 };
 
+
+// TransactionBuffer
+template <typename T> struct ObjectDestroyer {
+    static void destroy(void* object) {
+        ((T*) object)->~T();
+    }
+};
+
+class TransactionBuffer {
+    struct elt;
+    struct item;
+
+  public:
+    TransactionBuffer()
+        : e_() {
+    }
+    ~TransactionBuffer() {
+        if (e_)
+            hard_clear(true);
+    }
+
+    static constexpr size_t aligned_size(size_t x) {
+        return (x + 7) & ~7;
+    }
+
+    template <typename T>
+    void* pack_unique(T x) {
+        return pack_unique(std::move(x), (typename Packer<T>::is_simple_type) 0);
+    }
+    template <typename T>
+    void* pack(T x) {
+        return pack(std::move(x), (typename Packer<T>::is_simple_type) 0);
+    }
+
+    void clear() {
+        if (e_)
+            hard_clear(false);
+    }
+
+  private:
+    struct itemhdr {
+        void (*destroyer)(void*);
+        size_t size;
+    };
+    struct item : public itemhdr {
+        char buf[0];
+    };
+    struct elthdr {
+        elt* next;
+        size_t pos;
+        size_t size;
+    };
+    struct elt : public elthdr {
+        char buf[0];
+        void clear() {
+            size_t off = 0;
+            while (off < pos) {
+                itemhdr* i = (itemhdr*) &buf[off];
+                i->destroyer(i + 1);
+                off += i->size;
+            }
+            pos = 0;
+        }
+    };
+    elt* e_;
+
+    item* get_space(size_t needed) {
+        if (!e_ || e_->pos + needed > e_->size) {
+            size_t s = std::max(needed, e_ ? e_->size * 2 : 256);
+            elt* ne = (elt*) new char[sizeof(elthdr) + s];
+            ne->next = e_;
+            ne->pos = 0;
+            ne->size = s;
+            e_ = ne;
+        }
+        e_->pos += needed;
+        return (item*) &e_->buf[e_->pos - needed];
+    }
+
+    template <typename T>
+    void* pack(T x, int) {
+        return Packer<T>::pack(x);
+    }
+    template <typename T>
+    void* pack(T x, void*) {
+        size_t isize = aligned_size(sizeof(itemhdr) + sizeof(T));
+        item* space = this->get_space(isize);
+        space->destroyer = ObjectDestroyer<T>::destroy;
+        space->size = isize;
+        new (&space->buf[0]) T(std::move(x));
+        return &space->buf[0];
+    }
+
+    template <typename T>
+    void* pack_unique(T x, int) {
+        return Packer<T>::pack(x);
+    }
+    template <typename T>
+    void* pack_unique(T x, void*);
+
+    void hard_clear(bool delete_all);
+};
+
+template <typename T>
+void* TransactionBuffer::pack_unique(T x, void*) {
+    void (*destroyer)(void*) = ObjectDestroyer<T>::destroy;
+    for (elt* e = e_; e; e = e->next) {
+        size_t off = 0;
+        while (off < e->pos) {
+            item* i = (item*) &e->buf[off];
+            if (i->destroyer == destroyer
+                && ((Aliasable<T>*) &i->buf[0])->x == x)
+                return &i->buf[0];
+            off += i->size;
+        }
+    }
+    return pack(std::move(x));
+}
 
 
 class Transaction {
@@ -239,12 +359,13 @@ public:
 
   // reset data so we can be reused for another transaction
   void reset() {
-    transSet_.resize(0);
+    transSet_.clear();
     permute = NULL;
     perm_size = 0;
     may_duplicate_items_ = false;
     isAborted_ = false;
     firstWrite_ = -1;
+    buf_.clear();
     if (tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
         print_stats();
     inc_p(txp_total_starts);
@@ -262,68 +383,71 @@ public:
 
   // adds item for a key that is known to be new (must NOT exist in the set)
   template <typename T>
-  TransProxy new_item(Shared* s, const T& key) {
-    void* k = pack(key);
-    // TODO: TransData packs its arguments so we're technically double packing here (void* packs to void* though)
-    transSet_.emplace_back(s, k);
-    return TransProxy(*this, transSet_.back());
+  TransProxy new_item(Shared* s, T key) {
+      transSet_.emplace_back(s, buf_.pack(std::move(key)));
+      return TransProxy(*this, transSet_.back());
   }
 
   // adds item without checking its presence in the array
   template <typename T>
-  TransProxy fresh_item(Shared *s, const T& key) {
-    may_duplicate_items_ = true;
-    return new_item(s, key);
+  TransProxy fresh_item(Shared *s, T key) {
+      may_duplicate_items_ = true;
+      transSet_.emplace_back(s, buf_.pack_unique(std::move(key)));
+      return TransProxy(*this, transSet_.back());
   }
 
   // tries to find an existing item with this key, otherwise adds it
   template <typename T>
-  TransProxy item(Shared *s, const T& key) {
-    TransItem *ti = has_item<false>(s, key);
-    // we use the firstwrite optimization when checking for item(), but do a full check if they call has_item.
-    // kinda jank, ideal I think would be we'd figure out when it's the first write, and at that point consolidate
-    // the set to be doing rmw (and potentially even combine any duplicate reads from earlier)
-    if (!ti)
-      ti = &new_item(s, key).i_;
-    return TransProxy(*this, *ti);
+  TransProxy item(Shared* s, T key) {
+      void* xkey = buf_.pack_unique(std::move(key));
+      TransItem* ti = find_item<false>(s, xkey);
+      if (!ti) {
+          transSet_.emplace_back(s, xkey);
+          ti = &transSet_.back();
+      }
+      return TransProxy(*this, *ti);
   }
 
   // gets an item that is intended to be read only. this method essentially allows for duplicate items
   // in the set in some cases
   template <typename T>
-  TransProxy read_item(Shared *s, const T& key) {
-    TransItem *ti;
-    if (!(ti = has_item<true>(s, key)))
-        ti = &new_item(s, key).i_;
-    return TransProxy(*this, *ti);
+  TransProxy read_item(Shared *s, T key) {
+      void* xkey = buf_.pack_unique(std::move(key));
+      TransItem* ti = find_item<true>(s, xkey);
+      if (!ti) {
+          transSet_.emplace_back(s, xkey);
+          ti = &transSet_.back();
+      }
+      return TransProxy(*this, *ti);
   }
 
   template <typename T>
-  OptionalTransProxy check_item(Shared* s, const T& key) {
-      return OptionalTransProxy(*this, has_item<false>(s, key));
+  OptionalTransProxy check_item(Shared* s, T key) {
+      void* xkey = buf_.pack_unique(std::move(key));
+      return OptionalTransProxy(*this, find_item<false>(s, xkey));
   }
 
+private:
   // tries to find an existing item with this key, returns NULL if not found
-  template <bool read_only, typename T>
-  TransItem* has_item(Shared *s, const T& key) {
-    if (read_only && firstWrite_ == -1) return NULL;
+  template <bool read_only>
+  TransItem* find_item(Shared *s, void* key) {
+      if (read_only && firstWrite_ == -1) {
+          may_duplicate_items_ = true;
+          return NULL;
+      }
 
-    if (!read_only && firstWrite_ == -1) {
-      consolidateReads();
-    }
+      if (!read_only && firstWrite_ == -1) {
+          consolidateReads();
+      }
 
-    // TODO: the semantics here are wrong. this all works fine if key if just some opaque pointer (which it sorta has to be anyway)
-    // but if it wasn't, we'd be doing silly copies here, AND have totally incorrect behavior anyway because k would be a unique
-    // pointer and thus not comparable to anything in the transSet. We should either actually support custom key comparisons
-    // or enforce that key is in fact trivially copyable/one word
-    void *k = pack(key);
-    for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
-      TransItem& ti = *it;
-      inc_p(txp_total_searched);
-      if (ti.sharedObj() == s && ti.key_ == k)
-        return &ti;
-    }
-    return NULL;
+      for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
+          TransItem& ti = *it;
+          inc_p(txp_total_searched);
+          if (ti.sharedObj() == s && ti.key_ == key)
+              return &ti;
+      }
+
+      return NULL;
   }
 
 public:
@@ -401,7 +525,8 @@ public:
 
     bool success = true;
 
-    if (firstWrite_ == -1) firstWrite_ = transSet_.size();
+    if (firstWrite_ == -1)
+        firstWrite_ = transSet_.size();
 
     int permute_alloc[transSet_.size() - firstWrite_];
     permute = permute_alloc;
@@ -511,15 +636,35 @@ private:
   }
 
 private:
-  TransSet transSet_;
-  int *permute;
-  int perm_size;
-  int firstWrite_;
-  bool may_duplicate_items_;
-  bool isAborted_;
+    int firstWrite_;
+    bool may_duplicate_items_;
+    bool isAborted_;
+    TransactionBuffer buf_;
+    TransSet transSet_;
+    int *permute;
+    int perm_size;
+
+    friend class TransProxy;
 };
 
 
+
+template <typename T>
+TransProxy& TransProxy::add_read(T rdata) {
+    if (!i_.shared.has_flags(READER_BIT)) {
+        i_.shared.or_flags(READER_BIT);
+        i_.rdata_ = t_.buf_.pack(std::move(rdata));
+    }
+    return *this;
+}
+
+template <typename T, typename U>
+TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
+    if (i_.shared.has_flags(READER_BIT)
+        && this->read_value<T>() == old_rdata)
+        i_.rdata_ = t_.buf_.pack(std::move(new_rdata));
+    return *this;
+}
 
 template <typename T>
 TransProxy& TransProxy::add_write(T wdata) {
@@ -531,7 +676,7 @@ TransProxy& TransProxy::add_write(T wdata) {
         this->template write_value<T>() = std::move(wdata);
     else {
         i_.shared.or_flags(WRITER_BIT);
-        i_.wdata_ = pack(std::move(wdata));
+        i_.wdata_ = t_.buf_.pack(std::move(wdata));
         t_.mark_write(i_);
     }
     return *this;

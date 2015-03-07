@@ -37,12 +37,11 @@ public:
     if (item.has_write())
       return item.template write_value<T>();
     else{
-			Version v;
-			T val;
-			atomicRead(v, val);
-			if (!item.has_read())
-				item.add_read(v);
-			return val;
+        Version v;
+        T val;
+        atomicRead(v, val);
+        item.add_read(v);
+        return val;
     }
   }
 
@@ -74,10 +73,6 @@ public:
   void install(TransItem& item) {
     s_.set_value(item.template write_value<T>());
 		Versioning::inc_version(s_.version());
-  }
-
-  void cleanup(TransItem& item, bool) {
-      item.cleanup_write<T>();
   }
 
 protected:

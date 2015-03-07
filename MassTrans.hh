@@ -156,7 +156,9 @@ public:
 #endif
       Version elem_vers;
       atomicRead(e, elem_vers, retval, max_read);
-      item.clear_read(valid_check_only_bit).add_read(elem_vers);
+      if (item.has_read((Version) valid_check_only_bit))
+          item.clear_read();
+      item.add_read(elem_vers);
     } else {
       ensureNotFound(t, lp.node(), lp.full_version_value());
     }
@@ -198,12 +200,7 @@ public:
       // we only need to check validity, not if the item has changed
       item.add_read(valid_check_only_bit);
       // same as inserts we need to store (copy) key so we can lookup to remove later
-      item.template clear_write<value_type>();
-      if (std::is_same<std::string, StringType>::value)
-	item.add_write(key);
-      else
-	// force a copy if e.g. string type is Str
-	item.add_write(std::string(key));
+      item.clear_write().template add_write<std::string>(key);
       item.set_flags(delete_bit);
       return found;
     } else {
@@ -482,16 +479,6 @@ public:
         (void)success;
         assert(success);
     }
-
-#if 0
-    if (item.has_read())
-      item.cleanup_read<Version>();
-#endif
-    item.cleanup_key<versioned_value*>();
-    if (we_inserted(item) || has_delete(item))
-      item.cleanup_write<std::string>();
-    else if (item.has_write())
-      item.cleanup_write<value_type>();
   }
 
   bool remove(const Str& key, threadinfo_type& ti = mythreadinfo) {
