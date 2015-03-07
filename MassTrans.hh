@@ -413,14 +413,14 @@ public:
   }
 
   void lock(TransItem& item) {
-    lock(unpack<versioned_value*>(item.key()));
+    lock(item.key<versioned_value*>());
   }
   void unlock(TransItem& item) {
-    unlock(unpack<versioned_value*>(item.key()));
+    unlock(item.key<versioned_value*>());
   }
   bool check(TransItem& item, Transaction& t) {
-    if (is_inter(item.key())) {
-      auto n = untag_inter(unpack<leaf_type*>(item.key()));
+    if (is_inter(item)) {
+      auto n = untag_inter(item.key<leaf_type*>());
       auto cur_version = n->full_version_value();
       auto read_version = item.template read_value<typename unlocked_cursor_type::nodeversion_value_type>();
       //      if (cur_version != read_version)
@@ -430,7 +430,7 @@ public:
       return cur_version == read_version;
         //&& !(cur_version & (unlocked_cursor_type::nodeversion_type::traits_type::lock_bit));
     }
-    auto e = unpack<versioned_value*>(item.key());
+    auto e = item.key<versioned_value*>();
     auto read_version = item.template read_value<Version>();
     //    if (read_version != e->version)
     //printf("leaf versions disagree: %d vs %d\n", e->version, read_version);
@@ -445,8 +445,8 @@ public:
     return lockedCheck && ((read_version & valid_check_only_bit) || versionCheck(read_version, e->version()));
   }
   void install(TransItem& item) {
-    assert(!is_inter(item.key()));
-    auto e = unpack<versioned_value*>(item.key());
+    assert(!is_inter(item));
+    auto e = item.key<versioned_value*>();
     assert(is_locked(e->version()));
     if (has_delete(item)) {
       if (!we_inserted(item)) {
@@ -484,10 +484,10 @@ public:
     }
 
 #if 0
-    free_packed<versioned_value*>(item.key());
     if (item.has_read())
       item.cleanup_read<Version>();
 #endif
+    item.cleanup_key<versioned_value*>();
     if (we_inserted(item) || has_delete(item))
       item.cleanup_write<std::string>();
     else if (item.has_write())
@@ -712,17 +712,19 @@ private:
   static constexpr uint8_t delete_bit = 1<<0;
 
   template <typename T>
-  T* tag_inter(T* p) {
+  static T* tag_inter(T* p) {
     return (T*)((uintptr_t)p | internode_bit);
   }
-
   template <typename T>
-  T* untag_inter(T* p) {
+  static T* untag_inter(T* p) {
     return (T*)((uintptr_t)p & ~internode_bit);
   }
   template <typename T>
-  bool is_inter(T* p) {
+  static bool is_inter(T* p) {
     return (uintptr_t)p & internode_bit;
+  }
+  static bool is_inter(TransItem& t) {
+      return is_inter(t.key<versioned_value*>());
   }
 
   bool versionCheck(Version v1, Version v2) {

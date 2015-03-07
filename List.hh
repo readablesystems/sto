@@ -391,36 +391,36 @@ private:
   void lock(TransItem& item) {
     // only lock we need to maybe do is for deletes
     if (has_delete(item))
-      unpack<list_node*>(item.key())->lock();
-    else if (item.key() == (void*)this)
-      lock(listversion_);
+        item.key<list_node*>()->lock();
+    else if (item.key<List*>() == this)
+        lock(listversion_);
   }
 
   void unlock(TransItem& item) {
     if (has_delete(item))
-      unpack<list_node*>(item.key())->unlock();
-    else if (item.key() == (void*)this)
+      item.key<list_node*>()->unlock();
+    else if (item.key<List*>() == (void*)this)
       unlock(listversion_);
   }
 
   bool check(TransItem& item, Transaction& t) {
-    if (item.key() == size_key) {
+    if (item.key<void*>() == size_key) {
       return true;
     }
-    if (item.key() == (void*)this) {
+    if (item.key<List*>() == this) {
       auto lv = listversion_;
       return 
         ListVersioning::versionCheck(lv, item.template read_value<Version>())
         && (!is_locked(lv) || t.check_for_write(item));
     }
-    auto n = unpack<list_node*>(item.key());
+    auto n = item.key<list_node*>();
     return (n->is_valid() || has_insert(item)) && (has_delete(item) || !n->is_locked());
   }
 
   void install(TransItem& item) {
-    if (item.key() == (void*)this)
+    if (item.key<List*>() == this)
       return;
-    list_node *n = unpack<list_node*>(item.key());
+    list_node *n = item.key<list_node*>();
     if (has_delete(item)) {
       remove(n, true);
       listsize_--;
@@ -436,7 +436,7 @@ private:
 
   void cleanup(TransItem& item, bool committed) {
       if (!committed && item.has_undo()) {
-          list_node *n = unpack<list_node*>(item.key());
+          list_node *n = item.key<list_node*>();
           remove(n);
       }
   }

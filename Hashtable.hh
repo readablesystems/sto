@@ -251,11 +251,11 @@ public:
   }
 
   bool check(TransItem& item, Transaction& t) {
-    if (is_bucket(item.key())) {
-      bucket_entry& buck = map_[bucket_value(item.key())];
+    if (is_bucket(item)) {
+      bucket_entry& buck = map_[bucket_key(item)];
       return versionCheck(item.template read_value<Version>(), buck.version) && !is_locked(buck.version);
     }
-    auto el = unpack<internal_elem*>(item.key());
+    auto el = item.key<internal_elem*>();
     auto read_version = item.template read_value<Version>();
     // if item has undo then its an insert so no validity check needed.
     // otherwise we check that it is both valid and not locked
@@ -265,18 +265,18 @@ public:
   }
 
   void lock(TransItem& item) {
-    assert(!is_bucket(item.key()));
-    auto el = unpack<internal_elem*>(item.key());
+    assert(!is_bucket(item));
+    auto el = item.key<internal_elem*>();
     lock(el);
   }
   void unlock(TransItem& item) {
-    assert(!is_bucket(item.key()));
-    auto el = unpack<internal_elem*>(item.key());
+    assert(!is_bucket(item));
+    auto el = item.key<internal_elem*>();
     unlock(el);
   }
   void install(TransItem& item) {
-    assert(!is_bucket(item.key()));
-    auto el = unpack<internal_elem*>(item.key());
+    assert(!is_bucket(item));
+    auto el = item.key<internal_elem*>();
     assert(is_locked(el));
     // delete
     if (item.has_afterC()) {
@@ -293,12 +293,12 @@ public:
 
   void cleanup(TransItem& item, bool committed) {
     if (committed ? item.has_afterC() : item.has_undo()) {
-        auto el = unpack<internal_elem*>(item.key());
+        auto el = item.key<internal_elem*>();
         assert(!el->valid());
         remove(el);
     }
 
-    free_packed<internal_elem*>(item.key());
+    item.cleanup_key<internal_elem*>();
     item.cleanup_read<Version>().cleanup_write<Value>();
   }
 
@@ -494,13 +494,16 @@ private:
   bool validity_check(TransItem& item, internal_elem *e) {
     return has_insert(item) || e->valid();
   }
-  
-  bool is_bucket(void *key) {
-    return (uintptr_t)key & bucket_bit;
+
+  static bool is_bucket(TransItem& item) {
+      return is_bucket(item.key<void*>());
   }
-  unsigned bucket_value(void *key) {
-    assert(is_bucket(key));
-    return (uintptr_t)key >> 1;
+  static bool is_bucket(void* key) {
+      return (uintptr_t)key & bucket_bit;
+  }
+  static unsigned bucket_key(TransItem& item) {
+      assert(is_bucket(item));
+      return (uintptr_t) item.key<void*>() >> 1;
   }
   void *pack_bucket(unsigned bucket) {
     return pack((bucket << 1) | bucket_bit);

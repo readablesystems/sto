@@ -114,22 +114,22 @@ public:
   }
 
   bool check(TransItem& item, Transaction& t) {
-    bool versionOK = ((elem(unpack<Key>(item.key())).version ^ unpack<Version>(item.data.rdata)) 
+    bool versionOK = ((elem(item.key<Key>()).version ^ item.read_value<Version>()) 
                       & ~lock_bit) == 0;
-    return versionOK && (t.check_for_write(item) || !is_locked(unpack<Key>(item.data.key)));
+    return versionOK && (t.check_for_write(item) || !is_locked(item.key<Key>()));
   }
 
   void lock(TransItem& item) {
-    lock(unpack<Key>(item.data.key));
+    lock(item.key<Key>());
   }
 
   void unlock(TransItem& item) {
-    unlock(unpack<Key>(item.data.key));
+    unlock(item.key<Key>());
   }
 
   void install(TransItem& item) {
-    Key i = unpack<Key>(item.data.key);
-    Value val = unpack<Value>(item.data.wdata);
+    Key i = item.key<Key>();
+    Value val = item.write_value<Value>();
     assert(is_locked(i));
     // TODO: updating version then value leads to incorrect behavior
     // updating value then version means atomic read isn't a real thing

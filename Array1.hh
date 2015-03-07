@@ -42,21 +42,20 @@ class Array1 : public Shared {
     }
 
     bool check(TransItem& item, Transaction& trans){
-        key_type i = unpack<key_type>(item.key());
+        key_type i = item.key<key_type>();
         return data_[i].check(item, trans);
     }
 
     void lock(TransItem& item){
-        lock(unpack<key_type>(item.key()));
+        lock(item.key<key_type>());
     }
     void unlock(TransItem& item){
-        unlock(unpack<key_type>(item.key()));
+        unlock(item.key<key_type>());
     }
 
     void install(TransItem& item){
         //install value
-        key_type i = unpack<key_type>(item.key());
-        data_[i].install(item);
+        data_[item.key<key_type>()].install(item);
     }
 
   private:

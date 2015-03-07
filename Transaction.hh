@@ -265,7 +265,7 @@ public:
   TransProxy new_item(Shared* s, const T& key) {
     void* k = pack(key);
     // TODO: TransData packs its arguments so we're technically double packing here (void* packs to void* though)
-    transSet_.emplace_back(s, k, NULL, NULL);
+    transSet_.emplace_back(s, k);
     return TransProxy(*this, transSet_.back());
   }
 
@@ -320,7 +320,7 @@ public:
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
       TransItem& ti = *it;
       inc_p(txp_total_searched);
-      if (ti.sharedObj() == s && ti.data.key == k)
+      if (ti.sharedObj() == s && ti.key_ == k)
         return &ti;
     }
     return NULL;
@@ -349,7 +349,7 @@ public:
       has_write = std::binary_search(permute, permute + perm_size, -1, [&] (const int& i, const int& j) {
 	  auto& e1 = unlikely(i < 0) ? item : transSet_[i];
 	  auto& e2 = likely(j < 0) ? item : transSet_[j];
-	  auto ret = likely(e1.data < e2.data) || (unlikely(e1.data == e2.data) && unlikely(e1.sharedObj() < e2.sharedObj()));
+	  auto ret = likely(e1.key_ < e2.key_) || (unlikely(e1.key_ == e2.key_) && unlikely(e1.sharedObj() < e2.sharedObj()));
 #if 0
 	  if (likely(i >= 0)) {
 	    auto cur = &i;
@@ -531,7 +531,7 @@ TransProxy& TransProxy::add_write(T wdata) {
         this->template write_value<T>() = std::move(wdata);
     else {
         i_.shared.or_flags(WRITER_BIT);
-        i_.data.wdata = pack(std::move(wdata));
+        i_.wdata_ = pack(std::move(wdata));
         t_.mark_write(i_);
     }
     return *this;

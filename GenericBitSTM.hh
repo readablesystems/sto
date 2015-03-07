@@ -108,24 +108,23 @@ public:
 
   // Hashtable handles all of this
   void lock(TransItem& item) {
-    table_.set(hash(item.key()) % table_.size());
+      table_.set(hash(item.key<void*>()) % table_.size());
   }
   void unlock(TransItem& item) {
-    table_.unset(hash(item.key()) % table_.size());
+      table_.unset(hash(item.key<void*>()) % table_.size());
   }
   bool check(TransItem& item, Transaction& t) {
     size_t sz = item.flags();
     uintptr_t cur = 0, old = 0;
     memcpy(&cur, &item.read_value<void*>(), sz);
-    memcpy(&old, item.key(), sz);
+    memcpy(&old, item.key<void*>(), sz);
     // TODO: will eventually need to check for false conflicts, too...
-    return cur == old && (!table_.get(hash(item.key()) % table_.size()) || t.check_for_write(item));
+    return cur == old && (!table_.get(hash(item.key<void*>()) % table_.size()) || t.check_for_write(item));
   }
   void install(TransItem& item) {
-    void* word = item.key();
-
-    void *data = item.write_value<void*>();
-    memcpy(word, &data, item.flags());
+      void* word = item.key<void*>();
+      void* data = item.write_value<void*>();
+      memcpy(word, &data, item.flags());
   }
 
 private:

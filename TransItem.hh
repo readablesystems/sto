@@ -70,28 +70,15 @@ inline void free_packed(void *&vp) {
   packer<sizeof(T) <= sizeof(void*)>().template free_packed<T>(vp);
 }
 
-struct TransData {
-  template <typename K, typename RD, typename WD>
-  TransData(K k, RD rd, WD wd) : key(pack(k)), rdata(pack(rd)), wdata(pack(wd)) {}
-  inline bool operator==(const TransData& d2) const {
-    return key == d2.key;
-  }
-  inline bool operator<(const TransData& d2) const {
-    return key < d2.key;
-  }
-  // this word must be unique (to a particular item) and consistently ordered across transactions
-  void *key;
-  void *rdata;
-  void *wdata;
-};
-
 class Shared;
 class Transaction;
 class TransProxy;
 
 struct TransItem {
-  template <typename K, typename RD, typename WD>
-  TransItem(Shared *s, K k, RD rd, WD wd) : shared(s), data(k, rd, wd) {}
+  template <typename K>
+  TransItem(Shared *s, K k)
+      : shared(s), key_(pack(std::move(k))) {
+  }
 
   Shared *sharedObj() const {
     return shared.ptr();
@@ -110,50 +97,51 @@ struct TransItem {
     return shared.has_flags(AFTERC_BIT);
   }
   bool same_item(const TransItem& x) const {
-    return sharedObj() == x.sharedObj() && data.key == x.data.key;
+    return sharedObj() == x.sharedObj() && key_ == x.key_;
   }
 
   template <typename T>
   T& write_value() {
     assert(has_write());
-    return unpack<T>(data.wdata);
+    return unpack<T>(wdata_);
   }
   template <typename T>
   T& read_value() {
     assert(has_read());
-    return unpack<T>(data.rdata);
-  }
-
-  void *&key() {
-    return data.key;
+    return unpack<T>(rdata_);
   }
 
   template <typename T>
-  T& key() {
-    return unpack<T>(data.key);
+  const T& key() {
+    return unpack<T>(key_);
   }
 
   inline bool operator==(const TransItem& t2) const {
-    return data == t2.data && sharedObj() == t2.sharedObj();
+    return key_ == t2.key_ && sharedObj() == t2.sharedObj();
   }
 
   inline bool operator<(const TransItem& t2) const {
     // we compare keys and THEN shared objects here so that read and write keys with the same value
     // are next to each other
-    return data < t2.data
-      || (data == t2.data && sharedObj() < t2.sharedObj());
+    return key_ < t2.key_
+      || (key_ == t2.key_ && sharedObj() < t2.sharedObj());
   }
 
   template <typename T>
-  TransItem& cleanup_write() {
-      if (has_write())
-          free_packed<T>(data.wdata);
+  TransItem& cleanup_key() {
+      free_packed<T>(key_);
       return *this;
   }
   template <typename T>
   TransItem& cleanup_read() {
       if (has_read())
-          free_packed<T>(data.rdata);
+          free_packed<T>(rdata_);
+      return *this;
+  }
+  template <typename T>
+  TransItem& cleanup_write() {
+      if (has_write())
+          free_packed<T>(wdata_);
       return *this;
   }
 
@@ -178,10 +166,13 @@ struct TransItem {
   }
 
 private:
-  friend class Transaction;
-  friend class TransProxy;
-  Tagged64<Shared> shared;
-  TransData data;
+    friend class Transaction;
+    friend class TransProxy;
+    Tagged64<Shared> shared;
+    // this word must be unique (to a particular item) and consistently ordered across transactions
+    void* key_;
+    void* rdata_;
+    void* wdata_;
 };
 
 
@@ -211,14 +202,14 @@ class TransProxy {
     TransProxy& add_read(T rdata) {
         if (!i_.shared.has_flags(READER_BIT)) {
             i_.shared.or_flags(READER_BIT);
-            i_.data.rdata = pack(std::move(rdata));
+            i_.rdata_ = pack(std::move(rdata));
         }
         return *this;
     }
     template <typename T>
     TransProxy& clear_read() {
         if (i_.shared.has_flags(READER_BIT)) {
-            free_packed<T>(i_.data.rdata);
+            free_packed<T>(i_.rdata_);
             i_.shared.rm_flags(READER_BIT);
         }
         return *this;
@@ -227,7 +218,7 @@ class TransProxy {
     TransProxy& clear_read(T rdata) {
         if (i_.shared.has_flags(READER_BIT)
             && this->read_value<T>() == rdata) {
-            free_packed<T>(i_.data.rdata);
+            free_packed<T>(i_.rdata_);
             i_.shared.rm_flags(READER_BIT);
         }
         return *this;
@@ -236,8 +227,8 @@ class TransProxy {
     TransProxy& update_read(T old_rdata, U new_rdata) {
         if (i_.shared.has_flags(READER_BIT)
             && this->read_value<T>() == old_rdata) {
-            free_packed<T>(i_.data.rdata);
-            i_.data.rdata = pack(std::move(new_rdata));
+            free_packed<T>(i_.rdata_);
+            i_.rdata_ = pack(std::move(new_rdata));
         }
         return *this;
     }
@@ -247,7 +238,7 @@ class TransProxy {
     template <typename T>
     TransProxy& clear_write() {
         if (i_.shared.has_flags(WRITER_BIT)) {
-            free_packed<T>(i_.data.wdata);
+            free_packed<T>(i_.wdata_);
             i_.shared.rm_flags(WRITER_BIT);
         }
         return *this;
@@ -265,12 +256,12 @@ class TransProxy {
     template <typename T>
     T& read_value() {
         assert(has_read());
-        return unpack<T>(i_.data.rdata);
+        return unpack<T>(i_.rdata_);
     }
     template <typename T>
     T& write_value() {
         assert(has_write());
-        return unpack<T>(i_.data.wdata);
+        return unpack<T>(i_.wdata_);
     }
 
     TransProxy& remove_write() { // XXX should also cleanup_write

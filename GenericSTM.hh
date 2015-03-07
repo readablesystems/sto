@@ -43,11 +43,10 @@ public:
   void unlock(TransItem&) {}
   bool check(TransItem&, Transaction&) { assert(0); return false; }
   void install(TransItem& item) {
-    void* word = item.key();
-    
-    // Hashtable implementation has already locked this word for us
-    void *data = item.write_value<void*>();
-    memcpy(word, &data, item.flags());
+      void* word = item.key<void*>();
+      // Hashtable implementation has already locked this word for us
+      void *data = item.write_value<void*>();
+      memcpy(word, &data, item.flags());
   }
   
 private:
