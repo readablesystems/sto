@@ -371,6 +371,7 @@ public:
     inc_p(txp_total_starts);
   }
 
+private:
   void consolidateReads() {
     // TODO: should be stable sort technically, but really we want to use insertion sort
     auto first = transSet_.begin();
@@ -379,8 +380,10 @@ public:
     // takes the first element of any duplicates which is what we want. that is, we want to verify
     // only the oldest read
     transSet_.resize(std::unique(first, last) - first);
+    may_duplicate_items_ = false;
   }
 
+public:
   // adds item for a key that is known to be new (must NOT exist in the set)
   template <typename T>
   TransProxy new_item(Shared* s, T key) {
@@ -391,7 +394,7 @@ public:
   // adds item without checking its presence in the array
   template <typename T>
   TransProxy fresh_item(Shared *s, T key) {
-      may_duplicate_items_ = true;
+      may_duplicate_items_ = transSet_.size() > 0;
       transSet_.emplace_back(s, buf_.pack_unique(std::move(key)));
       return TransProxy(*this, transSet_.back());
   }
@@ -400,7 +403,7 @@ public:
   template <typename T>
   TransProxy item(Shared* s, T key) {
       void* xkey = buf_.pack_unique(std::move(key));
-      TransItem* ti = find_item<false>(s, xkey);
+      TransItem* ti = find_item(s, xkey);
       if (!ti) {
           transSet_.emplace_back(s, xkey);
           ti = &transSet_.back();
@@ -413,8 +416,18 @@ public:
   template <typename T>
   TransProxy read_item(Shared *s, T key) {
       void* xkey = buf_.pack_unique(std::move(key));
-      TransItem* ti = find_item<true>(s, xkey);
+      TransItem* ti = 0;
+      if (firstWrite_ >= 0)
+          for (auto it = transSet_.begin() + firstWrite_;
+               it != transSet_.end(); ++it) {
+              inc_p(txp_total_searched);
+              if (it->sharedObj() == s && it->key_ == xkey) {
+                  ti = &*it;
+                  break;
+              }
+          }
       if (!ti) {
+          may_duplicate_items_ = transSet_.size() > 0;
           transSet_.emplace_back(s, xkey);
           ti = &transSet_.back();
       }
@@ -424,29 +437,19 @@ public:
   template <typename T>
   OptionalTransProxy check_item(Shared* s, T key) {
       void* xkey = buf_.pack_unique(std::move(key));
-      return OptionalTransProxy(*this, find_item<false>(s, xkey));
+      return OptionalTransProxy(*this, find_item(s, xkey));
   }
 
 private:
   // tries to find an existing item with this key, returns NULL if not found
-  template <bool read_only>
   TransItem* find_item(Shared *s, void* key) {
-      if (read_only && firstWrite_ == -1) {
-          may_duplicate_items_ = true;
-          return NULL;
-      }
-
-      if (!read_only && firstWrite_ == -1) {
+      if (may_duplicate_items_)
           consolidateReads();
-      }
-
       for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
-          TransItem& ti = *it;
           inc_p(txp_total_searched);
-          if (ti.sharedObj() == s && ti.key_ == key)
-              return &ti;
+          if (it->sharedObj() == s && it->key_ == key)
+              return &*it;
       }
-
       return NULL;
   }
 
@@ -525,7 +528,7 @@ public:
 
     bool success = true;
 
-    if (firstWrite_ == -1)
+    if (firstWrite_ < 0)
         firstWrite_ = transSet_.size();
 
     int permute_alloc[transSet_.size() - firstWrite_];
