@@ -58,7 +58,7 @@ singleelems: singleelems.o clp.o $(STO_OBJS)
 
 array1: array1.o clp.o $(STO_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
-  
+
 genericTest: genericTest.o clp.o $(STO_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
