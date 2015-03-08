@@ -22,8 +22,8 @@ using namespace std;
 
 void queueTests() {
     Queue<int> q;
-    
     int p;
+
     // NONEMPTY TESTS
     {
         // ensure pops read pushes in FIFO order

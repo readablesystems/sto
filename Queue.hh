@@ -5,7 +5,7 @@
 #include "Transaction.hh"
 #include "VersionFunctions.hh"
 
-template <typename T, unsigned BUF_SIZE = 256> 
+template <typename T, unsigned BUF_SIZE = 4096> 
 class Queue: public Shared {
 public:
     Queue() : head_(0), tail_(0), queuesize_(0), tailversion_(0), headversion_(0) {}
@@ -18,6 +18,25 @@ public:
     static constexpr Version pop_bit = 1<<2;
     static constexpr Version read_writes = 1<<3;
 
+    // NONTRANSACTIONAL PUSH/POP/EMPTY
+    void push(T v) {
+        queueSlots[tail_] = v;
+        tail_ = (tail_+1)%BUF_SIZE;
+    }
+    
+    T pop() {
+        assert(head_ != tail_);
+        T v = queueSlots[head_];
+        head_ = (head_+1)%BUF_SIZE;
+        return v;
+    }
+   
+    // empty 
+    bool empty() {
+        return (head_ == tail_);
+    }
+
+    // TRANSACTIONAL CALLS
     void transPush(Transaction& t, const T& v) {
         auto& item = t.item(this, -1);
         if (item.has_write()) {
@@ -66,7 +85,8 @@ public:
             }
             else break;
         }
-       
+        
+        // ensure that head is not modified by time of commit 
         item->or_flags(delete_bit);
         if (!item->has_read()) {
            t.add_read(*item, headversion_);
@@ -109,7 +129,8 @@ public:
             }
             else break;
         }
-        //check that head was not modified at time of commit
+        
+        // ensure that head was not modified at time of commit
         if (!item->has_read())
            t.add_read(*item, headversion_);
         item->or_flags(front_bit);
