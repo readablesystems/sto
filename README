@@ -13,6 +13,9 @@ If this is too fast:
 Check delete multithreaded correctness (not applicable for arrays):
 ./concurrent 6 -c
 
+Note that the list tests are O(n^2) and generally not that great. Probably the
+only one worth running is ./concurrent 6 -c --prepopulate=0
+
 Benchmark singlethreaded:
 ./concurrent 3 --nthreads=1
 or

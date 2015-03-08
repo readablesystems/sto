@@ -455,7 +455,7 @@ void checkRandomRWs() {
   prepopulate_func(check);
 
   for (int i = 0; i < nthreads; ++i) {
-    randomRWs_delete((void*)(intptr_t)i);
+    randomRWs_nodelete((void*)(intptr_t)i);
   }
 #if MAINTAIN_TRUE_ARRAY_STATE
   maintain_true_array_state = !maintain_true_array_state;
