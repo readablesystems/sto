@@ -37,7 +37,7 @@
 // use unboxed strings in Masstree (only used if STRING_VALUES is set)
 #define UNBOXED_STRINGS 0
 
-// if 1 we just print the runtime, no diagnostic information or strings 
+// if 1 we just print the runtime, no diagnostic information or strings
 // (makes it easier to collect data using a script)
 #define DATA_COLLECT 0
 
@@ -60,7 +60,7 @@
 // assert reading our writes works
 #define TRY_READ_MY_WRITES 0
 
-// whether to also do random deletes in the randomRWs test (for performance 
+// whether to also do random deletes in the randomRWs test (for performance
 // only, we can't verify correctness from this)
 #define RAND_DELETES 0
 
@@ -101,6 +101,8 @@ struct ContainerBase_arraylike {
     static bool transUpdate(T&, Transaction&, K, V) {
         return false;
     }
+    static void init() {
+    }
     template <typename T>
     static void thread_init(T&) {
     }
@@ -119,6 +121,8 @@ struct ContainerBase_maplike {
     template <typename T, typename K, typename V>
     static bool transUpdate(T& c, Transaction& txn, K key, V value) {
         return c.transUpdate(txn, key, value);
+    }
+    static void init() {
     }
     template <typename T>
     static void thread_init(T&) {
@@ -150,6 +154,12 @@ template <> struct Container<USE_MASSTREE> : public ContainerBase_maplike {
 #else
     typedef MassTrans<value_type> type;
 #endif
+    static void init() {
+        Transaction::epoch_advance_callback = [] (unsigned) {
+            // just advance blindly because of the way Masstree uses epochs
+            globalepoch++;
+        };
+    }
     static void thread_init(type& c) {
         c.thread_init();
     }
@@ -158,10 +168,6 @@ template <> struct Container<USE_MASSTREE> : public ContainerBase_maplike {
 template <> struct Container<USE_HASHTABLE> : public ContainerBase_maplike {
     typedef Hashtable<int, value_type, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
 };
-
-typedef Container<DATA_STRUCTURE> ContainerType;
-typedef Container<DATA_STRUCTURE>::type ArrayType;
-ArrayType* a;
 
 bool readMyWrites = true;
 bool runCheck = false;
@@ -243,7 +249,7 @@ static void doWrite(T& a, Transaction& t, int slot, int& ctr) {
   if (blindRandomWrite) {
     if (readMyWrites) {
       a.transWrite(t, slot, val(ctr));
-    } 
+    }
 #if 0
 else {
       a.transWrite_nocheck(t, slot, val(ctr));
@@ -277,6 +283,7 @@ static inline void nreads(T& a, int n, Transaction& t, std::function<int(void)> 
     doRead(a, t, slotgen());
   }
 }
+
 template <typename T>
 static inline void nwrites(T& a, int n, Transaction& t, std::function<int(void)> slotgen) {
   for (int i = 0; i < n; ++i) {
@@ -284,9 +291,41 @@ static inline void nwrites(T& a, int n, Transaction& t, std::function<int(void)>
   }
 }
 
-void *readThenWrite(void *p) {
-  int me = (intptr_t)p;
-  ContainerType::thread_init(*a);
+
+struct Tester {
+    Tester() {}
+    virtual void initialize() = 0;
+    virtual void run(int me) = 0;
+    virtual bool check() { return false; }
+};
+
+template <int DS> struct DSTester : public Tester {
+    DSTester() : a() {}
+    void initialize();
+    virtual bool prepopulate() { return true; }
+    typedef Container<DS> container_type;
+    typedef typename Container<DS>::type type;
+  protected:
+    type* a;
+};
+
+template <int DS> void DSTester<DS>::initialize() {
+    a = new type;
+    if (prepopulate())
+        prepopulate_func(*a);
+    Container<DS>::init();
+}
+
+
+template <int DS> struct ReadThenWrite : public DSTester<DS> {
+    ReadThenWrite() {}
+    void run(int me);
+};
+
+template <int DS> void ReadThenWrite<DS>::run(int me) {
+  Transaction::threadid = me;
+  typename Container<DS>::type* a = this->a;
+  Container<DS>::thread_init(*a);
 
   std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
 
@@ -312,14 +351,19 @@ void *readThenWrite(void *p) {
       }
     }
   }
-  return NULL;
 }
 
 
-template <bool do_delete, typename C>
-void random_rws(int me, typename C::type& a) {
+template <int DS> struct RandomRWs_parent : public DSTester<DS> {
+    RandomRWs_parent() {}
+    template <bool do_delete> void do_run(int me);
+};
+
+template <int DS> template <bool do_delete>
+void RandomRWs_parent<DS>::do_run(int me) {
   Transaction::threadid = me;
-  C::thread_init(a);
+  typename Container<DS>::type* a = this->a;
+  Container<DS>::thread_init(*a);
 
   std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
   uint32_t write_thresh = (uint32_t) (write_percent * Rand::max());
@@ -362,11 +406,11 @@ void random_rws(int me, typename C::type& a) {
         auto r = transgen();
         if (do_delete && r > (write_thresh+write_thresh/2)) {
           // TODO: this doesn't make that much sense if write_percent != 50%
-          C::transDelete(a, t, slot);
+          Container<DS>::transDelete(*a, t, slot);
         } else if (r > write_thresh) {
-          doRead(a, t, slot);
+          doRead(*a, t, slot);
         } else {
-          doWrite(a, t, slot, j);
+          doWrite(*a, t, slot, j);
 
 #if MAINTAIN_TRUE_ARRAY_STATE
           slots_written[nslots_written++] = slot;
@@ -430,56 +474,63 @@ void random_rws(int me, typename C::type& a) {
 }
 
 
-void *randomRWs_delete(void *p) {
-  int me = (intptr_t)p;
-  random_rws<ContainerType::has_delete, ContainerType>(me, *a);
-  return NULL;
+template <int DS, bool do_delete> struct RandomRWs : public RandomRWs_parent<DS> {
+    RandomRWs() {}
+    void run(int me);
+    bool check();
+};
+
+template <int DS, bool do_delete> void RandomRWs<DS, do_delete>::run(int me) {
+    this->template do_run<do_delete && Container<DS>::has_delete>(me);
 }
 
-void *randomRWs_nodelete(void *p) {
-  int me = (intptr_t)p;
-  random_rws<false, ContainerType>(me, *a);
-  return NULL;
-}
+template <int DS, bool do_delete> bool RandomRWs<DS, do_delete>::check() {
+  if (do_delete && Container<DS>::has_delete)
+      return false;
 
-void checkRandomRWs() {
-  ArrayType *old = a;
-  a = new ArrayType();
-  ArrayType& check = *a;
+  typename Container<DS>::type* old = this->a;
+  typename Container<DS>::type ch;
+  this->a = &ch;
 
   // rerun transactions one-by-one
 #if MAINTAIN_TRUE_ARRAY_STATE
   maintain_true_array_state = !maintain_true_array_state;
 #endif
-
-  prepopulate_func(check);
+  prepopulate_func(ch);
 
   for (int i = 0; i < nthreads; ++i) {
-    randomRWs_nodelete((void*)(intptr_t)i);
+      this->template do_run<false>(i);
   }
 #if MAINTAIN_TRUE_ARRAY_STATE
   maintain_true_array_state = !maintain_true_array_state;
 #endif
-  a = old;
+  this->a = old;
 
   for (int i = 0; i < ARRAY_SZ; ++i) {
 # if MAINTAIN_TRUE_ARRAY_STATE
-    if (unval(a->read(i)) != true_array_state[i])
+    if (unval(old->read(i)) != true_array_state[i])
         fprintf(stderr, "index [%d]: parallel %d, atomic %d\n",
-                i, unval(a->read(i)), true_array_state[i]);
+                i, unval(old->read(i)), true_array_state[i]);
 # endif
-    if (unval(a->read(i)) != unval(check.read(i)))
+    if (unval(old->read(i)) != unval(ch.read(i)))
         fprintf(stderr, "index [%d]: parallel %d, sequential %d\n",
-                i, unval(a->read(i)), unval(check.read(i)));
-    assert(unval(check.read(i)) == unval(a->read(i)));
+                i, unval(old->read(i)), unval(ch.read(i)));
+    assert(unval(ch.read(i)) == unval(old->read(i)));
   }
+  return true;
 }
 
 
-void *kingOfTheDelete(void *p) {
-  int me = (intptr_t)p;
+template <int DS> struct KingDelete : public DSTester<DS> {
+    KingDelete() {}
+    void run(int me);
+    bool check();
+};
+
+template <int DS> void KingDelete<DS>::run(int me) {
   Transaction::threadid = me;
-  ContainerType::thread_init(*a);
+  typename Container<DS>::type* a = this->a;
+  Container<DS>::thread_init(*a);
 
   bool done = false;
   while (!done) {
@@ -487,7 +538,7 @@ void *kingOfTheDelete(void *p) {
       Transaction t;
       for (int i = 0; i < nthreads; ++i) {
         if (i != me) {
-          ContainerType::transDelete(*a, t, i);
+          Container<DS>::transDelete(*a, t, i);
         } else {
           a->transWrite(t, i, val(i+1));
         }
@@ -495,10 +546,10 @@ void *kingOfTheDelete(void *p) {
       done = t.commit();
     } catch (Transaction::Abort E) {}
   }
-  return NULL;
 }
 
-void checkKingOfTheDelete() {
+template <int DS> bool KingDelete<DS>::check() {
+  typename Container<DS>::type* a = this->a;
   int count = 0;
   for (int i = 0; i < nthreads; ++i) {
     if (unval(a->read(i))) {
@@ -506,13 +557,20 @@ void checkKingOfTheDelete() {
     }
   }
   assert(count==1);
+  return true;
 }
 
 
-void *xorDelete(void *p) {
-  int me = (intptr_t)p;
+template <int DS> struct XorDelete : public DSTester<DS> {
+    XorDelete() {}
+    void run(int me);
+    bool check();
+};
+
+template <int DS> void XorDelete<DS>::run(int me) {
   Transaction::threadid = me;
-  ContainerType::thread_init(*a);
+  typename Container<DS>::type* a = this->a;
+  Container<DS>::thread_init(*a);
 
   // we never pick slot 0 so we can detect if table is populated
   std::uniform_int_distribution<long> slotdist(1, ARRAY_SZ-1);
@@ -534,49 +592,47 @@ void *xorDelete(void *p) {
           if (r > delete_thresh) {
             // can't do put/insert because that makes the results ordering dependent
             // (these updates don't actually affect the final state at all)
-            ContainerType::transUpdate(*a, t, slot, val(slot + 1));
-          } else if (!ContainerType::transInsert(*a, t, slot, val(slot+1))) {
+            Container<DS>::transUpdate(*a, t, slot, val(slot + 1));
+          } else if (!Container<DS>::transInsert(*a, t, slot, val(slot+1))) {
             // we delete if the element is there and insert if it's not
             // this is essentially xor'ing the slot, so ordering won't matter
-            ContainerType::transDelete(*a, t, slot);
+            Container<DS>::transDelete(*a, t, slot);
           }
         }
         done = t.commit();
       } catch (Transaction::Abort E) {}
     }
   }
-  
-  return NULL;
 }
 
-void checkXorDelete() {
-  ArrayType *old = a;
-  ArrayType check;
-  a = &check;
-
-  prepopulate_func(*a);
+template <int DS> bool XorDelete<DS>::check() {
+  typename Container<DS>::type* old = this->a;
+  typename Container<DS>::type ch;
+  this->a = &ch;
+  prepopulate_func(*this->a);
 
   for (int i = 0; i < nthreads; ++i) {
-    xorDelete((void*)(intptr_t)i);
+    run(i);
   }
-  a = old;
+  this->a = old;
 
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    assert(unval(a->read(i)) == unval(check.read(i)));
+    assert(unval(old->read(i)) == unval(ch.read(i)));
   }
+  return true;
 }
 
 
-void checkIsolatedWrites() {
-  for (int i = 0; i < nthreads; ++i) {
-    assert(unval(a->read(i)) == i+1);
-  }
-}
+template <int DS> struct IsolatedWrites : public DSTester<DS> {
+    IsolatedWrites() {}
+    void run(int me);
+    bool check();
+};
 
-void *isolatedWrites(void *p) {
-  int me = (intptr_t)p;
+template <int DS> void IsolatedWrites<DS>::run(int me) {
   Transaction::threadid = me;
-  ContainerType::thread_init(*a);
+  typename Container<DS>::type* a = this->a;
+  Container<DS>::thread_init(*a);
 
   bool done = false;
   while (!done) {
@@ -592,14 +648,26 @@ void *isolatedWrites(void *p) {
     } catch (Transaction::Abort E) {}
     debug("iter: %d %d\n", me, done);
   }
-  return NULL;
+}
+
+template <int DS> bool IsolatedWrites<DS>::check() {
+  for (int i = 0; i < nthreads; ++i) {
+    assert(unval(this->a->read(i)) == i+1);
+  }
+  return true;
 }
 
 
-void *blindWrites(void *p) {
-  int me = (long long)p;
+template <int DS> struct BlindWrites : public DSTester<DS> {
+    BlindWrites() {}
+    void run(int me);
+    bool check();
+};
+
+template <int DS> void BlindWrites<DS>::run(int me) {
   Transaction::threadid = me;
-  ContainerType::thread_init(*a);
+  typename Container<DS>::type* a = this->a;
+  Container<DS>::thread_init(*a);
 
   bool done = false;
   while (!done) {
@@ -621,21 +689,27 @@ void *blindWrites(void *p) {
     } catch (Transaction::Abort E) {}
     debug("thread %d %d\n", me, done);
   }
-
-  return NULL;
 }
 
-void checkBlindWrites() {
+template <int DS> bool BlindWrites<DS>::check() {
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    debug("read %d\n", a->read(i));
-    assert(unval(a->read(i)) == nthreads-1);
+    debug("read %d\n", this->a->read(i));
+    assert(unval(this->a->read(i)) == nthreads-1);
   }
+  return true;
 }
 
-void *interferingRWs(void *p) {
-  int me = (intptr_t)p;
+
+template <int DS> struct InterferingRWs : public DSTester<DS> {
+    InterferingRWs() {}
+    void run(int me);
+    bool check();
+};
+
+template <int DS> void InterferingRWs<DS>::run(int me) {
   Transaction::threadid = me;
-  ContainerType::thread_init(*a);
+  typename Container<DS>::type* a = this->a;
+  Container<DS>::thread_init(*a);
 
   bool done = false;
   while (!done) {
@@ -653,19 +727,34 @@ void *interferingRWs(void *p) {
     } catch (Transaction::Abort E) {}
     debug("thread %d %d\n", me, done);
   }
-  return NULL;
 }
 
-void checkInterferingRWs() {
+template <int DS> bool InterferingRWs<DS>::check() {
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    assert(unval(a->read(i)) == (i % nthreads)+1);
+    assert(unval(this->a->read(i)) == (i % nthreads)+1);
   }
+  return true;
 }
 
-void startAndWait(int n, void *(*start_routine) (void *)) {
+
+struct TesterPair {
+    Tester* t;
+    int me;
+};
+
+void* runfunc(void* x) {
+    TesterPair* tp = (TesterPair*) x;
+    tp->t->run(tp->me);
+    return nullptr;
+}
+
+void startAndWait(int n, Tester* tester) {
   pthread_t tids[n];
+  TesterPair testers[n];
   for (int i = 0; i < n; ++i) {
-    pthread_create(&tids[i], NULL, start_routine, (void*)(intptr_t)i);
+      testers[i].t = tester;
+      testers[i].me = i;
+      pthread_create(&tids[i], NULL, runfunc, &testers[i]);
   }
   pthread_t advancer;
   pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
@@ -676,26 +765,45 @@ void startAndWait(int n, void *(*start_routine) (void *)) {
   }
 }
 
+
 void print_time(struct timeval tv1, struct timeval tv2) {
   printf("%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
 }
 
+#define MAKE_TESTER(name, desc, type, ...)            \
+    {name, desc, 0, new type<0, ## __VA_ARGS__>},     \
+    {name, desc, 1, new type<1, ## __VA_ARGS__>},     \
+    {name, desc, 2, new type<2, ## __VA_ARGS__>},     \
+    {name, desc, 3, new type<3, ## __VA_ARGS__>},     \
+    {name, desc, 4, new type<4, ## __VA_ARGS__>}
+
 struct Test {
-  const char* name;
-  void *(*threadfunc) (void *);
-  void (*checkfunc) (void);
-  bool prepopulate;
+    const char* name;
+    const char* desc;
+    int ds;
+    Tester* tester;
+} tests[] = {
+    MAKE_TESTER("isolatedwrites", 0, IsolatedWrites),
+    MAKE_TESTER("blindwrites", 0, BlindWrites),
+    MAKE_TESTER("interferingwrites", 0, InterferingRWs),
+    MAKE_TESTER("randomrw", "typically best choice", RandomRWs, false),
+    MAKE_TESTER("readthenwrite", 0, ReadThenWrite),
+    MAKE_TESTER("kingofthedelete", 0, KingDelete),
+    MAKE_TESTER("xordelete", 0, XorDelete),
+    MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true)
 };
 
-Test tests[] = {
-    {"isolatedwrites", isolatedWrites, checkIsolatedWrites, true},
-    {"blindwrites", blindWrites, checkBlindWrites, true},
-    {"interferingwrites", interferingRWs, checkInterferingRWs, true},
-    {"randomreadwrites (usually you want this)", randomRWs_nodelete, checkRandomRWs, true},
-    {"readthenwrite", readThenWrite, NULL, true},
-    {"kingofthedelete", kingOfTheDelete, checkKingOfTheDelete, true},
-    {"xordelete", xorDelete, checkXorDelete, true},
-    {"randomreadwrites-delete (uncheckable, use for benchmarking only)", randomRWs_delete, checkRandomRWs, true},
+struct {
+    const char* name;
+    int ds;
+} ds_names[] = {
+    {"array", USE_ARRAY},
+    {"hashtable", USE_HASHTABLE},
+    {"hash", USE_HASHTABLE},
+    {"masstree", USE_MASSTREE},
+    {"mass", USE_MASSTREE},
+    {"genstm", USE_GENSTMARRAY},
+    {"list", USE_LISTARRAY}
 };
 
 enum {
@@ -726,8 +834,18 @@ Options:\n\
  --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n",
          name, nthreads, ntrans, opspertrans, write_percent, prepopulate);
   printf("\nTests:\n");
+  size_t testidx = 0;
   for (size_t ti = 0; ti != sizeof(tests)/sizeof(tests[0]); ++ti)
-    printf(" %zu: %s\n", ti, tests[ti].name);
+      if (ti == 0 || strcmp(tests[ti].name, tests[ti-1].name) != 0) {
+          if (tests[ti].desc)
+              printf(" %zu: %-10s (%s)\n", testidx, tests[ti].name, tests[ti].desc);
+          else
+              printf(" %zu: %s\n", testidx, tests[ti].name);
+          ++testidx;
+      }
+  printf("\nData structures:\n");
+  for (size_t ti = 0; ti != sizeof(ds_names)/sizeof(ds_names[0]); ++ti)
+      printf(" %s", ds_names[ti].name);
   printf("\n");
   exit(1);
 }
@@ -735,23 +853,20 @@ Options:\n\
 int main(int argc, char *argv[]) {
   Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
 
-  int test = -1;
+  int ds = DATA_STRUCTURE;
+  const char* test_name = nullptr;
 
   int opt;
   while ((opt = Clp_Next(clp)) != Clp_Done) {
     switch (opt) {
     case Clp_NotOption:
-        if (isdigit((unsigned char) clp->vstr[0]))
-            test = atoi(clp->vstr);
-        else {
-            test = -1;
-            for (size_t ti = 0; ti != sizeof(tests) / sizeof(tests[0]); ++ti)
-                if (strcmp(tests[ti].name, clp->vstr) == 0) {
-                    test = (int) ti;
-                    break;
-                }
-        }
-        break;
+        for (size_t ti = 0; ti != sizeof(ds_names) / sizeof(ds_names[0]); ++ti)
+            if (strcmp(ds_names[ti].name, clp->vstr) == 0) {
+                ds = ds_names[ti].ds;
+                goto found_ds;
+            }
+        test_name = clp->vstr;
+    found_ds: break;
     case opt_nrmyw:
       readMyWrites = false;
       break;
@@ -782,32 +897,38 @@ int main(int argc, char *argv[]) {
   }
   Clp_DeleteParser(clp);
 
+  int testidx = 0;
+  int test = -1;
+  for (size_t ti = 0; ti != sizeof(tests) / sizeof(tests[0]); ++ti) {
+      if (ti > 0 && strcmp(tests[ti].name, tests[ti-1].name) != 0)
+          ++testidx;
+      if (tests[ti].ds == ds
+          && test_name
+          && (isdigit((unsigned char) test_name[0])
+              ? atoi(test_name) == testidx
+              : strcmp(tests[ti].name, test_name) == 0)) {
+          test = ti;
+          break;
+      }
+  }
+
   if (test == -1) {
     help(argv[0]);
   }
-  
+
   if (nthreads > MAX_THREADS) {
     printf("Asked for %d threads but MAX_THREADS is %d\n", nthreads, MAX_THREADS);
     exit(1);
   }
 
-#if DATA_STRUCTURE == USE_MASSTREE
-  Transaction::epoch_advance_callback = [] (unsigned) {
-    // just advance blindly because of the way Masstree uses epochs
-    globalepoch++;
-  };
-#endif
-
-  a = new ArrayType();
-
-  if (tests[test].prepopulate)
-    prepopulate_func(*a);
+  Tester* tester = tests[test].tester;
+  tester->initialize();
 
   struct timeval tv1,tv2;
   struct rusage ru1,ru2;
   gettimeofday(&tv1, NULL);
   getrusage(RUSAGE_SELF, &ru1);
-  startAndWait(nthreads, tests[test].threadfunc);
+  startAndWait(nthreads, tester);
   gettimeofday(&tv2, NULL);
   getrusage(RUSAGE_SELF, &ru2);
 #if !DATA_COLLECT
@@ -819,9 +940,14 @@ int main(int argc, char *argv[]) {
   print_time(ru1.ru_utime, ru2.ru_utime);
   printf("stime: ");
   print_time(ru1.ru_stime, ru2.ru_stime);
-  printf("Ran test %d with: ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f%% writes, blindrandwrites: %d\n\
+
+  size_t dsi = 0;
+  while (ds_names[dsi].ds != ds)
+      ++dsi;
+  printf("Ran test %s %s\n", tests[test].name, ds_names[dsi].name);
+  printf("  ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f%% writes, blindrandwrites: %d\n \
  MAINTAIN_TRUE_ARRAY_STATE: %d, LOCAL_VECTOR: %d, SPIN_LOCK: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, TRY_READ_MY_WRITES: %d, PERF_LOGGING: %d\n",
-         test, ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, blindRandomWrite,
+         ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, blindRandomWrite,
          MAINTAIN_TRUE_ARRAY_STATE, LOCAL_VECTOR, SPIN_LOCK, INIT_SET_SIZE, GLOBAL_SEED, TRY_READ_MY_WRITES, PERF_LOGGING);
 #endif
 
@@ -831,12 +957,11 @@ int main(int argc, char *argv[]) {
       using thd = threadinfo_t;
       thd tc = Transaction::tinfo_combined();
       printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
-#if DATA_STRUCTURE == USE_MASSTREE
-      printf("node aborts: %llu\n", (unsigned long long) node_aborts);
-#endif
+      if (ds == USE_MASSTREE)
+          printf("node aborts: %llu\n", (unsigned long long) node_aborts);
   }
 #endif
 
   if (runCheck)
-    tests[test].checkfunc();
+      tester->check();
 }
