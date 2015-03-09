@@ -359,6 +359,9 @@ public:
 
   // reset data so we can be reused for another transaction
   void reset() {
+    if (isAborted_
+        && tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
+        print_stats();
     transSet_.clear();
     permute = NULL;
     perm_size = 0;
@@ -366,8 +369,6 @@ public:
     isAborted_ = false;
     firstWrite_ = -1;
     buf_.clear();
-    if (tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
-        print_stats();
     inc_p(txp_total_starts);
   }
 
