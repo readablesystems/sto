@@ -443,8 +443,6 @@ public:
 private:
   // tries to find an existing item with this key, returns NULL if not found
   TransItem* find_item(Shared *s, void* key) {
-      if (may_duplicate_items_)
-          consolidateReads();
       for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
           inc_p(txp_total_searched);
           if (it->sharedObj() == s && it->key_ == key)
@@ -506,8 +504,12 @@ public:
       if (it->has_read()) {
         inc_p(txp_total_r);
         if (!it->sharedObj()->check(*it, *this)) {
-          return false;
+            for (auto jt = trans_first; jt != it; ++jt)
+                if (*jt == *it)
+                    goto ok;
+            return false;
         }
+      ok: ;
       }
     return true;
   }
