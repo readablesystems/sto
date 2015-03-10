@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vector>
+#include "local_vector.hh"
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -29,8 +29,6 @@
 #endif
 
 #include "config.h"
-
-#define LOCAL_VECTOR 1
 
 #define NOSORT 0
 
@@ -68,10 +66,6 @@ inline bool has_txp(int p) {
 }
 
 
-#if LOCAL_VECTOR
-#include "local_vector.hh"
-#endif
-
 #include "Interface.hh"
 #include "TransItem.hh"
 
@@ -83,7 +77,7 @@ void reportPerf();
 struct __attribute__((aligned(128))) threadinfo_t {
   unsigned epoch;
   unsigned spin_lock;
-  std::vector<std::pair<unsigned, std::function<void(void)>>> callbacks;
+  local_vector<std::pair<unsigned, std::function<void(void)>>, 8> callbacks;
   std::function<void(void)> trans_start_callback;
   std::function<void(void)> trans_end_callback;
   uint64_t p_[txp_count];
@@ -323,12 +317,6 @@ public:
     release_spinlock(tinfo[threadid].spin_lock);
   }
 
-#if LOCAL_VECTOR
-  typedef local_vector<TransItem, INIT_SET_SIZE> TransSet;
-#else
-  typedef std::vector<TransItem> TransSet;
-#endif
-
   static void inc_p(int p) {
       add_p(p, 1);
   }
@@ -340,9 +328,6 @@ public:
   }
 
   Transaction() : transSet_() {
-#if !LOCAL_VECTOR
-    transSet_.reserve(INIT_SET_SIZE);
-#endif
     // TODO: assumes this thread is constantly running transactions
     tinfo[threadid].epoch = global_epoch;
     if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
@@ -352,7 +337,7 @@ public:
   ~Transaction() {
     tinfo[threadid].epoch = 0;
     if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
-    if (!isAborted_ && transSet_.size() != 0) {
+    if (!isAborted_ && !transSet_.empty()) {
       silent_abort();
     }
   }
@@ -380,7 +365,7 @@ private:
     std::sort(first, last);
     // takes the first element of any duplicates which is what we want. that is, we want to verify
     // only the oldest read
-    transSet_.resize(std::unique(first, last) - first);
+    transSet_.erase(std::unique(first, last), last);
     may_duplicate_items_ = false;
   }
 
@@ -395,7 +380,7 @@ public:
   // adds item without checking its presence in the array
   template <typename T>
   TransProxy fresh_item(Shared *s, T key) {
-      may_duplicate_items_ = transSet_.size() > 0;
+      may_duplicate_items_ = !transSet_.empty();
       transSet_.emplace_back(s, buf_.pack_unique(std::move(key)));
       return TransProxy(*this, transSet_.back());
   }
@@ -428,7 +413,7 @@ public:
               }
           }
       if (!ti) {
-          may_duplicate_items_ = transSet_.size() > 0;
+          may_duplicate_items_ = !transSet_.empty();
           transSet_.emplace_back(s, xkey);
           ti = &transSet_.back();
       }
@@ -455,7 +440,7 @@ private:
 public:
   typedef int item_index_type;
   item_index_type item_index(TransItem& ti) {
-    return &ti - &transSet_[0];
+      return &ti - transSet_.begin();
   }
 
   void mark_write(TransItem& ti) {
@@ -495,9 +480,9 @@ public:
   }
 
   void check_reads() {
-    if (!check_reads(&transSet_[0], &transSet_[transSet_.size()])) {
-      abort();
-    }
+      if (!check_reads(transSet_.begin(), transSet_.end())) {
+          abort();
+      }
   }
 
   bool check_reads(TransItem *trans_first, TransItem *trans_last) {
@@ -539,11 +524,9 @@ public:
 
     //    int permute[transSet_.size() - firstWrite_];
     /*int*/ perm_size = 0;
-    auto begin = &transSet_[0];
-    auto end = begin + transSet_.size();
-    for (auto it = begin + firstWrite_; it != end; ++it) {
+    for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
       if (it->has_write()) {
-	permute[perm_size++] = it - begin;
+          permute[perm_size++] = it - transSet_.begin();
       }
     }
 
@@ -607,8 +590,7 @@ public:
       abort();
     }
 
-    transSet_.resize(0);
-
+    transSet_.clear();
     return success;
   }
 
@@ -646,7 +628,7 @@ private:
     bool may_duplicate_items_;
     bool isAborted_;
     TransactionBuffer buf_;
-    TransSet transSet_;
+    local_vector<TransItem, INIT_SET_SIZE> transSet_;
     int *permute;
     int perm_size;
 
