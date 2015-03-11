@@ -7,7 +7,7 @@
 #include <type_traits>
 #include <unistd.h>
 
-#define PERF_LOGGING 1
+#define PERF_LOGGING 0
 #define DETAILED_LOGGING 0
 #define ASSERT_TX_SIZE 0
 
@@ -32,7 +32,7 @@
 
 #define NOSORT 0
 
-#define MAX_THREADS 8
+#define MAX_THREADS 16
 
 // transaction performance counters
 enum txp {
@@ -346,7 +346,7 @@ public:
   void reset() {
     if (isAborted_
         && tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
-        print_stats();
+        //print_stats();
     transSet_.clear();
     permute = NULL;
     perm_size = 0;
