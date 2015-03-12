@@ -469,9 +469,12 @@ private:
     // since the "key" is fixed (rather than having to search the transset each time)
     auto item = t_item(t, size_key);
     int cur_offs = 0;
-    if (item.has_read())
+    // XXX: this is sorta ugly
+    if (item.has_read()) {
       cur_offs = item.template read_value<int>();
-    item.add_read(cur_offs + size_offs);
+      item.update_read(cur_offs, cur_offs + size_offs);
+    } else
+      item.add_read(cur_offs + size_offs);
   }
 
   int trans_size_offs(Transaction& t) {
