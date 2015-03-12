@@ -427,7 +427,9 @@ public:
   void transWrite_nocheck(Transaction& , Key , Value ) {}
   Value read(Key k) {
     Transaction t;
-    return transRead(t, k);
+    Value v = transRead(t, k);
+    t.commit();
+    return v;
   }
   void insert(Key k, Value v) {
     Transaction t;
@@ -460,6 +462,7 @@ public:
   void find(Key k, Value& v) {
     Transaction t;
     transGet(t, k, v);
+    t.commit();
   }
   Value find(Key k) {
     return read(k);
