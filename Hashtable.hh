@@ -2,6 +2,8 @@
 
 #include "config.h"
 #include "compiler.hh"
+// XXX: honestly hashtable should probably use local_vector too
+#include <vector>
 #include "Transaction.hh"
 
 #define HASHTABLE_DELETE 1
@@ -317,7 +319,8 @@ public:
       buck.head = cur->next;
     }
     unlock(&buck.version);
-    Transaction::cleanup([cur] () { free(cur); });
+    // TODO: why does this throw a bad function error
+    //    Transaction::cleanup([cur] () { free(cur); });
   }
 
   void print() {
