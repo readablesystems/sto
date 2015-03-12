@@ -205,7 +205,7 @@ public:
       }
       // insert-then-delete becomes nothing
       if (has_insert(item)) {
-        remove(n);
+        remove<true>(n);
         item.remove_read().remove_write().remove_undo().remove_afterC();
         add_trans_size_offs(t, -1);
         // TODO: should have a count on add_lock_list_item so we can cancel that here
@@ -228,17 +228,19 @@ public:
     }
   }
 
+  template <bool Txnal>
   bool remove(const T& elem, bool locked = false) {
-    return _remove([&] (list_node *n2) { return comp_(n2->val, elem) == 0; }, locked);
+    return _remove<Txnal>([&] (list_node *n2) { return comp_(n2->val, elem) == 0; }, locked);
   }
 
+  template <bool Txnal>
   bool remove(list_node *n, bool locked = false) {
     // TODO: doing this remove means we don't have to value compare, but we also
     // have to go through the whole list (possibly). Unclear which is better.
-    return _remove([n] (list_node *n2) { return n == n2; }, locked);
+    return _remove<Txnal>([n] (list_node *n2) { return n == n2; }, locked);
   }
 
-  template <typename FoundFunc>
+  template <bool Txnal, typename FoundFunc>
   bool _remove(FoundFunc found_f, bool locked = false) {
     if (!locked)
       lock(listversion_);
@@ -255,6 +257,8 @@ public:
         // TODO: rcu free
         if (!locked)
           unlock(listversion_);
+        if (!Txnal)
+          listsize_--;
         return true;
       }
       prev = cur;
@@ -366,7 +370,7 @@ private:
 
   void clear() {
       while (auto item = head_)
-          remove(head_, true);
+        remove<false>(head_, true);
   }
 
 
@@ -422,7 +426,7 @@ private:
       return;
     list_node *n = item.key<list_node*>();
     if (has_delete(item)) {
-      remove(n, true);
+      remove<true>(n, true);
       listsize_--;
       // not super ideal that we have to change version
       // but we need to invalidate transSize() calls
@@ -437,7 +441,7 @@ private:
   void cleanup(TransItem& item, bool committed) {
       if (!committed && item.has_undo()) {
           list_node *n = item.key<list_node*>();
-          remove(n);
+          remove<true>(n);
       }
   }
 
