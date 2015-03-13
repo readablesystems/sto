@@ -141,7 +141,7 @@ void local_vector<T, N, A>::grow(size_type n) {
         newcap *= 2;
     T* m = r_.allocate(newcap);
     for (T* it = r_.first_, *mit = m; it != r_.last_; ++it, ++mit) {
-        r_.construct(m, std::move(*it));
+        r_.construct(mit, std::move(*it));
         r_.destroy(it);
     }
     if (r_.first_ != reinterpret_cast<T*>(r_.lv_))

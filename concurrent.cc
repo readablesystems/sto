@@ -225,6 +225,12 @@ inline int unval(const value_type& v) {
 #endif
 }
 
+void prepopulate_func(int *array) {
+  for (int i = 0; i < prepopulate; ++i) {
+    array[i] = i+1;
+  }
+}
+
 template <typename T>
 void prepopulate_func(T& a) {
   for (int i = 0; i < prepopulate; ++i) {
@@ -311,8 +317,10 @@ template <int DS> struct DSTester : public Tester {
 
 template <int DS> void DSTester<DS>::initialize() {
     a = new type;
-    if (prepopulate())
+    if (prepopulate()) {
         prepopulate_func(*a);
+        prepopulate_func(true_array_state);
+    }
     Container<DS>::init();
 }
 

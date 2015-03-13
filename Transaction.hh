@@ -348,8 +348,8 @@ public:
      //   && tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
         //print_stats();
     transSet_.clear();
-    permute = NULL;
-    perm_size = 0;
+    writeset_ = NULL;
+    nwriteset_ = 0;
     may_duplicate_items_ = false;
     isAborted_ = false;
     firstWrite_ = -1;
@@ -450,14 +450,14 @@ public:
   }
 
   bool check_for_write(TransItem& item) {
-    // if permute is NULL, we're not in commit (just an opacity check), so no need to check our writes (we
+    // if writeset_ is NULL, we're not in commit (just an opacity check), so no need to check our writes (we
     // haven't locked anything yet)
-    if (!permute)
+    if (!writeset_)
       return false;
     auto it = &item;
     bool has_write = it->has_write();
     if (!has_write && may_duplicate_items_) {
-      has_write = std::binary_search(permute, permute + perm_size, -1, [&] (const int& i, const int& j) {
+      has_write = std::binary_search(writeset_, writeset_ + nwriteset_, -1, [&] (const int& i, const int& j) {
 	  auto& e1 = unlikely(i < 0) ? item : transSet_[i];
 	  auto& e2 = likely(j < 0) ? item : transSet_[j];
 	  auto ret = likely(e1.key_ < e2.key_) || (unlikely(e1.key_ == e2.key_) && unlikely(e1.sharedObj() < e2.sharedObj()));
@@ -466,9 +466,9 @@ public:
 	    auto cur = &i;
 	    int idx;
 	    if (ret) {
-	      idx = (cur - permute) / 2;
+	      idx = (cur - writeset_) / 2;
 	    } else {
-	      idx = (permute + perm_size - cur) / 2;
+	      idx = (writeset_ + nwriteset_ - cur) / 2;
 	    }
 	    __builtin_prefetch(&transSet_[idx]);
 	  }
@@ -519,15 +519,14 @@ public:
     if (firstWrite_ < 0)
         firstWrite_ = transSet_.size();
 
-    int permute_alloc[transSet_.size() - firstWrite_];
-    permute = permute_alloc;
-
-    //    int permute[transSet_.size() - firstWrite_];
-    /*int*/ perm_size = 0;
+    int writeset_alloc[transSet_.size() - firstWrite_];
+    writeset_ = writeset_alloc;
+    nwriteset_ = 0;
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
+
       if (it->has_write()) {
-          permute[perm_size++] = it - transSet_.begin();
-      }
+        writeset_[nwriteset_++] = it - transSet_.begin();
+      }   
 #ifdef DETAILED_LOGGING
       if (it->has_read()) {
 	inc_p(txp_total_r);
@@ -537,24 +536,21 @@ public:
 
     //phase1
 #if !NOSORT
-    std::sort(permute, permute + perm_size, [&] (int i, int j) {
+    std::sort(writeset_, writeset_ + nwriteset_, [&] (int i, int j) {
 	return transSet_[i] < transSet_[j];
       });
 #endif
     TransItem* trans_first = &transSet_[0];
     TransItem* trans_last = trans_first + transSet_.size();
 
-    auto perm_end = permute + perm_size;
-    for (auto it = permute; it != perm_end; ) {
+    auto writeset_end = writeset_ + nwriteset_;
+    for (auto it = writeset_; it != writeset_end; ) {
       TransItem *me = &transSet_[*it];
-      if (me->has_write()) {
-        me->sharedObj()->lock(*me);
-        ++it;
-        if (may_duplicate_items_)
-          for (; it != perm_end && transSet_[*it].same_item(*me); ++it)
-            /* do nothing */;
-      } else
-        ++it;
+      me->sharedObj()->lock(*me);
+      ++it;
+      if (may_duplicate_items_)
+          for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
+              /* do nothing */;
     }
 
     /* fence(); */
@@ -576,16 +572,13 @@ public:
 
   end:
 
-    for (auto it = permute; it != perm_end; ) {
+    for (auto it = writeset_; it != writeset_end; ) {
       TransItem *me = &transSet_[*it];
-      if (me->has_write()) {
-        me->sharedObj()->unlock(*me);
-        ++it;
-        if (may_duplicate_items_)
-          for (; it != perm_end && transSet_[*it].same_item(*me); ++it)
-            /* do nothing */;
-      } else
-        ++it;
+      me->sharedObj()->unlock(*me);
+      ++it;
+      if (may_duplicate_items_)
+          for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
+              /* do nothing */;
     }
 
     if (success) {
@@ -634,8 +627,8 @@ private:
     bool isAborted_;
     TransactionBuffer buf_;
     local_vector<TransItem, INIT_SET_SIZE> transSet_;
-    int *permute;
-    int perm_size;
+    int* writeset_;
+    int nwriteset_;
 
     friend class TransProxy;
 };

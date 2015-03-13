@@ -2,11 +2,13 @@
 
 #include "config.h"
 #include "compiler.hh"
+// XXX: honestly hashtable should probably use local_vector too
+#include <vector>
 #include "Transaction.hh"
 
 #define HASHTABLE_DELETE 1
 
-template <typename K, typename V, unsigned Init_size = 129, typename Hash = std::hash<K>>
+template <typename K, typename V, unsigned Init_size = 129, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
 class Hashtable : public Shared {
 public:
     typedef unsigned Version;
@@ -43,6 +45,7 @@ private:
   // this is the hashtable itself, an array of bucket_entry's
   MapType map_;
   Hash hasher_;
+  Pred pred_;
 
 public:
   static constexpr Version lock_bit = ((Version)1U)<<(sizeof(Version)*8 - 1);
@@ -55,7 +58,7 @@ public:
   // or a pointer (which will always have the lower 3 bits as 0)
   static constexpr uintptr_t bucket_bit = 1U<<0;
 
-  Hashtable(unsigned size = Init_size, Hash h = Hash()) : map_(), hasher_(h) {
+  Hashtable(unsigned size = Init_size, Hash h = Hash(), Pred p = Pred()) : map_(), hasher_(h), pred_(p) {
     map_.resize(size);
   }
   
@@ -317,7 +320,8 @@ public:
       buck.head = cur->next;
     }
     unlock(&buck.version);
-    Transaction::cleanup([cur] () { free(cur); });
+    // TODO: why does this throw a bad function error
+    //    Transaction::cleanup([cur] () { free(cur); });
   }
 
   void print() {
@@ -423,7 +427,9 @@ public:
   void transWrite_nocheck(Transaction& , Key , Value ) {}
   Value read(Key k) {
     Transaction t;
-    return transRead(t, k);
+    Value v = transRead(t, k);
+    t.commit();
+    return v;
   }
   void insert(Key k, Value v) {
     Transaction t;
@@ -456,6 +462,7 @@ public:
   void find(Key k, Value& v) {
     Transaction t;
     transGet(t, k, v);
+    t.commit();
   }
   Value find(Key k) {
     return read(k);
@@ -471,7 +478,7 @@ private:
   // looks up a key's internal_elem, given its bucket
   internal_elem* find(bucket_entry& buck, Key k) {
     internal_elem *list = buck.head;
-    while (list && !(list->key == k)) {
+    while (list && !pred_(list->key, k)) {
       list = list->next;
     }
     return list;
