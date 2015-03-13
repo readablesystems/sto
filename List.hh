@@ -72,6 +72,14 @@ public:
     return !!ret;
   }
 
+  T* find(const T& elem) {
+    auto *ret = _find(elem);
+    if (ret) {
+      return &ret->val;
+    }
+    return NULL;
+  }
+
   T* transFind(Transaction& t, const T& elem) {
     auto listv = listversion_;
     fence();
