@@ -1,0 +1,150 @@
+In file included from Interface.hh:4:0,
+                 from Transaction.hh:19,
+                 from Array.hh:9,
+                 from single.cc:4:
+TransItem.hh:58:14: error: ‘template<class T> void* packer<false>::pack(T)’ cannot be overloaded
+ inline void *pack(T v) {
+              ^
+TransItem.hh:41:9: error: with ‘template<class T> void* packer<false>::pack(T)’
+   void* pack(T value) {
+         ^
+TransItem.hh:64:11: error: ‘template<class T> T& packer<false>::unpack(void*&)’ cannot be overloaded
+ inline T& unpack(void *&vp) {
+           ^
+TransItem.hh:46:6: error: with ‘template<class T> T& packer<false>::unpack(void*&)’
+   T& unpack(void*& packed) {
+      ^
+In file included from masstree-beta/string_base.hh:19:0,
+                 from masstree-beta/str.hh:18,
+                 from masstree-beta/masstree.hh:19,
+                 from MassTrans.hh:3,
+                 from single.cc:6:
+masstree-beta/hashcode.hh:42:11: error: explicit specialization in non-namespace scope ‘struct packer<false>’
+ template <>
+           ^
+masstree-beta/hashcode.hh:47:11: error: explicit specialization in non-namespace scope ‘struct packer<false>’
+ template <>
+           ^
+masstree-beta/hashcode.hh:52:11: error: explicit specialization in non-namespace scope ‘struct packer<false>’
+ template <>
+           ^
+masstree-beta/hashcode.hh:57:11: error: explicit specialization in non-namespace scope ‘struct packer<false>’
+ template <>
+           ^
+masstree-beta/hashcode.hh:62:11: error: explicit specialization in non-namespace scope ‘struct packer<false>’
+ template <>
+           ^
+masstree-beta/hashcode.hh:67:11: error: explicit specialization in non-namespace scope ‘struct packer<false>’
+ template <>
+           ^
+masstree-beta/hashcode.hh:72:11: error: explicit specialization in non-namespace scope ‘struct packer<false>’
+ template <>
+           ^
+masstree-beta/hashcode.hh:77:11: error: explicit specialization in non-namespace scope ‘struct packer<false>’
+ template <>
+           ^
+masstree-beta/hashcode.hh:82:11: error: explicit specialization in non-namespace scope ‘struct packer<false>’
+ template <>
+           ^
+masstree-beta/hashcode.hh:87:11: error: explicit specialization in non-namespace scope ‘struct packer<false>’
+ template <>
+           ^
+masstree-beta/hashcode.hh:92:11: error: explicit specialization in non-namespace scope ‘struct packer<false>’
+ template <>
+           ^
+masstree-beta/hashcode.hh:110:19: error: too many template-parameter-lists
+ inline hashcode_t hashcode(T * const &x) {
+                   ^
+masstree-beta/hashcode.hh:115:40: error: too many template-parameter-lists
+ inline typename T::key_const_reference hashkey(const T &x) {
+                                        ^
+In file included from /usr/include/features.h:365:0,
+                 from /usr/include/c++/4.9.2/x86_64-redhat-linux/bits/os_defines.h:39,
+                 from /usr/include/c++/4.9.2/x86_64-redhat-linux/bits/c++config.h:2109,
+                 from /usr/include/c++/4.9.2/iostream:38,
+                 from single.cc:1:
+/usr/include/assert.h:64:1: error: expected unqualified-id before string constant
+ __BEGIN_DECLS
+ ^
+In file included from masstree-beta/str.hh:18:0,
+                 from masstree-beta/masstree.hh:19,
+                 from MassTrans.hh:3,
+                 from single.cc:6:
+masstree-beta/string_base.hh:25:1: error: expected unqualified-id before ‘namespace’
+ namespace lcdf {
+ ^
+single.cc:365:1: error: expected ‘}’ at end of input
+ }
+ ^
+In file included from Interface.hh:4:0,
+                 from Transaction.hh:19,
+                 from Array.hh:9,
+                 from single.cc:4:
+TransItem.hh: In member function ‘T& packer<false>::unpack(void*&)’:
+TransItem.hh:50:3: error: a template declaration cannot appear at block scope
+   template <typename T>
+   ^
+TransItem.hh: In member function ‘void packer<false>::Transaction::add_undo(packer<false>::TransItem&)’:
+TransItem.hh:188:8: error: ‘void packer<false>::TransItem::_add_undo()’ is private
+   void _add_undo() {
+        ^
+In file included from Array.hh:9:0,
+                 from single.cc:4:
+Transaction.hh:221:18: error: within this context
+     ti._add_undo();
+                  ^
+In file included from Interface.hh:4:0,
+                 from Transaction.hh:19,
+                 from Array.hh:9,
+                 from single.cc:4:
+TransItem.hh: In member function ‘void packer<false>::Transaction::add_afterC(packer<false>::TransItem&)’:
+TransItem.hh:191:8: error: ‘void packer<false>::TransItem::_add_afterC()’ is private
+   void _add_afterC() {
+        ^
+In file included from Array.hh:9:0,
+                 from single.cc:4:
+Transaction.hh:225:20: error: within this context
+     ti._add_afterC();
+                    ^
+In file included from single.cc:4:0:
+Array.hh: In member function ‘bool packer<false>::Array<T, N>::check(packer<false>::TransItem&, packer<false>::Transaction&)’:
+Array.hh:117:51: error: cannot call member function ‘T& packer<false>::unpack(void*&) [with T = unsigned int]’ without object
+     bool versionOK = ((elem(unpack<Key>(item.key())).version ^ unpack<Version>(item.data.rdata)) 
+                                                   ^
+Array.hh:117:95: error: cannot call member function ‘T& packer<false>::unpack(void*&) [with T = unsigned int]’ without object
+     bool versionOK = ((elem(unpack<Key>(item.key())).version ^ unpack<Version>(item.data.rdata)) 
+                                                                                               ^
+Array.hh:119:89: error: cannot call member function ‘T& packer<false>::unpack(void*&) [with T = unsigned int]’ without object
+     return versionOK && (t.check_for_write(item) || !is_locked(unpack<Key>(item.data.key)));
+                                                                                         ^
+Array.hh: In member function ‘void packer<false>::Array<T, N>::lock(packer<false>::TransItem&)’:
+Array.hh:123:35: error: cannot call member function ‘T& packer<false>::unpack(void*&) [with T = unsigned int]’ without object
+     lock(unpack<Key>(item.data.key));
+                                   ^
+Array.hh: In member function ‘void packer<false>::Array<T, N>::unlock(packer<false>::TransItem&)’:
+Array.hh:127:37: error: cannot call member function ‘T& packer<false>::unpack(void*&) [with T = unsigned int]’ without object
+     unlock(unpack<Key>(item.data.key));
+                                     ^
+Array.hh: In member function ‘void packer<false>::Array<T, N>::install(packer<false>::TransItem&)’:
+Array.hh:131:38: error: cannot call member function ‘T& packer<false>::unpack(void*&) [with T = unsigned int]’ without object
+     Key i = unpack<Key>(item.data.key);
+                                      ^
+In file included from single.cc:5:0:
+Hashtable.hh: In member function ‘void* packer<false>::Hashtable<K, V, INIT_SIZE>::pack_bucket(unsigned int)’:
+Hashtable.hh:121:43: error: cannot call member function ‘void* packer<false>::pack(T) [with T = long unsigned int]’ without object
+     return pack((bucket << 1) | bucket_bit);
+                                           ^
+Hashtable.hh: In member function ‘void packer<false>::Hashtable<K, V, INIT_SIZE>::cleanup(packer<false>::TransItem&)’:
+Hashtable.hh:470:43: error: cannot call member function ‘void packer<false>::free_packed(void*&) [with T = unsigned int]’ without object
+       free_packed<Version>(item.data.rdata);
+                                           ^
+In file included from masstree-beta/string_base.hh:19:0,
+                 from masstree-beta/str.hh:18,
+                 from masstree-beta/masstree.hh:19,
+                 from MassTrans.hh:3,
+                 from single.cc:6:
+masstree-beta/hashcode.hh: At global scope:
+masstree-beta/hashcode.hh:95:1: error: expected unqualified-id at end of input
+ }
+ ^
+make: *** [single.o] Error 1
