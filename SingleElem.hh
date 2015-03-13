@@ -1,4 +1,4 @@
-
+#pragma once
 #include "Interface.hh"
 #include "versioned_value.hh"
 #include "VersionFunctions.hh"
@@ -33,22 +33,20 @@ public:
 	}
 
   T transRead(Transaction& t) {
-    auto& item = t.item(this, this);
+    auto item = t.item(this, this);
     if (item.has_write())
       return item.template write_value<T>();
-		else{
-			Version v;
-			T val;
-			atomicRead(v, val);
-			if (!item.has_read())
-				t.add_read(item, v);
-			return val;
-		}
+    else{
+        Version v;
+        T val;
+        atomicRead(v, val);
+        item.add_read(v);
+        return val;
+    }
   }
 
   void transWrite(Transaction& t, const T& v) {
-    auto& item = t.item(this, this);
-    t.add_write(item, v);
+      t.item(this, this).add_write(v);
   }
 
 	void lock(){
@@ -75,11 +73,6 @@ public:
   void install(TransItem& item) {
     s_.set_value(item.template write_value<T>());
 		Versioning::inc_version(s_.version());
-  }
-
-  void cleanup(TransItem& item) {
-    if (item.has_write())
-      free_packed<T>(item.data.wdata);
   }
 
 protected:

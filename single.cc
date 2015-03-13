@@ -6,12 +6,10 @@
 #include "Hashtable.hh"
 #include "MassTrans.hh"
 #include "List.hh"
-#include "Queue.hh"
+//#include "Queue.hh"
 #include "Transaction.hh"
 
 #define N 100
-
-#define HASHTABLE 0
 
 kvepoch_t global_log_epoch = 0;
 volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly
@@ -20,6 +18,7 @@ volatile bool recovering = false; // so don't add log entries, and free old valu
 
 using namespace std;
 
+#if 0
 void queueTests() {
     Queue<int> q;
     int p;
@@ -270,6 +269,7 @@ void queueTests() {
         Transaction t;
     }
 }
+#endif
 
 void linkedListTests() {
   List<int> l;
@@ -309,7 +309,25 @@ void linkedListTests() {
 
   {
     Transaction t;
+    assert(l.transDelete(t, 7));
+    assert(!l.transDelete(t, 1000));
+    assert(l.transSize(t) == 2);
+    assert(!l.transFind(t, 7));
+    auto it = l.transIter(t);
+    assert(*it.transNext(t) == 5);
+    assert(*it.transNext(t) == 10);
+    assert(t.commit());
   }
+
+  {
+    Transaction t;
+    assert(l.transInsert(t, 7));
+    assert(l.transDelete(t, 7));
+    assert(l.transSize(t) == 2);
+    assert(!l.transFind(t, 7));
+    assert(t.commit());
+  }
+
 }
 
 void stringKeyTests() {
@@ -442,16 +460,21 @@ void rangeQueryTest() {
   assert(t.commit());
 }
 
-int main() {
-/*
+template <typename K, typename V>
+void basicQueryTests(MassTrans<K, V>& h) {
+  Transaction t19;
+  h.transQuery(t19, "0", "2", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
+  h.transQuery(t19, "4", "4", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
+  assert(t19.commit());
+}
+
+template <typename T>
+void basicQueryTests(T&) {}
+
+template <typename MapType>
+void basicMapTests(MapType& h) {
   typedef int Key;
   typedef int Value;
-#if HASHTABLE
-  Hashtable<Key, Value> h;
-#else
-  MassTrans<Value> h;
-  h.thread_init();
-#endif
 
   Transaction t;
 
@@ -565,12 +588,17 @@ int main() {
     assert(0);
   } catch (Transaction::Abort E) {}
 
-#if !HASHTABLE
-  Transaction t19;
-  h.transQuery(t19, "0", "2", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
-  h.transQuery(t19, "4", "4", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
-  assert(t19.commit());
-#endif
+  basicQueryTests(h);
+}
+
+int main() {
+
+  // run on both Hashtable and MassTrans
+  Hashtable<int, int> h;
+  basicMapTests(h);
+  MassTrans<int> m;
+  m.thread_init();
+  basicMapTests(m);
 
   // insert-then-delete node test
   insertDeleteTest(false);
@@ -581,15 +609,13 @@ int main() {
 
   rangeQueryTest();
 
-  h.print();
-
-  cout << v1 << " " << v2 << endl;
-
   // string key testing
   stringKeyTests();
 
   linkedListTests();
-*/  
+
   queueTests();
+  
+  //queueTests();
   
 }

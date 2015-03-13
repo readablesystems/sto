@@ -1,3 +1,4 @@
+#pragma once
 #include "GenericSTM.hh"
 
 // wraps an array transactionally with our GenericSTM class
