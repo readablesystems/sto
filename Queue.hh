@@ -38,7 +38,7 @@ public:
 
     // TRANSACTIONAL CALLS
     void transPush(Transaction& t, const T& v) {
-        auto& item = t.item(this, -1);
+        auto item = t.item(this, -1);
         if (item.has_write()) {
             auto& write_list = item.template write_value<std::list<T>>();
             write_list.push_back(v);
@@ -46,29 +46,29 @@ public:
         else {
             std::list<T> write_list;
             write_list.push_back(v);
-            t.add_write(item, write_list);
+            item.add_write(item, write_list);
         }
     }
 
     bool transPop(Transaction& t) {
         auto index = head_;
-        auto item = &t.item(this, index);
+        auto item = t.item(this, index);
         // mark only the first item popped so we only lock headversion once
-        if (!has_delete(*item))
-            item->or_flags(pop_bit);
+        if (!has_delete(item))
+            item.or_flags(pop_bit);
 
         while (1) {
            if (index == tail_) { 
                Version tv = tailversion_;
                 // if someone has pushed onto tail, can successfully do a front read, so don't read our own writes
                 if (index == tail_) {
-                    auto& pushitem = t.item(this,-1);
+                    auto pushitem = t.item(this,-1);
                     if (pushitem.has_write()) {
                         auto& write_list = pushitem.template write_value<std::list<T>>();
                         // if there is an element to be pushed on the queue, return addr of queue element
                         if (!write_list.empty()) {
                             write_list.pop_front();
-                            item->or_flags(read_writes);
+                            item.or_flags(read_writes);
                         }
                         else return false;
                     }
@@ -76,35 +76,35 @@ public:
                     else return false; 
                     
                     if (!pushitem.has_read())
-                        t.add_read(pushitem, tailversion_);
+                        item.add_read(pushitem, tailversion_);
                 } 
             }
-            if (has_delete(*item)) {
+            if (has_delete(item)) {
                 index = (index + 1) % BUF_SIZE;  
-                item = &t.item(this, index);
+                item = t.item(this, index);
             }
             else break;
         }
         
         // ensure that head is not modified by time of commit 
-        item->or_flags(delete_bit);
-        if (!item->has_read()) {
-           t.add_read(*item, headversion_);
+        item.or_flags(delete_bit);
+        if (!item.has_read()) {
+           item.add_read(item, headversion_);
         }
-        t.add_write(*item, 0);
+        item.add_write(item, 0);
         return true;
     }
 
     bool transFront(Transaction& t, T& val) {
         unsigned index = head_;
-        auto item = &t.item(this, index);
+        auto item = t.item(this, index);
         while (1) {
             // empty queue
             if (index == tail_) {
                 Version tv = tailversion_;
                 // if someone has pushed onto tail, can successfully do a front read, so skip reading from our pushes 
                 if (index == tail_) {
-                    auto& pushitem = t.item(this,-1);
+                    auto pushitem = t.item(this,-1);
                     if (pushitem.has_write()) {
                         auto& write_list = pushitem.template write_value<std::list<T>>();
                         // if there is an element to be pushed on the queue, return addr of queue element
@@ -119,21 +119,21 @@ public:
                         else return false;
                     }
                     if (!pushitem.has_read())
-                        t.add_read(pushitem, tailversion_);
+                        item.add_read(pushitem, tailversion_);
                 }
                 return false;
             }
-            if (has_delete(*item)) {
+            if (has_delete(item)) {
                 index = (index + 1) % BUF_SIZE;
-                item = &t.item(this, index);
+                item = t.item(this, index);
             }
             else break;
         }
         
         // ensure that head was not modified at time of commit
-        if (!item->has_read())
-           t.add_read(*item, headversion_);
-        item->or_flags(front_bit);
+        if (!item.has_read())
+           item.add_read(item, headversion_);
+        item.or_flags(front_bit);
         val = queueSlots[index];
         return true;
     }

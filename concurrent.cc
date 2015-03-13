@@ -791,7 +791,7 @@ template <int DS> bool InterferingRWs<DS>::check() {
   return true;
 }
 
-
+#if DATA_STRUCTURE == 5
 template <int DS> struct QXorDelete: public DSTester<DS> {
     QXorDelete() {}
     void run(int me);
@@ -826,7 +826,6 @@ template <int DS> void QXorDelete<DS>::run(int me) {
   }
 }
 
-#if DATA_STRUCTURE == 5
 template <int DS> bool QXorDelete<DS>::check() {
   QueueType *old = q;
   QueueType ch;
