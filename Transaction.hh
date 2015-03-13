@@ -41,13 +41,13 @@ enum txp {
     txp_commit_time_aborts = 2, txp_max_set = 3,
     // DETAILED_LOGGING only
     txp_total_n = 4, txp_total_r = 5, txp_total_w = 6, txp_total_searched = 7,
-
+    txp_total_check_read = 8,
 #if !PERF_LOGGING
     txp_count = 0
 #elif !DETAILED_LOGGING
     txp_count = 4
 #else
-    txp_count = 8
+    txp_count = 9
 #endif
 };
 
@@ -488,7 +488,7 @@ public:
   bool check_reads(TransItem *trans_first, TransItem *trans_last) {
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
-        inc_p(txp_total_r);
+        inc_p(txp_total_check_read);
         if (!it->sharedObj()->check(*it, *this)) {
             for (auto jt = trans_first; jt != it; ++jt)
                 if (*jt == *it)
@@ -528,6 +528,11 @@ public:
       if (it->has_write()) {
           permute[perm_size++] = it - transSet_.begin();
       }
+#ifdef DETAILED_LOGGING
+      if (it->has_read()) {
+	inc_p(txp_total_r);
+      }
+#endif
     }
 
     //phase1
