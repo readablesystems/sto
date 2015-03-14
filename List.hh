@@ -127,7 +127,7 @@ public:
       list_node *new_head = new list_node(elem, head_, Txnal);
       head_ = new_head;
       unlock(listversion_);
-      return head_;
+      return new_head;
     }
 
     list_node *prev = NULL;
@@ -264,10 +264,10 @@ public:
           head_ = cur->next;
         }
         // TODO: rcu free
-        if (!locked)
-          unlock(listversion_);
         if (!Txnal)
           listsize_--;
+        if (!locked)
+          unlock(listversion_);
         return true;
       }
       prev = cur;
