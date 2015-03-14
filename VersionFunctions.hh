@@ -20,6 +20,7 @@ public:
   static void set_version(version_type& v, version_type cur) {
     assert(is_locked(v));
     assert((cur & version_mask) == cur);
+    assert((v & version_mask) < cur);
     release_fence();
     v = (cur | (v & lock_bit));
   }
