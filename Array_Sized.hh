@@ -10,7 +10,7 @@ template <typename T, int Default_size = 100,
 class Array_Sized : public Shared {
 public:
   typedef uint32_t Version;
-  typedef VersionFunctions<Version, 0> Versioning;
+  typedef VersionFunctions<Version> Versioning;
 
   Array_Sized(int size=Default_size) : arr_(new Structure[size]), capacity_(size) {}
 

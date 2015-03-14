@@ -9,7 +9,7 @@ template <typename T, typename Structure = versioned_value_struct<T>>
 class SingleElem : public Shared {
 public:
   typedef uint32_t Version;
-  typedef VersionFunctions<Version, 0> Versioning;
+  typedef VersionFunctions<Version> Versioning;
 
 	T read(){
 		return s_.read_value();

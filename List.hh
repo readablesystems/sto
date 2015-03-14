@@ -21,7 +21,7 @@ public:
   }
 
   typedef uint32_t Version;
-  typedef VersionFunctions<Version, 0> ListVersioning;
+  typedef VersionFunctions<Version> ListVersioning;
 
   static constexpr Version invalid_bit = 1<<0;
   // we need this to protect deletes (could just do a CAS on invalid_bit, but it's unclear

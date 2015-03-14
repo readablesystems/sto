@@ -10,7 +10,7 @@
 template <typename T, unsigned N, typename Elem = SingleElem<T>>
 class Array1 : public Shared {
     typedef uint32_t Version;
-    typedef VersionFunctions<Version, 0> Versioning;
+    typedef VersionFunctions<Version> Versioning;
   public:
     typedef unsigned key_type;
     typedef T value_type;
