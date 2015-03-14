@@ -96,7 +96,7 @@ public:
       item.add_read(0);
     } else {
       // log list v#
-      ensureNotFound(t, listv);
+      verify_list(t, listv);
       return NULL;
     }
     return &n->val;
@@ -218,7 +218,7 @@ public:
         add_trans_size_offs(t, -1);
         // TODO: should have a count on add_lock_list_item so we can cancel that here
         // still need to make sure no one else inserts something
-        ensureNotFound(t, listv);
+        verify_list(t, listv);
         return true;
       }
       item.set_flags(delete_bit);
@@ -231,7 +231,7 @@ public:
       add_trans_size_offs(t, -1);
       return true;
     } else {
-      ensureNotFound(t, listv);
+      verify_list(t, listv);
       return false;
     }
   }
@@ -363,12 +363,12 @@ private:
   }
 
   ListIter transIter(Transaction& t) {
-    ensureNotFound(t, listversion_);//TODO: rename
+    verify_list(t, listversion_);//TODO: rename
     return ListIter(this, head_, t);
   }
 
   size_t transSize(Transaction& t) {
-    ensureNotFound(t, listversion_);
+    verify_list(t, listversion_);
     return listsize_ + trans_size_offs(t);
   }
 
@@ -382,10 +382,9 @@ private:
   }
 
 
-  void ensureNotFound(Transaction& t, Version readv) {
-    auto item = t_item(t, this);
-    if (!item.has_read())
-      item.add_read(readv);
+  void verify_list(Transaction& t, Version readv) {
+      t_item(t, this).add_read(readv);
+      acquire_fence();
   }
 
   void lock(Version& v) {
@@ -421,7 +420,7 @@ private:
     }
     if (item.key<List*>() == this) {
       auto lv = listversion_;
-      return 
+      return
         ListVersioning::versionCheck(lv, item.template read_value<Version>())
         && (!is_locked(lv) || t.check_for_write(item));
     }
