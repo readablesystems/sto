@@ -16,6 +16,17 @@ public:
     // set new version and ensure invalid bit is off
     v = (cur | (v & ~version_mask)) & ~invalid_bit;
   }
+  static void set_version(Version& v, Version cur) {
+    assert(is_locked(v));
+    cur = (cur) & version_mask;
+    // set new version and ensure invalid bit is off
+    v = (cur | (v & ~version_mask)) & ~invalid_bit;
+  }
+  
+  static Version get_tid(Version v) {
+    return (v & version_mask);
+  }
+  
   static bool is_locked(Version v) {
     return v & lock_bit;
   }

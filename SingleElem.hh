@@ -3,7 +3,7 @@
 #include "versioned_value.hh"
 #include "VersionFunctions.hh"
 
-template <typename T, typename Structure = versioned_value_struct<T>>
+template <typename T,  bool GenericSTM = false, typename Structure = versioned_value_struct<T>>
 // if we're inheriting from Shared then a SingleElem adds both a version word and a vtable word
 // (not much else we can do though)
 class SingleElem : public Shared {
@@ -40,8 +40,18 @@ public:
         Version v;
         T val;
         atomicRead(v, val);
-        item.add_read(v);
-        return val;
+        if (GenericSTM) {
+            uint32_t r_tid = Versioning::get_tid(v);
+            if (r_tid <= t.start_tid()) {
+                item.add_read(v);
+                return val;
+            } else {
+                t.abort();
+            }
+        } else {
+            item.add_read(v);
+            return val;
+        }
     }
   }
 
@@ -70,9 +80,13 @@ public:
       (!Versioning::is_locked(s_.version()) || item.has_write());
   }
 
-  void install(TransItem& item) {
+  void install(TransItem& item, uint32_t tid) {
     s_.set_value(item.template write_value<T>());
-		Versioning::inc_version(s_.version());
+    if (GenericSTM) {
+      Versioning::set_version(s_.version(), tid);
+    } else {
+      Versioning::inc_version(s_.version());
+    }
   }
 
 protected:

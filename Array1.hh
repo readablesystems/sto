@@ -53,9 +53,9 @@ class Array1 : public Shared {
         unlock(item.key<key_type>());
     }
 
-    void install(TransItem& item){
+    void install(TransItem& item, uint32_t tid){
         //install value
-        data_[item.key<key_type>()].install(item);
+        data_[item.key<key_type>()].install(item, tid);
     }
 
   private:

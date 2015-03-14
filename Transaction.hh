@@ -1,11 +1,14 @@
 #pragma once
 
 #include "local_vector.hh"
+#include "compiler.hh"
 #include <algorithm>
 #include <functional>
 #include <memory>
 #include <type_traits>
 #include <unistd.h>
+#include <iostream>
+
 
 #define PERF_LOGGING 0
 #define DETAILED_LOGGING 0
@@ -14,7 +17,6 @@
 #if ASSERT_TX_SIZE
 #if DETAILED_LOGGING
 #  define TX_SIZE_LIMIT 20000
-#  include <iostream>
 #  include <cassert>
 #else
 #  error "ASSERT_TX_SIZE requires DETAILED_LOGGING!"
@@ -232,12 +234,15 @@ void* TransactionBuffer::pack_unique(T x, void*) {
 }
 
 
+
 class Transaction {
 public:
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static unsigned global_epoch;
   static __thread Transaction *__transaction;
+  typedef uint32_t Tid;
+  static Tid _TID;
 
   static Transaction& get_transaction() {
     if (!__transaction)
@@ -326,6 +331,16 @@ public:
   static void max_p(int p, unsigned long long n) {
       tinfo[threadid].max_p(p, n);
   }
+  
+  static Tid incTid() {
+    Tid t_old = _TID;
+    Tid t_new = t_old + 1;
+    Tid t = cmpxchg(&_TID, t_old, t_new);
+    if (t != t_old) {
+      t_new = t;
+    }
+    return t_new;
+  }
 
   Transaction() : transSet_() {
     // TODO: assumes this thread is constantly running transactions
@@ -353,6 +368,7 @@ public:
     may_duplicate_items_ = false;
     isAborted_ = false;
     firstWrite_ = -1;
+    start_tid_ = 0;
     buf_.clear();
     inc_p(txp_total_starts);
   }
@@ -554,7 +570,8 @@ public:
     }
 
     /* fence(); */
-
+    Tid commit_tid = incTid();
+  
     //phase2
     if (!check_reads(trans_first, trans_last)) {
       success = false;
@@ -566,7 +583,7 @@ public:
       TransItem& ti = *it;
       if (ti.has_write()) {
         inc_p(txp_total_w);
-        ti.sharedObj()->install(ti);
+        ti.sharedObj()->install(ti, commit_tid);
       }
     }
 
@@ -610,6 +627,19 @@ public:
   bool aborted() {
     return isAborted_;
   }
+  
+  Tid start_tid() {
+    if (start_tid_ == 0) {
+      return read_tid();
+    } else {
+      return start_tid_;
+    }
+  }
+  
+  Tid read_tid() {
+    start_tid_ = _TID;
+    return start_tid_;
+  }
 
   class Abort {};
 
@@ -629,6 +659,7 @@ private:
     local_vector<TransItem, INIT_SET_SIZE> transSet_;
     int* writeset_;
     int nwriteset_;
+    Tid start_tid_;
 
     friend class TransProxy;
 };

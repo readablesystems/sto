@@ -429,7 +429,7 @@ private:
     return (n->is_valid() || has_insert(item)) && (has_delete(item) || !n->is_locked());
   }
 
-  void install(TransItem& item) {
+  void install(TransItem& item, uint32_t tid) {
     if (item.key<List*>() == this)
       return;
     list_node *n = item.key<list_node*>();
