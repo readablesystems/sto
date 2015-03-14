@@ -33,8 +33,9 @@ public:
   static constexpr void* size_key = (void*)0;
 
   struct list_node {
-    list_node(const T& val, list_node *next, bool valid) 
-      : val(val), next(next, valid) {}
+    list_node(const T& val, list_node *next, bool valid)
+        : val(val), next(next, valid ? 0 : invalid_bit) {
+    }
 
     void mark_invalid() {
       next.or_flags(invalid_bit);
