@@ -13,7 +13,7 @@ public:
     Queue() : head_(0), tail_(0), queuesize_(0), tailversion_(0), headversion_(0) {}
 
     typedef uint32_t Version;
-    typedef VersionFunctions<Version, 0> QueueVersioning;
+    typedef VersionFunctions<Version> QueueVersioning;
     
     static constexpr Version delete_bit = 1<<0;
     static constexpr Version front_bit = 1<<1;
