@@ -1,20 +1,22 @@
 #pragma once
 
-#include <vector>
+#include "local_vector.hh"
+#include "compiler.hh"
 #include <algorithm>
 #include <functional>
 #include <memory>
 #include <type_traits>
 #include <unistd.h>
+#include <iostream>
 
-#define PERF_LOGGING 1
+
+#define PERF_LOGGING 0
 #define DETAILED_LOGGING 0
 #define ASSERT_TX_SIZE 0
 
 #if ASSERT_TX_SIZE
 #if DETAILED_LOGGING
 #  define TX_SIZE_LIMIT 20000
-#  include <iostream>
 #  include <cassert>
 #else
 #  error "ASSERT_TX_SIZE requires DETAILED_LOGGING!"
@@ -30,11 +32,9 @@
 
 #include "config.h"
 
-#define LOCAL_VECTOR 1
-
 #define NOSORT 0
 
-#define MAX_THREADS 8
+#define MAX_THREADS 16
 
 // transaction performance counters
 enum txp {
@@ -43,13 +43,13 @@ enum txp {
     txp_commit_time_aborts = 2, txp_max_set = 3,
     // DETAILED_LOGGING only
     txp_total_n = 4, txp_total_r = 5, txp_total_w = 6, txp_total_searched = 7,
-
+    txp_total_check_read = 8,
 #if !PERF_LOGGING
     txp_count = 0
 #elif !DETAILED_LOGGING
     txp_count = 4
 #else
-    txp_count = 8
+    txp_count = 9
 #endif
 };
 
@@ -68,10 +68,6 @@ inline bool has_txp(int p) {
 }
 
 
-#if LOCAL_VECTOR
-#include "local_vector.hh"
-#endif
-
 #include "Interface.hh"
 #include "TransItem.hh"
 
@@ -83,7 +79,7 @@ void reportPerf();
 struct __attribute__((aligned(128))) threadinfo_t {
   unsigned epoch;
   unsigned spin_lock;
-  std::vector<std::pair<unsigned, std::function<void(void)>>> callbacks;
+  local_vector<std::pair<unsigned, std::function<void(void)>>, 8> callbacks;
   std::function<void(void)> trans_start_callback;
   std::function<void(void)> trans_end_callback;
   uint64_t p_[txp_count];
@@ -238,12 +234,15 @@ void* TransactionBuffer::pack_unique(T x, void*) {
 }
 
 
+
 class Transaction {
 public:
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static unsigned global_epoch;
   static __thread Transaction *__transaction;
+  typedef uint32_t Tid;
+  static Tid _TID;
 
   static Transaction& get_transaction() {
     if (!__transaction)
@@ -323,12 +322,6 @@ public:
     release_spinlock(tinfo[threadid].spin_lock);
   }
 
-#if LOCAL_VECTOR
-  typedef local_vector<TransItem, INIT_SET_SIZE> TransSet;
-#else
-  typedef std::vector<TransItem> TransSet;
-#endif
-
   static void inc_p(int p) {
       add_p(p, 1);
   }
@@ -338,11 +331,18 @@ public:
   static void max_p(int p, unsigned long long n) {
       tinfo[threadid].max_p(p, n);
   }
+  
+  static Tid incTid() {
+    Tid t_old = _TID;
+    Tid t_new = t_old + 1;
+    Tid t = cmpxchg(&_TID, t_old, t_new);
+    if (t != t_old) {
+      t_new = t;
+    }
+    return t_new;
+  }
 
   Transaction() : transSet_() {
-#if !LOCAL_VECTOR
-    transSet_.reserve(INIT_SET_SIZE);
-#endif
     // TODO: assumes this thread is constantly running transactions
     tinfo[threadid].epoch = global_epoch;
     if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
@@ -352,22 +352,24 @@ public:
   ~Transaction() {
     tinfo[threadid].epoch = 0;
     if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
-    if (!isAborted_ && transSet_.size() != 0) {
+    if (!isAborted_ && !transSet_.empty()) {
       silent_abort();
     }
   }
 
   // reset data so we can be reused for another transaction
   void reset() {
+     //if (isAborted_
+     //   && tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
+        //print_stats();
     transSet_.clear();
-    permute = NULL;
-    perm_size = 0;
+    writeset_ = NULL;
+    nwriteset_ = 0;
     may_duplicate_items_ = false;
     isAborted_ = false;
     firstWrite_ = -1;
+    start_tid_ = 0;
     buf_.clear();
-    if (tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
-        print_stats();
     inc_p(txp_total_starts);
   }
 
@@ -379,7 +381,7 @@ private:
     std::sort(first, last);
     // takes the first element of any duplicates which is what we want. that is, we want to verify
     // only the oldest read
-    transSet_.resize(std::unique(first, last) - first);
+    transSet_.erase(std::unique(first, last), last);
     may_duplicate_items_ = false;
   }
 
@@ -394,7 +396,7 @@ public:
   // adds item without checking its presence in the array
   template <typename T>
   TransProxy fresh_item(Shared *s, T key) {
-      may_duplicate_items_ = transSet_.size() > 0;
+      may_duplicate_items_ = !transSet_.empty();
       transSet_.emplace_back(s, buf_.pack_unique(std::move(key)));
       return TransProxy(*this, transSet_.back());
   }
@@ -427,7 +429,7 @@ public:
               }
           }
       if (!ti) {
-          may_duplicate_items_ = transSet_.size() > 0;
+          may_duplicate_items_ = !transSet_.empty();
           transSet_.emplace_back(s, xkey);
           ti = &transSet_.back();
       }
@@ -443,8 +445,6 @@ public:
 private:
   // tries to find an existing item with this key, returns NULL if not found
   TransItem* find_item(Shared *s, void* key) {
-      if (may_duplicate_items_)
-          consolidateReads();
       for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
           inc_p(txp_total_searched);
           if (it->sharedObj() == s && it->key_ == key)
@@ -456,7 +456,7 @@ private:
 public:
   typedef int item_index_type;
   item_index_type item_index(TransItem& ti) {
-    return &ti - &transSet_[0];
+      return &ti - transSet_.begin();
   }
 
   void mark_write(TransItem& ti) {
@@ -466,14 +466,14 @@ public:
   }
 
   bool check_for_write(TransItem& item) {
-    // if permute is NULL, we're not in commit (just an opacity check), so no need to check our writes (we
+    // if writeset_ is NULL, we're not in commit (just an opacity check), so no need to check our writes (we
     // haven't locked anything yet)
-    if (!permute)
+    if (!writeset_)
       return false;
     auto it = &item;
     bool has_write = it->has_write();
     if (!has_write && may_duplicate_items_) {
-      has_write = std::binary_search(permute, permute + perm_size, -1, [&] (const int& i, const int& j) {
+      has_write = std::binary_search(writeset_, writeset_ + nwriteset_, -1, [&] (const int& i, const int& j) {
 	  auto& e1 = unlikely(i < 0) ? item : transSet_[i];
 	  auto& e2 = likely(j < 0) ? item : transSet_[j];
 	  auto ret = likely(e1.key_ < e2.key_) || (unlikely(e1.key_ == e2.key_) && unlikely(e1.sharedObj() < e2.sharedObj()));
@@ -482,9 +482,9 @@ public:
 	    auto cur = &i;
 	    int idx;
 	    if (ret) {
-	      idx = (cur - permute) / 2;
+	      idx = (cur - writeset_) / 2;
 	    } else {
-	      idx = (permute + perm_size - cur) / 2;
+	      idx = (writeset_ + nwriteset_ - cur) / 2;
 	    }
 	    __builtin_prefetch(&transSet_[idx]);
 	  }
@@ -496,18 +496,23 @@ public:
   }
 
   void check_reads() {
-    if (!check_reads(&transSet_[0], &transSet_[transSet_.size()])) {
-      abort();
-    }
+      if (!check_reads(transSet_.begin(), transSet_.end())) {
+          abort();
+      }
   }
 
   bool check_reads(TransItem *trans_first, TransItem *trans_last) {
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
-        inc_p(txp_total_r);
+        inc_p(txp_total_check_read);
         if (!it->sharedObj()->check(*it, *this)) {
-          return false;
+          // XXX: only do this if we're dup'ing reads
+            for (auto jt = trans_first; jt != it; ++jt)
+                if (*jt == *it)
+                    goto ok;
+            return false;
         }
+      ok: ;
       }
     return true;
   }
@@ -531,71 +536,75 @@ public:
     if (firstWrite_ < 0)
         firstWrite_ = transSet_.size();
 
-    int permute_alloc[transSet_.size() - firstWrite_];
-    permute = permute_alloc;
+    int writeset_alloc[transSet_.size() - firstWrite_];
+    writeset_ = writeset_alloc;
+    nwriteset_ = 0;
+    for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
 
-    //    int permute[transSet_.size() - firstWrite_];
-    /*int*/ perm_size = 0;
-    auto begin = &transSet_[0];
-    auto end = begin + transSet_.size();
-    for (auto it = begin + firstWrite_; it != end; ++it) {
       if (it->has_write()) {
-	permute[perm_size++] = it - begin;
+        writeset_[nwriteset_++] = it - transSet_.begin();
+      }   
+#ifdef DETAILED_LOGGING
+      if (it->has_read()) {
+	inc_p(txp_total_r);
       }
+#endif
     }
 
     //phase1
 #if !NOSORT
-    std::sort(permute, permute + perm_size, [&] (int i, int j) {
+    std::sort(writeset_, writeset_ + nwriteset_, [&] (int i, int j) {
 	return transSet_[i] < transSet_[j];
       });
 #endif
     TransItem* trans_first = &transSet_[0];
     TransItem* trans_last = trans_first + transSet_.size();
 
-    auto perm_end = permute + perm_size;
-    for (auto it = permute; it != perm_end; ) {
+    auto writeset_end = writeset_ + nwriteset_;
+    for (auto it = writeset_; it != writeset_end; ) {
       TransItem *me = &transSet_[*it];
-      if (me->has_write()) {
-        me->sharedObj()->lock(*me);
-        ++it;
-        if (may_duplicate_items_)
-          for (; it != perm_end && transSet_[*it].same_item(*me); ++it)
-            /* do nothing */;
-      } else
-        ++it;
+      me->sharedObj()->lock(*me);
+      ++it;
+      if (may_duplicate_items_)
+          for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
+              /* do nothing */;
     }
 
-    /* fence(); */
+    //    fence();
 
+    Tid commit_tid = incTid();
+  
     //phase2
     if (!check_reads(trans_first, trans_last)) {
       success = false;
       goto end;
     }
 
+    //    fence();
+
     //phase3
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
       TransItem& ti = *it;
       if (ti.has_write()) {
         inc_p(txp_total_w);
-        ti.sharedObj()->install(ti);
+        ti.sharedObj()->install(ti, commit_tid);
       }
     }
 
   end:
 
-    for (auto it = permute; it != perm_end; ) {
+    //    fence();
+
+    for (auto it = writeset_; it != writeset_end; ) {
       TransItem *me = &transSet_[*it];
-      if (me->has_write()) {
-        me->sharedObj()->unlock(*me);
-        ++it;
-        if (may_duplicate_items_)
-          for (; it != perm_end && transSet_[*it].same_item(*me); ++it)
-            /* do nothing */;
-      } else
-        ++it;
+      me->sharedObj()->unlock(*me);
+      ++it;
+      if (may_duplicate_items_)
+          for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
+              /* do nothing */;
     }
+
+    //    fence();
 
     if (success) {
       commitSuccess();
@@ -604,8 +613,7 @@ public:
       abort();
     }
 
-    transSet_.resize(0);
-
+    transSet_.clear();
     return success;
   }
 
@@ -627,6 +635,19 @@ public:
   bool aborted() {
     return isAborted_;
   }
+  
+  Tid start_tid() {
+    if (start_tid_ == 0) {
+      return read_tid();
+    } else {
+      return start_tid_;
+    }
+  }
+  
+  Tid read_tid() {
+    start_tid_ = _TID;
+    return start_tid_;
+  }
 
   class Abort {};
 
@@ -643,9 +664,10 @@ private:
     bool may_duplicate_items_;
     bool isAborted_;
     TransactionBuffer buf_;
-    TransSet transSet_;
-    int *permute;
-    int perm_size;
+    local_vector<TransItem, INIT_SET_SIZE> transSet_;
+    int* writeset_;
+    int nwriteset_;
+    Tid start_tid_;
 
     friend class TransProxy;
 };
@@ -654,18 +676,18 @@ private:
 
 template <typename T>
 TransProxy& TransProxy::add_read(T rdata) {
-    if (!i_.shared.has_flags(READER_BIT)) {
-        i_.shared.or_flags(READER_BIT);
-        i_.rdata_ = t_.buf_.pack(std::move(rdata));
+    if (!i_->shared.has_flags(READER_BIT)) {
+        i_->shared.or_flags(READER_BIT);
+        i_->rdata_ = t_->buf_.pack(std::move(rdata));
     }
     return *this;
 }
 
 template <typename T, typename U>
 TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
-    if (i_.shared.has_flags(READER_BIT)
+    if (i_->shared.has_flags(READER_BIT)
         && this->read_value<T>() == old_rdata)
-        i_.rdata_ = t_.buf_.pack(std::move(new_rdata));
+        i_->rdata_ = t_->buf_.pack(std::move(new_rdata));
     return *this;
 }
 
@@ -678,9 +700,9 @@ TransProxy& TransProxy::add_write(T wdata) {
         // which will make our lives much easier)
         this->template write_value<T>() = std::move(wdata);
     else {
-        i_.shared.or_flags(WRITER_BIT);
-        i_.wdata_ = t_.buf_.pack(std::move(wdata));
-        t_.mark_write(i_);
+        i_->shared.or_flags(WRITER_BIT);
+        i_->wdata_ = t_->buf_.pack(std::move(wdata));
+        t_->mark_write(*i_);
     }
     return *this;
 }

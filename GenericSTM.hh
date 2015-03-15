@@ -13,15 +13,16 @@ public:
 
     auto it = t.check_item(this, word);
     if (it && it->has_write()) {
-        t.check_reads();
+        //t.check_reads();
         return it->template write_value<T>();
     }
     
     size_t key = bucket(word);
     // ensures version doesn't change
     table_.transRead(t, key);
+    T ret = *word;
     t.check_reads();
-    return *word;
+    return ret;
   }
   
   template <typename T>
@@ -32,14 +33,14 @@ public:
     size_t key = bucket(word);
     table_.transWrite(t, key, 0);
     t.item(this, word).add_write(new_val).set_flags((int) sizeof(T));
-    t.check_reads();
+    //t.check_reads();
   }
   
   // Hashtable handles all of this
   void lock(TransItem&) {}
   void unlock(TransItem&) {}
   bool check(TransItem&, Transaction&) { assert(0); return false; }
-  void install(TransItem& item) {
+  void install(TransItem& item, uint32_t tid) {
       void* word = item.key<void*>();
       // Hashtable implementation has already locked this word for us
       void *data = item.write_value<void*>();
@@ -59,5 +60,5 @@ private:
     return hash(k) % nbuckets();
   }
   // value is actually unused!
-  Array1<int, SIZE> table_;
+  Array1<int, SIZE, SingleElem<int, true>> table_;
 };

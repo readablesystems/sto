@@ -153,30 +153,30 @@ class TransProxy {
         return this;
     }
     operator TransItem&() {
-        return i_;
+        return *i_;
     }
 
     bool has_read() const {
-        return i_.shared.has_flags(READER_BIT);
+        return i_->shared.has_flags(READER_BIT);
     }
     template <typename T>
     bool has_read(const T& value) const {
         return has_read() && this->template read_value<T>() == value;
     }
     bool has_write() const {
-        return i_.shared.has_flags(WRITER_BIT);
+        return i_->shared.has_flags(WRITER_BIT);
     }
     bool has_undo() const {
-        return i_.shared.has_flags(UNDO_BIT);
+        return i_->shared.has_flags(UNDO_BIT);
     }
     bool has_afterC() const {
-        return i_.shared.has_flags(AFTERC_BIT);
+        return i_->shared.has_flags(AFTERC_BIT);
     }
 
     template <typename T>
     inline TransProxy& add_read(T rdata);
     inline TransProxy& clear_read() {
-        i_.shared.rm_flags(READER_BIT);
+        i_->shared.rm_flags(READER_BIT);
         return *this;
     }
     template <typename T, typename U>
@@ -185,78 +185,78 @@ class TransProxy {
     template <typename T>
     inline TransProxy& add_write(T wdata);
     inline TransProxy& clear_write() {
-        i_.shared.rm_flags(WRITER_BIT);
+        i_->shared.rm_flags(WRITER_BIT);
         return *this;
     }
 
     TransProxy& add_undo() {
-        i_.shared.or_flags(UNDO_BIT);
+        i_->shared.or_flags(UNDO_BIT);
         return *this;
     }
     TransProxy& add_afterC() {
-        i_.shared.or_flags(AFTERC_BIT);
+        i_->shared.or_flags(AFTERC_BIT);
         return *this;
     }
 
     template <typename T>
     T& read_value() {
-        return i_.read_value<T>();
+        return i_->read_value<T>();
     }
     template <typename T>
     const T& read_value() const {
-        return i_.read_value<T>();
+        return i_->read_value<T>();
     }
     template <typename T>
     T& write_value() {
-        return i_.write_value<T>();
+        return i_->write_value<T>();
     }
     template <typename T>
     const T& write_value() const {
-        return i_.write_value<T>();
+        return i_->write_value<T>();
     }
 
     TransProxy& remove_write() { // XXX should also cleanup_write
-        i_.shared.rm_flags(WRITER_BIT);
+        i_->shared.rm_flags(WRITER_BIT);
         return *this;
     }
     TransProxy& remove_read() { // XXX should also cleanup_read
-        i_.shared.rm_flags(READER_BIT);
+        i_->shared.rm_flags(READER_BIT);
         return *this;
     }
     TransProxy& remove_undo() {
-        i_.shared.rm_flags(UNDO_BIT);
+        i_->shared.rm_flags(UNDO_BIT);
         return *this;
     }
     TransProxy& remove_afterC() {
-        i_.shared.rm_flags(AFTERC_BIT);
+        i_->shared.rm_flags(AFTERC_BIT);
         return *this;
     }
 
     // these methods are all for user flags (currently we give them 8 bits, the high 8 of the 16 total flag bits we have)
     uint8_t flags() {
-        return i_.shared.flags() >> 8;
+        return i_->shared.flags() >> 8;
     }
     TransProxy& set_flags(uint8_t flags) {
-        i_.shared.set_flags(((uint16_t)flags << 8) | (i_.shared.flags() & 0xff));
+        i_->shared.set_flags(((uint16_t)flags << 8) | (i_->shared.flags() & 0xff));
         return *this;
     }
     TransProxy& rm_flags(uint8_t flags) {
-        i_.shared.rm_flags((uint16_t)flags << 8);
+        i_->shared.rm_flags((uint16_t)flags << 8);
         return *this;
     }
     TransProxy& or_flags(uint8_t flags) {
-        i_.shared.or_flags((uint16_t)flags << 8);
+        i_->shared.or_flags((uint16_t)flags << 8);
         return *this;
     }
     bool has_flags(uint8_t flags) {
-        return i_.shared.has_flags((uint16_t)flags << 8);
+        return i_->shared.has_flags((uint16_t)flags << 8);
     }
 
   private:
-    Transaction& t_;
-    TransItem& i_;
+    Transaction* t_;
+    TransItem* i_;
     TransProxy(Transaction& t, TransItem& i)
-        : t_(t), i_(i) {
+        : t_(&t), i_(&i) {
     }
     friend class Transaction;
     friend struct OptionalTransProxy;
@@ -271,16 +271,16 @@ struct OptionalTransProxy {
     }
     TransProxy get() const {
         assert(i_);
-        return TransProxy(t_, *i_);
+        return TransProxy(*t_, *i_);
     }
     TransProxy operator->() const {
         return get();
     }
   private:
-    Transaction& t_;
+    Transaction* t_;
     TransItem* i_;
     OptionalTransProxy(Transaction& t, TransItem* i)
-        : t_(t), i_(i) {
+        : t_(&t), i_(i) {
     }
     friend class Transaction;
 };

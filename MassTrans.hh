@@ -423,7 +423,6 @@ public:
       //      if (cur_version != read_version)
       //printf("node versions disagree: %d vs %d\n", cur_version, read_version);
       // XXXXXX node_aborts
-      assert(cur_version == read_version);
       return cur_version == read_version;
         //&& !(cur_version & (unlocked_cursor_type::nodeversion_type::traits_type::lock_bit));
     }
@@ -441,7 +440,7 @@ public:
 #endif
     return lockedCheck && ((read_version & valid_check_only_bit) || versionCheck(read_version, e->version()));
   }
-  void install(TransItem& item) {
+  void install(TransItem& item, uint32_t tid) {
     assert(!is_inter(item));
     auto e = item.key<versioned_value*>();
     assert(is_locked(e->version()));

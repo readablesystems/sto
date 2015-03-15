@@ -21,7 +21,7 @@ public:
   }
 
   typedef uint32_t Version;
-  typedef VersionFunctions<Version, 0> ListVersioning;
+  typedef VersionFunctions<Version> ListVersioning;
 
   static constexpr Version invalid_bit = 1<<0;
   // we need this to protect deletes (could just do a CAS on invalid_bit, but it's unclear
@@ -29,12 +29,14 @@ public:
   static constexpr Version node_lock_bit = 1<<1;
 
   static constexpr Version delete_bit = 1<<0;
+  static constexpr Version doupdate_flag = 1<<1;
 
   static constexpr void* size_key = (void*)0;
 
   struct list_node {
-    list_node(const T& val, list_node *next, bool valid) 
-      : val(val), next(next, valid) {}
+    list_node(const T& val, list_node *next, bool invalid)
+        : val(val), next(next, invalid ? invalid_bit : 0) {
+    }
 
     void mark_invalid() {
       next.or_flags(invalid_bit);
@@ -72,6 +74,14 @@ public:
     return !!ret;
   }
 
+  T* find(const T& elem) {
+    auto *ret = _find(elem);
+    if (ret) {
+      return &ret->val;
+    }
+    return NULL;
+  }
+
   T* transFind(Transaction& t, const T& elem) {
     auto listv = listversion_;
     fence();
@@ -88,7 +98,7 @@ public:
       item.add_read(0);
     } else {
       // log list v#
-      ensureNotFound(t, listv);
+      verify_list(t, listv);
       return NULL;
     }
     return &n->val;
@@ -118,7 +128,7 @@ public:
       list_node *new_head = new list_node(elem, head_, Txnal);
       head_ = new_head;
       unlock(listversion_);
-      return head_;
+      return new_head;
     }
 
     list_node *prev = NULL;
@@ -167,12 +177,14 @@ public:
       if (has_insert(item)) {
         return false;
       }
+      // delete-then-insert, then insert -- failed insert
+      if (has_doupdate(item)) {
+        return false;
+      }
       // delete-then-insert... (should really become an update...)
       if (has_delete(item)) {
-        item.set_flags(0);
-        // TODO: should really become an update, but for now it's better
-        // we just don't do anything
-        item.remove_write();
+        item.clear_write().add_write(elem);
+        item.set_flags(doupdate_flag);
         add_trans_size_offs(t, 1);
         return true;
       }
@@ -203,14 +215,21 @@ public:
         // we're deleting our delete
         return false;
       }
+      // delete-then-insert, then delete
+      if (has_doupdate(item)) {
+        // back to deleting
+        item.set_flags(delete_bit);
+        add_trans_size_offs(t, -1);
+        return true;
+      }
       // insert-then-delete becomes nothing
       if (has_insert(item)) {
-        remove(n);
+        remove<true>(n);
         item.remove_read().remove_write().remove_undo().remove_afterC();
         add_trans_size_offs(t, -1);
         // TODO: should have a count on add_lock_list_item so we can cancel that here
         // still need to make sure no one else inserts something
-        ensureNotFound(t, listv);
+        verify_list(t, listv);
         return true;
       }
       item.set_flags(delete_bit);
@@ -223,22 +242,24 @@ public:
       add_trans_size_offs(t, -1);
       return true;
     } else {
-      ensureNotFound(t, listv);
+      verify_list(t, listv);
       return false;
     }
   }
 
+  template <bool Txnal>
   bool remove(const T& elem, bool locked = false) {
-    return _remove([&] (list_node *n2) { return comp_(n2->val, elem) == 0; }, locked);
+    return _remove<Txnal>([&] (list_node *n2) { return comp_(n2->val, elem) == 0; }, locked);
   }
 
+  template <bool Txnal>
   bool remove(list_node *n, bool locked = false) {
     // TODO: doing this remove means we don't have to value compare, but we also
     // have to go through the whole list (possibly). Unclear which is better.
-    return _remove([n] (list_node *n2) { return n == n2; }, locked);
+    return _remove<Txnal>([n] (list_node *n2) { return n == n2; }, locked);
   }
 
-  template <typename FoundFunc>
+  template <bool Txnal, typename FoundFunc>
   bool _remove(FoundFunc found_f, bool locked = false) {
     if (!locked)
       lock(listversion_);
@@ -253,6 +274,8 @@ public:
           head_ = cur->next;
         }
         // TODO: rcu free
+        if (!Txnal)
+          listsize_--;
         if (!locked)
           unlock(listversion_);
         return true;
@@ -351,12 +374,12 @@ private:
   }
 
   ListIter transIter(Transaction& t) {
-    ensureNotFound(t, listversion_);//TODO: rename
+    verify_list(t, listversion_);//TODO: rename
     return ListIter(this, head_, t);
   }
 
   size_t transSize(Transaction& t) {
-    ensureNotFound(t, listversion_);
+    verify_list(t, listversion_);
     return listsize_ + trans_size_offs(t);
   }
 
@@ -366,14 +389,13 @@ private:
 
   void clear() {
       while (auto item = head_)
-          remove(head_, true);
+        remove<false>(head_, true);
   }
 
 
-  void ensureNotFound(Transaction& t, Version readv) {
-    auto item = t_item(t, this);
-    if (!item.has_read())
-      item.add_read(readv);
+  void verify_list(Transaction& t, Version readv) {
+      t_item(t, this).add_read(readv);
+      acquire_fence();
   }
 
   void lock(Version& v) {
@@ -389,17 +411,19 @@ private:
   }
 
   void lock(TransItem& item) {
-    // only lock we need to maybe do is for deletes
-    if (has_delete(item))
-        item.key<list_node*>()->lock();
-    else if (item.key<List*>() == this)
+    // this lock is useless given that we also lock the listversion_
+    // currently
+    //if (has_delete(item) || has_doupdate(item))
+    //    item.key<list_node*>()->lock();
+    // XXX: this isn't great, but I think we need it to update the size...
+    if (item.key<List*>() == this)
         lock(listversion_);
   }
 
   void unlock(TransItem& item) {
-    if (has_delete(item))
-      item.key<list_node*>()->unlock();
-    else if (item.key<List*>() == (void*)this)
+    //    if (has_delete(item) || has_doupdate(item))
+    //item.key<list_node*>()->unlock();
+    if (item.key<List*>() == (void*)this)
       unlock(listversion_);
   }
 
@@ -409,7 +433,7 @@ private:
     }
     if (item.key<List*>() == this) {
       auto lv = listversion_;
-      return 
+      return
         ListVersioning::versionCheck(lv, item.template read_value<Version>())
         && (!is_locked(lv) || t.check_for_write(item));
     }
@@ -417,16 +441,18 @@ private:
     return (n->is_valid() || has_insert(item)) && (has_delete(item) || !n->is_locked());
   }
 
-  void install(TransItem& item) {
+  void install(TransItem& item, uint32_t tid) {
     if (item.key<List*>() == this)
       return;
     list_node *n = item.key<list_node*>();
     if (has_delete(item)) {
-      remove(n, true);
+      remove<true>(n, true);
       listsize_--;
       // not super ideal that we have to change version
       // but we need to invalidate transSize() calls
       ListVersioning::inc_version(listversion_);
+    } else if (has_doupdate(item)) {
+      n->val = item.template write_value<T>();
     } else {
       n->mark_valid();
       listsize_++;
@@ -437,12 +463,12 @@ private:
   void cleanup(TransItem& item, bool committed) {
       if (!committed && item.has_undo()) {
           list_node *n = item.key<list_node*>();
-          remove(n);
+          remove<true>(n);
       }
   }
 
   bool validityCheck(list_node *n, TransItem& item) {
-    return n->is_valid() || has_insert(item);
+    return n->is_valid() || item.has_undo();
   }
 
   template <typename PTR>
@@ -452,11 +478,15 @@ private:
   }
   
   bool has_insert(TransItem& item) {
-    return item.has_write() && !has_delete(item);
+    return item.has_write() && !has_delete(item) && !has_doupdate(item);
   }
   
   bool has_delete(TransItem& item) {
     return item.has_flags(delete_bit);
+  }
+  
+  bool has_doupdate(TransItem& item) {
+    return item.has_flags(doupdate_flag);
   }
 
   void add_lock_list_item(Transaction& t) {
@@ -469,9 +499,12 @@ private:
     // since the "key" is fixed (rather than having to search the transset each time)
     auto item = t_item(t, size_key);
     int cur_offs = 0;
-    if (item.has_read())
+    // XXX: this is sorta ugly
+    if (item.has_read()) {
       cur_offs = item.template read_value<int>();
-    item.add_read(cur_offs + size_offs);
+      item.update_read(cur_offs, cur_offs + size_offs);
+    } else
+      item.add_read(cur_offs + size_offs);
   }
 
   int trans_size_offs(Transaction& t) {
