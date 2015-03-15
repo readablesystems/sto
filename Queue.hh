@@ -46,7 +46,7 @@ public:
         else {
             std::list<T> write_list;
             write_list.push_back(v);
-            item.add_write(item, write_list);
+            item.add_write(write_list);
         }
     }
 
@@ -76,11 +76,11 @@ public:
                     else return false; 
                     
                     if (!pushitem.has_read())
-                        item.add_read(pushitem, tailversion_);
+                        pushitem.add_read(tailversion_);
                 } 
             }
             if (has_delete(item)) {
-                index = (index + 1) % BUF_SIZE;  
+                index = (index + 1) % BUF_SIZE;
                 item = t.item(this, index);
             }
             else break;
@@ -89,9 +89,9 @@ public:
         // ensure that head is not modified by time of commit 
         item.or_flags(delete_bit);
         if (!item.has_read()) {
-           item.add_read(item, headversion_);
+           item.add_read(headversion_);
         }
-        item.add_write(item, 0);
+        item.add_write(0);
         return true;
     }
 
@@ -119,7 +119,7 @@ public:
                         else return false;
                     }
                     if (!pushitem.has_read())
-                        item.add_read(pushitem, tailversion_);
+                        pushitem.add_read(tailversion_);
                 }
                 return false;
             }
@@ -132,7 +132,7 @@ public:
         
         // ensure that head was not modified at time of commit
         if (!item.has_read())
-           item.add_read(item, headversion_);
+           item.add_read(headversion_);
         item.or_flags(front_bit);
         val = queueSlots[index];
         return true;
