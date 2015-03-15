@@ -490,6 +490,7 @@ public:
       if (it->has_read()) {
         inc_p(txp_total_r);
         if (!it->sharedObj()->check(*it, *this)) {
+          // XXX: only do this if we're dup'ing reads
             for (auto jt = trans_first; jt != it; ++jt)
                 if (*jt == *it)
                     goto ok;
@@ -547,13 +548,15 @@ public:
               /* do nothing */;
     }
 
-    /* fence(); */
+    //    fence();
 
     //phase2
     if (!check_reads(trans_first, trans_last)) {
       success = false;
       goto end;
     }
+
+    //    fence();
 
     //phase3
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
@@ -566,6 +569,8 @@ public:
 
   end:
 
+    //    fence();
+
     for (auto it = writeset_; it != writeset_end; ) {
       TransItem *me = &transSet_[*it];
       me->sharedObj()->unlock(*me);
@@ -574,6 +579,8 @@ public:
           for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
               /* do nothing */;
     }
+
+    //    fence();
 
     if (success) {
       commitSuccess();

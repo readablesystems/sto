@@ -29,6 +29,7 @@ public:
   static constexpr Version node_lock_bit = 1<<1;
 
   static constexpr Version delete_bit = 1<<0;
+  static constexpr Version doupdate_flag = 1<<1;
 
   static constexpr void* size_key = (void*)0;
 
@@ -175,12 +176,14 @@ public:
       if (has_insert(item)) {
         return false;
       }
+      // delete-then-insert, then insert -- failed insert
+      if (has_doupdate(item)) {
+        return false;
+      }
       // delete-then-insert... (should really become an update...)
       if (has_delete(item)) {
-        item.set_flags(0);
-        // TODO: should really become an update, but for now it's better
-        // we just don't do anything
-        item.remove_write();
+        item.clear_write().add_write(elem);
+        item.set_flags(doupdate_flag);
         add_trans_size_offs(t, 1);
         return true;
       }
@@ -210,6 +213,13 @@ public:
       if (has_delete(item)) {
         // we're deleting our delete
         return false;
+      }
+      // delete-then-insert, then delete
+      if (has_doupdate(item)) {
+        // back to deleting
+        item.set_flags(delete_bit);
+        add_trans_size_offs(t, -1);
+        return true;
       }
       // insert-then-delete becomes nothing
       if (has_insert(item)) {
@@ -401,17 +411,19 @@ private:
   }
 
   void lock(TransItem& item) {
-    // only lock we need to maybe do is for deletes
-    if (has_delete(item))
-        item.key<list_node*>()->lock();
-    else if (item.key<List*>() == this)
+    // this lock is useless given that we also lock the listversion_
+    // currently
+    //if (has_delete(item) || has_doupdate(item))
+    //    item.key<list_node*>()->lock();
+    // XXX: this isn't great, but I think we need it to update the size...
+    if (item.key<List*>() == this)
         lock(listversion_);
   }
 
   void unlock(TransItem& item) {
-    if (has_delete(item))
-      item.key<list_node*>()->unlock();
-    else if (item.key<List*>() == (void*)this)
+    //    if (has_delete(item) || has_doupdate(item))
+    //item.key<list_node*>()->unlock();
+    if (item.key<List*>() == (void*)this)
       unlock(listversion_);
   }
 
@@ -439,6 +451,8 @@ private:
       // not super ideal that we have to change version
       // but we need to invalidate transSize() calls
       ListVersioning::inc_version(listversion_);
+    } else if (has_doupdate(item)) {
+      n->val = item.template write_value<T>();
     } else {
       n->mark_valid();
       listsize_++;
@@ -454,7 +468,7 @@ private:
   }
 
   bool validityCheck(list_node *n, TransItem& item) {
-    return n->is_valid() || has_insert(item);
+    return n->is_valid() || item.has_undo();
   }
 
   template <typename PTR>
@@ -464,11 +478,15 @@ private:
   }
   
   bool has_insert(TransItem& item) {
-    return item.has_write() && !has_delete(item);
+    return item.has_write() && !has_delete(item) && !has_doupdate(item);
   }
   
   bool has_delete(TransItem& item) {
     return item.has_flags(delete_bit);
+  }
+  
+  bool has_doupdate(TransItem& item) {
+    return item.has_flags(doupdate_flag);
   }
 
   void add_lock_list_item(Transaction& t) {

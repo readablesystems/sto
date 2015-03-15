@@ -20,8 +20,9 @@ public:
     size_t key = bucket(word);
     // ensures version doesn't change
     table_.transRead(t, key);
+    T ret = *word;
     t.check_reads();
-    return *word;
+    return ret;
   }
   
   template <typename T>
