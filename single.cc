@@ -6,7 +6,7 @@
 #include "Hashtable.hh"
 #include "MassTrans.hh"
 #include "List.hh"
-//#include "Queue.hh"
+#include "Queue.hh"
 #include "Transaction.hh"
 
 #define N 100
@@ -18,7 +18,6 @@ volatile bool recovering = false; // so don't add log entries, and free old valu
 
 using namespace std;
 
-#if 0
 void queueTests() {
     Queue<int> q;
     int p;
@@ -30,9 +29,7 @@ void queueTests() {
         // q is empty
         q.transPush(t, 1);
         q.transPush(t, 2);
-        assert(q.transFront(t, p) && p == 1);
-        assert(q.transPop(t));
-        assert(q.transFront(t, p) && p == 2);
+        assert(q.transFront(t, p) && p == 1); assert(q.transPop(t)); assert(q.transFront(t, p) && p == 2);
         assert(q.transPop(t));
         assert(t.commit());
     }    
@@ -269,7 +266,6 @@ void queueTests() {
         Transaction t;
     }
 }
-#endif
 
 void linkedListTests() {
   List<int> l;
@@ -615,7 +611,4 @@ int main() {
   linkedListTests();
 
   queueTests();
-  
-  //queueTests();
-  
 }

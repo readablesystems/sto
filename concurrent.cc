@@ -265,7 +265,7 @@ void prepopulate_func(QueueType* q) {
 
 void empty_func(QueueType* q) {
     Transaction t;
-    while (q->transPop()) {}
+    while (q->transPop(t)) {}
 }
 
 static void doRead(Transaction& t) {
@@ -896,7 +896,7 @@ template <int DS> bool QTransfer<DS>::check() {
   while (!q->empty()) {
     assert (unval(q->pop()) == unval(q2->pop()));
   }
-  assert(ch.empty() == q->empty());
+  assert(q2->empty() == q->empty());
   return true;
 }
 #endif
