@@ -10,7 +10,7 @@ template <typename T, int Default_size = 100,
 class Array_Sized : public Shared {
 public:
   typedef uint32_t Version;
-  typedef VersionFunctions<Version, 0> Versioning;
+  typedef VersionFunctions<Version> Versioning;
 
   Array_Sized(int size=Default_size) : arr_(new Structure[size]), capacity_(size) {}
 
@@ -65,7 +65,7 @@ public:
       && (!Versioning::is_locked(elem.version()) || t.check_for_write(item));
   }
 
-  void install(TransItem& item) {
+  void install(TransItem& item, uint32_t tid) {
     int i = item.template key<int>();
     arr_[i].set_value(item.template write_value<T>());
     Versioning::inc_version(arr_[i].version());

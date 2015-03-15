@@ -10,7 +10,7 @@ public:
   TaggedLow(T* ptr, uint8_t flgs) : ptr_(ptr) {
     set_flags(flgs);
   }
-  
+
   TaggedLow(T* ptr) : ptr_(ptr) {}
 
   operator T*() {
@@ -45,6 +45,7 @@ public:
     auto p = (uintptr_t)ptr_;
     p &= ~7;
     p |= flags;
+    fence();
     ptr_ = (T*)p;
   }
 
@@ -57,6 +58,7 @@ public:
     assert((flags & ~7) == 0);
     while (1) {
       auto cur = (uintptr_t)ptr_;
+      fence();
       if ((cur & flags) == 0 && bool_cmpxchg(&ptr_, (T*)cur, (T*)(cur | flags))) {
         break;
       }
