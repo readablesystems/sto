@@ -676,18 +676,18 @@ private:
 
 template <typename T>
 TransProxy& TransProxy::add_read(T rdata) {
-    if (!i_.shared.has_flags(READER_BIT)) {
-        i_.shared.or_flags(READER_BIT);
-        i_.rdata_ = t_.buf_.pack(std::move(rdata));
+    if (!i_->shared.has_flags(READER_BIT)) {
+        i_->shared.or_flags(READER_BIT);
+        i_->rdata_ = t_->buf_.pack(std::move(rdata));
     }
     return *this;
 }
 
 template <typename T, typename U>
 TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
-    if (i_.shared.has_flags(READER_BIT)
+    if (i_->shared.has_flags(READER_BIT)
         && this->read_value<T>() == old_rdata)
-        i_.rdata_ = t_.buf_.pack(std::move(new_rdata));
+        i_->rdata_ = t_->buf_.pack(std::move(new_rdata));
     return *this;
 }
 
@@ -700,9 +700,9 @@ TransProxy& TransProxy::add_write(T wdata) {
         // which will make our lives much easier)
         this->template write_value<T>() = std::move(wdata);
     else {
-        i_.shared.or_flags(WRITER_BIT);
-        i_.wdata_ = t_.buf_.pack(std::move(wdata));
-        t_.mark_write(i_);
+        i_->shared.or_flags(WRITER_BIT);
+        i_->wdata_ = t_->buf_.pack(std::move(wdata));
+        t_->mark_write(*i_);
     }
     return *this;
 }
