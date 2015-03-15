@@ -279,7 +279,7 @@ public:
     auto el = item.key<internal_elem*>();
     unlock(el);
   }
-  void install(TransItem& item) {
+  void install(TransItem& item, uint32_t tid) {
     assert(!is_bucket(item));
     auto el = item.key<internal_elem*>();
     assert(is_locked(el));

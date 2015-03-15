@@ -10,7 +10,7 @@ public:
   TaggedLow(T* ptr, uint8_t flgs) : ptr_(ptr) {
     set_flags(flgs);
   }
-  
+
   TaggedLow(T* ptr) : ptr_(ptr) {}
 
   operator T*() {
