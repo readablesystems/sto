@@ -173,9 +173,8 @@ template <> struct Container<USE_HASHTABLE> : public ContainerBase_maplike {
     typedef Hashtable<int, value_type, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
 };
 
-typedef Queue<value_type> QueueType;
-QueueType* q;
-QueueType* q2;
+Queue<value_type> q;
+Queue<value_type> q2;
 
 bool readMyWrites = true;
 bool runCheck = false;
@@ -255,29 +254,30 @@ void prepopulate_func(int *array) {
 
 #if DATA_STRUCTURE == 5
 // FUNCTIONS FOR QUEUE
-void prepopulate_func(QueueType* q) {
+void prepopulate_func() {
   for (int i = 0; i < prepopulate; ++i) {
     Transaction t;
-    q->transPush(t, val(i));
+    q.transPush(t, val(i));
     t.commit();
   }
 }
 
-void empty_func(QueueType* q) {
-    Transaction t;
-    while (q->transPop(t)) {}
+void empty_func() {
+    while (!q.empty()) {
+        q.pop();
+    }
 }
 
 static void doRead(Transaction& t) {
   if (readMyWrites) {
     value_type v;
-    q->transFront(t, v);
-    q->transPop(t);
+    q.transFront(t, v);
+    q.transPop(t);
   }
 }
 
 static void doWrite(Transaction& t, int& ctr) {
-    q->transPush(t, val(ctr));
+    q.transPush(t, val(ctr));
     ++ctr; // because we've done a read and a write
 }
   
@@ -798,31 +798,21 @@ template <int DS> bool InterferingRWs<DS>::check() {
 }
 
 #if DATA_STRUCTURE == 5
-template <int DS> struct QXorDelete: public DSTester<DS> {
-    QXorDelete() {}
-    void run(int me);
-    bool check();
-};
-
-template <int DS> void QXorDelete<DS>::run(int me) {
+void Qxordeleterun(int me) {
   Transaction::threadid = me;
 
   int N = ntrans/nthreads;
   int OPS = opspertrans;
-  
-  // ensure q always starts out with exactly prepopulated values ?????????????
-  empty_func(q);
-  prepopulate_func(q);
-
+ 
   for (int i = 0; i < N; ++i) {
     while (1) {
       try {
         Transaction t;
         for (int j = 0; j < OPS; ++j) {
           value_type v = val(1);
-          if (!q->transPop(t)) {
+          if (!q.transPop(t)) {
             // we pop if the q is nonempty, push if it's empty
-            q->transPush(t, v);
+            q.transPush(t, v);
           }
         }
         if (t.commit())
@@ -832,39 +822,31 @@ template <int DS> void QXorDelete<DS>::run(int me) {
   }
 }
 
-template <int DS> bool QXorDelete<DS>::check() {
-  QueueType *old = q;
-  QueueType ch;
-  q = &ch;
+bool Qxordeletecheck() {
+  Queue<value_type>* old = &q;
+  Queue<value_type> ch;
+  q = ch;
 
-  prepopulate_func(q);
+  empty_func();
+  prepopulate_func();
   
   for (int i = 0; i < nthreads; ++i) {
-    run(i);
+    Qxordeleterun(i);
   }
-  q = old;
+  q = *old;
 
-  while (!q->empty()) {
-    assert (unval(q->pop()) == unval(ch.pop()));
+  while (!q.empty()) {
+    assert (unval(q.pop()) == unval(ch.pop()));
   }
-  assert(ch.empty() == q->empty());
+  assert(ch.empty() == q.empty());
   return true;
 }
 
-template <int DS> struct QTransfer: public DSTester<DS> {
-    QTransfer() {}
-    void run(int me);
-    bool check();
-};
-
-template <int DS> void QTransfer<DS>::run(int me) {
+void Qtransferrun(int me) {
   Transaction::threadid = me;
 
   int N = ntrans/nthreads;
   int OPS = opspertrans;
-
-  empty_func(q);
-  prepopulate_func(q);
 
   for (int i = 0; i < N; ++i) {
     while (1) {
@@ -873,9 +855,9 @@ template <int DS> void QTransfer<DS>::run(int me) {
         for (int j = 0; j < OPS; ++j) {
           value_type v;
           // if q is nonempty, pop from q, push onto q2
-          if (q->transFront(t, v)) {
-            q->transPop(t);
-            q2->transPush(t, v);
+          if (q.transFront(t, v)) {
+            q.transPop(t);
+            q2.transPush(t, v);
           }
         }
         if (t.commit())
@@ -885,20 +867,44 @@ template <int DS> void QTransfer<DS>::run(int me) {
   }
 }
 
-template <int DS> bool QTransfer<DS>::check() {
+bool Qtransfercheck() {
   // check if all items successfully popped
-  assert(q->empty());
+  assert(q.empty());
 
   // restore q to prepopulated state
-  prepopulate_func(q);
+  prepopulate_func();
 
   // check if q2 and q are equivalent
-  while (!q->empty()) {
-    assert (unval(q->pop()) == unval(q2->pop()));
+  while (!q.empty()) {
+    assert (unval(q.pop()) == unval(q2.pop()));
   }
-  assert(q2->empty() == q->empty());
+  assert(q2.empty() == q.empty());
   return true;
 }
+
+void* xorrunfunc(void* x) {
+    int* i = (int*) x;
+    Qxordeleterun(*i);
+} 
+
+void* transferrunfunc(void* x) {
+    int* i = (int*) x;
+    Qtransferrun(*i);
+} 
+void qstartAndWait(int n, void*(*runfunc)(void*)) {
+  pthread_t tids[n];
+  for (int i = 0; i < n; ++i) {
+      pthread_create(&tids[i], NULL, runfunc, &i);
+  }
+  pthread_t advancer;
+  pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
+  pthread_detach(advancer);
+
+  for (int i = 0; i < n; ++i) {
+    pthread_join(tids[i], NULL);
+  }
+}
+
 #endif
 
 struct TesterPair {
@@ -955,10 +961,6 @@ struct Test {
     MAKE_TESTER("kingofthedelete", 0, KingDelete),
     MAKE_TESTER("xordelete", 0, XorDelete),
     MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true)
-#if DATA_STRUCTURE == 5
-    , MAKE_TESTER("qxordelete", 0, QXorDelete),
-    MAKE_TESTER("qtransfer", 0, QTransfer)
-#endif
 };
 
 struct {
@@ -1066,6 +1068,18 @@ int main(int argc, char *argv[]) {
   }
   Clp_DeleteParser(clp);
 
+#if DATA_STRUCTURE == 5 
+    empty_func();
+    prepopulate_func();    
+    qstartAndWait(nthreads, xorrunfunc);
+    Qxordeletecheck();
+
+    empty_func();
+    prepopulate_func();
+    qstartAndWait(nthreads, transferrunfunc);
+Qtransfercheck();
+#else 
+
   int testidx = 0;
   int test = -1;
   for (size_t ti = 0; ti != sizeof(tests) / sizeof(tests[0]); ++ti) {
@@ -1133,5 +1147,5 @@ int main(int argc, char *argv[]) {
 
   if (runCheck)
       tester->check();
+#endif
 }
-
