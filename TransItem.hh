@@ -79,61 +79,60 @@ struct TransItem {
         return sharedObj() == x.sharedObj() && key_ == x.key_;
     }
 
-  template <typename T>
-  const T& key() const {
-      return Packer<T>::unpack(key_);
-  }
+    template <typename T>
+    const T& key() const {
+        return Packer<T>::unpack(key_);
+    }
 
-  template <typename T>
-  T& read_value() {
-    assert(has_read());
-    return Packer<T>::unpack(rdata_);
-  }
-  template <typename T>
-  const T& read_value() const {
-    assert(has_read());
-    return Packer<T>::unpack(rdata_);
-  }
-  template <typename T>
-  T& write_value() {
-    assert(has_write());
-    return Packer<T>::unpack(wdata_);
-  }
-  template <typename T>
-  const T& write_value() const {
-    assert(has_write());
-    return Packer<T>::unpack(wdata_);
-  }
+    template <typename T>
+    T& read_value() {
+        assert(has_read());
+        return Packer<T>::unpack(rdata_);
+    }
+    template <typename T>
+    const T& read_value() const {
+        assert(has_read());
+        return Packer<T>::unpack(rdata_);
+    }
+    template <typename T>
+    T& write_value() {
+        assert(has_write());
+        return Packer<T>::unpack(wdata_);
+    }
+    template <typename T>
+    const T& write_value() const {
+        assert(has_write());
+        return Packer<T>::unpack(wdata_);
+    }
 
-  inline bool operator==(const TransItem& t2) const {
-    return key_ == t2.key_ && sharedObj() == t2.sharedObj();
-  }
+    inline bool operator==(const TransItem& t2) const {
+        return key_ == t2.key_ && sharedObj() == t2.sharedObj();
+    }
+    inline bool operator<(const TransItem& t2) const {
+        // we compare keys and THEN shared objects here so that read and write keys with the same value
+        // are next to each other
+        return key_ < t2.key_
+                      || (key_ == t2.key_ && sharedObj() < t2.sharedObj());
+    }
 
-  inline bool operator<(const TransItem& t2) const {
-    // we compare keys and THEN shared objects here so that read and write keys with the same value
-    // are next to each other
-    return key_ < t2.key_
-      || (key_ == t2.key_ && sharedObj() < t2.sharedObj());
-  }
+    // these methods are all for user flags (currently we give them 8 bits, the high 8 of the 16 total flag bits we have)
+    uint8_t flags() {
+        return shared.flags() >> 8;
+    }
+    TransItem& assign_flags(uint8_t flags) {
+        shared.assign_flags(((uint16_t)flags << 8) | (shared.flags() & 0xff));
+        return *this;
+    }
+    TransItem& rm_flags(uint8_t flags) {
+        shared.rm_flags((uint16_t)flags << 8);
+        return *this;
+    }
+    TransItem& or_flags(uint8_t flags) {
+        shared.or_flags((uint16_t)flags << 8);
+        return *this;
+    }
 
-  // these methods are all for user flags (currently we give them 8 bits, the high 8 of the 16 total flag bits we have)
-  uint8_t flags() {
-    return shared.flags() >> 8;
-  }
-  TransItem& assign_flags(uint8_t flags) {
-    shared.assign_flags(((uint16_t)flags << 8) | (shared.flags() & 0xff));
-    return *this;
-  }
-  TransItem& rm_flags(uint8_t flags) {
-    shared.rm_flags((uint16_t)flags << 8);
-    return *this;
-  }
-  TransItem& or_flags(uint8_t flags) {
-    shared.or_flags((uint16_t)flags << 8);
-    return *this;
-  }
-
-private:
+  private:
     friend class Transaction;
     friend class TransProxy;
     Tagged64<Shared> shared;
