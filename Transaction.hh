@@ -517,7 +517,7 @@ public:
     return true;
   }
 
-  bool commit() {
+  bool try_commit() {
 #if ASSERT_TX_SIZE
     if (transSet_.size() > TX_SIZE_LIMIT) {
         std::cerr << "transSet_ size at " << transSet_.size()
@@ -543,7 +543,7 @@ public:
 
       if (it->has_write()) {
         writeset_[nwriteset_++] = it - transSet_.begin();
-      }   
+      }
 #ifdef DETAILED_LOGGING
       if (it->has_read()) {
 	inc_p(txp_total_r);
@@ -573,7 +573,7 @@ public:
     //    fence();
 
     Tid commit_tid = incTid();
-  
+
     //phase2
     if (!check_reads(trans_first, trans_last)) {
       success = false;
@@ -592,7 +592,6 @@ public:
     }
 
   end:
-
     //    fence();
 
     for (auto it = writeset_; it != writeset_end; ) {
@@ -610,7 +609,7 @@ public:
       commitSuccess();
     } else {
       inc_p(txp_commit_time_aborts);
-      abort();
+      silent_abort();
     }
 
     transSet_.clear();
@@ -631,6 +630,11 @@ public:
     silent_abort();
     throw Abort();
   }
+
+    void commit() {
+        if (!try_commit())
+            throw Abort();
+    }
 
   bool aborted() {
     return isAborted_;
