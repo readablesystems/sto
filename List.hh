@@ -50,18 +50,6 @@ public:
       return !next.has_flags(invalid_bit);
     }
 
-    void lock() {
-      next.atomic_add_flags(node_lock_bit);
-    }
-
-    void unlock() {
-      next.set_flags(next.flags() & ~node_lock_bit);
-    }
-    
-    bool is_locked() {
-      return next.has_flags(node_lock_bit);
-    }
-
     T val;
     TaggedLow<list_node> next;
   };
@@ -413,16 +401,12 @@ private:
   void lock(TransItem& item) {
     // this lock is useless given that we also lock the listversion_
     // currently
-    //if (has_delete(item) || has_doupdate(item))
-    //    item.key<list_node*>()->lock();
     // XXX: this isn't great, but I think we need it to update the size...
     if (item.key<List*>() == this)
         lock(listversion_);
   }
 
   void unlock(TransItem& item) {
-    //    if (has_delete(item) || has_doupdate(item))
-    //item.key<list_node*>()->unlock();
     if (item.key<List*>() == (void*)this)
       unlock(listversion_);
   }
@@ -438,7 +422,7 @@ private:
         && (!is_locked(lv) || t.check_for_write(item));
     }
     auto n = item.key<list_node*>();
-    return (n->is_valid() || has_insert(item)) && (has_delete(item) || !n->is_locked());
+    return n->is_valid() || has_insert(item);
   }
 
   void install(TransItem& item, uint32_t tid) {
