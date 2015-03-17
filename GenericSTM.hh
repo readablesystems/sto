@@ -32,7 +32,7 @@ public:
     // (and locks this word for us)
     size_t key = bucket(word);
     table_.transWrite(t, key, 0);
-    t.item(this, word).add_write(new_val).set_flags((int) sizeof(T));
+    t.item(this, word).add_write(new_val).assign_flags((int) sizeof(T));
     //t.check_reads();
   }
   

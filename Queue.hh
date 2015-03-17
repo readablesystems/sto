@@ -99,11 +99,11 @@ public:
     
 private:
   bool is_front(TransItem& item) {
-        return item.has_flags(front_bit);
+      return item.flags() & front_bit;
     }
 
     bool has_delete(TransItem& item) {
-        return item.has_flags(delete_bit);
+        return item.flags() & delete_bit;
     }
     
     void lock(Version& v) {

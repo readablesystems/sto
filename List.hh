@@ -29,7 +29,7 @@ public:
   static constexpr Version node_lock_bit = 1<<1;
 
   static constexpr Version delete_bit = 1<<0;
-  static constexpr Version doupdate_flag = 1<<1;
+  static constexpr Version doupdate_bit = 1<<1;
 
   static constexpr void* size_key = (void*)0;
 
@@ -43,11 +43,11 @@ public:
     }
 
     void mark_valid() {
-      next.set_flags(next.flags() & ~invalid_bit);
+      next.assign_flags(next.flags() & ~invalid_bit);
     }
 
     bool is_valid() {
-      return !next.has_flags(invalid_bit);
+        return !(next.flags() & invalid_bit);
     }
 
     T val;
@@ -136,9 +136,9 @@ public:
     }
     auto ret = new list_node(elem, cur, Txnal);
     if (prev) {
-      prev->next = ret;
+        prev->next.assign_ptr(ret);
     } else {
-      head_ = ret;
+        head_ = ret;
     }
     if (!Txnal)
       listsize_++;
@@ -172,7 +172,7 @@ public:
       // delete-then-insert... (should really become an update...)
       if (has_delete(item)) {
         item.clear_write().add_write(elem);
-        item.set_flags(doupdate_flag);
+        item.assign_flags(doupdate_bit);
         add_trans_size_offs(t, 1);
         return true;
       }
@@ -206,7 +206,7 @@ public:
       // delete-then-insert, then delete
       if (has_doupdate(item)) {
         // back to deleting
-        item.set_flags(delete_bit);
+        item.assign_flags(delete_bit);
         add_trans_size_offs(t, -1);
         return true;
       }
@@ -220,7 +220,7 @@ public:
         verify_list(t, listv);
         return true;
       }
-      item.set_flags(delete_bit);
+      item.assign_flags(delete_bit);
       // mark as a write
       item.add_write(0);
       // we also need to check that it's still valid at commit time (not 
@@ -257,9 +257,9 @@ public:
       if (found_f(cur)) {
         cur->mark_invalid();
         if (prev) {
-          prev->next = (list_node*)cur->next;
+            prev->next.assign_ptr(cur->next);
         } else {
-          head_ = cur->next;
+            head_ = cur->next;
         }
         // TODO: rcu free
         if (!Txnal)
@@ -460,17 +460,17 @@ private:
     // can switch this to fresh_item to not read our writes
     return t.item(this, node);
   }
-  
+
   bool has_insert(TransItem& item) {
     return item.has_write() && !has_delete(item) && !has_doupdate(item);
   }
-  
+
   bool has_delete(TransItem& item) {
-    return item.has_flags(delete_bit);
+      return item.flags() & delete_bit;
   }
-  
+
   bool has_doupdate(TransItem& item) {
-    return item.has_flags(doupdate_flag);
+      return item.flags() & doupdate_bit;
   }
 
   void add_lock_list_item(Transaction& t) {

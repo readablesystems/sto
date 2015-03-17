@@ -63,21 +63,21 @@ struct TransItem {
     return shared.ptr();
   }
 
-  bool has_write() const {
-    return shared.has_flags(WRITER_BIT);
-  }
-  bool has_read() const {
-    return shared.has_flags(READER_BIT);
-  }
-  bool has_undo() const {
-    return shared.has_flags(UNDO_BIT);
-  }
-  bool has_afterC() const {
-    return shared.has_flags(AFTERC_BIT);
-  }
-  bool same_item(const TransItem& x) const {
-    return sharedObj() == x.sharedObj() && key_ == x.key_;
-  }
+    bool has_write() const {
+        return shared.flags() & WRITER_BIT;
+    }
+    bool has_read() const {
+        return shared.flags() & READER_BIT;
+    }
+    bool has_undo() const {
+        return shared.flags() & UNDO_BIT;
+    }
+    bool has_afterC() const {
+        return shared.flags() & AFTERC_BIT;
+    }
+    bool same_item(const TransItem& x) const {
+        return sharedObj() == x.sharedObj() && key_ == x.key_;
+    }
 
   template <typename T>
   const T& key() const {
@@ -120,8 +120,8 @@ struct TransItem {
   uint8_t flags() {
     return shared.flags() >> 8;
   }
-  TransItem& set_flags(uint8_t flags) {
-    shared.set_flags(((uint16_t)flags << 8) | (shared.flags() & 0xff));
+  TransItem& assign_flags(uint8_t flags) {
+    shared.assign_flags(((uint16_t)flags << 8) | (shared.flags() & 0xff));
     return *this;
   }
   TransItem& rm_flags(uint8_t flags) {
@@ -131,9 +131,6 @@ struct TransItem {
   TransItem& or_flags(uint8_t flags) {
     shared.or_flags((uint16_t)flags << 8);
     return *this;
-  }
-  bool has_flags(uint8_t flags) {
-    return shared.has_flags((uint16_t)flags << 8);
   }
 
 private:
@@ -236,8 +233,8 @@ class TransProxy {
     uint8_t flags() {
         return i_->flags();
     }
-    TransProxy& set_flags(uint8_t flags) {
-        i_->set_flags(flags);
+    TransProxy& assign_flags(uint8_t flags) {
+        i_->assign_flags(flags);
         return *this;
     }
     TransProxy& rm_flags(uint8_t flags) {
@@ -247,9 +244,6 @@ class TransProxy {
     TransProxy& or_flags(uint8_t flags) {
         i_->or_flags(flags);
         return *this;
-    }
-    bool has_flags(uint8_t flags) {
-        return i_->shared.has_flags((uint16_t)flags << 8);
     }
 
   private:

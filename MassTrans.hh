@@ -180,7 +180,7 @@ public:
           return false;
         }
         // otherwise this is an insert-then-delete
-        item.set_flags(delete_bit);
+        item.assign_flags(delete_bit);
         // key is already in write data since this used to be an insert
         return true;
       } else 
@@ -201,7 +201,7 @@ public:
       item.add_read(valid_check_only_bit);
       // same as inserts we need to store (copy) key so we can lookup to remove later
       item.clear_write().template add_write<std::string>(key);
-      item.set_flags(delete_bit);
+      item.assign_flags(delete_bit);
       return found;
     } else {
       ensureNotFound(t, lp.node(), lp.full_version_value());
@@ -613,7 +613,7 @@ private:
       // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
       // if user can't read v#)
       if (INSERT) {
-        item.set_flags(0);
+        item.assign_flags(0);
         assert(!has_delete(item));
         reallyHandlePutFound(t, item, e, key, value);
       } else {
@@ -680,7 +680,7 @@ private:
     return item.has_undo();
   }
   bool has_delete(TransItem& item) {
-    return item.has_flags(delete_bit);
+      return item.flags() & delete_bit;
   }
 
   bool validityCheck(TransItem& item, versioned_value *e) {
