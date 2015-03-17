@@ -20,8 +20,8 @@ public:
     size_t key = bucket(word);
     // ensures version doesn't change
     table_.transRead(t, key);
+    //t.check_reads();
     T ret = *word;
-    t.check_reads();
     return ret;
   }
   
