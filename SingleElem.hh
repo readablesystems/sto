@@ -42,16 +42,12 @@ public:
         atomicRead(v, val);
         if (GenericSTM) {
             uint32_t r_tid = Versioning::get_tid(v);
-            if ((r_tid <= t.start_tid()) && (!Versioning::is_locked(v) || item.has_write()) ) {
-                item.add_read(v);
-                return val;
-            } else {
+            if (r_tid > t.start_tid() || (Versioning::is_locked(v) && !item.has_write()))
+                // wait a minute what?
                 t.abort();
-            }
-        } else {
-            item.add_read(v);
-            return val;
         }
+        item.add_read(v);
+        return val;
     }
   }
 
@@ -80,7 +76,7 @@ public:
       (!Versioning::is_locked(s_.version()) || item.has_write());
   }
 
-  void install(TransItem& item, uint32_t tid) {
+  void install(TransItem& item, Transaction::tid_type tid) {
     s_.set_value(item.template write_value<T>());
     if (GenericSTM) {
       Versioning::set_version(s_.version(), tid);

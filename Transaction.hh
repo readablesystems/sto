@@ -241,8 +241,8 @@ public:
   static __thread int threadid;
   static unsigned global_epoch;
   static __thread Transaction *__transaction;
-  typedef uint32_t Tid;
-  static Tid _TID;
+  typedef TransactionTid tid_type;
+  static tid_type _TID;
 
   static Transaction& get_transaction() {
     if (!__transaction)
@@ -332,10 +332,10 @@ public:
       tinfo[threadid].max_p(p, n);
   }
   
-  static Tid incTid() {
-    Tid t_old = _TID;
-    Tid t_new = t_old + 1;
-    Tid t = cmpxchg(&_TID, t_old, t_new);
+  static tid_type incTid() {
+    tid_type t_old = _TID;
+    tid_type t_new = t_old + 1;
+    tid_type t = cmpxchg(&_TID, t_old, t_new);
     if (t != t_old) {
       t_new = t;
     }
@@ -572,7 +572,7 @@ public:
 
     //    fence();
 
-    Tid commit_tid = incTid();
+    tid_type commit_tid = incTid();
 
     //phase2
     if (!check_reads(trans_first, trans_last)) {
@@ -640,7 +640,7 @@ public:
     return isAborted_;
   }
   
-  Tid start_tid() {
+  tid_type start_tid() {
     if (start_tid_ == 0) {
       return read_tid();
     } else {
@@ -648,7 +648,7 @@ public:
     }
   }
   
-  Tid read_tid() {
+  tid_type read_tid() {
     start_tid_ = _TID;
     return start_tid_;
   }
@@ -671,7 +671,7 @@ private:
     local_vector<TransItem, INIT_SET_SIZE> transSet_;
     int* writeset_;
     int nwriteset_;
-    Tid start_tid_;
+    tid_type start_tid_;
 
     friend class TransProxy;
 };
@@ -680,8 +680,8 @@ private:
 
 template <typename T>
 TransProxy& TransProxy::add_read(T rdata) {
-    if (!i_->shared.has_flags(READER_BIT)) {
-        i_->shared.or_flags(READER_BIT);
+    if (!has_read()) {
+        i_->__or_flags(TransItem::read_bit);
         i_->rdata_ = t_->buf_.pack(std::move(rdata));
     }
     return *this;
@@ -689,8 +689,7 @@ TransProxy& TransProxy::add_read(T rdata) {
 
 template <typename T, typename U>
 TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
-    if (i_->shared.has_flags(READER_BIT)
-        && this->read_value<T>() == old_rdata)
+    if (has_read() && this->read_value<T>() == old_rdata)
         i_->rdata_ = t_->buf_.pack(std::move(new_rdata));
     return *this;
 }
@@ -704,7 +703,7 @@ TransProxy& TransProxy::add_write(T wdata) {
         // which will make our lives much easier)
         this->template write_value<T>() = std::move(wdata);
     else {
-        i_->shared.or_flags(WRITER_BIT);
+        i_->__or_flags(TransItem::write_bit);
         i_->wdata_ = t_->buf_.pack(std::move(wdata));
         t_->mark_write(*i_);
     }

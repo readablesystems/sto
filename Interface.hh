@@ -4,6 +4,7 @@
 #include "TransItem.hh"
 
 class Transaction;
+typedef uint32_t TransactionTid;
 
 class Shared {
 public:
@@ -13,7 +14,7 @@ public:
 
   virtual void lock(TransItem& item) = 0;
   virtual void unlock(TransItem& item) = 0;
-  virtual void install(TransItem& item, uint32_t tid) = 0;
+  virtual void install(TransItem& item, TransactionTid tid) = 0;
 
   // probably just needs to call destructor
   virtual void cleanup(TransItem& item, bool committed) {

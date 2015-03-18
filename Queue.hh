@@ -15,8 +15,8 @@ public:
     typedef uint32_t Version;
     typedef VersionFunctions<Version> QueueVersioning;
     
-    static constexpr Version delete_bit = 1<<0;
-    static constexpr Version front_bit = 1<<1;
+    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;
+    static constexpr TransItem::flags_type front_bit = TransItem::user0_bit<<1;
 
     void transPush(Transaction& t, const T& v) {
         auto& item = t.item(this, -1);
@@ -56,7 +56,7 @@ public:
             item = t.item(this, index);
             index = (index + 1) % BUF_SIZE;
         }
-        item.set_flags(delete_bit);
+        item.assign_flags(delete_bit);
         if (!item.has_read()) {
            t.add_read(item, headversion_);
            t.add_write(item, 0);
@@ -93,17 +93,17 @@ public:
         //check that head was not modified at time of commit
         if (!item.has_read())
            t.add_read(item, headversion_);
-        item.set_flags(front_bit);
+        item.assign_flags(front_bit);
         return &queueSlots[index];
     }
     
 private:
   bool is_front(TransItem& item) {
-        return item.has_flags(front_bit);
+      return item.flags() & front_bit;
     }
 
     bool has_delete(TransItem& item) {
-        return item.has_flags(delete_bit);
+        return item.flags() & delete_bit;
     }
     
     void lock(Version& v) {
@@ -143,7 +143,7 @@ private:
         return head_check && tail_check;
     }
 
-    void install(TransItem& item, uint32_t tid) {
+    void install(TransItem& item, Transaction::tid_type) {
 	    if (has_delete(item)) {
             head_ = head_+1 % BUF_SIZE;
             QueueVersioning::inc_version(headversion_);
