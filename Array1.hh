@@ -53,7 +53,7 @@ class Array1 : public Shared {
         unlock(item.key<key_type>());
     }
 
-    void install(TransItem& item, uint32_t tid){
+    void install(TransItem& item, Transaction::tid_type tid){
         //install value
         data_[item.key<key_type>()].install(item, tid);
     }

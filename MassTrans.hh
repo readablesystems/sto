@@ -440,7 +440,7 @@ public:
 #endif
     return lockedCheck && ((read_version & valid_check_only_bit) || versionCheck(read_version, e->version()));
   }
-  void install(TransItem& item, uint32_t tid) {
+  void install(TransItem& item, Transaction::tid_type) {
     assert(!is_inter(item));
     auto e = item.key<versioned_value*>();
     assert(is_locked(e->version()));

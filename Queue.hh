@@ -143,7 +143,7 @@ private:
         return head_check && tail_check;
     }
 
-    void install(TransItem& item, uint32_t tid) {
+    void install(TransItem& item, Transaction::tid_type) {
 	    if (has_delete(item)) {
             head_ = head_+1 % BUF_SIZE;
             QueueVersioning::inc_version(headversion_);

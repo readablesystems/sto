@@ -282,7 +282,7 @@ public:
     auto el = item.key<internal_elem*>();
     unlock(el);
   }
-  void install(TransItem& item, uint32_t tid) {
+  void install(TransItem& item, Transaction::tid_type) {
     assert(!is_bucket(item));
     auto el = item.key<internal_elem*>();
     assert(is_locked(el));

@@ -121,7 +121,7 @@ public:
     // TODO: will eventually need to check for false conflicts, too...
     return cur == old && (!table_.get(hash(item.key<void*>()) % table_.size()) || t.check_for_write(item));
   }
-  void install(TransItem& item, uint32_t tid) {
+  void install(TransItem& item, Transaction::tid_type) {
       void* word = item.key<void*>();
       void* data = item.write_value<void*>();
       memcpy(word, &data, item.shifted_user_flags());

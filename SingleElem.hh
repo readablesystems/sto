@@ -76,7 +76,7 @@ public:
       (!Versioning::is_locked(s_.version()) || item.has_write());
   }
 
-  void install(TransItem& item, uint32_t tid) {
+  void install(TransItem& item, Transaction::tid_type tid) {
     s_.set_value(item.template write_value<T>());
     if (GenericSTM) {
       Versioning::set_version(s_.version(), tid);

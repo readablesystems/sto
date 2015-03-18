@@ -426,7 +426,7 @@ private:
     return n->is_valid() || has_insert(item);
   }
 
-  void install(TransItem& item, uint32_t tid) {
+  void install(TransItem& item, Transaction::tid_type) {
     if (item.key<List*>() == this)
       return;
     list_node *n = item.key<list_node*>();
