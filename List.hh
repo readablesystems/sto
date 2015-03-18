@@ -28,8 +28,9 @@ public:
   // how to make that work with the lock, check, install, unlock protocol
   static constexpr Version node_lock_bit = 1<<1;
 
-    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;
-    static constexpr TransItem::flags_type doupdate_bit = TransItem::user0_bit<<1;
+    static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
+    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
+    static constexpr TransItem::flags_type doupdate_bit = TransItem::user0_bit<<2;
 
   static constexpr void* size_key = (void*)0;
 
@@ -185,7 +186,7 @@ public:
     // we lock the list for inserts
     add_lock_list_item(t);
     item.add_write(0);
-    item.add_undo();
+    item.add_flags(insert_bit);
     return true;
   }
 
@@ -213,7 +214,7 @@ public:
       // insert-then-delete becomes nothing
       if (has_insert(item)) {
         remove<true>(n);
-        item.remove_read().remove_write().remove_undo().remove_afterC();
+        item.remove_read().remove_write().clear_flags(insert_bit);
         add_trans_size_offs(t, -1);
         // TODO: should have a count on add_lock_list_item so we can cancel that here
         // still need to make sure no one else inserts something
@@ -445,14 +446,14 @@ private:
   }
 
   void cleanup(TransItem& item, bool committed) {
-      if (!committed && item.has_undo()) {
+      if (!committed && (item.flags() & insert_bit)) {
           list_node *n = item.key<list_node*>();
           remove<true>(n);
       }
   }
 
   bool validityCheck(list_node *n, TransItem& item) {
-    return n->is_valid() || item.has_undo();
+      return n->is_valid() || (item.flags() & insert_bit);
   }
 
   template <typename PTR>
@@ -462,7 +463,7 @@ private:
   }
 
   bool has_insert(TransItem& item) {
-    return item.has_write() && !has_delete(item) && !has_doupdate(item);
+      return item.has_write() && !has_delete(item) && !has_doupdate(item);
   }
 
   bool has_delete(TransItem& item) {

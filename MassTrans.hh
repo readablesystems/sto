@@ -145,7 +145,7 @@ public:
       }
       if (item.has_write()) {
         // read directly from the element if we're inserting it
-        if (we_inserted(item)) {
+        if (has_insert(item)) {
           retval = e->read_value();
         } else {
           // TODO: should we refcount, copy, or...?
@@ -174,7 +174,7 @@ public:
       auto item = t_item(t, e);
       bool valid = !(e->version() & invalid_bit);
 #if READ_MY_WRITES
-      if (!valid && we_inserted(item)) {
+      if (!valid && has_insert(item)) {
         if (has_delete(item)) {
           // insert-then-delete then delete, so second delete should return false
           return false;
@@ -263,7 +263,7 @@ public:
       else
         // force a copy
         item.add_write(std::string(key));
-      item.add_undo();
+      item.add_flags(insert_bit);
       return found;
     }
   }
@@ -445,7 +445,7 @@ public:
     auto e = item.key<versioned_value*>();
     assert(is_locked(e->version()));
     if (has_delete(item)) {
-      if (!we_inserted(item)) {
+      if (!has_insert(item)) {
         assert(!(e->version() & invalid_bit));
         e->version() |= invalid_bit;
         fence();
@@ -460,7 +460,7 @@ public:
       assert(success);
       return;
     }
-    if (!we_inserted(item)) {
+    if (!has_insert(item)) {
       value_type& v = item.template write_value<value_type>();
       e->set_value(v);
     }
@@ -469,7 +469,7 @@ public:
   }
 
   void cleanup(TransItem& item, bool committed) {
-    if (!committed && item.has_undo()) {
+      if (!committed && has_insert(item)) {
         // remove node
         auto& stdstr = item.template write_value<std::string>();
         // does not copy
@@ -556,7 +556,7 @@ private:
     auto *new_location = e;
     bool needsResize = e->needsResize(value);
     if (needsResize) {
-      if (!we_inserted(item)) {
+      if (!has_insert(item)) {
         // TODO: might be faster to do this part at commit time but easiest to just do it now
         lock(e);
         // we had a weird race condition and now this element is gone. just abort at this point
@@ -574,7 +574,7 @@ private:
       new_location = e->resizeIfNeeded(value);
       // e can't get bigger so this should always be true
       assert(new_location != e);
-      if (!we_inserted(item)) {
+      if (!has_insert(item)) {
         // copied version is going to be invalid because we just had to mark e invalid
         new_location->version() &= ~invalid_bit;
       }
@@ -587,7 +587,7 @@ private:
       // now rcu free "e"
     }
 #if READ_MY_WRITES
-    if (we_inserted(item)) {
+    if (has_insert(item)) {
       new_location->set_value(value);
     } else
 #endif
@@ -623,7 +623,7 @@ private:
       return false;
     }
     // make sure this item doesn't get deleted (we don't care about other updates to it though)
-    if (!item.has_read() && !we_inserted(item))
+    if (!item.has_read() && !has_insert(item))
 #endif
     {
       item.add_read(valid_check_only_bit);
@@ -676,16 +676,16 @@ private:
 #endif
   }
 
-  bool we_inserted(TransItem& item) {
-    return item.has_undo();
+  bool has_insert(TransItem& item) {
+      return item.flags() & insert_bit;
   }
   bool has_delete(TransItem& item) {
       return item.flags() & delete_bit;
   }
 
   bool validityCheck(TransItem& item, versioned_value *e) {
-    return //likely(we_inserted(item)) || !(e->version & invalid_bit);
-      likely(!(e->version() & invalid_bit)) || we_inserted(item);
+    return //likely(has_insert(item)) || !(e->version & invalid_bit);
+      likely(!(e->version() & invalid_bit)) || has_insert(item);
   }
 
   static constexpr Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
@@ -695,7 +695,8 @@ private:
 
   static constexpr uintptr_t internode_bit = 1<<0;
 
-    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;
+    static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
+    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
 
   template <typename T>
   static T* tag_inter(T* p) {
