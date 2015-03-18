@@ -695,7 +695,7 @@ private:
 
   static constexpr uintptr_t internode_bit = 1<<0;
 
-  static constexpr uint8_t delete_bit = 1<<0;
+    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;
 
   template <typename T>
   static T* tag_inter(T* p) {

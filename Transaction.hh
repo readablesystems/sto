@@ -681,7 +681,7 @@ private:
 template <typename T>
 TransProxy& TransProxy::add_read(T rdata) {
     if (!has_read()) {
-        i_->shared.or_flags(READER_BIT);
+        i_->__or_flags(TransItem::read_bit);
         i_->rdata_ = t_->buf_.pack(std::move(rdata));
     }
     return *this;
@@ -703,7 +703,7 @@ TransProxy& TransProxy::add_write(T wdata) {
         // which will make our lives much easier)
         this->template write_value<T>() = std::move(wdata);
     else {
-        i_->shared.or_flags(WRITER_BIT);
+        i_->__or_flags(TransItem::write_bit);
         i_->wdata_ = t_->buf_.pack(std::move(wdata));
         t_->mark_write(*i_);
     }

@@ -3,15 +3,7 @@
 #include <type_traits>
 #include <string.h>
 #include <assert.h>
-
-#include "Tagged64.hh"
-
-enum {
-  READER_BIT = 1<<0,
-  WRITER_BIT = 1<<1,
-  UNDO_BIT = 1<<2,
-  AFTERC_BIT = 1<<3,
-};
+#include "compiler.hh"
 
 // Packer
 template <typename T>
@@ -55,25 +47,44 @@ class Transaction;
 class TransProxy;
 
 struct TransItem {
-  TransItem(Shared* s, void* k)
-      : shared(s), key_(k) {
-  }
+#if SIZEOF_VOID_P == 8
+    typedef Shared* sharedstore_type;
+    typedef uintptr_t flags_type;
+#else
+    typedef uint64_t sharedstore_type;
+    typedef uint64_t flags_type;
+#endif
 
-  Shared *sharedObj() const {
-    return shared.ptr();
-  }
+    static constexpr flags_type write_bit = flags_type(1) << 63;
+    static constexpr flags_type read_bit = flags_type(1) << 62;
+    static constexpr flags_type undo_bit = flags_type(1) << 61;
+    static constexpr flags_type afterC_bit = flags_type(1) << 60;
+    static constexpr flags_type pointer_mask = (flags_type(1) << 48) - 1;
+    static constexpr flags_type user0_bit = flags_type(1) << 48;
+    static constexpr int userf_shift = 48;
+    static constexpr flags_type shifted_userf_mask = 0x0FFF;
+    static constexpr flags_type special_mask = pointer_mask | read_bit | write_bit | undo_bit | afterC_bit;
+
+
+    TransItem(Shared* s, void* k)
+        : s_(reinterpret_cast<sharedstore_type>(s)), key_(k) {
+    }
+
+    Shared* sharedObj() const {
+        return reinterpret_cast<Shared*>(reinterpret_cast<flags_type>(s_) & pointer_mask);
+    }
 
     bool has_write() const {
-        return shared.flags() & WRITER_BIT;
+        return flags() & write_bit;
     }
     bool has_read() const {
-        return shared.flags() & READER_BIT;
+        return flags() & read_bit;
     }
     bool has_undo() const {
-        return shared.flags() & UNDO_BIT;
+        return flags() & undo_bit;
     }
     bool has_afterC() const {
-        return shared.flags() & AFTERC_BIT;
+        return flags() & afterC_bit;
     }
     bool same_item(const TransItem& x) const {
         return sharedObj() == x.sharedObj() && key_ == x.key_;
@@ -116,30 +127,43 @@ struct TransItem {
     }
 
     // these methods are all for user flags (currently we give them 8 bits, the high 8 of the 16 total flag bits we have)
-    uint8_t flags() {
-        return shared.flags() >> 8;
+    flags_type flags() const {
+        return reinterpret_cast<flags_type>(s_);
     }
-    TransItem& assign_flags(uint8_t flags) {
-        shared.assign_flags(((uint16_t)flags << 8) | (shared.flags() & 0xff));
+    flags_type shifted_user_flags() const {
+        return (flags() >> userf_shift) & shifted_userf_mask;
+    }
+    TransItem& assign_flags(flags_type flags) {
+        assert(!(flags & special_mask));
+        s_ = reinterpret_cast<sharedstore_type>((reinterpret_cast<flags_type>(s_) & special_mask) | flags);
         return *this;
     }
-    TransItem& rm_flags(uint8_t flags) {
-        shared.rm_flags((uint16_t)flags << 8);
+    TransItem& rm_flags(flags_type flags) {
+        assert(!(flags & special_mask));
+        s_ = reinterpret_cast<sharedstore_type>(reinterpret_cast<flags_type>(s_) & ~flags);
         return *this;
     }
-    TransItem& or_flags(uint8_t flags) {
-        shared.or_flags((uint16_t)flags << 8);
+    TransItem& or_flags(flags_type flags) {
+        assert(!(flags & special_mask));
+        s_ = reinterpret_cast<sharedstore_type>(reinterpret_cast<flags_type>(s_) | flags);
         return *this;
     }
 
   private:
     friend class Transaction;
     friend class TransProxy;
-    Tagged64<Shared> shared;
+    Shared* s_;
     // this word must be unique (to a particular item) and consistently ordered across transactions
     void* key_;
     void* rdata_;
     void* wdata_;
+
+    void __rm_flags(flags_type flags) {
+        s_ = reinterpret_cast<sharedstore_type>(reinterpret_cast<flags_type>(s_) & ~flags);
+    }
+    void __or_flags(flags_type flags) {
+        s_ = reinterpret_cast<sharedstore_type>(reinterpret_cast<flags_type>(s_) | flags);
+    }
 };
 
 
@@ -172,7 +196,7 @@ class TransProxy {
     template <typename T>
     inline TransProxy& add_read(T rdata);
     inline TransProxy& clear_read() {
-        i_->shared.rm_flags(READER_BIT);
+        i_->__rm_flags(TransItem::read_bit);
         return *this;
     }
     template <typename T, typename U>
@@ -181,16 +205,16 @@ class TransProxy {
     template <typename T>
     inline TransProxy& add_write(T wdata);
     inline TransProxy& clear_write() {
-        i_->shared.rm_flags(WRITER_BIT);
+        i_->__rm_flags(TransItem::write_bit);
         return *this;
     }
 
     TransProxy& add_undo() {
-        i_->shared.or_flags(UNDO_BIT);
+        i_->__or_flags(TransItem::undo_bit);
         return *this;
     }
     TransProxy& add_afterC() {
-        i_->shared.or_flags(AFTERC_BIT);
+        i_->__or_flags(TransItem::afterC_bit);
         return *this;
     }
 
@@ -212,35 +236,38 @@ class TransProxy {
     }
 
     TransProxy& remove_write() { // XXX should also cleanup_write
-        i_->shared.rm_flags(WRITER_BIT);
+        i_->__rm_flags(TransItem::write_bit);
         return *this;
     }
     TransProxy& remove_read() { // XXX should also cleanup_read
-        i_->shared.rm_flags(READER_BIT);
+        i_->__rm_flags(TransItem::read_bit);
         return *this;
     }
     TransProxy& remove_undo() {
-        i_->shared.rm_flags(UNDO_BIT);
+        i_->__rm_flags(TransItem::undo_bit);
         return *this;
     }
     TransProxy& remove_afterC() {
-        i_->shared.rm_flags(AFTERC_BIT);
+        i_->__rm_flags(TransItem::afterC_bit);
         return *this;
     }
 
     // these methods are all for user flags (currently we give them 8 bits, the high 8 of the 16 total flag bits we have)
-    uint8_t flags() {
+    TransItem::flags_type flags() const {
         return i_->flags();
     }
-    TransProxy& assign_flags(uint8_t flags) {
+    TransItem::flags_type shifted_user_flags() const {
+        return i_->shifted_user_flags();
+    }
+    TransProxy& assign_flags(TransItem::flags_type flags) {
         i_->assign_flags(flags);
         return *this;
     }
-    TransProxy& rm_flags(uint8_t flags) {
+    TransProxy& rm_flags(TransItem::flags_type flags) {
         i_->rm_flags(flags);
         return *this;
     }
-    TransProxy& or_flags(uint8_t flags) {
+    TransProxy& or_flags(TransItem::flags_type flags) {
         i_->or_flags(flags);
         return *this;
     }

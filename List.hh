@@ -28,8 +28,8 @@ public:
   // how to make that work with the lock, check, install, unlock protocol
   static constexpr Version node_lock_bit = 1<<1;
 
-  static constexpr Version delete_bit = 1<<0;
-  static constexpr Version doupdate_bit = 1<<1;
+    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;
+    static constexpr TransItem::flags_type doupdate_bit = TransItem::user0_bit<<1;
 
   static constexpr void* size_key = (void*)0;
 
