@@ -276,6 +276,19 @@ public:
       unlock(listversion_);
     return false;
   }
+  
+  void opacity_check(Transaction& t) {
+    // When we check for opacity, we need to compare the latest listversion and not
+    // the one at the beginning of the operation.
+    assert(Opacity);
+    auto listv = listversion_;
+    fence();
+    Transaction::tid_type r_tid = ListVersioning::get_tid(listv);
+    // assumes that a thread will not call this method holding the version lock.
+    if (r_tid > t.start_tid() || (ListVersioning::is_locked(listv)))
+        t.abort();
+    
+  }
 
   struct ListIter {
     ListIter() : us(NULL), cur(NULL) {}
@@ -381,11 +394,11 @@ private:
         remove<false>(head_, true);
   }
 
-
   void verify_list(Transaction& t, Version readv) {
       t_item(t, this).add_read(readv);
       acquire_fence();
   }
+  
 
   void lock(Version& v) {
     ListVersioning::lock(v);
@@ -426,7 +439,7 @@ private:
     return n->is_valid() || has_insert(item);
   }
 
-  void install(TransItem& item, Transaction::tid_type) {
+  void install(TransItem& item, Transaction::tid_type tid) {
     if (item.key<List*>() == this)
       return;
     list_node *n = item.key<list_node*>();
