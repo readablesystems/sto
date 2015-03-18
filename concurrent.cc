@@ -353,7 +353,7 @@ template <int DS> void ReadThenWrite<DS>::run(int me) {
       nreads(*a, OPS - OPS*write_percent, t, gen);
       nwrites(*a, OPS*write_percent, t, gen);
 
-      done = t.commit();
+      done = t.try_commit();
       if (!done) {
         debug("thread%d retrying\n", me);
       }
@@ -425,7 +425,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
 #endif
         }
       }
-      done = t.commit();
+      done = t.try_commit();
       } catch (Transaction::Abort E) {}
       if (!done) {
 #if RANDOM_REPORT
@@ -551,7 +551,7 @@ template <int DS> void KingDelete<DS>::run(int me) {
           a->transWrite(t, i, val(i+1));
         }
       }
-      done = t.commit();
+      done = t.try_commit();
     } catch (Transaction::Abort E) {}
   }
 }
@@ -607,7 +607,7 @@ template <int DS> void XorDelete<DS>::run(int me) {
             Container<DS>::transDelete(*a, t, slot);
           }
         }
-        done = t.commit();
+        done = t.try_commit();
       } catch (Transaction::Abort E) {}
     }
   }
@@ -652,7 +652,7 @@ template <int DS> void IsolatedWrites<DS>::run(int me) {
     }
     a->transWrite(t, me, val(me+1));
 
-    done = t.commit();
+    done = t.try_commit();
     } catch (Transaction::Abort E) {}
     debug("iter: %d %d\n", me, done);
   }
@@ -693,7 +693,7 @@ template <int DS> void BlindWrites<DS>::run(int me) {
       a->transWrite(t, 0, val(me));
     }
 
-    done = t.commit();
+    done = t.try_commit();
     } catch (Transaction::Abort E) {}
     debug("thread %d %d\n", me, done);
   }
@@ -731,7 +731,7 @@ template <int DS> void InterferingRWs<DS>::run(int me) {
       }
     }
 
-    done = t.commit();
+    done = t.try_commit();
     } catch (Transaction::Abort E) {}
     debug("thread %d %d\n", me, done);
   }

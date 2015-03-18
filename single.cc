@@ -25,13 +25,13 @@ void queueTests() {
         Transaction t;
         q.transPush(t, 1);
         q.transPush(t, 2);
-        assert(t.commit());
+        assert(t.try_commit());
     }
 
     {
         Transaction t;
         assert(*q.transFront(t) == 1);
-        assert(t.commit());
+        assert(t.try_commit());
     }
 
     {
@@ -49,7 +49,7 @@ void linkedListTests() {
     assert(l.transInsert(t, 5));
     int *p = l.transFind(t, 5);
     assert(*p == 5);
-    assert(t.commit());
+    assert(t.try_commit());
   }
 
   {
@@ -58,7 +58,7 @@ void linkedListTests() {
     assert(*l.transFind(t, 5) == 5);
     assert(!l.transFind(t, 7));
     assert(l.transInsert(t, 7));
-    assert(t.commit());
+    assert(t.try_commit());
   }
 
   {
@@ -72,7 +72,7 @@ void linkedListTests() {
     while (it.transHasNext(t)) {
       assert(*it.transNext(t) == elems[i++]);
     }
-    assert(t.commit());
+    assert(t.try_commit());
   }
 
 
@@ -85,7 +85,7 @@ void linkedListTests() {
     auto it = l.transIter(t);
     assert(*it.transNext(t) == 5);
     assert(*it.transNext(t) == 10);
-    assert(t.commit());
+    assert(t.try_commit());
   }
 
   {
@@ -94,7 +94,7 @@ void linkedListTests() {
     assert(l.transDelete(t, 7));
     assert(l.transSize(t) == 2);
     assert(!l.transFind(t, 7));
-    assert(t.commit());
+    assert(t.try_commit());
   }
 
 }
@@ -111,12 +111,12 @@ void stringKeyTests() {
   std::string s;
   assert(h.transGet(t, "foo", s));
   assert(s == "bar");
-  assert(t.commit());
+  assert(t.try_commit());
 
   Transaction t2;
   assert(h.transGet(t2, "foo", s));
   assert(s == "bar");
-  assert(t2.commit());
+  assert(t2.try_commit());
 #endif
 }
 
@@ -126,7 +126,7 @@ void insertDeleteTest(bool shouldAbort) {
   for (int i = 10; i < 25; ++i) {
     assert(h.transInsert(t, i, i+1));
   }
-  assert(t.commit());
+  assert(t.try_commit());
 
   Transaction t2;
   assert(h.transInsert(t2, 25, 26));
@@ -139,14 +139,14 @@ void insertDeleteTest(bool shouldAbort) {
   if (shouldAbort) {
     Transaction t3;
     assert(h.transInsert(t3, 26, 27));
-    assert(t3.commit());
+    assert(t3.try_commit());
 
     try {
       t2.commit();
       assert(0);
     } catch (Transaction::Abort E) {}
   } else
-    assert(t2.commit());
+    assert(t2.try_commit());
 }
 
 void insertDeleteSeparateTest() {
@@ -155,7 +155,7 @@ void insertDeleteSeparateTest() {
   for (int i = 10; i < 12; ++i) {
     assert(h.transInsert(t_init, i, i+1));
   }
-  assert(t_init.commit());
+  assert(t_init.try_commit());
 
   Transaction t;
   int x;
@@ -164,7 +164,7 @@ void insertDeleteSeparateTest() {
   Transaction t2;
   assert(h.transInsert(t2, 12, 13));
   assert(h.transDelete(t2, 10));
-  assert(t2.commit());
+  assert(t2.try_commit());
   
   try {
     t.commit();
@@ -180,7 +180,7 @@ void insertDeleteSeparateTest() {
   assert(h.transInsert(t4, 13, 14));
   assert(h.transDelete(t4, 11));
   assert(h.transDelete(t4, 12));
-  assert(t4.commit());
+  assert(t4.try_commit());
 
   try {
     t3.commit();
@@ -199,7 +199,7 @@ void rangeQueryTest() {
   for (int i = 10; i <= n; ++i) {
     assert(h.transInsert(t_init, i, i+1));
   }
-  assert(t_init.commit());
+  assert(t_init.try_commit());
 
   Transaction t;
   int x = 0;
@@ -226,7 +226,7 @@ void rangeQueryTest() {
   h.transQuery(t, "10", "26", [&] (Masstree::Str , int ) { x++; return true; });
   assert(x == 26-10);
 
-  assert(t.commit());
+  assert(t.try_commit());
 }
 
 template <typename K, typename V>
@@ -234,7 +234,7 @@ void basicQueryTests(MassTrans<K, V>& h) {
   Transaction t19;
   h.transQuery(t19, "0", "2", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
   h.transQuery(t19, "4", "4", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
-  assert(t19.commit());
+  assert(t19.try_commit());
 }
 
 template <typename T>
@@ -253,36 +253,36 @@ void basicMapTests(MapType& h) {
   assert(h.transInsert(t, 0, 1));
   h.transPut(t, 1, 3);
   
-  assert(t.commit());
+  assert(t.try_commit());
 
   Transaction tm;
   assert(h.transUpdate(tm, 1, 2));
-  assert(tm.commit());
+  assert(tm.try_commit());
 
   Transaction t2;
   assert(h.transGet(t2, 1, v1));
-  assert(t2.commit());
+  assert(t2.try_commit());
 
   Transaction t3;
   h.transPut(t3, 0, 4);
-  assert(t3.commit());
+  assert(t3.try_commit());
   Transaction t4;
   assert(h.transGet(t4, 0, v2));
-  assert(t4.commit());
+  assert(t4.try_commit());
 
   Transaction t5;
   assert(!h.transInsert(t5, 0, 5));
-  assert(t5.commit());
+  assert(t5.try_commit());
 
   Transaction t6;
   assert(!h.transUpdate(t6, 2, 1));
-  assert(t6.commit());
+  assert(t6.try_commit());
 
   Transaction t7;
   assert(!h.transGet(t7, 2, vunused));
   Transaction t8;
   assert(h.transInsert(t8, 2, 2));
-  assert(t8.commit());
+  assert(t8.try_commit());
 
   try {
     t7.commit();
@@ -304,12 +304,12 @@ void basicMapTests(MapType& h) {
     h.transDelete(t10_2, 3);
     assert(0);
   } catch (Transaction::Abort E) {}
-  assert(t9.commit());
-  assert(!t10.commit() && !t10_2.commit());
+  assert(t9.try_commit());
+  assert(!t10.try_commit() && !t10_2.try_commit());
 
   Transaction t11;
   assert(h.transInsert(t11, 4, 5));
-  assert(t11.commit());
+  assert(t11.try_commit());
 
   // basic delete
   Transaction t12;
@@ -319,7 +319,7 @@ void basicMapTests(MapType& h) {
   assert(!h.transGet(t12, 4, vunused));
   assert(!h.transUpdate(t12, 4, 0));
   assert(!h.transDelete(t12, 4));
-  assert(t12.commit());
+  assert(t12.try_commit());
 
   // delete-then-insert
   Transaction t13;
@@ -327,7 +327,7 @@ void basicMapTests(MapType& h) {
   assert(h.transDelete(t13, 3));
   assert(h.transInsert(t13, 3, 1));
   assert(h.transGet(t13, 3, vunused));
-  assert(t13.commit());
+  assert(t13.try_commit());
 
   // insert-then-delete
   Transaction t14;
@@ -336,22 +336,22 @@ void basicMapTests(MapType& h) {
   assert(h.transGet(t14, 4, vunused));
   assert(h.transDelete(t14, 4));
   assert(!h.transGet(t14, 4, vunused));
-  assert(t14.commit());
+  assert(t14.try_commit());
 
   // blind update success
   Transaction t15;
   assert(h.transUpdate(t15, 3, 15));
   Transaction t16;
   assert(h.transUpdate(t16, 3, 16));
-  assert(t16.commit());
-  assert(t15.commit());
+  assert(t16.try_commit());
+  assert(t15.try_commit());
 
   // update aborts after delete
   Transaction t17;
   Transaction t18;
   assert(h.transUpdate(t17, 3, 17));
   assert(h.transDelete(t18, 3));
-  assert(t18.commit());
+  assert(t18.try_commit());
   try {
     t17.commit();
     assert(0);

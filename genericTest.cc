@@ -29,11 +29,11 @@ int main() {
   
   Transaction t2;
   stm_.transWrite(t2, &x, 4);
-  assert(t2.commit());
+  assert(t2.try_commit());
   assert(x == 4);
   
   
-  assert(!t1.commit());
+  assert(!t1.try_commit());
   
   
 }
