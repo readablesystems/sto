@@ -173,8 +173,9 @@ template <> struct Container<USE_HASHTABLE> : public ContainerBase_maplike {
     typedef Hashtable<int, value_type, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
 };
 
-Queue<value_type> q;
-Queue<value_type> q2;
+typedef Queue<value_type, QUEUE_SZ> QueueType;
+QueueType* q;
+QueueType* q2;
 
 bool readMyWrites = true;
 bool runCheck = false;
@@ -183,7 +184,7 @@ int ntrans = 1000000;
 int opspertrans = 10;
 int prepopulate = 
 #if DATA_STRUCTURE == 5
-    QUEUE_SZ/16;
+    QUEUE_SZ/2;
 #else
     ARRAY_SZ/10;
 #endif
@@ -257,27 +258,27 @@ void prepopulate_func(int *array) {
 void prepopulate_func() {
   for (int i = 0; i < prepopulate; ++i) {
     Transaction t;
-    q.transPush(t, val(i));
+    q->transPush(t, val(i));
     t.commit();
   }
 }
 
 void empty_func() {
-    while (!q.empty()) {
-        q.pop();
+    while (!q->empty()) {
+        q->pop();
     }
 }
 
 static void doRead(Transaction& t) {
   if (readMyWrites) {
     value_type v;
-    q.transFront(t, v);
-    q.transPop(t);
+    q->transFront(t, v);
+    q->transPop(t);
   }
 }
 
 static void doWrite(Transaction& t, int& ctr) {
-    q.transPush(t, val(ctr));
+    q->transPush(t, val(ctr));
     ++ctr; // because we've done a read and a write
 }
   
@@ -810,9 +811,9 @@ void Qxordeleterun(int me) {
         Transaction t;
         for (int j = 0; j < OPS; ++j) {
           value_type v = val(1);
-          if (!q.transPop(t)) {
+          if (!q->transPop(t)) {
             // we pop if the q is nonempty, push if it's empty
-            q.transPush(t, v);
+            q->transPush(t, v);
           }
         }
         if (t.commit())
@@ -823,9 +824,9 @@ void Qxordeleterun(int me) {
 }
 
 bool Qxordeletecheck() {
-  Queue<value_type>* old = &q;
-  Queue<value_type> ch;
-  q = ch;
+  QueueType* old = q;
+  QueueType ch;
+  q = &ch;
 
   empty_func();
   prepopulate_func();
@@ -833,12 +834,12 @@ bool Qxordeletecheck() {
   for (int i = 0; i < nthreads; ++i) {
     Qxordeleterun(i);
   }
-  q = *old;
+  q = old;
 
-  while (!q.empty()) {
-    assert (unval(q.pop()) == unval(ch.pop()));
+  while (!q->empty()) {
+    assert (unval(q->pop()) == unval(ch.pop()));
   }
-  assert(ch.empty() == q.empty());
+  assert(ch.empty() == q->empty());
   return true;
 }
 
@@ -855,9 +856,9 @@ void Qtransferrun(int me) {
         for (int j = 0; j < OPS; ++j) {
           value_type v;
           // if q is nonempty, pop from q, push onto q2
-          if (q.transFront(t, v)) {
-            q.transPop(t);
-            q2.transPush(t, v);
+          if (q->transFront(t, v)) {
+            q->transPop(t);
+            q2->transPush(t, v);
           }
         }
         if (t.commit())
@@ -868,33 +869,40 @@ void Qtransferrun(int me) {
 }
 
 bool Qtransfercheck() {
-  // check if all items successfully popped
-  assert(q.empty());
-
   // restore q to prepopulated state
+  empty_func();
   prepopulate_func();
 
   // check if q2 and q are equivalent
-  while (!q.empty()) {
-    assert (unval(q.pop()) == unval(q2.pop()));
+  while (!q2->empty()) {
+    assert (unval(q->pop()) == unval(q2->pop()));
   }
-  assert(q2.empty() == q.empty());
   return true;
 }
 
+struct QTester {
+    int me;
+};
+
 void* xorrunfunc(void* x) {
-    int* i = (int*) x;
-    Qxordeleterun(*i);
+    QTester* qt = (QTester*) x;
+    Qxordeleterun(qt->me);
+    return nullptr;
 } 
 
 void* transferrunfunc(void* x) {
-    int* i = (int*) x;
-    Qtransferrun(*i);
+    QTester* qt = (QTester*) x;
+    Qtransferrun(qt->me);
+    return nullptr;
 } 
+
 void qstartAndWait(int n, void*(*runfunc)(void*)) {
   pthread_t tids[n];
+  QTester tester[n];
+
   for (int i = 0; i < n; ++i) {
-      pthread_create(&tids[i], NULL, runfunc, &i);
+      tester[i].me = i;
+      pthread_create(&tids[i], NULL, runfunc, &tester[i]);
   }
   pthread_t advancer;
   pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
@@ -1069,15 +1077,19 @@ int main(int argc, char *argv[]) {
   Clp_DeleteParser(clp);
 
 #if DATA_STRUCTURE == 5 
+    QueueType stack_q;
+    QueueType stack_q2;
+    q = &stack_q;
+    q2 = &stack_q2;
     empty_func();
     prepopulate_func();    
     qstartAndWait(nthreads, xorrunfunc);
-    Qxordeletecheck();
+    assert(Qxordeletecheck());
 
     empty_func();
     prepopulate_func();
     qstartAndWait(nthreads, transferrunfunc);
-Qtransfercheck();
+    assert(Qtransfercheck());
 #else 
 
   int testidx = 0;

@@ -8,7 +8,7 @@
 template <typename T, unsigned BUF_SIZE = 4096> 
 class Queue: public Shared {
 public:
-    Queue() : head_(0), tail_(0), queuesize_(0), tailversion_(0), headversion_(0) {}
+    Queue() : head_(0), tail_(0), tailversion_(0), headversion_(0) {}
 
     typedef uint32_t Version;
     typedef VersionFunctions<Version> QueueVersioning;
@@ -223,7 +223,6 @@ private:
 
     unsigned head_;
     unsigned tail_;
-    unsigned queuesize_;
     Version tailversion_;
     Version headversion_;
 };
