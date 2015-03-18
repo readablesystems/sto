@@ -14,7 +14,7 @@ public:
   }
 };
 
-template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true>
+template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true, bool Opacity = false>
 class List : public Shared {
 public:
   List(Compare comp = Compare()) : head_(NULL), listsize_(0), listversion_(0), comp_(comp) {
@@ -450,13 +450,21 @@ private:
       listsize_--;
       // not super ideal that we have to change version
       // but we need to invalidate transSize() calls
-      ListVersioning::inc_version(listversion_);
+      if (Opacity) {
+        ListVersioning::set_version(listversion_, tid);
+      } else {
+        ListVersioning::inc_version(listversion_);
+      }
     } else if (has_doupdate(item)) {
       n->val = item.template write_value<T>();
     } else {
       n->mark_valid();
       listsize_++;
-      ListVersioning::inc_version(listversion_);
+      if (Opacity) {
+        ListVersioning::set_version(listversion_, tid);
+      } else {
+        ListVersioning::inc_version(listversion_);
+      }
     }
   }
 
