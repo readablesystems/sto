@@ -415,7 +415,7 @@ public:
   void unlock(TransItem& item) {
     unlock(item.key<versioned_value*>());
   }
-  bool check(TransItem& item, Transaction& t) {
+  bool check(const TransItem& item, const Transaction& t) {
     if (is_inter(item)) {
       auto n = untag_inter(item.key<leaf_type*>());
       auto cur_version = n->full_version_value();
@@ -676,14 +676,14 @@ private:
 #endif
   }
 
-  bool has_insert(TransItem& item) {
+  bool has_insert(const TransItem& item) {
       return item.flags() & insert_bit;
   }
-  bool has_delete(TransItem& item) {
+  bool has_delete(const TransItem& item) {
       return item.flags() & delete_bit;
   }
 
-  bool validityCheck(TransItem& item, versioned_value *e) {
+  bool validityCheck(const TransItem& item, versioned_value *e) {
     return //likely(has_insert(item)) || !(e->version & invalid_bit);
       likely(!(e->version() & invalid_bit)) || has_insert(item);
   }
@@ -710,7 +710,7 @@ private:
   static bool is_inter(T* p) {
     return (uintptr_t)p & internode_bit;
   }
-  static bool is_inter(TransItem& t) {
+  static bool is_inter(const TransItem& t) {
       return is_inter(t.key<versioned_value*>());
   }
 

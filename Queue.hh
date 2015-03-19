@@ -130,7 +130,7 @@ private:
             unlock(tailversion_);
     }
   
-    bool check(TransItem& item, Transaction& t) {
+    bool check(const TransItem& item, const Transaction& t) {
         (void) t;
         auto hv = headversion_;
         auto tv = tailversion_;

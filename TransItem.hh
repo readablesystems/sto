@@ -3,6 +3,7 @@
 #include <type_traits>
 #include <string.h>
 #include <assert.h>
+#include "Interface.hh"
 #include "compiler.hh"
 
 // Packer
@@ -42,11 +43,10 @@ template <typename T> struct Packer<T, false> {
 };
 
 
-class Shared;
-class Transaction;
 class TransProxy;
 
-struct TransItem {
+class TransItem {
+  public:
 #if SIZEOF_VOID_P == 8
     typedef Shared* sharedstore_type;
     typedef uintptr_t flags_type;
@@ -252,7 +252,7 @@ class TransProxy {
 };
 
 
-struct OptionalTransProxy {
+class OptionalTransProxy {
   public:
     typedef TransProxy (OptionalTransProxy::*unspecified_bool_type)() const;
     operator unspecified_bool_type() const {

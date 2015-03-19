@@ -24,12 +24,12 @@ public:
     release_fence();
     v = (cur | (v & lock_bit));
   }
-  
+
   static version_type get_tid(version_type v) {
     return (v & version_mask);
   }
-  
- 
+
+
   static bool is_locked(version_type v) {
     return v & lock_bit;
   }

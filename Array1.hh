@@ -41,7 +41,7 @@ class Array1 : public Shared {
         data_[i].unlock();
     }
 
-    bool check(TransItem& item, Transaction& trans){
+    bool check(const TransItem& item, const Transaction& trans){
         key_type i = item.key<key_type>();
         return data_[i].check(item, trans);
     }

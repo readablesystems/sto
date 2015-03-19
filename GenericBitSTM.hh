@@ -113,7 +113,7 @@ public:
   void unlock(TransItem& item) {
       table_.unset(hash(item.key<void*>()) % table_.size());
   }
-  bool check(TransItem& item, Transaction& t) {
+  bool check(const TransItem& item, const Transaction& t) {
     size_t sz = item.shifted_user_flags();
     uintptr_t cur = 0, old = 0;
     memcpy(&cur, &item.read_value<void*>(), sz);

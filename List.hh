@@ -425,7 +425,7 @@ private:
       unlock(listversion_);
   }
 
-  bool check(TransItem& item, Transaction& t) {
+  bool check(const TransItem& item, const Transaction& t) {
     if (item.key<void*>() == size_key) {
       return true;
     }
@@ -483,15 +483,15 @@ private:
     return t.item(this, node);
   }
 
-  bool has_insert(TransItem& item) {
+  bool has_insert(const TransItem& item) {
       return item.has_write() && !has_delete(item) && !has_doupdate(item);
   }
 
-  bool has_delete(TransItem& item) {
+  bool has_delete(const TransItem& item) {
       return item.flags() & delete_bit;
   }
 
-  bool has_doupdate(TransItem& item) {
+  bool has_doupdate(const TransItem& item) {
       return item.flags() & doupdate_bit;
   }
 

@@ -258,7 +258,7 @@ public:
       return ((v1 ^ v2) & version_mask) == 0;
   }
 
-  bool check(TransItem& item, Transaction& t) {
+  bool check(const TransItem& item, const Transaction& t) {
     if (is_bucket(item)) {
       bucket_entry& buck = map_[bucket_key(item)];
       return versionCheck(item.template read_value<Version>(), buck.version) && !is_locked(buck.version);
@@ -492,25 +492,25 @@ private:
     return find(buck_entry(k), k);
   }
 
-  bool has_delete(TransItem& item) {
+  bool has_delete(const TransItem& item) {
       return item.flags() & delete_bit;
   }
-  
-  bool has_insert(TransItem& item) {
+
+  bool has_insert(const TransItem& item) {
       return item.flags() & insert_bit;
   }
 
-  bool validity_check(TransItem& item, internal_elem *e) {
+  bool validity_check(const TransItem& item, internal_elem *e) {
     return has_insert(item) || e->valid();
   }
 
-  static bool is_bucket(TransItem& item) {
+  static bool is_bucket(const TransItem& item) {
       return is_bucket(item.key<void*>());
   }
   static bool is_bucket(void* key) {
       return (uintptr_t)key & bucket_bit;
   }
-  static unsigned bucket_key(TransItem& item) {
+  static unsigned bucket_key(const TransItem& item) {
       assert(is_bucket(item));
       return (uintptr_t) item.key<void*>() >> 1;
   }
