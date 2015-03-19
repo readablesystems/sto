@@ -273,7 +273,11 @@ public:
         } else {
           head_ = cur->next;
         }
-        // TODO: rcu free
+        if (Txnal) {
+          Transaction::rcu_cleanup([cur] () { free(cur); });
+        } else {
+          free(cur);
+        }
         if (!Txnal)
           listsize_--;
         if (!locked)

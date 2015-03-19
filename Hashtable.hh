@@ -291,7 +291,12 @@ public:
       return;
     }
     // else must be insert/update
-    el->value = std::move(item.template write_value<Value>());
+    Value new_v = std::move(item.template write_value<Value>());
+    std::swap(new_v, el->value);
+    if (!__has_trivial_copy(Value)) {
+      Transaction::rcu_cleanup([new_v] () { delete new_v; });
+    }
+
     inc_version(el->version);
     el->valid() = true;
   }
@@ -321,7 +326,7 @@ public:
     }
     unlock(&buck.version);
     // TODO: why does this throw a bad function error
-    //    Transaction::cleanup([cur] () { free(cur); });
+    Transaction::rcu_cleanup([cur] () { free(cur); });
   }
 
   void print() {

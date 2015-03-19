@@ -316,7 +316,7 @@ public:
     return NULL;
   }
 
-  static void cleanup(std::function<void(void)> callback) {
+  static void rcu_cleanup(std::function<void(void)> callback) {
     acquire_spinlock(tinfo[threadid].spin_lock);
     tinfo[threadid].callbacks.emplace_back(global_epoch, callback);
     release_spinlock(tinfo[threadid].spin_lock);
@@ -343,18 +343,20 @@ public:
   }
 
   Transaction() : transSet_() {
-    // TODO: assumes this thread is constantly running transactions
-    tinfo[threadid].epoch = global_epoch;
-    if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
     reset();
   }
 
   ~Transaction() {
-    tinfo[threadid].epoch = 0;
-    if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
+    end_trans();
     if (!isAborted_ && !transSet_.empty()) {
       silent_abort();
     }
+  }
+
+  void end_trans() {
+    // TODO: this will probably mess up with nested transactions
+    tinfo[threadid].epoch = 0;
+    if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
   }
 
   // reset data so we can be reused for another transaction
@@ -362,6 +364,8 @@ public:
      //if (isAborted_
      //   && tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
         //print_stats();
+    tinfo[threadid].epoch = global_epoch;
+    if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
     transSet_.clear();
     writeset_ = NULL;
     nwriteset_ = 0;
@@ -613,7 +617,6 @@ public:
       abort();
     }
 
-    transSet_.clear();
     return success;
   }
 
@@ -625,6 +628,7 @@ public:
     for (auto& ti : transSet_) {
       ti.sharedObj()->cleanup(ti, false);
     }
+    end_trans();
   }
 
   void abort() {
@@ -657,6 +661,7 @@ private:
     for (TransItem& ti : transSet_) {
       ti.sharedObj()->cleanup(ti, true);
     }
+    end_trans();
   }
 
 private:
