@@ -953,10 +953,10 @@ int main(int argc, char *argv[]) {
   while (ds_names[dsi].ds != ds)
       ++dsi;
   printf("Ran test %s %s\n", tests[test].name, ds_names[dsi].name);
-  printf("  ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f%% writes, blindrandwrites: %d\n \
- MAINTAIN_TRUE_ARRAY_STATE: %d, SPIN_LOCK: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, TRY_READ_MY_WRITES: %d, PERF_LOGGING: %d\n",
-         ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, blindRandomWrite,
-         MAINTAIN_TRUE_ARRAY_STATE, SPIN_LOCK, INIT_SET_SIZE, GLOBAL_SEED, TRY_READ_MY_WRITES, PERF_LOGGING);
+  printf("  ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f%% writes, prepopulate: %d, blindrandwrites: %d\n \
+ MAINTAIN_TRUE_ARRAY_STATE: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, PERF_LOGGING: %d\n",
+         ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, prepopulate, blindRandomWrite,
+         MAINTAIN_TRUE_ARRAY_STATE, INIT_SET_SIZE, GLOBAL_SEED, PERF_LOGGING);
 #endif
 
 #if PERF_LOGGING

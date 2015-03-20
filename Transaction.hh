@@ -349,10 +349,10 @@ public:
   }
 
   ~Transaction() {
-    end_trans();
     if (!isAborted_ && !transSet_.empty()) {
       silent_abort();
     }
+    end_trans();
   }
 
   void end_trans() {
@@ -621,6 +621,7 @@ private:
       silent_abort();
     }
 
+    transSet_.clear();
     return success;
   }
 
