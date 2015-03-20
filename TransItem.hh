@@ -78,6 +78,7 @@ class TransItem {
     bool has_read() const {
         return flags() & read_bit;
     }
+    bool has_lock(const Transaction& t) const;
     bool same_item(const TransItem& x) const {
         return sharedObj() == x.sharedObj() && key_ == x.key_;
     }
@@ -178,6 +179,7 @@ class TransProxy {
     bool has_write() const {
         return i_->has_write();
     }
+    bool has_lock() const;
 
     template <typename T>
     inline TransProxy& add_read(T rdata);

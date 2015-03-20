@@ -436,7 +436,7 @@ public:
 #if NOSORT
     bool lockedCheck = true;
 #else
-    bool lockedCheck = !is_locked(e->version()) || t.check_for_write(item);
+    bool lockedCheck = !is_locked(e->version()) || item.has_lock(t);
 #endif
     return lockedCheck && ((read_version & valid_check_only_bit) || versionCheck(read_version, e->version()));
   }

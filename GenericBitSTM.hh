@@ -119,7 +119,8 @@ public:
     memcpy(&cur, &item.read_value<void*>(), sz);
     memcpy(&old, item.key<void*>(), sz);
     // TODO: will eventually need to check for false conflicts, too...
-    return cur == old && (!table_.get(hash(item.key<void*>()) % table_.size()) || t.check_for_write(item));
+    return cur == old
+        && (!table_.get(hash(item.key<void*>()) % table_.size()) || item.has_lock(t));
   }
   void install(TransItem& item, Transaction::tid_type) {
       void* word = item.key<void*>();

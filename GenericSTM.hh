@@ -35,7 +35,7 @@ public:
     t.item(this, word).add_write(new_val).assign_flags(sizeof(T) << TransItem::userf_shift);
     //t.check_reads();
   }
-  
+
   // Hashtable handles all of this
   void lock(TransItem&) {}
   void unlock(TransItem&) {}
@@ -46,7 +46,7 @@ public:
       void *data = item.write_value<void*>();
       memcpy(word, &data, item.shifted_user_flags());
   }
-  
+
 private:
   inline size_t hash(void* k) {
     std::hash<void*> hash_fn;

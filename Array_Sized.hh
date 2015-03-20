@@ -62,7 +62,7 @@ public:
     int i = item.template key<int>();
     auto& elem = arr_[i];
     return Versioning::versionCheck(elem.version(), item.template read_value<Version>())
-      && (!Versioning::is_locked(elem.version()) || t.check_for_write(item));
+        && (!Versioning::is_locked(elem.version()) || item.has_lock(t));
   }
 
   void install(TransItem& item, Transaction::tid_type) {
