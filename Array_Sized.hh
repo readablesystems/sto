@@ -58,14 +58,14 @@ public:
     Versioning::unlock(arr_[i].version());
   }
 
-  bool check(TransItem& item, Transaction& t) {
+  bool check(const TransItem& item, const Transaction& t) {
     int i = item.template key<int>();
     auto& elem = arr_[i];
     return Versioning::versionCheck(elem.version(), item.template read_value<Version>())
       && (!Versioning::is_locked(elem.version()) || t.check_for_write(item));
   }
 
-  void install(TransItem& item, uint32_t tid) {
+  void install(TransItem& item, Transaction::tid_type) {
     int i = item.template key<int>();
     arr_[i].set_value(item.template write_value<T>());
     Versioning::inc_version(arr_[i].version());

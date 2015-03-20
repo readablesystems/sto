@@ -113,7 +113,7 @@ public:
 #endif
   }
 
-  bool check(TransItem& item, Transaction& t) {
+  bool check(const TransItem& item, const Transaction& t) {
     bool versionOK = ((elem(item.key<Key>()).version ^ item.read_value<Version>()) 
                       & ~lock_bit) == 0;
     return versionOK && (t.check_for_write(item) || !is_locked(item.key<Key>()));
@@ -127,7 +127,7 @@ public:
     unlock(item.key<Key>());
   }
 
-  void install(TransItem& item, uint32_t tid) {
+  void install(TransItem& item, Transaction::tid_type) {
     Key i = item.key<Key>();
     Value val = item.write_value<Value>();
     assert(is_locked(i));

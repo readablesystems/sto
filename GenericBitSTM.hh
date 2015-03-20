@@ -80,7 +80,7 @@ public:
     if (!item.has_read()) {
       // TODO: this could be a pointer so can we get ABA problems?
       item.add_read(ret);
-      item.set_flags(sizeof(T));
+      item.assign_flags(sizeof(T) << TransItem::userf_shift);
     } else if (item.template read_value<T>() != ret) {
       // this prevents problems where we read a value twice, get different values each time, then end up back at the original val
       t.abort();
@@ -97,7 +97,7 @@ public:
     item.add_write(new_val);
     // we need to store sizeof the data type somewhere. 
     // this is 1, 2, 4, or 8, so we can fit it in our 8 flag bits
-    item.set_flags(sizeof(T));
+    item.assign_flags(sizeof(T) << TransItem::userf_shift);
     t.check_reads();
   }
 
@@ -113,18 +113,18 @@ public:
   void unlock(TransItem& item) {
       table_.unset(hash(item.key<void*>()) % table_.size());
   }
-  bool check(TransItem& item, Transaction& t) {
-    size_t sz = item.flags();
+  bool check(const TransItem& item, const Transaction& t) {
+    size_t sz = item.shifted_user_flags();
     uintptr_t cur = 0, old = 0;
     memcpy(&cur, &item.read_value<void*>(), sz);
     memcpy(&old, item.key<void*>(), sz);
     // TODO: will eventually need to check for false conflicts, too...
     return cur == old && (!table_.get(hash(item.key<void*>()) % table_.size()) || t.check_for_write(item));
   }
-  void install(TransItem& item, uint32_t tid) {
+  void install(TransItem& item, Transaction::tid_type) {
       void* word = item.key<void*>();
       void* data = item.write_value<void*>();
-      memcpy(word, &data, item.flags());
+      memcpy(word, &data, item.shifted_user_flags());
   }
 
 private:

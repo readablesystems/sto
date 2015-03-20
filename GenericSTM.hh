@@ -20,8 +20,8 @@ public:
     size_t key = bucket(word);
     // ensures version doesn't change
     table_.transRead(t, key);
+    //t.check_reads();
     T ret = *word;
-    t.check_reads();
     return ret;
   }
   
@@ -32,19 +32,19 @@ public:
     // (and locks this word for us)
     size_t key = bucket(word);
     table_.transWrite(t, key, 0);
-    t.item(this, word).add_write(new_val).set_flags((int) sizeof(T));
+    t.item(this, word).add_write(new_val).assign_flags(sizeof(T) << TransItem::userf_shift);
     //t.check_reads();
   }
   
   // Hashtable handles all of this
   void lock(TransItem&) {}
   void unlock(TransItem&) {}
-  bool check(TransItem&, Transaction&) { assert(0); return false; }
-  void install(TransItem& item, uint32_t tid) {
+  bool check(const TransItem&, const Transaction&) { assert(0); return false; }
+  void install(TransItem& item, Transaction::tid_type) {
       void* word = item.key<void*>();
       // Hashtable implementation has already locked this word for us
       void *data = item.write_value<void*>();
-      memcpy(word, &data, item.flags());
+      memcpy(word, &data, item.shifted_user_flags());
   }
   
 private:

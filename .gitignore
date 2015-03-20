@@ -1,3 +1,4 @@
+.DS_Store
 *.o
 *.d
 *.a
@@ -16,5 +17,6 @@
 /single
 /array1
 /concurrent
+/genericTest
 /singleelems
 /tags

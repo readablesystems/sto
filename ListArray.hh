@@ -34,7 +34,7 @@ public:
   T read(int k) {
     Transaction t;
     auto ret = transRead(t, k);
-    assert(t.commit());
+    assert(t.try_commit());
     return ret;
   }
 

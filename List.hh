@@ -14,7 +14,7 @@ public:
   }
 };
 
-template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true>
+template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true, bool Opacity = false>
 class List : public Shared {
 public:
   List(Compare comp = Compare()) : head_(NULL), listsize_(0), listversion_(0), comp_(comp) {
@@ -28,8 +28,9 @@ public:
   // how to make that work with the lock, check, install, unlock protocol
   static constexpr Version node_lock_bit = 1<<1;
 
-  static constexpr Version delete_bit = 1<<0;
-  static constexpr Version doupdate_flag = 1<<1;
+    static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
+    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
+    static constexpr TransItem::flags_type doupdate_bit = TransItem::user0_bit<<2;
 
   static constexpr void* size_key = (void*)0;
 
@@ -43,23 +44,11 @@ public:
     }
 
     void mark_valid() {
-      next.set_flags(next.flags() & ~invalid_bit);
+      next.assign_flags(next.flags() & ~invalid_bit);
     }
 
     bool is_valid() {
-      return !next.has_flags(invalid_bit);
-    }
-
-    void lock() {
-      next.atomic_add_flags(node_lock_bit);
-    }
-
-    void unlock() {
-      next.set_flags(next.flags() & ~node_lock_bit);
-    }
-    
-    bool is_locked() {
-      return next.has_flags(node_lock_bit);
+        return !(next.flags() & invalid_bit);
     }
 
     T val;
@@ -148,9 +137,9 @@ public:
     }
     auto ret = new list_node(elem, cur, Txnal);
     if (prev) {
-      prev->next = ret;
+        prev->next.assign_ptr(ret);
     } else {
-      head_ = ret;
+        head_ = ret;
     }
     if (!Txnal)
       listsize_++;
@@ -184,7 +173,7 @@ public:
       // delete-then-insert... (should really become an update...)
       if (has_delete(item)) {
         item.clear_write().add_write(elem);
-        item.set_flags(doupdate_flag);
+        item.assign_flags(doupdate_bit);
         add_trans_size_offs(t, 1);
         return true;
       }
@@ -197,7 +186,7 @@ public:
     // we lock the list for inserts
     add_lock_list_item(t);
     item.add_write(0);
-    item.add_undo();
+    item.add_flags(insert_bit);
     return true;
   }
 
@@ -218,21 +207,21 @@ public:
       // delete-then-insert, then delete
       if (has_doupdate(item)) {
         // back to deleting
-        item.set_flags(delete_bit);
+        item.assign_flags(delete_bit);
         add_trans_size_offs(t, -1);
         return true;
       }
       // insert-then-delete becomes nothing
       if (has_insert(item)) {
         remove<true>(n);
-        item.remove_read().remove_write().remove_undo().remove_afterC();
+        item.remove_read().remove_write().clear_flags(insert_bit);
         add_trans_size_offs(t, -1);
         // TODO: should have a count on add_lock_list_item so we can cancel that here
         // still need to make sure no one else inserts something
         verify_list(t, listv);
         return true;
       }
-      item.set_flags(delete_bit);
+      item.assign_flags(delete_bit);
       // mark as a write
       item.add_write(0);
       // we also need to check that it's still valid at commit time (not 
@@ -269,9 +258,9 @@ public:
       if (found_f(cur)) {
         cur->mark_invalid();
         if (prev) {
-          prev->next = (list_node*)cur->next;
+            prev->next.assign_ptr(cur->next);
         } else {
-          head_ = cur->next;
+            head_ = cur->next;
         }
         if (Txnal) {
           Transaction::rcu_cleanup([cur] () { free(cur); });
@@ -290,6 +279,19 @@ public:
     if (!locked)
       unlock(listversion_);
     return false;
+  }
+  
+  void opacity_check(Transaction& t) {
+    // When we check for opacity, we need to compare the latest listversion and not
+    // the one at the beginning of the operation.
+    assert(Opacity);
+    auto listv = listversion_;
+    fence();
+    Transaction::tid_type r_tid = ListVersioning::get_tid(listv);
+    // assumes that a thread will not call this method holding the version lock.
+    if (r_tid > t.start_tid() || (ListVersioning::is_locked(listv)))
+        t.abort();
+    
   }
 
   struct ListIter {
@@ -396,11 +398,11 @@ private:
         remove<false>(head_, true);
   }
 
-
   void verify_list(Transaction& t, Version readv) {
       t_item(t, this).add_read(readv);
       acquire_fence();
   }
+  
 
   void lock(Version& v) {
     ListVersioning::lock(v);
@@ -417,21 +419,17 @@ private:
   void lock(TransItem& item) {
     // this lock is useless given that we also lock the listversion_
     // currently
-    //if (has_delete(item) || has_doupdate(item))
-    //    item.key<list_node*>()->lock();
     // XXX: this isn't great, but I think we need it to update the size...
     if (item.key<List*>() == this)
         lock(listversion_);
   }
 
   void unlock(TransItem& item) {
-    //    if (has_delete(item) || has_doupdate(item))
-    //item.key<list_node*>()->unlock();
     if (item.key<List*>() == (void*)this)
       unlock(listversion_);
   }
 
-  bool check(TransItem& item, Transaction& t) {
+  bool check(const TransItem& item, const Transaction& t) {
     if (item.key<void*>() == size_key) {
       return true;
     }
@@ -442,10 +440,10 @@ private:
         && (!is_locked(lv) || t.check_for_write(item));
     }
     auto n = item.key<list_node*>();
-    return (n->is_valid() || has_insert(item)) && (has_delete(item) || !n->is_locked());
+    return n->is_valid() || has_insert(item);
   }
 
-  void install(TransItem& item, uint32_t tid) {
+  void install(TransItem& item, Transaction::tid_type tid) {
     if (item.key<List*>() == this)
       return;
     list_node *n = item.key<list_node*>();
@@ -454,25 +452,33 @@ private:
       listsize_--;
       // not super ideal that we have to change version
       // but we need to invalidate transSize() calls
-      ListVersioning::inc_version(listversion_);
+      if (Opacity) {
+        ListVersioning::set_version(listversion_, tid);
+      } else {
+        ListVersioning::inc_version(listversion_);
+      }
     } else if (has_doupdate(item)) {
       n->val = item.template write_value<T>();
     } else {
       n->mark_valid();
       listsize_++;
-      ListVersioning::inc_version(listversion_);
+      if (Opacity) {
+        ListVersioning::set_version(listversion_, tid);
+      } else {
+        ListVersioning::inc_version(listversion_);
+      }
     }
   }
 
   void cleanup(TransItem& item, bool committed) {
-      if (!committed && item.has_undo()) {
+      if (!committed && (item.flags() & insert_bit)) {
           list_node *n = item.key<list_node*>();
           remove<true>(n);
       }
   }
 
   bool validityCheck(list_node *n, TransItem& item) {
-    return n->is_valid() || item.has_undo();
+      return n->is_valid() || (item.flags() & insert_bit);
   }
 
   template <typename PTR>
@@ -480,17 +486,17 @@ private:
     // can switch this to fresh_item to not read our writes
     return t.item(this, node);
   }
-  
-  bool has_insert(TransItem& item) {
-    return item.has_write() && !has_delete(item) && !has_doupdate(item);
+
+  bool has_insert(const TransItem& item) {
+      return item.has_write() && !has_delete(item) && !has_doupdate(item);
   }
-  
-  bool has_delete(TransItem& item) {
-    return item.has_flags(delete_bit);
+
+  bool has_delete(const TransItem& item) {
+      return item.flags() & delete_bit;
   }
-  
-  bool has_doupdate(TransItem& item) {
-    return item.has_flags(doupdate_flag);
+
+  bool has_doupdate(const TransItem& item) {
+      return item.flags() & doupdate_bit;
   }
 
   void add_lock_list_item(Transaction& t) {

@@ -1,95 +1,59 @@
 #pragma once
-
 #include <stdint.h>
-
-#if INTPTR_MAX == INT64_MAX
-#define IS64BIT
-#elif INTPTR_MAX == INT32_MAX
-#define IS32BIT
-#else
-#error "Only support 32 and 64 bit systems"
-#endif
 
 // 64 bits including a pointer and 16 bits of flags
 // (technically we have 19 flag bits on a 64 bit machine and 35 on a 32 bit machine but who cares)
 template <typename T>
 class Tagged64 {
-#ifdef IS64BIT
-  static constexpr uintptr_t shift = (sizeof(void*)*8 - 16);
-  static constexpr uintptr_t flagmask = ((uintptr_t)0xffff) << shift;
-  static constexpr uintptr_t ptrmask = ~(flagmask);
+    static constexpr int shift = 64 - 16;
+#if SIZEOF_VOID_P == 8
+    typedef T* packed_type;
+    static constexpr uintptr_t ptrmask = 0xFFFFFFFFFFFFULL;
+#elif SIZEOF_VOID_P == 4
+    typedef uint64_t packed_type;
+    static constexpr uintptr_t ptrmask = 0xFFFFFFFFU;
+#else
+# error "bad sizeof(void*)"
 #endif
+    typedef uint64_t flags_type;
+
+    static packed_type pack(T* p, int flags) {
+        return reinterpret_cast<packed_type>(reinterpret_cast<uintptr_t>(p)
+                                             | (flags_type(flags) << shift));
+    }
 
 public:
 
-  Tagged64(T *p) : p_(p)
-#ifdef IS32BIT
-                 , flags_(0)
-#endif
-  { assert(ptr() == p); }
+    Tagged64(T* p)
+        : p_(pack(p, 0)) {
+    }
 
-  T* ptr() const {
-#ifdef IS32BIT
-    return p_;
-#else
-    return (T*)((uintptr_t)p_ & ptrmask);
-#endif
-  }
+    T* ptr() const {
+        return reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(p_) & ptrmask);
+    }
 
-  uint16_t flags() const {
-#ifdef IS32BIT
-    return flags_;
-#else
-    return ((uintptr_t)p_ & flagmask) >> shift;
-#endif
-  }
+    uint16_t flags() const {
+        return reinterpret_cast<flags_type>(p_) >> shift;
+    }
 
-  void set_flags(uint16_t flags) {
-#ifdef IS32BIT
-    flags_ = flags;
-#else
-    p_ = (T*)(((uintptr_t)p_ & ~flagmask) | shifted(flags));
-#endif
-  }
+    void assign_flags(uint16_t flags) {
+        p_ = pack(ptr(), flags);
+    }
 
-  void or_flags(uint16_t flags) {
-#ifdef IS32BIT
-    flags_ |= flags;
-#else
-    p_ = (T*)((uintptr_t)p_ | shifted(flags));
-#endif
-  }
-  
-  void rm_flags(uint16_t flags) {
-#ifdef IS32BIT
-    flags_ &= ~flags;
-#else
-    p_ = (T*)((uintptr_t)p_ & ~shifted(flags));
-#endif
-  }
+    void or_flags(uint16_t flags) {
+        p_ = reinterpret_cast<packed_type>(reinterpret_cast<flags_type>(p_)
+                                           | (flags_type(flags) << shift));
+    }
 
-  bool has_flags(uint16_t flags) const {
-#ifdef IS32BIT
-    return (flags_ & flags) == flags;
-#else
-    return (this->flags() & flags) == flags;
-#endif
-  }
+    void rm_flags(uint16_t flags) {
+        p_ = reinterpret_cast<packed_type>(reinterpret_cast<flags_type>(p_)
+                                           & ~(flags_type(flags) << shift));
+    }
 
-  bool operator<(const Tagged64<T> other) const {
-    return ptr() < other.ptr() || (ptr() == other.ptr() && 
-                                   flags() < other.flags());
-  }
+    bool operator<(Tagged64<T> x) const {
+        return reinterpret_cast<flags_type>(p_) < reinterpret_cast<flags_type>(x.p_);
+    }
 
-private:
-  inline uintptr_t shifted(uint16_t flags) const {
-    return (uintptr_t)flags << shift;
-  }
-
-  T *p_;
-#ifdef IS32BIT
-  uint16_t unused;
-  uint16_t flags_;
-#endif
-
+  private:
+    packed_type p_;
 };

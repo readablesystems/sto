@@ -240,9 +240,9 @@ public:
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static unsigned global_epoch;
-  static __thread Transaction *__transaction;
-  typedef uint32_t Tid;
-  static Tid _TID;
+  static __thread Transaction* __transaction;
+  typedef TransactionTid tid_type;
+  static tid_type _TID;
 
   static Transaction& get_transaction() {
     if (!__transaction)
@@ -332,16 +332,17 @@ public:
   static void max_p(int p, unsigned long long n) {
       tinfo[threadid].max_p(p, n);
   }
-  
-  static Tid incTid() {
-    Tid t_old = _TID;
-    Tid t_new = t_old + 1;
-    Tid t = cmpxchg(&_TID, t_old, t_new);
+
+  static tid_type incTid() {
+    tid_type t_old = _TID;
+    tid_type t_new = t_old + 1;
+    tid_type t = cmpxchg(&_TID, t_old, t_new);
     if (t != t_old) {
       t_new = t;
     }
     return t_new;
   }
+
 
   Transaction() : transSet_() {
     reset();
@@ -470,7 +471,7 @@ public:
       firstWrite_ = idx;
   }
 
-  bool check_for_write(TransItem& item) {
+  bool check_for_write(const TransItem& item) const {
     // if writeset_ is NULL, we're not in commit (just an opacity check), so no need to check our writes (we
     // haven't locked anything yet)
     if (!writeset_)
@@ -522,7 +523,8 @@ public:
     return true;
   }
 
-  bool commit() {
+  public:
+  bool try_commit() {
 #if ASSERT_TX_SIZE
     if (transSet_.size() > TX_SIZE_LIMIT) {
         std::cerr << "transSet_ size at " << transSet_.size()
@@ -548,7 +550,7 @@ public:
 
       if (it->has_write()) {
         writeset_[nwriteset_++] = it - transSet_.begin();
-      }   
+      }
 #ifdef DETAILED_LOGGING
       if (it->has_read()) {
 	inc_p(txp_total_r);
@@ -577,8 +579,8 @@ public:
 
     //    fence();
 
-    Tid commit_tid = incTid();
-  
+    tid_type commit_tid = incTid();
+
     //phase2
     if (!check_reads(trans_first, trans_last)) {
       success = false;
@@ -597,7 +599,6 @@ public:
     }
 
   end:
-
     //    fence();
 
     for (auto it = writeset_; it != writeset_end; ) {
@@ -615,7 +616,7 @@ public:
       commitSuccess();
     } else {
       inc_p(txp_commit_time_aborts);
-      abort();
+      silent_abort();
     }
 
     return success;
@@ -637,19 +638,24 @@ public:
     throw Abort();
   }
 
+    void commit() {
+        if (!try_commit())
+            throw Abort();
+    }
+
   bool aborted() {
     return isAborted_;
   }
-  
-  Tid start_tid() {
+
+  tid_type start_tid() {
     if (start_tid_ == 0) {
       return read_tid();
     } else {
       return start_tid_;
     }
   }
-  
-  Tid read_tid() {
+
+  tid_type read_tid() {
     start_tid_ = _TID;
     return start_tid_;
   }
@@ -673,7 +679,7 @@ private:
     local_vector<TransItem, INIT_SET_SIZE> transSet_;
     int* writeset_;
     int nwriteset_;
-    Tid start_tid_;
+    mutable tid_type start_tid_;
 
     friend class TransProxy;
 };
@@ -682,18 +688,17 @@ private:
 
 template <typename T>
 TransProxy& TransProxy::add_read(T rdata) {
-    if (!i_.shared.has_flags(READER_BIT)) {
-        i_.shared.or_flags(READER_BIT);
-        i_.rdata_ = t_.buf_.pack(std::move(rdata));
+    if (!has_read()) {
+        i_->__or_flags(TransItem::read_bit);
+        i_->rdata_ = t_->buf_.pack(std::move(rdata));
     }
     return *this;
 }
 
 template <typename T, typename U>
 TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
-    if (i_.shared.has_flags(READER_BIT)
-        && this->read_value<T>() == old_rdata)
-        i_.rdata_ = t_.buf_.pack(std::move(new_rdata));
+    if (has_read() && this->read_value<T>() == old_rdata)
+        i_->rdata_ = t_->buf_.pack(std::move(new_rdata));
     return *this;
 }
 
@@ -706,9 +711,9 @@ TransProxy& TransProxy::add_write(T wdata) {
         // which will make our lives much easier)
         this->template write_value<T>() = std::move(wdata);
     else {
-        i_.shared.or_flags(WRITER_BIT);
-        i_.wdata_ = t_.buf_.pack(std::move(wdata));
-        t_.mark_write(i_);
+        i_->__or_flags(TransItem::write_bit);
+        i_->wdata_ = t_->buf_.pack(std::move(wdata));
+        t_->mark_write(*i_);
     }
     return *this;
 }
