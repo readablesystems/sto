@@ -3,7 +3,11 @@
 #include "versioned_value.hh"
 #include "VersionFunctions.hh"
 
-template <typename T,  bool GenericSTM = false, typename Structure = versioned_value_struct<T>>
+#define OPACITY_NONE 0
+#define OPACITY_TL2  1
+#define OPACITY_SLOW 2
+
+template <typename T,  unsigned OpacityMode = OPACITY_NONE, typename Structure = versioned_value_struct<T>>
 // if we're inheriting from Shared then a SingleElem adds both a version word and a vtable word
 // (not much else we can do though)
 class SingleElem : public Shared {
@@ -40,11 +44,13 @@ public:
             Version v;
             T val;
             atomicRead(v, val);
-            if (GenericSTM) {
+            if (OpacityMode == OPACITY_TL2) {
                 Transaction::tid_type r_tid = Versioning::get_tid(v);
                 if (r_tid > t.start_tid() || (Versioning::is_locked(v) && !item.has_write()))
                     // wait a minute what?
                     t.abort();
+            } else if (OpacityMode == OPACITY_SLOW) {
+                t.check_reads();
             }
             item.add_read(v);
             return val;
@@ -78,7 +84,7 @@ public:
 
     void install(TransItem& item, Transaction::tid_type tid) {
         s_.set_value(item.template write_value<T>());
-        if (GenericSTM) {
+        if (OpacityMode == OPACITY_TL2) {
             Versioning::set_version(s_.version(), tid);
         } else {
             Versioning::inc_version(s_.version());

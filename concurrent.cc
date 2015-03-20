@@ -18,6 +18,7 @@
 // size of array (for hashtables or other non-array structures, this is the
 // size of the key space)
 #define ARRAY_SZ 1000000
+#define OPACITY_MODE OPACITY_TL2
 
 #define USE_ARRAY 0
 #define USE_HASHTABLE 1
@@ -133,7 +134,7 @@ struct ContainerBase_maplike {
 template <int DS> struct Container {};
 
 template <> struct Container<USE_ARRAY> : public ContainerBase_arraylike {
-    typedef Array1<value_type, ARRAY_SZ> type;
+    typedef Array1<value_type, ARRAY_SZ, SingleElem<value_type, OPACITY_MODE>> type;
 };
 
 template <> struct Container<USE_LISTARRAY> : public ContainerBase_maplike {
