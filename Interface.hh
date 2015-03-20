@@ -15,7 +15,6 @@ public:
     virtual void unlock(TransItem& item) = 0;
     virtual void install(TransItem& item, TransactionTid tid) = 0;
 
-    // probably just needs to call destructor
     virtual void cleanup(TransItem& item, bool committed) {
         (void) item, (void) committed;
     }
