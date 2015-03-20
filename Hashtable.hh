@@ -294,7 +294,7 @@ public:
     Value new_v = std::move(item.template write_value<Value>());
     std::swap(new_v, el->value);
     if (!__has_trivial_copy(Value)) {
-      Transaction::rcu_cleanup([new_v] () { delete new_v; });
+      //      Transaction::rcu_cleanup([new_v] () { delete new_v; });
     }
 
     inc_version(el->version);

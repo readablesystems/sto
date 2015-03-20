@@ -299,7 +299,8 @@ public:
         acquire_spinlock(t.spin_lock);
         auto deletetil = t.callbacks.begin();
         for (auto it = t.callbacks.begin(); it != t.callbacks.end(); ++it) {
-          if (it->first <= g-2) {
+          // TODO: check for overflow
+          if ((int)it->first <= (int)g-2) {
             it->second();
             ++deletetil;
           } else {
