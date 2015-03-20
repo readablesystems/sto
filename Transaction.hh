@@ -459,7 +459,7 @@ private:
       return NULL;
   }
 
-public:
+private:
   typedef int item_index_type;
   item_index_type item_index(TransItem& ti) {
       return &ti - transSet_.begin();
@@ -501,12 +501,14 @@ public:
     return has_write;
   }
 
+  public:
   void check_reads() {
       if (!check_reads(transSet_.begin(), transSet_.end())) {
           abort();
       }
   }
 
+  private:
   bool check_reads(TransItem *trans_first, TransItem *trans_last) {
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
@@ -682,12 +684,13 @@ private:
     mutable tid_type start_tid_;
 
     friend class TransProxy;
+    friend class TransItem;
 };
 
 
 
 template <typename T>
-TransProxy& TransProxy::add_read(T rdata) {
+inline TransProxy& TransProxy::add_read(T rdata) {
     if (!has_read()) {
         i_->__or_flags(TransItem::read_bit);
         i_->rdata_ = t_->buf_.pack(std::move(rdata));
@@ -696,14 +699,14 @@ TransProxy& TransProxy::add_read(T rdata) {
 }
 
 template <typename T, typename U>
-TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
+inline TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
     if (has_read() && this->read_value<T>() == old_rdata)
         i_->rdata_ = t_->buf_.pack(std::move(new_rdata));
     return *this;
 }
 
 template <typename T>
-TransProxy& TransProxy::add_write(T wdata) {
+inline TransProxy& TransProxy::add_write(T wdata) {
     if (has_write())
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general
@@ -716,4 +719,12 @@ TransProxy& TransProxy::add_write(T wdata) {
         t_->mark_write(*i_);
     }
     return *this;
+}
+
+inline bool TransItem::has_lock(const Transaction& t) const {
+    return t.check_for_write(*this);
+}
+
+inline bool TransProxy::has_lock() const {
+    return t_->check_for_write(*i_);
 }

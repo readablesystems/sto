@@ -267,7 +267,7 @@ public:
     auto read_version = item.template read_value<Version>();
     // if item has insert_bit then its an insert so no validity check needed.
     // otherwise we check that it is both valid and not locked
-    bool validity_check = has_insert(item) || (el->valid() && (!is_locked(el->version) || t.check_for_write(item)));
+    bool validity_check = has_insert(item) || (el->valid() && (!is_locked(el->version) || item.has_lock(t)));
     return validity_check && ((read_version & valid_check_only_bit) ||
                               versionCheck(read_version, el->version));
   }

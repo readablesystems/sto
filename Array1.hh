@@ -1,11 +1,11 @@
-
-#pragma once 
+#pragma once
 
 #include "config.h"
 #include "compiler.hh"
 #include <iostream>
 #include "Transaction.hh"
 #include "SingleElem.hh"
+#include "VersionFunctions.hh"
 
 template <typename T, unsigned N, typename Elem = SingleElem<T>>
 class Array1 : public Shared {

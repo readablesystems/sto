@@ -437,7 +437,7 @@ private:
       auto lv = listversion_;
       return
         ListVersioning::versionCheck(lv, item.template read_value<Version>())
-        && (!is_locked(lv) || t.check_for_write(item));
+          && (!is_locked(lv) || item.has_lock(t));
     }
     auto n = item.key<list_node*>();
     return n->is_valid() || has_insert(item);
