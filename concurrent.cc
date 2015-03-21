@@ -1,3 +1,4 @@
+#define UBENCHMARK
 #include <iostream>
 #include <assert.h>
 #include <random>
@@ -134,7 +135,7 @@ struct ContainerBase_maplike {
 template <int DS> struct Container {};
 
 template <> struct Container<USE_ARRAY> : public ContainerBase_arraylike {
-    typedef Array1<value_type, ARRAY_SZ, SingleElem<value_type, OPACITY_MODE>> type;
+    typedef Array1<value_type, ARRAY_SZ, SingleElem<value_type>> type;
 };
 
 template <> struct Container<USE_LISTARRAY> : public ContainerBase_maplike {
@@ -178,7 +179,7 @@ int opspertrans = 10;
 int prepopulate = ARRAY_SZ/10;
 double write_percent = 0.5;
 bool blindRandomWrite = false;
-
+int opacity = OPACITY_NONE;
 
 using namespace std;
 
@@ -816,7 +817,7 @@ struct {
 };
 
 enum {
-  opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_blindrandwrites, opt_prepopulate
+  opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_blindrandwrites, opt_prepopulate, opt_opacity
 };
 
 static const Clp_Option options[] = {
@@ -828,6 +829,7 @@ static const Clp_Option options[] = {
   { "writepercent", 0, opt_writepercent, Clp_ValDouble, Clp_Optional },
   { "blindrandwrites", 0, opt_blindrandwrites, 0, Clp_Negate },
   { "prepopulate", 0, opt_prepopulate, Clp_ValInt, Clp_Optional },
+  { "opacity", 0, opt_opacity, Clp_ValInt, Clp_Optional },
 };
 
 static void help(const char *name) {
@@ -840,8 +842,9 @@ Options:\n\
  --opspertrans=OPSPERTRANS, how many operations to run per transaction (default %d)\n\
  --writepercent=WRITEPERCENT, probability with which to do writes versus reads (default %f)\n\
  --blindrandwrites, do blind random writes for random tests. makes checking impossible\n\
- --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n",
-         name, nthreads, ntrans, opspertrans, write_percent, prepopulate);
+ --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n\
+ --opacity=OPACITYMODE, only works with value 0 (no opacity), 1 (TL2 opacity), and 2 (slow opacity) (default %d)\n",
+         name, nthreads, ntrans, opspertrans, write_percent, prepopulate, opacity);
   printf("\nTests:\n");
   size_t testidx = 0;
   for (size_t ti = 0; ti != sizeof(tests)/sizeof(tests[0]); ++ti)
@@ -899,6 +902,9 @@ int main(int argc, char *argv[]) {
       break;
     case opt_prepopulate:
       prepopulate = clp->val.i;
+      break;
+    case opt_opacity:
+      opacity = clp->val.i;
       break;
     default:
       help(argv[0]);
