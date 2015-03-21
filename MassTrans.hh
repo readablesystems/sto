@@ -203,8 +203,8 @@ public:
       item.add_read(valid_check_only_bit);
       // same as inserts we need to store (copy) key so we can lookup to remove later
       item.clear_write();
-      if (std::is_same<std::string, StringType>::value)
-	item.add_write(pack(std::move(key)));
+      if (std::is_same<const std::string, const StringType>::value)
+	item.add_write(pack(key));
       else
 	item.add_write(std::string(key));
       item.assign_flags(delete_bit);
@@ -264,8 +264,8 @@ public:
 #endif
       }
       auto item = t.new_item(this, val);
-      if (std::is_same<std::string, StringType>::value)
-        item.add_write(pack(std::move(key)));
+      if (std::is_same<const std::string, const StringType>::value)
+        item.add_write(pack(key));
       else
         // force a copy
         item.add_write(std::string(key));
@@ -489,8 +489,8 @@ public:
   template <typename ValType>
   static inline void *pack(const ValType& value) {
     void *placed_val = NULL;
-    // TODO: std::move?                                                                                                                                   
-    //     new (&placed_val) ValType(value);                                                                                                              
+    // TODO: std::move?
+    //     new (&placed_val) ValType(value);
     placed_val = *(void**)&value;
     return placed_val;
   }
@@ -762,10 +762,11 @@ private:
   void atomicRead(versioned_value *e, Version& vers, value_type& val, size_t max_read = (size_t)-1) {
     (void)max_read;
     Version v2;
+#if 1
     vers = e->version();
     auto str = e->read_value();
     val.assign(str.data(), str.length());
-#if 0
+#else
     do {
       do {
         relax_fence();
