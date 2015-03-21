@@ -328,8 +328,7 @@ public:
       buck.head = cur->next;
     }
     unlock(&buck.version);
-    // TODO: why does this throw a bad function error
-    Transaction::rcu_cleanup([cur] () { free(cur); });
+    Transaction::rcu_free(cur);
   }
 
   void print() {

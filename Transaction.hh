@@ -80,6 +80,7 @@ struct __attribute__((aligned(128))) threadinfo_t {
   unsigned epoch;
   unsigned spin_lock;
   local_vector<std::pair<unsigned, std::function<void(void)>>, 8> callbacks;
+  local_vector<std::pair<unsigned, void*>, 8> needs_free;
   std::function<void(void)> trans_start_callback;
   std::function<void(void)> trans_end_callback;
   uint64_t p_[txp_count];
@@ -311,6 +312,19 @@ public:
         if (t.callbacks.begin() != deletetil) {
           t.callbacks.erase(t.callbacks.begin(), deletetil);
         }
+        auto deletetil2 = t.needs_free.begin();
+        for (auto it = t.needs_free.begin(); it != t.needs_free.end(); ++it) {
+          // TODO: overflow
+          if ((int)it->first <= (int)g-2) {
+            free(it->second);
+            ++deletetil2;
+          } else {
+            break;
+          }
+        }
+        if (t.needs_free.begin() != deletetil2) {
+          t.needs_free.erase(t.needs_free.begin(), deletetil2);
+        }
         release_spinlock(t.spin_lock);
       }
     }
@@ -320,6 +334,12 @@ public:
   static void rcu_cleanup(std::function<void(void)> callback) {
     acquire_spinlock(tinfo[threadid].spin_lock);
     tinfo[threadid].callbacks.emplace_back(global_epoch, callback);
+    release_spinlock(tinfo[threadid].spin_lock);
+  }
+
+  static void rcu_free(void *ptr) {
+    acquire_spinlock(tinfo[threadid].spin_lock);
+    tinfo[threadid].needs_free.emplace_back(global_epoch, ptr);
     release_spinlock(tinfo[threadid].spin_lock);
   }
 

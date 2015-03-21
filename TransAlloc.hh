@@ -27,7 +27,7 @@ public:
     if (item.template write_value<int>() == alloc_flag)
       return;
     void *ptr = item.template key<void*>();
-    Transaction::rcu_cleanup([ptr] () { free(ptr); });
+    Transaction::rcu_free(ptr);
   }
   void cleanup(TransItem& item, bool committed) {
     if (!committed && item.template write_value<int>() == alloc_flag)

@@ -263,7 +263,7 @@ public:
             head_ = cur->next;
         }
         if (Txnal) {
-          Transaction::rcu_cleanup([cur] () { free(cur); });
+          Transaction::rcu_free(cur);
         } else {
           free(cur);
         }
