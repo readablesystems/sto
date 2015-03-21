@@ -167,7 +167,7 @@ public:
   }
 
   template <typename StringType>
-  bool transDelete(Transaction& t, StringType key, threadinfo_type& ti = mythreadinfo) {
+  bool transDelete(Transaction& t, StringType& key, threadinfo_type& ti = mythreadinfo) {
     unlocked_cursor_type lp(table_, key);
     bool found = lp.find_unlocked(*ti.ti);
     if (found) {
@@ -201,7 +201,11 @@ public:
       // we only need to check validity, not if the item has changed
       item.add_read(valid_check_only_bit);
       // same as inserts we need to store (copy) key so we can lookup to remove later
-      item.clear_write().add_write(pack(key));
+      item.clear_write();
+      if (std::is_same<std::string, StringType>::value)
+	item.add_write(pack(std::move(key)));
+      else
+	item.add_write(std::string(key));
       item.assign_flags(delete_bit);
       return found;
     } else {
@@ -211,7 +215,7 @@ public:
   }
 
   template <bool INSERT = true, bool SET = true, typename StringType>
-  bool transPut(Transaction& t, StringType key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
+  bool transPut(Transaction& t, StringType& key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
     // optimization to do an unlocked lookup first
     if (SET) {
       unlocked_cursor_type lp(table_, key);
@@ -260,7 +264,7 @@ public:
       }
       auto item = t.new_item(this, val);
       if (std::is_same<std::string, StringType>::value)
-        item.add_write(pack(key));
+        item.add_write(pack(std::move(key)));
       else
         // force a copy
         item.add_write(std::string(key));
@@ -270,12 +274,12 @@ public:
   }
 
   template <typename StringType>
-  bool transUpdate(Transaction& t, StringType k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
+  bool transUpdate(Transaction& t, StringType& k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
     return transPut</*insert*/false, /*set*/true>(t, k, v, ti);
   }
 
   template <typename StringType>
-  bool transInsert(Transaction& t, StringType k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
+  bool transInsert(Transaction& t, StringType& k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
     return !transPut</*insert*/true, /*set*/false>(t, k, v, ti);
   }
 
@@ -757,6 +761,10 @@ private:
   void atomicRead(versioned_value *e, Version& vers, value_type& val, size_t max_read = (size_t)-1) {
     (void)max_read;
     Version v2;
+    vers = e->version();
+    auto str = e->read_value();
+    val.assign(str.data(), str.length());
+#if 0
     do {
       do {
         relax_fence();
@@ -768,6 +776,7 @@ private:
       fence();
       v2 = e->version();
     } while (vers != v2);
+#endif
    }
 
   static constexpr bool is_versioned_str() {
