@@ -147,7 +147,8 @@ public:
       if (item.has_write()) {
         // read directly from the element if we're inserting it
         if (has_insert(item)) {
-          retval = e->read_value();
+          auto str = e->read_value();
+	  retval.assign(str.data(), str.length());
         } else {
           // TODO: should we refcount, copy, or...?
           retval = (value_type&)item.template write_value<void*>();
