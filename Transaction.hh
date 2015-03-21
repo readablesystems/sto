@@ -621,6 +621,8 @@ private:
       silent_abort();
     }
 
+    // Nate: we need this line because the Transaction destructor decides
+    // whether to do an abort based on whether transSet_ is empty (meh)
     transSet_.clear();
     return success;
   }
