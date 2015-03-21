@@ -250,7 +250,7 @@ class TransProxy {
         : t_(&t), i_(&i) {
     }
     friend class Transaction;
-    friend struct OptionalTransProxy;
+    friend class OptionalTransProxy;
 };
 
 

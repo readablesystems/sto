@@ -349,10 +349,10 @@ public:
   }
 
   ~Transaction() {
-    end_trans();
     if (!isAborted_ && !transSet_.empty()) {
       silent_abort();
     }
+    end_trans();
   }
 
   void end_trans() {
@@ -621,6 +621,9 @@ private:
       silent_abort();
     }
 
+    // Nate: we need this line because the Transaction destructor decides
+    // whether to do an abort based on whether transSet_ is empty (meh)
+    transSet_.clear();
     return success;
   }
 
