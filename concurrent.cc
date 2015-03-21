@@ -351,7 +351,7 @@ template <int DS> void ReadThenWrite<DS>::run(int me) {
 
       auto gen = [&]() { return slotdist(transgen); };
 
-      Transaction t;
+      Transaction& t = Transaction::get_transaction();
       nreads(*a, OPS - OPS*write_percent, t, gen);
       nwrites(*a, OPS*write_percent, t, gen);
 
@@ -406,7 +406,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
       bool used[ARRAY_SZ] = {false};
 #endif
 
-      Transaction t;
+      Transaction& t = Transaction::get_transaction();
       for (int j = 0; j < OPS; ++j) {
         int slot = slotdist(transgen);
 #if ALL_UNIQUE_SLOTS
@@ -545,7 +545,7 @@ template <int DS> void KingDelete<DS>::run(int me) {
   bool done = false;
   while (!done) {
     try {
-      Transaction t;
+      Transaction& t = Transaction::get_transaction();
       for (int i = 0; i < nthreads; ++i) {
         if (i != me) {
           Container<DS>::transDelete(*a, t, i);
@@ -595,7 +595,7 @@ template <int DS> void XorDelete<DS>::run(int me) {
     while (!done) {
       Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
       try {
-        Transaction t;
+        Transaction& t = Transaction::get_transaction();
         for (int j = 0; j < OPS; ++j) {
           int slot = slotdist(transgen);
           auto r = transgen();
@@ -647,7 +647,7 @@ template <int DS> void IsolatedWrites<DS>::run(int me) {
   bool done = false;
   while (!done) {
     try{
-    Transaction t;
+    Transaction& t = Transaction::get_transaction();
 
     for (int i = 0; i < nthreads; ++i) {
       a->transRead(t, i);
@@ -682,7 +682,7 @@ template <int DS> void BlindWrites<DS>::run(int me) {
   bool done = false;
   while (!done) {
     try{
-    Transaction t;
+    Transaction& t = Transaction::get_transaction();
 
     if (unval(a->transRead(t, 0)) == 0 || me == nthreads-1) {
       for (int i = 1; i < ARRAY_SZ; ++i) {
@@ -724,7 +724,7 @@ template <int DS> void InterferingRWs<DS>::run(int me) {
   bool done = false;
   while (!done) {
     try{
-    Transaction t;
+    Transaction& t = Transaction::get_transaction();
 
     for (int i = 0; i < ARRAY_SZ; ++i) {
       if ((i % nthreads) >= me) {
