@@ -16,7 +16,7 @@
 #define RCU 0
 #define ABORT_ON_WRITE_READ_CONFLICT 0
 
-#define READ_MY_WRITES 1
+#define READ_MY_WRITES 0
 
 #include "Debug_rcu.hh"
 
@@ -54,6 +54,7 @@ struct versioned_str_struct : public versioned_str {
   inline void set_value(const StringType& v) {
     auto *ret = this->replace(v.data(), v.length());
     // we should already be the proper size at this point
+    (void)ret;
     assert(ret == this);
   }
   
@@ -149,7 +150,7 @@ public:
           retval = e->read_value();
         } else {
           // TODO: should we refcount, copy, or...?
-          retval = item.template write_value<value_type>();
+          retval = (value_type&)item.template write_value<void*>();
         }
         return true;
       }
@@ -200,7 +201,7 @@ public:
       // we only need to check validity, not if the item has changed
       item.add_read(valid_check_only_bit);
       // same as inserts we need to store (copy) key so we can lookup to remove later
-      item.clear_write().template add_write<std::string>(key);
+      item.clear_write().add_write(pack(key));
       item.assign_flags(delete_bit);
       return found;
     } else {
@@ -259,7 +260,7 @@ public:
       }
       auto item = t.new_item(this, val);
       if (std::is_same<std::string, StringType>::value)
-        item.add_write(key);
+        item.add_write(pack(key));
       else
         // force a copy
         item.add_write(std::string(key));
@@ -453,7 +454,7 @@ public:
       // TODO: hashtable did this in afterC, we're doing this now, unclear really which is better
       // (if we do it now, we take more time while holding other locks, if we wait, we make other transactions abort more
       // from looking up an invalid node)
-      auto &s = item.template write_value<std::string>();
+      auto &s = (std::string&)item.template write_value<void*>();
       bool success = remove(Str(s));
       // no one should be able to remove since we hold the lock
       (void)success;
@@ -461,7 +462,7 @@ public:
       return;
     }
     if (!has_insert(item)) {
-      value_type& v = item.template write_value<value_type>();
+      value_type& v = (value_type&)item.template write_value<void*>();
       e->set_value(v);
     }
     // also marks valid if needed
@@ -471,13 +472,22 @@ public:
   void cleanup(TransItem& item, bool committed) {
       if (!committed && has_insert(item)) {
         // remove node
-        auto& stdstr = item.template write_value<std::string>();
+        auto& stdstr = (std::string&)item.template write_value<void*>();
         // does not copy
         Str s(stdstr);
         bool success = remove(s);
         (void)success;
         assert(success);
     }
+  }
+
+  template <typename ValType>
+  static inline void *pack(const ValType& value) {
+    void *placed_val = NULL;
+    // TODO: std::move?                                                                                                                                   
+    //     new (&placed_val) ValType(value);                                                                                                              
+    placed_val = *(void**)&value;
+    return placed_val;
   }
 
   bool remove(const Str& key, threadinfo_type& ti = mythreadinfo) {
@@ -581,6 +591,7 @@ private:
       cursor_type lp(table_, key);
       // TODO: not even trying to pass around threadinfo here
       bool found = lp.find_locked(*mythreadinfo.ti);
+      (void)found;
       assert(found);
       lp.value() = new_location;
       lp.finish(0, *mythreadinfo.ti);
@@ -593,9 +604,9 @@ private:
 #endif
     {
         if (new_location == e)
-            item.add_write(value);
+	    item.add_write(pack(value));
         else
-            t.new_item(this, new_location).add_write(value);
+            t.new_item(this, new_location).add_write(pack(value));
     }
   }
 
