@@ -21,14 +21,16 @@ public:
         unlock();
     }
 
-    inline void atomicRead(Version& v, T& val) {
+  inline void atomicRead(Transaction& t, Version& v, T& val) {
         Version v2;
         do {
-            v = s_.version();
+            v2 = s_.version();
+            if (Versioning::is_locked(v2))
+              t.abort();
             fence();
             val = s_.read_value();
             fence();
-            v2 = s_.version();
+            v = s_.version();
         } while (v != v2);
     }
 
@@ -39,7 +41,7 @@ public:
         else {
             Version v;
             T val;
-            atomicRead(v, val);
+            atomicRead(t, v, val);
             if (GenericSTM) {
                 Transaction::tid_type r_tid = Versioning::get_tid(v);
                 if (r_tid > t.start_tid() || (Versioning::is_locked(v) && !item.has_write()))

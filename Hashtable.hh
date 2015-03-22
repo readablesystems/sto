@@ -99,7 +99,7 @@ public:
       }
       Version elem_vers;
       // "atomic" read of both the current value and the version #
-      atomicRead(e, elem_vers, retval);
+      atomicRead(t, e, elem_vers, retval);
       // check both node changes and node deletes
       if (item.has_read((Version) valid_check_only_bit))
           item.clear_read();
@@ -564,14 +564,16 @@ private:
     inc_version(buck.version);
   }
 
-  void atomicRead(internal_elem *e, Version& vers, Value& val) {
+  void atomicRead(Transaction& t, internal_elem *e, Version& vers, Value& val) {
     Version v2;
     do {
-      vers = e->version;
+      v2 = e->version;
+      if (is_locked(v2))
+        t.abort();
       fence();
       val = e->value;
       fence();
-      v2 = e->version;
+      vers = e->version;
     } while (vers != v2);
   }
 
