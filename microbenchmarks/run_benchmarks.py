@@ -33,7 +33,7 @@ def build():
 		print "Built."
 
 def attach_args(nthreads, txlen, opacity):
-	args = [bm_exec, "3", "array"]
+	args = [bm_exec, "3", "array", "--ntrans=4000000"]
 	args.append("--nthreads=%d" % nthreads)
 	args.append("--opspertrans=%d" % txlen)
 	args.append("--opacity=%d" % opacity)
