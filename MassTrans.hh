@@ -157,7 +157,7 @@ public:
       }
 #endif
       Version elem_vers;
-      atomicRead(e, elem_vers, retval, max_read);
+      atomicRead(t, e, elem_vers, retval, max_read);
       if (item.has_read((Version) valid_check_only_bit))
           item.clear_read();
       item.add_read(elem_vers);
@@ -759,28 +759,22 @@ private:
     *v = cur;
   }
 
-  void atomicRead(versioned_value *e, Version& vers, value_type& val, size_t max_read = (size_t)-1) {
+  void atomicRead(Transaction& t, versioned_value *e, Version& vers, value_type& val, size_t max_read = (size_t)-1) {
     (void)max_read;
     Version v2;
-#if 1
-    vers = e->version();
-    auto str = e->read_value();
-    val.assign(str.data(), str.length());
-#else
     do {
-      do {
-        relax_fence();
-        vers = e->version();
-      } while (is_locked(vers));
-      fence();
-      // TODO: max_read
-      val = e->read_value();
-      fence();
       v2 = e->version();
+      if (is_locked(v2))
+	t.abort();
+      fence();
+      //val = e->read_value();
+      auto str = e->read_value();
+      val.assign(str.data(), str.length());
+      fence();
+      vers = e->version();
     } while (vers != v2);
-#endif
-   }
-
+}
+  
   static constexpr bool is_versioned_str() {
     return std::is_same<V, versioned_str>::value;
   }
