@@ -24,13 +24,13 @@ public:
   void unlock(TransItem&) {}
   bool check(const TransItem&, const Transaction&) { assert(0); return false; }
   void install(TransItem& item, TransactionTid) {
-    if (item.template write_value<int>() == alloc_flag)
+    if (item.write_value<int>() == alloc_flag)
       return;
-    void *ptr = item.template key<void*>();
-    Transaction::rcu_cleanup([ptr] () { free(ptr); });
+    void *ptr = item.key<void*>();
+    Transaction::rcu_free(ptr);
   }
   void cleanup(TransItem& item, bool committed) {
-    if (!committed && item.template write_value<int>() == alloc_flag)
-      free(item.template key<void*>());
+    if (!committed && item.write_value<int>() == alloc_flag)
+      free(item.key<void*>());
   }
 };

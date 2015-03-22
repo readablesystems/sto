@@ -32,16 +32,18 @@ public:
     unlock(i);
   }
 
-  inline void atomicRead(Key i, Version& v, Value& val) {
+  inline void atomicRead(Transaction& t, Key i, Version& v, Value& val) {
     Version v2;
     // if version stays the same across these reads then .val should match up with .version
     do {
-      v = data_[i].version;
+      v2 = data_[i].version;
+      if (is_locked(v2))
+        t.abort();
       fence();
       val = data_[i].val;
       fence();
       // make sure version didn't change after we read the value
-      v2 = data_[i].version;
+      v = data_[i].version;
     } while (v != v2);
   }
 
@@ -49,7 +51,7 @@ public:
     auto item = t.fresh_item(this, i);
     Version v;
     Value val;
-    atomicRead(i, v, val);
+    atomicRead(t, i, v, val);
     item.add_read(v);
     return val;
   }
@@ -66,7 +68,7 @@ public:
     } else {
       Version v;
       Value val;
-      atomicRead(i, v, val);
+      atomicRead(t, i, v, val);
       if (!item.has_read()) {
         item.add_read(v);
       }

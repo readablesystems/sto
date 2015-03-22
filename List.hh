@@ -263,7 +263,7 @@ public:
             head_ = cur->next;
         }
         if (Txnal) {
-          Transaction::rcu_cleanup([cur] () { free(cur); });
+          Transaction::rcu_free(cur);
         } else {
           free(cur);
         }
@@ -289,8 +289,10 @@ public:
     fence();
     Transaction::tid_type r_tid = ListVersioning::get_tid(listv);
     // assumes that a thread will not call this method holding the version lock.
-    if (r_tid > t.start_tid() || (ListVersioning::is_locked(listv)))
-        t.abort();
+    if (r_tid > t.start_tid() || (ListVersioning::is_locked(listv))) {
+       t.check_reads();
+       t.read_tid();	
+    }
     
   }
 

@@ -499,7 +499,7 @@ template <int DS, bool do_delete> bool RandomRWs<DS, do_delete>::check() {
       return false;
 
   typename Container<DS>::type* old = this->a;
-  typename Container<DS>::type ch;
+  typename Container<DS>::type& ch = *(new typename Container<DS>::type);
   this->a = &ch;
 
   // rerun transactions one-by-one
@@ -617,7 +617,7 @@ template <int DS> void XorDelete<DS>::run(int me) {
 
 template <int DS> bool XorDelete<DS>::check() {
   typename Container<DS>::type* old = this->a;
-  typename Container<DS>::type ch;
+  typename Container<DS>::type& ch = *(new typename Container<DS>::type);
   this->a = &ch;
   prepopulate_func(*this->a);
 
