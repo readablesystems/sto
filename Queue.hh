@@ -5,7 +5,7 @@
 #include "Transaction.hh"
 #include "VersionFunctions.hh"
 
-template <typename T, unsigned BUF_SIZE = 4096> 
+template <typename T, unsigned BUF_SIZE = 1000000> 
 class Queue: public Shared {
 public:
     Queue() : head_(0), tail_(0), tailversion_(0), headversion_(0) {}
@@ -30,8 +30,13 @@ public:
         head_ = (head_+1)%BUF_SIZE;
         return v;
     }
+
+    void reset() {
+        assert(head_ == tail_);
+        head_ = 0;
+        tail_ = 0;
+    }
    
-    // empty 
     bool empty() {
         return (head_ == tail_);
     }
