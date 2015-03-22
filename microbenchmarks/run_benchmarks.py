@@ -7,7 +7,7 @@ bm_prog = "concurrent"
 bm_exec = bm_dir + bm_prog
 
 opacity_names = ["no opacity", "TL2 opacity", "slow opacity"]
-scaling_txlens = [100, 150, 200, 250, 300, 500, 1000, 2000]
+scaling_txlens = [5, 10, 25, 50, 75, 100, 150, 200, 250, 300]
 fixed_txlen = 100
 nthreads_max = multiprocessing.cpu_count()
 
@@ -55,8 +55,15 @@ def extract_numbers(output):
 	numtx = int(re.split(" ", re.search("(?<=, )[0-9]* transactions", output).group(0))[0])
 	tx_starts = int(re.split(" ", re.search("(?<=\$ )[0-9]* starts", output).group(0))[0])
 	tx_commits = int(re.split(" ", re.search("(?<=, )[0-9]* commits", output).group(0))[0])
-	commit_aborts = int(re.split(" ", re.search("(?<=\$ )[0-9]* \(", output).group(0))[0])
-	tx_aborts = tx_starts - tx_aborts
+	tx_aborts = tx_starts - tx_commits
+	if tx_aborts > 0:
+		commit_aborts = int(re.split(" ", re.search("(?<=\$ )[0-9]* \(", output).group(0))[0])
+		abort_rate = float(tx_aborts) / float(tx_starts)
+		ct_abort_ratio = float(commit_aborts) / float(tx_aborts)
+	else:
+		commit_aborts = 0
+		abort_rate = 0.0
+		ct_abort_ratio = 0.0
 
 	results = dict()
 	results["time"] = time
@@ -66,18 +73,18 @@ def extract_numbers(output):
 	results["tx_commits"] = tx_commits
 	results["tx_aborts"] = tx_aborts
 	results["commit_aborts"] = commit_aborts
-	results["abort_rate"] = float(tx_aborts) / float(starts)
-	results["commit_time_abort_ratio"] = float(commit_aborts) / float(tx_aborts)
+	results["abort_rate"] = abort_rate
+	results["commit_time_abort_ratio"] = ct_abort_ratio
 
 	return results
 
 def getRecordKey(trail, nthreads, txlen, opacity):
 	return "%d/%d/%d/%d" % (trail, nthreads, txlen, opacity)
 
-def run_series(trail, txlen, opacity, records):
+def run_series(trail, txlen, opacity, records, start_nthreads):
 	assert opacity >= 0 and opacity <= 2
 
-	nthreads = 1
+	nthreads = start_nthreads
 
 	bm_stdout = "@@@ Running with %s, txlen %d. Trail #%d" % (opacity_names[opacity], txlen, trail)
 	print bm_stdout
@@ -102,7 +109,7 @@ def run_fix_txlen(repetitions, records, txlen):
 	combined_stdout = ""
 	for opacity in range(0,3):
 		for trail in range(0, repetitions):
-			combined_stdout += run_series(trail, txlen, opacity, records)
+			combined_stdout += run_series(trail, txlen, opacity, records, 1)
 
 	f = open("fixed_txlen_stdout.txt", "w")
 	f.write(combined_stdout)
@@ -114,7 +121,7 @@ def run_scale_txlen(repetitions, records):
 	combined_stdout = ""
 	for txlen in scaling_txlens:
 		for trail in range(0, repetitions):
-			combined_stdout += run_series(trail, txlen, 1, records)
+			combined_stdout += run_series(trail, txlen, 1, records, 16)
 
 	f = open("scale_txlen_stdout.txt", "w")
 	f.write(combined_stdout)
@@ -145,15 +152,19 @@ def main(argc, argv):
 	if mode <= 0 or mode > 3:
 		mode = 3
 
+	build()
+
 	records = dict()
+
+	f = open("experiment_data.json", "w")
 
 	if mode & 0x1 != 0:
 		run_fix_txlen(repetitions, records, fixed_txlen)
+		f.write(json.dumps(records))
 	if mode & 0x2 != 0:
 		run_scale_txlen(repetitions, records)
+		f.write(json.dumps(records))
 
-	f = open("experiment_data.json", "w")
-	f.write(json.dumps(records))
 	f.close()
 
 if __name__ == "__main__":
