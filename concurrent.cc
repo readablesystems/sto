@@ -20,8 +20,6 @@
 // size of the key space)
 #define ARRAY_SZ 1000000
 
-#define QUEUE_SZ 4096
-
 #define USE_ARRAY 0
 #define USE_HASHTABLE 1
 #define USE_MASSTREE 2
@@ -173,7 +171,7 @@ template <> struct Container<USE_HASHTABLE> : public ContainerBase_maplike {
     typedef Hashtable<int, value_type, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
 };
 
-typedef Queue<value_type, QUEUE_SZ> QueueType;
+typedef Queue<value_type, ARRAY_SZ> QueueType;
 QueueType* q;
 QueueType* q2;
 
@@ -182,12 +180,7 @@ bool runCheck = false;
 int nthreads = 4;
 int ntrans = 1000000;
 int opspertrans = 10;
-int prepopulate = 
-#if DATA_STRUCTURE == 5
-    QUEUE_SZ/2;
-#else
-    ARRAY_SZ/10;
-#endif
+int prepopulate = ARRAY_SZ/10;
 double write_percent = 0.5;
 bool blindRandomWrite = false;
 
@@ -256,10 +249,8 @@ void prepopulate_func(int *array) {
 #if DATA_STRUCTURE == 5
 // FUNCTIONS FOR QUEUE
 void prepopulate_func() {
-  for (int i = 0; i < prepopulate; ++i) {
-    Transaction t;
-    q->transPush(t, val(i));
-    t.commit();
+  for (int i = 0; i < prepopulate*10; ++i) {
+    q->push(val(i));
   }
 }
 
@@ -810,11 +801,14 @@ void Qxordeleterun(int me) {
       try {
         Transaction t;
         for (int j = 0; j < OPS; ++j) {
-          value_type v = val(1);
-          if (!q->transPop(t)) {
+          value_type v = val(j);
+          value_type u;
+          if (!q->transFront(t, u)) {
             // we pop if the q is nonempty, push if it's empty
             q->transPush(t, v);
           }
+          else
+              q->transPop(t);
         }
         if (t.commit())
             break;
@@ -825,10 +819,11 @@ void Qxordeleterun(int me) {
 
 bool Qxordeletecheck() {
   QueueType* old = q;
-  QueueType ch;
+  QueueType& ch =  *(new QueueType);
   q = &ch;
 
   empty_func();
+  q->reset();
   prepopulate_func();
   
   for (int i = 0; i < nthreads; ++i) {
@@ -871,6 +866,7 @@ void Qtransferrun(int me) {
 bool Qtransfercheck() {
   // restore q to prepopulated state
   empty_func();
+  q->reset();
   prepopulate_func();
 
   // check if q2 and q are equivalent
@@ -912,7 +908,6 @@ void qstartAndWait(int n, void*(*runfunc)(void*)) {
     pthread_join(tids[i], NULL);
   }
 }
-
 #endif
 
 struct TesterPair {
@@ -1081,12 +1076,15 @@ int main(int argc, char *argv[]) {
     QueueType stack_q2;
     q = &stack_q;
     q2 = &stack_q2;
+    
     empty_func();
+    q->reset();
     prepopulate_func();    
     qstartAndWait(nthreads, xorrunfunc);
     assert(Qxordeletecheck());
-
+    
     empty_func();
+    q->reset();
     prepopulate_func();
     qstartAndWait(nthreads, transferrunfunc);
     assert(Qtransfercheck());
