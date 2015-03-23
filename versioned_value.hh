@@ -1,6 +1,7 @@
 #pragma once
 #include <iostream>
 
+#include "masstree-beta/kvthread.hh"
 
 template <typename T, typename=void>
 struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
@@ -35,6 +36,10 @@ struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
   
   inline version_type& version() {
     return version_;
+  }
+
+  inline void deallocate_rcu(threadinfo& ti) {
+    ti.deallocate_rcu(this, sizeof(versioned_value_struct), memtag_value);
   }
 
 #if 0
@@ -86,6 +91,10 @@ public:
 
   version_type& version() {
     return version_;
+  }
+
+  inline void deallocate_rcu(threadinfo& ti) {
+    ti.deallocate_rcu(this, sizeof(versioned_value_struct), memtag_value);
   }
   
 private:

@@ -13,10 +13,10 @@
 #include "versioned_value.hh"
 #include "stuffed_str.hh"
 
-#define RCU 0
+#define RCU 1
 #define ABORT_ON_WRITE_READ_CONFLICT 0
 
-#define READ_MY_WRITES 0
+#define READ_MY_WRITES 1
 
 #include "Debug_rcu.hh"
 
@@ -66,6 +66,10 @@ struct versioned_str_struct : public versioned_str {
   inline version_type& version() {
     return stuff();
   }
+
+  inline void deallocate_rcu(threadinfo& ti) {
+    ti.deallocate_rcu(this, this->capacity() + sizeof(versioned_str_struct), memtag_value);
+  }
 };
 
 template <typename V, typename Box = versioned_value_struct<V>>
@@ -107,7 +111,14 @@ public:
     // but doesn't seem to be possible
   }
 
-  void thread_init() {
+  static void static_init() {
+    Transaction::epoch_advance_callback = [] (unsigned) {
+      // just advance blindly because of the way Masstree uses epochs
+      globalepoch++;
+    };
+  }
+
+  static void thread_init() {
 #if !RCU
     mythreadinfo.ti = new threadinfo;
     return;
@@ -182,7 +193,7 @@ public:
           return false;
         }
         // otherwise this is an insert-then-delete
-	item.clear_flags(insert_bit);
+	// has_insert() is used all over the place so we just keep that flag set
         item.add_flags(delete_bit);
         // key is already in write data since this used to be an insert
         return true;
@@ -530,9 +541,8 @@ public:
   bool remove(const Str& key, threadinfo_type& ti = mythreadinfo) {
     cursor_type lp(table_, key);
     bool found = lp.find_locked(*ti.ti);
-    //    ti.ti->rcu_register(lp.value());
+    lp.value()->deallocate_rcu(*ti.ti);
     lp.finish(found ? -1 : 0, *ti.ti);
-    // rcu the value
     return found;
   }
 
@@ -634,6 +644,7 @@ private:
       lp.value() = new_location;
       lp.finish(0, *mythreadinfo.ti);
       // now rcu free "e"
+      e->deallocate_rcu(*mythreadinfo.ti);
     }
 #if READ_MY_WRITES
     if (has_insert(item)) {
@@ -669,7 +680,7 @@ private:
       // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
       // if user can't read v#)
       if (INSERT) {
-        item.assign_flags(0);
+        item.clear_flags(delete_bit);
         assert(!has_delete(item));
         reallyHandlePutFound<CopyVals>(t, item, e, key, value);
       } else {
