@@ -10,7 +10,7 @@
 #include <iostream>
 
 
-#define PERF_LOGGING 1
+#define PERF_LOGGING 0
 #define DETAILED_LOGGING 0
 #define ASSERT_TX_SIZE 0
 
@@ -83,16 +83,13 @@ struct __attribute__((aligned(128))) threadinfo_t {
   local_vector<std::pair<unsigned, void*>, 8> needs_free;
   std::function<void(void)> trans_start_callback;
   std::function<void(void)> trans_end_callback;
-#if PERF_LOGGING
   uint64_t p_[txp_count];
-#endif
   threadinfo_t() : epoch(), spin_lock() {
 #if PERF_LOGGING
       for (int i = 0; i != txp_count; ++i)
           p_[i] = 0;
 #endif
   }
-#if PERF_LOGGING
   static bool p_is_max(int p) {
       return p == txp_max_set;
   }
@@ -118,7 +115,6 @@ struct __attribute__((aligned(128))) threadinfo_t {
               p_[p] = n;
       }
   }
-#endif
 };
 
 
@@ -247,13 +243,10 @@ public:
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static unsigned global_epoch;
-#if PERF_LOGGING
   static __thread Transaction* __transaction;
-#endif
   typedef TransactionTid tid_type;
   static tid_type _TID;
 
-#if PERF_LOGGING
   static Transaction& get_transaction() {
     if (!__transaction)
       __transaction = new Transaction();
@@ -261,11 +254,9 @@ public:
       __transaction->reset();
     return *__transaction;
   }
-#endif
 
   static std::function<void(unsigned)> epoch_advance_callback;
 
-#if PERF_LOGGING
   static threadinfo_t tinfo_combined() {
     threadinfo_t out;
     for (int i = 0; i != MAX_THREADS; ++i) {
@@ -276,7 +267,6 @@ public:
   }
 
   static void print_stats();
-#endif
 
 
   static void acquire_spinlock(unsigned& spin_lock) {
