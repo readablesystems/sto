@@ -27,21 +27,6 @@ void queueTests() {
         // ensure pops read pushes in FIFO order
         Transaction t;
         // q is empty
-<<<<<<< HEAD
-=======
-        q.transPush(t, 1);
-        q.transPush(t, 2);
-        assert(q.transFront(t, p) && p == 1);
-        assert(q.transPop(t));
-        assert(q.transFront(t, p) && p == 2);
-        assert(q.transPop(t));
-        assert(t.commit());
-    }    
-    
-    {
-        Transaction t;
-        // q is empty
->>>>>>> master
         q.transPush(t, 1);
         q.transPush(t, 2);
         assert(q.transFront(t, p) && p == 1); assert(q.transPop(t)); assert(q.transFront(t, p) && p == 2);
@@ -842,12 +827,6 @@ int main() {
   stringKeyTests();
 
   linkedListTests();
-<<<<<<< HEAD
-
-  queueTests();
-=======
   
   queueTests();
-  
->>>>>>> master
 }
