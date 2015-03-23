@@ -243,6 +243,7 @@ public:
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static unsigned global_epoch;
+  static bool run_epochs;
   static __thread Transaction* __transaction;
   typedef TransactionTid::type tid_type;
 private:
@@ -287,8 +288,9 @@ public:
   }
 
   static void* epoch_advancer(void*) {
-    while (1) {
-      usleep(100000);
+    // don't bother epoch'ing til things have picked up
+    usleep(100000);
+    while (run_epochs) {
       auto g = global_epoch;
       for (auto&& t : tinfo) {
         if (t.epoch != 0 && t.epoch < g)
@@ -332,6 +334,7 @@ public:
         release_spinlock(t.spin_lock);
       }
     }
+    usleep(100000);
     return NULL;
   }
 
