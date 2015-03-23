@@ -13,8 +13,8 @@ public:
     typedef uint32_t Version;
     typedef VersionFunctions<Version> QueueVersioning;
     
-    static constexpr Version delete_bit = 1<<0;
-    static constexpr Version read_writes = 1<<3;
+    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;
+    static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<1;
 
     // NONTRANSACTIONAL PUSH/POP/EMPTY
     void push(T v) {
@@ -67,7 +67,7 @@ public:
                         // if there is an element to be pushed on the queue, return addr of queue element
                         if (!write_list.empty()) {
                             write_list.pop_front();
-                            item.or_flags(read_writes);
+                            item.add_flags(read_writes);
                             return true;
                         }
                         else return false;
@@ -88,7 +88,7 @@ public:
             lockitem.add_read(headversion_);
             lockitem.add_write(0);
         }
-        item.or_flags(delete_bit);
+        item.add_flags(delete_bit);
         item.add_write(0);
         return true;
     }
@@ -140,12 +140,12 @@ public:
     }
     
 private:
-    bool has_delete(TransItem& item) {
+    bool has_delete(const TransItem& item) {
         return item.flags() & delete_bit;
     }
     
-    bool is_rw(TransItem& item) {
-        return item.has_flags(read_writes);
+    bool is_rw(const TransItem& item) {
+        return item.flags() & read_writes;
     }
 
     void lock(Version& v) {
@@ -186,7 +186,7 @@ private:
         }
     }
 
-    void install(TransItem& item, uint32_t tid) {
+    void install(TransItem& item, const Transaction& t) {
 	    // ignore lock_headversion marker item
         if (item.key<int>() == -2)
             return;

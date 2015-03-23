@@ -31,7 +31,7 @@ void queueTests() {
         q.transPush(t, 2);
         assert(q.transFront(t, p) && p == 1); assert(q.transPop(t)); assert(q.transFront(t, p) && p == 2);
         assert(q.transPop(t));
-        assert(t.commit());
+        assert(t.try_commit());
     }    
     
     {
@@ -39,7 +39,7 @@ void queueTests() {
         // q is empty
         q.transPush(t, 1);
         q.transPush(t, 2);
-        assert(t.commit());
+        assert(t.try_commit());
     }
 
     {
@@ -49,7 +49,7 @@ void queueTests() {
         assert(p == 1);
         assert(q.transFront(t, p));
         assert(p == 1);
-        assert(t.commit());
+        assert(t.try_commit());
     }
 
     {
@@ -63,7 +63,7 @@ void queueTests() {
         q.transPush(t, 1);
         q.transPush(t, 2);
         q.transPush(t, 3); 
-        assert(t.commit());
+        assert(t.try_commit());
     }
 
     {
@@ -84,7 +84,7 @@ void queueTests() {
         q.transPush(t, 1);
         q.transPush(t, 2);
         q.transPush(t, 3);  
-        assert(t.commit());
+        assert(t.try_commit());
     }
 
     {
@@ -97,7 +97,7 @@ void queueTests() {
         q.transPush(t,4);
         assert(q.transFront(t, p));
         assert(p == 1);
-        assert(t.commit());
+        assert(t.try_commit());
     }
 
     {
@@ -136,7 +136,6 @@ void queueTests() {
         assert(p == 1);
         assert(q.transFront(t, p));
         assert(p == 1);
-        assert(t.commit());
         assert(t.try_commit());
     }
 
@@ -153,7 +152,7 @@ void queueTests() {
         q.transPush(t, 1);
         assert(q.transPop(t));
         assert(!q.transPop(t));
-        assert(t.commit());
+        assert(t.try_commit());
     }
 
     {
@@ -176,7 +175,7 @@ void queueTests() {
         q.transPush(t, 1);
         q.transPush(t, 2);
 
-        assert(t.commit());
+        assert(t.try_commit());
     }
 
     // CONFLICTING TRANSACTIONS TEST
@@ -187,11 +186,8 @@ void queueTests() {
         // q has >1 element
         assert(q.transPop(t1));
         assert(q.transPop(t2));
-        assert(t1.commit());
-        try {
-          t2.commit();
-          assert(0); // shouldn't reach here since commit should fail
-        } catch (Transaction::Abort E) {}
+        assert(t1.try_commit());
+        assert(!t2.try_commit());
     }
 
     {
@@ -201,13 +197,13 @@ void queueTests() {
         // q has >1 element
         assert(q.transPop(t1));
         q.transPush(t2, 3);
-        assert(t1.commit());
-        assert(t2.commit()); // commit should succeed 
+        assert(t1.try_commit());
+        assert(t2.try_commit()); // commit should succeed 
 
         assert(q.transFront(t1, p) && p == 3);
         assert(q.transPop(t1));
         assert(!q.transPop(t1));
-        assert(t1.commit());
+        assert(t1.try_commit());
     }
 
     {
@@ -225,11 +221,8 @@ void queueTests() {
         // read-my-write, lock tail
         assert(q.transPop(t2));
         
-        assert(t1.commit());
-        try {
-          t2.commit();
-          assert(0); // shouldn't reach here since commit should fail
-        } catch (Transaction::Abort E) {}
+        assert(t1.try_commit());
+        assert(!t2.try_commit());
     }
 
     {
@@ -248,8 +241,8 @@ void queueTests() {
 
         q.transPush(t2, 3);
         // order of pushes doesn't matter, commits succeed
-        assert(t2.commit());
-        assert(t1.commit());
+        assert(t2.try_commit());
+        assert(t1.try_commit());
 
         // check if q is in order
         assert(q.transPop(t1));
@@ -260,7 +253,7 @@ void queueTests() {
         assert(p == 4);
         assert(q.transPop(t1));
         assert(!q.transPop(t1));
-        assert(t1.commit());
+        assert(t1.try_commit());
     }
 
     {
@@ -368,11 +361,7 @@ void insertDeleteTest(bool shouldAbort) {
     Transaction t3;
     assert(h.transInsert(t3, 26, 27));
     assert(t3.try_commit());
-
-    try {
-      t2.commit();
-      assert(0);
-    } catch (Transaction::Abort E) {}
+    assert(!t2.try_commit());
   } else
     assert(t2.try_commit());
 }
@@ -393,11 +382,7 @@ void insertDeleteSeparateTest() {
   assert(h.transInsert(t2, 12, 13));
   assert(h.transDelete(t2, 10));
   assert(t2.try_commit());
-  
-  try {
-    t.commit();
-    assert(0);
-  } catch (Transaction::Abort E) {}
+  assert(!t.try_commit());
 
 
   Transaction t3;
@@ -409,11 +394,7 @@ void insertDeleteSeparateTest() {
   assert(h.transDelete(t4, 11));
   assert(h.transDelete(t4, 12));
   assert(t4.try_commit());
-
-  try {
-    t3.commit();
-    assert(0);
-  } catch (Transaction::Abort E) {}
+  assert(!t3.try_commit());
 
 }
 
@@ -512,10 +493,7 @@ void basicMapTests(MapType& h) {
   assert(h.transInsert(t8, 2, 2));
   assert(t8.try_commit());
 
-  try {
-    t7.commit();
-    assert(0);
-  } catch(Transaction::Abort E) {}
+  assert(!t7.try_commit());
 
   Transaction t9;
   assert(h.transInsert(t9, 3, 0));
@@ -580,10 +558,7 @@ void basicMapTests(MapType& h) {
   assert(h.transUpdate(t17, 3, 17));
   assert(h.transDelete(t18, 3));
   assert(t18.try_commit());
-  try {
-    t17.commit();
-    assert(0);
-  } catch (Transaction::Abort E) {}
+  assert(!t17.try_commit());
 
   basicQueryTests(h);
 }

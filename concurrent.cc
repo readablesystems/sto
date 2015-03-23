@@ -789,7 +789,7 @@ void Qxordeleterun(int me) {
           else
               q->transPop(t);
         }
-        if (t.commit())
+        if (t.try_commit())
             break;
       } catch (Transaction::Abort E) {}
     }
@@ -834,7 +834,7 @@ void Qtransferrun(int me) {
             q2->transPush(t, v);
           }
         }
-        if (t.commit())
+        if (t.try_commit())
             break;
       } catch (Transaction::Abort E) {}
     }
