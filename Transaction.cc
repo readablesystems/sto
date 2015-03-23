@@ -3,7 +3,10 @@
 threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int Transaction::threadid;
 unsigned Transaction::global_epoch;
+//TODO: fix this
+#if PERF_LOGGING
 __thread Transaction *Transaction::__transaction;
+#endif
 std::function<void(unsigned)> Transaction::epoch_advance_callback;
 Transaction::tid_type Transaction::_TID;
 
@@ -11,6 +14,7 @@ static void __attribute__((used)) check_static_assertions() {
     static_assert(sizeof(threadinfo_t) % 128 == 0, "threadinfo is 2-cache-line aligned");
 }
 
+#if PERF_LOGGING
 void Transaction::print_stats() {
     threadinfo_t out = tinfo_combined();
     if (txp_count >= 4) {
@@ -30,6 +34,7 @@ void Transaction::print_stats() {
         fprintf(stderr, "\n");
     }
 }
+#endif
 
 void TransactionBuffer::hard_clear(bool delete_all) {
     while (e_ && e_->next) {

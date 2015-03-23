@@ -54,6 +54,7 @@ struct versioned_str_struct : public versioned_str {
   inline void set_value(const StringType& v) {
     auto *ret = this->replace(v.data(), v.length());
     // we should already be the proper size at this point
+    (void)ret;
     assert(ret == this);
   }
   
@@ -126,7 +127,7 @@ public:
   }
 
   template <typename ValType>
-  bool transGet(Transaction& t, Str key, ValType& retval, size_t max_read = (size_t)-1, threadinfo_type& ti = mythreadinfo) {
+  bool transGet(Transaction& t, Str key, ValType& retval, threadinfo_type& ti = mythreadinfo) {
     unlocked_cursor_type lp(table_, key);
     bool found = lp.find_unlocked(*ti.ti);
     if (found) {
@@ -146,16 +147,19 @@ public:
       if (item.has_write()) {
         // read directly from the element if we're inserting it
         if (has_insert(item)) {
-          retval = e->read_value();
+	  get_val(retval, e);
         } else {
-          // TODO: should we refcount, copy, or...?
-          retval = item.template write_value<value_type>();
+	  if (item.flags() & copyvals_bit)
+	    retval = item.template write_value<value_type>();
+	  else
+	    // TODO: should we refcount, copy, or...?
+	    retval = (value_type&)item.template write_value<void*>();
         }
         return true;
       }
 #endif
       Version elem_vers;
-      atomicRead(e, elem_vers, retval, max_read);
+      atomicRead(t, e, elem_vers, retval);
       if (item.has_read((Version) valid_check_only_bit))
           item.clear_read();
       item.add_read(elem_vers);
@@ -165,8 +169,8 @@ public:
     return found;
   }
 
-  template <typename StringType>
-  bool transDelete(Transaction& t, StringType key, threadinfo_type& ti = mythreadinfo) {
+  template <bool CopyVals = true, typename StringType>
+  bool transDelete(Transaction& t, StringType& key, threadinfo_type& ti = mythreadinfo) {
     unlocked_cursor_type lp(table_, key);
     bool found = lp.find_unlocked(*ti.ti);
     if (found) {
@@ -180,7 +184,8 @@ public:
           return false;
         }
         // otherwise this is an insert-then-delete
-        item.assign_flags(delete_bit);
+	item.clear_flags(insert_bit);
+        item.add_flags(delete_bit);
         // key is already in write data since this used to be an insert
         return true;
       } else 
@@ -200,8 +205,15 @@ public:
       // we only need to check validity, not if the item has changed
       item.add_read(valid_check_only_bit);
       // same as inserts we need to store (copy) key so we can lookup to remove later
-      item.clear_write().template add_write<std::string>(key);
-      item.assign_flags(delete_bit);
+      item.clear_write();
+      if (std::is_same<const std::string, const StringType>::value) {
+	if (CopyVals)
+	  item.add_write(key).add_flags(copyvals_bit);
+	else
+	  item.add_write(pack(key));
+      } else
+	item.add_write(std::string(key)).add_flags(copyvals_bit);
+      item.add_flags(delete_bit);
       return found;
     } else {
       ensureNotFound(t, lp.node(), lp.full_version_value());
@@ -209,14 +221,14 @@ public:
     }
   }
 
-  template <bool INSERT = true, bool SET = true, typename StringType>
-  bool transPut(Transaction& t, StringType key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
+  template <bool CopyVals = true, bool INSERT = true, bool SET = true, typename StringType>
+  bool transPut(Transaction& t, StringType& key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
     // optimization to do an unlocked lookup first
     if (SET) {
       unlocked_cursor_type lp(table_, key);
       bool found = lp.find_unlocked(*ti.ti);
       if (found) {
-        return handlePutFound<INSERT, SET>(t, lp.value(), key, value);
+        return handlePutFound<CopyVals, INSERT, SET>(t, lp.value(), key, value);
       } else {
         if (!INSERT) {
           ensureNotFound(t, lp.node(), lp.full_version_value());
@@ -230,7 +242,7 @@ public:
     if (found) {
       versioned_value *e = lp.value();
       lp.finish(0, *ti.ti);
-      return handlePutFound<INSERT, SET>(t, e, key, value);
+      return handlePutFound<CopyVals, INSERT, SET>(t, e, key, value);
     } else {
       //      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
       versioned_value* val = (versioned_value*)versioned_value::make(value, invalid_bit);
@@ -258,24 +270,30 @@ public:
 #endif
       }
       auto item = t.new_item(this, val);
-      if (std::is_same<std::string, StringType>::value)
-        item.add_write(key);
-      else
+      if (std::is_same<const std::string, const StringType>::value) {
+	if (CopyVals)
+	  item.add_write(key).add_flags(copyvals_bit);
+	else
+	  item.add_write(pack(key));
+      } else
         // force a copy
-        item.add_write(std::string(key));
+	// technically a user could request CopyVals=false and pass non-std::string keys
+	// but we don't support that
+        item.add_write(std::string(key)).add_flags(copyvals_bit);
+
       item.add_flags(insert_bit);
       return found;
     }
   }
 
-  template <typename StringType>
-  bool transUpdate(Transaction& t, StringType k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
-    return transPut</*insert*/false, /*set*/true>(t, k, v, ti);
+  template <bool CopyVals = true, typename StringType>
+  bool transUpdate(Transaction& t, StringType& k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
+    return transPut<CopyVals, /*insert*/false, /*set*/true>(t, k, v, ti);
   }
 
-  template <typename StringType>
-  bool transInsert(Transaction& t, StringType k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
-    return !transPut</*insert*/true, /*set*/false>(t, k, v, ti);
+  template <bool CopyVals = true, typename StringType>
+  bool transInsert(Transaction& t, StringType& k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
+    return !transPut<CopyVals, /*insert*/true, /*set*/false>(t, k, v, ti);
   }
 
 
@@ -453,7 +471,9 @@ public:
       // TODO: hashtable did this in afterC, we're doing this now, unclear really which is better
       // (if we do it now, we take more time while holding other locks, if we wait, we make other transactions abort more
       // from looking up an invalid node)
-      auto &s = item.template write_value<std::string>();
+      auto &s = item.flags() & copyvals_bit ? 
+	item.template write_value<std::string>()
+	: (std::string&)item.template write_value<void*>();
       bool success = remove(Str(s));
       // no one should be able to remove since we hold the lock
       (void)success;
@@ -461,7 +481,9 @@ public:
       return;
     }
     if (!has_insert(item)) {
-      value_type& v = item.template write_value<value_type>();
+      value_type& v = item.flags() & copyvals_bit ?
+	item.template write_value<value_type>()
+	: (value_type&)item.template write_value<void*>();
       e->set_value(v);
     }
     // also marks valid if needed
@@ -471,13 +493,22 @@ public:
   void cleanup(TransItem& item, bool committed) {
       if (!committed && has_insert(item)) {
         // remove node
-        auto& stdstr = item.template write_value<std::string>();
+        auto& stdstr = item.flags() & copyvals_bit ?
+	  item.template write_value<std::string>()
+	  : (std::string&)item.template write_value<void*>();
         // does not copy
         Str s(stdstr);
         bool success = remove(s);
         (void)success;
         assert(success);
     }
+  }
+
+  template <typename ValType>
+  static inline void *pack(const ValType& value) {
+    assert(sizeof(ValType) <= sizeof(void*));
+    void *placed_val = *(void**)&value;
+    return placed_val;
   }
 
   bool remove(const Str& key, threadinfo_type& ti = mythreadinfo) {
@@ -550,6 +581,7 @@ public:
 
 private:
   // called once we've checked our own writes for a found put()
+  template <bool CopyVals = true>
   void reallyHandlePutFound(Transaction& t, TransProxy& item, versioned_value *e, Str key, const value_type& value) {
     // resizing takes a lot of effort, so we first check if we'll need to
     // (values never shrink in size, so if we don't need to resize, we'll never need to)
@@ -581,6 +613,7 @@ private:
       cursor_type lp(table_, key);
       // TODO: not even trying to pass around threadinfo here
       bool found = lp.find_locked(*mythreadinfo.ti);
+      (void)found;
       assert(found);
       lp.value() = new_location;
       lp.finish(0, *mythreadinfo.ti);
@@ -592,16 +625,23 @@ private:
     } else
 #endif
     {
-        if (new_location == e)
-            item.add_write(value);
-        else
-            t.new_item(this, new_location).add_write(value);
+      if (new_location == e) {
+	if (CopyVals)
+	  item.add_write(value).add_flags(copyvals_bit);
+	else
+	  item.add_write(pack(value));
+      } else {
+	if (CopyVals)
+	  t.new_item(this, new_location).add_write(value).add_flags(copyvals_bit);
+	else
+	  t.new_item(this, new_location).add_write(pack(value));
+      }
     }
   }
 
   // returns true if already in tree, false otherwise
   // handles a transactional put when the given key is already in the tree
-  template <bool INSERT=true, bool SET=true>
+  template <bool CopyVals = true, bool INSERT=true, bool SET=true>
   bool handlePutFound(Transaction& t, versioned_value *e, Str key, const value_type& value) {
     auto item = t_item(t, e);
     if (!validityCheck(item, e)) {
@@ -615,7 +655,7 @@ private:
       if (INSERT) {
         item.assign_flags(0);
         assert(!has_delete(item));
-        reallyHandlePutFound(t, item, e, key, value);
+        reallyHandlePutFound<CopyVals>(t, item, e, key, value);
       } else {
         // delete-then-update == not found
         // delete will check for other deletes so we don't need to re-log that check
@@ -629,7 +669,7 @@ private:
       item.add_read(valid_check_only_bit);
     }
     if (SET) {
-      reallyHandlePutFound(t, item, e, key, value);
+      reallyHandlePutFound<CopyVals>(t, item, e, key, value);
     }
     return true;
   }
@@ -645,6 +685,7 @@ private:
 
   template <typename NODE, typename VERSION>
   bool updateNodeVersion(Transaction& t, NODE *node, VERSION prev_version, VERSION new_version) {
+    (void)t, (void)node, (void)prev_version, (void)new_version;
 #if READ_MY_WRITES
     if (auto node_item = t.check_item(this, tag_inter(node))) {
       if (node_item->has_read() &&
@@ -695,8 +736,9 @@ private:
 
   static constexpr uintptr_t internode_bit = 1<<0;
 
-    static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
-    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
+  static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
+  static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
+  static constexpr TransItem::flags_type copyvals_bit = TransItem::user0_bit<<2;
 
   template <typename T>
   static T* tag_inter(T* p) {
@@ -743,24 +785,27 @@ private:
     *v = cur;
   }
 
-  void atomicRead(versioned_value *e, Version& vers, value_type& val, size_t max_read = (size_t)-1) {
-    (void)max_read;
+  void atomicRead(Transaction& t, versioned_value *e, Version& vers, value_type& val) {
     Version v2;
     do {
-      do {
-        relax_fence();
-        vers = e->version();
-      } while (is_locked(vers));
-      fence();
-      // TODO: max_read
-      val = e->read_value();
-      fence();
       v2 = e->version();
+      if (is_locked(v2))
+	t.abort();
+      fence();
+      get_val(val, e);
+      fence();
+      vers = e->version();
+      fence();
     } while (vers != v2);
-   }
+  }
 
-  static constexpr bool is_versioned_str() {
-    return std::is_same<V, versioned_str>::value;
+  template <typename ValType>
+  void get_val(ValType& val, versioned_value *e) {
+    val = e->read_value();
+  }
+  void get_val(std::string& val, versioned_value *e) {
+    auto str = (Str)e->read_value();
+    val.assign(str.data(), str.length());
   }
 
   struct table_params : public Masstree::nodeparams<15,15> {
