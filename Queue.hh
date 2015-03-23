@@ -55,7 +55,7 @@ public:
         auto item = t.item(this, index);
 
         while (1) {
-           if (index == tail_) { 
+           if (index == tail_) {
                Version tv = tailversion_;
                fence();
                 // if someone has pushed onto tail, can successfully do a front read, so don't read our own writes
@@ -87,8 +87,8 @@ public:
         auto lockitem = t.item(this, -2);
         if (!lockitem.has_read()) {
             lockitem.add_read(hv);
-            lockitem.add_write(0);
         }
+        lockitem.add_write(0);
         item.add_flags(delete_bit);
         item.add_write(0);
         return true;
@@ -130,7 +130,6 @@ public:
         auto lockitem = t.item(this, -2);
         if (!lockitem.has_read()) {
             lockitem.add_read(hv);
-            lockitem.add_write(0);
         }  
         val = queueSlots[index];
         return true;
@@ -173,14 +172,16 @@ private:
         // check if was a pop or front 
         if (item.key<int>() == -2) {
             auto hv = headversion_;
-            return QueueVersioning::versionCheck(hv, item.template read_value<Version>()) || (!QueueVersioning::is_locked(hv) && !has_delete(item));
+            return QueueVersioning::versionCheck(hv, item.template read_value<Version>()) && (!QueueVersioning::is_locked(hv) || item.has_write());
         }
 
         // check if we read off the write_list (and locked tailversion)
         else if (item.key<int>() == -1) {
             auto tv = tailversion_;
-            return QueueVersioning::versionCheck(tv, item.template read_value<Version>());
+            return QueueVersioning::versionCheck(tv, item.template read_value<Version>()) && (!QueueVersioning::is_locked(tv) || item.has_write());
         }
+        // shouldn't reach this
+        assert(0);
         return false;
     }
 
@@ -196,7 +197,7 @@ private:
             QueueVersioning::inc_version(headversion_);
         }
         // install pushes
-        else {
+        else if (item.key<int>() == -1) {
             auto& write_list = item.template write_value<std::list<T>>();
             auto head_index = head_;
             // write all the elements
