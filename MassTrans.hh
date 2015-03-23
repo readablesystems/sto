@@ -322,9 +322,7 @@ public:
     };
     auto value_callback = [&] (Str key, versioned_value* value) {
       // TODO: this needs to read my writes
-      auto item = this->t_read_only_item(t, value);
-      if (!item.has_read())
-        item.add_read(value->version());
+      this->t_read_only_item(t, value).add_read(value->version());
       return query_callback_overload(key, value, callback);
     };
 
@@ -338,9 +336,7 @@ public:
       this->ensureNotFound(t, node, version);
     };
     auto value_callback = [&] (Str key, versioned_value* value) {
-      auto item = this->t_read_only_item(t, value);
-      if (!item.has_read())
-        item.add_read(value->version());
+      this->t_read_only_item(t, value).add_read(value->version());
       return query_callback_overload(key, value, callback);
     };
 

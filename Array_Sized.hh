@@ -30,8 +30,7 @@ public:
       //atomicRead(i, v, val);
       Version v = arr_[i].version();
       fence();
-      if (!item.has_read())
-        t.add_read(item, v);
+      t.add_read(item, v);
       // TODO: nothing close to opacity here, but probably faster
       return arr_[i].read_value();
     }

@@ -69,9 +69,7 @@ public:
       Version v;
       Value val;
       atomicRead(t, i, v, val);
-      if (!item.has_read()) {
-        item.add_read(v);
-      }
+      item.add_read(v);
       return val;
     }
   }
