@@ -175,7 +175,6 @@ private:
   
     bool check(TransItem& item, Transaction& t) {
         (void) t;
-        // XXX: not great for performance to read both of these always
         // check if was a pop or front 
         if (item.key<int>() == -2) {
             auto hv = headversion_;
