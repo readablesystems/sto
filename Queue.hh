@@ -43,8 +43,12 @@ public:
             if (!is_list(item)) {
                 auto& val = item.template write_value<T>();
                 std::list<T> write_list;
-                write_list.push_back(val);
+                if (!is_empty(item)) {
+                    write_list.push_back(val);
+                    item.clear_flags(empty_bit);
+                }
                 write_list.push_back(v);
+                item.clear_write();
                 item.add_write(write_list);
                 item.add_flags(list_bit);
             }
@@ -83,8 +87,10 @@ public:
                             else return false;
                         }
                         // not a list, has exactly one element
-                        else if (!is_empty(pushitem))
+                        else if (!is_empty(pushitem)) {
                             pushitem.add_flags(empty_bit);
+                            return true;
+                        }
                         else return false;
                     }
                     // fail if trying to read from an empty queue
@@ -139,6 +145,7 @@ public:
                             val = v;
                             return true;
                         }
+                        else return false;
                     }
                     return false;
                 }
