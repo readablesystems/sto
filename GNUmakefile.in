@@ -39,13 +39,11 @@ libjson.a: json.o string.o straccum.o str.o msgpack.o \
 	$(AR) cru $@ $^
 
 
-KVTREES = masstree-beta/query_masstree.o \
-	masstree-beta/value_string.o masstree-beta/value_array.o masstree-beta/value_versioned_array.o \
-	masstree-beta/string_slice.o
+KVTREES = masstree-beta/string_slice.o
 
 MASSTREE_OBJS = masstree-beta/kvio.o masstree-beta/misc.o masstree-beta/checkpoint.o $(KVTREES) masstree-beta/libjson.a
 
-STO_OBJS = Transaction.o
+STO_OBJS = Transaction.o MassTrans.o
 
 concurrent: concurrent.o clp.o $(STO_OBJS) $(MASSTREE_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)

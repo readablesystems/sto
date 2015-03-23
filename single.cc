@@ -11,11 +11,6 @@
 
 #define N 100
 
-kvepoch_t global_log_epoch = 0;
-volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly
-kvtimestamp_t initial_timestamp;
-volatile bool recovering = false; // so don't add log entries, and free old value immediately
-
 using namespace std;
 
 void queueTests() {
@@ -544,13 +539,15 @@ void basicMapTests(MapType& h) {
   assert(!h.transGet(t14, 4, vunused));
   assert(t14.try_commit());
 
-  // blind update success
+  // blind update failure
   Transaction t15;
   assert(h.transUpdate(t15, 3, 15));
   Transaction t16;
   assert(h.transUpdate(t16, 3, 16));
   assert(t16.try_commit());
-  assert(t15.try_commit());
+  // blind updates conflict each other now (not worth the extra trouble)
+  assert(!t15.try_commit());
+
 
   // update aborts after delete
   Transaction t17;
