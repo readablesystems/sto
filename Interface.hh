@@ -8,8 +8,8 @@ class TransItem;
 
 class TransactionTid {
 public:
-    typedef uint32_t type;
-    typedef int32_t signed_type;
+    typedef uint64_t type;
+    typedef int64_t signed_type;
 
     static constexpr type lock_bit = type(1);
     static constexpr type valid_bit = type(2);
