@@ -85,7 +85,7 @@ public:
         // ensure that head is not modified by time of commit 
         auto lockitem = t.item(this, -2);
         if (!lockitem.has_read()) {
-            lockitem.add_read(headversion_);
+            lockitem.add_read(hv);
             lockitem.add_write(0);
         }
         item.add_flags(delete_bit);
@@ -132,7 +132,7 @@ public:
         // ensure that head was not modified at time of commit
         auto lockitem = t.item(this, -2);
         if (!lockitem.has_read()) {
-            lockitem.add_read(headversion_);
+            lockitem.add_read(hv);
             lockitem.add_write(0);
         }  
         val = queueSlots[index];
