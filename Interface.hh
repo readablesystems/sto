@@ -52,7 +52,7 @@ public:
     }
     static bool try_check_opacity(type start_tid, type v) {
         signed_type delta = start_tid - v;
-        return delta > 0 && !(delta & (lock_bit | valid_bit));
+        return (delta > 0 && !(delta & (lock_bit | valid_bit))) || !v;
     }
 };
 
