@@ -823,7 +823,6 @@ bool Qxordeletecheck() {
   q = &ch;
 
   empty_func();
-  q->reset();
   prepopulate_func();
   
   for (int i = 0; i < nthreads; ++i) {
@@ -831,10 +830,10 @@ bool Qxordeletecheck() {
   }
   q = old;
 
-  while (!q->empty()) {
+  // check only while q or ch is nonempty (may have started xordelete at different indices into the q)
+  while (!q->empty() && !ch.empty()) {
     assert (unval(q->pop()) == unval(ch.pop()));
   }
-  assert(ch.empty() == q->empty());
   return true;
 }
 
@@ -866,7 +865,6 @@ void Qtransferrun(int me) {
 bool Qtransfercheck() {
   // restore q to prepopulated state
   empty_func();
-  q->reset();
   prepopulate_func();
 
   // check if q2 and q are equivalent
@@ -1078,13 +1076,11 @@ int main(int argc, char *argv[]) {
     q2 = &stack_q2;
     
     empty_func();
-    q->reset();
     prepopulate_func();    
     qstartAndWait(nthreads, xorrunfunc);
     assert(Qxordeletecheck());
     
     empty_func();
-    q->reset();
     prepopulate_func();
     qstartAndWait(nthreads, transferrunfunc);
     assert(Qtransfercheck());

@@ -14,8 +14,6 @@ public:
     typedef VersionFunctions<Version> QueueVersioning;
     
     static constexpr Version delete_bit = 1<<0;
-    static constexpr Version front_bit = 1<<1;
-    static constexpr Version pop_bit = 1<<2;
     static constexpr Version read_writes = 1<<3;
 
     // NONTRANSACTIONAL PUSH/POP/EMPTY
@@ -31,12 +29,6 @@ public:
         return v;
     }
 
-    void reset() {
-        assert(head_ == tail_);
-        head_ = 0;
-        tail_ = 0;
-    }
-   
     bool empty() {
         return (head_ == tail_);
     }
@@ -58,9 +50,6 @@ public:
     bool transPop(Transaction& t) {
         auto index = head_;
         auto item = t.item(this, index);
-        // mark only the first item popped so we only lock headversion once
-        if (!has_delete(item))
-            item.or_flags(pop_bit);
 
         while (1) {
            if (index == tail_) { 
@@ -90,12 +79,14 @@ public:
             }
             else break;
         }
-        
+       
         // ensure that head is not modified by time of commit 
-        item.or_flags(delete_bit);
-        if (!item.has_read()) {
-           item.add_read(headversion_);
+        auto lockitem = t.item(this, -2);
+        if (!lockitem.has_read()) {
+            lockitem.add_read(headversion_);
+            lockitem.add_write(0);
         }
+        item.or_flags(delete_bit);
         item.add_write(0);
         return true;
     }
@@ -136,28 +127,22 @@ public:
         }
         
         // ensure that head was not modified at time of commit
-        if (!item.has_read())
-           item.add_read(headversion_);
-        item.or_flags(front_bit);
+        auto lockitem = t.item(this, -2);
+        if (!lockitem.has_read()) {
+            lockitem.add_read(headversion_);
+            lockitem.add_write(0);
+        }  
         val = queueSlots[index];
         return true;
     }
     
 private:
-  bool is_front(TransItem& item) {
-        return item.has_flags(front_bit);
-    }
-
     bool has_delete(TransItem& item) {
         return item.has_flags(delete_bit);
     }
     
     bool is_rw(TransItem& item) {
         return item.has_flags(read_writes);
-    }
-
-    bool first_pop(TransItem& item) {
-        return item.has_flags(pop_bit);
     }
    
     void lock(Version& v) {
@@ -169,23 +154,17 @@ private:
     }
      
     void lock(TransItem& item) {
-        // only lock headversion for pops 
-        if (has_delete(item)) {
-            if (first_pop(item)) {
-                lock(headversion_);
-            }
-        }
-        // only lock tailversion for pushes and front on empty queue
-        else if (item.has_write() || item.has_read())
+        if (item.key<int>() == -1)
             lock(tailversion_);
+        else if (item.key<int>() == -2)
+            lock(headversion_);
     }
 
     void unlock(TransItem& item) {
-        if (has_delete(item)) {
-            if (first_pop(item))
-                unlock(headversion_);
+        if (item.key<int>() == -2) {
+            unlock(headversion_);
         }
-        else if (item.has_write() || item.has_read())
+        else if (item.has_write() && item.key<int>() == -1)
             unlock(tailversion_);
     }
   
@@ -194,21 +173,26 @@ private:
         auto hv = headversion_;
         auto tv = tailversion_;
         // check if was a pop or front 
-        if (is_front(item) || has_delete(item))
+        if (item.key<int>() == -2)
             return QueueVersioning::versionCheck(hv, item.template read_value<Version>()) || (!QueueVersioning::is_locked(hv) && !has_delete(item));
 
         // check if we read off the write_list (and locked tailversion)
-        else 
+        else if (item.key<int>() == -1)
             return QueueVersioning::versionCheck(tv, item.template read_value<Version>());
     }
 
     void install(TransItem& item, uint32_t tid) {
-	    if (has_delete(item)) {
+	    // ignore lock_headversion marker item
+        if (item.key<int>() == -2)
+            return;
+        // install pops
+        if (has_delete(item)) {
             // only increment head if item popped from actual q
             if (!is_rw(item))
                 head_ = (head_+1) % BUF_SIZE;
             QueueVersioning::inc_version(headversion_);
         }
+        // install pushes
         else {
             auto& write_list = item.template write_value<std::list<T>>();
             auto head_index = head_;
