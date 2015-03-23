@@ -180,7 +180,5 @@ def main(argc, argv):
 		f.write(json.dumps(records, sort_keys=True, indent=2))
 		f.close()
 
-	f.close()
-
 if __name__ == "__main__":
 	main(len(sys.argv), sys.argv)
