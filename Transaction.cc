@@ -11,6 +11,16 @@ static void __attribute__((used)) check_static_assertions() {
     static_assert(sizeof(threadinfo_t) % 128 == 0, "threadinfo is 2-cache-line aligned");
 }
 
+bool Transaction::hard_try_check_opacity() const {
+    tid_type newstart = start_tid_;
+    release_fence();
+    if (check_reads(transSet_.begin(), transSet_.end())) {
+        start_tid_ = newstart;
+        return true;
+    } else
+        return false;
+}
+
 void Transaction::print_stats() {
     threadinfo_t out = tinfo_combined();
     if (txp_count >= 4) {

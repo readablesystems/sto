@@ -533,7 +533,7 @@ private:
   }
 
   private:
-  bool check_reads(TransItem *trans_first, TransItem *trans_last) {
+  bool check_reads(const TransItem *trans_first, const TransItem *trans_last) const {
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
         INC_P(txp_total_check_read);
@@ -676,6 +676,13 @@ private:
 
 
     // opacity checking
+    bool try_check_opacity(tid_type t) const {
+        assert(!writeset_);
+        if (!start_tid_)
+            start_tid_ = _TID;
+        return start_tid_ > t || hard_try_check_opacity();
+    }
+
     tid_type commit_tid() const {
         assert(writeset_);
         if (!commit_tid_)
@@ -683,21 +690,7 @@ private:
         return commit_tid_;
     }
 
-
-  tid_type start_tid() {
-    if (start_tid_ == 0) {
-      return read_tid();
-    } else {
-      return start_tid_;
-    }
-  }
-
-  tid_type read_tid() {
-    start_tid_ = _TID;
-    return start_tid_;
-  }
-
-  class Abort {};
+    class Abort {};
 
 private:
 
@@ -721,6 +714,7 @@ private:
 
     friend class TransProxy;
     friend class TransItem;
+    bool hard_try_check_opacity() const;
 };
 
 

@@ -289,11 +289,8 @@ public:
     fence();
     Transaction::tid_type r_tid = ListVersioning::get_tid(listv);
     // assumes that a thread will not call this method holding the version lock.
-    if (r_tid > t.start_tid() || (ListVersioning::is_locked(listv))) {
-       t.check_reads();
-       t.read_tid();	
-    }
-    
+    if (!t.try_check_opacity(r_tid) || ListVersioning::is_locked(listv))
+      t.abort();
   }
 
   struct ListIter {
