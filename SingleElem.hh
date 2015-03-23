@@ -44,7 +44,7 @@ public:
             atomicRead(t, v, val);
             if (GenericSTM) {
                 Transaction::tid_type r_tid = Versioning::get_tid(v);
-                if (!t.try_check_opacity(r_tid) || (Versioning::is_locked(v) && !item.has_write()))
+                if (!t.try_check_opacity(r_tid) || Versioning::is_locked(v))
                     t.abort();
             }
             item.add_read(v);
