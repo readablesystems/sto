@@ -1,11 +1,11 @@
-
-#pragma once 
+#pragma once
 
 #include "config.h"
 #include "compiler.hh"
 #include <iostream>
 #include "Transaction.hh"
 #include "SingleElem.hh"
+#include "VersionFunctions.hh"
 
 template <typename T, unsigned N, typename Elem = SingleElem<T>>
 class Array1 : public Shared {
@@ -41,7 +41,7 @@ class Array1 : public Shared {
         data_[i].unlock();
     }
 
-    bool check(TransItem& item, Transaction& trans){
+    bool check(const TransItem& item, const Transaction& trans){
         key_type i = item.key<key_type>();
         return data_[i].check(item, trans);
     }
@@ -53,9 +53,9 @@ class Array1 : public Shared {
         unlock(item.key<key_type>());
     }
 
-    void install(TransItem& item, uint32_t tid){
+    void install(TransItem& item, const Transaction& t) {
         //install value
-        data_[item.key<key_type>()].install(item, tid);
+        data_[item.key<key_type>()].install(item, t);
     }
 
   private:

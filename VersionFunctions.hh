@@ -20,16 +20,16 @@ public:
   static void set_version(version_type& v, version_type cur) {
     assert(is_locked(v));
     assert((cur & version_mask) == cur);
-    assert((v & version_mask) < cur);
+    assert((v & version_mask) <= cur); // can be equal if same object is register twice
     release_fence();
     v = (cur | (v & lock_bit));
   }
-  
+
   static version_type get_tid(version_type v) {
     return (v & version_mask);
   }
-  
- 
+
+
   static bool is_locked(version_type v) {
     return v & lock_bit;
   }

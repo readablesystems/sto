@@ -30,8 +30,7 @@ public:
       //atomicRead(i, v, val);
       Version v = arr_[i].version();
       fence();
-      if (!item.has_read())
-        t.add_read(item, v);
+      t.add_read(item, v);
       // TODO: nothing close to opacity here, but probably faster
       return arr_[i].read_value();
     }
@@ -58,14 +57,14 @@ public:
     Versioning::unlock(arr_[i].version());
   }
 
-  bool check(TransItem& item, Transaction& t) {
+  bool check(const TransItem& item, const Transaction& t) {
     int i = item.template key<int>();
     auto& elem = arr_[i];
     return Versioning::versionCheck(elem.version(), item.template read_value<Version>())
-      && (!Versioning::is_locked(elem.version()) || t.check_for_write(item));
+        && (!Versioning::is_locked(elem.version()) || item.has_lock(t));
   }
 
-  void install(TransItem& item, uint32_t tid) {
+  void install(TransItem& item, const Transaction&) {
     int i = item.template key<int>();
     arr_[i].set_value(item.template write_value<T>());
     Versioning::inc_version(arr_[i].version());

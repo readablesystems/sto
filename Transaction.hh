@@ -34,7 +34,7 @@
 
 #define NOSORT 0
 
-#define MAX_THREADS 16
+#define MAX_THREADS 24
 
 // transaction performance counters
 enum txp {
@@ -80,12 +80,15 @@ struct __attribute__((aligned(128))) threadinfo_t {
   unsigned epoch;
   unsigned spin_lock;
   local_vector<std::pair<unsigned, std::function<void(void)>>, 8> callbacks;
+  local_vector<std::pair<unsigned, void*>, 8> needs_free;
   std::function<void(void)> trans_start_callback;
   std::function<void(void)> trans_end_callback;
   uint64_t p_[txp_count];
   threadinfo_t() : epoch(), spin_lock() {
+#if PERF_LOGGING
       for (int i = 0; i != txp_count; ++i)
           p_[i] = 0;
+#endif
   }
   static bool p_is_max(int p) {
       return p == txp_max_set;
@@ -240,9 +243,9 @@ public:
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static unsigned global_epoch;
-  static __thread Transaction *__transaction;
-  typedef uint32_t Tid;
-  static Tid _TID;
+  static __thread Transaction* __transaction;
+  typedef TransactionTid tid_type;
+  static tid_type _TID;
 
   static Transaction& get_transaction() {
     if (!__transaction)
@@ -299,7 +302,8 @@ public:
         acquire_spinlock(t.spin_lock);
         auto deletetil = t.callbacks.begin();
         for (auto it = t.callbacks.begin(); it != t.callbacks.end(); ++it) {
-          if (it->first <= g-2) {
+          // TODO: check for overflow
+          if ((int)it->first <= (int)g-2) {
             it->second();
             ++deletetil;
           } else {
@@ -310,18 +314,38 @@ public:
         if (t.callbacks.begin() != deletetil) {
           t.callbacks.erase(t.callbacks.begin(), deletetil);
         }
+        auto deletetil2 = t.needs_free.begin();
+        for (auto it = t.needs_free.begin(); it != t.needs_free.end(); ++it) {
+          // TODO: overflow
+          if ((int)it->first <= (int)g-2) {
+            free(it->second);
+            ++deletetil2;
+          } else {
+            break;
+          }
+        }
+        if (t.needs_free.begin() != deletetil2) {
+          t.needs_free.erase(t.needs_free.begin(), deletetil2);
+        }
         release_spinlock(t.spin_lock);
       }
     }
     return NULL;
   }
 
-  static void cleanup(std::function<void(void)> callback) {
+  static void rcu_cleanup(std::function<void(void)> callback) {
     acquire_spinlock(tinfo[threadid].spin_lock);
     tinfo[threadid].callbacks.emplace_back(global_epoch, callback);
     release_spinlock(tinfo[threadid].spin_lock);
   }
 
+  static void rcu_free(void *ptr) {
+    acquire_spinlock(tinfo[threadid].spin_lock);
+    tinfo[threadid].needs_free.emplace_back(global_epoch, ptr);
+    release_spinlock(tinfo[threadid].spin_lock);
+  }
+
+#if PERF_LOGGING
   static void inc_p(int p) {
       add_p(p, 1);
   }
@@ -331,30 +355,34 @@ public:
   static void max_p(int p, unsigned long long n) {
       tinfo[threadid].max_p(p, n);
   }
-  
-  static Tid incTid() {
-    Tid t_old = _TID;
-    Tid t_new = t_old + 1;
-    Tid t = cmpxchg(&_TID, t_old, t_new);
-    if (t != t_old) {
-      t_new = t;
-    }
-    return t_new;
-  }
+#endif
+
+#if PERF_LOGGING
+#define INC_P(p) inc_p((p))
+#define ADD_P(p, n) add_p((p), (n))
+#define MAX_P(p, n) max_p((p), (n))
+#else
+#define INC_P(p) /**/
+#define ADD_P(p, n) /**/
+#define MAX_P(p, n) /**/
+#endif
+
 
   Transaction() : transSet_() {
-    // TODO: assumes this thread is constantly running transactions
-    tinfo[threadid].epoch = global_epoch;
-    if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
     reset();
   }
 
   ~Transaction() {
-    tinfo[threadid].epoch = 0;
-    if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
     if (!isAborted_ && !transSet_.empty()) {
       silent_abort();
     }
+    end_trans();
+  }
+
+  void end_trans() {
+    // TODO: this will probably mess up with nested transactions
+    tinfo[threadid].epoch = 0;
+    if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
   }
 
   // reset data so we can be reused for another transaction
@@ -362,15 +390,17 @@ public:
      //if (isAborted_
      //   && tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
         //print_stats();
+    tinfo[threadid].epoch = global_epoch;
+    if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
     transSet_.clear();
     writeset_ = NULL;
     nwriteset_ = 0;
     may_duplicate_items_ = false;
     isAborted_ = false;
     firstWrite_ = -1;
-    start_tid_ = 0;
+    start_tid_ = commit_tid_ = 0;
     buf_.clear();
-    inc_p(txp_total_starts);
+    INC_P(txp_total_starts);
   }
 
 private:
@@ -422,7 +452,7 @@ public:
       if (firstWrite_ >= 0)
           for (auto it = transSet_.begin() + firstWrite_;
                it != transSet_.end(); ++it) {
-              inc_p(txp_total_searched);
+              INC_P(txp_total_searched);
               if (it->sharedObj() == s && it->key_ == xkey) {
                   ti = &*it;
                   break;
@@ -446,14 +476,14 @@ private:
   // tries to find an existing item with this key, returns NULL if not found
   TransItem* find_item(Shared *s, void* key) {
       for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
-          inc_p(txp_total_searched);
+          INC_P(txp_total_searched);
           if (it->sharedObj() == s && it->key_ == key)
               return &*it;
       }
       return NULL;
   }
 
-public:
+private:
   typedef int item_index_type;
   item_index_type item_index(TransItem& ti) {
       return &ti - transSet_.begin();
@@ -465,7 +495,7 @@ public:
       firstWrite_ = idx;
   }
 
-  bool check_for_write(TransItem& item) {
+  bool check_for_write(const TransItem& item) const {
     // if writeset_ is NULL, we're not in commit (just an opacity check), so no need to check our writes (we
     // haven't locked anything yet)
     if (!writeset_)
@@ -495,16 +525,18 @@ public:
     return has_write;
   }
 
+  public:
   void check_reads() {
       if (!check_reads(transSet_.begin(), transSet_.end())) {
           abort();
       }
   }
 
-  bool check_reads(TransItem *trans_first, TransItem *trans_last) {
+  private:
+  bool check_reads(const TransItem *trans_first, const TransItem *trans_last) const {
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
-        inc_p(txp_total_check_read);
+        INC_P(txp_total_check_read);
         if (!it->sharedObj()->check(*it, *this)) {
           // XXX: only do this if we're dup'ing reads
             for (auto jt = trans_first; jt != it; ++jt)
@@ -517,7 +549,8 @@ public:
     return true;
   }
 
-  bool commit() {
+  public:
+  bool try_commit() {
 #if ASSERT_TX_SIZE
     if (transSet_.size() > TX_SIZE_LIMIT) {
         std::cerr << "transSet_ size at " << transSet_.size()
@@ -525,8 +558,8 @@ public:
         assert(false);
     }
 #endif
-    max_p(txp_max_set, transSet_.size());
-    add_p(txp_total_n, transSet_.size());
+    MAX_P(txp_max_set, transSet_.size());
+    ADD_P(txp_total_n, transSet_.size());
 
     if (isAborted_)
       return false;
@@ -543,10 +576,10 @@ public:
 
       if (it->has_write()) {
         writeset_[nwriteset_++] = it - transSet_.begin();
-      }   
+      }
 #ifdef DETAILED_LOGGING
       if (it->has_read()) {
-	inc_p(txp_total_r);
+	INC_P(txp_total_r);
       }
 #endif
     }
@@ -572,8 +605,6 @@ public:
 
     //    fence();
 
-    Tid commit_tid = incTid();
-  
     //phase2
     if (!check_reads(trans_first, trans_last)) {
       success = false;
@@ -586,13 +617,12 @@ public:
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
       TransItem& ti = *it;
       if (ti.has_write()) {
-        inc_p(txp_total_w);
-        ti.sharedObj()->install(ti, commit_tid);
+        INC_P(txp_total_w);
+        ti.sharedObj()->install(ti, *this);
       }
     }
 
   end:
-
     //    fence();
 
     for (auto it = writeset_; it != writeset_end; ) {
@@ -609,10 +639,12 @@ public:
     if (success) {
       commitSuccess();
     } else {
-      inc_p(txp_commit_time_aborts);
-      abort();
+      INC_P(txp_commit_time_aborts);
+      silent_abort();
     }
 
+    // Nate: we need this line because the Transaction destructor decides
+    // whether to do an abort based on whether transSet_ is empty (meh)
     transSet_.clear();
     return success;
   }
@@ -620,11 +652,12 @@ public:
   void silent_abort() {
     if (isAborted_)
       return;
-    inc_p(txp_total_aborts);
+    INC_P(txp_total_aborts);
     isAborted_ = true;
     for (auto& ti : transSet_) {
       ti.sharedObj()->cleanup(ti, false);
     }
+    end_trans();
   }
 
   void abort() {
@@ -632,24 +665,32 @@ public:
     throw Abort();
   }
 
+    void commit() {
+        if (!try_commit())
+            throw Abort();
+    }
+
   bool aborted() {
     return isAborted_;
   }
-  
-  Tid start_tid() {
-    if (start_tid_ == 0) {
-      return read_tid();
-    } else {
-      return start_tid_;
-    }
-  }
-  
-  Tid read_tid() {
-    start_tid_ = _TID;
-    return start_tid_;
-  }
 
-  class Abort {};
+
+    // opacity checking
+    bool try_check_opacity(tid_type t) const {
+        assert(!writeset_);
+        if (!start_tid_)
+            start_tid_ = _TID;
+        return start_tid_ > t || hard_try_check_opacity();
+    }
+
+    tid_type commit_tid() const {
+        assert(writeset_);
+        if (!commit_tid_)
+            commit_tid_ = fetch_and_add(&_TID, 2);
+        return commit_tid_;
+    }
+
+    class Abort {};
 
 private:
 
@@ -657,6 +698,7 @@ private:
     for (TransItem& ti : transSet_) {
       ti.sharedObj()->cleanup(ti, true);
     }
+    end_trans();
   }
 
 private:
@@ -667,32 +709,34 @@ private:
     local_vector<TransItem, INIT_SET_SIZE> transSet_;
     int* writeset_;
     int nwriteset_;
-    Tid start_tid_;
+    mutable tid_type start_tid_;
+    mutable tid_type commit_tid_;
 
     friend class TransProxy;
+    friend class TransItem;
+    bool hard_try_check_opacity() const;
 };
 
 
 
 template <typename T>
-TransProxy& TransProxy::add_read(T rdata) {
-    if (!i_->shared.has_flags(READER_BIT)) {
-        i_->shared.or_flags(READER_BIT);
+inline TransProxy& TransProxy::add_read(T rdata) {
+    if (!has_read()) {
+        i_->__or_flags(TransItem::read_bit);
         i_->rdata_ = t_->buf_.pack(std::move(rdata));
     }
     return *this;
 }
 
 template <typename T, typename U>
-TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
-    if (i_->shared.has_flags(READER_BIT)
-        && this->read_value<T>() == old_rdata)
+inline TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
+    if (has_read() && this->read_value<T>() == old_rdata)
         i_->rdata_ = t_->buf_.pack(std::move(new_rdata));
     return *this;
 }
 
 template <typename T>
-TransProxy& TransProxy::add_write(T wdata) {
+inline TransProxy& TransProxy::add_write(T wdata) {
     if (has_write())
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general
@@ -700,9 +744,17 @@ TransProxy& TransProxy::add_write(T wdata) {
         // which will make our lives much easier)
         this->template write_value<T>() = std::move(wdata);
     else {
-        i_->shared.or_flags(WRITER_BIT);
+        i_->__or_flags(TransItem::write_bit);
         i_->wdata_ = t_->buf_.pack(std::move(wdata));
         t_->mark_write(*i_);
     }
     return *this;
+}
+
+inline bool TransItem::has_lock(const Transaction& t) const {
+    return t.check_for_write(*this);
+}
+
+inline bool TransProxy::has_lock() const {
+    return t_->check_for_write(*i_);
 }

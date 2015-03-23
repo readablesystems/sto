@@ -82,7 +82,6 @@ public:
             }
             else break;
         }
-       
         // ensure that head is not modified by time of commit 
         auto lockitem = t.item(this, -2);
         if (!lockitem.has_read()) {
@@ -130,7 +129,6 @@ public:
             }
             else break;
         }
-        
         // ensure that head was not modified at time of commit
         auto lockitem = t.item(this, -2);
         if (!lockitem.has_read()) {
@@ -143,7 +141,7 @@ public:
     
 private:
     bool has_delete(TransItem& item) {
-        return item.has_flags(delete_bit);
+        return item.flags() & delete_bit;
     }
     
     bool is_rw(TransItem& item) {
@@ -173,7 +171,7 @@ private:
             unlock(tailversion_);
     }
   
-    bool check(TransItem& item, Transaction& t) {
+    bool check(const TransItem& item, const Transaction& t) {
         (void) t;
         // check if was a pop or front 
         if (item.key<int>() == -2) {

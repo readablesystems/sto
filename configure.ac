@@ -1,15 +1,17 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_INIT([sto], [0.1])
-AC_PREREQ(2.60)
+AC_PREREQ([2.60])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([GNUmakefile])
-AC_SUBST(ac_configure_args)
+AC_CONFIG_SUBDIRS([masstree-beta])
+AC_SUBST([ac_configure_args])
 
 ac_user_cxx=${CXX+y}
 
 AC_PROG_CC
 AC_PROG_CXX
+AC_PROG_INSTALL
 AC_LANG_CPLUSPLUS
 
 AC_DEFINE([WORDS_BIGENDIAN_SET], [1], [Define if WORDS_BIGENDIAN has been set.])

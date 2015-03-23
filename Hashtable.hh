@@ -52,11 +52,13 @@ public:
   // if set we check only node validity, not the node's version number
   // (for deletes we need to make sure the node is still there/valid, but 
   // not that its value is the same)
-  static constexpr Version valid_check_only_bit = ((Version)1U)<<(sizeof(Version)*8 - 2);
-  static constexpr Version version_mask = ~(lock_bit|valid_check_only_bit);
+  static constexpr Version version_mask = ~(lock_bit);
   // used to mark whether a key is a bucket (for bucket version checks)
   // or a pointer (which will always have the lower 3 bits as 0)
   static constexpr uintptr_t bucket_bit = 1U<<0;
+
+    static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
+    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
 
   Hashtable(unsigned size = Init_size, Hash h = Hash(), Pred p = Pred()) : map_(), hasher_(h), pred_(p) {
     map_.resize(size);
@@ -96,10 +98,8 @@ public:
       }
       Version elem_vers;
       // "atomic" read of both the current value and the version #
-      atomicRead(e, elem_vers, retval);
+      atomicRead(t, e, elem_vers, retval);
       // check both node changes and node deletes
-      if (item.has_read((Version) valid_check_only_bit))
-          item.clear_read();
       item.add_read(elem_vers);
       return true;
     } else {
@@ -123,7 +123,7 @@ public:
         remove(e);
         // no way to remove an item (would be pretty inefficient)
         // so we just unmark all attributes so the item is ignored
-        item.remove_read().remove_write().remove_undo().remove_afterC();
+        item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
         // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
         t.item(this, pack_bucket(bucket(k))).add_read(unlocked(buck_version));
         return true;
@@ -137,12 +137,12 @@ public:
         return false;
       }
       // we need to make sure this bucket didn't change (e.g. what was once there got removed)
-      item.add_read((Version) valid_check_only_bit);
-      // we use has_afterC() to detect deletes so we don't need any other data
+      item.add_read(e->version);
+      // we use delete_bit to detect deletes so we don't need any other data
       // for deletes, just to mark it as a write
       if (!item.has_write())
           item.add_write(0); // XXX is this the right type?
-      item.add_afterC();
+      item.add_flags(delete_bit);
       return true;
     } else {
       // add a read that yes this element doesn't exist
@@ -173,7 +173,7 @@ public:
         // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
         // if user can't read v#)
         if (INSERT) {
-          item.remove_afterC();
+          item.clear_flags(delete_bit);
           item.add_write(v);
         } else {
           // delete-then-update == not found
@@ -183,9 +183,8 @@ public:
       }
 
 #if HASHTABLE_DELETE
-      // we need to make sure this item stays here
-      // we only need to check validity, not presence
-      item.add_read((Version) valid_check_only_bit);
+      // make sure the item doesn't get deleted before us
+      item.add_read(e->version);
 #endif
       if (SET) {
         item.add_write(v);
@@ -214,7 +213,7 @@ public:
       // (for now insert and set will just do the same thing on install, set a value and then mark valid)
       item.add_write(v);
       // need to remove this item if we abort
-      item.add_undo();
+      item.add_flags(insert_bit);
       return false;
     }
   }
@@ -255,18 +254,17 @@ public:
       return ((v1 ^ v2) & version_mask) == 0;
   }
 
-  bool check(TransItem& item, Transaction& t) {
+  bool check(const TransItem& item, const Transaction& t) {
     if (is_bucket(item)) {
       bucket_entry& buck = map_[bucket_key(item)];
       return versionCheck(item.template read_value<Version>(), buck.version) && !is_locked(buck.version);
     }
     auto el = item.key<internal_elem*>();
     auto read_version = item.template read_value<Version>();
-    // if item has undo then its an insert so no validity check needed.
+    // if item has insert_bit then its an insert so no validity check needed.
     // otherwise we check that it is both valid and not locked
-    bool validity_check = item.has_undo() || (el->valid() && (!is_locked(el->version) || t.check_for_write(item)));
-    return validity_check && ((read_version & valid_check_only_bit) ||
-                              versionCheck(read_version, el->version));
+    bool validity_check = has_insert(item) || (el->valid() && (!is_locked(el->version) || item.has_lock(t)));
+    return validity_check && versionCheck(read_version, el->version);
   }
 
   void lock(TransItem& item) {
@@ -279,25 +277,30 @@ public:
     auto el = item.key<internal_elem*>();
     unlock(el);
   }
-  void install(TransItem& item, uint32_t tid) {
+  void install(TransItem& item, const Transaction&) {
     assert(!is_bucket(item));
     auto el = item.key<internal_elem*>();
     assert(is_locked(el));
     // delete
-    if (item.has_afterC()) {
+    if (item.flags() & delete_bit) {
       assert(el->valid());
       el->valid() = false;
       // we wait to remove the node til afterC() (unclear that this is actually necessary)
       return;
     }
     // else must be insert/update
-    el->value = std::move(item.template write_value<Value>());
+    Value new_v = std::move(item.template write_value<Value>());
+    std::swap(new_v, el->value);
+    if (!__has_trivial_copy(Value)) {
+      //      Transaction::rcu_cleanup([new_v] () { delete new_v; });
+    }
+
     inc_version(el->version);
     el->valid() = true;
   }
 
   void cleanup(TransItem& item, bool committed) {
-    if (committed ? item.has_afterC() : item.has_undo()) {
+      if (item.flags() & (committed ? delete_bit : insert_bit)) {
         auto el = item.key<internal_elem*>();
         assert(!el->valid());
         remove(el);
@@ -320,8 +323,7 @@ public:
       buck.head = cur->next;
     }
     unlock(&buck.version);
-    // TODO: why does this throw a bad function error
-    //    Transaction::cleanup([cur] () { free(cur); });
+    Transaction::rcu_free(cur);
   }
 
   void print() {
@@ -489,25 +491,25 @@ private:
     return find(buck_entry(k), k);
   }
 
-  bool has_delete(TransItem& item) {
-    return item.has_afterC();
-  }
-  
-  bool has_insert(TransItem& item) {
-    return item.has_undo();
+  bool has_delete(const TransItem& item) {
+      return item.flags() & delete_bit;
   }
 
-  bool validity_check(TransItem& item, internal_elem *e) {
+  bool has_insert(const TransItem& item) {
+      return item.flags() & insert_bit;
+  }
+
+  bool validity_check(const TransItem& item, internal_elem *e) {
     return has_insert(item) || e->valid();
   }
 
-  static bool is_bucket(TransItem& item) {
+  static bool is_bucket(const TransItem& item) {
       return is_bucket(item.key<void*>());
   }
   static bool is_bucket(void* key) {
       return (uintptr_t)key & bucket_bit;
   }
-  static unsigned bucket_key(TransItem& item) {
+  static unsigned bucket_key(const TransItem& item) {
       assert(is_bucket(item));
       return (uintptr_t) item.key<void*>() >> 1;
   }
@@ -557,14 +559,16 @@ private:
     inc_version(buck.version);
   }
 
-  void atomicRead(internal_elem *e, Version& vers, Value& val) {
+  void atomicRead(Transaction& t, internal_elem *e, Version& vers, Value& val) {
     Version v2;
     do {
-      vers = e->version;
+      v2 = e->version;
+      if (is_locked(v2))
+        t.abort();
       fence();
       val = e->value;
       fence();
-      v2 = e->version;
+      vers = e->version;
     } while (vers != v2);
   }
 

@@ -373,11 +373,11 @@ template <int DS> void ReadThenWrite<DS>::run(int me) {
 
       auto gen = [&]() { return slotdist(transgen); };
 
-      Transaction t;
+      Transaction& t = Transaction::get_transaction();
       nreads(*a, OPS - OPS*write_percent, t, gen);
       nwrites(*a, OPS*write_percent, t, gen);
 
-      done = t.commit();
+      done = t.try_commit();
       if (!done) {
         debug("thread%d retrying\n", me);
       }
@@ -428,7 +428,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
       bool used[ARRAY_SZ] = {false};
 #endif
 
-      Transaction t;
+      Transaction& t = Transaction::get_transaction();
       for (int j = 0; j < OPS; ++j) {
         int slot = slotdist(transgen);
 #if ALL_UNIQUE_SLOTS
@@ -449,7 +449,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
 #endif
         }
       }
-      done = t.commit();
+      done = t.try_commit();
       } catch (Transaction::Abort E) {}
       if (!done) {
 #if RANDOM_REPORT
@@ -521,7 +521,7 @@ template <int DS, bool do_delete> bool RandomRWs<DS, do_delete>::check() {
       return false;
 
   typename Container<DS>::type* old = this->a;
-  typename Container<DS>::type ch;
+  typename Container<DS>::type& ch = *(new typename Container<DS>::type);
   this->a = &ch;
 
   // rerun transactions one-by-one
@@ -567,7 +567,7 @@ template <int DS> void KingDelete<DS>::run(int me) {
   bool done = false;
   while (!done) {
     try {
-      Transaction t;
+      Transaction& t = Transaction::get_transaction();
       for (int i = 0; i < nthreads; ++i) {
         if (i != me) {
           Container<DS>::transDelete(*a, t, i);
@@ -575,7 +575,7 @@ template <int DS> void KingDelete<DS>::run(int me) {
           a->transWrite(t, i, val(i+1));
         }
       }
-      done = t.commit();
+      done = t.try_commit();
     } catch (Transaction::Abort E) {}
   }
 }
@@ -617,7 +617,7 @@ template <int DS> void XorDelete<DS>::run(int me) {
     while (!done) {
       Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
       try {
-        Transaction t;
+        Transaction& t = Transaction::get_transaction();
         for (int j = 0; j < OPS; ++j) {
           int slot = slotdist(transgen);
           auto r = transgen();
@@ -631,7 +631,7 @@ template <int DS> void XorDelete<DS>::run(int me) {
             Container<DS>::transDelete(*a, t, slot);
           }
         }
-        done = t.commit();
+        done = t.try_commit();
       } catch (Transaction::Abort E) {}
     }
   }
@@ -639,7 +639,7 @@ template <int DS> void XorDelete<DS>::run(int me) {
 
 template <int DS> bool XorDelete<DS>::check() {
   typename Container<DS>::type* old = this->a;
-  typename Container<DS>::type ch;
+  typename Container<DS>::type& ch = *(new typename Container<DS>::type);
   this->a = &ch;
   prepopulate_func(*this->a);
 
@@ -669,14 +669,14 @@ template <int DS> void IsolatedWrites<DS>::run(int me) {
   bool done = false;
   while (!done) {
     try{
-    Transaction t;
+    Transaction& t = Transaction::get_transaction();
 
     for (int i = 0; i < nthreads; ++i) {
       a->transRead(t, i);
     }
     a->transWrite(t, me, val(me+1));
 
-    done = t.commit();
+    done = t.try_commit();
     } catch (Transaction::Abort E) {}
     debug("iter: %d %d\n", me, done);
   }
@@ -704,7 +704,7 @@ template <int DS> void BlindWrites<DS>::run(int me) {
   bool done = false;
   while (!done) {
     try{
-    Transaction t;
+    Transaction& t = Transaction::get_transaction();
 
     if (unval(a->transRead(t, 0)) == 0 || me == nthreads-1) {
       for (int i = 1; i < ARRAY_SZ; ++i) {
@@ -717,7 +717,7 @@ template <int DS> void BlindWrites<DS>::run(int me) {
       a->transWrite(t, 0, val(me));
     }
 
-    done = t.commit();
+    done = t.try_commit();
     } catch (Transaction::Abort E) {}
     debug("thread %d %d\n", me, done);
   }
@@ -746,7 +746,7 @@ template <int DS> void InterferingRWs<DS>::run(int me) {
   bool done = false;
   while (!done) {
     try{
-    Transaction t;
+    Transaction& t = Transaction::get_transaction();
 
     for (int i = 0; i < ARRAY_SZ; ++i) {
       if ((i % nthreads) >= me) {
@@ -755,7 +755,7 @@ template <int DS> void InterferingRWs<DS>::run(int me) {
       }
     }
 
-    done = t.commit();
+    done = t.try_commit();
     } catch (Transaction::Abort E) {}
     debug("thread %d %d\n", me, done);
   }
@@ -1113,10 +1113,10 @@ int main(int argc, char *argv[]) {
   while (ds_names[dsi].ds != ds)
       ++dsi;
   printf("Ran test %s %s\n", tests[test].name, ds_names[dsi].name);
-  printf("  ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f%% writes, blindrandwrites: %d\n \
- MAINTAIN_TRUE_ARRAY_STATE: %d, SPIN_LOCK: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, TRY_READ_MY_WRITES: %d, PERF_LOGGING: %d\n",
-         ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, blindRandomWrite,
-         MAINTAIN_TRUE_ARRAY_STATE, SPIN_LOCK, INIT_SET_SIZE, GLOBAL_SEED, TRY_READ_MY_WRITES, PERF_LOGGING);
+  printf("  ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f%% writes, prepopulate: %d, blindrandwrites: %d\n \
+ MAINTAIN_TRUE_ARRAY_STATE: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, PERF_LOGGING: %d\n",
+         ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, prepopulate, blindRandomWrite,
+         MAINTAIN_TRUE_ARRAY_STATE, INIT_SET_SIZE, GLOBAL_SEED, PERF_LOGGING);
 #endif
 
 #if PERF_LOGGING

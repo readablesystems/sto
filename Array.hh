@@ -32,16 +32,18 @@ public:
     unlock(i);
   }
 
-  inline void atomicRead(Key i, Version& v, Value& val) {
+  inline void atomicRead(Transaction& t, Key i, Version& v, Value& val) {
     Version v2;
     // if version stays the same across these reads then .val should match up with .version
     do {
-      v = data_[i].version;
+      v2 = data_[i].version;
+      if (is_locked(v2))
+        t.abort();
       fence();
       val = data_[i].val;
       fence();
       // make sure version didn't change after we read the value
-      v2 = data_[i].version;
+      v = data_[i].version;
     } while (v != v2);
   }
 
@@ -49,7 +51,7 @@ public:
     auto item = t.fresh_item(this, i);
     Version v;
     Value val;
-    atomicRead(i, v, val);
+    atomicRead(t, i, v, val);
     item.add_read(v);
     return val;
   }
@@ -66,10 +68,8 @@ public:
     } else {
       Version v;
       Value val;
-      atomicRead(i, v, val);
-      if (!item.has_read()) {
-        item.add_read(v);
-      }
+      atomicRead(t, i, v, val);
+      item.add_read(v);
       return val;
     }
   }
@@ -113,10 +113,10 @@ public:
 #endif
   }
 
-  bool check(TransItem& item, Transaction& t) {
+  bool check(const TransItem& item, const Transaction& t) {
     bool versionOK = ((elem(item.key<Key>()).version ^ item.read_value<Version>()) 
                       & ~lock_bit) == 0;
-    return versionOK && (t.check_for_write(item) || !is_locked(item.key<Key>()));
+    return versionOK && (!is_locked(item.key<Key>()) || item.has_lock(t));
   }
 
   void lock(TransItem& item) {
@@ -127,7 +127,7 @@ public:
     unlock(item.key<Key>());
   }
 
-  void install(TransItem& item, uint32_t tid) {
+  void install(TransItem& item, const Transaction&) {
     Key i = item.key<Key>();
     Value val = item.write_value<Value>();
     assert(is_locked(i));
