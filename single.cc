@@ -27,6 +27,21 @@ void queueTests() {
         // ensure pops read pushes in FIFO order
         Transaction t;
         // q is empty
+<<<<<<< HEAD
+=======
+        q.transPush(t, 1);
+        q.transPush(t, 2);
+        assert(q.transFront(t, p) && p == 1);
+        assert(q.transPop(t));
+        assert(q.transFront(t, p) && p == 2);
+        assert(q.transPop(t));
+        assert(t.commit());
+    }    
+    
+    {
+        Transaction t;
+        // q is empty
+>>>>>>> master
         q.transPush(t, 1);
         q.transPush(t, 2);
         assert(q.transFront(t, p) && p == 1); assert(q.transPop(t)); assert(q.transFront(t, p) && p == 2);
@@ -50,6 +65,224 @@ void queueTests() {
         assert(q.transFront(t, p));
         assert(p == 1);
         assert(t.commit());
+    }
+
+    {
+        // pop until empty
+        Transaction t;
+        assert(q.transPop(t));
+        assert(q.transPop(t));
+        assert (!q.transPop(t));
+        
+        // prepare pushes for next test
+        q.transPush(t, 1);
+        q.transPush(t, 2);
+        q.transPush(t, 3); 
+        assert(t.commit());
+    }
+
+    {
+        // fronts intermixed with pops
+        Transaction t;
+        assert(q.transFront(t, p));
+        assert(p == 1);
+        assert(q.transPop(t));
+        assert(q.transFront(t, p));
+        assert(p == 2);
+        assert(q.transPop(t));
+        assert(q.transFront(t, p));
+        assert(p == 3);
+        assert(q.transPop(t));
+        assert(!q.transPop(t));
+        
+        // set up for next test
+        q.transPush(t, 1);
+        q.transPush(t, 2);
+        q.transPush(t, 3);  
+        assert(t.commit());
+    }
+
+    {
+        // front intermixed with pushes on nonempty
+        Transaction t;
+        assert(q.transFront(t, p));
+        assert(p == 1);
+        assert(q.transFront(t, p));
+        assert(p == 1);
+        q.transPush(t,4);
+        assert(q.transFront(t, p));
+        assert(p == 1);
+        assert(t.commit());
+    }
+
+    {
+        // pops intermixed with pushes and front on nonempty
+        // q = [1 2 3 4]
+        Transaction t;
+        assert(q.transPop(t));
+        assert(q.transFront(t, p));
+        assert(p == 2);
+        q.transPush(t, 5);
+        // q = [2 3 4 5]
+        assert(q.transPop(t));
+        assert(q.transFront(t, p));
+        assert(p == 3);
+        q.transPush(t, 6);
+        // q = [3 4 5 6]
+        assert(t.commit());
+    }
+
+    // EMPTY TESTS
+    {
+<<<<<<< HEAD
+        // front with empty queue
+        Transaction t;
+        
+        // empty the queue
+        assert(q.transPop(t));
+        assert(q.transPop(t));
+        assert(q.transPop(t));
+        assert(q.transPop(t));
+        assert(!q.transPop(t));
+        
+        assert(!q.transFront(t, p));
+       
+        q.transPush(t, 1);
+=======
+        // front with no pops
+        Transaction t;
+>>>>>>> master
+        assert(q.transFront(t, p));
+        assert(p == 1);
+        assert(q.transFront(t, p));
+        assert(p == 1);
+<<<<<<< HEAD
+        assert(t.commit());
+    }
+
+    {
+        // pop with empty queue
+        Transaction t;
+        
+        // empty the queue
+        assert(q.transPop(t));
+        assert(!q.transPop(t));
+       
+        assert(!q.transFront(t, p));
+       
+        q.transPush(t, 1);
+        assert(q.transPop(t));
+        assert(!q.transPop(t));
+        assert(t.commit());
+    }
+
+    {
+        // pop and front with empty queue
+        Transaction t;
+       
+        assert(!q.transFront(t, p));
+       
+        q.transPush(t, 1);
+        assert(q.transFront(t, p));
+        assert(p == 1);
+        assert(q.transPop(t));
+       
+        q.transPush(t, 1);
+        assert(q.transPop(t));
+        assert(!q.transFront(t, p));
+        assert(!q.transPop(t));
+
+        // add items for next test
+        q.transPush(t, 1);
+        q.transPush(t, 2);
+
+=======
+>>>>>>> master
+        assert(t.commit());
+    }
+
+    // CONFLICTING TRANSACTIONS TEST
+    {
+        // test abortion due to pops 
+        Transaction t1;
+        Transaction t2;
+        // q has >1 element
+        assert(q.transPop(t1));
+        assert(q.transPop(t2));
+        assert(t1.commit());
+        try {
+          t2.commit();
+          assert(0); // shouldn't reach here since commit should fail
+        } catch (Transaction::Abort E) {}
+    }
+
+    {
+        // test nonabortion T1 pops, T2 pushes on nonempty q
+        Transaction t1;
+        Transaction t2;
+        // q has >1 element
+        assert(q.transPop(t1));
+        q.transPush(t2, 3);
+        assert(t1.commit());
+        assert(t2.commit()); // commit should succeed 
+
+        assert(q.transFront(t1, p) && p == 3);
+        assert(q.transPop(t1));
+        assert(!q.transPop(t1));
+        assert(t1.commit());
+    }
+
+    {
+        // test abortion due to empty q pops
+        Transaction t1;
+        Transaction t2;
+        // q has 0 elements
+        assert(!q.transPop(t1));
+        q.transPush(t1, 1);
+        q.transPush(t1, 2);
+        q.transPush(t2, 3);
+        q.transPush(t2, 4);
+        q.transPush(t2, 5);
+        
+        // read-my-write, lock tail
+        assert(q.transPop(t2));
+        
+        assert(t1.commit());
+        try {
+          t2.commit();
+          assert(0); // shouldn't reach here since commit should fail
+        } catch (Transaction::Abort E) {}
+    }
+
+    {
+        // test nonabortion T1 pops/fronts and pushes, T2 pushes on nonempty q
+        Transaction t1;
+        Transaction t2;
+        
+        // q has 2 elements [1, 2]
+        assert(q.transFront(t1, p) && p == 1);
+        q.transPush(t1, 4);
+
+        // pop from non-empty q
+        assert(q.transPop(t1));
+        assert(q.transFront(t1, p));
+        assert(p == 2);
+
+        q.transPush(t2, 3);
+        // order of pushes doesn't matter, commits succeed
+        assert(t2.commit());
+        assert(t1.commit());
+
+        // check if q is in order
+        assert(q.transPop(t1));
+        assert(q.transFront(t1, p));
+        assert(p == 3);
+        assert(q.transPop(t1));
+        assert(q.transFront(t1, p));
+        assert(p == 4);
+        assert(q.transPop(t1));
+        assert(!q.transPop(t1));
+        assert(t1.commit());
     }
 
     {
@@ -609,6 +842,12 @@ int main() {
   stringKeyTests();
 
   linkedListTests();
+<<<<<<< HEAD
 
   queueTests();
+=======
+  
+  queueTests();
+  
+>>>>>>> master
 }
