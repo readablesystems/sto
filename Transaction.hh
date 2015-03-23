@@ -34,7 +34,7 @@
 
 #define NOSORT 0
 
-#define MAX_THREADS 16
+#define MAX_THREADS 24
 
 // transaction performance counters
 enum txp {
@@ -85,8 +85,10 @@ struct __attribute__((aligned(128))) threadinfo_t {
   std::function<void(void)> trans_end_callback;
   uint64_t p_[txp_count];
   threadinfo_t() : epoch(), spin_lock() {
+#if PERF_LOGGING
       for (int i = 0; i != txp_count; ++i)
           p_[i] = 0;
+#endif
   }
   static bool p_is_max(int p) {
       return p == txp_max_set;
@@ -343,6 +345,7 @@ public:
     release_spinlock(tinfo[threadid].spin_lock);
   }
 
+#if PERF_LOGGING
   static void inc_p(int p) {
       add_p(p, 1);
   }
@@ -352,6 +355,17 @@ public:
   static void max_p(int p, unsigned long long n) {
       tinfo[threadid].max_p(p, n);
   }
+#endif
+
+#if PERF_LOGGING
+#define INC_P(p) inc_p((p))
+#define ADD_P(p, n) add_p((p), (n))
+#define MAX_P(p, n) max_p((p), (n))
+#else
+#define INC_P(p) /**/
+#define ADD_P(p, n) /**/
+#define MAX_P(p, n) /**/
+#endif
 
   static tid_type incTid() {
     tid_type t_old = _TID;
@@ -396,7 +410,7 @@ public:
     firstWrite_ = -1;
     start_tid_ = 0;
     buf_.clear();
-    inc_p(txp_total_starts);
+    INC_P(txp_total_starts);
   }
 
 private:
@@ -448,7 +462,7 @@ public:
       if (firstWrite_ >= 0)
           for (auto it = transSet_.begin() + firstWrite_;
                it != transSet_.end(); ++it) {
-              inc_p(txp_total_searched);
+              INC_P(txp_total_searched);
               if (it->sharedObj() == s && it->key_ == xkey) {
                   ti = &*it;
                   break;
@@ -472,7 +486,7 @@ private:
   // tries to find an existing item with this key, returns NULL if not found
   TransItem* find_item(Shared *s, void* key) {
       for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
-          inc_p(txp_total_searched);
+          INC_P(txp_total_searched);
           if (it->sharedObj() == s && it->key_ == key)
               return &*it;
       }
@@ -532,7 +546,7 @@ private:
   bool check_reads(TransItem *trans_first, TransItem *trans_last) {
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
-        inc_p(txp_total_check_read);
+        INC_P(txp_total_check_read);
         if (!it->sharedObj()->check(*it, *this)) {
           // XXX: only do this if we're dup'ing reads
             for (auto jt = trans_first; jt != it; ++jt)
@@ -554,8 +568,8 @@ private:
         assert(false);
     }
 #endif
-    max_p(txp_max_set, transSet_.size());
-    add_p(txp_total_n, transSet_.size());
+    MAX_P(txp_max_set, transSet_.size());
+    ADD_P(txp_total_n, transSet_.size());
 
     if (isAborted_)
       return false;
@@ -575,7 +589,7 @@ private:
       }
 #ifdef DETAILED_LOGGING
       if (it->has_read()) {
-	inc_p(txp_total_r);
+	INC_P(txp_total_r);
       }
 #endif
     }
@@ -615,7 +629,7 @@ private:
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
       TransItem& ti = *it;
       if (ti.has_write()) {
-        inc_p(txp_total_w);
+        INC_P(txp_total_w);
         ti.sharedObj()->install(ti, commit_tid);
       }
     }
@@ -637,7 +651,7 @@ private:
     if (success) {
       commitSuccess();
     } else {
-      inc_p(txp_commit_time_aborts);
+      INC_P(txp_commit_time_aborts);
       silent_abort();
     }
 
@@ -650,7 +664,7 @@ private:
   void silent_abort() {
     if (isAborted_)
       return;
-    inc_p(txp_total_aborts);
+    INC_P(txp_total_aborts);
     isAborted_ = true;
     for (auto& ti : transSet_) {
       ti.sharedObj()->cleanup(ti, false);

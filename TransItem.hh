@@ -126,6 +126,7 @@ class TransItem {
     flags_type shifted_user_flags() const {
         return (flags() >> userf_shift) & shifted_userf_mask;
     }
+    // removes any existing flags, too
     TransItem& assign_flags(flags_type flags) {
         assert(!(flags & special_mask));
         s_ = reinterpret_cast<sharedstore_type>((reinterpret_cast<flags_type>(s_) & special_mask) | flags);
@@ -136,6 +137,7 @@ class TransItem {
         s_ = reinterpret_cast<sharedstore_type>(reinterpret_cast<flags_type>(s_) & ~flags);
         return *this;
     }
+    // adds to existing flags
     TransItem& add_flags(flags_type flags) {
         assert(!(flags & special_mask));
         s_ = reinterpret_cast<sharedstore_type>(reinterpret_cast<flags_type>(s_) | flags);
