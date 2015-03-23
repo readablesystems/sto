@@ -244,8 +244,10 @@ public:
   static __thread int threadid;
   static unsigned global_epoch;
   static __thread Transaction* __transaction;
-  typedef TransactionTid tid_type;
-  static tid_type _TID;
+  typedef TransactionTid::type tid_type;
+private:
+  static TransactionTid::type _TID;
+public:
 
   static Transaction& get_transaction() {
     if (!__transaction)
@@ -676,17 +678,18 @@ private:
 
 
     // opacity checking
-    bool try_check_opacity(tid_type t) const {
+    void check_opacity(TransactionTid::type t) {
         assert(!writeset_);
         if (!start_tid_)
             start_tid_ = _TID;
-        return start_tid_ > t || hard_try_check_opacity();
+        if (!TransactionTid::try_check_opacity(start_tid_, t))
+            hard_check_opacity(t);
     }
 
     tid_type commit_tid() const {
         assert(writeset_);
         if (!commit_tid_)
-            commit_tid_ = fetch_and_add(&_TID, 2);
+            commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
     }
 
@@ -714,7 +717,7 @@ private:
 
     friend class TransProxy;
     friend class TransItem;
-    bool hard_try_check_opacity() const;
+    void hard_check_opacity(TransactionTid::type t);
 };
 
 
