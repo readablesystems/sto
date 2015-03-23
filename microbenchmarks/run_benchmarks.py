@@ -95,13 +95,13 @@ def getRecordKey(trail, nthreads, txlen, opacity):
 def run_series(trail, txlen, opacity, records, start_nthreads):
 	assert opacity >= 0 and opacity <= 2
 
-	nthreads = start_nthreads
-
 	bm_stdout = "@@@ Running with %s, txlen %d. Trail #%d" % (opacity_names[opacity], txlen, trail)
 	print bm_stdout
 	bm_stdout += "\n"
 
 	for nthreads in nthreads_to_run:
+		if nthreads < start_nthreads:
+			continue
 		run_key = getRecordKey(trail, nthreads, txlen, opacity)
 		args = attach_args(nthreads, txlen, opacity)
 		print_cmd(args)
