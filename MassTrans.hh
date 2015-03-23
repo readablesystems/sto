@@ -335,8 +335,7 @@ public:
       value_type stack_val;
       value_type& val = va ? *(*va)() : stack_val;
       this->atomicRead(t, e, v, val);
-      if (!item.has_read())
-        item.add_read(v);
+      item.add_read(v);
       // key and val are both only guaranteed until callback returns
       return callback(key, val);//query_callback_overload(key, val, callback);
     };
@@ -357,8 +356,7 @@ public:
       value_type stack_val;
       value_type& val = va ? *(*va)() : stack_val;
       this->atomicRead(t, e, v, val);
-      if (!item.has_read())
-        item.add_read(v);
+      item.add_read(v);
       return callback(key, val);
     };
 
@@ -476,7 +474,7 @@ public:
 #endif
     return lockedCheck && versionCheck(read_version, e->version());
   }
-  void install(TransItem& item, Transaction::tid_type) {
+  void install(TransItem& item, const Transaction&) {
     assert(!is_inter(item));
     auto e = item.key<versioned_value*>();
     assert(is_locked(e->version()));

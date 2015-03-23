@@ -78,10 +78,10 @@ public:
             (!Versioning::is_locked(s_.version()) || item.has_write());
     }
 
-    void install(TransItem& item, Transaction::tid_type tid) {
+    void install(TransItem& item, const Transaction& t) {
         s_.set_value(item.template write_value<T>());
         if (GenericSTM) {
-            Versioning::set_version(s_.version(), tid);
+            Versioning::set_version(s_.version(), t.commit_tid());
         } else {
             Versioning::inc_version(s_.version());
         }
