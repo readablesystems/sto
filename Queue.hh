@@ -48,29 +48,32 @@ public:
     }
 
     bool transPop(Transaction& t) {
+        auto hv = headversion_;
+        fence();
         auto index = head_;
         auto item = t.item(this, index);
 
         while (1) {
            if (index == tail_) { 
                Version tv = tailversion_;
+               fence();
                 // if someone has pushed onto tail, can successfully do a front read, so don't read our own writes
                 if (index == tail_) {
                     auto pushitem = t.item(this,-1);
+                    if (!pushitem.has_read())
+                        pushitem.add_read(tv);
                     if (pushitem.has_write()) {
                         auto& write_list = pushitem.template write_value<std::list<T>>();
                         // if there is an element to be pushed on the queue, return addr of queue element
                         if (!write_list.empty()) {
                             write_list.pop_front();
                             item.or_flags(read_writes);
+                            return true;
                         }
                         else return false;
                     }
                     // fail if trying to read from an empty queue
-                    else return false; 
-                    
-                    if (!pushitem.has_read())
-                        pushitem.add_read(tailversion_);
+                    else return false;  
                 } 
             }
             if (has_delete(item)) {
@@ -92,15 +95,20 @@ public:
     }
 
     bool transFront(Transaction& t, T& val) {
+        auto hv = headversion_;
+        fence();
         unsigned index = head_;
         auto item = t.item(this, index);
         while (1) {
             // empty queue
             if (index == tail_) {
                 Version tv = tailversion_;
+                fence();
                 // if someone has pushed onto tail, can successfully do a front read, so skip reading from our pushes 
                 if (index == tail_) {
                     auto pushitem = t.item(this,-1);
+                    if (!pushitem.has_read())
+                        pushitem.add_read(tv);
                     if (pushitem.has_write()) {
                         auto& write_list = pushitem.template write_value<std::list<T>>();
                         // if there is an element to be pushed on the queue, return addr of queue element
@@ -112,12 +120,9 @@ public:
                             val = queueSlots[index];
                             return true;
                         }
-                        else return false;
                     }
-                    if (!pushitem.has_read())
-                        pushitem.add_read(tailversion_);
+                    return false;
                 }
-                return false;
             }
             if (has_delete(item)) {
                 index = (index + 1) % BUF_SIZE;
@@ -144,7 +149,7 @@ private:
     bool is_rw(TransItem& item) {
         return item.has_flags(read_writes);
     }
-   
+
     void lock(Version& v) {
         QueueVersioning::lock(v);
     }
@@ -170,15 +175,18 @@ private:
   
     bool check(TransItem& item, Transaction& t) {
         (void) t;
-        auto hv = headversion_;
-        auto tv = tailversion_;
+        // XXX: not great for performance to read both of these always
         // check if was a pop or front 
-        if (item.key<int>() == -2)
+        if (item.key<int>() == -2) {
+            auto hv = headversion_;
             return QueueVersioning::versionCheck(hv, item.template read_value<Version>()) || (!QueueVersioning::is_locked(hv) && !has_delete(item));
+        }
 
         // check if we read off the write_list (and locked tailversion)
-        else if (item.key<int>() == -1)
+        else if (item.key<int>() == -1) {
+            auto tv = tailversion_;
             return QueueVersioning::versionCheck(tv, item.template read_value<Version>());
+        }
     }
 
     void install(TransItem& item, uint32_t tid) {
