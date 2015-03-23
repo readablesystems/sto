@@ -445,7 +445,7 @@ private:
     return n->is_valid() || has_insert(item);
   }
 
-  void install(TransItem& item, Transaction::tid_type tid) {
+  void install(TransItem& item, const Transaction& t) {
     if (item.key<List*>() == this)
       return;
     list_node *n = item.key<list_node*>();
@@ -455,7 +455,7 @@ private:
       // not super ideal that we have to change version
       // but we need to invalidate transSize() calls
       if (Opacity) {
-        ListVersioning::set_version(listversion_, tid);
+        ListVersioning::set_version(listversion_, t.commit_tid());
       } else {
         ListVersioning::inc_version(listversion_);
       }
@@ -465,7 +465,7 @@ private:
       n->mark_valid();
       listsize_++;
       if (Opacity) {
-        ListVersioning::set_version(listversion_, tid);
+        ListVersioning::set_version(listversion_, t.commit_tid());
       } else {
         ListVersioning::inc_version(listversion_);
       }

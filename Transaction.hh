@@ -367,16 +367,6 @@ public:
 #define MAX_P(p, n) /**/
 #endif
 
-  static tid_type incTid() {
-    tid_type t_old = _TID;
-    tid_type t_new = t_old + 1;
-    tid_type t = cmpxchg(&_TID, t_old, t_new);
-    if (t != t_old) {
-      t_new = t;
-    }
-    return t_new;
-  }
-
 
   Transaction() : transSet_() {
     reset();
@@ -408,7 +398,7 @@ public:
     may_duplicate_items_ = false;
     isAborted_ = false;
     firstWrite_ = -1;
-    start_tid_ = 0;
+    start_tid_ = commit_tid_ = 0;
     buf_.clear();
     INC_P(txp_total_starts);
   }
@@ -615,8 +605,6 @@ private:
 
     //    fence();
 
-    tid_type commit_tid = incTid();
-
     //phase2
     if (!check_reads(trans_first, trans_last)) {
       success = false;
@@ -630,7 +618,7 @@ private:
       TransItem& ti = *it;
       if (ti.has_write()) {
         INC_P(txp_total_w);
-        ti.sharedObj()->install(ti, commit_tid);
+        ti.sharedObj()->install(ti, *this);
       }
     }
 
@@ -686,6 +674,16 @@ private:
     return isAborted_;
   }
 
+
+    // opacity checking
+    tid_type commit_tid() const {
+        assert(writeset_);
+        if (!commit_tid_)
+            commit_tid_ = fetch_and_add(&_TID, 2);
+        return commit_tid_;
+    }
+
+
   tid_type start_tid() {
     if (start_tid_ == 0) {
       return read_tid();
@@ -719,6 +717,7 @@ private:
     int* writeset_;
     int nwriteset_;
     mutable tid_type start_tid_;
+    mutable tid_type commit_tid_;
 
     friend class TransProxy;
     friend class TransItem;

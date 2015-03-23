@@ -64,7 +64,7 @@ public:
         && (!Versioning::is_locked(elem.version()) || item.has_lock(t));
   }
 
-  void install(TransItem& item, Transaction::tid_type) {
+  void install(TransItem& item, const Transaction&) {
     int i = item.template key<int>();
     arr_[i].set_value(item.template write_value<T>());
     Versioning::inc_version(arr_[i].version());

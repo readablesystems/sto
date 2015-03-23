@@ -127,7 +127,7 @@ public:
     unlock(item.key<Key>());
   }
 
-  void install(TransItem& item, Transaction::tid_type) {
+  void install(TransItem& item, const Transaction&) {
     Key i = item.key<Key>();
     Value val = item.write_value<Value>();
     assert(is_locked(i));
