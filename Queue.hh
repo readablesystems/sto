@@ -179,7 +179,7 @@ private:
         // check if we read off the write_list (and locked tailversion)
         else if (item.key<int>() == -1) {
             auto tv = tailversion_;
-            return QueueVersioning::versionCheck(tv, item.template read_value<Version>());
+            return QueueVersioning::versionCheck(tv, item.template read_value<Version>()) || (!QueueVersioning::is_locked(tv) || item.has_write());
         }
         return false;
     }
