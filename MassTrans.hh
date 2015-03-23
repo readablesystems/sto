@@ -16,7 +16,9 @@
 #define RCU 1
 #define ABORT_ON_WRITE_READ_CONFLICT 0
 
+#ifndef READ_MY_WRITES
 #define READ_MY_WRITES 1
+#endif
 
 #include "Debug_rcu.hh"
 
