@@ -10,6 +10,7 @@
 #include "GenericSTMArray.hh"
 #include "ListArray.hh"
 #include "Hashtable.hh"
+#include "Queue.hh"
 #include "Transaction.hh"
 #include "clp.h"
 
@@ -24,9 +25,10 @@
 #define USE_MASSTREE 2
 #define USE_GENSTMARRAY 3
 #define USE_LISTARRAY 4
+#define USE_QUEUE 5
 
 // set this to USE_DATASTRUCTUREYOUWANT
-#define DATA_STRUCTURE USE_ARRAY
+#define DATA_STRUCTURE USE_QUEUE
 
 // if true, each operation of a transaction will act on a different slot
 #define ALL_UNIQUE_SLOTS 0
@@ -167,12 +169,19 @@ template <> struct Container<USE_HASHTABLE> : public ContainerBase_maplike {
     typedef Hashtable<int, value_type, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
 };
 
+#if DATA_STRUCTURE == 5
+typedef Queue<value_type, ARRAY_SZ> QueueType;
+QueueType* q;
+QueueType* q2;
+#endif
+
 bool readMyWrites = true;
 bool runCheck = false;
 int nthreads = 4;
 int ntrans = 1000000;
 int opspertrans = 10;
-int prepopulate = ARRAY_SZ/10;
+int prepopulate = 
+    ARRAY_SZ/10;
 double write_percent = 0.5;
 bool blindRandomWrite = false;
 
@@ -223,12 +232,6 @@ inline int unval(const value_type& v) {
 #endif
 }
 
-void prepopulate_func(int *array) {
-  for (int i = 0; i < prepopulate; ++i) {
-    array[i] = i+1;
-  }
-}
-
 template <typename T>
 void prepopulate_func(T& a) {
   for (int i = 0; i < prepopulate; ++i) {
@@ -238,6 +241,28 @@ void prepopulate_func(T& a) {
   }
 }
 
+void prepopulate_func(int *array) {
+  for (int i = 0; i < prepopulate; ++i) {
+    array[i] = i+1;
+  }
+}
+
+#if DATA_STRUCTURE == 5
+// FUNCTIONS FOR QUEUE
+void prepopulate_func() {
+  for (int i = 0; i < prepopulate; ++i) {
+    q->push(val(i));
+  }
+}
+
+void empty_func() {
+    while (!q->empty()) {
+        q->pop();
+    }
+}
+#endif
+
+// FUNCTIONS FOR ARRAY/MAP-TYPE
 template <typename T>
 static void doRead(T& a, Transaction& t, int slot) {
   if (readMyWrites)
@@ -294,7 +319,6 @@ static inline void nwrites(T& a, int n, Transaction& t, std::function<int(void)>
     doWrite(a, t, slotgen(), i);
   }
 }
-
 
 struct Tester {
     Tester() {}
@@ -742,6 +766,124 @@ template <int DS> bool InterferingRWs<DS>::check() {
   return true;
 }
 
+#if DATA_STRUCTURE == 5
+void Qxordeleterun(int me) {
+  Transaction::threadid = me;
+
+  int N = ntrans/nthreads;
+  int OPS = opspertrans;
+ 
+  for (int i = 0; i < N; ++i) {
+    while (1) {
+      try {
+        Transaction t;
+        for (int j = 0; j < OPS; ++j) {
+          value_type v = val(j);
+          value_type u;
+          if (!q->transFront(t, u)) {
+            // we pop if the q is nonempty, push if it's empty
+            q->transPush(t, v);
+          }
+          else
+              q->transPop(t);
+        }
+        if (t.try_commit())
+            break;
+      } catch (Transaction::Abort E) {}
+    }
+  }
+}
+
+bool Qxordeletecheck() {
+  QueueType* old = q;
+  QueueType& ch =  *(new QueueType);
+  q = &ch;
+
+  empty_func();
+  prepopulate_func();
+  
+  for (int i = 0; i < nthreads; ++i) {
+    Qxordeleterun(i);
+  }
+  q = old;
+
+  // check only while q or ch is nonempty (may have started xordelete at different indices into the q)
+  while (!q->empty() && !ch.empty()) {
+    assert (unval(q->pop()) == unval(ch.pop()));
+  }
+  return true;
+}
+
+void Qtransferrun(int me) {
+  Transaction::threadid = me;
+
+  int N = ntrans/nthreads;
+  int OPS = opspertrans;
+
+  for (int i = 0; i < N; ++i) {
+    while (1) {
+      try {
+        Transaction t;
+        for (int j = 0; j < OPS; ++j) {
+          value_type v;
+          // if q is nonempty, pop from q, push onto q2
+          if (q->transFront(t, v)) {
+            q->transPop(t);
+            q2->transPush(t, v);
+          }
+        }
+        if (t.try_commit())
+            break;
+      } catch (Transaction::Abort E) {}
+    }
+  }
+}
+
+bool Qtransfercheck() {
+  // restore q to prepopulated state
+  empty_func();
+  prepopulate_func();
+
+  // check if q2 and q are equivalent
+  while (!q2->empty()) {
+    assert (unval(q->pop()) == unval(q2->pop()));
+  }
+  return true;
+}
+
+struct QTester {
+    int me;
+};
+
+void* xorrunfunc(void* x) {
+    QTester* qt = (QTester*) x;
+    Qxordeleterun(qt->me);
+    return nullptr;
+} 
+
+void* transferrunfunc(void* x) {
+    QTester* qt = (QTester*) x;
+    Qtransferrun(qt->me);
+    return nullptr;
+} 
+
+void qstartAndWait(int n, void*(*runfunc)(void*)) {
+  pthread_t tids[n];
+  QTester tester[n];
+
+  for (int i = 0; i < n; ++i) {
+      tester[i].me = i;
+      pthread_create(&tids[i], NULL, runfunc, &tester[i]);
+  }
+  pthread_t advancer;
+  pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
+  pthread_detach(advancer);
+
+  for (int i = 0; i < n; ++i) {
+    pthread_join(tids[i], NULL);
+  }
+}
+#endif
 
 struct TesterPair {
     Tester* t;
@@ -809,7 +951,8 @@ struct {
     {"masstree", USE_MASSTREE},
     {"mass", USE_MASSTREE},
     {"genstm", USE_GENSTMARRAY},
-    {"list", USE_LISTARRAY}
+    {"list", USE_LISTARRAY},
+    {"queue", USE_QUEUE}
 };
 
 enum {
@@ -903,6 +1046,23 @@ int main(int argc, char *argv[]) {
   }
   Clp_DeleteParser(clp);
 
+#if DATA_STRUCTURE == 5 
+    QueueType stack_q;
+    QueueType stack_q2;
+    q = &stack_q;
+    q2 = &stack_q2;
+    
+    empty_func();
+    prepopulate_func();    
+    qstartAndWait(nthreads, xorrunfunc);
+    assert(Qxordeletecheck());
+    
+    empty_func();
+    prepopulate_func();
+    qstartAndWait(nthreads, transferrunfunc);
+    assert(Qtransfercheck());
+#else 
+
   int testidx = 0;
   int test = -1;
   for (size_t ti = 0; ti != sizeof(tests) / sizeof(tests[0]); ++ti) {
@@ -970,4 +1130,6 @@ int main(int argc, char *argv[]) {
 
   if (runCheck)
       tester->check();
+#endif
 }
+

@@ -5,10 +5,19 @@ __thread int Transaction::threadid;
 unsigned Transaction::global_epoch;
 __thread Transaction *Transaction::__transaction;
 std::function<void(unsigned)> Transaction::epoch_advance_callback;
-Transaction::tid_type Transaction::_TID = 1;
+TransactionTid::type Transaction::_TID = TransactionTid::valid_bit;
 
 static void __attribute__((used)) check_static_assertions() {
     static_assert(sizeof(threadinfo_t) % 128 == 0, "threadinfo is 2-cache-line aligned");
+}
+
+void Transaction::hard_check_opacity(TransactionTid::type t) {
+    TransactionTid::type newstart = start_tid_;
+    release_fence();
+    if (!(t & TransactionTid::lock_bit) && check_reads(transSet_.begin(), transSet_.end()))
+        start_tid_ = newstart;
+    else
+        abort();
 }
 
 void Transaction::print_stats() {

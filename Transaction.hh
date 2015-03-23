@@ -244,8 +244,10 @@ public:
   static __thread int threadid;
   static unsigned global_epoch;
   static __thread Transaction* __transaction;
-  typedef TransactionTid tid_type;
-  static tid_type _TID;
+  typedef TransactionTid::type tid_type;
+private:
+  static TransactionTid::type _TID;
+public:
 
   static Transaction& get_transaction() {
     if (!__transaction)
@@ -533,7 +535,7 @@ private:
   }
 
   private:
-  bool check_reads(TransItem *trans_first, TransItem *trans_last) {
+  bool check_reads(const TransItem *trans_first, const TransItem *trans_last) const {
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
         INC_P(txp_total_check_read);
@@ -676,28 +678,22 @@ private:
 
 
     // opacity checking
+    void check_opacity(TransactionTid::type t) {
+        assert(!writeset_);
+        if (!start_tid_)
+            start_tid_ = _TID;
+        if (!TransactionTid::try_check_opacity(start_tid_, t))
+            hard_check_opacity(t);
+    }
+
     tid_type commit_tid() const {
         assert(writeset_);
         if (!commit_tid_)
-            commit_tid_ = fetch_and_add(&_TID, 2);
+            commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
     }
 
-
-  tid_type start_tid() {
-    if (start_tid_ == 0) {
-      return read_tid();
-    } else {
-      return start_tid_;
-    }
-  }
-
-  tid_type read_tid() {
-    start_tid_ = _TID;
-    return start_tid_;
-  }
-
-  class Abort {};
+    class Abort {};
 
 private:
 
@@ -721,6 +717,7 @@ private:
 
     friend class TransProxy;
     friend class TransItem;
+    void hard_check_opacity(TransactionTid::type t);
 };
 
 
