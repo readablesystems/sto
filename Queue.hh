@@ -20,10 +20,10 @@ public:
     void push(T v) {
         queueSlots[tail_] = v;
         tail_ = (tail_+1)%BUF_SIZE;
+        assert(head_ != tail_);
     }
     
     T pop() {
-        assert(head_ != tail_);
         T v = queueSlots[head_];
         head_ = (head_+1)%BUF_SIZE;
         return v;
