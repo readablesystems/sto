@@ -184,6 +184,7 @@ private:
             auto tv = tailversion_;
             return QueueVersioning::versionCheck(tv, item.template read_value<Version>());
         }
+        return false;
     }
 
     void install(TransItem& item, const Transaction& t) {
