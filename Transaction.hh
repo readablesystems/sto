@@ -39,17 +39,26 @@
 // transaction performance counters
 enum txp {
     // all logging levels
-    txp_total_aborts = 0, txp_total_starts = 1,
-    txp_commit_time_aborts = 2, txp_max_set = 3,
+    txp_total_aborts = 0,
+    txp_total_starts,
+    txp_commit_time_aborts,
+    txp_max_set,
+    txp_hco,
+    txp_hco_lock,
+    txp_hco_invalid,
+    txp_hco_abort,
     // DETAILED_LOGGING only
-    txp_total_n = 4, txp_total_r = 5, txp_total_w = 6, txp_total_searched = 7,
-    txp_total_check_read = 8,
+    txp_total_n,
+    txp_total_r,
+    txp_total_w,
+    txp_total_searched,
+    txp_total_check_read,
 #if !PERF_LOGGING
     txp_count = 0
 #elif !DETAILED_LOGGING
-    txp_count = 4
+    txp_count = txp_hco_abort + 1
 #else
-    txp_count = 9
+    txp_count = txp_total_check_read + 1
 #endif
 };
 
