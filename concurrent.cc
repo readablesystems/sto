@@ -252,7 +252,7 @@ void prepopulate_func(int *array) {
 #if DATA_STRUCTURE == 5
 // FUNCTIONS FOR QUEUE
 void prepopulate_func() {
-  for (int i = 0; i < prepopulate*10; ++i) {
+  for (int i = 0; i < prepopulate; ++i) {
     q->push(val(i));
   }
 }

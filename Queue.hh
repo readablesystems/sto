@@ -24,6 +24,7 @@ public:
     }
     
     T pop() {
+        assert(head_ != tail_);
         T v = queueSlots[head_];
         head_ = (head_+1)%BUF_SIZE;
         return v;
@@ -112,11 +113,7 @@ public:
                         auto& write_list = pushitem.template write_value<std::list<T>>();
                         // if there is an element to be pushed on the queue, return addr of queue element
                         if (!write_list.empty()) {
-                            // install tail elements immediately
-                            queueSlots[tail_] = write_list.front();
-                            write_list.pop_front();
-                            tail_ = (tail_ + 1) % BUF_SIZE;
-                            val = queueSlots[index];
+                            val = write_list.front();
                             return true;
                         }
                     }
@@ -202,7 +199,7 @@ private:
         else {
             auto& write_list = item.template write_value<std::list<T>>();
             auto head_index = head_;
-            // write all the elements that have not yet been installed 
+            // write all the elements
             while (!write_list.empty()) {
                 // assert queue is not out of space            
                 assert(tail_ != (head_index-1) % BUF_SIZE);
