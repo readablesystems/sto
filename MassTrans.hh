@@ -16,7 +16,7 @@
 #define RCU 0
 #define ABORT_ON_WRITE_READ_CONFLICT 0
 
-#define READ_MY_WRITES 0
+#define READ_MY_WRITES 1
 
 #include "Debug_rcu.hh"
 
@@ -149,7 +149,7 @@ public:
         if (has_insert(item)) {
 	  get_val(retval, e);
         } else {
-	  if (!(item.flags() & copyvals_bit))
+	  if (item.flags() & copyvals_bit)
 	    retval = item.template write_value<value_type>();
 	  else
 	    // TODO: should we refcount, copy, or...?
