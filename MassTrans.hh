@@ -160,8 +160,6 @@ public:
 #endif
       Version elem_vers;
       atomicRead(t, e, elem_vers, retval);
-      if (item.has_read((Version) valid_check_only_bit))
-          item.clear_read();
       item.add_read(elem_vers);
     } else {
       ensureNotFound(t, lp.node(), lp.full_version_value());
@@ -203,7 +201,7 @@ public:
 #endif
       // XXX deleting something we put?
       // we only need to check validity, not if the item has changed
-      item.add_read(valid_check_only_bit);
+      item.add_read(e->version());
       // same as inserts we need to store (copy) key so we can lookup to remove later
       item.clear_write();
       if (std::is_same<const std::string, const StringType>::value) {
@@ -456,7 +454,7 @@ public:
 #else
     bool lockedCheck = !is_locked(e->version()) || item.has_lock(t);
 #endif
-    return lockedCheck && ((read_version & valid_check_only_bit) || versionCheck(read_version, e->version()));
+    return lockedCheck && versionCheck(read_version, e->version());
   }
   void install(TransItem& item, Transaction::tid_type) {
     assert(!is_inter(item));
@@ -666,7 +664,7 @@ private:
     if (!item.has_read() && !has_insert(item))
 #endif
     {
-      item.add_read(valid_check_only_bit);
+      item.add_read(e->version());
     }
     if (SET) {
       reallyHandlePutFound<CopyVals>(t, item, e, key, value);
@@ -731,8 +729,7 @@ private:
 
   static constexpr Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
   static constexpr Version invalid_bit = 1U<<(sizeof(Version)*8 - 2);
-  static constexpr Version valid_check_only_bit = 1U<<(sizeof(Version)*8 - 3);
-  static constexpr Version version_mask = ~(lock_bit|invalid_bit|valid_check_only_bit);
+  static constexpr Version version_mask = ~(lock_bit|invalid_bit);
 
   static constexpr uintptr_t internode_bit = 1<<0;
 

@@ -52,8 +52,7 @@ public:
   // if set we check only node validity, not the node's version number
   // (for deletes we need to make sure the node is still there/valid, but 
   // not that its value is the same)
-  static constexpr Version valid_check_only_bit = ((Version)1U)<<(sizeof(Version)*8 - 2);
-  static constexpr Version version_mask = ~(lock_bit|valid_check_only_bit);
+  static constexpr Version version_mask = ~(lock_bit);
   // used to mark whether a key is a bucket (for bucket version checks)
   // or a pointer (which will always have the lower 3 bits as 0)
   static constexpr uintptr_t bucket_bit = 1U<<0;
@@ -101,8 +100,6 @@ public:
       // "atomic" read of both the current value and the version #
       atomicRead(t, e, elem_vers, retval);
       // check both node changes and node deletes
-      if (item.has_read((Version) valid_check_only_bit))
-          item.clear_read();
       item.add_read(elem_vers);
       return true;
     } else {
@@ -140,7 +137,7 @@ public:
         return false;
       }
       // we need to make sure this bucket didn't change (e.g. what was once there got removed)
-      item.add_read((Version) valid_check_only_bit);
+      item.add_read(e->version);
       // we use delete_bit to detect deletes so we don't need any other data
       // for deletes, just to mark it as a write
       if (!item.has_write())
@@ -186,9 +183,8 @@ public:
       }
 
 #if HASHTABLE_DELETE
-      // we need to make sure this item stays here
-      // we only need to check validity, not presence
-      item.add_read((Version) valid_check_only_bit);
+      // make sure the item doesn't get deleted before us
+      item.add_read(e->version);
 #endif
       if (SET) {
         item.add_write(v);
@@ -268,8 +264,7 @@ public:
     // if item has insert_bit then its an insert so no validity check needed.
     // otherwise we check that it is both valid and not locked
     bool validity_check = has_insert(item) || (el->valid() && (!is_locked(el->version) || item.has_lock(t)));
-    return validity_check && ((read_version & valid_check_only_bit) ||
-                              versionCheck(read_version, el->version));
+    return validity_check && versionCheck(read_version, el->version);
   }
 
   void lock(TransItem& item) {
