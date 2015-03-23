@@ -567,14 +567,14 @@ int main() {
 
   // run on both Hashtable and MassTrans
   Hashtable<int, int> h;
-  basicMapTests(h);
+  //basicMapTests(h);
   MassTrans<int> m;
   m.thread_init();
-  basicMapTests(m);
+  //basicMapTests(m);
 
   // insert-then-delete node test
-  insertDeleteTest(false);
-  insertDeleteTest(true);
+//  insertDeleteTest(false);
+ // insertDeleteTest(true);
 
   // insert-then-delete problems with masstree version numbers (currently fails)
   insertDeleteSeparateTest();
