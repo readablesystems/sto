@@ -887,109 +887,6 @@ void qstartAndWait(int n, void*(*runfunc)(void*)) {
 }
 #endif
 
-template <int DS> struct QXorDelete: public DSTester<DS> {
-    QXorDelete() {}
-    void run(int me);
-    bool check();
-};
-
-template <int DS> void QXorDelete<DS>::run(int me) {
-  Transaction::threadid = me;
-
-  int N = ntrans/nthreads;
-  int OPS = opspertrans;
-  
-  // ensure q always starts out with exactly prepopulated values ?????????????
-  empty_func(q);
-  prepopulate_func(q);
-
-  for (int i = 0; i < N; ++i) {
-    while (1) {
-      try {
-        Transaction t;
-        for (int j = 0; j < OPS; ++j) {
-          value_type v = val(1);
-          if (!q->transPop(t)) {
-            // we pop if the q is nonempty, push if it's empty
-            q->transPush(t, v);
-          }
-        }
-        if (t.commit())
-            break;
-      } catch (Transaction::Abort E) {}
-    }
-  }
-}
-
-template <int DS> bool QXorDelete<DS>::check() {
-  QueueType *old = q;
-  QueueType ch;
-  q = &ch;
-
-  prepopulate_func(q);
-  
-  for (int i = 0; i < nthreads; ++i) {
-    run(i);
-  }
-  q = old;
-
-  while (!q->empty()) {
-    assert (unval(q->pop()) == unval(ch.pop()));
-  }
-  assert(ch.empty() == q->empty());
-  return true;
-}
-
-template <int DS> struct QTransfer: public DSTester<DS> {
-    QTransfer() {}
-    void run(int me);
-    bool check();
-};
-
-template <int DS> void QTransfer<DS>::run(int me) {
-  Transaction::threadid = me;
-
-  int N = ntrans/nthreads;
-  int OPS = opspertrans;
-
-  empty_func(q);
-  prepopulate_func(q);
-
-  for (int i = 0; i < N; ++i) {
-    while (1) {
-      try {
-        Transaction t;
-        for (int j = 0; j < OPS; ++j) {
-          value_type v;
-          // if q is nonempty, pop from q, push onto q2
-          if (q->transFront(t, v)) {
-            q->transPop(t);
-            q2->transPush(t, v);
-          }
-        }
-        if (t.commit())
-            break;
-      } catch (Transaction::Abort E) {}
-    }
-  }
-}
-
-template <int DS> bool QTransfer<DS>::check() {
-  // check if all items successfully popped
-  assert(q->empty());
-
-  // restore q to prepopulated state
-  prepopulate_func(q);
-
-  // check if q2 and q are equivalent
-  while (!q->empty()) {
-    assert (unval(q->pop()) == unval(q2->pop()));
-  }
-  assert(ch.empty() == q->empty());
-  return true;
-}
-
-
 struct TesterPair {
     Tester* t;
     int me;
@@ -1044,8 +941,6 @@ struct Test {
     MAKE_TESTER("kingofthedelete", 0, KingDelete),
     MAKE_TESTER("xordelete", 0, XorDelete),
     MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true)
-    MAKE_TESTER("qxordelete", 0, QXorDelete),
-    MAKE_TESTER("qtransfer", 0, QTransfer),
 };
 
 struct {
