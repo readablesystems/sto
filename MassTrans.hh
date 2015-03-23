@@ -312,34 +312,54 @@ public:
     return c(key, val);
   }
 
+  // unused (we just stack alloc if no allocator is passed)
+  class DefaultValAllocator {
+  public:
+    value_type* operator()() {
+      assert(0);
+      return new value_type();
+    }
+  };
+
   // range queries
-  template <typename Callback>
-  void transQuery(Transaction& t, Str begin, Str end, Callback callback, threadinfo_type& ti = mythreadinfo) {
+  template <typename Callback, typename ValAllocator = DefaultValAllocator>
+  void transQuery(Transaction& t, Str begin, Str end, Callback callback, ValAllocator *va = NULL, threadinfo_type& ti = mythreadinfo) {
     auto node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
       this->ensureNotFound(t, node, version);
     };
-    auto value_callback = [&] (Str key, versioned_value* value) {
+    auto value_callback = [&] (Str key, versioned_value* e) {
       // TODO: this needs to read my writes
-      auto item = this->t_read_only_item(t, value);
+      auto item = this->t_read_only_item(t, e);
+      Version v;
+      // not sure of a better way to do this
+      value_type stack_val;
+      value_type& val = va ? *(*va)() : stack_val;
+      this->atomicRead(t, e, v, val);
       if (!item.has_read())
-        item.add_read(value->version());
-      return query_callback_overload(key, value, callback);
+        item.add_read(v);
+      // key and val are both only guaranteed until callback returns
+      return callback(key, val);//query_callback_overload(key, val, callback);
     };
 
     range_scanner<decltype(node_callback), decltype(value_callback)> scanner(end, node_callback, value_callback);
     table_.scan(begin, true, scanner, *ti.ti);
   }
 
-  template <typename Callback>
-  void transRQuery(Transaction& t, Str begin, Str end, Callback callback, threadinfo_type& ti = mythreadinfo) {
+  template <typename Callback, typename ValAllocator = DefaultValAllocator>
+  void transRQuery(Transaction& t, Str begin, Str end, Callback callback, ValAllocator *va = NULL, threadinfo_type& ti = mythreadinfo) {
     auto node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
       this->ensureNotFound(t, node, version);
     };
-    auto value_callback = [&] (Str key, versioned_value* value) {
-      auto item = this->t_read_only_item(t, value);
+    auto value_callback = [&] (Str key, versioned_value* e) {
+      auto item = this->t_read_only_item(t, e);
+      Version v;
+      // not sure of a better way to do this
+      value_type stack_val;
+      value_type& val = va ? *(*va)() : stack_val;
+      this->atomicRead(t, e, v, val);
       if (!item.has_read())
-        item.add_read(value->version());
-      return query_callback_overload(key, value, callback);
+        item.add_read(v);
+      return callback(key, val);
     };
 
     range_scanner<decltype(node_callback), decltype(value_callback), true> scanner(end, node_callback, value_callback);
