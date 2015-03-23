@@ -1,15 +1,26 @@
 #!/usr/bin/env python
 
-import os, re, sys, json, numpy, subprocess, multiprocessing
+import os, re, sys, json, subprocess, multiprocessing
 
 bm_dir = "../"
 bm_prog = "concurrent"
 bm_exec = bm_dir + bm_prog
 
 opacity_names = ["no opacity", "TL2 opacity", "slow opacity"]
-scaling_txlens = [5, 10, 25, 50, 75, 150, 200, 250, 300]
+scaling_txlens = [5, 10, 50, 75, 150, 200, 250, 300, 400, 500, 600]
+s_fixed_txlen = 25
 fixed_txlen = 100
 nthreads_max = multiprocessing.cpu_count()
+
+def get_nthreads_to_run():
+	ret = []
+	t = 1
+	while t < nthreads_max:
+		ret.append(t)
+		t = t * 2
+	return ret
+
+nthreads_to_run = get_nthreads_to_run()
 
 def clean_up():
 	print "Cleanning up sto directory..."
@@ -90,7 +101,7 @@ def run_series(trail, txlen, opacity, records, start_nthreads):
 	print bm_stdout
 	bm_stdout += "\n"
 
-	while nthreads < nthreads_max:
+	for nthreads in nthreads_to_run:
 		run_key = getRecordKey(trail, nthreads, txlen, opacity)
 		args = attach_args(nthreads, txlen, opacity)
 		print_cmd(args)
@@ -100,16 +111,18 @@ def run_series(trail, txlen, opacity, records, start_nthreads):
 		bm_stdout += single_out
 		records[run_key] = extract_numbers(single_out)
 
-		nthreads = nthreads * 2
-
 	return bm_stdout
 
-def run_fix_txlen(repetitions, records, txlen):
+def run_fix_txlen(repetitions, records, txlen, s_txlen):
 	print "@@@ Tx length fixed to %d, repeat each experiment %d for trails" % (txlen, repetitions)
 	combined_stdout = ""
 	for opacity in range(0,3):
 		for trail in range(0, repetitions):
 			combined_stdout += run_series(trail, txlen, opacity, records, 1)
+
+	for opacity in range(0,2):
+		for trail in range(0, repetitions):
+			combined_stdout += run_series(trail, s_txlen, opacity, records, 1)
 
 	f = open("fixed_txlen_stdout.txt", "w")
 	f.write(combined_stdout)
@@ -156,14 +169,16 @@ def main(argc, argv):
 
 	records = dict()
 
-	f = open("experiment_data.json", "w")
-
 	if mode & 0x1 != 0:
-		run_fix_txlen(repetitions, records, fixed_txlen)
-		f.write(json.dumps(records))
+		run_fix_txlen(repetitions, records, fixed_txlen, s_fixed_txlen)
+		f = open("experiment_data.json", "w")
+		f.write(json.dumps(records, sort_keys=True, indent=2))
+		f.close()
 	if mode & 0x2 != 0:
 		run_scale_txlen(repetitions, records)
-		f.write(json.dumps(records))
+		f = open("experiment_data.json", "w")
+		f.write(json.dumps(records, sort_keys=True, indent=2))
+		f.close()
 
 	f.close()
 
