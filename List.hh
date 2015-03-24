@@ -347,16 +347,17 @@ private:
 
     void ensureValid(Transaction& t) {
       while (cur) {
-        auto item = us->t_item(t, cur);
+	// need to check if this item already exists
+        auto item = t.check_item(us, cur);
         if (!cur->is_valid()) {
-          if (!us->has_insert(item)) {
+          if (!item || !us->has_insert(*item)) {
             t.abort();
             // TODO: do we continue in this situation or abort?
             cur = cur->next;
             continue;
           }
         }
-        if (us->has_delete(item)) {
+        if (item && us->has_delete(*item)) {
           cur = cur->next;
           continue;
         }
