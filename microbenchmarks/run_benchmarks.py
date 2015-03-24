@@ -2,49 +2,17 @@
 
 import os, re, sys, json, subprocess, multiprocessing
 
-bm_dir = "../"
-bm_prog = "concurrent"
-bm_exec = bm_dir + bm_prog
+bm_execs = ["./concurrent-1M", "./concurrent-50"]
 
 opacity_names = ["no opacity", "TL2 opacity", "slow opacity"]
-scaling_txlens = [5, 10, 50, 75, 150, 200, 250, 300, 400, 500, 600]
-s_fixed_txlen = 25
-fixed_txlen = 100
+scaling_txlens = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]
 nthreads_max = multiprocessing.cpu_count()
+nthreads_to_run_full = [1, 2, 4, 8, 16, 24]
+nthreads_to_run_dual = [1, 24]
 
-def get_nthreads_to_run():
-	ret = []
-	t = 1
-	while t < nthreads_max:
-		ret.append(t)
-		t = t * 2
-	return ret
-
-nthreads_to_run = get_nthreads_to_run()
-
-def clean_up():
-	print "Cleanning up sto directory..."
-	ret = os.system("cd %s && make clean > /dev/null 2>&1" % bm_dir)
-	assert ret == 0
-	print "Done."
-
-def build():
-	if os.path.exists(bm_exec):
-		clean_up();
-
-	assert not os.path.exists(bm_exec)
-
-	print "Building benchmark..."
-
-	ret = os.system("cd %s && make -j%d > /dev/null 2>&1" % (bm_dir, nthreads_max))
-	if ret != 0:
-		print "FATAL: Build error!"
-		sys.exit(1)
-	else:
-		print "Built."
-
-def attach_args(nthreads, txlen, opacity):
-	args = [bm_exec, "3", "array", "--ntrans=4000000"]
+def attach_args(bm_idx, nthreads, txlen, opacity, ntrans):
+	args = [bm_execs[bm_idx], "3", "array"]
+	args.append("--ntrans=%d" % ntrans)
 	args.append("--nthreads=%d" % nthreads)
 	args.append("--opspertrans=%d" % txlen)
 	args.append("--opacity=%d" % opacity)
@@ -89,10 +57,21 @@ def extract_numbers(output):
 
 	return results
 
-def getRecordKey(trail, nthreads, txlen, opacity):
-	return "%d/%d/%d/%d" % (trail, nthreads, txlen, opacity)
+def getRecordKey(bm_idx, trail, ntrans, nthreads, txlen, opacity):
+	return "%d/%d/%d/%d/%d/%d" % (bm_idx, trail, ntrans, nthreads, txlen, opacity)
 
-def run_series(trail, txlen, opacity, records, start_nthreads):
+def run_single(bm_idx, trail, txlen, opacity, records, nthreads, ntrans):
+	run_key = getRecordKey(bm_idx, trail, nthreads, txlen, opacity, ntrans)
+	args = attach_args(bm_idx, nthreads, txlen, opacity, ntrans)
+	print_cmd(args)
+	bm_stdout = (to_strcmd(args) + "\n")
+
+#	single_out = subprocess.check_output(args, stderr=subprocess.STDOUT)
+#	records[run_key] = extract_numbers(single_out)
+#	bm_stdout += single_out
+	return bm_stdout
+
+def run_series(bm_idx, trail, txlen, opacity, records, nthreads_to_run, ntrans):
 	assert opacity >= 0 and opacity <= 2
 
 	bm_stdout = "@@@ Running with %s, txlen %d. Trail #%d" % (opacity_names[opacity], txlen, trail)
@@ -100,53 +79,86 @@ def run_series(trail, txlen, opacity, records, start_nthreads):
 	bm_stdout += "\n"
 
 	for nthreads in nthreads_to_run:
-		if nthreads < start_nthreads:
-			continue
-		run_key = getRecordKey(trail, nthreads, txlen, opacity)
-		args = attach_args(nthreads, txlen, opacity)
-		print_cmd(args)
-		bm_stdout += (to_strcmd(args) + "\n")
-
-		single_out = subprocess.check_output(args, stderr=subprocess.STDOUT)
-		bm_stdout += single_out
-		records[run_key] = extract_numbers(single_out)
+		bm_stdout += run_single(bm_idx, trail, txlen, opacity, records, nthreads, ntrans)
 
 	return bm_stdout
 
-def run_fix_txlen(repetitions, records, txlen, s_txlen):
-	print "@@@ Tx length fixed to %d, repeat each experiment %d for trails" % (txlen, repetitions)
+def save_results(exp_name, stdout, records):
+#	f = open(exp_name + "_stdout.txt", "w")
+#	f.write(stdout)
+#	f.close()
+
+#	f = open("experiment_data.json", "w")
+#	f.write(json.dumps(records, sort_keys=True, indent=2))
+#	f.close()
+	return ""
+
+def exp_scalability_overhead(repetitions, records):
+	print "@@@@\n@@@ Starting experiment: scalability-overhead:"
+	ntxs = 8000000
+	ttr = nthreads_to_run_full
+	txlen = 10
 	combined_stdout = ""
-	for opacity in range(0,3):
-		for trail in range(0, repetitions):
-			combined_stdout += run_series(trail, txlen, opacity, records, 1)
 
-	for opacity in range(0,2):
-		for trail in range(0, repetitions):
-			combined_stdout += run_series(trail, s_txlen, opacity, records, 1)
+	for trail in range(0, repetitions):
+		combined_stdout += run_series(0, trail, txlen, 0, records, ttr, ntxs)
 
-	f = open("fixed_txlen_stdout.txt", "w")
-	f.write(combined_stdout)
-	f.close()
+	save_results("scalability_overhead", combined_stdout, records)
 
-def run_scale_txlen(repetitions, records):
-	print "@@@ Scaling Tx length, opacity fixed to %s\n\
-	Repeating each experiment for %d trails" % (opacity_names[1], repetitions)
+def exp_scalability_hi_contention(repetitions, records):
+	print "@@@@\n@@@ Starting experiment: scalability-hi-contention:"
+	ntxs = 4000000
+	ttr = threads_to_run_dual
+	txlen = 25
 	combined_stdout = ""
+
+	for trail in range(0, repetitions):
+		combined_stdout += run_series(1, trail, txlen, 0, records, ttr, ntxs)
+
+	save_results("scalability_hi_contention", combined_stdout, records)
+
+def exp_scalability_largetx(repetitions, records):
+	print "@@@@\n@@@ Starting experiment: scalability-largetx:"
+	nitems = 8192000
+	combined_stdout = ""
+
 	for txlen in scaling_txlens:
 		for trail in range(0, repetitions):
-			combined_stdout += run_series(trail, txlen, 1, records, 16)
+			combined_stdout += run_single(0, trail, txlen, 0, records, 1, nitems/txlen)	
 
-	f = open("scale_txlen_stdout.txt", "w")
-	f.write(combined_stdout)
-	f.close()
+	save_results("scalability_largetx", combined_stdout, records)
+
+def exp_opacity_modes(repetitions, records):
+	print "@@@@\n@@@ Starting experiment: opacity-modes:"
+	ntxs = 8000000
+	txlen = 10
+	combined_stdout = ""
+
+	for opacity in range(0, 3):
+		for trail in range(0, repetitions):
+			# low-contention
+			combined_stdout += run_single(0, trail, txlen, opacity, records, 16, ntxs)
+			# high-contention
+			combined_stdout += run_single(1, trail, txlen, opacity, records, 16, ntxs/2)
+	
+	save_results("opacity_modes", combined_stdout, records)
+
+def exp_opacity_tl2overhead(repetitions, records):
+	print "@@@@\n@@@ Starting experiment: opacity_tl2overhead:"
+	ntxs = 50000000
+	ttr = nthreads_to_run_full
+	txlen = 2
+	combined_stdout = ""
+	
+	for opacity in range(0, 2):
+		for trail in range(0, repetitions):
+			combined_stdout += run_series(0, trail, txlen, opacity, records, ttr, ntxs)
+	
+	save_results("opacity_modes", combined_stdout, records)
 
 def print_usage(script_name):
-	usage = "Usage: " + script_name + """ num_rep [mode]
-  num_rep: Integer number specifying the number of repeated runs for each experiment, should be within range [1,10]
-  mode: Optional argument specifying which benchmark(s) to execute, only takes integer numbers 1, 2, or 3:
-    1 - Opacity microbenchmark: Fixed transaction length (%d) with all three opacity implementations
-    2 - Transaction length microbenchmark: Scale transaction length with the TL2 opacity implementation
-    3 - Run both benchmarks above (default)""" % fixed_txlen
+	usage = "Usage: " + script_name + """ num_rep
+  num_rep: Integer number specifying the number of repeated runs for each experiment, 5 is a good choice"""
 	print usage
 
 def main(argc, argv):
@@ -159,26 +171,13 @@ def main(argc, argv):
 		print "Please specify number of repetitions within integer range [1, 10]"
 		sys.exit(0)
 
-	mode = 3
-	if argc == 3:
-		mode = int(argv[2])
-	if mode <= 0 or mode > 3:
-		mode = 3
-
-	build()
-
 	records = dict()
 
-	if mode & 0x1 != 0:
-		run_fix_txlen(repetitions, records, fixed_txlen, s_fixed_txlen)
-		f = open("experiment_data.json", "w")
-		f.write(json.dumps(records, sort_keys=True, indent=2))
-		f.close()
-	if mode & 0x2 != 0:
-		run_scale_txlen(repetitions, records)
-		f = open("experiment_data.json", "w")
-		f.write(json.dumps(records, sort_keys=True, indent=2))
-		f.close()
+	exp_scalability_overhead(repetitions, records)
+	exp_scalability_overhead(repetitions, records)
+	exp_scalability_overhead(repetitions, records)
+	exp_opacity_modes(repetitions, records)
+	exp_opacity_tl2overhead(repetitions, records)
 
 if __name__ == "__main__":
 	main(len(sys.argv), sys.argv)
