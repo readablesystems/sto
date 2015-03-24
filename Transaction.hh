@@ -10,7 +10,7 @@
 #include <iostream>
 
 
-#define PERF_LOGGING 1
+#define PERF_LOGGING 0
 #define DETAILED_LOGGING 0
 #define ASSERT_TX_SIZE 0
 
