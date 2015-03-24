@@ -755,8 +755,8 @@ private:
       likely(!(e->version() & invalid_bit)) || has_insert(item);
   }
 
-  static constexpr Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
-  static constexpr Version invalid_bit = 1U<<(sizeof(Version)*8 - 2);
+  static constexpr Version lock_bit = (Version)1<<(sizeof(Version)*8 - 1);
+  static constexpr Version invalid_bit = (Version)1<<(sizeof(Version)*8 - 2);
   static constexpr Version version_mask = ~(lock_bit|invalid_bit);
 
   static constexpr uintptr_t internode_bit = 1<<0;
