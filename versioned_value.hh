@@ -64,7 +64,7 @@ template<typename T>
 struct versioned_value_struct<T, typename std::enable_if<!__has_trivial_copy(T)>::type> {
 public:
   typedef T value_type;
-  typedef uint32_t version_type;
+  typedef uint64_t version_type;
 
   static versioned_value_struct* make(const value_type& val, version_type version) {
     return new versioned_value_struct(val, version);
