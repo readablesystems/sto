@@ -6,7 +6,7 @@ unsigned Transaction::global_epoch;
 bool Transaction::run_epochs = true;
 __thread Transaction *Transaction::__transaction;
 std::function<void(unsigned)> Transaction::epoch_advance_callback;
-TransactionTid::type Transaction::_TID = TransactionTid::valid_bit;
+TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = TransactionTid::valid_bit;
 
 static void __attribute__((used)) check_static_assertions() {
     static_assert(sizeof(threadinfo_t) % 128 == 0, "threadinfo is 2-cache-line aligned");
