@@ -202,6 +202,11 @@ def main(argc, argv):
 	records = parse_exp_data_file()
 	config = parse_exp_config_file()
 
+	print_scalability_overhead(records, config)
+	print_scalability_hi_contention(records, config)
+	print_scalability_largetx(records, config)
+	print_opacity_modes_low(records, config)
+	print_opacity_modes_high(records, config)
 	print_opacity_tl2overhead(records, config)
 
 if __name__ == "__main__":

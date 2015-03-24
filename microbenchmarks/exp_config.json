@@ -10,7 +10,7 @@
     "exec_idx": 1,
     "opacity": [0],
     "ntxs": [4000000],
-    "ttr": [1, 16],
+    "ttr": [1, 24],
     "txlen":[25]
   },
   "scalability_largetx": {
