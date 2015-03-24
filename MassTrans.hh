@@ -22,10 +22,6 @@
 
 #include "Debug_rcu.hh"
 
-#if PERF_LOGGING
-uint64_t node_aborts;
-#endif
-
 typedef stuffed_str<uint32_t> versioned_str;
 
 struct versioned_str_struct : public versioned_str {
@@ -504,16 +500,10 @@ public:
       auto n = untag_inter(item.key<leaf_type*>());
       auto cur_version = n->full_version_value();
       auto read_version = item.template read_value<typename unlocked_cursor_type::nodeversion_value_type>();
-      //      if (cur_version != read_version)
-      //printf("node versions disagree: %d vs %d\n", cur_version, read_version);
-      // XXXXXX node_aborts
       return cur_version == read_version;
-        //&& !(cur_version & (unlocked_cursor_type::nodeversion_type::traits_type::lock_bit));
     }
     auto e = item.key<versioned_value*>();
     auto read_version = item.template read_value<Version>();
-    //    if (read_version != e->version)
-    //printf("leaf versions disagree: %d vs %d\n", e->version, read_version);
     bool valid = validityCheck(item, e);
     if (!valid)
       return false;
