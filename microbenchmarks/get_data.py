@@ -41,7 +41,7 @@ def print_scalability_overhead(records, config):
 	for tr in ttr:
 		speedup = baseline / data[f_on][f_tl][tr]["med_time"]
 		rows.append(["%d" % tr, "%.4f" % speedup])
-	
+
 	print "Experiment: %s\n" % name
 	print_csv(rows)
 	print "\n\n"
@@ -61,7 +61,7 @@ def print_scalability_hi_contention(records, config):
 	for tr in ttr:
 		speedup = baseline / data[f_on][f_tl][tr]["med_time"]
 		rows.append(["%d" % tr, "%.4f" % speedup])
-	
+
 	print "Experiment: %s\n" % name
 	print_csv(rows)
 	print "\n\n"
@@ -80,7 +80,7 @@ def print_scalability_largetx(records, config):
 	for txlen in txlens:
 		time = data[f_on][txlen][f_tr]["med_time"]
 		rows.append(["%d" % txlen, "%.4f" % time])
-	
+
 	print "Experiment: %s\n" % name
 	print_csv(rows)
 	print "\n\n"
@@ -98,8 +98,8 @@ def print_opacity_modes_low(records, config):
 	for op in config[name]["opacity"]:
 		on = run_benchmarks.opacity_names[op]
 		time = data[on][f_tl][f_tr]["med_time"]
-		rows.append([on, "%.4f" % time]
-	
+		rows.append([on, "%.4f" % time])
+
 	print "Experiment: %s\n" % name
 	print_csv(rows)
 	print "\n\n"
@@ -117,8 +117,8 @@ def print_opacity_modes_high(records, config):
 	for op in config[name]["opacity"]:
 		on = run_benchmarks.opacity_names[op]
 		time = data[on][f_tl][f_tr]["med_time"]
-		rows.append([on, "%.4f" % time]
-	
+		rows.append([on, "%.4f" % time])
+
 	print "Experiment: %s\n" % name
 	print_csv(rows)
 	print "\n\n"
@@ -133,20 +133,20 @@ def print_opacity_tl2overhead(records, config):
 	data = process_results(name, config[name], records, ["time", "abort_rate"])
 	baseline = data["no opacity"][f_tl][1]["med_time"]
 
-		for tr in config[name]["ttr"]:
-			curr_row = []
-			curr_row.append("%d" % tr)
-			for op in config[name]["opacity"]:
-				on = run_benchmarks.opacity_names[op]
-				speedup = baseline / data[on][f_tl][tr]
-				curr_row.append("%.4f" % speedup)
-			rows.append(curr_row)
-	
+	for tr in config[name]["ttr"]:
+		curr_row = []
+		curr_row.append("%d" % tr)
+		for op in config[name]["opacity"]:
+			on = run_benchmarks.opacity_names[op]
+			speedup = baseline / data[on][f_tl][tr]["med_time"]
+			curr_row.append("%.4f" % speedup)
+		rows.append(curr_row)
+
 	print "Experiment: %s\n" % name
 	print_csv(rows)
 	print "\n\n"
 
-def keyf(bi, t, ntr, tl, op, ntx)
+def keyf(bi, t, ntr, tl, op, ntx):
 	return run_benchmarks.getRecordKey(bi, t, ntr, tl, op, ntx)
 
 # general framework for doing statistics
@@ -171,15 +171,15 @@ def process_results(exp_name, params, records, attrs):
 				for attr in attrs:
 					tempdata[attr] = []
 
-				processed_results[on][nthreads] = dict()
+				processed_results[on][txlen][nthreads] = dict()
 
 				for trail in range(0, ntrails):
 					for attr in attrs:
 						r = records[keyf(bm_idx, trail, nthreads, txlen, opacity, ntxs)][attr]
 						tempdata[attr].append(r)
-
-				processed_results[on][txlen][nthreads]["med_" + attr] = numpy.median(tempdata[attr])
-				processed_results[on][txlen][nthreads]["std_" + attr] = numpy.std(tempdata[attr])
+				for attr in attrs:
+					processed_results[on][txlen][nthreads]["med_" + attr] = numpy.median(tempdata[attr])
+					processed_results[on][txlen][nthreads]["std_" + attr] = numpy.std(tempdata[attr])
 
 	save_processed_results(exp_name, processed_results)
 	

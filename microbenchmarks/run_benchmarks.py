@@ -107,7 +107,7 @@ def exp_scalability_overhead(repetitions, records):
 def exp_scalability_hi_contention(repetitions, records):
 	print "@@@@\n@@@ Starting experiment: scalability-hi-contention:"
 	ntxs = 4000000
-	ttr = threads_to_run_dual
+	ttr = nthreads_to_run_dual
 	txlen = 25
 	combined_stdout = ""
 
@@ -173,8 +173,8 @@ def main(argc, argv):
 	records = dict()
 
 	exp_scalability_overhead(repetitions, records)
-	exp_scalability_overhead(repetitions, records)
-	exp_scalability_overhead(repetitions, records)
+	exp_scalability_hi_contention(repetitions, records)
+	exp_scalability_largetx(repetitions, records)
 	exp_opacity_modes(repetitions, records)
 	exp_opacity_tl2overhead(repetitions, records)
 
