@@ -34,7 +34,7 @@
 
 #define NOSORT 0
 
-#define MAX_THREADS 24
+#define MAX_THREADS 32
 
 // transaction performance counters
 enum txp {
