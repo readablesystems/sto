@@ -3,6 +3,7 @@
 threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int Transaction::threadid;
 unsigned Transaction::global_epoch;
+bool Transaction::run_epochs = true;
 __thread Transaction *Transaction::__transaction;
 std::function<void(unsigned)> Transaction::epoch_advance_callback;
 TransactionTid::type Transaction::_TID = TransactionTid::valid_bit;
@@ -12,17 +13,25 @@ static void __attribute__((used)) check_static_assertions() {
 }
 
 void Transaction::hard_check_opacity(TransactionTid::type t) {
-    TransactionTid::type newstart = start_tid_;
+    INC_P(txp_hco);
+    if (t & TransactionTid::lock_bit)
+        INC_P(txp_hco_lock);
+    if (!(t & TransactionTid::valid_bit))
+        INC_P(txp_hco_invalid);
+
+    TransactionTid::type newstart = _TID;
     release_fence();
     if (!(t & TransactionTid::lock_bit) && check_reads(transSet_.begin(), transSet_.end()))
         start_tid_ = newstart;
-    else
+    else {
+        INC_P(txp_hco_abort);
         abort();
+    }
 }
 
 void Transaction::print_stats() {
     threadinfo_t out = tinfo_combined();
-    if (txp_count >= 4) {
+    if (txp_count >= txp_max_set) {
         fprintf(stderr, "$ %llu starts, %llu max read set, %llu commits",
                 out.p(txp_total_starts),
                 out.p(txp_max_set),
@@ -38,6 +47,9 @@ void Transaction::print_stats() {
         }
         fprintf(stderr, "\n");
     }
+    if (txp_count >= txp_hco_abort)
+        fprintf(stderr, "$ %llu HCO (%llu lock, %llu invalid, %llu aborts)\n",
+                out.p(txp_hco), out.p(txp_hco_lock), out.p(txp_hco_invalid), out.p(txp_hco_abort));
 }
 
 void TransactionBuffer::hard_clear(bool delete_all) {

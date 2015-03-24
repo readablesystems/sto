@@ -10,7 +10,7 @@
 #include <iostream>
 
 
-#define PERF_LOGGING 0
+#define PERF_LOGGING 1
 #define DETAILED_LOGGING 0
 #define ASSERT_TX_SIZE 0
 
@@ -39,17 +39,26 @@
 // transaction performance counters
 enum txp {
     // all logging levels
-    txp_total_aborts = 0, txp_total_starts = 1,
-    txp_commit_time_aborts = 2, txp_max_set = 3,
+    txp_total_aborts = 0,
+    txp_total_starts,
+    txp_commit_time_aborts,
+    txp_max_set,
+    txp_hco,
+    txp_hco_lock,
+    txp_hco_invalid,
+    txp_hco_abort,
     // DETAILED_LOGGING only
-    txp_total_n = 4, txp_total_r = 5, txp_total_w = 6, txp_total_searched = 7,
-    txp_total_check_read = 8,
+    txp_total_n,
+    txp_total_r,
+    txp_total_w,
+    txp_total_searched,
+    txp_total_check_read,
 #if !PERF_LOGGING
     txp_count = 0
 #elif !DETAILED_LOGGING
-    txp_count = 4
+    txp_count = txp_hco_abort + 1
 #else
-    txp_count = 9
+    txp_count = txp_total_check_read + 1
 #endif
 };
 
@@ -243,6 +252,7 @@ public:
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static unsigned global_epoch;
+  static bool run_epochs;
   static __thread Transaction* __transaction;
   typedef TransactionTid::type tid_type;
 private:
@@ -287,8 +297,9 @@ public:
   }
 
   static void* epoch_advancer(void*) {
-    while (1) {
-      usleep(100000);
+    // don't bother epoch'ing til things have picked up
+    usleep(100000);
+    while (run_epochs) {
       auto g = global_epoch;
       for (auto&& t : tinfo) {
         if (t.epoch != 0 && t.epoch < g)
@@ -332,6 +343,7 @@ public:
         release_spinlock(t.spin_lock);
       }
     }
+    usleep(100000);
     return NULL;
   }
 

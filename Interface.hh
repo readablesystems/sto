@@ -8,8 +8,8 @@ class TransItem;
 
 class TransactionTid {
 public:
-    typedef uint32_t type;
-    typedef int32_t signed_type;
+    typedef uint64_t type;
+    typedef int64_t signed_type;
 
     static constexpr type lock_bit = type(1);
     static constexpr type valid_bit = type(2);
@@ -52,7 +52,7 @@ public:
     }
     static bool try_check_opacity(type start_tid, type v) {
         signed_type delta = start_tid - v;
-        return delta > 0 && !(delta & (lock_bit | valid_bit));
+        return (delta > 0 && !(delta & (lock_bit | valid_bit))) || !v;
     }
 };
 

@@ -222,7 +222,7 @@ public:
       item.assign_flags(delete_bit);
       // mark as a write
       item.add_write(0);
-      // we also need to check that it's still valid at commit time (not 
+      // we also need to check that it's still valid at commit time (not
       // bothering with valid_check_only_bit optimization right now)
       item.add_read(0);
       add_lock_list_item(t);
@@ -278,7 +278,7 @@ public:
       unlock(listversion_);
     return false;
   }
-  
+
   inline void opacity_check(Transaction& t) {
     // When we check for opacity, we need to compare the latest listversion and not
     // the one at the beginning of the operation.
@@ -307,7 +307,7 @@ public:
       auto ret = cur ? &cur->val : NULL;
       if (cur)
         cur = cur->next;
-      return ret;      
+      return ret;
     }
 
     bool transHasNext(Transaction&) const {
@@ -347,16 +347,17 @@ private:
 
     void ensureValid(Transaction& t) {
       while (cur) {
-        auto item = us->t_item(t, cur);
+	// need to check if this item already exists
+        auto item = t.check_item(us, cur);
         if (!cur->is_valid()) {
-          if (!us->has_insert(item)) {
+          if (!item || !us->has_insert(*item)) {
             t.abort();
             // TODO: do we continue in this situation or abort?
             cur = cur->next;
             continue;
           }
         }
-        if (us->has_delete(item)) {
+        if (item && us->has_delete(*item)) {
           cur = cur->next;
           continue;
         }
@@ -396,7 +397,7 @@ private:
       t_item(t, this).add_read(readv);
       acquire_fence();
   }
-  
+
 
   void lock(version_type& v) {
     TransactionTid::lock(v);
@@ -419,7 +420,7 @@ private:
   }
 
   void unlock(TransItem& item) {
-    if (item.key<List*>() == (void*)this)
+    if (item.key<List*>() == this)
       unlock(listversion_);
   }
 

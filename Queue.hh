@@ -15,6 +15,8 @@ public:
     
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<1;
+    static constexpr TransItem::flags_type list_bit = TransItem::user0_bit<<2;
+    static constexpr TransItem::flags_type empty_bit = TransItem::user0_bit<<3;
 
     // NONTRANSACTIONAL PUSH/POP/EMPTY
     void push(T v) {
@@ -34,18 +36,37 @@ public:
         return (head_ == tail_);
     }
 
+    template <typename RandomGen>
+    void shuffle(RandomGen gen) {
+        auto head = &queueSlots[head_];
+        auto tail = &queueSlots[tail_];
+        // don't support wrap-around shuffle
+        assert(head < tail);
+        std::shuffle(head, tail, gen);
+    }
+
     // TRANSACTIONAL CALLS
     void transPush(Transaction& t, const T& v) {
         auto item = t.item(this, -1);
         if (item.has_write()) {
-            auto& write_list = item.template write_value<std::list<T>>();
-            write_list.push_back(v);
+            if (!is_list(item)) {
+                auto& val = item.template write_value<T>();
+                std::list<T> write_list;
+                if (!is_empty(item)) {
+                    write_list.push_back(val);
+                    item.clear_flags(empty_bit);
+                }
+                write_list.push_back(v);
+                item.clear_write();
+                item.add_write(write_list);
+                item.add_flags(list_bit);
+            }
+            else {
+                auto& write_list = item.template write_value<std::list<T>>();
+                write_list.push_back(v);
+            }
         }
-        else {
-            std::list<T> write_list;
-            write_list.push_back(v);
-            item.add_write(write_list);
-        }
+        else item.add_write(v);
     }
 
     bool transPop(Transaction& t) {
@@ -64,11 +85,19 @@ public:
                     if (!pushitem.has_read())
                         pushitem.add_read(tv);
                     if (pushitem.has_write()) {
-                        auto& write_list = pushitem.template write_value<std::list<T>>();
-                        // if there is an element to be pushed on the queue, return addr of queue element
-                        if (!write_list.empty()) {
-                            write_list.pop_front();
-                            item.add_flags(read_writes);
+                        if (is_list(pushitem)) {
+                            auto& write_list = pushitem.template write_value<std::list<T>>();
+                            // if there is an element to be pushed on the queue, return addr of queue element
+                            if (!write_list.empty()) {
+                                write_list.pop_front();
+                                item.add_flags(read_writes);
+                                return true;
+                            }
+                            else return false;
+                        }
+                        // not a list, has exactly one element
+                        else if (!is_empty(pushitem)) {
+                            pushitem.add_flags(empty_bit);
                             return true;
                         }
                         else return false;
@@ -110,12 +139,22 @@ public:
                     if (!pushitem.has_read())
                         pushitem.add_read(tv);
                     if (pushitem.has_write()) {
-                        auto& write_list = pushitem.template write_value<std::list<T>>();
-                        // if there is an element to be pushed on the queue, return addr of queue element
-                        if (!write_list.empty()) {
-                            val = write_list.front();
+                        if (is_list(pushitem)) {
+                            auto& write_list= pushitem.template write_value<std::list<T>>();
+                            // if there is an element to be pushed on the queue, return addr of queue element
+                            if (!write_list.empty()) {
+                                val = write_list.front();
+                                return true;
+                            }
+                            else return false;
+                        }
+                        // not a list, has exactly one element
+                        else if (!is_empty(pushitem)) {
+                            auto& v = pushitem.template write_value<T>();
+                            val = v;
                             return true;
                         }
+                        else return false;
                     }
                     return false;
                 }
@@ -142,6 +181,14 @@ private:
     
     bool is_rw(const TransItem& item) {
         return item.flags() & read_writes;
+    }
+ 
+    bool is_list(const TransItem& item) {
+        return item.flags() & list_bit;
+    }
+ 
+    bool is_empty(const TransItem& item) {
+        return item.flags() & empty_bit;
     }
 
     void lock(Version& v) {
@@ -185,7 +232,7 @@ private:
         return false;
     }
 
-    void install(TransItem& item, const Transaction& t) {
+    void install(TransItem& item, const Transaction&) {
 	    // ignore lock_headversion marker item
         if (item.key<int>() == -2)
             return;
@@ -198,16 +245,24 @@ private:
         }
         // install pushes
         else if (item.key<int>() == -1) {
-            auto& write_list = item.template write_value<std::list<T>>();
             auto head_index = head_;
             // write all the elements
-            while (!write_list.empty()) {
-                // assert queue is not out of space            
-                assert(tail_ != (head_index-1) % BUF_SIZE);
-                queueSlots[tail_] = write_list.front();
-                write_list.pop_front();
+            if (is_list(item)) {
+                auto& write_list = item.template write_value<std::list<T>>();
+                while (!write_list.empty()) {
+                    // assert queue is not out of space            
+                    assert(tail_ != (head_index-1) % BUF_SIZE);
+                    queueSlots[tail_] = write_list.front();
+                    write_list.pop_front();
+                    tail_ = (tail_+1) % BUF_SIZE;
+                }
+            }
+            else if (!is_empty(item)) {
+                auto& val = item.template write_value<T>();
+                queueSlots[tail_] = val;
                 tail_ = (tail_+1) % BUF_SIZE;
             }
+
             QueueVersioning::inc_version(tailversion_);
         }
     }

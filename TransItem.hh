@@ -266,6 +266,9 @@ class OptionalTransProxy {
         assert(i_);
         return TransProxy(*t_, *i_);
     }
+    TransProxy operator*() const {
+        return get();
+    }
     TransProxy operator->() const {
         return get();
     }
