@@ -36,14 +36,14 @@ public:
         return (head_ == tail_);
     }
 
-  template <typename RandomGen>
-  void shuffle(RandomGen gen) {
-    auto head = &queueSlots[head_];
-    auto tail = &queueSlots[tail_];
-    // don't support wrap-around shuffle
-    assert(head < tail);
-    std::shuffle(head, tail, gen);
-  }
+    template <typename RandomGen>
+    void shuffle(RandomGen gen) {
+        auto head = &queueSlots[head_];
+        auto tail = &queueSlots[tail_];
+        // don't support wrap-around shuffle
+        assert(head < tail);
+        std::shuffle(head, tail, gen);
+    }
 
     // TRANSACTIONAL CALLS
     void transPush(Transaction& t, const T& v) {
