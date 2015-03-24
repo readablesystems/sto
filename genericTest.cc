@@ -5,10 +5,6 @@
 #include "Transaction.hh"
 #include "GenericSTM.hh"
 
-volatile uint64_t globalepoch = 1;
-
-volatile bool recovering = false;
-
 typedef int Key;
 typedef int Value;
 

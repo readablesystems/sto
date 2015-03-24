@@ -69,9 +69,7 @@ public:
       Version v;
       Value val;
       atomicRead(t, i, v, val);
-      if (!item.has_read()) {
-        item.add_read(v);
-      }
+      item.add_read(v);
       return val;
     }
   }
@@ -129,7 +127,7 @@ public:
     unlock(item.key<Key>());
   }
 
-  void install(TransItem& item, Transaction::tid_type) {
+  void install(TransItem& item, const Transaction&) {
     Key i = item.key<Key>();
     Value val = item.write_value<Value>();
     assert(is_locked(i));

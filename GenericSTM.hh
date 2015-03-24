@@ -40,7 +40,7 @@ public:
   void lock(TransItem&) {}
   void unlock(TransItem&) {}
   bool check(const TransItem&, const Transaction&) { assert(0); return false; }
-  void install(TransItem& item, Transaction::tid_type) {
+  void install(TransItem& item, const Transaction&) {
       void* word = item.key<void*>();
       // Hashtable implementation has already locked this word for us
       void *data = item.write_value<void*>();

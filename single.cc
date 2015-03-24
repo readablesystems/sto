@@ -1,44 +1,260 @@
 #include <iostream>
 #include <assert.h>
+#include <stdio.h>
 
 #include "Array.hh"
 #include "Hashtable.hh"
 #include "MassTrans.hh"
 #include "List.hh"
-//#include "Queue.hh"
+#include "Queue.hh"
 #include "Transaction.hh"
 
 #define N 100
 
-kvepoch_t global_log_epoch = 0;
-volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly
-kvtimestamp_t initial_timestamp;
-volatile bool recovering = false; // so don't add log entries, and free old value immediately
-
 using namespace std;
 
-#if 0
 void queueTests() {
     Queue<int> q;
+    int p;
 
+    // NONEMPTY TESTS
+    {
+        // ensure pops read pushes in FIFO order
+        Transaction t;
+        // q is empty
+        q.transPush(t, 1);
+        q.transPush(t, 2);
+        assert(q.transFront(t, p) && p == 1); assert(q.transPop(t)); assert(q.transFront(t, p) && p == 2);
+        assert(q.transPop(t));
+        assert(t.try_commit());
+    }    
+    
     {
         Transaction t;
+        // q is empty
         q.transPush(t, 1);
         q.transPush(t, 2);
         assert(t.try_commit());
     }
 
     {
+        // front with no pops
         Transaction t;
-        assert(*q.transFront(t) == 1);
+        assert(q.transFront(t, p));
+        assert(p == 1);
+        assert(q.transFront(t, p));
+        assert(p == 1);
         assert(t.try_commit());
+    }
+
+    {
+        // pop until empty
+        Transaction t;
+        assert(q.transPop(t));
+        assert(q.transPop(t));
+        assert (!q.transPop(t));
+        
+        // prepare pushes for next test
+        q.transPush(t, 1);
+        q.transPush(t, 2);
+        q.transPush(t, 3); 
+        assert(t.try_commit());
+    }
+
+    {
+        // fronts intermixed with pops
+        Transaction t;
+        assert(q.transFront(t, p));
+        assert(p == 1);
+        assert(q.transPop(t));
+        assert(q.transFront(t, p));
+        assert(p == 2);
+        assert(q.transPop(t));
+        assert(q.transFront(t, p));
+        assert(p == 3);
+        assert(q.transPop(t));
+        assert(!q.transPop(t));
+        
+        // set up for next test
+        q.transPush(t, 1);
+        q.transPush(t, 2);
+        q.transPush(t, 3);  
+        assert(t.try_commit());
+    }
+
+    {
+        // front intermixed with pushes on nonempty
+        Transaction t;
+        assert(q.transFront(t, p));
+        assert(p == 1);
+        assert(q.transFront(t, p));
+        assert(p == 1);
+        q.transPush(t,4);
+        assert(q.transFront(t, p));
+        assert(p == 1);
+        assert(t.try_commit());
+    }
+
+    {
+        // pops intermixed with pushes and front on nonempty
+        // q = [1 2 3 4]
+        Transaction t;
+        assert(q.transPop(t));
+        assert(q.transFront(t, p));
+        assert(p == 2);
+        q.transPush(t, 5);
+        // q = [2 3 4 5]
+        assert(q.transPop(t));
+        assert(q.transFront(t, p));
+        assert(p == 3);
+        q.transPush(t, 6);
+        // q = [3 4 5 6]
+        assert(t.try_commit());
+    }
+
+    // EMPTY TESTS
+    {
+        // front with empty queue
+        Transaction t;
+        
+        // empty the queue
+        assert(q.transPop(t));
+        assert(q.transPop(t));
+        assert(q.transPop(t));
+        assert(q.transPop(t));
+        assert(!q.transPop(t));
+        
+        assert(!q.transFront(t, p));
+       
+        q.transPush(t, 1);
+        assert(q.transFront(t, p));
+        assert(p == 1);
+        assert(q.transFront(t, p));
+        assert(p == 1);
+        assert(t.try_commit());
+    }
+
+    {
+        // pop with empty queue
+        Transaction t;
+        
+        // empty the queue
+        assert(q.transPop(t));
+        assert(!q.transPop(t));
+       
+        assert(!q.transFront(t, p));
+       
+        q.transPush(t, 1);
+        assert(q.transPop(t));
+        assert(!q.transPop(t));
+        assert(t.try_commit());
+    }
+
+    {
+        // pop and front with empty queue
+        Transaction t;
+       
+        assert(!q.transFront(t, p));
+       
+        q.transPush(t, 1);
+        assert(q.transFront(t, p));
+        assert(p == 1);
+        assert(q.transPop(t));
+       
+        q.transPush(t, 1);
+        assert(q.transPop(t));
+        assert(!q.transFront(t, p));
+        assert(!q.transPop(t));
+
+        // add items for next test
+        q.transPush(t, 1);
+        q.transPush(t, 2);
+
+        assert(t.try_commit());
+    }
+
+    // CONFLICTING TRANSACTIONS TEST
+    {
+        // test abortion due to pops 
+        Transaction t1;
+        Transaction t2;
+        // q has >1 element
+        assert(q.transPop(t1));
+        assert(q.transPop(t2));
+        assert(t1.try_commit());
+        assert(!t2.try_commit());
+    }
+
+    {
+        // test nonabortion T1 pops, T2 pushes on nonempty q
+        Transaction t1;
+        Transaction t2;
+        // q has >1 element
+        assert(q.transPop(t1));
+        q.transPush(t2, 3);
+        assert(t1.try_commit());
+        assert(t2.try_commit()); // commit should succeed 
+
+        assert(q.transFront(t1, p) && p == 3);
+        assert(q.transPop(t1));
+        assert(!q.transPop(t1));
+        assert(t1.try_commit());
+    }
+
+    {
+        // test abortion due to empty q pops
+        Transaction t1;
+        Transaction t2;
+        // q has 0 elements
+        assert(!q.transPop(t1));
+        q.transPush(t1, 1);
+        q.transPush(t1, 2);
+        q.transPush(t2, 3);
+        q.transPush(t2, 4);
+        q.transPush(t2, 5);
+        
+        // read-my-write, lock tail
+        assert(q.transPop(t2));
+        
+        assert(t1.try_commit());
+        assert(!t2.try_commit());
+    }
+
+    {
+        // test nonabortion T1 pops/fronts and pushes, T2 pushes on nonempty q
+        Transaction t1;
+        Transaction t2;
+        
+        // q has 2 elements [1, 2]
+        assert(q.transFront(t1, p) && p == 1);
+        q.transPush(t1, 4);
+
+        // pop from non-empty q
+        assert(q.transPop(t1));
+        assert(q.transFront(t1, p));
+        assert(p == 2);
+
+        q.transPush(t2, 3);
+        // order of pushes doesn't matter, commits succeed
+        assert(t2.try_commit());
+        assert(t1.try_commit());
+
+        // check if q is in order
+        assert(q.transPop(t1));
+        assert(q.transFront(t1, p));
+        assert(p == 3);
+        assert(q.transPop(t1));
+        assert(q.transFront(t1, p));
+        assert(p == 4);
+        assert(q.transPop(t1));
+        assert(!q.transPop(t1));
+        assert(t1.try_commit());
     }
 
     {
         Transaction t;
     }
 }
-#endif
 
 void linkedListTests() {
   List<int> l;
@@ -140,11 +356,7 @@ void insertDeleteTest(bool shouldAbort) {
     Transaction t3;
     assert(h.transInsert(t3, 26, 27));
     assert(t3.try_commit());
-
-    try {
-      t2.commit();
-      assert(0);
-    } catch (Transaction::Abort E) {}
+    assert(!t2.try_commit());
   } else
     assert(t2.try_commit());
 }
@@ -165,11 +377,7 @@ void insertDeleteSeparateTest() {
   assert(h.transInsert(t2, 12, 13));
   assert(h.transDelete(t2, 10));
   assert(t2.try_commit());
-  
-  try {
-    t.commit();
-    assert(0);
-  } catch (Transaction::Abort E) {}
+  assert(!t.try_commit());
 
 
   Transaction t3;
@@ -181,11 +389,7 @@ void insertDeleteSeparateTest() {
   assert(h.transDelete(t4, 11));
   assert(h.transDelete(t4, 12));
   assert(t4.try_commit());
-
-  try {
-    t3.commit();
-    assert(0);
-  } catch (Transaction::Abort E) {}
+  assert(!t3.try_commit());
 
 }
 
@@ -284,10 +488,7 @@ void basicMapTests(MapType& h) {
   assert(h.transInsert(t8, 2, 2));
   assert(t8.try_commit());
 
-  try {
-    t7.commit();
-    assert(0);
-  } catch(Transaction::Abort E) {}
+  assert(!t7.try_commit());
 
   Transaction t9;
   assert(h.transInsert(t9, 3, 0));
@@ -338,13 +539,15 @@ void basicMapTests(MapType& h) {
   assert(!h.transGet(t14, 4, vunused));
   assert(t14.try_commit());
 
-  // blind update success
+  // blind update failure
   Transaction t15;
   assert(h.transUpdate(t15, 3, 15));
   Transaction t16;
   assert(h.transUpdate(t16, 3, 16));
   assert(t16.try_commit());
-  assert(t15.try_commit());
+  // blind updates conflict each other now (not worth the extra trouble)
+  assert(!t15.try_commit());
+
 
   // update aborts after delete
   Transaction t17;
@@ -352,10 +555,7 @@ void basicMapTests(MapType& h) {
   assert(h.transUpdate(t17, 3, 17));
   assert(h.transDelete(t18, 3));
   assert(t18.try_commit());
-  try {
-    t17.commit();
-    assert(0);
-  } catch (Transaction::Abort E) {}
+  assert(!t17.try_commit());
 
   basicQueryTests(h);
 }
@@ -383,6 +583,5 @@ int main() {
 
   linkedListTests();
   
-  //queueTests();
-  
+  queueTests();
 }

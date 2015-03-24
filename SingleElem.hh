@@ -15,24 +15,26 @@ template <typename T, bool GenericSTM = false, typename Structure = versioned_va
 // (not much else we can do though)
 class SingleElem : public Shared {
 public:
-    typedef uint32_t Version;
-    typedef VersionFunctions<Version> Versioning;
-
     T read() {
         return s_.read_value();
     }
 
     void write(T v) {
-        lock();
+        TransactionTid::lock(s_.version());
         s_.set_value(v);
-        unlock();
+        TransactionTid::type newv = (s_.version() + TransactionTid::increment_value) & ~(TransactionTid::lock_bit | TransactionTid::valid_bit);
+        release_fence();
+        s_.version() = newv;
     }
 
-  inline void atomicRead(Transaction& t, Version& v, T& val) {
-        Version v2;
+private:
+    typedef TransactionTid::type version_type;
+
+    inline void atomicRead(Transaction& t, version_type& v, T& val) {
+        version_type v2;
         do {
             v2 = s_.version();
-            if (Versioning::is_locked(v2))
+            if (TransactionTid::is_locked(v2))
               t.abort();
             fence();
             val = s_.read_value();
@@ -41,12 +43,13 @@ public:
         } while (v != v2);
     }
 
+public:
     T transRead(Transaction& t) {
         auto item = t.item(this, this);
         if (item.has_write())
             return item.template write_value<T>();
         else {
-            Version v;
+            version_type v;
             T val;
             atomicRead(t, v, val);
 #ifdef UBENCHMARK
@@ -54,12 +57,7 @@ public:
 #else
             if (GenericSTM) {
 #endif
-                Transaction::tid_type r_tid = Versioning::get_tid(v);
-                if (r_tid > t.start_tid() || (Versioning::is_locked(v) && !item.has_write())) {
-                    // wait a minute what?
-                    t.check_reads();
-                    t.read_tid();
-                }
+                t.check_opacity(v);
 #ifdef UBENCHMARK
             } else if (opacity == OPACITY_SLOW) {
                 t.check_reads();
@@ -75,11 +73,11 @@ public:
     }
 
     void lock() {
-        Versioning::lock(s_.version());
+        TransactionTid::lock(s_.version());
     }
 
     void unlock() {
-        Versioning::unlock(s_.version());
+        TransactionTid::unlock(s_.version());
     }
 
     void lock(TransItem&) {
@@ -91,20 +89,20 @@ public:
     }
 
     bool check(const TransItem& item, const Transaction&) {
-        return Versioning::versionCheck(s_.version(), item.template read_value<Version>()) &&
-            (!Versioning::is_locked(s_.version()) || item.has_write());
+        return TransactionTid::same_version(s_.version(), item.template read_value<version_type>())
+            && (!TransactionTid::is_locked(s_.version()) || item.has_write());
     }
 
-    void install(TransItem& item, Transaction::tid_type tid) {
+    void install(TransItem& item, const Transaction& t) {
         s_.set_value(item.template write_value<T>());
 #ifdef UBENCHMARK
         if (opacity == OPACITY_TL2) {
 #else
         if (GenericSTM) {
 #endif
-            Versioning::set_version(s_.version(), tid);
+            TransactionTid::set_version(s_.version(), t.commit_tid());
         } else {
-            Versioning::inc_version(s_.version());
+            TransactionTid::inc_invalid_version(s_.version());
         }
     }
 

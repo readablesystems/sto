@@ -34,22 +34,31 @@
 
 #define NOSORT 0
 
-#define MAX_THREADS 24
+#define MAX_THREADS 32
 
 // transaction performance counters
 enum txp {
     // all logging levels
-    txp_total_aborts = 0, txp_total_starts = 1,
-    txp_commit_time_aborts = 2, txp_max_set = 3,
+    txp_total_aborts = 0,
+    txp_total_starts,
+    txp_commit_time_aborts,
+    txp_max_set,
+    txp_hco,
+    txp_hco_lock,
+    txp_hco_invalid,
+    txp_hco_abort,
     // DETAILED_LOGGING only
-    txp_total_n = 4, txp_total_r = 5, txp_total_w = 6, txp_total_searched = 7,
-    txp_total_check_read = 8,
+    txp_total_n,
+    txp_total_r,
+    txp_total_w,
+    txp_total_searched,
+    txp_total_check_read,
 #if !PERF_LOGGING
     txp_count = 0
 #elif !DETAILED_LOGGING
-    txp_count = 4
+    txp_count = txp_hco_abort + 1
 #else
-    txp_count = 9
+    txp_count = txp_total_check_read + 1
 #endif
 };
 
@@ -243,9 +252,12 @@ public:
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static unsigned global_epoch;
+  static bool run_epochs;
   static __thread Transaction* __transaction;
-  typedef TransactionTid tid_type;
-  static tid_type _TID;
+  typedef TransactionTid::type tid_type;
+private:
+  static TransactionTid::type _TID;
+public:
 
   static Transaction& get_transaction() {
     if (!__transaction)
@@ -285,8 +297,9 @@ public:
   }
 
   static void* epoch_advancer(void*) {
-    while (1) {
-      usleep(100000);
+    // don't bother epoch'ing til things have picked up
+    usleep(100000);
+    while (run_epochs) {
       auto g = global_epoch;
       for (auto&& t : tinfo) {
         if (t.epoch != 0 && t.epoch < g)
@@ -329,6 +342,7 @@ public:
         }
         release_spinlock(t.spin_lock);
       }
+      usleep(100000);
     }
     return NULL;
   }
@@ -367,16 +381,6 @@ public:
 #define MAX_P(p, n) /**/
 #endif
 
-  static tid_type incTid() {
-    tid_type t_old = _TID;
-    tid_type t_new = t_old + 1;
-    tid_type t = cmpxchg(&_TID, t_old, t_new);
-    if (t != t_old) {
-      t_new = t;
-    }
-    return t_new;
-  }
-
 
   Transaction() : transSet_() {
     reset();
@@ -408,7 +412,7 @@ public:
     may_duplicate_items_ = false;
     isAborted_ = false;
     firstWrite_ = -1;
-    start_tid_ = 0;
+    start_tid_ = commit_tid_ = 0;
     buf_.clear();
     INC_P(txp_total_starts);
   }
@@ -543,7 +547,7 @@ private:
   }
 
   private:
-  bool check_reads(TransItem *trans_first, TransItem *trans_last) {
+  bool check_reads(const TransItem *trans_first, const TransItem *trans_last) const {
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
         INC_P(txp_total_check_read);
@@ -615,8 +619,6 @@ private:
 
     //    fence();
 
-    tid_type commit_tid = incTid();
-
     //phase2
     if (!check_reads(trans_first, trans_last)) {
       success = false;
@@ -630,7 +632,7 @@ private:
       TransItem& ti = *it;
       if (ti.has_write()) {
         INC_P(txp_total_w);
-        ti.sharedObj()->install(ti, commit_tid);
+        ti.sharedObj()->install(ti, *this);
       }
     }
 
@@ -686,20 +688,24 @@ private:
     return isAborted_;
   }
 
-  tid_type start_tid() {
-    if (start_tid_ == 0) {
-      return read_tid();
-    } else {
-      return start_tid_;
+
+    // opacity checking
+    void check_opacity(TransactionTid::type t) {
+        assert(!writeset_);
+        if (!start_tid_)
+            start_tid_ = _TID;
+        if (!TransactionTid::try_check_opacity(start_tid_, t))
+            hard_check_opacity(t);
     }
-  }
 
-  tid_type read_tid() {
-    start_tid_ = _TID;
-    return start_tid_;
-  }
+    tid_type commit_tid() const {
+        assert(writeset_);
+        if (!commit_tid_)
+            commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
+        return commit_tid_;
+    }
 
-  class Abort {};
+    class Abort {};
 
 private:
 
@@ -719,9 +725,11 @@ private:
     int* writeset_;
     int nwriteset_;
     mutable tid_type start_tid_;
+    mutable tid_type commit_tid_;
 
     friend class TransProxy;
     friend class TransItem;
+    void hard_check_opacity(TransactionTid::type t);
 };
 
 

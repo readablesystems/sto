@@ -53,9 +53,9 @@ class Array1 : public Shared {
         unlock(item.key<key_type>());
     }
 
-    void install(TransItem& item, Transaction::tid_type tid){
+    void install(TransItem& item, const Transaction& t) {
         //install value
-        data_[item.key<key_type>()].install(item, tid);
+        data_[item.key<key_type>()].install(item, t);
     }
 
   private:

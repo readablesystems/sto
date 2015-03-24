@@ -13,29 +13,16 @@
 #include "versioned_value.hh"
 #include "stuffed_str.hh"
 
-#define RCU 0
+#define RCU 1
 #define ABORT_ON_WRITE_READ_CONFLICT 0
 
-#define READ_MY_WRITES 0
+#ifndef READ_MY_WRITES
+#define READ_MY_WRITES 1
+#endif
 
 #include "Debug_rcu.hh"
 
-#if PERF_LOGGING
-uint64_t node_aborts;
-#endif
-
 typedef stuffed_str<uint32_t> versioned_str;
-
-/*
-// TODO: ughhh
-void print(FILE* f, const char* prefix,
-           int indent, lcdf::Str key, kvtimestamp_t,
-           char* suffix) {
-  //      int fprintf(FILE * , const char * , ...);                                                                                                
-  fprintf(f, "%s%*s%.*s = %d%s (version %d)\n", prefix, indent, "", key.len, key.s, value_, suffix, version_);
-}
-
-*/
 
 struct versioned_str_struct : public versioned_str {
   typedef Masstree::Str value_type;
@@ -65,6 +52,10 @@ struct versioned_str_struct : public versioned_str {
   
   inline version_type& version() {
     return stuff();
+  }
+
+  inline void deallocate_rcu(threadinfo& ti) {
+    ti.deallocate_rcu(this, this->capacity() + sizeof(versioned_str_struct), memtag_value);
   }
 };
 
@@ -107,7 +98,14 @@ public:
     // but doesn't seem to be possible
   }
 
-  void thread_init() {
+  static void static_init() {
+    Transaction::epoch_advance_callback = [] (unsigned) {
+      // just advance blindly because of the way Masstree uses epochs
+      globalepoch++;
+    };
+  }
+
+  static void thread_init() {
 #if !RCU
     mythreadinfo.ti = new threadinfo;
     return;
@@ -147,21 +145,20 @@ public:
       if (item.has_write()) {
         // read directly from the element if we're inserting it
         if (has_insert(item)) {
-	  get_val(retval, e);
+	  assign_val(retval, e->read_value());
         } else {
 	  if (item.flags() & copyvals_bit)
 	    retval = item.template write_value<value_type>();
-	  else
+	  else {
 	    // TODO: should we refcount, copy, or...?
 	    retval = (value_type&)item.template write_value<void*>();
+	  }
         }
         return true;
       }
 #endif
       Version elem_vers;
       atomicRead(t, e, elem_vers, retval);
-      if (item.has_read((Version) valid_check_only_bit))
-          item.clear_read();
       item.add_read(elem_vers);
     } else {
       ensureNotFound(t, lp.node(), lp.full_version_value());
@@ -184,7 +181,7 @@ public:
           return false;
         }
         // otherwise this is an insert-then-delete
-	item.clear_flags(insert_bit);
+	// has_insert() is used all over the place so we just keep that flag set
         item.add_flags(delete_bit);
         // key is already in write data since this used to be an insert
         return true;
@@ -203,7 +200,7 @@ public:
 #endif
       // XXX deleting something we put?
       // we only need to check validity, not if the item has changed
-      item.add_read(valid_check_only_bit);
+      item.add_read(e->version());
       // same as inserts we need to store (copy) key so we can lookup to remove later
       item.clear_write();
       if (std::is_same<const std::string, const StringType>::value) {
@@ -314,39 +311,104 @@ public:
     return c(key, val);
   }
 
+  // unused (we just stack alloc if no allocator is passed)
+  class DefaultValAllocator {
+  public:
+    value_type* operator()() {
+      assert(0);
+      return new value_type();
+    }
+  };
+
   // range queries
-  template <typename Callback>
-  void transQuery(Transaction& t, Str begin, Str end, Callback callback, threadinfo_type& ti = mythreadinfo) {
+  template <typename Callback, typename ValAllocator = DefaultValAllocator>
+  void transQuery(Transaction& t, Str begin, Str end, Callback callback, ValAllocator *va = NULL, threadinfo_type& ti = mythreadinfo) {
     auto node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
       this->ensureNotFound(t, node, version);
     };
-    auto value_callback = [&] (Str key, versioned_value* value) {
+    auto value_callback = [&] (Str key, versioned_value* e) {
       // TODO: this needs to read my writes
-      auto item = this->t_read_only_item(t, value);
-      if (!item.has_read())
-        item.add_read(value->version());
-      return query_callback_overload(key, value, callback);
+      auto item = this->t_read_only_item(t, e);
+#if READ_MY_WRITES
+      if (has_delete(item)) {
+        return true;
+      }
+      if (item.has_write()) {
+        // read directly from the element if we're inserting it
+        if (has_insert(item)) {
+	  return range_query_has_insert(callback, key, e, va);
+	  //return callback(key, val);
+        } else {
+	  if (item.flags() & copyvals_bit)
+	    return callback(key, item.template write_value<value_type>());
+	  else {
+	    // TODO: should we refcount, copy, or...?
+	    return callback(key, (value_type&)item.template write_value<void*>());
+	  }
+        }
+      }
+#endif
+      // not sure of a better way to do this
+      value_type stack_val;
+      value_type& val = va ? *(*va)() : stack_val;
+      Version v;
+      atomicRead(t, e, v, val);
+      item.add_read(v);
+      // key and val are both only guaranteed until callback returns
+      return callback(key, val);//query_callback_overload(key, val, callback);
     };
 
     range_scanner<decltype(node_callback), decltype(value_callback)> scanner(end, node_callback, value_callback);
     table_.scan(begin, true, scanner, *ti.ti);
   }
 
-  template <typename Callback>
-  void transRQuery(Transaction& t, Str begin, Str end, Callback callback, threadinfo_type& ti = mythreadinfo) {
+  template <typename Callback, typename ValAllocator = DefaultValAllocator>
+  void transRQuery(Transaction& t, Str begin, Str end, Callback callback, ValAllocator *va = NULL, threadinfo_type& ti = mythreadinfo) {
     auto node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
       this->ensureNotFound(t, node, version);
     };
-    auto value_callback = [&] (Str key, versioned_value* value) {
-      auto item = this->t_read_only_item(t, value);
-      if (!item.has_read())
-        item.add_read(value->version());
-      return query_callback_overload(key, value, callback);
+    auto value_callback = [&] (Str key, versioned_value* e) {
+      auto item = this->t_read_only_item(t, e);
+      // not sure of a better way to do this
+      value_type stack_val;
+      value_type& val = va ? *(*va)() : stack_val;
+#if READ_MY_WRITES
+      if (has_delete(item)) {
+        return true;
+      }
+      if (item.has_write()) {
+        // read directly from the element if we're inserting it
+        if (has_insert(item)) {
+	  return range_query_has_insert(callback, key, e, va);
+        } else {
+	  if (item.flags() & copyvals_bit)
+	    return callback(key, item.template write_value<value_type>());
+	  else {
+	    return callback(key, (value_type&)item.template write_value<void*>());
+	  }
+        }
+      }
+#endif
+      Version v;
+      atomicRead(t, e, v, val);
+      item.add_read(v);
+      return callback(key, val);
     };
 
     range_scanner<decltype(node_callback), decltype(value_callback), true> scanner(end, node_callback, value_callback);
     table_.rscan(begin, true, scanner, *ti.ti);
   }
+
+#if READ_MY_WRITES
+  template <typename Callback, typename ValAllocator>
+  // for some reason inlining this/not making it a function gives a 5% slowdown on g++...
+  static __attribute__((noinline)) bool range_query_has_insert(Callback callback, Str key, versioned_value *e, ValAllocator *va) {
+    value_type stack_val;
+    value_type& val = va ? *(*va)() : stack_val;
+    assign_val(val, e->read_value());
+    return callback(key, val);
+  }
+#endif
 
 private:
   // range query class thang
@@ -438,16 +500,10 @@ public:
       auto n = untag_inter(item.key<leaf_type*>());
       auto cur_version = n->full_version_value();
       auto read_version = item.template read_value<typename unlocked_cursor_type::nodeversion_value_type>();
-      //      if (cur_version != read_version)
-      //printf("node versions disagree: %d vs %d\n", cur_version, read_version);
-      // XXXXXX node_aborts
       return cur_version == read_version;
-        //&& !(cur_version & (unlocked_cursor_type::nodeversion_type::traits_type::lock_bit));
     }
     auto e = item.key<versioned_value*>();
     auto read_version = item.template read_value<Version>();
-    //    if (read_version != e->version)
-    //printf("leaf versions disagree: %d vs %d\n", e->version, read_version);
     bool valid = validityCheck(item, e);
     if (!valid)
       return false;
@@ -456,9 +512,9 @@ public:
 #else
     bool lockedCheck = !is_locked(e->version()) || item.has_lock(t);
 #endif
-    return lockedCheck && ((read_version & valid_check_only_bit) || versionCheck(read_version, e->version()));
+    return lockedCheck && versionCheck(read_version, e->version());
   }
-  void install(TransItem& item, Transaction::tid_type) {
+  void install(TransItem& item, const Transaction&) {
     assert(!is_inter(item));
     auto e = item.key<versioned_value*>();
     assert(is_locked(e->version()));
@@ -514,9 +570,8 @@ public:
   bool remove(const Str& key, threadinfo_type& ti = mythreadinfo) {
     cursor_type lp(table_, key);
     bool found = lp.find_locked(*ti.ti);
-    //    ti.ti->rcu_register(lp.value());
+    lp.value()->deallocate_rcu(*ti.ti);
     lp.finish(found ? -1 : 0, *ti.ti);
-    // rcu the value
     return found;
   }
 
@@ -618,6 +673,7 @@ private:
       lp.value() = new_location;
       lp.finish(0, *mythreadinfo.ti);
       // now rcu free "e"
+      e->deallocate_rcu(*mythreadinfo.ti);
     }
 #if READ_MY_WRITES
     if (has_insert(item)) {
@@ -653,7 +709,7 @@ private:
       // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
       // if user can't read v#)
       if (INSERT) {
-        item.assign_flags(0);
+        item.clear_flags(delete_bit);
         assert(!has_delete(item));
         reallyHandlePutFound<CopyVals>(t, item, e, key, value);
       } else {
@@ -666,7 +722,7 @@ private:
     if (!item.has_read() && !has_insert(item))
 #endif
     {
-      item.add_read(valid_check_only_bit);
+      item.add_read(e->version());
     }
     if (SET) {
       reallyHandlePutFound<CopyVals>(t, item, e, key, value);
@@ -685,8 +741,6 @@ private:
 
   template <typename NODE, typename VERSION>
   bool updateNodeVersion(Transaction& t, NODE *node, VERSION prev_version, VERSION new_version) {
-    (void)t, (void)node, (void)prev_version, (void)new_version;
-#if READ_MY_WRITES
     if (auto node_item = t.check_item(this, tag_inter(node))) {
       if (node_item->has_read() &&
           prev_version == node_item->template read_value<VERSION>()) {
@@ -695,7 +749,6 @@ private:
         return true;
       }
     }
-#endif
     return false;
   }
 
@@ -717,22 +770,21 @@ private:
 #endif
   }
 
-  bool has_insert(const TransItem& item) {
+  static bool has_insert(const TransItem& item) {
       return item.flags() & insert_bit;
   }
-  bool has_delete(const TransItem& item) {
+  static bool has_delete(const TransItem& item) {
       return item.flags() & delete_bit;
   }
 
-  bool validityCheck(const TransItem& item, versioned_value *e) {
+  static bool validityCheck(const TransItem& item, versioned_value *e) {
     return //likely(has_insert(item)) || !(e->version & invalid_bit);
       likely(!(e->version() & invalid_bit)) || has_insert(item);
   }
 
-  static constexpr Version lock_bit = 1U<<(sizeof(Version)*8 - 1);
-  static constexpr Version invalid_bit = 1U<<(sizeof(Version)*8 - 2);
-  static constexpr Version valid_check_only_bit = 1U<<(sizeof(Version)*8 - 3);
-  static constexpr Version version_mask = ~(lock_bit|invalid_bit|valid_check_only_bit);
+  static constexpr Version lock_bit = (Version)1<<(sizeof(Version)*8 - 1);
+  static constexpr Version invalid_bit = (Version)1<<(sizeof(Version)*8 - 2);
+  static constexpr Version version_mask = ~(lock_bit|invalid_bit);
 
   static constexpr uintptr_t internode_bit = 1<<0;
 
@@ -756,20 +808,20 @@ private:
       return is_inter(t.key<versioned_value*>());
   }
 
-  bool versionCheck(Version v1, Version v2) {
+  static bool versionCheck(Version v1, Version v2) {
     return ((v1 ^ v2) & version_mask) == 0;
   }
-  void inc_version(Version& v) {
+  static void inc_version(Version& v) {
     assert(is_locked(v));
     Version cur = v & version_mask;
     cur = (cur+1) & version_mask;
     // set new version and ensure invalid bit is off
     v = (cur | (v & ~version_mask)) & ~invalid_bit;
   }
-  bool is_locked(Version v) {
+  static bool is_locked(Version v) {
     return v & lock_bit;
   }
-  void lock(Version *v) {
+  static void lock(Version *v) {
     while (1) {
       Version cur = *v;
       if (!(cur&lock_bit) && bool_cmpxchg(v, cur, cur|lock_bit)) {
@@ -778,21 +830,21 @@ private:
       relax_fence();
     }
   }
-  void unlock(Version *v) {
+  static void unlock(Version *v) {
     assert(is_locked(*v));
     Version cur = *v;
     cur &= ~lock_bit;
     *v = cur;
   }
 
-  void atomicRead(Transaction& t, versioned_value *e, Version& vers, value_type& val) {
+  static void atomicRead(Transaction& t, versioned_value *e, Version& vers, value_type& val) {
     Version v2;
     do {
       v2 = e->version();
       if (is_locked(v2))
 	t.abort();
       fence();
-      get_val(val, e);
+      assign_val(val, e->read_value());
       fence();
       vers = e->version();
       fence();
@@ -800,12 +852,11 @@ private:
   }
 
   template <typename ValType>
-  void get_val(ValType& val, versioned_value *e) {
-    val = e->read_value();
+  static void assign_val(ValType& val, const ValType& val_to_assign) {
+    val = val_to_assign;
   }
-  void get_val(std::string& val, versioned_value *e) {
-    auto str = (Str)e->read_value();
-    val.assign(str.data(), str.length());
+  static void assign_val(std::string& val, Str val_to_assign) {
+    val.assign(val_to_assign.data(), val_to_assign.length());
   }
 
   struct table_params : public Masstree::nodeparams<15,15> {

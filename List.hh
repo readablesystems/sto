@@ -20,13 +20,11 @@ public:
   List(Compare comp = Compare()) : head_(NULL), listsize_(0), listversion_(0), comp_(comp) {
   }
 
-  typedef uint32_t Version;
-  typedef VersionFunctions<Version> ListVersioning;
+private:
+  typedef TransactionTid::type version_type;
 
-  static constexpr Version invalid_bit = 1<<0;
-  // we need this to protect deletes (could just do a CAS on invalid_bit, but it's unclear
-  // how to make that work with the lock, check, install, unlock protocol
-  static constexpr Version node_lock_bit = 1<<1;
+public:
+    static constexpr uint8_t invalid_bit = 1<<0;
 
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
@@ -224,7 +222,7 @@ public:
       item.assign_flags(delete_bit);
       // mark as a write
       item.add_write(0);
-      // we also need to check that it's still valid at commit time (not 
+      // we also need to check that it's still valid at commit time (not
       // bothering with valid_check_only_bit optimization right now)
       item.add_read(0);
       add_lock_list_item(t);
@@ -280,20 +278,14 @@ public:
       unlock(listversion_);
     return false;
   }
-  
-  void opacity_check(Transaction& t) {
+
+  inline void opacity_check(Transaction& t) {
     // When we check for opacity, we need to compare the latest listversion and not
     // the one at the beginning of the operation.
     assert(Opacity);
     auto listv = listversion_;
     fence();
-    Transaction::tid_type r_tid = ListVersioning::get_tid(listv);
-    // assumes that a thread will not call this method holding the version lock.
-    if (r_tid > t.start_tid() || (ListVersioning::is_locked(listv))) {
-       t.check_reads();
-       t.read_tid();	
-    }
-    
+    t.check_opacity(listv);
   }
 
   struct ListIter {
@@ -315,7 +307,7 @@ public:
       auto ret = cur ? &cur->val : NULL;
       if (cur)
         cur = cur->next;
-      return ret;      
+      return ret;
     }
 
     bool transHasNext(Transaction&) const {
@@ -355,16 +347,17 @@ private:
 
     void ensureValid(Transaction& t) {
       while (cur) {
-        auto item = us->t_item(t, cur);
+	// need to check if this item already exists
+        auto item = t.check_item(us, cur);
         if (!cur->is_valid()) {
-          if (!us->has_insert(item)) {
+          if (!item || !us->has_insert(*item)) {
             t.abort();
             // TODO: do we continue in this situation or abort?
             cur = cur->next;
             continue;
           }
         }
-        if (us->has_delete(item)) {
+        if (item && us->has_delete(*item)) {
           cur = cur->next;
           continue;
         }
@@ -400,22 +393,22 @@ private:
         remove<false>(head_, true);
   }
 
-  void verify_list(Transaction& t, Version readv) {
+  void verify_list(Transaction& t, version_type readv) {
       t_item(t, this).add_read(readv);
       acquire_fence();
   }
-  
 
-  void lock(Version& v) {
-    ListVersioning::lock(v);
+
+  void lock(version_type& v) {
+    TransactionTid::lock(v);
   }
 
-  void unlock(Version& v) {
-    ListVersioning::unlock(v);
+  void unlock(version_type& v) {
+    TransactionTid::unlock(v);
   }
 
-  bool is_locked(Version& v) {
-    return ListVersioning::is_locked(v);
+  bool is_locked(version_type& v) {
+    return TransactionTid::is_locked(v);
   }
 
   void lock(TransItem& item) {
@@ -427,7 +420,7 @@ private:
   }
 
   void unlock(TransItem& item) {
-    if (item.key<List*>() == (void*)this)
+    if (item.key<List*>() == this)
       unlock(listversion_);
   }
 
@@ -438,14 +431,14 @@ private:
     if (item.key<List*>() == this) {
       auto lv = listversion_;
       return
-        ListVersioning::versionCheck(lv, item.template read_value<Version>())
+        TransactionTid::same_version(lv, item.template read_value<version_type>())
           && (!is_locked(lv) || item.has_lock(t));
     }
     auto n = item.key<list_node*>();
     return n->is_valid() || has_insert(item);
   }
 
-  void install(TransItem& item, Transaction::tid_type tid) {
+  void install(TransItem& item, const Transaction& t) {
     if (item.key<List*>() == this)
       return;
     list_node *n = item.key<list_node*>();
@@ -455,9 +448,9 @@ private:
       // not super ideal that we have to change version
       // but we need to invalidate transSize() calls
       if (Opacity) {
-        ListVersioning::set_version(listversion_, tid);
+        TransactionTid::set_version(listversion_, t.commit_tid());
       } else {
-        ListVersioning::inc_version(listversion_);
+        TransactionTid::inc_invalid_version(listversion_);
       }
     } else if (has_doupdate(item)) {
       n->val = item.template write_value<T>();
@@ -465,9 +458,9 @@ private:
       n->mark_valid();
       listsize_++;
       if (Opacity) {
-        ListVersioning::set_version(listversion_, tid);
+        TransactionTid::set_version(listversion_, t.commit_tid());
       } else {
-        ListVersioning::inc_version(listversion_);
+        TransactionTid::inc_invalid_version(listversion_);
       }
     }
   }
@@ -528,6 +521,6 @@ private:
 
   list_node *head_;
   long listsize_;
-  Version listversion_;
+  version_type listversion_;
   Compare comp_;
 };

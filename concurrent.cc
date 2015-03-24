@@ -71,9 +71,9 @@
 
 // Masstree globals
 kvepoch_t global_log_epoch = 0;
-volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly
+//volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly
 kvtimestamp_t initial_timestamp;
-volatile bool recovering = false; // so don't add log entries, and free old value immediately
+//volatile bool recovering = false; // so don't add log entries, and free old value immediately
 
 //#define DEBUG
 #ifdef DEBUG
@@ -159,7 +159,7 @@ template <> struct Container<USE_MASSTREE> : public ContainerBase_maplike {
     static void init() {
         Transaction::epoch_advance_callback = [] (unsigned) {
             // just advance blindly because of the way Masstree uses epochs
-            globalepoch++;
+            //globalepoch++;
         };
     }
     static void thread_init(type& c) {
@@ -972,8 +972,6 @@ int main(int argc, char *argv[]) {
       using thd = threadinfo_t;
       thd tc = Transaction::tinfo_combined();
       printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
-      if (ds == USE_MASSTREE)
-          printf("node aborts: %llu\n", (unsigned long long) node_aborts);
   }
 #endif
 

@@ -122,7 +122,7 @@ public:
     return cur == old
         && (!table_.get(hash(item.key<void*>()) % table_.size()) || item.has_lock(t));
   }
-  void install(TransItem& item, Transaction::tid_type) {
+  void install(TransItem& item, const Transaction&) {
       void* word = item.key<void*>();
       void* data = item.write_value<void*>();
       memcpy(word, &data, item.shifted_user_flags());
