@@ -2,7 +2,7 @@
 
 threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int Transaction::threadid;
-unsigned Transaction::global_epoch;
+unsigned __attribute__((aligned(64))) Transaction::global_epoch;
 bool Transaction::run_epochs = true;
 __thread Transaction *Transaction::__transaction;
 std::function<void(unsigned)> Transaction::epoch_advance_callback;
