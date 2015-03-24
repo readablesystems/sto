@@ -852,7 +852,7 @@ private:
   }
 
   template <typename ValType>
-  static void assign_val(ValType& val, ValType& val_to_assign) {
+  static void assign_val(ValType& val, const ValType& val_to_assign) {
     val = val_to_assign;
   }
   static void assign_val(std::string& val, Str val_to_assign) {
