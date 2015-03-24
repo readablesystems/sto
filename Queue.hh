@@ -10,7 +10,7 @@ class Queue: public Shared {
 public:
     Queue() : head_(0), tail_(0), tailversion_(0), headversion_(0) {}
 
-    typedef uint32_t Version;
+    typedef uint64_t Version;
     typedef VersionFunctions<Version> QueueVersioning;
     
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;

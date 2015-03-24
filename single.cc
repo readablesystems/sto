@@ -195,6 +195,10 @@ void queueTests() {
         assert(t1.try_commit());
         assert(t2.try_commit()); // commit should succeed 
 
+    }
+    // Nate: this used to be part of the above block but that doesn't make sense
+    {
+	Transaction t1;
         assert(q.transFront(t1, p) && p == 3);
         assert(q.transPop(t1));
         assert(!q.transPop(t1));

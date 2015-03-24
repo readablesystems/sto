@@ -28,7 +28,7 @@
 #define USE_QUEUE 5
 
 // set this to USE_DATASTRUCTUREYOUWANT
-#define DATA_STRUCTURE USE_QUEUE
+#define DATA_STRUCTURE USE_ARRAY
 
 // if true, each operation of a transaction will act on a different slot
 #define ALL_UNIQUE_SLOTS 0
@@ -1123,8 +1123,6 @@ int main(int argc, char *argv[]) {
       using thd = threadinfo_t;
       thd tc = Transaction::tinfo_combined();
       printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
-      if (ds == USE_MASSTREE)
-          printf("node aborts: %llu\n", (unsigned long long) node_aborts);
   }
 #endif
 

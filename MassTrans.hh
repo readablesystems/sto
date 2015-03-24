@@ -22,7 +22,7 @@
 
 #include "Debug_rcu.hh"
 
-typedef stuffed_str<uint32_t> versioned_str;
+typedef stuffed_str<uint64_t> versioned_str;
 
 struct versioned_str_struct : public versioned_str {
   typedef Masstree::Str value_type;
@@ -59,7 +59,7 @@ struct versioned_str_struct : public versioned_str {
   }
 };
 
-template <typename V, typename Box = versioned_value_struct<V>>
+template <typename V, typename Box = versioned_value_struct<V>, bool Opacity = false>
 class MassTrans : public Shared {
 public:
 #if !RCU
@@ -160,6 +160,8 @@ public:
       Version elem_vers;
       atomicRead(t, e, elem_vers, retval);
       item.add_read(elem_vers);
+      if (Opacity)
+	t.check_opacity(elem_vers);
     } else {
       ensureNotFound(t, lp.node(), lp.full_version_value());
     }
@@ -200,7 +202,11 @@ public:
 #endif
       // XXX deleting something we put?
       // we only need to check validity, not if the item has changed
-      item.add_read(e->version());
+      Version v = e->version();
+      fence();
+      item.add_read(v);
+      if (Opacity)
+	t.check_opacity(v);
       // same as inserts we need to store (copy) key so we can lookup to remove later
       item.clear_write();
       if (std::is_same<const std::string, const StringType>::value) {
@@ -514,7 +520,7 @@ public:
 #endif
     return lockedCheck && versionCheck(read_version, e->version());
   }
-  void install(TransItem& item, const Transaction&) {
+  void install(TransItem& item, const Transaction& t) {
     assert(!is_inter(item));
     auto e = item.key<versioned_value*>();
     assert(is_locked(e->version()));
@@ -543,7 +549,16 @@ public:
       e->set_value(v);
     }
     // also marks valid if needed
-    inc_version(e->version());
+    //inc_version(e->version());
+    if (Opacity)
+      TransactionTid::set_version(e->version(), t.commit_tid());
+    else if (has_insert(item)) {
+      Version v = e->version() & ~invalid_bit;
+      fence();
+      e->version() = v;
+    } else
+      TransactionTid::inc_invalid_version(e->version());
+    
   }
 
   void cleanup(TransItem& item, bool committed) {
@@ -722,7 +737,13 @@ private:
     if (!item.has_read() && !has_insert(item))
 #endif
     {
-      item.add_read(e->version());
+      // XXX: I'm pretty sure there's a race here-- we should grab this
+      // version before we check if the node is valid
+      Version v = e->version();
+      fence();
+      item.add_read(v);
+      if (Opacity)
+	t.check_opacity(v);
     }
     if (SET) {
       reallyHandlePutFound<CopyVals>(t, item, e, key, value);
@@ -736,6 +757,9 @@ private:
     auto item = t_read_only_item(t, tag_inter(n));
     if (!item.has_read()) {
       item.add_read(v);
+    }
+    if (Opacity) {
+      // XXX: would be annoying to do this with node versions
     }
   }
 
@@ -783,7 +807,8 @@ private:
   }
 
   static constexpr Version lock_bit = (Version)1<<(sizeof(Version)*8 - 1);
-  static constexpr Version invalid_bit = (Version)1<<(sizeof(Version)*8 - 2);
+  static constexpr Version invalid_bit = TransactionTid::user_bit1;
+  //(Version)1<<(sizeof(Version)*8 - 2);
   static constexpr Version version_mask = ~(lock_bit|invalid_bit);
 
   static constexpr uintptr_t internode_bit = 1<<0;
@@ -809,9 +834,11 @@ private:
   }
 
   static bool versionCheck(Version v1, Version v2) {
-    return ((v1 ^ v2) & version_mask) == 0;
+    return TransactionTid::same_version(v1, v2);
+    //return ((v1 ^ v2) & version_mask) == 0;
   }
   static void inc_version(Version& v) {
+    assert(0);
     assert(is_locked(v));
     Version cur = v & version_mask;
     cur = (cur+1) & version_mask;
@@ -819,9 +846,11 @@ private:
     v = (cur | (v & ~version_mask)) & ~invalid_bit;
   }
   static bool is_locked(Version v) {
-    return v & lock_bit;
+    return TransactionTid::is_locked(v);
   }
   static void lock(Version *v) {
+    TransactionTid::lock(*v);
+#if 0
     while (1) {
       Version cur = *v;
       if (!(cur&lock_bit) && bool_cmpxchg(v, cur, cur|lock_bit)) {
@@ -829,12 +858,16 @@ private:
       }
       relax_fence();
     }
+#endif
   }
   static void unlock(Version *v) {
+    TransactionTid::unlock(*v);
+#if 0
     assert(is_locked(*v));
     Version cur = *v;
     cur &= ~lock_bit;
     *v = cur;
+#endif
   }
 
   static void atomicRead(Transaction& t, versioned_value *e, Version& vers, value_type& val) {
@@ -871,9 +904,9 @@ private:
   table_type table_;
 };
 
-template <typename V, typename Box>
-__thread typename MassTrans<V, Box>::threadinfo_type MassTrans<V, Box>::mythreadinfo;
+template <typename V, typename Box, bool Opacity>
+__thread typename MassTrans<V, Box, Opacity>::threadinfo_type MassTrans<V, Box, Opacity>::mythreadinfo;
 
-template <typename V, typename Box>
-constexpr typename MassTrans<V, Box>::Version MassTrans<V, Box>::invalid_bit;
+template <typename V, typename Box, bool Opacity>
+constexpr typename MassTrans<V, Box, Opacity>::Version MassTrans<V, Box, Opacity>::invalid_bit;
 
