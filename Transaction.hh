@@ -342,8 +342,8 @@ public:
         }
         release_spinlock(t.spin_lock);
       }
+      usleep(100000);
     }
-    usleep(100000);
     return NULL;
   }
 
