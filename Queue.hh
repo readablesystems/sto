@@ -232,7 +232,7 @@ private:
         return false;
     }
 
-    void install(TransItem& item, const Transaction& t) {
+    void install(TransItem& item, const Transaction&) {
 	    // ignore lock_headversion marker item
         if (item.key<int>() == -2)
             return;
