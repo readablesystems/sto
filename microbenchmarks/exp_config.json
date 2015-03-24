@@ -1,0 +1,66 @@
+{
+  "scalability_overhead": {
+    "exec_idx": 0,
+    "opacity": [0],
+    "ntxs": [8000000],
+    "ttr": [1, 2, 4, 8, 16, 24],
+    "txlen":[10]
+  },
+  "scalability_hi_contention": {
+    "exec_idx": 1,
+    "opacity": [0],
+    "ntxs": [4000000],
+    "ttr": [1, 16],
+    "txlen":[25]
+  },
+  "scalability_largetx": {
+    "exec_idx": 0,
+    "opacity": [0],
+    "ntxs": [
+      8192000,
+      4096000,
+      2048000,
+      1024000,
+      512000,
+      256000,
+      128000,
+      64000,
+      32000,
+      16000
+    ],
+    "ttr": [1],
+    "txlen":[
+      1,
+      2,
+      4,
+      8,
+      16,
+      32,
+      64,
+      128,
+      256,
+      512
+    ]
+  },
+  "opacity_modes_low": {
+    "exec_idx": 0,
+    "opacity": [0, 1, 2],
+    "ntxs": [8000000],
+    "ttr": [16],
+    "txlen":[10]
+  },
+  "opacity_modes_high": {
+    "exec_idx": 1,
+    "opacity": [0, 1, 2],
+    "ntxs": [4000000],
+    "ttr": [16],
+    "txlen":[10]
+  },
+  "opacity_tl2overhead": {
+    "exec_idx": 0,
+    "opacity": [0, 1],
+    "ntxs": [50000000],
+    "ttr": [1, 2, 4, 8, 16, 24],
+    "txlen":[2]
+  }
+}
