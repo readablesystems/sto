@@ -66,9 +66,9 @@ def run_single(bm_idx, trail, txlen, opacity, records, nthreads, ntrans):
 	print_cmd(args)
 	bm_stdout = (to_strcmd(args) + "\n")
 
-#	single_out = subprocess.check_output(args, stderr=subprocess.STDOUT)
-#	records[run_key] = extract_numbers(single_out)
-#	bm_stdout += single_out
+	single_out = subprocess.check_output(args, stderr=subprocess.STDOUT)
+	records[run_key] = extract_numbers(single_out)
+	bm_stdout += single_out
 	return bm_stdout
 
 def run_series(bm_idx, trail, txlen, opacity, records, nthreads_to_run, ntrans):
@@ -84,14 +84,13 @@ def run_series(bm_idx, trail, txlen, opacity, records, nthreads_to_run, ntrans):
 	return bm_stdout
 
 def save_results(exp_name, stdout, records):
-#	f = open(exp_name + "_stdout.txt", "w")
-#	f.write(stdout)
-#	f.close()
+	f = open(exp_name + "_stdout.txt", "w")
+	f.write(stdout)
+	f.close()
 
-#	f = open("experiment_data.json", "w")
-#	f.write(json.dumps(records, sort_keys=True, indent=2))
-#	f.close()
-	return ""
+	f = open("experiment_data.json", "w")
+	f.write(json.dumps(records, sort_keys=True, indent=2))
+	f.close()
 
 def exp_scalability_overhead(repetitions, records):
 	print "@@@@\n@@@ Starting experiment: scalability-overhead:"

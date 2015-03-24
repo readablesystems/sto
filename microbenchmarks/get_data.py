@@ -3,117 +3,192 @@
 import sys, json, numpy, run_benchmarks
 
 records_filename = "experiment_data.json"
+config_filename = "exp_config.json"
+
+ntrails = 5
 
 def parse_exp_data_file():
 	with open(records_filename) as data_file:
 		return json.load(data_file)
 
-def print_table_fixed_txlen(data):
-	opacity_modes = data.keys()
-	num_threads = sorted(data[opacity_modes[0]].keys())
+def parse_exp_config_file():
+	with open(config_filename) as data_file:
+		return json.load(data_file)
 
-	out = "\\begin{tabular}{ |c|"
-	out += "c|" * len(opacity_modes)
-	out += " }\n\\hline\n"
+def print_csv(rows):
+	csv_str = ""
+	for row in rows:
+		row_str = ""
+		for cell in row:
+			row_str += (cell + ",")
+		row_str += "\n"
+		csv_str += row_str
+	print csv_str
 
-	out += "number of threads"
-	for on in opacity_modes:
-		out += (" & %s" % on)
-	out += "\\\\\\hline\n"
+def print_scalability_overhead(records, config):
+	name = "scalability_overhead"
+	f_on = run_benchmarks.opacity_names[config[name]["opacity"][0]]
+	f_tl = config[name]["txlen"][0]
+	ttr = config[name]["ttr"]
+	rows = []
+	curr_row = ["number of cores", "speedup"]
+	rows.append(curr_row)
 
-	for ntr in num_threads:
-		line = "%d" % ntr
-		for on in opacity_modes:
-			line += (" & %f" % data[on][ntr]["med_time"])
-		line += "\\\\\\hline\n"
-		out += line
+	data = process_results(name, config[name], records, ["time", "abort_rate"])
 
-	out += "\\end{tabular}\n"
-	return out
+	baseline = data[f_on][f_tl][1]["med_time"]
+	
+	for tr in ttr:
+		speedup = baseline / data[f_on][f_tl][tr]["med_time"]
+		rows.append(["%d" % tr, "%.4f" % speedup])
+	
+	print "Experiment: %s\n" % name
+	print_csv(rows)
+	print "\n\n"
 
-def print_table_variable_txlen(data):
-	txlens = sorted(data.keys())
+def print_scalability_hi_contention(records, config):
+	name = "scalability_hi_contention"
+	f_on = run_benchmarks.opacity_names[config[name]["opacity"][0]]
+	f_tl = config[name]["txlen"][0]
+	ttr = config[name]["ttr"]
+	rows = []
+	rows.append(["number of cores", "speedup"])
 
-	out = "\\begin{tabular}{ |c|c| }\n\\hline\n"
+	data = process_results(name, config[name], records, ["time", "abort_rate"])
+
+	baseline = data[f_on][f_tl][1]["med_time"]
+	
+	for tr in ttr:
+		speedup = baseline / data[f_on][f_tl][tr]["med_time"]
+		rows.append(["%d" % tr, "%.4f" % speedup])
+	
+	print "Experiment: %s\n" % name
+	print_csv(rows)
+	print "\n\n"
+
+def print_scalability_largetx(records, config):
+	name = "scalability_largetx"
+	f_on = run_benchmarks.opacity_names[config[name]["opacity"][0]]
+	f_tr = config[name]["ttr"][0]
+	txlens = config[name]["txlen"]
+
+	rows = []
+	rows.append(["transaction size", "time"])
+
+	data = process_results(name, config[name], records, ["time", "abort_rate"])
 	
 	for txlen in txlens:
-		out += "%d & %f \\\\\\hline\n" % (txlen, data[txlen]["med_time"])
-
-	out += "\\end{tabular}\n"
-	return out
-
-# experiments where we tested 3 opacity modes and fixed txlen to 100
-def calc_results_opacity100(ntrails, records):
-	data = calc_results("opacity100", ntrails, records)
-	print "exp=opacity100, txlen=100:"
-	out = print_table_fixed_txlen(data)
-	print out
-
-# experiments where we compare the overhead to TL2 style opacity, txlen
-# was fixed to 25
-def calc_results_tl2overhead(ntrails, records):
-	data = calc_results("tl2overhead", ntrails, records)
-	print "exp=tl2overhead, txlen=25:"
-	out = print_table_fixed_txlen(data)
-	print out
-
-# experiments where we scale the sizes of transactions with nthreads=16
-# and opacity=1 (TL2)
-def calc_results_scaletxlen(ntrails, records):
-	data = calc_results("scaletxlen", ntrails, records)
-	print "exp=scale_txlen, nthreads=16, opacity=tl2:"
-	out = print_table_variable_txlen(data)
-	print out
-
-# general framework for time extraction
-def calc_results(exp_name, ntrails, records):
-	processed_results = dict()
-	tempdata = []
-
-	if exp_name == "opacity100":
-		opacity_top = 3
-	elif exp_name == "tl2overhead":
-		opacity_top = 2
-
-	if exp_name == "opacity100" or exp_name == "tl2overhead":
-
-		for opacity in range(0, opacity_top):
-			on = run_benchmarks.opacity_names[opacity]
-			processed_results[on] = dict()
-			for nthreads in run_benchmarks.nthreads_to_run:
-				processed_results[on][nthreads] = dict()
-				tempdata = []
-				for trail in range(0, ntrails):
-					if exp_name == "opacity100":
-						r = records[run_benchmarks.getRecordKey(trail, nthreads, 100, opacity)]["time"]
-					elif exp_name == "tl2overhead":
-						r = records[run_benchmarks.getRecordKey(trail, nthreads, 25, opacity)]["time"]
-					tempdata.append(r)
-				processed_results[on][nthreads]["med_time"] = numpy.median(tempdata)
-				processed_results[on][nthreads]["stddev"] = numpy.std(tempdata)
-
-	elif exp_name == "scaletxlen":
-
-		nthreads = 16
-		txlens = run_benchmarks.scaling_txlens
-		txlens.append(run_benchmarks.s_fixed_txlen)
-		txlens.append(run_benchmarks.fixed_txlen)
-		txlens = sorted(txlens)
-
-		for txlen in run_benchmarks.scaling_txlens:
-			processed_results[txlen] = dict()
-			tempdata = []
-			for trail in range(0, ntrails):
-				r = records[run_benchmarks.getRecordKey(trail, nthreads, txlen, 1)]
-				tempdata.append(r)
-			processed_results[txlen]["med_time"] = numpy.median(tempdata)
-			processed_results[txlen]["stddev"] = numpy.std(tempdata)
+		time = data[f_on][txlen][f_tr]["med_time"]
+		rows.append(["%d" % txlen, "%.4f" % time])
 	
-	f = open("processed_%s.json" % exp_name, "w")
-	f.write(json.dumps(processed_results, sort_keys=True, indent=2))
-	f.close()
+	print "Experiment: %s\n" % name
+	print_csv(rows)
+	print "\n\n"
 
+def print_opacity_modes_low(records, config):
+	name = "opacity_modes_low"
+	f_tr = config[name]["ttr"][0]
+	f_tl = config[name]["txlen"][0]
+
+	rows = []
+	rows.append(["opacity mode", "time"])
+
+	data = process_results(name, config[name], records, ["time", "abort_rate"])
+
+	for op in config[name]["opacity"]:
+		on = run_benchmarks.opacity_names[op]
+		time = data[on][f_tl][f_tr]["med_time"]
+		rows.append([on, "%.4f" % time]
+	
+	print "Experiment: %s\n" % name
+	print_csv(rows)
+	print "\n\n"
+
+def print_opacity_modes_high(records, config):
+	name = "opacity_modes_high"
+	f_tr = config[name]["ttr"][0]
+	f_tl = config[name]["txlen"][0]
+
+	rows = []
+	rows.append(["opacity mode", "time"])
+
+	data = process_results(name, config[name], records, ["time", "abort_rate"])
+
+	for op in config[name]["opacity"]:
+		on = run_benchmarks.opacity_names[op]
+		time = data[on][f_tl][f_tr]["med_time"]
+		rows.append([on, "%.4f" % time]
+	
+	print "Experiment: %s\n" % name
+	print_csv(rows)
+	print "\n\n"
+
+def print_opacity_tl2overhead(records, config):
+	name = "opacity_tl2overhead"
+	f_tl = config[name]["txlen"][0]
+
+	rows = []
+	rows.append(["number of cores", "no opacity", "tl2 opacity"])
+	
+	data = process_results(name, config[name], records, ["time", "abort_rate"])
+	baseline = data["no opacity"][f_tl][1]["med_time"]
+
+		for tr in config[name]["ttr"]:
+			curr_row = []
+			curr_row.append("%d" % tr)
+			for op in config[name]["opacity"]:
+				on = run_benchmarks.opacity_names[op]
+				speedup = baseline / data[on][f_tl][tr]
+				curr_row.append("%.4f" % speedup)
+			rows.append(curr_row)
+	
+	print "Experiment: %s\n" % name
+	print_csv(rows)
+	print "\n\n"
+
+def keyf(bi, t, ntr, tl, op, ntx)
+	return run_benchmarks.getRecordKey(bi, t, ntr, tl, op, ntx)
+
+# general framework for doing statistics
+def process_results(exp_name, params, records, attrs):
+	processed_results = dict()
+	tempdata = dict()
+	bm_idx = params["exec_idx"]
+
+	for attr in attrs:
+		tempdata[attr] = []
+
+	for opacity in params["opacity"]:
+		on = run_benchmarks.opacity_names[opacity]
+		processed_results[on] = dict()
+		for idx in range(0, len(params["txlen"])):
+			txlen = params["txlen"][idx]
+			ntxs = params["ntxs"][idx]
+			processed_results[on][txlen] = dict()
+			for nthreads in params["ttr"]:
+
+				# reset temp space
+				for attr in attrs:
+					tempdata[attr] = []
+
+				processed_results[on][nthreads] = dict()
+
+				for trail in range(0, ntrails):
+					for attr in attrs:
+						r = records[keyf(bm_idx, trail, nthreads, txlen, opacity, ntxs)][attr]
+						tempdata[attr].append(r)
+
+				processed_results[on][txlen][nthreads]["med_" + attr] = numpy.median(tempdata[attr])
+				processed_results[on][txlen][nthreads]["std_" + attr] = numpy.std(tempdata[attr])
+
+	save_processed_results(exp_name, processed_results)
+	
 	return processed_results
+
+def save_processed_results(exp_name, results):
+	f = open("processed_%s.json" % exp_name, "w")
+	f.write(json.dumps(results, sort_keys=True, indent=2))
+	f.close()
 
 def main(argc, argv):
 	if argc != 2:
@@ -125,10 +200,9 @@ def main(argc, argv):
 		sys.exit(0)
 	
 	records = parse_exp_data_file()
-	
-	calc_results_opacity100(ntrails, records)
-	calc_results_tl2overhead(ntrails, records)
-	calc_results_scaletxlen(ntrails, records)
+	config = parse_exp_config_file()
+
+	print_opacity_tl2overhead(records, config)
 
 if __name__ == "__main__":
 	main(len(sys.argv), sys.argv)
