@@ -94,6 +94,7 @@ public:
   }
 
   inline void deallocate_rcu(threadinfo& ti) {
+    // XXX: really this one needs to be a rcu_callback so we can call destructor
     ti.deallocate_rcu(this, sizeof(versioned_value_struct), memtag_value);
   }
   

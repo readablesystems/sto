@@ -28,17 +28,6 @@ uint64_t node_aborts;
 
 typedef stuffed_str<uint32_t> versioned_str;
 
-/*
-// TODO: ughhh
-void print(FILE* f, const char* prefix,
-           int indent, lcdf::Str key, kvtimestamp_t,
-           char* suffix) {
-  //      int fprintf(FILE * , const char * , ...);                                                                                                
-  fprintf(f, "%s%*s%.*s = %d%s (version %d)\n", prefix, indent, "", key.len, key.s, value_, suffix, version_);
-}
-
-*/
-
 struct versioned_str_struct : public versioned_str {
   typedef Masstree::Str value_type;
   typedef versioned_str::stuff_type version_type;
@@ -160,13 +149,14 @@ public:
       if (item.has_write()) {
         // read directly from the element if we're inserting it
         if (has_insert(item)) {
-	  get_val(retval, e);
+	  assign_val(retval, e->read_value());
         } else {
 	  if (item.flags() & copyvals_bit)
 	    retval = item.template write_value<value_type>();
-	  else
+	  else {
 	    // TODO: should we refcount, copy, or...?
 	    retval = (value_type&)item.template write_value<void*>();
+	  }
         }
         return true;
       }
@@ -343,11 +333,30 @@ public:
     auto value_callback = [&] (Str key, versioned_value* e) {
       // TODO: this needs to read my writes
       auto item = this->t_read_only_item(t, e);
-      Version v;
+#if READ_MY_WRITES
+      if (has_delete(item)) {
+        return true;
+      }
+      if (item.has_write()) {
+        // read directly from the element if we're inserting it
+        if (has_insert(item)) {
+	  return range_query_has_insert(callback, key, e, va);
+	  //return callback(key, val);
+        } else {
+	  if (item.flags() & copyvals_bit)
+	    return callback(key, item.template write_value<value_type>());
+	  else {
+	    // TODO: should we refcount, copy, or...?
+	    return callback(key, (value_type&)item.template write_value<void*>());
+	  }
+        }
+      }
+#endif
       // not sure of a better way to do this
       value_type stack_val;
       value_type& val = va ? *(*va)() : stack_val;
-      this->atomicRead(t, e, v, val);
+      Version v;
+      atomicRead(t, e, v, val);
       item.add_read(v);
       // key and val are both only guaranteed until callback returns
       return callback(key, val);//query_callback_overload(key, val, callback);
@@ -364,11 +373,28 @@ public:
     };
     auto value_callback = [&] (Str key, versioned_value* e) {
       auto item = this->t_read_only_item(t, e);
-      Version v;
       // not sure of a better way to do this
       value_type stack_val;
       value_type& val = va ? *(*va)() : stack_val;
-      this->atomicRead(t, e, v, val);
+#if READ_MY_WRITES
+      if (has_delete(item)) {
+        return true;
+      }
+      if (item.has_write()) {
+        // read directly from the element if we're inserting it
+        if (has_insert(item)) {
+	  return range_query_has_insert(callback, key, e, va);
+        } else {
+	  if (item.flags() & copyvals_bit)
+	    return callback(key, item.template write_value<value_type>());
+	  else {
+	    return callback(key, (value_type&)item.template write_value<void*>());
+	  }
+        }
+      }
+#endif
+      Version v;
+      atomicRead(t, e, v, val);
       item.add_read(v);
       return callback(key, val);
     };
@@ -376,6 +402,17 @@ public:
     range_scanner<decltype(node_callback), decltype(value_callback), true> scanner(end, node_callback, value_callback);
     table_.rscan(begin, true, scanner, *ti.ti);
   }
+
+#if READ_MY_WRITES
+  template <typename Callback, typename ValAllocator>
+  // for some reason inlining this/not making it a function gives a 5% slowdown on g++...
+  static __attribute__((noinline)) bool range_query_has_insert(Callback callback, Str key, versioned_value *e, ValAllocator *va) {
+    value_type stack_val;
+    value_type& val = va ? *(*va)() : stack_val;
+    assign_val(val, e->read_value());
+    return callback(key, val);
+  }
+#endif
 
 private:
   // range query class thang
@@ -743,14 +780,14 @@ private:
 #endif
   }
 
-  bool has_insert(const TransItem& item) {
+  static bool has_insert(const TransItem& item) {
       return item.flags() & insert_bit;
   }
-  bool has_delete(const TransItem& item) {
+  static bool has_delete(const TransItem& item) {
       return item.flags() & delete_bit;
   }
 
-  bool validityCheck(const TransItem& item, versioned_value *e) {
+  static bool validityCheck(const TransItem& item, versioned_value *e) {
     return //likely(has_insert(item)) || !(e->version & invalid_bit);
       likely(!(e->version() & invalid_bit)) || has_insert(item);
   }
@@ -781,20 +818,20 @@ private:
       return is_inter(t.key<versioned_value*>());
   }
 
-  bool versionCheck(Version v1, Version v2) {
+  static bool versionCheck(Version v1, Version v2) {
     return ((v1 ^ v2) & version_mask) == 0;
   }
-  void inc_version(Version& v) {
+  static void inc_version(Version& v) {
     assert(is_locked(v));
     Version cur = v & version_mask;
     cur = (cur+1) & version_mask;
     // set new version and ensure invalid bit is off
     v = (cur | (v & ~version_mask)) & ~invalid_bit;
   }
-  bool is_locked(Version v) {
+  static bool is_locked(Version v) {
     return v & lock_bit;
   }
-  void lock(Version *v) {
+  static void lock(Version *v) {
     while (1) {
       Version cur = *v;
       if (!(cur&lock_bit) && bool_cmpxchg(v, cur, cur|lock_bit)) {
@@ -803,21 +840,21 @@ private:
       relax_fence();
     }
   }
-  void unlock(Version *v) {
+  static void unlock(Version *v) {
     assert(is_locked(*v));
     Version cur = *v;
     cur &= ~lock_bit;
     *v = cur;
   }
 
-  void atomicRead(Transaction& t, versioned_value *e, Version& vers, value_type& val) {
+  static void atomicRead(Transaction& t, versioned_value *e, Version& vers, value_type& val) {
     Version v2;
     do {
       v2 = e->version();
       if (is_locked(v2))
 	t.abort();
       fence();
-      get_val(val, e);
+      assign_val(val, e->read_value());
       fence();
       vers = e->version();
       fence();
@@ -825,12 +862,11 @@ private:
   }
 
   template <typename ValType>
-  void get_val(ValType& val, versioned_value *e) {
-    val = e->read_value();
+  static void assign_val(ValType& val, ValType& val_to_assign) {
+    val = val_to_assign;
   }
-  void get_val(std::string& val, versioned_value *e) {
-    auto str = (Str)e->read_value();
-    val.assign(str.data(), str.length());
+  static void assign_val(std::string& val, Str val_to_assign) {
+    val.assign(val_to_assign.data(), val_to_assign.length());
   }
 
   struct table_params : public Masstree::nodeparams<15,15> {
