@@ -414,6 +414,7 @@ public:
     firstWrite_ = -1;
     start_tid_ = commit_tid_ = 0;
     buf_.clear();
+    memset(hashtable_, -1, sizeof(hashtable_));
     INC_P(txp_total_starts);
   }
 
@@ -433,7 +434,10 @@ public:
   // adds item for a key that is known to be new (must NOT exist in the set)
   template <typename T>
   TransProxy new_item(Shared* s, T key) {
-      transSet_.emplace_back(s, buf_.pack(std::move(key)));
+      void *xkey = buf_.pack(std::move(key));
+      transSet_.emplace_back(s, xkey);
+      // assume most recent item with this hash is most likely
+      hashtable_[hash(s, xkey)] = transSet_.size()-1;
       return TransProxy(*this, transSet_.back());
   }
 
@@ -453,6 +457,8 @@ public:
       if (!ti) {
           transSet_.emplace_back(s, xkey);
           ti = &transSet_.back();
+	  // assume most recent item with this hash is most likely
+	  hashtable_[hash(s, xkey)] = transSet_.size()-1;
       }
       return TransProxy(*this, *ti);
   }
@@ -476,6 +482,8 @@ public:
           may_duplicate_items_ = !transSet_.empty();
           transSet_.emplace_back(s, xkey);
           ti = &transSet_.back();
+	  // assume most recent item with this hash is most likely
+	  hashtable_[hash(s, xkey)] = transSet_.size()-1;
       }
       return TransProxy(*this, *ti);
   }
@@ -487,8 +495,18 @@ public:
   }
 
 private:
+  int hash(Shared *s, void *key) {
+    auto n = (uintptr_t)key;
+    //2654435761
+    return n % INIT_SET_SIZE;
+  }
+
   // tries to find an existing item with this key, returns NULL if not found
   TransItem* find_item(Shared *s, void* key) {
+      int idx = hashtable_[hash(s, key)];
+      if (idx != -1 && transSet_[idx].sharedObj() == s && transSet_[idx].key_ == key) {
+          return &transSet_[idx];
+      }
       for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
           INC_P(txp_total_searched);
           if (it->sharedObj() == s && it->key_ == key)
@@ -726,6 +744,7 @@ private:
     int nwriteset_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
+    int hashtable_[INIT_SET_SIZE];
 
     friend class TransProxy;
     friend class TransItem;
