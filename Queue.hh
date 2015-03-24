@@ -45,6 +45,12 @@ public:
         std::shuffle(head, tail, gen);
     }
 
+    void clear() {
+        while (!empty()) {
+            pop();
+	}
+    }
+
     // TRANSACTIONAL CALLS
     void transPush(Transaction& t, const T& v) {
         auto item = t.item(this, -1);
