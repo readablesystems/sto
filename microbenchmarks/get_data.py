@@ -183,6 +183,7 @@ def process_results(exp_name, params, records, attrs):
 				for attr in attrs:
 					processed_results[on][txlen][nthreads]["med_" + attr] = numpy.median(tempdata[attr])
 					processed_results[on][txlen][nthreads]["err_" + attr] = [numpy.min(tempdata[attr]), numpy.max(tempdata[attr])]
+					processed_results[on][txlen][nthreads]["std_" + attr] = numpy.std(tempdata[attr])
 
 	save_processed_results(exp_name, processed_results)
 	
