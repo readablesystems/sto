@@ -130,7 +130,7 @@ def print_opacity_tl2overhead(records, config):
 	tls = config[name]["txlen"]
 
 	rows = []
-	rows.append(["number of cores", "no opacity", "tl2 opacity"])
+	rows.append(["number of cores", "no opacity", "tl2 opacity", "slow opacity"])
 	
 	data = process_results(name, config[name], records, ["time", "abort_rate"])
 
