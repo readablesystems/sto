@@ -47,7 +47,7 @@
     "opacity": [0, 1, 2],
     "ntxs": [8000000],
     "ttr": [16],
-    "txlen":[10]
+    "txlen":[50]
   },
   "opacity_modes_high": {
     "exec_idx": 1,
@@ -59,8 +59,8 @@
   "opacity_tl2overhead": {
     "exec_idx": 0,
     "opacity": [0, 1],
-    "ntxs": [50000000],
+    "ntxs": [50000000, 5000000],
     "ttr": [1, 2, 4, 8, 16, 24],
-    "txlen":[2]
+    "txlen":[5, 50]
   }
 }

@@ -91,14 +91,15 @@ def print_opacity_modes_low(records, config):
 	f_tl = config[name]["txlen"][0]
 
 	rows = []
-	rows.append(["opacity mode", "time"])
+	rows.append(["opacity mode", "speedup"])
 
 	data = process_results(name, config[name], records, ["time", "abort_rate"])
+	baseline = data["no opacity"][f_tl][f_tr]["med_time"]
 
 	for op in config[name]["opacity"]:
 		on = run_benchmarks.opacity_names[op]
-		time = data[on][f_tl][f_tr]["med_time"]
-		rows.append([on, "%.4f" % time])
+		speedup = baseline / data[on][f_tl][f_tr]["med_time"]
+		rows.append([on, "%.4f" % speedup])
 
 	print "Experiment: %s\n" % name
 	print_csv(rows)
@@ -110,14 +111,15 @@ def print_opacity_modes_high(records, config):
 	f_tl = config[name]["txlen"][0]
 
 	rows = []
-	rows.append(["opacity mode", "time"])
+	rows.append(["opacity mode", "speedup"])
 
 	data = process_results(name, config[name], records, ["time", "abort_rate"])
+	baseline = data["no opacity"][f_tl][f_tr]["med_time"]
 
 	for op in config[name]["opacity"]:
 		on = run_benchmarks.opacity_names[op]
-		time = data[on][f_tl][f_tr]["med_time"]
-		rows.append([on, "%.4f" % time])
+		speedup = baseline / data[on][f_tl][f_tr]["med_time"]
+		rows.append([on, "%.4f" % speedup])
 
 	print "Experiment: %s\n" % name
 	print_csv(rows)
@@ -125,22 +127,23 @@ def print_opacity_modes_high(records, config):
 
 def print_opacity_tl2overhead(records, config):
 	name = "opacity_tl2overhead"
-	f_tl = config[name]["txlen"][0]
+	tls = config[name]["txlen"]
 
 	rows = []
 	rows.append(["number of cores", "no opacity", "tl2 opacity"])
 	
 	data = process_results(name, config[name], records, ["time", "abort_rate"])
-	baseline = data["no opacity"][f_tl][1]["med_time"]
 
-	for tr in config[name]["ttr"]:
-		curr_row = []
-		curr_row.append("%d" % tr)
-		for op in config[name]["opacity"]:
-			on = run_benchmarks.opacity_names[op]
-			speedup = baseline / data[on][f_tl][tr]["med_time"]
-			curr_row.append("%.4f" % speedup)
-		rows.append(curr_row)
+	for tl in tls:
+		baseline = data["no opacity"][tl][1]["med_time"]
+		for tr in config[name]["ttr"]:
+			curr_row = []
+			curr_row.append("%d" % tr)
+			for op in config[name]["opacity"]:
+				on = run_benchmarks.opacity_names[op]
+				speedup = baseline / data[on][tl][tr]["med_time"]
+				curr_row.append("%.4f" % speedup)
+			rows.append(curr_row)
 
 	print "Experiment: %s\n" % name
 	print_csv(rows)

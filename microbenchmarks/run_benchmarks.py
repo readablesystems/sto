@@ -130,7 +130,7 @@ def exp_scalability_largetx(repetitions, records):
 def exp_opacity_modes(repetitions, records):
 	print "@@@@\n@@@ Starting experiment: opacity-modes:"
 	ntxs = 8000000
-	txlen = 10
+	txlen = 50
 	combined_stdout = ""
 
 	for opacity in range(0, 3):
@@ -138,20 +138,21 @@ def exp_opacity_modes(repetitions, records):
 			# low-contention
 			combined_stdout += run_single(0, trail, txlen, opacity, records, 16, ntxs)
 			# high-contention
-			combined_stdout += run_single(1, trail, txlen, opacity, records, 16, ntxs/2)
+			combined_stdout += run_single(1, trail, txlen/5, opacity, records, 16, ntxs/2)
 	
 	save_results("opacity_modes", combined_stdout, records)
 
 def exp_opacity_tl2overhead(repetitions, records):
 	print "@@@@\n@@@ Starting experiment: opacity_tl2overhead:"
-	ntxs = 50000000
+	ntxs = [50000000, 5000000]
 	ttr = nthreads_to_run_full
-	txlen = 2
+	txlens = [5, 50]
 	combined_stdout = ""
 	
 	for opacity in range(0, 2):
-		for trail in range(0, repetitions):
-			combined_stdout += run_series(0, trail, txlen, opacity, records, ttr, ntxs)
+		for tidx in range(0, len(txlens)):
+			for trail in range(0, repetitions):
+				combined_stdout += run_series(0, trail, txlens[tidx], opacity, records, ttr, ntxs[tidx])
 	
 	save_results("opacity_modes", combined_stdout, records)
 
@@ -170,11 +171,12 @@ def main(argc, argv):
 		print "Please specify number of repetitions within integer range [1, 10]"
 		sys.exit(0)
 
-	records = dict()
+	with open("experiment_data.json") as data_file:
+		records = json.load(data_file)
 
-	exp_scalability_overhead(repetitions, records)
-	exp_scalability_hi_contention(repetitions, records)
-	exp_scalability_largetx(repetitions, records)
+#	exp_scalability_overhead(repetitions, records)
+#	exp_scalability_hi_contention(repetitions, records)
+#	exp_scalability_largetx(repetitions, records)
 	exp_opacity_modes(repetitions, records)
 	exp_opacity_tl2overhead(repetitions, records)
 
