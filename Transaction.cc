@@ -17,7 +17,7 @@ void Transaction::update_hash() {
         memset(hashtable_, 0, sizeof(hashtable_));
     for (auto it = transSet_.begin() + nhashed_; it != transSet_.end(); ++it, ++nhashed_) {
         int h = hash(it->sharedObj(), it->key_);
-        if (!hashtable_[h])
+        if (!hashtable_[h] || !may_duplicate_items_)
             hashtable_[h] = nhashed_ + 1;
     }
 }
