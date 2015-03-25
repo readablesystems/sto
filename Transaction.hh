@@ -507,11 +507,11 @@ public:
   }
 
 private:
-  int hash(Shared *s, void *key) {
-    (void)s;
-    auto n = (uintptr_t)key;
-    //2654435761
-    return ((n >> 4) ^ (n & 15)) % HASHTABLE_SIZE;
+  static int hash(Shared* s, void* key) {
+      auto n = (uintptr_t) key;
+      n += -(n <= 0xFFFF) & reinterpret_cast<uintptr_t>(s);
+      //2654435761
+      return ((n >> 4) ^ (n & 15)) % HASHTABLE_SIZE;
   }
 
   // tries to find an existing item with this key, returns NULL if not found
