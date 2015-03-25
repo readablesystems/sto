@@ -161,7 +161,7 @@ public:
       atomicRead(t, e, elem_vers, retval);
       item.add_read(elem_vers);
       if (Opacity)
-	t.check_opacity(e->version());
+	check_opacity(t, e->version());
     } else {
       ensureNotFound(t, lp.node(), lp.full_version_value());
     }
@@ -206,7 +206,7 @@ public:
       fence();
       item.add_read(v);
       if (Opacity)
-	t.check_opacity(e->version());
+	check_opacity(t, e->version());
       // same as inserts we need to store (copy) key so we can lookup to remove later
       item.clear_write();
       if (std::is_same<const std::string, const StringType>::value) {
@@ -743,7 +743,7 @@ private:
       fence();
       item.add_read(v);
       if (Opacity)
-	t.check_opacity(e->version());
+	check_opacity(t, e->version());
     }
     if (SET) {
       reallyHandlePutFound<CopyVals>(t, item, e, key, value);
@@ -831,6 +831,12 @@ private:
   }
   static bool is_inter(const TransItem& t) {
       return is_inter(t.key<versioned_value*>());
+  }
+
+  static void check_opacity(Transaction& t, Version& v) {
+    Version v2 = v;
+    fence();
+    t.check_opacity(v);
   }
 
   static bool versionCheck(Version v1, Version v2) {
