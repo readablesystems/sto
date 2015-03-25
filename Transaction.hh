@@ -378,9 +378,9 @@ public:
 #define ADD_P(p, n) add_p((p), (n))
 #define MAX_P(p, n) max_p((p), (n))
 #else
-#define INC_P(p) /**/
-#define ADD_P(p, n) /**/
-#define MAX_P(p, n) /**/
+#define INC_P(p) do {} while (0)
+#define ADD_P(p, n) do {} while (0)
+#define MAX_P(p, n) do {} while (0)
 #endif
 
 
