@@ -10,7 +10,7 @@ class Queue: public Shared {
 public:
     Queue() : head_(0), tail_(0), tailversion_(0), headversion_(0) {}
 
-    typedef uint32_t Version;
+    typedef uint64_t Version;
     typedef VersionFunctions<Version> QueueVersioning;
     
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;
@@ -43,6 +43,12 @@ public:
         // don't support wrap-around shuffle
         assert(head < tail);
         std::shuffle(head, tail, gen);
+    }
+
+    void clear() {
+        while (!empty()) {
+            pop();
+	}
     }
 
     // TRANSACTIONAL CALLS
