@@ -13,6 +13,7 @@
 #define PERF_LOGGING 0
 #define DETAILED_LOGGING 0
 #define ASSERT_TX_SIZE 0
+#define TRANSACTION_HASHTABLE 1
 
 #if ASSERT_TX_SIZE
 #if DETAILED_LOGGING
@@ -411,12 +412,12 @@ public:
     transSet_.clear();
     writeset_ = NULL;
     nwriteset_ = 0;
+    nhashed_ = 0;
     may_duplicate_items_ = false;
     isAborted_ = false;
     firstWrite_ = -1;
     start_tid_ = commit_tid_ = 0;
     buf_.clear();
-    memset(hashtable_, -1, sizeof(hashtable_));
     INC_P(txp_total_starts);
   }
 
@@ -438,9 +439,6 @@ public:
   TransProxy new_item(Shared* s, T key) {
       void *xkey = buf_.pack(std::move(key));
       transSet_.emplace_back(s, xkey);
-      auto h = hash(s, xkey);
-      if (hashtable_[h] == -1 || !may_duplicate_items_)
-	hashtable_[h] = transSet_.size()-1;
       return TransProxy(*this, transSet_.back());
   }
 
@@ -456,13 +454,10 @@ public:
   template <typename T>
   TransProxy item(Shared* s, T key) {
       void* xkey = buf_.pack_unique(std::move(key));
-      TransItem* ti = find_item(s, xkey);
+      TransItem* ti = find_item(s, xkey, 0);
       if (!ti) {
           transSet_.emplace_back(s, xkey);
           ti = &transSet_.back();
-	  auto h = hash(s, xkey);
-	  if (hashtable_[h] == -1 || !may_duplicate_items_)
-	    hashtable_[h] = transSet_.size()-1;
       }
       return TransProxy(*this, *ti);
   }
@@ -472,30 +467,13 @@ public:
   template <typename T>
   TransProxy read_item(Shared *s, T key) {
       void* xkey = buf_.pack_unique(std::move(key));
-      TransItem* ti = 0;
-      if (firstWrite_ >= 0) {
-	int idx = hashtable_[hash(s, xkey)];
-	if (idx != -1 && transSet_[idx].sharedObj() == s && transSet_[idx].key_ == xkey)
-	  ti = &transSet_[idx];
-	else
-          for (auto it = transSet_.begin() + firstWrite_;
-               it != transSet_.end(); ++it) {
-              INC_P(txp_total_searched);
-              if (it->sharedObj() == s && it->key_ == xkey) {
-                  ti = &*it;
-                  break;
-              }
-          }
-      }
+      TransItem* ti = nullptr;
+      if (firstWrite_ >= 0)
+          ti = find_item(s, xkey, firstWrite_);
       if (!ti) {
           may_duplicate_items_ = !transSet_.empty();
           transSet_.emplace_back(s, xkey);
           ti = &transSet_.back();
-	  // only overwrite a free slot, to maintain invariant that
-	  // the oldest read item is always the one we see
-	  auto h = hash(s, xkey);
-	  if (hashtable_[h] == -1)
-	    hashtable_[h] = transSet_.size()-1;
       }
       return TransProxy(*this, *ti);
   }
@@ -503,7 +481,7 @@ public:
   template <typename T>
   OptionalTransProxy check_item(Shared* s, T key) {
       void* xkey = buf_.pack_unique(std::move(key));
-      return OptionalTransProxy(*this, find_item(s, xkey));
+      return OptionalTransProxy(*this, find_item(s, xkey, 0));
   }
 
 private:
@@ -515,12 +493,19 @@ private:
   }
 
   // tries to find an existing item with this key, returns NULL if not found
-  TransItem* find_item(Shared *s, void* key) {
-      int idx = hashtable_[hash(s, key)];
-      if (idx != -1 && transSet_[idx].sharedObj() == s && transSet_[idx].key_ == key) {
-          return &transSet_[idx];
+  TransItem* find_item(Shared* s, void* key, int delta) {
+#if TRANSACTION_HASHTABLE
+      if (transSet_.size() > 16) {
+          if (nhashed_ < transSet_.size())
+              update_hash();
+          uint16_t idx = hashtable_[hash(s, key)];
+          if (!idx)
+              return NULL;
+          else if (transSet_[idx - 1].sharedObj() == s && transSet_[idx - 1].key_ == key)
+              return &transSet_[idx - 1];
       }
-      for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
+#endif
+      for (auto it = transSet_.begin() + delta; it != transSet_.end(); ++it) {
           INC_P(txp_total_searched);
           if (it->sharedObj() == s && it->key_ == key)
               return &*it;
@@ -751,17 +736,19 @@ private:
     int firstWrite_;
     bool may_duplicate_items_;
     bool isAborted_;
+    uint16_t nhashed_;
     TransactionBuffer buf_;
     local_vector<TransItem, INIT_SET_SIZE> transSet_;
     int* writeset_;
     int nwriteset_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
-    int hashtable_[HASHTABLE_SIZE];
+    uint16_t hashtable_[HASHTABLE_SIZE];
 
     friend class TransProxy;
     friend class TransItem;
     void hard_check_opacity(TransactionTid::type t);
+    void update_hash();
 };
 
 

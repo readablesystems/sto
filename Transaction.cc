@@ -12,6 +12,16 @@ static void __attribute__((used)) check_static_assertions() {
     static_assert(sizeof(threadinfo_t) % 128 == 0, "threadinfo is 2-cache-line aligned");
 }
 
+void Transaction::update_hash() {
+    if (nhashed_ == 0)
+        memset(hashtable_, 0, sizeof(hashtable_));
+    for (auto it = transSet_.begin() + nhashed_; it != transSet_.end(); ++it, ++nhashed_) {
+        int h = hash(it->sharedObj(), it->key_);
+        if (!hashtable_[h])
+            hashtable_[h] = nhashed_ + 1;
+    }
+}
+
 void Transaction::hard_check_opacity(TransactionTid::type t) {
     INC_P(txp_hco);
     if (t & TransactionTid::lock_bit)
