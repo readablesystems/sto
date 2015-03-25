@@ -13,6 +13,7 @@
 #define PERF_LOGGING 0
 #define DETAILED_LOGGING 0
 #define ASSERT_TX_SIZE 0
+#define TRANSACTION_HASHTABLE 1
 
 #if ASSERT_TX_SIZE
 #if DETAILED_LOGGING
@@ -35,6 +36,9 @@
 #define NOSORT 0
 
 #define MAX_THREADS 32
+
+#define HASHTABLE_SIZE 512
+#define HASHTABLE_THRESHOLD 16
 
 // transaction performance counters
 enum txp {
@@ -376,9 +380,9 @@ public:
 #define ADD_P(p, n) add_p((p), (n))
 #define MAX_P(p, n) max_p((p), (n))
 #else
-#define INC_P(p) /**/
-#define ADD_P(p, n) /**/
-#define MAX_P(p, n) /**/
+#define INC_P(p) do {} while (0)
+#define ADD_P(p, n) do {} while (0)
+#define MAX_P(p, n) do {} while (0)
 #endif
 
 
@@ -409,12 +413,12 @@ public:
     transSet_.clear();
     writeset_ = NULL;
     nwriteset_ = 0;
+    nhashed_ = 0;
     may_duplicate_items_ = false;
     isAborted_ = false;
     firstWrite_ = -1;
     start_tid_ = commit_tid_ = 0;
     buf_.clear();
-    memset(hashtable_, -1, sizeof(hashtable_));
     INC_P(txp_total_starts);
   }
 
@@ -436,8 +440,6 @@ public:
   TransProxy new_item(Shared* s, T key) {
       void *xkey = buf_.pack(std::move(key));
       transSet_.emplace_back(s, xkey);
-      // assume most recent item with this hash is most likely
-      hashtable_[hash(s, xkey)] = transSet_.size()-1;
       return TransProxy(*this, transSet_.back());
   }
 
@@ -453,12 +455,10 @@ public:
   template <typename T>
   TransProxy item(Shared* s, T key) {
       void* xkey = buf_.pack_unique(std::move(key));
-      TransItem* ti = find_item(s, xkey);
+      TransItem* ti = find_item(s, xkey, 0);
       if (!ti) {
           transSet_.emplace_back(s, xkey);
           ti = &transSet_.back();
-	  // assume most recent item with this hash is most likely
-	  hashtable_[hash(s, xkey)] = transSet_.size()-1;
       }
       return TransProxy(*this, *ti);
   }
@@ -468,22 +468,13 @@ public:
   template <typename T>
   TransProxy read_item(Shared *s, T key) {
       void* xkey = buf_.pack_unique(std::move(key));
-      TransItem* ti = 0;
+      TransItem* ti = nullptr;
       if (firstWrite_ >= 0)
-          for (auto it = transSet_.begin() + firstWrite_;
-               it != transSet_.end(); ++it) {
-              INC_P(txp_total_searched);
-              if (it->sharedObj() == s && it->key_ == xkey) {
-                  ti = &*it;
-                  break;
-              }
-          }
+          ti = find_item(s, xkey, firstWrite_);
       if (!ti) {
           may_duplicate_items_ = !transSet_.empty();
           transSet_.emplace_back(s, xkey);
           ti = &transSet_.back();
-	  // assume most recent item with this hash is most likely
-	  hashtable_[hash(s, xkey)] = transSet_.size()-1;
       }
       return TransProxy(*this, *ti);
   }
@@ -491,23 +482,31 @@ public:
   template <typename T>
   OptionalTransProxy check_item(Shared* s, T key) {
       void* xkey = buf_.pack_unique(std::move(key));
-      return OptionalTransProxy(*this, find_item(s, xkey));
+      return OptionalTransProxy(*this, find_item(s, xkey, 0));
   }
 
 private:
-  int hash(Shared *s, void *key) {
-    auto n = (uintptr_t)key;
-    //2654435761
-    return n % INIT_SET_SIZE;
+  static int hash(Shared* s, void* key) {
+      auto n = (uintptr_t) key;
+      n += -(n <= 0xFFFF) & reinterpret_cast<uintptr_t>(s);
+      //2654435761
+      return ((n >> 4) ^ (n & 15)) % HASHTABLE_SIZE;
   }
 
   // tries to find an existing item with this key, returns NULL if not found
-  TransItem* find_item(Shared *s, void* key) {
-      int idx = hashtable_[hash(s, key)];
-      if (idx != -1 && transSet_[idx].sharedObj() == s && transSet_[idx].key_ == key) {
-          return &transSet_[idx];
+  TransItem* find_item(Shared* s, void* key, int delta) {
+#if TRANSACTION_HASHTABLE
+      if (transSet_.size() > HASHTABLE_THRESHOLD) {
+          if (nhashed_ < transSet_.size())
+              update_hash();
+          uint16_t idx = hashtable_[hash(s, key)];
+          if (!idx)
+              return NULL;
+          else if (transSet_[idx - 1].sharedObj() == s && transSet_[idx - 1].key_ == key)
+              return &transSet_[idx - 1];
       }
-      for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
+#endif
+      for (auto it = transSet_.begin() + delta; it != transSet_.end(); ++it) {
           INC_P(txp_total_searched);
           if (it->sharedObj() == s && it->key_ == key)
               return &*it;
@@ -738,17 +737,19 @@ private:
     int firstWrite_;
     bool may_duplicate_items_;
     bool isAborted_;
+    uint16_t nhashed_;
     TransactionBuffer buf_;
     local_vector<TransItem, INIT_SET_SIZE> transSet_;
     int* writeset_;
     int nwriteset_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
-    int hashtable_[INIT_SET_SIZE];
+    uint16_t hashtable_[HASHTABLE_SIZE];
 
     friend class TransProxy;
     friend class TransItem;
     void hard_check_opacity(TransactionTid::type t);
+    void update_hash();
 };
 
 

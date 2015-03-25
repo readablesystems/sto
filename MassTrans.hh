@@ -161,7 +161,7 @@ public:
       atomicRead(t, e, elem_vers, retval);
       item.add_read(elem_vers);
       if (Opacity)
-	t.check_opacity(elem_vers);
+	check_opacity(t, e->version());
     } else {
       ensureNotFound(t, lp.node(), lp.full_version_value());
     }
@@ -174,8 +174,10 @@ public:
     bool found = lp.find_unlocked(*ti.ti);
     if (found) {
       versioned_value *e = lp.value();
+      Version v = e->version();
+      fence();
       auto item = t_item(t, e);
-      bool valid = !(e->version() & invalid_bit);
+      bool valid = !(v & invalid_bit);
 #if READ_MY_WRITES
       if (!valid && has_insert(item)) {
         if (has_delete(item)) {
@@ -200,13 +202,9 @@ public:
         return false;
       }
 #endif
-      // XXX deleting something we put?
-      // we only need to check validity, not if the item has changed
-      Version v = e->version();
-      fence();
       item.add_read(v);
       if (Opacity)
-	t.check_opacity(v);
+	check_opacity(t, e->version());
       // same as inserts we need to store (copy) key so we can lookup to remove later
       item.clear_write();
       if (std::is_same<const std::string, const StringType>::value) {
@@ -360,6 +358,8 @@ public:
       Version v;
       atomicRead(t, e, v, val);
       item.add_read(v);
+      if (Opacity)
+	check_opacity(t, e->version());
       // key and val are both only guaranteed until callback returns
       return callback(key, val);//query_callback_overload(key, val, callback);
     };
@@ -398,6 +398,8 @@ public:
       Version v;
       atomicRead(t, e, v, val);
       item.add_read(v);
+      if (Opacity)
+	check_opacity(t, e->version());
       return callback(key, val);
     };
 
@@ -548,8 +550,6 @@ public:
 	: (value_type&)item.template write_value<void*>();
       e->set_value(v);
     }
-    // also marks valid if needed
-    //inc_version(e->version());
     if (Opacity)
       TransactionTid::set_version(e->version(), t.commit_tid());
     else if (has_insert(item)) {
@@ -743,7 +743,7 @@ private:
       fence();
       item.add_read(v);
       if (Opacity)
-	t.check_opacity(v);
+	check_opacity(t, e->version());
     }
     if (SET) {
       reallyHandlePutFound<CopyVals>(t, item, e, key, value);
@@ -831,6 +831,12 @@ private:
   }
   static bool is_inter(const TransItem& t) {
       return is_inter(t.key<versioned_value*>());
+  }
+
+  static void check_opacity(Transaction& t, Version& v) {
+    Version v2 = v;
+    fence();
+    t.check_opacity(v);
   }
 
   static bool versionCheck(Version v1, Version v2) {

@@ -162,13 +162,13 @@ template <> struct Container<USE_MASSTREE> : public ContainerBase_maplike {
             //globalepoch++;
         };
     }
-    static void thread_init(type& c) {
-        c.thread_init();
+    static void thread_init(type&) {
+        type::thread_init();
     }
 };
 
 template <> struct Container<USE_HASHTABLE> : public ContainerBase_maplike {
-    typedef Hashtable<int, value_type, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
+  typedef Hashtable<int, value_type, false, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
 };
 
 bool readMyWrites = true;
