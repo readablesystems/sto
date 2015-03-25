@@ -36,6 +36,8 @@
 
 #define MAX_THREADS 32
 
+#define HASHTABLE_SIZE 512
+
 // transaction performance counters
 enum txp {
     // all logging levels
@@ -436,8 +438,9 @@ public:
   TransProxy new_item(Shared* s, T key) {
       void *xkey = buf_.pack(std::move(key));
       transSet_.emplace_back(s, xkey);
-      // assume most recent item with this hash is most likely
-      hashtable_[hash(s, xkey)] = transSet_.size()-1;
+      auto h = hash(s, xkey);
+      if (hashtable_[h] == -1 || !may_duplicate_items_)
+	hashtable_[h] = transSet_.size()-1;
       return TransProxy(*this, transSet_.back());
   }
 
@@ -457,8 +460,9 @@ public:
       if (!ti) {
           transSet_.emplace_back(s, xkey);
           ti = &transSet_.back();
-	  // assume most recent item with this hash is most likely
-	  hashtable_[hash(s, xkey)] = transSet_.size()-1;
+	  auto h = hash(s, xkey);
+	  if (hashtable_[h] == -1 || !may_duplicate_items_)
+	    hashtable_[h] = transSet_.size()-1;
       }
       return TransProxy(*this, *ti);
   }
@@ -469,7 +473,11 @@ public:
   TransProxy read_item(Shared *s, T key) {
       void* xkey = buf_.pack_unique(std::move(key));
       TransItem* ti = 0;
-      if (firstWrite_ >= 0)
+      if (firstWrite_ >= 0) {
+	int idx = hashtable_[hash(s, xkey)];
+	if (idx != -1 && transSet_[idx].sharedObj() == s && transSet_[idx].key_ == xkey)
+	  ti = &transSet_[idx];
+	else
           for (auto it = transSet_.begin() + firstWrite_;
                it != transSet_.end(); ++it) {
               INC_P(txp_total_searched);
@@ -478,12 +486,16 @@ public:
                   break;
               }
           }
+      }
       if (!ti) {
           may_duplicate_items_ = !transSet_.empty();
           transSet_.emplace_back(s, xkey);
           ti = &transSet_.back();
-	  // assume most recent item with this hash is most likely
-	  hashtable_[hash(s, xkey)] = transSet_.size()-1;
+	  // only overwrite a free slot, to maintain invariant that
+	  // the oldest read item is always the one we see
+	  auto h = hash(s, xkey);
+	  if (hashtable_[h] == -1)
+	    hashtable_[h] = transSet_.size()-1;
       }
       return TransProxy(*this, *ti);
   }
@@ -499,7 +511,7 @@ private:
     (void)s;
     auto n = (uintptr_t)key;
     //2654435761
-    return n % INIT_SET_SIZE;
+    return ((n >> 4) ^ (n & 15)) % HASHTABLE_SIZE;
   }
 
   // tries to find an existing item with this key, returns NULL if not found
@@ -745,7 +757,7 @@ private:
     int nwriteset_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
-    int hashtable_[INIT_SET_SIZE];
+    int hashtable_[HASHTABLE_SIZE];
 
     friend class TransProxy;
     friend class TransItem;
