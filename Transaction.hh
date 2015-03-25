@@ -496,6 +496,7 @@ public:
 
 private:
   int hash(Shared *s, void *key) {
+    (void)s;
     auto n = (uintptr_t)key;
     //2654435761
     return n % INIT_SET_SIZE;

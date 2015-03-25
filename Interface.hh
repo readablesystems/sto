@@ -35,6 +35,9 @@ public:
         release_fence();
         v = new_v;
     }
+    static type unlocked(type v) {
+      return v & ~lock_bit;
+    }
 
     static void set_version(type& v, type new_v) {
         assert(is_locked(v));

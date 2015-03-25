@@ -8,10 +8,10 @@
 
 #define HASHTABLE_DELETE 1
 
-template <typename K, typename V, unsigned Init_size = 129, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
+template <typename K, typename V, bool Opacity = false, unsigned Init_size = 129, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
 class Hashtable : public Shared {
 public:
-    typedef unsigned Version;
+    typedef uint64_t Version;
     typedef K Key;
     typedef K key_type;
     typedef V Value;
@@ -47,19 +47,14 @@ private:
   Hash hasher_;
   Pred pred_;
 
-public:
-  static constexpr Version lock_bit = ((Version)1U)<<(sizeof(Version)*8 - 1);
-  // if set we check only node validity, not the node's version number
-  // (for deletes we need to make sure the node is still there/valid, but 
-  // not that its value is the same)
-  static constexpr Version version_mask = ~(lock_bit);
   // used to mark whether a key is a bucket (for bucket version checks)
   // or a pointer (which will always have the lower 3 bits as 0)
   static constexpr uintptr_t bucket_bit = 1U<<0;
 
-    static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
-    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
+  static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
+  static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
 
+public:
   Hashtable(unsigned size = Init_size, Hash h = Hash(), Pred p = Pred()) : map_(), hasher_(h), pred_(p) {
     map_.resize(size);
   }
@@ -101,9 +96,13 @@ public:
       atomicRead(t, e, elem_vers, retval);
       // check both node changes and node deletes
       item.add_read(elem_vers);
+      if (Opacity)
+	check_opacity(t, e->version);
       return true;
     } else {
-      t.item(this, pack_bucket(bucket(k))).add_read(unlocked(buck_version));
+      t.item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+      if (Opacity)
+	check_opacity(t, buck.version);
       return false;
     }
   }
@@ -116,6 +115,8 @@ public:
     fence();
     internal_elem *e = find(buck, k);
     if (e) {
+      Version elemvers = e->version;
+      fence();
       auto item = t.item(this, e);
       bool valid = e->valid();
       if (!valid && has_insert(item)) {
@@ -125,7 +126,7 @@ public:
         // so we just unmark all attributes so the item is ignored
         item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
         // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
-        t.item(this, pack_bucket(bucket(k))).add_read(unlocked(buck_version));
+        t.item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
         return true;
       } else if (!valid) {
         t.abort();
@@ -137,7 +138,9 @@ public:
         return false;
       }
       // we need to make sure this bucket didn't change (e.g. what was once there got removed)
-      item.add_read(e->version);
+      item.add_read(elemvers);
+      if (Opacity)
+	check_opacity(t, e->version);
       // we use delete_bit to detect deletes so we don't need any other data
       // for deletes, just to mark it as a write
       if (!item.has_write())
@@ -146,7 +149,9 @@ public:
       return true;
     } else {
       // add a read that yes this element doesn't exist
-      t.item(this, pack_bucket(bucket(k))).add_read(unlocked(buck_version));
+      t.item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+      if (Opacity)
+	check_opacity(t, buck.version);
       return false;
     }
   }
@@ -158,10 +163,14 @@ public:
     // TODO: technically puts don't need to look into the table at all until lock time
     bucket_entry& buck = buck_entry(k);
     // TODO: update doesn't need to lock the table
+    // also we should lock the head pointer instead so we don't
+    // mess with tids
     lock(&buck.version);
     internal_elem *e = find(buck, k);
     if (e) {
       unlock(&buck.version);
+      Version elemvers = e->version;
+      fence();
       auto item = t.item(this, e);
       if (!validity_check(item, e)) {
         t.abort();
@@ -184,7 +193,9 @@ public:
 
 #if HASHTABLE_DELETE
       // make sure the item doesn't get deleted before us
-      item.add_read(e->version);
+      item.add_read(elemvers);
+      if (Opacity)
+	check_opacity(t, e->version);
 #endif
       if (SET) {
         item.add_write(v);
@@ -193,7 +204,9 @@ public:
     } else {
       if (!INSERT) {
         auto buck_version = unlock(&buck.version);
-        t.item(this, pack_bucket(bucket(k))).add_read(buck_version);
+        t.item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+	if (Opacity)
+	  check_opacity(t, buck.version);
         return false;
       }
 
@@ -236,10 +249,7 @@ public:
     lock(&elem(k));
   }
   void unlock(internal_elem *el) {
-    Version cur = el->version;
-    assert(cur & lock_bit);
-    cur &= ~lock_bit;
-    el->version = cur;
+    unlock(&el->version);
   }
 
   void unlock(Key k) {
@@ -251,7 +261,7 @@ public:
   }
 
   bool versionCheck(Version v1, Version v2) {
-      return ((v1 ^ v2) & version_mask) == 0;
+    return TransactionTid::same_version(v1, v2);
   }
 
   bool check(const TransItem& item, const Transaction& t) {
@@ -277,7 +287,7 @@ public:
     auto el = item.key<internal_elem*>();
     unlock(el);
   }
-  void install(TransItem& item, const Transaction&) {
+  void install(TransItem& item, const Transaction& t) {
     assert(!is_bucket(item));
     auto el = item.key<internal_elem*>();
     assert(is_locked(el));
@@ -292,10 +302,25 @@ public:
     Value new_v = std::move(item.template write_value<Value>());
     std::swap(new_v, el->value);
     if (!__has_trivial_copy(Value)) {
-      //      Transaction::rcu_cleanup([new_v] () { delete new_v; });
+      //Transaction::rcu_cleanup([new_v] () { delete new_v; });
     }
 
-    inc_version(el->version);
+    if (Opacity)
+      TransactionTid::set_version(el->version, t.commit_tid());
+    else
+      TransactionTid::inc_invalid_version(el->version);
+#if 0
+    if (has_insert(item)) {
+      // need to update bucket version
+      bucket_entry& buck = buck_entry(el->key);
+      lock(&buck.version);
+      if (Opacity)
+	TransactionTid::set_version(buck.version, t.commit_tid());
+      else
+	TransactionTid::inc_invalid_version(buck.version);
+      unlock(&buck.version);
+    }
+#endif
     el->valid() = true;
   }
 
@@ -503,6 +528,13 @@ private:
     return has_insert(item) || e->valid();
   }
 
+  void check_opacity(Transaction& t, Version& v) {
+    assert(Opacity);
+    Version v2 = v;
+    fence();
+    t.check_opacity(v2);
+  }
+
   static bool is_bucket(const TransItem& item) {
       return is_bucket(item.key<void*>());
   }
@@ -517,33 +549,16 @@ private:
       return (void*) ((bucket << 1) | bucket_bit);
   }
 
-  static void inc_version(Version& v) {
-    assert(is_locked(v));
-    Version cur = v & version_mask;
-    cur = (cur+1) & version_mask;
-    v = cur | (v & ~version_mask);
-  }
-
   static bool is_locked(Version v) {
-    return v & lock_bit;
+    return TransactionTid::is_locked(v);
   }
   static void lock(Version *v) {
-    while (1) {
-      Version cur = *v;
-      if (!(cur&lock_bit) && bool_cmpxchg(v, cur, cur|lock_bit)) {
-        break;
-      }
-      relax_fence();
-    }
+    TransactionTid::lock(*v);
   }
   static Version unlock(Version *v) {
-    assert(is_locked(*v));
-    Version cur = *v;
-    cur &= ~lock_bit;
-    return *v = cur;
-  }
-  static constexpr Version unlocked(Version v) {
-    return v & ~lock_bit;
+    auto ret = TransactionTid::unlocked(*v);
+    TransactionTid::unlock(*v);
+    return ret;
   }
 
   template <bool markValid = false>
@@ -556,7 +571,6 @@ private:
       new_head->valid() = true;
     }
     buck.head = new_head;
-    inc_version(buck.version);
   }
 
   void atomicRead(Transaction& t, internal_elem *e, Version& vers, Value& val) {
