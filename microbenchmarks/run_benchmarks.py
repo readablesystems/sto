@@ -149,7 +149,7 @@ def exp_opacity_tl2overhead(repetitions, records):
 	txlens = [5, 50]
 	combined_stdout = ""
 	
-	for opacity in range(0, 2):
+	for opacity in range(0, 3):
 		for tidx in range(0, len(txlens)):
 			for trail in range(0, repetitions):
 				combined_stdout += run_series(0, trail, txlens[tidx], opacity, records, ttr, ntxs[tidx])
