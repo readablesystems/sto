@@ -38,6 +38,7 @@
 #define MAX_THREADS 32
 
 #define HASHTABLE_SIZE 512
+#define HASHTABLE_THRESHOLD 16
 
 // transaction performance counters
 enum txp {
@@ -495,7 +496,7 @@ private:
   // tries to find an existing item with this key, returns NULL if not found
   TransItem* find_item(Shared* s, void* key, int delta) {
 #if TRANSACTION_HASHTABLE
-      if (transSet_.size() > 16) {
+      if (transSet_.size() > HASHTABLE_THRESHOLD) {
           if (nhashed_ < transSet_.size())
               update_hash();
           uint16_t idx = hashtable_[hash(s, key)];
