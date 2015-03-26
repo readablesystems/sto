@@ -95,7 +95,7 @@ def save_results(exp_name, stdout, records):
 def exp_scalability_overhead(repetitions, records):
 	print "@@@@\n@@@ Starting experiment: scalability-overhead:"
 	ntxs = 8000000
-	ttr = nthreads_to_run_full
+	ttr = [1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24]
 	txlen = 10
 	combined_stdout = ""
 
@@ -174,11 +174,11 @@ def main(argc, argv):
 	with open("experiment_data.json") as data_file:
 		records = json.load(data_file)
 
-	#exp_scalability_overhead(repetitions, records)
+	exp_scalability_overhead(repetitions, records)
 	#exp_scalability_hi_contention(repetitions, records)
 	#exp_scalability_largetx(repetitions, records)
 	#exp_opacity_modes(repetitions, records)
-	exp_opacity_tl2overhead(repetitions, records)
+	#exp_opacity_tl2overhead(repetitions, records)
 
 if __name__ == "__main__":
 	main(len(sys.argv), sys.argv)
