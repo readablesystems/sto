@@ -57,7 +57,7 @@
  * we are checking our concurrent run not only with a single-threaded run
  * but also with a guaranteed correct implementation
  */
-#define MAINTAIN_TRUE_ARRAY_STATE 1
+#define MAINTAIN_TRUE_ARRAY_STATE 0
 
 // assert reading our writes works
 #define TRY_READ_MY_WRITES 0
@@ -321,7 +321,9 @@ template <int DS> void DSTester<DS>::initialize() {
     a = new type;
     if (prepopulate()) {
         prepopulate_func(*a);
+#if MAINTAIN_TRUE_ARRAY_STATE
         prepopulate_func(true_array_state);
+#endif
     }
     Container<DS>::init();
 }
