@@ -115,7 +115,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 50000000, 
-    "time": 31.339621, 
+    "time": 27.047382, 
     "tx_aborts": 0, 
     "tx_commits": 50100000, 
     "tx_starts": 50100000
@@ -126,7 +126,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 50000000, 
-    "time": 31.952857, 
+    "time": 26.900512, 
     "tx_aborts": 0, 
     "tx_commits": 50100000, 
     "tx_starts": 50100000
@@ -137,7 +137,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 50000000, 
-    "time": 33.534103, 
+    "time": 28.628228, 
     "tx_aborts": 0, 
     "tx_commits": 50100000, 
     "tx_starts": 50100000
@@ -148,7 +148,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 5000000, 
-    "time": 34.677555, 
+    "time": 29.09511, 
     "tx_aborts": 0, 
     "tx_commits": 5100000, 
     "tx_starts": 5100000
@@ -159,7 +159,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 5000000, 
-    "time": 35.286981, 
+    "time": 29.783439, 
     "tx_aborts": 0, 
     "tx_commits": 5100000, 
     "tx_starts": 5100000
@@ -170,7 +170,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 5000000, 
-    "time": 45.407495, 
+    "time": 45.236545, 
     "tx_aborts": 0, 
     "tx_commits": 5100000, 
     "tx_starts": 5100000
@@ -264,48 +264,48 @@
     "tx_starts": 50100614
   }, 
   "0/0/16/5/0/50000000": {
-    "abort_rate": 7.02545449900526e-05, 
+    "abort_rate": 0.00023315919696492338, 
     "array_size": 1000000, 
-    "commit_aborts": 2405, 
-    "commit_time_abort_ratio": 0.6832386363636364, 
+    "commit_aborts": 7784, 
+    "commit_time_abort_ratio": 0.6662102019856213, 
     "num_txs": 50000000, 
-    "time": 2.751799, 
-    "tx_aborts": 3520, 
+    "time": 2.326404, 
+    "tx_aborts": 11684, 
     "tx_commits": 50100000, 
-    "tx_starts": 50103520
+    "tx_starts": 50111684
   }, 
   "0/0/16/5/1/50000000": {
-    "abort_rate": 0.0001312602136042939, 
+    "abort_rate": 0.00011348013476953493, 
     "array_size": 1000000, 
-    "commit_aborts": 2462, 
-    "commit_time_abort_ratio": 0.3743348031017181, 
+    "commit_aborts": 2162, 
+    "commit_time_abort_ratio": 0.3802321491382343, 
     "num_txs": 50000000, 
-    "time": 4.667254, 
-    "tx_aborts": 6577, 
+    "time": 4.449311, 
+    "tx_aborts": 5686, 
     "tx_commits": 50100000, 
-    "tx_starts": 50106577
+    "tx_starts": 50105686
   }, 
   "0/0/16/5/2/50000000": {
-    "abort_rate": 0.00017204624330012993, 
+    "abort_rate": 9.39632259707012e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 2914, 
-    "commit_time_abort_ratio": 0.33801183157406334, 
+    "commit_aborts": 1847, 
+    "commit_time_abort_ratio": 0.3923109600679694, 
     "num_txs": 50000000, 
-    "time": 3.064296, 
-    "tx_aborts": 8621, 
+    "time": 2.498436, 
+    "tx_aborts": 4708, 
     "tx_commits": 50100000, 
-    "tx_starts": 50108621
+    "tx_starts": 50104708
   }, 
   "0/0/16/50/0/5000000": {
-    "abort_rate": 0.004574273983319007, 
+    "abort_rate": 0.005053159424429105, 
     "array_size": 1000000, 
-    "commit_aborts": 18324, 
-    "commit_time_abort_ratio": 0.7818740399385561, 
+    "commit_aborts": 20065, 
+    "commit_time_abort_ratio": 0.7746506061308007, 
     "num_txs": 5000000, 
-    "time": 2.779482, 
-    "tx_aborts": 23436, 
+    "time": 2.607945, 
+    "tx_aborts": 25902, 
     "tx_commits": 5100000, 
-    "tx_starts": 5123436
+    "tx_starts": 5125902
   }, 
   "0/0/16/50/0/8000000": {
     "abort_rate": 0.0047007614407804325, 
@@ -319,15 +319,15 @@
     "tx_starts": 8138256
   }, 
   "0/0/16/50/1/5000000": {
-    "abort_rate": 0.004572913960552591, 
+    "abort_rate": 0.005004825726595226, 
     "array_size": 1000000, 
-    "commit_aborts": 17881, 
-    "commit_time_abort_ratio": 0.7631994536685305, 
+    "commit_aborts": 19433, 
+    "commit_time_abort_ratio": 0.757533231980665, 
     "num_txs": 5000000, 
-    "time": 2.839986, 
-    "tx_aborts": 23429, 
+    "time": 2.527171, 
+    "tx_aborts": 25653, 
     "tx_commits": 5100000, 
-    "tx_starts": 5123429
+    "tx_starts": 5125653
   }, 
   "0/0/16/50/1/8000000": {
     "abort_rate": 0.0046797255963442995, 
@@ -341,15 +341,15 @@
     "tx_starts": 8138084
   }, 
   "0/0/16/50/2/5000000": {
-    "abort_rate": 0.004632362914943884, 
+    "abort_rate": 0.004920570223438257, 
     "array_size": 1000000, 
-    "commit_aborts": 5055, 
-    "commit_time_abort_ratio": 0.21297661681061722, 
+    "commit_aborts": 5621, 
+    "commit_time_abort_ratio": 0.2228875054522384, 
     "num_txs": 5000000, 
-    "time": 4.143929, 
-    "tx_aborts": 23735, 
+    "time": 3.824275, 
+    "tx_aborts": 25219, 
     "tx_commits": 5100000, 
-    "tx_starts": 5123735
+    "tx_starts": 5125219
   }, 
   "0/0/16/50/2/8000000": {
     "abort_rate": 0.0046843731268712855, 
@@ -396,70 +396,70 @@
     "tx_starts": 50100018
   }, 
   "0/0/2/5/0/50000000": {
-    "abort_rate": 3.4530818885595465e-06, 
+    "abort_rate": 6.586782961309836e-06, 
     "array_size": 1000000, 
-    "commit_aborts": 121, 
-    "commit_time_abort_ratio": 0.6994219653179191, 
+    "commit_aborts": 253, 
+    "commit_time_abort_ratio": 0.7666666666666667, 
     "num_txs": 50000000, 
-    "time": 16.583134, 
-    "tx_aborts": 173, 
+    "time": 13.321861, 
+    "tx_aborts": 330, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100173
+    "tx_starts": 50100330
   }, 
   "0/0/2/5/1/50000000": {
-    "abort_rate": 3.992000031936e-06, 
+    "abort_rate": 4.590797287756962e-06, 
     "array_size": 1000000, 
-    "commit_aborts": 106, 
-    "commit_time_abort_ratio": 0.53, 
+    "commit_aborts": 137, 
+    "commit_time_abort_ratio": 0.5956521739130435, 
     "num_txs": 50000000, 
-    "time": 19.415953, 
-    "tx_aborts": 200, 
+    "time": 17.066318, 
+    "tx_aborts": 230, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100200
+    "tx_starts": 50100230
   }, 
   "0/0/2/5/2/50000000": {
-    "abort_rate": 2.6147636220751597e-06, 
+    "abort_rate": 4.53091759444523e-06, 
     "array_size": 1000000, 
-    "commit_aborts": 51, 
-    "commit_time_abort_ratio": 0.3893129770992366, 
+    "commit_aborts": 84, 
+    "commit_time_abort_ratio": 0.3700440528634361, 
     "num_txs": 50000000, 
-    "time": 17.978114, 
-    "tx_aborts": 131, 
+    "time": 15.546093, 
+    "tx_aborts": 227, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100131
+    "tx_starts": 50100227
   }, 
   "0/0/2/50/0/5000000": {
-    "abort_rate": 0.00031049180019382215, 
+    "abort_rate": 0.00032166120665879863, 
     "array_size": 1000000, 
-    "commit_aborts": 1234, 
-    "commit_time_abort_ratio": 0.7790404040404041, 
+    "commit_aborts": 1289, 
+    "commit_time_abort_ratio": 0.785496648385131, 
     "num_txs": 5000000, 
-    "time": 17.629984, 
-    "tx_aborts": 1584, 
+    "time": 16.004805, 
+    "tx_aborts": 1641, 
     "tx_commits": 5100000, 
-    "tx_starts": 5101584
+    "tx_starts": 5101641
   }, 
   "0/0/2/50/1/5000000": {
-    "abort_rate": 0.00030539690031947104, 
+    "abort_rate": 0.0003432154960130355, 
     "array_size": 1000000, 
-    "commit_aborts": 1222, 
-    "commit_time_abort_ratio": 0.7843388960205392, 
+    "commit_aborts": 1330, 
+    "commit_time_abort_ratio": 0.759565962307253, 
     "num_txs": 5000000, 
-    "time": 18.09853, 
-    "tx_aborts": 1558, 
+    "time": 15.618657, 
+    "tx_aborts": 1751, 
     "tx_commits": 5100000, 
-    "tx_starts": 5101558
+    "tx_starts": 5101751
   }, 
   "0/0/2/50/2/5000000": {
-    "abort_rate": 0.00033283036353778684, 
+    "abort_rate": 0.00034458710115219105, 
     "array_size": 1000000, 
-    "commit_aborts": 348, 
-    "commit_time_abort_ratio": 0.2049469964664311, 
+    "commit_aborts": 378, 
+    "commit_time_abort_ratio": 0.2150170648464164, 
     "num_txs": 5000000, 
-    "time": 25.723751, 
-    "tx_aborts": 1698, 
+    "time": 23.405458, 
+    "tx_aborts": 1758, 
     "tx_commits": 5100000, 
-    "tx_starts": 5101698
+    "tx_starts": 5101758
   }, 
   "0/0/24/10/0/8000000": {
     "abort_rate": 0.0003497545177447967, 
@@ -495,70 +495,70 @@
     "tx_starts": 50114597
   }, 
   "0/0/24/5/0/50000000": {
-    "abort_rate": 0.00028967658847061636, 
+    "abort_rate": 0.0002492393012982275, 
     "array_size": 1000000, 
-    "commit_aborts": 10398, 
-    "commit_time_abort_ratio": 0.7162636908452159, 
+    "commit_aborts": 8542, 
+    "commit_time_abort_ratio": 0.6839071257005604, 
     "num_txs": 50000000, 
-    "time": 1.949324, 
-    "tx_aborts": 14517, 
+    "time": 1.660407, 
+    "tx_aborts": 12490, 
     "tx_commits": 50099992, 
-    "tx_starts": 50114509
+    "tx_starts": 50112482
   }, 
   "0/0/24/5/1/50000000": {
-    "abort_rate": 0.00019150027735211073, 
+    "abort_rate": 0.00020855932165676525, 
     "array_size": 1000000, 
-    "commit_aborts": 4407, 
-    "commit_time_abort_ratio": 0.45925385577323885, 
+    "commit_aborts": 2778, 
+    "commit_time_abort_ratio": 0.26581188403023637, 
     "num_txs": 50000000, 
-    "time": 3.389203, 
-    "tx_aborts": 9596, 
+    "time": 3.264233, 
+    "tx_aborts": 10451, 
     "tx_commits": 50099992, 
-    "tx_starts": 50109588
+    "tx_starts": 50110443
   }, 
   "0/0/24/5/2/50000000": {
-    "abort_rate": 0.0002283311229928084, 
+    "abort_rate": 0.00021248980256488443, 
     "array_size": 1000000, 
-    "commit_aborts": 3621, 
-    "commit_time_abort_ratio": 0.31646565285789197, 
+    "commit_aborts": 3500, 
+    "commit_time_abort_ratio": 0.32870022539444027, 
     "num_txs": 50000000, 
-    "time": 2.084175, 
-    "tx_aborts": 11442, 
+    "time": 1.832875, 
+    "tx_aborts": 10648, 
     "tx_commits": 50099992, 
-    "tx_starts": 50111434
+    "tx_starts": 50110640
   }, 
   "0/0/24/50/0/5000000": {
-    "abort_rate": 0.007424669739503061, 
+    "abort_rate": 0.012376491192805133, 
     "array_size": 1000000, 
-    "commit_aborts": 29361, 
-    "commit_time_abort_ratio": 0.7696400954153451, 
+    "commit_aborts": 29914, 
+    "commit_time_abort_ratio": 0.4680571419630424, 
     "num_txs": 5000000, 
-    "time": 2.002068, 
-    "tx_aborts": 38149, 
+    "time": 2.000046, 
+    "tx_aborts": 63911, 
     "tx_commits": 5099992, 
-    "tx_starts": 5138141
+    "tx_starts": 5163903
   }, 
   "0/0/24/50/1/5000000": {
-    "abort_rate": 0.007475666087044521, 
+    "abort_rate": 0.008174405997637118, 
     "array_size": 1000000, 
-    "commit_aborts": 29121, 
-    "commit_time_abort_ratio": 0.7581027256397573, 
+    "commit_aborts": 31411, 
+    "commit_time_abort_ratio": 0.7472937929721886, 
     "num_txs": 5000000, 
-    "time": 2.040089, 
-    "tx_aborts": 38413, 
+    "time": 1.810404, 
+    "tx_aborts": 42033, 
     "tx_commits": 5099992, 
-    "tx_starts": 5138405
+    "tx_starts": 5142025
   }, 
   "0/0/24/50/2/5000000": {
-    "abort_rate": 0.007634995904055666, 
+    "abort_rate": 0.008121745272817515, 
     "array_size": 1000000, 
-    "commit_aborts": 8349, 
-    "commit_time_abort_ratio": 0.21277842907385697, 
+    "commit_aborts": 9169, 
+    "commit_time_abort_ratio": 0.21956417624521074, 
     "num_txs": 5000000, 
-    "time": 2.983417, 
-    "tx_aborts": 39238, 
+    "time": 2.793618, 
+    "tx_aborts": 41760, 
     "tx_commits": 5099992, 
-    "tx_starts": 5139230
+    "tx_starts": 5141752
   }, 
   "0/0/4/10/0/8000000": {
     "abort_rate": 5.147883127498251e-05, 
@@ -594,70 +594,70 @@
     "tx_starts": 50100076
   }, 
   "0/0/4/5/0/50000000": {
-    "abort_rate": 1.2854126186481754e-05, 
+    "abort_rate": 1.1277317930446493e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 474, 
-    "commit_time_abort_ratio": 0.7360248447204969, 
+    "commit_aborts": 378, 
+    "commit_time_abort_ratio": 0.6690265486725664, 
     "num_txs": 50000000, 
-    "time": 8.399809, 
-    "tx_aborts": 644, 
+    "time": 7.28081, 
+    "tx_aborts": 565, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100644
+    "tx_starts": 50100565
   }, 
   "0/0/4/5/1/50000000": {
-    "abort_rate": 1.173638920165967e-05, 
+    "abort_rate": 1.2694449627346047e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 326, 
-    "commit_time_abort_ratio": 0.5544217687074829, 
+    "commit_aborts": 355, 
+    "commit_time_abort_ratio": 0.5581761006289309, 
     "num_txs": 50000000, 
-    "time": 10.292671, 
-    "tx_aborts": 588, 
+    "time": 9.325929, 
+    "tx_aborts": 636, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100588
+    "tx_starts": 50100636
   }, 
   "0/0/4/5/2/50000000": {
-    "abort_rate": 8.842237183411731e-06, 
+    "abort_rate": 1.1057761956085355e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 171, 
-    "commit_time_abort_ratio": 0.3860045146726862, 
+    "commit_aborts": 247, 
+    "commit_time_abort_ratio": 0.44584837545126355, 
     "num_txs": 50000000, 
-    "time": 9.078068, 
-    "tx_aborts": 443, 
+    "time": 7.843432, 
+    "tx_aborts": 554, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100443
+    "tx_starts": 50100554
   }, 
   "0/0/4/50/0/5000000": {
-    "abort_rate": 0.0009633847203814048, 
+    "abort_rate": 0.0010209174467191568, 
     "array_size": 1000000, 
-    "commit_aborts": 3832, 
-    "commit_time_abort_ratio": 0.7791785278568524, 
+    "commit_aborts": 4077, 
+    "commit_time_abort_ratio": 0.782233307751343, 
     "num_txs": 5000000, 
-    "time": 8.932637, 
-    "tx_aborts": 4918, 
+    "time": 8.039513, 
+    "tx_aborts": 5212, 
     "tx_commits": 5100000, 
-    "tx_starts": 5104918
+    "tx_starts": 5105212
   }, 
   "0/0/4/50/1/5000000": {
-    "abort_rate": 0.0009397043604280445, 
+    "abort_rate": 0.0010551599712225537, 
     "array_size": 1000000, 
-    "commit_aborts": 3725, 
-    "commit_time_abort_ratio": 0.7765269960391912, 
+    "commit_aborts": 4154, 
+    "commit_time_abort_ratio": 0.7711156487841099, 
     "num_txs": 5000000, 
-    "time": 9.155433, 
-    "tx_aborts": 4797, 
+    "time": 8.027913, 
+    "tx_aborts": 5387, 
     "tx_commits": 5100000, 
-    "tx_starts": 5104797
+    "tx_starts": 5105387
   }, 
   "0/0/4/50/2/5000000": {
-    "abort_rate": 0.0009809974832556579, 
+    "abort_rate": 0.0010483116541229675, 
     "array_size": 1000000, 
-    "commit_aborts": 1024, 
-    "commit_time_abort_ratio": 0.20447284345047922, 
+    "commit_aborts": 1150, 
+    "commit_time_abort_ratio": 0.2148729446935725, 
     "num_txs": 5000000, 
-    "time": 13.040765, 
-    "tx_aborts": 5008, 
+    "time": 11.83984, 
+    "tx_aborts": 5352, 
     "tx_commits": 5100000, 
-    "tx_starts": 5105008
+    "tx_starts": 5105352
   }, 
   "0/0/8/10/0/8000000": {
     "abort_rate": 0.00011171591322204124, 
@@ -693,70 +693,70 @@
     "tx_starts": 50106508
   }, 
   "0/0/8/5/0/50000000": {
-    "abort_rate": 0.00015281097657389968, 
+    "abort_rate": 0.0003468457241672016, 
     "array_size": 1000000, 
-    "commit_aborts": 5573, 
-    "commit_time_abort_ratio": 0.7278307431108789, 
+    "commit_aborts": 11120, 
+    "commit_time_abort_ratio": 0.6397054593568429, 
     "num_txs": 50000000, 
-    "time": 4.254152, 
-    "tx_aborts": 7657, 
+    "time": 3.684385, 
+    "tx_aborts": 17383, 
     "tx_commits": 50100000, 
-    "tx_starts": 50107657
+    "tx_starts": 50117383
   }, 
   "0/0/8/5/1/50000000": {
-    "abort_rate": 0.00014852085245141829, 
+    "abort_rate": 6.0874537578051634e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 3606, 
-    "commit_time_abort_ratio": 0.4845471647406611, 
+    "commit_aborts": 1308, 
+    "commit_time_abort_ratio": 0.42885245901639346, 
     "num_txs": 50000000, 
-    "time": 6.119855, 
-    "tx_aborts": 7442, 
+    "time": 5.807948, 
+    "tx_aborts": 3050, 
     "tx_commits": 50100000, 
-    "tx_starts": 50107442
+    "tx_starts": 50103050
   }, 
   "0/0/8/5/2/50000000": {
-    "abort_rate": 8.55415842069878e-05, 
+    "abort_rate": 0.0001169124775789689, 
     "array_size": 1000000, 
-    "commit_aborts": 1344, 
-    "commit_time_abort_ratio": 0.3135790947270182, 
+    "commit_aborts": 2132, 
+    "commit_time_abort_ratio": 0.3639467395015364, 
     "num_txs": 50000000, 
-    "time": 4.604818, 
-    "tx_aborts": 4286, 
+    "time": 3.989575, 
+    "tx_aborts": 5858, 
     "tx_commits": 50100000, 
-    "tx_starts": 50104286
+    "tx_starts": 50105858
   }, 
   "0/0/8/50/0/5000000": {
-    "abort_rate": 0.0022271854354906618, 
+    "abort_rate": 0.002396010053500915, 
     "array_size": 1000000, 
-    "commit_aborts": 8955, 
-    "commit_time_abort_ratio": 0.7866303583977512, 
+    "commit_aborts": 9598, 
+    "commit_time_abort_ratio": 0.7835741693199445, 
     "num_txs": 5000000, 
-    "time": 4.561534, 
-    "tx_aborts": 11384, 
+    "time": 4.119607, 
+    "tx_aborts": 12249, 
     "tx_commits": 5100000, 
-    "tx_starts": 5111384
+    "tx_starts": 5112249
   }, 
   "0/0/8/50/1/5000000": {
-    "abort_rate": 0.0021801385717441285, 
+    "abort_rate": 0.0024404999768214116, 
     "array_size": 1000000, 
-    "commit_aborts": 8628, 
-    "commit_time_abort_ratio": 0.7742977654132639, 
+    "commit_aborts": 9473, 
+    "commit_time_abort_ratio": 0.759236996072774, 
     "num_txs": 5000000, 
-    "time": 4.689383, 
-    "tx_aborts": 11143, 
+    "time": 4.061048, 
+    "tx_aborts": 12477, 
     "tx_commits": 5100000, 
-    "tx_starts": 5111143
+    "tx_starts": 5112477
   }, 
   "0/0/8/50/2/5000000": {
-    "abort_rate": 0.0022178154595980386, 
+    "abort_rate": 0.0024397194860491193, 
     "array_size": 1000000, 
-    "commit_aborts": 2328, 
-    "commit_time_abort_ratio": 0.205363443895554, 
+    "commit_aborts": 2754, 
+    "commit_time_abort_ratio": 0.22079692135011625, 
     "num_txs": 5000000, 
-    "time": 6.723096, 
-    "tx_aborts": 11336, 
+    "time": 5.972975, 
+    "tx_aborts": 12473, 
     "tx_commits": 5100000, 
-    "tx_starts": 5111336
+    "tx_starts": 5112473
   }, 
   "0/1/1/1/0/8192000": {
     "abort_rate": 0.0, 
@@ -874,7 +874,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 50000000, 
-    "time": 31.403829, 
+    "time": 26.152947, 
     "tx_aborts": 0, 
     "tx_commits": 50100000, 
     "tx_starts": 50100000
@@ -885,7 +885,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 50000000, 
-    "time": 32.03821, 
+    "time": 26.87651, 
     "tx_aborts": 0, 
     "tx_commits": 50100000, 
     "tx_starts": 50100000
@@ -896,7 +896,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 50000000, 
-    "time": 33.694121, 
+    "time": 28.517907, 
     "tx_aborts": 0, 
     "tx_commits": 50100000, 
     "tx_starts": 50100000
@@ -907,7 +907,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 5000000, 
-    "time": 34.7969, 
+    "time": 25.081117, 
     "tx_aborts": 0, 
     "tx_commits": 5100000, 
     "tx_starts": 5100000
@@ -918,7 +918,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 5000000, 
-    "time": 35.215708, 
+    "time": 29.842145, 
     "tx_aborts": 0, 
     "tx_commits": 5100000, 
     "tx_starts": 5100000
@@ -929,7 +929,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 5000000, 
-    "time": 50.836634, 
+    "time": 44.962854, 
     "tx_aborts": 0, 
     "tx_commits": 5100000, 
     "tx_starts": 5100000
@@ -1023,48 +1023,48 @@
     "tx_starts": 50100371
   }, 
   "0/1/16/5/0/50000000": {
-    "abort_rate": 0.00013638858124622282, 
+    "abort_rate": 0.00010493908643280512, 
     "array_size": 1000000, 
-    "commit_aborts": 4506, 
-    "commit_time_abort_ratio": 0.659350307287094, 
+    "commit_aborts": 3709, 
+    "commit_time_abort_ratio": 0.7054012932674021, 
     "num_txs": 50000000, 
-    "time": 2.680229, 
-    "tx_aborts": 6834, 
+    "time": 2.273067, 
+    "tx_aborts": 5258, 
     "tx_commits": 50100000, 
-    "tx_starts": 50106834
+    "tx_starts": 50105258
   }, 
   "0/1/16/5/1/50000000": {
-    "abort_rate": 8.498279727044356e-05, 
+    "abort_rate": 7.993372984854204e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 1853, 
-    "commit_time_abort_ratio": 0.43518083607327385, 
+    "commit_aborts": 1543, 
+    "commit_time_abort_ratio": 0.38526841448189764, 
     "num_txs": 50000000, 
-    "time": 4.627035, 
-    "tx_aborts": 4258, 
+    "time": 4.453024, 
+    "tx_aborts": 4005, 
     "tx_commits": 50100000, 
-    "tx_starts": 50104258
+    "tx_starts": 50104005
   }, 
   "0/1/16/5/2/50000000": {
-    "abort_rate": 0.0001252138604439037, 
+    "abort_rate": 8.865481427774408e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 2126, 
-    "commit_time_abort_ratio": 0.3388587822760599, 
+    "commit_aborts": 1646, 
+    "commit_time_abort_ratio": 0.3705538045925259, 
     "num_txs": 50000000, 
-    "time": 2.981032, 
-    "tx_aborts": 6274, 
+    "time": 2.537395, 
+    "tx_aborts": 4442, 
     "tx_commits": 50100000, 
-    "tx_starts": 50106274
+    "tx_starts": 50104442
   }, 
   "0/1/16/50/0/5000000": {
-    "abort_rate": 0.004542409616354549, 
+    "abort_rate": 0.0051923109558170795, 
     "array_size": 1000000, 
-    "commit_aborts": 18192, 
-    "commit_time_abort_ratio": 0.7817119284977656, 
+    "commit_aborts": 19937, 
+    "commit_time_abort_ratio": 0.7489762951275405, 
     "num_txs": 5000000, 
-    "time": 2.798275, 
-    "tx_aborts": 23272, 
+    "time": 2.452617, 
+    "tx_aborts": 26619, 
     "tx_commits": 5100000, 
-    "tx_starts": 5123272
+    "tx_starts": 5126619
   }, 
   "0/1/16/50/0/8000000": {
     "abort_rate": 0.004638752067678667, 
@@ -1078,15 +1078,15 @@
     "tx_starts": 8137749
   }, 
   "0/1/16/50/1/5000000": {
-    "abort_rate": 0.004569611032647775, 
+    "abort_rate": 0.004949109975755878, 
     "array_size": 1000000, 
-    "commit_aborts": 17886, 
-    "commit_time_abort_ratio": 0.7639671963095849, 
+    "commit_aborts": 19201, 
+    "commit_time_abort_ratio": 0.7569581329338485, 
     "num_txs": 5000000, 
-    "time": 2.870592, 
-    "tx_aborts": 23412, 
+    "time": 2.527311, 
+    "tx_aborts": 25366, 
     "tx_commits": 5100000, 
-    "tx_starts": 5123412
+    "tx_starts": 5125366
   }, 
   "0/1/16/50/1/8000000": {
     "abort_rate": 0.0046410760296926624, 
@@ -1100,15 +1100,15 @@
     "tx_starts": 8137768
   }, 
   "0/1/16/50/2/5000000": {
-    "abort_rate": 0.004622649518852154, 
+    "abort_rate": 0.004974153715885003, 
     "array_size": 1000000, 
-    "commit_aborts": 5137, 
-    "commit_time_abort_ratio": 0.21688832594469074, 
+    "commit_aborts": 5666, 
+    "commit_time_abort_ratio": 0.22223965483428124, 
     "num_txs": 5000000, 
-    "time": 4.161931, 
-    "tx_aborts": 23685, 
+    "time": 3.833066, 
+    "tx_aborts": 25495, 
     "tx_commits": 5100000, 
-    "tx_starts": 5123685
+    "tx_starts": 5125495
   }, 
   "0/1/16/50/2/8000000": {
     "abort_rate": 0.004677768728400893, 
@@ -1155,70 +1155,70 @@
     "tx_starts": 50100020
   }, 
   "0/1/2/5/0/50000000": {
-    "abort_rate": 3.213562527274114e-06, 
+    "abort_rate": 3.353282168634644e-06, 
     "array_size": 1000000, 
-    "commit_aborts": 119, 
-    "commit_time_abort_ratio": 0.7391304347826086, 
+    "commit_aborts": 112, 
+    "commit_time_abort_ratio": 0.6666666666666666, 
     "num_txs": 50000000, 
-    "time": 16.586675, 
-    "tx_aborts": 161, 
+    "time": 14.19942, 
+    "tx_aborts": 168, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100161
+    "tx_starts": 50100168
   }, 
   "0/1/2/5/1/50000000": {
-    "abort_rate": 3.493001770951898e-06, 
+    "abort_rate": 4.051879789788476e-06, 
     "array_size": 1000000, 
-    "commit_aborts": 97, 
-    "commit_time_abort_ratio": 0.5542857142857143, 
+    "commit_aborts": 115, 
+    "commit_time_abort_ratio": 0.5665024630541872, 
     "num_txs": 50000000, 
-    "time": 19.467837, 
-    "tx_aborts": 175, 
+    "time": 17.06635, 
+    "tx_aborts": 203, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100175
+    "tx_starts": 50100203
   }, 
   "0/1/2/5/2/50000000": {
     "abort_rate": 3.253482428789703e-06, 
     "array_size": 1000000, 
-    "commit_aborts": 64, 
-    "commit_time_abort_ratio": 0.39263803680981596, 
+    "commit_aborts": 66, 
+    "commit_time_abort_ratio": 0.4049079754601227, 
     "num_txs": 50000000, 
-    "time": 18.055584, 
+    "time": 16.063704, 
     "tx_aborts": 163, 
     "tx_commits": 50100000, 
     "tx_starts": 50100163
   }, 
   "0/1/2/50/0/5000000": {
-    "abort_rate": 0.00028580064757957434, 
+    "abort_rate": 0.0003432154960130355, 
     "array_size": 1000000, 
-    "commit_aborts": 1154, 
-    "commit_time_abort_ratio": 0.7914951989026063, 
+    "commit_aborts": 1345, 
+    "commit_time_abort_ratio": 0.7681324957167333, 
     "num_txs": 5000000, 
-    "time": 17.652672, 
-    "tx_aborts": 1458, 
+    "time": 15.319536, 
+    "tx_aborts": 1751, 
     "tx_commits": 5100000, 
-    "tx_starts": 5101458
+    "tx_starts": 5101751
   }, 
   "0/1/2/50/1/5000000": {
-    "abort_rate": 0.0003159785573657895, 
+    "abort_rate": 0.00034380332724784455, 
     "array_size": 1000000, 
-    "commit_aborts": 1268, 
-    "commit_time_abort_ratio": 0.7866004962779156, 
+    "commit_aborts": 1337, 
+    "commit_time_abort_ratio": 0.7622576966932725, 
     "num_txs": 5000000, 
-    "time": 18.132539, 
-    "tx_aborts": 1612, 
+    "time": 15.681052, 
+    "tx_aborts": 1754, 
     "tx_commits": 5100000, 
-    "tx_starts": 5101612
+    "tx_starts": 5101754
   }, 
   "0/1/2/50/2/5000000": {
-    "abort_rate": 0.0003244045314706698, 
+    "abort_rate": 0.0004035625617030301, 
     "array_size": 1000000, 
-    "commit_aborts": 353, 
-    "commit_time_abort_ratio": 0.21329305135951662, 
+    "commit_aborts": 422, 
+    "commit_time_abort_ratio": 0.2049538610976202, 
     "num_txs": 5000000, 
-    "time": 26.486156, 
-    "tx_aborts": 1655, 
+    "time": 23.346796, 
+    "tx_aborts": 2059, 
     "tx_commits": 5100000, 
-    "tx_starts": 5101655
+    "tx_starts": 5102059
   }, 
   "0/1/24/10/0/8000000": {
     "abort_rate": 0.0003498778882975041, 
@@ -1254,70 +1254,70 @@
     "tx_starts": 50119258
   }, 
   "0/1/24/5/0/50000000": {
-    "abort_rate": 0.0002732387370834933, 
+    "abort_rate": 0.00028000146226533315, 
     "array_size": 1000000, 
-    "commit_aborts": 9513, 
-    "commit_time_abort_ratio": 0.6947345358942525, 
+    "commit_aborts": 9975, 
+    "commit_time_abort_ratio": 0.7108751425313569, 
     "num_txs": 50000000, 
-    "time": 1.957299, 
-    "tx_aborts": 13693, 
+    "time": 1.66918, 
+    "tx_aborts": 14032, 
     "tx_commits": 50099992, 
-    "tx_starts": 50113685
+    "tx_starts": 50114024
   }, 
   "0/1/24/5/1/50000000": {
-    "abort_rate": 0.00017845121191362802, 
+    "abort_rate": 0.0001411377844848383, 
     "array_size": 1000000, 
-    "commit_aborts": 4137, 
-    "commit_time_abort_ratio": 0.4626481771415791, 
+    "commit_aborts": 2942, 
+    "commit_time_abort_ratio": 0.41600678733031676, 
     "num_txs": 50000000, 
-    "time": 3.40422, 
-    "tx_aborts": 8942, 
+    "time": 3.275793, 
+    "tx_aborts": 7072, 
     "tx_commits": 50099992, 
-    "tx_starts": 50108934
+    "tx_starts": 50107064
   }, 
   "0/1/24/5/2/50000000": {
-    "abort_rate": 0.0002444512460647839, 
+    "abort_rate": 0.00017663548926883025, 
     "array_size": 1000000, 
-    "commit_aborts": 3923, 
-    "commit_time_abort_ratio": 0.32024489795918365, 
+    "commit_aborts": 3063, 
+    "commit_time_abort_ratio": 0.346062591797537, 
     "num_txs": 50000000, 
-    "time": 2.09886, 
-    "tx_aborts": 12250, 
+    "time": 1.815675, 
+    "tx_aborts": 8851, 
     "tx_commits": 50099992, 
-    "tx_starts": 50112242
+    "tx_starts": 50108843
   }, 
   "0/1/24/50/0/5000000": {
-    "abort_rate": 0.0075164207638788345, 
+    "abort_rate": 0.008156660150958794, 
     "array_size": 1000000, 
-    "commit_aborts": 29558, 
-    "commit_time_abort_ratio": 0.7652754763877382, 
+    "commit_aborts": 31915, 
+    "commit_time_abort_ratio": 0.7609499058200806, 
     "num_txs": 5000000, 
-    "time": 1.998369, 
-    "tx_aborts": 38624, 
+    "time": 1.773919, 
+    "tx_aborts": 41941, 
     "tx_commits": 5099992, 
-    "tx_starts": 5138616
+    "tx_starts": 5141933
   }, 
   "0/1/24/50/1/5000000": {
-    "abort_rate": 0.007483006038988853, 
+    "abort_rate": 0.008109399092282534, 
     "array_size": 1000000, 
-    "commit_aborts": 28920, 
-    "commit_time_abort_ratio": 0.7521260825466177, 
+    "commit_aborts": 31056, 
+    "commit_time_abort_ratio": 0.7448196469685342, 
     "num_txs": 5000000, 
-    "time": 2.04213, 
-    "tx_aborts": 38451, 
+    "time": 1.823421, 
+    "tx_aborts": 41696, 
     "tx_commits": 5099992, 
-    "tx_starts": 5138443
+    "tx_starts": 5141688
   }, 
   "0/1/24/50/2/5000000": {
-    "abort_rate": 0.007542301143274143, 
+    "abort_rate": 0.008107662885995022, 
     "array_size": 1000000, 
-    "commit_aborts": 8524, 
-    "commit_time_abort_ratio": 0.21992878889519582, 
+    "commit_aborts": 9051, 
+    "commit_time_abort_ratio": 0.21711804639336005, 
     "num_txs": 5000000, 
-    "time": 2.996542, 
-    "tx_aborts": 38758, 
+    "time": 2.806506, 
+    "tx_aborts": 41687, 
     "tx_commits": 5099992, 
-    "tx_starts": 5138750
+    "tx_starts": 5141679
   }, 
   "0/1/4/10/0/8000000": {
     "abort_rate": 4.0368740669358166e-05, 
@@ -1353,70 +1353,70 @@
     "tx_starts": 50100357
   }, 
   "0/1/4/5/0/50000000": {
-    "abort_rate": 8.842237183411731e-06, 
+    "abort_rate": 1.1616631519370374e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 312, 
-    "commit_time_abort_ratio": 0.7042889390519187, 
+    "commit_aborts": 399, 
+    "commit_time_abort_ratio": 0.6855670103092784, 
     "num_txs": 50000000, 
-    "time": 8.389211, 
-    "tx_aborts": 443, 
+    "time": 7.264687, 
+    "tx_aborts": 582, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100443
+    "tx_starts": 50100582
   }, 
   "0/1/4/5/1/50000000": {
-    "abort_rate": 1.099788303725442e-05, 
+    "abort_rate": 1.267449005386858e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 300, 
-    "commit_time_abort_ratio": 0.5444646098003629, 
+    "commit_aborts": 335, 
+    "commit_time_abort_ratio": 0.5275590551181102, 
     "num_txs": 50000000, 
-    "time": 10.29887, 
-    "tx_aborts": 551, 
+    "time": 9.329112, 
+    "tx_aborts": 635, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100551
+    "tx_starts": 50100635
   }, 
   "0/1/4/5/2/50000000": {
-    "abort_rate": 9.920061272046862e-06, 
+    "abort_rate": 1.0957963754049881e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 191, 
-    "commit_time_abort_ratio": 0.3843058350100604, 
+    "commit_aborts": 210, 
+    "commit_time_abort_ratio": 0.3825136612021858, 
     "num_txs": 50000000, 
-    "time": 9.033139, 
-    "tx_aborts": 497, 
+    "time": 7.840699, 
+    "tx_aborts": 549, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100497
+    "tx_starts": 50100549
   }, 
   "0/1/4/50/0/5000000": {
-    "abort_rate": 0.0009516425334455924, 
+    "abort_rate": 0.0010921392610745585, 
     "array_size": 1000000, 
-    "commit_aborts": 3741, 
-    "commit_time_abort_ratio": 0.7700699876492384, 
+    "commit_aborts": 4224, 
+    "commit_time_abort_ratio": 0.757532281205165, 
     "num_txs": 5000000, 
-    "time": 9.024765, 
-    "tx_aborts": 4858, 
+    "time": 8.486216, 
+    "tx_aborts": 5576, 
     "tx_commits": 5100000, 
-    "tx_starts": 5104858
+    "tx_starts": 5105576
   }, 
   "0/1/4/50/1/5000000": {
-    "abort_rate": 0.0009185672231942043, 
+    "abort_rate": 0.0010340277191510983, 
     "array_size": 1000000, 
-    "commit_aborts": 3659, 
-    "commit_time_abort_ratio": 0.7803369588398379, 
+    "commit_aborts": 4038, 
+    "commit_time_abort_ratio": 0.7649175980299299, 
     "num_txs": 5000000, 
-    "time": 9.201828, 
-    "tx_aborts": 4689, 
+    "time": 7.956494, 
+    "tx_aborts": 5279, 
     "tx_commits": 5100000, 
-    "tx_starts": 5104689
+    "tx_starts": 5105279
   }, 
   "0/1/4/50/2/5000000": {
-    "abort_rate": 0.000962601916506331, 
+    "abort_rate": 0.0010485073216288865, 
     "array_size": 1000000, 
-    "commit_aborts": 1068, 
-    "commit_time_abort_ratio": 0.21733821733821734, 
+    "commit_aborts": 1215, 
+    "commit_time_abort_ratio": 0.22697552774145338, 
     "num_txs": 5000000, 
-    "time": 12.963752, 
-    "tx_aborts": 4914, 
+    "time": 11.988691, 
+    "tx_aborts": 5353, 
     "tx_commits": 5100000, 
-    "tx_starts": 5104914
+    "tx_starts": 5105353
   }, 
   "0/1/8/10/0/8000000": {
     "abort_rate": 9.542299234900175e-05, 
@@ -1452,70 +1452,70 @@
     "tx_starts": 50100273
   }, 
   "0/1/8/5/0/50000000": {
-    "abort_rate": 4.891976242838898e-05, 
+    "abort_rate": 0.000483000131074385, 
     "array_size": 1000000, 
-    "commit_aborts": 1612, 
-    "commit_time_abort_ratio": 0.6576907384740922, 
+    "commit_aborts": 16387, 
+    "commit_time_abort_ratio": 0.6768690623709211, 
     "num_txs": 50000000, 
-    "time": 4.231699, 
-    "tx_aborts": 2451, 
+    "time": 3.721939, 
+    "tx_aborts": 24210, 
     "tx_commits": 50100000, 
-    "tx_starts": 50102451
+    "tx_starts": 50124210
   }, 
   "0/1/8/5/1/50000000": {
-    "abort_rate": 0.0004319490679177561, 
+    "abort_rate": 0.00016596047650054734, 
     "array_size": 1000000, 
-    "commit_aborts": 10816, 
-    "commit_time_abort_ratio": 0.49958429561200923, 
+    "commit_aborts": 3458, 
+    "commit_time_abort_ratio": 0.4158249158249158, 
     "num_txs": 50000000, 
-    "time": 6.289778, 
-    "tx_aborts": 21650, 
+    "time": 5.82786, 
+    "tx_aborts": 8316, 
     "tx_commits": 50100000, 
-    "tx_starts": 50121650
+    "tx_starts": 50108316
   }, 
   "0/1/8/5/2/50000000": {
-    "abort_rate": 4.432937214499932e-05, 
+    "abort_rate": 9.120924498503829e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 743, 
-    "commit_time_abort_ratio": 0.3345339936965331, 
+    "commit_aborts": 1266, 
+    "commit_time_abort_ratio": 0.27702407002188184, 
     "num_txs": 50000000, 
-    "time": 4.585212, 
-    "tx_aborts": 2221, 
+    "time": 3.988214, 
+    "tx_aborts": 4570, 
     "tx_commits": 50100000, 
-    "tx_starts": 50102221
+    "tx_starts": 50104570
   }, 
   "0/1/8/50/0/5000000": {
-    "abort_rate": 0.0021781863238542216, 
+    "abort_rate": 0.0024399146088566904, 
     "array_size": 1000000, 
-    "commit_aborts": 8771, 
-    "commit_time_abort_ratio": 0.787837959220336, 
+    "commit_aborts": 9631, 
+    "commit_time_abort_ratio": 0.7720859387526054, 
     "num_txs": 5000000, 
-    "time": 4.558398, 
-    "tx_aborts": 11133, 
+    "time": 3.944246, 
+    "tx_aborts": 12474, 
     "tx_commits": 5100000, 
-    "tx_starts": 5111133
+    "tx_starts": 5112474
   }, 
   "0/1/8/50/1/5000000": {
-    "abort_rate": 0.00220141757831545, 
+    "abort_rate": 0.002430938880704041, 
     "array_size": 1000000, 
-    "commit_aborts": 8613, 
-    "commit_time_abort_ratio": 0.7654639175257731, 
+    "commit_aborts": 9461, 
+    "commit_time_abort_ratio": 0.7612648857418732, 
     "num_txs": 5000000, 
-    "time": 4.662638, 
-    "tx_aborts": 11252, 
+    "time": 4.053978, 
+    "tx_aborts": 12428, 
     "tx_commits": 5100000, 
-    "tx_starts": 5111252
+    "tx_starts": 5112428
   }, 
   "0/1/8/50/2/5000000": {
-    "abort_rate": 0.0022869148950738407, 
+    "abort_rate": 0.002449280413854454, 
     "array_size": 1000000, 
-    "commit_aborts": 2534, 
-    "commit_time_abort_ratio": 0.21676646706586827, 
+    "commit_aborts": 2818, 
+    "commit_time_abort_ratio": 0.22504392269605494, 
     "num_txs": 5000000, 
-    "time": 6.53805, 
-    "tx_aborts": 11690, 
+    "time": 5.949489, 
+    "tx_aborts": 12522, 
     "tx_commits": 5100000, 
-    "tx_starts": 5111690
+    "tx_starts": 5112522
   }, 
   "0/2/1/1/0/8192000": {
     "abort_rate": 0.0, 
@@ -1633,7 +1633,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 50000000, 
-    "time": 31.288084, 
+    "time": 26.100027, 
     "tx_aborts": 0, 
     "tx_commits": 50100000, 
     "tx_starts": 50100000
@@ -1644,7 +1644,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 50000000, 
-    "time": 31.988524, 
+    "time": 26.884337, 
     "tx_aborts": 0, 
     "tx_commits": 50100000, 
     "tx_starts": 50100000
@@ -1655,7 +1655,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 50000000, 
-    "time": 33.442118, 
+    "time": 28.561478, 
     "tx_aborts": 0, 
     "tx_commits": 50100000, 
     "tx_starts": 50100000
@@ -1666,7 +1666,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 5000000, 
-    "time": 34.689534, 
+    "time": 29.442753, 
     "tx_aborts": 0, 
     "tx_commits": 5100000, 
     "tx_starts": 5100000
@@ -1677,7 +1677,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 5000000, 
-    "time": 35.29164, 
+    "time": 29.903745, 
     "tx_aborts": 0, 
     "tx_commits": 5100000, 
     "tx_starts": 5100000
@@ -1688,7 +1688,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 5000000, 
-    "time": 50.448254, 
+    "time": 45.073208, 
     "tx_aborts": 0, 
     "tx_commits": 5100000, 
     "tx_starts": 5100000
@@ -1782,48 +1782,48 @@
     "tx_starts": 50101207
   }, 
   "0/2/16/5/0/50000000": {
-    "abort_rate": 5.704265413362248e-05, 
+    "abort_rate": 0.00018437717643247386, 
     "array_size": 1000000, 
-    "commit_aborts": 2006, 
-    "commit_time_abort_ratio": 0.701889433170049, 
+    "commit_aborts": 6054, 
+    "commit_time_abort_ratio": 0.6552657213984198, 
     "num_txs": 50000000, 
-    "time": 2.710564, 
-    "tx_aborts": 2858, 
+    "time": 2.303922, 
+    "tx_aborts": 9239, 
     "tx_commits": 50100000, 
-    "tx_starts": 50102858
+    "tx_starts": 50109239
   }, 
   "0/2/16/5/1/50000000": {
-    "abort_rate": 8.178971708062682e-05, 
+    "abort_rate": 9.450204656306436e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 1869, 
-    "commit_time_abort_ratio": 0.4560761346998536, 
+    "commit_aborts": 1938, 
+    "commit_time_abort_ratio": 0.4092925026399155, 
     "num_txs": 50000000, 
-    "time": 4.614166, 
-    "tx_aborts": 4098, 
+    "time": 4.398518, 
+    "tx_aborts": 4735, 
     "tx_commits": 50100000, 
-    "tx_starts": 50104098
+    "tx_starts": 50104735
   }, 
   "0/2/16/5/2/50000000": {
-    "abort_rate": 0.00010168626563825495, 
+    "abort_rate": 0.00013525116572554646, 
     "array_size": 1000000, 
-    "commit_aborts": 1684, 
-    "commit_time_abort_ratio": 0.3305201177625123, 
+    "commit_aborts": 2370, 
+    "commit_time_abort_ratio": 0.34971226206285966, 
     "num_txs": 50000000, 
-    "time": 2.894042, 
-    "tx_aborts": 5095, 
+    "time": 2.529169, 
+    "tx_aborts": 6777, 
     "tx_commits": 50100000, 
-    "tx_starts": 50105095
+    "tx_starts": 50106777
   }, 
   "0/2/16/50/0/5000000": {
-    "abort_rate": 0.0045713596442689365, 
+    "abort_rate": 0.0051086694440391186, 
     "array_size": 1000000, 
-    "commit_aborts": 18359, 
-    "commit_time_abort_ratio": 0.7838691772341061, 
+    "commit_aborts": 20099, 
+    "commit_time_abort_ratio": 0.7674889262257523, 
     "num_txs": 5000000, 
-    "time": 2.757127, 
-    "tx_aborts": 23421, 
+    "time": 2.431009, 
+    "tx_aborts": 26188, 
     "tx_commits": 5100000, 
-    "tx_starts": 5123421
+    "tx_starts": 5126188
   }, 
   "0/2/16/50/0/8000000": {
     "abort_rate": 0.0045794262051716645, 
@@ -1837,15 +1837,15 @@
     "tx_starts": 8137264
   }, 
   "0/2/16/50/1/5000000": {
-    "abort_rate": 0.004630808784308766, 
+    "abort_rate": 0.0050467540235616636, 
     "array_size": 1000000, 
-    "commit_aborts": 18296, 
-    "commit_time_abort_ratio": 0.7711046487124373, 
+    "commit_aborts": 19486, 
+    "commit_time_abort_ratio": 0.7532567938459159, 
     "num_txs": 5000000, 
-    "time": 2.841881, 
-    "tx_aborts": 23727, 
+    "time": 2.49984, 
+    "tx_aborts": 25869, 
     "tx_commits": 5100000, 
-    "tx_starts": 5123727
+    "tx_starts": 5125869
   }, 
   "0/2/16/50/1/8000000": {
     "abort_rate": 0.004636550409444599, 
@@ -1859,15 +1859,15 @@
     "tx_starts": 8137731
   }, 
   "0/2/16/50/2/5000000": {
-    "abort_rate": 0.004614684392592459, 
+    "abort_rate": 0.004966776621089593, 
     "array_size": 1000000, 
-    "commit_aborts": 5134, 
-    "commit_time_abort_ratio": 0.21713754017932668, 
+    "commit_aborts": 5717, 
+    "commit_time_abort_ratio": 0.22457477314687513, 
     "num_txs": 5000000, 
-    "time": 4.131129, 
-    "tx_aborts": 23644, 
+    "time": 3.971934, 
+    "tx_aborts": 25457, 
     "tx_commits": 5100000, 
-    "tx_starts": 5123644
+    "tx_starts": 5125457
   }, 
   "0/2/16/50/2/8000000": {
     "abort_rate": 0.004698437757465161, 
@@ -1914,70 +1914,70 @@
     "tx_starts": 50100015
   }, 
   "0/2/2/5/0/50000000": {
-    "abort_rate": 3.2734423783522946e-06, 
-    "array_size": 1000000, 
-    "commit_aborts": 117, 
-    "commit_time_abort_ratio": 0.7134146341463414, 
-    "num_txs": 50000000, 
-    "time": 16.643373, 
-    "tx_aborts": 164, 
-    "tx_commits": 50100000, 
-    "tx_starts": 50100164
-  }, 
-  "0/2/2/5/1/50000000": {
-    "abort_rate": 4.071839707479035e-06, 
+    "abort_rate": 3.712561067138553e-06, 
     "array_size": 1000000, 
     "commit_aborts": 122, 
-    "commit_time_abort_ratio": 0.5980392156862745, 
+    "commit_time_abort_ratio": 0.6559139784946236, 
     "num_txs": 50000000, 
-    "time": 19.428007, 
-    "tx_aborts": 204, 
+    "time": 14.223533, 
+    "tx_aborts": 186, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100204
+    "tx_starts": 50100186
+  }, 
+  "0/2/2/5/1/50000000": {
+    "abort_rate": 4.650676973897506e-06, 
+    "array_size": 1000000, 
+    "commit_aborts": 128, 
+    "commit_time_abort_ratio": 0.5493562231759657, 
+    "num_txs": 50000000, 
+    "time": 17.124496, 
+    "tx_aborts": 233, 
+    "tx_commits": 50100000, 
+    "tx_starts": 50100233
   }, 
   "0/2/2/5/2/50000000": {
-    "abort_rate": 3.073842846870291e-06, 
+    "abort_rate": 3.4530818885595465e-06, 
     "array_size": 1000000, 
-    "commit_aborts": 70, 
-    "commit_time_abort_ratio": 0.45454545454545453, 
+    "commit_aborts": 72, 
+    "commit_time_abort_ratio": 0.4161849710982659, 
     "num_txs": 50000000, 
-    "time": 18.98912, 
-    "tx_aborts": 154, 
+    "time": 15.492616, 
+    "tx_aborts": 173, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100154
+    "tx_starts": 50100173
   }, 
   "0/2/2/50/0/5000000": {
-    "abort_rate": 0.0003332222592469177, 
-    "array_size": 1000000, 
-    "commit_aborts": 1299, 
-    "commit_time_abort_ratio": 0.7641176470588236, 
-    "num_txs": 5000000, 
-    "time": 17.649032, 
-    "tx_aborts": 1700, 
-    "tx_commits": 5100000, 
-    "tx_starts": 5101700
-  }, 
-  "0/2/2/50/1/5000000": {
-    "abort_rate": 0.00032734379134675507, 
+    "abort_rate": 0.0003173502372482147, 
     "array_size": 1000000, 
     "commit_aborts": 1289, 
-    "commit_time_abort_ratio": 0.7718562874251497, 
+    "commit_time_abort_ratio": 0.7961704756022236, 
     "num_txs": 5000000, 
-    "time": 18.055722, 
-    "tx_aborts": 1670, 
+    "time": 16.525004, 
+    "tx_aborts": 1619, 
     "tx_commits": 5100000, 
-    "tx_starts": 5101670
+    "tx_starts": 5101619
+  }, 
+  "0/2/2/50/1/5000000": {
+    "abort_rate": 0.00035536386770742087, 
+    "array_size": 1000000, 
+    "commit_aborts": 1387, 
+    "commit_time_abort_ratio": 0.7650303364589078, 
+    "num_txs": 5000000, 
+    "time": 15.675179, 
+    "tx_aborts": 1813, 
+    "tx_commits": 5100000, 
+    "tx_starts": 5101813
   }, 
   "0/2/2/50/2/5000000": {
-    "abort_rate": 0.00031264731912274493, 
+    "abort_rate": 0.0003714306154869906, 
     "array_size": 1000000, 
-    "commit_aborts": 347, 
-    "commit_time_abort_ratio": 0.2175548589341693, 
+    "commit_aborts": 406, 
+    "commit_time_abort_ratio": 0.21424802110817942, 
     "num_txs": 5000000, 
-    "time": 25.696893, 
-    "tx_aborts": 1595, 
+    "time": 23.391746, 
+    "tx_aborts": 1895, 
     "tx_commits": 5100000, 
-    "tx_starts": 5101595
+    "tx_starts": 5101895
   }, 
   "0/2/24/10/0/8000000": {
     "abort_rate": 0.00035900722469643897, 
@@ -2013,70 +2013,70 @@
     "tx_starts": 50139254
   }, 
   "0/2/24/5/0/50000000": {
-    "abort_rate": 0.0003928396910586881, 
+    "abort_rate": 0.0003894890199751143, 
     "array_size": 1000000, 
-    "commit_aborts": 13480, 
-    "commit_time_abort_ratio": 0.6846462491746661, 
+    "commit_aborts": 13455, 
+    "commit_time_abort_ratio": 0.6892577224527432, 
     "num_txs": 50000000, 
-    "time": 1.943269, 
-    "tx_aborts": 19689, 
+    "time": 1.664963, 
+    "tx_aborts": 19521, 
     "tx_commits": 50099992, 
-    "tx_starts": 50119681
+    "tx_starts": 50119513
   }, 
   "0/2/24/5/1/50000000": {
-    "abort_rate": 0.00015350938989716628, 
+    "abort_rate": 0.00016588068915683116, 
     "array_size": 1000000, 
-    "commit_aborts": 3482, 
-    "commit_time_abort_ratio": 0.45267810712428497, 
+    "commit_aborts": 2988, 
+    "commit_time_abort_ratio": 0.35948026948989414, 
     "num_txs": 50000000, 
-    "time": 3.426563, 
-    "tx_aborts": 7692, 
+    "time": 3.26916, 
+    "tx_aborts": 8312, 
     "tx_commits": 50099992, 
-    "tx_starts": 50107684
+    "tx_starts": 50108304
   }, 
   "0/2/24/5/2/50000000": {
-    "abort_rate": 0.00011671294204428067, 
+    "abort_rate": 0.00017082912314049707, 
     "array_size": 1000000, 
-    "commit_aborts": 2078, 
-    "commit_time_abort_ratio": 0.35533515731874143, 
+    "commit_aborts": 3125, 
+    "commit_time_abort_ratio": 0.36507009345794394, 
     "num_txs": 50000000, 
-    "time": 2.12112, 
-    "tx_aborts": 5848, 
+    "time": 1.825802, 
+    "tx_aborts": 8560, 
     "tx_commits": 50099992, 
-    "tx_starts": 50105840
+    "tx_starts": 50108552
   }, 
   "0/2/24/50/0/5000000": {
-    "abort_rate": 0.0074476573781786055, 
+    "abort_rate": 0.008095509271793148, 
     "array_size": 1000000, 
-    "commit_aborts": 29425, 
-    "commit_time_abort_ratio": 0.7689192014215532, 
+    "commit_aborts": 31901, 
+    "commit_time_abort_ratio": 0.7664088026138766, 
     "num_txs": 5000000, 
-    "time": 1.988237, 
-    "tx_aborts": 38268, 
+    "time": 1.769951, 
+    "tx_aborts": 41624, 
     "tx_commits": 5099992, 
-    "tx_starts": 5138260
+    "tx_starts": 5141616
   }, 
   "0/2/24/50/1/5000000": {
-    "abort_rate": 0.007453838746416124, 
+    "abort_rate": 0.008333897222786112, 
     "array_size": 1000000, 
-    "commit_aborts": 28885, 
-    "commit_time_abort_ratio": 0.754177545691906, 
+    "commit_aborts": 31582, 
+    "commit_time_abort_ratio": 0.7368642090527299, 
     "num_txs": 5000000, 
-    "time": 2.04088, 
-    "tx_aborts": 38300, 
+    "time": 1.818145, 
+    "tx_aborts": 42860, 
     "tx_commits": 5099992, 
-    "tx_starts": 5138292
+    "tx_starts": 5142852
   }, 
   "0/2/24/50/2/5000000": {
-    "abort_rate": 0.007593671628965545, 
+    "abort_rate": 0.008141228463746436, 
     "array_size": 1000000, 
-    "commit_aborts": 8586, 
-    "commit_time_abort_ratio": 0.22001845018450183, 
+    "commit_aborts": 9263, 
+    "commit_time_abort_ratio": 0.22127995031174602, 
     "num_txs": 5000000, 
-    "time": 2.983401, 
-    "tx_aborts": 39024, 
+    "time": 2.810298, 
+    "tx_aborts": 41861, 
     "tx_commits": 5099992, 
-    "tx_starts": 5139016
+    "tx_starts": 5141853
   }, 
   "0/2/4/10/0/8000000": {
     "abort_rate": 4.9256832904156944e-05, 
@@ -2112,70 +2112,70 @@
     "tx_starts": 50100155
   }, 
   "0/2/4/5/0/50000000": {
-    "abort_rate": 9.421068927254817e-06, 
+    "abort_rate": 1.0419053118847743e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 341, 
-    "commit_time_abort_ratio": 0.722457627118644, 
+    "commit_aborts": 385, 
+    "commit_time_abort_ratio": 0.7375478927203065, 
     "num_txs": 50000000, 
-    "time": 8.365581, 
-    "tx_aborts": 472, 
+    "time": 7.260323, 
+    "tx_aborts": 522, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100472
+    "tx_starts": 50100522
   }, 
   "0/2/4/5/1/50000000": {
-    "abort_rate": 9.82026284292777e-06, 
+    "abort_rate": 0.0002794228990248494, 
     "array_size": 1000000, 
-    "commit_aborts": 285, 
-    "commit_time_abort_ratio": 0.5792682926829268, 
+    "commit_aborts": 7400, 
+    "commit_time_abort_ratio": 0.5284581875312433, 
     "num_txs": 50000000, 
-    "time": 10.281964, 
-    "tx_aborts": 492, 
+    "time": 9.387085, 
+    "tx_aborts": 14003, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100492
+    "tx_starts": 50114003
   }, 
   "0/2/4/5/2/50000000": {
-    "abort_rate": 8.842237183411731e-06, 
+    "abort_rate": 1.1576712285566355e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 171, 
-    "commit_time_abort_ratio": 0.3860045146726862, 
+    "commit_aborts": 241, 
+    "commit_time_abort_ratio": 0.41551724137931034, 
     "num_txs": 50000000, 
-    "time": 9.073793, 
-    "tx_aborts": 443, 
+    "time": 7.916276, 
+    "tx_aborts": 580, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100443
+    "tx_starts": 50100580
   }, 
   "0/2/4/50/0/5000000": {
-    "abort_rate": 0.000945967044145847, 
+    "abort_rate": 0.001030701264695132, 
     "array_size": 1000000, 
-    "commit_aborts": 3777, 
-    "commit_time_abort_ratio": 0.7821495133568026, 
+    "commit_aborts": 4108, 
+    "commit_time_abort_ratio": 0.7806917521854808, 
     "num_txs": 5000000, 
-    "time": 8.92973, 
-    "tx_aborts": 4829, 
+    "time": 8.537151, 
+    "tx_aborts": 5262, 
     "tx_commits": 5100000, 
-    "tx_starts": 5104829
+    "tx_starts": 5105262
   }, 
   "0/2/4/50/1/5000000": {
-    "abort_rate": 0.0009516425334455924, 
+    "abort_rate": 0.001058290599194618, 
     "array_size": 1000000, 
-    "commit_aborts": 3804, 
-    "commit_time_abort_ratio": 0.783038287361054, 
+    "commit_aborts": 4252, 
+    "commit_time_abort_ratio": 0.7869702017397742, 
     "num_txs": 5000000, 
-    "time": 9.174164, 
-    "tx_aborts": 4858, 
+    "time": 7.935236, 
+    "tx_aborts": 5403, 
     "tx_commits": 5100000, 
-    "tx_starts": 5104858
+    "tx_starts": 5105403
   }, 
   "0/2/4/50/2/5000000": {
-    "abort_rate": 0.0009717997845625069, 
+    "abort_rate": 0.0010236569350700634, 
     "array_size": 1000000, 
-    "commit_aborts": 1119, 
-    "commit_time_abort_ratio": 0.22555936303164684, 
+    "commit_aborts": 1131, 
+    "commit_time_abort_ratio": 0.21641791044776118, 
     "num_txs": 5000000, 
-    "time": 12.956432, 
-    "tx_aborts": 4961, 
+    "time": 12.321003, 
+    "tx_aborts": 5226, 
     "tx_commits": 5100000, 
-    "tx_starts": 5104961
+    "tx_starts": 5105226
   }, 
   "0/2/8/10/0/8000000": {
     "abort_rate": 9.036220430449989e-05, 
@@ -2211,70 +2211,70 @@
     "tx_starts": 50107953
   }, 
   "0/2/8/5/0/50000000": {
-    "abort_rate": 0.0002672738549697911, 
+    "abort_rate": 0.00011834926524664845, 
     "array_size": 1000000, 
-    "commit_aborts": 9000, 
-    "commit_time_abort_ratio": 0.6719426608929371, 
+    "commit_aborts": 4052, 
+    "commit_time_abort_ratio": 0.6833052276559866, 
     "num_txs": 50000000, 
-    "time": 4.263286, 
-    "tx_aborts": 13394, 
+    "time": 3.691458, 
+    "tx_aborts": 5930, 
     "tx_commits": 50100000, 
-    "tx_starts": 50113394
+    "tx_starts": 50105930
   }, 
   "0/2/8/5/1/50000000": {
-    "abort_rate": 0.00029183097748411766, 
+    "abort_rate": 6.907706435689143e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 6752, 
-    "commit_time_abort_ratio": 0.4616752136752137, 
+    "commit_aborts": 1484, 
+    "commit_time_abort_ratio": 0.42877780988153713, 
     "num_txs": 50000000, 
-    "time": 6.147522, 
-    "tx_aborts": 14625, 
+    "time": 5.765364, 
+    "tx_aborts": 3461, 
     "tx_commits": 50100000, 
-    "tx_starts": 50114625
+    "tx_starts": 50103461
   }, 
   "0/2/8/5/2/50000000": {
-    "abort_rate": 0.00017428099808470513, 
+    "abort_rate": 6.199216471729318e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 2688, 
-    "commit_time_abort_ratio": 0.3077980075575404, 
+    "commit_aborts": 1059, 
+    "commit_time_abort_ratio": 0.340952994204765, 
     "num_txs": 50000000, 
-    "time": 4.600832, 
-    "tx_aborts": 8733, 
+    "time": 3.979761, 
+    "tx_aborts": 3106, 
     "tx_commits": 50100000, 
-    "tx_starts": 50108733
+    "tx_starts": 50103106
   }, 
   "0/2/8/50/0/5000000": {
-    "abort_rate": 0.0022373360441175433, 
+    "abort_rate": 0.002478352313301599, 
     "array_size": 1000000, 
-    "commit_aborts": 8932, 
-    "commit_time_abort_ratio": 0.7810423224903813, 
+    "commit_aborts": 9794, 
+    "commit_time_abort_ratio": 0.7729460973877358, 
     "num_txs": 5000000, 
-    "time": 4.576792, 
-    "tx_aborts": 11436, 
+    "time": 3.929712, 
+    "tx_aborts": 12671, 
     "tx_commits": 5100000, 
-    "tx_starts": 5111436
+    "tx_starts": 5112671
   }, 
   "0/2/8/50/1/5000000": {
-    "abort_rate": 0.0022853534316101824, 
+    "abort_rate": 0.0025298580952036356, 
     "array_size": 1000000, 
-    "commit_aborts": 8948, 
-    "commit_time_abort_ratio": 0.765964732066427, 
+    "commit_aborts": 9780, 
+    "commit_time_abort_ratio": 0.7560881329725551, 
     "num_txs": 5000000, 
-    "time": 4.663796, 
-    "tx_aborts": 11682, 
+    "time": 4.085068, 
+    "tx_aborts": 12935, 
     "tx_commits": 5100000, 
-    "tx_starts": 5111682
+    "tx_starts": 5112935
   }, 
   "0/2/8/50/2/5000000": {
-    "abort_rate": 0.0022453392629958034, 
+    "abort_rate": 0.0024196214280265316, 
     "array_size": 1000000, 
-    "commit_aborts": 2392, 
-    "commit_time_abort_ratio": 0.20841683366733466, 
+    "commit_aborts": 2737, 
+    "commit_time_abort_ratio": 0.22126111560226355, 
     "num_txs": 5000000, 
-    "time": 6.547363, 
-    "tx_aborts": 11477, 
+    "time": 5.950536, 
+    "tx_aborts": 12370, 
     "tx_commits": 5100000, 
-    "tx_starts": 5111477
+    "tx_starts": 5112370
   }, 
   "0/3/1/1/0/8192000": {
     "abort_rate": 0.0, 
@@ -2392,7 +2392,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 50000000, 
-    "time": 31.270031, 
+    "time": 26.074702, 
     "tx_aborts": 0, 
     "tx_commits": 50100000, 
     "tx_starts": 50100000
@@ -2403,7 +2403,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 50000000, 
-    "time": 32.081123, 
+    "time": 26.917553, 
     "tx_aborts": 0, 
     "tx_commits": 50100000, 
     "tx_starts": 50100000
@@ -2414,7 +2414,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 50000000, 
-    "time": 33.705289, 
+    "time": 28.451113, 
     "tx_aborts": 0, 
     "tx_commits": 50100000, 
     "tx_starts": 50100000
@@ -2425,7 +2425,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 5000000, 
-    "time": 34.712562, 
+    "time": 30.654712, 
     "tx_aborts": 0, 
     "tx_commits": 5100000, 
     "tx_starts": 5100000
@@ -2436,7 +2436,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 5000000, 
-    "time": 35.231441, 
+    "time": 29.751463, 
     "tx_aborts": 0, 
     "tx_commits": 5100000, 
     "tx_starts": 5100000
@@ -2447,7 +2447,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 5000000, 
-    "time": 50.450992, 
+    "time": 45.097267, 
     "tx_aborts": 0, 
     "tx_commits": 5100000, 
     "tx_starts": 5100000
@@ -2541,48 +2541,48 @@
     "tx_starts": 50101423
   }, 
   "0/3/16/5/0/50000000": {
-    "abort_rate": 9.625819853709493e-05, 
+    "abort_rate": 0.00017274460524345335, 
     "array_size": 1000000, 
-    "commit_aborts": 3403, 
-    "commit_time_abort_ratio": 0.705577441426498, 
+    "commit_aborts": 5572, 
+    "commit_time_abort_ratio": 0.6437153419593346, 
     "num_txs": 50000000, 
-    "time": 2.699795, 
-    "tx_aborts": 4823, 
+    "time": 2.319557, 
+    "tx_aborts": 8656, 
     "tx_commits": 50100000, 
-    "tx_starts": 50104823
+    "tx_starts": 50108656
   }, 
   "0/3/16/5/1/50000000": {
-    "abort_rate": 0.00018683135498711798, 
+    "abort_rate": 0.00017206619651204935, 
     "array_size": 1000000, 
-    "commit_aborts": 3522, 
-    "commit_time_abort_ratio": 0.3762016663106174, 
+    "commit_aborts": 3125, 
+    "commit_time_abort_ratio": 0.3624449083739272, 
     "num_txs": 50000000, 
-    "time": 4.616659, 
-    "tx_aborts": 9362, 
+    "time": 4.454016, 
+    "tx_aborts": 8622, 
     "tx_commits": 50100000, 
-    "tx_starts": 50109362
+    "tx_starts": 50108622
   }, 
   "0/3/16/5/2/50000000": {
-    "abort_rate": 0.00016847460553652815, 
+    "abort_rate": 0.00011176395452803679, 
     "array_size": 1000000, 
-    "commit_aborts": 2814, 
-    "commit_time_abort_ratio": 0.3333333333333333, 
+    "commit_aborts": 2075, 
+    "commit_time_abort_ratio": 0.3705357142857143, 
     "num_txs": 50000000, 
-    "time": 2.865555, 
-    "tx_aborts": 8442, 
+    "time": 2.562761, 
+    "tx_aborts": 5600, 
     "tx_commits": 50100000, 
-    "tx_starts": 50108442
+    "tx_starts": 50105600
   }, 
   "0/3/16/50/0/5000000": {
-    "abort_rate": 0.004587874006588457, 
+    "abort_rate": 0.005173099880620772, 
     "array_size": 1000000, 
-    "commit_aborts": 18302, 
-    "commit_time_abort_ratio": 0.7786097166680848, 
+    "commit_aborts": 20370, 
+    "commit_time_abort_ratio": 0.7680995475113123, 
     "num_txs": 5000000, 
-    "time": 2.758199, 
-    "tx_aborts": 23506, 
+    "time": 2.45671, 
+    "tx_aborts": 26520, 
     "tx_commits": 5100000, 
-    "tx_starts": 5123506
+    "tx_starts": 5126520
   }, 
   "0/3/16/50/0/8000000": {
     "abort_rate": 0.004633981795861489, 
@@ -2596,15 +2596,15 @@
     "tx_starts": 8137710
   }, 
   "0/3/16/50/1/5000000": {
-    "abort_rate": 0.004557370579283199, 
+    "abort_rate": 0.005135257713859344, 
     "array_size": 1000000, 
-    "commit_aborts": 17888, 
-    "commit_time_abort_ratio": 0.7661141804788214, 
+    "commit_aborts": 19895, 
+    "commit_time_abort_ratio": 0.7557454890788224, 
     "num_txs": 5000000, 
-    "time": 2.872325, 
-    "tx_aborts": 23349, 
+    "time": 2.527652, 
+    "tx_aborts": 26325, 
     "tx_commits": 5100000, 
-    "tx_starts": 5123349
+    "tx_starts": 5126325
   }, 
   "0/3/16/50/1/8000000": {
     "abort_rate": 0.004672754219173763, 
@@ -2618,15 +2618,15 @@
     "tx_starts": 8138027
   }, 
   "0/3/16/50/2/5000000": {
-    "abort_rate": 0.004584765462604592, 
+    "abort_rate": 0.004889504686677753, 
     "array_size": 1000000, 
-    "commit_aborts": 5056, 
-    "commit_time_abort_ratio": 0.21524052788420606, 
+    "commit_aborts": 5571, 
+    "commit_time_abort_ratio": 0.22231533580749432, 
     "num_txs": 5000000, 
-    "time": 4.138844, 
-    "tx_aborts": 23490, 
+    "time": 3.827953, 
+    "tx_aborts": 25059, 
     "tx_commits": 5100000, 
-    "tx_starts": 5123490
+    "tx_starts": 5125059
   }, 
   "0/3/16/50/2/8000000": {
     "abort_rate": 0.004692934253701559, 
@@ -2673,70 +2673,70 @@
     "tx_starts": 50100019
   }, 
   "0/3/2/5/0/50000000": {
-    "abort_rate": 3.033922931012265e-06, 
+    "abort_rate": 4.251478930838078e-06, 
     "array_size": 1000000, 
-    "commit_aborts": 109, 
-    "commit_time_abort_ratio": 0.7171052631578947, 
+    "commit_aborts": 149, 
+    "commit_time_abort_ratio": 0.6995305164319249, 
     "num_txs": 50000000, 
-    "time": 16.566935, 
-    "tx_aborts": 152, 
+    "time": 14.222962, 
+    "tx_aborts": 213, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100152
+    "tx_starts": 50100213
   }, 
   "0/3/2/5/1/50000000": {
-    "abort_rate": 3.4530818885595465e-06, 
+    "abort_rate": 4.53091759444523e-06, 
     "array_size": 1000000, 
-    "commit_aborts": 106, 
-    "commit_time_abort_ratio": 0.6127167630057804, 
+    "commit_aborts": 116, 
+    "commit_time_abort_ratio": 0.5110132158590308, 
     "num_txs": 50000000, 
-    "time": 19.425478, 
-    "tx_aborts": 173, 
+    "time": 17.046882, 
+    "tx_aborts": 227, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100173
+    "tx_starts": 50100227
   }, 
   "0/3/2/5/2/50000000": {
-    "abort_rate": 3.672641202275824e-06, 
+    "abort_rate": 3.872240494717446e-06, 
     "array_size": 1000000, 
-    "commit_aborts": 76, 
-    "commit_time_abort_ratio": 0.41304347826086957, 
+    "commit_aborts": 71, 
+    "commit_time_abort_ratio": 0.36597938144329895, 
     "num_txs": 50000000, 
-    "time": 18.239866, 
-    "tx_aborts": 184, 
+    "time": 15.512437, 
+    "tx_aborts": 194, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100184
+    "tx_starts": 50100194
   }, 
   "0/3/2/50/0/5000000": {
-    "abort_rate": 0.00031343114188316253, 
+    "abort_rate": 0.00034282360813909114, 
     "array_size": 1000000, 
-    "commit_aborts": 1269, 
-    "commit_time_abort_ratio": 0.7936210131332082, 
+    "commit_aborts": 1354, 
+    "commit_time_abort_ratio": 0.7741566609491137, 
     "num_txs": 5000000, 
-    "time": 17.632945, 
-    "tx_aborts": 1599, 
+    "time": 16.145224, 
+    "tx_aborts": 1749, 
     "tx_commits": 5100000, 
-    "tx_starts": 5101599
+    "tx_starts": 5101749
   }, 
   "0/3/2/50/1/5000000": {
-    "abort_rate": 0.0002942271304073056, 
+    "abort_rate": 0.0003455668168043086, 
     "array_size": 1000000, 
-    "commit_aborts": 1153, 
-    "commit_time_abort_ratio": 0.7681545636242505, 
+    "commit_aborts": 1342, 
+    "commit_time_abort_ratio": 0.7612024957458877, 
     "num_txs": 5000000, 
-    "time": 18.104184, 
-    "tx_aborts": 1501, 
+    "time": 15.691248, 
+    "tx_aborts": 1763, 
     "tx_commits": 5100000, 
-    "tx_starts": 5101501
+    "tx_starts": 5101763
   }, 
   "0/3/2/50/2/5000000": {
-    "abort_rate": 0.00033106682904426356, 
+    "abort_rate": 0.0003596745092697039, 
     "array_size": 1000000, 
-    "commit_aborts": 352, 
-    "commit_time_abort_ratio": 0.20840734162226168, 
+    "commit_aborts": 409, 
+    "commit_time_abort_ratio": 0.22288828337874658, 
     "num_txs": 5000000, 
-    "time": 25.729194, 
-    "tx_aborts": 1689, 
+    "time": 23.392506, 
+    "tx_aborts": 1835, 
     "tx_commits": 5100000, 
-    "tx_starts": 5101689
+    "tx_starts": 5101835
   }, 
   "0/3/24/10/0/8000000": {
     "abort_rate": 0.00037492147998958417, 
@@ -2772,70 +2772,70 @@
     "tx_starts": 50123936
   }, 
   "0/3/24/5/0/50000000": {
-    "abort_rate": 0.0004022334170095893, 
+    "abort_rate": 0.00022238569885943117, 
     "array_size": 1000000, 
-    "commit_aborts": 14245, 
-    "commit_time_abort_ratio": 0.7065972222222222, 
+    "commit_aborts": 7324, 
+    "commit_time_abort_ratio": 0.6572146446518305, 
     "num_txs": 50000000, 
-    "time": 1.945915, 
-    "tx_aborts": 20160, 
+    "time": 1.690113, 
+    "tx_aborts": 11144, 
     "tx_commits": 50099992, 
-    "tx_starts": 50120152
+    "tx_starts": 50111136
   }, 
   "0/3/24/5/1/50000000": {
-    "abort_rate": 0.00016995117874992407, 
+    "abort_rate": 0.00014331281471417277, 
     "array_size": 1000000, 
-    "commit_aborts": 3732, 
-    "commit_time_abort_ratio": 0.4382339126350399, 
+    "commit_aborts": 2920, 
+    "commit_time_abort_ratio": 0.40662860325859906, 
     "num_txs": 50000000, 
-    "time": 3.419365, 
-    "tx_aborts": 8516, 
+    "time": 3.292846, 
+    "tx_aborts": 7181, 
     "tx_commits": 50099992, 
-    "tx_starts": 50108508
+    "tx_starts": 50107173
   }, 
   "0/3/24/5/2/50000000": {
-    "abort_rate": 0.00022128838130632225, 
+    "abort_rate": 0.00023529396269935158, 
     "array_size": 1000000, 
-    "commit_aborts": 3609, 
-    "commit_time_abort_ratio": 0.3254576607448823, 
+    "commit_aborts": 4010, 
+    "commit_time_abort_ratio": 0.3400898990755661, 
     "num_txs": 50000000, 
-    "time": 2.101301, 
-    "tx_aborts": 11089, 
+    "time": 1.834841, 
+    "tx_aborts": 11791, 
     "tx_commits": 50099992, 
-    "tx_starts": 50111081
+    "tx_starts": 50111783
   }, 
   "0/3/24/50/0/5000000": {
-    "abort_rate": 0.007454804578248396, 
+    "abort_rate": 0.00825232589501965, 
     "array_size": 1000000, 
-    "commit_aborts": 29528, 
-    "commit_time_abort_ratio": 0.7708654222686333, 
+    "commit_aborts": 32407, 
+    "commit_time_abort_ratio": 0.7636496453566464, 
     "num_txs": 5000000, 
-    "time": 1.983173, 
-    "tx_aborts": 38305, 
+    "time": 1.755786, 
+    "tx_aborts": 42437, 
     "tx_commits": 5099992, 
-    "tx_starts": 5138297
+    "tx_starts": 5142429
   }, 
   "0/3/24/50/1/5000000": {
-    "abort_rate": 0.007501162295805207, 
+    "abort_rate": 0.008302851561565724, 
     "array_size": 1000000, 
-    "commit_aborts": 29092, 
-    "commit_time_abort_ratio": 0.7547541834219743, 
+    "commit_aborts": 31340, 
+    "commit_time_abort_ratio": 0.7339750345441345, 
     "num_txs": 5000000, 
-    "time": 2.043983, 
-    "tx_aborts": 38545, 
+    "time": 1.814267, 
+    "tx_aborts": 42699, 
     "tx_commits": 5099992, 
-    "tx_starts": 5138537
+    "tx_starts": 5142691
   }, 
   "0/3/24/50/2/5000000": {
-    "abort_rate": 0.007527429746940504, 
+    "abort_rate": 0.008106891236805127, 
     "array_size": 1000000, 
-    "commit_aborts": 8383, 
-    "commit_time_abort_ratio": 0.21672138776143327, 
+    "commit_aborts": 9220, 
+    "commit_time_abort_ratio": 0.22119329222944606, 
     "num_txs": 5000000, 
-    "time": 2.988455, 
-    "tx_aborts": 38681, 
+    "time": 2.802521, 
+    "tx_aborts": 41683, 
     "tx_commits": 5099992, 
-    "tx_starts": 5138673
+    "tx_starts": 5141675
   }, 
   "0/3/4/10/0/8000000": {
     "abort_rate": 4.431902339143241e-05, 
@@ -2871,70 +2871,70 @@
     "tx_starts": 50100085
   }, 
   "0/3/4/5/0/50000000": {
-    "abort_rate": 9.460988333164272e-06, 
+    "abort_rate": 1.1017842677661516e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 330, 
-    "commit_time_abort_ratio": 0.6962025316455697, 
+    "commit_aborts": 396, 
+    "commit_time_abort_ratio": 0.717391304347826, 
     "num_txs": 50000000, 
-    "time": 8.322521, 
-    "tx_aborts": 474, 
+    "time": 7.197792, 
+    "tx_aborts": 552, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100474
+    "tx_starts": 50100552
   }, 
   "0/3/4/5/1/50000000": {
-    "abort_rate": 1.073840763945489e-05, 
+    "abort_rate": 1.2295258006408544e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 319, 
-    "commit_time_abort_ratio": 0.5929368029739777, 
+    "commit_aborts": 352, 
+    "commit_time_abort_ratio": 0.5714285714285714, 
     "num_txs": 50000000, 
-    "time": 10.285902, 
-    "tx_aborts": 538, 
+    "time": 9.382585, 
+    "tx_aborts": 616, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100538
+    "tx_starts": 50100616
   }, 
   "0/3/4/5/2/50000000": {
-    "abort_rate": 9.640625620315875e-06, 
+    "abort_rate": 1.0598690061787969e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 203, 
-    "commit_time_abort_ratio": 0.42028985507246375, 
+    "commit_aborts": 228, 
+    "commit_time_abort_ratio": 0.4293785310734463, 
     "num_txs": 50000000, 
-    "time": 9.040284, 
-    "tx_aborts": 483, 
+    "time": 7.877788, 
+    "tx_aborts": 531, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100483
+    "tx_starts": 50100531
   }, 
   "0/3/4/50/0/5000000": {
-    "abort_rate": 0.000936768700406795, 
+    "abort_rate": 0.0010907697065694344, 
     "array_size": 1000000, 
-    "commit_aborts": 3754, 
-    "commit_time_abort_ratio": 0.7850271852781263, 
+    "commit_aborts": 4288, 
+    "commit_time_abort_ratio": 0.7699766564912911, 
     "num_txs": 5000000, 
-    "time": 8.987979, 
-    "tx_aborts": 4782, 
+    "time": 7.761314, 
+    "tx_aborts": 5569, 
     "tx_commits": 5100000, 
-    "tx_starts": 5104782
+    "tx_starts": 5105569
   }, 
   "0/3/4/50/1/5000000": {
-    "abort_rate": 0.0009477284097947869, 
+    "abort_rate": 0.0010438112803308074, 
     "array_size": 1000000, 
-    "commit_aborts": 3713, 
-    "commit_time_abort_ratio": 0.767465894997933, 
+    "commit_aborts": 4083, 
+    "commit_time_abort_ratio": 0.7661850253330831, 
     "num_txs": 5000000, 
-    "time": 9.165047, 
-    "tx_aborts": 4838, 
+    "time": 7.955322, 
+    "tx_aborts": 5329, 
     "tx_commits": 5100000, 
-    "tx_starts": 5104838
+    "tx_starts": 5105329
   }, 
   "0/3/4/50/2/5000000": {
-    "abort_rate": 0.0009537952883805637, 
+    "abort_rate": 0.001058094935521238, 
     "array_size": 1000000, 
-    "commit_aborts": 1045, 
-    "commit_time_abort_ratio": 0.2146231258985418, 
+    "commit_aborts": 1146, 
+    "commit_time_abort_ratio": 0.21214365049981487, 
     "num_txs": 5000000, 
-    "time": 12.989007, 
-    "tx_aborts": 4869, 
+    "time": 11.768516, 
+    "tx_aborts": 5402, 
     "tx_commits": 5100000, 
-    "tx_starts": 5104869
+    "tx_starts": 5105402
   }, 
   "0/3/8/10/0/8000000": {
     "abort_rate": 9.480582581799652e-05, 
@@ -2970,70 +2970,70 @@
     "tx_starts": 50100255
   }, 
   "0/3/8/5/0/50000000": {
-    "abort_rate": 0.0002666354733893128, 
+    "abort_rate": 0.00016346628837588648, 
     "array_size": 1000000, 
-    "commit_aborts": 9002, 
-    "commit_time_abort_ratio": 0.6737015416853764, 
+    "commit_aborts": 5272, 
+    "commit_time_abort_ratio": 0.6436332560126968, 
     "num_txs": 50000000, 
-    "time": 4.289403, 
-    "tx_aborts": 13362, 
+    "time": 3.672354, 
+    "tx_aborts": 8191, 
     "tx_commits": 50100000, 
-    "tx_starts": 50113362
+    "tx_starts": 50108191
   }, 
   "0/3/8/5/1/50000000": {
-    "abort_rate": 0.00028622543677315224, 
+    "abort_rate": 4.1874493958316876e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 7342, 
-    "commit_time_abort_ratio": 0.5118516452872282, 
+    "commit_aborts": 922, 
+    "commit_time_abort_ratio": 0.43946615824594853, 
     "num_txs": 50000000, 
-    "time": 6.130582, 
-    "tx_aborts": 14344, 
+    "time": 5.897662, 
+    "tx_aborts": 2098, 
     "tx_commits": 50100000, 
-    "tx_starts": 50114344
+    "tx_starts": 50102098
   }, 
   "0/3/8/5/2/50000000": {
-    "abort_rate": 0.00011948671922179678, 
+    "abort_rate": 7.468504049058851e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 1931, 
-    "commit_time_abort_ratio": 0.3225321529981627, 
+    "commit_aborts": 1388, 
+    "commit_time_abort_ratio": 0.3709246392303581, 
     "num_txs": 50000000, 
-    "time": 4.538938, 
-    "tx_aborts": 5987, 
+    "time": 4.011426, 
+    "tx_aborts": 3742, 
     "tx_commits": 50100000, 
-    "tx_starts": 50105987
+    "tx_starts": 50103742
   }, 
   "0/3/8/50/0/5000000": {
-    "abort_rate": 0.002166082216427829, 
+    "abort_rate": 0.002514445937847653, 
     "array_size": 1000000, 
-    "commit_aborts": 8649, 
-    "commit_time_abort_ratio": 0.781230241170626, 
+    "commit_aborts": 9856, 
+    "commit_time_abort_ratio": 0.7666459240821406, 
     "num_txs": 5000000, 
-    "time": 4.567456, 
-    "tx_aborts": 11071, 
+    "time": 3.950785, 
+    "tx_aborts": 12856, 
     "tx_commits": 5100000, 
-    "tx_starts": 5111071
+    "tx_starts": 5112856
   }, 
   "0/3/8/50/1/5000000": {
-    "abort_rate": 0.002281840120946917, 
+    "abort_rate": 0.002508788190955806, 
     "array_size": 1000000, 
-    "commit_aborts": 8946, 
-    "commit_time_abort_ratio": 0.7669753086419753, 
+    "commit_aborts": 9662, 
+    "commit_time_abort_ratio": 0.7532548530443596, 
     "num_txs": 5000000, 
-    "time": 4.934924, 
-    "tx_aborts": 11664, 
+    "time": 4.051666, 
+    "tx_aborts": 12827, 
     "tx_commits": 5100000, 
-    "tx_starts": 5111664
+    "tx_starts": 5112827
   }, 
   "0/3/8/50/2/5000000": {
-    "abort_rate": 0.0022601741584211297, 
+    "abort_rate": 0.0024403048542428365, 
     "array_size": 1000000, 
-    "commit_aborts": 2447, 
-    "commit_time_abort_ratio": 0.2118064571972648, 
+    "commit_aborts": 2707, 
+    "commit_time_abort_ratio": 0.21697659506252004, 
     "num_txs": 5000000, 
-    "time": 6.615789, 
-    "tx_aborts": 11553, 
+    "time": 5.994308, 
+    "tx_aborts": 12476, 
     "tx_commits": 5100000, 
-    "tx_starts": 5111553
+    "tx_starts": 5112476
   }, 
   "0/4/1/1/0/8192000": {
     "abort_rate": 0.0, 
@@ -3151,7 +3151,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 50000000, 
-    "time": 31.324137, 
+    "time": 26.133654, 
     "tx_aborts": 0, 
     "tx_commits": 50100000, 
     "tx_starts": 50100000
@@ -3162,7 +3162,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 50000000, 
-    "time": 31.987203, 
+    "time": 26.929194, 
     "tx_aborts": 0, 
     "tx_commits": 50100000, 
     "tx_starts": 50100000
@@ -3173,7 +3173,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 50000000, 
-    "time": 33.680725, 
+    "time": 28.541707, 
     "tx_aborts": 0, 
     "tx_commits": 50100000, 
     "tx_starts": 50100000
@@ -3184,7 +3184,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 5000000, 
-    "time": 34.719333, 
+    "time": 29.288068, 
     "tx_aborts": 0, 
     "tx_commits": 5100000, 
     "tx_starts": 5100000
@@ -3195,7 +3195,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 5000000, 
-    "time": 35.296881, 
+    "time": 29.760959, 
     "tx_aborts": 0, 
     "tx_commits": 5100000, 
     "tx_starts": 5100000
@@ -3206,7 +3206,7 @@
     "commit_aborts": 0, 
     "commit_time_abort_ratio": 0.0, 
     "num_txs": 5000000, 
-    "time": 50.599083, 
+    "time": 45.181438, 
     "tx_aborts": 0, 
     "tx_commits": 5100000, 
     "tx_starts": 5100000
@@ -3300,48 +3300,48 @@
     "tx_starts": 50101880
   }, 
   "0/4/16/5/0/50000000": {
-    "abort_rate": 0.00011208324432135512, 
+    "abort_rate": 0.00016925278577093568, 
     "array_size": 1000000, 
-    "commit_aborts": 3917, 
-    "commit_time_abort_ratio": 0.69747150997151, 
+    "commit_aborts": 5606, 
+    "commit_time_abort_ratio": 0.6610069567268011, 
     "num_txs": 50000000, 
-    "time": 2.681672, 
-    "tx_aborts": 5616, 
+    "time": 2.343285, 
+    "tx_aborts": 8481, 
     "tx_commits": 50100000, 
-    "tx_starts": 50105616
+    "tx_starts": 50108481
   }, 
   "0/4/16/5/1/50000000": {
-    "abort_rate": 0.00018437717643247386, 
+    "abort_rate": 9.508077914507291e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 3273, 
-    "commit_time_abort_ratio": 0.3542591189522676, 
+    "commit_aborts": 1429, 
+    "commit_time_abort_ratio": 0.29995801847187237, 
     "num_txs": 50000000, 
-    "time": 4.649683, 
-    "tx_aborts": 9239, 
+    "time": 4.413729, 
+    "tx_aborts": 4764, 
     "tx_commits": 50100000, 
-    "tx_starts": 50109239
+    "tx_starts": 50104764
   }, 
   "0/4/16/5/2/50000000": {
-    "abort_rate": 0.0002424761212106022, 
+    "abort_rate": 8.248820511473574e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 3973, 
-    "commit_time_abort_ratio": 0.3269689737470167, 
+    "commit_aborts": 1537, 
+    "commit_time_abort_ratio": 0.37188482942172757, 
     "num_txs": 50000000, 
-    "time": 3.083141, 
-    "tx_aborts": 12151, 
+    "time": 2.526094, 
+    "tx_aborts": 4133, 
     "tx_commits": 50100000, 
-    "tx_starts": 50112151
+    "tx_starts": 50104133
   }, 
   "0/4/16/50/0/5000000": {
-    "abort_rate": 0.004559313528487853, 
+    "abort_rate": 0.005020937480978342, 
     "array_size": 1000000, 
-    "commit_aborts": 18216, 
-    "commit_time_abort_ratio": 0.7798279035917633, 
+    "commit_aborts": 19783, 
+    "commit_time_abort_ratio": 0.7686897730805098, 
     "num_txs": 5000000, 
-    "time": 2.763561, 
-    "tx_aborts": 23359, 
+    "time": 2.439758, 
+    "tx_aborts": 25736, 
     "tx_commits": 5100000, 
-    "tx_starts": 5123359
+    "tx_starts": 5125736
   }, 
   "0/4/16/50/0/8000000": {
     "abort_rate": 0.0047192282224273125, 
@@ -3355,15 +3355,15 @@
     "tx_starts": 8138407
   }, 
   "0/4/16/50/1/5000000": {
-    "abort_rate": 0.004598948036747084, 
+    "abort_rate": 0.005053547627891588, 
     "array_size": 1000000, 
-    "commit_aborts": 17987, 
-    "commit_time_abort_ratio": 0.7633578067308916, 
+    "commit_aborts": 19713, 
+    "commit_time_abort_ratio": 0.7610021618282891, 
     "num_txs": 5000000, 
-    "time": 2.862251, 
-    "tx_aborts": 23563, 
+    "time": 2.55218, 
+    "tx_aborts": 25904, 
     "tx_commits": 5100000, 
-    "tx_starts": 5123563
+    "tx_starts": 5125904
   }, 
   "0/4/16/50/1/8000000": {
     "abort_rate": 0.004629823060048102, 
@@ -3377,15 +3377,15 @@
     "tx_starts": 8137676
   }, 
   "0/4/16/50/2/5000000": {
-    "abort_rate": 0.00468403499530933, 
+    "abort_rate": 0.0048959121124069575, 
     "array_size": 1000000, 
-    "commit_aborts": 5189, 
-    "commit_time_abort_ratio": 0.21619932502812383, 
+    "commit_aborts": 5721, 
+    "commit_time_abort_ratio": 0.22800095648015303, 
     "num_txs": 5000000, 
-    "time": 4.136092, 
-    "tx_aborts": 24001, 
+    "time": 3.819219, 
+    "tx_aborts": 25092, 
     "tx_commits": 5100000, 
-    "tx_starts": 5124001
+    "tx_starts": 5125092
   }, 
   "0/4/16/50/2/8000000": {
     "abort_rate": 0.0046731211361963525, 
@@ -3432,70 +3432,70 @@
     "tx_starts": 50100023
   }, 
   "0/4/2/5/0/50000000": {
-    "abort_rate": 3.6327213342258915e-06, 
+    "abort_rate": 3.7524809288140795e-06, 
     "array_size": 1000000, 
-    "commit_aborts": 130, 
-    "commit_time_abort_ratio": 0.7142857142857143, 
+    "commit_aborts": 133, 
+    "commit_time_abort_ratio": 0.7074468085106383, 
     "num_txs": 50000000, 
-    "time": 16.577042, 
-    "tx_aborts": 182, 
+    "time": 14.206483, 
+    "tx_aborts": 188, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100182
+    "tx_starts": 50100188
   }, 
   "0/4/2/5/1/50000000": {
-    "abort_rate": 4.091799624372794e-06, 
+    "abort_rate": 4.81035610187983e-06, 
     "array_size": 1000000, 
-    "commit_aborts": 120, 
-    "commit_time_abort_ratio": 0.5853658536585366, 
+    "commit_aborts": 139, 
+    "commit_time_abort_ratio": 0.5767634854771784, 
     "num_txs": 50000000, 
-    "time": 19.383133, 
-    "tx_aborts": 205, 
+    "time": 17.049459, 
+    "tx_aborts": 241, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100205
+    "tx_starts": 50100241
   }, 
   "0/4/2/5/2/50000000": {
-    "abort_rate": 3.0139629718880487e-06, 
+    "abort_rate": 3.8123607153513645e-06, 
     "array_size": 1000000, 
-    "commit_aborts": 56, 
-    "commit_time_abort_ratio": 0.3708609271523179, 
+    "commit_aborts": 68, 
+    "commit_time_abort_ratio": 0.35602094240837695, 
     "num_txs": 50000000, 
-    "time": 18.078456, 
-    "tx_aborts": 151, 
+    "time": 15.545551, 
+    "tx_aborts": 191, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100151
+    "tx_starts": 50100191
   }, 
   "0/4/2/50/0/5000000": {
-    "abort_rate": 0.0003251883357942975, 
+    "abort_rate": 0.00034262766408689726, 
     "array_size": 1000000, 
-    "commit_aborts": 1284, 
-    "commit_time_abort_ratio": 0.7739602169981917, 
+    "commit_aborts": 1341, 
+    "commit_time_abort_ratio": 0.767162471395881, 
     "num_txs": 5000000, 
-    "time": 17.658189, 
-    "tx_aborts": 1659, 
+    "time": 15.281521, 
+    "tx_aborts": 1748, 
     "tx_commits": 5100000, 
-    "tx_starts": 5101659
+    "tx_starts": 5101748
   }, 
   "0/4/2/50/1/5000000": {
-    "abort_rate": 0.0003142149634144405, 
+    "abort_rate": 0.0003483100104140185, 
     "array_size": 1000000, 
-    "commit_aborts": 1254, 
-    "commit_time_abort_ratio": 0.7822832189644416, 
+    "commit_aborts": 1403, 
+    "commit_time_abort_ratio": 0.7895329206527856, 
     "num_txs": 5000000, 
-    "time": 18.613981, 
-    "tx_aborts": 1603, 
+    "time": 15.628141, 
+    "tx_aborts": 1777, 
     "tx_commits": 5100000, 
-    "tx_starts": 5101603
+    "tx_starts": 5101777
   }, 
   "0/4/2/50/2/5000000": {
-    "abort_rate": 0.0003159785573657895, 
+    "abort_rate": 0.0003441952143536461, 
     "array_size": 1000000, 
-    "commit_aborts": 350, 
-    "commit_time_abort_ratio": 0.21712158808933002, 
+    "commit_aborts": 429, 
+    "commit_time_abort_ratio": 0.24430523917995445, 
     "num_txs": 5000000, 
-    "time": 25.735078, 
-    "tx_aborts": 1612, 
+    "time": 23.391419, 
+    "tx_aborts": 1756, 
     "tx_commits": 5100000, 
-    "tx_starts": 5101612
+    "tx_starts": 5101756
   }, 
   "0/4/24/10/0/8000000": {
     "abort_rate": 0.00031767714079712525, 
@@ -3531,70 +3531,70 @@
     "tx_starts": 50126660
   }, 
   "0/4/24/5/0/50000000": {
-    "abort_rate": 0.00048371807667180894, 
+    "abort_rate": 0.00047673875578047736, 
     "array_size": 1000000, 
-    "commit_aborts": 16195, 
-    "commit_time_abort_ratio": 0.6679452280788584, 
+    "commit_aborts": 13743, 
+    "commit_time_abort_ratio": 0.5751171744224974, 
     "num_txs": 50000000, 
-    "time": 1.962463, 
-    "tx_aborts": 24246, 
+    "time": 1.687454, 
+    "tx_aborts": 23896, 
     "tx_commits": 50099992, 
-    "tx_starts": 50124238
+    "tx_starts": 50123888
   }, 
   "0/4/24/5/1/50000000": {
-    "abort_rate": 0.00016508255005601472, 
+    "abort_rate": 0.0001855544151593447, 
     "array_size": 1000000, 
-    "commit_aborts": 3872, 
-    "commit_time_abort_ratio": 0.46808510638297873, 
+    "commit_aborts": 4240, 
+    "commit_time_abort_ratio": 0.45601204560120456, 
     "num_txs": 50000000, 
-    "time": 3.408935, 
-    "tx_aborts": 8272, 
+    "time": 3.27223, 
+    "tx_aborts": 9298, 
     "tx_commits": 50099992, 
-    "tx_starts": 50108264
+    "tx_starts": 50109290
   }, 
   "0/4/24/5/2/50000000": {
-    "abort_rate": 0.0001988227688490241, 
+    "abort_rate": 0.00013978088009905843, 
     "array_size": 1000000, 
-    "commit_aborts": 3552, 
-    "commit_time_abort_ratio": 0.356519120746763, 
+    "commit_aborts": 2617, 
+    "commit_time_abort_ratio": 0.3736436322101656, 
     "num_txs": 50000000, 
-    "time": 2.09447, 
-    "tx_aborts": 9963, 
+    "time": 1.831857, 
+    "tx_aborts": 7004, 
     "tx_commits": 50099992, 
-    "tx_starts": 50109955
+    "tx_starts": 50106996
   }, 
   "0/4/24/50/0/5000000": {
-    "abort_rate": 0.0074984582145492, 
+    "abort_rate": 0.008251554470896512, 
     "array_size": 1000000, 
-    "commit_aborts": 29703, 
-    "commit_time_abort_ratio": 0.7708857802808129, 
+    "commit_aborts": 31765, 
+    "commit_time_abort_ratio": 0.7485918978153795, 
     "num_txs": 5000000, 
-    "time": 1.987134, 
-    "tx_aborts": 38531, 
+    "time": 1.783541, 
+    "tx_aborts": 42433, 
     "tx_commits": 5099992, 
-    "tx_starts": 5138523
+    "tx_starts": 5142425
   }, 
   "0/4/24/50/1/5000000": {
-    "abort_rate": 0.007400715100786938, 
+    "abort_rate": 0.008329655073179553, 
     "array_size": 1000000, 
-    "commit_aborts": 28812, 
-    "commit_time_abort_ratio": 0.7577120315581855, 
+    "commit_aborts": 31296, 
+    "commit_time_abort_ratio": 0.7305663196227649, 
     "num_txs": 5000000, 
-    "time": 2.044501, 
-    "tx_aborts": 38025, 
+    "time": 1.820182, 
+    "tx_aborts": 42838, 
     "tx_commits": 5099992, 
-    "tx_starts": 5138017
+    "tx_starts": 5142830
   }, 
   "0/4/24/50/2/5000000": {
-    "abort_rate": 0.007593285404554259, 
+    "abort_rate": 0.008136598863945107, 
     "array_size": 1000000, 
-    "commit_aborts": 8446, 
-    "commit_time_abort_ratio": 0.2164420070729332, 
+    "commit_aborts": 9242, 
+    "commit_time_abort_ratio": 0.22090494060281568, 
     "num_txs": 5000000, 
-    "time": 2.982612, 
-    "tx_aborts": 39022, 
+    "time": 2.804205, 
+    "tx_aborts": 41837, 
     "tx_commits": 5099992, 
-    "tx_starts": 5139014
+    "tx_starts": 5141829
   }, 
   "0/4/4/10/0/8000000": {
     "abort_rate": 3.9010823775270004e-05, 
@@ -3630,70 +3630,70 @@
     "tx_starts": 50100089
   }, 
   "0/4/4/5/0/50000000": {
-    "abort_rate": 8.922076084470864e-06, 
+    "abort_rate": 1.0359174123525547e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 320, 
-    "commit_time_abort_ratio": 0.7158836689038032, 
+    "commit_aborts": 362, 
+    "commit_time_abort_ratio": 0.697495183044316, 
     "num_txs": 50000000, 
-    "time": 8.383874, 
-    "tx_aborts": 447, 
+    "time": 7.223266, 
+    "tx_aborts": 519, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100447
+    "tx_starts": 50100519
   }, 
   "0/4/4/5/1/50000000": {
-    "abort_rate": 1.0558770746712075e-05, 
+    "abort_rate": 1.2574692174529541e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 327, 
-    "commit_time_abort_ratio": 0.6181474480151229, 
+    "commit_aborts": 336, 
+    "commit_time_abort_ratio": 0.5333333333333333, 
     "num_txs": 50000000, 
-    "time": 10.271029, 
-    "tx_aborts": 529, 
+    "time": 9.327255, 
+    "tx_aborts": 630, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100529
+    "tx_starts": 50100630
   }, 
   "0/4/4/5/2/50000000": {
-    "abort_rate": 1.2834166619378518e-05, 
+    "abort_rate": 1.0359174123525547e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 262, 
-    "commit_time_abort_ratio": 0.40746500777604977, 
+    "commit_aborts": 215, 
+    "commit_time_abort_ratio": 0.4142581888246628, 
     "num_txs": 50000000, 
-    "time": 9.087318, 
-    "tx_aborts": 643, 
+    "time": 7.914333, 
+    "tx_aborts": 519, 
     "tx_commits": 50100000, 
-    "tx_starts": 50100643
+    "tx_starts": 50100519
   }, 
   "0/4/4/50/0/5000000": {
-    "abort_rate": 0.0009549695144347315, 
+    "abort_rate": 0.001061616869914718, 
     "array_size": 1000000, 
-    "commit_aborts": 3836, 
-    "commit_time_abort_ratio": 0.7868717948717948, 
+    "commit_aborts": 4249, 
+    "commit_time_abort_ratio": 0.7839483394833948, 
     "num_txs": 5000000, 
-    "time": 8.938986, 
-    "tx_aborts": 4875, 
+    "time": 7.799474, 
+    "tx_aborts": 5420, 
     "tx_commits": 5100000, 
-    "tx_starts": 5104875
+    "tx_starts": 5105420
   }, 
   "0/4/4/50/1/5000000": {
-    "abort_rate": 0.0009404872001866478, 
+    "abort_rate": 0.0010389195236953567, 
     "array_size": 1000000, 
-    "commit_aborts": 3699, 
-    "commit_time_abort_ratio": 0.7704644865652989, 
+    "commit_aborts": 4070, 
+    "commit_time_abort_ratio": 0.7673453996983409, 
     "num_txs": 5000000, 
-    "time": 9.1684, 
-    "tx_aborts": 4801, 
+    "time": 7.987351, 
+    "tx_aborts": 5304, 
     "tx_commits": 5100000, 
-    "tx_starts": 5104801
+    "tx_starts": 5105304
   }, 
   "0/4/4/50/2/5000000": {
-    "abort_rate": 0.000977083589618624, 
+    "abort_rate": 0.001061421207544376, 
     "array_size": 1000000, 
-    "commit_aborts": 1047, 
-    "commit_time_abort_ratio": 0.2099037690457097, 
+    "commit_aborts": 1236, 
+    "commit_time_abort_ratio": 0.2280863627975641, 
     "num_txs": 5000000, 
-    "time": 12.996145, 
-    "tx_aborts": 4988, 
+    "time": 11.785476, 
+    "tx_aborts": 5419, 
     "tx_commits": 5100000, 
-    "tx_starts": 5104988
+    "tx_starts": 5105419
   }, 
   "0/4/8/10/0/8000000": {
     "abort_rate": 9.08559419786054e-05, 
@@ -3729,70 +3729,70 @@
     "tx_starts": 50112719
   }, 
   "0/4/8/5/0/50000000": {
-    "abort_rate": 6.404779382494243e-05, 
+    "abort_rate": 0.0001283467984379091, 
     "array_size": 1000000, 
-    "commit_aborts": 2259, 
-    "commit_time_abort_ratio": 0.7039576191960112, 
+    "commit_aborts": 4381, 
+    "commit_time_abort_ratio": 0.6812315347535376, 
     "num_txs": 50000000, 
-    "time": 4.447899, 
-    "tx_aborts": 3209, 
+    "time": 3.653174, 
+    "tx_aborts": 6431, 
     "tx_commits": 50100000, 
-    "tx_starts": 50103209
+    "tx_starts": 50106431
   }, 
   "0/4/8/5/1/50000000": {
-    "abort_rate": 8.719798467075795e-05, 
+    "abort_rate": 9.635797971405072e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 1982, 
-    "commit_time_abort_ratio": 0.4536507209887846, 
+    "commit_aborts": 2215, 
+    "commit_time_abort_ratio": 0.4587821043910522, 
     "num_txs": 50000000, 
-    "time": 6.145191, 
-    "tx_aborts": 4369, 
+    "time": 5.88753, 
+    "tx_aborts": 4828, 
     "tx_commits": 50100000, 
-    "tx_starts": 50104369
+    "tx_starts": 50104828
   }, 
   "0/4/8/5/2/50000000": {
-    "abort_rate": 3.0238606557107107e-05, 
+    "abort_rate": 7.514405354567665e-05, 
     "array_size": 1000000, 
-    "commit_aborts": 552, 
-    "commit_time_abort_ratio": 0.36435643564356435, 
+    "commit_aborts": 1259, 
+    "commit_time_abort_ratio": 0.3343957503320053, 
     "num_txs": 50000000, 
-    "time": 4.631277, 
-    "tx_aborts": 1515, 
+    "time": 4.12217, 
+    "tx_aborts": 3765, 
     "tx_commits": 50100000, 
-    "tx_starts": 50101515
+    "tx_starts": 50103765
   }, 
   "0/4/8/50/0/5000000": {
-    "abort_rate": 0.0021520254650803103, 
+    "abort_rate": 0.0024125966730655707, 
     "array_size": 1000000, 
-    "commit_aborts": 8652, 
-    "commit_time_abort_ratio": 0.7866169651786526, 
+    "commit_aborts": 9553, 
+    "commit_time_abort_ratio": 0.7745257013134426, 
     "num_txs": 5000000, 
-    "time": 4.566145, 
-    "tx_aborts": 10999, 
+    "time": 3.973709, 
+    "tx_aborts": 12334, 
     "tx_commits": 5100000, 
-    "tx_starts": 5110999
+    "tx_starts": 5112334
   }, 
   "0/4/8/50/1/5000000": {
-    "abort_rate": 0.00219927019680739, 
+    "abort_rate": 0.0025202987119212123, 
     "array_size": 1000000, 
-    "commit_aborts": 8676, 
-    "commit_time_abort_ratio": 0.7718174539631706, 
+    "commit_aborts": 9743, 
+    "commit_time_abort_ratio": 0.7560918826633556, 
     "num_txs": 5000000, 
-    "time": 4.678516, 
-    "tx_aborts": 11241, 
+    "time": 4.058461, 
+    "tx_aborts": 12886, 
     "tx_commits": 5100000, 
-    "tx_starts": 5111241
+    "tx_starts": 5112886
   }, 
   "0/4/8/50/2/5000000": {
-    "abort_rate": 0.002291989617576563, 
+    "abort_rate": 0.0024738648152581597, 
     "array_size": 1000000, 
-    "commit_aborts": 2448, 
-    "commit_time_abort_ratio": 0.20894503243427792, 
+    "commit_aborts": 2785, 
+    "commit_time_abort_ratio": 0.22019291587602782, 
     "num_txs": 5000000, 
-    "time": 6.830016, 
-    "tx_aborts": 11716, 
+    "time": 5.95755, 
+    "tx_aborts": 12648, 
     "tx_commits": 5100000, 
-    "tx_starts": 5111716
+    "tx_starts": 5112648
   }, 
   "1/0/1/25/0/4000000": {
     "abort_rate": 0.0, 
