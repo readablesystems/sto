@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <iostream>
 
+#include "Array.hh"
 
 #define PERF_LOGGING 0
 #define DETAILED_LOGGING 0
@@ -39,6 +40,8 @@
 
 #define HASHTABLE_SIZE 512
 #define HASHTABLE_THRESHOLD 16
+
+typedef Array<int, 1000000> array_type;
 
 // transaction performance counters
 enum txp {
@@ -568,7 +571,8 @@ private:
     for (auto it = trans_first; it != trans_last; ++it)
       if (it->has_read()) {
         INC_P(txp_total_check_read);
-        if (!it->sharedObj()->check(*it, *this)) {
+        auto *arr = (array_type*)it->sharedObj();
+        if (!arr->check(*it, *this)) {
           // XXX: only do this if we're dup'ing reads
             for (auto jt = trans_first; jt != it; ++jt)
                 if (*jt == *it)
@@ -627,7 +631,8 @@ private:
     auto writeset_end = writeset_ + nwriteset_;
     for (auto it = writeset_; it != writeset_end; ) {
       TransItem *me = &transSet_[*it];
-      me->sharedObj()->lock(*me);
+      auto *arr = (array_type*)me->sharedObj();
+      arr->lock(*me);
       ++it;
       if (may_duplicate_items_)
           for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
@@ -649,7 +654,8 @@ private:
       TransItem& ti = *it;
       if (ti.has_write()) {
         INC_P(txp_total_w);
-        ti.sharedObj()->install(ti, *this);
+        auto *arr = (array_type*)ti.sharedObj();
+        arr->install(ti, *this);
       }
     }
 
@@ -658,7 +664,8 @@ private:
 
     for (auto it = writeset_; it != writeset_end; ) {
       TransItem *me = &transSet_[*it];
-      me->sharedObj()->unlock(*me);
+      array_type *arr = (array_type*)me->sharedObj();
+      arr->unlock(*me);
       ++it;
       if (may_duplicate_items_)
           for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
@@ -686,7 +693,8 @@ private:
     INC_P(txp_total_aborts);
     isAborted_ = true;
     for (auto& ti : transSet_) {
-      ti.sharedObj()->cleanup(ti, false);
+      auto *arr = (array_type*)ti.sharedObj();
+      arr->cleanup(ti, false);
     }
     end_trans();
   }
@@ -728,7 +736,8 @@ private:
 
   void commitSuccess() {
     for (TransItem& ti : transSet_) {
-      ti.sharedObj()->cleanup(ti, true);
+      auto *arr = (array_type*)ti.sharedObj();
+      arr->cleanup(ti, true);
     }
     end_trans();
   }

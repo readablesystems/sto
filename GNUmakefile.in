@@ -43,7 +43,7 @@ KVTREES = masstree-beta/string_slice.o
 
 MASSTREE_OBJS = masstree-beta/kvio.o masstree-beta/misc.o masstree-beta/checkpoint.o $(KVTREES) masstree-beta/libjson.a
 
-STO_OBJS = Transaction.o MassTrans.o
+STO_OBJS = Transaction.o MassTrans.o Array.o
 
 concurrent: concurrent.o clp.o $(STO_OBJS) $(MASSTREE_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)

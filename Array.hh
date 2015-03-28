@@ -6,8 +6,9 @@
 
 #include "compiler.hh"
 
-#include "Transaction.hh"
+//#include "Transaction.hh"
 #include "Interface.hh"
+#include "TransItem.hh"
 
 #define SPIN_LOCK 1
 
@@ -30,54 +31,6 @@ public:
     lock(i);
     data_[i].val = v;
     unlock(i);
-  }
-
-  inline void atomicRead(Transaction& t, Key i, Version& v, Value& val) {
-    Version v2;
-    // if version stays the same across these reads then .val should match up with .version
-    do {
-      v2 = data_[i].version;
-      if (is_locked(v2))
-        t.abort();
-      fence();
-      val = data_[i].val;
-      fence();
-      // make sure version didn't change after we read the value
-      v = data_[i].version;
-    } while (v != v2);
-  }
-
-  Value transRead_nocheck(Transaction& t, Key i) {
-    auto item = t.fresh_item(this, i);
-    Version v;
-    Value val;
-    atomicRead(t, i, v, val);
-    item.add_read(v);
-    return val;
-  }
-
-  void transWrite_nocheck(Transaction& t, Key i, Value val) {
-    auto item = t.fresh_item(this, i);
-    item.add_write(val);
-  }
-
-  Value transRead(Transaction& t, Key i) {
-    auto item = t.item(this, i);
-    if (item.has_write()) {
-      return item.template write_value<Value>();
-    } else {
-      Version v;
-      Value val;
-      atomicRead(t, i, v, val);
-      item.add_read(v);
-      return val;
-    }
-  }
-
-  void transWrite(Transaction& t, Key i, Value val) {
-    auto item = t.item(this, i);
-    // can just do this blindly
-    item.add_write(val);
   }
 
   bool is_locked(Key i) {
@@ -142,6 +95,12 @@ public:
     cur = (cur+1) & ~lock_bit;
     elem(i).version = cur | lock_bit;
   }
+
+  void atomicRead(Transaction& t, Key i, Version& v, Value& val);
+  Value transRead_nocheck(Transaction& t, Key i);
+  void transWrite_nocheck(Transaction& t, Key i, Value val);
+  Value transRead(Transaction& t, Key i);
+  void transWrite(Transaction& t, Key i, Value val);
 
 private:
 

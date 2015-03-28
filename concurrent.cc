@@ -133,7 +133,7 @@ struct ContainerBase_maplike {
 template <int DS> struct Container {};
 
 template <> struct Container<USE_ARRAY> : public ContainerBase_arraylike {
-    typedef Array1<value_type, ARRAY_SZ> type;
+    typedef Array<value_type, ARRAY_SZ> type;
 };
 
 template <> struct Container<USE_LISTARRAY> : public ContainerBase_maplike {
