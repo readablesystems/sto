@@ -63,14 +63,14 @@ public:
 
 class Shared {
 public:
-    virtual ~Shared() {}
+    ~Shared() {}
 
-    virtual bool check(const TransItem& item, const Transaction& t) = 0;
-    virtual void lock(TransItem& item) = 0;
-    virtual void unlock(TransItem& item) = 0;
-    virtual void install(TransItem& item, const Transaction& t) = 0;
+  bool check(const TransItem& item, const Transaction& t) { return false; }
+  void lock(TransItem& item) {}
+  void unlock(TransItem& item) {}
+  void install(TransItem& item, const Transaction& t) {}
 
-    virtual void cleanup(TransItem& item, bool committed) {
+    void cleanup(TransItem& item, bool committed) {
         (void) item, (void) committed;
     }
 };
