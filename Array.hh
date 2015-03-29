@@ -37,7 +37,7 @@ public:
     // if version stays the same across these reads then .val should match up with .version
     do {
       v2 = data_[i].version;
-      if (is_locked(v2))
+      if (v2 & lock_bit)
         t.abort();
       fence();
       val = data_[i].val;
