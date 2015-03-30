@@ -94,6 +94,8 @@ struct __attribute__((aligned(128))) threadinfo_t {
   unsigned spin_lock;
   local_vector<std::pair<unsigned, std::function<void(void)>>, 8> callbacks;
   local_vector<std::pair<unsigned, void*>, 8> needs_free;
+  // XXX(NH): these should be vectors so multiple data structures can register
+  // callbacks for these
   std::function<void(void)> trans_start_callback;
   std::function<void(void)> trans_end_callback;
   uint64_t p_[txp_count];
