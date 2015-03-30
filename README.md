@@ -33,3 +33,7 @@ etc. (larger transactions):
 `./concurrent 3 DATASTRUCTURE --nthreads=1 --opspertrans=100`
 
 (and benchmarking multithreaded just involves changing the --nthreads argument)
+
+Paper benchmarks
+----------------
+See `BENCHMARKS.md` for some help on reproducing data/graphs from the paper.
