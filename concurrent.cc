@@ -18,8 +18,8 @@
 
 // size of array (for hashtables or other non-array structures, this is the
 // size of the key space)
-#define ARRAY_SZ 1000000
-#define OPACITY_MODE OPACITY_TL2
+#define ARRAY_SZ 10000
+#define OPACITY_MODE OPACITY_NONE
 
 #define USE_ARRAY 0
 #define USE_HASHTABLE 1

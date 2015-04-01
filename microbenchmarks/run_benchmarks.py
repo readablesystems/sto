@@ -5,7 +5,8 @@ import os, re, sys, json, subprocess, multiprocessing
 bm_execs = ["./concurrent-1M", "./concurrent-50"]
 
 opacity_names = ["no opacity", "TL2 opacity", "slow opacity"]
-scaling_txlens = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]
+scaling_txlens = [1, 2, 4, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 30, 32, 36,
+		  40, 44, 48, 56, 64, 128, 256, 512]
 nthreads_max = multiprocessing.cpu_count()
 nthreads_to_run_full = [1, 2, 4, 8, 16, 24]
 nthreads_to_run_dual = [1, 24]
@@ -118,7 +119,7 @@ def exp_scalability_hi_contention(repetitions, records):
 
 def exp_scalability_largetx(repetitions, records):
 	print "@@@@\n@@@ Starting experiment: scalability-largetx:"
-	nitems = 8192000
+	nitems = 7096320 # = 512 * 7 * 9 * 11 * 20 (for dividability)
 	combined_stdout = ""
 
 	for txlen in scaling_txlens:
@@ -174,9 +175,9 @@ def main(argc, argv):
 	with open("experiment_data.json") as data_file:
 		records = json.load(data_file)
 
-	exp_scalability_overhead(repetitions, records)
+	#exp_scalability_overhead(repetitions, records)
 	#exp_scalability_hi_contention(repetitions, records)
-	#exp_scalability_largetx(repetitions, records)
+	exp_scalability_largetx(repetitions, records)
 	#exp_opacity_modes(repetitions, records)
 	#exp_opacity_tl2overhead(repetitions, records)
 
