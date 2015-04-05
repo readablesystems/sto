@@ -14,7 +14,7 @@ CFLAGS += -g -pg -fno-inline
 endif
 
 ifneq ($(OPT),0)
-CFLAGS += -O3
+CFLAGS += -O0
 endif
 
 # debugging on by default
@@ -25,7 +25,8 @@ endif
 SRCFILES = Logger.cc \
   Transaction.cc
   
-SRCFILESCKP = Checkpointer.cc
+SRCFILESCKP = Checkpointer.cc \
+  Recovery.cc
 
 OBJFILES := $(patsubst %.cc, %.o, $(SRCFILES))
 OBJFILESCKP := $(patsubst %.cc, %.o, $(SRCFILESCKP))

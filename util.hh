@@ -44,8 +44,8 @@ static inline uint64_t makeTID(uint64_t threadId, uint64_t numId, uint64_t epoch
   //std::cout <<" Num id "<<numId<< std::endl;
   //std::cout <<"Epoch id "<<epochId<<std::endl;
   //std::cout<<"tid " <<((threadId) | (numId << NUMID_SHIFT) | (epochId << EPOCH_SHIFT)) << std::endl;
-  return (threadId) | (numId << NUMID_SHIFT) | (epochId << EPOCH_SHIFT);
   
+  return (threadId) | (numId << NUMID_SHIFT) | (epochId << EPOCH_SHIFT);
 }
 
 template <typename T>
@@ -62,6 +62,19 @@ static inline uint8_t * write(uint8_t* buf, const T &obj) {
   T *p = (T *) buf;
   *p = obj;
   return (uint8_t *)(p + 1);
+}
+
+static inline uint64_t _char_to_uint64(char *str)
+{
+  uint64_t ret = 0;
+  char *ptr = str;
+  while (*ptr) {
+    ret *= 10;
+    ret += (uint64_t) (*ptr) - 48;
+    ptr++;
+  }
+  
+  return ret;
 }
 
 namespace util {

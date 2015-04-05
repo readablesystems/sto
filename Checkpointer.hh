@@ -2,6 +2,9 @@
 
 #include <iostream>
 #include <atomic>
+#include <regex>
+#include <dirent.h>
+
 #include "util.hh"
 #include "macros.hh"
 #include "circbuf.hh"
@@ -9,6 +12,7 @@
 #include "Transaction.hh"
 #include "MassTrans.hh"
 #include <fcntl.h>
+#include "ckp_params.hh"
 
 #define NUM_TH_CKP 4
 
@@ -113,7 +117,6 @@ public:
     // rename all of the files in here to the correct files
     for (size_t i = 0; i < writedirs_.size(); i++) {
       std::string dir = writedirs_[i];
-      std::string checkpoint_file_symlink_name(file_name);
       std::string checkpoint_symlink(dir);
       checkpoint_symlink.append(file_symlink_name);
       std::string checkpoint_file_name_final(dir);
@@ -219,6 +222,7 @@ public:
     eol = '\n';
     fd = -1;
     max_epoch = 0;
+    ckp_epoch = 0;
     writer = NULL;
   }
   
@@ -232,6 +236,12 @@ public:
   inline void write_txn(char * start_tid, char* key, uint32_t key_length,
                         char* value, uint32_t value_length) {
     
+    if (enable_datastripe_par || enable_par_ckp) {
+      size_t total_size = 8 + 4 + key_length + 4 + value_length;
+      if ( !((data_stripe_par_writer *) writer)->has_space(total_size)) {
+        write_to_disk();
+      }
+    }
     write_to_buffer(start_tid, 8);
     write_to_buffer(key_length);
     write_to_buffer(key, key_length);
@@ -241,21 +251,44 @@ public:
   }
   
   inline void write_to_buffer(uint32_t size) {
-    if (!buf.write_32(size)) {
-      this->write_to_disk();
-      buf.rewind();
-      buf.write_32(size);
+    if (enable_datastripe) {
+      if (fd == -1) {
+        open_file();
+      }
+      if (writer->data_write((char *) &size, 4) < 4) {
+        this->write_to_disk();
+        writer->data_write((char *)&size, 4);
+      }
+    } else if (enable_datastripe_par || enable_par_ckp) {
+      writer->data_write((char *) &size, 4);
+    } else {
+      if (!buf.write_32(size)) {
+        this->write_to_disk();
+        buf.rewind();
+        buf.write_32(size);
+      }
     }
   }
   
   inline void write_to_buffer(char *ptr, size_t size) {
-    if (!buf.write(ptr, size)) {
-      this->write_to_disk();
-      buf.rewind();
-      buf.write(ptr, size);
+    if (enable_datastripe) {
+      if (fd == -1) {
+        open_file();
+      }
+      if (writer->data_write(ptr, size) < size) {
+        this->write_to_disk();
+        writer->data_write(ptr, size);
+      }
+    } else if (enable_datastripe_par || enable_par_ckp) {
+      writer->data_write(ptr, size);
+    } else {
+      if (!buf.write(ptr, size)) {
+        this->write_to_disk();
+        buf.rewind();
+        buf.write(ptr, size);
+      }
     }
   }
-  
   
   inline void set_tree_id(uint64_t tree_id) {
     this->tree_id = tree_id;
@@ -268,20 +301,47 @@ public:
     buf.rewind();
   }
   
+  void data_fsync() {
+    if (enable_datastripe_par || enable_par_ckp)
+      writer->data_fsync();
+  }
+  
   void finish() {
-    fsync(fd);
-    close(fd);
-    fd = -1;
-    
-    std::string checkpoint_symlink(checkpoint_file_stem);
-    checkpoint_symlink.append("ckp_");
-    checkpoint_symlink.append(std::to_string(tree_id));
-    
-    // relink and delete old file
-    char buf[512];
-    memcpy(buf, checkpoint_symlink.c_str(), checkpoint_file_stem.size());
-    char *buf_ptr = buf + strlen(buf);
-    
+    if (enable_datastripe) {
+      writer->data_fsync();
+      writer->finish(checkpoint_file_symlink_name, std::string("ckp_").append(std::to_string(tree_id)));
+      writer->done();
+      delete writer;
+      fd = -1;
+    } else if (enable_datastripe_par || enable_par_ckp) {
+      writer->finish(checkpoint_file_symlink_name, std::string("ckp_").append(std::to_string(tree_id)));
+      writer->done();
+      delete writer;
+      fd = -1;
+    } else {
+      
+      fsync(fd);
+      close(fd);
+      fd = -1;
+      
+      std::string checkpoint_symlink(checkpoint_file_stem);
+      checkpoint_symlink.append("ckp_");
+      checkpoint_symlink.append(std::to_string(tree_id));
+      
+      // relink and delete old file
+      char buf[512];
+      memcpy(buf, checkpoint_symlink.c_str(), checkpoint_file_stem.size());
+      char *buf_ptr = buf + strlen(buf);
+      if (readlink(checkpoint_symlink.c_str(), buf_ptr, 128) > 0) {
+        remove(checkpoint_symlink.c_str());
+        if (symlink(checkpoint_file_symlink_name.c_str(), checkpoint_symlink.c_str()) == 0) {
+        }
+        if (remove((const char *) buf) < 0) {
+          perror("Remove failed");
+          assert(false);
+        }
+      }
+    }
   }
   
   buffer buf;
@@ -289,6 +349,7 @@ public:
   
 public:
   uint64_t max_epoch;
+  uint64_t ckp_epoch;
   uint64_t tree_id;
   int fd;
   data_writer *writer;
@@ -330,14 +391,16 @@ class Checkpointer {
   static tree_list_type _tree_list;
   static size_t NUM_QUERIES;
   static int fd;
-  static checkpoint_scan_callback callback;
+  // static checkpoint_scan_callback callback;
   
 public:
   static void AddTree(MassTrans<Value> *tree);
+  // logfile_base is used when truncating the log
   static void Init(std::vector<MassTrans<Value> *> *btree_list,
                    std::vector<std::string> logfile_base, bool is_test = false);
   static void checkpoint(std::vector<std::string> logfile_base);
   static void log_truncate(uint64_t epoch, std::vector<std::string> logfile_base);
   static void StartThread(bool is_test, std::vector<std::string> logfile_base);
   //static std::regex log_reg;
+  // TODO: add support for truncating the log
 };

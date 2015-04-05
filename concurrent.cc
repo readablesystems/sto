@@ -16,7 +16,7 @@
 #include "MassTrans.hh"
 
 // size of array
-#define ARRAY_SZ 1000000
+#define ARRAY_SZ 10000
 
 // only used for randomRWs test
 #define GLOBAL_SEED 0

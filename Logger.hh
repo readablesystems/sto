@@ -6,6 +6,7 @@
 #include "macros.hh"
 #include "circbuf.hh"
 #include "spinlock.hh"
+#include "ckp_params.hh"
 
 
 class Logger {
@@ -15,35 +16,31 @@ public:
   friend class Checkpointer;
   static const size_t g_nmax_loggers = 16;
   static const size_t g_perthread_buffers = 512; // Outstanding buffers
-  static const size_t g_buffer_size = (1 << 20); // in bytes
-  static const size_t g_horizon_buffer_size = 1 << 17; // in bytes
+  static const size_t g_buffer_size = (1 << 20); // in bytes = 1 MB
+  static const size_t g_horizon_buffer_size = 1 << 17; // in bytes = 128KB
   static const size_t g_max_lag_epochs = 128; // use to stop logging for threads that are producing log faster
   // static const bool g_pin_loggers_to_numa_nodes = false;
   
-  // Public data structures
+  /////////////////////////////
+  //Public data structures
+  /////////////////////////////
+  
+  // Buffer header that contains number of transactions and last tid.
   struct logbuf_header {
     uint64_t nentries_; // > 0 for all valid log buffers
     uint64_t last_tid_; // TID of the last commit
-    
-    /*inline void set_entries(uint64_t entries) {
-      nentries_ = entries;
-    }
-    
-    inline void set_last_tid(uint64_t last_tid) {
-      last_tid_ = last_tid;
-    }*/
   } PACKED;
   
-  // Buffer
+  // Buffer to write log entriers
   struct pbuffer {
     uint64_t earliest_txn_start_time_; // start time of the earliest txn
     uint64_t last_txn_start_time_; // start time of last txn
-    bool io_scheduled_; // has the logger schedules the IO yet?
+    bool io_scheduled_; // has the logger scheduled the IO yet?
     unsigned cur_offset_; // current offset into the buffer for writing
     
     const unsigned thread_id_; // thread id of this buffer
     const unsigned buffer_size_;
-    uint8_t buffer_start_[0];
+    uint8_t buffer_start_[0]; // This must be the last field
     
     pbuffer(unsigned thread_id, unsigned buffer_size) : thread_id_(thread_id), buffer_size_(buffer_size) {
       assert(((char *)this) + sizeof(*this) == (char *) &buffer_start_[0]);
@@ -89,7 +86,7 @@ public:
     
   };
   
-  // init the logging subsystem.
+  // Init the logging subsystem.
   //
   // should only be called ONCE is not thread-safe.  if assignments_used is not
   // null, then fills it with a copy of the assignment actually computed
@@ -103,14 +100,17 @@ public:
     return g_use_compression;
   }
   
-  typedef circbuf<pbuffer, g_perthread_buffers> pbuffer_circbuf;
+  static void wait_for_idle_state();
+  
+  typedef circbuf<pbuffer, g_perthread_buffers> pbuffer_circbuf; // Queue of buffers
   
   
 private:
+  
   // data structures
   
   struct epoch_array {
-    std::atomic<uint64_t> epochs_[MAX_THREADS_];
+    std::atomic<uint64_t> epochs_[MAX_THREADS_]; // MAX_THREADS =  512
     std::atomic<uint64_t> dummy_work_; // so we can do some fake work
     CACHE_PADOUT;
   };
@@ -123,6 +123,12 @@ private:
     circbuf<pbuffer, g_perthread_buffers> persist_buffers_; // buffers for logger
     spinlock lock_;
     persist_ctx() : init_(false), lz4ctx_(nullptr), horizon_(nullptr) {}
+    void lock() {
+      lock_.lock();
+    }
+    void unlock() {
+      lock_.unlock();
+    }
   };
   
   static void advance_system_sync_epoch(const std::vector<std::vector<unsigned>> &assignments);

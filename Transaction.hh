@@ -48,6 +48,7 @@ public:
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static unsigned global_epoch;
+  tid_t final_commit_tid;
 
   static std::function<void(unsigned)> epoch_advance_callback;
 
@@ -72,8 +73,9 @@ public:
       
       auto g = global_epoch;
       for (auto&& t : tinfo) {
-        if (t.epoch != 0 && t.epoch < g)
+        if (t.epoch != 0 && t.epoch < g){
           g = t.epoch;
+        }
       }
 
       global_epoch = ++g;
@@ -121,6 +123,10 @@ public:
     // TODO: assumes this thread is constantly running transactions
     tinfo[threadid].epoch = global_epoch;
     if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
+    if (Logger::IsPersistenceEnabled()) {
+      Logger::persist_ctx &ctx = Logger::persist_ctx_for(threadid, Logger::INITMODE_REG);
+      ctx.lock();
+    }
   }
 
   ~Transaction() {
@@ -128,6 +134,10 @@ public:
     if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
     if (!isAborted_ && transSet_.size() != 0) {
       silent_abort();
+    }
+    if (Logger::IsPersistenceEnabled()) {
+      Logger::persist_ctx &ctx = Logger::persist_ctx_for(threadid, Logger::INITMODE_REG);
+      ctx.unlock();
     }
   }
 
@@ -291,28 +301,34 @@ public:
     fence();
     
     tid_t ret = ctx.last_commit_tid;
+    assert(commit_epoch >= epochId(ret));
     if (commit_epoch != epochId(ret))
       ret = makeTID(threadid, 0, commit_epoch);
+    assert(ret >= ctx.last_commit_tid);
     
     {
       TransItem* trans_first = &transSet[0];
       TransItem* trans_last = trans_first + transSet.size();
-      
+      int i = 0;
       for (auto it = trans_first; it != trans_last; ++it) {
         // Need to get the tid from the underlying shared object.
         const tid_t t = it->sharedObj()->getTid(*it);
-        //std::cout<<t<<std::endl;
+        assert (commit_epoch >= epochId(t));
         if (t > ret)
+          std::cout << "greated tid " << t << std::endl;
           ret = t;
       }
-      
+      //assert(ret >= ctx.last_commit_tid);
+      assert(commit_epoch >= epochId(ret));
       ret = makeTID(threadid, numId(ret) + 1, commit_epoch);
     }
+    if (ret <= ctx.last_commit_tid)
+      ret = ctx.last_commit_tid + 1;
     return (ctx.last_commit_tid = ret);
   }
   
-  void on_tid_finish(tid_t commit_tid) {
-    if (isAborted_) {
+  void on_tid_finish(tid_t commit_tid, bool success) {
+    if (!success) {
       return;
     } else if (!Logger::IsPersistenceEnabled()) {
       return;
@@ -323,6 +339,7 @@ public:
     Logger::pbuffer_circbuf &pull_buf = ctx.all_buffers_;
     Logger::pbuffer_circbuf &push_buf = ctx.persist_buffers_;
     
+    this->final_commit_tid = commit_tid;
     //compute how much space is necessary
     uint64_t space_needed = 0;
     
@@ -348,9 +365,12 @@ public:
     assert(space_needed <= Logger::g_buffer_size);
     
     //TODO: deal with compression later
-    
+    //Logger::pbuffer *lpx = Logger::wait_for_head(pull_buf);
+    //bool first = true;
   retry:
     Logger::pbuffer *px = Logger::wait_for_head(pull_buf);
+    //assert((px != lpx) || first);
+    //lpx = px;
     assert(px && px->thread_id_ == threadid);
     
     bool tidChanged = false;
@@ -358,14 +378,16 @@ public:
       assert(px->header()->nentries_);
       // Send the buffer to logger's queue
       Logger::pbuffer *px0 = pull_buf.deq();
+      //std::cout << "pull buffer " << px0 << " dequeued by thread " << threadid <<std::endl;
       assert(px == px0);
       assert(px0->header()->nentries_);
       push_buf.enq(px0);
+      fence(); // TODO: Is this required?
       goto retry;
     }
     
     const uint64_t written = write_current_txn_into_buffer(px, commit_tid);
-    std::cout<<"Written = "<<written<<" and space needed = "<<space_needed<<std::endl;
+    //std::cout<<"Written = "<<written<<" and space needed = "<<space_needed<<std::endl;
     assert(written == space_needed);
   }
   
@@ -447,11 +469,11 @@ public:
         ++it;
     }
 
-    /* fence(); */
+    fence();
     
     //Generate a commit tid right after phase 1
     commit_tid = genCommitTid(transSet_);
-
+    
     //phase2
     if (!check_reads(trans_first, trans_last)) {
       success = false;
@@ -484,7 +506,7 @@ public:
     }
     // Do logging at this point after releasing all locks
     // TODO: do this only if logging is enabled
-    on_tid_finish(commit_tid);
+    on_tid_finish(commit_tid, success);
     
     if (success) {
       commitSuccess();
@@ -516,7 +538,7 @@ public:
 
   void abort() {
     silent_abort();
-    throw Abort();
+    //throw Abort();
   }
 
   bool aborted() {

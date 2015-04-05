@@ -261,6 +261,25 @@ public:
 #endif
   }
 
+  bool insert(Str key,  versioned_value*  val, threadinfo_type&ti = mythreadinfo) {
+    cursor_type lp(table_, key);
+    bool found = lp.find_insert(*ti.ti);
+    lp.value() = val;
+      
+    lp.finish(1, *ti.ti);
+    return !found;
+  }
+    
+  bool insert_if_absent(Str key,  versioned_value*  val, threadinfo_type&ti = mythreadinfo) {
+    cursor_type lp(table_, key);
+    bool found = lp.find_insert(*ti.ti);
+    if (!found) {
+      lp.value() = val;
+    }
+    lp.finish(!found, *ti.ti);
+    return !found;
+  }
+    
   bool put(Str key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
     cursor_type lp(table_, key);
     bool found = lp.find_insert(*ti.ti);
@@ -269,7 +288,7 @@ public:
       // this will uses value's copy constructor (TODO: just doing this may be unsafe and we should be using rcu for dealloc)
       lp.value()->set_value(value);
     } else {
-      versioned_value* val = (versioned_value*)versioned_value::make(value, 0);
+      versioned_value* val = (versioned_value*)versioned_value::make(key, value, 0);
       lp.value() = val;
     }
     if (found) {
@@ -280,11 +299,13 @@ public:
     return found;
   }
 
-  bool get(Str key, value_type& value, threadinfo_type& ti = mythreadinfo) {
+  bool get(Str key, versioned_value*& value, threadinfo_type& ti = mythreadinfo) {
     unlocked_cursor_type lp(table_, key);
     bool found = lp.find_unlocked(*ti.ti);
-    if (found)
-      lp.value()->read_value(value);
+    if (found){
+      versioned_value *e = lp.value();
+      value = e;
+    }
     return found;
   }
 
@@ -335,6 +356,12 @@ public:
     if (found) {
       versioned_value *e = lp.value();
       auto& item = t_item(t, e);
+      bool deleted = (e->version() & deleted_bit);
+      if (deleted) {
+        // should check that it is still deleted at commit
+        t.add_read(item, e->version());//TODO: maybe we can only check if the item still deleted or not
+        return false;
+      }
       bool valid = !(e->version() & invalid_bit);
 #if READ_MY_WRITES
       if (!valid && we_inserted(item)) {
@@ -385,7 +412,17 @@ public:
       unlocked_cursor_type lp(table_, key);
       bool found = lp.find_unlocked(*ti.ti);
       if (found) {
-        return handlePutFound<INSERT, SET>(t, lp.value(), key, value);
+        versioned_value *e = lp.value();
+        bool deleted = (e->version() & deleted_bit);
+        if (!deleted) {
+          return handlePutFound<INSERT, SET>(t, lp.value(), key, value);
+        } else {
+          if (!INSERT) {
+            auto& item = t_item(t, e);
+            t.add_read(item, e->version());
+            return false;
+          }
+        }
       } else {
         if (!INSERT) {
           ensureNotFound(t, lp.node(), lp.full_version_value());
@@ -396,13 +433,20 @@ public:
 
     cursor_type lp(table_, key);
     bool found = lp.find_insert(*ti.ti);
+    Version version = invalid_bit;
     if (found) {
       versioned_value *e = lp.value();
-      lp.finish(0, *ti.ti);
-      return handlePutFound<INSERT, SET>(t, e, key, value);
-    } else {
+      bool deleted = (e->version() & deleted_bit);
+      if (!deleted) {
+        lp.finish(0, *ti.ti);
+        return handlePutFound<INSERT, SET>(t, e, key, value);
+      } else {
+        version = e->version();
+        version |= invalid_bit;
+      }
+    }
       //      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
-      versioned_value* val = (versioned_value*)versioned_value::make(key, value, invalid_bit);
+      versioned_value* val = (versioned_value*)versioned_value::make(key, value, version);
       lp.value() = val;
 #if ABORT_ON_WRITE_READ_CONFLICT
       auto orig_node = lp.node();
@@ -426,7 +470,8 @@ public:
         }
 #endif
       }
-      auto& item = t.add_item<false>(this, val); // TODO: val should also include key and tree id
+      auto& item = t.add_item<false>(this, val);
+      auto e = unpack<versioned_value*>(item.key());
       if (std::is_same<std::string, StringType>::value)
         t.add_write(item, key);
       else
@@ -434,7 +479,7 @@ public:
         t.add_write(item, std::string(key));
       t.add_undo(item);
       return found;
-    }
+    
   }
 
   template <typename StringType>
@@ -566,6 +611,38 @@ public:
   void unlock(TransItem& item) {
     unlock(unpack<versioned_value*>(item.key()));
   }
+    
+  static uint64_t tid_from_version(versioned_value* e) {
+    return (e->version() & version_mask) >> tid_shift;
+  }
+    
+  static bool is_invalid(versioned_value* e) {
+    return (e->version() & invalid_bit);
+  }
+  
+  static void make_invalid(versioned_value* e) {
+    e->version() |= invalid_bit;
+  }
+    
+  static bool is_deleted(versioned_value* e) {
+    return (e->version() & deleted_bit);
+  }
+    
+  static void make_deleted(versioned_value* e) {
+    e->version() |= deleted_bit;
+  }
+    
+    static void make_valid(versioned_value* e) {
+      assert(is_invalid(e));
+      Version cur = e->version();
+      cur &= ~invalid_bit;
+      e->version() = cur;
+    }
+    
+  static void set_tid(versioned_value* e, uint64_t tid) {
+    set_version_to_tid(e->version(), tid);
+  }
+    
   bool check(TransItem& item, Transaction& t) {
     if (is_inter(item.key())) {
       auto n = untag_inter(unpack<leaf_type*>(item.key()));
@@ -601,13 +678,25 @@ public:
     if (has_delete(item)) {
       if (!we_inserted(item)) {
         assert(!(e->version() & invalid_bit));
-        e->version() |= invalid_bit;
+        //e->version() |= invalid_bit;
+        make_deleted(e);
         fence();
+        
+#if USE_TID_AS_VERSION
+        set_version_to_tid(e->version(), tid);
+        assert((e->version() & version_mask) >> tid_shift == tid);
+#else
+        // also marks valid if needed
+        inc_version(e->version());
+#endif
+        // don't remove it now
+        return;
       }
       // TODO: hashtable did this in afterC, we're doing this now, unclear really which is better
       // (if we do it now, we take more time while holding other locks, if we wait, we make other transactions abort more
       // from looking up an invalid node)
       auto &s = item.template write_value<std::string>();
+      // but if we inserted the key, then we can remove it right away
       bool success = remove(Str(s));
       // no one should be able to remove since we hold the lock
       (void)success;
@@ -616,11 +705,13 @@ public:
     }
     if (!we_inserted(item)) {
       value_type& v = item.template write_value<value_type>();
-      std::cout<<"value in install is "<<v<<std::endl;
+      //std::cout << " ["<< tid << "] Installing in tree " << (int)tree_id << " key " << e->read_key() << " value " << v << std::endl;
+      //std::cout<<"value in install is "<<v<<std::endl;
       e->set_value(v);
     }
 #if USE_TID_AS_VERSION
     set_version_to_tid(e->version(), tid);
+    assert((e->version() & version_mask) >> tid_shift == tid);
 #else
     // also marks valid if needed
     inc_version(e->version());
@@ -628,9 +719,12 @@ public:
   }
 
     uint64_t getTid(TransItem& item) {
+      // TODO: fix this for reads
+      if (!item.has_write()) {
+          return 0;
+      }
       auto e = unpack<versioned_value*>(item.key());
 #if USE_TID_AS_VERSION
-      //std::cout << ((e->version() & version_mask) >> tid_shift) << std::endl;
       return (e->version() & version_mask) >> tid_shift;
 #else 
       return 0;
@@ -644,7 +738,7 @@ public:
       space_needed += 1;
       auto e = unpack<versioned_value*>(item.key());
       std::string s = (std::string) e->read_key();
-      std::cout<<"Key "<<s.data()<<std::endl;
+      //std::cout<<"Key "<<s.data()<<std::endl;
       const uint32_t k_nbytes = s.size();
       //std::cout<<"Key size "<<k_nbytes<<std::endl;
       space_needed += sizeof(k_nbytes);
@@ -659,12 +753,16 @@ public:
       
       //std::cout<<"value "<<value<<std::endl;
 
-      const uint32_t v_nbytes = sizeof(value);
+      uint32_t v_nbytes = sizeof(value);
+      if (has_delete(item)){
+        v_nbytes = 0;
+      }
       //std::cout<<"value size "<<v_nbytes<<std::endl;
       //std::cout<<"bytes value size "<<sizeof(v_nbytes)<<std::endl;
 
       space_needed += sizeof(v_nbytes);
-      space_needed += v_nbytes;
+      if (!has_delete(item))
+        space_needed += v_nbytes;
       return space_needed;
     
     }
@@ -693,7 +791,11 @@ public:
         value = item.template write_value<value_type>();
       }
       
-      const uint32_t v_nbytes = sizeof(value);
+      uint32_t v_nbytes = sizeof(value);
+      if (has_delete(item)){
+        v_nbytes = 0;
+        //std::cout << "Logging remove key " << s << " from tree " << (int)tree_id << std::endl;
+      }
       //std::cout<<"value size while writing"<<v_nbytes<<std::endl;
       //std::cout<<"bytes value size while writing"<<sizeof(v_nbytes)<<std::endl;
 
@@ -702,6 +804,8 @@ public:
       assert(p-p1 == sizeof(v_nbytes));
       if (v_nbytes) {
         memcpy(p, &value, v_nbytes);
+        int vv = *((int *)p);
+        assert(vv == value);
         p += v_nbytes;
       }
       return p;
@@ -939,9 +1043,10 @@ private:
   static constexpr Version lock_bit = 1ULL<<(sizeof(Version)*8 - 1);
   static constexpr Version invalid_bit = 1ULL<<(sizeof(Version)*8 - 2);
   static constexpr Version valid_check_only_bit = 1ULL<<(sizeof(Version)*8 - 3);
-  static constexpr Version version_mask = ~(lock_bit|invalid_bit|valid_check_only_bit);
+  static constexpr Version deleted_bit = 1ULL<<(sizeof(Version)*8 - 4);
+  static constexpr Version version_mask = ~(lock_bit|invalid_bit|valid_check_only_bit|deleted_bit);
     
-  static constexpr uint8_t tid_shift = 1;
+  static constexpr uint8_t tid_shift = 0; // TODO: this can be zero
   static constexpr int tid_extra_bits = (64 - ((sizeof(Version)*8) - 4));
     
   static constexpr uintptr_t internode_bit = 1<<0;
@@ -973,13 +1078,13 @@ private:
     v = (cur | (v & ~version_mask)) & ~invalid_bit;
   }
     
-  void set_version_to_tid(Version& v, uint64_t tid) {
-    assert(is_locked(v));
+  static void set_version_to_tid(Version& v, uint64_t tid) {
+    //assert(is_locked(v));
     //std::cout<<tid_extra_bits<<std::endl;
     //std::cout<<"Transaction id "<<tid<<std::endl;
     assert(((tid << tid_extra_bits) >> tid_extra_bits) == tid);
     //std::cout<<"old version number "<<v<<std::endl;
-    v = ((tid << tid_shift) | (v & ~version_mask) | (v & 1)) & ~invalid_bit; // Should we preserve the internode bit?
+    v = ((tid << tid_shift) | (v & ~version_mask) | (v & 1)) & ~invalid_bit;
     //std::cout<<"New version number "<<v<<std::endl;
     assert(((v & version_mask) >> tid_shift )== tid);
   }
