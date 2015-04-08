@@ -10,44 +10,70 @@
 #include "GenericSTMArray.hh"
 #include "ListArray.hh"
 #include "Hashtable.hh"
+#include "Queue.hh"
 #include "Transaction.hh"
 #include "clp.h"
 
 #include "MassTrans.hh"
 
-// size of array
-#define ARRAY_SZ 10000
+// size of array (for hashtables or other non-array structures, this is the
+// size of the key space)
+#define ARRAY_SZ 1000000
 
-// only used for randomRWs test
-#define GLOBAL_SEED 0
-#define TRY_READ_MY_WRITES 0
-#define MAINTAIN_TRUE_ARRAY_STATE 1
+#define USE_ARRAY 0
+#define USE_HASHTABLE 1
+#define USE_MASSTREE 2
+#define USE_GENSTMARRAY 3
+#define USE_LISTARRAY 4
+#define USE_QUEUE 5
+
+// set this to USE_DATASTRUCTUREYOUWANT
+#define DATA_STRUCTURE USE_ARRAY
 
 // if true, each operation of a transaction will act on a different slot
 #define ALL_UNIQUE_SLOTS 0
 
-#define DATA_COLLECT 0
-#define HASHTABLE 0
-#define HASHTABLE_LOAD_FACTOR 2
-#define HASHTABLE_RAND_DELETES 0
-
-#define MASSTREE 1
-
-#define GENSTM_ARRAY 0
-#define LIST_ARRAY 1
-
-#define RANDOM_REPORT 0
-
+// use string values rather than ints
 #define STRING_VALUES 0
+
+// use unboxed strings in Masstree (only used if STRING_VALUES is set)
 #define UNBOXED_STRINGS 0
 
-kvepoch_t global_log_epoch = 0;
-volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly
-kvtimestamp_t initial_timestamp;
-volatile bool recovering = false; // so don't add log entries, and free old value immediately
+// if 1 we just print the runtime, no diagnostic information or strings
+// (makes it easier to collect data using a script)
+#define DATA_COLLECT 0
+
+// If we have N keys, we make our hashtable have size N/HASHTABLE_LOAD_FACTOR
+#define HASHTABLE_LOAD_FACTOR 2
+
+// additional seed to randomness used in tests (otherwise each run of
+// ./concurrent does the exact same operations)
+#define GLOBAL_SEED 0
+
+/* Track the array state during concurrent execution using atomic increments.
+ * Turn off if you want the most accurate performance results.
+ *
+ * When on, a validation check of our random test is much stronger, because
+ * we are checking our concurrent run not only with a single-threaded run
+ * but also with a guaranteed correct implementation
+ */
+#define MAINTAIN_TRUE_ARRAY_STATE 0
+
+// assert reading our writes works
+#define TRY_READ_MY_WRITES 0
+
+// whether to also do random deletes in the randomRWs test (for performance
+// only, we can't verify correctness from this)
+#define RAND_DELETES 0
+
+// track/report diagnostics on how good our randomness is
+#define RANDOM_REPORT 0
+
+// Masstree globals
+//kvepoch_t global_log_epoch = 0;
+//kvtimestamp_t initial_timestamp;
 
 //#define DEBUG
-
 #ifdef DEBUG
 #define debug(...) printf(__VA_ARGS__)
 #else
@@ -60,32 +86,93 @@ typedef std::string value_type;
 typedef int value_type;
 #endif
 
-#if !HASHTABLE
-#if !MASSTREE
-#if !GENSTM_ARRAY
-#if !LIST_ARRAY
-typedef Array1<value_type, ARRAY_SZ> ArrayType;
-ArrayType *a;
-#else
-typedef ListArray<value_type> ArrayType;
-ArrayType *a;
-#endif
-#else
-typedef GenericSTMArray<value_type, ARRAY_SZ> ArrayType;
-ArrayType *a;
-#endif
-#else
-typedef MassTrans<value_type
+
+struct ContainerBase_arraylike {
+    static constexpr bool has_delete = false;
+    template <typename T, typename K, typename V>
+    static bool transInsert(T&, Transaction&, K, V) {
+        return false;
+    }
+    template <typename T, typename K>
+    static bool transDelete(T&, Transaction&, K) {
+        return false;
+    }
+    template <typename T, typename K, typename V>
+    static bool transUpdate(T&, Transaction&, K, V) {
+        return false;
+    }
+    static void init() {
+    }
+    template <typename T>
+    static void thread_init(T&) {
+    }
+};
+
+struct ContainerBase_maplike {
+    static constexpr bool has_delete = true;
+    template <typename T, typename K, typename V>
+    static bool transInsert(T& c, Transaction& txn, K key, V value) {
+        return c.transInsert(txn, key, value);
+    }
+    template <typename T, typename K>
+    static bool transDelete(T& c, Transaction& txn, K key) {
+        return c.transDelete(txn, key);
+    }
+    template <typename T, typename K, typename V>
+    static bool transUpdate(T& c, Transaction& txn, K key, V value) {
+        return c.transUpdate(txn, key, value);
+    }
+    static void init() {
+    }
+    template <typename T>
+    static void thread_init(T&) {
+    }
+};
+
+
+template <int DS> struct Container {};
+
+template <> struct Container<USE_ARRAY> : public ContainerBase_arraylike {
+    typedef Array1<value_type, ARRAY_SZ> type;
+};
+
+template <> struct Container<USE_LISTARRAY> : public ContainerBase_maplike {
+    typedef ListArray<value_type> type;
+    template <typename K, typename V>
+    static bool transUpdate(type&, Transaction&, K, V) {
+        return false;
+    }
+};
+
+template <> struct Container<USE_GENSTMARRAY> : public ContainerBase_arraylike {
+    typedef GenericSTMArray<value_type, ARRAY_SZ> type;
+};
+
+template <> struct Container<USE_MASSTREE> : public ContainerBase_maplike {
 #if STRING_VALUES && UNBOXED_STRINGS
-, versioned_str_struct
-#endif
-> ArrayType;
-ArrayType *a;
-#endif
+    typedef MassTrans<value_type, versioned_str_struct> type;
 #else
-// hashtable from int to int
-typedef Hashtable<int, value_type, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> ArrayType;
-ArrayType *a;
+    typedef MassTrans<value_type> type;
+#endif
+    static void init() {
+        Transaction::epoch_advance_callback = [] (unsigned) {
+            // just advance blindly because of the way Masstree uses epochs
+            globalepoch++;
+        };
+    }
+    static void thread_init(type&) {
+        type::thread_init();
+    }
+};
+
+template <> struct Container<USE_HASHTABLE> : public ContainerBase_maplike {
+  typedef Hashtable<int, value_type, false, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
+};
+
+#if DATA_STRUCTURE == 5
+typedef Queue<value_type, ARRAY_SZ> QueueType;
+QueueType* q;
+QueueType* q2;
 #endif
 
 bool readMyWrites = true;
@@ -93,7 +180,8 @@ bool runCheck = false;
 int nthreads = 4;
 int ntrans = 1000000;
 int opspertrans = 10;
-int prepopulate = ARRAY_SZ/10;
+int prepopulate = 
+    ARRAY_SZ/10;
 double write_percent = 0.5;
 bool blindRandomWrite = false;
 
@@ -144,64 +232,133 @@ inline int unval(const value_type& v) {
 #endif
 }
 
-static void doRead(Transaction& t, int slot) {
+template <typename T>
+void prepopulate_func(T& a) {
+  for (int i = 0; i < prepopulate; ++i) {
+    Transaction t;
+    a.transWrite(t, i, val(i+1));
+    t.commit();
+  }
+}
+
+void prepopulate_func(int *array) {
+  for (int i = 0; i < prepopulate; ++i) {
+    array[i] = i+1;
+  }
+}
+
+#if DATA_STRUCTURE == 5
+// FUNCTIONS FOR QUEUE
+void prepopulate_func() {
+  for (int i = 0; i < prepopulate; ++i) {
+    q->push(val(i));
+  }
+}
+
+void empty_func() {
+    while (!q->empty()) {
+        q->pop();
+    }
+}
+#endif
+
+// FUNCTIONS FOR ARRAY/MAP-TYPE
+template <typename T>
+static void doRead(T& a, Transaction& t, int slot) {
   if (readMyWrites)
-    a->transRead(t, slot);
+    a.transRead(t, slot);
 #if 0
   else
-    a->transRead_nocheck(t, slot);
+    a.transRead_nocheck(t, slot);
 #endif
 }
 
-static void doWrite(Transaction& t, int slot, int& ctr) {
+template <typename T>
+static void doWrite(T& a, Transaction& t, int slot, int& ctr) {
   if (blindRandomWrite) {
     if (readMyWrites) {
-      a->transWrite(t, slot, val(ctr));
-    } 
+      a.transWrite(t, slot, val(ctr));
+    }
 #if 0
 else {
-      a->transWrite_nocheck(t, slot, val(ctr));
+      a.transWrite_nocheck(t, slot, val(ctr));
     }
 #endif
   } else {
     // increment current value (this lets us verify transaction correctness)
     if (readMyWrites) {
-      auto v0 = a->transRead(t, slot);
-      a->transWrite(t, slot, val(unval(v0)+1));
+      auto v0 = a.transRead(t, slot);
+      a.transWrite(t, slot, val(unval(v0)+1));
 #if TRY_READ_MY_WRITES
           // read my own writes
-          assert(a->transRead(t,slot) == v0+1);
-          a->transWrite(t, slot, v0+2);
+          assert(a.transRead(t,slot) == v0+1);
+          a.transWrite(t, slot, v0+2);
           // read my own second writes
-          assert(a->transRead(t,slot) == v0+2);
+          assert(a.transRead(t,slot) == v0+2);
 #endif
     } else {
 #if 0
-      auto v0 = a->transRead_nocheck(t, slot);
-      a->transWrite_nocheck(t, slot, val(unval(v0)+1));
+      auto v0 = a.transRead_nocheck(t, slot);
+      a.transWrite_nocheck(t, slot, val(unval(v0)+1));
 #endif
     }
     ++ctr; // because we've done a read and a write
   }
 }
-  
-static inline void nreads(int n, Transaction& t, std::function<int(void)> slotgen) {
+
+template <typename T>
+static inline void nreads(T& a, int n, Transaction& t, std::function<int(void)> slotgen) {
   for (int i = 0; i < n; ++i) {
-    doRead(t, slotgen());
-  }
-}
-static inline void nwrites(int n, Transaction& t, std::function<int(void)> slotgen) {
-  for (int i = 0; i < n; ++i) {
-    doWrite(t, slotgen(), i);
+    doRead(a, t, slotgen());
   }
 }
 
-void *readThenWrite(void *p) {
-  int me = (intptr_t)p;
-#if MASSTREE
-  a->thread_init();
+template <typename T>
+static inline void nwrites(T& a, int n, Transaction& t, std::function<int(void)> slotgen) {
+  for (int i = 0; i < n; ++i) {
+    doWrite(a, t, slotgen(), i);
+  }
+}
+
+struct Tester {
+    Tester() {}
+    virtual void initialize() = 0;
+    virtual void run(int me) = 0;
+    virtual bool check() { return false; }
+};
+
+template <int DS> struct DSTester : public Tester {
+    DSTester() : a() {}
+    void initialize();
+    virtual bool prepopulate() { return true; }
+    typedef Container<DS> container_type;
+    typedef typename Container<DS>::type type;
+  protected:
+    type* a;
+};
+
+template <int DS> void DSTester<DS>::initialize() {
+    a = new type;
+    if (prepopulate()) {
+        prepopulate_func(*a);
+#if MAINTAIN_TRUE_ARRAY_STATE
+        prepopulate_func(true_array_state);
 #endif
-  
+    }
+    Container<DS>::init();
+}
+
+
+template <int DS> struct ReadThenWrite : public DSTester<DS> {
+    ReadThenWrite() {}
+    void run(int me);
+};
+
+template <int DS> void ReadThenWrite<DS>::run(int me) {
+  Transaction::threadid = me;
+  typename Container<DS>::type* a = this->a;
+  Container<DS>::thread_init(*a);
+
   std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
 
   int N = ntrans/nthreads;
@@ -216,26 +373,30 @@ void *readThenWrite(void *p) {
 
       auto gen = [&]() { return slotdist(transgen); };
 
-      Transaction t;
-      nreads(OPS - OPS*write_percent, t, gen);
-      nwrites(OPS*write_percent, t, gen);
+      Transaction& t = Transaction::get_transaction();
+      nreads(*a, OPS - OPS*write_percent, t, gen);
+      nwrites(*a, OPS*write_percent, t, gen);
 
-      done = t.commit();
+      done = t.try_commit();
       if (!done) {
         debug("thread%d retrying\n", me);
       }
     }
   }
-  return NULL;
 }
 
-void *randomRWs(void *p) {
-  int me = (intptr_t)p;
+
+template <int DS> struct RandomRWs_parent : public DSTester<DS> {
+    RandomRWs_parent() {}
+    template <bool do_delete> void do_run(int me);
+};
+
+template <int DS> template <bool do_delete>
+void RandomRWs_parent<DS>::do_run(int me) {
   Transaction::threadid = me;
-#if MASSTREE
-  a->thread_init();
-#endif
-  
+  typename Container<DS>::type* a = this->a;
+  Container<DS>::thread_init(*a);
+
   std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
   uint32_t write_thresh = (uint32_t) (write_percent * Rand::max());
 
@@ -267,7 +428,7 @@ void *randomRWs(void *p) {
       bool used[ARRAY_SZ] = {false};
 #endif
 
-      Transaction t;
+      Transaction& t = Transaction::get_transaction();
       for (int j = 0; j < OPS; ++j) {
         int slot = slotdist(transgen);
 #if ALL_UNIQUE_SLOTS
@@ -275,23 +436,20 @@ void *randomRWs(void *p) {
         used[slot]=true;
 #endif
         auto r = transgen();
-#if HASHTABLE_RAND_DELETES
-        // TODO: this doesn't make that much sense if write_percent != 50%
-        if (r > (write_thresh+write_thresh/2)) {
-          a->transDelete(t, slot);
-        }else
-#endif
-        if (r > write_thresh) {
-          doRead(t, slot);
+        if (do_delete && r > (write_thresh+write_thresh/2)) {
+          // TODO: this doesn't make that much sense if write_percent != 50%
+          Container<DS>::transDelete(*a, t, slot);
+        } else if (r > write_thresh) {
+          doRead(*a, t, slot);
         } else {
-          doWrite(t, slot, j);
+          doWrite(*a, t, slot, j);
 
 #if MAINTAIN_TRUE_ARRAY_STATE
           slots_written[nslots_written++] = slot;
 #endif
         }
       }
-      done = t.commit();
+      done = t.try_commit();
       } catch (Transaction::Abort E) {}
       if (!done) {
 #if RANDOM_REPORT
@@ -345,74 +503,85 @@ void *randomRWs(void *p) {
       printf("insertat: %d (%d)\n", i, slot_spread[i]);
   }
 #endif
-
-  return NULL;
 }
 
-void checkRandomRWs() {
-  ArrayType *old = a;
-  ArrayType check;
+
+template <int DS, bool do_delete> struct RandomRWs : public RandomRWs_parent<DS> {
+    RandomRWs() {}
+    void run(int me);
+    bool check();
+};
+
+template <int DS, bool do_delete> void RandomRWs<DS, do_delete>::run(int me) {
+    this->template do_run<do_delete && Container<DS>::has_delete>(me);
+}
+
+template <int DS, bool do_delete> bool RandomRWs<DS, do_delete>::check() {
+  if (do_delete && Container<DS>::has_delete)
+      return false;
+
+  typename Container<DS>::type* old = this->a;
+  typename Container<DS>::type& ch = *(new typename Container<DS>::type);
+  this->a = &ch;
 
   // rerun transactions one-by-one
 #if MAINTAIN_TRUE_ARRAY_STATE
   maintain_true_array_state = !maintain_true_array_state;
 #endif
-  a = &check;
-
-  for (int i = 0; i < prepopulate; ++i) {
-    Transaction t;
-    a->transWrite(t, i, val(0));
-    t.commit();
-  }
+  prepopulate_func(ch);
 
   for (int i = 0; i < nthreads; ++i) {
-    randomRWs((void*)(intptr_t)i);
+      this->template do_run<false>(i);
   }
 #if MAINTAIN_TRUE_ARRAY_STATE
   maintain_true_array_state = !maintain_true_array_state;
 #endif
-  a = old;
+  this->a = old;
 
   for (int i = 0; i < ARRAY_SZ; ++i) {
 # if MAINTAIN_TRUE_ARRAY_STATE
-    if (unval(a->read(i)) != true_array_state[i])
+    if (unval(old->read(i)) != true_array_state[i])
         fprintf(stderr, "index [%d]: parallel %d, atomic %d\n",
-                i, unval(a->read(i)), true_array_state[i]);
+                i, unval(old->read(i)), true_array_state[i]);
 # endif
-    if (unval(a->read(i)) != unval(check.read(i)))
+    if (unval(old->read(i)) != unval(ch.read(i)))
         fprintf(stderr, "index [%d]: parallel %d, sequential %d\n",
-                i, unval(a->read(i)), unval(check.read(i)));
-    assert(unval(check.read(i)) == unval(a->read(i)));
+                i, unval(old->read(i)), unval(ch.read(i)));
+    assert(unval(ch.read(i)) == unval(old->read(i)));
   }
+  return true;
 }
 
-#if HASHTABLE || MASSTREE
 
-void *kingOfTheDelete(void *p) {
-  int me = (intptr_t)p;
+template <int DS> struct KingDelete : public DSTester<DS> {
+    KingDelete() {}
+    void run(int me);
+    bool check();
+};
+
+template <int DS> void KingDelete<DS>::run(int me) {
   Transaction::threadid = me;
-#if MASSTREE
-  a->thread_init();
-#endif
+  typename Container<DS>::type* a = this->a;
+  Container<DS>::thread_init(*a);
 
   bool done = false;
   while (!done) {
     try {
-      Transaction t;
+      Transaction& t = Transaction::get_transaction();
       for (int i = 0; i < nthreads; ++i) {
         if (i != me) {
-          a->transDelete(t, i);
+          Container<DS>::transDelete(*a, t, i);
         } else {
-          a->transPut(t, i, val(i+1));
+          a->transWrite(t, i, val(i+1));
         }
       }
-      done = t.commit();
+      done = t.try_commit();
     } catch (Transaction::Abort E) {}
   }
-  return NULL;
 }
 
-void checkKingOfTheDelete() {
+template <int DS> bool KingDelete<DS>::check() {
+  typename Container<DS>::type* a = this->a;
   int count = 0;
   for (int i = 0; i < nthreads; ++i) {
     if (unval(a->read(i))) {
@@ -420,14 +589,20 @@ void checkKingOfTheDelete() {
     }
   }
   assert(count==1);
+  return true;
 }
 
-void *xorDelete(void *p) {
-  int me = (intptr_t)p;
+
+template <int DS> struct XorDelete : public DSTester<DS> {
+    XorDelete() {}
+    void run(int me);
+    bool check();
+};
+
+template <int DS> void XorDelete<DS>::run(int me) {
   Transaction::threadid = me;
-#if MASSTREE
-  a->thread_init();
-#endif
+  typename Container<DS>::type* a = this->a;
+  Container<DS>::thread_init(*a);
 
   // we never pick slot 0 so we can detect if table is populated
   std::uniform_int_distribution<long> slotdist(1, ARRAY_SZ-1);
@@ -436,114 +611,100 @@ void *xorDelete(void *p) {
   int N = ntrans/nthreads;
   int OPS = opspertrans;
 
-  if (me == 0) {
-    // populate
-    Transaction t;
-    for (int i = 1; i < ARRAY_SZ; ++i) {
-      a->transPut(t, i, val(i+1));
-    }
-    a->transPut(t, 0, val(1));
-    assert(t.commit());
-  } else {
-    // wait for populated
-    while (1) {
-      try {
-        Transaction t;
-        if (unval(a->transRead(t, 0)) && t.commit()) {
-          break;
-        }
-        t.commit();
-      } catch (Transaction::Abort E) {}
-    }
-  }
-
   for (int i = 0; i < N; ++i) {
     auto transseed = i;
     bool done = false;
     while (!done) {
       Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
       try {
-        Transaction t;
+        Transaction& t = Transaction::get_transaction();
         for (int j = 0; j < OPS; ++j) {
           int slot = slotdist(transgen);
           auto r = transgen();
           if (r > delete_thresh) {
             // can't do put/insert because that makes the results ordering dependent
             // (these updates don't actually affect the final state at all)
-            a->transUpdate(t, slot, val(slot+1));
-          } else if (!a->transInsert(t, slot, val(slot+1))) {
+            Container<DS>::transUpdate(*a, t, slot, val(slot + 1));
+          } else if (!Container<DS>::transInsert(*a, t, slot, val(slot+1))) {
             // we delete if the element is there and insert if it's not
             // this is essentially xor'ing the slot, so ordering won't matter
-            a->transDelete(t, slot);
+            Container<DS>::transDelete(*a, t, slot);
           }
         }
-        done = t.commit();
+        done = t.try_commit();
       } catch (Transaction::Abort E) {}
     }
   }
-  
-  return NULL;
 }
 
-void checkXorDelete() {
-  ArrayType *old = a;
-  ArrayType check;
-  a = &check;
-  
+template <int DS> bool XorDelete<DS>::check() {
+  typename Container<DS>::type* old = this->a;
+  typename Container<DS>::type& ch = *(new typename Container<DS>::type);
+  this->a = &ch;
+  prepopulate_func(*this->a);
+
   for (int i = 0; i < nthreads; ++i) {
-    xorDelete((void*)(intptr_t)i);
+    run(i);
   }
-  a = old;
-  
+  this->a = old;
+
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    assert(unval(a->read(i)) == unval(check.read(i)));
+    assert(unval(old->read(i)) == unval(ch.read(i)));
   }
-}
-#endif
-
-void checkIsolatedWrites() {
-  for (int i = 0; i < nthreads; ++i) {
-    assert(unval(a->read(i)) == i+1);
-  }
+  return true;
 }
 
-void *isolatedWrites(void *p) {
-  int me = (intptr_t)p;
+
+template <int DS> struct IsolatedWrites : public DSTester<DS> {
+    IsolatedWrites() {}
+    void run(int me);
+    bool check();
+};
+
+template <int DS> void IsolatedWrites<DS>::run(int me) {
   Transaction::threadid = me;
-#if MASSTREE
-  a->thread_init();
-#endif
+  typename Container<DS>::type* a = this->a;
+  Container<DS>::thread_init(*a);
 
   bool done = false;
   while (!done) {
     try{
-    Transaction t;
+    Transaction& t = Transaction::get_transaction();
 
     for (int i = 0; i < nthreads; ++i) {
       a->transRead(t, i);
     }
-		
-		a->transWrite(t, me, val(me+1));
-    
-    done = t.commit();
+    a->transWrite(t, me, val(me+1));
+
+    done = t.try_commit();
     } catch (Transaction::Abort E) {}
     debug("iter: %d %d\n", me, done);
   }
-  return NULL;
+}
+
+template <int DS> bool IsolatedWrites<DS>::check() {
+  for (int i = 0; i < nthreads; ++i) {
+    assert(unval(this->a->read(i)) == i+1);
+  }
+  return true;
 }
 
 
-void *blindWrites(void *p) {
-  int me = (long long)p;
+template <int DS> struct BlindWrites : public DSTester<DS> {
+    BlindWrites() {}
+    void run(int me);
+    bool check();
+};
+
+template <int DS> void BlindWrites<DS>::run(int me) {
   Transaction::threadid = me;
-#if MASSTREE
-  a->thread_init();
-#endif
+  typename Container<DS>::type* a = this->a;
+  Container<DS>::thread_init(*a);
 
   bool done = false;
   while (!done) {
     try{
-    Transaction t;
+    Transaction& t = Transaction::get_transaction();
 
     if (unval(a->transRead(t, 0)) == 0 || me == nthreads-1) {
       for (int i = 1; i < ARRAY_SZ; ++i) {
@@ -556,32 +717,36 @@ void *blindWrites(void *p) {
       a->transWrite(t, 0, val(me));
     }
 
-    done = t.commit();
+    done = t.try_commit();
     } catch (Transaction::Abort E) {}
     debug("thread %d %d\n", me, done);
   }
-
-  return NULL;
 }
 
-void checkBlindWrites() {
+template <int DS> bool BlindWrites<DS>::check() {
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    debug("read %d\n", a->read(i));
-    assert(unval(a->read(i)) == nthreads-1);
+    debug("read %d\n", this->a->read(i));
+    assert(unval(this->a->read(i)) == nthreads-1);
   }
+  return true;
 }
 
-void *interferingRWs(void *p) {
-  int me = (intptr_t)p;
+
+template <int DS> struct InterferingRWs : public DSTester<DS> {
+    InterferingRWs() {}
+    void run(int me);
+    bool check();
+};
+
+template <int DS> void InterferingRWs<DS>::run(int me) {
   Transaction::threadid = me;
-#if MASSTREE
-  a->thread_init();
-#endif
+  typename Container<DS>::type* a = this->a;
+  Container<DS>::thread_init(*a);
 
   bool done = false;
   while (!done) {
     try{
-    Transaction t;
+    Transaction& t = Transaction::get_transaction();
 
     for (int i = 0; i < ARRAY_SZ; ++i) {
       if ((i % nthreads) >= me) {
@@ -590,23 +755,156 @@ void *interferingRWs(void *p) {
       }
     }
 
-    done = t.commit();
+    done = t.try_commit();
     } catch (Transaction::Abort E) {}
     debug("thread %d %d\n", me, done);
   }
-  return NULL;
 }
 
-void checkInterferingRWs() {
+template <int DS> bool InterferingRWs<DS>::check() {
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    assert(unval(a->read(i)) == (i % nthreads)+1);
+    assert(unval(this->a->read(i)) == (i % nthreads)+1);
+  }
+  return true;
+}
+
+#if DATA_STRUCTURE == 5
+void Qxordeleterun(int me) {
+  Transaction::threadid = me;
+
+  int N = ntrans/nthreads;
+  int OPS = opspertrans;
+ 
+  for (int i = 0; i < N; ++i) {
+    while (1) {
+      try {
+        Transaction t;
+        for (int j = 0; j < OPS; ++j) {
+          value_type v = val(j);
+          value_type u;
+          if (!q->transFront(t, u)) {
+            // we pop if the q is nonempty, push if it's empty
+            q->transPush(t, v);
+          }
+          else
+              q->transPop(t);
+        }
+        if (t.try_commit())
+            break;
+      } catch (Transaction::Abort E) {}
+    }
   }
 }
 
-void startAndWait(int n, void *(*start_routine) (void *)) {
+bool Qxordeletecheck() {
+  QueueType* old = q;
+  QueueType& ch =  *(new QueueType);
+  q = &ch;
+
+  empty_func();
+  prepopulate_func();
+  
+  for (int i = 0; i < nthreads; ++i) {
+    Qxordeleterun(i);
+  }
+  q = old;
+
+  // check only while q or ch is nonempty (may have started xordelete at different indices into the q)
+  while (!q->empty() && !ch.empty()) {
+    assert (unval(q->pop()) == unval(ch.pop()));
+  }
+  return true;
+}
+
+void Qtransferrun(int me) {
+  Transaction::threadid = me;
+
+  int N = ntrans/nthreads;
+  int OPS = opspertrans;
+
+  for (int i = 0; i < N; ++i) {
+    while (1) {
+      try {
+        Transaction t;
+        for (int j = 0; j < OPS; ++j) {
+          value_type v;
+          // if q is nonempty, pop from q, push onto q2
+          if (q->transFront(t, v)) {
+            q->transPop(t);
+            q2->transPush(t, v);
+          }
+        }
+        if (t.try_commit())
+            break;
+      } catch (Transaction::Abort E) {}
+    }
+  }
+}
+
+bool Qtransfercheck() {
+  // restore q to prepopulated state
+  empty_func();
+  prepopulate_func();
+
+  // check if q2 and q are equivalent
+  while (!q2->empty()) {
+    assert (unval(q->pop()) == unval(q2->pop()));
+  }
+  return true;
+}
+
+struct QTester {
+    int me;
+};
+
+void* xorrunfunc(void* x) {
+    QTester* qt = (QTester*) x;
+    Qxordeleterun(qt->me);
+    return nullptr;
+} 
+
+void* transferrunfunc(void* x) {
+    QTester* qt = (QTester*) x;
+    Qtransferrun(qt->me);
+    return nullptr;
+} 
+
+void qstartAndWait(int n, void*(*runfunc)(void*)) {
   pthread_t tids[n];
+  QTester tester[n];
+
   for (int i = 0; i < n; ++i) {
-    pthread_create(&tids[i], NULL, start_routine, (void*)(intptr_t)i);
+      tester[i].me = i;
+      pthread_create(&tids[i], NULL, runfunc, &tester[i]);
+  }
+  pthread_t advancer;
+  pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
+  pthread_detach(advancer);
+
+  for (int i = 0; i < n; ++i) {
+    pthread_join(tids[i], NULL);
+  }
+}
+#endif
+
+struct TesterPair {
+    Tester* t;
+    int me;
+};
+
+void* runfunc(void* x) {
+    TesterPair* tp = (TesterPair*) x;
+    tp->t->run(tp->me);
+    return nullptr;
+}
+
+void startAndWait(int n, Tester* tester) {
+  pthread_t tids[n];
+  TesterPair testers[n];
+  for (int i = 0; i < n; ++i) {
+      testers[i].t = tester;
+      testers[i].me = i;
+      pthread_create(&tids[i], NULL, runfunc, &testers[i]);
   }
   pthread_t advancer;
   pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
@@ -617,25 +915,46 @@ void startAndWait(int n, void *(*start_routine) (void *)) {
   }
 }
 
+
 void print_time(struct timeval tv1, struct timeval tv2) {
   printf("%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
 }
 
+#define MAKE_TESTER(name, desc, type, ...)            \
+    {name, desc, 0, new type<0, ## __VA_ARGS__>},     \
+    {name, desc, 1, new type<1, ## __VA_ARGS__>},     \
+    {name, desc, 2, new type<2, ## __VA_ARGS__>},     \
+    {name, desc, 3, new type<3, ## __VA_ARGS__>},     \
+    {name, desc, 4, new type<4, ## __VA_ARGS__>}
+
 struct Test {
-  void *(*threadfunc) (void *);
-  void (*checkfunc) (void);
+    const char* name;
+    const char* desc;
+    int ds;
+    Tester* tester;
+} tests[] = {
+    MAKE_TESTER("isolatedwrites", 0, IsolatedWrites),
+    MAKE_TESTER("blindwrites", 0, BlindWrites),
+    MAKE_TESTER("interferingwrites", 0, InterferingRWs),
+    MAKE_TESTER("randomrw", "typically best choice", RandomRWs, false),
+    MAKE_TESTER("readthenwrite", 0, ReadThenWrite),
+    MAKE_TESTER("kingofthedelete", 0, KingDelete),
+    MAKE_TESTER("xordelete", 0, XorDelete),
+    MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true)
 };
 
-Test tests[] = {
-  {isolatedWrites, checkIsolatedWrites},
-  {blindWrites, checkBlindWrites},
-  {interferingRWs, checkInterferingRWs},
-  {randomRWs, checkRandomRWs},
-  {readThenWrite, NULL},
-#if HASHTABLE || MASSTREE
-  {kingOfTheDelete, checkKingOfTheDelete},
-  {xorDelete, checkXorDelete},
-#endif
+struct {
+    const char* name;
+    int ds;
+} ds_names[] = {
+    {"array", USE_ARRAY},
+    {"hashtable", USE_HASHTABLE},
+    {"hash", USE_HASHTABLE},
+    {"masstree", USE_MASSTREE},
+    {"mass", USE_MASSTREE},
+    {"genstm", USE_GENSTMARRAY},
+    {"list", USE_LISTARRAY},
+    {"queue", USE_QUEUE}
 };
 
 enum {
@@ -665,20 +984,40 @@ Options:\n\
  --blindrandwrites, do blind random writes for random tests. makes checking impossible\n\
  --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n",
          name, nthreads, ntrans, opspertrans, write_percent, prepopulate);
+  printf("\nTests:\n");
+  size_t testidx = 0;
+  for (size_t ti = 0; ti != sizeof(tests)/sizeof(tests[0]); ++ti)
+      if (ti == 0 || strcmp(tests[ti].name, tests[ti-1].name) != 0) {
+          if (tests[ti].desc)
+              printf(" %zu: %-10s (%s)\n", testidx, tests[ti].name, tests[ti].desc);
+          else
+              printf(" %zu: %s\n", testidx, tests[ti].name);
+          ++testidx;
+      }
+  printf("\nData structures:\n");
+  for (size_t ti = 0; ti != sizeof(ds_names)/sizeof(ds_names[0]); ++ti)
+      printf(" %s", ds_names[ti].name);
+  printf("\n");
   exit(1);
 }
 
 int main(int argc, char *argv[]) {
   Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
 
-  int test = -1;
+  int ds = DATA_STRUCTURE;
+  const char* test_name = nullptr;
 
   int opt;
   while ((opt = Clp_Next(clp)) != Clp_Done) {
     switch (opt) {
     case Clp_NotOption:
-      test = atoi(clp->vstr);
-      break;
+        for (size_t ti = 0; ti != sizeof(ds_names) / sizeof(ds_names[0]); ++ti)
+            if (strcmp(ds_names[ti].name, clp->vstr) == 0) {
+                ds = ds_names[ti].ds;
+                goto found_ds;
+            }
+        test_name = clp->vstr;
+    found_ds: break;
     case opt_nrmyw:
       readMyWrites = false;
       break;
@@ -709,36 +1048,55 @@ int main(int argc, char *argv[]) {
   }
   Clp_DeleteParser(clp);
 
+#if DATA_STRUCTURE == 5 
+    QueueType stack_q;
+    QueueType stack_q2;
+    q = &stack_q;
+    q2 = &stack_q2;
+    
+    empty_func();
+    prepopulate_func();    
+    qstartAndWait(nthreads, xorrunfunc);
+    assert(Qxordeletecheck());
+    
+    empty_func();
+    prepopulate_func();
+    qstartAndWait(nthreads, transferrunfunc);
+    assert(Qtransfercheck());
+#else 
+
+  int testidx = 0;
+  int test = -1;
+  for (size_t ti = 0; ti != sizeof(tests) / sizeof(tests[0]); ++ti) {
+      if (ti > 0 && strcmp(tests[ti].name, tests[ti-1].name) != 0)
+          ++testidx;
+      if (tests[ti].ds == ds
+          && test_name
+          && (isdigit((unsigned char) test_name[0])
+              ? atoi(test_name) == testidx
+              : strcmp(tests[ti].name, test_name) == 0)) {
+          test = ti;
+          break;
+      }
+  }
+
   if (test == -1) {
     help(argv[0]);
   }
-  
+
   if (nthreads > MAX_THREADS) {
     printf("Asked for %d threads but MAX_THREADS is %d\n", nthreads, MAX_THREADS);
     exit(1);
   }
 
-#if MASSTREE
-  Transaction::epoch_advance_callback = [] (unsigned) {
-    // just advance blindly because of the way Masstree uses epochs
-    globalepoch++;
-  };
-#endif
-
-  ArrayType stack_arr;
-  a = &stack_arr;
-
-  for (int i = 0; i < prepopulate; ++i) {
-    Transaction t;
-    a->transWrite(t, i, val(0));
-    t.commit();
-  }
+  Tester* tester = tests[test].tester;
+  tester->initialize();
 
   struct timeval tv1,tv2;
   struct rusage ru1,ru2;
   gettimeofday(&tv1, NULL);
   getrusage(RUSAGE_SELF, &ru1);
-  startAndWait(nthreads, tests[test].threadfunc);
+  startAndWait(nthreads, tester);
   gettimeofday(&tv2, NULL);
   getrusage(RUSAGE_SELF, &ru2);
 #if !DATA_COLLECT
@@ -750,21 +1108,28 @@ int main(int argc, char *argv[]) {
   print_time(ru1.ru_utime, ru2.ru_utime);
   printf("stime: ");
   print_time(ru1.ru_stime, ru2.ru_stime);
-  printf("Ran test %d with: ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f%% writes, blindrandwrites: %d\n\
- MAINTAIN_TRUE_ARRAY_STATE: %d, LOCAL_VECTOR: %d, SPIN_LOCK: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, TRY_READ_MY_WRITES: %d, PERF_LOGGING: %d\n",
-         test, ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, blindRandomWrite,
-         MAINTAIN_TRUE_ARRAY_STATE, LOCAL_VECTOR, SPIN_LOCK, INIT_SET_SIZE, GLOBAL_SEED, TRY_READ_MY_WRITES, PERF_LOGGING);
+
+  size_t dsi = 0;
+  while (ds_names[dsi].ds != ds)
+      ++dsi;
+  printf("Ran test %s %s\n", tests[test].name, ds_names[dsi].name);
+  printf("  ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f%% writes, prepopulate: %d, blindrandwrites: %d\n \
+ MAINTAIN_TRUE_ARRAY_STATE: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, PERF_LOGGING: %d\n",
+         ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, prepopulate, blindRandomWrite,
+         MAINTAIN_TRUE_ARRAY_STATE, INIT_SET_SIZE, GLOBAL_SEED, PERF_LOGGING);
 #endif
 
 #if PERF_LOGGING
-#define LLU(x) ((long long unsigned)x)
-  printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", LLU(total_n), LLU(total_r), LLU(total_w), LLU(total_searched), LLU(total_aborts), LLU(commit_time_aborts));
-#if MASSTREE
-  printf("node aborts: %llu\n", LLU(node_aborts));
-#endif
-#undef LLU
+  Transaction::print_stats();
+  {
+      using thd = threadinfo_t;
+      thd tc = Transaction::tinfo_combined();
+      printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+  }
 #endif
 
   if (runCheck)
-    tests[test].checkfunc();
+      tester->check();
+#endif
 }
+

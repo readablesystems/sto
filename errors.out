@@ -1,0 +1,11 @@
+In file included from single.cc:8:0:
+Queue.hh: In member function ‘bool Queue<T, BUF_SIZE>::check(TransItem&, Transaction&)’:
+Queue.hh:134:173: error: expected ‘)’ before ‘;’ token
+         bool tail_check = (QueueVersioning::versionCheck(tv, item.template read_value<Version>()) && (!QueueVersioning::is_locked(tv) || has_delete(item) || is_front(item));
+                                                                                                                                                                             ^
+In file included from single.cc:7:0:
+List.hh: At global scope:
+List.hh:17:22: warning: ‘list_locked’ defined but not used [-Wunused-variable]
+ static __thread bool list_locked;
+                      ^
+make: *** [single.o] Error 1

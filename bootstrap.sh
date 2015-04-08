@@ -10,3 +10,5 @@ if [ -x masstree-beta/bootstrap.sh ]; then
 fi
 
 autoreconf -i
+
+echo "Now, run ./configure [ARGS]."

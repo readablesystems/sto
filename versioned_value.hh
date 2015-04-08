@@ -1,5 +1,7 @@
-#include <iostream>
 #pragma once
+#include <iostream>
+
+#include "masstree-beta/kvthread.hh"
 
 //versioned_value_struct suitable for logging
 template <typename T, typename S, typename=void>
@@ -87,9 +89,17 @@ struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
   inline const value_type& read_value() {
     return value_;
   }
+
+  inline value_type& writeable_value() {
+    return value_;
+  }
   
   inline version_type& version() {
     return version_;
+  }
+
+  inline void deallocate_rcu(threadinfo& ti) {
+    ti.deallocate_rcu(this, sizeof(versioned_value_struct), memtag_value);
   }
 
 #if 0
@@ -141,6 +151,11 @@ public:
 
   version_type& version() {
     return version_;
+  }
+
+  inline void deallocate_rcu(threadinfo& ti) {
+    // XXX: really this one needs to be a rcu_callback so we can call destructor
+    ti.deallocate_rcu(this, sizeof(versioned_value_struct), memtag_value);
   }
   
 private:

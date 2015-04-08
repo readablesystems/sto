@@ -1,3 +1,4 @@
+#pragma once
 #include "List.hh"
 
 // implememnts abstraction of a transactional array using our linked list
@@ -5,6 +6,8 @@
 template <typename T>
 class ListArray {
 public:
+    typedef int key_type;
+
   T transRead(Transaction& t, int k) {
     KV* kv = list_.transFind(t, KV(k, T()));
     if (kv) {
@@ -20,10 +23,18 @@ public:
     assert(inserted);
   }
 
+  bool transDelete(Transaction& t, int k) {
+    return list_.transDelete(t, KV(k, T()));
+  }
+
+  bool transInsert(Transaction& t, int k, const T& value) {
+    return list_.transInsert(t, KV(k, value));
+  }
+
   T read(int k) {
     Transaction t;
     auto ret = transRead(t, k);
-    assert(t.commit());
+    assert(t.try_commit());
     return ret;
   }
 
