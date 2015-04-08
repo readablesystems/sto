@@ -315,7 +315,7 @@ public:
         const tid_t t = it->sharedObj()->getTid(*it);
         assert (commit_epoch >= epochId(t));
         if (t > ret)
-          std::cout << "greated tid " << t << std::endl;
+          //std::cout << "greater tid " << t << std::endl;
           ret = t;
       }
       //assert(ret >= ctx.last_commit_tid);

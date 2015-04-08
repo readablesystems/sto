@@ -422,6 +422,7 @@ typedef uint64_t Version;
 static constexpr Version lock_bit = 1ULL<<(sizeof(Version)*8 - 1);
 static constexpr Version invalid_bit = 1ULL<<(sizeof(Version)*8 - 2);
 static constexpr Version valid_check_only_bit = 1ULL<<(sizeof(Version)*8 - 3);
+static constexpr Version deleted_bit = 1ULL<<(sizeof(Version)*8 - 4);
 
 static constexpr Version version_mask = ~(lock_bit|invalid_bit|valid_check_only_bit);
 static constexpr uint8_t tid_shift = 1;

@@ -134,7 +134,7 @@ void consistent_test_multi_table_thread(uint64_t low, uint64_t high,
   
   int cur_num_new_insert = 0;
 
-  int num_txn = 100;
+  int num_txn = 600000;
   int count_txn = 0;
   
   int num_tree_ids = trees->size();
@@ -165,7 +165,7 @@ void consistent_test_multi_table_thread(uint64_t low, uint64_t high,
         insert_key = std::make_pair(table, key);
       } while(repeat_key_list.find(insert_key) != repeat_key_list.end());
       
-      std::cout << "[" << th << "] inserted key " <<insert_key.second << " to tree " << insert_key.first << std::endl;
+     // std::cout << "[" << th << "] inserted key " <<insert_key.second << " to tree " << insert_key.first << std::endl;
 
       repeat_key_list.insert(insert_key);
       btr->transWrite(t, insert_key.second, value);
@@ -184,7 +184,7 @@ void consistent_test_multi_table_thread(uint64_t low, uint64_t high,
       bool deleted = btr->transDelete(t, remove_key.second);
       if (deleted) {
         tr->removes.insert(remove_key);
-        std::cout << "[" << th << "] removed key " <<remove_key.second << " from tree " << remove_key.first << std::endl;
+        //std::cout << "[" << th << "] removed key " <<remove_key.second << " from tree " << remove_key.first << std::endl;
       }
       //<< " success " << deleted << std::endl;
      }
@@ -272,7 +272,7 @@ int main() {
   const std::vector<std::vector<unsigned> > assignments_given;
   
   uint64_t low = 0;
-  uint64_t high = 1000;
+  uint64_t high = 1035698;
   
   std::vector<MassTrans<Value> *> btree_list;
   
@@ -369,9 +369,20 @@ int main() {
   int count = 0;
   for (size_t i = 0; i < txn_list.size(); i++) {
     count += txn_list[i].size();
-    tlist.insert(txn_list[i].begin(), txn_list[i].end()); // TODO: deal with repeated tids
+    std::map<uint64_t, txn_record_multi *>::iterator it = txn_list[i].begin();
+    std::map<uint64_t, txn_record_multi *>::iterator it_end = txn_list[i].end();
+    std::map<uint64_t, txn_record_multi *>::iterator find_it;
+    for (; it != it_end; it++) {
+      find_it = tlist.find(it->first);
+      if (find_it != tlist.end()) {
+        find_it->second->updates.insert(it->second->updates.begin(), it->second->updates.end());
+        find_it->second->removes.insert(it->second->removes.begin(), it->second->removes.end());
+      } else {
+        tlist[it->first] = it->second;
+      }
+    }
   }
-  assert(tlist.size() == count);
+  //assert(tlist.size() == count);
   
   
   std::cout << "Replay single threaded" << std::endl;

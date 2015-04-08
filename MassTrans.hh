@@ -1046,8 +1046,8 @@ private:
   static constexpr Version deleted_bit = 1ULL<<(sizeof(Version)*8 - 4);
   static constexpr Version version_mask = ~(lock_bit|invalid_bit|valid_check_only_bit|deleted_bit);
     
-  static constexpr uint8_t tid_shift = 0; // TODO: this can be zero
-  static constexpr int tid_extra_bits = (64 - ((sizeof(Version)*8) - 4));
+  static constexpr uint8_t tid_shift = 1; // TODO: this can be zero
+  static constexpr int tid_extra_bits = (64 - ((sizeof(Version)*8) - 5));
     
   static constexpr uintptr_t internode_bit = 1<<0;
 
