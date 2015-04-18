@@ -401,6 +401,5 @@ public:
   static void checkpoint(std::vector<std::string> logfile_base);
   static void log_truncate(uint64_t epoch, std::vector<std::string> logfile_base);
   static void StartThread(bool is_test, std::vector<std::string> logfile_base);
-  //static std::regex log_reg;
-  // TODO: add support for truncating the log
+   
 };

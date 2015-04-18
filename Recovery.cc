@@ -104,7 +104,7 @@ log_replay:
                            i);
       //replay_logs(*(file_list[i * NTHREADS_PER_DISK + j]), ckp_epoch,
        //                                 persist_epoch, i * NTHREADS_PER_DISK + j,
-        //          i);
+       //           i);
     }
   }
   
@@ -131,6 +131,7 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
                            uint64_t persist_epoch,
                            size_t th,
                            int index) {
+  btree_type::thread_init();
   std::cout << "Recover thread " << th <<" starting " << std::endl;
   if (file_list.size() == 0) {
     printf("No log files found\n");
@@ -153,9 +154,13 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
     while (true) {
       uint64_t nentries = 0; // Num of transactions
       uint64_t last_tid = 0; // last tid of all transactions
+      uint64_t epoch = 0;
       if (!buf.read_64_s(&nentries))
         goto end;
       if (!buf.read_64_s(&last_tid))
+        goto end;
+      
+      if (!buf.read_64_s(&epoch))
         goto end;
       
       for (uint64_t n = 0; n < nentries; n++) { // for each transaction
@@ -163,7 +168,7 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
         uint64_t tid = 0;
         if (!buf.read_64_s(&tid)) // transaction tid
           goto end;
-        uint64_t cur_epoch = epochId(tid);
+        uint64_t cur_epoch = tid;
         if (cur_epoch > persist_epoch || cur_epoch < ckp_epoch) {
           // we should not replay this transaction if it's bigger than the persistent epoch,
           // and we don't need to replay if it's smaller than the checkpoint epoch
@@ -202,7 +207,6 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
             mtx.lock();
             if (btree_map->find(tree_id) == btree_map->end()) {
               (*btree_map)[tree_id] = new tree_type();
-              // TODO: is anything else is necessary here
             }
             mtx.unlock();
           }
@@ -242,7 +246,7 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
               
             } else {
               if (value_size > 0) {
-                record = btree_type::versioned_value_type::make(key.data(), *value_ptr, tid << 1);//TODO: change the shift
+                record = btree_type::versioned_value_type::make(key.data(), *value_ptr, tid);
                 btr->lock(record);
                 if (! (btr->insert_if_absent(key, record))){
                   goto retry;
@@ -254,7 +258,7 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
                 btr->get(key, record);
                 //std::cout << " Reached here " <<std::endl;
                 // Do nothing
-                record = btree_type::versioned_value_type::make(key.data(), *value_ptr, tid << 1);//TODO: change the shift
+                record = btree_type::versioned_value_type::make(key.data(), *value_ptr, tid);
                 btr->lock(record);
                 btree_type::make_invalid(record);
                 if (! (btr->insert_if_absent(key, record))){
@@ -348,7 +352,7 @@ void Recovery::recover_ckp_thread(Recovery::btree_type* btree, std::string filen
     perror("checkpoint replay fd open error\n");
     assert(false);
   }
-  
+  btree_type::thread_init();
   read_buffer buf(fd);
   
   bool replay = true;
@@ -363,7 +367,7 @@ void Recovery::recover_ckp_thread(Recovery::btree_type* btree, std::string filen
     if (!buf.read_64_s(&tid))
       break;
     
-    uint64_t cur_epoch = epochId(tid);
+    uint64_t cur_epoch = tid;
     if (cur_epoch > pepoch) {
       replay = false;
     }
@@ -388,7 +392,7 @@ void Recovery::recover_ckp_thread(Recovery::btree_type* btree, std::string filen
       key_type key((uint8_t*) buf.pinned_bytes(key_offset, key_size), key_size);
       versioned_value_type *record = NULL;
       std::string value(buf.pinned_bytes(value_offset, value_size), value_size);
-      record = btree_type::versioned_value_type::make(key.data(), std::atoi(value.c_str()), tid << 1);//TODO: change the shift
+      record = btree_type::versioned_value_type::make(key.data(), std::atoi(value.c_str()), tid);
       btree->insert(key, record);
     }
     

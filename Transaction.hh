@@ -87,7 +87,6 @@ inline bool has_txp(int p) {
 
 #define INIT_SET_SIZE 512
 
-typedef uint64_t tid_t; //TODO: change this
 
 void reportPerf();
 #define STO_SHUTDOWN() reportPerf()
@@ -101,7 +100,7 @@ struct __attribute__((aligned(128))) threadinfo_t {
   // callbacks for these
   std::function<void(void)> trans_start_callback;
   std::function<void(void)> trans_end_callback;
-  tid_t last_commit_tid;
+  TransactionTid::type last_commit_tid;
   
   uint64_t p_[txp_count];
   threadinfo_t() : epoch(), spin_lock() {
@@ -263,12 +262,14 @@ public:
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static unsigned global_epoch;
-  tid_t final_commit_tid;
+  
   
   static bool run_epochs;
   static __thread Transaction* __transaction;
   typedef TransactionTid::type tid_type;
-private:
+  
+  tid_type final_commit_tid;
+  
   static TransactionTid::type _TID;
 public:
 
@@ -310,7 +311,6 @@ public:
     fence();
   }
 
-  // TODO: is this change okay
   static void* epoch_advancer(void*) {
     // don't bother epoch'ing til things have picked up
     usleep(100000);
@@ -408,14 +408,14 @@ public:
     if (!isAborted_ && !transSet_.empty()) {
       silent_abort();
     }
-    end_trans();
+    end_trans(false);
   }
 
-  void end_trans() {
+  void end_trans(bool unlock) {
     // TODO: this will probably mess up with nested transactions
     tinfo[threadid].epoch = 0;
     if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
-    if (Logger::IsPersistenceEnabled()) {
+    if (unlock && Logger::IsPersistenceEnabled()) {
       Logger::persist_ctx &ctx = Logger::persist_ctx_for(threadid, Logger::INITMODE_REG);
       ctx.unlock();
     }
@@ -602,6 +602,7 @@ private:
     return true;
   }
   
+  /*
   // Generate a tid for this transaction
   tid_t genCommitTid(TransSet transSet) {
     threadinfo_t &ctx = tinfo[threadid];
@@ -638,9 +639,10 @@ private:
     if (ret <= ctx.last_commit_tid)
       ret = ctx.last_commit_tid + 1;
     return (ctx.last_commit_tid = ret);
-  }
+  }*/
   
-  void on_tid_finish(tid_t commit_tid, bool success) {
+  void on_tid_finish(uint64_t commitEpoch, tid_type commitTid, bool success) {
+    Transaction::tinfo[threadid].last_commit_tid = commitTid;
     if (!success) {
       return;
     } else if (!Logger::IsPersistenceEnabled()) {
@@ -652,14 +654,14 @@ private:
     Logger::pbuffer_circbuf &pull_buf = ctx.all_buffers_;
     Logger::pbuffer_circbuf &push_buf = ctx.persist_buffers_;
     
-    this->final_commit_tid = commit_tid;
+    this->final_commit_tid = commitTid;
     //compute how much space is necessary
     uint64_t space_needed = 0;
     
     //8 bytes to indicate TID
-    space_needed += sizeof(uint64_t);
+    space_needed += sizeof(tid_type);
     //std::cout<<"Space needed after tid "<<space_needed<<std::endl;
-    const unsigned nwrites = perm_size;
+    const unsigned nwrites = nwriteset_;
     space_needed += sizeof(nwrites);
     //std::cout<<"Space needed after nwrites "<<space_needed<<std::endl;
     // each record needs to be recorded
@@ -668,7 +670,6 @@ private:
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
       TransItem& ti = *it;
       if (ti.has_write()) {
-        // space_needed += 1; // TODO: is this required? FIX THIS
         // Call the shared object to get square required
         space_needed += ti.sharedObj()->spaceRequired(ti);
         //std::cout<<"Space needed after write "<<space_needed<<std::endl;
@@ -677,17 +678,13 @@ private:
     assert(space_needed <= Logger::g_horizon_buffer_size);
     assert(space_needed <= Logger::g_buffer_size);
     
-    //TODO: deal with compression later
-    //Logger::pbuffer *lpx = Logger::wait_for_head(pull_buf);
-    //bool first = true;
+    
   retry:
     Logger::pbuffer *px = Logger::wait_for_head(pull_buf);
-    //assert((px != lpx) || first);
-    //lpx = px;
     assert(px && px->thread_id_ == threadid);
     
-    bool tidChanged = false;
-    if (px->space_remaining() < space_needed || (tidChanged = !px->can_hold_tid(commit_tid))) {
+    bool epochChanged = false;
+    if (px->space_remaining() < space_needed || (epochChanged = !px->can_hold_epoch(commitEpoch))) {
       assert(px->header()->nentries_);
       // Send the buffer to logger's queue
       Logger::pbuffer *px0 = pull_buf.deq();
@@ -699,20 +696,20 @@ private:
       goto retry;
     }
     
-    const uint64_t written = write_current_txn_into_buffer(px, commit_tid);
+    const uint64_t written = write_current_txn_into_buffer(px, commitTid, commitEpoch);
     //std::cout<<"Written = "<<written<<" and space needed = "<<space_needed<<std::endl;
     assert(written == space_needed);
   }
   
-  inline uint64_t write_current_txn_into_buffer(Logger::pbuffer *px, uint64_t commit_tid) {
-    assert(px->can_hold_tid(commit_tid));
+  inline uint64_t write_current_txn_into_buffer(Logger::pbuffer *px, uint64_t commitTid, uint64_t commitEpoch) {
+    assert(px->can_hold_epoch(commitEpoch));
     
     uint8_t* p = px->pointer();
     uint8_t *porig = p;
     
-    const unsigned nwrites = perm_size;
+    const unsigned nwrites = nwriteset_;
     
-    p = write(p, commit_tid);
+    p = write(p, commitTid);
     //std::cout<<"After tid "<<uint64_t(p-porig)<<std::endl;
     p = write(p, nwrites);
     //std::cout<<"After nwrites "<<uint64_t(p-porig)<<std::endl;
@@ -729,7 +726,8 @@ private:
     
     px->cur_offset_ += (p - porig);
     px->header()->nentries_++;
-    px->header()->last_tid_ = commit_tid;
+    px->header()->last_tid_ = commitTid;
+    px->header()->epoch = commitEpoch;
     
     return uint64_t(p - porig);
   }
@@ -750,7 +748,8 @@ private:
       return false;
 
     bool success = true;
-    tid_t commit_tid = 0;
+    tid_type commitTid = 0;
+    uint64_t commitEpoch = 0;
 
     if (firstWrite_ < 0)
         firstWrite_ = transSet_.size();
@@ -789,11 +788,12 @@ private:
               /* do nothing */;
     }
 
-    // TODO: these may not be required
-    //fence();
-    
     //Generate a commit tid right after phase 1
-    //commit_tid = genCommitTid(transSet_);
+    if (Logger::IsPersistenceEnabled()) {
+      commitTid = commit_tid();
+      commitEpoch = global_epoch;
+      fence();
+    }
   
     //phase2
     if (!check_reads(trans_first, trans_last)) {
@@ -827,9 +827,8 @@ private:
 
     //    fence();
     // Do logging at this point after releasing all locks
-    // TODO: do this only if logging is enabled
     if (Logger::IsPersistenceEnabled())
-      on_tid_finish(commit_tid, success);
+      on_tid_finish(commitEpoch, commitTid, success);
 
 
     if (success) {
@@ -854,7 +853,7 @@ private:
     for (auto& ti : transSet_) {
       ti.sharedObj()->cleanup(ti, false);
     }
-    end_trans();
+    end_trans(true);
   }
 
   void abort() {
@@ -896,7 +895,7 @@ private:
     for (TransItem& ti : transSet_) {
       ti.sharedObj()->cleanup(ti, true);
     }
-    end_trans();
+    end_trans(true);
   }
 
 private:

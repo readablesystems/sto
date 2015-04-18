@@ -68,7 +68,7 @@ void Checkpointer::checkpoint(std::vector<std::string> logfile_base) {
   Checkpointer::tree_list_type::iterator begin_it = Checkpointer::_tree_list.begin();
   Checkpointer::tree_list_type::iterator end_it = Checkpointer::_tree_list.end();
   
-  uint64_t checkpoint_epoch = Transaction::global_epoch;
+  uint64_t checkpoint_epoch = Transaction::_TID;
   uint64_t max_epoch = 0;
   
   std::vector<std::vector<checkpoint_tree_key> > range_list;
@@ -146,9 +146,9 @@ void Checkpointer::checkpoint(std::vector<std::string> logfile_base) {
     return;
   }
   
-  std::cout << "Checkpoint epoch is " << checkpoint_epoch << std::endl;
-  std::cout << "Max epoch is " << max_epoch << std::endl;
-  std::cout << "Current epoch is " << Transaction::global_epoch << std::endl;
+  std::cout << "Checkpoint tid is " << checkpoint_epoch << std::endl;
+  std::cout << "Max tid is " << max_epoch << std::endl;
+  std::cout << "Current tid is " << Transaction::_TID << std::endl;
   
   // write to disk the checkpoint epoch
   // perform log truncation
@@ -430,12 +430,12 @@ static constexpr uint8_t tid_shift = 1;
 bool checkpoint_scan_callback::invoke (const key_type &k, versioned_value v,
                                        const node_opaque_t *n, uint64_t version) {
   char * key = (char *) k.data();
-  uint64_t start_t = (v.version() & version_mask) >> tid_shift;
+  uint64_t start_t = v.version() & ~(Version)1;
   
-  std::string value = std::to_string(v.read_value()); // TODO: check this
+  std::string value = std::to_string(v.read_value());
   //std::cout << " [" << tree_id <<"] found key " << key << " with value " << value << std::endl;
   if (enable_datastripe_par || enable_par_ckp) {
-    uint64_t cur_epoch = epochId(start_t);
+    uint64_t cur_epoch = start_t;
     max_epoch = (cur_epoch > max_epoch) ? cur_epoch : max_epoch;
     
     if (reduced_ckp) {

@@ -23,8 +23,7 @@ CFLAGS += -g
 endif
 
 
-SRCFILE = Logger.cc \
-  Checkpointer.cc \
+SRCFILES = Checkpointer.cc \
   Recovery.cc
 
 OBJFILES := $(patsubst %.cc, %.o, $(SRCFILES))
@@ -50,7 +49,7 @@ KVTREES = masstree-beta/string_slice.o
 
 MASSTREE_OBJS = masstree-beta/kvio.o masstree-beta/misc.o masstree-beta/checkpoint.o $(KVTREES) masstree-beta/libjson.a
 
-STO_OBJS = Transaction.o MassTrans.o
+STO_OBJS = Logger.o Transaction.o MassTrans.o
 
 concurrent: concurrent.o clp.o $(STO_OBJS) $(MASSTREE_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
@@ -65,7 +64,7 @@ array1: array1.o clp.o $(STO_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 genericTest: genericTest.o clp.o $(STO_OBJS)
-  $(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 committid: committid.o clp.o $(STO_OBJS) $(OBJFILES) $(MASSTREE_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)

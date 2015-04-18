@@ -45,6 +45,11 @@ public:
         release_fence();
         v = new_v;
     }
+  
+    static type get_version(type v) {
+      return v  & ~lock_bit;
+    }
+  
     static void inc_invalid_version(type& v) {
         assert(is_locked(v));
         type new_v = (v + increment_value) & ~valid_bit;
@@ -74,12 +79,8 @@ public:
         (void) item, (void) committed;
     }
   
-    // TODO: maybe not required anymore
-    virtual uint64_t getTid(TransItem& item) { return 0; }
-  
     // Get space required to encode the write data
     virtual uint64_t spaceRequired(TransItem & item) { return 0;}
     // Get the log data inorder to do logging
-  
     virtual uint8_t* writeLogData(TransItem & item, uint8_t* p) {return 0;}
 };

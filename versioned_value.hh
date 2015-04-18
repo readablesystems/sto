@@ -44,6 +44,11 @@ struct versioned_value_struct_logging /*: public threadinfo::rcu_callback*/ {
     return version_;
   }
   
+  inline void deallocate_rcu(threadinfo& ti) {
+    ti.deallocate_rcu(this, sizeof(versioned_value_struct_logging), memtag_value);
+  }
+
+  
 #if 0
   // rcu_callback method to self-destruct ourself
   void operator()(threadinfo& ti) {

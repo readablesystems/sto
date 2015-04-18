@@ -186,8 +186,6 @@ struct read_buffer { // TODO: do I need this?
   }
   
   inline ssize_t pin_bytes(size_t size) {
-    // TODO: add in support for when the size of bytes read exceeds
-    // buffer size
     if ((size_t) (tail - cur) >= size || load() >= size) {
       pin_ = pin_ ? pin_ : cur;
       ssize_t offset = cur - pin_;
@@ -287,7 +285,6 @@ class Recovery {
   typedef btree_type::internode_type internal_node;
   typedef btree_type::leaf_type leaf_node;
   typedef btree_type::node_type node_type;
-  typedef btree_type::threadinfo threadinfo;
   typedef btree_type::versioned_value_type versioned_value_type;
   typedef concurrent_btree::key_type key_type;
   typedef leaf_node::leafvalue_type leafvalue_type;

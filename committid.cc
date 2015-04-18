@@ -14,11 +14,6 @@
 #include "ckp_params.hh"
 #include "util.hh"
 
-kvepoch_t global_log_epoch = 0;
-volatile uint64_t globalepoch = 1;     // global epoch, updated by main thread regularly
-kvtimestamp_t initial_timestamp;
-volatile bool recovering = false; // so don't add log entries, and free old value immediately
-
 typedef int Key;
 typedef int Value;
 
@@ -71,7 +66,7 @@ int main_0() {
   h.transWrite(t, 1, 1);
   h.transWrite(t, 3, 3);
   
-  assert(t.commit());
+  assert(t.try_commit());
   uint64_t tid_1 = Transaction::tinfo[0].last_commit_tid;
   
   Transaction::threadid = 2;
@@ -81,7 +76,7 @@ int main_0() {
   Transaction::threadid = 0;
   Transaction tm;
   h.transDelete(tm, 3);
-  assert(tm.commit());
+  assert(tm.try_commit());
   
   uint64_t tid_2 = Transaction::tinfo[0].last_commit_tid;
   
@@ -96,12 +91,12 @@ int main_0() {
   
   Transaction t2;
   h.transWrite(t2, 3, 1);
-  assert(t2.commit());
+  assert(t2.try_commit());
   uint64_t tid_4 = Transaction::tinfo[1].last_commit_tid;
   
   assert(tid_4 > tid_2);
   Transaction::threadid = 2;
-  assert(!tt.commit());
+  assert(!tt.try_commit());
   
   
   //Transaction
@@ -126,8 +121,10 @@ void consistent_test_multi_table_thread(uint64_t low, uint64_t high,
   // for each transaction that it performs, it keeps tracks of the returned TID
   // and the state of the txn
   
-  std::cout << "Starting thread " << th << "\n";
+  std::cout << "Starting thread " << th  << "\n";
   Transaction::threadid = th;
+  
+  MassTrans<Value>::thread_init();
   
   int add = 3;
   int remove = 1;
@@ -203,7 +200,7 @@ void consistent_test_multi_table_thread(uint64_t low, uint64_t high,
       if_insert = true;
     }
     
-    if (t.commit()) {
+    if (t.try_commit()) {
       // put this transaction in its record
       uint64_t final_commit_tid = Transaction::tinfo[th].last_commit_tid;
       assert((*txn_list).find(final_commit_tid) == (*txn_list).end());
@@ -272,7 +269,7 @@ int main() {
   const std::vector<std::vector<unsigned> > assignments_given;
   
   uint64_t low = 0;
-  uint64_t high = 1035698;
+  uint64_t high = 1000000;
   
   std::vector<MassTrans<Value> *> btree_list;
   
@@ -294,13 +291,13 @@ int main() {
   btree_list.push_back(&btr4);
   
   // Starting logging and checkpointing
-  Logger::Init(logfiles.size(),logfiles, assignments_given); // call_fsync = true, use_compression = false, fake_writes = false
+  Logger::Init(4,logfiles, assignments_given); // call_fsync = true, use_compression = false, fake_writes = false
   Checkpointer::Init(&btree_list, logfiles, true); // is_test = true
  
   // we first insert all of the keys into the database
   for (size_t j = 0; j < btree_list.size(); j++) {
     MassTrans<Value> *btr = btree_list[j];
-    btr->thread_init();
+    MassTrans<Value>::thread_init();
     for (uint64_t i = low; i <= high; i++) {
       Transaction t;
       btr->transWrite(t, i, 0);
@@ -402,7 +399,7 @@ int main() {
 
   
   for (; it != it_end; it++) {
-    uint64_t cur_epoch = epochId(it->first);
+    uint64_t cur_epoch = it->first;
     
     if (cur_epoch > new_epoch)
       continue;

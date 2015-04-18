@@ -29,6 +29,7 @@ public:
   struct logbuf_header {
     uint64_t nentries_; // > 0 for all valid log buffers
     uint64_t last_tid_; // TID of the last commit
+    uint64_t epoch;
   } PACKED;
   
   // Buffer to write log entriers
@@ -74,8 +75,8 @@ public:
       return buffer_size_ - cur_offset_;
     }
     
-    inline bool can_hold_tid(uint64_t tid) const {
-      return !header()->nentries_ || epochId(header()->last_tid_) == epochId(tid);
+    inline bool can_hold_epoch(uint64_t epoch) const {
+      return !header()->nentries_ || header()->epoch == epoch;
     }
     
     inline uint8_t* pointer() {
@@ -151,8 +152,6 @@ private:
     
     if (!ctx.init_  && imode != INITMODE_NONE) {
       size_t needed = g_perthread_buffers * (sizeof(pbuffer) + g_buffer_size);
-      // TODO: deal with compression enabled case later
-      
       // TODO: deal with rcu based allocation later
       char *mem = (char *) malloc(needed);
       

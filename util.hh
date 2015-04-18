@@ -24,6 +24,7 @@
 #define EPOCH_SHIFT (THREAD_BITS + NUMID_BITS)
 #define EPOCH_MASK (((uint64_t)-1) << (EPOCH_SHIFT))
 
+/*
 static inline uint64_t epochId(uint64_t tid) {
   return (tid & EPOCH_MASK) >> EPOCH_SHIFT;
 }
@@ -46,7 +47,7 @@ static inline uint64_t makeTID(uint64_t threadId, uint64_t numId, uint64_t epoch
   //std::cout<<"tid " <<((threadId) | (numId << NUMID_SHIFT) | (epochId << EPOCH_SHIFT)) << std::endl;
   
   return (threadId) | (numId << NUMID_SHIFT) | (epochId << EPOCH_SHIFT);
-}
+}*/
 
 template <typename T>
 static std::vector<T> MakeRange(T start, T end) {

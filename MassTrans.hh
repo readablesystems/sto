@@ -130,9 +130,13 @@ public:
       auto* ti = threadinfo::make(threadinfo::TI_PROCESS, Transaction::threadid);
       mythreadinfo.ti = ti;
     }
+    assert(mythreadinfo.ti != NULL);
+    std::cout << Transaction::threadid << std::endl;
     Transaction::tinfo[Transaction::threadid].trans_start_callback = [] () {
+      assert(mythreadinfo.ti != NULL);
       mythreadinfo.ti->rcu_start();
     };
+    std::cout << Transaction::threadid << std::endl;
     Transaction::tinfo[Transaction::threadid].trans_end_callback = [] () {
       mythreadinfo.ti->rcu_stop();
     };
@@ -158,25 +162,6 @@ public:
     return !found;
   }
     
-  bool put(Str key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
-    cursor_type lp(table_, key);
-    bool found = lp.find_insert(*ti.ti);
-    if (found) {
-      lock(&lp.value()->version());
-      // this will uses value's copy constructor (TODO: just doing this may be unsafe and we should be using rcu for dealloc)
-      lp.value()->set_value(value);
-    } else {
-      versioned_value* val = (versioned_value*)versioned_value::make(key, value, 0);
-      lp.value() = val;
-    }
-    if (found) {
-      inc_version(lp.value()->version());
-      unlock(&lp.value()->version());
-    }
-    lp.finish(1, *ti.ti);
-    return found;
-  }
-
   bool get(Str key, versioned_value*& value, threadinfo_type& ti = mythreadinfo) {
     unlocked_cursor_type lp(table_, key);
     bool found = lp.find_unlocked(*ti.ti);
@@ -238,15 +223,7 @@ public:
     if (found) {
       versioned_value *e = lp.value();
       
-      //TODO: since we are using global tid, logical delete and holding the key for an epoch is not required.
-      /*auto& item = t_item(t, e);
-      bool deleted = (e->version() & deleted_bit);
-      if (deleted) {
-        // should check that it is still deleted at commit
-        t.add_read(item, e->version());//TODO: maybe we can only check if the item still deleted or not
-        return false;
-      }
-      bool valid = !(e->version() & invalid_bit);*/
+      //since we are using global tid, logical delete and holding the key for an epoch is not required.
       Version v = e->version();
       fence();
       auto item = t_item(t, e);
@@ -329,16 +306,6 @@ public:
     Version version = invalid_bit;
     if (found) {
       versioned_value *e = lp.value();
-      //TODO: not required
-      /*bool deleted = (e->version() & deleted_bit);
-      if (!deleted) {
-        lp.finish(0, *ti.ti);
-        return handlePutFound<INSERT, SET>(t, e, key, value);
-      } else {
-        version = e->version();
-        version |= invalid_bit;
-      }
-    }*/
       lp.finish(0, *ti.ti);
       return handlePutFound<CopyVals, INSERT, SET>(t, e, key, value);
     } else {
@@ -383,6 +350,7 @@ public:
 
       item.add_flags(insert_bit);
       return found;
+    }
     
   }
 
@@ -603,9 +571,9 @@ public:
     unlock(item.key<versioned_value*>());
   }
 
-    
+  
   static uint64_t tid_from_version(versioned_value* e) {
-    return (e->version() & version_mask) >> tid_shift;
+    return TransactionTid::get_version(e->version());
   }
     
   static bool is_invalid(versioned_value* e) {
@@ -616,13 +584,14 @@ public:
     e->version() |= invalid_bit;
   }
     
+  /*
   static bool is_deleted(versioned_value* e) {
     return (e->version() & deleted_bit);
   }
     
   static void make_deleted(versioned_value* e) {
     e->version() |= deleted_bit;
-  }
+  }*/
     
     static void make_valid(versioned_value* e) {
       assert(is_invalid(e));
@@ -632,7 +601,7 @@ public:
     }
     
   static void set_tid(versioned_value* e, uint64_t tid) {
-    set_version_to_tid(e->version(), tid);
+    TransactionTid::set_version(e->version(), tid);
   }
   
   bool check(const TransItem& item, const Transaction& t) {
@@ -696,19 +665,6 @@ public:
       TransactionTid::inc_invalid_version(e->version());
   }
 
-    uint64_t getTid(TransItem& item) {
-      // TODO: fix this for reads
-      if (!item.has_write()) {
-          return 0;
-      }
-      auto e = item.key<versioned_value*>();
-#if USE_TID_AS_VERSION
-      return TransactionTid::get_tid(e->version());
-#else 
-      return 0;
-#endif
-    }
-    
     // Get space required to encode the write data
     uint64_t spaceRequired(TransItem & item) {
       assert(item.has_write());
@@ -723,7 +679,7 @@ public:
       //std::cout<<"bytes Key size "<<sizeof(k_nbytes)<<std::endl;
       space_needed += k_nbytes;
       value_type value;
-      if (we_inserted(item)) {
+      if (has_insert(item)) {
         value = e->read_value();
       } else {
         value = item.flags() & copyvals_bit ?
@@ -765,7 +721,7 @@ public:
       p += k_nbytes;
       
       value_type value;
-      if (we_inserted(item)) {
+      if (has_insert(item)) {
         value = e->read_value();
       } else {
         value = item.flags() & copyvals_bit ?
@@ -818,7 +774,9 @@ public:
   bool remove(const Str& key, threadinfo_type& ti = mythreadinfo) {
     cursor_type lp(table_, key);
     bool found = lp.find_locked(*ti.ti);
+#if RCU
     lp.value()->deallocate_rcu(*ti.ti);
+#endif
     lp.finish(found ? -1 : 0, *ti.ti);
     return found;
   }
@@ -920,7 +878,9 @@ private:
       lp.value() = new_location;
       lp.finish(0, *mythreadinfo.ti);
       // now rcu free "e"
+#if RCU
       e->deallocate_rcu(*mythreadinfo.ti);
+#endif
     }
 #if READ_MY_WRITES
     if (has_insert(item)) {
@@ -1084,18 +1044,6 @@ private:
     v = (cur | (v & ~version_mask)) & ~invalid_bit;
   }
 
-  //TODO: not used anymore
-  /*static void set_version_to_tid(Version& v, uint64_t tid) {
-    //assert(is_locked(v));
-    //std::cout<<tid_extra_bits<<std::endl;
-    //std::cout<<"Transaction id "<<tid<<std::endl;
-    assert(((tid << tid_extra_bits) >> tid_extra_bits) == tid);
-    //std::cout<<"old version number "<<v<<std::endl;
-    v = ((tid << tid_shift) | (v & ~version_mask) | (v & 1)) & ~invalid_bit;
-    //std::cout<<"New version number "<<v<<std::endl;
-    assert(((v & version_mask) >> tid_shift )== tid);
-  }*/
-    
    static bool is_locked(Version v) {
     return TransactionTid::is_locked(v);
   }

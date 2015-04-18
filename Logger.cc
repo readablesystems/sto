@@ -82,14 +82,14 @@ void Logger::persister(std::vector<std::vector<unsigned>> assignments) {
 }
 
 void Logger::advance_system_sync_epoch(const std::vector<std::vector<unsigned>> &assignments) {
-  uint64_t min_so_far = std::numeric_limits<uint64_t>::max(); // Minimum of persist epochs of all worker threads
-  const uint64_t cur_epoch = Transaction::global_epoch;
+  uint64_t min_so_far = std::numeric_limits<uint64_t>::max(); // Minimum of persist tids of all worker threads
+  const uint64_t cur_epoch = Transaction::_TID;
   const uint64_t best_epoch = cur_epoch ? (cur_epoch - 1) : 0;
   if (best_epoch == 0)
-    std::cout<<"best epoch "<<Transaction::global_epoch <<std::endl;
+    std::cout<<"best epoch "<<Transaction::_TID <<std::endl;
   for (size_t i = 0; i < assignments.size(); i++) {
     for (auto j :assignments[i]) {
-      for (size_t k = j; k < g_nworkers; k += g_nworkers) { // TODO: Implement this correctly
+      for (size_t k = j; k < g_nworkers; k += g_nworkers) {
         // we need to arbitrarily advance threads which are not "doing
         // anything", so they don't drag down the persistence of the system. if
         // we can see that a thread is NOT in a guarded section AND its
@@ -206,8 +206,8 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
   for(;;) {
     usleep(40000); // To support batch IO
     
-    if (fd == -1 || max_epoch_so_far - min_epoch_so_far > 100 ) {
-      if (max_epoch_so_far - min_epoch_so_far > 100) {
+    if (fd == -1 || max_epoch_so_far - min_epoch_so_far > 10000000 ) {
+      if (max_epoch_so_far - min_epoch_so_far > 10000000) {
         std::string fname(logfile);
         fname.append("old_data");
         fname.append(std::to_string(max_epoch_so_far));
@@ -253,7 +253,7 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
             goto process;
           }
           
-          if (epochId(px->header()->last_tid_) >= cur_sync_epoch_ex + g_max_lag_epochs) {
+          if (px->header()->epoch >= cur_sync_epoch_ex + g_max_lag_epochs) {
             // logger max log wait
             break;
           }
@@ -274,7 +274,7 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
           totalbyteswritten += pxlen;
           totalbufswritten++;
           
-          const uint64_t px_epoch = epochId(px->header()->last_tid_);
+          const uint64_t px_epoch = px->header()->last_tid_;
           epoch_prefixes[k] = px_epoch == 0 ? 0 : px_epoch - 1;
           
           max_epoch_so_far = px_epoch > max_epoch_so_far ? px_epoch : max_epoch_so_far;
