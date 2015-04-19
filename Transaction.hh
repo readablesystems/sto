@@ -82,7 +82,7 @@ inline bool has_txp(int p) {
 #include "Interface.hh"
 #include "TransItem.hh"
 
-#include "Util.hh"
+#include "util.hh"
 #include "Logger.hh"
 
 #define INIT_SET_SIZE 512

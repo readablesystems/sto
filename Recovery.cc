@@ -280,7 +280,6 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
     close(fd);
   }
   
-  printf("Done with all of the rlrs, enquing last block\n");
   std::cout << "Recovery thread " << th << " done" << std::endl;
   
 }

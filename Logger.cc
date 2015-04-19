@@ -2,7 +2,7 @@
 #include <iostream>
 #include "Logger.hh"
 #include <thread>
-#include <limits>
+#include <limits.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/uio.h>

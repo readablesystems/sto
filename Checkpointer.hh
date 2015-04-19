@@ -6,7 +6,6 @@
 #include <dirent.h>
 
 #include "util.hh"
-#include "macros.hh"
 #include "circbuf.hh"
 #include "spinlock.hh"
 #include "Transaction.hh"

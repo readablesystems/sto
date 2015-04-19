@@ -3,11 +3,11 @@
 #include <iostream>
 #include <atomic>
 #include "util.hh"
-#include "macros.hh"
 #include "circbuf.hh"
 #include "spinlock.hh"
 #include "ckp_params.hh"
 
+#define MAX_THREADS_ 32
 
 class Logger {
   

@@ -51,8 +51,8 @@ private:
   // or a pointer (which will always have the lower 3 bits as 0)
   static constexpr uintptr_t bucket_bit = 1U<<0;
 
-  static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
-  static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
+  TransItem::flags_type insert_bit = TransItem::user0_bit;
+  TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
 
 public:
   Hashtable(unsigned size = Init_size, Hash h = Hash(), Pred p = Pred()) : map_(), hasher_(h), pred_(p) {

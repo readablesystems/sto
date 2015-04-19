@@ -1,6 +1,5 @@
 #include <iostream>
 #include <assert.h>
-#include <thread>
 
 #include "Transaction.hh"
 #include "GenericSTM.hh"
