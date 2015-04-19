@@ -302,7 +302,7 @@ void Recovery::replay_checkpoint(uint64_t pepoch) {
       char *file_name = ent->d_name;
       std::cmatch cm;
       if (std::regex_match(file_name, cm, reg_data, std::regex_constants::format_default)) {
-        char *tree_id = (char *) cm[1].str().c_str();
+        char *tree_id = (char *) cm[1].str().c_str() + 1; // TODO: + 1 is required when compiling with gcc. why?
         uint64_t tree_id_uint = _char_to_uint64(tree_id);
         (*btree_map)[tree_id_uint] = new tree_type();
         
