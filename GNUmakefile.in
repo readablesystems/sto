@@ -9,6 +9,8 @@ DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
 LIBS = @LIBS@ -lpthread -lm
 LDFLAGS = @LDFLAGS@
 
+LDFLAGS += -lrt
+
 ifeq ($(PROFILE),1)
 CFLAGS += -g -pg -fno-inline
 endif
@@ -28,7 +30,41 @@ SRCFILES = Checkpointer.cc \
 
 OBJFILES := $(patsubst %.cc, %.o, $(SRCFILES))
 
+UTIL_SRCFILES = benchmarks/util/allocator.cc \
+	benchmarks/util/core.cc \
+	benchmarks/util/counter.cc \
+	benchmarks/util/rcu.cc \
+	benchmarks/util/thread.cc \
+	benchmarks/util/ticker.cc
+
+UTIL_OBJFILES : $(patsubst %.cc, %.o, $(UTIL_SRCFILES))
+
+BENCH_CXXFLAGS := $(CXXFLAGS)
+BENCH_LDFLAGS := $(LDFLAGS) -ldb_cxx
+
+BENCH_SRCFILES = benchmarks/bdb_wrapper.cc \
+	benchmarks/bench.cc \
+	benchmarks/encstress.cc \
+	benchmarks/masstree/kvrandom.cc \
+	benchmarks/queue.cc \
+	benchmarks/tpcc.cc \
+	benchmarks/ycsb.cc
+
+BENCH_CXXFLAGS += -DNO_MYSQL
+
+BENCH_OBJFILES : $(patsubst %.cc, %.o, $(BENCH_SRCFILES))
+
 all: concurrent single singleelems array1 committid genericTest
+
+benchmarks/util/%.o: benchmarks/util/%.cc config.h $(DEPSDIR)/stamp
+	$(CXX) $(BENCH_CXXFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+
+benchmarks/%.o: benchmarks/%.cc config.h $(DEPSDIR)/stamp
+	$(CXX) $(BENCH_CXXFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+
+benchmarks/masstree/%.o: benchmarks/masstree/%.cc config.h $(DEPSDIR)/stamp
+	$(CXX) $(BENCH_CXXFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+
 
 %.o: %.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
@@ -74,6 +110,13 @@ $(MASSTREE_OBJS): masstree ;
 .PHONY: masstree
 masstree: masstree-beta/config.status
 	$(MAKE) -C masstree-beta
+
+.PHONY: dbtest
+dbtest: benchmarks/dbtest
+
+benchmarks/dbtest: benchmarks/dbtest.o $(STO_OBJS) $(OBJFILES) $(UTIL_OBJFILES) $(MASSTREE_OBJS)  $(BENCH_OBJFILES)
+	$(CXX) $(CFLAGS) -o $@ $^ $(BENCH_LDFLAGS) $(LIBS)
+	
 
 config.h: stamp-h
 
