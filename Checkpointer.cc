@@ -5,11 +5,17 @@
 std::vector<std::vector<std::string> > ckpdirs;
 int run_for_ckp = 3;
 volatile bool checkpoint_stop = false;
+int enable_ckp = 0;
+int enable_ckp_compress = 0;
 int enable_datastripe = 0; // DATASTRIPE
 int enable_datastripe_par = 0; // DATASTRIPE_PAR
 int enable_par_ckp = 0; // PAR_CKP
-
+int enable_par_log_replay = 0;
 int reduced_ckp = 0;
+int nckp_threads = 0;
+int ckp_compress = 0;
+int recovery_test = 0;
+bool if_runner_done = false;
 //checkpoint_scan_callback Checkpointer::callback;
 
 Checkpointer::tree_list_type Checkpointer::_tree_list;
@@ -54,6 +60,7 @@ void Checkpointer::StartThread(bool is_test, std::vector<std::string> logfile_ba
       }
     
       if (count == num_checkpoints) {
+	if_runner_done = true;
         fprintf(stderr, "All checkpointer doen \n");
         break;
       }

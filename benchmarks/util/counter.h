@@ -12,7 +12,7 @@
 #include "macros.h"
 #include "core.h"
 #include "util.h"
-#include "spinlock.h"
+#include "../../spinlock.hh"
 
 struct counter_data {
   enum Type { TYPE_COUNT, TYPE_AGG };

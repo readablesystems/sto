@@ -742,8 +742,6 @@ public:
       assert(p-p1 == sizeof(v_nbytes));
       if (v_nbytes) {
         memcpy(p, &value, v_nbytes);
-        int vv = *((int *)p);
-        assert(vv == value);
         p += v_nbytes;
       }
       return p;

@@ -22,7 +22,7 @@
 #include "small_vector.h"
 
 namespace util {
-
+/*
 // padded, aligned primitives
 template <typename T, bool Pedantic = true>
 class aligned_padded_elem {
@@ -58,6 +58,79 @@ typedef aligned_padded_elem<uint8_t>  aligned_padded_u8;
 typedef aligned_padded_elem<uint16_t> aligned_padded_u16;
 typedef aligned_padded_elem<uint32_t> aligned_padded_u32;
 typedef aligned_padded_elem<uint64_t> aligned_padded_u64;
+*/
+
+
+template <typename T>
+struct host_endian_trfm {
+  inline ALWAYS_INLINE T operator()(const T &t) const { return t; }
+};
+
+template <>
+struct host_endian_trfm<uint16_t> {
+  inline ALWAYS_INLINE uint16_t operator()(uint16_t t) const { return be16toh(t); }
+};
+
+template <>
+struct host_endian_trfm<int16_t> {
+  inline ALWAYS_INLINE int16_t operator()(int16_t t) const { return be16toh(t); }
+};
+
+template <>
+struct host_endian_trfm<int32_t> {
+  inline ALWAYS_INLINE int32_t operator()(int32_t t) const { return be32toh(t); }
+};
+
+template <>
+struct host_endian_trfm<uint32_t> {
+  inline ALWAYS_INLINE uint32_t operator()(uint32_t t) const { return be32toh(t); }
+};
+
+template <>
+struct host_endian_trfm<int64_t> {
+  inline ALWAYS_INLINE int64_t operator()(int64_t t) const { return be64toh(t); }
+};
+
+template <>
+struct host_endian_trfm<uint64_t> {
+  inline ALWAYS_INLINE uint64_t operator()(uint64_t t) const { return be64toh(t); }
+};
+
+template <typename T>
+struct big_endian_trfm {
+  inline ALWAYS_INLINE T operator()(const T &t) const { return t; }
+};
+
+template <>
+struct big_endian_trfm<uint16_t> {
+  inline ALWAYS_INLINE uint16_t operator()(uint16_t t) const { return htobe16(t); }
+};
+
+template <>
+struct big_endian_trfm<int16_t> {
+  inline ALWAYS_INLINE int16_t operator()(int16_t t) const { return htobe16(t); }
+};
+
+template <>
+struct big_endian_trfm<int32_t> {
+  inline ALWAYS_INLINE int32_t operator()(int32_t t) const { return htobe32(t); }
+};
+
+template <>
+struct big_endian_trfm<uint32_t> {
+  inline ALWAYS_INLINE uint32_t operator()(uint32_t t) const { return htobe32(t); }
+};
+
+template <>
+struct big_endian_trfm<int64_t> {
+  inline ALWAYS_INLINE int64_t operator()(int64_t t) const { return htobe64(t); }
+};
+
+template <>
+struct big_endian_trfm<uint64_t> {
+  inline ALWAYS_INLINE uint64_t operator()(uint64_t t) const { return htobe64(t); }
+};
+
 
 inline std::string
 hexify_buf(const char *buf, size_t len)

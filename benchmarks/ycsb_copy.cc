@@ -10,19 +10,20 @@
 #include <getopt.h>
 #include <numa.h>
 
-#include "../macros.h"
-#include "../varkey.h"
-#include "../thread.h"
-#include "../util.h"
-#include "../spinbarrier.h"
-#include "../core.h"
+#include "util/macros.h"
+#include "util/varkey.h"
+#include "util/thread.h"
+#include "util/util.h"
+#include "util/spinbarrier.h"
+#include "util/core.h"
 
 #include "bench.h"
 
-#include "ndb_wrapper.h"
-#include "../txn_proto2_impl.h"
-#include "../ckp_params.h"
-
+#include "mbta_wrapper.h"
+#include "../Transaction.hh"
+#include "../ckp_params.hh"
+#include "../MassTrans.hh"
+#include "../Checkpointer.hh"
 using namespace std;
 using namespace util;
 
@@ -443,25 +444,25 @@ protected:
 
     fprintf(stderr, "YCSB workers made, enable_par_ckp is %u\n", enable_par_ckp);
     if (enable_par_ckp) {
-      ndb_ordered_index<transaction_proto2> *index = dynamic_cast<ndb_ordered_index<transaction_proto2> *> (open_tables.at("USERTABLE"));
-      txn_btree<transaction_proto2> *tree = dynamic_cast<txn_btree<transaction_proto2> *> (&(index->btr));
-      if (tree->tree_id == 0) {
+      mbta_ordered_index *index = dynamic_cast<mbta_ordered_index *> (open_tables.at("USERTABLE"));
+      concurrent_btree *tree = dynamic_cast<concurrent_btree *> (&(index->btr));
+      if (tree->get_tree_id() == 0) {
 	tree->set_tree_id(1);
-	checkpointer::AddTree(tree);
+	Checkpointer::AddTree(tree);
       } else {
-	printf("tree id is %lu\n", tree->tree_id);
+	printf("tree id is %lu\n", tree->get_tree_id());
       }
       
       const std::vector<string> logfiles({
-	  std::string("/data/" USERNAME "/"),
-	    std::string("/f0/" USERNAME "/"),
-	    std::string("/f1/" USERNAME "/"),
-	    std::string("/f2/" USERNAME "/"),
+	  std::string("../data/"),
+	    std::string("../f0/"),
+	    std::string("../f1/"),
+	    std::string("../f2/"),
 	    /* std::string("./")*/
 	    
 	    });
       
-      checkpointer::Init(NULL, logfiles, true);
+      Checkpointer::Init(NULL, logfiles, true);
     }
 
     return ret;

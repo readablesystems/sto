@@ -21,7 +21,7 @@ public:
     // XXX: implement SPINLOCK_BACKOFF
     uint32_t v = value;
     while (v || !__sync_bool_compare_and_swap(&value, 0, 1)) {
-      nop_pause();
+      nop_pause;
       v = value;
     }
     COMPILER_MEMORY_FENCE;

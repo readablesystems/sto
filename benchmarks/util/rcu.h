@@ -11,7 +11,7 @@
 
 #include "allocator.h"
 #include "counter.h"
-#include "spinlock.h"
+#include "../../spinlock.hh"
 #include "util.h"
 #include "ticker.h"
 #include "pxqueue.h"

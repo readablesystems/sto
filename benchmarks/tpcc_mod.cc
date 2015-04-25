@@ -16,11 +16,14 @@
 #include <set>
 #include <vector>
 
-#include "../txn.h"
-#include "../macros.h"
-#include "../scopedperf.hh"
-#include "../spinlock.h"
-
+#include "../Transaction.hh"
+#include "../MassTrans.hh"
+#include "../Checkpointer.hh"
+#include "util/macros.h"
+#include "util/scopedperf.hh"
+#include "util/counter.h"
+#include "../spinlock.hh"
+#include "util/small_unordered_map.h"
 #include "bench.h"
 #include "tpcc.h"
 using namespace std;
@@ -28,9 +31,9 @@ using namespace util;
 
 #define NUM_ORDERS 1
 
-#include "ndb_wrapper.h"
-#include "../txn_proto2_impl.h"
-#include "../ckp_params.h"
+#include "mbta_wrapper.h"
+//#include "../txn_proto2_impl.h"
+#include "../ckp_params.hh"
 
 #define TPCC_TABLE_LIST(x) \
   x(customer) \
@@ -45,6 +48,9 @@ using namespace util;
   x(stock) \
   x(stock_data) \
   x(warehouse)
+
+static event_counter evt_tpcc_cross_partition_new_order_txns("tpcc_cross_partition_new_order_txns");
+static event_counter evt_tpcc_cross_partition_payment_txns("tpcc_cross_partition_payment_txns");
 
 static inline ALWAYS_INLINE size_t
 NumWarehouses()
@@ -672,12 +678,12 @@ protected:
       vector<warehouse::value> warehouses;
       for (uint i = 1; i <= NumWarehouses(); i++) {
 	if (enable_par_ckp) {
-	  ndb_ordered_index<transaction_proto2> *index = dynamic_cast<ndb_ordered_index<transaction_proto2> *> (tbl_warehouse(i));
-	  txn_btree<transaction_proto2> *tree = dynamic_cast<txn_btree<transaction_proto2> *> (&(index->btr));
-	  if (tree->tree_id == 0) {
+	  mbta_ordered_index *index = dynamic_cast<mbta_ordered_index *> (tbl_warehouse(i));
+	  concurrent_btree *tree = dynamic_cast<concurrent_btree *> (&(index->btr));
+	  if (tree->get_tree_id() == 0) {
 	    tree->set_tree_id(1);
-	    checkpointer::AddTree(tree);
-	    tree->set_secondary_index(false);
+	    Checkpointer::AddTree(tree);
+	    //tree->set_secondary_index(false);
 	  } else {
 	    //printf("tree id is %lu\n", tree->tree_id);
 	  }
@@ -756,12 +762,12 @@ protected:
     uint64_t total_sz = 0;
     try {
       if (enable_par_ckp) {
-	ndb_ordered_index<transaction_proto2> *index = dynamic_cast<ndb_ordered_index<transaction_proto2> *> (tbl_item(1));
-	txn_btree<transaction_proto2> *tree = dynamic_cast<txn_btree<transaction_proto2> *> (&(index->btr));
-	if (tree->tree_id == 0 ) {
+	mbta_ordered_index *index = dynamic_cast<mbta_ordered_index *> (tbl_item(1));
+	concurrent_btree *tree = dynamic_cast<concurrent_btree *> (&(index->btr));
+	if (tree->get_tree_id() == 0 ) {
 	  tree->set_tree_id(2);
-	  checkpointer::AddTree(tree);
-	  tree->set_secondary_index(false);
+	  Checkpointer::AddTree(tree);
+	  //tree->set_secondary_index(false);
 	} else {
 	  //printf("tree id is %lu\n", tree->tree_id);
 	}
@@ -840,22 +846,22 @@ protected:
 
     for (uint w = w_start; w <= w_end; w++) {
       if (enable_par_ckp) {
-	ndb_ordered_index<transaction_proto2> *index = dynamic_cast<ndb_ordered_index<transaction_proto2> *> (tbl_stock(w));
-	txn_btree<transaction_proto2> *tree = dynamic_cast<txn_btree<transaction_proto2> *> (&(index->btr));
-	if (tree->tree_id == 0) {
+	mbta_ordered_index *index = dynamic_cast<mbta_ordered_index *> (tbl_stock(w));
+	concurrent_btree *tree = dynamic_cast<concurrent_btree *> (&(index->btr));
+	if (tree->get_tree_id() == 0) {
 	  tree->set_tree_id(3);
-	  checkpointer::AddTree(tree);
-	  tree->set_secondary_index(false);
+	  Checkpointer::AddTree(tree);
+	  //tree->set_secondary_index(false);
 	} else {
 	  //printf("tree id is %lu\n", tree->tree_id);
 	}
 	
-	index = dynamic_cast<ndb_ordered_index<transaction_proto2> *> (tbl_stock_data(w));
-	tree = dynamic_cast<txn_btree<transaction_proto2> *> (&(index->btr));
-	if (tree->tree_id == 0) {
+	index = dynamic_cast<mbta_ordered_index *> (tbl_stock_data(w));
+	tree = dynamic_cast<concurrent_btree *> (&(index->btr));
+	if (tree->get_tree_id() == 0) {
 	  tree->set_tree_id(4);
-	  checkpointer::AddTree(tree);
-	  tree->set_secondary_index(false);
+	  Checkpointer::AddTree(tree);
+	  //tree->set_secondary_index(false);
 	} else {
 	  //printf("tree id is %lu\n", tree->tree_id);
 	}
@@ -964,12 +970,12 @@ protected:
       uint cnt = 0;
       for (uint w = 1; w <= NumWarehouses(); w++) {
 	if (enable_par_ckp) {
-	  ndb_ordered_index<transaction_proto2> *index = dynamic_cast<ndb_ordered_index<transaction_proto2> *> (tbl_district(w));
-	  txn_btree<transaction_proto2> *tree = dynamic_cast<txn_btree<transaction_proto2> *> (&(index->btr));
-	  if (tree->tree_id == 0) {
+	  mbta_ordered_index *index = dynamic_cast<mbta_ordered_index *> (tbl_district(w));
+	  concurrent_btree *tree = dynamic_cast<concurrent_btree *> (&(index->btr));
+	  if (tree->get_tree_id() == 0) {
 	    tree->set_tree_id(5);
-	    checkpointer::AddTree(tree);
-	    tree->set_secondary_index(false);
+	    Checkpointer::AddTree(tree);
+	    //tree->set_secondary_index(false);
 	  } else {
 	    //printf("tree id is %lu\n", tree->tree_id);
 	  }
@@ -1055,30 +1061,30 @@ protected:
 
     for (uint w = w_start; w <= w_end; w++) {
       if (enable_par_ckp) {
-	ndb_ordered_index<transaction_proto2> *index = dynamic_cast<ndb_ordered_index<transaction_proto2> *> (tbl_history(w));
-	txn_btree<transaction_proto2> *tree = dynamic_cast<txn_btree<transaction_proto2> *> (&(index->btr));
+	mbta_ordered_index *index = dynamic_cast<mbta_ordered_index *> (tbl_history(w));
+	concurrent_btree *tree = dynamic_cast<concurrent_btree *> (&(index->btr));
 	if (tree->get_tree_id() == 0) {
 	  tree->set_tree_id(6);
-	  checkpointer::AddTree(tree);
-	  tree->set_secondary_index(false);
+	  Checkpointer::AddTree(tree);
+	  //tree->set_secondary_index(false);
 	}
 
-	index = dynamic_cast<ndb_ordered_index<transaction_proto2> *> (tbl_customer(w));
+	index = dynamic_cast<mbta_ordered_index *> (tbl_customer(w));
 
-	tree = dynamic_cast<txn_btree<transaction_proto2> *> (&(index->btr));
+	tree = dynamic_cast<concurrent_btree *> (&(index->btr));
 	if (tree->get_tree_id() == 0) {
 	  tree->set_tree_id(10);
-	  tree->set_secondary_index(false);
-	  checkpointer::AddTree(tree);
+	  //tree->set_secondary_index(false);
+	  Checkpointer::AddTree(tree);
 	}
 
-	ndb_ordered_index<transaction_proto2> *sec_index = dynamic_cast<ndb_ordered_index<transaction_proto2> *> (tbl_customer_name_idx(w));
+	/*ndb_ordered_index<transaction_proto2> *sec_index = dynamic_cast<ndb_ordered_index<transaction_proto2> *> (tbl_customer_name_idx(w));
 	txn_btree<transaction_proto2> *sec_tree = dynamic_cast<txn_btree<transaction_proto2> *> (&(sec_index->btr));
 	if (sec_tree->get_tree_id() == 0) {
 	  sec_tree->set_tree_id(61);
 	  sec_tree->set_secondary_index(true);
 	  checkpointer::AddTree(sec_tree);
-	}
+	}*/
       }
 
       if (pin_cpus)
@@ -1217,40 +1223,40 @@ protected:
 
     for (uint w = w_start; w <= w_end; w++) {
       if (enable_par_ckp) {
-	ndb_ordered_index<transaction_proto2> *index = dynamic_cast<ndb_ordered_index<transaction_proto2> *> (tbl_oorder(w));
-	txn_btree<transaction_proto2> *tree = dynamic_cast<txn_btree<transaction_proto2> *> (&(index->btr));
-	if (tree->tree_id == 0) {
+	mbta_ordered_index *index = dynamic_cast<mbta_ordered_index *> (tbl_oorder(w));
+	concurrent_btree *tree = dynamic_cast<concurrent_btree *> (&(index->btr));
+	if (tree->get_tree_id() == 0) {
 	  tree->set_tree_id(7);
-	  checkpointer::AddTree(tree);
-	  tree->set_secondary_index(false);
-	} else if (tree->tree_id != 7){
-	  printf("tree id is %lu\n", tree->tree_id);
+	  Checkpointer::AddTree(tree);
+	  //tree->set_secondary_index(false);
+	} else if (tree->get_tree_id() != 7){
+	  printf("tree id is %lu\n", tree->get_tree_id());
 	}
 
-	ndb_ordered_index<transaction_proto2> *sec_index = dynamic_cast<ndb_ordered_index<transaction_proto2> *> (tbl_oorder_c_id_idx(w));
+	/*ndb_ordered_index<transaction_proto2> *sec_index = dynamic_cast<ndb_ordered_index<transaction_proto2> *> (tbl_oorder_c_id_idx(w));
 	txn_btree<transaction_proto2> *sec_tree = dynamic_cast<txn_btree<transaction_proto2> *> (&(sec_index->btr));
 	if (sec_tree->get_tree_id() == 0) {
 	  sec_tree->set_tree_id(71);
 	  checkpointer::AddTree(sec_tree);
 	  sec_tree->set_secondary_index(true);
-	}
+	}*/
 
-	index = dynamic_cast<ndb_ordered_index<transaction_proto2> *> (tbl_new_order(w));
-	tree = dynamic_cast<txn_btree<transaction_proto2> *> (&(index->btr));
-	if (tree->tree_id == 0) {
+	index = dynamic_cast<mbta_ordered_index *> (tbl_new_order(w));
+	tree = dynamic_cast<concurrent_btree *> (&(index->btr));
+	if (tree->get_tree_id() == 0) {
 	  tree->set_tree_id(8);
-	  checkpointer::AddTree(tree);
-	  tree->set_secondary_index(false);
+	  Checkpointer::AddTree(tree);
+	  //tree->set_secondary_index(false);
 	} else {
 	//printf("tree id is %lu\n", tree->tree_id);
 	}
 	
-	index = dynamic_cast<ndb_ordered_index<transaction_proto2> *> (tbl_order_line(w));
-	tree = dynamic_cast<txn_btree<transaction_proto2> *> (&(index->btr));
-	if (tree->tree_id == 0) {
+	index = dynamic_cast<mbta_ordered_index *> (tbl_order_line(w));
+	tree = dynamic_cast<concurrent_btree *> (&(index->btr));
+	if (tree->get_tree_id() == 0) {
 	  tree->set_tree_id(9);
-	  checkpointer::AddTree(tree);
-	  tree->set_secondary_index(false);
+	  Checkpointer::AddTree(tree);
+	  //tree->set_secondary_index(false);
 	} else {
 	  //printf("tree id is %lu\n", tree->tree_id);
 	}
@@ -1376,9 +1382,6 @@ protected:
 private:
   ssize_t warehouse_id;
 };
-
-static event_counter evt_tpcc_cross_partition_new_order_txns("tpcc_cross_partition_new_order_txns");
-static event_counter evt_tpcc_cross_partition_payment_txns("tpcc_cross_partition_payment_txns");
 
 tpcc_worker::txn_result
 tpcc_worker::txn_new_order()
@@ -1960,8 +1963,8 @@ tpcc_worker::txn_order_status()
   //   max_read_set_size : 81
   //   max_write_set_size : 0
   //   num_txn_contexts : 4
-  const uint64_t read_only_mask =
-    g_disable_read_only_scans ? 0 : transaction_base::TXN_FLAG_READ_ONLY;
+  const uint64_t read_only_mask = 0;
+    //g_disable_read_only_scans ? 0 : transaction_base::TXN_FLAG_READ_ONLY;
   const abstract_db::TxnProfileHint hint =
     g_disable_read_only_scans ?
       abstract_db::HINT_TPCC_ORDER_STATUS :
@@ -2119,8 +2122,8 @@ tpcc_worker::txn_stock_level()
   //   n_node_scan_large_instances : 1
   //   n_read_set_large_instances : 2
   //   num_txn_contexts : 3
-  const uint64_t read_only_mask =
-    g_disable_read_only_scans ? 0 : transaction_base::TXN_FLAG_READ_ONLY;
+  const uint64_t read_only_mask = 0;
+    //g_disable_read_only_scans ? 0 : transaction_base::TXN_FLAG_READ_ONLY;
   const abstract_db::TxnProfileHint hint =
     g_disable_read_only_scans ?
       abstract_db::HINT_TPCC_STOCK_LEVEL :
@@ -2350,12 +2353,12 @@ protected:
 
     if (enable_par_ckp) {
       const std::vector<string> logfiles({
-	  std::string("/data/" USERNAME "/"),
-	    std::string("/f0/" USERNAME "/"),
-	    std::string("/f1/" USERNAME "/"),
-	    std::string("/f2/" USERNAME "/"),
-	    /*std::string("./") */});
-      checkpointer::Init(NULL, logfiles, true);
+	  std::string("../data/"),
+	    std::string("../f0/"),
+	    std::string("../f1/"),
+	    std::string("../f2/"),
+	   });
+      Checkpointer::Init(NULL, logfiles, true);
     }
     return ret;
   }

@@ -10,17 +10,17 @@
 
 #include "abstract_db.h"
 #include "util/macros.h"
-//#include "../thread.h"
-//#include "../util.h"
-//#include "../spinbarrier.h"
-//#include "../rcu.h"
+#include "util/thread.h"
+#include "util/util.h"
+#include "util/spinbarrier.h"
+#include "util/rcu.h"
 
 //#define CHECKPOINT
 
 extern void ycsb_do_test(abstract_db *db, int argc, char **argv);
 extern void tpcc_do_test(abstract_db *db, int argc, char **argv);
 extern void queue_do_test(abstract_db *db, int argc, char **argv);
-extern void encstress_do_test(abstract_db *db, int argc, char **argv);
+//extern void encstress_do_test(abstract_db *db, int argc, char **argv);
 
 enum {
   RUNMODE_TIME = 0,

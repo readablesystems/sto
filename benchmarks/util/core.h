@@ -4,7 +4,7 @@
 #include <sys/types.h>
 #include "macros.h"
 #include "util.h"
-
+#include "../../util.hh"
 /**
  * XXX: CoreIDs are not recyclable for now, so NMAXCORES is really the number
  * of threads which can ever be spawned in the system

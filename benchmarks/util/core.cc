@@ -17,7 +17,7 @@ retry:
   if (unlikely(replace > NMaxCores))
     return -1;
   if (!g_core_count.compare_exchange_strong(current, replace, memory_order_acq_rel)) {
-    nop_pause();
+    nop_pause;
     goto retry;
   }
   return rounded;

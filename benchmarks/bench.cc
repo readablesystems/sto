@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <sched.h>
 #include <unistd.h>
-//#include <sys/sysinfo.h>
+#include <sys/sysinfo.h>
 
 #include "bench.h"
 
@@ -59,6 +59,7 @@ string stats_file;
 string test_counters;
 string sockfile;
 
+extern bool if_runner_done;
 template <typename T>
 static void
 delete_pointers(const vector<T *> &pts)
@@ -233,7 +234,7 @@ bench_worker::run()
               spins *= 100; // XXX: tuned pretty arbitrarily
               evt_avg_abort_spins.offer(spins);
               while (spins) {
-                nop_pause();
+                nop_pause;
                 spins--;
               }
             }
@@ -363,6 +364,7 @@ bench_runner::run()
   __sync_synchronize();
   for (size_t i = 0; i < nthreads; i++)
     workers[i]->join();
+  cerr << "Joined workers" << endl;
   const unsigned long elapsed_nosync = t_nosync.lap();
   db->do_txn_finish(); // waits for all worker txns to persist
   size_t n_commits = 0;
@@ -387,7 +389,7 @@ bench_runner::run()
 //     }
 //   }
 // #endif
-
+  cerr << "Doing sanity checks" << endl;
   // various sanity checks
   ALWAYS_ASSERT(get<0>(persisted_info) == get<1>(persisted_info));
   // not == b/c persisted_info does not count read-only txns

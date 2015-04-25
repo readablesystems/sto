@@ -14,16 +14,16 @@
 #include "util/allocator.h"
 #include "util/stats_server.h"
 #include "bench.h"
-#include "bdb_wrapper.h"
-#include "ndb_wrapper.h"
-#include "ndb_wrapper_impl.h"
-#include "kvdb_wrapper.h"
-#include "kvdb_wrapper_impl.h"
+//#include "bdb_wrapper.h"
+//#include "ndb_wrapper.h"
+//#include "ndb_wrapper_impl.h"
+//#include "kvdb_wrapper.h"
+//#include "kvdb_wrapper_impl.h"
 #if !NO_MYSQL
 #include "mysql_wrapper.h"
 #endif
-
-#include "../ckp_params.h"
+#include "mbta_wrapper.h"
+#include "../ckp_params.hh"
 
 using namespace std;
 using namespace util;
@@ -201,7 +201,7 @@ main(int argc, char **argv)
 
     case 'x':
       stats_server_sockfile = optarg;
-      sockfile = optarg;
+      //sockfile = optarg;
       break;
 
     case 'c':
@@ -213,8 +213,8 @@ main(int argc, char **argv)
       break;
 
     case 'h':
-      nckp_threads = strtoul(optarg, NULL, 10);
-      ALWAYS_ASSERT(nckp_threads > 0);
+      //nckp_threads = strtoul(optarg, NULL, 10);
+     // ALWAYS_ASSERT(nckp_threads > 0);
       break;
 
     case 'z':
@@ -226,7 +226,7 @@ main(int argc, char **argv)
       break;
 
     case 'p':
-      run_for_ckp = strtoul(optarg, NULL, 10);
+      //run_for_ckp = strtoul(optarg, NULL, 10);
       break;
 
     case '?':
@@ -244,8 +244,6 @@ main(int argc, char **argv)
     test_fn = tpcc_do_test;
   else if (bench_type == "queue")
     test_fn = queue_do_test;
-  else if (bench_type == "encstress")
-    test_fn = encstress_do_test;
   else
     ALWAYS_ASSERT(false);
 
@@ -316,7 +314,7 @@ main(int argc, char **argv)
     return 1;
   }
 #endif
-
+/*
   if (db_type == "bdb") {
     const string cmd = "rm -rf " + basedir + "/db/*";
     // XXX(stephentu): laziness
@@ -355,7 +353,8 @@ main(int argc, char **argv)
 #endif
   } else
     ALWAYS_ASSERT(false);
-
+  */
+  db = new mbta_wrapper;
 #ifdef DEBUG
   cerr << "WARNING: benchmark built in DEBUG mode!!!" << endl;
 #endif
@@ -415,8 +414,8 @@ main(int argc, char **argv)
     cerr << "  stats-server-sockfile: " << stats_server_sockfile << endl;
 
     cerr << "system properties:" << endl;
-    cerr << "  btree_internal_node_size: " << concurrent_btree::InternalNodeSize() << endl;
-    cerr << "  btree_leaf_node_size    : " << concurrent_btree::LeafNodeSize() << endl;
+    //cerr << "  btree_internal_node_size: " << concurrent_btree::InternalNodeSize() << endl;
+    //cerr << "  btree_leaf_node_size    : " << concurrent_btree::LeafNodeSize() << endl;
 
 #ifdef TUPLE_PREFETCH
     cerr << "  tuple_prefetch          : yes" << endl;

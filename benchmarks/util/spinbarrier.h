@@ -4,7 +4,7 @@
 #include "amd64.h"
 #include "macros.h"
 #include "util.h"
-
+#include "../../util.hh"
 /**
  * Barrier implemented by spinning
  */
@@ -43,7 +43,7 @@ public:
   wait_for()
   {
     while (n > 0)
-      nop_pause();
+      nop_pause;
   }
 
 private:

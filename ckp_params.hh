@@ -17,8 +17,8 @@ extern std::vector<std::vector<std::string> > ckpdirs; // a list of list of dire
 
 extern int reduced_ckp;
 extern std::string root_folder; // this folder stores pepoch, cepoch, and other information
-/*extern int nckp_threads;
+extern int nckp_threads;
 extern int ckp_compress;
 extern std::string sockfile;
-extern int run_for_ckp;
-extern int recovery_test;*/
+extern int run_for_ckp; 
+extern int recovery_test;

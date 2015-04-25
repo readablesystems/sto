@@ -4,11 +4,11 @@
 #include "macros.h"
 #include <stdint.h>
 
-inline ALWAYS_INLINE void
+/*inline ALWAYS_INLINE void
 nop_pause()
 {
   __asm volatile("pause" : :);
-}
+}*/
 
 inline ALWAYS_INLINE uint64_t
 rdtsc(void)

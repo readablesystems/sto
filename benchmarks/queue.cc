@@ -7,11 +7,11 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "../macros.h"
-#include "../varkey.h"
-#include "../thread.h"
-#include "../util.h"
-#include "../spinbarrier.h"
+#include "util/macros.h"
+#include "util/varkey.h"
+#include "util/thread.h"
+#include "util/util.h"
+#include "util/spinbarrier.h"
 
 #include "bench.h"
 

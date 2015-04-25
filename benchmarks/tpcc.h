@@ -1,9 +1,9 @@
 #ifndef _NDB_BENCH_TPCC_H_
 #define _NDB_BENCH_TPCC_H_
 
-#include "../record/encoder.h"
-#include "../record/inline_str.h"
-#include "../macros.h"
+#include "util/record/encoder.h"
+#include "util/record/inline_str.h"
+#include "util/macros.h"
 
 #define CUSTOMER_KEY_FIELDS(x, y) \
   x(int32_t,c_w_id) \

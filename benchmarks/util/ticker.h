@@ -6,7 +6,7 @@
 
 #include "core.h"
 #include "macros.h"
-#include "spinlock.h"
+#include "../../spinlock.hh"
 #include "lockguard.h"
 
 class ticker {

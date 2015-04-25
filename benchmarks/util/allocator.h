@@ -8,7 +8,7 @@
 #include "util.h"
 #include "core.h"
 #include "macros.h"
-#include "spinlock.h"
+#include "../../spinlock.hh"
 
 class allocator {
 public:

@@ -6,7 +6,7 @@
 #include <numa.h>
 
 #include "allocator.h"
-#include "spinlock.h"
+#include "../../spinlock.hh"
 #include "lockguard.h"
 #include "static_vector.h"
 #include "counter.h"
