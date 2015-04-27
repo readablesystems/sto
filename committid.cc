@@ -15,7 +15,7 @@
 #include "util.hh"
 
 typedef int Key;
-typedef int Value;
+typedef std::string Value;
 
 int main_0() {
   
@@ -63,8 +63,8 @@ int main_0() {
   Transaction t;
 
   
-  h.transWrite(t, 1, 1);
-  h.transWrite(t, 3, 3);
+  h.transWrite(t, 1, "1");
+  h.transWrite(t, 3, "3");
   
   assert(t.try_commit());
   uint64_t tid_1 = Transaction::tinfo[0].last_commit_tid;
@@ -85,12 +85,12 @@ int main_0() {
   Transaction::threadid = 1;
   
   /*Transaction t1;
-  h.transWrite(t1, 4, 4);
+  h.transWrite(t1, 4, "4");
   assert(t1.commit());
   uint64_t tid_3 = Transaction::tinfo[1].last_commit_tid;*/
   
   Transaction t2;
-  h.transWrite(t2, 3, 1);
+  h.transWrite(t2, 3, "1");
   assert(t2.try_commit());
   uint64_t tid_4 = Transaction::tinfo[1].last_commit_tid;
   
@@ -108,7 +108,7 @@ struct txn_record_multi {
   // updates and removes also contain information about tree ID
   
   // the "key" here consistitutes of table ID, followed by key inserted/removed
-  std::map<std::pair<uint64_t, uint64_t>, int> updates;
+  std::map<std::pair<uint64_t, uint64_t>, std::string> updates;
   std::set<std::pair<uint64_t, uint64_t> > removes;
 };
 
@@ -143,7 +143,7 @@ void consistent_test_multi_table_thread(uint64_t low, uint64_t high,
     txn_record_multi *tr = new txn_record_multi;
     
     Transaction t;
-    int value = x;
+    std::string value = std::to_string(x);
     
     // make sure the insert keys and remove keys are all unique
     std::set<std::pair<uint64_t, int> > repeat_key_list;
@@ -166,7 +166,7 @@ void consistent_test_multi_table_thread(uint64_t low, uint64_t high,
 
       repeat_key_list.insert(insert_key);
       btr->transWrite(t, insert_key.second, value);
-      tr->updates[insert_key] = x;
+      tr->updates[insert_key] = value;
     }
     
     for (int j = 0; j < remove; j++) {
@@ -192,9 +192,9 @@ void consistent_test_multi_table_thread(uint64_t low, uint64_t high,
       // value is just the same as key
       for (int i = 0; i < num_tree_ids; i++) {
         btr = (*trees)[i];
-        bool inserted = btr->transInsert(t, int_key, int_key);
+        bool inserted = btr->transInsert(t, int_key, std::to_string(int_key));
         if (inserted)
-          tr->updates[std::make_pair(btr->get_tree_id(), int_key)] = int_key;
+          tr->updates[std::make_pair(btr->get_tree_id(), int_key)] = std::to_string(int_key);
       }
       
       if_insert = true;
@@ -300,7 +300,7 @@ int main() {
     MassTrans<Value>::thread_init();
     for (uint64_t i = low; i <= high; i++) {
       Transaction t;
-      btr->transWrite(t, i, 0);
+      btr->transWrite(t, i, "0");
       t.commit();
     }
   }
@@ -384,13 +384,13 @@ int main() {
   
   std::cout << "Replay single threaded" << std::endl;
   
-  std::map<std::pair<uint64_t, uint64_t>, int> updates; //(<tableId, key>, value)
+  std::map<std::pair<uint64_t, uint64_t>, std::string> updates; //(<tableId, key>, value)
   std::set<std::pair<uint64_t, uint64_t> > removes;
   
   for (size_t j = 0; j < btree_list.size(); j++) {
     uint64_t tree_id = btree_list[j]->get_tree_id();
     for (uint64_t i = low; i <= high; i++) {
-      updates[std::make_pair(tree_id, i)] = 0;
+      updates[std::make_pair(tree_id, i)] = "0";
     }
   }
   
@@ -406,8 +406,8 @@ int main() {
     
     txn_record_multi *r = it->second;
     
-    std::map<std::pair<uint64_t, uint64_t>, int>::iterator u_it = r->updates.begin();
-    std::map<std::pair<uint64_t, uint64_t>, int>::iterator u_it_end = r->updates.end();
+    std::map<std::pair<uint64_t, uint64_t>, std::string>::iterator u_it = r->updates.begin();
+    std::map<std::pair<uint64_t, uint64_t>, std::string>::iterator u_it_end = r->updates.end();
     
     std::set<std::pair<uint64_t, uint64_t> >::iterator find_it;
     
@@ -423,7 +423,7 @@ int main() {
     std::set<std::pair<uint64_t, uint64_t> >::iterator r_it = r->removes.begin();
     std::set<std::pair<uint64_t, uint64_t> >::iterator r_it_end = r->removes.end();
     
-    std::map<std::pair<uint64_t, uint64_t>, int>::iterator find_u_it;
+    std::map<std::pair<uint64_t, uint64_t>, std::string>::iterator find_u_it;
     
     for (; r_it != r_it_end; r_it++) {
       removes.insert(*r_it);
@@ -448,28 +448,26 @@ int main() {
   
   bool consistent = true;
   
-  std::map<std::pair<uint64_t, uint64_t>, int>::iterator r_u_it = updates.begin();
-  std::map<std::pair<uint64_t, uint64_t>, int>::iterator r_u_it_end = updates.end();
+  std::map<std::pair<uint64_t, uint64_t>, std::string>::iterator r_u_it = updates.begin();
+  std::map<std::pair<uint64_t, uint64_t>, std::string>::iterator r_u_it_end = updates.end();
   
   Transaction t;
   for (; r_u_it != r_u_it_end; r_u_it++) {
     uint64_t id = (r_u_it->first).first;
     uint64_t int_key = (r_u_it->first).second;
-    int int_value = r_u_it->second;
+    std::string value = r_u_it->second;
     std::string key = std::to_string(int_key);
-    int v0;
+    std::string v0;
     
     bool found = (*tree_map)[id]->transGet(t, key, v0);
     if (!found) {
       consistent = false;
-      (*tree_map)[id]->transGet(t, key, v0);
       std::cout << "Key" << int_key << " is not found in tree " << id << "\n";
     }
     
-    if (v0 != int_value) {
+    if (v0 != value) {
       consistent = false;
-      (*tree_map)[id]->transGet(t, key, v0);
-      std::cout << " In tree " << id << ", Key " << int_key << " should have value " << int_value << ", but has value " << v0 <<"\n";
+      std::cout << " In tree " << id << ", Key " << int_key << " should have value " << value << ", but has value " << v0 <<"\n";
     }
   }
   
@@ -480,7 +478,7 @@ int main() {
     uint64_t id = r_r_it->first;
     uint64_t int_key = r_r_it->second;
     std::string key = std::to_string(int_key);
-    int v0;
+    std::string v0;
     bool found = (*tree_map)[id]->transGet(t, key, v0);
     if (found) {
       consistent = false;
