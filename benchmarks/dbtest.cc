@@ -432,6 +432,7 @@ main(int argc, char **argv)
   }
 
   if (!stats_server_sockfile.empty()) {
+    cerr << "Reached here " << endl;
     stats_server *srvr = new stats_server(stats_server_sockfile);
     thread(&stats_server::serve_forever, srvr).detach();
   }

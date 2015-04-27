@@ -131,12 +131,12 @@ public:
       mythreadinfo.ti = ti;
     }
     assert(mythreadinfo.ti != NULL);
-    std::cout << Transaction::threadid << std::endl;
+    //std::cout << Transaction::threadid << std::endl;
     Transaction::tinfo[Transaction::threadid].trans_start_callback = [] () {
       assert(mythreadinfo.ti != NULL);
       mythreadinfo.ti->rcu_start();
     };
-    std::cout << Transaction::threadid << std::endl;
+    //std::cout << Transaction::threadid << std::endl;
     Transaction::tinfo[Transaction::threadid].trans_end_callback = [] () {
       mythreadinfo.ti->rcu_stop();
     };
@@ -275,7 +275,7 @@ public:
   template <bool CopyVals = true, bool INSERT = true, bool SET = true, typename StringType>
   bool transPut(Transaction& t, StringType& key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
     // optimization to do an unlocked lookup first
-    if (SET) {
+      if (SET) {
       unlocked_cursor_type lp(table_, key);
       bool found = lp.find_unlocked(*ti.ti);
       if (found) {
@@ -1073,7 +1073,7 @@ private:
       v2 = e->version();
       if (is_locked(v2))
 	t.abort();
-      fence();
+      fence(); 
       assign_val(val, e->read_value());
       fence();
       vers = e->version();
@@ -1083,10 +1083,10 @@ private:
 
   template <typename ValType>
   static void assign_val(ValType& val, const ValType& val_to_assign) {
-    val = val_to_assign;
+     val = val_to_assign;
   }
   static void assign_val(std::string& val, Str val_to_assign) {
-    val.assign(val_to_assign.data(), val_to_assign.length());
+     val.assign(val_to_assign.data(), val_to_assign.length());
   }
  
   struct table_params : public Masstree::nodeparams<15,15> {
@@ -1286,9 +1286,9 @@ private:
                   std::string *buf = nullptr) const;
 
 };
-    
-typedef MassTrans<int> concurrent_btree;
 
+typedef MassTrans<std::string> concurrent_btree;
+    
 template <typename V, typename Box, bool Opacity>
 __thread typename MassTrans<V, Box, Opacity>::threadinfo_type MassTrans<V, Box, Opacity>::mythreadinfo;
 

@@ -22,11 +22,11 @@ Checkpointer::tree_list_type Checkpointer::_tree_list;
 int Checkpointer::fd = -1;
 volatile uint64_t fsync_sync[NUM_TH_CKP] = {0, 0, 0, 0};
 
-void Checkpointer::AddTree(MassTrans<Value> *tree) {
+void Checkpointer::AddTree(concurrent_btree *tree) {
   _tree_list.push_back(tree);
 }
 
-void Checkpointer::Init(std::vector<MassTrans<Value> *> *btree_list,
+void Checkpointer::Init(std::vector<concurrent_btree *> *btree_list,
                         std::vector<std::string> logfile_base, bool is_test) {
   if (btree_list != NULL) {
     size_t size = btree_list->size();
@@ -86,7 +86,7 @@ void Checkpointer::checkpoint(std::vector<std::string> logfile_base) {
   
   // Assign each checkpointer thread a range of keys for each tree
   for (Checkpointer::tree_list_type::iterator it = begin_it; it != end_it; it++) {
-    MassTrans<Value> * tree = *it;
+    concurrent_btree * tree = *it;
     
     if (tree == NULL) {
       continue;
@@ -439,7 +439,7 @@ bool checkpoint_scan_callback::invoke (const key_type &k, versioned_value v,
   char * key = (char *) k.data();
   uint64_t start_t = v.version() & ~(Version)1;
   
-  std::string value = std::to_string(v.read_value());
+  std::string value = v.read_value();
   //std::cout << " [" << tree_id <<"] found key " << key << " with value " << value << std::endl;
   if (enable_datastripe_par || enable_par_ckp) {
     uint64_t cur_epoch = start_t;

@@ -10,7 +10,7 @@ struct versioned_value_struct_logging /*: public threadinfo::rcu_callback*/ {
   typedef uint64_t version_type;
   typedef S key_type;
   
-  versioned_value_struct_logging() : version_(), value_(), key_() {}
+  versioned_value_struct_logging() : version_(), valueptr_(), keyptr_() {}
   
   static versioned_value_struct_logging* make(const key_type& key, const value_type& val, version_type version) {
     return new versioned_value_struct_logging<T, S>(val, version, key);
@@ -25,19 +25,19 @@ struct versioned_value_struct_logging /*: public threadinfo::rcu_callback*/ {
   }
   
   inline void set_value(const value_type& v) {
-    value_ = v;
+    valueptr_ = new value_type(std::move(v));
   }
   
   inline const value_type& read_value() {
-    return value_;
+    return *valueptr_;
   }
   
   inline void set_key(const key_type& k) {
-    key_ = k;
+    keyptr_ = new key_type(std::move(k));
   }
   
   inline const key_type& read_key() {
-    return key_;
+    return *keyptr_;
   }
   
   inline version_type& version() {
@@ -60,11 +60,11 @@ struct versioned_value_struct_logging /*: public threadinfo::rcu_callback*/ {
 #endif
   
 private:
-  versioned_value_struct_logging(const value_type& val, version_type v, key_type k) : version_(v), value_(val), key_(k) {}
+  versioned_value_struct_logging(const value_type& val, version_type v, const key_type& k) : version_(v), valueptr_(new value_type(std::move(val))), keyptr_(new key_type(std::move(k))) {}
   
   version_type version_;
-  value_type value_;
-  key_type key_;
+  value_type* valueptr_;
+  key_type* keyptr_;
 };
 
 
@@ -94,7 +94,7 @@ struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
   inline const value_type& read_value() {
     return value_;
   }
-
+  
   inline value_type& writeable_value() {
     return value_;
   }
@@ -153,7 +153,7 @@ public:
   const value_type& read_value() {
     return *valueptr_;
   }
-
+  
   version_type& version() {
     return version_;
   }

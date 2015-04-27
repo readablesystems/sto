@@ -278,8 +278,7 @@ class Recovery {
 #define NTHREADS_PER_DISK 8
 #define NUM_TH_CKP 4
   
-  typedef MassTrans<int> tree_type;
-  typedef std::map<uint64_t, tree_type*> txn_btree_map_type;
+  typedef std::map<uint64_t, concurrent_btree*> txn_btree_map_type;
   typedef concurrent_btree btree_type;
   typedef btree_type::node_base_type node;
   typedef btree_type::internode_type internal_node;

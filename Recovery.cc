@@ -206,7 +206,7 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
             fprintf(stderr, "THIS SHOULD NOT BE CALLED! tree_id is %lu, reading %s\n", (unsigned long) tree_id, file_name_value.c_str());
             mtx.lock();
             if (btree_map->find(tree_id) == btree_map->end()) {
-              (*btree_map)[tree_id] = new tree_type();
+              (*btree_map)[tree_id] = new concurrent_btree();
             }
             mtx.unlock();
           }
@@ -218,7 +218,8 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
             key_type key((uint8_t*) buf.pinned_bytes(key_offset, key_size), key_size);
             versioned_value_type *record = NULL;
             std::string keystr(key);
-            int* value_ptr = (int*) (buf.pinned_bytes(value_offset, value_size));
+            key_type value_ptr( (uint8_t*) (buf.pinned_bytes(value_offset, value_size)), value_size);
+	    std::string valuestr(value_ptr);
             if (btr->get(key, record)) {
               // Key has been found, we can simple do updates in place
               btr->lock(record);
@@ -237,7 +238,7 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
                   if (btree_type::is_invalid(record)) {
                     btree_type::make_valid(record);
                   }
-                  record->set_value(*value_ptr);
+                  record->set_value(valuestr);
                   btree_type::set_tid(record, tid);
                 }
               }
@@ -246,7 +247,7 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
               
             } else {
               if (value_size > 0) {
-                record = btree_type::versioned_value_type::make(key.data(), *value_ptr, tid);
+                record = btree_type::versioned_value_type::make(key.data(), valuestr, tid);
                 btr->lock(record);
                 if (! (btr->insert_if_absent(key, record))){
                   goto retry;
@@ -258,7 +259,7 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
                 btr->get(key, record);
                 //std::cout << " Reached here " <<std::endl;
                 // Do nothing
-                record = btree_type::versioned_value_type::make(key.data(), *value_ptr, tid);
+                record = btree_type::versioned_value_type::make(key.data(), valuestr, tid);
                 btr->lock(record);
                 btree_type::make_invalid(record);
                 if (! (btr->insert_if_absent(key, record))){
@@ -304,7 +305,7 @@ void Recovery::replay_checkpoint(uint64_t pepoch) {
       if (std::regex_match(file_name, cm, reg_data, std::regex_constants::format_default)) {
         char *tree_id = (char *) cm[1].str().c_str() + 1; // TODO: + 1 is required when compiling with gcc. why?
         uint64_t tree_id_uint = _char_to_uint64(tree_id);
-        (*btree_map)[tree_id_uint] = new tree_type();
+        (*btree_map)[tree_id_uint] = new concurrent_btree();
         
         uint64_t epoch = _read_min_epoch(tree_id);
         min_recovery_epoch = epoch < min_recovery_epoch ? epoch : min_recovery_epoch;
@@ -391,7 +392,7 @@ void Recovery::recover_ckp_thread(Recovery::btree_type* btree, std::string filen
       key_type key((uint8_t*) buf.pinned_bytes(key_offset, key_size), key_size);
       versioned_value_type *record = NULL;
       std::string value(buf.pinned_bytes(value_offset, value_size), value_size);
-      record = btree_type::versioned_value_type::make(key.data(), std::atoi(value.c_str()), tid);
+      record = btree_type::versioned_value_type::make(key.data(), value, tid);
       btree->insert(key, record);
     }
     

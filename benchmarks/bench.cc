@@ -198,6 +198,7 @@ static event_avg_counter evt_avg_abort_spins("avg_abort_spins");
 void
 bench_worker::run()
 {
+  cout << "starting worker " << worker_id << " " << Transaction::threadid << endl;
   // XXX(stephentu): so many nasty hacks here. should actually
   // fix some of this stuff one day
   if (set_core_id)
@@ -211,6 +212,7 @@ bench_worker::run()
   txn_counts.resize(workload.size());
   barrier_a->count_down();
   barrier_b->wait_for();
+  cout << " Running operations " << Transaction::threadid << endl;
   while (running && (run_mode != RUNMODE_OPS || ntxn_commits < ops_per_worker)) {
     double d = r.next_uniform();
     for (size_t i = 0; i < workload.size(); i++) {
@@ -251,6 +253,7 @@ bench_worker::run()
       d -= workload[i].frequency;
     }
   }
+  cout << "Worker finished " << worker_id << endl;
 }
 
 void

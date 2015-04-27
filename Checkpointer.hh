@@ -366,8 +366,7 @@ class Checkpointer {
   typedef concurrent_btree::leaf_type l_node;
   typedef concurrent_btree::key_type key_type;
   typedef concurrent_btree::key_slice key_slice;
-  typedef int Value;
-  typedef std::vector<MassTrans<Value> *> tree_list_type;
+  typedef std::vector<concurrent_btree *> tree_list_type;
   
   
   struct checkpoint_tree_key {
@@ -393,9 +392,9 @@ class Checkpointer {
   // static checkpoint_scan_callback callback;
   
 public:
-  static void AddTree(MassTrans<Value> *tree);
+  static void AddTree(concurrent_btree *tree);
   // logfile_base is used when truncating the log
-  static void Init(std::vector<MassTrans<Value> *> *btree_list,
+  static void Init(std::vector<concurrent_btree *> *btree_list,
                    std::vector<std::string> logfile_base, bool is_test = false);
   static void checkpoint(std::vector<std::string> logfile_base);
   static void log_truncate(uint64_t epoch, std::vector<std::string> logfile_base);

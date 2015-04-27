@@ -16,7 +16,7 @@ CFLAGS += -g -pg -fno-inline
 endif
 
 ifneq ($(OPT),0)
-CFLAGS += -O0
+CFLAGS += -O3
 endif
 
 # debugging on by default

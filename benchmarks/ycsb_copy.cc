@@ -41,7 +41,7 @@ static unsigned g_txn_workload_mix[] = { 80, 20, 0, 0 };
 static inline string
 RandomNStr(fast_random &r, uint len)
 {
-  const char base = '0';
+  const char base = 'A';
   string buf(len, 0);
   for (uint i = 0; i < len; i++)
     buf[i] = (char)(base + (r.next() % 10));
@@ -72,7 +72,8 @@ public:
     scoped_str_arena s_arena(arena);
     try {
       const uint64_t k = r.next() % nkeys;
-      ALWAYS_ASSERT(tbl->get(txn, u64_varkey(k).str(obj_key0), obj_v));
+      const string key = std::to_string(k);
+      ALWAYS_ASSERT(tbl->get(txn, key, obj_v));
       computation_n += obj_v.size();
       measure_txn_counters(txn, "txn_read");
       if (likely(db->commit_txn(txn)))
@@ -96,8 +97,10 @@ public:
     scoped_str_arena s_arena(arena);
     try {
       //tbl->put(txn, u64_varkey(r.next() % nkeys).str(str()), str().assign(YCSBRecordSize, 'b'));
-      const string v = RandomNStr(r, YCSBRecordSize);
-      tbl->put(txn, u64_varkey(r.next() % nkeys).str(str()), v);
+      auto s = std::to_string(r.next() % nkeys);
+      //auto s2 = str().assign(YCSBRecordSize, 'b');
+      const string s2 = RandomNStr(r, YCSBRecordSize);
+      tbl->put(txn, s, s2);
 
       measure_txn_counters(txn, "txn_write");
       if (likely(db->commit_txn(txn)))
@@ -273,8 +276,9 @@ ycsb_load_keyrange(
         keyend : keystart + ((batchid + 1) * batchsize);
       for (size_t i = batchid * batchsize + keystart; i < rend; i++) {
         ALWAYS_ASSERT(i >= keystart && i < keyend);
-        const string k = u64_varkey(i).str();
-        //const string v(YCSBRecordSize, 'a');
+        const string k = std::to_string(i);//u64_varkey(i).str();
+        //cout << k.data() << endl;
+	//const string v(YCSBRecordSize, 'a');
 	const string v = RandomNStr(r, YCSBRecordSize);
         tbl->insert(txn, k, v);
       }
