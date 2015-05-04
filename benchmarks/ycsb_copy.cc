@@ -33,7 +33,7 @@ static const size_t YCSBRecordSize = 100;
 // [R, W, RMW, Scan]
 // we're missing remove for now
 // the default is a modification of YCSB "A" we made (80/20 R/W)
-static unsigned g_txn_workload_mix[] = { 80, 20, 0, 0 };
+static unsigned g_txn_workload_mix[] = { 70, 30, 0, 0 };
 
 //fast_random r(9834028);
 
@@ -448,14 +448,32 @@ protected:
 
     fprintf(stderr, "YCSB workers made, enable_par_ckp is %u\n", enable_par_ckp);
     if (enable_par_ckp) {
+      ckpdirs = {
+    {"./f0/disk1/", "./f0/disk2/",
+      "./f0/disk3/", "./f0/disk4/",
+      "./f0/disk5/", "./f0/disk6/"},
+    
+    {"./f1/disk1/", "./f1/disk2/",
+      "./f1/disk3/", "./f1/disk4/",
+      "./f1/disk5/", "./f1/disk6/"},
+    
+    {"./f2/disk1/", "./f2/disk2/",
+      "./f2/disk3/", "./f2/disk4/",
+      "./f2/disk5/", "./f2/disk6/"},
+    
+    {"./data/disk1/", "./data/disk2/",
+      "./data/disk3/", "./data/disk4/",
+      "./data/disk5/", "./data/disk6/"},
+  };
       mbta_ordered_index *index = dynamic_cast<mbta_ordered_index *> (open_tables.at("USERTABLE"));
       concurrent_btree *tree = dynamic_cast<concurrent_btree *> (&(index->btr));
-      if (tree->get_tree_id() == 0) {
-	tree->set_tree_id(1);
+      //if (tree->get_tree_id() == 0) {
+	std::cout << "set tree id to 1" << std::endl;
+        tree->set_tree_id(1);
 	Checkpointer::AddTree(tree);
-      } else {
-	printf("tree id is %lu\n", tree->get_tree_id());
-      }
+      //} else {
+	//printf("tree id is %lu\n", tree->get_tree_id());
+      //}
       
       const std::vector<string> logfiles({
 	  std::string("../data/"),
@@ -465,7 +483,7 @@ protected:
 	    /* std::string("./")*/
 	    
 	    });
-      
+      std::cout << "Initializing checkpointing" << std::endl;
       Checkpointer::Init(NULL, logfiles, true);
     }
 

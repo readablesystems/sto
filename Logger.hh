@@ -103,6 +103,8 @@ public:
   
   static void wait_for_idle_state();
   
+  static void wait_until_current_point_persisted();
+
   typedef circbuf<pbuffer, g_perthread_buffers> pbuffer_circbuf; // Queue of buffers
   
   

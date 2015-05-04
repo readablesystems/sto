@@ -4,6 +4,7 @@
 #include "abstract_ordered_index.h"
 #include "../Transaction.hh"
 #include "../MassTrans.hh"
+#include "bench.h"
 
 #define STD_OP(f) auto& t = *(Transaction*)(txn);	\
   try { \
@@ -108,10 +109,16 @@ class mbta_wrapper : public abstract_db {
 public:
   ssize_t txn_max_batch_size() const OVERRIDE { return 100; }
   
+  mbta_wrapper(const std::vector<std::string> &logfiles,
+	const std::vector<std::vector<unsigned>> & assignments_given,
+	bool call_fsync,
+	bool use_compression,
+	bool fake_writes); 
+
   void
   do_txn_epoch_sync() const
   {
-    //txn_epoch_sync<Transaction>::sync();
+    Transaction::sync();
   }
 
   void
@@ -121,7 +128,7 @@ public:
     Transaction::print_stats();
     //    printf("v: %lu, k %lu, ref %lu, read %lu\n", version_mallocs, key_mallocs, ref_mallocs, read_mallocs);
 #endif
-    //txn_epoch_sync<Transaction>::finish();
+    Transaction::finish();
   }
 
   void

@@ -33,7 +33,8 @@ void Checkpointer::Init(std::vector<concurrent_btree *> *btree_list,
     for (size_t i = 0; i < size; i++) {
       _tree_list.push_back(btree_list->at(i));
     }
-    
+  } 
+  if (!_tree_list.empty()) { 
     std::thread t(&Checkpointer::StartThread, is_test, logfile_base);
     t.detach();
   }

@@ -44,8 +44,8 @@ UTIL_OBJFILES := $(patsubst %.cc, %.o, $(UTIL_SRCFILES))
 BENCH_CXXFLAGS := $(CXXFLAGS)
 BENCH_LDFLAGS := $(LDFLAGS) -ldb_cxx
 
-BENCH_SRCFILES = benchmarks/mbta_wrapper.cc \
-	benchmarks/bench.cc \
+BENCH_SRCFILES = benchmarks/bench.cc \
+	benchmarks/mbta_wrapper.cc \
 	benchmarks/masstree/kvrandom.cc \
 	benchmarks/queue.cc \
 	benchmarks/tpcc.cc \

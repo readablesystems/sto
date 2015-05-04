@@ -354,7 +354,7 @@ main(int argc, char **argv)
   } else
     ALWAYS_ASSERT(false);
   */
-  db = new mbta_wrapper;
+  db = new mbta_wrapper(logfiles, assignments, !nofsync, do_compress, fake_writes);
 #ifdef DEBUG
   cerr << "WARNING: benchmark built in DEBUG mode!!!" << endl;
 #endif

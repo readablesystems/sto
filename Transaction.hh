@@ -396,9 +396,29 @@ public:
 #define ADD_P(p, n) do {} while (0)
 #define MAX_P(p, n) do {} while (0)
 #endif
-  
+  static void wait_an_epoch() {
+    const uint64_t e = global_epoch;
+    fence();
+    std::cout << "Waiting for next epoch" << std::endl;
+    while(global_epoch == e) { 
+      nop_pause;
+    }  
+   
+    std::cout << "Done waiting for next epoch" << std::endl;
+  }
 
+  static void sync() {
+    wait_an_epoch();
+    if (Logger::IsPersistenceEnabled()) { 
+      Logger::wait_until_current_point_persisted();
+    }
+  }
 
+  static void finish() {
+   if (Logger::IsPersistenceEnabled()) {
+     Logger::wait_until_current_point_persisted();
+   }
+  }
 
   Transaction() : transSet_() {
     reset();

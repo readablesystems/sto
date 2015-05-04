@@ -84,7 +84,7 @@ void Logger::persister(std::vector<std::vector<unsigned>> assignments) {
 void Logger::advance_system_sync_epoch(const std::vector<std::vector<unsigned>> &assignments) {
   uint64_t min_so_far = std::numeric_limits<uint64_t>::max(); // Minimum of persist tids of all worker threads
   const uint64_t cur_epoch = Transaction::_TID;
-  const uint64_t best_epoch = cur_epoch ? (cur_epoch - 1) : 0;
+  const uint64_t best_epoch = cur_epoch;
   if (best_epoch == 0)
     std::cout<<"best epoch "<<Transaction::_TID <<std::endl;
   for (size_t i = 0; i < assignments.size(); i++) {
@@ -119,7 +119,7 @@ void Logger::advance_system_sync_epoch(const std::vector<std::vector<unsigned>> 
               pbuffer * last_px = ctx.all_buffers_.peek();
               if (last_px && last_px->header()->nentries_ > 0) {
                 // Outstanding buffer; should remove it and add to the push buffers.
-                std::cout<<"Extra thread pushing a outstanding buffer to push buffer on behalf of thread "<<k<<std::endl;
+                //std::cout<<"Extra thread pushing a outstanding buffer to push buffer on behalf of thread "<<k<<std::endl;
                 ctx.all_buffers_.deq();
                 assert(!last_px->io_scheduled_);
                 ctx.persist_buffers_.enq(last_px);
@@ -348,4 +348,15 @@ void Logger::wait_for_idle_state() {
     while (ctx.persist_buffers_.peek())
       __asm volatile("pause" : :);
   }
+}
+
+void Logger::wait_until_current_point_persisted() {
+  const uint64_t t = Transaction::_TID;
+  fence();
+  std::cout << "Waiting until current point is persisted " << t << " epoch point is " << system_sync_epoch_->load(std::memory_order_acquire) << std::endl;
+  while(system_sync_epoch_->load(std::memory_order_acquire) < t) {
+    nop_pause;
+    //std::cout << system_sync_epoch_->load(std::memory_order_acquire) << std::endl;
+  }
+  std::cout << t << " is persisted!" << std::endl;
 }
