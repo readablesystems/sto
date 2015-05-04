@@ -2,6 +2,8 @@
 
 #include <assert.h>
 #include <vector>
+#include <sys/time.h>
+#include <atomic>
 
 #define CACHELINE_SIZE 64
 
@@ -71,6 +73,23 @@ namespace util {
     inline const T * operator->() const { return &elem;}
     
   } CACHE_ALIGNED;
+
+  template <typename T>
+  static inline T
+  non_atomic_fetch_add_(std::atomic<T> &data, T arg)
+  {
+    const T ret = data.load(std::memory_order_acquire);
+    data.store(ret + arg, std::memory_order_release);
+    return ret;
+  }
+
+  static inline uint64_t
+  cur_time_us()
+  {
+    struct timeval tv;
+    gettimeofday(&tv, 0);
+    return ((uint64_t)tv.tv_sec) * 1000000 + tv.tv_usec;
+  }
 }
 
 

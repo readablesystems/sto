@@ -462,6 +462,7 @@ public:
     start_tid_ = commit_tid_ = 0;
     buf_.clear();
     INC_P(txp_total_starts);
+    start_us_ = util::cur_time_us();
   }
 
 private:
@@ -670,10 +671,13 @@ private:
     }
     
     Logger::persist_ctx &ctx = Logger::persist_ctx_for(threadid, Logger::INITMODE_REG);
-    
+    Logger::persist_stats &stats = Logger::g_persist_stats[threadid];   
+ 
     Logger::pbuffer_circbuf &pull_buf = ctx.all_buffers_;
     Logger::pbuffer_circbuf &push_buf = ctx.persist_buffers_;
     
+    auto &epoch_stat = stats.epochStats[commitEpoch % Logger::g_max_lag_epochs]; 
+
     this->final_commit_tid = commitTid;
     //compute how much space is necessary
     uint64_t space_needed = 0;
@@ -698,6 +702,7 @@ private:
     assert(space_needed <= Logger::g_horizon_buffer_size);
     assert(space_needed <= Logger::g_buffer_size);
     
+    util::non_atomic_fetch_add_(stats.ntxns_committed_, 1UL);
     
   retry:
     Logger::pbuffer *px = Logger::wait_for_head(pull_buf);
@@ -711,6 +716,7 @@ private:
       //std::cout << "pull buffer " << px0 << " dequeued by thread " << threadid <<std::endl;
       assert(px == px0);
       assert(px0->header()->nentries_);
+      util::non_atomic_fetch_add_(stats.ntxns_pushed_, px0->header()->nentries_);
       push_buf.enq(px0);
       fence(); // TODO: Is this required?
       goto retry;
@@ -723,7 +729,11 @@ private:
   
   inline uint64_t write_current_txn_into_buffer(Logger::pbuffer *px, uint64_t commitTid, uint64_t commitEpoch) {
     assert(px->can_hold_epoch(commitEpoch));
-    
+   
+    if (!px->header()->nentries_) //First transaction
+      px->earliest_txn_start_time_ = start_us_;
+    px->last_txn_start_time_ = start_us_;
+ 
     uint8_t* p = px->pointer();
     uint8_t *porig = p;
     
@@ -930,6 +940,7 @@ private:
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
     uint16_t hashtable_[HASHTABLE_SIZE];
+    uint64_t start_us_;    
 
     friend class TransProxy;
     friend class TransItem;

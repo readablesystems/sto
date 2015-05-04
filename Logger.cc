@@ -23,6 +23,7 @@ Logger::epoch_array Logger::per_thread_sync_epochs_[Logger::g_nmax_loggers];
 util::aligned_padded_elem<std::atomic<uint64_t>> Logger::system_sync_epoch_(0);
 
 Logger::persist_ctx Logger::g_persist_ctxs[MAX_THREADS_];
+Logger::persist_stats Logger::g_persist_stats[MAX_THREADS_];
 
 void Logger::Init(size_t nworkers, const std::vector<std::string> &logfiles, const std::vector<std::vector<unsigned>> &assignments_given, std::vector<std::vector<unsigned>> *assignments_used, bool call_fsync, bool use_compression, bool fake_writes) {
   assert(!g_persist);
@@ -155,7 +156,31 @@ void Logger::advance_system_sync_epoch(const std::vector<std::vector<unsigned>> 
   assert(syssync <= min_so_far);
   //assert(min_so_far <= best_epoch);
   
-  
+  // Stats
+  const uint64_t now_us = util::cur_time_us();
+  for (size_t i = 0; i < MAX_THREADS_; i++) {
+    auto &ps = g_persist_stats[i];
+    for (uint64_t e = syssync + 1; e <= min_so_far; e++) {
+      auto &pes = ps.epochStats[e % g_max_lag_epochs];
+      const uint64_t start_us = pes.start_time_.load(std::memory_order_acquire);
+      const uint64_t last_us = pes.last_time_.load(std::memory_order_acquire);
+      const uint64_t ntxns_persisted = pes.ntxns_.load(std::memory_order_acquire);
+
+      if (start_us == 0 && last_us == 0)
+      	continue;
+
+      assert(now_us >= start_us);
+      util::non_atomic_fetch_add_(ps.ntxns_persisted_, ntxns_persisted);
+      util::non_atomic_fetch_add_(ps.total_latency_,
+			   (now_us - (last_us + start_us)/2) * ntxns_persisted);
+
+      pes.ntxns_.store(0, std::memory_order_release);
+      pes.start_time_.store(0, std::memory_order_release);
+      pes.last_time_.store(0, std::memory_order_release);
+    }
+  }
+
+   
   // write the persistent epoch to disk
   // to avoid failure during write, write to another file and then rename
   
@@ -278,6 +303,13 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
           epoch_prefixes[k] = px_epoch == 0 ? 0 : px_epoch - 1;
           
           max_epoch_so_far = px_epoch > max_epoch_so_far ? px_epoch : max_epoch_so_far;
+        
+          auto &epoch_stat = g_persist_stats[k].epochStats[px_epoch % g_max_lag_epochs];
+          if (!epoch_stat.ntxns_.load(std::memory_order_acquire))
+            epoch_stat.start_time_.store(px->earliest_txn_start_time_, std::memory_order_release);
+          epoch_stat.last_time_.store(px->last_txn_start_time_, std::memory_order_release);
+          util::non_atomic_fetch_add_(epoch_stat.ntxns_, px->header()->nentries_);
+        
         }
       }
       
@@ -333,6 +365,21 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
           ea.epochs_[k].store(x1, std::memory_order_release);
         }
       }
+    }
+  }
+}
+
+void Logger::clear_ntxns_persisted_statistics() {
+  for (size_t i = 0; i < MAX_THREADS_; i++) {
+    auto &ps = g_persist_stats[i];
+    ps.ntxns_persisted_.store(0, std::memory_order_release);
+    ps.ntxns_pushed_.store(0, std::memory_order_release);
+    ps.ntxns_committed_.store(0, std::memory_order_release);
+    ps.total_latency_.store(0, std::memory_order_release);
+    for (size_t e = 0; e < g_max_lag_epochs; e++) {
+      auto &pes = ps.epochStats[e];
+      pes.ntxns_.store(0, std::memory_order_release);
+      pes.start_time_.store(0, std::memory_order_release);
     }
   }
 }

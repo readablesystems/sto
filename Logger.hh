@@ -101,6 +101,7 @@ public:
     return g_use_compression;
   }
   
+  static void clear_ntxns_persisted_statistics();  
   static void wait_for_idle_state();
   
   static void wait_until_current_point_persisted();
@@ -133,7 +134,25 @@ private:
       lock_.unlock();
     }
   };
-  
+
+  struct persist_stats {
+    std::atomic<uint64_t> ntxns_persisted_;
+    std::atomic<uint64_t> ntxns_pushed_;
+    std::atomic<uint64_t> ntxns_committed_;
+    std::atomic<uint64_t> total_latency_;
+    
+    struct per_epoch_stats {
+      std::atomic<uint64_t> ntxns_;
+      std::atomic<uint64_t> start_time_;
+      std::atomic<uint64_t> last_time_;
+      
+      per_epoch_stats() : ntxns_(0), start_time_(0), last_time_(0) {}
+    } epochStats[g_max_lag_epochs]; 
+   
+    persist_stats() : ntxns_persisted_(0), ntxns_pushed_(0), 
+	ntxns_committed_(0), total_latency_(0) {}
+  };
+
   static void advance_system_sync_epoch(const std::vector<std::vector<unsigned>> &assignments);
   
   static void writer(unsigned id, std::string logfile, std::vector<unsigned> assignment);
@@ -195,6 +214,6 @@ private:
   static util::aligned_padded_elem<std::atomic<uint64_t>> system_sync_epoch_ CACHE_ALIGNED;
   
   static persist_ctx g_persist_ctxs[MAX_THREADS_] CACHE_ALIGNED;
-
+  static persist_stats g_persist_stats[MAX_THREADS_] CACHE_ALIGNED;
 };
 
