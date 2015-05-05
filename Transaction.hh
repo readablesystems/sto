@@ -419,6 +419,19 @@ public:
      Logger::wait_until_current_point_persisted();
    }
   }
+  
+  static std::tuple<uint64_t, uint64_t, double>
+  compute_ntxn_persisted() {
+    if (!Logger::IsPersistenceEnabled())
+      return std::make_tuple(0, 0, 0.0);
+    return Logger::compute_ntxns_persisted_statistics();
+  }
+
+  static void reset_ntxn_persisted() {
+    if (!Logger::IsPersistenceEnabled())
+      return;
+    Logger::clear_ntxns_persisted_statistics();
+  }
 
   Transaction() : transSet_() {
     reset();

@@ -154,6 +154,16 @@ public:
   {
 
   }
+ 
+  virtual std::tuple<uint64_t, uint64_t, double>
+  get_ntxn_persisted() const {
+     return Transaction::compute_ntxn_persisted();
+  }
+
+  virtual void reset_ntxn_persisted() {
+    Transaction::reset_ntxn_persisted();
+  } 
+
 
   size_t
   sizeof_txn_object(uint64_t txn_flags) const

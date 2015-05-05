@@ -121,6 +121,8 @@ void Logger::advance_system_sync_epoch(const std::vector<std::vector<unsigned>> 
               if (last_px && last_px->header()->nentries_ > 0) {
                 // Outstanding buffer; should remove it and add to the push buffers.
                 //std::cout<<"Extra thread pushing a outstanding buffer to push buffer on behalf of thread "<<k<<std::endl;
+                Logger::persist_stats &stats = Logger::g_persist_stats[k];
+                util::non_atomic_fetch_add_(stats.ntxns_pushed_, last_px->header()->nentries_);
                 ctx.all_buffers_.deq();
                 assert(!last_px->io_scheduled_);
                 ctx.persist_buffers_.enq(last_px);
@@ -168,7 +170,8 @@ void Logger::advance_system_sync_epoch(const std::vector<std::vector<unsigned>> 
 
       if (start_us == 0 && last_us == 0)
       	continue;
-
+      if (now_us < start_us)
+        std::cout << "Now " << now_us << " start " << start_us << std::endl;
       assert(now_us >= start_us);
       util::non_atomic_fetch_add_(ps.ntxns_persisted_, ntxns_persisted);
       util::non_atomic_fetch_add_(ps.total_latency_,
@@ -367,6 +370,23 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
       }
     }
   }
+}
+
+std::tuple<uint64_t, uint64_t, double> Logger::compute_ntxns_persisted_statistics() {
+  uint64_t pers = 0, push = 0, comm = 0, latency = 0.0;
+  for (size_t i = 0; i < MAX_THREADS_; i++) {
+    pers += g_persist_stats[i].ntxns_persisted_.load(std::memory_order_acquire);
+    push += g_persist_stats[i].ntxns_pushed_.load(std::memory_order_acquire);
+    latency += g_persist_stats[i].total_latency_.load(std::memory_order_acquire);
+    comm += g_persist_stats[i].ntxns_committed_.load(std::memory_order_acquire);
+  }
+  std::cout << "pers " << pers << " push" << push << " comm " << comm <<  std::endl;
+  assert(pers <= push);
+  if (pers == 0)
+    return std::make_tuple(0, push, 0.0);
+  std::cout << "Latency " << (double(latency)/double (pers)) << std::endl;
+  std::cout << "Pers " << pers << std::endl;
+  return std::make_tuple(pers, push, double(latency) / double(pers));
 }
 
 void Logger::clear_ntxns_persisted_statistics() {

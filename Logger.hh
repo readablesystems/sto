@@ -100,8 +100,11 @@ public:
   static inline bool IsCompressionEnabled() {
     return g_use_compression;
   }
-  
+
+  static std::tuple<uint64_t, uint64_t, double> compute_ntxns_persisted_statistics();
+ 
   static void clear_ntxns_persisted_statistics();  
+
   static void wait_for_idle_state();
   
   static void wait_until_current_point_persisted();
