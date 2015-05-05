@@ -162,10 +162,10 @@ void Logger::advance_system_sync_epoch(const std::vector<std::vector<unsigned>> 
   const uint64_t now_us = util::cur_time_us();
   for (size_t i = 0; i < MAX_THREADS_; i++) {
     auto &ps = g_persist_stats[i];
-    for (int i =0 ; i < g_max_lag_epochs; i++) {
-      auto &pes = ps.epochStats[i];
+    for (int j = 0 ; j < g_max_lag_epochs; j++) {
+      auto &pes = ps.epochStats[j];
       const uint64_t last_tid = pes.last_tid_.load(std::memory_order_acquire);
-      if (last_tid <= min_so_far) {
+      if (last_tid > 0 && last_tid <= min_so_far) {
         const uint64_t start_us = pes.start_time_.load(std::memory_order_acquire);
         const uint64_t last_us = pes.last_time_.load(std::memory_order_acquire);
         const uint64_t ntxns_persisted = pes.ntxns_.load(std::memory_order_acquire);
@@ -182,7 +182,6 @@ void Logger::advance_system_sync_epoch(const std::vector<std::vector<unsigned>> 
         pes.ntxns_.store(0, std::memory_order_release);
         pes.start_time_.store(0, std::memory_order_release);
         pes.last_time_.store(0, std::memory_order_release);
-        pes.start_tid_.store(0, std::memory_order_release);
         pes.last_tid_.store(0, std::memory_order_release);
       }
     }
@@ -311,7 +310,7 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
           const uint64_t px_epoch = px->header()->epoch;
           epoch_prefixes[k] = px_epoch == 0 ? 0 : px_epoch - 1;
           
-          max_epoch_so_far = px_tid > max_tid_so_far ? px_tid : max_epoch_so_far;
+          max_epoch_so_far = px_tid > max_epoch_so_far ? px_tid : max_epoch_so_far;
         
           auto &epoch_stat = g_persist_stats[k].epochStats[px_epoch % g_max_lag_epochs];
           if (!epoch_stat.ntxns_.load(std::memory_order_acquire)) {
@@ -408,7 +407,7 @@ void Logger::clear_ntxns_persisted_statistics() {
       auto &pes = ps.epochStats[e];
       pes.ntxns_.store(0, std::memory_order_release);
       pes.start_time_.store(0, std::memory_order_release);
-      pes.start_tid_.store(0, std::memory_order_release);
+      pes.last_tid_.store(0, std::memory_order_release);
     }
   }
 }
