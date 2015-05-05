@@ -148,8 +148,9 @@ private:
       std::atomic<uint64_t> ntxns_;
       std::atomic<uint64_t> start_time_;
       std::atomic<uint64_t> last_time_;
+      std::atomic<uint64_t> last_tid_;
       
-      per_epoch_stats() : ntxns_(0), start_time_(0), last_time_(0) {}
+      per_epoch_stats() : ntxns_(0), start_time_(0), last_time_(0), last_tid_(0) {}
     } epochStats[g_max_lag_epochs]; 
    
     persist_stats() : ntxns_persisted_(0), ntxns_pushed_(0), 
