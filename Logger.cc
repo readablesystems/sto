@@ -77,7 +77,7 @@ void Logger::Init(size_t nworkers, const std::vector<std::string> &logfiles, con
 
 void Logger::persister(std::vector<std::vector<unsigned>> assignments) {
   for (;;) {
-    usleep(100000); // sleep for 100 ms  (actually 40ms was used in Silo)
+    usleep(40000); // sleep for 100 ms  (actually 40ms was used in Silo)
     advance_system_sync_epoch(assignments);
   }
 }
@@ -308,7 +308,7 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
           
           const uint64_t px_tid = px->header()->last_tid_;
           const uint64_t px_epoch = px->header()->epoch;
-          epoch_prefixes[k] = px_epoch == 0 ? 0 : px_epoch - 1;
+          epoch_prefixes[k] = px_tid == 0 ? 0 : px_tid - 1;
           
           max_epoch_so_far = px_tid > max_epoch_so_far ? px_tid : max_epoch_so_far;
         
@@ -433,5 +433,22 @@ void Logger::wait_until_current_point_persisted() {
     nop_pause;
     //std::cout << system_sync_epoch_->load(std::memory_order_acquire) << std::endl;
   }
-  std::cout << t << " is persisted!" << std::endl;
+  const uint64_t tt = Transaction::_TID;
+  fence();
+  std::cout << tt << " is persisted!" << std::endl;
+
+  for (size_t i = 0; i < MAX_THREADS_; i++) {
+    persist_ctx &ctx = persist_ctx_for(i, INITMODE_NONE);
+    if (!ctx.init_)
+      continue;
+    pbuffer *px;
+    if (!(px = ctx.all_buffers_.peek()) || px->header()->nentries_)
+      {std::cout << "Outstanding commits that are not pushed to logger " << i << std::endl;
+      std::cout << (px->header()->nentries_) << std::endl;
+      std::cout << (px->header()->last_tid_) << std::endl; 
+    }
+    if (ctx.persist_buffers_.peek())
+      std::cout << "Outstanding commits that should be written to disk" << std::endl;
+  }
+
 }

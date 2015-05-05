@@ -313,7 +313,7 @@ public:
 
   static void* epoch_advancer(void*) {
     // don't bother epoch'ing til things have picked up
-    usleep(100000);
+    usleep(40000);
     while (run_epochs) {
       auto g = global_epoch;
       for (auto&& t : tinfo) {
@@ -358,7 +358,7 @@ public:
         }
         release_spinlock(t.spin_lock);
       }
-      usleep(100000);
+      usleep(40000);
     }
     return NULL;
   }

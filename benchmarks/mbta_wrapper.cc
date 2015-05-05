@@ -13,7 +13,7 @@ mbta_wrapper::mbta_wrapper(const std::vector<std::string> &logfiles,
     if (logfiles.empty()) return;
     std::vector<std::vector<unsigned>> assignments_used;
     
-    Logger::Init(nthreads, logfiles, assignments_given, &assignments_used,
+    Logger::Init(nthreads + 1, logfiles, assignments_given, &assignments_used,
         call_fsync, use_compression, fake_writes);
         
     if (verbose) {
