@@ -17,136 +17,7 @@
 #include <fcntl.h>
 #include "ckp_params.hh"
 
-
-#define HASHBLOCK_SIZE 50
-class hashblock {
-  // this block is just a chunk of memory, but represents an entry
-  // in the hashtable
-  // provides chaining
-  
-public:
-  hashblock() {
-    used = 0;
-    next = NULL;
-    used_ptr = buf;
-    //cur_ptr = buf;
-    lockbit = false;
-  }
-  
-  void done() {
-    // free memory
-    if (next != NULL)
-      next->done();
-    delete next;
-  }
-  
-  inline void lock() {
-    while (!__sync_bool_compare_and_swap(&lockbit, false, true)) { }
-    //mtx.lock();
-  }
-  
-  inline void unlock() {
-    lockbit = false;
-    //mtx.unlock();
-  }
-  
-  inline uint8_t ** put(uint8_t *key, size_t key_size, uint8_t **value) {
-    // this assumes that find_key() didn't find anything
-    //printf("put(): used %lu, %lu\n", used, 8 + key_size + sizeof(uint8_t *));
-    
-    size_t total_size = 8 + key_size + sizeof(uint8_t *);
-    
-    if (used + total_size < HASHBLOCK_SIZE) {
-      uint8_t *ptr = buf + used;
-      memcpy(ptr, &key_size, 8);
-      
-      ptr += 8;
-      memcpy(ptr, key, key_size);
-      
-      ptr += key_size;
-      memcpy(ptr, value, sizeof(uint8_t *));
-      used += total_size;
-      used_ptr = buf + used;
-      //printf("total_size is %lu\n", total_size);
-      
-      return (uint8_t **) ptr;
-    } else {
-      if (next == NULL) {
-        //printf("hashblock size %lu, key: %p\n", sizeof(hashblock), key);
-        next = new hashblock;
-      }
-    }
-    return next->put(key, key_size, value);
-  }
-  
-  inline uint8_t **find_key(uint8_t *key, size_t size) {
-    
-    if (used == 0)
-      return NULL;
-    
-    uint8_t *cur_ptr = buf;
-    
-    do {
-      size_t *key_size = (size_t *) cur_ptr;
-      cur_ptr += 8;
-      
-      //printf("[%u] buf: %p, key_size: %p, cur_ptr: %p, used_ptr: %p\n", count, buf, key_size, cur_ptr, used_ptr);
-      if (*key_size == size) {
-        
-        if (memcmp(cur_ptr, key, size) == 0) {
-          //printf("Found the key\n");
-          return (uint8_t **) (cur_ptr + size);
-        }
-        
-      }
-      
-      cur_ptr += *key_size + 8;
-      //count += 1;
-    } while (cur_ptr < used_ptr);
-    
-    if (next != NULL) {
-      //printf("Goes to next block for key\n");
-      return next->find_key(key, size);
-    }
-    //printf("Did not find key\n");
-    return NULL;
-  }
-  
-  uint8_t buf[HASHBLOCK_SIZE];
-  size_t used;
-  hashblock *next;
-  uint8_t *used_ptr;
-  //uint8_t *cur_ptr;
-  volatile bool lockbit;
-};
-
-
-#define TABLE_SIZE (32*1024*1204)
-class hashtable { // TODO: is this required
-public:
-  hashtable() {
-    //blocks = (hashblock *) malloc(sizeof(hashblock) * TABLE_SIZE);
-    for (int i = 0; i < TABLE_SIZE; i++) {
-      blocks[i] = hashblock();
-    }
-  }
-  
-  ~hashtable() {
-    for (int i = 0; i < TABLE_SIZE; i++) {
-      blocks[i].done();
-    }
-  }
-  
-  inline hashblock *get_block(size_t idx) {
-    return blocks + idx;
-  }
-  
-  hashblock blocks[TABLE_SIZE];
-};
-
-
-struct read_buffer { // TODO: do I need this?
-  
+struct read_buffer {
   static const uint64_t MAX_SIZE = 32*1024*1024;
   static const size_t max_reg_ptrs = 20;
   
@@ -221,7 +92,6 @@ struct read_buffer { // TODO: do I need this?
       // reload more data and try again
       load();
       if ((tail - cur) < sizeof(uint32_t)) {
-        std::cout << "read_32_vs(): new pos isn't defined" << std::endl;
         return false;
       } else {
          new_pos = (uint8_t *) read_(cur, number);
@@ -239,7 +109,6 @@ struct read_buffer { // TODO: do I need this?
       // reload more data and try again
       load();
       if ((tail - cur) < sizeof(uint64_t)) {
-        //std::cout << "read_64_s(): new pos isn't defined " << (tail - cur) <<std::endl;
         return false;
       } else {
         new_pos = (uint8_t *) read_(cur, number);
@@ -291,20 +160,20 @@ class Recovery {
 
 
   static void Init() {}
-  static txn_btree_map_type * recover(std::vector<std::string> logfile_base, uint64_t test_epoch = 0);
+  static txn_btree_map_type * recover(std::vector<std::string> logfile_base, uint64_t test_tid = 0);
   
-  static void replay_checkpoint(uint64_t pepoch);
+  static void replay_checkpoint(uint64_t ptid);
   static void replay_logs(std::vector<std::string> file_list,
-                          uint64_t ckp_epoch,
-                          uint64_t persist_epoch, size_t th,
+                          uint64_t ckp_tid,
+                          uint64_t persist_tid, size_t th,
                           int index);
   
 private:
-  static void _read_checkpoint_file(std::string diskname, uint64_t pepoch);
-  static uint64_t _read_min_epoch(char *tree_id);
-  static void recover_ckp_thread(Recovery::btree_type* btree, std::string filename, uint64_t pepoch);
+  static void _read_checkpoint_file(std::string diskname, uint64_t ptid);
+  static uint64_t _read_min_tid(char *tree_id);
+  static void recover_ckp_thread(Recovery::btree_type* btree, std::string filename, uint64_t ptid);
   
   static txn_btree_map_type *btree_map;
-  static uint64_t min_recovery_epoch;
+  static uint64_t min_recovery_tid;
   static std::mutex mtx;
 };

@@ -3,12 +3,13 @@
 typedef Recovery::txn_btree_map_type txn_btree_map_type;
 
 txn_btree_map_type * Recovery::btree_map = new txn_btree_map_type();
-uint64_t Recovery::min_recovery_epoch = std::numeric_limits<uint64_t>::max();
+uint64_t Recovery::min_recovery_tid = std::numeric_limits<uint64_t>::max();
 std::mutex Recovery::mtx;
 
-txn_btree_map_type * Recovery::recover(std::vector<std::string> logfile_base, uint64_t test_epoch) {
+txn_btree_map_type * Recovery::recover(std::vector<std::string> logfile_base, uint64_t test_tid) {
   std::vector<std::vector<std::string>* > file_list;
   uint64_t bytes[NTHREADS_PER_DISK * NUM_TH_CKP];
+  
   for (int i = 0; i < NTHREADS_PER_DISK * NUM_TH_CKP; i++) {
     std::vector<std::string> * vec = new std::vector<std::string>();
     file_list.emplace_back(vec);
@@ -20,48 +21,45 @@ txn_btree_map_type * Recovery::recover(std::vector<std::string> logfile_base, ui
   std::vector<std::thread> threads;
   std::vector<std::thread> keyspace_threads;
   
-  uint64_t ckp_epoch = 0;
-  uint64_t persist_epoch = 0;
+  uint64_t ckp_tid = 0;
+  uint64_t persist_tid = 0;
   
-  // find the checkpoint epoch
-  std::cout << root_folder << std::endl;
-  
-  if (test_epoch == 0) {
-    // find the persistent epoch
+  if (test_tid == 0) {
+    // find the persistent tid
     int fd = open(std::string(root_folder).append("/ptid").c_str(), O_RDONLY);
     if (fd > 0) {
-      if (read(fd, (char *) &persist_epoch, 8) < 0) {
-        perror("Persist epoch reading failed");
+      if (read(fd, (char *) &persist_tid, 8) < 0) {
+        perror("Persist tid reading failed");
         assert(false);
       }
       close(fd);
     } else {
-      perror("pepoch file not found");
+      perror("ptid file not found");
       assert(false);
     }
   } else {
-    persist_epoch = test_epoch;
+    persist_tid = test_tid;
   }
   
-  std::cout << "persist_epoch is " << persist_epoch << std::endl;
+  std::cout << "persist_tid is " << persist_tid << std::endl;
   
-  int fd = open(std::string(root_folder).append("/cepoch").c_str(), O_RDONLY);
+  int fd = open(std::string(root_folder).append("/ctid").c_str(), O_RDONLY);
   if (fd > 0) {
-    if (read(fd, (char *) &ckp_epoch, 8) < 0) {
-      perror("Checkpoint epoch reading failed");
+    if (read(fd, (char *) &ckp_tid, 8) < 0) {
+      perror("Checkpoint tid reading failed");
       assert(false);
     }
     close(fd);
   } else {
-    perror("[recover] cepoch file not found");
+    perror("[recover] ctid file not found");
     goto log_replay;
   }
 
-  replay_checkpoint(persist_epoch);
+  replay_checkpoint(persist_tid);
   
 log_replay:
   for (size_t i = 0; i < logfile_base.size(); i++) {
-    uint64_t all_max_epoch = 0;
+    uint64_t all_max_tid = 0;
     std::map<uint64_t, std::string> map_list;
     
     DIR *dir;
@@ -71,16 +69,16 @@ log_replay:
         char* file_name = ent->d_name;
         std::cmatch cm;
         if (std::regex_match(file_name, cm, log_reg, std::regex_constants::format_default)) {
-          char *max_epoch_char = (char *) cm[1].str().c_str();
-          uint64_t max_epoch = _char_to_uint64(max_epoch_char);
-          if (max_epoch < ckp_epoch) {
+          char *max_tid_char = (char *) cm[1].str().c_str();
+          uint64_t max_tid = _char_to_uint64(max_tid_char);
+          if (max_tid < ckp_tid) {
             continue;
           }
           std::string f(logfile_base[i]);
           f.append(std::string(file_name));
     
-          map_list[max_epoch] = f;
-          all_max_epoch = (max_epoch > all_max_epoch) ? max_epoch : all_max_epoch;
+          map_list[max_tid] = f;
+          all_max_tid = (max_tid > all_max_tid) ? max_tid : all_max_tid;
         }
       }
       closedir(dir);
@@ -89,7 +87,7 @@ log_replay:
     std::string s(logfile_base[i]);
     file_list[i*NTHREADS_PER_DISK]->push_back(s.append("data.log"));
     
-    std::map<uint64_t, std::string>::reverse_iterator rit = map_list.rbegin(); // reverse order of max_epoch
+    std::map<uint64_t, std::string>::reverse_iterator rit = map_list.rbegin(); // reverse order of max_tid
     int file_list_idx = 0;
     for(; rit != map_list.rend(); rit++) {
       file_list[file_list_idx + i * NTHREADS_PER_DISK]->push_back(rit->second);
@@ -99,12 +97,9 @@ log_replay:
   
   for (size_t i = 0; i < logfile_base.size(); i++) {
     for (int j = 0; j < NTHREADS_PER_DISK; j++) {
-      threads.emplace_back(&replay_logs, *(file_list[i * NTHREADS_PER_DISK + j]), ckp_epoch,
-                           persist_epoch, i * NTHREADS_PER_DISK + j,
+      threads.emplace_back(&replay_logs, *(file_list[i * NTHREADS_PER_DISK + j]), ckp_tid,
+                           persist_tid, i * NTHREADS_PER_DISK + j,
                            i);
-      //replay_logs(*(file_list[i * NTHREADS_PER_DISK + j]), ckp_epoch,
-       //                                 persist_epoch, i * NTHREADS_PER_DISK + j,
-       //           i);
     }
   }
   
@@ -116,28 +111,22 @@ log_replay:
     threads[i].join();
   }
   
-  
   // delete all of the extra records
   
   return btree_map;
-
-
 }
 
 
 // Replay logs
 void Recovery::replay_logs(std::vector<std::string> file_list,
-                           uint64_t ckp_epoch,
-                           uint64_t persist_epoch,
+                           uint64_t ckp_tid,
+                           uint64_t persist_tid,
                            size_t th,
                            int index) {
   btree_type::thread_init();
   std::cout << "Recover thread " << th <<" starting " << std::endl;
   if (file_list.size() == 0) {
-    printf("No log files found\n");
     return;
-  } else {
-    printf("Log files found\n");
   }
   
   std::vector<std::string>::iterator it = file_list.begin();
@@ -154,13 +143,13 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
     while (true) {
       uint64_t nentries = 0; // Num of transactions
       uint64_t last_tid = 0; // last tid of all transactions
-      uint64_t epoch = 0;
+      uint64_t tid = 0;
       if (!buf.read_64_s(&nentries))
         goto end;
       if (!buf.read_64_s(&last_tid))
         goto end;
       
-      if (!buf.read_64_s(&epoch))
+      if (!buf.read_64_s(&tid))
         goto end;
       
       for (uint64_t n = 0; n < nentries; n++) { // for each transaction
@@ -168,10 +157,10 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
         uint64_t tid = 0;
         if (!buf.read_64_s(&tid)) // transaction tid
           goto end;
-        uint64_t cur_epoch = tid;
-        if (cur_epoch > persist_epoch || cur_epoch < ckp_epoch) {
-          // we should not replay this transaction if it's bigger than the persistent epoch,
-          // and we don't need to replay if it's smaller than the checkpoint epoch
+        uint64_t cur_tid = tid;
+        if (cur_tid > persist_tid || cur_tid < ckp_tid) {
+          // we should not replay this transaction if it's bigger than the persistent tid,
+          // and we don't need to replay if it's smaller than the checkpoint tid
           replay = false;
         }
         
@@ -180,7 +169,7 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
           goto end;
         
         for (uint32_t i = 0; i < num_records; i++) { // For each record
-          buf.set_pin(); // what does this do?
+          buf.set_pin();
           uint8_t tree_id;
           if (!buf.read_object(&tree_id))
             goto end;
@@ -227,13 +216,10 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
               
               if (old_tid < tid) {
                 if (value_size == 0) {
-                  //std::cout << "remove (found) for key " << key.data() << " for tree " << tree_id << std::endl;
                   btree_type::set_tid(record, tid);
                   if (!btree_type::is_invalid(record)) {
                     btree_type::make_invalid(record);
                   }
-                  // bool success = btr->remove(key);
-                  //assert(success);
                 } else {
                   if (btree_type::is_invalid(record)) {
                     btree_type::make_valid(record);
@@ -251,20 +237,15 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
                 btr->lock(record);
                 if (! (btr->insert_if_absent(key, record))){
                   goto retry;
-                   // TODO: should we destroy the record
                 }
                 btr->unlock(record);
               } else {
-                //std::cout << "remove for key " << key.data() << " for tree " << tree_id << std::endl;
                 btr->get(key, record);
-                //std::cout << " Reached here " <<std::endl;
-                // Do nothing
                 record = btree_type::versioned_value_type::make(key.data(), valuestr, tid);
                 btr->lock(record);
                 btree_type::make_invalid(record);
                 if (! (btr->insert_if_absent(key, record))){
                   goto retry;
-                  // TODO: should we destroy the record
                 }
                 btr->unlock(record);
                 
@@ -285,10 +266,8 @@ void Recovery::replay_logs(std::vector<std::string> file_list,
   
 }
 
-void Recovery::replay_checkpoint(uint64_t pepoch) {
+void Recovery::replay_checkpoint(uint64_t ptid) {
   std::regex reg_data("ckp_(.*)");
-  std::regex reg_epoch("epoch_(.*)");
-  
   std::vector<std::string> disks;
   
   for (size_t i = 0; i < ckpdirs.size(); i++) {
@@ -303,12 +282,12 @@ void Recovery::replay_checkpoint(uint64_t pepoch) {
       char *file_name = ent->d_name;
       std::cmatch cm;
       if (std::regex_match(file_name, cm, reg_data, std::regex_constants::format_default)) {
-        char *tree_id = (char *) cm[1].str().c_str() + 1; // TODO: + 1 is required when compiling with gcc. why?
+        char *tree_id = (char *) cm[1].str().c_str() + 1;
         uint64_t tree_id_uint = _char_to_uint64(tree_id);
         (*btree_map)[tree_id_uint] = new concurrent_btree();
         
-        uint64_t epoch = _read_min_epoch(tree_id);
-        min_recovery_epoch = epoch < min_recovery_epoch ? epoch : min_recovery_epoch;
+        uint64_t tid = _read_min_tid(tree_id);
+        min_recovery_tid = tid < min_recovery_tid ? tid : min_recovery_tid;
       }
     }
     
@@ -318,8 +297,7 @@ void Recovery::replay_checkpoint(uint64_t pepoch) {
   // start one thread per directory
   std::vector<std::thread> ths;
   for (auto diskname : disks) {
-    ths.emplace_back(&_read_checkpoint_file, diskname, pepoch);
-    //_read_checkpoint_file(diskname, pepoch);
+    ths.emplace_back(&_read_checkpoint_file, diskname, ptid);
   }
   
   for (size_t i = 0; i < ths.size(); i++) {
@@ -328,24 +306,24 @@ void Recovery::replay_checkpoint(uint64_t pepoch) {
 }
 
 
-uint64_t Recovery::_read_min_epoch(char *tree_id) {
-  uint64_t epoch;
+uint64_t Recovery::_read_min_tid(char *tree_id) {
+  uint64_t tid;
   int fd;
   
-  std::string epoch_file = "epoch_";
-  epoch_file.append(std::string(tree_id));
-  fd = open((char *) epoch_file.c_str(), O_RDONLY, S_IRUSR|S_IWUSR);
+  std::string tid_file = "tid_"; // TODO: is this correct?
+  tid_file.append(std::string(tree_id));
+  fd = open((char *) tid_file.c_str(), O_RDONLY, S_IRUSR|S_IWUSR);
   
-  ssize_t read_size = read(fd, (char *) &epoch, 8);
+  ssize_t read_size = read(fd, (char *) &tid, 8);
   if (read_size < 8) {
     return std::numeric_limits<uint64_t>::max();
   }
   close(fd);
-  return epoch;
+  return tid;
 }
 
 
-void Recovery::recover_ckp_thread(Recovery::btree_type* btree, std::string filename, uint64_t pepoch) {
+void Recovery::recover_ckp_thread(Recovery::btree_type* btree, std::string filename, uint64_t ptid) {
   printf("Par ckp reading file %s\n", filename.c_str());
   int fd = open((char *) filename.c_str(), O_RDONLY);
   if (fd < 0) {
@@ -367,8 +345,8 @@ void Recovery::recover_ckp_thread(Recovery::btree_type* btree, std::string filen
     if (!buf.read_64_s(&tid))
       break;
     
-    uint64_t cur_epoch = tid;
-    if (cur_epoch > pepoch) {
+    uint64_t cur_tid = tid;
+    if (cur_tid > ptid) {
       replay = false;
     }
     
@@ -402,7 +380,7 @@ void Recovery::recover_ckp_thread(Recovery::btree_type* btree, std::string filen
   
 }
 
-void Recovery::_read_checkpoint_file(std::string diskname, uint64_t pepoch) {
+void Recovery::_read_checkpoint_file(std::string diskname, uint64_t ptid) {
   int counter = 0;
   
   std::regex reg_data("ckp_(.*)");
@@ -417,15 +395,13 @@ void Recovery::_read_checkpoint_file(std::string diskname, uint64_t pepoch) {
         char* tree_id = (char *) cm[1].str().c_str() + 1;
         uint64_t tree_id_uint = _char_to_uint64(tree_id);
         btree_type *tree = (*btree_map)[tree_id_uint];
-        recover_ckp_thread(tree, std::string(diskname).append(file_name), pepoch);
+        recover_ckp_thread(tree, std::string(diskname).append(file_name), ptid);
         counter++;
       }
     }
   }
   closedir(dir);
 }
-
-
 
 
 // Read buffer methods

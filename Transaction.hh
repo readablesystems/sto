@@ -636,45 +636,6 @@ private:
     return true;
   }
   
-  /*
-  // Generate a tid for this transaction
-  tid_t genCommitTid(TransSet transSet) {
-    threadinfo_t &ctx = tinfo[threadid];
-    uint64_t commit_epoch;
-    
-    // Get the current global epoch
-    fence();
-    commit_epoch = global_epoch;
-    //std::cout<<"Commit epoch "<<commit_epoch<<std::endl;
-    fence();
-    
-    tid_t ret = ctx.last_commit_tid;
-    assert(commit_epoch >= epochId(ret));
-    if (commit_epoch != epochId(ret))
-      ret = makeTID(threadid, 0, commit_epoch);
-    assert(ret >= ctx.last_commit_tid);
-    
-    {
-      TransItem* trans_first = &transSet[0];
-      TransItem* trans_last = trans_first + transSet.size();
-      int i = 0;
-      for (auto it = trans_first; it != trans_last; ++it) {
-        // Need to get the tid from the underlying shared object.
-        const tid_t t = it->sharedObj()->getTid(*it);
-        assert (commit_epoch >= epochId(t));
-        if (t > ret)
-          //std::cout << "greater tid " << t << std::endl;
-          ret = t;
-      }
-      //assert(ret >= ctx.last_commit_tid);
-      assert(commit_epoch >= epochId(ret));
-      ret = makeTID(threadid, numId(ret) + 1, commit_epoch);
-    }
-    if (ret <= ctx.last_commit_tid)
-      ret = ctx.last_commit_tid + 1;
-    return (ctx.last_commit_tid = ret);
-  }*/
-  
   void on_tid_finish(uint64_t commitEpoch, tid_type commitTid, bool success) {
     Transaction::tinfo[threadid].last_commit_tid = commitTid;
     if (!success) {
@@ -692,24 +653,24 @@ private:
     auto &epoch_stat = stats.epochStats[commitEpoch % Logger::g_max_lag_epochs]; 
 
     this->final_commit_tid = commitTid;
+    
     //compute how much space is necessary
     uint64_t space_needed = 0;
     
     //8 bytes to indicate TID
     space_needed += sizeof(tid_type);
-    //std::cout<<"Space needed after tid "<<space_needed<<std::endl;
+    
     const unsigned nwrites = nwriteset_;
     space_needed += sizeof(nwrites);
-    //std::cout<<"Space needed after nwrites "<<space_needed<<std::endl;
+    
     // each record needs to be recorded
     TransItem* trans_first = &transSet_[0];
     TransItem* trans_last = trans_first + transSet_.size();
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
       TransItem& ti = *it;
       if (ti.has_write()) {
-        // Call the shared object to get square required
+        // Call the shared object to get space required
         space_needed += ti.sharedObj()->spaceRequired(ti);
-        //std::cout<<"Space needed after write "<<space_needed<<std::endl;
       }
     }
     assert(space_needed <= Logger::g_horizon_buffer_size);
@@ -726,17 +687,17 @@ private:
       assert(px->header()->nentries_);
       // Send the buffer to logger's queue
       Logger::pbuffer *px0 = pull_buf.deq();
-      //std::cout << "pull buffer " << px0 << " dequeued by thread " << threadid <<std::endl;
+      
       assert(px == px0);
       assert(px0->header()->nentries_);
+      
       util::non_atomic_fetch_add_(stats.ntxns_pushed_, px0->header()->nentries_);
       push_buf.enq(px0);
-      fence(); // TODO: Is this required?
+      fence();
       goto retry;
     }
     
     const uint64_t written = write_current_txn_into_buffer(px, commitTid, commitEpoch);
-    //std::cout<<"Written = "<<written<<" and space needed = "<<space_needed<<std::endl;
     assert(written == space_needed);
   }
   
@@ -753,17 +714,14 @@ private:
     const unsigned nwrites = nwriteset_;
     
     p = write(p, commitTid);
-    //std::cout<<"After tid "<<uint64_t(p-porig)<<std::endl;
     p = write(p, nwrites);
-    //std::cout<<"After nwrites "<<uint64_t(p-porig)<<std::endl;
+    
     TransItem* trans_first = &transSet_[0];
     TransItem* trans_last = trans_first + transSet_.size();
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
       TransItem& ti = *it;
       if (ti.has_write()) {
         p = ti.sharedObj()->writeLogData(ti, p);
-        //std::cout<<"After write "<<uint64_t(p-porig)<<std::endl;
-        
       }
     }
     
