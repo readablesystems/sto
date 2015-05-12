@@ -72,10 +72,11 @@ template <typename T, typename=void>
 struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
   typedef T value_type;
   typedef uint64_t version_type;
+  typedef std::string key_type;
 
   versioned_value_struct() : version_(), value_() {}
   
-  static versioned_value_struct* make(const value_type& val, version_type version) {
+  static versioned_value_struct* make(const key_type& key, const value_type& val, version_type version) {
     return new versioned_value_struct<T>(val, version);
   }
   
@@ -94,6 +95,15 @@ struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
   inline const value_type& read_value() {
     return value_;
   }
+  
+  inline void set_key(const key_type& k) {
+    return;
+  }
+  
+  inline const key_type& read_key() {
+    return "";
+  }
+
   
   inline value_type& writeable_value() {
     return value_;
@@ -118,7 +128,7 @@ struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
 #endif
   
 private:
-  versioned_value_struct(const value_type& val, version_type v) : version_(v), value_(val) {}
+  versioned_value_struct(const value_type& val, version_type v, const key_type& k) : version_(v), value_(val) {}
   
   version_type version_;
   value_type value_;
@@ -130,8 +140,9 @@ struct versioned_value_struct<T, typename std::enable_if<!__has_trivial_copy(T)>
 public:
   typedef T value_type;
   typedef uint64_t version_type;
+  typedef std::string key_type;
 
-  static versioned_value_struct* make(const value_type& val, version_type version) {
+  static versioned_value_struct* make(const key_type& k, const value_type& val, version_type version) {
     return new versioned_value_struct(val, version);
   }
 
@@ -154,6 +165,14 @@ public:
     return *valueptr_;
   }
   
+  inline void set_key(const key_type& k) {
+    return;
+  }
+  
+  inline const key_type& read_key() {
+    return "";
+  }
+  
   version_type& version() {
     return version_;
   }
@@ -164,7 +183,7 @@ public:
   }
   
 private:
-  versioned_value_struct(const value_type& val, version_type version) : version_(version), valueptr_(new value_type(std::move(val))) {}
+  versioned_value_struct(const value_type& val, version_type version, const key_type& k) : version_(version), valueptr_(new value_type(std::move(val))) {}
 
   version_type version_;
   value_type* valueptr_;
