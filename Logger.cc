@@ -228,7 +228,7 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
       if (max_tid_so_far - min_tid_so_far > 10000000) {
         std::string fname(logfile);
         fname.append("old_data");
-        fname.append(std::to_string(max_epoch_so_far));
+        fname.append(std::to_string(max_tid_so_far));
         
         if (rename(logfile_name.c_str(), fname.c_str()) < 0){
           perror("Renaming failure");
