@@ -8,7 +8,7 @@
 #include <sys/uio.h>
 
 #include "Transaction.hh"
-
+#include "Checkpointer.hh"
 
 std::string root_folder; // this folder stores ptid, ctid and other information
 
@@ -24,8 +24,6 @@ util::aligned_padded_elem<std::atomic<uint64_t>> Logger::system_sync_tid_(0);
 
 Logger::persist_ctx Logger::g_persist_ctxs[MAX_THREADS_];
 Logger::persist_stats Logger::g_persist_stats[MAX_THREADS_];
-
-extern volatile uint64_t fsync_sync[NUM_TH_CKP];
 
 void Logger::Init(size_t nworkers, const std::vector<std::string> &logfiles, const std::vector<std::vector<unsigned>> &assignments_given, std::vector<std::vector<unsigned>> *assignments_used, bool call_fsync, bool use_compression, bool fake_writes) {
   assert(!g_persist);
