@@ -101,6 +101,7 @@ public:
     mythreadinfo.ti = new threadinfo;
 #endif
     table_.initialize(*mythreadinfo.ti);
+    tree_id = 0;
     // TODO: technically we could probably free this threadinfo at this point since we won't use it again,
     // but doesn't seem to be possible
   }
@@ -131,12 +132,12 @@ public:
       mythreadinfo.ti = ti;
     }
     assert(mythreadinfo.ti != NULL);
-    //std::cout << Transaction::threadid << std::endl;
+    
     Transaction::tinfo[Transaction::threadid].trans_start_callback = [] () {
       assert(mythreadinfo.ti != NULL);
       mythreadinfo.ti->rcu_start();
     };
-    //std::cout << Transaction::threadid << std::endl;
+    
     Transaction::tinfo[Transaction::threadid].trans_end_callback = [] () {
       mythreadinfo.ti->rcu_stop();
     };
@@ -279,19 +280,6 @@ public:
       unlocked_cursor_type lp(table_, key);
       bool found = lp.find_unlocked(*ti.ti);
       if (found) {
-        //TOOD: Not required
-        /*versioned_value *e = lp.value();
-        bool deleted = (e->version() & deleted_bit);
-        if (!deleted) {
-          return handlePutFound<INSERT, SET>(t, lp.value(), key, value);
-        } else {
-          if (!INSERT) {
-            auto& item = t_item(t, e);
-            t.add_read(item, e->version());
-            return false;
-          }
-        }*/
-
         return handlePutFound<CopyVals, INSERT, SET>(t, lp.value(), key, value);
       } else {
         if (!INSERT) {
@@ -584,21 +572,12 @@ public:
     e->version() |= invalid_bit;
   }
     
-  /*
-  static bool is_deleted(versioned_value* e) {
-    return (e->version() & deleted_bit);
+  static void make_valid(versioned_value* e) {
+    assert(is_invalid(e));
+    Version cur = e->version();
+    cur &= ~invalid_bit;
+    e->version() = cur;
   }
-    
-  static void make_deleted(versioned_value* e) {
-    e->version() |= deleted_bit;
-  }*/
-    
-    static void make_valid(versioned_value* e) {
-      assert(is_invalid(e));
-      Version cur = e->version();
-      cur &= ~invalid_bit;
-      e->version() = cur;
-    }
     
   static void set_tid(versioned_value* e, uint64_t tid) {
     TransactionTid::set_version(e->version(), tid);
@@ -632,9 +611,7 @@ public:
       if (!has_insert(item)) {
         assert(!(e->version() & invalid_bit));
         e->version() |= invalid_bit;
-        //make_deleted(e);
         fence();
-        //return;
       }
       // TODO: hashtable did this in afterC, we're doing this now, unclear really which is better
       // (if we do it now, we take more time while holding other locks, if we wait, we make other transactions abort more
@@ -665,88 +642,77 @@ public:
       TransactionTid::inc_invalid_version(e->version());
   }
 
-    // Get space required to encode the write data
-    uint64_t spaceRequired(TransItem & item) {
-      assert(item.has_write());
-      uint64_t space_needed = 0;
-      space_needed += 1;
-      auto e = item.key<versioned_value*>();
-      std::string s = (std::string) e->read_key();
-      //std::cout<<"Key "<<s.data()<<std::endl;
-      const uint32_t k_nbytes = s.size();
-      //std::cout<<"Key size "<<k_nbytes<<std::endl;
-      space_needed += sizeof(k_nbytes);
-      //std::cout<<"bytes Key size "<<sizeof(k_nbytes)<<std::endl;
-      space_needed += k_nbytes;
-      value_type value;
-      if (has_insert(item)) {
-        value = e->read_value();
-      } else {
-        value = item.flags() & copyvals_bit ?
-        item.template write_value<value_type>()
-        : (value_type&)item.template write_value<void*>();
-      }
-      
-      //std::cout<<"value "<<value<<std::endl;
+  // Get space required to encode the write data
+  uint64_t spaceRequired(TransItem & item) {
+    assert(item.has_write());
+    uint64_t space_needed = 0;
+    space_needed += 1;
+    auto e = item.key<versioned_value*>();
+    std::string s = (std::string) e->read_key();
 
-      uint32_t v_nbytes = sizeof(value);
-      if (has_delete(item)){
-        v_nbytes = 0;
-      }
-      //std::cout<<"value size "<<v_nbytes<<std::endl;
-      //std::cout<<"bytes value size "<<sizeof(v_nbytes)<<std::endl;
-
-      space_needed += sizeof(v_nbytes);
-      if (!has_delete(item))
-        space_needed += v_nbytes;
-      return space_needed;
+    const uint32_t k_nbytes = s.size();
+    space_needed += sizeof(k_nbytes);
+    space_needed += k_nbytes;
     
+    value_type value;
+    if (has_insert(item)) {
+      value = e->read_value();
+    } else {
+      value = item.flags() & copyvals_bit ?
+      item.template write_value<value_type>()
+      : (value_type&)item.template write_value<void*>();
     }
     
-    // Get the log data inorder to do logging
-    uint8_t* writeLogData(TransItem & item, uint8_t* p) {
-      uint8_t tree_id = (uint8_t) get_tree_id();
-      memcpy(p, (char *) &tree_id, 1);
-      p += 1;
-      
-      auto e = item.key<versioned_value*>();
-      std::string s = (std::string) e->read_key();
-      const uint32_t k_nbytes = s.size();
-      uint8_t* p2 = p;
-      p = write(p, k_nbytes);
-      assert(p-p2 == sizeof(k_nbytes));
-      memcpy(p, s.data(), k_nbytes);
-       //std::cout<<"Key size while writing "<<k_nbytes<<std::endl;
-       //std::cout<<"bytes Key size while writing "<<sizeof(k_nbytes)<<std::endl;
-      p += k_nbytes;
-      
-      value_type value;
-      if (has_insert(item)) {
-        value = e->read_value();
-      } else {
-        value = item.flags() & copyvals_bit ?
-        item.template write_value<value_type>()
-        : (value_type&)item.template write_value<void*>();
-      }
-      
-      uint32_t v_nbytes = sizeof(value);
-      if (has_delete(item)){
-        v_nbytes = 0;
-        //std::cout << "Logging remove key " << s << " from tree " << (int)tree_id << std::endl;
-      }
-      //std::cout<<"value size while writing"<<v_nbytes<<std::endl;
-      //std::cout<<"bytes value size while writing"<<sizeof(v_nbytes)<<std::endl;
-
-      uint8_t* p1 = p;
-      p = write(p, v_nbytes);
-      assert(p-p1 == sizeof(v_nbytes));
-      if (v_nbytes) {
-        memcpy(p, &value, v_nbytes);
-        p += v_nbytes;
-      }
-      return p;
-      
+    uint32_t v_nbytes = sizeof(value);
+    if (has_delete(item)){
+      v_nbytes = 0;
     }
+
+    space_needed += sizeof(v_nbytes);
+    if (!has_delete(item))
+      space_needed += v_nbytes;
+    return space_needed;
+  }
+    
+  // Get the log data inorder to do logging
+  uint8_t* writeLogData(TransItem & item, uint8_t* p) {
+    uint8_t tree_id = (uint8_t) get_tree_id();
+    memcpy(p, (char *) &tree_id, 1);
+    p += 1;
+    
+    auto e = item.key<versioned_value*>();
+    std::string s = (std::string) e->read_key();
+    const uint32_t k_nbytes = s.size();
+    uint8_t* p2 = p;
+    p = write(p, k_nbytes);
+    assert(p-p2 == sizeof(k_nbytes));
+    memcpy(p, s.data(), k_nbytes);
+    p += k_nbytes;
+    
+    value_type value;
+    if (has_insert(item)) {
+      value = e->read_value();
+    } else {
+      value = item.flags() & copyvals_bit ?
+      item.template write_value<value_type>()
+      : (value_type&)item.template write_value<void*>();
+    }
+    
+    uint32_t v_nbytes = sizeof(value);
+    if (has_delete(item)){
+      v_nbytes = 0;
+    }
+    
+    uint8_t* p1 = p;
+    p = write(p, v_nbytes);
+    assert(p-p1 == sizeof(v_nbytes));
+    if (v_nbytes) {
+      memcpy(p, &value, v_nbytes);
+      p += v_nbytes;
+    }
+    return p;
+    
+  }
 
   void cleanup(TransItem& item, bool committed) {
       if (!committed && has_insert(item)) {
@@ -1111,7 +1077,7 @@ private:
     typedef versioned_value versioned_value_type;
     
     
-    // Tree walk related algorithms
+    // Tree walk related algorithms (used for checkpointing)
     
     /**
      * The low level callback interface is as follows:

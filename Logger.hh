@@ -14,18 +14,21 @@ class Logger {
 public:
   friend class Transaction;
   friend class Checkpointer;
+  
   static const size_t g_nmax_loggers = 16;
   static const size_t g_perthread_buffers = 512; // Outstanding buffers
   static const size_t g_buffer_size = (1 << 20); // in bytes = 1 MB
   static const size_t g_horizon_buffer_size = 1 << 17; // in bytes = 128KB
   static const size_t g_max_lag_epochs = 128; // use to stop logging for threads that are producing log faster
-  // static const bool g_pin_loggers_to_numa_nodes = false;
+                                              // TODO: I think this should have a larger value now because epochs are tids and they grow very fast.
+  
   
   /////////////////////////////
   //Public data structures
   /////////////////////////////
   
-  // Buffer header that contains number of transactions and last tid.
+  // Buffer header that contains number of transactions, last tid and epoch of transaction.
+  // All transactions in a buffer will be from the same epoch.
   struct logbuf_header {
     uint64_t nentries_; // > 0 for all valid log buffers
     uint64_t last_tid_; // TID of the last commit
@@ -116,8 +119,8 @@ private:
   
   // data structures
   
-  struct epoch_array {
-    std::atomic<uint64_t> epochs_[MAX_THREADS_]; // MAX_THREADS =  512
+  struct tid_array {
+    std::atomic<uint64_t> tids_[MAX_THREADS_];
     std::atomic<uint64_t> dummy_work_; // so we can do some fake work
     CACHE_PADOUT;
   };
@@ -157,7 +160,7 @@ private:
 	ntxns_committed_(0), total_latency_(0) {}
   };
 
-  static void advance_system_sync_epoch(const std::vector<std::vector<unsigned>> &assignments);
+  static void advance_system_sync_tid(const std::vector<std::vector<unsigned>> &assignments);
   
   static void writer(unsigned id, std::string logfile, std::vector<unsigned> assignment);
   
@@ -167,7 +170,7 @@ private:
   enum InitMode{
     INITMODE_NONE, // no initialization
     INITMODE_REG, // use malloc to init buffers
-    INITMODE_RCU, // try to use the RCU numa aware allocator
+    INITMODE_RCU, // try to use the RCU numa aware allocator (Not used)
   };
   
   // Get persist_ctx for a thread
@@ -177,7 +180,6 @@ private:
     
     if (!ctx.init_  && imode != INITMODE_NONE) {
       size_t needed = g_perthread_buffers * (sizeof(pbuffer) + g_buffer_size);
-      // TODO: deal with rcu based allocation later
       char *mem = (char *) malloc(needed);
       
       for (size_t i = 0; i < g_perthread_buffers; i++) {
@@ -213,9 +215,9 @@ private:
                             // responsible for cores i + k * g_nworkers, for k
                             // >= 0
   
-  static epoch_array per_thread_sync_epochs_[g_nmax_loggers] CACHE_ALIGNED;
+  static tid_array per_thread_sync_tids_[g_nmax_loggers] CACHE_ALIGNED;
   
-  static util::aligned_padded_elem<std::atomic<uint64_t>> system_sync_epoch_ CACHE_ALIGNED;
+  static util::aligned_padded_elem<std::atomic<uint64_t>> system_sync_tid_ CACHE_ALIGNED;
   
   static persist_ctx g_persist_ctxs[MAX_THREADS_] CACHE_ALIGNED;
   static persist_stats g_persist_stats[MAX_THREADS_] CACHE_ALIGNED;

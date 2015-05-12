@@ -367,7 +367,7 @@ void Checkpointer::_range_query_par(concurrent_btree* btr, key_type *lower, key_
   uint64_t persist_epoch = 0;
   // Need to wait until the persist_epoch reaches the max_epoch of checkpointed data
   while (true) {
-    persist_epoch = Logger::system_sync_epoch_->load(std::memory_order_acquire);
+    persist_epoch = Logger::system_sync_tid_->load(std::memory_order_acquire);
     if (persist_epoch >= local_callback.max_epoch)
       break;   
     usleep(1000);

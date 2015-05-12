@@ -10,7 +10,7 @@
 #include "Transaction.hh"
 
 
-std::string root_folder; // this folder stores pepoch, cepoch and other information
+std::string root_folder; // this folder stores ptid, ctid and other information
 
 bool Logger::g_persist = false;
 bool Logger::g_call_fsync = true;
@@ -19,8 +19,8 @@ bool Logger::g_fake_writes = false;
 size_t Logger::g_nworkers = 0;
 
 
-Logger::epoch_array Logger::per_thread_sync_epochs_[Logger::g_nmax_loggers];
-util::aligned_padded_elem<std::atomic<uint64_t>> Logger::system_sync_epoch_(0);
+Logger::tid_array Logger::per_thread_sync_tids_[Logger::g_nmax_loggers];
+util::aligned_padded_elem<std::atomic<uint64_t>> Logger::system_sync_tid_(0);
 
 Logger::persist_ctx Logger::g_persist_ctxs[MAX_THREADS_];
 Logger::persist_stats Logger::g_persist_stats[MAX_THREADS_];
@@ -39,10 +39,10 @@ void Logger::Init(size_t nworkers, const std::vector<std::string> &logfiles, con
   g_fake_writes = fake_writes;
   g_nworkers = nworkers;
   
-  // Initialize per_thread_sync_epochs
+  // Initialize per_thread_sync_tids
   for (size_t i = 0; i < g_nmax_loggers; i++)
     for (size_t j = 0; j < g_nworkers; j++)
-      per_thread_sync_epochs_[i].epochs_[j].store(0, std::memory_order_release);
+      per_thread_sync_tids_[i].tids_[j].store(0, std::memory_order_release);
   
   std::vector<std::thread> writers;
   std::vector<std::vector<unsigned>> assignments(assignments_given);
@@ -66,7 +66,7 @@ void Logger::Init(size_t nworkers, const std::vector<std::string> &logfiles, con
     writers.back().detach();
   }
   
-  // persist_thread is responsible for calling sync epoch.
+  // persist_thread is responsible for calling sync tid.
   std::thread persist_thread(&Logger::persister, assignments);
   persist_thread.detach();
   
@@ -78,23 +78,23 @@ void Logger::Init(size_t nworkers, const std::vector<std::string> &logfiles, con
 void Logger::persister(std::vector<std::vector<unsigned>> assignments) {
   for (;;) {
     usleep(40000); // sleep for 40 ms
-    advance_system_sync_epoch(assignments);
+    advance_system_sync_tid(assignments);
   }
 }
 
-void Logger::advance_system_sync_epoch(const std::vector<std::vector<unsigned>> &assignments) {
+void Logger::advance_system_sync_tid(const std::vector<std::vector<unsigned>> &assignments) {
   uint64_t min_so_far = std::numeric_limits<uint64_t>::max(); // Minimum of persist tids of all worker threads
-  const uint64_t cur_epoch = Transaction::_TID;
-  const uint64_t best_epoch = cur_epoch;
-  if (best_epoch == 0)
-    std::cout<<"best epoch "<<Transaction::_TID <<std::endl;
+  const uint64_t cur_tid = Transaction::_TID;
+  const uint64_t best_tid = cur_tid;
+  if (best_tid == 0)
+    std::cout<<"best tid "<<Transaction::_TID <<std::endl;
   for (size_t i = 0; i < assignments.size(); i++) {
     for (auto j :assignments[i]) {
       for (size_t k = j; k < g_nworkers; k += g_nworkers) {
         // we need to arbitrarily advance threads which are not "doing
         // anything", so they don't drag down the persistence of the system. if
         // we can see that a thread is NOT in a guarded section AND its
-        // core->logger queue is empty, then that means we can advance its sync
+        // logger queue is empty, then that means we can advance its sync
         // epoch up to best_epoch, b/c it is guaranteed that the next time
         // it does any actions will be in epoch > best_epoch
 
@@ -120,43 +120,35 @@ void Logger::advance_system_sync_epoch(const std::vector<std::vector<unsigned>> 
               pbuffer * last_px = ctx.all_buffers_.peek();
               if (last_px && last_px->header()->nentries_ > 0) {
                 // Outstanding buffer; should remove it and add to the push buffers.
-                //std::cout<<"Extra thread pushing a outstanding buffer to push buffer on behalf of thread "<<k<<std::endl;
+                
                 Logger::persist_stats &stats = Logger::g_persist_stats[k];
                 util::non_atomic_fetch_add_(stats.ntxns_pushed_, last_px->header()->nentries_);
+                
                 ctx.all_buffers_.deq();
                 assert(!last_px->io_scheduled_);
                 ctx.persist_buffers_.enq(last_px);
-              } else {
-               // std::cout<<"Pull buffers clear for thread "<<k<<std::endl;
               }
+              
               if (!ctx.persist_buffers_.peek()) {
-                // If everything is written to disk and all buffers are clean, then increment epoch for that worker.
-               // std::cout<<"Push buffers clear and hence incrementing epoch on behalf of thread "<<k<<std::endl;
-                min_so_far = std::min(min_so_far, best_epoch);
-                per_thread_sync_epochs_[i].epochs_[k].store(best_epoch, std::memory_order_release);
-               // std::cout<<"Min epoch so far1 "<<min_so_far<<std::endl;
+                // If everything is written to disk and all buffers are clean, then increment tid for that worker.
+                min_so_far = std::min(min_so_far, best_tid);
+                per_thread_sync_tids_[i].tids_[k].store(best_tid, std::memory_order_release);
                 l.unlock();
                 continue;
-              } else {
-               // std::cout<<"Push buffers busy for thread "<<k<<std::endl;
               }
               l.unlock();
             }
           }
         }
         
-        min_so_far = std::min(per_thread_sync_epochs_[i].epochs_[k].load(std::memory_order_acquire), min_so_far);
-      //  std::cout<<"thread epoch is "<<per_thread_sync_epochs_[i].epochs_[k].load(std::memory_order_acquire)<<std::endl;
-     //   std::cout<<"Min epoch so far2 "<<min_so_far<<std::endl;
+        min_so_far = std::min(per_thread_sync_tids_[i].tids_[k].load(std::memory_order_acquire), min_so_far);
       }
     }
   }
   
-  const uint64_t syssync = system_sync_epoch_->load(std::memory_order_acquire);
-  //assert(syssync <= best_epoch);
+  const uint64_t syssync = system_sync_tid_->load(std::memory_order_acquire);
   assert(min_so_far < std::numeric_limits<uint64_t>::max());
   assert(syssync <= min_so_far);
-  //assert(min_so_far <= best_epoch);
   
   // Stats
   const uint64_t now_us = util::cur_time_us();
@@ -186,49 +178,44 @@ void Logger::advance_system_sync_epoch(const std::vector<std::vector<unsigned>> 
       }
     }
   }
-
    
-  // write the persistent epoch to disk
+  // write the persistent tid to disk
   // to avoid failure during write, write to another file and then rename
-  
-  // Is this correct? Does min_so_far represent the actual persisted epoch?
-  if (syssync < min_so_far) {
-    std::string persist_epoch_symlink = root_folder + "/pepoch";
-    std::string persist_epoch_filename = root_folder + "/persist_epoch_";
+    if (syssync < min_so_far) {
+    std::string persist_tid_symlink = root_folder + "/ptid";
+    std::string persist_tid_filename = root_folder + "/persist_tid_";
     
-    persist_epoch_filename.append(std::to_string(min_so_far));
+    persist_tid_filename.append(std::to_string(min_so_far));
     
-    int fd = open((char*) persist_epoch_filename.c_str(), O_WRONLY|O_CREAT, 0777);
-    ssize_t epoch_ret = write(fd, (char *) &min_so_far, 8);
-    if (epoch_ret == -1) {
-      perror("Writing persist epoch to disk failed");
+    int fd = open((char*) persist_tid_filename.c_str(), O_WRONLY|O_CREAT, 0777);
+    ssize_t tid_ret = write(fd, (char *) &min_so_far, 8);
+    if (tid_ret == -1) {
+      perror("Writing persist tid to disk failed");
       assert(false);
     }
     fsync(fd);
     close(fd);
     
-    if (rename(persist_epoch_filename.c_str(), persist_epoch_symlink.c_str()) < 0) {
+    if (rename(persist_tid_filename.c_str(), persist_tid_symlink.c_str()) < 0) {
       perror("Renaming failure");
       assert(false);
     }
   }
-  assert(min_so_far <= best_epoch);
+  assert(min_so_far <= best_tid);
   //std::cout<<"Storing " << min_so_far << " in system_sync_epoch" << std::endl;
-  system_sync_epoch_->store(min_so_far, std::memory_order_release);
+  system_sync_tid_->store(min_so_far, std::memory_order_release);
 }
 
 void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assignment) {
-  // TODO: deal with pinning to numa nodes later
-  
   int fd = -1;
-  uint64_t min_epoch_so_far = 0;
-  uint64_t max_epoch_so_far = 0;
+  uint64_t min_tid_so_far = 0;
+  uint64_t max_tid_so_far = 0;
   
   std::vector<iovec> iovs(std::min(size_t(IOV_MAX), g_nworkers * g_perthread_buffers));
   std::vector<pbuffer*> pxs;
   
-  uint64_t epoch_prefixes[MAX_THREADS_];
-  memset(&epoch_prefixes, 0, sizeof(epoch_prefixes));
+  uint64_t tid_prefixes[MAX_THREADS_];
+  memset(&tid_prefixes, 0, sizeof(tid_prefixes));
   
   std::string logfile_name(logfile);
   logfile_name.append("data.log");
@@ -237,8 +224,8 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
   for(;;) {
     usleep(40000); // To support batch IO
     
-    if (fd == -1 || max_epoch_so_far - min_epoch_so_far > 10000000 ) { // Magic number
-      if (max_epoch_so_far - min_epoch_so_far > 10000000) {
+    if (fd == -1 || max_tid_so_far - min_tid_so_far > 10000000 ) { // Magic number
+      if (max_tid_so_far - min_tid_so_far > 10000000) {
         std::string fname(logfile);
         fname.append("old_data");
         fname.append(std::to_string(max_epoch_so_far));
@@ -257,10 +244,10 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
         assert(false);
       }
       
-      min_epoch_so_far = max_epoch_so_far;
+      min_tid_so_far = max_tid_so_far;
     }
     
-    const uint64_t cur_sync_epoch_ex = system_sync_epoch_->load(std::memory_order_acquire) + 1;
+    const uint64_t cur_sync_tid_ex = system_sync_tid_->load(std::memory_order_acquire) + 1;
     nbufswritten = nbyteswritten = totalbyteswritten = totalbufswritten = 0;
     
     //NOTE: a core id in the persistence system really represents
@@ -270,9 +257,7 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
       for (size_t k = idx; k < g_nworkers; k+= g_nworkers) {
         persist_ctx &ctx = persist_ctx_for(k, INITMODE_NONE);
         ctx.persist_buffers_.peekall(pxs);
-        if (pxs.size() == 0) {
-          //std::cout<<"Push buffers empty for thread "<<k<<std::endl;
-        }
+        
         for (auto px : pxs) {
           assert(px);
           assert(!px->io_scheduled_);
@@ -284,7 +269,7 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
             goto process;
           }
           
-          if (px->header()->epoch >= cur_sync_epoch_ex + g_max_lag_epochs) {
+          if (px->header()->epoch >= cur_sync_tid_ex + g_max_lag_epochs) { // TODO: this is wrong - mixing up tid and epochs
             // logger max log wait
             break;
           }
@@ -295,8 +280,6 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
 #else
 #define PXLEN(px) ((px)->cur_offset_)
 #endif
-          //std::cout<<"Writing push buffer on disk for thread "<<k<<std::endl;
-
           const size_t pxlen = PXLEN(px);
           iovs[nbufswritten].iov_len = pxlen;
           px->io_scheduled_ = true;
@@ -307,9 +290,9 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
           
           const uint64_t px_tid = px->header()->last_tid_;
           const uint64_t px_epoch = px->header()->epoch;
-          epoch_prefixes[k] = px_tid == 0 ? 0 : px_tid - 1;
+          tid_prefixes[k] = px_tid == 0 ? 0 : px_tid - 1;
           
-          max_epoch_so_far = px_tid > max_epoch_so_far ? px_tid : max_epoch_so_far;
+          max_tid_so_far = px_tid > max_tid_so_far ? px_tid : max_tid_so_far;
         
           auto &epoch_stat = g_persist_stats[k].epochStats[px_epoch % g_max_lag_epochs];
           if (!epoch_stat.ntxns_.load(std::memory_order_acquire)) {
@@ -364,14 +347,14 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
       }
     }
     
-    epoch_array &ea = per_thread_sync_epochs_[id];
+    tid_array &ea = per_thread_sync_tids_[id];
     for (auto idx : assignment) {
       for (size_t k = idx; k < MAX_THREADS_; k += g_nworkers) {
-        const uint64_t x0 = ea.epochs_[k].load(std::memory_order_acquire);
-        const uint64_t x1 = epoch_prefixes[k];
+        const uint64_t x0 = ea.tids_[k].load(std::memory_order_acquire);
+        const uint64_t x1 = tid_prefixes[k];
         if (x1 > x0) {
          // std::cout<<"Putting into per thread epoch "<<x1<<std::endl;
-          ea.epochs_[k].store(x1, std::memory_order_release);
+          ea.tids_[k].store(x1, std::memory_order_release);
         }
       }
     }
@@ -427,10 +410,10 @@ void Logger::wait_for_idle_state() {
 void Logger::wait_until_current_point_persisted() {
   const uint64_t t = Transaction::_TID;
   fence();
-  std::cout << "Waiting until current point is persisted " << t << " epoch point is " << system_sync_epoch_->load(std::memory_order_acquire) << std::endl;
-  while(system_sync_epoch_->load(std::memory_order_acquire) < t) {
+  std::cout << "Waiting until current point is persisted " << t << " epoch point is " << system_sync_tid_->load(std::memory_order_acquire) << std::endl;
+  while(system_sync_tid_->load(std::memory_order_acquire) < t) {
     nop_pause;
-    //std::cout << system_sync_epoch_->load(std::memory_order_acquire) << std::endl;
+    //std::cout << system_sync_tid_->load(std::memory_order_acquire) << std::endl;
   }
   const uint64_t tt = Transaction::_TID;
   fence();
