@@ -77,7 +77,7 @@ void Logger::Init(size_t nworkers, const std::vector<std::string> &logfiles, con
 
 void Logger::persister(std::vector<std::vector<unsigned>> assignments) {
   for (;;) {
-    usleep(40000); // sleep for 100 ms  (actually 40ms was used in Silo)
+    usleep(40000); // sleep for 40 ms
     advance_system_sync_epoch(assignments);
   }
 }
@@ -217,7 +217,6 @@ void Logger::advance_system_sync_epoch(const std::vector<std::vector<unsigned>> 
   system_sync_epoch_->store(min_so_far, std::memory_order_release);
 }
 
-#define LOGBUFSIZE (4 * 1024 * 1024)
 void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assignment) {
   // TODO: deal with pinning to numa nodes later
   
@@ -238,7 +237,7 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
   for(;;) {
     usleep(40000); // To support batch IO
     
-    if (fd == -1 || max_epoch_so_far - min_epoch_so_far > 10000000 ) {
+    if (fd == -1 || max_epoch_so_far - min_epoch_so_far > 10000000 ) { // Magic number
       if (max_epoch_so_far - min_epoch_so_far > 10000000) {
         std::string fname(logfile);
         fname.append("old_data");

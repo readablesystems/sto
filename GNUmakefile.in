@@ -55,7 +55,7 @@ BENCH_CXXFLAGS += -DNO_MYSQL
 
 BENCH_OBJFILES := $(patsubst %.cc, %.o, $(BENCH_SRCFILES))
 
-all: concurrent single singleelems array1 committid genericTest
+all: concurrent single singleelems array1 loggingTest genericTest
 
 benchmarks/util/%.o: benchmarks/util/%.cc config.h $(DEPSDIR)/stamp
 	$(CXX) $(BENCH_CXXFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
@@ -102,7 +102,7 @@ array1: array1.o clp.o $(STO_OBJS)
 genericTest: genericTest.o clp.o $(STO_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
-committid: committid.o clp.o $(STO_OBJS) $(OBJFILES) $(MASSTREE_OBJS)
+loggingTest: loggingTest.o clp.o $(STO_OBJS) $(OBJFILES) $(MASSTREE_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;
@@ -139,7 +139,7 @@ stamp-h: config.h.in config.status
 	echo > stamp-h
 
 clean:
-	rm -f concurrent array single singleelems committid *.o libjson.a genericTest *.o
+	rm -f concurrent array single singleelems loggingTest *.o libjson.a genericTest *.o
 	rm -f benchmarks/*.o benchmarks/util/*.o benchmarks/masstree/*.o
 	rm -rf .deps
 	$(MAKE) -C masstree-beta clean

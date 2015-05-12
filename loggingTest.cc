@@ -17,6 +17,7 @@
 typedef int Key;
 typedef std::string Value;
 
+// A small test to check that tids are correctly ordered
 int main_0() {
   
   Transaction::epoch_advance_callback = [] (unsigned) {
@@ -24,10 +25,6 @@ int main_0() {
     globalepoch++;
   };
   
-  std::string log("./disk1");
-  const std::vector<std::string> logfiles({log});
-  const std::vector<std::vector<unsigned> > assignments_given;
-  root_folder = "./silo_log";
   pthread_t advancer;
   pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
   pthread_detach(advancer);
@@ -36,26 +33,6 @@ int main_0() {
   
   std::vector<MassTrans<Value> *>tree_list;
   tree_list.push_back(&h);
-  ckpdirs = {
-    {"./f0/disk1/", "./f0/disk2/",
-      "./f0/disk3/", "./f0/disk4/",
-      "./f0/disk5/", "./f0/disk6/"},
-    
-    {"./f1/disk1/", "./f1/disk2/",
-      "./f1/disk3/", "./f1/disk4/",
-      "./f1/disk5/", "./f1/disk6/"},
-    
-    {"./f2/disk1/", "./f2/disk2/",
-      "./f2/disk3/", "./f2/disk4/",
-      "./f2/disk5/", "./f2/disk6/"},
-    
-    {"./data/disk1/", "./data/disk2/",
-      "./data/disk3/", "./data/disk4/",
-      "./data/disk5/", "./data/disk6/"},
-  };
-  
-  //Logger::Init(1,logfiles, assignments_given); // call_fsync = true, use_compression = false, fake_writes = false
-  //Checkpointer::Init(&tree_list, logfiles, true); // is_test = true
   
   h.thread_init();
   Transaction::threadid = 0;
@@ -84,11 +61,6 @@ int main_0() {
   
   Transaction::threadid = 1;
   
-  /*Transaction t1;
-  h.transWrite(t1, 4, "4");
-  assert(t1.commit());
-  uint64_t tid_3 = Transaction::tinfo[1].last_commit_tid;*/
-  
   Transaction t2;
   h.transWrite(t2, 3, "1");
   assert(t2.try_commit());
@@ -97,11 +69,8 @@ int main_0() {
   assert(tid_4 > tid_2);
   Transaction::threadid = 2;
   assert(!tt.try_commit());
-  
-  
-  //Transaction
-
 }
+
 
 struct txn_record_multi {
   // keeps track of updates and removes for a single transaction
@@ -162,8 +131,6 @@ void consistent_test_multi_table_thread(uint64_t low, uint64_t high,
         insert_key = std::make_pair(table, key);
       } while(repeat_key_list.find(insert_key) != repeat_key_list.end());
       
-     // std::cout << "[" << th << "] inserted key " <<insert_key.second << " to tree " << insert_key.first << std::endl;
-
       repeat_key_list.insert(insert_key);
       btr->transWrite(t, insert_key.second, value);
       tr->updates[insert_key] = value;
@@ -181,9 +148,7 @@ void consistent_test_multi_table_thread(uint64_t low, uint64_t high,
       bool deleted = btr->transDelete(t, remove_key.second);
       if (deleted) {
         tr->removes.insert(remove_key);
-        //std::cout << "[" << th << "] removed key " <<remove_key.second << " from tree " << remove_key.first << std::endl;
       }
-      //<< " success " << deleted << std::endl;
      }
   
     if (rand() % 10 == 0 && cur_num_new_insert < num_new_insert) {
@@ -340,7 +305,6 @@ int main() {
     close(fd);
   } else {
     perror("cepoch file not found");
-    //assert(false);
   }
   
   uint64_t pepoch;
@@ -379,8 +343,6 @@ int main() {
       }
     }
   }
-  //assert(tlist.size() == count);
-  
   
   std::cout << "Replay single threaded" << std::endl;
   
@@ -412,7 +374,6 @@ int main() {
     std::set<std::pair<uint64_t, uint64_t> >::iterator find_it;
     
     for (; u_it != u_it_end; u_it++) {
-     // std::cout << " Updating tree " << u_it->first.first << " key "<<u_it->first.second << " value " <<u_it->second << std::endl;
       updates[u_it->first] = u_it->second;
       find_it = removes.find(u_it->first);
       if (find_it != removes.end()) {

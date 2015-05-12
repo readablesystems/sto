@@ -67,7 +67,7 @@ void Checkpointer::StartThread(bool is_test, std::vector<std::string> logfile_ba
       }
     }
     
-    sleep(10);
+    sleep(10); // Magic number
   }
 }
 
