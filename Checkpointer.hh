@@ -71,7 +71,6 @@ public:
   }
   
   inline void data_flush() {
-    // Currently assuming that compression is not enabled
     size_t already_written = 0;
     while (already_written < cur_bytes) {
       while (fsync_sync[id] > 0) {
@@ -85,7 +84,7 @@ public:
       ssize_t ret_bytes = write(file_fds[cur_file], temp_buf + already_written, w);
       
       if (ret_bytes < 0) {
-        perror("data_stripe_par compress flush failed");
+        perror("data_stripe_par flush failed");
         assert(false);
       }
       
@@ -220,8 +219,8 @@ public:
   checkpoint_scan_callback() {
     eol = '\n';
     fd = -1;
-    max_epoch = 0;
-    ckp_epoch = 0;
+    max_tid = 0;
+    ckp_tid = 0;
     writer = NULL;
   }
   
@@ -347,8 +346,8 @@ public:
   char eol;
   
 public:
-  uint64_t max_epoch;
-  uint64_t ckp_epoch;
+  uint64_t max_tid;
+  uint64_t ckp_tid;
   uint64_t tree_id;
   int fd;
   data_writer *writer;
@@ -378,9 +377,9 @@ class Checkpointer {
   };
   
   static void _checkpoint_walk_multi_range(std::vector<checkpoint_tree_key>* range_list, int count,
-                                           uint64_t* max, uint64_t ckp_epoch);
+                                           uint64_t* max, uint64_t ckp_tid);
   static void _range_query_par(concurrent_btree* btr, key_type *lower, key_type* higher, int i,
-                               uint64_t* max_epoch, uint64_t ckp_epoch);
+                               uint64_t* max_tid, uint64_t ckp_tid);
   
   static key_type* _tree_walk_1(concurrent_btree* tree);
   static l_node* _walk_to_right_1(node* root);
@@ -389,15 +388,15 @@ class Checkpointer {
   static tree_list_type _tree_list;
   static size_t NUM_QUERIES;
   static int fd;
-  // static checkpoint_scan_callback callback;
   
 public:
   static void AddTree(concurrent_btree *tree);
+  
   // logfile_base is used when truncating the log
   static void Init(std::vector<concurrent_btree *> *btree_list,
                    std::vector<std::string> logfile_base, bool is_test = false);
   static void checkpoint(std::vector<std::string> logfile_base);
-  static void log_truncate(uint64_t epoch, std::vector<std::string> logfile_base);
+  static void log_truncate(uint64_t tid, std::vector<std::string> logfile_base);
   static void StartThread(bool is_test, std::vector<std::string> logfile_base);
    
 };

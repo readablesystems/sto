@@ -25,6 +25,8 @@ util::aligned_padded_elem<std::atomic<uint64_t>> Logger::system_sync_tid_(0);
 Logger::persist_ctx Logger::g_persist_ctxs[MAX_THREADS_];
 Logger::persist_stats Logger::g_persist_stats[MAX_THREADS_];
 
+extern volatile uint64_t fsync_sync[NUM_TH_CKP];
+
 void Logger::Init(size_t nworkers, const std::vector<std::string> &logfiles, const std::vector<std::vector<unsigned>> &assignments_given, std::vector<std::vector<unsigned>> *assignments_used, bool call_fsync, bool use_compression, bool fake_writes) {
   assert(!g_persist);
   assert(g_nworkers == 0);
@@ -340,11 +342,13 @@ void Logger::writer(unsigned id, std::string logfile, std::vector<unsigned> assi
     }
     
     if (!g_fake_writes && g_call_fsync) {
+      fsync_sync[id] = 1;
       int fret = fsync(fd);
       if (fret < 0) {
         perror("fsync logger failed\n");
         assert(false);
       }
+      fsync_sync[id] = 0;
     }
     
     tid_array &ea = per_thread_sync_tids_[id];

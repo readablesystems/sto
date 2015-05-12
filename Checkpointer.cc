@@ -16,7 +16,6 @@ int nckp_threads = 0;
 int ckp_compress = 0;
 int recovery_test = 0;
 bool if_runner_done = false;
-//checkpoint_scan_callback Checkpointer::callback;
 
 Checkpointer::tree_list_type Checkpointer::_tree_list;
 int Checkpointer::fd = -1;
@@ -51,7 +50,6 @@ void Checkpointer::StartThread(bool is_test, std::vector<std::string> logfile_ba
   fprintf(stderr, "Done sleeping, starting first checkpoint\n");
   
   while (true) {
-    // TODO: statistics
     checkpoint(logfile_base);
     if (is_test) {
       count += 1;
@@ -61,7 +59,7 @@ void Checkpointer::StartThread(bool is_test, std::vector<std::string> logfile_ba
       }
     
       if (count == num_checkpoints) {
-	if_runner_done = true;
+        if_runner_done = true;
         fprintf(stderr, "All checkpointer doen \n");
         break;
       }
@@ -76,8 +74,8 @@ void Checkpointer::checkpoint(std::vector<std::string> logfile_base) {
   Checkpointer::tree_list_type::iterator begin_it = Checkpointer::_tree_list.begin();
   Checkpointer::tree_list_type::iterator end_it = Checkpointer::_tree_list.end();
   
-  uint64_t checkpoint_epoch = Transaction::_TID;
-  uint64_t max_epoch = 0;
+  uint64_t checkpoint_tid = Transaction::_TID;
+  uint64_t max_tid = 0;
   
   std::vector<std::vector<checkpoint_tree_key> > range_list;
   
@@ -98,7 +96,6 @@ void Checkpointer::checkpoint(std::vector<std::string> logfile_base) {
     while (true) {
       max_key = _tree_walk_1(tree);
       if (max_key != NULL) {
-        //std::cout <<" max_key "<< max_key->s << std::endl;
         break;
       }
     }
@@ -127,17 +124,17 @@ void Checkpointer::checkpoint(std::vector<std::string> logfile_base) {
     }
   }
   
-  uint64_t epochs[NUM_TH_CKP];
+  uint64_t tids[NUM_TH_CKP];
   std::vector<std::thread> callback_threads;
   for (int i = 0; i < NUM_TH_CKP; i++) {
-    epochs[i] = 0;
-    callback_threads.emplace_back(&_checkpoint_walk_multi_range, &range_list[i], i, &epochs[i], checkpoint_epoch);
+    tids[i] = 0;
+    callback_threads.emplace_back(&_checkpoint_walk_multi_range, &range_list[i], i, &tids[i], checkpoint_tid);
   }
   
   for (int i = 0; i < NUM_TH_CKP; i++) {
     callback_threads[i].join();
-    if (epochs[i] > max_epoch) {
-      max_epoch = epochs[i];
+    if (tids[i] > max_tid) {
+      max_tid = tids[i];
     }
   }
   
@@ -154,39 +151,39 @@ void Checkpointer::checkpoint(std::vector<std::string> logfile_base) {
     return;
   }
   
-  std::cout << "Checkpoint tid is " << checkpoint_epoch << std::endl;
-  std::cout << "Max tid is " << max_epoch << std::endl;
+  std::cout << "Checkpoint tid is " << checkpoint_tid << std::endl;
+  std::cout << "Max tid is " << max_tid << std::endl;
   std::cout << "Current tid is " << Transaction::_TID << std::endl;
   
-  // write to disk the checkpoint epoch
+  // write to disk the checkpoint tid
   // perform log truncation
   
   std::string t = std::to_string(std::time(NULL));
-  std::string cepoch_file(std::string(root_folder).append("/checkpoint_epoch_"));
-  std::string cepoch_file_symlink("checkpoint_epoch_");
-  cepoch_file.append(t);
-  cepoch_file_symlink.append(t);
+  std::string ctid_file(std::string(root_folder).append("/checkpoint_tid_"));
+  std::string ctid_file_symlink("checkpoint_tid_");
+  ctid_file.append(t);
+  ctid_file_symlink.append(t);
   
-  int cepoch_fd = open(cepoch_file.c_str(), O_CREAT|O_WRONLY, 0777);
-  if (cepoch_fd < 0) {
-    perror("Checkpoint epoch file failed");
+  int ctid_fd = open(ctid_file.c_str(), O_CREAT|O_WRONLY, 0777);
+  if (ctid_fd < 0) {
+    perror("Checkpoint tid file failed");
     assert(false);
   }
   
-  if (write(cepoch_fd, (char *) &checkpoint_epoch, 8) < 0) {
-    perror("Write to checkpoint epoch failed");
+  if (write(ctid_fd, (char *) &checkpoint_tid, 8) < 0) {
+    perror("Write to checkpoint tid failed");
     assert(false);
   }
-  fsync(cepoch_fd);
-  std::string cepoch_symlink = std::string(root_folder).append("/cepoch");
+  fsync(ctid_fd);
+  std::string ctid_symlink = std::string(root_folder).append("/ctid");
   
-  if (rename(cepoch_file.c_str(), cepoch_symlink.c_str()) < 0) {
-    perror("Renaming failure for cepoch");
+  if (rename(ctid_file.c_str(), ctid_symlink.c_str()) < 0) {
+    perror("Renaming failure for ctid");
     assert(false);
   }
   
-  close(cepoch_fd);
-  log_truncate(checkpoint_epoch, logfile_base);
+  close(ctid_fd);
+  log_truncate(checkpoint_tid, logfile_base);
   
   std::cout << "Checkpointing done\n" << std::endl;
 }
@@ -242,8 +239,6 @@ restart:
     int num_keys = right_most_node->permutation().size();
     int last_index = right_most_node->permutation()[num_keys - 1];
     
-    //std::cout << "last_index is " << last_index << std::endl;
-    
     if (right_most_node->value_is_layer(last_index)) {
       // there's definitely at least one more layer to go
       if (right_most_node->has_changed(version)) {
@@ -260,9 +255,6 @@ restart:
       const char * max_key_ptr = max_key_str.mutable_data();
       size_t last_key_size = max_key_str.length();
       
-      //std::cout << "key: " << right_most_node->get_key(last_index) << std::endl;
-      //std::cout << last_key_size << std::endl;
-      
       if (right_most_node->has_changed(version)) {
       	printf("goes to retry \n");
       	goto retry;
@@ -273,7 +265,6 @@ restart:
       
       uint8_t *ptr = (uint8_t *) malloc(size);
       for (size_t i = 0; i < vector_size; i++) {
-      	//key_slices[i] = htobe64(key_slices[i]); TODO: is this required
       	memcpy(ptr+i*8, &(key_slices[i]), 8);
       }
       
@@ -326,9 +317,9 @@ Checkpointer::l_node* Checkpointer::_walk_to_right_1(node* root) {
 void Checkpointer::_checkpoint_walk_multi_range(std::vector<checkpoint_tree_key>* range_list,
                                                 int count,
                                                 uint64_t* max,
-                                                uint64_t ckp_epoch) {
-  uint64_t max_epoch = 0;
-  uint64_t max_epoch_local = 0;
+                                                uint64_t ckp_tid) {
+  uint64_t max_tid = 0;
+  uint64_t max_tid_local = 0;
   
   for (auto it = range_list->begin(); it != range_list->end(); ++it) {
     printf("[%u] Start _range_query_par for tree with id %lu\n", count, it->tree->get_tree_id());
@@ -337,52 +328,51 @@ void Checkpointer::_checkpoint_walk_multi_range(std::vector<checkpoint_tree_key>
     if (btr == NULL) {
       continue;
     }
-    //callback.set_tree_id(btr->get_tree_id());
-    _range_query_par(btr, &it->lowkey, &it->highkey, count, &max_epoch_local, ckp_epoch);
+
+    _range_query_par(btr, &it->lowkey, &it->highkey, count, &max_tid_local, ckp_tid);
     
-    if (max_epoch_local > max_epoch)
-      max_epoch = max_epoch_local;
+    if (max_tid_local > max_tid)
+      max_tid = max_tid_local;
     
     printf("[%u] _range_query_par done for tree %lu\n", count, btr->get_tree_id());
   }
   
-  *max = max_epoch;
+  *max = max_tid;
 }
 
 void Checkpointer::_range_query_par(concurrent_btree* btr, key_type *lower, key_type *higher,
-                                    int i, uint64_t* max_epoch, uint64_t ckp_epoch) {
+                                    int i, uint64_t* max_tid, uint64_t ckp_tid) {
   checkpoint_scan_callback local_callback;
   local_callback.idx = i;
   local_callback.set_tree_id(btr->get_tree_id());
-  //std::cout << "Low key is " << *lower << ", high key is " << *higher << std::endl;
   
   key_type key_lower = (key_type) *lower;
   const key_type *key_higher = (const key_type *) higher;
-  local_callback.ckp_epoch = ckp_epoch;
+  local_callback.ckp_tid = ckp_tid;
   btr->search_range_call(key_lower, key_higher, local_callback, NULL);
   
   local_callback.write_to_disk();
   local_callback.data_fsync();
   
-  uint64_t persist_epoch = 0;
-  // Need to wait until the persist_epoch reaches the max_epoch of checkpointed data
+  uint64_t persist_tid = 0;
+  // Need to wait until the persist_tid reaches the max_tid of checkpointed data
   while (true) {
-    persist_epoch = Logger::system_sync_tid_->load(std::memory_order_acquire);
-    if (persist_epoch >= local_callback.max_epoch)
+    persist_tid = Logger::system_sync_tid_->load(std::memory_order_acquire);
+    if (persist_tid >= local_callback.max_tid)
       break;   
     usleep(1000);
   }
   
   if (!checkpoint_stop)
     local_callback.finish();
-  *max_epoch = local_callback.max_epoch;
+  *max_tid = local_callback.max_tid;
 }
 
 
-void Checkpointer::log_truncate(uint64_t epoch, std::vector<std::string> logfile_base) {
+void Checkpointer::log_truncate(uint64_t tid, std::vector<std::string> logfile_base) {
   std::regex log_reg2("old_data(.*)");
   
-  printf("Truncating up to epoch %lu\n", epoch);
+  printf("Truncating up to tid %lu\n", tid);
   
   std::vector<std::string> file_list;
   
@@ -394,13 +384,12 @@ void Checkpointer::log_truncate(uint64_t epoch, std::vector<std::string> logfile
         char *file_name = ent->d_name;
         std::cmatch cm;
         if (std::regex_match(file_name, cm, log_reg2, std::regex_constants::format_default)) {
-          char *max_epoch_char = (char *) cm[1].str().c_str();
-          uint64_t max_epoch = _char_to_uint64(max_epoch_char);
-          if (max_epoch < epoch) {
+          char *max_tid_char = (char *) cm[1].str().c_str();
+          uint64_t max_tid = _char_to_uint64(max_tid_char);
+          if (max_tid < tid) {
             std::string f(logfile_base[i]);
             f.append(std::string(file_name));
             file_list.push_back(f);
-            //std::cout << file_list.back() << std::endl;
           }
         }
       }
@@ -441,14 +430,13 @@ bool checkpoint_scan_callback::invoke (const key_type &k, versioned_value v,
   uint64_t start_t = v.version() & ~(Version)1;
   
   std::string value = v.read_value();
-  //std::cout << " [" << tree_id <<"] found key " << key << " with value " << value << std::endl;
   if (enable_datastripe_par || enable_par_ckp) {
-    uint64_t cur_epoch = start_t;
-    max_epoch = (cur_epoch > max_epoch) ? cur_epoch : max_epoch;
+    uint64_t cur_tid = start_t;
+    max_tid = (cur_tid > max_tid) ? cur_tid : max_tid;
     
     if (reduced_ckp) {
       // we perform a reduced checkpoint here
-      if (cur_epoch > ckp_epoch) {
+      if (cur_tid > ckp_tid) {
         return true;
       }
     }

@@ -16,7 +16,7 @@ extern std::vector<std::vector<std::string> > ckpdirs; // a list of list of dire
 // to be assigned to a different checkpoint thread
 
 extern int reduced_ckp;
-extern std::string root_folder; // this folder stores pepoch, cepoch, and other information
+extern std::string root_folder; // this folder stores ptid, ctid, and other information
 extern int nckp_threads;
 extern int ckp_compress;
 extern std::string sockfile;

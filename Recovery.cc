@@ -28,7 +28,7 @@ txn_btree_map_type * Recovery::recover(std::vector<std::string> logfile_base, ui
   
   if (test_epoch == 0) {
     // find the persistent epoch
-    int fd = open(std::string(root_folder).append("/pepoch").c_str(), O_RDONLY);
+    int fd = open(std::string(root_folder).append("/ptid").c_str(), O_RDONLY);
     if (fd > 0) {
       if (read(fd, (char *) &persist_epoch, 8) < 0) {
         perror("Persist epoch reading failed");

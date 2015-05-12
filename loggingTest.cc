@@ -294,34 +294,34 @@ int main() {
     threads[i].join();
   }
   
-  uint64_t new_epoch;
-  uint64_t cepoch;
-  int fd = open(std::string(root_folder).append("/cepoch").c_str(), O_RDONLY);
+  uint64_t new_tid;
+  uint64_t ctid;
+  int fd = open(std::string(root_folder).append("/ctid").c_str(), O_RDONLY);
   if (fd > 0) {
-    if (read(fd, (char *) &cepoch, 8) < 0) {
-      perror("Checkpoint epoch reading failed");
+    if (read(fd, (char *) &ctid, 8) < 0) {
+      perror("Checkpoint tid reading failed");
       assert(false);
     }
     close(fd);
   } else {
-    perror("cepoch file not found");
+    perror("ctid file not found");
   }
   
-  uint64_t pepoch;
-  fd = open(std::string(root_folder).append("/pepoch").c_str(), O_RDONLY);
+  uint64_t ptid;
+  fd = open(std::string(root_folder).append("/ptid").c_str(), O_RDONLY);
   if (fd > 0) {
-    if (read(fd, (char *) &pepoch, 8) < 0) {
-      perror("Persist error reading failed");
+    if (read(fd, (char *) &ptid, 8) < 0) {
+      perror("Persist tid reading failed");
       assert(false);
     }
     close(fd);
   } else {
-    perror("pepoch file not found");
+    perror("ptid file not found");
     assert(false);
   }
   
-  new_epoch = pepoch - 13;
-  fprintf(stderr, "cepoch: %lu, new_epoch: %lu, pepoch: %lu\n", cepoch, new_epoch, pepoch);
+  new_tid = ptid - 13;
+  fprintf(stderr, "ctid: %lu, new_tid: %lu, ptid: %lu\n", ctid, new_tid, ptid);
   
   // We should reconstruct a big map with TIDs
   // this map will automatically reorder all of the TIDs through iterator
@@ -361,9 +361,9 @@ int main() {
 
   
   for (; it != it_end; it++) {
-    uint64_t cur_epoch = it->first;
+    uint64_t cur_tid = it->first;
     
-    if (cur_epoch > new_epoch)
+    if (cur_tid > new_tid)
       continue;
     
     txn_record_multi *r = it->second;
@@ -400,7 +400,7 @@ int main() {
   std::cout << "Starting recovery..." << std::endl;
   
   Recovery::Init();
-  Recovery::txn_btree_map_type *tree_map = Recovery::recover(logfiles, new_epoch);
+  Recovery::txn_btree_map_type *tree_map = Recovery::recover(logfiles, new_tid);
   
   std::cout << "Recovery complete" << std::endl;
   
