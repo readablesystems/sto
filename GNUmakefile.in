@@ -22,7 +22,7 @@ ifneq ($(NDEBUG),1)
 CFLAGS += -g
 endif
 
-all: concurrent single singleelems array1 genericTest
+all: concurrent single singleelems array1 genericTest nd_test
 
 %.o: %.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
@@ -43,7 +43,7 @@ KVTREES = masstree-beta/string_slice.o
 
 MASSTREE_OBJS = masstree-beta/kvio.o masstree-beta/misc.o masstree-beta/checkpoint.o $(KVTREES) masstree-beta/libjson.a
 
-STO_OBJS = Transaction.o MassTrans.o
+STO_OBJS = Transaction.o MassTrans.o MassTrans_nd.o
 
 concurrent: concurrent.o clp.o $(STO_OBJS) $(MASSTREE_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
@@ -59,6 +59,10 @@ array1: array1.o clp.o $(STO_OBJS)
 
 genericTest: genericTest.o clp.o $(STO_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+    
+nd_test: nd_test.o clp.o $(STO_OBJS) $(MASSTREE_OBJS)
+	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
 
 $(MASSTREE_OBJS): masstree ;
 
@@ -87,7 +91,7 @@ stamp-h: config.h.in config.status
 	echo > stamp-h
 
 clean:
-	rm -f concurrent array single singleelems genericTest *.o libjson.a
+	rm -f concurrent array single singleelems genericTest nd_test *.o libjson.a
 	rm -rf .deps
 	$(MAKE) -C masstree-beta clean
 
