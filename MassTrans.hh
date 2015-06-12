@@ -78,7 +78,7 @@ public:
 
   static __thread threadinfo_type mythreadinfo;
 
-private:
+protected:
 
   typedef Box versioned_value;
   
@@ -418,7 +418,7 @@ public:
   }
 #endif
 
-private:
+protected:
   // range query class thang
   template <typename Nodecallback, typename Valuecallback, bool Reverse = false>
   class range_scanner {
@@ -649,7 +649,7 @@ public:
   }
 
 
-private:
+protected:
   // called once we've checked our own writes for a found put()
   template <bool CopyVals = true>
   void reallyHandlePutFound(Transaction& t, TransProxy& item, versioned_value *e, Str key, const value_type& value) {
@@ -802,8 +802,9 @@ private:
   }
 
   static bool validityCheck(const TransItem& item, versioned_value *e) {
-    return //likely(has_insert(item)) || !(e->version & invalid_bit);
+    bool v =  //likely(has_insert(item)) || !(e->version & invalid_bit);
       likely(!(e->version() & invalid_bit)) || has_insert(item);
+    return v;
   }
 
   static constexpr Version lock_bit = (Version)1<<(sizeof(Version)*8 - 1);
@@ -882,6 +883,7 @@ private:
       v2 = e->version();
       if (is_locked(v2))
 	t.abort();
+	
       fence();
       assign_val(val, e->read_value());
       fence();
