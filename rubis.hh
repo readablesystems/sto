@@ -80,6 +80,10 @@ public:
     db->ndtransGet(t, numBidsKey, retval);
     return *((uint64_t*) retval);
   }
+  
+  void pushLocalData(Transaction& t) {
+    db->pushLocalData(t);
+  }
 
 private:
   DB_type* db;

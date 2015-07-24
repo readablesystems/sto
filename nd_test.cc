@@ -10,15 +10,15 @@
 #include "clp.h"
 #include "rubis.hh"
 
-const int nthreads = 16;
-int ntrans = 10000000;
+const int nthreads = 4;
+int ntrans = 1000000;
 int nitems = 5;
 int nusers = 5;
 int maxBid = 1000000000;
 int opspertrans = 1;
 typedef int value_type;
 
-#define NON_DET 0
+#define NON_DET 1
 
 #if NON_DET
 typedef Rubis_nd type;
@@ -64,7 +64,9 @@ int main(int argc, char *argv[]) {
         db->createItem(t, i);
         t.commit();
     }
-    
+    Transaction t;
+    db->pushLocalData(t);
+  
     struct timeval tv1,tv2;
     struct rusage ru1,ru2;
     gettimeofday(&tv1, NULL);

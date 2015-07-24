@@ -17,15 +17,24 @@ class MassTrans_nd : public MassTrans<void*, versioned_value_struct<void*>, Opac
   typedef typename supertype::Str Str;
   typedef typename supertype::threadinfo_type threadinfo_type;
 
-struct LocalItem {
-  std::string key;
-  void* value;
-};
+  enum OP {
+    MAX,
+    ADD,
+    OPUT
+  };
+  
+  struct LocalItem {
+    std::string key;
+    void* value;
+    OP nd_op;
+  
+    LocalItem(std::string k) : key(k) {}
+  };
 
 typedef local_vector<LocalItem, INIT_SET_SIZE_> LocalItemsType;
 
 public:
-  MassTrans_nd(): supertype() { }
+  MassTrans_nd(): supertype(), localItemsArray() { }
 
   struct oput_entry {
     uint64_t order;
@@ -34,30 +43,103 @@ public:
   
   template <typename StringType>
   void ndtransMax(Transaction& t, StringType key, uint64_t value) {
-    LocalItem it = item(key, localItemsArray[Transaction::threadid]; 
+    auto it = item(key, localItemsArray[Transaction::threadid]);
     uint64_t* value_ptr = new uint64_t;
-    *value_ptr = value;  
-    ndtransPut(t, key, value_ptr, max_bit, this->mythreadinfo);
+    *value_ptr = value;
+    if (it->value == NULL) {
+      it->value = (void *) value_ptr;
+      it->nd_op = MAX;
+    } else {
+      assert(it->nd_op == MAX);
+      if ( value > *((uint64_t*) it->value)) {
+        it->value = (void *) value_ptr;
+      }
+    }
+    //ndtransPut(t, key, value_ptr, max_bit, this->mythreadinfo);
   }
 
   template <typename StringType>
   void ndtransAdd(Transaction& t, StringType key, int value) {
-    int* value_ptr = new int;
-    *value_ptr = value;  
-    ndtransPut(t, key, value_ptr, add_bit, this->mythreadinfo); // TODO: what if the key doesn't already exist
+    auto it = item(key, localItemsArray[Transaction::threadid]);
+    uint64_t* value_ptr = new uint64_t;
+    *value_ptr = value;
+    if (it->value == NULL) {
+      it->value = (void *) value_ptr;
+      it->nd_op = ADD;
+    } else {
+      assert(it->nd_op == ADD);
+      *value_ptr = value + *((int *) (it->value));
+      it->value = (void *) value_ptr;
+      
+    }
+    //ndtransPut(t, key, value_ptr, add_bit, this->mythreadinfo); // TODO: what if the key doesn't already exist
   }
   
   template <typename StringType>
   void ndtransOPut(Transaction& t, StringType key, uint64_t order, const std::string& value) {
+    auto it = item(key, localItemsArray[Transaction::threadid]);
     oput_entry* ent_ = new oput_entry;
     ent_->order = order; 
     ent_->value = value;
-    ndtransPut(t, key, ent_, oput_bit, this->mythreadinfo);
+    
+    if (it->value == NULL) {
+      it->value = (void *) ent_;
+      it->nd_op = OPUT;
+    } else {
+      assert(it->nd_op == OPUT);
+      oput_entry* prev_entry = (oput_entry*) (it->value);
+      if (order > prev_entry->order) {
+        it->value = (void *) ent_;
+      }
+    }
+    //ndtransPut(t, key, ent_, oput_bit, this->mythreadinfo);
+  }
+  
+  void pushLocalData(Transaction& t) {
+    LocalItemsType localItems = localItemsArray[Transaction::threadid];
+    for (auto it = localItems.begin(); it != localItems.end(); ++it) {
+      if (it->nd_op == MAX) {
+        ndtransMax(t, it->key, *((uint64_t *) it->value));
+      } else if (it->nd_op == ADD) {
+        ndtransAdd(t, it->key, *((int *) it->value));
+      } else {
+        oput_entry* ent = (oput_entry*) (it->value);
+        ndtransOPut(t, it->key, ent->order, ent->value);
+      }
+    }
+    t.commit();
+    localItems.clear();
   }
   
   template <typename ValType>
-  bool ndtransGet(Transaction& t, Str key, ValType& retval) { 
-    return ndtransRead(t, key, retval, this->mythreadinfo);
+  bool ndtransGet(Transaction& t, Str key, ValType& retval) {
+    LocalItem* it = find_item(key, localItemsArray[Transaction::threadid]);
+    bool found = ndtransRead(t, key, retval, this->mythreadinfo);
+    if (it != NULL) {
+      if (!found) {
+        retval = it->value;
+      } else {
+        if (it->nd_op == MAX) {
+          if ((*(uint64_t*) it->value) > *((uint64_t*) retval)) {
+            retval = it->value;
+          }
+        } else if (it->nd_op == ADD) {
+          uint64_t new_val = (*(uint64_t*) it->value) + *((uint64_t*) retval);
+          retval = &new_val;
+        } else if (it->nd_op == OPUT) {
+          oput_entry* prev_entry = (oput_entry*) (retval);
+          oput_entry* local_entry = (oput_entry*) (it->value);
+          if (local_entry->order > prev_entry->order) {
+            retval = it->value;
+          }
+        } else {
+          assert(false);
+        }
+        
+      }
+      return true;
+    }
+    return found;
   }
 
   template <typename ValType>
@@ -67,7 +149,7 @@ public:
     if (found) {
       versioned_value *e = lp.value();
       //      __builtin_prefetch(&e->version);
-      auto item = this->t_read_only_item(t, e);
+      auto item = this->t_read_only_item(e);
       item.add_flags(ndread_bit);
       if (!this->validityCheck(item, e)) {
         t.abort();
@@ -348,7 +430,7 @@ public:
       if (ndoput) {
         oput_entry* prev_entry = (oput_entry*) (prevVal);
         oput_entry* new_entry = (oput_entry*) (v);
-	if (new_entry->order > prev_entry->order) {
+        if (new_entry->order > prev_entry->order) {
           e->set_value(v);
           updated = true;
         }
@@ -399,17 +481,20 @@ public:
       TransactionTid::inc_invalid_version(e->version());
 
   }
-
-  template <typename T> LocalItem item(T key, LocalItemsType& localSet) {
-      LocalItem* ti = find_item(key);
+  
+private:
+  template <typename T>
+  LocalItem* item(T key, LocalItemsType& localSet) {
+      LocalItem* ti = find_item(key, localSet);
       if (!ti) {
           localSet.emplace_back(key);
           ti = &localSet.back();
       }
-      return *ti;
+      return ti;
   }
-
-  LocalItem* find_item(void* key, LocalItemsType& localSet) {
+ 
+  template <typename T>
+  LocalItem* find_item(T key, LocalItemsType& localSet) {
     for (auto it = localSet.begin(); it != localSet.end(); ++it) {
       if (it->key == key) return &*it;
     }
