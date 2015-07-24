@@ -9,11 +9,11 @@ class GenericSTMArray {
 public:
   GenericSTMArray() : stm_(), array_() {}
 
-  Value transRead(Transaction& t, int i) {
-    return stm_.transRead(t, &array_[i]);
+  Value transRead(int i) {
+    return stm_.transRead(&array_[i]);
   }
-  void transWrite(Transaction& t, int i, const Value& v) {
-    stm_.transWrite(t, &array_[i], v);
+  void transWrite(int i, const Value& v) {
+    stm_.transWrite(&array_[i], v);
   }
 
   Value read(int i) {

@@ -23,12 +23,12 @@ public:
 private:
     typedef TransactionTid::type version_type;
 
-    inline void atomicRead(Transaction& t, version_type& v, T& val) {
+    inline void atomicRead(version_type& v, T& val) {
         version_type v2;
         do {
             v2 = s_.version();
             if (TransactionTid::is_locked(v2))
-              t.abort();
+              STO::abort();
             fence();
             val = s_.read_value();
             fence();
@@ -37,23 +37,23 @@ private:
     }
 
 public:
-    T transRead(Transaction& t) {
-        auto item = t.item(this, this);
+    T transRead() {
+        auto item = STO::item(this, this);
         if (item.has_write())
             return item.template write_value<T>();
         else {
             version_type v;
             T val;
-            atomicRead(t, v, val);
+            atomicRead(v, val);
             if (GenericSTM)
-                t.check_opacity(v);
+              STO::check_opacity(v);
             item.add_read(v);
             return val;
         }
     }
 
-    void transWrite(Transaction& t, const T& v) {
-        t.item(this, this).add_write(v);
+    void transWrite(const T& v) {
+      STO::item(this, this).add_write(v);
     }
 
     void lock() {

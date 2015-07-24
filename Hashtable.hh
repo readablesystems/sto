@@ -72,15 +72,15 @@ public:
   }
 
   // returns true if found false if not
-  bool transGet(Transaction& t, Key k, Value& retval) {
+  bool transGet(Key k, Value& retval) {
     bucket_entry& buck = buck_entry(k);
     Version buck_version = buck.version;
     fence();
     internal_elem *e = find(buck, k);
     if (e) {
-      auto item = t.item(this, e);
+      auto item = STO::item(this, e);
       if (!validity_check(item, e)) {
-        t.abort();
+        STO::abort();
         return false;
       }
       // deleted
@@ -93,23 +93,23 @@ public:
       }
       Version elem_vers;
       // "atomic" read of both the current value and the version #
-      atomicRead(t, e, elem_vers, retval);
+      atomicRead(e, elem_vers, retval);
       // check both node changes and node deletes
       item.add_read(elem_vers);
       if (Opacity)
-	check_opacity(t, e->version);
+        check_opacity(e->version);
       return true;
     } else {
-      t.item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+      STO::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
       if (Opacity)
-	check_opacity(t, buck.version);
+        check_opacity(buck.version);
       return false;
     }
   }
 
 #if HASHTABLE_DELETE
   // returns true if successful
-  bool transDelete(Transaction& t, Key k) {
+  bool transDelete(Key k) {
     bucket_entry& buck = buck_entry(k);
     Version buck_version = buck.version;
     fence();
@@ -117,7 +117,7 @@ public:
     if (e) {
       Version elemvers = e->version;
       fence();
-      auto item = t.item(this, e);
+      auto item = STO::item(this, e);
       bool valid = e->valid();
       if (!valid && has_insert(item)) {
         // we're deleting our own insert. special case this to just remove element and just check for no insert at commit
@@ -126,10 +126,10 @@ public:
         // so we just unmark all attributes so the item is ignored
         item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
         // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
-        t.item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+        STO::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
         return true;
       } else if (!valid) {
-        t.abort();
+        STO::abort();
         return false;
       }
       assert(valid);
@@ -140,7 +140,7 @@ public:
       // we need to make sure this bucket didn't change (e.g. what was once there got removed)
       item.add_read(elemvers);
       if (Opacity)
-	check_opacity(t, e->version);
+        check_opacity(e->version);
       // we use delete_bit to detect deletes so we don't need any other data
       // for deletes, just to mark it as a write
       if (!item.has_write())
@@ -149,9 +149,9 @@ public:
       return true;
     } else {
       // add a read that yes this element doesn't exist
-      t.item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+      STO::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
       if (Opacity)
-	check_opacity(t, buck.version);
+        check_opacity(buck.version);
       return false;
     }
   }
@@ -159,7 +159,7 @@ public:
 
   // returns true if item already existed, false if it did not
   template <bool INSERT = true, bool SET = true>
-  bool transPut(Transaction& t, Key k, const Value& v) {
+  bool transPut(Key k, const Value& v) {
     // TODO: technically puts don't need to look into the table at all until lock time
     bucket_entry& buck = buck_entry(k);
     // TODO: update doesn't need to lock the table
@@ -171,9 +171,9 @@ public:
       unlock(&buck.version);
       Version elemvers = e->version;
       fence();
-      auto item = t.item(this, e);
+      auto item = STO::item(this, e);
       if (!validity_check(item, e)) {
-        t.abort();
+        STO::abort();
         // unreachable (t.abort() raises an exception)
         return false;
       }
@@ -195,7 +195,7 @@ public:
       // make sure the item doesn't get deleted before us
       item.add_read(elemvers);
       if (Opacity)
-	check_opacity(t, e->version);
+        check_opacity(e->version);
 #endif
       if (SET) {
         item.add_write(v);
@@ -204,9 +204,9 @@ public:
     } else {
       if (!INSERT) {
         auto buck_version = unlock(&buck.version);
-        t.item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
-	if (Opacity)
-	  check_opacity(t, buck.version);
+        STO::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+    if (Opacity)
+      check_opacity(buck.version);
         return false;
       }
 
@@ -215,13 +215,13 @@ public:
       auto new_head = buck.head;
       auto new_version = unlock(&buck.version);
       // see if this item was previously read
-      auto bucket_item = t.check_item(this, pack_bucket(bucket(k)));
+      auto bucket_item = STO::check_item(this, pack_bucket(bucket(k)));
       if (bucket_item) {
         bucket_item->update_read(new_version - 1, new_version);
         //} else { could abort transaction now
       }
       // use new_item because we know there are no collisions
-      auto item = t.new_item(this, new_head);
+      auto item = STO::new_item(this, new_head);
       // don't actually need to store anything for the write, just mark as valid on install
       // (for now insert and set will just do the same thing on install, set a value and then mark valid)
       item.add_write(v);
@@ -232,13 +232,13 @@ public:
   }
 
   // returns true if successful
-  bool transInsert(Transaction& t, Key k, const Value& v) {
-    return !transPut</*insert*/true, /*set*/false>(t, k, v);
+  bool transInsert(Key k, const Value& v) {
+    return !transPut</*insert*/true, /*set*/false>(k, v);
   }
 
   // aka putIfAbsent (returns true if successful)
-  bool transUpdate(Transaction& t, Key k, const Value& v) {
-    return transPut</*insert*/false, /*set*/true>(t, k, v);
+  bool transUpdate(Key k, const Value& v) {
+    return transPut</*insert*/false, /*set*/true>(k, v);
   }
 
   void lock(internal_elem *el) {
@@ -440,12 +440,12 @@ public:
   }
 
   // these are wrappers for concurrent.cc
-  void transWrite(Transaction& t, Key k, Value v) {
-    transPut(t, k, v);
+  void transWrite(Key k, Value v) {
+    transPut(k, v);
   }
-  Value transRead(Transaction& t, Key k) {
+  Value transRead(Key k) {
     Value v;
-    if (!transGet(t, k, v)) {
+    if (!transGet(k, v)) {
       return Value();
     }
     return v;
@@ -454,7 +454,7 @@ public:
   void transWrite_nocheck(Transaction& , Key , Value ) {}
   Value read(Key k) {
     Transaction t;
-    Value v = transRead(t, k);
+    Value v = transRead(k);
     t.commit();
     return v;
   }
@@ -528,11 +528,11 @@ private:
     return has_insert(item) || e->valid();
   }
 
-  void check_opacity(Transaction& t, Version& v) {
+  void check_opacity(Version& v) {
     assert(Opacity);
     Version v2 = v;
     fence();
-    t.check_opacity(v2);
+    STO::check_opacity(v2);
   }
 
   static bool is_bucket(const TransItem& item) {
@@ -573,12 +573,12 @@ private:
     buck.head = new_head;
   }
 
-  void atomicRead(Transaction& t, internal_elem *e, Version& vers, Value& val) {
+  void atomicRead(internal_elem *e, Version& vers, Value& val) {
     Version v2;
     do {
       v2 = e->version;
       if (is_locked(v2))
-        t.abort();
+        STO::abort();
       fence();
       val = e->value;
       fence();
