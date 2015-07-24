@@ -40,6 +40,13 @@
 #define HASHTABLE_SIZE 512
 #define HASHTABLE_THRESHOLD 16
 
+// TRANSACTION macros that can be used to wrap transactional code
+#define TRANSACTION_LOOP while(1) { try { STO::start_transaction();
+#define TRANSACTION try { STO::start_transaction();
+#define TRY_COMMIT(out) out = STO::try_commit();} catch (Transaction::Abort e) {out = false;}
+#define COMMIT STO::try_commit();} catch (Transaction::Abort e) {throw e;}
+#define END if (STO::try_commit()) break;} catch (Transaction::Abort e) {} }
+
 // transaction performance counters
 enum txp {
     // all logging levels
@@ -251,27 +258,16 @@ void* TransactionBuffer::pack_unique(T x, void*) {
     return pack(std::move(x));
 }
 
-
-
 class Transaction {
 public:
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static unsigned global_epoch;
   static bool run_epochs;
-  static __thread Transaction* __transaction;
   typedef TransactionTid::type tid_type;
 private:
   static TransactionTid::type _TID;
 public:
-
-  static Transaction& get_transaction() {
-    if (!__transaction)
-      __transaction = new Transaction();
-    else
-      __transaction->reset();
-    return *__transaction;
-  }
 
   static std::function<void(unsigned)> epoch_advance_callback;
 
@@ -387,7 +383,7 @@ public:
 #define MAX_P(p, n) do {} while (0)
 #endif
 
-
+  
   Transaction() : transSet_() {
     reset();
   }
@@ -403,6 +399,7 @@ public:
     // TODO: this will probably mess up with nested transactions
     tinfo[threadid].epoch = 0;
     if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
+    inProgress_ = false;
   }
 
   // reset data so we can be reused for another transaction
@@ -422,6 +419,7 @@ public:
     start_tid_ = commit_tid_ = 0;
     buf_.clear();
     INC_P(txp_total_starts);
+    inProgress_ = true;
   }
 
 private:
@@ -707,6 +705,9 @@ private:
     return isAborted_;
   }
 
+  bool inProgress() {
+    return inProgress_;
+  }
 
     // opacity checking
     void check_opacity(TransactionTid::type t) {
@@ -747,6 +748,7 @@ private:
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
     uint16_t hashtable_[HASHTABLE_SIZE];
+    bool inProgress_;
 
     friend class TransProxy;
     friend class TransItem;
@@ -754,6 +756,101 @@ private:
     void update_hash();
 };
 
+
+class STO {
+public:
+  static __thread Transaction* __transaction;
+  
+  static void start_transaction() {
+    if (!__transaction) {
+      __transaction = new Transaction();
+    } else {
+      if (__transaction->inProgress()) {
+        assert(false);
+      } else {
+        __transaction->reset();
+      }
+      
+    }
+  }
+  
+  class NotInTransaction{};
+  
+  static bool trans_in_progress() {
+    if (__transaction == NULL)
+      return false;
+    else
+      return __transaction->inProgress();
+  }
+  static void abort() {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    __transaction->abort();
+  }
+  
+  template <typename T>
+  static TransProxy item(Shared* s, T key) {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    return __transaction->item(s, key);
+  }
+  
+  static void check_opacity(TransactionTid::type t) {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    __transaction->check_opacity(t);
+  }
+  
+  template <typename T>
+  static OptionalTransProxy check_item(Shared* s, T key) {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    return __transaction->check_item(s, key);
+  }
+  
+  template <typename T>
+  static TransProxy new_item(Shared* s, T key) {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    return __transaction->new_item(s, key);
+  }
+  
+  template <typename T>
+  static TransProxy read_item(Shared *s, T key) {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    return __transaction->read_item(s, key);
+  }
+  
+  template <typename T>
+  static TransProxy fresh_item(Shared *s, T key) {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    return __transaction->fresh_item(s, key);
+  }
+  
+  static void commit() {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    __transaction->commit();
+  }
+  
+  static bool try_commit() {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    return __transaction->try_commit();
+  }
+  
+};
 
 
 template <typename T>

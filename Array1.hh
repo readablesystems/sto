@@ -20,17 +20,15 @@ class Array1 : public Shared {
     }
 
     void write(key_type i, value_type v) {
-        lock(i);
-        data_[i].set_value(std::move(v));
-        unlock(i);
+        data_[i].write(std::move(v));
     }
 
-    value_type transRead(Transaction& t, const key_type& i){
-        return data_[i].transRead(t);
+    value_type transRead(const key_type& i){
+        return data_[i].transRead();
     }
 
-    void transWrite(Transaction& t, const key_type& i, value_type v) {
-        data_[i].transWrite(t, std::move(v));
+    void transWrite(const key_type& i, value_type v) {
+        data_[i].transWrite(std::move(v));
     }
 
     void lock(key_type i) {

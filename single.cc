@@ -264,57 +264,68 @@ void linkedListTests() {
   List<int> l;
   
   {
-    Transaction t;
-    assert(!l.transFind(t, 5));
-    assert(l.transInsert(t, 5));
-    int *p = l.transFind(t, 5);
-    assert(*p == 5);
-    assert(t.try_commit());
+    bool committed;
+    TRANSACTION {
+      assert(!l.transFind(5));
+      assert(l.transInsert(5));
+      int *p = l.transFind(5);
+      assert(*p == 5);
+    } TRY_COMMIT(committed);
+    assert(committed);
   }
 
   {
-    Transaction t;
-    assert(!l.transInsert(t, 5));
-    assert(*l.transFind(t, 5) == 5);
-    assert(!l.transFind(t, 7));
-    assert(l.transInsert(t, 7));
-    assert(t.try_commit());
+    bool committed;
+    TRANSACTION {
+      assert(!l.transInsert(5));
+      assert(*l.transFind(5) == 5);
+      assert(!l.transFind(7));
+      assert(l.transInsert(7));
+    } TRY_COMMIT(committed);
+    assert(committed);
   }
 
   {
-    Transaction t;
-    assert(l.transSize(t) == 2);
-    assert(l.transInsert(t, 10));
-    assert(l.transSize(t) == 3);
-    auto it = l.transIter(t);
-    int i = 0;
-    int elems[] = {5,7,10};
-    while (it.transHasNext(t)) {
-      assert(*it.transNext(t) == elems[i++]);
-    }
-    assert(t.try_commit());
+    bool committed;
+    TRANSACTION {
+      assert(l.transSize() == 2);
+      assert(l.transInsert(10));
+      assert(l.transSize() == 3);
+      auto it = l.transIter();
+      int i = 0;
+      int elems[] = {5,7,10};
+      while (it.transHasNext()) {
+        assert(*it.transNext() == elems[i++]);
+      }
+    } TRY_COMMIT(committed);
+    assert(committed);
+
   }
 
 
   {
-    Transaction t;
-    assert(l.transDelete(t, 7));
-    assert(!l.transDelete(t, 1000));
-    assert(l.transSize(t) == 2);
-    assert(!l.transFind(t, 7));
-    auto it = l.transIter(t);
-    assert(*it.transNext(t) == 5);
-    assert(*it.transNext(t) == 10);
-    assert(t.try_commit());
+    bool committed;
+    TRANSACTION {
+      assert(l.transDelete(7));
+      assert(!l.transDelete(1000));
+      assert(l.transSize() == 2);
+      assert(!l.transFind(7));
+      auto it = l.transIter();
+      assert(*it.transNext() == 5);
+      assert(*it.transNext() == 10);
+    } TRY_COMMIT(committed);
+    assert(committed);
   }
 
   {
-    Transaction t;
-    assert(l.transInsert(t, 7));
-    assert(l.transDelete(t, 7));
-    assert(l.transSize(t) == 2);
-    assert(!l.transFind(t, 7));
-    assert(t.try_commit());
+    bool committed;
+    TRANSACTION {
+      assert(l.transInsert(7));
+      assert(l.transDelete(7));
+      assert(l.transSize() == 2);
+      assert(!l.transFind(7));
+    } TRY_COMMIT(committed);
+    assert(committed);
   }
 
 }
@@ -323,46 +334,51 @@ void stringKeyTests() {
 #if 1
   Hashtable<std::string, std::string> h;
   
-  Transaction t;
-  {
-  std::string s1("bar");
-  assert(h.transInsert(t, "foo", s1));
-  }
+  bool committed;
   std::string s;
-  assert(h.transGet(t, "foo", s));
-  assert(s == "bar");
-  assert(t.try_commit());
+  TRANSACTION {
+    std::string s1("bar");
+    assert(h.transInsert("foo", s1));
+    
+    assert(h.transGet("foo", s));
+    assert(s == "bar");
+  } TRY_COMMIT(committed);
+  assert(committed);
 
-  Transaction t2;
-  assert(h.transGet(t2, "foo", s));
-  assert(s == "bar");
-  assert(t2.try_commit());
+  TRANSACTION {
+    assert(h.transGet("foo", s));
+    assert(s == "bar");
+  } TRY_COMMIT(committed);
+  assert(committed);
 #endif
 }
 
 void insertDeleteTest(bool shouldAbort) {
   MassTrans<int> h;
-  Transaction t;
-  for (int i = 10; i < 25; ++i) {
-    assert(h.transInsert(t, i, i+1));
-  }
-  assert(t.try_commit());
+  bool committed;
+  TRANSACTION {
+    for (int i = 10; i < 25; ++i) {
+      assert(h.transInsert(i, i+1));
+    }
+  } TRY_COMMIT(committed);
+  assert(committed);
 
-  Transaction t2;
-  assert(h.transInsert(t2, 25, 26));
-  int x;
-  assert(h.transGet(t2, 25, x));
-  assert(!h.transGet(t2, 26, x));
+  TRANSACTION {
+    assert(h.transInsert(25, 26));
+    int x;
+    assert(h.transGet(25, x));
+    assert(!h.transGet(26, x));
 
-  assert(h.transDelete(t2, 25));
+    assert(h.transDelete(25));
 
-  if (shouldAbort) {
+    /*if (shouldAbort) {
     Transaction t3;
     assert(h.transInsert(t3, 26, 27));
     assert(t3.try_commit());
     assert(!t2.try_commit());
-  } else
-    assert(t2.try_commit());
+    } else*/
+  } TRY_COMMIT(committed);
+  assert(committed);
 }
 
 void insertDeleteSeparateTest() {
