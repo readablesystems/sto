@@ -774,6 +774,10 @@ public:
     }
   }
   
+  static void set_transaction(Transaction* t) {
+    __transaction = t;
+  }
+  
   class NotInTransaction{};
   
   static bool trans_in_progress() {
