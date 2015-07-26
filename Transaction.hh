@@ -774,6 +774,7 @@ public:
     }
   }
   
+  /* Only used for testing purposes */
   static void set_transaction(Transaction* t) {
     __transaction = t;
   }
@@ -786,6 +787,7 @@ public:
     else
       return __transaction->inProgress();
   }
+  
   static void abort() {
     if (!trans_in_progress()) {
       throw NotInTransaction();

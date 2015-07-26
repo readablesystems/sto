@@ -52,8 +52,8 @@ public:
     }
 
     // TRANSACTIONAL CALLS
-    void transPush(Transaction& t, const T& v) {
-        auto item = t.item(this, -1);
+    void transPush(const T& v) {
+        auto item = STO::item(this, -1);
         if (item.has_write()) {
             if (!is_list(item)) {
                 auto& val = item.template write_value<T>();
@@ -75,11 +75,11 @@ public:
         else item.add_write(v);
     }
 
-    bool transPop(Transaction& t) {
+    bool transPop() {
         auto hv = headversion_;
         fence();
         auto index = head_;
-        auto item = t.item(this, index);
+        auto item = STO::item(this, index);
 
         while (1) {
            if (index == tail_) {
@@ -87,7 +87,7 @@ public:
                fence();
                 // if someone has pushed onto tail, can successfully do a front read, so don't read our own writes
                 if (index == tail_) {
-                    auto pushitem = t.item(this,-1);
+                    auto pushitem = STO::item(this,-1);
                     if (!pushitem.has_read())
                         pushitem.add_read(tv);
                     if (pushitem.has_write()) {
@@ -114,12 +114,12 @@ public:
             }
             if (has_delete(item)) {
                 index = (index + 1) % BUF_SIZE;
-                item = t.item(this, index);
+                item = STO::item(this, index);
             }
             else break;
         }
         // ensure that head is not modified by time of commit 
-        auto lockitem = t.item(this, -2);
+        auto lockitem = STO::item(this, -2);
         if (!lockitem.has_read()) {
             lockitem.add_read(hv);
         }
@@ -129,11 +129,11 @@ public:
         return true;
     }
 
-    bool transFront(Transaction& t, T& val) {
+    bool transFront(T& val) {
         auto hv = headversion_;
         fence();
         unsigned index = head_;
-        auto item = t.item(this, index);
+        auto item = STO::item(this, index);
         while (1) {
             // empty queue
             if (index == tail_) {
@@ -141,7 +141,7 @@ public:
                 fence();
                 // if someone has pushed onto tail, can successfully do a front read, so skip reading from our pushes 
                 if (index == tail_) {
-                    auto pushitem = t.item(this,-1);
+                    auto pushitem = STO::item(this,-1);
                     if (!pushitem.has_read())
                         pushitem.add_read(tv);
                     if (pushitem.has_write()) {
@@ -167,12 +167,12 @@ public:
             }
             if (has_delete(item)) {
                 index = (index + 1) % BUF_SIZE;
-                item = t.item(this, index);
+                item = STO::item(this, index);
             }
             else break;
         }
         // ensure that head was not modified at time of commit
-        auto lockitem = t.item(this, -2);
+        auto lockitem = STO::item(this, -2);
         if (!lockitem.has_read()) {
             lockitem.add_read(hv);
         }  
