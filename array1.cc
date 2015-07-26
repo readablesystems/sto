@@ -6,36 +6,35 @@
 
 void testSimpleInt() {
 	Array1<int, 100> f;
-  bool committed;
-	TRANSACTION {
-    f.transWrite(1, 100);
-  } TRY_COMMIT(committed)
-  assert(committed);
 
-	TRANSACTION {
-    int f_read = f.transRead(1);
+	Transaction t;
+  STO::set_transaction(&t);
+	f.transWrite(1, 100);
+	assert(t.try_commit());
 
-    assert(f_read == 100);
-	} TRY_COMMIT(committed)
-  assert(committed);
+	Transaction t2;
+  STO::set_transaction(&t2);
+	int f_read = f.transRead(1);
+
+	assert(f_read == 100);
+	assert(t2.try_commit());
 	printf("PASS: testSimpleInt\n");
 }
 
 void testSimpleString() {
 	Array1<std::string, 100> f;
 
-	bool committed;
-	TRANSACTION {
-    f.transWrite(1, "100");
-	} TRY_COMMIT(committed)
-  assert(committed);
+	Transaction t;
+  STO::set_transaction(&t);
+	f.transWrite(1, "100");
+	assert(t.try_commit());
 
-	TRANSACTION {
-    std::string f_read = f.transRead(1);
+	Transaction t2;
+  STO::set_transaction(&t2);
+	std::string f_read = f.transRead(1);
 
-    assert(f_read.compare("100") == 0);
-	} TRY_COMMIT(committed)
-  assert(committed);
+	assert(f_read.compare("100") == 0);
+	assert(t2.try_commit());
 	printf("PASS: testSimpleString\n");
 }
 
