@@ -9,14 +9,14 @@ public:
   static constexpr int alloc_flag = 1;
   
   // used to free things only if successful commit
-  void transFree(Transaction& t, void *ptr) {
-    t.new_item(this, ptr).add_write(0);
+  void transFree(void *ptr) {
+    Sto::new_item(this, ptr).add_write(0);
   }
 
   // malloc() which will be freed on abort
-  void* transMalloc(Transaction& t, size_t sz) {
+  void* transMalloc(size_t sz) {
     void *ptr = malloc(sz);
-    t.new_item(this, ptr).add_write(alloc_flag);
+    Sto::new_item(this, ptr).add_write(alloc_flag);
     return ptr;
   }
 
