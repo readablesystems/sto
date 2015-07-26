@@ -28,7 +28,7 @@ private:
         do {
             v2 = s_.version();
             if (TransactionTid::is_locked(v2))
-              STO::abort();
+              Sto::abort();
             fence();
             val = s_.read_value();
             fence();
@@ -38,7 +38,7 @@ private:
 
 public:
     T transRead() {
-        auto item = STO::item(this, this);
+        auto item = Sto::item(this, this);
         if (item.has_write())
             return item.template write_value<T>();
         else {
@@ -46,14 +46,14 @@ public:
             T val;
             atomicRead(v, val);
             if (GenericSTM)
-              STO::check_opacity(v);
+              Sto::check_opacity(v);
             item.add_read(v);
             return val;
         }
     }
 
     void transWrite(const T& v) {
-      STO::item(this, this).add_write(v);
+      Sto::item(this, this).add_write(v);
     }
 
     void lock() {
@@ -87,6 +87,6 @@ public:
     }
 
   protected:
-    // we store the versioned_value inlined (no added boxing)
+    // we Store the versioned_value inlined (no added boxing)
     Structure s_;
 };

@@ -4,7 +4,7 @@ threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int Transaction::threadid;
 unsigned __attribute__((aligned(64))) Transaction::global_epoch;
 bool Transaction::run_epochs = true;
-__thread Transaction *STO::__transaction;
+__thread Transaction *Sto::__transaction;
 std::function<void(unsigned)> Transaction::epoch_advance_callback;
 TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = TransactionTid::valid_bit;
 

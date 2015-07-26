@@ -78,9 +78,9 @@ public:
     fence();
     internal_elem *e = find(buck, k);
     if (e) {
-      auto item = STO::item(this, e);
+      auto item = Sto::item(this, e);
       if (!validity_check(item, e)) {
-        STO::abort();
+        Sto::abort();
         return false;
       }
       // deleted
@@ -100,7 +100,7 @@ public:
         check_opacity(e->version);
       return true;
     } else {
-      STO::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+      Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
       if (Opacity)
         check_opacity(buck.version);
       return false;
@@ -117,7 +117,7 @@ public:
     if (e) {
       Version elemvers = e->version;
       fence();
-      auto item = STO::item(this, e);
+      auto item = Sto::item(this, e);
       bool valid = e->valid();
       if (!valid && has_insert(item)) {
         // we're deleting our own insert. special case this to just remove element and just check for no insert at commit
@@ -126,10 +126,10 @@ public:
         // so we just unmark all attributes so the item is ignored
         item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
         // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
-        STO::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+        Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
         return true;
       } else if (!valid) {
-        STO::abort();
+        Sto::abort();
         return false;
       }
       assert(valid);
@@ -149,7 +149,7 @@ public:
       return true;
     } else {
       // add a read that yes this element doesn't exist
-      STO::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+      Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
       if (Opacity)
         check_opacity(buck.version);
       return false;
@@ -171,9 +171,9 @@ public:
       unlock(&buck.version);
       Version elemvers = e->version;
       fence();
-      auto item = STO::item(this, e);
+      auto item = Sto::item(this, e);
       if (!validity_check(item, e)) {
-        STO::abort();
+        Sto::abort();
         // unreachable (t.abort() raises an exception)
         return false;
       }
@@ -204,7 +204,7 @@ public:
     } else {
       if (!INSERT) {
         auto buck_version = unlock(&buck.version);
-        STO::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+        Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
     if (Opacity)
       check_opacity(buck.version);
         return false;
@@ -215,14 +215,14 @@ public:
       auto new_head = buck.head;
       auto new_version = unlock(&buck.version);
       // see if this item was previously read
-      auto bucket_item = STO::check_item(this, pack_bucket(bucket(k)));
+      auto bucket_item = Sto::check_item(this, pack_bucket(bucket(k)));
       if (bucket_item) {
         bucket_item->update_read(new_version - 1, new_version);
         //} else { could abort transaction now
       }
       // use new_item because we know there are no collisions
-      auto item = STO::new_item(this, new_head);
-      // don't actually need to store anything for the write, just mark as valid on install
+      auto item = Sto::new_item(this, new_head);
+      // don't actually need to Store anything for the write, just mark as valid on install
       // (for now insert and set will just do the same thing on install, set a value and then mark valid)
       item.add_write(v);
       // need to remove this item if we abort
@@ -309,7 +309,7 @@ public:
       TransactionTid::set_version(el->version, t.commit_tid());
     else
       TransactionTid::inc_invalid_version(el->version);
-#if 0
+#if 1
     if (has_insert(item)) {
       // need to update bucket version
       bucket_entry& buck = buck_entry(el->key);
@@ -532,7 +532,7 @@ private:
     assert(Opacity);
     Version v2 = v;
     fence();
-    STO::check_opacity(v2);
+    Sto::check_opacity(v2);
   }
 
   static bool is_bucket(const TransItem& item) {
@@ -578,7 +578,7 @@ private:
     do {
       v2 = e->version;
       if (is_locked(v2))
-        STO::abort();
+        Sto::abort();
       fence();
       val = e->value;
       fence();

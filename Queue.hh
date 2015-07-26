@@ -53,7 +53,7 @@ public:
 
     // TRANSACTIONAL CALLS
     void transPush(const T& v) {
-        auto item = STO::item(this, -1);
+        auto item = Sto::item(this, -1);
         if (item.has_write()) {
             if (!is_list(item)) {
                 auto& val = item.template write_value<T>();
@@ -79,7 +79,7 @@ public:
         auto hv = headversion_;
         fence();
         auto index = head_;
-        auto item = STO::item(this, index);
+        auto item = Sto::item(this, index);
 
         while (1) {
            if (index == tail_) {
@@ -87,7 +87,7 @@ public:
                fence();
                 // if someone has pushed onto tail, can successfully do a front read, so don't read our own writes
                 if (index == tail_) {
-                    auto pushitem = STO::item(this,-1);
+                    auto pushitem = Sto::item(this,-1);
                     if (!pushitem.has_read())
                         pushitem.add_read(tv);
                     if (pushitem.has_write()) {
@@ -114,12 +114,12 @@ public:
             }
             if (has_delete(item)) {
                 index = (index + 1) % BUF_SIZE;
-                item = STO::item(this, index);
+                item = Sto::item(this, index);
             }
             else break;
         }
         // ensure that head is not modified by time of commit 
-        auto lockitem = STO::item(this, -2);
+        auto lockitem = Sto::item(this, -2);
         if (!lockitem.has_read()) {
             lockitem.add_read(hv);
         }
@@ -133,7 +133,7 @@ public:
         auto hv = headversion_;
         fence();
         unsigned index = head_;
-        auto item = STO::item(this, index);
+        auto item = Sto::item(this, index);
         while (1) {
             // empty queue
             if (index == tail_) {
@@ -141,7 +141,7 @@ public:
                 fence();
                 // if someone has pushed onto tail, can successfully do a front read, so skip reading from our pushes 
                 if (index == tail_) {
-                    auto pushitem = STO::item(this,-1);
+                    auto pushitem = Sto::item(this,-1);
                     if (!pushitem.has_read())
                         pushitem.add_read(tv);
                     if (pushitem.has_write()) {
@@ -167,12 +167,12 @@ public:
             }
             if (has_delete(item)) {
                 index = (index + 1) % BUF_SIZE;
-                item = STO::item(this, index);
+                item = Sto::item(this, index);
             }
             else break;
         }
         // ensure that head was not modified at time of commit
-        auto lockitem = STO::item(this, -2);
+        auto lockitem = Sto::item(this, -2);
         if (!lockitem.has_read()) {
             lockitem.add_read(hv);
         }  

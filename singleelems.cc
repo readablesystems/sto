@@ -14,12 +14,12 @@ void bigObjTests() {
   printf("big obj size: %lu\n", sizeof(f));
   
   Transaction t;
-  STO::set_transaction(&t);
+  Sto::set_transaction(&t);
   f.transWrite(foo{1, 2, 3.4});
   assert(t.try_commit());
 
   Transaction t2;
-  STO::set_transaction(&t2);
+  Sto::set_transaction(&t2);
   foo f_read = f.transRead();
   assert(f_read.a == 1);
   assert(f_read.b == 2);
@@ -32,12 +32,12 @@ void nontrivialObjTests() {
   printf("std string size: %lu\n", sizeof(f));
 
   Transaction t;
-  STO::set_transaction(&t);
+  Sto::set_transaction(&t);
   f.transWrite("foobarbaz");
   assert(t.try_commit());
 
   Transaction t2;
-  STO::set_transaction(&t2);
+  Sto::set_transaction(&t2);
   auto s = f.transRead();
   assert(s == std::string("foobarbaz"));
   assert(t2.try_commit());
@@ -50,7 +50,7 @@ void genericSTMTests() {
   uint64_t *z = (uint64_t*)malloc(sizeof(*z));
   *z = 0xffffffffffULL;
   {Transaction t;
-    STO::set_transaction(&t);
+    Sto::set_transaction(&t);
     assert(stm.transRead(&x) == 4);
     stm.transWrite(&x, 5);
     assert(stm.transRead(&x) == 5);
@@ -67,7 +67,7 @@ void genericSTMTests() {
   assert(x == 5);
 
   {Transaction t;
-    STO::set_transaction(&t);
+    Sto::set_transaction(&t);
     assert(stm.transRead(&x) == 5);
     assert(stm.transRead(&y) - 1.1 < 0.01);
     assert(stm.transRead(z) == (uint64_t)0x7777777777ULL);
@@ -80,13 +80,13 @@ int main() {
   printf("size: %lu\n", sizeof(f));
   
   Transaction t;
-  STO::set_transaction(&t);
+  Sto::set_transaction(&t);
   f.transWrite(1);
   assert(f.transRead() == 1);
   assert(t.try_commit());
 
   Transaction t2;
-  STO::set_transaction(&t2);
+  Sto::set_transaction(&t2);
   assert(f.transRead() == 1);
   assert(t2.try_commit());
 

@@ -76,7 +76,7 @@ public:
     if (n) {
       auto item = t_item(n);
       if (!validityCheck(n, item)) {
-        STO::abort();
+        Sto::abort();
         return NULL;
       }
       if (has_delete(item)) {
@@ -157,7 +157,7 @@ public:
     auto item = t_item(node);
     if (!inserted) {
       if (!validityCheck(node, item)) {
-        STO::abort();
+        Sto::abort();
         return false;
       }
       // intertransactional insert-then-insert = failed insert
@@ -195,7 +195,7 @@ public:
     if (n) {
       auto item = t_item(n);
       if (!validityCheck(n, item)) {
-        STO::abort();
+        Sto::abort();
         return false;
       }
       if (has_delete(item)) {
@@ -285,7 +285,7 @@ public:
     assert(Opacity);
     auto listv = listversion_;
     fence();
-    STO::check_opacity(listv);
+    Sto::check_opacity(listv);
   }
 
   struct ListIter {
@@ -346,10 +346,10 @@ private:
     void ensureValid() {
       while (cur) {
 	// need to check if this item already exists
-        auto item = STO::check_item(us, cur);
+        auto item = Sto::check_item(us, cur);
         if (!cur->is_valid()) {
           if (!item || !us->has_insert(*item)) {
-            STO::abort();
+            Sto::abort();
             // TODO: do we continue in this situation or abort?
             cur = cur->next;
             continue;
@@ -477,7 +477,7 @@ private:
   template <typename PTR>
   TransProxy t_item(PTR *node) {
     // can switch this to fresh_item to not read our writes
-    return STO::item(this, node);
+    return Sto::item(this, node);
   }
 
   bool has_insert(const TransItem& item) {

@@ -133,7 +133,7 @@ public:
       //      __builtin_prefetch(&e->version);
       auto item = t_read_only_item(e);
       if (!validityCheck(item, e)) {
-        STO::abort();
+        Sto::abort();
         return false;
       }
       //      __builtin_prefetch();
@@ -192,7 +192,7 @@ public:
       } else 
 #endif
      if (!valid) {
-        STO::abort();
+        Sto::abort();
         return false;
       }
       assert(valid);
@@ -205,7 +205,7 @@ public:
       item.add_read(v);
       if (Opacity)
         check_opacity(e->version());
-      // same as inserts we need to store (copy) key so we can lookup to remove later
+      // same as inserts we need to Store (copy) key so we can lookup to remove later
       item.clear_write();
       if (std::is_same<const std::string, const StringType>::value) {
 	if (CopyVals)
@@ -266,11 +266,11 @@ public:
         // add any new nodes as a result of splits, etc. to the read/absent set
 #if !ABORT_ON_WRITE_READ_CONFLICT
         for (auto&& pair : lp.new_nodes()) {
-          STO::new_item(this, tag_inter(pair.first)).add_read(pair.second);
+          Sto::new_item(this, tag_inter(pair.first)).add_read(pair.second);
         }
 #endif
       }
-      auto item = STO::new_item(this, val);
+      auto item = Sto::new_item(this, val);
       if (std::is_same<const std::string, const StringType>::value) {
 	if (CopyVals)
 	  item.add_write(key).add_flags(copyvals_bit);
@@ -663,7 +663,7 @@ protected:
         // we had a weird race condition and now this element is gone. just abort at this point
         if (e->version() & invalid_bit) {
           unlock(e);
-          STO::abort();
+          Sto::abort();
           return;
         }
         e->version() |= invalid_bit;
@@ -702,9 +702,9 @@ protected:
 	  item.add_write(pack(value));
       } else {
 	if (CopyVals)
-	  STO::new_item(this, new_location).add_write(value).add_flags(copyvals_bit);
+	  Sto::new_item(this, new_location).add_write(value).add_flags(copyvals_bit);
 	else
-	  STO::new_item(this, new_location).add_write(pack(value));
+	  Sto::new_item(this, new_location).add_write(pack(value));
       }
     }
   }
@@ -715,7 +715,7 @@ protected:
   bool handlePutFound(versioned_value *e, Str key, const value_type& value) {
     auto item = t_item(e);
     if (!validityCheck(item, e)) {
-      STO::abort();
+      Sto::abort();
       return false;
     }
 #if READ_MY_WRITES
@@ -764,7 +764,7 @@ protected:
 
   template <typename NODE, typename VERSION>
   bool updateNodeVersion(NODE *node, VERSION prev_version, VERSION new_version) {
-    if (auto node_item = STO::check_item(this, tag_inter(node))) {
+    if (auto node_item = Sto::check_item(this, tag_inter(node))) {
       if (node_item->has_read() &&
           prev_version == node_item->template read_value<VERSION>()) {
         node_item->update_read(node_item->template read_value<VERSION>(),
@@ -778,18 +778,18 @@ protected:
   template <typename T>
   TransProxy t_item(T e) {
 #if READ_MY_WRITES
-    return STO::item(this, e);
+    return Sto::item(this, e);
 #else
-    return STO::fresh_item(this, e);
+    return Sto::fresh_item(this, e);
 #endif
   }
 
   template <typename T>
   TransProxy t_read_only_item(T e) {
 #if READ_MY_WRITES
-    return STO::read_item(this, e);
+    return Sto::read_item(this, e);
 #else
-    return STO::fresh_item(this, e);
+    return Sto::fresh_item(this, e);
 #endif
   }
 
@@ -836,7 +836,7 @@ protected:
   static void check_opacity(Version& v) {
     Version v2 = v;
     fence();
-    STO::check_opacity(v2);
+    Sto::check_opacity(v2);
   }
 
   static bool versionCheck(Version v1, Version v2) {
@@ -881,7 +881,7 @@ protected:
     do {
       v2 = e->version();
       if (is_locked(v2))
-        STO::abort();
+        Sto::abort();
 	
       fence();
       assign_val(val, e->read_value());

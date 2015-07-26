@@ -11,7 +11,7 @@ public:
   T transRead(T* word) {
     static_assert(sizeof(T) <= sizeof(void*), "don't support words larger than pointer size");
 
-    auto it = STO::check_item(this, word);
+    auto it = Sto::check_item(this, word);
     if (it && it->has_write()) {
         return it->template write_value<T>();
     }
@@ -30,7 +30,7 @@ public:
     // (and locks this word for us)
     size_t key = bucket(word);
     table_.transWrite(key, 0);
-    STO::item(this, word).add_write(new_val).assign_flags(sizeof(T) << TransItem::userf_shift);
+    Sto::item(this, word).add_write(new_val).assign_flags(sizeof(T) << TransItem::userf_shift);
   }
 
   // Hashtable handles all of this
