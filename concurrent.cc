@@ -240,7 +240,7 @@ void prepopulate_func(T& a) {
   for (int i = 0; i < prepopulate; ++i) {
     TRANSACTION {
     a.transWrite(i, val(i+1));
-    } COMMIT
+    } RETRY(false)
   }
 }
 
@@ -370,7 +370,7 @@ template <int DS> void ReadThenWrite<DS>::run(int me) {
     // so that retries of this transaction do the same thing
     auto transseed = i;
 
-    TRANSACTION_LOOP {
+    TRANSACTION {
       Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
 
       auto gen = [&]() { return slotdist(transgen); };
@@ -378,7 +378,7 @@ template <int DS> void ReadThenWrite<DS>::run(int me) {
       nreads(*a, OPS - OPS*write_percent, gen);
       nwrites(*a, OPS*write_percent, gen);
 
-    } END;
+    } RETRY(true);
   }
 }
 
@@ -417,7 +417,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
     int slots_written[OPS], nslots_written;
 #endif
 
-    TRANSACTION_LOOP {
+    TRANSACTION {
 #if MAINTAIN_TRUE_ARRAY_STATE
       nslots_written = 0;
 #endif
@@ -449,7 +449,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
 #endif
         }
       }
-    } END
+    } RETRY(true)
 #if MAINTAIN_TRUE_ARRAY_STATE
     if (maintain_true_array_state) {
         std::sort(slots_written, slots_written + nslots_written);
@@ -556,7 +556,7 @@ template <int DS> void KingDelete<DS>::run(int me) {
   typename Container<DS>::type* a = this->a;
   Container<DS>::thread_init(*a);
 
-  TRANSACTION_LOOP {
+  TRANSACTION {
     for (int i = 0; i < nthreads; ++i) {
         if (i != me) {
           Container<DS>::transDelete(*a, i);
@@ -564,7 +564,7 @@ template <int DS> void KingDelete<DS>::run(int me) {
           a->transWrite(i, val(i+1));
         }
       }
-  } END
+  } RETRY(true)
 }
 
 template <int DS> bool KingDelete<DS>::check() {
@@ -600,7 +600,7 @@ template <int DS> void XorDelete<DS>::run(int me) {
 
   for (int i = 0; i < N; ++i) {
     auto transseed = i;
-    TRANSACTION_LOOP {
+    TRANSACTION {
       Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
         for (int j = 0; j < OPS; ++j) {
           int slot = slotdist(transgen);
@@ -615,7 +615,7 @@ template <int DS> void XorDelete<DS>::run(int me) {
             Container<DS>::transDelete(*a, slot);
           }
         }
-    } END
+    } RETRY(true)
   }
 }
 
@@ -648,12 +648,12 @@ template <int DS> void IsolatedWrites<DS>::run(int me) {
   typename Container<DS>::type* a = this->a;
   Container<DS>::thread_init(*a);
 
-  TRANSACTION_LOOP {
+  TRANSACTION {
     for (int i = 0; i < nthreads; ++i) {
       a->transRead(i);
     }
     a->transWrite(me, val(me+1));
-  } END
+  } RETRY(true)
       
   
 }
@@ -677,7 +677,7 @@ template <int DS> void BlindWrites<DS>::run(int me) {
   typename Container<DS>::type* a = this->a;
   Container<DS>::thread_init(*a);
 
-  TRANSACTION_LOOP {
+  TRANSACTION {
     if (unval(a->transRead(0)) == 0 || me == nthreads-1) {
       for (int i = 1; i < ARRAY_SZ; ++i) {
         a->transWrite(i, val(me));
@@ -688,7 +688,7 @@ template <int DS> void BlindWrites<DS>::run(int me) {
     if (me == nthreads-1) {
       a->transWrite(0, val(me));
     }
-  } END
+  } RETRY(true)
 }
 
 template <int DS> bool BlindWrites<DS>::check() {
@@ -711,14 +711,14 @@ template <int DS> void InterferingRWs<DS>::run(int me) {
   typename Container<DS>::type* a = this->a;
   Container<DS>::thread_init(*a);
 
-  TRANSACTION_LOOP {
+  TRANSACTION {
     for (int i = 0; i < ARRAY_SZ; ++i) {
       if ((i % nthreads) >= me) {
         auto cur = a->transRead(i);
         a->transWrite(i, val(unval(cur)+1));
       }
     }
-  } END
+  } RETRY(true)
 }
 
 template <int DS> bool InterferingRWs<DS>::check() {
@@ -736,7 +736,7 @@ void Qxordeleterun(int me) {
   int OPS = opspertrans;
  
   for (int i = 0; i < N; ++i) {
-    TRANSACTION_LOOP {
+    TRANSACTION {
       for (int j = 0; j < OPS; ++j) {
           value_type v = val(j);
           value_type u;
@@ -747,7 +747,7 @@ void Qxordeleterun(int me) {
           else
               q->transPop(t);
         }
-    } END
+    } RETRY(true)
   }
 }
 
@@ -778,7 +778,7 @@ void Qtransferrun(int me) {
   int OPS = opspertrans;
 
   for (int i = 0; i < N; ++i) {
-    TRANSACTION_LOOP {
+    TRANSACTION {
         for (int j = 0; j < OPS; ++j) {
           value_type v;
           // if q is nonempty, pop from q, push onto q2
@@ -787,7 +787,7 @@ void Qtransferrun(int me) {
             q2->transPush(t, v);
           }
         }
-    } END
+    } RETRY(true)
   }
 }
 

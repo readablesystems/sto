@@ -41,11 +41,8 @@
 #define HASHTABLE_THRESHOLD 16
 
 // TRANSACTION macros that can be used to wrap transactional code
-#define TRANSACTION_LOOP while(1) { try { STO::start_transaction();
-#define TRANSACTION try { STO::start_transaction();
-#define TRY_COMMIT(out) out = STO::try_commit();} catch (Transaction::Abort e) {out = false;}
-#define COMMIT STO::try_commit();} catch (Transaction::Abort e) {throw e;}
-#define END if (STO::try_commit()) break;} catch (Transaction::Abort e) {} }
+#define TRANSACTION while(1) { try { STO::start_transaction();
+#define RETRY(retry) if (STO::try_commit()) break; else if (!retry) throw Transaction::Abort();} catch (Transaction::Abort e) {if (!retry) throw e;}}
 
 // transaction performance counters
 enum txp {
