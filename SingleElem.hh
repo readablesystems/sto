@@ -60,7 +60,7 @@ public:
     }
   
     /* Overloads = operator with transWrite */
-    SingleElem& operator= (T v) {
+    SingleElem& operator= (const T& v) {
         transWrite(v);
         return *this;
     }
