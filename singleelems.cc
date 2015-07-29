@@ -15,12 +15,12 @@ void bigObjTests() {
   
   Transaction t;
   Sto::set_transaction(&t);
-  f.transWrite(foo{1, 2, 3.4});
+  f = foo{1, 2, 3.4};
   assert(t.try_commit());
 
   Transaction t2;
   Sto::set_transaction(&t2);
-  foo f_read = f.transRead();
+  foo f_read = f;
   assert(f_read.a == 1);
   assert(f_read.b == 2);
   assert(f_read.c - 3.4 < .001);
@@ -33,12 +33,12 @@ void nontrivialObjTests() {
 
   Transaction t;
   Sto::set_transaction(&t);
-  f.transWrite("foobarbaz");
+  f = "foobarbaz";
   assert(t.try_commit());
 
   Transaction t2;
   Sto::set_transaction(&t2);
-  auto s = f.transRead();
+  std::string s = f;
   assert(s == std::string("foobarbaz"));
   assert(t2.try_commit());
 }
@@ -75,25 +75,46 @@ void genericSTMTests() {
   }
 }
 
+void incrementTest() {
+    SingleElem<int> f;
+    
+    TRANSACTION {
+        f = 1;
+    } RETRY(false)
+    
+    TRANSACTION {
+        f = f + 1;
+    } RETRY(false)
+    
+    int v;
+    TRANSACTION {
+        v = f;
+    } RETRY(false)
+
+    assert(v == 2);
+}
+
 int main() {
   SingleElem<int> f;
   printf("size: %lu\n", sizeof(f));
   
   Transaction t;
   Sto::set_transaction(&t);
-  f.transWrite(1);
-  assert(f.transRead() == 1);
+  f = 1;
+  assert(f == 1);
   assert(t.try_commit());
 
   Transaction t2;
   Sto::set_transaction(&t2);
-  assert(f.transRead() == 1);
+  assert(f == 1);
   assert(t2.try_commit());
 
   bigObjTests();
   nontrivialObjTests();
 
   genericSTMTests();
+    
+  incrementTest();
 
   return 0;
 }

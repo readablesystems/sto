@@ -51,9 +51,18 @@ public:
             return val;
         }
     }
+    
+    /* Overloading cast operation so that we can now directly read values from SingleElem objects */
+    operator T() { return transRead(); }
 
     void transWrite(const T& v) {
-      Sto::item(this, this).add_write(v);
+        Sto::item(this, this).add_write(v);
+    }
+  
+    /* Overloads = operator with transWrite */
+    SingleElem& operator= (T v) {
+        transWrite(v);
+        return *this;
     }
 
     void lock() {
