@@ -339,8 +339,9 @@ public:
     }
 
 private:
-    ListIter(List *us, list_node *cur) : us(us), cur(cur) {
-      ensureValid();
+    ListIter(List *us, list_node *cur, bool validityCheck) : us(us), cur(cur) {
+      if (validityCheck)
+        ensureValid();
     }
 
     void ensureValid() {
@@ -369,12 +370,12 @@ private:
   };
 
   ListIter iter() {
-    return ListIter(this, head_);
+    return ListIter(this, head_, false);
   }
 
   ListIter transIter() {
     verify_list(listversion_);//TODO: rename
-    return ListIter(this, head_);
+    return ListIter(this, head_, true);
   }
 
   size_t transSize() {

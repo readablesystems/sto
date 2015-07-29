@@ -1,6 +1,6 @@
 #include "Transaction.hh"
 
-#define TM_BEGIN() while (1) { Transaction __transaction; try {
-#define TM_END() __transaction.commit(); } catch (Transaction::Abort E) { continue; } break; }
-#define TM_ARG __transaction,
-#define TM_ARG_ALONE __transaction
+#define TM_BEGIN() TRANSACTION {
+#define TM_END() } RETRY(true)
+#define TM_ARG /* Nothing */
+#define TM_ARG_ALONE /* Nothing */
