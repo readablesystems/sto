@@ -22,7 +22,7 @@ ifneq ($(NDEBUG),1)
 CFLAGS += -g
 endif
 
-all: concurrent single singleelems array1 genericTest
+all: concurrent single singleelems array1 genericTest list1 vector
 
 %.o: %.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
@@ -55,6 +55,12 @@ singleelems: singleelems.o clp.o $(STO_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 array1: array1.o clp.o $(STO_OBJS)
+	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
+list1: list1.o clp.o $(STO_OBJS)
+	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
+vector: vector.o clp.o $(STO_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 genericTest: genericTest.o clp.o $(STO_OBJS)
