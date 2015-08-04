@@ -14,8 +14,12 @@ public:
   }
 };
 
+template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true, bool Opacity = false> class ListIterator;
+
 template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true, bool Opacity = false>
 class List : public Shared {
+  friend class ListIterator<T, Duplicates, Compare, Sorted, Opacity>;
+  typedef ListIterator<T, Duplicates, Compare, Sorted, Opacity> iterator;
 public:
   List(Compare comp = Compare()) : head_(NULL), listsize_(0), listversion_(0), comp_(comp) {
   }
@@ -287,6 +291,9 @@ public:
     fence();
     Sto::check_opacity(listv);
   }
+    
+  iterator begin() { return iterator(this, head_); }
+  iterator end() { return iterator(this, NULL); }
 
   struct ListIter {
     ListIter() : us(NULL), cur(NULL) {}
@@ -339,8 +346,8 @@ public:
     }
 
 private:
-    ListIter(List *us, list_node *cur, bool validityCheck) : us(us), cur(cur) {
-      if (validityCheck)
+    ListIter(List *us, list_node *cur, bool trans) : us(us), cur(cur) {
+      if (trans)
         ensureValid();
     }
 
@@ -452,6 +459,7 @@ private:
         TransactionTid::inc_invalid_version(listversion_);
       }
     } else if (has_doupdate(item)) {
+        // XXX BUG
       n->val = item.template write_value<T>();
     } else {
       n->mark_valid();
@@ -523,3 +531,78 @@ private:
   version_type listversion_;
   Compare comp_;
 };
+    
+    
+
+    
+template <typename T, bool Duplicates, typename Compare, bool Sorted, bool Opacity>
+class ListIterator : public std::iterator<std::forward_iterator_tag, T> {
+    typedef ListIterator<T, Duplicates, Compare, Sorted, Opacity> iterator;
+    typedef List<T, Duplicates, Compare, Sorted, Opacity> list_type;
+    typedef typename list_type::list_node list_node;
+public:
+    ListIterator(list_type * list, list_node* ptr) : myList(list), myPtr(ptr) {
+        myList->list_verify(myList->listversion_);
+    }
+    ListIterator(const ListIterator& itr) : myList(itr.myList), myPtr(itr.myPtr) {}
+    
+    ListIterator& operator= (const ListIterator& v) {
+        myList = v.myList;
+        myPtr = v.myPtr;
+        return *this;
+    }
+    
+    bool operator==(iterator other) const {
+        return (myList == other.myList) && (myPtr == other.myPtr);
+    }
+    
+    bool operator!=(iterator other) const {
+        return !(operator==(other));
+    }
+    
+    T& operator*() {
+        return myPtr->val; // Just returing the pointer to the value because this
+                           // list does not transactionally track updates to list values.
+    }
+    
+    void increment_ptr() {
+        if (myPtr)
+            myPtr = myPtr->next;
+        while (myPtr) {
+            // need to check if this item already exists
+            auto item = Sto::check_item(myList, myPtr);
+            if (!myPtr->is_valid()) {
+                if (!item || !myList->has_insert(*item)) {
+                    Sto::abort();
+                    // TODO: do we continue in this situation or abort?
+                    myPtr = myPtr->next;
+                    continue;
+                }
+            }
+            if (item && myList->has_delete(*item)) {
+                myPtr = myPtr->next;
+                continue;
+            }
+            break;
+        }
+    }
+    
+    /* This is the prefix case */
+    iterator& operator++() {
+        increment_ptr();
+        return *this;
+    }
+    
+    /* This is the postfix case */
+    iterator operator++(int) {
+        iterator clone(*this);
+        increment_ptr();
+        return clone;
+    }
+    
+private:
+    list_type * myList;
+    list_node * myPtr;
+};
+
+
