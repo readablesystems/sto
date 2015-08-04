@@ -11,7 +11,7 @@ public:
     T read() {
         return s_.read_value();
     }
-
+    
     void write(T v) {
         TransactionTid::lock(s_.version());
         s_.set_value(v);
@@ -53,7 +53,12 @@ public:
     }
     
     /* Overloading cast operation so that we can now directly read values from SingleElem objects */
-    operator T() { return transRead(); }
+    operator T() {
+        if (Sto::trans_in_progress())
+            return transRead();
+        else
+            return read();
+    }
 
     void transWrite(const T& v) {
         Sto::item(this, this).add_write(v);
@@ -61,7 +66,10 @@ public:
   
     /* Overloads = operator with transWrite */
     SingleElem& operator= (const T& v) {
-        transWrite(v);
+        if (Sto::trans_in_progress())
+            transWrite(v);
+        else
+            write(v);
         return *this;
     }
 
