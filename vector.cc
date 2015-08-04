@@ -335,6 +335,50 @@ void testConflictingModifyIter3() {
     printf("PASS: vector conflicting replace test3\n");
 }
 
+void testIterNPushBack() {
+    Vector<int> f;
+    TRANSACTION {
+        for (int i = 0; i < 10; i++) {
+            f.push_back(i);
+        }
+    } RETRY(false)
+    
+    int max;
+    TRANSACTION {
+        f.push_back(20);
+        max = *(std::max_element(f.begin(), f.end()));
+    } RETRY(false)
+    
+    assert(max == 20);
+    printf("PASS: IterNPushBack\n");
+    
+}
+
+void testIterNPushBack1() {
+    Vector<int> f;
+    TRANSACTION {
+        for (int i = 0; i < 10; i++) {
+            f.push_back(i);
+        }
+    } RETRY(false)
+    
+    int max;
+    Transaction t1;
+    Sto::set_transaction(&t1);
+    f.push_back(20);
+    max = *(std::max_element(f.begin(), f.end()));
+    assert(max == 20);
+    
+    Transaction t2;
+    Sto::set_transaction(&t2);
+    f.push_back(12);
+    assert(t2.try_commit());
+    
+    assert(!t1.try_commit());
+    
+    printf("PASS: IterNPushBack1\n");    
+}
+
 
 int main() {
 	testSimpleInt();
@@ -351,5 +395,7 @@ int main() {
     testConflictingModifyIter1();
     testConflictingModifyIter2();
     testConflictingModifyIter3();
+    testIterNPushBack();
+    testIterNPushBack1();
 	return 0;
 }

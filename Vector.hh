@@ -312,12 +312,30 @@ private:
     Version vecversion_; // for vector size
     Elem* data_;
 };
+    
+template<typename T, bool Opacity, typename Elem>
+struct T_wrapper {
+    T_wrapper(Vector<T, Opacity, Elem> * arr, int idx) : arr_(arr), idx_(idx) {}
+    
+    operator T() {
+        return arr_->transRead(idx_);
+    }
+    
+    T_wrapper& operator= (const T& v) {
+        arr_->transWrite(idx_, v);
+        return *this;
+    }
 
-// TODO: iterator should also deal with objects from push_backs within the same transaction
+private:
+    Vector<T, Opacity, Elem> * arr_;
+    int idx_;
+};
+
 template<typename T, bool Opacity, typename Elem>
 class VecIterator : public std::iterator<std::forward_iterator_tag, T> {
 public:
     typedef T value_type;
+    typedef T_wrapper<T, Opacity, Elem> wrapper;
     VecIterator(Vector<T, Opacity, Elem> * arr, int ptr) : myArr(arr), myPtr(ptr) { }
     VecIterator(const VecIterator& itr) : myArr(itr.myArr), myPtr(itr.myPtr) {}
     
@@ -335,8 +353,9 @@ public:
         return !(operator==(other));
     }
     
-    Elem& operator*() {
-        return myArr->data_[myPtr];
+    wrapper& operator*() {
+        wrapper * item = new wrapper(myArr, myPtr); //TODO: need to gc this
+        return *item;
     }
     
     /* This is the prefix case */
