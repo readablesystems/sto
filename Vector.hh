@@ -15,7 +15,6 @@ template<typename T, bool Opacity = false, typename Elem = Box<T>> class VecIter
 template <typename T, bool Opacity = false, typename Elem = Box<T>>
 class Vector : public Shared {
     friend class VecIterator<T, Opacity, Elem>;
-    typedef VecIterator<T, Opacity, Elem> iterator;
     
     typedef TransactionTid::type Version;
     typedef VersionFunctions<Version> Versioning;
@@ -23,9 +22,14 @@ class Vector : public Shared {
     static constexpr void* size_key = (void*)0;
     static constexpr TransItem::flags_type list_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type empty_bit = TransItem::user0_bit<<1;
+    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<2;
 public:
     typedef unsigned key_type;
     typedef T value_type;
+    
+    typedef VecIterator<T, Opacity, Elem> iterator;
+    typedef const VecIterator<T, Opacity, Elem> const_iterator;
+    
     
     Vector() {
         capacity_ = 0;
@@ -60,6 +64,20 @@ public:
     }
     
     void push_back(const value_type& v) {
+        if (trans_size_offs() < 0) {
+            // There are some deleted items in the array, we need to overwrite them
+            auto item = Sto::item(this, size_ + trans_size_offs());
+            if (!item.has_write() || ! has_delete(item)) {
+                // some other transaction has pushed items in the mean time, so abort
+                Sto::abort();
+            } else {
+                item.clear_write();
+                item.clear_flags(delete_bit);
+                item.add_write(v);
+                add_trans_size_offs(1);
+            }
+            return;
+        }
         auto item = Sto::item(this, -1);
         if (item.has_write()) {
             if (!is_list(item)) {
@@ -86,6 +104,52 @@ public:
         add_trans_size_offs(1);
     }
     
+    void pop_back() {
+        auto item = Sto::item(this, -1);
+        if (item.has_write()) {
+            if (!is_list(item)) {
+                if (!is_empty(item)) {
+                    item.clear_write();
+                    add_trans_size_offs(-1);
+                    return;
+                }
+                /* empty */
+            }
+            else {
+                /* list */
+                auto& write_list= item.template write_value<std::vector<T>>();
+                write_list.pop_back();
+                add_trans_size_offs(-1);
+                return;
+            }
+        }
+        Sto::item(this, size_ - 1).add_write(0).add_flags(delete_bit);
+        add_lock_vector_item();
+        add_trans_size_offs(-1);
+
+    }
+    
+    iterator erase(iterator pos) {
+        iterator end_it = end();
+        for (iterator it = pos; it != (end_it - 1); ++it) {
+            *(it) = (T) *(it + 1);
+        }
+        pop_back();
+        return pos;
+        
+    }
+    
+    iterator insert(iterator pos, const T& value) {
+        iterator end_it = end();
+        push_back(*(end_it - 1));
+        for (iterator it = (end_it - 1); it != pos; --it) {
+            *(it) = (T) *(it - 1);
+        }
+        
+        *pos = value;
+        return pos;
+    }
+    
     size_t transSize() {
         t_item(this).add_read(vecversion_);
         acquire_fence();
@@ -107,6 +171,7 @@ public:
     }
     
     value_type transRead(const key_type& i){
+        //std::cout << "Reading " << i << std::endl;
         uint32_t size = size_;
         fence();
         if (i < size)
@@ -141,6 +206,7 @@ public:
     }
     
     void transWrite(const key_type& i, value_type v) {
+        //std::cout << "Writing to " << i << " with value " << v << std::endl;
         uint32_t size = size_;
         fence();
         if (i < size)
@@ -180,6 +246,10 @@ public:
     
     bool is_empty(const TransItem& item) {
         return item.flags() & empty_bit;
+    }
+    
+    bool has_delete(const TransItem& item) {
+        return item.flags() & delete_bit;
     }
     
     void lock_version(Version& v) {
@@ -248,7 +318,7 @@ public:
     
     void lock(TransItem& item){
         if (item.key<Vector*>() == this)
-            lock_version(vecversion_);
+            lock_version(vecversion_); // TODO: no need to lock vecversion_ if trans_size_offs() is 0
         else if (item.key<int>() == -1)
             return; // Do nothing as we will anyways lock vecversion for size.
         else
@@ -297,6 +367,14 @@ public:
             }
         } else {
             data_[item.key<key_type>()].install(item, t);
+            if (has_delete(item)) {
+                size_--;
+                if (Opacity) {
+                    TransactionTid::set_version(vecversion_, t.commit_tid());
+                } else {
+                    TransactionTid::inc_invalid_version(vecversion_);
+                }
+            }
         }
     }
     
@@ -336,6 +414,7 @@ class VecIterator : public std::iterator<std::forward_iterator_tag, T> {
 public:
     typedef T value_type;
     typedef T_wrapper<T, Opacity, Elem> wrapper;
+    typedef VecIterator<T, Opacity, Elem> iterator;
     VecIterator(Vector<T, Opacity, Elem> * arr, int ptr) : myArr(arr), myPtr(ptr) { }
     VecIterator(const VecIterator& itr) : myArr(itr.myArr), myPtr(itr.myPtr) {}
     
@@ -345,11 +424,11 @@ public:
         return *this;
     }
     
-    bool operator==(VecIterator<T, Opacity, Elem> other) const {
+    bool operator==(iterator other) const {
         return (myArr == other.myArr) && (myPtr == other.myPtr);
     }
     
-    bool operator!=(VecIterator<T, Opacity, Elem> other) const {
+    bool operator!=(iterator other) const {
         return !(operator==(other));
     }
     
@@ -359,15 +438,35 @@ public:
     }
     
     /* This is the prefix case */
-    VecIterator<T, Opacity, Elem>& operator++() { ++myPtr; return *this; }
+    iterator& operator++() { ++myPtr; return *this; }
     
     /* This is the postfix case */
-    VecIterator<T, Opacity, Elem> operator++(int) {
+    iterator operator++(int) {
         VecIterator<T, Opacity, Elem> clone(*this);
         ++myPtr;
         return clone;
     }
     
+    iterator operator+(int i) {
+        VecIterator<T, Opacity, Elem> clone(*this);
+        clone.myPtr += i;
+        return clone;
+    }
+    
+    iterator& operator--() { --myPtr; return *this; }
+    
+    iterator operator--(int) {
+        VecIterator<T, Opacity, Elem> clone(*this);
+        --myPtr;
+        return clone;
+    }
+    
+    iterator operator-(int i) {
+        VecIterator<T, Opacity, Elem> clone(*this);
+        clone.myPtr -= i;
+        return clone;
+    }
+        
 private:
     Vector<T, Opacity, Elem> * myArr;
     int myPtr;

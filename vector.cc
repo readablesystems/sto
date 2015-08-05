@@ -379,6 +379,59 @@ void testIterNPushBack1() {
     printf("PASS: IterNPushBack1\n");    
 }
 
+void testErase() {
+    Vector<int> f;
+    
+    TRANSACTION {
+        for (int i = 0; i < 10; i++) {
+            f.push_back(i);
+        }
+    } RETRY(false)
+    
+    Transaction t1;
+    Sto::set_transaction(&t1);
+    f.erase(f.begin() + 5);
+    assert(t1.try_commit());
+    
+    TRANSACTION {
+        Vector<int>::iterator it = f.begin();
+        Vector<int>::iterator eit = f.end();
+        for (; it != eit; ++it) {
+            printf("%i\n", (int)*it);
+        }
+    } RETRY(false)
+    
+    printf("PASS: testErase\n");
+}
+
+void testInsert() {
+    Vector<int> f;
+    
+    TRANSACTION {
+        for (int i = 0; i < 10; i++) {
+            f.push_back(i);
+        }
+    } RETRY(false)
+    
+    Transaction t1;
+    Sto::set_transaction(&t1);
+    f.insert(f.begin() + 5, 25);
+    assert(t1.try_commit());
+    
+    TRANSACTION {
+        Vector<int>::iterator it = f.begin();
+        Vector<int>::iterator eit = f.end();
+        for (; it != eit; ++it) {
+            printf("%i\n", (int)*it);
+        }
+    } RETRY(false)
+    
+    printf("PASS: testInsert\n");
+}
+
+
+
+
 
 int main() {
 	testSimpleInt();
@@ -397,5 +450,7 @@ int main() {
     testConflictingModifyIter3();
     testIterNPushBack();
     testIterNPushBack1();
+    testErase();
+    testInsert();
 	return 0;
 }
