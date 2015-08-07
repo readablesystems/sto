@@ -430,6 +430,82 @@ void testInsert() {
 }
 
 
+void testPushNPop() {
+    Vector<int> f;
+    
+    TRANSACTION {
+        for (int i = 0; i < 10; i++) {
+            f.push_back(i);
+        }
+    } RETRY(false)
+    
+    Transaction t1;
+    Sto::set_transaction(&t1);
+    f.pop_back();
+    f.push_back(15);
+    
+    Transaction t2;
+    Sto::set_transaction(&t2);
+    f.push_back(20);
+    assert(t2.try_commit());
+    
+    assert(!t1.try_commit());
+    
+    TRANSACTION {
+        assert(f.transSize() == 11);
+        assert(f.transRead(10) == 20);
+    } RETRY(false);
+    
+    
+    printf("PASS: testPushNPop\n");
+    
+    Transaction t3;
+    Sto::set_transaction(&t3);
+    f.pop_back();
+    f.push_back(15);
+    
+    Transaction t4;
+    Sto::set_transaction(&t4);
+    f.pop_back();
+    assert(t4.try_commit());
+    
+    assert(!t3.try_commit());
+    
+    TRANSACTION {
+        assert(f.transSize() == 10);
+    } RETRY(false);
+    
+    printf("PASS: testPushNPop1\n");
+    
+
+    Transaction t5;
+    Sto::set_transaction(&t5);
+    f.pop_back();
+    f.pop_back();
+    f.push_back(15);
+    
+    Transaction t6;
+    Sto::set_transaction(&t6);
+    f.transWrite(8, 16);
+    assert(t6.try_commit());
+    
+    Transaction t7;
+    Sto::set_transaction(&t7);
+    f.transRead(8);
+    
+    assert(t5.try_commit());
+    assert(!t7.try_commit());
+    
+    TRANSACTION {
+        assert(f.transSize() == 9);
+        assert(f.transRead(8) == 15);
+    } RETRY(false);
+    
+    printf("PASS: testPushNPop2\n");
+
+}
+
+
 
 
 
@@ -452,5 +528,6 @@ int main() {
     testIterNPushBack1();
     testErase();
     testInsert();
+    testPushNPop();
 	return 0;
 }

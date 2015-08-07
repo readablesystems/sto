@@ -21,8 +21,7 @@ class Vector : public Shared {
     
     static constexpr void* size_key = (void*)0;
     static constexpr TransItem::flags_type list_bit = TransItem::user0_bit;
-    static constexpr TransItem::flags_type empty_bit = TransItem::user0_bit<<1;
-    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<2;
+    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
 public:
     typedef unsigned key_type;
     typedef T value_type;
@@ -83,10 +82,7 @@ public:
             if (!is_list(item)) {
                 auto& val = item.template write_value<T>();
                 std::vector<T> write_list;
-                if (!is_empty(item)) {
-                    write_list.push_back(val);
-                    item.clear_flags(empty_bit);
-                }
+                write_list.push_back(val);
                 write_list.push_back(v);
                 item.clear_write();
                 item.add_write(write_list);
@@ -108,12 +104,9 @@ public:
         auto item = Sto::item(this, -1);
         if (item.has_write()) {
             if (!is_list(item)) {
-                if (!is_empty(item)) {
-                    item.clear_write();
-                    add_trans_size_offs(-1);
-                    return;
-                }
-                /* empty */
+                item.clear_write();
+                add_trans_size_offs(-1);
+                return;
             }
             else {
                 /* list */
@@ -123,8 +116,10 @@ public:
                 return;
             }
         }
-        Sto::item(this, size_ - 1).add_write(0).add_flags(delete_bit);
-        add_lock_vector_item();
+        // add vecversion_ to the read set as well as the write set
+        t_item(this).add_read(vecversion_).add_write(0);
+        acquire_fence();
+        Sto::item(this, size_ + trans_size_offs() - 1).add_write(0).add_flags(delete_bit);
         add_trans_size_offs(-1);
 
     }
@@ -172,15 +167,16 @@ public:
     
     value_type transRead(const key_type& i){
         //std::cout << "Reading " << i << std::endl;
+        Version ver = vecversion_;
+        acquire_fence();
         uint32_t size = size_;
-        fence();
+        acquire_fence();
+        assert(i < size + trans_size_offs());
         if (i < size)
             return data_[i].transRead();
         else {
-            assert(i < size + trans_size_offs());
             int diff = i - size;
-            Version ver = vecversion_;
-            fence();
+            
             auto extra_items = Sto::item(this,-1);
             if (!extra_items.has_read()) {
                 // We need to register the vecversion_ to invalidate other concurrent push_backs.
@@ -195,11 +191,10 @@ public:
                     else assert(false);
                 }
                 // not a list, has exactly one element
-                else if (!is_empty(extra_items)) {
+                else {
                     assert(diff == 0);
                     return extra_items.template write_value<T>();
                 }
-                else assert(false);
             }
             assert(false);
         }
@@ -207,15 +202,16 @@ public:
     
     void transWrite(const key_type& i, value_type v) {
         //std::cout << "Writing to " << i << " with value " << v << std::endl;
+        Version ver = vecversion_;
+        acquire_fence();
         uint32_t size = size_;
-        fence();
+        acquire_fence();
+        assert(i < size + trans_size_offs());
         if (i < size)
             data_[i].transWrite(std::move(v));
         else {
-            assert(i < size + trans_size_offs());
             int diff = i - size;
-            Version ver = vecversion_;
-            fence();
+            
             auto extra_items = Sto::item(this,-1);
             if (!extra_items.has_read()) {
                 // We need to register the vecversion_ to invalidate other concurrent push_backs.
@@ -230,22 +226,17 @@ public:
                     else assert(false);
                 }
                 // not a list, has exactly one element
-                else if (!is_empty(extra_items)) {
+                else {
                     assert(diff == 0);
                     extra_items.clear_write();
                     extra_items.add_write(v);
                 }
-                else assert(false);
             } else assert(false);
         }
     }
     
     bool is_list(const TransItem& item) {
         return item.flags() & list_bit;
-    }
-    
-    bool is_empty(const TransItem& item) {
-        return item.flags() & empty_bit;
     }
     
     bool has_delete(const TransItem& item) {
@@ -350,7 +341,7 @@ public:
                     data_[size_++].write(write_list[i]);
                 }
             }
-            else if (!is_empty(item)) {
+            else {
                 auto& val = item.template write_value<T>();
                 if (size_ >= capacity_) {
                     // Need to resize
