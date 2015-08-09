@@ -11,6 +11,7 @@
 #include "ListArray.hh"
 #include "Hashtable.hh"
 #include "Queue.hh"
+#include "Vector.hh"
 #include "Transaction.hh"
 #include "clp.h"
 
@@ -26,9 +27,10 @@
 #define USE_GENSTMARRAY 3
 #define USE_LISTARRAY 4
 #define USE_QUEUE 5
+#define USE_VECTOR 6
 
 // set this to USE_DATASTRUCTUREYOUWANT
-#define DATA_STRUCTURE USE_ARRAY
+#define DATA_STRUCTURE USE_VECTOR
 
 // if true, then all threads perform non-conflicting operations
 #define NON_CONFLICTING 0
@@ -139,6 +141,20 @@ template <> struct Container<USE_ARRAY> : public ContainerBase_arraylike {
     typedef Array1<value_type, ARRAY_SZ> type;
 };
 
+template <> struct Container<USE_VECTOR> : public ContainerBase_arraylike {
+    typedef Vector<value_type> type;
+    template <typename T, typename K, typename V>
+    static bool transInsert(T& c, K key, V value) {
+        c.insert(c.begin() + key, value);
+        return true;
+    }
+    template <typename T, typename K>
+    static bool transDelete(T& c, K key) {
+        c.erase(c.begin() + key);
+        return true;
+    }
+};
+
 template <> struct Container<USE_LISTARRAY> : public ContainerBase_maplike {
     typedef ListArray<value_type> type;
     template <typename K, typename V>
@@ -172,7 +188,7 @@ template <> struct Container<USE_HASHTABLE> : public ContainerBase_maplike {
   typedef Hashtable<int, value_type, false, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
 };
 
-#if DATA_STRUCTURE == 5
+#if DATA_STRUCTURE == USE_QUEUE
 typedef Queue<value_type, ARRAY_SZ> QueueType;
 QueueType* q;
 QueueType* q2;
@@ -242,6 +258,7 @@ void prepopulate_func(T& a) {
     a.transWrite(i, val(i+1));
     } RETRY(false)
   }
+  std::cout << "Done prepopulating " << std::endl;
 }
 
 void prepopulate_func(int *array) {
@@ -250,7 +267,7 @@ void prepopulate_func(int *array) {
   }
 }
 
-#if DATA_STRUCTURE == 5
+#if DATA_STRUCTURE == USE_QUEUE
 // FUNCTIONS FOR QUEUE
 void prepopulate_func() {
   for (int i = 0; i < prepopulate; ++i) {
@@ -264,6 +281,7 @@ void empty_func() {
     }
 }
 #endif
+
 
 // FUNCTIONS FOR ARRAY/MAP-TYPE
 template <typename T>
@@ -728,7 +746,7 @@ template <int DS> bool InterferingRWs<DS>::check() {
   return true;
 }
 
-#if DATA_STRUCTURE == 5
+#if DATA_STRUCTURE == USE_QUEUE
 void Qxordeleterun(int me) {
   Transaction::threadid = me;
 
@@ -875,7 +893,8 @@ void print_time(struct timeval tv1, struct timeval tv2) {
     {name, desc, 1, new type<1, ## __VA_ARGS__>},     \
     {name, desc, 2, new type<2, ## __VA_ARGS__>},     \
     {name, desc, 3, new type<3, ## __VA_ARGS__>},     \
-    {name, desc, 4, new type<4, ## __VA_ARGS__>}
+    {name, desc, 4, new type<4, ## __VA_ARGS__>},     \
+    {name, desc, 6, new type<6, ## __VA_ARGS__>}
 
 struct Test {
     const char* name;
@@ -904,7 +923,8 @@ struct {
     {"mass", USE_MASSTREE},
     {"genstm", USE_GENSTMARRAY},
     {"list", USE_LISTARRAY},
-    {"queue", USE_QUEUE}
+    {"queue", USE_QUEUE},
+    {"vector", USE_VECTOR}
 };
 
 enum {
@@ -998,7 +1018,7 @@ int main(int argc, char *argv[]) {
   }
   Clp_DeleteParser(clp);
 
-#if DATA_STRUCTURE == 5 
+#if DATA_STRUCTURE == USE_QUEUE
     QueueType stack_q;
     QueueType stack_q2;
     q = &stack_q;

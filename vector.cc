@@ -15,7 +15,7 @@ void testSimpleInt() {
 
     Transaction t2;
     Sto::set_transaction(&t2);
-	int f_read = f.transRead(0);
+	int f_read = f.transGet(0);
 
 	assert(f_read == 100);
 	assert(t2.try_commit());
@@ -32,7 +32,7 @@ void testWriteNPushBack() {
     
     Transaction t2;
     Sto::set_transaction(&t2);
-    f.transWrite(0, 4);
+    f.transUpdate(0, 4);
     
     Transaction t3;
     Sto::set_transaction(&t3);
@@ -43,7 +43,7 @@ void testWriteNPushBack() {
     
     Transaction t4;
     Sto::set_transaction(&t4);
-    assert(f.transRead(0) == 4); // Make sure that the value is actually updated
+    assert(f.transGet(0) == 4); // Make sure that the value is actually updated
     assert(t4.try_commit());
     
     printf("PASS: testWriteNPushBack\n");
@@ -70,9 +70,9 @@ void testPushBack() {
     
     Transaction t4;
     Sto::set_transaction(&t4);
-    assert(f.transRead(0) == 10);
-    assert(f.transRead(1) == 20);
-    assert(f.transRead(2) == 4);
+    assert(f.transGet(0) == 10);
+    assert(f.transGet(1) == 20);
+    assert(f.transGet(2) == 4);
     assert(t4.try_commit());
     
     printf("PASS: testPushBack\n");
@@ -90,7 +90,7 @@ void testPushBackNRead() {
     Transaction t2;
     Sto::set_transaction(&t2);
     f.push_back(4);
-    assert(f.transRead(1) == 4);
+    assert(f.transGet(1) == 4);
     
     assert(t2.try_commit());
     printf("PASS: testPushBackNRead\n");
@@ -107,7 +107,7 @@ void testPushBackNRead1() {
     Transaction t2;
     Sto::set_transaction(&t2);
     f.push_back(4);
-    assert(f.transRead(1) == 4);
+    assert(f.transGet(1) == 4);
     
     Transaction t3;
     Sto::set_transaction(&t3);
@@ -129,7 +129,7 @@ void testPushBackNRead2() {
     Transaction t2;
     Sto::set_transaction(&t2);
     f.push_back(4);
-    assert(f.transRead(f.transSize() - 1) == 4);
+    assert(f.transGet(f.transSize() - 1) == 4);
     
     Transaction t3;
     Sto::set_transaction(&t3);
@@ -152,13 +152,13 @@ void testPushBackNWrite() {
     Transaction t2;
     Sto::set_transaction(&t2);
     f.push_back(4);
-    f.transWrite(1, 10);
+    f.transUpdate(1, 10);
     
     assert(t2.try_commit());
     
     Transaction t3;
     Sto::set_transaction(&t3);
-    assert(f.transRead(1) == 10);
+    assert(f.transGet(1) == 10);
     assert(t3.try_commit());
     printf("PASS: testPushBackNRead\n");
 }
@@ -175,7 +175,7 @@ void testSimpleString() {
 
 	Transaction t2;
     Sto::set_transaction(&t2);
-	std::string f_read = f.transRead(0);
+	std::string f_read = f.transGet(0);
 
 	assert(f_read.compare("100") == 0);
 	assert(t2.try_commit());
@@ -219,7 +219,7 @@ void testConflictingIter() {
     
     Transaction t1;
     Sto::set_transaction(&t1);
-    f.transWrite(4, 10);
+    f.transUpdate(4, 10);
     assert(t1.try_commit());
     assert(!t.try_commit());
     printf("PASS: conflicting vector max_element test\n");
@@ -242,7 +242,7 @@ void testModifyingIter() {
     
     Transaction t1;
     Sto::set_transaction(&t1);
-    int v = f.transRead(4);
+    int v = f.transGet(4);
     assert(t1.try_commit());
     
     assert(v == 6);
@@ -263,14 +263,14 @@ void testConflictingModifyIter1() {
     
     Transaction t1;
     Sto::set_transaction(&t1);
-    f.transWrite(4, 10);
+    f.transUpdate(4, 10);
     assert(t1.try_commit());
     
     assert(!t.try_commit());
     
     Transaction t2;
     Sto::set_transaction(&t2);
-    int v = f.transRead(4);
+    int v = f.transGet(4);
     assert(t2.try_commit());
     
     assert(v == 10);
@@ -293,12 +293,12 @@ void testConflictingModifyIter2() {
     
     Transaction t1;
     Sto::set_transaction(&t1);
-    f.transWrite(4, 10);
+    f.transUpdate(4, 10);
     assert(t1.try_commit());
     
     Transaction t2;
     Sto::set_transaction(&t2);
-    int v = f.transRead(4);
+    int v = f.transGet(4);
     assert(t2.try_commit());
     
     assert(v == 10);
@@ -316,7 +316,7 @@ void testConflictingModifyIter3() {
     
     Transaction t1;
     Sto::set_transaction(&t1);
-    f.transRead(4);
+    f.transGet(4);
     
     Transaction t;
     Sto::set_transaction(&t);
@@ -327,7 +327,7 @@ void testConflictingModifyIter3() {
     
     Transaction t2;
     Sto::set_transaction(&t2);
-    int v = f.transRead(4);
+    int v = f.transGet(4);
     assert(t2.try_commit());
     
     assert(v == 6);
@@ -378,6 +378,30 @@ void testIterNPushBack1() {
     
     printf("PASS: IterNPushBack1\n");    
 }
+
+void testIterNPushBack2() {
+    Vector<int> f;
+    TRANSACTION {
+        for (int i = 0; i < 10; i++) {
+            f.push_back(i);
+        }
+    } RETRY(false)
+    
+    Transaction t1;
+    Sto::set_transaction(&t1);
+    std::max_element(f.begin(), f.end());
+    
+    Transaction t2;
+    Sto::set_transaction(&t2);
+    f.push_back(2);
+    assert(t2.try_commit());
+    
+    assert(!t1.try_commit());
+    
+    printf("PASS: IterNPushBack2\n");
+    
+}
+
 
 void testErase() {
     Vector<int> f;
@@ -439,6 +463,16 @@ void testPushNPop() {
         }
     } RETRY(false)
     
+    TRANSACTION {
+        f.push_back(20);
+        f.push_back(21);
+        assert(f.transGet(0) == 0);
+        assert(f.transSize() == 12);
+        f.pop_back();
+        f.pop_back();
+        
+    } RETRY(false)
+    
     Transaction t1;
     Sto::set_transaction(&t1);
     f.pop_back();
@@ -453,7 +487,7 @@ void testPushNPop() {
     
     TRANSACTION {
         assert(f.transSize() == 11);
-        assert(f.transRead(10) == 20);
+        assert(f.transGet(10) == 20);
     } RETRY(false);
     
     
@@ -486,19 +520,19 @@ void testPushNPop() {
     
     Transaction t6;
     Sto::set_transaction(&t6);
-    f.transWrite(8, 16);
+    f.transUpdate(8, 16);
     assert(t6.try_commit());
     
     Transaction t7;
     Sto::set_transaction(&t7);
-    f.transRead(8);
+    f.transGet(8);
     
     assert(t5.try_commit());
     assert(!t7.try_commit());
     
     TRANSACTION {
         assert(f.transSize() == 9);
-        assert(f.transRead(8) == 15);
+        assert(f.transGet(8) == 15);
     } RETRY(false);
     
     printf("PASS: testPushNPop2\n");
@@ -526,6 +560,7 @@ int main() {
     testConflictingModifyIter3();
     testIterNPushBack();
     testIterNPushBack1();
+    testIterNPushBack2();
     testErase();
     testInsert();
     testPushNPop();

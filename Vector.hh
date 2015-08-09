@@ -11,6 +11,7 @@
 #define log2(x) ceil(log((double) size) / log(2.0))
 
 template<typename T, bool Opacity = false, typename Elem = Box<T>> class VecIterator;
+template<typename T, bool Opacity, typename Elem> struct T_wrapper;
 
 template <typename T, bool Opacity = false, typename Elem = Box<T>>
 class Vector : public Shared {
@@ -18,6 +19,7 @@ class Vector : public Shared {
     
     typedef TransactionTid::type Version;
     typedef VersionFunctions<Version> Versioning;
+    typedef T_wrapper<T, Opacity, Elem> wrapper;
     
     static constexpr int push_back_key = -1;
     static constexpr int size_key = -2;
@@ -58,7 +60,8 @@ public:
             new_data[i].initialize(this, i);
         }
         capacity_ = new_capacity;
-        Transaction::rcu_free(data_);
+        Elem* old_data = data_;
+        Transaction::rcu_cleanup([old_data] () {delete[] old_data; });
         data_ = new_data;
         if(lock) unlock_version(vecversion_);
     }
@@ -157,8 +160,11 @@ public:
     }
     
     T read(key_type i) {
-        assert(i < size_);
-        return data_[i].read();
+        if (i < size_) {
+            return data_[i].read();
+        } else {
+            return 0;
+        }
     }
     
     void write(key_type i, value_type v) {
@@ -166,7 +172,12 @@ public:
         data_[i].write(std::move(v));
     }
     
-    value_type transRead(const key_type& i){
+    wrapper& front() {
+        wrapper * item = new wrapper(this, 0); //TODO: need to gc this
+        return *item;
+    }
+    
+    value_type transGet(const key_type& i){
         //std::cout << "Reading " << i << std::endl;
         Version ver = vecversion_;
         acquire_fence();
@@ -201,7 +212,7 @@ public:
         }
     }
     
-    void transWrite(const key_type& i, value_type v) {
+    void transUpdate(const key_type& i, value_type v) {
         //std::cout << "Writing to " << i << " with value " << v << std::endl;
         Version ver = vecversion_;
         acquire_fence();
@@ -375,6 +386,24 @@ public:
         t_item(this).add_read(vecversion_);// to invalidate size changes after this call.
         acquire_fence();
         return iterator(this, size_ + trans_size_offs());
+    }
+    
+    
+    // Extra methods used by concurrent.cc
+    value_type transRead(const key_type& i){
+        if (i >= size_ + trans_size_offs()) { // TODO: this isn't totally right
+            return 0;
+        } else {
+            return transGet(i);
+        }
+    }
+    
+    void transWrite(const key_type& i, value_type v) {
+        if (i >= size_ + trans_size_offs()) {
+            return push_back(v);
+        } else {
+            return transUpdate(i, v);
+        }
     }
     
 private:
