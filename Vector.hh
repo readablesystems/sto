@@ -7,6 +7,7 @@
 #include "Transaction.hh"
 #include "Box.hh"
 #include "VersionFunctions.hh"
+#include "rwlock.hh"
 
 #define log2(x) ceil(log((double) size) / log(2.0))
 
@@ -47,12 +48,12 @@ public:
         data_ = new T[capacity_];
     }
     
-    void reserve(uint32_t new_capacity, bool lock) {
+    void reserve(uint32_t new_capacity) {
         if (new_capacity <= capacity_)
             return;
         Elem * new_data = new Elem[new_capacity];
         
-        if(lock) lock_version(vecversion_);
+        resize_lock_.write_lock();
         for (uint32_t i = 0; i < capacity_; i++) {
             new_data[i] = data_[i];
         }
@@ -63,7 +64,7 @@ public:
         Elem* old_data = data_;
         Transaction::rcu_cleanup([old_data] () {delete[] old_data; });
         data_ = new_data;
-        if(lock) unlock_version(vecversion_);
+        resize_lock_.write_unlock();
     }
     
     void push_back(const value_type& v) {
@@ -348,9 +349,11 @@ public:
                     if (size_ >= capacity_) {
                         // Need to resize
                         int new_capacity = (capacity_  == 0) ? 1 : capacity_ << 1;
-                        reserve(new_capacity, false); // Don't lock vecversion_ since it is already locked
+                        reserve(new_capacity);
                     }
+                    resize_lock_.read_lock();
                     data_[size_++].write(write_list[i]);
+                    resize_lock_.read_unlock();
                 }
             }
             else {
@@ -358,9 +361,11 @@ public:
                 if (size_ >= capacity_) {
                     // Need to resize
                     int new_capacity = (capacity_  == 0) ? 1 : capacity_ << 1;
-                    reserve(new_capacity, false); // Don't lock vecversion_ since it is already locked
+                    reserve(new_capacity);
                 }
+                resize_lock_.read_lock();
                 data_[size_++].write(val);
+                resize_lock_.read_unlock();
             }
             
             if (Opacity) {
@@ -369,7 +374,9 @@ public:
                 TransactionTid::inc_invalid_version(vecversion_);
             }
         } else {
+            resize_lock_.read_lock();
             data_[item.key<key_type>()].install(item, t);
+            resize_lock_.read_unlock();
             if (has_delete(item)) {
                 size_--;
                 if (Opacity) {
@@ -410,6 +417,7 @@ private:
     uint32_t size_;
     uint32_t capacity_;
     Version vecversion_; // for vector size
+    rwlock resize_lock_; // to do concurrent resize
     Elem* data_;
 };
     
