@@ -82,6 +82,10 @@ public:
     void lock() {
         TransactionTid::lock(s_.version());
     }
+    
+    bool try_lock() {
+        return TransactionTid::try_lock(s_.version());
+    }
 
     void unlock() {
         TransactionTid::unlock(s_.version());

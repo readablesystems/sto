@@ -20,6 +20,15 @@ public:
     static bool is_locked(type v) {
         return v & lock_bit;
     }
+    
+    static bool try_lock(type& v) {
+        type vv = v;
+        if (!is_locked(vv)) {
+            return bool_cmpxchg(&v, vv, vv | lock_bit);
+        }
+        return false;
+    }
+    
     static void lock(type& v) {
         while (1) {
             type vv = v;

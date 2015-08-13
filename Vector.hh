@@ -32,6 +32,8 @@ public:
     
     typedef VecIterator<T, Opacity, Elem> iterator;
     typedef const VecIterator<T, Opacity, Elem> const_iterator;
+    typedef wrapper& reference;
+    typedef uint32_t size_type;
     
     
     Vector() {
@@ -121,12 +123,19 @@ public:
                 return;
             }
         }
-        // add vecversion_ to the read set as well as the write set
-        t_item(this).add_read(vecversion_).add_write(0);
+        // add vecversion_ to the read set
+        auto vecitem = t_item(this).add_read(vecversion_);
         acquire_fence();
-        Sto::item(this, size_ + trans_size_offs() - 1).add_write(0).add_flags(delete_bit);
-        add_trans_size_offs(-1);
-
+        uint32_t size = size_;
+        acquire_fence();
+        if (size + trans_size_offs() == 0) {
+            // Empty vector, behavior is undefined - so do nothing
+        } else {
+            // add vecversion_ to the write set as well
+            vecitem.add_write(0);
+            Sto::item(this, size_ + trans_size_offs() - 1).add_write(0).add_flags(delete_bit);
+            add_trans_size_offs(-1);
+        }
     }
     
     iterator erase(iterator pos) {
@@ -269,11 +278,18 @@ public:
     }
     
     void lock(key_type i) {
-        data_[i].lock();
+        while(1) {
+            resize_lock_.read_lock();
+            bool locked = data_[i].try_lock();
+            resize_lock_.read_unlock();
+            if (locked) break;
+        }
     }
     
     void unlock(key_type i) {
+        resize_lock_.read_lock();
         data_[i].unlock();
+        resize_lock_.read_unlock();
     }
     
     template <typename PTR>
@@ -374,17 +390,26 @@ public:
                 TransactionTid::inc_invalid_version(vecversion_);
             }
         } else {
-            resize_lock_.read_lock();
-            data_[item.key<key_type>()].install(item, t);
-            resize_lock_.read_unlock();
+            auto index = item.key<key_type>();
             if (has_delete(item)) {
-                size_--;
-                if (Opacity) {
-                    TransactionTid::set_version(vecversion_, t.commit_tid());
-                } else {
-                    TransactionTid::inc_invalid_version(vecversion_);
+                if (index < size_) {
+                    size_ = index;
+                
+                    if (Opacity) {
+                        TransactionTid::set_version(vecversion_, t.commit_tid());
+                    } else {
+                        TransactionTid::inc_invalid_version(vecversion_);
+                    }
                 }
+            } else if (index >= size_) { // check that the index in still valid
+                Sto::abort();
+                return;
             }
+            
+            resize_lock_.read_lock();
+            data_[index].install(item, t);
+            resize_lock_.read_unlock();
+            
         }
     }
     
@@ -413,6 +438,14 @@ public:
         }
     }
     
+    // This is not-transactional and only used for debugging purposes
+    void print() {
+        for (int i = 0; i < size_ + trans_size_offs(); i++) {
+            std::cout << transRead(i) << " ";
+        }
+        std::cout << std::endl;
+    }
+    
 private:
     uint32_t size_;
     uint32_t capacity_;
@@ -426,11 +459,16 @@ struct T_wrapper {
     T_wrapper(Vector<T, Opacity, Elem> * arr, int idx) : arr_(arr), idx_(idx) {}
     
     operator T() {
-        return arr_->transRead(idx_);
+        return arr_->transGet(idx_);
     }
     
     T_wrapper& operator= (const T& v) {
-        arr_->transWrite(idx_, v);
+        arr_->transUpdate(idx_, v);
+        return *this;
+    }
+    
+    T_wrapper& operator= (T_wrapper& v) {
+        arr_->transUpdate(idx_, (T) v);
         return *this;
     }
 
@@ -440,7 +478,7 @@ private:
 };
 
 template<typename T, bool Opacity, typename Elem>
-class VecIterator : public std::iterator<std::forward_iterator_tag, T> {
+class VecIterator : public std::iterator<std::random_access_iterator_tag, T> {
 public:
     typedef T value_type;
     typedef T_wrapper<T, Opacity, Elem> wrapper;
@@ -467,6 +505,11 @@ public:
         return *item;
     }
     
+    wrapper& operator[](const int& n) {
+        wrapper* item = new wrapper(myArr, myPtr + n);
+        return *item;
+    }
+    
     /* This is the prefix case */
     iterator& operator++() { ++myPtr; return *this; }
     
@@ -474,12 +517,6 @@ public:
     iterator operator++(int) {
         VecIterator<T, Opacity, Elem> clone(*this);
         ++myPtr;
-        return clone;
-    }
-    
-    iterator operator+(int i) {
-        VecIterator<T, Opacity, Elem> clone(*this);
-        clone.myPtr += i;
         return clone;
     }
     
@@ -491,10 +528,21 @@ public:
         return clone;
     }
     
+    iterator operator+(int i) {
+        VecIterator<T, Opacity, Elem> clone(*this);
+        clone.myPtr += i;
+        return clone;
+    }
+    
     iterator operator-(int i) {
         VecIterator<T, Opacity, Elem> clone(*this);
         clone.myPtr -= i;
         return clone;
+    }
+    
+    int operator-(const iterator& rhs) {
+        assert(rhs.myArr == myArr);
+        return (myPtr - rhs.myPtr);
     }
         
 private:

@@ -11,13 +11,15 @@ void testSimpleInt() {
 	Transaction t;
     Sto::set_transaction(&t);
 	f.push_back(100);
+    f.push_back(200);
+    *(f.begin()) = *(f.begin() + 1);
 	assert(t.try_commit());
 
     Transaction t2;
     Sto::set_transaction(&t2);
 	int f_read = f.transGet(0);
 
-	assert(f_read == 100);
+	assert(f_read == 200);
 	assert(t2.try_commit());
 	printf("PASS: testSimpleInt\n");
 }
@@ -539,6 +541,31 @@ void testPushNPop() {
 
 }
 
+void testPopAndUdpate() {
+    Vector<int> f;
+    
+    TRANSACTION {
+        for (int i = 0; i < 10; i++) {
+            f.push_back(i);
+        }
+    } RETRY(false)
+    
+    Transaction t1;
+    Sto::set_transaction(&t1);
+    f.transUpdate(9, 20);
+    
+    
+    Transaction t2;
+    Sto::set_transaction(&t2);
+    f.pop_back();
+    f.pop_back();
+    assert(t2.try_commit());
+    Sto::set_transaction(&t1);
+    try {
+        assert(!t1.try_commit());
+    } catch (Transaction::Abort) {}
+}
+
 
 
 
@@ -564,5 +591,6 @@ int main() {
     testErase();
     testInsert();
     testPushNPop();
+    testPopAndUdpate();
 	return 0;
 }
