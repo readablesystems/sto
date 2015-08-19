@@ -5,14 +5,14 @@
 #include <random>
 #include "Transaction.hh"
 #include "Vector.hh"
-#include "PriorityQueue1.hh"
+#include "PriorityQueue.hh"
 
 #define GLOBAL_SEED 0
 #define MAX_VALUE  100000
-#define NTRANS 1000
+#define NTRANS 100000
 #define N_THREADS 4
 
-typedef PriorityQueue1<int> data_structure;
+typedef PriorityQueue<int> data_structure;
 
 struct Rand {
     typedef uint32_t result_type;
@@ -93,7 +93,7 @@ void startAndWait(int n, data_structure* queue) {
 
 // These tests are adapted from the queue tests in single.cc
 void queueTests() {
-    PriorityQueue1<int> q;
+    data_structure q;
     
     // NONEMPTY TESTS
     {
@@ -152,7 +152,7 @@ void queueTests() {
         q.pop();
         assert(q.top() == 1);
         q.pop();
-        q.pop();
+        //q.pop();
         
         // set up for next test
         q.push(1);
@@ -257,7 +257,14 @@ void queueTests() {
         Sto::set_transaction(&t2);
         q.pop();
         assert(t1.try_commit());
-        assert(!t2.try_commit());
+        bool com = t2.try_commit();// TODO: this depends on the queue implementation
+        assert(com);
+        if (com) {
+            Transaction t3;
+            Sto::set_transaction(&t3);
+            q.push(1);
+            t3.try_commit();
+        }
     }
     
     {
@@ -270,7 +277,7 @@ void queueTests() {
         Sto::set_transaction(&t2);
         q.push(3);
         assert(t1.try_commit());
-        assert(!t2.try_commit()); // TODO: this commit can actually succeed with a special transactional priority queue.
+        assert(t2.try_commit()); // TODO: this also depends on queue implementation
         
         Transaction t3;
         Sto::set_transaction(&t3);
@@ -283,6 +290,8 @@ void queueTests() {
         Transaction t1;
         Sto::set_transaction(&t1);
         assert(q.top() == 3);
+        q.pop();
+        assert(q.top() == 3);
         q.pop(); // q is empty after this
         assert(t1.try_commit());
     }
@@ -293,7 +302,7 @@ void queueTests() {
         Transaction t2;
         // q has 0 elements
         Sto::set_transaction(&t1);
-        q.pop();
+        q.pop(); // TODO: should support pop from empty queue in PriorityQueue
         q.push(1);
         q.push(2);
         Sto::set_transaction(&t2);
@@ -314,6 +323,7 @@ void queueTests() {
         
         // q has 2 elements [2, 1]
         Sto::set_transaction(&t1);
+        q.print();
         assert(q.top() == 2);
         q.push(4);
         
@@ -330,6 +340,7 @@ void queueTests() {
         // check if q is in order
         Transaction t;
         Sto::set_transaction(&t);
+        q.print();
         assert(q.top() == 3);
         q.pop();
         assert(q.top() == 2);
@@ -347,6 +358,17 @@ int main() {
     data_structure q;
     startAndWait(N_THREADS, &q);
     
+#if PERF_LOGGING
+    Transaction::print_stats();
+    {
+        using thd = threadinfo_t;
+        thd tc = Transaction::tinfo_combined();
+        printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+    }
+#endif
+
+    
+    if (false) {
     // check with sequential execution
     data_structure q1;
     for (int i = 0; i < N_THREADS; i++) {
@@ -354,11 +376,12 @@ int main() {
     }
     std::cout << "Done " << std::endl;
     int size = q.size();
+    
     std::cout << "size = " << size << std::endl;
     assert(size == q1.size());
     TRANSACTION {
-        q.print();
-        q1.print();
+        //q.print();
+        //q1.print();
     } RETRY(false);
     for (int i = 0; i < size; i++) {
         TRANSACTION {
@@ -366,6 +389,7 @@ int main() {
             q.pop();
             q1.pop();
         } RETRY(false)
+    }
     }
 	return 0;
 }
