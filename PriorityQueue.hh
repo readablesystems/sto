@@ -32,19 +32,18 @@ class PriorityQueue: public Shared {
     
     static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
+    static constexpr TransItem::flags_type dirty_tag = TransItem::user0_bit<<2;
     
     static constexpr Version insert_bit = TransactionTid::user_bit1;
     static constexpr Version delete_bit = TransactionTid::user_bit1<<1;
     static constexpr Version dirty_bit = TransactionTid::user_bit1<<2;
     
-    static constexpr int push_key = -1;
     static constexpr int pop_key = -2;
 public:
     PriorityQueue() : heap_() {
         size_ = 0;
         heaplock_ = 0;
         poplock_ = 0;
-        pushversion_ = 0;
         popversion_ = 0;
     }
     
@@ -63,7 +62,18 @@ public:
             lock(&heap_[child].ver);
             int old = child;
             if (heap_[parent].status == AVAILABLE) {
-                if (heap_[child].val->read_value() > heap_[parent].val->read_value()) {
+                versioned_value* parent_val = heap_[parent].val;
+                if (heap_[child].val->read_value() > parent_val->read_value()) {
+                    if (is_dirty(parent_val->version())) {
+                        auto item = Sto::item(this, parent_val);
+                        if (!has_dirty(item)) {
+                            // Some other concurrent transaction did a pop and dirtied the parent
+                            unlock(&heap_[old].ver);
+                            unlock(&heap_[parent].ver);
+                            Sto::abort();
+                            return;
+                        }
+                    }
                     swap(child, parent);
                     child = parent;
                 } else {
@@ -162,13 +172,9 @@ public:
         versioned_value* val = versioned_value::make(v, TransactionTid::increment_value + insert_bit);
         add(val);
         Sto::item(this, val).add_write(v).add_flags(insert_tag);
-        Sto::item(this, push_key).add_write(0);
     }
     
     void pop() {
-        Sto::item(this, push_key).add_read(pushversion_);
-        acquire_fence();
-        acquire_fence();
         if (size_ == 0) {
             return;
         }
@@ -178,9 +184,10 @@ public:
         if (new_head != NULL) {
             mark_dirty(&new_head->version());
         }
+        // TODO: should deal properly with the case when new_head is null.
         unlock(&poplock_);
         if (new_head != NULL) {
-            Sto::item(this, new_head).add_write(0);// Adding new_head as key so that we can track that this transaction dirtied it.
+            Sto::item(this, new_head).add_write(0).add_flags(dirty_tag);// Adding new_head as key so that we can track that this transaction dirtied it.
         }
         auto item = Sto::item(this, val).add_read(val->version());
         item.add_write(new_head).add_flags(delete_tag);
@@ -190,8 +197,6 @@ public:
     
     T top() {
         Sto::item(this, pop_key).add_read(popversion_);
-        acquire_fence();
-        Sto::item(this, push_key).add_read(pushversion_);
         acquire_fence();
         lock(&poplock_);
         versioned_value* val = getMax();
@@ -213,9 +218,7 @@ public:
     }
     
     void lock(TransItem& item) {
-        if (item.key<int>() == push_key) {
-            lock(&pushversion_);
-        } else if (item.key<int>() == pop_key){
+        if (item.key<int>() == pop_key){
             lock(&popversion_);
         } else {
             lock(item.key<versioned_value*>());
@@ -223,9 +226,7 @@ public:
     }
     
     void unlock(TransItem& item) {
-        if (item.key<int>() == push_key) {
-            unlock(&pushversion_);
-        } else if (item.key<int>() == pop_key){
+        if (item.key<int>() == pop_key){
             unlock(&popversion_);
         } else {
             unlock(item.key<versioned_value*>());
@@ -233,11 +234,7 @@ public:
     }
     
     bool check(const TransItem& item, const Transaction& trans){
-        if (item.key<int>() == push_key) {
-            auto lv = pushversion_;
-            return TransactionTid::same_version(lv, item.template read_value<Version>())
-            && (!is_locked(lv) || item.has_lock(trans));
-        } else if (item.key<int>() == pop_key) {
+        if (item.key<int>() == pop_key) {
             auto lv = popversion_;
             return TransactionTid::same_version(lv, item.template read_value<Version>())
             && (!is_locked(lv) || item.has_lock(trans));
@@ -253,13 +250,7 @@ public:
     
     
     void install(TransItem& item, const Transaction& t) {
-        if (item.key<int>() == push_key) {
-            if (Opacity) {
-                TransactionTid::set_version(pushversion_, t.commit_tid());
-            } else {
-                TransactionTid::inc_invalid_version(pushversion_);
-            }
-        } else if (item.key<int>() == pop_key){
+        if (item.key<int>() == pop_key){
             if (Opacity) {
                 TransactionTid::set_version(popversion_, t.commit_tid());
             } else {
@@ -274,8 +265,8 @@ public:
             if (has_delete(item)) {
                 auto new_head = item.template write_value<versioned_value*>();
                 if (new_head != NULL) {
-                    assert(is_dirty(new_head->version()));
-                    erase_dirty(&new_head->version());
+                    if (is_dirty(new_head->version()))
+                      erase_dirty(&new_head->version());
                 }
             }
         }
@@ -333,6 +324,10 @@ private:
         return item.flags() & delete_tag;
     }
     
+    static bool has_dirty(const TransItem& item) {
+        return item.flags() & dirty_tag;
+    }
+    
     static bool is_inserted(Version v) {
         return v & insert_bit;
     }
@@ -378,7 +373,6 @@ private:
     std::vector<HeapNode<T>> heap_;
     Version heaplock_;
     Version poplock_;
-    Version pushversion_;
     Version popversion_;
     int size_;
     
