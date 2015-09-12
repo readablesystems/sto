@@ -313,7 +313,15 @@ void queueTests() {
         q.pop();
         
         assert(t1.try_commit());
-        assert(!t2.try_commit());
+        assert(t2.try_commit());
+    }
+    
+    {
+        Transaction t;
+        Sto::set_transaction(&t);
+        q.pop();
+        q.pop();
+        assert(t.try_commit());
     }
     
     {
@@ -323,24 +331,22 @@ void queueTests() {
         
         // q has 2 elements [2, 1]
         Sto::set_transaction(&t1);
-        q.print();
         assert(q.top() == 2);
         q.push(4);
         
         // pop from non-empty q
         q.pop();
         assert(q.top() == 2);
-        
+        assert(t1.try_commit());
         Sto::set_transaction(&t2);
+        
         q.push(3);
         // order of pushes doesn't matter, commits succeed
         assert(t2.try_commit());
-        assert(!t1.try_commit());
         
         // check if q is in order
         Transaction t;
         Sto::set_transaction(&t);
-        q.print();
         assert(q.top() == 3);
         q.pop();
         assert(q.top() == 2);
@@ -348,6 +354,27 @@ void queueTests() {
         assert(q.top() == 1);
         q.pop();
         assert(t.try_commit());
+    }
+    
+    {
+        Transaction t;
+        Sto::set_transaction(&t);
+        q.push(10);
+        q.push(4);
+        q.push(5);
+        assert(t.try_commit());
+        
+        Transaction t1;
+        Sto::set_transaction(&t1);
+        q.pop();
+        q.push(20);
+        
+        Transaction t2;
+        Sto::set_transaction(&t2);
+        q.push(12);
+        assert(t2.try_commit());
+        
+        assert(!t1.try_commit());
     }
 }
 
