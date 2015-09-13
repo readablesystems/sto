@@ -58,12 +58,19 @@ public:
     // Concurrently adds v to the priority queue
     void add(versioned_value* v) {
         lock(&heaplock_);
-        int child = size_++;
-        HeapNode<T>* new_node = new HeapNode<T>(v);
+        int child = size_;
         if (child >= heap_.size()) {
+            HeapNode<T>* new_node = new HeapNode<T>(v);
             heap_.push_back(new_node);
-        } else
-            heap_[child] = new_node;
+        } else {
+            lock(&heap_[child]->ver);
+            heap_[child]->val = v;
+            heap_[child]->status = BUSY;
+            heap_[child]->owner = Transaction::threadid;
+            unlock(&heap_[child]->ver);
+        }
+        size_++;
+        
         unlock(&heaplock_);
         while (child > 0) {
             int parent = (child - 1) / 2;
@@ -76,10 +83,11 @@ public:
                 if (heap_[child]->val->read_value() > parent_val->read_value()) {
                     swap(child, parent);
                     child = parent;
-                    if (is_dirty(parent_val->version())) {
+                    if (is_inserted(heap_[child]->val->version()) && is_dirty(parent_val->version())) {
                         auto item = Sto::item(this, parent_val);
                         if (!has_dirty(item)) {
                             // Some other concurrent transaction did a pop and dirtied the parent - so abort
+                            assert(heap_[child]->status ==BUSY);
                             heap_[child]->status = AVAILABLE;
                             heap_[child]->owner = NO_ONE;
                             unlock(&(heap_[old]->ver));
@@ -89,6 +97,7 @@ public:
                         }
                     }
                 } else {
+                    assert(heap_[child]->status == BUSY);
                     heap_[child]->status = AVAILABLE;
                     heap_[child]->owner = NO_ONE;
                     unlock(&(heap_[old]->ver));
@@ -106,6 +115,7 @@ public:
         if (child == 0) {
             lock(&(heap_[0]->ver));
             if (heap_[0]->amOwner()) {
+                assert(heap_[child]->status == BUSY);
                 heap_[0]->status = AVAILABLE;
                 heap_[0]->owner = NO_ONE;
             }
@@ -116,18 +126,34 @@ public:
     // Concurrently removes the maximum element from the heap
     versioned_value* removeMax(versioned_value* expVal = NULL) {
         lock(&heaplock_);
-        assert(is_locked(heaplock_));
         int bottom  = --size_;
+        if (bottom < 0) {
+            unlock(&heaplock_);
+            return NULL;
+        }
         if (bottom == 0) {
+            lock(&heap_[0]->ver);
             versioned_value* res = heap_[0]->val;
             unlock(&heaplock_);
+            heap_[0]->status = EMPTY;
+            heap_[0]->owner = NO_ONE;
+            unlock(&heap_[0]->ver);
             return res;
         }
-        lock(&heap_[bottom]->ver);
         lock(&heap_[0]->ver);
+        while(1) {
+            lock(&heap_[bottom]->ver);
+            if (heap_[bottom]->status == AVAILABLE) {
+                break;
+            } else {
+                unlock(&heap_[bottom]->ver);
+            }
+        }
         versioned_value* res = heap_[0]->val;
         unlock(&heaplock_);
         if (expVal != NULL && res != expVal) {
+            unlock(&heap_[0]->ver);
+            unlock(&heap_[bottom]->ver);
             return NULL;
         }
         heap_[0]->status = EMPTY;
@@ -141,7 +167,7 @@ public:
         while (2*parent < size_ - 2) {
             int left = parent * 2 + 1;
             int right = (parent * 2) + 2;
-            assert(right <= size_);
+            assert(right < size_);
             lock(&heap_[left]->ver);
             lock(&heap_[right]->ver);
             if (heap_[left]->status == EMPTY) {
@@ -168,29 +194,35 @@ public:
         return res;
     }
     
-    // TODO: should make this method concurrent with the other methods.
     versioned_value* getMax() {
         assert(is_locked(poplock_));
         if (size_ == 0) {
             return NULL;
         }
         while(1) {
-            versioned_value* val = heap_[0]->val;
-            auto item = Sto::item(this, val);
-            if (is_inserted(val->version())) {
-                if (has_insert(item)) {
-                    // push then pop
-                    return val;
+            lock(&heap_[0]->ver);
+            if (heap_[0]->status == AVAILABLE) {
+                versioned_value* val = heap_[0]->val;
+                unlock(&heap_[0]->ver);
+                auto item = Sto::item(this, val);
+                if (is_inserted(val->version())) {
+                    if (has_insert(item)) {
+                        // push then pop
+                        return val;
+                    } else {
+                        // Some other transaction is inserting a node with high priority
+                        unlock(&poplock_);
+                        Sto::abort();
+                        return NULL;
+                    }
+                } else if (is_deleted(val->version())) {
+                    removeMax(val);
                 } else {
-                    // Some other transaction is inserting a node with high priority
-                    unlock(&poplock_);
-                    Sto::abort();
-                    return NULL;
+                    return val;
                 }
-            } else if (is_deleted(val->version())) { // TODO: this is not thread safe
-                removeMax(val);
             } else {
-                return val;
+                assert(heap_[0]->status != AVAILABLE);
+                unlock(&heap_[0]->ver);
             }
         }
     }
@@ -205,21 +237,36 @@ public:
         if (size_ == 0) {
             return;
         }
+        
         lock(&poplock_);
         // TODO: deal with deleted heads
         versioned_value* val = removeMax();
-        // TODO: what happens if there is a push with high priority right at this point
-        versioned_value* new_head = getMax();
-        if (new_head != NULL) {
-            mark_dirty(&new_head->version());
-        }
-        // TODO: should deal properly with the case when new_head is null.
-        unlock(&poplock_);
-        if (new_head != NULL) {
-            Sto::item(this, new_head).add_write(0).add_flags(dirty_tag);// Adding new_head as key so that we can track that this transaction dirtied it.
-        }
         auto item = Sto::item(this, val).add_read(val->version());
-        item.add_write(new_head).add_flags(delete_tag);
+        if (has_insert(item)) {
+            unlock(&poplock_);
+            /* insert and then delete */
+            item.clear_flags(insert_tag);
+        } else {
+            // TODO: what happens if there is a push with high priority right at this point
+            versioned_value* new_head = getMax();
+            if (new_head != NULL) {
+                lock(new_head);
+                if (is_dirty(new_head->version())) { // This is possible in some weird situtations
+                    unlock(new_head);
+                    unlock(&poplock_);
+                    Sto::abort();
+                    return;
+                }
+                mark_dirty(&new_head->version());
+                unlock(new_head);
+            }
+            // TODO: should deal properly with the case when new_head is null.
+            unlock(&poplock_);
+            if (new_head != NULL) {
+                Sto::item(this, new_head).add_write(0).add_flags(dirty_tag);// Adding new_head as key so that we can track that this transaction dirtied it.
+            }
+            item.add_write(new_head).add_flags(delete_tag);
+        }
         
         Sto::item(this, pop_key).add_write(0);
     }
@@ -294,6 +341,7 @@ public:
             if (has_delete(item)) {
                 auto new_head = item.template write_value<versioned_value*>();
                 if (new_head != NULL) {
+                    assert(is_locked(new_head->version()));
                     if (is_dirty(new_head->version()))
                       erase_dirty(&new_head->version());
                 }
@@ -374,10 +422,12 @@ private:
     }
     
     static void erase_dirty(Version* v) {
+        assert(is_dirty(*v));
         *v = *v & (~dirty_bit);
     }
     
     static void mark_dirty(Version* v) {
+        assert(!is_dirty(*v));
         *v = *v | dirty_bit;
     }
             
@@ -395,6 +445,8 @@ private:
 
 
     void swap(int i, int j) {
+        assert(heap_[i]->ver == 1);
+        assert(heap_[j]->ver == 1);
         HeapNode<T> tmp = *(heap_[i]);
         heap_[i]->val = heap_[j]->val;
         heap_[i]->status = heap_[j]->status;
