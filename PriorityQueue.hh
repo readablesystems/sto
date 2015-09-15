@@ -53,6 +53,8 @@ public:
         heaplock_ = 0;
         poplock_ = 0;
         popversion_ = 0;
+        dirtytid_ = -1;
+        dirtyval_ = -1;
     }
     
     // Concurrently adds v to the priority queue
@@ -83,19 +85,6 @@ public:
                 if (heap_[child]->val->read_value() > parent_val->read_value()) {
                     swap(child, parent);
                     child = parent;
-                    if (is_inserted(heap_[child]->val->version()) && is_dirty(parent_val->version())) {
-                        auto item = Sto::item(this, parent_val);
-                        if (!has_dirty(item)) {
-                            // Some other concurrent transaction did a pop and dirtied the parent - so abort
-                            assert(heap_[child]->status ==BUSY);
-                            heap_[child]->status = AVAILABLE;
-                            heap_[child]->owner = NO_ONE;
-                            unlock(&(heap_[old]->ver));
-                            unlock(&(heap_[parent]->ver));
-                            Sto::abort();
-                            return;
-                        }
-                    }
                 } else {
                     assert(heap_[child]->status == BUSY);
                     heap_[child]->status = AVAILABLE;
@@ -227,10 +216,18 @@ public:
         }
     }
     
+    void push_nontrans(T v) {
+        versioned_value* val = versioned_value::make(v, TransactionTid::increment_value + insert_bit);
+        add(val);
+    }
+    
     void push(T v) {
         versioned_value* val = versioned_value::make(v, TransactionTid::increment_value + insert_bit);
         add(val);
         Sto::item(this, val).add_write(v).add_flags(insert_tag);
+        if (dirtytid_ != -1 && dirtytid_ != Transaction::threadid && v > dirtyval_) {
+            Sto::abort();
+        }
     }
     
     void pop() {
@@ -239,33 +236,28 @@ public:
         }
         
         lock(&poplock_);
-        // TODO: deal with deleted heads
+        if (dirtytid_ != -1 && dirtytid_ != Transaction::threadid) {
+            // queue is in dirty state
+            unlock(&poplock_);
+            Sto::abort();
+            return;
+        }
+        
         versioned_value* val = removeMax();
-        auto item = Sto::item(this, val).add_read(val->version());
+        auto item = Sto::item(this, val);
         if (has_insert(item)) {
             unlock(&poplock_);
             /* insert and then delete */
             item.clear_flags(insert_tag);
         } else {
-            // TODO: what happens if there is a push with high priority right at this point
-            versioned_value* new_head = getMax();
-            if (new_head != NULL) {
-                lock(new_head);
-                if (is_dirty(new_head->version())) { // This is possible in some weird situtations
-                    unlock(new_head);
-                    unlock(&poplock_);
-                    Sto::abort();
-                    return;
-                }
-                mark_dirty(&new_head->version());
-                unlock(new_head);
+            if (val->read_value() < dirtyval_) {
+                dirtyval_ = val->read_value();
+                fence();
             }
-            // TODO: should deal properly with the case when new_head is null.
+            dirtytid_ = Transaction::threadid;
+            
+            item.add_write(0).add_flags(delete_tag);
             unlock(&poplock_);
-            if (new_head != NULL) {
-                Sto::item(this, new_head).add_write(0).add_flags(dirty_tag);// Adding new_head as key so that we can track that this transaction dirtied it.
-            }
-            item.add_write(new_head).add_flags(delete_tag);
         }
         
         Sto::item(this, pop_key).add_write(0);
@@ -275,6 +267,11 @@ public:
         Sto::item(this, pop_key).add_read(popversion_);
         acquire_fence();
         lock(&poplock_);
+        if (dirtytid_ != -1 && dirtytid_ != Transaction::threadid) {
+            // queue is in dirty state
+            unlock(&poplock_);
+            Sto::abort();
+        }
         versioned_value* val = getMax();
         unlock(&poplock_);
         T retval = val->read_value();
@@ -339,12 +336,7 @@ public:
                 erase_inserted(&e->version());
             }
             if (has_delete(item)) {
-                auto new_head = item.template write_value<versioned_value*>();
-                if (new_head != NULL) {
-                    assert(is_locked(new_head->version()));
-                    if (is_dirty(new_head->version()))
-                      erase_dirty(&new_head->version());
-                }
+                dirtytid_ = -1;
             }
         }
     }
@@ -360,14 +352,7 @@ public:
                 auto v = e->read_value();
                 versioned_value* val = versioned_value::make(v, TransactionTid::increment_value);
                 add(val);
-                auto new_head = item.template write_value<versioned_value*>();
-                if (new_head) {
-                    lock(&new_head->version());
-                    TransactionTid::inc_invalid_version(new_head->version());
-                    assert(is_dirty(new_head->version()));
-                    erase_dirty(&new_head->version());
-                    unlock(&new_head->version());
-                }
+                dirtytid_ = -1;
             }
         }
     }
@@ -375,7 +360,7 @@ public:
     // Used for debugging
     void print() {
         for (int i =0; i < size_; i++) {
-            std::cout << heap_[i].val->read_value() << "[" << (!is_inserted(heap_[i].val->version()) && !is_deleted(heap_[i].val->version())) << "] ";
+            std::cout << heap_[i]->val->read_value() << "[" << (!is_inserted(heap_[i]->val->version()) && !is_deleted(heap_[i]->val->version())) << "] ";
         }
         std::cout << std::endl;
     }
@@ -460,5 +445,7 @@ private:
     Version poplock_;
     Version popversion_;
     int size_;
+    int dirtyval_;
+    int dirtytid_;
     
 };
