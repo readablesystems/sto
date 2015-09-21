@@ -6,10 +6,11 @@
 #include "Transaction.hh"
 #include "Vector.hh"
 #include "PriorityQueue.hh"
+#include "PriorityQueue1.hh"
 
 #define GLOBAL_SEED 10
 #define MAX_VALUE  100000
-#define NTRANS 10000
+#define NTRANS 1000000
 #define N_THREADS 4
 
 typedef PriorityQueue<int> data_structure;
@@ -36,10 +37,12 @@ struct Rand {
 };
 
 
+template <typename T>
 struct TesterPair {
-    data_structure* t;
+    T* t;
     int me;
 };
+
 
 void run_conc(data_structure* q, int me) {
     std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
@@ -65,7 +68,8 @@ void run_conc(data_structure* q, int me) {
     }
 
 }
-void run(data_structure* q, int me) {
+template <typename T>
+void run(T* q, int me) {
     Transaction::threadid = me + 1;
     
     std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
@@ -92,26 +96,28 @@ void run(data_structure* q, int me) {
     }
 }
 
+template <typename T>
 void* runFunc(void* x) {
-    TesterPair* tp = (TesterPair*) x;
+    TesterPair<T>* tp = (TesterPair<T>*) x;
     run(tp->t, tp->me);
     return nullptr;
 }
 
 void* runConcFunc(void* x) {
-    TesterPair* tp = (TesterPair*) x;
+    TesterPair<data_structure>* tp = (TesterPair<data_structure>*) x;
     run_conc(tp->t, tp->me);
     return nullptr;
 }
-    
-void startAndWait(int n, data_structure* queue, bool parallel = true) {
-    pthread_t tids[n];
-    TesterPair testers[n];
-    for (int i = 0; i < n; ++i) {
+
+template <typename T>
+void startAndWait(T* queue, bool parallel = true) {
+    pthread_t tids[N_THREADS];
+    TesterPair<T> testers[N_THREADS];
+    for (int i = 0; i < N_THREADS; ++i) {
         testers[i].t = queue;
         testers[i].me = i;
         if (parallel)
-            pthread_create(&tids[i], NULL, runFunc, &testers[i]);
+            pthread_create(&tids[i], NULL, runFunc<T>, &testers[i]);
         else
             pthread_create(&tids[i], NULL, runConcFunc, &testers[i]);
     }
@@ -119,7 +125,7 @@ void startAndWait(int n, data_structure* queue, bool parallel = true) {
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
     
-    for (int i = 0; i < n; ++i) {
+    for (int i = 0; i < N_THREADS; ++i) {
         pthread_join(tids[i], NULL);
     }
 }
@@ -285,10 +291,11 @@ void queueTests() {
         Transaction t1;
         Transaction t2;
         // q has >1 element
+        Transaction::threadid = 0;
         Sto::set_transaction(&t1);
         q.pop();
-        Sto::set_transaction(&t2);
         Transaction::threadid = 1;
+        Sto::set_transaction(&t2);
         bool aborted = false;
         try {
             q.pop();
@@ -306,11 +313,12 @@ void queueTests() {
         Transaction t1;
         Transaction t2;
         // q has 1 element
-        Sto::set_transaction(&t1);
         Transaction::threadid = 0;
+        Sto::set_transaction(&t1);
+        
         q.pop();
-        Sto::set_transaction(&t2);
         Transaction::threadid = 1;
+        Sto::set_transaction(&t2);
         bool aborted = false;
         try {
             q.push(3);
@@ -342,13 +350,15 @@ void queueTests() {
         Transaction t1;
         Transaction t2;
         // q has 0 elements
-        Sto::set_transaction(&t1);
         Transaction::threadid = 0;
+        Sto::set_transaction(&t1);
+        
         q.pop(); // TODO: should support pop from empty queue in PriorityQueue
         q.push(1);
         q.push(2);
-        Sto::set_transaction(&t2);
         Transaction::threadid = 1;
+        Sto::set_transaction(&t2);
+        
         q.push(3);
         q.push(4);
         q.push(5);
@@ -403,8 +413,8 @@ void queueTests() {
     
     {
         Transaction t;
-        Sto::set_transaction(&t);
         Transaction::threadid = 0;
+        Sto::set_transaction(&t);
         q.push(10);
         q.push(4);
         q.push(5);
@@ -425,8 +435,27 @@ void queueTests() {
             aborted = true;
         }
         
+        Transaction::threadid = 0;
         assert(t1.try_commit());
         assert(aborted);
+    }
+    
+    {
+        Transaction t;
+        Transaction::threadid = 0;
+        Sto::set_transaction(&t);
+        q.top();
+        
+        Transaction t1;
+        Transaction::threadid = 1;
+        Sto::set_transaction(&t1);
+        q.push(100);
+        
+        assert(t1.try_commit());
+        Transaction::threadid = 0;
+        Sto::set_transaction(&t);
+        assert(!t.try_commit());
+        
     }
 }
 
@@ -435,7 +464,8 @@ void print_time(struct timeval tv1, struct timeval tv2) {
 }
 
 int main() {
-    //queueTests();
+    queueTests();
+    std::cout << "Done queue tests" << std::endl;
     
     // Run a parallel test with lots of transactions doing pushes and pops
     data_structure q;
@@ -453,7 +483,7 @@ int main() {
     struct timeval tv1,tv2;
     gettimeofday(&tv1, NULL);
     
-    startAndWait(N_THREADS, &q);
+    startAndWait(&q);
     
     gettimeofday(&tv2, NULL);
     printf("Parallel time: ");
@@ -483,11 +513,30 @@ int main() {
     data_structure q2;
     gettimeofday(&tv1, NULL);
     
-    startAndWait(N_THREADS, &q, false);
+    startAndWait(&q2, false);
     
     gettimeofday(&tv2, NULL);
     printf("Concurrent time: ");
     print_time(tv1, tv2);
+    
+    PriorityQueue1<int> q3;
+    gettimeofday(&tv1, NULL);
+    
+    startAndWait(&q3);
+    
+    gettimeofday(&tv2, NULL);
+    printf("Vector rep time: ");
+    print_time(tv1, tv2);
+    
+#if PERF_LOGGING
+    Transaction::print_stats();
+    {
+        using thd = threadinfo_t;
+        thd tc = Transaction::tinfo_combined();
+        printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+    }
+#endif
+    
    
     if (false) {
     TRANSACTION {
