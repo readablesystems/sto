@@ -69,16 +69,14 @@ class rbtree {
 
     inline bool empty() const;
     inline size_t size() const;
-
+    inline size_t count() const;
+   
     inline void insert(reference n);
-
-    typedef std::pair<rbnodeptr<T>, bool> insert_commit_data;
+    
     inline void erase(reference x);
     inline void erase_and_dispose(reference x);
     template <typename Disposer>
     inline void erase_and_dispose(reference x, Disposer d);
-
-    inline node_type* unlink_leftmost_without_rebalance();
 
     int check() const;
     template <typename TT, typename CC, typename RR>
@@ -90,15 +88,6 @@ class rbtree {
     void insert_commit(T* x, rbnodeptr<T> p, bool side);
     void delete_node(T* victim, T* successor_hint);
     void delete_node_fixup(rbnodeptr<T> p, bool side);
-
-    template <typename K, typename Comp>
-    inline T* find_any(const K& key, Comp comp) const;
-    template <typename K, typename Comp>
-    inline T* find_first(const K& key, Comp comp) const;
-    template <typename K, typename Comp>
-    inline T* lower_bound_impl(const K& key, Comp comp) const;
-    template <typename K, typename Comp>
-    inline T* upper_bound_impl(const K& key, Comp comp) const;
 };
 
 template <typename T>
@@ -496,31 +485,6 @@ inline T* rbtree<T, C, R>::root() {
     return r_.root_;
 }
 
-template <typename T, typename C, typename R> template <typename K, typename Comp>
-inline T* rbtree<T, C, R>::find_any(const K& key, Comp comp) const {
-    T* n = r_.root_;
-    while (n) {
-        int cmp = comp.compare(key, *n);
-        if (cmp == 0)
-            break;
-        n = n->rblinks_.c_[cmp > 0].node();
-    }
-    return n;
-}
-
-template <typename T, typename C, typename R> template <typename K, typename Comp>
-inline T* rbtree<T, C, R>::find_first(const K& key, Comp comp) const {
-    T* n = r_.root_;
-    T* answer = nullptr;
-    while (n) {
-        int cmp = comp.compare(key, *n);
-        if (cmp == 0)
-            answer = n;
-        n = n->rblinks_.c_[cmp > 0].node();
-    }
-    return answer;
-}
-
 template <typename T, typename C, typename R>
 inline void rbtree<T, C, R>::erase(T& node) {
     rbaccount(erase);
@@ -539,21 +503,6 @@ inline void rbtree<T, C, R>::erase_and_dispose(T& node, Disposer d) {
     rbaccount(erase);
     delete_node(&node, nullptr);
     d(&node);
-}
-
-template <typename T, typename C, typename R>
-inline T* rbtree<T, C, R>::unlink_leftmost_without_rebalance() {
-    T* node = r_.limit_[0];
-    if (node) {
-        rbnodeptr<T> n(node, false);
-        if (n.child(true)) {
-            n.child(true).parent() = n.parent();
-            r_.limit_[0] = rbalgorithms<T>::edge_node(n.child(true).node(), false);
-        } else
-            r_.limit_[0] = n.parent();
-    } else
-        r_.root_ = r_.limit_[1] = 0;
-    return node;
 }
 
 // RBNODEPTR FUNCTION DEFINITIONS
@@ -631,7 +580,6 @@ void rbnodeptr<T>::check(T* parent, int this_black_height, int& black_height,
 
 #undef rbcheck_assert
 
-// XXX WHY IS THIS HERE AND NOT WITH THE OTHER RBTREE IMPLEMENTATIONS
 template <typename T, typename C, typename R>
 int rbtree<T, C, R>::check() const {
     int black_height = -1;
