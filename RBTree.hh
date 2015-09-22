@@ -6,6 +6,10 @@
 #include "versioned_value.hh"
 #include "VersionFunctions.hh"
 
+#ifndef rbaccount
+# define rbaccount(x)
+#endif
+
 template <typename T>
 class rbnodeptr {
   public:
@@ -67,24 +71,32 @@ class rbtree {
 
     inline node_type *root();
 
+    // lookup
     inline bool empty() const;
     inline size_t size() const;
-    inline size_t count() const;
-   
-    inline void insert(reference n);
-    
-    inline void erase(reference x);
-    inline void erase_and_dispose(reference x);
-    template <typename Disposer>
-    inline void erase_and_dispose(reference x, Disposer d);
+    template <typename K>
+    inline size_t count(const &K key) const;
 
-    int check() const;
-    template <typename TT, typename CC, typename RR>
-    friend std::ostream &operator<<(std::ostream &s, const rbtree<TT, CC, RR> &tree);
+    // element access
+    template <typename K>
+    inline &T operator[](const &K key);
+    
+    // modifiers
+    // XXX should we also dispose (i.e. delete/free) the node?
+    inline void insert(reference n);
+    inline void erase(reference x);
+  
+    template <typename TT, typename CC>
+    friend std::ostream &operator<<(std::ostream &s, const rbtree<TT, CC> &tree);
 
   private:
     rbpriv::rbrep<T, Compare> r_;
 
+    template <typename K, typename Comp>
+    inline T* find_any(const K& key, Comp comp) const;
+    template <typename K, typename Comp>
+    inline T* find_first(const K& key, Comp comp) const;
+   
     void insert_commit(T* x, rbnodeptr<T> p, bool side);
     void delete_node(T* victim, T* successor_hint);
     void delete_node_fixup(rbnodeptr<T> p, bool side);
@@ -243,7 +255,6 @@ inline rbnodeptr<T> rbnodeptr<T>::set_child(bool isright, rbnodeptr<T> x, T*& ro
     return x;
 }
 
-// XXX INTRUSIVE --> Forces T* to be a struct with an rblinks member var
 template <typename T>
 inline T*& rbnodeptr<T>::parent() const {
     return node()->rblinks_.p_;
@@ -319,8 +330,8 @@ inline int rbcompare<Compare>::compare(const A& a, const B& b) const {
     return this->operator()(a, b);
 }
 
-template <typename T, typename C, typename R>
-inline rbrep<T, C, R>::rbrep(const C &compare) : rbcompare_type(compare) {
+template <typename T, typename C>
+inline rbrep<T, C>::rbrep(const C &compare) : rbcompare_type(compare) {
     this->root_ = this->limit_[0] = this->limit_[1] = 0;
 }
 
@@ -332,17 +343,35 @@ inline Compare& rbcompare<Compare>::get_compare() const {
 } // namespace rbpriv
 
 // RBTREE FUNCTION DEFINITIONS
-template <typename T, typename C, typename R>
-inline rbtree<T, C, R>::rbtree(const value_compare &compare)
+template <typename T, typename C>
+inline rbtree<T, C>::rbtree(const value_compare &compare)
     : r_(compare) {
 }
 
-template <typename T, typename C, typename R>
-rbtree<T, C, R>::~rbtree() {
+template <typename T, typename C>
+rbtree<T, C>::~rbtree() {
 }
 
-template <typename T, typename C, typename R>
-void rbtree<T, C, R>::insert_commit(T* x, rbnodeptr<T> p, bool side) {
+template <typename T, typename C> template <typename K>
+inline size_t rbtree<T, C>::count(const &K key) {
+    return ((find_any(key, rbpriv::make_compare<T, T>(r_.get_compare()))) ? 1 : 0);
+}
+
+template <typename T, typename C> template <typename K>
+T& rbtree<T, C>::operator[](const &K key) {
+    T* n = find_any(key, rbpriv::make_compare<T, T>(r_.get_compare()));
+    // insert a key with a default value into the tree if key not in tree and return the reference
+    if (!n) {
+        // create a new node with key "key" and call insert
+        // return the node (reference to the node)
+    }
+    return n ? *n : 
+}
+
+
+
+template <typename T, typename C>
+void rbtree<T, C>::insert_commit(T* x, rbnodeptr<T> p, bool side) {
     // link in new node; it's red
     x->rblinks_.p_ = p.node();
     x->rblinks_.c_[0] = x->rblinks_.c_[1] = rbnodeptr<T>(0, false);
@@ -374,8 +403,8 @@ void rbtree<T, C, R>::insert_commit(T* x, rbnodeptr<T> p, bool side) {
     }
 }
 
-template <typename T, typename C, typename R>
-void rbtree<T, C, R>::insert(reference x) {
+template <typename T, typename C>
+void rbtree<T, C>::insert(reference x) {
     rbaccount(insert);
 
     // find insertion point
@@ -388,8 +417,8 @@ void rbtree<T, C, R>::insert(reference x) {
     insert_commit(&x, p, side);
 }
 
-template <typename T, typename C, typename R>
-void rbtree<T, C, R>::delete_node(T* victim_node, T* succ) {
+template <typename T, typename C>
+void rbtree<T, C>::delete_node(T* victim_node, T* succ) {
     using std::swap;
     // find the node's color
     rbnodeptr<T> victim(victim_node, false);
@@ -439,8 +468,8 @@ void rbtree<T, C, R>::delete_node(T* victim_node, T* succ) {
         delete_node_fixup(p, side);
 }
 
-template <typename T, typename C, typename R>
-void rbtree<T, C, R>::delete_node_fixup(rbnodeptr<T> p, bool side) {
+template <typename T, typename C>
+void rbtree<T, C>::delete_node_fixup(rbnodeptr<T> p, bool side) {
     while (p && !p.child(0).red() && !p.child(1).red()
            && !p.child(!side).child(0).red()
            && !p.child(!side).child(1).red()) {
@@ -480,29 +509,40 @@ void rbtree<T, C, R>::delete_node_fixup(rbnodeptr<T> p, bool side) {
         p.child(side) = p.child(side).change_color(false);
 }
 
-template <typename T, typename C, typename R>
-inline T* rbtree<T, C, R>::root() {
+template <typename T, typename C>
+inline T* rbtree<T, C>::root() {
     return r_.root_;
 }
 
-template <typename T, typename C, typename R>
-inline void rbtree<T, C, R>::erase(T& node) {
-    rbaccount(erase);
-    delete_node(&node, nullptr);
+template <typename T, typename C> template <typename K, typename Comp>
+inline T* rbtree<T, C>::find_any(const K& key, Comp comp) const {
+    T* n = r_.root_;
+    while (n) {
+        int cmp = comp.compare(key, *n);
+        if (cmp == 0)
+            break;
+        n = n->rblinks_.c_[cmp > 0].node();
+    }
+    return n;
 }
 
-template <typename T, typename C, typename R>
-inline void rbtree<T, C, R>::erase_and_dispose(T& node) {
-    rbaccount(erase);
-    delete_node(&node, nullptr);
-    delete &node;
+template <typename T, typename C> template <typename K, typename Comp>
+inline T* rbtree<T, C>::find_first(const K& key, Comp comp) const {
+    T* n = r_.root_;
+    T* answer = nullptr;
+    while (n) {
+        int cmp = comp.compare(key, *n);
+        if (cmp == 0)
+            answer = n;
+        n = n->rblinks_.c_[cmp > 0].node();
+    }
+    return answer;
 }
 
-template <typename T, typename C, typename R> template <typename Disposer>
-inline void rbtree<T, C, R>::erase_and_dispose(T& node, Disposer d) {
+template <typename T, typename C>
+inline void rbtree<T, C>::erase(T& node) {
     rbaccount(erase);
     delete_node(&node, nullptr);
-    d(&node);
 }
 
 // RBNODEPTR FUNCTION DEFINITIONS
@@ -523,8 +563,8 @@ void rbnodeptr<T>::output(std::ostream &s, int indent, T* highlight) const {
     }
 }
 
-template <typename T, typename C, typename R>
-std::ostream &operator<<(std::ostream &s, const rbtree<T, C, R> &tree) {
+template <typename T, typename C>
+std::ostream &operator<<(std::ostream &s, const rbtree<T, C> &tree) {
     rbnodeptr<T>(tree.r_.root_, false).output(s, 0, 0);
     return s;
 }
@@ -535,13 +575,13 @@ size_t rbnodeptr<T>::size() const {
 	+ (child(true) ? child(true).size() : 0);
 }
 
-template <typename T, typename C, typename R>
-inline bool rbtree<T, C, R>::empty() const {
+template <typename T, typename C>
+inline bool rbtree<T, C>::empty() const {
     return !r_.root_;
 }
 
-template <typename T, typename C, typename R>
-inline size_t rbtree<T, C, R>::size() const {
+template <typename T, typename C>
+inline size_t rbtree<T, C>::size() const {
     return r_.root_ ? rbnodeptr<T>(r_.root_, false).size() : 0;
 }
 
@@ -580,8 +620,8 @@ void rbnodeptr<T>::check(T* parent, int this_black_height, int& black_height,
 
 #undef rbcheck_assert
 
-template <typename T, typename C, typename R>
-int rbtree<T, C, R>::check() const {
+template <typename T, typename C>
+int rbtree<T, C>::check() const {
     int black_height = -1;
     if (r_.root_)
         rbnodeptr<T>(r_.root_, false).check(0, 0, black_height, r_.root_,
