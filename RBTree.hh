@@ -55,8 +55,20 @@ class rbnodeptr {
 };
 
 template <typename T, typename Compare = default_comparator<T>>
-class rbtree {
+class rbtree : public Shared {
+    typedef TransactionTid::type Version;
+    typedef VersionFunctions<Version> Versioning;
+    typedef versioned_value_struct<T> versioned_value;
+    
+    static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
+    static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
+    
+    static constexpr Version insert_bit = TransactionTid::user_bit1;
+    static constexpr Version delete_bit = TransactionTid::user_bit1<<1;
+    static constexpr Version dirty_bit = TransactionTid::user_bit1<<2;
   public:
+    treelock_ = 0;
+
     typedef T* pointer;
     typedef const T* const_pointer;
     typedef T value_type;
@@ -88,6 +100,14 @@ class rbtree {
   
     template <typename TT, typename CC>
     friend std::ostream &operator<<(std::ostream &s, const rbtree<TT, CC> &tree);
+    
+    inline void lock(versioned_value *e);
+    inline void unlock(versioned_value *e);
+    inline void lock(TransItem& item);
+    inline void unlock(TransItem& item);
+    inline bool check(const TransItem& item, const Transaction& trans);
+    inline void install(TransItem& item, const Transaction& t);
+    inline void cleanup(TransItem& item, bool committed);
 
   private:
     rbpriv::rbrep<T, Compare> r_;
@@ -100,6 +120,63 @@ class rbtree {
     void insert_commit(T* x, rbnodeptr<T> p, bool side);
     void delete_node(T* victim, T* successor_hint);
     void delete_node_fixup(rbnodeptr<T> p, bool side);
+    
+    static void lock(Version *v) {
+        TransactionTid::lock(*v);
+    }
+    
+    static void unlock(Version *v) {
+        TransactionTid::unlock(*v);
+    }
+    
+    static bool is_locked(Version v) {
+        return TransactionTid::is_locked(v);
+    }
+
+    static bool has_insert(const TransItem& item) {
+        return item.flags() & insert_tag;
+    }
+    static bool has_delete(const TransItem& item) {
+        return item.flags() & delete_tag;
+    }
+    
+    static bool is_inserted(Version v) {
+        return v & insert_bit;
+    }
+    
+    static void erase_inserted(Version* v) {
+        *v = *v & (~insert_bit);
+    }
+    
+    static void mark_inserted(Version* v) {
+        *v = *v | insert_bit;
+    }
+    
+    static bool is_dirty(Version v) {
+        return v & dirty_bit;
+    }
+    
+    static void erase_dirty(Version* v) {
+        *v = *v & (~dirty_bit);
+    }
+    
+    static void mark_dirty(Version* v) {
+        *v = *v | dirty_bit;
+    }
+            
+    static bool is_deleted(Version v) {
+        return v & delete_bit;
+    }
+            
+    static void erase_deleted(Version* v) {
+        *v = *v & (~delete_bit);
+    }
+            
+    static void mark_deleted(Version* v) {
+        *v = *v | delete_bit;
+    }
+
+    Version treelock_;
 };
 
 template <typename T>
