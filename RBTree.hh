@@ -1,5 +1,9 @@
 #pragma once
 
+#include <inttypes.h>
+#include <iostream>
+#include <iomanip>
+#include <iterator>
 #include <vector>
 #include "TaggedLow.hh"
 #include "Transaction.hh"
@@ -13,8 +17,6 @@
 template <typename T>
 class rbnodeptr {
   public:
-    typedef bool (rbnodeptr<T>::*unspecified_bool_type)() const;
-  
     // what is unspecified_bool_type doing? 
     typedef bool (rbnodeptr<T>::*unspecified_bool_type)() const;
 
@@ -54,6 +56,7 @@ class rbnodeptr {
     uintptr_t x_;
 };
 
+// XXX syntax?
 template <typename T, typename Compare = default_comparator<T>>
 class rbtree : public Shared {
     typedef TransactionTid::type Version;
@@ -67,7 +70,6 @@ class rbtree : public Shared {
     static constexpr Version delete_bit = TransactionTid::user_bit1<<1;
     static constexpr Version dirty_bit = TransactionTid::user_bit1<<2;
   public:
-    treelock_ = 0;
 
     typedef T* pointer;
     typedef const T* const_pointer;
@@ -86,6 +88,8 @@ class rbtree : public Shared {
     // lookup
     inline bool empty() const;
     inline size_t size() const;
+
+    // XXX why does this work for private functions??
     template <typename K>
     inline size_t count(const &K key) const;
 
@@ -105,11 +109,12 @@ class rbtree : public Shared {
     inline void unlock(versioned_value *e);
     inline void lock(TransItem& item);
     inline void unlock(TransItem& item);
-    inline bool check(const TransItem& item, const Transaction& trans);
+    int check() const;
     inline void install(TransItem& item, const Transaction& t);
     inline void cleanup(TransItem& item, bool committed);
 
   private:
+    // XXX rbpriv is a namespace?
     rbpriv::rbrep<T, Compare> r_;
 
     template <typename K, typename Comp>
@@ -420,15 +425,18 @@ inline Compare& rbcompare<Compare>::get_compare() const {
 } // namespace rbpriv
 
 // RBTREE FUNCTION DEFINITIONS
+// XXX no r_
 template <typename T, typename C>
 inline rbtree<T, C>::rbtree(const value_compare &compare)
     : r_(compare) {
+    treelock_ = 0;
 }
 
 template <typename T, typename C>
 rbtree<T, C>::~rbtree() {
 }
 
+// XXX DOesn't match??
 template <typename T, typename C> template <typename K>
 inline size_t rbtree<T, C>::count(const &K key) {
     return ((find_any(key, rbpriv::make_compare<T, T>(r_.get_compare()))) ? 1 : 0);
@@ -446,7 +454,7 @@ T& rbtree<T, C>::operator[](const &K key) {
 }
 
 
-
+// XXX what is r_?
 template <typename T, typename C>
 void rbtree<T, C>::insert_commit(T* x, rbnodeptr<T> p, bool side) {
     // link in new node; it's red
@@ -562,7 +570,7 @@ void rbtree<T, C>::delete_node_fixup(rbnodeptr<T> p, bool side) {
 
         if (p.child(!side).red()) {
             // invariant: p is black (b/c one of its children is red)
-            gp.set_child(gpside, p.rotate(side, r_.root_);
+            gp.set_child(gpside, p.rotate(side, r_.root_));
             gp = p.black_parent(); // p is now further down the tree
             gpside = side;         // (since we rotated in that direction)
         }
@@ -744,5 +752,3 @@ template <typename T>
 inline T* rbalgorithms<T>::prev_node(T* n, T* last) {
     return n ? step_node(n, false) : last;
 }
-
-#endif
