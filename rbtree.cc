@@ -2,6 +2,7 @@
 #define rbaccount(x) ++rbaccount_##x
 unsigned long long rbaccount_rotation, rbaccount_flip, rbaccount_insert, rbaccount_erase;
 #include <iostream>
+#include <utility>
 #include <string.h>
 #include "RBTree.hh"
 #include <sys/time.h>
@@ -15,7 +16,8 @@ void rbaccount_report() {
 
 int main() {
     {
-        RBTree<int> tree;
-        tree.insert(1);
+        RBTree<std::pair<int, int>> tree;
+       auto x = std::pair<int, int>(1,1);
+        tree.insert(x);
     }
 }

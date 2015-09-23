@@ -73,6 +73,11 @@ struct default_comparator {
     }
 };
 
+template <typename T>
+inline int default_compare(const T &a, const T &b) {
+    return default_comparator<T>()(a, b);
+}
+
 template <typename T, typename Compare>
 struct rbrep : public rbcompare<Compare> {
     T* root_;
@@ -320,7 +325,7 @@ inline rbcompare<Compare>::rbcompare(const Compare& compare)
 template <typename Compare> template <typename T>
 inline int rbcompare<Compare>::node_compare(const T& a, const T& b) const {
     int cmp = this->operator()(a, b);
-    return cmp ? cmp : default_compare(&a, &b);
+    return cmp ? cmp : rbpriv::default_compare(&a, &b);
 }
 
 template <typename Compare> template <typename A, typename B>

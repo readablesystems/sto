@@ -28,8 +28,6 @@ class rbwrapper : public T {
 template <typename T>
 class RBTree {
     public :
-        inline RBTree();
-        ~RBTree();
 
 /*
         inline T *root();
