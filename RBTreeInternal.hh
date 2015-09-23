@@ -346,7 +346,6 @@ inline Compare& rbcompare<Compare>::get_compare() const {
 } // namespace rbpriv
 
 // RBTREE FUNCTION DEFINITIONS
-// XXX what is r_?
 template <typename T, typename C>
 inline rbtree<T, C>::rbtree(const value_compare &compare)
     : r_(compare) {
@@ -546,6 +545,7 @@ template <typename T, typename C>
 inline void rbtree<T, C>::erase(T& node) {
     rbaccount(erase);
     delete_node(&node, nullptr);
+    delete &node;
 }
 
 // RBNODEPTR FUNCTION DEFINITIONS

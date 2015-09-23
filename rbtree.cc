@@ -16,8 +16,8 @@ void rbaccount_report() {
 
 int main() {
     {
-        RBTree<std::pair<int, int>> tree;
-       auto x = std::pair<int, int>(1,1);
+        RBTree<int, int> tree;
+        auto x = std::pair<int, int>(1,1);
         tree.insert(x);
     }
 }

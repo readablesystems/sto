@@ -25,34 +25,51 @@ class rbwrapper : public T {
     rblinks<rbwrapper<T> > rblinks_;
 };
 
-template <typename T>
+template <typename K, typename T>
 class RBTree {
     public :
-
-/*
-        inline T *root();
-
         // lookup
-        inline bool empty() const;
-        inline size_t size() const;
-        template <typename K>
         inline size_t count(const K& key) const;
 
         // element access
-        template <typename K>
         inline T& operator[](const K& key);
         
         // modifiers
-        // XXX should we also dispose (i.e. delete/free) the node?
-        inline void erase(T& x);
-*/
-        inline void insert(T& n);
+        inline int erase(K& key);
+        inline void insert(std::pair<K, T>& n);
     private:
-        rbtree<rbwrapper<T>> wrapper_tree_;
+        rbtree<rbwrapper<std::pair<K, T>>> wrapper_tree_;
 };
 
-template <typename T>
-inline void RBTree<T>::insert(T& n) {
-    auto x = *new rbwrapper<T>(n);
+template <typename K, typename T>
+inline size_t RBTree<K, T>::count(const K& key) const {
+    return wrapper_tree_.count(key);
+}
+
+template <typename K, typename T>
+inline T& RBTree<K, T>::operator[](const K& key) {
+    auto x = wrapper_tree_.find_any(key);
+    if (x) 
+        return x->value().second;
+    // create a new key-value pair with empty value
+    // return reference to value
+    auto n = *new rbwrapper<std::pair<K, T>>(std::pair<K, T>(key, T()));
+    wrapper_tree_.insert(n);
+    return n.value().second;
+}
+
+template <typename K, typename T>
+inline void RBTree<K, T>::insert(std::pair<K, T>& kvp) {
+    auto x = *new rbwrapper<std::pair<K, T>>(kvp);
     wrapper_tree_.insert(x);
+}
+
+template <typename K, typename T>
+inline int RBTree<K, T>::erase(K& key) {
+    auto x = wrapper_tree_.find_any(key);
+    if (x) {
+        wrapper_tree_.erase(x);
+        return 1;
+    }
+    else return 0;
 }
