@@ -69,7 +69,7 @@ struct rbcompare : private Compare {
 template <typename T>
 struct default_comparator {
     inline int operator()(const T &a, const T &b) const {
-	return a < b ? -1 : (b < a ? 1 : 0);
+    return a < b ? -1 : (b < a ? 1 : 0);
     }
 };
 
@@ -254,9 +254,9 @@ inline rbnodeptr<T>& rbnodeptr<T>::load_color() {
 template <typename T>
 inline rbnodeptr<T> rbnodeptr<T>::set_child(bool isright, rbnodeptr<T> x, T*& root) const {
     if (x_)
-	child(isright) = x;
+    child(isright) = x;
     else
-	root = x.node();
+    root = x.node();
     return x;
 }
 
@@ -552,17 +552,17 @@ inline void rbtree<T, C>::erase(T& node) {
 template <typename T>
 void rbnodeptr<T>::output(std::ostream &s, int indent, T* highlight) const {
     if (!*this)
-	s << "<empty>\n";
+    s << "<empty>\n";
     else {
-	if (child(0))
-	    child(0).output(s, indent + 2, highlight);
-	s << std::setw(indent) << "" << (const T&) *node() << " @" << (void*) node() << (red() ? " red" : "");
-	if (highlight && highlight == node())
-	    s << " ******  p@" << (void*) node()->rblinks_.p_ << "\n";
-	else
-	    s << "\n";
-	if (child(1))
-	    child(1).output(s, indent + 2, highlight);
+    if (child(0))
+        child(0).output(s, indent + 2, highlight);
+    s << std::setw(indent) << "" << (const T&) *node() << " @" << (void*) node() << (red() ? " red" : "");
+    if (highlight && highlight == node())
+        s << " ******  p@" << (void*) node()->rblinks_.p_ << "\n";
+    else
+        s << "\n";
+    if (child(1))
+        child(1).output(s, indent + 2, highlight);
     }
 }
 
@@ -575,7 +575,7 @@ std::ostream &operator<<(std::ostream &s, const rbtree<T, C> &tree) {
 template <typename T>
 size_t rbnodeptr<T>::size() const {
     return 1 + (child(false) ? child(false).size() : 0)
-	+ (child(true) ? child(true).size() : 0);
+    + (child(true) ? child(true).size() : 0);
 }
 
 template <typename T, typename C>
