@@ -7,7 +7,6 @@
 #include "MassTrans.hh"
 #include "List.hh"
 #include "Queue.hh"
-#include "RBTree.hh"
 #include "Transaction.hh"
 
 #define N 100

@@ -1,10 +1,6 @@
 #pragma once
 
-#include <inttypes.h>
-#include <iostream>
 #include <iomanip>
-#include <iterator>
-#include <vector>
 #include "TaggedLow.hh"
 #include "Transaction.hh"
 #include "versioned_value.hh"
@@ -56,134 +52,6 @@ class rbnodeptr {
     uintptr_t x_;
 };
 
-// XXX syntax?
-template <typename T, typename Compare = default_comparator<T>>
-class rbtree : public Shared {
-    typedef TransactionTid::type Version;
-    typedef VersionFunctions<Version> Versioning;
-    typedef versioned_value_struct<T> versioned_value;
-    
-    static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
-    static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
-    
-    static constexpr Version insert_bit = TransactionTid::user_bit1;
-    static constexpr Version delete_bit = TransactionTid::user_bit1<<1;
-    static constexpr Version dirty_bit = TransactionTid::user_bit1<<2;
-  public:
-
-    typedef T* pointer;
-    typedef const T* const_pointer;
-    typedef T value_type;
-    typedef value_type key_type;
-    typedef T& reference;
-    typedef const T& const_reference;
-    typedef Compare value_compare;
-    typedef T node_type;
-
-    inline rbtree(const value_compare &compare = value_compare());
-    ~rbtree();
-
-    inline node_type *root();
-
-    // lookup
-    inline bool empty() const;
-    inline size_t size() const;
-
-    // XXX why does this work for private functions??
-    template <typename K>
-    inline size_t count(const &K key) const;
-
-    // element access
-    template <typename K>
-    inline &T operator[](const &K key);
-    
-    // modifiers
-    // XXX should we also dispose (i.e. delete/free) the node?
-    inline void insert(reference n);
-    inline void erase(reference x);
-  
-    template <typename TT, typename CC>
-    friend std::ostream &operator<<(std::ostream &s, const rbtree<TT, CC> &tree);
-    
-    inline void lock(versioned_value *e);
-    inline void unlock(versioned_value *e);
-    inline void lock(TransItem& item);
-    inline void unlock(TransItem& item);
-    int check() const;
-    inline void install(TransItem& item, const Transaction& t);
-    inline void cleanup(TransItem& item, bool committed);
-
-  private:
-    // XXX rbpriv is a namespace?
-    rbpriv::rbrep<T, Compare> r_;
-
-    template <typename K, typename Comp>
-    inline T* find_any(const K& key, Comp comp) const;
-    template <typename K, typename Comp>
-    inline T* find_first(const K& key, Comp comp) const;
-   
-    void insert_commit(T* x, rbnodeptr<T> p, bool side);
-    void delete_node(T* victim, T* successor_hint);
-    void delete_node_fixup(rbnodeptr<T> p, bool side);
-    
-    static void lock(Version *v) {
-        TransactionTid::lock(*v);
-    }
-    
-    static void unlock(Version *v) {
-        TransactionTid::unlock(*v);
-    }
-    
-    static bool is_locked(Version v) {
-        return TransactionTid::is_locked(v);
-    }
-
-    static bool has_insert(const TransItem& item) {
-        return item.flags() & insert_tag;
-    }
-    static bool has_delete(const TransItem& item) {
-        return item.flags() & delete_tag;
-    }
-    
-    static bool is_inserted(Version v) {
-        return v & insert_bit;
-    }
-    
-    static void erase_inserted(Version* v) {
-        *v = *v & (~insert_bit);
-    }
-    
-    static void mark_inserted(Version* v) {
-        *v = *v | insert_bit;
-    }
-    
-    static bool is_dirty(Version v) {
-        return v & dirty_bit;
-    }
-    
-    static void erase_dirty(Version* v) {
-        *v = *v & (~dirty_bit);
-    }
-    
-    static void mark_dirty(Version* v) {
-        *v = *v | dirty_bit;
-    }
-            
-    static bool is_deleted(Version v) {
-        return v & delete_bit;
-    }
-            
-    static void erase_deleted(Version* v) {
-        *v = *v & (~delete_bit);
-    }
-            
-    static void mark_deleted(Version* v) {
-        *v = *v | delete_bit;
-    }
-
-    Version treelock_;
-};
-
 template <typename T>
 class rblinks {
   public:
@@ -200,6 +68,13 @@ struct rbcompare : private Compare {
     template <typename A, typename B>
     inline int compare(const A &a, const B &b) const;
     inline Compare& get_compare() const;
+};
+
+template <typename T>
+struct default_comparator {
+    inline int operator()(const T &a, const T &b) const {
+	return a < b ? -1 : (b < a ? 1 : 0);
+    }
 };
 
 template <typename T, typename Compare>
@@ -273,6 +148,130 @@ class rbalgorithms {
     static inline T* edge_node(T* n, bool forward);
 };
 
+template <typename T, typename Compare = rbpriv::default_comparator<T>>
+class rbtree : public Shared {
+    typedef TransactionTid::type Version;
+    typedef VersionFunctions<Version> Versioning;
+    typedef versioned_value_struct<T> versioned_value;
+    
+    static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
+    static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
+    
+    static constexpr Version insert_bit = TransactionTid::user_bit1;
+    static constexpr Version delete_bit = TransactionTid::user_bit1<<1;
+    static constexpr Version dirty_bit = TransactionTid::user_bit1<<2;
+  public:
+
+    typedef T* pointer;
+    typedef const T* const_pointer;
+    typedef T value_type;
+    typedef value_type key_type;
+    typedef T& reference;
+    typedef const T& const_reference;
+    typedef Compare value_compare;
+    typedef T node_type;
+
+    inline rbtree(const value_compare &compare = value_compare());
+    ~rbtree();
+
+    inline node_type *root();
+
+    // lookup
+    inline bool empty() const;
+    inline size_t size() const;
+
+    template <typename K>
+    inline size_t count(const K& key) const;
+
+    // element access
+    template <typename K>
+    inline T& operator[](const K& key);
+    
+    // modifiers
+    // XXX should we also dispose (i.e. delete/free) the node?
+    inline void insert(reference n);
+    inline void erase(reference x);
+  
+    template <typename TT, typename CC>
+    friend std::ostream &operator<<(std::ostream &s, const rbtree<TT, CC> &tree);
+    
+    inline void lock(versioned_value *e);
+    inline void unlock(versioned_value *e);
+    inline void lock(TransItem& item);
+    inline void unlock(TransItem& item);
+    int check() const;
+    inline void install(TransItem& item, const Transaction& t);
+    inline void cleanup(TransItem& item, bool committed);
+
+  private:
+    rbpriv::rbrep<T, Compare> r_;
+
+    template <typename K, typename Comp>
+    inline T* find_any(const K& key, Comp comp) const;
+    template <typename K, typename Comp>
+    inline T* find_first(const K& key, Comp comp) const;
+   
+    void insert_commit(T* x, rbnodeptr<T> p, bool side);
+    void delete_node(T* victim, T* successor_hint);
+    void delete_node_fixup(rbnodeptr<T> p, bool side);
+    
+    static void lock(Version *v) {
+        TransactionTid::lock(*v);
+    }
+    
+    static void unlock(Version *v) {
+        TransactionTid::unlock(*v);
+    }
+    
+    static bool is_locked(Version v) {
+        return TransactionTid::is_locked(v);
+    }
+
+    static bool has_insert(const TransItem& item) {
+        return item.flags() & insert_tag;
+    }
+    static bool has_delete(const TransItem& item) {
+        return item.flags() & delete_tag;
+    }
+    
+    static bool is_inserted(Version v) {
+        return v & insert_bit;
+    }
+    
+    static void erase_inserted(Version* v) {
+        *v = *v & (~insert_bit);
+    }
+    
+    static void mark_inserted(Version* v) {
+        *v = *v | insert_bit;
+    }
+    
+    static bool is_dirty(Version v) {
+        return v & dirty_bit;
+    }
+    
+    static void erase_dirty(Version* v) {
+        *v = *v & (~dirty_bit);
+    }
+    
+    static void mark_dirty(Version* v) {
+        *v = *v | dirty_bit;
+    }
+            
+    static bool is_deleted(Version v) {
+        return v & delete_bit;
+    }
+            
+    static void erase_deleted(Version* v) {
+        *v = *v & (~delete_bit);
+    }
+            
+    static void mark_deleted(Version* v) {
+        *v = *v | delete_bit;
+    }
+
+    Version treelock_;
+};
 
 template <typename T>
 inline rbnodeptr<T>::rbnodeptr(T* x, bool color)
@@ -425,7 +424,7 @@ inline Compare& rbcompare<Compare>::get_compare() const {
 } // namespace rbpriv
 
 // RBTREE FUNCTION DEFINITIONS
-// XXX no r_
+// XXX what is r_?
 template <typename T, typename C>
 inline rbtree<T, C>::rbtree(const value_compare &compare)
     : r_(compare) {
@@ -436,25 +435,23 @@ template <typename T, typename C>
 rbtree<T, C>::~rbtree() {
 }
 
-// XXX DOesn't match??
 template <typename T, typename C> template <typename K>
-inline size_t rbtree<T, C>::count(const &K key) {
+inline size_t rbtree<T, C>::count(const K& key) const {
     return ((find_any(key, rbpriv::make_compare<T, T>(r_.get_compare()))) ? 1 : 0);
 }
 
 template <typename T, typename C> template <typename K>
-T& rbtree<T, C>::operator[](const &K key) {
+T& rbtree<T, C>::operator[](const K& key) {
     T* n = find_any(key, rbpriv::make_compare<T, T>(r_.get_compare()));
     // insert a key with a default value into the tree if key not in tree and return the reference
     if (!n) {
         // create a new node with key "key" and call insert
         // return the node (reference to the node)
     }
-    return n ? *n : 
+    return n ? *n : NULL;
 }
 
 
-// XXX what is r_?
 template <typename T, typename C>
 void rbtree<T, C>::insert_commit(T* x, rbnodeptr<T> p, bool side) {
     // link in new node; it's red
