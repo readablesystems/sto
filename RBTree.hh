@@ -37,6 +37,7 @@ class rbnodeptr {
     inline rbnodeptr<T> change_color(bool color) const;
     inline rbnodeptr<T> reverse_color() const;
 
+    // XXX what is F? used for reshaping?
     template <typename F> inline rbnodeptr<T> rotate(bool isright, F &f) const;
     template <typename F> inline rbnodeptr<T> rotate_left(F &f) const;
     template <typename F> inline rbnodeptr<T> rotate_right(F &f) const;
