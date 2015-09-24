@@ -149,6 +149,9 @@ class rbalgorithms {
     static inline T* edge_node(T* n, bool forward);
 };
 
+//template <typename K, typename V>
+//class RBTree;
+
 template <typename T, typename Compare = rbpriv::default_comparator<T>>
 class rbtree {
   public:
@@ -195,6 +198,8 @@ class rbtree {
     void insert_commit(T* x, rbnodeptr<T> p, bool side);
     void delete_node(T* victim, T* successor_hint);
     void delete_node_fixup(rbnodeptr<T> p, bool side);
+
+    template<typename K, typename V> friend class RBTree;
 };
 
 template <typename T>

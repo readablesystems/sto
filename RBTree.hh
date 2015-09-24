@@ -21,7 +21,10 @@ class rbwrapper : public T {
     : T(std::move(x)) {
     }
     inline const T& value() const {
-    return *this;
+        return *this;
+    }
+    inline T& mutable_value() {
+        return *this;
     }
     rblinks<rbwrapper<T> > rblinks_;
 };
@@ -41,14 +44,19 @@ public:
     static constexpr Version delete_bit = TransactionTid::user_bit1<<1;
     static constexpr Version dirty_bit = TransactionTid::user_bit1<<2;
 
-    explicit rbpair(K &key, T &value) {
+    explicit rbpair(const K &key, const T &value) {
         versioned_value *val = versioned_value::make(value, TransactionTid::increment_value + insert_bit);
         versioned_pair_.first = key;
         versioned_pair_.second = val;
-    };
+    }
     explicit rbpair(std::pair<K, T> &kvp) {
         rbpair(kvp.first, kvp.second);
     }
+    rbpair(rbpair &&cp) {
+        rbpair(cp.key(), cp.writable_value());
+    }
+    ~rbpair() {delete versioned_pair_.second;}
+
     inline const K& key() const {
         return versioned_pair_.first;
     }
@@ -56,7 +64,8 @@ public:
         return versioned_pair_.second;
     }
     inline T& writable_value() {
-        return versioned_pair_.second->writable_value();
+        //XXX typo in versioned_value.hh...
+        return versioned_pair_.second->writeable_value();
     }
 
     inline bool operator<(const rbpair& rhs) const {
@@ -73,6 +82,8 @@ template <typename K, typename T>
 class RBTree {
     public:
         // lookup
+        typedef rbwrapper<rbpair<K, T>> wrapper_type;
+        typedef rbtree<wrapper_type> internal_tree_type;
         inline size_t count(const K& key) const;
 
         // element access
@@ -82,7 +93,7 @@ class RBTree {
         inline int erase(K& key);
         inline void insert(std::pair<K, T>& n);
     private:
-        rbtree<rbwrapper<rbpair<K, T>>> wrapper_tree_;
+        internal_tree_type wrapper_tree_;
 };
 
 template <typename K, typename T>
@@ -92,20 +103,22 @@ inline size_t RBTree<K, T>::count(const K& key) const {
 
 template <typename K, typename T>
 inline T& RBTree<K, T>::operator[](const K& key) {
-    auto x = wrapper_tree_.find_any(key);
+    rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
+    auto x = wrapper_tree_.find_any(idx_pair,
+        rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
     if (x) 
-        return x->value().writable_value();
+        return x->mutable_value().writable_value();
     // create a new key-value pair with empty value
     // return reference to value
-    auto n = *new rbwrapper<rbpair<K, T>>(rbpair<K, T>(key, T()));
-    wrapper_tree_.insert(n);
-    return n.value().writable_value();
+    auto n = new rbwrapper<rbpair<K, T>>(rbpair<K, T>(key, T()));
+    wrapper_tree_.insert(*n);
+    return n->mutable_value().writable_value();
 }
 
 template <typename K, typename T>
 inline void RBTree<K, T>::insert(std::pair<K, T>& kvp) {
-    auto x = *new rbwrapper<rbpair<K, T>>(kvp);
-    wrapper_tree_.insert(x);
+    auto x = new rbwrapper<rbpair<K, T>>(kvp);
+    wrapper_tree_.insert(*x);
 }
 
 template <typename K, typename T>
