@@ -44,18 +44,22 @@ public:
     static constexpr Version delete_bit = TransactionTid::user_bit1<<1;
     static constexpr Version dirty_bit = TransactionTid::user_bit1<<2;
 
-    explicit rbpair(const K &key, const T &value) {
-        versioned_value *val = versioned_value::make(value, TransactionTid::increment_value + insert_bit);
-        versioned_pair_.first = key;
-        versioned_pair_.second = val;
+    explicit rbpair(const K& key, const T& value) {
+        init(key, value);
     }
-    explicit rbpair(std::pair<K, T> &kvp) {
-        rbpair(kvp.first, kvp.second);
+    explicit rbpair(std::pair<K, T>& kvp) {
+        init(kvp.first, kvp.second);
     }
-    rbpair(rbpair &&cp) {
-        rbpair(cp.key(), cp.writable_value());
+
+    // move ctor
+    inline rbpair(rbpair&& cp) noexcept {
+        versioned_pair_.first = cp.key();
+        versioned_pair_.second = cp.vervalue();
+        cp.versioned_pair_.first = K();
+        cp.versioned_pair_.second = nullptr;
     }
-    ~rbpair() {delete versioned_pair_.second;}
+
+    ~rbpair(){delete versioned_pair_.second;}
 
     inline const K& key() const {
         return versioned_pair_.first;
@@ -75,6 +79,12 @@ public:
         return (key() > rhs.key());
     }
 private:
+    void init(const K& key, const T& value) {
+        versioned_value *val = versioned_value::make(value,
+            TransactionTid::increment_value + insert_bit);
+        versioned_pair_.first = key;
+        versioned_pair_.second = val;
+    }
     std::pair<K, versioned_value*> versioned_pair_;
 };
 
@@ -110,15 +120,15 @@ inline T& RBTree<K, T>::operator[](const K& key) {
         return x->mutable_value().writable_value();
     // create a new key-value pair with empty value
     // return reference to value
-    auto n = new rbwrapper<rbpair<K, T>>(rbpair<K, T>(key, T()));
+    auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, T())  );
     wrapper_tree_.insert(*n);
     return n->mutable_value().writable_value();
 }
 
 template <typename K, typename T>
 inline void RBTree<K, T>::insert(std::pair<K, T>& kvp) {
-    auto x = new rbwrapper<rbpair<K, T>>(kvp);
-    wrapper_tree_.insert(*x);
+    rbpair<K, T> rbkvp(kvp);
+    wrapper_tree_.insert(*new rbwrapper<rbpair<K, T> >(  std::move(rbkvp)  ));
 }
 
 template <typename K, typename T>
