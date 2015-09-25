@@ -171,9 +171,6 @@ class rbtree {
     inline bool empty() const;
     inline size_t size() const;
 
-    template <typename K>
-    inline size_t count(const K& key) const;
-
     // modifiers
     inline void insert(reference n);
     inline void erase(reference x);
@@ -351,11 +348,6 @@ inline rbtree<T, C>::rbtree(const value_compare &compare)
 
 template <typename T, typename C>
 rbtree<T, C>::~rbtree() {
-}
-
-template <typename T, typename C> template <typename K>
-inline size_t rbtree<T, C>::count(const K& key) const {
-    return ((find_any(key, rbpriv::make_compare<T, T>(r_.get_compare()))) ? 1 : 0);
 }
 
 template <typename T, typename C>

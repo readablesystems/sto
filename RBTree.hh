@@ -65,7 +65,7 @@ public:
         return versioned_pair_.second;
     }
     inline T& writeable_value() {
-        //XXX typo in versioned_value.hh...
+        //XXX typo in versioned_value.hh... should be writable :(
         return versioned_pair_.second->writeable_value();
     }
 
@@ -76,15 +76,10 @@ public:
         return (key() > rhs.key());
     }
 
-    void lock(versioned_value *e) {
-        lock(&e->version());
-    }
-    void unlock(versioned_value *e) {
-        unlock(&e->version());
-    }
-
 private:
     void init(const K& key, const T& value) {
+        // initialize with "insert_bit" set (i.e. inserted but not committed)
+        // erase at commit time 
         versioned_value *val = versioned_value::make(value,
             TransactionTid::increment_value + insert_bit);
         versioned_pair_.first = key;
@@ -122,6 +117,12 @@ public:
     inline int erase(K& key);
     inline void insert(std::pair<K, T>& n);
 
+    void lock(versioned_value *e) {
+        lock(&e->version());
+    }
+    void unlock(versioned_value *e) {
+        unlock(&e->version());
+    }
     inline void lock(TransItem& item);
     inline void unlock(TransItem& item);
     inline bool check(const TransItem& item, const Transaction& trans);
@@ -129,6 +130,31 @@ public:
     inline void cleanup(TransItem& item, bool committed);
 
 private:
+    // return a pointer to the rbwrapper 
+    // abort if value inserted and not yet committed
+    inline rbwrapper<rbpair<K, T>>* find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) {
+        auto x = wrapper_tree_.find_any(rbkvp,
+            rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+        if (x) {
+            // x->mutable_value() returns the rbpair
+            versioned_value* v = x->mutable_value().vervalue();
+            // check if rbpair has version "inserted" (someone inserted w/out commit)
+            if (is_inserted(v->version())) {
+                auto item = Sto::item(this, v);
+                // check if item was inserted by this transaction
+                if (has_insert(item)) {
+                    return x; 
+                } else {
+                    // some other transaction inserted this node and hasn't committed
+                    Sto::abort();
+                    // XXX do we need to return something after an abort?
+                }
+           }
+        }
+        // item was committed or DNE, so return pointer
+        return x;
+    }
+
     static void lock(Version *v) {
         TransactionTid::lock(*v);
     }
@@ -178,39 +204,26 @@ private:
 
 template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
-    return wrapper_tree_.count(key);
+    rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
+    return ((find_or_abort(idx_pair)) ? 1 : 0);
 }
 
 template <typename K, typename T>
 inline T& RBTree<K, T>::operator[](const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    auto x = wrapper_tree_.find_any(idx_pair,
-        rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-    if (x) {
-        // x->mutable_value() returns the rbpair
-        versioned_value* v = x->mutable_value().vervalue();
-        // check if x has version "inserted" (someone inserted w/out commit)
-        if (is_inserted(v->version())) {
-            auto item = Sto::item(this, v);
-            // check if item was inserted by this transaction
-            if (has_insert(item)) {
-                return x->mutable_value().writeable_value(); 
-            } else {
-                // some other transaction inserted this node and hasn't committed
-                Sto::abort();
-                // XXX do we need to return something after an abort?
-            }
-        }
-        // item was committed
-        return x->mutable_value().writeable_value();
+    auto x = find_or_abort(idx_pair);
+    if (!x) {
+        // if item DNE, return ref to newly inserted new key-value pair with empty value
+        // lock entire tree during insert
+        auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, T())  );
+        lock(&treelock_);
+        wrapper_tree_.insert(*n);
+        unlock(&treelock_);
+        // XXX add write and insert flag of item (value of rbpair) with value T()
+        // Sto::item(this, n->mutable_value().vervalue()).add_write(T()).add_flags(insert_tag);
+        return n->mutable_value().writeable_value();
     }
-    // if item DNE, return ref to newly inserted new key-value pair with empty value
-    // lock entire tree during insert
-    auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, T())  );
-    lock(&treelock_);
-    wrapper_tree_.insert(*n);
-    unlock(&treelock_);
-    return n->mutable_value().writeable_value();
+    return x->mutable_value().writeable_value();
 }
 
 template <typename K, typename T>
