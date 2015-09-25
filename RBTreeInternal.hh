@@ -187,8 +187,6 @@ class rbtree {
 
     template <typename K, typename Comp>
     inline T* find_any(const K& key, Comp comp) const;
-    template <typename K, typename Comp>
-    inline T* find_first(const K& key, Comp comp) const;
    
     void insert_commit(T* x, rbnodeptr<T> p, bool side);
     void delete_node(T* victim, T* successor_hint);
@@ -516,23 +514,11 @@ inline T* rbtree<T, C>::find_any(const K& key, Comp comp) const {
     return n;
 }
 
-template <typename T, typename C> template <typename K, typename Comp>
-inline T* rbtree<T, C>::find_first(const K& key, Comp comp) const {
-    T* n = r_.root_;
-    T* answer = nullptr;
-    while (n) {
-        int cmp = comp.compare(key, *n);
-        if (cmp == 0)
-            answer = n;
-        n = n->rblinks_.c_[cmp > 0].node();
-    }
-    return answer;
-}
-
 template <typename T, typename C>
 inline void rbtree<T, C>::erase(T& node) {
     rbaccount(erase);
     delete_node(&node, nullptr);
+    // dispose of node after removing from tree (non-intrusive)
     delete &node;
 }
 
