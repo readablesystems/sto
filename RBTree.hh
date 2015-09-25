@@ -147,7 +147,7 @@ private:
                 } else {
                     // some other transaction inserted this node and hasn't committed
                     Sto::abort();
-                    // XXX do we need to return something after an abort?
+                    return NULL;
                 }
            }
         }
