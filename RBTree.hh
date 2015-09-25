@@ -130,8 +130,7 @@ public:
     inline void cleanup(TransItem& item, bool committed);
 
 private:
-    // return a pointer to the rbwrapper 
-    // abort if value inserted and not yet committed
+    // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
     inline rbwrapper<rbpair<K, T>>* find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) {
         auto x = wrapper_tree_.find_any(rbkvp,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
@@ -236,14 +235,14 @@ inline void RBTree<K, T>::insert(std::pair<K, T>& kvp) {
 
 template <typename K, typename T>
 inline int RBTree<K, T>::erase(K& key) {
-    lock(&treelock_);
-    rbpair<K, T>* x = wrapper_tree_.find_any(key);
+    rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
+    rbpair<K, T>* x = find_or_abort(idx_pair);
     if (x) {
+        lock(&treelock_);
         wrapper_tree_.erase(x);
         unlock(&treelock_);
         return 1;
     }
-    unlock(&treelock_);
     return 0;
 }
 
