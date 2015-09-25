@@ -174,12 +174,7 @@ class rbtree {
     template <typename K>
     inline size_t count(const K& key) const;
 
-    // element access
-    template <typename K>
-    inline T& operator[](const K& key);
-    
     // modifiers
-    // XXX should we also dispose (i.e. delete/free) the node?
     inline void insert(reference n);
     inline void erase(reference x);
   
@@ -364,18 +359,6 @@ template <typename T, typename C> template <typename K>
 inline size_t rbtree<T, C>::count(const K& key) const {
     return ((find_any(key, rbpriv::make_compare<T, T>(r_.get_compare()))) ? 1 : 0);
 }
-
-template <typename T, typename C> template <typename K>
-T& rbtree<T, C>::operator[](const K& key) {
-    T* n = find_any(key, rbpriv::make_compare<T, T>(r_.get_compare()));
-    // insert a key with a default value into the tree if key not in tree and return the reference
-    if (!n) {
-        // create a new node with key "key" and call insert
-        // return the node (reference to the node)
-    }
-    return n ? *n : NULL;
-}
-
 
 template <typename T, typename C>
 void rbtree<T, C>::insert_commit(T* x, rbnodeptr<T> p, bool side) {
