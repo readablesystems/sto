@@ -8,6 +8,9 @@
 #include "VersionFunctions.hh"
 #include "RBTreeInternal.hh"
 
+template <typename K, typename T>
+class RBTree;
+
 template <typename T>
 class rbwrapper : public T {
   public:
@@ -34,11 +37,9 @@ class rbwrapper : public T {
 template <typename K, typename T>
 class rbpair {
 public:
-    // XXX typedef again in RBTree --> bad?
     typedef TransactionTid::type Version;
     typedef versioned_value_struct<T> versioned_value;
 
-    // XXX defined in both classes?
     static constexpr Version insert_bit = TransactionTid::user_bit1;
 
     explicit rbpair(const K& key, const T& value) {
@@ -68,12 +69,15 @@ public:
         //XXX typo in versioned_value.hh... should be writable :(
         return versioned_pair_.second->writeable_value();
     }
-
     inline bool operator<(const rbpair& rhs) const {
         return (key() < rhs.key());
     }
     inline bool operator>(const rbpair& rhs) const {
         return (key() > rhs.key());
+    }
+    rbpair& operator= (const T& v) {
+        rbtree_->insert(v);
+        return *this;
     }
 
 private:
@@ -85,7 +89,8 @@ private:
         versioned_pair_.first = key;
         versioned_pair_.second = val;
     }
-    
+   
+    RBTree<K, T>* rbtree_;
     std::pair<K, versioned_value*> versioned_pair_;
 };
 
@@ -111,7 +116,9 @@ public:
     inline size_t count(const K& key) const;
 
     // element access
-    inline T& operator[](const K& key);
+    // XXX problem with overriding operator[]?
+    inline const T& operator[](const K& key);
+    inline rbpair<K, T>& operator[](const K& key);
     
     // modifiers
     inline int erase(K& key);
@@ -132,8 +139,11 @@ public:
 private:
     // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
     inline rbwrapper<rbpair<K, T>>* find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) {
+        // XXX problem with overloading lock -- this doesn't work?
+        lock(treelock_);
         auto x = wrapper_tree_.find_any(rbkvp,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+        unlock(treelock_);
         if (x) {
             // x->mutable_value() returns the rbpair
             versioned_value* v = x->mutable_value().vervalue();
@@ -208,7 +218,7 @@ inline size_t RBTree<K, T>::count(const K& key) const {
 }
 
 template <typename K, typename T>
-inline T& RBTree<K, T>::operator[](const K& key) {
+inline const T& RBTree<K, T>::operator[](const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
     auto x = find_or_abort(idx_pair);
     if (!x) {
@@ -220,9 +230,31 @@ inline T& RBTree<K, T>::operator[](const K& key) {
         unlock(&treelock_);
         // XXX add write and insert flag of item (value of rbpair) with value T()
         // Sto::item(this, n->mutable_value().vervalue()).add_write(T()).add_flags(insert_tag);
+        
+        // return the reference to the actual value 
         return n->mutable_value().writeable_value();
     }
     return x->mutable_value().writeable_value();
+}
+
+template <typename K, typename T>
+inline rbpair<K, T>& RBTree<K, T>::operator[](const K& key) {
+    rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
+    auto x = find_or_abort(idx_pair);
+    if (!x) {
+        // if item DNE, return ref to newly inserted new key-value pair with empty value
+        // lock entire tree during insert
+        auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, T())  );
+        lock(&treelock_);
+        wrapper_tree_.insert(*n);
+        unlock(&treelock_);
+        // XXX add write and insert flag of item (value of rbpair) with value T()
+        // Sto::item(this, n->mutable_value().vervalue()).add_write(T()).add_flags(insert_tag);
+        
+        // XXX return the reference to the rbpair to ensure operator= will be used
+        return n->mutable_value();
+    }
+    return x->mutable_value();
 }
 
 template <typename K, typename T>
@@ -248,20 +280,28 @@ inline int RBTree<K, T>::erase(K& key) {
 
 template <typename K, typename T>
 inline void RBTree<K, T>::lock(TransItem& item) {
+    (void) item;
 }
 
 template <typename K, typename T>
 inline void RBTree<K, T>::unlock(TransItem& item) {
+    (void) item;
 }
 template <typename K, typename T>
 inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans) {
+    (void) item;
+    (void) trans;
     return false;
 }
 
 template <typename K, typename T>
 inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
+    (void) item;
+    (void) t;
 }
 
 template <typename K, typename T>
 inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
+    (void) item;
+        (void) committed;
 }
