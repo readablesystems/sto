@@ -75,10 +75,6 @@ public:
     inline bool operator>(const rbpair& rhs) const {
         return (key() > rhs.key());
     }
-    rbpair& operator= (const T& v) {
-        rbtree_->insert(v);
-        return *this;
-    }
 
 private:
     void init(const K& key, const T& value) {
@@ -90,9 +86,11 @@ private:
         versioned_pair_.second = val;
     }
    
-    RBTree<K, T>* rbtree_;
     std::pair<K, versioned_value*> versioned_pair_;
 };
+
+template <typename K, typename T>
+class RBProxy;
 
 template <typename K, typename T>
 class RBTree : public Shared {
@@ -116,9 +114,7 @@ public:
     inline size_t count(const K& key) const;
 
     // element access
-    // XXX problem with overriding operator[]?
-    inline const T& operator[](const K& key);
-    inline rbpair<K, T>& operator[](const K& key);
+    inline RBProxy<K, T>& operator[](const K& key);
     
     // modifiers
     inline int erase(K& key);
@@ -140,10 +136,10 @@ private:
     // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
     inline rbwrapper<rbpair<K, T>>* find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) {
         // XXX problem with overloading lock -- this doesn't work?
-        lock(treelock_);
+        TransactionTid::lock(treelock_);
         auto x = wrapper_tree_.find_any(rbkvp,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-        unlock(treelock_);
+        TransactionTid::unlock(treelock_);
         if (x) {
             // x->mutable_value() returns the rbpair
             versioned_value* v = x->mutable_value().vervalue();
@@ -156,12 +152,37 @@ private:
                 } else {
                     // some other transaction inserted this node and hasn't committed
                     Sto::abort();
-                    return NULL;
+                    return nullptr;
                 }
            }
         }
         // item was committed or DNE, so return pointer
         return x;
+    }
+
+    // Insert <@key, @value> and force an update if @key exists
+    // return value indicates whether @key exists
+    inline bool insert_update(const K& key, const T& value) {
+        auto x = this->find_or_abort(
+            rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) )
+        );
+        if (x == nullptr) {
+            // this code is largely identical to the conversion operator in RBProxy (or
+            // essentially RBTree::operator[]), see if we can refactor it later
+            auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, value)  );
+            TransactionTid::lock(&treelock_);
+            wrapper_tree_.insert(*n);
+            TransactionTid::unlock(&treelock_);
+            // XXX add write and insert flag of item (value of rbpair) with @value
+            // Sto::item(this, n->mutable_value().vervalue()).add_write(value).add_flags(insert_tag);
+
+            // return the reference to the actual value
+            return false;
+        } else {
+            // XXX add @value to write set
+            // Sto::item(this, x->mutable_value().vervalue()).add_write(value).add_flags(blahblah);
+            return true;
+        }
     }
 
     static void lock(Version *v) {
@@ -209,6 +230,29 @@ private:
 
     internal_tree_type wrapper_tree_;
     Version treelock_;
+    
+    friend class RBProxy<K, T>;
+};
+
+// STL-ish interface wrapper returned by RBTree::operator[]
+template <typename K, typename T>
+class RBProxy {
+public:
+    typedef RBTree<K, T> transtree_t;
+    explicit RBProxy(transtree_t& tree, const K& key)
+        : tree_(tree), key_(key) {};
+    operator T();
+    RBProxy& operator=(const T& value) {
+        tree_.insert_update(key_, value);
+        return *this;
+    };
+    RBProxy& operator=(RBProxy& other) {
+        tree_.insert_update(key_, (T)other);
+        return *this;
+    };
+private:
+    transtree_t& tree_;
+    const K& key_;
 };
 
 template <typename K, typename T>
@@ -218,43 +262,10 @@ inline size_t RBTree<K, T>::count(const K& key) const {
 }
 
 template <typename K, typename T>
-inline const T& RBTree<K, T>::operator[](const K& key) {
-    rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    auto x = find_or_abort(idx_pair);
-    if (!x) {
-        // if item DNE, return ref to newly inserted new key-value pair with empty value
-        // lock entire tree during insert
-        auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, T())  );
-        lock(&treelock_);
-        wrapper_tree_.insert(*n);
-        unlock(&treelock_);
-        // XXX add write and insert flag of item (value of rbpair) with value T()
-        // Sto::item(this, n->mutable_value().vervalue()).add_write(T()).add_flags(insert_tag);
-        
-        // return the reference to the actual value 
-        return n->mutable_value().writeable_value();
-    }
-    return x->mutable_value().writeable_value();
-}
-
-template <typename K, typename T>
-inline rbpair<K, T>& RBTree<K, T>::operator[](const K& key) {
-    rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    auto x = find_or_abort(idx_pair);
-    if (!x) {
-        // if item DNE, return ref to newly inserted new key-value pair with empty value
-        // lock entire tree during insert
-        auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, T())  );
-        lock(&treelock_);
-        wrapper_tree_.insert(*n);
-        unlock(&treelock_);
-        // XXX add write and insert flag of item (value of rbpair) with value T()
-        // Sto::item(this, n->mutable_value().vervalue()).add_write(T()).add_flags(insert_tag);
-        
-        // XXX return the reference to the rbpair to ensure operator= will be used
-        return n->mutable_value();
-    }
-    return x->mutable_value();
+inline RBProxy<K, T>& RBTree<K, T>::operator[](const K& key) {
+    auto proxy = new RBProxy<K, T>(*this, key);
+    // XXX rcu deallocate proxy; safe, right?
+    return *proxy;
 }
 
 template <typename K, typename T>
@@ -303,5 +314,29 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
 template <typename K, typename T>
 inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
     (void) item;
-        (void) committed;
+    (void) committed;
+}
+
+template <typename K, typename T>
+RBProxy<K, T>::operator T() {
+    // XXX basically moved the old operator[] logic here
+    // XXX super ugly right now; needs a lot of refactoring
+    // XXX why are there so many overloaded lock/unlock methods?
+    rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key_, T()));
+    // all methods in class RBTree should be transactional
+    auto x = tree_.find_or_abort(idx_pair);
+    if (!x) {
+        // if item DNE, return ref to newly inserted new key-value pair with empty value
+        // lock entire tree during insert
+        auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key_, T())  );
+        RBTree<K, T>::lock(&tree_.treelock_);
+        tree_.wrapper_tree_.insert(*n);
+        RBTree<K, T>::unlock(&tree_.treelock_);
+        // XXX add write and insert flag of item (value of rbpair) with value T()
+        // Sto::item(this, n->mutable_value().vervalue()).add_write(T()).add_flags(insert_tag);
+        
+        // return the reference to the actual value
+        return n->mutable_value().writeable_value();
+    }
+    return x->mutable_value().writeable_value();
 }
