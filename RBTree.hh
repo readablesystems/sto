@@ -141,7 +141,6 @@ private:
             // x->mutable_value() returns the rbpair
             versioned_value* v = x->mutable_value().vervalue();
             // check if rbpair has version "inserted" (someone inserted w/out commit)
-            // should check insert before deleted because we remove insert_bit after adding delete_bit
             if (is_inserted(v->version())) {
                 auto item = Sto::item(this, v);
                 // check if item was inserted by this transaction
@@ -179,6 +178,7 @@ private:
             // XXX do we need the add_write if we're actually writing the value??
             // insert_tag indicates that we need to remove the insert_bit during install
             Sto::item(this, v).add_write(value).add_flags(insert_tag);
+            // we never actually delete nodes -- if deleted nodes are read, they are just updated
             if (is_deleted(v->version())) {
                 // previous transaction install marked delete_bit and removed insert_bit
                 mark_inserted(&v->version());
@@ -262,7 +262,12 @@ private:
 template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    return ((find_or_abort(idx_pair)) ? 1 : 0);
+    auto x = find_or_abort(idx_pair);
+    if (x) {
+        auto val = x->mutable_value().vervalue();
+        auto item = Sto::item(this, val).add_read(val->version());
+    }
+    return ((x) ? 1 : 0);
 }
 
 template <typename K, typename T>
@@ -282,7 +287,6 @@ inline void RBTree<K, T>::insert(std::pair<K, T>& kvp) {
 
 template <typename K, typename T>
 inline int RBTree<K, T>::erase(K& key) {
-    
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
     rbpair<K, T>* x = find_or_abort(idx_pair);
     auto val = x->mutable_value().vervalue();
@@ -294,13 +298,14 @@ inline int RBTree<K, T>::erase(K& key) {
 
 template <typename K, typename T>
 inline void RBTree<K, T>::lock(TransItem& item) {
-    (void) item;
+    lock(item.key<versioned_value*>());
 }
-
+    
 template <typename K, typename T>
 inline void RBTree<K, T>::unlock(TransItem& item) {
-    (void) item;
+    unlock(item.key<versioned_value*>());
 }
+   
 template <typename K, typename T>
 inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans) {
     (void) item;
@@ -308,14 +313,31 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     return false;
 }
 
+// XXX we use versioned value as the "STO key" -- will break if we start deleting nodes because then two
+// key-versionedvalue pairs with the same key will have two different items
 template <typename K, typename T>
 inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
-    (void) item;
     (void) t;
+    auto e = item.key<versioned_value*>();
+    assert(is_locked(e->version()));
+    if (has_delete(item)) {
+        mark_deleted(&e->version());
+    }
+    if (has_insert(item)) {
+        erase_inserted(&e->version());
+    }
 }
 
 template <typename K, typename T>
 inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
-    (void) item;
-    (void) committed;
+    if (!committed) {
+        // if item has been tagged inserted, then we just mark that it should be deleted 
+        // (i.e. another item can reuse this node)
+        if (has_insert(item)) {
+            auto e = item.key<versioned_value*>();
+            mark_deleted(&e->version());
+            erase_inserted(&e->version());
+        }
+        // if item has been tagged deleted, then we just ignore it (don't set delete bit)
+    }
 }
