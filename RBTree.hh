@@ -308,9 +308,12 @@ inline void RBTree<K, T>::unlock(TransItem& item) {
    
 template <typename K, typename T>
 inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans) {
-    (void) item;
-    (void) trans;
-    return false;
+    auto e = item.key<versioned_value*>();
+    auto read_version = item.template read_value<Version>();
+    // XXX?
+    bool same_version = (read_version ^ e->version()) <= TransactionTid::lock_bit;
+    bool not_locked = (!is_locked(e->version()) || item.has_lock(trans));
+    return same_version && not_locked;
 }
 
 // XXX we use versioned value as the "STO key" -- will break if we start deleting nodes because then two
