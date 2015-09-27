@@ -159,29 +159,29 @@ private:
         return x;
     }
 
-    // Insert <@key, @value> and force an update if @key exists
-    // return value indicates whether @key exists
-    inline bool insert_update(const K& key, const T& value) {
-        auto x = this->find_or_abort(
-            rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) )
-        );
+    // Insert <@key, @value>, optionally force an update if @key exists
+    // return value is a reference to the value of the kvp
+    inline T& insert_update(const K& key, const T& value, bool force) {
+        // XXX basically moved the old operator[] logic here
+        // XXX super ugly right now; needs a lot of refactoring
+        // XXX why are there so many overloaded lock/unlock methods?
+        auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
+        auto x = this->find_or_abort(node);
         if (x == nullptr) {
-            // this code is largely identical to the conversion operator in RBProxy (or
-            // essentially RBTree::operator[]), see if we can refactor it later
             auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, value)  );
             lock(&treelock_);
             wrapper_tree_.insert(*n);
             unlock(&treelock_);
-            // XXX add write and insert flag of item (value of rbpair) with @value
-            // Sto::item(this, n->mutable_value().vervalue()).add_write(value).add_flags(insert_tag);
-
-            // return the reference to the actual value
-            return false;
-        } else {
-            // XXX add @value to write set
-            // Sto::item(this, x->mutable_value().vervalue()).add_write(value).add_flags(blahblah);
-            return true;
+            // add write and insert flag of item (value of rbpair) with @value
+            Sto::item(this, n->mutable_value().vervalue()).add_write(value).add_flags(insert_tag);
+            return n->mutable_value().writeable_value();
+        } else if (force) {
+            // add @value to write set
+            Sto::item(this, x->mutable_value().vervalue()).add_write(value).add_flags(insert_tag);
+            // XXX do we want to write before commit?
+            x->mutable_value().writeable_value() = value;
         }
+        return x->mutable_value().writeable_value();
     }
 
     static void lock(Version *v) {
@@ -242,11 +242,11 @@ public:
         : tree_(tree), key_(key) {};
     operator T();
     RBProxy& operator=(const T& value) {
-        tree_.insert_update(key_, value);
+        tree_.insert_update(key_, value, true);
         return *this;
     };
     RBProxy& operator=(RBProxy& other) {
-        tree_.insert_update(key_, (T)other);
+        tree_.insert_update(key_, (T)other, true);
         return *this;
     };
 private:
@@ -318,24 +318,5 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
 
 template <typename K, typename T>
 RBProxy<K, T>::operator T() {
-    // XXX basically moved the old operator[] logic here
-    // XXX super ugly right now; needs a lot of refactoring
-    // XXX why are there so many overloaded lock/unlock methods?
-    rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key_, T()));
-    // all methods in class RBTree should be transactional
-    auto x = tree_.find_or_abort(idx_pair);
-    if (!x) {
-        // if item DNE, return ref to newly inserted new key-value pair with empty value
-        // lock entire tree during insert
-        auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key_, T())  );
-        RBTree<K, T>::lock(&tree_.treelock_);
-        tree_.wrapper_tree_.insert(*n);
-        RBTree<K, T>::unlock(&tree_.treelock_);
-        // XXX add write and insert flag of item (value of rbpair) with value T()
-        // Sto::item(this, n->mutable_value().vervalue()).add_write(T()).add_flags(insert_tag);
-        
-        // return the reference to the actual value
-        return n->mutable_value().writeable_value();
-    }
-    return x->mutable_value().writeable_value();
+    return tree_.insert_update(key_, T(), false);
 }
