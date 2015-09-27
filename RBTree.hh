@@ -66,7 +66,6 @@ public:
         return versioned_pair_.second;
     }
     inline T& writeable_value() {
-        //XXX typo in versioned_value.hh... should be writable :(
         return versioned_pair_.second->writeable_value();
     }
     inline bool operator<(const rbpair& rhs) const {
@@ -101,7 +100,6 @@ class RBTree : public Shared {
     static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
     static constexpr Version insert_bit = TransactionTid::user_bit1;
     static constexpr Version delete_bit = TransactionTid::user_bit1<<1;
-    static constexpr Version dirty_bit = TransactionTid::user_bit1<<2;
 
 public:
     RBTree() {
@@ -143,6 +141,7 @@ private:
             // x->mutable_value() returns the rbpair
             versioned_value* v = x->mutable_value().vervalue();
             // check if rbpair has version "inserted" (someone inserted w/out commit)
+            // should check insert before deleted because we remove insert_bit after adding delete_bit
             if (is_inserted(v->version())) {
                 auto item = Sto::item(this, v);
                 // check if item was inserted by this transaction
@@ -150,10 +149,11 @@ private:
                     return x; 
                 } else {
                     // some other transaction inserted this node and hasn't committed
+                    // XXX should we abort every time even just for a read?
                     Sto::abort();
                     return nullptr;
                 }
-           }
+            }
         }
         // item was committed or DNE, so return pointer
         return x;
@@ -162,25 +162,37 @@ private:
     // Insert <@key, @value>, optionally force an update if @key exists
     // return value is a reference to the value of the kvp
     inline T& insert_update(const K& key, const T& value, bool force) {
-        // XXX basically moved the old operator[] logic here
-        // XXX super ugly right now; needs a lot of refactoring
-        // XXX why are there so many overloaded lock/unlock methods?
         auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
         auto x = this->find_or_abort(node);
+        lock(&treelock_);
         if (x == nullptr) {
             auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, value)  );
-            lock(&treelock_);
             wrapper_tree_.insert(*n);
             unlock(&treelock_);
             // add write and insert flag of item (value of rbpair) with @value
             Sto::item(this, n->mutable_value().vervalue()).add_write(value).add_flags(insert_tag);
             return n->mutable_value().writeable_value();
-        } else if (force) {
+        // kvp is already inserted into the tree
+        } else {
+            auto v = x->mutable_value().vervalue();
             // add @value to write set
-            Sto::item(this, x->mutable_value().vervalue()).add_write(value).add_flags(insert_tag);
-            // XXX do we want to write before commit?
-            x->mutable_value().writeable_value() = value;
+            // XXX do we need the add_write if we're actually writing the value??
+            // insert_tag indicates that we need to remove the insert_bit during install
+            Sto::item(this, v).add_write(value).add_flags(insert_tag);
+            if (is_deleted(v->version())) {
+                // previous transaction install marked delete_bit and removed insert_bit
+                mark_inserted(&v->version());
+                erase_deleted(&v->version());
+                if (force) {
+                    // XXX do we want to write before commit?
+                    x->mutable_value().writeable_value() = value;
+                } else {
+                   // deleted but we don't want to update with value (T())
+                    x->mutable_value().writeable_value() = T();
+                }
+            }
         }
+        unlock(&treelock_);
         return x->mutable_value().writeable_value();
     }
 
@@ -207,15 +219,6 @@ private:
     }
     static void mark_inserted(Version* v) {
         *v = *v | insert_bit;
-    }
-    static bool is_dirty(Version v) {
-        return v & dirty_bit;
-    }
-    static void erase_dirty(Version* v) {
-        *v = *v & (~dirty_bit);
-    }
-    static void mark_dirty(Version* v) {
-        *v = *v | dirty_bit;
     }
     static bool is_deleted(Version v) {
         return v & delete_bit;
@@ -265,7 +268,7 @@ inline size_t RBTree<K, T>::count(const K& key) const {
 template <typename K, typename T>
 inline RBProxy<K, T>& RBTree<K, T>::operator[](const K& key) {
     auto proxy = new RBProxy<K, T>(*this, key);
-    // XXX rcu deallocate proxy; safe, right?
+    Transaction::rcu_free(proxy);
     return *proxy;
 }
 
@@ -279,15 +282,14 @@ inline void RBTree<K, T>::insert(std::pair<K, T>& kvp) {
 
 template <typename K, typename T>
 inline int RBTree<K, T>::erase(K& key) {
+    
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
     rbpair<K, T>* x = find_or_abort(idx_pair);
-    if (x) {
-        lock(&treelock_);
-        wrapper_tree_.erase(x);
-        unlock(&treelock_);
-        return 1;
-    }
-    return 0;
+    auto val = x->mutable_value().vervalue();
+    auto item = Sto::item(this, val).add_read(val->version());
+    // when install, set delete bit so another transaction will erase
+    item.add_flags(delete_tag);
+    return (x) ? 1 : 0;
 }
 
 template <typename K, typename T>
