@@ -136,10 +136,10 @@ private:
     // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
     inline rbwrapper<rbpair<K, T>>* find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) {
         // XXX problem with overloading lock -- this doesn't work?
-        TransactionTid::lock(treelock_);
+        lock(&treelock_);
         auto x = wrapper_tree_.find_any(rbkvp,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-        TransactionTid::unlock(treelock_);
+        unlock(&treelock_);
         if (x) {
             // x->mutable_value() returns the rbpair
             versioned_value* v = x->mutable_value().vervalue();
@@ -170,9 +170,9 @@ private:
             // this code is largely identical to the conversion operator in RBProxy (or
             // essentially RBTree::operator[]), see if we can refactor it later
             auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, value)  );
-            TransactionTid::lock(&treelock_);
+            lock(&treelock_);
             wrapper_tree_.insert(*n);
-            TransactionTid::unlock(&treelock_);
+            unlock(&treelock_);
             // XXX add write and insert flag of item (value of rbpair) with @value
             // Sto::item(this, n->mutable_value().vervalue()).add_write(value).add_flags(insert_tag);
 
