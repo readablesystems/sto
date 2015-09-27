@@ -112,7 +112,7 @@ public:
     inline size_t count(const K& key) const;
 
     // element access
-    inline RBProxy<K, T>& operator[](const K& key);
+    inline RBProxy<K, T> operator[](const K& key);
     
     // modifiers
     inline int erase(K& key);
@@ -271,10 +271,8 @@ inline size_t RBTree<K, T>::count(const K& key) const {
 }
 
 template <typename K, typename T>
-inline RBProxy<K, T>& RBTree<K, T>::operator[](const K& key) {
-    auto proxy = new RBProxy<K, T>(*this, key);
-    Transaction::rcu_free(proxy);
-    return *proxy;
+inline RBProxy<K, T> RBTree<K, T>::operator[](const K& key) {
+    return RBProxy<K, T>(*this, key);
 }
 
 template <typename K, typename T>
