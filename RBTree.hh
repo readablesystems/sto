@@ -240,7 +240,9 @@ public:
     typedef RBTree<K, T> transtree_t;
     explicit RBProxy(transtree_t& tree, const K& key)
         : tree_(tree), key_(key) {};
-    operator T();
+    operator T() {
+        return tree_.insert_update(key_, T(), false);
+    }
     RBProxy& operator=(const T& value) {
         tree_.insert_update(key_, value, true);
         return *this;
@@ -314,9 +316,4 @@ template <typename K, typename T>
 inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
     (void) item;
     (void) committed;
-}
-
-template <typename K, typename T>
-RBProxy<K, T>::operator T() {
-    return tree_.insert_update(key_, T(), false);
 }
