@@ -25,5 +25,8 @@ int main() {
         assert(tree[1]==1);
         assert(tree[2]==2);
         assert(tree[3]==3);
+        assert(tree.count(1) == 1);
+        assert(tree.erase(1) == 1);
     }
+    return 0;
 }

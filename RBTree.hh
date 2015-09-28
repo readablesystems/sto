@@ -96,7 +96,7 @@ public:
     inline RBProxy<K, T> operator[](const K& key);
     
     // modifiers
-    inline int erase(K& key);
+    inline size_t erase(const K& key);
 
     void lock(versioned_value *e) {
         lock(&e->version());
@@ -113,7 +113,7 @@ public:
 
 private:
     // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
-    inline rbwrapper<rbpair<K, T>>* find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) {
+    inline rbwrapper<rbpair<K, T>>* find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) const {
         lock(&treeversion_);
         auto x = wrapper_tree_.find_any(rbkvp,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
@@ -121,7 +121,8 @@ private:
         if (x) {
             // check if rbpair has version "inserted" (someone inserted w/out commit)
             if (is_inserted(x->version())) {
-                auto item = Sto::item(this, x);
+                // XXX const_cast hack here... any other way to do this?
+                auto item = Sto::item(const_cast<RBTree<K, T>*>(this), x);
                 // check if item was inserted by this transaction
                 if (has_insert(item)) {
                     return x;
@@ -133,7 +134,7 @@ private:
             }
         }
         // add a read of the current treeversion
-        Sto::item(this, tree_key_).add_read(treeversion_);
+        Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
         // item was committed or DNE, so return pointer
         return x;
     }
@@ -215,7 +216,7 @@ private:
     }
 
     internal_tree_type wrapper_tree_;
-    Version treeversion_;
+    mutable Version treeversion_;
     // used to mark whether a key is for the tree structure (for tree version checks)
     // or a pointer (which will always have the lower 3 bits as 0)
     static constexpr uintptr_t tree_bit = 1U<<0;
@@ -251,10 +252,9 @@ template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
     auto x = find_or_abort(idx_pair);
-    if (x) {
-        auto val = x->mutable_value().vervalue();
-        auto item = Sto::item(this, val).add_read(val->version());
-    }
+    // We will observe treeversion_ regardless of the
+    // result of the lookup
+    Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
     return ((x) ? 1 : 0);
 }
 
@@ -264,14 +264,19 @@ inline RBProxy<K, T> RBTree<K, T>::operator[](const K& key) {
 }
 
 template <typename K, typename T>
-inline int RBTree<K, T>::erase(K& key) {
+inline size_t RBTree<K, T>::erase(const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
     rbpair<K, T>* x = find_or_abort(idx_pair);
-    auto val = x->mutable_value().vervalue();
-    auto item = Sto::item(this, val).add_read(val->version());
-    // when install, set delete bit so another transaction will erase
-    item.add_flags(delete_tag);
-    return (x) ? 1 : 0;
+    if (x != nullptr) {
+        auto item = Sto::item(this, x).add_read(x->version());
+        // when install, set delete bit so another transaction will erase
+        item.add_flags(delete_tag);
+        return 1;
+    } else {
+        // treat it like an absent read
+        Sto::item(this, tree_key_).add_read(treeversion_);
+        return 0;
+    }
 }
 
 template <typename K, typename T>
