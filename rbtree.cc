@@ -19,12 +19,9 @@ void rbaccount_report() {
 int main() {
     {
         RBTree<int, int> tree;
-        auto x = PAIR(1,1);
-        tree.insert(x);
-        x = PAIR(3,3);
-        tree.insert(x);
-        x = PAIR(2,2);
-        tree.insert(x);
+        tree[1] = 1;
+        tree[2] = 2;
+        tree[3] = 3;
         assert(tree[1]==1);
         assert(tree[2]==2);
         assert(tree[3]==3);
