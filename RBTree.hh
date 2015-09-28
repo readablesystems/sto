@@ -132,8 +132,8 @@ private:
                 }
             }
         }
+        // add a read of the current treeversion
         Sto::item(this, tree_key_).add_read(treeversion_);
-        // add item to read set with empty value
         // item was committed or DNE, so return pointer
         return x;
     }
@@ -144,13 +144,16 @@ private:
         auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
         auto x = this->find_or_abort(node);
         lock(&treeversion_);
-        if (x == nullptr) {
+        
+        // kvp did not exist --> absent read
+        if (!x) {
             auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, value)  );
             wrapper_tree_.insert(*n);
             unlock(&treeversion_);
             // add write and insert flag of item (value of rbpair) with @value
             Sto::item(this, n).add_write(value).add_flags(insert_tag);
             return n->mutable_value().writeable_value();
+
         // kvp is already inserted into the tree
         } else {
             auto item = Sto::item(this, x);
@@ -175,12 +178,6 @@ private:
         }
         unlock(&treeversion_);
         return x->mutable_value().writeable_value();
-    }
-
-    void inc_version(Version* v) {
-        lock(v);
-        VersionFunctions<Version>::inc_version(*v);
-        unlock(v);
     }
 
     static void lock(Version *v) {
@@ -279,12 +276,20 @@ inline int RBTree<K, T>::erase(K& key) {
 
 template <typename K, typename T>
 inline void RBTree<K, T>::lock(TransItem& item) {
-    lock(item.key<versioned_value*>());
+    if (item.key<void*> = tree_key_) {
+        lock(&treeversion_)
+    } else {
+        lock(item.key<versioned_value*>());
+    }
 }
     
 template <typename K, typename T>
 inline void RBTree<K, T>::unlock(TransItem& item) {
-    unlock(item.key<versioned_value*>());
+    if (item.key<void*> = tree_key_) {
+        unlock(&treeversion_)
+    } else {
+        unlock(item.key<versioned_value*>());
+    }
 }
    
 template <typename K, typename T>
@@ -310,6 +315,8 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
     if (has_insert(item)) {
         erase_inserted(&e->version());
     }
+    // if we deleted or inserted, increment treeversion
+    VersionFunctions<Version>::inc_version(&treeversion_);
 }
 
 template <typename K, typename T>
