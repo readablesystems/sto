@@ -38,35 +38,25 @@ template <typename K, typename T>
 class rbpair {
 public:
     typedef TransactionTid::type Version;
-    typedef versioned_value_struct<T> versioned_value;
+    typedef versioned_value_struct<std::pair<K, T>> versioned_pair;
+    typedef uint64_t version_type;
 
     static constexpr Version insert_bit = TransactionTid::user_bit1;
 
-    explicit rbpair(const K& key, const T& value) {
-        init(key, value);
-    }
-    explicit rbpair(std::pair<K, T>& kvp) {
-        init(kvp.first, kvp.second);
-    }
-
-    // move ctor
-    inline rbpair(rbpair&& cp) noexcept {
-        versioned_pair_.first = cp.key();
-        versioned_pair_.second = cp.vervalue();
-        cp.versioned_pair_.first = K();
-        cp.versioned_pair_.second = nullptr;
-    }
-
-    ~rbpair(){delete versioned_pair_.second;}
+    explicit rbpair(const K& key, const T& value) :
+        pair_(std::pair<K, T>(key, value),
+              TransactionTid::increment_value + insert_bit) {}
+    explicit rbpair(std::pair<K, T>& kvp) :
+        pair_(kvp, TransactionTid::increment_value + insert_bit) {}
 
     inline const K& key() const {
-        return versioned_pair_.first;
+        return pair_.read_value().first;
     }
-    inline versioned_value *vervalue() {
-        return versioned_pair_.second;
+    inline version_type& version() {
+        return pair_.version();
     }
     inline T& writeable_value() {
-        return versioned_pair_.second->writeable_value();
+        return pair_.writeable_value().second;
     }
     inline bool operator<(const rbpair& rhs) const {
         return (key() < rhs.key());
@@ -76,16 +66,7 @@ public:
     }
 
 private:
-    void init(const K& key, const T& value) {
-        // initialize with "insert_bit" set (i.e. inserted but not committed)
-        // erase at commit time 
-        versioned_value *val = versioned_value::make(value,
-            TransactionTid::increment_value + insert_bit);
-        versioned_pair_.first = key;
-        versioned_pair_.second = val;
-    }
-   
-    std::pair<K, versioned_value*> versioned_pair_;
+    versioned_pair pair_;
 };
 
 template <typename K, typename T>
@@ -138,14 +119,12 @@ private:
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
         unlock(&treelock_);
         if (x) {
-            // x->mutable_value() returns the rbpair
-            versioned_value* v = x->mutable_value().vervalue();
             // check if rbpair has version "inserted" (someone inserted w/out commit)
-            if (is_inserted(v->version())) {
-                auto item = Sto::item(this, v);
+            if (is_inserted(x->version())) {
+                auto item = Sto::item(this, x);
                 // check if item was inserted by this transaction
                 if (has_insert(item)) {
-                    return x; 
+                    return x;
                 } else {
                     // some other transaction inserted this node and hasn't committed
                     // XXX should we abort every time even just for a read?
@@ -169,26 +148,25 @@ private:
             wrapper_tree_.insert(*n);
             unlock(&treelock_);
             // add write and insert flag of item (value of rbpair) with @value
-            Sto::item(this, n->mutable_value().vervalue()).add_write(value).add_flags(insert_tag);
+            Sto::item(this, n).add_write(value).add_flags(insert_tag);
             return n->mutable_value().writeable_value();
         // kvp is already inserted into the tree
         } else {
-            auto v = x->mutable_value().vervalue();
             // add @value to write set
             // XXX do we need the add_write if we're actually writing the value??
             // insert_tag indicates that we need to remove the insert_bit during install
-            Sto::item(this, v).add_write(value).add_flags(insert_tag);
+            Sto::item(this, x).add_write(value).add_flags(insert_tag);
             // we never actually delete nodes -- if deleted nodes are read, they are just updated
-            if (is_deleted(v->version())) {
+            if (is_deleted(x->version())) {
                 // previous transaction install marked delete_bit and removed insert_bit
-                mark_inserted(&v->version());
-                erase_deleted(&v->version());
+                mark_inserted(&x->version());
+                erase_deleted(&x->version());
                 if (force) {
                     // XXX do we want to write before commit?
-                    x->mutable_value().writeable_value() = value;
+                    x->writeable_value() = value;
                 } else {
                    // deleted but we don't want to update with value (T())
-                    x->mutable_value().writeable_value() = T();
+                    x->writeable_value() = T();
                 }
             }
         }
