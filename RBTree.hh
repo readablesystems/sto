@@ -171,9 +171,9 @@ private:
             item.add_write(value).add_flags(insert_tag);
             // either overwrite value or put empty value
             if (force) {
-                x->.writeable_value() = value;
+                x->writeable_value() = value;
             } else {
-                x->.writeable_value() = T();
+                x->writeable_value() = T();
             }
         }
         unlock(&treeversion_);
@@ -276,8 +276,8 @@ inline int RBTree<K, T>::erase(K& key) {
 
 template <typename K, typename T>
 inline void RBTree<K, T>::lock(TransItem& item) {
-    if (item.key<void*> = tree_key_) {
-        lock(&treeversion_)
+    if (item.key<void*>() == tree_key_) {
+        lock(&treeversion_);
     } else {
         lock(item.key<versioned_value*>());
     }
@@ -285,8 +285,8 @@ inline void RBTree<K, T>::lock(TransItem& item) {
     
 template <typename K, typename T>
 inline void RBTree<K, T>::unlock(TransItem& item) {
-    if (item.key<void*> = tree_key_) {
-        unlock(&treeversion_)
+    if (item.key<void*>() == tree_key_) {
+        unlock(&treeversion_);
     } else {
         unlock(item.key<versioned_value*>());
     }
@@ -316,7 +316,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         erase_inserted(&e->version());
     }
     // if we deleted or inserted, increment treeversion
-    VersionFunctions<Version>::inc_version(&treeversion_);
+    VersionFunctions<Version>::inc_version(treeversion_);
 }
 
 template <typename K, typename T>
