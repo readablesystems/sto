@@ -39,7 +39,6 @@ class rbpair {
 public:
     typedef TransactionTid::type Version;
     typedef versioned_value_struct<std::pair<K, T>> versioned_pair;
-    typedef uint64_t version_type;
 
     static constexpr Version insert_bit = TransactionTid::user_bit1;
 
@@ -52,7 +51,7 @@ public:
     inline const K& key() const {
         return pair_.read_value().first;
     }
-    inline version_type& version() {
+    inline Version& version() {
         return pair_.version();
     }
     inline T& writeable_value() {
@@ -299,11 +298,14 @@ inline void RBTree<K, T>::unlock(TransItem& item) {
    
 template <typename K, typename T>
 inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans) {
-    auto e = item.key<versioned_value*>();
-    auto read_version = item.template read_value<Version>();
-    // XXX?
-    bool same_version = (read_version ^ e->version()) <= TransactionTid::lock_bit;
-    bool not_locked = (!is_locked(e->version()) || item.has_lock(trans));
+    auto e = item.key<wrapper_type*>();
+    auto read_version = item.read_value<Version>();
+
+    // set up the correct current version to check against
+    Version& curr_version = (e == (wrapper_type*)tree_key_)? treeversion_ : e->version();
+
+    bool same_version = (read_version ^ curr_version) <= TransactionTid::lock_bit;
+    bool not_locked = (!is_locked(curr_version) || item.has_lock(trans));
     return same_version && not_locked;
 }
 
@@ -312,16 +314,25 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
 template <typename K, typename T>
 inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
     (void) t;
-    auto e = item.key<versioned_value*>();
-    assert(is_locked(e->version()));
-    if (has_delete(item)) {
-        mark_deleted(&e->version());
+    auto e = item.key<wrapper_type*>();
+    if (e != (wrapper_type*)tree_key_) {
+        assert(is_locked(e->version()));
+
+        bool deleted = has_delete(item);
+        bool inserted = has_insert(item);
+        if (deleted) {
+            mark_deleted(&e->version());
+        }
+        if (inserted) {
+            erase_inserted(&e->version());
+        }
+
+        // XXX we probably want to do this in cleanup? otherwise we end up
+        // aborting ourselves all the time
+        // if we deleted or inserted, increment treeversion
+        if (deleted || inserted)
+            VersionFunctions<Version>::inc_version(treeversion_);
     }
-    if (has_insert(item)) {
-        erase_inserted(&e->version());
-    }
-    // if we deleted or inserted, increment treeversion
-    VersionFunctions<Version>::inc_version(treeversion_);
 }
 
 template <typename K, typename T>
