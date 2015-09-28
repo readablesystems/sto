@@ -100,6 +100,7 @@ stamp-h: config.h.in config.status
 
 clean:
 	rm -f concurrent array single singleelems genericTest *.o libjson.a
+	rm -f pqueue vector list1 rbtree
 	rm -rf .deps
 	$(MAKE) -C masstree-beta clean
 
