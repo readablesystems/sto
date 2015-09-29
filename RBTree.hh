@@ -154,7 +154,7 @@ private:
             assert(is_inserted(n->version()));
             Sto::item(this, n).add_write(value).add_flags(insert_tag);
             unlock(&treeversion_);
-            return n->mutable_value().writeable_value();
+            return n->writeable_value();
 
         // kvp is already inserted into the tree
         } else {
@@ -170,20 +170,39 @@ private:
                     // XXX do we need to return / unlock treeversion_?
                     unlock(&treeversion_);
                     Sto::abort();
+                    // should be unreachable
+                    return x->writeable_value();
                 }
+                // we only reach here if read_my_delete; always doing an insert due to
+                // operator[] semantics
+                // add item value to write set and marked as inserted instead of deleted
+                // insert_tag indicates that we need to remove the insert_bit during install
+                item.add_write(value).clear_flags(delete_tag).add_flags(insert_tag);
+                // either overwrite value or put empty value
+                if (force) {
+                    x->writeable_value() = value;
+                } else {
+                    x->writeable_value() = T();
+                }
+                unlock(&treeversion_);
+                return x->writeable_value();
             }
-            // add item value to write set and marked as inserted instead of deleted
-            // insert_tag indicates that we need to remove the insert_bit during install
-            item.add_write(value).clear_flags(delete_tag).add_flags(insert_tag);
-            // either overwrite value or put empty value
-            if (force) {
-                x->writeable_value() = value;
-            } else {
-                x->writeable_value() = T();
+
+            if (item.has_write()) {
+                // read_my_writes: don't add anything to read set
+                if (force) {
+                    // operator[] used on LHS, overwrite
+                    item.add_write(value);
+                }
+                unlock(&treeversion_);
+                return item.template write_value<T>();
             }
+
+            // otherwise it's just a harmless read; add to our read set
+            item.add_read(x->version());
+            unlock(&treeversion_);
+            return x->writeable_value();
         }
-        unlock(&treeversion_);
-        return x->mutable_value().writeable_value();
     }
 
     static void lock(Version *v) {
