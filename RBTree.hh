@@ -86,14 +86,13 @@ public:
         treeversion_ = 0;
     }
     
-    // lookup
     typedef rbwrapper<rbpair<K, T>> wrapper_type;
     typedef rbtree<wrapper_type> internal_tree_type;
+    
+    // lookup
     inline size_t count(const K& key) const;
-
     // element access
     inline RBProxy<K, T> operator[](const K& key);
-    
     // modifiers
     inline size_t erase(const K& key);
 
@@ -149,12 +148,13 @@ private:
         if (!x) {
             auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, value)  );
             wrapper_tree_.insert(*n);
-            // add write and insert flag of item (value of rbpair) with @value
             // invariant: the node's insert_bit should be set
             assert(is_inserted(n->version()));
-            Sto::item(this, n).add_write(value).add_flags(insert_tag);
             // we will increment treeversion upon commit
             Sto::item(this, tree_key_).add_write(0);
+            // add write and insert flag of item (value of rbpair) with @value
+            // XXX add read of this current version to read set
+            Sto::item(this, n).add_read(n->version()).add_write(value).add_flags(insert_tag);
             unlock(&treeversion_);
             return n->writeable_value();
 
@@ -201,6 +201,10 @@ private:
             }
 
             // otherwise we are just accessing a regular key
+            //XXX add item value to write set, add item version to read set, and mark as inserted
+            // insert_tag indicates that we need to remove the insert_bit during install
+            item.add_read(x->version()).add_write(value).clear_flags(delete_tag).add_flags(insert_tag);
+            // either overwrite value or put empty value
             if (force) {
                 item.add_write(value);
             } else {
@@ -282,7 +286,7 @@ template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
     auto x = find_or_abort(idx_pair);
-    // We will observe treeversion_ regardless of the lookup result
+    // we will observe treeversion_ regardless of the lookup result
     Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
     return ((x) ? 1 : 0);
 }
