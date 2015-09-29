@@ -139,7 +139,7 @@ private:
     }
 
     // Insert <@key, @value>, optionally force an update if @key exists
-    // return value is a reference to the value of the kvp
+    // return value is a reference to kvp.second
     inline T& insert_update(const K& key, const T& value, bool force) {
         auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
         auto x = this->find_or_abort(node);
@@ -153,6 +153,8 @@ private:
             // invariant: the node's insert_bit should be set
             assert(is_inserted(n->version()));
             Sto::item(this, n).add_write(value).add_flags(insert_tag);
+            // we will increment treeversion upon commit
+            Sto::item(this, tree_key_).add_write(0);
             unlock(&treeversion_);
             return n->writeable_value();
 
@@ -198,8 +200,12 @@ private:
                 return item.template write_value<T>();
             }
 
-            // otherwise it's just a harmless read; add to our read set
-            item.add_read(x->version());
+            // otherwise we are just accessing a regular key
+            if (force) {
+                item.add_write(value);
+            } else {
+                item.add_read(x->version());
+            }
             unlock(&treeversion_);
             return x->writeable_value();
         }
@@ -289,11 +295,41 @@ inline RBProxy<K, T> RBTree<K, T>::operator[](const K& key) {
 template <typename K, typename T>
 inline size_t RBTree<K, T>::erase(const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    rbpair<K, T>* x = find_or_abort(idx_pair);
+    auto x = find_or_abort(idx_pair);
     if (x != nullptr) {
+        auto item = Sto::item(this, x);
+        if (is_inserted(x->version())) {
+            if (has_insert(item)) {
+                // insert-then-delete; we need to undo all the effects of an insert here
+                lock(&treeversion_);
+                wrapper_tree_.erase(*x);
+                unlock(&treeversion_);
+                item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
+                Transaction::rcu_free(x);
+                // read a treeversion so that we can abort if another transaction inserts
+                // this key again (actually any key, so lots of false conflicts right now)
+                Sto::item(this, tree_key_).add_read(treeversion_);
+                return 1;
+            } else {
+                Sto::abort();
+                // unreachable
+                return 0;
+            }
+        }
+        if (is_deleted(x->version())) {
+            if (!has_delete(item)) {
+                // abort if another transaction deleted it
+                Sto::abort();
+            }
+            return 0;
+        }
+        // XXX in Hashtable.hh, delete bit isn't set until commit time. Maybe we should
+        // also do this?
         // set the delete bit
         mark_deleted(&x->version());
-        auto item = Sto::item(this, x).add_read(x->version());
+        // we need to add write here; otherwise STO won't call install
+        item.add_read(x->version()).add_write(0);
+        Sto::item(this, tree_key_).add_write(0);
         // remind ourselves that we were the ones to delete this item
         // should we later read a delete bit
         item.add_flags(delete_tag);
@@ -360,9 +396,8 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         } else if (inserted) {
             erase_inserted(&e->version());
         }
-        if (deleted || inserted) {
-            VersionFunctions<Version>::inc_version(treeversion_);
-        }
+    } else {
+        VersionFunctions<Version>::inc_version(treeversion_);
     }
 }
 

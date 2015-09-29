@@ -17,8 +17,10 @@ void rbaccount_report() {
 #define PAIR(k,v) std::pair<int, int>(k, v)
 
 int main() {
+    RBTree<int, int> tree;
     {
-        RBTree<int, int> tree;
+        Transaction t;
+        Sto::set_transaction(&t);
         tree[1] = 1;
         tree[2] = 2;
         tree[3] = 3;
@@ -27,6 +29,7 @@ int main() {
         assert(tree[3]==3);
         assert(tree.count(1) == 1);
         assert(tree.erase(1) == 1);
+        assert(t.try_commit());
     }
     return 0;
 }
