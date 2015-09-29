@@ -309,7 +309,6 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     return same_version && not_locked;
 }
 
-// XXX we use versioned value as the "STO key" -- will break if we start deleting nodes because then two
 // key-versionedvalue pairs with the same key will have two different items
 template <typename K, typename T>
 inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
