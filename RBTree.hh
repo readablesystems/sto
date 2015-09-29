@@ -149,9 +149,9 @@ private:
         if (!x) {
             auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, value)  );
             wrapper_tree_.insert(*n);
-            unlock(&treeversion_);
             // add write and insert flag of item (value of rbpair) with @value
             Sto::item(this, n).add_write(value).add_flags(insert_tag);
+            unlock(&treeversion_);
             return n->mutable_value().writeable_value();
 
         // kvp is already inserted into the tree
@@ -164,6 +164,8 @@ private:
                     erase_deleted(&x->version());
                 // abort if another transaction has marked deleted
                 } else {
+                    // XXX do we need to return / unlock treeversion_?
+                    unlock(&treeversion_);
                     Sto::abort();
                 }
             }
@@ -251,8 +253,7 @@ template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
     auto x = find_or_abort(idx_pair);
-    // We will observe treeversion_ regardless of the
-    // result of the lookup
+    // We will observe treeversion_ regardless of the lookup result
     Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
     return ((x) ? 1 : 0);
 }
@@ -268,7 +269,8 @@ inline size_t RBTree<K, T>::erase(const K& key) {
     rbpair<K, T>* x = find_or_abort(idx_pair);
     if (x != nullptr) {
         auto item = Sto::item(this, x).add_read(x->version());
-        // when install, set delete bit so another transaction will erase
+        // remind ourselves that we were the ones to delete this item
+        // should we later read a delete bit
         item.add_flags(delete_tag);
         return 1;
     } else {
@@ -301,7 +303,7 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     auto e = item.key<wrapper_type*>();
     auto read_version = item.read_value<Version>();
 
-    // set up the correct current version to check against
+    // set up the correct current version to check: either treeversion or item version
     Version& curr_version = (e == (wrapper_type*)tree_key_)? treeversion_ : e->version();
 
     bool same_version = (read_version ^ curr_version) <= TransactionTid::lock_bit;
@@ -319,18 +321,23 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
 
         bool deleted = has_delete(item);
         bool inserted = has_insert(item);
+        // should never be both deleted and inserted...
+        // sanity check to make sure we handled read_my_writes
+        assert(!(deleted && inserted));
+        // actually erase the element when installing the delete
         if (deleted) {
-            mark_deleted(&e->version());
-        }
-        if (inserted) {
+            // XXX check: we do need to lock, right?
+            lock(&treeversion_);
+            wrapper_tree_.erase(*e);
+            unlock(&treeversion_);
+            // XXX using rcu_free correctly?
+            Transaction::rcu_free(e);
+        } else if (inserted) {
             erase_inserted(&e->version());
         }
-
-        // XXX we probably want to do this in cleanup? otherwise we end up
-        // aborting ourselves all the time
-        // if we deleted or inserted, increment treeversion
-        if (deleted || inserted)
+        if (deleted || inserted) {
             VersionFunctions<Version>::inc_version(treeversion_);
+        }
     }
 }
 
@@ -340,10 +347,21 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
         // if item has been tagged inserted, then we just mark that it should be deleted 
         // (i.e. another item can reuse this node)
         if (has_insert(item)) {
-            auto e = item.key<versioned_value*>();
-            mark_deleted(&e->version());
+            auto e = item.key<wrapper_type*>();
+            // XXX we actually want to erase this or else it will never will be erased if
+            // we never do a read of the item in another transaction? (right now we're aborting
+            // if the delete_bit is set from a different txn, rather than updating)
+            erase_inserted(&e->version());
+            lock(&treeversion_);
+            wrapper_tree_.erase(*e);
+            unlock(&treeversion_);
+            Transaction::rcu_free(e);
             erase_inserted(&e->version());
         }
-        // if item has been tagged deleted, then we just ignore it (don't set delete bit)
+        // if item has been tagged deleted, turn off delete bit so other txns won't abort
+        if (has_delete(item)) {
+            auto e = item.key<versioned_value*>();
+            erase_deleted(&e->version());
+        }
     }
 }

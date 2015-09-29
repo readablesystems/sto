@@ -510,8 +510,6 @@ template <typename T, typename C>
 inline void rbtree<T, C>::erase(T& node) {
     rbaccount(erase);
     delete_node(&node, nullptr);
-    // dispose of node after removing from tree (non-intrusive)
-    delete &node;
 }
 
 // RBNODEPTR FUNCTION DEFINITIONS
