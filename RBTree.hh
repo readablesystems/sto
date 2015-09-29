@@ -150,6 +150,8 @@ private:
             auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, value)  );
             wrapper_tree_.insert(*n);
             // add write and insert flag of item (value of rbpair) with @value
+            // invariant: the node's insert_bit should be set
+            assert(is_inserted(n->version()));
             Sto::item(this, n).add_write(value).add_flags(insert_tag);
             unlock(&treeversion_);
             return n->mutable_value().writeable_value();
@@ -158,6 +160,7 @@ private:
         } else {
             auto item = Sto::item(this, x);
             if (is_deleted(x->version())) {
+                // check if current txn was the one to delete this item
                 // read_my_deletes: just update item that this transaction deleted
                 if (has_delete(item)) {
                     mark_inserted(&x->version());
@@ -169,8 +172,9 @@ private:
                     Sto::abort();
                 }
             }
+            // add item value to write set and marked as inserted instead of deleted
             // insert_tag indicates that we need to remove the insert_bit during install
-            item.add_write(value).add_flags(insert_tag);
+            item.add_write(value).clear_flags(delete_tag).add_flags(insert_tag);
             // either overwrite value or put empty value
             if (force) {
                 x->writeable_value() = value;
@@ -268,6 +272,8 @@ inline size_t RBTree<K, T>::erase(const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
     rbpair<K, T>* x = find_or_abort(idx_pair);
     if (x != nullptr) {
+        // set the delete bit
+        mark_deleted(&x->version());
         auto item = Sto::item(this, x).add_read(x->version());
         // remind ourselves that we were the ones to delete this item
         // should we later read a delete bit
@@ -322,7 +328,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         bool deleted = has_delete(item);
         bool inserted = has_insert(item);
         // should never be both deleted and inserted...
-        // sanity check to make sure we handled read_my_writes
+        // sanity check to make sure we handled read_my_writes correctly
         assert(!(deleted && inserted));
         // actually erase the element when installing the delete
         if (deleted) {
@@ -344,8 +350,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
 template <typename K, typename T>
 inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
     if (!committed) {
-        // if item has been tagged inserted, then we just mark that it should be deleted 
-        // (i.e. another item can reuse this node)
+        // if item has been tagged inserted, then we erase the item
         if (has_insert(item)) {
             auto e = item.key<wrapper_type*>();
             // XXX we actually want to erase this or else it will never will be erased if
@@ -355,8 +360,9 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
             lock(&treeversion_);
             wrapper_tree_.erase(*e);
             unlock(&treeversion_);
-            Transaction::rcu_free(e);
+            // XXX not sure if we need to erase insert_bit?
             erase_inserted(&e->version());
+            Transaction::rcu_free(e);
         }
         // if item has been tagged deleted, turn off delete bit so other txns won't abort
         if (has_delete(item)) {
