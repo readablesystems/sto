@@ -22,7 +22,11 @@ ifneq ($(NDEBUG),1)
 CFLAGS += -g
 endif
 
+<<<<<<< HEAD
 all: concurrent single singleelems array1 genericTest list1 vector pqueue rbtree
+=======
+all: concurrent single singleelems array1 genericTest list1 vector pqueue trans_test
+>>>>>>> Added test file to check transactional consistency. Also fixed some bugs in Priority Queue.
 
 %.o: %.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
@@ -70,6 +74,9 @@ rbtree: rbtree.o clp.o $(STO_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 genericTest: genericTest.o clp.o $(STO_OBJS)
+	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+    
+trans_test: trans_test.o clp.o $(STO_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;
