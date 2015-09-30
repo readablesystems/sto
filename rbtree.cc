@@ -18,17 +18,25 @@ void rbaccount_report() {
 
 int main() {
     RBTree<int, int> tree;
+    // test single-threaded operations
     {
         Transaction t;
         Sto::set_transaction(&t);
-        tree[1] = 1;
-        tree[2] = 2;
-        tree[3] = 3;
-        assert(tree[1]==1);
-        assert(tree[2]==2);
-        assert(tree[3]==3);
-        assert(tree.count(1) == 1);
-        assert(tree.erase(1) == 1);
+        for (int i = 0; i < 100; ++i) {
+            tree[i] = i;
+            assert(tree[i]==i);
+            tree[i] = 100-i;
+            assert(tree[i]==100-i);
+        }
+        for (int i = 0; i < 100; ++i) {
+            assert(tree.count(i) == 1);
+        }
+        for (int i = 0; i < 100; ++i) {
+            assert(tree.erase(i) == 1);
+            assert(tree.count(i) == 0);
+        }
+        int x = tree[102];
+        assert(x==0);
         assert(t.try_commit());
     }
     return 0;
