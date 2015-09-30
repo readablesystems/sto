@@ -3,14 +3,15 @@
 #include <assert.h>
 #include <vector>
 #include <random>
+#include <map>
 #include "Transaction.hh"
 #include "Vector.hh"
 #include "PriorityQueue.hh"
 #include "PriorityQueue1.hh"
 
-#define GLOBAL_SEED 10
+#define GLOBAL_SEED 11
 #define MAX_VALUE  100000
-#define NTRANS 1000000
+#define NTRANS 1000
 #define N_THREADS 4
 
 typedef PriorityQueue<int> data_structure;
@@ -37,12 +38,24 @@ struct Rand {
 };
 
 
+struct txn_record {
+    // keeps track of pushes and pops for a single transaction
+    std::vector<int> pushes;
+    std::vector<int> tops;
+    int pops;
+};
+
+
+
 template <typename T>
 struct TesterPair {
     T* t;
     int me;
 };
 
+std::vector<std::map<uint64_t, txn_record *> > txn_list;
+typedef TransactionTid::type Version;
+Version lock;
 
 void run_conc(data_structure* q, int me) {
     std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
@@ -70,14 +83,17 @@ void run_conc(data_structure* q, int me) {
 }
 template <typename T>
 void run(T* q, int me) {
-    Transaction::threadid = me + 1;
+    Transaction::threadid = me;
     
     std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
-    
     for (int i = 0; i < NTRANS; ++i) {
         // so that retries of this transaction do the same thing
         auto transseed = i;
+        txn_record *tr = new txn_record;
         TRANSACTION {
+            tr->pushes.clear();
+            tr->pops = 0;
+            tr->tops.clear();
             uint32_t seed = transseed*3 + (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_THREADS*NTRANS*11;
             auto seedlow = seed & 0xffff;
             auto seedhigh = seed >> 16;
@@ -86,13 +102,63 @@ void run(T* q, int me) {
             int val1 = slotdist(transgen);
             int val2 = slotdist(transgen);
             int val3 = slotdist(transgen);
+            q->pop();
+            //TransactionTid::lock(lock);
+            //std::cout << "[" << me << "] try to push " << val1 << std::endl;
+            //TransactionTid::unlock(lock);
             q->push(val1);
+            //TransactionTid::lock(lock);
+            //std::cout << "[" << me << "] pushed " << val1 << std::endl;
+            //TransactionTid::unlock(lock);
+            //TransactionTid::lock(lock);
+            //std::cout << "[" << me << "] try to push " << val2 << std::endl;
+            //TransactionTid::unlock(lock);
             q->push(val2);
+            //TransactionTid::lock(lock);
+            //std::cout << "[" << me << "] pushed " << val2 << std::endl;
+            //TransactionTid::unlock(lock);
+            //TransactionTid::lock(lock);
+            //std::cout << "[" << me << "] try to push " << val3 << std::endl;
+            //TransactionTid::unlock(lock);
+            //q->push(val3);
+            //TransactionTid::lock(lock);
+            //std::cout << "[" << me << "] pushed " << val3 << std::endl;
+            //TransactionTid::unlock(lock);
+            //TransactionTid::lock(lock);
+            //std::cout << "[" << me << "] try to read "  << std::endl;
+            //TransactionTid::unlock(lock);
+            int rval = q->top();
+            //TransactionTid::lock(lock);
+            //std::cout << "[" << me << "] read " << rval << std::endl;
+            //TransactionTid::unlock(lock);
+            //TransactionTid::lock(lock);
+            //std::cout << "[" << me << "] try to pop "  << std::endl;
+            //TransactionTid::unlock(lock);
+            //int pval = q->pop();
             q->push(val3);
+            //TransactionTid::lock(lock);
+            //std::cout << "[" << me << "] popped " << pval << std::endl;
+            //TransactionTid::unlock(lock);
+            //q->pop();
             
-            //q->pop();
-            //q->pop();
-        } RETRY(true)
+            tr->pushes.push_back(val1);
+            tr->pushes.push_back(val2);
+            tr->pushes.push_back(val3);
+            tr->pops = 1;
+            tr->tops.push_back(rval);
+        }
+        if (Sto::try_commit()) {
+            //TransactionTid::lock(lock);
+            //std::cout << "[" << me << "] committed "  << std::endl;
+            //TransactionTid::unlock(lock);
+            txn_list[me][Sto::commit_tid()] = tr;
+            break;
+        }
+        
+        } catch (Transaction::Abort e) {
+            //TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
+        }
+    }
     }
 }
 
@@ -457,6 +523,59 @@ void queueTests() {
         assert(!t.try_commit());
         
     }
+    
+    {
+        // prepare queue for next test
+        Transaction t;
+        Sto::set_transaction(&t);
+        q.pop();
+        q.pop();
+        q.pop();
+        q.pop();
+        q.push(5);
+        assert(t.try_commit());
+    }
+    
+    {
+        Transaction t;
+        Sto::set_transaction(&t);
+        q.top(); // gets 5
+        q.push(10);
+        
+        Transaction t1;
+        Sto::set_transaction(&t1);
+        q.push(7);
+        assert(t1.try_commit());
+        
+        Sto::set_transaction(&t);
+        assert(!t.try_commit());
+    }
+    
+    {
+        // prepare queue for next test
+        Transaction t;
+        Sto::set_transaction(&t);
+        q.pop();
+        q.pop();
+        assert(t.try_commit());
+    }
+    
+    {
+        // prepare queue for next test
+        Transaction t;
+        Sto::set_transaction(&t);
+        q.pop(); // poping froming an empty queue
+        
+        Transaction t1;
+        Sto::set_transaction(&t1);
+        q.push(4);
+        assert(t1.try_commit());
+        
+        Sto::set_transaction(&t);
+        assert(!t.try_commit());
+    }
+
+
 }
 
 void print_time(struct timeval tv1, struct timeval tv2) {
@@ -466,7 +585,7 @@ void print_time(struct timeval tv1, struct timeval tv2) {
 int main() {
     queueTests();
     std::cout << "Done queue tests" << std::endl;
-    
+    lock = 0;
     // Run a parallel test with lots of transactions doing pushes and pops
     data_structure q;
     /*for (int i = 0; i < 10000; i++) {
@@ -483,6 +602,10 @@ int main() {
     struct timeval tv1,tv2;
     gettimeofday(&tv1, NULL);
     
+    for (int i = 0; i < N_THREADS; i++) {
+        txn_list.emplace_back();
+    }
+    
     startAndWait(&q);
     
     gettimeofday(&tv2, NULL);
@@ -498,58 +621,97 @@ int main() {
     }
 #endif
     
+    
+    std::map<uint64_t, txn_record *> combined_txn_list;
+    
+    for (int i = 0; i < N_THREADS; i++) {
+        combined_txn_list.insert(txn_list[i].begin(), txn_list[i].end());
+    }
+    
+    std::cout << "Single thread replay" << std::endl;
     data_structure q1;
     gettimeofday(&tv1, NULL);
     
-    for (int i = 0; i < N_THREADS; i++) {
-        run(&q1, i);
+    std::map<uint64_t, txn_record *>::iterator it = combined_txn_list.begin();
+    
+    for(; it != combined_txn_list.end(); it++) {
+        Sto::start_transaction();
+        q1.pop();
+        q1.push(it->second->pushes[0]);
+        //std::cout << "Pushed " << it->second->pushes[0] << std::endl;
+        q1.push(it->second->pushes[1]);
+        //std::cout << "Pushed " << it->second->pushes[1] << std::endl;
+        //std::cout << "Pushed " << it->second->pushes[2] << std::endl;
+        assert(q1.top() == it->second->tops[0]);
+        //assert(q1.pop() == it->second->tops[0]);
+        q1.push(it->second->pushes[2]);
+        //std::cout << "Popped " << it->second->tops[0] << std::endl;
+        assert(Sto::try_commit());
     }
+    
+    //for (int i = 0; i < N_THREADS; i++) {
+    //    run(&q1, i);
+    //}
     
     gettimeofday(&tv2, NULL);
     printf("Serial time: ");
     print_time(tv1, tv2);
     
     
-    data_structure q2;
-    gettimeofday(&tv1, NULL);
+    //data_structure q2;
+    //gettimeofday(&tv1, NULL);
     
-    startAndWait(&q2, false);
+    //startAndWait(&q2, false);
     
-    gettimeofday(&tv2, NULL);
-    printf("Concurrent time: ");
-    print_time(tv1, tv2);
+    //gettimeofday(&tv2, NULL);
+    //printf("Concurrent time: ");
+    //print_time(tv1, tv2);
     
-    PriorityQueue1<int> q3;
-    gettimeofday(&tv1, NULL);
+    //PriorityQueue1<int> q3;
+    //gettimeofday(&tv1, NULL);
     
-    startAndWait(&q3);
+    //startAndWait(&q3);
     
-    gettimeofday(&tv2, NULL);
-    printf("Vector rep time: ");
-    print_time(tv1, tv2);
+    //gettimeofday(&tv2, NULL);
+    //printf("Vector rep time: ");
+    //print_time(tv1, tv2);
     
-#if PERF_LOGGING
+/*#if PERF_LOGGING
     Transaction::print_stats();
     {
         using thd = threadinfo_t;
         thd tc = Transaction::tinfo_combined();
         printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
     }
-#endif
+#endif*/
     
    
-    if (false) {
+    if (true) {
     TRANSACTION {
         //q.print();
         //q1.print();
     } RETRY(false);
-    for (int i = 0; i < q1.size(); i++) {
+    //std::cout << q.size() << " " << q1.size() << std::endl;
+    //assert(q.size() == q1.size());
+    assert(q1.size() == N_THREADS* NTRANS*2 + 1);
+    int size = q1.size();
+    for (int i = 0; i < size; i++) {
         TRANSACTION {
-            assert(q.top() == q1.top());
-            q.pop();
-            q1.pop();
+            int v1 = q.top();
+            int v2 = q1.top();
+            //std::cout << v1 << " " << v2 << std::endl;
+            if (v1 != v2)
+                q1.print();
+            assert(v1 == v2);
+            assert(q.pop() == v1);
+            assert(q1.pop() == v2);
         } RETRY(false)
     }
+        TRANSACTION {
+            q.print();
+            assert(q.top() == -1);
+            //q1.print();
+        } RETRY(false);
     }
 
 	return 0;

@@ -47,6 +47,7 @@ class PriorityQueue: public Shared {
     static constexpr int NO_ONE = -1;
     
     static constexpr int pop_key = -2;
+    static constexpr int empty_key = -3;
 public:
     PriorityQueue() : heap_() {
         size_ = 0;
@@ -156,10 +157,25 @@ public:
         
         int child = 0;
         int parent = 0;
-        while (2*parent < size_ - 2) {
+        while (2*parent < size_ - 1) {
             int left = parent * 2 + 1;
             int right = (parent * 2) + 2;
-            assert(right < size_);
+            if (right >= size_) {
+                lock(&heap_[left]->ver);
+                if (heap_[left]->status == EMPTY) {
+                    unlock(&heap_[left]->ver);
+                    break;
+                }
+                if (heap_[left]->val->read_value() > heap_[parent]->val->read_value()) {
+                    swap(parent, left);
+                    unlock(&heap_[parent]->ver);
+                    parent = left;
+                } else {
+                    unlock(&heap_[left]->ver);
+                    break;
+                }
+
+            } else {
             lock(&heap_[left]->ver);
             lock(&heap_[right]->ver);
             if (heap_[left]->status == EMPTY) {
@@ -180,6 +196,7 @@ public:
             } else {
                 unlock(&heap_[child]->ver);
                 break;
+            }
             }
         }
         unlock(&heap_[parent]->ver);
@@ -209,6 +226,7 @@ public:
                     }
                 } else if (is_deleted(val->version())) {
                     removeMax(val);
+                    if (size_ == 0) return NULL;
                 } else {
                     return val;
                 }
@@ -241,9 +259,10 @@ public:
         
     }
     
-    void pop() {
+    T pop() {
         if (size_ == 0) {
-            return;
+            Sto::item(this, empty_key).add_read(0);
+            return -1;
         }
         
         lock(&poplock_);
@@ -251,12 +270,17 @@ public:
             // queue is in dirty state
             unlock(&poplock_);
             Sto::abort();
-            return;
+            return -1;
         }
         
         versioned_value* val = getMax();
         auto item = Sto::item(this, val);
         
+        if (val == NULL) {
+            Sto::item(this, empty_key).add_read(0);
+            unlock(&poplock_);
+            return -1;
+        }
         if (dirtytid_ == -1 || val->read_value() < dirtyval_) {
             dirtyval_ = val->read_value();
             fence();
@@ -275,9 +299,15 @@ public:
         
         
         Sto::item(this, pop_key).add_write(0);
+        return val->read_value();
     }
     
     T top() {
+        if (size_ == 0) {
+            Sto::item(this, empty_key).add_read(0);
+            return -1;
+        }
+        
         Sto::item(this, pop_key).add_read(popversion_);
         acquire_fence();
         lock(&poplock_);
@@ -288,13 +318,17 @@ public:
         }
         versioned_value* val = getMax();
         unlock(&poplock_);
+        if (val == NULL) {
+            Sto::item(this, empty_key).add_read(0);
+            return -1;
+        }
         T retval = val->read_value();
         Sto::item(this, val).add_read(val->version());
         return retval;
     }
     
     int size() {
-        return heap_.size(); // TODO: this is not transactional yet
+        return size_; // TODO: this is not transactional yet
     }
     
     void lock(versioned_value *e) {
@@ -321,7 +355,18 @@ public:
     }
     
     bool check(const TransItem& item, const Transaction& trans){
-        if (item.key<int>() == pop_key) {
+        if (item.key<int>() == empty_key) {
+            // check that no other transaction  pushed items onto the queue
+            for (int i = 0; i < size_; i++) {
+                versioned_value* val = heap_[i]->val;
+                auto it = Sto::check_item(this, val);
+                if ((is_locked(val->version()) && (it == NULL ||  ! (*it).has_lock()))
+                    || !is_inserted(val->version()))
+                    return false;
+            }
+            return true;
+        }
+        else if (item.key<int>() == pop_key) {
             auto lv = popversion_;
             return TransactionTid::same_version(lv, item.template read_value<Version>())
             && (!is_locked(lv) || item.has_lock(trans));
@@ -378,6 +423,7 @@ public:
             if (has_insert(item)) {
                 auto e = item.key<versioned_value*>();
                 mark_deleted(&e->version());
+                fence();
                 erase_inserted(&e->version());
             } else if (has_delete(item)) {
                 auto e = item.key<versioned_value*>();

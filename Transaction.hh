@@ -9,9 +9,9 @@
 #include <unistd.h>
 #include <iostream>
 
-
-#define PERF_LOGGING 0
-#define DETAILED_LOGGING 0
+#define CONSISTENCY_CHECK 1
+#define PERF_LOGGING 1
+#define DETAILED_LOGGING 1
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
 
@@ -631,7 +631,11 @@ private:
               /* do nothing */;
     }
 
-    //    fence();
+#if CONSISTENCY_CHECK
+    fence();
+    commit_tid();
+    fence();
+#endif 
 
     //phase2
     if (!check_reads(trans_first, trans_last)) {
@@ -853,6 +857,9 @@ public:
     return __transaction->try_commit();
   }
   
+  static TransactionTid::type commit_tid() {
+    return __transaction->commit_tid();
+  }
 };
 
 
