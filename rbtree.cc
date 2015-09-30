@@ -39,5 +39,18 @@ int main() {
         assert(x==0);
         assert(t.try_commit());
     }
+    // tree should now be empty
+    {
+        Transaction t1, t2;
+        Sto::set_transaction(&t1);
+        tree[55] = 56;
+        tree[57] = 58;
+        Sto::set_transaction(&t2);
+        int x = tree[58];
+        assert(x == 0);
+        assert(t2.try_commit());
+        Sto::set_transaction(&t1);
+        assert(t1.try_commit());
+    }
     return 0;
 }
