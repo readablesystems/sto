@@ -18,6 +18,95 @@ void rbaccount_report() {
 
 #define PAIR(k,v) std::pair<int, int>(k, v)
 typedef RBTree<int, int> tree_type;
+// initialize the tree: contains (1,1), (2,2), (3,3)
+void reset_tree(tree_type& tree) {
+    Transaction init;
+    // initialize the tree: contains (1,1), (2,2), (3,3)
+    Sto::set_transaction(&init);
+    tree[1] = 1;
+    tree[2] = 2;
+    tree[3] = 3;
+    assert(init.try_commit());
+}
+/***** erase <-> count; erase <-> erase; count <-> count conflicts ******/
+void erase_count_tests() {
+    {
+        // t1:count - t1:erase - t2:count - t1:commit - t2:abort
+        tree_type tree;
+        Transaction t1, t2, after;
+        reset_tree(tree);
+        Sto::set_transaction(&t1);
+        assert(tree.count(1) == 1);
+        assert(tree.erase(1) == 1);
+        Sto::set_transaction(&t2);
+        assert(tree.count(1) == 1);
+        Sto::set_transaction(&t1);
+        assert(t1.try_commit());
+        Sto::set_transaction(&t2);
+        assert(!t2.try_commit());
+        // check that the commit did its job
+        Sto::set_transaction(&after);
+        assert(tree.count(1)==0);
+        assert(after.try_commit());
+    }
+    {
+        // t1:count - t1:erase - t2:count - t2:commit - t1:commit
+        tree_type tree;
+        Transaction t1, t2, after;
+        reset_tree(tree);
+        Sto::set_transaction(&t1);
+        assert(tree.count(1) == 1);
+        assert(tree.erase(1) == 1);
+        Sto::set_transaction(&t2);
+        assert(tree.count(1) == 1);
+        Sto::set_transaction(&t2);
+        assert(t2.try_commit());
+        Sto::set_transaction(&t1);
+        assert(t1.try_commit());
+        Sto::set_transaction(&after);
+        assert(tree.count(1)==0);
+        assert(after.try_commit());
+    }
+    {
+        // t1:count - t1:erase - t1:count - t2:erase - t2:commit - t1:abort
+        tree_type tree;
+        Transaction t1, t2, after;
+        reset_tree(tree);
+        Sto::set_transaction(&t1);
+        assert(tree.count(1) == 1);
+        assert(tree.erase(1) == 1);
+        assert(tree.count(1) == 1);
+        Sto::set_transaction(&t2);
+        assert(tree.erase(1) == 1);
+        Sto::set_transaction(&t2);
+        assert(t2.try_commit());
+        Sto::set_transaction(&t1);
+        assert(!t1.try_commit());
+        Sto::set_transaction(&after);
+        assert(tree.count(1)==0);
+        assert(after.try_commit());
+    }
+    {
+        // t1:count - t1:erase - t1:count - t2:erase - t1:commit - t2:abort XXX technically t2 doesn't have to abort?
+        tree_type tree;
+        Transaction t1, t2, after;
+        reset_tree(tree);
+        Sto::set_transaction(&t1);
+        assert(tree.count(1) == 1);
+        assert(tree.erase(1) == 1);
+        assert(tree.count(1) == 1);
+        Sto::set_transaction(&t2);
+        assert(tree.erase(1) == 1);
+        Sto::set_transaction(&t1);
+        assert(t1.try_commit());
+        Sto::set_transaction(&t2);
+        assert(!t2.try_commit());
+        Sto::set_transaction(&after);
+        assert(tree.count(1)==0);
+        assert(after.try_commit());
+    }
+}
+
 int main() {
     // test single-threaded operations
     {
@@ -52,8 +141,11 @@ int main() {
         assert(x == 0);
         assert(t2.try_commit());
         Sto::set_transaction(&t1);
-        assert(!t1.try_commit());
+        assert(t1.try_commit());
     }
+    erase_count_tests();
+    /**** update <-> update conflict; update <-> erase; update <-> count counflicts ******/
+    // test abort-cleanup
     return 0;
 }
 

@@ -295,12 +295,12 @@ inline size_t RBTree<K, T>::erase(const K& key) {
                 // insert-then-delete; we need to undo all the effects of an insert here
                 lock(&treeversion_);
                 wrapper_tree_.erase(*x);
-                unlock(&treeversion_);
                 item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
                 Transaction::rcu_free(x);
                 // read a treeversion so that we can abort if another transaction inserts
                 // this key again (actually any key, so lots of false conflicts right now)
                 Sto::item(this, tree_key_).add_read(treeversion_);
+                unlock(&treeversion_);
                 return 1;
             } else {
                 Sto::abort();
@@ -315,7 +315,10 @@ inline size_t RBTree<K, T>::erase(const K& key) {
         }
         // found item that has already been installed and not deleted
         // XXX don't need to add a read of version --> ok to delete a node if someone else modifies
+        // XXX actually, we do need to add a read of the version --> segfaults if we try to delete
+        // after another has deleted
         item.add_write(0).add_flags(delete_tag);
+        item.add_read(x->version());
         Sto::item(this, tree_key_).add_write(0);
         return 1;
     } else {
@@ -366,6 +369,9 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
 
         bool deleted = has_delete(item);
         bool inserted = has_insert(item);
+        // need this bool so that we don't try to lock treeversion_ again if it was locked
+        // because it was added to the write set
+        bool tree_locked = is_locked(treeversion_);
         // should never be both deleted and inserted...
         // sanity check to make sure we handled read_my_writes correctly
         assert(!(deleted && inserted));
@@ -374,9 +380,11 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             // mark deleted (in case rcu free doesn't free immediately)
             mark_deleted(&e->version());
             // actually erase
-            lock(&treeversion_);
+            if (!tree_locked)
+                lock(&treeversion_);
             wrapper_tree_.erase(*e);
-            unlock(&treeversion_);
+            if (!tree_locked)
+                unlock(&treeversion_);
             Transaction::rcu_free(e);
         } else if (inserted) {
             erase_inserted(&e->version());
