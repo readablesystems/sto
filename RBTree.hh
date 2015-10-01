@@ -1,7 +1,6 @@
 #pragma once
 
-#include <cassert>
-#include <utility>
+#include <cassert> #include <utility>
 #include "TaggedLow.hh"
 #include "Transaction.hh"
 #include "versioned_value.hh"
@@ -369,7 +368,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
 
         bool deleted = has_delete(item);
         bool inserted = has_insert(item);
-        // need this bool so that we don't try to lock treeversion_ again if it was locked
+        // XXX need this bool so that we don't try to lock treeversion_ again if it was locked
         // because it was added to the write set
         bool tree_locked = is_locked(treeversion_);
         // should never be both deleted and inserted...

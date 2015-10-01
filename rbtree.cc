@@ -28,8 +28,24 @@ void reset_tree(tree_type& tree) {
     tree[3] = 3;
     assert(init.try_commit());
 }
-/***** erase <-> count; erase <-> erase; count <-> count conflicts ******/
-void erase_count_tests() {
+/**** update <-> update conflict; update <-> erase; update <-> count counflicts ******/
+void update_conflict_tests() {
+    {
+        tree_type tree;
+        Transaction t1, t2;
+        Sto::set_transaction(&t1);
+        tree[55] = 56;
+        tree[57] = 58;
+        Sto::set_transaction(&t2);
+        int x = tree[58];
+        assert(x == 0);
+        assert(t2.try_commit());
+        Sto::set_transaction(&t1);
+        assert(t1.try_commit());
+    }
+}
+/***** erase <-> count; erase <-> erase conflicts ******/
+void erase_conflict_tests() {
     {
         // t1:count - t1:erase - t2:count - t1:commit - t2:abort
         tree_type tree;
@@ -113,38 +129,40 @@ int main() {
         tree_type tree;
         Transaction t;
         Sto::set_transaction(&t);
+        // read_my_inserts
         for (int i = 0; i < 100; ++i) {
             tree[i] = i;
             assert(tree[i]==i);
             tree[i] = 100-i;
             assert(tree[i]==100-i);
         }
+        // count_my_inserts
         for (int i = 0; i < 100; ++i) {
             assert(tree.count(i) == 1);
         }
+        // delete_my_inserts and read_my_deletes
         for (int i = 0; i < 100; ++i) {
             assert(tree.erase(i) == 1);
             assert(tree.count(i) == 0);
         }
+        // delete_my_deletes
+        for (int i = 0; i < 100; ++i) {
+            assert(tree.erase(i) == 0);
+            assert(tree.count(i) == 0);
+        }
+        // insert_my_deletes
+        for (int i = 0; i < 100; ++i) {
+            tree[i] == 1;
+            assert(tree.count(i) == 1);
+        }
+        // operator[] inserts empty value
         int x = tree[102];
         assert(x==0);
+        assert(tree.count(102)==1);
         assert(t.try_commit());
     }
-    {
-        tree_type tree;
-        Transaction t1, t2;
-        Sto::set_transaction(&t1);
-        tree[55] = 56;
-        tree[57] = 58;
-        Sto::set_transaction(&t2);
-        int x = tree[58];
-        assert(x == 0);
-        assert(t2.try_commit());
-        Sto::set_transaction(&t1);
-        assert(t1.try_commit());
-    }
-    erase_count_tests();
-    /**** update <-> update conflict; update <-> erase; update <-> count counflicts ******/
+    erase_conflict_tests();
+    update_conflict_tests();
     // test abort-cleanup
     return 0;
 }
