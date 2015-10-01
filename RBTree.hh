@@ -132,9 +132,6 @@ private:
                 }
             }
         }
-        // XXX lots of false conflicts here
-        // add a read of the current treeversion
-        Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
         // item was committed or DNE, so return pointer
         unlock(&treeversion_);
         return x;
