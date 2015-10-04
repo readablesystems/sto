@@ -48,6 +48,7 @@ class PriorityQueue: public Shared {
     
     static constexpr int pop_key = -2;
     static constexpr int empty_key = -3;
+    static constexpr int top_key = -4;
 public:
     PriorityQueue() : heap_() {
         size_ = 0;
@@ -260,8 +261,20 @@ public:
     }
     
     T pop() {
+        // Check if we previously read the top element.
+        auto top_item = Sto::check_item(this, top_key);
+        versioned_value* read_val = NULL;
+        if (top_item != NULL && top_item->has_read()) {
+            read_val = (*top_item).template read_value<versioned_value*>();
+        }
+        // Check if we previously saw the queue as empty.
+        auto empty_item = Sto::check_item(this, empty_key);
+        bool read_empty = empty_item != NULL && empty_item->has_read();
+        
         if (size_ == 0) {
-            Sto::item(this, empty_key).add_read(0);
+            if (read_val != NULL) Sto::abort();
+            else Sto::item(this, empty_key).add_read(0);
+            Sto::item(this, pop_key).add_read(popversion_);
             return -1;
         }
         
@@ -274,10 +287,24 @@ public:
         }
         
         versioned_value* val = getMax();
+        // If we already read the top value, then either val = read_val or val is pushed by the current transaction
+        bool shouldBeInserted = false;
+        if (read_empty && val != NULL) shouldBeInserted = true;
+        if (read_val != NULL && read_val->read_value() == val->read_value()) { // TODO: Should we compare values or versioned_values?
+            top_item->remove_read();
+        } else if (read_val != NULL) {
+            shouldBeInserted = true;
+        }
         auto item = Sto::item(this, val);
+        if (shouldBeInserted && !has_insert(item)) {
+                unlock(&poplock_);
+                Sto::abort();
+                return -1;
+        }
         
         if (val == NULL) {
             Sto::item(this, empty_key).add_read(0);
+            Sto::item(this, pop_key).add_read(popversion_);
             unlock(&poplock_);
             return -1;
         }
@@ -303,13 +330,13 @@ public:
     }
     
     T top() {
+        Sto::item(this, pop_key).add_read(popversion_);
+        acquire_fence();
         if (size_ == 0) {
             Sto::item(this, empty_key).add_read(0);
             return -1;
         }
         
-        Sto::item(this, pop_key).add_read(popversion_);
-        acquire_fence();
         lock(&poplock_);
         if (dirtytid_ != -1 && dirtytid_ != Transaction::threadid) {
             // queue is in dirty state
@@ -324,6 +351,7 @@ public:
         }
         T retval = val->read_value();
         Sto::item(this, val).add_read(val->version());
+        Sto::item(this, top_key).add_read(val);
         return retval;
     }
     
@@ -355,15 +383,18 @@ public:
     }
     
     bool check(const TransItem& item, const Transaction& trans){
-        if (item.key<int>() == empty_key) {
+        if (item.key<int>() == top_key) { return true; }
+        else if (item.key<int>() == empty_key) {
             // check that no other transaction  pushed items onto the queue
             for (int i = 0; i < size_; i++) {
                 versioned_value* val = heap_[i]->val;
                 auto it = Sto::check_item(this, val);
-                if ((is_locked(val->version()) && (it == NULL ||  ! (*it).has_lock()))
-                    || !is_inserted(val->version()))
+                if (!is_inserted(val->version()) ||
+                    (is_locked(val->version()) && (it == NULL ||  ! (*it).has_lock())))
                     return false;
             }
+            
+            if (dirtytid_ != -1 && dirtytid_ != Transaction::threadid) return false;
             return true;
         }
         else if (item.key<int>() == pop_key) {
@@ -371,14 +402,16 @@ public:
             return TransactionTid::same_version(lv, item.template read_value<Version>())
             && (!is_locked(lv) || item.has_lock(trans));
         } else {
+            // This is top case
             auto e = item.key<versioned_value*>();
-            if (has_delete(item)) return true;
+            if (dirtytid_ != -1 && dirtytid_ != Transaction::threadid && dirtyval_ >= e->read_value()) return false;
+            else if (has_delete(item)) return true;
             // check that e is not pushed down by other transactions
             int level = 1; // level that contains the root
             bool found = false;
             for (int i = 0; i < size_; i++) {
                 versioned_value* val = heap_[i]->val;
-                if (val == e) found = true;
+                if (val == e || val->read_value() == e->read_value()) found = true; 
                 else if (val->read_value() > e->read_value()) {
                     auto it = Sto::check_item(this, val);
                     if (it != NULL && has_insert(*it)) {
@@ -390,6 +423,7 @@ public:
                 }
                 if (i == endOfLevel(level)) break;
             }
+            if (dirtytid_ != -1 && dirtytid_ != Transaction::threadid && dirtyval_ >= e->read_value()) return false;
             if (!found) return false;
             else return true;
         }
@@ -429,7 +463,9 @@ public:
                 auto e = item.key<versioned_value*>();
                 auto v = e->read_value();
                 versioned_value* val = versioned_value::make(v, TransactionTid::increment_value);
+                lock(&poplock_);
                 add(val);
+                unlock(&poplock_);
                 fence();
                 dirtycount_--;
                 if (dirtycount_ == 0) {

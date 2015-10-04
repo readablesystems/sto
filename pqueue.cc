@@ -419,7 +419,7 @@ void queueTests() {
         Transaction::threadid = 0;
         Sto::set_transaction(&t1);
         
-        q.pop(); // TODO: should support pop from empty queue in PriorityQueue
+        q.pop();
         q.push(1);
         q.push(2);
         Transaction::threadid = 1;
@@ -432,7 +432,7 @@ void queueTests() {
         q.pop();
         
         Transaction::threadid = 0;
-        assert(t1.try_commit());
+        assert(!t1.try_commit()); // TODO: this can actually commit
         Transaction::threadid = 1;
         assert(t2.try_commit());
     }
@@ -442,6 +442,8 @@ void queueTests() {
         Sto::set_transaction(&t);
         q.pop();
         q.pop();
+        q.push(1);
+        q.push(2);
         assert(t.try_commit());
     }
     
@@ -561,7 +563,6 @@ void queueTests() {
     }
     
     {
-        // prepare queue for next test
         Transaction t;
         Sto::set_transaction(&t);
         q.pop(); // poping froming an empty queue
@@ -574,6 +575,57 @@ void queueTests() {
         Sto::set_transaction(&t);
         assert(!t.try_commit());
     }
+    
+    {
+        Transaction t;
+        Transaction::threadid = 0;
+        Sto::set_transaction(&t);
+        assert(q.top() == 4);
+        
+        Transaction t1;
+        Transaction::threadid = 1;
+        Sto::set_transaction(&t1);
+        q.push(6);
+        assert(t1.try_commit());
+        
+        Transaction t2;
+        Sto::set_transaction(&t2);
+        q.pop();
+        
+        Transaction::threadid = 0;
+        Sto::set_transaction(&t);
+        assert(!t.try_commit());
+        
+        Transaction::threadid = 1;
+        Sto::set_transaction(&t2);
+        assert(t2.try_commit());
+        
+    }
+
+    
+    {
+        Transaction t;
+        Transaction::threadid = 0;
+        Sto::set_transaction(&t);
+        assert(q.top() == 4);
+        
+        Transaction t1;
+        Transaction::threadid = 1;
+        Sto::set_transaction(&t1);
+        q.push(6);
+        assert(t1.try_commit());
+        
+        Transaction::threadid = 0;
+        Sto::set_transaction(&t);
+        bool aborted = false;
+        try {
+            q.pop();
+        } catch (Transaction::Abort e) {
+            aborted = true;
+        }
+        assert(aborted);
+    }
+
 
 
 }

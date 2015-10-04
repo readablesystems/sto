@@ -8,10 +8,12 @@
 #include "PriorityQueue.hh"
 
 #define GLOBAL_SEED 10
-#define MAX_VALUE  100000
-#define NTRANS 1000
-#define N_THREADS 4
-#define MAX_OPS 1
+#define MAX_VALUE  100000 // Max value of integers used in data structures
+#define NTRANS 10000 // Number of transactions each thread should run.
+#define N_THREADS 4 // Number of concurrent threads
+#define MAX_OPS 3 // Maximum number of operations in a transaction.
+#define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements.
+
 
 typedef PriorityQueue<int> data_structure;
 
@@ -37,6 +39,7 @@ struct Rand {
 };
 
 struct op_record {
+    // Keeps track of a transactional operation, arguments used, and any read data.
     int op;
     std::vector<int> args;
     std::vector<int> rdata;
@@ -54,29 +57,62 @@ struct TesterPair {
 };
 
 std::vector<std::map<uint64_t, txn_record *> > txn_list;
+
 typedef TransactionTid::type Version;
 Version lock;
 
-
+// Number of operations supported on the data structure.
 static const int num_ops = 3;
 
+//Perform a particular operation on the data structure.
+// Change this method inorder to test a different data structure.
 template <typename T>
-op_record* doOp(T* q, int op, std::uniform_int_distribution<long> slotdist, Rand transgen) {
+op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
     if (op == 0) {
         int val = slotdist(transgen);
+#if PRINT_DEBUG
+        TransactionTid::lock(lock);
+        std::cout << "[" << me << "] try to push " << val << std::endl;
+        TransactionTid::unlock(lock);
+#endif
         q->push(val);
+#if PRINT_DEBUG
+        TransactionTid::lock(lock);
+        std::cout << "[" << me << "] pushed " << val << std::endl;
+        TransactionTid::unlock(lock);
+#endif
         op_record* rec = new op_record;
         rec->op = op;
         rec->args.push_back(val);
         return rec;
     } else if (op == 1) {
+#if PRINT_DEBUG
+        TransactionTid::lock(lock);
+        std::cout << "[" << me << "] try to pop " << std::endl;
+        TransactionTid::unlock(lock);
+#endif
         int val = q->pop();
+#if PRINT_DEBUG
+        TransactionTid::lock(lock);
+        std::cout << "[" << me << "] popped " << val << std::endl;
+        TransactionTid::unlock(lock);
+#endif
         op_record* rec = new op_record;
         rec->op = op;
         rec->rdata.push_back(val);
         return rec;
     } else {
+#if PRINT_DEBUG
+        TransactionTid::lock(lock);
+        std::cout << "[" << me << "] try to read " << std::endl;
+        TransactionTid::unlock(lock);
+#endif
         int val = q->top();
+#if PRINT_DEBUG
+        TransactionTid::lock(lock);
+        std::cout << "[" << me << "] read " << val << std::endl;
+        TransactionTid::unlock(lock);
+#endif
         op_record* rec = new op_record;
         rec->op = op;
         rec->rdata.push_back(val);
@@ -84,6 +120,8 @@ op_record* doOp(T* q, int op, std::uniform_int_distribution<long> slotdist, Rand
     }
 }
 
+//Redo a operation. This is called during serial execution.
+// Change this method to test a different data structure.
 template <typename T>
 void redoOp(T* q, op_record* op) {
     if (op->op == 0) {
@@ -117,17 +155,32 @@ void run(T* q, int me) {
             Rand transgen(seed, seedlow << 16 | seedhigh);
             
             int numOps = slotdist(transgen) % MAX_OPS + 1;
-            for (int i = 0; i < numOps; i++) {
+            
+            for (int j = 0; j < numOps; j++) {
                 int op = slotdist(transgen) % num_ops;
-                tr->ops.push_back(doOp(q, op, slotdist, transgen));
+                tr->ops.push_back(doOp(q, op, me, slotdist, transgen));
             }
         }
         if (Sto::try_commit()) {
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] committed " << Sto::commit_tid() << std::endl;
+            TransactionTid::unlock(lock);
+#endif
             txn_list[me][Sto::commit_tid()] = tr;
             break;
+        } else {
+#if PRINT_DEBUG
+            TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
+#endif
         }
         
-        } catch (Transaction::Abort e) {}
+    } catch (Transaction::Abort e) {
+#if PRINT_DEBUG
+        TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
+#endif
+    }
+
     }
     }
 }
@@ -162,6 +215,8 @@ void print_time(struct timeval tv1, struct timeval tv2) {
     printf("%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
 }
 
+// Checks that final state of the two data structures are the same.
+// Change this method to test a different data structure.
 template <typename T>
 void check (T* q, T* q1) {
     int size = q1->size();
@@ -184,15 +239,22 @@ void check (T* q, T* q1) {
     } RETRY(false);
 }
 
+// Initialize the data structure.
+template <typename T>
+void init(T* q) {
+    for (int i = 0; i < 10000; i++) {
+        TRANSACTION {
+            q->push(i);
+        } RETRY(false);
+    }
+}
+
+
 int main() {
     lock = 0;
     data_structure q;
-    for (int i = 0; i < 10000; i++) {
-        TRANSACTION {
-            q.push(i);
-        } RETRY(false);
-    }
     
+    init(&q);
     
     struct timeval tv1,tv2;
     gettimeofday(&tv1, NULL);
@@ -225,15 +287,10 @@ int main() {
     
     std::cout << "Single thread replay" << std::endl;
     data_structure q1;
-    for (int i = 0; i < 10000; i++) {
-        TRANSACTION {
-            q1.push(i);
-        } RETRY(false);
-    }
+    init(&q1);
     gettimeofday(&tv1, NULL);
     
     std::map<uint64_t, txn_record *>::iterator it = combined_txn_list.begin();
-    
     for(; it != combined_txn_list.end(); it++) {
         Sto::start_transaction();
         for (int i = 0; i < it->second->ops.size(); i++) {
