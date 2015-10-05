@@ -9,9 +9,9 @@
 #include <unistd.h>
 #include <iostream>
 
-#define CONSISTENCY_CHECK 1
-#define PERF_LOGGING 1
-#define DETAILED_LOGGING 1
+#define CONSISTENCY_CHECK 0
+#define PERF_LOGGING 0
+#define DETAILED_LOGGING 0
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
 
@@ -796,6 +796,13 @@ public:
     __transaction->abort();
   }
   
+  static void silent_abort() {
+    if (trans_in_progress()) {
+      __transaction->silent_abort();
+    }
+  }
+
+ 
   template <typename T>
   static TransProxy item(Shared* s, T key) {
     if (!trans_in_progress()) {
