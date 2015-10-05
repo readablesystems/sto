@@ -6,16 +6,26 @@
 #include <map>
 #include "Transaction.hh"
 #include "PriorityQueue.hh"
+#include "Hashtable.hh"
 
 #define GLOBAL_SEED 10
 #define MAX_VALUE  100000 // Max value of integers used in data structures
-#define NTRANS 10000 // Number of transactions each thread should run.
+#define NTRANS 100000 // Number of transactions each thread should run.
 #define N_THREADS 4 // Number of concurrent threads
 #define MAX_OPS 3 // Maximum number of operations in a transaction.
 #define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements.
 
+#define PRIORITY_QUEUE 0
+#define HASHTABLE 1
 
+#define DS HASHTABLE
+
+#if DS == PRIORITY_QUEUE
 typedef PriorityQueue<int> data_structure;
+#endif
+#if DS == HASHTABLE
+typedef Hashtable<int, int, false, 1000000> data_structure;
+#endif
 
 struct Rand {
     typedef uint32_t result_type;
@@ -62,10 +72,18 @@ typedef TransactionTid::type Version;
 Version lock;
 
 // Number of operations supported on the data structure.
+
+#if DS == PRIORITY_QUEUE
 static const int num_ops = 3;
+#endif
+#if DS == HASHTABLE
+static const int num_ops = 3;
+#endif
 
 //Perform a particular operation on the data structure.
 // Change this method inorder to test a different data structure.
+
+#if DS == PRIORITY_QUEUE
 template <typename T>
 op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
     if (op == 0) {
@@ -119,9 +137,77 @@ op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdi
         return rec;
     }
 }
+#endif
+#if DS == HASHTABLE
+template <typename T>
+op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
+    if (op == 0) {
+        int key = slotdist(transgen);
+        int val = slotdist(transgen);
+#if PRINT_DEBUG
+        TransactionTid::lock(lock);
+        std::cout << "[" << me << "] try to put " << key << ", " << val << std::endl;
+        TransactionTid::unlock(lock);
+#endif
+        bool present = q->transPut(key, val);
+#if PRINT_DEBUG
+        TransactionTid::lock(lock);
+        std::cout << "[" << me << "] put " << key << "," << val << std::endl;
+        TransactionTid::unlock(lock);
+#endif
+        op_record* rec = new op_record;
+        rec->op = op;
+        rec->args.push_back(key);
+        rec->args.push_back(val);
+        rec->rdata.push_back(present);
+        return rec;
+    } else if (op == 1) {
+        int key = slotdist(transgen);
+#if PRINT_DEBUG
+        TransactionTid::lock(lock);
+        std::cout << "[" << me << "] try to get " << key << std::endl;
+        TransactionTid::unlock(lock);
+#endif
+        int val;
+        bool present = q->transGet(key, val);
+#if PRINT_DEBUG
+        TransactionTid::lock(lock);
+        std::cout << "[" << me << "] read " << key << ", " << val << std::endl;
+        TransactionTid::unlock(lock);
+#endif
+        op_record* rec = new op_record;
+        rec->op = op;
+        rec->args.push_back(key);
+        rec->rdata.push_back(val);
+        rec->rdata.push_back(present);
+        return rec;
+    } else {
+        int key = slotdist(transgen);
+#if PRINT_DEBUG
+        TransactionTid::lock(lock);
+        std::cout << "[" << me << "] try to delete " << key << std::endl;
+        TransactionTid::unlock(lock);
+#endif
+        bool success = q->transDelete(key);
+#if PRINT_DEBUG
+        TransactionTid::lock(lock);
+        std::cout << "[" << me << "] deleted " << key << ", " << success << std::endl;
+        TransactionTid::unlock(lock);
+#endif
+        op_record* rec = new op_record;
+        rec->op = op;
+        rec->args.push_back(key);
+        rec->rdata.push_back(success);
+        return rec;
+    }
+}
+
+#endif
+
 
 //Redo a operation. This is called during serial execution.
 // Change this method to test a different data structure.
+#if DS == PRIORITY_QUEUE
 template <typename T>
 void redoOp(T* q, op_record* op) {
     if (op->op == 0) {
@@ -135,6 +221,29 @@ void redoOp(T* q, op_record* op) {
         assert(val == op->rdata[0]);
     }
 }
+#endif
+#if DS == HASHTABLE
+template <typename T>
+void redoOp(T* q, op_record* op) {
+    if (op->op == 0) {
+        int key = op->args[0];
+        int val = op->args[1];
+        bool present = q->transPut(key, val);
+        assert(present == op->rdata[0]);
+    } else if (op->op == 1) {
+        int key = op->args[0];
+        int val;
+        bool present = q->transGet(key, val);
+        assert(present == op->rdata[1]);
+        if (present)
+            assert(val == op->rdata[0]);
+    } else {
+        int key = op->args[0];
+        bool success = q->transDelete(key);
+        assert(success == op->rdata[0]);
+    }
+}
+#endif
 
 
 template <typename T>
@@ -217,6 +326,8 @@ void print_time(struct timeval tv1, struct timeval tv2) {
 
 // Checks that final state of the two data structures are the same.
 // Change this method to test a different data structure.
+
+#if DS == PRIORITY_QUEUE
 template <typename T>
 void check (T* q, T* q1) {
     int size = q1->size();
@@ -238,8 +349,27 @@ void check (T* q, T* q1) {
         //q1.print();
     } RETRY(false);
 }
+#endif
+#if DS == HASHTABLE
+template <typename T>
+void check (T* q, T* q1) {
+    for (int i = 0; i < MAX_VALUE; i++) {
+        TRANSACTION {
+            int v1;
+            bool p1 = q->transGet(i, v1);
+            int v2;
+            bool p2 = q1->transGet(i, v2);
+            assert(p1 == p2);
+            if (p1) {
+                assert(v1 == v2);
+            }
+        } RETRY(false)
+    }
+}
+#endif
 
 // Initialize the data structure.
+#if DS == PRIORITY_QUEUE
 template <typename T>
 void init(T* q) {
     for (int i = 0; i < 10000; i++) {
@@ -248,6 +378,17 @@ void init(T* q) {
         } RETRY(false);
     }
 }
+#endif
+#if DS == HASHTABLE
+template <typename T>
+void init(T* q) {
+    for (int i = 0; i < 10000; i++) {
+        TRANSACTION {
+            q->transPut(i, i);
+        } RETRY(false);
+    }
+}
+#endif
 
 
 int main() {
