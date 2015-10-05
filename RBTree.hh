@@ -1,6 +1,7 @@
 #pragma once
 
-#include <cassert> #include <utility>
+#include <cassert> 
+#include <utility>
 #include "TaggedLow.hh"
 #include "Transaction.hh"
 #include "versioned_value.hh"

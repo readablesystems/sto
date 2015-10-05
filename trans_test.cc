@@ -5,7 +5,7 @@
 #include <random>
 #include <map>
 #include "Transaction.hh"
-#include "PriorityQueue.hh"
+#include "Testers.hh"
 
 #define GLOBAL_SEED 10
 #define MAX_VALUE  100000 // Max value of integers used in data structures
@@ -14,127 +14,7 @@
 #define MAX_OPS 3 // Maximum number of operations in a transaction.
 #define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements.
 
-typedef PriorityQueue<int> data_structure;
-
-struct Rand {
-    typedef uint32_t result_type;
-    
-    result_type u, v;
-    Rand(result_type u, result_type v) : u(u|1), v(v|1) {}
-    
-    inline result_type operator()() {
-        v = 36969*(v & 65535) + (v >> 16);
-        u = 18000*(u & 65535) + (u >> 16);
-        return (v << 16) + u;
-    }
-    
-    static constexpr result_type max() {
-        return (uint32_t)-1;
-    }
-    
-    static constexpr result_type min() {
-        return 0;
-    }
-};
-
-struct op_record {
-    // Keeps track of a transactional operation, arguments used, and any read data.
-    int op;
-    std::vector<int> args;
-    std::vector<int> rdata;
-};
-
-struct txn_record {
-    // keeps track of operations in a single transaction
-    std::vector<op_record*> ops;
-};
-
-template <typename T>
-struct TesterPair {
-    T* t;
-    int me;
-};
-
-std::vector<std::map<uint64_t, txn_record *> > txn_list;
-
-typedef TransactionTid::type Version;
-Version lock;
-
-// Number of operations supported on the data structure.
-static const int num_ops = 3;
-
-//Perform a particular operation on the data structure.
-// Change this method inorder to test a different data structure.
-template <typename T>
-op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
-    if (op == 0) {
-        int val = slotdist(transgen);
-#if PRINT_DEBUG
-        TransactionTid::lock(lock);
-        std::cout << "[" << me << "] try to push " << val << std::endl;
-        TransactionTid::unlock(lock);
-#endif
-        q->push(val);
-#if PRINT_DEBUG
-        TransactionTid::lock(lock);
-        std::cout << "[" << me << "] pushed " << val << std::endl;
-        TransactionTid::unlock(lock);
-#endif
-        op_record* rec = new op_record;
-        rec->op = op;
-        rec->args.push_back(val);
-        return rec;
-    } else if (op == 1) {
-#if PRINT_DEBUG
-        TransactionTid::lock(lock);
-        std::cout << "[" << me << "] try to pop " << std::endl;
-        TransactionTid::unlock(lock);
-#endif
-        int val = q->pop();
-#if PRINT_DEBUG
-        TransactionTid::lock(lock);
-        std::cout << "[" << me << "] popped " << val << std::endl;
-        TransactionTid::unlock(lock);
-#endif
-        op_record* rec = new op_record;
-        rec->op = op;
-        rec->rdata.push_back(val);
-        return rec;
-    } else {
-#if PRINT_DEBUG
-        TransactionTid::lock(lock);
-        std::cout << "[" << me << "] try to read " << std::endl;
-        TransactionTid::unlock(lock);
-#endif
-        int val = q->top();
-#if PRINT_DEBUG
-        TransactionTid::lock(lock);
-        std::cout << "[" << me << "] read " << val << std::endl;
-        TransactionTid::unlock(lock);
-#endif
-        op_record* rec = new op_record;
-        rec->op = op;
-        rec->rdata.push_back(val);
-        return rec;
-    }
-}
-
-//Redo a operation. This is called during serial execution.
-// Change this method to test a different data structure.
-template <typename T>
-void redoOp(T* q, op_record* op) {
-    if (op->op == 0) {
-        int val = op->args[0];
-        q->push(val);
-    } else if (op->op == 1) {
-        int val = q->pop();
-        assert(val == op->rdata[0]);
-    } else {
-        int val = q->top();
-        assert(val == op->rdata[0]);
-    }
-}
-
+PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
 
 template <typename T>
 void run(T* q, int me) {
@@ -156,8 +36,8 @@ void run(T* q, int me) {
             int numOps = slotdist(transgen) % MAX_OPS + 1;
             
             for (int j = 0; j < numOps; j++) {
-                int op = slotdist(transgen) % num_ops;
-                tr->ops.push_back(doOp(q, op, me, slotdist, transgen));
+                int op = slotdist(transgen) % tester.num_ops_;
+                tr->ops.push_back(tester.doOp(q, op, me, slotdist, transgen));
             }
         }
         if (Sto::try_commit()) {
@@ -213,47 +93,14 @@ void print_time(struct timeval tv1, struct timeval tv2) {
     printf("%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
 }
 
-// Checks that final state of the two data structures are the same.
-// Change this method to test a different data structure.
-template <typename T>
-void check (T* q, T* q1) {
-    int size = q1->size();
-    for (int i = 0; i < size; i++) {
-        TRANSACTION {
-            int v1 = q->top();
-            int v2 = q1->top();
-            //std::cout << v1 << " " << v2 << std::endl;
-            if (v1 != v2)
-                q1->print();
-            assert(v1 == v2);
-            assert(q->pop() == v1);
-            assert(q1->pop() == v2);
-        } RETRY(false)
-    }
-    TRANSACTION {
-        q->print();
-        assert(q->top() == -1);
-        //q1.print();
-    } RETRY(false);
-}
-
-// Initialize the data structure.
-template <typename T>
-void init(T* q) {
-    for (int i = 0; i < 10000; i++) {
-        TRANSACTION {
-            q->push(i);
-        } RETRY(false);
-    }
-}
-
-
 int main() {
     lock = 0;
-    data_structure q;
+    PriorityQueue<int> q;
+    PriorityQueue<int> q1;
     
-    init(&q);
-    
+    tester.init(&q);
+    tester.init(&q1);
+
     struct timeval tv1,tv2;
     gettimeofday(&tv1, NULL);
     
@@ -284,15 +131,13 @@ int main() {
     }
     
     std::cout << "Single thread replay" << std::endl;
-    data_structure q1;
-    init(&q1);
     gettimeofday(&tv1, NULL);
     
     std::map<uint64_t, txn_record *>::iterator it = combined_txn_list.begin();
     for(; it != combined_txn_list.end(); it++) {
         Sto::start_transaction();
-        for (int i = 0; i < it->second->ops.size(); i++) {
-            redoOp(&q1, it->second->ops[i]);
+        for (unsigned i = 0; i < it->second->ops.size(); i++) {
+            tester.redoOp(&q1, it->second->ops[i]);
         }
         assert(Sto::try_commit());
     }
@@ -302,6 +147,6 @@ int main() {
     print_time(tv1, tv2);
     
    
-    check(&q, &q1);
+    tester.check(&q, &q1);
 	return 0;
 }
