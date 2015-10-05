@@ -14,7 +14,15 @@
 #define MAX_OPS 3 // Maximum number of operations in a transaction.
 #define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements.
 
+#define PRIORITY_QUEUE 0
+#define HASHTABLE 1
+#define DS HASHTABLE
+
+#if DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
+#elif DS == HASHTABLE
+HashtableTester<Hashtable<int, int, false, 1000000>> tester = HashtableTester<Hashtable<int, int, false, 1000000>>();
+#endif
 
 template <typename T>
 void run(T* q, int me) {
@@ -95,9 +103,15 @@ void print_time(struct timeval tv1, struct timeval tv2) {
 
 int main() {
     lock = 0;
+
+#if DS == PRIORITY_QUEUE 
     PriorityQueue<int> q;
     PriorityQueue<int> q1;
-    
+#elif DS == HASHTABLE
+    Hashtable<int, int, false, 1000000> q;
+    Hashtable<int, int, false, 1000000> q1;
+#endif  
+
     tester.init(&q);
     tester.init(&q1);
 
