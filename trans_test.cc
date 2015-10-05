@@ -392,6 +392,7 @@ void init(T* q) {
 
 
 int main() {
+    assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
     lock = 0;
     data_structure q;
     

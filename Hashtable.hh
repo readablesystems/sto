@@ -205,8 +205,8 @@ public:
       if (!INSERT) {
         auto buck_version = unlock(&buck.version);
         Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
-    if (Opacity)
-      check_opacity(buck.version);
+        if (Opacity)
+            check_opacity(buck.version);
         return false;
       }
 
@@ -217,7 +217,7 @@ public:
       // see if this item was previously read
       auto bucket_item = Sto::check_item(this, pack_bucket(bucket(k)));
       if (bucket_item) {
-        bucket_item->update_read(new_version - 1, new_version);
+        bucket_item->update_read(new_version - TransactionTid::increment_value, new_version);
         //} else { could abort transaction now
       }
       // use new_item because we know there are no collisions
@@ -309,7 +309,7 @@ public:
       TransactionTid::set_version(el->version, t.commit_tid());
     else
       TransactionTid::inc_invalid_version(el->version);
-#if 1
+#if 0
     if (has_insert(item)) {
       // need to update bucket version
       bucket_entry& buck = buck_entry(el->key);
@@ -571,6 +571,7 @@ private:
       new_head->valid() = true;
     }
     buck.head = new_head;
+    TransactionTid::inc_invalid_version(buck.version);
   }
 
   void atomicRead(internal_elem *e, Version& vers, Value& val) {
