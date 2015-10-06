@@ -16,12 +16,15 @@
 
 #define PRIORITY_QUEUE 0
 #define HASHTABLE 1
-#define DS HASHTABLE
+#define RBTREE 2
+#define DS RBTREE
 
 #if DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
 #elif DS == HASHTABLE
 HashtableTester<Hashtable<int, int, false, 1000000>> tester = HashtableTester<Hashtable<int, int, false, 1000000>>();
+#elif DS == RBTREE
+RBTreeTester<RBTree<int, int>> tester = RBTreeTester<RBTree<int, int>>();
 #endif
 
 template <typename T>
@@ -110,6 +113,9 @@ int main() {
 #elif DS == HASHTABLE
     Hashtable<int, int, false, 1000000> q;
     Hashtable<int, int, false, 1000000> q1;
+#elif DS == RBTREE
+    RBTree<int, int> q;
+    RBTree<int, int> q1;
 #endif  
 
     tester.init(&q);
