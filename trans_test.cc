@@ -8,8 +8,7 @@
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define MAX_VALUE  100000 // Max value of integers used in data structures
-#define NTRANS 100000 // Number of transactions each thread should run.
+#define NTRANS 10000 // Number of transactions each thread should run.
 #define N_THREADS 4 // Number of concurrent threads
 #define MAX_OPS 3 // Maximum number of operations in a transaction.
 

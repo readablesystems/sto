@@ -9,11 +9,7 @@
 #include "Hashtable.hh"
 #include "RBTree.hh"
 
-#define GLOBAL_SEED 10
 #define MAX_VALUE  100000 // Max value of integers used in data structures
-#define NTRANS 10000 // Number of transactions each thread should run.
-#define N_THREADS 4 // Number of concurrent threads
-#define MAX_OPS 3 // Maximum number of operations in a transaction.
 #define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements.
 
 struct Rand {
