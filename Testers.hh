@@ -162,7 +162,7 @@ public:
                 std::cout << "q count: " << c << std::endl;
                 std::cout << "q1 count: " << c1 << std::endl;
 #endif
-                assert(q->count(i) == q1->count(i));
+                assert(c == c1);
                 int v1 = (*q)[i];
                 int v2 = (*q1)[i];
 #if PRINT_DEBUG
