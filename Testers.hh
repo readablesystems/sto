@@ -14,7 +14,7 @@
 #define NTRANS 10000 // Number of transactions each thread should run.
 #define N_THREADS 4 // Number of concurrent threads
 #define MAX_OPS 3 // Maximum number of operations in a transaction.
-#define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements.
+#define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements.
 
 struct Rand {
     typedef uint32_t result_type;
@@ -152,17 +152,10 @@ public:
             assert(q->count(val) == op->rdata[0]);
         }
     }
-
+ 
     void check(T* q, T*q1) {
         for (int i = 0; i < 10000; i++) {
             TRANSACTION {
-                int v1 = (*q)[i];
-                int v2 = (*q)[i];
-#if PRINT_DEBUG
-                std::cout << "v1: " << v1 << std::endl;
-                std::cout << "v2: " << v2 << std::endl;
-#endif
-                assert(v1 == v2);
                 int c = q->count(i);
                 int c1 = q1->count(i);
 #if PRINT_DEBUG
@@ -170,6 +163,15 @@ public:
                 std::cout << "q1 count: " << c1 << std::endl;
 #endif
                 assert(q->count(i) == q1->count(i));
+                int v1 = (*q)[i];
+                int v2 = (*q1)[i];
+#if PRINT_DEBUG
+                std::cout << "v1: " << v1 << std::endl;
+                std::cout << "v2: " << v2 << std::endl;
+#endif
+                assert(v1 == v2);
+                // this should always return 1 because we inserted an empty element if it
+                // did not exist before
                 int e = q->erase(i);
                 int e1 = q1->erase(i);
 #if PRINT_DEBUG
