@@ -436,7 +436,7 @@ protected:
           boundary_compar_ = true;
         else if (cmp == 0) {
           uint64_t last_ikey = iter.node()->ikey0_[iter.permutation()[iter.permutation().size() - 1]];
-          uint64_t slice = string_slice<uint64_t>::make_comparable(boundary_.data() + key.prefix_length(), std::min(boundary_.length() - key.prefix_length(), 8));
+          uint64_t slice = string_slice<uint64_t>::make_comparable(boundary_.data() + key.prefix_length(), std::min(boundary_.length() - key.prefix_length(), size_t(8)));
           boundary_compar_ = slice <= last_ikey;
         }
       } else {
