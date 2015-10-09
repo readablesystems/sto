@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <iostream>
 
-#define CONSISTENCY_CHECK 0
+#define CONSISTENCY_CHECK 1
 #define PERF_LOGGING 0
 #define DETAILED_LOGGING 0
 #define ASSERT_TX_SIZE 0

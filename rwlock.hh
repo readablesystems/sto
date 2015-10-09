@@ -1,6 +1,5 @@
 #include "compiler.hh"
 
-
 class rwlock {
 private:
   __attribute__((aligned(64))) uint32_t value;

@@ -625,9 +625,6 @@ void queueTests() {
         }
         assert(aborted);
     }
-
-
-
 }
 
 void print_time(struct timeval tv1, struct timeval tv2) {
@@ -737,7 +734,6 @@ int main() {
     }
 #endif*/
     
-   
     if (true) {
     TRANSACTION {
         //q.print();

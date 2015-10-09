@@ -330,6 +330,11 @@ public:
     }
     
     T top() {
+        if (size_ == 0) {
+            Sto::item(this, empty_key).add_read(0);
+            return -1;
+        }
+        
         Sto::item(this, pop_key).add_read(popversion_);
         acquire_fence();
         if (size_ == 0) {
