@@ -22,7 +22,7 @@ ifneq ($(NDEBUG),1)
 CFLAGS += -g
 endif
 
-all: concurrent single singleelems array1 genericTest list1 vector pqueue trans_test
+all: concurrent single singleelems array1 genericTest list1 vector pqueue rbtree trans_test
 
 %.o: %.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
@@ -66,6 +66,9 @@ vector: vector.o clp.o $(STO_OBJS)
 pqueue: pqueue.o clp.o $(STO_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
+rbtree: rbtree.o clp.o $(STO_OBJS)
+	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
 genericTest: genericTest.o clp.o $(STO_OBJS)
 	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
     
@@ -100,6 +103,7 @@ stamp-h: config.h.in config.status
 
 clean:
 	rm -f concurrent array single singleelems genericTest *.o libjson.a
+	rm -f pqueue vector list1 rbtree trans_test
 	rm -rf .deps
 	$(MAKE) -C masstree-beta clean
 

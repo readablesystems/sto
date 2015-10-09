@@ -5,99 +5,25 @@
 #include <random>
 #include <map>
 #include "Transaction.hh"
-#include "PriorityQueue.hh"
+#include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define MAX_VALUE  100000
-#define NTRANS 1000
-#define N_THREADS 4
-#define MAX_OPS 1
+#define NTRANS 10000 // Number of transactions each thread should run.
+#define N_THREADS 4 // Number of concurrent threads
+#define MAX_OPS 3 // Maximum number of operations in a transaction.
 
-typedef PriorityQueue<int> data_structure;
+#define PRIORITY_QUEUE 0
+#define HASHTABLE 1
+#define RBTREE 2
+#define DS RBTREE
 
-struct Rand {
-    typedef uint32_t result_type;
-    
-    result_type u, v;
-    Rand(result_type u, result_type v) : u(u|1), v(v|1) {}
-    
-    inline result_type operator()() {
-        v = 36969*(v & 65535) + (v >> 16);
-        u = 18000*(u & 65535) + (u >> 16);
-        return (v << 16) + u;
-    }
-    
-    static constexpr result_type max() {
-        return (uint32_t)-1;
-    }
-    
-    static constexpr result_type min() {
-        return 0;
-    }
-};
-
-struct op_record {
-    int op;
-    std::vector<int> args;
-    std::vector<int> rdata;
-};
-
-struct txn_record {
-    // keeps track of operations in a single transaction
-    std::vector<op_record*> ops;
-};
-
-template <typename T>
-struct TesterPair {
-    T* t;
-    int me;
-};
-
-std::vector<std::map<uint64_t, txn_record *> > txn_list;
-typedef TransactionTid::type Version;
-Version lock;
-
-
-static const int num_ops = 3;
-
-template <typename T>
-op_record* doOp(T* q, int op, std::uniform_int_distribution<long> slotdist, Rand transgen) {
-    if (op == 0) {
-        int val = slotdist(transgen);
-        q->push(val);
-        op_record* rec = new op_record;
-        rec->op = op;
-        rec->args.push_back(val);
-        return rec;
-    } else if (op == 1) {
-        int val = q->pop();
-        op_record* rec = new op_record;
-        rec->op = op;
-        rec->rdata.push_back(val);
-        return rec;
-    } else {
-        int val = q->top();
-        op_record* rec = new op_record;
-        rec->op = op;
-        rec->rdata.push_back(val);
-        return rec;
-    }
-}
-
-template <typename T>
-void redoOp(T* q, op_record* op) {
-    if (op->op == 0) {
-        int val = op->args[0];
-        q->push(val);
-    } else if (op->op == 1) {
-        int val = q->pop();
-        assert(val == op->rdata[0]);
-    } else {
-        int val = q->top();
-        assert(val == op->rdata[0]);
-    }
-}
-
+#if DS == PRIORITY_QUEUE
+PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
+#elif DS == HASHTABLE
+HashtableTester<Hashtable<int, int, false, 1000000>> tester = HashtableTester<Hashtable<int, int, false, 1000000>>();
+#elif DS == RBTREE
+RBTreeTester<RBTree<int, int>> tester = RBTreeTester<RBTree<int, int>>();
+#endif
 
 template <typename T>
 void run(T* q, int me) {
@@ -117,17 +43,31 @@ void run(T* q, int me) {
             Rand transgen(seed, seedlow << 16 | seedhigh);
             
             int numOps = slotdist(transgen) % MAX_OPS + 1;
-            for (int i = 0; i < numOps; i++) {
-                int op = slotdist(transgen) % num_ops;
-                tr->ops.push_back(doOp(q, op, slotdist, transgen));
+            
+            for (int j = 0; j < numOps; j++) {
+                int op = slotdist(transgen) % tester.num_ops_;
+                tr->ops.push_back(tester.doOp(q, op, me, slotdist, transgen));
             }
         }
         if (Sto::try_commit()) {
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] committed " << Sto::commit_tid() << std::endl;
+            TransactionTid::unlock(lock);
+#endif
             txn_list[me][Sto::commit_tid()] = tr;
             break;
+        } else {
+#if PRINT_DEBUG
+            TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
+#endif
         }
         
-        } catch (Transaction::Abort e) {}
+    } catch (Transaction::Abort e) {
+#if PRINT_DEBUG
+        TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
+#endif
+    }
     }
     }
 }
@@ -162,38 +102,23 @@ void print_time(struct timeval tv1, struct timeval tv2) {
     printf("%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
 }
 
-template <typename T>
-void check (T* q, T* q1) {
-    int size = q1->size();
-    for (int i = 0; i < size; i++) {
-        TRANSACTION {
-            int v1 = q->top();
-            int v2 = q1->top();
-            //std::cout << v1 << " " << v2 << std::endl;
-            if (v1 != v2)
-                q1->print();
-            assert(v1 == v2);
-            assert(q->pop() == v1);
-            assert(q1->pop() == v2);
-        } RETRY(false)
-    }
-    TRANSACTION {
-        q->print();
-        assert(q->top() == -1);
-        //q1.print();
-    } RETRY(false);
-}
-
 int main() {
     lock = 0;
-    data_structure q;
-    for (int i = 0; i < 10000; i++) {
-        TRANSACTION {
-            q.push(i);
-        } RETRY(false);
-    }
-    
-    
+
+#if DS == PRIORITY_QUEUE 
+    PriorityQueue<int> q;
+    PriorityQueue<int> q1;
+#elif DS == HASHTABLE
+    Hashtable<int, int, false, 1000000> q;
+    Hashtable<int, int, false, 1000000> q1;
+#elif DS == RBTREE
+    RBTree<int, int> q;
+    RBTree<int, int> q1;
+#endif  
+
+    tester.init(&q);
+    tester.init(&q1);
+
     struct timeval tv1,tv2;
     gettimeofday(&tv1, NULL);
     
@@ -224,20 +149,13 @@ int main() {
     }
     
     std::cout << "Single thread replay" << std::endl;
-    data_structure q1;
-    for (int i = 0; i < 10000; i++) {
-        TRANSACTION {
-            q1.push(i);
-        } RETRY(false);
-    }
     gettimeofday(&tv1, NULL);
     
     std::map<uint64_t, txn_record *>::iterator it = combined_txn_list.begin();
-    
     for(; it != combined_txn_list.end(); it++) {
         Sto::start_transaction();
-        for (int i = 0; i < it->second->ops.size(); i++) {
-            redoOp(&q1, it->second->ops[i]);
+        for (unsigned i = 0; i < it->second->ops.size(); i++) {
+            tester.redoOp(&q1, it->second->ops[i]);
         }
         assert(Sto::try_commit());
     }
@@ -247,6 +165,6 @@ int main() {
     print_time(tv1, tv2);
     
    
-    check(&q, &q1);
+    tester.check(&q, &q1);
 	return 0;
 }
