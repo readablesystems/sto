@@ -80,7 +80,7 @@ trans_test: trans_test.o clp.o $(STO_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 ht_mt: ht_mt.o clp.o $(STO_OBJS) $(MASSTREE_OBJS)
-        $(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;
 
