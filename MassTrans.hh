@@ -27,16 +27,16 @@ typedef stuffed_str<uint64_t> versioned_str;
 struct versioned_str_struct : public versioned_str {
   typedef Masstree::Str value_type;
   typedef versioned_str::stuff_type version_type;
-  
+
   bool needsResize(const value_type& v) {
     return needs_resize(v.length());
   }
-  
+
   versioned_str_struct* resizeIfNeeded(const value_type& potential_new_value) {
     // TODO: this cast is only safe because we have no ivars or virtual methods
     return (versioned_str_struct*)this->reserve(versioned_str::size_for(potential_new_value.length()));
   }
-  
+
   template <typename StringType>
   inline void set_value(const StringType& v) {
     auto *ret = this->replace(v.data(), v.length());
@@ -436,7 +436,7 @@ protected:
           boundary_compar_ = true;
         else if (cmp == 0) {
           uint64_t last_ikey = iter.node()->ikey0_[iter.permutation()[iter.permutation().size() - 1]];
-          uint64_t slice = string_slice<uint64_t>::make_comparable(boundary_.data() + key.prefix_length(), std::min(boundary_.length() - key.prefix_length(), size_t(8)));
+          uint64_t slice = string_slice<uint64_t>::make_comparable(boundary_.data() + key.prefix_length(), std::min(boundary_.length() - key.prefix_length(), 8));
           boundary_compar_ = slice <= last_ikey;
         }
       } else {
