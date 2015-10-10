@@ -8,6 +8,7 @@
 
 #define HASHTABLE_DELETE 1
 int ct = 0;
+int max_ct = 0;
 template <typename K, typename V, bool Opacity = false, unsigned Init_size = 129, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
 class Hashtable : public Shared {
 public:
@@ -505,10 +506,13 @@ private:
   internal_elem* find(bucket_entry& buck, const Key& k) {
     internal_elem *list = buck.head;
     //ct++;
+    //int i = 1;
     while (list && ! pred_(list->key, k)) {
       list = list->next;
       //ct++;
+      //i++;
     }
+    //if (i > max_ct) max_ct = i;
     return list;
   }
 
