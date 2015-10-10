@@ -18,5 +18,10 @@
 /array1
 /concurrent
 /genericTest
+/list1
+/pqueue
+/rbtree
 /singleelems
 /tags
+/trans_test
+/vector

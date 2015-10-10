@@ -2,7 +2,7 @@
 #include <iostream>
 #include "Interface.hh"
 
-#include "masstree-beta/kvthread.hh"
+#include "kvthread.hh"
 
 template <typename T, typename=void>
 struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {

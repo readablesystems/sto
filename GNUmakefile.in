@@ -3,32 +3,34 @@
 AR = ar
 CC = @CC@
 CXX = @CXX@
-CFLAGS = -W -Wall
+CPPFLAGS = -I$(MASSTREEDIR)
+CXXFLAGS = -W -Wall
 DEPSDIR := .deps
 DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
 LIBS = @LIBS@ -lpthread -lm
 LDFLAGS = @LDFLAGS@
+MASSTREEDIR = @MASSTREEDIR@
 
 ifeq ($(PROFILE),1)
-CFLAGS += -g -pg -fno-inline
+CXXFLAGS += -g -pg -fno-inline
 endif
 
 ifneq ($(OPT),0)
-CFLAGS += -O3
+CXXFLAGS += -O3
 endif
 
 # debugging on by default
 ifneq ($(NDEBUG),1)
-CFLAGS += -g
+CXXFLAGS += -g
 endif
 
 all: concurrent single singleelems array1 genericTest list1 vector pqueue rbtree trans_test ht_mt
 
 %.o: %.c config.h $(DEPSDIR)/stamp
-	$(CXX) $(CFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
 
 %.o: %.cc config.h $(DEPSDIR)/stamp
-	$(CXX) $(CFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
 
 %.S: %.o
 	objdump -S $< > $@
@@ -39,41 +41,43 @@ libjson.a: json.o string.o straccum.o str.o msgpack.o \
 	$(AR) cru $@ $^
 
 
-KVTREES = masstree-beta/string_slice.o
-
-MASSTREE_OBJS = masstree-beta/kvio.o masstree-beta/misc.o masstree-beta/checkpoint.o $(KVTREES) masstree-beta/libjson.a
+MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
+	$(MASSTREEDIR)/misc.o \
+	$(MASSTREEDIR)/checkpoint.o \
+	$(MASSTREEDIR)/string_slice.o \
+	$(MASSTREEDIR)/libjson.a
 
 STO_OBJS = Transaction.o MassTrans.o
 
 concurrent: concurrent.o clp.o $(STO_OBJS) $(MASSTREE_OBJS)
-	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 single: single.o clp.o $(STO_OBJS) $(MASSTREE_OBJS)
-	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 singleelems: singleelems.o clp.o $(STO_OBJS)
-	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 array1: array1.o clp.o $(STO_OBJS)
-	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 list1: list1.o clp.o $(STO_OBJS)
-	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 vector: vector.o clp.o $(STO_OBJS)
-	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 pqueue: pqueue.o clp.o $(STO_OBJS)
-	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 rbtree: rbtree.o clp.o $(STO_OBJS)
-	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 genericTest: genericTest.o clp.o $(STO_OBJS)
-	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
-    
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
 trans_test: trans_test.o clp.o $(STO_OBJS)
-	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 ht_mt: ht_mt.o clp.o $(STO_OBJS) $(MASSTREE_OBJS)
         $(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
@@ -81,8 +85,8 @@ ht_mt: ht_mt.o clp.o $(STO_OBJS) $(MASSTREE_OBJS)
 $(MASSTREE_OBJS): masstree ;
 
 .PHONY: masstree
-masstree: masstree-beta/config.status
-	$(MAKE) -C masstree-beta
+masstree: $(MASSTREEDIR)/config.status
+	$(MAKE) -C $(MASSTREEDIR)
 
 config.h: stamp-h
 
@@ -108,7 +112,7 @@ clean:
 	rm -f concurrent array single singleelems genericTest *.o libjson.a
 	rm -f pqueue vector list1 rbtree trans_test ht_mt
 	rm -rf .deps
-	$(MAKE) -C masstree-beta clean
+	$(MAKE) -C $(MASSTREEDIR) clean
 
 DEPFILES := $(wildcard $(DEPSDIR)/*.d)
 ifneq ($(DEPFILES),)

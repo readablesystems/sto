@@ -1,13 +1,13 @@
 #pragma once
 
-#include "masstree-beta/masstree.hh"
-#include "masstree-beta/kvthread.hh"
-#include "masstree-beta/masstree_tcursor.hh"
-#include "masstree-beta/masstree_insert.hh"
-#include "masstree-beta/masstree_print.hh"
-#include "masstree-beta/masstree_remove.hh"
-#include "masstree-beta/masstree_scan.hh"
-#include "masstree-beta/string.hh"
+#include "masstree.hh"
+#include "kvthread.hh"
+#include "masstree_tcursor.hh"
+#include "masstree_insert.hh"
+#include "masstree_print.hh"
+#include "masstree_remove.hh"
+#include "masstree_scan.hh"
+#include "string.hh"
 #include "Transaction.hh"
 
 #include "versioned_value.hh"
@@ -27,16 +27,16 @@ typedef stuffed_str<uint64_t> versioned_str;
 struct versioned_str_struct : public versioned_str {
   typedef Masstree::Str value_type;
   typedef versioned_str::stuff_type version_type;
-  
+
   bool needsResize(const value_type& v) {
     return needs_resize(v.length());
   }
-  
+
   versioned_str_struct* resizeIfNeeded(const value_type& potential_new_value) {
     // TODO: this cast is only safe because we have no ivars or virtual methods
     return (versioned_str_struct*)this->reserve(versioned_str::size_for(potential_new_value.length()));
   }
-  
+
   template <typename StringType>
   inline void set_value(const StringType& v) {
     auto *ret = this->replace(v.data(), v.length());
