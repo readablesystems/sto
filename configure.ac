@@ -437,4 +437,10 @@ extern void fail_masstree_precondition(const char* file, int line, const char* a
 
 AC_DEFINE_UNQUOTED([HAVE_UNALIGNED_ACCESS], [1], [Define if unaligned accesses are OK.])
 
+AC_ARG_WITH([masstree],
+    [AS_HELP_STRING([--with-masstree=DIR],
+                    [Masstree directory [masstree-beta]])],
+    [MASSTREEDIR="$withval"], [MASSTREEDIR=masstree-beta])
+AC_SUBST(MASSTREEDIR)
+
 AC_OUTPUT

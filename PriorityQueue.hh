@@ -59,7 +59,7 @@ public:
         dirtyval_ = -1;
         dirtycount_ = 0;
     }
-    
+
     // Concurrently adds v to the priority queue
     void add(versioned_value* v) {
         lock(&heaplock_);
@@ -75,7 +75,7 @@ public:
             unlock(&heap_[child]->ver);
         }
         size_++;
-        
+
         unlock(&heaplock_);
         while (child > 0) {
             int parent = (child - 1) / 2;

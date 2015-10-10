@@ -1,13 +1,13 @@
 #pragma once
 
-#include "masstree-beta/masstree.hh"
-#include "masstree-beta/kvthread.hh"
-#include "masstree-beta/masstree_tcursor.hh"
-#include "masstree-beta/masstree_insert.hh"
-#include "masstree-beta/masstree_print.hh"
-#include "masstree-beta/masstree_remove.hh"
-#include "masstree-beta/masstree_scan.hh"
-#include "masstree-beta/string.hh"
+#include "masstree.hh"
+#include "kvthread.hh"
+#include "masstree_tcursor.hh"
+#include "masstree_insert.hh"
+#include "masstree_print.hh"
+#include "masstree_remove.hh"
+#include "masstree_scan.hh"
+#include "string.hh"
 #include "Transaction.hh"
 
 #include "versioned_value.hh"
