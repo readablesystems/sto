@@ -6,18 +6,23 @@
 #include "MassTrans.hh"
 #include "Transaction.hh"
 
+
 #define DS 0
+#define USE_STRINGS 1
 
 #if DS == 0
+#if USE_STRINGS == 1
 typedef Hashtable<std::string, std::string, false, 1000000> ds;
+#else
+typedef Hashtable<int, std::string, false, 1000000> ds;
+#endif
 #else
 typedef MassTrans<std::string> ds;
 #endif
 
 #define NTRANS 5000000
-#define MAX_VALUE 10000000
-#define NINIT 3000000
-
+#define NINIT 100000
+#define MAX_VALUE NINIT
 using namespace std;
 
 std::string value;
@@ -56,13 +61,24 @@ void run(ds& h) {
         int key = slotdist(transgen);
         std::string value;
 #if DS == 0
-        TRANSACTION{
-            h.transGet(std::to_string(key), value);
-        } RETRY(false);
+        //TRANSACTION{
+#if USE_STRINGS == 1
+            std::string s = std::to_string(key);
+            h.read(s, value);
+#else
+	    std::string s = std::to_string(key);
+	    h.read(key, value);
+#endif
+        //} RETRY(false);
 #else
         TRANSACTION{
-            h.transGet(std::to_string(key), value);
-        } RETRY(false);
+#if USE_STRINGS == 1
+            std::string s = std::to_string(key);
+            h.transGet(s, value);
+#else
+            h.transGet(key, value);
+#endif 
+	} RETRY(false);
 #endif
     }
     
@@ -72,8 +88,12 @@ void run(ds& h) {
 void init(ds& h) {
     for (int i = 0; i < NINIT; ++i) {
         TRANSACTION{
+#if USE_STRINGS == 1
             std::string s = std::to_string(i);
             h.transPut(s, value);
+#else
+	    h.transPut(i, value);
+#endif
         } RETRY(false);
     }
     
@@ -92,7 +112,7 @@ int main() {
 #endif
     
     init(h);
-    
+    ct = 0;    
     struct timeval tv1,tv2;
     gettimeofday(&tv1, NULL);
     
@@ -102,5 +122,6 @@ int main() {
     printf("Time taken: ");
     print_time(tv1, tv2);
     
-  
+    std::cout << "traversal: " << ct  << std::endl;
+    std::cout << "Max traversal: " << max_ct << std::endl;
 }
