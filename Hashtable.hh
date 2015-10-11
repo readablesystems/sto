@@ -5,6 +5,7 @@
 // XXX: honestly hashtable should probably use local_vector too
 #include <vector>
 #include "Transaction.hh"
+#include "simple_str.hh"
 
 #define HASHTABLE_DELETE 1
 int ct = 0;
@@ -25,7 +26,8 @@ private:
     Version version;
     bool valid_;
     Value value;
-    internal_elem(Key k, Value val) : key(k), next(NULL), version(0), valid_(false), value(val) {}
+    template <typename ValType> 
+    internal_elem(Key k, ValType val) : key(k), next(NULL), version(0), valid_(false), value(val) {}
     bool& valid() {
       return valid_;
     }
@@ -72,7 +74,8 @@ public:
   }
 
   // returns true if found false if not
-  bool transGet(const Key& k, Value& retval) {
+  template <typename ValType>
+  bool transGet(const Key& k, ValType& retval) {
     bucket_entry& buck = buck_entry(k);
     Version buck_version = buck.version;
     fence();
@@ -158,8 +161,8 @@ public:
 #endif
 
   // returns true if item already existed, false if it did not
-  template <bool INSERT = true, bool SET = true>
-  bool transPut(const Key& k, const Value& v) {
+  template <bool INSERT = true, bool SET = true, typename ValType>
+  bool transPut(const Key& k, const ValType& v) {
     // TODO: technically puts don't need to look into the table at all until lock time
     bucket_entry& buck = buck_entry(k);
     // TODO: update doesn't need to lock the table
@@ -232,7 +235,8 @@ public:
   }
 
   // returns true if successful
-  bool transInsert(const Key& k, const Value& v) {
+  template <typename ValType>
+  bool transInsert(const Key& k, const ValType& v) {
     return !transPut</*insert*/true, /*set*/false>(k, v);
   }
 
@@ -412,14 +416,24 @@ public:
 
   // non-transactional get/put/etc.
   // not very interesting
-  bool read(const Key& k, Value& retval) {
+  template <typename ValType>
+  bool read(const Key& k, ValType& retval) {
     auto e = find(buck_entry(k), k);
     if (e)
-      retval = e->value;
+      assign_val(retval, e->value);
     return !!e;
   }
 
-  void put(const Key& k, const Value& val) {
+  template <typename ValType>
+  static void assign_val(ValType& val, const ValType& val_to_assign) {
+    val = val_to_assign;
+  }
+  static void assign_val(std::string& val, simple_str& val_to_assign) {
+    val.assign(val_to_assign.data(), val_to_assign.length());
+  }
+  
+  template <typename ValType>
+  void put(const Key& k, const ValType& val) {
     bucket_entry& buck = buck_entry(k);
     lock(&buck.version);
     internal_elem *e = find(buck, k);
@@ -431,7 +445,8 @@ public:
     unlock(&buck.version);
   }
 
-  void set(internal_elem *e, const Value& val) {
+  template <typename ValType>
+  void set(internal_elem *e, const ValType& val) {
     assert(e);
     lock(&e->version);
     e->value = val;
@@ -566,8 +581,8 @@ private:
     return ret;
   }
 
-  template <bool markValid = false>
-  void insert_locked(bucket_entry& buck, const Key& k, const Value& val) {
+  template <bool markValid = false, typename ValType>
+  void insert_locked(bucket_entry& buck, const Key& k, const ValType& val) {
     assert(is_locked(buck.version));
     auto new_head = new internal_elem(k, val);
     internal_elem *cur_head = buck.head;

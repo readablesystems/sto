@@ -5,16 +5,16 @@
 #include "Hashtable.hh"
 #include "MassTrans.hh"
 #include "Transaction.hh"
-
+#include "simple_str.hh"
 
 #define DS 0
 #define USE_STRINGS 1
 
 #if DS == 0
 #if USE_STRINGS == 1
-typedef Hashtable<std::string, std::string, false, 1000000> ds;
+typedef Hashtable<std::string, simple_str, false, 1000000> ds;
 #else
-typedef Hashtable<int, std::string, false, 1000000> ds;
+typedef Hashtable<int, simple_str, false, 1000000> ds;
 #endif
 #else
 typedef MassTrans<std::string> ds;
@@ -90,9 +90,9 @@ void init(ds& h) {
         TRANSACTION{
 #if USE_STRINGS == 1
             std::string s = std::to_string(i);
-            h.transPut(s, value);
+            h.put(s, value);
 #else
-	    h.transPut(i, value);
+	    h.put(i, value);
 #endif
         } RETRY(false);
     }
