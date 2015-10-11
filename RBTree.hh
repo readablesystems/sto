@@ -83,6 +83,7 @@ class RBTree : public Shared {
 
 public:
     RBTree() {
+        treelock_ = 0;
         treeversion_ = 0;
     }
     
@@ -112,7 +113,7 @@ public:
 private:
     // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
     inline rbwrapper<rbpair<K, T>>* find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) const {
-        lock(&treeversion_);
+        lock(&treelock_);
         auto x = wrapper_tree_.find_any(rbkvp,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
         if (x) {
@@ -122,18 +123,18 @@ private:
                 auto item = Sto::item(const_cast<RBTree<K, T>*>(this), x);
                 // check if item was inserted by this transaction
                 if (has_insert(item)) {
-                    unlock(&treeversion_);
+                    unlock(&treelock_);
                     return x;
                 } else {
                     // some other transaction inserted this node and hasn't committed
-                    unlock(&treeversion_);
+                    unlock(&treelock_);
                     Sto::abort();
                     return nullptr;
                 }
             }
         }
         // item was committed or DNE, so return pointer
-        unlock(&treeversion_);
+        unlock(&treelock_);
         return x;
     }
 
@@ -142,7 +143,7 @@ private:
     inline T& insert_update(const K& key, const T& value, bool force) {
         auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
         auto x = this->find_or_abort(node);
-        lock(&treeversion_);
+        lock(&treelock_);
         
         // INSERT: kvp did not exist
         if (!x) {
@@ -154,14 +155,14 @@ private:
             Sto::item(this, tree_key_).add_write(0);
             // add write and insert flag of item (value of rbpair) with @value
             Sto::item(this, n).add_write(value).add_flags(insert_tag);
-            unlock(&treeversion_);
+            unlock(&treelock_);
             return n->writeable_value();
 
         // UPDATE: kvp is already inserted into the tree
         } else {
             auto item = Sto::item(this, x);
             if (is_deleted(x->version())) {
-                unlock(&treeversion_);
+                unlock(&treelock_);
                 Sto::abort();
                 // should be unreachable
                 return x->writeable_value();
@@ -177,7 +178,7 @@ private:
                 } else {
                     x->writeable_value() = T();
                 }
-                unlock(&treeversion_);
+                unlock(&treelock_);
                 return x->writeable_value();
             } else if (item.has_write()) {
                 // read_my_writes: don't add anything to read set
@@ -185,7 +186,7 @@ private:
                     // operator[] used on LHS, overwrite
                     item.add_write(value);
                 }
-                unlock(&treeversion_);
+                unlock(&treelock_);
                 return item.template write_value<T>();
             }
 
@@ -196,7 +197,7 @@ private:
             } else {
                 item.add_read(x->version());
             }
-            unlock(&treeversion_);
+            unlock(&treelock_);
             return x->writeable_value();
         }
     }
@@ -236,6 +237,7 @@ private:
     }
 
     internal_tree_type wrapper_tree_;
+    mutable Version treelock_;
     mutable Version treeversion_;
     // used to mark whether a key is for the tree structure (for tree version checks)
     // or a pointer (which will always have the lower 3 bits as 0)
@@ -293,14 +295,14 @@ inline size_t RBTree<K, T>::erase(const K& key) {
         if (is_inserted(x->version())) {
             if (has_insert(item)) {
                 // insert-then-delete; we need to undo all the effects of an insert here
-                lock(&treeversion_);
+                lock(&treelock_);
                 wrapper_tree_.erase(*x);
                 item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
                 Transaction::rcu_free(x);
                 // read a treeversion so that we can abort if another transaction inserts
                 // this key again (actually any key, so lots of false conflicts right now)
                 Sto::item(this, tree_key_).add_read(treeversion_);
-                unlock(&treeversion_);
+                unlock(&treelock_);
                 return 1;
             } else {
                 Sto::abort();
@@ -369,9 +371,6 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
 
         bool deleted = has_delete(item);
         bool inserted = has_insert(item);
-        // XXX need this bool so that we don't try to lock treeversion_ again if it was locked
-        // because it was added to the write set
-        bool tree_locked = is_locked(treeversion_);
         // should never be both deleted and inserted...
         // sanity check to make sure we handled read_my_writes correctly
         assert(!(deleted && inserted));
@@ -380,11 +379,9 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             // mark deleted (in case rcu free doesn't free immediately)
             mark_deleted(&e->version());
             // actually erase
-            if (!tree_locked)
-                lock(&treeversion_);
+            lock(&treelock_);
             wrapper_tree_.erase(*e);
-            if (!tree_locked)
-                unlock(&treeversion_);
+            unlock(&treelock_);
             Transaction::rcu_free(e);
         } else if (inserted) {
             erase_inserted(&e->version());
@@ -408,9 +405,9 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
         if (has_insert(item)) {
             auto e = item.key<wrapper_type*>();
             // we actually want to erase this 
-            lock(&treeversion_);
+            lock(&treelock_);
             wrapper_tree_.erase(*e);
-            unlock(&treeversion_);
+            unlock(&treelock_);
             mark_deleted(&e->version());
             erase_inserted(&e->version());
             Transaction::rcu_free(e);
