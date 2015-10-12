@@ -10,13 +10,14 @@
 #define HASHTABLE_DELETE 1
 int ct = 0;
 int max_ct = 0;
-template <typename K, typename V, bool Opacity = false, unsigned Init_size = 129, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
+template <typename K, typename V, bool Opacity = false, unsigned Init_size = 129, typename W = V, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
 class Hashtable : public Shared {
 public:
     typedef uint64_t Version;
     typedef K Key;
     typedef K key_type;
     typedef V Value;
+    typedef W Value_type;
 private:
   // our hashtable is an array of linked lists. 
   // an internal_elem is the node type for these linked lists
@@ -25,9 +26,8 @@ private:
     internal_elem *next;
     Version version;
     bool valid_;
-    Value value;
-    template <typename ValType> 
-    internal_elem(Key k, ValType val) : key(k), next(NULL), version(0), valid_(false), value(val) {}
+    Value_type value;
+    internal_elem(Key k, Value val) : key(k), next(NULL), version(0), valid_(false), value(val) {}
     bool& valid() {
       return valid_;
     }
@@ -55,7 +55,6 @@ private:
 
   static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
   static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
-
 public:
   Hashtable(unsigned size = Init_size, Hash h = Hash(), Pred p = Pred()) : map_(), hasher_(h), pred_(p) {
     map_.resize(size);
@@ -74,8 +73,7 @@ public:
   }
 
   // returns true if found false if not
-  template <typename ValType>
-  bool transGet(const Key& k, ValType& retval) {
+  bool transGet(const Key& k, Value& retval) {
     bucket_entry& buck = buck_entry(k);
     Version buck_version = buck.version;
     fence();
@@ -161,8 +159,8 @@ public:
 #endif
 
   // returns true if item already existed, false if it did not
-  template <bool INSERT = true, bool SET = true, typename ValType>
-  bool transPut(const Key& k, const ValType& v) {
+  template <bool INSERT = true, bool SET = true>
+  bool transPut(const Key& k, const Value& v) {
     // TODO: technically puts don't need to look into the table at all until lock time
     bucket_entry& buck = buck_entry(k);
     // TODO: update doesn't need to lock the table
@@ -235,8 +233,7 @@ public:
   }
 
   // returns true if successful
-  template <typename ValType>
-  bool transInsert(const Key& k, const ValType& v) {
+  bool transInsert(const Key& k, const Value& v) {
     return !transPut</*insert*/true, /*set*/false>(k, v);
   }
 
@@ -303,8 +300,9 @@ public:
       return;
     }
     // else must be insert/update
-    Value new_v = std::move(item.template write_value<Value>());
-    std::swap(new_v, el->value);
+    Value& new_v = item.template write_value<Value>();
+    el->value = new_v;
+    //std::swap(new_v, el->value);
     if (!__has_trivial_copy(Value)) {
       //Transaction::rcu_cleanup([new_v] () { delete new_v; });
     }
@@ -416,11 +414,11 @@ public:
 
   // non-transactional get/put/etc.
   // not very interesting
-  template <typename ValType>
-  bool read(const Key& k, ValType& retval) {
+  bool read(const Key& k, Value& retval) {
     auto e = find(buck_entry(k), k);
-    if (e)
+    if (e) {
       assign_val(retval, e->value);
+    }
     return !!e;
   }
 
@@ -432,8 +430,7 @@ public:
     val.assign(val_to_assign.data(), val_to_assign.length());
   }
   
-  template <typename ValType>
-  void put(const Key& k, const ValType& val) {
+  void put(const Key& k, const Value& val) {
     bucket_entry& buck = buck_entry(k);
     lock(&buck.version);
     internal_elem *e = find(buck, k);
@@ -445,8 +442,7 @@ public:
     unlock(&buck.version);
   }
 
-  template <typename ValType>
-  void set(internal_elem *e, const ValType& val) {
+  void set(internal_elem *e, const Value& val) {
     assert(e);
     lock(&e->version);
     e->value = val;
@@ -581,8 +577,8 @@ private:
     return ret;
   }
 
-  template <bool markValid = false, typename ValType>
-  void insert_locked(bucket_entry& buck, const Key& k, const ValType& val) {
+  template <bool markValid = false>
+  void insert_locked(bucket_entry& buck, const Key& k, const Value& val) {
     assert(is_locked(buck.version));
     auto new_head = new internal_elem(k, val);
     internal_elem *cur_head = buck.head;
@@ -601,7 +597,7 @@ private:
       if (is_locked(v2))
         Sto::abort();
       fence();
-      val = e->value;
+      assign_val(val, e->value);
       fence();
       vers = e->version;
     } while (vers != v2);

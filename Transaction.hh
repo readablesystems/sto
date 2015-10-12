@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <iostream>
 
-#define CONSISTENCY_CHECK 1
+#define CONSISTENCY_CHECK 0
 #define PERF_LOGGING 0
 #define DETAILED_LOGGING 0
 #define ASSERT_TX_SIZE 0
@@ -133,6 +133,9 @@ struct __attribute__((aligned(128))) threadinfo_t {
           else if (n > p_[p])
               p_[p] = n;
       }
+  }
+  void reset_p(int p) {
+    p_[p] = 0;
   }
 };
 
@@ -278,7 +281,12 @@ public:
   }
 
   static void print_stats();
-
+  static void clear_stats() {
+    for (int i = 0; i != MAX_THREADS; ++i) {
+      for (int p = 0; p!= txp_count; ++p) 
+         tinfo[i].reset_p(p);
+    }
+  }
 
   static void acquire_spinlock(unsigned& spin_lock) {
     unsigned cur;

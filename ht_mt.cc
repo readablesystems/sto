@@ -12,9 +12,9 @@
 
 #if DS == 0
 #if USE_STRINGS == 1
-typedef Hashtable<std::string, simple_str, false, 1000000> ds;
+typedef Hashtable<std::string, std::string, false, 1000000, simple_str> ds;
 #else
-typedef Hashtable<int, simple_str, false, 1000000> ds;
+typedef Hashtable<int, std::string, false, 1000000, simple_str> ds;
 #endif
 #else
 typedef MassTrans<std::string> ds;
@@ -61,15 +61,14 @@ void run(ds& h) {
         int key = slotdist(transgen);
         std::string value;
 #if DS == 0
-        //TRANSACTION{
+        TRANSACTION{
 #if USE_STRINGS == 1
             std::string s = std::to_string(key);
-            h.read(s, value);
+            h.transGet(s, value);
 #else
-	    std::string s = std::to_string(key);
-	    h.read(key, value);
+	    h.transGet(key, value);
 #endif
-        //} RETRY(false);
+        } RETRY(false);
 #else
         TRANSACTION{
 #if USE_STRINGS == 1
@@ -90,9 +89,9 @@ void init(ds& h) {
         TRANSACTION{
 #if USE_STRINGS == 1
             std::string s = std::to_string(i);
-            h.put(s, value);
+            h.transPut(s, value);
 #else
-	    h.put(i, value);
+	    h.transPut(i, value);
 #endif
         } RETRY(false);
     }
