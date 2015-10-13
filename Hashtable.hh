@@ -113,7 +113,7 @@ public:
         check_opacity(e->version);
       return true;
     } else {
-      t_item(pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+      Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
       if (Opacity)
         check_opacity(buck.version);
       return false;
@@ -140,7 +140,7 @@ public:
         // so we just unmark all attributes so the item is ignored
         item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
         // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
-        t_item(pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+        Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
         return true;
       } else 
 #endif
@@ -167,7 +167,7 @@ public:
       return true;
     } else {
       // add a read that yes this element doesn't exist
-      t_item(pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+      Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
       if (Opacity)
         check_opacity(buck.version);
       return false;
@@ -195,7 +195,7 @@ public:
         // unreachable (t.abort() raises an exception)
         return false;
       }
-
+#if READ_MY_WRITES
       if (has_delete(item)) {
         // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
         // if user can't read v#)
@@ -211,6 +211,7 @@ public:
         }
         return false;
       }
+#endif
 
 #if HASHTABLE_DELETE
       // make sure the item doesn't get deleted before us
@@ -221,14 +222,20 @@ public:
       if (SET) {
         if (CopyVals)
             item.add_write(v).add_flags(copyvals_bit);
-          else
+        else
             item.add_write(pack(v));
+#if READ_MY_WRITES
+        if (has_insert(item)) {
+	  // Updating the value here, as we won't update it during install
+          e->value = v;
+        }
+#endif
       }
       return true;
     } else {
       if (!INSERT) {
         auto buck_version = unlock(&buck.version);
-        t_item(pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+        Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
         if (Opacity)
             check_opacity(buck.version);
         return false;
@@ -326,12 +333,14 @@ public:
       return;
     }
     // else must be insert/update
-    Value& new_v = item.flags() & copyvals_bit ? item.template write_value<Value>() : (Value&)item.template write_value<void*>();
-    el->value = new_v;
-    //std::swap(new_v, el->value);
-    if (!__has_trivial_copy(Value)) {
-      //Transaction::rcu_cleanup([new_v] () { delete new_v; });
+    if (!(item.flags() & insert_bit)) {
+      // Update
+      Value& new_v = item.flags() & copyvals_bit ? item.template write_value<Value>() : (Value&)item.template write_value<void*>();
+      el->value = new_v;
     }
+    //if (!__has_trivial_copy(Value)) {
+      //Transaction::rcu_cleanup([new_v] () { delete new_v; });
+    //}
 
     if (Opacity)
       TransactionTid::set_version(el->version, t.commit_tid());
