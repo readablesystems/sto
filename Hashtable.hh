@@ -8,6 +8,11 @@
 #include "simple_str.hh"
 
 #define HASHTABLE_DELETE 1
+
+#ifndef READ_MY_WRITES
+#define READ_MY_WRITES 1
+#endif 
+
 int ct = 0;
 int max_ct = 0;
 template <typename K, typename V, bool Opacity = false, unsigned Init_size = 129, typename W = V, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
@@ -55,6 +60,8 @@ private:
 
   static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
   static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
+  static constexpr TransItem::flags_type copyvals_bit = TransItem::user0_bit<<2;
+
 public:
   Hashtable(unsigned size = Init_size, Hash h = Hash(), Pred p = Pred()) : map_(), hasher_(h), pred_(p) {
     map_.resize(size);
@@ -79,19 +86,24 @@ public:
     fence();
     internal_elem *e = find(buck, k);
     if (e) {
-      auto item = Sto::item(this, e);
+      auto item = t_read_only_item(e);
       if (!validity_check(item, e)) {
         Sto::abort();
         return false;
       }
+#if READ_MY_WRITES
       // deleted
       if (has_delete(item)) {
         return false;
       }
       if (item.has_write()) {
-        retval = item.template write_value<Value>();
+        if (item.flags() & copyvals_bit)
+          retval = item.template write_value<Value>();
+        else
+          retval = (Value&)item.template write_value<void*>();
         return true;
       }
+#endif
       Version elem_vers;
       // "atomic" read of both the current value and the version #
       atomicRead(e, elem_vers, retval);
@@ -101,7 +113,7 @@ public:
         check_opacity(e->version);
       return true;
     } else {
-      Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+      t_item(pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
       if (Opacity)
         check_opacity(buck.version);
       return false;
@@ -118,8 +130,9 @@ public:
     if (e) {
       Version elemvers = e->version;
       fence();
-      auto item = Sto::item(this, e);
+      auto item = t_item(e);
       bool valid = e->valid();
+#if READ_MY_WRITES
       if (!valid && has_insert(item)) {
         // we're deleting our own insert. special case this to just remove element and just check for no insert at commit
         remove(e);
@@ -127,17 +140,21 @@ public:
         // so we just unmark all attributes so the item is ignored
         item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
         // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
-        Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+        t_item(pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
         return true;
-      } else if (!valid) {
+      } else 
+#endif
+      if (!valid) {
         Sto::abort();
         return false;
       }
       assert(valid);
+#if READ_MY_WRITES      
       // we already deleted!
       if (has_delete(item)) {
         return false;
       }
+#endif
       // we need to make sure this bucket didn't change (e.g. what was once there got removed)
       item.add_read(elemvers);
       if (Opacity)
@@ -145,12 +162,12 @@ public:
       // we use delete_bit to detect deletes so we don't need any other data
       // for deletes, just to mark it as a write
       if (!item.has_write())
-          item.add_write(0); // XXX is this the right type?
+          item.add_write(0).add_flags(copyvals_bit); // XXX is this the right type?
       item.add_flags(delete_bit);
       return true;
     } else {
       // add a read that yes this element doesn't exist
-      Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+      t_item(pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
       if (Opacity)
         check_opacity(buck.version);
       return false;
@@ -159,7 +176,7 @@ public:
 #endif
 
   // returns true if item already existed, false if it did not
-  template <bool INSERT = true, bool SET = true>
+  template <bool CopyVals = true, bool INSERT = true, bool SET = true>
   bool transPut(const Key& k, const Value& v) {
     // TODO: technically puts don't need to look into the table at all until lock time
     bucket_entry& buck = buck_entry(k);
@@ -172,7 +189,7 @@ public:
       unlock(&buck.version);
       Version elemvers = e->version;
       fence();
-      auto item = Sto::item(this, e);
+      auto item = t_item(e);
       if (!validity_check(item, e)) {
         Sto::abort();
         // unreachable (t.abort() raises an exception)
@@ -184,7 +201,10 @@ public:
         // if user can't read v#)
         if (INSERT) {
           item.clear_flags(delete_bit);
-          item.add_write(v);
+          if (CopyVals)
+            item.add_write(v).add_flags(copyvals_bit);
+          else
+            item.add_write(pack(v));
         } else {
           // delete-then-update == not found
           // delete will check for other deletes so we don't need to re-log that check
@@ -199,13 +219,16 @@ public:
         check_opacity(e->version);
 #endif
       if (SET) {
-        item.add_write(v);
+        if (CopyVals)
+            item.add_write(v).add_flags(copyvals_bit);
+          else
+            item.add_write(pack(v));
       }
       return true;
     } else {
       if (!INSERT) {
         auto buck_version = unlock(&buck.version);
-        Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+        t_item(pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
         if (Opacity)
             check_opacity(buck.version);
         return false;
@@ -225,7 +248,10 @@ public:
       auto item = Sto::new_item(this, new_head);
       // don't actually need to Store anything for the write, just mark as valid on install
       // (for now insert and set will just do the same thing on install, set a value and then mark valid)
-      item.add_write(v);
+      if (CopyVals)
+            item.add_write(v).add_flags(copyvals_bit);
+      else
+            item.add_write(pack(v));
       // need to remove this item if we abort
       item.add_flags(insert_bit);
       return false;
@@ -234,12 +260,12 @@ public:
 
   // returns true if successful
   bool transInsert(const Key& k, const Value& v) {
-    return !transPut</*insert*/true, /*set*/false>(k, v);
+    return !transPut</*copyvals*/true, /*insert*/true, /*set*/false>(k, v);
   }
 
   // aka putIfAbsent (returns true if successful)
   bool transUpdate(const Key& k, const Value& v) {
-    return transPut</*insert*/false, /*set*/true>(k, v);
+    return transPut</*copyvals*/true, /*insert*/false, /*set*/true>(k, v);
   }
 
   void lock(internal_elem *el) {
@@ -300,7 +326,7 @@ public:
       return;
     }
     // else must be insert/update
-    Value& new_v = item.template write_value<Value>();
+    Value& new_v = item.flags() & copyvals_bit ? item.template write_value<Value>() : (Value&)item.template write_value<void*>();
     el->value = new_v;
     //std::swap(new_v, el->value);
     if (!__has_trivial_copy(Value)) {
@@ -602,6 +628,29 @@ private:
       vers = e->version;
     } while (vers != v2);
   }
+  
+  template <typename ValType>
+  static inline void *pack(const ValType& value) {
+    assert(sizeof(ValType) <= sizeof(void*));
+    void *placed_val = *(void**)&value;
+    return placed_val;
+  }
+  
+  template <typename T>
+  TransProxy t_item(T e) {
+#if READ_MY_WRITES
+    return Sto::item(this, e);
+#else
+    return Sto::fresh_item(this, e);
+#endif
+  }
 
-
+  template <typename T>
+  TransProxy t_read_only_item(T e) {
+#if READ_MY_WRITES
+    return Sto::read_item(this, e);
+#else
+    return Sto::fresh_item(this, e);
+#endif
+  }
 };
