@@ -7,8 +7,8 @@
 #include "Transaction.hh"
 
 #define HASHTABLE_DELETE 1
-int ct = 0;
-int max_ct = 0;
+//int ct = 0;
+//int max_ct = 0;
 template <typename K, typename V, bool Opacity = false, unsigned Init_size = 129, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
 class Hashtable : public Shared {
 public:
