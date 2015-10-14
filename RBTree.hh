@@ -8,6 +8,8 @@
 #include "VersionFunctions.hh"
 #include "RBTreeInternal.hh"
 
+#define PRINT_DEBUG 1
+
 template <typename K, typename T>
 class RBTree;
 
@@ -85,6 +87,9 @@ public:
     RBTree() {
         treelock_ = 0;
         treeversion_ = 0;
+#if PRINT_DEBUG
+        stats_ = {0,0,0,0,0,0};
+#endif
     }
     
     typedef rbwrapper<rbpair<K, T>> wrapper_type;
@@ -109,8 +114,15 @@ public:
     inline bool check(const TransItem& item, const Transaction& trans);
     inline void install(TransItem& item, const Transaction& t);
     inline void cleanup(TransItem& item, bool committed);
+#if PRINT_DEBUG
+    inline void print_absent_reads();
+#endif
 
 private:
+    inline size_t debug_size() const {
+        return wrapper_tree_.size();
+    }
+
     // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
     inline rbwrapper<rbpair<K, T>>* find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) const {
         lock(&treelock_);
@@ -147,6 +159,9 @@ private:
         
         // INSERT: kvp did not exist
         if (!x) {
+#if PRINT_DEBUG
+            stats_.absent_insert++;
+#endif
             auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, value)  );
             wrapper_tree_.insert(*n);
             // invariant: the node's insert_bit should be set
@@ -160,7 +175,10 @@ private:
 
         // UPDATE: kvp is already inserted into the tree
         } else {
-            auto item = Sto::item(this, x);
+#if PRINT_DEBUG
+            stats_.present_insert++;
+#endif
+        auto item = Sto::item(this, x);
             if (is_deleted(x->version())) {
                 unlock(&treelock_);
                 Sto::abort();
@@ -239,6 +257,16 @@ private:
     internal_tree_type wrapper_tree_;
     mutable Version treelock_;
     mutable Version treeversion_;
+#if PRINT_DEBUG
+    mutable struct stats {
+        int absent_insert;
+        int absent_delete;
+        int absent_count;
+        int present_insert;
+        int present_delete;
+        int present_count;
+    } stats_;
+#endif
     // used to mark whether a key is for the tree structure (for tree version checks)
     // or a pointer (which will always have the lower 3 bits as 0)
     static constexpr uintptr_t tree_bit = 1U<<0;
@@ -274,6 +302,9 @@ template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
     auto x = find_or_abort(idx_pair);
+#if PRINT_DEBUG
+    (!x) ? stats_.absent_count++ : stats_.present_count++;
+#endif
     // we will observe treeversion_ regardless of the lookup result
     Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
     return ((x) ? 1 : 0);
@@ -290,6 +321,9 @@ inline size_t RBTree<K, T>::erase(const K& key) {
     auto x = find_or_abort(idx_pair);
     // FOUND ITEM
     if (x) {
+#if PRINT_DEBUG
+        stats_.present_delete++;
+#endif
         auto item = Sto::item(this, x);
         // item marked as inserted and not yet installed
         if (is_inserted(x->version())) {
@@ -324,6 +358,9 @@ inline size_t RBTree<K, T>::erase(const K& key) {
         Sto::item(this, tree_key_).add_write(0);
         return 1;
     } else {
+#if PRINT_DEBUG
+        stats_.absent_delete++;
+#endif
         // treat it like an absent read
         Sto::item(this, tree_key_).add_read(treeversion_);
         return 0;
@@ -414,3 +451,16 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
         }
     }
 }
+
+#if PRINT_DEBUG 
+template <typename K, typename T>
+inline void RBTree<K, T>::print_absent_reads() {
+    std::cout << "absent inserts: " << stats_.absent_insert << std::endl;
+    std::cout << "absent deletes: " << stats_.absent_delete << std::endl;
+    std::cout << "absent counts: " << stats_.absent_count << std::endl;
+    std::cout << "present inserts: " << stats_.present_insert << std::endl;
+    std::cout << "present deletes: " << stats_.present_delete << std::endl;
+    std::cout << "present counts: " << stats_.present_count << std::endl;
+    std::cout << "size: " << debug_size() << std::endl;
+}
+#endif

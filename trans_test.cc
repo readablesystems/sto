@@ -76,16 +76,19 @@ template <typename T>
 void* runFunc(void* x) {
     TesterPair<T>* tp = (TesterPair<T>*) x;
     run(tp->t, tp->me);
+#if PRINT_DEBUG 
+    TransactionTid::lock(lock); tester.print_stats(tp->t); TransactionTid::unlock(lock);
+#endif
     return nullptr;
 }
 
 
 template <typename T>
-void startAndWait(T* queue) {
+void startAndWait(T* ds) {
     pthread_t tids[N_THREADS];
     TesterPair<T> testers[N_THREADS];
     for (int i = 0; i < N_THREADS; ++i) {
-        testers[i].t = queue;
+        testers[i].t = ds;
         testers[i].me = i;
         pthread_create(&tids[i], NULL, runFunc<T>, &testers[i]);
     }
