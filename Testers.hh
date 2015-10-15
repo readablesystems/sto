@@ -64,7 +64,7 @@ public:
     virtual void init(T* q) = 0; 
     // Perform a particular operation on the data structure.    
     virtual op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) = 0 ;
-    //Redo a operation. This is called during serial execution.
+    // Redo a operation. This is called during serial execution.
     virtual void redoOp(T* q, op_record *op) = 0;
     // Checks that final state of the two data structures are the same.
     virtual void check(T* q, T* q1) = 0;

@@ -183,7 +183,7 @@ class rbtree {
     rbpriv::rbrep<T, Compare> r_;
 
     template <typename K, typename Comp>
-    inline T* find_any(const K& key, Comp comp) const;
+    inline std::pair<T*,T*> find_any(const K& key, Comp comp) const;
    
     void insert_commit(T* x, rbnodeptr<T> p, bool side);
     void delete_node(T* victim, T* successor_hint);
@@ -495,15 +495,18 @@ inline T* rbtree<T, C>::root() {
 }
 
 template <typename T, typename C> template <typename K, typename Comp>
-inline T* rbtree<T, C>::find_any(const K& key, Comp comp) const {
+inline std::pair<T*, T*> rbtree<T, C>::find_any(const K& key, Comp comp) const {
     T* n = r_.root_;
+    if (!n) {
+        return std::make_pair(nullptr, nullptr);
+    }
     while (n) {
         int cmp = comp.compare(key, *n);
         if (cmp == 0)
             break;
         n = n->rblinks_.c_[cmp > 0].node();
     }
-    return n;
+    return std::make_pair(n, n->rblinks_.p_);
 }
 
 template <typename T, typename C>
