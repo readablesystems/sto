@@ -41,12 +41,16 @@ public:
     typedef versioned_value_struct<std::pair<K, T>> versioned_pair;
 
     static constexpr Version insert_bit = TransactionTid::user_bit1;
+    static constexpr Version structure_bit = TransactionTid::user_bit1<<2;
 
-    explicit rbpair(const K& key, const T& value) :
-        pair_(std::pair<K, T>(key, value),
-              TransactionTid::increment_value + insert_bit) {}
-    explicit rbpair(std::pair<K, T>& kvp) :
-        pair_(kvp, TransactionTid::increment_value + insert_bit) {}
+    explicit rbpair(const K& key, const T& value)
+    : pair_(std::pair<K, T>(key, value), TransactionTid::increment_value + insert_bit),
+        nodeversion_(TransactionTid::increment_value + structure_bit) {
+    }
+    explicit rbpair(std::pair<K, T>& kvp)
+    : pair_(kvp, TransactionTid::increment_value + insert_bit),
+        nodeversion_(TransactionTid::increment_value + structure_bit) {
+    }
 
     inline const K& key() const {
         return pair_.read_value().first;
@@ -87,6 +91,7 @@ class RBTree : public Shared {
     static constexpr TransItem::flags_type structure_tag = TransItem::user0_bit<<2;
     static constexpr Version insert_bit = TransactionTid::user_bit1;
     static constexpr Version delete_bit = TransactionTid::user_bit1<<1;
+    static constexpr Version structure_bit = TransactionTid::user_bit1<<2;
 
 public:
     RBTree() {
@@ -137,7 +142,6 @@ private:
         if (x) {
             // check if rbpair has version "inserted" (someone inserted w/out commit)
             if (is_inserted(x->version())) {
-                // XXX const_cast hack here... any other way to do this?
                 auto item = Sto::item(const_cast<RBTree<K, T>*>(this), x);
                 // check if item was inserted by this transaction
                 if (has_insert(item)) {
@@ -174,7 +178,6 @@ private:
             wrapper_tree_.insert(*n);
             // invariant: the node's insert_bit should be set
             assert(is_inserted(n->version()));
-            // we will increment parent nodeversion upon commit (XXX will parent be the same?)
             // if tree is empty (i.e. no parent), we increment treeversion 
             if (!nodepair.second) {
                 Sto::item(this, tree_key_).add_write(0);
@@ -199,8 +202,7 @@ private:
                 // should be unreachable
                 return x->writeable_value();
             } else if (has_delete(item)) {
-                // we only reach here if read_my_delete; always doing an insert due to
-                // operator[] semantics
+                // we only reach here if read_my_delete; always doing an insert due to operator[] semantics
                 // add item value to write set and marked as inserted instead of deleted
                 // insert_tag indicates that we need to remove the insert_bit during install
                 item.add_write(value).clear_flags(delete_tag).add_flags(insert_tag);
@@ -252,6 +254,9 @@ private:
     static bool is_locked(Version v) {
         return TransactionTid::is_locked(v);
     }
+    static bool is_structured(Version v) {
+        return v & structure_bit;
+    }
     static bool is_inserted(Version v) {
         return v & insert_bit;
     }
@@ -274,16 +279,16 @@ private:
     internal_tree_type wrapper_tree_;
     mutable Version treelock_;
     mutable Version treeversion_;
+    // used to mark whether a key is for the tree structure (for tree version checks)
+    // or a pointer (which will always have the lower 3 bits as 0)
+    static constexpr uintptr_t tree_bit = 1U<<0;
+    void* tree_key_ = (void*) tree_bit;
 #if PRINT_DEBUG
     mutable struct stats {
         int absent_insert, absent_delete, absent_count;
         int present_insert, present_delete, present_count;
     } stats_;
 #endif
-    // used to mark whether a key is for the tree structure (for tree version checks)
-    // or a pointer (which will always have the lower 3 bits as 0)
-    static constexpr uintptr_t tree_bit = 1U<<0;
-    void* tree_key_ = (void*) tree_bit;
  
     friend class RBProxy<K, T>;
 };
@@ -314,7 +319,7 @@ private:
 template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    auto nodepair = find_or_abort(idx_pair); // return both parent and child
+    auto nodepair = find_or_abort(idx_pair);
     auto x = nodepair.first;
 #if PRINT_DEBUG
     (!x) ? stats_.absent_count++ : stats_.present_count++;
@@ -358,8 +363,7 @@ inline size_t RBTree<K, T>::erase(const K& key) {
                 wrapper_tree_.erase(*x);
                 item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
                 Transaction::rcu_free(x);
-                // read a parentversion so that we can abort if another transaction inserts
-                // this key again
+                // read parentversion so that we can abort if another transaction inserts this key again
                 if (!nodepair.second) {
                     Sto::item(this, tree_key_).add_read(treeversion_);
                 } else {
@@ -433,12 +437,13 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     Version curr_version;
 
     // set up the correct current version to check: either treeversion, item version, or nodeversion
-    if (e == (wrapper_type*)tree_key_)
+    if (e == (wrapper_type*)tree_key_) {
         curr_version = treeversion_;
-    else if (has_structure(item))
+    } else if (is_structured(read_version)) {
         curr_version = e->nodeversion();
-    else
+    } else {
         curr_version = e->version();
+    }
 
     bool same_version = (read_version ^ curr_version) <= TransactionTid::lock_bit;
     bool not_locked = (!is_locked(curr_version) || item.has_lock(trans));
