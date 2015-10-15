@@ -9,8 +9,8 @@
 #include "Hashtable.hh"
 #include "RBTree.hh"
 
-#define MAX_VALUE  100000 // Max value of integers used in data structures
-#define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements.
+#define MAX_VALUE  10000 // Max value of integers used in data structures
+#define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements.
 
 struct Rand {
     typedef uint32_t result_type;
@@ -68,6 +68,10 @@ public:
     virtual void redoOp(T* q, op_record *op) = 0;
     // Checks that final state of the two data structures are the same.
     virtual void check(T* q, T* q1) = 0;
+#if PRINT_DEBUG
+    // Print stats for each data structure
+    void print_stats(T* q) {};
+#endif
 };
 
 template <typename T>
@@ -148,7 +152,7 @@ public:
             assert(q->count(val) == op->rdata[0]);
         }
     }
- 
+
     void check(T* q, T*q1) {
         for (int i = 0; i < 10000; i++) {
             TRANSACTION {
@@ -183,6 +187,12 @@ public:
             }
         } RETRY(false);
     }
+
+#if PRINT_DEBUG
+    void print_stats(T* q) {
+        q->print_absent_reads();
+    }
+#endif
 
     static const int num_ops_ = 3;
 };
