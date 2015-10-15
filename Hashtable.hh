@@ -551,14 +551,20 @@ private:
   // looks up a key's internal_elem, given its bucket
   internal_elem* find(bucket_entry& buck, const Key& k) {
     internal_elem *list = buck.head;
-    //ct++;
-    //int i = 1;
+#if OP_LOGGING
+    ct++;
+    int i = 1;
+#endif
     while (list && ! pred_(list->key, k)) {
       list = list->next;
-      //ct++;
-      //i++;
+#if OP_LOGGING
+      ct++;
+      i++;
+#endif
     }
-    //if (i > max_ct) max_ct = i;
+#if OP_LOGGING
+    if (i > max_ct) max_ct = i;
+#endif
     return list;
   }
 

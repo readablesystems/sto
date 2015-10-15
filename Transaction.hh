@@ -59,6 +59,8 @@ enum txp {
     txp_total_n,
     txp_total_r,
     txp_total_w,
+    txp_max_rdata_size,
+    txp_max_wdata_size,
     txp_total_searched,
     txp_total_check_read,
 #if !PERF_LOGGING
@@ -881,6 +883,9 @@ public:
 template <typename T>
 inline TransProxy& TransProxy::add_read(T rdata) {
     if (!has_read()) {
+#if DETAILED_LOGGING
+        Transaction::max_p(txp_max_rdata_size, sizeof(T));
+#endif
         i_->__or_flags(TransItem::read_bit);
         i_->rdata_ = t_->buf_.pack(std::move(rdata));
     }
@@ -896,6 +901,9 @@ inline TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
 
 template <typename T>
 inline TransProxy& TransProxy::add_write(T wdata) {
+#if DETAILED_LOGGING
+    Transaction::max_p(txp_max_wdata_size, sizeof(T));
+#endif
     if (has_write())
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general
