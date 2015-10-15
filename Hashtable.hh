@@ -13,8 +13,6 @@
 #define READ_MY_WRITES 1
 #endif 
 
-int ct = 0;
-int max_ct = 0;
 template <typename K, typename V, bool Opacity = false, unsigned Init_size = 129, typename W = V, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
 class Hashtable : public Shared {
 public:
@@ -388,6 +386,31 @@ public:
     Transaction::rcu_free(cur);
   }
 
+  void print_stats() {
+    int tot_count = 0;
+    int max_chaining = 0;
+    int num_empty = 0;
+
+    for (unsigned i = 0; i < map_.size(); ++i) {
+      bucket_entry& buck = map_[i];
+      if (!buck.head) {
+        num_empty++;
+        continue;
+      }
+      int ct = 0;
+      internal_elem * list = buck.head;
+      while (list) {
+        ct++;
+        tot_count++;
+        list = list->next;
+      }
+
+      if (ct > max_chaining) max_chaining = ct;
+    }
+
+    printf("Total count: %d, Empty buckets: %d, Avg chaining: %f, Max chaining: %d\n", tot_count, num_empty, ((double)(tot_count))/(map_.size() - num_empty), max_chaining);
+  }
+
   void print() {
     printf("Hashtable:\n");
     for (unsigned i = 0; i < map_.size(); ++i) {
@@ -551,20 +574,9 @@ private:
   // looks up a key's internal_elem, given its bucket
   internal_elem* find(bucket_entry& buck, const Key& k) {
     internal_elem *list = buck.head;
-#if OP_LOGGING
-    ct++;
-    int i = 1;
-#endif
     while (list && ! pred_(list->key, k)) {
       list = list->next;
-#if OP_LOGGING
-      ct++;
-      i++;
-#endif
     }
-#if OP_LOGGING
-    if (i > max_ct) max_ct = i;
-#endif
     return list;
   }
 
