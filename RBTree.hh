@@ -8,8 +8,6 @@
 #include "VersionFunctions.hh"
 #include "RBTreeInternal.hh"
 
-#define PRINT_DEBUG 1
-
 template <typename K, typename T>
 class RBTree;
 
@@ -163,8 +161,8 @@ private:
     // return value is a reference to kvp.second
     inline T& insert_update(const K& key, const T& value, bool force) {
         auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
-        auto pair = this->find_or_abort(node);
-        auto x = pair.first;
+        auto nodepair = this->find_or_abort(node);
+        auto x = nodepair.first;
         lock(&treelock_);
         
         // INSERT: kvp did not exist
@@ -178,11 +176,11 @@ private:
             assert(is_inserted(n->version()));
             // we will increment parent nodeversion upon commit (XXX will parent be the same?)
             // if tree is empty (i.e. no parent), we increment treeversion 
-            if (!pair.second) {
+            if (!nodepair.second) {
                 Sto::item(this, tree_key_).add_write(0);
             // else we increment the parent version 
             } else {
-                Sto::item(this, pair.second).add_write(0).add_flags(structure_tag);
+                Sto::item(this, nodepair.second).add_write(0).add_flags(structure_tag);
             }
             // add write and insert flag of item (value of rbpair) with @value
             Sto::item(this, n).add_write(value).add_flags(insert_tag);
@@ -316,17 +314,17 @@ private:
 template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    auto pair = find_or_abort(idx_pair); // return both parent and child
-    auto x = pair.first;
+    auto nodepair = find_or_abort(idx_pair); // return both parent and child
+    auto x = nodepair.first;
 #if PRINT_DEBUG
     (!x) ? stats_.absent_count++ : stats_.present_count++;
 #endif
     // we will check parent version upon commit if absent read
     if (!x) {
-        if (!pair.second) {
+        if (!nodepair.second) {
             Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
         } else {
-            Sto::item(const_cast<RBTree<K, T>*>(this), pair.second).add_read(pair.second->nodeversion());
+            Sto::item(const_cast<RBTree<K, T>*>(this), nodepair.second).add_read(nodepair.second->nodeversion());
         }
         return 0;
     // else we found the item, check the item version at commit time
@@ -344,8 +342,8 @@ inline RBProxy<K, T> RBTree<K, T>::operator[](const K& key) {
 template <typename K, typename T>
 inline size_t RBTree<K, T>::erase(const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    auto pair = find_or_abort(idx_pair);
-    auto x = pair.first;
+    auto nodepair = find_or_abort(idx_pair);
+    auto x = nodepair.first;
     // FOUND ITEM
     if (x) {
 #if PRINT_DEBUG
@@ -362,10 +360,10 @@ inline size_t RBTree<K, T>::erase(const K& key) {
                 Transaction::rcu_free(x);
                 // read a parentversion so that we can abort if another transaction inserts
                 // this key again
-                if (!pair.second) {
+                if (!nodepair.second) {
                     Sto::item(this, tree_key_).add_read(treeversion_);
                 } else {
-                    Sto::item(const_cast<RBTree<K, T>*>(this), pair.second).add_read(pair.second->nodeversion());
+                    Sto::item(const_cast<RBTree<K, T>*>(this), nodepair.second).add_read(nodepair.second->nodeversion());
                 }
                 unlock(&treelock_);
                 return 1;
@@ -385,11 +383,11 @@ inline size_t RBTree<K, T>::erase(const K& key) {
         item.add_read(x->version());
         // must change the parent node version
         // if tree is empty (i.e. no parent), we increment treeversion 
-        if (!pair.second) {
+        if (!nodepair.second) {
             Sto::item(this, tree_key_).add_write(0);
         // else we increment the parent version
         } else {
-            Sto::item(this, pair.second).add_write(0).add_flags(structure_tag);
+            Sto::item(this, nodepair.second).add_write(0).add_flags(structure_tag);
         }
         return 1;
     // item not in tree, treat it like an absent read
@@ -397,10 +395,10 @@ inline size_t RBTree<K, T>::erase(const K& key) {
 #if PRINT_DEBUG
         stats_.absent_delete++;
 #endif
-        if (!pair.second) {
+        if (!nodepair.second) {
             Sto::item(this, tree_key_).add_read(treeversion_);
         } else {
-            Sto::item(const_cast<RBTree<K, T>*>(this), pair.second).add_read(pair.second->nodeversion());
+            Sto::item(const_cast<RBTree<K, T>*>(this), nodepair.second).add_read(nodepair.second->nodeversion());
         }
         return 0;
     }
@@ -410,6 +408,8 @@ template <typename K, typename T>
 inline void RBTree<K, T>::lock(TransItem& item) {
     if (item.key<void*>() == tree_key_) {
         lock(&treeversion_);
+    } else if (has_structure(item)) {
+        lock(&(item.key<wrapper_type*>()->nodeversion()));
     } else {
         lock(item.key<versioned_value*>());
     }
@@ -419,6 +419,8 @@ template <typename K, typename T>
 inline void RBTree<K, T>::unlock(TransItem& item) {
     if (item.key<void*>() == tree_key_) {
         unlock(&treeversion_);
+    } else if (has_structure(item)) {
+        unlock(&(item.key<wrapper_type*>()->nodeversion()));
     } else {
         unlock(item.key<versioned_value*>());
     }
@@ -451,7 +453,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
     (void) t;
     auto e = item.key<wrapper_type*>();
     if (e != (wrapper_type*)tree_key_) {
-        assert(is_locked(e->version()));
+        assert(is_locked(e->version()) || is_locked(e->nodeversion()));
 
         bool deleted = has_delete(item);
         bool inserted = has_insert(item);

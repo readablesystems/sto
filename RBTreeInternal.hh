@@ -497,16 +497,15 @@ inline T* rbtree<T, C>::root() {
 template <typename T, typename C> template <typename K, typename Comp>
 inline std::pair<T*, T*> rbtree<T, C>::find_any(const K& key, Comp comp) const {
     T* n = r_.root_;
-    if (!n) {
-        return std::make_pair(nullptr, nullptr);
-    }
+    T* p = nullptr;
     while (n) {
         int cmp = comp.compare(key, *n);
         if (cmp == 0)
             break;
+        p = n->rblinks_.p_;
         n = n->rblinks_.c_[cmp > 0].node();
     }
-    return std::make_pair(n, n->rblinks_.p_);
+    return std::make_pair(n, p);
 }
 
 template <typename T, typename C>
