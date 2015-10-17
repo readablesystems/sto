@@ -17,14 +17,15 @@ template <typename T>
 class rbwrapper : public T {
   public:
     typedef TransactionTid::type Version;
+    static constexpr Version structure_bit = TransactionTid::user_bit1<<2;
     template <typename... Args> inline rbwrapper(Args&&... args)
-    : T(std::forward<Args>(args)...) {
+    : T(std::forward<Args>(args)...), nodeversion_(TransactionTid::increment_value + structure_bit) {
     }
     inline rbwrapper(const T& x)
-    : T(x) {
+    : T(x), nodeversion_(TransactionTid::increment_value + structure_bit) {
     }
     inline rbwrapper(T&& x) noexcept
-    : T(std::move(x)) {
+    : T(std::move(x)), nodeversion_(TransactionTid::increment_value + structure_bit) {
     }
     inline const T& value() const {
         return *this;
@@ -33,9 +34,10 @@ class rbwrapper : public T {
         return *this;
     }
     inline Version& nodeversion() {
-        return rblinks_.nodeversion_;
+        return nodeversion_;
     }
     rblinks<rbwrapper<T> > rblinks_;
+    mutable Version nodeversion_;
 };
 
 // Define a custom key-value pair type that contains versions and also
@@ -334,7 +336,7 @@ inline size_t RBTree<K, T>::count(const K& key) const {
             Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
         } else {
             // XXX DOES NOT WORK
-            std::cout << "adding read of " << x->nodeversion() << " for absent count" << std::endl;
+            //std::cout << "adding read of " << x->nodeversion() << " for absent count" << std::endl;
             Sto::item(const_cast<RBTree<K, T>*>(this), x).add_read(x->nodeversion());
         }
         return 0;
@@ -414,7 +416,7 @@ inline size_t RBTree<K, T>::erase(const K& key) {
             Sto::item(this, tree_key_).add_read(treeversion_);
         } else {
             // XXX DOES NOT WORK
-            std::cout << "adding read of " << x->nodeversion() << " for absent erase" << std::endl;
+            //std::cout << "adding read of " << x->nodeversion() << " for absent erase" << std::endl;
             Sto::item(const_cast<RBTree<K, T>*>(this), x).add_read(x->nodeversion());
         }
         return 0;
@@ -449,7 +451,7 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     if (e == (wrapper_type*)tree_key_) {
         curr_version = treeversion_;
     } else if (is_structured(read_version)) {
-        std::cout << "checking nodeversion " << e->nodeversion() << " against " << read_version << std::endl;
+        //std::cout << "checking nodeversion " << e->nodeversion() << " against " << read_version << std::endl;
         curr_version = e->nodeversion();
     } else {
         curr_version = e->version();
@@ -498,7 +500,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         // don't need to update nodeversion if deleted (mark delete bit) or inserted (it should have no children who did a read)
         } else if (structured) {
             lock(&e->nodeversion());
-            std::cout << "Incrementing nodeversion " << e->nodeversion() << std::endl;
+            std::cout << "Incrementing locked nodeversion " << e->nodeversion() << std::endl;
             TransactionTid::inc_invalid_version(e->nodeversion());
             std::cout << "New nodeversion " << e->nodeversion() << std::endl;
             unlock(&e->nodeversion());

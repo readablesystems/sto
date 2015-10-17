@@ -51,14 +51,8 @@ class rbnodeptr {
 template <typename T>
 class rblinks {
     public:
-    typedef TransactionTid::type Version;
-    static constexpr Version structure_bit = TransactionTid::user_bit1<<2;
- 
-    rblinks() : nodeversion_(TransactionTid::increment_value + structure_bit) {}
-    
     T* p_;
     rbnodeptr<T> c_[2];
-    mutable Version nodeversion_;
 };
 
 namespace rbpriv {
