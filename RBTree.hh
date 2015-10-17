@@ -414,7 +414,8 @@ inline void RBTree<K, T>::lock(TransItem& item) {
     if (item.key<void*>() == tree_key_) {
         lock(&treeversion_);
     } else { 
-        lock(&(item.key<wrapper_type*>()->nodeversion()));
+        printf("locking nodeversion of key %d\n", item.key<wrapper_type*>()->key());
+        lock(&item.key<wrapper_type*>()->nodeversion());
         lock(item.key<versioned_value*>());
     }
 }
@@ -424,8 +425,9 @@ inline void RBTree<K, T>::unlock(TransItem& item) {
     if (item.key<void*>() == tree_key_) {
         unlock(&treeversion_);
     } else {
+        printf("unlocking nodeversion of key %d\n", item.key<wrapper_type*>()->key());
         assert(is_locked(item.key<wrapper_type*>()->nodeversion()));
-        unlock(&(item.key<wrapper_type*>()->nodeversion()));
+        unlock(&item.key<wrapper_type*>()->nodeversion());
         unlock(item.key<versioned_value*>());
     }
 }
@@ -459,6 +461,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
     auto e = item.key<wrapper_type*>();
     if (e != (wrapper_type*)tree_key_) {
         assert(is_locked(e->version()) && is_locked(e->nodeversion()));
+        printf("installing nodeversion of key %d\n", e->key());
 
         bool deleted = has_delete(item);
         bool inserted = has_insert(item);
