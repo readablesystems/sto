@@ -180,7 +180,7 @@ class rbtree {
     rbpriv::rbrep<T, Compare> r_;
 
     template <typename K, typename Comp>
-    inline std::pair<T*,bool> find_any(const K& key, Comp comp) const;
+    inline std::pair<std::pair<T*, bool>, std::vector<T*>> find_any(const K& key, Comp comp) const;
    
     std::vector<T*> insert_commit(T* x, rbnodeptr<T> p, bool side);
     std::vector<T*> delete_node(T* victim, T* successor_hint);
@@ -509,22 +509,26 @@ inline T* rbtree<T, C>::root() {
 // else if bool is false the node is the parent of the absent read. If (null, false), we have
 // an empty tree
 template <typename T, typename C> template <typename K, typename Comp>
-inline std::pair<T*, bool> rbtree<T, C>::find_any(const K& key, Comp comp) const {
+inline std::pair<std::pair<T*, bool>, std::vector<T*>> rbtree<T, C>::find_any(const K& key, Comp comp) const {
     T* n = r_.root_;
     T* p = nullptr;
+    std::vector<T*> path;
     while (n) {
+        path.push_back(n);
         int cmp = comp.compare(key, *n);
         if (cmp == 0)
             break;
         p = n->rblinks_.p_;
         n = n->rblinks_.c_[cmp > 0].node();
     }
-    return std::make_pair((n) ? n : p, n);
+    auto nodepair = std::make_pair((n) ? n : p, n);
+    return std::make_pair(nodepair, path);
 }
 
 template <typename T, typename C>
 inline std::vector<T*> rbtree<T, C>::erase(T& node) {
     rbaccount(erase);
+    std::cout << "erasing " << (&node == nullptr) << std::endl;
     return delete_node(&node, nullptr);
 }
 
