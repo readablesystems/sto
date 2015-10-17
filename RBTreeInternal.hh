@@ -528,7 +528,6 @@ inline std::pair<std::pair<T*, bool>, std::vector<T*>> rbtree<T, C>::find_any(co
 template <typename T, typename C>
 inline std::vector<T*> rbtree<T, C>::erase(T& node) {
     rbaccount(erase);
-    std::cout << "erasing " << (&node == nullptr) << std::endl;
     return delete_node(&node, nullptr);
 }
 

@@ -132,7 +132,7 @@ private:
     }
 
     // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
-    inline std::pair<std::pair<T*, bool>, std::vector<T*>> find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) const {
+    inline std::pair<std::pair<rbwrapper<rbpair<K, T>>*, bool>, std::vector<rbwrapper<rbpair<K, T>>*>> find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) const {
         lock(&treelock_);
         auto nodepath = wrapper_tree_.find_any(rbkvp, rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
         auto nodepair = nodepath.first;
@@ -340,8 +340,6 @@ inline size_t RBTree<K, T>::count(const K& key) const {
             for(auto it = path.begin(); it != path.end(); ++it) {
                 Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_read((*it)->nodeversion());
             } 
-            // XXX DOES NOT WORK
-            //std::cout << "adding read of " << x->nodeversion() << " for absent count" << std::endl;
         }
         return 0;
     // else we found the item, check the item version at commit time
@@ -385,8 +383,10 @@ inline size_t RBTree<K, T>::erase(const K& key) {
                 if (!x->rblinks_.p_) {
                     Sto::item(this, tree_key_).add_read(treeversion_);
                 } else {
-                    auto p = x->rblinks_.p_;
-                    Sto::item(const_cast<RBTree<K, T>*>(this), p).add_read(p->nodeversion());
+                    // add a read of all nodeversions in the path in case they are later rotated
+                    for(auto it = path.begin(); it != path.end(); ++it) {
+                        Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_read((*it)->nodeversion());
+                    } 
                 }
                 unlock(&treelock_);
                 return 1;
@@ -458,7 +458,6 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     if (e == (wrapper_type*)tree_key_) {
         curr_version = treeversion_;
     } else if (is_structured(read_version)) {
-        //std::cout << "checking nodeversion " << e->nodeversion() << " against " << read_version << std::endl;
         curr_version = e->nodeversion();
     } else {
         curr_version = e->version();
@@ -502,14 +501,12 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             Transaction::rcu_free(e);
         } else if (inserted) {
             erase_inserted(&e->version());
-        // we made a structural change to this item (changed its children)
+        } 
+        // we made a structural change to this item (its children changed or it was directly rotated)
         // update the nodeversion of the item
-        // don't need to update nodeversion if deleted (mark delete bit) or inserted (it should have no children who did a read)
-        } else if (structured) {
+        if (structured) {
             lock(&e->nodeversion());
-            std::cout << "Incrementing locked nodeversion " << e->nodeversion() << std::endl;
             TransactionTid::inc_invalid_version(e->nodeversion());
-            std::cout << "New nodeversion " << e->nodeversion() << std::endl;
             unlock(&e->nodeversion());
         // item in write set did not update value --> read_my_writes 
         } else {
@@ -521,7 +518,6 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
     } else {
         assert(is_locked(treeversion_));
         TransactionTid::inc_invalid_version(treeversion_);
-        std::cout << "new treeversion " << treeversion_ << std::endl;
     }
 }
 
@@ -534,7 +530,12 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
             auto e = item.key<wrapper_type*>();
             // we actually want to erase this 
             lock(&treelock_);
-            wrapper_tree_.erase(*e);
+            auto rotated = wrapper_tree_.erase(*e);
+            for(auto it = rotated.begin(); it != rotated.end(); ++it) {
+                lock(&(*it)->nodeversion());
+                TransactionTid::inc_invalid_version((*it)->nodeversion());
+                unlock(&(*it)->nodeversion());
+            } 
             unlock(&treelock_);
             mark_deleted(&e->version());
             erase_inserted(&e->version());
