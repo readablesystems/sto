@@ -10,6 +10,10 @@
 
 #define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements.
 
+// XXX CHECK
+// just tracking parent node not sufficient -- right now, we do a read of all nodes touched
+// along the path
+// we do a write of any nodes rotated and the parent
 template <typename K, typename T>
 class RBTree;
 
