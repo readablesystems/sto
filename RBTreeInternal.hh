@@ -50,9 +50,15 @@ class rbnodeptr {
 
 template <typename T>
 class rblinks {
-  public:
+    public:
+    typedef TransactionTid::type Version;
+    static constexpr Version structure_bit = TransactionTid::user_bit1<<2;
+ 
+    rblinks() : nodeversion_(TransactionTid::increment_value + structure_bit) {}
+    
     T* p_;
     rbnodeptr<T> c_[2];
+    mutable Version nodeversion_;
 };
 
 namespace rbpriv {
@@ -149,9 +155,6 @@ class rbalgorithms {
     static inline T* edge_node(T* n, bool forward);
 };
 
-//template <typename K, typename V>
-//class RBTree;
-
 template <typename T, typename Compare = rbpriv::default_comparator<T>>
 class rbtree {
   public:
@@ -183,7 +186,7 @@ class rbtree {
     rbpriv::rbrep<T, Compare> r_;
 
     template <typename K, typename Comp>
-    inline std::pair<T*,T*> find_any(const K& key, Comp comp) const;
+    inline std::pair<T*,bool> find_any(const K& key, Comp comp) const;
    
     void insert_commit(T* x, rbnodeptr<T> p, bool side);
     void delete_node(T* victim, T* successor_hint);
@@ -494,8 +497,11 @@ inline T* rbtree<T, C>::root() {
     return r_.root_;
 }
 
+// Return a pair of node, bool: if bool is true, then the node is the found node, 
+// else if bool is false the node is the parent of the absent read. If (null, false), we have
+// an empty tree
 template <typename T, typename C> template <typename K, typename Comp>
-inline std::pair<T*, T*> rbtree<T, C>::find_any(const K& key, Comp comp) const {
+inline std::pair<T*, bool> rbtree<T, C>::find_any(const K& key, Comp comp) const {
     T* n = r_.root_;
     T* p = nullptr;
     while (n) {
@@ -505,7 +511,7 @@ inline std::pair<T*, T*> rbtree<T, C>::find_any(const K& key, Comp comp) const {
         p = n->rblinks_.p_;
         n = n->rblinks_.c_[cmp > 0].node();
     }
-    return std::make_pair(n, p);
+    return std::make_pair((n) ? n : p, n);
 }
 
 template <typename T, typename C>

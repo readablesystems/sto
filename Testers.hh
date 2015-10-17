@@ -146,15 +146,30 @@ public:
             (*q)[val] = val;
         } else if (op->op == 1) {
             int val = op->args[0];
-            assert (q->erase(val) == op->rdata[0]);
+            auto erased = q->erase(val);
+#if PRINT_DEBUG
+            std::cout << "erasing: " << val << std::endl;
+            std::cout << "erase val: " << erased << std::endl;
+            std::cout << "erase expected: " << op->rdata[0] << std::endl;
+#endif
+            assert (erased == op->rdata[0]);
         } else {
             int val = op->args[0];
+            auto counted = q->count(val);
+#if PRINT_DEBUG
+            std::cout << "counting: " << val << std::endl;
+            std::cout << "count val: " << counted << std::endl;
+            std::cout << "count expected: " << op->rdata[0] << std::endl;
+#endif
             assert(q->count(val) == op->rdata[0]);
         }
     }
 
     void check(T* q, T*q1) {
         for (int i = 0; i < 10000; i++) {
+#if PRINT_DEBUG
+            std::cout << "i is: " << i << std::endl;
+#endif
             TRANSACTION {
                 int c = q->count(i);
                 int c1 = q1->count(i);
