@@ -173,7 +173,10 @@ private:
             stats_.absent_insert++;
 #endif
             auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, value)  );
-            wrapper_tree_.insert(*n);
+            auto rotated = wrapper_tree_.insert(*n);
+            for(auto it = rotated.begin(); it != rotated.end(); ++it) {
+                Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_write(0).add_flags(structure_tag);
+            } 
             // invariant: the node's insert_bit should be set
             assert(is_inserted(n->version()));
             // if tree is empty (i.e. no parent), we increment treeversion 
@@ -360,7 +363,10 @@ inline size_t RBTree<K, T>::erase(const K& key) {
             if (has_insert(item)) {
                 // insert-then-delete; we need to undo all the effects of an insert here
                 lock(&treelock_);
-                wrapper_tree_.erase(*x);
+                auto rotated = wrapper_tree_.erase(*x);
+                for(auto it = rotated.begin(); it != rotated.end(); ++it) {
+                    Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_write(0).add_flags(structure_tag);
+                } 
                 item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
                 Transaction::rcu_free(x);
                 // read parentversion so that we can abort if another transaction inserts this key again
@@ -469,7 +475,15 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             mark_deleted(&e->version());
             // actually erase
             lock(&treelock_);
-            wrapper_tree_.erase(*e);
+            // XXX do we need to handle the rotated nodes during this erase? should we just increment all their nodeversions?
+            auto rotated = wrapper_tree_.erase(*e);
+            /*
+            for(auto it = rotated.begin(); it != rotated.end(); ++it) {
+                lock(&(*it)->nodeversion());
+                TransactionTid::inc_invalid_version((*it)->nodeversion());
+                unlock(&(*it)->nodeversion());
+            } 
+            */
             unlock(&treelock_);
             Transaction::rcu_free(e);
         } else if (inserted) {
