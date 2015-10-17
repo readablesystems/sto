@@ -477,13 +477,11 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             lock(&treelock_);
             // XXX do we need to handle the rotated nodes during this erase? should we just increment all their nodeversions?
             auto rotated = wrapper_tree_.erase(*e);
-            /*
             for(auto it = rotated.begin(); it != rotated.end(); ++it) {
                 lock(&(*it)->nodeversion());
                 TransactionTid::inc_invalid_version((*it)->nodeversion());
                 unlock(&(*it)->nodeversion());
             } 
-            */
             unlock(&treelock_);
             Transaction::rcu_free(e);
         } else if (inserted) {
