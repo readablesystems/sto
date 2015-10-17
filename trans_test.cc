@@ -9,7 +9,7 @@
 
 #define GLOBAL_SEED 10
 #define NTRANS 5000 // Number of transactions each thread should run.
-#define N_THREADS 1 // Number of concurrent threads
+#define N_THREADS 2 // Number of concurrent threads
 #define MAX_OPS 3 // Maximum number of operations in a transaction.
 
 #define PRIORITY_QUEUE 0
