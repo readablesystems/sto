@@ -8,7 +8,7 @@
 #include "VersionFunctions.hh"
 #include "RBTreeInternal.hh"
 
-#define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements.
+#define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements.
 
 template <typename K, typename T>
 class RBTree;
@@ -177,6 +177,8 @@ private:
             for(auto it = rotated.begin(); it != rotated.end(); ++it) {
                 Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_write(0).add_flags(structure_tag);
             } 
+            // XXX to debug
+            assert(wrapper_tree_.find_any(*n, rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare())).second);
             // invariant: the node's insert_bit should be set
             assert(is_inserted(n->version()));
             // if tree is empty (i.e. no parent), we increment treeversion 
@@ -331,11 +333,13 @@ inline size_t RBTree<K, T>::count(const K& key) const {
         if (!x) {
             Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
         } else {
+            // XXX DOES NOT WORK
+            std::cout << "adding read of " << x->nodeversion() << " for absent count" << std::endl;
             Sto::item(const_cast<RBTree<K, T>*>(this), x).add_read(x->nodeversion());
         }
         return 0;
     // else we found the item, check the item version at commit time
-    } else  {
+    } else {
         Sto::item(const_cast<RBTree<K, T>*>(this), x).add_read(x->version());
         return 1;
     }
@@ -409,6 +413,8 @@ inline size_t RBTree<K, T>::erase(const K& key) {
         if (!x) {
             Sto::item(this, tree_key_).add_read(treeversion_);
         } else {
+            // XXX DOES NOT WORK
+            std::cout << "adding read of " << x->nodeversion() << " for absent erase" << std::endl;
             Sto::item(const_cast<RBTree<K, T>*>(this), x).add_read(x->nodeversion());
         }
         return 0;
@@ -443,6 +449,7 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     if (e == (wrapper_type*)tree_key_) {
         curr_version = treeversion_;
     } else if (is_structured(read_version)) {
+        std::cout << "checking nodeversion " << e->nodeversion() << " against " << read_version << std::endl;
         curr_version = e->nodeversion();
     } else {
         curr_version = e->version();
@@ -491,7 +498,9 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         // don't need to update nodeversion if deleted (mark delete bit) or inserted (it should have no children who did a read)
         } else if (structured) {
             lock(&e->nodeversion());
+            std::cout << "Incrementing nodeversion " << e->nodeversion() << std::endl;
             TransactionTid::inc_invalid_version(e->nodeversion());
+            std::cout << "New nodeversion " << e->nodeversion() << std::endl;
             unlock(&e->nodeversion());
         // item in write set did not update value --> read_my_writes 
         } else {
@@ -503,6 +512,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
     } else {
         assert(is_locked(treeversion_));
         TransactionTid::inc_invalid_version(treeversion_);
+        std::cout << "new treeversion " << treeversion_ << std::endl;
     }
 }
 

@@ -43,6 +43,18 @@ void update_conflict_tests() {
         Sto::set_transaction(&t1);
         assert(t1.try_commit());
     }
+    {
+        tree_type tree;
+        Transaction t1, t2;
+        Sto::set_transaction(&t1);
+        tree[10] = 10;
+        Sto::set_transaction(&t2);
+        int x = tree[58];
+        assert(x == 0);
+        assert(t2.try_commit());
+        Sto::set_transaction(&t1);
+        assert(t1.try_commit());
+    }
 }
 /***** erase <-> count; erase <-> erase conflicts ******/
 void erase_conflict_tests() {

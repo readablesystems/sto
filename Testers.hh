@@ -9,7 +9,7 @@
 #include "Hashtable.hh"
 #include "RBTree.hh"
 
-#define MAX_VALUE  10000 // Max value of integers used in data structures
+#define MAX_VALUE  100 // Max value of integers used in data structures
 #define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements.
 
 struct Rand {
@@ -78,7 +78,7 @@ template <typename T>
 class RBTreeTester: Tester<T> {
 public:
     void init(T* q) {
-        for (int i = 0; i < 10000; i++) {
+        for (int i = 0; i < MAX_VALUE; i++) {
             TRANSACTION {
                 (*q)[i] = i;
             } RETRY(false);
@@ -144,6 +144,9 @@ public:
         if (op->op == 0) {
             int val = op->args[0];
             (*q)[val] = val;
+#if PRINT_DEBUG
+            std::cout << "inserting: " << val << std::endl;
+#endif
         } else if (op->op == 1) {
             int val = op->args[0];
             auto erased = q->erase(val);
