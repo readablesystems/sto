@@ -33,9 +33,7 @@ class rbnodeptr {
     inline rbnodeptr<T> change_color(bool color) const;
     inline rbnodeptr<T> reverse_color() const;
 
-    inline rbnodeptr<T> rotate(bool isright) const;
-    inline rbnodeptr<T> rotate_left() const;
-    inline rbnodeptr<T> rotate_right() const;
+    inline rbnodeptr<T> rotate(bool isright, std::vector<T*>& rotated) const;
     inline rbnodeptr<T> flip() const;
 
     size_t size() const;
@@ -278,9 +276,14 @@ inline rbnodeptr<T> rbnodeptr<T>::reverse_color() const {
 }
 
 template <typename T>
-inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side) const {
+inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side, std::vector<T*>& rotated) const {
     rbaccount(rotation);
     rbnodeptr<T> x = child(!side);
+    // add this node, the node's changing child, and the moved grandchild to rotated set
+    rotated.push_back(node());
+    rotated.push_back(x.node());
+    if (x.child(side)) rotated.push_back(x.child(side).node());
+    // perform the rotation 
     if ((child(!side) = x.child(side)))
         x.child(side).parent() = node();
     bool old_color = red();
@@ -288,16 +291,6 @@ inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side) const {
     x.parent() = parent();
     parent() = x.node();
     return x.change_color(old_color);
-}
-
-template <typename T>
-inline rbnodeptr<T> rbnodeptr<T>::rotate_left() const {
-    return rotate(false);
-}
-
-template <typename T>
-inline rbnodeptr<T> rbnodeptr<T>::rotate_right() const {
-    return rotate(true);
 }
 
 template <typename T>
@@ -372,11 +365,9 @@ std::vector<T*> rbtree<T, C>::insert_commit(T* x, rbnodeptr<T> p, bool side) {
         } else {
             bool gpside = gp.find_child(p.node());
             if (gpside != side) {
-                gp.child(gpside) = p.rotate(gpside);
-                rotated.push_back(p.node()); 
+                gp.child(gpside) = p.rotate(gpside, rotated);
             } 
-            z = gp.rotate(!gpside);
-            rotated.push_back(gp.node()); 
+            z = gp.rotate(!gpside, rotated);
             p = z.black_parent();
         }
         side = p.find_child(gp.node());
@@ -470,8 +461,7 @@ std::vector<T*> rbtree<T, C>::delete_node_fixup(rbnodeptr<T> p, bool side) {
 
         if (p.child(!side).red()) {
             // invariant: p is black (b/c one of its children is red)
-            gp.set_child(gpside, p.rotate(side), r_.root_);
-            rotated.push_back(p.node());
+            gp.set_child(gpside, p.rotate(side, rotated), r_.root_);
             gp = p.black_parent(); // p is now further down the tree
             gpside = side;         // (since we rotated in that direction)
         }
@@ -482,14 +472,12 @@ std::vector<T*> rbtree<T, C>::delete_node_fixup(rbnodeptr<T> p, bool side) {
             p = p.change_color(false);
         } else {
             if (!w.child(!side).red()) {
-                p.child(!side) = w.rotate(!side);
-                rotated.push_back(w.node());
+                p.child(!side) = w.rotate(!side, rotated);
             }
             bool gpside = gp.find_child(p.node());
             if (gp)
                 p = gp.child(gpside); // fetch correct color for `p`
-            p = p.rotate(side);
-            rotated.push_back(p.node());
+            p = p.rotate(side, rotated);
             p.child(0) = p.child(0).change_color(false);
             p.child(1) = p.child(1).change_color(false);
         }
