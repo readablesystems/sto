@@ -21,28 +21,31 @@ void queueTests() {
     {
         // ensure pops read pushes in FIFO order
         Transaction t;
+        Sto::set_transaction(&t);
         // q is empty
-        q.transPush(t, 1);
-        q.transPush(t, 2);
-        assert(q.transFront(t, p) && p == 1); assert(q.transPop(t)); assert(q.transFront(t, p) && p == 2);
-        assert(q.transPop(t));
+        q.transPush(1);
+        q.transPush(2);
+        assert(q.transFront(p) && p == 1); assert(q.transPop()); assert(q.transFront(p) && p == 2);
+        assert(q.transPop());
         assert(t.try_commit());
     }    
     
     {
         Transaction t;
+        Sto::set_transaction(&t);
         // q is empty
-        q.transPush(t, 1);
-        q.transPush(t, 2);
+        q.transPush(1);
+        q.transPush(2);
         assert(t.try_commit());
     }
 
     {
         // front with no pops
         Transaction t;
-        assert(q.transFront(t, p));
+        Sto::set_transaction(&t);
+        assert(q.transFront(p));
         assert(p == 1);
-        assert(q.transFront(t, p));
+        assert(q.transFront(p));
         assert(p == 1);
         assert(t.try_commit());
     }
@@ -50,47 +53,50 @@ void queueTests() {
     {
         // pop until empty
         Transaction t;
-        assert(q.transPop(t));
-        assert(q.transPop(t));
-        assert (!q.transPop(t));
+        Sto::set_transaction(&t);
+        assert(q.transPop());
+        assert(q.transPop());
+        assert (!q.transPop());
         
         // prepare pushes for next test
-        q.transPush(t, 1);
-        q.transPush(t, 2);
-        q.transPush(t, 3); 
+        q.transPush(1);
+        q.transPush(2);
+        q.transPush(3);
         assert(t.try_commit());
     }
 
     {
         // fronts intermixed with pops
         Transaction t;
-        assert(q.transFront(t, p));
+        Sto::set_transaction(&t);
+        assert(q.transFront(p));
         assert(p == 1);
-        assert(q.transPop(t));
-        assert(q.transFront(t, p));
+        assert(q.transPop());
+        assert(q.transFront(p));
         assert(p == 2);
-        assert(q.transPop(t));
-        assert(q.transFront(t, p));
+        assert(q.transPop());
+        assert(q.transFront(p));
         assert(p == 3);
-        assert(q.transPop(t));
-        assert(!q.transPop(t));
+        assert(q.transPop());
+        assert(!q.transPop());
         
         // set up for next test
-        q.transPush(t, 1);
-        q.transPush(t, 2);
-        q.transPush(t, 3);  
+        q.transPush(1);
+        q.transPush(2);
+        q.transPush(3);
         assert(t.try_commit());
     }
 
     {
         // front intermixed with pushes on nonempty
         Transaction t;
-        assert(q.transFront(t, p));
+        Sto::set_transaction(&t);
+        assert(q.transFront(p));
         assert(p == 1);
-        assert(q.transFront(t, p));
+        assert(q.transFront(p));
         assert(p == 1);
-        q.transPush(t,4);
-        assert(q.transFront(t, p));
+        q.transPush(4);
+        assert(q.transFront(p));
         assert(p == 1);
         assert(t.try_commit());
     }
@@ -99,15 +105,16 @@ void queueTests() {
         // pops intermixed with pushes and front on nonempty
         // q = [1 2 3 4]
         Transaction t;
-        assert(q.transPop(t));
-        assert(q.transFront(t, p));
+        Sto::set_transaction(&t);
+        assert(q.transPop());
+        assert(q.transFront(p));
         assert(p == 2);
-        q.transPush(t, 5);
+        q.transPush(5);
         // q = [2 3 4 5]
-        assert(q.transPop(t));
-        assert(q.transFront(t, p));
+        assert(q.transPop());
+        assert(q.transFront(p));
         assert(p == 3);
-        q.transPush(t, 6);
+        q.transPush(6);
         // q = [3 4 5 6]
         assert(t.try_commit());
     }
@@ -116,20 +123,20 @@ void queueTests() {
     {
         // front with empty queue
         Transaction t;
-        
+        Sto::set_transaction(&t);
         // empty the queue
-        assert(q.transPop(t));
-        assert(q.transPop(t));
-        assert(q.transPop(t));
-        assert(q.transPop(t));
-        assert(!q.transPop(t));
+        assert(q.transPop());
+        assert(q.transPop());
+        assert(q.transPop());
+        assert(q.transPop());
+        assert(!q.transPop());
         
-        assert(!q.transFront(t, p));
+        assert(!q.transFront(p));
        
-        q.transPush(t, 1);
-        assert(q.transFront(t, p));
+        q.transPush(1);
+        assert(q.transFront(p));
         assert(p == 1);
-        assert(q.transFront(t, p));
+        assert(q.transFront(p));
         assert(p == 1);
         assert(t.try_commit());
     }
@@ -137,38 +144,38 @@ void queueTests() {
     {
         // pop with empty queue
         Transaction t;
-        
+        Sto::set_transaction(&t);
         // empty the queue
-        assert(q.transPop(t));
-        assert(!q.transPop(t));
+        assert(q.transPop());
+        assert(!q.transPop());
        
-        assert(!q.transFront(t, p));
+        assert(!q.transFront(p));
        
-        q.transPush(t, 1);
-        assert(q.transPop(t));
-        assert(!q.transPop(t));
+        q.transPush(1);
+        assert(q.transPop());
+        assert(!q.transPop());
         assert(t.try_commit());
     }
 
     {
         // pop and front with empty queue
         Transaction t;
+        Sto::set_transaction(&t);
+        assert(!q.transFront(p));
        
-        assert(!q.transFront(t, p));
-       
-        q.transPush(t, 1);
-        assert(q.transFront(t, p));
+        q.transPush(1);
+        assert(q.transFront(p));
         assert(p == 1);
-        assert(q.transPop(t));
+        assert(q.transPop());
        
-        q.transPush(t, 1);
-        assert(q.transPop(t));
-        assert(!q.transFront(t, p));
-        assert(!q.transPop(t));
+        q.transPush(1);
+        assert(q.transPop());
+        assert(!q.transFront(p));
+        assert(!q.transPop());
 
         // add items for next test
-        q.transPush(t, 1);
-        q.transPush(t, 2);
+        q.transPush(1);
+        q.transPush(2);
 
         assert(t.try_commit());
     }
@@ -179,8 +186,10 @@ void queueTests() {
         Transaction t1;
         Transaction t2;
         // q has >1 element
-        assert(q.transPop(t1));
-        assert(q.transPop(t2));
+        Sto::set_transaction(&t1);
+        assert(q.transPop());
+        Sto::set_transaction(&t2);
+        assert(q.transPop());
         assert(t1.try_commit());
         assert(!t2.try_commit());
     }
@@ -190,18 +199,21 @@ void queueTests() {
         Transaction t1;
         Transaction t2;
         // q has >1 element
-        assert(q.transPop(t1));
-        q.transPush(t2, 3);
+        Sto::set_transaction(&t1);
+        assert(q.transPop());
+        Sto::set_transaction(&t2);
+        q.transPush(3);
         assert(t1.try_commit());
         assert(t2.try_commit()); // commit should succeed 
 
     }
     // Nate: this used to be part of the above block but that doesn't make sense
     {
-	Transaction t1;
-        assert(q.transFront(t1, p) && p == 3);
-        assert(q.transPop(t1));
-        assert(!q.transPop(t1));
+        Transaction t1;
+        Sto::set_transaction(&t1);
+        assert(q.transFront(p) && p == 3);
+        assert(q.transPop());
+        assert(!q.transPop());
         assert(t1.try_commit());
     }
 
@@ -210,15 +222,17 @@ void queueTests() {
         Transaction t1;
         Transaction t2;
         // q has 0 elements
-        assert(!q.transPop(t1));
-        q.transPush(t1, 1);
-        q.transPush(t1, 2);
-        q.transPush(t2, 3);
-        q.transPush(t2, 4);
-        q.transPush(t2, 5);
+        Sto::set_transaction(&t1);
+        assert(!q.transPop());
+        q.transPush(1);
+        q.transPush(2);
+        Sto::set_transaction(&t2);
+        q.transPush(3);
+        q.transPush(4);
+        q.transPush(5);
         
         // read-my-write, lock tail
-        assert(q.transPop(t2));
+        assert(q.transPop());
         
         assert(t1.try_commit());
         assert(!t2.try_commit());
@@ -230,33 +244,33 @@ void queueTests() {
         Transaction t2;
         
         // q has 2 elements [1, 2]
-        assert(q.transFront(t1, p) && p == 1);
-        q.transPush(t1, 4);
+        Sto::set_transaction(&t1);
+        assert(q.transFront(p) && p == 1);
+        q.transPush(4);
 
         // pop from non-empty q
-        assert(q.transPop(t1));
-        assert(q.transFront(t1, p));
+        assert(q.transPop());
+        assert(q.transFront(p));
         assert(p == 2);
 
-        q.transPush(t2, 3);
+        Sto::set_transaction(&t2);
+        q.transPush(3);
         // order of pushes doesn't matter, commits succeed
         assert(t2.try_commit());
         assert(t1.try_commit());
 
         // check if q is in order
-        assert(q.transPop(t1));
-        assert(q.transFront(t1, p));
-        assert(p == 3);
-        assert(q.transPop(t1));
-        assert(q.transFront(t1, p));
-        assert(p == 4);
-        assert(q.transPop(t1));
-        assert(!q.transPop(t1));
-        assert(t1.try_commit());
-    }
-
-    {
         Transaction t;
+        Sto::set_transaction(&t);
+        assert(q.transPop());
+        assert(q.transFront(p));
+        assert(p == 3);
+        assert(q.transPop());
+        assert(q.transFront(p));
+        assert(p == 4);
+        assert(q.transPop());
+        assert(!q.transPop());
+        assert(t1.try_commit());
     }
 }
 
@@ -265,32 +279,35 @@ void linkedListTests() {
   
   {
     Transaction t;
-    assert(!l.transFind(t, 5));
-    assert(l.transInsert(t, 5));
-    int *p = l.transFind(t, 5);
+    Sto::set_transaction(&t);
+    assert(!l.transFind(5));
+    assert(l.transInsert(5));
+    int *p = l.transFind(5);
     assert(*p == 5);
     assert(t.try_commit());
   }
 
   {
     Transaction t;
-    assert(!l.transInsert(t, 5));
-    assert(*l.transFind(t, 5) == 5);
-    assert(!l.transFind(t, 7));
-    assert(l.transInsert(t, 7));
+    Sto::set_transaction(&t);
+    assert(!l.transInsert(5));
+    assert(*l.transFind(5) == 5);
+    assert(!l.transFind(7));
+    assert(l.transInsert(7));
     assert(t.try_commit());
   }
 
   {
     Transaction t;
-    assert(l.transSize(t) == 2);
-    assert(l.transInsert(t, 10));
-    assert(l.transSize(t) == 3);
-    auto it = l.transIter(t);
+    Sto::set_transaction(&t);
+    assert(l.transSize() == 2);
+    assert(l.transInsert(10));
+    assert(l.transSize() == 3);
+    auto it = l.transIter();
     int i = 0;
     int elems[] = {5,7,10};
-    while (it.transHasNext(t)) {
-      assert(*it.transNext(t) == elems[i++]);
+    while (it.transHasNext()) {
+      assert(*it.transNext() == elems[i++]);
     }
     assert(t.try_commit());
   }
@@ -298,22 +315,24 @@ void linkedListTests() {
 
   {
     Transaction t;
-    assert(l.transDelete(t, 7));
-    assert(!l.transDelete(t, 1000));
-    assert(l.transSize(t) == 2);
-    assert(!l.transFind(t, 7));
-    auto it = l.transIter(t);
-    assert(*it.transNext(t) == 5);
-    assert(*it.transNext(t) == 10);
+    Sto::set_transaction(&t);
+    assert(l.transDelete(7));
+    assert(!l.transDelete(1000));
+    assert(l.transSize() == 2);
+    assert(!l.transFind(7));
+    auto it = l.transIter();
+    assert(*it.transNext() == 5);
+    assert(*it.transNext() == 10);
     assert(t.try_commit());
   }
 
   {
     Transaction t;
-    assert(l.transInsert(t, 7));
-    assert(l.transDelete(t, 7));
-    assert(l.transSize(t) == 2);
-    assert(!l.transFind(t, 7));
+    Sto::set_transaction(&t);
+    assert(l.transInsert(7));
+    assert(l.transDelete(7));
+    assert(l.transSize() == 2);
+    assert(!l.transFind(7));
     assert(t.try_commit());
   }
 
@@ -324,17 +343,19 @@ void stringKeyTests() {
   Hashtable<std::string, std::string> h;
   
   Transaction t;
+  Sto::set_transaction(&t);
   {
   std::string s1("bar");
-  assert(h.transInsert(t, "foo", s1));
+  assert(h.transInsert("foo", s1));
   }
   std::string s;
-  assert(h.transGet(t, "foo", s));
+  assert(h.transGet("foo", s));
   assert(s == "bar");
   assert(t.try_commit());
 
   Transaction t2;
-  assert(h.transGet(t2, "foo", s));
+  Sto::set_transaction(&t2);
+  assert(h.transGet("foo", s));
   assert(s == "bar");
   assert(t2.try_commit());
 #endif
@@ -343,22 +364,25 @@ void stringKeyTests() {
 void insertDeleteTest(bool shouldAbort) {
   MassTrans<int> h;
   Transaction t;
+  Sto::set_transaction(&t);
   for (int i = 10; i < 25; ++i) {
-    assert(h.transInsert(t, i, i+1));
+    assert(h.transInsert(i, i+1));
   }
   assert(t.try_commit());
 
   Transaction t2;
-  assert(h.transInsert(t2, 25, 26));
+  Sto::set_transaction(&t2);
+  assert(h.transInsert(25, 26));
   int x;
-  assert(h.transGet(t2, 25, x));
-  assert(!h.transGet(t2, 26, x));
+  assert(h.transGet(25, x));
+  assert(!h.transGet(26, x));
 
-  assert(h.transDelete(t2, 25));
+  assert(h.transDelete(25));
 
   if (shouldAbort) {
     Transaction t3;
-    assert(h.transInsert(t3, 26, 27));
+    Sto::set_transaction(&t3);
+    assert(h.transInsert(26, 27));
     assert(t3.try_commit());
     assert(!t2.try_commit());
   } else
@@ -368,30 +392,35 @@ void insertDeleteTest(bool shouldAbort) {
 void insertDeleteSeparateTest() {
   MassTrans<int> h;
   Transaction t_init;
+  Sto::set_transaction(&t_init);
   for (int i = 10; i < 12; ++i) {
-    assert(h.transInsert(t_init, i, i+1));
+    assert(h.transInsert(i, i+1));
   }
   assert(t_init.try_commit());
 
   Transaction t;
+  Sto::set_transaction(&t);
   int x;
-  assert(!h.transGet(t, 12, x));
+  assert(!h.transGet(12, x));
 
   Transaction t2;
-  assert(h.transInsert(t2, 12, 13));
-  assert(h.transDelete(t2, 10));
+  Sto::set_transaction(&t2);
+  assert(h.transInsert(12, 13));
+  assert(h.transDelete(10));
   assert(t2.try_commit());
   assert(!t.try_commit());
 
 
   Transaction t3;
-  assert(!h.transGet(t3, 13, x));
+  Sto::set_transaction(&t3);
+  assert(!h.transGet(13, x));
   
   Transaction t4;
-  assert(h.transInsert(t4, 10, 11));
-  assert(h.transInsert(t4, 13, 14));
-  assert(h.transDelete(t4, 11));
-  assert(h.transDelete(t4, 12));
+  Sto::set_transaction(&t4);
+  assert(h.transInsert(10, 11));
+  assert(h.transInsert(13, 14));
+  assert(h.transDelete(11));
+  assert(h.transDelete(12));
   assert(t4.try_commit());
   assert(!t3.try_commit());
 
@@ -401,37 +430,39 @@ void rangeQueryTest() {
   MassTrans<int> h;
   
   Transaction t_init;
+  Sto::set_transaction(&t_init);
   int n = 99;
   char ns[64];
   sprintf(ns, "%d", n);
   for (int i = 10; i <= n; ++i) {
-    assert(h.transInsert(t_init, i, i+1));
+    assert(h.transInsert(i, i+1));
   }
   assert(t_init.try_commit());
 
   Transaction t;
+  Sto::set_transaction(&t);
   int x = 0;
-  h.transQuery(t, "10", Masstree::Str(), [&] (Masstree::Str , int ) { x++; return true; });
+  h.transQuery("10", Masstree::Str(), [&] (Masstree::Str , int ) { x++; return true; });
   assert(x == n-10+1);
   
   x = 0;
-  h.transQuery(t, "10", ns, [&] (Masstree::Str , int) { x++; return true; });
+  h.transQuery("10", ns, [&] (Masstree::Str , int) { x++; return true; });
   assert(x == n-10);
 
   x = 0;
-  h.transRQuery(t, ns, Masstree::Str(), [&] (Masstree::Str , int ) { x++; return true; });
+  h.transRQuery(ns, Masstree::Str(), [&] (Masstree::Str , int ) { x++; return true; });
   assert(x == n-10+1);
   
   x = 0;
-  h.transRQuery(t, ns, "90", [&] (Masstree::Str , int ) { x++; return true; });
+  h.transRQuery(ns, "90", [&] (Masstree::Str , int ) { x++; return true; });
   assert(x == n-90);
 
   x = 0;
-  h.transQuery(t, "10", "25", [&] (Masstree::Str , int ) { x++; return true; });
+  h.transQuery("10", "25", [&] (Masstree::Str , int ) { x++; return true; });
   assert(x == 25-10);
 
   x = 0;
-  h.transQuery(t, "10", "26", [&] (Masstree::Str , int ) { x++; return true; });
+  h.transQuery("10", "26", [&] (Masstree::Str , int ) { x++; return true; });
   assert(x == 26-10);
 
   assert(t.try_commit());
@@ -440,8 +471,9 @@ void rangeQueryTest() {
 template <typename K, typename V>
 void basicQueryTests(MassTrans<K, V>& h) {
   Transaction t19;
-  h.transQuery(t19, "0", "2", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
-  h.transQuery(t19, "4", "4", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
+  Sto::set_transaction(&t19);
+  h.transQuery("0", "2", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
+  h.transQuery("4", "4", [] (Masstree::Str s, int val) { printf("%s, %d\n", s.data(), val); return true; });
   assert(t19.try_commit());
 }
 
@@ -454,100 +486,118 @@ void basicMapTests(MapType& h) {
   typedef int Value;
 
   Transaction t;
+  Sto::set_transaction(&t);
 
   Value v1,v2,vunused;
   //  assert(!h.transGet(t, 0, v1));
 
-  assert(h.transInsert(t, 0, 1));
-  h.transPut(t, 1, 3);
+  assert(h.transInsert(0, 1));
+  h.transPut(1, 3);
   
   assert(t.try_commit());
 
   Transaction tm;
-  assert(h.transUpdate(tm, 1, 2));
+  Sto::set_transaction(&tm);
+  assert(h.transUpdate(1, 2));
   assert(tm.try_commit());
 
   Transaction t2;
-  assert(h.transGet(t2, 1, v1));
+  Sto::set_transaction(&t2);
+  assert(h.transGet(1, v1));
   assert(t2.try_commit());
 
   Transaction t3;
-  h.transPut(t3, 0, 4);
+  Sto::set_transaction(&t3);
+  h.transPut(0, 4);
   assert(t3.try_commit());
   Transaction t4;
-  assert(h.transGet(t4, 0, v2));
+  Sto::set_transaction(&t4);
+  assert(h.transGet(0, v2));
   assert(t4.try_commit());
 
   Transaction t5;
-  assert(!h.transInsert(t5, 0, 5));
+  Sto::set_transaction(&t5);
+  assert(!h.transInsert(0, 5));
   assert(t5.try_commit());
 
   Transaction t6;
-  assert(!h.transUpdate(t6, 2, 1));
+  Sto::set_transaction(&t6);
+  assert(!h.transUpdate(2, 1));
   assert(t6.try_commit());
 
   Transaction t7;
-  assert(!h.transGet(t7, 2, vunused));
+  Sto::set_transaction(&t7);
+  assert(!h.transGet(2, vunused));
   Transaction t8;
-  assert(h.transInsert(t8, 2, 2));
+  Sto::set_transaction(&t8);
+  assert(h.transInsert(2, 2));
   assert(t8.try_commit());
 
   assert(!t7.try_commit());
 
   Transaction t9;
-  assert(h.transInsert(t9, 3, 0));
+  Sto::set_transaction(&t9);
+  assert(h.transInsert(3, 0));
   Transaction t10;
-  assert(h.transInsert(t10, 4, 4));
+  Sto::set_transaction(&t10);
+  assert(h.transInsert(4, 4));
   try{
     // t9 inserted invalid node, so we are forced to abort
-    h.transUpdate(t10, 3, vunused);
+    h.transUpdate(3, vunused);
     assert(0);
   } catch (Transaction::Abort E) {}
   Transaction t10_2;
+  Sto::set_transaction(&t10_2);
   try {
     // deletes should also force abort from invalid nodes
-    h.transDelete(t10_2, 3);
+    h.transDelete(3);
     assert(0);
   } catch (Transaction::Abort E) {}
   assert(t9.try_commit());
   assert(!t10.try_commit() && !t10_2.try_commit());
 
   Transaction t11;
-  assert(h.transInsert(t11, 4, 5));
+  Sto::set_transaction(&t11);
+  assert(h.transInsert(4, 5));
   assert(t11.try_commit());
 
   // basic delete
   Transaction t12;
-  assert(!h.transDelete(t12, 5));
-  assert(h.transUpdate(t12, 4, 0));
-  assert(h.transDelete(t12, 4));
-  assert(!h.transGet(t12, 4, vunused));
-  assert(!h.transUpdate(t12, 4, 0));
-  assert(!h.transDelete(t12, 4));
+  Sto::set_transaction(&t12);
+  assert(!h.transDelete(5));
+  assert(h.transUpdate(4, 0));
+  assert(h.transDelete(4));
+  assert(!h.transGet(4, vunused));
+  assert(!h.transUpdate(4, 0));
+  assert(!h.transDelete(4));
   assert(t12.try_commit());
 
   // delete-then-insert
   Transaction t13;
-  assert(h.transGet(t13, 3, vunused));
-  assert(h.transDelete(t13, 3));
-  assert(h.transInsert(t13, 3, 1));
-  assert(h.transGet(t13, 3, vunused));
+  Sto::set_transaction(&t13);
+  assert(h.transGet(3, vunused));
+  assert(h.transDelete(3));
+  assert(h.transInsert(3, 1));
+  assert(h.transGet(3, vunused));
   assert(t13.try_commit());
 
   // insert-then-delete
   Transaction t14;
-  assert(!h.transGet(t14, 4, vunused));
-  assert(h.transInsert(t14, 4, 14));
-  assert(h.transGet(t14, 4, vunused));
-  assert(h.transDelete(t14, 4));
-  assert(!h.transGet(t14, 4, vunused));
+  Sto::set_transaction(&t14);
+  assert(!h.transGet(4, vunused));
+  assert(h.transInsert(4, 14));
+  assert(h.transGet(4, vunused));
+  assert(h.transDelete(4));
+  assert(!h.transGet(4, vunused));
   assert(t14.try_commit());
 
   // blind update failure
   Transaction t15;
-  assert(h.transUpdate(t15, 3, 15));
+  Sto::set_transaction(&t15);
+  assert(h.transUpdate(3, 15));
   Transaction t16;
-  assert(h.transUpdate(t16, 3, 16));
+  Sto::set_transaction(&t16);
+  assert(h.transUpdate(3, 16));
   assert(t16.try_commit());
   // blind updates conflict each other now (not worth the extra trouble)
   assert(!t15.try_commit());
@@ -556,8 +606,10 @@ void basicMapTests(MapType& h) {
   // update aborts after delete
   Transaction t17;
   Transaction t18;
-  assert(h.transUpdate(t17, 3, 17));
-  assert(h.transDelete(t18, 3));
+  Sto::set_transaction(&t17);
+  assert(h.transUpdate(3, 17));
+  Sto::set_transaction(&t18);
+  assert(h.transDelete(3));
   assert(t18.try_commit());
   assert(!t17.try_commit());
 

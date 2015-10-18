@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <iostream>
 
-
+#define CONSISTENCY_CHECK 0
 #define PERF_LOGGING 1
 #define DETAILED_LOGGING 0
 #define ASSERT_TX_SIZE 0
@@ -40,6 +40,10 @@
 #define HASHTABLE_SIZE 512
 #define HASHTABLE_THRESHOLD 16
 
+// TRANSACTION macros that can be used to wrap transactional code
+#define TRANSACTION while(1) { try { Sto::start_transaction();
+#define RETRY(retry) if (Sto::try_commit()) break; else if (!retry) throw Transaction::Abort();} catch (Transaction::Abort e) {if (!retry) throw e;}}
+
 // transaction performance counters
 enum txp {
     // all logging levels
@@ -55,6 +59,8 @@ enum txp {
     txp_total_n,
     txp_total_r,
     txp_total_w,
+    txp_max_rdata_size,
+    txp_max_wdata_size,
     txp_total_searched,
     txp_total_check_read,
 #if !PERF_LOGGING
@@ -94,6 +100,8 @@ struct __attribute__((aligned(128))) threadinfo_t {
   unsigned spin_lock;
   local_vector<std::pair<unsigned, std::function<void(void)>>, 8> callbacks;
   local_vector<std::pair<unsigned, void*>, 8> needs_free;
+  // XXX(NH): these should be vectors so multiple data structures can register
+  // callbacks for these
   std::function<void(void)> trans_start_callback;
   std::function<void(void)> trans_end_callback;
   uint64_t p_[txp_count];
@@ -127,6 +135,9 @@ struct __attribute__((aligned(128))) threadinfo_t {
           else if (n > p_[p])
               p_[p] = n;
       }
+  }
+  void reset_p(int p) {
+    p_[p] = 0;
   }
 };
 
@@ -249,27 +260,16 @@ void* TransactionBuffer::pack_unique(T x, void*) {
     return pack(std::move(x));
 }
 
-
-
 class Transaction {
 public:
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
   static unsigned global_epoch;
   static bool run_epochs;
-  static __thread Transaction* __transaction;
   typedef TransactionTid::type tid_type;
 private:
   static TransactionTid::type _TID;
 public:
-
-  static Transaction& get_transaction() {
-    if (!__transaction)
-      __transaction = new Transaction();
-    else
-      __transaction->reset();
-    return *__transaction;
-  }
 
   static std::function<void(unsigned)> epoch_advance_callback;
 
@@ -283,7 +283,12 @@ public:
   }
 
   static void print_stats();
-
+  static void clear_stats() {
+    for (int i = 0; i != MAX_THREADS; ++i) {
+      for (int p = 0; p!= txp_count; ++p) 
+         tinfo[i].reset_p(p);
+    }
+  }
 
   static void acquire_spinlock(unsigned& spin_lock) {
     unsigned cur;
@@ -385,7 +390,7 @@ public:
 #define MAX_P(p, n) do {} while (0)
 #endif
 
-
+  
   Transaction() : transSet_() {
     reset();
   }
@@ -401,6 +406,7 @@ public:
     // TODO: this will probably mess up with nested transactions
     tinfo[threadid].epoch = 0;
     if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
+    inProgress_ = false;
   }
 
   // reset data so we can be reused for another transaction
@@ -420,6 +426,7 @@ public:
     start_tid_ = commit_tid_ = 0;
     buf_.clear();
     INC_P(txp_total_starts);
+    inProgress_ = true;
   }
 
 private:
@@ -634,7 +641,11 @@ private:
               /* do nothing */;
     }
 
-    //    fence();
+#if CONSISTENCY_CHECK
+    fence();
+    commit_tid();
+    fence();
+#endif 
 
     //phase2
     if (!check_reads(trans_first, trans_last)) {
@@ -705,6 +716,9 @@ private:
     return isAborted_;
   }
 
+  bool inProgress() {
+    return inProgress_;
+  }
 
     // opacity checking
     void check_opacity(TransactionTid::type t) {
@@ -745,6 +759,7 @@ private:
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
     uint16_t hashtable_[HASHTABLE_SIZE];
+    bool inProgress_;
 
     friend class TransProxy;
     friend class TransItem;
@@ -753,10 +768,128 @@ private:
 };
 
 
+class Sto {
+public:
+  static __thread Transaction* __transaction;
+  
+  static void start_transaction() {
+    if (!__transaction) {
+      __transaction = new Transaction();
+    } else {
+      if (__transaction->inProgress()) {
+        assert(false);
+      } else {
+        __transaction->reset();
+      }
+      
+    }
+  }
+  
+  /* Only used for testing purposes */
+  static void set_transaction(Transaction* t) {
+    __transaction = t;
+  }
+  
+  class NotInTransaction{};
+  
+  static bool trans_in_progress() {
+    if (__transaction == NULL)
+      return false;
+    else
+      return __transaction->inProgress();
+  }
+  
+  static void abort() {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    __transaction->abort();
+  }
+  
+  static void silent_abort() {
+    if (trans_in_progress()) {
+      __transaction->silent_abort();
+    }
+  }
+
+ 
+  template <typename T>
+  static TransProxy item(Shared* s, T key) {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    return __transaction->item(s, key);
+  }
+  
+  static void check_opacity(TransactionTid::type t) {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    __transaction->check_opacity(t);
+  }
+
+  static void check_reads() {
+    __transaction->check_reads();
+  }
+  
+  template <typename T>
+  static OptionalTransProxy check_item(Shared* s, T key) {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    return __transaction->check_item(s, key);
+  }
+  
+  template <typename T>
+  static TransProxy new_item(Shared* s, T key) {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    return __transaction->new_item(s, key);
+  }
+  
+  template <typename T>
+  static TransProxy read_item(Shared *s, T key) {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    return __transaction->read_item(s, key);
+  }
+  
+  template <typename T>
+  static TransProxy fresh_item(Shared *s, T key) {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    return __transaction->fresh_item(s, key);
+  }
+  
+  static void commit() {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    __transaction->commit();
+  }
+  
+  static bool try_commit() {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    return __transaction->try_commit();
+  }
+  
+  static TransactionTid::type commit_tid() {
+    return __transaction->commit_tid();
+  }
+};
+
 
 template <typename T>
 inline TransProxy& TransProxy::add_read(T rdata) {
     if (!has_read()) {
+#if DETAILED_LOGGING
+        Transaction::max_p(txp_max_rdata_size, sizeof(T));
+#endif
         i_->__or_flags(TransItem::read_bit);
         i_->rdata_ = t_->buf_.pack(std::move(rdata));
     }
@@ -772,6 +905,9 @@ inline TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
 
 template <typename T>
 inline TransProxy& TransProxy::add_write(T wdata) {
+#if DETAILED_LOGGING
+    Transaction::max_p(txp_max_wdata_size, sizeof(T));
+#endif
     if (has_write())
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general

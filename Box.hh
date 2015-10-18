@@ -3,18 +3,17 @@
 #include "versioned_value.hh"
 #include "VersionFunctions.hh"
 
-#ifdef UBENCHMARK
-#  define OPACITY_NONE 0
-#  define OPACITY_TL2  1
-#  define OPACITY_SLOW 2
-extern int opacity;
-#endif
-
-template <typename T, bool GenericSTM = false, typename Structure = versioned_value_struct<T>>
+template <typename T,  bool GenericSTM = false, typename Structure = versioned_value_struct<T>>
 // if we're inheriting from Shared then a SingleElem adds both a version word and a vtable word
 // (not much else we can do though)
-class SingleElem : public Shared {
+class Box : public Shared {
 public:
+    
+    void initialize(Shared* container, int idx) {
+        container_ = container;
+        idx_ = idx;
+    }
+    
     T read() {
         return s_.read_value();
     }
@@ -45,24 +44,15 @@ private:
 
 public:
     T transRead() {
-        auto item = Sto::item(this, this);
+        auto item = Sto::item(container_, idx_);
         if (item.has_write())
             return item.template write_value<T>();
         else {
             version_type v;
             T val;
             atomicRead(v, val);
-#ifdef UBENCHMARK
-            if (opacity == OPACITY_TL2) {
-#else
-            if (GenericSTM) {
-#endif
-                Sto::check_opacity(v);
-#ifdef UBENCHMARK
-            } else if (opacity == OPACITY_SLOW) {
-                Sto::check_reads();
-#endif
-            }
+            if (GenericSTM)
+              Sto::check_opacity(v);
             item.add_read(v);
             return val;
         }
@@ -77,11 +67,11 @@ public:
     }
 
     void transWrite(const T& v) {
-        Sto::item(this, this).add_write(v);
+        Sto::item(container_, idx_).add_write(v);
     }
   
     /* Overloads = operator with transWrite */
-    SingleElem& operator= (const T& v) {
+    Box& operator= (const T& v) {
         if (Sto::trans_in_progress())
             transWrite(v);
         else
@@ -91,6 +81,10 @@ public:
 
     void lock() {
         TransactionTid::lock(s_.version());
+    }
+    
+    bool try_lock() {
+        return TransactionTid::try_lock(s_.version());
     }
 
     void unlock() {
@@ -112,12 +106,8 @@ public:
 
     void install(TransItem& item, const Transaction& t) {
         s_.set_value(item.template write_value<T>());
-#ifdef UBENCHMARK
-        if (opacity == OPACITY_TL2) {
-#else
         if (GenericSTM) {
-#endif
-            TransactionTid::set_version(s_.version(), Sto::commit_tid());
+            TransactionTid::set_version(s_.version(), t.commit_tid());
         } else {
             TransactionTid::inc_invalid_version(s_.version());
         }
@@ -126,4 +116,6 @@ public:
   protected:
     // we Store the versioned_value inlined (no added boxing)
     Structure s_;
+    Shared* container_;
+    int idx_;
 };

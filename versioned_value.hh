@@ -1,14 +1,17 @@
 #pragma once
 #include <iostream>
+#include "Interface.hh"
 
-#include "masstree-beta/kvthread.hh"
+#include "kvthread.hh"
 
 template <typename T, typename=void>
 struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
   typedef T value_type;
-  typedef uint64_t version_type;
+  typedef TransactionTid::type version_type;
 
   versioned_value_struct() : version_(), value_() {}
+  // XXX Yihe: I made it public; is there any reason why it should be private?
+  versioned_value_struct(const value_type& val, version_type v) : version_(v), value_(val) {}
   
   static versioned_value_struct* make(const value_type& val, version_type version) {
     return new versioned_value_struct<T>(val, version);
@@ -26,7 +29,7 @@ struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
     value_ = v;
   }
   
-  inline const value_type& read_value() {
+  inline const value_type& read_value() const {
     return value_;
   }
 
@@ -52,9 +55,7 @@ struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
   }
 #endif
   
-private:
-  versioned_value_struct(const value_type& val, version_type v) : version_(v), value_(val) {}
-  
+private: 
   version_type version_;
   value_type value_;
 };
@@ -64,7 +65,7 @@ template<typename T>
 struct versioned_value_struct<T, typename std::enable_if<!__has_trivial_copy(T)>::type> {
 public:
   typedef T value_type;
-  typedef uint64_t version_type;
+  typedef TransactionTid::type version_type;
 
   static versioned_value_struct* make(const value_type& val, version_type version) {
     return new versioned_value_struct(val, version);

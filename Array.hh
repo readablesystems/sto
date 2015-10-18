@@ -32,13 +32,13 @@ public:
     unlock(i);
   }
 
-  inline void atomicRead(Transaction& t, Key i, Version& v, Value& val) {
+  inline void atomicRead(Key i, Version& v, Value& val) {
     Version v2;
     // if version stays the same across these reads then .val should match up with .version
     do {
       v2 = data_[i].version;
       if (v2 & lock_bit)
-        t.abort();
+        Sto::abort();
       fence();
       val = data_[i].val;
       fence();
@@ -47,35 +47,35 @@ public:
     } while (v != v2);
   }
 
-  Value transRead_nocheck(Transaction& t, Key i) {
-    auto item = t.fresh_item(this, i);
+  Value transRead_nocheck(Key i) {
+    auto item = Sto::fresh_item(this, i);
     Version v;
     Value val;
-    atomicRead(t, i, v, val);
+    atomicRead(i, v, val);
     item.add_read(v);
     return val;
   }
 
-  void transWrite_nocheck(Transaction& t, Key i, Value val) {
-    auto item = t.fresh_item(this, i);
+  void transWrite_nocheck(Key i, Value val) {
+    auto item = Sto::fresh_item(this, i);
     item.add_write(val);
   }
 
-  Value transRead(Transaction& t, Key i) {
-    auto item = t.item(this, i);
+  Value transRead(Key i) {
+    auto item = Sto::item(this, i);
     if (item.has_write()) {
       return item.template write_value<Value>();
     } else {
       Version v;
       Value val;
-      atomicRead(t, i, v, val);
+      atomicRead(i, v, val);
       item.add_read(v);
       return val;
     }
   }
 
-  void transWrite(Transaction& t, Key i, Value val) {
-    auto item = t.item(this, i);
+  void transWrite(Key i, Value val) {
+    auto item = Sto::item(this, i);
     // can just do this blindly
     item.add_write(val);
   }

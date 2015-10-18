@@ -14,8 +14,12 @@ public:
   }
 };
 
+template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true, bool Opacity = false> class ListIterator;
+
 template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true, bool Opacity = false>
 class List : public Shared {
+  friend class ListIterator<T, Duplicates, Compare, Sorted, Opacity>;
+  typedef ListIterator<T, Duplicates, Compare, Sorted, Opacity> iterator;
 public:
   List(Compare comp = Compare()) : head_(NULL), listsize_(0), listversion_(0), comp_(comp) {
   }
@@ -69,14 +73,14 @@ public:
     return NULL;
   }
 
-  T* transFind(Transaction& t, const T& elem) {
+  T* transFind(const T& elem) {
     auto listv = listversion_;
     fence();
     auto *n = _find(elem);
     if (n) {
-      auto item = t_item(t, n);
+      auto item = t_item(n);
       if (!validityCheck(n, item)) {
-        t.abort();
+        Sto::abort();
         return NULL;
       }
       if (has_delete(item)) {
@@ -85,7 +89,7 @@ public:
       item.add_read(0);
     } else {
       // log list v#
-      verify_list(t, listv);
+      verify_list(listv);
       return NULL;
     }
     return &n->val;
@@ -151,13 +155,13 @@ public:
     return inserted;
   }
 
-  bool transInsert(Transaction& t, const T& elem) {
+  bool transInsert(const T& elem) {
     bool inserted;
     auto *node = _insert<true>(elem, &inserted);
-    auto item = t_item(t, node);
+    auto item = t_item(node);
     if (!inserted) {
       if (!validityCheck(node, item)) {
-        t.abort();
+        Sto::abort();
         return false;
       }
       // intertransactional insert-then-insert = failed insert
@@ -172,7 +176,7 @@ public:
       if (has_delete(item)) {
         item.clear_write().add_write(elem);
         item.assign_flags(doupdate_bit);
-        add_trans_size_offs(t, 1);
+        add_trans_size_offs(1);
         return true;
       }
       // "normal" insert-then-insert = failed insert
@@ -180,22 +184,22 @@ public:
       item.add_read(0);
       return false;
     }
-    add_trans_size_offs(t, 1);
+    add_trans_size_offs(1);
     // we lock the list for inserts
-    add_lock_list_item(t);
+    add_lock_list_item();
     item.add_write(0);
     item.add_flags(insert_bit);
     return true;
   }
 
-  bool transDelete(Transaction& t, const T& elem) {
+  bool transDelete(const T& elem) {
     auto listv = listversion_;
     fence();
     auto *n = _find(elem);
     if (n) {
-      auto item = t_item(t, n);
+      auto item = t_item(n);
       if (!validityCheck(n, item)) {
-        t.abort();
+        Sto::abort();
         return false;
       }
       if (has_delete(item)) {
@@ -206,17 +210,17 @@ public:
       if (has_doupdate(item)) {
         // back to deleting
         item.assign_flags(delete_bit);
-        add_trans_size_offs(t, -1);
+        add_trans_size_offs(-1);
         return true;
       }
       // insert-then-delete becomes nothing
       if (has_insert(item)) {
         remove<true>(n);
         item.remove_read().remove_write().clear_flags(insert_bit);
-        add_trans_size_offs(t, -1);
+        add_trans_size_offs(-1);
         // TODO: should have a count on add_lock_list_item so we can cancel that here
         // still need to make sure no one else inserts something
-        verify_list(t, listv);
+        verify_list(listv);
         return true;
       }
       item.assign_flags(delete_bit);
@@ -225,11 +229,11 @@ public:
       // we also need to check that it's still valid at commit time (not
       // bothering with valid_check_only_bit optimization right now)
       item.add_read(0);
-      add_lock_list_item(t);
-      add_trans_size_offs(t, -1);
+      add_lock_list_item();
+      add_trans_size_offs(-1);
       return true;
     } else {
-      verify_list(t, listv);
+      verify_list(listv);
       return false;
     }
   }
@@ -279,14 +283,17 @@ public:
     return false;
   }
 
-  inline void opacity_check(Transaction& t) {
+  inline void opacity_check() {
     // When we check for opacity, we need to compare the latest listversion and not
     // the one at the beginning of the operation.
     assert(Opacity);
     auto listv = listversion_;
     fence();
-    t.check_opacity(listv);
+    Sto::check_opacity(listv);
   }
+    
+  iterator begin() { return iterator(this, head_); }
+  iterator end() { return iterator(this, NULL); }
 
   struct ListIter {
     ListIter() : us(NULL), cur(NULL) {}
@@ -310,27 +317,27 @@ public:
       return ret;
     }
 
-    bool transHasNext(Transaction&) const {
+    bool transHasNext() const {
       return !!cur;
     }
 
-    void transReset(Transaction& t) {
+    void transReset() {
       cur = us->head_;
-      ensureValid(t);
+      ensureValid();
     }
 
-    T* transNext(Transaction& t) {
+    T* transNext() {
       auto ret = cur ? &cur->val : NULL;
       if (cur)
         cur = cur->next;
-      ensureValid(t);
+      ensureValid();
       return ret;
     }
 
-    T* transNthNext(Transaction& t, int n) {
+    T* transNthNext(int n) {
       T* ret = NULL;
-      while (n > 0 && transHasNext(t)) {
-        ret = transNext(t);
+      while (n > 0 && transHasNext()) {
+        ret = transNext();
         n--;
       }
       if (n == 0)
@@ -339,19 +346,18 @@ public:
     }
 
 private:
-    ListIter(List *us, list_node *cur, Transaction& t) : us(us), cur(cur) {
-      ensureValid(t);
+    ListIter(List *us, list_node *cur, bool trans) : us(us), cur(cur) {
+      if (trans)
+        ensureValid();
     }
 
-    ListIter(List *us, list_node *cur) : us(us), cur(cur) {}
-
-    void ensureValid(Transaction& t) {
+    void ensureValid() {
       while (cur) {
 	// need to check if this item already exists
-        auto item = t.check_item(us, cur);
+        auto item = Sto::check_item(us, cur);
         if (!cur->is_valid()) {
           if (!item || !us->has_insert(*item)) {
-            t.abort();
+            Sto::abort();
             // TODO: do we continue in this situation or abort?
             cur = cur->next;
             continue;
@@ -371,17 +377,17 @@ private:
   };
 
   ListIter iter() {
-    return ListIter(this, head_);
+    return ListIter(this, head_, false);
   }
 
-  ListIter transIter(Transaction& t) {
-    verify_list(t, listversion_);//TODO: rename
-    return ListIter(this, head_, t);
+  ListIter transIter() {
+    verify_list(listversion_);//TODO: rename
+    return ListIter(this, head_, true);
   }
 
-  size_t transSize(Transaction& t) {
-    verify_list(t, listversion_);
-    return listsize_ + trans_size_offs(t);
+  size_t transSize() {
+    verify_list(listversion_);
+    return listsize_ + trans_size_offs();
   }
 
   size_t size() const {
@@ -393,8 +399,8 @@ private:
         remove<false>(head_, true);
   }
 
-  void verify_list(Transaction& t, version_type readv) {
-      t_item(t, this).add_read(readv);
+  void verify_list(version_type readv) {
+      t_item(this).add_read(readv);
       acquire_fence();
   }
 
@@ -453,6 +459,7 @@ private:
         TransactionTid::inc_invalid_version(listversion_);
       }
     } else if (has_doupdate(item)) {
+        // XXX BUG
       n->val = item.template write_value<T>();
     } else {
       n->mark_valid();
@@ -477,9 +484,9 @@ private:
   }
 
   template <typename PTR>
-  TransProxy t_item(Transaction& t, PTR *node) {
+  TransProxy t_item(PTR *node) {
     // can switch this to fresh_item to not read our writes
-    return t.item(this, node);
+    return Sto::item(this, node);
   }
 
   bool has_insert(const TransItem& item) {
@@ -494,15 +501,15 @@ private:
       return item.flags() & doupdate_bit;
   }
 
-  void add_lock_list_item(Transaction& t) {
-    auto item = t_item(t, (void*)this);
+  void add_lock_list_item() {
+    auto item = t_item((void*)this);
     item.add_write(0);
   }
 
-  void add_trans_size_offs(Transaction& t, int size_offs) {
+  void add_trans_size_offs(int size_offs) {
     // TODO: it would be more efficient to store this directly in Transaction,
     // since the "key" is fixed (rather than having to search the transset each time)
-    auto item = t_item(t, size_key);
+    auto item = t_item(size_key);
     int cur_offs = 0;
     // XXX: this is sorta ugly
     if (item.has_read()) {
@@ -512,8 +519,8 @@ private:
       item.add_read(cur_offs + size_offs);
   }
 
-  int trans_size_offs(Transaction& t) {
-    auto item = t_item(t, size_key);
+  int trans_size_offs() {
+    auto item = t_item(size_key);
     if (item.has_read())
       return item.template read_value<int>();
     return 0;
@@ -524,3 +531,78 @@ private:
   version_type listversion_;
   Compare comp_;
 };
+    
+    
+
+    
+template <typename T, bool Duplicates, typename Compare, bool Sorted, bool Opacity>
+class ListIterator : public std::iterator<std::forward_iterator_tag, T> {
+    typedef ListIterator<T, Duplicates, Compare, Sorted, Opacity> iterator;
+    typedef List<T, Duplicates, Compare, Sorted, Opacity> list_type;
+    typedef typename list_type::list_node list_node;
+public:
+    ListIterator(list_type * list, list_node* ptr) : myList(list), myPtr(ptr) {
+        myList->list_verify(myList->listversion_);
+    }
+    ListIterator(const ListIterator& itr) : myList(itr.myList), myPtr(itr.myPtr) {}
+    
+    ListIterator& operator= (const ListIterator& v) {
+        myList = v.myList;
+        myPtr = v.myPtr;
+        return *this;
+    }
+    
+    bool operator==(iterator other) const {
+        return (myList == other.myList) && (myPtr == other.myPtr);
+    }
+    
+    bool operator!=(iterator other) const {
+        return !(operator==(other));
+    }
+    
+    T& operator*() {
+        return myPtr->val; // Just returing the pointer to the value because this
+                           // list does not transactionally track updates to list values.
+    }
+    
+    void increment_ptr() {
+        if (myPtr)
+            myPtr = myPtr->next;
+        while (myPtr) {
+            // need to check if this item already exists
+            auto item = Sto::check_item(myList, myPtr);
+            if (!myPtr->is_valid()) {
+                if (!item || !myList->has_insert(*item)) {
+                    Sto::abort();
+                    // TODO: do we continue in this situation or abort?
+                    myPtr = myPtr->next;
+                    continue;
+                }
+            }
+            if (item && myList->has_delete(*item)) {
+                myPtr = myPtr->next;
+                continue;
+            }
+            break;
+        }
+    }
+    
+    /* This is the prefix case */
+    iterator& operator++() {
+        increment_ptr();
+        return *this;
+    }
+    
+    /* This is the postfix case */
+    iterator operator++(int) {
+        iterator clone(*this);
+        increment_ptr();
+        return clone;
+    }
+    
+private:
+    list_type * myList;
+    list_node * myPtr;
+};
+
+

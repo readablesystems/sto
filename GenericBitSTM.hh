@@ -69,11 +69,11 @@ public:
   GenericSTM() : table_() {}
 
   template <typename T>
-  T transRead(Transaction& t, T* word) {
+  T transRead(T* word) {
     static_assert(sizeof(T) <= sizeof(void*), "don't support words larger than pointer size");
-    auto item = t.item(this, word);
+    auto item = Sto::item(this, word);
     if (item.has_write()) {
-      t.check_reads();
+      Sto::check_reads();
       return item.template write_value<T>();
     }
     T ret = *word;
@@ -83,7 +83,7 @@ public:
       item.assign_flags(sizeof(T) << TransItem::userf_shift);
     } else if (item.template read_value<T>() != ret) {
       // this prevents problems where we read a value twice, get different values each time, then end up back at the original val
-      t.abort();
+      Sto::abort();
       return ret;
     }
     t.check_reads();
@@ -91,14 +91,14 @@ public:
   }
 
   template <typename T>
-  void transWrite(Transaction& t, T* word, const T& new_val) {
+  void transWrite(T* word, const T& new_val) {
     static_assert(sizeof(T) <= sizeof(void*), "don't support words larger than pointer size");
-    auto item = t.item(this, word);
+    auto item = Sto::item(this, word);
     item.add_write(new_val);
     // we need to store sizeof the data type somewhere. 
     // this is 1, 2, 4, or 8, so we can fit it in our 8 flag bits
     item.assign_flags(sizeof(T) << TransItem::userf_shift);
-    t.check_reads();
+    Sto::check_reads();
   }
 
   unsigned hash(void *word) const {

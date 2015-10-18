@@ -1,13 +1,13 @@
 #pragma once
 
-#include "masstree-beta/masstree.hh"
-#include "masstree-beta/kvthread.hh"
-#include "masstree-beta/masstree_tcursor.hh"
-#include "masstree-beta/masstree_insert.hh"
-#include "masstree-beta/masstree_print.hh"
-#include "masstree-beta/masstree_remove.hh"
-#include "masstree-beta/masstree_scan.hh"
-#include "masstree-beta/string.hh"
+#include "masstree.hh"
+#include "kvthread.hh"
+#include "masstree_tcursor.hh"
+#include "masstree_insert.hh"
+#include "masstree_print.hh"
+#include "masstree_remove.hh"
+#include "masstree_scan.hh"
+#include "string.hh"
 #include "Transaction.hh"
 
 #include "versioned_value.hh"
@@ -27,16 +27,16 @@ typedef stuffed_str<uint64_t> versioned_str;
 struct versioned_str_struct : public versioned_str {
   typedef Masstree::Str value_type;
   typedef versioned_str::stuff_type version_type;
-  
+
   bool needsResize(const value_type& v) {
     return needs_resize(v.length());
   }
-  
+
   versioned_str_struct* resizeIfNeeded(const value_type& potential_new_value) {
     // TODO: this cast is only safe because we have no ivars or virtual methods
     return (versioned_str_struct*)this->reserve(versioned_str::size_for(potential_new_value.length()));
   }
-  
+
   template <typename StringType>
   inline void set_value(const StringType& v) {
     auto *ret = this->replace(v.data(), v.length());
@@ -78,7 +78,7 @@ public:
 
   static __thread threadinfo_type mythreadinfo;
 
-private:
+protected:
 
   typedef Box versioned_value;
   
@@ -125,15 +125,15 @@ public:
   }
 
   template <typename ValType>
-  bool transGet(Transaction& t, Str key, ValType& retval, threadinfo_type& ti = mythreadinfo) {
+  bool transGet(Str key, ValType& retval, threadinfo_type& ti = mythreadinfo) {
     unlocked_cursor_type lp(table_, key);
     bool found = lp.find_unlocked(*ti.ti);
     if (found) {
       versioned_value *e = lp.value();
       //      __builtin_prefetch(&e->version);
-      auto item = t_read_only_item(t, e);
+      auto item = t_read_only_item(e);
       if (!validityCheck(item, e)) {
-        t.abort();
+        Sto::abort();
         return false;
       }
       //      __builtin_prefetch();
@@ -158,25 +158,25 @@ public:
       }
 #endif
       Version elem_vers;
-      atomicRead(t, e, elem_vers, retval);
+      atomicRead(e, elem_vers, retval);
       item.add_read(elem_vers);
       if (Opacity)
-	check_opacity(t, e->version());
+        check_opacity(e->version());
     } else {
-      ensureNotFound(t, lp.node(), lp.full_version_value());
+      ensureNotFound(lp.node(), lp.full_version_value());
     }
     return found;
   }
 
   template <bool CopyVals = true, typename StringType>
-  bool transDelete(Transaction& t, StringType& key, threadinfo_type& ti = mythreadinfo) {
+  bool transDelete(StringType& key, threadinfo_type& ti = mythreadinfo) {
     unlocked_cursor_type lp(table_, key);
     bool found = lp.find_unlocked(*ti.ti);
     if (found) {
       versioned_value *e = lp.value();
       Version v = e->version();
       fence();
-      auto item = t_item(t, e);
+      auto item = t_item(e);
       bool valid = !(v & invalid_bit);
 #if READ_MY_WRITES
       if (!valid && has_insert(item)) {
@@ -192,7 +192,7 @@ public:
       } else 
 #endif
      if (!valid) {
-        t.abort();
+        Sto::abort();
         return false;
       }
       assert(valid);
@@ -204,8 +204,8 @@ public:
 #endif
       item.add_read(v);
       if (Opacity)
-	check_opacity(t, e->version());
-      // same as inserts we need to store (copy) key so we can lookup to remove later
+        check_opacity(e->version());
+      // same as inserts we need to Store (copy) key so we can lookup to remove later
       item.clear_write();
       if (std::is_same<const std::string, const StringType>::value) {
 	if (CopyVals)
@@ -217,22 +217,22 @@ public:
       item.add_flags(delete_bit);
       return found;
     } else {
-      ensureNotFound(t, lp.node(), lp.full_version_value());
+      ensureNotFound(lp.node(), lp.full_version_value());
       return found;
     }
   }
 
   template <bool CopyVals = true, bool INSERT = true, bool SET = true, typename StringType>
-  bool transPut(Transaction& t, StringType& key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
+  bool transPut(StringType& key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
     // optimization to do an unlocked lookup first
     if (SET) {
       unlocked_cursor_type lp(table_, key);
       bool found = lp.find_unlocked(*ti.ti);
       if (found) {
-        return handlePutFound<CopyVals, INSERT, SET>(t, lp.value(), key, value);
+        return handlePutFound<CopyVals, INSERT, SET>(lp.value(), key, value);
       } else {
         if (!INSERT) {
-          ensureNotFound(t, lp.node(), lp.full_version_value());
+          ensureNotFound(lp.node(), lp.full_version_value());
           return false;
         }
       }
@@ -243,7 +243,7 @@ public:
     if (found) {
       versioned_value *e = lp.value();
       lp.finish(0, *ti.ti);
-      return handlePutFound<CopyVals, INSERT, SET>(t, e, key, value);
+      return handlePutFound<CopyVals, INSERT, SET>(e, key, value);
     } else {
       //      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
       versioned_value* val = (versioned_value*)versioned_value::make(value, invalid_bit);
@@ -262,15 +262,15 @@ public:
       auto upd_version = lp.updated_version_value();
 #endif
 
-      if (updateNodeVersion(t, orig_node, orig_version, upd_version)) {
+      if (updateNodeVersion(orig_node, orig_version, upd_version)) {
         // add any new nodes as a result of splits, etc. to the read/absent set
 #if !ABORT_ON_WRITE_READ_CONFLICT
         for (auto&& pair : lp.new_nodes()) {
-          t.new_item(this, tag_inter(pair.first)).add_read(pair.second);
+          Sto::new_item(this, tag_inter(pair.first)).add_read(pair.second);
         }
 #endif
       }
-      auto item = t.new_item(this, val);
+      auto item = Sto::new_item(this, val);
       if (std::is_same<const std::string, const StringType>::value) {
 	if (CopyVals)
 	  item.add_write(key).add_flags(copyvals_bit);
@@ -288,13 +288,13 @@ public:
   }
 
   template <bool CopyVals = true, typename StringType>
-  bool transUpdate(Transaction& t, StringType& k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
-    return transPut<CopyVals, /*insert*/false, /*set*/true>(t, k, v, ti);
+  bool transUpdate(StringType& k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
+    return transPut<CopyVals, /*insert*/false, /*set*/true>(k, v, ti);
   }
 
   template <bool CopyVals = true, typename StringType>
-  bool transInsert(Transaction& t, StringType& k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
-    return !transPut<CopyVals, /*insert*/true, /*set*/false>(t, k, v, ti);
+  bool transInsert(StringType& k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
+    return !transPut<CopyVals, /*insert*/true, /*set*/false>(k, v, ti);
   }
 
 
@@ -326,13 +326,13 @@ public:
 
   // range queries
   template <typename Callback, typename ValAllocator = DefaultValAllocator>
-  void transQuery(Transaction& t, Str begin, Str end, Callback callback, ValAllocator *va = NULL, threadinfo_type& ti = mythreadinfo) {
+  void transQuery(Str begin, Str end, Callback callback, ValAllocator *va = NULL, threadinfo_type& ti = mythreadinfo) {
     auto node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
-      this->ensureNotFound(t, node, version);
+      this->ensureNotFound(node, version);
     };
     auto value_callback = [&] (Str key, versioned_value* e) {
       // TODO: this needs to read my writes
-      auto item = this->t_read_only_item(t, e);
+      auto item = this->t_read_only_item(e);
 #if READ_MY_WRITES
       if (has_delete(item)) {
         return true;
@@ -356,10 +356,10 @@ public:
       value_type stack_val;
       value_type& val = va ? *(*va)() : stack_val;
       Version v;
-      atomicRead(t, e, v, val);
+      atomicRead(e, v, val);
       item.add_read(v);
       if (Opacity)
-	check_opacity(t, e->version());
+        check_opacity(e->version());
       // key and val are both only guaranteed until callback returns
       return callback(key, val);//query_callback_overload(key, val, callback);
     };
@@ -369,12 +369,12 @@ public:
   }
 
   template <typename Callback, typename ValAllocator = DefaultValAllocator>
-  void transRQuery(Transaction& t, Str begin, Str end, Callback callback, ValAllocator *va = NULL, threadinfo_type& ti = mythreadinfo) {
+  void transRQuery(Str begin, Str end, Callback callback, ValAllocator *va = NULL, threadinfo_type& ti = mythreadinfo) {
     auto node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
-      this->ensureNotFound(t, node, version);
+      this->ensureNotFound(node, version);
     };
     auto value_callback = [&] (Str key, versioned_value* e) {
-      auto item = this->t_read_only_item(t, e);
+      auto item = this->t_read_only_item(e);
       // not sure of a better way to do this
       value_type stack_val;
       value_type& val = va ? *(*va)() : stack_val;
@@ -396,10 +396,10 @@ public:
       }
 #endif
       Version v;
-      atomicRead(t, e, v, val);
+      atomicRead(e, v, val);
       item.add_read(v);
       if (Opacity)
-	check_opacity(t, e->version());
+        check_opacity(e->version());
       return callback(key, val);
     };
 
@@ -418,7 +418,7 @@ public:
   }
 #endif
 
-private:
+protected:
   // range query class thang
   template <typename Nodecallback, typename Valuecallback, bool Reverse = false>
   class range_scanner {
@@ -596,50 +596,49 @@ public:
   
 
   // these are mostly for concurrent.cc (which currently requires specifically named methods)
-  void transWrite(Transaction& t, int k, value_type v) {
+  void transWrite(int k, value_type v) {
     char s[16];
     sprintf(s, "%d", k);
-    transPut(t, s, v);
+    transPut(s, v);
   }
-  value_type transRead(Transaction& t, int k) {
+  value_type transRead(int k) {
     char s[16];
     sprintf(s, "%d", k);
     value_type v;
-    if (!transGet(t, s, v)) {
+    if (!transGet(s, v)) {
       return value_type();
     }
     return v;
   }
-  bool transGet(Transaction& t, int k, value_type& v) {
+  bool transGet(int k, value_type& v) {
     char s[16];
     sprintf(s, "%d", k);
-    return transGet(t, s, v);
+    return transGet(s, v);
   }
-  bool transPut(Transaction& t, int k, value_type v) {
+  bool transPut(int k, value_type v) {
     char s[16];
     sprintf(s, "%d", k);
-    return transPut(t, s, v);
+    return transPut(s, v);
   }
-  bool transUpdate(Transaction& t, int k, value_type v) {
+  bool transUpdate(int k, value_type v) {
     char s[16];
     sprintf(s, "%d", k);
-    return transUpdate(t, s, v);
+    return transUpdate(s, v);
   }
-  bool transInsert(Transaction& t, int k, value_type v) {
+  bool transInsert(int k, value_type v) {
     char s[16];
     sprintf(s, "%d", k);
-    return transInsert(t, s, v);
+    return transInsert(s, v);
   }
-  bool transDelete(Transaction& t, int k) {
+  bool transDelete(int k) {
     char s[16];
     sprintf(s, "%d", k);
-    return transDelete(t, s);
+    return transDelete(s);
   }
   value_type transRead_nocheck(Transaction& , int ) { return value_type(); }
   void transWrite_nocheck(Transaction&, int , value_type ) {}
   value_type read(int k) {
-    Transaction t;
-    return transRead(t, k);
+    return transRead(k);
   }
 
   void put(int k, value_type v) {
@@ -649,10 +648,10 @@ public:
   }
 
 
-private:
+protected:
   // called once we've checked our own writes for a found put()
   template <bool CopyVals = true>
-  void reallyHandlePutFound(Transaction& t, TransProxy& item, versioned_value *e, Str key, const value_type& value) {
+  void reallyHandlePutFound(TransProxy& item, versioned_value *e, Str key, const value_type& value) {
     // resizing takes a lot of effort, so we first check if we'll need to
     // (values never shrink in size, so if we don't need to resize, we'll never need to)
     auto *new_location = e;
@@ -664,7 +663,7 @@ private:
         // we had a weird race condition and now this element is gone. just abort at this point
         if (e->version() & invalid_bit) {
           unlock(e);
-          t.abort();
+          Sto::abort();
           return;
         }
         e->version() |= invalid_bit;
@@ -703,9 +702,9 @@ private:
 	  item.add_write(pack(value));
       } else {
 	if (CopyVals)
-	  t.new_item(this, new_location).add_write(value).add_flags(copyvals_bit);
+	  Sto::new_item(this, new_location).add_write(value).add_flags(copyvals_bit);
 	else
-	  t.new_item(this, new_location).add_write(pack(value));
+	  Sto::new_item(this, new_location).add_write(pack(value));
       }
     }
   }
@@ -713,10 +712,10 @@ private:
   // returns true if already in tree, false otherwise
   // handles a transactional put when the given key is already in the tree
   template <bool CopyVals = true, bool INSERT=true, bool SET=true>
-  bool handlePutFound(Transaction& t, versioned_value *e, Str key, const value_type& value) {
-    auto item = t_item(t, e);
+  bool handlePutFound(versioned_value *e, Str key, const value_type& value) {
+    auto item = t_item(e);
     if (!validityCheck(item, e)) {
-      t.abort();
+      Sto::abort();
       return false;
     }
 #if READ_MY_WRITES
@@ -726,7 +725,7 @@ private:
       if (INSERT) {
         item.clear_flags(delete_bit);
         assert(!has_delete(item));
-        reallyHandlePutFound<CopyVals>(t, item, e, key, value);
+        reallyHandlePutFound<CopyVals>(item, e, key, value);
       } else {
         // delete-then-update == not found
         // delete will check for other deletes so we don't need to re-log that check
@@ -743,18 +742,18 @@ private:
       fence();
       item.add_read(v);
       if (Opacity)
-	check_opacity(t, e->version());
+        check_opacity(e->version());
     }
     if (SET) {
-      reallyHandlePutFound<CopyVals>(t, item, e, key, value);
+      reallyHandlePutFound<CopyVals>(item, e, key, value);
     }
     return true;
   }
 
   template <typename NODE, typename VERSION>
-  void ensureNotFound(Transaction& t, NODE n, VERSION v) {
+  void ensureNotFound(NODE n, VERSION v) {
     // TODO: could be more efficient to use fresh_item here, but that will also require more work for read-then-insert
-    auto item = t_read_only_item(t, tag_inter(n));
+    auto item = t_read_only_item(tag_inter(n));
     if (!item.has_read()) {
       item.add_read(v);
     }
@@ -764,8 +763,8 @@ private:
   }
 
   template <typename NODE, typename VERSION>
-  bool updateNodeVersion(Transaction& t, NODE *node, VERSION prev_version, VERSION new_version) {
-    if (auto node_item = t.check_item(this, tag_inter(node))) {
+  bool updateNodeVersion(NODE *node, VERSION prev_version, VERSION new_version) {
+    if (auto node_item = Sto::check_item(this, tag_inter(node))) {
       if (node_item->has_read() &&
           prev_version == node_item->template read_value<VERSION>()) {
         node_item->update_read(node_item->template read_value<VERSION>(),
@@ -777,20 +776,20 @@ private:
   }
 
   template <typename T>
-  TransProxy t_item(Transaction& t, T e) {
+  TransProxy t_item(T e) {
 #if READ_MY_WRITES
-    return t.item(this, e);
+    return Sto::item(this, e);
 #else
-    return t.fresh_item(this, e);
+    return Sto::fresh_item(this, e);
 #endif
   }
 
   template <typename T>
-  TransProxy t_read_only_item(Transaction& t, T e) {
+  TransProxy t_read_only_item(T e) {
 #if READ_MY_WRITES
-    return t.read_item(this, e);
+    return Sto::read_item(this, e);
 #else
-    return t.fresh_item(this, e);
+    return Sto::fresh_item(this, e);
 #endif
   }
 
@@ -802,8 +801,9 @@ private:
   }
 
   static bool validityCheck(const TransItem& item, versioned_value *e) {
-    return //likely(has_insert(item)) || !(e->version & invalid_bit);
+    bool v =  //likely(has_insert(item)) || !(e->version & invalid_bit);
       likely(!(e->version() & invalid_bit)) || has_insert(item);
+    return v;
   }
 
   static constexpr Version lock_bit = (Version)1<<(sizeof(Version)*8 - 1);
@@ -833,10 +833,10 @@ private:
       return is_inter(t.key<versioned_value*>());
   }
 
-  static void check_opacity(Transaction& t, Version& v) {
+  static void check_opacity(Version& v) {
     Version v2 = v;
     fence();
-    t.check_opacity(v);
+    Sto::check_opacity(v2);
   }
 
   static bool versionCheck(Version v1, Version v2) {
@@ -876,12 +876,13 @@ private:
 #endif
   }
 
-  static void atomicRead(Transaction& t, versioned_value *e, Version& vers, value_type& val) {
+  static void atomicRead(versioned_value *e, Version& vers, value_type& val) {
     Version v2;
     do {
       v2 = e->version();
       if (is_locked(v2))
-	t.abort();
+        Sto::abort();
+	
       fence();
       assign_val(val, e->read_value());
       fence();

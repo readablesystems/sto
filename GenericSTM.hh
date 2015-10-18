@@ -8,29 +8,29 @@ class GenericSTM : public Shared {
 public:
   
   template <typename T>
-  T transRead(Transaction& t, T* word) {
+  T transRead(T* word) {
     static_assert(sizeof(T) <= sizeof(void*), "don't support words larger than pointer size");
 
-    auto it = t.check_item(this, word);
+    auto it = Sto::check_item(this, word);
     if (it && it->has_write()) {
         return it->template write_value<T>();
     }
     
     size_t key = bucket(word);
     // ensures version doesn't change
-    table_.transRead(t, key);
+    table_.transRead(key);
     T ret = *word;
     return ret;
   }
   
   template <typename T>
-  void transWrite(Transaction& t, T* word, const T& new_val) {
+  void transWrite(T* word, const T& new_val) {
     static_assert(sizeof(T) <= sizeof(void*), "don't support words larger than pointer size");
     // just makes the version number change, i.e., makes conflicting reads abort
     // (and locks this word for us)
     size_t key = bucket(word);
-    table_.transWrite(t, key, 0);
-    t.item(this, word).add_write(new_val).assign_flags(sizeof(T) << TransItem::userf_shift);
+    table_.transWrite(key, 0);
+    Sto::item(this, word).add_write(new_val).assign_flags(sizeof(T) << TransItem::userf_shift);
   }
 
   // Hashtable handles all of this
