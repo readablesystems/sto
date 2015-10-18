@@ -157,11 +157,13 @@ int main() {
     
     std::map<uint64_t, txn_record *>::iterator it = combined_txn_list.begin();
     for(; it != combined_txn_list.end(); it++) {
+        std::cout << "BEGIN txn " << it->first << std::endl;
         Sto::start_transaction();
         for (unsigned i = 0; i < it->second->ops.size(); i++) {
             tester.redoOp(&q1, it->second->ops[i]);
         }
         assert(Sto::try_commit());
+        std::cout << "COMMITTED" << std::endl;
     }
     
     gettimeofday(&tv2, NULL);
