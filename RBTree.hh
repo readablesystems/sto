@@ -213,6 +213,7 @@ private:
             stats_.present_insert++;
 #endif
             auto item = Sto::item(this, x);
+            item.add_read(x->version());
             if (is_deleted(x->version())) {
                 unlock(&treelock_);
                 Sto::abort();
@@ -436,9 +437,9 @@ inline size_t RBTree<K, T>::erase(const K& key) {
             Sto::item(this, tree_key_).add_read(treeversion_);
         } else {
             // add a read of all nodeversions in the path in case they are later rotated
-//            for(auto it = path.begin(); it != path.end(); ++it) {
-//                Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_read((*it)->nodeversion());
-//            } 
+            //for(auto it = path.begin(); it != path.end(); ++it) {
+            //    Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_read((*it)->nodeversion());
+            //} 
         }
         return 0;
     }
