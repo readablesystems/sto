@@ -827,6 +827,10 @@ public:
     }
     __transaction->check_opacity(t);
   }
+
+  static void check_reads() {
+    __transaction->check_reads();
+  }
   
   template <typename T>
   static OptionalTransProxy check_item(Shared* s, T key) {
