@@ -232,12 +232,12 @@ private:
                 item.add_write(value).clear_flags(delete_tag).add_flags(insert_tag);
                 // either overwrite value or put empty value
                 if (force) {
-                    x->writeable_value() = value;
+                    item.add_write(value);
                 } else {
-                    x->writeable_value() = T();
+                    item.add_write(T());
                 }
                 unlock(&treelock_);
-                return x->writeable_value();
+                return item.template write_value<T>();
             // read_my_writes
             } else if (item.has_write()) {
                 // operator[] used on LHS, overwrite
@@ -251,11 +251,10 @@ private:
 
             // otherwise we are just accessing a regular key
             if (force) {
-                x->writeable_value() = value;
                 item.add_write(value);
             }
             unlock(&treelock_);
-            return x->writeable_value();
+            return item.template write_value<T>(); 
         }
     }
 
