@@ -11,6 +11,8 @@
 
 #define log2(x) ceil(log((double) size) / log(2.0))
 
+class Empty {};
+
 template<typename T, bool Opacity = false, typename Elem = Box<T>> class VecIterator;
 template<typename T, bool Opacity, typename Elem> struct T_wrapper;
 
@@ -34,20 +36,23 @@ public:
     typedef const VecIterator<T, Opacity, Elem> const_iterator;
     typedef wrapper& reference;
     typedef uint32_t size_type;
+
     
-    
-    Vector() {
+    Vector(): resize_lock_() {
         capacity_ = 0;
         size_ = 0;
         vecversion_ = 0;
         data_ = NULL;
     }
     
-    Vector(uint32_t size) {
+    Vector(uint32_t size): resize_lock_() {
         size_ = size;
         capacity_ = 1 << ((int) log2(size));
         vecversion_ = 0;
-        data_ = new T[capacity_];
+        data_ = new Elem[capacity_];
+        for (int i = 0; i < capacity_; i++) {
+            data_[i].initialize(this, i);
+        }
     }
     
     void reserve(uint32_t new_capacity) {
@@ -63,8 +68,10 @@ public:
             new_data[i].initialize(this, i);
         }
         capacity_ = new_capacity;
-        Elem* old_data = data_;
-        Transaction::rcu_cleanup([old_data] () {delete[] old_data; });
+        if (data_ != NULL) {
+            Elem* old_data = data_;
+            Transaction::rcu_cleanup([old_data] () {delete[] old_data; });
+        }
         data_ = new_data;
         resize_lock_.write_unlock();
     }
@@ -193,17 +200,15 @@ public:
         acquire_fence();
         uint32_t size = size_;
         acquire_fence();
-        assert(i < size + trans_size_offs());
+        if (i >= size + trans_size_offs()) { throw Empty(); }
         if (i < size)
             return data_[i].transRead();
         else {
             int diff = i - size;
             
             auto extra_items = Sto::item(this, push_back_key);
-            if (!extra_items.has_read()) {
-                // We need to register the vecversion_ to invalidate other concurrent push_backs.
-                extra_items.add_read(ver);
-            }
+            // We need to register the vecversion_ to invalidate other concurrent push_backs.
+            t_item(this).add_read(ver);
             if (extra_items.has_write()) {
                 if (is_list(extra_items)) {
                     auto& write_list= extra_items.template write_value<std::vector<T>>();
@@ -228,17 +233,15 @@ public:
         acquire_fence();
         uint32_t size = size_;
         acquire_fence();
-        assert(i < size + trans_size_offs());
+        if (i >= size + trans_size_offs()) {throw Empty(); }
         if (i < size)
             data_[i].transWrite(std::move(v));
         else {
             int diff = i - size;
             
             auto extra_items = Sto::item(this, push_back_key);
-            if (!extra_items.has_read()) {
-                // We need to register the vecversion_ to invalidate other concurrent push_backs.
-                extra_items.add_read(ver);
-            }
+            // We need to register the vecversion_ to invalidate other concurrent push_backs.
+            t_item(this).add_read(ver);
             if (extra_items.has_write()) {
                 if (is_list(extra_items)) {
                     auto& write_list= extra_items.template write_value<std::vector<T>>();
@@ -337,20 +340,25 @@ public:
     }
     
     void lock(TransItem& item){
-        if (item.key<Vector*>() == this)
+        if (item.key<Vector*>() == this) {
             lock_version(vecversion_); // TODO: no need to lock vecversion_ if trans_size_offs() is 0
-        else if (item.key<int>() == push_back_key)
+        } else if (item.key<int>() == push_back_key) {
             return; // Do nothing as we will anyways lock vecversion for size.
-        else
+        }
+        else {
             lock(item.key<key_type>());
+        }
     }
     void unlock(TransItem& item){
-        if (item.key<Vector*>() == this)
+        if (item.key<Vector*>() == this) {
             unlock_version(vecversion_);
-        else if (item.key<int>() == push_back_key)
+        }
+        else if (item.key<int>() == push_back_key) {
             return;
-        else
+        }
+        else {
             unlock(item.key<key_type>());
+        }
     }
     
     void install(TransItem& item, const Transaction& t) {

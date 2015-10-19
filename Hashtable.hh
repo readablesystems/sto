@@ -362,7 +362,7 @@ public:
   }
 
   void cleanup(TransItem& item, bool committed) {
-      if (item.flags() & (committed ? delete_bit : insert_bit)) {
+      if (committed ? has_delete(item) : has_insert(item)) {
         auto el = item.key<internal_elem*>();
         assert(!el->valid());
         remove(el);

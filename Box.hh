@@ -8,7 +8,7 @@ template <typename T,  bool GenericSTM = false, typename Structure = versioned_v
 // (not much else we can do though)
 class Box : public Shared {
 public:
-    
+    Box() : s_() {}
     void initialize(Shared* container, int idx) {
         container_ = container;
         idx_ = idx;

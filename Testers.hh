@@ -405,6 +405,12 @@ public:
             } RETRY(false)
         }
     }
+    
+#if PRINT_DEBUG
+    void print_stats(T* q) {
+       
+    }
+#endif
 
     static const int num_ops_ = 3;
 };

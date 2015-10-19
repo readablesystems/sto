@@ -190,11 +190,11 @@ void testIter() {
     TRANSACTION {
     for (int i = 0; i < 10; i++) {
         int x = rand();
-        arr.push_back(x);
         f.push_back(x);
+        arr.push_back(x);
     }
     } RETRY(false)
-    
+
     int max;
     TRANSACTION {
         max = *(std::max_element(f.begin(), f.end()));
@@ -230,11 +230,12 @@ void testConflictingIter() {
 
 void testModifyingIter() {
     Vector<int> f;
-    TRANSACTION {
+    Transaction tt;
+    Sto::set_transaction(&tt);
     for (int i = 0; i < 10; i++) {
         f.push_back(i);
     }
-    } RETRY(false)
+    assert(tt.try_commit());
     
     Transaction t;
     Sto::set_transaction(&t);
@@ -358,11 +359,12 @@ void testIterNPushBack() {
 
 void testIterNPushBack1() {
     Vector<int> f;
-    TRANSACTION {
+    Transaction tt;
+    Sto::set_transaction(&tt);
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false)
+    assert(tt.try_commit());
     
     int max;
     Transaction t1;
@@ -383,11 +385,13 @@ void testIterNPushBack1() {
 
 void testIterNPushBack2() {
     Vector<int> f;
-    TRANSACTION {
+    Transaction tt;
+    Sto::set_transaction(&tt);
+
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false)
+    assert(tt.try_commit());
     
     Transaction t1;
     Sto::set_transaction(&t1);
