@@ -10,10 +10,6 @@
 
 #define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements.
 
-// XXX CHECK
-// just tracking parent node not sufficient -- right now, we do a read of all nodes touched
-// along the path
-// we do a write of any nodes rotated and the parent
 template <typename K, typename T>
 class RBTree;
 
@@ -140,21 +136,13 @@ private:
     inline std::pair<std::pair<rbwrapper<rbpair<K, T>>*, bool>, std::vector<rbwrapper<rbpair<K, T>>*>> find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp, bool read_path) const {
         lock(&treelock_);
         auto nodepath = wrapper_tree_.find_any(rbkvp, rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-        if (read_path) {
-            // if requested, add node versions to read set while we still hold the structural lock
-            // XXX doesn't work for fine-grained locking unfortunately...
-            for (auto n : nodepath.second)
-                Sto::item(const_cast<RBTree<K, T>*>(this), n).add_read(n->nodeversion());
-            if (nodepath.first.second)
-                Sto::item(const_cast<RBTree<K, T>*>(this), nodepath.first.first).add_read(nodepath.first.first->nodeversion());
-        }
         auto nodepair = nodepath.first;
         auto x = nodepair.first;
         auto found = nodepair.second;
         if (found) {
             // check if rbpair has version "inserted" (someone inserted w/out commit)
+            auto item = Sto::item(const_cast<RBTree<K, T>*>(this), x);
             if (is_inserted(x->version())) {
-                auto item = Sto::item(const_cast<RBTree<K, T>*>(this), x);
                 // check if item was inserted by this transaction
                 if (has_insert(item)) {
                     unlock(&treelock_);
@@ -166,6 +154,25 @@ private:
                     // unreachable
                     return nodepath; 
                 }
+            }
+            // add a read of the node version while we still hold structural lock
+            // ensures no one can commit before we read versions
+            // e.g. we have to add a read of the version if we find it during insert_update 
+            // to ensure that no one else has deleted it before we commit (because we insert at execution
+            // time, not at commit time)
+            item.add_read(x->version());
+        } else {
+            if (read_path) {
+                // if requested, add node versions to read set while we still hold the structural lock
+                // XXX doesn't work for fine-grained locking unfortunately...
+                for (auto n : nodepath.second)
+                    Sto::item(const_cast<RBTree<K, T>*>(this), n).add_read(n->nodeversion());
+                if (nodepath.first.second)
+                    Sto::item(const_cast<RBTree<K, T>*>(this), nodepath.first.first).add_read(nodepath.first.first->nodeversion());
+            }
+            // add read of treeversion if tree is empty 
+            if (!x) {
+                Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
             }
         }
         // item was committed or DNE, so return pointer
@@ -213,10 +220,6 @@ private:
             stats_.present_insert++;
 #endif
             auto item = Sto::item(this, x);
-            // we have to add a read of the version to ensure that no one
-            // else has deleted it before we commit (because we insert at execution
-            // time, not at commit time)
-            item.add_read(x->version());
             if (is_deleted(x->version())) {
                 unlock(&treelock_);
                 Sto::abort();
@@ -341,24 +344,17 @@ private:
 template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    //XXX lots of false conflicts right now... every count is an absent read
     auto nodepath = find_or_abort(idx_pair, true);
     auto nodepair = nodepath.first; 
-    auto x = nodepair.first;
     auto found = nodepair.second;
     auto path = nodepath.second; 
 #if PRINT_DEBUG
     (!found) ? stats_.absent_count++ : stats_.present_count++;
 #endif
     if (!found) {
-        // add read of treeversion if tree is empty 
-        if (!x) {
-            Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
-        }
         return 0;
-    // else we found the item, check the item version at commit time
+    // else we found the item
     } else {
-        Sto::item(const_cast<RBTree<K, T>*>(this), x).add_read(x->version());
         return 1;
     }
 }
@@ -371,7 +367,6 @@ inline RBProxy<K, T> RBTree<K, T>::operator[](const K& key) {
 template <typename K, typename T>
 inline size_t RBTree<K, T>::erase(const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    // XXX every erase is an absent read (add all path nodes to read set)
     auto nodepath = find_or_abort(idx_pair, true);
     auto nodepair = nodepath.first; 
     auto x = nodepair.first;
@@ -394,11 +389,6 @@ inline size_t RBTree<K, T>::erase(const K& key) {
                 } 
                 item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
                 Transaction::rcu_free(x);
-                // add read of treeversion if tree is empty 
-                // XXX do we need this? insert should already be incrementing parentversion/treeversion
-                if (!x->rblinks_.p_) {
-                    Sto::item(this, tree_key_).add_read(treeversion_);
-                }
                 unlock(&treelock_);
                 return 1;
             } else {
@@ -426,10 +416,6 @@ inline size_t RBTree<K, T>::erase(const K& key) {
 #if PRINT_DEBUG
         stats_.absent_delete++;
 #endif
-        // add a read of treeversion if tree is empty 
-        if (!x) {
-            Sto::item(this, tree_key_).add_read(treeversion_);
-        }
         return 0;
     }
 }
