@@ -136,9 +136,18 @@ private:
     }
 
     // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
-    inline std::pair<std::pair<rbwrapper<rbpair<K, T>>*, bool>, std::vector<rbwrapper<rbpair<K, T>>*>> find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) const {
+    // return values: (node*, found, path)
+    inline std::pair<std::pair<rbwrapper<rbpair<K, T>>*, bool>, std::vector<rbwrapper<rbpair<K, T>>*>> find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp, bool read_path) const {
         lock(&treelock_);
         auto nodepath = wrapper_tree_.find_any(rbkvp, rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+        if (read_path) {
+            // if requested, add node versions to read set while we still hold the structural lock
+            // XXX doesn't work for fine-grained locking unfortunately...
+            for (auto n : nodepath.second)
+                Sto::item(const_cast<RBTree<K, T>*>(this), n).add_read(n->nodeversion());
+            if (nodepath.first.second)
+                Sto::item(const_cast<RBTree<K, T>*>(this), nodepath.first.first).add_read(nodepath.first.first->nodeversion());
+        }
         auto nodepair = nodepath.first;
         auto x = nodepair.first;
         auto found = nodepair.second;
@@ -169,7 +178,7 @@ private:
     inline T& insert_update(const K& key, const T& value, bool force) {
         auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
         // we don't need path because this is an insert -- we only add writes, not reads
-        auto nodepair = this->find_or_abort(node).first;
+        auto nodepair = this->find_or_abort(node, false).first;
         auto x = nodepair.first;
         auto found = nodepair.second;
         lock(&treelock_);
@@ -327,7 +336,8 @@ private:
 template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    auto nodepath = find_or_abort(idx_pair);
+    //XXX lots of false conflicts right now...
+    auto nodepath = find_or_abort(idx_pair, true);
     auto nodepair = nodepath.first; 
     auto x = nodepair.first;
     auto found = nodepair.second;
@@ -341,9 +351,9 @@ inline size_t RBTree<K, T>::count(const K& key) const {
             Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
         } else {
             // add a read of all nodeversions in the path in case they are later rotated
-            for(auto it = path.begin(); it != path.end(); ++it) {
-                Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_read((*it)->nodeversion());
-            } 
+            //for(auto it = path.begin(); it != path.end(); ++it) {
+            //    Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_read((*it)->nodeversion());
+            //} 
         }
         return 0;
     // else we found the item, check the item version at commit time
@@ -361,7 +371,7 @@ inline RBProxy<K, T> RBTree<K, T>::operator[](const K& key) {
 template <typename K, typename T>
 inline size_t RBTree<K, T>::erase(const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    auto nodepath = find_or_abort(idx_pair);
+    auto nodepath = find_or_abort(idx_pair, true);
     auto nodepair = nodepath.first; 
     auto x = nodepair.first;
     auto found = nodepair.second;
@@ -379,7 +389,7 @@ inline size_t RBTree<K, T>::erase(const K& key) {
                 lock(&treelock_);
                 auto rotated = wrapper_tree_.erase(*x);
                 for(auto it = rotated.begin(); it != rotated.end(); ++it) {
-                    Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_write(0).add_flags(structure_tag);
+                    Sto::item(this, *it).add_write(0).add_flags(structure_tag);
                 } 
                 item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
                 Transaction::rcu_free(x);
@@ -388,9 +398,9 @@ inline size_t RBTree<K, T>::erase(const K& key) {
                     Sto::item(this, tree_key_).add_read(treeversion_);
                 } else {
                     // add a read of all nodeversions in the path in case they are later rotated
-                    for(auto it = path.begin(); it != path.end(); ++it) {
-                        Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_read((*it)->nodeversion());
-                    } 
+                    //for(auto it = path.begin(); it != path.end(); ++it) {
+                    //    Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_read((*it)->nodeversion());
+                    //} 
                 }
                 unlock(&treelock_);
                 return 1;
@@ -407,7 +417,7 @@ inline size_t RBTree<K, T>::erase(const K& key) {
         }
         // found item that has already been installed and not deleted
         item.add_write(0).add_flags(delete_tag);
-        item.add_read(x->version());
+        //item.add_read(x->version());
         // must change the parent node version
         // if tree is empty (i.e. no parent), we increment treeversion 
         if (!x) {
@@ -426,9 +436,9 @@ inline size_t RBTree<K, T>::erase(const K& key) {
             Sto::item(this, tree_key_).add_read(treeversion_);
         } else {
             // add a read of all nodeversions in the path in case they are later rotated
-            for(auto it = path.begin(); it != path.end(); ++it) {
-                Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_read((*it)->nodeversion());
-            } 
+//            for(auto it = path.begin(); it != path.end(); ++it) {
+//                Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_read((*it)->nodeversion());
+//            } 
         }
         return 0;
     }
