@@ -213,6 +213,9 @@ private:
             stats_.present_insert++;
 #endif
             auto item = Sto::item(this, x);
+            // we have to add a read of the version to ensure that no one
+            // else has deleted it before we commit (because we insert at execution
+            // time, not at commit time)
             item.add_read(x->version());
             if (is_deleted(x->version())) {
                 unlock(&treelock_);
@@ -232,22 +235,21 @@ private:
                 }
                 unlock(&treelock_);
                 return x->writeable_value();
+            // read_my_writes
             } else if (item.has_write()) {
-                // read_my_writes: don't add anything to read set
+                // operator[] used on LHS, overwrite
                 if (force) {
-                    // operator[] used on LHS, overwrite
                     item.add_write(value);
                 }
                 unlock(&treelock_);
+                // return the last value written (i.e. the old value if we didn't force)
                 return item.template write_value<T>();
             }
 
             // otherwise we are just accessing a regular key
-            // either overwrite value or put empty value
             if (force) {
+                x->writeable_value() = value;
                 item.add_write(value);
-            } else {
-                item.add_read(x->version());
             }
             unlock(&treelock_);
             return x->writeable_value();
@@ -318,6 +320,8 @@ public:
     typedef RBTree<K, T> transtree_t;
     explicit RBProxy(transtree_t& tree, const K& key)
         : tree_(tree), key_(key) {};
+    // when we just do a read of the item (using operator[] on the RHS), we don't
+    // want to force an update
     operator T() {
         return tree_.insert_update(key_, T(), false);
     }
@@ -337,7 +341,7 @@ private:
 template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    //XXX lots of false conflicts right now...
+    //XXX lots of false conflicts right now... every count is an absent read
     auto nodepath = find_or_abort(idx_pair, true);
     auto nodepair = nodepath.first; 
     auto x = nodepair.first;
@@ -346,15 +350,10 @@ inline size_t RBTree<K, T>::count(const K& key) const {
 #if PRINT_DEBUG
     (!found) ? stats_.absent_count++ : stats_.present_count++;
 #endif
-    // we will check parent version upon commit if absent read
     if (!found) {
+        // add read of treeversion if tree is empty 
         if (!x) {
             Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
-        } else {
-            // add a read of all nodeversions in the path in case they are later rotated
-            //for(auto it = path.begin(); it != path.end(); ++it) {
-            //    Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_read((*it)->nodeversion());
-            //} 
         }
         return 0;
     // else we found the item, check the item version at commit time
@@ -372,6 +371,7 @@ inline RBProxy<K, T> RBTree<K, T>::operator[](const K& key) {
 template <typename K, typename T>
 inline size_t RBTree<K, T>::erase(const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
+    // XXX every erase is an absent read (add all path nodes to read set)
     auto nodepath = find_or_abort(idx_pair, true);
     auto nodepair = nodepath.first; 
     auto x = nodepair.first;
@@ -394,14 +394,10 @@ inline size_t RBTree<K, T>::erase(const K& key) {
                 } 
                 item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
                 Transaction::rcu_free(x);
-                // read parentversion so that we can abort if another transaction inserts this key again
+                // add read of treeversion if tree is empty 
+                // XXX do we need this? insert should already be incrementing parentversion/treeversion
                 if (!x->rblinks_.p_) {
                     Sto::item(this, tree_key_).add_read(treeversion_);
-                } else {
-                    // add a read of all nodeversions in the path in case they are later rotated
-                    //for(auto it = path.begin(); it != path.end(); ++it) {
-                    //    Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_read((*it)->nodeversion());
-                    //} 
                 }
                 unlock(&treelock_);
                 return 1;
@@ -418,14 +414,11 @@ inline size_t RBTree<K, T>::erase(const K& key) {
         }
         // found item that has already been installed and not deleted
         item.add_write(0).add_flags(delete_tag);
-        //item.add_read(x->version());
-        // must change the parent node version
-        // if tree is empty (i.e. no parent), we increment treeversion 
-        if (!x) {
+        // must change the parent node version; if tree is empty, increment treeversion 
+        if (!x->rblinks_.p_) {
             Sto::item(this, tree_key_).add_write(0);
-        // else we increment the parent version
         } else {
-            Sto::item(this, x).add_write(0).add_flags(structure_tag);
+            Sto::item(this, x->rblinks_.p_).add_write(0).add_flags(structure_tag);
         }
         return 1;
     // item not in tree, treat it like an absent read
@@ -433,13 +426,9 @@ inline size_t RBTree<K, T>::erase(const K& key) {
 #if PRINT_DEBUG
         stats_.absent_delete++;
 #endif
+        // add a read of treeversion if tree is empty 
         if (!x) {
             Sto::item(this, tree_key_).add_read(treeversion_);
-        } else {
-            // add a read of all nodeversions in the path in case they are later rotated
-            //for(auto it = path.begin(); it != path.end(); ++it) {
-            //    Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_read((*it)->nodeversion());
-            //} 
         }
         return 0;
     }
@@ -505,7 +494,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             mark_deleted(&e->version());
             // actually erase
             lock(&treelock_);
-            // XXX do we need to handle the rotated nodes during this erase? should we just increment all their nodeversions?
+            // handle the rotated nodes during this erase by incrementing all nodeversions
             auto rotated = wrapper_tree_.erase(*e);
             for(auto it = rotated.begin(); it != rotated.end(); ++it) {
                 lock(&(*it)->nodeversion());
@@ -540,10 +529,10 @@ template <typename K, typename T>
 inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
     if (!committed) {
         // if item has been tagged deleted or structured, don't need to do anything 
-        // if item has been tagged inserted, then we erase the item
+        // if item has been tagged inserted, then we erase the item and note which
+        // nodes we rotated
         if (has_insert(item)) {
             auto e = item.key<wrapper_type*>();
-            // we actually want to erase this 
             lock(&treelock_);
             auto rotated = wrapper_tree_.erase(*e);
             for(auto it = rotated.begin(); it != rotated.end(); ++it) {
