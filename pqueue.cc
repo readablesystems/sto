@@ -753,7 +753,7 @@ int main() {
             assert(v1 == v2);
             assert(q.pop() == v1);
             assert(q1.pop() == v2);
-        } RETRY(false)
+        } RETRY(false);
     }
         TRANSACTION {
             q.print();

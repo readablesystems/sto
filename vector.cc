@@ -194,12 +194,12 @@ void testIter() {
         f.push_back(x);
         arr.push_back(x);
     }
-    } RETRY(false)
+    } RETRY(false);
 
     int max;
     TRANSACTION {
         max = *(std::max_element(f.begin(), f.end()));
-    } RETRY(false)
+    } RETRY(false);
     
     assert(max == *(std::max_element(arr.begin(), arr.end())));
     printf("Max is %i\n", max);
@@ -214,7 +214,7 @@ void testConflictingIter() {
     for (int i = 0; i < 10; i++) {
         f.push_back(i);
     }
-    } RETRY(false)
+    } RETRY(false);
 
     Transaction t;
     Sto::set_transaction(&t);
@@ -259,7 +259,7 @@ void testConflictingModifyIter1() {
     for (int i = 0; i < 10; i++) {
         f.push_back(i);
     }
-    } RETRY(false)
+    } RETRY(false);
     
     Transaction t;
     Sto::set_transaction(&t);
@@ -316,7 +316,7 @@ void testConflictingModifyIter3() {
     for (int i = 0; i < 10; i++) {
         f.push_back(i);
     }
-    } RETRY(false)
+    } RETRY(false);
     
     Transaction t1;
     Sto::set_transaction(&t1);
@@ -345,13 +345,13 @@ void testIterNPushBack() {
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false)
+    } RETRY(false);
     
     int max;
     TRANSACTION {
         f.push_back(20);
         max = *(std::max_element(f.begin(), f.end()));
-    } RETRY(false)
+    } RETRY(false);
     
     assert(max == 20);
     printf("PASS: IterNPushBack\n");
@@ -417,7 +417,7 @@ void testErase() {
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false)
+    } RETRY(false);
     
     Transaction t1;
     Sto::set_transaction(&t1);
@@ -430,7 +430,7 @@ void testErase() {
         for (; it != eit; ++it) {
             printf("%i\n", (int)*it);
         }
-    } RETRY(false)
+    } RETRY(false);
     
     printf("PASS: testErase\n");
 }
@@ -442,7 +442,7 @@ void testInsert() {
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false)
+    } RETRY(false);
     
     Transaction t1;
     Sto::set_transaction(&t1);
@@ -455,7 +455,7 @@ void testInsert() {
         for (; it != eit; ++it) {
             printf("%i\n", (int)*it);
         }
-    } RETRY(false)
+    } RETRY(false);
     
     printf("PASS: testInsert\n");
 }
@@ -468,7 +468,7 @@ void testPushNPop() {
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false)
+    } RETRY(false);
     
     TRANSACTION {
         f.push_back(20);
@@ -478,7 +478,7 @@ void testPushNPop() {
         f.pop_back();
         f.pop_back();
         
-    } RETRY(false)
+    } RETRY(false);
     
     Transaction t1;
     Sto::set_transaction(&t1);
@@ -553,7 +553,7 @@ void testPopAndUdpate() {
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false)
+    } RETRY(false);
     
     Transaction t1;
     Sto::set_transaction(&t1);
@@ -578,7 +578,7 @@ void testMulPushPops() {
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false)
+    } RETRY(false);
     
     Transaction t1;
     Sto::set_transaction(&t1);
@@ -597,7 +597,7 @@ void testMulPushPops1() {
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false)
+    } RETRY(false);
     
     Transaction t1;
     Sto::set_transaction(&t1);

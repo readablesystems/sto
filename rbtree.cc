@@ -234,7 +234,7 @@ void trans_thread1(tree_type& tree, record_type& record, bool serial) {
         RBTREE_PUT(87, 88);
         RBTREE_GET(90);
         RBTREE_GET(16);
-    } RETRY(true)
+    } RETRY(true);
 
     if (!serial) {
         // return the internal (transactional consistent) record

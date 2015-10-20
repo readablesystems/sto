@@ -781,38 +781,36 @@ public:
       } else {
         __transaction->reset();
       }
-      
     }
   }
-  
+
   /* Only used for testing purposes */
   static void set_transaction(Transaction* t) {
     __transaction = t;
   }
-  
+
   class NotInTransaction{};
-  
+
   static bool trans_in_progress() {
     if (__transaction == NULL)
       return false;
     else
       return __transaction->inProgress();
   }
-  
+
   static void abort() {
     if (!trans_in_progress()) {
       throw NotInTransaction();
     }
     __transaction->abort();
   }
-  
+
   static void silent_abort() {
     if (trans_in_progress()) {
       __transaction->silent_abort();
     }
   }
 
- 
   template <typename T>
   static TransProxy item(Shared* s, T key) {
     if (!trans_in_progress()) {
@@ -820,7 +818,7 @@ public:
     }
     return __transaction->item(s, key);
   }
-  
+
   static void check_opacity(TransactionTid::type t) {
     if (!trans_in_progress()) {
       throw NotInTransaction();
@@ -831,7 +829,7 @@ public:
   static void check_reads() {
     __transaction->check_reads();
   }
-  
+
   template <typename T>
   static OptionalTransProxy check_item(Shared* s, T key) {
     if (!trans_in_progress()) {
@@ -839,7 +837,7 @@ public:
     }
     return __transaction->check_item(s, key);
   }
-  
+
   template <typename T>
   static TransProxy new_item(Shared* s, T key) {
     if (!trans_in_progress()) {
@@ -847,7 +845,7 @@ public:
     }
     return __transaction->new_item(s, key);
   }
-  
+
   template <typename T>
   static TransProxy read_item(Shared *s, T key) {
     if (!trans_in_progress()) {
@@ -855,7 +853,7 @@ public:
     }
     return __transaction->read_item(s, key);
   }
-  
+
   template <typename T>
   static TransProxy fresh_item(Shared *s, T key) {
     if (!trans_in_progress()) {
@@ -863,21 +861,21 @@ public:
     }
     return __transaction->fresh_item(s, key);
   }
-  
+
   static void commit() {
     if (!trans_in_progress()) {
       throw NotInTransaction();
     }
     __transaction->commit();
   }
-  
+
   static bool try_commit() {
     if (!trans_in_progress()) {
       throw NotInTransaction();
     }
     return __transaction->try_commit();
   }
-  
+
   static TransactionTid::type commit_tid() {
     return __transaction->commit_tid();
   }
