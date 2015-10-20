@@ -19,6 +19,7 @@ int prepopulate = 10000;
 double push_percent = 0.3;
 double top_percent = 0.4;
 
+TransactionTid::type lock;
 
 typedef PriorityQueue<int> data_structure;
 
@@ -48,9 +49,6 @@ struct TesterPair {
     T* t;
     int me;
 };
-
-typedef TransactionTid::type Version;
-Version lock;
 
 template <typename T>
 void run_serial(T* q, int n) {
@@ -83,7 +81,7 @@ void run_serial(T* q, int n) {
             }
             
             /* Waiting time */
-            for (int i = 0; i < 10000; i++) {;}
+            for (int i = 0; i < 10000; i++) {asm("");}
         }
         if (Sto::try_commit()) {
             break;
@@ -126,7 +124,7 @@ void run(T* q, int me) {
             }
             
             /* Waiting time */
-            for (int i = 0; i < 10000; i++) {;}
+            for (int i = 0; i < 10000; i++) {asm("");}
         }
         if (Sto::try_commit()) {
             break;
@@ -196,6 +194,7 @@ static void help() {
 
 
 int main(int argc, char *argv[]) {
+    lock = 0;
     struct timeval tv1,tv2;
     
     Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
