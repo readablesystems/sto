@@ -90,7 +90,8 @@ void run(T* q, int me) {
         // so that retries of this transaction do the same thing
         auto transseed = i;
         txn_record *tr = new txn_record;
-        TRANSACTION {
+        Sto::start_transaction();
+        try {
             tr->pushes.clear();
             tr->pops = 0;
             tr->tops.clear();
@@ -140,25 +141,24 @@ void run(T* q, int me) {
             //std::cout << "[" << me << "] popped " << pval << std::endl;
             //TransactionTid::unlock(lock);
             //q->pop();
-            
+
             tr->pushes.push_back(val1);
             tr->pushes.push_back(val2);
             tr->pushes.push_back(val3);
             tr->pops = 1;
             tr->tops.push_back(rval);
-        }
-        if (Sto::try_commit()) {
-            //TransactionTid::lock(lock);
-            //std::cout << "[" << me << "] committed "  << std::endl;
-            //TransactionTid::unlock(lock);
-            txn_list[me][Sto::commit_tid()] = tr;
-            break;
-        }
-        
+
+            if (Sto::try_commit()) {
+                //TransactionTid::lock(lock);
+                //std::cout << "[" << me << "] committed "  << std::endl;
+                //TransactionTid::unlock(lock);
+                txn_list[me][Sto::commit_tid()] = tr;
+                break;
+            }
+
         } catch (Transaction::Abort e) {
             //TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
         }
-    }
     }
 }
 

@@ -60,38 +60,39 @@ void run_serial(T* q, int n) {
     for (int i = 0; i < N; ++i) {
         for (int k = 0; k < n; k++) {
             int me = k;
-        // so that retries of this transaction do the same thing
-        auto transseed = i;
-        TRANSACTION {
-            uint32_t seed = transseed*3 + (uint32_t)me*ntrans*7 + (uint32_t)global_seed*MAX_THREADS*ntrans*11;
-            auto seedlow = seed & 0xffff;
-            auto seedhigh = seed >> 16;
-            Rand transgen(seed, seedlow << 16 | seedhigh);
-            
-            for (int j = 0; j < OPS; ++j) {
-                int op = slotdist(transgen) % 100;
-                if (op < push_percent * 100) {
-                    int val = slotdist(transgen);
-                    q->push(val);
-                } else {
-                    for (int r = 0; r < ratio; r++) {
-                        q->top();
-                        q->pop();
+            // so that retries of this transaction do the same thing
+            auto transseed = i;
+            Sto::start_transaction();
+            try {
+                uint32_t seed = transseed*3 + (uint32_t)me*ntrans*7 + (uint32_t)global_seed*MAX_THREADS*ntrans*11;
+                auto seedlow = seed & 0xffff;
+                auto seedhigh = seed >> 16;
+                Rand transgen(seed, seedlow << 16 | seedhigh);
+
+                for (int j = 0; j < OPS; ++j) {
+                    int op = slotdist(transgen) % 100;
+                    if (op < push_percent * 100) {
+                        int val = slotdist(transgen);
+                        q->push(val);
+                    } else {
+                        for (int r = 0; r < ratio; r++) {
+                            q->top();
+                            q->pop();
+                        }
                     }
                 }
+
+                /* Waiting time */
+                for (int i = 0; i < 10000; i++) {asm("");}
+
+                if (Sto::try_commit()) {
+                    break;
+                }
+
+            } catch (Transaction::Abort e) {
             }
-            
-            /* Waiting time */
-            for (int i = 0; i < 10000; i++) {asm("");}
         }
-        if (Sto::try_commit()) {
-            break;
-        }
-        
-    } catch (Transaction::Abort e) { }
-}
-}
-}
+    }
 }
 
 template <typename T>
@@ -107,7 +108,8 @@ void run(T* q, int me) {
     for (int i = 0; i < N; ++i) {
         // so that retries of this transaction do the same thing
         auto transseed = i;
-        TRANSACTION {
+        Sto::start_transaction();
+        try {
             uint32_t seed = transseed*3 + (uint32_t)me*ntrans*7 + (uint32_t)global_seed*MAX_THREADS*ntrans*11;
             auto seedlow = seed & 0xffff;
             auto seedhigh = seed >> 16;
@@ -129,13 +131,12 @@ void run(T* q, int me) {
             
             /* Waiting time */
             for (int i = 0; i < 10000; i++) {asm("");}
-        }
-        if (Sto::try_commit()) {
-            break;
-        }
+
+            if (Sto::try_commit()) {
+                break;
+            }
         
         } catch (Transaction::Abort e) { }
-    }
     }
 }
 

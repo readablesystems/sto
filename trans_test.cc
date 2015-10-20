@@ -37,7 +37,8 @@ void run(T* q, int me) {
         // so that retries of this transaction do the same thing
         auto transseed = i;
         txn_record *tr = new txn_record;
-        TRANSACTION {
+        Sto::start_transaction();
+        try {
             tr->ops.clear();
             
             uint32_t seed = transseed*3 + (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_THREADS*NTRANS*11;
@@ -51,27 +52,26 @@ void run(T* q, int me) {
                 int op = slotdist(transgen) % tester.num_ops_;
                 tr->ops.push_back(tester.doOp(q, op, me, slotdist, transgen));
             }
-        }
-        if (Sto::try_commit()) {
+
+            if (Sto::try_commit()) {
 #if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] committed " << Sto::commit_tid() << std::endl;
-            TransactionTid::unlock(lock);
+                TransactionTid::lock(lock);
+                std::cout << "[" << me << "] committed " << Sto::commit_tid() << std::endl;
+                TransactionTid::unlock(lock);
 #endif
-            txn_list[me][Sto::commit_tid()] = tr;
-            break;
-        } else {
+                txn_list[me][Sto::commit_tid()] = tr;
+                break;
+            } else {
+#if PRINT_DEBUG
+                TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
+#endif
+            }
+
+        } catch (Transaction::Abort e) {
 #if PRINT_DEBUG
             TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
 #endif
         }
-        
-    } catch (Transaction::Abort e) {
-#if PRINT_DEBUG
-        TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
-#endif
-    }
-    }
     }
 }
 
