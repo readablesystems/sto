@@ -16,8 +16,7 @@ int nthreads = 4;
 int ntrans = 100000;
 int opspertrans = 1;
 int prepopulate = 10000;
-double push_percent = 0.3;
-double top_percent = 0.4;
+double push_percent = 0.75;
 
 TransactionTid::type lock;
 
@@ -55,6 +54,8 @@ void run_serial(T* q, int n) {
     std::uniform_int_distribution<long> slotdist(0, max_value);
     int N = ntrans/nthreads;
     int OPS = opspertrans;
+    int ratio = ( push_percent / (1 - push_percent));
+    if (ratio < 1) ratio = 1;
    
     for (int i = 0; i < N; ++i) {
         for (int k = 0; k < n; k++) {
@@ -72,11 +73,11 @@ void run_serial(T* q, int n) {
                 if (op < push_percent * 100) {
                     int val = slotdist(transgen);
                     q->push(val);
-                } else if (op < (push_percent + top_percent) * 100) {
-                    q->top();
                 } else {
-                    q->top();
-                    q->pop();
+                    for (int r = 0; r < ratio; r++) {
+                        q->top();
+                        q->pop();
+                    }
                 }
             }
             
@@ -100,6 +101,8 @@ void run(T* q, int me) {
     std::uniform_int_distribution<long> slotdist(0, max_value);
     int N = ntrans/nthreads;
     int OPS = opspertrans;
+    int ratio = ( push_percent / (1 - push_percent));
+    if (ratio < 1) ratio = 1;
 
     for (int i = 0; i < N; ++i) {
         // so that retries of this transaction do the same thing
@@ -115,12 +118,13 @@ void run(T* q, int me) {
                 if (op < push_percent * 100) {
                     int val = slotdist(transgen);
                     q->push(val);
-                } else if (op < (push_percent + top_percent) * 100) {
-                    q->top();
                 } else {
-                    q->top();
-                    q->pop();
+                    for (int r = 0; r < ratio; r++) {
+                        q->top();
+                        q->pop();
+                    }
                 }
+
             }
             
             /* Waiting time */
@@ -185,13 +189,25 @@ static void help() {
            --ntrans=NTRANS, how many total transactions to run (they'll be split between threads) (default %d)\n\
            --opspertrans=OPSPERTRANS, how many operations to run per transaction (default %d)\n\
            --pushpercent=PUSHPERCENT, probability with which to do pushes (default %f)\n\
-           --toppercent=TOPPERCENT, Probability with which to do pops (default %f)\n\
            --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n\
            --seed=SEED, global seed to run the experiment \n",
-            nthreads, ntrans, opspertrans, push_percent, top_percent, prepopulate);
+            nthreads, ntrans, opspertrans, push_percent, prepopulate);
     exit(1);
 }
 
+template <typename T>
+void init(T* q) {
+    std::uniform_int_distribution<long> slotdist(0, max_value);
+    uint32_t seed = global_seed * 11;
+    auto seedlow = seed & 0xffff;
+    auto seedhigh = seed >> 16;
+    Rand transgen(seed, seedlow << 16 | seedhigh);
+    for (int i = 0; i < prepopulate; i++) {
+        TRANSACTION {
+            q->push(slotdist(transgen));
+        } RETRY(false);
+    }
+}
 
 int main(int argc, char *argv[]) {
     lock = 0;
@@ -214,9 +230,6 @@ int main(int argc, char *argv[]) {
             case opt_pushpercent:
                 push_percent = clp->val.d;
                 break;
-            case opt_toppercent:
-                top_percent = !clp->negated;
-                break;
             case opt_prepopulate:
                 prepopulate = clp->val.i;
                 break;
@@ -230,12 +243,8 @@ int main(int argc, char *argv[]) {
     Clp_DeleteParser(clp);
 
     // Run a parallel test with lots of transactions doing pushes and pops
-   data_structure q;
-    for (int i = 0; i < prepopulate; i++) {
-        TRANSACTION {
-            q.push(i);
-        } RETRY(false);
-    }
+    data_structure q;
+    init(&q);
     
     gettimeofday(&tv1, NULL);
     
@@ -256,11 +265,7 @@ int main(int argc, char *argv[]) {
 #endif
     
     data_structure q1;
-    for (int i = 0; i < prepopulate; i++) {
-        TRANSACTION {
-            q1.push(i);
-        } RETRY(false);
-    }
+    init(&q1);
     gettimeofday(&tv1, NULL);
     
     run_serial(&q1, nthreads);
@@ -272,11 +277,7 @@ int main(int argc, char *argv[]) {
     Transaction::clear_stats();
     
     PriorityQueue1<int> q2;
-    for (int i = 0; i < prepopulate; i++) {
-        TRANSACTION {
-            q2.push(i);
-        } RETRY(false);
-    }
+    init(&q2);
     gettimeofday(&tv1, NULL);
     
     startAndWait(nthreads, &q2);
@@ -296,11 +297,7 @@ int main(int argc, char *argv[]) {
 #endif
     
     PriorityQueue1<int> q3;
-    for (int i = 0; i < prepopulate; i++) {
-        TRANSACTION {
-            q3.push(i);
-        } RETRY(false);
-    }
+    init(&q3);
     gettimeofday(&tv1, NULL);
     
     run_serial(&q3, nthreads);
