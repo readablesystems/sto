@@ -41,6 +41,7 @@ void testWriteNPushBack() {
     f.push_back(20); // This will resize the array
     assert(t3.try_commit());
     
+    Sto::set_transaction(&t2);
     assert(t2.try_commit()); // This should not conflict with the write
     
     Transaction t4;
@@ -570,6 +571,45 @@ void testPopAndUdpate() {
     } catch (Transaction::Abort) {}
 }
 
+void testMulPushPops() {
+    Vector<int> f;
+    
+    TRANSACTION {
+        for (int i = 0; i < 10; i++) {
+            f.push_back(i);
+        }
+    } RETRY(false)
+    
+    Transaction t1;
+    Sto::set_transaction(&t1);
+    f.push_back(100);
+    f.push_back(200);
+    f.pop_back();
+    f.pop_back();
+    f.pop_back();
+    assert(t1.try_commit());
+}
+
+void testMulPushPops1() {
+    Vector<int> f;
+    
+    TRANSACTION {
+        for (int i = 0; i < 10; i++) {
+            f.push_back(i);
+        }
+    } RETRY(false)
+    
+    Transaction t1;
+    Sto::set_transaction(&t1);
+    f.push_back(100);
+    f.push_back(200);
+    f.pop_back();
+    f.pop_back();
+    f.push_back(300);
+    assert(t1.try_commit());
+}
+
+
 
 
 
@@ -596,5 +636,7 @@ int main() {
     testInsert();
     testPushNPop();
     testPopAndUdpate();
+    testMulPushPops();
+    testMulPushPops1();
 	return 0;
 }

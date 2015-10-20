@@ -8,7 +8,9 @@ template <typename T,  bool GenericSTM = false, typename Structure = versioned_v
 // (not much else we can do though)
 class Box : public Shared {
 public:
-    Box() : s_() {}
+    static constexpr TransItem::flags_type valid_only_bit = TransItem::user0_bit;
+    
+    Box() : s_() , local_lock(false) {}
     void initialize(Shared* container, int idx) {
         container_ = container;
         idx_ = idx;
@@ -19,11 +21,15 @@ public:
     }
     
     void write(T v) {
-        TransactionTid::lock(s_.version());
+        bool locked = try_lock();
+        // Can be locked by a thread that is about to abort or locked by a thread that is about to release the locks.
+        if (!locked) lock_local();
         s_.set_value(v);
-        TransactionTid::type newv = (s_.version() + TransactionTid::increment_value) & ~(TransactionTid::lock_bit | TransactionTid::valid_bit);
+        TransactionTid::type newv = (s_.version() + TransactionTid::increment_value)  & ~TransactionTid::valid_bit;
         release_fence();
         s_.version() = newv;
+        if (!locked) unlock_local();
+        else unlock();
     }
 
 private:
@@ -53,6 +59,10 @@ public:
             atomicRead(v, val);
             if (GenericSTM)
               Sto::check_opacity(v);
+            if (item.flags() & valid_only_bit) {
+                item.clear_read();
+                item.clear_flags(valid_only_bit);
+            }
             item.add_read(v);
             return val;
         }
@@ -67,7 +77,10 @@ public:
     }
 
     void transWrite(const T& v) {
-        Sto::item(container_, idx_).add_write(v);
+        auto item = Sto::item(container_, idx_).add_write(v);
+        if (!item.has_read()) {
+            item.add_read(v).add_flags(valid_only_bit);
+        }
     }
   
     /* Overloads = operator with transWrite */
@@ -88,7 +101,9 @@ public:
     }
 
     void unlock() {
+        lock_local();
         TransactionTid::unlock(s_.version());
+        unlock_local();
     }
 
     void lock(TransItem&) {
@@ -100,6 +115,9 @@ public:
     }
 
     bool check(const TransItem& item, const Transaction&) {
+        if (item.flags() & valid_only_bit) {
+            return (!TransactionTid::is_locked(s_.version()) || item.has_write());
+        }
         return TransactionTid::same_version(s_.version(), item.template read_value<version_type>())
             && (!TransactionTid::is_locked(s_.version()) || item.has_write());
     }
@@ -112,10 +130,26 @@ public:
             TransactionTid::inc_invalid_version(s_.version());
         }
     }
+    
+    void lock_local() {
+        while (1) {
+            bool vv = local_lock;
+            if (!vv && bool_cmpxchg(&local_lock, vv, true))
+                break;
+            relax_fence();
+        }
+        acquire_fence();
+    }
+    void unlock_local() {
+        assert(local_lock == true);
+        local_lock = false;
+    }
+
 
   protected:
     // we Store the versioned_value inlined (no added boxing)
     Structure s_;
     Shared* container_;
     int idx_;
+    bool local_lock;
 };

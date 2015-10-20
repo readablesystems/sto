@@ -13,20 +13,20 @@ public:
         try {
         elems.push_back(v);
         std::push_heap(elems.begin(), elems.end());
-        } catch (Empty e) {Sto::abort();}
+        } catch (OutOfBoundsException e) {Sto::abort();}
     }
     
     void pop() {
         try {
         std::pop_heap(elems.begin(), elems.end());
         elems.pop_back();
-        } catch (Empty e) {}
+        } catch (OutOfBoundsException e) {}
     }
     
     T top() {
         try {
         return elems.front();
-        } catch (Empty e) {}
+        } catch (OutOfBoundsException e) {}
     }
     
     uint32_t size() {
