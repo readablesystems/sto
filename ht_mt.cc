@@ -111,7 +111,6 @@ int main() {
 #endif
     
     init(h);
-    ct = 0;    
     struct timeval tv1,tv2;
     gettimeofday(&tv1, NULL);
     
@@ -120,7 +119,4 @@ int main() {
     gettimeofday(&tv2, NULL);
     printf("Time taken: ");
     print_time(tv1, tv2);
-    
-    std::cout << "traversal: " << ct  << std::endl;
-    std::cout << "Max traversal: " << max_ct << std::endl;
 }
