@@ -17,15 +17,14 @@ template <typename T>
 class rbwrapper : public T {
   public:
     typedef TransactionTid::type Version;
-    static constexpr Version structure_bit = TransactionTid::user_bit1<<2;
     template <typename... Args> inline rbwrapper(Args&&... args)
-    : T(std::forward<Args>(args)...), nodeversion_(TransactionTid::increment_value + structure_bit) {
+    : T(std::forward<Args>(args)...) {
     }
     inline rbwrapper(const T& x)
-    : T(x), nodeversion_(TransactionTid::increment_value + structure_bit) {
+    : T(x) {
     }
     inline rbwrapper(T&& x) noexcept
-    : T(std::move(x)), nodeversion_(TransactionTid::increment_value + structure_bit) {
+    : T(std::move(x)) {
     }
     inline const T& value() const {
         return *this;
@@ -34,10 +33,9 @@ class rbwrapper : public T {
         return *this;
     }
     inline Version& nodeversion() {
-        return nodeversion_;
+        return rblinks_.nodeversion_;
     }
     rblinks<rbwrapper<T> > rblinks_;
-    mutable Version nodeversion_;
 };
 
 // Define a custom key-value pair type that contains versions and also
@@ -86,10 +84,9 @@ class RBTree : public Shared {
 
     static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
-    static constexpr TransItem::flags_type structure_tag = TransItem::user0_bit<<2;
+    static constexpr TransItem::flags_type update_tag = TransItem::user0_bit<<2;
     static constexpr Version insert_bit = TransactionTid::user_bit1;
     static constexpr Version delete_bit = TransactionTid::user_bit1<<1;
-    static constexpr Version structure_bit = TransactionTid::user_bit1<<2;
 
 public:
     RBTree() {
@@ -133,62 +130,54 @@ private:
 
     // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
     // return values: (node*, found, path)
-    inline std::pair<std::pair<rbwrapper<rbpair<K, T>>*, bool>, std::vector<rbwrapper<rbpair<K, T>>*>> find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp, bool read_path) const {
-        lock(&treelock_);
+    inline std::pair<std::pair<rbwrapper<rbpair<K, T>>*, bool>, std::vector<rbwrapper<rbpair<K, T>>*>> find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp, bool insert) const {
         auto nodepath = wrapper_tree_.find_any(rbkvp, rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-        auto nodepair = nodepath.first;
-        auto x = nodepair.first;
-        auto found = nodepair.second;
+        auto pair = nodepath.first;
+        auto x = pair.first;
+        auto found = pair.second;
+
+        // PRESENT GET
         if (found) {
             // check if rbpair has version "inserted" (someone inserted w/out commit)
             auto item = Sto::item(const_cast<RBTree<K, T>*>(this), x);
             if (is_inserted(x->version())) {
                 // check if item was inserted by this transaction
                 if (has_insert(item)) {
-                    unlock(&treelock_);
                     return nodepath;
                 } else {
                     // some other transaction inserted this node and hasn't committed
-                    unlock(&treelock_);
                     Sto::abort();
                     // unreachable
                     return nodepath; 
                 }
             }
-            // add a read of the node version while we still hold structural lock
-            // ensures no one can commit before we read versions
-            // e.g. we have to add a read of the version if we find it during insert_update 
-            // to ensure that no one else has deleted it before we commit (because we insert at execution
-            // time, not at commit time)
-            item.add_read(x->version());
+            // add a read of the node version for a present get
+            if (!insert)
+                item.add_read(x->version());
+        
+        // ABSENT GET
         } else {
-            if (read_path) {
-                // if requested, add node versions to read set while we still hold the structural lock
-                // XXX doesn't work for fine-grained locking unfortunately...
+            if (!insert) {
+                // add a read of treeversion if tree is empty
+                if (!x)
+                    Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
+                // add a read for all nodes in the path, marking them as nodeversion ptrs
                 for (auto n : nodepath.second)
-                    Sto::item(const_cast<RBTree<K, T>*>(this), n).add_read(n->nodeversion());
-                if (nodepath.first.second)
-                    Sto::item(const_cast<RBTree<K, T>*>(this), nodepath.first.first).add_read(nodepath.first.first->nodeversion());
-            }
-            // add read of treeversion if tree is empty 
-            if (!x) {
-                Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
+                    Sto::item(const_cast<RBTree<K, T>*>(this), reinterpret_cast<uintptr_t>(n) | 1).add_read(n->nodeversion());
             }
         }
         // item was committed or DNE, so return pointer
-        unlock(&treelock_);
         return nodepath;
     }
 
     // Insert <@key, @value>, optionally force an update if @key exists
     // return value is a reference to kvp.second
     inline T& insert_update(const K& key, const T& value, bool force) {
-        auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
-        // we don't need path because this is an insert -- we only add writes, not reads
-        auto nodepair = this->find_or_abort(node, false).first;
-        auto x = nodepair.first;
-        auto found = nodepair.second;
         lock(&treelock_);
+        auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
+        auto pair = this->find_or_abort(node, true).first;
+        auto x = pair.first;
+        auto found = pair.second;
         
         // INSERT: kvp did not exist
         if (!found) {
@@ -196,10 +185,7 @@ private:
             stats_.absent_insert++;
 #endif
             auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, value)  );
-            auto rotated = wrapper_tree_.insert(*n);
-            for(auto it = rotated.begin(); it != rotated.end(); ++it) {
-                Sto::item(const_cast<RBTree<K, T>*>(this), *it).add_write(0).add_flags(structure_tag);
-            } 
+            wrapper_tree_.insert(*n);
             // invariant: the node's insert_bit should be set
             assert(is_inserted(n->version()));
             // if tree is empty (i.e. no parent), we increment treeversion 
@@ -207,7 +193,7 @@ private:
                 Sto::item(this, tree_key_).add_write(0);
             // else we increment the parent version 
             } else {
-                Sto::item(this, x).add_write(0).add_flags(structure_tag);
+                x->nodeversion()++;
             }
             // add write and insert flag of item (value of rbpair) with @value
             Sto::item(this, n).add_write(value).add_flags(insert_tag);
@@ -225,11 +211,10 @@ private:
                 Sto::abort();
                 // should be unreachable
                 return x->writeable_value();
+            
+            // read-my-delete
             } else if (has_delete(item)) {
-                // we only reach here if read_my_delete; always doing an insert due to operator[] semantics
-                // add item value to write set and marked as inserted instead of deleted
-                // insert_tag indicates that we need to remove the insert_bit during install
-                item.add_write(value).clear_flags(delete_tag).add_flags(insert_tag);
+                item.clear_flags(delete_tag).add_flags(update_tag);
                 // either overwrite value or put empty value
                 if (force) {
                     item.add_write(value);
@@ -238,20 +223,21 @@ private:
                 }
                 unlock(&treelock_);
                 return item.template write_value<T>();
+            
             // read_my_writes
             } else if (item.has_write()) {
                 // operator[] used on LHS, overwrite
                 if (force) {
-                    item.add_write(value);
+                    item.add_write(value).add_flags(update_tag);
                 }
                 unlock(&treelock_);
                 // return the last value written (i.e. the old value if we didn't force)
                 return item.template write_value<T>();
             }
 
-            // otherwise we are just accessing a regular key
+            // accessing a regular key
             if (force) {
-                item.add_write(value);
+                item.add_write(value).add_flags(update_tag);
             }
             unlock(&treelock_);
             return item.template write_value<T>(); 
@@ -264,8 +250,8 @@ private:
     static void unlock(Version *v) {
         TransactionTid::unlock(*v);
     }
-    static bool has_structure(const TransItem& item) {
-        return item.flags() & structure_tag;
+    static bool has_update(const TransItem& item) {
+        return item.flags() & update_tag;
     }
     static bool has_insert(const TransItem& item) {
         return item.flags() & insert_tag;
@@ -275,9 +261,6 @@ private:
     }
     static bool is_locked(Version v) {
         return TransactionTid::is_locked(v);
-    }
-    static bool is_structured(Version v) {
-        return v & structure_bit;
     }
     static bool is_inserted(Version v) {
         return v & insert_bit;
@@ -343,9 +326,11 @@ private:
 template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    auto nodepath = find_or_abort(idx_pair, true);
-    auto nodepair = nodepath.first; 
-    auto found = nodepair.second;
+    lock(&treelock_);
+    auto nodepath = find_or_abort(idx_pair, false);
+    unlock(&treelock_);
+    auto pair = nodepath.first; 
+    auto found = pair.second;
     auto path = nodepath.second; 
 #if PRINT_DEBUG
     (!found) ? stats_.absent_count++ : stats_.present_count++;
@@ -366,29 +351,30 @@ inline RBProxy<K, T> RBTree<K, T>::operator[](const K& key) {
 template <typename K, typename T>
 inline size_t RBTree<K, T>::erase(const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    auto nodepath = find_or_abort(idx_pair, true);
-    auto nodepair = nodepath.first; 
-    auto x = nodepair.first;
-    auto found = nodepair.second;
+    lock(&treelock_);
+    auto nodepath = find_or_abort(idx_pair, false);
+    unlock(&treelock_);
+    auto pair = nodepath.first; 
+    auto x = pair.first;
+    auto found = pair.second;
     auto path = nodepath.second;
-    // FOUND ITEM
+   
+    // PRESENT ERASE
     if (found) {
 #if PRINT_DEBUG
         stats_.present_delete++;
 #endif
         auto item = Sto::item(this, x);
+        // item marked at install as deleted, not deleted yet so abort
+        if (is_deleted(x->version())) {
+            Sto::abort();
+            return 0;
+        }
         // item marked as inserted and not yet installed
         if (is_inserted(x->version())) {
+            // mark to delete at install time
             if (has_insert(item)) {
-                // insert-then-delete; we need to undo all the effects of an insert here
-                lock(&treelock_);
-                auto rotated = wrapper_tree_.erase(*x);
-                for(auto it = rotated.begin(); it != rotated.end(); ++it) {
-                    Sto::item(this, *it).add_write(0).add_flags(structure_tag);
-                } 
-                item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
-                Transaction::rcu_free(x);
-                unlock(&treelock_);
+                item.add_write(0).clear_flags(insert_tag).add_flags(delete_tag);
                 return 1;
             } else {
                 Sto::abort();
@@ -396,21 +382,11 @@ inline size_t RBTree<K, T>::erase(const K& key) {
                 return 0;
             }
         }
-        // item marked at install as deleted, not deleted yet so abort
-        if (is_deleted(x->version())) {
-            Sto::abort();
-            return 0;
-        }
         // found item that has already been installed and not deleted
         item.add_write(0).add_flags(delete_tag);
-        // must change the parent node version; if tree is empty, increment treeversion 
-        if (!x->rblinks_.p_) {
-            Sto::item(this, tree_key_).add_write(0);
-        } else {
-            Sto::item(this, x->rblinks_.p_).add_write(0).add_flags(structure_tag);
-        }
         return 1;
-    // item not in tree, treat it like an absent read
+
+    // ABSENT ERASE
     } else {
 #if PRINT_DEBUG
         stats_.absent_delete++;
@@ -439,17 +415,18 @@ inline void RBTree<K, T>::unlock(TransItem& item) {
    
 template <typename K, typename T>
 inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans) {
-    auto e = item.key<wrapper_type*>();
+    auto e = item.key<uintptr_t>();
+    bool is_structured = e & uintptr_t(1);
     auto read_version = item.read_value<Version>();
     Version curr_version;
 
     // set up the correct current version to check: either treeversion, item version, or nodeversion
-    if (e == (wrapper_type*)tree_key_) {
+    if ((void*)e == (wrapper_type*)tree_key_) {
         curr_version = treeversion_;
-    } else if (is_structured(read_version)) {
-        curr_version = e->nodeversion();
+    } else if (is_structured) {
+        curr_version = reinterpret_cast<wrapper_type*>(e & ~uintptr_t(1))->nodeversion();
     } else {
-        curr_version = e->version();
+        curr_version = reinterpret_cast<wrapper_type*>(e)->version();
     }
 
     bool same_version = (read_version ^ curr_version) <= TransactionTid::lock_bit;
@@ -463,45 +440,43 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
 template <typename K, typename T>
 inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
     (void) t;
+    // we don't need to check for nodeversion updates because those are done during execution
     auto e = item.key<wrapper_type*>();
-    if (e != (wrapper_type*)tree_key_) {
+    if ((void*)e != (wrapper_type*)tree_key_) {
         assert(is_locked(e->version()));
 
         bool deleted = has_delete(item);
         bool inserted = has_insert(item);
-        bool structured = has_structure(item);
+        bool updated = has_update(item);
         // should never be both deleted and inserted...
         // sanity check to make sure we handled read_my_writes correctly
         assert(!(deleted && inserted));
+        assert(deleted || inserted || updated);
         // actually erase the element when installing the delete
         if (deleted) {
             // mark deleted (in case rcu free doesn't free immediately)
             mark_deleted(&e->version());
             // actually erase
             lock(&treelock_);
-            // handle the rotated nodes during this erase by incrementing all nodeversions
-            auto rotated = wrapper_tree_.erase(*e);
-            for(auto it = rotated.begin(); it != rotated.end(); ++it) {
-                lock(&(*it)->nodeversion());
-                TransactionTid::inc_invalid_version((*it)->nodeversion());
-                unlock(&(*it)->nodeversion());
-            } 
+            wrapper_tree_.erase(*e);
             unlock(&treelock_);
             Transaction::rcu_free(e);
         } else if (inserted) {
             erase_inserted(&e->version());
-        } 
-        // we made a structural change to this item (its children changed or it was directly rotated)
-        // update the nodeversion of the item
-        if (structured) {
-            lock(&e->nodeversion());
-            TransactionTid::inc_invalid_version(e->nodeversion());
-            unlock(&e->nodeversion());
-        // item in write set did not update value --> read_my_writes 
-        } else {
-            // XXX what is valid bit?
-            e->writeable_value() = item.template write_value<T>(); 
-            TransactionTid::inc_invalid_version(e->version());
+        } else if (updated) {
+            // update, but item deleted by another transaction - we should reinsert the value
+            if (is_deleted(e->version())) {
+                lock(&treelock_);
+                auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(e->key(), item.template write_value<T>())  );
+                wrapper_tree_.insert(*n);
+                unlock(&treelock_);
+            // else install the update
+            } else {
+                e->writeable_value() = item.template write_value<T>(); 
+                lock(&e->version());
+                TransactionTid::inc_invalid_version(e->version());
+                unlock(&e->version());
+            }
         }
     // we did something to an empty tree, so update treeversion
     } else {
@@ -514,17 +489,11 @@ template <typename K, typename T>
 inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
     if (!committed) {
         // if item has been tagged deleted or structured, don't need to do anything 
-        // if item has been tagged inserted, then we erase the item and note which
-        // nodes we rotated
+        // if item has been tagged inserted, then we erase the item
         if (has_insert(item)) {
             auto e = item.key<wrapper_type*>();
             lock(&treelock_);
-            auto rotated = wrapper_tree_.erase(*e);
-            for(auto it = rotated.begin(); it != rotated.end(); ++it) {
-                lock(&(*it)->nodeversion());
-                TransactionTid::inc_invalid_version((*it)->nodeversion());
-                unlock(&(*it)->nodeversion());
-            } 
+            wrapper_tree_.erase(*e);
             unlock(&treelock_);
             mark_deleted(&e->version());
             erase_inserted(&e->version());
