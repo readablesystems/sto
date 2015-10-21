@@ -10,10 +10,8 @@ public:
 
     
     void push(T v) {
-        try {
         elems.push_back(v);
         std::push_heap(elems.begin(), elems.end());
-        } catch (OutOfBoundsException e) {Sto::abort();}
     }
     
     void pop() {

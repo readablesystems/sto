@@ -504,9 +504,7 @@ public:
             int val;
             int sz = q->transSize();
             if (sz > 0) {
-             try {
               val = q->transGet(sz - 1);
-             } catch (OutOfBoundsException e) {Sto::abort(); }
               q->pop_back();
             }
             

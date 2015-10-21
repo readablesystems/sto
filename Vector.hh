@@ -29,13 +29,13 @@ class Vector : public Shared {
     static constexpr TransItem::flags_type list_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
 public:
-    typedef unsigned key_type;
+    typedef int key_type;
     typedef T value_type;
     
     typedef VecIterator<T, Opacity, Elem> iterator;
     typedef const VecIterator<T, Opacity, Elem> const_iterator;
     typedef wrapper& reference;
-    typedef uint32_t size_type;
+    typedef int32_t size_type;
 
     
     Vector(): resize_lock_() {
@@ -45,7 +45,7 @@ public:
         data_ = NULL;
     }
     
-    Vector(uint32_t size): resize_lock_() {
+    Vector(int32_t size): resize_lock_() {
         size_ = 0;
         capacity_ = 1 << ((int) log2(size));
         vecversion_ = 0;
@@ -135,14 +135,18 @@ public:
         // add vecversion_ to the read set
         auto vecitem = t_item(this).add_read(vecversion_);
         acquire_fence();
-        uint32_t size = size_;
+        int32_t size = size_;
         acquire_fence();
         if (size + trans_size_offs() == 0) {
             // Empty vector, behavior is undefined - so do nothing
         } else {
             // add vecversion_ to the write set as well
             vecitem.add_write(0);
-            Sto::item(this, size_ + trans_size_offs() - 1).add_write(0).add_flags(delete_bit);
+            auto item = Sto::item(this, size_ + trans_size_offs() - 1).add_write(0).add_flags(delete_bit);
+            if (item.flags() & Elem::valid_only_bit) {
+                item.clear_read();
+                item.clear_flags(Elem::valid_only_bit);
+            }
             add_trans_size_offs(-1);
         }
     }
@@ -197,20 +201,25 @@ public:
     }
     
     value_type transGet(const key_type& i){
-        //std::cout << "Reading " << i << std::endl;
         Version ver = vecversion_;
         acquire_fence();
-        uint32_t size = size_;
+        int32_t size = size_;
         acquire_fence();
         if (i >= size + trans_size_offs()) {
             auto vecitem = t_item(this);
+            bool aborted = false;
             if (vecitem.has_read()) {
                 auto lv = vecversion_;
                 if (!TransactionTid::same_version(lv, vecitem.template read_value<Version>())
-                    || is_locked(lv)) Sto::abort();
+                    || is_locked(lv)) {
+                    aborted = true;
+                    Sto::abort();
+                }
             }
-            vecitem.add_read(ver);
-            throw OutOfBoundsException();
+            if (!aborted) {
+                vecitem.add_read(ver);
+                throw OutOfBoundsException();
+            }
         }
         if (i < size)
             return data_[i].transRead();
@@ -242,17 +251,23 @@ public:
         //std::cout << "Writing to " << i << " with value " << v << std::endl;
         Version ver = vecversion_;
         acquire_fence();
-        uint32_t size = size_;
+        int32_t size = size_;
         acquire_fence();
         if (i >= size + trans_size_offs()) {
+            bool aborted = false;
             auto vecitem = t_item(this);
             if (vecitem.has_read()) {
                 auto lv = vecversion_;
                 if (!TransactionTid::same_version(lv, vecitem.template read_value<Version>())
-                    || is_locked(lv)) Sto::abort();
+                    || is_locked(lv)) {
+                    aborted = true;
+                    Sto::abort();
+                }
             }
-            vecitem.add_read(ver);
-            throw OutOfBoundsException();
+            if (!aborted) {
+                vecitem.add_read(ver);
+                throw OutOfBoundsException();
+            }
 
         }
         if (i < size)
@@ -277,7 +292,9 @@ public:
                     extra_items.clear_write();
                     extra_items.add_write(v);
                 }
-            } else assert(false);
+            } else {
+                assert(false);
+            }
         }
     }
     
@@ -484,7 +501,7 @@ public:
     }
     
 private:
-    uint32_t size_;
+    int32_t size_;
     uint32_t capacity_;
     Version vecversion_; // for vector size
     rwlock resize_lock_; // to do concurrent resize

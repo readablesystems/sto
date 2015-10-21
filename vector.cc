@@ -609,6 +609,22 @@ void testMulPushPops1() {
     assert(t1.try_commit());
 }
 
+void testUpdatePop() {
+    Vector<int> f;
+    
+    TRANSACTION {
+        for (int i = 0; i < 10; i++) {
+            f.push_back(i);
+        }
+    } RETRY(false)
+    
+    Transaction t1;
+    Sto::set_transaction(&t1);
+    f.transUpdate(9, 20);
+    f.pop_back();
+    assert(t1.try_commit());
+}
+
 
 
 
@@ -638,5 +654,6 @@ int main() {
     testPopAndUdpate();
     testMulPushPops();
     testMulPushPops1();
+    testUpdatePop();
 	return 0;
 }
