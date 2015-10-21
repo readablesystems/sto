@@ -28,7 +28,7 @@ def print_csv(rows):
 def print_scalability_overhead(records, config):
 	name = "scalability_overhead"
 	f_on = run_benchmarks.opacity_names[config[name]["opacity"][0]]
-	f_tl = config[name]["txlen"][0]
+	tls = config[name]["txlen"]
 	ttr = config[name]["ttr"]
 	rows = []
 	curr_row = ["number of cores", "speedup"]
@@ -36,11 +36,12 @@ def print_scalability_overhead(records, config):
 
 	data = process_results(name, config[name], records, ["time", "abort_rate"])
 
-	baseline = data[f_on][f_tl][1]["med_time"]
+	for f_tl in tls:
+		baseline = data[f_on][f_tl][1]["med_time"]
 	
-	for tr in ttr:
-		speedup = baseline / data[f_on][f_tl][tr]["med_time"]
-		rows.append(["%d" % tr, "%.4f" % speedup])
+		for tr in ttr:
+			speedup = baseline / data[f_on][f_tl][tr]["med_time"]
+			rows.append(["%d" % tr, "%.4f" % speedup])
 
 	print "Experiment: %s\n" % name
 	print_csv(rows)
@@ -207,11 +208,11 @@ def main(argc, argv):
 	config = parse_exp_config_file()
 
 	print_scalability_overhead(records, config)
-	print_scalability_hi_contention(records, config)
-	print_scalability_largetx(records, config)
-	print_opacity_modes_low(records, config)
-	print_opacity_modes_high(records, config)
-	print_opacity_tl2overhead(records, config)
+	#print_scalability_hi_contention(records, config)
+	#print_scalability_largetx(records, config)
+	#print_opacity_modes_low(records, config)
+	#print_opacity_modes_high(records, config)
+	#print_opacity_tl2overhead(records, config)
 
 if __name__ == "__main__":
 	main(len(sys.argv), sys.argv)

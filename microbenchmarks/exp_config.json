@@ -1,10 +1,10 @@
 {
   "scalability_overhead": {
     "exec_idx": 0,
-    "opacity": [0],
-    "ntxs": [8000000],
+    "opacity": [1],
+    "ntxs": [8000000, 8000000],
     "ttr": [1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24],
-    "txlen":[10]
+    "txlen":[10, 50]
   },
   "scalability_hi_contention": {
     "exec_idx": 1,
