@@ -180,7 +180,7 @@ public:
                 std::cout << "q1 erased: " << e1 << std::endl;
 #endif
                 assert(e == e1);
-            } RETRY(false)
+            } RETRY(false);
         }
         TRANSACTION {
             for (int i = 0; i < 10000; i++) {
@@ -287,7 +287,7 @@ public:
                 assert(v1 == v2);
                 assert(q->pop() == v1);
                 assert(q1->pop() == v2);
-            } RETRY(false)
+            } RETRY(false);
         }
         TRANSACTION {
             q->print();
@@ -403,7 +403,7 @@ public:
                 if (p1) {
                     assert(v1 == v2);
                 }
-            } RETRY(false)
+            } RETRY(false);
         }
     }
     
@@ -577,7 +577,7 @@ public:
         for (int i = 0; i < size; i++) {
             TRANSACTION {
                 assert(q->transGet(i) == q1->transGet(i));
-            } RETRY(false)
+            } RETRY(false);
         }
     }
     

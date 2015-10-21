@@ -41,8 +41,21 @@
 #define HASHTABLE_THRESHOLD 16
 
 // TRANSACTION macros that can be used to wrap transactional code
-#define TRANSACTION while(1) { try { Sto::start_transaction();
-#define RETRY(retry) if (Sto::try_commit()) break; else if (!retry) throw Transaction::Abort();} catch (Transaction::Abort e) {if (!retry) throw e;}}
+#define TRANSACTION                               \
+    do {                                          \
+        TransactionGuard __txn_guard;             \
+        while (1) {                               \
+            __txn_guard.start();                  \
+            try {
+#define RETRY(retry)                              \
+                if (__txn_guard.try_commit())     \
+                    break;                        \
+            } catch (Transaction::Abort e) {      \
+            }                                     \
+            if (!(retry))                         \
+                throw Transaction::Abort();       \
+        }                                         \
+    } while (0)
 
 // transaction performance counters
 enum txp {
@@ -390,7 +403,7 @@ public:
 #define MAX_P(p, n) do {} while (0)
 #endif
 
-  
+
   Transaction() : transSet_() {
     reset();
   }
@@ -645,7 +658,7 @@ private:
     fence();
     commit_tid();
     fence();
-#endif 
+#endif
 
     //phase2
     if (!check_reads(trans_first, trans_last)) {
@@ -702,23 +715,23 @@ private:
     end_trans();
   }
 
-  void abort() {
-    silent_abort();
-    throw Abort();
-  }
+    void abort() {
+        silent_abort();
+        throw Abort();
+    }
 
     void commit() {
         if (!try_commit())
             throw Abort();
     }
 
-  bool aborted() {
-    return isAborted_;
-  }
+    bool aborted() {
+        return isAborted_;
+    }
 
-  bool inProgress() {
-    return inProgress_;
-  }
+    bool inProgress() {
+        return inProgress_;
+    }
 
     // opacity checking
     void check_opacity(TransactionTid::type t) {
@@ -771,7 +784,7 @@ private:
 class Sto {
 public:
   static __thread Transaction* __transaction;
-  
+
   static void start_transaction() {
     if (!__transaction) {
       __transaction = new Transaction();
@@ -781,38 +794,36 @@ public:
       } else {
         __transaction->reset();
       }
-      
     }
   }
-  
+
   /* Only used for testing purposes */
   static void set_transaction(Transaction* t) {
     __transaction = t;
   }
-  
+
   class NotInTransaction{};
-  
+
   static bool trans_in_progress() {
     if (__transaction == NULL)
       return false;
     else
       return __transaction->inProgress();
   }
-  
+
   static void abort() {
     if (!trans_in_progress()) {
       throw NotInTransaction();
     }
     __transaction->abort();
   }
-  
+
   static void silent_abort() {
     if (trans_in_progress()) {
       __transaction->silent_abort();
     }
   }
 
- 
   template <typename T>
   static TransProxy item(Shared* s, T key) {
     if (!trans_in_progress()) {
@@ -820,7 +831,7 @@ public:
     }
     return __transaction->item(s, key);
   }
-  
+
   static void check_opacity(TransactionTid::type t) {
     if (!trans_in_progress()) {
       throw NotInTransaction();
@@ -831,7 +842,7 @@ public:
   static void check_reads() {
     __transaction->check_reads();
   }
-  
+
   template <typename T>
   static OptionalTransProxy check_item(Shared* s, T key) {
     if (!trans_in_progress()) {
@@ -839,7 +850,7 @@ public:
     }
     return __transaction->check_item(s, key);
   }
-  
+
   template <typename T>
   static TransProxy new_item(Shared* s, T key) {
     if (!trans_in_progress()) {
@@ -847,7 +858,7 @@ public:
     }
     return __transaction->new_item(s, key);
   }
-  
+
   template <typename T>
   static TransProxy read_item(Shared *s, T key) {
     if (!trans_in_progress()) {
@@ -855,7 +866,7 @@ public:
     }
     return __transaction->read_item(s, key);
   }
-  
+
   template <typename T>
   static TransProxy fresh_item(Shared *s, T key) {
     if (!trans_in_progress()) {
@@ -863,24 +874,40 @@ public:
     }
     return __transaction->fresh_item(s, key);
   }
-  
+
   static void commit() {
     if (!trans_in_progress()) {
       throw NotInTransaction();
     }
     __transaction->commit();
   }
-  
+
   static bool try_commit() {
     if (!trans_in_progress()) {
       throw NotInTransaction();
     }
     return __transaction->try_commit();
   }
-  
+
   static TransactionTid::type commit_tid() {
     return __transaction->commit_tid();
   }
+};
+
+class TransactionGuard {
+  public:
+    TransactionGuard() {
+    }
+    ~TransactionGuard() {
+        if (Sto::__transaction->inProgress())
+            Sto::__transaction->silent_abort();
+    }
+    void start() {
+        Sto::start_transaction();
+    }
+    bool try_commit() {
+        return Sto::__transaction->try_commit();
+    }
 };
 
 
