@@ -62,6 +62,7 @@ void run_serial(T* q, int n) {
             int me = k;
             // so that retries of this transaction do the same thing
             auto transseed = i;
+            while(1) {
             Sto::start_transaction();
             try {
                 uint32_t seed = transseed*3 + (uint32_t)me*ntrans*7 + (uint32_t)global_seed*MAX_THREADS*ntrans*11;
@@ -89,7 +90,7 @@ void run_serial(T* q, int n) {
                     break;
                 }
 
-            } catch (Transaction::Abort e) {
+            } catch (Transaction::Abort e) {}
             }
         }
     }
@@ -108,6 +109,7 @@ void run(T* q, int me) {
     for (int i = 0; i < N; ++i) {
         // so that retries of this transaction do the same thing
         auto transseed = i;
+        while (1) {
         Sto::start_transaction();
         try {
             uint32_t seed = transseed*3 + (uint32_t)me*ntrans*7 + (uint32_t)global_seed*MAX_THREADS*ntrans*11;
@@ -137,6 +139,7 @@ void run(T* q, int me) {
             }
         
         } catch (Transaction::Abort e) { }
+        }
     }
 }
 

@@ -616,7 +616,7 @@ void testUpdatePop() {
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false)
+    } RETRY(false);
     
     Transaction t1;
     Sto::set_transaction(&t1);

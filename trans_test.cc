@@ -37,6 +37,7 @@ void run(T* q, int me) {
         // so that retries of this transaction do the same thing
         auto transseed = i;
         txn_record *tr = new txn_record;
+        while (1) {
         Sto::start_transaction();
         try {
             tr->ops.clear();
@@ -71,6 +72,7 @@ void run(T* q, int me) {
 #if PRINT_DEBUG
             TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
 #endif
+        }
         }
     }
 }
