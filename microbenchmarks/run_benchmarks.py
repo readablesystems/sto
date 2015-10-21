@@ -97,12 +97,13 @@ def exp_scalability_overhead(repetitions, records):
 	print "@@@@\n@@@ Starting experiment: scalability-overhead:"
 	ntxs = 8000000
 	ttr = [1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24]
-	txlens = [10, 50]
+	#txlens = [10, 50]
+	txlens = [50]
 	combined_stdout = ""
 
 	for trail in range(0, repetitions):
 		for txlen in txlens:
-			combined_stdout += run_series(0, trail, txlen, 1, records, ttr, ntxs)
+			combined_stdout += run_series(0, trail, txlen, 0, records, ttr, ntxs)
 
 	save_results("scalability_overhead", combined_stdout, records)
 

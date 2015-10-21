@@ -38,8 +38,16 @@ def print_scalability_overhead(records, config):
 
 	for f_tl in tls:
 		baseline = data[f_on][f_tl][1]["med_time"]
-	
 		for tr in ttr:
+			speedup = baseline / data[f_on][f_tl][tr]["med_time"]
+			rows.append(["%d" % tr, "%.4f" % speedup])
+
+	f_on = run_benchmarks.opacity_names[config[name]["opacity"][1]]
+	#f_tl = 10
+	for f_tl in tls:
+		baseline = data[f_on][f_tl][1]["med_time"]
+		for tr in ttr:
+			baseline = data[f_on][f_tl][1]["med_time"]
 			speedup = baseline / data[f_on][f_tl][tr]["med_time"]
 			rows.append(["%d" % tr, "%.4f" % speedup])
 
