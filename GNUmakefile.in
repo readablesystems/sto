@@ -16,7 +16,7 @@ CXXFLAGS += -g -pg -fno-inline
 endif
 
 ifneq ($(OPT),0)
-#CXXFLAGS += -O3
+CXXFLAGS += -O3
 endif
 
 # debugging on by default
