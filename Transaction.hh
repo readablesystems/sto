@@ -75,6 +75,8 @@ enum txp {
     txp_max_rdata_size,
     txp_max_wdata_size,
     txp_total_searched,
+    txp_push_abort,
+    txp_pop_abort,
     txp_total_check_read,
 #if !PERF_LOGGING
     txp_count = 0
@@ -394,9 +396,9 @@ public:
 #endif
 
 #if PERF_LOGGING
-#define INC_P(p) inc_p((p))
-#define ADD_P(p, n) add_p((p), (n))
-#define MAX_P(p, n) max_p((p), (n))
+#define INC_P(p) Transaction::inc_p((p))
+#define ADD_P(p, n) Transaction::add_p((p), (n))
+#define MAX_P(p, n) Transaction::max_p((p), (n))
 #else
 #define INC_P(p) do {} while (0)
 #define ADD_P(p, n) do {} while (0)

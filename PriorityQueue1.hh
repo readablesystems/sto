@@ -3,10 +3,10 @@
 #include "Vector.hh"
 #include <algorithm>
 
-template <typename T>
+template <typename T, int INIT_CAPACITY = 10000>
 class PriorityQueue1 {
 public:
-    PriorityQueue1() : elems() {}
+    PriorityQueue1() : elems(INIT_CAPACITY) {}
 
     
     void push(T v) {

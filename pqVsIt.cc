@@ -4,19 +4,32 @@
 #include <vector>
 #include <random>
 #include <map>
+#include <inttypes.h>
 #include "Transaction.hh"
 #include "Vector.hh"
 #include "PriorityQueue.hh"
 #include "PriorityQueue1.hh"
 #include "clp.h"
-
+int waiting = 5000;
 int max_value = 100000;
 int global_seed = 11;
 int nthreads = 4;
-int ntrans = 100000;
 int opspertrans = 1;
-int prepopulate = 10000;
+int prepopulate = 1000;
 double push_percent = 0.75;
+int blocks = 1000;
+int runtime = 10;
+
+volatile bool running = true;
+
+#define SMALLER_WRITES 0
+#define SINGLE_POP 0
+#define FIX_RUNTIME 1
+#if FIX_RUNTIME
+int ntrans = 1000000;
+#else
+int ntrans = 300000;
+#endif
 
 TransactionTid::type lock;
 
@@ -47,66 +60,36 @@ template <typename T>
 struct TesterPair {
     T* t;
     int me;
+    uint64_t num_trans;
 };
 
 template <typename T>
-void run_serial(T* q, int n) {
-    std::uniform_int_distribution<long> slotdist(0, max_value);
-    int N = ntrans/nthreads;
-    int OPS = opspertrans;
-    int ratio = ( push_percent / (1 - push_percent));
-    if (ratio < 1) ratio = 1;
-   
-    for (int i = 0; i < N; ++i) {
-        for (int k = 0; k < n; k++) {
-            int me = k;
-            // so that retries of this transaction do the same thing
-            auto transseed = i;
-            while(1) {
-            Sto::start_transaction();
-            try {
-                uint32_t seed = transseed*3 + (uint32_t)me*ntrans*7 + (uint32_t)global_seed*MAX_THREADS*ntrans*11;
-                auto seedlow = seed & 0xffff;
-                auto seedhigh = seed >> 16;
-                Rand transgen(seed, seedlow << 16 | seedhigh);
-
-                for (int j = 0; j < OPS; ++j) {
-                    int op = slotdist(transgen) % 100;
-                    if (op < push_percent * 100) {
-                        int val = slotdist(transgen);
-                        q->push(val);
-                    } else {
-                        for (int r = 0; r < ratio; r++) {
-                            q->top();
-                            q->pop();
-                        }
-                    }
-                }
-
-                /* Waiting time */
-                for (int i = 0; i < 10000; i++) {asm("");}
-
-                if (Sto::try_commit()) {
-                    break;
-                }
-
-            } catch (Transaction::Abort e) {}
-            }
-        }
-    }
-}
-
-template <typename T>
-void run(T* q, int me) {
+uint64_t run(T* q, int me) {
     Transaction::threadid = me;
-    
+#if SMALLER_WRITES
+    std::uniform_int_distribution<long> slotdist(0, max_value/blocks);
+#else
     std::uniform_int_distribution<long> slotdist(0, max_value);
+#endif
+    uint64_t num_trans = 0;
     int N = ntrans/nthreads;
     int OPS = opspertrans;
     int ratio = ( push_percent / (1 - push_percent));
     if (ratio < 1) ratio = 1;
+    bool only_pop = false;
+    bool only_push = false;
+#if SINGLE_POP
+    if (me == 0) only_pop = true;
+    else only_push = true;
+#endif
 
+#if FIX_RUNTIME
+    int i = -1;
+    while(running) {
+    i++;
+#else
     for (int i = 0; i < N; ++i) {
+#endif
         // so that retries of this transaction do the same thing
         auto transseed = i;
         while (1) {
@@ -119,39 +102,46 @@ void run(T* q, int me) {
             
             for (int j = 0; j < OPS; ++j) {
                 int op = slotdist(transgen) % 100;
-                if (op < push_percent * 100) {
-                    int val = slotdist(transgen);
-                    q->push(val);
+                if (only_push || (!only_pop && op < push_percent * 100)) {
+	            int val = slotdist(transgen);
+#if SMALLER_READS
+                    val = val + (1 - (i/N))*max_value;
+#endif
+	            q->push(val);
                 } else {
                     for (int r = 0; r < ratio; r++) {
-                        q->top();
                         q->pop();
                     }
                 }
 
             }
-            
-            /* Waiting time */
-            for (int i = 0; i < 10000; i++) {asm("");}
-
-            if (Sto::try_commit()) {
-                break;
-            }
+ 
+        if (Sto::try_commit()) {
+#if FIX_RUNTIME
+	    num_trans++;
+#endif
+            break;
+        }
         
         } catch (Transaction::Abort e) { }
         }
+        /* Waiting time */
+        for (int k = 0; k < waiting; k++) {__asm__ __volatile__("");}
     }
+    return num_trans;
 }
 
 template <typename T>
 void* runFunc(void* x) {
     TesterPair<T>* tp = (TesterPair<T>*) x;
-    run(tp->t, tp->me);
+    uint64_t num_trans = run(tp->t, tp->me);
+    tp->num_trans = num_trans;
     return nullptr;
 }
 
 template <typename T>
-void startAndWait(int n, T* queue) {
+uint64_t startAndWait(int n, T* queue) {
+    running = true;
     pthread_t tids[nthreads];
     TesterPair<T> *testers = new TesterPair<T>[n];
     for (int i = 0; i < nthreads; ++i) {
@@ -162,10 +152,20 @@ void startAndWait(int n, T* queue) {
     pthread_t advancer;
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
-    
+#if FIX_RUNTIME
+    sleep(runtime);
+    running = false;
+#endif 
+    __sync_synchronize();
     for (int i = 0; i < nthreads; ++i) {
         pthread_join(tids[i], NULL);
     }
+
+    uint64_t tot_trans = 0;
+    for (int i = 0; i < nthreads; ++i) {
+       tot_trans += testers[i].num_trans; 
+    }
+    return tot_trans;
 }
 
 void print_time(struct timeval tv1, struct timeval tv2) {
@@ -208,7 +208,11 @@ void init(T* q) {
     Rand transgen(seed, seedlow << 16 | seedhigh);
     for (int i = 0; i < prepopulate; i++) {
         TRANSACTION {
-            q->push(slotdist(transgen));
+            int val = slotdist(transgen);
+#if SMALLER_WRITES
+            val = val + max_value*(1+blocks)/blocks;
+#endif
+            q->push(val);
         } RETRY(false);
     }
 }
@@ -216,6 +220,9 @@ void init(T* q) {
 int main(int argc, char *argv[]) {
     lock = 0;
     struct timeval tv1,tv2;
+    uint64_t num_trans;
+    uint64_t time;
+    uint64_t throughput;
     
     Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
         
@@ -252,44 +259,43 @@ int main(int argc, char *argv[]) {
     
     gettimeofday(&tv1, NULL);
     
-    startAndWait(nthreads, &q);
+    num_trans = startAndWait(nthreads, &q);
     
     gettimeofday(&tv2, NULL);
+#if FIX_RUNTIME
+    time = tv2.tv_sec - tv1.tv_sec + (tv2.tv_usec-tv1.tv_usec)/1000000.0;
+    throughput = num_trans/time;
+    printf("PQ: %llu\n", throughput);
+#else
     printf("Parallel PQ time: ");
     print_time(tv1, tv2);
+#endif
     
 #if PERF_LOGGING
     Transaction::print_stats();
     {
         using thd = threadinfo_t;
         thd tc = Transaction::tinfo_combined();
-        printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+        printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time), pop_aborts: %llu, push_aborts: %llu\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts), tc.p(txp_pop_abort), tc.p(txp_push_abort));
     }
     Transaction::clear_stats();
 #endif
-    
-    data_structure q1;
-    init(&q1);
-    gettimeofday(&tv1, NULL);
-    
-    run_serial(&q1, nthreads);
-    
-    gettimeofday(&tv2, NULL);
-    printf("Serial PQ time: ");
-    print_time(tv1, tv2);
-    
-    Transaction::clear_stats();
     
     PriorityQueue1<int> q2;
     init(&q2);
     gettimeofday(&tv1, NULL);
     
-    startAndWait(nthreads, &q2);
+    num_trans = startAndWait(nthreads, &q2);
     
     gettimeofday(&tv2, NULL);
-    printf("Iterator parallel time: ");
+#if FIX_RUNTIME
+    time = tv2.tv_sec - tv1.tv_sec + (tv2.tv_usec-tv1.tv_usec)/1000000.0;
+    throughput = num_trans/time;
+    printf("it: %llu\n", throughput);
+#else
+    printf("Parallel iterator time: ");
     print_time(tv1, tv2);
-    
+#endif
 #if PERF_LOGGING
     Transaction::print_stats();
     {
@@ -299,16 +305,6 @@ int main(int argc, char *argv[]) {
     }
     Transaction::clear_stats();
 #endif
-    
-    PriorityQueue1<int> q3;
-    init(&q3);
-    gettimeofday(&tv1, NULL);
-    
-    run_serial(&q3, nthreads);
-    
-    gettimeofday(&tv2, NULL);
-    printf("Serial iterator time: ");
-    print_time(tv1, tv2);
     
 	return 0;
 }
