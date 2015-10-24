@@ -32,10 +32,13 @@ class rbwrapper : public T {
     inline T& mutable_value() {
         return *this;
     }
-    inline void inc_nodeversion() {
+    inline std::pair<Version, Version>&& inc_nodeversion() {
         TransactionTid::lock(rblinks_.nodeversion_);
+        Version old_readv = TransactionTid::unlocked(rblinks_.nodeversion_);
         TransactionTid::inc_invalid_version(rblinks_.nodeversion_);
+        Version new_readv = TransactionTid::unlocked(rblinks_.nodeversion_);
         TransactionTid::unlock(rblinks_.nodeversion_);
+        return std::move(std::make_pair(old_readv, new_readv));
     }
     inline Version& nodeversion() {
         return rblinks_.nodeversion_;
@@ -134,11 +137,12 @@ private:
     }
 
     // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
-    // return values: (node*, found, path)
+    // return values: (node*, found, boundary), boundary only valid if !found
     // NOTE: this function must be surrounded by a lock in order to ensure we add the correct nodeversions
-    inline std::pair<std::pair<rbwrapper<rbpair<K, T>>*, bool>, std::vector<rbwrapper<rbpair<K, T>>*>> find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp, bool insert) const {
-        auto nodepath = wrapper_tree_.find_any(rbkvp, rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-        auto pair = nodepath.first;
+    inline std::pair<std::pair<wrapper_type*, bool>, std::pair<wrapper_type*, wrapper_type*>>
+    find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp, bool insert) const {
+        auto results = wrapper_tree_.find_any(rbkvp, rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+        auto pair = results.first;
         auto x = pair.first;
         auto found = pair.second;
 
@@ -149,12 +153,12 @@ private:
             if (is_inserted(x->version())) {
                 // check if item was inserted by this transaction
                 if (has_insert(item)) {
-                    return nodepath;
+                    return results;
                 } else {
                     // some other transaction inserted this node and hasn't committed
                     Sto::abort();
                     // unreachable
-                    return nodepath; 
+                    return results;
                 }
             }
             // add a read of the node version for a present get
@@ -163,17 +167,20 @@ private:
         
         // ABSENT GET
         } else {
+            // XXX this code only works with coarse-grain locking
             if (!insert) {
                 // add a read of treeversion if tree is empty
                 if (!x)
                     Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
                 // add a read for all nodes in the path, marking them as nodeversion ptrs
-                for (auto n : nodepath.second)
-                    Sto::item(const_cast<RBTree<K, T>*>(this), reinterpret_cast<uintptr_t>(n) | 1).add_read(n->nodeversion());
+                for (unsigned int i = 0; i < 2; ++i) {
+                    wrapper_type* n = (i == 0)? results.second.first : results.second.second;
+                    Sto::item(const_cast<RBTree<K, T>*>(this), reinterpret_cast<uintptr_t>(n) | 1U).add_read(n->nodeversion());
+                }
             }
         }
-        // item was committed or DNE, so return pointer
-        return nodepath;
+        // item was committed or DNE, so return results
+        return results;
     }
 
     // Insert <@key, @value>, optionally force an update if @key exists
@@ -191,7 +198,9 @@ private:
             stats_.absent_insert++;
 #endif
             auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, value)  );
-            wrapper_tree_.insert(*n);
+            // insert now returns the parent, before re-balancing, under which the
+            // new leaf is inserted
+            auto p = wrapper_tree_.insert(*n);
             // invariant: the node's insert_bit should be set
             assert(is_inserted(n->version()));
             // if tree is empty (i.e. no parent), we increment treeversion 
@@ -199,7 +208,14 @@ private:
                 Sto::item(this, tree_key_).add_write(0);
             // else we increment the parent version 
             } else {
-                x->inc_nodeversion();
+                assert(p); //XXX ugly code; this is only true because of coarse-grained locking
+                assert(p.node() == x); // XXX same problem as above
+                // returned pair is the versions (unlocked) before and after the increment
+                auto versions = p.node()->inc_nodeversion();
+                auto item = Sto::item(this, reinterpret_cast<uintptr_t>(p.node()) | 1);
+                // update our own read if necessary
+                if (item.has_read())
+                    item.update_read(versions.first, versions.second);
             }
             // add write and insert flag of item (value of rbpair) with @value
             Sto::item(this, n).add_write(value).add_flags(insert_tag);
@@ -333,11 +349,10 @@ template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
     lock(&treelock_);
-    auto nodepath = find_or_abort(idx_pair, false);
+    auto results = find_or_abort(idx_pair, false);
     unlock(&treelock_);
-    auto pair = nodepath.first; 
+    auto pair = results.first;
     auto found = pair.second;
-    auto path = nodepath.second; 
 #if PRINT_DEBUG
     (!found) ? stats_.absent_count++ : stats_.present_count++;
 #endif
@@ -353,12 +368,11 @@ template <typename K, typename T>
 inline size_t RBTree<K, T>::erase(const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
     lock(&treelock_);
-    auto nodepath = find_or_abort(idx_pair, false);
+    auto results = find_or_abort(idx_pair, false);
     unlock(&treelock_);
-    auto pair = nodepath.first; 
+    auto pair = results.first; 
     auto x = pair.first;
     auto found = pair.second;
-    auto path = nodepath.second;
    
     // PRESENT ERASE
     if (found) {
