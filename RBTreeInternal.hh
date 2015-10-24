@@ -283,9 +283,9 @@ inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side) const {
     rbaccount(rotation);
     rbnodeptr<T> x = child(!side);
     // increment the nodeversions of these nodes
-    node()->rblinks_.nodeversion_++;
-    x.node()->rblinks_.nodeversion_++;
-    if (x.child(side)) x.child(side).node()->rblinks_.nodeversion_++;
+    node()->inc_nodeversion();
+    x.node()->inc_nodeversion();
+    if (x.child(side)) x.child(side).node()->inc_nodeversion();
     // perform the rotation 
     if ((child(!side) = x.child(side)))
         x.child(side).parent() = node();

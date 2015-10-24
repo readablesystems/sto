@@ -32,6 +32,11 @@ class rbwrapper : public T {
     inline T& mutable_value() {
         return *this;
     }
+    inline void inc_nodeversion() {
+        TransactionTid::lock(rblinks_.nodeversion_);
+        TransactionTid::inc_invalid_version(rblinks_.nodeversion_);
+        TransactionTid::unlock(rblinks_.nodeversion_);
+    }
     inline Version& nodeversion() {
         return rblinks_.nodeversion_;
     }
@@ -130,6 +135,7 @@ private:
 
     // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
     // return values: (node*, found, path)
+    // NOTE: this function must be surrounded by a lock in order to ensure we add the correct nodeversions
     inline std::pair<std::pair<rbwrapper<rbpair<K, T>>*, bool>, std::vector<rbwrapper<rbpair<K, T>>*>> find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp, bool insert) const {
         auto nodepath = wrapper_tree_.find_any(rbkvp, rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
         auto pair = nodepath.first;
@@ -138,8 +144,8 @@ private:
 
         // PRESENT GET
         if (found) {
-            // check if rbpair has version "inserted" (someone inserted w/out commit)
             auto item = Sto::item(const_cast<RBTree<K, T>*>(this), x);
+            // check if item is inserted by not committed yet 
             if (is_inserted(x->version())) {
                 // check if item was inserted by this transaction
                 if (has_insert(item)) {
@@ -193,7 +199,7 @@ private:
                 Sto::item(this, tree_key_).add_write(0);
             // else we increment the parent version 
             } else {
-                x->nodeversion()++;
+                x->inc_nodeversion();
             }
             // add write and insert flag of item (value of rbpair) with @value
             Sto::item(this, n).add_write(value).add_flags(insert_tag);
@@ -335,12 +341,7 @@ inline size_t RBTree<K, T>::count(const K& key) const {
 #if PRINT_DEBUG
     (!found) ? stats_.absent_count++ : stats_.present_count++;
 #endif
-    if (!found) {
-        return 0;
-    // else we found the item
-    } else {
-        return 1;
-    }
+    return (found) ? 1 : 0;
 }
 
 template <typename K, typename T>
