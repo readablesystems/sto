@@ -151,6 +151,7 @@ private:
                 if (has_insert(item)) {
                     return nodepath;
                 } else {
+                    unlock(&treelock_);
                     // some other transaction inserted this node and hasn't committed
                     Sto::abort();
                     // unreachable
@@ -194,10 +195,10 @@ private:
             wrapper_tree_.insert(*n);
             // invariant: the node's insert_bit should be set
             assert(is_inserted(n->version()));
-            // if tree is empty (i.e. no parent), we increment treeversion 
+            // if tree is empty (i.e. no parent), we increment treeversion
+            // else we increment the nodeversion
             if (!x) {
                 Sto::item(this, tree_key_).add_write(0);
-            // else we increment the parent version 
             } else {
                 x->inc_nodeversion();
             }
@@ -474,9 +475,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             // else install the update
             } else {
                 e->writeable_value() = item.template write_value<T>(); 
-                lock(&e->version());
                 TransactionTid::inc_invalid_version(e->version());
-                unlock(&e->version());
             }
         }
     // we did something to an empty tree, so update treeversion
