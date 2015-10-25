@@ -8,7 +8,7 @@
 #include "VersionFunctions.hh"
 #include "RBTreeInternal.hh"
 
-#define PRINT_DEBUG 0
+#define PRINT_DEBUG 1
 
 template <typename K, typename T>
 class RBTree;

@@ -9,14 +9,14 @@
 
 #define GLOBAL_SEED 10
 #define NTRANS 50 // Number of transactions each thread should run.
-#define N_THREADS 1 // Number of concurrent threads
+#define N_THREADS 4 // Number of concurrent threads
 #define MAX_OPS 3 // Maximum number of operations in a transaction.
 
 #define PRIORITY_QUEUE 0
 #define HASHTABLE 1
 #define RBTREE 2
 #define VECTOR 3
-#define DS VECTOR
+#define DS RBTREE 
 
 #if DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();

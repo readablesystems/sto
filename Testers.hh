@@ -87,55 +87,57 @@ public:
     }
 
     op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
-        int val = slotdist(transgen);
+        int key = slotdist(transgen);
         if (op == 0) {
+            int val = slotdist(transgen);
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to operator[] key and val " << val << std::endl;
+            std::cout << "[" << me << "] try to operator[] key " << key << " and val " << val << std::endl;
             TransactionTid::unlock(lock);
 #endif
-            (*q)[val] = val;
+            (*q)[key] = val;
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
-            std::cout << "[" << me << "] insert key and val " << val << std::endl;
+            std::cout << "[" << me << "] insert key " << key << " and val " << val << std::endl;
             TransactionTid::unlock(lock);
 #endif
             op_record* rec = new op_record;
             rec->op = op;
+            rec->args.push_back(key);
             rec->args.push_back(val);
             return rec;
         } else if (op == 1) {
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to erase " << val << std::endl;
+            std::cout << "[" << me << "] try to erase " << key<< std::endl;
             TransactionTid::unlock(lock);
 #endif
-            int num = q->erase(val);
+            int num = q->erase(key);
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
-            std::cout << "[" << me << "] erased " << num << " items with key " << val << std::endl;
+            std::cout << "[" << me << "] erased " << num << " items with key " << key << std::endl;
             TransactionTid::unlock(lock);
 #endif
             op_record* rec = new op_record;
             rec->op = op;
-            rec->args.push_back(val);
+            rec->args.push_back(key);
             rec->rdata.push_back(num);
             return rec;
         } else {
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to count " << val << std::endl;
+            std::cout << "[" << me << "] try to count " << key << std::endl;
             TransactionTid::unlock(lock);
 #endif
-            int num = q->count(val);
+            int num = q->count(key);
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
-            std::cout << "[" << me << "] counted " << num << " items with key " << val << std::endl;
+            std::cout << "[" << me << "] counted " << num << " items with key " << key << std::endl;
             TransactionTid::unlock(lock);
 #endif
             op_record* rec = new op_record;
             rec->op = op;
-            rec->args.push_back(val);
+            rec->args.push_back(key);
             rec->rdata.push_back(num);
             return rec;
         }
@@ -143,29 +145,30 @@ public:
 
     void redoOp(T* q, op_record *op) {
         if (op->op == 0) {
-            int val = op->args[0];
-            (*q)[val] = val;
+            int key = op->args[0];
+            int val = op->args[1];
+            (*q)[key] = val;
 #if PRINT_DEBUG
-            std::cout << "inserting: " << val << std::endl;
+            std::cout << "inserting: " << key << ", " << val << std::endl;
 #endif
         } else if (op->op == 1) {
-            int val = op->args[0];
-            auto erased = q->erase(val);
+            int key = op->args[0];
+            auto erased = q->erase(key);
 #if PRINT_DEBUG
-            std::cout << "erasing: " << val << std::endl;
-            std::cout << "erase val: " << erased << std::endl;
+            std::cout << "erasing: " << key << std::endl;
+            std::cout << "erase key: " << erased << std::endl;
             std::cout << "erase expected: " << op->rdata[0] << std::endl;
 #endif
             assert (erased == op->rdata[0]);
         } else {
-            int val = op->args[0];
-            auto counted = q->count(val);
+            int key = op->args[0];
+            auto counted = q->count(key);
 #if PRINT_DEBUG
-            std::cout << "counting: " << val << std::endl;
-            std::cout << "count val: " << counted << std::endl;
+            std::cout << "counting: " << key << std::endl;
+            std::cout << "count key: " << counted << std::endl;
             std::cout << "count expected: " << op->rdata[0] << std::endl;
 #endif
-            assert(q->count(val) == op->rdata[0]);
+            assert(q->count(key) == op->rdata[0]);
         }
     }
 
