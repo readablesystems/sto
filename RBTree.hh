@@ -509,9 +509,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             // else install the update
             } else {
                 e->writeable_value() = item.template write_value<T>(); 
-                lock(&e->version());
                 TransactionTid::inc_invalid_version(e->version());
-                unlock(&e->version());
             }
         }
     // we did something to an empty tree, so update treeversion
