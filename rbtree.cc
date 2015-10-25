@@ -158,10 +158,30 @@ void insert_then_delete_tests() {
         Sto::set_transaction(&after);
         assert(tree.count(4) == 1);
         assert(tree[4] == 44);
-        for (int i = 0; i <= 5; ++i) {
+        for (int i = 1; i <= 5; ++i) {
             if (i != 4)
                 assert(tree[i] == i);
         }
+        assert(after.try_commit());
+    }
+    {
+        tree_type tree;
+        Transaction t1, after;
+        reset_tree(tree);
+        Sto::set_transaction(&t1);
+        // absent read of key 4
+        // reads nodeversion of key 3
+        assert(tree.count(4) == 0);
+        // increments nodeversion of key 3
+        tree[5] = 5;
+        // absent read of key 4 again
+        assert(tree.count(4) == 0);
+        tree[4] = 4;
+        assert(tree.count(4) == 1);
+        assert(t1.try_commit());
+        Sto::set_transaction(&after);
+        for (int i = 0; i <= 5; ++i)
+            assert(tree[i] == i);
         assert(after.try_commit());
     }
 }
