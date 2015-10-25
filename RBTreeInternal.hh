@@ -500,12 +500,12 @@ template <typename T, typename C> template <typename K, typename Comp>
 inline std::pair<std::pair<T*, bool>, std::pair<T*, T*>> rbtree<T, C>::find_any(const K& key, Comp comp) const {
     T* n = r_.root_;
     T* p = nullptr;
-    std::pair<T*, T*> boundary = std::make_pair(n, n);
+    // a null left/right-boundary means negative/positive infinity
+    std::pair<T*, T*> boundary = std::make_pair(nullptr, nullptr);
     while (n) {
         int cmp = comp.compare(key, *n);
         if (cmp == 0)
             break;
-        p = n->rblinks_.p_;
 
         // narrow down to find the boundary nodes
         // update the LEFT boundary when going RIGHT, and vise versa
@@ -514,7 +514,7 @@ inline std::pair<std::pair<T*, bool>, std::pair<T*, T*>> rbtree<T, C>::find_any(
         } else {
             boundary.second = n;
         }
-
+        p = n;
         n = n->rblinks_.c_[cmp > 0].node();
     }
     auto nodepair = std::make_pair((n) ? n : p, n);

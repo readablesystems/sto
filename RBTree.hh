@@ -156,6 +156,7 @@ private:
                     return results;
                 } else {
                     // some other transaction inserted this node and hasn't committed
+                    unlock(&treelock_);
                     Sto::abort();
                     // unreachable
                     return results;
@@ -175,7 +176,9 @@ private:
                 // add a read for all nodes in the path, marking them as nodeversion ptrs
                 for (unsigned int i = 0; i < 2; ++i) {
                     wrapper_type* n = (i == 0)? results.second.first : results.second.second;
-                    Sto::item(const_cast<RBTree<K, T>*>(this), reinterpret_cast<uintptr_t>(n) | 1U).add_read(n->nodeversion());
+                    if (n)
+                        Sto::item(const_cast<RBTree<K, T>*>(this),
+                                        reinterpret_cast<uintptr_t>(n) | 1U).add_read(n->nodeversion());
                 }
             }
         }
