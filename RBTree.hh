@@ -32,13 +32,13 @@ class rbwrapper : public T {
     inline T& mutable_value() {
         return *this;
     }
-    inline std::pair<Version, Version>&& inc_nodeversion() {
+    inline std::pair<Version, Version> inc_nodeversion() {
         TransactionTid::lock(rblinks_.nodeversion_);
         Version old_readv = TransactionTid::unlocked(rblinks_.nodeversion_);
         TransactionTid::inc_invalid_version(rblinks_.nodeversion_);
         Version new_readv = TransactionTid::unlocked(rblinks_.nodeversion_);
         TransactionTid::unlock(rblinks_.nodeversion_);
-        return std::move(std::make_pair(old_readv, new_readv));
+        return std::make_pair(old_readv, new_readv);
     }
     inline Version& nodeversion() {
         return rblinks_.nodeversion_;
@@ -219,8 +219,9 @@ private:
                 auto versions = p.node()->inc_nodeversion();
                 auto item = Sto::item(this, reinterpret_cast<uintptr_t>(p.node()) | 1);
                 // update our own read if necessary
-                if (item.has_read())
+                if (item.has_read()) {
                     item.update_read(versions.first, versions.second);
+                }
             }
             // add write and insert flag of item (value of rbpair) with @value
             Sto::item(this, n).add_write(value).add_flags(insert_tag);
