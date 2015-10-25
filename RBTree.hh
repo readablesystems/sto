@@ -190,7 +190,7 @@ private:
 
     // Insert <@key, @value>, optionally force an update if @key exists
     // return value is a reference to kvp.second
-    inline T& insert_update(const K& key, const T& value, bool force) {
+    inline T& find_insert_update(const K& key, const T& value, bool update) {
         lock(&treelock_);
         auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
         auto pair = this->find_or_abort(node, true).first;
@@ -245,22 +245,23 @@ private:
             } else if (has_delete(item)) {
                 item.clear_flags(delete_tag).add_flags(update_tag);
                 // recover from delete-my-insert (engineer's induction all
-                // over the place...
-                if (is_inserted(x->version()))
+                // over the place...)
+                const T& insert_val = update? value : T();
+                if (is_inserted(x->version())) {
+                    // okay to directly update value since we are the only txn
+                    // who can access it
                     item.add_flags(insert_tag);
-                // either overwrite value or put empty value
-                if (force) {
-                    item.add_write(value);
-                } else {
-                    item.add_write(T());
+                    x->writeable_value() = insert_val;
                 }
+                // either overwrite value or put empty value
+                item.add_write(insert_val);
                 unlock(&treelock_);
                 return item.template write_value<T>();
             
             // read_my_writes
             } else if (item.has_write()) {
                 // operator[] used on LHS, overwrite
-                if (force) {
+                if (update) {
                     item.add_write(value).add_flags(update_tag);
                 }
                 unlock(&treelock_);
@@ -269,7 +270,7 @@ private:
             }
 
             // accessing a regular key
-            if (force) {
+            if (update) {
                 // operator[] on LHS, return value doesn't matter
                 item.add_write(value).add_flags(update_tag);
             } else {
@@ -346,14 +347,14 @@ public:
     // when we just do a read of the item (using operator[] on the RHS), we don't
     // want to force an update
     operator T() {
-        return tree_.insert_update(key_, T(), false);
+        return tree_.find_insert_update(key_, T(), false);
     }
     RBProxy& operator=(const T& value) {
-        tree_.insert_update(key_, value, true);
+        tree_.find_insert_update(key_, value, true);
         return *this;
     };
     RBProxy& operator=(RBProxy& other) {
-        tree_.insert_update(key_, (T)other, true);
+        tree_.find_insert_update(key_, (T)other, true);
         return *this;
     };
 private:
