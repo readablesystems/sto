@@ -270,10 +270,15 @@ private:
 
             // accessing a regular key
             if (force) {
+                // operator[] on LHS, return value doesn't matter
                 item.add_write(value).add_flags(update_tag);
+            } else {
+                // operator[] on RHS (THIS IS A READ!)
+                //XXX function name is really confusing
+                item.add_read(x->version());
             }
             unlock(&treelock_);
-            return item.template write_value<T>(); 
+            return x->writeable_value();
         }
     }
 
