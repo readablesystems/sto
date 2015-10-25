@@ -8,6 +8,7 @@
 #include "PriorityQueue.hh"
 #include "Hashtable.hh"
 #include "RBTree.hh"
+#include "Vector.hh"
 
 #define MAX_VALUE 10 // Max value of integers used in data structures
 #define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements.
@@ -197,7 +198,7 @@ public:
                 std::cout << "q1 erased: " << e1 << std::endl;
 #endif
                 assert(e == e1);
-            } RETRY(false)
+            } RETRY(false);
         }
         TRANSACTION {
             for (int i = 0; i < 10000; i++) {
@@ -304,7 +305,7 @@ public:
                 assert(v1 == v2);
                 assert(q->pop() == v1);
                 assert(q1->pop() == v2);
-            } RETRY(false)
+            } RETRY(false);
         }
         TRANSACTION {
             q->print();
@@ -420,9 +421,190 @@ public:
                 if (p1) {
                     assert(v1 == v2);
                 }
-            } RETRY(false)
+            } RETRY(false);
         }
     }
+    
+#if PRINT_DEBUG
+    void print_stats(T* q) {
+       
+    }
+#endif
 
     static const int num_ops_ = 3;
 };
+
+template <typename T>
+class VectorTester : Tester<T> {
+public:
+    void init(T* q) {
+        for (int i = 0; i < 1000; i++) {
+            TRANSACTION {
+                q->push_back(i);
+            } RETRY(false);
+        }
+    }
+    
+    op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
+        if (op == 0) {
+            int key = slotdist(transgen);
+            int val = slotdist(transgen);
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to update " << key << ", " << val << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            bool outOfBounds = false;
+            try {
+            q->transUpdate(key, val);
+            } catch (OutOfBoundsException e) {
+                outOfBounds = true;
+            }
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] update " << !outOfBounds << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->args.push_back(key);
+            rec->args.push_back(val);
+            rec->rdata.push_back(outOfBounds);
+            return rec;
+        } else if (op == 1) {
+            int key = slotdist(transgen);
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to read " << key << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            int val;
+            bool outOfBounds = false;
+            try {
+            val = q->transGet(key);
+            } catch (OutOfBoundsException e) {
+                outOfBounds = true;
+            }
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] read (" << !outOfBounds << ") " << key << ", " << val << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->args.push_back(key);
+            rec->rdata.push_back(val);
+            rec->rdata.push_back(outOfBounds);
+            return rec;
+        } else if (op == 2) {
+            int val = slotdist(transgen);
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to push " << val << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            q->push_back(val);
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] pushed " << val  << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->args.push_back(val);
+            return rec;
+        } else if (op == 3) {
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to pop " << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            int val;
+            int sz = q->transSize();
+            if (sz > 0) {
+              val = q->transGet(sz - 1);
+              q->pop_back();
+            }
+            
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] popped "  << sz-1 << " " << val << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->rdata.push_back(val);
+            rec->rdata.push_back(sz > 0);
+            return rec;
+
+        } else {
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try size " << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            int sz = q->transSize();
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] size "  << sz << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->rdata.push_back(sz);
+            return rec;
+
+        }
+    }
+    
+    void redoOp(T* q, op_record* op) {
+        if (op->op == 0) {
+            int key = op->args[0];
+            int val = op->args[1];
+            int size = q->transSize();
+            if (op->rdata[0]) { assert(key >= size); return; }
+            assert(key < size);
+            q->transUpdate(key, val);
+        } else if (op->op == 1) {
+            int key = op->args[0];
+            int size = q->transSize();
+            if (op->rdata[1]) { assert(key >= size); return; }
+            assert(key < size);
+            int val = q->transGet(key);
+            assert(val == op->rdata[0]);
+        } else if (op->op == 2){
+            int val = op->args[0];
+            q->push_back(val);
+        } else if (op->op == 3) {
+            int size = q->transSize();
+            if (!op->rdata[1]) { assert(size == 0); return;}
+            assert(size > 0);
+            assert(q->transGet(size - 1) == op->rdata[0]);
+            q->pop_back();
+        } else {
+            assert(q->transSize() == op->rdata[0]);
+        }
+    }
+    
+    void check(T* q, T*q1) {
+        int size;
+        TRANSACTION {
+            size = q->transSize();
+            assert(size == q1->transSize());
+        } RETRY(false);
+        for (int i = 0; i < size; i++) {
+            TRANSACTION {
+                assert(q->transGet(i) == q1->transGet(i));
+            } RETRY(false);
+        }
+    }
+    
+#if PRINT_DEBUG
+    void print_stats(T* q) {
+        
+    }
+#endif
+    
+    static const int num_ops_ = 5;
+};
+

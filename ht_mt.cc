@@ -5,16 +5,16 @@
 #include "Hashtable.hh"
 #include "MassTrans.hh"
 #include "Transaction.hh"
-
+#include "simple_str.hh"
 
 #define DS 0
 #define USE_STRINGS 1
 
 #if DS == 0
 #if USE_STRINGS == 1
-typedef Hashtable<std::string, std::string, false, 1000000> ds;
+typedef Hashtable<std::string, std::string, false, 1000000, simple_str> ds;
 #else
-typedef Hashtable<int, std::string, false, 1000000> ds;
+typedef Hashtable<int, std::string, false, 1000000, simple_str> ds;
 #endif
 #else
 typedef MassTrans<std::string> ds;
@@ -61,15 +61,14 @@ void run(ds& h) {
         int key = slotdist(transgen);
         std::string value;
 #if DS == 0
-        //TRANSACTION{
+        TRANSACTION{
 #if USE_STRINGS == 1
             std::string s = std::to_string(key);
-            h.read(s, value);
+            h.transGet(s, value);
 #else
-	    std::string s = std::to_string(key);
-	    h.read(key, value);
+	    h.transGet(key, value);
 #endif
-        //} RETRY(false);
+        } RETRY(false);
 #else
         TRANSACTION{
 #if USE_STRINGS == 1
@@ -112,7 +111,6 @@ int main() {
 #endif
     
     init(h);
-    ct = 0;    
     struct timeval tv1,tv2;
     gettimeofday(&tv1, NULL);
     
@@ -121,7 +119,4 @@ int main() {
     gettimeofday(&tv2, NULL);
     printf("Time taken: ");
     print_time(tv1, tv2);
-    
-    std::cout << "traversal: " << ct  << std::endl;
-    std::cout << "Max traversal: " << max_ct << std::endl;
 }

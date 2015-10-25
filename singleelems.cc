@@ -80,16 +80,16 @@ void incrementTest() {
     
     TRANSACTION {
         f = 1;
-    } RETRY(false)
+    } RETRY(false);
     
     TRANSACTION {
         f = f + 1;
-    } RETRY(false)
+    } RETRY(false);
     
     int v;
     TRANSACTION {
         v = f;
-    } RETRY(false)
+    } RETRY(false);
 
     assert(v == 2);
 }
