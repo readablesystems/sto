@@ -154,6 +154,8 @@ private:
                 // check if item was inserted by this transaction
                 if (has_insert(item)) {
                     return results;
+                } else if (has_delete(item)) {
+                    return results;
                 } else {
                     // some other transaction inserted this node and hasn't committed
                     unlock(&treelock_);
@@ -232,6 +234,8 @@ private:
 #endif
             auto item = Sto::item(this, x);
             if (is_deleted(x->version())) {
+                //XXX actually we should assert here
+                // this entire path should be unreachable
                 unlock(&treelock_);
                 Sto::abort();
                 // should be unreachable
@@ -240,6 +244,10 @@ private:
             // read-my-delete
             } else if (has_delete(item)) {
                 item.clear_flags(delete_tag).add_flags(update_tag);
+                // recover from delete-my-insert (engineer's induction all
+                // over the place...
+                if (is_inserted(x->version()))
+                    item.add_flags(insert_tag);
                 // either overwrite value or put empty value
                 if (force) {
                     item.add_write(value);
@@ -359,6 +367,13 @@ inline size_t RBTree<K, T>::count(const K& key) const {
 #if PRINT_DEBUG
     (!found) ? stats_.absent_count++ : stats_.present_count++;
 #endif
+    if (found) {
+        auto item = Sto::item(const_cast<RBTree<K, T>*>(this), pair.first);
+        if (is_inserted(pair.first->version()) && has_delete(item)) {
+            // read my insert-then-delete
+            return 0;
+        }
+    }
     return (found) ? 1 : 0;
 }
 
@@ -394,6 +409,9 @@ inline size_t RBTree<K, T>::erase(const K& key) {
             if (has_insert(item)) {
                 item.add_write(0).clear_flags(insert_tag).add_flags(delete_tag);
                 return 1;
+            } else if (has_delete(item)) {
+                // insert-then-delete
+                return 0;
             } else {
                 Sto::abort();
                 // unreachable
