@@ -555,8 +555,8 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
                 // if the other transaction hasn't yet committed, we ignore the item and
                 // just insert it ourselves (the other transaction will do the update if it
                 // commits)
-                if (found && !is_inserted(&x->version())) {
-                    if (is_inserted(&x->version()))
+                if (found && !is_inserted(x->version())) {
+                    if (is_inserted(x->version()))
                     lock(&x->version());
                     x->writeable_value() = item.template write_value<T>();
                     TransactionTid::inc_invalid_version(x->version());
