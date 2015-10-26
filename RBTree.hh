@@ -545,7 +545,25 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
                 auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(e->key(), item.template write_value<T>())  );
                 // new node has insert bit set, erase it
                 erase_inserted(&n->version());
-                wrapper_tree_.insert(*n);
+                auto pair = this->find_or_abort(*n, false).first;
+                auto x = pair.first;
+                auto found = pair.second;
+                // if we found the item, this means that another transaction inserted
+                // another item with the same key. we should update it instead of reinsert
+                // tree is locked at this point, so we don't need to worry about other transactions
+                // doing a find
+                // if the other transaction hasn't yet committed, we ignore the item and
+                // just insert it ourselves (the other transaction will do the update if it
+                // commits)
+                if (found && !is_inserted(&x->version())) {
+                    if (is_inserted(&x->version()))
+                    lock(&x->version());
+                    x->writeable_value() = item.template write_value<T>();
+                    TransactionTid::inc_invalid_version(x->version());
+                    unlock(&x->version());
+                } else {
+                    wrapper_tree_.insert(*n);
+                }
                 unlock(&treelock_);
             // else install the update
             } else {
