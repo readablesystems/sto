@@ -184,6 +184,38 @@ void insert_then_delete_tests() {
             assert(tree[i] == i);
         assert(after.try_commit());
     }
+    {
+        tree_type tree;
+        Transaction t1, t2, t3, after;
+        reset_tree(tree);
+        Sto::set_transaction(&t1);
+        // t1: update
+        tree[3] = 13;
+
+        Sto::set_transaction(&t2);
+        // t2: delete key 3
+        assert(tree.erase(3) == 1);
+        // t2 committed
+        assert(t2.try_commit());
+
+        Sto::set_transaction(&t3);
+        // t3: checks that key 3 is not in
+        // the tree, and inserts 3
+        assert(tree.count(3) == 0);
+        tree[3] = 33;
+        // t3 committed
+        assert(t3.try_commit());
+
+        Sto::set_transaction(&t1);
+        // t1 should also be able to commit
+        assert(t1.try_commit());
+
+        Sto::set_transaction(&after);
+        // because t1 committed last, key 3
+        // should correspond to value 13
+        assert(tree[3] == 13);
+        assert(after.try_commit());
+    }
 }
 
 int main() {
