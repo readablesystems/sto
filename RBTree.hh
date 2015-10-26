@@ -191,17 +191,9 @@ private:
         return results;
     }
 
-    // Insert <@key, @value>, optionally force an update if @key exists
+    // Insert nonexistent <@key, @value>
     // return value is a reference to kvp.second
-    inline T& find_insert_update(const K& key, const T& value, bool update) {
-        lock(&treelock_);
-        auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
-        auto pair = this->find_or_abort(node, true).first;
-        auto x = pair.first;
-        auto found = pair.second;
-        
-        // INSERT: kvp did not exist
-        if (!found) {
+    inline T& insert_absent(wrapper_type* found_p, const K& key, const T& value) {
 #if PRINT_DEBUG
             stats_.absent_insert++;
 #endif
@@ -212,12 +204,12 @@ private:
             // invariant: the node's insert_bit should be set
             assert(is_inserted(n->version()));
             // if tree is empty (i.e. no parent), we increment treeversion 
-            if (!x) {
+            if (!found_p) {
                 Sto::item(this, tree_key_).add_write(0);
             // else we increment the parent version 
             } else {
                 assert(p); //XXX ugly code; this is only true because of coarse-grained locking
-                assert(p.node() == x); // XXX same problem as above
+                assert(p.node() == found_p); // XXX same problem as above
                 // returned pair is the versions (unlocked) before and after the increment
                 auto versions = p.node()->inc_nodeversion();
                 auto item = Sto::item(this, reinterpret_cast<uintptr_t>(p.node()) | 1);
@@ -230,9 +222,24 @@ private:
             Sto::item(this, n).add_write(value).add_flags(insert_tag);
             unlock(&treelock_);
             return n->writeable_value();
+    }
+
+    // Insert <@key, @value>, optionally force an update if @key exists and we are not
+    // using the value as a RHS operator[]
+    // return value is a reference to kvp.second
+    inline T& find_insert_update(const K& key, const T& value, bool update) {
+        lock(&treelock_);
+        auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
+        auto pair = this->find_or_abort(node, true).first;
+        auto x = pair.first;
+        auto found = pair.second;
+        
+        // INSERT: kvp did not exist
+        if (!found)
+            return insert_absent(x, key, value);
 
         // UPDATE: kvp is already inserted into the tree
-        } else {
+        else {
 #if PRINT_DEBUG
             stats_.present_insert++;
 #endif
@@ -243,16 +250,15 @@ private:
 #if PRINT_DEBUG
                 printf("Oops!\n");
 #endif
+                assert(0);
                 unlock(&treelock_);
                 Sto::abort();
-                // should be unreachable
                 return x->writeable_value();
             
             // read-my-delete
             } else if (has_delete(item)) {
                 item.clear_flags(delete_tag).add_flags(update_tag);
-                // recover from delete-my-insert (engineer's induction all
-                // over the place...)
+                // recover from delete-my-insert (engineer's induction all over the place...)
                 const T& insert_val = update? value : T();
                 if (is_inserted(x->version())) {
                     // okay to directly update value since we are the only txn
@@ -282,7 +288,6 @@ private:
                 item.add_write(value).add_flags(update_tag);
             } else {
                 // operator[] on RHS (THIS IS A READ!)
-                //XXX function name is really confusing
                 item.add_read(x->version());
             }
             unlock(&treelock_);
