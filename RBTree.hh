@@ -494,10 +494,10 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
         wrapper_type* node = reinterpret_cast<wrapper_type*>(e & ~uintptr_t(1));
         int k_ = node? node->key() : 0;
         int v_ = node? node->writeable_value() : 0;
-        printf("Check failed at TItem %p (key=%d, val=%d)\n", e, k_, v_);
+        printf("Check failed at TItem %p (key=%d, val=%d)\n", (void *)e, k_, v_);
     }
     if (!same_version)
-        printf("\tVersion mismatch: %p -> %p\n", read_version, curr_version);
+        printf("\tVersion mismatch: %lx -> %lx\n", read_version, curr_version);
     if (!not_locked)
         printf("\tVersion locked\n");
     if (!not_deleted)
@@ -538,6 +538,8 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             if (is_deleted(e->version())) {
                 lock(&treelock_);
                 auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(e->key(), item.template write_value<T>())  );
+                // new node has insert bit set, erase it
+                erase_inserted(&n->version());
                 wrapper_tree_.insert(*n);
                 unlock(&treelock_);
             // else install the update
@@ -558,8 +560,10 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
     if (!committed) {
         // if item has been tagged deleted or structured, don't need to do anything 
         // if item has been tagged inserted, then we erase the item
-        if (has_insert(item)) {
+        if (has_insert(item) || has_delete(item)) {
             auto e = item.key<wrapper_type*>();
+            if (!is_inserted(e->version()))
+                return;
             lock(&treelock_);
             wrapper_tree_.erase(*e);
             unlock(&treelock_);
