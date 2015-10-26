@@ -158,6 +158,9 @@ private:
                     return results;
                 } else {
                     // some other transaction inserted this node and hasn't committed
+#if PRINT_DEBUG
+                    printf("Aborted in find_or_abort\n");
+#endif
                     unlock(&treelock_);
                     Sto::abort();
                     // unreachable
@@ -237,6 +240,9 @@ private:
             if (is_deleted(x->version())) {
                 //XXX actually we should assert here
                 // this entire path should be unreachable
+#if PRINT_DEBUG
+                printf("Oops!\n");
+#endif
                 unlock(&treelock_);
                 Sto::abort();
                 // should be unreachable
@@ -407,6 +413,9 @@ inline size_t RBTree<K, T>::erase(const K& key) {
         auto item = Sto::item(this, x);
         // item marked at install as deleted, not deleted yet so abort
         if (is_deleted(x->version())) {
+#if PRINT_DEBUG
+            printf("Aborted in erase (delete bit set)\n");
+#endif
             Sto::abort();
             return 0;
         }
@@ -420,6 +429,9 @@ inline size_t RBTree<K, T>::erase(const K& key) {
                 // insert-then-delete
                 return 0;
             } else {
+#if PRINT_DEBUG
+                printf("Aborted in erase (insert bit set)\n");
+#endif
                 Sto::abort();
                 // unreachable
                 return 0;
@@ -476,6 +488,21 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     bool not_locked = (!is_locked(curr_version) || item.has_lock(trans));
     // to handle the case that we check nodeversion, but the node (parent) is deleted
     bool not_deleted = !is_deleted(curr_version);
+#if PRINT_DEBUG
+    bool check_fails = !(same_version && not_locked && not_deleted);
+    if (check_fails) {
+        wrapper_type* node = reinterpret_cast<wrapper_type*>(e & ~uintptr_t(1));
+        int k_ = node? node->key() : 0;
+        int v_ = node? node->writeable_value() : 0;
+        printf("Check failed at TItem %p (key=%d, val=%d)\n", e, k_, v_);
+    }
+    if (!same_version)
+        printf("\tVersion mismatch: %p -> %p\n", read_version, curr_version);
+    if (!not_locked)
+        printf("\tVersion locked\n");
+    if (!not_deleted)
+        printf("\tDeleted\n");
+#endif
     return same_version && not_locked && not_deleted;
 }
 
