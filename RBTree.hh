@@ -33,8 +33,8 @@ class rbwrapper : public T {
         return *this;
     }
     inline std::pair<Version, Version> inc_nodeversion() {
-        auto new_val = fetch_and_add(&rblinks_.nodeversion_, 100);
-        return std::make_pair(new_val - 100, new_val);
+        auto old_val = fetch_and_add(&rblinks_.nodeversion_, TransactionTid::increment_value);
+        return std::make_pair(old_val, old_val + TransactionTid::increment_value);
     }
     inline Version& nodeversion() {
         return rblinks_.nodeversion_;
