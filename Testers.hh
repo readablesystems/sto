@@ -173,7 +173,7 @@ public:
     }
 
     void check(T* q, T*q1) {
-        for (int i = 0; i < 10000; i++) {
+        for (int i = 0; i < MAX_VALUE; i++) {
 #if PRINT_DEBUG
             std::cout << "i is: " << i << std::endl;
 #endif
@@ -204,7 +204,7 @@ public:
             } RETRY(false);
         }
         TRANSACTION {
-            for (int i = 0; i < 10000; i++) {
+            for (int i = 0; i < MAX_VALUE; i++) {
                 assert(q->count(i) == 0);
             }
         } RETRY(false);

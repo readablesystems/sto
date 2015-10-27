@@ -532,11 +532,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             mark_deleted(&e->version());
             // actually erase
             lock(&treelock_);
-            auto rotated = wrapper_tree_.erase(*e);
-            // increment all nodesversions of rotated nodes
-            for(auto it = rotated.begin(); it != rotated.end(); ++it) {
-                (*it)->inc_nodeversion();
-            } 
+            wrapper_tree_.erase(*e);
             unlock(&treelock_);
             Transaction::rcu_free(e);
         } else if (inserted) {
@@ -595,11 +591,9 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
             if (!is_inserted(e->version()))
                 return;
             lock(&treelock_);
-            auto rotated = wrapper_tree_.erase(*e);
-            // increment all nodesversions of rotated nodes
-            for(auto it = rotated.begin(); it != rotated.end(); ++it) {
-                (*it)->inc_nodeversion();
-            } 
+            auto p = wrapper_tree_.erase(*e);
+            // increment the parent nodeversion after we erase
+            p->inc_nodeversion();            
             unlock(&treelock_);
             mark_deleted(&e->version());
             erase_inserted(&e->version());
