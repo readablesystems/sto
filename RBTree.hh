@@ -151,7 +151,7 @@ private:
             auto item = Sto::item(const_cast<RBTree<K, T>*>(this), x);
             // check if item is inserted by not committed yet 
             if (is_inserted(x->version())) {
-                // check if item was inserted by this transaction
+                // check if item was inserted or inserted->deleted by this transaction 
                 if (has_insert(item) || (has_delete(item))) {
                     return results;
                 } else {
@@ -173,19 +173,19 @@ private:
         } else {
             // XXX this code only works with coarse-grain locking
             if (!insert) {
+                auto boundaries = results.second;
                 // add a read of treeversion if tree is empty
                 if (!x)
                     Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
                 // add a read for all nodes in the path, marking them as nodeversion ptrs
                 for (unsigned int i = 0; i < 2; ++i) {
-                    wrapper_type* n = (i == 0)? results.second.first : results.second.second;
+                    wrapper_type* n = (i == 0)? boundaries.first : boundaries.second;
                     if (n)
                         Sto::item(const_cast<RBTree<K, T>*>(this),
                                         reinterpret_cast<uintptr_t>(n) | 1U).add_read(n->nodeversion());
                 }
             }
         }
-        // item was committed or DNE, so return results
         return results;
     }
 
@@ -196,9 +196,8 @@ private:
             stats_.absent_insert++;
 #endif
             auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, value)  );
-            // insert now returns the parent, before re-balancing, under which the
-            // new leaf is inserted
-            auto p = wrapper_tree_.insert(*n);
+            // insert now returns the nodes rotated during the insert
+            auto rotated = wrapper_tree_.insert(*n);
             // invariant: the node's insert_bit should be set
             assert(is_inserted(n->version()));
             // if tree is empty (i.e. no parent), we increment treeversion 
@@ -206,15 +205,17 @@ private:
                 Sto::item(this, tree_key_).add_write(0);
             // else we increment the parent version 
             } else {
-                assert(p); //XXX ugly code; this is only true because of coarse-grained locking
-                assert(p.node() == found_p); // XXX same problem as above
+                // XXX found_p is the same as the current parent of the node (before rotations)
+                // because of coarse-grained locking
                 // returned pair is the versions (unlocked) before and after the increment
-                auto versions = p.node()->inc_nodeversion();
-                auto item = Sto::item(this, reinterpret_cast<uintptr_t>(p.node()) | 1);
-                // update our own read if necessary
-                if (item.has_read()) {
-                    item.update_read(versions.first, versions.second);
-                }
+                for(auto it = rotated.begin(); it != rotated.end(); ++it) {
+                    auto versions = (*it)->inc_nodeversion();
+                    auto item = Sto::item(this, reinterpret_cast<uintptr_t>(*it) | 1);
+                    // update our own read if necessary
+                    if (item.has_read()) {
+                        item.update_read(versions.first, versions.second);
+                    }
+                } 
             }
             // add write and insert flag of item (value of rbpair) with @value
             Sto::item(this, n).add_write(value).add_flags(insert_tag);
@@ -531,9 +532,11 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             mark_deleted(&e->version());
             // actually erase
             lock(&treelock_);
-            auto p = wrapper_tree_.erase(*e);
-            // increment the parent nodeversion after we erase
-            if (p) p->inc_nodeversion();            
+            auto rotated = wrapper_tree_.erase(*e);
+            // increment all nodesversions of rotated nodes
+            for(auto it = rotated.begin(); it != rotated.end(); ++it) {
+                (*it)->inc_nodeversion();
+            } 
             unlock(&treelock_);
             Transaction::rcu_free(e);
         } else if (inserted) {
@@ -562,7 +565,11 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
                     TransactionTid::atomic_inc_version(x->version());
                     unlock(&x->version());
                 } else {
-                    wrapper_tree_.insert(*n);
+                    auto rotated = wrapper_tree_.insert(*n);
+                    // increment all nodesversions of rotated nodes
+                    for(auto it = rotated.begin(); it != rotated.end(); ++it) {
+                        (*it)->inc_nodeversion();
+                    } 
                 }
                 unlock(&treelock_);
             // else install the update
@@ -588,9 +595,11 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
             if (!is_inserted(e->version()))
                 return;
             lock(&treelock_);
-            auto p = wrapper_tree_.erase(*e);
-            // increment the parent nodeversion after we erase
-            if (p) p->inc_nodeversion();            
+            auto rotated = wrapper_tree_.erase(*e);
+            // increment all nodesversions of rotated nodes
+            for(auto it = rotated.begin(); it != rotated.end(); ++it) {
+                (*it)->inc_nodeversion();
+            } 
             unlock(&treelock_);
             mark_deleted(&e->version());
             erase_inserted(&e->version());

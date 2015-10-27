@@ -34,7 +34,7 @@ class rbnodeptr {
     inline rbnodeptr<T> change_color(bool color) const;
     inline rbnodeptr<T> reverse_color() const;
 
-    inline rbnodeptr<T> rotate(bool isright) const;
+    inline std::pair<std::vector<T*>,rbnodeptr<T>> rotate(bool isright) const;
     inline rbnodeptr<T> flip() const;
 
     size_t size() const;
@@ -171,8 +171,8 @@ class rbtree {
     inline size_t size() const;
 
     // modifiers
-    inline rbnodeptr<T> insert(reference n);
-    inline T* erase(reference x);
+    inline std::vector<T*> insert(reference n);
+    inline std::vector<T*> erase(reference x);
   
     template <typename TT, typename CC>
     friend std::ostream &operator<<(std::ostream &s, const rbtree<TT, CC> &tree);
@@ -184,9 +184,9 @@ class rbtree {
     template <typename K, typename Comp>
     inline std::pair<std::pair<T*, bool>, std::pair<T*, T*>> find_any(const K& key, Comp comp) const;
    
-    void insert_commit(T* x, rbnodeptr<T> p, bool side);
-    T* delete_node(T* victim, T* successor_hint);
-    void delete_node_fixup(rbnodeptr<T> p, bool side);
+    std::vector<T*> insert_commit(T* x, rbnodeptr<T> p, bool side);
+    std::vector<T*> delete_node(T* victim, T* successor_hint);
+    std::vector<T*> delete_node_fixup(rbnodeptr<T> p, bool side);
 
     template<typename K, typename V> friend class RBTree;
 };
@@ -280,14 +280,14 @@ inline rbnodeptr<T> rbnodeptr<T>::reverse_color() const {
 }
 
 template <typename T>
-inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side) const {
+inline std::pair<std::vector<T*>, rbnodeptr<T>> rbnodeptr<T>::rotate(bool side) const {
     rbaccount(rotation);
+    // store the rotated nodes
+    std::vector<T*> rotated;
     rbnodeptr<T> x = child(!side);
-    // XXX no need to track rotations if using boundary nodes
-    // increment the nodeversions of these nodes
-    // node()->inc_nodeversion();
-    // x.node()->inc_nodeversion();
-    // if (x.child(side)) x.child(side).node()->inc_nodeversion();
+    rotated.push_back(node());
+    rotated.push_back(x.node());
+    if (x.child(side)) rotated.push_back(x.child(side).node());
     // perform the rotation 
     if ((child(!side) = x.child(side)))
         x.child(side).parent() = node();
@@ -295,7 +295,7 @@ inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side) const {
     x.child(side) = change_color(true);
     x.parent() = parent();
     parent() = x.node();
-    return x.change_color(old_color);
+    return std::make_pair(rotated, x.change_color(old_color));
 }
 
 template <typename T>
@@ -346,7 +346,8 @@ rbtree<T, C>::~rbtree() {
 }
 
 template <typename T, typename C>
-void rbtree<T, C>::insert_commit(T* x, rbnodeptr<T> p, bool side) {
+std::vector<T*> rbtree<T, C>::insert_commit(T* x, rbnodeptr<T> p, bool side) {
+    std::vector<T*> rotated;
     // link in new node; it's red
     x->rblinks_.p_ = p.node();
     x->rblinks_.c_[0] = x->rblinks_.c_[1] = rbnodeptr<T>(0, false);
@@ -369,18 +370,27 @@ void rbtree<T, C>::insert_commit(T* x, rbnodeptr<T> p, bool side) {
         } else {
             bool gpside = gp.find_child(p.node());
             if (gpside != side) {
-                gp.child(gpside) = p.rotate(gpside);
+                auto rotate_pair = p.rotate(gpside);
+                gp.child(gpside) = rotate_pair.second; 
+                for(auto it = rotate_pair.first.begin(); it != rotate_pair.first.end(); ++it) {
+                   rotated.push_back(*it); 
+                }
             } 
-            z = gp.rotate(!gpside); 
+            auto rotate_pair = gp.rotate(!gpside); 
+            for(auto it = rotate_pair.first.begin(); it != rotate_pair.first.end(); ++it) {
+               rotated.push_back(*it); 
+            }
+            z = rotate_pair.second;
             p = z.black_parent();
         }
         side = p.find_child(gp.node());
         p.set_child(side, z, r_.root_);
     }
+    return rotated;
 }
 
 template <typename T, typename C>
-rbnodeptr<T> rbtree<T, C>::insert(reference x) {
+std::vector<T*> rbtree<T, C>::insert(reference x) {
     rbaccount(insert);
 
     // find insertion point
@@ -390,13 +400,15 @@ rbnodeptr<T> rbtree<T, C>::insert(reference x) {
                  p.child(side)))
         p = p.child(side);
 
-    insert_commit(&x, p, side);
-    return p;
+    auto rotated = insert_commit(&x, p, side);
+    if (p) rotated.push_back(p.node());
+    return rotated;
 }
 
 template <typename T, typename C>
-T* rbtree<T, C>::delete_node(T* victim_node, T* succ) {
+std::vector<T*> rbtree<T, C>::delete_node(T* victim_node, T* succ) {
     using std::swap;
+    std::vector<T*> rotated;
     // find the node's color
     rbnodeptr<T> victim(victim_node, false);
     rbnodeptr<T> p = victim.black_parent();
@@ -442,14 +454,16 @@ T* rbtree<T, C>::delete_node(T* victim_node, T* succ) {
         }
 
     if (!color)
-        delete_node_fixup(p, side);
-   
-    // return parent node to increment nodeversion
-    return p.node();
+        rotated = delete_node_fixup(p, side);
+  
+    if (p) rotated.push_back(p.node());
+    // return rotated nodes 
+    return rotated; 
 }
 
 template <typename T, typename C>
-void rbtree<T, C>::delete_node_fixup(rbnodeptr<T> p, bool side) {
+std::vector<T*> rbtree<T, C>::delete_node_fixup(rbnodeptr<T> p, bool side) {
+    std::vector<T*> rotated;
     while (p && !p.child(0).red() && !p.child(1).red()
            && !p.child(!side).child(0).red()
            && !p.child(!side).child(1).red()) {
@@ -464,8 +478,12 @@ void rbtree<T, C>::delete_node_fixup(rbnodeptr<T> p, bool side) {
         bool gpside = gp.find_child(p.node());
 
         if (p.child(!side).red()) {
+            auto rotate_pair = p.rotate(side);
+            for(auto it = rotate_pair.first.begin(); it != rotate_pair.first.end(); ++it) {
+               rotated.push_back(*it); 
+            }
             // invariant: p is black (b/c one of its children is red)
-            gp.set_child(gpside, p.rotate(side), r_.root_);
+            gp.set_child(gpside, rotate_pair.second, r_.root_);
             gp = p.black_parent(); // p is now further down the tree
             gpside = side;         // (since we rotated in that direction)
         }
@@ -476,18 +494,27 @@ void rbtree<T, C>::delete_node_fixup(rbnodeptr<T> p, bool side) {
             p = p.change_color(false);
         } else {
             if (!w.child(!side).red()) {
-                p.child(!side) = w.rotate(!side);
+                auto rotate_pair = w.rotate(!side);
+                for(auto it = rotate_pair.first.begin(); it != rotate_pair.first.end(); ++it) {
+                   rotated.push_back(*it); 
+                }
+                p.child(!side) = rotate_pair.second;
             }
             bool gpside = gp.find_child(p.node());
             if (gp)
                 p = gp.child(gpside); // fetch correct color for `p`
-            p = p.rotate(side);
+            auto rotate_pair = p.rotate(side);
+            for(auto it = rotate_pair.first.begin(); it != rotate_pair.first.end(); ++it) {
+               rotated.push_back(*it); 
+            }
+            p = rotate_pair.second;
             p.child(0) = p.child(0).change_color(false);
             p.child(1) = p.child(1).change_color(false);
         }
         gp.set_child(gpside, p, r_.root_);
     } else if (p)
         p.child(side) = p.child(side).change_color(false);
+    return rotated;
 }
 
 template <typename T, typename C>
@@ -524,7 +551,7 @@ inline std::pair<std::pair<T*, bool>, std::pair<T*, T*>> rbtree<T, C>::find_any(
 }
 
 template <typename T, typename C>
-inline T* rbtree<T, C>::erase(T& node) {
+inline std::vector<T*> rbtree<T, C>::erase(T& node) {
     rbaccount(erase);
     return delete_node(&node, nullptr);
 }
