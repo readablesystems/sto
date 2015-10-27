@@ -152,9 +152,7 @@ private:
             // check if item is inserted by not committed yet 
             if (is_inserted(x->version())) {
                 // check if item was inserted by this transaction
-                if (has_insert(item)) {
-                    return results;
-                } else if (has_delete(item)) {
+                if (has_insert(item) || (has_delete(item))) {
                     return results;
                 } else {
                     // some other transaction inserted this node and hasn't committed
@@ -557,10 +555,10 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
                 // commits)
                 if (found && !is_inserted(x->version())) {
                     // we cannot lock... possible to deadlock?
-                    //lock(&x->version());
+                    lock(&x->version());
                     x->writeable_value() = item.template write_value<T>();
                     TransactionTid::atomic_inc_version(x->version());
-                    //unlock(&x->version());
+                    unlock(&x->version());
                 } else {
                     wrapper_tree_.insert(*n);
                 }
