@@ -33,12 +33,8 @@ class rbwrapper : public T {
         return *this;
     }
     inline std::pair<Version, Version> inc_nodeversion() {
-        TransactionTid::lock(rblinks_.nodeversion_);
-        Version old_readv = TransactionTid::unlocked(rblinks_.nodeversion_);
-        TransactionTid::inc_invalid_version(rblinks_.nodeversion_);
-        Version new_readv = TransactionTid::unlocked(rblinks_.nodeversion_);
-        TransactionTid::unlock(rblinks_.nodeversion_);
-        return std::make_pair(old_readv, new_readv);
+        auto new_val = fetch_and_add(&rblinks_.nodeversion_, 100);
+        return std::make_pair(new_val - 100, new_val);
     }
     inline Version& nodeversion() {
         return rblinks_.nodeversion_;
@@ -172,6 +168,7 @@ private:
         // ABSENT GET
         } else {
             // XXX this code only works with coarse-grain locking
+            // not an insert (on RHS), add a read of boundary nodes
             if (!insert) {
                 // add a read of treeversion if tree is empty
                 if (!x)
@@ -242,19 +239,10 @@ private:
             stats_.present_insert++;
 #endif
             auto item = Sto::item(this, x);
-            if (is_deleted(x->version())) {
-                //XXX actually we should assert here
-                // this entire path should be unreachable
-#if PRINT_DEBUG
-                printf("Oops!\n");
-#endif
-                assert(0);
-                unlock(&treelock_);
-                Sto::abort();
-                return x->writeable_value();
+            assert(!is_deleted(x->version()));
             
-            // read-my-delete
-            } else if (has_delete(item)) {
+            // insert-my-delete
+            if (has_delete(item)) {
                 item.clear_flags(delete_tag).add_flags(update_tag);
                 // recover from delete-my-insert (engineer's induction all over the place...)
                 const T& insert_val = update? value : T();
@@ -284,10 +272,11 @@ private:
             if (update) {
                 // operator[] on LHS, return value doesn't matter
                 item.add_write(value).add_flags(update_tag);
-            } else {
-                // operator[] on RHS (THIS IS A READ!)
-                item.add_read(x->version());
             }
+            // operator[] on RHS (THIS IS A READ!)
+            // add a read regardless because we need to ensure no one has
+            // deleted this item before we commit
+            item.add_read(x->version());
             unlock(&treelock_);
             return x->writeable_value();
         }
@@ -376,8 +365,8 @@ template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
     lock(&treelock_);
+    // should have added a read of boundary nodes if absent
     auto results = find_or_abort(idx_pair, false);
-    unlock(&treelock_);
     auto pair = results.first;
     auto found = pair.second;
 #if PRINT_DEBUG
@@ -387,9 +376,11 @@ inline size_t RBTree<K, T>::count(const K& key) const {
         auto item = Sto::item(const_cast<RBTree<K, T>*>(this), pair.first);
         if (is_inserted(pair.first->version()) && has_delete(item)) {
             // read my insert-then-delete
+            unlock(&treelock_);
             return 0;
         }
     }
+    unlock(&treelock_);
     return (found) ? 1 : 0;
 }
 
@@ -402,8 +393,8 @@ template <typename K, typename T>
 inline size_t RBTree<K, T>::erase(const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
     lock(&treelock_);
+    // add a read of boundary nodes if absent erase
     auto results = find_or_abort(idx_pair, false);
-    unlock(&treelock_);
     auto pair = results.first; 
     auto x = pair.first;
     auto found = pair.second;
@@ -414,27 +405,24 @@ inline size_t RBTree<K, T>::erase(const K& key) {
         stats_.present_delete++;
 #endif
         auto item = Sto::item(this, x);
-        // item marked at install as deleted, not deleted yet so abort
-        if (is_deleted(x->version())) {
-#if PRINT_DEBUG
-            printf("Aborted in erase (delete bit set)\n");
-#endif
-            Sto::abort();
-            return 0;
-        }
+        assert(!is_deleted(x->version()));
+        
         // item marked as inserted and not yet installed
         if (is_inserted(x->version())) {
             // mark to delete at install time
             if (has_insert(item)) {
                 item.add_write(0).clear_flags(insert_tag).add_flags(delete_tag);
+                unlock(&treelock_);
                 return 1;
             } else if (has_delete(item)) {
                 // insert-then-delete
+                unlock(&treelock_);
                 return 0;
             } else {
 #if PRINT_DEBUG
                 printf("Aborted in erase (insert bit set)\n");
 #endif
+                unlock(&treelock_);
                 Sto::abort();
                 // unreachable
                 return 0;
@@ -442,6 +430,7 @@ inline size_t RBTree<K, T>::erase(const K& key) {
         }
         // found item that has already been installed and not deleted
         item.add_write(0).add_flags(delete_tag);
+        unlock(&treelock_);
         return 1;
 
     // ABSENT ERASE
@@ -449,6 +438,7 @@ inline size_t RBTree<K, T>::erase(const K& key) {
 #if PRINT_DEBUG
         stats_.absent_delete++;
 #endif
+        unlock(&treelock_);
         return 0;
     }
 }
@@ -489,10 +479,8 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
 
     bool same_version = (read_version ^ curr_version) <= TransactionTid::lock_bit;
     bool not_locked = (!is_locked(curr_version) || item.has_lock(trans));
-    // to handle the case that we check nodeversion, but the node (parent) is deleted
-    bool not_deleted = !is_deleted(curr_version);
 #if PRINT_DEBUG
-    bool check_fails = !(same_version && not_locked && not_deleted);
+    bool check_fails = !(same_version && not_locked);
     if (check_fails) {
         wrapper_type* node = reinterpret_cast<wrapper_type*>(e & ~uintptr_t(1));
         int k_ = node? node->key() : 0;
@@ -503,10 +491,8 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
         printf("\tVersion mismatch: %lx -> %lx\n", read_version, curr_version);
     if (!not_locked)
         printf("\tVersion locked\n");
-    if (!not_deleted)
-        printf("\tDeleted\n");
 #endif
-    return same_version && not_locked && not_deleted;
+    return same_version && not_locked;
 }
 
 // key-versionedvalue pairs with the same key will have two different items
@@ -527,49 +513,21 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         assert(deleted || inserted || updated);
         // actually erase the element when installing the delete
         if (deleted) {
-            // mark deleted (in case rcu free doesn't free immediately)
-            mark_deleted(&e->version());
+            // increment value version 
+            TransactionTid::inc_invalid_version(e->version());
             // actually erase
             lock(&treelock_);
-            auto p = wrapper_tree_.erase(*e);
-            // increment the parent nodeversion after we erase
-            if (p) p->inc_nodeversion();            
+            wrapper_tree_.erase(*e);
+            // increment the nodeversion after we erase
+            e->inc_nodeversion();            
             unlock(&treelock_);
             Transaction::rcu_free(e);
         } else if (inserted) {
             erase_inserted(&e->version());
         } else if (updated) {
-            // update, but item deleted by another transaction - we should reinsert the value
-            if (is_deleted(e->version())) {
-                lock(&treelock_);
-                auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(e->key(), item.template write_value<T>())  );
-                // new node has insert bit set, erase it
-                erase_inserted(&n->version());
-                auto pair = this->find_or_abort(*n, false).first;
-                auto x = pair.first;
-                auto found = pair.second;
-                // if we found the item, this means that another transaction inserted
-                // another item with the same key. we should update it instead of reinsert
-                // tree is locked at this point, so we don't need to worry about other transactions
-                // doing a find
-                // if the other transaction hasn't yet committed, we ignore the item and
-                // just insert it ourselves (the other transaction will do the update if it
-                // commits)
-                if (found && !is_inserted(x->version())) {
-                    // we cannot lock... possible to deadlock?
-                    lock(&x->version());
-                    x->writeable_value() = item.template write_value<T>();
-                    TransactionTid::atomic_inc_version(x->version());
-                    unlock(&x->version());
-                } else {
-                    wrapper_tree_.insert(*n);
-                }
-                unlock(&treelock_);
-            // else install the update
-            } else {
-                e->writeable_value() = item.template write_value<T>(); 
-                TransactionTid::inc_invalid_version(e->version());
-            }
+            // already checked that value version has not changed (i.e. no one else deleted)
+            e->writeable_value() = item.template write_value<T>(); 
+            TransactionTid::inc_invalid_version(e->version());
         }
     // we did something to an empty tree, so update treeversion
     } else {
@@ -588,9 +546,9 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
             if (!is_inserted(e->version()))
                 return;
             lock(&treelock_);
-            auto p = wrapper_tree_.erase(*e);
-            // increment the parent nodeversion after we erase
-            if (p) p->inc_nodeversion();            
+            wrapper_tree_.erase(*e);
+            // increment the nodeversion after we erase
+            e->inc_nodeversion();            
             unlock(&treelock_);
             mark_deleted(&e->version());
             erase_inserted(&e->version());
