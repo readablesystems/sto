@@ -172,7 +172,7 @@ class rbtree {
 
     // modifiers
     inline rbnodeptr<T> insert(reference n);
-    inline void erase(reference x);
+    inline T* erase(reference x);
   
     template <typename TT, typename CC>
     friend std::ostream &operator<<(std::ostream &s, const rbtree<TT, CC> &tree);
@@ -185,7 +185,7 @@ class rbtree {
     inline std::pair<std::pair<T*, bool>, std::pair<T*, T*>> find_any(const K& key, Comp comp) const;
    
     void insert_commit(T* x, rbnodeptr<T> p, bool side);
-    void delete_node(T* victim, T* successor_hint);
+    T* delete_node(T* victim, T* successor_hint);
     void delete_node_fixup(rbnodeptr<T> p, bool side);
 
     template<typename K, typename V> friend class RBTree;
@@ -395,7 +395,7 @@ rbnodeptr<T> rbtree<T, C>::insert(reference x) {
 }
 
 template <typename T, typename C>
-void rbtree<T, C>::delete_node(T* victim_node, T* succ) {
+T* rbtree<T, C>::delete_node(T* victim_node, T* succ) {
     using std::swap;
     // find the node's color
     rbnodeptr<T> victim(victim_node, false);
@@ -442,7 +442,10 @@ void rbtree<T, C>::delete_node(T* victim_node, T* succ) {
         }
 
     if (!color)
-        return delete_node_fixup(p, side);
+        delete_node_fixup(p, side);
+   
+    // return parent node to increment nodeversion
+    return p.node();
 }
 
 template <typename T, typename C>
@@ -521,9 +524,9 @@ inline std::pair<std::pair<T*, bool>, std::pair<T*, T*>> rbtree<T, C>::find_any(
 }
 
 template <typename T, typename C>
-inline void rbtree<T, C>::erase(T& node) {
+inline T* rbtree<T, C>::erase(T& node) {
     rbaccount(erase);
-    delete_node(&node, nullptr);
+    return delete_node(&node, nullptr);
 }
 
 // RBNODEPTR FUNCTION DEFINITIONS

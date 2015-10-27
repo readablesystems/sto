@@ -586,7 +586,9 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
             if (!is_inserted(e->version()))
                 return;
             lock(&treelock_);
-            wrapper_tree_.erase(*e);
+            auto p = wrapper_tree_.erase(*e);
+            // increment the parent nodeversion after we erase
+            p->inc_nodeversion();            
             unlock(&treelock_);
             mark_deleted(&e->version());
             erase_inserted(&e->version());
