@@ -556,10 +556,11 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
                 // just insert it ourselves (the other transaction will do the update if it
                 // commits)
                 if (found && !is_inserted(x->version())) {
-                    lock(&x->version());
+                    // we cannot lock... possible to deadlock?
+                    //lock(&x->version());
                     x->writeable_value() = item.template write_value<T>();
                     TransactionTid::atomic_inc_version(x->version());
-                    unlock(&x->version());
+                    //unlock(&x->version());
                 } else {
                     wrapper_tree_.insert(*n);
                 }
