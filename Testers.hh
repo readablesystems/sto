@@ -156,7 +156,7 @@ public:
             auto erased = q->erase(key);
 #if PRINT_DEBUG
             std::cout << "erasing: " << key << std::endl;
-            std::cout << "erase actual: " << erased << std::endl;
+            std::cout << "erase replay: " << erased << std::endl;
             std::cout << "erase expected: " << op->rdata[0] << std::endl;
 #endif
             assert (erased == op->rdata[0]);
@@ -165,7 +165,7 @@ public:
             auto counted = q->count(key);
 #if PRINT_DEBUG
             std::cout << "counting: " << key << std::endl;
-            std::cout << "count actual: " << counted << std::endl;
+            std::cout << "count replay: " << counted << std::endl;
             std::cout << "count expected: " << op->rdata[0] << std::endl;
 #endif
             assert(q->count(key) == op->rdata[0]);
