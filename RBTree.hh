@@ -9,6 +9,8 @@
 #include "RBTreeInternal.hh"
 
 #define PRINT_DEBUG 1
+#define MAGIC_ONE 0xdeadbeefabcddcba
+#define MAGIC_TWO 0x9ae988c74d9bcbfb
 
 template <typename K, typename T>
 class RBTree;
@@ -17,14 +19,8 @@ template <typename T>
 class rbwrapper : public T {
   public:
     typedef TransactionTid::type Version;
-    template <typename... Args> inline rbwrapper(Args&&... args)
-    : T(std::forward<Args>(args)...) {
-    }
-    inline rbwrapper(const T& x)
-    : T(x) {
-    }
-    inline rbwrapper(T&& x) noexcept
-    : T(std::move(x)) {
+    explicit inline rbwrapper(const T& x)
+    : T(x), magic_one(MAGIC_ONE), magic_two(MAGIC_TWO), rblinks_() {
     }
     inline const T& value() const {
         return *this;
@@ -33,12 +29,20 @@ class rbwrapper : public T {
         return *this;
     }
     inline std::pair<Version, Version> inc_nodeversion() {
-        auto old_val = fetch_and_add(&rblinks_.nodeversion_, TransactionTid::increment_value);
+        assert((rblinks_.nodeversion_ & 0x1) == 0);
+        assert(magic_one == MAGIC_ONE);
+        assert(magic_two == MAGIC_TWO);
+        Version old_val = fetch_and_add(&rblinks_.nodeversion_, TransactionTid::increment_value);
         return std::make_pair(old_val, old_val + TransactionTid::increment_value);
     }
-    inline Version& nodeversion() {
+    inline Version nodeversion() {
+        assert((rblinks_.nodeversion_ & 0x1) == 0);
+        assert(magic_one == MAGIC_ONE);
+        assert(magic_two == MAGIC_TWO);
         return rblinks_.nodeversion_;
     }
+    unsigned long magic_one;
+    unsigned long magic_two;
     rblinks<rbwrapper<T> > rblinks_;
 };
 
@@ -176,9 +180,23 @@ private:
                 // add a read for all nodes in the path, marking them as nodeversion ptrs
                 for (unsigned int i = 0; i < 2; ++i) {
                     wrapper_type* n = (i == 0)? results.second.first : results.second.second;
-                    if (n)
+                    if (n) {
+                        auto value_item = Sto::item(const_cast<RBTree<K, T>*>(this), n);
+                        if (is_inserted(n->version()) && !has_insert(value_item) && !has_delete(value_item)) {
+#if PRINT_DEBUG
+                            printf("Aborted in find_or_abort (phantom boundary)\n");
+#endif
+                            unlock(&treelock_);
+                            Sto::abort();
+                            return results;
+                        }
+                        Version v = n->nodeversion();
+#if PRINT_DEBUG
+                        printf("\t#Tracking boundary 0x%lx (k %d), nv 0x%lx\n", (unsigned long)n, n->key(), v);
+#endif
                         Sto::item(const_cast<RBTree<K, T>*>(this),
-                                        reinterpret_cast<uintptr_t>(n) | 1U).add_read(n->nodeversion());
+                                        (reinterpret_cast<uintptr_t>(n)|0x1)).add_read(v);
+                    }
                 }
             }
         }
@@ -192,10 +210,11 @@ private:
 #if PRINT_DEBUG
             stats_.absent_insert++;
 #endif
-            auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, value)  );
+            wrapper_type* n = new wrapper_type(rbpair<K, T>(key, value));
             // insert now returns the parent, before re-balancing, under which the
             // new leaf is inserted
-            auto p = wrapper_tree_.insert(*n);
+            rbnodeptr<wrapper_type> p = wrapper_tree_.insert(*n);
+            fence();
             // invariant: the node's insert_bit should be set
             assert(is_inserted(n->version()));
             // if tree is empty (i.e. no parent), we increment treeversion 
@@ -206,7 +225,12 @@ private:
                 assert(p); //XXX ugly code; this is only true because of coarse-grained locking
                 assert(p.node() == found_p); // XXX same problem as above
                 // returned pair is the versions (unlocked) before and after the increment
+                fence();
                 auto versions = p.node()->inc_nodeversion();
+                fence();
+#if PRINT_DEBUG
+                printf("\t#inc nodeversion 0x%lx (0x%lx -> 0x%lx)\n", (unsigned long)p.node(), versions.first, versions.second);
+#endif
                 auto item = Sto::item(this, reinterpret_cast<uintptr_t>(p.node()) | 1);
                 // update our own read if necessary
                 if (item.has_read()) {
@@ -464,20 +488,31 @@ inline void RBTree<K, T>::unlock(TransItem& item) {
 template <typename K, typename T>
 inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans) {
     auto e = item.key<uintptr_t>();
-    bool is_structured = e & uintptr_t(1);
-    auto read_version = item.read_value<Version>();
+    bool is_treekey = ((uintptr_t)e == (uintptr_t)tree_key_);
+    bool is_structured = (e & uintptr_t(1)) && !is_treekey;
+    Version read_version = item.read_value<Version>();
     Version curr_version;
 
     // set up the correct current version to check: either treeversion, item version, or nodeversion
-    if ((void*)e == (wrapper_type*)tree_key_) {
+    if (is_treekey) {
         curr_version = treeversion_;
     } else if (is_structured) {
+        fence();
         curr_version = reinterpret_cast<wrapper_type*>(e & ~uintptr_t(1))->nodeversion();
+        fence();
+#if PRINT_DEBUG
+        printf("\t#read 0x%lx nv 0x%lx\n", e, curr_version);
+#endif
     } else {
         curr_version = reinterpret_cast<wrapper_type*>(e)->version();
     }
 
-    bool same_version = (read_version ^ curr_version) <= TransactionTid::lock_bit;
+    bool same_version;
+    if (is_structured) {
+        same_version = (read_version == curr_version);
+    } else {
+        same_version = (read_version ^ curr_version) <= TransactionTid::lock_bit;
+    }
     bool not_locked = (!is_locked(curr_version) || item.has_lock(trans));
 #if PRINT_DEBUG
     bool check_fails = !(same_version && not_locked);
@@ -503,7 +538,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
     auto e = item.key<wrapper_type*>();
     if ((void*)e != (wrapper_type*)tree_key_) {
         assert(is_locked(e->version()));
-
+        assert(((uintptr_t)e & 0x1) == 0);
         bool deleted = has_delete(item);
         bool inserted = has_insert(item);
         bool updated = has_update(item);
@@ -513,14 +548,19 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         assert(deleted || inserted || updated);
         // actually erase the element when installing the delete
         if (deleted) {
-            // increment value version 
-            TransactionTid::inc_invalid_version(e->version());
             // actually erase
             lock(&treelock_);
             wrapper_tree_.erase(*e);
             // increment the nodeversion after we erase
-            e->inc_nodeversion();            
             unlock(&treelock_);
+            // increment value version 
+            TransactionTid::inc_invalid_version(e->version());
+#if PRINT_DEBUG
+            printf("\t#inc nodeversion (erase) 0x%lx\n", (unsigned long)e);
+#endif
+            fence();
+            e->inc_nodeversion();
+            fence();
             Transaction::rcu_free(e);
         } else if (inserted) {
             erase_inserted(&e->version());
@@ -543,15 +583,17 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
         // if item has been tagged inserted, then we erase the item
         if (has_insert(item) || has_delete(item)) {
             auto e = item.key<wrapper_type*>();
+            assert(((uintptr_t)e & 0x1) == 0);
             if (!is_inserted(e->version()))
                 return;
             lock(&treelock_);
             wrapper_tree_.erase(*e);
             // increment the nodeversion after we erase
-            e->inc_nodeversion();            
             unlock(&treelock_);
-            mark_deleted(&e->version());
             erase_inserted(&e->version());
+            fence();
+            e->inc_nodeversion();
+            fence();
             Transaction::rcu_free(e);
         }
     }

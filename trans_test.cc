@@ -8,7 +8,7 @@
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define NTRANS 50 // Number of transactions each thread should run.
+#define NTRANS 100 // Number of transactions each thread should run.
 #define N_THREADS 3 // Number of concurrent threads
 #define MAX_OPS 3 // Maximum number of operations in a transaction.
 
@@ -111,6 +111,7 @@ void print_time(struct timeval tv1, struct timeval tv2) {
 }
 
 int main() {
+    std::ios_base::sync_with_stdio(true);
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
     lock = 0;
 
