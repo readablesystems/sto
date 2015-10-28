@@ -54,7 +54,7 @@ class rblinks {
  
     T* p_;
     rbnodeptr<T> c_[2];
-    mutable Version nodeversion_;
+//    mutable Version nodeversion_;
 }; 
 
 namespace rbpriv {
