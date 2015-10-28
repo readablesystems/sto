@@ -18,6 +18,7 @@ void rbaccount_report() {
 
 #define PAIR(k,v) std::pair<int, int>(k, v)
 typedef RBTree<int, int> tree_type;
+TransactionTid::type lock;
 // initialize the tree: contains (1,1), (2,2), (3,3)
 void reset_tree(tree_type& tree) {
     Transaction init;
@@ -207,14 +208,46 @@ void insert_then_delete_tests() {
         assert(t3.try_commit());
 
         Sto::set_transaction(&t1);
-        // t1 should also be able to commit
-        assert(t1.try_commit());
+        // t1 cannot commit in the current scheme
+        assert(!t1.try_commit());
 
         Sto::set_transaction(&after);
-        // because t1 committed last, key 3
-        // should correspond to value 13
-        assert(tree[3] == 13);
+        assert(tree[3] == 33);
         assert(after.try_commit());
+    }
+}
+
+void mem_tests() {
+    {
+        tree_type tree;
+        Transaction t1, t2, after;
+        reset_tree(tree);
+
+        Sto::set_transaction(&t1);
+        // absent get of key 4
+        assert(tree.count(4) == 0);
+        Sto::set_transaction(&t2);
+        tree[5] = 5;
+        assert(t2.try_commit());
+        Sto::set_transaction(&t1);
+        // t1 should abort as a result
+        assert(!t1.try_commit());
+
+        Sto::set_transaction(&after);
+        assert(tree.count(4) == 0);
+        assert(tree[5] == 5);
+        assert(after.try_commit());
+    }
+    {
+        tree_type tree;
+        Transaction t1;
+        reset_tree(tree);
+
+        Sto::set_transaction(&t1);
+        tree.erase(1);
+        tree.erase(2);
+        tree.erase(3);
+        assert(t1.try_commit());
     }
 }
 
@@ -259,7 +292,9 @@ int main() {
     erase_conflict_tests();
     update_conflict_tests();
     insert_then_delete_tests();
+    mem_tests();
     // test abort-cleanup
+    std::cout << "ALL TESTS PASS!!" << std:: endl;
     return 0;
 }
 

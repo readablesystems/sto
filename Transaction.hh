@@ -746,8 +746,13 @@ private:
 
     tid_type commit_tid() const {
         assert(writeset_);
-        if (!commit_tid_)
+        if (commit_tid_ == 0) {
+            //TransactionTid::lock(_TID);
+            //commit_tid_ = TransactionTid::unlocked(_TID);
+            //TransactionTid::inc_invalid_version(_TID);
+            //TransactionTid::unlock(_TID);
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
+        }
         return commit_tid_;
     }
 
@@ -788,7 +793,7 @@ public:
   static __thread Transaction* __transaction;
 
   static void start_transaction() {
-    if (!__transaction) {
+    if (__transaction == nullptr) {
       __transaction = new Transaction();
     } else {
       if (__transaction->inProgress()) {
@@ -807,7 +812,7 @@ public:
   class NotInTransaction{};
 
   static bool trans_in_progress() {
-    if (__transaction == NULL)
+    if (__transaction == nullptr)
       return false;
     else
       return __transaction->inProgress();

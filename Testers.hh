@@ -11,7 +11,7 @@
 #include "Vector.hh"
 
 #define MAX_VALUE 10 // Max value of integers used in data structures
-#define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements.
+#define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements.
 
 struct Rand {
     typedef uint32_t result_type;
@@ -156,7 +156,7 @@ public:
             auto erased = q->erase(key);
 #if PRINT_DEBUG
             std::cout << "erasing: " << key << std::endl;
-            std::cout << "erase actual: " << erased << std::endl;
+            std::cout << "erase replay: " << erased << std::endl;
             std::cout << "erase expected: " << op->rdata[0] << std::endl;
 #endif
             assert (erased == op->rdata[0]);
