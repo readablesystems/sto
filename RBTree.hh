@@ -196,9 +196,7 @@ private:
                         return results;
                     }
                     if (!insert) {
-                        memory_fence();
                         Version v = n->nodeversion();
-                        memory_fence();
 #if PRINT_DEBUG
                         TransactionTid::lock(::lock);
                         printf("\t#Tracking boundary 0x%lx (k %d), nv 0x%lx\n", (unsigned long)n, n->key(), v);
@@ -225,7 +223,6 @@ private:
             // insert now returns the parent, before re-balancing, under which the
             // new leaf is inserted
             rbnodeptr<wrapper_type> p = wrapper_tree_.insert(*n);
-            fence();
             // invariant: the node's insert_bit should be set
             assert(is_inserted(n->version()));
             // if tree is empty (i.e. no parent), we increment treeversion 
@@ -236,9 +233,7 @@ private:
                 assert(p); //XXX ugly code; this is only true because of coarse-grained locking
                 assert(p.node() == found_p); // XXX same problem as above
                 // returned pair is the versions (unlocked) before and after the increment
-                memory_fence();
                 auto versions = p.node()->inc_nodeversion();
-                memory_fence();
                 auto item = Sto::item(this, reinterpret_cast<uintptr_t>(p.node()) | 1);
                 // update our own read if necessary
                 if (item.has_read()) {
@@ -503,7 +498,6 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     Version read_version = item.read_value<Version>();
     Version curr_version;
 
-    memory_fence();
     // set up the correct current version to check: either treeversion, item version, or nodeversion
     if (is_treekey) {
         curr_version = treeversion_;
@@ -518,7 +512,6 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     } else {
         curr_version = reinterpret_cast<wrapper_type*>(e)->version();
     }
-    memory_fence();
 
     bool same_version;
     if (is_structured) {
@@ -577,9 +570,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             printf("\t#inc nodeversion (erase) 0x%lx\n", (unsigned long)e);
             TransactionTid::unlock(::lock);
 #endif
-            memory_fence();
             e->inc_nodeversion();
-            memory_fence();
             Transaction::rcu_free(e);
         } else if (inserted) {
             erase_inserted(&e->version());
@@ -610,9 +601,7 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
             // increment the nodeversion after we erase
             unlock(&treelock_);
             erase_inserted(&e->version());
-            memory_fence();
             e->inc_nodeversion();
-            memory_fence();
             Transaction::rcu_free(e);
         }
     }

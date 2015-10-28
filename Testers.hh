@@ -87,6 +87,9 @@ public:
     }
 
     op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
+#if !PRINT_DEBUG
+        (void)me;
+#endif
         int key = slotdist(transgen);
         if (op == 0) {
             int val = slotdist(transgen);
@@ -153,7 +156,7 @@ public:
 #endif
         } else if (op->op == 1) {
             int key = op->args[0];
-            auto erased = q->erase(key);
+            int erased = q->erase(key);
 #if PRINT_DEBUG
             std::cout << "erasing: " << key << std::endl;
             std::cout << "erase replay: " << erased << std::endl;
@@ -162,13 +165,13 @@ public:
             assert (erased == op->rdata[0]);
         } else {
             int key = op->args[0];
-            auto counted = q->count(key);
+            int counted = q->count(key);
 #if PRINT_DEBUG
             std::cout << "counting: " << key << std::endl;
             std::cout << "count replay: " << counted << std::endl;
             std::cout << "count expected: " << op->rdata[0] << std::endl;
 #endif
-            assert(q->count(key) == op->rdata[0]);
+            assert(counted == op->rdata[0]);
         }
     }
 
