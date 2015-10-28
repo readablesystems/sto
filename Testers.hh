@@ -11,7 +11,7 @@
 #include "Vector.hh"
 
 #define MAX_VALUE 10 // Max value of integers used in data structures
-#define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements.
+#define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements.
 
 struct Rand {
     typedef uint32_t result_type;

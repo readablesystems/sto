@@ -8,13 +8,10 @@
 #include "VersionFunctions.hh"
 #include "RBTreeInternal.hh"
 
-#define PRINT_DEBUG 1
-#define MAGIC_ONE 0xdeadbeefabcddcba
-#define MAGIC_TWO 0x9ae988c74d9bcbfb
+#define PRINT_DEBUG 0
 
 #if PRINT_DEBUG
-typedef TransactionTid::type Version;
-extern Version lock;
+extern TransactionTid::type Version lock;
 #endif
 
 template <typename K, typename T>
@@ -25,7 +22,7 @@ class rbwrapper : public T {
   public:
     typedef TransactionTid::type Version;
     explicit inline rbwrapper(const T& x)
-    : T(x), nodeversion_(0), magic_one(MAGIC_ONE), magic_two(MAGIC_TWO) {
+    : T(x), nodeversion_(0) {
     }
     inline const T& value() const {
         return *this;
@@ -34,15 +31,9 @@ class rbwrapper : public T {
         return *this;
     }
     inline std::pair<Version, Version> inc_nodeversion() {
-        //assert((rblinks_.nodeversion_ & 0x1) == 0);
-        assert(magic_one == MAGIC_ONE);
-        assert(magic_two == MAGIC_TWO);
         Version old_val, new_val;
-        TransactionTid::lock(nodeversion_);
-        old_val = TransactionTid::unlocked(nodeversion_);
-        TransactionTid::inc_invalid_version(nodeversion_);
-        new_val = TransactionTid::unlocked(nodeversion_);
-        TransactionTid::unlock(nodeversion_);
+        old_val = fetch_and_add(&nodeversion_, TransactionTid::increment_value);
+        new_val = old_val + TransactionTid::increment_value;
 #if PRINT_DEBUG
         TransactionTid::lock(::lock);
         printf("\t#inc nodeversion 0x%lx (0x%lx -> 0x%lx)\n", (unsigned long)this, old_val, new_val);
@@ -51,18 +42,9 @@ class rbwrapper : public T {
         return std::make_pair(old_val, new_val);
     }
     inline Version nodeversion() {
-        //assert((rblinks_.nodeversion_ & 0x1) == 0);
-        assert(magic_one == MAGIC_ONE);
-        assert(magic_two == MAGIC_TWO);
-        Version v;
-        TransactionTid::lock(nodeversion_);
-        v = TransactionTid::unlocked(nodeversion_);
-        TransactionTid::unlock(nodeversion_);
-        return v;
+        return nodeversion_;
     }
     Version nodeversion_;
-    unsigned long magic_one;
-    unsigned long magic_two;
     rblinks<rbwrapper<T> > rblinks_;
 };
 
