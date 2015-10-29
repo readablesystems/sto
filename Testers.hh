@@ -9,7 +9,7 @@
 #include "Hashtable.hh"
 #include "RBTree.hh"
 
-#define MAX_VALUE 15 // Max value of integers used in data structures
+#define MAX_VALUE 10 // Max value of integers used in data structures
 #define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements.
 
 struct Rand {
@@ -170,6 +170,9 @@ public:
 
     void check(T* q, T*q1) {
         for (int i = 0; i < 10000; i++) {
+#if PRINT_DEBUG
+            std::cout << "i is: " << i << std::endl;
+#endif
             TRANSACTION {
                 int c = q->count(i);
                 int c1 = q1->count(i);
