@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vector>
 #include <iomanip>
 
 #ifndef rbaccount
@@ -53,7 +54,7 @@ class rblinks {
  
     T* p_;
     rbnodeptr<T> c_[2];
-    mutable Version nodeversion_;
+//    mutable Version nodeversion_;
 }; 
 
 namespace rbpriv {
@@ -170,8 +171,8 @@ class rbtree {
     inline size_t size() const;
 
     // modifiers
-    inline void insert(reference n);
-    inline void erase(reference x);
+    inline rbnodeptr<T> insert(reference n);
+    inline T* erase(reference x);
   
     template <typename TT, typename CC>
     friend std::ostream &operator<<(std::ostream &s, const rbtree<TT, CC> &tree);
@@ -181,10 +182,10 @@ class rbtree {
     rbpriv::rbrep<T, Compare> r_;
 
     template <typename K, typename Comp>
-    inline std::pair<std::pair<T*, bool>, std::vector<T*>> find_any(const K& key, Comp comp) const;
+    inline std::pair<std::pair<T*, bool>, std::pair<T*, T*>> find_any(const K& key, Comp comp) const;
    
     void insert_commit(T* x, rbnodeptr<T> p, bool side);
-    void delete_node(T* victim, T* successor_hint);
+    T* delete_node(T* victim, T* successor_hint);
     void delete_node_fixup(rbnodeptr<T> p, bool side);
 
     template<typename K, typename V> friend class RBTree;
@@ -282,10 +283,11 @@ template <typename T>
 inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side) const {
     rbaccount(rotation);
     rbnodeptr<T> x = child(!side);
+    // XXX no need to track rotations if using boundary nodes
     // increment the nodeversions of these nodes
-    node()->inc_nodeversion();
-    x.node()->inc_nodeversion();
-    if (x.child(side)) x.child(side).node()->inc_nodeversion();
+    // node()->inc_nodeversion();
+    // x.node()->inc_nodeversion();
+    // if (x.child(side)) x.child(side).node()->inc_nodeversion();
     // perform the rotation 
     if ((child(!side) = x.child(side)))
         x.child(side).parent() = node();
@@ -378,7 +380,7 @@ void rbtree<T, C>::insert_commit(T* x, rbnodeptr<T> p, bool side) {
 }
 
 template <typename T, typename C>
-void rbtree<T, C>::insert(reference x) {
+rbnodeptr<T> rbtree<T, C>::insert(reference x) {
     rbaccount(insert);
 
     // find insertion point
@@ -389,10 +391,11 @@ void rbtree<T, C>::insert(reference x) {
         p = p.child(side);
 
     insert_commit(&x, p, side);
+    return p;
 }
 
 template <typename T, typename C>
-void rbtree<T, C>::delete_node(T* victim_node, T* succ) {
+T* rbtree<T, C>::delete_node(T* victim_node, T* succ) {
     using std::swap;
     // find the node's color
     rbnodeptr<T> victim(victim_node, false);
@@ -439,7 +442,10 @@ void rbtree<T, C>::delete_node(T* victim_node, T* succ) {
         }
 
     if (!color)
-        return delete_node_fixup(p, side);
+        delete_node_fixup(p, side);
+   
+    // return parent node to increment nodeversion
+    return p.node();
 }
 
 template <typename T, typename C>
@@ -492,27 +498,35 @@ inline T* rbtree<T, C>::root() {
 // Return a pair of node, bool: if bool is true, then the node is the found node, 
 // else if bool is false the node is the parent of the absent read. If (null, false), we have
 // an empty tree
+// XXX always tracking boundary right now, seems a bit inefficient for inserts
 template <typename T, typename C> template <typename K, typename Comp>
-inline std::pair<std::pair<T*, bool>, std::vector<T*>> rbtree<T, C>::find_any(const K& key, Comp comp) const {
+inline std::pair<std::pair<T*, bool>, std::pair<T*, T*>> rbtree<T, C>::find_any(const K& key, Comp comp) const {
     T* n = r_.root_;
     T* p = nullptr;
-    std::vector<T*> path;
+    std::pair<T*, T*> boundary = std::make_pair(r_.limit_[0], r_.limit_[1]);
     while (n) {
-        path.push_back(n);
         int cmp = comp.compare(key, *n);
         if (cmp == 0)
             break;
-        p = n->rblinks_.p_;
+
+        // narrow down to find the boundary nodes
+        // update the LEFT boundary when going RIGHT, and vice versa
+        if (cmp > 0) {
+            boundary.first = n;
+        } else {
+            boundary.second = n;
+        }
+        p = n;
         n = n->rblinks_.c_[cmp > 0].node();
     }
     auto nodepair = std::make_pair((n) ? n : p, n);
-    return std::make_pair(nodepair, path);
+    return std::make_pair(nodepair, boundary);
 }
 
 template <typename T, typename C>
-inline void rbtree<T, C>::erase(T& node) {
+inline T* rbtree<T, C>::erase(T& node) {
     rbaccount(erase);
-    delete_node(&node, nullptr);
+    return delete_node(&node, nullptr);
 }
 
 // RBNODEPTR FUNCTION DEFINITIONS

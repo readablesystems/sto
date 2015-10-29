@@ -3,10 +3,10 @@
 #include "Vector.hh"
 #include <algorithm>
 
-template <typename T>
+template <typename T, int INIT_CAPACITY = 10000>
 class PriorityQueue1 {
 public:
-    PriorityQueue1() : elems() {}
+    PriorityQueue1() : elems(INIT_CAPACITY) {}
 
     
     void push(T v) {
@@ -15,12 +15,16 @@ public:
     }
     
     void pop() {
+        try {
         std::pop_heap(elems.begin(), elems.end());
         elems.pop_back();
+        } catch (OutOfBoundsException e) {}
     }
     
     T top() {
+        try {
         return elems.front();
+        } catch (OutOfBoundsException e) {}
     }
     
     uint32_t size() {

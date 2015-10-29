@@ -60,6 +60,9 @@ public:
         release_fence();
         v = new_v;
     }
+    static void atomic_inc_version(type& v) {
+        fetch_and_add(&v, increment_value);
+    }
 
     static bool same_version(type v1, type v2) {
         return (v1 ^ v2) <= lock_bit;

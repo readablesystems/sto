@@ -254,9 +254,9 @@ inline int unval(const value_type& v) {
 template <typename T>
 void prepopulate_func(T& a) {
   for (int i = 0; i < prepopulate; ++i) {
-    TRANSACTION {
-    a.transWrite(i, val(i+1));
-    } RETRY(false)
+      TRANSACTION {
+          a.transWrite(i, val(i+1));
+      } RETRY(false);
   }
   std::cout << "Done prepopulating " << std::endl;
 }
@@ -467,7 +467,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
 #endif
         }
       }
-    } RETRY(true)
+    } RETRY(true);
 #if MAINTAIN_TRUE_ARRAY_STATE
     if (maintain_true_array_state) {
         std::sort(slots_written, slots_written + nslots_written);
@@ -582,7 +582,7 @@ template <int DS> void KingDelete<DS>::run(int me) {
           a->transWrite(i, val(i+1));
         }
       }
-  } RETRY(true)
+  } RETRY(true);
 }
 
 template <int DS> bool KingDelete<DS>::check() {
@@ -633,7 +633,7 @@ template <int DS> void XorDelete<DS>::run(int me) {
             Container<DS>::transDelete(*a, slot);
           }
         }
-    } RETRY(true)
+    } RETRY(true);
   }
 }
 
@@ -671,7 +671,7 @@ template <int DS> void IsolatedWrites<DS>::run(int me) {
       a->transRead(i);
     }
     a->transWrite(me, val(me+1));
-  } RETRY(true)
+  } RETRY(true);
       
   
 }
@@ -706,7 +706,7 @@ template <int DS> void BlindWrites<DS>::run(int me) {
     if (me == nthreads-1) {
       a->transWrite(0, val(me));
     }
-  } RETRY(true)
+  } RETRY(true);
 }
 
 template <int DS> bool BlindWrites<DS>::check() {
@@ -736,7 +736,7 @@ template <int DS> void InterferingRWs<DS>::run(int me) {
         a->transWrite(i, val(unval(cur)+1));
       }
     }
-  } RETRY(true)
+  } RETRY(true);
 }
 
 template <int DS> bool InterferingRWs<DS>::check() {
@@ -765,7 +765,7 @@ void Qxordeleterun(int me) {
           else
               q->transPop(t);
         }
-    } RETRY(true)
+    } RETRY(true);
   }
 }
 
@@ -805,7 +805,7 @@ void Qtransferrun(int me) {
             q2->transPush(t, v);
           }
         }
-    } RETRY(true)
+    } RETRY(true);
   }
 }
 

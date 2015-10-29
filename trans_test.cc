@@ -8,14 +8,15 @@
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define NTRANS 50 // Number of transactions each thread should run.
-#define N_THREADS 1 // Number of concurrent threads
-#define MAX_OPS 3 // Maximum number of operations in a transaction.
+#define NTRANS 200 // Number of transactions each thread should run.
+#define N_THREADS 3 // Number of concurrent threads
+#define MAX_OPS 5 // Maximum number of operations in a transaction.
 
 #define PRIORITY_QUEUE 0
 #define HASHTABLE 1
 #define RBTREE 2
-#define DS RBTREE
+#define VECTOR 3
+#define DS RBTREE 
 
 #if DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
@@ -23,6 +24,8 @@ PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
 HashtableTester<Hashtable<int, int, false, 1000000>> tester = HashtableTester<Hashtable<int, int, false, 1000000>>();
 #elif DS == RBTREE
 RBTreeTester<RBTree<int, int>> tester = RBTreeTester<RBTree<int, int>>();
+#elif DS == VECTOR
+VectorTester<Vector<int>> tester = VectorTester<Vector<int>>();
 #endif
 
 template <typename T>
@@ -34,7 +37,9 @@ void run(T* q, int me) {
         // so that retries of this transaction do the same thing
         auto transseed = i;
         txn_record *tr = new txn_record;
-        TRANSACTION {
+        while (1) {
+        Sto::start_transaction();
+        try {
             tr->ops.clear();
             
             uint32_t seed = transseed*3 + (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_THREADS*NTRANS*11;
@@ -48,27 +53,27 @@ void run(T* q, int me) {
                 int op = slotdist(transgen) % tester.num_ops_;
                 tr->ops.push_back(tester.doOp(q, op, me, slotdist, transgen));
             }
-        }
-        if (Sto::try_commit()) {
+
+            if (Sto::try_commit()) {
 #if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] committed " << Sto::commit_tid() << std::endl;
-            TransactionTid::unlock(lock);
+                TransactionTid::lock(lock);
+                std::cout << "[" << me << "] committed " << Sto::commit_tid() << std::endl;
+                TransactionTid::unlock(lock);
 #endif
-            txn_list[me][Sto::commit_tid()] = tr;
-            break;
-        } else {
+                txn_list[me][Sto::commit_tid()] = tr;
+                break;
+            } else {
+#if PRINT_DEBUG
+                TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
+#endif
+            }
+
+        } catch (Transaction::Abort e) {
 #if PRINT_DEBUG
             TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
 #endif
         }
-        
-    } catch (Transaction::Abort e) {
-#if PRINT_DEBUG
-        TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
-#endif
-    }
-    }
+        }
     }
 }
 
@@ -106,6 +111,7 @@ void print_time(struct timeval tv1, struct timeval tv2) {
 }
 
 int main() {
+    std::ios_base::sync_with_stdio(true);
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
     lock = 0;
 
@@ -118,6 +124,9 @@ int main() {
 #elif DS == RBTREE
     RBTree<int, int> q;
     RBTree<int, int> q1;
+#elif DS == VECTOR
+    Vector<int> q;
+    Vector<int> q1;
 #endif  
 
     tester.init(&q);
@@ -157,13 +166,17 @@ int main() {
     
     std::map<uint64_t, txn_record *>::iterator it = combined_txn_list.begin();
     for(; it != combined_txn_list.end(); it++) {
+#if PRINT_DEBUG
         std::cout << "BEGIN txn " << it->first << std::endl;
+#endif
         Sto::start_transaction();
         for (unsigned i = 0; i < it->second->ops.size(); i++) {
             tester.redoOp(&q1, it->second->ops[i]);
         }
         assert(Sto::try_commit());
+#if PRINT_DEBUG
         std::cout << "COMMITTED" << std::endl;
+#endif
     }
     
     gettimeofday(&tv2, NULL);

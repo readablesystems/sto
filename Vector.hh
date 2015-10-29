@@ -11,6 +11,8 @@
 
 #define log2(x) ceil(log((double) size) / log(2.0))
 
+class OutOfBoundsException {};
+
 template<typename T, bool Opacity = false, typename Elem = Box<T>> class VecIterator;
 template<typename T, bool Opacity, typename Elem> struct T_wrapper;
 
@@ -27,27 +29,30 @@ class Vector : public Shared {
     static constexpr TransItem::flags_type list_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
 public:
-    typedef unsigned key_type;
+    typedef int key_type;
     typedef T value_type;
     
     typedef VecIterator<T, Opacity, Elem> iterator;
     typedef const VecIterator<T, Opacity, Elem> const_iterator;
     typedef wrapper& reference;
-    typedef uint32_t size_type;
+    typedef int32_t size_type;
+
     
-    
-    Vector() {
+    Vector(): resize_lock_() {
         capacity_ = 0;
         size_ = 0;
         vecversion_ = 0;
         data_ = NULL;
     }
     
-    Vector(uint32_t size) {
-        size_ = size;
+    Vector(int32_t size): resize_lock_() {
+        size_ = 0;
         capacity_ = 1 << ((int) log2(size));
         vecversion_ = 0;
-        data_ = new T[capacity_];
+        data_ = new Elem[capacity_];
+        for (int i = 0; i < capacity_; i++) {
+            data_[i].initialize(this, i);
+        }
     }
     
     void reserve(uint32_t new_capacity) {
@@ -63,8 +68,10 @@ public:
             new_data[i].initialize(this, i);
         }
         capacity_ = new_capacity;
-        Elem* old_data = data_;
-        Transaction::rcu_cleanup([old_data] () {delete[] old_data; });
+        if (data_ != NULL) {
+            Elem* old_data = data_;
+            Transaction::rcu_cleanup([old_data] () {delete[] old_data; });
+        }
         data_ = new_data;
         resize_lock_.write_unlock();
     }
@@ -102,6 +109,7 @@ public:
         }
         else {
             item.add_write(v);
+            item.clear_flags(list_bit);
         }
         add_lock_vector_item();
         add_trans_size_offs(1);
@@ -119,6 +127,7 @@ public:
                 /* list */
                 auto& write_list= item.template write_value<std::vector<T>>();
                 write_list.pop_back();
+                if (write_list.size() == 0) item.clear_write();
                 add_trans_size_offs(-1);
                 return;
             }
@@ -126,14 +135,18 @@ public:
         // add vecversion_ to the read set
         auto vecitem = t_item(this).add_read(vecversion_);
         acquire_fence();
-        uint32_t size = size_;
+        int32_t size = size_;
         acquire_fence();
         if (size + trans_size_offs() == 0) {
             // Empty vector, behavior is undefined - so do nothing
         } else {
             // add vecversion_ to the write set as well
             vecitem.add_write(0);
-            Sto::item(this, size_ + trans_size_offs() - 1).add_write(0).add_flags(delete_bit);
+            auto item = Sto::item(this, size_ + trans_size_offs() - 1).add_write(0).add_flags(delete_bit);
+            if (item.flags() & Elem::valid_only_bit) {
+                item.clear_read();
+                item.clear_flags(Elem::valid_only_bit);
+            }
             add_trans_size_offs(-1);
         }
     }
@@ -188,22 +201,34 @@ public:
     }
     
     value_type transGet(const key_type& i){
-        //std::cout << "Reading " << i << std::endl;
         Version ver = vecversion_;
         acquire_fence();
-        uint32_t size = size_;
+        int32_t size = size_;
         acquire_fence();
-        assert(i < size + trans_size_offs());
+        if (i >= size + trans_size_offs()) {
+            auto vecitem = t_item(this);
+            bool aborted = false;
+            if (vecitem.has_read()) {
+                auto lv = vecversion_;
+                if (!TransactionTid::same_version(lv, vecitem.template read_value<Version>())
+                    || is_locked(lv)) {
+                    aborted = true;
+                    Sto::abort();
+                }
+            }
+            if (!aborted) {
+                vecitem.add_read(ver);
+                throw OutOfBoundsException();
+            }
+        }
         if (i < size)
             return data_[i].transRead();
         else {
             int diff = i - size;
             
             auto extra_items = Sto::item(this, push_back_key);
-            if (!extra_items.has_read()) {
-                // We need to register the vecversion_ to invalidate other concurrent push_backs.
-                extra_items.add_read(ver);
-            }
+            // We need to register the vecversion_ to invalidate other concurrent push_backs.
+            t_item(this).add_read(ver);
             if (extra_items.has_write()) {
                 if (is_list(extra_items)) {
                     auto& write_list= extra_items.template write_value<std::vector<T>>();
@@ -226,19 +251,33 @@ public:
         //std::cout << "Writing to " << i << " with value " << v << std::endl;
         Version ver = vecversion_;
         acquire_fence();
-        uint32_t size = size_;
+        int32_t size = size_;
         acquire_fence();
-        assert(i < size + trans_size_offs());
+        if (i >= size + trans_size_offs()) {
+            bool aborted = false;
+            auto vecitem = t_item(this);
+            if (vecitem.has_read()) {
+                auto lv = vecversion_;
+                if (!TransactionTid::same_version(lv, vecitem.template read_value<Version>())
+                    || is_locked(lv)) {
+                    aborted = true;
+                    Sto::abort();
+                }
+            }
+            if (!aborted) {
+                vecitem.add_read(ver);
+                throw OutOfBoundsException();
+            }
+
+        }
         if (i < size)
             data_[i].transWrite(std::move(v));
         else {
             int diff = i - size;
             
             auto extra_items = Sto::item(this, push_back_key);
-            if (!extra_items.has_read()) {
-                // We need to register the vecversion_ to invalidate other concurrent push_backs.
-                extra_items.add_read(ver);
-            }
+            // We need to register the vecversion_ to invalidate other concurrent push_backs.
+            t_item(this).add_read(ver);
             if (extra_items.has_write()) {
                 if (is_list(extra_items)) {
                     auto& write_list= extra_items.template write_value<std::vector<T>>();
@@ -253,7 +292,9 @@ public:
                     extra_items.clear_write();
                     extra_items.add_write(v);
                 }
-            } else assert(false);
+            } else {
+                assert(false);
+            }
         }
     }
     
@@ -333,24 +374,34 @@ public:
                 && (!is_locked(lv) || item.has_lock(trans));
         }
         key_type i = item.key<key_type>();
+        if (item.flags() & Elem::valid_only_bit) {
+            if (i >= size_ + trans_size_offs()) {
+                return false;
+            }
+        }
         return data_[i].check(item, trans);
     }
     
     void lock(TransItem& item){
-        if (item.key<Vector*>() == this)
+        if (item.key<Vector*>() == this) {
             lock_version(vecversion_); // TODO: no need to lock vecversion_ if trans_size_offs() is 0
-        else if (item.key<int>() == push_back_key)
+        } else if (item.key<int>() == push_back_key) {
             return; // Do nothing as we will anyways lock vecversion for size.
-        else
+        }
+        else {
             lock(item.key<key_type>());
+        }
     }
     void unlock(TransItem& item){
-        if (item.key<Vector*>() == this)
+        if (item.key<Vector*>() == this) {
             unlock_version(vecversion_);
-        else if (item.key<int>() == push_back_key)
+        }
+        else if (item.key<int>() == push_back_key) {
             return;
-        else
+        }
+        else {
             unlock(item.key<key_type>());
+        }
     }
     
     void install(TransItem& item, const Transaction& t) {
@@ -368,7 +419,9 @@ public:
                         reserve(new_capacity);
                     }
                     resize_lock_.read_lock();
-                    data_[size_++].write(write_list[i]);
+                    data_[size_].write(write_list[i]);
+                    acquire_fence();
+                    size_++;
                     resize_lock_.read_unlock();
                 }
             }
@@ -380,7 +433,9 @@ public:
                     reserve(new_capacity);
                 }
                 resize_lock_.read_lock();
-                data_[size_++].write(val);
+                data_[size_].write(val);
+                acquire_fence();
+                size_++;
                 resize_lock_.read_unlock();
             }
             
@@ -401,9 +456,8 @@ public:
                         TransactionTid::inc_invalid_version(vecversion_);
                     }
                 }
-            } else if (index >= size_) { // check that the index in still valid
-                Sto::abort();
-                return;
+            } else if (index >= size_) {
+                assert(false);
             }
             
             resize_lock_.read_lock();
@@ -447,7 +501,7 @@ public:
     }
     
 private:
-    uint32_t size_;
+    int32_t size_;
     uint32_t capacity_;
     Version vecversion_; // for vector size
     rwlock resize_lock_; // to do concurrent resize
