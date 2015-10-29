@@ -234,6 +234,9 @@ public:
     }
 
     op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
+#if !PRINT_DEBUG
+        (void)me;
+#endif
         if (op == 0) {
             int val = slotdist(transgen);
 #if PRINT_DEBUG
@@ -335,6 +338,9 @@ public:
     }
 
     op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
+#if !PRINT_DEBUG
+        (void)me;
+#endif
         if (op == 0) {
             int key = slotdist(transgen);
             int val = slotdist(transgen);
@@ -452,6 +458,9 @@ public:
     }
     
     op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
+#if !PRINT_DEBUG
+        (void)me;
+#endif
         if (op == 0) {
             int key = slotdist(transgen);
             int val = slotdist(transgen);
