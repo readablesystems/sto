@@ -747,10 +747,6 @@ private:
     tid_type commit_tid() const {
         assert(writeset_);
         if (commit_tid_ == 0) {
-            //TransactionTid::lock(_TID);
-            //commit_tid_ = TransactionTid::unlocked(_TID);
-            //TransactionTid::inc_invalid_version(_TID);
-            //TransactionTid::unlock(_TID);
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         }
         return commit_tid_;
