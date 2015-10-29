@@ -180,22 +180,38 @@ private:
             // add a read of treeversion if tree is empty
             if (!x && !insert)
                 Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
-            // add a read for all nodes in the path, marking them as nodeversion ptrs
-            for (unsigned int i = 0; i < 2; ++i) {
-                wrapper_type* n = (i == 0)? results.second.first : results.second.second;
-                if (n) {
-                    auto value_item = Sto::item(const_cast<RBTree<K, T>*>(this), n);
-                    if (is_inserted(n->version()) && !has_insert(value_item) && !has_delete(value_item)) {
+            if (insert) {
+                if (x) {
+                    // we currently do not allow insertions under phantom nodes
+                    auto value_item = Sto::item(const_cast<RBTree<K, T>*>(this), x);
+                    if (is_inserted(x->version()) && !has_insert(value_item)
+                            && !has_delete(value_item)) {
 #if PRINT_DEBUG
                         TransactionTid::lock(::lock);
-                        printf("Aborted in find_or_abort (phantom boundary)\n");
-                        TransactionTid::unlock(::lock);
+                        printf("Aborted in find_or_abort (insertion under phantom node)\n");
+                        TransactionTid::unlock(::unlock);
 #endif
                         unlock(&treelock_);
                         Sto::abort();
                         return results;
                     }
-                    if (!insert) {
+                }
+            } else {
+                // add reads of boundary nodes, marking them as nodeversion ptrs
+                for (unsigned int i = 0; i < 2; ++i) {
+                    wrapper_type* n = (i == 0)? results.second.first : results.second.second;
+                    if (n) {
+                        auto value_item = Sto::item(const_cast<RBTree<K, T>*>(this), n);
+                        if (is_inserted(n->version()) && !has_insert(value_item) && !has_delete(value_item)) {
+#if PRINT_DEBUG
+                            TransactionTid::lock(::lock);
+                            printf("Aborted in find_or_abort (phantom boundary)\n");
+                            TransactionTid::unlock(::lock);
+#endif
+                            unlock(&treelock_);
+                            Sto::abort();
+                            return results;
+                        }
                         Version v = n->nodeversion();
 #if PRINT_DEBUG
                         TransactionTid::lock(::lock);
