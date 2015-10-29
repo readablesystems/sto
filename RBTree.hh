@@ -138,6 +138,23 @@ private:
         return wrapper_tree_.size();
     }
 
+    // A (hard) phantom node is a node that's being inserted but not yet
+    // committed by another transaction. It should be treated as invisible
+    inline bool is_phantom_node(wrapper_type* node) const {
+        Version& val_ver = node->version();
+        auto item = Sto::item(const_cast<RBTree<K, T>*>(this), node);
+        return (is_inserted(val_ver) && !has_insert(item) && !has_delete(item));
+    }
+
+    // A soft phantom node is a node that's marked inserted by the current
+    // transaction. Its value information is visible (and only visible) to
+    // the current transaction
+    inline bool is_soft_phantom(wrapper_type* node) const {
+        Version& val_ver = node->version();
+        auto item = Sto::item(const_cast<RBTree<K, T>*>(this), node);
+        return (is_inserted(val_ver) && (has_insert(item) || has_delete(item)));
+    }
+
     // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
     // return values: (node*, found, boundary), boundary only valid if !found
     // NOTE: this function must be surrounded by a lock in order to ensure we add the correct nodeversions
@@ -183,9 +200,7 @@ private:
             if (insert) {
                 if (x) {
                     // we currently do not allow insertions under phantom nodes
-                    auto value_item = Sto::item(const_cast<RBTree<K, T>*>(this), x);
-                    if (is_inserted(x->version()) && !has_insert(value_item)
-                            && !has_delete(value_item)) {
+                    if (is_phantom_node(x)) {
 #if PRINT_DEBUG
                         TransactionTid::lock(::lock);
                         printf("Aborted in find_or_abort (insertion under phantom node)\n");
@@ -201,17 +216,6 @@ private:
                 for (unsigned int i = 0; i < 2; ++i) {
                     wrapper_type* n = (i == 0)? results.second.first : results.second.second;
                     if (n) {
-                        auto value_item = Sto::item(const_cast<RBTree<K, T>*>(this), n);
-                        if (is_inserted(n->version()) && !has_insert(value_item) && !has_delete(value_item)) {
-#if PRINT_DEBUG
-                            TransactionTid::lock(::lock);
-                            printf("Aborted in find_or_abort (phantom boundary)\n");
-                            TransactionTid::unlock(::lock);
-#endif
-                            unlock(&treelock_);
-                            Sto::abort();
-                            return results;
-                        }
                         Version v = n->nodeversion();
 #if PRINT_DEBUG
                         TransactionTid::lock(::lock);
