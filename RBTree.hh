@@ -191,12 +191,7 @@ private:
 #if PRINT_DEBUG
             stats_.absent_insert++;
 #endif
-            // ensure that the new node does not have the last bit set
-            // setting the last bit to 1 means this node is key for a nodeversion read
             auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, value)  );
-            n = reinterpret_cast<wrapper_type*>((uintptr_t) n & ~uintptr_t(1));
-            assert(!((uintptr_t)n & uintptr_t(1)));
-
             wrapper_tree_.insert(*n);
             // invariant: the node's insert_bit should be set
             assert(is_inserted(n->version()));
@@ -430,13 +425,10 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     // set up the correct current version to check: either treeversion, item version, or nodeversion
     if ((void*)e == (wrapper_type*)tree_key_) {
         curr_version = treeversion_;
-        std::cout << "treeversion checking" << std::endl;
     } else if (is_structured) {
         curr_version = reinterpret_cast<wrapper_type*>(e & ~uintptr_t(1))->nodeversion();
-        std::cout << "structure checking" << std::endl;
     } else {
         curr_version = reinterpret_cast<wrapper_type*>(e)->version();
-        std::cout << "version checking" << std::endl;
     }
 
     bool same_version = (read_version ^ curr_version) <= TransactionTid::lock_bit;
