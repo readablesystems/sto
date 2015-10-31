@@ -180,7 +180,7 @@ private:
                     printf("Aborted in find_or_abort\n");
                     TransactionTid::unlock(::lock);
 #endif
-                    unlock(&treelock_);
+                    hle_unlock(treelock_);
                     Sto::abort();
                     // unreachable
                     return results;
@@ -206,7 +206,7 @@ private:
                         printf("Aborted in find_or_abort (insertion under phantom node)\n");
                         TransactionTid::unlock(::unlock);
 #endif
-                        unlock(&treelock_);
+                        hle_unlock(treelock_);
                         Sto::abort();
                         return results;
                     }
@@ -262,7 +262,7 @@ private:
             }
             // add write and insert flag of item (value of rbpair) with @value
             Sto::item(this, n).add_write(value).add_flags(insert_tag);
-            unlock(&treelock_);
+            hle_unlock(treelock_);
             return n->writeable_value();
     }
 
@@ -270,7 +270,7 @@ private:
     // using the value as a RHS operator[]
     // return value is a reference to kvp.second
     inline T& find_insert_update(const K& key, const T& value, bool update) {
-        lock(&treelock_);
+        hle_lock(treelock_);
         auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
         auto pair = this->find_or_abort(node, true).first;
         auto x = pair.first;
@@ -301,7 +301,7 @@ private:
                 }
                 // either overwrite value or put empty value
                 item.add_write(insert_val);
-                unlock(&treelock_);
+                hle_unlock(treelock_);
                 return item.template write_value<T>();
             
             // read_my_writes
@@ -310,7 +310,7 @@ private:
                 if (update) {
                     item.add_write(value).add_flags(update_tag);
                 }
-                unlock(&treelock_);
+                hle_unlock(treelock_);
                 // return the last value written (i.e. the old value if we didn't force)
                 return item.template write_value<T>();
             }
@@ -324,7 +324,7 @@ private:
             // add a read regardless because we need to ensure no one has
             // deleted this item before we commit
             item.add_read(x->version());
-            unlock(&treelock_);
+            hle_unlock(treelock_);
             return x->writeable_value();
         }
     }
@@ -334,6 +334,29 @@ private:
     }
     static void unlock(Version *v) {
         TransactionTid::unlock(*v);
+    }
+
+    // Experimenting with Intel HTM
+    //
+    // * RBTree::treelock_ is the HLE lock
+    //
+    // * Currently only the last bit is used, but using any other
+    // bits will break the spin lock! (the cmpxchg loop is really
+    // dumb right now). So DO NOT use any bits other than the LSB
+    // in the lock!
+    //
+    // * Intel documentation says non-HLE writes to the lock will
+    // abort the HLE transaction. An aborted HLE transaction will
+    // automatically retry with the lock held (so neat...)
+    //
+    // * Conflicts are tracked at cache line granularity, so if
+    // performance is not good try separating treelock_ to a
+    // seperate cache line
+    static void hle_lock(Version &v) {
+        TransactionTid::hle_acquire(v);
+    }
+    static void hle_unlock(Version &v) {
+        TransactionTid::hle_release(v);
     }
     static bool has_update(const TransItem& item) {
         return item.flags() & update_tag;
@@ -411,7 +434,7 @@ private:
 template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    lock(&treelock_);
+    hle_lock(treelock_);
     // should have added a read of boundary nodes if absent
     auto results = find_or_abort(idx_pair, false);
     auto pair = results.first;
@@ -423,11 +446,11 @@ inline size_t RBTree<K, T>::count(const K& key) const {
         auto item = Sto::item(const_cast<RBTree<K, T>*>(this), pair.first);
         if (is_inserted(pair.first->version()) && has_delete(item)) {
             // read my insert-then-delete
-            unlock(&treelock_);
+            hle_unlock(treelock_);
             return 0;
         }
     }
-    unlock(&treelock_);
+    hle_unlock(treelock_);
     return (found) ? 1 : 0;
 }
 
@@ -439,7 +462,7 @@ inline RBProxy<K, T> RBTree<K, T>::operator[](const K& key) {
 template <typename K, typename T>
 inline size_t RBTree<K, T>::erase(const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    lock(&treelock_);
+    hle_lock(treelock_);
     // add a read of boundary nodes if absent erase
     auto results = find_or_abort(idx_pair, false);
     auto pair = results.first; 
@@ -459,11 +482,11 @@ inline size_t RBTree<K, T>::erase(const K& key) {
             // mark to delete at install time
             if (has_insert(item)) {
                 item.add_write(0).clear_flags(insert_tag).add_flags(delete_tag);
-                unlock(&treelock_);
+                hle_unlock(treelock_);
                 return 1;
             } else if (has_delete(item)) {
                 // insert-then-delete
-                unlock(&treelock_);
+                hle_unlock(treelock_);
                 return 0;
             } else {
 #if PRINT_DEBUG
@@ -471,7 +494,7 @@ inline size_t RBTree<K, T>::erase(const K& key) {
                 printf("Aborted in erase (insert bit set)\n");
                 TransactionTid::unlock(::lock);
 #endif
-                unlock(&treelock_);
+                hle_unlock(treelock_);
                 Sto::abort();
                 // unreachable
                 return 0;
@@ -479,7 +502,7 @@ inline size_t RBTree<K, T>::erase(const K& key) {
         }
         // found item that has already been installed and not deleted
         item.add_write(0).add_flags(delete_tag);
-        unlock(&treelock_);
+        hle_unlock(treelock_);
         return 1;
 
     // ABSENT ERASE
@@ -487,7 +510,7 @@ inline size_t RBTree<K, T>::erase(const K& key) {
 #if PRINT_DEBUG
         stats_.absent_delete++;
 #endif
-        unlock(&treelock_);
+        hle_unlock(treelock_);
         return 0;
     }
 }
@@ -579,10 +602,10 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         // actually erase the element when installing the delete
         if (deleted) {
             // actually erase
-            lock(&treelock_);
+            hle_lock(treelock_);
             wrapper_tree_.erase(*e);
             // increment the nodeversion after we erase
-            unlock(&treelock_);
+            hle_unlock(treelock_);
             // increment value version 
             TransactionTid::inc_invalid_version(e->version());
 #if PRINT_DEBUG
@@ -616,10 +639,10 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
             assert(((uintptr_t)e & 0x1) == 0);
             if (!is_inserted(e->version()))
                 return;
-            lock(&treelock_);
+            hle_lock(treelock_);
             wrapper_tree_.erase(*e);
             // increment the nodeversion after we erase
-            unlock(&treelock_);
+            hle_unlock(treelock_);
             erase_inserted(&e->version());
             e->inc_nodeversion();
             Transaction::rcu_free(e);

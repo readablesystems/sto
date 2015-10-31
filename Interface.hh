@@ -6,6 +6,10 @@
 class Transaction;
 class TransItem;
 
+
+
+
+
 class TransactionTid {
 public:
     typedef uint64_t type;
@@ -16,6 +20,34 @@ public:
     static constexpr type user_bit1 = type(4);
     static constexpr type user_bit2 = type(8);
     static constexpr type increment_value = type(32);
+
+    // Experimental stuff with Intel TSX
+    // HLE-prefixed val_cmpxchg
+    static inline type hle_val_cmpxchg(type* object, type expected, type desired) {
+        asm volatile(".byte 0xf2; lock; cmpxchgq %2,%1"
+                 : "+a" (expected), "+m" (*object)
+                 : "r" (desired) : "cc");
+        return expected;
+    }
+
+    // HLE-prefixed `mov` (store) instruction
+    static inline void hle_mov(type* object, type val) {
+        asm volatile(".byte 0xf3; mov %1,%0"
+                     : "+m" (*object) : "q" (val));
+    }
+
+    // Acquire HLE lock (begin HLE transaction)
+    static void hle_acquire(type &v) {
+        while(hle_val_cmpxchg(&v, 0, 1) != 0);
+        acquire_fence();
+    }
+
+    // Release HLE lock (commit HLE transaction)
+    static void hle_release(type &v) {
+        release_fence();
+        hle_mov(&v, 0);
+    }
+
 
     static bool is_locked(type v) {
         return v & lock_bit;
@@ -59,9 +91,6 @@ public:
         type new_v = (v + increment_value) & ~valid_bit;
         release_fence();
         v = new_v;
-    }
-    static void atomic_inc_version(type& v) {
-        fetch_and_add(&v, increment_value);
     }
 
     static bool same_version(type v1, type v2) {
