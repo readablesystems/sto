@@ -267,7 +267,7 @@ private:
             unlock(&treelock_);
             // add a write to size with incremented value
             auto size_item = Sto::item(this, size_key_);
-            size_item.has_write() ? size_item.add_write(++size_item.template write_value<size_t>()) : size_item.add_write(0);
+            size_item.has_write() ? size_item.add_write(++size_item.template write_value<size_t>()) : size_item.add_write(1);
             return n->writeable_value();
     }
 
@@ -309,7 +309,7 @@ private:
                 unlock(&treelock_);
                 // we have to update the value of the size we will write
                 auto size_item = Sto::item(this, size_key_);
-                size_item.has_write() ? size_item.add_write(++size_item.template write_value<size_t>()) : size_item.add_write(0);
+                size_item.has_write() ? size_item.add_write(++size_item.template write_value<size_t>()) : size_item.add_write(1);
                 return item.template write_value<T>();
             
             // read_my_writes
@@ -415,7 +415,11 @@ private:
 template <typename K, typename T>
 inline size_t RBTree<K, T>::size() const {
     auto size_item = Sto::item(const_cast<RBTree<K, T>*>(this), size_key_);
-    size_item.add_read(size_);
+    printf("adding read of size %d\n", size_);
+    if (!size_item.has_read()) {
+        size_item.add_read(size_);
+    }
+
     size_t offset = (size_item.has_write()) ? size_item.template write_value<size_t>() : 0;
     return size_ + offset; 
 }
@@ -470,9 +474,12 @@ inline size_t RBTree<K, T>::erase(const K& key) {
             // mark to delete at install time
             if (has_insert(item)) {
                 item.add_write(0).clear_flags(insert_tag).add_flags(delete_tag);
+                auto size_item = Sto::item(this, size_key_);
+                size_item.has_write() ? size_item.add_write(--size_item.template write_value<size_t>()) : size_item.add_write(-1);
                 unlock(&treelock_);
                 return 1;
             } else if (has_delete(item)) {
+                // DO NOT UPDATE SIZE HERE
                 // insert-then-delete
                 unlock(&treelock_);
                 return 0;
@@ -493,7 +500,7 @@ inline size_t RBTree<K, T>::erase(const K& key) {
         // add a write to size item of the current size minus one
         // because we will delete the element from the tree
         auto size_item = Sto::item(this, size_key_);
-        size_item.has_write() ? size_item.add_write(--size_item.template write_value<size_t>()) : size_item.add_write(0);
+        size_item.has_write() ? size_item.add_write(--size_item.template write_value<size_t>()) : size_item.add_write(-1);
         unlock(&treelock_);
         return 1;
 
@@ -540,11 +547,11 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     Version read_version = item.read_value<Version>();
     Version curr_version;
 
-    // set up the correct current version to check: either treeversion, item version, or nodeversion
+    // set up the correct current version to check: either size_, treeversion, item version, or nodeversion
     if (is_sizekey) {
+        printf("checking against size %d\n", size_);
         curr_version = size_;
-    }
-    else if (is_treekey) {
+    } else if (is_treekey) {
         curr_version = treeversion_;
     } else if (is_structured) {
         wrapper_type* n = reinterpret_cast<wrapper_type*>(e & ~uintptr_t(1));
