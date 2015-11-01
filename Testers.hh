@@ -189,12 +189,12 @@ public:
 #endif
             assert(counted == op->rdata[0]);
         } else {
-            size_t size = q->size();
-            assert(size == op->rdata[0]);
+            int size = q->size();
 #if PRINT_DEBUG
             std::cout << "size replay: " << size << std::endl;
             std::cout << "size expected: " << op->rdata[0] << std::endl;
 #endif
+            assert(size == op->rdata[0]);
         }
     }
 
