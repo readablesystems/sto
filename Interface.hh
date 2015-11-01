@@ -6,10 +6,6 @@
 class Transaction;
 class TransItem;
 
-
-
-
-
 class TransactionTid {
 public:
     typedef uint64_t type;
@@ -32,7 +28,7 @@ public:
 
     // HLE-prefixed `mov` (store) instruction
     static inline void hle_mov(type* object, type val) {
-        asm volatile(".byte 0xf3; mov %1,%0"
+        asm volatile(".byte 0xf3; movq %1,%0"
                      : "+m" (*object) : "q" (val));
     }
 
