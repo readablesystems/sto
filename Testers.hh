@@ -11,7 +11,7 @@
 #include "Vector.hh"
 
 #define MAX_VALUE 10 // Max value of integers used in data structures
-#define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements.
+#define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements.
 
 struct Rand {
     typedef uint32_t result_type;
@@ -71,7 +71,7 @@ public:
     virtual void check(T* q, T* q1) = 0;
 #if PRINT_DEBUG
     // Print stats for each data structure
-    void print_stats(T* q) {};
+    //void print_stats(T* q) {};
 #endif
 };
 
@@ -126,7 +126,7 @@ public:
             rec->args.push_back(key);
             rec->rdata.push_back(num);
             return rec;
-        } else {
+        } else if (op == 2) {
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] try to count " << key << std::endl;
@@ -142,6 +142,22 @@ public:
             rec->op = op;
             rec->args.push_back(key);
             rec->rdata.push_back(num);
+            return rec;
+        } else {
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to size" << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            size_t size = q->size();
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] size " << size << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->rdata.push_back(size);
             return rec;
         }
     }
@@ -163,7 +179,7 @@ public:
             std::cout << "erase expected: " << op->rdata[0] << std::endl;
 #endif
             assert (erased == op->rdata[0]);
-        } else {
+        } else if (op->op == 2) {
             int key = op->args[0];
             int counted = q->count(key);
 #if PRINT_DEBUG
@@ -172,6 +188,13 @@ public:
             std::cout << "count expected: " << op->rdata[0] << std::endl;
 #endif
             assert(counted == op->rdata[0]);
+        } else {
+            size_t size = q->size();
+            assert(size == op->rdata[0]);
+#if PRINT_DEBUG
+            std::cout << "size replay: " << size << std::endl;
+            std::cout << "size expected: " << op->rdata[0] << std::endl;
+#endif
         }
     }
 
@@ -181,6 +204,13 @@ public:
             std::cout << "i is: " << i << std::endl;
 #endif
             TRANSACTION {
+                int s = q->size();
+                int s1 = q1->size();
+#if PRINT_DEBUG
+                std::cout << "q size: " << s << std::endl;
+                std::cout << "q1 size: " << s1 << std::endl;
+#endif
+                assert(s == s1);
                 int c = q->count(i);
                 int c1 = q1->count(i);
 #if PRINT_DEBUG
@@ -215,11 +245,11 @@ public:
 
 #if PRINT_DEBUG
     void print_stats(T* q) {
-        q->print_absent_reads();
+        //q->print_absent_reads();
     }
 #endif
 
-    static const int num_ops_ = 3;
+    static const int num_ops_ = 4;
 };
 
 template <typename T>

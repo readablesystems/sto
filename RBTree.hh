@@ -415,7 +415,6 @@ private:
 template <typename K, typename T>
 inline size_t RBTree<K, T>::size() const {
     auto size_item = Sto::item(const_cast<RBTree<K, T>*>(this), size_key_);
-    printf("adding read of size %d\n", size_);
     if (!size_item.has_read()) {
         size_item.add_read(size_);
     }
@@ -549,7 +548,6 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
 
     // set up the correct current version to check: either size_, treeversion, item version, or nodeversion
     if (is_sizekey) {
-        printf("checking against size %d\n", size_);
         curr_version = size_;
     } else if (is_treekey) {
         curr_version = treeversion_;
