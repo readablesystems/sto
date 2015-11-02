@@ -163,10 +163,11 @@ private:
         auto size_item = Sto::item(this, size_key_);
         ssize_t prev_offset = size_item.has_write() ? size_item.template write_value<ssize_t>() : 0;
         size_item.add_write(prev_offset + delta);
+        assert(size_ + size_item.template write_value<ssize_t>() >= 0);
 #if DEBUG
         TransactionTid::lock(::lock);
-        printf("base size: %lu\n", size_); 
-        printf("offset: %ld\n", size_item.template write_value<ssize_t>());
+        printf("\tbase size: %lu\n", size_); 
+        printf("\toffset: %ld\n", size_item.template write_value<ssize_t>());
         TransactionTid::unlock(::lock);
 #endif 
     }
@@ -509,6 +510,10 @@ inline size_t RBTree<K, T>::erase(const K& key) {
                 // unreachable
                 return 0;
             }
+        // we are deleting our deletes (of item we didn't insert)
+        } else if (has_delete(item)) {
+            unlock(&treelock_);
+            return 0; 
         }
         // found item that has already been installed and not deleted
         item.add_write(0).add_flags(delete_tag);
@@ -618,8 +623,13 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         TransactionTid::inc_invalid_version(treeversion_);
     // we changed the size of the tree, so update size
     } else if ((void*)e == (wrapper_type*)size_key_) {
-        fetch_and_add(&size_, item.template write_value<ssize_t>());
-        assert(size_ >= 0);
+        size_ += item.template write_value<ssize_t>();
+        //fetch_and_add(&size_, item.template write_value<ssize_t>());
+#if DEBUG
+    if ((ssize_t)size_ < 0)
+        printf("\tNegative Size, offset is: %lx\n", item.template write_value<ssize_t>());
+#endif
+        assert((ssize_t)size_ >= 0);
     } else {
         assert(is_locked(e->version()));
         assert(((uintptr_t)e & 0x1) == 0);

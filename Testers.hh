@@ -189,10 +189,10 @@ public:
 #endif
             assert(counted == op->rdata[0]);
         } else {
-            int size = q->size();
+            size_t size = q->size();
 #if PRINT_DEBUG
-            std::cout << "size replay: " << size << std::endl;
-            std::cout << "size expected: " << op->rdata[0] << std::endl;
+            std::cout << "size replay: " << std::hex << size << std::endl;
+            std::cout << "size expected: " << std::hex << op->rdata[0] << std::endl;
 #endif
             assert(size == op->rdata[0]);
         }
@@ -204,15 +204,15 @@ public:
             std::cout << "i is: " << i << std::endl;
 #endif
             TRANSACTION {
-                int s = q->size();
-                int s1 = q1->size();
+                size_t s = q->size();
+                size_t s1 = q1->size();
 #if PRINT_DEBUG
-                std::cout << "q size: " << s << std::endl;
-                std::cout << "q1 size: " << s1 << std::endl;
+                std::cout << "q size: " << std::hex << s << std::endl;
+                std::cout << "q1 size: " << std::hex << s1 << std::endl;
 #endif
                 assert(s == s1);
-                int c = q->count(i);
-                int c1 = q1->count(i);
+                size_t c = q->count(i);
+                size_t c1 = q1->count(i);
 #if PRINT_DEBUG
                 std::cout << "q count: " << c << std::endl;
                 std::cout << "q1 count: " << c1 << std::endl;
@@ -229,15 +229,15 @@ public:
                 s = q->size();
                 s1 = q1->size();
 #if PRINT_DEBUG
-                std::cout << "q size: " << s << std::endl;
-                std::cout << "q1 size: " << s1 << std::endl;
+                std::cout << "q size: " << std::hex << s << std::endl;
+                std::cout << "q1 size: " << std::hex << s1 << std::endl;
 #endif
                 assert(s == s1);
 
                 // this should always return 1 because we inserted an empty element if it
                 // did not exist before
-                int e = q->erase(i);
-                int e1 = q1->erase(i);
+                size_t e = q->erase(i);
+                size_t e1 = q1->erase(i);
 #if PRINT_DEBUG
                 std::cout << "q erased: " << e << std::endl;
                 std::cout << "q1 erased: " << e1 << std::endl;
