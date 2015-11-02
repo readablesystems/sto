@@ -225,6 +225,15 @@ public:
                 std::cout << "v2: " << v2 << std::endl;
 #endif
                 assert(v1 == v2);
+
+                s = q->size();
+                s1 = q1->size();
+#if PRINT_DEBUG
+                std::cout << "q size: " << s << std::endl;
+                std::cout << "q1 size: " << s1 << std::endl;
+#endif
+                assert(s == s1);
+
                 // this should always return 1 because we inserted an empty element if it
                 // did not exist before
                 int e = q->erase(i);

@@ -8,9 +8,9 @@
 #include "VersionFunctions.hh"
 #include "RBTreeInternal.hh"
 
-#define PRINT_DEBUG 1
+#define DEBUG 1
 
-#if PRINT_DEBUG
+#if DEBUG
 extern TransactionTid::type lock;
 #endif
 
@@ -34,7 +34,7 @@ class rbwrapper : public T {
         Version old_val, new_val;
         old_val = fetch_and_add(&nodeversion_, TransactionTid::increment_value);
         new_val = old_val + TransactionTid::increment_value;
-#if PRINT_DEBUG
+#if DEBUG
         TransactionTid::lock(::lock);
         printf("\t#inc nodeversion 0x%lx (0x%lx -> 0x%lx)\n", (unsigned long)this, old_val, new_val);
         TransactionTid::unlock(::lock);
@@ -103,7 +103,7 @@ public:
         treeversion_ = 0;
         sizelock_ = 0;
         size_ = 0;
-#if PRINT_DEBUG
+#if DEBUG
         stats_ = {0,0,0,0,0,0};
 #endif
     }
@@ -132,7 +132,7 @@ public:
     inline bool check(const TransItem& item, const Transaction& trans);
     inline void install(TransItem& item, const Transaction& t);
     inline void cleanup(TransItem& item, bool committed);
-#if PRINT_DEBUG
+#if DEBUG
     inline void print_absent_reads();
 #endif
 
@@ -158,10 +158,17 @@ private:
         return (is_inserted(val_ver) && (has_insert(item) || has_delete(item)));
     }
 
+    // increment or decrement the offset size of the transaction's tree
     inline void change_size_offset(ssize_t delta) {
         auto size_item = Sto::item(this, size_key_);
         ssize_t prev_offset = size_item.has_write() ? size_item.template write_value<ssize_t>() : 0;
         size_item.add_write(prev_offset + delta);
+#if DEBUG
+        TransactionTid::lock(::lock);
+        printf("base size: %lu\n", size_); 
+        printf("offset: %ld\n", size_item.template write_value<ssize_t>());
+        TransactionTid::unlock(::lock);
+#endif 
     }
 
     // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
@@ -184,7 +191,7 @@ private:
                     return results;
                 } else {
                     // some other transaction inserted this node and hasn't committed
-#if PRINT_DEBUG
+#if DEBUG
                     TransactionTid::lock(::lock);
                     printf("Aborted in find_or_abort\n");
                     TransactionTid::unlock(::lock);
@@ -209,7 +216,7 @@ private:
                 if (x) {
                     // we currently do not allow insertions under phantom nodes
                     if (is_phantom_node(x)) {
-#if PRINT_DEBUG
+#if DEBUG
                         TransactionTid::lock(::lock);
                         printf("Aborted in find_or_abort (insertion under phantom node)\n");
                         TransactionTid::unlock(::lock);
@@ -225,7 +232,7 @@ private:
                     wrapper_type* n = (i == 0)? results.second.first : results.second.second;
                     if (n) {
                         Version v = n->nodeversion();
-#if PRINT_DEBUG
+#if DEBUG
                         TransactionTid::lock(::lock);
                         printf("\t#Tracking boundary 0x%lx (k %d), nv 0x%lx\n", (unsigned long)n, n->key(), v);
                         TransactionTid::unlock(::lock);
@@ -243,13 +250,14 @@ private:
     // Insert nonexistent <@key, @value>
     // return value is a reference to kvp.second
     inline T& insert_absent(wrapper_type* found_p, const K& key, const T& value) {
-#if PRINT_DEBUG
+#if DEBUG
             stats_.absent_insert++;
 #endif
             wrapper_type* n = (wrapper_type*)malloc(sizeof(wrapper_type));
             new (n) wrapper_type(rbpair<K, T>(key, value));
             // insert now returns the parent, before re-balancing, under which the
             // new leaf is inserted
+            //XXX rbnodeptr<wrapper_type> p = wrapper_tree_.insert_commit(*n, found_p, false);
             rbnodeptr<wrapper_type> p = wrapper_tree_.insert(*n);
             // invariant: the node's insert_bit should be set
             assert(is_inserted(n->version()));
@@ -291,9 +299,8 @@ private:
             return insert_absent(x, key, value);
 
         // UPDATE: kvp is already inserted into the tree
-        // We don't need to add a write to size because size isn't changing
         else {
-#if PRINT_DEBUG
+#if DEBUG
             stats_.present_insert++;
 #endif
             auto item = Sto::item(this, x);
@@ -317,6 +324,7 @@ private:
                 return item.template write_value<T>();
             
             // read_my_writes
+            // don't need to add a write to size because size isn't changing
             } else if (item.has_write()) {
                 // operator[] used on LHS, overwrite
                 if (update) {
@@ -328,6 +336,7 @@ private:
             }
 
             // accessing a regular key
+            // don't need to add a write to size because size isn't changing
             if (update) {
                 // operator[] on LHS, return value doesn't matter
                 item.add_write(value).add_flags(update_tag);
@@ -381,7 +390,7 @@ private:
     void* tree_key_ = (void*) tree_bit;
     static constexpr uintptr_t size_bit = 1U<<1;
     void* size_key_ = (void*) size_bit;
-#if PRINT_DEBUG
+#if DEBUG
     mutable struct stats {
         int absent_insert, absent_delete, absent_count;
         int present_insert, present_delete, present_count;
@@ -439,7 +448,7 @@ inline size_t RBTree<K, T>::count(const K& key) const {
     auto results = find_or_abort(idx_pair, false);
     auto pair = results.first;
     auto found = pair.second;
-#if PRINT_DEBUG
+#if DEBUG
     (!found) ? stats_.absent_count++ : stats_.present_count++;
 #endif
     if (found) {
@@ -471,7 +480,7 @@ inline size_t RBTree<K, T>::erase(const K& key) {
    
     // PRESENT ERASE
     if (found) {
-#if PRINT_DEBUG
+#if DEBUG
         stats_.present_delete++;
 #endif
         auto item = Sto::item(this, x);
@@ -486,11 +495,11 @@ inline size_t RBTree<K, T>::erase(const K& key) {
                 return 1;
             } else if (has_delete(item)) {
                 // DO NOT UPDATE SIZE HERE
-                // insert-then-delete
+                // insert-delete-delete
                 unlock(&treelock_);
                 return 0;
             } else {
-#if PRINT_DEBUG
+#if DEBUG
                 TransactionTid::lock(::lock);
                 printf("Aborted in erase (insert bit set)\n");
                 TransactionTid::unlock(::lock);
@@ -511,7 +520,7 @@ inline size_t RBTree<K, T>::erase(const K& key) {
 
     // ABSENT ERASE
     } else {
-#if PRINT_DEBUG
+#if DEBUG
         stats_.absent_delete++;
 #endif
         unlock(&treelock_);
@@ -560,7 +569,7 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     } else if (is_structured) {
         wrapper_type* n = reinterpret_cast<wrapper_type*>(e & ~uintptr_t(1));
         curr_version = n->nodeversion();
-#if PRINT_DEBUG
+#if DEBUG
         TransactionTid::lock(::lock);
         printf("\t#read %p nv 0x%lx, exp %lx\n", n, curr_version, read_version);
         TransactionTid::unlock(::lock);
@@ -577,7 +586,7 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     }
     bool not_locked = !is_sizekey? (!is_locked(curr_version) || item.has_lock(trans))
                                   : (!is_locked(sizelock_) || item.has_lock(trans));
-#if PRINT_DEBUG
+#if DEBUG
     bool check_fails = !(same_version && not_locked);
     if (check_fails && !is_sizekey && !is_treekey) {
         wrapper_type* node = reinterpret_cast<wrapper_type*>(e & ~uintptr_t(1));
@@ -610,6 +619,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
     // we changed the size of the tree, so update size
     } else if ((void*)e == (wrapper_type*)size_key_) {
         fetch_and_add(&size_, item.template write_value<ssize_t>());
+        assert(size_ >= 0);
     } else {
         assert(is_locked(e->version()));
         assert(((uintptr_t)e & 0x1) == 0);
@@ -629,7 +639,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             unlock(&treelock_);
             // increment value version 
             TransactionTid::inc_invalid_version(e->version());
-#if PRINT_DEBUG
+#if DEBUG
             TransactionTid::lock(::lock);
             printf("\t#inc nodeversion (erase) 0x%lx\n", (unsigned long)e);
             TransactionTid::unlock(::lock);
@@ -667,7 +677,7 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
     }
 }
 
-#if PRINT_DEBUG 
+#if DEBUG 
 template <typename K, typename T>
 inline void RBTree<K, T>::print_absent_reads() {
     std::cout << "absent inserts: " << stats_.absent_insert << std::endl;
