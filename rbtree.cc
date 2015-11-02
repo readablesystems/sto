@@ -258,35 +258,42 @@ int main() {
         Transaction t;
         Sto::set_transaction(&t);
         // read_my_inserts
+        assert(tree.size() == 0);
         for (int i = 0; i < 100; ++i) {
             tree[i] = i;
             assert(tree[i]==i);
             tree[i] = 100-i;
             assert(tree[i]==100-i);
         }
+        assert(tree.size() == 100);
         // count_my_inserts
         for (int i = 0; i < 100; ++i) {
             assert(tree.count(i) == 1);
         }
+        assert(tree.size() == 100);
         // delete_my_inserts and read_my_deletes
         for (int i = 0; i < 100; ++i) {
             assert(tree.erase(i) == 1);
             assert(tree.count(i) == 0);
         }
+        assert(tree.size() == 0);
         // delete_my_deletes
         for (int i = 0; i < 100; ++i) {
             assert(tree.erase(i) == 0);
             assert(tree.count(i) == 0);
         }
+        assert(tree.size() == 0);
         // insert_my_deletes
         for (int i = 0; i < 100; ++i) {
             tree[i] = 1;
             assert(tree.count(i) == 1);
         }
+        assert(tree.size() == 100);
         // operator[] inserts empty value
         int x = tree[102];
         assert(x==0);
         assert(tree.count(102)==1);
+        assert(tree.size() == 101);
         assert(t.try_commit());
     }
     erase_conflict_tests();

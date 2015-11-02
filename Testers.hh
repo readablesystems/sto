@@ -10,7 +10,7 @@
 #include "RBTree.hh"
 #include "Vector.hh"
 
-#define MAX_VALUE 10 // Max value of integers used in data structures
+#define MAX_VALUE 1000 // Max value of integers used in data structures
 #define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements.
 
 struct Rand {
@@ -71,7 +71,7 @@ public:
     virtual void check(T* q, T* q1) = 0;
 #if PRINT_DEBUG
     // Print stats for each data structure
-    void print_stats(T* q) {};
+    //void print_stats(T* q) {};
 #endif
 };
 
@@ -126,7 +126,7 @@ public:
             rec->args.push_back(key);
             rec->rdata.push_back(num);
             return rec;
-        } else {
+        } else if (op == 2) {
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] try to count " << key << std::endl;
@@ -142,6 +142,22 @@ public:
             rec->op = op;
             rec->args.push_back(key);
             rec->rdata.push_back(num);
+            return rec;
+        } else {
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to size" << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            size_t size = q->size();
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] size " << size << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->rdata.push_back(size);
             return rec;
         }
     }
@@ -163,7 +179,7 @@ public:
             std::cout << "erase expected: " << op->rdata[0] << std::endl;
 #endif
             assert (erased == op->rdata[0]);
-        } else {
+        } else if (op->op == 2) {
             int key = op->args[0];
             int counted = q->count(key);
 #if PRINT_DEBUG
@@ -172,6 +188,13 @@ public:
             std::cout << "count expected: " << op->rdata[0] << std::endl;
 #endif
             assert(counted == op->rdata[0]);
+        } else {
+            size_t size = q->size();
+#if PRINT_DEBUG
+            std::cout << "size replay: " << std::hex << size << std::endl;
+            std::cout << "size expected: " << std::hex << op->rdata[0] << std::endl;
+#endif
+            assert(size == op->rdata[0]);
         }
     }
 
@@ -181,8 +204,15 @@ public:
             std::cout << "i is: " << i << std::endl;
 #endif
             TRANSACTION {
-                int c = q->count(i);
-                int c1 = q1->count(i);
+                size_t s = q->size();
+                size_t s1 = q1->size();
+#if PRINT_DEBUG
+                std::cout << "q size: " << std::hex << s << std::endl;
+                std::cout << "q1 size: " << std::hex << s1 << std::endl;
+#endif
+                assert(s == s1);
+                size_t c = q->count(i);
+                size_t c1 = q1->count(i);
 #if PRINT_DEBUG
                 std::cout << "q count: " << c << std::endl;
                 std::cout << "q1 count: " << c1 << std::endl;
@@ -195,10 +225,19 @@ public:
                 std::cout << "v2: " << v2 << std::endl;
 #endif
                 assert(v1 == v2);
+
+                s = q->size();
+                s1 = q1->size();
+#if PRINT_DEBUG
+                std::cout << "q size: " << std::hex << s << std::endl;
+                std::cout << "q1 size: " << std::hex << s1 << std::endl;
+#endif
+                assert(s == s1);
+
                 // this should always return 1 because we inserted an empty element if it
                 // did not exist before
-                int e = q->erase(i);
-                int e1 = q1->erase(i);
+                size_t e = q->erase(i);
+                size_t e1 = q1->erase(i);
 #if PRINT_DEBUG
                 std::cout << "q erased: " << e << std::endl;
                 std::cout << "q1 erased: " << e1 << std::endl;
@@ -215,11 +254,11 @@ public:
 
 #if PRINT_DEBUG
     void print_stats(T* q) {
-        q->print_absent_reads();
+        //q->print_absent_reads();
     }
 #endif
 
-    static const int num_ops_ = 3;
+    static const int num_ops_ = 4;
 };
 
 template <typename T>
