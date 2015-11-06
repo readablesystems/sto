@@ -101,7 +101,7 @@ public:
     RBTree() {
         treelock_ = 0;
         treeversion_ = 0;
-        sizelock_ = 0;
+        sizeversion_ = 0;
         size_ = 0;
 #if DEBUG
         stats_ = {0,0,0,0,0,0};
@@ -404,7 +404,7 @@ private:
     internal_tree_type wrapper_tree_;
     // only add a write to size if we erase or do an absent insert
     size_t size_;
-    mutable Version sizelock_;
+    mutable Version sizeversion_;
     mutable Version treelock_;
     mutable Version treeversion_;
     // used to mark whether a key is for the tree structure (for tree version checks)
@@ -451,16 +451,13 @@ private:
 template <typename K, typename T>
 inline size_t RBTree<K, T>::size() const {
     auto size_item = Sto::item(const_cast<RBTree<K, T>*>(this), size_key_);
-    size_t size_base;
     if (!size_item.has_read()) {
-        size_base = size_;
-        size_item.add_read(size_base);
+        size_item.add_read(sizeversion_);
     } else {
-        size_base = size_item.template read_value<size_t>();
     }
 
     ssize_t offset = (size_item.has_write()) ? size_item.template write_value<ssize_t>() : 0;
-    return size_base + offset;
+    return size_ + offset;
 }
 
 template <typename K, typename T>
@@ -558,7 +555,7 @@ inline size_t RBTree<K, T>::erase(const K& key) {
 template <typename K, typename T>
 inline void RBTree<K, T>::lock(TransItem& item) {
     if (item.key<void*>() == size_key_) {
-        lock(&sizelock_);
+        lock(&sizeversion_);
     }
     else if (item.key<void*>() == tree_key_) {
         lock(&treeversion_);
@@ -570,7 +567,7 @@ inline void RBTree<K, T>::lock(TransItem& item) {
 template <typename K, typename T>
 inline void RBTree<K, T>::unlock(TransItem& item) {
     if (item.key<void*>() == size_key_) {
-        unlock(&sizelock_);
+        unlock(&sizeversion_);
     }
     else if (item.key<void*>() == tree_key_) {
         unlock(&treeversion_);
@@ -590,7 +587,7 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
 
     // set up the correct current version to check: either size_, treeversion, item version, or nodeversion
     if (is_sizekey) {
-        curr_version = size_;
+        curr_version = sizeversion_;
     } else if (is_treekey) {
         curr_version = treeversion_;
     } else if (is_structured) {
@@ -606,13 +603,12 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     }
 
     bool same_version;
-    if (is_structured || is_sizekey) {
+    if (is_structured) {
         same_version = (read_version == curr_version);
     } else {
         same_version = (read_version ^ curr_version) <= TransactionTid::lock_bit;
     }
-    bool not_locked = !is_sizekey? (!is_locked(curr_version) || item.has_lock(trans))
-                                  : (!is_locked(sizelock_) || item.has_lock(trans));
+    bool not_locked = !is_locked(curr_version) || item.has_lock(trans);
 #if DEBUG
     bool check_fails = !(same_version && not_locked);
     if (check_fails && !is_sizekey && !is_treekey) {
@@ -645,12 +641,9 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         TransactionTid::inc_invalid_version(treeversion_);
     // we changed the size of the tree, so update size
     } else if ((void*)e == (wrapper_type*)size_key_) {
+        assert(is_locked(sizeversion_));
         size_ += item.template write_value<ssize_t>();
-        //fetch_and_add(&size_, item.template write_value<ssize_t>());
-#if DEBUG
-    if ((ssize_t)size_ < 0)
-        printf("\tNegative Size, offset is: %lx\n", item.template write_value<ssize_t>());
-#endif
+        TransactionTid::inc_invalid_version(sizeversion_);
         assert((ssize_t)size_ >= 0);
     } else {
         assert(is_locked(e->version()));
