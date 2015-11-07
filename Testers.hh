@@ -10,7 +10,7 @@
 #include "RBTree.hh"
 #include "Vector.hh"
 
-#define MAX_VALUE 10 // Max value of integers used in data structures
+#define MAX_VALUE 30 // Max value of integers used in data structures
 #define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements.
 
 struct Rand {
@@ -191,8 +191,8 @@ public:
         } else {
             size_t size = q->size();
 #if PRINT_DEBUG
-            std::cout << "size replay: " << std::hex << size << std::endl;
-            std::cout << "size expected: " << std::hex << op->rdata[0] << std::endl;
+            std::cout << "size replay: " << size << std::endl;
+            std::cout << "size expected: " << op->rdata[0] << std::endl;
 #endif
             assert(size == op->rdata[0]);
         }
@@ -207,8 +207,8 @@ public:
                 size_t s = q->size();
                 size_t s1 = q1->size();
 #if PRINT_DEBUG
-                std::cout << "q size: " << std::hex << s << std::endl;
-                std::cout << "q1 size: " << std::hex << s1 << std::endl;
+                std::cout << "q size: " << std::endl;
+                std::cout << "q1 size: " << s1 << std::endl;
 #endif
                 assert(s == s1);
                 size_t c = q->count(i);
@@ -229,8 +229,8 @@ public:
                 s = q->size();
                 s1 = q1->size();
 #if PRINT_DEBUG
-                std::cout << "q size: " << std::hex << s << std::endl;
-                std::cout << "q1 size: " << std::hex << s1 << std::endl;
+                std::cout << "q size: " << s << std::endl;
+                std::cout << "q1 size: " << s1 << std::endl;
 #endif
                 assert(s == s1);
 

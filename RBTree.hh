@@ -14,8 +14,8 @@
 extern TransactionTid::type lock;
 #endif
 
-template <typename K, typename T>
-class RBTree;
+template<typename K, typename T> class RBTreeIterator;
+template <typename K, typename T> class RBTree;
 
 template <typename T>
 class rbwrapper : public T {
@@ -89,6 +89,9 @@ class RBProxy;
 
 template <typename K, typename T>
 class RBTree : public Shared {
+    friend class RBTreeIterator<K, T>;
+    friend class RBProxy<K, T>;
+
     typedef TransactionTid::type Version;
     typedef versioned_value_struct<T> versioned_value;
 
@@ -96,6 +99,9 @@ class RBTree : public Shared {
     static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
     static constexpr TransItem::flags_type update_tag = TransItem::user0_bit<<2;
     static constexpr Version insert_bit = TransactionTid::user_bit1;
+
+    typedef RBTreeIterator<K, T> iterator;
+    typedef const RBTreeIterator<K, T> const_iterator;
 
 public:
     RBTree() {
@@ -126,6 +132,9 @@ public:
     void unlock(versioned_value *e) {
         unlock(&e->version());
     }
+ 
+    iterator begin();
+    iterator end();
 
     inline void lock(TransItem& item);
     inline void unlock(TransItem& item);
@@ -139,6 +148,27 @@ public:
 private:
     inline size_t debug_size() const {
         return wrapper_tree_.size();
+    }
+
+    // XXX should we inline these?
+    inline wrapper_type* get_next(wrapper_type* node) {
+        lock(&treelock_);
+        wrapper_type* next_node = node;
+       // TODO -- traverse tree and get next highest node
+       // either right child or leftmost of next branch to the right
+       // add versions of node and next node to read set
+        unlock(&treelock_);
+        return next_node;
+    }
+
+    inline wrapper_type* get_prev(wrapper_type* node) {
+        lock(&treelock_);
+        wrapper_type* prev_node = node;
+       // TODO -- traverse tree and get next highest node
+       // either left child or rightmost of next branch to the left
+       // add versions of node and next node to read set
+        unlock(&treelock_);
+        return prev_node;
     }
 
     // A (hard) phantom node is a node that's being inserted but not yet
@@ -397,8 +427,67 @@ private:
         int present_insert, present_delete, present_count;
     } stats_;
 #endif
- 
-    friend class RBProxy<K, T>;
+};
+
+template<typename K, typename T>
+// XXX should this be an iterator over wrapper_type?
+class RBTreeIterator : public std::iterator<std::bidirectional_iterator_tag, rbwrapper<rbpair<K, T>>> {
+public:
+    typedef T value_type;
+    typedef rbwrapper<rbpair<K, T>> wrapper;
+    typedef RBTreeIterator<K, T> iterator;
+
+    RBTreeIterator(RBTree<K, T> * tree, wrapper* node) : tree_(tree), node_(node) { }
+    RBTreeIterator(const RBTreeIterator& itr) : tree_(itr.tree_), node_(itr.node_) {}
+    
+    // we don't have to add anything to read/write sets?
+    RBTreeIterator& operator= (const RBTreeIterator& v) {
+        tree_ = v.tree_;
+        node_ = v.node_;
+        return *this;
+    }
+   
+    // XXX we don't have to add anything to read/write sets?
+    bool operator==(iterator other) const {
+        return (tree_ == other.tree_) && (node_ == other.node_);
+    }
+    
+    bool operator!=(iterator other) const {
+        return !(operator==(other));
+    }
+    
+    wrapper& operator*() {
+        //XXX not sure if this is correct? can we just return the node pointer?
+        return node_;
+    }
+    
+    // This is the prefix case
+    iterator& operator++() { 
+        node_ = tree_->get_next(node_); 
+        return *this; 
+    }
+    
+    // This is the postfix case
+    iterator operator++(int) {
+        RBTreeIterator<K, T> clone(*this);
+        node_ = tree_->get_next(node_);
+        return clone;
+    }
+    
+    iterator& operator--() { 
+        node_ = tree_->get_prev(node_); 
+        return *this; 
+    }
+    
+    iterator operator--(int) {
+        RBTreeIterator<K, T> clone(*this);
+        node_ = tree_->get_prev(node_);
+        return clone;
+    }
+        
+private:
+    RBTree<K, T> * tree_;
+    wrapper* node_;
 };
 
 // STL-ish interface wrapper returned by RBTree::operator[]
