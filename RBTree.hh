@@ -153,20 +153,22 @@ private:
     // XXX should we inline these?
     inline wrapper_type* get_next(wrapper_type* node) {
         lock(&treelock_);
-        wrapper_type* next_node = node;
-       // TODO -- traverse tree and get next highest node
-       // either right child or leftmost of next branch to the right
-       // add versions of node and next node to read set
+        auto next_node = rbalgorithms<wrapper_type>::next_node(node);
+        Sto::item(this, (reinterpret_cast<uintptr_t>(node)|0x1)).add_read(node->nodeversion());
+        if (next_node) {
+            Sto::item(this, (reinterpret_cast<uintptr_t>(next_node)|0x1)).add_read(next_node->nodeversion());
+        }
         unlock(&treelock_);
         return next_node;
     }
 
     inline wrapper_type* get_prev(wrapper_type* node) {
         lock(&treelock_);
-        wrapper_type* prev_node = node;
-       // TODO -- traverse tree and get next highest node
-       // either left child or rightmost of next branch to the left
-       // add versions of node and next node to read set
+        auto prev_node = rbalgorithms<wrapper_type>::prev_node(node);
+        Sto::item(this, (reinterpret_cast<uintptr_t>(node)|0x1)).add_read(node->nodeversion());
+        if (prev_node) {
+            Sto::item(this, (reinterpret_cast<uintptr_t>(prev_node)|0x1)).add_read(prev_node->nodeversion());
+        }
         unlock(&treelock_);
         return prev_node;
     }
