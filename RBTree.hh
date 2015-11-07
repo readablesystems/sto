@@ -457,8 +457,9 @@ public:
     }
     
     wrapper& operator*() {
-        //XXX not sure if this is correct? can we just return the node pointer?
-        return node_;
+        // add a read of the version to make sure the value hasn't changed at commit time
+        Sto::item(*tree_, node_).add_read(node_->version());
+        return std::make_pair(node_->key(), node_->writeable_value());
     }
     
     // This is the prefix case
