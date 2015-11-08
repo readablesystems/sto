@@ -133,8 +133,19 @@ public:
         unlock(&e->version());
     }
  
-    iterator begin();
-    iterator end();
+    iterator begin() {
+        lock(&treelock_);
+        auto start = rbalgorithms<wrapper_type>::edge_node(wrapper_tree_.root, false);
+        unlock(&treelock_);
+        return iterator(this, start);
+    }
+
+    iterator end() {
+        lock(&treelock_);
+        auto end = rbalgorithms<wrapper_type>::edge_node(wrapper_tree_.root, true);
+        unlock(&treelock_);
+        return iterator(this, end);
+    }
 
     inline void lock(TransItem& item);
     inline void unlock(TransItem& item);
