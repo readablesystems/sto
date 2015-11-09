@@ -139,10 +139,7 @@ public:
     }
 
     iterator end() {
-        lock(&treelock_);
-        auto end = rbalgorithms<wrapper_type>::edge_node(wrapper_tree_.root(), true);
-        unlock(&treelock_);
-        return iterator(this, end);
+        return iterator(*this, nullptr);
     }
 
     inline void lock(TransItem& item);
@@ -431,14 +428,13 @@ public:
     RBTreeIterator(RBTree<K, T> * tree, wrapper* node) : tree_(tree), node_(node) { }
     RBTreeIterator(const RBTreeIterator& itr) : tree_(itr.tree_), node_(itr.node_) {}
     
-    // we don't have to add anything to read/write sets?
+    // XXX we don't have to add anything to read/write sets?
     RBTreeIterator& operator= (const RBTreeIterator& v) {
         tree_ = v.tree_;
         node_ = v.node_;
         return *this;
     }
    
-    // XXX we don't have to add anything to read/write sets?
     bool operator==(iterator other) const {
         return (tree_ == other.tree_) && (node_ == other.node_);
     }
@@ -446,12 +442,12 @@ public:
     bool operator!=(iterator other) const {
         return !(operator==(other));
     }
-    
+   
+    // XXX operator* returns a reference to the value, not to the pair
     wrapper& operator*() {
         // add a read of the version to make sure the value hasn't changed at commit time
         Sto::item(*tree_, node_).add_read(node_->version());
-        return std::make_pair<node_->key(), node_->writeable_value()>;
-        return RBPairProxy(this, node_);
+        return RBPairProxy(*tree_, node_);
     }
     
     // This is the prefix case
