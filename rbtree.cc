@@ -266,6 +266,16 @@ int main() {
             assert(tree[i]==100-i);
         }
         assert(tree.size() == 100);
+
+        // iterators
+        /*
+        int i = 0;
+        for (auto it = tree.begin(); it < tree.end(); it++) {
+            assert(it->first == i);
+            assert(it->second == i++);
+        }
+        */
+
         // count_my_inserts
         for (int i = 0; i < 100; ++i) {
             assert(tree.count(i) == 1);
