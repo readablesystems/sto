@@ -289,8 +289,8 @@ private:
         return results;
     }
 
-    // Insert nonexistent <@key, @value>
-    // return value is a reference to kvp.second
+    // Insert nonexistent key with empty value
+    // return value is a pointer to the inserted node 
     inline wrapper_type* insert_absent(rbnodeptr<wrapper_type> found_p, const K& key) {
 #if DEBUG
             stats_.absent_insert++;
@@ -328,10 +328,10 @@ private:
             return n;
     }
 
-    // Insert <@key, @value>, optionally force an update if @key exists and we are not
-    // using the value as a RHS operator[]
-    // return value is a reference to kvp.second
-    inline wrapper_type* find_insert_update(const K& key) {
+    // Insert key and empty value if key does not exist 
+    // If key exists, then add a read of the item version and return the node
+    // return value is a reference to the found or inserted node 
+    inline wrapper_type* insert(const K& key) {
         lock(&treelock_);
         auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
         auto pair = this->find_or_abort(node, true).first;
@@ -567,7 +567,7 @@ inline size_t RBTree<K, T>::count(const K& key) const {
 template <typename K, typename T>
 inline RBProxy<K, T> RBTree<K, T>::operator[](const K& key) {
     // either insert empty value or return present value
-    auto node = find_insert_update(key);
+    auto node = insert(key);
     return RBProxy<K, T>(*this, node);
 }
 
