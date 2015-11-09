@@ -8,15 +8,16 @@
 #include "Vector.hh"
 #include "clp.h"
 
-int max_value = 100000;
+int max_value = 10000;
 int global_seed = 11;
-int nthreads = 4;
-int ntrans = 1000;
+int nthreads = 16;
+int ntrans = 1000000;
 int opspertrans = 1;
 int prepopulate = 1000;
 int max_key = 1000;
 double search_percent = 0.3;
 double update_percent = 0.3;
+bool use_iterators = false;
 
 
 TransactionTid::type lock;
@@ -50,20 +51,20 @@ struct TesterPair {
     int me;
 };
 
-bool use_iterators = false;
 
 template <typename T>
 int findK(T* q, int val) {
     if (use_iterators) {
         data_structure::iterator fit = q->begin();
-        data_structure::iterator it = std::find(fit, q->end(), val);
-        return fit - it;
+        data_structure::iterator eit = q->end();
+        data_structure::iterator it = std::find(fit, eit, val);
+        return it-fit;
         
     } else {
         int first = 0;
         int last = q->transSize();
-        while (first!=last) {
-            if (q->transGet(first)==val) return first;
+        while (first != last) {
+            if (q->transRead(first) == val) return first;
             ++first;
         }
         return last;
@@ -144,7 +145,7 @@ void print_time(struct timeval tv1, struct timeval tv2) {
 }
 
 enum {
-    opt_nthreads, opt_ntrans, opt_opspertrans, opt_searchpercent, opt_updatepercent, opt_prepopulate, opt_seed
+    opt_nthreads, opt_ntrans, opt_opspertrans, opt_searchpercent, opt_updatepercent, opt_prepopulate, opt_seed, opt_useiterators
 };
 
 static const Clp_Option options[] = {
@@ -154,7 +155,8 @@ static const Clp_Option options[] = {
     { "searchpercent", 0, opt_searchpercent, Clp_ValDouble, Clp_Optional },
     { "updatepercent", 0, opt_updatepercent, Clp_ValDouble, Clp_Optional },
     { "prepopulate", 0, opt_prepopulate, Clp_ValInt, Clp_Optional },
-    { "seed", 0, opt_seed, Clp_ValInt, Clp_Optional }
+    { "seed", 0, opt_seed, Clp_ValInt, Clp_Optional },
+    { "useiterators", 0, opt_useiterators, Clp_ValInt, Clp_Optional}
 };
 
 static void help() {
@@ -215,13 +217,16 @@ int main(int argc, char *argv[]) {
             case opt_seed:
                 global_seed = clp->val.i;
                 break;
+            case opt_useiterators:
+                use_iterators = clp->val.i == 1;
+                break;
             default:
                 help();
         }
     }
     Clp_DeleteParser(clp);
 
-    use_iterators = false;
+    if (!use_iterators) {
     // Run a parallel test with lots of transactions doing pushes and pops
     data_structure q;
     init(&q);
@@ -243,8 +248,7 @@ int main(int argc, char *argv[]) {
     }
     Transaction::clear_stats();
 #endif
-    
-    use_iterators = true;
+    } else {
     
     data_structure q2;
     init(&q2);
@@ -265,6 +269,6 @@ int main(int argc, char *argv[]) {
     }
     Transaction::clear_stats();
 #endif
-    
+   }    
 	return 0;
 }

@@ -4,11 +4,13 @@
 #include "compiler.hh"
 #include <iostream>
 #include <vector>
+#include <map>
 #include "Transaction.hh"
 #include "Box.hh"
 #include "VersionFunctions.hh"
 #include "rwlock.hh"
 
+#define IT_SIZE 10000
 #define log2(x) ceil(log((double) size) / log(2.0))
 
 class OutOfBoundsException {};
@@ -43,12 +45,21 @@ public:
         size_ = 0;
         vecversion_ = 0;
         data_ = NULL;
+        it_objs = new wrapper[IT_SIZE];
+        for (int i = 0; i < IT_SIZE; i++) {
+          it_objs[i].initialize(this, i);
+        }
     }
     
     Vector(int32_t size): resize_lock_() {
         size_ = 0;
         capacity_ = 1 << ((int) log2(size));
         vecversion_ = 0;
+        it_objs = new wrapper[IT_SIZE];
+        for (int i = 0; i < IT_SIZE; i++) {
+          it_objs[i].initialize(this, i);
+        }
+
         data_ = new Elem[capacity_];
         for (int i = 0; i < capacity_; i++) {
             data_[i].initialize(this, i);
@@ -499,6 +510,11 @@ public:
         }
         std::cout << std::endl;
     }
+
+    wrapper& get_it_obj(int idx) {
+        assert(idx < IT_SIZE);
+        return it_objs[idx];
+    }
     
 private:
     int32_t size_;
@@ -506,11 +522,16 @@ private:
     Version vecversion_; // for vector size
     rwlock resize_lock_; // to do concurrent resize
     Elem* data_;
+    wrapper* it_objs;
 };
+
     
 template<typename T, bool Opacity, typename Elem>
 struct T_wrapper {
-    T_wrapper(Vector<T, Opacity, Elem> * arr, int idx) : arr_(arr), idx_(idx) {}
+    void initialize(Vector<T, Opacity, Elem> * arr, int idx) {
+       arr_ = arr;
+       idx_ = idx;
+    }
     
     operator T() {
         return arr_->transGet(idx_);
@@ -530,6 +551,7 @@ private:
     Vector<T, Opacity, Elem> * arr_;
     int idx_;
 };
+
 
 template<typename T, bool Opacity, typename Elem>
 class VecIterator : public std::iterator<std::random_access_iterator_tag, T> {
@@ -555,13 +577,13 @@ public:
     }
     
     wrapper& operator*() {
-        wrapper * item = new wrapper(myArr, myPtr); //TODO: need to gc this
-        return *item;
+        wrapper& item = myArr->get_it_obj(myPtr);
+        return item;
     }
     
     wrapper& operator[](const int& n) {
-        wrapper* item = new wrapper(myArr, myPtr + n);
-        return *item;
+        wrapper& item = myArr->get_it_obj( myPtr + n);
+        return item;
     }
     
     /* This is the prefix case */
