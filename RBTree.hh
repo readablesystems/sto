@@ -216,11 +216,11 @@ private:
     // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
     // return values: (node*, found, boundary), boundary only valid if !found
     // NOTE: this function must be surrounded by a lock in order to ensure we add the correct nodeversions
-    inline std::pair<std::pair<wrapper_type*, bool>, std::pair<wrapper_type*, wrapper_type*>>
+    inline std::pair<std::pair<rbnodeptr<wrapper_type>, bool>, std::pair<wrapper_type*, wrapper_type*>>
     find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp, bool insert) const {
         auto results = wrapper_tree_.find_any(rbkvp, rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
         auto pair = results.first;
-        auto x = pair.first;
+        wrapper_type* x = pair.first.node();
         auto found = pair.second;
 
         // PRESENT GET
@@ -291,28 +291,30 @@ private:
 
     // Insert nonexistent <@key, @value>
     // return value is a reference to kvp.second
-    inline wrapper_type* insert_absent(wrapper_type* found_p, const K& key) {
+    inline wrapper_type* insert_absent(rbnodeptr<wrapper_type> found_p, const K& key) {
 #if DEBUG
             stats_.absent_insert++;
 #endif
+            // use in-place constructor so that we don't mix up c++'s new and c's free()
             wrapper_type* n = (wrapper_type*)malloc(sizeof(wrapper_type));
             new (n) wrapper_type(rbpair<K, T>(key, T()));
-            // insert now returns the parent, before re-balancing, under which the
-            // new leaf is inserted
-            //XXX rbnodeptr<wrapper_type> p = wrapper_tree_.insert_commit(*n, found_p, false);
-            rbnodeptr<wrapper_type> p = wrapper_tree_.insert(*n);
+            // insert new node under parent
+            bool side = (found_p.node() == nullptr)? false :
+                    wrapper_tree_.r_.node_compare(*n, *found_p.node()) > 0;
+            wrapper_tree_.insert_commit(n, found_p, side);
+            // rbnodeptr<wrapper_type> p = wrapper_tree_.insert(*n);
             // invariant: the node's insert_bit should be set
             assert(is_inserted(n->version()));
             // if tree is empty (i.e. no parent), we increment treeversion 
-            if (!found_p) {
+            if (found_p.node() == nullptr) {
                 Sto::item(this, tree_key_).add_write(0);
             // else we increment the parent version 
             } else {
-                assert(p); //XXX ugly code; this is only true because of coarse-grained locking
-                assert(p.node() == found_p); // XXX same problem as above
+                //assert(p); //XXX ugly code; this is only true because of coarse-grained locking
+                //assert(p.node() == found_p); // XXX same problem as above
                 // returned pair is the versions (unlocked) before and after the increment
-                auto versions = p.node()->inc_nodeversion();
-                auto item = Sto::item(this, reinterpret_cast<uintptr_t>(p.node()) | 1);
+                auto versions = found_p.node()->inc_nodeversion();
+                auto item = Sto::item(this, reinterpret_cast<uintptr_t>(found_p.node()) | 1);
                 // update our own read if necessary
                 if (item.has_read()) {
                     item.update_read(versions.first, versions.second);
@@ -333,12 +335,13 @@ private:
         lock(&treelock_);
         auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
         auto pair = this->find_or_abort(node, true).first;
-        auto x = pair.first;
+        rbnodeptr<wrapper_type> x_rbnp = pair.first;
+        wrapper_type* x = x_rbnp.node();
         auto found = pair.second;
         
         // INSERT: kvp did not exist
         if (!found)
-            return insert_absent(x, key);
+            return insert_absent(x_rbnp, key);
 
         // UPDATE: kvp is already inserted into the tree
         else {
@@ -549,8 +552,9 @@ inline size_t RBTree<K, T>::count(const K& key) const {
     (!found) ? stats_.absent_count++ : stats_.present_count++;
 #endif
     if (found) {
-        auto item = Sto::item(const_cast<RBTree<K, T>*>(this), pair.first);
-        if (is_inserted(pair.first->version()) && has_delete(item)) {
+        wrapper_type* n = pair.first.node();
+        auto item = Sto::item(const_cast<RBTree<K, T>*>(this), n);
+        if (is_inserted(n->version()) && has_delete(item)) {
             // read my insert-then-delete
             unlock(&treelock_);
             return 0;
@@ -574,7 +578,7 @@ inline size_t RBTree<K, T>::erase(const K& key) {
     // add a read of boundary nodes if absent erase
     auto results = find_or_abort(idx_pair, false);
     auto pair = results.first; 
-    auto x = pair.first;
+    wrapper_type* x = pair.first.node();
     auto found = pair.second;
    
     // PRESENT ERASE
