@@ -182,7 +182,7 @@ class rbtree {
     rbpriv::rbrep<T, Compare> r_;
 
     template <typename K, typename Comp>
-    inline std::pair<std::pair<T*, bool>, std::pair<T*, T*>> find_any(const K& key, Comp comp) const;
+    inline std::pair<std::pair<rbnodeptr<T>, bool>, std::pair<T*, T*>> find_any(const K& key, Comp comp) const;
    
     void insert_commit(T* x, rbnodeptr<T> p, bool side);
     T* delete_node(T* victim, T* successor_hint);
@@ -500,26 +500,26 @@ inline T* rbtree<T, C>::root() {
 // an empty tree
 // XXX always tracking boundary right now, seems a bit inefficient for inserts
 template <typename T, typename C> template <typename K, typename Comp>
-inline std::pair<std::pair<T*, bool>, std::pair<T*, T*>> rbtree<T, C>::find_any(const K& key, Comp comp) const {
-    T* n = r_.root_;
-    T* p = nullptr;
+inline std::pair<std::pair<rbnodeptr<T>, bool>, std::pair<T*, T*>> rbtree<T, C>::find_any(const K& key, Comp comp) const {
+    rbnodeptr<T> n(r_.root_, false);
+    rbnodeptr<T> p(nullptr, false);
     std::pair<T*, T*> boundary = std::make_pair(r_.limit_[0], r_.limit_[1]);
-    while (n) {
-        int cmp = comp.compare(key, *n);
+    while (n.node()) {
+        int cmp = comp.compare(key, *n.node());
         if (cmp == 0)
             break;
 
         // narrow down to find the boundary nodes
         // update the LEFT boundary when going RIGHT, and vice versa
         if (cmp > 0) {
-            boundary.first = n;
+            boundary.first = n.node();
         } else {
-            boundary.second = n;
+            boundary.second = n.node();
         }
         p = n;
-        n = n->rblinks_.c_[cmp > 0].node();
+        n = n.node()->rblinks_.c_[cmp > 0];
     }
-    auto nodepair = std::make_pair((n) ? n : p, n);
+    auto nodepair = std::make_pair((n.node()) ? n : p, n.node());
     return std::make_pair(nodepair, boundary);
 }
 
