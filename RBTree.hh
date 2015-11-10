@@ -8,8 +8,7 @@
 #include "VersionFunctions.hh"
 #include "RBTreeInternal.hh"
 
-#define DEBUG 1
-
+#define DEBUG 0
 #if DEBUG
 extern TransactionTid::type lock;
 #endif

@@ -225,9 +225,10 @@ public:
             for (int i = 0; i <= place && it != q->end(); i++, it++) {
                 tmp = it;
             }
+            int val = *tmp;
 #if PRINT_DEBUG
-            std::cout << "*it replay: " << *tmp << std::endl;
-            std::cout << "*it expected: " << op->rdata[0] << std::endl;
+            std::cout << "*it replay at place " << place << ": " << val << std::endl;
+            std::cout << "*it expected at place " << place << ": " << op->rdata[0]  << std::endl;
 #endif
             assert(*tmp == op->rdata[0]);
         }
