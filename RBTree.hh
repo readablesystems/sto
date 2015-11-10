@@ -139,7 +139,7 @@ public:
     }
 
     iterator end() {
-        return iterator(*this, nullptr);
+        return iterator(this, nullptr);
     }
 
     inline void lock(TransItem& item);
@@ -444,10 +444,10 @@ public:
     }
    
     // XXX operator* returns a reference to the value, not to the pair
-    wrapper& operator*() {
+    RBProxy<K, T> operator*() {
         // add a read of the version to make sure the value hasn't changed at commit time
-        Sto::item(*tree_, node_).add_read(node_->version());
-        return RBPairProxy(*tree_, node_);
+        Sto::item(tree_, node_).add_read(node_->version());
+        return RBProxy<K, T>(*tree_, node_);
     }
     
     // This is the prefix case
