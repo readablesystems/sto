@@ -419,7 +419,6 @@ private:
 };
 
 template<typename K, typename T>
-// XXX should this be an iterator over wrapper_type?
 class RBTreeIterator : public std::iterator<std::bidirectional_iterator_tag, rbwrapper<rbpair<K, T>>> {
 public:
     typedef rbwrapper<rbpair<K, T>> wrapper;
@@ -428,8 +427,7 @@ public:
     RBTreeIterator(RBTree<K, T> * tree, wrapper* node) : tree_(tree), node_(node) { }
     RBTreeIterator(const RBTreeIterator& itr) : tree_(itr.tree_), node_(itr.node_) {}
     
-    // XXX we don't have to add anything to read/write sets?
-    RBTreeIterator& operator= (const RBTreeIterator& v) {
+    RBTreeIterator& operator=(const RBTreeIterator& v) {
         tree_ = v.tree_;
         node_ = v.node_;
         return *this;

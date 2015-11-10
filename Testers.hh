@@ -143,7 +143,7 @@ public:
             rec->args.push_back(key);
             rec->rdata.push_back(num);
             return rec;
-        } else {
+        } else if (op == 3) {
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] try to size" << std::endl;
@@ -158,6 +158,29 @@ public:
             op_record* rec = new op_record;
             rec->op = op;
             rec->rdata.push_back(size);
+            return rec;
+        } else if (op == 4) {
+            int place = slotdist(transgen);
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to iterator* at place " << place << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            auto it = q->begin();
+            auto tmp = it;
+            for (int i = 0; i <= place && it != q->end(); i++, it++) {
+                tmp = it;
+            }
+            auto val = *tmp;
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] found value " << val << " at place " << place << "in the tree" << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->args.push_back(place);
+            rec->rdata.push_back(val);
             return rec;
         }
     }
@@ -188,13 +211,25 @@ public:
             std::cout << "count expected: " << op->rdata[0] << std::endl;
 #endif
             assert(counted == op->rdata[0]);
-        } else {
+        } else if (op->op == 3) {
             size_t size = q->size();
 #if PRINT_DEBUG
             std::cout << "size replay: " << size << std::endl;
             std::cout << "size expected: " << op->rdata[0] << std::endl;
 #endif
             assert(size == op->rdata[0]);
+        } else if (op->op == 4) {
+            int place = op->args[0];
+            auto it = q->begin();
+            auto tmp = it;
+            for (int i = 0; i <= place && it != q->end(); i++, it++) {
+                tmp = it;
+            }
+#if PRINT_DEBUG
+            std::cout << "*it replay: " << *tmp << std::endl;
+            std::cout << "*it expected: " << op->rdata[0] << std::endl;
+#endif
+            assert(*tmp == op->rdata[0]);
         }
     }
 
@@ -204,6 +239,12 @@ public:
             std::cout << "i is: " << i << std::endl;
 #endif
             TRANSACTION {
+                for (auto it = q->begin(), it1 = q1->begin(); 
+                        (it != q->end() || it1 != q1->end());
+                         it++, it1++) {
+                    assert(*it == *it1);
+                }
+
                 size_t s = q->size();
                 size_t s1 = q1->size();
 #if PRINT_DEBUG
@@ -258,7 +299,7 @@ public:
     }
 #endif
 
-    static const int num_ops_ = 4;
+    static const int num_ops_ = 5;
 };
 
 template <typename T>
