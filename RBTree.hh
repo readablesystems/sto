@@ -489,10 +489,8 @@ public:
     explicit RBProxy(transtree_t& tree, wrapper_type* node)
         : tree_(tree), node_(node) {};
 
-    // when we just do a read of the item (using operator[] on the RHS), we don't
-    // want to force an update
+    // get the latest write value
     operator T() {
-        // get the latest write value
         auto item = Sto::item(&tree_, node_);
         if (item.has_write()) {
             return item.template write_value<T>();

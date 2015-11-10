@@ -171,10 +171,10 @@ public:
             for (int i = 0; i <= place && it != q->end(); i++, it++) {
                 tmp = it;
             }
-            auto val = *tmp;
+            int val = *tmp;
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
-            std::cout << "[" << me << "] found value " << val << " at place " << place << "in the tree" << std::endl;
+            std::cout << "[" << me << "] found value " << val << " at place " << place << " in the tree" << std::endl;
             TransactionTid::unlock(lock);
 #endif
             op_record* rec = new op_record;
