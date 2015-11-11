@@ -224,6 +224,7 @@ void testConflictingIter() {
     Sto::set_transaction(&t1);
     f.transUpdate(4, 10);
     assert(t1.try_commit());
+    Sto::set_transaction(&t);
     assert(!t.try_commit());
     printf("PASS: conflicting vector max_element test\n");
     
@@ -269,9 +270,9 @@ void testConflictingModifyIter1() {
     Sto::set_transaction(&t1);
     f.transUpdate(4, 10);
     assert(t1.try_commit());
-    
+    Sto::set_transaction(&t);
     assert(!t.try_commit());
-    
+    Sto::set_transaction(&t);
     Transaction t2;
     Sto::set_transaction(&t2);
     int v = f.transGet(4);
@@ -327,6 +328,7 @@ void testConflictingModifyIter3() {
     std::replace(f.begin(), f.end(), 4, 6);
     assert(t.try_commit());
     
+    Sto::set_transaction(&t1);
     assert(!t1.try_commit());
     
     Transaction t2;
@@ -378,7 +380,7 @@ void testIterNPushBack1() {
     Sto::set_transaction(&t2);
     f.push_back(12);
     assert(t2.try_commit());
-    
+    Sto::set_transaction(&t1);
     assert(!t1.try_commit());
     
     printf("PASS: IterNPushBack1\n");    
@@ -402,7 +404,7 @@ void testIterNPushBack2() {
     Sto::set_transaction(&t2);
     f.push_back(2);
     assert(t2.try_commit());
-    
+    Sto::set_transaction(&t1);
     assert(!t1.try_commit());
     
     printf("PASS: IterNPushBack2\n");
@@ -470,7 +472,8 @@ void testPushNPop() {
         }
     } RETRY(false);
     
-    TRANSACTION {
+    Transaction t;
+    Sto::set_transaction(&t);
         f.push_back(20);
         f.push_back(21);
         assert(f.transGet(0) == 0);
@@ -478,7 +481,7 @@ void testPushNPop() {
         f.pop_back();
         f.pop_back();
         
-    } RETRY(false);
+    assert(t.try_commit());
     
     Transaction t1;
     Sto::set_transaction(&t1);
@@ -489,7 +492,7 @@ void testPushNPop() {
     Sto::set_transaction(&t2);
     f.push_back(20);
     assert(t2.try_commit());
-    
+    Sto::set_transaction(&t1);
     assert(!t1.try_commit());
     
     TRANSACTION {
@@ -509,7 +512,7 @@ void testPushNPop() {
     Sto::set_transaction(&t4);
     f.pop_back();
     assert(t4.try_commit());
-    
+    Sto::set_transaction(&t3);
     assert(!t3.try_commit());
     
     TRANSACTION {
@@ -535,6 +538,7 @@ void testPushNPop() {
     f.transGet(8);
     
     assert(t5.try_commit());
+    Sto::set_transaction(&t7);
     assert(!t7.try_commit());
     
     TRANSACTION {
@@ -626,6 +630,30 @@ void testUpdatePop() {
 }
 
 
+void testIteratorBetterSemantics() {
+    Vector<int> f;
+    
+    TRANSACTION {
+        for (int i = 0; i < 10; i++) {
+            f.push_back(i);
+        }
+    } RETRY(false);
+    
+    Transaction t1;
+    Sto::set_transaction(&t1);
+    std::find(f.begin(), f.end(), 5);
+    
+    Transaction t2;
+    Sto::set_transaction(&t2);
+    f.push_back(12);
+    assert(t2.try_commit());
+    Sto::set_transaction(&t1);
+    assert(t1.try_commit());
+    
+    printf("PASS: IteratorBetterSemantics\n");
+
+}
+
 
 
 
@@ -655,5 +683,6 @@ int main() {
     testMulPushPops();
     testMulPushPops1();
     testUpdatePop();
+    testIteratorBetterSemantics();
 	return 0;
 }

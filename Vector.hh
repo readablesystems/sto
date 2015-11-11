@@ -28,8 +28,13 @@ class Vector : public Shared {
     
     static constexpr int push_back_key = -1;
     static constexpr int size_key = -2;
+    static constexpr int size_pred_key = -3;
     static constexpr TransItem::flags_type list_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
+    static constexpr int32_t eq_bit = 0;
+    static constexpr int32_t geq_bit = 1;
+    static constexpr int32_t pred_shift = 1;
+    static constexpr int32_t pred_mask = 1;
 public:
     typedef int key_type;
     typedef T value_type;
@@ -187,6 +192,30 @@ public:
         t_item(this).add_read(vecversion_);
         acquire_fence();
         return size_ + trans_size_offs();
+    }
+    
+    bool checkSize(int32_t sz) {
+        int32_t size = size_;
+        int32_t offset = trans_size_offs();
+        
+        int32_t pred = (sz - offset) << pred_shift;
+        if (size + offset == sz) {
+            pred |= eq_bit;
+        } else if (size + offset > sz) {
+            pred |= geq_bit;
+        } else {
+            Sto::abort();
+        }
+        auto item = Sto::item(this, size_pred_key);
+        if (item.has_read()) {
+            auto& pred_list= item.template read_value<std::vector<int32_t>>();
+            pred_list.push_back(pred);
+        } else {
+            std::vector<int32_t> pred_list;
+            pred_list.push_back(pred);
+            item.add_read(pred_list);
+        }
+        return size + offset == sz;
     }
     
     size_t size() const {
@@ -379,6 +408,25 @@ public:
         if (item.key<int>() == size_key) {
             return true;
         }
+        if (item.key<int>() == size_pred_key) {
+            int32_t size = size_;
+            auto& pred_list = item.template read_value<std::vector<int32_t>>();
+            for (int i = 0; i < pred_list.size(); i++) {
+                int32_t pred = pred_list[i];
+                int32_t rval = pred >> pred_shift;
+                if ((pred & pred_mask) == eq_bit) {
+                    if (size != rval) return false;
+                } else {
+                    assert((pred & pred_mask) == geq_bit);
+                    if (size < rval) return false;
+                }
+            }
+            
+            auto vec_item = Sto::check_item(this, this);
+            auto lv = vecversion_;
+            return (!is_locked(lv) || (*vec_item).has_lock());
+            
+        }
         if (item.key<Vector*>() == this || item.key<int>() == push_back_key) {
             auto lv = vecversion_;
             return TransactionTid::same_version(lv, item.template read_value<Version>())
@@ -478,11 +526,11 @@ public:
         }
     }
     
-    iterator begin() { return iterator(this, 0); }
+    iterator begin() { return iterator(this, 0, false); }
     iterator end() {
-        t_item(this).add_read(vecversion_);// to invalidate size changes after this call.
-        acquire_fence();
-        return iterator(this, size_ + trans_size_offs());
+        //t_item(this).add_read(vecversion_);// to invalidate size changes after this call.
+        //acquire_fence();
+        return iterator(this, 0, true);
     }
     
     
@@ -559,17 +607,24 @@ public:
     typedef T value_type;
     typedef T_wrapper<T, Opacity, Elem> wrapper;
     typedef VecIterator<T, Opacity, Elem> iterator;
-    VecIterator(Vector<T, Opacity, Elem> * arr, int ptr) : myArr(arr), myPtr(ptr) { }
-    VecIterator(const VecIterator& itr) : myArr(itr.myArr), myPtr(itr.myPtr) {}
+    VecIterator(Vector<T, Opacity, Elem> * arr, int ptr, bool endy) : myArr(arr), myPtr(ptr), endy(endy) { }
+    VecIterator(const VecIterator& itr) : myArr(itr.myArr), myPtr(itr.myPtr), endy(itr.endy) {}
     
     VecIterator& operator= (const VecIterator& v) {
         myArr = v.myArr;
         myPtr = v.myPtr;
+        endy = v.endy;
         return *this;
     }
     
     bool operator==(iterator other) const {
-        return (myArr == other.myArr) && (myPtr == other.myPtr);
+        if (myArr != other.myArr) return false;
+        if (endy == other.endy) {
+            return myPtr == other.myPtr;
+        } else {
+            size_t sz = endy ? other.myPtr - myPtr : myPtr - other.myPtr;
+            return myArr->checkSize(sz);
+        }
     }
     
     bool operator!=(iterator other) const {
@@ -577,12 +632,14 @@ public:
     }
     
     wrapper& operator*() {
-        wrapper& item = myArr->get_it_obj(myPtr);
+        int idx = endy ? myArr->transSize() + myPtr : myPtr;
+        wrapper& item = myArr->get_it_obj(idx);
         return item;
     }
     
     wrapper& operator[](const int& n) {
-        wrapper& item = myArr->get_it_obj( myPtr + n);
+        int idx = endy ? myArr->transSize() + myPtr : myPtr;
+        wrapper& item = myArr->get_it_obj( idx + n);
         return item;
     }
     
@@ -618,11 +675,20 @@ public:
     
     int operator-(const iterator& rhs) {
         assert(rhs.myArr == myArr);
-        return (myPtr - rhs.myPtr);
+        if (endy == rhs.endy)
+            return (myPtr - rhs.myPtr);
+        else {
+            size_t size = myArr->transSize();
+            if (endy)
+                return size + myPtr - rhs.myPtr;
+            else
+                return myPtr - rhs.myPtr - size;
+        }
     }
         
 private:
     Vector<T, Opacity, Elem> * myArr;
-    int myPtr;
+    size_t myPtr;
+    bool endy;
 };
 
