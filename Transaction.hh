@@ -744,6 +744,10 @@ private:
             hard_check_opacity(t);
     }
 
+    void check_opacity() {
+        check_opacity(_TID);
+    }
+
     tid_type commit_tid() const {
         assert(writeset_);
         if (commit_tid_ == 0) {
@@ -840,6 +844,13 @@ public:
       throw NotInTransaction();
     }
     __transaction->check_opacity(t);
+  }
+
+  static void check_opacity() {
+    if (!trans_in_progress()) {
+      throw NotInTransaction();
+    }
+    __transaction->check_opacity();
   }
 
   static void check_reads() {
