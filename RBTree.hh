@@ -133,12 +133,23 @@ public:
     iterator begin() {
         lock(&treelock_);
         auto start = rbalgorithms<wrapper_type>::edge_node(wrapper_tree_.root(), false);
+        if (is_phantom_node(start)) {
+            unlock(&treelock_);
+            Sto::abort();
+        }
         unlock(&treelock_);
         return iterator(this, start);
     }
 
     iterator end() {
-        return iterator(this, nullptr);
+        lock(&treelock_);
+        auto n = wrapper_tree_.r_.limit_[1];
+        if (is_phantom_node(n)) {
+            unlock(&treelock_);
+            Sto::abort();
+        }
+        unlock(&treelock_);
+        return iterator(this, n);
     }
 
     inline void lock(TransItem& item);
@@ -159,6 +170,10 @@ private:
     inline wrapper_type* get_next(wrapper_type* node) {
         lock(&treelock_);
         auto next_node = rbalgorithms<wrapper_type>::next_node(node);
+        if (is_phantom_node(next_node)) {
+            unlock(&treelock_);
+            Sto::abort();
+        }
         Sto::item(this, (reinterpret_cast<uintptr_t>(node)|0x1)).add_read(node->nodeversion());
         if (next_node) {
             Sto::item(this, (reinterpret_cast<uintptr_t>(next_node)|0x1)).add_read(next_node->nodeversion());
@@ -170,6 +185,10 @@ private:
     inline wrapper_type* get_prev(wrapper_type* node) {
         lock(&treelock_);
         auto prev_node = rbalgorithms<wrapper_type>::prev_node(node);
+        if (is_phantom_node(prev_node)) {
+            unlock(&treelock_);
+            Sto::abort();
+        }
         Sto::item(this, (reinterpret_cast<uintptr_t>(node)|0x1)).add_read(node->nodeversion());
         if (prev_node) {
             Sto::item(this, (reinterpret_cast<uintptr_t>(prev_node)|0x1)).add_read(prev_node->nodeversion());
