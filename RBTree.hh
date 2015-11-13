@@ -139,7 +139,11 @@ public:
     // iterators
     iterator begin() {
         lock(&treelock_);
-        auto start = rbalgorithms<wrapper_type>::edge_node(wrapper_tree_.root(), false);
+        auto start = wrapper_tree_.r_.limit_[0];
+        if (is_phantom_node(start)) {
+            unlock(&treelock_);
+            Sto::abort();
+        }
         unlock(&treelock_);
         return iterator(this, start);
     }
@@ -166,6 +170,10 @@ private:
     inline wrapper_type* get_next(wrapper_type* node) {
         lock(&treelock_);
         auto next_node = rbalgorithms<wrapper_type>::next_node(node);
+        if (is_phantom_node(next_node)) {
+            unlock(&treelock_);
+            Sto::abort();
+        }
         Sto::item(this, (reinterpret_cast<uintptr_t>(node)|0x1)).add_read(node->nodeversion());
         if (next_node) {
             Sto::item(this, (reinterpret_cast<uintptr_t>(next_node)|0x1)).add_read(next_node->nodeversion());
@@ -176,8 +184,15 @@ private:
 
     inline wrapper_type* get_prev(wrapper_type* node) {
         lock(&treelock_);
-        auto prev_node = rbalgorithms<wrapper_type>::prev_node(node);
-        Sto::item(this, (reinterpret_cast<uintptr_t>(node)|0x1)).add_read(node->nodeversion());
+        // check if we are at the end() node (i.e. nullptr)
+        auto prev_node = node ? rbalgorithms<wrapper_type>::prev_node(node) : wrapper_tree_.r_.limit_[1];
+        if (is_phantom_node(prev_node)) {
+            unlock(&treelock_);
+            Sto::abort();
+        }
+        if (node) {
+            Sto::item(this, (reinterpret_cast<uintptr_t>(node)|0x1)).add_read(node->nodeversion());
+        }
         if (prev_node) {
             Sto::item(this, (reinterpret_cast<uintptr_t>(prev_node)|0x1)).add_read(prev_node->nodeversion());
         }
@@ -188,6 +203,7 @@ private:
     // A (hard) phantom node is a node that's being inserted but not yet
     // committed by another transaction. It should be treated as invisible
     inline bool is_phantom_node(wrapper_type* node) const {
+        if (!node) return false;
         Version& val_ver = node->version();
         auto item = Sto::item(const_cast<RBTree<K, T>*>(this), node);
         return (is_inserted(val_ver) && !has_insert(item) && !has_delete(item));
