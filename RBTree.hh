@@ -791,12 +791,12 @@ bool RBTree<K, T>::nontrans_insert(const K& key, const T& value) {
     wrapper_type* x = pair.first.node();
     bool found = pair.second;
     if (!found) {
-        rbnodeptr<T> p = pair.first;
+        rbnodeptr<wrapper_type> p = pair.first;
         wrapper_type* n = (wrapper_type*)malloc(sizeof(wrapper_type));
         new (n) wrapper_type(rbpair<K, T>(key, value));
-        erase_inserted(n->version());
-        bool side = (wrapper_tree_.r_.node_compare(*n, *x) > 0);
-        wrapper_tree_.insert_commit(p, *n, side);
+        erase_inserted(&n->version());
+        bool side = (x == nullptr)? false : (wrapper_tree_.r_.node_compare(*n, *x) > 0);
+        wrapper_tree_.insert_commit(n, p, side);
     }
     return !found;
 }
