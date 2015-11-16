@@ -160,6 +160,40 @@ public:
             rec->rdata.push_back(size);
             return rec;
         } else if (op == 4) {
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to iterator* --end" << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            auto it = --(q->end());
+            int val = *it;
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] found value " << val << " at end" << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->rdata.push_back(val);
+            return rec;
+        } else if (op == 5) {
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to iterator* start" << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            auto it = q->begin();
+            int val = *it;
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] found value " << val << " at start" << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->rdata.push_back(val);
+            return rec;
+        } else if (op == 6) {
             int place = slotdist(transgen);
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
@@ -219,6 +253,27 @@ public:
 #endif
             assert(size == op->rdata[0]);
         } else if (op->op == 4) {
+            auto it = q->end();
+            // ensure that --end and end-- do the same hting
+            int val1 = *(--it);
+            assert(++it == q->end());
+            it--;
+            int val2 = *it;
+#if PRINT_DEBUG
+            std::cout << "*it end-1 replay: " << val1 << std::endl;
+            std::cout << "*it end-1 expected: " << op->rdata[0]  << std::endl;
+#endif
+            assert(val1 == val2);
+            assert(val1 == op->rdata[0]);
+        } else if (op->op == 5) {
+            auto it = q->begin();
+            int val = *it;
+#if PRINT_DEBUG
+            std::cout << "*it start replay: " << val << std::endl;
+            std::cout << "*it start expected: " << op->rdata[0]  << std::endl;
+#endif
+            assert(val == op->rdata[0]);
+        } else if (op->op == 6) {
             int place = op->args[0];
             auto it = q->begin();
             auto tmp = it;
@@ -230,7 +285,7 @@ public:
             std::cout << "*it replay at place " << place << ": " << val << std::endl;
             std::cout << "*it expected at place " << place << ": " << op->rdata[0]  << std::endl;
 #endif
-            assert(*tmp == op->rdata[0]);
+            assert(val == op->rdata[0]);
         }
     }
 
@@ -300,7 +355,7 @@ public:
     }
 #endif
 
-    static const int num_ops_ = 5;
+    static const int num_ops_ = 6;
 };
 
 template <typename T>
