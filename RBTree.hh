@@ -124,13 +124,20 @@ public:
     // modifiers
     inline size_t erase(const K& key);
 
+    // STAMP-compatible nontransactional methods
+    bool nontrans_insert(const K& key, const T& value);
+    bool nontrans_contains(const K& key);
+    bool nontrans_remove(const K& key);
+    T nontrans_find(const K& key); // returns T() if not found, works for STAMP
+
     void lock(versioned_value *e) {
         lock(&e->version());
     }
     void unlock(versioned_value *e) {
         unlock(&e->version());
     }
- 
+
+    // iterators
     iterator begin() {
         lock(&treelock_);
         auto start = wrapper_tree_.r_.limit_[0];
@@ -779,6 +786,8 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             e->inc_nodeversion();
             Transaction::rcu_free(e);
         } else if (inserted) {
+            // BUMMER...
+            e->writeable_value() = item.template write_value<T>();
             erase_inserted(&e->version());
         // updated
         } else { 
@@ -809,6 +818,63 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
         }
     }
 }
+
+template <typename K, typename T>
+bool RBTree<K, T>::nontrans_insert(const K& key, const T& value) {
+    wrapper_type idx_pair(rbpair<K, T>(key, value));
+    auto results = wrapper_tree_.find_any(idx_pair,
+            rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+    auto pair = results.first;
+    wrapper_type* x = pair.first.node();
+    bool found = pair.second;
+    if (!found) {
+        rbnodeptr<wrapper_type> p = pair.first;
+        wrapper_type* n = (wrapper_type*)malloc(sizeof(wrapper_type));
+        new (n) wrapper_type(rbpair<K, T>(key, value));
+        erase_inserted(&n->version());
+        bool side = (x == nullptr)? false : (wrapper_tree_.r_.node_compare(*n, *x) > 0);
+        wrapper_tree_.insert_commit(n, p, side);
+    }
+    return !found;
+}
+
+template <typename K, typename T>
+bool RBTree<K, T>::nontrans_contains(const K& key) {
+    wrapper_type idx_pair(rbpair<K, T>(key, T()));
+    auto results = wrapper_tree_.find_any(idx_pair,
+            rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+    return results.first.second;
+}
+
+template <typename K, typename T>
+T RBTree<K, T>::nontrans_find(const K& key) {
+    wrapper_type idx_pair(rbpair<K, T>(key, T()));
+    auto results = wrapper_tree_.find_any(idx_pair,
+            rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+    auto pair = results.first;
+    bool found = pair.second;
+    if (found) {
+        return pair.first.node()->writeable_value();
+    } else {
+        return T();
+    }
+}
+
+template <typename K, typename T>
+bool RBTree<K, T>::nontrans_remove(const K& key) {
+    wrapper_type idx_pair(rbpair<K, T>(key, T()));
+    auto results = wrapper_tree_.find_any(idx_pair,
+            rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+    auto pair = results.first;
+    bool found = pair.second;
+    if (found) {
+        wrapper_type* n = pair.first.node();
+        wrapper_tree_.erase(*n);
+        free(n);
+    }
+    return found;
+}
+
 
 #if DEBUG 
 template <typename K, typename T>
