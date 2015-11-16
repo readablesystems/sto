@@ -104,6 +104,7 @@ public:
     RBTree() {
         treelock_ = 0;
         treeversion_ = 0;
+        startversion_ = 0;
         sizeversion_ = 0;
         size_ = 0;
 #if DEBUG
@@ -133,6 +134,8 @@ public:
     iterator begin() {
         lock(&treelock_);
         auto start = wrapper_tree_.r_.limit_[0];
+        // add a read of the startversion to ensure start does not change by commit time
+        Sto::item(this, start_key_).add_read(startversion_);
         if (is_phantom_node(start)) {
             unlock(&treelock_);
             Sto::abort();
@@ -334,6 +337,10 @@ private:
             }
             // add write and insert flag of item (value of rbpair) with @value
             Sto::item(this, n).add_write(T()).add_flags(insert_tag);
+            // if we actually changed begin, increment startversion_ 
+            if (wrapper_tree_.r_.limit_[0] == n) {
+                Sto::item(this, start_key_).add_write(0);
+            }
             unlock(&treelock_);
             // add a write to size with incremented value
             change_size_offset(1);
@@ -419,12 +426,15 @@ private:
     mutable Version sizeversion_;
     mutable Version treelock_;
     mutable Version treeversion_;
+    mutable Version startversion_;
     // used to mark whether a key is for the tree structure (for tree version checks)
     // or a pointer (which will always have the lower 3 bits as 0)
     static constexpr uintptr_t tree_bit = 1U<<0;
     void* tree_key_ = (void*) tree_bit;
     static constexpr uintptr_t size_bit = 1U<<1;
     void* size_key_ = (void*) size_bit;
+    static constexpr uintptr_t start_bit = 1U<<2;
+    void* start_key_ = (void*) start_bit;
 #if DEBUG
     mutable struct stats {
         int absent_insert, absent_delete, absent_count;
@@ -644,10 +654,11 @@ inline size_t RBTree<K, T>::erase(const K& key) {
 
 template <typename K, typename T>
 inline void RBTree<K, T>::lock(TransItem& item) {
-    if (item.key<void*>() == size_key_) {
+    if (item.key<void*>() == start_key_) {
+        lock(&startversion_);
+    } else if (item.key<void*>() == size_key_) {
         lock(&sizeversion_);
-    }
-    else if (item.key<void*>() == tree_key_) {
+    } else if (item.key<void*>() == tree_key_) {
         lock(&treeversion_);
     } else { 
         lock(item.key<versioned_value*>());
@@ -656,10 +667,11 @@ inline void RBTree<K, T>::lock(TransItem& item) {
     
 template <typename K, typename T>
 inline void RBTree<K, T>::unlock(TransItem& item) {
-    if (item.key<void*>() == size_key_) {
+    if (item.key<void*>() == start_key_) {
+        unlock(&startversion_);
+    } else if (item.key<void*>() == size_key_) {
         unlock(&sizeversion_);
-    }
-    else if (item.key<void*>() == tree_key_) {
+    } else if (item.key<void*>() == tree_key_) {
         unlock(&treeversion_);
     } else {
         unlock(item.key<versioned_value*>());
@@ -671,12 +683,16 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     auto e = item.key<uintptr_t>();
     bool is_treekey = ((uintptr_t)e == (uintptr_t)tree_key_);
     bool is_sizekey = ((uintptr_t)e == (uintptr_t)size_key_);
+    bool is_startkey = ((uintptr_t)e == (uintptr_t)start_key_);
     bool is_structured = (e & uintptr_t(1)) && !is_treekey;
     Version read_version = item.read_value<Version>();
     Version curr_version;
 
-    // set up the correct current version to check: either size_, treeversion, item version, or nodeversion
-    if (is_sizekey) {
+    // set up the correct current version to check: either sizeversion, startversion, treeversion, item version, or nodeversion
+    if (is_startkey) {
+        curr_version = startversion_;
+    }
+    else if (is_sizekey) {
         curr_version = sizeversion_;
     } else if (is_treekey) {
         curr_version = treeversion_;
@@ -730,6 +746,9 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         assert(is_locked(treeversion_));
         TransactionTid::inc_invalid_version(treeversion_);
     // we changed the size of the tree, so update size
+    } else if ((void*)e == (wrapper_type*)start_key_) {
+        assert(is_locked(startversion_));
+        TransactionTid::inc_invalid_version(startversion_);
     } else if ((void*)e == (wrapper_type*)size_key_) {
         assert(is_locked(sizeversion_));
         size_ += item.template write_value<ssize_t>();
