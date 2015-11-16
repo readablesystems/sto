@@ -767,6 +767,8 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             e->inc_nodeversion();
             Transaction::rcu_free(e);
         } else if (inserted) {
+            // BUMMER...
+            e->writeable_value() = item.template write_value<T>();
             erase_inserted(&e->version());
         // updated
         } else { 
