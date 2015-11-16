@@ -57,27 +57,31 @@ std::vector<std::map<uint64_t, txn_record *> > txn_list;
 typedef TransactionTid::type Version;
 Version lock;
 
-template <typename T>
+template <typename DT, typename RT>
 class Tester {
 public: 
     virtual ~Tester() {}
-    // initialize the data structure
-    virtual void init(T* q) = 0; 
+    // initialize the data structures
+    // structure under test
+    virtual void init_sut(DT* q) = 0;
+    // reference structure
+    virtual void init_ref(RT* q) = 0;
     // Perform a particular operation on the data structure.    
-    virtual op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) = 0 ;
+    virtual op_record* doOp(DT* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) = 0 ;
     // Redo a operation. This is called during serial execution.
-    virtual void redoOp(T* q, op_record *op) = 0;
+    virtual void redoOp(RT* q, op_record *op) = 0;
     // Checks that final state of the two data structures are the same.
-    virtual void check(T* q, T* q1) = 0;
+    virtual void check(DT* q, RT* q1) = 0;
 #if PRINT_DEBUG
     // Print stats for each data structure
     //void print_stats(T* q) {};
 #endif
 };
 
-template <typename T>
-class RBTreeTester: Tester<T> {
+template <typename DT, typename RT>
+class RBTreeTester: Tester<DT, RT> {
 public:
+    template <typename T>
     void init(T* q) {
         for (int i = 0; i < MAX_VALUE; i++) {
             TRANSACTION {
@@ -86,7 +90,10 @@ public:
         }
     }
 
-    op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
+    void init_sut(DT* q) {init<DT>(q);}
+    void init_ref(RT* q) {init<RT>(q);}
+
+    op_record* doOp(DT* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
 #if !PRINT_DEBUG
         (void)me;
 #endif
@@ -159,7 +166,7 @@ public:
             rec->op = op;
             rec->rdata.push_back(size);
             return rec;
-        } else if (op == 4) {
+        } /*else if (op == 4) {
             int place = slotdist(transgen);
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
@@ -182,10 +189,11 @@ public:
             rec->args.push_back(place);
             rec->rdata.push_back(val);
             return rec;
-        }
+        }*/
+        return nullptr;
     }
 
-    void redoOp(T* q, op_record *op) {
+    void redoOp(RT* q, op_record *op) {
         if (op->op == 0) {
             int key = op->args[0];
             int val = op->args[1];
@@ -218,7 +226,7 @@ public:
             std::cout << "size expected: " << op->rdata[0] << std::endl;
 #endif
             assert(size == op->rdata[0]);
-        } else if (op->op == 4) {
+        } /*else if (op->op == 4) {
             int place = op->args[0];
             auto it = q->begin();
             auto tmp = it;
@@ -231,21 +239,22 @@ public:
             std::cout << "*it expected at place " << place << ": " << op->rdata[0]  << std::endl;
 #endif
             assert(*tmp == op->rdata[0]);
-        }
+        }*/
     }
 
-    void check(T* q, T*q1) {
+    void check(DT* q, RT*q1) {
         for (int i = 0; i < MAX_VALUE; i++) {
 #if PRINT_DEBUG
             std::cout << "i is: " << i << std::endl;
 #endif
             TRANSACTION {
+                /*
                 for (auto it = q->begin(), it1 = q1->begin(); 
                         (it != q->end() || it1 != q1->end());
                          it++, it1++) {
                     assert(*it == *it1);
                 }
-
+                */
                 size_t s = q->size();
                 size_t s1 = q1->size();
 #if PRINT_DEBUG
@@ -295,14 +304,16 @@ public:
     }
 
 #if PRINT_DEBUG
-    void print_stats(T* q) {
+    void print_stats(DT* q) {
+        (void)q;
         //q->print_absent_reads();
     }
 #endif
 
-    static const int num_ops_ = 5;
+    static const int num_ops_ = 4;
 };
 
+/*
 template <typename T>
 class PqueueTester : Tester<T> {
 public:
@@ -703,4 +714,4 @@ public:
     
     static const int num_ops_ = 5;
 };
-
+*/

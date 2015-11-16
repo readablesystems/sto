@@ -23,7 +23,7 @@ PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
 #elif DS == HASHTABLE
 HashtableTester<Hashtable<int, int, false, 1000000>> tester = HashtableTester<Hashtable<int, int, false, 1000000>>();
 #elif DS == RBTREE
-RBTreeTester<RBTree<int, int>> tester = RBTreeTester<RBTree<int, int>>();
+RBTreeTester<RBTree<int, int>, std::map<int, int>> tester = RBTreeTester<RBTree<int, int>, std::map<int, int>>();
 #elif DS == VECTOR
 VectorTester<Vector<int>> tester = VectorTester<Vector<int>>();
 #endif
@@ -123,7 +123,7 @@ int main() {
     Hashtable<int, int, false, 1000000> q1;
 #elif DS == RBTREE
     RBTree<int, int> q;
-    RBTree<int, int> q1;
+    std::map<int, int> q1;
 #elif DS == VECTOR
     Vector<int> q;
     Vector<int> q1;
