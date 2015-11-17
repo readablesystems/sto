@@ -568,11 +568,8 @@ inline size_t RBTree<K, T>::count(const K& key) const {
     if (found) {
         wrapper_type* n = pair.first.node();
         auto item = Sto::item(const_cast<RBTree<K, T>*>(this), n);
-        if (is_inserted(n->version()) && has_delete(item)) {
-            // read my insert-then-delete
-            unlock(&treelock_);
-            return 0;
-        } else if (has_delete(item)) {
+        if (has_delete(item)) {
+            // read my deletes
             unlock(&treelock_);
             return 0;
         }
