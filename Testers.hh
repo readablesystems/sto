@@ -186,6 +186,23 @@ public:
         } else if (op == 4) {
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to iterator* --end" << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            auto it = --(q->end());
+            int val = *it;
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] found value " << val << " at end" << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->rdata.push_back(val);
+            return rec;
+        } else if (op == 5) {
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
             std::cout << "[" << me << "] try to iterator* start" << std::endl;
             TransactionTid::unlock(lock);
 #endif
@@ -365,7 +382,7 @@ public:
     }
 #endif
 
-    static const int num_ops_ = 5;
+    static const int num_ops_ = 6;
 };
 
 /*
