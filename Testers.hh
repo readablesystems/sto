@@ -166,7 +166,7 @@ public:
             rec->op = op;
             rec->rdata.push_back(size);
             return rec;
-        } else if (op == 4) {
+        } else if (op == 5) {
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] try to iterator* --end" << std::endl;
@@ -183,7 +183,7 @@ public:
             rec->op = op;
             rec->rdata.push_back(val);
             return rec;
-        } else if (op == 5) {
+        } else if (op == 4) {
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] try to iterator* start" << std::endl;
@@ -260,7 +260,7 @@ public:
             std::cout << "size expected: " << op->rdata[0] << std::endl;
 #endif
             assert(size == op->rdata[0]);
-        } else if (op->op == 4) {
+        } else if (op->op == 5) {
             auto it = q->end();
             // ensure that --end and end-- do the same hting
             auto val1 = (--it)->second;
@@ -273,7 +273,7 @@ public:
 #endif
             assert(val1 == val2);
             assert(val1 == op->rdata[0]);
-        } else if (op->op == 5) {
+        } else if (op->op == 4) {
             auto it = q->begin();
             int val = it->second;
 #if PRINT_DEBUG
@@ -365,7 +365,7 @@ public:
     }
 #endif
 
-    static const int num_ops_ = 6;
+    static const int num_ops_ = 5;
 };
 
 /*

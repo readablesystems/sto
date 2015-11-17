@@ -143,6 +143,7 @@ public:
         auto start = wrapper_tree_.r_.limit_[0];
         // add a read of the startversion to ensure start does not change by commit time
         Sto::item(this, start_key_).add_read(startversion_);
+        Sto::item(this, (reinterpret_cast<uintptr_t>(start)|0x1)).add_read(start->nodeversion());
         if (is_phantom_node(start)) {
             unlock(&treelock_);
             Sto::abort();
