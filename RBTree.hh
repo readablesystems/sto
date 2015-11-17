@@ -572,6 +572,9 @@ inline size_t RBTree<K, T>::count(const K& key) const {
             // read my insert-then-delete
             unlock(&treelock_);
             return 0;
+        } else if (has_delete(item)) {
+            unlock(&treelock_);
+            return 0;
         }
     }
     unlock(&treelock_);
