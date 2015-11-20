@@ -146,6 +146,7 @@ public:
         } else {
             // READ-MY-WRITES: skip our own deletes!
             while(has_delete(Sto::item(this, start))) {
+                Sto::item(this, (reinterpret_cast<uintptr_t>(start)|0x1)).add_read(start->nodeversion());
                 start = rbalgorithms<wrapper_type>::next_node(start);
             }
             if (is_phantom_node(start)) {
