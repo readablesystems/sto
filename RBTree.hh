@@ -183,6 +183,8 @@ private:
         wrapper_type* next_node = rbalgorithms<wrapper_type>::next_node(node);
         // READ-MY-WRITES: skip our own deletes
         while (has_delete(Sto::item(this, next_node))) {
+            // add read of nodeversions of all deleted nodes; gosh, read-my-write is really a nightmare...
+            Sto::item(this, (reinterpret_cast<uintptr_t>(next_node) | 0x1)).add_read(next_node->nodeversion());
             next_node = rbalgorithms<wrapper_type>::next_node(next_node);
         }
 
@@ -204,6 +206,7 @@ private:
         wrapper_type* prev_node = (node == nullptr) ? wrapper_tree_.r_.limit_[1] : rbalgorithms<wrapper_type>::prev_node(node);
         // READ-MY-WRITES: skip our own deletes
         while (has_delete(Sto::item(this, prev_node))) {
+            Sto::item(this, (reinterpret_cast<uintptr_t>(prev_node) | 0x1)).add_read(prev_node->nodeversion());
             prev_node = rbalgorithms<wrapper_type>::prev_node(prev_node);
         }
         if (is_phantom_node(prev_node)) {
