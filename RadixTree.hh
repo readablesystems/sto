@@ -218,6 +218,12 @@ public:
     void *vv_or_node;
     bool is_vv = get_value(key, vv_or_node);
     if (!is_vv) {
+      // not found, add the version of the node to detect inserts
+      // XXX: this seems a bit weird - makes remove not exactly a blind write
+      auto node = static_cast<tree_node *>(vv_or_node);
+      auto item = Sto::item(this, node);
+      item.template add_read<version_t>(node->version);
+      item.add_flags(item_empty_bit);
       return;
     }
 
