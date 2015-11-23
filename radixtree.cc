@@ -89,11 +89,11 @@ void serial_random_puts() {
         uint64_t val = 0;
         if (!can.trans_get(it->first, val)) {
           ok = false;
-          printf("ERROR: write not found\n");
+          printf("\nERROR: write not found\n");
         }
         if (val != it->second) {
           ok = false;
-          printf("ERROR: write value incorrect, got %lu expected %lu\n", val, it->second);
+          printf("\nERROR: write value incorrect, got %lu expected %lu\n", val, it->second);
         }
       }
     } RETRY(false);
@@ -105,15 +105,61 @@ void serial_random_puts() {
   print_result(ok);
 }
 
-// get-get
-// get-put
-// get-remove
-// put-put
-// put-remove
-// remove-remove
+// test conflicting gets where the key exists
+// both should succeed
+void serial_gets() {
+  bool ok = true;
+  candidate_t tree;
+  tree.put(123, 456);
 
-// test abort from conflicting puts
-void serial_conflicting_puts() {
+  Transaction t1;
+  Transaction t2;
+
+  printf("\tconflicting gets ");
+
+  bool found;
+  uint64_t val;
+
+  // get from transaction 1
+  Transaction::threadid = 0;
+  Sto::set_transaction(&t1);
+  found = tree.trans_get(123, val);
+  if (!found) {
+    ok = false;
+    printf("\nERROR: value not found\n");
+  }
+  if (val != 456) {
+    ok = false;
+    printf("\nERROR: expected value %d from transaction 1, got %lu\n", 456, val);
+  }
+
+  // get from transaction 2
+  Transaction::threadid = 1;
+  Sto::set_transaction(&t2);
+  found = tree.trans_get(123, val);
+  if (!found) {
+    ok = false;
+    printf("\nERROR: value not found\n");
+  }
+  if (val != 456) {
+    ok = false;
+    printf("\nERROR: expected value %d from transaction 2, got %lu\n", 456, val);
+  }
+
+  if (!t1.try_commit()) {
+    ok = false;
+    printf("\nERROR: transaction 1 did not commit\n");
+  }
+  if (!t2.try_commit()) {
+    ok = false;
+    printf("\nERROR: transaction 2 did not commit\n");
+  }
+
+  print_result(ok);
+}
+
+// test conflicting puts - should not abort
+void serial_puts() {
   bool ok = true;
   candidate_t tree;
   Transaction t1;
@@ -129,12 +175,7 @@ void serial_conflicting_puts() {
   Transaction::threadid = 1;
   Sto::set_transaction(&t2);
 
-  bool aborted = false;
-  try {
-    tree.trans_put(123, 234);
-  } catch (Transaction::Abort e) {
-    aborted = true;
-  }
+  tree.trans_put(123, 234);
 
   Transaction::threadid = 0;
   Sto::set_transaction(&t1);
@@ -145,15 +186,78 @@ void serial_conflicting_puts() {
 
   Transaction::threadid = 1;
   Sto::set_transaction(&t2);
-  if (!aborted) {
-    printf("\nERROR: later put did not abort\n");
+  if (!t2.try_commit()) {
+    ok = false;
+    printf("\nERROR: later put did not commit\n");
+  }
+
+  uint64_t val = 0;
+  if (!tree.get(123, val)) {
+    ok = false;
+    printf("\nERROR: value not found\n");
+  }
+  if (val != 234) {
+    ok = false;
+    printf("\nERROR: expected value %d from later commit, got %lu\n", 234, val);
   }
 
   print_result(ok);
 }
 
-// test abort from conflicting gets and put, where the key already exists
-void serial_conflicting_gets_put() {
+// test conflicting get and put where the key doesn't exist
+// the get after the put should abort
+void serial_get_put_no_key() {
+  bool ok = true;
+  candidate_t tree;
+
+  Transaction t1;
+  Transaction t2;
+
+  printf("\tconflicting gets and put (key doesn't exist) ");
+
+  // put from transaction 2
+  Transaction::threadid = 1;
+  Sto::set_transaction(&t2);
+  tree.trans_put(123, 234);
+
+  // get from transaction 1 before put commits - should not abort
+  Transaction::threadid = 0;
+  Sto::set_transaction(&t1);
+  uint64_t read_val;
+  bool found = tree.trans_get(123, read_val);
+  if (found) {
+    ok = false;
+    printf("\nERROR: nonexistent value found\n");
+  }
+
+  // commit from transaction 2
+  Transaction::threadid = 1;
+  Sto::set_transaction(&t2);
+  if (!t2.try_commit()) {
+    ok = false;
+    printf("\nERROR: put transaction did not commit\n");
+  }
+
+  // get from transaction 1 after put commits - should abort
+  Transaction::threadid = 0;
+  Sto::set_transaction(&t1);
+  bool aborted = false;
+  try {
+    found = tree.trans_get(123, read_val);
+  } catch (Transaction::Abort e) {
+    aborted = true;
+  }
+
+  if (!aborted) {
+    printf("\nERROR: get after put committed did not abort\n");
+  }
+
+  print_result(ok);
+}
+
+// test conflicting get and put where the key already exists
+// the get after the put should abort
+void serial_get_put_key_exists() {
   bool ok = true;
   candidate_t tree;
   tree.put(123, 456);
@@ -163,10 +267,14 @@ void serial_conflicting_gets_put() {
 
   printf("\tconflicting gets and put (key exists) ");
 
+  // put from transaction 2
+  Transaction::threadid = 1;
+  Sto::set_transaction(&t2);
+  tree.trans_put(123, 234);
+
+  // get from transaction 1 before put commits - should not abort
   Transaction::threadid = 0;
   Sto::set_transaction(&t1);
-
-  // get from transaction 1
   uint64_t read_val;
   bool found = tree.trans_get(123, read_val);
   if (!found) {
@@ -178,20 +286,17 @@ void serial_conflicting_gets_put() {
     printf("\nERROR: incorrect value %ld for first get\n", read_val);
   }
 
+  // commit from transaction 2
   Transaction::threadid = 1;
   Sto::set_transaction(&t2);
-
-  // put from transaction 2
-  tree.trans_put(123, 234);
   if (!t2.try_commit()) {
     ok = false;
     printf("\nERROR: put transaction did not commit\n");
   }
 
+  // get from transaction 1 after put commits - should abort
   Transaction::threadid = 0;
   Sto::set_transaction(&t1);
-
-  // get from transaction 1 - should abort
   bool aborted = false;
   try {
     found = tree.trans_get(123, read_val);
@@ -200,7 +305,338 @@ void serial_conflicting_gets_put() {
   }
 
   if (!aborted) {
-    printf("\nERROR: second get did not abort\n");
+    printf("\nERROR: get after put committed did not abort\n");
+  }
+
+  print_result(ok);
+}
+
+// test conflicting gets and removes when the key does not exist
+// both should succeed
+void serial_get_remove_no_key() {
+  bool ok = true;
+  candidate_t tree;
+
+  Transaction t1;
+  Transaction t2;
+
+  printf("\tconflicting get and remove (key doesn't exist) ");
+
+  // remove from t2
+  Transaction::threadid = 1;
+  Sto::set_transaction(&t2);
+  tree.trans_remove(123);
+
+  // get from transaction 1 before remove commits - should not abort
+  Transaction::threadid = 0;
+  Sto::set_transaction(&t1);
+  uint64_t read_val;
+  bool found = tree.trans_get(123, read_val);
+  if (found) {
+    ok = false;
+    printf("\nERROR: value found in first get\n");
+  }
+
+  // commit from transaction 2
+  Transaction::threadid = 1;
+  Sto::set_transaction(&t2);
+  if (!t2.try_commit()) {
+    ok = false;
+    printf("\nERROR: remove transaction did not commit\n");
+  }
+
+  // get from transaction 1 after remove commits - should not abort
+  Transaction::threadid = 0;
+  Sto::set_transaction(&t1);
+  found = tree.trans_get(123, read_val);
+  if (found) {
+    ok = false;
+    printf("\nERROR: value found in second get\n");
+  }
+  if (!t1.try_commit()) {
+    ok = false;
+    printf("\nERROR: get transaction did not commit\n");
+  }
+
+  print_result(ok);
+}
+
+// test conflicting gets and removes when the key already exists
+// the get after the remove should abort
+void serial_get_remove_key_exists() {
+  bool ok = true;
+  candidate_t tree;
+  tree.put(123, 456);
+
+  Transaction t1;
+  Transaction t2;
+
+  printf("\tconflicting get and remove (key exists) ");
+
+  // remove from t2
+  Transaction::threadid = 1;
+  Sto::set_transaction(&t2);
+  tree.trans_remove(123);
+
+  // get from transaction 1 before remove commits - should not abort
+  Transaction::threadid = 0;
+  Sto::set_transaction(&t1);
+  uint64_t read_val;
+  bool found = tree.trans_get(123, read_val);
+  if (!found) {
+    ok = false;
+    printf("\nERROR: value not found for first get\n");
+  }
+  if (read_val != 456) {
+    ok = false;
+    printf("\nERROR: incorrect value %ld for first get\n", read_val);
+  }
+
+  // commit from transaction 2
+  Transaction::threadid = 1;
+  Sto::set_transaction(&t2);
+  if (!t2.try_commit()) {
+    ok = false;
+    printf("\nERROR: remove transaction did not commit\n");
+  }
+
+  // get from transaction 1 after remove commits - should abort
+  Transaction::threadid = 0;
+  Sto::set_transaction(&t1);
+  bool aborted = false;
+  try {
+    found = tree.trans_get(123, read_val);
+  } catch (Transaction::Abort e) {
+    aborted = true;
+  }
+
+  if (!aborted) {
+    ok = false;
+    printf("\nERROR: get after remove committed did not abort\n");
+  }
+
+  uint64_t val = 0;
+  if (tree.get(123, val)) {
+    ok = false;
+    printf("\nERROR: removed value found\n");
+  }
+
+  print_result(ok);
+}
+
+// test conflicting put then remove when the key doesn't exist
+// the remove should abort
+void serial_put_then_remove_no_key() {
+  bool ok = true;
+  candidate_t tree;
+
+  Transaction t1;
+  Transaction t2;
+
+  printf("\tconflicting put then remove (key doesn't exist) ");
+
+  // put with remove in between
+  // put from t1
+  Transaction::threadid = 0;
+  Sto::set_transaction(&t1);
+  tree.trans_put(123, 456);
+
+  // remove from transaction 2 before put commits - should not abort
+  Transaction::threadid = 1;
+  Sto::set_transaction(&t2);
+  tree.trans_remove(123);
+  if (!t2.try_commit()) {
+    ok = false;
+    printf("\nERROR: remove transaction before put did not commit\n");
+  }
+
+  // put transaction should commit too
+  if (!t1.try_commit()) {
+    ok = false;
+    printf("\nERROR: put transaction did not commit\n");
+  }
+
+  uint64_t read_val;
+  if (!tree.get(123, read_val)) {
+    ok = false;
+    printf("\nERROR: value not found\n");
+  }
+  if (read_val != 456) {
+    printf("\nERROR: incorrect value %lu after put\n", read_val);
+  }
+
+  print_result(ok);
+}
+
+// test conflicting put then remove when the key exists
+// both should succeed
+void serial_put_then_remove_key_exists() {
+  bool ok = true;
+  candidate_t tree;
+
+  Transaction t1;
+  Transaction t2;
+
+  printf("\tconflicting put then remove (key exists) ");
+
+  tree.put(123, 789);
+
+  // put with remove in between
+  // put from t1
+  Transaction::threadid = 0;
+  Sto::set_transaction(&t1);
+  tree.trans_put(123, 456);
+
+  // remove from transaction 2 before put commits - should not abort
+  Transaction::threadid = 1;
+  Sto::set_transaction(&t2);
+  tree.trans_remove(123);
+  if (!t2.try_commit()) {
+    ok = false;
+    printf("\nERROR: remove transaction before put did not commit\n");
+  }
+
+  // put transaction should commit too
+  if (!t1.try_commit()) {
+    ok = false;
+    printf("\nERROR: put transaction did not commit\n");
+  }
+
+  uint64_t read_val;
+  if (!tree.get(123, read_val)) {
+    ok = false;
+    printf("\nERROR: value not found\n");
+  }
+  if (read_val != 456) {
+    printf("\nERROR: incorrect value %lu after put\n", read_val);
+  }
+
+  print_result(ok);
+}
+
+// test conflicting remove then put when the key doesn't exist
+// both should succeed
+void serial_remove_then_put_no_key() {
+  bool ok = true;
+  candidate_t tree;
+
+  Transaction t1;
+  Transaction t2;
+
+  printf("\tconflicting remove then put (key doesn't exist) ");
+
+  // remove with put in between
+  Transaction::threadid = 0;
+  Sto::set_transaction(&t1);
+  tree.trans_remove(123);
+
+  // put from transaction 2 before remove commits - should not abort
+  Transaction::threadid = 1;
+  Sto::set_transaction(&t2);
+  tree.trans_put(123, 789);
+  if (!t2.try_commit()) {
+    ok = false;
+    printf("\nERROR: put transaction before remove did not commit\n");
+  }
+
+  // remove transaction should not commit (yes, this is a bit weird)
+  if (t1.try_commit()) {
+    ok = false;
+    printf("\nERROR: remove transaction did not abort\n");
+  }
+
+  uint64_t read_val = 0;
+  if (!tree.get(123, read_val)) {
+    ok = false;
+    printf("\nERROR: value not found\n");
+  }
+  if (read_val != 789) {
+    ok = false;
+    printf("\nERROR: incorrect value %lu after put\n", read_val);
+  }
+
+  print_result(ok);
+}
+
+
+// test conflicting remove then put when the key exists
+// both should succeed
+void serial_remove_then_put_key_exists() {
+  bool ok = true;
+  candidate_t tree;
+
+  Transaction t1;
+  Transaction t2;
+
+  printf("\tconflicting remove then put (key exists) ");
+
+  tree.put(123, 456);
+
+  // remove with put in between
+  Transaction::threadid = 0;
+  Sto::set_transaction(&t1);
+  tree.trans_remove(123);
+
+  // put from transaction 2 before remove commits - should not abort
+  Transaction::threadid = 1;
+  Sto::set_transaction(&t2);
+  tree.trans_put(123, 789);
+  if (!t2.try_commit()) {
+    ok = false;
+    printf("\nERROR: put transaction before remove did not commit\n");
+  }
+
+  // remove transaction should commit too
+  if (!t1.try_commit()) {
+    ok = false;
+    printf("\nERROR: put transaction did not commit\n");
+  }
+
+  uint64_t read_val;
+  if (tree.get(123, read_val)) {
+    ok = false;
+    printf("\nERROR: removed value found\n");
+  }
+
+  print_result(ok);
+}
+
+// test conflicting removes - should not abort
+void serial_removes() {
+  bool ok = true;
+  candidate_t tree;
+  Transaction t1;
+  Transaction t2;
+  tree.put(123, 456);
+
+  printf("\tconflicting removes ");
+
+  Transaction::threadid = 0;
+  Sto::set_transaction(&t1);
+  tree.trans_remove(123);
+
+  Transaction::threadid = 1;
+  Sto::set_transaction(&t2);
+  tree.trans_remove(123);
+
+  Transaction::threadid = 0;
+  Sto::set_transaction(&t1);
+  if (!t1.try_commit()) {
+    ok = false;
+    printf("\nERROR: earlier remove did not commit\n");
+  }
+
+  Transaction::threadid = 1;
+  Sto::set_transaction(&t2);
+  if (!t2.try_commit()) {
+    ok = false;
+    printf("\nERROR: later remove did not commit\n");
+  }
+
+  uint64_t val = 0;
+  if (tree.get(123, val)) {
+    ok = false;
+    printf("\nERROR: removed value found\n");
   }
 
   print_result(ok);
@@ -209,8 +645,17 @@ void serial_conflicting_gets_put() {
 void serial_tests() {
   printf("Running serial tests\n");
   serial_random_puts();
-  serial_conflicting_puts();
-  serial_conflicting_gets_put();
+  serial_gets();
+  serial_puts();
+  serial_get_put_no_key();
+  serial_get_put_key_exists();
+  serial_get_remove_no_key();
+  serial_get_remove_key_exists();
+  serial_put_then_remove_no_key();
+  serial_put_then_remove_key_exists();
+  serial_remove_then_put_no_key();
+  serial_remove_then_put_key_exists();
+  serial_removes();
 }
 
 void parallel_tests(int nthreads) {
