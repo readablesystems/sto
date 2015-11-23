@@ -166,41 +166,7 @@ public:
             rec->op = op;
             rec->rdata.push_back(size);
             return rec;
-        } else if (op == 5) {
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to iterator* --end" << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            auto it = --(q->end());
-            int val = *it;
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] found value " << val << " at end" << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            op_record* rec = new op_record;
-            rec->op = op;
-            rec->rdata.push_back(val);
-            return rec;
         } else if (op == 4) {
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to iterator* --end" << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            auto it = --(q->end());
-            int val = *it;
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] found value " << val << " at end" << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            op_record* rec = new op_record;
-            rec->op = op;
-            rec->rdata.push_back(val);
-            return rec;
-        } else if (op == 5) {
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] try to iterator* start" << std::endl;
@@ -217,6 +183,34 @@ public:
             rec->op = op;
             rec->rdata.push_back(val);
             return rec;
+        } else if (op == 5) {
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to iterator* --end" << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            if (q->size() == 0) {
+#if PRINT_DEBUG
+                TransactionTid::lock(lock);
+                std::cout << "[" << me << "] tried to -- empty tree" << std::endl;
+                TransactionTid::unlock(lock);
+#endif
+                op_record* rec = new op_record;
+                rec->op = op;
+                rec->rdata.push_back(-1);
+                return rec;
+            }
+            auto it = --(q->end());
+            int val = *it;
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] found value " << val << " at end" << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->rdata.push_back(val);
+            return rec;
         } else if (op == 6) {
             int place = slotdist(transgen);
 #if PRINT_DEBUG
@@ -225,6 +219,17 @@ public:
             TransactionTid::unlock(lock);
 #endif
             auto it = q->begin();
+            if (q->size() == 0) {
+#if PRINT_DEBUG
+                TransactionTid::lock(lock);
+                std::cout << "[" << me << "] tried to ++ empty tree" << std::endl;
+                TransactionTid::unlock(lock);
+#endif
+                op_record* rec = new op_record;
+                rec->op = op;
+                rec->rdata.push_back(-1);
+                return rec;
+            }
             auto tmp = it;
             for (int i = 0; i <= place && it != q->end(); i++, it++) {
                 tmp = it;
@@ -277,9 +282,21 @@ public:
             std::cout << "size expected: " << op->rdata[0] << std::endl;
 #endif
             assert(size == op->rdata[0]);
+        } else if (op->op == 4) {
+            auto it = q->begin();
+            int val = it->second;
+#if PRINT_DEBUG
+            std::cout << "*it start replay: " << val << std::endl;
+            std::cout << "*it start expected: " << op->rdata[0]  << std::endl;
+#endif
+            assert(val == op->rdata[0]);
         } else if (op->op == 5) {
             auto it = q->end();
-            // ensure that --end and end-- do the same hting
+            // deal with empty tree end()
+            if (q->size() == 0) {
+                assert(op->rdata[0] == -1);
+                return;
+            }
             auto val1 = (--it)->second;
             assert(++it == q->end());
             it--;
@@ -290,17 +307,14 @@ public:
 #endif
             assert(val1 == val2);
             assert(val1 == op->rdata[0]);
-        } else if (op->op == 4) {
-            auto it = q->begin();
-            int val = it->second;
-#if PRINT_DEBUG
-            std::cout << "*it start replay: " << val << std::endl;
-            std::cout << "*it start expected: " << op->rdata[0]  << std::endl;
-#endif
-            assert(val == op->rdata[0]);
         } else if (op->op == 6) {
-            int place = op->args[0];
             auto it = q->begin();
+            // deal with empty tree begin()
+            if (q->size() == 0) {
+                assert(op->rdata[0] == -1);
+                return;
+            }
+            int place = op->args[0];
             auto tmp = it;
             for (int i = 0; i <= place && it != q->end(); i++, it++) {
                 tmp = it;
