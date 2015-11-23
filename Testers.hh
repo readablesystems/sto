@@ -212,17 +212,20 @@ public:
             rec->rdata.push_back(val);
             return rec;
         } else if (op == 6) {
-            int place = slotdist(transgen);
+            int forward = slotdist(transgen);
+            int backward = slotdist(transgen);
+            auto size = q->size();
+            backward = (size < forward) ? size : ((forward < backward) ? forward : backward);
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to iterator* at place " << place << std::endl;
+            std::cout << "[" << me << "] try to * " << forward << " forward and " << backward << " backward" << std::endl;
             TransactionTid::unlock(lock);
 #endif
             auto it = q->begin();
             if (q->size() == 0) {
 #if PRINT_DEBUG
                 TransactionTid::lock(lock);
-                std::cout << "[" << me << "] tried to ++ empty tree" << std::endl;
+                std::cout << "[" << me << "] tried to iterate empty tree" << std::endl;
                 TransactionTid::unlock(lock);
 #endif
                 op_record* rec = new op_record;
@@ -231,18 +234,44 @@ public:
                 return rec;
             }
             auto tmp = it;
-            for (int i = 0; i <= place && it != q->end(); i++, it++) {
+            for (int i = 0; i <= forward && it != q->end(); i++, it++) {
+                tmp = it;
+            }
+            for (int i = backward; i > 0 && it != q->begin(); i--, it--) {
                 tmp = it;
             }
             int val = *tmp;
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
-            std::cout << "[" << me << "] found value " << val << " at place " << place << " in the tree" << std::endl;
+            std::cout << "[" << me << "] found value " << val << " @ " << forward << " - " << backward<< std::endl;
             TransactionTid::unlock(lock);
 #endif
+           /* 
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] redoing "<<  forward << " forward and " << backward << " backward with prefix"<< std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            auto it2 = q->begin();
+            tmp = it2;
+            for (int i = 0; i <= forward && it2 != q->end(); i++, ++it2) {
+                tmp = it2;
+            }
+            for (int i = backward; i > 0 && it2 != q->begin(); i--, --it2) {
+                tmp = it2;
+            }
+            int val2 = *tmp;
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] found value2 " << val2 << " @ " << forward << " - " << backward << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            assert(val == val2);
+            */
             op_record* rec = new op_record;
             rec->op = op;
-            rec->args.push_back(place);
+            rec->args.push_back(forward);
+            rec->args.push_back(backward);
             rec->rdata.push_back(val);
             return rec;
         }
@@ -281,7 +310,7 @@ public:
             std::cout << "size replay: " << size << std::endl;
             std::cout << "size expected: " << op->rdata[0] << std::endl;
 #endif
-            assert(size == op->rdata[0]);
+            assert(size == (size_t) op->rdata[0]);
         } else if (op->op == 4) {
             auto it = q->begin();
             int val = it->second;
@@ -314,15 +343,19 @@ public:
                 assert(op->rdata[0] == -1);
                 return;
             }
-            int place = op->args[0];
+            int forward = op->args[0];
+            int backward = op->args[1];
             auto tmp = it;
-            for (int i = 0; i <= place && it != q->end(); i++, it++) {
+            for (int i = 0; i <= forward && it != q->end(); i++, it++) {
+                tmp = it;
+            }
+            for (int i = backward; i > 0 && it != q->begin(); i--, it--) {
                 tmp = it;
             }
             int val = tmp->second;
 #if PRINT_DEBUG
-            std::cout << "*it replay at place " << place << ": " << val << std::endl;
-            std::cout << "*it expected at place " << place << ": " << op->rdata[0]  << std::endl;
+            std::cout << "*it replay at place " << forward << " - " << backward << ": " << val << std::endl;
+            std::cout << "*it expected at place " << forward << " - " << backward << ": " << op->rdata[0]  << std::endl;
 #endif
             assert(val == op->rdata[0]);
         }
@@ -334,13 +367,13 @@ public:
             std::cout << "i is: " << i << std::endl;
 #endif
             TRANSACTION {
-                /*
-                for (auto it = q->begin(), it1 = q1->begin(); 
-                        (it != q->end() || it1 != q1->end());
-                         it++, it1++) {
-                    assert(*it == *it1);
+                if (q->size() != 0) {
+                    auto it = q->begin();
+                    auto it1 = q1->begin();
+                    for (; (it != q->end() || it1 != q1->end()); it++, it1++) {
+                        assert(*it == (*it1).second);
+                    }
                 }
-                */
                 size_t s = q->size();
                 size_t s1 = q1->size();
 #if PRINT_DEBUG
@@ -396,7 +429,7 @@ public:
     }
 #endif
 
-    static const int num_ops_ = 6;
+    static const int num_ops_ = 7;
 };
 
 /*
