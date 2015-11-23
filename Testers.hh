@@ -10,7 +10,7 @@
 #include "RBTree.hh"
 #include "Vector.hh"
 
-#define MAX_VALUE 30 // Max value of integers used in data structures
+#define MAX_VALUE 100 // Max value of integers used in data structures
 #define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements.
 
 struct Rand {

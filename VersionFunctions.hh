@@ -29,7 +29,6 @@ public:
     return (v & version_mask);
   }
 
-
   static bool is_locked(version_type v) {
     return v & lock_bit;
   }
