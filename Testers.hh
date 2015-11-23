@@ -215,7 +215,7 @@ public:
             int forward = slotdist(transgen);
             int backward = slotdist(transgen);
             auto size = q->size();
-            backward = (size < forward) ? size : ((forward < backward) ? forward : backward);
+            backward = (forward < backward) ? forward : backward;
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] try to * " << forward << " forward and " << backward << " backward" << std::endl;
@@ -233,14 +233,17 @@ public:
                 rec->rdata.push_back(-1);
                 return rec;
             }
-            auto tmp = it;
-            for (int i = 0; i <= forward && it != q->end(); i++, it++) {
-                tmp = it;
+            for (int i = 0; i <= forward && it != q->end(); i++, it++) {}
+            for (int i = backward; i > 0 && it != q->begin(); i--, it--) {}
+            if (it == q->end()) {
+                it = q->begin();
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] \t iterator was at end" << std::endl; 
+            TransactionTid::unlock(lock);
+#endif
             }
-            for (int i = backward; i > 0 && it != q->begin(); i--, it--) {
-                tmp = it;
-            }
-            int val = *tmp;
+            int val = *it;
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] found value " << val << " @ " << forward << " - " << backward<< std::endl;
@@ -257,6 +260,7 @@ public:
             for (int i = 0; i <= forward && it2 != q->end(); i++, ++it2) {
                 tmp = it2;
             }
+
             for (int i = backward; i > 0 && it2 != q->begin(); i--, --it2) {
                 tmp = it2;
             }
@@ -345,14 +349,10 @@ public:
             }
             int forward = op->args[0];
             int backward = op->args[1];
-            auto tmp = it;
-            for (int i = 0; i <= forward && it != q->end(); i++, it++) {
-                tmp = it;
-            }
-            for (int i = backward; i > 0 && it != q->begin(); i--, it--) {
-                tmp = it;
-            }
-            int val = tmp->second;
+            for (int i = 0; i <= forward && it != q->end(); i++, it++) {}
+            for (int i = backward; i > 0 && it != q->begin(); i--, it--) {}
+            if (it == q->end()) it = q->begin();
+            int val = it->second;
 #if PRINT_DEBUG
             std::cout << "*it replay at place " << forward << " - " << backward << ": " << val << std::endl;
             std::cout << "*it expected at place " << forward << " - " << backward << ": " << op->rdata[0]  << std::endl;
