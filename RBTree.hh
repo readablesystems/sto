@@ -71,9 +71,6 @@ public:
     inline T& writeable_value() {
         return pair_.writeable_value().second;
     }
-    inline std::pair<const K, T>& writable_pair() {
-        return pair_.writeable_value();
-    }
     inline bool operator<(const rbpair& rhs) const {
         return (key() < rhs.key());
     }
@@ -153,12 +150,14 @@ public:
                 Sto::item(this, (reinterpret_cast<uintptr_t>(start)|0x1)).add_read(start->nodeversion());
                 start = rbalgorithms<wrapper_type>::next_node(start);
             }
-            if (is_phantom_node(start)) {
-                unlock_read(&treelock_);
-                Sto::abort();
+            if (start != nullptr) {
+                if (is_phantom_node(start)) {
+                    unlock_read(&treelock_);
+                    Sto::abort();
+                }
+                // valid start node, read nodeversion
+                Sto::item(this, (reinterpret_cast<uintptr_t>(start)|0x1)).add_read(start->nodeversion());
             }
-            // valid start node, read nodeversion
-            Sto::item(this, (reinterpret_cast<uintptr_t>(start)|0x1)).add_read(start->nodeversion());
         }
         unlock_read(&treelock_);
         return iterator(this, start);
@@ -210,8 +209,8 @@ private:
         // check if we are at the end() node (i.e. nullptr)
         wrapper_type* prev_node = (node == nullptr) ? wrapper_tree_.r_.limit_[1] : rbalgorithms<wrapper_type>::prev_node(node);
         // check that we are not begin (i.e. prev_node is not null)
-        if (!prev_node) {
-            unlock_read(&treelock_);            
+        if (prev_node == nullptr) {
+            unlock_read(&treelock_);
             Sto::abort();
         }
         // READ-MY-WRITES: skip our own deletes
@@ -219,6 +218,12 @@ private:
             Sto::item(this, (reinterpret_cast<uintptr_t>(prev_node) | 0x1)).add_read(prev_node->nodeversion());
             prev_node = rbalgorithms<wrapper_type>::prev_node(prev_node);
         }
+        // check again after reading-my-writes...
+        if (prev_node == nullptr) {
+            unlock_read(&treelock_);
+            Sto::abort();
+        }
+
         if (is_phantom_node(prev_node)) {
             unlock_read(&treelock_);
             Sto::abort();
@@ -492,13 +497,23 @@ class RBTreeIterator : public std::iterator<std::bidirectional_iterator_tag, rbw
 public:
     typedef rbwrapper<rbpair<K, T>> wrapper;
     typedef RBTreeIterator<K, T> iterator;
+    typedef RBProxy<K, T> proxy_type;
+    typedef std::pair<const K, proxy_type> proxy_pair_type;
 
-    RBTreeIterator(RBTree<K, T> * tree, wrapper* node) : tree_(tree), node_(node) { }
-    RBTreeIterator(const RBTreeIterator& itr) : tree_(itr.tree_), node_(itr.node_) {}
+    RBTreeIterator(RBTree<K, T> * tree, wrapper* node) : tree_(tree), node_(node), proxy_pair_(nullptr) {
+        this->update_proxy_pair();
+    }
+    RBTreeIterator(const RBTreeIterator& itr) : tree_(itr.tree_), node_(itr.node_), proxy_pair_(nullptr) {
+        this->update_proxy_pair();
+    }
+    ~RBTreeIterator() {
+        this->destroy_proxy_pair();
+    }
     
     RBTreeIterator& operator=(const RBTreeIterator& v) {
         tree_ = v.tree_;
         node_ = v.node_;
+        this->update_proxy_pair();
         return *this;
     }
    
@@ -511,21 +526,24 @@ public:
     }
    
     // Dereference operator on iterators; returns reference to std::pair<const K, T>
-    std::pair<const K, T>& operator*() {
+    proxy_pair_type& operator*() {
         // add a read of the version to make sure the value hasn't changed at commit time
         Sto::item(tree_, node_).add_read(node_->version());
-        return node_->writable_pair();
+        this->update_proxy_pair();
+        return *proxy_pair_;
     }
 
-    std::pair<const K, T>* operator->() {
+    proxy_pair_type* operator->() {
         // add a read of the version to make sure the value hasn't changed at commit time
         Sto::item(tree_, node_).add_read(node_->version());
-        return &node_->writable_pair();
+        this->update_proxy_pair();
+        return proxy_pair_;
     }
     
     // This is the prefix case
     iterator& operator++() { 
-        node_ = tree_->get_next(node_); 
+        node_ = tree_->get_next(node_);
+        this->update_proxy_pair();
         return *this; 
     }
     
@@ -533,23 +551,46 @@ public:
     iterator operator++(int) {
         RBTreeIterator<K, T> clone(*this);
         node_ = tree_->get_next(node_);
+        this->update_proxy_pair();
         return clone;
     }
     
     iterator& operator--() { 
-        node_ = tree_->get_prev(node_); 
+        node_ = tree_->get_prev(node_);
+        this->update_proxy_pair();
         return *this; 
     }
     
     iterator operator--(int) {
         RBTreeIterator<K, T> clone(*this);
         node_ = tree_->get_prev(node_);
+        this->update_proxy_pair();
         return clone;
     }
         
 private:
+    inline void destroy_proxy_pair() {
+        if (proxy_pair_ != nullptr) {
+            delete proxy_pair_;
+        }
+    }
+    inline void update_proxy_pair() {
+        if (proxy_pair_ != nullptr) {
+            delete proxy_pair_;
+        }
+        if (node_ == nullptr) {
+            proxy_pair_ = nullptr;
+            return;
+        } else {
+            proxy_pair_type* new_pair = new std::pair<const K, RBProxy<K, T>>(node_->key(), proxy_type(*tree_, node_));
+            proxy_pair_ = new_pair;
+            return;
+        }
+    }
+
     RBTree<K, T> * tree_;
     wrapper* node_;
+    proxy_pair_type* proxy_pair_;
 };
 
 // STL-ish interface wrapper returned by RBTree::operator[]

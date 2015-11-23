@@ -11,7 +11,7 @@
 #include "Vector.hh"
 
 #define MAX_VALUE 10 // Max value of integers used in data structures
-#define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements.
+#define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements
 
 struct Rand {
     typedef uint32_t result_type;
@@ -172,6 +172,17 @@ public:
             std::cout << "[" << me << "] try to iterator* start" << std::endl;
             TransactionTid::unlock(lock);
 #endif
+            if (q->size() == 0) {
+#if PRINT_DEBUG
+                TransactionTid::lock(lock);
+                std::cout << "[" << me << "] tried to *start empty tree" << std::endl;
+                TransactionTid::unlock(lock);
+#endif
+                op_record* rec = new op_record;
+                rec->op = op;
+                rec->rdata.push_back(-1);
+                return rec;
+            }
             auto it = q->begin();
             int val = it->second;
 #if PRINT_DEBUG
@@ -238,9 +249,9 @@ public:
                 it = q->begin();
                 assert(it != q->end());
 #if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] \t iterator was at end" << std::endl; 
-            TransactionTid::unlock(lock);
+                TransactionTid::lock(lock);
+                std::cout << "[" << me << "] \t iterator was at end" << std::endl;
+                TransactionTid::unlock(lock);
 #endif
             }
             int val = it->second;
@@ -316,6 +327,10 @@ public:
 #endif
             assert(size == (size_t) op->rdata[0]);
         } else if (op->op == 4) {
+            if (q->size() == 0) {
+                assert(op->rdata[0] == -1);
+                return;
+            }
             auto it = q->begin();
             int val = it->second;
 #if PRINT_DEBUG
@@ -371,7 +386,7 @@ public:
                     auto it = q->begin();
                     auto it1 = q1->begin();
                     for (; (it != q->end() || it1 != q1->end()); it++, it1++) {
-                        assert(*it == *it1);
+                        assert(it->second == it1->second);
                     }
                 }
                 size_t s = q->size();
