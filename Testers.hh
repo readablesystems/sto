@@ -214,7 +214,6 @@ public:
         } else if (op == 6) {
             int forward = slotdist(transgen);
             int backward = slotdist(transgen);
-            auto size = q->size();
             backward = (forward < backward) ? forward : backward;
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
@@ -237,6 +236,7 @@ public:
             for (int i = backward; i > 0 && it != q->begin(); i--, it--) {}
             if (it == q->end()) {
                 it = q->begin();
+                assert(it != q->end());
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] \t iterator was at end" << std::endl; 

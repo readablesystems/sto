@@ -205,6 +205,11 @@ private:
         lock(&treelock_);
         // check if we are at the end() node (i.e. nullptr)
         wrapper_type* prev_node = (node == nullptr) ? wrapper_tree_.r_.limit_[1] : rbalgorithms<wrapper_type>::prev_node(node);
+        // check that we are not begin (i.e. prev_node is not null)
+        if (!prev_node) {
+            unlock(&treelock_);            
+            Sto::abort();
+        }
         // READ-MY-WRITES: skip our own deletes
         while (has_delete(Sto::item(this, prev_node))) {
             Sto::item(this, (reinterpret_cast<uintptr_t>(prev_node) | 0x1)).add_read(prev_node->nodeversion());
