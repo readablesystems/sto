@@ -10,7 +10,7 @@
 #include "RBTree.hh"
 #include "Vector.hh"
 
-#define MAX_VALUE 100 // Max value of integers used in data structures
+#define MAX_VALUE 10 // Max value of integers used in data structures
 #define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements.
 
 struct Rand {
@@ -173,7 +173,7 @@ public:
             TransactionTid::unlock(lock);
 #endif
             auto it = q->begin();
-            int val = *it;
+            int val = it->second;
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] found value " << val << " at start" << std::endl;
@@ -201,7 +201,7 @@ public:
                 return rec;
             }
             auto it = --(q->end());
-            int val = *it;
+            int val = it->second;
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] found value " << val << " at end" << std::endl;
@@ -243,7 +243,7 @@ public:
             TransactionTid::unlock(lock);
 #endif
             }
-            int val = *it;
+            int val = it->second;
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] found value " << val << " @ " << forward << " - " << backward<< std::endl;
@@ -371,7 +371,7 @@ public:
                     auto it = q->begin();
                     auto it1 = q1->begin();
                     for (; (it != q->end() || it1 != q1->end()); it++, it1++) {
-                        assert(*it == (*it1).second);
+                        assert(*it == *it1);
                     }
                 }
                 size_t s = q->size();

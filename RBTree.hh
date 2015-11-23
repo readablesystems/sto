@@ -53,13 +53,13 @@ template <typename K, typename T>
 class rbpair {
 public:
     typedef TransactionTid::type Version;
-    typedef versioned_value_struct<std::pair<K, T>> versioned_pair;
+    typedef versioned_value_struct<std::pair<const K, T>> versioned_pair;
 
     static constexpr Version insert_bit = TransactionTid::user_bit1;
 
     explicit rbpair(const K& key, const T& value)
-    : pair_(std::pair<K, T>(key, value), TransactionTid::increment_value + insert_bit) {}
-    explicit rbpair(std::pair<K, T>& kvp)
+    : pair_(std::pair<const K, T>(key, value), TransactionTid::increment_value + insert_bit) {}
+    explicit rbpair(std::pair<const K, T>& kvp)
     : pair_(kvp, TransactionTid::increment_value + insert_bit) {}
 
     inline const K& key() const {
@@ -70,6 +70,9 @@ public:
     }
     inline T& writeable_value() {
         return pair_.writeable_value().second;
+    }
+    inline std::pair<const K, T>& writable_pair() {
+        return pair_.writeable_value();
     }
     inline bool operator<(const rbpair& rhs) const {
         return (key() < rhs.key());
@@ -507,11 +510,17 @@ public:
         return !(operator==(other));
     }
    
-    // XXX operator* returns a reference to the value, not to the pair
-    RBProxy<K, T> operator*() {
+    // Dereference operator on iterators; returns reference to std::pair<const K, T>
+    std::pair<const K, T>& operator*() {
         // add a read of the version to make sure the value hasn't changed at commit time
         Sto::item(tree_, node_).add_read(node_->version());
-        return RBProxy<K, T>(*tree_, node_);
+        return node_->writable_pair();
+    }
+
+    std::pair<const K, T>* operator->() {
+        // add a read of the version to make sure the value hasn't changed at commit time
+        Sto::item(tree_, node_).add_read(node_->version());
+        return &node_->writable_pair();
     }
     
     // This is the prefix case
