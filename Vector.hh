@@ -207,13 +207,15 @@ public:
             Sto::abort();
         }
         auto item = Sto::item(this, size_pred_key);
-        if (item.has_read()) {
+        if (item.has_predicate()) {
+            assert(item.has_read());
             auto& pred_list= item.template read_value<std::vector<int32_t>>();
             pred_list.push_back(pred);
         } else {
+            assert(!item.has_read());
             std::vector<int32_t> pred_list;
             pred_list.push_back(pred);
-            item.add_read(pred_list);
+            item.add_predicate(pred_list);
         }
         return size + offset == sz;
     }
@@ -404,12 +406,25 @@ public:
         item.add_write(0);
     }
     
+    void readVersion(TransItem& item, Transaction& t) {
+        if (item.key<int>() == size_pred_key) {
+            auto vec_item = Sto::check_item(this, this);
+            auto lv = vecversion_;
+            if (is_locked(lv) && !(*vec_item).has_lock()) { Sto::abort(); }
+            item.add_read_version(lv, t);
+            return;
+        }
+        assert(false);
+    }
+    
     bool check(const TransItem& item, const Transaction& trans){
         if (item.key<int>() == size_key) {
             return true;
         }
         if (item.key<int>() == size_pred_key) {
             int32_t size = size_;
+            acquire_fence();
+            
             auto& pred_list = item.template read_value<std::vector<int32_t>>();
             for (int i = 0; i < pred_list.size(); i++) {
                 int32_t pred = pred_list[i];
@@ -421,10 +436,9 @@ public:
                     if (size < rval) return false;
                 }
             }
-            
-            auto vec_item = Sto::check_item(this, this);
-            auto lv = vecversion_;
-            return (!is_locked(lv) || (*vec_item).has_lock());
+            auto& read_version = item.template write_value<Version>();
+            if (read_version != vecversion_) { return false; }
+            return true;
             
         }
         if (item.key<Vector*>() == this || item.key<int>() == push_back_key) {

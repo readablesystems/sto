@@ -57,11 +57,12 @@ class TransItem {
 
     static constexpr flags_type write_bit = flags_type(1) << 63;
     static constexpr flags_type read_bit = flags_type(1) << 62;
+    static constexpr flags_type pred_bit = flags_type(1) << 61;
     static constexpr flags_type pointer_mask = (flags_type(1) << 48) - 1;
     static constexpr flags_type user0_bit = flags_type(1) << 48;
     static constexpr int userf_shift = 48;
     static constexpr flags_type shifted_userf_mask = 0x3FFF;
-    static constexpr flags_type special_mask = pointer_mask | read_bit | write_bit;
+    static constexpr flags_type special_mask = pointer_mask | read_bit | write_bit | pred_bit;
 
 
     TransItem(Shared* s, void* k)
@@ -77,6 +78,9 @@ class TransItem {
     }
     bool has_read() const {
         return flags() & read_bit;
+    }
+    bool has_predicate() const {
+        return flags() & pred_bit;
     }
     bool has_lock(const Transaction& t) const;
     bool same_item(const TransItem& x) const {
@@ -100,12 +104,12 @@ class TransItem {
     }
     template <typename T>
     T& write_value() {
-        assert(has_write());
+        assert(has_write() || has_predicate());
         return Packer<T>::unpack(wdata_);
     }
     template <typename T>
     const T& write_value() const {
-        assert(has_write());
+        assert(has_write() || has_predicate());
         return Packer<T>::unpack(wdata_);
     }
 
@@ -143,7 +147,10 @@ class TransItem {
         s_ = reinterpret_cast<sharedstore_type>(reinterpret_cast<flags_type>(s_) | flags);
         return *this;
     }
-
+    
+    template <typename T>
+    inline void add_read_version(T version, Transaction& t);
+    
   private:
     friend class Transaction;
     friend class TransProxy;
@@ -171,6 +178,13 @@ class TransProxy {
         return *i_;
     }
 
+    bool has_predicate() const {
+        return i_->has_predicate();
+    }
+    template <typename T>
+    bool has_predicate(const T& value) const {
+        return has_predicate() && this->template read_value<T>() == value;
+    }
     bool has_read() const {
         return i_->has_read();
     }
@@ -192,6 +206,9 @@ class TransProxy {
     template <typename T, typename U>
     inline TransProxy& update_read(T old_rdata, U new_rdata);
 
+    template <typename T>
+    inline TransProxy& add_predicate(T rdata);
+    
     template <typename T>
     inline TransProxy& add_write(T wdata);
     inline TransProxy& clear_write() {

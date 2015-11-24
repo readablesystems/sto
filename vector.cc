@@ -406,6 +406,7 @@ void testIterNPushBack2() {
     assert(t2.try_commit());
     Sto::set_transaction(&t1);
     assert(!t1.try_commit());
+    Sto::clear_transaction();
     
     printf("PASS: IterNPushBack2\n");
     
@@ -414,7 +415,7 @@ void testIterNPushBack2() {
 
 void testErase() {
     Vector<int> f;
-    
+
     TRANSACTION {
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
@@ -425,7 +426,7 @@ void testErase() {
     Sto::set_transaction(&t1);
     f.erase(f.begin() + 5);
     assert(t1.try_commit());
-    
+    Sto::clear_transaction();
     TRANSACTION {
         Vector<int>::iterator it = f.begin();
         Vector<int>::iterator eit = f.end();

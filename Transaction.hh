@@ -655,6 +655,15 @@ private:
           for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
               /* do nothing */;
     }
+      
+    // get read versions for predicates - ideally we can combine this in phase 1
+      for (auto it = trans_first; it != trans_last; ++it) {
+          if (it->has_predicate()) {
+              it->sharedObj()->readVersion(*it, *this);
+          }
+      }
+  
+
 
 #if CONSISTENCY_CHECK
     fence();
@@ -803,6 +812,9 @@ public:
   static void set_transaction(Transaction* t) {
     __transaction = t;
   }
+  static void clear_transaction() {
+    __transaction = NULL;
+  }
 
   class NotInTransaction{};
 
@@ -924,6 +936,25 @@ inline TransProxy& TransProxy::add_read(T rdata) {
     }
     return *this;
 }
+
+template <typename T>
+inline TransProxy& TransProxy::add_predicate(T rdata) {
+    if (!has_read()) {
+#if DETAILED_LOGGING
+        Transaction::max_p(txp_max_rdata_size, sizeof(T));
+#endif
+        i_->__or_flags(TransItem::read_bit);
+        i_->__or_flags(TransItem::pred_bit);
+        i_->rdata_ = t_->buf_.pack(std::move(rdata));
+    }
+    return *this;
+}
+
+template <typename T>
+inline void TransItem::add_read_version(T version, Transaction& t) {
+    wdata_ = t.buf_.pack(std::move(version));
+}
+
 
 template <typename T, typename U>
 inline TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
