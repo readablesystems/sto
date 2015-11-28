@@ -57,12 +57,13 @@ public:
 public:
   bool trans_get(const K &key, V &value) {
     void *vv_or_node;
-    bool is_vv = get_value(key, vv_or_node);
+    version_t node_version;
+    bool is_vv = get_value_or_node(key, vv_or_node, node_version);
     if (!is_vv) {
       // not found, add the version of the node to detect inserts
       auto node = static_cast<tree_node *>(vv_or_node);
       auto item = Sto::item(this, node);
-      item.template add_read<version_t>(node->version);
+      item.template add_read<version_t>(node_version);
       item.add_flags(item_empty_bit);
       return false;
     }
@@ -72,26 +73,44 @@ public:
 
     if (item.has_write()) {
       // Return the value directly from the item if this transaction performed a write.
-      // XXX: handle removes in same transaction
-      value = item.template write_value<V>();
-      return true;
+      if (item.flags() & item_remove_bit) {
+        return false;
+      } else { // put
+        value = item.template write_value<V>();
+        return true;
+      }
     }
 
+    version_t ver = 0;
+
+    /*
     version_t ver = vv->version();
+
+    // If the version has changed from the last read, this transaction can't possibly complete.
+    if (item.has_read() && !TransactionTid::same_version(item.template read_value<version_t>(), ver)) {
+      Sto::abort();
+      return false;
+    }
+    */
+
+    value = atomic_read(vv, ver);
+
+    // If the version has changed from the last read, this transaction can't possibly complete.
     if (item.has_read() && !TransactionTid::same_version(item.template read_value<version_t>(), ver)) {
       // The version has changed from the last read, this transaction can't possibly complete.
       Sto::abort();
       return false;
     }
 
-    value = atomic_read(vv, ver);
     item.template add_read<version_t>(ver);
-    return ver & TransactionTid::valid_bit;
+
+    return !!(ver & TransactionTid::valid_bit);
   }
 
   bool get(const K &key, V &value) {
     void *vv_or_node;
-    bool is_vv = get_value(key, vv_or_node);
+    version_t node_version;
+    bool is_vv = get_value_or_node(key, vv_or_node, node_version);
     if (!is_vv) {
       return false;
     }
@@ -106,7 +125,7 @@ public:
   }
 
 private:
-  bool get_value(const K &key, void * &vv_or_node) {
+  bool get_value_or_node(const K &key, void * &vv_or_node, version_t &node_version) {
     constexpr int t_key_sz = KeyTransformer::buf_size();
     uint8_t t_key[t_key_sz];
     transformer.transform(key, t_key);
@@ -114,11 +133,29 @@ private:
     void *cur = &root;
     for (int i = 0; i < t_key_sz; i++) {
       tree_node *node = static_cast<tree_node*>(cur);
-      if (node->children[t_key[i]] == nullptr) {
+      version_t node_version2;
+      void *next;
+      // atomically read the node version and next pointer
+      while (true) {
+        node_version2 = node->version;
+        fence();
+        next = node->children[t_key[i]];
+        fence();
+        node_version = node->version;
+        if (TransactionTid::is_locked(node_version)) {
+          vv_or_node = cur;
+          Sto::abort();
+          return false;
+        }
+        if (node_version2 == node_version) {
+          break;
+        }
+      }
+      if (next == nullptr) {
         vv_or_node = cur;
         return false;
       }
-      cur = node->children[t_key[i]];
+      cur = next;
     }
 
     vv_or_node = cur;
@@ -133,6 +170,10 @@ private:
       V value = vv->read_value();
       fence();
       ver = vv->version();
+      if (TransactionTid::is_locked(ver)) {
+        Sto::abort();
+        return false;
+      }
       if (ver == ver2) {
         return value;
       }
@@ -142,14 +183,14 @@ private:
 public:
   void trans_put(const K &key, const V &value) {
     // Add nodes if they don't exist yet.
-    auto vv = insert_nodes(key);
+    auto vv = insert_nodes(key, true);
     auto item = Sto::item(this, vv);
     item.add_write(value);
     item.add_flags(item_put_bit);
   }
 
   void put(const K &key, const V &value) {
-    auto vv = insert_nodes(key);
+    auto vv = insert_nodes(key, false);
 
     TransactionTid::lock(vv->version());
 
@@ -163,7 +204,7 @@ public:
   }
 
 private:
-  versioned_value *insert_nodes(const K &key) {
+  versioned_value *insert_nodes(const K &key, bool transactional) {
     constexpr int t_key_sz = KeyTransformer::buf_size();
     uint8_t t_key[t_key_sz];
     transformer.transform(key, t_key);
@@ -173,30 +214,46 @@ private:
     for (int i = 0; i < t_key_sz; i++) {
       tree_node *node = static_cast<tree_node *>(cur);
       if (node->children[t_key[i]] == nullptr) {
+        // allocate the new node
         void *new_node;
         if (i == t_key_sz - 1) {
-          // insert versioned value with insert bit set
+          // allocate a versioned value with insert bit set
           versioned_value *vv = new versioned_value();
           vv->version() = ver_insert_bit;
           new_node = static_cast<void *>(vv);
         } else {
-          // insert tree node
+          // allocate a tree node
           new_node = static_cast<void *>(new tree_node(node, t_key[i]));
         }
 
-        // TODO: We can probably do this without actually locking, because only
-        // range queries and other inserts are affected by this. But then we
-        // still have to use CAS to set the pointer.
         TransactionTid::lock(node->version);
-
         // Even if this transaction aborts, new tree_nodes/versioned_values
         // might end up being used by some other insert. Therefore, we update
         // the node version now.
         if (node->children[t_key[i]] == nullptr) {
+
+          auto new_ver = node->version + TransactionTid::increment_value;
+
+          if (transactional) {
+            // Check if another transaction has made an insert to this node.
+            auto citem = Sto::check_item(this, node);
+            if (citem) {
+              auto old_ver = citem->template read_value<version_t>();
+              if (!TransactionTid::same_version(node->version, old_ver)) {
+                TransactionTid::unlock(node->version);
+                Sto::abort();
+              }
+
+              // Update the node version in the readset.
+              citem->update_read(old_ver, new_ver & ~TransactionTid::lock_bit);
+            }
+          }
+
           // Increment the version number of the current node.
-          TransactionTid::set_version(node->version, node->version + TransactionTid::increment_value);
+          TransactionTid::set_version(node->version, new_ver);
           // Insert the new node.
           node->children[t_key[i]] = new_node;
+
         } else {
           // Someone else already inserted the node/value.
           if (i == t_key_sz - 1) {
@@ -216,13 +273,14 @@ private:
 public:
   void trans_remove(const K &key) {
     void *vv_or_node;
-    bool is_vv = get_value(key, vv_or_node);
+    version_t node_version;
+    bool is_vv = get_value_or_node(key, vv_or_node, node_version);
     if (!is_vv) {
       // not found, add the version of the node to detect inserts
       // XXX: this seems a bit weird - makes remove not exactly a blind write
       auto node = static_cast<tree_node *>(vv_or_node);
       auto item = Sto::item(this, node);
-      item.template add_read<version_t>(node->version);
+      item.template add_read<version_t>(node_version);
       item.add_flags(item_empty_bit);
       return;
     }
@@ -235,7 +293,8 @@ public:
 
   void remove(const K &key) {
     void *vv_or_node;
-    bool is_vv = get_value(key, vv_or_node);
+    version_t node_version;
+    bool is_vv = get_value_or_node(key, vv_or_node, node_version);
     if (!is_vv) {
       return;
     }
