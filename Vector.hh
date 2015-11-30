@@ -209,13 +209,44 @@ public:
         auto item = Sto::item(this, size_pred_key);
         if (item.has_predicate()) {
             assert(item.has_read());
-            auto& pred_list= item.template read_value<std::vector<int32_t>>();
-            pred_list.push_back(pred);
+            int32_t old_pred = item.template read_value<int32_t>();
+            // Add the covering predicate of the old predicate and the new one.
+            if (old_pred != pred) {
+                int32_t oldval = old_pred >> pred_shift;
+                int32_t newval = pred >> pred_shift;
+                if ((old_pred & pred_mask) == eq_bit) {
+                    if ((pred & pred_mask) == eq_bit) {
+                        // Contradicting predicates
+                        Sto::abort();
+                    } else {
+                        assert((pred & pred_mask) == geq_bit);
+                        if (oldval < newval) {
+                            // Again contradicting
+                            Sto::abort();
+                        }
+                        // old predicate is the covering  predicate - so retain it
+                    }
+                } else {
+                    assert((old_pred & pred_mask) == geq_bit);
+                    if ((pred & pred_mask) == eq_bit) {
+                        if (newval < oldval) {
+                            // Contradicting
+                            Sto::abort();
+                        } else {
+                            // new predicate is the covering predicate
+                            item.clear_predicate().add_predicate(pred);
+                        }
+                    } else {
+                        assert((pred & pred_mask) == geq_bit);
+                        if (newval > oldval) {
+                            item.clear_predicate().add_predicate(pred);
+                        }
+                    }
+                }
+            }
         } else {
             assert(!item.has_read());
-            std::vector<int32_t> pred_list;
-            pred_list.push_back(pred);
-            item.add_predicate(pred_list);
+            item.add_predicate(pred);
         }
         return size + offset == sz;
     }
@@ -425,16 +456,13 @@ public:
             int32_t size = size_;
             acquire_fence();
             
-            auto& pred_list = item.template read_value<std::vector<int32_t>>();
-            for (int i = 0; i < pred_list.size(); i++) {
-                int32_t pred = pred_list[i];
-                int32_t rval = pred >> pred_shift;
-                if ((pred & pred_mask) == eq_bit) {
-                    if (size != rval) return false;
-                } else {
-                    assert((pred & pred_mask) == geq_bit);
-                    if (size < rval) return false;
-                }
+            int32_t pred = item.template read_value<int32_t>();
+            int32_t rval = pred >> pred_shift;
+            if ((pred & pred_mask) == eq_bit) {
+                if (size != rval) return false;
+            } else {
+                assert((pred & pred_mask) == geq_bit);
+                if (size < rval) return false;
             }
             auto& read_version = item.template write_value<Version>();
             if (read_version != vecversion_) { return false; }

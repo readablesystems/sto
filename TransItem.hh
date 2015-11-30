@@ -208,6 +208,11 @@ class TransProxy {
 
     template <typename T>
     inline TransProxy& add_predicate(T rdata);
+    inline TransProxy& clear_predicate() {
+        i_->__rm_flags(TransItem::pred_bit);
+        i_->__rm_flags(TransItem::read_bit);
+        return *this;
+    }
     
     template <typename T>
     inline TransProxy& add_write(T wdata);
