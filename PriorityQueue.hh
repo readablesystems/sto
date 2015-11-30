@@ -6,12 +6,6 @@
 #include "versioned_value.hh"
 #include "VersionFunctions.hh"
 
-enum Status{
-    AVAILABLE,
-    EMPTY,
-    BUSY,
-};
-
 
 template <typename T, bool Opacity = false>
 class PriorityQueue: public Shared {
@@ -26,9 +20,7 @@ class PriorityQueue: public Shared {
     static constexpr Version insert_bit = TransactionTid::user_bit1;
     static constexpr Version delete_bit = TransactionTid::user_bit1<<1;
     static constexpr Version dirty_bit = TransactionTid::user_bit1<<2;
-    
-    static constexpr int NO_ONE = -1;
-    
+        
     static constexpr int pop_key = -2;
     static constexpr int empty_key = -3;
     static constexpr int top_key = -4;
@@ -158,8 +150,7 @@ public:
                             // Can also try readers-writers lock
         if (dirtytid_ != -1 && dirtytid_ != Transaction::threadid && v > dirtyval_) {
             unlock(&poplock_);
-            //INC_P(txp_push_abort);
-	    Sto::abort();
+            Sto::abort();
             return;
         }
         versioned_value* val = versioned_value::make(v, TransactionTid::increment_value + insert_bit);
@@ -182,9 +173,8 @@ public:
         
         if (size_ == 0) {
             if (read_val != NULL) {
-		//INC_P(txp_pop_abort); 
-		Sto::abort();
-	    }
+                Sto::abort();
+            }
             else Sto::item(this, empty_key).add_read(0);
             Sto::item(this, pop_key).add_read(popversion_);
             return -1;
@@ -194,8 +184,7 @@ public:
         if (dirtytid_ != -1 && dirtytid_ != Transaction::threadid) {
             // queue is in dirty state
             unlock(&poplock_);
-            //INC_P(txp_pop_abort);
- 	    Sto::abort();
+            Sto::abort();
             return -1;
         }
         
@@ -211,8 +200,7 @@ public:
         auto item = Sto::item(this, val);
         if (shouldBeInserted && !has_insert(item)) {
                 unlock(&poplock_);
-                //INC_P(txp_pop_abort);
-		Sto::abort();
+                Sto::abort();
                 return -1;
         }
         
@@ -260,8 +248,7 @@ public:
         if (dirtytid_ != -1 && dirtytid_ != Transaction::threadid) {
             // queue is in dirty state
             unlock(&poplock_);
-            //INC_P(txp_pop_abort);
-	    Sto::abort();
+            Sto::abort();
         }
         versioned_value* val = getMax();
         unlock(&poplock_);
