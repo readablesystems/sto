@@ -56,6 +56,11 @@ public:
 
 public:
   bool trans_get(const K &key, V &value) {
+    version_t ver;
+    return trans_get(key, value, ver);
+  }
+
+  bool trans_get(const K &key, V &value, version_t &ver) {
     void *vv_or_node;
     version_t node_version;
     bool is_vv = get_value_or_node(key, vv_or_node, node_version);
@@ -73,6 +78,7 @@ public:
 
     if (item.has_write()) {
       // Return the value directly from the item if this transaction performed a write.
+      ver = 9001;
       if (item.flags() & item_remove_bit) {
         return false;
       } else { // put
@@ -81,23 +87,10 @@ public:
       }
     }
 
-    version_t ver = 0;
-
-    /*
-    version_t ver = vv->version();
-
-    // If the version has changed from the last read, this transaction can't possibly complete.
-    if (item.has_read() && !TransactionTid::same_version(item.template read_value<version_t>(), ver)) {
-      Sto::abort();
-      return false;
-    }
-    */
-
     value = atomic_read(vv, ver);
 
     // If the version has changed from the last read, this transaction can't possibly complete.
     if (item.has_read() && !TransactionTid::same_version(item.template read_value<version_t>(), ver)) {
-      // The version has changed from the last read, this transaction can't possibly complete.
       Sto::abort();
       return false;
     }
@@ -374,12 +367,15 @@ public:
 
   virtual bool check(const TransItem& item, const Transaction&) {
     auto flags = item.flags();
+    version_t read_ver = item.template read_value<version_t>();
     if (flags & item_empty_bit) {
       tree_node *node = item.template key<tree_node *>();
-      return TransactionTid::same_version(node->version, item.template read_value<version_t>());
+      return TransactionTid::same_version(node->version, read_ver)
+        && (!TransactionTid::is_locked(node->version) || item.has_write());
     } else {
       versioned_value *vv = item.template key<versioned_value *>();
-      return TransactionTid::same_version(vv->version(), item.template read_value<version_t>());
+      return TransactionTid::same_version(vv->version(), read_ver)
+        && (!TransactionTid::is_locked(vv->version()) || item.has_write());
     }
   }
 
@@ -396,6 +392,7 @@ public:
       new_ver &= ~ver_insert_bit;
     }
     TransactionTid::set_version(vv->version(), new_ver);
+    memory_fence();
   }
 
   virtual void unlock(TransItem& item) {
