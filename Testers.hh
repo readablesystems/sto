@@ -9,26 +9,27 @@
 #include "Hashtable.hh"
 #include "RBTree.hh"
 #include "Vector.hh"
+#include "RadixTree.hh"
 
 #define MAX_VALUE  10000 // Max value of integers used in data structures
 #define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements.
 
 struct Rand {
     typedef uint32_t result_type;
-    
+
     result_type u, v;
     Rand(result_type u, result_type v) : u(u|1), v(v|1) {}
-    
+
     inline result_type operator()() {
         v = 36969*(v & 65535) + (v >> 16);
         u = 18000*(u & 65535) + (u >> 16);
         return (v << 16) + u;
     }
-    
+
     static constexpr result_type max() {
         return (uint32_t)-1;
     }
-    
+
     static constexpr result_type min() {
         return 0;
     }
@@ -59,11 +60,11 @@ Version lock;
 
 template <typename T>
 class Tester {
-public: 
+public:
     virtual ~Tester() {}
     // initialize the data structure
-    virtual void init(T* q) = 0; 
-    // Perform a particular operation on the data structure.    
+    virtual void init(T* q) = 0;
+    // Perform a particular operation on the data structure.
     virtual op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) = 0 ;
     //Redo a operation. This is called during serial execution.
     virtual void redoOp(T* q, op_record *op) = 0;
@@ -406,10 +407,10 @@ public:
             } RETRY(false);
         }
     }
-    
+
 #if PRINT_DEBUG
     void print_stats(T* q) {
-       
+
     }
 #endif
 
@@ -426,7 +427,7 @@ public:
             } RETRY(false);
         }
     }
-    
+
     op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
         if (op == 0) {
             int key = slotdist(transgen);
@@ -507,7 +508,7 @@ public:
               val = q->transGet(sz - 1);
               q->pop_back();
             }
-            
+
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] popped "  << sz-1 << " " << val << std::endl;
@@ -538,7 +539,7 @@ public:
 
         }
     }
-    
+
     void redoOp(T* q, op_record* op) {
         if (op->op == 0) {
             int key = op->args[0];
@@ -567,7 +568,7 @@ public:
             assert(q->transSize() == op->rdata[0]);
         }
     }
-    
+
     void check(T* q, T*q1) {
         int size;
         TRANSACTION {
@@ -580,13 +581,133 @@ public:
             } RETRY(false);
         }
     }
-    
+
 #if PRINT_DEBUG
     void print_stats(T* q) {
-        
+
     }
 #endif
-    
+
     static const int num_ops_ = 5;
 };
 
+template <typename T>
+class RadixTreeTester: Tester<T> {
+public:
+    void init(T* q) {
+      (void) q;
+    }
+
+    op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
+        (void) me;
+        uint64_t key = slotdist(transgen);
+        if (op == 0) {
+            uint64_t val = slotdist(transgen);
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to put " << key << ", " << val << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            q->trans_put(key, val);
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] put " << key << "," << val << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->args.push_back(key);
+            rec->args.push_back(val);
+            return rec;
+        } else if (op == 1) {
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to get " << key << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            uint64_t val = 0;
+            uint64_t ver = 0;
+            bool found = q->trans_get(key, val, ver);
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] get " << key << ", " << val << "(" << found << ")" << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->args.push_back(key);
+            rec->rdata.push_back(val);
+            rec->rdata.push_back(found);
+            rec->rdata.push_back(ver);
+            return rec;
+        } else {
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to remove " << key << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            q->trans_remove(key);
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] removed " << key << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->args.push_back(key);
+            return rec;
+        }
+    }
+
+    void redoOp(T* q, op_record* op) {
+        if (op->op == 0) {
+            uint64_t key = op->args[0];
+            uint64_t val = op->args[1];
+            q->trans_put(key, val);
+#if PRINT_DEBUG
+            std::cout << "[serial] put " << key << ", " << val << std::endl;
+#endif
+        } else if (op->op == 1) {
+            uint64_t key = op->args[0];
+            uint64_t val;
+            uint64_t ver;
+            bool found = q->trans_get(key, val, ver);
+#if PRINT_DEBUG
+            std::cout << "[serial] get " << key << ", " << val << "(" << found << "," << ver << ")" << std::endl;
+#endif
+            assert(found == op->rdata[1]);
+            if (found) {
+                assert(val == op->rdata[0]);
+            }
+        } else {
+            uint64_t key = op->args[0];
+            q->trans_remove(key);
+#if PRINT_DEBUG
+            std::cout << "[serial] removed " << key << std::endl;
+#endif
+        }
+    }
+
+    void check(T* q, T* q1) {
+        for (uint64_t i = 0; i < MAX_VALUE; i++) {
+            TRANSACTION {
+                uint64_t v1;
+                bool p1 = q->trans_get(i, v1);
+                uint64_t v2;
+                bool p2 = q1->trans_get(i, v2);
+                assert(p1 == p2);
+                if (p1) {
+                    assert(v1 == v2);
+                }
+            } RETRY(false);
+        }
+    }
+
+#if PRINT_DEBUG
+    void print_stats(T* q) {
+
+    }
+#endif
+
+    static const int num_ops_ = 3;
+};

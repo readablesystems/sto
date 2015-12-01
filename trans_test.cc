@@ -16,7 +16,8 @@
 #define HASHTABLE 1
 #define RBTREE 2
 #define VECTOR 3
-#define DS VECTOR
+#define RADIX_TREE 4
+#define DS RADIX_TREE
 
 #if DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
@@ -26,12 +27,16 @@ HashtableTester<Hashtable<int, int, false, 1000000>> tester = HashtableTester<Ha
 RBTreeTester<RBTree<int, int>> tester = RBTreeTester<RBTree<int, int>>();
 #elif DS == VECTOR
 VectorTester<Vector<int>> tester = VectorTester<Vector<int>>();
+#elif DS == RADIX_TREE
+// We should probably use ints here, but overflow isn't an issue
+// as long as the tester controls all of the keys and values
+RadixTreeTester<RadixTree<uint64_t, uint64_t>> tester = RadixTreeTester<RadixTree<uint64_t, uint64_t>>();
 #endif
 
 template <typename T>
 void run(T* q, int me) {
     Transaction::threadid = me;
-    
+
     std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
     for (int i = 0; i < NTRANS; ++i) {
         // so that retries of this transaction do the same thing
@@ -41,14 +46,14 @@ void run(T* q, int me) {
         Sto::start_transaction();
         try {
             tr->ops.clear();
-            
+
             uint32_t seed = transseed*3 + (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_THREADS*NTRANS*11;
             auto seedlow = seed & 0xffff;
             auto seedhigh = seed >> 16;
             Rand transgen(seed, seedlow << 16 | seedhigh);
-            
+
             int numOps = slotdist(transgen) % MAX_OPS + 1;
-            
+
             for (int j = 0; j < numOps; j++) {
                 int op = slotdist(transgen) % tester.num_ops_;
                 tr->ops.push_back(tester.doOp(q, op, me, slotdist, transgen));
@@ -81,7 +86,7 @@ template <typename T>
 void* runFunc(void* x) {
     TesterPair<T>* tp = (TesterPair<T>*) x;
     run(tp->t, tp->me);
-#if PRINT_DEBUG 
+#if PRINT_DEBUG
     TransactionTid::lock(lock); tester.print_stats(tp->t); TransactionTid::unlock(lock);
 #endif
     return nullptr;
@@ -100,7 +105,7 @@ void startAndWait(T* ds) {
     pthread_t advancer;
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
-    
+
     for (int i = 0; i < N_THREADS; ++i) {
         pthread_join(tids[i], NULL);
     }
@@ -114,7 +119,7 @@ int main() {
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
     lock = 0;
 
-#if DS == PRIORITY_QUEUE 
+#if DS == PRIORITY_QUEUE
     PriorityQueue<int> q;
     PriorityQueue<int> q1;
 #elif DS == HASHTABLE
@@ -126,24 +131,27 @@ int main() {
 #elif DS == VECTOR
     Vector<int> q;
     Vector<int> q1;
-#endif  
+#elif DS == RADIX_TREE
+    RadixTree<uint64_t, uint64_t> q;
+    RadixTree<uint64_t, uint64_t> q1;
+#endif
 
     tester.init(&q);
     tester.init(&q1);
 
     struct timeval tv1,tv2;
     gettimeofday(&tv1, NULL);
-    
+
     for (int i = 0; i < N_THREADS; i++) {
         txn_list.emplace_back();
     }
-    
+
     startAndWait(&q);
-    
+
     gettimeofday(&tv2, NULL);
     printf("Parallel time: ");
     print_time(tv1, tv2);
-    
+
 #if PERF_LOGGING
     Transaction::print_stats();
     {
@@ -152,17 +160,17 @@ int main() {
         printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
     }
 #endif
-    
-    
+
+
     std::map<uint64_t, txn_record *> combined_txn_list;
-    
+
     for (int i = 0; i < N_THREADS; i++) {
         combined_txn_list.insert(txn_list[i].begin(), txn_list[i].end());
     }
-    
+
     std::cout << "Single thread replay" << std::endl;
     gettimeofday(&tv1, NULL);
-    
+
     std::map<uint64_t, txn_record *>::iterator it = combined_txn_list.begin();
     for(; it != combined_txn_list.end(); it++) {
         Sto::start_transaction();
@@ -171,12 +179,12 @@ int main() {
         }
         assert(Sto::try_commit());
     }
-    
+
     gettimeofday(&tv2, NULL);
     printf("Serial time: ");
     print_time(tv1, tv2);
-    
-   
+
+
     tester.check(&q, &q1);
 	return 0;
 }
