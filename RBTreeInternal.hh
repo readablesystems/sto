@@ -10,7 +10,7 @@
 template <typename T>
 class rbnodeptr {
   public:
-    // what is unspecified_bool_type doing? 
+    typedef TransactionTid::type Version;
     typedef bool (rbnodeptr<T>::*unspecified_bool_type)() const;
 
     rbnodeptr() = default;
@@ -38,6 +38,9 @@ class rbnodeptr {
     inline rbnodeptr<T> flip() const;
 
     size_t size() const;
+    
+    inline void inc_lockversion() const;
+
     template <typename C>
     void check(T* parent, int this_black_height, int& black_height,
                T* root, T* begin, T* end, C& compare) const;
@@ -51,10 +54,12 @@ template <typename T>
 class rblinks {
     public:
     typedef TransactionTid::type Version;
+    rblinks() : nodeversion_(0), lockversion_(0) {}
  
     T* p_;
     rbnodeptr<T> c_[2];
-//    mutable Version nodeversion_;
+    mutable Version nodeversion_;
+    mutable Version lockversion_;
 }; 
 
 namespace rbpriv {
@@ -160,6 +165,11 @@ class rbtree {
     typedef const T& const_reference;
     typedef Compare value_compare;
     typedef T node_type;
+    typedef TransactionTid::type Version;
+    
+    // pairs the node with the current node version number
+    typedef std::pair<std::pair<T*, Version>, std::pair<T*, Version>> boundary_nodes;
+    typedef std::pair<std::pair<rbnodeptr<T>, Version>, bool> found_node;
 
     inline rbtree(const value_compare &compare = value_compare());
     ~rbtree();
@@ -180,16 +190,22 @@ class rbtree {
 
   private:
     rbpriv::rbrep<T, Compare> r_;
-
     template <typename K, typename Comp>
-    inline std::pair<std::pair<rbnodeptr<T>, bool>, std::pair<T*, T*>> find_any(const K& key, Comp comp) const;
+    inline std::pair<found_node, boundary_nodes> find_any(const K& key, Comp comp) const;
    
     void insert_commit(T* x, rbnodeptr<T> p, bool side);
     T* delete_node(T* victim, T* successor_hint);
     void delete_node_fixup(rbnodeptr<T> p, bool side);
 
+    Version treeversion_;
     template<typename K, typename V> friend class RBTree;
 };
+
+// increment the lockversion of the node during rotations
+template <typename T>
+inline void rbnodeptr<T>::inc_lockversion() const {
+    fetch_and_add(&(node()->rblinks_.lockversion_), TransactionTid::increment_value);
+}
 
 template <typename T>
 inline rbnodeptr<T>::rbnodeptr(T* x, bool color)
@@ -283,11 +299,11 @@ template <typename T>
 inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side) const {
     rbaccount(rotation);
     rbnodeptr<T> x = child(!side);
-    // XXX no need to track rotations if using boundary nodes
-    // increment the nodeversions of these nodes
-    // node()->inc_nodeversion();
-    // x.node()->inc_nodeversion();
-    // if (x.child(side)) x.child(side).node()->inc_nodeversion();
+    // increment the lockversions of these nodes
+    inc_lockversion();
+    x.inc_lockversion();
+    if (x.child(side)) x.child(side).inc_lockversion();
+
     // perform the rotation 
     if ((child(!side) = x.child(side)))
         x.child(side).parent() = node();
@@ -338,7 +354,7 @@ inline Compare& rbcompare<Compare>::get_compare() const {
 // RBTREE FUNCTION DEFINITIONS
 template <typename T, typename C>
 inline rbtree<T, C>::rbtree(const value_compare &compare)
-    : r_(compare) {
+    : r_(compare), treeversion_(0) {
 }
 
 template <typename T, typename C>
@@ -495,15 +511,24 @@ inline T* rbtree<T, C>::root() {
     return r_.root_;
 }
 
-// Return a pair of node, bool: if bool is true, then the node is the found node, 
-// else if bool is false the node is the parent of the absent read. If (null, false), we have
-// an empty tree
+// Return a pair of {(node+version, bool), (boundaries+version)}: 
+// if bool is true, then the node is the found node and version is the node's version
+// else if bool is false the node is the parent of the absent read and version is the current treeversion
+// If ((null, treeversion_), false), we have an empty tree
 // XXX always tracking boundary right now, seems a bit inefficient for inserts
 template <typename T, typename C> template <typename K, typename Comp>
-inline std::pair<std::pair<rbnodeptr<T>, bool>, std::pair<T*, T*>> rbtree<T, C>::find_any(const K& key, Comp comp) const {
+inline std::pair<
+    std::pair<std::pair<rbnodeptr<T>, long unsigned int>, bool>, 
+    std::pair<std::pair<T*, long unsigned int>, std::pair<T*, long unsigned int> >> 
+rbtree<T, C>::find_any(const K& key, Comp comp) const {
     rbnodeptr<T> n(r_.root_, false);
     rbnodeptr<T> p(nullptr, false);
+    rbnodeptr<T> temp_p(nullptr, false);
     std::pair<T*, T*> boundary = std::make_pair(r_.limit_[0], r_.limit_[1]);
+    std::pair<Version, Version> boundary_versions = std::make_pair(
+            r_.limit_[0] ? r_.limit_[0]->rblinks_.nodeversion_ : 0, 
+            r_.limit_[1] ? r_.limit_[1]->rblinks_.nodeversion_ : 1);
+    Version nodeversion = 0, lockversion = 0;
     while (n.node()) {
         int cmp = comp.compare(key, *n.node());
         if (cmp == 0)
@@ -513,14 +538,28 @@ inline std::pair<std::pair<rbnodeptr<T>, bool>, std::pair<T*, T*>> rbtree<T, C>:
         // update the LEFT boundary when going RIGHT, and vice versa
         if (cmp > 0) {
             boundary.first = n.node();
+            boundary_versions.first = n.node()->rblinks_.nodeversion_;
         } else {
             boundary.second = n.node();
+            boundary_versions.second = n.node()->rblinks_.nodeversion_;
         }
+        temp_p = p;
+        lockversion = temp_p.node()->rblinks_.lockversion_;
         p = n;
+        // update nodeversion to be the version of the currently visited node 
+        nodeversion = n.node()->rblinks_.nodeversion_;
         n = n.node()->rblinks_.c_[cmp > 0];
+        // if parent lockversion has changed, then we want to retry the search
+        if (lockversion != temp_p.node()->rblinks_.lockversion_) {
+            n = rbnodeptr<T>(r_.root_, false);
+        }
     }
-    auto nodepair = std::make_pair((n.node()) ? n : p, n.node());
-    return std::make_pair(nodepair, boundary);
+    auto node = n.node() ? std::make_pair(n, nodeversion) : std::make_pair(p, treeversion_);
+    auto nodepair = std::make_pair(node, n.node());
+    auto boundarypair = std::make_pair(
+            std::make_pair(boundary.first, boundary_versions.first),
+            std::make_pair(boundary.second, boundary_versions.second));
+    return std::make_pair(nodepair, boundarypair);
 }
 
 template <typename T, typename C>
