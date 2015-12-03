@@ -527,7 +527,7 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
     std::pair<T*, T*> boundary = std::make_pair(r_.limit_[0], r_.limit_[1]);
     std::pair<Version, Version> boundary_versions = std::make_pair(
             r_.limit_[0] ? r_.limit_[0]->rblinks_.nodeversion_ : 0, 
-            r_.limit_[1] ? r_.limit_[1]->rblinks_.nodeversion_ : 1);
+            r_.limit_[1] ? r_.limit_[1]->rblinks_.nodeversion_ : 0);
     Version nodeversion = 0, lockversion = 0;
     while (n.node()) {
         int cmp = comp.compare(key, *n.node());

@@ -8,7 +8,7 @@
 #include "VersionFunctions.hh"
 #include "RBTreeInternal.hh"
 
-#define DEBUG 0
+#define DEBUG 1
 #if DEBUG
 extern TransactionTid::type lock;
 #endif
@@ -334,7 +334,7 @@ private:
                         Version v = n.second;
 #if DEBUG
                         TransactionTid::lock(::lock);
-                        printf("\t#Tracking boundary 0x%lx (k %d), nv 0x%lx\n", (unsigned long)n, n->key(), v);
+                        printf("\t#Tracking boundary 0x%lx (k %d), nv 0x%lx\n", (unsigned long)n.first, n.first->key(), v);
                         TransactionTid::unlock(::lock);
 #endif
                         Sto::item(const_cast<RBTree<K, T>*>(this),
