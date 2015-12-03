@@ -512,9 +512,9 @@ inline T* rbtree<T, C>::root() {
 }
 
 // Return a pair of {(node+version, bool), (boundaries+version)}: 
-// if bool is true, then the node is the found node and version is the node's version
-// else if bool is false the node is the parent of the absent read and version is the current treeversion
-// If ((null, treeversion_), false), we have an empty tree
+// if bool is true, then the node is the found node and version is the node's value version XXX
+// else if bool is false the node is the parent of the absent read and version is the parent node version
+// If ((null, treeversion_), false), we have an empty tree and the version of the node is treeversion
 // XXX always tracking boundary right now, seems a bit inefficient for inserts
 template <typename T, typename C> template <typename K, typename Comp>
 inline std::pair<
@@ -528,11 +528,18 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
     std::pair<Version, Version> boundary_versions = std::make_pair(
             r_.limit_[0] ? r_.limit_[0]->rblinks_.nodeversion_ : 0, 
             r_.limit_[1] ? r_.limit_[1]->rblinks_.nodeversion_ : 0);
-    Version nodeversion = 0, lockversion = 0;
+    Version version = 0, nodeversion = 0, lockversion = 0;
+    bool nonempty = false;
+
     while (n.node()) {
+        nonempty = true;
         int cmp = comp.compare(key, *n.node());
-        if (cmp == 0)
+        if (cmp == 0) {
+            // need to get version of child
+            // XXX this needs to be the value version, not the nodeversion...
+            version = n.node()->rblinks_.nodeversion_;
             break;
+        }
 
         // narrow down to find the boundary nodes
         // update the LEFT boundary when going RIGHT, and vice versa
@@ -546,7 +553,8 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
         temp_p = p;
         lockversion = temp_p.node()->rblinks_.lockversion_;
         p = n;
-        // update nodeversion to be the version of the currently visited node 
+        // update nodeversion to be the version of the currently visited node
+        // this will be the "parent" nodeversion
         nodeversion = n.node()->rblinks_.nodeversion_;
         n = n.node()->rblinks_.c_[cmp > 0];
         // if parent lockversion has changed, then we want to retry the search
@@ -554,7 +562,9 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
             n = rbnodeptr<T>(r_.root_, false);
         }
     }
-    auto node = n.node() ? std::make_pair(n, nodeversion) : std::make_pair(p, treeversion_);
+    auto node = nonempty ? 
+        (n.node() ? std::make_pair(n, version) : std::make_pair(p, nodeversion)) :
+        std::make_pair(n, treeversion_);
     auto nodepair = std::make_pair(node, n.node());
     auto boundarypair = std::make_pair(
             std::make_pair(boundary.first, boundary_versions.first),

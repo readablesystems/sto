@@ -364,6 +364,7 @@ private:
             if (found_p.node() == nullptr) {
                 Sto::item(this, tree_key_).add_write(0);
             // else we increment the parent version 
+            // XXX we need to ensure the nodeversion is the same as the one we read
             } else {
                 auto versions = found_p.node()->inc_nodeversion();
                 auto item = Sto::item(this, reinterpret_cast<uintptr_t>(found_p.node()) | 1);
