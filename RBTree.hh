@@ -152,7 +152,7 @@ public:
                 start = rbalgorithms<wrapper_type>::next_node(start);
             }
             if (start != nullptr) {
-                if (is_phantom_node(start)) {
+                if (is_phantom_node(start, start->version())) {
                     unlock(&treelock_);
                     Sto::abort();
                 }
@@ -195,7 +195,7 @@ private:
         }
 
         if (next_node != nullptr) {
-            if (is_phantom_node(next_node)) {
+            if (is_phantom_node(next_node, next_node->version())) {
                 unlock(&treelock_);
                 Sto::abort();
             }
@@ -226,7 +226,7 @@ private:
             Sto::abort();
         }
 
-        if (is_phantom_node(prev_node)) {
+        if (is_phantom_node(prev_node, prev_node->version())) {
             unlock(&treelock_);
             Sto::abort();
         }
@@ -242,19 +242,17 @@ private:
 
     // A (hard) phantom node is a node that's being inserted but not yet
     // committed by another transaction. It should be treated as invisible
-    inline bool is_phantom_node(wrapper_type* node) const {
-        Version& val_ver = node->version();
+    inline bool is_phantom_node(wrapper_type* node, Version& version) const {
         auto item = Sto::item(const_cast<RBTree<K, T>*>(this), node);
-        return (is_inserted(val_ver) && !has_insert(item) && !has_delete(item));
+        return (is_inserted(version) && !has_insert(item) && !has_delete(item));
     }
 
     // A soft phantom node is a node that's marked inserted by the current
     // transaction. Its value information is visible (and only visible) to
     // the current transaction
-    inline bool is_soft_phantom(wrapper_type* node) const {
-        Version& val_ver = node->version();
+    inline bool is_soft_phantom(wrapper_type* node, Version& version) const {
         auto item = Sto::item(const_cast<RBTree<K, T>*>(this), node);
-        return (is_inserted(val_ver) && (has_insert(item) || has_delete(item)));
+        return (is_inserted(version) && (has_insert(item) || has_delete(item)));
     }
 
     // increment or decrement the offset size of the transaction's tree
@@ -316,7 +314,7 @@ private:
             if (insert) {
                 if (x) {
                     // we currently do not allow insertions under phantom nodes
-                    if (is_phantom_node(x)) {
+                    if (is_phantom_node(x, version)) {
 #if DEBUG
                         TransactionTid::lock(::lock);
                         printf("Aborted in find_or_abort (insertion under phantom node)\n");
