@@ -54,10 +54,13 @@ template <typename T>
 class rblinks {
     public:
     typedef TransactionTid::type Version;
-    rblinks() : nodeversion_(0), lockversion_(0) {}
+    static constexpr Version insert_bit = TransactionTid::user_bit1;
+    
+    rblinks() : valueversion_(TransactionTid::increment_value + insert_bit), nodeversion_(0), lockversion_(0) {}
  
     T* p_;
     rbnodeptr<T> c_[2];
+    mutable Version valueversion_;
     mutable Version nodeversion_;
     mutable Version lockversion_;
 }; 
@@ -528,7 +531,7 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
     std::pair<Version, Version> boundary_versions = std::make_pair(
             r_.limit_[0] ? r_.limit_[0]->rblinks_.nodeversion_ : 0, 
             r_.limit_[1] ? r_.limit_[1]->rblinks_.nodeversion_ : 0);
-    Version version = 0, nodeversion = 0, lockversion = 0;
+    Version valueversion = 0, nodeversion = 0, lockversion = 0;
     bool nonempty = false;
 
     while (n.node()) {
@@ -536,8 +539,7 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
         int cmp = comp.compare(key, *n.node());
         if (cmp == 0) {
             // need to get version of child
-            // XXX this needs to be the value version, not the nodeversion...
-            version = n.node()->rblinks_.nodeversion_;
+            valueversion = n.node()->rblinks_.valueversion_;
             break;
         }
 
@@ -563,7 +565,7 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
         }
     }
     auto node = nonempty ? 
-        (n.node() ? std::make_pair(n, version) : std::make_pair(p, nodeversion)) :
+        (n.node() ? std::make_pair(n, valueversion) : std::make_pair(p, nodeversion)) :
         std::make_pair(n, treeversion_);
     auto nodepair = std::make_pair(node, n.node());
     auto boundarypair = std::make_pair(

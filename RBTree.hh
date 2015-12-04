@@ -39,8 +39,11 @@ class rbwrapper : public T {
 #endif
         return std::make_pair(old_val, new_val);
     }
-    inline Version nodeversion() {
+    inline Version& nodeversion() {
         return rblinks_.nodeversion_;
+    }
+    inline Version& version() {
+        return rblinks_.valueversion_;
     }
     rblinks<rbwrapper<T> > rblinks_;
 };
@@ -51,23 +54,15 @@ template <typename K, typename T>
 class rbpair {
 public:
     typedef TransactionTid::type Version;
-    typedef versioned_value_struct<std::pair<const K, T>> versioned_pair;
 
-    static constexpr Version insert_bit = TransactionTid::user_bit1;
-
-    explicit rbpair(const K& key, const T& value)
-    : pair_(std::pair<const K, T>(key, value), TransactionTid::increment_value + insert_bit) {}
-    explicit rbpair(std::pair<const K, T>& kvp)
-    : pair_(kvp, TransactionTid::increment_value + insert_bit) {}
+    explicit rbpair(const K& key, const T& value) : pair_(std::pair<const K, T>(key, value)) {}
+    explicit rbpair(std::pair<const K, T>& kvp) : pair_(kvp) {}
 
     inline const K& key() const {
-        return pair_.read_value().first;
-    }
-    inline Version& version() {
-        return pair_.version();
+        return pair_.first;
     }
     inline T& writeable_value() {
-        return pair_.writeable_value().second;
+        return pair_.second;
     }
     inline bool operator<(const rbpair& rhs) const {
         return (key() < rhs.key());
@@ -78,7 +73,7 @@ public:
 
 private:
     // key-value pair associated with a version for the data
-    versioned_pair pair_;
+    std::pair<const K, T> pair_;
 };
 
 template <typename K, typename T> class RBProxy;
@@ -129,14 +124,7 @@ public:
     bool nontrans_contains(const K& key);
     bool nontrans_remove(const K& key);
     T nontrans_find(const K& key); // returns T() if not found, works for STAMP
-
-    void lock(versioned_value *e) {
-        lock(&e->version());
-    }
-    void unlock(versioned_value *e) {
-        unlock(&e->version());
-    }
-
+    
     // iterators
     // TODO should not need to lock?
     iterator begin() {
@@ -364,7 +352,7 @@ private:
             if (found_p.node() == nullptr) {
                 Sto::item(this, tree_key_).add_write(0);
             // else we increment the parent version 
-            // XXX we need to ensure the nodeversion is the same as the one we read
+            // XXX we need to ensure the nodeversion is the same as the one we read???
             } else {
                 auto versions = found_p.node()->inc_nodeversion();
                 auto item = Sto::item(this, reinterpret_cast<uintptr_t>(found_p.node()) | 1);
@@ -723,7 +711,8 @@ inline void RBTree<K, T>::lock(TransItem& item) {
     } else if (item.key<void*>() == tree_key_) {
         lock(&treeversion());
     } else { 
-        lock(item.key<versioned_value*>());
+        auto node = item.key<wrapper_type*>();
+        lock(&node->version());
     }
 }
     
@@ -734,7 +723,8 @@ inline void RBTree<K, T>::unlock(TransItem& item) {
     } else if (item.key<void*>() == tree_key_) {
         unlock(&treeversion());
     } else {
-        unlock(item.key<versioned_value*>());
+        auto node = item.key<wrapper_type*>();
+        unlock(&node->version());
     }
 }
    
@@ -808,6 +798,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         TransactionTid::inc_invalid_version(sizeversion_);
         assert((ssize_t)size_ >= 0);
     } else {
+        auto v = e->version();
         assert(is_locked(e->version()));
         assert(((uintptr_t)e & 0x1) == 0);
         bool deleted = has_delete(item);
@@ -823,6 +814,9 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             // increment the nodeversion after we erase
             unlock(&treelock_);
             // increment value version 
+            printf("\t#first version (erase) 0x%lx\n", (unsigned long)v);
+            printf("\t#second version (erase) 0x%lx\n", (unsigned long)e->version());
+            assert(v == e->version());
             TransactionTid::inc_invalid_version(e->version());
 #if DEBUG
             TransactionTid::lock(::lock);
