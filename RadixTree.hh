@@ -392,7 +392,6 @@ public:
       new_ver &= ~ver_insert_bit;
     }
     TransactionTid::set_version(vv->version(), new_ver);
-    memory_fence();
   }
 
   virtual void unlock(TransItem& item) {
