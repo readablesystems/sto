@@ -56,21 +56,20 @@ public:
 
 public:
   bool trans_get(const K &key, V &value) {
-    void *vv_or_node;
+    versioned_value *vv;
+    tree_node *parent;
+    uint8_t index;
     version_t node_version;
-    bool is_vv = get_value_or_node(key, vv_or_node, node_version);
-    if (!is_vv) {
+    std::tie(vv, parent, index, node_version) = get_value_or_node(key);
+    if (!vv) {
       // not found, add the version of the node to detect inserts
-      auto node = static_cast<tree_node *>(vv_or_node);
-      auto item = Sto::item(this, node);
+      auto item = Sto::item(this, parent);
       item.template add_read<version_t>(node_version);
       item.add_flags(item_empty_bit);
       return false;
     }
 
-    auto vv = static_cast<versioned_value *>(vv_or_node);
     auto item = Sto::item(this, vv);
-
     if (item.has_write()) {
       // Return the value directly from the item if this transaction performed a write.
       if (item.flags() & item_remove_bit) {
@@ -96,14 +95,15 @@ public:
   }
 
   bool get(const K &key, V &value) {
-    void *vv_or_node;
+    versioned_value *vv;
+    tree_node *parent;
+    uint8_t index;
     version_t node_version;
-    bool is_vv = get_value_or_node(key, vv_or_node, node_version);
-    if (!is_vv) {
+    std::tie(vv, parent, index, node_version) = get_value_or_node(key);
+    if (!vv) {
       return false;
     }
 
-    auto vv = static_cast<versioned_value *>(vv_or_node);
     if (!(vv->version() & TransactionTid::valid_bit)) {
       return false;
     }
@@ -113,41 +113,50 @@ public:
   }
 
 private:
-  bool get_value_or_node(const K &key, void * &vv_or_node, version_t &node_version) {
+  // If the key exists in the tree, returns a pointer to the versioned value,
+  // the parent node, the index of the key within that node and the node
+  // version.
+  //
+  // If the key does not exist, returns the lowest node in the tree that was
+  // found while searching for the key.
+  //
+  // If any node is locked on the path down the tree, a tuple with null
+  // pointers and zeroes is returned.
+  std::tuple<versioned_value*, tree_node*, uint8_t, version_t> get_value_or_node(const K &key) {
     constexpr int t_key_sz = KeyTransformer::buf_size();
-    uint8_t t_key[t_key_sz];
-    transformer.transform(key, t_key);
+    uint8_t t_key[t_key_sz]; transformer.transform(key, t_key);
 
-    void *cur = &root;
+    tree_node *cur = &root;
+    version_t node_version;
+    void *next;
+
     for (int i = 0; i < t_key_sz; i++) {
-      tree_node *node = static_cast<tree_node*>(cur);
       version_t node_version2;
-      void *next;
       // atomically read the node version and next pointer
       while (true) {
-        node_version2 = node->version;
+        node_version2 = cur->version;
         fence();
-        next = node->children[t_key[i]];
+        next = cur->children[t_key[i]];
         fence();
-        node_version = node->version;
+        node_version = cur->version;
         if (TransactionTid::is_locked(node_version)) {
-          vv_or_node = cur;
           Sto::abort();
-          return false;
+          return std::make_tuple(nullptr, nullptr, 0, 0);
         }
         if (node_version2 == node_version) {
           break;
         }
       }
       if (next == nullptr) {
-        vv_or_node = cur;
-        return false;
+        return std::make_tuple(nullptr, cur, 0, node_version);
       }
-      cur = next;
+      if (i < t_key_sz - 1) {
+        cur = static_cast<tree_node *>(next);
+      }
     }
 
-    vv_or_node = cur;
-    return true;
+    return std::make_tuple(static_cast<versioned_value *>(next), cur,
+        t_key[t_key_sz-1], node_version);
   }
 
   V atomic_read(versioned_value *vv, version_t &ver) {
@@ -264,44 +273,44 @@ private:
 
 public:
   void trans_remove(const K &key) {
-    void *vv_or_node;
+    versioned_value *vv;
+    tree_node *parent;
+    uint8_t index;
     version_t node_version;
-    bool is_vv = get_value_or_node(key, vv_or_node, node_version);
-    if (!is_vv) {
+    std::tie(vv, parent, index, node_version) = get_value_or_node(key);
+    if (!vv && parent) {
       // not found, add the version of the node to detect inserts
       // XXX: this seems a bit weird - makes remove not exactly a blind write
-      auto node = static_cast<tree_node *>(vv_or_node);
-      auto item = Sto::item(this, node);
+      auto item = Sto::item(this, parent);
       item.template add_read<version_t>(node_version);
       item.add_flags(item_empty_bit);
       return;
     }
 
-    auto vv = static_cast<versioned_value *>(vv_or_node);
     auto item = Sto::item(this, vv);
     // if there's a put already, replace it with the remove
     if (item.has_write() && (item.flags() & item_put_bit)) {
       item.clear_flags(item_put_bit);
     }
-    item.add_write(true);
+    // store a pointer to the pointer we need to cleanup later
+    item.add_write(&parent->children[index]);
     item.add_flags(item_remove_bit);
   }
 
   void remove(const K &key) {
-    void *vv_or_node;
+    versioned_value *vv;
+    tree_node *parent;
+    uint8_t index;
     version_t node_version;
-    bool is_vv = get_value_or_node(key, vv_or_node, node_version);
-    if (!is_vv) {
+    std::tie(vv, parent, index, node_version) = get_value_or_node(key);
+    if (!vv) {
       return;
     }
 
-    auto vv = static_cast<versioned_value *>(vv_or_node);
     TransactionTid::lock(vv->version());
-
     version_t ver = vv->version() + TransactionTid::increment_value;
     ver &= ~(TransactionTid::valid_bit | ver_insert_bit);
     vv->version() = ver;
-
     TransactionTid::unlock(vv->version());
   }
 
@@ -402,10 +411,8 @@ public:
     TransactionTid::unlock(vv->version());
   }
 
-  /*
   virtual void cleanup(TransItem& item, bool committed) {
   }
-  */
 
 private:
   const KeyTransformer transformer;
