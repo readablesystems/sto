@@ -62,9 +62,9 @@ void print_result(bool ok) {
 }
 
 
-// random puts in separate transactions
+// random puts and removes in separate transactions
 // verifies basic get/put behavior without concurrent transactions
-void serial_random_puts() {
+void serial_random() {
   bool ok = true;
   reference_t ref;
   candidate_t can;
@@ -73,27 +73,44 @@ void serial_random_puts() {
   std::uniform_int_distribution<uint64_t> rand;
 
   printf("\trandom puts ");
-  reference_t writes;
+  reference_t puts;
+  reference_t removes;
   for (int i = 0; i < 1024; i++) {
-    writes.clear();
+    puts.clear();
     TRANSACTION {
       for (int j = 0; j < 64; j++) {
         uint64_t key = rand(gen) % 8192; // restrict range so there are some collisions
+        uint64_t remove = rand(gen) % 2; // 0 = put, 1 = remove
         uint64_t val = rand(gen);
-        can.trans_put(key, val);
-        writes[key] = val;
-        ref[key] = val;
+        if (remove) {
+          can.trans_remove(key);
+          puts.erase(key);
+          removes[key] = 1;
+          ref.erase(key);
+        } else {
+          can.trans_put(key, val);
+          puts[key] = val;
+          removes.erase(key);
+          ref[key] = val;
+        }
       }
-      // make sure we can read our writes in the transaction
-      for (auto it = writes.begin(); it != writes.end(); it++) {
+      // make sure we can read our removes and puts in the transaction
+      for (auto it = puts.begin(); it != puts.end(); it++) {
         uint64_t val = 0;
         if (!can.trans_get(it->first, val)) {
           ok = false;
-          printf("\nERROR: write not found\n");
+          printf("\nERROR: put not found\n");
         }
         if (val != it->second) {
           ok = false;
-          printf("\nERROR: write value incorrect, got %lu expected %lu\n", val, it->second);
+          printf("\nERROR: put value incorrect, got %lu expected %lu\n", val, it->second);
+        }
+      }
+      for (auto it = removes.begin(); it != removes.end(); it++) {
+        uint64_t val = 0;
+        if (can.trans_get(it->first, val)) {
+          ok = false;
+          printf("\nERROR: removed value found\n");
         }
       }
     } RETRY(false);
@@ -644,7 +661,7 @@ void serial_removes() {
 
 void serial_tests() {
   printf("Running serial tests\n");
-  serial_random_puts();
+  serial_random();
   serial_gets();
   serial_puts();
   serial_get_put_no_key();

@@ -56,11 +56,6 @@ public:
 
 public:
   bool trans_get(const K &key, V &value) {
-    version_t ver;
-    return trans_get(key, value, ver);
-  }
-
-  bool trans_get(const K &key, V &value, version_t &ver) {
     void *vv_or_node;
     version_t node_version;
     bool is_vv = get_value_or_node(key, vv_or_node, node_version);
@@ -78,7 +73,6 @@ public:
 
     if (item.has_write()) {
       // Return the value directly from the item if this transaction performed a write.
-      ver = 9001;
       if (item.flags() & item_remove_bit) {
         return false;
       } else { // put
@@ -87,6 +81,7 @@ public:
       }
     }
 
+    version_t ver;
     value = atomic_read(vv, ver);
 
     // If the version has changed from the last read, this transaction can't possibly complete.
@@ -178,6 +173,10 @@ public:
     // Add nodes if they don't exist yet.
     auto vv = insert_nodes(key, true);
     auto item = Sto::item(this, vv);
+    // if there's a remove already, replace it with the put
+    if (item.has_write() && (item.flags() & item_remove_bit)) {
+      item.clear_flags(item_remove_bit);
+    }
     item.add_write(value);
     item.add_flags(item_put_bit);
   }
@@ -280,6 +279,10 @@ public:
 
     auto vv = static_cast<versioned_value *>(vv_or_node);
     auto item = Sto::item(this, vv);
+    // if there's a put already, replace it with the remove
+    if (item.has_write() && (item.flags() & item_put_bit)) {
+      item.clear_flags(item_put_bit);
+    }
     item.add_write(true);
     item.add_flags(item_remove_bit);
   }

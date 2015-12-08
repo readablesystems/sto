@@ -626,8 +626,7 @@ public:
             TransactionTid::unlock(lock);
 #endif
             uint64_t val = 0;
-            uint64_t ver = 0;
-            bool found = q->trans_get(key, val, ver);
+            bool found = q->trans_get(key, val);
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] get " << key << ", " << val << "(" << found << ")" << std::endl;
@@ -638,7 +637,6 @@ public:
             rec->args.push_back(key);
             rec->rdata.push_back(val);
             rec->rdata.push_back(found);
-            rec->rdata.push_back(ver);
             return rec;
         } else {
 #if PRINT_DEBUG
@@ -670,8 +668,7 @@ public:
         } else if (op->op == 1) {
             uint64_t key = op->args[0];
             uint64_t val;
-            uint64_t ver;
-            bool found = q->trans_get(key, val, ver);
+            bool found = q->trans_get(key, val);
 #if PRINT_DEBUG
             std::cout << "[serial] get " << key << ", " << val << "(" << found << "," << ver << ")" << std::endl;
 #endif
