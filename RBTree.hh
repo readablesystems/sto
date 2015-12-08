@@ -249,7 +249,7 @@ private:
     // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
     // return values: (node*, found, boundary), boundary only valid if !found
     // NOTE: this function must be surrounded by a lock in order to ensure we add the correct nodeversions
-    inline results<T> find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp, bool insert) const {
+    inline results<wrapper_type> find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp, bool insert) const {
         auto results = wrapper_tree_.find_any(rbkvp, 
                 rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()),
                 insert);
@@ -361,7 +361,7 @@ private:
     inline wrapper_type* insert(const K& key) {
         lock(&treelock_);
         auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
-        results<T> results = this->find_or_abort(node, true);
+        results<wrapper_type> results = this->find_or_abort(node, true);
         rbnodeptr<wrapper_type> x_rbnp = results->node;
         Version version = results.valueversion;
         auto pnodeversions = results.pnodeversions;
