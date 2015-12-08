@@ -324,8 +324,13 @@ template <typename T>
 inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side) const {
     rbaccount(rotation);
     rbnodeptr<T> x = child(!side);
+    
+    // lock all versions 
+    TransactionTid::lock(rblinks_.lockversion_);
+    TransactionTid::lock(x.node()->rblinks_.lockversion_);
+    if (x.child(side)) TransactionTid::lock(x.child(side).node()->rblinks_.lockversion_);
     // increment the lockversions of these nodes
-    x.node()->rblinks_.inc_lockversion();
+    rblinks_.inc_lockversion();
     x.node()->rblinks_.inc_lockversion();
     if (x.child(side)) x.child(side).node()->rblinks_.inc_lockversion();
 
@@ -336,6 +341,12 @@ inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side) const {
     x.child(side) = change_color(true);
     x.parent() = parent();
     parent() = x.node();
+
+    // unlock all versions 
+    TransactionTid::unlock(rblinks_.lockversion_);
+    TransactionTid::unlock(x.node()->rblinks_.lockversion_);
+    if (x.child(side)) TransactionTid::unlock(x.child(side).node()->rblinks_.lockversion_);
+
     return x.change_color(old_color);
 }
 
@@ -437,7 +448,15 @@ rbnodeptr<T> rbtree<T, C>::insert(reference x) {
 
 template <typename T, typename C>
 void rbtree<T, C>::swap_links(T* succ, T* node) {
-    // XXX we need to lock the versions around this swap (mark with lock_bit)
+    // lock the versions so that reads will retry 
+    TransactionTid::lock(node->rblinks_.lockversion_);
+    TransactionTid::lock(succ->rblinks_.lockversion_);
+    // only lock righthand child if not equal to the successor
+    if (node->rblinks_.c[1] != succ) {
+        TransactionTid::lock(node->rblinks_.c[1]->rblinks_.lockversion_);
+    }
+
+    // do the actual swap
     auto tmp = node->rblinks_;
     node->rblinks_.p_ = succ->rblinks_.p_; 
     node->rblinks_.c_[0] = succ->rblinks_.c_[0]; 
@@ -445,9 +464,13 @@ void rbtree<T, C>::swap_links(T* succ, T* node) {
     succ->rblinks_.p_ = tmp.p_;
     succ->rblinks_.c_[0] = tmp.c_[0];
     succ->rblinks_.c_[1] = tmp.c_[1];
+    // increment lockversions
     fetch_and_add(&(node->rblinks_.lockversion_), TransactionTid::increment_value);
     fetch_and_add(&(succ->rblinks_.lockversion_), TransactionTid::increment_value);
-    // XXX erase lock bit
+
+    // unlock
+    TransactionTid::unlock(node->rblinks_.lockversion_);
+    TransactionTid::unlock(succ->rblinks_.lockversion_);
 }
 
 template <typename T, typename C>
@@ -473,7 +496,6 @@ void rbtree<T, C>::delete_node(T* victim_node, T* succ) {
         // swap the position of the two nodes
         swap_links(succ, victim.node());
         // update the versions
-        
         if (sside)
             succ->rblinks_.c_[sside] = victim.change_color(succ->rblinks_.c_[sside].red());
         succ->rblinks_.c_[0].parent() = succ->rblinks_.c_[1].parent() = succ;
@@ -593,7 +615,8 @@ inline results<T> rbtree<T, C>::find_any(const K& key, Comp comp, bool insert) c
         pnodeversion = n.node()->rblinks_.nodeversion_;
         n = n.node()->rblinks_.c_[cmp > 0];
         // if parent lockversion has changed, then we want to retry the search
-        if (lockversion != temp_p.node()->rblinks_.lockversion_) {
+        // also check if version is locked -- if so, retry
+        if (lockversion != temp_p.node()->rblinks_.lockversion_ || TransactionTid::is_locked(lockversion)) {
             n = rbnodeptr<T>(r_.root_, false);
         }
     }
@@ -608,14 +631,12 @@ inline results<T> rbtree<T, C>::find_any(const K& key, Comp comp, bool insert) c
 
 template <typename T, typename C>
 inline T* rbtree<T, C>::erase(T& node) {
-    // XXX we need to lock the stuffs here
     rbaccount(erase);
     delete_node(&node, nullptr);
     // increment the value version
     TransactionTid::inc_invalid_version(node.rblinks_.valueversion_);
     // increment the nodeversion after we erase
     node.rblinks_.inc_nodeversion();
-    // XXX we need to unlock the stuffs here
     return &node;
 }
 
