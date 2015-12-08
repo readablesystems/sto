@@ -5,6 +5,7 @@
 #include <map>
 #include <iostream>
 #include <cassert>
+#include <cstring>
 
 #include "Transaction.hh"
 #include "RadixTree.hh"
@@ -675,37 +676,27 @@ void serial_tests() {
   serial_removes();
 }
 
-void parallel_tests(int nthreads) {
-  /*
-  vector<pthread_t> tids(nthreads);
-  TesterPair<T> testers[N_THREADS];
-  for (int i = 0; i < N_THREADS; ++i) {
-      testers[i].t = queue;
-      testers[i].me = i;
-      if (parallel)
-          pthread_create(&tids[i], NULL, runFunc<T>, &testers[i]);
-      else
-          pthread_create(&tids[i], NULL, runConcFunc, &testers[i]);
-  }
-  pthread_t advancer;
-  pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
-  pthread_detach(advancer);
-
-  for (int i = 0; i < N_THREADS; ++i) {
-      pthread_join(tids[i], NULL);
-  }
-  */
-}
-
-void run_parallel() {
-
-}
-
 void performance_tests() {
-
+  printf("Running performance tests\n");
 }
-int main() {
-  serial_tests();
-  parallel_tests(4);
-  performance_tests();
+
+int main(int argc, char **argv) {
+  bool run_serial = false;
+  bool run_performance = false;
+  if (argc < 2) {
+    run_serial = true;
+    run_performance = true;
+  } else if (!strcmp("serial", argv[1])) {
+    run_serial = true;
+  } else if (!strcmp("performance", argv[1])) {
+    run_performance = true;
+  } else {
+    printf("usage: ./radixtree [serial | performance]\n");
+    return -1;
+  }
+
+  if (run_serial)
+    serial_tests();
+  if (run_performance)
+    performance_tests();
 }
