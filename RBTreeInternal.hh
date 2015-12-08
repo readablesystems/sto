@@ -12,6 +12,7 @@ class rbnodeptr;
 
 template <typename T>
 struct results {
+    typedef TransactionTid::type Version;
     rbnodeptr<T> node;              // either the parent node or the found node
     long unsigned int valueversion; // valueversion of the node
     std::pair<long unsigned int, long unsigned int> 
@@ -19,7 +20,7 @@ struct results {
                                     // we need this in order to do an absent insert
     bool found;                     // whether the node exists
     std::pair<T*, T*> boundaries;   // boundary nodes
-    std::pair<T*, T*> bversions;    // boundary node versions
+    std::pair<Version, Version> bversions;    // boundary node versions
 };
 
 template <typename T>
@@ -51,10 +52,8 @@ class rbnodeptr {
 
     inline rbnodeptr<T> rotate(bool isright) const;
     inline rbnodeptr<T> flip() const;
-
     size_t size() const;
     
-    inline void inc_lockversion() const;
 
     template <typename C>
     void check(T* parent, int this_black_height, int& black_height,
@@ -72,6 +71,9 @@ class rblinks {
     static constexpr Version insert_bit = TransactionTid::user_bit1;
     
     rblinks() : valueversion_(TransactionTid::increment_value + insert_bit), nodeversion_(0), lockversion_(0) {}
+    
+    inline std::pair<Version, Version> inc_nodeversion();
+    inline void inc_lockversion() const;
  
     T* p_;
     rbnodeptr<T> c_[2];
@@ -79,6 +81,14 @@ class rblinks {
     mutable Version nodeversion_;
     mutable Version lockversion_;
 }; 
+
+template <typename T>
+inline std::pair<TransactionTid::type, TransactionTid::type> rblinks<T>::inc_nodeversion() {
+    Version old_val, new_val;
+    old_val = fetch_and_add(&nodeversion_, TransactionTid::increment_value);
+    new_val = old_val + TransactionTid::increment_value;
+    return std::make_pair(old_val, new_val);
+}
 
 namespace rbpriv {
 template <typename Compare>
@@ -198,7 +208,6 @@ class rbtree {
     inline rbnodeptr<T> insert(reference n);
     inline T*erase(reference x);
   
-    inline std::pair<Version, Version> inc_nodeversion(T* node);
     template <typename TT, typename CC>
     friend std::ostream &operator<<(std::ostream &s, const rbtree<TT, CC> &tree);
     int check() const;
@@ -206,10 +215,10 @@ class rbtree {
   private:
     rbpriv::rbrep<T, Compare> r_;
     template <typename K, typename Comp>
-    inline results<T>& find_any(const K& key, Comp comp, bool insert) const;
+    inline results<T> find_any(const K& key, Comp comp, bool insert) const;
    
     void insert_commit(T* x, rbnodeptr<T> p, bool side);
-    T* delete_node(T* victim, T* successor_hint);
+    void delete_node(T* victim, T* successor_hint);
     void delete_node_fixup(rbnodeptr<T> p, bool side);
     void swap_links(T* succ, T* node);
 
@@ -219,8 +228,8 @@ class rbtree {
 
 // increment the lockversion of the node during rotations
 template <typename T>
-inline void rbnodeptr<T>::inc_lockversion() const {
-    fetch_and_add(&(node()->rblinks_.lockversion_), TransactionTid::increment_value);
+inline void rblinks<T>::inc_lockversion() const {
+    fetch_and_add(&lockversion_, TransactionTid::increment_value);
 }
 
 template <typename T>
@@ -316,9 +325,9 @@ inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side) const {
     rbaccount(rotation);
     rbnodeptr<T> x = child(!side);
     // increment the lockversions of these nodes
-    inc_lockversion();
-    x.inc_lockversion();
-    if (x.child(side)) x.child(side).inc_lockversion();
+    x.node()->rblinks_.inc_lockversion();
+    x.node()->rblinks_.inc_lockversion();
+    if (x.child(side)) x.child(side).node()->rblinks_.inc_lockversion();
 
     // perform the rotation 
     if ((child(!side) = x.child(side)))
@@ -429,18 +438,20 @@ rbnodeptr<T> rbtree<T, C>::insert(reference x) {
 template <typename T, typename C>
 void rbtree<T, C>::swap_links(T* succ, T* node) {
     // XXX we need to lock the versions around this swap (mark with lock_bit)
-    auto tmp = node->rblinks;
+    auto tmp = node->rblinks_;
     node->rblinks_.p_ = succ->rblinks_.p_; 
-    node->rblinks_.c_ = succ->rblinks_.c_; 
+    node->rblinks_.c_[0] = succ->rblinks_.c_[0]; 
+    node->rblinks_.c_[1] = succ->rblinks_.c_[1]; 
     succ->rblinks_.p_ = tmp.p_;
-    succ->rblinks_.c_ = tmp.c_;
+    succ->rblinks_.c_[0] = tmp.c_[0];
+    succ->rblinks_.c_[1] = tmp.c_[1];
     fetch_and_add(&(node->rblinks_.lockversion_), TransactionTid::increment_value);
     fetch_and_add(&(succ->rblinks_.lockversion_), TransactionTid::increment_value);
     // XXX erase lock bit
 }
 
 template <typename T, typename C>
-T* rbtree<T, C>::delete_node(T* victim_node, T* succ) {
+void rbtree<T, C>::delete_node(T* victim_node, T* succ) {
     // find the node's color
     rbnodeptr<T> victim(victim_node, false);
     rbnodeptr<T> p = victim.black_parent();
@@ -490,9 +501,6 @@ T* rbtree<T, C>::delete_node(T* victim_node, T* succ) {
 
     if (!color)
         delete_node_fixup(p, side);
-   
-    // return parent node to increment nodeversion
-    return p.node();
 }
 
 template <typename T, typename C>
@@ -548,7 +556,7 @@ inline T* rbtree<T, C>::root() {
 // If ((null, treeversion_), false), we have an empty tree and the version of the node is treeversion
 // XXX always tracking boundary right now, seems a bit inefficient for inserts
 template <typename T, typename C> template <typename K, typename Comp>
-inline results<T>& rbtree<T, C>::find_any(const K& key, Comp comp, bool insert) const {
+inline results<T> rbtree<T, C>::find_any(const K& key, Comp comp, bool insert) const {
     rbnodeptr<T> n(r_.root_, false), p(nullptr, false), temp_p(nullptr, false);
     results<T> results;
     results.boundaries = std::make_pair(r_.limit_[0], r_.limit_[1]);
@@ -571,10 +579,10 @@ inline results<T>& rbtree<T, C>::find_any(const K& key, Comp comp, bool insert) 
         // narrow down to find the boundary nodes
         // update the LEFT boundary when going RIGHT, and vice versa
         if (cmp > 0) {
-            results.boundary.first = n.node();
+            results.boundaries.first = n.node();
             results.bversions.first = n.node()->rblinks_.nodeversion_;
         } else {
-            results.boundary.second = n.node();
+            results.boundaries.second = n.node();
             results.bversions.second = n.node()->rblinks_.nodeversion_;
         }
         temp_p = p;
@@ -591,32 +599,24 @@ inline results<T>& rbtree<T, C>::find_any(const K& key, Comp comp, bool insert) 
     }
     // increment in the case of an absent insert
     if (insert && nonempty) {
-        results.pnodeversions = inc_nodeversion(p);
+        results.pnodeversions = p.node()->rblinks_.inc_nodeversion();
     }
     results.found = n.node();
     return results;
 }
 
-template <typename T, typename C>
-inline std::pair<TransactionTid::type, TransactionTid::type> rbtree<T, C>::inc_nodeversion(T* node) {
-    Version old_val, new_val;
-    old_val = fetch_and_add(&(node->rblinks_.nodeversion_), TransactionTid::increment_value);
-    new_val = old_val + TransactionTid::increment_value;
-    return std::make_pair(old_val, new_val);
-}
 
 template <typename T, typename C>
 inline T* rbtree<T, C>::erase(T& node) {
     // XXX we need to lock the stuffs here
     rbaccount(erase);
-    auto deleted = delete_node(&node, nullptr);
+    delete_node(&node, nullptr);
     // increment the value version
-    TransactionTid::inc_invalid_version(node->rblinks_.valueversion_);
+    TransactionTid::inc_invalid_version(node.rblinks_.valueversion_);
     // increment the nodeversion after we erase
-    inc_nodeversion(node);
-    erase_inserted(&node->rblinks_.valueversion_);
-    Transaction::rcu_free(node);
+    node.rblinks_.inc_nodeversion();
     // XXX we need to unlock the stuffs here
+    return &node;
 }
 
 // RBNODEPTR FUNCTION DEFINITIONS

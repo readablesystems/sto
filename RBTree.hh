@@ -302,15 +302,15 @@ private:
                 // add reads of boundary nodes, marking them as nodeversion ptrs
                 for (unsigned int i = 0; i < 2; ++i) {
                     auto n = (i == 0)? results.boundaries.first : results.boundaries.second;
-                    if (n.first) {
-                        Version v = n.second;
+                    if (n) {
+                        Version v = (i == 0) ? results.bversions.first : results.bversions.second;
 #if DEBUG
                         TransactionTid::lock(::lock);
-                        printf("\t#Tracking boundary 0x%lx (k %d), nv 0x%lx\n", (unsigned long)n.first, n.first->key(), v);
+                        printf("\t#Tracking boundary 0x%lx (k %d), nv 0x%lx\n", (unsigned long)n, n->key(), v);
                         TransactionTid::unlock(::lock);
 #endif
                         Sto::item(const_cast<RBTree<K, T>*>(this),
-                                        (reinterpret_cast<uintptr_t>(n.first)|0x1)).add_read(v);
+                                        (reinterpret_cast<uintptr_t>(n)|0x1)).add_read(v);
                     }
                 }
             }
@@ -362,7 +362,7 @@ private:
         lock(&treelock_);
         auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
         results<wrapper_type> results = this->find_or_abort(node, true);
-        rbnodeptr<wrapper_type> x_rbnp = results->node;
+        rbnodeptr<wrapper_type> x_rbnp = results.node;
         Version version = results.valueversion;
         auto pnodeversions = results.pnodeversions;
         wrapper_type* x = x_rbnp.node();
@@ -785,7 +785,6 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         TransactionTid::inc_invalid_version(sizeversion_);
         assert((ssize_t)size_ >= 0);
     } else {
-        auto v = e->version();
         assert(is_locked(e->version()));
         assert(((uintptr_t)e & 0x1) == 0);
         bool deleted = has_delete(item);
@@ -800,6 +799,8 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
             lock(&treelock_);
             // this increments the valueversion and nodeversion of the deleted node
             wrapper_tree_.erase(*e);
+            erase_inserted(&e->rblinks_.valueversion_);
+            Transaction::rcu_free(e);
             // increment value version 
             unlock(&treelock_);
         } else if (inserted) {
@@ -828,6 +829,8 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
             // XXX remove these locks here
             lock(&treelock_);
             wrapper_tree_.erase(*e);
+            erase_inserted(&e->rblinks_.valueversion_);
+            Transaction::rcu_free(e);
             unlock(&treelock_);
         }
     }
