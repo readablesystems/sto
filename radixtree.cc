@@ -418,19 +418,20 @@ void serial_get_remove_key_exists() {
     printf("\nERROR: remove transaction did not commit\n");
   }
 
-  // get from transaction 1 after remove commits - should abort
+  // get from transaction 1 after remove commits, should not be found
+  // XXX: this does not provide opacity
   Transaction::threadid = 0;
   Sto::set_transaction(&t1);
-  bool aborted = false;
-  try {
-    found = tree.trans_get(123, read_val);
-  } catch (Transaction::Abort e) {
-    aborted = true;
+  found = tree.trans_get(123, read_val);
+
+  if (found) {
+    ok = false;
+    printf("\nERROR: value found for get after remove committed\n");
   }
 
-  if (!aborted) {
+  if (t1.try_commit()) {
     ok = false;
-    printf("\nERROR: get after remove committed did not abort\n");
+    printf("\nERROR: get transaction did not fail\n");
   }
 
   uint64_t val = 0;
@@ -468,19 +469,16 @@ void serial_put_then_remove_no_key() {
     printf("\nERROR: remove transaction before put did not commit\n");
   }
 
-  // put transaction should commit too
-  if (!t1.try_commit()) {
+  // put transaction should not commit
+  if (t1.try_commit()) {
     ok = false;
-    printf("\nERROR: put transaction did not commit\n");
+    printf("\nERROR: put transaction after remove committed\n");
   }
 
   uint64_t read_val;
-  if (!tree.get(123, read_val)) {
+  if (tree.get(123, read_val)) {
     ok = false;
-    printf("\nERROR: value not found\n");
-  }
-  if (read_val != 456) {
-    printf("\nERROR: incorrect value %lu after put\n", read_val);
+    printf("\nERROR: removed value found\n");
   }
 
   print_result(ok);
@@ -514,19 +512,16 @@ void serial_put_then_remove_key_exists() {
     printf("\nERROR: remove transaction before put did not commit\n");
   }
 
-  // put transaction should commit too
-  if (!t1.try_commit()) {
+  // put transaction should not commit
+  if (t1.try_commit()) {
     ok = false;
-    printf("\nERROR: put transaction did not commit\n");
+    printf("\nERROR: put transaction after remove committed\n");
   }
 
   uint64_t read_val;
-  if (!tree.get(123, read_val)) {
+  if (tree.get(123, read_val)) {
     ok = false;
-    printf("\nERROR: value not found\n");
-  }
-  if (read_val != 456) {
-    printf("\nERROR: incorrect value %lu after put\n", read_val);
+    printf("\nERROR: removed value found\n");
   }
 
   print_result(ok);
