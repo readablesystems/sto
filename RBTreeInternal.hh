@@ -223,6 +223,7 @@ class rbtree {
     void swap_links(T* succ, T* node);
 
     Version treeversion_;
+    Version rotationlock_;
     template<typename K, typename V> friend class RBTree;
 };
 
@@ -326,11 +327,12 @@ inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side) const {
     rbnodeptr<T> x = child(!side);
     
     // lock all versions 
-    TransactionTid::lock(rblinks_.lockversion_);
+    auto n = node();
+    TransactionTid::lock(n->rblinks_.lockversion_);
     TransactionTid::lock(x.node()->rblinks_.lockversion_);
     if (x.child(side)) TransactionTid::lock(x.child(side).node()->rblinks_.lockversion_);
     // increment the lockversions of these nodes
-    rblinks_.inc_lockversion();
+    n->rblinks_.inc_lockversion();
     x.node()->rblinks_.inc_lockversion();
     if (x.child(side)) x.child(side).node()->rblinks_.inc_lockversion();
 
@@ -343,7 +345,7 @@ inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side) const {
     parent() = x.node();
 
     // unlock all versions 
-    TransactionTid::unlock(rblinks_.lockversion_);
+    TransactionTid::unlock(n->rblinks_.lockversion_);
     TransactionTid::unlock(x.node()->rblinks_.lockversion_);
     if (x.child(side)) TransactionTid::unlock(x.child(side).node()->rblinks_.lockversion_);
 
@@ -399,6 +401,9 @@ rbtree<T, C>::~rbtree() {
 
 template <typename T, typename C>
 void rbtree<T, C>::insert_commit(T* x, rbnodeptr<T> p, bool side) {
+    // we need to lock all nodes we have to rotate -- can have an infinite number of
+    // rotations
+    TransactionTid::lock(rotationlock_);
     // link in new node; it's red
     x->rblinks_.p_ = p.node();
     x->rblinks_.c_[0] = x->rblinks_.c_[1] = rbnodeptr<T>(0, false);
@@ -429,6 +434,7 @@ void rbtree<T, C>::insert_commit(T* x, rbnodeptr<T> p, bool side) {
         side = p.find_child(gp.node());
         p.set_child(side, z, r_.root_);
     }
+    TransactionTid::unlock(rotationlock_);
 }
 
 template <typename T, typename C>
@@ -451,9 +457,10 @@ void rbtree<T, C>::swap_links(T* succ, T* node) {
     // lock the versions so that reads will retry 
     TransactionTid::lock(node->rblinks_.lockversion_);
     TransactionTid::lock(succ->rblinks_.lockversion_);
+
     // only lock righthand child if not equal to the successor
-    if (node->rblinks_.c[1] != succ) {
-        TransactionTid::lock(node->rblinks_.c[1]->rblinks_.lockversion_);
+    if (node->rblinks_.c_[1].node() != succ) {
+        TransactionTid::lock(node->rblinks_.c_[1].node()->rblinks_.lockversion_);
     }
 
     // do the actual swap
@@ -527,6 +534,9 @@ void rbtree<T, C>::delete_node(T* victim_node, T* succ) {
 
 template <typename T, typename C>
 void rbtree<T, C>::delete_node_fixup(rbnodeptr<T> p, bool side) {
+    // we need to use a rotation lock so that rotations don't mess with each other
+    // (mostly because of insert_commit)
+    TransactionTid::lock(rotationlock_);
     while (p && !p.child(0).red() && !p.child(1).red()
            && !p.child(!side).child(0).red()
            && !p.child(!side).child(1).red()) {
@@ -565,16 +575,20 @@ void rbtree<T, C>::delete_node_fixup(rbnodeptr<T> p, bool side) {
         gp.set_child(gpside, p, r_.root_);
     } else if (p)
         p.child(side) = p.child(side).change_color(false);
+
+    // unlock
+    TransactionTid::unlock(rotationlock_);
 }
 
 template <typename T, typename C>
 inline T* rbtree<T, C>::root() {
-    return r_.root_;
+    return r_.root_b;
 }
 
-// Return a pair of {(node+version, bool), (boundaries+version)}: 
-// if bool is true, then the node is the found node and version is the node's value version XXX
-// else if bool is false the node is the parent of the absent read and version is the parent node version
+// Return a results struct 
+// if bool is true, then the node is the found node and valueversion is the node's value version
+// else if bool is false the node is the parent of the absent read and pnodeversions are 
+// the parent nodeversions before and after increment
 // If ((null, treeversion_), false), we have an empty tree and the version of the node is treeversion
 // XXX always tracking boundary right now, seems a bit inefficient for inserts
 template <typename T, typename C> template <typename K, typename Comp>
