@@ -54,6 +54,29 @@ private:
 public:
   RadixTree() : transformer(), root() {}
 
+  // no copy constructor
+  RadixTree(const RadixTree<K, V, KeyTransformer> &k) = delete;
+
+  ~RadixTree() {
+    free_node(&root, 0);
+  }
+
+private:
+  void free_node(tree_node *node, int depth) {
+    constexpr int t_key_sz = KeyTransformer::buf_size();
+    for (int i = 0; i < fanout; i++) {
+      if (node->children[i] != nullptr) {
+        if (depth < t_key_sz - 1) {
+          auto child = static_cast<tree_node *>(node->children[i]);
+          free_node(child, depth + 1);
+          delete child;
+        } else {
+          delete static_cast<versioned_value *>(node->children[i]);
+        }
+      }
+    }
+  }
+
 public:
   bool trans_get(const K &key, V &value) {
     versioned_value *vv;

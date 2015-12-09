@@ -4,6 +4,7 @@
 #include <random>
 #include <map>
 #include <iostream>
+#include <chrono>
 #include <cassert>
 #include <cstring>
 
@@ -11,14 +12,12 @@
 #include "RadixTree.hh"
 
 #define GLOBAL_SEED 11
-#define MAX_VALUE  100000
-#define NTRANS 1000
-#define N_THREADS 4
+#define N_THREADS 8
 
 typedef std::map<uint64_t, uint64_t> reference_t;
 typedef RadixTree<uint64_t, uint64_t> candidate_t;
 
-bool check_tree(reference_t reference, candidate_t candidate) {
+bool check_tree(reference_t &reference, candidate_t &candidate) {
   bool ok = true;
   for (auto it = reference.begin(); it != reference.end(); it++) {
     uint64_t key = it->first;
@@ -660,6 +659,10 @@ void serial_removes() {
   print_result(ok);
 }
 
+void serial_cleanup() {
+  Sto::clear_transaction();
+}
+
 void serial_tests() {
   printf("Running serial tests\n");
   serial_random();
@@ -674,10 +677,120 @@ void serial_tests() {
   serial_remove_then_put_no_key();
   serial_remove_then_put_key_exists();
   serial_removes();
+  serial_cleanup();
+}
+
+struct perf_config {
+  uint64_t ntrans;
+  uint64_t nkeys;
+  uint64_t sparseness;
+  uint64_t txn_nops;
+  double prob_write;
+
+  uint64_t aborts;
+  candidate_t *tree;
+};
+
+void perf_init(void *data) {
+  auto c = static_cast<perf_config *>(data);
+  c->tree = new candidate_t();
+
+  std::mt19937_64 gen(GLOBAL_SEED);
+  std::uniform_int_distribution<uint64_t> rand;
+  for (uint64_t i = 0; i < c->nkeys; i++) {
+    uint64_t key = c->sparseness * i;
+    uint64_t val = rand(gen);
+    c->tree->put(key, val);
+  }
+}
+
+void *perf_random_gets(void *data) {
+  auto c = static_cast<perf_config *>(data);
+  auto tree = c->tree;
+
+  std::mt19937_64 gen(GLOBAL_SEED);
+  std::uniform_int_distribution<uint64_t> rand;
+  std::uniform_real_distribution<double> randf(0, 1);
+  uint64_t sum = 0, misses = 0;
+  for (uint64_t i = 0; i < c->ntrans; i++) {
+    TRANSACTION {
+      for (uint64_t j = 0; j < c->txn_nops; j++) {
+        uint64_t key = rand(gen) % (c->sparseness * c->nkeys);
+        uint64_t val;
+        if (randf(gen) < c->prob_write) {
+          val = rand(gen);
+          tree->trans_put(key, val);
+        } else {
+          if (tree->trans_get(key, val)) {
+            misses++;
+          }
+          sum += val;
+        }
+      }
+    } RETRY(true);
+  }
+  return nullptr;
+}
+
+void perf_cleanup(void *data) {
+  auto c = static_cast<perf_config *>(data);
+  delete c->tree;
+}
+
+void perf_run(perf_config *c, void (*init)(void *), void *(*func)(void *), void (*cleanup)(void *)) {
+  printf("\tntrans: %lu, nkeys: %lu, sparseness: %lu, txn_nops: %lu, prob_write: %f\n",
+      c->ntrans, c->nkeys, c->sparseness, c->txn_nops, c->prob_write);
+
+  // serial
+  perf_init(c);
+  auto s_start = std::chrono::high_resolution_clock::now();
+  for (int i = 0; i < N_THREADS; i++) {
+    func(c);
+  }
+  auto s_end = std::chrono::high_resolution_clock::now();
+  perf_cleanup(c);
+  auto s_time = std::chrono::duration_cast<std::chrono::microseconds>(s_end - s_start);
+
+  // parallel
+  perf_init(c);
+  auto p_start = std::chrono::high_resolution_clock::now();
+  pthread_t threads[N_THREADS];
+  for (int i = 0; i < N_THREADS; i++) {
+    pthread_create(&threads[i], NULL, func, c);
+  }
+  for (int i = 0; i < N_THREADS; i++) {
+    pthread_join(threads[i], NULL);
+  }
+  auto p_end = std::chrono::high_resolution_clock::now();
+  perf_cleanup(c);
+  auto p_time = std::chrono::duration_cast<std::chrono::microseconds>(p_end - p_start);
+  auto n_ops = c->txn_nops * c->ntrans;
+  printf("\tserial: %ld us (%f ops/s), parallel: %ld us (%f ops/s, %fx speedup)\n\n",
+      s_time.count(), (double) 1000000 * n_ops / s_time.count(),
+      p_time.count(), (double) 1000000 * n_ops / p_time.count(),
+      (double) s_time.count()/p_time.count());
 }
 
 void performance_tests() {
   printf("Running performance tests\n");
+
+  auto c = new perf_config();
+  c->ntrans = 100000;
+  c->nkeys = (1 << 20);
+  c->sparseness = 1;
+  c->txn_nops = 5;
+  c->prob_write = 0.0;
+  perf_run(c, &perf_init, &perf_random_gets, &perf_cleanup);
+
+  c->prob_write = 0.25;
+  perf_run(c, &perf_init, &perf_random_gets, &perf_cleanup);
+
+  c->prob_write = 0.5;
+  perf_run(c, &perf_init, &perf_random_gets, &perf_cleanup);
+
+  c->prob_write = 0.75;
+  perf_run(c, &perf_init, &perf_random_gets, &perf_cleanup);
+  delete c;
 }
 
 int main(int argc, char **argv) {
@@ -686,12 +799,12 @@ int main(int argc, char **argv) {
   if (argc < 2) {
     run_serial = true;
     run_performance = true;
-  } else if (!strcmp("serial", argv[1])) {
+  } else if (!strcmp("serial_test", argv[1])) {
     run_serial = true;
   } else if (!strcmp("performance", argv[1])) {
     run_performance = true;
   } else {
-    printf("usage: ./radixtree [serial | performance]\n");
+    printf("usage: ./radixtree [serial_test | performance]\n");
     return -1;
   }
 
