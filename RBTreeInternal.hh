@@ -177,12 +177,14 @@ inline auto make_compare(C comp) -> rbcomparator<C, decltype(comp(*(K*)nullptr, 
 
 template <typename T>
 class rbalgorithms {
+  typedef TransactionTid::type Version;
+
   public:
-    static inline T* next_node(T* n);
-    static inline T* prev_node(T* n);
-    static inline T* prev_node(T* n, T* last);
-    static inline T* step_node(T* n, bool forward);
-    static inline T* edge_node(T* n, bool forward);
+    static inline results<T> next_node(T* n);
+    static inline results<T> prev_node(T* n);
+    static inline results<T> prev_node(T* n, T* last);
+    static inline results<T> step_node(T* n, bool forward);
+    static inline results<T> edge_node(T* n, bool forward);
 };
 
 template <typename T, typename Compare = rbpriv::default_comparator<T>>
@@ -460,6 +462,7 @@ results<T> rbtree<T, C>::get_start() {
     // get the initial lockversion of the node
     auto lockversion = r_.limit_[0]->rblinks_.lockversion_;
     auto node = r_.limit_[0];
+    results.node = node;
     // if empty, add read of treeversion
     if (!node) {
         results.valueversion = treeversion_;
@@ -659,7 +662,7 @@ inline results<T> rbtree<T, C>::find_any(const K& key, Comp comp, bool insert) c
     if (insert && nonempty) {
         results.pnodeversions = p.node()->rblinks_.inc_nodeversion();
     }
-    results.found = n.node();
+    results.node = n;
     return results;
 }
 
@@ -763,37 +766,62 @@ int rbtree<T, C>::check() const {
 
 // RBALGORITHMS FUNCTION DEFINITIONS
 template <typename T>
-inline T* rbalgorithms<T>::edge_node(T* n, bool forward) {
-    while (n->rblinks_.c_[forward])
+inline results<T> rbalgorithms<T>::edge_node(T* n, bool forward) {
+    results<T> results;
+    Version lockversion;
+    auto node = n;
+
+    while (n->rblinks_.c_[forward]) {
+        lockversion = n->rblinks_.lockversion_;
+        auto tmp_node = n;
         n = n->rblinks_.c_[forward].node();
-    return n;
+        results.valueversion = n->rblinks_.valueversion_;
+        results.nodeversion = n->rblinks_.nodeversion_;
+        results.node = n;
+        // validate that this child pointer has remained valid, else retry the search
+        // XXX would it be possible to retry just from the node that failed?
+        if (lockversion != tmp_node->rblinks_.lockversion_ || TransactionTid::is_locked(lockversion)) {
+            return edge_node(node, forward);
+        }
+    }
+    return results;
 }
 
 template <typename T>
-inline T* rbalgorithms<T>::step_node(T* n, bool forward) {
-    if (n->rblinks_.c_[forward])
-        n = edge_node(n->rblinks_.c_[forward].node(), !forward);
+inline results<T> rbalgorithms<T>::step_node(T* n, bool forward) {
+    results<T> results;
+    Version lockversion;
+
+    if (n->rblinks_.c_[forward]) {
+        lockversion = n->rblinks_.lockversion_;
+        results = edge_node(n->rblinks_.c_[forward].node(), !forward);
+        return results;
+    }
     else {
         T* prev;
         do {
+            // XXX how do we deal with lockversions when tracing pointers upward?
             prev = n;
             n = n->rblinks_.p_;
         } while (n && n->rblinks_.c_[!forward].node() != prev);
     }
-    return n;
+    results.valueversion = n->rblinks_.valueversion_;
+    results.nodeversion = n->rblinks_.nodeversion_;
+    results.node = n;
+    return results;
 }
 
 template <typename T>
-inline T* rbalgorithms<T>::next_node(T* n) {
+inline results<T> rbalgorithms<T>::next_node(T* n) {
     return step_node(n, true);
 }
 
 template <typename T>
-inline T* rbalgorithms<T>::prev_node(T* n) {
+inline results<T> rbalgorithms<T>::prev_node(T* n) {
     return step_node(n, false);
 }
 
 template <typename T>
-inline T* rbalgorithms<T>::prev_node(T* n, T* last) {
+inline results<T> rbalgorithms<T>::prev_node(T* n, T* last) {
     return n ? step_node(n, false) : last;
 }

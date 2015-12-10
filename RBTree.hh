@@ -124,10 +124,14 @@ public:
             Sto::item(this, tree_key_).add_read(valueversion);
         } else {
             // XXX how do we make sure that adding nodeversions is consistent, without fine-grained locking?
+            // XXX note to self, this is definitely not good!
             // READ-MY-WRITES: skip our own deletes!
             while(has_delete(Sto::item(this, start))) {
-                Sto::item(this, (reinterpret_cast<uintptr_t>(start)|0x1)).add_read(start->rblinks_.nodeversion_);
-                start = rbalgorithms<wrapper_type>::next_node(start);
+                Sto::item(this, (reinterpret_cast<uintptr_t>(start)|0x1)).add_read(nodeversion);
+                results = rbalgorithms<wrapper_type>::next_node(start);
+                start = results.node.node();
+                nodeversion = results.nodeversion;
+                valueversion = results.valueversion;
             }
             if (start != nullptr) {
                 if (is_phantom_node(start, valueversion)) {
@@ -161,49 +165,65 @@ private:
         return wrapper_tree_.treeversion_;
     }
     inline wrapper_type* get_next(wrapper_type* node) {
-        wrapper_type* next_node = rbalgorithms<wrapper_type>::next_node(node);
+        // XXX added the reads of the node's nodeversion before we even call this function (or
+        // get_prev)
+        results<wrapper_type> results = rbalgorithms<wrapper_type>::next_node(node);
+        wrapper_type* next_node = results.node.node(); 
+        auto valueversion = results.valueversion;
+        auto nodeversion = results.valueversion;
+
         // READ-MY-WRITES: skip our own deletes
+        // XXX not sure if adding nodeversions correctly
         while (has_delete(Sto::item(this, next_node))) {
             // add read of nodeversions of all deleted nodes; gosh, read-my-write is really a nightmare...
-            Sto::item(this, (reinterpret_cast<uintptr_t>(next_node) | 0x1)).add_read(next_node->nodeversion());
-            next_node = rbalgorithms<wrapper_type>::next_node(next_node);
+            Sto::item(this, (reinterpret_cast<uintptr_t>(next_node) | 0x1)).add_read(nodeversion);
+            results = rbalgorithms<wrapper_type>::next_node(next_node);
+            next_node = results.node.node();
+            valueversion = results.valueversion;
+            nodeversion = results.valueversion;
         }
 
         if (next_node != nullptr) {
-            if (is_phantom_node(next_node, next_node->version())) {
+            if (is_phantom_node(next_node, valueversion)) {
                 Sto::abort();
             }
-            Sto::item(this, (reinterpret_cast<uintptr_t>(next_node)|0x1)).add_read(next_node->nodeversion());
+            Sto::item(this, (reinterpret_cast<uintptr_t>(next_node)|0x1)).add_read(nodeversion);
         }
-        Sto::item(this, (reinterpret_cast<uintptr_t>(node)|0x1)).add_read(node->nodeversion());
         return next_node;
     }
 
     inline wrapper_type* get_prev(wrapper_type* node) {
         // check if we are at the end() node (i.e. nullptr)
-        wrapper_type* prev_node = (node == nullptr) ? wrapper_tree_.r_.limit_[1] : rbalgorithms<wrapper_type>::prev_node(node);
+        results<wrapper_type> results;
+        wrapper_type* prev_node;
+        Version valueversion, nodeversion;
+        if (!node) {
+            prev_node = wrapper_tree_.r_.limit_[1];
+        } else {
+            results = rbalgorithms<wrapper_type>::prev_node(node);
+            prev_node = results.node.node(); 
+            valueversion = results.valueversion;
+            nodeversion = results.valueversion;
+        }
         // check that we are not begin (i.e. prev_node is not null)
         if (prev_node == nullptr) {
             Sto::abort();
         }
         // READ-MY-WRITES: skip our own deletes
+        // XXX 
         while (has_delete(Sto::item(this, prev_node))) {
-            Sto::item(this, (reinterpret_cast<uintptr_t>(prev_node) | 0x1)).add_read(prev_node->nodeversion());
-            prev_node = rbalgorithms<wrapper_type>::prev_node(prev_node);
+            Sto::item(this, (reinterpret_cast<uintptr_t>(prev_node) | 0x1)).add_read(nodeversion);
+            results = rbalgorithms<wrapper_type>::prev_node(prev_node);
+            prev_node = results.node.node();
+            valueversion = results.valueversion;
+            nodeversion = results.valueversion;
         }
         // check again after reading-my-writes...
-        if (prev_node == nullptr) {
+        if (prev_node == nullptr || is_phantom_node(prev_node, valueversion)) {
             Sto::abort();
-        }
-
-        if (is_phantom_node(prev_node, prev_node->version())) {
-            Sto::abort();
-        }
-        if (node) {
-            Sto::item(this, (reinterpret_cast<uintptr_t>(node)|0x1)).add_read(node->nodeversion());
         }
         if (prev_node) {
-            Sto::item(this, (reinterpret_cast<uintptr_t>(prev_node)|0x1)).add_read(prev_node->nodeversion());
+            Sto::item(this, (reinterpret_cast<uintptr_t>(prev_node)|0x1)).add_read(nodeversion);
         }
         return prev_node;
     }
@@ -487,6 +507,9 @@ public:
     
     // This is the prefix case
     iterator& operator++() { 
+        if (node_) {
+            Sto::item(tree_, (reinterpret_cast<uintptr_t>(node_)|0x1)).add_read(node_->nodeversion());
+        }
         node_ = tree_->get_next(node_);
         this->update_proxy_pair();
         return *this; 
@@ -495,12 +518,18 @@ public:
     // This is the postfix case
     iterator operator++(int) {
         RBTreeIterator<K, T> clone(*this);
+        if (node_) {
+            Sto::item(tree_, (reinterpret_cast<uintptr_t>(node_)|0x1)).add_read(node_->nodeversion());
+        }
         node_ = tree_->get_next(node_);
         this->update_proxy_pair();
         return clone;
     }
     
     iterator& operator--() { 
+        if (node_) {
+            Sto::item(tree_, (reinterpret_cast<uintptr_t>(node_)|0x1)).add_read(node_->nodeversion());
+        }
         node_ = tree_->get_prev(node_);
         this->update_proxy_pair();
         return *this; 
@@ -508,6 +537,9 @@ public:
     
     iterator operator--(int) {
         RBTreeIterator<K, T> clone(*this);
+        if (node_) {
+            Sto::item(tree_, (reinterpret_cast<uintptr_t>(node_)|0x1)).add_read(node_->nodeversion());
+        }
         node_ = tree_->get_prev(node_);
         this->update_proxy_pair();
         return clone;
