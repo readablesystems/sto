@@ -15,6 +15,7 @@ struct results {
     typedef TransactionTid::type Version;
     rbnodeptr<T> node;              // either the parent node or the found node
     long unsigned int valueversion; // valueversion of the node
+    long unsigned int nodeversion;  // nodeversion of the node
     std::pair<long unsigned int, long unsigned int> 
         pnodeversions;              // old and incremented nodeversion of the parent node if absent insert
                                     // we need this in order to do an absent insert
@@ -221,6 +222,7 @@ class rbtree {
     void delete_node(T* victim, T* successor_hint);
     void delete_node_fixup(rbnodeptr<T> p, bool side);
     void swap_links(T* succ, T* node);
+    results<T> get_start();
 
     Version treeversion_;
     Version rotationlock_;
@@ -452,6 +454,25 @@ rbnodeptr<T> rbtree<T, C>::insert(reference x) {
     return p;
 }
 
+template <typename T, typename C>
+results<T> rbtree<T, C>::get_start() {
+    results<T> results;
+    // get the initial lockversion of the node
+    auto lockversion = r_.limit_[0]->rblinks_.lockversion_;
+    auto node = r_.limit_[0];
+    // if empty, add read of treeversion
+    if (!node) {
+        results.valueversion = treeversion_;
+    } else {
+        results.valueversion = node->rblinks_.valueversion_;
+        results.nodeversion = node->rblinks_.nodeversion_;
+    }
+    // retry if lockversion has changed
+    if (lockversion != node->rblinks_.lockversion_ || TransactionTid::is_locked(lockversion)) {
+        return get_start();
+    }
+    return results;
+}
 template <typename T, typename C>
 void rbtree<T, C>::swap_links(T* succ, T* node) {
     // lock the versions so that reads will retry 
