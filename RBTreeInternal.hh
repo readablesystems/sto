@@ -462,7 +462,7 @@ results<T> rbtree<T, C>::get_start() {
     // get the initial lockversion of the node
     auto lockversion = r_.limit_[0]->rblinks_.lockversion_;
     auto node = r_.limit_[0];
-    results.node = node;
+    results.node = rbnodeptr<T>((uintptr_t)node);
     // if empty, add read of treeversion
     if (!node) {
         results.valueversion = treeversion_;
@@ -777,7 +777,7 @@ inline results<T> rbalgorithms<T>::edge_node(T* n, bool forward) {
         n = n->rblinks_.c_[forward].node();
         results.valueversion = n->rblinks_.valueversion_;
         results.nodeversion = n->rblinks_.nodeversion_;
-        results.node = n;
+        results.node = rbnodeptr<T>((uintptr_t)n);
         // validate that this child pointer has remained valid, else retry the search
         // XXX would it be possible to retry just from the node that failed?
         if (lockversion != tmp_node->rblinks_.lockversion_ || TransactionTid::is_locked(lockversion)) {
@@ -807,7 +807,7 @@ inline results<T> rbalgorithms<T>::step_node(T* n, bool forward) {
     }
     results.valueversion = n->rblinks_.valueversion_;
     results.nodeversion = n->rblinks_.nodeversion_;
-    results.node = n;
+    results.node = rbnodeptr<T>((uintptr_t)n);
     return results;
 }
 
