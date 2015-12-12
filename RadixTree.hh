@@ -17,7 +17,7 @@ public:
   static constexpr int buf_size();
 };
 
-template <typename K, typename V, typename KeyTransformer = DefaultKeyTransformer<K> >
+template <typename K, typename V, typename KeyTransformer = DefaultKeyTransformer<K>>
 class RadixTree : public Shared {
 public:
   static constexpr uint8_t span = 4;
@@ -51,8 +51,13 @@ private:
 
   static constexpr auto item_empty_bit = TransItem::user0_bit << 2;
 
+  const KeyTransformer transformer;
+  tree_node root;
+  bool opacity;
+
 public:
-  RadixTree() : transformer(), root() {}
+  RadixTree() : RadixTree(false) {}
+  RadixTree(bool opacity) : transformer(), root(), opacity(opacity) {}
 
   // no copy constructor
   RadixTree(const RadixTree<K, V, KeyTransformer> &k) = delete;
@@ -85,14 +90,19 @@ public:
     version_t node_version;
     std::tie(vv, parent, index, node_version) = get_value_or_node(key);
     if (!vv) {
-      // not found, add the version of the node to detect inserts
-      auto item = Sto::item(this, parent);
-      item.template add_read<version_t>(node_version);
-      item.add_flags(item_empty_bit);
+      if (parent) {
+        // not found, add the version of the node to detect inserts
+        // XXX: We don't use read_items here because we'd like to update
+        // node versions outside of commit time. This makes using the
+        // opacity checker rather difficult.
+        auto item = Sto::item(this, parent);
+        item.template add_read<version_t>(node_version);
+        item.add_flags(item_empty_bit);
+      }
       return false;
     }
 
-    auto item = Sto::item(this, vv);
+    auto item = Sto::read_item(this, vv);
     if (item.has_write()) {
       // Return the value directly from the item if this transaction performed a write.
       if (item.flags() & item_remove_bit) {
@@ -113,6 +123,7 @@ public:
     }
 
     item.template add_read<version_t>(ver);
+    check_opacity(vv->version());
 
     return !!(ver & TransactionTid::valid_bit);
   }
@@ -256,9 +267,9 @@ private:
         // the node version now.
         if (node->children[t_key[i]] == nullptr) {
 
-          auto new_ver = node->version + TransactionTid::increment_value;
-
           if (transactional) {
+            auto new_ver = node->version + TransactionTid::increment_value;
+
             // Check if another transaction has made an insert to this node.
             auto citem = Sto::check_item(this, node);
             if (citem) {
@@ -271,10 +282,10 @@ private:
               // Update the node version in the readset.
               citem->update_read(old_ver, new_ver & ~TransactionTid::lock_bit);
             }
-          }
 
-          // Increment the version number of the current node.
-          TransactionTid::set_version(node->version, new_ver);
+            // Increment the version number of the current node.
+            TransactionTid::set_version(node->version, new_ver);
+          }
           // Insert the new node.
           node->children[t_key[i]] = new_node;
 
@@ -301,12 +312,14 @@ public:
     uint8_t index;
     version_t node_version;
     std::tie(vv, parent, index, node_version) = get_value_or_node(key);
-    if (!vv && parent) {
-      // not found, add the version of the node to detect inserts
-      // XXX: this seems a bit weird - makes remove not exactly a blind write
-      auto item = Sto::item(this, parent);
-      item.template add_read<version_t>(node_version);
-      item.add_flags(item_empty_bit);
+    if (!vv) {
+      if (parent) {
+        // not found, add the version of the node to detect inserts
+        // XXX: this seems a bit weird - makes remove not exactly a blind write
+        auto item = Sto::item(this, parent);
+        item.template add_read<version_t>(node_version);
+        item.add_flags(item_empty_bit);
+      }
       return;
     }
 
@@ -417,6 +430,9 @@ public:
   virtual void install(TransItem& item, const Transaction&) {
     versioned_value *vv = item.template key<versioned_value *>();
     auto new_ver = vv->version() + TransactionTid::increment_value;
+    if (opacity)
+      new_ver = Sto::commit_tid();
+
     auto flags = item.flags();
     if (flags & item_put_bit) {
       new_ver |= TransactionTid::valid_bit;
@@ -437,9 +453,17 @@ public:
   virtual void cleanup(TransItem& item, bool committed) {
   }
 
-private:
-  const KeyTransformer transformer;
-  tree_node root;
+  bool has_opacity() {
+    return opacity;
+  }
+
+  void check_opacity(version_t &v) {
+    if (opacity) {
+      version_t v2 = v;
+      fence();
+      Sto::check_opacity(v2);
+    }
+  }
 };
 
 template<>
