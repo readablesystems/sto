@@ -796,6 +796,7 @@ class SnapshotKeyNotFoundException{};
 class Sto {
 public:
   static __thread Transaction* __transaction;
+  static TransactionTid::type __ss_lock;
   static std::vector<std::pair<std::pair<uintptr_t, uint64_t>, void*>> __ss_set;
   static __thread uint16_t __active_sid;
 
@@ -924,7 +925,9 @@ public:
   static void new_snapshot(T& blob, uintptr_t key, uint64_t sid) {
     void *snapshot_mem = malloc(sizeof(T));
     snapshot_mem = new (snapshot_mem) T(blob);
+    TransactionTid::lock(__ss_lock);
     __ss_set.push_back(std::make_pair(std::make_pair(key, sid), snapshot_mem));
+    TransactionTid::unlock(__ss_lock);
   }
 
   // retrieve a reference to a snapshot item at logical time 'sid'
