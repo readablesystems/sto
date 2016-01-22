@@ -791,10 +791,13 @@ private:
     void update_hash();
 };
 
+class SnapshotKeyNotFoundException{};
 
 class Sto {
 public:
   static __thread Transaction* __transaction;
+  static std::vector<std::pair<std::pair<uintptr_t, uint64_t>, void*>> __ss_set;
+  static __thread uint16_t __active_sid;
 
   static void start_transaction() {
     if (!__transaction) {
@@ -905,6 +908,34 @@ public:
 
   static TransactionTid::type commit_tid() {
     return __transaction->commit_tid();
+  }
+
+  // manipulating the thread-local active snapshot id variable(s)
+  static void set_active_sid(uint16_t sid) {
+    __active_sid = sid;
+  }
+
+  static uint16_t get_sid() {
+    return __active_sid;
+  }
+
+  // create a new snapshot item with the content of 'blob' at logical time 'sid'
+  template <typename T>
+  static void new_snapshot(T& blob, uintptr_t key, uint64_t sid) {
+    void *snapshot_mem = malloc(sizeof(T));
+    snapshot_mem = new (snapshot_mem) T(blob);
+    __ss_set.push_back(std::make_pair(std::make_pair(key, sid), snapshot_mem));
+  }
+
+  // retrieve a reference to a snapshot item at logical time 'sid'
+  // throws exception if not found
+  template <typename T>
+  static T& snapshot_item(uintptr_t key, uint64_t sid) {
+    for (auto&& i : __ss_set) {
+      if (i.first == std::pair<uintptr_t, uint64_t>(key, sid))
+        return *(T*)i.second;
+    }
+    throw SnapshotKeyNotFoundException();
   }
 };
 

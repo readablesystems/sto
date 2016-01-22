@@ -100,7 +100,18 @@ public:
 
   list_node* _find(const T& elem) {
     list_node *cur = head_;
+    uint64_t sid = Sto::get_sid();
     while (cur != NULL) {
+      if (sid != cur->snapshot_state) {
+        // if deleted, advance to the next node
+        if (cur->snapshot_state & 1) {
+          cur = cur->next;
+          continue;
+        }
+        // otherwise, retrieve the snapshot and proceed with the traversal
+        list_node& n = Sto::snapshot_item<list_node>(cur, sid);
+        cur = &n;
+      }
       int c = comp_(cur->val, elem);
       if (c == 0) {
         return cur;
@@ -133,7 +144,7 @@ public:
       if (!Duplicates && c == 0) {
         if (snapshot_deleted(cur)) {
           // save the old snapshot and reuse the deleted slot
-          Sto::new_snapshot<list_node>(cur, cur->snapshot_state & ~(uint64_t)1);
+          Sto::new_snapshot<list_node>(*cur, cur, cur->snapshot_state & ~(uint64_t)1);
           cur->mark_invalid();
           cur->val = elem;
           cur->snapshot_state = 0;
@@ -484,7 +495,7 @@ private:
       if (is_snapshot(n)) {
         // create a snapshot copy of previous version of the node (copy-on-write)
         // set snapshot state to pending
-        Sto::new_snapshot<list_node>(n, n->snapshot_state);
+        Sto::new_snapshot<list_node>(*n, n, n->snapshot_state);
         n->snapshot_state = 0;
       }
       n->val = item.template write_value<T>();
