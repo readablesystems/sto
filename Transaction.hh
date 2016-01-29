@@ -797,6 +797,7 @@ class Sto {
 public:
   static __thread Transaction* __transaction;
   static TransactionTid::type __ss_lock;
+  static TransactionTid::type __next_sid;
   static std::vector<std::pair<std::pair<uintptr_t, uint64_t>, void*>> __ss_set;
   static __thread uint16_t __active_sid;
 
@@ -920,6 +921,18 @@ public:
     return __active_sid;
   }
 
+  static uint64_t next_sid() {
+    return ((__next_sid >> 5) << 1);
+  }
+
+  static void lock_read_next_sid() {
+    lock_read(__next_sid);
+  }
+
+  static void unlock_read_next_sid() {
+    unlock_read(__next_sid);
+  }
+
   // create a new snapshot item with the content of 'blob' at logical time 'sid'
   template <typename T>
   static void new_snapshot(T& blob, uintptr_t key, uint64_t sid) {
@@ -939,6 +952,12 @@ public:
         return *(T*)i.second;
     }
     throw SnapshotKeyNotFoundException();
+  }
+
+  static uint64_t take_snapshot() {
+    lock_write(__next_sid);
+    TransactionTid::inc_invalid_version(__next_sid);
+    unlock_write(__next_sid);
   }
 };
 

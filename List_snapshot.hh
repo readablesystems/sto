@@ -30,19 +30,19 @@ private:
   typedef TransactionTid::type version_type;
 
 public:
-    static constexpr uint8_t invalid_bit = 1<<0;
+  static constexpr uint8_t invalid_bit = 1<<0;
 
-    static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
-    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
-    static constexpr TransItem::flags_type doupdate_bit = TransItem::user0_bit<<2;
+  static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
+  static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
+  static constexpr TransItem::flags_type doupdate_bit = TransItem::user0_bit<<2;
 
   static constexpr void* size_key = (void*)0;
+  static constexpr void* snapshot_key = (void*)1;
   static constexpr uint64_t snapshot_inc_value = 1 << 1;
 
   struct list_node {
     list_node(const T& val, list_node *next, bool invalid)
-        : val(val), next(next, invalid ? invalid_bit : 0), snapshot_state(0) {
-    }
+        : val(val), next(next, invalid ? invalid_bit : 0), snapshot_state(0) {}
 
     void mark_invalid() {
       next.or_flags(invalid_bit);
@@ -103,14 +103,19 @@ public:
     uint64_t sid = Sto::get_sid();
     while (cur != NULL) {
       if (sid != cur->snapshot_state) {
-        // if deleted, advance to the next node
+        // if deleted or snapshot not found, advance to the next node
         if (cur->snapshot_state & 1) {
           cur = cur->next;
           continue;
         }
         // otherwise, retrieve the snapshot and proceed with the traversal
-        list_node& n = Sto::snapshot_item<list_node>(cur, sid);
-        cur = &n;
+        try {
+          list_node& n = Sto::snapshot_item<list_node>(cur, sid);
+          cur = &n;
+        } catch (SnapshotKeyNotFoundException& e) {
+          cur = cur->next;
+          continue;
+        }
       }
       int c = comp_(cur->val, elem);
       if (c == 0) {
@@ -142,7 +147,7 @@ public:
     while (cur != NULL) {
       int c = comp_(cur->val, elem);
       if (!Duplicates && c == 0) {
-        if (snapshot_deleted(cur)) {
+        if (snapshot_is_deleted(cur->snapshot_state)) {
           // save the old snapshot and reuse the deleted slot
           Sto::new_snapshot<list_node>(*cur, cur, cur->snapshot_state & ~(uint64_t)1);
           cur->mark_invalid();
@@ -214,6 +219,7 @@ public:
     add_lock_list_item();
     item.add_write(0);
     item.add_flags(insert_bit);
+    t_item(snapshot_key).add_write(0);
     return true;
   }
 
@@ -254,6 +260,7 @@ public:
       // we also need to check that it's still valid at commit time (not
       // bothering with valid_check_only_bit optimization right now)
       item.add_read(0);
+      t_item(snapshot_key).add_write(0);
       add_lock_list_item();
       add_trans_size_offs(-1);
       return true;
@@ -448,11 +455,15 @@ private:
     // XXX: this isn't great, but I think we need it to update the size...
     if (item.key<List*>() == this)
         lock(listversion_);
+    else if (item.key<void*>() == snapshot_key)
+        Sto::lock_read_next_sid();
   }
 
   void unlock(TransItem& item) {
     if (item.key<List*>() == this)
       unlock(listversion_);
+    else if (item.key<void*>() == snapshot_key)
+      Sto::unlock_read_next_sid();
   }
 
   bool check(const TransItem& item, const Transaction& t) {
@@ -469,6 +480,28 @@ private:
     return n->is_valid() || has_insert(item);
   }
 
+  bool is_snapshot(list_node* n) {
+    assert(!snapshot_is_deleted(n->snapshot_state));
+    if (n->snapshot_state < Sto::next_sid())
+      return true;
+    else
+      return false;
+  }
+
+  uint64_t get_snapshot_number(uint64_t snapshot_state) {
+    return (snapshot_state >> 1);
+  }
+
+  void snapshot_mark_deleted(uint64_t& snapshot_state) {
+    assert(snapshot_state % 2 == 0);
+    snapshot_state |= (uint64_t)1;
+    fence();
+  }
+
+  bool snapshot_is_deleted(uint64_t snapshot_state) {
+    return (snapshot_state & (uint64_t)1);
+  }
+
   void install(TransItem& item, const Transaction& t) {
     if (item.key<List*>() == this)
       return;
@@ -476,7 +509,7 @@ private:
     if (has_delete(item)) {
       if (is_snapshot(n)) {
         // Mark node as deleted, but don't actually delete the node
-        n->snapshot_state |= 1;
+        snapshot_mark_deleted(n->snapshot_state);
       } else {
         remove<true>(n, true);
       }
@@ -494,13 +527,15 @@ private:
         // XXX BUG
       if (is_snapshot(n)) {
         // create a snapshot copy of previous version of the node (copy-on-write)
-        // set snapshot state to pending
+        // set snapshot state to next_sid()
         Sto::new_snapshot<list_node>(*n, n, n->snapshot_state);
-        n->snapshot_state = 0;
+        n->snapshot_state = Sto::next_sid;
       }
       n->val = item.template write_value<T>();
     } else {
-      // insert (install time): nothing to be done here apparently??
+      // insert (install time): set snapshot state to next_sid
+      assert(n->snapshot_state == 0);
+      n->snapshot_state = Sto::next_sid();
       n->mark_valid();
       listsize_++;
       if (Opacity) {
@@ -543,6 +578,7 @@ private:
   void add_lock_list_item() {
     auto item = t_item((void*)this);
     item.add_write(0);
+    t_item(snapshot_key).add_write(0);
   }
 
   void add_trans_size_offs(int size_offs) {
