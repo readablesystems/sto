@@ -961,7 +961,7 @@ public:
   }
 
   static uint64_t take_snapshot() {
-    if (!trans_in_progress()) {
+    if (trans_in_progress()) {
       throw TransInProgress();
     }
     return Transaction::take_snapshot();
