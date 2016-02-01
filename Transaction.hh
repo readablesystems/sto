@@ -279,9 +279,11 @@ class Transaction {
 public:
   static threadinfo_t tinfo[MAX_THREADS];
   static __thread int threadid;
+  static uint64_t global_next_sid;
   static unsigned global_epoch;
   static bool run_epochs;
   typedef TransactionTid::type tid_type;
+  static constexpr uint64_t snapshot_inc_value = 1 << 1;
 private:
   static TransactionTid::type _TID;
 public:
@@ -430,6 +432,7 @@ public:
      //   && tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
         //print_stats();
     tinfo[threadid].epoch = global_epoch;
+    next_sid_ = global_next_sid;
     if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
     transSet_.clear();
     writeset_ = NULL;
@@ -760,6 +763,15 @@ private:
         return commit_tid_;
     }
 
+    // return the local copy of the snapshot_id when txn started
+    uint64_t next_sid() const {
+        return next_sid_;
+    }
+
+    static uint64_t take_snapshot() {
+        return fetch_and_add(&global_next_sid, snapshot_inc_value);
+    }
+
     class Abort {};
 
 private:
@@ -784,6 +796,7 @@ private:
     mutable tid_type commit_tid_;
     uint16_t hashtable_[HASHTABLE_SIZE];
     bool inProgress_;
+    uint64_t next_sid_;
 
     friend class TransProxy;
     friend class TransItem;
@@ -797,7 +810,6 @@ class Sto {
 public:
   static __thread Transaction* __transaction;
   static TransactionTid::type __ss_lock;
-  static TransactionTid::type __next_sid;
   static std::vector<std::pair<std::pair<uintptr_t, uint64_t>, void*>> __ss_set;
   static __thread uint16_t __active_sid;
 
@@ -822,6 +834,8 @@ public:
   }
 
   class NotInTransaction{};
+  // we don't allow snapshots to be taken during a transaction right now
+  class TransInProgress{};
 
   static bool trans_in_progress() {
     if (__transaction == NULL)
@@ -922,15 +936,7 @@ public:
   }
 
   static uint64_t next_sid() {
-    return ((__next_sid >> 5) << 1);
-  }
-
-  static void lock_read_next_sid() {
-    lock_read(__next_sid);
-  }
-
-  static void unlock_read_next_sid() {
-    unlock_read(__next_sid);
+    return __transaction->next_sid();
   }
 
   // create a new snapshot item with the content of 'blob' at logical time 'sid'
@@ -955,9 +961,10 @@ public:
   }
 
   static uint64_t take_snapshot() {
-    lock_write(__next_sid);
-    TransactionTid::inc_invalid_version(__next_sid);
-    unlock_write(__next_sid);
+    if (!trans_in_progress()) {
+      throw TransInProgress();
+    }
+    return Transaction::take_snapshot();
   }
 };
 

@@ -37,8 +37,6 @@ public:
   static constexpr TransItem::flags_type doupdate_bit = TransItem::user0_bit<<2;
 
   static constexpr void* size_key = (void*)0;
-  static constexpr void* snapshot_key = (void*)1;
-  static constexpr uint64_t snapshot_inc_value = 1 << 1;
 
   struct list_node {
     list_node(const T& val, list_node *next, bool invalid)
@@ -218,7 +216,6 @@ public:
     add_lock_list_item();
     item.add_write(0);
     item.add_flags(insert_bit);
-    t_item(snapshot_key).add_write(0);
     return true;
   }
 
@@ -259,7 +256,6 @@ public:
       // we also need to check that it's still valid at commit time (not
       // bothering with valid_check_only_bit optimization right now)
       item.add_read(0);
-      t_item(snapshot_key).add_write(0);
       add_lock_list_item();
       add_trans_size_offs(-1);
       return true;
@@ -459,15 +455,11 @@ private:
     // XXX: this isn't great, but I think we need it to update the size...
     if (item.key<List*>() == this)
         lock(listversion_);
-    else if (item.key<void*>() == snapshot_key)
-        Sto::lock_read_next_sid();
   }
 
   void unlock(TransItem& item) {
     if (item.key<List*>() == this)
       unlock(listversion_);
-    else if (item.key<void*>() == snapshot_key)
-      Sto::unlock_read_next_sid();
   }
 
   bool check(const TransItem& item, const Transaction& t) {
@@ -590,7 +582,6 @@ private:
   void add_lock_list_item() {
     auto item = t_item((void*)this);
     item.add_write(0);
-    t_item(snapshot_key).add_write(0);
   }
 
   void add_trans_size_offs(int size_offs) {
