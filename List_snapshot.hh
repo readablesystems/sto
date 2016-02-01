@@ -102,7 +102,7 @@ public:
     list_node *cur = head_;
     uint64_t sid = Sto::get_sid();
     while (cur != NULL) {
-      if (sid != cur->snapshot_state) {
+      if (sid != 0 && sid != cur->snapshot_state) {
         // if deleted or snapshot not found, advance to the next node
         if (cur->snapshot_state & 1) {
           cur = cur->next;
@@ -153,7 +153,6 @@ public:
           cur->mark_invalid();
           cur->val = elem;
           cur->snapshot_state = 0;
-          // TODO: listsize_++
           unlock(listversion_);
           return cur;
         }
@@ -423,7 +422,12 @@ private:
   }
 
   size_t size() const {
-      return listsize_;
+      uint64_t sid = Sto::get_sid();
+      if (sid != 0) {
+          return Sto::snapshot_item<size_t>(&listsize_, sid);
+      } else {
+          return listsize_;
+      }
   }
 
   void clear() {
@@ -488,10 +492,6 @@ private:
       return false;
   }
 
-  uint64_t get_snapshot_number(uint64_t snapshot_state) {
-    return (snapshot_state >> 1);
-  }
-
   void snapshot_mark_deleted(uint64_t& snapshot_state) {
     assert(snapshot_state % 2 == 0);
     snapshot_state |= (uint64_t)1;
@@ -514,8 +514,13 @@ private:
         remove<true>(n, true);
       }
 
-      // TODO copy-on-write for listsize_
+      // CoW listsize_
+      if (size_sid_ < Sto::next_sid()) {
+        Sto::new_snapshot<size_t>(listsize_, &listsize_, size_sid_);
+        size_sid_ = Sto::next_sid();
+      }
       listsize_--;
+
       // not super ideal that we have to change version
       // but we need to invalidate transSize() calls
       if (Opacity) {
@@ -529,7 +534,7 @@ private:
         // create a snapshot copy of previous version of the node (copy-on-write)
         // set snapshot state to next_sid()
         Sto::new_snapshot<list_node>(*n, n, n->snapshot_state);
-        n->snapshot_state = Sto::next_sid;
+        n->snapshot_state = Sto::next_sid();
       }
       n->val = item.template write_value<T>();
     } else {
@@ -537,7 +542,14 @@ private:
       assert(n->snapshot_state == 0);
       n->snapshot_state = Sto::next_sid();
       n->mark_valid();
+
+      // CoW listsize_
+      if (size_sid_ < Sto::next_sid()) {
+        Sto::new_snapshot<size_t>(listsize_, &listsize_, size_sid_);
+        size_sid_ = Sto::next_sid();
+      }
       listsize_++;
+
       if (Opacity) {
         TransactionTid::set_version(listversion_, t.commit_tid());
       } else {
@@ -602,6 +614,7 @@ private:
   }
 
   list_node *head_;
+  uint64_t size_sid_;
   long listsize_;
   version_type listversion_;
   Compare comp_;

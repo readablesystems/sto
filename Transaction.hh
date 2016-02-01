@@ -917,7 +917,7 @@ public:
     __active_sid = sid;
   }
 
-  static uint16_t get_sid() {
+  static uint64_t get_sid() {
     return __active_sid;
   }
 
