@@ -107,13 +107,12 @@ public:
           continue;
         }
         // otherwise, retrieve the snapshot and proceed with the traversal
-        try {
-          list_node& n = Sto::snapshot_item<list_node>(cur, sid);
-          cur = &n;
-        } catch (SnapshotKeyNotFoundException& e) {
+        list_node* n = Sto::snapshot_item<list_node>(cur, sid);
+        if (n == nullptr) {
           cur = cur->next;
           continue;
         }
+        cur = n;
       }
       int c = comp_(cur->val, elem);
       if (c == 0) {

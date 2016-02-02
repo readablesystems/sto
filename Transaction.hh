@@ -2,6 +2,7 @@
 
 #include "local_vector.hh"
 #include "compiler.hh"
+#include <map>
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -804,13 +805,11 @@ private:
     void update_hash();
 };
 
-class SnapshotKeyNotFoundException{};
-
 class Sto {
 public:
   static __thread Transaction* __transaction;
-  static TransactionTid::type __ss_lock;
-  static std::vector<std::pair<std::pair<uintptr_t, uint64_t>, void*>> __ss_set;
+  static TransactionTid::signed_type __ss_lock;
+  static std::map<std::pair<uintptr_t, uint64_t>, void*> __ss_set;
   static __thread uint16_t __active_sid;
 
   static void start_transaction() {
@@ -942,22 +941,28 @@ public:
   // create a new snapshot item with the content of 'blob' at logical time 'sid'
   template <typename T>
   static void new_snapshot(T& blob, uintptr_t key, uint64_t sid) {
-    void *snapshot_mem = malloc(sizeof(T));
-    snapshot_mem = new (snapshot_mem) T(blob);
-    TransactionTid::lock(__ss_lock);
-    __ss_set.push_back(std::make_pair(std::make_pair(key, sid), snapshot_mem));
-    TransactionTid::unlock(__ss_lock);
+    TransactionTid::lock_write(__ss_lock);
+    auto res = __ss_set.insert(std::make_pair(std::make_pair(key, sid), nullptr));
+    if (res.second) {
+      void *snapshot_mem = malloc(sizeof(T));
+      snapshot_mem = new (snapshot_mem) T(blob);
+      res.first->second = snapshot_mem;
+    }
+    TransactionTid::unlock_write(__ss_lock);
   }
 
   // retrieve a reference to a snapshot item at logical time 'sid'
   // throws exception if not found
   template <typename T>
-  static T& snapshot_item(uintptr_t key, uint64_t sid) {
-    for (auto&& i : __ss_set) {
-      if (i.first == std::pair<uintptr_t, uint64_t>(key, sid))
-        return *(T*)i.second;
+  static T* snapshot_item(uintptr_t key, uint64_t sid) {
+    T* ret = nullptr;
+    TransactionTid::lock_read(__ss_lock);
+    auto it = __ss_set.find(std::make_pair(key, sid));
+    if (it != __ss_set.end()) {
+      ret = it->second;
     }
-    throw SnapshotKeyNotFoundException();
+    TransactionTid::unlock_read(__ss_lock);
+    return ret;
   }
 
   static uint64_t take_snapshot() {
