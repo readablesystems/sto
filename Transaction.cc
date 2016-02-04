@@ -3,6 +3,10 @@
 threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int Transaction::threadid;
 unsigned __attribute__((aligned(64))) Transaction::global_epoch;
+uint64_t Transaction::global_next_sid;
+__thread uint64_t Sto::__active_sid;
+TransactionTid::signed_type Sto::__ss_lock;
+std::map<std::pair<uintptr_t, uint64_t>, void*> Sto::__ss_set;
 bool Transaction::run_epochs = true;
 __thread Transaction *Sto::__transaction;
 std::function<void(unsigned)> Transaction::epoch_advance_callback;

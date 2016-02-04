@@ -107,7 +107,7 @@ public:
           continue;
         }
         // otherwise, retrieve the snapshot and proceed with the traversal
-        list_node* n = Sto::snapshot_item<list_node>(cur, sid);
+        list_node* n = Sto::snapshot_item<list_node>((uintptr_t)cur, sid);
         if (n == nullptr) {
           cur = cur->next;
           continue;
@@ -146,7 +146,7 @@ public:
       if (!Duplicates && c == 0) {
         if (snapshot_is_deleted(cur->snapshot_state)) {
           // save the old snapshot and reuse the deleted slot
-          Sto::new_snapshot<list_node>(*cur, cur, cur->snapshot_state & ~(uint64_t)1);
+          Sto::new_snapshot<list_node>(*cur, (uintptr_t)cur, cur->snapshot_state & ~(uint64_t)1);
           cur->mark_invalid();
           cur->val = elem;
           cur->snapshot_state = 0;
@@ -507,7 +507,7 @@ private:
 
       // CoW listsize_
       if (size_sid_ < Sto::next_sid()) {
-        Sto::new_snapshot<size_t>(listsize_, &listsize_, size_sid_);
+        Sto::new_snapshot<long>(listsize_, (uintptr_t)&listsize_, size_sid_);
         size_sid_ = Sto::next_sid();
       }
       listsize_--;
@@ -524,7 +524,7 @@ private:
       if (is_snapshot(n)) {
         // create a snapshot copy of previous version of the node (copy-on-write)
         // set snapshot state to next_sid()
-        Sto::new_snapshot<list_node>(*n, n, n->snapshot_state);
+        Sto::new_snapshot<list_node>(*n, (uintptr_t)n, n->snapshot_state);
         n->snapshot_state = Sto::next_sid();
       }
       n->val = item.template write_value<T>();
@@ -536,7 +536,7 @@ private:
 
       // CoW listsize_
       if (size_sid_ < Sto::next_sid()) {
-        Sto::new_snapshot<size_t>(listsize_, &listsize_, size_sid_);
+        Sto::new_snapshot<long>(listsize_, (uintptr_t)&listsize_, size_sid_);
         size_sid_ = Sto::next_sid();
       }
       listsize_++;

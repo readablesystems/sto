@@ -24,7 +24,7 @@ ifneq ($(NDEBUG),1)
 CXXFLAGS += -g
 endif
 
-all: concurrent single singleelems array1 genericTest list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators
+all: concurrent single singleelems array1 genericTest list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators list_ss
 
 %.o: %.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
@@ -88,6 +88,9 @@ pqVsIt: pqVsIt.o clp.o $(STO_OBJS)
 iterators: iterators.o clp.o $(STO_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
+list_ss: list_ss.o clp.o $(STO_OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
 $(MASSTREE_OBJS): masstree ;
 
 .PHONY: masstree
@@ -116,7 +119,7 @@ stamp-h: config.h.in config.status
 
 clean:
 	rm -f concurrent array single singleelems genericTest *.o libjson.a
-	rm -f pqueue vector list1 rbtree trans_test ht_mt pqVsIt iterators
+	rm -f pqueue vector list1 rbtree trans_test ht_mt pqVsIt iterators list_ss
 	rm -rf .deps
 	$(MAKE) -C $(MASSTREEDIR) clean
 

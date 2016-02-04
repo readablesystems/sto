@@ -810,7 +810,7 @@ public:
   static __thread Transaction* __transaction;
   static TransactionTid::signed_type __ss_lock;
   static std::map<std::pair<uintptr_t, uint64_t>, void*> __ss_set;
-  static __thread uint16_t __active_sid;
+  static __thread uint64_t __active_sid;
 
   static void start_transaction() {
     if (!__transaction) {
@@ -959,7 +959,7 @@ public:
     TransactionTid::lock_read(__ss_lock);
     auto it = __ss_set.find(std::make_pair(key, sid));
     if (it != __ss_set.end()) {
-      ret = it->second;
+      ret = (T*)it->second;
     }
     TransactionTid::unlock_read(__ss_lock);
     return ret;
