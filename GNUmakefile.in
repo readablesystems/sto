@@ -84,8 +84,11 @@ ht_mt: ht_mt.o clp.o $(STO_OBJS) $(MASSTREE_OBJS)
 
 pqVsIt: pqVsIt.o clp.o $(STO_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
-    
+
 iterators: iterators.o clp.o $(STO_OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
+hashtable_nostm: hashtable_nostm.o clp.o $(STO_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;

@@ -14,7 +14,11 @@
 #endif 
 
 template <typename K, typename V, bool Opacity = false, unsigned Init_size = 129, typename W = V, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
+#ifdef NO_STM
+class Hashtable {
+#else
 class Hashtable : public Shared {
+#endif
 public:
     typedef uint64_t Version;
     typedef K Key;
@@ -25,18 +29,30 @@ private:
   // our hashtable is an array of linked lists. 
   // an internal_elem is the node type for these linked lists
   struct internal_elem {
+    // nate: I wonder if this would perform better if these had their own
+    // cache line.
     Key key;
     internal_elem *next;
     Version version;
+#ifndef NO_STM
+    // TODO(nate): we should just stuff this in the version so we don't have to
+    // deal with this.
     bool valid_;
+#endif
     Value_type value;
+#ifndef NO_STM
     internal_elem(Key k, Value val) : key(k), next(NULL), version(0), valid_(false), value(val) {}
     bool& valid() {
       return valid_;
     }
+#else
+    internal_elem(Key k, Value val) : key(k), next(NULL), version(0), value(val) {}
+#endif
   };
 
   struct bucket_entry {
+    // nate: we could inline the first element of a bucket. Would probably
+    // make resize harder though.
     internal_elem *head;
     // this is the bucket version number, which is incremented on insert
     // we use it to make sure that an unsuccessful key lookup will still be
@@ -77,6 +93,7 @@ public:
     return hash(k) % nbuckets();
   }
 
+#ifndef NO_STM
   // returns true if found false if not
   bool transGet(const Key& k, Value& retval) {
     bucket_entry& buck = buck_entry(k);
@@ -133,7 +150,7 @@ public:
 #if READ_MY_WRITES
       if (!valid && has_insert(item)) {
         // we're deleting our own insert. special case this to just remove element and just check for no insert at commit
-        remove(e);
+        _remove(e);
         // no way to remove an item (would be pretty inefficient)
         // so we just unmark all attributes so the item is ignored
         item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
@@ -273,24 +290,6 @@ public:
     return transPut</*copyvals*/true, /*insert*/false, /*set*/true>(k, v);
   }
 
-  void lock(internal_elem *el) {
-    lock(&el->version);
-  }
-
-  void lock(const Key& k) {
-    lock(&elem(k));
-  }
-  void unlock(internal_elem *el) {
-    unlock(&el->version);
-  }
-
-  void unlock(const Key& k) {
-    unlock(&elem(k));
-  }
-
-  bool is_locked(internal_elem *el) {
-    return is_locked(el->version);
-  }
 
   bool versionCheck(Version v1, Version v2) {
     return TransactionTid::same_version(v1, v2);
@@ -363,27 +362,88 @@ public:
       if (committed ? has_delete(item) : has_insert(item)) {
         auto el = item.key<internal_elem*>();
         assert(!el->valid());
-        remove(el);
+        _remove(el);
     }
   }
 
-  void remove(internal_elem *el) {
-    bucket_entry& buck = buck_entry(el->key);
-    lock(&buck.version);
-    internal_elem *prev = NULL;
-    internal_elem *cur = buck.head;
-    while (cur != NULL && cur != el) {
-      prev = cur;
-      cur = cur->next;
+  // these are wrappers for concurrent.cc and other
+  // frameworks we use the hashtable in
+  void transWrite(Key k, Value v) {
+    transPut(k, v);
+  }
+  Value transRead(Key k) {
+    Value v;
+    if (!transGet(k, v)) {
+      return Value();
     }
-    assert(cur);
-    if (prev) {
-      prev->next = cur->next;
+    return v;
+  }
+  Value transRead_nocheck(Transaction& , Key ) { return Value(); }
+  void transWrite_nocheck(Transaction& , Key , Value ) {}
+  Value read(Key k) {
+    Transaction t;
+    Value v = transRead(k);
+    t.commit();
+    return v;
+  }
+  void insert(Key k, Value v) {
+    Transaction t;
+    transInsert(t, k, v);
+    t.commit();
+  }
+  void erase(Key ) {}
+  void update(Key k, Value v) {
+    Transaction t;
+    transUpdate(t, k, v);
+    t.commit();
+  }
+  template <typename F>
+  void update_fn(Key k, F f) {
+    Transaction t;
+    transUpdate(t, k, f(transRead(t, k)));
+    t.commit();
+  }
+  template <typename F>
+  void upsert(Key k, F f, Value v) {
+    Transaction t;
+    Value cur;
+    if (transGet(t, k, cur)) {
+      transUpdate(t, k, f(cur));
     } else {
-      buck.head = cur->next;
+      transInsert(t, k, v);
     }
-    unlock(&buck.version);
-    Transaction::rcu_free(cur);
+    t.commit();
+  }
+  void find(Key k, Value& v) {
+    Transaction t;
+    transGet(t, k, v);
+    t.commit();
+  }
+  Value find(Key k) {
+    return read(k);
+  }
+  void rehash(unsigned ) {}
+  void reserve(unsigned ) {}
+
+#endif /* NO_STM */
+
+  void lock(internal_elem *el) {
+    lock(&el->version);
+  }
+
+  void lock(const Key& k) {
+    lock(&elem(k));
+  }
+  void unlock(internal_elem *el) {
+    unlock(&el->version);
+  }
+
+  void unlock(const Key& k) {
+    unlock(&elem(k));
+  }
+
+  bool is_locked(internal_elem *el) {
+    return is_locked(el->version);
   }
 
   void print_stats() {
@@ -470,11 +530,55 @@ public:
     return end;
   }
 
-  // non-transactional get/put/etc.
-  // not very interesting
+  // remove given the internal element node. used by transaction system
+  void _remove(internal_elem *el) {
+    bucket_entry& buck = buck_entry(el->key);
+    lock(&buck.version);
+    internal_elem *prev = NULL;
+    internal_elem *cur = buck.head;
+    while (cur != NULL && cur != el) {
+      prev = cur;
+      cur = cur->next;
+    }
+    assert(cur);
+    if (prev) {
+      prev->next = cur->next;
+    } else {
+      buck.head = cur->next;
+    }
+    unlock(&buck.version);
+    Transaction::rcu_free(cur);
+  }
+
+  // non-txnal remove given a key
+  bool remove(const Key& k) {
+    bucket_entry& buck = buck_entry(k);
+    lock(&buck.version);
+    internal_elem *prev = NULL;
+    internal_elem *cur = buck.head;
+    while (cur != NULL && !pred_(cur->key, k)) {
+      prev = cur;
+      cur = cur->next;
+    }
+    if (!cur) {
+      unlock(&buck.version);
+      return false;
+    }
+    if (prev) {
+      prev->next = cur->next;
+    } else {
+      buck.head = cur->next;
+    }
+    unlock(&buck.version);    
+    // TODO(nate): this would probably work fine as-is
+    // Transaction::rcu_free(cur);
+    return true;
+  }
+
   bool read(const Key& k, Value& retval) {
     auto e = find(buck_entry(k), k);
     if (e) {
+      // TODO(nate): this isn't safe for non-trivial types
       assign_val(retval, e->value);
     }
     return !!e;
@@ -488,83 +592,38 @@ public:
     val.assign(val_to_assign.data(), val_to_assign.length());
   }
   
-  void put(const Key& k, const Value& val) {
+  // returns true if item already existed
+  template <bool InsertOnly = false>
+  bool put(const Key& k, const Value& val) {
+    bool exists = false;
     bucket_entry& buck = buck_entry(k);
     lock(&buck.version);
     internal_elem *e = find(buck, k);
     if (e) {
-      set(e, val);
+      if (!InsertOnly)
+        set(e, val);
+      exists = true;
     } else {
       insert_locked<true>(buck, k, val);
+      exists = false;
     }
     unlock(&buck.version);
+    return exists;
+  }
+  // returns true if successfully inserted
+  bool insert(const Key& k, const Value& val) {
+    return !put<true>(k, val);
   }
 
   void set(internal_elem *e, const Value& val) {
     assert(e);
     lock(&e->version);
     e->value = val;
+#ifndef NO_STM
     TransactionTid::inc_invalid_version(e->version);
+#endif
     unlock(&e->version);
   }
-
-  // these are wrappers for concurrent.cc
-  void transWrite(Key k, Value v) {
-    transPut(k, v);
-  }
-  Value transRead(Key k) {
-    Value v;
-    if (!transGet(k, v)) {
-      return Value();
-    }
-    return v;
-  }
-  Value transRead_nocheck(Transaction& , Key ) { return Value(); }
-  void transWrite_nocheck(Transaction& , Key , Value ) {}
-  Value read(Key k) {
-    Transaction t;
-    Value v = transRead(k);
-    t.commit();
-    return v;
-  }
-  void insert(Key k, Value v) {
-    Transaction t;
-    transInsert(t, k, v);
-    t.commit();
-  }
-  void erase(Key ) {}
-  void update(Key k, Value v) {
-    Transaction t;
-    transUpdate(t, k, v);
-    t.commit();
-  }
-  template <typename F>
-  void update_fn(Key k, F f) {
-    Transaction t;
-    transUpdate(t, k, f(transRead(t, k)));
-    t.commit();
-  }
-  template <typename F>
-  void upsert(Key k, F f, Value v) {
-    Transaction t;
-    Value cur;
-    if (transGet(t, k, cur)) {
-      transUpdate(t, k, f(cur));
-    } else {
-      transInsert(t, k, v);
-    }
-    t.commit();
-  }
-  void find(Key k, Value& v) {
-    Transaction t;
-    transGet(t, k, v);
-    t.commit();
-  }
-  Value find(Key k) {
-    return read(k);
-  }
-  void rehash(unsigned ) {}
-  void reserve(unsigned ) {}
   
 private:
   bucket_entry& buck_entry(const Key& k) {
@@ -637,7 +696,9 @@ private:
     internal_elem *cur_head = buck.head;
     new_head->next = cur_head;
     if (markValid) {
+#ifndef NO_STM
       new_head->valid() = true;
+#endif
     }
     buck.head = new_head;
     TransactionTid::inc_invalid_version(buck.version);
