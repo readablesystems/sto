@@ -42,11 +42,6 @@ public:
     if (!own_lock(table_[key]))
       TransactionTid::lock(table_[key], Transaction::threadid);
   }
-  void unlock(TransItem& item) {
-    size_t key = bucket(item.key<void*>());
-    if (own_lock(table_[key]))
-      TransactionTid::unlock(table_[key]);
-  }
   bool check(const TransItem& item, const Transaction&) {
     size_t key = bucket(item.key<void*>());
     auto current = table_[key];
@@ -59,6 +54,13 @@ public:
     TransactionTid::set_version(table_[bucket(word)], TransactionTid::add_user_bits(t.commit_tid(), Transaction::threadid));
     void *data = item.write_value<void*>();
     memcpy(word, &data, item.shifted_user_flags());
+  }
+  void cleanup(TransItem& item) {
+    if (item.needs_unlock()) {
+      size_t key = bucket(item.key<void*>());
+      if (own_lock(table_[key]))
+        TransactionTid::unlock(table_[key]);
+    }
   }
 
 private:

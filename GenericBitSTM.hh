@@ -110,9 +110,6 @@ public:
   void lock(TransItem& item) {
       table_.set(hash(item.key<void*>()) % table_.size());
   }
-  void unlock(TransItem& item) {
-      table_.unset(hash(item.key<void*>()) % table_.size());
-  }
   bool check(const TransItem& item, const Transaction& t) {
     size_t sz = item.shifted_user_flags();
     uintptr_t cur = 0, old = 0;
@@ -126,6 +123,10 @@ public:
       void* word = item.key<void*>();
       void* data = item.write_value<void*>();
       memcpy(word, &data, item.shifted_user_flags());
+  }
+  void cleanup(TransItem& item, bool) {
+      if (item.needs_unlock())
+          table_.unset(hash(item.key<void*>()) % table_.size());
   }
 
 private:

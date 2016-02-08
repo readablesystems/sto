@@ -52,13 +52,13 @@ class Array1 : public Shared {
     void lock(TransItem& item){
         lock(item.key<key_type>());
     }
-    void unlock(TransItem& item){
-        unlock(item.key<key_type>());
-    }
-
     void install(TransItem& item, const Transaction& t) {
         //install value
         data_[item.key<key_type>()].install(item, t);
+    }
+    void cleanup(TransItem& item, bool) {
+        if (item.needs_unlock())
+            unlock(item.key<key_type>());
     }
     
     iterator begin() { return iterator(this, 0); }

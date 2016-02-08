@@ -312,11 +312,6 @@ public:
     auto el = item.key<internal_elem*>();
     lock(el);
   }
-  void unlock(TransItem& item) {
-    assert(!is_bucket(item));
-    auto el = item.key<internal_elem*>();
-    unlock(el);
-  }
   void install(TransItem& item, const Transaction& t) {
     assert(!is_bucket(item));
     auto el = item.key<internal_elem*>();
@@ -358,11 +353,16 @@ public:
   }
 
   void cleanup(TransItem& item, bool committed) {
+      if (item.needs_unlock()) {
+          assert(!is_bucket(item));
+          auto el = item.key<internal_elem*>();
+          unlock(el);
+      }
       if (committed ? has_delete(item) : has_insert(item)) {
-        auto el = item.key<internal_elem*>();
-        assert(!el->valid());
-        _remove(el);
-    }
+          auto el = item.key<internal_elem*>();
+          assert(!el->valid());
+          _remove(el);
+      }
   }
 
   // these are wrappers for concurrent.cc and other

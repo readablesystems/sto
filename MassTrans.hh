@@ -500,9 +500,6 @@ public:
   void lock(TransItem& item) {
     lock(item.key<versioned_value*>());
   }
-  void unlock(TransItem& item) {
-    unlock(item.key<versioned_value*>());
-  }
   bool check(const TransItem& item, const Transaction& t) {
     if (is_inter(item)) {
       auto n = untag_inter(item.key<leaf_type*>());
@@ -562,6 +559,8 @@ public:
   }
 
   void cleanup(TransItem& item, bool committed) {
+      if (item.needs_unlock())
+          unlock(item.key<versioned_value*>());
       if (!committed && has_insert(item)) {
         // remove node
         auto& stdstr = item.flags() & copyvals_bit ?

@@ -281,14 +281,6 @@ public:
         }
     }
     
-    void unlock(TransItem& item) {
-        if (item.key<int>() == pop_key){
-            unlock(&popversion_);
-        } else {
-            //unlock(item.key<versioned_value*>());
-        }
-    }
-    
     bool check(const TransItem& item, const Transaction& trans){
         if (item.key<int>() == top_key) { return true; }
         else if (item.key<int>() == empty_key) {
@@ -353,6 +345,8 @@ public:
     }
     
     void cleanup(TransItem& item, bool committed) {
+        if (item.needs_unlock() && item.key<int>() == pop_key)
+            unlock(&popversion_);
         if (committed && dirtytid_ == Transaction::threadid) {
             dirtytid_ = -1;
         }

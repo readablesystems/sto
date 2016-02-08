@@ -106,7 +106,7 @@ bool Transaction::try_commit() {
         return state_ > s_aborted;
 
     state_ = s_committing;
-    bool success = true;
+    bool success = false;
 
     if (firstWrite_ < 0)
         firstWrite_ = transSet_.size();
@@ -136,8 +136,9 @@ bool Transaction::try_commit() {
 
     auto writeset_end = writeset_ + nwriteset_;
     for (auto it = writeset_; it != writeset_end; ) {
-        TransItem *me = &transSet_[*it];
+        TransItem* me = &transSet_[*it];
         me->sharedObj()->lock(*me);
+        me->__or_flags(TransItem::lock_bit);
         ++it;
         if (may_duplicate_items_)
             for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
@@ -159,14 +160,14 @@ bool Transaction::try_commit() {
 #endif
 
     //phase2
-    if (!check_reads(trans_first, trans_last)) {
-        success = false;
+    if (!check_reads(trans_first, trans_last))
         goto end;
-    }
 
     //    fence();
 
     //phase3
+    success = true;
+
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
         TransItem& ti = *it;
         if (ti.has_write()) {
@@ -176,25 +177,12 @@ bool Transaction::try_commit() {
     }
 
 end:
-    //    fence();
+    // fence();
 
-    for (auto it = writeset_; it != writeset_end; ) {
-        TransItem *me = &transSet_[*it];
-        me->sharedObj()->unlock(*me);
-        ++it;
-        if (may_duplicate_items_)
-            for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
-                /* do nothing */;
-    }
-
-    //    fence();
-
-    if (success) {
-        stop(true);
-    } else {
+    if (!success) {
         INC_P(txp_commit_time_aborts);
-        silent_abort();
     }
+    stop(success);
     return success;
 }
 

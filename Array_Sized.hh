@@ -52,11 +52,6 @@ public:
     Versioning::lock(arr_[i].version());
   }
 
-  void unlock(TransItem& item) {
-    int i = item.template key<int>();
-    Versioning::unlock(arr_[i].version());
-  }
-
   bool check(const TransItem& item, const Transaction& t) {
     int i = item.template key<int>();
     auto& elem = arr_[i];
@@ -68,6 +63,13 @@ public:
     int i = item.template key<int>();
     arr_[i].set_value(item.template write_value<T>());
     Versioning::inc_version(arr_[i].version());
+  }
+
+  void cleanup(TransItem& item, bool) {
+    if (item.needs_unlock()) {
+      int i = item.template key<int>();
+      Versioning::unlock(arr_[i].version());
+    }
   }
 
   int capacity() {

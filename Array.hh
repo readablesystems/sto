@@ -124,10 +124,6 @@ public:
     lock(item.key<Key>());
   }
 
-  void unlock(TransItem& item) {
-    unlock(item.key<Key>());
-  }
-
   void install(TransItem& item, const Transaction&) {
     Key i = item.key<Key>();
     Value val = item.write_value<Value>();
@@ -142,6 +138,11 @@ public:
     // addition mod 2^(word_size-1)
     cur = (cur+1) & ~lock_bit;
     elem(i).version = cur | lock_bit;
+  }
+
+  void cleanup(TransItem& item, bool) {
+    if (item.needs_unlock())
+      unlock(item.key<Key>());
   }
 
 private:

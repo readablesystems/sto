@@ -545,7 +545,6 @@ private:
 public:
     void silent_abort() {
         if (!aborted()) {
-            INC_P(txp_total_aborts);
             stop(false);
         }
     }
@@ -591,6 +590,8 @@ public:
 
 private:
     void stop(bool committed) {
+        if (!committed)
+            INC_P(txp_total_aborts);
         for (TransItem& ti : transSet_)
             ti.sharedObj()->cleanup(ti, committed);
         // TODO: this will probably mess up with nested transactions

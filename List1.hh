@@ -418,11 +418,6 @@ public:
             lock(listversion_);
     }
     
-    void unlock(TransItem& item) {
-        if (item.key<List1*>() == this)
-            unlock(listversion_);
-    }
-    
     bool check(const TransItem& item, const Transaction& t) {
         if (item.key<void*>() == size_key) {
             return true;
@@ -466,6 +461,8 @@ public:
     }
     
     void cleanup(TransItem& item, bool committed) {
+        if (item.needs_unlock() && item.key<List1*>() == this)
+            unlock(listversion_);
         if (!committed && (item.flags() & insert_bit)) {
             list_node *n = item.key<list_node*>();
             remove<true>(n);

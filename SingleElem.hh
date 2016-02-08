@@ -85,10 +85,6 @@ public:
         lock();
     }
 
-    void unlock(TransItem&) {
-        unlock();
-    }
-
     bool check(const TransItem& item, const Transaction&) {
         return TransactionTid::same_version(s_.version(), item.template read_value<version_type>())
             && (!TransactionTid::is_locked(s_.version()) || item.has_write());
@@ -101,6 +97,11 @@ public:
         } else {
             TransactionTid::inc_invalid_version(s_.version());
         }
+    }
+
+    void cleanup(TransItem& item, bool) {
+        if (item.needs_unlock())
+            unlock();
     }
 
   protected:

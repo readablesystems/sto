@@ -110,10 +110,6 @@ public:
         lock();
     }
 
-    void unlock(TransItem&) {
-        unlock();
-    }
-
     bool check(const TransItem& item, const Transaction&) {
         if (item.flags() & valid_only_bit) {
             return (!TransactionTid::is_locked(s_.version()) || item.has_write());
@@ -129,6 +125,11 @@ public:
         } else {
             TransactionTid::inc_invalid_version(s_.version());
         }
+    }
+
+    void cleanup(TransItem& item, bool) {
+        if (item.needs_unlock())
+            unlock();
     }
     
     void lock_local() {

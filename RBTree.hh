@@ -110,7 +110,6 @@ public:
     }
 
     inline void lock(TransItem& item);
-    inline void unlock(TransItem& item);
     inline bool check(const TransItem& item, const Transaction& trans);
     inline void install(TransItem& item, const Transaction& t);
     inline void cleanup(TransItem& item, bool committed);
@@ -375,15 +374,6 @@ inline void RBTree<K, T>::lock(TransItem& item) {
         lock(item.key<versioned_value*>());
     }
 }
-    
-template <typename K, typename T>
-inline void RBTree<K, T>::unlock(TransItem& item) {
-    if (item.key<void*>() == tree_key_) {
-        unlock(&treeversion_);
-    } else {
-        unlock(item.key<versioned_value*>());
-    }
-}
    
 template <typename K, typename T>
 inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans) {
@@ -436,6 +426,13 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
 
 template <typename K, typename T>
 inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
+    if (item.needs_unlock()) {
+        if (item.key<void*>() == tree_key_) {
+            unlock(&treeversion_);
+        } else {
+            unlock(item.key<versioned_value*>());
+        }
+    }
     if (!committed) {
         // if item has been tagged deleted, don't need to do anything 
         // if item has been tagged inserted, then we erase the item

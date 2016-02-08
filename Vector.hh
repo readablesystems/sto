@@ -493,18 +493,7 @@ public:
             lock(item.key<key_type>());
         }
     }
-    void unlock(TransItem& item){
-        if (item.key<Vector*>() == this) {
-            unlock_version(vecversion_);
-        }
-        else if (item.key<int>() == push_back_key) {
-            return;
-        }
-        else {
-            unlock(item.key<key_type>());
-        }
-    }
-    
+
     void install(TransItem& item, const Transaction& t) {
         //install value
         if (item.key<Vector*>() == this)
@@ -565,6 +554,15 @@ public:
             data_[index].install(item, t);
             resize_lock_.read_unlock();
             
+        }
+    }
+
+    void cleanup(TransItem& item, bool) {
+        if (item.needs_unlock()) {
+            if (item.key<Vector*>() == this)
+                unlock_version(vecversion_);
+            else if (item.key<int>() != push_back_key)
+                unlock(item.key<key_type>());
         }
     }
     

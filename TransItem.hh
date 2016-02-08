@@ -57,12 +57,13 @@ class TransItem {
 
     static constexpr flags_type write_bit = flags_type(1) << 63;
     static constexpr flags_type read_bit = flags_type(1) << 62;
-    static constexpr flags_type predicate_bit = flags_type(1) << 61;
+    static constexpr flags_type lock_bit = flags_type(1) << 61;
+    static constexpr flags_type predicate_bit = flags_type(1) << 60;
     static constexpr flags_type pointer_mask = (flags_type(1) << 48) - 1;
     static constexpr flags_type user0_bit = flags_type(1) << 48;
     static constexpr int userf_shift = 48;
-    static constexpr flags_type shifted_userf_mask = 0x1FFF;
-    static constexpr flags_type special_mask = pointer_mask | read_bit | write_bit | predicate_bit;
+    static constexpr flags_type shifted_userf_mask = 0xFFF;
+    static constexpr flags_type special_mask = pointer_mask | read_bit | write_bit | lock_bit | predicate_bit;
 
 
     TransItem(Shared* s, void* k)
@@ -81,6 +82,9 @@ class TransItem {
     }
     bool has_predicate() const {
         return flags() & predicate_bit;
+    }
+    bool needs_unlock() const {
+        return flags() & lock_bit;
     }
     bool has_lock(const Transaction& t) const;
     bool same_item(const TransItem& x) const {
