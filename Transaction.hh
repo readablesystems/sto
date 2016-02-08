@@ -88,16 +88,16 @@ enum txp {
 };
 
 template <int N> struct has_txp_struct {
-    static bool test(int p) {
+    static constexpr bool test(int p) {
         return unsigned(p) < unsigned(N);
     }
 };
 template <> struct has_txp_struct<0> {
-    static bool test(int) {
+    static constexpr bool test(int) {
         return false;
     }
 };
-inline bool has_txp(int p) {
+inline constexpr bool has_txp(int p) {
     return has_txp_struct<txp_count>::test(p);
 }
 
