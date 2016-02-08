@@ -78,9 +78,9 @@ public:
     virtual void lock(TransItem& item) = 0;
     virtual void unlock(TransItem& item) = 0;
     virtual void install(TransItem& item, const Transaction& t) = 0;
-    virtual void readVersion(TransItem& item, Transaction& t) {}
-    
-
+    virtual void readVersion(TransItem& item, Transaction& t) {
+        (void) item, (void) t;
+    }
     virtual void cleanup(TransItem& item, bool committed) {
         (void) item, (void) committed;
     }

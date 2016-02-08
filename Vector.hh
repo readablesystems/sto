@@ -56,7 +56,7 @@ public:
         }
     }
     
-    Vector(int32_t size): resize_lock_() {
+    Vector(size_type size): resize_lock_() {
         size_ = 0;
         capacity_ = 1 << ((int) log2(size));
         vecversion_ = 0;
@@ -71,16 +71,16 @@ public:
         }
     }
     
-    void reserve(uint32_t new_capacity) {
+    void reserve(size_type new_capacity) {
         if (new_capacity <= capacity_)
             return;
         Elem * new_data = new Elem[new_capacity];
         
         resize_lock_.write_lock();
-        for (uint32_t i = 0; i < capacity_; i++) {
+        for (size_type i = 0; i < capacity_; i++) {
             new_data[i] = data_[i];
         }
-        for (uint32_t i = size_; i < new_capacity; i++) {
+        for (size_type i = size_; i < new_capacity; i++) {
             new_data[i].initialize(this, i);
         }
         capacity_ = new_capacity;
@@ -151,7 +151,7 @@ public:
         // add vecversion_ to the read set
         auto vecitem = t_item(this).add_read(vecversion_);
         acquire_fence();
-        int32_t size = size_;
+        size_type size = size_;
         acquire_fence();
         if (size + trans_size_offs() == 0) {
             // Empty vector, behavior is undefined - so do nothing
@@ -194,8 +194,8 @@ public:
         return size_ + trans_size_offs();
     }
     
-    bool checkSize(int32_t sz) {
-        int32_t size = size_;
+    bool checkSize(size_type sz) {
+        size_type size = size_;
         int32_t offset = trans_size_offs();
         
         int32_t pred = (sz - offset) << pred_shift;
@@ -276,7 +276,7 @@ public:
     value_type transGet(const key_type& i){
         Version ver = vecversion_;
         acquire_fence();
-        int32_t size = size_;
+        size_type size = size_;
         acquire_fence();
         if (i >= size + trans_size_offs()) {
             auto vecitem = t_item(this);
@@ -324,7 +324,7 @@ public:
         //std::cout << "Writing to " << i << " with value " << v << std::endl;
         Version ver = vecversion_;
         acquire_fence();
-        int32_t size = size_;
+        size_type size = size_;
         acquire_fence();
         if (i >= size + trans_size_offs()) {
             bool aborted = false;
@@ -453,7 +453,7 @@ public:
             return true;
         }
         if (item.key<int>() == size_pred_key) {
-            int32_t size = size_;
+            size_type size = size_;
             acquire_fence();
             
             int32_t pred = item.template read_value<int32_t>();
@@ -607,8 +607,8 @@ public:
     }
     
 private:
-    int32_t size_;
-    uint32_t capacity_;
+    size_type size_;
+    size_type capacity_;
     Version vecversion_; // for vector size
     rwlock resize_lock_; // to do concurrent resize
     Elem* data_;
