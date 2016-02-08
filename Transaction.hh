@@ -111,49 +111,49 @@ void reportPerf();
 #define STO_SHUTDOWN() reportPerf()
 
 struct __attribute__((aligned(128))) threadinfo_t {
-  unsigned epoch;
-  unsigned spin_lock;
-  local_vector<std::pair<unsigned, std::function<void(void)>>, 8> callbacks;
-  local_vector<std::pair<unsigned, void*>, 8> needs_free;
-  // XXX(NH): these should be vectors so multiple data structures can register
-  // callbacks for these
-  std::function<void(void)> trans_start_callback;
-  std::function<void(void)> trans_end_callback;
-  uint64_t p_[txp_count];
-  threadinfo_t() : epoch(), spin_lock() {
+    unsigned epoch;
+    unsigned spin_lock;
+    local_vector<std::pair<unsigned, std::function<void(void)>>, 8> callbacks;
+    local_vector<std::pair<unsigned, void*>, 8> needs_free;
+    // XXX(NH): these should be vectors so multiple data structures can register
+    // callbacks for these
+    std::function<void(void)> trans_start_callback;
+    std::function<void(void)> trans_end_callback;
+    uint64_t p_[txp_count];
+    threadinfo_t() : epoch(), spin_lock() {
 #if PERF_LOGGING
-      for (int i = 0; i != txp_count; ++i)
-          p_[i] = 0;
+        for (int i = 0; i != txp_count; ++i)
+            p_[i] = 0;
 #endif
-  }
-  static bool p_is_max(int p) {
-      return p == txp_max_set;
-  }
-  unsigned long long p(int p) {
-      return has_txp(p) ? p_[p] : 0;
-  }
-  void inc_p(int p) {
-      add_p(p, 1);
-  }
-  void add_p(int p, uint64_t n) {
-      if (has_txp(p))
-          p_[p] += n;
-  }
-  void max_p(int p, unsigned long long n) {
-      if (has_txp(p) && n > p_[p])
-          p_[p] = n;
-  }
-  void combine_p(int p, unsigned long long n) {
-      if (has_txp(p)) {
-          if (!p_is_max(p))
-              p_[p] += n;
-          else if (n > p_[p])
-              p_[p] = n;
-      }
-  }
-  void reset_p(int p) {
-    p_[p] = 0;
-  }
+    }
+    static bool p_is_max(int p) {
+        return p == txp_max_set;
+    }
+    unsigned long long p(int p) {
+        return has_txp(p) ? p_[p] : 0;
+    }
+    void inc_p(int p) {
+        add_p(p, 1);
+    }
+    void add_p(int p, uint64_t n) {
+        if (has_txp(p))
+            p_[p] += n;
+    }
+    void max_p(int p, unsigned long long n) {
+        if (has_txp(p) && n > p_[p])
+            p_[p] = n;
+    }
+    void combine_p(int p, unsigned long long n) {
+        if (has_txp(p)) {
+            if (!p_is_max(p))
+                p_[p] += n;
+            else if (n > p_[p])
+                p_[p] = n;
+        }
+    }
+    void reset_p(int p) {
+        p_[p] = 0;
+    }
 };
 
 
@@ -277,122 +277,122 @@ void* TransactionBuffer::pack_unique(T x, void*) {
 
 class Transaction {
 public:
-  static threadinfo_t tinfo[MAX_THREADS];
-  static __thread int threadid;
-  static unsigned global_epoch;
-  static bool run_epochs;
-  typedef TransactionTid::type tid_type;
+    static threadinfo_t tinfo[MAX_THREADS];
+    static __thread int threadid;
+    static unsigned global_epoch;
+    static bool run_epochs;
+    typedef TransactionTid::type tid_type;
 private:
-  static TransactionTid::type _TID;
+    static TransactionTid::type _TID;
 public:
 
-  static std::function<void(unsigned)> epoch_advance_callback;
+    static std::function<void(unsigned)> epoch_advance_callback;
 
-  static threadinfo_t tinfo_combined() {
-    threadinfo_t out;
-    for (int i = 0; i != MAX_THREADS; ++i) {
-        for (int p = 0; p != txp_count; ++p)
-            out.combine_p(p, tinfo[i].p(p));
-    }
-    return out;
-  }
-
-  static void print_stats();
-  static void clear_stats() {
-    for (int i = 0; i != MAX_THREADS; ++i) {
-      for (int p = 0; p!= txp_count; ++p) 
-         tinfo[i].reset_p(p);
-    }
-  }
-
-  static void acquire_spinlock(unsigned& spin_lock) {
-    unsigned cur;
-    while (1) {
-      cur = spin_lock;
-      if (cur == 0 && bool_cmpxchg(&spin_lock, cur, 1)) {
-        break;
-      }
-      relax_fence();
-    }
-  }
-  static void release_spinlock(unsigned& spin_lock) {
-    spin_lock = 0;
-    fence();
-  }
-
-  static void* epoch_advancer(void*) {
-    // don't bother epoch'ing til things have picked up
-    usleep(100000);
-    while (run_epochs) {
-      auto g = global_epoch;
-      for (auto&& t : tinfo) {
-        if (t.epoch != 0 && t.epoch < g)
-          g = t.epoch;
-      }
-
-      global_epoch = ++g;
-
-      if (epoch_advance_callback)
-        epoch_advance_callback(global_epoch);
-
-      for (auto&& t : tinfo) {
-        acquire_spinlock(t.spin_lock);
-        auto deletetil = t.callbacks.begin();
-        for (auto it = t.callbacks.begin(); it != t.callbacks.end(); ++it) {
-          // TODO: check for overflow
-          if ((int)it->first <= (int)g-2) {
-            it->second();
-            ++deletetil;
-          } else {
-            // callbacks are in ascending order so if this one is too soon of an epoch the rest will be too
-            break;
-          }
+    static threadinfo_t tinfo_combined() {
+        threadinfo_t out;
+        for (int i = 0; i != MAX_THREADS; ++i) {
+            for (int p = 0; p != txp_count; ++p)
+                out.combine_p(p, tinfo[i].p(p));
         }
-        if (t.callbacks.begin() != deletetil) {
-          t.callbacks.erase(t.callbacks.begin(), deletetil);
-        }
-        auto deletetil2 = t.needs_free.begin();
-        for (auto it = t.needs_free.begin(); it != t.needs_free.end(); ++it) {
-          // TODO: overflow
-          if ((int)it->first <= (int)g-2) {
-            free(it->second);
-            ++deletetil2;
-          } else {
-            break;
-          }
-        }
-        if (t.needs_free.begin() != deletetil2) {
-          t.needs_free.erase(t.needs_free.begin(), deletetil2);
-        }
-        release_spinlock(t.spin_lock);
-      }
-      usleep(100000);
+        return out;
     }
-    return NULL;
-  }
 
-  static void rcu_cleanup(std::function<void(void)> callback) {
-    acquire_spinlock(tinfo[threadid].spin_lock);
-    tinfo[threadid].callbacks.emplace_back(global_epoch, callback);
-    release_spinlock(tinfo[threadid].spin_lock);
-  }
+    static void print_stats();
 
-  static void rcu_free(void *ptr) {
-    acquire_spinlock(tinfo[threadid].spin_lock);
-    tinfo[threadid].needs_free.emplace_back(global_epoch, ptr);
-    release_spinlock(tinfo[threadid].spin_lock);
-  }
+    static void clear_stats() {
+        for (int i = 0; i != MAX_THREADS; ++i) {
+            for (int p = 0; p!= txp_count; ++p)
+                tinfo[i].reset_p(p);
+        }
+    }
+
+    static void acquire_spinlock(unsigned& spin_lock) {
+        unsigned cur;
+        while (1) {
+            cur = spin_lock;
+            if (cur == 0 && bool_cmpxchg(&spin_lock, cur, 1))
+                break;
+            relax_fence();
+        }
+    }
+    static void release_spinlock(unsigned& spin_lock) {
+        spin_lock = 0;
+        fence();
+    }
+
+    static void* epoch_advancer(void*) {
+        // don't bother epoch'ing til things have picked up
+        usleep(100000);
+        while (run_epochs) {
+            auto g = global_epoch;
+            for (auto&& t : tinfo) {
+                if (t.epoch != 0 && t.epoch < g)
+                    g = t.epoch;
+            }
+
+            global_epoch = ++g;
+
+            if (epoch_advance_callback)
+                epoch_advance_callback(global_epoch);
+
+            for (auto&& t : tinfo) {
+                acquire_spinlock(t.spin_lock);
+                auto deletetil = t.callbacks.begin();
+                for (auto it = t.callbacks.begin(); it != t.callbacks.end(); ++it) {
+                    // TODO: check for overflow
+                    if ((int)it->first <= (int)g-2) {
+                        it->second();
+                        ++deletetil;
+                    } else {
+                        // callbacks are in ascending order so if this one is too soon of an epoch the rest will be too
+                        break;
+                    }
+                }
+                if (t.callbacks.begin() != deletetil) {
+                    t.callbacks.erase(t.callbacks.begin(), deletetil);
+                }
+                auto deletetil2 = t.needs_free.begin();
+                for (auto it = t.needs_free.begin(); it != t.needs_free.end(); ++it) {
+                    // TODO: overflow
+                    if ((int)it->first <= (int)g-2) {
+                        free(it->second);
+                        ++deletetil2;
+                    } else {
+                        break;
+                    }
+                }
+                if (t.needs_free.begin() != deletetil2) {
+                    t.needs_free.erase(t.needs_free.begin(), deletetil2);
+                }
+                release_spinlock(t.spin_lock);
+            }
+            usleep(100000);
+        }
+        return NULL;
+    }
+
+    static void rcu_cleanup(std::function<void(void)> callback) {
+        acquire_spinlock(tinfo[threadid].spin_lock);
+        tinfo[threadid].callbacks.emplace_back(global_epoch, callback);
+        release_spinlock(tinfo[threadid].spin_lock);
+    }
+
+    static void rcu_free(void *ptr) {
+        acquire_spinlock(tinfo[threadid].spin_lock);
+        tinfo[threadid].needs_free.emplace_back(global_epoch, ptr);
+        release_spinlock(tinfo[threadid].spin_lock);
+    }
 
 #if PERF_LOGGING
-  static void inc_p(int p) {
-      add_p(p, 1);
-  }
-  static void add_p(int p, uint64_t n) {
-      tinfo[threadid].add_p(p, n);
-  }
-  static void max_p(int p, unsigned long long n) {
-      tinfo[threadid].max_p(p, n);
-  }
+    static void inc_p(int p) {
+        add_p(p, 1);
+    }
+    static void add_p(int p, uint64_t n) {
+        tinfo[threadid].add_p(p, n);
+    }
+    static void max_p(int p, unsigned long long n) {
+        tinfo[threadid].max_p(p, n);
+    }
 #endif
 
 #if PERF_LOGGING
@@ -406,312 +406,310 @@ public:
 #endif
 
 
-  Transaction() : transSet_() {
-    reset();
-  }
-
-  ~Transaction() {
-    if (!isAborted_ && !transSet_.empty()) {
-      silent_abort();
+    Transaction() : transSet_() {
+        reset();
     }
-    end_trans();
-  }
 
-  void end_trans() {
-    // TODO: this will probably mess up with nested transactions
-    tinfo[threadid].epoch = 0;
-    if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
-    inProgress_ = false;
-  }
-
-  // reset data so we can be reused for another transaction
-  void reset() {
-     //if (isAborted_
-     //   && tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
-        //print_stats();
-    tinfo[threadid].epoch = global_epoch;
-    if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
-    transSet_.clear();
-    writeset_ = NULL;
-    nwriteset_ = 0;
-    nhashed_ = 0;
-    may_duplicate_items_ = false;
-    isAborted_ = false;
-    firstWrite_ = -1;
-    start_tid_ = commit_tid_ = 0;
-    buf_.clear();
-    INC_P(txp_total_starts);
-    inProgress_ = true;
-  }
-
-  // adds item for a key that is known to be new (must NOT exist in the set)
-  template <typename T>
-  TransProxy new_item(Shared* s, T key) {
-      void *xkey = buf_.pack(std::move(key));
-      transSet_.emplace_back(s, xkey);
-      return TransProxy(*this, transSet_.back());
-  }
-
-  // adds item without checking its presence in the array
-  template <typename T>
-  TransProxy fresh_item(Shared *s, T key) {
-      may_duplicate_items_ = !transSet_.empty();
-      transSet_.emplace_back(s, buf_.pack_unique(std::move(key)));
-      return TransProxy(*this, transSet_.back());
-  }
-
-  // tries to find an existing item with this key, otherwise adds it
-  template <typename T>
-  TransProxy item(Shared* s, T key) {
-      void* xkey = buf_.pack_unique(std::move(key));
-      TransItem* ti = find_item(s, xkey, 0);
-      if (!ti) {
-          transSet_.emplace_back(s, xkey);
-          ti = &transSet_.back();
-      }
-      return TransProxy(*this, *ti);
-  }
-
-  // gets an item that is intended to be read only. this method essentially allows for duplicate items
-  // in the set in some cases
-  template <typename T>
-  TransProxy read_item(Shared *s, T key) {
-      void* xkey = buf_.pack_unique(std::move(key));
-      TransItem* ti = nullptr;
-      if (firstWrite_ >= 0)
-          ti = find_item(s, xkey, firstWrite_);
-      if (!ti) {
-          may_duplicate_items_ = !transSet_.empty();
-          transSet_.emplace_back(s, xkey);
-          ti = &transSet_.back();
-      }
-      return TransProxy(*this, *ti);
-  }
-
-  template <typename T>
-  OptionalTransProxy check_item(Shared* s, T key) {
-      void* xkey = buf_.pack_unique(std::move(key));
-      return OptionalTransProxy(*this, find_item(s, xkey, 0));
-  }
-
-private:
-  static int hash(Shared* s, void* key) {
-      auto n = (uintptr_t) key;
-      n += -(n <= 0xFFFF) & reinterpret_cast<uintptr_t>(s);
-      //2654435761
-      return ((n >> 4) ^ (n & 15)) % HASHTABLE_SIZE;
-  }
-
-  // tries to find an existing item with this key, returns NULL if not found
-  TransItem* find_item(Shared* s, void* key, int delta) {
-#if TRANSACTION_HASHTABLE
-      if (transSet_.size() > HASHTABLE_THRESHOLD) {
-          if (nhashed_ < transSet_.size())
-              update_hash();
-          uint16_t idx = hashtable_[hash(s, key)];
-          if (!idx)
-              return NULL;
-          else if (transSet_[idx - 1].sharedObj() == s && transSet_[idx - 1].key_ == key)
-              return &transSet_[idx - 1];
-      }
-#endif
-      for (auto it = transSet_.begin() + delta; it != transSet_.end(); ++it) {
-          INC_P(txp_total_searched);
-          if (it->sharedObj() == s && it->key_ == key)
-              return &*it;
-      }
-      return NULL;
-  }
-
-private:
-  typedef int item_index_type;
-  item_index_type item_index(TransItem& ti) {
-      return &ti - transSet_.begin();
-  }
-
-  void mark_write(TransItem& ti) {
-    item_index_type idx = item_index(ti);
-    if (firstWrite_ < 0 || idx < firstWrite_)
-      firstWrite_ = idx;
-  }
-
-  bool check_for_write(const TransItem& item) const {
-    // if writeset_ is NULL, we're not in commit (just an opacity check), so no need to check our writes (we
-    // haven't locked anything yet)
-    if (!writeset_)
-      return false;
-    auto it = &item;
-    bool has_write = it->has_write();
-    if (!has_write && may_duplicate_items_) {
-      has_write = std::binary_search(writeset_, writeset_ + nwriteset_, -1, [&] (const int& i, const int& j) {
-          auto& e1 = unlikely(i < 0) ? item : transSet_[i];
-          auto& e2 = likely(j < 0) ? item : transSet_[j];
-          auto ret = likely(e1.key_ < e2.key_) || (unlikely(e1.key_ == e2.key_) && unlikely(e1.sharedObj() < e2.sharedObj()));
-#if 0
-          if (likely(i >= 0)) {
-            auto cur = &i;
-            int idx;
-            if (ret) {
-              idx = (cur - writeset_) / 2;
-            } else {
-              idx = (writeset_ + nwriteset_ - cur) / 2;
-            }
-            __builtin_prefetch(&transSet_[idx]);
-          }
-#endif
-          return ret;
-        });
-    }
-    return has_write;
-  }
-
-  public:
-  void check_reads() {
-      if (!check_reads(transSet_.begin(), transSet_.end())) {
-          abort();
-      }
-  }
-
-  private:
-  bool check_reads(const TransItem *trans_first, const TransItem *trans_last) const {
-    for (auto it = trans_first; it != trans_last; ++it)
-      if (it->has_read()) {
-        INC_P(txp_total_check_read);
-        if (!it->sharedObj()->check(*it, *this)) {
-          // XXX: only do this if we're dup'ing reads
-            for (auto jt = trans_first; jt != it; ++jt)
-                if (*jt == *it)
-                    goto ok;
-            return false;
+    ~Transaction() {
+        if (!isAborted_ && !transSet_.empty()) {
+            silent_abort();
         }
-      ok: ;
-      }
-    return true;
-  }
+        end_trans();
+    }
 
-  public:
-  bool try_commit() {
+    void end_trans() {
+        // TODO: this will probably mess up with nested transactions
+        tinfo[threadid].epoch = 0;
+        if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
+        inProgress_ = false;
+    }
+
+    // reset data so we can be reused for another transaction
+    void reset() {
+        //if (isAborted_
+        //   && tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
+           //print_stats();
+        tinfo[threadid].epoch = global_epoch;
+        if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
+        transSet_.clear();
+        writeset_ = NULL;
+        nwriteset_ = 0;
+        nhashed_ = 0;
+        may_duplicate_items_ = false;
+        isAborted_ = false;
+        firstWrite_ = -1;
+        start_tid_ = commit_tid_ = 0;
+        buf_.clear();
+        INC_P(txp_total_starts);
+        inProgress_ = true;
+    }
+
+    // adds item for a key that is known to be new (must NOT exist in the set)
+    template <typename T>
+    TransProxy new_item(Shared* s, T key) {
+        void *xkey = buf_.pack(std::move(key));
+        transSet_.emplace_back(s, xkey);
+        return TransProxy(*this, transSet_.back());
+    }
+
+    // adds item without checking its presence in the array
+    template <typename T>
+    TransProxy fresh_item(Shared *s, T key) {
+        may_duplicate_items_ = !transSet_.empty();
+        transSet_.emplace_back(s, buf_.pack_unique(std::move(key)));
+        return TransProxy(*this, transSet_.back());
+    }
+
+    // tries to find an existing item with this key, otherwise adds it
+    template <typename T>
+    TransProxy item(Shared* s, T key) {
+        void* xkey = buf_.pack_unique(std::move(key));
+        TransItem* ti = find_item(s, xkey, 0);
+        if (!ti) {
+            transSet_.emplace_back(s, xkey);
+            ti = &transSet_.back();
+        }
+        return TransProxy(*this, *ti);
+    }
+
+    // gets an item that is intended to be read only. this method essentially allows for duplicate items
+    // in the set in some cases
+    template <typename T>
+    TransProxy read_item(Shared *s, T key) {
+        void* xkey = buf_.pack_unique(std::move(key));
+        TransItem* ti = nullptr;
+        if (firstWrite_ >= 0)
+            ti = find_item(s, xkey, firstWrite_);
+        if (!ti) {
+            may_duplicate_items_ = !transSet_.empty();
+            transSet_.emplace_back(s, xkey);
+            ti = &transSet_.back();
+        }
+        return TransProxy(*this, *ti);
+    }
+
+    template <typename T>
+    OptionalTransProxy check_item(Shared* s, T key) {
+        void* xkey = buf_.pack_unique(std::move(key));
+        return OptionalTransProxy(*this, find_item(s, xkey, 0));
+    }
+
+private:
+    static int hash(Shared* s, void* key) {
+        auto n = (uintptr_t) key;
+        n += -(n <= 0xFFFF) & reinterpret_cast<uintptr_t>(s);
+        //2654435761
+        return ((n >> 4) ^ (n & 15)) % HASHTABLE_SIZE;
+    }
+
+    // tries to find an existing item with this key, returns NULL if not found
+    TransItem* find_item(Shared* s, void* key, int delta) {
+#if TRANSACTION_HASHTABLE
+        if (transSet_.size() > HASHTABLE_THRESHOLD) {
+            if (nhashed_ < transSet_.size())
+                update_hash();
+            uint16_t idx = hashtable_[hash(s, key)];
+            if (!idx)
+                return NULL;
+            else if (transSet_[idx - 1].sharedObj() == s && transSet_[idx - 1].key_ == key)
+                return &transSet_[idx - 1];
+        }
+#endif
+        for (auto it = transSet_.begin() + delta; it != transSet_.end(); ++it) {
+            INC_P(txp_total_searched);
+            if (it->sharedObj() == s && it->key_ == key)
+                return &*it;
+        }
+        return NULL;
+    }
+
+private:
+    typedef int item_index_type;
+    item_index_type item_index(TransItem& ti) {
+        return &ti - transSet_.begin();
+    }
+
+    void mark_write(TransItem& ti) {
+        item_index_type idx = item_index(ti);
+        if (firstWrite_ < 0 || idx < firstWrite_)
+          firstWrite_ = idx;
+    }
+
+    bool check_for_write(const TransItem& item) const {
+        // if writeset_ is NULL, we're not in commit (just an opacity check), so no need to check our writes (we
+        // haven't locked anything yet)
+        if (!writeset_)
+            return false;
+        auto it = &item;
+        bool has_write = it->has_write();
+        if (!has_write && may_duplicate_items_) {
+            has_write = std::binary_search(writeset_, writeset_ + nwriteset_, -1, [&] (const int& i, const int& j) {
+                auto& e1 = unlikely(i < 0) ? item : transSet_[i];
+                auto& e2 = likely(j < 0) ? item : transSet_[j];
+                auto ret = likely(e1.key_ < e2.key_) || (unlikely(e1.key_ == e2.key_) && unlikely(e1.sharedObj() < e2.sharedObj()));
+    #if 0
+              if (likely(i >= 0)) {
+                auto cur = &i;
+                int idx;
+                if (ret) {
+                  idx = (cur - writeset_) / 2;
+                } else {
+                  idx = (writeset_ + nwriteset_ - cur) / 2;
+                }
+                __builtin_prefetch(&transSet_[idx]);
+              }
+    #endif
+                return ret;
+            });
+        }
+        return has_write;
+    }
+
+public:
+    void check_reads() {
+        if (!check_reads(transSet_.begin(), transSet_.end())) {
+            abort();
+        }
+    }
+
+private:
+    bool check_reads(const TransItem *trans_first, const TransItem *trans_last) const {
+        for (auto it = trans_first; it != trans_last; ++it)
+            if (it->has_read()) {
+                INC_P(txp_total_check_read);
+                if (!it->sharedObj()->check(*it, *this)) {
+                    // XXX: only do this if we're dup'ing reads
+                    for (auto jt = trans_first; jt != it; ++jt)
+                        if (*jt == *it)
+                            goto ok;
+                    return false;
+                }
+            ok: ;
+            }
+        return true;
+    }
+
+public:
+    bool try_commit() {
 #if ASSERT_TX_SIZE
-    if (transSet_.size() > TX_SIZE_LIMIT) {
-        std::cerr << "transSet_ size at " << transSet_.size()
-            << ", abort." << std::endl;
-        assert(false);
-    }
+        if (transSet_.size() > TX_SIZE_LIMIT) {
+            std::cerr << "transSet_ size at " << transSet_.size()
+                << ", abort." << std::endl;
+            assert(false);
+        }
 #endif
-    MAX_P(txp_max_set, transSet_.size());
-    ADD_P(txp_total_n, transSet_.size());
+        MAX_P(txp_max_set, transSet_.size());
+        ADD_P(txp_total_n, transSet_.size());
 
-    if (isAborted_)
-      return false;
+        if (isAborted_)
+            return false;
 
-    bool success = true;
+        bool success = true;
 
-    if (firstWrite_ < 0)
-        firstWrite_ = transSet_.size();
+        if (firstWrite_ < 0)
+            firstWrite_ = transSet_.size();
 
-    int writeset_alloc[transSet_.size() - firstWrite_];
-    writeset_ = writeset_alloc;
-    nwriteset_ = 0;
-    for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
-
-      if (it->has_write()) {
-        writeset_[nwriteset_++] = it - transSet_.begin();
-      }
+        int writeset_alloc[transSet_.size() - firstWrite_];
+        writeset_ = writeset_alloc;
+        nwriteset_ = 0;
+        for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
+            if (it->has_write()) {
+                writeset_[nwriteset_++] = it - transSet_.begin();
+            }
 #ifdef DETAILED_LOGGING
-      if (it->has_read()) {
-        INC_P(txp_total_r);
-      }
+            if (it->has_read()) {
+                INC_P(txp_total_r);
+            }
 #endif
-    }
+        }
 
-    //phase1
+        //phase1
 #if !NOSORT
-    std::sort(writeset_, writeset_ + nwriteset_, [&] (int i, int j) {
-        return transSet_[i] < transSet_[j];
-      });
+        std::sort(writeset_, writeset_ + nwriteset_, [&] (int i, int j) {
+            return transSet_[i] < transSet_[j];
+        });
 #endif
-    TransItem* trans_first = &transSet_[0];
-    TransItem* trans_last = trans_first + transSet_.size();
+        TransItem* trans_first = &transSet_[0];
+        TransItem* trans_last = trans_first + transSet_.size();
 
-    auto writeset_end = writeset_ + nwriteset_;
-    for (auto it = writeset_; it != writeset_end; ) {
-      TransItem *me = &transSet_[*it];
-      me->sharedObj()->lock(*me);
-      ++it;
-      if (may_duplicate_items_)
-          for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
-              /* do nothing */;
-    }
+        auto writeset_end = writeset_ + nwriteset_;
+        for (auto it = writeset_; it != writeset_end; ) {
+            TransItem *me = &transSet_[*it];
+            me->sharedObj()->lock(*me);
+            ++it;
+            if (may_duplicate_items_)
+                for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
+                    /* do nothing */;
+        }
       
-    // get read versions for predicates - ideally we can combine this in phase 1
-      for (auto it = trans_first; it != trans_last; ++it) {
-          if (it->has_predicate()) {
-              it->sharedObj()->readVersion(*it, *this);
-          }
-      }
-  
+        // get read versions for predicates - ideally we can combine this in phase 1
+        for (auto it = trans_first; it != trans_last; ++it) {
+            if (it->has_predicate()) {
+                it->sharedObj()->readVersion(*it, *this);
+            }
+        }
 
 
 #if CONSISTENCY_CHECK
-    fence();
-    commit_tid();
-    fence();
+        fence();
+        commit_tid();
+        fence();
 #endif
 
-    //phase2
-    if (!check_reads(trans_first, trans_last)) {
-      success = false;
-      goto end;
+        //phase2
+        if (!check_reads(trans_first, trans_last)) {
+            success = false;
+            goto end;
+        }
+
+        //    fence();
+
+        //phase3
+        for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
+            TransItem& ti = *it;
+            if (ti.has_write()) {
+                INC_P(txp_total_w);
+                ti.sharedObj()->install(ti, *this);
+            }
+        }
+
+    end:
+        //    fence();
+
+        for (auto it = writeset_; it != writeset_end; ) {
+            TransItem *me = &transSet_[*it];
+            me->sharedObj()->unlock(*me);
+            ++it;
+            if (may_duplicate_items_)
+                for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
+                    /* do nothing */;
+        }
+
+        //    fence();
+
+        if (success) {
+            commitSuccess();
+        } else {
+            INC_P(txp_commit_time_aborts);
+            silent_abort();
+        }
+
+        // Nate: we need this line because the Transaction destructor decides
+        // whether to do an abort based on whether transSet_ is empty (meh)
+        transSet_.clear();
+        return success;
     }
 
-    //    fence();
-
-    //phase3
-    for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
-      TransItem& ti = *it;
-      if (ti.has_write()) {
-        INC_P(txp_total_w);
-        ti.sharedObj()->install(ti, *this);
-      }
+    void silent_abort() {
+        if (isAborted_)
+            return;
+        INC_P(txp_total_aborts);
+        isAborted_ = true;
+        for (auto& ti : transSet_) {
+            ti.sharedObj()->cleanup(ti, false);
+        }
+        end_trans();
     }
-
-  end:
-    //    fence();
-
-    for (auto it = writeset_; it != writeset_end; ) {
-      TransItem *me = &transSet_[*it];
-      me->sharedObj()->unlock(*me);
-      ++it;
-      if (may_duplicate_items_)
-          for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
-              /* do nothing */;
-    }
-
-    //    fence();
-
-    if (success) {
-      commitSuccess();
-    } else {
-      INC_P(txp_commit_time_aborts);
-      silent_abort();
-    }
-
-    // Nate: we need this line because the Transaction destructor decides
-    // whether to do an abort based on whether transSet_ is empty (meh)
-    transSet_.clear();
-    return success;
-  }
-
-  void silent_abort() {
-    if (isAborted_)
-      return;
-    INC_P(txp_total_aborts);
-    isAborted_ = true;
-    for (auto& ti : transSet_) {
-      ti.sharedObj()->cleanup(ti, false);
-    }
-    end_trans();
-  }
 
     void abort() {
         silent_abort();
