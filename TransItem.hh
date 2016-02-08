@@ -61,7 +61,7 @@ class TransItem {
     static constexpr flags_type pointer_mask = (flags_type(1) << 48) - 1;
     static constexpr flags_type user0_bit = flags_type(1) << 48;
     static constexpr int userf_shift = 48;
-    static constexpr flags_type shifted_userf_mask = 0x3FFF;
+    static constexpr flags_type shifted_userf_mask = 0x1FFF;
     static constexpr flags_type special_mask = pointer_mask | read_bit | write_bit | pred_bit;
 
 
