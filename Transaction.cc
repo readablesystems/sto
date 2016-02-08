@@ -105,6 +105,7 @@ bool Transaction::try_commit() {
     if (isAborted_)
         return false;
 
+    committing_ = true;
     bool success = true;
 
     if (firstWrite_ < 0)

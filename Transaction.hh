@@ -382,7 +382,7 @@ public:
         // TODO: this will probably mess up with nested transactions
         tinfo[threadid].epoch = 0;
         if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
-        inProgress_ = false;
+        inProgress_ = committing_ = false;
     }
 
     // reset data so we can be reused for another transaction
@@ -403,6 +403,7 @@ public:
         buf_.clear();
         INC_P(txp_total_starts);
         inProgress_ = true;
+        committing_ = false;
     }
 
   public:
@@ -494,13 +495,13 @@ private:
     void mark_write(TransItem& ti) {
         item_index_type idx = item_index(ti);
         if (firstWrite_ < 0 || idx < firstWrite_)
-          firstWrite_ = idx;
+            firstWrite_ = idx;
     }
 
     bool check_for_write(const TransItem& item) const {
-        // if writeset_ is NULL, we're not in commit (just an opacity check), so no need to check our writes (we
+        // if !committing_, we're not in commit (just an opacity check), so no need to check our writes (we
         // haven't locked anything yet)
-        if (!writeset_)
+        if (!committing_)
             return false;
         auto it = &item;
         bool has_write = it->has_write();
@@ -585,7 +586,7 @@ public:
 
     // opacity checking
     void check_opacity(TransactionTid::type t) {
-        assert(!writeset_);
+        assert(!committing_);
         if (!start_tid_)
             start_tid_ = _TID;
         if (!TransactionTid::try_check_opacity(start_tid_, t)) {
@@ -594,7 +595,7 @@ public:
     }
 
     tid_type commit_tid() const {
-        assert(writeset_);
+        assert(committing_);
         if (!commit_tid_)
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
@@ -615,15 +616,16 @@ private:
     bool may_duplicate_items_;
     bool isAborted_;
     uint16_t nhashed_;
-    TransactionBuffer buf_;
     local_vector<TransItem, INIT_SET_SIZE> transSet_;
     int* writeset_;
     int nwriteset_;
+    bool inProgress_;
+    bool committing_;
+    bool is_test_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
     uint16_t hashtable_[HASHTABLE_SIZE];
-    bool inProgress_;
-    bool is_test_;
+    TransactionBuffer buf_;
 
     friend class TransProxy;
     friend class TransItem;
