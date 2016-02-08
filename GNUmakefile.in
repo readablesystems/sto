@@ -7,7 +7,7 @@ CPPFLAGS = -I$(MASSTREEDIR)
 CXXFLAGS = -W -Wall
 DEPSDIR := .deps
 DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
-LIBS = @LIBS@ -lpthread -lm
+LIBS = @LIBS@ $(MASSTREEDIR)/libjson.a -lpthread -lm
 LDFLAGS = @LDFLAGS@
 MASSTREEDIR = @MASSTREEDIR@
 
@@ -44,8 +44,7 @@ libjson.a: json.o string.o straccum.o str.o msgpack.o \
 MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 	$(MASSTREEDIR)/misc.o \
 	$(MASSTREEDIR)/checkpoint.o \
-	$(MASSTREEDIR)/string_slice.o \
-	$(MASSTREEDIR)/libjson.a
+	$(MASSTREEDIR)/string_slice.o
 
 STO_OBJS = Transaction.o MassTrans.o
 
