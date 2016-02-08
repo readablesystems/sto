@@ -799,7 +799,7 @@ inline TransProxy& TransProxy::add_predicate(T rdata) {
         Transaction::max_p(txp_max_rdata_size, sizeof(T));
 #endif
         i_->__or_flags(TransItem::read_bit);
-        i_->__or_flags(TransItem::pred_bit);
+        i_->__or_flags(TransItem::predicate_bit);
         i_->rdata_ = t_->buf_.pack(std::move(rdata));
     }
     return *this;
