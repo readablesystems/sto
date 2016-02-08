@@ -208,12 +208,12 @@ public:
       // same as inserts we need to Store (copy) key so we can lookup to remove later
       item.clear_write();
       if (std::is_same<const std::string, const StringType>::value) {
-	if (CopyVals)
-	  item.add_write(key).add_flags(copyvals_bit);
-	else
-	  item.add_write(pack(key));
+        if (CopyVals)
+          item.add_write(key).add_flags(copyvals_bit);
+        else
+          item.add_write(pack(key));
       } else
-	item.add_write(std::string(key)).add_flags(copyvals_bit);
+        item.add_write(std::string(key)).add_flags(copyvals_bit);
       item.add_flags(delete_bit);
       return found;
     } else {
@@ -536,8 +536,8 @@ public:
       // (if we do it now, we take more time while holding other locks, if we wait, we make other transactions abort more
       // from looking up an invalid node)
       auto &s = item.flags() & copyvals_bit ? 
-	item.template write_value<std::string>()
-	: (std::string&)item.template write_value<void*>();
+        item.template write_value<std::string>()
+        : (std::string&)item.template write_value<void*>();
       bool success = remove(Str(s));
       // no one should be able to remove since we hold the lock
       (void)success;

@@ -285,7 +285,6 @@ public:
     return !transPut</*copyvals*/true, /*insert*/true, /*set*/false>(k, v);
   }
 
-  // aka putIfAbsent (returns true if successful)
   bool transUpdate(const Key& k, const Value& v) {
     return transPut</*copyvals*/true, /*insert*/false, /*set*/true>(k, v);
   }
@@ -547,6 +546,8 @@ public:
       buck.head = cur->next;
     }
     unlock(&buck.version);
+    // TODO(nate): we probably need to do a delete of cur->value too to actually free
+    // all memory (for non-trivial types)
     Transaction::rcu_free(cur);
   }
 
@@ -578,7 +579,7 @@ public:
   bool read(const Key& k, Value& retval) {
     auto e = find(buck_entry(k), k);
     if (e) {
-      // TODO(nate): this isn't safe for non-trivial types
+      // TODO(nate): this isn't safe for non-trivial types (need an atomic read)
       assign_val(retval, e->value);
     }
     return !!e;
@@ -591,7 +592,26 @@ public:
   static void assign_val(std::string& val, simple_str& val_to_assign) {
     val.assign(val_to_assign.data(), val_to_assign.length());
   }
-  
+
+  // returns true if inserted. otherwise return false and val is set to current value.
+  // TODO(nate): if I'm feeling generous towards boosting we could let them have a pointer
+  // into the hashtable's e->value so they don't have to do a separate malloc per-lock
+  bool putIfAbsent(const Key& k, Value& val) {
+    bool exists = false;
+    bucket_entry& buck = buck_entry(k);
+    lock(&buck.version);
+    internal_elem *e = find(buck, k);
+    if (e) {
+      assign_val(val, e->value);
+      exists = true;
+    } else {
+      insert_locked<true>(buck, k, val);
+      exists = false;
+    }
+    unlock(&buck.version);
+    return exists;
+  }
+
   // returns true if item already existed
   template <bool InsertOnly = false>
   bool put(const Key& k, const Value& val) {
