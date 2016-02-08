@@ -751,12 +751,12 @@ private:
 
 private:
 
-  void commitSuccess() {
-    for (TransItem& ti : transSet_) {
-      ti.sharedObj()->cleanup(ti, true);
+    void commitSuccess() {
+        for (TransItem& ti : transSet_) {
+            ti.sharedObj()->cleanup(ti, true);
+        }
+        end_trans();
     }
-    end_trans();
-  }
 
 private:
     int firstWrite_;
@@ -781,118 +781,99 @@ private:
 
 class Sto {
 public:
-  static __thread Transaction* __transaction;
+    static __thread Transaction* __transaction;
 
-  static void start_transaction() {
-    if (!__transaction) {
-      __transaction = new Transaction();
-    } else {
-      if (__transaction->inProgress()) {
-        assert(false);
-      } else {
-        __transaction->reset();
-      }
+    /* Only used for testing purposes */
+    static void set_transaction(Transaction* t) {
+        __transaction = t;
     }
-  }
-
-  /* Only used for testing purposes */
-  static void set_transaction(Transaction* t) {
-    __transaction = t;
-  }
-  static void clear_transaction() {
-    __transaction = NULL;
-  }
-
-  class NotInTransaction{};
-
-  static bool trans_in_progress() {
-    if (__transaction == NULL)
-      return false;
-    else
-      return __transaction->inProgress();
-  }
-
-  static void abort() {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
+    static void clear_transaction() {
+        __transaction = NULL;
     }
-    __transaction->abort();
-  }
 
-  static void silent_abort() {
-    if (trans_in_progress()) {
-      __transaction->silent_abort();
+
+    static void start_transaction() {
+        if (!__transaction) {
+            __transaction = new Transaction();
+        } else {
+            always_assert(!__transaction->inProgress());
+            __transaction->reset();
+        }
     }
-  }
 
-  template <typename T>
-  static TransProxy item(Shared* s, T key) {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
+    class NotInTransaction {};
+
+    static bool trans_in_progress() {
+        return __transaction && __transaction->inProgress();
     }
-    return __transaction->item(s, key);
-  }
 
-  static void check_opacity(TransactionTid::type t) {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
+    static void check_in_progress() {
+        if (!trans_in_progress())
+            throw NotInTransaction();
     }
-    __transaction->check_opacity(t);
-  }
 
-  static void check_reads() {
-    __transaction->check_reads();
-  }
-
-  template <typename T>
-  static OptionalTransProxy check_item(Shared* s, T key) {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
+    static void abort() {
+        check_in_progress();
+        __transaction->abort();
     }
-    return __transaction->check_item(s, key);
-  }
 
-  template <typename T>
-  static TransProxy new_item(Shared* s, T key) {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
+    static void silent_abort() {
+        if (trans_in_progress())
+            __transaction->silent_abort();
     }
-    return __transaction->new_item(s, key);
-  }
 
-  template <typename T>
-  static TransProxy read_item(Shared *s, T key) {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
+    template <typename T>
+    static TransProxy item(Shared* s, T key) {
+        check_in_progress();
+        return __transaction->item(s, key);
     }
-    return __transaction->read_item(s, key);
-  }
 
-  template <typename T>
-  static TransProxy fresh_item(Shared *s, T key) {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
+    static void check_opacity(TransactionTid::type t) {
+        check_in_progress();
+        __transaction->check_opacity(t);
     }
-    return __transaction->fresh_item(s, key);
-  }
 
-  static void commit() {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
+    static void check_reads() {
+        __transaction->check_reads();
     }
-    __transaction->commit();
-  }
 
-  static bool try_commit() {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
+    template <typename T>
+    static OptionalTransProxy check_item(Shared* s, T key) {
+        check_in_progress();
+        return __transaction->check_item(s, key);
     }
-    return __transaction->try_commit();
-  }
 
-  static TransactionTid::type commit_tid() {
-    return __transaction->commit_tid();
-  }
+    template <typename T>
+    static TransProxy new_item(Shared* s, T key) {
+        check_in_progress();
+        return __transaction->new_item(s, key);
+    }
+
+    template <typename T>
+    static TransProxy read_item(Shared *s, T key) {
+        check_in_progress();
+        return __transaction->read_item(s, key);
+    }
+
+    template <typename T>
+    static TransProxy fresh_item(Shared *s, T key) {
+        check_in_progress();
+        return __transaction->fresh_item(s, key);
+    }
+
+    static void commit() {
+        check_in_progress();
+        __transaction->commit();
+    }
+
+    static bool try_commit() {
+        check_in_progress();
+        return __transaction->try_commit();
+    }
+
+    static TransactionTid::type commit_tid() {
+        return __transaction->commit_tid();
+    }
 };
 
 class TransactionGuard {
