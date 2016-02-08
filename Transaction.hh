@@ -557,23 +557,23 @@ private:
     bool has_write = it->has_write();
     if (!has_write && may_duplicate_items_) {
       has_write = std::binary_search(writeset_, writeset_ + nwriteset_, -1, [&] (const int& i, const int& j) {
-	  auto& e1 = unlikely(i < 0) ? item : transSet_[i];
-	  auto& e2 = likely(j < 0) ? item : transSet_[j];
-	  auto ret = likely(e1.key_ < e2.key_) || (unlikely(e1.key_ == e2.key_) && unlikely(e1.sharedObj() < e2.sharedObj()));
+          auto& e1 = unlikely(i < 0) ? item : transSet_[i];
+          auto& e2 = likely(j < 0) ? item : transSet_[j];
+          auto ret = likely(e1.key_ < e2.key_) || (unlikely(e1.key_ == e2.key_) && unlikely(e1.sharedObj() < e2.sharedObj()));
 #if 0
-	  if (likely(i >= 0)) {
-	    auto cur = &i;
-	    int idx;
-	    if (ret) {
-	      idx = (cur - writeset_) / 2;
-	    } else {
-	      idx = (writeset_ + nwriteset_ - cur) / 2;
-	    }
-	    __builtin_prefetch(&transSet_[idx]);
-	  }
+          if (likely(i >= 0)) {
+            auto cur = &i;
+            int idx;
+            if (ret) {
+              idx = (cur - writeset_) / 2;
+            } else {
+              idx = (writeset_ + nwriteset_ - cur) / 2;
+            }
+            __builtin_prefetch(&transSet_[idx]);
+          }
 #endif
-	  return ret;
-	});
+          return ret;
+        });
     }
     return has_write;
   }
@@ -632,7 +632,7 @@ private:
       }
 #ifdef DETAILED_LOGGING
       if (it->has_read()) {
-	INC_P(txp_total_r);
+        INC_P(txp_total_r);
       }
 #endif
     }
@@ -640,7 +640,7 @@ private:
     //phase1
 #if !NOSORT
     std::sort(writeset_, writeset_ + nwriteset_, [&] (int i, int j) {
-	return transSet_[i] < transSet_[j];
+        return transSet_[i] < transSet_[j];
       });
 #endif
     TransItem* trans_first = &transSet_[0];
