@@ -161,9 +161,9 @@ bool Transaction::try_commit() {
 
     //phase2
     if (!check_reads(trans_first, trans_last))
-        goto end;
+        goto abort;
 
-    //    fence();
+    // fence();
 
     //phase3
     success = true;
@@ -176,14 +176,16 @@ bool Transaction::try_commit() {
         }
     }
 
-end:
     // fence();
+    stop(true);
+    return true;
 
-    if (!success) {
-        INC_P(txp_commit_time_aborts);
-    }
-    stop(success);
-    return success;
+abort:
+    // fence();
+    INC_P(txp_commit_time_aborts);
+    if (state_ == s_committing)
+        stop(false);
+    return false;
 }
 
 void Transaction::print_stats() {
