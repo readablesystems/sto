@@ -362,7 +362,7 @@ public:
   private:
     Transaction()
         : is_test_(false) {
-        state_ = s_aborted;
+        start();
     }
 
     struct testing_type {};
@@ -370,7 +370,7 @@ public:
 
     Transaction(const testing_type&)
         : is_test_(true) {
-        state_ = s_aborted;
+        start();
     }
 
     ~Transaction() { /* XXX should really be private */
@@ -646,8 +646,10 @@ public:
     static void start_transaction() {
         if (!__transaction)
             __transaction = new Transaction();
-        always_assert(!__transaction->in_progress());
-        __transaction->start();
+        else {
+            always_assert(!__transaction->in_progress());
+            __transaction->start();
+        }
     }
 
     class NotInTransaction {};
