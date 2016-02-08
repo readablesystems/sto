@@ -3,10 +3,10 @@
 Transaction::testing_type Transaction::testing;
 threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int Transaction::threadid;
-unsigned __attribute__((aligned(64))) Transaction::global_epoch;
+threadinfo_t::epoch_type __attribute__((aligned(64))) Transaction::global_epoch;
 bool Transaction::run_epochs = true;
 __thread Transaction *Sto::__transaction;
-std::function<void(unsigned)> Transaction::epoch_advance_callback;
+std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callback;
 TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = TransactionTid::valid_bit;
 
 static void __attribute__((used)) check_static_assertions() {
@@ -32,8 +32,7 @@ void* Transaction::epoch_advancer(void*) {
             acquire_spinlock(t.spin_lock);
             auto deletetil = t.callbacks.begin();
             for (auto it = t.callbacks.begin(); it != t.callbacks.end(); ++it) {
-                // TODO: check for overflow
-                if ((int)it->first <= (int)g-2) {
+                if (threadinfo_t::signed_epoch_type(g - it->first) >= 2) {
                     it->second();
                     ++deletetil;
                 } else {
@@ -46,8 +45,7 @@ void* Transaction::epoch_advancer(void*) {
             }
             auto deletetil2 = t.needs_free.begin();
             for (auto it = t.needs_free.begin(); it != t.needs_free.end(); ++it) {
-                // TODO: overflow
-                if ((int)it->first <= (int)g-2) {
+                if (threadinfo_t::signed_epoch_type(g - it->first) >= 2) {
                     free(it->second);
                     ++deletetil2;
                 } else {
@@ -106,7 +104,6 @@ bool Transaction::try_commit() {
         return state_ > s_aborted;
 
     state_ = s_committing;
-    bool success = false;
 
     if (firstWrite_ < 0)
         firstWrite_ = transSet_.size();
@@ -166,8 +163,6 @@ bool Transaction::try_commit() {
     // fence();
 
     //phase3
-    success = true;
-
     for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
         TransItem& ti = *it;
         if (ti.has_write()) {

@@ -112,10 +112,12 @@ void reportPerf();
 #define STO_SHUTDOWN() reportPerf()
 
 struct __attribute__((aligned(128))) threadinfo_t {
-    unsigned epoch;
+    typedef unsigned epoch_type;
+    typedef int signed_epoch_type;
+    epoch_type epoch;
     unsigned spin_lock;
-    local_vector<std::pair<unsigned, std::function<void(void)>>, 8> callbacks;
-    local_vector<std::pair<unsigned, void*>, 8> needs_free;
+    local_vector<std::pair<epoch_type, std::function<void(void)>>, 8> callbacks;
+    local_vector<std::pair<epoch_type, void*>, 8> needs_free;
     // XXX(NH): these should be vectors so multiple data structures can register
     // callbacks for these
     std::function<void(void)> trans_start_callback;
@@ -280,14 +282,14 @@ class Transaction {
 public:
     static threadinfo_t tinfo[MAX_THREADS];
     static __thread int threadid;
-    static unsigned global_epoch;
+    static threadinfo_t::epoch_type global_epoch;
     static bool run_epochs;
     typedef TransactionTid::type tid_type;
 private:
     static TransactionTid::type _TID;
 public:
 
-    static std::function<void(unsigned)> epoch_advance_callback;
+    static std::function<void(threadinfo_t::epoch_type)> epoch_advance_callback;
 
     static threadinfo_t tinfo_combined() {
         threadinfo_t out;
