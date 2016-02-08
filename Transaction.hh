@@ -126,7 +126,7 @@ struct __attribute__((aligned(128))) threadinfo_t {
             p_[i] = 0;
 #endif
     }
-    static bool p_is_max(int p) {
+    static bool p_combine_by_max(int p) {
         return p == txp_max_set;
     }
     unsigned long long p(int p) {
@@ -145,7 +145,7 @@ struct __attribute__((aligned(128))) threadinfo_t {
     }
     void combine_p(int p, unsigned long long n) {
         if (has_txp(p)) {
-            if (!p_is_max(p))
+            if (!p_combine_by_max(p))
                 p_[p] += n;
             else if (n > p_[p])
                 p_[p] = n;
@@ -540,8 +540,6 @@ private:
     }
 
 public:
-    bool try_commit();
-
     void silent_abort() {
         if (isAborted_)
             return;
@@ -557,6 +555,8 @@ public:
         silent_abort();
         throw Abort();
     }
+
+    bool try_commit();
 
     void commit() {
         if (!try_commit())
