@@ -359,51 +359,41 @@ public:
 
   private:
     Transaction()
-        : transSet_(), is_test_(false) {
-        reset();
+        : is_test_(false) {
+        state_ = s_aborted;
     }
 
     struct testing_type {};
     static testing_type testing;
 
     Transaction(const testing_type&)
-        : transSet_(), is_test_(true) {
-        reset();
+        : is_test_(true) {
+        state_ = s_aborted;
     }
 
     ~Transaction() { /* XXX should really be private */
-        if (!isAborted_) {
+        if (in_progress())
             silent_abort();
-        }
-    }
-
-  private:
-    void end_transaction() {
-        // TODO: this will probably mess up with nested transactions
-        tinfo[threadid].epoch = 0;
-        if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
-        inProgress_ = committing_ = false;
     }
 
     // reset data so we can be reused for another transaction
-    void reset() {
+    void start() {
         //if (isAborted_
         //   && tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
            //print_stats();
         tinfo[threadid].epoch = global_epoch;
-        if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
+        if (tinfo[threadid].trans_start_callback)
+            tinfo[threadid].trans_start_callback();
         transSet_.clear();
         writeset_ = NULL;
         nwriteset_ = 0;
         nhashed_ = 0;
         may_duplicate_items_ = false;
-        isAborted_ = false;
         firstWrite_ = -1;
         start_tid_ = commit_tid_ = 0;
         buf_.clear();
         INC_P(txp_total_starts);
-        inProgress_ = true;
-        committing_ = false;
+        state_ = s_in_progress;
     }
 
   public:
@@ -501,7 +491,7 @@ private:
     bool check_for_write(const TransItem& item) const {
         // if !committing_, we're not in commit (just an opacity check), so no need to check our writes (we
         // haven't locked anything yet)
-        if (!committing_)
+        if (state_ < s_committing)
             return false;
         auto it = &item;
         bool has_write = it->has_write();
@@ -554,14 +544,10 @@ private:
 
 public:
     void silent_abort() {
-        if (isAborted_)
-            return;
-        INC_P(txp_total_aborts);
-        isAborted_ = true;
-        for (auto& ti : transSet_) {
-            ti.sharedObj()->cleanup(ti, false);
+        if (!aborted()) {
+            INC_P(txp_total_aborts);
+            stop(false);
         }
-        end_transaction();
     }
 
     void abort() {
@@ -577,16 +563,16 @@ public:
     }
 
     bool aborted() {
-        return isAborted_;
+        return state_ == s_aborted;
     }
 
-    bool inProgress() {
-        return inProgress_;
+    bool in_progress() {
+        return state_ < s_aborted;
     }
 
     // opacity checking
     void check_opacity(TransactionTid::type t) {
-        assert(!committing_);
+        assert(state_ < s_committing);
         if (!start_tid_)
             start_tid_ = _TID;
         if (!TransactionTid::try_check_opacity(start_tid_, t)) {
@@ -595,7 +581,7 @@ public:
     }
 
     tid_type commit_tid() const {
-        assert(committing_);
+        assert(state_ == s_committing);
         if (!commit_tid_)
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
@@ -604,28 +590,33 @@ public:
     class Abort {};
 
 private:
-    void commitSuccess() {
-        for (TransItem& ti : transSet_) {
-            ti.sharedObj()->cleanup(ti, true);
-        }
-        end_transaction();
+    void stop(bool committed) {
+        for (TransItem& ti : transSet_)
+            ti.sharedObj()->cleanup(ti, committed);
+        // TODO: this will probably mess up with nested transactions
+        tinfo[threadid].epoch = 0;
+        if (tinfo[threadid].trans_end_callback)
+            tinfo[threadid].trans_end_callback();
+        state_ = s_aborted + committed;
     }
 
 private:
+    enum {
+        s_in_progress = 0, s_committing = 1, s_aborted = 2, s_committed = 3
+    };
+
     int firstWrite_;
+    uint8_t state_;
     bool may_duplicate_items_;
-    bool isAborted_;
     uint16_t nhashed_;
     local_vector<TransItem, INIT_SET_SIZE> transSet_;
     int* writeset_;
     int nwriteset_;
-    bool inProgress_;
-    bool committing_;
-    bool is_test_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
     uint16_t hashtable_[HASHTABLE_SIZE];
     TransactionBuffer buf_;
+    bool is_test_;
 
     friend class TransProxy;
     friend class TransItem;
@@ -650,18 +641,16 @@ public:
 
 
     static void start_transaction() {
-        if (!__transaction) {
+        if (!__transaction)
             __transaction = new Transaction();
-        } else {
-            always_assert(!__transaction->inProgress());
-            __transaction->reset();
-        }
+        always_assert(!__transaction->in_progress());
+        __transaction->start();
     }
 
     class NotInTransaction {};
 
     static bool trans_in_progress() {
-        return __transaction && __transaction->inProgress();
+        return __transaction && __transaction->in_progress();
     }
 
     static void check_in_progress() {
@@ -770,7 +759,7 @@ class TransactionLoopGuard {
     TransactionLoopGuard() {
     }
     ~TransactionLoopGuard() {
-        if (Sto::__transaction->inProgress())
+        if (Sto::__transaction->in_progress())
             Sto::__transaction->silent_abort();
     }
     void start() {

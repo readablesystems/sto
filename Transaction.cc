@@ -102,10 +102,10 @@ bool Transaction::try_commit() {
     MAX_P(txp_max_set, transSet_.size());
     ADD_P(txp_total_n, transSet_.size());
 
-    if (isAborted_)
-        return false;
+    if (state_ >= s_aborted)
+        return state_ > s_aborted;
 
-    committing_ = true;
+    state_ = s_committing;
     bool success = true;
 
     if (firstWrite_ < 0)
@@ -190,15 +190,11 @@ end:
     //    fence();
 
     if (success) {
-        commitSuccess();
+        stop(true);
     } else {
         INC_P(txp_commit_time_aborts);
         silent_abort();
     }
-
-    // Nate: we need this line because the Transaction destructor decides
-    // whether to do an abort based on whether transSet_ is empty (meh)
-    transSet_.clear();
     return success;
 }
 
