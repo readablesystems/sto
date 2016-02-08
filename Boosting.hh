@@ -5,6 +5,35 @@
 #include "config.h"
 #include "compiler.hh"
 
+class SpinLock {
+public:
+  typedef uint64_t lock_type;
+private:
+  lock_type lock;
+  
+  static constexpr lock_type lock_bit = lock_type(1) << (sizeof(lock_type) * 8 - 1);
+
+public:
+  SpinLock() : lock(0) {}
+
+  bool tryLock(int spin = 0) {
+    while (spin >= 0) {
+      lock_type cur = lock;
+      if (!(cur & lock_bit) && bool_cmpxchg(&lock, cur, lock_bit)) {
+        return true;
+      }
+      spin--;
+      relax_fence();
+    }
+    return false;
+  }
+
+  void unlock() {
+    fence();
+    lock = 0;
+  }
+};
+
 // nate: realized after writing this we have an rwlock.hh. But this one has 
 // support for not starving writers (which I guess could be useful), and for 
 // upgrading read -> write locks (which we probably need for boosting).
@@ -94,8 +123,6 @@ public:
         // no new readers should be adding themselves, so once this is won't go
         // back up
         if ((cur & readerMask) == 1) {
-          // don't do a read unlock because we'll already have an undo
-          // registered for that.
           acquire_fence();
           return true;
         }
@@ -119,8 +146,41 @@ public:
     //   lock and is waiting for our read to finish. In that case the answer
     //   to our question is no (it's still technically only a read lock).
     //   Chances are we'll also conflict the other upgrader so we should maybe just abort.
+
+    // might be better to just get a slightly better boosting semantics
     return (cur & write_lock_bit) && (cur & readerMask) <= 1;
+  }
+  // I'm not sure if it's actually useful to distinguish upgraded (MAYBE for optimizations?)
+  // if not we could just readUnlock in tryUpgrade and then at least we have one less weird case.
+  bool isUpgraded() {
+    lock_type cur = lock;
+    fence();
+    return (cur & write_lock_bit) && (cur & readerMask) == 1;
   }
 };
 
+
+static __thread unordered_set<SpinLock*> lockset;
+static __thread unordered_set<RWLock*> rwlockset;
+
+void releaseLocksCallback(void*, void*) {
+  for (auto lock : lockset) {
+    lock.unlock();
+  }
+  for (auto *rwlockp : rwlockset) {
+    auto& rwlock = *rwlockp;
+    // this certainly doesn't seem very safe but I think it might be
+    if (rwlock.isUpgraded()) {
+      rwlock.readUnlock();
+      rwlock.writeUnlock();
+    } else if (rwlock.isWriteLocked()) {
+      rwlock.writeUnlock();
+    } else {
+      rwlock.readUnlock();
+    }
+  }
+
+  lockset.clear();
+  rwlockset.clear();
+}
 
