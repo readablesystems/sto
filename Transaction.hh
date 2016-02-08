@@ -373,6 +373,12 @@ public:
         start();
     }
 
+    struct uninitialized {};
+    Transaction(uninitialized)
+        : is_test_(false) {
+        state_ = s_aborted;
+    }
+
     ~Transaction() { /* XXX should really be private */
         if (in_progress())
             silent_abort();
@@ -645,11 +651,9 @@ public:
 
     static void start_transaction() {
         if (!__transaction)
-            __transaction = new Transaction();
-        else {
-            always_assert(!__transaction->in_progress());
-            __transaction->start();
-        }
+            __transaction = new Transaction(Transaction::uninitialized());
+        always_assert(!__transaction->in_progress());
+        __transaction->start();
     }
 
     class NotInTransaction {};
