@@ -444,19 +444,6 @@ public:
     inProgress_ = true;
   }
 
-private:
-  void consolidateReads() {
-    // TODO: should be stable sort technically, but really we want to use insertion sort
-    auto first = transSet_.begin();
-    auto last = transSet_.end();
-    std::sort(first, last);
-    // takes the first element of any duplicates which is what we want. that is, we want to verify
-    // only the oldest read
-    transSet_.erase(std::unique(first, last), last);
-    may_duplicate_items_ = false;
-  }
-
-public:
   // adds item for a key that is known to be new (must NOT exist in the set)
   template <typename T>
   TransProxy new_item(Shared* s, T key) {
