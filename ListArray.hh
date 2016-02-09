@@ -20,6 +20,9 @@ public:
     bool inserted = list_.transInsert(KV(k, value));
     // will only be useful for very large arrays (in the random insertion case)
     // we can generalize this later by removing an existing key
+    if (!inserted) {
+      printf("Did a transWrite that resulted in a duplicate insert. This code is weird and doesn't support that--you probably just don't want to rely on this test.\n");
+    }
     assert(inserted);
   }
 
