@@ -2,8 +2,15 @@
 
 #include <assert.h>
 
+#include <unordered_set>
+
 #include "config.h"
 #include "compiler.hh"
+
+#define NO_STM
+#include "Hashtable.hh"
+
+#include "../../../tl2/stm.h"
 
 class SpinLock {
 public:
@@ -159,15 +166,30 @@ public:
   }
 };
 
+struct boosting_threadinfo {
+  std::unordered_set<SpinLock*> lockset;
+  std::unordered_set<RWLock*> rwlockset;
+};
 
-static __thread unordered_set<SpinLock*> lockset;
-static __thread unordered_set<RWLock*> rwlockset;
+#define BOOSTING_MAX_THREADS 16
+static boosting_threadinfo boosting_threads[BOOSTING_MAX_THREADS];
+
+// TODO(nate): make a Boosting.cc to create this + something that initializes it for each thread
+static __thread int boosting_threadid;
+
+// TODO(nate): ughhh
+Thread *self;
+
+static inline boosting_threadinfo& _thread() {
+  return boosting_threads[boosting_threadid];
+}
+
 
 void releaseLocksCallback(void*, void*) {
-  for (auto lock : lockset) {
-    lock.unlock();
+  for (auto *lock : _thread().lockset) {
+    lock->unlock();
   }
-  for (auto *rwlockp : rwlockset) {
+  for (auto *rwlockp : _thread().rwlockset) {
     auto& rwlock = *rwlockp;
     // this certainly doesn't seem very safe but I think it might be
     if (rwlock.isUpgraded()) {
@@ -180,29 +202,30 @@ void releaseLocksCallback(void*, void*) {
     }
   }
 
-  lockset.clear();
-  rwlockset.clear();
+  _thread().lockset.clear();
+  _thread().rwlockset.clear();
 }
 
 #define READ_SPIN 100
 #define WRITE_SPIN 100
 
-#define DO_ABORT() TxAbort(Self)
+#define DO_ABORT() STM_RESTART()
 
-#define ON_ABORT(callback, context1, context2) TxAbortHook(Self, (callback), (context1), (context2))
+#define ON_ABORT(callback, context1, context2) TxAbortHook(STM_SELF, (callback), (context1), (context2))
 
-template <typename K, unsigned Init_size = 129, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>>
+template <typename K, unsigned Init_size = 129, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
 class LockKey {
 public:
   LockKey(unsigned size = Init_size, Hash h = Hash(), Pred p = Pred()) : lockMap(size, h, p) {}
 
   void readLock(const K& key) {
     RWLock *lock = getLock(key);
-    std::tie(std::ignore, inserted) = rwlockset.insert(lock);
+    bool inserted;
+    std::tie(std::ignore, inserted) = _thread().rwlockset.insert(lock);
     // check if we already have the lock or need to get it now
     if (inserted) {
-      if (!lock.tryReadLock(READ_SPIN)) {
-        rwlockset.erase(lock);
+      if (!lock->tryReadLock(READ_SPIN)) {
+        _thread().rwlockset.erase(lock);
         DO_ABORT();
       }
     }
@@ -210,18 +233,19 @@ public:
 
   void writeLock(const K& key) {
     RWLock *lock = getLock(key);
-    std::tie(std::ignore, inserted) = rwlockset.insert(lock);
+    bool inserted;
+    std::tie(std::ignore, inserted) = _thread().rwlockset.insert(lock);
     if (inserted) {
       // don't have the lock in any form yet
-      if (!lock.tryWriteLock(WRITE_SPIN)) {
-        rwlockset.erase(lock);
+      if (!lock->tryWriteLock(WRITE_SPIN)) {
+        _thread().rwlockset.erase(lock);
         DO_ABORT();
       }
       return;
     }
     // only have a read lock so far
-    if (!lock.isWriteLocked()) {
-      if (!lock.tryUpgrade(WRITE_SPIN)) {
+    if (!lock->isWriteLocked()) {
+      if (!lock->tryUpgrade(WRITE_SPIN)) {
         DO_ABORT();
       }
     }
@@ -259,7 +283,7 @@ public:
   }
 
   virtual void _undoDelete(std::pair<Key, Value> *pair) {
-    hashtable.put(pair.key, pair.value);
+    hashtable.put(pair->key, pair->value);
     delete pair;
   }
 
