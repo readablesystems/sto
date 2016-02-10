@@ -72,13 +72,23 @@ public:
   }
 
   virtual void _undoDelete(std::pair<Key, Value> *pair) {
-    hashtable.put(pair->key, pair->value);
+    hashtable.put(pair->first, pair->second);
     delete pair;
   }
 
   virtual void _undoInsert(Key *key) {
     hashtable.remove(key);
     delete key;
+  }
+
+  bool remove(const Key& k) {
+    return hashtable.remove(k);
+  }
+  bool insert(const Key& k, const Value& val) {
+    return hashtable.insert(k, val);
+  }
+  bool read(const Key& k, Value& val) {
+    return read(k, val);
   }
 
   bool transDelete(const Key& k) {
