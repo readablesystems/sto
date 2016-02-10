@@ -1,4 +1,4 @@
-#define NO_STM
+#define STO_NO_STM
 #import "Hashtable.hh"
 
 // tests of the hashtable without STM

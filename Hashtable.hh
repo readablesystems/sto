@@ -14,7 +14,7 @@
 #endif 
 
 template <typename K, typename V, bool Opacity = false, unsigned Init_size = 129, typename W = V, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
-#ifdef NO_STM
+#ifdef STO_NO_STM
 class Hashtable {
 #else
 class Hashtable : public Shared {
@@ -34,13 +34,13 @@ private:
     Key key;
     internal_elem *next;
     Version version;
-#ifndef NO_STM
+#ifndef STO_NO_STM
     // TODO(nate): we should just stuff this in the version so we don't have to
     // deal with this.
     bool valid_;
 #endif
     Value_type value;
-#ifndef NO_STM
+#ifndef STO_NO_STM
     internal_elem(Key k, Value val) : key(k), next(NULL), version(0), valid_(false), value(val) {}
     bool& valid() {
       return valid_;
@@ -93,7 +93,7 @@ public:
     return hash(k) % nbuckets();
   }
 
-#ifndef NO_STM
+#ifndef STO_NO_STM
   // returns true if found false if not
   bool transGet(const Key& k, Value& retval) {
     bucket_entry& buck = buck_entry(k);
@@ -424,7 +424,7 @@ public:
   void rehash(unsigned ) {}
   void reserve(unsigned ) {}
 
-#endif /* NO_STM */
+#endif /* STO_NO_STM */
 
   void lock(internal_elem *el) {
     lock(&el->version);
@@ -639,7 +639,7 @@ public:
     assert(e);
     lock(&e->version);
     e->value = val;
-#ifndef NO_STM
+#ifndef STO_NO_STM
     TransactionTid::inc_invalid_version(e->version);
 #endif
     unlock(&e->version);
@@ -716,7 +716,7 @@ private:
     internal_elem *cur_head = buck.head;
     new_head->next = cur_head;
     if (markValid) {
-#ifndef NO_STM
+#ifndef STO_NO_STM
       new_head->valid() = true;
 #endif
     }

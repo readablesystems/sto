@@ -7,7 +7,7 @@
 #include "config.h"
 #include "compiler.hh"
 
-#define NO_STM
+#define STO_NO_STM
 #include "Hashtable.hh"
 
 #include "../../../tl2/stm.h"
@@ -177,9 +177,6 @@ static boosting_threadinfo boosting_threads[BOOSTING_MAX_THREADS];
 // TODO(nate): make a Boosting.cc to create this + something that initializes it for each thread
 static __thread int boosting_threadid;
 
-// TODO(nate): ughhh
-Thread *self;
-
 static inline boosting_threadinfo& _thread() {
   return boosting_threads[boosting_threadid];
 }
@@ -209,9 +206,9 @@ void releaseLocksCallback(void*, void*) {
 #define READ_SPIN 100
 #define WRITE_SPIN 100
 
-#define DO_ABORT() STM_RESTART()
+#define DO_ABORT() TxAbort(STM_CUR_SELF)
 
-#define ON_ABORT(callback, context1, context2) TxAbortHook(STM_SELF, (callback), (context1), (context2))
+#define ON_ABORT(callback, context1, context2) TxAbortHook(STM_CUR_SELF, (callback), (context1), (context2))
 
 template <typename K, unsigned Init_size = 129, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
 class LockKey {
