@@ -2,6 +2,10 @@
 #include <iostream>
 #include "Interface.hh"
 
+// TODO(nate): ugh. really we should have a MassTrans subclass of this with the
+// deallocate_rcu functions so we 1) don't have to include Masstree headers in
+// nearly everything STO-related and 2) don't accidentally call a Masstree
+// function (deallocate_rcu) in some other context.
 #include "kvthread.hh"
 
 template <typename T, typename=void>
