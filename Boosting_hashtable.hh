@@ -55,8 +55,19 @@ private:
   }
 };
 
+class TransHashtableUndo {
+public:
+  virtual ~TransHashtableUndo() {}
+  virtual void _undoDelete(void *c1, void *c2) = 0;
+  virtual void _undoInsert(void *c1, void *c2) = 0;
+};
+
+void _undoDel(void *self, void *c1, void *c2);
+void _undoIns(void *self, void *c1, void *c2);
+
+
 template <typename K, typename V, unsigned Init_size = 129, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
-class TransHashtable {
+  class TransHashtable : public TransHashtableUndo {
   Hashtable<K, V, true, Init_size, V, Hash, Pred> hashtable;
   LockKey<K, Init_size, Hash, Pred> lockKey;
 
@@ -71,16 +82,6 @@ public:
     return hashtable.read(k, retval);
   }
 
-  virtual void _undoDelete(std::pair<Key, Value> *pair) {
-    hashtable.put(pair->first, pair->second);
-    delete pair;
-  }
-
-  virtual void _undoInsert(Key *key) {
-    hashtable.remove(key);
-    delete key;
-  }
-
   bool remove(const Key& k) {
     return hashtable.remove(k);
   }
@@ -89,6 +90,22 @@ public:
   }
   bool read(const Key& k, Value& val) {
     return hashtable.read(k, val);
+  }
+
+  virtual void _undoDelete(void *c1, void *c2) {
+    Key *key = (Key*)c1;
+    Value *val = (Value*)c2;
+    bool inserted = hashtable.insert(*key, *val);
+    assert(inserted);
+    delete key;
+    delete val;
+  }
+  
+  virtual void _undoInsert(void *c1, void *c2) {
+    Key *key = (Key*)c1;
+    bool success = hashtable.remove(*key);
+    assert(success);
+    delete key;
   }
 
   bool transDelete(const Key& k) {
@@ -100,9 +117,7 @@ public:
     bool success = hashtable.remove(k);
     assert(success);
 
-    auto *pair = new std::pair<Key, Value>(k, std::move(oldval));
-
-    //    ON_ABORT(&TransHashtable::_undoDelete, this, pair);
+    ON_ABORT(_undoDel, this, new Key(k), new Value(std::move(oldval)));
 
     return success;
   }
@@ -112,7 +127,7 @@ public:
     bool success = hashtable.insert(k, val);
     
     if (success) {
-      //    ON_ABORT(Hashtable::remove, this, k);
+      ON_ABORT(_undoIns, this, new Key(k), NULL);
     }
 
     return success;

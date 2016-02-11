@@ -1,18 +1,19 @@
 #include "Boosting.hh"
+#include "Boosting_hashtable.hh"
 
 boosting_threadinfo boosting_threads[BOOSTING_MAX_THREADS];
 __thread int boosting_threadid;
 
 void boosting_txStartHook() {
-  POST_COMMIT(boosting_releaseLocksCallback, NULL, NULL);
-  ON_ABORT(boosting_releaseLocksCallback, NULL, NULL);
+  POST_COMMIT(boosting_releaseLocksCallback, NULL, NULL, NULL);
+  ON_ABORT(boosting_releaseLocksCallback, NULL, NULL, NULL);
 }
 
 void boosting_setThreadID(int threadid) {
   boosting_threadid = threadid;
 }
 
-void boosting_releaseLocksCallback(void*, void*) {
+void boosting_releaseLocksCallback(void*, void*, void*) {
   for (auto *lock : _thread().lockset) {
     lock->unlock();
   }
@@ -33,3 +34,10 @@ void boosting_releaseLocksCallback(void*, void*) {
   _thread().rwlockset.clear();
 }
 
+// TODO: should probably go in Boosting_hashtable.cc or something
+void _undoDel(void *self, void *c1, void *c2) {
+  ((TransHashtableUndo*)self)->_undoDelete(c1, c2);
+}
+void _undoIns(void *self, void *c1, void *c2) {
+  ((TransHashtableUndo*)self)->_undoInsert(c1, c2);
+}

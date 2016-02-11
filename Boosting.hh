@@ -31,13 +31,13 @@ void boosting_txStartHook();
 
 void boosting_setThreadID(int threadid);
 
-void boosting_releaseLocksCallback(void*, void*);
+void boosting_releaseLocksCallback(void*, void*, void*);
 
 #define READ_SPIN 100
 #define WRITE_SPIN 100
 
 #define DO_ABORT() TxAbort(STM_CUR_SELF)
 
-#define POST_COMMIT(callback, context1, context2) TxPostCommitHook(STM_CUR_SELF, (callback), (context1), (context2))
-#define ON_ABORT(callback, context1, context2) TxAbortHook(STM_CUR_SELF, (callback), (context1), (context2))
+#define POST_COMMIT(callback, context1, context2, context3) TxPostCommitHook(STM_CUR_SELF, (callback), (context1), (context2), (context3))
+#define ON_ABORT(callback, context1, context2, context3) TxAbortHook(STM_CUR_SELF, (callback), (context1), (context2), (context3))
 
