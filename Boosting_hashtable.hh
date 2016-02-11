@@ -93,19 +93,19 @@ public:
   }
 
   virtual void _undoDelete(void *c1, void *c2) {
-    Key *key = (Key*)c1;
-    Value *val = (Value*)c2;
-    bool inserted = hashtable.insert(*key, *val);
+    Key key = (Key)c1;
+    Value val = (Value)c2;
+    bool inserted = hashtable.insert(key, val);
     assert(inserted);
-    delete key;
-    delete val;
+    //    delete key;
+    //    delete val;
   }
   
   virtual void _undoInsert(void *c1, void *c2) {
-    Key *key = (Key*)c1;
-    bool success = hashtable.remove(*key);
+    Key key = (Key)c1;
+    bool success = hashtable.remove(key);
     assert(success);
-    delete key;
+    //    delete key;
   }
 
   bool transDelete(const Key& k) {
@@ -117,7 +117,7 @@ public:
     bool success = hashtable.remove(k);
     assert(success);
 
-    ON_ABORT(_undoDel, this, new Key(k), new Value(std::move(oldval)));
+    ON_ABORT(_undoDel, this, k, oldval);
 
     return success;
   }
@@ -127,7 +127,7 @@ public:
     bool success = hashtable.insert(k, val);
     
     if (success) {
-      ON_ABORT(_undoIns, this, new Key(k), NULL);
+      ON_ABORT(_undoIns, this, k, NULL);
     }
 
     return success;
