@@ -88,7 +88,7 @@ public:
     return hashtable.insert(k, val);
   }
   bool read(const Key& k, Value& val) {
-    return read(k, val);
+    return hashtable.read(k, val);
   }
 
   bool transDelete(const Key& k) {
