@@ -602,10 +602,11 @@ void testIteratorBetterSemantics() {
     TestTransaction t2;
     f.push_back(12);
     assert(t2.try_commit());
+    t1.use();
     int x = *it;
     assert(t1.try_commit());
     assert(x == 5);
-    
+
     printf("PASS: IteratorBetterSemantics\n");
 
 }
