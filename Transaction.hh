@@ -358,16 +358,15 @@ public:
 
   private:
     Transaction()
-        : transSet_() {
+        : transSet_(), is_test_(false) {
         reset();
     }
 
-  public:
     struct testing_type {};
     static testing_type testing;
 
     Transaction(const testing_type&)
-        : transSet_() {
+        : transSet_(), is_test_(true) {
         reset();
     }
 
@@ -623,10 +622,12 @@ private:
     mutable tid_type commit_tid_;
     uint16_t hashtable_[HASHTABLE_SIZE];
     bool inProgress_;
+    bool is_test_;
 
     friend class TransProxy;
     friend class TransItem;
     friend class Sto;
+    friend class TestTransaction;
     void hard_check_opacity(TransactionTid::type t);
     void update_hash();
 };
@@ -727,6 +728,28 @@ public:
     static TransactionTid::type commit_tid() {
         return __transaction->commit_tid();
     }
+};
+
+class TestTransaction {
+public:
+    TestTransaction()
+        : t_(Transaction::testing), base_(Sto::__transaction) {
+        use();
+    }
+    ~TestTransaction() {
+        if (base_ && !base_->is_test_)
+            Sto::__transaction = base_;
+    }
+    void use() {
+        Sto::__transaction = &t_;
+    }
+    bool try_commit() {
+        use();
+        return t_.try_commit();
+    }
+private:
+    Transaction t_;
+    Transaction* base_;
 };
 
 class TransactionGuard {

@@ -65,17 +65,16 @@ void testConflictingIter() {
         f.write(i, i);
     }
 
-    Transaction t(Transaction::testing);
-    Sto::set_transaction(&t);
-    std::max_element(f.begin(), f.end());
+    {
+        TestTransaction t;
+        std::max_element(f.begin(), f.end());
 
-    Transaction t1(Transaction::testing);
-    Sto::set_transaction(&t1);
-    f.transWrite(4, 10);
-    assert(t1.try_commit());
-    assert(!t.try_commit());
-    printf("PASS: conflicting array max_element test\n");
-    
+        TestTransaction t1;
+        f.transWrite(4, 10);
+        assert(t1.try_commit());
+        assert(!t.try_commit());
+        printf("PASS: conflicting array max_element test\n");
+    }
 }
 
 void testModifyingIter() {
@@ -104,16 +103,16 @@ void testConflictingModifyIter1() {
         f.write(i, i);
     }
     
-    Transaction t(Transaction::testing);
-    Sto::set_transaction(&t);
-    std::replace(f.begin(), f.end(), 4, 6);
+    {
+        TestTransaction t;
+        std::replace(f.begin(), f.end(), 4, 6);
     
-    Transaction t1(Transaction::testing);
-    Sto::set_transaction(&t1);
-    f.transWrite(4, 10);
-    assert(t1.try_commit());
-    
-    assert(!t.try_commit());
+        TestTransaction t1;
+        f.transWrite(4, 10);
+
+        assert(t1.try_commit());
+        assert(!t.try_commit());
+    }
 
     {
         TransactionGuard t2;
@@ -155,16 +154,16 @@ void testConflictingModifyIter3() {
         f.write(i, i);
     }
     
-    Transaction t1(Transaction::testing);
-    Sto::set_transaction(&t1);
-    f.transRead(4);
+    {
+        TestTransaction t1;
+        f.transRead(4);
     
-    Transaction t(Transaction::testing);
-    Sto::set_transaction(&t);
-    std::replace(f.begin(), f.end(), 4, 6);
-    assert(t.try_commit());
-    
-    assert(!t1.try_commit());
+        TestTransaction t;
+        std::replace(f.begin(), f.end(), 4, 6);
+
+        assert(t.try_commit());
+        assert(!t1.try_commit());
+    }
 
     {
         TransactionGuard t2;
@@ -177,13 +176,13 @@ void testConflictingModifyIter3() {
 
 
 int main() {
-	testSimpleInt();
-	testSimpleString();
+    testSimpleInt();
+    testSimpleString();
     testIter();
     testConflictingIter();
     testModifyingIter();
     testConflictingModifyIter1();
     testConflictingModifyIter2();
     testConflictingModifyIter3();
-	return 0;
+    return 0;
 }
