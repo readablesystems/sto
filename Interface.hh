@@ -15,7 +15,12 @@ public:
     static constexpr type valid_bit = type(2);
     static constexpr type user_bit1 = type(4);
     static constexpr type user_bit2 = type(8);
-    static constexpr type increment_value = type(32);
+    static constexpr type user_bit3 = type(16);
+    static constexpr type user_bit4 = type(32);
+    static constexpr type user_bit5 = type(64);
+    static constexpr type user_shift = type(2);
+    static constexpr type user_mask = type(user_bit1|user_bit2|user_bit3|user_bit4|user_bit5);
+    static constexpr type increment_value = type(128);
 
     static bool is_locked(type v) {
         return v & lock_bit;

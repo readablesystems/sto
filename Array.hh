@@ -4,6 +4,7 @@
 #include <mutex>
 #include <iostream>
 
+#include "config.h"
 #include "compiler.hh"
 
 #include "Transaction.hh"
