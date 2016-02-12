@@ -582,7 +582,6 @@ void testUpdatePop() {
     }
 }
 
-
 void testIteratorBetterSemantics() {
     Vector<int> f;
     
@@ -591,14 +590,21 @@ void testIteratorBetterSemantics() {
             f.push_back(i);
         }
     } RETRY(false);
-    
+
     TestTransaction t1;
-    std::find(f.begin(), f.end(), 5);
-    
+    // XXX std::find uses a special case for random-access iterators
+    // that calls size()
+    Vector<int>::iterator it;
+    for (it = f.begin(); it != f.end(); ++it)
+        if (*it == 5)
+            break;
+
     TestTransaction t2;
     f.push_back(12);
     assert(t2.try_commit());
+    int x = *it;
     assert(t1.try_commit());
+    assert(x == 5);
     
     printf("PASS: IteratorBetterSemantics\n");
 
@@ -609,14 +615,14 @@ void testIteratorBetterSemantics() {
 
 
 int main() {
-	testSimpleInt();
+    testSimpleInt();
     testWriteNPushBack();
     testPushBack();
     testPushBackNRead();
     testPushBackNRead1();
     testPushBackNRead2();
     testPushBackNWrite();
-	testSimpleString();
+    testSimpleString();
     testIter();
     testConflictingIter();
     testModifyingIter();
@@ -634,5 +640,5 @@ int main() {
     testMulPushPops1();
     testUpdatePop();
     testIteratorBetterSemantics();
-	return 0;
+    return 0;
 }

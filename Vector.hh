@@ -148,7 +148,7 @@ public:
             }
         }
         // add vecversion_ to the read set
-        auto vecitem = vector_item().add_read(vecversion_);
+        auto vecitem = add_vector_version(vecversion_);
         acquire_fence();
         size_type size = size_;
         acquire_fence();
@@ -188,7 +188,7 @@ public:
     }
     
     size_t transSize() {
-        vector_item().add_read(vecversion_);
+        add_vector_version(vecversion_);
         acquire_fence();
         return size_ + trans_size_offs();
     }
@@ -271,7 +271,7 @@ public:
             
             auto extra_items = Sto::item(this, push_back_key);
             // We need to register the vecversion_ to invalidate other concurrent push_backs.
-            vector_item().add_read(ver);
+            add_vector_version(vecversion_);
             if (extra_items.has_write()) {
                 if (is_list(extra_items)) {
                     auto& write_list= extra_items.template write_value<std::vector<T>>();
@@ -320,7 +320,7 @@ public:
             
             auto extra_items = Sto::item(this, push_back_key);
             // We need to register the vecversion_ to invalidate other concurrent push_backs.
-            vector_item().add_read(ver);
+            add_vector_version(ver);
             if (extra_items.has_write()) {
                 if (is_list(extra_items)) {
                     auto& write_list= extra_items.template write_value<std::vector<T>>();
@@ -376,11 +376,6 @@ public:
         resize_lock_.read_unlock();
     }
 
-    TransProxy vector_item() {
-        // can switch this to fresh_item to not read our writes
-        return Sto::item(this, vector_key);
-    }
-
     void add_trans_size_offs(int size_offs) {
         // TODO: it would be more efficient to store this directly in Transaction,
         // since the "key" is fixed (rather than having to search the transset each time)
@@ -401,8 +396,17 @@ public:
         return 0;
     }
 
+    TransProxy vector_item() {
+        // can switch this to fresh_item to not read our writes
+        return Sto::item(this, vector_key);
+    }
+
     void add_lock_vector_item() {
         vector_item().add_write(0);
+    }
+
+    TransProxy add_vector_version(Version ver) {
+        return vector_item().add_read(ver);
     }
 
     bool check_predicate(TransItem& item, Transaction&) {
@@ -432,6 +436,9 @@ public:
         }
         if (item.key<int>() == vector_key || item.key<int>() == push_back_key) {
             auto lv = vecversion_;
+            if (!(TransactionTid::same_version(lv, item.template read_value<Version>())
+                  && (!is_locked(lv) || item.has_lock(trans))))
+                fprintf(stderr, "fail version check %d/%d\n", (int) lv, (int) item.template read_value<Version>());
             return TransactionTid::same_version(lv, item.template read_value<Version>())
                 && (!is_locked(lv) || item.has_lock(trans));
         }
@@ -545,14 +552,15 @@ public:
         }
     }
 
-    iterator begin() { return iterator(this, 0, false); }
+    iterator begin() {
+        return iterator(this, 0, false);
+    }
     iterator end() {
         //vector_item().add_read(vecversion_);// to invalidate size changes after this call.
         //acquire_fence();
         return iterator(this, 0, true);
     }
-    
-    
+
     // Extra methods used by concurrent.cc
     value_type transRead(const key_type& i){
         if (i >= size_ + trans_size_offs()) { // TODO: this isn't totally right
@@ -626,6 +634,7 @@ public:
     typedef T value_type;
     typedef T_wrapper<T, Opacity, Elem> wrapper;
     typedef VecIterator<T, Opacity, Elem> iterator;
+    VecIterator() = default;
     VecIterator(Vector<T, Opacity, Elem> * arr, int ptr, bool endy) : myArr(arr), myPtr(ptr), endy(endy) { }
     VecIterator(const VecIterator& itr) : myArr(itr.myArr), myPtr(itr.myPtr), endy(itr.endy) {}
     
@@ -637,10 +646,11 @@ public:
     }
     
     bool operator==(iterator other) const {
-        if (myArr != other.myArr) return false;
-        if (endy == other.endy) {
+        if (myArr != other.myArr)
+            return false;
+        else if (endy == other.endy)
             return myPtr == other.myPtr;
-        } else {
+        else {
             size_t sz = endy ? other.myPtr - myPtr : myPtr - other.myPtr;
             return myArr->checkSize(sz);
         }
