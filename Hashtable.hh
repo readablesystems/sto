@@ -377,46 +377,39 @@ public:
     }
     return v;
   }
-  Value transRead_nocheck(Transaction& , Key ) { return Value(); }
-  void transWrite_nocheck(Transaction& , Key , Value ) {}
+  Value transRead_nocheck(Transaction&, Key) { return Value(); }
+  void transWrite_nocheck(Transaction&, Key, Value) {}
   Value read(Key k) {
-    Transaction t;
-    Value v = transRead(k);
-    t.commit();
-    return v;
+    TransactionGuard t;
+    return transRead(k);
   }
   void insert(Key k, Value v) {
-    Transaction t;
-    transInsert(t, k, v);
-    t.commit();
+    TransactionGuard t;
+    transInsert(k, v);
   }
   void erase(Key ) {}
   void update(Key k, Value v) {
-    Transaction t;
-    transUpdate(t, k, v);
-    t.commit();
+    TransactionGuard t;
+    transUpdate(k, v);
   }
   template <typename F>
   void update_fn(Key k, F f) {
-    Transaction t;
-    transUpdate(t, k, f(transRead(t, k)));
-    t.commit();
+    TransactionGuard t;
+    transUpdate(k, f(transRead(t, k)));
   }
   template <typename F>
   void upsert(Key k, F f, Value v) {
-    Transaction t;
+    TransactionGuard t;
     Value cur;
-    if (transGet(t, k, cur)) {
-      transUpdate(t, k, f(cur));
+    if (transGet(k, cur)) {
+      transUpdate(k, f(cur));
     } else {
-      transInsert(t, k, v);
+      transInsert(k, v);
     }
-    t.commit();
   }
   void find(Key k, Value& v) {
-    Transaction t;
-    transGet(t, k, v);
-    t.commit();
+    TransactionGuard t;
+    transGet(k, v);
   }
   Value find(Key k) {
     return read(k);

@@ -205,8 +205,7 @@ void queueTests() {
     // NONEMPTY TESTS
     {
         // ensure pops read pushes in FIFO order
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         // q is empty
         q.push(1);
         q.push(2);
@@ -214,31 +213,25 @@ void queueTests() {
         q.pop();
         assert(q.top() == 1);
         q.pop();
-        assert(t.try_commit());
     }
     
     {
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         // q is empty
         q.push(1);
         q.push(2);
-        assert(t.try_commit());
     }
     
     {
         // front with no pops
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         assert(q.top() == 2);
         assert(q.top() == 2);
-        assert(t.try_commit());
     }
     
     {
         // pop until empty
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         q.pop();
         q.pop(); // After this, queue is empty
         
@@ -246,13 +239,11 @@ void queueTests() {
         q.push(1);
         q.push(2);
         q.push(3);
-        assert(t.try_commit());
     }
     
     {
         // fronts intermixed with pops
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         assert(q.top() == 3);
         q.pop();
         assert(q.top() == 2);
@@ -265,25 +256,21 @@ void queueTests() {
         q.push(1);
         q.push(2);
         q.push(3);
-        assert(t.try_commit());
     }
     
     {
         // front intermixed with pushes on nonempty
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         assert(q.top() == 3);
         assert(q.top() == 3);
         q.push(4);
         assert(q.top() == 4);
-        assert(t.try_commit());
     }
     
     {
         // pops intermixed with pushes and front on nonempty
         // q = [4 3 2 1]
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         q.pop();
         assert(q.top() == 3);
         q.push(5);
@@ -292,14 +279,12 @@ void queueTests() {
         assert(q.top() == 3);
         q.push(6);
         // q = [6 3 2 1]
-        assert(t.try_commit());
     }
     
     // EMPTY TESTS
     {
         // front with empty queue
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         // empty the queue
         q.pop();
         q.pop();
@@ -312,13 +297,11 @@ void queueTests() {
         q.push(1);
         assert(q.top() == 1);
         assert(q.top() == 1);
-        assert(t.try_commit());
     }
     
     {
         // pop with empty queue
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         // empty the queue
         q.pop();
         //q.pop();
@@ -328,13 +311,11 @@ void queueTests() {
         q.push(1);
         q.pop();
         //q.pop();
-        assert(t.try_commit());
     }
     
     {
         // pop and front with empty queue
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         //q.top();
         
         q.push(1);
@@ -349,15 +330,13 @@ void queueTests() {
         // add items for next test
         q.push(1);
         q.push(2);
-        
-        assert(t.try_commit());
     }
     
     // CONFLICTING TRANSACTIONS TEST
     {
         // test abortion due to pops
-        Transaction t1;
-        Transaction t2;
+        Transaction t1(Transaction::testing);
+        Transaction t2(Transaction::testing);
         // q has >1 element
         Transaction::threadid = 0;
         Sto::set_transaction(&t1);
@@ -378,8 +357,8 @@ void queueTests() {
     
     {
         // test nonabortion T1 pops, T2 pushes on nonempty q
-        Transaction t1;
-        Transaction t2;
+        Transaction t1(Transaction::testing);
+        Transaction t2(Transaction::testing);
         // q has 1 element
         Transaction::threadid = 0;
         Sto::set_transaction(&t1);
@@ -397,26 +376,22 @@ void queueTests() {
         assert(t1.try_commit());
         Transaction::threadid = 1;
         assert(aborted); // TODO: this also depends on queue implementation
-        
-        Transaction t3;
-        Sto::set_transaction(&t3);
+    }
+    {
+        TransactionGuard t3;
         q.push(3);
-        assert(t3.try_commit());
-        
     }
 
     {
-        Transaction t1;
-        Sto::set_transaction(&t1);
+        TransactionGuard t1;
         assert(q.top() == 3);
         q.pop(); // q is empty after this
-        assert(t1.try_commit());
     }
     
     {
         // test abortion due to empty q pops
-        Transaction t1;
-        Transaction t2;
+        Transaction t1(Transaction::testing);
+        Transaction t2(Transaction::testing);
         // q has 0 elements
         Transaction::threadid = 0;
         Sto::set_transaction(&t1);
@@ -440,19 +415,17 @@ void queueTests() {
     }
     
     {
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         q.pop();
         q.pop();
         q.push(1);
         q.push(2);
-        assert(t.try_commit());
     }
     
     {
         // test nonabortion T1 pops/fronts and pushes, T2 pushes on nonempty q
-        Transaction t1;
-        Transaction t2;
+        Transaction t1(Transaction::testing);
+        Transaction t2(Transaction::testing);
         
         // q has 2 elements [2, 1]
         Sto::set_transaction(&t1);
@@ -468,34 +441,34 @@ void queueTests() {
         q.push(3);
         // order of pushes doesn't matter, commits succeed
         assert(t2.try_commit());
-        
+    }
+
+    {
         // check if q is in order
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         assert(q.top() == 3);
         q.pop();
         assert(q.top() == 2);
         q.pop();
         assert(q.top() == 1);
         q.pop();
-        assert(t.try_commit());
     }
     
     {
-        Transaction t;
+        TransactionGuard t;
         Transaction::threadid = 0;
-        Sto::set_transaction(&t);
         q.push(10);
         q.push(4);
         q.push(5);
-        assert(t.try_commit());
-        
-        Transaction t1;
+    }
+
+    {
+        Transaction t1(Transaction::testing);
         Sto::set_transaction(&t1);
         q.pop();
         q.push(20);
         
-        Transaction t2;
+        Transaction t2(Transaction::testing);
         Transaction::threadid = 1;
         Sto::set_transaction(&t2);
         bool aborted = false;
@@ -511,12 +484,12 @@ void queueTests() {
     }
     
     {
-        Transaction t;
+        Transaction t(Transaction::testing);
         Transaction::threadid = 0;
         Sto::set_transaction(&t);
         q.top();
         
-        Transaction t1;
+        Transaction t1(Transaction::testing);
         Transaction::threadid = 1;
         Sto::set_transaction(&t1);
         q.push(100);
@@ -530,23 +503,21 @@ void queueTests() {
     
     {
         // prepare queue for next test
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         q.pop();
         q.pop();
         q.pop();
         q.pop();
         q.push(5);
-        assert(t.try_commit());
     }
     
     {
-        Transaction t;
+        Transaction t(Transaction::testing);
         Sto::set_transaction(&t);
         q.top(); // gets 5
         q.push(10);
         
-        Transaction t1;
+        Transaction t1(Transaction::testing);
         Sto::set_transaction(&t1);
         q.push(7);
         assert(t1.try_commit());
@@ -557,19 +528,17 @@ void queueTests() {
     
     {
         // prepare queue for next test
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         q.pop();
         q.pop();
-        assert(t.try_commit());
     }
     
     {
-        Transaction t;
+        Transaction t(Transaction::testing);
         Sto::set_transaction(&t);
         q.pop(); // poping froming an empty queue
         
-        Transaction t1;
+        Transaction t1(Transaction::testing);
         Sto::set_transaction(&t1);
         q.push(4);
         assert(t1.try_commit());
@@ -579,18 +548,18 @@ void queueTests() {
     }
     
     {
-        Transaction t;
+        Transaction t(Transaction::testing);
         Transaction::threadid = 0;
         Sto::set_transaction(&t);
         assert(q.top() == 4);
         
-        Transaction t1;
+        Transaction t1(Transaction::testing);
         Transaction::threadid = 1;
         Sto::set_transaction(&t1);
         q.push(6);
         assert(t1.try_commit());
         
-        Transaction t2;
+        Transaction t2(Transaction::testing);
         Sto::set_transaction(&t2);
         q.pop();
         
@@ -606,12 +575,12 @@ void queueTests() {
 
     
     {
-        Transaction t;
+        Transaction t(Transaction::testing);
         Transaction::threadid = 0;
         Sto::set_transaction(&t);
         assert(q.top() == 4);
         
-        Transaction t1;
+        Transaction t1(Transaction::testing);
         Transaction::threadid = 1;
         Sto::set_transaction(&t1);
         q.push(6);

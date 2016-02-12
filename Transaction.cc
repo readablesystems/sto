@@ -1,5 +1,6 @@
 #include "Transaction.hh"
 
+Transaction::testing_type Transaction::testing;
 threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int Transaction::threadid;
 unsigned __attribute__((aligned(64))) Transaction::global_epoch;

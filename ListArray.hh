@@ -35,10 +35,9 @@ public:
   }
 
   T read(int k) {
-    Transaction t;
+    TransactionGuard t;
     auto ret = transRead(k);
     assert(false);
-    assert(t.try_commit());
     return ret;
   }
 

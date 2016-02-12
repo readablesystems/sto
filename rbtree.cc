@@ -20,19 +20,17 @@ void rbaccount_report() {
 typedef RBTree<int, int> tree_type;
 // initialize the tree: contains (1,1), (2,2), (3,3)
 void reset_tree(tree_type& tree) {
-    Transaction init;
+    TransactionGuard init;
     // initialize the tree: contains (1,1), (2,2), (3,3)
-    Sto::set_transaction(&init);
     tree[1] = 1;
     tree[2] = 2;
     tree[3] = 3;
-    assert(init.try_commit());
 }
 /**** update <-> update conflict; update <-> erase; update <-> count counflicts ******/
 void update_conflict_tests() {
     {
         tree_type tree;
-        Transaction t1, t2;
+        Transaction t1(Transaction::testing), t2(Transaction::testing);
         Sto::set_transaction(&t1);
         tree[55] = 56;
         tree[57] = 58;
@@ -49,7 +47,7 @@ void erase_conflict_tests() {
     {
         // t1:count - t1:erase - t2:count - t1:commit - t2:abort
         tree_type tree;
-        Transaction t1, t2, after;
+        Transaction t1(Transaction::testing), t2(Transaction::testing), after(Transaction::testing);
         reset_tree(tree);
         Sto::set_transaction(&t1);
         assert(tree.count(1) == 1);
@@ -68,7 +66,7 @@ void erase_conflict_tests() {
     {
         // t1:count - t1:erase - t2:count - t2:commit - t1:commit
         tree_type tree;
-        Transaction t1, t2, after;
+        Transaction t1(Transaction::testing), t2(Transaction::testing), after(Transaction::testing);
         reset_tree(tree);
         Sto::set_transaction(&t1);
         assert(tree.count(1) == 1);
@@ -86,7 +84,7 @@ void erase_conflict_tests() {
     {
         // t1:count - t1:erase - t1:count - t2:erase - t2:commit - t1:abort
         tree_type tree;
-        Transaction t1, t2, after;
+        Transaction t1(Transaction::testing), t2(Transaction::testing), after(Transaction::testing);
         reset_tree(tree);
         Sto::set_transaction(&t1);
         assert(tree.count(1) == 1);
@@ -105,7 +103,7 @@ void erase_conflict_tests() {
     {
         // t1:count - t1:erase - t1:count - t2:erase - t1:commit - t2:abort XXX technically t2 doesn't have to abort?
         tree_type tree;
-        Transaction t1, t2, after;
+        Transaction t1(Transaction::testing), t2(Transaction::testing), after(Transaction::testing);
         reset_tree(tree);
         Sto::set_transaction(&t1);
         assert(tree.count(1) == 1);
@@ -127,7 +125,7 @@ int main() {
     // test single-threaded operations
     {
         tree_type tree;
-        Transaction t;
+        Transaction t(Transaction::testing);
         Sto::set_transaction(&t);
         // read_my_inserts
         for (int i = 0; i < 100; ++i) {

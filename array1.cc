@@ -8,34 +8,34 @@
 void testSimpleInt() {
 	Array1<int, 100> f;
 
-	Transaction t;
-  Sto::set_transaction(&t);
-	f.transWrite(1, 100);
-	assert(t.try_commit());
+        {
+            TransactionGuard t;
+            f.transWrite(1, 100);
+        }
 
-	Transaction t2;
-  Sto::set_transaction(&t2);
-	int f_read = f.transRead(1);
+	{
+            TransactionGuard t2;
+            int f_read = f.transRead(1);
+            assert(f_read == 100);
+        }
 
-	assert(f_read == 100);
-	assert(t2.try_commit());
 	printf("PASS: testSimpleInt\n");
 }
 
 void testSimpleString() {
 	Array1<std::string, 100> f;
 
-	Transaction t;
-  Sto::set_transaction(&t);
-	f.transWrite(1, "100");
-	assert(t.try_commit());
+	{
+            TransactionGuard t;
+            f.transWrite(1, "100");
+        }
 
-	Transaction t2;
-  Sto::set_transaction(&t2);
-	std::string f_read = f.transRead(1);
+	{
+            TransactionGuard t2;
+            std::string f_read = f.transRead(1);
+            assert(f_read.compare("100") == 0);
+        }
 
-	assert(f_read.compare("100") == 0);
-	assert(t2.try_commit());
 	printf("PASS: testSimpleString\n");
 }
 
@@ -65,11 +65,11 @@ void testConflictingIter() {
         f.write(i, i);
     }
 
-    Transaction t;
+    Transaction t(Transaction::testing);
     Sto::set_transaction(&t);
     std::max_element(f.begin(), f.end());
-    
-    Transaction t1;
+
+    Transaction t1(Transaction::testing);
     Sto::set_transaction(&t1);
     f.transWrite(4, 10);
     assert(t1.try_commit());
@@ -83,19 +83,18 @@ void testModifyingIter() {
     for (int i = 0; i < 10; i++) {
         f.write(i, i);
     }
-    
-    Transaction t;
-    Sto::set_transaction(&t);
-    std::replace(f.begin(), f.end(), 4, 6);
-    assert(t.try_commit());
-    
-    
-    Transaction t1;
-    Sto::set_transaction(&t1);
-    int v = f.transRead(4);
-    assert(t1.try_commit());
-    
-    assert(v == 6);
+
+    {
+        TransactionGuard t;
+        std::replace(f.begin(), f.end(), 4, 6);
+    }
+
+    {
+        TransactionGuard t1;
+        int v = f.transRead(4);
+        assert(v == 6);
+    }
+
     printf("PASS: array replace test\n");
 }
 
@@ -105,23 +104,22 @@ void testConflictingModifyIter1() {
         f.write(i, i);
     }
     
-    Transaction t;
+    Transaction t(Transaction::testing);
     Sto::set_transaction(&t);
     std::replace(f.begin(), f.end(), 4, 6);
     
-    Transaction t1;
+    Transaction t1(Transaction::testing);
     Sto::set_transaction(&t1);
     f.transWrite(4, 10);
     assert(t1.try_commit());
     
     assert(!t.try_commit());
-    
-    Transaction t2;
-    Sto::set_transaction(&t2);
-    int v = f.transRead(4);
-    assert(t2.try_commit());
-    
-    assert(v == 10);
+
+    {
+        TransactionGuard t2;
+        int v = f.transRead(4);
+        assert(v == 10);
+    }
     
     printf("PASS: array conflicting replace test1\n");
 }
@@ -131,24 +129,23 @@ void testConflictingModifyIter2() {
     for (int i = 0; i < 10; i++) {
         f.write(i, i);
     }
-    
-    Transaction t;
-    Sto::set_transaction(&t);
-    std::replace(f.begin(), f.end(), 4, 6);
-    assert(t.try_commit());
-    
-    Transaction t1;
-    Sto::set_transaction(&t1);
-    f.transWrite(4, 10);
-    assert(t1.try_commit());
-    
-    Transaction t2;
-    Sto::set_transaction(&t2);
-    int v = f.transRead(4);
-    assert(t2.try_commit());
-    
-    assert(v == 10);
-    
+
+    {
+        TransactionGuard t;
+        std::replace(f.begin(), f.end(), 4, 6);
+    }
+
+    {
+        TransactionGuard t1;
+        f.transWrite(4, 10);
+    }
+
+    {
+        TransactionGuard t2;
+        int v = f.transRead(4);
+        assert(v == 10);
+    }
+
     printf("PASS: array conflicting replace test2\n");
 }
 
@@ -158,24 +155,23 @@ void testConflictingModifyIter3() {
         f.write(i, i);
     }
     
-    Transaction t1;
+    Transaction t1(Transaction::testing);
     Sto::set_transaction(&t1);
     f.transRead(4);
     
-    Transaction t;
+    Transaction t(Transaction::testing);
     Sto::set_transaction(&t);
     std::replace(f.begin(), f.end(), 4, 6);
     assert(t.try_commit());
     
     assert(!t1.try_commit());
-    
-    Transaction t2;
-    Sto::set_transaction(&t2);
-    int v = f.transRead(4);
-    assert(t2.try_commit());
-    
-    assert(v == 6);
-    
+
+    {
+        TransactionGuard t2;
+        int v = f.transRead(4);
+        assert(v == 6);
+    }
+
     printf("PASS: array conflicting replace test3\n");
 }
 

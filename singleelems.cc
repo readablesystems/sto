@@ -13,34 +13,34 @@ void bigObjTests() {
   SingleElem<foo> f;
   printf("big obj size: %lu\n", sizeof(f));
   
-  Transaction t;
-  Sto::set_transaction(&t);
-  f = foo{1, 2, 3.4};
-  assert(t.try_commit());
+  {
+      TransactionGuard t;
+      f = foo{1, 2, 3.4};
+  }
 
-  Transaction t2;
-  Sto::set_transaction(&t2);
-  foo f_read = f;
-  assert(f_read.a == 1);
-  assert(f_read.b == 2);
-  assert(f_read.c - 3.4 < .001);
-  assert(t2.try_commit());
+  {
+      TransactionGuard t2;
+      foo f_read = f;
+      assert(f_read.a == 1);
+      assert(f_read.b == 2);
+      assert(f_read.c - 3.4 < .001);
+  }
 }
 
 void nontrivialObjTests() {
   SingleElem<std::string> f;
   printf("std string size: %lu\n", sizeof(f));
 
-  Transaction t;
-  Sto::set_transaction(&t);
-  f = "foobarbaz";
-  assert(t.try_commit());
+  {
+      TransactionGuard t;
+      f = "foobarbaz";
+  }
 
-  Transaction t2;
-  Sto::set_transaction(&t2);
-  std::string s = f;
-  assert(s == std::string("foobarbaz"));
-  assert(t2.try_commit());
+  {
+      TransactionGuard t2;
+      std::string s = f;
+      assert(s == std::string("foobarbaz"));
+  }
 }
 
 float y = 1.1;
@@ -49,8 +49,7 @@ void genericSTMTests() {
   int x = 4;
   uint64_t *z = (uint64_t*)malloc(sizeof(*z));
   *z = 0xffffffffffULL;
-  {Transaction t;
-    Sto::set_transaction(&t);
+  {TransactionGuard t;
     assert(stm.transRead(&x) == 4);
     stm.transWrite(&x, 5);
     assert(stm.transRead(&x) == 5);
@@ -60,18 +59,14 @@ void genericSTMTests() {
     assert(stm.transRead(z) == (uint64_t)0xffffffffffULL);
     stm.transWrite(z, (uint64_t)0x7777777777ULL);
     assert(stm.transRead(z) == (uint64_t)0x7777777777ULL);
-
-    assert(t.try_commit());
   }
 
   assert(x == 5);
 
-  {Transaction t;
-    Sto::set_transaction(&t);
+  {TransactionGuard t;
     assert(stm.transRead(&x) == 5);
     assert(stm.transRead(&y) - 1.1 < 0.01);
     assert(stm.transRead(z) == (uint64_t)0x7777777777ULL);
-    assert(t.try_commit());
   }
 }
 
@@ -97,23 +92,23 @@ void incrementTest() {
 int main() {
   SingleElem<int> f;
   printf("size: %lu\n", sizeof(f));
-  
-  Transaction t;
-  Sto::set_transaction(&t);
-  f = 1;
-  assert(f == 1);
-  assert(t.try_commit());
 
-  Transaction t2;
-  Sto::set_transaction(&t2);
-  assert(f == 1);
-  assert(t2.try_commit());
+  {
+      TransactionGuard t;
+      f = 1;
+      assert(f == 1);
+  }
+
+  {
+      TransactionGuard t2;
+      assert(f == 1);
+  }
 
   bigObjTests();
   nontrivialObjTests();
 
   genericSTMTests();
-    
+
   incrementTest();
 
   return 0;

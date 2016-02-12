@@ -43,7 +43,7 @@
 // TRANSACTION macros that can be used to wrap transactional code
 #define TRANSACTION                               \
     do {                                          \
-        TransactionGuard __txn_guard;             \
+        TransactionLoopGuard __txn_guard;         \
         while (1) {                               \
             __txn_guard.start();                  \
             try {
@@ -356,18 +356,29 @@ public:
 #endif
 
 
-    Transaction() : transSet_() {
+  private:
+    Transaction()
+        : transSet_() {
         reset();
     }
 
-    ~Transaction() {
+  public:
+    struct testing_type {};
+    static testing_type testing;
+
+    Transaction(const testing_type&)
+        : transSet_() {
+    }
+
+    ~Transaction() { /* XXX should really be private */
         if (!isAborted_ && !transSet_.empty()) {
             silent_abort();
         }
-        end_trans();
+        end_transaction();
     }
 
-    void end_trans() {
+  private:
+    void end_transaction() {
         // TODO: this will probably mess up with nested transactions
         tinfo[threadid].epoch = 0;
         if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
@@ -394,6 +405,7 @@ public:
         inProgress_ = true;
     }
 
+  public:
     // adds item for a key that is known to be new (must NOT exist in the set)
     template <typename T>
     TransProxy new_item(Shared* s, T key) {
@@ -548,7 +560,7 @@ public:
         for (auto& ti : transSet_) {
             ti.sharedObj()->cleanup(ti, false);
         }
-        end_trans();
+        end_transaction();
     }
 
     void abort() {
@@ -594,7 +606,7 @@ private:
         for (TransItem& ti : transSet_) {
             ti.sharedObj()->cleanup(ti, true);
         }
-        end_trans();
+        end_transaction();
     }
 
 private:
@@ -613,6 +625,7 @@ private:
 
     friend class TransProxy;
     friend class TransItem;
+    friend class Sto;
     void hard_check_opacity(TransactionTid::type t);
     void update_hash();
 };
@@ -718,8 +731,18 @@ public:
 class TransactionGuard {
   public:
     TransactionGuard() {
+        Sto::start_transaction();
     }
     ~TransactionGuard() {
+        Sto::commit();
+    }
+};
+
+class TransactionLoopGuard {
+  public:
+    TransactionLoopGuard() {
+    }
+    ~TransactionLoopGuard() {
         if (Sto::__transaction->inProgress())
             Sto::__transaction->silent_abort();
     }
