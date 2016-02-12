@@ -3,7 +3,7 @@
 #include "Array.hh"
 #include "Transaction.hh"
 
-#define SIZE (1<<10)
+#define SIZE (1<<15)
 class GenericSTM : public Shared {
 public:
   GenericSTM() : table_() {}
@@ -20,7 +20,6 @@ public:
     // ensures version doesn't change
     auto version = table_[key];
     t.check_opacity(version);
-    t.item(this, key).add_read(version).assign_flags(uint64_t(3) << TransItem::userf_shift);
     fence();
     T ret = *word;
     return ret;
@@ -32,35 +31,33 @@ public:
     // just makes the version number change, i.e., makes conflicting reads abort
     // (and locks this word for us)
     Sto::item(this, word).add_write(new_val).assign_flags(sizeof(T) << TransItem::userf_shift);
-    Sto::item(this, bucket(word)).add_write(0).assign_flags(uint64_t(3) << TransItem::userf_shift);
+  }
+
+  bool own_lock(TransactionTid::type& lock) {
+    return TransactionTid::is_locked(lock) && TransactionTid::user_bits(lock) == Transaction::threadid;
   }
 
   void lock(TransItem& item) {
-    if (item.shifted_user_flags() != 3)
-      return;
-    size_t key = (size_t)item.key<void*>();
-    TransactionTid::lock(table_[key]);
+    size_t key = bucket(item.key<void*>());
+    if (!own_lock(table_[key]))
+      TransactionTid::lock(table_[key], Transaction::threadid);
   }
   void unlock(TransItem& item) {
-    if (item.shifted_user_flags() != 3)
-      return;
-    size_t key = (size_t)item.key<void*>();
-    TransactionTid::unlock(table_[key]);
+    size_t key = bucket(item.key<void*>());
+    if (own_lock(table_[key]))
+      TransactionTid::unlock(table_[key]);
   }
   bool check(const TransItem& item, const Transaction&) {
-    size_t key = (size_t)item.key<void*>();
-    return TransactionTid::same_version(table_[key], item.template read_value<uint64_t>())
-      && (!TransactionTid::is_locked(table_[key]) || item.has_write());
+    size_t key = bucket(item.key<void*>());
+    auto current = table_[key];
+    return TransactionTid::same_version(current, item.template read_value<uint64_t>())
+      && (!TransactionTid::is_locked(current) || item.has_write() || TransactionTid::user_bits(current) == Transaction::threadid);
   }
   void install(TransItem& item, const Transaction& t) {
-    if (item.shifted_user_flags() == 3)
-      TransactionTid::set_version(table_[(size_t)item.key<void*>()], t.commit_tid());
-    else {
-      void* word = item.key<void*>();
-      // Hashtable implementation has already locked this word for us
-      void *data = item.write_value<void*>();
-      memcpy(word, &data, item.shifted_user_flags());
-    }
+    void* word = item.key<void*>();
+    TransactionTid::set_version(table_[bucket(word)], TransactionTid::add_user_bits(t.commit_tid(), Transaction::threadid));
+    void *data = item.write_value<void*>();
+    memcpy(word, &data, item.shifted_user_flags());
   }
 
 private:

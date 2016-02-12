@@ -22,22 +22,34 @@ public:
     static constexpr type user_mask = type(user_bit1|user_bit2|user_bit3|user_bit4|user_bit5);
     static constexpr type increment_value = type(128);
 
+    static type make_user_bits(type user_bits) {
+        return (user_bits << user_shift) & user_mask;
+    }
+
+    static type user_bits(type v) {
+        return (v & user_mask) >> user_shift;
+    }
+
+    static type add_user_bits(type v, type user_bits) {
+        return (v & ~user_mask)  | make_user_bits(user_bits);
+    }
+
     static bool is_locked(type v) {
         return v & lock_bit;
     }
     
-    static bool try_lock(type& v) {
+    static bool try_lock(type& v, type user_bits = 0) {
         type vv = v;
         if (!is_locked(vv)) {
-            return bool_cmpxchg(&v, vv, vv | lock_bit);
+            return bool_cmpxchg(&v, vv, vv | lock_bit | make_user_bits(user_bits));
         }
         return false;
     }
     
-    static void lock(type& v) {
+    static void lock(type& v, type user_bits = 0) {
         while (1) {
             type vv = v;
-            if (!is_locked(vv) && bool_cmpxchg(&v, vv, vv | lock_bit))
+            if (!is_locked(vv) && bool_cmpxchg(&v, vv, vv | lock_bit | make_user_bits(user_bits)))
                 break;
             relax_fence();
         }
@@ -45,7 +57,7 @@ public:
     }
     static void unlock(type& v) {
         assert(is_locked(v));
-        type new_v = v - lock_bit;
+        type new_v = (v - lock_bit) & ~user_mask;
         release_fence();
         v = new_v;
     }
