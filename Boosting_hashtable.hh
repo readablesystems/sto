@@ -10,7 +10,7 @@ public:
   void readLock(const K& key) {
     RWLock *lock = getLock(key);
     bool inserted;
-    std::tie(std::ignore, inserted) = _thread().rwlockset.insert(lock);
+    inserted = _thread().rwlockset.insert(lock);
     // check if we already have the lock or need to get it now
     if (inserted) {
       if (!lock->tryReadLock(READ_SPIN)) {
@@ -23,7 +23,7 @@ public:
   void writeLock(const K& key) {
     RWLock *lock = getLock(key);
     bool inserted;
-    std::tie(std::ignore, inserted) = _thread().rwlockset.insert(lock);
+    inserted = _thread().rwlockset.insert(lock);
     if (inserted) {
       // don't have the lock in any form yet
       if (!lock->tryWriteLock(WRITE_SPIN)) {
