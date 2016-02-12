@@ -150,7 +150,7 @@ int main() {
         }
         // insert_my_deletes
         for (int i = 0; i < 100; ++i) {
-            tree[i] == 1;
+            tree[i] = 1;
             assert(tree.count(i) == 1);
         }
         // operator[] inserts empty value
