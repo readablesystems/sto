@@ -594,6 +594,8 @@ public:
         return commit_tid_;
     }
 
+    void print(FILE* f) const;
+
     class Abort {};
 
 private:
@@ -745,6 +747,9 @@ public:
     }
     void use() {
         Sto::__transaction = &t_;
+    }
+    void print(FILE* f) const {
+        t_.print(f);
     }
     bool try_commit() {
         use();

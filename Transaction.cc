@@ -215,3 +215,22 @@ void TransactionBuffer::hard_clear(bool delete_all) {
         e_ = 0;
     }
 }
+
+void Transaction::print(FILE* f) const {
+    static const char* names[] = {"in-progress", "committing", "aborted", "committed"};
+    fprintf(f, "T%p %s [", this, names[state_]);
+    for (auto& ti : transSet_)
+        ti.owner()->print(f, ti);
+    fprintf(f, "]\n");
+}
+
+void Shared::print(FILE* f, const TransItem& item) const {
+    fprintf(f, "<%p.%p", this, item.key<void*>());
+    if (item.has_read())
+        fprintf(f, " r%p", item.read_value<void*>());
+    if (item.has_write())
+        fprintf(f, " w%p", item.write_value<void*>());
+    if (item.has_predicate())
+        fprintf(f, " p%p", item.predicate_value<void*>());
+    fprintf(f, ">");
+}

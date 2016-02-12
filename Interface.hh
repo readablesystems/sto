@@ -105,4 +105,5 @@ public:
     virtual void cleanup(TransItem& item, bool committed) {
         (void) item, (void) committed;
     }
+    virtual void print(FILE* f, const TransItem& item) const;
 };

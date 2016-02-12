@@ -25,10 +25,11 @@ class Vector : public Shared {
     typedef TransactionTid::type Version;
     typedef VersionFunctions<Version> Versioning;
     typedef T_wrapper<T, Opacity, Elem> wrapper;
-    
-    static constexpr int push_back_key = -1;
-    static constexpr int size_key = -2;
-    static constexpr int size_pred_key = -3;
+
+    static constexpr int vector_key = -1;
+    static constexpr int push_back_key = -2;
+    static constexpr int size_key = -3;
+    static constexpr int size_pred_key = -4;
     static constexpr TransItem::flags_type list_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
     static constexpr int32_t value_shift = 1;
@@ -128,7 +129,7 @@ public:
         add_lock_vector_item();
         add_trans_size_offs(1);
     }
-    
+
     void pop_back() {
         auto item = Sto::item(this, push_back_key);
         if (item.has_write()) {
@@ -147,7 +148,7 @@ public:
             }
         }
         // add vecversion_ to the read set
-        auto vecitem = t_item(this).add_read(vecversion_);
+        auto vecitem = vector_item().add_read(vecversion_);
         acquire_fence();
         size_type size = size_;
         acquire_fence();
@@ -187,7 +188,7 @@ public:
     }
     
     size_t transSize() {
-        t_item(this).add_read(vecversion_);
+        vector_item().add_read(vecversion_);
         acquire_fence();
         return size_ + trans_size_offs();
     }
@@ -248,7 +249,7 @@ public:
         size_type size = size_;
         acquire_fence();
         if (i >= size + trans_size_offs()) {
-            auto vecitem = t_item(this);
+            auto vecitem = vector_item();
             bool aborted = false;
             if (vecitem.has_read()) {
                 auto lv = vecversion_;
@@ -270,7 +271,7 @@ public:
             
             auto extra_items = Sto::item(this, push_back_key);
             // We need to register the vecversion_ to invalidate other concurrent push_backs.
-            t_item(this).add_read(ver);
+            vector_item().add_read(ver);
             if (extra_items.has_write()) {
                 if (is_list(extra_items)) {
                     auto& write_list= extra_items.template write_value<std::vector<T>>();
@@ -297,7 +298,7 @@ public:
         acquire_fence();
         if (i >= size + trans_size_offs()) {
             bool aborted = false;
-            auto vecitem = t_item(this);
+            auto vecitem = vector_item();
             if (vecitem.has_read()) {
                 auto lv = vecversion_;
                 if (!TransactionTid::same_version(lv, vecitem.template read_value<Version>())
@@ -319,7 +320,7 @@ public:
             
             auto extra_items = Sto::item(this, push_back_key);
             // We need to register the vecversion_ to invalidate other concurrent push_backs.
-            t_item(this).add_read(ver);
+            vector_item().add_read(ver);
             if (extra_items.has_write()) {
                 if (is_list(extra_items)) {
                     auto& write_list= extra_items.template write_value<std::vector<T>>();
@@ -374,13 +375,12 @@ public:
         data_[i].unlock();
         resize_lock_.read_unlock();
     }
-    
-    template <typename PTR>
-    TransProxy t_item(PTR *node) {
+
+    TransProxy vector_item() {
         // can switch this to fresh_item to not read our writes
-        return Sto::item(this, node);
+        return Sto::item(this, vector_key);
     }
-    
+
     void add_trans_size_offs(int size_offs) {
         // TODO: it would be more efficient to store this directly in Transaction,
         // since the "key" is fixed (rather than having to search the transset each time)
@@ -393,7 +393,7 @@ public:
         } else
             item.add_read(cur_offs + size_offs);
     }
-    
+
     int trans_size_offs() {
         auto item = Sto::item(this, size_key);
         if (item.has_read())
@@ -402,33 +402,35 @@ public:
     }
 
     void add_lock_vector_item() {
-        auto item = t_item((void*)this);
-        item.add_write(0);
+        vector_item().add_write(0);
     }
 
-    bool check_predicate(TransItem& item, Transaction& t) {
+    bool check_predicate(TransItem& item, Transaction&) {
         assert(item.key<int>() == size_pred_key);
         auto lv = vecversion_;
         if (is_locked(lv))
             return false;
+        vector_item().add_read(lv);
         acquire_fence();
-        TransProxy(t, item).add_read(lv);
         auto size = size_;
         int32_t pred = item.template predicate_value<int32_t>();
         int32_t pred_value = pred >> value_shift;
-        fprintf(stderr, "%d %d %d\n", pred_value, pred & geq_mask, size);
-        if (pred & geq_mask)
+        if (pred & geq_mask) {
+            if (size < pred_value)
+                fprintf(stderr, "%d >= %d fail\n", size, pred_value);
             return size >= pred_value;
-        else
+        } else {
+            if (size != pred_value)
+                fprintf(stderr, "%d == %d fail\n", size, pred_value);
             return size == pred_value;
+        }
     }
-    
+
     bool check(const TransItem& item, const Transaction& trans){
         if (item.key<int>() == size_key) {
             return true;
         }
-        if (item.key<Vector*>() == this || item.key<int>() == push_back_key
-            || item.key<int>() == size_pred_key) {
+        if (item.key<int>() == vector_key || item.key<int>() == push_back_key) {
             auto lv = vecversion_;
             return TransactionTid::same_version(lv, item.template read_value<Version>())
                 && (!is_locked(lv) || item.has_lock(trans));
@@ -443,7 +445,7 @@ public:
     }
     
     void lock(TransItem& item){
-        if (item.key<Vector*>() == this) {
+        if (item.key<int>() == vector_key) {
             lock_version(vecversion_); // TODO: no need to lock vecversion_ if trans_size_offs() is 0
         } else if (item.key<int>() == push_back_key) {
             return; // Do nothing as we will anyways lock vecversion for size.
@@ -455,7 +457,7 @@ public:
 
     void install(TransItem& item, const Transaction& t) {
         //install value
-        if (item.key<Vector*>() == this)
+        if (item.key<int>() == vector_key)
             return;
         if (item.key<int>() == push_back_key) {
             // write all the elements
@@ -518,16 +520,34 @@ public:
 
     void cleanup(TransItem& item, bool) {
         if (item.needs_unlock()) {
-            if (item.key<Vector*>() == this)
+            if (item.key<int>() == vector_key)
                 unlock_version(vecversion_);
             else if (item.key<int>() != push_back_key)
                 unlock(item.key<key_type>());
         }
     }
-    
+
+    void print(FILE* f, const TransItem& item) const {
+        if (item.key<int>() == size_pred_key) {
+            fprintf(f, "<%p.size%s%d>", this, item.predicate_value<int32_t>() & geq_mask ? ">=" : "==", item.predicate_value<int32_t>() >> value_shift);
+        } else {
+            if (item.key<int>() == size_key)
+                fprintf(f, "<%p.size", this);
+            else if (item.key<int>() == vector_key)
+                fprintf(f, "<%p", this);
+            else
+                fprintf(f, "<%p.%d", this, item.key<int>());
+            if (item.has_read())
+                fprintf(f, " r%lu", item.read_value<Version>());
+            if (item.has_write())
+                fprintf(f, " w%p", item.write_value<void*>());
+            fprintf(f, ">");
+        }
+    }
+
     iterator begin() { return iterator(this, 0, false); }
     iterator end() {
-        //t_item(this).add_read(vecversion_);// to invalidate size changes after this call.
+        //vector_item().add_read(vecversion_);// to invalidate size changes after this call.
         //acquire_fence();
         return iterator(this, 0, true);
     }
