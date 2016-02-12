@@ -114,6 +114,10 @@ public:
     typedef rbwrapper<rbpair<K, T>> wrapper_type;
     typedef rbtree<wrapper_type> internal_tree_type;
 
+    typedef rbnodeptr<wrapper_type> internal_ptr_type;
+    typedef std::tuple<wrapper_type*, Version> boundary_info_type;
+    typedef std::pair<boundary_info_type, boundary_info_type> boundaries_type;
+
     // capacity 
     inline size_t size() const;
     // lookup
@@ -239,8 +243,7 @@ private:
 
     // A (hard) phantom node is a node that's being inserted but not yet
     // committed by another transaction. It should be treated as invisible
-    inline bool is_phantom_node(wrapper_type* node) const {
-        Version& val_ver = node->version();
+    inline bool is_phantom_node(wrapper_type* node, Version val_ver) const {
         auto item = Sto::item(const_cast<RBTree<K, T>*>(this), node);
         return (is_inserted(val_ver) && !has_insert(item) && !has_delete(item));
     }
@@ -268,21 +271,27 @@ private:
 #endif 
     }
 
-    // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
-    // return values: (node*, found, boundary), boundary only valid if !found
+    // *Read-only* lookup operation
+    // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed (by another txn).
+    // return values: (node*, version, found, boundary), boundary only valid if !found
+    // XXX node can point to the *found* node or its immediate parent or nothing (in case of empty tree)
+    // version can be the node's value version or treeversion_ (in case of empty tree)
     // NOTE: this function must be surrounded by a lock in order to ensure we add the correct nodeversions
-    inline std::pair<std::pair<rbnodeptr<wrapper_type>, bool>, std::pair<wrapper_type*, wrapper_type*>>
-    find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp, bool insert) const {
+    inline std::tuple<wrapper_type*, Version, bool, boundaries_type>
+    find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) const {
         auto results = wrapper_tree_.find_any(rbkvp, rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-        auto pair = results.first;
-        wrapper_type* x = pair.first.node();
-        auto found = pair.second;
+
+        // extract information from results
+        wrapper_type* x = std::get<wrapper_type*>(results);
+        Version val_ver = std::get<Version>(results);
+        bool found = std::get<bool>(results);
+        boundaries_type& boundaries = std::get<boundaries_type>(results);
 
         // PRESENT GET
         if (found) {
             auto item = Sto::item(const_cast<RBTree<K, T>*>(this), x);
             // check if item is inserted by not committed yet 
-            if (is_inserted(x->version())) {
+            if (is_inserted(val_ver)) {
                 // check if item was inserted by this transaction
                 if (has_insert(item) || (has_delete(item))) {
                     return results;
@@ -293,55 +302,55 @@ private:
                     printf("Aborted in find_or_abort\n");
                     TransactionTid::unlock(::lock);
 #endif
-                    insert ? unlock(&treelock_) : unlock(&treelock_);
+                    unlock(&treelock_);
                     Sto::abort();
                     // unreachable
                     return results;
                 }
             }
             // add a read of the node version for a present get
-            if (!insert)
-                item.add_read(x->version());
+            item.add_read(val_ver);
         
         // ABSENT GET
         } else {
-            // XXX this code only works with coarse-grain locking
-            // not an insert (on RHS), add a read of boundary nodes and read of treeversion if empty tree
-            if (!x && !insert)
-                Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
-            if (insert) {
-                if (x) {
-                    // we currently do not allow insertions under phantom nodes
-                    if (is_phantom_node(x)) {
+            // add a read of treeversion if empty tree
+            if (!x) {
+                Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(val_ver);
+            }
+
+            // add reads of boundary nodes, marking them as nodeversion ptrs
+            for (unsigned int i = 0; i < 2; ++i) {
+                boundary_info_type& binfo = (i == 0)? boundaries.first : boundaries.second;
+                wrapper_type* n = std::get<wrapper_type*>(binfo);
+                Version v = std::get<Version>(binfo);
+                if (n) {
 #if DEBUG
-                        TransactionTid::lock(::lock);
-                        printf("Aborted in find_or_abort (insertion under phantom node)\n");
-                        TransactionTid::unlock(::lock);
+                    TransactionTid::lock(::lock);
+                    printf("\t#Tracking boundary 0x%lx (k %d), nv 0x%lx\n", (unsigned long)n, n->key(), v);
+                    TransactionTid::unlock(::lock);
 #endif
-                        unlock(&treelock_);
-                        Sto::abort();
-                        return results;
-                    }
-                }
-            } else {
-                // add reads of boundary nodes, marking them as nodeversion ptrs
-                for (unsigned int i = 0; i < 2; ++i) {
-                    wrapper_type* n = (i == 0)? results.second.first : results.second.second;
-                    if (n) {
-                        Version v = n->nodeversion();
-#if DEBUG
-                        TransactionTid::lock(::lock);
-                        printf("\t#Tracking boundary 0x%lx (k %d), nv 0x%lx\n", (unsigned long)n, n->key(), v);
-                        TransactionTid::unlock(::lock);
-#endif
-                        Sto::item(const_cast<RBTree<K, T>*>(this),
-                                        (reinterpret_cast<uintptr_t>(n)|0x1)).add_read(v);
-                    }
+                    Sto::item(const_cast<RBTree<K, T>*>(this),
+                                    (reinterpret_cast<uintptr_t>(n)|0x1)).add_read(v);
                 }
             }
         }
         // item was committed or DNE, so return results
         return results;
+    }
+
+    // Read-write lookup operation
+    // Returns: <node : wrapper_type*, ver : Version, found : bool, boundary : boundaries_type, parent : boundary_info_type>
+    // Atomic: looks for rbkvp.key() in the rbtree:
+    // if found, return the pointer to node and a snapshot of its value version (returned tuple being <ptr, ver, true>)
+    // otherwise, insert rbkvp to the tree and returns <ptr, ver, false>
+    // @ptr: always point to the found/inserted node
+    // @ver: always a valid value version corresponding to *@ptr
+    // @boundary: boundary nodes info (*pre-insertion* state) of the inserted/found node
+    inline std::tuple<wrapper_type*, Version, bool, boundaries_type, boundary_info_type>
+    find_or_insert(wrapper_type& rbkvp) {
+        (void)rbkvp;
+        return std::make_tuple(nullptr, 0, false, boundaries_type());
+        // invokes some internal tree method here
     }
 
     // Insert nonexistent key with empty value
@@ -390,15 +399,29 @@ private:
     inline wrapper_type* insert(const K& key) {
         lock(&treelock_);
         auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
-        auto pair = this->find_or_abort(node, true).first;
-        rbnodeptr<wrapper_type> x_rbnp = pair.first;
-        wrapper_type* x = x_rbnp.node();
-        auto found = pair.second;
+        auto results = this->find_or_insert(node);
+        wrapper_type* x = std::get<wrapper_type*>(results);
+        Version val_ver = std::get<Version>(results);
+        bool found = std::get<bool>(results);
+        boundaries_type& boundaries = std::get<boundaries_type>(results);
         
         // INSERT: kvp did not exist
-        if (!found)
-            return insert_absent(x_rbnp, key);
+        if (!found) {
+#if DEBUG
+            stats_.absent_insert++;
+#endif
+            wrapper_type* lhs = std::get<wrapper_type*>(boundaries.first);
+            wrapper_type* rhs = std::get<wrapper_type*>(boundaries.second);
+            if (lhs == nullptr && rhs == nullptr) {
+                // tree was empty, increment treeversion at COMMIT TIME
+                Sto::item(this, tree_key_).add_write(0);
+            } else {
 
+            }
+            Sto::item(this, x).add_write(T()).add_flags(insert_tag);
+            change_size_offset(1);
+            return x;
+        }
         // UPDATE: kvp is already inserted into the tree
         else {
 #if DEBUG
@@ -410,7 +433,7 @@ private:
             if (has_delete(item)) {
                 item.clear_flags(delete_tag);
                 // recover from delete-my-insert (engineer's induction all over the place...)
-                if (is_inserted(x->version())) {
+                if (is_inserted(val_ver)) {
                     // okay to directly update value since we are the only txn
                     // who can access it
                     item.add_flags(insert_tag);
@@ -426,7 +449,7 @@ private:
             // operator[] on RHS (THIS IS A READ!)
             // don't need to add a write to size because size isn't changing
             // STO won't add read of items in our write set
-            item.add_read(x->version());
+            item.add_read(val_ver);
             unlock(&treelock_);
             return x;
         }
