@@ -368,6 +368,7 @@ public:
 
     Transaction(const testing_type&)
         : transSet_() {
+        reset();
     }
 
     ~Transaction() { /* XXX should really be private */
