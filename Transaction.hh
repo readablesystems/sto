@@ -600,8 +600,10 @@ private:
     void stop(bool committed) {
         if (!committed)
             INC_P(txp_total_aborts);
-        for (TransItem& ti : transSet_)
-            ti.sharedObj()->cleanup(ti, committed);
+        if (firstWrite_ >= 0)
+            for (auto it = transSet_.begin() + firstWrite_; it != transSet_.end(); ++it)
+                if (it->has_write())
+                    it->sharedObj()->cleanup(*it, committed);
         // TODO: this will probably mess up with nested transactions
         tinfo[threadid].epoch = 0;
         if (tinfo[threadid].trans_end_callback)
