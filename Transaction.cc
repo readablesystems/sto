@@ -66,7 +66,7 @@ void Transaction::update_hash() {
     if (nhashed_ == 0)
         memset(hashtable_, 0, sizeof(hashtable_));
     for (auto it = transSet_.begin() + nhashed_; it != transSet_.end(); ++it, ++nhashed_) {
-        int h = hash(it->sharedObj(), it->key_);
+        int h = hash(it->owner(), it->key_);
         if (!hashtable_[h] || !may_duplicate_items_)
             hashtable_[h] = nhashed_ + 1;
     }
@@ -111,14 +111,17 @@ bool Transaction::try_commit() {
     int writeset_alloc[transSet_.size() - firstWrite_];
     writeset_ = writeset_alloc;
     nwriteset_ = 0;
+
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
-        if (it->has_write()) {
+        if (it->has_write())
             writeset_[nwriteset_++] = it - transSet_.begin();
+        else if (it->has_predicate()) {
+            if (!it->owner()->check_predicate(*it, *this))
+                goto abort;
         }
 #ifdef DETAILED_LOGGING
-        if (it->has_read()) {
+        if (it->has_read())
             INC_P(txp_total_r);
-        }
 #endif
     }
 
@@ -128,24 +131,16 @@ bool Transaction::try_commit() {
         return transSet_[i] < transSet_[j];
     });
 #endif
-    TransItem* trans_first = &transSet_[0];
-    TransItem* trans_last = trans_first + transSet_.size();
-
-    auto writeset_end = writeset_ + nwriteset_;
-    for (auto it = writeset_; it != writeset_end; ) {
-        TransItem* me = &transSet_[*it];
-        me->sharedObj()->lock(*me);
-        me->__or_flags(TransItem::lock_bit);
-        ++it;
-        if (may_duplicate_items_)
-            for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
-                /* do nothing */;
-    }
-
-    // get read versions for predicates - ideally we can combine this in phase 1
-    for (auto it = trans_first; it != trans_last; ++it) {
-        if (it->has_predicate()) {
-            it->sharedObj()->readVersion(*it, *this);
+    {
+        auto writeset_end = writeset_ + nwriteset_;
+        for (auto it = writeset_; it != writeset_end; ) {
+            TransItem* me = &transSet_[*it];
+            me->owner()->lock(*me);
+            me->__or_flags(TransItem::lock_bit);
+            ++it;
+            if (may_duplicate_items_)
+                for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
+                    /* do nothing */;
         }
     }
 
@@ -157,17 +152,17 @@ bool Transaction::try_commit() {
 #endif
 
     //phase2
-    if (!check_reads(trans_first, trans_last))
+    if (!check_reads(transSet_.begin(), transSet_.end()))
         goto abort;
 
     // fence();
 
     //phase3
-    for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
+    for (auto it = transSet_.begin() + firstWrite_; it != transSet_.end(); ++it) {
         TransItem& ti = *it;
         if (ti.has_write()) {
             INC_P(txp_total_w);
-            ti.sharedObj()->install(ti, *this);
+            ti.owner()->install(ti, *this);
         }
     }
 

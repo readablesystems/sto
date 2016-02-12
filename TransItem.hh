@@ -70,8 +70,11 @@ class TransItem {
         : s_(reinterpret_cast<sharedstore_type>(s)), key_(k) {
     }
 
-    Shared* sharedObj() const {
+    Shared* owner() const {
         return reinterpret_cast<Shared*>(reinterpret_cast<flags_type>(s_) & pointer_mask);
+    }
+    Shared* sharedObj() const {
+        return owner();
     }
 
     bool has_write() const {
@@ -88,7 +91,7 @@ class TransItem {
     }
     bool has_lock(const Transaction& t) const;
     bool same_item(const TransItem& x) const {
-        return sharedObj() == x.sharedObj() && key_ == x.key_;
+        return owner() == x.owner() && key_ == x.key_;
     }
 
     template <typename T>
@@ -106,25 +109,37 @@ class TransItem {
         assert(has_read());
         return Packer<T>::unpack(rdata_);
     }
+
+    template <typename T>
+    T& predicate_value() {
+        assert(has_predicate());
+        return Packer<T>::unpack(wdata_);
+    }
+    template <typename T>
+    const T& predicate_value() const {
+        assert(has_predicate());
+        return Packer<T>::unpack(wdata_);
+    }
+
     template <typename T>
     T& write_value() {
-        assert(has_write() || has_predicate());
+        assert(has_write());
         return Packer<T>::unpack(wdata_);
     }
     template <typename T>
     const T& write_value() const {
-        assert(has_write() || has_predicate());
+        assert(has_write());
         return Packer<T>::unpack(wdata_);
     }
 
     inline bool operator==(const TransItem& t2) const {
-        return key_ == t2.key_ && sharedObj() == t2.sharedObj();
+        return key_ == t2.key_ && owner() == t2.owner();
     }
     inline bool operator<(const TransItem& t2) const {
         // we compare keys and THEN shared objects here so that read and write keys with the same value
         // are next to each other
         return key_ < t2.key_
-                      || (key_ == t2.key_ && sharedObj() < t2.sharedObj());
+            || (key_ == t2.key_ && owner() < t2.owner());
     }
 
     // these methods are all for user flags (currently we give them 8 bits, the high 8 of the 16 total flag bits we have)
@@ -151,10 +166,7 @@ class TransItem {
         s_ = reinterpret_cast<sharedstore_type>(reinterpret_cast<flags_type>(s_) | flags);
         return *this;
     }
-    
-    template <typename T>
-    inline void add_read_version(T version, Transaction& t);
-    
+
   private:
     friend class Transaction;
     friend class TransProxy;
@@ -175,6 +187,10 @@ class TransItem {
 
 class TransProxy {
   public:
+    TransProxy(Transaction& t, TransItem& i)
+        : t_(&t), i_(&i) {
+    }
+
     TransProxy* operator->() { // make OptionalTransProxy work
         return this;
     }
@@ -182,15 +198,15 @@ class TransProxy {
         return *i_;
     }
 
-    bool has_predicate() const {
-        return i_->has_predicate();
-    }
     bool has_read() const {
         return i_->has_read();
     }
     template <typename T>
     bool has_read(const T& value) const {
         return has_read() && this->template read_value<T>() == value;
+    }
+    bool has_predicate() const {
+        return i_->has_predicate();
     }
     bool has_write() const {
         return i_->has_write();
@@ -207,10 +223,9 @@ class TransProxy {
     inline TransProxy& update_read(T old_rdata, U new_rdata);
 
     template <typename T>
-    inline TransProxy& add_predicate(T rdata);
+    inline TransProxy& set_predicate(T pdata);
     inline TransProxy& clear_predicate() {
         i_->__rm_flags(TransItem::predicate_bit);
-        i_->__rm_flags(TransItem::read_bit);
         return *this;
     }
     
@@ -229,6 +244,16 @@ class TransProxy {
     const T& read_value() const {
         return i_->read_value<T>();
     }
+
+    template <typename T>
+    T& predicate_value() {
+        return i_->predicate_value<T>();
+    }
+    template <typename T>
+    const T& predicate_value() const {
+        return i_->predicate_value<T>();
+    }
+
     template <typename T>
     T& write_value() {
         return i_->write_value<T>();
@@ -238,12 +263,12 @@ class TransProxy {
         return i_->write_value<T>();
     }
 
-    TransProxy& remove_write() { // XXX should also cleanup_write
-        i_->__rm_flags(TransItem::write_bit);
-        return *this;
-    }
     TransProxy& remove_read() { // XXX should also cleanup_read
         i_->__rm_flags(TransItem::read_bit);
+        return *this;
+    }
+    TransProxy& remove_write() { // XXX should also cleanup_write
+        i_->__rm_flags(TransItem::write_bit);
         return *this;
     }
 
@@ -270,9 +295,6 @@ class TransProxy {
   private:
     Transaction* t_;
     TransItem* i_;
-    TransProxy(Transaction& t, TransItem& i)
-        : t_(&t), i_(&i) {
-    }
     friend class Transaction;
     friend class OptionalTransProxy;
 };

@@ -472,13 +472,13 @@ private:
             uint16_t idx = hashtable_[hash(s, key)];
             if (!idx)
                 return NULL;
-            else if (transSet_[idx - 1].sharedObj() == s && transSet_[idx - 1].key_ == key)
+            else if (transSet_[idx - 1].owner() == s && transSet_[idx - 1].key_ == key)
                 return &transSet_[idx - 1];
         }
 #endif
         for (auto it = transSet_.begin() + delta; it != transSet_.end(); ++it) {
             INC_P(txp_total_searched);
-            if (it->sharedObj() == s && it->key_ == key)
+            if (it->owner() == s && it->key_ == key)
                 return &*it;
         }
         return NULL;
@@ -507,7 +507,7 @@ private:
             has_write = std::binary_search(writeset_, writeset_ + nwriteset_, -1, [&] (const int& i, const int& j) {
                 auto& e1 = unlikely(i < 0) ? item : transSet_[i];
                 auto& e2 = likely(j < 0) ? item : transSet_[j];
-                auto ret = likely(e1.key_ < e2.key_) || (unlikely(e1.key_ == e2.key_) && unlikely(e1.sharedObj() < e2.sharedObj()));
+                auto ret = likely(e1.key_ < e2.key_) || (unlikely(e1.key_ == e2.key_) && unlikely(e1.owner() < e2.owner()));
     #if 0
               if (likely(i >= 0)) {
                 auto cur = &i;
@@ -538,7 +538,7 @@ private:
         for (auto it = trans_first; it != trans_last; ++it)
             if (it->has_read()) {
                 INC_P(txp_total_check_read);
-                if (!it->sharedObj()->check(*it, *this)) {
+                if (!it->owner()->check(*it, *this)) {
                     // XXX: only do this if we're dup'ing reads
                     for (auto jt = trans_first; jt != it; ++jt)
                         if (*jt == *it)
@@ -603,7 +603,7 @@ private:
         if (firstWrite_ >= 0)
             for (auto it = transSet_.begin() + firstWrite_; it != transSet_.end(); ++it)
                 if (it->has_write())
-                    it->sharedObj()->cleanup(*it, committed);
+                    it->owner()->cleanup(*it, committed);
         // TODO: this will probably mess up with nested transactions
         tinfo[threadid].epoch = 0;
         if (tinfo[threadid].trans_end_callback)
@@ -794,25 +794,6 @@ inline TransProxy& TransProxy::add_read(T rdata) {
     return *this;
 }
 
-template <typename T>
-inline TransProxy& TransProxy::add_predicate(T rdata) {
-    if (!has_read()) {
-#if DETAILED_LOGGING
-        Transaction::max_p(txp_max_rdata_size, sizeof(T));
-#endif
-        i_->__or_flags(TransItem::read_bit);
-        i_->__or_flags(TransItem::predicate_bit);
-        i_->rdata_ = t_->buf_.pack(std::move(rdata));
-    }
-    return *this;
-}
-
-template <typename T>
-inline void TransItem::add_read_version(T version, Transaction& t) {
-    wdata_ = t.buf_.pack(std::move(version));
-}
-
-
 template <typename T, typename U>
 inline TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
     if (has_read() && this->read_value<T>() == old_rdata)
@@ -820,8 +801,21 @@ inline TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
     return *this;
 }
 
+
+template <typename T>
+inline TransProxy& TransProxy::set_predicate(T pdata) {
+    assert(!has_write());
+#if DETAILED_LOGGING
+    Transaction::max_p(txp_max_rdata_size, sizeof(T));
+#endif
+    i_->__or_flags(TransItem::predicate_bit);
+    i_->wdata_ = t_->buf_.pack(std::move(pdata));
+    return *this;
+}
+
 template <typename T>
 inline TransProxy& TransProxy::add_write(T wdata) {
+    assert(!has_predicate());
 #if DETAILED_LOGGING
     Transaction::max_p(txp_max_wdata_size, sizeof(T));
 #endif

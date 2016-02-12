@@ -31,10 +31,8 @@ class Vector : public Shared {
     static constexpr int size_pred_key = -3;
     static constexpr TransItem::flags_type list_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
-    static constexpr int32_t eq_bit = 0;
-    static constexpr int32_t geq_bit = 1;
-    static constexpr int32_t pred_shift = 1;
-    static constexpr int32_t pred_mask = 1;
+    static constexpr int32_t value_shift = 1;
+    static constexpr int32_t geq_mask = 1;
 public:
     typedef int key_type;
     typedef T value_type;
@@ -198,59 +196,30 @@ public:
         size_type size = size_;
         int32_t offset = trans_size_offs();
         
-        int32_t pred = (sz - offset) << pred_shift;
+        int32_t pred = (sz - offset) << value_shift;
         if (size + offset == sz) {
-            pred |= eq_bit;
         } else if (size + offset > sz) {
-            pred |= geq_bit;
+            pred |= geq_mask;
         } else {
             Sto::abort();
         }
         auto item = Sto::item(this, size_pred_key);
         if (item.has_predicate()) {
-            assert(item.has_read());
-            int32_t old_pred = item.template read_value<int32_t>();
+            int32_t old_pred = item.template predicate_value<int32_t>();
             // Add the covering predicate of the old predicate and the new one.
-            if (old_pred != pred) {
-                int32_t oldval = old_pred >> pred_shift;
-                int32_t newval = pred >> pred_shift;
-                if ((old_pred & pred_mask) == eq_bit) {
-                    if ((pred & pred_mask) == eq_bit) {
-                        // Contradicting predicates
-                        Sto::abort();
-                    } else {
-                        assert((pred & pred_mask) == geq_bit);
-                        if (oldval < newval) {
-                            // Again contradicting
-                            Sto::abort();
-                        }
-                        // old predicate is the covering  predicate - so retain it
-                    }
-                } else {
-                    assert((old_pred & pred_mask) == geq_bit);
-                    if ((pred & pred_mask) == eq_bit) {
-                        if (newval < oldval) {
-                            // Contradicting
-                            Sto::abort();
-                        } else {
-                            // new predicate is the covering predicate
-                            item.clear_predicate().add_predicate(pred);
-                        }
-                    } else {
-                        assert((pred & pred_mask) == geq_bit);
-                        if (newval > oldval) {
-                            item.clear_predicate().add_predicate(pred);
-                        }
-                    }
-                }
-            }
-        } else {
-            assert(!item.has_read());
-            item.add_predicate(pred);
+            if (pred == old_pred || (old_pred & pred & geq_mask))
+                pred = pred >= old_pred ? pred : old_pred;
+            else if ((old_pred & geq_mask) && old_pred <= (pred | geq_mask))
+                /* OK */;
+            else if ((pred & geq_mask) && pred <= (old_pred | geq_mask))
+                pred = old_pred;
+            else
+                Sto::abort();
         }
+        item.set_predicate(pred);
         return size + offset == sz;
     }
-    
+
     size_t size() const {
         return size_;
     }
@@ -436,40 +405,30 @@ public:
         auto item = t_item((void*)this);
         item.add_write(0);
     }
-    
-    void readVersion(TransItem& item, Transaction& t) {
-        if (item.key<int>() == size_pred_key) {
-            auto vec_item = Sto::check_item(this, this);
-            auto lv = vecversion_;
-            if (is_locked(lv) && !(*vec_item).has_lock()) { Sto::abort(); }
-            item.add_read_version(lv, t);
-            return;
-        }
-        assert(false);
+
+    bool check_predicate(TransItem& item, Transaction& t) {
+        assert(item.key<int>() == size_pred_key);
+        auto lv = vecversion_;
+        if (is_locked(lv))
+            return false;
+        acquire_fence();
+        TransProxy(t, item).add_read(lv);
+        auto size = size_;
+        int32_t pred = item.template predicate_value<int32_t>();
+        int32_t pred_value = pred >> value_shift;
+        fprintf(stderr, "%d %d %d\n", pred_value, pred & geq_mask, size);
+        if (pred & geq_mask)
+            return size >= pred_value;
+        else
+            return size == pred_value;
     }
     
     bool check(const TransItem& item, const Transaction& trans){
         if (item.key<int>() == size_key) {
             return true;
         }
-        if (item.key<int>() == size_pred_key) {
-            size_type size = size_;
-            acquire_fence();
-            
-            int32_t pred = item.template read_value<int32_t>();
-            int32_t rval = pred >> pred_shift;
-            if ((pred & pred_mask) == eq_bit) {
-                if (size != rval) return false;
-            } else {
-                assert((pred & pred_mask) == geq_bit);
-                if (size < rval) return false;
-            }
-            auto& read_version = item.template write_value<Version>();
-            if (read_version != vecversion_) { return false; }
-            return true;
-            
-        }
-        if (item.key<Vector*>() == this || item.key<int>() == push_back_key) {
+        if (item.key<Vector*>() == this || item.key<int>() == push_back_key
+            || item.key<int>() == size_pred_key) {
             auto lv = vecversion_;
             return TransactionTid::same_version(lv, item.template read_value<Version>())
                 && (!is_locked(lv) || item.has_lock(trans));
