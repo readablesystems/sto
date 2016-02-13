@@ -372,10 +372,9 @@ public:
     }
 
     ~Transaction() { /* XXX should really be private */
-        if (!isAborted_ && !transSet_.empty()) {
+        if (!isAborted_) {
             silent_abort();
         }
-        end_transaction();
     }
 
   private:
