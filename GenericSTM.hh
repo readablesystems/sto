@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Array.hh"
 #include "Transaction.hh"
 
 #define SIZE (1<<15)
@@ -75,7 +74,5 @@ private:
   inline size_t bucket(void* k) {
     return hash(k) % nbuckets();
   }
-  // value is actually unused!
-  //Array<int, SIZE/*, SingleElem<int, true>*/> table_;
   uint64_t table_[SIZE];
 };
