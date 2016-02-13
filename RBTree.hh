@@ -308,7 +308,7 @@ private:
                     return results;
                 }
             }
-            // add a read of the node version for a present get
+            // add a read of the value version for a present get
             item.add_read(val_ver);
         
         // ABSENT GET
@@ -505,8 +505,6 @@ private:
     // only add a write to size if we erase or do an absent insert
     size_t size_;
     mutable Version sizeversion_;
-    mutable Version treelock_;
-    mutable Version treeversion_;
     // used to mark whether a key is for the tree structure (for tree version checks)
     // or a pointer (which will always have the lower 3 bits as 0)
     static constexpr uintptr_t tree_bit = 1U<<0;
