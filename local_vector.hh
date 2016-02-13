@@ -1,5 +1,6 @@
 #ifndef GSTORE_LOCAL_VECTOR_HH
 #define GSTORE_LOCAL_VECTOR_HH 1
+#include "config.h"
 #include "compiler.hh"
 #include <memory>
 #include <iterator>

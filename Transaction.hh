@@ -1,6 +1,7 @@
 #pragma once
 
 #include "local_vector.hh"
+#include "config.h"
 #include "compiler.hh"
 #include <algorithm>
 #include <functional>
