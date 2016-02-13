@@ -46,55 +46,62 @@ MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 	$(MASSTREEDIR)/checkpoint.o \
 	$(MASSTREEDIR)/string_slice.o
 
-STO_OBJS = Transaction.o MassTrans.o
+STO_OBJS = Transaction.o MassTrans.o clp.o
+MSTO_OBJS = $(STO_OBJS) $(MASSTREE_OBJS)
+STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
+MSTO_DEPS = $(MSTO_OBJS) $(MASSTREEDIR)/libjson.a
 
-concurrent: concurrent.o clp.o $(STO_OBJS) $(MASSTREE_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+concurrent: concurrent.o $(MSTO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
 
-single: single.o clp.o $(STO_OBJS) $(MASSTREE_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+single: single.o $(MSTO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
 
-singleelems: singleelems.o clp.o $(STO_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+singleelems: singleelems.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-array1: array1.o clp.o $(STO_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+array1: array1.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-list1: list1.o clp.o $(STO_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+list1: list1.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-vector: vector.o clp.o $(STO_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+vector: vector.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-pqueue: pqueue.o clp.o $(STO_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+pqueue: pqueue.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-rbtree: rbtree.o clp.o $(STO_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+rbtree: rbtree.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-genericTest: genericTest.o clp.o $(STO_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+genericTest: genericTest.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-trans_test: trans_test.o clp.o $(STO_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+trans_test: trans_test.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-ht_mt: ht_mt.o clp.o $(STO_OBJS) $(MASSTREE_OBJS)
-	$(CXX) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+ht_mt: ht_mt.o $(MSTO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
 
-pqVsIt: pqVsIt.o clp.o $(STO_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+pqVsIt: pqVsIt.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-iterators: iterators.o clp.o $(STO_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+iterators: iterators.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-hashtable_nostm: hashtable_nostm.o clp.o $(STO_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+hashtable_nostm: hashtable_nostm.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;
 
 .PHONY: masstree
 masstree: $(MASSTREEDIR)/config.status
 	$(MAKE) -C $(MASSTREEDIR)
+
+.PHONY: $(MASSTREEDIR)/libjson.a
+$(MASSTREEDIR)/libjson.a: $(MASSTREEDIR)/config.status
+	$(MAKE) -C $(MASSTREEDIR) libjson.a
 
 config.h: stamp-h
 

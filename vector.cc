@@ -32,16 +32,12 @@ void testWriteNPushBack() {
         f.push_back(10);
     }
 
-    Transaction t2(Transaction::testing);
-    Sto::set_transaction(&t2);
+    TestTransaction t2;
     f.transUpdate(0, 4);
     
-    Transaction t3(Transaction::testing);
-    Sto::set_transaction(&t3);
+    TestTransaction t3;
     f.push_back(20); // This will resize the array
     assert(t3.try_commit());
-    
-    Sto::set_transaction(&t2);
     assert(t2.try_commit()); // This should not conflict with the write
 
     {
@@ -60,15 +56,12 @@ void testPushBack() {
         f.push_back(10);
     }
 
-    Transaction t2(Transaction::testing);
-    Sto::set_transaction(&t2);
+    TestTransaction t2;
     f.push_back(4);
     
-    Transaction t3(Transaction::testing);
-    Sto::set_transaction(&t3);
+    TestTransaction t3;
     f.push_back(20);
     assert(t3.try_commit());
-    
     assert(t2.try_commit()); // This should not conflict with the push_back
 
     {
@@ -107,17 +100,15 @@ void testPushBackNRead1() {
         f.push_back(10);
     }
 
-    Transaction t2(Transaction::testing);
-    Sto::set_transaction(&t2);
+    TestTransaction t2;
     f.push_back(4);
     assert(f.transGet(1) == 4);
     
-    Transaction t3(Transaction::testing);
-    Sto::set_transaction(&t3);
+    TestTransaction t3;
     f.push_back(20);
     assert(t3.try_commit());
-    
     assert(!t2.try_commit());
+
     printf("PASS: testPushBackNRead1\n");
 }
 
@@ -129,17 +120,16 @@ void testPushBackNRead2() {
         f.push_back(10);
     }
 
-    Transaction t2(Transaction::testing);
-    Sto::set_transaction(&t2);
+    TestTransaction t2;
     f.push_back(4);
     assert(f.transGet(f.transSize() - 1) == 4);
     
-    Transaction t3(Transaction::testing);
-    Sto::set_transaction(&t3);
+    TestTransaction t3;
     f.push_back(20);
+
     assert(t3.try_commit());
-    
     assert(!t2.try_commit()); // TODO: this can actually commit
+
     printf("PASS: testPushBackNRead2\n");
 }
 
@@ -216,16 +206,14 @@ void testConflictingIter() {
     }
     } RETRY(false);
 
-    Transaction t(Transaction::testing);
-    Sto::set_transaction(&t);
+    TestTransaction t;
     std::max_element(f.begin(), f.end());
     
-    Transaction t1(Transaction::testing);
-    Sto::set_transaction(&t1);
+    TestTransaction t1;
     f.transUpdate(4, 10);
     assert(t1.try_commit());
-    Sto::set_transaction(&t);
     assert(!t.try_commit());
+
     printf("PASS: conflicting vector max_element test\n");
     
 }
@@ -261,15 +249,12 @@ void testConflictingModifyIter1() {
     }
     } RETRY(false);
     
-    Transaction t(Transaction::testing);
-    Sto::set_transaction(&t);
+    TestTransaction t;
     std::replace(f.begin(), f.end(), 4, 6);
     
-    Transaction t1(Transaction::testing);
-    Sto::set_transaction(&t1);
+    TestTransaction t1;
     f.transUpdate(4, 10);
     assert(t1.try_commit());
-    Sto::set_transaction(&t);
     assert(!t.try_commit());
 
     {
@@ -316,16 +301,12 @@ void testConflictingModifyIter3() {
     }
     } RETRY(false);
     
-    Transaction t1(Transaction::testing);
-    Sto::set_transaction(&t1);
+    TestTransaction t1;
     f.transGet(4);
     
-    Transaction t(Transaction::testing);
-    Sto::set_transaction(&t);
+    TestTransaction t;
     std::replace(f.begin(), f.end(), 4, 6);
     assert(t.try_commit());
-    
-    Sto::set_transaction(&t1);
     assert(!t1.try_commit());
 
     {
@@ -365,17 +346,14 @@ void testIterNPushBack1() {
     }
 
     int max;
-    Transaction t1(Transaction::testing);
-    Sto::set_transaction(&t1);
+    TestTransaction t1;
     f.push_back(20);
     max = *(std::max_element(f.begin(), f.end()));
     assert(max == 20);
     
-    Transaction t2(Transaction::testing);
-    Sto::set_transaction(&t2);
+    TestTransaction t2;
     f.push_back(12);
     assert(t2.try_commit());
-    Sto::set_transaction(&t1);
     assert(!t1.try_commit());
     
     printf("PASS: IterNPushBack1\n");    
@@ -391,17 +369,13 @@ void testIterNPushBack2() {
         }
     }
 
-    Transaction t1(Transaction::testing);
-    Sto::set_transaction(&t1);
+    TestTransaction t1;
     std::max_element(f.begin(), f.end());
     
-    Transaction t2(Transaction::testing);
-    Sto::set_transaction(&t2);
+    TestTransaction t2;
     f.push_back(2);
     assert(t2.try_commit());
-    Sto::set_transaction(&t1);
     assert(!t1.try_commit());
-    Sto::clear_transaction();
     
     printf("PASS: IterNPushBack2\n");
     
@@ -478,16 +452,13 @@ void testPushNPop() {
         f.pop_back();
     }
     
-    Transaction t1(Transaction::testing);
-    Sto::set_transaction(&t1);
+    TestTransaction t1;
     f.pop_back();
     f.push_back(15);
     
-    Transaction t2(Transaction::testing);
-    Sto::set_transaction(&t2);
+    TestTransaction t2;
     f.push_back(20);
     assert(t2.try_commit());
-    Sto::set_transaction(&t1);
     assert(!t1.try_commit());
     
     TRANSACTION {
@@ -498,16 +469,13 @@ void testPushNPop() {
     
     printf("PASS: testPushNPop\n");
     
-    Transaction t3(Transaction::testing);
-    Sto::set_transaction(&t3);
+    TestTransaction t3;
     f.pop_back();
     f.push_back(15);
     
-    Transaction t4(Transaction::testing);
-    Sto::set_transaction(&t4);
+    TestTransaction t4;
     f.pop_back();
     assert(t4.try_commit());
-    Sto::set_transaction(&t3);
     assert(!t3.try_commit());
     
     TRANSACTION {
@@ -517,23 +485,19 @@ void testPushNPop() {
     printf("PASS: testPushNPop1\n");
     
 
-    Transaction t5(Transaction::testing);
-    Sto::set_transaction(&t5);
+    TestTransaction t5;
     f.pop_back();
     f.pop_back();
     f.push_back(15);
     
-    Transaction t6(Transaction::testing);
-    Sto::set_transaction(&t6);
+    TestTransaction t6;
     f.transUpdate(8, 16);
     assert(t6.try_commit());
     
-    Transaction t7(Transaction::testing);
-    Sto::set_transaction(&t7);
+    TestTransaction t7;
     f.transGet(8);
     
     assert(t5.try_commit());
-    Sto::set_transaction(&t7);
     assert(!t7.try_commit());
     
     TRANSACTION {
@@ -554,17 +518,13 @@ void testPopAndUdpate() {
         }
     } RETRY(false);
     
-    Transaction t1(Transaction::testing);
-    Sto::set_transaction(&t1);
+    TestTransaction t1;
     f.transUpdate(9, 20);
-    
-    
-    Transaction t2(Transaction::testing);
-    Sto::set_transaction(&t2);
+
+    TestTransaction t2;
     f.pop_back();
     f.pop_back();
     assert(t2.try_commit());
-    Sto::set_transaction(&t1);
     assert(!t1.try_commit());
 }
 
@@ -632,15 +592,12 @@ void testIteratorBetterSemantics() {
         }
     } RETRY(false);
     
-    Transaction t1(Transaction::testing);
-    Sto::set_transaction(&t1);
+    TestTransaction t1;
     std::find(f.begin(), f.end(), 5);
     
-    Transaction t2(Transaction::testing);
-    Sto::set_transaction(&t2);
+    TestTransaction t2;
     f.push_back(12);
     assert(t2.try_commit());
-    Sto::set_transaction(&t1);
     assert(t1.try_commit());
     
     printf("PASS: IteratorBetterSemantics\n");

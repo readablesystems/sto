@@ -19,19 +19,15 @@ int main() {
   
   GenericSTM stm_;
   int x = 5;
-  Transaction t1(Transaction::testing);
-  Sto::set_transaction(&t1);
-  int x_ = stm_.transRead(&x);
-  assert(x_ == 5);
+  {
+      TestTransaction t1;
+      int x_ = stm_.transRead(&x);
+      assert(x_ == 5);
   
-  Transaction t2(Transaction::testing);
-  Sto::set_transaction(&t2);
-  stm_.transWrite(&x, 4);
-  assert(t2.try_commit());
-  assert(x == 4);
-  
-  
-  assert(!t1.try_commit());
-  
-  
+      TestTransaction t2;
+      stm_.transWrite(&x, 4);
+      assert(t2.try_commit());
+      assert(x == 4);
+      assert(!t1.try_commit());
+  }
 }

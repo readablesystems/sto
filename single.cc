@@ -162,12 +162,10 @@ void queueTests() {
     // CONFLICTING TRANSACTIONS TEST
     {
         // test abortion due to pops 
-        Transaction t1(Transaction::testing);
-        Transaction t2(Transaction::testing);
+        TestTransaction t1;
         // q has >1 element
-        Sto::set_transaction(&t1);
         assert(q.transPop());
-        Sto::set_transaction(&t2);
+        TestTransaction t2;
         assert(q.transPop());
         assert(t1.try_commit());
         assert(!t2.try_commit());
@@ -175,12 +173,10 @@ void queueTests() {
 
     {
         // test nonabortion T1 pops, T2 pushes on nonempty q
-        Transaction t1(Transaction::testing);
-        Transaction t2(Transaction::testing);
+        TestTransaction t1;
         // q has >1 element
-        Sto::set_transaction(&t1);
         assert(q.transPop());
-        Sto::set_transaction(&t2);
+        TestTransaction t2;
         q.transPush(3);
         assert(t1.try_commit());
         assert(t2.try_commit()); // commit should succeed 
@@ -196,14 +192,12 @@ void queueTests() {
 
     {
         // test abortion due to empty q pops
-        Transaction t1(Transaction::testing);
-        Transaction t2(Transaction::testing);
+        TestTransaction t1;
         // q has 0 elements
-        Sto::set_transaction(&t1);
         assert(!q.transPop());
         q.transPush(1);
         q.transPush(2);
-        Sto::set_transaction(&t2);
+        TestTransaction t2;
         q.transPush(3);
         q.transPush(4);
         q.transPush(5);
@@ -217,11 +211,8 @@ void queueTests() {
 
     {
         // test nonabortion T1 pops/fronts and pushes, T2 pushes on nonempty q
-        Transaction t1(Transaction::testing);
-        Transaction t2(Transaction::testing);
-        
+        TestTransaction t1;
         // q has 2 elements [1, 2]
-        Sto::set_transaction(&t1);
         assert(q.transFront(p) && p == 1);
         q.transPush(4);
 
@@ -230,15 +221,14 @@ void queueTests() {
         assert(q.transFront(p));
         assert(p == 2);
 
-        Sto::set_transaction(&t2);
+        TestTransaction t2;
         q.transPush(3);
         // order of pushes doesn't matter, commits succeed
         assert(t2.try_commit());
         assert(t1.try_commit());
 
         // check if q is in order
-        Transaction t(Transaction::testing);
-        Sto::set_transaction(&t);
+        TestTransaction t;
         assert(q.transPop());
         assert(q.transFront(p));
         assert(p == 3);
@@ -247,7 +237,7 @@ void queueTests() {
         assert(p == 4);
         assert(q.transPop());
         assert(!q.transPop());
-        assert(t1.try_commit());
+        assert(t.try_commit());
     }
 }
 
@@ -336,8 +326,7 @@ void insertDeleteTest(bool shouldAbort) {
       }
   }
 
-  Transaction t2(Transaction::testing);
-  Sto::set_transaction(&t2);
+  TestTransaction t2;
   assert(h.transInsert(25, 26));
   int x;
   assert(h.transGet(25, x));
@@ -346,13 +335,12 @@ void insertDeleteTest(bool shouldAbort) {
   assert(h.transDelete(25));
 
   if (shouldAbort) {
-    Transaction t3(Transaction::testing);
-    Sto::set_transaction(&t3);
-    assert(h.transInsert(26, 27));
-    assert(t3.try_commit());
-    assert(!t2.try_commit());
+      TestTransaction t3;
+      assert(h.transInsert(26, 27));
+      assert(t3.try_commit());
+      assert(!t2.try_commit());
   } else
-    assert(t2.try_commit());
+      assert(t2.try_commit());
 }
 
 void insertDeleteSeparateTest() {
@@ -364,25 +352,21 @@ void insertDeleteSeparateTest() {
       }
   }
 
-  Transaction t(Transaction::testing);
-  Sto::set_transaction(&t);
+  TestTransaction t;
   int x;
   assert(!h.transGet(12, x));
 
-  Transaction t2(Transaction::testing);
-  Sto::set_transaction(&t2);
+  TestTransaction t2;
   assert(h.transInsert(12, 13));
   assert(h.transDelete(10));
   assert(t2.try_commit());
   assert(!t.try_commit());
 
 
-  Transaction t3(Transaction::testing);
-  Sto::set_transaction(&t3);
+  TestTransaction t3;
   assert(!h.transGet(13, x));
   
-  Transaction t4(Transaction::testing);
-  Sto::set_transaction(&t4);
+  TestTransaction t4;
   assert(h.transInsert(10, 11));
   assert(h.transInsert(13, 14));
   assert(h.transDelete(11));
@@ -485,29 +469,24 @@ void basicMapTests(MapType& h) {
       assert(!h.transUpdate(2, 1));
   }
 
-  Transaction t7(Transaction::testing);
-  Sto::set_transaction(&t7);
+  TestTransaction t7;
   assert(!h.transGet(2, vunused));
-  Transaction t8(Transaction::testing);
-  Sto::set_transaction(&t8);
+  TestTransaction t8;
   assert(h.transInsert(2, 2));
   assert(t8.try_commit());
 
   assert(!t7.try_commit());
 
-  Transaction t9(Transaction::testing);
-  Sto::set_transaction(&t9);
+  TestTransaction t9;
   assert(h.transInsert(3, 0));
-  Transaction t10(Transaction::testing);
-  Sto::set_transaction(&t10);
+  TestTransaction t10;
   assert(h.transInsert(4, 4));
   try{
     // t9 inserted invalid node, so we are forced to abort
     h.transUpdate(3, vunused);
     assert(0);
   } catch (Transaction::Abort E) {}
-  Transaction t10_2(Transaction::testing);
-  Sto::set_transaction(&t10_2);
+  TestTransaction t10_2;
   try {
     // deletes should also force abort from invalid nodes
     h.transDelete(3);
@@ -552,11 +531,9 @@ void basicMapTests(MapType& h) {
   }
 
   // blind update failure
-  Transaction t15(Transaction::testing);
-  Sto::set_transaction(&t15);
+  TestTransaction t15;
   assert(h.transUpdate(3, 15));
-  Transaction t16(Transaction::testing);
-  Sto::set_transaction(&t16);
+  TestTransaction t16;
   assert(h.transUpdate(3, 16));
   assert(t16.try_commit());
   // blind updates conflict each other now (not worth the extra trouble)
@@ -564,11 +541,9 @@ void basicMapTests(MapType& h) {
 
 
   // update aborts after delete
-  Transaction t17(Transaction::testing);
-  Transaction t18(Transaction::testing);
-  Sto::set_transaction(&t17);
+  TestTransaction t17;
   assert(h.transUpdate(3, 17));
-  Sto::set_transaction(&t18);
+  TestTransaction t18;
   assert(h.transDelete(3));
   assert(t18.try_commit());
   assert(!t17.try_commit());

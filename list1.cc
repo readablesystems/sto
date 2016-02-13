@@ -63,15 +63,16 @@ void testConflictingIter() {
         f.insert(i);
     }
 
-    Transaction t(Transaction::testing);
-    Sto::set_transaction(&t);
-    std::max_element(f.begin(), f.end());
+    {
+        TestTransaction t;
+        std::max_element(f.begin(), f.end());
 
-    Transaction t1(Transaction::testing);
-    Sto::set_transaction(&t1);
-    f.transInsert(10);
-    assert(t1.try_commit());
-    assert(!t.try_commit());
+        TestTransaction t1;
+        f.transInsert(10);
+        assert(t1.try_commit());
+        assert(!t.try_commit());
+    }
+
     printf("PASS: conflicting array max_element test\n");
 }
 
@@ -100,15 +101,12 @@ void testConflictingModifyIter1() {
         f.insert(i);
     }
 
-    Transaction t(Transaction::testing);
-    Sto::set_transaction(&t);
+    TestTransaction t;
     std::replace(f.begin(), f.end(), 4, 6);
 
-    Transaction t1(Transaction::testing);
-    Sto::set_transaction(&t1);
+    TestTransaction t1;
     f.transInsert(4);
     assert(t1.try_commit());
-
     assert(!t.try_commit());
 
     {
@@ -149,15 +147,12 @@ void testConflictingModifyIter3() {
         f.insert(i);
     }
 
-    Transaction t1(Transaction::testing);
-    Sto::set_transaction(&t1);
+    TestTransaction t1;
     f.transFind(4);
 
-    Transaction t(Transaction::testing);
-    Sto::set_transaction(&t);
+    TestTransaction t;
     std::replace(f.begin(), f.end(), 4, 6);
     assert(t.try_commit());
-    
     assert(!t1.try_commit());
 
     {

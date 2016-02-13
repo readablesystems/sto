@@ -30,15 +30,14 @@ void reset_tree(tree_type& tree) {
 void update_conflict_tests() {
     {
         tree_type tree;
-        Transaction t1(Transaction::testing), t2(Transaction::testing);
-        Sto::set_transaction(&t1);
+        TestTransaction t1, t2;
+        t1.use();
         tree[55] = 56;
         tree[57] = 58;
-        Sto::set_transaction(&t2);
+        t2.use();
         int x = tree[58];
         assert(x == 0);
         assert(t2.try_commit());
-        Sto::set_transaction(&t1);
         assert(t1.try_commit());
     }
 }
@@ -47,75 +46,67 @@ void erase_conflict_tests() {
     {
         // t1:count - t1:erase - t2:count - t1:commit - t2:abort
         tree_type tree;
-        Transaction t1(Transaction::testing), t2(Transaction::testing), after(Transaction::testing);
+        TestTransaction t1, t2, after;
         reset_tree(tree);
-        Sto::set_transaction(&t1);
+        t1.use();
         assert(tree.count(1) == 1);
         assert(tree.erase(1) == 1);
-        Sto::set_transaction(&t2);
+        t2.use();
         assert(tree.count(1) == 1);
-        Sto::set_transaction(&t1);
         assert(t1.try_commit());
-        Sto::set_transaction(&t2);
         assert(!t2.try_commit());
         // check that the commit did its job
-        Sto::set_transaction(&after);
+        after.use();
         assert(tree.count(1)==0);
         assert(after.try_commit());
     }
     {
         // t1:count - t1:erase - t2:count - t2:commit - t1:commit
         tree_type tree;
-        Transaction t1(Transaction::testing), t2(Transaction::testing), after(Transaction::testing);
+        TestTransaction t1, t2, after;
         reset_tree(tree);
-        Sto::set_transaction(&t1);
+        t1.use();
         assert(tree.count(1) == 1);
         assert(tree.erase(1) == 1);
-        Sto::set_transaction(&t2);
+        t2.use();
         assert(tree.count(1) == 1);
-        Sto::set_transaction(&t2);
         assert(t2.try_commit());
-        Sto::set_transaction(&t1);
         assert(t1.try_commit());
-        Sto::set_transaction(&after);
+        after.use();
         assert(tree.count(1)==0);
         assert(after.try_commit());
     }
     {
         // t1:count - t1:erase - t1:count - t2:erase - t2:commit - t1:abort
         tree_type tree;
-        Transaction t1(Transaction::testing), t2(Transaction::testing), after(Transaction::testing);
+        TestTransaction t1, t2, after;
         reset_tree(tree);
-        Sto::set_transaction(&t1);
+        t1.use();
         assert(tree.count(1) == 1);
         assert(tree.erase(1) == 1);
         assert(tree.count(1) == 1);
-        Sto::set_transaction(&t2);
+        t2.use();
         assert(tree.erase(1) == 1);
-        Sto::set_transaction(&t2);
         assert(t2.try_commit());
-        Sto::set_transaction(&t1);
         assert(!t1.try_commit());
-        Sto::set_transaction(&after);
+        after.use();
         assert(tree.count(1)==0);
         assert(after.try_commit());
     }
     {
         // t1:count - t1:erase - t1:count - t2:erase - t1:commit - t2:abort XXX technically t2 doesn't have to abort?
         tree_type tree;
-        Transaction t1(Transaction::testing), t2(Transaction::testing), after(Transaction::testing);
+        TestTransaction t1, t2, after;
         reset_tree(tree);
-        Sto::set_transaction(&t1);
+        t1.use();
         assert(tree.count(1) == 1);
         assert(tree.erase(1) == 1);
         assert(tree.count(1) == 1);
-        Sto::set_transaction(&t2);
+        t2.use();
         assert(tree.erase(1) == 1);
-        Sto::set_transaction(&t1);
         assert(t1.try_commit());
-        Sto::set_transaction(&t2);
         assert(!t2.try_commit());
-        Sto::set_transaction(&after);
+        after.use();
         assert(tree.count(1)==0);
         assert(after.try_commit());
     }
@@ -125,8 +116,7 @@ int main() {
     // test single-threaded operations
     {
         tree_type tree;
-        Transaction t(Transaction::testing);
-        Sto::set_transaction(&t);
+        TestTransaction t;
         // read_my_inserts
         for (int i = 0; i < 100; ++i) {
             tree[i] = i;
@@ -150,7 +140,7 @@ int main() {
         }
         // insert_my_deletes
         for (int i = 0; i < 100; ++i) {
-            tree[i] == 1;
+            tree[i] = 1;
             assert(tree.count(i) == 1);
         }
         // operator[] inserts empty value
