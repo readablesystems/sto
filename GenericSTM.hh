@@ -18,7 +18,7 @@ public:
     size_t key = bucket(word);
     // ensure version doesn't change
     auto version = table_[key];
-    t.check_opacity(version);
+    Sto::check_opacity(version);
     it.add_read(version);
     fence();
     T ret = *word;
