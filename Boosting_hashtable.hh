@@ -9,33 +9,30 @@ public:
 
   void readLock(const K& key) {
     RWLock *lock = getLock(key);
-    bool inserted;
-    inserted = _thread().rwlockset.insert(lock);
-    // check if we already have the lock or need to get it now
-    if (inserted) {
+    if (!_thread().rwlockset.exists(lock)) {
       if (!lock->tryReadLock(READ_SPIN)) {
-        _thread().rwlockset.erase(lock);
         DO_ABORT();
+        return;
       }
+      _thread().rwlockset.push(lock);
     }
   }
 
   void writeLock(const K& key) {
     RWLock *lock = getLock(key);
-    bool inserted;
-    inserted = _thread().rwlockset.insert(lock);
-    if (inserted) {
+    if (!_thread().rwlockset.exists(lock)) {
       // don't have the lock in any form yet
       if (!lock->tryWriteLock(WRITE_SPIN)) {
-        _thread().rwlockset.erase(lock);
         DO_ABORT();
+        return;
       }
-      return;
-    }
-    // only have a read lock so far
-    if (!lock->isWriteLocked()) {
-      if (!lock->tryUpgrade(WRITE_SPIN)) {
-        DO_ABORT();
+      _thread().rwlockset.push(lock);
+    } else {
+      // only have a read lock so far
+      if (!lock->isWriteLocked()) {
+        if (!lock->tryUpgrade(WRITE_SPIN)) {
+          DO_ABORT();
+        }
       }
     }
   }

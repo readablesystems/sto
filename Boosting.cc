@@ -30,8 +30,8 @@ void boosting_releaseLocksCallback(void*, void*, void*) {
     }
   }
 
-  _thread().lockset.clear();
-  _thread().rwlockset.clear();
+  _thread().lockset.unsafe_clear();
+  _thread().rwlockset.unsafe_clear();
 }
 
 // TODO: should probably go in Boosting_hashtable.cc or something

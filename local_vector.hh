@@ -55,6 +55,7 @@ class local_vector {
     inline void pop_back();
 
     inline void clear();
+    inline void unsafe_clear();
     inline void resize(size_type n, value_type x = value_type());
     iterator erase(iterator position);
     iterator erase(iterator first, iterator last);
@@ -271,6 +272,12 @@ inline void local_vector<T, N, A>::pop_back() {
     assert(r_.first_ != r_.last_);
     --r_.last_;
     r_.destroy(r_.last_);
+}
+
+template <typename T, int N, typename A>
+inline void local_vector<T, N, A>::unsafe_clear() {
+    // don't need to do any destroying if it's a POD type
+    r_.last_ = r_.first_;
 }
 
 template <typename T, int N, typename A>
