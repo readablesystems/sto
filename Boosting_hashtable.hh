@@ -6,19 +6,8 @@
 #define STO_NO_STM
 #include "Hashtable.hh"
 
-class TransHashtableUndo {
-public:
-  virtual ~TransHashtableUndo() {}
-  virtual void _undoDelete(void *c1, void *c2) = 0;
-  virtual void _undoInsert(void *c1, void *c2) = 0;
-};
-
-void _undoDel(void *self, void *c1, void *c2);
-void _undoIns(void *self, void *c1, void *c2);
-
-
 template <typename K, typename V, unsigned Init_size = 129, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
-  class TransHashtable : public TransHashtableUndo {
+  class TransHashtable {
   Hashtable<K, V, true, Init_size, V, Hash, Pred> hashtable;
   LockKey<K, Init_size, Hash, Pred> lockKey;
 
@@ -43,18 +32,19 @@ public:
     return hashtable.read(k, val);
   }
 
-  virtual void _undoDelete(void *c1, void *c2) {
+  static void _undoDelete(void *self, void *c1, void *c2) {
     Key key = (Key)c1;
     Value val = (Value)c2;
-    bool inserted = hashtable.insert(key, val);
+    bool inserted = ((TransHashtable*)self)->hashtable.insert(key, val);
     assert(inserted);
+    // Assume we're always running in STAMP and thus key and value are always POD
     //    delete key;
     //    delete val;
   }
   
-  virtual void _undoInsert(void *c1, void *c2) {
+  static void _undoInsert(void *self, void *c1, void *c2) {
     Key key = (Key)c1;
-    bool success = hashtable.remove(key);
+    bool success = ((TransHashtable*)self)->hashtable.remove(key);
     assert(success);
     //    delete key;
   }
@@ -68,7 +58,7 @@ public:
     bool success = hashtable.remove(k);
     assert(success);
 
-    ON_ABORT(_undoDel, this, k, oldval);
+    ON_ABORT(TransHashtable::_undoDelete, this, k, oldval);
 
     return success;
   }
@@ -78,7 +68,7 @@ public:
     bool success = hashtable.insert(k, val);
     
     if (success) {
-      ON_ABORT(_undoIns, this, k, NULL);
+      ON_ABORT(TransHashtable::_undoInsert, this, k, NULL);
     }
 
     return success;

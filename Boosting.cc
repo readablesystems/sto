@@ -33,11 +33,3 @@ void boosting_releaseLocksCallback(void*, void*, void*) {
   _thread().lockset.unsafe_clear();
   _thread().rwlockset.unsafe_clear();
 }
-
-// TODO: should probably go in Boosting_hashtable.cc or something
-void _undoDel(void *self, void *c1, void *c2) {
-  ((TransHashtableUndo*)self)->_undoDelete(c1, c2);
-}
-void _undoIns(void *self, void *c1, void *c2) {
-  ((TransHashtableUndo*)self)->_undoInsert(c1, c2);
-}
