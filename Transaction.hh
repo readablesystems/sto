@@ -588,8 +588,9 @@ public:
         assert(!writeset_);
         if (!start_tid_)
             start_tid_ = _TID;
-        if (!TransactionTid::try_check_opacity(start_tid_, t))
+        if (!TransactionTid::try_check_opacity(start_tid_, t)) {
             hard_check_opacity(t);
+        }
     }
 
     tid_type commit_tid() const {

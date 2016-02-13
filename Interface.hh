@@ -12,6 +12,9 @@ public:
     typedef int64_t signed_type;
 
     static constexpr type lock_bit = type(1);
+    // Used for data structures that don't use opacity. When they increment
+    // a version they unset the valid_bit, forcing any opacity check to be
+    // hard (checking the full read set).
     static constexpr type valid_bit = type(2);
     static constexpr type user_bit1 = type(4);
     static constexpr type user_bit2 = type(8);

@@ -17,9 +17,10 @@ public:
         return it.template write_value<T>();
     }
     size_t key = bucket(word);
-    // ensures version doesn't change
+    // ensure version doesn't change
     auto version = table_[key];
     t.check_opacity(version);
+    it.add_read(version);
     fence();
     T ret = *word;
     return ret;
@@ -50,11 +51,12 @@ public:
   bool check(const TransItem& item, const Transaction&) {
     size_t key = bucket(item.key<void*>());
     auto current = table_[key];
-    return TransactionTid::same_version(current, item.template read_value<uint64_t>())
+    return TransactionTid::same_version(current & ~TransactionTid::user_mask, item.template read_value<uint64_t>() & ~TransactionTid::user_mask)
       && (!TransactionTid::is_locked(current) || item.has_write() || TransactionTid::user_bits(current) == Transaction::threadid);
   }
   void install(TransItem& item, const Transaction& t) {
     void* word = item.key<void*>();
+    // need to know when we've unlocked it so we keep threadid in there for now
     TransactionTid::set_version(table_[bucket(word)], TransactionTid::add_user_bits(t.commit_tid(), Transaction::threadid));
     void *data = item.write_value<void*>();
     memcpy(word, &data, item.shifted_user_flags());
