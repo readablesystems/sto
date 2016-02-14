@@ -58,8 +58,7 @@ public:
   }
 
   void transWrite_nocheck(Key i, Value val) {
-    auto item = Sto::fresh_item(this, i);
-    item.add_write(val);
+    Sto::item(this, i).add_write(val);
   }
 
   Value transRead(Key i) {
@@ -76,9 +75,8 @@ public:
   }
 
   void transWrite(Key i, Value val) {
-    auto item = Sto::item(this, i);
     // can just do this blindly
-    item.add_write(val);
+    Sto::item(this, i).add_write(val);
   }
 
   bool is_locked(Key i) {

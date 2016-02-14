@@ -742,11 +742,7 @@ private:
   
   template <typename T>
   TransProxy t_item(T e) {
-#if READ_MY_WRITES
     return Sto::item(this, e);
-#else
-    return Sto::fresh_item(this, e);
-#endif
   }
 
   template <typename T>
