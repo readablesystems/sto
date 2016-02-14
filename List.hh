@@ -301,6 +301,8 @@ public:
     Sto::check_opacity(listv);
   }
 
+  struct ListIter;
+
   ListIter transIter() {
     verify_list(listversion_);//TODO: rename
     return ListIter(this, head_, true);

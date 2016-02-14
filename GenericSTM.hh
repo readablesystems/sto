@@ -50,7 +50,7 @@ public:
   bool check(const TransItem& item, const Transaction&) {
     size_t key = bucket(item.key<void*>());
     auto current = table_[key];
-    return TransactionTid::same_version(current & ~TransactionTid::user_mask, item.template read_value<uint64_t>() & ~TransactionTid::user_mask)
+    return TransactionTid::same_version(current & ~TransactionTid::user_mask, item.read_value<uint64_t>() & ~TransactionTid::user_mask)
       && (!TransactionTid::is_locked(current) || item.has_write() || TransactionTid::user_bits(current) == Transaction::threadid);
   }
   void install(TransItem& item, const Transaction& t) {
