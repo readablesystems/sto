@@ -29,6 +29,9 @@ void boosting_setThreadID(int threadid);
 
 void boosting_releaseLocksCallback(void*, void*, void*);
 
+void transReadLock(RWLock *lock);
+void transWriteLock(RWLock *lock);
+
 #define READ_SPIN 100
 #define WRITE_SPIN 100
 

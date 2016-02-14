@@ -1,8 +1,12 @@
 #pragma once
 
 #include "TaggedLow.hh"
-#include "Transaction.hh"
+#include "Interface.hh"
 #include "VersionFunctions.hh"
+
+#ifndef STO_NO_STM
+#include "Transaction.hh"
+#endif
 
 template<typename T>
 class DefaultCompare {
@@ -17,7 +21,11 @@ public:
 template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true, bool Opacity = false> class ListIterator;
 
 template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true, bool Opacity = false>
-class List : public Shared {
+class List 
+#ifndef STO_NO_STM
+: public Shared 
+#endif
+{
   friend class ListIterator<T, Duplicates, Compare, Sorted, Opacity>;
   typedef ListIterator<T, Duplicates, Compare, Sorted, Opacity> iterator;
 public:
@@ -71,28 +79,6 @@ public:
       return &ret->val;
     }
     return NULL;
-  }
-
-  T* transFind(const T& elem) {
-    auto listv = listversion_;
-    fence();
-    auto *n = _find(elem);
-    if (n) {
-      auto item = t_item(n);
-      if (!validityCheck(n, item)) {
-        Sto::abort();
-        return NULL;
-      }
-      if (has_delete(item)) {
-        return NULL;
-      }
-      item.add_read(0);
-    } else {
-      // log list v#
-      verify_list(listv);
-      return NULL;
-    }
-    return &n->val;
   }
 
   list_node* _find(const T& elem) {
@@ -153,6 +139,74 @@ public:
     bool inserted;
     _insert<false>(elem, &inserted);
     return inserted;
+  }
+
+  template <bool Txnal>
+  bool remove(const T& elem, bool locked = false) {
+    return _remove<Txnal>([&] (list_node *n2) { return comp_(n2->val, elem) == 0; }, locked);
+  }
+
+  template <bool Txnal>
+  bool remove(list_node *n, bool locked = false) {
+    // TODO: doing this remove means we don't have to value compare, but we also
+    // have to go through the whole list (possibly). Unclear which is better.
+    return _remove<Txnal>([n] (list_node *n2) { return n == n2; }, locked);
+  }
+
+  template <bool Txnal, typename FoundFunc>
+  bool _remove(FoundFunc found_f, bool locked = false) {
+    if (!locked)
+      lock(listversion_);
+    list_node *prev = NULL;
+    list_node *cur = head_;
+    while (cur != NULL) {
+      if (found_f(cur)) {
+        cur->mark_invalid();
+        if (prev) {
+            prev->next.assign_ptr(cur->next);
+        } else {
+            head_ = cur->next;
+        }
+        if (Txnal) {
+          Transaction::rcu_free(cur);
+        } else {
+          free(cur);
+        }
+        if (!Txnal)
+          listsize_--;
+        if (!locked)
+          unlock(listversion_);
+        return true;
+      }
+      prev = cur;
+      cur = cur->next;
+    }
+    if (!locked)
+      unlock(listversion_);
+    return false;
+  }
+
+#ifndef STO_NO_STM
+  T* transFind(const T& elem) {
+    auto listv = listversion_;
+    fence();
+    auto *n = _find(elem);
+    if (n) {
+      auto item = t_item(n);
+      if (!validityCheck(n, item)) {
+        Sto::abort();
+        return NULL;
+      }
+      if (has_delete(item)) {
+        return NULL;
+      }
+      item.add_read(0);
+    } else {
+      // log list v#
+      verify_list(listv);
+      return NULL;
+    }
+    return &n->val;
   }
 
   bool transInsert(const T& elem) {
@@ -238,51 +292,6 @@ public:
     }
   }
 
-  template <bool Txnal>
-  bool remove(const T& elem, bool locked = false) {
-    return _remove<Txnal>([&] (list_node *n2) { return comp_(n2->val, elem) == 0; }, locked);
-  }
-
-  template <bool Txnal>
-  bool remove(list_node *n, bool locked = false) {
-    // TODO: doing this remove means we don't have to value compare, but we also
-    // have to go through the whole list (possibly). Unclear which is better.
-    return _remove<Txnal>([n] (list_node *n2) { return n == n2; }, locked);
-  }
-
-  template <bool Txnal, typename FoundFunc>
-  bool _remove(FoundFunc found_f, bool locked = false) {
-    if (!locked)
-      lock(listversion_);
-    list_node *prev = NULL;
-    list_node *cur = head_;
-    while (cur != NULL) {
-      if (found_f(cur)) {
-        cur->mark_invalid();
-        if (prev) {
-            prev->next.assign_ptr(cur->next);
-        } else {
-            head_ = cur->next;
-        }
-        if (Txnal) {
-          Transaction::rcu_free(cur);
-        } else {
-          free(cur);
-        }
-        if (!Txnal)
-          listsize_--;
-        if (!locked)
-          unlock(listversion_);
-        return true;
-      }
-      prev = cur;
-      cur = cur->next;
-    }
-    if (!locked)
-      unlock(listversion_);
-    return false;
-  }
-
   inline void opacity_check() {
     // When we check for opacity, we need to compare the latest listversion and not
     // the one at the beginning of the operation.
@@ -291,6 +300,18 @@ public:
     fence();
     Sto::check_opacity(listv);
   }
+
+  ListIter transIter() {
+    verify_list(listversion_);//TODO: rename
+    return ListIter(this, head_, true);
+  }
+
+  size_t transSize() {
+    verify_list(listversion_);
+    return listsize_ + trans_size_offs();
+  }
+
+#endif /* !STO_NO_STM */
     
   iterator begin() { return iterator(this, head_); }
   iterator end() { return iterator(this, NULL); }
@@ -352,6 +373,7 @@ private:
     }
 
     void ensureValid() {
+#ifndef STO_NO_STM
       while (cur) {
 	// need to check if this item already exists
         auto item = Sto::check_item(us, cur);
@@ -369,6 +391,7 @@ private:
         }
         break;
       }
+#endif
     }
 
     friend class List;
@@ -378,16 +401,6 @@ private:
 
   ListIter iter() {
     return ListIter(this, head_, false);
-  }
-
-  ListIter transIter() {
-    verify_list(listversion_);//TODO: rename
-    return ListIter(this, head_, true);
-  }
-
-  size_t transSize() {
-    verify_list(listversion_);
-    return listsize_ + trans_size_offs();
   }
 
   size_t size() const {
@@ -417,6 +430,7 @@ private:
     return TransactionTid::is_locked(v);
   }
 
+#ifndef STO_NO_STM
   void lock(TransItem& item) {
     // XXX: this isn't great, but I think we need it to update the size...
     // nate: we might be able to remove this if we updated the listversion_
@@ -493,10 +507,6 @@ private:
       }
   }
 
-  bool validityCheck(list_node *n, TransItem& item) {
-      return n->is_valid() || (item.flags() & insert_bit);
-  }
-
   template <typename PTR>
   TransProxy t_item(PTR *node) {
     // can switch this to fresh_item to not read our writes
@@ -538,6 +548,11 @@ private:
     if (item.has_read())
       return item.template read_value<int>();
     return 0;
+  }
+#endif /* !STO_NO_STM */
+
+  bool validityCheck(list_node *n, TransItem& item) {
+      return n->is_valid() || (item.flags() & insert_bit);
   }
 
   list_node *head_;

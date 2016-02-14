@@ -1,5 +1,8 @@
 #pragma once
 
+#include "config.h"
+#include "compiler.hh"
+
 template <typename T>
 class VersionFunctions {
 public:
