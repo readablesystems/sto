@@ -7,6 +7,7 @@
 
 typedef int Key;
 typedef int Value;
+extern volatile uint64_t globalepoch;
 
 int main() {
   Transaction::epoch_advance_callback = [] (unsigned) {
