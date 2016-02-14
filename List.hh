@@ -418,9 +418,11 @@ private:
   }
 
   void lock(TransItem& item) {
-    // this lock is useless given that we also lock the listversion_
-    // currently
     // XXX: this isn't great, but I think we need it to update the size...
+    // nate: we might be able to remove this if we updated the listversion_
+    // immediately after a remove/insert. That would give semantics that:
+    // inserts/deletes to different locations didn't conflict, but iteration
+    // conflicted with insert/remove even before the write committed.
     if (item.key<List*>() == this)
         lock(listversion_);
   }
@@ -441,7 +443,17 @@ private:
           && (!is_locked(lv) || item.has_lock(t));
     }
     auto n = item.key<list_node*>();
-    return n->is_valid() || has_insert(item);
+    if (!n->is_valid()) {
+      return has_insert(item);
+    }
+    // We need to check listversion_ for locks here
+    // otherwise we might be conflicting with a concurrent delete.
+    if (is_locked(listversion_)) {
+      // check_item isn't technically const but the way we're using it is
+      auto it = ((Transaction&)t).check_item(this, this);
+      return it && it->has_lock();
+    }
+    return true;
   }
 
   void install(TransItem& item, const Transaction& t) {
@@ -459,6 +471,8 @@ private:
         TransactionTid::inc_invalid_version(listversion_);
       }
     } else if (has_doupdate(item)) {
+      // nate: Not sure what the bug here is? We'll have a lock on the whole list because 
+      // we were going to delete it earlier
         // XXX BUG
       n->val = item.template write_value<T>();
     } else {

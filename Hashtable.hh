@@ -714,6 +714,8 @@ private:
 #endif
     }
     buck.head = new_head;
+    // TODO(nate): this means we'll always have to do a hard opacity check on 
+    // the bucket version (but I don't think we can get a commit tid yet).
     TransactionTid::inc_invalid_version(buck.version);
   }
 
