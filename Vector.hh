@@ -545,7 +545,7 @@ public:
             else
                 fprintf(f, "<%p.%d", this, item.key<int>());
             if (item.has_read())
-                fprintf(f, " r%lu", item.read_value<Version>());
+                fprintf(f, " r%" PRIu64, item.read_value<Version>());
             if (item.has_write())
                 fprintf(f, " w%p", item.write_value<void*>());
             fprintf(f, ">");
