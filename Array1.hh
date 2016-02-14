@@ -49,8 +49,9 @@ class Array1 : public Shared {
         return data_[i].check(item, trans);
     }
 
-    void lock(TransItem& item){
+    bool lock(TransItem& item){
         lock(item.key<key_type>());
+        return true;
     }
     void install(TransItem& item, const Transaction& t) {
         //install value

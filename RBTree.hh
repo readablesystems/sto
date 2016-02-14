@@ -109,7 +109,7 @@ public:
         unlock(&e->version());
     }
 
-    inline void lock(TransItem& item);
+    inline bool lock(TransItem& item);
     inline bool check(const TransItem& item, const Transaction& trans);
     inline void install(TransItem& item, const Transaction& t);
     inline void cleanup(TransItem& item, bool committed);
@@ -367,12 +367,13 @@ inline size_t RBTree<K, T>::erase(const K& key) {
 }
 
 template <typename K, typename T>
-inline void RBTree<K, T>::lock(TransItem& item) {
+inline bool RBTree<K, T>::lock(TransItem& item) {
     if (item.key<void*>() == tree_key_) {
         lock(&treeversion_);
     } else {
         lock(item.key<versioned_value*>());
     }
+    return true;
 }
    
 template <typename K, typename T>

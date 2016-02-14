@@ -20,7 +20,7 @@ public:
     return ptr;
   }
 
-  void lock(TransItem&) {}
+  bool lock(TransItem&) { return true; }
   bool check(const TransItem&, const Transaction&) { assert(0); return false; }
   void install(TransItem& item, const Transaction&) {
     if (item.write_value<int>() == alloc_flag)

@@ -94,7 +94,7 @@ class Shared {
 public:
     virtual ~Shared() {}
 
-    virtual void lock(TransItem& item) = 0;
+    virtual bool lock(TransItem& item) = 0;
     virtual bool check_predicate(TransItem& item, Transaction& t) {
         (void) item, (void) t;
         always_assert(false);

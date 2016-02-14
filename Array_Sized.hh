@@ -47,9 +47,10 @@ public:
     t.add_write(item, val);
   }
 
-  void lock(TransItem& item) {
+  bool lock(TransItem& item) {
     int i = item.template key<int>();
     Versioning::lock(arr_[i].version());
+    return true;
   }
 
   bool check(const TransItem& item, const Transaction& t) {

@@ -307,10 +307,11 @@ public:
     return validity_check && versionCheck(read_version, el->version);
   }
 
-  void lock(TransItem& item) {
+  bool lock(TransItem& item) {
     assert(!is_bucket(item));
     auto el = item.key<internal_elem*>();
     lock(el);
+    return true;
   }
   void install(TransItem& item, const Transaction& t) {
     assert(!is_bucket(item));

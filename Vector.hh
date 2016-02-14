@@ -451,15 +451,13 @@ public:
         return data_[i].check(item, trans);
     }
     
-    void lock(TransItem& item){
+    bool lock(TransItem& item){
         if (item.key<int>() == vector_key) {
             lock_version(vecversion_); // TODO: no need to lock vecversion_ if trans_size_offs() is 0
-        } else if (item.key<int>() == push_back_key) {
-            return; // Do nothing as we will anyways lock vecversion for size.
-        }
-        else {
+        } else if (item.key<int>() != push_back_key) {
             lock(item.key<key_type>());
         }
+        return true;
     }
 
     void install(TransItem& item, const Transaction& t) {

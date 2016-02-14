@@ -120,8 +120,9 @@ public:
     return versionOK && (!is_locked(item.key<Key>()) || item.has_lock(t));
   }
 
-  void lock(TransItem& item) {
+  bool lock(TransItem& item) {
     lock(item.key<Key>());
+    return true;
   }
 
   void install(TransItem& item, const Transaction&) {

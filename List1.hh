@@ -409,13 +409,14 @@ public:
     bool is_locked(version_type& v) {
         return TransactionTid::is_locked(v);
     }
-    
-    void lock(TransItem& item) {
+
+    bool lock(TransItem& item) {
         // this lock is useless given that we also lock the listversion_
         // currently
         // XXX: this isn't great, but I think we need it to update the size...
         if (item.key<List1*>() == this)
             lock(listversion_);
+        return true;
     }
     
     bool check(const TransItem& item, const Transaction& t) {

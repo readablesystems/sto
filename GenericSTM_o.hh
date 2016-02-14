@@ -32,7 +32,7 @@ public:
   }
 
   // Hashtable handles all of this
-  void lock(TransItem&) {}
+  bool lock(TransItem&) { return true; }
   bool check(const TransItem&, const Transaction&) { assert(0); return false; }
   void install(TransItem& item, const Transaction&) {
     void* word = item.key();

@@ -497,8 +497,9 @@ public:
     unlock(&e->version());
   }
 
-  void lock(TransItem& item) {
+  bool lock(TransItem& item) {
     lock(item.key<versioned_value*>());
+    return true;
   }
   bool check(const TransItem& item, const Transaction& t) {
     if (is_inter(item)) {

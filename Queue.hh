@@ -205,11 +205,12 @@ private:
         QueueVersioning::unlock(v);
     }
      
-    void lock(TransItem& item) {
+    bool lock(TransItem& item) {
         if (item.key<int>() == -1)
             lock(tailversion_);
         else if (item.key<int>() == -2)
             lock(headversion_);
+        return true;
     }
 
     bool check(const TransItem& item, const Transaction& t) {

@@ -107,8 +107,9 @@ public:
   }
 
   // Hashtable handles all of this
-  void lock(TransItem& item) {
+  bool lock(TransItem& item) {
       table_.set(hash(item.key<void*>()) % table_.size());
+      return true;
   }
   bool check(const TransItem& item, const Transaction& t) {
     size_t sz = item.shifted_user_flags();

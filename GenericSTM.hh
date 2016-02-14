@@ -37,10 +37,11 @@ public:
     return TransactionTid::is_locked(lock) && TransactionTid::user_bits(lock) == Transaction::threadid;
   }
 
-  void lock(TransItem& item) {
+  bool lock(TransItem& item) {
     size_t key = bucket(item.key<void*>());
     if (!own_lock(table_[key]))
       TransactionTid::lock(table_[key], Transaction::threadid);
+    return true;
   }
   bool check(const TransItem& item, const Transaction&) {
     size_t key = bucket(item.key<void*>());

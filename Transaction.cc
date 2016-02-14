@@ -135,7 +135,8 @@ bool Transaction::try_commit() {
         auto writeset_end = writeset_ + nwriteset_;
         for (auto it = writeset_; it != writeset_end; ) {
             TransItem* me = &transSet_[*it];
-            me->owner()->lock(*me);
+            if (!me->owner()->lock(*me))
+                goto abort;
             me->__or_flags(TransItem::lock_bit);
             ++it;
             if (may_duplicate_items_)

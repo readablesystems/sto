@@ -273,12 +273,13 @@ public:
         unlock(&e->version());
     }
     
-    void lock(TransItem& item) {
+    bool lock(TransItem& item) {
         if (item.key<int>() == pop_key){
             lock(&popversion_);
         } else {
             //lock(item.key<versioned_value*>());
         }
+        return true;
     }
     
     bool check(const TransItem& item, const Transaction& trans){
