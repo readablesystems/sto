@@ -587,9 +587,30 @@ public:
     val.assign(val_to_assign.data(), val_to_assign.length());
   }
 
+  Value* readPtr(const Key& k) {
+    auto e = find(buck_entry(k), k);
+    if (e) {
+      return &e->value;
+    }
+    return NULL;
+  }
+
+  // returns pointer to the value in the hashtable 
+  // (no current way to distinguish if insert or set)
+  Value* putIfAbsentPtr(const Key& k, const Value& val) {
+    bucket_entry& buck = buck_entry(k);
+    lock(&buck.version);
+    internal_elem *e = find(buck, k);
+    if (!e) {
+      insert_locked<true>(buck, k, val);
+      e = buck.head;
+    }
+    Value *ret = &e->value;
+    unlock(&buck.version);
+    return ret;
+  }
+
   // returns true if inserted. otherwise return false and val is set to current value.
-  // TODO(nate): if I'm feeling generous towards boosting we could let them have a pointer
-  // into the hashtable's e->value so they don't have to do a separate malloc per-lock
   bool putIfAbsent(const Key& k, Value& val) {
     bool exists = false;
     bucket_entry& buck = buck_entry(k);

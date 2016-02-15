@@ -21,15 +21,14 @@ public:
   }
 
 private:
-  Hashtable<K, RWLock*, true, Init_size, RWLock*, Hash, Pred> lockMap;
+  Hashtable<K, RWLock, true, Init_size, RWLock, Hash, Pred> lockMap;
 
   RWLock *getLock(const K& key) {
-    RWLock *lock;
-    if (!lockMap.read(key, lock)) {
+    RWLock *lock = lockMap.readPtr(key);
+    if (!lock) {
       // TODO(nate): might want to acquire the lock before we insert it
-      lock = new RWLock();
       // lock will either stay the same or be set to the current lock if one exists.
-      lockMap.putIfAbsent(key, lock);
+      lock = lockMap.putIfAbsentPtr(key, RWLock());
     }
     return lock;
   }
