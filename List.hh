@@ -168,9 +168,10 @@ public:
             head_ = cur->next;
         }
         if (Txnal) {
+          // TODO: probably needs to be a delete
           Transaction::rcu_free(cur);
         } else {
-          free(cur);
+          delete cur;
         }
         if (!Txnal)
           listsize_--;
