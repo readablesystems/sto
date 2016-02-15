@@ -14,9 +14,9 @@ public:
   TransList(Compare comp = Compare()) : list_(comp), listlock_() {}
 
   static void _undoInsert(void *self, void *c1, void *c2) {
-    T* elem = (T*)c1;
-    ((TransList*)self)->list_.template remove<false>(*elem);
-    delete elem;
+    
+    ((TransList*)self)->list_.template remove<false>((T){ c1, c2 });
+    //delete elem;
   }
 
   static void _undoDelete(void *self, void *c1, void *c2) {
@@ -26,21 +26,27 @@ public:
   }
 
   bool transInsert(const T& elem) {
+    // TODO: assuming T is a pair_t (always is in STAMP)
+    static_assert(sizeof(T) == 16, "we assume T is pair_t");
     transWriteLock(&listlock_);
     bool inserted = list_.insert(elem);
-    if (inserted)
-      // TODO(nate): we can avoid the alloc here if we use the fact that T is a pair :\
-      ON_ABORT(TransList::_undoInsert, this, new T(elem), NULL);
+    if (inserted) {
+      void *words[2];
+      new (words) T(elem);
+      ON_ABORT(TransList::_undoInsert, this, words[0], words[1]);
+    }
     return inserted;
   }
 
   T* transFind(const T& elem) {
+    printf("never happens\n");
     transReadLock(&listlock_);
     T* ret = list_.find(elem);
     return ret;
   }
 
-  bool transDelete(const pair_t& elem) {
+  bool transDelete(const T& elem) {
+    printf("never happens either\n");
     transWriteLock(&listlock_);
     bool removed = list_.template remove<false>(elem);
     if (removed)
