@@ -802,10 +802,7 @@ protected:
     return v;
   }
 
-  static constexpr Version lock_bit = (Version)1<<(sizeof(Version)*8 - 1);
   static constexpr Version invalid_bit = TransactionTid::user_bit1;
-  //(Version)1<<(sizeof(Version)*8 - 2);
-  static constexpr Version version_mask = ~(lock_bit|invalid_bit);
 
   static constexpr uintptr_t internode_bit = 1<<0;
 
@@ -838,14 +835,6 @@ protected:
   static bool versionCheck(Version v1, Version v2) {
     return TransactionTid::same_version(v1, v2);
     //return ((v1 ^ v2) & version_mask) == 0;
-  }
-  static void inc_version(Version& v) {
-    assert(0);
-    assert(is_locked(v));
-    Version cur = v & version_mask;
-    cur = (cur+1) & version_mask;
-    // set new version and ensure invalid bit is off
-    v = (cur | (v & ~version_mask)) & ~invalid_bit;
   }
   static bool is_locked(Version v) {
     return TransactionTid::is_locked(v);
