@@ -552,7 +552,7 @@ private:
 
 public:
     void silent_abort() {
-        if (!aborted())
+        if (in_progress())
             stop(false);
     }
 
@@ -631,14 +631,6 @@ private:
 class Sto {
 public:
     static __thread Transaction* __transaction;
-
-    /* Only used for testing purposes */
-    static void set_transaction(Transaction* t) {
-        __transaction = t;
-    }
-    static void clear_transaction() {
-        __transaction = NULL;
-    }
 
 
     static void start_transaction() {

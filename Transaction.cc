@@ -5,7 +5,7 @@ threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int Transaction::threadid;
 threadinfo_t::epoch_type __attribute__((aligned(64))) Transaction::global_epoch;
 bool Transaction::run_epochs = true;
-__thread Transaction *Sto::__transaction;
+__thread Transaction *Sto::__transaction = nullptr;
 std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callback;
 TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = TransactionTid::valid_bit;
 
@@ -120,6 +120,7 @@ bool Transaction::try_commit() {
     MAX_P(txp_max_set, transSet_.size());
     ADD_P(txp_total_n, transSet_.size());
 
+    assert(state_ == s_in_progress || state_ >= s_aborted);
     if (state_ >= s_aborted)
         return state_ > s_aborted;
 
@@ -195,8 +196,7 @@ bool Transaction::try_commit() {
 abort:
     // fence();
     INC_P(txp_commit_time_aborts);
-    if (state_ == s_committing)
-        stop(false);
+    stop(false);
     return false;
 }
 
@@ -239,7 +239,7 @@ void TransactionBuffer::hard_clear(bool delete_all) {
 }
 
 void Transaction::print(FILE* f) const {
-    static const char* names[] = {"in-progress", "committing", "aborted", "committed"};
+    static const char* names[] = {"in-progress", "committing", "committing-locked", "aborted", "committed"};
     fprintf(f, "T%p %s [", this, names[state_]);
     for (auto& ti : transSet_)
         ti.owner()->print(f, ti);
