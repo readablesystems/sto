@@ -57,9 +57,8 @@ class Array1 : public Shared {
         //install value
         data_[item.key<key_type>()].install(item, t);
     }
-    void cleanup(TransItem& item, bool) {
-        if (item.needs_unlock())
-            unlock(item.key<key_type>());
+    void unlock(TransItem& item) {
+        unlock(item.key<key_type>());
     }
     
     iterator begin() { return iterator(this, 0); }

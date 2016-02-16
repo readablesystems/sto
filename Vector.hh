@@ -523,13 +523,11 @@ public:
         }
     }
 
-    void cleanup(TransItem& item, bool) {
-        if (item.needs_unlock()) {
-            if (item.key<int>() == vector_key)
-                unlock_version(vecversion_);
-            else if (item.key<int>() != push_back_key)
-                unlock(item.key<key_type>());
-        }
+    void unlock(TransItem& item) {
+        if (item.key<int>() == vector_key)
+            unlock_version(vecversion_);
+        else if (item.key<int>() != push_back_key)
+            unlock(item.key<key_type>());
     }
 
     void print(FILE* f, const TransItem& item) const {

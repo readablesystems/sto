@@ -66,11 +66,9 @@ public:
     Versioning::inc_version(arr_[i].version());
   }
 
-  void cleanup(TransItem& item, bool) {
-    if (item.needs_unlock()) {
+  void unlock(TransItem& item) {
       int i = item.template key<int>();
       Versioning::unlock(arr_[i].version());
-    }
   }
 
   int capacity() {

@@ -139,8 +139,7 @@ public:
     elem(i).version = cur | lock_bit;
   }
 
-  void cleanup(TransItem& item, bool) {
-    if (item.needs_unlock())
+  void unlock(TransItem& item) {
       unlock(item.key<Key>());
   }
 

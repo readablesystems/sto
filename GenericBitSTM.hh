@@ -125,9 +125,8 @@ public:
       void* data = item.write_value<void*>();
       memcpy(word, &data, item.shifted_user_flags());
   }
-  void cleanup(TransItem& item, bool) {
-      if (item.needs_unlock())
-          table_.unset(hash(item.key<void*>()) % table_.size());
+  void unlock(TransItem& item) {
+      table_.unset(hash(item.key<void*>()) % table_.size());
   }
 
 private:

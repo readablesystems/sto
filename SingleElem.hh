@@ -100,9 +100,8 @@ public:
         }
     }
 
-    void cleanup(TransItem& item, bool) {
-        if (item.needs_unlock())
-            unlock();
+    void unlock(TransItem&) {
+        unlock();
     }
 
   protected:

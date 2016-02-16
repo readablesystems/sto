@@ -266,13 +266,11 @@ private:
         }
     }
     
-    void cleanup(TransItem& item, bool) {
-        if (item.needs_unlock()) {
-            if (item.key<int>() == -1)
-                unlock(tailversion_);
-            else if (item.key<int>() == -2)
-                unlock(headversion_);
-        }
+    void unlock(TransItem& item) {
+        if (item.key<int>() == -1)
+            unlock(tailversion_);
+        else if (item.key<int>() == -2)
+            unlock(headversion_);
     }
 
     T queueSlots[BUF_SIZE];

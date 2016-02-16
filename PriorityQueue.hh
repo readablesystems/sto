@@ -345,9 +345,12 @@ public:
         }
     }
     
-    void cleanup(TransItem& item, bool committed) {
-        if (item.needs_unlock() && item.key<int>() == pop_key)
+    void unlock(TransItem& item) {
+        if (item.key<int>() == pop_key)
             unlock(&popversion_);
+    }
+
+    void cleanup(TransItem& item, bool committed) {
         if (committed && dirtytid_ == Transaction::threadid) {
             dirtytid_ = -1;
         }

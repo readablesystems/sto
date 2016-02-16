@@ -102,6 +102,7 @@ public:
     }
     virtual bool check(const TransItem& item, const Transaction& t) = 0;
     virtual void install(TransItem& item, const Transaction& t) = 0;
+    virtual void unlock(TransItem& item) = 0;
     virtual void cleanup(TransItem& item, bool committed) {
         (void) item, (void) committed;
     }

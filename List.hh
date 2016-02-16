@@ -42,8 +42,6 @@ public:
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
     static constexpr TransItem::flags_type doupdate_bit = TransItem::user0_bit<<2;
 
-  static constexpr void* size_key = (void*)0;
-
   struct list_node {
     list_node(const T& val, list_node *next, bool invalid)
         : val(val), next(next, invalid ? invalid_bit : 0) {
@@ -64,6 +62,10 @@ public:
     T val;
     TaggedLow<list_node> next;
   };
+
+  static constexpr list_node* list_key = nullptr;
+  static constexpr list_node* size_key = reinterpret_cast<list_node*>(1);
+
 
   bool find(const T& elem, T& val) {
     auto *ret = _find(elem);
@@ -416,7 +418,7 @@ private:
   }
 
   void verify_list(version_type readv) {
-      t_item(this).add_read(readv);
+      t_item(list_key).add_read(readv);
       acquire_fence();
   }
 
@@ -440,16 +442,16 @@ private:
       // immediately after a remove/insert. That would give semantics that:
       // inserts/deletes to different locations didn't conflict, but iteration
       // conflicted with insert/remove even before the write committed.
-      if (item.key<List*>() == this)
+      if (item.key<list_node*>() == list_key)
           lock(listversion_);
       return true;
   }
 
   bool check(const TransItem& item, const Transaction& t) {
-    if (item.key<void*>() == size_key) {
+    if (item.key<list_node*>() == size_key) {
       return true;
     }
-    if (item.key<List*>() == this) {
+    if (item.key<list_node*>() == list_key) {
       auto lv = listversion_;
       return
         TransactionTid::same_version(lv, item.template read_value<version_type>())
@@ -470,7 +472,7 @@ private:
   }
 
   void install(TransItem& item, const Transaction& t) {
-    if (item.key<List*>() == this)
+    if (item.key<list_node*>() == list_key)
       return;
     list_node *n = item.key<list_node*>();
     if (has_delete(item)) {
@@ -499,17 +501,19 @@ private:
     }
   }
 
-  void cleanup(TransItem& item, bool committed) {
-      if (item.needs_unlock() && item.key<List*>() == this)
+  void unlock(TransItem& item) {
+      if (item.key<list_node*>() == list_key)
           unlock(listversion_);
+  }
+
+  void cleanup(TransItem& item, bool committed) {
       if (!committed && (item.flags() & insert_bit)) {
           list_node *n = item.key<list_node*>();
           remove<true>(n);
       }
   }
 
-  template <typename PTR>
-  TransProxy t_item(PTR *node) {
+  TransProxy t_item(list_node* node) {
     // can switch this to fresh_item to not read our writes
     return Sto::item(this, node);
   }
@@ -527,8 +531,7 @@ private:
   }
 
   void add_lock_list_item() {
-    auto item = t_item((void*)this);
-    item.add_write(0);
+    t_item(list_key).add_write(0);
   }
 
   void add_trans_size_offs(int size_offs) {

@@ -353,12 +353,13 @@ public:
     el->valid() = true;
   }
 
+  void unlock(TransItem& item) {
+      assert(!is_bucket(item));
+      auto el = item.key<internal_elem*>();
+      unlock(el);
+  }
+
   void cleanup(TransItem& item, bool committed) {
-      if (item.needs_unlock()) {
-          assert(!is_bucket(item));
-          auto el = item.key<internal_elem*>();
-          unlock(el);
-      }
       if (committed ? has_delete(item) : has_insert(item)) {
           auto el = item.key<internal_elem*>();
           assert(!el->valid());

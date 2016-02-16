@@ -28,6 +28,7 @@ public:
     void *ptr = item.key<void*>();
     Transaction::rcu_free(ptr);
   }
+  void unlock(TransItem&) {}
   void cleanup(TransItem& item, bool committed) {
     if (!committed && item.write_value<int>() == alloc_flag)
       free(item.key<void*>());

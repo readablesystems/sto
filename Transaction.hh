@@ -552,9 +552,8 @@ private:
 
 public:
     void silent_abort() {
-        if (!aborted()) {
+        if (!aborted())
             stop(false);
-        }
     }
 
     void abort() {
@@ -588,7 +587,7 @@ public:
     }
 
     tid_type commit_tid() const {
-        assert(state_ == s_committing);
+        assert(state_ == s_committing_locked);
         if (!commit_tid_)
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
@@ -599,23 +598,12 @@ public:
     class Abort {};
 
 private:
-    void stop(bool committed) {
-        if (!committed)
-            INC_P(txp_total_aborts);
-        if (firstWrite_ >= 0)
-            for (auto it = transSet_.begin() + firstWrite_; it != transSet_.end(); ++it)
-                if (it->has_write())
-                    it->owner()->cleanup(*it, committed);
-        // TODO: this will probably mess up with nested transactions
-        tinfo[threadid].epoch = 0;
-        if (tinfo[threadid].trans_end_callback)
-            tinfo[threadid].trans_end_callback();
-        state_ = s_aborted + committed;
-    }
+    void stop(bool committed);
 
 private:
     enum {
-        s_in_progress = 0, s_committing = 1, s_aborted = 2, s_committed = 3
+        s_in_progress = 0, s_committing = 1, s_committing_locked = 2,
+        s_aborted = 3, s_committed = 4
     };
 
     int firstWrite_;

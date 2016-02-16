@@ -56,12 +56,10 @@ public:
     void *data = item.write_value<void*>();
     memcpy(word, &data, item.shifted_user_flags());
   }
-  void cleanup(TransItem& item) {
-    if (item.needs_unlock()) {
+  void unlock(TransItem& item) {
       size_t key = bucket(item.key<void*>());
       if (own_lock(table_[key]))
         TransactionTid::unlock(table_[key]);
-    }
   }
 
 private:

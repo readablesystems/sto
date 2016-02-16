@@ -559,9 +559,11 @@ public:
     
   }
 
+  void unlock(TransItem& item) {
+      unlock(item.key<versioned_value*>());
+  }
+
   void cleanup(TransItem& item, bool committed) {
-      if (item.needs_unlock())
-          unlock(item.key<versioned_value*>());
       if (!committed && has_insert(item)) {
         // remove node
         auto& stdstr = item.flags() & copyvals_bit ?

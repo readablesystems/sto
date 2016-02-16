@@ -89,6 +89,26 @@ void Transaction::hard_check_opacity(TransactionTid::type t) {
     }
 }
 
+ void Transaction::stop(bool committed) {
+    if (!committed)
+        INC_P(txp_total_aborts);
+    if (firstWrite_ >= 0 && state_ == s_committing_locked) {
+        for (auto it = transSet_.begin() + firstWrite_; it != transSet_.end(); ++it)
+            if (it->needs_unlock())
+                it->owner()->unlock(*it);
+    }
+    if (firstWrite_ >= 0) {
+        for (auto it = transSet_.begin() + firstWrite_; it != transSet_.end(); ++it)
+            if (it->has_write())
+                it->owner()->cleanup(*it, committed);
+    }
+    // TODO: this will probably mess up with nested transactions
+    tinfo[threadid].epoch = 0;
+    if (tinfo[threadid].trans_end_callback)
+        tinfo[threadid].trans_end_callback();
+    state_ = s_aborted + committed;
+}
+
 bool Transaction::try_commit() {
 #if ASSERT_TX_SIZE
     if (transSet_.size() > TX_SIZE_LIMIT) {
@@ -131,7 +151,8 @@ bool Transaction::try_commit() {
         return transSet_[i] < transSet_[j];
     });
 #endif
-    {
+    if (nwriteset_) {
+        state_ = s_committing_locked;
         auto writeset_end = writeset_ + nwriteset_;
         for (auto it = writeset_; it != writeset_end; ) {
             TransItem* me = &transSet_[*it];
