@@ -547,16 +547,67 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
 
     bool found = (n.node() != nullptr);
     T* retnode = found ? n.node() : p.node();
-    Version retver = retnode ? treeversion_ : retnode->version();
+    Version retver = retnode ? retnode->version() : treeversion_;
 
     TransactionTid::unlock(treelock_);
     return std::make_tuple(retnode, retver, found, boundary);
 }
 
+template <typename K, typename T>
+class rbpair;
+
 template <typename T, typename C> template <typename K, typename Comp>
 inline std::tuple<T*, typename rbtree<T, C>::Version, bool,
        typename rbtree<T, C>::boundaries_type, typename rbtree<T, C>::node_info_type>
 rbtree<T, C>::find_insert(K& key, Comp comp) {
+    TransactionTid::lock(treelock_);
+
+    // lookup part, almost identical to find_any()
+    rbnodeptr<T> n(r_.root_, false);
+    rbnodeptr<T> p(nullptr, false);
+
+    T* lhs = r_.limit_[0];
+    T* rhs = r_.limit_[1];
+    boundaries_type boundary = std::make_pair(std::make_tuple(lhs, lhs->nodeversion()),
+                    std::make_tuple(rhs, rhs->nodeversion()));
+
+    int cmp = 0;
+    while (n.node()) {
+        cmp = comp.compare(key, *n.node());
+        if (cmp == 0)
+            break;
+        if (cmp > 0) {
+            T* nb = n.node();
+            boundary.first = std::make_tuple(nb, nb->nodeversion());
+        } else {
+            T* nb = n.node();
+            boundary.second = std::make_tuple(nb, nb->nodeversion());
+        }
+        p = n;
+        n = n.node()->rblinks_.c_[cmp > 0];
+    }
+
+    bool found = (n.node() != nullptr);
+    T* retnode = n.node();
+    Version retver = retnode ? retnode->version() : 0;
+    node_info_type parent = std::make_tuple(p.node(), p->nodeversion());
+
+    // perform the insertion if not found
+    if (!found) {
+        retnode = (T*)malloc(sizeof(T));
+        new (retnode) T(rbpair<K, typename T::value_type>(key, typename T::value_type()));
+        retver = retnode->version();
+        insert_commit(retnode, p, (cmp > 0));
+
+        // increment parent's nodeversion upon successful insertion
+        if (p.node()) {
+            p.node()->inc_nodeversion();
+        }
+    }
+
+    TransactionTid::unlock(treelock_);
+
+    return std::make_tuple(retnode, retver, found, boundary, parent);
 }
 
 template <typename T, typename C>

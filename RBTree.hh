@@ -19,6 +19,7 @@ template <typename K, typename T> class RBTree;
 template <typename T>
 class rbwrapper : public T {
   public:
+    typedef T value_type;
     typedef TransactionTid::type Version;
     explicit inline rbwrapper(const T& x)
     : T(x), nodeversion_(0) {
