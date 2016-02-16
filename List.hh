@@ -465,7 +465,7 @@ private:
     // otherwise we might be conflicting with a concurrent delete.
     if (is_locked(listversion_)) {
       // check_item isn't technically const but the way we're using it is
-      auto it = ((Transaction&)t).check_item(this, this);
+      auto it = ((Transaction&)t).check_item(this, list_key);
       return it && it->has_lock();
     }
     return true;
