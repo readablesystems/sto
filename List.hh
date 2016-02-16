@@ -64,8 +64,8 @@ public:
   };
 
   static constexpr list_node* list_key = nullptr;
-  static constexpr list_node* size_key = reinterpret_cast<list_node*>(1);
-
+  // Can't have non-NULL constexpr pointer
+  static inline list_node* size_key() { return (list_node*)1; }
 
   bool find(const T& elem, T& val) {
     auto *ret = _find(elem);
@@ -448,7 +448,7 @@ private:
   }
 
   bool check(const TransItem& item, const Transaction& t) {
-    if (item.key<list_node*>() == size_key) {
+    if (item.key<list_node*>() == size_key()) {
       return true;
     }
     if (item.key<list_node*>() == list_key) {
@@ -537,7 +537,7 @@ private:
   void add_trans_size_offs(int size_offs) {
     // TODO: it would be more efficient to store this directly in Transaction,
     // since the "key" is fixed (rather than having to search the transset each time)
-    auto item = t_item(size_key);
+    auto item = t_item(size_key());
     int cur_offs = 0;
     // XXX: this is sorta ugly
     if (item.has_read()) {
@@ -548,7 +548,7 @@ private:
   }
 
   int trans_size_offs() {
-    auto item = t_item(size_key);
+    auto item = t_item(size_key());
     if (item.has_read())
       return item.template read_value<int>();
     return 0;
