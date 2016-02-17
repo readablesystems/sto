@@ -591,15 +591,9 @@ public:
     }
 
     tid_type commit_tid() const {
-<<<<<<< HEAD
         assert(state_ == s_committing_locked);
         if (!commit_tid_)
-=======
-        assert(writeset_);
-        if (commit_tid_ == 0) {
->>>>>>> rbtree
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
-        }
         return commit_tid_;
     }
 

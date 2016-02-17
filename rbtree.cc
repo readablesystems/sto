@@ -43,14 +43,14 @@ void update_conflict_tests() {
     }
     {
         tree_type tree;
-        Transaction t1, t2;
-        Sto::set_transaction(&t1);
+        TestTransaction t1, t2;
+        t1.use();
         tree[10] = 10;
-        Sto::set_transaction(&t2);
+        t2.use();
         int x = tree[58];
         assert(x == 0);
         assert(t2.try_commit());
-        Sto::set_transaction(&t1);
+        t1.use();
         assert(t1.try_commit());
     }
 }
@@ -128,9 +128,9 @@ void erase_conflict_tests() {
 void insert_then_delete_tests() {
     {
         tree_type tree;
-        Transaction t1, after;
+        TestTransaction t1, after;
         reset_tree(tree);
-        Sto::set_transaction(&t1);
+        t1.use();
         tree[5] = 5;
         tree[4] = 4;
         assert(tree.count(4) == 1);
@@ -145,7 +145,7 @@ void insert_then_delete_tests() {
         assert(t1.try_commit());
         // check insert-delete-insert
         // is actually installed
-        Sto::set_transaction(&after);
+        after.use();
         assert(tree.count(4) == 1);
         assert(tree[4] == 44);
         for (int i = 1; i <= 5; ++i) {
@@ -156,9 +156,9 @@ void insert_then_delete_tests() {
     }
     {
         tree_type tree;
-        Transaction t1, after;
+        TestTransaction t1, after;
         reset_tree(tree);
-        Sto::set_transaction(&t1);
+        t1.use();
         // absent read of key 4
         // reads nodeversion of key 3
         assert(tree.count(4) == 0);
@@ -169,26 +169,26 @@ void insert_then_delete_tests() {
         tree[4] = 4;
         assert(tree.count(4) == 1);
         assert(t1.try_commit());
-        Sto::set_transaction(&after);
+        after.use();
         for (int i = 0; i <= 5; ++i)
             assert(tree[i] == i);
         assert(after.try_commit());
     }
     {
         tree_type tree;
-        Transaction t1, t2, t3, after;
+        TestTransaction t1, t2, t3, after;
         reset_tree(tree);
-        Sto::set_transaction(&t1);
+        t1.use();
         // t1: update
         tree[3] = 13;
 
-        Sto::set_transaction(&t2);
+        t2.use();
         // t2: delete key 3
         assert(tree.erase(3) == 1);
         // t2 committed
         assert(t2.try_commit());
 
-        Sto::set_transaction(&t3);
+        t3.use();
         // t3: checks that key 3 is not in
         // the tree, and inserts 3
         assert(tree.count(3) == 0);
@@ -196,11 +196,11 @@ void insert_then_delete_tests() {
         // t3 committed
         assert(t3.try_commit());
 
-        Sto::set_transaction(&t1);
+        t1.use();
         // t1 cannot commit in the current scheme
         assert(!t1.try_commit());
 
-        Sto::set_transaction(&after);
+        after.use();
         assert(tree[3] == 33);
         assert(after.try_commit());
     }
@@ -209,30 +209,30 @@ void insert_then_delete_tests() {
 void mem_tests() {
     {
         tree_type tree;
-        Transaction t1, t2, after;
+        TestTransaction t1, t2, after;
         reset_tree(tree);
 
-        Sto::set_transaction(&t1);
+        t1.use();
         // absent get of key 4
         assert(tree.count(4) == 0);
-        Sto::set_transaction(&t2);
+        t2.use();
         tree[5] = 5;
         assert(t2.try_commit());
-        Sto::set_transaction(&t1);
+        t1.use();
         // t1 should abort as a result
         assert(!t1.try_commit());
 
-        Sto::set_transaction(&after);
+        after.use();
         assert(tree.count(4) == 0);
         assert(tree[5] == 5);
         assert(after.try_commit());
     }
     {
         tree_type tree;
-        Transaction t1;
+        TestTransaction t1;
         reset_tree(tree);
 
-        Sto::set_transaction(&t1);
+        t1.use();
         tree.erase(1);
         tree.erase(2);
         tree.erase(3);
@@ -256,11 +256,11 @@ int main() {
         assert(tree.size() == 100);
 
         // iterators
-        int i = 100;
-        for (auto it = tree.begin(); it != tree.end(); it++) {
-            std::cout << "iterator is " << *it << std::endl;
-            assert((*it) == i--);
-        }
+        //int i = 100;
+        //for (auto it = tree.begin(); it != tree.end(); it++) {
+        //    std::cout << "iterator is " << *it << std::endl;
+        //    assert((*it) == i--);
+        //}
         
         // count_my_inserts
         for (int i = 0; i < 100; ++i) {

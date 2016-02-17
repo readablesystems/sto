@@ -734,7 +734,9 @@ template <typename K, typename T>
 inline bool RBTree<K, T>::lock(TransItem& item) {
     if (item.key<void*>() == tree_key_) {
         lock(&treeversion_);
-    } else { 
+    } else if (item.key<void*>() == size_key_) {
+        lock(&sizeversion_);
+    } else {
         lock(item.key<versioned_value*>());
     }
     return true;
