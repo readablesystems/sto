@@ -8,22 +8,22 @@
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define NTRANS 100000 // Number of transactions each thread should run.
-#define N_THREADS 4 // Number of concurrent threads
-#define MAX_OPS 5 // Maximum number of operations in a transaction.
+#define NTRANS 200 // Number of transactions each thread should run.
+#define N_THREADS 3 // Number of concurrent threads
+#define MAX_OPS 3 // Maximum number of operations in a transaction.
 
 #define PRIORITY_QUEUE 0
 #define HASHTABLE 1
 #define RBTREE 2
 #define VECTOR 3
-#define DS VECTOR
+#define DS RBTREE 
 
 #if DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
 #elif DS == HASHTABLE
 HashtableTester<Hashtable<int, int, false, 1000000>> tester = HashtableTester<Hashtable<int, int, false, 1000000>>();
 #elif DS == RBTREE
-RBTreeTester<RBTree<int, int>> tester = RBTreeTester<RBTree<int, int>>();
+RBTreeTester<RBTree<int, int>, std::map<int, int>> tester = RBTreeTester<RBTree<int, int>, std::map<int, int>>();
 #elif DS == VECTOR
 VectorTester<Vector<int>> tester = VectorTester<Vector<int>>();
 #endif
@@ -111,6 +111,7 @@ void print_time(struct timeval tv1, struct timeval tv2) {
 }
 
 int main() {
+    std::ios_base::sync_with_stdio(true);
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
     lock = 0;
 
@@ -122,7 +123,7 @@ int main() {
     Hashtable<int, int, false, 1000000> q1;
 #elif DS == RBTREE
     RBTree<int, int> q;
-    RBTree<int, int> q1;
+    std::map<int, int> q1;
 #elif DS == VECTOR
     Vector<int> q;
     Vector<int> q1;
@@ -165,11 +166,17 @@ int main() {
     
     std::map<uint64_t, txn_record *>::iterator it = combined_txn_list.begin();
     for(; it != combined_txn_list.end(); it++) {
+#if PRINT_DEBUG
+        std::cout << "BEGIN txn " << it->first << std::endl;
+#endif
         Sto::start_transaction();
         for (unsigned i = 0; i < it->second->ops.size(); i++) {
             tester.redoOp(&q1, it->second->ops[i]);
         }
         assert(Sto::try_commit());
+#if PRINT_DEBUG
+        std::cout << "COMMITTED" << std::endl;
+#endif
     }
     
     gettimeofday(&tv2, NULL);

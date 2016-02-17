@@ -8,22 +8,20 @@
 #include "VersionFunctions.hh"
 #include "RBTreeInternal.hh"
 
-#define PRINT_DEBUG 0
+#define DEBUG 0
+#if DEBUG
+extern TransactionTid::type lock;
+#endif
 
-template <typename K, typename T>
-class RBTree;
+template<typename K, typename T> class RBTreeIterator;
+template <typename K, typename T> class RBTree;
 
 template <typename T>
 class rbwrapper : public T {
   public:
-    template <typename... Args> inline rbwrapper(Args&&... args)
-    : T(std::forward<Args>(args)...) {
-    }
-    inline rbwrapper(const T& x)
-    : T(x) {
-    }
-    inline rbwrapper(T&& x) noexcept
-    : T(std::move(x)) {
+    typedef TransactionTid::type Version;
+    explicit inline rbwrapper(const T& x)
+    : T(x), nodeversion_(0) {
     }
     inline const T& value() const {
         return *this;
@@ -31,6 +29,21 @@ class rbwrapper : public T {
     inline T& mutable_value() {
         return *this;
     }
+    inline std::pair<Version, Version> inc_nodeversion() {
+        Version old_val, new_val;
+        old_val = fetch_and_add(&nodeversion_, TransactionTid::increment_value);
+        new_val = old_val + TransactionTid::increment_value;
+#if DEBUG
+        TransactionTid::lock(::lock);
+        printf("\t#inc nodeversion 0x%lx (0x%lx -> 0x%lx)\n", (unsigned long)this, old_val, new_val);
+        TransactionTid::unlock(::lock);
+#endif
+        return std::make_pair(old_val, new_val);
+    }
+    inline Version nodeversion() {
+        return nodeversion_;
+    }
+    Version nodeversion_;
     rblinks<rbwrapper<T> > rblinks_;
 };
 
@@ -40,15 +53,14 @@ template <typename K, typename T>
 class rbpair {
 public:
     typedef TransactionTid::type Version;
-    typedef versioned_value_struct<std::pair<K, T>> versioned_pair;
+    typedef versioned_value_struct<std::pair<const K, T>> versioned_pair;
 
     static constexpr Version insert_bit = TransactionTid::user_bit1;
 
-    explicit rbpair(const K& key, const T& value) :
-        pair_(std::pair<K, T>(key, value),
-              TransactionTid::increment_value + insert_bit) {}
-    explicit rbpair(std::pair<K, T>& kvp) :
-        pair_(kvp, TransactionTid::increment_value + insert_bit) {}
+    explicit rbpair(const K& key, const T& value)
+    : pair_(std::pair<const K, T>(key, value), TransactionTid::increment_value + insert_bit) {}
+    explicit rbpair(std::pair<const K, T>& kvp)
+    : pair_(kvp, TransactionTid::increment_value + insert_bit) {}
 
     inline const K& key() const {
         return pair_.read_value().first;
@@ -67,40 +79,55 @@ public:
     }
 
 private:
+    // key-value pair associated with a version for the data
     versioned_pair pair_;
 };
 
-template <typename K, typename T>
-class RBProxy;
+template <typename K, typename T> class RBProxy;
 
 template <typename K, typename T>
 class RBTree : public Shared {
+    friend class RBTreeIterator<K, T>;
+    friend class RBProxy<K, T>;
+
     typedef TransactionTid::type Version;
     typedef versioned_value_struct<T> versioned_value;
 
     static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
     static constexpr Version insert_bit = TransactionTid::user_bit1;
-    static constexpr Version delete_bit = TransactionTid::user_bit1<<1;
+
+    typedef RBTreeIterator<K, T> iterator;
+    typedef const RBTreeIterator<K, T> const_iterator;
 
 public:
     RBTree() {
         treelock_ = 0;
         treeversion_ = 0;
-#if PRINT_DEBUG
+        sizeversion_ = 0;
+        size_ = 0;
+#if DEBUG
         stats_ = {0,0,0,0,0,0};
 #endif
     }
     
     typedef rbwrapper<rbpair<K, T>> wrapper_type;
     typedef rbtree<wrapper_type> internal_tree_type;
-    
+
+    // capacity 
+    inline size_t size() const;
     // lookup
     inline size_t count(const K& key) const;
     // element access
     inline RBProxy<K, T> operator[](const K& key);
     // modifiers
     inline size_t erase(const K& key);
+
+    // STAMP-compatible nontransactional methods
+    bool nontrans_insert(const K& key, const T& value);
+    bool nontrans_contains(const K& key);
+    bool nontrans_remove(const K& key);
+    T nontrans_find(const K& key); // returns T() if not found, works for STAMP
 
     void lock(versioned_value *e) {
         lock(&e->version());
@@ -109,12 +136,42 @@ public:
         unlock(&e->version());
     }
 
+    // iterators
+    iterator begin() {
+        lock(&treelock_);
+        wrapper_type* start = wrapper_tree_.r_.limit_[0];
+        if (start == nullptr) {
+            // tree empty, read tree version
+            Sto::item(this, tree_key_).add_read(treeversion_);
+        } else {
+            // READ-MY-WRITES: skip our own deletes!
+            while(has_delete(Sto::item(this, start))) {
+                Sto::item(this, (reinterpret_cast<uintptr_t>(start)|0x1)).add_read(start->nodeversion());
+                start = rbalgorithms<wrapper_type>::next_node(start);
+            }
+            if (start != nullptr) {
+                if (is_phantom_node(start)) {
+                    unlock(&treelock_);
+                    Sto::abort();
+                }
+                // valid start node, read nodeversion
+                Sto::item(this, (reinterpret_cast<uintptr_t>(start)|0x1)).add_read(start->nodeversion());
+            }
+        }
+        unlock(&treelock_);
+        return iterator(this, start);
+    }
+
+    iterator end() {
+        return iterator(this, nullptr);
+    }
+
     inline bool lock(TransItem& item);
+    inline void unlock(TransItem& item);
     inline bool check(const TransItem& item, const Transaction& trans);
     inline void install(TransItem& item, const Transaction& t);
-    inline void unlock(TransItem& item);
     inline void cleanup(TransItem& item, bool committed);
-#if PRINT_DEBUG
+#if DEBUG
     inline void print_absent_reads();
 #endif
 
@@ -123,100 +180,255 @@ private:
         return wrapper_tree_.size();
     }
 
-    // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
-    inline rbwrapper<rbpair<K, T>>* find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) const {
+    // XXX should we inline these?
+    inline wrapper_type* get_next(wrapper_type* node) {
         lock(&treelock_);
-        auto x = wrapper_tree_.find_any(rbkvp,
-            rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-        if (x) {
-            // check if rbpair has version "inserted" (someone inserted w/out commit)
+        wrapper_type* next_node = rbalgorithms<wrapper_type>::next_node(node);
+        // READ-MY-WRITES: skip our own deletes
+        while (has_delete(Sto::item(this, next_node))) {
+            // add read of nodeversions of all deleted nodes; gosh, read-my-write is really a nightmare...
+            Sto::item(this, (reinterpret_cast<uintptr_t>(next_node) | 0x1)).add_read(next_node->nodeversion());
+            next_node = rbalgorithms<wrapper_type>::next_node(next_node);
+        }
+
+        if (next_node != nullptr) {
+            if (is_phantom_node(next_node)) {
+                unlock(&treelock_);
+                Sto::abort();
+            }
+            Sto::item(this, (reinterpret_cast<uintptr_t>(next_node)|0x1)).add_read(next_node->nodeversion());
+        }
+        Sto::item(this, (reinterpret_cast<uintptr_t>(node)|0x1)).add_read(node->nodeversion());
+        unlock(&treelock_);
+        return next_node;
+    }
+
+    inline wrapper_type* get_prev(wrapper_type* node) {
+        lock(&treelock_);
+        // check if we are at the end() node (i.e. nullptr)
+        wrapper_type* prev_node = (node == nullptr) ? wrapper_tree_.r_.limit_[1] : rbalgorithms<wrapper_type>::prev_node(node);
+        // check that we are not begin (i.e. prev_node is not null)
+        if (prev_node == nullptr) {
+            unlock(&treelock_);
+            Sto::abort();
+        }
+        // READ-MY-WRITES: skip our own deletes
+        while (has_delete(Sto::item(this, prev_node))) {
+            Sto::item(this, (reinterpret_cast<uintptr_t>(prev_node) | 0x1)).add_read(prev_node->nodeversion());
+            prev_node = rbalgorithms<wrapper_type>::prev_node(prev_node);
+        }
+        // check again after reading-my-writes...
+        if (prev_node == nullptr) {
+            unlock(&treelock_);
+            Sto::abort();
+        }
+
+        if (is_phantom_node(prev_node)) {
+            unlock(&treelock_);
+            Sto::abort();
+        }
+        if (node) {
+            Sto::item(this, (reinterpret_cast<uintptr_t>(node)|0x1)).add_read(node->nodeversion());
+        }
+        if (prev_node) {
+            Sto::item(this, (reinterpret_cast<uintptr_t>(prev_node)|0x1)).add_read(prev_node->nodeversion());
+        }
+        unlock(&treelock_);
+        return prev_node;
+    }
+
+    // A (hard) phantom node is a node that's being inserted but not yet
+    // committed by another transaction. It should be treated as invisible
+    inline bool is_phantom_node(wrapper_type* node) const {
+        Version& val_ver = node->version();
+        auto item = Sto::item(const_cast<RBTree<K, T>*>(this), node);
+        return (is_inserted(val_ver) && !has_insert(item) && !has_delete(item));
+    }
+
+    // A soft phantom node is a node that's marked inserted by the current
+    // transaction. Its value information is visible (and only visible) to
+    // the current transaction
+    inline bool is_soft_phantom(wrapper_type* node) const {
+        Version& val_ver = node->version();
+        auto item = Sto::item(const_cast<RBTree<K, T>*>(this), node);
+        return (is_inserted(val_ver) && (has_insert(item) || has_delete(item)));
+    }
+
+    // increment or decrement the offset size of the transaction's tree
+    inline void change_size_offset(ssize_t delta) {
+        auto size_item = Sto::item(this, size_key_);
+        ssize_t prev_offset = size_item.has_write() ? size_item.template write_value<ssize_t>() : 0;
+        size_item.add_write(prev_offset + delta);
+        assert(size_ + size_item.template write_value<ssize_t>() >= 0);
+#if DEBUG
+        TransactionTid::lock(::lock);
+        printf("\tbase size: %lu\n", size_); 
+        printf("\toffset: %ld\n", size_item.template write_value<ssize_t>());
+        TransactionTid::unlock(::lock);
+#endif 
+    }
+
+    // Find and return a pointer to the rbwrapper. Abort if value inserted and not yet committed.
+    // return values: (node*, found, boundary), boundary only valid if !found
+    // NOTE: this function must be surrounded by a lock in order to ensure we add the correct nodeversions
+    inline std::pair<std::pair<rbnodeptr<wrapper_type>, bool>, std::pair<wrapper_type*, wrapper_type*>>
+    find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp, bool insert) const {
+        auto results = wrapper_tree_.find_any(rbkvp, rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+        auto pair = results.first;
+        wrapper_type* x = pair.first.node();
+        auto found = pair.second;
+
+        // PRESENT GET
+        if (found) {
+            auto item = Sto::item(const_cast<RBTree<K, T>*>(this), x);
+            // check if item is inserted by not committed yet 
             if (is_inserted(x->version())) {
-                // XXX const_cast hack here... any other way to do this?
-                auto item = Sto::item(const_cast<RBTree<K, T>*>(this), x);
                 // check if item was inserted by this transaction
-                if (has_insert(item)) {
-                    unlock(&treelock_);
-                    return x;
+                if (has_insert(item) || (has_delete(item))) {
+                    return results;
                 } else {
                     // some other transaction inserted this node and hasn't committed
-                    unlock(&treelock_);
+#if DEBUG
+                    TransactionTid::lock(::lock);
+                    printf("Aborted in find_or_abort\n");
+                    TransactionTid::unlock(::lock);
+#endif
+                    insert ? unlock(&treelock_) : unlock(&treelock_);
                     Sto::abort();
-                    return nullptr;
+                    // unreachable
+                    return results;
+                }
+            }
+            // add a read of the node version for a present get
+            if (!insert)
+                item.add_read(x->version());
+        
+        // ABSENT GET
+        } else {
+            // XXX this code only works with coarse-grain locking
+            // not an insert (on RHS), add a read of boundary nodes and read of treeversion if empty tree
+            if (!x && !insert)
+                Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
+            if (insert) {
+                if (x) {
+                    // we currently do not allow insertions under phantom nodes
+                    if (is_phantom_node(x)) {
+#if DEBUG
+                        TransactionTid::lock(::lock);
+                        printf("Aborted in find_or_abort (insertion under phantom node)\n");
+                        TransactionTid::unlock(::lock);
+#endif
+                        unlock(&treelock_);
+                        Sto::abort();
+                        return results;
+                    }
+                }
+            } else {
+                // add reads of boundary nodes, marking them as nodeversion ptrs
+                for (unsigned int i = 0; i < 2; ++i) {
+                    wrapper_type* n = (i == 0)? results.second.first : results.second.second;
+                    if (n) {
+                        Version v = n->nodeversion();
+#if DEBUG
+                        TransactionTid::lock(::lock);
+                        printf("\t#Tracking boundary 0x%lx (k %d), nv 0x%lx\n", (unsigned long)n, n->key(), v);
+                        TransactionTid::unlock(::lock);
+#endif
+                        Sto::item(const_cast<RBTree<K, T>*>(this),
+                                        (reinterpret_cast<uintptr_t>(n)|0x1)).add_read(v);
+                    }
                 }
             }
         }
-        // item was committed or DNE, so return pointer
-        unlock(&treelock_);
-        return x;
+        // item was committed or DNE, so return results
+        return results;
     }
 
-    // Insert <@key, @value>, optionally force an update if @key exists
-    // return value is a reference to kvp.second
-    inline T& insert_update(const K& key, const T& value, bool force) {
-        auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
-        auto x = this->find_or_abort(node);
-        lock(&treelock_);
-        
-        // INSERT: kvp did not exist
-        if (!x) {
-#if PRINT_DEBUG
+    // Insert nonexistent key with empty value
+    // return value is a pointer to the inserted node 
+    inline wrapper_type* insert_absent(rbnodeptr<wrapper_type> found_p, const K& key) {
+#if DEBUG
             stats_.absent_insert++;
 #endif
-            auto n = new rbwrapper<rbpair<K, T> >(  rbpair<K, T>(key, value)  );
-            wrapper_tree_.insert(*n);
+            // use in-place constructor so that we don't mix up c++'s new and c's free()
+            wrapper_type* n = (wrapper_type*)malloc(sizeof(wrapper_type));
+            new (n) wrapper_type(rbpair<K, T>(key, T()));
+            // insert new node under parent
+            bool side = (found_p.node() == nullptr)? false :
+                    wrapper_tree_.r_.node_compare(*n, *found_p.node()) > 0;
+            wrapper_tree_.insert_commit(n, found_p, side);
+            // rbnodeptr<wrapper_type> p = wrapper_tree_.insert(*n);
             // invariant: the node's insert_bit should be set
             assert(is_inserted(n->version()));
-            // we will increment treeversion upon commit
-            Sto::item(this, tree_key_).add_write(0);
+            // if tree is empty (i.e. no parent), we increment treeversion 
+            if (found_p.node() == nullptr) {
+                Sto::item(this, tree_key_).add_write(0);
+            // else we increment the parent version 
+            } else {
+                auto versions = found_p.node()->inc_nodeversion();
+                auto item = Sto::item(this, reinterpret_cast<uintptr_t>(found_p.node()) | 1);
+                // update our own read if necessary
+                if (item.has_read()) {
+                    item.update_read(versions.first, versions.second);
+                }
+            }
             // add write and insert flag of item (value of rbpair) with @value
-            Sto::item(this, n).add_write(value).add_flags(insert_tag);
+            Sto::item(this, n).add_write(T()).add_flags(insert_tag);
+            // if we actually changed begin, increment startversion_ 
+            //if (wrapper_tree_.r_.limit_[0] == n) {
+            //    Sto::item(this, start_key_).add_write(0);
+            //}
             unlock(&treelock_);
-            return n->writeable_value();
+            // add a write to size with incremented value
+            change_size_offset(1);
+            return n;
+    }
+
+    // Insert key and empty value if key does not exist 
+    // If key exists, then add a read of the item version and return the node
+    // return value is a reference to the found or inserted node 
+    inline wrapper_type* insert(const K& key) {
+        lock(&treelock_);
+        auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
+        auto pair = this->find_or_abort(node, true).first;
+        rbnodeptr<wrapper_type> x_rbnp = pair.first;
+        wrapper_type* x = x_rbnp.node();
+        auto found = pair.second;
+        
+        // INSERT: kvp did not exist
+        if (!found)
+            return insert_absent(x_rbnp, key);
 
         // UPDATE: kvp is already inserted into the tree
-        } else {
-#if PRINT_DEBUG
+        else {
+#if DEBUG
             stats_.present_insert++;
 #endif
-        auto item = Sto::item(this, x);
-            if (is_deleted(x->version())) {
-                unlock(&treelock_);
-                Sto::abort();
-                // should be unreachable
-                return x->writeable_value();
-            } else if (has_delete(item)) {
-                // we only reach here if read_my_delete; always doing an insert due to
-                // operator[] semantics
-                // add item value to write set and marked as inserted instead of deleted
-                // insert_tag indicates that we need to remove the insert_bit during install
-                item.add_write(value).clear_flags(delete_tag).add_flags(insert_tag);
-                // either overwrite value or put empty value
-                if (force) {
-                    x->writeable_value() = value;
-                } else {
+            auto item = Sto::item(this, x);
+            
+            // insert-my-delete
+            if (has_delete(item)) {
+                item.clear_flags(delete_tag);
+                // recover from delete-my-insert (engineer's induction all over the place...)
+                if (is_inserted(x->version())) {
+                    // okay to directly update value since we are the only txn
+                    // who can access it
+                    item.add_flags(insert_tag);
                     x->writeable_value() = T();
                 }
+                // overwrite value
+                item.add_write(T());
                 unlock(&treelock_);
-                return x->writeable_value();
-            } else if (item.has_write()) {
-                // read_my_writes: don't add anything to read set
-                if (force) {
-                    // operator[] used on LHS, overwrite
-                    item.add_write(value);
-                }
-                unlock(&treelock_);
-                return item.template write_value<T>();
+                // we have to update the value of the size we will write
+                change_size_offset(1);
+                return x; 
             }
-
-            // otherwise we are just accessing a regular key
-            // either overwrite value or put empty value
-            if (force) {
-                item.add_write(value);
-            } else {
-                item.add_read(x->version());
-            }
+            // operator[] on RHS (THIS IS A READ!)
+            // don't need to add a write to size because size isn't changing
+            // STO won't add read of items in our write set
+            item.add_read(x->version());
             unlock(&treelock_);
-            return x->writeable_value();
+            return x;
         }
     }
 
@@ -244,125 +456,276 @@ private:
     static void mark_inserted(Version* v) {
         *v = *v | insert_bit;
     }
-    static bool is_deleted(Version v) {
-        return v & delete_bit;
-    }
-    static void erase_deleted(Version* v) {
-        *v = *v & (~delete_bit);
-    }
-    static void mark_deleted(Version* v) {
-        *v = *v | delete_bit;
-    }
 
     internal_tree_type wrapper_tree_;
+    // only add a write to size if we erase or do an absent insert
+    size_t size_;
+    mutable Version sizeversion_;
     mutable Version treelock_;
     mutable Version treeversion_;
-#if PRINT_DEBUG
-    mutable struct stats {
-        int absent_insert;
-        int absent_delete;
-        int absent_count;
-        int present_insert;
-        int present_delete;
-        int present_count;
-    } stats_;
-#endif
     // used to mark whether a key is for the tree structure (for tree version checks)
     // or a pointer (which will always have the lower 3 bits as 0)
     static constexpr uintptr_t tree_bit = 1U<<0;
     void* tree_key_ = (void*) tree_bit;
- 
-    friend class RBProxy<K, T>;
+    static constexpr uintptr_t size_bit = 1U<<1;
+    void* size_key_ = (void*) size_bit;
+    static constexpr uintptr_t start_bit = 1U<<2;
+    void* start_key_ = (void*) start_bit;
+#if DEBUG
+    mutable struct stats {
+        int absent_insert, absent_delete, absent_count;
+        int present_insert, present_delete, present_count;
+    } stats_;
+#endif
+};
+
+template<typename K, typename T>
+class RBTreeIterator : public std::iterator<std::bidirectional_iterator_tag, rbwrapper<rbpair<K, T>>> {
+public:
+    typedef rbwrapper<rbpair<K, T>> wrapper;
+    typedef RBTreeIterator<K, T> iterator;
+    typedef RBProxy<K, T> proxy_type;
+    typedef std::pair<const K, proxy_type> proxy_pair_type;
+
+    RBTreeIterator(RBTree<K, T> * tree, wrapper* node) : tree_(tree), node_(node), proxy_pair_(nullptr) {
+        this->update_proxy_pair();
+    }
+    RBTreeIterator(const RBTreeIterator& itr) : tree_(itr.tree_), node_(itr.node_), proxy_pair_(nullptr) {
+        this->update_proxy_pair();
+    }
+    ~RBTreeIterator() {
+        this->destroy_proxy_pair();
+    }
+    
+    RBTreeIterator& operator=(const RBTreeIterator& v) {
+        tree_ = v.tree_;
+        node_ = v.node_;
+        this->update_proxy_pair();
+        return *this;
+    }
+   
+    bool operator==(iterator other) const {
+        return (tree_ == other.tree_) && (node_ == other.node_);
+    }
+    
+    bool operator!=(iterator other) const {
+        return !(operator==(other));
+    }
+   
+    // Dereference operator on iterators; returns reference to std::pair<const K, T>
+    proxy_pair_type& operator*() {
+        // add a read of the version to make sure the value hasn't changed at commit time
+        Sto::item(tree_, node_).add_read(node_->version());
+        this->update_proxy_pair();
+        return *proxy_pair_;
+    }
+
+    proxy_pair_type* operator->() {
+        // add a read of the version to make sure the value hasn't changed at commit time
+        Sto::item(tree_, node_).add_read(node_->version());
+        this->update_proxy_pair();
+        return proxy_pair_;
+    }
+    
+    // This is the prefix case
+    iterator& operator++() { 
+        node_ = tree_->get_next(node_);
+        this->update_proxy_pair();
+        return *this; 
+    }
+    
+    // This is the postfix case
+    iterator operator++(int) {
+        RBTreeIterator<K, T> clone(*this);
+        node_ = tree_->get_next(node_);
+        this->update_proxy_pair();
+        return clone;
+    }
+    
+    iterator& operator--() { 
+        node_ = tree_->get_prev(node_);
+        this->update_proxy_pair();
+        return *this; 
+    }
+    
+    iterator operator--(int) {
+        RBTreeIterator<K, T> clone(*this);
+        node_ = tree_->get_prev(node_);
+        this->update_proxy_pair();
+        return clone;
+    }
+        
+private:
+    inline void destroy_proxy_pair() {
+        if (proxy_pair_ != nullptr) {
+            delete proxy_pair_;
+        }
+    }
+    inline void update_proxy_pair() {
+        if (proxy_pair_ != nullptr) {
+            delete proxy_pair_;
+        }
+        if (node_ == nullptr) {
+            proxy_pair_ = nullptr;
+            return;
+        } else {
+            proxy_pair_type* new_pair = new std::pair<const K, RBProxy<K, T>>(node_->key(), proxy_type(*tree_, node_));
+            proxy_pair_ = new_pair;
+            return;
+        }
+    }
+
+    RBTree<K, T> * tree_;
+    wrapper* node_;
+    proxy_pair_type* proxy_pair_;
 };
 
 // STL-ish interface wrapper returned by RBTree::operator[]
+// differentiate between reads and writes
 template <typename K, typename T>
 class RBProxy {
 public:
     typedef RBTree<K, T> transtree_t;
-    explicit RBProxy(transtree_t& tree, const K& key)
-        : tree_(tree), key_(key) {};
+    typedef rbwrapper<rbpair<K, T>> wrapper_type;
+    typedef TransactionTid::type Version;
+
+    explicit RBProxy(transtree_t& tree, wrapper_type* node)
+        : tree_(tree), node_(node) {};
+
+    // get the latest write value
     operator T() {
-        return tree_.insert_update(key_, T(), false);
+        auto item = Sto::item(&tree_, node_);
+        if (item.has_write()) {
+            return item.template write_value<T>();
+        } else {
+            // validate the read of the node, abort if someone has updated
+            auto value = node_->writeable_value();
+            auto curr_version = node_->version();
+            assert(item.has_read());
+            if (item.template read_value<Version>() != curr_version || RBTree<K, T>::is_locked(curr_version)) {
+                Sto::abort();
+            }
+            return value; 
+        }
     }
     RBProxy& operator=(const T& value) {
-        tree_.insert_update(key_, value, true);
+        auto item = Sto::item(&tree_, node_);
+        item.add_write(value);
         return *this;
     };
     RBProxy& operator=(RBProxy& other) {
-        tree_.insert_update(key_, (T)other, true);
+        auto item = Sto::item(&tree_, node_);
+        item.add_write((T)other);
         return *this;
     };
 private:
     transtree_t& tree_;
-    const K& key_;
+    wrapper_type* node_;
 };
+
+template <typename K, typename T>
+inline size_t RBTree<K, T>::size() const {
+    auto size_item = Sto::item(const_cast<RBTree<K, T>*>(this), size_key_);
+    if (!size_item.has_read()) {
+        size_item.add_read(sizeversion_);
+    } else {
+    }
+
+    ssize_t offset = (size_item.has_write()) ? size_item.template write_value<ssize_t>() : 0;
+    return size_ + offset;
+}
 
 template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    auto x = find_or_abort(idx_pair);
-#if PRINT_DEBUG
-    (!x) ? stats_.absent_count++ : stats_.present_count++;
+    lock(&treelock_);
+    // should have added a read of boundary nodes if absent
+    auto results = find_or_abort(idx_pair, false);
+    auto pair = results.first;
+    auto found = pair.second;
+#if DEBUG
+    (!found) ? stats_.absent_count++ : stats_.present_count++;
 #endif
-    // we will observe treeversion_ regardless of the lookup result
-    Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(treeversion_);
-    return ((x) ? 1 : 0);
+    if (found) {
+        wrapper_type* n = pair.first.node();
+        auto item = Sto::item(const_cast<RBTree<K, T>*>(this), n);
+        if (has_delete(item)) {
+            // read my deletes
+            unlock(&treelock_);
+            return 0;
+        }
+    }
+    unlock(&treelock_);
+    return (found) ? 1 : 0;
 }
 
 template <typename K, typename T>
 inline RBProxy<K, T> RBTree<K, T>::operator[](const K& key) {
-    return RBProxy<K, T>(*this, key);
+    // either insert empty value or return present value
+    auto node = insert(key);
+    return RBProxy<K, T>(*this, node);
 }
 
 template <typename K, typename T>
 inline size_t RBTree<K, T>::erase(const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    auto x = find_or_abort(idx_pair);
-    // FOUND ITEM
-    if (x) {
-#if PRINT_DEBUG
+    lock(&treelock_);
+    // add a read of boundary nodes if absent erase
+    auto results = find_or_abort(idx_pair, false);
+    auto pair = results.first; 
+    wrapper_type* x = pair.first.node();
+    auto found = pair.second;
+   
+    // PRESENT ERASE
+    if (found) {
+#if DEBUG
         stats_.present_delete++;
 #endif
         auto item = Sto::item(this, x);
+        
         // item marked as inserted and not yet installed
         if (is_inserted(x->version())) {
+            // mark to delete at install time
             if (has_insert(item)) {
-                // insert-then-delete; we need to undo all the effects of an insert here
-                lock(&treelock_);
-                wrapper_tree_.erase(*x);
-                item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
-                Transaction::rcu_free(x);
-                // read a treeversion so that we can abort if another transaction inserts
-                // this key again (actually any key, so lots of false conflicts right now)
-                Sto::item(this, tree_key_).add_read(treeversion_);
+                item.add_write(0).clear_flags(insert_tag).add_flags(delete_tag);
+                change_size_offset(-1);
                 unlock(&treelock_);
                 return 1;
+            } else if (has_delete(item)) {
+                // DO NOT UPDATE SIZE HERE
+                // insert-delete-delete
+                unlock(&treelock_);
+                return 0;
             } else {
+#if DEBUG
+                TransactionTid::lock(::lock);
+                printf("Aborted in erase (insert bit set)\n");
+                TransactionTid::unlock(::lock);
+#endif
+                unlock(&treelock_);
                 Sto::abort();
                 // unreachable
                 return 0;
             }
-        }
-        // item marked at install as deleted, not deleted yet so abort
-        if (is_deleted(x->version())) {
-            Sto::abort();
-            return 0;
+        // we are deleting our deletes (of item we didn't insert)
+        } else if (has_delete(item)) {
+            unlock(&treelock_);
+            return 0; 
         }
         // found item that has already been installed and not deleted
-        // XXX don't need to add a read of version --> ok to delete a node if someone else modifies
-        // XXX actually, we do need to add a read of the version --> segfaults if we try to delete
-        // after another has deleted
         item.add_write(0).add_flags(delete_tag);
-        item.add_read(x->version());
-        Sto::item(this, tree_key_).add_write(0);
+        // add a write to size item of the current size minus one
+        // because we will delete the element from the tree
+        change_size_offset(-1);
+        unlock(&treelock_);
         return 1;
+
+    // ABSENT ERASE
     } else {
-#if PRINT_DEBUG
+#if DEBUG
         stats_.absent_delete++;
 #endif
-        // treat it like an absent read
-        Sto::item(this, tree_key_).add_read(treeversion_);
+        unlock(&treelock_);
         return 0;
     }
 }
@@ -371,22 +734,73 @@ template <typename K, typename T>
 inline bool RBTree<K, T>::lock(TransItem& item) {
     if (item.key<void*>() == tree_key_) {
         lock(&treeversion_);
-    } else {
+    } else { 
         lock(item.key<versioned_value*>());
     }
     return true;
 }
+    
+template <typename K, typename T>
+inline void RBTree<K, T>::unlock(TransItem& item) {
+    if (item.key<void*>() == size_key_) {
+        unlock(&sizeversion_);
+    } else if (item.key<void*>() == tree_key_) {
+        unlock(&treeversion_);
+    } else {
+        unlock(item.key<versioned_value*>());
+    }
+}
    
 template <typename K, typename T>
 inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans) {
-    auto e = item.key<wrapper_type*>();
-    auto read_version = item.read_value<Version>();
+    auto e = item.key<uintptr_t>();
+    bool is_treekey = ((uintptr_t)e == (uintptr_t)tree_key_);
+    bool is_sizekey = ((uintptr_t)e == (uintptr_t)size_key_);
+    bool is_structured = (e & uintptr_t(1)) && !is_treekey;
+    Version read_version = item.read_value<Version>();
+    Version curr_version;
 
-    // set up the correct current version to check: either treeversion or item version
-    Version& curr_version = (e == (wrapper_type*)tree_key_)? treeversion_ : e->version();
+    // set up the correct current version to check: either sizeversion, treeversion, item version, or nodeversion
+    if (is_sizekey) {
+        curr_version = sizeversion_;
+    } else if (is_treekey) {
+        curr_version = treeversion_;
+    } else if (is_structured) {
+        wrapper_type* n = reinterpret_cast<wrapper_type*>(e & ~uintptr_t(1));
+        curr_version = n->nodeversion();
+#if DEBUG
+        TransactionTid::lock(::lock);
+        printf("\t#read %p nv 0x%lx, exp %lx\n", n, curr_version, read_version);
+        TransactionTid::unlock(::lock);
+#endif
+    } else {
+        curr_version = reinterpret_cast<wrapper_type*>(e)->version();
+    }
 
-    bool same_version = (read_version ^ curr_version) <= TransactionTid::lock_bit;
-    bool not_locked = (!is_locked(curr_version) || item.has_lock(trans));
+    bool same_version;
+    if (is_structured) {
+        same_version = (read_version == curr_version);
+    } else {
+        same_version = (read_version ^ curr_version) <= TransactionTid::lock_bit;
+    }
+    bool not_locked = !is_locked(curr_version) || item.has_lock(trans);
+#if DEBUG
+    bool check_fails = !(same_version && not_locked);
+    if (check_fails && !is_sizekey && !is_treekey) {
+        wrapper_type* node = reinterpret_cast<wrapper_type*>(e & ~uintptr_t(1));
+        int k_ = node? node->key() : 0;
+        int v_ = node? node->writeable_value() : 0;
+        TransactionTid::lock(::lock);
+        printf("Check failed at TItem %p (key=%d, val=%d)\n", (void *)e, k_, v_);
+        TransactionTid::unlock(::lock);
+    }
+    TransactionTid::lock(::lock);
+    if (!same_version)
+        printf("\tVersion mismatch: %lx -> %lx\n", read_version, curr_version);
+    if (!not_locked)
+        printf("\tVersion locked\n");
+    TransactionTid::unlock(::lock);
+#endif
     return same_version && not_locked;
 }
 
@@ -394,10 +808,21 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
 template <typename K, typename T>
 inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
     (void) t;
+    // we don't need to check for nodeversion updates because those are done during execution
     auto e = item.key<wrapper_type*>();
-    if (e != (wrapper_type*)tree_key_) {
+    // we did something to an empty tree, so update treeversion
+    if ((void*)e == (wrapper_type*)tree_key_) {
+        assert(is_locked(treeversion_));
+        TransactionTid::inc_invalid_version(treeversion_);
+    // we changed the size of the tree, so update size
+    } else if ((void*)e == (wrapper_type*)size_key_) {
+        assert(is_locked(sizeversion_));
+        size_ += item.template write_value<ssize_t>();
+        TransactionTid::inc_invalid_version(sizeversion_);
+        assert((ssize_t)size_ >= 0);
+    } else {
         assert(is_locked(e->version()));
-
+        assert(((uintptr_t)e & 0x1) == 0);
         bool deleted = has_delete(item);
         bool inserted = has_insert(item);
         // should never be both deleted and inserted...
@@ -405,55 +830,112 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         assert(!(deleted && inserted));
         // actually erase the element when installing the delete
         if (deleted) {
-            // mark deleted (in case rcu free doesn't free immediately)
-            mark_deleted(&e->version());
             // actually erase
             lock(&treelock_);
             wrapper_tree_.erase(*e);
+            // increment the nodeversion after we erase
             unlock(&treelock_);
+            // increment value version 
+            TransactionTid::inc_invalid_version(e->version());
+#if DEBUG
+            TransactionTid::lock(::lock);
+            printf("\t#inc nodeversion (erase) 0x%lx\n", (unsigned long)e);
+            TransactionTid::unlock(::lock);
+#endif
+            e->inc_nodeversion();
             Transaction::rcu_free(e);
         } else if (inserted) {
+            // BUMMER...
+            e->writeable_value() = item.template write_value<T>();
             erase_inserted(&e->version());
-        // item in write set did not update value --> read_my_writes 
-        } else {
-            // XXX what is valid bit?
-            TransactionTid::inc_invalid_version(e->version());
+        // updated
+        } else { 
+            // already checked that value version has not changed (i.e. no one else deleted)
             e->writeable_value() = item.template write_value<T>(); 
+            TransactionTid::inc_invalid_version(e->version());
         }
-    } else {
-        assert(is_locked(treeversion_));
-        TransactionTid::inc_invalid_version(treeversion_);
-    }
-}
-
-template <typename K, typename T>
-inline void RBTree<K, T>::unlock(TransItem& item) {
-    if (item.key<void*>() == tree_key_) {
-        unlock(&treeversion_);
-    } else {
-        unlock(item.key<versioned_value*>());
     }
 }
 
 template <typename K, typename T>
 inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
     if (!committed) {
-        // if item has been tagged deleted, don't need to do anything 
+        // if item has been tagged deleted or structured, don't need to do anything 
         // if item has been tagged inserted, then we erase the item
-        if (has_insert(item)) {
+        if (has_insert(item) || has_delete(item)) {
             auto e = item.key<wrapper_type*>();
-            // we actually want to erase this 
+            assert(((uintptr_t)e & 0x1) == 0);
+            if (!is_inserted(e->version()))
+                return;
             lock(&treelock_);
             wrapper_tree_.erase(*e);
+            // increment the nodeversion after we erase
             unlock(&treelock_);
-            mark_deleted(&e->version());
             erase_inserted(&e->version());
+            e->inc_nodeversion();
             Transaction::rcu_free(e);
         }
     }
 }
 
-#if PRINT_DEBUG 
+template <typename K, typename T>
+bool RBTree<K, T>::nontrans_insert(const K& key, const T& value) {
+    wrapper_type idx_pair(rbpair<K, T>(key, value));
+    auto results = wrapper_tree_.find_any(idx_pair,
+            rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+    auto pair = results.first;
+    wrapper_type* x = pair.first.node();
+    bool found = pair.second;
+    if (!found) {
+        rbnodeptr<wrapper_type> p = pair.first;
+        wrapper_type* n = (wrapper_type*)malloc(sizeof(wrapper_type));
+        new (n) wrapper_type(rbpair<K, T>(key, value));
+        erase_inserted(&n->version());
+        bool side = (x == nullptr)? false : (wrapper_tree_.r_.node_compare(*n, *x) > 0);
+        wrapper_tree_.insert_commit(n, p, side);
+    }
+    return !found;
+}
+
+template <typename K, typename T>
+bool RBTree<K, T>::nontrans_contains(const K& key) {
+    wrapper_type idx_pair(rbpair<K, T>(key, T()));
+    auto results = wrapper_tree_.find_any(idx_pair,
+            rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+    return results.first.second;
+}
+
+template <typename K, typename T>
+T RBTree<K, T>::nontrans_find(const K& key) {
+    wrapper_type idx_pair(rbpair<K, T>(key, T()));
+    auto results = wrapper_tree_.find_any(idx_pair,
+            rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+    auto pair = results.first;
+    bool found = pair.second;
+    if (found) {
+        return pair.first.node()->writeable_value();
+    } else {
+        return T();
+    }
+}
+
+template <typename K, typename T>
+bool RBTree<K, T>::nontrans_remove(const K& key) {
+    wrapper_type idx_pair(rbpair<K, T>(key, T()));
+    auto results = wrapper_tree_.find_any(idx_pair,
+            rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+    auto pair = results.first;
+    bool found = pair.second;
+    if (found) {
+        wrapper_type* n = pair.first.node();
+        wrapper_tree_.erase(*n);
+        free(n);
+    }
+    return found;
+}
+
+
+#if DEBUG 
 template <typename K, typename T>
 inline void RBTree<K, T>::print_absent_reads() {
     std::cout << "absent inserts: " << stats_.absent_insert << std::endl;

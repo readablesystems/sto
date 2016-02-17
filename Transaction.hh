@@ -10,8 +10,8 @@
 #include <unistd.h>
 #include <iostream>
 
-#define CONSISTENCY_CHECK 0
-#define PERF_LOGGING 0
+#define CONSISTENCY_CHECK 1
+#define PERF_LOGGING 1
 #define DETAILED_LOGGING 0
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
@@ -586,10 +586,20 @@ public:
         }
     }
 
+    void check_opacity() {
+        check_opacity(_TID);
+    }
+
     tid_type commit_tid() const {
+<<<<<<< HEAD
         assert(state_ == s_committing_locked);
         if (!commit_tid_)
+=======
+        assert(writeset_);
+        if (commit_tid_ == 0) {
+>>>>>>> rbtree
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
+        }
         return commit_tid_;
     }
 
@@ -631,7 +641,6 @@ private:
 class Sto {
 public:
     static __thread Transaction* __transaction;
-
 
     static void start_transaction() {
         if (!__transaction)
