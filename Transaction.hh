@@ -591,7 +591,7 @@ public:
     }
 
     tid_type commit_tid() const {
-        assert(state_ == s_committing_locked);
+        assert(state_ == s_committing_locked || state_ == s_committing);
         if (!commit_tid_)
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
