@@ -644,73 +644,67 @@ public:
         __transaction->start();
     }
 
-    class NotInTransaction {};
-
-    static bool trans_in_progress() {
+    static bool in_progress() {
         return __transaction && __transaction->in_progress();
     }
 
-    static void check_in_progress() {
-        if (!trans_in_progress())
-            throw NotInTransaction();
-    }
-
     static void abort() {
-        check_in_progress();
+        always_assert(in_progress());
         __transaction->abort();
     }
 
     static void silent_abort() {
-        if (trans_in_progress())
+        if (in_progress())
             __transaction->silent_abort();
     }
 
     template <typename T>
     static TransProxy item(Shared* s, T key) {
-        check_in_progress();
+        always_assert(in_progress());
         return __transaction->item(s, key);
     }
 
     static void check_opacity(TransactionTid::type t) {
-        check_in_progress();
+        always_assert(in_progress());
         __transaction->check_opacity(t);
     }
 
     static void check_reads() {
+        always_assert(in_progress());
         __transaction->check_reads();
     }
 
     template <typename T>
     static OptionalTransProxy check_item(Shared* s, T key) {
-        check_in_progress();
+        always_assert(in_progress());
         return __transaction->check_item(s, key);
     }
 
     template <typename T>
     static TransProxy new_item(Shared* s, T key) {
-        check_in_progress();
+        always_assert(in_progress());
         return __transaction->new_item(s, key);
     }
 
     template <typename T>
     static TransProxy read_item(Shared *s, T key) {
-        check_in_progress();
+        always_assert(in_progress());
         return __transaction->read_item(s, key);
     }
 
     template <typename T>
     static TransProxy fresh_item(Shared *s, T key) {
-        check_in_progress();
+        always_assert(in_progress());
         return __transaction->fresh_item(s, key);
     }
 
     static void commit() {
-        check_in_progress();
+        always_assert(in_progress());
         __transaction->commit();
     }
 
     static bool try_commit() {
-        check_in_progress();
+        always_assert(in_progress());
         return __transaction->try_commit();
     }
 

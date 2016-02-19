@@ -70,7 +70,7 @@ public:
     
     /* Overloading cast operation so that we can now directly read values from SingleElem objects */
     operator T() {
-        if (Sto::trans_in_progress())
+        if (Sto::in_progress())
             return transRead();
         else
             return read();
@@ -85,7 +85,7 @@ public:
   
     /* Overloads = operator with transWrite */
     Box& operator= (const T& v) {
-        if (Sto::trans_in_progress())
+        if (Sto::in_progress())
             transWrite(v);
         else
             write(v);
