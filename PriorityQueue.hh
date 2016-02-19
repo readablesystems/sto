@@ -148,7 +148,7 @@ public:
     void push(T v) {
         lock(&poplock_); // TODO: locking this is not required, but performance seems to be better with this
                             // Can also try readers-writers lock
-        if (dirtytid_ != -1 && dirtytid_ != Transaction::threadid && v > dirtyval_) {
+        if (dirtytid_ != -1 && dirtytid_ != TThread::id && v > dirtyval_) {
             unlock(&poplock_);
             Sto::abort();
             return;
@@ -181,7 +181,7 @@ public:
         }
         
         lock(&poplock_);
-        if (dirtytid_ != -1 && dirtytid_ != Transaction::threadid) {
+        if (dirtytid_ != -1 && dirtytid_ != TThread::id) {
             // queue is in dirty state
             unlock(&poplock_);
             Sto::abort();
@@ -214,7 +214,7 @@ public:
             dirtyval_ = val->read_value();
             fence();
         }
-        dirtytid_ = Transaction::threadid;
+        dirtytid_ = TThread::id;
         
         removeMax(val);
         unlock(&poplock_);
@@ -245,7 +245,7 @@ public:
         }
         
         lock(&poplock_);
-        if (dirtytid_ != -1 && dirtytid_ != Transaction::threadid) {
+        if (dirtytid_ != -1 && dirtytid_ != TThread::id) {
             // queue is in dirty state
             unlock(&poplock_);
             Sto::abort();
@@ -294,7 +294,7 @@ public:
                     return false;
             }
             
-            if (dirtytid_ != -1 && dirtytid_ != Transaction::threadid) return false;
+            if (dirtytid_ != -1 && dirtytid_ != TThread::id) return false;
             return true;
         }
         else if (item.key<int>() == pop_key) {
@@ -304,7 +304,7 @@ public:
         } else {
             // This is top case
             auto e = item.key<versioned_value*>();
-            if (dirtytid_ != -1 && dirtytid_ != Transaction::threadid && dirtyval_ >= e->read_value()) return false;
+            if (dirtytid_ != -1 && dirtytid_ != TThread::id && dirtyval_ >= e->read_value()) return false;
             else if (has_delete(item)) return true;
             // check that e is not pushed down by other transactions
             int level = 1; // level that contains the root
@@ -323,7 +323,7 @@ public:
                 }
                 if (i == endOfLevel(level)) break;
             }
-            if (dirtytid_ != -1 && dirtytid_ != Transaction::threadid && dirtyval_ >= e->read_value()) return false;
+            if (dirtytid_ != -1 && dirtytid_ != TThread::id && dirtyval_ >= e->read_value()) return false;
             if (!found) return false;
             else return true;
         }
@@ -351,7 +351,7 @@ public:
     }
 
     void cleanup(TransItem& item, bool committed) {
-        if (committed && dirtytid_ == Transaction::threadid) {
+        if (committed && dirtytid_ == TThread::id) {
             dirtytid_ = -1;
         }
         if (!committed) {
@@ -374,7 +374,7 @@ public:
                 fence();
                 dirtycount_--;
                 if (dirtycount_ == 0) {
-                    assert(dirtytid_ == Transaction::threadid);
+                    assert(dirtytid_ == TThread::id);
                     dirtytid_ = -1;
                 }
             }

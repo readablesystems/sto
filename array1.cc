@@ -66,10 +66,10 @@ void testConflictingIter() {
     }
 
     {
-        TestTransaction t;
+        TestTransaction t(1);
         std::max_element(f.begin(), f.end());
 
-        TestTransaction t1;
+        TestTransaction t1(2);
         f.transWrite(4, 10);
         assert(t1.try_commit());
         assert(!t.try_commit());
@@ -104,10 +104,10 @@ void testConflictingModifyIter1() {
     }
     
     {
-        TestTransaction t;
+        TestTransaction t(1);
         std::replace(f.begin(), f.end(), 4, 6);
     
-        TestTransaction t1;
+        TestTransaction t1(2);
         f.transWrite(4, 10);
 
         assert(t1.try_commit());
@@ -155,10 +155,10 @@ void testConflictingModifyIter3() {
     }
     
     {
-        TestTransaction t1;
+        TestTransaction t1(1);
         f.transRead(4);
     
-        TestTransaction t;
+        TestTransaction t(2);
         std::replace(f.begin(), f.end(), 4, 6);
 
         assert(t.try_commit());

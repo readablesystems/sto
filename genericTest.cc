@@ -21,11 +21,11 @@ int main() {
   GenericSTM stm_;
   int x = 5;
   {
-      TestTransaction t1;
+      TestTransaction t1(1);
       int x_ = stm_.transRead(&x);
       assert(x_ == 5);
   
-      TestTransaction t2;
+      TestTransaction t2(2);
       stm_.transWrite(&x, 4);
       assert(t2.try_commit());
       assert(x == 4);

@@ -6,6 +6,11 @@
 class Transaction;
 class TransItem;
 
+class TThread {
+public:
+    static __thread int id;
+};
+
 class TransactionTid {
 public:
     typedef uint64_t type;
@@ -93,9 +98,9 @@ public:
     }
 };
 
-class Shared {
+class TObject {
 public:
-    virtual ~Shared() {}
+    virtual ~TObject() {}
 
     virtual bool lock(TransItem& item) = 0;
     virtual bool check_predicate(TransItem& item, Transaction& t) {
@@ -111,3 +116,5 @@ public:
     }
     virtual void print(FILE* f, const TransItem& item) const;
 };
+
+typedef TObject Shared;

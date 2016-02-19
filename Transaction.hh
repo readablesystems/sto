@@ -282,7 +282,6 @@ void* TransactionBuffer::pack_unique(T x, void*) {
 class Transaction {
 public:
     static threadinfo_t tinfo[MAX_THREADS];
-    static __thread int threadid;
     static threadinfo_t::epoch_type global_epoch;
     static bool run_epochs;
     typedef TransactionTid::type tid_type;
@@ -326,15 +325,15 @@ public:
 
     static void* epoch_advancer(void*);
     static void rcu_cleanup(std::function<void(void)> callback) {
-        acquire_spinlock(tinfo[threadid].spin_lock);
-        tinfo[threadid].callbacks.emplace_back(global_epoch, callback);
-        release_spinlock(tinfo[threadid].spin_lock);
+        acquire_spinlock(tinfo[TThread::id].spin_lock);
+        tinfo[TThread::id].callbacks.emplace_back(global_epoch, callback);
+        release_spinlock(tinfo[TThread::id].spin_lock);
     }
 
     static void rcu_free(void *ptr) {
-        acquire_spinlock(tinfo[threadid].spin_lock);
-        tinfo[threadid].needs_free.emplace_back(global_epoch, ptr);
-        release_spinlock(tinfo[threadid].spin_lock);
+        acquire_spinlock(tinfo[TThread::id].spin_lock);
+        tinfo[TThread::id].needs_free.emplace_back(global_epoch, ptr);
+        release_spinlock(tinfo[TThread::id].spin_lock);
     }
 
 #if PERF_LOGGING
@@ -342,10 +341,10 @@ public:
         add_p(p, 1);
     }
     static void add_p(int p, uint64_t n) {
-        tinfo[threadid].add_p(p, n);
+        tinfo[TThread::id].add_p(p, n);
     }
     static void max_p(int p, unsigned long long n) {
-        tinfo[threadid].max_p(p, n);
+        tinfo[TThread::id].max_p(p, n);
     }
 #endif
 
@@ -388,11 +387,11 @@ public:
     // reset data so we can be reused for another transaction
     void start() {
         //if (isAborted_
-        //   && tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
+        //   && tinfo[TThread::id].p(txp_total_aborts) % 0x10000 == 0xFFFF)
            //print_stats();
-        tinfo[threadid].epoch = global_epoch;
-        if (tinfo[threadid].trans_start_callback)
-            tinfo[threadid].trans_start_callback();
+        tinfo[TThread::id].epoch = global_epoch;
+        if (tinfo[TThread::id].trans_start_callback)
+            tinfo[TThread::id].trans_start_callback();
         transSet_.clear();
         writeset_ = NULL;
         nwriteset_ = 0;
@@ -715,8 +714,8 @@ public:
 
 class TestTransaction {
 public:
-    TestTransaction()
-        : t_(Transaction::testing), base_(Sto::__transaction) {
+    TestTransaction(int threadid)
+        : t_(Transaction::testing), base_(Sto::__transaction), threadid_(threadid) {
         use();
     }
     ~TestTransaction() {
@@ -725,6 +724,7 @@ public:
     }
     void use() {
         Sto::__transaction = &t_;
+        TThread::id = threadid_;
     }
     void print(FILE* f) const {
         t_.print(f);
@@ -736,6 +736,7 @@ public:
 private:
     Transaction t_;
     Transaction* base_;
+    int threadid_;
 };
 
 class TransactionGuard {

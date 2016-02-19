@@ -162,10 +162,10 @@ void queueTests() {
     // CONFLICTING TRANSACTIONS TEST
     {
         // test abortion due to pops 
-        TestTransaction t1;
+        TestTransaction t1(1);
         // q has >1 element
         assert(q.transPop());
-        TestTransaction t2;
+        TestTransaction t2(2);
         assert(q.transPop());
         assert(t1.try_commit());
         assert(!t2.try_commit());
@@ -173,10 +173,10 @@ void queueTests() {
 
     {
         // test nonabortion T1 pops, T2 pushes on nonempty q
-        TestTransaction t1;
+        TestTransaction t1(1);
         // q has >1 element
         assert(q.transPop());
-        TestTransaction t2;
+        TestTransaction t2(2);
         q.transPush(3);
         assert(t1.try_commit());
         assert(t2.try_commit()); // commit should succeed 
@@ -192,12 +192,12 @@ void queueTests() {
 
     {
         // test abortion due to empty q pops
-        TestTransaction t1;
+        TestTransaction t1(1);
         // q has 0 elements
         assert(!q.transPop());
         q.transPush(1);
         q.transPush(2);
-        TestTransaction t2;
+        TestTransaction t2(2);
         q.transPush(3);
         q.transPush(4);
         q.transPush(5);
@@ -211,7 +211,7 @@ void queueTests() {
 
     {
         // test nonabortion T1 pops/fronts and pushes, T2 pushes on nonempty q
-        TestTransaction t1;
+        TestTransaction t1(1);
         // q has 2 elements [1, 2]
         assert(q.transFront(p) && p == 1);
         q.transPush(4);
@@ -221,14 +221,14 @@ void queueTests() {
         assert(q.transFront(p));
         assert(p == 2);
 
-        TestTransaction t2;
+        TestTransaction t2(2);
         q.transPush(3);
         // order of pushes doesn't matter, commits succeed
         assert(t2.try_commit());
         assert(t1.try_commit());
 
         // check if q is in order
-        TestTransaction t;
+        TestTransaction t(3);
         assert(q.transPop());
         assert(q.transFront(p));
         assert(p == 3);
@@ -326,7 +326,7 @@ void insertDeleteTest(bool shouldAbort) {
       }
   }
 
-  TestTransaction t2;
+  TestTransaction t2(1);
   assert(h.transInsert(25, 26));
   int x;
   assert(h.transGet(25, x));
@@ -335,7 +335,7 @@ void insertDeleteTest(bool shouldAbort) {
   assert(h.transDelete(25));
 
   if (shouldAbort) {
-      TestTransaction t3;
+      TestTransaction t3(2);
       assert(h.transInsert(26, 27));
       assert(t3.try_commit());
       assert(!t2.try_commit());
@@ -352,21 +352,21 @@ void insertDeleteSeparateTest() {
       }
   }
 
-  TestTransaction t;
+  TestTransaction t(1);
   int x;
   assert(!h.transGet(12, x));
 
-  TestTransaction t2;
+  TestTransaction t2(2);
   assert(h.transInsert(12, 13));
   assert(h.transDelete(10));
   assert(t2.try_commit());
   assert(!t.try_commit());
 
 
-  TestTransaction t3;
+  TestTransaction t3(3);
   assert(!h.transGet(13, x));
   
-  TestTransaction t4;
+  TestTransaction t4(4);
   assert(h.transInsert(10, 11));
   assert(h.transInsert(13, 14));
   assert(h.transDelete(11));
@@ -469,24 +469,24 @@ void basicMapTests(MapType& h) {
       assert(!h.transUpdate(2, 1));
   }
 
-  TestTransaction t7;
+  TestTransaction t7(1);
   assert(!h.transGet(2, vunused));
-  TestTransaction t8;
+  TestTransaction t8(2);
   assert(h.transInsert(2, 2));
   assert(t8.try_commit());
 
   assert(!t7.try_commit());
 
-  TestTransaction t9;
+  TestTransaction t9(3);
   assert(h.transInsert(3, 0));
-  TestTransaction t10;
+  TestTransaction t10(4);
   assert(h.transInsert(4, 4));
   try{
     // t9 inserted invalid node, so we are forced to abort
     h.transUpdate(3, vunused);
     assert(0);
   } catch (Transaction::Abort E) {}
-  TestTransaction t10_2;
+  TestTransaction t10_2(5);
   try {
     // deletes should also force abort from invalid nodes
     h.transDelete(3);
@@ -531,9 +531,9 @@ void basicMapTests(MapType& h) {
   }
 
   // blind update failure
-  TestTransaction t15;
+  TestTransaction t15(1);
   assert(h.transUpdate(3, 15));
-  TestTransaction t16;
+  TestTransaction t16(2);
   assert(h.transUpdate(3, 16));
   assert(t16.try_commit());
   // blind updates conflict each other now (not worth the extra trouble)
@@ -541,9 +541,9 @@ void basicMapTests(MapType& h) {
 
 
   // update aborts after delete
-  TestTransaction t17;
+  TestTransaction t17(1);
   assert(h.transUpdate(3, 17));
-  TestTransaction t18;
+  TestTransaction t18(2);
   assert(h.transDelete(3));
   assert(t18.try_commit());
   assert(!t17.try_commit());

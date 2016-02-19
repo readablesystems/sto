@@ -31,7 +31,7 @@ void reset_tree(tree_type& tree) {
 void update_conflict_tests() {
     {
         tree_type tree;
-        TestTransaction t1, t2;
+        TestTransaction t1(1), t2(2);
         t1.use();
         tree[55] = 56;
         tree[57] = 58;
@@ -43,7 +43,7 @@ void update_conflict_tests() {
     }
     {
         tree_type tree;
-        TestTransaction t1, t2;
+        TestTransaction t1(1), t2(2);
         t1.use();
         tree[10] = 10;
         t2.use();
@@ -60,7 +60,7 @@ void erase_conflict_tests() {
         // t1:count - t1:erase - t2:count - t1:commit - t2:abort
         tree_type tree;
         reset_tree(tree);
-        TestTransaction t1, t2, after;
+        TestTransaction t1(1), t2(2), after(3);
         t1.use();
         assert(tree.count(1) == 1);
         assert(tree.erase(1) == 1);
@@ -77,7 +77,7 @@ void erase_conflict_tests() {
         // t1:count - t1:erase - t2:count - t2:commit - t1:commit
         tree_type tree;
         reset_tree(tree);
-        TestTransaction t1, t2, after;
+        TestTransaction t1(1), t2(2), after(3);
         t1.use();
         assert(tree.count(1) == 1);
         assert(tree.erase(1) == 1);
@@ -93,7 +93,7 @@ void erase_conflict_tests() {
         // t1:count - t1:erase - t1:count - t2:erase - t2:commit - t1:abort
         tree_type tree;
         reset_tree(tree);
-        TestTransaction t1, t2, after;
+        TestTransaction t1(1), t2(2), after(3);
         t1.use();
         assert(tree.count(1) == 1);
         assert(tree.erase(1) == 1);
@@ -110,7 +110,7 @@ void erase_conflict_tests() {
         // t1:count - t1:erase - t1:count - t2:erase - t1:commit - t2:abort XXX technically t2 doesn't have to abort?
         tree_type tree;
         reset_tree(tree);
-        TestTransaction t1, t2, after;
+        TestTransaction t1(1), t2(2), after(3);
         t1.use();
         assert(tree.count(1) == 1);
         assert(tree.erase(1) == 1);
@@ -129,7 +129,7 @@ void insert_then_delete_tests() {
     {
         tree_type tree;
         reset_tree(tree);
-        TestTransaction t1, after;
+        TestTransaction t1(1), after(2);
         t1.use();
         tree[5] = 5;
         tree[4] = 4;
@@ -157,7 +157,7 @@ void insert_then_delete_tests() {
     {
         tree_type tree;
         reset_tree(tree);
-        TestTransaction t1, after;
+        TestTransaction t1(1), after(2);
         t1.use();
         // absent read of key 4
         // reads nodeversion of key 3
@@ -177,7 +177,7 @@ void insert_then_delete_tests() {
     {
         tree_type tree;
         reset_tree(tree);
-        TestTransaction t1, t2, t3, after;
+        TestTransaction t1(1), t2(2), t3(3), after(4);
         t1.use();
         // t1: update
         tree[3] = 13;
@@ -210,7 +210,7 @@ void mem_tests() {
     {
         tree_type tree;
         reset_tree(tree);
-        TestTransaction t1, t2, after;
+        TestTransaction t1(1), t2(2), after(3);
 
         t1.use();
         // absent get of key 4
@@ -230,7 +230,7 @@ void mem_tests() {
     {
         tree_type tree;
         reset_tree(tree);
-        TestTransaction t1;
+        TestTransaction t1(1);
 
         t1.use();
         tree.erase(1);
@@ -244,7 +244,7 @@ int main() {
     // test single-threaded operations
     {
         tree_type tree;
-        TestTransaction t;
+        TestTransaction t(1);
         // read_my_inserts
         assert(tree.size() == 0);
         for (int i = 0; i < 100; ++i) {

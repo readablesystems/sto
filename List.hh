@@ -552,8 +552,6 @@ private:
   version_type listversion_;
   Compare comp_;
 };
-    
-    
 
     
 template <typename T, bool Duplicates, typename Compare, bool Sorted, bool Opacity>

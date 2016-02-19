@@ -32,10 +32,10 @@ void testWriteNPushBack() {
         f.push_back(10);
     }
 
-    TestTransaction t2;
+    TestTransaction t2(1);
     f.transUpdate(0, 4);
     
-    TestTransaction t3;
+    TestTransaction t3(2);
     f.push_back(20); // This will resize the array
     assert(t3.try_commit());
     assert(t2.try_commit()); // This should not conflict with the write
@@ -56,10 +56,10 @@ void testPushBack() {
         f.push_back(10);
     }
 
-    TestTransaction t2;
+    TestTransaction t2(1);
     f.push_back(4);
     
-    TestTransaction t3;
+    TestTransaction t3(2);
     f.push_back(20);
     assert(t3.try_commit());
     assert(t2.try_commit()); // This should not conflict with the push_back
@@ -100,11 +100,11 @@ void testPushBackNRead1() {
         f.push_back(10);
     }
 
-    TestTransaction t2;
+    TestTransaction t2(1);
     f.push_back(4);
     assert(f.transGet(1) == 4);
     
-    TestTransaction t3;
+    TestTransaction t3(2);
     f.push_back(20);
     assert(t3.try_commit());
     assert(!t2.try_commit());
@@ -120,11 +120,11 @@ void testPushBackNRead2() {
         f.push_back(10);
     }
 
-    TestTransaction t2;
+    TestTransaction t2(1);
     f.push_back(4);
     assert(f.transGet(f.transSize() - 1) == 4);
     
-    TestTransaction t3;
+    TestTransaction t3(2);
     f.push_back(20);
 
     assert(t3.try_commit());
@@ -206,10 +206,10 @@ void testConflictingIter() {
     }
     } RETRY(false);
 
-    TestTransaction t;
+    TestTransaction t(1);
     std::max_element(f.begin(), f.end());
     
-    TestTransaction t1;
+    TestTransaction t1(2);
     f.transUpdate(4, 10);
     assert(t1.try_commit());
     assert(!t.try_commit());
@@ -249,10 +249,10 @@ void testConflictingModifyIter1() {
     }
     } RETRY(false);
     
-    TestTransaction t;
+    TestTransaction t(1);
     std::replace(f.begin(), f.end(), 4, 6);
     
-    TestTransaction t1;
+    TestTransaction t1(2);
     f.transUpdate(4, 10);
     assert(t1.try_commit());
     assert(!t.try_commit());
@@ -301,10 +301,10 @@ void testConflictingModifyIter3() {
     }
     } RETRY(false);
     
-    TestTransaction t1;
+    TestTransaction t1(1);
     f.transGet(4);
     
-    TestTransaction t;
+    TestTransaction t(2);
     std::replace(f.begin(), f.end(), 4, 6);
     assert(t.try_commit());
     assert(!t1.try_commit());
@@ -346,12 +346,12 @@ void testIterNPushBack1() {
     }
 
     int max;
-    TestTransaction t1;
+    TestTransaction t1(1);
     f.push_back(20);
     max = *(std::max_element(f.begin(), f.end()));
     assert(max == 20);
     
-    TestTransaction t2;
+    TestTransaction t2(2);
     f.push_back(12);
     assert(t2.try_commit());
     assert(!t1.try_commit());
@@ -369,10 +369,10 @@ void testIterNPushBack2() {
         }
     }
 
-    TestTransaction t1;
+    TestTransaction t1(1);
     std::max_element(f.begin(), f.end());
     
-    TestTransaction t2;
+    TestTransaction t2(2);
     f.push_back(2);
     assert(t2.try_commit());
     assert(!t1.try_commit());
@@ -452,11 +452,11 @@ void testPushNPop() {
         f.pop_back();
     }
     
-    TestTransaction t1;
+    TestTransaction t1(1);
     f.pop_back();
     f.push_back(15);
     
-    TestTransaction t2;
+    TestTransaction t2(2);
     f.push_back(20);
     assert(t2.try_commit());
     assert(!t1.try_commit());
@@ -469,11 +469,11 @@ void testPushNPop() {
     
     printf("PASS: testPushNPop\n");
     
-    TestTransaction t3;
+    TestTransaction t3(1);
     f.pop_back();
     f.push_back(15);
     
-    TestTransaction t4;
+    TestTransaction t4(2);
     f.pop_back();
     assert(t4.try_commit());
     assert(!t3.try_commit());
@@ -485,16 +485,16 @@ void testPushNPop() {
     printf("PASS: testPushNPop1\n");
     
 
-    TestTransaction t5;
+    TestTransaction t5(1);
     f.pop_back();
     f.pop_back();
     f.push_back(15);
     
-    TestTransaction t6;
+    TestTransaction t6(2);
     f.transUpdate(8, 16);
     assert(t6.try_commit());
     
-    TestTransaction t7;
+    TestTransaction t7(3);
     f.transGet(8);
     
     assert(t5.try_commit());
@@ -518,10 +518,10 @@ void testPopAndUdpate() {
         }
     } RETRY(false);
     
-    TestTransaction t1;
+    TestTransaction t1(1);
     f.transUpdate(9, 20);
 
-    TestTransaction t2;
+    TestTransaction t2(2);
     f.pop_back();
     f.pop_back();
     assert(t2.try_commit());
@@ -591,7 +591,7 @@ void testIteratorBetterSemantics() {
         }
     } RETRY(false);
 
-    TestTransaction t1;
+    TestTransaction t1(1);
     // XXX std::find uses a special case for random-access iterators
     // that calls size()
     Vector<int>::iterator it;
@@ -599,7 +599,7 @@ void testIteratorBetterSemantics() {
         if (*it == 5)
             break;
 
-    TestTransaction t2;
+    TestTransaction t2(2);
     f.push_back(12);
     assert(t2.try_commit());
     t1.use();

@@ -83,7 +83,7 @@ void run_conc(data_structure* q, int me) {
 }
 template <typename T>
 void run(T* q, int me) {
-    Transaction::threadid = me;
+    TThread::id = me;
     
     std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
     for (int i = 0; i < NTRANS; ++i) {
@@ -335,13 +335,11 @@ void queueTests() {
     // CONFLICTING TRANSACTIONS TEST
     {
         // test abortion due to pops
-        TestTransaction t1;
-        TestTransaction t2;
+        TestTransaction t1(1);
+        TestTransaction t2(2);
         // q has >1 element
-        Transaction::threadid = 0;
         t1.use();
         q.pop();
-        Transaction::threadid = 1;
         t2.use();
         bool aborted = false;
         try {
@@ -349,22 +347,18 @@ void queueTests() {
         } catch (Transaction::Abort e) {
             aborted = true;
         }
-        Transaction::threadid = 0;
         assert(t1.try_commit());
-        Transaction::threadid = 1;
         assert(aborted);
     }
     
     {
         // test nonabortion T1 pops, T2 pushes on nonempty q
-        TestTransaction t1;
-        TestTransaction t2;
+        TestTransaction t1(1);
+        TestTransaction t2(2);
         // q has 1 element
-        Transaction::threadid = 0;
         t1.use();
         
         q.pop();
-        Transaction::threadid = 1;
         t2.use();
         bool aborted = false;
         try {
@@ -372,9 +366,7 @@ void queueTests() {
         } catch (Transaction::Abort e) {
             aborted = true;
         }
-        Transaction::threadid = 0;
         assert(t1.try_commit());
-        Transaction::threadid = 1;
         assert(aborted); // TODO: this also depends on queue implementation
     }
     {
@@ -390,27 +382,21 @@ void queueTests() {
     
     {
         // test abortion due to empty q pops
-        TestTransaction t1;
-        TestTransaction t2;
+        TestTransaction t1(1);
+        TestTransaction t2(2);
         // q has 0 elements
-        Transaction::threadid = 0;
         t1.use();
-        
         q.pop();
         q.push(1);
         q.push(2);
-        Transaction::threadid = 1;
+
         t2.use();
-        
         q.push(3);
         q.push(4);
         q.push(5);
-        
         q.pop();
-        
-        Transaction::threadid = 0;
+
         assert(!t1.try_commit()); // TODO: this can actually commit
-        Transaction::threadid = 1;
         assert(t2.try_commit());
     }
     
@@ -424,8 +410,8 @@ void queueTests() {
     
     {
         // test nonabortion T1 pops/fronts and pushes, T2 pushes on nonempty q
-        TestTransaction t1;
-        TestTransaction t2;
+        TestTransaction t1(1);
+        TestTransaction t2(2);
         
         // q has 2 elements [2, 1]
         t1.use();
@@ -436,8 +422,8 @@ void queueTests() {
         q.pop();
         assert(q.top() == 2);
         assert(t1.try_commit());
+
         t2.use();
-        
         q.push(3);
         // order of pushes doesn't matter, commits succeed
         assert(t2.try_commit());
@@ -456,19 +442,17 @@ void queueTests() {
     
     {
         TransactionGuard t;
-        Transaction::threadid = 0;
         q.push(10);
         q.push(4);
         q.push(5);
     }
 
     {
-        TestTransaction t1;
+        TestTransaction t1(1);
         q.pop();
         q.push(20);
         
-        TestTransaction t2;
-        Transaction::threadid = 1;
+        TestTransaction t2(2);
         bool aborted = false;
         try {
             q.push(12);
@@ -476,22 +460,18 @@ void queueTests() {
             aborted = true;
         }
         
-        Transaction::threadid = 0;
         assert(t1.try_commit());
         assert(aborted);
     }
     
     {
-        TestTransaction t;
-        Transaction::threadid = 0;
+        TestTransaction t(1);
         q.top();
         
-        TestTransaction t1;
-        Transaction::threadid = 1;
+        TestTransaction t1(2);
         q.push(100);
         
         assert(t1.try_commit());
-        Transaction::threadid = 0;
         assert(!t.try_commit());
     }
     
@@ -506,11 +486,11 @@ void queueTests() {
     }
     
     {
-        TestTransaction t;
+        TestTransaction t(1);
         q.top(); // gets 5
         q.push(10);
-        
-        TestTransaction t1;
+
+        TestTransaction t1(2);
         q.push(7);
         assert(t1.try_commit());
         assert(!t.try_commit());
@@ -524,46 +504,39 @@ void queueTests() {
     }
     
     {
-        TestTransaction t;
+        TestTransaction t(1);
         q.pop(); // poping froming an empty queue
-        
-        TestTransaction t1;
+
+        TestTransaction t1(2);
         q.push(4);
         assert(t1.try_commit());
         assert(!t.try_commit());
     }
     
     {
-        TestTransaction t;
-        Transaction::threadid = 0;
+        TestTransaction t(1);
         assert(q.top() == 4);
-        
-        TestTransaction t1;
-        Transaction::threadid = 1;
+
+        TestTransaction t1(2);
         q.push(6);
         assert(t1.try_commit());
-        
-        TestTransaction t2;
+
+        TestTransaction t2(3);
         q.pop();
-        
-        Transaction::threadid = 0;
+
         assert(!t.try_commit());
-        Transaction::threadid = 1;
         assert(t2.try_commit());
     }
 
     
     {
-        TestTransaction t;
-        Transaction::threadid = 0;
+        TestTransaction t(1);
         assert(q.top() == 4);
-        
-        TestTransaction t1;
-        Transaction::threadid = 1;
+
+        TestTransaction t1(2);
         q.push(6);
         assert(t1.try_commit());
         
-        Transaction::threadid = 0;
         t.use();
         bool aborted = false;
         try {

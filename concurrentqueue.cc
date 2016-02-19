@@ -117,7 +117,7 @@ static inline void nwrites(int n, Transaction& t) {
 
 void *randomRWs(void *p) {
   int me = (intptr_t)p;
-  Transaction::threadid = me;
+  TThread::id = me;
   
   // randomness to determine write or read (push or pop)
   uint32_t write_thresh = (uint32_t) (write_percent * Rand::max());
@@ -183,7 +183,7 @@ void checkRandomRWs() {
 
 void *xorDelete(void *p) {
   int me = (intptr_t)p;
-  Transaction::threadid = me;
+  TThread::id = me;
 
   int N = ntrans/nthreads;
   int OPS = opspertrans;
@@ -239,7 +239,7 @@ void checkXorDelete() {
 
 void *queueTransfer(void *p) {
   int me = (intptr_t)p;
-  Transaction::threadid = me;
+  TThread::id = me;
 
   int N = ntrans/nthreads;
   int OPS = opspertrans;

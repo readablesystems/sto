@@ -65,7 +65,7 @@ struct TesterPair {
 
 template <typename T>
 uint64_t run(T* q, int me) {
-    Transaction::threadid = me;
+    TThread::id = me;
 #if SMALLER_WRITES
     std::uniform_int_distribution<long> slotdist(0, max_value/blocks);
 #else

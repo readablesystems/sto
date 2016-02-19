@@ -34,25 +34,25 @@ public:
   }
 
   bool own_lock(TransactionTid::type& lock) {
-    return TransactionTid::is_locked(lock) && TransactionTid::user_bits(lock) == Transaction::threadid;
+    return TransactionTid::is_locked(lock) && TransactionTid::user_bits(lock) == TThread::id;
   }
 
   bool lock(TransItem& item) {
     size_t key = bucket(item.key<void*>());
     if (!own_lock(table_[key]))
-      TransactionTid::lock(table_[key], Transaction::threadid);
+      TransactionTid::lock(table_[key], TThread::id);
     return true;
   }
   bool check(const TransItem& item, const Transaction&) {
     size_t key = bucket(item.key<void*>());
     auto current = table_[key];
     return TransactionTid::same_version(current & ~TransactionTid::user_mask, item.read_value<uint64_t>() & ~TransactionTid::user_mask)
-      && (!TransactionTid::is_locked(current) || item.has_write() || TransactionTid::user_bits(current) == Transaction::threadid);
+      && (!TransactionTid::is_locked(current) || item.has_write() || TransactionTid::user_bits(current) == TThread::id);
   }
   void install(TransItem& item, const Transaction& t) {
     void* word = item.key<void*>();
     // need to know when we've unlocked it so we keep threadid in there for now
-    TransactionTid::set_version(table_[bucket(word)], TransactionTid::add_user_bits(t.commit_tid(), Transaction::threadid));
+    TransactionTid::set_version(table_[bucket(word)], TransactionTid::add_user_bits(t.commit_tid(), TThread::id));
     void *data = item.write_value<void*>();
     memcpy(word, &data, item.shifted_user_flags());
   }
