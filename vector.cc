@@ -9,16 +9,16 @@ void testSimpleInt() {
     Vector<int> f;
 
     {
-	TransactionGuard t;
-	f.push_back(100);
+        TransactionGuard t;
+        f.push_back(100);
         f.push_back(200);
         *(f.begin()) = *(f.begin() + 1);
     }
 
     {
         TransactionGuard t2;
-	int f_read = f.transGet(0);
-	assert(f_read == 200);
+        int f_read = f.transGet(0);
+        assert(f_read == 200);
     }
 
     printf("PASS: testSimpleInt\n");

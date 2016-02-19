@@ -419,15 +419,10 @@ public:
         auto size = size_;
         int32_t pred = item.template predicate_value<int32_t>();
         int32_t pred_value = pred >> value_shift;
-        if (pred & geq_mask) {
-            if (size < pred_value)
-                fprintf(stderr, "%d >= %d fail\n", size, pred_value);
+        if (pred & geq_mask)
             return size >= pred_value;
-        } else {
-            if (size != pred_value)
-                fprintf(stderr, "%d == %d fail\n", size, pred_value);
+        else
             return size == pred_value;
-        }
     }
 
     bool check(const TransItem& item, const Transaction& trans){
@@ -436,9 +431,6 @@ public:
         }
         if (item.key<int>() == vector_key || item.key<int>() == push_back_key) {
             auto lv = vecversion_;
-            if (!(TransactionTid::same_version(lv, item.template read_value<Version>())
-                  && (!is_locked(lv) || item.has_lock(trans))))
-                fprintf(stderr, "fail version check %d/%d\n", (int) lv, (int) item.template read_value<Version>());
             return TransactionTid::same_version(lv, item.template read_value<Version>())
                 && (!is_locked(lv) || item.has_lock(trans));
         }
