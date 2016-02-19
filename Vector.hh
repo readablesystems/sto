@@ -380,20 +380,11 @@ public:
         // TODO: it would be more efficient to store this directly in Transaction,
         // since the "key" is fixed (rather than having to search the transset each time)
         auto item = Sto::item(this, size_key);
-        int cur_offs = 0;
-        // XXX: this is sorta ugly
-        if (item.has_read()) {
-            cur_offs = item.template read_value<int>();
-            item.update_read(cur_offs, cur_offs + size_offs);
-        } else
-            item.add_read(cur_offs + size_offs);
+        item.set_stash(item.template stash_value<int>(0) + size_offs);
     }
 
     int trans_size_offs() {
-        auto item = Sto::item(this, size_key);
-        if (item.has_read())
-            return item.template read_value<int>();
-        return 0;
+        return Sto::item(this, size_key).template stash_value<int>(0);
     }
 
     TransProxy vector_item() {
@@ -426,15 +417,13 @@ public:
     }
 
     bool check(const TransItem& item, const Transaction& trans){
-        if (item.key<int>() == size_key) {
-            return true;
-        }
         if (item.key<int>() == vector_key || item.key<int>() == push_back_key) {
             auto lv = vecversion_;
             return TransactionTid::same_version(lv, item.template read_value<Version>())
                 && (!is_locked(lv) || item.has_lock(trans));
         }
         key_type i = item.key<key_type>();
+        assert(i >= 0);
         if (item.flags() & Elem::valid_only_bit) {
             if (i >= size_ + trans_size_offs()) {
                 return false;

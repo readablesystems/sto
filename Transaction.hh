@@ -75,6 +75,7 @@ enum txp {
     txp_total_w,
     txp_max_rdata_size,
     txp_max_wdata_size,
+    txp_max_sdata_size,
     txp_total_searched,
     txp_push_abort,
     txp_pop_abort,
@@ -772,6 +773,7 @@ class TransactionLoopGuard {
 
 template <typename T>
 inline TransProxy& TransProxy::add_read(T rdata) {
+    assert(!has_stash());
     if (!has_read()) {
 #if DETAILED_LOGGING
         Transaction::max_p(txp_max_rdata_size, sizeof(T));
@@ -807,17 +809,30 @@ inline TransProxy& TransProxy::add_write(T wdata) {
 #if DETAILED_LOGGING
     Transaction::max_p(txp_max_wdata_size, sizeof(T));
 #endif
-    if (has_write())
+    if (!has_write()) {
+        i_->__or_flags(TransItem::write_bit);
+        i_->wdata_ = t_->buf_.pack(std::move(wdata));
+        t_->mark_write(*i_);
+    } else
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general
         // (hopefully we'll have a system that can automatically call destructors and such
         // which will make our lives much easier)
         this->template write_value<T>() = std::move(wdata);
-    else {
-        i_->__or_flags(TransItem::write_bit);
-        i_->wdata_ = t_->buf_.pack(std::move(wdata));
-        t_->mark_write(*i_);
-    }
+    return *this;
+}
+
+template <typename T>
+inline TransProxy& TransProxy::set_stash(T sdata) {
+    assert(!has_read());
+    if (!has_stash()) {
+#if DETAILED_LOGGING
+        Transaction::max_p(txp_max_sdata_size, sizeof(T));
+#endif
+        i_->__or_flags(TransItem::stash_bit);
+        i_->rdata_ = t_->buf_.pack(std::move(sdata));
+    } else
+        this->template stash_value<T>() = std::move(sdata);
     return *this;
 }
 

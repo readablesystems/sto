@@ -59,11 +59,12 @@ class TransItem {
     static constexpr flags_type read_bit = flags_type(1) << 62;
     static constexpr flags_type lock_bit = flags_type(1) << 61;
     static constexpr flags_type predicate_bit = flags_type(1) << 60;
+    static constexpr flags_type stash_bit = flags_type(1) << 59;
     static constexpr flags_type pointer_mask = (flags_type(1) << 48) - 1;
     static constexpr flags_type user0_bit = flags_type(1) << 48;
     static constexpr int userf_shift = 48;
-    static constexpr flags_type shifted_userf_mask = 0xFFF;
-    static constexpr flags_type special_mask = pointer_mask | read_bit | write_bit | lock_bit | predicate_bit;
+    static constexpr flags_type shifted_userf_mask = 0x7FF;
+    static constexpr flags_type special_mask = pointer_mask | read_bit | write_bit | lock_bit | predicate_bit | stash_bit;
 
 
     TransItem(Shared* s, void* k)
@@ -85,6 +86,9 @@ class TransItem {
     }
     bool has_predicate() const {
         return flags() & predicate_bit;
+    }
+    bool has_stash() const {
+        return flags() & stash_bit;
     }
     bool needs_unlock() const {
         return flags() & lock_bit;
@@ -130,6 +134,25 @@ class TransItem {
     const T& write_value() const {
         assert(has_write());
         return Packer<T>::unpack(wdata_);
+    }
+
+    template <typename T>
+    T& stash_value() {
+        assert(has_stash());
+        return Packer<T>::unpack(rdata_);
+    }
+    template <typename T>
+    const T& stash_value() const {
+        assert(has_stash());
+        return Packer<T>::unpack(rdata_);
+    }
+    template <typename T>
+    T stash_value(T default_value) const {
+        assert(!has_read());
+        if (has_stash())
+            return Packer<T>::unpack(rdata_);
+        else
+            return std::move(default_value);
     }
 
     inline bool operator==(const TransItem& t2) const {
@@ -211,6 +234,9 @@ class TransProxy {
     bool has_write() const {
         return i_->has_write();
     }
+    bool has_stash() const {
+        return i_->has_stash();
+    }
     bool has_lock() const;
 
     template <typename T>
@@ -233,6 +259,13 @@ class TransProxy {
     inline TransProxy& add_write(T wdata);
     inline TransProxy& clear_write() {
         i_->__rm_flags(TransItem::write_bit);
+        return *this;
+    }
+
+    template <typename T>
+    inline TransProxy& set_stash(T sdata);
+    inline TransProxy& clear_stash() {
+        i_->__rm_flags(TransItem::stash_bit);
         return *this;
     }
 
@@ -261,6 +294,19 @@ class TransProxy {
     template <typename T>
     const T& write_value() const {
         return i_->write_value<T>();
+    }
+
+    template <typename T>
+    T& stash_value() {
+        return i_->stash_value<T>();
+    }
+    template <typename T>
+    const T& stash_value() const {
+        return i_->stash_value<T>();
+    }
+    template <typename T>
+    T stash_value(T default_value) const {
+        return i_->stash_value<T>(std::move(default_value));
     }
 
     TransProxy& remove_read() { // XXX should also cleanup_read

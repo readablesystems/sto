@@ -15,17 +15,17 @@ class List1 : public Shared {
 public:
     List1(Compare comp = Compare()) : head_(NULL), listsize_(0), listversion_(0), comp_(comp) {
     }
-    
+
 private:
     typedef TransactionTid::type version_type;
-    
+
 public:
     static constexpr uint8_t invalid_bit = 1<<0;
-    
+
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
     static constexpr TransItem::flags_type doupdate_bit = TransItem::user0_bit<<2;
-    
+
     static constexpr void* size_key = (void*)0;
     
     struct list_node {
@@ -420,9 +420,6 @@ public:
     }
     
     bool check(const TransItem& item, const Transaction& t) {
-        if (item.key<void*>() == size_key) {
-            return true;
-        }
         if (item.key<List1*>() == this) {
             auto lv = listversion_;
             return
@@ -504,27 +501,18 @@ public:
         // TODO: it would be more efficient to store this directly in Transaction,
         // since the "key" is fixed (rather than having to search the transset each time)
         auto item = t_item(size_key);
-        int cur_offs = 0;
-        // XXX: this is sorta ugly
-        if (item.has_read()) {
-            cur_offs = item.template read_value<int>();
-            item.update_read(cur_offs, cur_offs + size_offs);
-        } else
-            item.add_read(cur_offs + size_offs);
+        item.template set_stash<int>(item.template stash_value<int>(0) + size_offs);
     }
     
     int trans_size_offs() {
-        auto item = t_item(size_key);
-        if (item.has_read())
-            return item.template read_value<int>();
-        return 0;
+        return t_item(size_key).template stash_value<int>(0);
     }
     
     list_node *head_;
     long listsize_;
     version_type listversion_;
     Compare comp_;
-    };
+};
     
     
     

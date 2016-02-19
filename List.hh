@@ -448,9 +448,6 @@ private:
   }
 
   bool check(const TransItem& item, const Transaction& t) {
-    if (item.key<list_node*>() == size_key()) {
-      return true;
-    }
     if (item.key<list_node*>() == list_key) {
       auto lv = listversion_;
       return
@@ -538,20 +535,11 @@ private:
     // TODO: it would be more efficient to store this directly in Transaction,
     // since the "key" is fixed (rather than having to search the transset each time)
     auto item = t_item(size_key());
-    int cur_offs = 0;
-    // XXX: this is sorta ugly
-    if (item.has_read()) {
-      cur_offs = item.template read_value<int>();
-      item.update_read(cur_offs, cur_offs + size_offs);
-    } else
-      item.add_read(cur_offs + size_offs);
+    item.template set_stash<int>(item.template stash_value<int>(0) + size_offs);
   }
 
   int trans_size_offs() {
-    auto item = t_item(size_key());
-    if (item.has_read())
-      return item.template read_value<int>();
-    return 0;
+    return t_item(size_key()).template stash_value<int>(0);
   }
 #endif /* !STO_NO_STM */
 
