@@ -668,6 +668,11 @@ public:
         __transaction->check_opacity(t);
     }
 
+    static void check_opacity() {
+        always_assert(in_progress());
+        __transaction->check_opacity();
+    }
+
     static void check_reads() {
         always_assert(in_progress());
         __transaction->check_reads();
