@@ -889,6 +889,7 @@ bool RBTree<K, T>::nontrans_insert(const K& key, const T& value) {
     wrapper_type* x = pair.first.node();
     bool found = pair.second;
     if (!found) {
+        size_++;
         rbnodeptr<wrapper_type> p = pair.first;
         wrapper_type* n = (wrapper_type*)malloc(sizeof(wrapper_type));
         new (n) wrapper_type(rbpair<K, T>(key, value));
@@ -929,6 +930,7 @@ bool RBTree<K, T>::nontrans_remove(const K& key) {
     auto pair = results.first;
     bool found = pair.second;
     if (found) {
+        size_--;
         wrapper_type* n = pair.first.node();
         wrapper_tree_.erase(*n);
         free(n);
