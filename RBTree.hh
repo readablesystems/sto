@@ -142,6 +142,7 @@ public:
         wrapper_type* start = wrapper_tree_.r_.limit_[0];
         if (start == nullptr) {
             // tree empty, read tree version
+            // TODO(nate): this would race without the lock
             Sto::item(this, tree_key_).add_read(treeversion_);
         } else {
             // READ-MY-WRITES: skip our own deletes!
@@ -351,6 +352,7 @@ private:
             stats_.absent_insert++;
 #endif
             // use in-place constructor so that we don't mix up c++'s new and c's free()
+            // XXX(nate): we'd need to an rcu delete if T is a nontrivial type.
             wrapper_type* n = (wrapper_type*)malloc(sizeof(wrapper_type));
             new (n) wrapper_type(rbpair<K, T>(key, T()));
             // insert new node under parent
@@ -599,8 +601,9 @@ public:
             return item.template write_value<T>();
         } else {
             // validate the read of the node, abort if someone has updated
-            auto value = node_->writeable_value();
             auto curr_version = node_->version();
+            fence();
+            auto value = node_->writeable_value();
             assert(item.has_read());
             if (item.template read_value<Version>() != curr_version || RBTree<K, T>::is_locked(curr_version)) {
                 Sto::abort();
@@ -638,6 +641,7 @@ inline size_t RBTree<K, T>::size() const {
 template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
+    // XXX(nate): we should be able to do a lookup without holding a lock
     lock(&treelock_);
     // should have added a read of boundary nodes if absent
     auto results = find_or_abort(idx_pair, false);
@@ -778,6 +782,7 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     } else {
         curr_version = reinterpret_cast<wrapper_type*>(e)->version();
     }
+    fence();
 
     bool same_version;
     if (is_structured) {
@@ -854,6 +859,7 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         } else { 
             // already checked that value version has not changed (i.e. no one else deleted)
             e->writeable_value() = item.template write_value<T>(); 
+            // XXX(nate): seems like we should set to the commit tid so we have cheap opacity?
             TransactionTid::inc_invalid_version(e->version());
         }
     }
