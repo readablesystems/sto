@@ -103,8 +103,6 @@ class RBTree : public Shared {
 
 public:
     RBTree() {
-        treelock_ = 0;
-        treeversion_ = 0;
         sizeversion_ = 0;
         size_ = 0;
 #if DEBUG
@@ -303,7 +301,6 @@ private:
                     printf("Aborted in find_or_abort\n");
                     TransactionTid::unlock(::lock);
 #endif
-                    unlock(&treelock_);
                     Sto::abort();
                     // unreachable
                     return results;
@@ -394,7 +391,6 @@ private:
             //if (wrapper_tree_.r_.limit_[0] == n) {
             //    Sto::item(this, start_key_).add_write(0);
             //}
-            unlock(&treelock_);
             // add a write to size with incremented value
             change_size_offset(1);
             return n;
@@ -404,7 +400,6 @@ private:
     // If key exists, then add a read of the item version and return the node
     // return value is a reference to the found or inserted node 
     inline wrapper_type* insert(const K& key) {
-        lock(&treelock_);
         auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
         auto results = this->find_or_insert(node);
         wrapper_type* x = std::get<wrapper_type*>(results);
@@ -467,11 +462,15 @@ private:
                 item.add_write(T());
                 // we have to update the value of the size we will write
                 change_size_offset(1);
-                return x; 
+                return x;
             }
             // operator[] on RHS (THIS IS A READ!)
             // don't need to add a write to size because size isn't changing
             // STO won't add read of items in our write set
+
+            // This is not ideal because a blind write also reads this version
+            // It's a compromise since we don't want to acquire any more locks
+            // at install time (to avoid deadlocks)
             item.add_read(ver);
             return x;
         }
@@ -681,24 +680,22 @@ inline size_t RBTree<K, T>::size() const {
 template <typename K, typename T>
 inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    lock(&treelock_);
-    // should have added a read of boundary nodes if absent
+
+    // find_or_abort() tracks boundary nodes if key is absent
     auto results = find_or_abort(idx_pair, false);
-    auto pair = results.first;
-    auto found = pair.second;
+
+    wrapper_type* node = std::get<wrapper_type*>(results);
+    bool found = std::get<bool>(results);
 #if DEBUG
     (!found) ? stats_.absent_count++ : stats_.present_count++;
 #endif
     if (found) {
-        wrapper_type* n = pair.first.node();
-        auto item = Sto::item(const_cast<RBTree<K, T>*>(this), n);
+        auto item = Sto::item(const_cast<RBTree<K, T>*>(this), node);
         if (has_delete(item)) {
             // read my deletes
-            unlock(&treelock_);
             return 0;
         }
     }
-    unlock(&treelock_);
     return (found) ? 1 : 0;
 }
 
@@ -712,12 +709,11 @@ inline RBProxy<K, T> RBTree<K, T>::operator[](const K& key) {
 template <typename K, typename T>
 inline size_t RBTree<K, T>::erase(const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
-    lock(&treelock_);
     // add a read of boundary nodes if absent erase
     auto results = find_or_abort(idx_pair, false);
-    auto pair = results.first; 
-    wrapper_type* x = pair.first.node();
-    auto found = pair.second;
+    wrapper_type* x = std::get<wrapper_type*>(results);
+    bool found = std::get<bool>(results);
+    Version ver = std::get<Version>(results);
    
     // PRESENT ERASE
     if (found) {
@@ -732,12 +728,10 @@ inline size_t RBTree<K, T>::erase(const K& key) {
             if (has_insert(item)) {
                 item.add_write(0).clear_flags(insert_tag).add_flags(delete_tag);
                 change_size_offset(-1);
-                unlock(&treelock_);
                 return 1;
             } else if (has_delete(item)) {
                 // DO NOT UPDATE SIZE HERE
                 // insert-delete-delete
-                unlock(&treelock_);
                 return 0;
             } else {
 #if DEBUG
@@ -745,22 +739,23 @@ inline size_t RBTree<K, T>::erase(const K& key) {
                 printf("Aborted in erase (insert bit set)\n");
                 TransactionTid::unlock(::lock);
 #endif
-                unlock(&treelock_);
                 Sto::abort();
                 // unreachable
                 return 0;
             }
         // we are deleting our deletes (of item we didn't insert)
         } else if (has_delete(item)) {
-            unlock(&treelock_);
             return 0; 
         }
+
+        // add a read here to make sure the key still exists when wen commit
+        // XXX better to use a predicate (or just a special bit?)
+        item.add_read(ver);
         // found item that has already been installed and not deleted
         item.add_write(0).add_flags(delete_tag);
         // add a write to size item of the current size minus one
         // because we will delete the element from the tree
         change_size_offset(-1);
-        unlock(&treelock_);
         return 1;
 
     // ABSENT ERASE
@@ -768,7 +763,6 @@ inline size_t RBTree<K, T>::erase(const K& key) {
 #if DEBUG
         stats_.absent_delete++;
 #endif
-        unlock(&treelock_);
         return 0;
     }
 }
@@ -778,7 +772,7 @@ inline void RBTree<K, T>::lock(TransItem& item) {
     if (item.key<void*>() == size_key_) {
         lock(&sizeversion_);
     } else if (item.key<void*>() == tree_key_) {
-        lock(&treeversion_);
+        lock(&wrapper_tree_.treeversion_);
     } else { 
         lock(item.key<versioned_value*>());
     }
@@ -789,7 +783,7 @@ inline void RBTree<K, T>::unlock(TransItem& item) {
     if (item.key<void*>() == size_key_) {
         unlock(&sizeversion_);
     } else if (item.key<void*>() == tree_key_) {
-        unlock(&treeversion_);
+        unlock(&wrapper_tree_.treeversion_);
     } else {
         unlock(item.key<versioned_value*>());
     }
@@ -808,7 +802,7 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     if (is_sizekey) {
         curr_version = sizeversion_;
     } else if (is_treekey) {
-        curr_version = treeversion_;
+        curr_version = wrapper_tree_.treeversion_;
     } else if (is_structured) {
         wrapper_type* n = reinterpret_cast<wrapper_type*>(e & ~uintptr_t(1));
         curr_version = n->nodeversion();
@@ -820,6 +814,8 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     } else {
         curr_version = reinterpret_cast<wrapper_type*>(e)->version();
     }
+
+    fence();
 
     bool same_version;
     if (is_structured) {
@@ -856,8 +852,8 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
     auto e = item.key<wrapper_type*>();
     // we did something to an empty tree, so update treeversion
     if ((void*)e == (wrapper_type*)tree_key_) {
-        assert(is_locked(treeversion_));
-        TransactionTid::inc_invalid_version(treeversion_);
+        assert(is_locked(wrapper_tree_.treeversion_));
+        TransactionTid::inc_invalid_version(wrapper_tree_.treeversion_);
     // we changed the size of the tree, so update size
     } else if ((void*)e == (wrapper_type*)size_key_) {
         assert(is_locked(sizeversion_));
@@ -875,10 +871,8 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         // actually erase the element when installing the delete
         if (deleted) {
             // actually erase
-            lock(&treelock_);
             wrapper_tree_.erase(*e);
             // increment the nodeversion after we erase
-            unlock(&treelock_);
             // increment value version 
             TransactionTid::inc_invalid_version(e->version());
 #if DEBUG
@@ -911,10 +905,8 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
             assert(((uintptr_t)e & 0x1) == 0);
             if (!is_inserted(e->version()))
                 return;
-            lock(&treelock_);
             wrapper_tree_.erase(*e);
             // increment the nodeversion after we erase
-            unlock(&treelock_);
             erase_inserted(&e->version());
             e->inc_nodeversion();
             Transaction::rcu_free(e);
