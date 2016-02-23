@@ -15,10 +15,27 @@
 
 class OutOfBoundsException {};
 
+template<typename T, bool Opacity = false, typename Elem = Box<T>> class Vector;
 template<typename T, bool Opacity = false, typename Elem = Box<T>> class VecIterator;
 template<typename T, bool Opacity, typename Elem> struct T_wrapper;
 
-template <typename T, bool Opacity = false, typename Elem = Box<T>>
+
+template<typename T, bool Opacity, typename Elem>
+struct T_wrapper {
+    T_wrapper(Vector<T, Opacity, Elem>* a, unsigned i)
+        : arr_(a), idx_(i) {
+    }
+    inline operator T() const;
+    inline T_wrapper<T, Opacity, Elem>& operator=(const T&);
+    inline T_wrapper<T, Opacity, Elem>& operator=(T&&);
+    inline T_wrapper<T, Opacity, Elem>& operator=(const T_wrapper<T, Opacity, Elem>&);
+
+private:
+    Vector<T, Opacity, Elem>* arr_;
+    unsigned idx_;
+};
+
+template <typename T, bool Opacity, typename Elem>
 class Vector : public Shared {
     friend class VecIterator<T, Opacity, Elem>;
     
@@ -40,7 +57,7 @@ public:
     
     typedef VecIterator<T, Opacity, Elem> iterator;
     typedef const VecIterator<T, Opacity, Elem> const_iterator;
-    typedef wrapper& reference;
+    typedef wrapper reference;
     typedef int32_t size_type;
 
     
@@ -49,20 +66,12 @@ public:
         size_ = 0;
         vecversion_ = 0;
         data_ = NULL;
-        it_objs = new wrapper[IT_SIZE];
-        for (int i = 0; i < IT_SIZE; i++) {
-          it_objs[i].initialize(this, i);
-        }
     }
     
     Vector(size_type size): resize_lock_() {
         size_ = 0;
         capacity_ = 1 << ((int) log2(size));
         vecversion_ = 0;
-        it_objs = new wrapper[IT_SIZE];
-        for (int i = 0; i < IT_SIZE; i++) {
-          it_objs[i].initialize(this, i);
-        }
 
         data_ = new Elem[capacity_];
         for (int i = 0; i < capacity_; i++) {
@@ -187,7 +196,7 @@ public:
         return pos;
     }
     
-    size_t transSize() {
+    size_type transSize() {
         add_vector_version(vecversion_);
         acquire_fence();
         return size_ + trans_size_offs();
@@ -224,8 +233,9 @@ public:
     size_t size() const {
         return size_;
     }
-    
+
     T read(key_type i) {
+        // XXX what is this
         if (i < size_) {
             return data_[i].read();
         } else {
@@ -238,11 +248,25 @@ public:
         data_[i].write(std::move(v));
     }
     
-    wrapper& front() {
-        wrapper * item = new wrapper(this, 0); //TODO: need to gc this
-        return *item;
+    wrapper front() {
+        return wrapper(this, 0);
     }
-    
+
+    wrapper back() {
+        size_t sz = transSize();
+        if (sz == 0)
+            Sto::abort();
+        return wrapper(this, sz - 1);
+    }
+
+    // XXX should have const_wrapper + wrapper
+    wrapper operator[](key_type i) const {
+        size_type sz = size_ + trans_size_offs();
+        if (i >= sz)
+            Sto::abort();
+        return wrapper(const_cast<Vector<T, Opacity, Elem>*>(this), i);
+    }
+
     value_type transGet(const key_type& i){
         Version ver = vecversion_;
         acquire_fence();
@@ -383,8 +407,8 @@ public:
         item.set_stash(item.template stash_value<int>(0) + size_offs);
     }
 
-    int trans_size_offs() {
-        return Sto::item(this, size_key).template stash_value<int>(0);
+    int trans_size_offs() const {
+        return Sto::item(const_cast<Vector<T, Opacity, Elem>*>(this), size_key).template stash_value<int>(0);
     }
 
     TransProxy vector_item() {
@@ -562,11 +586,6 @@ public:
         }
         std::cout << std::endl;
     }
-
-    wrapper& get_it_obj(int idx) {
-        assert(idx < IT_SIZE);
-        return it_objs[idx];
-    }
     
 private:
     size_type size_;
@@ -574,34 +593,6 @@ private:
     Version vecversion_; // for vector size
     rwlock resize_lock_; // to do concurrent resize
     Elem* data_;
-    wrapper* it_objs;
-};
-
-    
-template<typename T, bool Opacity, typename Elem>
-struct T_wrapper {
-    void initialize(Vector<T, Opacity, Elem> * arr, int idx) {
-       arr_ = arr;
-       idx_ = idx;
-    }
-    
-    operator T() {
-        return arr_->transGet(idx_);
-    }
-    
-    T_wrapper& operator= (const T& v) {
-        arr_->transUpdate(idx_, v);
-        return *this;
-    }
-    
-    T_wrapper& operator= (T_wrapper& v) {
-        arr_->transUpdate(idx_, (T) v);
-        return *this;
-    }
-
-private:
-    Vector<T, Opacity, Elem> * arr_;
-    int idx_;
 };
 
 
@@ -637,16 +628,12 @@ public:
         return !(operator==(other));
     }
     
-    wrapper& operator*() {
-        int idx = endy ? myArr->transSize() + myPtr : myPtr;
-        wrapper& item = myArr->get_it_obj(idx);
-        return item;
+    wrapper operator*() {
+        return wrapper(myArr, endy ? myArr->transSize() + myPtr : myPtr);
     }
-    
-    wrapper& operator[](const int& n) {
-        int idx = endy ? myArr->transSize() + myPtr : myPtr;
-        wrapper& item = myArr->get_it_obj( idx + n);
-        return item;
+
+    wrapper operator[](int delta) {
+        return wrapper(myArr, (endy ? myArr->transSize() + myPtr : myPtr) + delta);
     }
     
     /* This is the prefix case */
@@ -698,3 +685,24 @@ private:
     bool endy;
 };
 
+
+
+template <typename T, bool Opacity, typename Elem>
+inline T_wrapper<T, Opacity, Elem>::operator T() const {
+    return arr_->transGet(idx_);
+}
+template <typename T, bool Opacity, typename Elem>
+inline T_wrapper<T, Opacity, Elem>& T_wrapper<T, Opacity, Elem>::operator=(const T& x) {
+    arr_->transUpdate(idx_, x);
+    return *this;
+}
+template <typename T, bool Opacity, typename Elem>
+inline T_wrapper<T, Opacity, Elem>& T_wrapper<T, Opacity, Elem>::operator=(T&& x) {
+    arr_->transUpdate(idx_, std::move(x));
+    return *this;
+}
+template <typename T, bool Opacity, typename Elem>
+inline T_wrapper<T, Opacity, Elem>& T_wrapper<T, Opacity, Elem>::operator=(const T_wrapper<T, Opacity, Elem>& x) {
+    arr_->transUpdate(idx_, x.arr_->transGet(x.idx_));
+    return *this;
+}

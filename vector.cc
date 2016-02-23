@@ -17,7 +17,7 @@ void testSimpleInt() {
 
     {
         TransactionGuard t2;
-        int f_read = f.transGet(0);
+        int f_read = f[0];
         assert(f_read == 200);
     }
 
@@ -33,8 +33,8 @@ void testWriteNPushBack() {
     }
 
     TestTransaction t2(1);
-    f.transUpdate(0, 4);
-    
+    f[0] = 4;
+
     TestTransaction t3(2);
     f.push_back(20); // This will resize the array
     assert(t3.try_commit());
@@ -42,7 +42,7 @@ void testWriteNPushBack() {
 
     {
         TransactionGuard t4;
-        assert(f.transGet(0) == 4); // Make sure that the value is actually updated
+        assert(f[0] == 4); // Make sure that the value is actually updated
     }
 
     printf("PASS: testWriteNPushBack\n");
@@ -66,9 +66,9 @@ void testPushBack() {
 
     {
         TransactionGuard t4;
-        assert(f.transGet(0) == 10);
-        assert(f.transGet(1) == 20);
-        assert(f.transGet(2) == 4);
+        assert(f[0] == 10);
+        assert(f[1] == 20);
+        assert(f[2] == 4);
     }
 
     printf("PASS: testPushBack\n");
@@ -86,7 +86,7 @@ void testPushBackNRead() {
     {
         TransactionGuard t2;
         f.push_back(4);
-        assert(f.transGet(1) == 4);
+        assert(f[1] == 4);
     }
 
     printf("PASS: testPushBackNRead\n");
@@ -102,7 +102,7 @@ void testPushBackNRead1() {
 
     TestTransaction t2(1);
     f.push_back(4);
-    assert(f.transGet(1) == 4);
+    assert(f[1] == 4);
     
     TestTransaction t3(2);
     f.push_back(20);
@@ -122,7 +122,7 @@ void testPushBackNRead2() {
 
     TestTransaction t2(1);
     f.push_back(4);
-    assert(f.transGet(f.transSize() - 1) == 4);
+    assert(f[f.transSize() - 1] == 4);
     
     TestTransaction t3(2);
     f.push_back(20);
@@ -145,12 +145,12 @@ void testPushBackNWrite() {
     {
         TransactionGuard t2;
         f.push_back(4);
-        f.transUpdate(1, 10);
+        f[1] = 10;
     }
 
     {
         TransactionGuard t3;
-        assert(f.transGet(1) == 10);
+        assert(f[1] == 10);
     }
 
     printf("PASS: testPushBackNRead\n");
@@ -168,7 +168,7 @@ void testSimpleString() {
 
     {
 	TransactionGuard t2;
-	std::string f_read = f.transGet(0);
+	std::string f_read = f[0];
 	assert(f_read.compare("100") == 0);
     }
 
@@ -210,7 +210,7 @@ void testConflictingIter() {
     std::max_element(f.begin(), f.end());
     
     TestTransaction t1(2);
-    f.transUpdate(4, 10);
+    f[4] = 10;
     assert(t1.try_commit());
     assert(!t.try_commit());
 
