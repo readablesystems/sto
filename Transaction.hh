@@ -804,10 +804,30 @@ inline TransProxy& TransProxy::set_predicate(T pdata) {
 }
 
 template <typename T>
-inline TransProxy& TransProxy::add_write(T wdata) {
+inline TransProxy& TransProxy::add_write(const T& wdata) {
     assert(!has_predicate());
 #if DETAILED_LOGGING
     Transaction::max_p(txp_max_wdata_size, sizeof(T));
+#endif
+    if (!has_write()) {
+        i_->__or_flags(TransItem::write_bit);
+        i_->wdata_ = t_->buf_.pack(wdata);
+        t_->mark_write(*i_);
+    } else
+        // TODO: this assumes that a given writer data always has the same type.
+        // this is certainly true now but we probably shouldn't assume this in general
+        // (hopefully we'll have a system that can automatically call destructors and such
+        // which will make our lives much easier)
+        this->template write_value<T>() = wdata;
+    return *this;
+}
+
+template <typename T>
+inline TransProxy& TransProxy::add_write(T&& wdata) {
+    typedef typename std::decay<T>::type V;
+    assert(!has_predicate());
+#if DETAILED_LOGGING
+    Transaction::max_p(txp_max_wdata_size, sizeof(V));
 #endif
     if (!has_write()) {
         i_->__or_flags(TransItem::write_bit);
@@ -818,7 +838,7 @@ inline TransProxy& TransProxy::add_write(T wdata) {
         // this is certainly true now but we probably shouldn't assume this in general
         // (hopefully we'll have a system that can automatically call destructors and such
         // which will make our lives much easier)
-        this->template write_value<T>() = std::move(wdata);
+        this->template write_value<V>() = std::move(wdata);
     return *this;
 }
 
