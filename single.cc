@@ -2,7 +2,6 @@
 #include <assert.h>
 #include <stdio.h>
 
-#include "Array.hh"
 #include "Hashtable.hh"
 #include "MassTrans.hh"
 #include "List.hh"

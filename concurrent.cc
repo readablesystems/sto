@@ -5,7 +5,6 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 
-#include "Array.hh"
 #include "Array1.hh"
 #include "GenericSTMArray.hh"
 #include "ListArray.hh"
