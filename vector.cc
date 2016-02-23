@@ -234,7 +234,7 @@ void testModifyingIter() {
 
     {
         TransactionGuard t1;
-        int v = f.transGet(4);
+        int v = f[4];
         assert(v == 6);
     }
 
@@ -253,13 +253,13 @@ void testConflictingModifyIter1() {
     std::replace(f.begin(), f.end(), 4, 6);
     
     TestTransaction t1(2);
-    f.transUpdate(4, 10);
+    f[4] = 10;
     assert(t1.try_commit());
     assert(!t.try_commit());
 
     {
         TransactionGuard t2;
-        int v = f.transGet(4);
+        int v = f[4];
         assert(v == 10);
     }
 
@@ -281,12 +281,12 @@ void testConflictingModifyIter2() {
 
     {
         TransactionGuard t1;
-        f.transUpdate(4, 10);
+        f[4] = 10;
     }
 
     {
         TransactionGuard t2;
-        int v = f.transGet(4);
+        int v = f[4];
         assert(v == 10);
     }
 
@@ -302,7 +302,7 @@ void testConflictingModifyIter3() {
     } RETRY(false);
     
     TestTransaction t1(1);
-    f.transGet(4);
+    (int) f[4];
     
     TestTransaction t(2);
     std::replace(f.begin(), f.end(), 4, 6);
@@ -311,7 +311,7 @@ void testConflictingModifyIter3() {
 
     {
         TransactionGuard t2;
-        int v = f.transGet(4);
+        int v = f[4];
         assert(v == 6);
     }
 
@@ -446,7 +446,7 @@ void testPushNPop() {
         TransactionGuard t;
         f.push_back(20);
         f.push_back(21);
-        assert(f.transGet(0) == 0);
+        assert(f[0] == 0);
         assert(f.size() == 12);
         f.pop_back();
         f.pop_back();
@@ -463,7 +463,7 @@ void testPushNPop() {
     
     TRANSACTION {
         assert(f.size() == 11);
-        assert(f.transGet(10) == 20);
+        assert(f[10] == 20);
     } RETRY(false);
     
     
@@ -491,18 +491,18 @@ void testPushNPop() {
     f.push_back(15);
     
     TestTransaction t6(2);
-    f.transUpdate(8, 16);
+    f[8] = 16;
     assert(t6.try_commit());
     
     TestTransaction t7(3);
-    f.transGet(8);
+    (int) f[8];
     
     assert(t5.try_commit());
     assert(!t7.try_commit());
     
     TRANSACTION {
         assert(f.size() == 9);
-        assert(f.transGet(8) == 15);
+        assert(f[8] == 15);
     } RETRY(false);
     
     printf("PASS: testPushNPop2\n");
@@ -519,7 +519,7 @@ void testPopAndUdpate() {
     } RETRY(false);
     
     TestTransaction t1(1);
-    f.transUpdate(9, 20);
+    f[9] = 20;
 
     TestTransaction t2(2);
     f.pop_back();
@@ -577,7 +577,7 @@ void testUpdatePop() {
 
     {
         TransactionGuard t1;
-        f.transUpdate(9, 20);
+        f[9] = 20;
         f.pop_back();
     }
 }
