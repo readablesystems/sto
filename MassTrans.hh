@@ -637,8 +637,6 @@ public:
     sprintf(s, "%d", k);
     return transDelete(s);
   }
-  value_type transRead_nocheck(Transaction& , int ) { return value_type(); }
-  void transWrite_nocheck(Transaction&, int , value_type ) {}
   value_type read(int k) {
     return transRead(k);
   }

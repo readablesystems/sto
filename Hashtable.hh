@@ -379,8 +379,6 @@ public:
     }
     return v;
   }
-  Value transRead_nocheck(Transaction&, Key) { return Value(); }
-  void transWrite_nocheck(Transaction&, Key, Value) {}
   Value read(Key k) {
     TransactionGuard t;
     return transRead(k);

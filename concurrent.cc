@@ -287,10 +287,6 @@ template <typename T>
 static void doRead(T& a, int slot) {
   if (readMyWrites)
     a.transRead(slot);
-#if 0
-  else
-    a.transRead_nocheck(t, slot);
-#endif
 }
 
 template <typename T>
@@ -299,11 +295,6 @@ static void doWrite(T& a, int slot, int& ctr) {
     if (readMyWrites) {
       a.transWrite(slot, val(ctr));
     }
-#if 0
-else {
-      a.transWrite_nocheck(t, slot, val(ctr));
-    }
-#endif
   } else {
     // increment current value (this lets us verify transaction correctness)
     if (readMyWrites) {
@@ -315,11 +306,6 @@ else {
           a.transWrite(t, slot, v0+2);
           // read my own second writes
           assert(a.transRead(t,slot) == v0+2);
-#endif
-    } else {
-#if 0
-      auto v0 = a.transRead_nocheck(t, slot);
-      a.transWrite_nocheck(t, slot, val(unval(v0)+1));
 #endif
     }
     ++ctr; // because we've done a read and a write
