@@ -196,7 +196,7 @@ public:
         return pos;
     }
     
-    size_type transSize() {
+    size_type size() {
         add_vector_version(vecversion_);
         acquire_fence();
         return size_ + trans_size_offs();
@@ -230,7 +230,7 @@ public:
         return size + offset == sz;
     }
 
-    size_t size() const {
+    size_type unsafe_size() const {
         return size_;
     }
 
@@ -253,7 +253,7 @@ public:
     }
 
     wrapper back() {
-        size_t sz = transSize();
+        size_t sz = size();
         if (sz == 0)
             Sto::abort();
         return wrapper(this, sz - 1);
@@ -629,11 +629,11 @@ public:
     }
     
     wrapper operator*() {
-        return wrapper(myArr, endy ? myArr->transSize() + myPtr : myPtr);
+        return wrapper(myArr, endy ? myArr->size() + myPtr : myPtr);
     }
 
     wrapper operator[](int delta) {
-        return wrapper(myArr, (endy ? myArr->transSize() + myPtr : myPtr) + delta);
+        return wrapper(myArr, (endy ? myArr->size() + myPtr : myPtr) + delta);
     }
     
     /* This is the prefix case */
@@ -659,19 +659,19 @@ public:
         clone.myPtr += i;
         return clone;
     }
-    
+
     iterator operator-(int i) {
         VecIterator<T, Opacity, Elem> clone(*this);
         clone.myPtr -= i;
         return clone;
     }
-    
+
     int operator-(const iterator& rhs) {
         assert(rhs.myArr == myArr);
         if (endy == rhs.endy)
             return (myPtr - rhs.myPtr);
         else {
-            size_t size = myArr->transSize();
+            size_t size = myArr->size();
             if (endy)
                 return size + myPtr - rhs.myPtr;
             else

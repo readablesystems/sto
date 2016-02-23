@@ -26,11 +26,11 @@ public:
         return elems.front();
         } catch (OutOfBoundsException e) {}
     }
-    
+
     uint32_t size() {
         return elems.size();
     }
-    
+
     void print() {
         elems.print();
     }

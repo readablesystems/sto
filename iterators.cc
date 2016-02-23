@@ -62,7 +62,7 @@ int findK(T* q, int val) {
         
     } else {
         int first = 0;
-        int last = q->transSize();
+        int last = q->size();
         while (first != last) {
             if (q->transRead(first) == val) return first;
             ++first;

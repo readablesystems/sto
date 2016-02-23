@@ -262,7 +262,7 @@ public:
         return retval;
     }
     
-    int size() {
+    int unsafe_size() {
         return size_; // TODO: this is not transactional yet
     }
     

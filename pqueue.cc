@@ -662,8 +662,8 @@ int main() {
     } RETRY(false);
     //std::cout << q.size() << " " << q1.size() << std::endl;
     //assert(q.size() == q1.size());
-    assert(q1.size() == N_THREADS* NTRANS*2 + 1);
-    int size = q1.size();
+    assert(q1.unsafe_size() == N_THREADS* NTRANS*2 + 1);
+    int size = q1.unsafe_size();
     for (int i = 0; i < size; i++) {
         TRANSACTION {
             int v1 = q.top();

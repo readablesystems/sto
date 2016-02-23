@@ -761,7 +761,7 @@ public:
             TransactionTid::unlock(lock);
 #endif
             int val;
-            int sz = q->transSize();
+            int sz = q->size();
             if (sz > 0) {
               val = q->transGet(sz - 1);
               q->pop_back();
@@ -784,7 +784,7 @@ public:
             std::cout << "[" << me << "] try size " << std::endl;
             TransactionTid::unlock(lock);
 #endif
-            int sz = q->transSize();
+            int sz = q->size();
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] size "  << sz << std::endl;
@@ -802,13 +802,13 @@ public:
         if (op->op == 0) {
             int key = op->args[0];
             int val = op->args[1];
-            int size = q->transSize();
+            int size = q->size();
             if (op->rdata[0]) { assert(key >= size); return; }
             assert(key < size);
             q->transUpdate(key, val);
         } else if (op->op == 1) {
             int key = op->args[0];
-            int size = q->transSize();
+            int size = q->size();
             if (op->rdata[1]) { assert(key >= size); return; }
             assert(key < size);
             int val = q->transGet(key);
@@ -817,21 +817,21 @@ public:
             int val = op->args[0];
             q->push_back(val);
         } else if (op->op == 3) {
-            int size = q->transSize();
+            int size = q->size();
             if (!op->rdata[1]) { assert(size == 0); return;}
             assert(size > 0);
             assert(q->transGet(size - 1) == op->rdata[0]);
             q->pop_back();
         } else {
-            assert(q->transSize() == op->rdata[0]);
+            assert(q->size() == op->rdata[0]);
         }
     }
     
     void check(T* q, T*q1) {
         int size;
         TRANSACTION {
-            size = q->transSize();
-            assert(size == q1->transSize());
+            size = q->size();
+            assert(size == q1->size());
         } RETRY(false);
         for (int i = 0; i < size; i++) {
             TRANSACTION {

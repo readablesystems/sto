@@ -311,7 +311,7 @@ public:
     return ListIter(this, head_, true);
   }
 
-  size_t transSize() {
+  size_t size() {
     verify_list(listversion_);
     return listsize_ + trans_size_offs();
   }
@@ -408,7 +408,7 @@ private:
     return ListIter(this, head_, false);
   }
 
-  size_t size() const {
+  size_t unsafe_size() const {
       return listsize_;
   }
 

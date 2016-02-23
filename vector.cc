@@ -122,7 +122,7 @@ void testPushBackNRead2() {
 
     TestTransaction t2(1);
     f.push_back(4);
-    assert(f[f.transSize() - 1] == 4);
+    assert(f[f.size() - 1] == 4);
     
     TestTransaction t3(2);
     f.push_back(20);
@@ -447,7 +447,7 @@ void testPushNPop() {
         f.push_back(20);
         f.push_back(21);
         assert(f.transGet(0) == 0);
-        assert(f.transSize() == 12);
+        assert(f.size() == 12);
         f.pop_back();
         f.pop_back();
     }
@@ -462,7 +462,7 @@ void testPushNPop() {
     assert(!t1.try_commit());
     
     TRANSACTION {
-        assert(f.transSize() == 11);
+        assert(f.size() == 11);
         assert(f.transGet(10) == 20);
     } RETRY(false);
     
@@ -479,7 +479,7 @@ void testPushNPop() {
     assert(!t3.try_commit());
     
     TRANSACTION {
-        assert(f.transSize() == 10);
+        assert(f.size() == 10);
     } RETRY(false);
     
     printf("PASS: testPushNPop1\n");
@@ -501,7 +501,7 @@ void testPushNPop() {
     assert(!t7.try_commit());
     
     TRANSACTION {
-        assert(f.transSize() == 9);
+        assert(f.size() == 9);
         assert(f.transGet(8) == 15);
     } RETRY(false);
     

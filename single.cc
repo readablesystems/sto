@@ -261,9 +261,9 @@ void linkedListTests() {
 
   {
     TransactionGuard t;
-    assert(l.transSize() == 2);
+    assert(l.size() == 2);
     assert(l.transInsert(10));
-    assert(l.transSize() == 3);
+    assert(l.size() == 3);
     auto it = l.transIter();
     int i = 0;
     int elems[] = {5,7,10};
@@ -277,7 +277,7 @@ void linkedListTests() {
     TransactionGuard t;
     assert(l.transDelete(7));
     assert(!l.transDelete(1000));
-    assert(l.transSize() == 2);
+    assert(l.size() == 2);
     assert(!l.transFind(7));
     auto it = l.transIter();
     assert(*it.transNext() == 5);
@@ -288,7 +288,7 @@ void linkedListTests() {
     TransactionGuard t;
     assert(l.transInsert(7));
     assert(l.transDelete(7));
-    assert(l.transSize() == 2);
+    assert(l.size() == 2);
     assert(!l.transFind(7));
   }
 }
