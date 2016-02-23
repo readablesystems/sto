@@ -17,31 +17,52 @@ class OutOfBoundsException {};
 
 template<typename T, bool Opacity = false, typename Elem = Box<T>> class Vector;
 template<typename T, bool Opacity = false, typename Elem = Box<T>> class VecIterator;
-template<typename T, bool Opacity, typename Elem> struct T_wrapper;
 
-
-template<typename T, bool Opacity, typename Elem>
-struct T_wrapper {
-    T_wrapper(Vector<T, Opacity, Elem>* a, unsigned i)
-        : arr_(a), idx_(i) {
-    }
-    inline operator T() const;
-    inline T_wrapper<T, Opacity, Elem>& operator=(const T&);
-    inline T_wrapper<T, Opacity, Elem>& operator=(T&&);
-    inline T_wrapper<T, Opacity, Elem>& operator=(const T_wrapper<T, Opacity, Elem>&);
-
-private:
-    Vector<T, Opacity, Elem>* arr_;
-    unsigned idx_;
-};
 
 template <typename T, bool Opacity, typename Elem>
 class Vector : public Shared {
+public:
+    typedef unsigned index_type;
+
+private:
     friend class VecIterator<T, Opacity, Elem>;
-    
+    typedef const Vector<T, Opacity, Elem> const_vector_type;
+    typedef Vector<T, Opacity, Elem> vector_type;
+
     typedef TransactionTid::type Version;
     typedef VersionFunctions<Version> Versioning;
-    typedef T_wrapper<T, Opacity, Elem> wrapper;
+
+    class const_proxy {
+    public:
+        const_proxy(const_vector_type* a, index_type i)
+            : a_(a), i_(i) {
+        }
+        inline operator T() const {
+            return const_cast<vector_type*>(a_)->transGet(i_);
+        }
+        const_proxy& operator=(const const_proxy&) = delete;
+    protected:
+        const_vector_type* a_;
+        index_type i_;
+    };
+    class proxy : public const_proxy {
+    public:
+        proxy(vector_type* a, index_type i)
+            : const_proxy(a, i) {
+        }
+        inline proxy& operator=(const T& x) {
+            const_cast<vector_type*>(this->a_)->transUpdate(this->i_, x);
+            return *this;
+        }
+        inline proxy& operator=(T&& x) {
+            const_cast<vector_type*>(this->a_)->transUpdate(this->i_, std::move(x));
+            return *this;
+        }
+        inline proxy& operator=(const proxy& x) {
+            const_cast<vector_type*>(this->a_)->transUpdate(this->i_, x.operator T());
+            return *this;
+        }
+    };
 
     static constexpr int vector_key = -1;
     static constexpr int push_back_key = -2;
@@ -57,7 +78,7 @@ public:
     
     typedef VecIterator<T, Opacity, Elem> iterator;
     typedef const VecIterator<T, Opacity, Elem> const_iterator;
-    typedef wrapper reference;
+    typedef proxy reference;
     typedef int32_t size_type;
 
     
@@ -247,24 +268,31 @@ public:
         assert(i < size_);
         data_[i].write(std::move(v));
     }
-    
-    wrapper front() {
-        return wrapper(this, 0);
+
+    proxy front() {
+        if (size_ + trans_size_offs() == 0)
+            Sto::abort();
+        return proxy(this, 0);
     }
 
-    wrapper back() {
+    proxy back() {
         size_t sz = size();
         if (sz == 0)
             Sto::abort();
-        return wrapper(this, sz - 1);
+        return proxy(this, sz - 1);
     }
 
-    // XXX should have const_wrapper + wrapper
-    wrapper operator[](key_type i) const {
+    const_proxy operator[](key_type i) const {
         size_type sz = size_ + trans_size_offs();
         if (i >= sz)
             Sto::abort();
-        return wrapper(const_cast<Vector<T, Opacity, Elem>*>(this), i);
+        return const_proxy(this, i);
+    }
+    proxy operator[](key_type i) {
+        size_type sz = size_ + trans_size_offs();
+        if (i >= sz)
+            Sto::abort();
+        return proxy(this, i);
     }
 
     value_type transGet(const key_type& i){
@@ -600,7 +628,8 @@ template<typename T, bool Opacity, typename Elem>
 class VecIterator : public std::iterator<std::random_access_iterator_tag, T> {
 public:
     typedef T value_type;
-    typedef T_wrapper<T, Opacity, Elem> wrapper;
+    typedef Vector<T, Opacity, Elem> vector_type;
+    typedef typename vector_type::proxy proxy_type;
     typedef VecIterator<T, Opacity, Elem> iterator;
     VecIterator() = default;
     VecIterator(Vector<T, Opacity, Elem> * arr, int ptr, bool endy) : myArr(arr), myPtr(ptr), endy(endy) { }
@@ -628,12 +657,12 @@ public:
         return !(operator==(other));
     }
     
-    wrapper operator*() {
-        return wrapper(myArr, endy ? myArr->size() + myPtr : myPtr);
+    proxy_type operator*() {
+        return proxy_type(myArr, endy ? myArr->size() + myPtr : myPtr);
     }
 
-    wrapper operator[](int delta) {
-        return wrapper(myArr, (endy ? myArr->size() + myPtr : myPtr) + delta);
+    proxy_type operator[](int delta) {
+        return proxy_type(myArr, (endy ? myArr->size() + myPtr : myPtr) + delta);
     }
     
     /* This is the prefix case */
@@ -684,25 +713,3 @@ private:
     size_t myPtr;
     bool endy;
 };
-
-
-
-template <typename T, bool Opacity, typename Elem>
-inline T_wrapper<T, Opacity, Elem>::operator T() const {
-    return arr_->transGet(idx_);
-}
-template <typename T, bool Opacity, typename Elem>
-inline T_wrapper<T, Opacity, Elem>& T_wrapper<T, Opacity, Elem>::operator=(const T& x) {
-    arr_->transUpdate(idx_, x);
-    return *this;
-}
-template <typename T, bool Opacity, typename Elem>
-inline T_wrapper<T, Opacity, Elem>& T_wrapper<T, Opacity, Elem>::operator=(T&& x) {
-    arr_->transUpdate(idx_, std::move(x));
-    return *this;
-}
-template <typename T, bool Opacity, typename Elem>
-inline T_wrapper<T, Opacity, Elem>& T_wrapper<T, Opacity, Elem>::operator=(const T_wrapper<T, Opacity, Elem>& x) {
-    arr_->transUpdate(idx_, x.arr_->transGet(x.idx_));
-    return *this;
-}

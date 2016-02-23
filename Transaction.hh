@@ -407,27 +407,27 @@ public:
   public:
     // adds item for a key that is known to be new (must NOT exist in the set)
     template <typename T>
-    TransProxy new_item(Shared* s, T key) {
+    TransProxy new_item(const TObject* s, T key) {
         void *xkey = buf_.pack(std::move(key));
-        transSet_.emplace_back(s, xkey);
+        transSet_.emplace_back(const_cast<TObject*>(s), xkey);
         return TransProxy(*this, transSet_.back());
     }
 
     // adds item without checking its presence in the array
     template <typename T>
-    TransProxy fresh_item(Shared *s, T key) {
+    TransProxy fresh_item(const TObject* s, T key) {
         may_duplicate_items_ = !transSet_.empty();
-        transSet_.emplace_back(s, buf_.pack_unique(std::move(key)));
+        transSet_.emplace_back(const_cast<TObject*>(s), buf_.pack_unique(std::move(key)));
         return TransProxy(*this, transSet_.back());
     }
 
     // tries to find an existing item with this key, otherwise adds it
     template <typename T>
-    TransProxy item(Shared* s, T key) {
+    TransProxy item(const TObject* s, T key) {
         void* xkey = buf_.pack_unique(std::move(key));
-        TransItem* ti = find_item(s, xkey, 0);
+        TransItem* ti = find_item(const_cast<TObject*>(s), xkey, 0);
         if (!ti) {
-            transSet_.emplace_back(s, xkey);
+            transSet_.emplace_back(const_cast<TObject*>(s), xkey);
             ti = &transSet_.back();
         }
         return TransProxy(*this, *ti);
@@ -436,27 +436,27 @@ public:
     // gets an item that is intended to be read only. this method essentially allows for duplicate items
     // in the set in some cases
     template <typename T>
-    TransProxy read_item(Shared *s, T key) {
+    TransProxy read_item(const TObject* s, T key) {
         void* xkey = buf_.pack_unique(std::move(key));
         TransItem* ti = nullptr;
         if (firstWrite_ >= 0)
-            ti = find_item(s, xkey, firstWrite_);
+            ti = find_item(const_cast<TObject*>(s), xkey, firstWrite_);
         if (!ti) {
             may_duplicate_items_ = !transSet_.empty();
-            transSet_.emplace_back(s, xkey);
+            transSet_.emplace_back(const_cast<TObject*>(s), xkey);
             ti = &transSet_.back();
         }
         return TransProxy(*this, *ti);
     }
 
     template <typename T>
-    OptionalTransProxy check_item(Shared* s, T key) {
+    OptionalTransProxy check_item(const TObject* s, T key) {
         void* xkey = buf_.pack_unique(std::move(key));
-        return OptionalTransProxy(*this, find_item(s, xkey, 0));
+        return OptionalTransProxy(*this, find_item(const_cast<TObject*>(s), xkey, 0));
     }
 
 private:
-    static int hash(Shared* s, void* key) {
+    static int hash(TObject* s, void* key) {
         auto n = (uintptr_t) key;
         n += -(n <= 0xFFFF) & reinterpret_cast<uintptr_t>(s);
         //2654435761
@@ -464,7 +464,7 @@ private:
     }
 
     // tries to find an existing item with this key, returns NULL if not found
-    TransItem* find_item(Shared* s, void* key, int delta) {
+    TransItem* find_item(TObject* s, void* key, int delta) {
 #if TRANSACTION_HASHTABLE
         if (transSet_.size() > HASHTABLE_THRESHOLD) {
             if (nhashed_ < transSet_.size())
@@ -658,7 +658,7 @@ public:
     }
 
     template <typename T>
-    static TransProxy item(Shared* s, T key) {
+    static TransProxy item(const TObject* s, T key) {
         always_assert(in_progress());
         return __transaction->item(s, key);
     }
@@ -679,25 +679,25 @@ public:
     }
 
     template <typename T>
-    static OptionalTransProxy check_item(Shared* s, T key) {
+    static OptionalTransProxy check_item(const TObject* s, T key) {
         always_assert(in_progress());
         return __transaction->check_item(s, key);
     }
 
     template <typename T>
-    static TransProxy new_item(Shared* s, T key) {
+    static TransProxy new_item(const TObject* s, T key) {
         always_assert(in_progress());
         return __transaction->new_item(s, key);
     }
 
     template <typename T>
-    static TransProxy read_item(Shared *s, T key) {
+    static TransProxy read_item(const TObject* s, T key) {
         always_assert(in_progress());
         return __transaction->read_item(s, key);
     }
 
     template <typename T>
-    static TransProxy fresh_item(Shared *s, T key) {
+    static TransProxy fresh_item(const TObject* s, T key) {
         always_assert(in_progress());
         return __transaction->fresh_item(s, key);
     }
