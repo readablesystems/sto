@@ -28,4 +28,6 @@
 /vector
 /hashtable_nostm
 /ht_mt
+/iterators
+/pqVsIt
 .ycm_*
