@@ -10,7 +10,7 @@
 template<typename T, unsigned N, typename Elem = SingleElem<T>> class Array1Iter;
 
 template <typename T, unsigned N, typename Elem = SingleElem<T>>
-class Array1 : public Shared {
+class Array1 {
     friend class Array1Iter<T, N, Elem>;
     typedef Array1Iter<T, N, Elem> iterator;
     
@@ -36,31 +36,6 @@ class Array1 : public Shared {
         data_[i].transWrite(std::move(v));
     }
 
-    void lock(key_type i) {
-        data_[i].lock();
-    }
-
-    void unlock(key_type i) {
-        data_[i].unlock();
-    }
-
-    bool check(const TransItem& item, const Transaction& trans){
-        key_type i = item.key<key_type>();
-        return data_[i].check(item, trans);
-    }
-
-    bool lock(TransItem& item){
-        lock(item.key<key_type>());
-        return true;
-    }
-    void install(TransItem& item, const Transaction& t) {
-        //install value
-        data_[item.key<key_type>()].install(item, t);
-    }
-    void unlock(TransItem& item) {
-        unlock(item.key<key_type>());
-    }
-    
     iterator begin() { return iterator(this, 0); }
     iterator end() { return iterator(this, N); }
     
