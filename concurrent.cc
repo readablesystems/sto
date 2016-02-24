@@ -6,11 +6,12 @@
 #include <sys/resource.h>
 
 #include "Array1.hh"
-#include "GenericSTMArray.hh"
+#include "GenericSTM.hh"
 #include "Hashtable.hh"
 #include "Queue.hh"
 #include "Vector.hh"
 #include "Transaction.hh"
+#include "IntStr.hh"
 #include "clp.h"
 
 #include "MassTrans.hh"
@@ -89,92 +90,147 @@ typedef int value_type;
 #endif
 
 
-struct ContainerBase_arraylike {
-    static constexpr bool has_delete = false;
-    template <typename T, typename K, typename V>
-    static bool transInsert(T&, K, V) {
-        return false;
-    }
-    template <typename T, typename K>
-    static bool transDelete(T&, K) {
-        return false;
-    }
-    template <typename T, typename K, typename V>
-    static bool transUpdate(T&, K, V) {
-        return false;
-    }
-    static void init() {
-    }
-    template <typename T>
-    static void thread_init(T&) {
-    }
-};
-
-struct ContainerBase_maplike {
-    static constexpr bool has_delete = true;
-    template <typename T, typename K, typename V>
-    static bool transInsert(T& c, K key, V value) {
-        return c.transInsert(key, value);
-    }
-    template <typename T, typename K>
-    static bool transDelete(T& c, K key) {
-        return c.transDelete(key);
-    }
-    template <typename T, typename K, typename V>
-    static bool transUpdate(T& c, K key, V value) {
-        return c.transUpdate(key, value);
-    }
-    static void init() {
-    }
-    template <typename T>
-    static void thread_init(T&) {
-    }
-};
-
-
 template <int DS> struct Container {};
 
-template <> struct Container<USE_ARRAY> : public ContainerBase_arraylike {
+template <> struct Container<USE_ARRAY> {
     typedef Array1<value_type, ARRAY_SZ> type;
+    typedef int index_type;
+    static constexpr bool has_delete = false;
+    value_type unsafe_get(index_type key) {
+        return v_.unsafe_get(key);
+    }
+    value_type transGet(index_type key) {
+        return v_.transGet(key);
+    }
+    void transPut(index_type key, value_type value) {
+        v_.transPut(key, value);
+    }
+    static void init() {
+    }
+    static void thread_init(Container<USE_ARRAY>&) {
+    }
+private:
+    type v_;
 };
 
-template <> struct Container<USE_VECTOR> : public ContainerBase_arraylike {
+template <> struct Container<USE_VECTOR> {
     typedef Vector<value_type> type;
-    template <typename T, typename K, typename V>
-    static bool transInsert(T& c, K key, V value) {
-        c.insert(c.begin() + key, value);
-        return true;
+    typedef typename type::size_type index_type;
+    static constexpr bool has_delete = false;
+    value_type unsafe_get(index_type key) {
+        return v_.unsafe_get(key);
     }
-    template <typename T, typename K>
-    static bool transDelete(T& c, K key) {
-        c.erase(c.begin() + key);
-        return true;
+    value_type transGet(index_type key) {
+        return v_.transGet(key);
     }
+    void transPut(index_type key, value_type value) {
+        return v_.transUpdate(key, value);
+    }
+    static void init() {
+    }
+    template <typename T> static void thread_init(T&) {
+    }
+private:
+    type v_;
 };
 
-template <> struct Container<USE_GENSTMARRAY> : public ContainerBase_arraylike {
-    typedef GenericSTMArray<value_type, ARRAY_SZ> type;
+template <> struct Container<USE_GENSTMARRAY> {
+    typedef int index_type;
+    static constexpr bool has_delete = false;
+    value_type unsafe_get(index_type key) {
+        return a_[key];
+    }
+    value_type transGet(index_type key) {
+        assert(key >= 0 && key < ARRAY_SZ);
+        return stm_.transRead(&a_[key]);
+    }
+    void transPut(index_type key, value_type value) {
+        assert(key >= 0 && key < ARRAY_SZ);
+        stm_.transWrite(&a_[key], value);
+    }
+    static void init() {
+    }
+    template <typename T> static void thread_init(T&) {
+    }
+private:
+    GenericSTM stm_;
+    value_type a_[ARRAY_SZ];
 };
 
-template <> struct Container<USE_MASSTREE> : public ContainerBase_maplike {
+template <> struct Container<USE_MASSTREE> {
 #if STRING_VALUES && UNBOXED_STRINGS
     typedef MassTrans<value_type, versioned_str_struct> type;
 #else
     typedef MassTrans<value_type> type;
 #endif
+    typedef int index_type;
+    static constexpr bool has_delete = true;
+    value_type unsafe_get(index_type key) {
+        TransactionGuard guard;
+        value_type v;
+        v_.transGet(IntStr(key), v);
+        return v;
+    }
+    value_type transGet(index_type key) {
+        value_type v;
+        v_.transGet(IntStr(key), v);
+        return v;
+    }
+    void transPut(index_type key, value_type value) {
+        v_.transPut(IntStr(key).str(), value);
+    }
+    bool transDelete(index_type key) {
+        return v_.transDelete(IntStr(key).str());
+    }
+    bool transInsert(index_type key, value_type value) {
+        return v_.transInsert(IntStr(key).str(), value);
+    }
+    bool transUpdate(index_type key, value_type value) {
+        return v_.transUpdate(IntStr(key).str(), value);
+    }
     static void init() {
         Transaction::epoch_advance_callback = [] (unsigned) {
             // just advance blindly because of the way Masstree uses epochs
             globalepoch++;
         };
     }
-    static void thread_init(type&) {
+    static void thread_init(Container<USE_MASSTREE>&) {
         type::thread_init();
     }
+private:
+    type v_;
 };
 
-template <> struct Container<USE_HASHTABLE> : public ContainerBase_maplike {
-  typedef Hashtable<int, value_type, false, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
+template <> struct Container<USE_HASHTABLE> {
+    typedef Hashtable<int, value_type, false, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
+    typedef int index_type;
+    static constexpr bool has_delete = true;
+    value_type unsafe_get(index_type key) {
+        return v_.unsafe_get(key);
+    }
+    value_type transGet(index_type key) {
+        value_type v;
+        v_.transGet(key, v);
+        return v;
+    }
+    void transPut(index_type key, value_type value) {
+        v_.transPut(key, value);
+    }
+    bool transDelete(index_type key) {
+        return v_.transDelete(key);
+    }
+    bool transInsert(index_type key, value_type value) {
+        return v_.transInsert(key, value);
+    }
+    bool transUpdate(index_type key, value_type value) {
+        return v_.transUpdate(key, value);
+    }
+    static void init() {
+    }
+    static void thread_init(Container<USE_HASHTABLE>&) {
+    }
+private:
+    type v_;
 };
 
 #if DATA_STRUCTURE == USE_QUEUE
@@ -244,7 +300,7 @@ template <typename T>
 void prepopulate_func(T& a) {
   for (int i = 0; i < prepopulate; ++i) {
       TRANSACTION {
-          a.transWrite(i, val(i+1));
+          a.transPut(i, val(i+1));
       } RETRY(false);
   }
   std::cout << "Done prepopulating " << std::endl;
@@ -276,26 +332,26 @@ void empty_func() {
 template <typename T>
 static void doRead(T& a, int slot) {
   if (readMyWrites)
-    a.transRead(slot);
+    a.transGet(slot);
 }
 
 template <typename T>
 static void doWrite(T& a, int slot, int& ctr) {
   if (blindRandomWrite) {
     if (readMyWrites) {
-      a.transWrite(slot, val(ctr));
+      a.transPut(slot, val(ctr));
     }
   } else {
     // increment current value (this lets us verify transaction correctness)
     if (readMyWrites) {
-      auto v0 = a.transRead(slot);
-      a.transWrite(slot, val(unval(v0)+1));
+      auto v0 = a.transGet(slot);
+      a.transPut(slot, val(unval(v0)+1));
 #if TRY_READ_MY_WRITES
           // read my own writes
-          assert(a.transRead(t,slot) == v0+1);
-          a.transWrite(t, slot, v0+2);
+          assert(a.transGet(t,slot) == v0+1);
+          a.transPut(t, slot, v0+2);
           // read my own second writes
-          assert(a.transRead(t,slot) == v0+2);
+          assert(a.transGet(t,slot) == v0+2);
 #endif
     }
     ++ctr; // because we've done a read and a write
@@ -316,10 +372,30 @@ static inline void nwrites(T& a, int n, std::function<int(void)> slotgen) {
   }
 }
 
+template <typename T, bool Support = T::has_delete> struct DoDeleteHelper;
+template <typename T> struct DoDeleteHelper<T, true> {
+    static void run(T& a, typename T::index_type slot) {
+        a.transDelete(slot);
+    }
+};
+template <typename T> struct DoDeleteHelper<T, false> {
+    static void run(T&, typename T::index_type) {
+    }
+};
+template <typename T>
+static void doDelete(T& a, int slot) {
+    DoDeleteHelper<T>::run(a, slot);
+}
+
+
+
 struct Tester {
     Tester() {}
     virtual void initialize() = 0;
-    virtual void run(int me) = 0;
+    virtual void run(int me) {
+        (void) me;
+        assert(0 && "Test not supported");
+    }
     virtual bool check() { return false; }
 };
 
@@ -328,32 +404,32 @@ template <int DS> struct DSTester : public Tester {
     void initialize();
     virtual bool prepopulate() { return true; }
     typedef Container<DS> container_type;
-    typedef typename Container<DS>::type type;
   protected:
-    type* a;
+    container_type* a;
 };
 
 template <int DS> void DSTester<DS>::initialize() {
-    a = new type;
+    a = new container_type;
     if (prepopulate()) {
         prepopulate_func(*a);
 #if MAINTAIN_TRUE_ARRAY_STATE
         prepopulate_func(true_array_state);
 #endif
     }
-    Container<DS>::init();
+    container_type::init();
 }
 
 
 template <int DS> struct ReadThenWrite : public DSTester<DS> {
+    typedef typename DSTester<DS>::container_type container_type;
     ReadThenWrite() {}
     void run(int me);
 };
 
 template <int DS> void ReadThenWrite<DS>::run(int me) {
   TThread::id = me;
-  typename Container<DS>::type* a = this->a;
-  Container<DS>::thread_init(*a);
+  container_type* a = this->a;
+  container_type::thread_init(*a);
 
   std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
 
@@ -377,6 +453,7 @@ template <int DS> void ReadThenWrite<DS>::run(int me) {
 
 
 template <int DS> struct RandomRWs_parent : public DSTester<DS> {
+    typedef typename DSTester<DS>::container_type container_type;
     RandomRWs_parent() {}
     template <bool do_delete> void do_run(int me);
 };
@@ -384,8 +461,8 @@ template <int DS> struct RandomRWs_parent : public DSTester<DS> {
 template <int DS> template <bool do_delete>
 void RandomRWs_parent<DS>::do_run(int me) {
   TThread::id = me;
-  typename Container<DS>::type* a = this->a;
-  Container<DS>::thread_init(*a);
+  container_type* a = this->a;
+  container_type::thread_init(*a);
 
 #if NON_CONFLICTING
   long range = ARRAY_SZ/nthreads;
@@ -431,7 +508,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
         auto r = transgen();
         if (do_delete && r > (write_thresh+write_thresh/2)) {
           // TODO: this doesn't make that much sense if write_percent != 50%
-          Container<DS>::transDelete(*a, slot);
+          doDelete(*a, slot);
         } else if (r > write_thresh) {
           doRead(*a, slot);
         } else {
@@ -492,6 +569,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
 
 
 template <int DS, bool do_delete> struct RandomRWs : public RandomRWs_parent<DS> {
+    typedef typename DSTester<DS>::container_type container_type;
     RandomRWs() {}
     void run(int me);
     bool check();
@@ -505,8 +583,8 @@ template <int DS, bool do_delete> bool RandomRWs<DS, do_delete>::check() {
   if (do_delete && Container<DS>::has_delete)
       return false;
 
-  typename Container<DS>::type* old = this->a;
-  typename Container<DS>::type& ch = *(new typename Container<DS>::type);
+  container_type* old = this->a;
+  container_type ch;
   this->a = &ch;
 
   // rerun transactions one-by-one
@@ -525,46 +603,49 @@ template <int DS, bool do_delete> bool RandomRWs<DS, do_delete>::check() {
 
   for (int i = 0; i < ARRAY_SZ; ++i) {
 # if MAINTAIN_TRUE_ARRAY_STATE
-    if (unval(old->read(i)) != true_array_state[i])
+    if (old->unsafe_get(i) != true_array_state[i])
         fprintf(stderr, "index [%d]: parallel %d, atomic %d\n",
-                i, unval(old->read(i)), true_array_state[i]);
+                i, old->unsafe_get(i), true_array_state[i]);
 # endif
-    if (unval(old->read(i)) != unval(ch.read(i)))
+    if (old->unsafe_get(i) != ch.unsafe_get(i))
         fprintf(stderr, "index [%d]: parallel %d, sequential %d\n",
-                i, unval(old->read(i)), unval(ch.read(i)));
-    assert(unval(ch.read(i)) == unval(old->read(i)));
+                i, old->unsafe_get(i), ch.unsafe_get(i));
+    assert(old->unsafe_get(i) == ch.unsafe_get(i));
   }
   return true;
 }
 
 
-template <int DS> struct KingDelete : public DSTester<DS> {
+template <int DS, bool Ok = Container<DS>::has_delete> struct KingDelete;
+template <int DS> struct KingDelete<DS, false> : public DSTester<DS> {};
+template <int DS> struct KingDelete<DS, true> : public DSTester<DS> {
+    typedef typename DSTester<DS>::container_type container_type;
     KingDelete() {}
     void run(int me);
     bool check();
 };
 
-template <int DS> void KingDelete<DS>::run(int me) {
+template <int DS> void KingDelete<DS, true>::run(int me) {
   TThread::id = me;
-  typename Container<DS>::type* a = this->a;
+  container_type* a = this->a;
   Container<DS>::thread_init(*a);
 
   TRANSACTION {
     for (int i = 0; i < nthreads; ++i) {
         if (i != me) {
-          Container<DS>::transDelete(*a, i);
+          a->transDelete(i);
         } else {
-          a->transWrite(i, val(i+1));
+          a->transPut(i, val(i+1));
         }
       }
   } RETRY(true);
 }
 
-template <int DS> bool KingDelete<DS>::check() {
-  typename Container<DS>::type* a = this->a;
+template <int DS> bool KingDelete<DS, true>::check() {
+  container_type* a = this->a;
   int count = 0;
   for (int i = 0; i < nthreads; ++i) {
-    if (unval(a->read(i))) {
+    if (a->unsafe_get(i)) {
       count++;
     }
   }
@@ -573,16 +654,19 @@ template <int DS> bool KingDelete<DS>::check() {
 }
 
 
-template <int DS> struct XorDelete : public DSTester<DS> {
+template <int DS, bool Ok = Container<DS>::has_delete> struct XorDelete;
+template <int DS> struct XorDelete<DS, false> : public DSTester<DS> {};
+template <int DS> struct XorDelete<DS, true> : public DSTester<DS> {
+    typedef typename DSTester<DS>::container_type container_type;
     XorDelete() {}
     void run(int me);
     bool check();
 };
 
-template <int DS> void XorDelete<DS>::run(int me) {
+template <int DS> void XorDelete<DS, true>::run(int me) {
   TThread::id = me;
-  typename Container<DS>::type* a = this->a;
-  Container<DS>::thread_init(*a);
+  container_type* a = this->a;
+  container_type::thread_init(*a);
 
   // we never pick slot 0 so we can detect if table is populated
   std::uniform_int_distribution<long> slotdist(1, ARRAY_SZ-1);
@@ -601,20 +685,20 @@ template <int DS> void XorDelete<DS>::run(int me) {
           if (r > delete_thresh) {
             // can't do put/insert because that makes the results ordering dependent
             // (these updates don't actually affect the final state at all)
-            Container<DS>::transUpdate(*a, slot, val(slot + 1));
-          } else if (!Container<DS>::transInsert(*a, slot, val(slot+1))) {
+            a->transUpdate(slot, val(slot + 1));
+          } else if (!a->transInsert(slot, val(slot+1))) {
             // we delete if the element is there and insert if it's not
             // this is essentially xor'ing the slot, so ordering won't matter
-            Container<DS>::transDelete(*a, slot);
+            a->transDelete(slot);
           }
         }
     } RETRY(true);
   }
 }
 
-template <int DS> bool XorDelete<DS>::check() {
-  typename Container<DS>::type* old = this->a;
-  typename Container<DS>::type& ch = *(new typename Container<DS>::type);
+template <int DS> bool XorDelete<DS, true>::check() {
+  container_type* old = this->a;
+  container_type ch;
   this->a = &ch;
   prepopulate_func(*this->a);
 
@@ -624,13 +708,14 @@ template <int DS> bool XorDelete<DS>::check() {
   this->a = old;
 
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    assert(unval(old->read(i)) == unval(ch.read(i)));
+    assert(old->unsafe_get(i) == ch.unsafe_get(i));
   }
   return true;
 }
 
 
 template <int DS> struct IsolatedWrites : public DSTester<DS> {
+    typedef typename DSTester<DS>::container_type container_type;
     IsolatedWrites() {}
     void run(int me);
     bool check();
@@ -638,28 +723,27 @@ template <int DS> struct IsolatedWrites : public DSTester<DS> {
 
 template <int DS> void IsolatedWrites<DS>::run(int me) {
   TThread::id = me;
-  typename Container<DS>::type* a = this->a;
-  Container<DS>::thread_init(*a);
+  container_type* a = this->a;
+  container_type::thread_init(*a);
 
   TRANSACTION {
     for (int i = 0; i < nthreads; ++i) {
-      a->transRead(i);
+      a->transGet(i);
     }
-    a->transWrite(me, val(me+1));
+    a->transPut(me, val(me+1));
   } RETRY(true);
-      
-  
 }
 
 template <int DS> bool IsolatedWrites<DS>::check() {
   for (int i = 0; i < nthreads; ++i) {
-    assert(unval(this->a->read(i)) == i+1);
+    assert(this->a->unsafe_get(i) == i+1);
   }
   return true;
 }
 
 
 template <int DS> struct BlindWrites : public DSTester<DS> {
+    typedef typename DSTester<DS>::container_type container_type;
     BlindWrites() {}
     void run(int me);
     bool check();
@@ -667,33 +751,34 @@ template <int DS> struct BlindWrites : public DSTester<DS> {
 
 template <int DS> void BlindWrites<DS>::run(int me) {
   TThread::id = me;
-  typename Container<DS>::type* a = this->a;
-  Container<DS>::thread_init(*a);
+  container_type* a = this->a;
+  container_type::thread_init(*a);
 
   TRANSACTION {
-    if (unval(a->transRead(0)) == 0 || me == nthreads-1) {
+    if (unval(a->transGet(0)) == 0 || me == nthreads-1) {
       for (int i = 1; i < ARRAY_SZ; ++i) {
-        a->transWrite(i, val(me));
+        a->transPut(i, val(me));
       }
     }
 
     // nthreads-1 always wins
     if (me == nthreads-1) {
-      a->transWrite(0, val(me));
+      a->transPut(0, val(me));
     }
   } RETRY(true);
 }
 
 template <int DS> bool BlindWrites<DS>::check() {
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    debug("read %d\n", this->a->read(i));
-    assert(unval(this->a->read(i)) == nthreads-1);
+    debug("read %d\n", this->a->unsafe_get(i));
+    assert(this->a->unsafe_get(i) == nthreads-1);
   }
   return true;
 }
 
 
 template <int DS> struct InterferingRWs : public DSTester<DS> {
+    typedef typename DSTester<DS>::container_type container_type;
     InterferingRWs() {}
     void run(int me);
     bool check();
@@ -701,14 +786,14 @@ template <int DS> struct InterferingRWs : public DSTester<DS> {
 
 template <int DS> void InterferingRWs<DS>::run(int me) {
   TThread::id = me;
-  typename Container<DS>::type* a = this->a;
-  Container<DS>::thread_init(*a);
+  container_type* a = this->a;
+  container_type::thread_init(*a);
 
   TRANSACTION {
     for (int i = 0; i < ARRAY_SZ; ++i) {
       if ((i % nthreads) >= me) {
-        auto cur = a->transRead(i);
-        a->transWrite(i, val(unval(cur)+1));
+        auto cur = a->transGet(i);
+        a->transPut(i, val(unval(cur)+1));
       }
     }
   } RETRY(true);
@@ -716,7 +801,7 @@ template <int DS> void InterferingRWs<DS>::run(int me) {
 
 template <int DS> bool InterferingRWs<DS>::check() {
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    assert(unval(this->a->read(i)) == (i % nthreads)+1);
+    assert(this->a->unsafe_get(i) == (i % nthreads)+1);
   }
   return true;
 }

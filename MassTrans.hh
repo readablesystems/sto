@@ -223,7 +223,7 @@ public:
   }
 
   template <bool CopyVals = true, bool INSERT = true, bool SET = true, typename StringType>
-  bool transPut(StringType& key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
+  bool transPut(const StringType& key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
     // optimization to do an unlocked lookup first
     if (SET) {
       unlocked_cursor_type lp(table_, key);
@@ -595,58 +595,6 @@ public:
   void print() {
     //    table_.print();
   }
-  
-
-  // these are mostly for concurrent.cc (which currently requires specifically named methods)
-  void transWrite(int k, value_type v) {
-    char s[16];
-    sprintf(s, "%d", k);
-    transPut(s, v);
-  }
-  value_type transRead(int k) {
-    char s[16];
-    sprintf(s, "%d", k);
-    value_type v;
-    if (!transGet(s, v)) {
-      return value_type();
-    }
-    return v;
-  }
-  bool transGet(int k, value_type& v) {
-    char s[16];
-    sprintf(s, "%d", k);
-    return transGet(s, v);
-  }
-  bool transPut(int k, value_type v) {
-    char s[16];
-    sprintf(s, "%d", k);
-    return transPut(s, v);
-  }
-  bool transUpdate(int k, value_type v) {
-    char s[16];
-    sprintf(s, "%d", k);
-    return transUpdate(s, v);
-  }
-  bool transInsert(int k, value_type v) {
-    char s[16];
-    sprintf(s, "%d", k);
-    return transInsert(s, v);
-  }
-  bool transDelete(int k) {
-    char s[16];
-    sprintf(s, "%d", k);
-    return transDelete(s);
-  }
-  value_type read(int k) {
-    return transRead(k);
-  }
-
-  void put(int k, value_type v) {
-    char s[16];
-    sprintf(s, "%d", k);
-    put(s, v);
-  }
-
 
 protected:
   // called once we've checked our own writes for a found put()

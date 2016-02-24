@@ -8,8 +8,11 @@ template <typename T,  bool GenericSTM = false, typename Structure = versioned_v
 // (not much else we can do though)
 class SingleElem : public Shared {
 public:
-    T read() {
+    T unsafe_read() const {
         return s_.read_value();
+    }
+    void unsafe_write(T v) {
+        s_.set_value(v);
     }
     
     void write(T v) {
@@ -23,7 +26,7 @@ public:
 private:
     typedef TransactionTid::type version_type;
 
-    inline void atomicRead(version_type& v, T& val) {
+    inline void atomicRead(version_type& v, T& val) const {
         version_type v2;
         do {
             v2 = s_.version();
@@ -37,7 +40,7 @@ private:
     }
 
 public:
-    T transRead() {
+    T transRead() const {
         auto item = Sto::item(this, this);
         if (item.has_write())
             return item.template write_value<T>();
@@ -57,7 +60,7 @@ public:
         if (Sto::in_progress())
             return transRead();
         else
-            return read();
+            return unsafe_read();
     }
 
     void transWrite(const T& v) {
@@ -69,7 +72,7 @@ public:
         if (Sto::in_progress())
             transWrite(v);
         else
-            write(v);
+            unsafe_write(v);
         return *this;
     }
 

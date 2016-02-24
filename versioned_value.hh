@@ -41,6 +41,9 @@ struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
     return value_;
   }
   
+  inline const version_type& version() const {
+    return version_;
+  }
   inline version_type& version() {
     return version_;
   }
@@ -90,10 +93,13 @@ public:
     // rcu free old (HOW without threadinfo access??)
   }
 
-  const value_type& read_value() {
+  const value_type& read_value() const {
     return *valueptr_;
   }
 
+  inline const version_type& version() const {
+    return version_;
+  }
   version_type& version() {
     return version_;
   }

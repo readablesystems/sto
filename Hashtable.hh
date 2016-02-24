@@ -369,53 +369,18 @@ public:
 
   // these are wrappers for concurrent.cc and other
   // frameworks we use the hashtable in
-  void transWrite(Key k, Value v) {
-    transPut(k, v);
-  }
-  Value transRead(Key k) {
+  Value transGet(Key k) {
     Value v;
-    if (!transGet(k, v)) {
-      return Value();
-    }
+    transGet(k, v);
     return v;
   }
-  Value read(Key k) {
-    TransactionGuard t;
-    return transRead(k);
-  }
-  void insert(Key k, Value v) {
-    TransactionGuard t;
-    transInsert(k, v);
-  }
-  void erase(Key ) {}
-  void update(Key k, Value v) {
-    TransactionGuard t;
-    transUpdate(k, v);
-  }
-  template <typename F>
-  void update_fn(Key k, F f) {
-    TransactionGuard t;
-    transUpdate(k, f(transRead(t, k)));
-  }
-  template <typename F>
-  void upsert(Key k, F f, Value v) {
-    TransactionGuard t;
-    Value cur;
-    if (transGet(k, cur)) {
-      transUpdate(k, f(cur));
-    } else {
-      transInsert(k, v);
+
+    Value unsafe_get(Key k) {
+        if (Value* p = readPtr(k))
+            return *p;
+        else
+            return Value();
     }
-  }
-  void find(Key k, Value& v) {
-    TransactionGuard t;
-    transGet(k, v);
-  }
-  Value find(Key k) {
-    return read(k);
-  }
-  void rehash(unsigned ) {}
-  void reserve(unsigned ) {}
 
 #endif /* STO_NO_STM */
 

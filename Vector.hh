@@ -225,19 +225,9 @@ public:
     size_type unsafe_size() const {
         return size_;
     }
-
-    T read(key_type i) {
-        // XXX what is this
-        if (i < size_) {
-            return data_[i].read();
-        } else {
-            return 0;
-        }
-    }
-    
-    void write(key_type i, value_type v) {
+    T unsafe_get(key_type i) const {
         assert(i < size_);
-        data_[i].write(std::move(v));
+        return data_[i].unsafe_read();
     }
 
     proxy_type front() {
@@ -561,27 +551,10 @@ public:
         return iterator(this, 0, true);
     }
 
-    // Extra methods used by concurrent.cc
-    value_type transRead(const key_type& i){
-        if (i >= size_ + trans_size_offs()) { // TODO: this isn't totally right
-            return 0;
-        } else {
-            return transGet(i);
-        }
-    }
-    
-    void transWrite(const key_type& i, value_type v) {
-        if (i >= size_ + trans_size_offs()) {
-            return push_back(v);
-        } else {
-            return transUpdate(i, v);
-        }
-    }
-    
     // This is not-transactional and only used for debugging purposes
     void print() {
         for (int i = 0; i < size_ + trans_size_offs(); i++) {
-            std::cout << transRead(i) << " ";
+            std::cout << unsafe_get(i) << " ";
         }
         std::cout << std::endl;
     }

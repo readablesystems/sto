@@ -18,22 +18,21 @@ class Array1 {
     typedef VersionFunctions<Version> Versioning;
   public:
     typedef unsigned key_type;
+    typedef unsigned size_type;
     typedef T value_type;
 
-    T read(key_type i) {
-        return data_[i].read();
+    T unsafe_get(size_type i) const {
+        return data_[i].unsafe_read();
+    }
+    void unsafe_put(size_type i, value_type v) {
+        data_[i].unsafe_write(v);
     }
 
-    void write(key_type i, value_type v) {
-        data_[i].write(std::move(v));
+    value_type transGet(size_type idx) const {
+        return data_[idx].transRead();
     }
-
-    value_type transRead(const key_type& i){
-        return data_[i].transRead();
-    }
-
-    void transWrite(const key_type& i, value_type v) {
-        data_[i].transWrite(std::move(v));
+    void transPut(size_type idx, value_type v) {
+        data_[idx].transWrite(std::move(v));
     }
 
     iterator begin() { return iterator(this, 0); }

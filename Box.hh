@@ -16,7 +16,7 @@ public:
         idx_ = idx;
     }
     
-    T read() {
+    T unsafe_read() const {
         return s_.read_value();
     }
     
@@ -73,7 +73,7 @@ public:
         if (Sto::in_progress())
             return transRead();
         else
-            return read();
+            return unsafe_read();
     }
 
     void transWrite(const T& v) {

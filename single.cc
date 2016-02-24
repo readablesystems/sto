@@ -7,10 +7,34 @@
 #include "List.hh"
 #include "Queue.hh"
 #include "Transaction.hh"
+#include "IntStr.hh"
 
 #define N 100
 
 using namespace std;
+
+template <typename T> class IntMassTrans {
+    MassTrans<T> m_;
+public:
+    bool transGet(int k, T& v) {
+        return m_.transGet(IntStr(k).str(), v);
+    }
+    bool transPut(int k, T v) {
+        return m_.transPut(IntStr(k).str(), v);
+    }
+    bool transUpdate(int k, T v) {
+        return m_.transUpdate(IntStr(k).str(), v);
+    }
+    bool transInsert(int k, T v) {
+        return m_.transInsert(IntStr(k).str(), v);
+    }
+    bool transDelete(int k) {
+        return m_.transDelete(IntStr(k).str());
+    }
+    void thread_init() {
+        m_.thread_init();
+    }
+};
 
 void queueTests() {
     Queue<int> q;
@@ -321,21 +345,21 @@ void insertDeleteTest(bool shouldAbort) {
   {
       TransactionGuard t;
       for (int i = 10; i < 25; ++i) {
-          assert(h.transInsert(i, i+1));
+          assert(h.transInsert(IntStr(i).str(), i+1));
       }
   }
 
   TestTransaction t2(1);
-  assert(h.transInsert(25, 26));
+  assert(h.transInsert(IntStr(25).str(), 26));
   int x;
-  assert(h.transGet(25, x));
-  assert(!h.transGet(26, x));
+  assert(h.transGet(IntStr(25).str(), x));
+  assert(!h.transGet(IntStr(26).str(), x));
 
-  assert(h.transDelete(25));
+  assert(h.transDelete(IntStr(25).str()));
 
   if (shouldAbort) {
       TestTransaction t3(2);
-      assert(h.transInsert(26, 27));
+      assert(h.transInsert(IntStr(26).str(), 27));
       assert(t3.try_commit());
       assert(!t2.try_commit());
   } else
@@ -347,29 +371,29 @@ void insertDeleteSeparateTest() {
   {
       TransactionGuard t_init;
       for (int i = 10; i < 12; ++i) {
-          assert(h.transInsert(i, i+1));
+          assert(h.transInsert(IntStr(i).str(), i+1));
       }
   }
 
   TestTransaction t(1);
   int x;
-  assert(!h.transGet(12, x));
+  assert(!h.transGet(IntStr(12).str(), x));
 
   TestTransaction t2(2);
-  assert(h.transInsert(12, 13));
-  assert(h.transDelete(10));
+  assert(h.transInsert(IntStr(12).str(), 13));
+  assert(h.transDelete(IntStr(10).str()));
   assert(t2.try_commit());
   assert(!t.try_commit());
 
 
   TestTransaction t3(3);
-  assert(!h.transGet(13, x));
+  assert(!h.transGet(IntStr(13).str(), x));
   
   TestTransaction t4(4);
-  assert(h.transInsert(10, 11));
-  assert(h.transInsert(13, 14));
-  assert(h.transDelete(11));
-  assert(h.transDelete(12));
+  assert(h.transInsert(IntStr(10).str(), 11));
+  assert(h.transInsert(IntStr(13).str(), 14));
+  assert(h.transDelete(IntStr(11).str()));
+  assert(h.transDelete(IntStr(12).str()));
   assert(t4.try_commit());
   assert(!t3.try_commit());
 
@@ -384,7 +408,7 @@ void rangeQueryTest() {
       TransactionGuard t_init;
       sprintf(ns, "%d", n);
       for (int i = 10; i <= n; ++i) {
-          assert(h.transInsert(i, i+1));
+          assert(h.transInsert(IntStr(i).str(), i+1));
       }
   }
 
@@ -555,7 +579,7 @@ int main() {
   // run on both Hashtable and MassTrans
   Hashtable<int, int> h;
   basicMapTests(h);
-  MassTrans<int> m;
+  IntMassTrans<int> m;
   m.thread_init();
   basicMapTests(m);
 
