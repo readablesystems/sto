@@ -6,6 +6,7 @@
 #include <vector>
 #include <map>
 #include "Transaction.hh"
+#include "TArrayProxy.hh"
 #include "Box.hh"
 #include "VersionFunctions.hh"
 #include "rwlock.hh"
@@ -32,38 +33,6 @@ private:
     typedef TransactionTid::type Version;
     typedef VersionFunctions<Version> Versioning;
 
-    class const_proxy {
-    public:
-        const_proxy(const_vector_type* a, index_type i)
-            : a_(a), i_(i) {
-        }
-        inline operator T() const {
-            return const_cast<vector_type*>(a_)->transGet(i_);
-        }
-        const_proxy& operator=(const const_proxy&) = delete;
-    protected:
-        const_vector_type* a_;
-        index_type i_;
-    };
-    class proxy : public const_proxy {
-    public:
-        proxy(vector_type* a, index_type i)
-            : const_proxy(a, i) {
-        }
-        inline proxy& operator=(const T& x) {
-            const_cast<vector_type*>(this->a_)->transUpdate(this->i_, x);
-            return *this;
-        }
-        inline proxy& operator=(T&& x) {
-            const_cast<vector_type*>(this->a_)->transUpdate(this->i_, std::move(x));
-            return *this;
-        }
-        inline proxy& operator=(const proxy& x) {
-            const_cast<vector_type*>(this->a_)->transUpdate(this->i_, x.operator T());
-            return *this;
-        }
-    };
-
     static constexpr int vector_key = -1;
     static constexpr int push_back_key = -2;
     static constexpr int size_key = -3;
@@ -75,10 +44,12 @@ private:
 public:
     typedef int key_type;
     typedef T value_type;
+    typedef value_type get_type;
     
     typedef VecIterator<T, Opacity, Elem> iterator;
     typedef const VecIterator<T, Opacity, Elem> const_iterator;
-    typedef proxy reference;
+    typedef TArrayProxy<Vector<T, Opacity, Elem>> proxy_type;
+    typedef TConstArrayProxy<Vector<T, Opacity, Elem>> const_proxy_type;
     typedef int32_t size_type;
 
     
@@ -269,33 +240,33 @@ public:
         data_[i].write(std::move(v));
     }
 
-    proxy front() {
+    proxy_type front() {
         if (size_ + trans_size_offs() == 0)
             Sto::abort();
-        return proxy(this, 0);
+        return proxy_type(this, 0);
     }
 
-    proxy back() {
+    proxy_type back() {
         size_t sz = size();
         if (sz == 0)
             Sto::abort();
-        return proxy(this, sz - 1);
+        return proxy_type(this, sz - 1);
     }
 
-    const_proxy operator[](key_type i) const {
+    const_proxy_type operator[](key_type i) const {
         size_type sz = size_ + trans_size_offs();
         if (i >= sz)
             Sto::abort();
-        return const_proxy(this, i);
+        return const_proxy_type(this, i);
     }
-    proxy operator[](key_type i) {
+    proxy_type operator[](key_type i) {
         size_type sz = size_ + trans_size_offs();
         if (i >= sz)
             Sto::abort();
-        return proxy(this, i);
+        return proxy_type(this, i);
     }
 
-    value_type transGet(const key_type& i){
+    value_type transGet(const key_type& i) const {
         Version ver = vecversion_;
         acquire_fence();
         size_type size = size_;
@@ -393,11 +364,11 @@ public:
         }
     }
     
-    bool is_list(const TransItem& item) {
+    static bool is_list(const TransItem& item) {
         return item.flags() & list_bit;
     }
     
-    bool has_delete(const TransItem& item) {
+    static bool has_delete(const TransItem& item) {
         return item.flags() & delete_bit;
     }
     
@@ -409,7 +380,7 @@ public:
         TransactionTid::unlock(v);
     }
     
-    bool is_locked(Version& v) {
+    bool is_locked(Version& v) const {
         return TransactionTid::is_locked(v);
     }
     
@@ -439,7 +410,7 @@ public:
         return Sto::item(const_cast<Vector<T, Opacity, Elem>*>(this), size_key).template stash_value<int>(0);
     }
 
-    TransProxy vector_item() {
+    TransProxy vector_item() const {
         // can switch this to fresh_item to not read our writes
         return Sto::item(this, vector_key);
     }
@@ -448,7 +419,7 @@ public:
         vector_item().add_write(0);
     }
 
-    TransProxy add_vector_version(Version ver) {
+    TransProxy add_vector_version(Version ver) const {
         return vector_item().add_read(ver);
     }
 
@@ -629,7 +600,7 @@ class VecIterator : public std::iterator<std::random_access_iterator_tag, T> {
 public:
     typedef T value_type;
     typedef Vector<T, Opacity, Elem> vector_type;
-    typedef typename vector_type::proxy proxy_type;
+    typedef typename vector_type::proxy_type proxy_type;
     typedef VecIterator<T, Opacity, Elem> iterator;
     VecIterator() = default;
     VecIterator(Vector<T, Opacity, Elem> * arr, int ptr, bool endy) : myArr(arr), myPtr(ptr), endy(endy) { }
