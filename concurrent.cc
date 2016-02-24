@@ -7,7 +7,6 @@
 
 #include "Array1.hh"
 #include "GenericSTMArray.hh"
-#include "ListArray.hh"
 #include "Hashtable.hh"
 #include "Queue.hh"
 #include "Vector.hh"
@@ -24,7 +23,6 @@
 #define USE_HASHTABLE 1
 #define USE_MASSTREE 2
 #define USE_GENSTMARRAY 3
-#define USE_LISTARRAY 4
 #define USE_QUEUE 5
 #define USE_VECTOR 6
 
@@ -151,14 +149,6 @@ template <> struct Container<USE_VECTOR> : public ContainerBase_arraylike {
     static bool transDelete(T& c, K key) {
         c.erase(c.begin() + key);
         return true;
-    }
-};
-
-template <> struct Container<USE_LISTARRAY> : public ContainerBase_maplike {
-    typedef ListArray<value_type> type;
-    template <typename K, typename V>
-    static bool transUpdate(type&, K, V) {
-        return false;
     }
 };
 
@@ -878,7 +868,6 @@ void print_time(struct timeval tv1, struct timeval tv2) {
     {name, desc, 1, new type<1, ## __VA_ARGS__>},     \
     {name, desc, 2, new type<2, ## __VA_ARGS__>},     \
     {name, desc, 3, new type<3, ## __VA_ARGS__>},     \
-    {name, desc, 4, new type<4, ## __VA_ARGS__>},     \
     {name, desc, 6, new type<6, ## __VA_ARGS__>}
 
 struct Test {
@@ -907,7 +896,6 @@ struct {
     {"masstree", USE_MASSTREE},
     {"mass", USE_MASSTREE},
     {"genstm", USE_GENSTMARRAY},
-    {"list", USE_LISTARRAY},
     {"queue", USE_QUEUE},
     {"vector", USE_VECTOR}
 };

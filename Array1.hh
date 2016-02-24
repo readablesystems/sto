@@ -82,4 +82,3 @@ private:
     Array1<T, N, Elem> * myArr;
     int myPtr;
 };
-
