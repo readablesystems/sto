@@ -24,7 +24,7 @@ ifneq ($(NDEBUG),1)
 CXXFLAGS += -g
 endif
 
-all: concurrent single singleelems array1 genericTest list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators
+all: concurrent singleelems array1 genericTest list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single
 
 %.o: %.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
@@ -34,11 +34,6 @@ all: concurrent single singleelems array1 genericTest list1 vector pqueue rbtree
 
 %.S: %.o
 	objdump -S $< > $@
-
-libjson.a: json.o string.o straccum.o str.o msgpack.o \
-	clp.o kvrandom.o compiler.o kvthread.o
-	@/bin/rm -f $@
-	$(AR) cru $@ $^
 
 
 MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
@@ -99,7 +94,6 @@ $(MASSTREE_OBJS): masstree ;
 masstree: $(MASSTREEDIR)/config.status
 	$(MAKE) -C $(MASSTREEDIR)
 
-.PHONY: $(MASSTREEDIR)/libjson.a
 $(MASSTREEDIR)/libjson.a: $(MASSTREEDIR)/config.status
 	$(MAKE) -C $(MASSTREEDIR) libjson.a
 
@@ -124,7 +118,7 @@ stamp-h: config.h.in config.status
 	echo > stamp-h
 
 clean:
-	rm -f concurrent array single singleelems genericTest *.o libjson.a
+	rm -f concurrent array single singleelems genericTest *.o
 	rm -f pqueue vector list1 rbtree trans_test ht_mt pqVsIt iterators
 	rm -rf .deps
 	$(MAKE) -C $(MASSTREEDIR) clean
