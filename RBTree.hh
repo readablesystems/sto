@@ -55,7 +55,7 @@ public:
     typedef TransactionTid::type Version;
     typedef versioned_value_struct<std::pair<const K, T>> versioned_pair;
 
-    static constexpr Version insert_bit = TransactionTid::user_bit1;
+    static constexpr Version insert_bit = TransactionTid::user_bit;
 
     explicit rbpair(const K& key, const T& value)
     : pair_(std::pair<const K, T>(key, value), TransactionTid::increment_value + insert_bit) {}
@@ -95,7 +95,7 @@ class RBTree : public Shared {
 
     static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
-    static constexpr Version insert_bit = TransactionTid::user_bit1;
+    static constexpr Version insert_bit = TransactionTid::user_bit;
 
     typedef RBTreeIterator<K, T> iterator;
     typedef const RBTreeIterator<K, T> const_iterator;

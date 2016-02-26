@@ -750,7 +750,7 @@ protected:
     return v;
   }
 
-  static constexpr Version invalid_bit = TransactionTid::user_bit1;
+  static constexpr Version invalid_bit = TransactionTid::user_bit;
 
   static constexpr uintptr_t internode_bit = 1<<0;
 

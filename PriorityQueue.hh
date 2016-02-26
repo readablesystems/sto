@@ -16,11 +16,11 @@ class PriorityQueue: public Shared {
     static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
     static constexpr TransItem::flags_type dirty_tag = TransItem::user0_bit<<2;
-    
-    static constexpr Version insert_bit = TransactionTid::user_bit1;
-    static constexpr Version delete_bit = TransactionTid::user_bit1<<1;
-    static constexpr Version dirty_bit = TransactionTid::user_bit1<<2;
-        
+
+    static constexpr Version insert_bit = TransactionTid::user_bit; // XXX get rid of this
+    static constexpr Version delete_bit = TransactionTid::user_bit<<1; // XXX get rid of this
+    static constexpr Version dirty_bit = TransactionTid::user_bit<<2; // XXX get rid of this
+
     static constexpr int pop_key = -2;
     static constexpr int empty_key = -3;
     static constexpr int top_key = -4;
