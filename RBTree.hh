@@ -758,7 +758,7 @@ inline void RBTree<K, T>::unlock(TransItem& item) {
 }
    
 template <typename K, typename T>
-inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans) {
+inline bool RBTree<K, T>::check(const TransItem& item, const Transaction&) {
     auto e = item.key<uintptr_t>();
     bool is_treekey = ((uintptr_t)e == (uintptr_t)tree_key_);
     bool is_sizekey = ((uintptr_t)e == (uintptr_t)size_key_);
@@ -784,17 +784,10 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     }
     fence();
 
-    bool same_version;
-    if (is_structured) {
-        same_version = (read_version == curr_version);
-    } else {
-        // XXX this is not right
-        same_version = (read_version ^ curr_version) < (TransactionTid::lock_bit << 1);
-    }
-    bool not_locked = !is_locked(curr_version) || item.has_lock(trans);
+    if (TransactionTid::check_version(curr_version, read_version))
+        return true;
 #if DEBUG
-    bool check_fails = !(same_version && not_locked);
-    if (check_fails && !is_sizekey && !is_treekey) {
+    if (!is_sizekey && !is_treekey) {
         wrapper_type* node = reinterpret_cast<wrapper_type*>(e & ~uintptr_t(1));
         int k_ = node? node->key() : 0;
         int v_ = node? node->writeable_value() : 0;
@@ -803,13 +796,13 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
         TransactionTid::unlock(::lock);
     }
     TransactionTid::lock(::lock);
-    if (!same_version)
+    if ((curr_version ^ read_version) >= (TransactionTid::lock_bit << 1))
         printf("\tVersion mismatch: %lx -> %lx\n", read_version, curr_version);
-    if (!not_locked)
-        printf("\tVersion locked\n");
+    if (TransactionTid::is_locked_elsewhere(curr_version))
+        printf("\tVersion locked elsewhere\n");
     TransactionTid::unlock(::lock);
 #endif
-    return same_version && not_locked;
+    return false;
 }
 
 // key-versionedvalue pairs with the same key will have two different items

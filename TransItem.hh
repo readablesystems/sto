@@ -93,7 +93,6 @@ class TransItem {
     bool needs_unlock() const {
         return flags() & lock_bit;
     }
-    bool has_lock(const Transaction& t) const;
     bool same_item(const TransItem& x) const {
         return owner() == x.owner() && key_ == x.key_;
     }
@@ -237,7 +236,6 @@ class TransProxy {
     bool has_stash() const {
         return i_->has_stash();
     }
-    bool has_lock() const;
 
     template <typename T>
     inline TransProxy& add_read(T rdata);

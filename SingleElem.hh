@@ -3,7 +3,7 @@
 #include "versioned_value.hh"
 #include "VersionFunctions.hh"
 
-template <typename T,  bool GenericSTM = false, typename Structure = versioned_value_struct<T>>
+template <typename T, bool GenericSTM = false, typename Structure = versioned_value_struct<T>>
 // if we're inheriting from Shared then a SingleElem adds both a version word and a vtable word
 // (not much else we can do though)
 class SingleElem : public Shared {
@@ -18,9 +18,7 @@ public:
     void write(T v) {
         TransactionTid::lock(s_.version());
         s_.set_value(v);
-        TransactionTid::type newv = (s_.version() + TransactionTid::increment_value) & ~(TransactionTid::lock_bit | TransactionTid::valid_bit);
-        release_fence();
-        s_.version() = newv;
+        TransactionTid::set_version_unlock(s_.version(), TransactionTid::next_invalid_version(s_.version()));
     }
 
 private:

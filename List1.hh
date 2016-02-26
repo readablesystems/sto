@@ -419,7 +419,7 @@ public:
         return true;
     }
 
-    bool check(const TransItem& item, const Transaction& t) {
+    bool check(const TransItem& item, const Transaction&) {
         if (item.key<List1*>() == this)
             return TransactionTid::check_version(listversion_, item.template read_value<version_type>());
         auto n = item.key<list_node*>();
@@ -582,5 +582,3 @@ public:
         list_type * myList;
         list_node * myPtr;
     };
-    
-    

@@ -130,13 +130,12 @@ bool Transaction::try_commit() {
     if (firstWrite_ < 0)
         firstWrite_ = transSet_.size();
 
-    int writeset_alloc[transSet_.size() - firstWrite_];
-    writeset_ = writeset_alloc;
-    nwriteset_ = 0;
+    int writeset[transSet_.size() - firstWrite_];
+    int nwriteset = 0;
 
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
         if (it->has_write())
-            writeset_[nwriteset_++] = it - transSet_.begin();
+            writeset[nwriteset++] = it - transSet_.begin();
         else if (it->has_predicate()) {
             if (!it->owner()->check_predicate(*it, *this))
                 goto abort;
@@ -149,14 +148,14 @@ bool Transaction::try_commit() {
 
     //phase1
 #if !NOSORT
-    std::sort(writeset_, writeset_ + nwriteset_, [&] (int i, int j) {
+    std::sort(writeset, writeset + nwriteset, [&] (int i, int j) {
         return transSet_[i] < transSet_[j];
     });
 #endif
-    if (nwriteset_) {
+    if (nwriteset) {
         state_ = s_committing_locked;
-        auto writeset_end = writeset_ + nwriteset_;
-        for (auto it = writeset_; it != writeset_end; ) {
+        auto writeset_end = writeset + nwriteset;
+        for (auto it = writeset; it != writeset_end; ) {
             TransItem* me = &transSet_[*it];
             if (!me->owner()->lock(*me))
                 goto abort;

@@ -393,8 +393,6 @@ public:
         if (tinfo[TThread::id()].trans_start_callback)
             tinfo[TThread::id()].trans_start_callback();
         transSet_.clear();
-        writeset_ = NULL;
-        nwriteset_ = 0;
         nhashed_ = 0;
         may_duplicate_items_ = false;
         firstWrite_ = -1;
@@ -496,36 +494,6 @@ private:
             firstWrite_ = idx;
     }
 
-    bool check_for_write(const TransItem& item) const {
-        // if !committing_, we're not in commit (just an opacity check), so no need to check our writes (we
-        // haven't locked anything yet)
-        if (state_ < s_committing)
-            return false;
-        auto it = &item;
-        bool has_write = it->has_write();
-        if (!has_write && may_duplicate_items_) {
-            has_write = std::binary_search(writeset_, writeset_ + nwriteset_, -1, [&] (const int& i, const int& j) {
-                auto& e1 = unlikely(i < 0) ? item : transSet_[i];
-                auto& e2 = likely(j < 0) ? item : transSet_[j];
-                auto ret = likely(e1.key_ < e2.key_) || (unlikely(e1.key_ == e2.key_) && unlikely(e1.owner() < e2.owner()));
-    #if 0
-              if (likely(i >= 0)) {
-                auto cur = &i;
-                int idx;
-                if (ret) {
-                  idx = (cur - writeset_) / 2;
-                } else {
-                  idx = (writeset_ + nwriteset_ - cur) / 2;
-                }
-                __builtin_prefetch(&transSet_[idx]);
-              }
-    #endif
-                return ret;
-            });
-        }
-        return has_write;
-    }
-
 public:
     void check_reads() {
         if (!check_reads(transSet_.begin(), transSet_.end())) {
@@ -615,8 +583,6 @@ private:
     bool may_duplicate_items_;
     uint16_t nhashed_;
     local_vector<TransItem, INIT_SET_SIZE> transSet_;
-    int* writeset_;
-    int nwriteset_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
     uint16_t hashtable_[HASHTABLE_SIZE];
@@ -854,12 +820,4 @@ inline TransProxy& TransProxy::set_stash(T sdata) {
     } else
         this->template stash_value<T>() = std::move(sdata);
     return *this;
-}
-
-inline bool TransItem::has_lock(const Transaction& t) const {
-    return t.check_for_write(*this);
-}
-
-inline bool TransProxy::has_lock() const {
-    return t_->check_for_write(*i_);
 }

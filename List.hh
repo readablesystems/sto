@@ -447,7 +447,7 @@ private:
       return true;
   }
 
-  bool check(const TransItem& item, const Transaction& t) {
+  bool check(const TransItem& item, const Transaction&) {
     if (item.key<list_node*>() == list_key) {
       auto lv = listversion_;
       return TransactionTid::check_version(lv, item.template read_value<version_type>());
@@ -458,13 +458,8 @@ private:
     }
     // We need to check listversion_ for locks here
     // otherwise we might be conflicting with a concurrent delete.
-    // XXX do not understand this, too complicated
-    if (is_locked(listversion_)) {
-      // check_item isn't technically const but the way we're using it is
-      auto it = ((Transaction&)t).check_item(this, list_key);
-      return it && it->has_lock();
-    }
-    return true;
+    // XXX Shouldn't we handle this locally?
+    return !TransactionTid::is_locked_elsewhere(listversion_);
   }
 
   void install(TransItem& item, const Transaction& t) {

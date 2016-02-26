@@ -112,7 +112,7 @@ public:
     }
     
     versioned_value* getMax() {
-        assert(is_locked(poplock_));
+        assert(TransactionTid::is_locked_here(poplock_));
         if (size_ == 0) {
             return NULL;
         }
@@ -289,8 +289,8 @@ public:
             for (int i = 0; i < size_; i++) {
                 versioned_value* val = heap_[i];
                 auto it = Sto::check_item(this, val);
-                if (!is_inserted(val->version()) ||
-                    (is_locked(val->version()) && (it == NULL ||  ! (*it).has_lock())))
+                if (!is_inserted(val->version())
+                    || TransactionTid::is_locked_elsewhere(val->version()))
                     return false;
             }
             
@@ -397,10 +397,6 @@ private:
         TransactionTid::unlock(*v);
     }
     
-    static bool is_locked(Version v) {
-        return TransactionTid::is_locked(v);
-    }
-
     static bool has_insert(const TransItem& item) {
         return item.flags() & insert_tag;
     }

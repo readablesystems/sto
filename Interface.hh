@@ -69,6 +69,17 @@ public:
         release_fence();
         v = new_v;
     }
+    static void set_version_unlock(type& v, type new_v) {
+        assert(is_locked_here(v));
+        assert(!is_locked(new_v) || is_locked_here(new_v));
+        new_v &= ~(lock_bit | threadid_mask);
+        release_fence();
+        v = new_v;
+    }
+
+    static type next_invalid_version(type v) {
+        return (v + increment_value) & ~valid_bit;
+    }
     static void inc_invalid_version(type& v) {
         assert(is_locked_here(v));
         type new_v = (v + increment_value) & ~valid_bit;
