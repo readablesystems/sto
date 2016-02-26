@@ -90,8 +90,7 @@ public:
     }
 
     bool check(const TransItem& item, const Transaction&) {
-        return TransactionTid::same_version(s_.version(), item.template read_value<version_type>())
-            && (!TransactionTid::is_locked(s_.version()) || item.has_write());
+        return TransactionTid::check_version(s_.version(), item.template read_value<version_type>());
     }
 
     void install(TransItem& item, const Transaction& t) {

@@ -290,21 +290,18 @@ public:
   }
 
 
-  bool versionCheck(Version v1, Version v2) {
-    return TransactionTid::same_version(v1, v2);
-  }
-
-  bool check(const TransItem& item, const Transaction& t) {
+  bool check(const TransItem& item, const Transaction&) {
     if (is_bucket(item)) {
       bucket_entry& buck = map_[bucket_key(item)];
-      return versionCheck(item.template read_value<Version>(), buck.version) && !is_locked(buck.version);
+      return TransactionTid::check_version(buck.version, item.template read_value<Version>());
     }
     auto el = item.key<internal_elem*>();
     auto read_version = item.template read_value<Version>();
     // if item has insert_bit then its an insert so no validity check needed.
     // otherwise we check that it is both valid and not locked
-    bool validity_check = has_insert(item) || (el->valid() && (!is_locked(el->version) || item.has_lock(t)));
-    return validity_check && versionCheck(read_version, el->version);
+    // XXX bool validity_check = has_insert(item) || (el->valid() && (!is_locked(el->version) || item.has_lock(t)));
+    // XXX Why isn't it enough to just do the versionCheck?
+    return TransactionTid::check_version(el->version, read_version);
   }
 
   bool lock(TransItem& item) {

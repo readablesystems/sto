@@ -1156,8 +1156,12 @@ int main(int argc, char *argv[]) {
   }
 #endif
 
-  if (runCheck)
-      tester->check();
+  if (runCheck) {
+    if (tester->check())
+      printf("Check succeeded\n");
+    else
+      printf("CHECK FAILED\n");
+  }
 #endif
 }
 

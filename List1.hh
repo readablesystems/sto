@@ -418,18 +418,14 @@ public:
             lock(listversion_);
         return true;
     }
-    
+
     bool check(const TransItem& item, const Transaction& t) {
-        if (item.key<List1*>() == this) {
-            auto lv = listversion_;
-            return
-            TransactionTid::same_version(lv, item.template read_value<version_type>())
-            && (!is_locked(lv) || item.has_lock(t));
-        }
+        if (item.key<List1*>() == this)
+            return TransactionTid::check_version(listversion_, item.template read_value<version_type>());
         auto n = item.key<list_node*>();
         return n->is_valid() || has_insert(item);
     }
-    
+
     void install(TransItem& item, const Transaction& t) {
         if (item.key<List1*>() == this)
             return;

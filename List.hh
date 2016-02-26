@@ -450,9 +450,7 @@ private:
   bool check(const TransItem& item, const Transaction& t) {
     if (item.key<list_node*>() == list_key) {
       auto lv = listversion_;
-      return
-        TransactionTid::same_version(lv, item.template read_value<version_type>())
-          && (!is_locked(lv) || item.has_lock(t));
+      return TransactionTid::check_version(lv, item.template read_value<version_type>());
     }
     auto n = item.key<list_node*>();
     if (!n->is_valid()) {
@@ -460,6 +458,7 @@ private:
     }
     // We need to check listversion_ for locks here
     // otherwise we might be conflicting with a concurrent delete.
+    // XXX do not understand this, too complicated
     if (is_locked(listversion_)) {
       // check_item isn't technically const but the way we're using it is
       auto it = ((Transaction&)t).check_item(this, list_key);

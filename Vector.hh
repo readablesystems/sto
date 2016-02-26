@@ -266,8 +266,7 @@ public:
             bool aborted = false;
             if (vecitem.has_read()) {
                 auto lv = vecversion_;
-                if (!TransactionTid::same_version(lv, vecitem.template read_value<Version>())
-                    || is_locked(lv)) {
+                if (!TransactionTid::check_version(lv, vecitem.template read_value<Version>())) {
                     aborted = true;
                     Sto::abort();
                 }
@@ -314,8 +313,7 @@ public:
             auto vecitem = vector_item();
             if (vecitem.has_read()) {
                 auto lv = vecversion_;
-                if (!TransactionTid::same_version(lv, vecitem.template read_value<Version>())
-                    || is_locked(lv)) {
+                if (!TransactionTid::check_version(lv, vecitem.template read_value<Version>())) {
                     aborted = true;
                     Sto::abort();
                 }
@@ -430,11 +428,8 @@ public:
     }
 
     bool check(const TransItem& item, const Transaction& trans){
-        if (item.key<int>() == vector_key || item.key<int>() == push_back_key) {
-            auto lv = vecversion_;
-            return TransactionTid::same_version(lv, item.template read_value<Version>())
-                && (!is_locked(lv) || item.has_lock(trans));
-        }
+        if (item.key<int>() == vector_key || item.key<int>() == push_back_key)
+            return TransactionTid::check_version(vecversion_, item.template read_value<Version>());
         key_type i = item.key<key_type>();
         assert(i >= 0);
         if (item.flags() & Elem::valid_only_bit) {

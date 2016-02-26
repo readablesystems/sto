@@ -110,7 +110,7 @@ public:
         stats_ = {0,0,0,0,0,0};
 #endif
     }
-    
+
     typedef rbwrapper<rbpair<K, T>> wrapper_type;
     typedef rbtree<wrapper_type> internal_tree_type;
 
@@ -788,7 +788,8 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction& trans)
     if (is_structured) {
         same_version = (read_version == curr_version);
     } else {
-        same_version = (read_version ^ curr_version) <= TransactionTid::lock_bit;
+        // XXX this is not right
+        same_version = (read_version ^ curr_version) < (TransactionTid::lock_bit << 1);
     }
     bool not_locked = !is_locked(curr_version) || item.has_lock(trans);
 #if DEBUG

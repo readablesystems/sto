@@ -282,7 +282,7 @@ public:
         return true;
     }
     
-    bool check(const TransItem& item, const Transaction& trans){
+    bool check(const TransItem& item, const Transaction&){
         if (item.key<int>() == top_key) { return true; }
         else if (item.key<int>() == empty_key) {
             // check that no other transaction  pushed items onto the queue
@@ -298,9 +298,7 @@ public:
             return true;
         }
         else if (item.key<int>() == pop_key) {
-            auto lv = popversion_;
-            return TransactionTid::same_version(lv, item.template read_value<Version>())
-            && (!is_locked(lv) || item.has_lock(trans));
+            return TransactionTid::check_version(popversion_, item.template read_value<Version>());
         } else {
             // This is top case
             auto e = item.key<versioned_value*>();

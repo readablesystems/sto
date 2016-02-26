@@ -501,7 +501,7 @@ public:
     lock(item.key<versioned_value*>());
     return true;
   }
-  bool check(const TransItem& item, const Transaction& t) {
+  bool check(const TransItem& item, const Transaction&) {
     if (is_inter(item)) {
       auto n = untag_inter(item.key<leaf_type*>());
       auto cur_version = n->full_version_value();
@@ -513,12 +513,7 @@ public:
     bool valid = validityCheck(item, e);
     if (!valid)
       return false;
-#if NOSORT
-    bool lockedCheck = true;
-#else
-    bool lockedCheck = !is_locked(e->version()) || item.has_lock(t);
-#endif
-    return lockedCheck && versionCheck(read_version, e->version());
+    return TransactionTid::check_version(e->version(), read_version);
   }
   void install(TransItem& item, const Transaction& t) {
     assert(!is_inter(item));
@@ -780,10 +775,6 @@ protected:
     Sto::check_opacity(v2);
   }
 
-  static bool versionCheck(Version v1, Version v2) {
-    return TransactionTid::same_version(v1, v2);
-    //return ((v1 ^ v2) & version_mask) == 0;
-  }
   static bool is_locked(Version v) {
     return TransactionTid::is_locked(v);
   }

@@ -78,11 +78,8 @@ public:
 
     static bool check_version(type cur_vers, type old_vers) {
         assert(!is_locked_elsewhere(old_vers));
-        // cur_vers might be locked by us
+        // cur_vers allowed to be locked by us
         return cur_vers == old_vers || cur_vers == (old_vers | lock_bit | TThread::id());
-    }
-    static bool same_version(type v1, type v2) {
-        return (v1 ^ v2) < valid_bit;
     }
     static bool try_check_opacity(type start_tid, type v) {
         signed_type delta = start_tid - v;
