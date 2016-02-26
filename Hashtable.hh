@@ -725,13 +725,11 @@ private:
     return placed_val;
   }
   
-  template <typename T>
-  TransProxy t_item(T e) {
+  TransProxy t_item(internal_elem* e) {
     return Sto::item(this, e);
   }
 
-  template <typename T>
-  TransProxy t_read_only_item(T e) {
+  TransProxy t_read_only_item(internal_elem* e) {
 #if READ_MY_WRITES
     return Sto::read_item(this, e);
 #else
