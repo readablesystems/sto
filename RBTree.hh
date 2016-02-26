@@ -19,7 +19,6 @@ template <typename K, typename T> class RBTree;
 template <typename T>
 class rbwrapper : public T {
   public:
-    typedef T value_type;
     typedef TransactionTid::type Version;
     explicit inline rbwrapper(const T& x)
     : T(x), nodeversion_(0) {
@@ -138,7 +137,7 @@ public:
     void unlock(versioned_value *e) {
         unlock(&e->version());
     }
-
+/*
     // iterators
     iterator begin() {
         lock(&treelock_);
@@ -168,7 +167,7 @@ public:
     iterator end() {
         return iterator(this, nullptr);
     }
-
+*/
     inline void lock(TransItem& item);
     inline void unlock(TransItem& item);
     inline bool check(const TransItem& item, const Transaction& trans);
@@ -182,7 +181,7 @@ private:
     inline size_t debug_size() const {
         return wrapper_tree_.size();
     }
-
+/*
     // XXX should we inline these?
     inline wrapper_type* get_next(wrapper_type* node) {
         lock(&treelock_);
@@ -239,6 +238,7 @@ private:
         unlock(&treelock_);
         return prev_node;
     }
+*/
 
     // A (hard) phantom node is a node that's being inserted but not yet
     // committed by another transaction. It should be treated as invisible
@@ -281,10 +281,10 @@ private:
         auto results = wrapper_tree_.find_any(rbkvp, rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
 
         // extract information from results
-        wrapper_type* x = std::get<wrapper_type*>(results);
-        Version val_ver = std::get<Version>(results);
-        bool found = std::get<bool>(results);
-        boundaries_type& boundaries = std::get<boundaries_type>(results);
+        wrapper_type* x = std::get<0>(results);
+        Version val_ver = std::get<1>(results);
+        bool found = std::get<2>(results);
+        boundaries_type& boundaries = std::get<3>(results);
 
         // PRESENT GET
         if (found) {
@@ -319,8 +319,8 @@ private:
             // add reads of boundary nodes, marking them as nodeversion ptrs
             for (unsigned int i = 0; i < 2; ++i) {
                 node_info_type& binfo = (i == 0)? boundaries.first : boundaries.second;
-                wrapper_type* n = std::get<wrapper_type*>(binfo);
-                Version v = std::get<Version>(binfo);
+                wrapper_type* n = std::get<0>(binfo);
+                Version v = std::get<1>(binfo);
                 if (n) {
 #if DEBUG
                     TransactionTid::lock(::lock);
@@ -347,9 +347,9 @@ private:
     inline std::tuple<wrapper_type*, Version, bool, boundaries_type, node_info_type>
     find_or_insert(wrapper_type& rbkvp) {
         auto results = wrapper_tree_.find_insert(rbkvp, rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-        bool found = std::get<bool>(results);
-        wrapper_type* ans = std::get<wrapper_type*>(results);
-        Version ver = std::get<Version>(results);
+        bool found = std::get<2>(results);
+        wrapper_type* ans = std::get<0>(results);
+        Version ver = std::get<1>(results);
         if (found && is_phantom_node(ans, ver)) {
             Sto::abort();
         }
@@ -400,16 +400,16 @@ private:
     // If key exists, then add a read of the item version and return the node
     // return value is a reference to the found or inserted node 
     inline wrapper_type* insert(const K& key) {
-        auto node = rbwrapper<rbpair<K, T>>( rbpair<K, T>(key, T()) );
+        rbwrapper<rbpair<K, T>> node( rbpair<K, T>(key, T()) );
         auto results = this->find_or_insert(node);
-        wrapper_type* x = std::get<wrapper_type*>(results);
-        Version ver = std::get<Version>(results);
-        bool found = std::get<bool>(results);
-        boundaries_type& boundaries = std::get<boundaries_type>(results);
-        node_info_type& pinfo = std::get<node_info_type>(results);
-        wrapper_type* p = std::get<wrapper_type*>(pinfo);
+        wrapper_type* x = std::get<0>(results);
+        Version ver = std::get<1>(results);
+        bool found = std::get<2>(results);
+        boundaries_type& boundaries = std::get<3>(results);
+        node_info_type& pinfo = std::get<4>(results);
+        wrapper_type* p = std::get<0>(pinfo);
         // p_ver is always nodeversion
-        Version p_ver = std::get<Version>(pinfo);
+        Version p_ver = std::get<1>(pinfo);
         
         // INSERT: kvp did not exist
         // @ver is *nodeversion*
@@ -417,8 +417,8 @@ private:
 #if DEBUG
             stats_.absent_insert++;
 #endif
-            wrapper_type* lhs = std::get<wrapper_type*>(boundaries.first);
-            wrapper_type* rhs = std::get<wrapper_type*>(boundaries.second);
+            wrapper_type* lhs = std::get<0>(boundaries.first);
+            wrapper_type* rhs = std::get<0>(boundaries.second);
             if (p == nullptr) {
                 // tree was empty, increment treeversion at COMMIT TIME
                 assert(lhs == nullptr && rhs == nullptr);
@@ -670,7 +670,6 @@ inline size_t RBTree<K, T>::size() const {
     auto size_item = Sto::item(const_cast<RBTree<K, T>*>(this), size_key_);
     if (!size_item.has_read()) {
         size_item.add_read(sizeversion_);
-    } else {
     }
 
     ssize_t offset = (size_item.has_write()) ? size_item.template write_value<ssize_t>() : 0;
@@ -682,10 +681,10 @@ inline size_t RBTree<K, T>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
 
     // find_or_abort() tracks boundary nodes if key is absent
-    auto results = find_or_abort(idx_pair, false);
+    auto results = find_or_abort(idx_pair);
 
-    wrapper_type* node = std::get<wrapper_type*>(results);
-    bool found = std::get<bool>(results);
+    wrapper_type* node = std::get<0>(results);
+    bool found = std::get<2>(results);
 #if DEBUG
     (!found) ? stats_.absent_count++ : stats_.present_count++;
 #endif
@@ -710,10 +709,10 @@ template <typename K, typename T>
 inline size_t RBTree<K, T>::erase(const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
     // add a read of boundary nodes if absent erase
-    auto results = find_or_abort(idx_pair, false);
-    wrapper_type* x = std::get<wrapper_type*>(results);
-    bool found = std::get<bool>(results);
-    Version ver = std::get<Version>(results);
+    auto results = find_or_abort(idx_pair);
+    wrapper_type* x = std::get<0>(results);
+    bool found = std::get<2>(results);
+    Version ver = std::get<1>(results);
    
     // PRESENT ERASE
     if (found) {

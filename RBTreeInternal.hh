@@ -568,8 +568,8 @@ rbtree<T, C>::find_insert(K& key, Comp comp) {
 
     T* lhs = r_.limit_[0];
     T* rhs = r_.limit_[1];
-    boundaries_type boundary = std::make_pair(std::make_tuple(lhs, lhs->nodeversion()),
-                    std::make_tuple(rhs, rhs->nodeversion()));
+    boundaries_type boundary = std::make_pair(std::make_tuple(lhs, lhs ? lhs->nodeversion() : 0),
+                    std::make_tuple(rhs, rhs ? rhs->nodeversion() : 0));
 
     int cmp = 0;
     while (n.node()) {
@@ -589,14 +589,14 @@ rbtree<T, C>::find_insert(K& key, Comp comp) {
 
     bool found = (n.node() != nullptr);
     T* retnode = n.node();
-    Version retver = retnode ? retnode->version() : 0;
-    node_info_type parent = std::make_tuple(p.node(), p->nodeversion());
+    Version retver = retnode ? (found ? retnode->version() : 0) : 0;
+    node_info_type parent = std::make_tuple(p.node(), p.node() ? p.node()->nodeversion() : 0);
 
     // perform the insertion if not found
     if (!found) {
         retnode = (T*)malloc(sizeof(T));
-        new (retnode) T(rbpair<K, typename T::value_type>(key, typename T::value_type()));
-        retver = retnode->version();
+        new (retnode) T(key);
+        retver = retnode->nodeversion();
         insert_commit(retnode, p, (cmp > 0));
 
         // increment parent's nodeversion upon successful insertion
@@ -612,8 +612,11 @@ rbtree<T, C>::find_insert(K& key, Comp comp) {
 
 template <typename T, typename C>
 inline T* rbtree<T, C>::erase(T& node) {
+    TransactionTid::lock(treelock_);
     rbaccount(erase);
-    return delete_node(&node, nullptr);
+    T* ret = delete_node(&node, nullptr);
+    TransactionTid::unlock(treelock_);
+    return ret;
 }
 
 // RBNODEPTR FUNCTION DEFINITIONS

@@ -104,10 +104,9 @@ void erase_conflict_tests() {
         Sto::set_transaction(&t1);
         assert(tree.count(1) == 1);
         assert(tree.erase(1) == 1);
-        assert(tree.count(1) == 1);
+        assert(tree.count(1) == 0);
         Sto::set_transaction(&t2);
         assert(tree.erase(1) == 1);
-        Sto::set_transaction(&t2);
         assert(t2.try_commit());
         Sto::set_transaction(&t1);
         assert(!t1.try_commit());
@@ -123,7 +122,7 @@ void erase_conflict_tests() {
         Sto::set_transaction(&t1);
         assert(tree.count(1) == 1);
         assert(tree.erase(1) == 1);
-        assert(tree.count(1) == 1);
+        assert(tree.count(1) == 0);
         Sto::set_transaction(&t2);
         assert(tree.erase(1) == 1);
         Sto::set_transaction(&t1);
@@ -266,14 +265,14 @@ int main() {
             assert(tree[i]==100-i);
         }
         assert(tree.size() == 100);
-
+/*
         // iterators
         int i = 100;
         for (auto it = tree.begin(); it != tree.end(); it++) {
             std::cout << "iterator is " << *it << std::endl;
             assert((*it) == i--);
         }
-        
+*/
         // count_my_inserts
         for (int i = 0; i < 100; ++i) {
             assert(tree.count(i) == 1);
