@@ -4,7 +4,6 @@
 #include <vector>
 #include <random>
 #include <map>
-#include <inttypes.h>
 #include "Transaction.hh"
 #include "Vector.hh"
 #include "PriorityQueue.hh"
