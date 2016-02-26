@@ -2,7 +2,7 @@
 
 Transaction::testing_type Transaction::testing;
 threadinfo_t Transaction::tinfo[MAX_THREADS];
-__thread int TThread::id;
+__thread int TThread::the_id;
 threadinfo_t::epoch_type __attribute__((aligned(64))) Transaction::global_epoch;
 bool Transaction::run_epochs = true;
 __thread Transaction *Sto::__transaction = nullptr;
@@ -103,9 +103,9 @@ void Transaction::hard_check_opacity(TransactionTid::type t) {
                 it->owner()->cleanup(*it, committed);
     }
     // TODO: this will probably mess up with nested transactions
-    tinfo[TThread::id].epoch = 0;
-    if (tinfo[TThread::id].trans_end_callback)
-        tinfo[TThread::id].trans_end_callback();
+    tinfo[TThread::id()].epoch = 0;
+    if (tinfo[TThread::id()].trans_end_callback)
+        tinfo[TThread::id()].trans_end_callback();
     // XXX should reset trans_end_callback after calling it...
     state_ = s_aborted + committed;
 }

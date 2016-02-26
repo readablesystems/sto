@@ -7,8 +7,15 @@ class Transaction;
 class TransItem;
 
 class TThread {
+    static __thread int the_id;
 public:
-    static __thread int id;
+    static int id() {
+        return the_id;
+    }
+    static void set_id(int id) {
+        assert(id >= 0 && id < 32);
+        the_id = id;
+    }
 };
 
 class TransactionTid {
@@ -33,36 +40,37 @@ public:
     static type make_user_bits(type user_bits) {
         return (user_bits << user_shift) & user_mask;
     }
-
     static type user_bits(type v) {
         return (v & user_mask) >> user_shift;
     }
-
     static type add_user_bits(type v, type user_bits) {
-        return (v & ~user_mask)  | make_user_bits(user_bits);
+        return (v & ~user_mask) | make_user_bits(user_bits);
     }
 
     static bool is_locked(type v) {
         return v & lock_bit;
     }
     
-    static bool try_lock(type& v, type user_bits = 0) {
+    static bool try_lock(type& v) {
         type vv = v;
-        if (!is_locked(vv)) {
-            return bool_cmpxchg(&v, vv, vv | lock_bit | make_user_bits(user_bits));
-        }
-        return false;
+        return bool_cmpxchg(&v, vv & ~lock_bit, vv | lock_bit);
+    }
+    static bool try_lock_with(type& v, type user_bits) {
+        type vv = v;
+        return bool_cmpxchg(&v, vv & ~lock_bit, vv | lock_bit | make_user_bits(user_bits));
     }
     
-    static void lock(type& v, type user_bits = 0) {
-        while (1) {
-            type vv = v;
-            if (!is_locked(vv) && bool_cmpxchg(&v, vv, vv | lock_bit | make_user_bits(user_bits)))
-                break;
+    static void lock(type& v) {
+        while (!try_lock(v))
             relax_fence();
-        }
         acquire_fence();
     }
+    static void lock_with(type& v, type user_bits = 0) {
+        while (!try_lock_with(v, user_bits))
+            relax_fence();
+        acquire_fence();
+    }
+
     static void unlock(type& v) {
         assert(is_locked(v));
         type new_v = (v - lock_bit) & ~user_mask;

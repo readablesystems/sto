@@ -73,7 +73,7 @@ int findK(T* q, int val) {
 
 template <typename T>
 void run(T* q, int me) {
-    TThread::id = me;
+    TThread::set_id(me);
     
     std::uniform_int_distribution<long> slotdist(0, max_value);
     int N = ntrans/nthreads;

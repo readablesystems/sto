@@ -112,13 +112,13 @@ public:
 #else
 
     if (!mythreadinfo.ti) {
-      auto* ti = threadinfo::make(threadinfo::TI_PROCESS, TThread::id);
+      auto* ti = threadinfo::make(threadinfo::TI_PROCESS, TThread::id());
       mythreadinfo.ti = ti;
     }
-    Transaction::tinfo[TThread::id].trans_start_callback = [] () {
+    Transaction::tinfo[TThread::id()].trans_start_callback = [] () {
       mythreadinfo.ti->rcu_start();
     };
-    Transaction::tinfo[TThread::id].trans_end_callback = [] () {
+    Transaction::tinfo[TThread::id()].trans_end_callback = [] () {
       mythreadinfo.ti->rcu_stop();
     };
 #endif

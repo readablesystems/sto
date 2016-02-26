@@ -30,7 +30,7 @@ VectorTester<Vector<int>> tester = VectorTester<Vector<int>>();
 
 template <typename T>
 void run(T* q, int me) {
-    TThread::id = me;
+    TThread::set_id(me);
     
     std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
     for (int i = 0; i < NTRANS; ++i) {

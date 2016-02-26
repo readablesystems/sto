@@ -427,7 +427,7 @@ template <int DS> struct ReadThenWrite : public DSTester<DS> {
 };
 
 template <int DS> void ReadThenWrite<DS>::run(int me) {
-  TThread::id = me;
+  TThread::set_id(me);
   container_type* a = this->a;
   container_type::thread_init(*a);
 
@@ -460,7 +460,7 @@ template <int DS> struct RandomRWs_parent : public DSTester<DS> {
 
 template <int DS> template <bool do_delete>
 void RandomRWs_parent<DS>::do_run(int me) {
-  TThread::id = me;
+  TThread::set_id(me);
   container_type* a = this->a;
   container_type::thread_init(*a);
 
@@ -626,7 +626,7 @@ template <int DS> struct KingDelete<DS, true> : public DSTester<DS> {
 };
 
 template <int DS> void KingDelete<DS, true>::run(int me) {
-  TThread::id = me;
+  TThread::set_id(me);
   container_type* a = this->a;
   Container<DS>::thread_init(*a);
 
@@ -664,7 +664,7 @@ template <int DS> struct XorDelete<DS, true> : public DSTester<DS> {
 };
 
 template <int DS> void XorDelete<DS, true>::run(int me) {
-  TThread::id = me;
+  TThread::set_id(me);
   container_type* a = this->a;
   container_type::thread_init(*a);
 
@@ -722,7 +722,7 @@ template <int DS> struct IsolatedWrites : public DSTester<DS> {
 };
 
 template <int DS> void IsolatedWrites<DS>::run(int me) {
-  TThread::id = me;
+  TThread::set_id(me);
   container_type* a = this->a;
   container_type::thread_init(*a);
 
@@ -750,7 +750,7 @@ template <int DS> struct BlindWrites : public DSTester<DS> {
 };
 
 template <int DS> void BlindWrites<DS>::run(int me) {
-  TThread::id = me;
+  TThread::set_id(me);
   container_type* a = this->a;
   container_type::thread_init(*a);
 
@@ -785,7 +785,7 @@ template <int DS> struct InterferingRWs : public DSTester<DS> {
 };
 
 template <int DS> void InterferingRWs<DS>::run(int me) {
-  TThread::id = me;
+  TThread::set_id(me);
   container_type* a = this->a;
   container_type::thread_init(*a);
 
@@ -808,7 +808,7 @@ template <int DS> bool InterferingRWs<DS>::check() {
 
 #if DATA_STRUCTURE == USE_QUEUE
 void Qxordeleterun(int me) {
-  TThread::id = me;
+  TThread::set_id(me);
 
   int N = ntrans/nthreads;
   int OPS = opspertrans;
@@ -850,7 +850,7 @@ bool Qxordeletecheck() {
 }
 
 void Qtransferrun(int me) {
-  TThread::id = me;
+  TThread::set_id(me);
 
   int N = ntrans/nthreads;
   int OPS = opspertrans;

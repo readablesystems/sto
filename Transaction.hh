@@ -325,15 +325,15 @@ public:
 
     static void* epoch_advancer(void*);
     static void rcu_cleanup(std::function<void(void)> callback) {
-        acquire_spinlock(tinfo[TThread::id].spin_lock);
-        tinfo[TThread::id].callbacks.emplace_back(global_epoch, callback);
-        release_spinlock(tinfo[TThread::id].spin_lock);
+        acquire_spinlock(tinfo[TThread::id()].spin_lock);
+        tinfo[TThread::id()].callbacks.emplace_back(global_epoch, callback);
+        release_spinlock(tinfo[TThread::id()].spin_lock);
     }
 
     static void rcu_free(void *ptr) {
-        acquire_spinlock(tinfo[TThread::id].spin_lock);
-        tinfo[TThread::id].needs_free.emplace_back(global_epoch, ptr);
-        release_spinlock(tinfo[TThread::id].spin_lock);
+        acquire_spinlock(tinfo[TThread::id()].spin_lock);
+        tinfo[TThread::id()].needs_free.emplace_back(global_epoch, ptr);
+        release_spinlock(tinfo[TThread::id()].spin_lock);
     }
 
 #if PERF_LOGGING
@@ -341,10 +341,10 @@ public:
         add_p(p, 1);
     }
     static void add_p(int p, uint64_t n) {
-        tinfo[TThread::id].add_p(p, n);
+        tinfo[TThread::id()].add_p(p, n);
     }
     static void max_p(int p, unsigned long long n) {
-        tinfo[TThread::id].max_p(p, n);
+        tinfo[TThread::id()].max_p(p, n);
     }
 #endif
 
@@ -387,11 +387,11 @@ public:
     // reset data so we can be reused for another transaction
     void start() {
         //if (isAborted_
-        //   && tinfo[TThread::id].p(txp_total_aborts) % 0x10000 == 0xFFFF)
+        //   && tinfo[TThread::id()].p(txp_total_aborts) % 0x10000 == 0xFFFF)
            //print_stats();
-        tinfo[TThread::id].epoch = global_epoch;
-        if (tinfo[TThread::id].trans_start_callback)
-            tinfo[TThread::id].trans_start_callback();
+        tinfo[TThread::id()].epoch = global_epoch;
+        if (tinfo[TThread::id()].trans_start_callback)
+            tinfo[TThread::id()].trans_start_callback();
         transSet_.clear();
         writeset_ = NULL;
         nwriteset_ = 0;
@@ -729,7 +729,7 @@ public:
     }
     void use() {
         Sto::__transaction = &t_;
-        TThread::id = threadid_;
+        TThread::set_id(threadid_);
     }
     void print(FILE* f) const {
         t_.print(f);
