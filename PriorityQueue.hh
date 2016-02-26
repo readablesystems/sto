@@ -176,7 +176,8 @@ public:
                 Sto::abort();
             }
             else Sto::item(this, empty_key).add_read(0);
-            Sto::item(this, pop_key).add_read(popversion_);
+            // XXX opacity
+            Sto::item(this, pop_key).add_read(TransactionTid::unlocked(popversion_));
             return -1;
         }
         
@@ -206,7 +207,7 @@ public:
         
         if (val == NULL) {
             Sto::item(this, empty_key).add_read(0);
-            Sto::item(this, pop_key).add_read(popversion_);
+            Sto::item(this, pop_key).add_read(TransactionTid::unlocked(popversion_));
             unlock(&poplock_);
             return -1;
         }
@@ -237,7 +238,7 @@ public:
             return -1;
         }
         
-        Sto::item(this, pop_key).add_read(popversion_);
+        Sto::item(this, pop_key).add_read(TransactionTid::unlocked(popversion_));
         acquire_fence();
         if (size_ == 0) {
             Sto::item(this, empty_key).add_read(0);
@@ -288,7 +289,6 @@ public:
             // check that no other transaction  pushed items onto the queue
             for (int i = 0; i < size_; i++) {
                 versioned_value* val = heap_[i];
-                auto it = Sto::check_item(this, val);
                 if (!is_inserted(val->version())
                     || TransactionTid::is_locked_elsewhere(val->version()))
                     return false;

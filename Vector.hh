@@ -149,7 +149,7 @@ public:
             }
         }
         // add vecversion_ to the read set
-        auto vecitem = add_vector_version(vecversion_);
+        auto vecitem = add_vector_version(TransactionTid::unlocked(vecversion_));
         acquire_fence();
         size_type size = size_;
         acquire_fence();
@@ -189,7 +189,7 @@ public:
     }
     
     size_type size() {
-        add_vector_version(vecversion_);
+        add_vector_version(TransactionTid::unlocked(vecversion_));
         acquire_fence();
         return size_ + trans_size_offs();
     }
@@ -272,7 +272,7 @@ public:
                 }
             }
             if (!aborted) {
-                vecitem.add_read(ver);
+                vecitem.add_read(TransactionTid::unlocked(ver));
                 throw OutOfBoundsException();
             }
         }
@@ -283,7 +283,7 @@ public:
             
             auto extra_items = Sto::item(this, push_back_key);
             // We need to register the vecversion_ to invalidate other concurrent push_backs.
-            add_vector_version(vecversion_);
+            add_vector_version(TransactionTid::unlocked(vecversion_));
             if (extra_items.has_write()) {
                 if (is_list(extra_items)) {
                     auto& write_list= extra_items.template write_value<std::vector<T>>();
@@ -319,7 +319,7 @@ public:
                 }
             }
             if (!aborted) {
-                vecitem.add_read(ver);
+                vecitem.add_read(TransactionTid::unlocked(ver));
                 throw OutOfBoundsException();
             }
 
@@ -331,7 +331,7 @@ public:
             
             auto extra_items = Sto::item(this, push_back_key);
             // We need to register the vecversion_ to invalidate other concurrent push_backs.
-            add_vector_version(ver);
+            add_vector_version(TransactionTid::unlocked(ver));
             if (extra_items.has_write()) {
                 if (is_list(extra_items)) {
                     auto& write_list= extra_items.template write_value<std::vector<T>>();
