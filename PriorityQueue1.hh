@@ -16,8 +16,10 @@ public:
     
     void pop() {
         try {
-        std::pop_heap(elems.begin(), elems.end());
-        elems.pop_back();
+            // XXX(nate): this doesn't compile on OS X clang with a complaint that std::swap is getting an lvalue.
+            // this broke in 9bdea5a (we stopped returning a reference in operator*) but idrk how to fix it.
+            std::pop_heap(elems.begin(), elems.end());
+            elems.pop_back();
         } catch (OutOfBoundsException e) {}
     }
     
