@@ -210,7 +210,8 @@ class TransItem {
 class TransProxy {
   public:
     TransProxy(Transaction& t, TransItem& i)
-        : t_(&t), i_(&i) {
+        : txn_(&t), i_(&i) {
+        assert(&t == TThread::txn);
     }
 
     TransProxy* operator->() { // make OptionalTransProxy work
@@ -339,8 +340,11 @@ class TransProxy {
     }
 
   private:
-    Transaction* t_;
+    Transaction* txn_;
     TransItem* i_;
+    inline Transaction* t() const {
+        return txn_;
+    }
     friend class Transaction;
     friend class OptionalTransProxy;
 };
@@ -354,7 +358,7 @@ class OptionalTransProxy {
     }
     TransProxy get() const {
         assert(i_);
-        return TransProxy(*t_, *i_);
+        return TransProxy(*t(), *i_);
     }
     TransProxy operator*() const {
         return get();
@@ -363,10 +367,14 @@ class OptionalTransProxy {
         return get();
     }
   private:
-    Transaction* t_;
+    Transaction* txn_;
     TransItem* i_;
     OptionalTransProxy(Transaction& t, TransItem* i)
-        : t_(&t), i_(i) {
+        : txn_(&t), i_(i) {
+        assert(&t == TThread::txn);
+    }
+    inline Transaction* t() const {
+        return txn_;
     }
     friend class Transaction;
 };

@@ -743,7 +743,7 @@ inline TransProxy& TransProxy::add_read(T rdata) {
         Transaction::max_p(txp_max_rdata_size, sizeof(T));
 #endif
         i_->__or_flags(TransItem::read_bit);
-        i_->rdata_ = t_->buf_.pack(std::move(rdata));
+        i_->rdata_ = t()->buf_.pack(std::move(rdata));
     }
     return *this;
 }
@@ -751,7 +751,7 @@ inline TransProxy& TransProxy::add_read(T rdata) {
 template <typename T, typename U>
 inline TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
     if (has_read() && this->read_value<T>() == old_rdata)
-        i_->rdata_ = t_->buf_.pack(std::move(new_rdata));
+        i_->rdata_ = t()->buf_.pack(std::move(new_rdata));
     return *this;
 }
 
@@ -763,7 +763,7 @@ inline TransProxy& TransProxy::set_predicate(T pdata) {
     Transaction::max_p(txp_max_rdata_size, sizeof(T));
 #endif
     i_->__or_flags(TransItem::predicate_bit);
-    i_->wdata_ = t_->buf_.pack(std::move(pdata));
+    i_->wdata_ = t()->buf_.pack(std::move(pdata));
     return *this;
 }
 
@@ -775,8 +775,8 @@ inline TransProxy& TransProxy::add_write(const T& wdata) {
 #endif
     if (!has_write()) {
         i_->__or_flags(TransItem::write_bit);
-        i_->wdata_ = t_->buf_.pack(wdata);
-        t_->mark_write(*i_);
+        i_->wdata_ = t()->buf_.pack(wdata);
+        t()->mark_write(*i_);
     } else
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general
@@ -795,8 +795,8 @@ inline TransProxy& TransProxy::add_write(T&& wdata) {
 #endif
     if (!has_write()) {
         i_->__or_flags(TransItem::write_bit);
-        i_->wdata_ = t_->buf_.pack(std::move(wdata));
-        t_->mark_write(*i_);
+        i_->wdata_ = t()->buf_.pack(std::move(wdata));
+        t()->mark_write(*i_);
     } else
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general
@@ -814,7 +814,7 @@ inline TransProxy& TransProxy::set_stash(T sdata) {
         Transaction::max_p(txp_max_sdata_size, sizeof(T));
 #endif
         i_->__or_flags(TransItem::stash_bit);
-        i_->rdata_ = t_->buf_.pack(std::move(sdata));
+        i_->rdata_ = t()->buf_.pack(std::move(sdata));
     } else
         this->template stash_value<T>() = std::move(sdata);
     return *this;
