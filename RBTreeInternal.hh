@@ -524,8 +524,8 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
 
     T* lhs = r_.limit_[0];
     T* rhs = r_.limit_[1];
-    boundaries_type boundary = std::make_pair(std::make_tuple(lhs, lhs->nodeversion()),
-                    std::make_tuple(rhs, rhs->nodeversion()));
+    boundaries_type boundary = std::make_pair(std::make_tuple(lhs, lhs ? lhs->nodeversion() : 0),
+                    std::make_tuple(rhs, rhs ? rhs->nodeversion() : 0));
 
     while (n.node()) {
         int cmp = comp.compare(key, *n.node());
