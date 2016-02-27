@@ -82,7 +82,7 @@ public:
         TransactionTid::unlock(s_.version());
     }
 
-    bool lock(TransItem&) {
+    bool lock(TransItem&, Transaction&) {
         lock();
         return true;
     }

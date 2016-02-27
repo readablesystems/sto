@@ -167,7 +167,7 @@ public:
         return iterator(this, nullptr);
     }
 
-    inline bool lock(TransItem& item);
+    inline bool lock(TransItem& item, Transaction&);
     inline void unlock(TransItem& item);
     inline bool check(const TransItem& item, const Transaction& trans);
     inline void install(TransItem& item, const Transaction& t);
@@ -735,7 +735,7 @@ inline size_t RBTree<K, T>::erase(const K& key) {
 }
 
 template <typename K, typename T>
-inline bool RBTree<K, T>::lock(TransItem& item) {
+inline bool RBTree<K, T>::lock(TransItem& item, Transaction&) {
     if (item.key<void*>() == tree_key_) {
         lock(&treeversion_);
     } else if (item.key<void*>() == size_key_) {

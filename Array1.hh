@@ -68,7 +68,10 @@ public:
     }
     
     /* This is the prefix case */
-    Array1Iter<T, N, Elem>& operator++() { ++myPtr; return *this; }
+    Array1Iter<T, N, Elem>& operator++() {
+        ++myPtr;
+        return *this;
+    }
     
     /* This is the postfix case */
     Array1Iter<T, N, Elem> operator++(int) {

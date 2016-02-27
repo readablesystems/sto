@@ -497,10 +497,10 @@ public:
     unlock(&e->version());
   }
 
-  bool lock(TransItem& item) {
-    lock(item.key<versioned_value*>());
-    return true;
-  }
+    bool lock(TransItem& item, Transaction&) {
+        lock(item.key<versioned_value*>());
+        return true;
+    }
   bool check(const TransItem& item, const Transaction&) {
     if (is_inter(item)) {
       auto n = untag_inter(item.key<leaf_type*>());

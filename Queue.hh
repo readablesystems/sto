@@ -205,7 +205,7 @@ private:
         QueueVersioning::unlock(v);
     }
      
-    bool lock(TransItem& item) {
+    bool lock(TransItem& item, Transaction&) {
         if (item.key<int>() == -1)
             lock(tailversion_);
         else if (item.key<int>() == -2)

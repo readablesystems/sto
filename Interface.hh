@@ -104,14 +104,14 @@ class TObject {
 public:
     virtual ~TObject() {}
 
-    virtual bool lock(TransItem& item) = 0;
-    virtual bool check_predicate(TransItem& item, Transaction& t) {
-        (void) item, (void) t;
+    virtual bool lock(TransItem& item, Transaction& txn) = 0;
+    virtual bool check_predicate(TransItem& item, Transaction& txn) {
+        (void) item, (void) txn;
         always_assert(false);
         return false;
     }
-    virtual bool check(const TransItem& item, const Transaction& t) = 0;
-    virtual void install(TransItem& item, const Transaction& t) = 0;
+    virtual bool check(const TransItem& item, const Transaction& txn) = 0;
+    virtual void install(TransItem& item, const Transaction& txn) = 0;
     virtual void unlock(TransItem& item) = 0;
     virtual void cleanup(TransItem& item, bool committed) {
         (void) item, (void) committed;

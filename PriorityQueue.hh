@@ -274,7 +274,7 @@ public:
         unlock(&e->version());
     }
     
-    bool lock(TransItem& item) {
+    bool lock(TransItem& item, Transaction&) {
         if (item.key<int>() == pop_key){
             lock(&popversion_);
         } else {

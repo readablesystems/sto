@@ -304,12 +304,12 @@ public:
     return TransactionTid::check_version(el->version, read_version);
   }
 
-  bool lock(TransItem& item) {
-    assert(!is_bucket(item));
-    auto el = item.key<internal_elem*>();
-    lock(el);
-    return true;
-  }
+    bool lock(TransItem& item, Transaction&) {
+        assert(!is_bucket(item));
+        auto el = item.key<internal_elem*>();
+        lock(el);
+        return true;
+    }
   void install(TransItem& item, const Transaction& t) {
     assert(!is_bucket(item));
     auto el = item.key<internal_elem*>();

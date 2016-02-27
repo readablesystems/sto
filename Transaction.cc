@@ -157,7 +157,7 @@ bool Transaction::try_commit() {
         auto writeset_end = writeset + nwriteset;
         for (auto it = writeset; it != writeset_end; ) {
             TransItem* me = &transSet_[*it];
-            if (!me->owner()->lock(*me))
+            if (!me->owner()->lock(*me, *this))
                 goto abort;
             me->__or_flags(TransItem::lock_bit);
             ++it;

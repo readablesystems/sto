@@ -436,16 +436,16 @@ private:
   }
 
 #ifndef STO_NO_STM
-  bool lock(TransItem& item) {
-      // XXX: this isn't great, but I think we need it to update the size...
-      // nate: we might be able to remove this if we updated the listversion_
-      // immediately after a remove/insert. That would give semantics that:
-      // inserts/deletes to different locations didn't conflict, but iteration
-      // conflicted with insert/remove even before the write committed.
-      if (item.key<list_node*>() == list_key)
-          lock(listversion_);
-      return true;
-  }
+    bool lock(TransItem& item, Transaction&) {
+        // XXX: this isn't great, but I think we need it to update the size...
+        // nate: we might be able to remove this if we updated the listversion_
+        // immediately after a remove/insert. That would give semantics that:
+        // inserts/deletes to different locations didn't conflict, but iteration
+        // conflicted with insert/remove even before the write committed.
+        if (item.key<list_node*>() == list_key)
+            lock(listversion_);
+        return true;
+    }
 
   bool check(const TransItem& item, const Transaction&) {
     if (item.key<list_node*>() == list_key) {

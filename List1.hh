@@ -410,7 +410,7 @@ public:
         return TransactionTid::is_locked(v);
     }
 
-    bool lock(TransItem& item) {
+    bool lock(TransItem& item, Transaction&) {
         // this lock is useless given that we also lock the listversion_
         // currently
         // XXX: this isn't great, but I think we need it to update the size...

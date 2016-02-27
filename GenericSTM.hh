@@ -35,7 +35,7 @@ public:
         Sto::item(this, word).add_write(new_val).assign_flags(sizeof(T) << TransItem::userf_shift);
     }
 
-    bool lock(TransItem& item) {
+    bool lock(TransItem& item, Transaction&) {
         size_t key = bucket(item.key<void*>());
         if (!TransactionTid::is_locked_here(table_[key]))
             TransactionTid::lock(table_[key]);
