@@ -545,6 +545,15 @@ public:
     }
 
     // opacity checking
+    bool try_lock(TVersion& vers) {
+        // This function will eventually help us track the commit TID when we
+        // have no opacity, or for GV7 opacity.
+        return vers.try_lock();
+    }
+    bool try_lock(TNonopaqueVersion& vers) {
+        return vers.try_lock();
+    }
+
     void check_opacity(TransactionTid::type t) {
         assert(state_ < s_committing);
         if (!start_tid_)
@@ -744,6 +753,35 @@ inline TransProxy& TransProxy::add_read(T rdata) {
 #endif
         i_->__or_flags(TransItem::read_bit);
         i_->rdata_ = t()->buf_.pack(std::move(rdata));
+    }
+    return *this;
+}
+
+inline TransProxy& TransProxy::observe(TVersion version) {
+    assert(!has_stash());
+    if (version.is_locked_elsewhere())
+        t()->abort();
+    t()->check_opacity(version.value());
+    if (!has_read()) {
+#if DETAILED_LOGGING
+        Transaction::max_p(txp_max_rdata_size, sizeof(TVersion));
+#endif
+        i_->__or_flags(TransItem::read_bit);
+        i_->rdata_ = t()->buf_.pack(std::move(version));
+    }
+    return *this;
+}
+
+inline TransProxy& TransProxy::observe(TNonopaqueVersion version) {
+    assert(!has_stash());
+    if (version.is_locked_elsewhere())
+        t()->abort();
+    if (!has_read()) {
+#if DETAILED_LOGGING
+        Transaction::max_p(txp_max_rdata_size, sizeof(TNonopaqueVersion));
+#endif
+        i_->__or_flags(TransItem::read_bit);
+        i_->rdata_ = t()->buf_.pack(std::move(version));
     }
     return *this;
 }

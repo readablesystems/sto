@@ -67,14 +67,14 @@ class TransItem {
     static constexpr flags_type special_mask = pointer_mask | read_bit | write_bit | lock_bit | predicate_bit | stash_bit;
 
 
-    TransItem(Shared* s, void* k)
+    TransItem(TObject* s, void* k)
         : s_(reinterpret_cast<sharedstore_type>(s)), key_(k) {
     }
 
-    Shared* owner() const {
-        return reinterpret_cast<Shared*>(reinterpret_cast<flags_type>(s_) & pointer_mask);
+    TObject* owner() const {
+        return reinterpret_cast<TObject*>(reinterpret_cast<flags_type>(s_) & pointer_mask);
     }
-    Shared* sharedObj() const {
+    TObject* sharedObj() const {
         return owner();
     }
 
@@ -111,6 +111,14 @@ class TransItem {
     const T& read_value() const {
         assert(has_read());
         return Packer<T>::unpack(rdata_);
+    }
+    bool check_version(TVersion v) const {
+        assert(has_read());
+        return v.check_version(this->template read_value<TVersion>());
+    }
+    bool check_version(TNonopaqueVersion v) const {
+        assert(has_read());
+        return v.check_version(this->template read_value<TNonopaqueVersion>());
     }
 
     template <typename T>
@@ -189,6 +197,12 @@ class TransItem {
         return *this;
     }
 
+    TransItem& clear_needs_unlock() {
+        assert(flags() & lock_bit);
+        __rm_flags(lock_bit);
+        return *this;
+    }
+
   private:
     friend class Transaction;
     friend class TransProxy;
@@ -240,6 +254,8 @@ class TransProxy {
 
     template <typename T>
     inline TransProxy& add_read(T rdata);
+    inline TransProxy& observe(TVersion version);
+    inline TransProxy& observe(TNonopaqueVersion version);
     inline TransProxy& clear_read() {
         i_->__rm_flags(TransItem::read_bit);
         return *this;

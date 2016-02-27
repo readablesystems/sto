@@ -100,6 +100,136 @@ public:
     }
 };
 
+class TVersion {
+public:
+    typedef TransactionTid::type type;
+    typedef TransactionTid::signed_type signed_type;
+
+    TVersion()
+        : v_() {
+    }
+    TVersion(type v)
+        : v_(v) {
+    }
+
+    type value() const {
+        return v_;
+    }
+    volatile type& value() {
+        return v_;
+    }
+
+    bool is_locked() const {
+        return TransactionTid::is_locked(v_);
+    }
+    bool is_locked_here() const {
+        return TransactionTid::is_locked_here(v_);
+    }
+    bool is_locked_elsewhere() const {
+        return TransactionTid::is_locked_elsewhere(v_);
+    }
+
+    bool try_lock() {
+        return TransactionTid::try_lock(v_);
+    }
+    void lock() {
+        TransactionTid::lock(v_);
+    }
+    void unlock() {
+        TransactionTid::unlock(v_);
+    }
+    type unlocked() const {
+        return TransactionTid::unlocked(v_);
+    }
+
+    bool operator==(TVersion x) const {
+        return v_ == x.v_;
+    }
+    bool operator!=(TVersion x) const {
+        return v_ != x.v_;
+    }
+
+    void set_version(TVersion new_v) {
+        TransactionTid::set_version(v_, new_v.v_);
+    }
+    void set_version_unlock(TVersion new_v) {
+        TransactionTid::set_version_unlock(v_, new_v.v_);
+    }
+
+    bool check_version(TVersion old_vers) const {
+        // XXX opacity
+        return TransactionTid::check_version(v_, old_vers.v_);
+    }
+
+private:
+    type v_;
+};
+
+class TNonopaqueVersion {
+public:
+    typedef TransactionTid::type type;
+    typedef TransactionTid::signed_type signed_type;
+
+    TNonopaqueVersion()
+        : v_() {
+    }
+    TNonopaqueVersion(type v)
+        : v_(v) {
+    }
+
+    type value() const {
+        return v_;
+    }
+    volatile type& value() {
+        return v_;
+    }
+
+    bool is_locked() const {
+        return TransactionTid::is_locked(v_);
+    }
+    bool is_locked_here() const {
+        return TransactionTid::is_locked_here(v_);
+    }
+    bool is_locked_elsewhere() const {
+        return TransactionTid::is_locked_elsewhere(v_);
+    }
+
+    bool try_lock() {
+        return TransactionTid::try_lock(v_);
+    }
+    void lock() {
+        TransactionTid::lock(v_);
+    }
+    void unlock() {
+        TransactionTid::unlock(v_);
+    }
+    type unlocked() const {
+        return TransactionTid::unlocked(v_);
+    }
+
+    bool operator==(TNonopaqueVersion x) const {
+        return v_ == x.v_;
+    }
+    bool operator!=(TNonopaqueVersion x) const {
+        return v_ != x.v_;
+    }
+
+    void set_version(TNonopaqueVersion new_v) {
+        TransactionTid::set_version(v_, new_v.v_);
+    }
+    void set_version_unlock(TNonopaqueVersion new_v) {
+        TransactionTid::set_version_unlock(v_, new_v.v_);
+    }
+
+    bool check_version(TNonopaqueVersion old_vers) const {
+        // XXX opacity
+        return TransactionTid::check_version(v_, old_vers.v_);
+    }
+
+private:
+    type v_;
+};
+
 class TObject {
 public:
     virtual ~TObject() {}
