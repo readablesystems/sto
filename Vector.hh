@@ -351,6 +351,9 @@ public:
             }
         }
     }
+    void transPut(const key_type& i, value_type v) {
+        transUpdate(i, v);
+    }
     
     static bool is_list(const TransItem& item) {
         return item.flags() & list_bit;

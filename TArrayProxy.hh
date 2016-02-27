@@ -35,15 +35,15 @@ public:
     }
 
     TArrayProxy<C>& operator=(const value_type& x) {
-        const_cast<C*>(this->c_)->transUpdate(this->idx_, x);
+        const_cast<C*>(this->c_)->transPut(this->idx_, x);
         return *this;
     }
     TArrayProxy<C>& operator=(value_type&& x) {
-        const_cast<C*>(this->c_)->transUpdate(this->idx_, std::move(x));
+        const_cast<C*>(this->c_)->transPut(this->idx_, std::move(x));
         return *this;
     }
     TArrayProxy<C>& operator=(const TArrayProxy<C>& x) {
-        const_cast<C*>(this->c_)->transUpdate(this->idx_, x.operator get_type());
+        const_cast<C*>(this->c_)->transPut(this->idx_, x.operator get_type());
         return *this;
     }
 };
