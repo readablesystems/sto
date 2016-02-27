@@ -600,101 +600,99 @@ private:
 
 class Sto {
 public:
-    static __thread Transaction* __transaction;
-
     static void start_transaction() {
-        if (!__transaction)
-            __transaction = new Transaction(Transaction::uninitialized());
-        always_assert(!__transaction->in_progress());
-        __transaction->start();
+        if (!TThread::txn)
+            TThread::txn = new Transaction(Transaction::uninitialized());
+        always_assert(!TThread::txn->in_progress());
+        TThread::txn->start();
     }
 
     static bool in_progress() {
-        return __transaction && __transaction->in_progress();
+        return TThread::txn && TThread::txn->in_progress();
     }
 
     static void abort() {
         always_assert(in_progress());
-        __transaction->abort();
+        TThread::txn->abort();
     }
 
     static void silent_abort() {
         if (in_progress())
-            __transaction->silent_abort();
+            TThread::txn->silent_abort();
     }
 
     template <typename T>
     static TransProxy item(const TObject* s, T key) {
         always_assert(in_progress());
-        return __transaction->item(s, key);
+        return TThread::txn->item(s, key);
     }
 
     static void check_opacity(TransactionTid::type t) {
         always_assert(in_progress());
-        __transaction->check_opacity(t);
+        TThread::txn->check_opacity(t);
     }
 
     static void check_opacity() {
         always_assert(in_progress());
-        __transaction->check_opacity();
+        TThread::txn->check_opacity();
     }
 
     static void check_reads() {
         always_assert(in_progress());
-        __transaction->check_reads();
+        TThread::txn->check_reads();
     }
 
     template <typename T>
     static OptionalTransProxy check_item(const TObject* s, T key) {
         always_assert(in_progress());
-        return __transaction->check_item(s, key);
+        return TThread::txn->check_item(s, key);
     }
 
     template <typename T>
     static TransProxy new_item(const TObject* s, T key) {
         always_assert(in_progress());
-        return __transaction->new_item(s, key);
+        return TThread::txn->new_item(s, key);
     }
 
     template <typename T>
     static TransProxy read_item(const TObject* s, T key) {
         always_assert(in_progress());
-        return __transaction->read_item(s, key);
+        return TThread::txn->read_item(s, key);
     }
 
     template <typename T>
     static TransProxy fresh_item(const TObject* s, T key) {
         always_assert(in_progress());
-        return __transaction->fresh_item(s, key);
+        return TThread::txn->fresh_item(s, key);
     }
 
     static void commit() {
         always_assert(in_progress());
-        __transaction->commit();
+        TThread::txn->commit();
     }
 
     static bool try_commit() {
         always_assert(in_progress());
-        return __transaction->try_commit();
+        return TThread::txn->try_commit();
     }
 
     static TransactionTid::type commit_tid() {
-        return __transaction->commit_tid();
+        return TThread::txn->commit_tid();
     }
 };
 
 class TestTransaction {
 public:
     TestTransaction(int threadid)
-        : t_(Transaction::testing), base_(Sto::__transaction), threadid_(threadid) {
+        : t_(Transaction::testing), base_(TThread::txn), threadid_(threadid) {
         use();
     }
     ~TestTransaction() {
         if (base_ && !base_->is_test_)
-            Sto::__transaction = base_;
+            TThread::txn = base_;
     }
     void use() {
-        Sto::__transaction = &t_;
+        TThread::txn = &t_;
         TThread::set_id(threadid_);
     }
     void print(FILE* f) const {
@@ -725,14 +723,14 @@ class TransactionLoopGuard {
     TransactionLoopGuard() {
     }
     ~TransactionLoopGuard() {
-        if (Sto::__transaction->in_progress())
-            Sto::__transaction->silent_abort();
+        if (TThread::txn->in_progress())
+            TThread::txn->silent_abort();
     }
     void start() {
         Sto::start_transaction();
     }
     bool try_commit() {
-        return Sto::__transaction->try_commit();
+        return TThread::txn->try_commit();
     }
 };
 

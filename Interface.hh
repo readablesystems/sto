@@ -9,6 +9,8 @@ class TransItem;
 class TThread {
     static __thread int the_id;
 public:
+    static __thread Transaction* txn;
+
     static int id() {
         return the_id;
     }
