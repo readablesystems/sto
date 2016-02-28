@@ -16,8 +16,8 @@ public:
     TTrivialWrapped(T&& v)
         : v_(std::move(v)) {
     }
-    template <typename... Args> TTrivialWrapped(Args... args)
-        : v_(std::forward(args...)) {
+    template <typename... Args> TTrivialWrapped(Args&&... args)
+        : v_(std::forward(args)...) {
     }
 
     read_type read(TransProxy item, const version_type& version) const {
@@ -68,8 +68,8 @@ public:
     TTrivialNonopaqueWrapped(T&& v)
         : v_(std::move(v)) {
     }
-    template <typename... Args> TTrivialNonopaqueWrapped(Args... args)
-        : v_(std::forward(args...)) {
+    template <typename... Args> TTrivialNonopaqueWrapped(Args&&... args)
+        : v_(std::forward<Args>(args)...) {
     }
 
     read_type read(TransProxy item, const version_type& version) const {
@@ -106,8 +106,8 @@ public:
     TLargeTrivialNonopaqueWrapped(T&& v)
         : v_(std::move(v)) {
     }
-    template <typename... Args> TLargeTrivialNonopaqueWrapped(Args... args)
-        : v_(std::forward(args...)) {
+    template <typename... Args> TLargeTrivialNonopaqueWrapped(Args&&... args)
+        : v_(std::forward<Args>(args)...) {
     }
 
     read_type read(TransProxy item, const version_type& version) const {
@@ -158,8 +158,8 @@ public:
     TNontrivialWrapped(T&& v)
         : vp_(new T(std::move(v))) {
     }
-    template <typename... Args> TNontrivialWrapped(Args... args)
-        : vp_(new T(std::forward(args...))) {
+    template <typename... Args> TNontrivialWrapped(Args&&... args)
+        : vp_(new T(std::forward<Args>(args)...)) {
     }
     ~TNontrivialWrapped() {
         T* vp = vp_;
@@ -220,8 +220,8 @@ public:
     TNontrivialNonopaqueWrapped(T&& v)
         : vp_(new T(std::move(v))) {
     }
-    template <typename... Args> TNontrivialNonopaqueWrapped(Args... args)
-        : vp_(new T(std::forward(args...))) {
+    template <typename... Args> TNontrivialNonopaqueWrapped(Args&&... args)
+        : vp_(new T(std::forward<Args>(args)...)) {
     }
     ~TNontrivialNonopaqueWrapped() {
         T* vp = vp_;
