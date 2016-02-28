@@ -574,7 +574,7 @@ public:
         return commit_tid_;
     }
 
-    void print(FILE* f) const;
+    void print(std::ostream& w) const;
 
     class Abort {};
 
@@ -704,8 +704,8 @@ public:
         TThread::txn = &t_;
         TThread::set_id(threadid_);
     }
-    void print(FILE* f) const {
-        t_.print(f);
+    void print(std::ostream& w) const {
+        t_.print(w);
     }
     bool try_commit() {
         use();

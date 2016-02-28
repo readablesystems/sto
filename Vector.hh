@@ -522,21 +522,20 @@ public:
             unlock(item.key<key_type>());
     }
 
-    void print(FILE* f, const TransItem& item) const {
+    void print(std::ostream& w, const TransItem& item) const {
         if (item.key<int>() == size_pred_key) {
-            fprintf(f, "<%p.size%s%d>", this, item.predicate_value<int32_t>() & geq_mask ? ">=" : "==", item.predicate_value<int32_t>() >> value_shift);
+            w << "<" << (void*) this << ".size" << (item.predicate_value<int32_t>() & geq_mask ? ">=" : "==") << (item.predicate_value<int32_t>() >> value_shift) << ">";
         } else {
+            w << "<" << (void*) this;
             if (item.key<int>() == size_key)
-                fprintf(f, "<%p.size", this);
-            else if (item.key<int>() == vector_key)
-                fprintf(f, "<%p", this);
-            else
-                fprintf(f, "<%p.%d", this, item.key<int>());
+                w << ".size";
+            else if (item.key<int>() != vector_key)
+                w << "@" << item.key<int>();
             if (item.has_read())
-                fprintf(f, " r%" PRIu64, item.read_value<Version>());
+                w << " ?" << item.read_value<Version>();
             if (item.has_write())
-                fprintf(f, " w%p", item.write_value<void*>());
-            fprintf(f, ">");
+                w << " =" << item.write_value<void*>();
+            w << ">";
         }
     }
 

@@ -1,7 +1,7 @@
 #pragma once
-
 #include <stdint.h>
 #include <assert.h>
+#include <iostream>
 
 class Transaction;
 class TransItem;
@@ -161,6 +161,10 @@ public:
         return TransactionTid::check_version(v_, old_vers.v_);
     }
 
+    friend std::ostream& operator<<(std::ostream& w, TVersion v) {
+        return w << v.value();
+    }
+
 private:
     type v_;
 };
@@ -226,6 +230,10 @@ public:
         return TransactionTid::check_version(v_, old_vers.v_);
     }
 
+    friend std::ostream& operator<<(std::ostream& w, TNonopaqueVersion v) {
+        return w << v.value();
+    }
+
 private:
     type v_;
 };
@@ -246,7 +254,7 @@ public:
     virtual void cleanup(TransItem& item, bool committed) {
         (void) item, (void) committed;
     }
-    virtual void print(FILE* f, const TransItem& item) const;
+    virtual void print(std::ostream& w, const TransItem& item) const;
 };
 
 typedef TObject Shared;

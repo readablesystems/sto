@@ -238,21 +238,21 @@ void TransactionBuffer::hard_clear(bool delete_all) {
     }
 }
 
-void Transaction::print(FILE* f) const {
+void Transaction::print(std::ostream& w) const {
     static const char* names[] = {"in-progress", "committing", "committing-locked", "aborted", "committed"};
-    fprintf(f, "T%p %s [", this, names[state_]);
+    w << "T0x" << (void*) this << " " << names[state_] << " [";
     for (auto& ti : transSet_)
-        ti.owner()->print(f, ti);
-    fprintf(f, "]\n");
+        ti.owner()->print(w, ti);
+    w << "]\n";
 }
 
-void TObject::print(FILE* f, const TransItem& item) const {
-    fprintf(f, "<%p.%p", this, item.key<void*>());
+void TObject::print(std::ostream& w, const TransItem& item) const {
+    w << "<" << (void*) this << "." << item.key<void*>();
     if (item.has_read())
-        fprintf(f, " r%p", item.read_value<void*>());
+        w << " ?" << item.read_value<void*>();
     if (item.has_write())
-        fprintf(f, " w%p", item.write_value<void*>());
+        w << " =" << item.write_value<void*>();
     if (item.has_predicate())
-        fprintf(f, " p%p", item.predicate_value<void*>());
-    fprintf(f, ">");
+        w << " P" << item.predicate_value<void*>();
+    w << ">";
 }
