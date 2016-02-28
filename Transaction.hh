@@ -555,7 +555,7 @@ public:
     }
 
     void check_opacity(TransactionTid::type t) {
-        assert(state_ < s_committing);
+        assert(state_ <= s_committing);
         if (!start_tid_)
             start_tid_ = _TID;
         if (!TransactionTid::try_check_opacity(start_tid_, t)) {
@@ -803,6 +803,14 @@ inline TransProxy& TransProxy::set_predicate(T pdata) {
     i_->__or_flags(TransItem::predicate_bit);
     i_->wdata_ = t()->buf_.pack(std::move(pdata));
     return *this;
+}
+
+template <typename T>
+inline T& TransProxy::predicate_value(T default_pdata) {
+    assert(!has_write());
+    if (!has_predicate())
+        set_predicate(default_pdata);
+    return this->template predicate_value<T>();
 }
 
 template <typename T>

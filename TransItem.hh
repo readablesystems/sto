@@ -300,6 +300,8 @@ class TransProxy {
         return i_->predicate_value<T>();
     }
     template <typename T>
+    inline T& predicate_value(T default_value);
+    template <typename T>
     const T& predicate_value() const {
         return i_->predicate_value<T>();
     }
