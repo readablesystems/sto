@@ -150,7 +150,7 @@ void testSimpleRangesFail() {
 }
 
 int main() {
-    assert((std::is_trivially_copyable<TIntPredicate<int>::pair_type>::value));
+    assert((mass::is_trivially_copyable<TIntPredicate<int>::pair_type>::value));
     testTrivial();
     testSimpleRangesOk();
     testSimpleRangesFail();
