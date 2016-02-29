@@ -96,6 +96,9 @@ class TransItem {
     bool same_item(const TransItem& x) const {
         return owner() == x.owner() && key_ == x.key_;
     }
+    bool has_flag(flags_type f) const {
+        return flags() & f;
+    }
 
     template <typename T>
     const T& key() const {
@@ -123,13 +126,13 @@ class TransItem {
 
     template <typename T>
     T& predicate_value() {
-        assert(has_predicate());
-        return Packer<T>::unpack(wdata_);
+        assert(has_predicate() && !has_read());
+        return Packer<T>::unpack(rdata_);
     }
     template <typename T>
     const T& predicate_value() const {
-        assert(has_predicate());
-        return Packer<T>::unpack(wdata_);
+        assert(has_predicate() && !has_read());
+        return Packer<T>::unpack(rdata_);
     }
 
     template <typename T>
@@ -251,6 +254,9 @@ class TransProxy {
     bool has_stash() const {
         return i_->has_stash();
     }
+    bool has_flag(TransItem::flags_type f) const {
+        return i_->flags() & f;
+    }
 
     template <typename T>
     inline TransProxy& add_read(T rdata);
@@ -309,6 +315,13 @@ class TransProxy {
     template <typename T>
     T& write_value() {
         return i_->write_value<T>();
+    }
+    template <typename T>
+    const T& write_value(const T& default_value) {
+        if (i_->has_write())
+            return i_->write_value<T>();
+        else
+            return default_value;
     }
     template <typename T>
     const T& write_value() const {

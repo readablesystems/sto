@@ -796,18 +796,18 @@ inline TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
 
 template <typename T>
 inline TransProxy& TransProxy::set_predicate(T pdata) {
-    assert(!has_write());
+    assert(!has_read());
 #if DETAILED_LOGGING
     Transaction::max_p(txp_max_rdata_size, sizeof(T));
 #endif
     i_->__or_flags(TransItem::predicate_bit);
-    i_->wdata_ = t()->buf_.pack(std::move(pdata));
+    i_->rdata_ = t()->buf_.pack(std::move(pdata));
     return *this;
 }
 
 template <typename T>
 inline T& TransProxy::predicate_value(T default_pdata) {
-    assert(!has_write());
+    assert(!has_read());
     if (!has_predicate())
         set_predicate(default_pdata);
     return this->template predicate_value<T>();
@@ -815,7 +815,6 @@ inline T& TransProxy::predicate_value(T default_pdata) {
 
 template <typename T>
 inline TransProxy& TransProxy::add_write(const T& wdata) {
-    assert(!has_predicate());
 #if DETAILED_LOGGING
     Transaction::max_p(txp_max_wdata_size, sizeof(T));
 #endif
@@ -835,7 +834,6 @@ inline TransProxy& TransProxy::add_write(const T& wdata) {
 template <typename T>
 inline TransProxy& TransProxy::add_write(T&& wdata) {
     typedef typename std::decay<T>::type V;
-    assert(!has_predicate());
 #if DETAILED_LOGGING
     Transaction::max_p(txp_max_wdata_size, sizeof(V));
 #endif
