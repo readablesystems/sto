@@ -3,10 +3,13 @@
 #include <cassert> 
 #include <utility>
 #include "TaggedLow.hh"
-#include "Transaction.hh"
 #include "versioned_value.hh"
 #include "VersionFunctions.hh"
 #include "RBTreeInternal.hh"
+
+#ifndef STO_NO_STM
+#include "Transaction.hh"
+#endif
 
 #define DEBUG 0
 #if DEBUG
@@ -86,7 +89,11 @@ private:
 template <typename K, typename T> class RBProxy;
 
 template <typename K, typename T>
-class RBTree : public Shared {
+class RBTree 
+#ifndef STO_NO_STM
+: public Shared 
+#endif
+{
     friend class RBTreeIterator<K, T>;
     friend class RBProxy<K, T>;
 
@@ -137,6 +144,7 @@ public:
         unlock(&e->version());
     }
 
+#ifndef STO_NO_STM
     // iterators
     iterator begin() {
         lock(&treelock_);
@@ -435,6 +443,8 @@ private:
         }
     }
 
+#endif /* !STO_NO_STM */
+
     static void lock(Version *v) {
         TransactionTid::lock(*v);
     }
@@ -481,6 +491,8 @@ private:
     } stats_;
 #endif
 };
+
+#ifndef STO_NO_STM
 
 template<typename K, typename T>
 class RBTreeIterator : public std::iterator<std::bidirectional_iterator_tag, rbwrapper<rbpair<K, T>>> {
@@ -880,6 +892,8 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
         }
     }
 }
+
+#endif /* !STO_NO_STM */
 
 template <typename K, typename T>
 bool RBTree<K, T>::nontrans_insert(const K& key, const T& value) {

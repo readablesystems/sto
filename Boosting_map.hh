@@ -5,6 +5,7 @@
 
 #define STO_NO_STM
 #include "Hashtable.hh"
+#include "RBTree.hh"
 
 template <typename K, typename V, unsigned Init_size = 129, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>, 
           typename MapType = Hashtable<K, V, true, Init_size, V, Hash, Pred>>
@@ -56,6 +57,7 @@ public:
   bool transDelete(const Key& k) {
     lockKey_.writeLock(k);
     Value oldval;
+    // XXX: two O(logn) lookups for a RBTree. Could make a customized nontrans_remove that gets the old value for us to avoid.
     if (!map_.nontrans_find(k, oldval)) {
       return false;
     }
