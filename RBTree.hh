@@ -939,18 +939,16 @@ template <typename K, typename T>
 bool RBTree<K, T>::nontrans_insert(const K& key, const T& value) {
     lock_write(&wrapper_tree_.treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, value));
-    auto results = wrapper_tree_.find_any(idx_pair,
+    auto results = wrapper_tree_.find_or_parent(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-    auto pair = results.first;
-    wrapper_type* x = pair.first.node();
-    bool found = pair.second;
+    bool found = std::get<1>(results);
     if (!found) {
         size_++;
-        rbnodeptr<wrapper_type> p = pair.first;
+        rbnodeptr<wrapper_type> p = std::get<0>(results);
         wrapper_type* n = (wrapper_type*)malloc(sizeof(wrapper_type));
         new (n) wrapper_type(rbpair<K, T>(key, value));
         erase_inserted(&n->version());
-        bool side = (x == nullptr)? false : (wrapper_tree_.r_.node_compare(*n, *x) > 0);
+        bool side = (p.node() == nullptr) ? false : (wrapper_tree_.r_.node_compare(*n, *p) > 0);
         wrapper_tree_.insert_commit(n, p, side);
     }
     unlock_write(&wrapper_tree_.treelock_);

@@ -200,6 +200,9 @@ class rbtree {
     template <typename K, typename Comp>
     inline std::tuple<T*, Version, bool, boundaries_type, node_info_type> find_insert(K& key, Comp comp);
 
+    template <typename K, typename Comp>
+    inline std::tuple<rbnodeptr<T>, bool> find_or_parent(const K& key, Comp comp) const;
+
     void insert_commit(T* x, rbnodeptr<T> p, bool side);
     T* delete_node(T* victim, T* successor_hint);
     void delete_node_fixup(rbnodeptr<T> p, bool side);
@@ -552,6 +555,29 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
 
     TransactionTid::unlock_read(treelock_);
     return std::make_tuple(retnode, retver, found, boundary);
+}
+
+template <typename T, typename C> template <typename K, typename Comp>
+inline std::tuple<rbnodeptr<T>, bool> rbtree<T, C>::find_or_parent(const K& key, Comp comp) const {
+    TransactionTid::lock_read(treelock_);
+
+    rbnodeptr<T> n(r_.root_, false);
+    rbnodeptr<T> p(nullptr, false);
+
+    while (n.node()) {
+        int cmp = comp.compare(key, *n.node());
+        if (cmp == 0)
+            break;
+
+        p = n;
+        n = n.node()->rblinks_.c_[cmp > 0];
+    }
+
+    TransactionTid::unlock_read(treelock_);
+
+    bool found = (n.node() != nullptr);
+
+    return std::make_tuple(found ? n : p, found);
 }
 
 template <typename K, typename T>
