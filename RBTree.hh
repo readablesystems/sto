@@ -98,6 +98,7 @@ class RBTree
     friend class RBProxy<K, T>;
 
     typedef TransactionTid::type Version;
+    typedef TransactionTid::signed_type RWVersion;
     typedef versioned_value_struct<T> versioned_value;
 
     static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
@@ -497,6 +498,12 @@ private:
     static void unlock(Version *v) {
         TransactionTid::unlock(*v);
     }
+
+    static void lock_read(RWVersion *v) {TransactionTid::lock_read(*v);}
+    static void lock_write(RWVersion *v) {TransactionTid::lock_write(*v);}
+    static void unlock_read(RWVersion *v) {TransactionTid::unlock_read(*v);}
+    static void unlock_write(RWVersion *v) {TransactionTid::unlock_write(*v);}
+
     static bool has_insert(const TransItem& item) {
         return item.flags() & insert_tag;
     }
@@ -930,7 +937,7 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
 
 template <typename K, typename T>
 bool RBTree<K, T>::nontrans_insert(const K& key, const T& value) {
-    lock(&wrapper_tree_.treelock_);
+    lock_write(&wrapper_tree_.treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, value));
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
@@ -946,36 +953,36 @@ bool RBTree<K, T>::nontrans_insert(const K& key, const T& value) {
         bool side = (x == nullptr)? false : (wrapper_tree_.r_.node_compare(*n, *x) > 0);
         wrapper_tree_.insert_commit(n, p, side);
     }
-    unlock(&wrapper_tree_.treelock_);
+    unlock_write(&wrapper_tree_.treelock_);
     return !found;
 }
 
 template <typename K, typename T>
 bool RBTree<K, T>::nontrans_contains(const K& key) {
-    lock(&wrapper_tree_.treelock_);
+    lock_read(&wrapper_tree_.treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
                                           rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-    unlock(&wrapper_tree_.treelock_);
+    unlock_read(&wrapper_tree_.treelock_);
     return std::get<2>(results);
 }
 
 template <typename K, typename T>
 T RBTree<K, T>::nontrans_find(const K& key) {
-    lock(&wrapper_tree_.treelock_);
+    lock_read(&wrapper_tree_.treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
     auto pair = results.first;
     bool found = pair.second;
     auto ret = found ? pair.first.node()->writeable_value() : T();
-    unlock(&wrapper_tree_.treelock_);
+    unlock_read(&wrapper_tree_.treelock_);
     return ret;
 }
 
 template <typename K, typename T>
 bool RBTree<K, T>::nontrans_find(const K& key, T& val) {
-    lock(&wrapper_tree_.treelock_);
+    lock_read(&wrapper_tree_.treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
@@ -984,13 +991,13 @@ bool RBTree<K, T>::nontrans_find(const K& key, T& val) {
     if (found) {
       val = pair.first.node()->writeable_value();
     }
-    unlock(&wrapper_tree_.treelock_);
+    unlock_read(&wrapper_tree_.treelock_);
     return found;
 }
 
 template <typename K, typename T>
 bool RBTree<K, T>::nontrans_remove(const K& key) {
-    lock(&wrapper_tree_.treelock_);
+    lock_write(&wrapper_tree_.treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
@@ -1002,7 +1009,7 @@ bool RBTree<K, T>::nontrans_remove(const K& key) {
         wrapper_tree_.erase(*n);
         free(n);
     }
-    unlock(&wrapper_tree_.treelock_);
+    unlock_write(&wrapper_tree_.treelock_);
     return found;
 }
 
