@@ -128,6 +128,7 @@ public:
     bool nontrans_contains(const K& key);
     bool nontrans_remove(const K& key);
     T nontrans_find(const K& key); // returns T() if not found, works for STAMP
+    bool nontrans_find(const K& key, T& val);
 
     void lock(versioned_value *e) {
         lock(&e->version());
