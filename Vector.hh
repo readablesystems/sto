@@ -436,11 +436,10 @@ public:
         key_type i = item.key<key_type>();
         assert(i >= 0);
         if (item.flags() & Elem::valid_only_bit) {
-            if (i >= size_ + trans_size_offs()) {
-                return false;
-            }
-        }
-        return data_[i].check(item, trans);
+            return i < size_ + trans_size_offs()
+                && !data_[i].is_locked_elsewhere();
+        } else
+            return data_[i].check_version(item.template read_value<Version>());
     }
     
     bool lock(TransItem& item, Transaction&){
@@ -511,7 +510,6 @@ public:
             resize_lock_.read_lock();
             data_[index].install(item, t);
             resize_lock_.read_unlock();
-            
         }
     }
 

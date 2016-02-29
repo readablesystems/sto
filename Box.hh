@@ -6,7 +6,7 @@
 template <typename T,  bool GenericSTM = false, typename Structure = versioned_value_struct<T>>
 // if we're inheriting from Shared then a SingleElem adds both a version word and a vtable word
 // (not much else we can do though)
-class Box : public Shared {
+class Box {
 public:
     static constexpr TransItem::flags_type valid_only_bit = TransItem::user0_bit;
     
@@ -106,18 +106,12 @@ public:
         unlock_local();
     }
 
-    bool lock(TransItem&, Transaction&) {
-        lock();
-        return true;
+    bool is_locked_elsewhere() const {
+        return TransactionTid::is_locked_elsewhere(s_.version());
     }
-
-    bool check(const TransItem& item, const Transaction&) {
-        if (item.flags() & valid_only_bit) {
-            return !TransactionTid::is_locked_elsewhere(s_.version());
-        }
-        return TransactionTid::check_version(s_.version(), item.template read_value<version_type>());
+    bool check_version(version_type v) const {
+        return TransactionTid::check_version(s_.version(), v);
     }
-
     void install(TransItem& item, const Transaction& t) {
         s_.set_value(item.template write_value<T>());
         if (GenericSTM) {
@@ -127,10 +121,6 @@ public:
         }
     }
 
-    void unlock(TransItem&) {
-        unlock();
-    }
-    
     void lock_local() {
         while (1) {
             bool vv = local_lock;
