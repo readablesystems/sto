@@ -957,7 +957,7 @@ bool RBTree<K, T>::nontrans_contains(const K& key) {
     auto results = wrapper_tree_.find_any(idx_pair,
                                           rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
     unlock(&wrapper_tree_.treelock_);
-    return results.first.second;
+    return std::get<2>(results);
 }
 
 template <typename K, typename T>
