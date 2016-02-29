@@ -167,6 +167,7 @@ class rbtree {
     typedef T node_type;
 
     typedef TransactionTid::type Version;
+    typedef TransactionTid::signed_type RWVersion;
     typedef std::tuple<T*, Version> node_info_type;
     typedef std::pair<node_info_type, node_info_type> boundaries_type;
 
@@ -190,7 +191,7 @@ class rbtree {
   private:
     rbpriv::rbrep<T, Compare> r_;
     // moved from RBTree.hh
-    Version treeversion_;
+    RWVersion treeversion_;
     mutable Version treelock_;
 
     template <typename K, typename Comp>
@@ -517,7 +518,7 @@ template <typename T, typename C> template <typename K, typename Comp>
 inline std::tuple<T*, typename rbtree<T, C>::Version, bool,
        typename rbtree<T, C>::boundaries_type>
 rbtree<T, C>::find_any(const K& key, Comp comp) const {
-    TransactionTid::lock(treelock_);
+    TransactionTid::lock_read(treelock_);
 
     rbnodeptr<T> n(r_.root_, false);
     rbnodeptr<T> p(nullptr, false);
@@ -549,7 +550,7 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
     T* retnode = found ? n.node() : p.node();
     Version retver = retnode ? retnode->version() : treeversion_;
 
-    TransactionTid::unlock(treelock_);
+    TransactionTid::unlock_read(treelock_);
     return std::make_tuple(retnode, retver, found, boundary);
 }
 
@@ -560,7 +561,7 @@ template <typename T, typename C> template <typename K, typename Comp>
 inline std::tuple<T*, typename rbtree<T, C>::Version, bool,
        typename rbtree<T, C>::boundaries_type, typename rbtree<T, C>::node_info_type>
 rbtree<T, C>::find_insert(K& key, Comp comp) {
-    TransactionTid::lock(treelock_);
+    TransactionTid::lock_write(treelock_);
 
     // lookup part, almost identical to find_any()
     rbnodeptr<T> n(r_.root_, false);
@@ -605,7 +606,7 @@ rbtree<T, C>::find_insert(K& key, Comp comp) {
         }
     }
 
-    TransactionTid::unlock(treelock_);
+    TransactionTid::unlock_write(treelock_);
 
     return std::make_tuple(retnode, retver, found, boundary, parent);
 }
