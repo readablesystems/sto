@@ -293,7 +293,7 @@ int main() {
         assert(t.try_commit());
     }
     erase_conflict_tests();
-    //update_conflict_tests(); // disabled because of "no-inserts-under-phantom" hack
+    update_conflict_tests(); // disabled because of "no-inserts-under-phantom" hack
     insert_then_delete_tests();
     mem_tests();
     // test abort-cleanup

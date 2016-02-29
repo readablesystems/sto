@@ -34,6 +34,34 @@ public:
     static constexpr type user_bit = type(0x80);
     static constexpr type increment_value = type(0x400);
 
+    static void lock_read(signed_type& v) {
+        while (1) {
+            signed_type vv = v;
+            if (vv >= 0 && bool_cmpxchg(&v, vv, vv+1))
+                break;
+            relax_fence();
+        }
+        acquire_fence();
+    }
+
+    static void lock_write(signed_type& v) {
+        while (1) {
+            signed_type vv = v;
+            if (vv == 0 && bool_cmpxchg(&v, vv, vv-1))
+                break;
+            relax_fence();
+        }
+        acquire_fence();
+    }
+
+    static void unlock_read(signed_type& v) {
+        assert(__sync_fetch_and_add(&v, -1) > 0);
+    }
+
+    static void unlock_write(signed_type& v) {
+        assert(__sync_fetch_and_add(&v, 1) < 0);
+    }
+
     static bool is_locked(type v) {
         return v & lock_bit;
     }

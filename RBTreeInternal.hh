@@ -1,7 +1,11 @@
 #pragma once
 
+#include <utility>
+#include <tuple>
 #include <vector>
 #include <iomanip>
+#include <iostream>
+#include "Interface.hh"
 
 #ifndef rbaccount
 # define rbaccount(x)
@@ -151,6 +155,7 @@ class rbalgorithms {
     static inline T* edge_node(T* n, bool forward);
 };
 
+
 template <typename T, typename Compare = rbpriv::default_comparator<T>>
 class rbtree {
   public:
@@ -160,6 +165,11 @@ class rbtree {
     typedef const T& const_reference;
     typedef Compare value_compare;
     typedef T node_type;
+
+    typedef TransactionTid::type Version;
+    typedef TransactionTid::signed_type RWVersion;
+    typedef std::tuple<T*, Version> node_info_type;
+    typedef std::pair<node_info_type, node_info_type> boundaries_type;
 
     inline rbtree(const value_compare &compare = value_compare());
     ~rbtree();
@@ -180,10 +190,16 @@ class rbtree {
 
   private:
     rbpriv::rbrep<T, Compare> r_;
+    // moved from RBTree.hh
+    Version treeversion_;
+    mutable RWVersion treelock_;
 
     template <typename K, typename Comp>
-    inline std::pair<std::pair<rbnodeptr<T>, bool>, std::pair<T*, T*>> find_any(const K& key, Comp comp) const;
-   
+    inline std::tuple<T*, Version, bool, boundaries_type> find_any(const K& key, Comp comp) const;
+
+    template <typename K, typename Comp>
+    inline std::tuple<T*, Version, bool, boundaries_type, node_info_type> find_insert(K& key, Comp comp);
+
     void insert_commit(T* x, rbnodeptr<T> p, bool side);
     T* delete_node(T* victim, T* successor_hint);
     void delete_node_fixup(rbnodeptr<T> p, bool side);
@@ -338,7 +354,7 @@ inline Compare& rbcompare<Compare>::get_compare() const {
 // RBTREE FUNCTION DEFINITIONS
 template <typename T, typename C>
 inline rbtree<T, C>::rbtree(const value_compare &compare)
-    : r_(compare) {
+    : r_(compare), treeversion_(), treelock_() {
 }
 
 template <typename T, typename C>
@@ -498,12 +514,20 @@ inline T* rbtree<T, C>::root() {
 // Return a pair of node, bool: if bool is true, then the node is the found node, 
 // else if bool is false the node is the parent of the absent read. If (null, false), we have
 // an empty tree
-// XXX always tracking boundary right now, seems a bit inefficient for inserts
 template <typename T, typename C> template <typename K, typename Comp>
-inline std::pair<std::pair<rbnodeptr<T>, bool>, std::pair<T*, T*>> rbtree<T, C>::find_any(const K& key, Comp comp) const {
+inline std::tuple<T*, typename rbtree<T, C>::Version, bool,
+       typename rbtree<T, C>::boundaries_type>
+rbtree<T, C>::find_any(const K& key, Comp comp) const {
+    TransactionTid::lock_read(treelock_);
+
     rbnodeptr<T> n(r_.root_, false);
     rbnodeptr<T> p(nullptr, false);
-    std::pair<T*, T*> boundary = std::make_pair(r_.limit_[0], r_.limit_[1]);
+
+    T* lhs = r_.limit_[0];
+    T* rhs = r_.limit_[1];
+    boundaries_type boundary = std::make_pair(std::make_tuple(lhs, lhs ? lhs->nodeversion() : 0),
+                    std::make_tuple(rhs, rhs ? rhs->nodeversion() : 0));
+
     while (n.node()) {
         int cmp = comp.compare(key, *n.node());
         if (cmp == 0)
@@ -512,21 +536,88 @@ inline std::pair<std::pair<rbnodeptr<T>, bool>, std::pair<T*, T*>> rbtree<T, C>:
         // narrow down to find the boundary nodes
         // update the LEFT boundary when going RIGHT, and vice versa
         if (cmp > 0) {
-            boundary.first = n.node();
+            T* nb = n.node();
+            boundary.first = std::make_tuple(nb, nb->nodeversion());
         } else {
-            boundary.second = n.node();
+            T* nb = n.node();
+            boundary.second = std::make_tuple(nb, nb->nodeversion());
         }
         p = n;
         n = n.node()->rblinks_.c_[cmp > 0];
     }
-    auto nodepair = std::make_pair((n.node()) ? n : p, n.node());
-    return std::make_pair(nodepair, boundary);
+
+    bool found = (n.node() != nullptr);
+    T* retnode = found ? n.node() : p.node();
+    Version retver = retnode ? retnode->version() : treeversion_;
+
+    TransactionTid::unlock_read(treelock_);
+    return std::make_tuple(retnode, retver, found, boundary);
+}
+
+template <typename K, typename T>
+class rbpair;
+
+template <typename T, typename C> template <typename K, typename Comp>
+inline std::tuple<T*, typename rbtree<T, C>::Version, bool,
+       typename rbtree<T, C>::boundaries_type, typename rbtree<T, C>::node_info_type>
+rbtree<T, C>::find_insert(K& key, Comp comp) {
+    TransactionTid::lock_write(treelock_);
+
+    // lookup part, almost identical to find_any()
+    rbnodeptr<T> n(r_.root_, false);
+    rbnodeptr<T> p(nullptr, false);
+
+    T* lhs = r_.limit_[0];
+    T* rhs = r_.limit_[1];
+    boundaries_type boundary = std::make_pair(std::make_tuple(lhs, lhs ? lhs->nodeversion() : 0),
+                    std::make_tuple(rhs, rhs ? rhs->nodeversion() : 0));
+
+    int cmp = 0;
+    while (n.node()) {
+        cmp = comp.compare(key, *n.node());
+        if (cmp == 0)
+            break;
+        if (cmp > 0) {
+            T* nb = n.node();
+            boundary.first = std::make_tuple(nb, nb->nodeversion());
+        } else {
+            T* nb = n.node();
+            boundary.second = std::make_tuple(nb, nb->nodeversion());
+        }
+        p = n;
+        n = n.node()->rblinks_.c_[cmp > 0];
+    }
+
+    bool found = (n.node() != nullptr);
+    T* retnode = n.node();
+    Version retver = retnode ? (found ? retnode->version() : 0) : 0;
+    node_info_type parent = std::make_tuple(p.node(), p.node() ? p.node()->nodeversion() : 0);
+
+    // perform the insertion if not found
+    if (!found) {
+        retnode = (T*)malloc(sizeof(T));
+        new (retnode) T(key);
+        retver = retnode->nodeversion();
+        insert_commit(retnode, p, (cmp > 0));
+
+        // increment parent's nodeversion upon successful insertion
+        if (p.node()) {
+            p.node()->inc_nodeversion();
+        }
+    }
+
+    TransactionTid::unlock_write(treelock_);
+
+    return std::make_tuple(retnode, retver, found, boundary, parent);
 }
 
 template <typename T, typename C>
 inline T* rbtree<T, C>::erase(T& node) {
+    TransactionTid::lock_write(treelock_);
     rbaccount(erase);
-    return delete_node(&node, nullptr);
+    T* ret = delete_node(&node, nullptr);
+    TransactionTid::unlock_write(treelock_);
+    return ret;
 }
 
 // RBNODEPTR FUNCTION DEFINITIONS
