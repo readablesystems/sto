@@ -303,7 +303,7 @@ private:
 
 
 template <typename T, bool Opaque = true,
-          bool Trivial = std::is_trivially_copyable<T>::value,
+          bool Trivial = mass::is_trivially_copyable<T>::value,
           bool Small = sizeof(T) <= sizeof(uintptr_t) && alignof(T) == sizeof(T)
           > class TWrapped;
 
@@ -315,7 +315,7 @@ template <typename T> class TWrapped<T, false, true, false> : public TLargeTrivi
 template <typename T, bool Small> class TWrapped<T, false, false, Small> : public TNontrivialNonopaqueWrapped<T> {};
 
 
-template <typename T, bool Trivial = std::is_trivially_copyable<T>::value,
+template <typename T, bool Trivial = mass::is_trivially_copyable<T>::value,
           bool Small = sizeof(T) <= sizeof(uintptr_t) && alignof(T) == sizeof(T)
           > class TNonopaqueWrapped;
 

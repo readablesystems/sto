@@ -118,7 +118,8 @@ public:
     }
     virtual bool check_predicate(TransItem& item, Transaction& txn) {
         TransProxy p(txn, item);
-        return discharge(p, v_.read(p, vers_));
+        pair_type pred = item.template predicate_value<pair_type>();
+        return discharge(pred, v_.read(p, vers_));
     }
     virtual bool check(const TransItem& item, const Transaction&) {
         return item.check_version(vers_);
@@ -134,9 +135,9 @@ public:
     virtual void print(std::ostream& w, const TransItem& item) const {
         w << "<IntProxy " << (void*) this << "=" << v_.unsafe_access() << ".v" << vers_.value();
         if (item.has_read())
-            w << " ?" << item.read_value<version_type>();
+            w << " ?" << item.template read_value<version_type>();
         if (item.has_write())
-            w << " =" << item.write_value<T>();
+            w << " =" << item.template write_value<T>();
         if (item.has_predicate()) {
             auto& p = item.predicate_value<pair_type>();
             w << " P[" << p.first << "," << p.second << "]";
@@ -147,7 +148,7 @@ public:
 
     // static methods for managing predicates
     static pair_type& get(TransProxy& item) {
-        return item.template predicate_value<pair_type>(pair_type{std::numeric_limits<T>::min(), std::numeric_limits<T>::max()});
+        return item.predicate_value<pair_type>(pair_type{std::numeric_limits<T>::min(), std::numeric_limits<T>::max()});
     }
     static void observe_eq(TransProxy& item, T value) {
         auto& p = get(item);
@@ -212,12 +213,11 @@ public:
         if (p.first > p.second)
             Sto::abort();
     }
-    static bool discharge(TransProxy& item, T value) {
-        auto& p = get(item);
-        return p.first <= value && value <= p.second;
+    static bool discharge(pair_type pred, T value) {
+        return pred.first <= value && value <= pred.second;
     }
     static void discharge_abort(TransProxy& item, T value) {
-        if (!discharge(item, value))
+        if (!discharge(get(item), value))
             Sto::abort();
     }
 

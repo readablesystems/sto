@@ -2,11 +2,12 @@
 #include <iostream>
 #include <assert.h>
 #include <vector>
+#include <algorithm>
 #include "Transaction.hh"
-#include "TIntPredicate.hh"
+#include "TCounter.hh"
 
 void testTrivial() {
-	TIntPredicate<int> ip;
+	TCounter<int> ip;
 
     {
         TransactionGuard t;
@@ -22,14 +23,72 @@ void testTrivial() {
 	printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testConcurrentUpdate() {
+    TCounter<int> ip;
+    bool b;
+
+    std::vector<int> permutation{1, 2, 3, 4};
+    do {
+        ip.unsafe_write(0);
+
+        TestTransaction t1(1);
+        ++ip;
+
+        TestTransaction t2(2);
+        ++ip;
+
+        TestTransaction t3(3);
+        ip -= 1;
+
+        TestTransaction t4(4);
+        ip += 5;
+
+        for (auto which : permutation)
+            switch (which) {
+            case 1:
+                assert(t1.try_commit());
+                break;
+            case 2:
+                assert(t2.try_commit());
+                break;
+            case 3:
+                assert(t3.try_commit());
+                break;
+            case 4:
+                assert(t4.try_commit());
+                break;
+            }
+
+        assert(ip.unsafe_read() == 6);
+    } while (std::next_permutation(permutation.begin(), permutation.end()));
+
+    {
+        TestTransaction t1(1);
+        b = ip >= 4;
+        assert(b);
+        ip += 4;
+
+        TestTransaction t2(2);
+        ip -= 2;
+        assert(t2.try_commit());
+
+        t1.use();
+        b = ip >= 8;
+        assert(b);
+        assert(t1.try_commit());
+        assert(ip.unsafe_read() == 8);
+    }
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
 void testSimpleRangesOk() {
-    TIntPredicate<int> ip;
+    TCounter<int> ip;
     bool match;
 
     {
         TestTransaction t1(1);
-        match = ip < 3;
-        assert(match);
+        ++ip;
 
         TestTransaction t2(2);
         ip = 1;
@@ -71,7 +130,7 @@ void testSimpleRangesOk() {
 }
 
 void testSimpleRangesFail() {
-    TIntPredicate<int> ip;
+    TCounter<int> ip;
     bool match;
 
     {
@@ -150,8 +209,8 @@ void testSimpleRangesFail() {
 }
 
 int main() {
-    assert((mass::is_trivially_copyable<TIntPredicate<int>::pair_type>::value));
     testTrivial();
+    testConcurrentUpdate();
     testSimpleRangesOk();
     testSimpleRangesFail();
     return 0;
