@@ -948,7 +948,7 @@ bool RBTree<K, T>::nontrans_insert(const K& key, const T& value) {
         wrapper_type* n = (wrapper_type*)malloc(sizeof(wrapper_type));
         new (n) wrapper_type(rbpair<K, T>(key, value));
         erase_inserted(&n->version());
-        bool side = (p.node() == nullptr) ? false : (wrapper_tree_.r_.node_compare(*n, *p) > 0);
+        bool side = (p.node() == nullptr) ? false : (wrapper_tree_.r_.node_compare(*n, *p.node()) > 0);
         wrapper_tree_.insert_commit(n, p, side);
     }
     unlock_write(&wrapper_tree_.treelock_);
