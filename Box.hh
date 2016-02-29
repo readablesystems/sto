@@ -11,10 +11,6 @@ public:
     static constexpr TransItem::flags_type valid_only_bit = TransItem::user0_bit;
     
     Box() : s_() , local_lock(false) {}
-    void initialize(Shared* container, int idx) {
-        container_ = container;
-        idx_ = idx;
-    }
     
     T unsafe_read() const {
         return s_.read_value();
@@ -49,8 +45,7 @@ private:
     }
 
 public:
-    T transRead() {
-        auto item = Sto::item(container_, idx_);
+    T transRead(TransProxy item) {
         if (item.has_write())
             return item.template write_value<T>();
         else {
@@ -68,30 +63,13 @@ public:
         }
     }
     
-    /* Overloading cast operation so that we can now directly read values from SingleElem objects */
-    operator T() {
-        if (Sto::in_progress())
-            return transRead();
-        else
-            return unsafe_read();
-    }
-
-    void transWrite(const T& v) {
-        auto item = Sto::item(container_, idx_).add_write(v);
+    void transWrite(TransProxy item, const T& v) {
+        item.add_write(v);
         if (!item.has_read()) {
             item.add_read(v).add_flags(valid_only_bit);
         }
     }
   
-    /* Overloads = operator with transWrite */
-    Box& operator= (const T& v) {
-        if (Sto::in_progress())
-            transWrite(v);
-        else
-            write(v);
-        return *this;
-    }
-
     void lock() {
         TransactionTid::lock(s_.version());
     }
@@ -139,7 +117,5 @@ public:
   protected:
     // we Store the versioned_value inlined (no added boxing)
     Structure s_;
-    Shared* container_;
-    int idx_;
     bool local_lock;
 };

@@ -66,9 +66,6 @@ public:
         vecversion_ = 0;
 
         data_ = new Elem[capacity_];
-        for (int i = 0; i < capacity_; i++) {
-            data_[i].initialize(this, i);
-        }
     }
     
     void reserve(size_type new_capacity) {
@@ -79,9 +76,6 @@ public:
         resize_lock_.write_lock();
         for (size_type i = 0; i < capacity_; i++) {
             new_data[i] = data_[i];
-        }
-        for (size_type i = size_; i < new_capacity; i++) {
-            new_data[i].initialize(this, i);
         }
         capacity_ = new_capacity;
         if (data_ != NULL) {
@@ -277,7 +271,7 @@ public:
             }
         }
         if (i < size)
-            return data_[i].transRead();
+            return data_[i].transRead(Sto::item(this, i));
         else {
             int diff = i - size;
             
@@ -325,7 +319,7 @@ public:
 
         }
         if (i < size)
-            data_[i].transWrite(std::move(v));
+            data_[i].transWrite(Sto::item(this, i), std::move(v));
         else {
             int diff = i - size;
             
