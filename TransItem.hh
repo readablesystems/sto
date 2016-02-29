@@ -114,11 +114,11 @@ class TransItem {
     }
     bool check_version(TVersion v) const {
         assert(has_read());
-        return v.check_version(this->template read_value<TVersion>());
+        return v.check_version(this->read_value<TVersion>());
     }
     bool check_version(TNonopaqueVersion v) const {
         assert(has_read());
-        return v.check_version(this->template read_value<TNonopaqueVersion>());
+        return v.check_version(this->read_value<TNonopaqueVersion>());
     }
 
     template <typename T>
