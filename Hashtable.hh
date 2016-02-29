@@ -620,7 +620,13 @@ public:
 #endif
     unlock(&e->version);
   }
-  
+
+  bool nontrans_insert(const Key& k, const Value& v) { return insert(k, v); }
+
+  bool nontrans_find(const Key& k, Value& v) { return read(k, v); }
+
+  bool nontrans_remove(const Key& k) { return remove(k); }
+
 private:
   bucket_entry& buck_entry(const Key& k) {
     return map_[bucket(k)];

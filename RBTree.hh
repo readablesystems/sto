@@ -882,6 +882,7 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
 
 template <typename K, typename T>
 bool RBTree<K, T>::nontrans_insert(const K& key, const T& value) {
+    lock(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, value));
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
@@ -897,33 +898,51 @@ bool RBTree<K, T>::nontrans_insert(const K& key, const T& value) {
         bool side = (x == nullptr)? false : (wrapper_tree_.r_.node_compare(*n, *x) > 0);
         wrapper_tree_.insert_commit(n, p, side);
     }
+    unlock(&treelock_);
     return !found;
 }
 
 template <typename K, typename T>
 bool RBTree<K, T>::nontrans_contains(const K& key) {
+    lock(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
-            rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+                                          rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+    unlock(&treelock_);
     return results.first.second;
 }
 
 template <typename K, typename T>
 T RBTree<K, T>::nontrans_find(const K& key) {
+    lock(&treelock_);
+    wrapper_type idx_pair(rbpair<K, T>(key, T()));
+    auto results = wrapper_tree_.find_any(idx_pair,
+            rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+    auto pair = results.first;
+    bool found = pair.second;
+    auto ret = found ? pair.first.node()->writeable_value() : T();
+    unlock(&treelock_);
+    return ret;
+}
+
+template <typename K, typename T>
+bool RBTree<K, T>::nontrans_find(const K& key, T& val) {
+    lock(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
     auto pair = results.first;
     bool found = pair.second;
     if (found) {
-        return pair.first.node()->writeable_value();
-    } else {
-        return T();
+      val = pair.first.node()->writeable_value();
     }
+    unlock(&treelock_);
+    return found;
 }
 
 template <typename K, typename T>
 bool RBTree<K, T>::nontrans_remove(const K& key) {
+    lock(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
@@ -935,6 +954,7 @@ bool RBTree<K, T>::nontrans_remove(const K& key) {
         wrapper_tree_.erase(*n);
         free(n);
     }
+    unlock(&treelock_);
     return found;
 }
 
