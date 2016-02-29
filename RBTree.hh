@@ -973,9 +973,8 @@ T RBTree<K, T>::nontrans_find(const K& key) {
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-    auto pair = results.first;
-    bool found = pair.second;
-    auto ret = found ? pair.first.node()->writeable_value() : T();
+    bool found = std::get<2>(results);
+    auto ret = found ? std::get<0>(results)->writeable_value() : T();
     unlock_read(&wrapper_tree_.treelock_);
     return ret;
 }
@@ -986,10 +985,9 @@ bool RBTree<K, T>::nontrans_find(const K& key, T& val) {
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-    auto pair = results.first;
-    bool found = pair.second;
+    bool found = std::get<2>(results);
     if (found) {
-      val = pair.first.node()->writeable_value();
+      val = std::get<0>(results)->writeable_value();
     }
     unlock_read(&wrapper_tree_.treelock_);
     return found;
@@ -1001,11 +999,10 @@ bool RBTree<K, T>::nontrans_remove(const K& key) {
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-    auto pair = results.first;
-    bool found = pair.second;
+    bool found = std::get<2>(results);
     if (found) {
         size_--;
-        wrapper_type* n = pair.first.node();
+        wrapper_type* n = std::get<0>(results);
         wrapper_tree_.erase(*n);
         free(n);
     }
