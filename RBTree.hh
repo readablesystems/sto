@@ -140,6 +140,8 @@ public:
     T nontrans_find(const K& key); // returns T() if not found, works for STAMP
     bool nontrans_find(const K& key, T& val);
 
+    bool stamp_insert(const K& key, const T& val);
+
     void lock(versioned_value *e) {
         lock(&e->version());
     }
@@ -934,6 +936,80 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
 }
 
 #endif /* !STO_NO_STM */
+
+// logN (instead of 2logN) insertion for STAMP
+template <typename K, typename T>
+bool RBTree<K, T>::stamp_insert(const K& key, const T& value) {
+    rbwrapper<rbpair<K, T>> node( rbpair<K, T>(key, value) );
+    auto results = this->find_or_insert(node);
+    wrapper_type* x = std::get<0>(results);
+    Version ver = std::get<1>(results);
+    bool found = std::get<2>(results);
+    boundaries_type& boundaries = std::get<3>(results);
+    node_info_type& pinfo = std::get<4>(results);
+    wrapper_type* p = std::get<0>(pinfo);
+    // p_ver is always nodeversion
+    Version p_ver = std::get<1>(pinfo);
+
+    // INSERT: kvp did not exist
+    // @ver is *nodeversion*
+    if (!found) {
+        wrapper_type* lhs = std::get<0>(boundaries.first);
+        wrapper_type* rhs = std::get<0>(boundaries.second);
+        if (p == nullptr) {
+            // tree was empty, increment treeversion at COMMIT TIME
+            assert(lhs == nullptr && rhs == nullptr);
+            Sto::item(this, tree_key_).add_write(0);
+        } else {
+            // update txn's own read set if inserted under a tracked boundary node
+            auto item = Sto::item(this, reinterpret_cast<uintptr_t>(p) | 0x1);
+            if (item.has_read())
+                item.update_read(p_ver, p_ver + TransactionTid::increment_value);
+
+            // add the newly inserted node to boundary node set if it is adjacent to any tracked
+            // boundary node
+            if (Sto::item(this, reinterpret_cast<uintptr_t>(lhs) | 0x1).has_read()
+                || Sto::item(this, reinterpret_cast<uintptr_t>(rhs) | 0x1).has_read()) {
+                Sto::item(this, reinterpret_cast<uintptr_t>(x) | 0x1).add_read(ver);
+            }
+        }
+        Sto::item(this, x).add_write(T()).add_flags(insert_tag);
+        change_size_offset(1);
+        return true;
+    }
+    // UPDATE: kvp is already inserted into the tree
+    // @ver is *value version*
+    else {
+        auto item = Sto::item(this, x);
+
+        // insert-my-delete
+        if (has_delete(item)) {
+            item.clear_flags(delete_tag);
+            // recover from delete-my-insert (engineer's induction all over the place...)
+            if (is_inserted(ver)) {
+                // okay to directly update value since we are the only txn
+                // who can access it
+                item.add_flags(insert_tag);
+                x->writeable_value() = T();
+            }
+            // overwrite value
+            item.add_write(T());
+            // we have to update the value of the size we will write
+            change_size_offset(1);
+            return true;
+        }
+        // operator[] on RHS (THIS IS A READ!)
+        // don't need to add a write to size because size isn't changing
+        // STO won't add read of items in our write set
+
+        // This is not ideal because a blind write also reads this version
+        // It's a compromise since we don't want to acquire any more locks
+        // at install time (to avoid deadlocks)
+        item.add_read(ver);
+        return false;
+    }
+
+}
 
 template <typename K, typename T>
 bool RBTree<K, T>::nontrans_insert(const K& key, const T& value) {
