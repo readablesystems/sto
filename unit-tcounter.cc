@@ -29,7 +29,7 @@ void testConcurrentUpdate() {
 
     std::vector<int> permutation{1, 2, 3, 4};
     do {
-        ip.unsafe_write(0);
+        ip.nontrans_write(0);
 
         TestTransaction t1(1);
         ++ip;
@@ -59,7 +59,7 @@ void testConcurrentUpdate() {
                 break;
             }
 
-        assert(ip.unsafe_read() == 6);
+        assert(ip.nontrans_read() == 6);
     } while (std::next_permutation(permutation.begin(), permutation.end()));
 
     {
@@ -76,7 +76,7 @@ void testConcurrentUpdate() {
         b = ip >= 8;
         assert(b);
         assert(t1.try_commit());
-        assert(ip.unsafe_read() == 8);
+        assert(ip.nontrans_read() == 8);
     }
 
     printf("PASS: %s\n", __FUNCTION__);
@@ -108,7 +108,7 @@ void testSimpleRangesOk() {
         assert(t1.try_commit());
     }
 
-    ip.unsafe_write(1);
+    ip.nontrans_write(1);
 
     {
         TestTransaction t1(1);
@@ -145,7 +145,7 @@ void testSimpleRangesFail() {
         assert(!t1.try_commit());
     }
 
-    ip.unsafe_write(0);
+    ip.nontrans_write(0);
 
     {
         TestTransaction t1(1);
@@ -163,7 +163,7 @@ void testSimpleRangesFail() {
         assert(!t1.try_commit());
     }
 
-    ip.unsafe_write(0);
+    ip.nontrans_write(0);
 
     {
         TestTransaction t1(1);
@@ -187,7 +187,7 @@ void testSimpleRangesFail() {
         assert(t1.try_commit());
     }
 
-    ip.unsafe_write(4);
+    ip.nontrans_write(4);
 
     try {
         TestTransaction t1(1);

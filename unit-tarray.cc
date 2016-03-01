@@ -45,7 +45,7 @@ void testIter() {
     for (int i = 0; i < 10; i++) {
         int x = rand();
         arr.push_back(x);
-        f.unsafe_put(i, x);
+        f.nontrans_put(i, x);
     }
     int max;
     TRANSACTION {
@@ -61,7 +61,7 @@ void testIter() {
 void testConflictingIter() {
     TArray<int, 10> f;
     for (int i = 0; i < 10; i++) {
-        f.unsafe_put(i, i);
+        f.nontrans_put(i, i);
     }
 
     {
@@ -80,7 +80,7 @@ void testConflictingIter() {
 void testModifyingIter() {
     TArray<int, 10> f;
     for (int i = 0; i < 10; i++)
-        f.unsafe_put(i, i);
+        f.nontrans_put(i, i);
 
     {
         TransactionGuard t;
@@ -99,7 +99,7 @@ void testModifyingIter() {
 void testConflictingModifyIter1() {
     TArray<int, 10> f;
     for (int i = 0; i < 10; i++)
-        f.unsafe_put(i, i);
+        f.nontrans_put(i, i);
 
     {
         TestTransaction t(1);
@@ -124,7 +124,7 @@ void testConflictingModifyIter1() {
 void testConflictingModifyIter2() {
     TArray<int, 10> f;
     for (int i = 0; i < 10; i++)
-        f.unsafe_put(i, i);
+        f.nontrans_put(i, i);
 
     {
         TransactionGuard t;
@@ -148,7 +148,7 @@ void testConflictingModifyIter2() {
 void testConflictingModifyIter3() {
     TArray<int, 10> f;
     for (int i = 0; i < 10; i++)
-        f.unsafe_put(i, i);
+        f.nontrans_put(i, i);
 
     {
         TestTransaction t1(1);
@@ -175,7 +175,7 @@ void testConflictingModifyIter3() {
 void testOpacity1() {
     TArray<int, 10> f;
     for (int i = 0; i < 10; i++)
-        f.unsafe_put(i, i);
+        f.nontrans_put(i, i);
 
     try {
         TestTransaction t1(1);
@@ -207,7 +207,7 @@ void testOpacity1() {
 void testNoOpacity1() {
     TArray<int, 10, TNonopaqueWrapped<int> > f;
     for (int i = 0; i < 10; i++)
-        f.unsafe_put(i, i);
+        f.nontrans_put(i, i);
 
     {
         TestTransaction t1(1);

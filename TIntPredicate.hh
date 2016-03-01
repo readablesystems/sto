@@ -43,11 +43,11 @@ public:
         return *this = x.operator TT();
     }
 
-    T unsafe_read() const {
-        return v_.unsafe_access();
+    T nontrans_read() const {
+        return v_.access();
     }
-    void unsafe_write(T x) {
-        v_.unsafe_access() = x;
+    void nontrans_write(T x) {
+        v_.access() = x;
     }
 
     bool operator==(T x) const {
@@ -125,7 +125,7 @@ public:
         return item.check_version(vers_);
     }
     virtual void install(TransItem& item, const Transaction& txn) {
-        v_.assign_locked(item.template write_value<T>());
+        v_.write(item.template write_value<T>());
         vers_.set_version_unlock(txn.commit_tid());
         item.clear_needs_unlock();
     }
@@ -133,7 +133,7 @@ public:
         vers_.unlock();
     }
     virtual void print(std::ostream& w, const TransItem& item) const {
-        w << "<IntProxy " << (void*) this << "=" << v_.unsafe_access() << ".v" << vers_.value();
+        w << "<IntProxy " << (void*) this << "=" << v_.access() << ".v" << vers_.value();
         if (item.has_read())
             w << " ?" << item.template read_value<version_type>();
         if (item.has_write())

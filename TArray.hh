@@ -49,17 +49,17 @@ public:
         Sto::item(this, i).add_write(x);
     }
 
-    get_type unsafe_get(size_type i) const {
+    get_type nontrans_get(size_type i) const {
         assert(i < N);
-        return data_[i].v.unsafe_access();
+        return data_[i].v.access();
     }
-    void unsafe_put(size_type i, const T& x) {
+    void nontrans_put(size_type i, const T& x) {
         assert(i < N);
-        data_[i].v.unsafe_access() = x;
+        data_[i].v.access() = x;
     }
-    void unsafe_put(size_type i, T&& x) {
+    void nontrans_put(size_type i, T&& x) {
         assert(i < N);
-        data_[i].v.unsafe_access() = std::move(x);
+        data_[i].v.access() = std::move(x);
     }
 
     // transactional methods
@@ -71,7 +71,7 @@ public:
     }
     void install(TransItem& item, const Transaction& txn) {
         size_type i = item.key<size_type>();
-        data_[i].v.assign_locked(item.write_value<T>());
+        data_[i].v.write(item.write_value<T>());
         data_[i].vers.set_version_unlock(txn.commit_tid());
         item.clear_needs_unlock();
     }

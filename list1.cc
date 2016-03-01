@@ -4,7 +4,6 @@
 #include <vector>
 #include "Transaction.hh"
 #include "List1.hh"
-#include "Array1.hh"
 
 void testSimpleInt() {
     List1<int> f;

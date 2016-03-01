@@ -11,6 +11,13 @@ public:
         : v_(std::forward(args)...) {
     }
 
+    const T& access() const {
+        return v_;
+    }
+    T& access() {
+        return v_;
+    }
+
     read_type snapshot(const version_type& version) const {
         version_type v0 = version, v1;
         T result;
@@ -42,18 +49,11 @@ public:
         item.observe(v1);
         return result;
     }
-    void assign_locked(const T& v) {
+    void write(const T& v) {
         v_ = v;
     }
-    void assign_locked(T&& v) {
+    void write(T&& v) {
         v_ = std::move(v);
-    }
-
-    const T& unsafe_access() const {
-        return v_;
-    }
-    T& unsafe_access() {
-        return v_;
     }
 
 protected:
@@ -92,6 +92,13 @@ public:
         : v_(std::forward<Args>(args)...) {
     }
 
+    const T& access() const {
+        return v_;
+    }
+    T& access() {
+        return v_;
+    }
+
     read_type snapshot(const version_type&) const {
         return v_;
     }
@@ -100,15 +107,8 @@ public:
         acquire_fence();
         return v_;
     }
-    void assign_locked(T v) {
+    void write(T v) {
         v_ = v;
-    }
-
-    const T& unsafe_access() const {
-        return v_;
-    }
-    T& unsafe_access() {
-        return v_;
     }
 
 private:
@@ -131,6 +131,13 @@ public:
     }
     template <typename... Args> TLargeTrivialNonopaqueWrapped(Args&&... args)
         : v_(std::forward<Args>(args)...) {
+    }
+
+    const T& access() const {
+        return v_;
+    }
+    T& access() {
+        return v_;
     }
 
     read_type snapshot(const version_type& version) const {
@@ -164,18 +171,11 @@ public:
         item.observe(v1);
         return result;
     }
-    void assign_locked(const T& v) {
+    void write(const T& v) {
         v_ = v;
     }
-    void assign_locked(T&& v) {
+    void write(T&& v) {
         v_ = std::move(v);
-    }
-
-    const T& unsafe_access() const {
-        return v_;
-    }
-    T& unsafe_access() {
-        return v_;
     }
 
 private:
@@ -204,6 +204,13 @@ public:
         Transaction::rcu_cleanup([vp](){ delete vp; });
     }
 
+    const T& access() const {
+        return *vp_;
+    }
+    T& access() {
+        return *vp_;
+    }
+
     read_type snapshot(const version_type&) const {
         return *vp_;
     }
@@ -223,18 +230,11 @@ public:
         item.observe(v1);
         return *resultp;
     }
-    void assign_locked(const T& v) {
+    void write(const T& v) {
         save(new T(v));
     }
-    void assign_locked(T&& v) {
+    void write(T&& v) {
         save(new T(std::move(v)));
-    }
-
-    const T& unsafe_access() const {
-        return *vp_;
-    }
-    T& unsafe_access() {
-        return *vp_;
     }
 
 private:
@@ -269,6 +269,13 @@ public:
         Transaction::rcu_cleanup([vp](){ delete vp; });
     }
 
+    const T& access() const {
+        return *vp_;
+    }
+    T& access() {
+        return *vp_;
+    }
+
     read_type snapshot(const version_type&) const {
         return *vp_;
     }
@@ -277,18 +284,11 @@ public:
         acquire_fence();
         return *vp_;
     }
-    void assign_locked(const T& v) {
+    void write(const T& v) {
         save(new T(v));
     }
-    void assign_locked(T&& v) {
+    void write(T&& v) {
         save(new T(std::move(v)));
-    }
-
-    const T& unsafe_access() const {
-        return *vp_;
-    }
-    T& unsafe_access() {
-        return *vp_;
     }
 
 private:

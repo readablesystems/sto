@@ -96,8 +96,8 @@ template <> struct Container<USE_ARRAY> {
     typedef TArray<value_type, ARRAY_SZ> type;
     typedef int index_type;
     static constexpr bool has_delete = false;
-    value_type unsafe_get(index_type key) {
-        return v_.unsafe_get(key);
+    value_type nontrans_get(index_type key) {
+        return v_.nontrans_get(key);
     }
     value_type transGet(index_type key) {
         return v_.transGet(key);
@@ -117,7 +117,7 @@ template <> struct Container<USE_VECTOR> {
     typedef Vector<value_type> type;
     typedef typename type::size_type index_type;
     static constexpr bool has_delete = false;
-    value_type unsafe_get(index_type key) {
+    value_type nontrans_get(index_type key) {
         return v_.unsafe_get(key);
     }
     value_type transGet(index_type key) {
@@ -137,7 +137,7 @@ private:
 template <> struct Container<USE_GENSTMARRAY> {
     typedef int index_type;
     static constexpr bool has_delete = false;
-    value_type unsafe_get(index_type key) {
+    value_type nontrans_get(index_type key) {
         return a_[key];
     }
     value_type transGet(index_type key) {
@@ -165,7 +165,7 @@ template <> struct Container<USE_MASSTREE> {
 #endif
     typedef int index_type;
     static constexpr bool has_delete = true;
-    value_type unsafe_get(index_type key) {
+    value_type nontrans_get(index_type key) {
         TransactionGuard guard;
         value_type v;
         v_.transGet(IntStr(key), v);
@@ -205,7 +205,7 @@ template <> struct Container<USE_HASHTABLE> {
     typedef Hashtable<int, value_type, false, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
     typedef int index_type;
     static constexpr bool has_delete = true;
-    value_type unsafe_get(index_type key) {
+    value_type nontrans_get(index_type key) {
         return v_.unsafe_get(key);
     }
     value_type transGet(index_type key) {
@@ -603,14 +603,14 @@ template <int DS, bool do_delete> bool RandomRWs<DS, do_delete>::check() {
 
   for (int i = 0; i < ARRAY_SZ; ++i) {
 # if MAINTAIN_TRUE_ARRAY_STATE
-    if (old->unsafe_get(i) != true_array_state[i])
+    if (old->nontrans_get(i) != true_array_state[i])
         fprintf(stderr, "index [%d]: parallel %d, atomic %d\n",
-                i, old->unsafe_get(i), true_array_state[i]);
+                i, old->nontrans_get(i), true_array_state[i]);
 # endif
-    if (old->unsafe_get(i) != ch.unsafe_get(i))
+    if (old->nontrans_get(i) != ch.nontrans_get(i))
         fprintf(stderr, "index [%d]: parallel %d, sequential %d\n",
-                i, old->unsafe_get(i), ch.unsafe_get(i));
-    assert(old->unsafe_get(i) == ch.unsafe_get(i));
+                i, old->nontrans_get(i), ch.nontrans_get(i));
+    assert(old->nontrans_get(i) == ch.nontrans_get(i));
   }
   return true;
 }
@@ -645,7 +645,7 @@ template <int DS> bool KingDelete<DS, true>::check() {
   container_type* a = this->a;
   int count = 0;
   for (int i = 0; i < nthreads; ++i) {
-    if (a->unsafe_get(i)) {
+    if (a->nontrans_get(i)) {
       count++;
     }
   }
@@ -708,7 +708,7 @@ template <int DS> bool XorDelete<DS, true>::check() {
   this->a = old;
 
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    assert(old->unsafe_get(i) == ch.unsafe_get(i));
+    assert(old->nontrans_get(i) == ch.nontrans_get(i));
   }
   return true;
 }
@@ -736,7 +736,7 @@ template <int DS> void IsolatedWrites<DS>::run(int me) {
 
 template <int DS> bool IsolatedWrites<DS>::check() {
   for (int i = 0; i < nthreads; ++i) {
-    assert(this->a->unsafe_get(i) == i+1);
+    assert(this->a->nontrans_get(i) == i+1);
   }
   return true;
 }
@@ -770,8 +770,8 @@ template <int DS> void BlindWrites<DS>::run(int me) {
 
 template <int DS> bool BlindWrites<DS>::check() {
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    debug("read %d\n", this->a->unsafe_get(i));
-    assert(this->a->unsafe_get(i) == nthreads-1);
+    debug("read %d\n", this->a->nontrans_get(i));
+    assert(this->a->nontrans_get(i) == nthreads-1);
   }
   return true;
 }
@@ -801,7 +801,7 @@ template <int DS> void InterferingRWs<DS>::run(int me) {
 
 template <int DS> bool InterferingRWs<DS>::check() {
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    assert(this->a->unsafe_get(i) == (i % nthreads)+1);
+    assert(this->a->nontrans_get(i) == (i % nthreads)+1);
   }
   return true;
 }

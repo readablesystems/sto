@@ -103,7 +103,7 @@ void testSimpleRangesOk() {
         assert(!t1.try_commit());
     }
 
-    ip.unsafe_write(3);
+    ip.nontrans_write(3);
 
     {
         TestTransaction t1(1);
@@ -130,7 +130,7 @@ void testSimpleRangesOk() {
         assert(t1.try_commit());
     }
 
-    ip.unsafe_write(1);
+    ip.nontrans_write(1);
 
     {
         TestTransaction t1(1);
@@ -167,7 +167,7 @@ void testSimpleRangesFail() {
         assert(!t1.try_commit());
     }
 
-    ip.unsafe_write(0);
+    ip.nontrans_write(0);
 
     {
         TestTransaction t1(1);
@@ -185,7 +185,7 @@ void testSimpleRangesFail() {
         assert(!t1.try_commit());
     }
 
-    ip.unsafe_write(0);
+    ip.nontrans_write(0);
 
     {
         TestTransaction t1(1);
@@ -209,7 +209,7 @@ void testSimpleRangesFail() {
         assert(t1.try_commit());
     }
 
-    ip.unsafe_write(4);
+    ip.nontrans_write(4);
 
     try {
         TestTransaction t1(1);
