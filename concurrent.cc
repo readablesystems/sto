@@ -5,7 +5,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 
-#include "Array1.hh"
+#include "TArray.hh"
 #include "GenericSTM.hh"
 #include "Hashtable.hh"
 #include "Queue.hh"
@@ -93,7 +93,7 @@ typedef int value_type;
 template <int DS> struct Container {};
 
 template <> struct Container<USE_ARRAY> {
-    typedef Array1<value_type, ARRAY_SZ> type;
+    typedef TArray<value_type, ARRAY_SZ> type;
     typedef int index_type;
     static constexpr bool has_delete = false;
     value_type unsafe_get(index_type key) {
