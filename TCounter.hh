@@ -4,6 +4,7 @@
 template <typename T, typename W = TWrapped<T> >
 class TCounter : public TObject {
     typedef TIntPredicate<T, W> ip_type;
+    typedef typename ip_type::pred_type pred_type;
 public:
     typedef typename W::version_type version_type;
     static constexpr TransItem::flags_type delta_bit = TransItem::user0_bit;
@@ -22,24 +23,21 @@ public:
     operator T() const {
         auto item = Sto::item(this, 0);
         T result = T();
-        if (item.has_write())
-            result += item.template write_value<T>();
         if (!item.has_flag(assigned_bit)) {
             result += v_.snapshot(vers_);
-            ip_type::observe_eq(item, result);
+            ip_type::observe(get(item), result);
         }
-        if (item.has_flag(delta_bit))
-            item.add_write(result).assign_flags(assigned_bit);
+        if (item.has_write())
+            result += item.template write_value<T>();
         return result;
     }
+
     TCounter<T, W>& operator=(T x) {
-        auto item = Sto::item(this, 0);
-        if (item.has_predicate()) {
-            ip_type::discharge_abort(item, v_.read(item, vers_));
-            item.clear_predicate();
-        }
-        item.add_write(x).assign_flags(assigned_bit);
+        Sto::item(this, 0).add_write(x).assign_flags(assigned_bit);
         return *this;
+    }
+    TCounter<T, W>& operator=(const TCounter<T, W>& x) {
+        return *this = x.operator T();
     }
     template <typename TT, typename WW>
     TCounter<T, W>& operator=(const TCounter<TT, WW>& x) {
@@ -54,64 +52,22 @@ public:
     }
 
     bool operator==(T x) const {
-        auto item = Sto::item(this, 0);
-        if (item.has_flag(delta_bit))
-            x -= item.template write_value<T>();
-        else if (item.has_write())
-            return item.template write_value<T>() == x;
-        T result = v_.snapshot(vers_);
-        ip_type::observe_eq(item, x, result == x);
-        return result == x;
+        return observe_eq(Sto::item(this, 0), x);
     }
     bool operator!=(T x) const {
-        auto item = Sto::item(this, 0);
-        if (item.has_flag(delta_bit))
-            x -= item.template write_value<T>();
-        else if (item.has_write())
-            return item.template write_value<T>() != x;
-        T result = v_.snapshot(vers_);
-        ip_type::observe_eq(item, x, result == x);
-        return result != x;
+        return !observe_eq(Sto::item(this, 0), x);
     }
     bool operator<(T x) const {
-        auto item = Sto::item(this, 0);
-        if (item.has_flag(delta_bit))
-            x -= item.template write_value<T>();
-        else if (item.has_write())
-            return item.template write_value<T>() < x;
-        T result = v_.snapshot(vers_);
-        ip_type::observe_lt(item, x, result < x);
-        return result < x;
+        return observe_lt(Sto::item(this, 0), x);
     }
     bool operator<=(T x) const {
-        auto item = Sto::item(this, 0);
-        if (item.has_flag(delta_bit))
-            x -= item.template write_value<T>();
-        else if (item.has_write())
-            return item.template write_value<T>() <= x;
-        T result = v_.snapshot(vers_);
-        ip_type::observe_le(item, x, result <= x);
-        return result <= x;
+        return observe_le(Sto::item(this, 0), x);
     }
     bool operator>=(T x) const {
-        auto item = Sto::item(this, 0);
-        if (item.has_flag(delta_bit))
-            x -= item.template write_value<T>();
-        else if (item.has_write())
-            return item.template write_value<T>() >= x;
-        T result = v_.snapshot(vers_);
-        ip_type::observe_lt(item, x, result < x);
-        return result >= x;
+        return !observe_lt(Sto::item(this, 0), x);
     }
     bool operator>(T x) const {
-        auto item = Sto::item(this, 0);
-        if (item.has_flag(delta_bit))
-            x -= item.template write_value<T>();
-        else if (item.has_write())
-            return item.template write_value<T>() > x;
-        T result = v_.snapshot(vers_);
-        ip_type::observe_le(item, x, result <= x);
-        return result > x;
+        return !observe_le(Sto::item(this, 0), x);
     }
 
     TCounter<T, W>& operator+=(T delta) {
@@ -147,7 +103,7 @@ public:
     }
     virtual bool check_predicate(TransItem& item, Transaction& txn) {
         TransProxy p(txn, item);
-        typename ip_type::pair_type pred = item.template predicate_value<typename ip_type::pair_type>();
+        pred_type pred = item.template predicate_value<pred_type>();
         return ip_type::discharge(pred, v_.read(p, vers_));
     }
     virtual bool check(const TransItem& item, const Transaction&) {
@@ -173,7 +129,7 @@ public:
         else if (item.has_write())
             w << " =" << item.template write_value<T>();
         if (item.has_predicate()) {
-            auto& p = item.predicate_value<pair_type>();
+            auto& p = item.predicate_value<pred_type>();
             w << " P[" << p.first << "," << p.second << "]";
         }
         w << ">";
@@ -182,4 +138,35 @@ public:
 private:
     version_type vers_;
     W v_;
+
+    static pred_type& get(TransProxy& item) {
+        return item.predicate_value<pred_type>(pred_type{std::numeric_limits<T>::min(), std::numeric_limits<T>::max()});
+    }
+    T snapshot(TransProxy item) const {
+        return item.has_flag(assigned_bit) ? item.template write_value<T>() : v_.snapshot(vers_);
+    }
+    static T delta(TransProxy item) {
+        return item.has_flag(delta_bit) ? -item.template write_value<T>() : T();
+    }
+    bool observe_eq(TransProxy item, T value) const {
+        value += delta(item);
+        bool result = snapshot(item) == value;
+        if (!item.has_flag(assigned_bit))
+            ip_type::observe_eq(get(item), value, result);
+        return result;
+    }
+    bool observe_lt(TransProxy item, T value) const {
+        value += delta(item);
+        bool result = snapshot(item) < value;
+        if (!item.has_flag(assigned_bit))
+            ip_type::observe_lt(get(item), value, result);
+        return result;
+    }
+    bool observe_le(TransProxy item, T value) const {
+        value += delta(item);
+        bool result = snapshot(item) <= value;
+        if (!item.has_flag(assigned_bit))
+            ip_type::observe_le(get(item), value, result);
+        return result;
+    }
 };

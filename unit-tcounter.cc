@@ -208,10 +208,46 @@ void testSimpleRangesFail() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testUpdateRead() {
+    TCounter<int> ip;
+    bool match;
+
+    {
+        TestTransaction t1(1);
+        ++ip;
+        match = ip > 0;
+        assert(match);
+
+        TestTransaction t2(2);
+        ip = 1;
+        assert(t2.try_commit());
+        assert(t1.try_commit());
+    }
+
+    assert(ip.nontrans_read() == 2);
+
+    {
+        TestTransaction t1(1);
+        ++ip;
+        match = ip > 0;
+        assert(match);
+
+        TestTransaction t2(2);
+        ip = -1;
+        assert(t2.try_commit());
+        assert(!t1.try_commit());
+    }
+
+    assert(ip.nontrans_read() == -1);
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
 int main() {
     testTrivial();
     testConcurrentUpdate();
     testSimpleRangesOk();
     testSimpleRangesFail();
+    testUpdateRead();
     return 0;
 }

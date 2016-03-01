@@ -231,7 +231,7 @@ void testSimpleRangesFail() {
 }
 
 int main() {
-    assert((mass::is_trivially_copyable<TIntPredicate<int>::pair_type>::value));
+    assert((mass::is_trivially_copyable<TIntPredicate<int>::pred_type>::value));
     assert((mass::is_trivially_copyable<TVersion>::value));
     assert((mass::is_trivially_copyable<TNonopaqueVersion>::value));
 

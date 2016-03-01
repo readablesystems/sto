@@ -4,11 +4,17 @@
 #include <stdio.h>
 #include "TWrapped.hh"
 
+template <typename T>
+class TIntProxy {
+public:
+
+};
+
 template <typename T, typename W = TWrapped<T> >
 class TIntPredicate : public TObject {
 public:
     typedef typename W::version_type version_type;
-    struct pair_type {
+    struct pred_type {
         T first;
         T second;
     };
@@ -25,18 +31,17 @@ public:
             return item.template write_value<T>();
         else {
             T result = v_.snapshot(vers_);
-            observe_eq(item, result);
+            observe(get(item), result);
             return result;
         }
     }
+
     TIntPredicate<T, W>& operator=(T x) {
-        auto item = Sto::item(this, 0);
-        if (item.has_predicate()) {
-            discharge_abort(item, v_.read(item, vers_));
-            item.clear_predicate();
-        }
-        item.add_write(x);
+        Sto::item(this, 0).add_write(x);
         return *this;
+    }
+    TIntPredicate<T, W>& operator=(const TIntPredicate<T, W>& x) {
+        return *this = x.operator T();
     }
     template <typename TT, typename WW>
     TIntPredicate<T, W>& operator=(const TIntPredicate<TT, WW>& x) {
@@ -51,64 +56,22 @@ public:
     }
 
     bool operator==(T x) const {
-        auto item = Sto::item(this, 0);
-        if (item.has_write())
-            return item.template write_value<T>() == x;
-        else {
-            T result = v_.snapshot(vers_);
-            observe_eq(item, x, result == x);
-            return result == x;
-        }
+        return observe_eq(Sto::item(this, 0), x);
     }
     bool operator!=(T x) const {
-        auto item = Sto::item(this, 0);
-        if (item.has_write())
-            return item.template write_value<T>() != x;
-        else {
-            T result = v_.snapshot(vers_);
-            observe_eq(item, x, result == x);
-            return result != x;
-        }
+        return !observe_eq(Sto::item(this, 0), x);
     }
     bool operator<(T x) const {
-        auto item = Sto::item(this, 0);
-        if (item.has_write())
-            return item.template write_value<T>() < x;
-        else {
-            T result = v_.snapshot(vers_);
-            observe_lt(item, x, result < x);
-            return result < x;
-        }
+        return observe_lt(Sto::item(this, 0), x);
     }
     bool operator<=(T x) const {
-        auto item = Sto::item(this, 0);
-        if (item.has_write())
-            return item.template write_value<T>() <= x;
-        else {
-            T result = v_.snapshot(vers_);
-            observe_le(item, x, result <= x);
-            return result <= x;
-        }
+        return observe_le(Sto::item(this, 0), x);
     }
     bool operator>=(T x) const {
-        auto item = Sto::item(this, 0);
-        if (item.has_write())
-            return item.template write_value<T>() >= x;
-        else {
-            T result = v_.snapshot(vers_);
-            observe_lt(item, x, result < x);
-            return result >= x;
-        }
+        return !observe_lt(Sto::item(this, 0), x);
     }
     bool operator>(T x) const {
-        auto item = Sto::item(this, 0);
-        if (item.has_write())
-            return item.template write_value<T>() > x;
-        else {
-            T result = v_.snapshot(vers_);
-            observe_le(item, x, result <= x);
-            return result > x;
-        }
+        return !observe_le(Sto::item(this, 0), x);
     }
 
 
@@ -118,7 +81,7 @@ public:
     }
     virtual bool check_predicate(TransItem& item, Transaction& txn) {
         TransProxy p(txn, item);
-        pair_type pred = item.template predicate_value<pair_type>();
+        pred_type pred = item.template predicate_value<pred_type>();
         return discharge(pred, v_.read(p, vers_));
     }
     virtual bool check(const TransItem& item, const Transaction&) {
@@ -139,7 +102,7 @@ public:
         if (item.has_write())
             w << " =" << item.template write_value<T>();
         if (item.has_predicate()) {
-            auto& p = item.predicate_value<pair_type>();
+            auto& p = item.predicate_value<pred_type>();
             w << " P[" << p.first << "," << p.second << "]";
         }
         w << ">";
@@ -147,44 +110,18 @@ public:
 
 
     // static methods for managing predicates
-    static pair_type& get(TransProxy& item) {
-        return item.predicate_value<pair_type>(pair_type{std::numeric_limits<T>::min(), std::numeric_limits<T>::max()});
-    }
-    static void observe_eq(TransProxy& item, T value) {
-        auto& p = get(item);
+    static void observe(pred_type& p, T value) {
         if (p.first <= value && value <= p.second)
             p.first = p.second = value;
         else
             Sto::abort();
     }
-    static void observe_lt(TransProxy& item, T value) {
-        auto& p = get(item);
-        p.second = std::min(p.second, value - 1);
-        if (p.first > p.second)
-            Sto::abort();
-    }
-    static void observe_le(TransProxy& item, T value) {
-        auto& p = get(item);
-        p.second = std::min(p.second, value);
-        if (p.first > p.second)
-            Sto::abort();
-    }
-    static void observe_gt(TransProxy& item, T value) {
-        auto& p = get(item);
-        p.first = std::max(p.first, value + 1);
-        if (p.first > p.second)
-            Sto::abort();
-    }
-    static void observe_ge(TransProxy& item, T value) {
-        auto& p = get(item);
-        p.first = std::max(p.first, value);
-        if (p.first > p.second)
-            Sto::abort();
-    }
-    static void observe_ne(TransProxy& item, T value) {
-        auto& p = get(item);
-        if (value < p.first || p.second < value)
-            /* skip */;
+    static void observe_eq(pred_type& p, T value, bool was_eq) {
+        if (was_eq) {
+            p.first = std::max(p.first, value);
+            p.second = std::min(p.second, value);
+        } else if (value < p.first || p.second < value)
+            /* do nothing */;
         else if (value - p.first <= p.second - value)
             p.first = value + 1;
         else
@@ -192,11 +129,7 @@ public:
         if (p.first > p.second)
             Sto::abort();
     }
-    static void observe_eq(TransProxy& item, T value, bool was_eq) {
-        was_eq ? observe_eq(item, value) : observe_ne(item, value);
-    }
-    static void observe_lt(TransProxy& item, T value, bool was_lt) {
-        auto& p = get(item);
+    static void observe_lt(pred_type& p, T value, bool was_lt) {
         if (was_lt)
             p.second = std::min(p.second, value - 1);
         else
@@ -204,8 +137,7 @@ public:
         if (p.first > p.second)
             Sto::abort();
     }
-    static void observe_le(TransProxy& item, T value, bool was_le) {
-        auto& p = get(item);
+    static void observe_le(pred_type& p, T value, bool was_le) {
         if (was_le)
             p.second = std::min(p.second, value);
         else
@@ -213,15 +145,36 @@ public:
         if (p.first > p.second)
             Sto::abort();
     }
-    static bool discharge(pair_type pred, T value) {
-        return pred.first <= value && value <= pred.second;
-    }
-    static void discharge_abort(TransProxy& item, T value) {
-        if (!discharge(get(item), value))
-            Sto::abort();
+    static bool discharge(pred_type p, T value) {
+        return p.first <= value && value <= p.second;
     }
 
 private:
     version_type vers_;
     W v_;
+
+    static pred_type& get(TransProxy& item) {
+        return item.predicate_value<pred_type>(pred_type{std::numeric_limits<T>::min(), std::numeric_limits<T>::max()});
+    }
+    T snapshot(TransProxy item) const {
+        return item.has_write() ? item.template write_value<T>() : v_.snapshot(vers_);
+    }
+    bool observe_eq(TransProxy item, T value) const {
+        bool result = snapshot(item) == value;
+        if (!item.has_write())
+            observe_eq(get(item), value, result);
+        return result;
+    }
+    bool observe_lt(TransProxy item, T value) const {
+        bool result = snapshot(item) < value;
+        if (!item.has_write())
+            observe_lt(get(item), value, result);
+        return result;
+    }
+    bool observe_le(TransProxy item, T value) const {
+        bool result = snapshot(item) <= value;
+        if (!item.has_write())
+            observe_le(get(item), value, result);
+        return result;
+    }
 };
