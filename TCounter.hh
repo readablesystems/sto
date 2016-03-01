@@ -25,7 +25,7 @@ public:
         T result = T();
         if (!item.has_flag(assigned_bit)) {
             result += v_.snapshot(vers_);
-            ip_type::observe(get(item), result);
+            get(item).observe(result);
         }
         if (item.has_write())
             result += item.template write_value<T>();
@@ -104,7 +104,7 @@ public:
     virtual bool check_predicate(TransItem& item, Transaction& txn) {
         TransProxy p(txn, item);
         pred_type pred = item.template predicate_value<pred_type>();
-        return ip_type::discharge(pred, v_.read(p, vers_));
+        return pred.discharge(v_.read(p, vers_));
     }
     virtual bool check(const TransItem& item, const Transaction&) {
         return item.check_version(vers_);
@@ -140,7 +140,7 @@ private:
     W v_;
 
     static pred_type& get(TransProxy& item) {
-        return item.predicate_value<pred_type>(pred_type{std::numeric_limits<T>::min(), std::numeric_limits<T>::max()});
+        return item.predicate_value<pred_type>(pred_type::unconstrained());
     }
     T snapshot(TransProxy item) const {
         return item.has_flag(assigned_bit) ? item.template write_value<T>() : v_.snapshot(vers_);
@@ -152,21 +152,21 @@ private:
         value += delta(item);
         bool result = snapshot(item) == value;
         if (!item.has_flag(assigned_bit))
-            ip_type::observe_eq(get(item), value, result);
+            get(item).observe_eq(value, result);
         return result;
     }
     bool observe_lt(TransProxy item, T value) const {
         value += delta(item);
         bool result = snapshot(item) < value;
         if (!item.has_flag(assigned_bit))
-            ip_type::observe_lt(get(item), value, result);
+            get(item).observe_lt(value, result);
         return result;
     }
     bool observe_le(TransProxy item, T value) const {
         value += delta(item);
         bool result = snapshot(item) <= value;
         if (!item.has_flag(assigned_bit))
-            ip_type::observe_le(get(item), value, result);
+            get(item).observe_le(value, result);
         return result;
     }
 };

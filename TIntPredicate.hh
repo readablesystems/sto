@@ -4,14 +4,59 @@
 #include <stdio.h>
 #include "TWrapped.hh"
 
-template <typename T, typename W = TWrapped<T> >
+template <typename T>
+struct TIntRange {
+    T first;
+    T second;
+
+    static TIntRange<T> unconstrained() {
+        return TIntRange<T>{std::numeric_limits<T>::min(), std::numeric_limits<T>::max()};
+    }
+    void observe(T value) {
+        if (first <= value && value <= second)
+            first = second = value;
+        else
+            Sto::abort();
+    }
+    void observe_eq(T value, bool was_eq) {
+        if (was_eq) {
+            first = std::max(first, value);
+            second = std::min(second, value);
+        } else if (value < first || second < value)
+            /* do nothing */;
+        else if (value - first <= second - value)
+            first = value + 1;
+        else
+            second = value - 1;
+        if (first > second)
+            Sto::abort();
+    }
+    void observe_lt(T value, bool was_lt) {
+        if (was_lt)
+            second = std::min(second, value - 1);
+        else
+            first = std::max(first, value);
+        if (first > second)
+            Sto::abort();
+    }
+    void observe_le(T value, bool was_le) {
+        if (was_le)
+            second = std::min(second, value);
+        else
+            first = std::max(first, value + 1);
+        if (first > second)
+            Sto::abort();
+    }
+    bool discharge(T value) const {
+        return first <= value && value <= second;
+    }
+};
+
+template <typename T, typename W = TNonopaqueWrapped<T> >
 class TIntPredicate : public TObject {
 public:
     typedef typename W::version_type version_type;
-    struct pred_type {
-        T first;
-        T second;
-    };
+    typedef TIntRange<T> pred_type;
 
     TIntPredicate() {
     }
@@ -25,7 +70,7 @@ public:
             return item.template write_value<T>();
         else {
             T result = v_.snapshot(vers_);
-            observe(get(item), result);
+            get(item).observe(result);
             return result;
         }
     }
@@ -76,7 +121,7 @@ public:
     virtual bool check_predicate(TransItem& item, Transaction& txn) {
         TransProxy p(txn, item);
         pred_type pred = item.template predicate_value<pred_type>();
-        return discharge(pred, v_.read(p, vers_));
+        return pred.discharge(v_.read(p, vers_));
     }
     virtual bool check(const TransItem& item, const Transaction&) {
         return item.check_version(vers_);
@@ -102,53 +147,12 @@ public:
         w << ">";
     }
 
-
-    // static methods for managing predicates
-    static void observe(pred_type& p, T value) {
-        if (p.first <= value && value <= p.second)
-            p.first = p.second = value;
-        else
-            Sto::abort();
-    }
-    static void observe_eq(pred_type& p, T value, bool was_eq) {
-        if (was_eq) {
-            p.first = std::max(p.first, value);
-            p.second = std::min(p.second, value);
-        } else if (value < p.first || p.second < value)
-            /* do nothing */;
-        else if (value - p.first <= p.second - value)
-            p.first = value + 1;
-        else
-            p.second = value - 1;
-        if (p.first > p.second)
-            Sto::abort();
-    }
-    static void observe_lt(pred_type& p, T value, bool was_lt) {
-        if (was_lt)
-            p.second = std::min(p.second, value - 1);
-        else
-            p.first = std::max(p.first, value);
-        if (p.first > p.second)
-            Sto::abort();
-    }
-    static void observe_le(pred_type& p, T value, bool was_le) {
-        if (was_le)
-            p.second = std::min(p.second, value);
-        else
-            p.first = std::max(p.first, value + 1);
-        if (p.first > p.second)
-            Sto::abort();
-    }
-    static bool discharge(pred_type p, T value) {
-        return p.first <= value && value <= p.second;
-    }
-
 private:
     version_type vers_;
     W v_;
 
     static pred_type& get(TransProxy& item) {
-        return item.predicate_value<pred_type>(pred_type{std::numeric_limits<T>::min(), std::numeric_limits<T>::max()});
+        return item.predicate_value<pred_type>(pred_type::unconstrained());
     }
     T snapshot(TransProxy item) const {
         return item.has_write() ? item.template write_value<T>() : v_.snapshot(vers_);
@@ -156,19 +160,19 @@ private:
     bool observe_eq(TransProxy item, T value) const {
         bool result = snapshot(item) == value;
         if (!item.has_write())
-            observe_eq(get(item), value, result);
+            get(item).observe_eq(value, result);
         return result;
     }
     bool observe_lt(TransProxy item, T value) const {
         bool result = snapshot(item) < value;
         if (!item.has_write())
-            observe_lt(get(item), value, result);
+            get(item).observe_lt(value, result);
         return result;
     }
     bool observe_le(TransProxy item, T value) const {
         bool result = snapshot(item) <= value;
         if (!item.has_write())
-            observe_le(get(item), value, result);
+            get(item).observe_le(value, result);
         return result;
     }
 };
