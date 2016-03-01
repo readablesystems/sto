@@ -4,44 +4,8 @@
 #include <string.h>
 #include <assert.h>
 #include "Interface.hh"
+#include "Packer.hh"
 #include "compiler.hh"
-
-// Packer
-template <typename T>
-struct __attribute__((may_alias)) Aliasable {
-    T x __attribute__((may_alias));
-};
-
-template <typename T,
-          bool simple = (__has_trivial_copy(T) && sizeof(T) <= sizeof(void*))>
-  struct Packer {};
-template <typename T> struct Packer<T, true> {
-    typedef T type;
-    typedef int is_simple_type;
-    static constexpr bool is_simple = true;
-    typedef const T& argument_type;
-    typedef T& return_type;
-    static void* pack(const T& x) {
-        void* v = 0;
-        memcpy(&v, &x, sizeof(T));
-        return v;
-    }
-    static T& unpack(void*& x) {
-        return *(T*) &x;
-    }
-    static const T& unpack(void* const& x) {
-        return *(const T*) &x;
-    }
-};
-template <typename T> struct Packer<T, false> {
-    typedef T type;
-    typedef void* is_simple_type;
-    static constexpr bool is_simple = false;
-    static T& unpack(void* x) {
-        return *(T*) x;
-    }
-};
-
 
 class TransProxy;
 
@@ -266,8 +230,8 @@ class TransProxy {
         i_->__rm_flags(TransItem::read_bit);
         return *this;
     }
-    template <typename T, typename U>
-    inline TransProxy& update_read(T old_rdata, U new_rdata);
+    template <typename T>
+    inline TransProxy& update_read(T old_rdata, T new_rdata);
 
     template <typename T>
     inline TransProxy& set_predicate(T pdata);
