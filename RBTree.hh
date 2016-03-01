@@ -141,6 +141,7 @@ public:
     bool nontrans_find(const K& key, T& val);
 
     bool stamp_insert(const K& key, const T& val);
+    T stamp_find(const K& key);
 
     void lock(versioned_value *e) {
         lock(&e->version());
@@ -1009,6 +1010,28 @@ bool RBTree<K, T>::stamp_insert(const K& key, const T& value) {
         return false;
     }
 
+}
+
+template <typename K, typename T>
+T RBTree<K, T>::stamp_find(const K& key) {
+    rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
+
+    // find_or_abort() tracks boundary nodes if key is absent
+    // it also observes a value version if key is found
+    auto results = find_or_abort(idx_pair);
+
+    wrapper_type* node = std::get<0>(results);
+    bool found = std::get<2>(results);
+    if (found) {
+        auto item = Sto::item(const_cast<RBTree<K, T>*>(this), node);
+        if (has_delete(item)) {
+            // read my deletes
+            return T();
+        }
+        return node->writeable_value();
+    } else {
+        return T();
+    }
 }
 
 template <typename K, typename T>
