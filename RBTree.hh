@@ -112,6 +112,7 @@ public:
     RBTree() {
         sizeversion_ = 0;
         size_ = 0;
+        treelock_ = 0;
 #if DEBUG
         stats_ = {0,0,0,0,0,0};
 #endif
@@ -294,7 +295,10 @@ private:
     // NOTE: this function must be surrounded by a lock in order to ensure we add the correct nodeversions
     inline std::tuple<wrapper_type*, Version, bool, boundaries_type>
     find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) const {
-        auto results = wrapper_tree_.find_any(rbkvp, rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+        lock_read(&treelock_);
+        auto results = wrapper_tree_.find_any(rbkvp,
+                           rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+        unlock_read(&treelock_);
 
         // extract information from results
         wrapper_type* x = std::get<0>(results);
@@ -362,7 +366,11 @@ private:
     // @parent: parent of the returned node, prior to any insertions
     inline std::tuple<wrapper_type*, Version, bool, boundaries_type, node_info_type>
     find_or_insert(wrapper_type& rbkvp) {
-        auto results = wrapper_tree_.find_insert(rbkvp, rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+        lock_write(&treelock_);
+        auto results = wrapper_tree_.find_insert(rbkvp,
+                           rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+        unlock_write(&treelock_);
+
         bool found = std::get<2>(results);
         wrapper_type* ans = std::get<0>(results);
         Version ver = std::get<1>(results);
@@ -530,6 +538,7 @@ private:
     // only add a write to size if we erase or do an absent insert
     size_t size_;
     mutable Version sizeversion_;
+    mutable RWVersion treelock_;
     // used to mark whether a key is for the tree structure (for tree version checks)
     // or a pointer (which will always have the lower 3 bits as 0)
     static constexpr uintptr_t tree_bit = 1U<<0;
@@ -892,7 +901,9 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
         // actually erase the element when installing the delete
         if (deleted) {
             // actually erase
+            lock_write(&treelock_);
             wrapper_tree_.erase(*e);
+            unlock_write(&treelock_);
             // increment the nodeversion after we erase
             // increment value version 
             TransactionTid::inc_invalid_version(e->version());
@@ -1036,7 +1047,7 @@ T RBTree<K, T>::stamp_find(const K& key) {
 
 template <typename K, typename T>
 bool RBTree<K, T>::nontrans_insert(const K& key, const T& value) {
-    lock_write(&wrapper_tree_.treelock_);
+    lock_write(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, value));
     auto results = wrapper_tree_.find_or_parent(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
@@ -1050,35 +1061,35 @@ bool RBTree<K, T>::nontrans_insert(const K& key, const T& value) {
         bool side = (p.node() == nullptr) ? false : (wrapper_tree_.r_.node_compare(*n, *p.node()) > 0);
         wrapper_tree_.insert_commit(n, p, side);
     }
-    unlock_write(&wrapper_tree_.treelock_);
+    unlock_write(&treelock_);
     return !found;
 }
 
 template <typename K, typename T>
 bool RBTree<K, T>::nontrans_contains(const K& key) {
-    lock_read(&wrapper_tree_.treelock_);
+    lock_read(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
                                           rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-    unlock_read(&wrapper_tree_.treelock_);
+    unlock_read(&treelock_);
     return std::get<2>(results);
 }
 
 template <typename K, typename T>
 T RBTree<K, T>::nontrans_find(const K& key) {
-    lock_read(&wrapper_tree_.treelock_);
+    lock_read(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
     bool found = std::get<2>(results);
     auto ret = found ? std::get<0>(results)->writeable_value() : T();
-    unlock_read(&wrapper_tree_.treelock_);
+    unlock_read(&treelock_);
     return ret;
 }
 
 template <typename K, typename T>
 bool RBTree<K, T>::nontrans_find(const K& key, T& val) {
-    lock_read(&wrapper_tree_.treelock_);
+    lock_read(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
@@ -1086,13 +1097,13 @@ bool RBTree<K, T>::nontrans_find(const K& key, T& val) {
     if (found) {
       val = std::get<0>(results)->writeable_value();
     }
-    unlock_read(&wrapper_tree_.treelock_);
+    unlock_read(&treelock_);
     return found;
 }
 
 template <typename K, typename T>
 bool RBTree<K, T>::nontrans_remove(const K& key) {
-    lock_write(&wrapper_tree_.treelock_);
+    lock_write(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
@@ -1103,7 +1114,7 @@ bool RBTree<K, T>::nontrans_remove(const K& key) {
         wrapper_tree_.erase(*n);
         free(n);
     }
-    unlock_write(&wrapper_tree_.treelock_);
+    unlock_write(&treelock_);
     return found;
 }
 

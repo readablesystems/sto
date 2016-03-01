@@ -192,7 +192,6 @@ class rbtree {
     rbpriv::rbrep<T, Compare> r_;
     // moved from RBTree.hh
     Version treeversion_;
-    mutable RWVersion treelock_;
 
     template <typename K, typename Comp>
     inline std::tuple<T*, Version, bool, boundaries_type> find_any(const K& key, Comp comp) const;
@@ -357,7 +356,7 @@ inline Compare& rbcompare<Compare>::get_compare() const {
 // RBTREE FUNCTION DEFINITIONS
 template <typename T, typename C>
 inline rbtree<T, C>::rbtree(const value_compare &compare)
-    : r_(compare), treeversion_(), treelock_() {
+    : r_(compare), treeversion_() {
 }
 
 template <typename T, typename C>
@@ -521,7 +520,6 @@ template <typename T, typename C> template <typename K, typename Comp>
 inline std::tuple<T*, typename rbtree<T, C>::Version, bool,
        typename rbtree<T, C>::boundaries_type>
 rbtree<T, C>::find_any(const K& key, Comp comp) const {
-    TransactionTid::lock_read(treelock_);
 
     rbnodeptr<T> n(r_.root_, false);
     rbnodeptr<T> p(nullptr, false);
@@ -553,14 +551,11 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
     T* retnode = found ? n.node() : p.node();
     Version retver = retnode ? retnode->version() : treeversion_;
 
-    TransactionTid::unlock_read(treelock_);
     return std::make_tuple(retnode, retver, found, boundary);
 }
 
 template <typename T, typename C> template <typename K, typename Comp>
 inline std::tuple<rbnodeptr<T>, bool> rbtree<T, C>::find_or_parent(const K& key, Comp comp) const {
-    TransactionTid::lock_read(treelock_);
-
     rbnodeptr<T> n(r_.root_, false);
     rbnodeptr<T> p(nullptr, false);
 
@@ -572,8 +567,6 @@ inline std::tuple<rbnodeptr<T>, bool> rbtree<T, C>::find_or_parent(const K& key,
         p = n;
         n = n.node()->rblinks_.c_[cmp > 0];
     }
-
-    TransactionTid::unlock_read(treelock_);
 
     bool found = (n.node() != nullptr);
 
@@ -587,8 +580,6 @@ template <typename T, typename C> template <typename K, typename Comp>
 inline std::tuple<T*, typename rbtree<T, C>::Version, bool,
        typename rbtree<T, C>::boundaries_type, typename rbtree<T, C>::node_info_type>
 rbtree<T, C>::find_insert(K& key, Comp comp) {
-    TransactionTid::lock_write(treelock_);
-
     // lookup part, almost identical to find_any()
     rbnodeptr<T> n(r_.root_, false);
     rbnodeptr<T> p(nullptr, false);
@@ -632,17 +623,13 @@ rbtree<T, C>::find_insert(K& key, Comp comp) {
         }
     }
 
-    TransactionTid::unlock_write(treelock_);
-
     return std::make_tuple(retnode, retver, found, boundary, parent);
 }
 
 template <typename T, typename C>
 inline T* rbtree<T, C>::erase(T& node) {
-    TransactionTid::lock_write(treelock_);
     rbaccount(erase);
     T* ret = delete_node(&node, nullptr);
-    TransactionTid::unlock_write(treelock_);
     return ret;
 }
 
