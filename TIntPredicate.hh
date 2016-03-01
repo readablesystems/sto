@@ -4,12 +4,6 @@
 #include <stdio.h>
 #include "TWrapped.hh"
 
-template <typename T>
-class TIntProxy {
-public:
-
-};
-
 template <typename T, typename W = TWrapped<T> >
 class TIntPredicate : public TObject {
 public:
@@ -178,3 +172,29 @@ private:
         return result;
     }
 };
+
+
+template <typename T, typename W>
+bool operator==(T a, const TIntPredicate<T, W>& b) {
+    return b == a;
+}
+template <typename T, typename W>
+bool operator!=(T a, const TIntPredicate<T, W>& b) {
+    return b != a;
+}
+template <typename T, typename W>
+bool operator<(T a, const TIntPredicate<T, W>& b) {
+    return b > a;
+}
+template <typename T, typename W>
+bool operator<=(T a, const TIntPredicate<T, W>& b) {
+    return b >= a;
+}
+template <typename T, typename W>
+bool operator>=(T a, const TIntPredicate<T, W>& b) {
+    return b <= a;
+}
+template <typename T, typename W>
+bool operator>(T a, const TIntPredicate<T, W>& b) {
+    return b < a;
+}

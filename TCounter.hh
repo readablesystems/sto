@@ -16,7 +16,7 @@ public:
 
     TCounter() {
     }
-    TCounter(T x)
+    explicit TCounter(T x)
         : v_(x) {
     }
 
@@ -170,3 +170,29 @@ private:
         return result;
     }
 };
+
+
+template <typename T, typename W>
+bool operator==(T a, const TCounter<T, W>& b) {
+    return b == a;
+}
+template <typename T, typename W>
+bool operator!=(T a, const TCounter<T, W>& b) {
+    return b != a;
+}
+template <typename T, typename W>
+bool operator<(T a, const TCounter<T, W>& b) {
+    return b > a;
+}
+template <typename T, typename W>
+bool operator<=(T a, const TCounter<T, W>& b) {
+    return b >= a;
+}
+template <typename T, typename W>
+bool operator>=(T a, const TCounter<T, W>& b) {
+    return b <= a;
+}
+template <typename T, typename W>
+bool operator>(T a, const TCounter<T, W>& b) {
+    return b < a;
+}
