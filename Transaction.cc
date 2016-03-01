@@ -134,12 +134,12 @@ bool Transaction::try_commit() {
     int nwriteset = 0;
 
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
-        if (it->has_write())
-            writeset[nwriteset++] = it - transSet_.begin();
-        else if (it->has_predicate()) {
+        if (it->has_predicate()) {
             if (!it->owner()->check_predicate(*it, *this))
                 goto abort;
         }
+        if (it->has_write())
+            writeset[nwriteset++] = it - transSet_.begin();
 #ifdef DETAILED_LOGGING
         if (it->has_read())
             INC_P(txp_total_r);
