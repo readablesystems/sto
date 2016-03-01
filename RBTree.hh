@@ -986,7 +986,9 @@ bool RBTree<K, T>::stamp_insert(const K& key, const T& value) {
             }
         }
         Sto::item(this, x).add_write(T()).add_flags(insert_tag);
+#ifndef STO_NO_STM
         change_size_offset(1);
+#endif
         return true;
     }
     // UPDATE: kvp is already inserted into the tree
@@ -1006,8 +1008,10 @@ bool RBTree<K, T>::stamp_insert(const K& key, const T& value) {
             }
             // overwrite value
             item.add_write(T());
+#ifndef STO_NO_STM
             // we have to update the value of the size we will write
             change_size_offset(1);
+#endif
             return true;
         }
         // operator[] on RHS (THIS IS A READ!)
