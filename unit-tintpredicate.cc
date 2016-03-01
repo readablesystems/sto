@@ -40,6 +40,86 @@ void testSimpleRangesOk() {
 
     {
         TestTransaction t1(1);
+        match = ip < 0;
+        assert(!match);
+
+        TestTransaction t2(2);
+        ip = 0;
+        assert(t2.try_commit());
+        t1.use();
+        assert(t1.try_commit());
+    }
+
+    {
+        TestTransaction t1(1);
+        match = ip > -1;
+        assert(match);
+
+        TestTransaction t2(2);
+        ip = -1;
+        assert(t2.try_commit());
+        t1.use();
+        assert(!t1.try_commit());
+    }
+
+    {
+        TestTransaction t1(1);
+        match = ip > 0;
+        assert(!match);
+
+        TestTransaction t2(2);
+        ip = 0;
+        assert(t2.try_commit());
+        t1.use();
+        assert(t1.try_commit());
+    }
+
+    {
+        TestTransaction t1(1);
+        match = ip >= 0;
+        assert(match);
+        match = ip < 4;
+        assert(match);
+
+        TestTransaction t2(2);
+        ip = 3;
+        assert(t2.try_commit());
+        t1.use();
+        assert(t1.try_commit());
+    }
+
+    {
+        TestTransaction t1(1);
+        match = ip >= 0;
+        assert(match);
+        match = ip < 4;
+        assert(match);
+
+        TestTransaction t2(2);
+        ip = -1;
+        assert(t2.try_commit());
+        t1.use();
+        assert(!t1.try_commit());
+    }
+
+    ip.unsafe_write(3);
+
+    {
+        TestTransaction t1(1);
+        match = ip >= 0;
+        assert(match);
+        match = ip < 4;
+        assert(match);
+
+        TestTransaction t2(2);
+        ip = 4;
+        assert(t2.try_commit());
+        t1.use();
+        assert(!t1.try_commit());
+    }
+
+    {
+        TestTransaction t1(1);
         match = ip > -4;
         assert(match);
 
