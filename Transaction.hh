@@ -161,124 +161,6 @@ struct __attribute__((aligned(128))) threadinfo_t {
 };
 
 
-// TransactionBuffer
-template <typename T> struct ObjectDestroyer {
-    static void destroy(void* object) {
-        ((T*) object)->~T();
-    }
-};
-
-class TransactionBuffer {
-    struct elt;
-    struct item;
-
-  public:
-    TransactionBuffer()
-        : e_() {
-    }
-    ~TransactionBuffer() {
-        if (e_)
-            hard_clear(true);
-    }
-
-    static constexpr size_t aligned_size(size_t x) {
-        return (x + 7) & ~7;
-    }
-
-    template <typename T>
-    void* pack_unique(T x) {
-        return pack_unique(std::move(x), (typename Packer<T>::is_simple_type) 0);
-    }
-    template <typename T>
-    void* pack(T x) {
-        return pack(std::move(x), (typename Packer<T>::is_simple_type) 0);
-    }
-
-    void clear() {
-        if (e_)
-            hard_clear(false);
-    }
-
-  private:
-    struct itemhdr {
-        void (*destroyer)(void*);
-        size_t size;
-    };
-    struct item : public itemhdr {
-        char buf[0];
-    };
-    struct elthdr {
-        elt* next;
-        size_t pos;
-        size_t size;
-    };
-    struct elt : public elthdr {
-        char buf[0];
-        void clear() {
-            size_t off = 0;
-            while (off < pos) {
-                itemhdr* i = (itemhdr*) &buf[off];
-                i->destroyer(i + 1);
-                off += i->size;
-            }
-            pos = 0;
-        }
-    };
-    elt* e_;
-
-    item* get_space(size_t needed) {
-        if (!e_ || e_->pos + needed > e_->size) {
-            size_t s = std::max(needed, e_ ? e_->size * 2 : 256);
-            elt* ne = (elt*) new char[sizeof(elthdr) + s];
-            ne->next = e_;
-            ne->pos = 0;
-            ne->size = s;
-            e_ = ne;
-        }
-        e_->pos += needed;
-        return (item*) &e_->buf[e_->pos - needed];
-    }
-
-    template <typename T>
-    void* pack(T x, int) {
-        return Packer<T>::pack(x);
-    }
-    template <typename T>
-    void* pack(T x, void*) {
-        size_t isize = aligned_size(sizeof(itemhdr) + sizeof(T));
-        item* space = this->get_space(isize);
-        space->destroyer = ObjectDestroyer<T>::destroy;
-        space->size = isize;
-        new (&space->buf[0]) T(std::move(x));
-        return &space->buf[0];
-    }
-
-    template <typename T>
-    void* pack_unique(T x, int) {
-        return Packer<T>::pack(x);
-    }
-    template <typename T>
-    void* pack_unique(T x, void*);
-
-    void hard_clear(bool delete_all);
-};
-
-template <typename T>
-void* TransactionBuffer::pack_unique(T x, void*) {
-    void (*destroyer)(void*) = ObjectDestroyer<T>::destroy;
-    for (elt* e = e_; e; e = e->next) {
-        size_t off = 0;
-        while (off < e->pos) {
-            item* i = (item*) &e->buf[off];
-            if (i->destroyer == destroyer
-                && ((Aliasable<T>*) &i->buf[0])->x == x)
-                return &i->buf[0];
-            off += i->size;
-        }
-    }
-    return pack(std::move(x));
-}
-
 class Transaction {
 public:
     static threadinfo_t tinfo[MAX_THREADS];
@@ -406,7 +288,7 @@ public:
     // adds item for a key that is known to be new (must NOT exist in the set)
     template <typename T>
     TransProxy new_item(const TObject* s, T key) {
-        void *xkey = buf_.pack(std::move(key));
+        void *xkey = Packer<T>::pack_unique(buf_, std::move(key));
         transSet_.emplace_back(const_cast<TObject*>(s), xkey);
         return TransProxy(*this, transSet_.back());
     }
@@ -415,14 +297,14 @@ public:
     template <typename T>
     TransProxy fresh_item(const TObject* s, T key) {
         may_duplicate_items_ = !transSet_.empty();
-        transSet_.emplace_back(const_cast<TObject*>(s), buf_.pack_unique(std::move(key)));
+        transSet_.emplace_back(const_cast<TObject*>(s), Packer<T>::pack_unique(buf_, std::move(key)));
         return TransProxy(*this, transSet_.back());
     }
 
     // tries to find an existing item with this key, otherwise adds it
     template <typename T>
     TransProxy item(const TObject* s, T key) {
-        void* xkey = buf_.pack_unique(std::move(key));
+        void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
         TransItem* ti = find_item(const_cast<TObject*>(s), xkey, 0);
         if (!ti) {
             transSet_.emplace_back(const_cast<TObject*>(s), xkey);
@@ -435,7 +317,7 @@ public:
     // in the set in some cases
     template <typename T>
     TransProxy read_item(const TObject* s, T key) {
-        void* xkey = buf_.pack_unique(std::move(key));
+        void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
         TransItem* ti = nullptr;
         if (firstWrite_ >= 0)
             ti = find_item(const_cast<TObject*>(s), xkey, firstWrite_);
@@ -449,7 +331,7 @@ public:
 
     template <typename T>
     OptionalTransProxy check_item(const TObject* s, T key) {
-        void* xkey = buf_.pack_unique(std::move(key));
+        void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
         return OptionalTransProxy(*this, find_item(const_cast<TObject*>(s), xkey, 0));
     }
 
@@ -752,7 +634,7 @@ inline TransProxy& TransProxy::add_read(T rdata) {
         Transaction::max_p(txp_max_rdata_size, sizeof(T));
 #endif
         i_->__or_flags(TransItem::read_bit);
-        i_->rdata_ = t()->buf_.pack(std::move(rdata));
+        i_->rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
     }
     return *this;
 }
@@ -767,7 +649,7 @@ inline TransProxy& TransProxy::observe(TVersion version) {
         Transaction::max_p(txp_max_rdata_size, sizeof(TVersion));
 #endif
         i_->__or_flags(TransItem::read_bit);
-        i_->rdata_ = t()->buf_.pack(std::move(version));
+        i_->rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
     }
     return *this;
 }
@@ -781,15 +663,15 @@ inline TransProxy& TransProxy::observe(TNonopaqueVersion version) {
         Transaction::max_p(txp_max_rdata_size, sizeof(TNonopaqueVersion));
 #endif
         i_->__or_flags(TransItem::read_bit);
-        i_->rdata_ = t()->buf_.pack(std::move(version));
+        i_->rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
     }
     return *this;
 }
 
-template <typename T, typename U>
-inline TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
+template <typename T>
+inline TransProxy& TransProxy::update_read(T old_rdata, T new_rdata) {
     if (has_read() && this->read_value<T>() == old_rdata)
-        i_->rdata_ = t()->buf_.pack(std::move(new_rdata));
+        i_->rdata_ = Packer<T>::repack(t()->buf_, i_->rdata_, new_rdata);
     return *this;
 }
 
@@ -801,7 +683,7 @@ inline TransProxy& TransProxy::set_predicate(T pdata) {
     Transaction::max_p(txp_max_rdata_size, sizeof(T));
 #endif
     i_->__or_flags(TransItem::predicate_bit);
-    i_->rdata_ = t()->buf_.pack(std::move(pdata));
+    i_->rdata_ = Packer<T>::pack(t()->buf_, std::move(pdata));
     return *this;
 }
 
@@ -820,14 +702,14 @@ inline TransProxy& TransProxy::add_write(const T& wdata) {
 #endif
     if (!has_write()) {
         i_->__or_flags(TransItem::write_bit);
-        i_->wdata_ = t()->buf_.pack(wdata);
+        i_->wdata_ = Packer<T>::pack(t()->buf_, wdata);
         t()->mark_write(*i_);
     } else
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general
         // (hopefully we'll have a system that can automatically call destructors and such
         // which will make our lives much easier)
-        this->template write_value<T>() = wdata;
+        i_->wdata_ = Packer<T>::repack(t()->buf_, i_->wdata_, wdata);
     return *this;
 }
 
@@ -839,14 +721,14 @@ inline TransProxy& TransProxy::add_write(T&& wdata) {
 #endif
     if (!has_write()) {
         i_->__or_flags(TransItem::write_bit);
-        i_->wdata_ = t()->buf_.pack(std::move(wdata));
+        i_->wdata_ = Packer<V>::pack(t()->buf_, std::move(wdata));
         t()->mark_write(*i_);
     } else
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general
         // (hopefully we'll have a system that can automatically call destructors and such
         // which will make our lives much easier)
-        this->template write_value<V>() = std::move(wdata);
+        i_->wdata_ = Packer<V>::repack(t()->buf_, i_->wdata_, std::move(wdata));
     return *this;
 }
 
@@ -858,8 +740,8 @@ inline TransProxy& TransProxy::set_stash(T sdata) {
         Transaction::max_p(txp_max_sdata_size, sizeof(T));
 #endif
         i_->__or_flags(TransItem::stash_bit);
-        i_->rdata_ = t()->buf_.pack(std::move(sdata));
+        i_->rdata_ = Packer<T>::pack(t()->buf_, std::move(sdata));
     } else
-        this->template stash_value<T>() = std::move(sdata);
+        i_->rdata_ = Packer<T>::repack(t()->buf_, i_->rdata_, std::move(sdata));
     return *this;
 }

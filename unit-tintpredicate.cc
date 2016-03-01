@@ -4,6 +4,7 @@
 #include <vector>
 #include "Transaction.hh"
 #include "TIntPredicate.hh"
+#include "StringWrapper.hh"
 
 void testTrivial() {
 	TIntPredicate<int> ip;
@@ -231,6 +232,43 @@ void testSimpleRangesFail() {
 
 int main() {
     assert((mass::is_trivially_copyable<TIntPredicate<int>::pair_type>::value));
+    assert((mass::is_trivially_copyable<TVersion>::value));
+    assert((mass::is_trivially_copyable<TNonopaqueVersion>::value));
+
+    // some assertions about TransactionBuffer
+    {
+        TransactionBuffer buf;
+        void* v1 = Packer<uintptr_t>::pack(buf, 12938);
+        void* v2 = Packer<uintptr_t>::pack_unique(buf, 12938);
+        void* v3 = Packer<uintptr_t>::pack(buf, 12938);
+        void* v4 = Packer<uintptr_t>::pack_unique(buf, 12938);
+        assert(v1 == v2 && v2 == v3 && v3 == v4 && v4 == (void*) (uintptr_t) 12938);
+        assert(Packer<uintptr_t>::unpack(v1) == 12938);
+        assert(Packer<uintptr_t>::unpack(v2) == 12938);
+        assert(Packer<uintptr_t>::unpack(v3) == 12938);
+        assert(Packer<uintptr_t>::unpack(v4) == 12938);
+
+        v1 = Packer<std::string>::pack(buf, "Hello");
+        v2 = Packer<std::string>::pack_unique(buf, "Hello");
+        v3 = Packer<std::string>::pack(buf, "Hello2");
+        v4 = Packer<std::string>::pack_unique(buf, "Hello2");
+        void* v5 = Packer<std::string>::pack(buf, "Hello");
+        void* v6 = Packer<std::string>::pack_unique(buf, "Hello");
+        assert(v1 != v2 && v1 != v5 && v2 != v5 && v1 != v6 && v5 != v6);
+        assert(v2 == v6);
+        assert(Packer<std::string>::unpack(v1) == "Hello");
+        assert(Packer<std::string>::unpack(v2) == "Hello");
+        assert(Packer<std::string>::unpack(v3) == "Hello2");
+        assert(Packer<std::string>::unpack(v4) == "Hello2");
+        assert(Packer<std::string>::unpack(v5) == "Hello");
+        assert(Packer<std::string>::unpack(v6) == "Hello");
+
+        std::string hello("Hello");
+        void* v7 = Packer<std::string>::pack(buf, StringWrapper(hello));
+        assert(v7 == &hello);
+    }
+
+
     testTrivial();
     testSimpleRangesOk();
     testSimpleRangesFail();
