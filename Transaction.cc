@@ -91,9 +91,16 @@ void Transaction::hard_check_opacity(TransactionTid::type t) {
     start_tid_ = _TID;
     release_fence();
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it)
-        if ((it->has_read() && !it->owner()->check(*it, *this))
-            || (it->has_predicate() && !it->owner()->check_predicate(*it, *this, false)))
-            goto abort;
+        if (it->has_read()) {
+            INC_P(txp_total_check_read);
+            if (!it->owner()->check(*it, *this)
+                && !preceding_read_exists(*it))
+                goto abort;
+        } else if (it->has_predicate()) {
+            INC_P(txp_total_check_predicate);
+            if (!it->owner()->check_predicate(*it, *this, false))
+                goto abort;
+        }
 }
 
  void Transaction::stop(bool committed) {
@@ -142,6 +149,7 @@ bool Transaction::try_commit() {
 
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
         if (it->has_predicate()) {
+            INC_P(txp_total_check_predicate);
             if (!it->owner()->check_predicate(*it, *this, true))
                 goto abort;
         }
@@ -182,8 +190,13 @@ bool Transaction::try_commit() {
 #endif
 
     //phase2
-    if (!check_reads(transSet_.begin(), transSet_.end()))
-        goto abort;
+    for (auto it = transSet_.begin(); it != transSet_.end(); ++it)
+        if (it->has_read()) {
+            INC_P(txp_total_check_read);
+            if (!it->owner()->check(*it, *this)
+                && !preceding_read_exists(*it))
+                goto abort;
+        }
 
     // fence();
 

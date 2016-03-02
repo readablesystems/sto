@@ -80,12 +80,13 @@ enum txp {
     txp_push_abort,
     txp_pop_abort,
     txp_total_check_read,
+    txp_total_check_predicate,
 #if !PERF_LOGGING
     txp_count = 0
 #elif !DETAILED_LOGGING
     txp_count = txp_hco_abort + 1
 #else
-    txp_count = txp_total_check_read + 1
+    txp_count = txp_total_check_predicate + 1
 #endif
 };
 
@@ -376,28 +377,12 @@ private:
             firstWrite_ = idx;
     }
 
-public:
-    void check_reads() {
-        if (!check_reads(transSet_.begin(), transSet_.end())) {
-            abort();
-        }
-    }
-
-private:
-    bool check_reads(const TransItem *trans_first, const TransItem *trans_last) const {
-        for (auto it = trans_first; it != trans_last; ++it)
-            if (it->has_read()) {
-                INC_P(txp_total_check_read);
-                if (!it->owner()->check(*it, *this)) {
-                    // XXX: only do this if we're dup'ing reads
-                    for (auto jt = trans_first; jt != it; ++jt)
-                        if (*jt == *it)
-                            goto ok;
-                    return false;
-                }
-            ok: ;
-            }
-        return true;
+    bool preceding_read_exists(TransItem& ti) const {
+        if (may_duplicate_items_)
+            for (auto it = transSet_.begin(); it != &ti; ++it)
+                if (it->owner() == ti.owner() && it->key_ == ti.key_)
+                    return true;
+        return false;
     }
 
 public:
@@ -525,11 +510,6 @@ public:
     static void check_opacity() {
         always_assert(in_progress());
         TThread::txn->check_opacity();
-    }
-
-    static void check_reads() {
-        always_assert(in_progress());
-        TThread::txn->check_reads();
     }
 
     template <typename T>
