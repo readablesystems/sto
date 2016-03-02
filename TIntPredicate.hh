@@ -118,10 +118,11 @@ public:
     bool lock(TransItem&, Transaction& txn) {
         return txn.try_lock(vers_);
     }
-    virtual bool check_predicate(TransItem& item, Transaction& txn) {
+    virtual bool check_predicate(TransItem& item, Transaction& txn, bool committing) {
         TransProxy p(txn, item);
         pred_type pred = item.template predicate_value<pred_type>();
-        return pred.discharge(v_.read(p, vers_));
+        T value = committing ? v_.read(p, vers_) : v_.snapshot(p, vers_);
+        return pred.discharge(value);
     }
     virtual bool check(const TransItem& item, const Transaction&) {
         return item.check_version(vers_);

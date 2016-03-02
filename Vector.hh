@@ -408,7 +408,16 @@ public:
         return vector_item().add_read(ver);
     }
 
-    bool check_predicate(TransItem& item, Transaction&) {
+    bool lock(TransItem& item, Transaction&){
+        if (item.key<int>() == vector_key) {
+            lock_version(vecversion_); // TODO: no need to lock vecversion_ if trans_size_offs() is 0
+        } else if (item.key<int>() != push_back_key) {
+            lock(item.key<key_type>());
+        }
+        return true;
+    }
+
+    bool check_predicate(TransItem& item, Transaction&, bool) {
         assert(item.key<int>() == size_pred_key);
         auto lv = vecversion_;
         if (is_locked(lv))
@@ -434,15 +443,6 @@ public:
                 && !data_[i].is_locked_elsewhere();
         } else
             return data_[i].check_version(item.template read_value<Version>());
-    }
-    
-    bool lock(TransItem& item, Transaction&){
-        if (item.key<int>() == vector_key) {
-            lock_version(vecversion_); // TODO: no need to lock vecversion_ if trans_size_offs() is 0
-        } else if (item.key<int>() != push_back_key) {
-            lock(item.key<key_type>());
-        }
-        return true;
     }
 
     void install(TransItem& item, const Transaction& t) {

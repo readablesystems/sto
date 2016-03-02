@@ -271,8 +271,8 @@ public:
     virtual ~TObject() {}
 
     virtual bool lock(TransItem& item, Transaction& txn) = 0;
-    virtual bool check_predicate(TransItem& item, Transaction& txn) {
-        (void) item, (void) txn;
+    virtual bool check_predicate(TransItem& item, Transaction& txn, bool committing) {
+        (void) item, (void) txn, (void) committing;
         always_assert(false);
         return false;
     }

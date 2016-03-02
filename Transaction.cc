@@ -73,20 +73,27 @@ void Transaction::update_hash() {
 }
 
 void Transaction::hard_check_opacity(TransactionTid::type t) {
-    INC_P(txp_hco);
-    if (t & TransactionTid::lock_bit)
-        INC_P(txp_hco_lock);
-    if (!(t & TransactionTid::valid_bit))
-        INC_P(txp_hco_invalid);
+    // ignore opacity checks during commit; we're in the middle of checking
+    // things anyway
+    if (state_ == s_committing)
+        return;
 
-    TransactionTid::type newstart = _TID;
-    release_fence();
-    if (!(t & TransactionTid::lock_bit) && check_reads(transSet_.begin(), transSet_.end()))
-        start_tid_ = newstart;
-    else {
+    INC_P(txp_hco);
+    if (t & TransactionTid::lock_bit) {
+        INC_P(txp_hco_lock);
+    abort:
         INC_P(txp_hco_abort);
         abort();
     }
+    if (!(t & TransactionTid::valid_bit))
+        INC_P(txp_hco_invalid);
+
+    start_tid_ = _TID;
+    release_fence();
+    for (auto it = transSet_.begin(); it != transSet_.end(); ++it)
+        if ((it->has_read() && !it->owner()->check(*it, *this))
+            || (it->has_predicate() && !it->owner()->check_predicate(*it, *this, false)))
+            goto abort;
 }
 
  void Transaction::stop(bool committed) {
@@ -135,7 +142,7 @@ bool Transaction::try_commit() {
 
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
         if (it->has_predicate()) {
-            if (!it->owner()->check_predicate(*it, *this))
+            if (!it->owner()->check_predicate(*it, *this, true))
                 goto abort;
         }
         if (it->has_write())

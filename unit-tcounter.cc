@@ -141,13 +141,12 @@ void testSimpleRangesFail() {
         TestTransaction t2(2);
         c = 5;
         assert(t2.try_commit());
-
         assert(!t1.try_commit());
     }
 
     c.nontrans_write(0);
 
-    {
+    try {
         TestTransaction t1(1);
         match = c < 3;
         assert(match);
@@ -158,14 +157,14 @@ void testSimpleRangesFail() {
 
         t1.use();
         match = c > 1;
-        // XXX we are actually able to abort here, but don't, because there
-        // *does* exist an eventual value that satisfies all constraints (2)
+        assert(false && "should not get here b/c opacity");
         assert(!t1.try_commit());
+    } catch (Transaction::Abort e) {
     }
 
     c.nontrans_write(0);
 
-    {
+    try {
         TestTransaction t1(1);
         match = c < 3;
         assert(match);
@@ -176,15 +175,14 @@ void testSimpleRangesFail() {
 
         t1.use();
         match = c > 1;
-        // XXX we are actually able to abort here, but don't, because there
-        // *does* exist an eventual value that satisfies all constraints (2).
-        // It would probably be better to abort.
+        assert(false && "should not get here b/c opacity");
         assert(match);
 
         TestTransaction t3(2);
         c = 2;
         assert(t3.try_commit());
         assert(t1.try_commit());
+    } catch (Transaction::Abort e) {
     }
 
     c.nontrans_write(4);
@@ -201,6 +199,80 @@ void testSimpleRangesFail() {
         t1.use();
         match = c < 1;
         assert(false && "should not get here");
+        assert(!t1.try_commit());
+    } catch (Transaction::Abort e) {
+    }
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
+void testSimpleRangesFailNoOpacity() {
+    TCounter<int, TNonopaqueWrapped<int> > c;
+    bool match;
+
+    {
+        TestTransaction t1(1);
+        match = c < 3;
+        assert(match);
+
+        TestTransaction t2(2);
+        c = 5;
+        assert(t2.try_commit());
+        assert(!t1.try_commit());
+    }
+
+    c.nontrans_write(0);
+
+    try {
+        TestTransaction t1(1);
+        match = c < 3;
+        assert(match);
+
+        TestTransaction t2(2);
+        c = 5;
+        assert(t2.try_commit());
+
+        t1.use();
+        match = c > 1;
+        assert(!t1.try_commit());
+    } catch (Transaction::Abort e) {
+    }
+
+    c.nontrans_write(0);
+
+    try {
+        TestTransaction t1(1);
+        match = c < 3;
+        assert(match);
+
+        TestTransaction t2(2);
+        c = 5;
+        assert(t2.try_commit());
+
+        t1.use();
+        match = c > 1;
+        assert(match);
+
+        TestTransaction t3(2);
+        c = 2;
+        assert(t3.try_commit());
+        assert(t1.try_commit());
+    } catch (Transaction::Abort e) {
+    }
+
+    c.nontrans_write(4);
+
+    try {
+        TestTransaction t1(1);
+        match = c > 1;
+        assert(match);
+
+        TestTransaction t2(2);
+        c = 0;
+        assert(t2.try_commit());
+
+        t1.use();
+        match = c < 1;
         assert(!t1.try_commit());
     } catch (Transaction::Abort e) {
     }
@@ -275,12 +347,45 @@ void testOpacity() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testNoOpacity() {
+    TCounter<int, TNonopaqueWrapped<int> > c1, c2;
+    bool match;
+
+    try {
+        TestTransaction t1(1);
+        ++c1;
+        match = c1 > 0;
+        assert(match);
+
+        TestTransaction t2(2);
+        c2 = 5;
+        --c1;
+        assert(t2.try_commit());
+
+        t1.use();
+        match = c2 > 4;
+        assert(match);
+        assert(!t1.try_commit());
+    } catch (Transaction::Abort e) {
+    }
+
+    {
+        TransactionGuard g;
+        match = c2 > 4;
+        assert(match);
+    }
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
 int main() {
     testTrivial();
     testConcurrentUpdate();
     testSimpleRangesOk();
     testSimpleRangesFail();
+    testSimpleRangesFailNoOpacity();
     testUpdateRead();
     testOpacity();
+    testNoOpacity();
     return 0;
 }
