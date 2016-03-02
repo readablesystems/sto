@@ -1,6 +1,6 @@
 #pragma once
 
-#include "local_vector.hh"
+#include "small_vector.hh"
 #include "config.h"
 #include "compiler.hh"
 #include <algorithm>
@@ -118,8 +118,8 @@ struct __attribute__((aligned(128))) threadinfo_t {
     typedef int signed_epoch_type;
     epoch_type epoch;
     unsigned spin_lock;
-    local_vector<std::pair<epoch_type, std::function<void(void)>>, 8> callbacks;
-    local_vector<std::pair<epoch_type, void*>, 8> needs_free;
+    small_vector<std::pair<epoch_type, std::function<void(void)>>, 8> callbacks;
+    small_vector<std::pair<epoch_type, void*>, 8> needs_free;
     // XXX(NH): these should be vectors so multiple data structures can register
     // callbacks for these
     std::function<void(void)> trans_start_callback;
@@ -457,7 +457,7 @@ private:
     uint8_t state_;
     bool may_duplicate_items_;
     uint16_t nhashed_;
-    local_vector<TransItem, INIT_SET_SIZE> transSet_;
+    small_vector<TransItem, INIT_SET_SIZE> transSet_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
     uint16_t hashtable_[HASHTABLE_SIZE];
