@@ -2,12 +2,12 @@
 #include "Transaction.hh"
 #include <utility>
 
-template <typename T> class TLargeTrivialWrapped {
+template <typename T> class TTrivialWrapped {
 public:
     typedef T read_type;
     typedef TVersion version_type;
 
-    template <typename... Args> TLargeTrivialWrapped(Args&&... args)
+    template <typename... Args> TTrivialWrapped(Args&&... args)
         : v_(std::forward(args)...) {
     }
 
@@ -18,7 +18,7 @@ public:
         return v_;
     }
 
-    read_type snapshot(const version_type& version) const {
+    read_type snapshot(TransProxy item, const version_type& version) const {
         version_type v0 = version, v1;
         T result;
         acquire_fence();
@@ -26,11 +26,12 @@ public:
             result = v_;
             release_fence();
             v1 = version;
-            if (v0 == v1 && !v1.is_locked())
+            if (v0 == v1 || v1.is_locked())
                 break;
             v0 = v1;
             relax_fence();
         }
+        item.observe_opacity(v1);
         return result;
     }
     read_type read(TransProxy item, const version_type& version) const {
@@ -60,20 +61,6 @@ protected:
     T v_;
 };
 
-template <typename T> class TSmallTrivialWrapped : public TLargeTrivialWrapped<T> {
-public:
-    typedef typename TLargeTrivialWrapped<T>::read_type read_type;
-    typedef typename TLargeTrivialWrapped<T>::version_type version_type;
-
-    template <typename... Args> TSmallTrivialWrapped(Args&&... args)
-        : TLargeTrivialWrapped<T>(std::forward(args)...) {
-    }
-
-    read_type snapshot(const version_type&) const {
-        return this->v_;
-    }
-};
-
 template <typename T> class TSmallTrivialNonopaqueWrapped {
 public:
     typedef T read_type;
@@ -99,7 +86,7 @@ public:
         return v_;
     }
 
-    read_type snapshot(const version_type&) const {
+    read_type snapshot(TransProxy, const version_type&) const {
         return v_;
     }
     read_type read(TransProxy item, const version_type& version) const {
@@ -140,7 +127,7 @@ public:
         return v_;
     }
 
-    read_type snapshot(const version_type& version) const {
+    read_type snapshot(TransProxy, const version_type& version) const {
         version_type v0 = version, v1;
         T result;
         acquire_fence();
@@ -211,8 +198,21 @@ public:
         return *vp_;
     }
 
-    read_type snapshot(const version_type&) const {
-        return *vp_;
+    read_type snapshot(TransProxy item, const version_type& version) const {
+        version_type v0 = version, v1;
+        T* resultp;
+        acquire_fence();
+        while (1) {
+            resultp = vp_;
+            release_fence();
+            v1 = version;
+            if (v0 == v1 || v1.is_locked())
+                break;
+            v0 = v1;
+            relax_fence();
+        }
+        item.observe_opacity(v1);
+        return *resultp;
     }
     read_type read(TransProxy item, const version_type& version) const {
         version_type v0 = version, v1;
@@ -276,7 +276,7 @@ public:
         return *vp_;
     }
 
-    read_type snapshot(const version_type&) const {
+    read_type snapshot(TransProxy, const version_type&) const {
         return *vp_;
     }
     read_type read(TransProxy item, const version_type& version) const {
@@ -307,8 +307,8 @@ template <typename T, bool Opaque = true,
           bool Small = sizeof(T) <= sizeof(uintptr_t) && alignof(T) == sizeof(T)
           > class TWrapped;
 
-template <typename T> class TWrapped<T, true, true, true> : public TSmallTrivialWrapped<T> {};
-template <typename T> class TWrapped<T, true, true, false> : public TLargeTrivialWrapped<T> {};
+template <typename T> class TWrapped<T, true, true, true> : public TTrivialWrapped<T> {};
+template <typename T> class TWrapped<T, true, true, false> : public TTrivialWrapped<T> {};
 template <typename T, bool Small> class TWrapped<T, true, false, Small> : public TNontrivialWrapped<T> {};
 template <typename T> class TWrapped<T, false, true, true> : public TSmallTrivialNonopaqueWrapped<T> {};
 template <typename T> class TWrapped<T, false, true, false> : public TLargeTrivialNonopaqueWrapped<T> {};

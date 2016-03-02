@@ -226,6 +226,8 @@ class TransProxy {
     inline TransProxy& add_read(T rdata);
     inline TransProxy& observe(TVersion version);
     inline TransProxy& observe(TNonopaqueVersion version);
+    inline TransProxy& observe_opacity(TVersion version);
+    inline TransProxy& observe_opacity(TNonopaqueVersion version);
     inline TransProxy& clear_read() {
         i_->__rm_flags(TransItem::read_bit);
         return *this;

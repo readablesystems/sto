@@ -440,9 +440,8 @@ public:
         assert(state_ <= s_committing);
         if (!start_tid_)
             start_tid_ = _TID;
-        if (!TransactionTid::try_check_opacity(start_tid_, t)) {
+        if (!TransactionTid::try_check_opacity(start_tid_, t))
             hard_check_opacity(t);
-        }
     }
 
     void check_opacity() {
@@ -665,6 +664,19 @@ inline TransProxy& TransProxy::observe(TNonopaqueVersion version) {
         i_->__or_flags(TransItem::read_bit);
         i_->rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
     }
+    return *this;
+}
+
+inline TransProxy& TransProxy::observe_opacity(TVersion version) {
+    if (version.is_locked_elsewhere())
+        t()->abort();
+    t()->check_opacity(version.value());
+    return *this;
+}
+
+inline TransProxy& TransProxy::observe_opacity(TNonopaqueVersion version) {
+    if (version.is_locked_elsewhere())
+        t()->abort();
     return *this;
 }
 

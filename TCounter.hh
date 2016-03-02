@@ -24,7 +24,7 @@ public:
         auto item = Sto::item(this, 0);
         T result = T();
         if (!item.has_flag(assigned_bit)) {
-            result += v_.snapshot(vers_);
+            result += v_.snapshot(item, vers_);
             get(item).observe(result);
         }
         if (item.has_write())
@@ -143,27 +143,30 @@ private:
         return item.predicate_value<pred_type>(pred_type::unconstrained());
     }
     T snapshot(TransProxy item) const {
-        return item.has_flag(assigned_bit) ? item.template write_value<T>() : v_.snapshot(vers_);
+        if (item.has_flag(assigned_bit))
+            return item.template write_value<T>();
+        else
+            return v_.snapshot(item, vers_);
     }
     static T delta(TransProxy item) {
-        return item.has_flag(delta_bit) ? -item.template write_value<T>() : T();
+        return item.has_flag(delta_bit) ? item.template write_value<T>() : T();
     }
     bool observe_eq(TransProxy item, T value) const {
-        value += delta(item);
+        value -= delta(item);
         bool result = snapshot(item) == value;
         if (!item.has_flag(assigned_bit))
             get(item).observe_eq(value, result);
         return result;
     }
     bool observe_lt(TransProxy item, T value) const {
-        value += delta(item);
+        value -= delta(item);
         bool result = snapshot(item) < value;
         if (!item.has_flag(assigned_bit))
             get(item).observe_lt(value, result);
         return result;
     }
     bool observe_le(TransProxy item, T value) const {
-        value += delta(item);
+        value -= delta(item);
         bool result = snapshot(item) <= value;
         if (!item.has_flag(assigned_bit))
             get(item).observe_le(value, result);

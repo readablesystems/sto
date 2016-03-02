@@ -69,7 +69,7 @@ public:
         if (item.has_write())
             return item.template write_value<T>();
         else {
-            T result = v_.snapshot(vers_);
+            T result = v_.snapshot(item, vers_);
             get(item).observe(result);
             return result;
         }
@@ -155,7 +155,10 @@ private:
         return item.predicate_value<pred_type>(pred_type::unconstrained());
     }
     T snapshot(TransProxy item) const {
-        return item.has_write() ? item.template write_value<T>() : v_.snapshot(vers_);
+        if (item.has_write())
+            return item.template write_value<T>();
+        else
+            return v_.snapshot(item, vers_);
     }
     bool observe_eq(TransProxy item, T value) const {
         bool result = snapshot(item) == value;
