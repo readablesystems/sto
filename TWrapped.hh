@@ -315,10 +315,7 @@ template <typename T> class TWrapped<T, false, true, false> : public TLargeTrivi
 template <typename T, bool Small> class TWrapped<T, false, false, Small> : public TNontrivialNonopaqueWrapped<T> {};
 
 
-template <typename T, bool Trivial = mass::is_trivially_copyable<T>::value,
-          bool Small = sizeof(T) <= sizeof(uintptr_t) && alignof(T) == sizeof(T)
-          > class TNonopaqueWrapped;
-
-template <typename T> class TNonopaqueWrapped<T, true, true> : public TSmallTrivialNonopaqueWrapped<T> {};
-template <typename T> class TNonopaqueWrapped<T, true, false> : public TLargeTrivialNonopaqueWrapped<T> {};
-template <typename T, bool Small> class TNonopaqueWrapped<T, false, Small> : public TNontrivialNonopaqueWrapped<T> {};
+template <typename T> class TOpaqueWrapped
+          : public TWrapped<T> {};
+template <typename T> class TNonopaqueWrapped
+          : public TWrapped<T, false> {};
