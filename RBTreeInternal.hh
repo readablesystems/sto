@@ -206,7 +206,7 @@ class rbtree {
     T* delete_node(T* victim, T* successor_hint);
     void delete_node_fixup(rbnodeptr<T> p, bool side);
 
-    template<typename K, typename V> friend class RBTree;
+    template<typename K, typename V, bool GlobalSize> friend class RBTree;
 };
 
 template <typename T>

@@ -16,8 +16,8 @@
 extern TransactionTid::type lock;
 #endif
 
-template<typename K, typename T> class RBTreeIterator;
-template <typename K, typename T> class RBTree;
+template<typename K, typename T, bool GlobalSize> class RBTreeIterator;
+template <typename K, typename T, bool GlobalSize> class RBTree;
 
 template <typename T>
 class rbwrapper : public T {
@@ -86,16 +86,17 @@ private:
     versioned_pair pair_;
 };
 
-template <typename K, typename T> class RBProxy;
+template <typename K, typename T, bool GlobalSize> class RBProxy;
 
-template <typename K, typename T>
+// If GlobalSize is false then we don't track a separate size field
+template <typename K, typename T, bool GlobalSize = true>
 class RBTree 
 #ifndef STO_NO_STM
 : public Shared 
 #endif
 {
-    friend class RBTreeIterator<K, T>;
-    friend class RBProxy<K, T>;
+    friend class RBTreeIterator<K, T, GlobalSize>;
+    friend class RBProxy<K, T, GlobalSize>;
 
     typedef TransactionTid::type Version;
     typedef TransactionTid::signed_type RWVersion;
@@ -105,8 +106,8 @@ class RBTree
     static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
     static constexpr Version insert_bit = TransactionTid::user_bit;
 
-    typedef RBTreeIterator<K, T> iterator;
-    typedef const RBTreeIterator<K, T> const_iterator;
+    typedef RBTreeIterator<K, T, GlobalSize> iterator;
+    typedef const RBTreeIterator<K, T, GlobalSize> const_iterator;
 
 public:
     RBTree() {
@@ -130,7 +131,7 @@ public:
     // lookup
     inline size_t count(const K& key) const;
     // element access
-    inline RBProxy<K, T> operator[](const K& key);
+    inline RBProxy<K, T, GlobalSize> operator[](const K& key);
     // modifiers
     inline size_t erase(const K& key);
 
@@ -260,7 +261,7 @@ private:
     // A (hard) phantom node is a node that's being inserted but not yet
     // committed by another transaction. It should be treated as invisible
     inline bool is_phantom_node(wrapper_type* node, Version val_ver) const {
-        auto item = Sto::item(const_cast<RBTree<K, T>*>(this), node);
+        auto item = Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this), node);
         return (is_inserted(val_ver) && !has_insert(item) && !has_delete(item));
     }
 
@@ -275,6 +276,8 @@ private:
 
     // increment or decrement the offset size of the transaction's tree
     inline void change_size_offset(ssize_t delta) {
+        if (!GlobalSize)
+            return;
         auto size_item = Sto::item(this, size_key_);
         ssize_t prev_offset = size_item.has_write() ? size_item.template write_value<ssize_t>() : 0;
         size_item.add_write(prev_offset + delta);
@@ -308,7 +311,7 @@ private:
 
         // PRESENT GET
         if (found) {
-            auto item = Sto::item(const_cast<RBTree<K, T>*>(this), x);
+            auto item = Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this), x);
             // check if item is inserted by not committed yet 
             if (is_inserted(val_ver)) {
                 // check if item was inserted by this transaction
@@ -333,7 +336,7 @@ private:
         } else {
             // add a read of treeversion if empty tree
             if (!x) {
-                Sto::item(const_cast<RBTree<K, T>*>(this), tree_key_).add_read(val_ver);
+                Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this), tree_key_).add_read(val_ver);
             }
 
             // add reads of boundary nodes, marking them as nodeversion ptrs
@@ -347,7 +350,7 @@ private:
                     printf("\t#Tracking boundary 0x%lx (k %d), nv 0x%lx\n", (unsigned long)n, n->key(), v);
                     TransactionTid::unlock(::lock);
 #endif
-                    Sto::item(const_cast<RBTree<K, T>*>(this),
+                    Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this),
                                     (reinterpret_cast<uintptr_t>(n)|0x1)).add_read(v);
                 }
             }
@@ -557,15 +560,15 @@ private:
 
 #ifndef STO_NO_STM
 
-template<typename K, typename T>
+template<typename K, typename T, bool GlobalSize>
 class RBTreeIterator : public std::iterator<std::bidirectional_iterator_tag, rbwrapper<rbpair<K, T>>> {
 public:
     typedef rbwrapper<rbpair<K, T>> wrapper;
-    typedef RBTreeIterator<K, T> iterator;
-    typedef RBProxy<K, T> proxy_type;
+    typedef RBTreeIterator<K, T, GlobalSize> iterator;
+    typedef RBProxy<K, T, GlobalSize> proxy_type;
     typedef std::pair<const K, proxy_type> proxy_pair_type;
 
-    RBTreeIterator(RBTree<K, T> * tree, wrapper* node) : tree_(tree), node_(node), proxy_pair_(nullptr) {
+    RBTreeIterator(RBTree<K, T, GlobalSize> * tree, wrapper* node) : tree_(tree), node_(node), proxy_pair_(nullptr) {
         this->update_proxy_pair();
     }
     RBTreeIterator(const RBTreeIterator& itr) : tree_(itr.tree_), node_(itr.node_), proxy_pair_(nullptr) {
@@ -614,7 +617,7 @@ public:
     
     // This is the postfix case
     iterator operator++(int) {
-        RBTreeIterator<K, T> clone(*this);
+        RBTreeIterator<K, T, GlobalSize> clone(*this);
         node_ = tree_->get_next(node_);
         this->update_proxy_pair();
         return clone;
@@ -627,7 +630,7 @@ public:
     }
     
     iterator operator--(int) {
-        RBTreeIterator<K, T> clone(*this);
+        RBTreeIterator<K, T, GlobalSize> clone(*this);
         node_ = tree_->get_prev(node_);
         this->update_proxy_pair();
         return clone;
@@ -647,23 +650,23 @@ private:
             proxy_pair_ = nullptr;
             return;
         } else {
-            proxy_pair_type* new_pair = new std::pair<const K, RBProxy<K, T>>(node_->key(), proxy_type(*tree_, node_));
+            proxy_pair_type* new_pair = new std::pair<const K, RBProxy<K, T, GlobalSize>>(node_->key(), proxy_type(*tree_, node_));
             proxy_pair_ = new_pair;
             return;
         }
     }
 
-    RBTree<K, T> * tree_;
+    RBTree<K, T, GlobalSize> * tree_;
     wrapper* node_;
     proxy_pair_type* proxy_pair_;
 };
 
 // STL-ish interface wrapper returned by RBTree::operator[]
 // differentiate between reads and writes
-template <typename K, typename T>
+template <typename K, typename T, bool GlobalSize>
 class RBProxy {
 public:
-    typedef RBTree<K, T> transtree_t;
+    typedef RBTree<K, T, GlobalSize> transtree_t;
     typedef rbwrapper<rbpair<K, T>> wrapper_type;
     typedef TransactionTid::type Version;
 
@@ -681,7 +684,7 @@ public:
             fence();
             auto value = node_->writeable_value();
             assert(item.has_read());
-            if (item.template read_value<Version>() != curr_version || RBTree<K, T>::is_locked(curr_version)) {
+            if (item.template read_value<Version>() != curr_version || RBTree<K, T, GlobalSize>::is_locked(curr_version)) {
                 Sto::abort();
             }
             return value; 
@@ -702,9 +705,10 @@ private:
     wrapper_type* node_;
 };
 
-template <typename K, typename T>
-inline size_t RBTree<K, T>::size() const {
-    auto size_item = Sto::item(const_cast<RBTree<K, T>*>(this), size_key_);
+template <typename K, typename T, bool GlobalSize>
+inline size_t RBTree<K, T, GlobalSize>::size() const {
+    always_assert(GlobalSize);
+    auto size_item = Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this), size_key_);
     if (!size_item.has_read()) {
         size_item.add_read(sizeversion_);
     }
@@ -713,8 +717,8 @@ inline size_t RBTree<K, T>::size() const {
     return size_ + offset;
 }
 
-template <typename K, typename T>
-inline size_t RBTree<K, T>::count(const K& key) const {
+template <typename K, typename T, bool GlobalSize>
+inline size_t RBTree<K, T, GlobalSize>::count(const K& key) const {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
 
     // find_or_abort() tracks boundary nodes if key is absent
@@ -726,7 +730,7 @@ inline size_t RBTree<K, T>::count(const K& key) const {
     (!found) ? stats_.absent_count++ : stats_.present_count++;
 #endif
     if (found) {
-        auto item = Sto::item(const_cast<RBTree<K, T>*>(this), node);
+        auto item = Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this), node);
         if (has_delete(item)) {
             // read my deletes
             return 0;
@@ -735,15 +739,15 @@ inline size_t RBTree<K, T>::count(const K& key) const {
     return (found) ? 1 : 0;
 }
 
-template <typename K, typename T>
-inline RBProxy<K, T> RBTree<K, T>::operator[](const K& key) {
+template <typename K, typename T, bool GlobalSize>
+inline RBProxy<K, T, GlobalSize> RBTree<K, T, GlobalSize>::operator[](const K& key) {
     // either insert empty value or return present value
     auto node = insert(key);
-    return RBProxy<K, T>(*this, node);
+    return RBProxy<K, T, GlobalSize>(*this, node);
 }
 
-template <typename K, typename T>
-inline size_t RBTree<K, T>::erase(const K& key) {
+template <typename K, typename T, bool GlobalSize>
+inline size_t RBTree<K, T, GlobalSize>::erase(const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
     // add a read of boundary nodes if absent erase
     auto results = find_or_abort(idx_pair);
@@ -803,8 +807,8 @@ inline size_t RBTree<K, T>::erase(const K& key) {
     }
 }
 
-template <typename K, typename T>
-inline bool RBTree<K, T>::lock(TransItem& item, Transaction&) {
+template <typename K, typename T, bool GlobalSize>
+inline bool RBTree<K, T, GlobalSize>::lock(TransItem& item, Transaction&) {
     if (item.key<void*>() == size_key_) {
         lock(&sizeversion_);
     } else if (item.key<void*>() == tree_key_) {
@@ -815,8 +819,8 @@ inline bool RBTree<K, T>::lock(TransItem& item, Transaction&) {
     return true;
 }
     
-template <typename K, typename T>
-inline void RBTree<K, T>::unlock(TransItem& item) {
+template <typename K, typename T, bool GlobalSize>
+inline void RBTree<K, T, GlobalSize>::unlock(TransItem& item) {
     if (item.key<void*>() == size_key_) {
         unlock(&sizeversion_);
     } else if (item.key<void*>() == tree_key_) {
@@ -826,8 +830,8 @@ inline void RBTree<K, T>::unlock(TransItem& item) {
     }
 }
    
-template <typename K, typename T>
-inline bool RBTree<K, T>::check(const TransItem& item, const Transaction&) {
+template <typename K, typename T, bool GlobalSize>
+inline bool RBTree<K, T, GlobalSize>::check(const TransItem& item, const Transaction&) {
     auto e = item.key<uintptr_t>();
     bool is_treekey = ((uintptr_t)e == (uintptr_t)tree_key_);
     bool is_sizekey = ((uintptr_t)e == (uintptr_t)size_key_);
@@ -875,8 +879,8 @@ inline bool RBTree<K, T>::check(const TransItem& item, const Transaction&) {
 }
 
 // key-versionedvalue pairs with the same key will have two different items
-template <typename K, typename T>
-inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
+template <typename K, typename T, bool GlobalSize>
+inline void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction& t) {
     (void) t;
     // we don't need to check for nodeversion updates because those are done during execution
     auto e = item.key<wrapper_type*>();
@@ -928,8 +932,8 @@ inline void RBTree<K, T>::install(TransItem& item, const Transaction& t) {
     }
 }
 
-template <typename K, typename T>
-inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
+template <typename K, typename T, bool GlobalSize>
+inline void RBTree<K, T, GlobalSize>::cleanup(TransItem& item, bool committed) {
     if (!committed) {
         // if item has been tagged deleted or structured, don't need to do anything 
         // if item has been tagged inserted, then we erase the item
@@ -950,8 +954,8 @@ inline void RBTree<K, T>::cleanup(TransItem& item, bool committed) {
 #endif /* !STO_NO_STM */
 
 // logN (instead of 2logN) insertion for STAMP
-template <typename K, typename T>
-bool RBTree<K, T>::stamp_insert(const K& key, const T& value) {
+template <typename K, typename T, bool GlobalSize>
+bool RBTree<K, T, GlobalSize>::stamp_insert(const K& key, const T& value) {
     rbwrapper<rbpair<K, T>> node( rbpair<K, T>(key, value) );
     auto results = this->find_or_insert(node);
     wrapper_type* x = std::get<0>(results);
@@ -1027,8 +1031,8 @@ bool RBTree<K, T>::stamp_insert(const K& key, const T& value) {
 
 }
 
-template <typename K, typename T>
-T RBTree<K, T>::stamp_find(const K& key) {
+template <typename K, typename T, bool GlobalSize>
+T RBTree<K, T, GlobalSize>::stamp_find(const K& key) {
     rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
 
     // find_or_abort() tracks boundary nodes if key is absent
@@ -1038,7 +1042,7 @@ T RBTree<K, T>::stamp_find(const K& key) {
     wrapper_type* node = std::get<0>(results);
     bool found = std::get<2>(results);
     if (found) {
-        auto item = Sto::item(const_cast<RBTree<K, T>*>(this), node);
+        auto item = Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this), node);
         if (has_delete(item)) {
             // read my deletes
             return T();
@@ -1049,8 +1053,8 @@ T RBTree<K, T>::stamp_find(const K& key) {
     }
 }
 
-template <typename K, typename T>
-bool RBTree<K, T>::nontrans_insert(const K& key, const T& value) {
+template <typename K, typename T, bool GlobalSize>
+bool RBTree<K, T, GlobalSize>::nontrans_insert(const K& key, const T& value) {
     lock_write(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, value));
     auto results = wrapper_tree_.find_or_parent(idx_pair,
@@ -1069,8 +1073,8 @@ bool RBTree<K, T>::nontrans_insert(const K& key, const T& value) {
     return !found;
 }
 
-template <typename K, typename T>
-bool RBTree<K, T>::nontrans_contains(const K& key) {
+template <typename K, typename T, bool GlobalSize>
+bool RBTree<K, T, GlobalSize>::nontrans_contains(const K& key) {
     lock_read(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
@@ -1079,8 +1083,8 @@ bool RBTree<K, T>::nontrans_contains(const K& key) {
     return std::get<2>(results);
 }
 
-template <typename K, typename T>
-T RBTree<K, T>::nontrans_find(const K& key) {
+template <typename K, typename T, bool GlobalSize>
+T RBTree<K, T, GlobalSize>::nontrans_find(const K& key) {
     lock_read(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
@@ -1091,8 +1095,8 @@ T RBTree<K, T>::nontrans_find(const K& key) {
     return ret;
 }
 
-template <typename K, typename T>
-bool RBTree<K, T>::nontrans_find(const K& key, T& val) {
+template <typename K, typename T, bool GlobalSize>
+bool RBTree<K, T, GlobalSize>::nontrans_find(const K& key, T& val) {
     lock_read(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
@@ -1105,8 +1109,8 @@ bool RBTree<K, T>::nontrans_find(const K& key, T& val) {
     return found;
 }
 
-template <typename K, typename T>
-bool RBTree<K, T>::nontrans_remove(const K& key) {
+template <typename K, typename T, bool GlobalSize>
+bool RBTree<K, T, GlobalSize>::nontrans_remove(const K& key) {
     lock_write(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
@@ -1124,8 +1128,8 @@ bool RBTree<K, T>::nontrans_remove(const K& key) {
 
 
 #if DEBUG 
-template <typename K, typename T>
-inline void RBTree<K, T>::print_absent_reads() {
+template <typename K, typename T, bool GlobalSize>
+inline void RBTree<K, T, GlobalSize>::print_absent_reads() {
     std::cout << "absent inserts: " << stats_.absent_insert << std::endl;
     std::cout << "absent deletes: " << stats_.absent_delete << std::endl;
     std::cout << "absent counts: " << stats_.absent_count << std::endl;
