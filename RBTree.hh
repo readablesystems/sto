@@ -3,7 +3,8 @@
 #include <cassert> 
 #include <utility>
 #include "TaggedLow.hh"
-#include "versioned_value.hh"
+#include "Interface.hh"
+#include "TWrapped.hh"
 #include "VersionFunctions.hh"
 #include "RBTreeInternal.hh"
 
@@ -16,38 +17,22 @@
 extern TransactionTid::type lock;
 #endif
 
-template<typename K, typename T, bool GlobalSize> class RBTreeIterator;
+template <typename K, typename T, bool GlobalSize> class RBTreeIterator;
 template <typename K, typename T, bool GlobalSize> class RBTree;
 
-template <typename T>
-class rbwrapper : public T {
+template <typename P>
+class rbwrapper : public P {
   public:
-    typedef TransactionTid::type Version;
-    explicit inline rbwrapper(const T& x)
-    : T(x), nodeversion_(0) {
+    explicit inline rbwrapper(const P& x)
+    : P(x) {
     }
-    inline const T& value() const {
+    inline const P& rbpair() const {
         return *this;
     }
-    inline T& mutable_value() {
+    inline P& mutable_rbpair() {
         return *this;
     }
-    inline std::pair<Version, Version> inc_nodeversion() {
-        Version old_val, new_val;
-        old_val = fetch_and_add(&nodeversion_, TransactionTid::increment_value);
-        new_val = old_val + TransactionTid::increment_value;
-#if DEBUG
-        TransactionTid::lock(::lock);
-        printf("\t#inc nodeversion 0x%lx (0x%lx -> 0x%lx)\n", (unsigned long)this, old_val, new_val);
-        TransactionTid::unlock(::lock);
-#endif
-        return std::make_pair(old_val, new_val);
-    }
-    inline Version nodeversion() {
-        return nodeversion_;
-    }
-    Version nodeversion_;
-    rblinks<rbwrapper<T> > rblinks_;
+    rblinks<rbwrapper<P> > rblinks_;
 };
 
 // Define a custom key-value pair type that contains versions and also
@@ -55,41 +40,95 @@ class rbwrapper : public T {
 template <typename K, typename T>
 class rbpair {
 public:
-    typedef TransactionTid::type Version;
-    typedef versioned_value_struct<std::pair<const K, T>> versioned_pair;
+    typedef TWrapped<std::pair<const K, T>> wrapped_pair;
+    typedef typename wrapped_pair::version_type version_type;
 
-    static constexpr Version insert_bit = TransactionTid::user_bit;
+    static constexpr TransactionTid::type insert_bit = TransactionTid::user_bit;
+
+/*
+    template <typename... Args>
+    explicit rbpair(Args&&... args)
+        : pair_(std::forward<Args>(args)...), vers_(TransactionTid::increment_value + insert_bit) {}
+*/
 
     explicit rbpair(const K& key, const T& value)
-    : pair_(std::pair<const K, T>(key, value), TransactionTid::increment_value + insert_bit) {}
+    : pair_(key, value), vers_(TransactionTid::increment_value + insert_bit) {}
     explicit rbpair(std::pair<const K, T>& kvp)
-    : pair_(kvp, TransactionTid::increment_value + insert_bit) {}
+    : pair_(kvp), vers_(TransactionTid::increment_value + insert_bit) {}
 
-    inline const K& key() const {
-        return pair_.read_value().first;
+    // version getters
+    version_type& version() {
+        return vers_;
     }
-    inline Version& version() {
-        return pair_.version();
+    const version_type& version() const {
+        return vers_;
     }
-    inline T& writeable_value() {
-        return pair_.writeable_value().second;
+    version_type& nodeversion() {
+        return nodevers_;
     }
-    inline bool operator<(const rbpair& rhs) const {
+    const version_type& nodeversion() const {
+        return nodevers_;
+    }
+
+    // transactional access to key-value pair
+    void lock() {
+        vers_.lock();
+    }
+    void unlock() {
+        vers_.unlock();
+    }
+    bool check(const TransItem& item) {
+        return item.check_version(vers_);
+    }
+    void install(TransItem& item, const Transaction& txn) {
+        pair_.access().second = item.template write_value<T>();
+        vers_.set_version_unlock(txn.commit_tid());
+        item.clear_needs_unlock();
+    }
+
+    // transactional access to node version
+    void lock_nv() {
+        nodevers_.lock();
+    }
+    void unlock_nv() {
+        nodevers_.unlock();
+    }
+    bool check_nv(const TransItem& item) {
+        return item.check_version(nodevers_);
+    }
+    void install_nv(TransItem& item, const Transaction& txn) {
+        nodevers_.set_version_unlock(txn.commit_tid());
+        item.clear_needs_unlock();
+    }
+
+    // key access and comparisons
+    const K& key() const {
+        return pair_.access().first;
+    }
+    bool operator<(const rbpair& rhs) const {
         return (key() < rhs.key());
     }
-    inline bool operator>(const rbpair& rhs) const {
+    bool operator>(const rbpair& rhs) const {
         return (key() > rhs.key());
+    }
+
+    wrapped_pair& get_wrapped_pair() {
+        return pair_;
+    }
+    std::pair<const K, T>& get_raw_pair() {
+        return pair_.access();
     }
 
 private:
     // key-value pair associated with a version for the data
-    versioned_pair pair_;
+    wrapped_pair pair_;
+    version_type vers_;
+    version_type nodevers_;
 };
 
 template <typename K, typename T, bool GlobalSize> class RBProxy;
 
-// If GlobalSize is false then we don't track a separate size field
-template <typename K, typename T, bool GlobalSize = true>
+template <typename K, typename T, bool GlobalSize>
 class RBTree 
 #ifndef STO_NO_STM
 : public Shared 
@@ -98,13 +137,13 @@ class RBTree
     friend class RBTreeIterator<K, T, GlobalSize>;
     friend class RBProxy<K, T, GlobalSize>;
 
-    typedef TransactionTid::type Version;
     typedef TransactionTid::signed_type RWVersion;
-    typedef versioned_value_struct<T> versioned_value;
+    typedef TWrapped<std::pair<const K, T>> wrapped_pair;
+    typedef typename wrapped_pair::version_type Version;
 
     static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
-    static constexpr Version insert_bit = TransactionTid::user_bit;
+    static constexpr TransactionTid::type insert_bit = TransactionTid::user_bit;
 
     typedef RBTreeIterator<K, T, GlobalSize> iterator;
     typedef const RBTreeIterator<K, T, GlobalSize> const_iterator;
@@ -145,12 +184,14 @@ public:
     bool stamp_insert(const K& key, const T& val);
     T stamp_find(const K& key);
 
-    void lock(versioned_value *e) {
-        lock(&e->version());
+/*
+    void lock(wrapped_pair *e) {
+        e->lock();
     }
-    void unlock(versioned_value *e) {
-        unlock(&e->version());
+    void unlock(wrapped_pair *e) {
+        e->unlock();
     }
+*/
 
 #ifndef STO_NO_STM
 /*
@@ -186,17 +227,17 @@ public:
     }
 
 */
-    inline bool lock(TransItem& item, Transaction&);
-    inline void unlock(TransItem& item);
-    inline bool check(const TransItem& item, const Transaction& trans);
-    inline void install(TransItem& item, const Transaction& t);
-    inline void cleanup(TransItem& item, bool committed);
+    bool lock(TransItem& item, Transaction&);
+    void unlock(TransItem& item);
+    bool check(const TransItem& item, const Transaction& trans);
+    void install(TransItem& item, const Transaction& t);
+    void cleanup(TransItem& item, bool committed);
 #if DEBUG
-    inline void print_absent_reads();
+    void print_absent_reads();
 #endif
 
 private:
-    inline size_t debug_size() const {
+    size_t debug_size() const {
         return wrapper_tree_.size();
     }
 /*
@@ -270,7 +311,7 @@ private:
     // the current transaction
     inline bool is_soft_phantom(wrapper_type* node) const {
         Version& val_ver = node->version();
-        auto item = Sto::item(const_cast<RBTree<K, T>*>(this), node);
+        auto item = Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this), node);
         return (is_inserted(val_ver) && (has_insert(item) || has_delete(item)));
     }
 
@@ -330,13 +371,13 @@ private:
                 }
             }
             // add a read of the value version for a present get
-            item.observe(TVersion(val_ver));
+            item.observe(val_ver);
         
         // ABSENT GET
         } else {
             // add a read of treeversion if empty tree
             if (!x) {
-  	        Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this), tree_key_).observe(TVersion(val_ver));
+                Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this), tree_key_).observe(val_ver);
             }
 
             // add reads of boundary nodes, marking them as nodeversion ptrs
@@ -351,7 +392,7 @@ private:
                     TransactionTid::unlock(::lock);
 #endif
                     Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this),
-			        (reinterpret_cast<uintptr_t>(n)|0x1)).observe(TVersion(v));
+                                    (reinterpret_cast<uintptr_t>(n)|0x1)).observe(v);
                 }
             }
         }
@@ -452,16 +493,15 @@ private:
                 assert(lhs == nullptr && rhs == nullptr);
                 Sto::item(this, tree_key_).add_write(0);
             } else {
-                // update txn's own read set if inserted under a tracked boundary node
+                // mark to update nodeversion at commit time
                 auto item = Sto::item(this, reinterpret_cast<uintptr_t>(p) | 0x1);
-                if (item.has_read())
-                    item.update_read(p_ver, p_ver + TransactionTid::increment_value);
+                item.add_write(0);
 
                 // add the newly inserted node to boundary node set if it is adjacent to any tracked
                 // boundary node
                 if (Sto::item(this, reinterpret_cast<uintptr_t>(lhs) | 0x1).has_read()
-                    || Sto::item(this, reinterpret_cast<uintptr_t>(rhs) | 0x1).has_read()) { 
-		  Sto::item(this, reinterpret_cast<uintptr_t>(x) | 0x1).observe(TVersion(ver));
+                    || Sto::item(this, reinterpret_cast<uintptr_t>(rhs) | 0x1).has_read()) {
+                    Sto::item(this, reinterpret_cast<uintptr_t>(x) | 0x1).observe(ver);
                 }
             }
             Sto::item(this, x).add_write(T()).add_flags(insert_tag);
@@ -481,10 +521,8 @@ private:
                 item.clear_flags(delete_tag);
                 // recover from delete-my-insert (engineer's induction all over the place...)
                 if (is_inserted(ver)) {
-                    // okay to directly update value since we are the only txn
-                    // who can access it
                     item.add_flags(insert_tag);
-                    x->writeable_value() = T();
+                    // x->writeable_value() = T();
                 }
                 // overwrite value
                 item.add_write(T());
@@ -499,19 +537,12 @@ private:
             // This is not ideal because a blind write also reads this version
             // It's a compromise since we don't want to acquire any more locks
             // at install time (to avoid deadlocks)
-            item.observe(TVersion(ver));
+            item.observe(ver);
             return x;
         }
     }
 
 #endif /* !STO_NO_STM */
-
-    static void lock(Version *v) {
-        TransactionTid::lock(*v);
-    }
-    static void unlock(Version *v) {
-        TransactionTid::unlock(*v);
-    }
 
     static void lock_read(RWVersion *v) {TransactionTid::lock_read(*v);}
     static void lock_write(RWVersion *v) {TransactionTid::lock_write(*v);}
@@ -540,7 +571,7 @@ private:
     internal_tree_type wrapper_tree_;
     // only add a write to size if we erase or do an absent insert
     size_t size_;
-    mutable Version sizeversion_;
+    Version sizeversion_;
     mutable RWVersion treelock_;
     // used to mark whether a key is for the tree structure (for tree version checks)
     // or a pointer (which will always have the lower 3 bits as 0)
@@ -596,14 +627,14 @@ public:
     // Dereference operator on iterators; returns reference to std::pair<const K, T>
     proxy_pair_type& operator*() {
         // add a read of the version to make sure the value hasn't changed at commit time
-        Sto::item(tree_, node_).observe(TVersion(node_->version()));
+        Sto::item(tree_, node_).observe(node_->version());
         this->update_proxy_pair();
         return *proxy_pair_;
     }
 
     proxy_pair_type* operator->() {
         // add a read of the version to make sure the value hasn't changed at commit time
-        Sto::item(tree_, node_).observe(TVersion(node_->version()));
+        Sto::item(tree_, node_).observe(node_->version());
         this->update_proxy_pair();
         return proxy_pair_;
     }
@@ -680,14 +711,7 @@ public:
             return item.template write_value<T>();
         } else {
             // validate the read of the node, abort if someone has updated
-            auto curr_version = node_->version();
-            fence();
-            auto value = node_->writeable_value();
-            assert(item.has_read());
-            if (item.template read_value<Version>() != curr_version || RBTree<K, T, GlobalSize>::is_locked(curr_version)) {
-                Sto::abort();
-            }
-            return value; 
+            return node_->get_wrapped_pair().read(item, node_->version()).second;
         }
     }
     RBProxy& operator=(const T& value) {
@@ -710,7 +734,7 @@ inline size_t RBTree<K, T, GlobalSize>::size() const {
     always_assert(GlobalSize);
     auto size_item = Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this), size_key_);
     if (!size_item.has_read()) {
-        size_item.observe(TVersion(sizeversion_));
+        size_item.observe(sizeversion_);
     }
 
     ssize_t offset = (size_item.has_write()) ? size_item.template write_value<ssize_t>() : 0;
@@ -790,7 +814,7 @@ inline size_t RBTree<K, T, GlobalSize>::erase(const K& key) {
 
         // add a read here to make sure the key still exists when wen commit
         // XXX better to use a predicate (or just a special bit?)
-        item.observe(TVersion(ver));
+        item.observe(ver);
         // found item that has already been installed and not deleted
         item.add_write(0).add_flags(delete_tag);
         // add a write to size item of the current size minus one
@@ -810,11 +834,14 @@ inline size_t RBTree<K, T, GlobalSize>::erase(const K& key) {
 template <typename K, typename T, bool GlobalSize>
 inline bool RBTree<K, T, GlobalSize>::lock(TransItem& item, Transaction&) {
     if (item.key<void*>() == size_key_) {
-        lock(&sizeversion_);
+        sizeversion_.lock();
     } else if (item.key<void*>() == tree_key_) {
-        lock(&wrapper_tree_.treeversion_);
-    } else { 
-        lock(item.key<versioned_value*>());
+        wrapper_tree_.treeversion_.lock();
+    } else if (item.key<uintptr_t>() & uintptr_t(1)) {
+        uintptr_t x = item.key<uintptr_t>() & ~uintptr_t(1);
+        reinterpret_cast<wrapper_type*>(x)->lock_nv();
+    } else {
+        item.key<wrapper_type*>()->lock();
     }
     return true;
 }
@@ -822,11 +849,14 @@ inline bool RBTree<K, T, GlobalSize>::lock(TransItem& item, Transaction&) {
 template <typename K, typename T, bool GlobalSize>
 inline void RBTree<K, T, GlobalSize>::unlock(TransItem& item) {
     if (item.key<void*>() == size_key_) {
-        unlock(&sizeversion_);
+        sizeversion_.unlock();
     } else if (item.key<void*>() == tree_key_) {
-        unlock(&wrapper_tree_.treeversion_);
+        wrapper_tree_.treeversion_.unlock();
+    } else if (item.key<uintptr_t>() & uintptr_t(1)){
+        uintptr_t x = item.key<uintptr_t>() & ~uintptr_t(1);
+        reinterpret_cast<wrapper_type*>(x)->unlock_nv();
     } else {
-        unlock(item.key<versioned_value*>());
+        item.key<wrapper_type*>()->unlock();
     }
 }
    
@@ -838,7 +868,6 @@ inline bool RBTree<K, T, GlobalSize>::check(const TransItem& item, const Transac
     bool is_structured = (e & uintptr_t(1)) && !is_treekey;
     Version read_version = item.read_value<Version>();
     Version curr_version;
-
     // set up the correct current version to check: either sizeversion, treeversion, item version, or nodeversion
     if (is_sizekey) {
         curr_version = sizeversion_;
@@ -846,17 +875,20 @@ inline bool RBTree<K, T, GlobalSize>::check(const TransItem& item, const Transac
         curr_version = wrapper_tree_.treeversion_;
     } else if (is_structured) {
         wrapper_type* n = reinterpret_cast<wrapper_type*>(e & ~uintptr_t(1));
-        curr_version = n->nodeversion();
+        return n->check_nv(item);
 #if DEBUG
         TransactionTid::lock(::lock);
         printf("\t#read %p nv 0x%lx, exp %lx\n", n, curr_version, read_version);
         TransactionTid::unlock(::lock);
 #endif
     } else {
-        curr_version = reinterpret_cast<wrapper_type*>(e)->version();
+        wrapper_type* n = reinterpret_cast<wrapper_type*>(e);
+        return n->check(item);
     }
     fence();
 
+    // XXX this is now wrong -- treeversion and sizeversion currently doesn't conform to
+    // the TVersion interface
     if (TransactionTid::check_version(curr_version, read_version))
         return true;
 #if DEBUG
@@ -881,19 +913,23 @@ inline bool RBTree<K, T, GlobalSize>::check(const TransItem& item, const Transac
 // key-versionedvalue pairs with the same key will have two different items
 template <typename K, typename T, bool GlobalSize>
 inline void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction& t) {
-    (void) t;
     // we don't need to check for nodeversion updates because those are done during execution
-    auto e = item.key<wrapper_type*>();
+    wrapper_type* e = item.key<wrapper_type*>();
     // we did something to an empty tree, so update treeversion
     if ((void*)e == (wrapper_type*)tree_key_) {
         assert(is_locked(wrapper_tree_.treeversion_));
-        TransactionTid::inc_invalid_version(wrapper_tree_.treeversion_);
+        wrapper_tree_.treeversion_.set_version_unlock(t.commit_tid());
     // we changed the size of the tree, so update size
     } else if ((void*)e == (wrapper_type*)size_key_) {
+        always_assert(GlobalSize);
         assert(is_locked(sizeversion_));
         size_ += item.template write_value<ssize_t>();
-        TransactionTid::inc_invalid_version(sizeversion_);
+        sizeversion_.set_version_unlock(t.commit_tid());
         assert((ssize_t)size_ >= 0);
+    } else if (uintptr_t(e) & uintptr_t(1)) {
+        auto n = reinterpret_cast<wrapper_type*>(uintptr_t(e) & ~uintptr_t(1));
+        n->install_nv(item, t);
+        return;
     } else {
         assert(is_locked(e->version()));
         assert(((uintptr_t)e & 0x1) == 0);
@@ -908,28 +944,18 @@ inline void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction
             lock_write(&treelock_);
             wrapper_tree_.erase(*e);
             unlock_write(&treelock_);
-            // increment the nodeversion after we erase
-            // increment value version 
-            TransactionTid::inc_invalid_version(e->version());
-#if DEBUG
-            TransactionTid::lock(::lock);
-            printf("\t#inc nodeversion (erase) 0x%lx\n", (unsigned long)e);
-            TransactionTid::unlock(::lock);
-#endif
-            e->inc_nodeversion();
+
+            e->version().set_version(t.commit_tid());
+            e->nodeversion().set_version(t.commit_tid());
             Transaction::rcu_free(e);
-        } else if (inserted) {
-            // BUMMER...
-            e->writeable_value() = item.template write_value<T>();
-            erase_inserted(&e->version());
-        // updated
-        } else { 
-            // already checked that value version has not changed (i.e. no one else deleted)
-            e->writeable_value() = item.template write_value<T>(); 
-            // XXX(nate): seems like we should set to the commit tid so we have cheap opacity?
-            TransactionTid::inc_invalid_version(e->version());
+            e->version().unlock();
+        } else {
+            // inserts/updates should be handled the same way
+            e->install(item, t);
+            return;
         }
     }
+    item.clear_needs_unlock();
 }
 
 template <typename K, typename T, bool GlobalSize>
@@ -942,10 +968,11 @@ inline void RBTree<K, T, GlobalSize>::cleanup(TransItem& item, bool committed) {
             assert(((uintptr_t)e & 0x1) == 0);
             if (!is_inserted(e->version()))
                 return;
+            lock_write(&treelock_);
             wrapper_tree_.erase(*e);
-            // increment the nodeversion after we erase
-            erase_inserted(&e->version());
-            e->inc_nodeversion();
+            unlock_write(&treelock_);
+            // invalidate the nodeversion after we erase
+            e->nodeversion().set_invalid();
             Transaction::rcu_free(e);
         }
     }
@@ -986,13 +1013,11 @@ bool RBTree<K, T, GlobalSize>::stamp_insert(const K& key, const T& value) {
             // boundary node
             if (Sto::item(this, reinterpret_cast<uintptr_t>(lhs) | 0x1).has_read()
                 || Sto::item(this, reinterpret_cast<uintptr_t>(rhs) | 0x1).has_read()) {
-	      Sto::item(this, reinterpret_cast<uintptr_t>(x) | 0x1).observe(TVersion(ver));
+                Sto::item(this, reinterpret_cast<uintptr_t>(x) | 0x1).observe(ver);
             }
         }
         Sto::item(this, x).add_write(T()).add_flags(insert_tag);
-#ifndef STO_NO_STM
         change_size_offset(1);
-#endif
         return true;
     }
     // UPDATE: kvp is already inserted into the tree
@@ -1012,10 +1037,8 @@ bool RBTree<K, T, GlobalSize>::stamp_insert(const K& key, const T& value) {
             }
             // overwrite value
             item.add_write(T());
-#ifndef STO_NO_STM
             // we have to update the value of the size we will write
             change_size_offset(1);
-#endif
             return true;
         }
         // operator[] on RHS (THIS IS A READ!)
@@ -1025,7 +1048,7 @@ bool RBTree<K, T, GlobalSize>::stamp_insert(const K& key, const T& value) {
         // This is not ideal because a blind write also reads this version
         // It's a compromise since we don't want to acquire any more locks
         // at install time (to avoid deadlocks)
-        item.observe(TVersion(ver));
+        item.observe(ver);
         return false;
     }
 

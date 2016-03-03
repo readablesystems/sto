@@ -53,12 +53,9 @@ class rbnodeptr {
 
 template <typename T>
 class rblinks {
-    public:
-    typedef TransactionTid::type Version;
- 
+  public:
     T* p_;
     rbnodeptr<T> c_[2];
-//    mutable Version nodeversion_;
 }; 
 
 namespace rbpriv {
@@ -166,8 +163,7 @@ class rbtree {
     typedef Compare value_compare;
     typedef T node_type;
 
-    typedef TransactionTid::type Version;
-    typedef TransactionTid::signed_type RWVersion;
+    typedef TVersion Version;
     typedef std::tuple<T*, Version> node_info_type;
     typedef std::pair<node_info_type, node_info_type> boundaries_type;
 
@@ -617,10 +613,7 @@ rbtree<T, C>::find_insert(K& key, Comp comp) {
         retver = retnode->nodeversion();
         insert_commit(retnode, p, (cmp > 0));
 
-        // increment parent's nodeversion upon successful insertion
-        if (p.node()) {
-            p.node()->inc_nodeversion();
-        }
+        // no more inc_nodeversion; nodeversion updates now occur at commit time
     }
 
     return std::make_tuple(retnode, retver, found, boundary, parent);

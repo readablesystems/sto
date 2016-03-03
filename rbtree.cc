@@ -17,7 +17,7 @@ void rbaccount_report() {
 }
 
 #define PAIR(k,v) std::pair<int, int>(k, v)
-typedef RBTree<int, int> tree_type;
+typedef RBTree<int, int, true> tree_type;
 TransactionTid::type lock;
 // initialize the tree: contains (1,1), (2,2), (3,3)
 void reset_tree(tree_type& tree) {
