@@ -1,8 +1,8 @@
 #pragma once
 
-#include "small_vector.hh"
 #include "config.h"
 #include "compiler.hh"
+#include "small_vector.hh"
 #include <algorithm>
 #include <functional>
 #include <memory>
