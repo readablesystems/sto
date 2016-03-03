@@ -39,7 +39,6 @@
 #define MAX_THREADS 32
 
 #define HASHTABLE_SIZE 512
-#define HASHTABLE_THRESHOLD 16
 
 // TRANSACTION macros that can be used to wrap transactional code
 #define TRANSACTION                               \
@@ -244,7 +243,7 @@ public:
 
   private:
     Transaction()
-        : is_test_(false) {
+        : hash_base_(32768), is_test_(false) {
         start();
     }
 
@@ -252,13 +251,13 @@ public:
     static testing_type testing;
 
     Transaction(const testing_type&)
-        : is_test_(true) {
+        : hash_base_(32768), is_test_(true) {
         start();
     }
 
     struct uninitialized {};
     Transaction(uninitialized)
-        : is_test_(false) {
+        : hash_base_(32768), is_test_(false) {
         state_ = s_aborted;
     }
 
@@ -275,8 +274,14 @@ public:
         tinfo[TThread::id()].epoch = global_epoch;
         if (tinfo[TThread::id()].trans_start_callback)
             tinfo[TThread::id()].trans_start_callback();
+        hash_base_ += transSet_.size() + 1;
         transSet_.clear();
-        nhashed_ = 0;
+#if TRANSACTION_HASHTABLE
+        if (hash_base_ >= 32768) {
+            memset(hashtable_, 0, sizeof(hashtable_));
+            hash_base_ = 0;
+        }
+#endif
         may_duplicate_items_ = false;
         firstWrite_ = -1;
         start_tid_ = commit_tid_ = 0;
@@ -285,8 +290,22 @@ public:
         state_ = s_in_progress;
     }
 
+#if TRANSACTION_HASHTABLE
+    static int hash(const TObject* obj, void* key) {
+        auto n = (uintptr_t) key;
+        n += -(n <= 0xFFFF) & reinterpret_cast<uintptr_t>(obj);
+        //2654435761
+        return ((n >> 4) ^ (n & 15)) % HASHTABLE_SIZE;
+    }
+#endif
+
     TransItem* allocate_item(const TObject* obj, void* xkey) {
         transSet_.emplace_back(const_cast<TObject*>(obj), xkey);
+#if TRANSACTION_HASHTABLE
+        uint16_t& h = hashtable_[hash(obj, xkey)];
+        if (h <= hash_base_)
+            h = hash_base_ + transSet_.size();
+#endif
         return &transSet_.back();
     }
 
@@ -338,32 +357,22 @@ public:
     }
 
 private:
-    static int hash(TObject* s, void* key) {
-        auto n = (uintptr_t) key;
-        n += -(n <= 0xFFFF) & reinterpret_cast<uintptr_t>(s);
-        //2654435761
-        return ((n >> 4) ^ (n & 15)) % HASHTABLE_SIZE;
-    }
-
     // tries to find an existing item with this key, returns NULL if not found
-    TransItem* find_item(TObject* s, void* key, int delta) {
+    TransItem* find_item(TObject* obj, void* xkey, int delta) {
 #if TRANSACTION_HASHTABLE
-        if (transSet_.size() > HASHTABLE_THRESHOLD) {
-            if (nhashed_ < transSet_.size())
-                update_hash();
-            uint16_t idx = hashtable_[hash(s, key)];
-            if (!idx)
-                return NULL;
-            else if (transSet_[idx - 1].owner() == s && transSet_[idx - 1].key_ == key)
-                return &transSet_[idx - 1];
-        }
+        uint16_t idx = hashtable_[hash(obj, xkey)];
+        if (idx <= hash_base_)
+            return nullptr;
+        TransItem* ti = &transSet_[idx - hash_base_ - 1];
+        if (ti->owner() == obj && ti->key_ == xkey)
+            return ti;
 #endif
         for (auto it = transSet_.begin() + delta; it != transSet_.end(); ++it) {
             INC_P(txp_total_searched);
-            if (it->owner() == s && it->key_ == key)
+            if (it->owner() == obj && it->key_ == xkey)
                 return &*it;
         }
-        return NULL;
+        return nullptr;
     }
 
 private:
@@ -457,11 +466,13 @@ private:
     int firstWrite_;
     uint8_t state_;
     bool may_duplicate_items_;
-    uint16_t nhashed_;
+    uint16_t hash_base_;
     small_vector<TransItem, INIT_SET_SIZE> transSet_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
+#if TRANSACTION_HASHTABLE
     uint16_t hashtable_[HASHTABLE_SIZE];
+#endif
     TransactionBuffer buf_;
     bool is_test_;
 
@@ -470,7 +481,6 @@ private:
     friend class Sto;
     friend class TestTransaction;
     void hard_check_opacity(TransactionTid::type t);
-    void update_hash();
 };
 
 

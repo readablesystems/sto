@@ -62,16 +62,6 @@ void* Transaction::epoch_advancer(void*) {
     return NULL;
 }
 
-void Transaction::update_hash() {
-    if (nhashed_ == 0)
-        memset(hashtable_, 0, sizeof(hashtable_));
-    for (auto it = transSet_.begin() + nhashed_; it != transSet_.end(); ++it, ++nhashed_) {
-        int h = hash(it->owner(), it->key_);
-        if (!hashtable_[h] || !may_duplicate_items_)
-            hashtable_[h] = nhashed_ + 1;
-    }
-}
-
 void Transaction::hard_check_opacity(TransactionTid::type t) {
     // ignore opacity checks during commit; we're in the middle of checking
     // things anyway
