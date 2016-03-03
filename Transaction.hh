@@ -285,55 +285,56 @@ public:
         state_ = s_in_progress;
     }
 
+    TransItem* allocate_item(const TObject* obj, void* xkey) {
+        transSet_.emplace_back(const_cast<TObject*>(obj), xkey);
+        return &transSet_.back();
+    }
+
   public:
     // adds item for a key that is known to be new (must NOT exist in the set)
     template <typename T>
-    TransProxy new_item(const TObject* s, T key) {
-        void *xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        transSet_.emplace_back(const_cast<TObject*>(s), xkey);
-        return TransProxy(*this, transSet_.back());
+    TransProxy new_item(const TObject* obj, T key) {
+        void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
+        return TransProxy(*this, *allocate_item(obj, xkey));
     }
 
     // adds item without checking its presence in the array
     template <typename T>
-    TransProxy fresh_item(const TObject* s, T key) {
+    TransProxy fresh_item(const TObject* obj, T key) {
         may_duplicate_items_ = !transSet_.empty();
-        transSet_.emplace_back(const_cast<TObject*>(s), Packer<T>::pack_unique(buf_, std::move(key)));
-        return TransProxy(*this, transSet_.back());
+        void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
+        return TransProxy(*this, *allocate_item(obj, xkey));
     }
 
     // tries to find an existing item with this key, otherwise adds it
     template <typename T>
-    TransProxy item(const TObject* s, T key) {
+    TransProxy item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        TransItem* ti = find_item(const_cast<TObject*>(s), xkey, 0);
-        if (!ti) {
-            transSet_.emplace_back(const_cast<TObject*>(s), xkey);
-            ti = &transSet_.back();
-        }
+        TransItem* ti = find_item(const_cast<TObject*>(obj), xkey, 0);
+        if (!ti)
+            ti = allocate_item(obj, xkey);
         return TransProxy(*this, *ti);
     }
 
     // gets an item that is intended to be read only. this method essentially allows for duplicate items
     // in the set in some cases
     template <typename T>
-    TransProxy read_item(const TObject* s, T key) {
+    TransProxy read_item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
         TransItem* ti = nullptr;
         if (firstWrite_ >= 0)
-            ti = find_item(const_cast<TObject*>(s), xkey, firstWrite_);
+            ti = find_item(const_cast<TObject*>(obj), xkey, firstWrite_);
         if (!ti) {
             may_duplicate_items_ = !transSet_.empty();
-            transSet_.emplace_back(const_cast<TObject*>(s), xkey);
-            ti = &transSet_.back();
+            ti = allocate_item(obj, xkey);
         }
         return TransProxy(*this, *ti);
     }
 
     template <typename T>
-    OptionalTransProxy check_item(const TObject* s, T key) {
+    OptionalTransProxy check_item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        return OptionalTransProxy(*this, find_item(const_cast<TObject*>(s), xkey, 0));
+        return OptionalTransProxy(*this, find_item(const_cast<TObject*>(obj), xkey, 0));
     }
 
 private:
