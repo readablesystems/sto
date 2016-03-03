@@ -330,13 +330,13 @@ private:
                 }
             }
             // add a read of the value version for a present get
-            item.add_read(val_ver);
+            item.observe(TVersion(val_ver));
         
         // ABSENT GET
         } else {
             // add a read of treeversion if empty tree
             if (!x) {
-                Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this), tree_key_).add_read(val_ver);
+  	        Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this), tree_key_).observe(TVersion(val_ver));
             }
 
             // add reads of boundary nodes, marking them as nodeversion ptrs
@@ -351,7 +351,7 @@ private:
                     TransactionTid::unlock(::lock);
 #endif
                     Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this),
-                                    (reinterpret_cast<uintptr_t>(n)|0x1)).add_read(v);
+			        (reinterpret_cast<uintptr_t>(n)|0x1)).observe(TVersion(v));
                 }
             }
         }
@@ -460,8 +460,8 @@ private:
                 // add the newly inserted node to boundary node set if it is adjacent to any tracked
                 // boundary node
                 if (Sto::item(this, reinterpret_cast<uintptr_t>(lhs) | 0x1).has_read()
-                    || Sto::item(this, reinterpret_cast<uintptr_t>(rhs) | 0x1).has_read()) {
-                    Sto::item(this, reinterpret_cast<uintptr_t>(x) | 0x1).add_read(ver);
+                    || Sto::item(this, reinterpret_cast<uintptr_t>(rhs) | 0x1).has_read()) { 
+		  Sto::item(this, reinterpret_cast<uintptr_t>(x) | 0x1).observe(TVersion(ver));
                 }
             }
             Sto::item(this, x).add_write(T()).add_flags(insert_tag);
@@ -499,7 +499,7 @@ private:
             // This is not ideal because a blind write also reads this version
             // It's a compromise since we don't want to acquire any more locks
             // at install time (to avoid deadlocks)
-            item.add_read(ver);
+            item.observe(TVersion(ver));
             return x;
         }
     }
@@ -596,14 +596,14 @@ public:
     // Dereference operator on iterators; returns reference to std::pair<const K, T>
     proxy_pair_type& operator*() {
         // add a read of the version to make sure the value hasn't changed at commit time
-        Sto::item(tree_, node_).add_read(node_->version());
+        Sto::item(tree_, node_).observe(TVersion(node_->version()));
         this->update_proxy_pair();
         return *proxy_pair_;
     }
 
     proxy_pair_type* operator->() {
         // add a read of the version to make sure the value hasn't changed at commit time
-        Sto::item(tree_, node_).add_read(node_->version());
+        Sto::item(tree_, node_).observe(TVersion(node_->version()));
         this->update_proxy_pair();
         return proxy_pair_;
     }
@@ -710,7 +710,7 @@ inline size_t RBTree<K, T, GlobalSize>::size() const {
     always_assert(GlobalSize);
     auto size_item = Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this), size_key_);
     if (!size_item.has_read()) {
-        size_item.add_read(sizeversion_);
+        size_item.observe(TVersion(sizeversion_));
     }
 
     ssize_t offset = (size_item.has_write()) ? size_item.template write_value<ssize_t>() : 0;
@@ -790,7 +790,7 @@ inline size_t RBTree<K, T, GlobalSize>::erase(const K& key) {
 
         // add a read here to make sure the key still exists when wen commit
         // XXX better to use a predicate (or just a special bit?)
-        item.add_read(ver);
+        item.observe(TVersion(ver));
         // found item that has already been installed and not deleted
         item.add_write(0).add_flags(delete_tag);
         // add a write to size item of the current size minus one
@@ -986,7 +986,7 @@ bool RBTree<K, T, GlobalSize>::stamp_insert(const K& key, const T& value) {
             // boundary node
             if (Sto::item(this, reinterpret_cast<uintptr_t>(lhs) | 0x1).has_read()
                 || Sto::item(this, reinterpret_cast<uintptr_t>(rhs) | 0x1).has_read()) {
-                Sto::item(this, reinterpret_cast<uintptr_t>(x) | 0x1).add_read(ver);
+	      Sto::item(this, reinterpret_cast<uintptr_t>(x) | 0x1).observe(TVersion(ver));
             }
         }
         Sto::item(this, x).add_write(T()).add_flags(insert_tag);
@@ -1025,7 +1025,7 @@ bool RBTree<K, T, GlobalSize>::stamp_insert(const K& key, const T& value) {
         // This is not ideal because a blind write also reads this version
         // It's a compromise since we don't want to acquire any more locks
         // at install time (to avoid deadlocks)
-        item.add_read(ver);
+        item.observe(TVersion(ver));
         return false;
     }
 

@@ -418,7 +418,7 @@ private:
   }
 
   void verify_list(version_type readv) {
-      t_item(list_key).add_read(readv);
+      t_item(list_key).observe(TVersion(readv));
       acquire_fence();
   }
 
