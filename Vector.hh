@@ -5,6 +5,7 @@
 #include <iostream>
 #include <vector>
 #include <map>
+#include <string.h>
 #include "Transaction.hh"
 #include "TArrayProxy.hh"
 #include "Box.hh"
@@ -187,7 +188,7 @@ public:
         acquire_fence();
         return size_ + trans_size_offs();
     }
-    
+
     bool checkSize(size_type sz) {
         size_type size = size_;
         int32_t offset = trans_size_offs();
@@ -216,10 +217,10 @@ public:
         return size + offset == sz;
     }
 
-    size_type unsafe_size() const {
+    size_type nontrans_size() const {
         return size_;
     }
-    T unsafe_get(key_type i) const {
+    T nontrans_get(key_type i) const {
         assert(i < size_);
         return data_[i].unsafe_read();
     }
@@ -515,20 +516,34 @@ public:
     }
 
     void print(std::ostream& w, const TransItem& item) const {
+        w << "{Vector<";
+        const char* pf = strstr(__PRETTY_FUNCTION__, "with T = ");
+        if (pf) {
+            pf += 9;
+            const char* semi = strchr(pf, ';');
+            w.write(pf, semi - pf);
+        }
+        w << "> " << (void*) this;
         if (item.key<int>() == size_pred_key) {
-            w << "<" << (void*) this << ".size" << (item.predicate_value<int32_t>() & geq_mask ? ">=" : "==") << (item.predicate_value<int32_t>() >> value_shift) << ">";
+            w << ".size" << (item.predicate_value<int32_t>() & geq_mask ? ">=" : "==") << (item.predicate_value<int32_t>() >> value_shift);
         } else {
-            w << "<" << (void*) this;
             if (item.key<int>() == size_key)
                 w << ".size";
-            else if (item.key<int>() != vector_key)
-                w << "@" << item.key<int>();
+            else if (item.key<int>() == push_back_key)
+                w << ".push_back";
+            else if (item.key<int>() == vector_key)
+                w << ".vector";
+            else {
+                w << "[" << item.key<int>() << "]";
+                if (has_delete(item))
+                    w << "XX";
+            }
             if (item.has_read())
                 w << " ?" << item.read_value<Version>();
             if (item.has_write())
                 w << " =" << item.write_value<void*>();
-            w << ">";
         }
+        w << "}";
     }
 
     iterator begin() {
@@ -542,8 +557,8 @@ public:
 
     // This is not-transactional and only used for debugging purposes
     void print() {
-        for (int i = 0; i < size_ + trans_size_offs(); i++) {
-            std::cout << unsafe_get(i) << " ";
+        for (int i = 0; i < nontrans_size(); i++) {
+            std::cout << nontrans_get(i) << " ";
         }
         std::cout << std::endl;
     }

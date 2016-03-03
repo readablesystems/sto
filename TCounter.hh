@@ -122,7 +122,7 @@ public:
         vers_.unlock();
     }
     virtual void print(std::ostream& w, const TransItem& item) const {
-        w << "<Counter " << (void*) this << "=" << v_.access() << ".v" << vers_.value();
+        w << "{Counter " << (void*) this << "=" << v_.access() << ".v" << vers_.value();
         if (item.has_read())
             w << " ?" << item.read_value<version_type>();
         if (item.has_write() && item.has_flag(delta_bit))
@@ -133,7 +133,7 @@ public:
             auto& p = item.predicate_value<pred_type>();
             w << " P[" << p.first << "," << p.second << "]";
         }
-        w << ">";
+        w << "}";
     }
 
 private:

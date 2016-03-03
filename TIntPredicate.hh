@@ -136,7 +136,7 @@ public:
         vers_.unlock();
     }
     virtual void print(std::ostream& w, const TransItem& item) const {
-        w << "<IntProxy " << (void*) this << "=" << v_.access() << ".v" << vers_.value();
+        w << "{IntProxy " << (void*) this << "=" << v_.access() << ".v" << vers_.value();
         if (item.has_read())
             w << " ?" << item.template read_value<version_type>();
         if (item.has_write())
@@ -145,7 +145,7 @@ public:
             auto& p = item.predicate_value<pred_type>();
             w << " P[" << p.first << "," << p.second << "]";
         }
-        w << ">";
+        w << "}";
     }
 
 private:

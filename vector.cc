@@ -481,32 +481,30 @@ void testPushNPop() {
     TRANSACTION {
         assert(f.size() == 10);
     } RETRY(false);
-    
+
     printf("PASS: testPushNPop1\n");
-    
 
     TestTransaction t5(1);
     f.pop_back();
     f.pop_back();
     f.push_back(15);
-    
+
     TestTransaction t6(2);
     f[8] = 16;
     assert(t6.try_commit());
-    
+
     TestTransaction t7(3);
     (int) f[8];
     
     assert(t5.try_commit());
     assert(!t7.try_commit());
-    
+
     TRANSACTION {
         assert(f.size() == 9);
         assert(f[8] == 15);
     } RETRY(false);
-    
-    printf("PASS: testPushNPop2\n");
 
+    printf("PASS: testPushNPop2\n");
 }
 
 void testPopAndUdpate() {

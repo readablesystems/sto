@@ -246,18 +246,21 @@ void Transaction::print_stats() {
 void Transaction::print(std::ostream& w) const {
     static const char* names[] = {"in-progress", "committing", "committing-locked", "aborted", "committed"};
     w << "T0x" << (void*) this << " " << names[state_] << " [";
-    for (auto& ti : transSet_)
+    for (auto& ti : transSet_) {
+        if (&ti != &transSet_[0])
+            w << " ";
         ti.owner()->print(w, ti);
+    }
     w << "]\n";
 }
 
 void TObject::print(std::ostream& w, const TransItem& item) const {
-    w << "<" << (void*) this << "." << item.key<void*>();
+    w << "{" << (void*) this << "." << item.key<void*>();
     if (item.has_read())
         w << " ?" << item.read_value<void*>();
     if (item.has_write())
         w << " =" << item.write_value<void*>();
     if (item.has_predicate())
         w << " P" << item.predicate_value<void*>();
-    w << ">";
+    w << "}";
 }

@@ -12,7 +12,7 @@ class TransProxy;
 class TransItem {
   public:
 #if SIZEOF_VOID_P == 8
-    typedef Shared* sharedstore_type;
+    typedef TObject* sharedstore_type;
     typedef uintptr_t flags_type;
 #else
     typedef uint64_t sharedstore_type;
@@ -31,6 +31,7 @@ class TransItem {
     static constexpr flags_type special_mask = pointer_mask | read_bit | write_bit | lock_bit | predicate_bit | stash_bit;
 
 
+    TransItem() = default;
     TransItem(TObject* s, void* k)
         : s_(reinterpret_cast<sharedstore_type>(s)), key_(k) {
     }
@@ -170,9 +171,7 @@ class TransItem {
         return *this;
     }
 
-  private:
-    friend class Transaction;
-    friend class TransProxy;
+private:
     Shared* s_;
     // this word must be unique (to a particular item) and consistently ordered across transactions
     void* key_;
@@ -185,6 +184,8 @@ class TransItem {
     void __or_flags(flags_type flags) {
         s_ = reinterpret_cast<sharedstore_type>(reinterpret_cast<flags_type>(s_) | flags);
     }
+    friend class Transaction;
+    friend class TransProxy;
 };
 
 
