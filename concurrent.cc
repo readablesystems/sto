@@ -118,7 +118,7 @@ template <> struct Container<USE_VECTOR> {
     typedef typename type::size_type index_type;
     static constexpr bool has_delete = false;
     value_type nontrans_get(index_type key) {
-        return v_.unsafe_get(key);
+        return v_.nontrans_get(key);
     }
     value_type transGet(index_type key) {
         return v_.transGet(key);
