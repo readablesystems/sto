@@ -908,12 +908,12 @@ inline void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction
     wrapper_type* e = item.key<wrapper_type*>();
     // we did something to an empty tree, so update treeversion
     if ((void*)e == (wrapper_type*)tree_key_) {
-        assert(wrapper_tree_.treeversion_.is_locked());
+        assert(wrapper_tree_.treeversion_.is_locked_here());
         wrapper_tree_.treeversion_.set_version_unlock(t.commit_tid());
     // we changed the size of the tree, so update size
     } else if ((void*)e == (wrapper_type*)size_key_) {
         always_assert(GlobalSize);
-        assert(sizeversion_.is_locked());
+        assert(sizeversion_.is_locked_here());
         size_ += item.template write_value<ssize_t>();
         sizeversion_.set_version_unlock(t.commit_tid());
         assert((ssize_t)size_ >= 0);
@@ -922,7 +922,7 @@ inline void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction
         n->install_nv(item, t);
         return;
     } else {
-        assert(e->version().is_locked());
+        assert(e->version().is_locked_here());
         assert(((uintptr_t)e & 0x1) == 0);
         bool deleted = has_delete(item);
         bool inserted = has_insert(item);
@@ -937,7 +937,8 @@ inline void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction
             unlock_write(&treelock_);
 
             e->version().set_version(t.commit_tid());
-            e->nodeversion().set_version(t.commit_tid());
+            e->lock_nv();
+            e->nodeversion().set_version_unlock(t.commit_tid());
             Transaction::rcu_free(e);
             e->version().unlock();
         } else {
