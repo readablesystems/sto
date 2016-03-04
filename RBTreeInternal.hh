@@ -611,9 +611,7 @@ rbtree<T, C>::find_insert(K& key, Comp comp) {
         retnode = (T*)malloc(sizeof(T));
         new (retnode) T(key);
         retver = retnode->nodeversion();
-        p.node()->lock_hohversion();
         insert_commit(retnode, p, (cmp > 0));
-        p.node()->unlock_hohversion();
 
         // no more inc_nodeversion; nodeversion updates now occur at commit time
     }

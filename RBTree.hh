@@ -582,6 +582,9 @@ private:
     static bool is_inserted(Version& v) {
         return v.value() & insert_bit;
     }
+    static void erase_inserted(Version& v) {
+        v.value() &= ~insert_bit;
+    }
 
     internal_tree_type wrapper_tree_;
     // only add a write to size if we erase or do an absent insert
@@ -962,8 +965,8 @@ inline void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction
 
             e->version().set_version(t.commit_tid());
             e->nodeversion().force_set_version(t.commit_tid());
-            Transaction::rcu_free(e);
             e->version().unlock();
+            Transaction::rcu_free(e);
         } else {
             // inserts/updates should be handled the same way
             e->install(item, t);
@@ -1021,8 +1024,7 @@ bool RBTree<K, T, GlobalSize>::stamp_insert(const K& key, const T& value) {
         } else {
             // update txn's own read set if inserted under a tracked boundary node
             auto item = Sto::item(this, reinterpret_cast<uintptr_t>(p) | 0x1);
-            if (item.has_read())
-                item.update_read(p_ver, p_ver + TransactionTid::increment_value);
+            item.add_write(0);
 
             // add the newly inserted node to boundary node set if it is adjacent to any tracked
             // boundary node
@@ -1031,7 +1033,7 @@ bool RBTree<K, T, GlobalSize>::stamp_insert(const K& key, const T& value) {
                 Sto::item(this, reinterpret_cast<uintptr_t>(x) | 0x1).observe(ver);
             }
         }
-        Sto::item(this, x).add_write(T()).add_flags(insert_tag);
+        Sto::item(this, x).add_write(value).add_flags(insert_tag);
         change_size_offset(1);
         return true;
     }
@@ -1048,10 +1050,10 @@ bool RBTree<K, T, GlobalSize>::stamp_insert(const K& key, const T& value) {
                 // okay to directly update value since we are the only txn
                 // who can access it
                 item.add_flags(insert_tag);
-                x->get_raw_pair().second = T();
+                x->get_raw_pair().second = value;
             }
             // overwrite value
-            item.add_write(T());
+            item.add_write(value);
             // we have to update the value of the size we will write
             change_size_offset(1);
             return true;
@@ -1071,13 +1073,14 @@ bool RBTree<K, T, GlobalSize>::stamp_insert(const K& key, const T& value) {
 
 template <typename K, typename T, bool GlobalSize>
 T RBTree<K, T, GlobalSize>::stamp_find(const K& key) {
-    rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
+    rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, 0));
 
     // find_or_abort() tracks boundary nodes if key is absent
     // it also observes a value version if key is found
     auto results = find_or_abort(idx_pair);
 
     wrapper_type* node = std::get<0>(results);
+    Version ver = std::get<1>(results);
     bool found = std::get<2>(results);
     if (found) {
         auto item = Sto::item(const_cast<RBTree<K, T, GlobalSize>*>(this), node);
@@ -1103,7 +1106,7 @@ bool RBTree<K, T, GlobalSize>::nontrans_insert(const K& key, const T& value) {
         rbnodeptr<wrapper_type> p = std::get<0>(results);
         wrapper_type* n = (wrapper_type*)malloc(sizeof(wrapper_type));
         new (n) wrapper_type(rbpair<K, T>(key, value));
-        erase_inserted(&n->version());
+        erase_inserted(n->version());
         bool side = (p.node() == nullptr) ? false : (wrapper_tree_.r_.node_compare(*n, *p.node()) > 0);
         wrapper_tree_.insert_commit(n, p, side);
     }
@@ -1128,7 +1131,7 @@ T RBTree<K, T, GlobalSize>::nontrans_find(const K& key) {
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
     bool found = std::get<2>(results);
-    auto ret = found ? std::get<0>(results)->writeable_value() : T();
+    auto ret = found ? std::get<0>(results)->get_raw_pair().second : T();
     unlock_read(&treelock_);
     return ret;
 }
