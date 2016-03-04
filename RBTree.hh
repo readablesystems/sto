@@ -477,9 +477,9 @@ private:
         boundaries_type& boundaries = std::get<3>(results);
         node_info_type& pinfo = std::get<4>(results);
         wrapper_type* p = std::get<0>(pinfo);
-        // p_ver is always nodeversion
-        Version p_ver = std::get<1>(pinfo);
-        
+        // p_ver is always nodeversion (not used right now)
+        //Version p_ver = std::get<1>(pinfo);
+
         // INSERT: kvp did not exist
         // @ver is *nodeversion*
         if (!found) {
@@ -555,17 +555,8 @@ private:
     static bool has_delete(const TransItem& item) {
         return item.flags() & delete_tag;
     }
-    static bool is_locked(Version v) {
-        return TransactionTid::is_locked(v);
-    }
-    static bool is_inserted(Version v) {
-        return v & insert_bit;
-    }
-    static void erase_inserted(Version* v) {
-        *v = *v & (~insert_bit);
-    }
-    static void mark_inserted(Version* v) {
-        *v = *v | insert_bit;
+    static bool is_inserted(Version& v) {
+        return v.value() & insert_bit;
     }
 
     internal_tree_type wrapper_tree_;
@@ -889,7 +880,7 @@ inline bool RBTree<K, T, GlobalSize>::check(const TransItem& item, const Transac
 
     // XXX this is now wrong -- treeversion and sizeversion currently doesn't conform to
     // the TVersion interface
-    if (TransactionTid::check_version(curr_version, read_version))
+    if (curr_version.check_version(read_version))
         return true;
 #if DEBUG
     if (!is_sizekey && !is_treekey) {
@@ -917,12 +908,12 @@ inline void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction
     wrapper_type* e = item.key<wrapper_type*>();
     // we did something to an empty tree, so update treeversion
     if ((void*)e == (wrapper_type*)tree_key_) {
-        assert(is_locked(wrapper_tree_.treeversion_));
+        assert(wrapper_tree_.treeversion_.is_locked());
         wrapper_tree_.treeversion_.set_version_unlock(t.commit_tid());
     // we changed the size of the tree, so update size
     } else if ((void*)e == (wrapper_type*)size_key_) {
         always_assert(GlobalSize);
-        assert(is_locked(sizeversion_));
+        assert(sizeversion_.is_locked());
         size_ += item.template write_value<ssize_t>();
         sizeversion_.set_version_unlock(t.commit_tid());
         assert((ssize_t)size_ >= 0);
@@ -931,7 +922,7 @@ inline void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction
         n->install_nv(item, t);
         return;
     } else {
-        assert(is_locked(e->version()));
+        assert(e->version().is_locked());
         assert(((uintptr_t)e & 0x1) == 0);
         bool deleted = has_delete(item);
         bool inserted = has_insert(item);
