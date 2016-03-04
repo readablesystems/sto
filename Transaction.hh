@@ -38,8 +38,6 @@
 
 #define MAX_THREADS 32
 
-#define HASHTABLE_SIZE 512
-
 // TRANSACTION macros that can be used to wrap transactional code
 #define TRANSACTION                               \
     do {                                          \
@@ -164,6 +162,8 @@ struct __attribute__((aligned(128))) threadinfo_t {
 
 class Transaction {
 public:
+    static constexpr unsigned hashtable_size = 512;
+
     static threadinfo_t tinfo[MAX_THREADS];
     static threadinfo_t::epoch_type global_epoch;
     static bool run_epochs;
@@ -296,7 +296,7 @@ public:
         auto n = reinterpret_cast<uintptr_t>(key) + 0x10000;
         n += -(n <= 0x1FFFF) & reinterpret_cast<uintptr_t>(obj);
         //2654435761
-        return ((n >> 4) ^ (n & 15)) % HASHTABLE_SIZE;
+        return ((n >> 4) ^ (n & 15)) % hashtable_size;
     }
 #endif
 
@@ -458,11 +458,11 @@ private:
     small_vector<TransItem, INIT_SET_SIZE> transSet_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
-#if TRANSACTION_HASHTABLE
-    uint16_t hashtable_[HASHTABLE_SIZE];
-#endif
     TransactionBuffer buf_;
     bool is_test_;
+#if TRANSACTION_HASHTABLE
+    uint16_t hashtable_[hashtable_size];
+#endif
 
     void hard_check_opacity(TransactionTid::type t);
     void stop(bool committed);
