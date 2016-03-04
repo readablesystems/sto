@@ -162,7 +162,7 @@ struct __attribute__((aligned(128))) threadinfo_t {
 
 class Transaction {
 public:
-    static constexpr unsigned hashtable_size = 512;
+    static constexpr unsigned hashtable_size = 1024;
 
     static threadinfo_t tinfo[MAX_THREADS];
     static threadinfo_t::epoch_type global_epoch;
