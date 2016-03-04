@@ -80,12 +80,13 @@ enum txp {
     txp_pop_abort,
     txp_total_check_read,
     txp_total_check_predicate,
+    txp_hash_collision,
 #if !PERF_LOGGING
     txp_count = 0
 #elif !DETAILED_LOGGING
     txp_count = txp_hco_abort + 1
 #else
-    txp_count = txp_total_check_predicate + 1
+    txp_count = txp_hash_collision + 1
 #endif
 };
 
@@ -366,6 +367,7 @@ private:
         TransItem* ti = &transSet_[idx - hash_base_ - 1];
         if (ti->owner() == obj && ti->key_ == xkey)
             return ti;
+        INC_P(txp_hash_collision);
 #endif
         for (auto it = transSet_.begin() + delta; it != transSet_.end(); ++it) {
             INC_P(txp_total_searched);
