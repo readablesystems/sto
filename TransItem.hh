@@ -192,7 +192,7 @@ private:
 class TransProxy {
   public:
     TransProxy(Transaction& t, unsigned idx)
-        : idx_(idx) {
+        : t_(&t), idx_(idx) {
         assert(&t == TThread::txn);
     }
 
@@ -338,9 +338,10 @@ class TransProxy {
     }
 
   private:
+    Transaction* t_;
     unsigned idx_;
     inline Transaction* t() const {
-        return TThread::txn;
+        return t_;
     }
     inline TransItem& item() const;
     friend class Transaction;
