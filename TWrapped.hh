@@ -2,12 +2,18 @@
 #include "Transaction.hh"
 #include <utility>
 
-template <typename T> class TTrivialWrapped {
+template <typename T, bool Opaque = true,
+          bool Trivial = mass::is_trivially_copyable<T>::value,
+          bool Small = sizeof(T) <= sizeof(uintptr_t) && alignof(T) == sizeof(T)
+          > class TWrapped;
+
+template <typename T, bool Small>
+class TWrapped<T, true, true, Small> {
 public:
     typedef T read_type;
     typedef TVersion version_type;
 
-    template <typename... Args> TTrivialWrapped(Args&&... args)
+    template <typename... Args> TWrapped(Args&&... args)
         : v_(std::forward(args)...) {
     }
 
@@ -61,21 +67,22 @@ protected:
     T v_;
 };
 
-template <typename T> class TSmallTrivialNonopaqueWrapped {
+template <typename T>
+class TWrapped<T, false, true, true> {
 public:
     typedef T read_type;
     typedef TNonopaqueVersion version_type;
 
-    TSmallTrivialNonopaqueWrapped()
+    TWrapped()
         : v_() {
     }
-    TSmallTrivialNonopaqueWrapped(const T& v)
+    TWrapped(const T& v)
         : v_(v) {
     }
-    TSmallTrivialNonopaqueWrapped(T&& v)
+    TWrapped(T&& v)
         : v_(std::move(v)) {
     }
-    template <typename... Args> TSmallTrivialNonopaqueWrapped(Args&&... args)
+    template <typename... Args> TWrapped(Args&&... args)
         : v_(std::forward<Args>(args)...) {
     }
 
@@ -102,21 +109,22 @@ private:
     T v_;
 };
 
-template <typename T> class TLargeTrivialNonopaqueWrapped {
+template <typename T>
+class TWrapped<T, false, true, false> {
 public:
     typedef T read_type;
     typedef TNonopaqueVersion version_type;
 
-    TLargeTrivialNonopaqueWrapped()
+    TWrapped()
         : v_() {
     }
-    TLargeTrivialNonopaqueWrapped(const T& v)
+    TWrapped(const T& v)
         : v_(v) {
     }
-    TLargeTrivialNonopaqueWrapped(T&& v)
+    TWrapped(T&& v)
         : v_(std::move(v)) {
     }
-    template <typename... Args> TLargeTrivialNonopaqueWrapped(Args&&... args)
+    template <typename... Args> TWrapped(Args&&... args)
         : v_(std::forward<Args>(args)...) {
     }
 
@@ -169,24 +177,25 @@ private:
     T v_;
 };
 
-template <typename T> class TNontrivialWrapped {
+template <typename T, bool Small>
+class TWrapped<T, true, false, Small> {
 public:
     typedef const T& read_type;
     typedef TVersion version_type;
 
-    TNontrivialWrapped()
+    TWrapped()
         : vp_(new T) {
     }
-    TNontrivialWrapped(const T& v)
+    TWrapped(const T& v)
         : vp_(new T(v)) {
     }
-    TNontrivialWrapped(T&& v)
+    TWrapped(T&& v)
         : vp_(new T(std::move(v))) {
     }
-    template <typename... Args> TNontrivialWrapped(Args&&... args)
+    template <typename... Args> TWrapped(Args&&... args)
         : vp_(new T(std::forward<Args>(args)...)) {
     }
-    ~TNontrivialWrapped() {
+    ~TWrapped() {
         T* vp = vp_;
         Transaction::rcu_cleanup([vp](){ delete vp; });
     }
@@ -247,24 +256,25 @@ private:
     }
 };
 
-template <typename T> class TNontrivialNonopaqueWrapped {
+template <typename T, bool Small>
+class TWrapped<T, false, false, Small> {
 public:
     typedef const T& read_type;
     typedef TNonopaqueVersion version_type;
 
-    TNontrivialNonopaqueWrapped()
+    TWrapped()
         : vp_(new T) {
     }
-    TNontrivialNonopaqueWrapped(const T& v)
+    TWrapped(const T& v)
         : vp_(new T(v)) {
     }
-    TNontrivialNonopaqueWrapped(T&& v)
+    TWrapped(T&& v)
         : vp_(new T(std::move(v))) {
     }
-    template <typename... Args> TNontrivialNonopaqueWrapped(Args&&... args)
+    template <typename... Args> TWrapped(Args&&... args)
         : vp_(new T(std::forward<Args>(args)...)) {
     }
-    ~TNontrivialNonopaqueWrapped() {
+    ~TWrapped() {
         T* vp = vp_;
         Transaction::rcu_cleanup([vp](){ delete vp; });
     }
@@ -302,20 +312,5 @@ private:
 };
 
 
-template <typename T, bool Opaque = true,
-          bool Trivial = mass::is_trivially_copyable<T>::value,
-          bool Small = sizeof(T) <= sizeof(uintptr_t) && alignof(T) == sizeof(T)
-          > class TWrapped;
-
-template <typename T> class TWrapped<T, true, true, true> : public TTrivialWrapped<T> {};
-template <typename T> class TWrapped<T, true, true, false> : public TTrivialWrapped<T> {};
-template <typename T, bool Small> class TWrapped<T, true, false, Small> : public TNontrivialWrapped<T> {};
-template <typename T> class TWrapped<T, false, true, true> : public TSmallTrivialNonopaqueWrapped<T> {};
-template <typename T> class TWrapped<T, false, true, false> : public TLargeTrivialNonopaqueWrapped<T> {};
-template <typename T, bool Small> class TWrapped<T, false, false, Small> : public TNontrivialNonopaqueWrapped<T> {};
-
-
-template <typename T> class TOpaqueWrapped
-          : public TWrapped<T> {};
-template <typename T> class TNonopaqueWrapped
-          : public TWrapped<T, false> {};
+template <typename T> using TOpaqueWrapped = TWrapped<T>;
+template <typename T> using TNonopaqueWrapped = TWrapped<T, false>;
