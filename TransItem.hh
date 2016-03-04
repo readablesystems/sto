@@ -374,3 +374,9 @@ class OptionalTransProxy {
     }
     friend class Transaction;
 };
+
+
+inline std::ostream& operator<<(std::ostream& w, const TransItem& item) {
+    item.owner()->print(w, item);
+    return w;
+}
