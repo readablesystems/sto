@@ -293,8 +293,8 @@ public:
 
 #if TRANSACTION_HASHTABLE
     static int hash(const TObject* obj, void* key) {
-        auto n = (uintptr_t) key;
-        n += -(n <= 0xFFFF) & reinterpret_cast<uintptr_t>(obj);
+        auto n = reinterpret_cast<uintptr_t>(key) + 0x10000;
+        n += -(n <= 0x1FFFF) & reinterpret_cast<uintptr_t>(obj);
         //2654435761
         return ((n >> 4) ^ (n & 15)) % HASHTABLE_SIZE;
     }
