@@ -191,8 +191,8 @@ private:
 
 class TransProxy {
   public:
-    TransProxy(Transaction& t, TransItem& i)
-        : i_(&i) {
+    TransProxy(Transaction& t, unsigned idx)
+        : idx_(idx) {
         assert(&t == TThread::txn);
     }
 
@@ -200,27 +200,27 @@ class TransProxy {
         return this;
     }
     operator TransItem&() {
-        return *i_;
+        return item();
     }
 
     bool has_read() const {
-        return i_->has_read();
+        return item().has_read();
     }
     template <typename T>
     bool has_read(const T& value) const {
         return has_read() && this->template read_value<T>() == value;
     }
     bool has_predicate() const {
-        return i_->has_predicate();
+        return item().has_predicate();
     }
     bool has_write() const {
-        return i_->has_write();
+        return item().has_write();
     }
     bool has_stash() const {
-        return i_->has_stash();
+        return item().has_stash();
     }
     bool has_flag(TransItem::flags_type f) const {
-        return i_->flags() & f;
+        return item().flags() & f;
     }
 
     template <typename T>
@@ -230,7 +230,7 @@ class TransProxy {
     inline TransProxy& observe_opacity(TVersion version);
     inline TransProxy& observe_opacity(TNonopaqueVersion version);
     inline TransProxy& clear_read() {
-        i_->__rm_flags(TransItem::read_bit);
+        item().__rm_flags(TransItem::read_bit);
         return *this;
     }
     template <typename T>
@@ -239,109 +239,110 @@ class TransProxy {
     template <typename T>
     inline TransProxy& set_predicate(T pdata);
     inline TransProxy& clear_predicate() {
-        i_->__rm_flags(TransItem::predicate_bit);
+        item().__rm_flags(TransItem::predicate_bit);
         return *this;
     }
-    
+
     template <typename T>
     inline TransProxy& add_write(const T& wdata);
     template <typename T>
     inline TransProxy& add_write(T&& wdata);
     inline TransProxy& clear_write() {
-        i_->__rm_flags(TransItem::write_bit);
+        item().__rm_flags(TransItem::write_bit);
         return *this;
     }
 
     template <typename T>
     inline TransProxy& set_stash(T sdata);
     inline TransProxy& clear_stash() {
-        i_->__rm_flags(TransItem::stash_bit);
+        item().__rm_flags(TransItem::stash_bit);
         return *this;
     }
 
     template <typename T>
     T& read_value() {
-        return i_->read_value<T>();
+        return item().read_value<T>();
     }
     template <typename T>
     const T& read_value() const {
-        return i_->read_value<T>();
+        return item().read_value<T>();
     }
 
     template <typename T>
     T& predicate_value() {
-        return i_->predicate_value<T>();
+        return item().predicate_value<T>();
     }
     template <typename T>
     inline T& predicate_value(T default_value);
     template <typename T>
     const T& predicate_value() const {
-        return i_->predicate_value<T>();
+        return item().predicate_value<T>();
     }
 
     template <typename T>
     T& write_value() {
-        return i_->write_value<T>();
+        return item().write_value<T>();
     }
     template <typename T>
     const T& write_value(const T& default_value) {
-        if (i_->has_write())
-            return i_->write_value<T>();
+        if (item().has_write())
+            return item().write_value<T>();
         else
             return default_value;
     }
     template <typename T>
     const T& write_value() const {
-        return i_->write_value<T>();
+        return item().write_value<T>();
     }
 
     template <typename T>
     T& stash_value() {
-        return i_->stash_value<T>();
+        return item().stash_value<T>();
     }
     template <typename T>
     const T& stash_value() const {
-        return i_->stash_value<T>();
+        return item().stash_value<T>();
     }
     template <typename T>
     T stash_value(T default_value) const {
-        return i_->stash_value<T>(std::move(default_value));
+        return item().stash_value<T>(std::move(default_value));
     }
 
     TransProxy& remove_read() { // XXX should also cleanup_read
-        i_->__rm_flags(TransItem::read_bit);
+        item().__rm_flags(TransItem::read_bit);
         return *this;
     }
     TransProxy& remove_write() { // XXX should also cleanup_write
-        i_->__rm_flags(TransItem::write_bit);
+        item().__rm_flags(TransItem::write_bit);
         return *this;
     }
 
     // these methods are all for user flags (currently we give them 8 bits, the high 8 of the 16 total flag bits we have)
     TransItem::flags_type flags() const {
-        return i_->flags();
+        return item().flags();
     }
     TransItem::flags_type shifted_user_flags() const {
-        return i_->shifted_user_flags();
+        return item().shifted_user_flags();
     }
     TransProxy& assign_flags(TransItem::flags_type flags) {
-        i_->assign_flags(flags);
+        item().assign_flags(flags);
         return *this;
     }
     TransProxy& clear_flags(TransItem::flags_type flags) {
-        i_->clear_flags(flags);
+        item().clear_flags(flags);
         return *this;
     }
     TransProxy& add_flags(TransItem::flags_type flags) {
-        i_->add_flags(flags);
+        item().add_flags(flags);
         return *this;
     }
 
   private:
-    TransItem* i_;
+    unsigned idx_;
     inline Transaction* t() const {
         return TThread::txn;
     }
+    inline TransItem& item() const;
     friend class Transaction;
     friend class OptionalTransProxy;
 };
@@ -351,11 +352,11 @@ class OptionalTransProxy {
   public:
     typedef TransProxy (OptionalTransProxy::*unspecified_bool_type)() const;
     operator unspecified_bool_type() const {
-        return i_ ? &OptionalTransProxy::get : 0;
+        return idx_ != unsigned(-1) ? &OptionalTransProxy::get : 0;
     }
     TransProxy get() const {
-        assert(i_);
-        return TransProxy(*t(), *i_);
+        assert(idx_ != unsigned(-1));
+        return TransProxy(*t(), idx_);
     }
     TransProxy operator*() const {
         return get();
@@ -364,9 +365,9 @@ class OptionalTransProxy {
         return get();
     }
   private:
-    TransItem* i_;
-    OptionalTransProxy(Transaction& t, TransItem* i)
-        : i_(i) {
+    unsigned idx_;
+    OptionalTransProxy(Transaction& t, unsigned idx)
+        : idx_(idx) {
         assert(&t == TThread::txn);
     }
     inline Transaction* t() const {

@@ -315,7 +315,7 @@ public:
     template <typename T>
     TransProxy new_item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        return TransProxy(*this, *allocate_item(obj, xkey));
+        return TransProxy(*this, allocate_item(obj, xkey) - transSet_.begin());
     }
 
     // adds item without checking its presence in the array
@@ -323,7 +323,7 @@ public:
     TransProxy fresh_item(const TObject* obj, T key) {
         may_duplicate_items_ = !transSet_.empty();
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        return TransProxy(*this, *allocate_item(obj, xkey));
+        return TransProxy(*this, allocate_item(obj, xkey) - transSet_.begin());
     }
 
     // tries to find an existing item with this key, otherwise adds it
@@ -333,7 +333,7 @@ public:
         TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
         if (!ti)
             ti = allocate_item(obj, xkey);
-        return TransProxy(*this, *ti);
+        return TransProxy(*this, ti - transSet_.begin());
     }
 
     // gets an item that is intended to be read only. this method essentially allows for duplicate items
@@ -348,13 +348,14 @@ public:
             may_duplicate_items_ = !transSet_.empty();
         if (!ti)
             ti = allocate_item(obj, xkey);
-        return TransProxy(*this, *ti);
+        return TransProxy(*this, ti - transSet_.begin());
     }
 
     template <typename T>
     OptionalTransProxy check_item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        return OptionalTransProxy(*this, find_item(const_cast<TObject*>(obj), xkey));
+        TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
+        return OptionalTransProxy(*this, ti ? ti - transSet_.begin() : unsigned(-1));
     }
 
 private:
@@ -606,6 +607,10 @@ class TransactionLoopGuard {
 };
 
 
+inline TransItem& TransProxy::item() const {
+    return t()->transSet_[idx_];
+}
+
 template <typename T>
 inline TransProxy& TransProxy::add_read(T rdata) {
     assert(!has_stash());
@@ -613,8 +618,8 @@ inline TransProxy& TransProxy::add_read(T rdata) {
 #if DETAILED_LOGGING
         Transaction::max_p(txp_max_rdata_size, sizeof(T));
 #endif
-        i_->__or_flags(TransItem::read_bit);
-        i_->rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
+        item().__or_flags(TransItem::read_bit);
+        item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
     }
     return *this;
 }
@@ -628,8 +633,8 @@ inline TransProxy& TransProxy::observe(TVersion version) {
 #if DETAILED_LOGGING
         Transaction::max_p(txp_max_rdata_size, sizeof(TVersion));
 #endif
-        i_->__or_flags(TransItem::read_bit);
-        i_->rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
+        item().__or_flags(TransItem::read_bit);
+        item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
     }
     return *this;
 }
@@ -642,8 +647,8 @@ inline TransProxy& TransProxy::observe(TNonopaqueVersion version) {
 #if DETAILED_LOGGING
         Transaction::max_p(txp_max_rdata_size, sizeof(TNonopaqueVersion));
 #endif
-        i_->__or_flags(TransItem::read_bit);
-        i_->rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
+        item().__or_flags(TransItem::read_bit);
+        item().rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
     }
     return *this;
 }
@@ -664,7 +669,7 @@ inline TransProxy& TransProxy::observe_opacity(TNonopaqueVersion version) {
 template <typename T>
 inline TransProxy& TransProxy::update_read(T old_rdata, T new_rdata) {
     if (has_read() && this->read_value<T>() == old_rdata)
-        i_->rdata_ = Packer<T>::repack(t()->buf_, i_->rdata_, new_rdata);
+        item().rdata_ = Packer<T>::repack(t()->buf_, item().rdata_, new_rdata);
     return *this;
 }
 
@@ -675,8 +680,8 @@ inline TransProxy& TransProxy::set_predicate(T pdata) {
 #if DETAILED_LOGGING
     Transaction::max_p(txp_max_rdata_size, sizeof(T));
 #endif
-    i_->__or_flags(TransItem::predicate_bit);
-    i_->rdata_ = Packer<T>::pack(t()->buf_, std::move(pdata));
+    item().__or_flags(TransItem::predicate_bit);
+    item().rdata_ = Packer<T>::pack(t()->buf_, std::move(pdata));
     return *this;
 }
 
@@ -694,15 +699,15 @@ inline TransProxy& TransProxy::add_write(const T& wdata) {
     Transaction::max_p(txp_max_wdata_size, sizeof(T));
 #endif
     if (!has_write()) {
-        i_->__or_flags(TransItem::write_bit);
-        i_->wdata_ = Packer<T>::pack(t()->buf_, wdata);
+        item().__or_flags(TransItem::write_bit);
+        item().wdata_ = Packer<T>::pack(t()->buf_, wdata);
         t()->any_writes_ = true;
     } else
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general
         // (hopefully we'll have a system that can automatically call destructors and such
         // which will make our lives much easier)
-        i_->wdata_ = Packer<T>::repack(t()->buf_, i_->wdata_, wdata);
+        item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, wdata);
     return *this;
 }
 
@@ -713,15 +718,15 @@ inline TransProxy& TransProxy::add_write(T&& wdata) {
     Transaction::max_p(txp_max_wdata_size, sizeof(V));
 #endif
     if (!has_write()) {
-        i_->__or_flags(TransItem::write_bit);
-        i_->wdata_ = Packer<V>::pack(t()->buf_, std::move(wdata));
+        item().__or_flags(TransItem::write_bit);
+        item().wdata_ = Packer<V>::pack(t()->buf_, std::move(wdata));
         t()->any_writes_ = true;
     } else
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general
         // (hopefully we'll have a system that can automatically call destructors and such
         // which will make our lives much easier)
-        i_->wdata_ = Packer<V>::repack(t()->buf_, i_->wdata_, std::move(wdata));
+        item().wdata_ = Packer<V>::repack(t()->buf_, item().wdata_, std::move(wdata));
     return *this;
 }
 
@@ -732,9 +737,9 @@ inline TransProxy& TransProxy::set_stash(T sdata) {
 #if DETAILED_LOGGING
         Transaction::max_p(txp_max_sdata_size, sizeof(T));
 #endif
-        i_->__or_flags(TransItem::stash_bit);
-        i_->rdata_ = Packer<T>::pack(t()->buf_, std::move(sdata));
+        item().__or_flags(TransItem::stash_bit);
+        item().rdata_ = Packer<T>::pack(t()->buf_, std::move(sdata));
     } else
-        i_->rdata_ = Packer<T>::repack(t()->buf_, i_->rdata_, std::move(sdata));
+        item().rdata_ = Packer<T>::repack(t()->buf_, item().rdata_, std::move(sdata));
     return *this;
 }
