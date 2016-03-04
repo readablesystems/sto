@@ -42,6 +42,7 @@ class rbpair {
 public:
     typedef TWrapped<std::pair<const K, T>> wrapped_pair;
     typedef typename wrapped_pair::version_type version_type;
+    typedef typename version_type::type raw_version;
 
     static constexpr TransactionTid::type insert_bit = TransactionTid::user_bit;
 
@@ -119,11 +120,34 @@ public:
         return pair_.access();
     }
 
+    // hand-over-hand validation stuff
+    void lock_hohversion() {
+        hohvers_.lock();
+    }
+    void unlock_hohversion() {
+        assert(hohvers_.is_locked_here());
+        TVersion nv(hohvers_.value() + TransactionTid::increment_value);
+        hohvers_.set_version_unlock(nv);
+    }
+    version_type unlocked_hohversion() const {
+        version_type v = hohvers_;
+        while (v.is_locked()) {
+            acquire_fence();
+            v = hohvers_;
+        }
+        return v;
+    }
+    bool validate_hohversion(version_type old_v) const {
+        acquire_fence();
+        return (hohvers_ == old_v);
+    }
+
 private:
     // key-value pair associated with a version for the data
     wrapped_pair pair_;
     version_type vers_;
     version_type nodevers_;
+    version_type hohvers_;
 };
 
 template <typename K, typename T, bool GlobalSize> class RBProxy;
@@ -567,11 +591,11 @@ private:
     // used to mark whether a key is for the tree structure (for tree version checks)
     // or a pointer (which will always have the lower 3 bits as 0)
     static constexpr uintptr_t tree_bit = 1U<<0;
-    void* tree_key_ = (void*) tree_bit;
+    static constexpr uintptr_t tree_key_ = tree_bit;
     static constexpr uintptr_t size_bit = 1U<<1;
-    void* size_key_ = (void*) size_bit;
+    static constexpr uintptr_t size_key_ = size_bit;
     static constexpr uintptr_t start_bit = 1U<<2;
-    void* start_key_ = (void*) start_bit;
+    static constexpr uintptr_t start_key_ = start_bit;
 #if DEBUG
     mutable struct stats {
         int absent_insert, absent_delete, absent_count;
@@ -824,9 +848,9 @@ inline size_t RBTree<K, T, GlobalSize>::erase(const K& key) {
 
 template <typename K, typename T, bool GlobalSize>
 inline bool RBTree<K, T, GlobalSize>::lock(TransItem& item, Transaction&) {
-    if (item.key<void*>() == size_key_) {
+    if (item.key<uintptr_t>() == size_key_) {
         sizeversion_.lock();
-    } else if (item.key<void*>() == tree_key_) {
+    } else if (item.key<uintptr_t>() == tree_key_) {
         wrapper_tree_.treeversion_.lock();
     } else if (item.key<uintptr_t>() & uintptr_t(1)) {
         uintptr_t x = item.key<uintptr_t>() & ~uintptr_t(1);
@@ -839,9 +863,9 @@ inline bool RBTree<K, T, GlobalSize>::lock(TransItem& item, Transaction&) {
     
 template <typename K, typename T, bool GlobalSize>
 inline void RBTree<K, T, GlobalSize>::unlock(TransItem& item) {
-    if (item.key<void*>() == size_key_) {
+    if (item.key<uintptr_t>() == size_key_) {
         sizeversion_.unlock();
-    } else if (item.key<void*>() == tree_key_) {
+    } else if (item.key<uintptr_t>() == tree_key_) {
         wrapper_tree_.treeversion_.unlock();
     } else if (item.key<uintptr_t>() & uintptr_t(1)){
         uintptr_t x = item.key<uintptr_t>() & ~uintptr_t(1);

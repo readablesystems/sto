@@ -302,7 +302,7 @@ inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side) const {
     // node()->inc_nodeversion();
     // x.node()->inc_nodeversion();
     // if (x.child(side)) x.child(side).node()->inc_nodeversion();
-    // perform the rotation 
+    // perform the rotation
     if ((child(!side) = x.child(side)))
         x.child(side).parent() = node();
     bool old_color = red();
@@ -611,7 +611,9 @@ rbtree<T, C>::find_insert(K& key, Comp comp) {
         retnode = (T*)malloc(sizeof(T));
         new (retnode) T(key);
         retver = retnode->nodeversion();
+        p.node()->lock_hohversion();
         insert_commit(retnode, p, (cmp > 0));
+        p.node()->unlock_hohversion();
 
         // no more inc_nodeversion; nodeversion updates now occur at commit time
     }

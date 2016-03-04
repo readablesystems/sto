@@ -166,7 +166,7 @@ public:
             rec->op = op;
             rec->rdata.push_back(size);
             return rec;
-        } else if (op == 4) {
+        } /*else if (op == 4) {
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] try to iterator* start" << std::endl;
@@ -260,7 +260,7 @@ public:
             std::cout << "[" << me << "] found value " << val << " @ " << forward << " - " << backward<< std::endl;
             TransactionTid::unlock(lock);
 #endif
-           /* 
+            // comment block start
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] redoing "<<  forward << " forward and " << backward << " backward with prefix"<< std::endl;
@@ -282,14 +282,14 @@ public:
             TransactionTid::unlock(lock);
 #endif
             assert(val == val2);
-            */
+            // comment block end
             op_record* rec = new op_record;
             rec->op = op;
             rec->args.push_back(forward);
             rec->args.push_back(backward);
             rec->rdata.push_back(val);
             return rec;
-        }
+        }*/
         return nullptr;
     }
 
@@ -326,7 +326,7 @@ public:
             std::cout << "size expected: " << op->rdata[0] << std::endl;
 #endif
             assert(size == (size_t) op->rdata[0]);
-        } else if (op->op == 4) {
+        } /*else if (op->op == 4) {
             if (q->size() == 0) {
                 assert(op->rdata[0] == -1);
                 return;
@@ -373,7 +373,7 @@ public:
             std::cout << "*it expected at place " << forward << " - " << backward << ": " << op->rdata[0]  << std::endl;
 #endif
             assert(val == op->rdata[0]);
-        }
+        }*/
     }
 
     void check(DT* q, RT*q1) {
@@ -382,6 +382,7 @@ public:
             std::cout << "i is: " << i << std::endl;
 #endif
             TRANSACTION {
+/*
                 if (q->size() != 0) {
                     auto it = q->begin();
                     auto it1 = q1->begin();
@@ -389,6 +390,7 @@ public:
                         assert(it->second == it1->second);
                     }
                 }
+*/
                 size_t s = q->size();
                 size_t s1 = q1->size();
 #if PRINT_DEBUG
@@ -444,7 +446,7 @@ public:
     }
 #endif
 
-    static const int num_ops_ = 7;
+    static const int num_ops_ = 4;
 };
 
 /*
