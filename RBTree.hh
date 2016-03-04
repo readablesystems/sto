@@ -1048,7 +1048,7 @@ bool RBTree<K, T, GlobalSize>::stamp_insert(const K& key, const T& value) {
                 // okay to directly update value since we are the only txn
                 // who can access it
                 item.add_flags(insert_tag);
-                x->writeable_value() = T();
+                x->get_raw_pair().second = T();
             }
             // overwrite value
             item.add_write(T());
@@ -1085,7 +1085,7 @@ T RBTree<K, T, GlobalSize>::stamp_find(const K& key) {
             // read my deletes
             return T();
         }
-        return node->writeable_value();
+        return node->get_raw_pair().second;
     } else {
         return T();
     }
