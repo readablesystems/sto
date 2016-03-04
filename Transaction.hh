@@ -294,9 +294,9 @@ public:
 #if TRANSACTION_HASHTABLE
     static int hash(const TObject* obj, void* key) {
         auto n = reinterpret_cast<uintptr_t>(key) + 0x4000000;
-        n += -uintptr_t(n < 0x8000000) & (reinterpret_cast<uintptr_t>(obj) >> 3);
+        n += -uintptr_t(n < 0x8000000) & (reinterpret_cast<uintptr_t>(obj) >> 4);
         //2654435761
-        return n % hashtable_size;
+        return (n + (n >> 16) * 9) % hashtable_size;
     }
 #endif
 
@@ -369,6 +369,7 @@ private:
         if (ti->owner() == obj && ti->key_ == xkey)
             return ti;
         INC_P(txp_hash_collision);
+        //std::cerr << *ti << " X " << (void*) obj << "," << xkey << '\n';
 #endif
         for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
             INC_P(txp_total_searched);
