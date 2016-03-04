@@ -937,8 +937,7 @@ inline void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction
             unlock_write(&treelock_);
 
             e->version().set_version(t.commit_tid());
-            e->lock_nv();
-            e->nodeversion().set_version_unlock(t.commit_tid());
+            e->nodeversion().force_set_version(t.commit_tid());
             Transaction::rcu_free(e);
             e->version().unlock();
         } else {
