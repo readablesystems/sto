@@ -283,8 +283,8 @@ public:
             hash_base_ = 0;
         }
 #endif
-        may_duplicate_items_ = false;
-        firstWrite_ = -1;
+        any_writes_ = may_duplicate_items_ = false;
+        first_write_ = 0;
         start_tid_ = commit_tid_ = 0;
         buf_.clear();
         INC_P(txp_total_starts);
@@ -330,7 +330,7 @@ public:
     template <typename T>
     TransProxy item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        TransItem* ti = find_item(const_cast<TObject*>(obj), xkey, 0);
+        TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
         if (!ti)
             ti = allocate_item(obj, xkey);
         return TransProxy(*this, *ti);
@@ -342,8 +342,8 @@ public:
     TransProxy read_item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
         TransItem* ti = nullptr;
-        if (firstWrite_ >= 0)
-            ti = find_item(const_cast<TObject*>(obj), xkey, firstWrite_);
+        if (any_writes_)
+            ti = find_item(const_cast<TObject*>(obj), xkey);
         if (!ti) {
             may_duplicate_items_ = !transSet_.empty();
             ti = allocate_item(obj, xkey);
@@ -354,12 +354,12 @@ public:
     template <typename T>
     OptionalTransProxy check_item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        return OptionalTransProxy(*this, find_item(const_cast<TObject*>(obj), xkey, 0));
+        return OptionalTransProxy(*this, find_item(const_cast<TObject*>(obj), xkey));
     }
 
 private:
     // tries to find an existing item with this key, returns NULL if not found
-    TransItem* find_item(TObject* obj, void* xkey, int delta) {
+    TransItem* find_item(TObject* obj, void* xkey) {
 #if TRANSACTION_HASHTABLE
         uint16_t idx = hashtable_[hash(obj, xkey)];
         if (idx <= hash_base_)
@@ -369,24 +369,12 @@ private:
             return ti;
         INC_P(txp_hash_collision);
 #endif
-        for (auto it = transSet_.begin() + delta; it != transSet_.end(); ++it) {
+        for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
             INC_P(txp_total_searched);
             if (it->owner() == obj && it->key_ == xkey)
                 return &*it;
         }
         return nullptr;
-    }
-
-private:
-    typedef int item_index_type;
-    item_index_type item_index(TransItem& ti) {
-        return &ti - transSet_.begin();
-    }
-
-    void mark_write(TransItem& ti) {
-        item_index_type idx = item_index(ti);
-        if (firstWrite_ < 0 || idx < firstWrite_)
-            firstWrite_ = idx;
     }
 
     bool preceding_read_exists(TransItem& ti) const {
@@ -457,18 +445,16 @@ public:
     class Abort {};
 
 private:
-    void stop(bool committed);
-
-private:
     enum {
         s_in_progress = 0, s_committing = 1, s_committing_locked = 2,
         s_aborted = 3, s_committed = 4
     };
 
-    int firstWrite_;
-    uint8_t state_;
-    bool may_duplicate_items_;
     uint16_t hash_base_;
+    uint16_t first_write_;
+    uint8_t state_;
+    bool any_writes_;
+    bool may_duplicate_items_;
     small_vector<TransItem, INIT_SET_SIZE> transSet_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
@@ -478,11 +464,13 @@ private:
     TransactionBuffer buf_;
     bool is_test_;
 
+    void hard_check_opacity(TransactionTid::type t);
+    void stop(bool committed);
+
     friend class TransProxy;
     friend class TransItem;
     friend class Sto;
     friend class TestTransaction;
-    void hard_check_opacity(TransactionTid::type t);
 };
 
 
@@ -708,7 +696,7 @@ inline TransProxy& TransProxy::add_write(const T& wdata) {
     if (!has_write()) {
         i_->__or_flags(TransItem::write_bit);
         i_->wdata_ = Packer<T>::pack(t()->buf_, wdata);
-        t()->mark_write(*i_);
+        t()->any_writes_ = true;
     } else
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general
@@ -727,7 +715,7 @@ inline TransProxy& TransProxy::add_write(T&& wdata) {
     if (!has_write()) {
         i_->__or_flags(TransItem::write_bit);
         i_->wdata_ = Packer<V>::pack(t()->buf_, std::move(wdata));
-        t()->mark_write(*i_);
+        t()->any_writes_ = true;
     } else
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general

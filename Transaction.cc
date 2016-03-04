@@ -96,13 +96,13 @@ void Transaction::hard_check_opacity(TransactionTid::type t) {
  void Transaction::stop(bool committed) {
     if (!committed)
         INC_P(txp_total_aborts);
-    if (firstWrite_ >= 0 && state_ == s_committing_locked) {
-        for (auto it = transSet_.begin() + firstWrite_; it != transSet_.end(); ++it)
+    if (any_writes_ && state_ == s_committing_locked) {
+        for (auto it = transSet_.begin() + first_write_; it != transSet_.end(); ++it)
             if (it->needs_unlock())
                 it->owner()->unlock(*it);
     }
-    if (firstWrite_ >= 0) {
-        for (auto it = transSet_.begin() + firstWrite_; it != transSet_.end(); ++it)
+    if (any_writes_) {
+        for (auto it = transSet_.begin() + first_write_; it != transSet_.end(); ++it)
             if (it->has_write())
                 it->owner()->cleanup(*it, committed);
     }
@@ -131,11 +131,9 @@ bool Transaction::try_commit() {
 
     state_ = s_committing;
 
-    if (firstWrite_ < 0)
-        firstWrite_ = transSet_.size();
-
-    int writeset[transSet_.size() - firstWrite_];
+    int writeset[transSet_.size()];
     int nwriteset = 0;
+    writeset[0] = transSet_.size();
 
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
         if (it->has_predicate()) {
@@ -150,6 +148,8 @@ bool Transaction::try_commit() {
             INC_P(txp_total_r);
 #endif
     }
+
+    first_write_ = writeset[0];
 
     //phase1
 #if !NOSORT
@@ -191,7 +191,7 @@ bool Transaction::try_commit() {
     // fence();
 
     //phase3
-    for (auto it = transSet_.begin() + firstWrite_; it != transSet_.end(); ++it) {
+    for (auto it = transSet_.begin() + first_write_; it != transSet_.end(); ++it) {
         TransItem& ti = *it;
         if (ti.has_write()) {
             INC_P(txp_total_w);
