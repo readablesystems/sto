@@ -344,10 +344,10 @@ public:
         TransItem* ti = nullptr;
         if (any_writes_)
             ti = find_item(const_cast<TObject*>(obj), xkey);
-        if (!ti) {
+        else
             may_duplicate_items_ = !transSet_.empty();
+        if (!ti)
             ti = allocate_item(obj, xkey);
-        }
         return TransProxy(*this, *ti);
     }
 
