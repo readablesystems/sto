@@ -1149,10 +1149,24 @@ int main(int argc, char *argv[]) {
 
 #if PERF_LOGGING
   Transaction::print_stats();
-  {
+  if (txp_count >= txp_total_aborts) {
       using thd = threadinfo_t;
       thd tc = Transaction::tinfo_combined();
-      printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+      const char* sep = "";
+      if (txp_count > txp_total_w) {
+          printf("%stotal_n: %llu, total_r: %llu, total_w: %llu", sep, tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w));
+          sep = ", ";
+      }
+      if (txp_count > txp_total_searched) {
+          printf("%stotal_searched: %llu", sep, tc.p(txp_total_searched));
+          sep = ", ";
+      }
+      if (txp_count > txp_total_aborts) {
+          printf("%stotal_aborts: %llu (%llu aborts at commit time)\n", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+          sep = ", ";
+      }
+      if (*sep)
+          printf("\n");
   }
 #endif
 
