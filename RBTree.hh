@@ -58,9 +58,9 @@ public:
 */
 
     explicit rbpair(const K& key, const T& value)
-    : pair_(key, value), vers_(TransactionTid::increment_value + insert_bit) {}
+    : key_(key), val_(value), vers_(TransactionTid::increment_value + insert_bit) {}
     explicit rbpair(std::pair<const K, T>& kvp)
-    : pair_(kvp), vers_(TransactionTid::increment_value + insert_bit) {}
+    : key_(kvp.first), val_(kvp.second), vers_(TransactionTid::increment_value + insert_bit) {}
 
     // version getters
     version_type& version() {
@@ -87,7 +87,7 @@ public:
         return item.check_version(vers_);
     }
     void install(TransItem& item, const Transaction& txn) {
-        pair_.access().second = item.template write_value<T>();
+        val_.write(item.template write_value<T>());
         vers_.set_version_unlock(txn.commit_tid());
         item.clear_needs_unlock();
     }
@@ -109,7 +109,7 @@ public:
 
     // key access and comparisons
     const K& key() const {
-        return pair_.access().first;
+        return key_;
     }
     bool operator<(const rbpair& rhs) const {
         return (key() < rhs.key());
@@ -118,11 +118,11 @@ public:
         return (key() > rhs.key());
     }
 
-    wrapped_pair& get_wrapped_pair() {
-        return pair_;
+    T read_value(TransProxy& item, const version_type& version) const {
+        return val_.read(item, version);
     }
-    std::pair<const K, T>& get_raw_pair() {
-        return pair_.access();
+    T& writeable_value() {
+        return val_.access();
     }
 
     // hand-over-hand validation stuff
@@ -149,7 +149,8 @@ public:
 
 private:
     // key-value pair associated with a version for the data
-    wrapped_pair pair_;
+    const K key_;
+    TWrapped<T> val_;
     version_type vers_;
     version_type nodevers_;
     version_type hohvers_;
@@ -737,7 +738,7 @@ public:
             return item.template write_value<T>();
         } else {
             // validate the read of the node, abort if someone has updated
-            return node_->get_wrapped_pair().read(item, node_->version()).second;
+            return node_->read_value(item, node_->version());
         }
     }
     RBProxy& operator=(const T& value) {
@@ -1058,7 +1059,7 @@ bool RBTree<K, T, GlobalSize>::stamp_insert(const K& key, const T& value) {
                 // okay to directly update value since we are the only txn
                 // who can access it
                 item.add_flags(insert_tag);
-                x->get_raw_pair().second = value;
+                //x->get_raw_pair().second = value;
             }
             // overwrite value
             item.add_write(value);
@@ -1096,7 +1097,7 @@ T RBTree<K, T, GlobalSize>::stamp_find(const K& key) {
             // read my deletes
             return T();
         }
-        return node->get_raw_pair().second;
+        return node->read_value(item, ver);
     } else {
         return T();
     }
@@ -1139,7 +1140,7 @@ T RBTree<K, T, GlobalSize>::nontrans_find(const K& key) {
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
     bool found = std::get<2>(results);
-    auto ret = found ? std::get<0>(results)->get_raw_pair().second : T();
+    T ret = found ? std::get<0>(results)->writeable_value() : T();
     unlock_read(&treelock_);
     return ret;
 }
@@ -1152,7 +1153,7 @@ bool RBTree<K, T, GlobalSize>::nontrans_find(const K& key, T& val) {
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
     bool found = std::get<2>(results);
     if (found) {
-      val = std::get<0>(results)->get_raw_pair().second;
+      val = std::get<0>(results)->writeable_value();
     }
     unlock_read(&treelock_);
     return found;
