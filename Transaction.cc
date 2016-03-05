@@ -211,7 +211,7 @@ abort:
 }
 
 void Transaction::print_stats() {
-    threadinfo_t out = tinfo_combined();
+    txp_counters out = txp_counters_combined();
     if (txp_count >= txp_max_set) {
         fprintf(stderr, "$ %llu starts, %llu max read set, %llu commits",
                 out.p(txp_total_starts),

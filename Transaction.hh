@@ -101,33 +101,11 @@ template <> struct has_txp_struct<0> {
 inline constexpr bool has_txp(int p) {
     return has_txp_struct<txp_count>::test(p);
 }
-
-
-#include "Interface.hh"
-#include "TransItem.hh"
-
-#define INIT_SET_SIZE 512
-
-void reportPerf();
-#define STO_SHUTDOWN() reportPerf()
-
-struct __attribute__((aligned(128))) threadinfo_t {
-    typedef unsigned epoch_type;
-    typedef int signed_epoch_type;
-    epoch_type epoch;
-    unsigned spin_lock;
-    small_vector<std::pair<epoch_type, std::function<void(void)>>, 8> callbacks;
-    small_vector<std::pair<epoch_type, void*>, 8> needs_free;
-    // XXX(NH): these should be vectors so multiple data structures can register
-    // callbacks for these
-    std::function<void(void)> trans_start_callback;
-    std::function<void(void)> trans_end_callback;
+struct txp_counters {
     uint64_t p_[txp_count];
-    threadinfo_t() : epoch(), spin_lock() {
-#if PERF_LOGGING
-        for (int i = 0; i != txp_count; ++i)
+    txp_counters() {
+        for (unsigned i = 0; i != txp_count; ++i)
             p_[i] = 0;
-#endif
     }
     static bool p_combine_by_max(int p) {
         return p == txp_max_set;
@@ -154,8 +132,35 @@ struct __attribute__((aligned(128))) threadinfo_t {
                 p_[p] = n;
         }
     }
-    void reset_p(int p) {
-        p_[p] = 0;
+    void reset() {
+        for (int i = 0; i != txp_count; ++i)
+            p_[i] = 0;
+    }
+};
+
+
+#include "Interface.hh"
+#include "TransItem.hh"
+
+#define INIT_SET_SIZE 512
+
+void reportPerf();
+#define STO_SHUTDOWN() reportPerf()
+
+struct __attribute__((aligned(128))) threadinfo_t {
+    typedef unsigned epoch_type;
+    typedef int signed_epoch_type;
+    epoch_type epoch;
+    unsigned spin_lock;
+    small_vector<std::pair<epoch_type, std::function<void(void)>>, 8> callbacks;
+    small_vector<std::pair<epoch_type, void*>, 8> needs_free;
+    // XXX(NH): these should be vectors so multiple data structures can register
+    // callbacks for these
+    std::function<void(void)> trans_start_callback;
+    std::function<void(void)> trans_end_callback;
+    txp_counters p_;
+    threadinfo_t()
+        : epoch(0), spin_lock(0) {
     }
 };
 
@@ -174,11 +179,11 @@ public:
 
     static std::function<void(threadinfo_t::epoch_type)> epoch_advance_callback;
 
-    static threadinfo_t tinfo_combined() {
-        threadinfo_t out;
+    static txp_counters txp_counters_combined() {
+        txp_counters out;
         for (int i = 0; i != MAX_THREADS; ++i) {
             for (int p = 0; p != txp_count; ++p)
-                out.combine_p(p, tinfo[i].p(p));
+                out.combine_p(p, tinfo[i].p_.p(p));
         }
         return out;
     }
@@ -186,10 +191,8 @@ public:
     static void print_stats();
 
     static void clear_stats() {
-        for (int i = 0; i != MAX_THREADS; ++i) {
-            for (int p = 0; p!= txp_count; ++p)
-                tinfo[i].reset_p(p);
-        }
+        for (int i = 0; i != MAX_THREADS; ++i)
+            tinfo[i].p_.reset();
     }
 
     static void acquire_spinlock(unsigned& spin_lock) {
@@ -224,10 +227,10 @@ public:
         add_p(p, 1);
     }
     static void add_p(int p, uint64_t n) {
-        tinfo[TThread::id()].add_p(p, n);
+        tinfo[TThread::id()].p_.add_p(p, n);
     }
     static void max_p(int p, unsigned long long n) {
-        tinfo[TThread::id()].max_p(p, n);
+        tinfo[TThread::id()].p_.max_p(p, n);
     }
 #endif
 

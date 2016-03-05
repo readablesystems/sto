@@ -1150,8 +1150,7 @@ int main(int argc, char *argv[]) {
 #if PERF_LOGGING
   Transaction::print_stats();
   if (txp_count >= txp_total_aborts) {
-      using thd = threadinfo_t;
-      thd tc = Transaction::tinfo_combined();
+      txp_counters tc = Transaction::txp_counters_combined();
       const char* sep = "";
       if (txp_count > txp_total_w) {
           printf("%stotal_n: %llu, total_r: %llu, total_w: %llu", sep, tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w));

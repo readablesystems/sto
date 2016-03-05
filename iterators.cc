@@ -242,8 +242,7 @@ int main(int argc, char *argv[]) {
 #if PERF_LOGGING
     Transaction::print_stats();
     {
-        using thd = threadinfo_t;
-        thd tc = Transaction::tinfo_combined();
+        txp_counters tc = Transaction::txp_counters_combined();
         printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
     }
     Transaction::clear_stats();
@@ -263,8 +262,7 @@ int main(int argc, char *argv[]) {
 #if PERF_LOGGING
     Transaction::print_stats();
     {
-        using thd = threadinfo_t;
-        thd tc = Transaction::tinfo_combined();
+        txp_counters tc = Transaction::txp_counters_combined();
         printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
     }
     Transaction::clear_stats();
