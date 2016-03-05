@@ -23,6 +23,9 @@ template <typename K, typename T, bool GlobalSize> class RBTree;
 template <typename P>
 class rbwrapper : public P {
   public:
+    typedef typename P::key_type key_type;
+    typedef typename P::value_type value_type;
+
     explicit inline rbwrapper(const P& x)
     : P(x) {
     }
@@ -43,6 +46,8 @@ public:
     typedef TWrapped<std::pair<const K, T>> wrapped_pair;
     typedef typename wrapped_pair::version_type version_type;
     typedef typename version_type::type raw_version;
+    typedef K key_type;
+    typedef T value_type;
 
     static constexpr TransactionTid::type insert_bit = TransactionTid::user_bit;
 
@@ -1073,7 +1078,7 @@ bool RBTree<K, T, GlobalSize>::stamp_insert(const K& key, const T& value) {
 
 template <typename K, typename T, bool GlobalSize>
 T RBTree<K, T, GlobalSize>::stamp_find(const K& key) {
-    rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, 0));
+    rbwrapper<rbpair<K, T>> idx_pair(rbpair<K, T>(key, T()));
 
     // find_or_abort() tracks boundary nodes if key is absent
     // it also observes a value version if key is found

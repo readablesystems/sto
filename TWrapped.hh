@@ -14,7 +14,7 @@ public:
     typedef TVersion version_type;
 
     template <typename... Args> TWrapped(Args&&... args)
-        : v_(std::forward(args)...) {
+        : v_{std::forward<Args>(args)...} {
     }
 
     const T& access() const {

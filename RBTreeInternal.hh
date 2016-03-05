@@ -609,7 +609,7 @@ rbtree<T, C>::find_insert(K& key, Comp comp) {
     // perform the insertion if not found
     if (!found) {
         retnode = (T*)malloc(sizeof(T));
-        new (retnode) T(key);
+        new (retnode) T((rbpair<typename K::key_type, typename K::value_type>)key);
         retver = retnode->nodeversion();
         insert_commit(retnode, p, (cmp > 0));
 
