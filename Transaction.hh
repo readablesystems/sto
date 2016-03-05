@@ -310,7 +310,7 @@ public:
         return &transSet_.back();
     }
 
-  public:
+public:
     // adds item for a key that is known to be new (must NOT exist in the set)
     template <typename T>
     TransProxy new_item(const TObject* obj, T key) {
@@ -607,6 +607,11 @@ class TransactionLoopGuard {
     }
 };
 
+
+inline TransProxy::TransProxy(Transaction& t, TransItem& item)
+    : t_(&t), idx_(&item - t.transSet_.begin()) {
+    assert(&t == TThread::txn);
+}
 
 inline TransItem& TransProxy::item() const {
     return t()->transSet_[idx_];

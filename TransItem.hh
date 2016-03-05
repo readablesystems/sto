@@ -195,6 +195,7 @@ class TransProxy {
         : t_(&t), idx_(idx) {
         assert(&t == TThread::txn);
     }
+    inline TransProxy(Transaction& t, TransItem& item);
 
     TransProxy* operator->() { // make OptionalTransProxy work
         return this;
