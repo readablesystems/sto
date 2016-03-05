@@ -24,9 +24,9 @@ ifneq ($(NDEBUG),1)
 CXXFLAGS += -g
 endif
 
-all: concurrent singleelems genericTest list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single unit-tarray unit-tintpredicate unit-tcounter unit-tbox
+all: concurrent singleelems genericTest list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single unit
 
-unit: unit-tarray unit-tintpredicate unit-tcounter unit-tbox
+unit: unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric
 
 %.o: %.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
@@ -67,6 +67,9 @@ unit-tcounter: unit-tcounter.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tbox: unit-tbox.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-tgeneric: unit-tgeneric.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 list1: list1.o $(STO_DEPS)
