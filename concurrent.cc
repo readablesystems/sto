@@ -992,7 +992,7 @@ enum {
 static const Clp_Option options[] = {
   { "no-readmywrites", 'n', opt_nrmyw, 0, 0 },
   { "check", 'c', opt_check, 0, Clp_Negate },
-  { "nthreads", 0, opt_nthreads, Clp_ValInt, Clp_Optional },
+  { "nthreads", 'j', opt_nthreads, Clp_ValInt, Clp_Optional },
   { "ntrans", 0, opt_ntrans, Clp_ValInt, Clp_Optional },
   { "opspertrans", 0, opt_opspertrans, Clp_ValInt, Clp_Optional },
   { "writepercent", 0, opt_writepercent, Clp_ValDouble, Clp_Optional },

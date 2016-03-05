@@ -3,6 +3,7 @@
 #include "config.h"
 #include "compiler.hh"
 #include "small_vector.hh"
+#include "TRcu.hh"
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -148,19 +149,16 @@ void reportPerf();
 #define STO_SHUTDOWN() reportPerf()
 
 struct __attribute__((aligned(128))) threadinfo_t {
-    typedef unsigned epoch_type;
-    typedef int signed_epoch_type;
+    using epoch_type = TRcuSet::epoch_type;
     epoch_type epoch;
-    unsigned spin_lock;
-    small_vector<std::pair<epoch_type, std::function<void(void)>>, 8> callbacks;
-    small_vector<std::pair<epoch_type, void*>, 8> needs_free;
+    TRcuSet rcu_set;
     // XXX(NH): these should be vectors so multiple data structures can register
     // callbacks for these
     std::function<void(void)> trans_start_callback;
     std::function<void(void)> trans_end_callback;
     txp_counters p_;
     threadinfo_t()
-        : epoch(0), spin_lock(0) {
+        : epoch(0) {
     }
 };
 
@@ -168,10 +166,15 @@ struct __attribute__((aligned(128))) threadinfo_t {
 class Transaction {
 public:
     static constexpr unsigned hashtable_size = 1024;
+    using epoch_type = TRcuSet::epoch_type;
+    using signed_epoch_type = TRcuSet::signed_epoch_type;
 
     static threadinfo_t tinfo[MAX_THREADS];
-    static threadinfo_t::epoch_type global_epoch;
-    static bool run_epochs;
+    static struct epoch_state {
+        epoch_type global_epoch; // != 0
+        epoch_type active_epoch; // no thread is before this epoch
+        bool run;
+    } global_epochs;
     typedef TransactionTid::type tid_type;
 private:
     static TransactionTid::type _TID;
@@ -195,31 +198,27 @@ public:
             tinfo[i].p_.reset();
     }
 
-    static void acquire_spinlock(unsigned& spin_lock) {
-        unsigned cur;
-        while (1) {
-            cur = spin_lock;
-            if (cur == 0 && bool_cmpxchg(&spin_lock, cur, 1))
-                break;
-            relax_fence();
-        }
-    }
-    static void release_spinlock(unsigned& spin_lock) {
-        spin_lock = 0;
-        fence();
-    }
-
     static void* epoch_advancer(void*);
-    static void rcu_cleanup(std::function<void(void)> callback) {
-        acquire_spinlock(tinfo[TThread::id()].spin_lock);
-        tinfo[TThread::id()].callbacks.emplace_back(global_epoch, callback);
-        release_spinlock(tinfo[TThread::id()].spin_lock);
+    template <typename T>
+    static void rcu_delete(T* x) {
+        auto& thr = tinfo[TThread::id()];
+        thr.rcu_set.add(thr.epoch, ObjectDestroyer<T>::destroy_and_free, x);
     }
-
-    static void rcu_free(void *ptr) {
-        acquire_spinlock(tinfo[TThread::id()].spin_lock);
-        tinfo[TThread::id()].needs_free.emplace_back(global_epoch, ptr);
-        release_spinlock(tinfo[TThread::id()].spin_lock);
+    template <typename T>
+    static void rcu_delete_array(T* x) {
+        auto& thr = tinfo[TThread::id()];
+        thr.rcu_set.add(thr.epoch, ObjectDestroyer<T>::destroy_and_free_array, x);
+    }
+    static void rcu_free(void* ptr) {
+        auto& thr = tinfo[TThread::id()];
+        thr.rcu_set.add(thr.epoch, ::free, ptr);
+    }
+    static void rcu_call(void (*function)(void*), void* argument) {
+        auto& thr = tinfo[TThread::id()];
+        thr.rcu_set.add(thr.epoch, function, argument);
+    }
+    static void rcu_quiesce() {
+        tinfo[TThread::id()].epoch = 0;
     }
 
 #if PERF_LOGGING
@@ -272,12 +271,14 @@ public:
 
     // reset data so we can be reused for another transaction
     void start() {
+        threadinfo_t& thr = tinfo[TThread::id()];
         //if (isAborted_
         //   && tinfo[TThread::id()].p(txp_total_aborts) % 0x10000 == 0xFFFF)
            //print_stats();
-        tinfo[TThread::id()].epoch = global_epoch;
-        if (tinfo[TThread::id()].trans_start_callback)
-            tinfo[TThread::id()].trans_start_callback();
+        thr.epoch = global_epochs.global_epoch;
+        thr.rcu_set.clean_until(global_epochs.active_epoch);
+        if (thr.trans_start_callback)
+            thr.trans_start_callback();
         hash_base_ += transSet_.size() + 1;
         transSet_.clear();
 #if TRANSACTION_HASHTABLE

@@ -19,7 +19,13 @@ template <typename T,
 // TransactionBuffer
 template <typename T> struct ObjectDestroyer {
     static void destroy(void* object) {
-        ((T*) object)->~T();
+        reinterpret_cast<T*>(object)->~T();
+    }
+    static void destroy_and_free(void* object) {
+        delete reinterpret_cast<T*>(object);
+    }
+    static void destroy_and_free_array(void* object) {
+        delete[] reinterpret_cast<T*>(object);
     }
 };
 

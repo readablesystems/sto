@@ -3,8 +3,9 @@
 Transaction::testing_type Transaction::testing;
 threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int TThread::the_id;
-threadinfo_t::epoch_type __attribute__((aligned(64))) Transaction::global_epoch;
-bool Transaction::run_epochs = true;
+Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epochs = {
+    1, 0, true
+};
 __thread Transaction *TThread::txn = nullptr;
 std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callback;
 TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = TransactionTid::valid_bit;
@@ -16,47 +17,19 @@ static void __attribute__((used)) check_static_assertions() {
 void* Transaction::epoch_advancer(void*) {
     // don't bother epoch'ing til things have picked up
     usleep(100000);
-    while (run_epochs) {
-        auto g = global_epoch;
-        for (auto&& t : tinfo) {
-            if (t.epoch != 0 && t.epoch < g)
-                g = t.epoch;
+    while (global_epochs.run) {
+        epoch_type g = global_epochs.global_epoch;
+        epoch_type e = g;
+        for (auto& t : tinfo) {
+            if (t.epoch != 0 && signed_epoch_type(t.epoch - g) < 0)
+                e = t.epoch;
         }
-
-        global_epoch = ++g;
+        global_epochs.global_epoch = std::max(g + 1, epoch_type(1));
+        global_epochs.active_epoch = e;
 
         if (epoch_advance_callback)
-            epoch_advance_callback(global_epoch);
+            epoch_advance_callback(global_epochs.global_epoch);
 
-        for (auto&& t : tinfo) {
-            acquire_spinlock(t.spin_lock);
-            auto deletetil = t.callbacks.begin();
-            for (auto it = t.callbacks.begin(); it != t.callbacks.end(); ++it) {
-                if (threadinfo_t::signed_epoch_type(g - it->first) >= 2) {
-                    it->second();
-                    ++deletetil;
-                } else {
-                    // callbacks are in ascending order so if this one is too soon of an epoch the rest will be too
-                    break;
-                }
-            }
-            if (t.callbacks.begin() != deletetil) {
-                t.callbacks.erase(t.callbacks.begin(), deletetil);
-            }
-            auto deletetil2 = t.needs_free.begin();
-            for (auto it = t.needs_free.begin(); it != t.needs_free.end(); ++it) {
-                if (threadinfo_t::signed_epoch_type(g - it->first) >= 2) {
-                    free(it->second);
-                    ++deletetil2;
-                } else {
-                    break;
-                }
-            }
-            if (t.needs_free.begin() != deletetil2) {
-                t.needs_free.erase(t.needs_free.begin(), deletetil2);
-            }
-            release_spinlock(t.spin_lock);
-        }
         usleep(100000);
     }
     return NULL;
@@ -107,9 +80,9 @@ void Transaction::hard_check_opacity(TransactionTid::type t) {
                 it->owner()->cleanup(*it, committed);
     }
     // TODO: this will probably mess up with nested transactions
-    tinfo[TThread::id()].epoch = 0;
-    if (tinfo[TThread::id()].trans_end_callback)
-        tinfo[TThread::id()].trans_end_callback();
+    threadinfo_t& thr = tinfo[TThread::id()];
+    if (thr.trans_end_callback)
+        thr.trans_end_callback();
     // XXX should reset trans_end_callback after calling it...
     state_ = s_aborted + committed;
 }

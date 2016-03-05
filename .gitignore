@@ -30,6 +30,7 @@
 /ht_mt
 /iterators
 /pqVsIt
+/unit-rcu
 /unit-tarray
 /unit-tbox
 /unit-tgeneric

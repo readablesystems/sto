@@ -227,8 +227,7 @@ public:
         : vp_(new T(std::forward<Args>(args)...)) {
     }
     ~TWrapped() {
-        T* vp = vp_;
-        Transaction::rcu_cleanup([vp](){ delete vp; });
+        Transaction::rcu_delete(vp_);
     }
 
     const T& access() const {
@@ -254,8 +253,7 @@ private:
     T* vp_;
 
     void save(T* new_vp) {
-        T* vp = vp_;
-        Transaction::rcu_cleanup([vp](){ delete vp; });
+        Transaction::rcu_delete(vp_);
         vp_ = new_vp;
     }
 };
@@ -279,8 +277,7 @@ public:
         : vp_(new T(std::forward<Args>(args)...)) {
     }
     ~TWrapped() {
-        T* vp = vp_;
-        Transaction::rcu_cleanup([vp](){ delete vp; });
+        Transaction::rcu_delete(vp_);
     }
 
     const T& access() const {
@@ -306,8 +303,7 @@ private:
     T* vp_;
 
     void save(T* new_vp) {
-        T* vp = vp_;
-        Transaction::rcu_cleanup([vp](){ delete vp; });
+        Transaction::rcu_delete(vp_);
         vp_ = new_vp;
     }
 };

@@ -79,10 +79,8 @@ public:
             new_data[i] = data_[i];
         }
         capacity_ = new_capacity;
-        if (data_ != NULL) {
-            Elem* old_data = data_;
-            Transaction::rcu_cleanup([old_data] () {delete[] old_data; });
-        }
+        if (data_ != NULL)
+            Transaction::rcu_delete_array(data_);
         data_ = new_data;
         resize_lock_.write_unlock();
     }

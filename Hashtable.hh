@@ -328,7 +328,7 @@ public:
       el->value = new_v;
     }
     //if (!__has_trivial_copy(Value)) {
-      //Transaction::rcu_cleanup([new_v] () { delete new_v; });
+      //Transaction::rcu_delete(new_v);
     //}
 
     if (Opacity)

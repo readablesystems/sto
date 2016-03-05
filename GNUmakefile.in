@@ -24,9 +24,12 @@ ifneq ($(NDEBUG),1)
 CXXFLAGS += -g
 endif
 
-all: concurrent singleelems genericTest list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single unit
+PROGRAMS = concurrent singleelems genericTest list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single $(UNIT_PROGRAMS)
+UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric unit-rcu
 
-unit: unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric
+all: $(PROGRAMS)
+
+unit: $(UNIT_PROGRAMS)
 
 %.o: %.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
@@ -43,7 +46,7 @@ MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 	$(MASSTREEDIR)/checkpoint.o \
 	$(MASSTREEDIR)/string_slice.o
 
-STO_OBJS = Packer.o Transaction.o MassTrans.o clp.o
+STO_OBJS = Packer.o Transaction.o TRcu.o MassTrans.o clp.o
 MSTO_OBJS = $(STO_OBJS) $(MASSTREE_OBJS)
 STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
 MSTO_DEPS = $(MSTO_OBJS) $(MASSTREEDIR)/libjson.a
@@ -55,6 +58,9 @@ single: single.o $(MSTO_DEPS)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
 
 singleelems: singleelems.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-rcu: unit-rcu.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tarray: unit-tarray.o $(STO_DEPS)
@@ -132,8 +138,7 @@ stamp-h: config.h.in config.status
 	echo > stamp-h
 
 clean:
-	rm -f concurrent array single singleelems genericTest *.o
-	rm -f pqueue vector list1 rbtree trans_test ht_mt pqVsIt iterators
+	rm -f $(PROGRAMS) *.o
 	rm -rf .deps
 	$(MAKE) -C $(MASSTREEDIR) clean
 
