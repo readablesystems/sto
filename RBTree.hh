@@ -572,6 +572,9 @@ private:
     }
 
 #endif /* !STO_NO_STM */
+#ifdef STO_NO_STM
+    static void change_size_offset(int){}
+#endif
 
     static void lock_read(RWVersion *v) {TransactionTid::lock_read(*v);}
     static void lock_write(RWVersion *v) {TransactionTid::lock_write(*v);}
@@ -1149,7 +1152,7 @@ bool RBTree<K, T, GlobalSize>::nontrans_find(const K& key, T& val) {
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
     bool found = std::get<2>(results);
     if (found) {
-      val = std::get<0>(results)->writeable_value();
+      val = std::get<0>(results)->get_raw_pair().second;
     }
     unlock_read(&treelock_);
     return found;
