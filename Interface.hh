@@ -113,7 +113,7 @@ public:
     }
 
     static void set_invalid(type& v) {
-        v |= valid_bit;
+        v &= ~valid_bit;
     }
 
     static type next_invalid_version(type v) {
