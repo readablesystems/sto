@@ -31,6 +31,6 @@ public:
   void unlock(TransItem&) {}
   void cleanup(TransItem& item, bool committed) {
     if (!committed && item.write_value<int>() == alloc_flag())
-      free(item.key<void*>());
+      Transaction::rcu_free(item.key<void*>());
   }
 };
