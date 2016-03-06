@@ -1,4 +1,5 @@
 # @configure_input@
+-include config.mk
 
 AR = ar
 CC = @CC@
