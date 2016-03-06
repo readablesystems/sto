@@ -10,6 +10,7 @@
 #include "Hashtable.hh"
 #include "Queue.hh"
 #include "Vector.hh"
+#include "TVector.hh"
 #include "Transaction.hh"
 #include "IntStr.hh"
 #include "clp.h"
@@ -26,9 +27,10 @@
 #define USE_GENSTMARRAY 3
 #define USE_QUEUE 5
 #define USE_VECTOR 6
+#define USE_TVECTOR 7
 
 // set this to USE_DATASTRUCTUREYOUWANT
-#define DATA_STRUCTURE USE_VECTOR
+#define DATA_STRUCTURE USE_TVECTOR
 
 // if true, then all threads perform non-conflicting operations
 #define NON_CONFLICTING 0
@@ -117,6 +119,11 @@ template <> struct Container<USE_VECTOR> {
     typedef Vector<value_type> type;
     typedef typename type::size_type index_type;
     static constexpr bool has_delete = false;
+    Container() {
+        v_.reserve(ARRAY_SZ);
+        while (v_.nontrans_size() < ARRAY_SZ)
+            v_.nontrans_push_back(value_type());
+    }
     value_type nontrans_get(index_type key) {
         return v_.nontrans_get(key);
     }
@@ -128,7 +135,33 @@ template <> struct Container<USE_VECTOR> {
     }
     static void init() {
     }
-    template <typename T> static void thread_init(T&) {
+    static void thread_init(Container<USE_VECTOR>&) {
+    }
+private:
+    type v_;
+};
+
+template <> struct Container<USE_TVECTOR> {
+    typedef TVector<value_type> type;
+    typedef typename type::size_type index_type;
+    static constexpr bool has_delete = false;
+    Container() {
+        v_.nontrans_reserve(ARRAY_SZ);
+        while (v_.nontrans_size() < ARRAY_SZ)
+            v_.nontrans_push_back(value_type());
+    }
+    value_type nontrans_get(index_type key) {
+        return v_.nontrans_get(key);
+    }
+    value_type transGet(index_type key) {
+        return v_.transGet(key);
+    }
+    void transPut(index_type key, value_type value) {
+        v_.transPut(key, value);
+    }
+    static void init() {
+    }
+    static void thread_init(Container<USE_TVECTOR>&) {
     }
 private:
     type v_;
@@ -953,7 +986,8 @@ void print_time(struct timeval tv1, struct timeval tv2) {
     {name, desc, 1, new type<1, ## __VA_ARGS__>},     \
     {name, desc, 2, new type<2, ## __VA_ARGS__>},     \
     {name, desc, 3, new type<3, ## __VA_ARGS__>},     \
-    {name, desc, 6, new type<6, ## __VA_ARGS__>}
+    {name, desc, 6, new type<6, ## __VA_ARGS__>},     \
+    {name, desc, 7, new type<7, ## __VA_ARGS__>}
 
 struct Test {
     const char* name;
@@ -982,7 +1016,8 @@ struct {
     {"mass", USE_MASSTREE},
     {"genstm", USE_GENSTMARRAY},
     {"queue", USE_QUEUE},
-    {"vector", USE_VECTOR}
+    {"vector", USE_VECTOR},
+    {"tvector", USE_TVECTOR}
 };
 
 enum {

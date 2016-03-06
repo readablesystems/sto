@@ -123,6 +123,11 @@ public:
         add_lock_vector_item();
         add_trans_size_offs(1);
     }
+    void nontrans_push_back(T x) {
+        assert(size_ < capacity_);
+        data_[size_].write(std::move(x));
+        ++size_;
+    }
 
     void pop_back() {
         auto item = Sto::item(this, push_back_key);

@@ -133,6 +133,7 @@ const T* TransactionBuffer::find(const U& x) const {
 
 
 template <typename T> struct Packer<T, true> {
+    static constexpr bool is_simple = true;
     typedef T type;
     static void* pack(TransactionBuffer&, const T& x) {
         void* v = 0;
@@ -154,6 +155,7 @@ template <typename T> struct Packer<T, true> {
 };
 
 template <typename T> struct Packer<T, false> {
+    static constexpr bool is_simple = false;
     typedef T type;
     template <typename... Args>
     static void* pack(TransactionBuffer& buf, Args&&... args) {

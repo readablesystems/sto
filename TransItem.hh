@@ -112,6 +112,17 @@ class TransItem {
     }
 
     template <typename T>
+    T& xwrite_value() {
+        static_assert(Packer<T>::is_simple, "xwrite_value only works on simple types");
+        return Packer<T>::unpack(wdata_);
+    }
+    template <typename T>
+    const T& xwrite_value() const {
+        static_assert(Packer<T>::is_simple, "xwrite_value only works on simple types");
+        return Packer<T>::unpack(wdata_);
+    }
+
+    template <typename T>
     T& stash_value() {
         assert(has_stash());
         return Packer<T>::unpack(rdata_);
@@ -294,6 +305,11 @@ class TransProxy {
     template <typename T>
     const T& write_value() const {
         return item().write_value<T>();
+    }
+
+    template <typename T>
+    T& xwrite_value() {
+        return item().xwrite_value<T>();
     }
 
     template <typename T>
