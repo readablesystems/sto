@@ -593,6 +593,9 @@ class TransactionGuard {
     ~TransactionGuard() {
         Sto::commit();
     }
+    void print(std::ostream& w) const {
+        TThread::txn->print(w);
+    }
 };
 
 class TransactionLoopGuard {
