@@ -99,6 +99,18 @@ public:
     iterator insert(iterator pos, T x);
     void resize(size_type size, T x = T());
 
+    void nontrans_reserve(size_type size);
+    void nontrans_push_back(T x) {
+        size_type& sz = size_.access();
+        assert(sz < capacity_);
+        if (sz == max_size_) {
+            new(reinterpret_cast<void*>(&data_[sz].v)) W<T>(std::move(x));
+            ++max_size_;
+        } else
+            data_[sz].v.write(std::move(x));
+        ++sz;
+    }
+
     // transGet and friends
     get_type transGet(size_type i) const {
         auto item = index_item(i);
@@ -705,5 +717,19 @@ void TVector<T, W>::resize(size_type size, T value) {
             key_type key = old_size <= wval.first ? old_size : -(old_size - wval.first);
             Sto::item(this, key).add_write(value);
         } while (old_size < size);
+    }
+}
+
+template <typename T, template <typename> typename W>
+void TVector<T, W>::nontrans_reserve(size_type size) {
+    size_type new_capacity = capacity_;
+    while (size > new_capacity)
+        new_capacity <<= 1;
+    if (new_capacity > capacity_) {
+        elem* new_data = reinterpret_cast<elem*>(new char[sizeof(elem) * new_capacity]);
+        memcpy(new_data, data_, sizeof(elem) * max_size_);
+        Transaction::rcu_delete_array(reinterpret_cast<char*>(data_));
+        data_ = new_data;
+        capacity_ = new_capacity;
     }
 }
