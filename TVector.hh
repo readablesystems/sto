@@ -23,19 +23,22 @@ private:
        If xwrite_value.first > xwrite_value.second, the vector shrank.
        Note that the xwrite_value exists even if !has_write(). */
 
-    static key_type index_key(TransProxy sitem, size_type idx) {
+    TransProxy index_item(size_type idx) const {
+        TransProxy sitem = size_item();
         pred_type& pval = sitem.predicate_value<pred_type>();
         pred_type& wval = sitem.xwrite_value<pred_type>();
         if (idx >= wval.second)
             Sto::abort();
-        if (idx >= wval.first) {
+        key_type key = idx >= wval.first ? -key_type(idx - wval.first) - 1 : idx + 1;
+        TransProxy item = Sto::item(this, key);
+        if (key < 0 || (item.has_write() && !item.has_flag(indexed_bit)))
             pval.observe(wval.first);
-            return -key_type(idx - wval.first) - 1;
-        } else {
+        else
             pval.observe_gt(idx);
-            return idx + 1;
-        }
+        return item.add_flags(indexed_bit);
     }
+
+    static constexpr TransItem::flags_type indexed_bit = TransItem::user0_bit;
 public:
     class iterator;
     class const_iterator;
@@ -79,12 +82,7 @@ public:
         pred_type& wval = sitem.template xwrite_value<pred_type>();
         size_type new_size = wval.second + 1;
         sitem.add_write(pred_type{wval.first, new_size});
-        key_type key;
-        if (new_size <= wval.first) {
-            sitem.template predicate_value<pred_type>().observe(wval.first);
-            key = new_size;
-        } else
-            key = -(new_size - wval.first);
+        key_type key = new_size <= wval.first ? new_size : -(new_size - wval.first);
         Sto::item(this, key).add_write(std::move(x));
     }
     void pop_back() {
@@ -102,14 +100,14 @@ public:
 
     // transGet and friends
     get_type transGet(size_type i) const {
-        auto item = Sto::item(this, index_key(size_item(), i));
+        auto item = index_item(i);
         if (item.has_write())
             return item.template write_value<T>();
         else
             return data_[i].v.read(item, data_[i].vers);
     }
     void transPut(size_type i, T x) {
-        auto item = Sto::item(this, index_key(size_item(), i));
+        auto item = index_item(i);
         item.add_write(std::move(x));
     }
 
@@ -191,6 +189,10 @@ public:
             // maybe we have popped past this point
             if (key < 0)
                 idx = original_size_ - key - 1;
+            else if (!item.has_flag(indexed_bit)) {
+                TransProxy sitem = const_cast<Transaction&>(txn).item(this, size_key);
+                idx = original_size_ - (original_size(sitem) - idx);
+            }
             if (idx >= size_.access()) {
                 item.clear_needs_unlock();
                 return;
@@ -221,13 +223,19 @@ public:
             w.write(pf, semi - pf);
         }
         w << "> " << (void*) this;
-        if (item.key<key_type>() == size_key) {
+        key_type key = item.key<key_type>();
+        if (key == size_key) {
             w << ".size " << item.predicate_value<pred_type>()
               << '@' << item.xwrite_value<pred_type>().first;
             if (item.has_write())
                 w << " =" << item.xwrite_value<pred_type>().second;
         } else {
-            w << "[" << item.key<int>() << "]";
+            w << "[";
+            if (key > 0)
+                w << (key - 1);
+            else
+                w << "push" << key;
+            w << "]";
             if (item.has_read())
                 w << " ?" << item.read_value<version_type>();
             if (item.has_write())

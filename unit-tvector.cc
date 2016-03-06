@@ -447,20 +447,40 @@ void testPushNPop() {
         f.pop_back();
     }
 
-    TestTransaction t1(1);
-    f.pop_back();
-    f.push_back(15);
+    {
+        TestTransaction t1(1);
+        f.pop_back();
+        f.push_back(15);
 
-    TestTransaction t2(2);
-    f.push_back(20);
-    assert(t2.try_commit());
-    assert(!t1.try_commit());
+        TestTransaction t2(2);
+        f.push_back(20);
+        assert(t2.try_commit());
+        assert(t1.try_commit());
 
-    TRANSACTION {
-        assert(f.size() == 11);
-        assert(f[10] == 20);
-    } RETRY(false);
+        TRANSACTION {
+            assert(f.size() == 11);
+            assert(f[10] == 15);
+        } RETRY(false);
+    }
 
+    {
+        TestTransaction t1(1);
+        f.pop_back();
+        f.push_back(18);
+        assert(f[10] == 18);
+
+        TestTransaction t2(2);
+        f.push_back(21);
+        assert(t2.try_commit());
+        //t1.print(std::cerr);
+        assert(!t1.try_commit());
+
+        TRANSACTION {
+            assert(f.size() == 12);
+            assert(f[10] == 15);
+            f.pop_back();
+        } RETRY(false);
+    }
 
     printf("PASS: testPushNPop\n");
 
@@ -471,7 +491,7 @@ void testPushNPop() {
     TestTransaction t4(2);
     f.pop_back();
     assert(t4.try_commit());
-    assert(!t3.try_commit());
+    assert(t3.try_commit());
 
     TRANSACTION {
         assert(f.size() == 10);
