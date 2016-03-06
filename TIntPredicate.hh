@@ -31,7 +31,7 @@ struct TIntRange {
         if (first > second)
             Sto::abort();
     }
-    void observe_lt(T value, bool was_lt) {
+    void observe_lt(T value, bool was_lt = true) {
         if (was_lt)
             second = std::min(second, value - 1);
         else
@@ -39,13 +39,19 @@ struct TIntRange {
         if (first > second)
             Sto::abort();
     }
-    void observe_le(T value, bool was_le) {
+    void observe_le(T value, bool was_le = true) {
         if (was_le)
             second = std::min(second, value);
         else
             first = std::max(first, value + 1);
         if (first > second)
             Sto::abort();
+    }
+    void observe_gt(T value, bool was_gt = true) {
+        observe_le(value, !was_gt);
+    }
+    void observe_ge(T value, bool was_ge = true) {
+        observe_lt(value, !was_ge);
     }
     bool discharge(T value) const {
         return first <= value && value <= second;
@@ -205,4 +211,9 @@ bool operator>=(T a, const TIntPredicate<T, W>& b) {
 template <typename T, typename W>
 bool operator>(T a, const TIntPredicate<T, W>& b) {
     return b < a;
+}
+
+template <typename T>
+std::ostream& operator<<(std::ostream& w, const TIntRange<T>& range) {
+    return w << '[' << range.first << ',' << range.second << ']';
 }
