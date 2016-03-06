@@ -20,6 +20,10 @@ public:
         size_t key = bucket(word);
         // ensure version doesn't change
         auto version = table_[key];
+	fence();
+	if (TransactionTid::is_locked(version)) {
+	  Sto::abort();
+	}
         Sto::check_opacity(version);
         it.add_read(version);
         fence();
