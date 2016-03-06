@@ -806,6 +806,52 @@ void testIterPredicates() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testResize() {
+    TVector<int> f;
+
+    TRANSACTION {
+        for (int i = 0; i < 10; i++)
+            f.push_back(i);
+    } RETRY(false);
+
+    {
+        TestTransaction t1(1);
+        assert(f[1] == 1);
+
+        TestTransaction t2(2);
+        f.resize(4);
+        assert(t2.try_commit());
+
+        t1.use();
+        assert(f.size() >= 4);
+        assert(t1.try_commit());
+
+        assert(f.nontrans_size() == 4);
+    }
+
+    {
+        TestTransaction t1(1);
+        assert(f[1] == 1);
+        assert(f.size() >= 4);
+
+        TestTransaction t2(2);
+        f.resize(5, -100);
+        assert(t2.try_commit());
+        assert(t1.try_commit());
+
+        TestTransaction t3(3);
+        assert(f.size() == 5);
+        assert(f[0] == 0);
+        assert(f[1] == 1);
+        assert(f[2] == 2);
+        assert(f[3] == 3);
+        assert(f[4] == -100);
+        assert(t3.try_commit());
+    }
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
 void testOpacity() {
     TVector<int> f;
 
@@ -1049,6 +1095,7 @@ int main() {
     testIteratorBetterSemantics();
     testSizePredicates();
     testIterPredicates();
+    testResize();
     testOpacity();
     testNoOpacity();
     return 0;

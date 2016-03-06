@@ -97,6 +97,7 @@ public:
     void clear();
     iterator erase(iterator pos);
     iterator insert(iterator pos, T x);
+    void resize(size_type size, T x = T());
 
     // transGet and friends
     get_type transGet(size_type i) const {
@@ -688,4 +689,21 @@ auto TVector<T, W>::insert(iterator pos, T value) -> iterator {
         transPut(idx, transGet(idx - 1));
     transPut(pos.i_, std::move(value));
     return pos;
+}
+
+template <typename T, template <typename> typename W>
+void TVector<T, W>::resize(size_type size, T value) {
+    auto sitem = size_item();
+    pred_type& wval = sitem.template xwrite_value<pred_type>();
+    size_type old_size = wval.second;
+    sitem.add_write(pred_type{wval.first, size});
+    if (old_size < size) {
+        size_predicate(sitem).observe(wval.first);
+        do {
+            // inlined portion of push_back (don't double-change size)
+            ++old_size;
+            key_type key = old_size <= wval.first ? old_size : -(old_size - wval.first);
+            Sto::item(this, key).add_write(value);
+        } while (old_size < size);
+    }
 }
