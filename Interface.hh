@@ -135,6 +135,19 @@ public:
         signed_type delta = start_tid - v;
         return (delta > 0 && !(delta & (lock_bit | valid_bit))) || !v;
     }
+
+    static void print(type v, std::ostream& w) {
+        auto f = w.flags();
+        w << std::hex << (v & ~(increment_value - 1));
+        v &= increment_value - 1;
+        if (v & ~(user_bit - 1))
+            w << "U" << std::hex << (v & ~(user_bit - 1));
+        if (!(v & valid_bit))
+            w << "!";
+        if (v & lock_bit)
+            w << "L" << std::dec << (v & (lock_bit - 1));
+        w.setf(f);
+    }
 };
 
 class TVersion {
@@ -206,7 +219,8 @@ public:
     }
 
     friend std::ostream& operator<<(std::ostream& w, TVersion v) {
-        return w << v.value();
+        TransactionTid::print(v.value(), w);
+        return w;
     }
 
 private:
@@ -275,7 +289,8 @@ public:
     }
 
     friend std::ostream& operator<<(std::ostream& w, TNonopaqueVersion v) {
-        return w << v.value();
+        TransactionTid::print(v.value(), w);
+        return w;
     }
 
 private:
