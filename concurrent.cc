@@ -6,6 +6,7 @@
 #include <sys/resource.h>
 
 #include "TArray.hh"
+#include "TGeneric.hh"
 #include "GenericSTM.hh"
 #include "Hashtable.hh"
 #include "Queue.hh"
@@ -25,6 +26,7 @@
 #define USE_HASHTABLE 1
 #define USE_MASSTREE 2
 #define USE_GENSTMARRAY 3
+#define USE_TGENERICARRAY 4
 #define USE_QUEUE 5
 #define USE_VECTOR 6
 #define USE_TVECTOR 7
@@ -183,10 +185,33 @@ template <> struct Container<USE_GENSTMARRAY> {
     }
     static void init() {
     }
-    template <typename T> static void thread_init(T&) {
+    static void thread_init(Container<USE_GENSTMARRAY>&) {
     }
 private:
     GenericSTM stm_;
+    value_type a_[ARRAY_SZ];
+};
+
+template <> struct Container<USE_TGENERICARRAY> {
+    typedef int index_type;
+    static constexpr bool has_delete = false;
+    value_type nontrans_get(index_type key) {
+        return a_[key];
+    }
+    value_type transGet(index_type key) {
+        assert(key >= 0 && key < ARRAY_SZ);
+        return stm_.read(&a_[key]);
+    }
+    void transPut(index_type key, value_type value) {
+        assert(key >= 0 && key < ARRAY_SZ);
+        stm_.write(&a_[key], value);
+    }
+    static void init() {
+    }
+    static void thread_init(Container<USE_TGENERICARRAY>&) {
+    }
+private:
+    TGeneric stm_;
     value_type a_[ARRAY_SZ];
 };
 
@@ -986,6 +1011,7 @@ void print_time(struct timeval tv1, struct timeval tv2) {
     {name, desc, 1, new type<1, ## __VA_ARGS__>},     \
     {name, desc, 2, new type<2, ## __VA_ARGS__>},     \
     {name, desc, 3, new type<3, ## __VA_ARGS__>},     \
+    {name, desc, 4, new type<4, ## __VA_ARGS__>},     \
     {name, desc, 6, new type<6, ## __VA_ARGS__>},     \
     {name, desc, 7, new type<7, ## __VA_ARGS__>}
 
@@ -1015,6 +1041,7 @@ struct {
     {"masstree", USE_MASSTREE},
     {"mass", USE_MASSTREE},
     {"genstm", USE_GENSTMARRAY},
+    {"tgeneric", USE_TGENERICARRAY},
     {"queue", USE_QUEUE},
     {"vector", USE_VECTOR},
     {"tvector", USE_TVECTOR}
