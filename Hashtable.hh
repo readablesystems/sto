@@ -4,7 +4,9 @@
 #include "compiler.hh"
 // XXX: honestly hashtable should probably use local_vector too
 #include <vector>
+#include "Interface.hh"
 #include "Transaction.hh"
+#include "TWrapped.hh"
 #include "simple_str.hh"
 
 #define HASHTABLE_DELETE 1
@@ -20,7 +22,7 @@ class Hashtable {
 class Hashtable : public Shared {
 #endif
 public:
-    typedef uint64_t Version;
+    typedef TVersion Version_type;
     typedef K Key;
     typedef K key_type;
     typedef V Value;
@@ -33,20 +35,20 @@ private:
     // cache line.
     Key key;
     internal_elem *next;
-    Version version;
+    Version_type version;
 #ifndef STO_NO_STM
     // TODO(nate): we should just stuff this in the version so we don't have to
     // deal with this.
     bool valid_;
 #endif
-    Value_type value;
+    TWrapped<Value> value;
 #ifndef STO_NO_STM
-    internal_elem(Key k, Value val) : key(k), next(NULL), version(0), valid_(false), value(val) {}
+    internal_elem(Key k, Value val) : key(k), next(NULL), version(TransactionTid::valid_bit), valid_(false), value(val) {}
     bool& valid() {
       return valid_;
     }
 #else
-    internal_elem(Key k, Value val) : key(k), next(NULL), version(0), value(val) {}
+    internal_elem(Key k, Value val) : key(k), next(NULL), version(TransactionTid::valid_bit), value(val) {}
 #endif
   };
 
@@ -58,7 +60,7 @@ private:
     // we use it to make sure that an unsuccessful key lookup will still be
     // unsuccessful at commit time (because this will always be true if no
     // new inserts have occurred in this bucket)
-    Version version;
+    Version_type version;
     bucket_entry() : head(NULL), version(0) {}
   };
 
@@ -97,7 +99,7 @@ public:
   // returns true if found false if not
   bool transGet(const Key& k, Value& retval) {
     bucket_entry& buck = buck_entry(k);
-    Version buck_version = buck.version;
+    Version_type buck_version = buck.version;
     fence();
     internal_elem *e = find(buck, k);
     if (e) {
@@ -119,18 +121,19 @@ public:
         return true;
       }
 #endif
-      Version elem_vers;
+      //Version_type elem_vers;
       // "atomic" read of both the current value and the version #
-      atomicRead(e, elem_vers, retval);
+      //atomicRead(e, elem_vers, retval);
       // check both node changes and node deletes
-      item.add_read(elem_vers);
-      if (Opacity)
-        check_opacity(e->version);
+      //item.add_read(elem_vers);
+      //if (Opacity)
+      //  check_opacity(e->version);
+      e->value.read(item, buck_version);
       return true;
     } else {
-      Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
-      if (Opacity)
-        check_opacity(buck.version);
+      Sto::item(this, pack_bucket(bucket(k))).observe(TVersion(buck_version.unlocked()));
+      //if (Opacity)
+      //  check_opacity(buck.version);
       return false;
     }
   }
@@ -139,11 +142,11 @@ public:
   // returns true if successful
   bool transDelete(const Key& k) {
     bucket_entry& buck = buck_entry(k);
-    Version buck_version = buck.version;
+    Version_type buck_version = buck.version;
     fence();
     internal_elem *e = find(buck, k);
     if (e) {
-      Version elemvers = e->version;
+      Version_type elemvers = e->version;
       fence();
       auto item = t_item(e);
       bool valid = e->valid();
@@ -155,7 +158,7 @@ public:
         // so we just unmark all attributes so the item is ignored
         item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
         // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
-        Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
+        Sto::item(this, pack_bucket(bucket(k))).observe(TVersion(buck_version.unlocked()));
         return true;
       } else 
 #endif
@@ -171,9 +174,9 @@ public:
       }
 #endif
       // we need to make sure this bucket didn't change (e.g. what was once there got removed)
-      item.add_read(elemvers);
-      if (Opacity)
-        check_opacity(e->version);
+      item.observe(elemvers);
+      //if (Opacity)
+      //  check_opacity(e->version);
       // we use delete_bit to detect deletes so we don't need any other data
       // for deletes, just to mark it as a write
       if (!item.has_write())
@@ -182,9 +185,9 @@ public:
       return true;
     } else {
       // add a read that yes this element doesn't exist
-      Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
-      if (Opacity)
-        check_opacity(buck.version);
+      Sto::item(this, pack_bucket(bucket(k))).observe(TVersion(buck_version.unlocked()));
+      //if (Opacity)
+      //  check_opacity(buck.version);
       return false;
     }
   }
@@ -198,11 +201,11 @@ public:
     // TODO: update doesn't need to lock the table
     // also we should lock the head pointer instead so we don't
     // mess with tids
-    lock(&buck.version);
+    lock(buck.version);
     internal_elem *e = find(buck, k);
     if (e) {
-      unlock(&buck.version);
-      Version elemvers = e->version;
+      unlock(buck.version);
+      Version_type elemvers = e->version;
       fence();
       auto item = t_item(e);
       if (!validity_check(item, e)) {
@@ -230,9 +233,9 @@ public:
 
 #if HASHTABLE_DELETE
       // make sure the item doesn't get deleted before us
-      item.add_read(elemvers);
-      if (Opacity)
-        check_opacity(e->version);
+      item.observe(elemvers);
+      //if (Opacity)
+      //  check_opacity(e->version);
 #endif
       if (SET) {
         if (CopyVals)
@@ -241,29 +244,30 @@ public:
             item.add_write(pack(v));
 #if READ_MY_WRITES
         if (has_insert(item)) {
-	  // Updating the value here, as we won't update it during install
-          e->value = v;
+          // Updating the value here, as we won't update it during install
+          e->value.write(v);
         }
 #endif
       }
       return true;
     } else {
       if (!INSERT) {
-        auto buck_version = unlock(&buck.version);
-        Sto::item(this, pack_bucket(bucket(k))).add_read(TransactionTid::unlocked(buck_version));
-        if (Opacity)
-            check_opacity(buck.version);
+        unlock(buck.version);
+        Sto::item(this, pack_bucket(bucket(k))).observe(TVersion(buck.version.unlocked()));
+        //if (Opacity)
+        //    check_opacity(buck.version);
         return false;
       }
 
       // not there so need to insert
       insert_locked(buck, k, v); // marked as invalid
       auto new_head = buck.head;
-      auto new_version = unlock(&buck.version);
+      unlock(buck.version);
+      auto new_version = buck.version;
       // see if this item was previously read
       auto bucket_item = Sto::check_item(this, pack_bucket(bucket(k)));
       if (bucket_item) {
-        bucket_item->update_read(new_version - TransactionTid::increment_value, new_version);
+        bucket_item->update_read(TVersion(new_version.value() - TransactionTid::increment_value), new_version);
         //} else { could abort transaction now
       }
       // use new_item because we know there are no collisions
@@ -293,23 +297,24 @@ public:
   bool check(const TransItem& item, const Transaction&) {
     if (is_bucket(item)) {
       bucket_entry& buck = map_[bucket_key(item)];
-      return TransactionTid::check_version(buck.version, item.template read_value<Version>());
+      return buck.version.check_version(item.template read_value<Version_type>());
     }
     auto el = item.key<internal_elem*>();
-    auto read_version = item.template read_value<Version>();
+    auto read_version = item.template read_value<Version_type>();
     // if item has insert_bit then its an insert so no validity check needed.
     // otherwise we check that it is both valid and not locked
     // XXX bool validity_check = has_insert(item) || (el->valid() && (!is_locked(el->version) || item.has_lock(t)));
     // XXX Why isn't it enough to just do the versionCheck?
-    return TransactionTid::check_version(el->version, read_version);
+    return el->version.check_version(read_version);
   }
 
-    bool lock(TransItem& item, Transaction&) {
-        assert(!is_bucket(item));
-        auto el = item.key<internal_elem*>();
-        lock(el);
-        return true;
-    }
+  bool lock(TransItem& item, Transaction&) {
+    assert(!is_bucket(item));
+    auto el = item.key<internal_elem*>();
+    lock(el);
+    return true;
+  }
+
   void install(TransItem& item, const Transaction& t) {
     assert(!is_bucket(item));
     auto el = item.key<internal_elem*>();
@@ -325,17 +330,18 @@ public:
     if (!(item.flags() & insert_bit)) {
       // Update
       Value& new_v = item.flags() & copyvals_bit ? item.template write_value<Value>() : (Value&)item.template write_value<void*>();
-      el->value = new_v;
+      el->value.write(new_v);
     }
     //if (!__has_trivial_copy(Value)) {
       //Transaction::rcu_delete(new_v);
     //}
 
+    el->version.set_version(t.commit_tid());
+#if 0
     if (Opacity)
       TransactionTid::set_version(el->version, t.commit_tid());
     else
       TransactionTid::inc_invalid_version(el->version);
-#if 0
     if (has_insert(item)) {
       // need to update bucket version
       bucket_entry& buck = buck_entry(el->key);
@@ -351,17 +357,17 @@ public:
   }
 
   void unlock(TransItem& item) {
-      assert(!is_bucket(item));
-      auto el = item.key<internal_elem*>();
-      unlock(el);
+    assert(!is_bucket(item));
+    auto el = item.key<internal_elem*>();
+    unlock(el);
   }
 
   void cleanup(TransItem& item, bool committed) {
-      if (committed ? has_delete(item) : has_insert(item)) {
-          auto el = item.key<internal_elem*>();
-          assert(!el->valid());
-          _remove(el);
-      }
+    if (committed ? has_delete(item) : has_insert(item)) {
+      auto el = item.key<internal_elem*>();
+      assert(!el->valid());
+      _remove(el);
+    }
   }
 
   // these are wrappers for concurrent.cc and other
@@ -372,28 +378,28 @@ public:
     return v;
   }
 
-    Value unsafe_get(Key k) {
-        if (Value* p = readPtr(k))
-            return *p;
-        else
-            return Value();
-    }
+  Value unsafe_get(Key k) {
+    if (Value* p = readPtr(k))
+      return *p;
+    else
+      return Value();
+  }
 
 #endif /* STO_NO_STM */
 
   void lock(internal_elem *el) {
-    lock(&el->version);
+    lock(el->version);
   }
 
   void lock(const Key& k) {
-    lock(&elem(k));
+    lock(elem(k));
   }
   void unlock(internal_elem *el) {
-    unlock(&el->version);
+    unlock(el->version);
   }
 
   void unlock(const Key& k) {
-    unlock(&elem(k));
+    unlock(elem(k));
   }
 
   bool is_locked(internal_elem *el) {
@@ -535,7 +541,7 @@ public:
     auto e = find(buck_entry(k), k);
     if (e) {
       // TODO(nate): this isn't safe for non-trivial types (need an atomic read)
-      assign_val(retval, e->value);
+      assign_val(retval, e->value.access());
     }
     return !!e;
   }
@@ -551,7 +557,7 @@ public:
   Value* readPtr(const Key& k) {
     auto e = find(buck_entry(k), k);
     if (e) {
-      return &e->value;
+      return &e->value.access();
     }
     return NULL;
   }
@@ -560,14 +566,14 @@ public:
   // (no current way to distinguish if insert or set)
   Value* putIfAbsentPtr(const Key& k, const Value& val) {
     bucket_entry& buck = buck_entry(k);
-    lock(&buck.version);
+    lock(buck.version);
     internal_elem *e = find(buck, k);
     if (!e) {
       insert_locked<true>(buck, k, val);
       e = buck.head;
     }
-    Value *ret = &e->value;
-    unlock(&buck.version);
+    Value *ret = &e->value.access();
+    unlock(buck.version);
     return ret;
   }
 
@@ -575,16 +581,16 @@ public:
   bool putIfAbsent(const Key& k, Value& val) {
     bool exists = false;
     bucket_entry& buck = buck_entry(k);
-    lock(&buck.version);
+    lock(buck.version);
     internal_elem *e = find(buck, k);
     if (e) {
-      assign_val(val, e->value);
+      assign_val(val, e->value.access());
       exists = true;
     } else {
       insert_locked<true>(buck, k, val);
       exists = false;
     }
-    unlock(&buck.version);
+    unlock(buck.version);
     return exists;
   }
 
@@ -593,7 +599,7 @@ public:
   bool put(const Key& k, const Value& val) {
     bool exists = false;
     bucket_entry& buck = buck_entry(k);
-    lock(&buck.version);
+    lock(buck.version);
     internal_elem *e = find(buck, k);
     if (e) {
       if (!InsertOnly)
@@ -603,7 +609,7 @@ public:
       insert_locked<true>(buck, k, val);
       exists = false;
     }
-    unlock(&buck.version);
+    unlock(buck.version);
     return exists;
   }
   // returns true if successfully inserted
@@ -613,12 +619,12 @@ public:
 
   void set(internal_elem *e, const Value& val) {
     assert(e);
-    lock(&e->version);
-    e->value = val;
+    lock(e->version);
+    e->value.access() = val;
 #ifndef STO_NO_STM
-    TransactionTid::inc_invalid_version(e->version);
+    e->version.inc_invalid_version();
 #endif
-    unlock(&e->version);
+    unlock(e->version);
   }
 
   bool nontrans_insert(const Key& k, const Value& v) { return insert(k, v); }
@@ -658,12 +664,14 @@ private:
     return has_insert(item) || e->valid();
   }
 
+#if 0
   void check_opacity(Version& v) {
     assert(Opacity);
     Version v2 = v;
     fence();
     Sto::check_opacity(v2);
   }
+#endif
 
   static bool is_bucket(const TransItem& item) {
       return is_bucket(item.key<void*>());
@@ -679,16 +687,14 @@ private:
       return (void*) ((bucket << 1) | bucket_bit);
   }
 
-  static bool is_locked(Version v) {
-    return TransactionTid::is_locked(v);
+  static bool is_locked(Version_type &v) {
+    return v.is_locked();
   }
-  static void lock(Version *v) {
-    TransactionTid::lock(*v);
+  static void lock(Version_type& v) {
+    v.lock();
   }
-  static Version unlock(Version *v) {
-    auto ret = TransactionTid::unlocked(*v);
-    TransactionTid::unlock(*v);
-    return ret;
+  static void unlock(Version_type& v) {
+    v.unlock();
   }
 
   template <bool markValid = false>
@@ -705,9 +711,10 @@ private:
     buck.head = new_head;
     // TODO(nate): this means we'll always have to do a hard opacity check on 
     // the bucket version (but I don't think we can get a commit tid yet).
-    TransactionTid::inc_invalid_version(buck.version);
+    buck.version.inc_invalid_version();
   }
 
+#if 0
   void atomicRead(internal_elem *e, Version& vers, Value& val) {
     Version v2;
     do {
@@ -720,7 +727,8 @@ private:
       vers = e->version;
     } while (vers != v2);
   }
-  
+#endif
+
   template <typename ValType>
   static inline void *pack(const ValType& value) {
     assert(sizeof(ValType) <= sizeof(void*));

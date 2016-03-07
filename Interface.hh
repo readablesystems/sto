@@ -213,6 +213,10 @@ public:
         TransactionTid::set_invalid(v_);
     }
 
+    void inc_invalid_version() {
+        TransactionTid::inc_invalid_version(v_);
+    }
+
     bool check_version(TVersion old_vers) const {
         // XXX opacity
         return TransactionTid::check_version(v_, old_vers.v_);
