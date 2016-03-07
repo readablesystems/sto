@@ -4,6 +4,7 @@ TRcuSet::TRcuSet()
     : clean_epoch_(0) {
     unsigned capacity = (4080 - sizeof(TRcuGroup)) / sizeof(TRcuGroup::TRcuElement);
     current_ = first_ = TRcuGroup::make(capacity);
+    // ngroups_ = 1;
 }
 
 TRcuSet::~TRcuSet() {
@@ -12,12 +13,37 @@ TRcuSet::~TRcuSet() {
         TRcuGroup::free(first_);
         first_ = next;
     }
+    current_ = nullptr;
+    // ngroups_ = 0;
+}
+
+void TRcuSet::check() {
+    // check invariants
+    TRcuGroup* first = first_;
+    unsigned n = (unsigned) -1; // ngroups_;
+    bool found_current = false;
+    while (n > 0 && first) {
+        assert(first->head_ <= first->tail_);
+        assert(first->tail_ <= first->capacity_);
+        if (found_current)
+            assert(first->head_ == 0 && first->tail_ == 0);
+        else if (first != current_)
+            assert(first->head_ != first->tail_);
+        found_current = found_current || first == current_;
+        --n;
+        first = first->next_;
+    }
+    assert(!first);
+    assert(found_current);
+    // assert(n == 0);
+    // assert(ngroups_ > 0);
 }
 
 void TRcuSet::grow() {
     if (!current_->next_) {
         unsigned capacity = (16368 - sizeof(TRcuGroup)) / sizeof(TRcuGroup::TRcuElement);
         current_->next_ = TRcuGroup::make(capacity);
+        // ++ngroups_;
     }
     current_ = current_->next_;
     assert(current_->head_ == 0 && current_->tail_ == 0);

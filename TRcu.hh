@@ -98,9 +98,11 @@ private:
     TRcuGroup* current_;
     TRcuGroup* first_;
     epoch_type clean_epoch_;
+    // unsigned ngroups_;
 
     TRcuSet(const TRcuSet&) = delete;
     TRcuSet& operator=(const TRcuSet&) = delete;
+    void check();
     void grow();
     void hard_clean_until(epoch_type max_epoch);
 };
