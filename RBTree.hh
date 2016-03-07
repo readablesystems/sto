@@ -58,9 +58,13 @@ public:
 */
 
     explicit rbpair(const K& key, const T& value)
-    : key_(key), val_(value), vers_(TransactionTid::increment_value + TransactionTid::valid_bit + insert_bit) {}
+    : key_(key), val_(value),
+      vers_(TransactionTid::increment_value + TransactionTid::valid_bit + insert_bit),
+      nodevers_(TransactionTid::valid_bit), hohvers_() {}
     explicit rbpair(std::pair<const K, T>& kvp)
-    : key_(kvp.first), val_(kvp.second), vers_(TransactionTid::increment_value + TransactionTid::valid_bit + insert_bit) {}
+    : key_(kvp.first), val_(kvp.second),
+      vers_(TransactionTid::increment_value + TransactionTid::valid_bit + insert_bit),
+      nodevers_(TransactionTid::valid_bit), hohvers_() {}
 
     // version getters
     version_type& version() {

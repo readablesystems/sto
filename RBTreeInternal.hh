@@ -352,7 +352,7 @@ inline Compare& rbcompare<Compare>::get_compare() const {
 // RBTREE FUNCTION DEFINITIONS
 template <typename T, typename C>
 inline rbtree<T, C>::rbtree(const value_compare &compare)
-    : r_(compare), treeversion_() {
+    : r_(compare), treeversion_(TransactionTid::valid_bit) {
 }
 
 template <typename T, typename C>
