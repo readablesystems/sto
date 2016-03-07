@@ -11,11 +11,10 @@
 #include "Box.hh"
 #include "VersionFunctions.hh"
 #include "rwlock.hh"
+#include <stdexcept>
 
 #define IT_SIZE 10000
 #define log2(x) ceil(log((double) size) / log(2.0))
-
-class OutOfBoundsException {};
 
 template<typename T, bool Opacity = false, typename Elem = Box<T>> class Vector;
 template<typename T, bool Opacity = false, typename Elem = Box<T>> class VecIterator;
@@ -271,7 +270,7 @@ public:
             }
             if (!aborted) {
                 vecitem.add_read(TransactionTid::unlocked(ver));
-                throw OutOfBoundsException();
+                throw std::out_of_range("Vector::transGet");
             }
         }
         if (i < size)
@@ -318,7 +317,7 @@ public:
             }
             if (!aborted) {
                 vecitem.add_read(TransactionTid::unlocked(ver));
-                throw OutOfBoundsException();
+                throw std::out_of_range("Vector::transUpdate");
             }
 
         }
