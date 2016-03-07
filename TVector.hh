@@ -42,8 +42,8 @@ private:
 public:
     class iterator;
     class const_iterator;
-    class size_proxy;
-    class difference_proxy;
+    using size_proxy = TIntRangeSizeProxy<size_type>;
+    using difference_proxy = TIntRangeDifferenceProxy<size_type>;
     typedef T value_type;
     typedef typename W<T>::read_type get_type;
     typedef typename W<T>::version_type version_type;
@@ -168,7 +168,7 @@ public:
         TransProxy p(txn, item);
         pred_type pred = item.template predicate_value<pred_type>();
         size_type value = committing ? size_.read(p, size_vers_) : size_.snapshot(p, size_vers_);
-        return pred.discharge(value);
+        return pred.verify(value);
     }
     bool lock(TransItem& item, Transaction& txn) {
         auto key = item.template key<key_type>();
@@ -485,124 +485,6 @@ inline auto TVector<T, W>::end() const -> const_iterator {
 
 
 template <typename T, template <typename> typename W>
-class TVector<T, W>::size_proxy {
-public:
-    size_proxy(pred_type* pred, size_type original, difference_type delta)
-        : pred_(pred), original_(original), delta_(delta) {
-    }
-
-    operator size_type() const {
-        // XXX this assumes that TransItem doesn't change location
-        if (pred_)
-            pred_->observe(original_);
-        return original_ + delta_;
-    }
-
-    bool operator==(size_type x) const {
-        x -= delta_;
-        if (pred_)
-            pred_->observe_eq(x, original_ == x);
-        return original_ == x;
-    }
-    bool operator!=(size_type x) const {
-        return !(*this == x);
-    }
-    bool operator<(size_type x) const {
-        x -= delta_;
-        if (pred_)
-            pred_->observe_lt(x, original_ < x);
-        return original_ < x;
-    }
-    bool operator<=(size_type x) const {
-        x -= delta_;
-        if (pred_)
-            pred_->observe_le(x, original_ <= x);
-        return original_ <= x;
-    }
-    bool operator>=(size_type x) const {
-        return !(*this < x);
-    }
-    bool operator>(size_type x) const {
-        return !(*this <= x);
-    }
-
-    // difference_type versions just for friendliness
-    bool operator==(difference_type x) const {
-        return *this == size_type(x);
-    }
-    bool operator!=(difference_type x) const {
-        return *this != size_type(x);
-    }
-    bool operator<(difference_type x) const {
-        return *this < size_type(x);
-    }
-    bool operator<=(difference_type x) const {
-        return *this <= size_type(x);
-    }
-    bool operator>=(difference_type x) const {
-        return *this >= size_type(x);
-    }
-    bool operator>(difference_type x) const {
-        return *this > size_type(x);
-    }
-
-private:
-    pred_type* pred_;
-    size_type original_;
-    difference_type delta_;
-    friend class TVector<T, W>;
-};
-
-template <typename T, template <typename> typename W>
-class TVector<T, W>::difference_proxy {
-public:
-    difference_proxy(pred_type* pred, size_type original, difference_type delta)
-        : pred_(pred), original_(original), delta_(delta) {
-    }
-
-    operator difference_type() const {
-        // XXX this assumes that TransItem doesn't change location
-        if (pred_)
-            pred_->observe(original_);
-        return original_ + delta_;
-    }
-
-    bool operator==(difference_type x) const {
-        x -= delta_;
-        if (pred_ && x >= 0)
-            pred_->observe_eq(x, original_ == size_type(x));
-        return x >= 0 && original_ == size_type(x);
-    }
-    bool operator!=(difference_type x) const {
-        return !(*this == x);
-    }
-    bool operator<(difference_type x) const {
-        x -= delta_;
-        if (pred_ && x >= 0)
-            pred_->observe_lt(x, original_ < size_type(x));
-        return x >= 0 && original_ < size_type(x);
-    }
-    bool operator<=(difference_type x) const {
-        x -= delta_;
-        if (pred_ && x >= 0)
-            pred_->observe_le(x, original_ <= size_type(x));
-        return x >= 0 && original_ <= size_type(x);
-    }
-    bool operator>=(difference_type x) const {
-        return !(*this < x);
-    }
-    bool operator>(difference_type x) const {
-        return !(*this <= x);
-    }
-
-private:
-    pred_type* pred_;
-    size_type original_;
-    difference_type delta_;
-    friend class TVector<T, W>;
-};
-
-template <typename T, template <typename> typename W>
 inline auto TVector<T, W>::size() const -> size_proxy {
     auto sitem = size_item();
     return size_proxy(&size_predicate(sitem), original_size(sitem), current_size(sitem) - original_size(sitem));
@@ -618,56 +500,6 @@ inline auto TVector<T, W>::const_iterator::operator-(const const_iterator& x) co
         return difference_proxy(nullptr, 0, i_ - x.i_);
 }
 
-
-template <typename T, template <typename> typename W>
-bool operator==(unsigned a, const typename TVector<T, W>::size_proxy& b) {
-    return b == a;
-}
-template <typename T, template <typename> typename W>
-bool operator!=(unsigned a, const typename TVector<T, W>::size_proxy& b) {
-    return b != a;
-}
-template <typename T, template <typename> typename W>
-bool operator<(unsigned a, const typename TVector<T, W>::size_proxy& b) {
-    return b > a;
-}
-template <typename T, template <typename> typename W>
-bool operator<=(unsigned a, const typename TVector<T, W>::size_proxy& b) {
-    return b >= a;
-}
-template <typename T, template <typename> typename W>
-bool operator>=(unsigned a, const typename TVector<T, W>::size_proxy& b) {
-    return b <= a;
-}
-template <typename T, template <typename> typename W>
-bool operator>(unsigned a, const typename TVector<T, W>::size_proxy& b) {
-    return b < a;
-}
-
-template <typename T, template <typename> typename W>
-bool operator==(int a, const typename TVector<T, W>::difference_proxy& b) {
-    return b == a;
-}
-template <typename T, template <typename> typename W>
-bool operator!=(int a, const typename TVector<T, W>::difference_proxy& b) {
-    return b != a;
-}
-template <typename T, template <typename> typename W>
-bool operator<(int a, const typename TVector<T, W>::difference_proxy& b) {
-    return b > a;
-}
-template <typename T, template <typename> typename W>
-bool operator<=(int a, const typename TVector<T, W>::difference_proxy& b) {
-    return b >= a;
-}
-template <typename T, template <typename> typename W>
-bool operator>=(int a, const typename TVector<T, W>::difference_proxy& b) {
-    return b <= a;
-}
-template <typename T, template <typename> typename W>
-bool operator>(int a, const typename TVector<T, W>::difference_proxy& b) {
-    return b < a;
-}
 
 template <typename T, template <typename> typename W>
 void TVector<T, W>::clear() {
