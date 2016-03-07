@@ -32,7 +32,7 @@ void TRcuSet::hard_clean_until(epoch_type max_epoch) {
             empty_head = first_;
         empty_tail = first_;
         if (first_ == current_) {
-            current_ = empty_head;
+            first_ = current_ = empty_head;
             return;
         }
         first_ = first_->next_;
