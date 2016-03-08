@@ -92,8 +92,7 @@ public:
     }
     void install(TransItem& item, const Transaction& txn) {
         val_.write(item.template write_value<T>());
-        vers_.set_version_unlock(txn.commit_tid());
-        item.clear_needs_unlock();
+        vers_.set_version(txn.commit_tid());
     }
 
     // transactional access to node version
@@ -106,9 +105,8 @@ public:
     bool check_nv(const TransItem& item) {
         return item.check_version(nodevers_);
     }
-    void install_nv(TransItem& item, const Transaction& txn) {
-        nodevers_.set_version_unlock(txn.commit_tid());
-        item.clear_needs_unlock();
+    void install_nv(const Transaction& txn) {
+        nodevers_.set_version(txn.commit_tid());
     }
 
     // key access and comparisons
@@ -870,9 +868,14 @@ inline bool RBTree<K, T, GlobalSize>::lock(TransItem& item, Transaction&) {
         wrapper_tree_.treeversion_.lock();
     } else if (item.key<uintptr_t>() & uintptr_t(1)) {
         uintptr_t x = item.key<uintptr_t>() & ~uintptr_t(1);
-        reinterpret_cast<wrapper_type*>(x)->lock_nv();
+        wrapper_type* n = reinterpret_cast<wrapper_type*>(x);
+        if (!n->nodeversion().is_locked_here())
+            n->lock_nv();
     } else {
-        item.key<wrapper_type*>()->lock();
+        wrapper_type* n = item.key<wrapper_type*>();
+        n->lock();
+        if (has_delete(item) && !n->nodeversion().is_locked_here())
+            n->lock_nv();
     }
     return true;
 }
@@ -885,9 +888,14 @@ inline void RBTree<K, T, GlobalSize>::unlock(TransItem& item) {
         wrapper_tree_.treeversion_.unlock();
     } else if (item.key<uintptr_t>() & uintptr_t(1)){
         uintptr_t x = item.key<uintptr_t>() & ~uintptr_t(1);
-        reinterpret_cast<wrapper_type*>(x)->unlock_nv();
+        wrapper_type* n = reinterpret_cast<wrapper_type*>(x);
+        if (n->nodeversion().is_locked_here())
+            n->unlock_nv();
     } else {
-        item.key<wrapper_type*>()->unlock();
+        wrapper_type* n = item.key<wrapper_type*>();
+        n->unlock();
+        if (has_delete(item) && n->nodeversion().is_locked_here())
+            n->unlock_nv();
     }
 }
    
@@ -959,7 +967,7 @@ inline void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction
         assert((ssize_t)size_ >= 0);
     } else if (uintptr_t(e) & uintptr_t(1)) {
         auto n = reinterpret_cast<wrapper_type*>(uintptr_t(e) & ~uintptr_t(1));
-        n->install_nv(item, t);
+        n->install_nv(t);
         return;
     } else {
         assert(e->version().is_locked_here());
@@ -977,9 +985,9 @@ inline void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction
             unlock_write(&treelock_);
 
             e->version().set_version(t.commit_tid());
-            e->nodeversion().force_set_version(t.commit_tid());
-            e->version().unlock();
+            e->nodeversion().set_version(t.commit_tid());
             Transaction::rcu_free(e);
+            return;
         } else {
             // inserts/updates should be handled the same way
             e->install(item, t);
