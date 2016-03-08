@@ -543,7 +543,14 @@ template <typename T, typename C> template <typename K, typename Comp>
 inline std::tuple<T*, typename rbtree<T, C>::Version, bool,
        typename rbtree<T, C>::boundaries_type>
 rbtree<T, C>::find_any(const K& key, Comp comp) const {
-
+ retry:
+    Version retver = treeversion_;
+    Version lasthohversion;
+    do {
+      lasthohversion = roothohversion_;
+      acquire_fence();
+    } while(lasthohversion.is_locked());
+    fence();
     rbnodeptr<T> n(r_.root_, false);
     rbnodeptr<T> p(nullptr, false);
 
@@ -551,9 +558,19 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
     T* rhs = r_.limit_[1];
     boundaries_type boundary = std::make_pair(std::make_tuple(lhs, lhs ? lhs->nodeversion() : 0),
                     std::make_tuple(rhs, rhs ? rhs->nodeversion() : 0));
-
     while (n.node()) {
+        Version curversion = n.node()->stable_hohversion();
+        // XXX: I'm not totally sure if we need to do this cmp before validating hohversions
         int cmp = comp.compare(key, *n.node());
+        fence();
+        if (p) {
+          if (!p.node()->validate_hohversion(lasthohversion))
+            // TODO: we may be able to locally retry in some cases
+            goto retry;
+        } else {
+          if (roothohversion_ != lasthohversion)
+            goto retry;
+        }
         if (cmp == 0)
             break;
 
@@ -566,13 +583,15 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
             T* nb = n.node();
             boundary.second = std::make_tuple(nb, nb->nodeversion());
         }
+        lasthohversion = curversion;
         p = n;
         n = n.node()->rblinks_.c_[cmp > 0];
     }
 
     bool found = (n.node() != nullptr);
     T* retnode = found ? n.node() : p.node();
-    Version retver = retnode ? retnode->version() : treeversion_;
+    if (retnode)
+        retver = retnode->version();
 
     return std::make_tuple(retnode, retver, found, boundary);
 }
