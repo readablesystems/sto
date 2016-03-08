@@ -169,7 +169,7 @@ class RBTree
     friend class RBTreeIterator<K, T, GlobalSize>;
     friend class RBProxy<K, T, GlobalSize>;
 
-    typedef TransactionTid::signed_type RWVersion;
+    typedef TransactionTid::type RWVersion;
     typedef TWrapped<std::pair<const K, T>> wrapped_pair;
     typedef typename wrapped_pair::version_type Version;
 
@@ -224,6 +224,23 @@ public:
         e->unlock();
     }
 */
+
+  __attribute__((always_inline)) std::tuple<wrapper_type*, Version, bool, boundaries_type> verified_lookup(rbwrapper<rbpair<K, T>>& rbkvp) const {
+        do {
+            auto initial = treelock_;
+	    fence();
+	    if (TransactionTid::is_locked(initial)) {
+                relax_fence();
+                continue;
+            }
+	    auto results = wrapper_tree_.find_any(rbkvp,
+                             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+	    fence();
+	    if (initial == treelock_)
+                return results;
+	    relax_fence();
+	} while(1);
+    }
 
 #ifndef STO_NO_STM
 /*
@@ -371,10 +388,7 @@ private:
     // NOTE: this function must be surrounded by a lock in order to ensure we add the correct nodeversions
     inline std::tuple<wrapper_type*, Version, bool, boundaries_type>
     find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) const {
-        lock_read(&treelock_);
-        auto results = wrapper_tree_.find_any(rbkvp,
-                           rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-        unlock_read(&treelock_);
+        auto results = verified_lookup(rbkvp);
 
         // extract information from results
         wrapper_type* x = std::get<0>(results);
@@ -582,7 +596,10 @@ private:
     static void lock_read(RWVersion *v) {TransactionTid::lock_read(*v);}
     static void lock_write(RWVersion *v) {TransactionTid::lock_write(*v);}
     static void unlock_read(RWVersion *v) {TransactionTid::unlock_read(*v);}
-    static void unlock_write(RWVersion *v) {TransactionTid::unlock_write(*v);}
+    static void unlock_write(RWVersion *v) {
+        TransactionTid::inc_write_version(*v);
+        TransactionTid::unlock_write(*v);
+    }
 
     static bool has_insert(const TransItem& item) {
         return item.flags() & insert_tag;
@@ -1137,37 +1154,29 @@ bool RBTree<K, T, GlobalSize>::nontrans_insert(const K& key, const T& value) {
 
 template <typename K, typename T, bool GlobalSize>
 bool RBTree<K, T, GlobalSize>::nontrans_contains(const K& key) {
-    lock_read(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
-    auto results = wrapper_tree_.find_any(idx_pair,
-                                          rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-    unlock_read(&treelock_);
+    auto results = verified_lookup(idx_pair);
     return std::get<2>(results);
 }
 
 template <typename K, typename T, bool GlobalSize>
 T RBTree<K, T, GlobalSize>::nontrans_find(const K& key) {
-    lock_read(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
-    auto results = wrapper_tree_.find_any(idx_pair,
-            rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+    auto results = verified_lookup(idx_pair);
     bool found = std::get<2>(results);
+    // TODO: this isn't safe if value is nontrivial (doesn't apply to STAMP)
     T ret = found ? std::get<0>(results)->writeable_value() : T();
-    unlock_read(&treelock_);
     return ret;
 }
 
 template <typename K, typename T, bool GlobalSize>
 bool RBTree<K, T, GlobalSize>::nontrans_find(const K& key, T& val) {
-    lock_read(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
-    auto results = wrapper_tree_.find_any(idx_pair,
-            rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+    auto results = verified_lookup(idx_pair);
     bool found = std::get<2>(results);
     if (found) {
-      val = std::get<0>(results)->writeable_value();
+        val = std::get<0>(results)->writeable_value();
     }
-    unlock_read(&treelock_);
     return found;
 }
 

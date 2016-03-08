@@ -34,35 +34,41 @@ public:
     static constexpr type user_bit = type(0x80);
     static constexpr type increment_value = type(0x400);
 
-    static void lock_read(signed_type& v) {
+    // NOTE: not compatible with the normal lock() methods
+    static void lock_read(type& v) {
         while (1) {
-            signed_type vv = v;
-            if (vv >= 0 && bool_cmpxchg(&v, vv, vv+1))
+            type vv = v;
+            if (!(vv & lock_bit) && bool_cmpxchg(&v, vv, vv+1))
                 break;
             relax_fence();
         }
         acquire_fence();
     }
-
-    static void lock_write(signed_type& v) {
+    static void lock_write(type& v) {
         while (1) {
-            signed_type vv = v;
-            if (vv == 0 && bool_cmpxchg(&v, vv, vv-1))
+            type vv = v;
+            if ((vv & threadid_mask) == 0 && !(vv & lock_bit) && bool_cmpxchg(&v, vv, vv | lock_bit))
                 break;
             relax_fence();
         }
         acquire_fence();
     }
-
-    static void unlock_read(signed_type& v) {
+    // for use with lock_write() and lock_read() (should probably be a different class altogether...)
+    // it could theoretically be useful to have an opacity-safe reader-writer lock (which this is not currently)
+    static void inc_write_version(type& v) {
+        assert(is_locked(v));
+        type new_v = (v + increment_value);
+        release_fence();
+        v = new_v;
+    }
+    static void unlock_read(type& v) {
         auto prev = __sync_fetch_and_add(&v, -1);
         assert(prev > 0);
     }
-
-    static void unlock_write(signed_type& v) {
-        auto prev = __sync_fetch_and_add(&v, 1);
-        assert(prev < 0);
+    static void unlock_write(type& v) {
+        v = v & ~lock_bit;
     }
+
 
     static bool is_locked(type v) {
         return v & lock_bit;
