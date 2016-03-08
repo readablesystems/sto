@@ -92,11 +92,6 @@ public:
       return v & ~(lock_bit | threadid_mask);
     }
 
-    static void force_set_version(type& v, type new_v) {
-        new_v |= TThread::id();
-        release_fence();
-        v = new_v;
-    }
     static void set_version(type& v, type new_v) {
         assert(is_locked_here(v));
         assert(!(new_v & (lock_bit | threadid_mask)));
@@ -199,9 +194,6 @@ public:
         return v_ != x.v_;
     }
 
-    void force_set_version(TVersion new_v) {
-        TransactionTid::force_set_version(v_, new_v.v_);
-    }
     void set_version(TVersion new_v) {
         TransactionTid::set_version(v_, new_v.v_);
     }
