@@ -1,62 +1,8 @@
 #pragma once
-#include <limits>
 #include <utility>
 #include <stdio.h>
 #include "TWrapped.hh"
-
-template <typename T>
-struct TIntRange {
-    T first;
-    T second;
-
-    static TIntRange<T> unconstrained() {
-        return TIntRange<T>{std::numeric_limits<T>::min(), std::numeric_limits<T>::max()};
-    }
-    void observe(T value) {
-        if (first <= value && value <= second)
-            first = second = value;
-        else
-            Sto::abort();
-    }
-    void observe_eq(T value, bool was_eq) {
-        if (was_eq) {
-            first = std::max(first, value);
-            second = std::min(second, value);
-        } else if (value < first || second < value)
-            /* do nothing */;
-        else if (value - first <= second - value)
-            first = value + 1;
-        else
-            second = value - 1;
-        if (first > second)
-            Sto::abort();
-    }
-    void observe_lt(T value, bool was_lt = true) {
-        if (was_lt)
-            second = std::min(second, value - 1);
-        else
-            first = std::max(first, value);
-        if (first > second)
-            Sto::abort();
-    }
-    void observe_le(T value, bool was_le = true) {
-        if (was_le)
-            second = std::min(second, value);
-        else
-            first = std::max(first, value + 1);
-        if (first > second)
-            Sto::abort();
-    }
-    void observe_gt(T value, bool was_gt = true) {
-        observe_le(value, !was_gt);
-    }
-    void observe_ge(T value, bool was_ge = true) {
-        observe_lt(value, !was_ge);
-    }
-    bool discharge(T value) const {
-        return first <= value && value <= second;
-    }
-};
+#include "TIntRange.hh"
 
 template <typename T, typename W = TNonopaqueWrapped<T> >
 class TIntPredicate : public TObject {
@@ -128,7 +74,7 @@ public:
         TransProxy p(txn, item);
         pred_type pred = item.template predicate_value<pred_type>();
         T value = committing ? v_.read(p, vers_) : v_.snapshot(p, vers_);
-        return pred.discharge(value);
+        return pred.verify(value);
     }
     virtual bool check(const TransItem& item, const Transaction&) {
         return item.check_version(vers_);

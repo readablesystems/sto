@@ -20,13 +20,13 @@ public:
             // this broke in 9bdea5a (we stopped returning a reference in operator*) but idrk how to fix it.
             std::pop_heap(elems.begin(), elems.end());
             elems.pop_back();
-        } catch (OutOfBoundsException e) {}
+        } catch (const std::out_of_range& e) {}
     }
     
     T top() {
         try {
         return elems.front();
-        } catch (OutOfBoundsException e) {}
+        } catch (const std::out_of_range& e) {}
     }
 
     uint32_t size() {

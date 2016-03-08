@@ -700,7 +700,7 @@ public:
             bool outOfBounds = false;
             try {
             q->transUpdate(key, val);
-            } catch (OutOfBoundsException e) {
+            } catch (const std::out_of_range& e) {
                 outOfBounds = true;
             }
 #if PRINT_DEBUG
@@ -725,7 +725,7 @@ public:
             bool outOfBounds = false;
             try {
             val = q->transGet(key);
-            } catch (OutOfBoundsException e) {
+            } catch (std::out_of_range& e) {
                 outOfBounds = true;
             }
 #if PRINT_DEBUG
