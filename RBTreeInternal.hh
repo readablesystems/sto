@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <iostream>
 #include "Interface.hh"
+#include "UncontendedVersion.hh"
 
 #ifndef rbaccount
 # define rbaccount(x)
@@ -38,7 +39,7 @@ class rbnodeptr {
     inline rbnodeptr<T> change_color(bool color) const;
     inline rbnodeptr<T> reverse_color() const;
 
-    inline rbnodeptr<T> rotate(bool isright, T*& root, TVersion& treeversion) const;
+    inline rbnodeptr<T> rotate(bool isright, T*& root, UncontendedVersion& treeversion) const;
     inline rbnodeptr<T> flip() const;
 
     size_t size() const;
@@ -188,7 +189,7 @@ class rbtree {
     rbpriv::rbrep<T, Compare> r_;
     // moved from RBTree.hh
     Version treeversion_;
-    Version roothohversion_;
+    UncontendedVersion roothohversion_;
 
     template <typename K, typename Comp>
     inline std::tuple<T*, Version, bool, boundaries_type> find_any(const K& key, Comp comp) const;
@@ -295,7 +296,7 @@ inline rbnodeptr<T> rbnodeptr<T>::reverse_color() const {
 }
 
 template <typename T>
-inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side, T*& root, TVersion& rootversion) const {
+inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side, T*& root, UncontendedVersion& rootversion) const {
     rbaccount(rotation);
     rbnodeptr<T> x = child(!side);
     // parent might not actually be black, but we want an rbnodeptr so we can use set_child and the like
@@ -329,10 +330,8 @@ inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side, T*& root, TVersion& rootvers
     cur_parent.set_child(parent_side, ret, root);
     if (cur_parent)
       cur_parent.node()->unlock_hohversion();
-    else {
-      rootversion.inc_invalid_version();
-      rootversion.unlock();
-    }
+    else
+      rootversion.inc_and_unlock();
     node()->unlock_hohversion();
     x.node()->unlock_hohversion();
     return ret;
@@ -378,7 +377,7 @@ inline Compare& rbcompare<Compare>::get_compare() const {
 // RBTREE FUNCTION DEFINITIONS
 template <typename T, typename C>
 inline rbtree<T, C>::rbtree(const value_compare &compare)
-    : r_(compare), treeversion_(TransactionTid::valid_bit), roothohversion_(TransactionTid::valid_bit) {
+    : r_(compare), treeversion_(TransactionTid::valid_bit), roothohversion_() {
 }
 
 template <typename T, typename C>
@@ -545,7 +544,7 @@ inline std::tuple<T*, typename rbtree<T, C>::Version, bool,
 rbtree<T, C>::find_any(const K& key, Comp comp) const {
  retry:
     Version retver = treeversion_;
-    Version lasthohversion;
+    UncontendedVersion lasthohversion;
     do {
       lasthohversion = roothohversion_;
       acquire_fence();
@@ -559,7 +558,7 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
     boundaries_type boundary = std::make_pair(std::make_tuple(lhs, lhs ? lhs->nodeversion() : 0),
                     std::make_tuple(rhs, rhs ? rhs->nodeversion() : 0));
     while (n.node()) {
-        Version curversion = n.node()->stable_hohversion();
+        auto curversion = n.node()->stable_hohversion();
         // XXX: I'm not totally sure if we need to do this cmp before validating hohversions
         int cmp = comp.compare(key, *n.node());
         fence();

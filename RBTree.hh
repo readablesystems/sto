@@ -129,22 +129,20 @@ public:
 
     // hand-over-hand validation stuff
     void lock_hohversion() {
-        hohvers_.lock();
+      hohvers_.lock();
     }
     void unlock_hohversion() {
-        assert(hohvers_.is_locked_here());
-        TVersion nv(hohvers_.value() + TransactionTid::increment_value);
-        hohvers_.set_version_unlock(nv);
+      hohvers_.inc_and_unlock();
     }
-    version_type stable_hohversion() const {
-        version_type v = hohvers_;
+    UncontendedVersion stable_hohversion() const {
+        auto v = hohvers_;
         while (v.is_locked()) {
             acquire_fence();
             v = hohvers_;
         }
         return v;
     }
-    bool validate_hohversion(version_type old_v) const {
+    bool validate_hohversion(UncontendedVersion old_v) const {
         acquire_fence();
         return (hohvers_ == old_v);
     }
@@ -155,8 +153,11 @@ private:
     TWrapped<T> val_;
     version_type vers_;
     version_type nodevers_;
-    // XXX: possibly shouldn't be a TVersion since it's not used at all transactionally.
-    version_type hohvers_;
+    // We cheat a bit here; because inserts and removes always have a global
+    // tree lock, there's never writer-writer contention on hohversions. Thus,
+    // we can update the hohversion with single word writes, rather than using
+    // cmpxchg or the like.
+    UncontendedVersion hohvers_;
 };
 
 template <typename K, typename T, bool GlobalSize> class RBProxy;

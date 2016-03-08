@@ -75,6 +75,7 @@ public:
 
     static bool try_lock(type& v) {
         type vv = v;
+        // XXX: this might be faster if we do a cmp and cmpxchg?
         return bool_cmpxchg(&v, vv & ~lock_bit, vv | lock_bit | TThread::id());
     }
     static void lock(type& v) {
