@@ -55,11 +55,13 @@ public:
     }
 
     static void unlock_read(signed_type& v) {
-        assert(__sync_fetch_and_add(&v, -1) > 0);
+        auto prev = __sync_fetch_and_add(&v, -1);
+        assert(prev > 0);
     }
 
     static void unlock_write(signed_type& v) {
-        assert(__sync_fetch_and_add(&v, 1) < 0);
+        auto prev = __sync_fetch_and_add(&v, 1);
+        assert(prev < 0);
     }
 
     static bool is_locked(type v) {
