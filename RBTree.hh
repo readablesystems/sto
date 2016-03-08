@@ -129,20 +129,22 @@ public:
 
     // hand-over-hand validation stuff
     void lock_hohversion() {
-      hohvers_.lock();
+        hohvers_.lock();
     }
     void unlock_hohversion() {
-      hohvers_.inc_and_unlock();
+        assert(hohvers_.is_locked_here());
+        TVersion nv(hohvers_.value() + TransactionTid::increment_value);
+        hohvers_.set_version_unlock(nv);
     }
-    UncontendedVersion stable_hohversion() const {
-        auto v = hohvers_;
+    version_type unlocked_hohversion() const {
+        version_type v = hohvers_;
         while (v.is_locked()) {
             acquire_fence();
             v = hohvers_;
         }
         return v;
     }
-    bool validate_hohversion(UncontendedVersion old_v) const {
+    bool validate_hohversion(version_type old_v) const {
         acquire_fence();
         return (hohvers_ == old_v);
     }
@@ -153,11 +155,7 @@ private:
     TWrapped<T> val_;
     version_type vers_;
     version_type nodevers_;
-    // We cheat a bit here; because inserts and removes always have a global
-    // tree lock, there's never writer-writer contention on hohversions. Thus,
-    // we can update the hohversion with single word writes, rather than using
-    // cmpxchg or the like.
-    UncontendedVersion hohvers_;
+    version_type hohvers_;
 };
 
 template <typename K, typename T, bool GlobalSize> class RBProxy;
@@ -373,10 +371,10 @@ private:
     // NOTE: this function must be surrounded by a lock in order to ensure we add the correct nodeversions
     inline std::tuple<wrapper_type*, Version, bool, boundaries_type>
     find_or_abort(rbwrapper<rbpair<K, T>>& rbkvp) const {
-      //        lock_read(&treelock_);
+        lock_read(&treelock_);
         auto results = wrapper_tree_.find_any(rbkvp,
                            rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-        //        unlock_read(&treelock_);
+        unlock_read(&treelock_);
 
         // extract information from results
         wrapper_type* x = std::get<0>(results);
@@ -1139,29 +1137,29 @@ bool RBTree<K, T, GlobalSize>::nontrans_insert(const K& key, const T& value) {
 
 template <typename K, typename T, bool GlobalSize>
 bool RBTree<K, T, GlobalSize>::nontrans_contains(const K& key) {
-  //    lock_read(&treelock_);
+    lock_read(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
                                           rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
-    //    unlock_read(&treelock_);
+    unlock_read(&treelock_);
     return std::get<2>(results);
 }
 
 template <typename K, typename T, bool GlobalSize>
 T RBTree<K, T, GlobalSize>::nontrans_find(const K& key) {
-  //    lock_read(&treelock_);
+    lock_read(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
     bool found = std::get<2>(results);
     T ret = found ? std::get<0>(results)->writeable_value() : T();
-    //    unlock_read(&treelock_);
+    unlock_read(&treelock_);
     return ret;
 }
 
 template <typename K, typename T, bool GlobalSize>
 bool RBTree<K, T, GlobalSize>::nontrans_find(const K& key, T& val) {
-  //    lock_read(&treelock_);
+    lock_read(&treelock_);
     wrapper_type idx_pair(rbpair<K, T>(key, T()));
     auto results = wrapper_tree_.find_any(idx_pair,
             rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
@@ -1169,7 +1167,7 @@ bool RBTree<K, T, GlobalSize>::nontrans_find(const K& key, T& val) {
     if (found) {
       val = std::get<0>(results)->writeable_value();
     }
-    //    unlock_read(&treelock_);
+    unlock_read(&treelock_);
     return found;
 }
 

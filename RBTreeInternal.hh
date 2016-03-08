@@ -6,7 +6,6 @@
 #include <iomanip>
 #include <iostream>
 #include "Interface.hh"
-#include "UncontendedVersion.hh"
 
 #ifndef rbaccount
 # define rbaccount(x)
@@ -39,7 +38,7 @@ class rbnodeptr {
     inline rbnodeptr<T> change_color(bool color) const;
     inline rbnodeptr<T> reverse_color() const;
 
-    inline rbnodeptr<T> rotate(bool isright, T*& root, UncontendedVersion& treeversion) const;
+    inline rbnodeptr<T> rotate(bool isright) const;
     inline rbnodeptr<T> flip() const;
 
     size_t size() const;
@@ -189,7 +188,6 @@ class rbtree {
     rbpriv::rbrep<T, Compare> r_;
     // moved from RBTree.hh
     Version treeversion_;
-    UncontendedVersion roothohversion_;
 
     template <typename K, typename Comp>
     inline std::tuple<T*, Version, bool, boundaries_type> find_any(const K& key, Comp comp) const;
@@ -296,45 +294,22 @@ inline rbnodeptr<T> rbnodeptr<T>::reverse_color() const {
 }
 
 template <typename T>
-inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side, T*& root, UncontendedVersion& rootversion) const {
+inline rbnodeptr<T> rbnodeptr<T>::rotate(bool side) const {
     rbaccount(rotation);
     rbnodeptr<T> x = child(!side);
-    // parent might not actually be black, but we want an rbnodeptr so we can use set_child and the like
-    auto cur_parent = black_parent();
-    if (cur_parent)
-      cur_parent.node()->lock_hohversion();
-    else
-      rootversion.lock();
-    // shouldn't be deadlock problems because we have a global treelock
-    // XXX(nate): why do we need a separate hoh version rather than using node version?
-    node()->lock_hohversion();
-    x.node()->lock_hohversion();
     // XXX no need to track rotations if using boundary nodes
     // increment the nodeversions of these nodes
     // node()->inc_nodeversion();
     // x.node()->inc_nodeversion();
     // if (x.child(side)) x.child(side).node()->inc_nodeversion();
     // perform the rotation
-    // make our child x's child
     if ((child(!side) = x.child(side)))
         x.child(side).parent() = node();
     bool old_color = red();
-    // set x's child to be us
     x.child(side) = change_color(true);
-    x.parent() = cur_parent.node();
+    x.parent() = parent();
     parent() = x.node();
-    auto ret = x.change_color(old_color);
-    
-    bool parent_side = cur_parent.find_child(node());
-    assert(!cur_parent || cur_parent.node()->rblinks_.c_[parent_side].node() == node());
-    cur_parent.set_child(parent_side, ret, root);
-    if (cur_parent)
-      cur_parent.node()->unlock_hohversion();
-    else
-      rootversion.inc_and_unlock();
-    node()->unlock_hohversion();
-    x.node()->unlock_hohversion();
-    return ret;
+    return x.change_color(old_color);
 }
 
 template <typename T>
@@ -377,7 +352,7 @@ inline Compare& rbcompare<Compare>::get_compare() const {
 // RBTREE FUNCTION DEFINITIONS
 template <typename T, typename C>
 inline rbtree<T, C>::rbtree(const value_compare &compare)
-    : r_(compare), treeversion_(TransactionTid::valid_bit), roothohversion_() {
+    : r_(compare), treeversion_(TransactionTid::valid_bit) {
 }
 
 template <typename T, typename C>
@@ -403,19 +378,18 @@ void rbtree<T, C>::insert_commit(T* x, rbnodeptr<T> p, bool side) {
     while (p.red()) {
         rbnodeptr<T> gp = p.black_parent(), z;
         if (gp.child(0).red() && gp.child(1).red()) {
-            // just changing colors, no need to hoh lock
             z = gp.flip();
             p = gp.black_parent().load_color();
-            side = p.find_child(gp.node());
-            p.set_child(side, z, r_.root_);
         } else {
             bool gpside = gp.find_child(p.node());
             if (gpside != side) {
-              p.rotate(gpside, r_.root_, roothohversion_);
-            }
-            z = gp.rotate(!gpside, r_.root_, roothohversion_);
+                gp.child(gpside) = p.rotate(gpside);
+            } 
+            z = gp.rotate(!gpside); 
             p = z.black_parent();
         }
+        side = p.find_child(gp.node());
+        p.set_child(side, z, r_.root_);
     }
 }
 
@@ -505,7 +479,7 @@ void rbtree<T, C>::delete_node_fixup(rbnodeptr<T> p, bool side) {
 
         if (p.child(!side).red()) {
             // invariant: p is black (b/c one of its children is red)
-            p.rotate(side, r_.root_, roothohversion_);
+            gp.set_child(gpside, p.rotate(side), r_.root_);
             gp = p.black_parent(); // p is now further down the tree
             gpside = side;         // (since we rotated in that direction)
         }
@@ -514,18 +488,18 @@ void rbtree<T, C>::delete_node_fixup(rbnodeptr<T> p, bool side) {
         if (!w.child(0).red() && !w.child(1).red()) {
             p.child(!side) = w.change_color(true);
             p = p.change_color(false);
-            gp.set_child(gpside, p, r_.root_);
         } else {
             if (!w.child(!side).red()) {
-                w.rotate(!side, r_.root_, roothohversion_);
+                p.child(!side) = w.rotate(!side);
             }
             bool gpside = gp.find_child(p.node());
             if (gp)
                 p = gp.child(gpside); // fetch correct color for `p`
-            p = p.rotate(side, r_.root_, roothohversion_);
+            p = p.rotate(side);
             p.child(0) = p.child(0).change_color(false);
             p.child(1) = p.child(1).change_color(false);
         }
+        gp.set_child(gpside, p, r_.root_);
     } else if (p)
         p.child(side) = p.child(side).change_color(false);
 }
@@ -542,14 +516,7 @@ template <typename T, typename C> template <typename K, typename Comp>
 inline std::tuple<T*, typename rbtree<T, C>::Version, bool,
        typename rbtree<T, C>::boundaries_type>
 rbtree<T, C>::find_any(const K& key, Comp comp) const {
- retry:
-    Version retver = treeversion_;
-    UncontendedVersion lasthohversion;
-    do {
-      lasthohversion = roothohversion_;
-      acquire_fence();
-    } while(lasthohversion.is_locked());
-    fence();
+
     rbnodeptr<T> n(r_.root_, false);
     rbnodeptr<T> p(nullptr, false);
 
@@ -557,19 +524,9 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
     T* rhs = r_.limit_[1];
     boundaries_type boundary = std::make_pair(std::make_tuple(lhs, lhs ? lhs->nodeversion() : 0),
                     std::make_tuple(rhs, rhs ? rhs->nodeversion() : 0));
+
     while (n.node()) {
-        auto curversion = n.node()->stable_hohversion();
-        // XXX: I'm not totally sure if we need to do this cmp before validating hohversions
         int cmp = comp.compare(key, *n.node());
-        fence();
-        if (p) {
-          if (!p.node()->validate_hohversion(lasthohversion))
-            // TODO: we may be able to locally retry in some cases
-            goto retry;
-        } else {
-          if (roothohversion_ != lasthohversion)
-            goto retry;
-        }
         if (cmp == 0)
             break;
 
@@ -582,15 +539,13 @@ rbtree<T, C>::find_any(const K& key, Comp comp) const {
             T* nb = n.node();
             boundary.second = std::make_tuple(nb, nb->nodeversion());
         }
-        lasthohversion = curversion;
         p = n;
         n = n.node()->rblinks_.c_[cmp > 0];
     }
 
     bool found = (n.node() != nullptr);
     T* retnode = found ? n.node() : p.node();
-    if (retnode)
-        retver = retnode->version();
+    Version retver = retnode ? retnode->version() : treeversion_;
 
     return std::make_tuple(retnode, retver, found, boundary);
 }
