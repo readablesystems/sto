@@ -6,12 +6,12 @@
 template <typename T, template <typename> typename W = TOpaqueWrapped>
 class TVector : public TObject {
 public:
-    typedef unsigned size_type;
-    typedef int difference_type;
+    using size_type = unsigned;
+    using difference_type = int;
 private:
     static constexpr size_type default_capacity = 128;
-    typedef TIntRange<unsigned> pred_type;
-    typedef int key_type;
+    using pred_type = TIntRange<size_type>;
+    using key_type = int;
     static constexpr key_type size_key = 0;
     /* All information about the TVector's size is stored under size_key.
        If size_key exists (which it almost always does), then:
@@ -124,6 +124,9 @@ public:
         item.add_write(std::move(x));
     }
 
+    size_type nontrans_size() const {
+        return size_.access();
+    }
     get_type nontrans_get(size_type i) const {
         assert(i < size_.access());
         return data_[i].v.access();
@@ -135,32 +138,6 @@ public:
     void nontrans_put(size_type i, T&& x) {
         assert(i < size_.access());
         data_[i].v.access() = std::move(x);
-    }
-
-    // size helpers
-    TransProxy size_item() const {
-        auto item = Sto::item(this, size_key);
-        if (!item.has_predicate()) {
-            item.set_predicate(pred_type::unconstrained());
-            size_type sz = size_.snapshot(item, size_vers_);
-            item.template xwrite_value<pred_type>() = pred_type{sz, sz};
-        }
-        return item;
-    }
-    static pred_type& size_predicate(TransProxy sitem) {
-        return sitem.template predicate_value<pred_type>();
-    }
-    pred_type& size_predicate() const {
-        return size_predicate(size_item());
-    }
-    static size_type current_size(TransProxy sitem) {
-        return sitem.template xwrite_value<pred_type>().second;
-    }
-    static size_type original_size(TransProxy sitem) {
-        return sitem.template xwrite_value<pred_type>().first;
-    }
-    size_type nontrans_size() const {
-        return size_.access();
     }
 
     // transactional methods
@@ -204,7 +181,7 @@ public:
                 idx = original_size_ - key - 1;
             else if (!item.has_flag(indexed_bit)) {
                 TransProxy sitem = const_cast<Transaction&>(txn).item(this, size_key);
-                idx = original_size_ - (original_size(sitem) - idx);
+                idx = original_size_ - (size_info(sitem).first - idx);
             }
             if (idx >= size_.access()) {
                 item.clear_needs_unlock();
@@ -289,6 +266,29 @@ private:
     size_type original_size_; // protected by size_vers_ lock
     size_type max_size_; // protected by size_vers_ lock
     size_type capacity_;
+
+    // size helpers
+    TransProxy size_item() const {
+        auto item = Sto::item(this, size_key);
+        if (!item.has_predicate()) {
+            item.set_predicate(pred_type::unconstrained());
+            size_type sz = size_.snapshot(item, size_vers_);
+            item.template xwrite_value<pred_type>() = pred_type{sz, sz};
+        }
+        return item;
+    }
+    static pred_type& size_predicate(TransProxy sitem) {
+        return sitem.template predicate_value<pred_type>();
+    }
+    pred_type& size_predicate() const {
+        return size_predicate(size_item());
+    }
+    static pred_type& size_info(TransProxy sitem) {
+        return sitem.template xwrite_value<pred_type>();
+    }
+    pred_type& size_info() const {
+        return size_info(size_item());
+    }
 
     friend class iterator;
     friend class const_iterator;
@@ -457,8 +457,8 @@ inline auto TVector<T, W>::begin() -> iterator {
 
 template <typename T, template <typename> typename W>
 inline auto TVector<T, W>::end() -> iterator {
-    TransProxy sitem = size_item();
-    return iterator(this, current_size(sitem), original_size(sitem) + 1);
+    auto& sinfo = size_info();
+    return iterator(this, sinfo.second, sinfo.first + 1);
 }
 
 template <typename T, template <typename> typename W>
@@ -468,8 +468,8 @@ inline auto TVector<T, W>::cbegin() const -> const_iterator {
 
 template <typename T, template <typename> typename W>
 inline auto TVector<T, W>::cend() const -> const_iterator {
-    TransProxy sitem = size_item();
-    return iterator(this, current_size(sitem), original_size(sitem) + 1);
+    auto& sinfo = size_info();
+    return iterator(this, sinfo.second, sinfo.first + 1);
 }
 
 template <typename T, template <typename> typename W>
@@ -479,15 +479,16 @@ inline auto TVector<T, W>::begin() const -> const_iterator {
 
 template <typename T, template <typename> typename W>
 inline auto TVector<T, W>::end() const -> const_iterator {
-    TransProxy sitem = size_item();
-    return iterator(this, current_size(sitem), original_size(sitem) + 1);
+    auto& sinfo = size_info();
+    return iterator(this, sinfo.second, sinfo.first + 1);
 }
 
 
 template <typename T, template <typename> typename W>
 inline auto TVector<T, W>::size() const -> size_proxy {
     auto sitem = size_item();
-    return size_proxy(&size_predicate(sitem), original_size(sitem), current_size(sitem) - original_size(sitem));
+    auto& sinfo = size_info(sitem);
+    return size_proxy(&size_predicate(sitem), sinfo.first, sinfo.second - sinfo.first);
 }
 
 template <typename T, template <typename> typename W>
