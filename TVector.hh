@@ -42,7 +42,7 @@ private:
 public:
     class iterator;
     class const_iterator;
-    using size_proxy = TIntRangeSizeProxy<size_type>;
+    using size_proxy = TIntRangeProxy<size_type>;
     using difference_proxy = TIntRangeDifferenceProxy<size_type>;
     typedef T value_type;
     typedef typename W<T>::read_type get_type;
@@ -61,7 +61,14 @@ public:
         delete[] reinterpret_cast<char*>(data_);
     }
 
-    inline size_proxy size() const;
+    size_proxy size() const {
+        auto sitem = size_item();
+        auto& sinfo = size_info(sitem);
+        return size_proxy(&size_predicate(sitem), sinfo.first, sinfo.second - sinfo.first);
+    }
+    bool empty() const {
+        return size() != 0;
+    }
 
     const_proxy_type operator[](size_type i) const {
         return const_proxy_type(this, i);
@@ -483,13 +490,6 @@ inline auto TVector<T, W>::end() const -> const_iterator {
     return iterator(this, sinfo.second, sinfo.first + 1);
 }
 
-
-template <typename T, template <typename> typename W>
-inline auto TVector<T, W>::size() const -> size_proxy {
-    auto sitem = size_item();
-    auto& sinfo = size_info(sitem);
-    return size_proxy(&size_predicate(sitem), sinfo.first, sinfo.second - sinfo.first);
-}
 
 template <typename T, template <typename> typename W>
 inline auto TVector<T, W>::const_iterator::operator-(const const_iterator& x) const -> difference_proxy {

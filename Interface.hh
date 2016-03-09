@@ -182,6 +182,10 @@ public:
         return TransactionTid::is_locked_elsewhere(v_);
     }
 
+    bool bool_cmpxchg(TVersion expected, TVersion desired) {
+        return ::bool_cmpxchg(&v_, expected.v_, desired.v_);
+    }
+
     bool try_lock() {
         return TransactionTid::try_lock(v_);
     }
@@ -200,6 +204,9 @@ public:
     }
     bool operator!=(TVersion x) const {
         return v_ != x.v_;
+    }
+    TVersion operator|(TVersion x) const {
+        return TVersion(v_ | x.v_);
     }
 
     void set_version(TVersion new_v) {
@@ -260,6 +267,10 @@ public:
         return TransactionTid::is_locked_elsewhere(v_);
     }
 
+    bool bool_cmpxchg(TNonopaqueVersion expected, TNonopaqueVersion desired) {
+        return ::bool_cmpxchg(&v_, expected.v_, desired.v_);
+    }
+
     bool try_lock() {
         return TransactionTid::try_lock(v_);
     }
@@ -278,6 +289,9 @@ public:
     }
     bool operator!=(TNonopaqueVersion x) const {
         return v_ != x.v_;
+    }
+    TNonopaqueVersion operator|(TNonopaqueVersion x) const {
+        return TNonopaqueVersion(v_ | x.v_);
     }
 
     void set_version(TNonopaqueVersion new_v) {

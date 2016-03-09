@@ -57,75 +57,128 @@ struct TIntRange {
     }
 };
 
+template <typename T, bool Signed = std::is_signed<T>::value>
+class TIntRangeProxy;
+
 template <typename T>
-class TIntRangeSizeProxy {
+class TIntRangeProxy<T, false> {
 public:
-    typedef T size_type;
+    typedef T value_type;
     typedef typename mass::make_signed<T>::type difference_type;
 
-    TIntRangeSizeProxy(TIntRange<T>* r, size_type original, difference_type delta)
+    TIntRangeProxy(TIntRange<T>* r, value_type original, difference_type delta)
         : r_(r), original_(original), delta_(delta) {
     }
 
-    operator size_type() const {
+    operator value_type() const {
         // XXX this assumes that TransItem doesn't change location
         if (r_)
             r_->observe(original_);
         return original_ + delta_;
     }
 
-    bool operator==(size_type x) const {
+    bool operator==(value_type x) const {
         x -= delta_;
         if (r_)
             r_->observe_eq(x, original_ == x);
         return original_ == x;
     }
-    bool operator!=(size_type x) const {
+    bool operator!=(value_type x) const {
         return !(*this == x);
     }
-    bool operator<(size_type x) const {
+    bool operator<(value_type x) const {
         x -= delta_;
         if (r_)
             r_->observe_lt(x, original_ < x);
         return original_ < x;
     }
-    bool operator<=(size_type x) const {
+    bool operator<=(value_type x) const {
         x -= delta_;
         if (r_)
             r_->observe_le(x, original_ <= x);
         return original_ <= x;
     }
-    bool operator>=(size_type x) const {
+    bool operator>=(value_type x) const {
         return !(*this < x);
     }
-    bool operator>(size_type x) const {
+    bool operator>(value_type x) const {
         return !(*this <= x);
     }
 
     // difference_type versions just for friendliness
     bool operator==(difference_type x) const {
-        return *this == size_type(x);
+        return *this == value_type(x);
     }
     bool operator!=(difference_type x) const {
-        return *this != size_type(x);
+        return *this != value_type(x);
     }
     bool operator<(difference_type x) const {
-        return *this < size_type(x);
+        return *this < value_type(x);
     }
     bool operator<=(difference_type x) const {
-        return *this <= size_type(x);
+        return *this <= value_type(x);
     }
     bool operator>=(difference_type x) const {
-        return *this >= size_type(x);
+        return *this >= value_type(x);
     }
     bool operator>(difference_type x) const {
-        return *this > size_type(x);
+        return *this > value_type(x);
     }
 
 private:
     TIntRange<T>* r_;
-    size_type original_;
+    value_type original_;
     difference_type delta_;
+};
+
+template <typename T>
+class TIntRangeProxy<T, true> {
+public:
+    typedef T value_type;
+
+    TIntRangeProxy(TIntRange<T>* r, value_type original, value_type delta)
+        : r_(r), original_(original), delta_(delta) {
+    }
+
+    operator value_type() const {
+        // XXX this assumes that TransItem doesn't change location
+        if (r_)
+            r_->observe(original_);
+        return original_ + delta_;
+    }
+
+    bool operator==(value_type x) const {
+        x -= delta_;
+        if (r_)
+            r_->observe_eq(x, original_ == x);
+        return original_ == x;
+    }
+    bool operator!=(value_type x) const {
+        return !(*this == x);
+    }
+    bool operator<(value_type x) const {
+        x -= delta_;
+        if (r_)
+            r_->observe_lt(x, original_ < x);
+        return original_ < x;
+    }
+    bool operator<=(value_type x) const {
+        x -= delta_;
+        if (r_)
+            r_->observe_le(x, original_ <= x);
+        return original_ <= x;
+    }
+    bool operator>=(value_type x) const {
+        return !(*this < x);
+    }
+    bool operator>(value_type x) const {
+        return !(*this <= x);
+    }
+
+private:
+    TIntRange<T>* r_;
+    value_type original_;
+    value_type delta_;
 };
 
 template <typename T>
@@ -179,28 +232,28 @@ private:
     difference_type delta_;
 };
 
-template <typename T>
-bool operator==(T a, const TIntRangeSizeProxy<T>& b) {
+template <typename T, bool Signed>
+bool operator==(T a, const TIntRangeProxy<T, Signed>& b) {
     return b == a;
 }
-template <typename T>
-bool operator!=(T a, const TIntRangeSizeProxy<T>& b) {
+template <typename T, bool Signed>
+bool operator!=(T a, const TIntRangeProxy<T, Signed>& b) {
     return b != a;
 }
-template <typename T>
-bool operator<(T a, const TIntRangeSizeProxy<T>& b) {
+template <typename T, bool Signed>
+bool operator<(T a, const TIntRangeProxy<T, Signed>& b) {
     return b > a;
 }
-template <typename T>
-bool operator<=(T a, const TIntRangeSizeProxy<T>& b) {
+template <typename T, bool Signed>
+bool operator<=(T a, const TIntRangeProxy<T, Signed>& b) {
     return b >= a;
 }
-template <typename T>
-bool operator>=(T a, const TIntRangeSizeProxy<T>& b) {
+template <typename T, bool Signed>
+bool operator>=(T a, const TIntRangeProxy<T, Signed>& b) {
     return b <= a;
 }
-template <typename T>
-bool operator>(T a, const TIntRangeSizeProxy<T>& b) {
+template <typename T, bool Signed>
+bool operator>(T a, const TIntRangeProxy<T, Signed>& b) {
     return b < a;
 }
 
