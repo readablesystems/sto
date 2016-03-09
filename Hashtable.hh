@@ -345,12 +345,12 @@ public:
     if (has_insert(item)) {
       // need to update bucket version
       bucket_entry& buck = buck_entry(el->key);
-      lock(&buck.version);
+      lock(buck.version);
       if (Opacity)
 	TransactionTid::set_version(buck.version, t.commit_tid());
       else
 	TransactionTid::inc_invalid_version(buck.version);
-      unlock(&buck.version);
+      unlock(buck.version);
     }
 #endif
     el->valid() = true;
@@ -493,7 +493,7 @@ public:
   // remove given the internal element node. used by transaction system
   void _remove(internal_elem *el) {
     bucket_entry& buck = buck_entry(el->key);
-    lock(&buck.version);
+    lock(buck.version);
     internal_elem *prev = NULL;
     internal_elem *cur = buck.head;
     while (cur != NULL && cur != el) {
@@ -506,7 +506,7 @@ public:
     } else {
       buck.head = cur->next;
     }
-    unlock(&buck.version);
+    unlock(buck.version);
     // TODO(nate): we probably need to do a delete of cur->value too to actually free
     // all memory (for non-trivial types)
     Transaction::rcu_free(cur);
@@ -515,7 +515,7 @@ public:
   // non-txnal remove given a key
   bool remove(const Key& k) {
     bucket_entry& buck = buck_entry(k);
-    lock(&buck.version);
+    lock(buck.version);
     internal_elem *prev = NULL;
     internal_elem *cur = buck.head;
     while (cur != NULL && !pred_(cur->key, k)) {
@@ -523,7 +523,7 @@ public:
       cur = cur->next;
     }
     if (!cur) {
-      unlock(&buck.version);
+      unlock(buck.version);
       return false;
     }
     if (prev) {
@@ -531,7 +531,7 @@ public:
     } else {
       buck.head = cur->next;
     }
-    unlock(&buck.version);    
+    unlock(buck.version);    
     // TODO(nate): this would probably work fine as-is
     // Transaction::rcu_free(cur);
     return true;
