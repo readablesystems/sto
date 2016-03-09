@@ -63,6 +63,7 @@ public:
     }
     static void unlock_read(type& v) {
         auto prev = __sync_fetch_and_add(&v, -1);
+	(void)prev;
         assert(prev > 0);
     }
     static void unlock_write(type& v) {
