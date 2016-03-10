@@ -504,9 +504,7 @@ public:
       buck.head = cur->next;
     }
     unlock(buck.version);
-    // TODO(nate): we probably need to do a delete of cur->value too to actually free
-    // all memory (for non-trivial types)
-    Transaction::rcu_free(cur);
+    Transaction::rcu_delete(cur);
   }
 
   // non-txnal remove given a key
