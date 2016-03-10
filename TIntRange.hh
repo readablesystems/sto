@@ -55,6 +55,10 @@ struct TIntRange {
     bool verify(T value) const {
         return first <= value && value <= second;
     }
+
+    friend std::ostream& operator<<(std::ostream& w, const TIntRange<T>& r) {
+        return w << '[' << r.first << ',' << r.second << ']';
+    }
 };
 
 template <typename T, bool Signed = std::is_signed<T>::value>

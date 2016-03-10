@@ -1,4 +1,5 @@
 #include "Transaction.hh"
+#include <typeinfo>
 
 Transaction::testing_type Transaction::testing;
 threadinfo_t Transaction::tinfo[MAX_THREADS];
@@ -220,7 +221,7 @@ void Transaction::print(std::ostream& w) const {
 }
 
 void TObject::print(std::ostream& w, const TransItem& item) const {
-    w << "{" << (void*) this << "." << item.key<void*>();
+    w << "{" << typeid(*this).name() << " " << (void*) this << "." << item.key<void*>();
     if (item.has_read())
         w << " ?" << item.read_value<void*>();
     if (item.has_write())
