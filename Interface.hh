@@ -108,6 +108,12 @@ public:
         release_fence();
         v = new_v;
     }
+    static void set_version_locked(type& v, type new_v) {
+        assert(is_locked_here(v));
+        assert(is_locked_here(new_v));
+        release_fence();
+        v = new_v;
+    }
     static void set_version_unlock(type& v, type new_v) {
         assert(is_locked_here(v));
         assert(!is_locked(new_v) || is_locked_here(new_v));
@@ -212,6 +218,9 @@ public:
     void set_version(TVersion new_v) {
         TransactionTid::set_version(v_, new_v.v_);
     }
+    void set_version_locked(TVersion new_v) {
+        TransactionTid::set_version_locked(v_, new_v.v_);
+    }
     void set_version_unlock(TVersion new_v) {
         TransactionTid::set_version_unlock(v_, new_v.v_);
     }
@@ -295,6 +304,9 @@ public:
 
     void set_version(TNonopaqueVersion new_v) {
         TransactionTid::set_version(v_, new_v.v_);
+    }
+    void set_version_locked(TNonopaqueVersion new_v) {
+        TransactionTid::set_version_locked(v_, new_v.v_);
     }
     void set_version_unlock(TNonopaqueVersion new_v) {
         TransactionTid::set_version_unlock(v_, new_v.v_);

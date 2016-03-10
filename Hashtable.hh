@@ -27,6 +27,8 @@ public:
     typedef K key_type;
     typedef V Value;
     typedef W Value_type;
+
+    static constexpr TVersion::type invalid_bit = TransactionTid::user_bit;
 private:
   // our hashtable is an array of linked lists. 
   // an internal_elem is the node type for these linked lists
@@ -36,20 +38,15 @@ private:
     Key key;
     internal_elem *next;
     Version_type version;
-#ifndef STO_NO_STM
-    // TODO(nate): we should just stuff this in the version so we don't have to
-    // deal with this.
-    bool valid_;
-#endif
     TWrapped<Value> value;
 #ifndef STO_NO_STM
-    internal_elem(Key k, Value val)
-        : key(k), next(NULL), version(Sto::initialized_tid()), valid_(false), value(val) {}
-    bool& valid() {
-      return valid_;
+    internal_elem(Key k, Value val, bool mark_valid)
+        : key(k), next(NULL), version(Sto::initialized_tid() | (mark_valid ? 0 : invalid_bit)), value(val) {}
+    bool valid() const {
+        return !(version.value() & invalid_bit);
     }
 #else
-    internal_elem(Key k, Value val)
+    internal_elem(Key k, Value val, bool)
         : key(k), next(NULL), version(Sto::initialized_tid()), value(val) {}
 #endif
   };
@@ -162,14 +159,14 @@ public:
         // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
         Sto::item(this, pack_bucket(bucket(k))).observe(TVersion(buck_version.unlocked()));
         return true;
-      } else 
+      } else
 #endif
       if (!valid) {
         Sto::abort();
         return false;
       }
       assert(valid);
-#if READ_MY_WRITES      
+#if READ_MY_WRITES
       // we already deleted!
       if (has_delete(item)) {
         return false;
@@ -262,7 +259,7 @@ public:
       }
 
       // not there so need to insert
-      insert_locked(buck, k, v); // marked as invalid
+      insert_locked<false>(buck, k, v); // marked as invalid
       auto new_head = buck.head;
       unlock(buck.version);
       auto new_version = buck.version;
@@ -323,8 +320,7 @@ public:
     assert(is_locked(el));
     // delete
     if (item.flags() & delete_bit) {
-      assert(el->valid());
-      el->valid() = false;
+      el->version.set_version_locked(el->version.value() | invalid_bit);
       // we wait to remove the node til afterC() (unclear that this is actually necessary)
       return;
     }
@@ -338,7 +334,7 @@ public:
       //Transaction::rcu_delete(new_v);
     //}
 
-    el->version.set_version(t.commit_tid());
+    el->version.set_version(t.commit_tid()); // automatically sets valid to true
 #if 0
     if (Opacity)
       TransactionTid::set_version(el->version, t.commit_tid());
@@ -355,7 +351,6 @@ public:
       unlock(buck.version);
     }
 #endif
-    el->valid() = true;
   }
 
   void unlock(TransItem& item) {
@@ -699,17 +694,12 @@ private:
     v.unlock();
   }
 
-  template <bool markValid = false>
+  template <bool markValid>
   void insert_locked(bucket_entry& buck, const Key& k, const Value& val) {
     assert(is_locked(buck.version));
-    auto new_head = new internal_elem(k, val);
+    auto new_head = new internal_elem(k, val, markValid);
     internal_elem *cur_head = buck.head;
     new_head->next = cur_head;
-    if (markValid) {
-#ifndef STO_NO_STM
-      new_head->valid() = true;
-#endif
-    }
     buck.head = new_head;
     // TODO(nate): this means we'll always have to do a hard opacity check on 
     // the bucket version (but I don't think we can get a commit tid yet).
