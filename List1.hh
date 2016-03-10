@@ -438,7 +438,7 @@ public:
             if (Opacity) {
                 TransactionTid::set_version(listversion_, t.commit_tid());
             } else {
-                TransactionTid::inc_invalid_version(listversion_);
+                TransactionTid::inc_nonopaque_version(listversion_);
             }
         } else if (has_doupdate(item)) {
             // XXX BUG
@@ -449,7 +449,7 @@ public:
             if (Opacity) {
                 TransactionTid::set_version(listversion_, t.commit_tid());
             } else {
-                TransactionTid::inc_invalid_version(listversion_);
+                TransactionTid::inc_nonopaque_version(listversion_);
             }
         }
     }

@@ -474,7 +474,7 @@ private:
       if (Opacity) {
         TransactionTid::set_version(listversion_, t.commit_tid());
       } else {
-        TransactionTid::inc_invalid_version(listversion_);
+        TransactionTid::inc_nonopaque_version(listversion_);
       }
     } else if (has_doupdate(item)) {
       // nate: Not sure what the bug here is? We'll have a lock on the whole list because 
@@ -487,7 +487,7 @@ private:
       if (Opacity) {
         TransactionTid::set_version(listversion_, t.commit_tid());
       } else {
-        TransactionTid::inc_invalid_version(listversion_);
+        TransactionTid::inc_nonopaque_version(listversion_);
       }
     }
   }

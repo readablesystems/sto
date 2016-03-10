@@ -28,9 +28,9 @@ public:
     static constexpr type threadid_mask = type(0x1F);
     static constexpr type lock_bit = type(0x20);
     // Used for data structures that don't use opacity. When they increment
-    // a version they unset the valid_bit, forcing any opacity check to be
+    // a version they set the nonopaque_bit, forcing any opacity check to be
     // hard (checking the full read set).
-    static constexpr type valid_bit = type(0x40);
+    static constexpr type nonopaque_bit = type(0x40);
     static constexpr type user_bit = type(0x80);
     static constexpr type increment_value = type(0x400);
 
@@ -116,16 +116,15 @@ public:
         v = new_v;
     }
 
-    static void set_invalid(type& v) {
-        v &= ~valid_bit;
+    static void set_nonopaque(type& v) {
+        v |= nonopaque_bit;
     }
-
-    static type next_invalid_version(type v) {
-        return (v + increment_value) & ~valid_bit;
+    static type next_nonopaque_version(type v) {
+        return (v + increment_value) | nonopaque_bit;
     }
-    static void inc_invalid_version(type& v) {
+    static void inc_nonopaque_version(type& v) {
         assert(is_locked_here(v));
-        type new_v = (v + increment_value) & ~valid_bit;
+        type new_v = (v + increment_value) | nonopaque_bit;
         release_fence();
         v = new_v;
     }
@@ -137,7 +136,7 @@ public:
     }
     static bool try_check_opacity(type start_tid, type v) {
         signed_type delta = start_tid - v;
-        return (delta > 0 && !(delta & (lock_bit | valid_bit))) || !v;
+        return delta > 0 && !(v & (lock_bit | nonopaque_bit));
     }
 
     static void print(type v, std::ostream& w) {
@@ -146,7 +145,7 @@ public:
         v &= increment_value - 1;
         if (v & ~(user_bit - 1))
             w << "U" << (v & ~(user_bit - 1));
-        if (!(v & valid_bit))
+        if (v & nonopaque_bit)
             w << "!";
         if (v & lock_bit)
             w << "L" << std::dec << (v & (lock_bit - 1));
@@ -217,12 +216,11 @@ public:
         TransactionTid::set_version_unlock(v_, new_v.v_);
     }
 
-    void set_invalid() {
-        TransactionTid::set_invalid(v_);
+    void set_nonopaque() {
+        TransactionTid::set_nonopaque(v_);
     }
-
-    void inc_invalid_version() {
-        TransactionTid::inc_invalid_version(v_);
+    void inc_nonopaque_version() {
+        TransactionTid::inc_nonopaque_version(v_);
     }
 
     bool check_version(TVersion old_vers) const {
@@ -245,7 +243,7 @@ public:
     typedef TransactionTid::signed_type signed_type;
 
     TNonopaqueVersion()
-        : v_() {
+        : v_(TransactionTid::nonopaque_bit) {
     }
     TNonopaqueVersion(type v)
         : v_(v) {

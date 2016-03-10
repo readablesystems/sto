@@ -486,7 +486,7 @@ public:
             if (Opacity) {
                 TransactionTid::set_version(vecversion_, t.commit_tid());
             } else {
-                TransactionTid::inc_invalid_version(vecversion_);
+                TransactionTid::inc_nonopaque_version(vecversion_);
             }
         } else {
             auto index = item.key<key_type>();
@@ -497,7 +497,7 @@ public:
                     if (Opacity) {
                         TransactionTid::set_version(vecversion_, t.commit_tid());
                     } else {
-                        TransactionTid::inc_invalid_version(vecversion_);
+                        TransactionTid::inc_nonopaque_version(vecversion_);
                     }
                 }
             } else if (index >= size_) {

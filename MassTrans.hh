@@ -550,7 +550,7 @@ public:
       fence();
       e->version() = v;
     } else
-      TransactionTid::inc_invalid_version(e->version());
+      TransactionTid::inc_nonopaque_version(e->version());
     
   }
 

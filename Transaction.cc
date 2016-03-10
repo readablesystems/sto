@@ -5,11 +5,11 @@ Transaction::testing_type Transaction::testing;
 threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int TThread::the_id;
 Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epochs = {
-    1, 0, true
+    1, 0, TransactionTid::increment_value, true
 };
 __thread Transaction *TThread::txn = nullptr;
 std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callback;
-TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = TransactionTid::valid_bit;
+TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = TransactionTid::increment_value;
 
 static void __attribute__((used)) check_static_assertions() {
     static_assert(sizeof(threadinfo_t) % 128 == 0, "threadinfo is 2-cache-line aligned");
@@ -27,6 +27,7 @@ void* Transaction::epoch_advancer(void*) {
         }
         global_epochs.global_epoch = std::max(g + 1, epoch_type(1));
         global_epochs.active_epoch = e;
+        global_epochs.recent_tid = Transaction::_TID;
 
         if (epoch_advance_callback)
             epoch_advance_callback(global_epochs.global_epoch);
@@ -49,7 +50,7 @@ void Transaction::hard_check_opacity(TransactionTid::type t) {
         INC_P(txp_hco_abort);
         abort();
     }
-    if (!(t & TransactionTid::valid_bit))
+    if (t & TransactionTid::nonopaque_bit)
         INC_P(txp_hco_invalid);
 
     start_tid_ = _TID;

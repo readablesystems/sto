@@ -333,7 +333,7 @@ public:
             if (Opacity) {
                 TransactionTid::set_version(popversion_, t.commit_tid());
             } else {
-                TransactionTid::inc_invalid_version(popversion_);
+                TransactionTid::inc_nonopaque_version(popversion_);
             }
         } else {
             auto e = item.key<versioned_value*>();

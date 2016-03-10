@@ -59,12 +59,12 @@ public:
 
     explicit rbpair(const K& key, const T& value)
     : key_(key), val_(value),
-      vers_(TransactionTid::increment_value + TransactionTid::valid_bit + insert_bit),
-      nodevers_(TransactionTid::valid_bit), hohvers_() {}
+      vers_(Sto::initialized_tid() + insert_bit),
+      nodevers_(Sto::initialized_tid()), hohvers_() {}
     explicit rbpair(std::pair<const K, T>& kvp)
     : key_(kvp.first), val_(kvp.second),
-      vers_(TransactionTid::increment_value + TransactionTid::valid_bit + insert_bit),
-      nodevers_(TransactionTid::valid_bit), hohvers_() {}
+      vers_(Sto::initialized_tid() + insert_bit),
+      nodevers_(Sto::initialized_tid()), hohvers_() {}
 
     // version getters
     version_type& version() {
@@ -1030,7 +1030,7 @@ void RBTree<K, T, GlobalSize>::cleanup(TransItem& item, bool committed) {
             wrapper_tree_.erase(*e);
             unlock_write(&treelock_);
             // invalidate the nodeversion after we erase
-            e->nodeversion().set_invalid();
+            e->nodeversion().set_nonopaque();
             Transaction::rcu_free(e);
         }
     }

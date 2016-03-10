@@ -18,7 +18,7 @@ public:
     void write(T v) {
         TransactionTid::lock(s_.version());
         s_.set_value(v);
-        TransactionTid::set_version_unlock(s_.version(), TransactionTid::next_invalid_version(s_.version()));
+        TransactionTid::set_version_unlock(s_.version(), TransactionTid::next_nonopaque_version(s_.version()));
     }
 
 private:
@@ -96,7 +96,7 @@ public:
         if (GenericSTM) {
             TransactionTid::set_version(s_.version(), t.commit_tid());
         } else {
-            TransactionTid::inc_invalid_version(s_.version());
+            TransactionTid::inc_nonopaque_version(s_.version());
         }
     }
 

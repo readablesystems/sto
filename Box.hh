@@ -21,7 +21,7 @@ public:
         // Can be locked by a thread that is about to abort or locked by a thread that is about to release the locks.
         if (!locked) lock_local();
         s_.set_value(v);
-        TransactionTid::type newv = (s_.version() + TransactionTid::increment_value)  & ~TransactionTid::valid_bit;
+        TransactionTid::type newv = (s_.version() + TransactionTid::increment_value) | TransactionTid::nonopaque_bit;
         release_fence();
         s_.version() = newv;
         if (!locked) unlock_local();
@@ -95,7 +95,7 @@ public:
         if (GenericSTM) {
             TransactionTid::set_version(s_.version(), t.commit_tid());
         } else {
-            TransactionTid::inc_invalid_version(s_.version());
+            TransactionTid::inc_nonopaque_version(s_.version());
         }
     }
 

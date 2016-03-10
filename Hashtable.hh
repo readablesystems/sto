@@ -43,12 +43,14 @@ private:
 #endif
     TWrapped<Value> value;
 #ifndef STO_NO_STM
-    internal_elem(Key k, Value val) : key(k), next(NULL), version(TransactionTid::valid_bit), valid_(false), value(val) {}
+    internal_elem(Key k, Value val)
+        : key(k), next(NULL), version(Sto::initialized_tid()), valid_(false), value(val) {}
     bool& valid() {
       return valid_;
     }
 #else
-    internal_elem(Key k, Value val) : key(k), next(NULL), version(TransactionTid::valid_bit), value(val) {}
+    internal_elem(Key k, Value val)
+        : key(k), next(NULL), version(Sto::initialized_tid()), value(val) {}
 #endif
   };
 
@@ -341,7 +343,7 @@ public:
     if (Opacity)
       TransactionTid::set_version(el->version, t.commit_tid());
     else
-      TransactionTid::inc_invalid_version(el->version);
+      TransactionTid::inc_nonopaque_version(el->version);
     if (has_insert(item)) {
       // need to update bucket version
       bucket_entry& buck = buck_entry(el->key);
@@ -349,7 +351,7 @@ public:
       if (Opacity)
 	TransactionTid::set_version(buck.version, t.commit_tid());
       else
-	TransactionTid::inc_invalid_version(buck.version);
+	TransactionTid::inc_nonopaque_version(buck.version);
       unlock(buck.version);
     }
 #endif
@@ -622,7 +624,7 @@ public:
     lock(e->version);
     e->value.access() = val;
 #ifndef STO_NO_STM
-    e->version.inc_invalid_version();
+    e->version.inc_nonopaque_version();
 #endif
     unlock(e->version);
   }
@@ -711,7 +713,7 @@ private:
     buck.head = new_head;
     // TODO(nate): this means we'll always have to do a hard opacity check on 
     // the bucket version (but I don't think we can get a commit tid yet).
-    buck.version.inc_invalid_version();
+    buck.version.inc_nonopaque_version();
   }
 
 #if 0

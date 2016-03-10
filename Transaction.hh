@@ -173,6 +173,7 @@ public:
     static struct epoch_state {
         epoch_type global_epoch; // != 0
         epoch_type active_epoch; // no thread is before this epoch
+        TransactionTid::type recent_tid;
         bool run;
     } global_epochs;
     typedef TransactionTid::type tid_type;
@@ -556,6 +557,14 @@ public:
 
     static TransactionTid::type commit_tid() {
         return TThread::txn->commit_tid();
+    }
+
+    static TransactionTid::type recent_tid() {
+        return Transaction::global_epochs.recent_tid;
+    }
+
+    static TransactionTid::type initialized_tid() {
+        return TransactionTid::increment_value;
     }
 };
 
