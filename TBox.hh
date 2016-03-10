@@ -15,24 +15,33 @@ public:
         : v_(std::forward<Args>(args)...) {
     }
 
-    operator read_type() const {
+    read_type read() const {
         auto item = Sto::item(this, 0);
         if (item.has_write())
             return item.template write_value<T>();
         else
             return v_.read(item, vers_);
     }
-
-    TBox<T, W>& operator=(const T& x) {
+    void write(const T& x) {
         Sto::item(this, 0).add_write(x);
+    }
+    void write(T&& x) {
+        Sto::item(this, 0).add_write(std::move(x));
+    }
+
+    operator read_type() const {
+        return read();
+    }
+    TBox<T, W>& operator=(const T& x) {
+        write(x);
         return *this;
     }
     TBox<T, W>& operator=(T&& x) {
-        Sto::item(this, 0).add_write(std::move(x));
+        write(std::move(x));
         return *this;
     }
     TBox<T, W>& operator=(const TBox<T, W>& x) {
-        Sto::item(this, 0).add_write(x.operator read_type());
+        write(x.read());
         return *this;
     }
 
@@ -70,7 +79,7 @@ public:
         w << "}";
     }
 
-private:
+protected:
     version_type vers_;
     W v_;
 };
