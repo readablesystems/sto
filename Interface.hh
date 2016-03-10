@@ -145,12 +145,12 @@ public:
         w << std::hex << (v & ~(increment_value - 1));
         v &= increment_value - 1;
         if (v & ~(user_bit - 1))
-            w << "U" << std::hex << (v & ~(user_bit - 1));
+            w << "U" << (v & ~(user_bit - 1));
         if (!(v & valid_bit))
             w << "!";
         if (v & lock_bit)
             w << "L" << std::dec << (v & (lock_bit - 1));
-        w.setf(f);
+        w.flags(f);
     }
 };
 

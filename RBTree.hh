@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cassert> 
+#include <cassert>
 #include <utility>
 #include "TaggedLow.hh"
 #include "Interface.hh"
@@ -172,6 +172,7 @@ class RBTree
     typedef TransactionTid::type RWVersion;
     typedef TWrapped<std::pair<const K, T>> wrapped_pair;
     typedef typename wrapped_pair::version_type Version;
+    typedef Version version_type;
 
     static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
@@ -284,6 +285,7 @@ public:
 #if DEBUG
     void print_absent_reads();
 #endif
+    void print(std::ostream& w, const TransItem& item) const;
 
 private:
     size_t debug_size() const {
@@ -878,7 +880,7 @@ inline size_t RBTree<K, T, GlobalSize>::erase(const K& key) {
 }
 
 template <typename K, typename T, bool GlobalSize>
-inline bool RBTree<K, T, GlobalSize>::lock(TransItem& item, Transaction&) {
+bool RBTree<K, T, GlobalSize>::lock(TransItem& item, Transaction&) {
     if (item.key<uintptr_t>() == size_key_) {
         sizeversion_.lock();
     } else if (item.key<uintptr_t>() == tree_key_) {
@@ -896,9 +898,9 @@ inline bool RBTree<K, T, GlobalSize>::lock(TransItem& item, Transaction&) {
     }
     return true;
 }
-    
+
 template <typename K, typename T, bool GlobalSize>
-inline void RBTree<K, T, GlobalSize>::unlock(TransItem& item) {
+void RBTree<K, T, GlobalSize>::unlock(TransItem& item) {
     if (item.key<uintptr_t>() == size_key_) {
         sizeversion_.unlock();
     } else if (item.key<uintptr_t>() == tree_key_) {
@@ -915,9 +917,9 @@ inline void RBTree<K, T, GlobalSize>::unlock(TransItem& item) {
             n->unlock_nv();
     }
 }
-   
+
 template <typename K, typename T, bool GlobalSize>
-inline bool RBTree<K, T, GlobalSize>::check(const TransItem& item, const Transaction&) {
+bool RBTree<K, T, GlobalSize>::check(const TransItem& item, const Transaction&) {
     auto e = item.key<uintptr_t>();
     bool is_treekey = ((uintptr_t)e == (uintptr_t)tree_key_);
     bool is_sizekey = ((uintptr_t)e == (uintptr_t)size_key_);
@@ -968,7 +970,7 @@ inline bool RBTree<K, T, GlobalSize>::check(const TransItem& item, const Transac
 
 // key-versionedvalue pairs with the same key will have two different items
 template <typename K, typename T, bool GlobalSize>
-inline void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction& t) {
+void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction& t) {
     // we don't need to check for nodeversion updates because those are done during execution
     wrapper_type* e = item.key<wrapper_type*>();
     // we did something to an empty tree, so update treeversion
@@ -1015,7 +1017,7 @@ inline void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction
 }
 
 template <typename K, typename T, bool GlobalSize>
-inline void RBTree<K, T, GlobalSize>::cleanup(TransItem& item, bool committed) {
+void RBTree<K, T, GlobalSize>::cleanup(TransItem& item, bool committed) {
     if (!committed) {
         // if item has been tagged deleted or structured, don't need to do anything 
         // if item has been tagged inserted, then we erase the item
@@ -1032,6 +1034,34 @@ inline void RBTree<K, T, GlobalSize>::cleanup(TransItem& item, bool committed) {
             Transaction::rcu_free(e);
         }
     }
+}
+
+template <typename K, typename T, bool GlobalSize>
+void RBTree<K, T, GlobalSize>::print(std::ostream& w, const TransItem& item) const {
+    w << "{RBTree<" << typeid(K).name() << "," << typeid(T).name() << "> " << (void*) this;
+    if (item.key<uintptr_t>() == size_key_)
+        w << ".size";
+    else if (item.key<uintptr_t>() == tree_key_)
+        w << ".tree";
+    else {
+        uintptr_t x = item.key<uintptr_t>();
+        if (x & 1)
+            w << "." << (void*) (x & ~uintptr_t(1)) << "V";
+        else
+            w << "." << (void*) x;
+    }
+    if (item.has_read())
+        w << " R" << item.read_value<version_type>();
+    if (item.has_write()) {
+        if (item.key<uintptr_t>() == size_key_)
+            w << " Δ" << item.write_value<ssize_t>();
+        else if (item.key<uintptr_t>() == tree_key_
+                 || (item.key<uintptr_t>() & 1))
+            w << " Δ";
+        else
+            w << " =" << item.write_value<T>();
+    }
+    w << "}";
 }
 
 #endif /* !STO_NO_STM */

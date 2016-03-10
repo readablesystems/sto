@@ -124,7 +124,7 @@ public:
     virtual void print(std::ostream& w, const TransItem& item) const {
         w << "{Counter " << (void*) this << "=" << v_.access() << ".v" << vers_.value();
         if (item.has_read())
-            w << " ?" << item.read_value<version_type>();
+            w << " R" << item.read_value<version_type>();
         if (item.has_write() && item.has_flag(delta_bit))
             w << " Δ" << item.template write_value<T>();
         else if (item.has_write())

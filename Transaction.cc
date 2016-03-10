@@ -220,10 +220,14 @@ void Transaction::print(std::ostream& w) const {
     w << "]\n";
 }
 
+void Transaction::print() const {
+    print(std::cerr);
+}
+
 void TObject::print(std::ostream& w, const TransItem& item) const {
     w << "{" << typeid(*this).name() << " " << (void*) this << "." << item.key<void*>();
     if (item.has_read())
-        w << " ?" << item.read_value<void*>();
+        w << " R" << item.read_value<void*>();
     if (item.has_write())
         w << " =" << item.write_value<void*>();
     if (item.has_predicate())

@@ -50,16 +50,24 @@ public:
     bool lock(TransItem&, Transaction& txn) {
         return txn.try_lock(vers_);
     }
-    virtual bool check(const TransItem& item, const Transaction&) {
+    bool check(const TransItem& item, const Transaction&) {
         return item.check_version(vers_);
     }
-    virtual void install(TransItem& item, const Transaction& txn) {
+    void install(TransItem& item, const Transaction& txn) {
         v_.write(std::move(item.template write_value<T>()));
         vers_.set_version_unlock(txn.commit_tid());
         item.clear_needs_unlock();
     }
-    virtual void unlock(TransItem&) {
+    void unlock(TransItem&) {
         vers_.unlock();
+    }
+    void print(std::ostream& w, const TransItem& item) const {
+        w << "{TBox<" << typeid(T).name() << "> " << (void*) this;
+        if (item.has_read())
+            w << " R" << item.read_value<version_type>();
+        if (item.has_write())
+            w << " =" << item.write_value<T>();
+        w << "}";
     }
 
 private:

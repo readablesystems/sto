@@ -446,6 +446,7 @@ public:
         return commit_tid_;
     }
 
+    void print() const;
     void print(std::ostream& w) const;
 
     class Abort {};

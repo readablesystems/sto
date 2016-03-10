@@ -212,14 +212,7 @@ public:
             data_[key - 1].vers.unlock();
     }
     void print(std::ostream& w, const TransItem& item) const {
-        w << "{TVector<";
-        const char* pf = strstr(__PRETTY_FUNCTION__, "with T = ");
-        if (pf) {
-            pf += 9;
-            const char* semi = strchr(pf, ';');
-            w.write(pf, semi - pf);
-        }
-        w << "> " << (void*) this;
+        w << "{TVector<" << typeid(T).name() << "> " << (void*) this;
         key_type key = item.key<key_type>();
         if (key == size_key) {
             w << ".size " << item.predicate_value<pred_type>()
@@ -234,7 +227,7 @@ public:
                 w << "push" << key;
             w << "]";
             if (item.has_read())
-                w << " ?" << item.read_value<version_type>();
+                w << " R" << item.read_value<version_type>();
             if (item.has_write())
                 w << " =" << item.write_value<T>();
         }
