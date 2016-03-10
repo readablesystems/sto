@@ -82,7 +82,7 @@ public:
   Hashtable(unsigned size = Init_size, Hash h = Hash(), Pred p = Pred()) : map_(), hasher_(h), pred_(p) {
     map_.resize(size);
   }
-  
+
   inline size_t hash(const Key& k) {
     return hasher_(k);
   }
@@ -128,7 +128,7 @@ public:
       //item.add_read(elem_vers);
       //if (Opacity)
       //  check_opacity(e->version);
-      e->value.read(item, buck_version);
+      retval = e->value.read(item, e->version);
       return true;
     } else {
       Sto::item(this, pack_bucket(bucket(k))).observe(TVersion(buck_version.unlocked()));
