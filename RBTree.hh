@@ -92,7 +92,7 @@ public:
     }
     void install(TransItem& item, const Transaction& txn) {
         val_.write(item.template write_value<T>());
-        vers_.set_version(txn.commit_tid());
+        vers_.set_version_unlock(txn.commit_tid());
     }
 
     // transactional access to node version
@@ -106,7 +106,8 @@ public:
         return item.check_version(nodevers_);
     }
     void install_nv(const Transaction& txn) {
-        nodevers_.set_version(txn.commit_tid());
+        if (nodevers_.is_locked_here())
+            nodevers_.set_version_unlock(txn.commit_tid());
     }
 
     // key access and comparisons

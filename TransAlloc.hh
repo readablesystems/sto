@@ -6,7 +6,7 @@
 
 class TransAlloc : public Shared {
 public:
-    static constexpr int alloc_flag = 1;
+    enum { alloc_flag = 1 };
 
     // used to free things only if successful commit
     void transFree(void *ptr) {
@@ -16,7 +16,7 @@ public:
     // malloc() which will be freed on abort
     void* transMalloc(size_t sz) {
         void *ptr = malloc(sz);
-        Sto::new_item(this, ptr).add_write(alloc_flag);
+        Sto::new_item(this, ptr).add_write(int(alloc_flag));
         return ptr;
     }
 
