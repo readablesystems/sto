@@ -100,7 +100,8 @@ public:
         nodevers_.lock();
     }
     void unlock_nv() {
-        nodevers_.unlock();
+        if (nodevers_.is_locked_here())
+            nodevers_.unlock();
     }
     bool check_nv(const TransItem& item) {
         return item.check_version(nodevers_);
@@ -906,16 +907,12 @@ void RBTree<K, T, GlobalSize>::unlock(TransItem& item) {
         sizeversion_.unlock();
     } else if (item.key<uintptr_t>() == tree_key_) {
         wrapper_tree_.treeversion_.unlock();
-    } else if (item.key<uintptr_t>() & uintptr_t(1)){
-        uintptr_t x = item.key<uintptr_t>() & ~uintptr_t(1);
-        wrapper_type* n = reinterpret_cast<wrapper_type*>(x);
-        if (n->nodeversion().is_locked_here())
-            n->unlock_nv();
     } else {
-        wrapper_type* n = item.key<wrapper_type*>();
-        n->unlock();
-        if (has_delete(item) && n->nodeversion().is_locked_here())
-            n->unlock_nv();
+        uintptr_t x = item.key<uintptr_t>();
+        wrapper_type* n = reinterpret_cast<wrapper_type*>(x & ~uintptr_t(1));
+        if (!(x & 1))
+            n->unlock();
+        n->unlock_nv();
     }
 }
 
@@ -988,7 +985,6 @@ void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction& t) {
     } else if (uintptr_t(e) & uintptr_t(1)) {
         auto n = reinterpret_cast<wrapper_type*>(uintptr_t(e) & ~uintptr_t(1));
         n->install_nv(t);
-        return;
     } else {
         assert(e->version().is_locked_here());
         assert(((uintptr_t)e & 0x1) == 0);
@@ -1004,14 +1000,12 @@ void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction& t) {
             wrapper_tree_.erase(*e);
             unlock_write(&treelock_);
 
-            e->version().set_version(t.commit_tid());
-            e->nodeversion().set_version(t.commit_tid());
+            e->version().set_version_unlock(t.commit_tid());
+            e->install_nv(t);
             Transaction::rcu_free(e);
-            return;
         } else {
             // inserts/updates should be handled the same way
             e->install(item, t);
-            return;
         }
     }
     item.clear_needs_unlock();
