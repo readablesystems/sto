@@ -170,8 +170,7 @@ public:
             head_ = cur->next;
         }
         if (Txnal) {
-          // TODO: probably needs to be a delete
-          Transaction::rcu_free(cur);
+          Transaction::rcu_delete(cur);
         } else {
           delete cur;
         }
