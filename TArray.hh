@@ -64,7 +64,7 @@ public:
 
     // transactional methods
     bool lock(TransItem& item, Transaction& txn) {
-        return txn.try_lock(data_[item.key<size_type>()].vers);
+        return txn.try_lock(item, data_[item.key<size_type>()].vers);
     }
     bool check(const TransItem& item, const Transaction&) {
         return item.check_version(data_[item.key<size_type>()].vers);

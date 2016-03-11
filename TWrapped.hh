@@ -53,6 +53,41 @@ static T read_snapshot_large(const T* v, TransProxy item, const V& version) {
         relax_fence();
     }
 }
+template <typename T, typename V>
+static T wait_snapshot_small(const T* v, TransProxy item, const V& version, bool add_read) {
+    unsigned n = 0;
+    while (1) {
+        T result = *v;
+        fence();
+        V v0 = version;
+        if (!v0.is_locked_elsewhere()) {
+            item.observe(version, add_read);
+            return result;
+        }
+        relax_fence();
+        if (++n > 0xFFFFFF)
+            Sto::abort();
+    }
+}
+template <typename T, typename V>
+static T wait_snapshot_large(const T* v, TransProxy item, const V& version, bool add_read) {
+    unsigned n = 0;
+    V v0 = version, v1;
+    fence();
+    while (1) {
+        T result = *v;
+        fence();
+        v1 = version;
+        if (v0 == v1 && !v1.is_locked_elsewhere()) {
+            item.observe(v1, add_read);
+            return result;
+        }
+        v0 = v1;
+        relax_fence();
+        if (++n > 0xFFFFFF)
+            Sto::abort();
+    }
+}
 }
 
 template <typename T>
@@ -73,6 +108,9 @@ public:
     }
     read_type snapshot(TransProxy item, const version_type& version) const {
         return TWrappedAccess::read_snapshot_small(&v_, item, version);
+    }
+    read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
+        return TWrappedAccess::wait_snapshot_small(&v_, item, version, add_read);
     }
     read_type read(TransProxy item, const version_type& version) const {
         return TWrappedAccess::read_opaque(&v_, item, version);
@@ -109,6 +147,9 @@ public:
     }
     read_type snapshot(TransProxy item, const version_type& version) const {
         return TWrappedAccess::read_snapshot_large(&v_, item, version);
+    }
+    read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
+        return TWrappedAccess::wait_snapshot_large(&v_, item, version, add_read);
     }
     read_type read(TransProxy item, const version_type& version) const {
         return TWrappedAccess::read_opaque(&v_, item, version);
@@ -152,6 +193,9 @@ public:
     read_type snapshot(TransProxy, const version_type&) const {
         return v_;
     }
+    read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
+        return TWrappedAccess::wait_snapshot_small(&v_, item, version, add_read);
+    }
     read_type read(TransProxy item, const version_type& version) const {
         return TWrappedAccess::read_nonopaque_small(&v_, item, version);
     }
@@ -193,6 +237,9 @@ public:
     }
     read_type snapshot(TransProxy item, const version_type& version) const {
         return TWrappedAccess::read_snapshot_large(&v_, item, version);
+    }
+    read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
+        return TWrappedAccess::wait_snapshot_large(&v_, item, version, add_read);
     }
     read_type read(TransProxy item, const version_type& version) const {
         return TWrappedAccess::read_snapshot_large(&v_, item, version);
@@ -238,6 +285,9 @@ public:
     }
     read_type snapshot(TransProxy item, const version_type& version) const {
         return *TWrappedAccess::read_snapshot_small(&vp_, item, version);
+    }
+    read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
+        return *TWrappedAccess::wait_snapshot_small(&vp_, item, version, add_read);
     }
     read_type read(TransProxy item, const version_type& version) const {
         return *TWrappedAccess::read_opaque(&vp_, item, version);
@@ -288,6 +338,9 @@ public:
     }
     read_type snapshot(TransProxy, const version_type&) const {
         return *vp_;
+    }
+    read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
+        return *TWrappedAccess::wait_snapshot_small(&vp_, item, version, add_read);
     }
     read_type read(TransProxy item, const version_type& version) const {
         return *TWrappedAccess::read_nonopaque_small(&vp_, item, version);

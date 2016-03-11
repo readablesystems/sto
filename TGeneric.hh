@@ -31,7 +31,7 @@ public:
 
     bool lock(TransItem& item, Transaction& txn) {
         version_type& vers = version(item.template key<void*>());
-        return vers.is_locked_here() || txn.try_lock(vers);
+        return vers.is_locked_here() || txn.try_lock(item, vers);
     }
     bool check(const TransItem& item, const Transaction&) {
         return item.check_version(version(item.template key<void*>()));

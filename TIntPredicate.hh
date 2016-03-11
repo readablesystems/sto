@@ -67,8 +67,8 @@ public:
 
 
     // transactional methods
-    bool lock(TransItem&, Transaction& txn) {
-        return txn.try_lock(vers_);
+    bool lock(TransItem& item, Transaction& txn) {
+        return txn.try_lock(item, vers_);
     }
     virtual bool check_predicate(TransItem& item, Transaction& txn, bool committing) {
         TransProxy p(txn, item);

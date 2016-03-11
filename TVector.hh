@@ -151,15 +151,15 @@ public:
     bool check_predicate(TransItem& item, Transaction& txn, bool committing) {
         TransProxy p(txn, item);
         pred_type pred = item.template predicate_value<pred_type>();
-        size_type value = committing ? size_.read(p, size_vers_) : size_.snapshot(p, size_vers_);
+        size_type value = size_.wait_snapshot(p, size_vers_, committing);
         return pred.verify(value);
     }
     bool lock(TransItem& item, Transaction& txn) {
         auto key = item.template key<key_type>();
         if (key == size_key)
-            return txn.try_lock(size_vers_);
+            return txn.try_lock(item, size_vers_);
         else if (key > 0)
-            return txn.try_lock(data_[key - 1].vers);
+            return txn.try_lock(item, data_[key - 1].vers);
         else {
             assert(size_vers_.is_locked_here());
             return true;
@@ -234,14 +234,7 @@ public:
         w << "}";
     }
     void print(std::ostream& w) const {
-        w << "TVector<";
-        const char* pf = strstr(__PRETTY_FUNCTION__, "with T = ");
-        if (pf) {
-            pf += 9;
-            const char* semi = strchr(pf, ';');
-            w.write(pf, semi - pf);
-        }
-        w << ">{" << (void*) this
+        w << "TVector<" << typeid(T).name() << ">{" << (void*) this
           << "size=" << size_.access() << '@' << size_vers_ << " [";
         for (size_type i = 0; i < size_.access(); ++i) {
             if (i)

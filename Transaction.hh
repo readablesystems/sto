@@ -456,13 +456,31 @@ public:
     }
 
     // opacity checking
-    bool try_lock(TVersion& vers) {
+    bool try_lock(TransItem& item, TVersion& vers) {
         // This function will eventually help us track the commit TID when we
         // have no opacity, or for GV7 opacity.
-        return vers.try_lock();
+        int i = (item.has_read() << 3);
+        while (1) {
+            if (vers.try_lock())
+                return true;
+            if (!i)
+                return false;
+            --i;
+            relax_fence();
+        }
     }
-    bool try_lock(TNonopaqueVersion& vers) {
-        return vers.try_lock();
+    bool try_lock(TransItem& item, TNonopaqueVersion& vers) {
+        // This function will eventually help us track the commit TID when we
+        // have no opacity, or for GV7 opacity.
+        int i = (!item.has_read() << 3);
+        while (1) {
+            if (vers.try_lock())
+                return true;
+            if (!i)
+                return false;
+            --i;
+            relax_fence();
+        }
     }
 
     void check_opacity(TransItem& item, TransactionTid::type v) {
@@ -693,40 +711,43 @@ inline TransProxy& TransProxy::add_read(T rdata) {
     return *this;
 }
 
-inline TransProxy& TransProxy::observe(TVersion version) {
+inline TransProxy& TransProxy::observe(TVersion version, bool add_read) {
     assert(!has_stash());
     if (version.is_locked_elsewhere())
         t()->abort_because(item(), "locked");
     t()->check_opacity(item(), version.value());
-    if (!has_read()) {
+    if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
     }
     return *this;
 }
 
-inline TransProxy& TransProxy::observe(TNonopaqueVersion version) {
+inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read) {
     assert(!has_stash());
     if (version.is_locked_elsewhere())
         t()->abort_because(item(), "locked");
-    if (!has_read()) {
+    if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
     }
     return *this;
 }
 
+inline TransProxy& TransProxy::observe(TVersion version) {
+    return observe(version, true);
+}
+
+inline TransProxy& TransProxy::observe(TNonopaqueVersion version) {
+    return observe(version, true);
+}
+
 inline TransProxy& TransProxy::observe_opacity(TVersion version) {
-    if (version.is_locked_elsewhere())
-        t()->abort_because(item(), "locked");
-    t()->check_opacity(version.value());
-    return *this;
+    return observe(version, false);
 }
 
 inline TransProxy& TransProxy::observe_opacity(TNonopaqueVersion version) {
-    if (version.is_locked_elsewhere())
-        t()->abort_because(item(), "locked");
-    return *this;
+    return observe(version, false);
 }
 
 template <typename T>
@@ -751,6 +772,14 @@ inline T& TransProxy::predicate_value(T default_pdata) {
     if (!has_predicate())
         set_predicate(default_pdata);
     return this->template predicate_value<T>();
+}
+
+inline TransProxy& TransProxy::add_write() {
+    if (!has_write()) {
+        item().__or_flags(TransItem::write_bit);
+        t()->any_writes_ = true;
+    }
+    return *this;
 }
 
 template <typename T>

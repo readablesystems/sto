@@ -237,6 +237,8 @@ class TransProxy {
 
     template <typename T>
     inline TransProxy& add_read(T rdata);
+    inline TransProxy& observe(TVersion version, bool add_read);
+    inline TransProxy& observe(TNonopaqueVersion version, bool add_read);
     inline TransProxy& observe(TVersion version);
     inline TransProxy& observe(TNonopaqueVersion version);
     inline TransProxy& observe_opacity(TVersion version);
@@ -255,6 +257,7 @@ class TransProxy {
         return *this;
     }
 
+    inline TransProxy& add_write();
     template <typename T>
     inline TransProxy& add_write(const T& wdata);
     template <typename T>
