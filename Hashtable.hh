@@ -425,6 +425,28 @@ public:
     printf("Total count: %d, Empty buckets: %d, Avg chaining: %f, Max chaining: %d\n", tot_count, num_empty, ((double)(tot_count))/(map_.size() - num_empty), max_chaining);
   }
 
+    void print(std::ostream& w, const TransItem& item) const {
+        w << "{Hashtable<" << typeid(K).name() << "," << typeid(V).name() << "> " << (void*) this;
+        if (is_bucket(item)) {
+            w << ".b[" << bucket_key(item) << "]";
+            if (item.has_read())
+                w << " R" << item.read_value<Version_type>();
+        } else {
+            auto el = item.key<internal_elem*>();
+            w << "[" << el->key << "]";
+            if (item.has_read())
+                w << " R" << item.read_value<Version_type>();
+            if (item.has_write()) {
+                w << " =";
+                if (item.flags() & copyvals_bit)
+                    w << item.write_value<Value>();
+                else
+                    w << (Value&) item.write_value<void*>();
+            }
+        }
+        w << "}";
+    }
+
   void print() {
     printf("Hashtable:\n");
     for (unsigned i = 0; i < map_.size(); ++i) {
