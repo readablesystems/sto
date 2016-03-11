@@ -2,7 +2,7 @@
 #include "Transaction.hh"
 #include "TWrapped.hh"
 
-template <template <typename> typename W = TOpaqueWrapped>
+template <template <typename> class W = TOpaqueWrapped>
 class TBasicGeneric : public TObject {
 public:
     typedef typename W<int>::version_type version_type;
