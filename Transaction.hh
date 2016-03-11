@@ -10,9 +10,17 @@
 #include <type_traits>
 #include <unistd.h>
 #include <iostream>
+#include <sstream>
 
 #ifndef STO_PROFILE_COUNTERS
 #define STO_PROFILE_COUNTERS 0
+#endif
+
+#ifndef STO_DEBUG_HASH_COLLISIONS
+#define STO_DEBUG_HASH_COLLISIONS 0
+#endif
+#ifndef STO_DEBUG_HASH_COLLISIONS_FRACTION
+#define STO_DEBUG_HASH_COLLISIONS_FRACTION 0.00001
 #endif
 
 #define CONSISTENCY_CHECK 1
@@ -225,7 +233,7 @@ public:
 
   private:
     Transaction()
-        : hash_base_(32768), is_test_(false) {
+        : hash_base_(32768), lrng_state_(12897), is_test_(false) {
         start();
     }
 
@@ -233,13 +241,13 @@ public:
     static testing_type testing;
 
     Transaction(const testing_type&)
-        : hash_base_(32768), is_test_(true) {
+        : hash_base_(32768), lrng_state_(12897), is_test_(true) {
         start();
     }
 
     struct uninitialized {};
     Transaction(uninitialized)
-        : hash_base_(32768), is_test_(false) {
+        : hash_base_(32768), lrng_state_(12897), is_test_(false) {
         state_ = s_aborted;
     }
 
@@ -272,6 +280,11 @@ public:
         buf_.clear();
         TXP_INCREMENT(txp_total_starts);
         state_ = s_in_progress;
+    }
+
+    uint32_t local_random() const {
+        lrng_state_ = lrng_state_ * 1664525 + 1013904223;
+        return lrng_state_;
     }
 
 #if TRANSACTION_HASHTABLE
@@ -353,7 +366,14 @@ private:
         if (ti->owner() == obj && ti->key_ == xkey)
             return ti;
         TXP_INCREMENT(txp_hash_collision);
-        //std::cerr << *ti << " X " << (void*) obj << "," << xkey << ' ' << idx << '>' << hash_base_ << '\n';
+# if STO_DEBUG_HASH_COLLISIONS
+        if (local_random() <= uint32_t(0xFFFFFFFF * STO_DEBUG_HASH_COLLISIONS_FRACTION)) {
+            std::ostringstream buf;
+            TransItem fake_item(obj, xkey);
+            buf << "$ STO hash collision: search " << fake_item << ", find " << *ti << '\n';
+            std::cerr << buf.str();
+        }
+# endif
 #endif
         for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
             TXP_INCREMENT(txp_total_searched);
@@ -446,6 +466,7 @@ private:
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
     TransactionBuffer buf_;
+    mutable uint32_t lrng_state_;
     bool is_test_;
 #if TRANSACTION_HASHTABLE
     uint16_t hashtable_[hashtable_size];
