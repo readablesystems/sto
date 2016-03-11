@@ -118,10 +118,8 @@ bool Transaction::try_commit() {
         }
         if (it->has_write())
             writeset[nwriteset++] = it - transSet_.begin();
-#ifdef DETAILED_LOGGING
         if (it->has_read())
             INC_P(txp_total_r);
-#endif
     }
 
     first_write_ = writeset[0];

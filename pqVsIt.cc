@@ -270,7 +270,7 @@ int main(int argc, char *argv[]) {
     print_time(tv1, tv2);
 #endif
     
-#if PERF_LOGGING
+#if STO_PROFILE_COUNTERS
     Transaction::print_stats();
     {
         txp_counters tc = Transaction::txp_counters_combined();
@@ -294,7 +294,7 @@ int main(int argc, char *argv[]) {
     printf("Parallel iterator time: ");
     print_time(tv1, tv2);
 #endif
-#if PERF_LOGGING
+#if STO_PROFILE_COUNTERS
     Transaction::print_stats();
     {
         txp_counters tc = Transaction::txp_counters_combined();

@@ -145,7 +145,7 @@ int main() {
     printf("Parallel time: ");
     print_time(tv1, tv2);
     
-#if PERF_LOGGING
+#if STO_PROFILE_COUNTERS
     Transaction::print_stats();
     {
         txp_counters tc = Transaction::txp_counters_combined();

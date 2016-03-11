@@ -11,25 +11,20 @@
 #include <unistd.h>
 #include <iostream>
 
+#ifndef STO_PROFILE_COUNTERS
+#define STO_PROFILE_COUNTERS 0
+#endif
+
 #define CONSISTENCY_CHECK 1
-#define PERF_LOGGING 0
-#define DETAILED_LOGGING 0
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
 
 #if ASSERT_TX_SIZE
-#if DETAILED_LOGGING
+#if STO_PROFILE_COUNTERS > 1
 #    define TX_SIZE_LIMIT 20000
 #    include <cassert>
 #else
-#    error "ASSERT_TX_SIZE requires DETAILED_LOGGING!"
-#endif
-#endif
-
-#if DETAILED_LOGGING
-#if PERF_LOGGING
-#else
-#    error "DETAILED_LOGGING requires PERF_LOGGING!"
+#    error "ASSERT_TX_SIZE requires STO_PROFILE_COUNTERS > 1!"
 #endif
 #endif
 
@@ -67,7 +62,7 @@ enum txp {
     txp_hco_lock,
     txp_hco_invalid,
     txp_hco_abort,
-    // DETAILED_LOGGING only
+    // STO_PROFILE_COUNTERS > 1 only
     txp_total_n,
     txp_total_r,
     txp_total_w,
@@ -80,58 +75,51 @@ enum txp {
     txp_total_check_read,
     txp_total_check_predicate,
     txp_hash_collision,
-#if !PERF_LOGGING
+#if !STO_PROFILE_COUNTERS
     txp_count = 0
-#elif !DETAILED_LOGGING
+#elif STO_PROFILE_COUNTERS == 1
     txp_count = txp_hco_abort + 1
 #else
     txp_count = txp_hash_collision + 1
 #endif
 };
+typedef uint64_t txp_counter_type;
 
-template <int N> struct has_txp_struct {
-    static constexpr bool test(int p) {
-        return unsigned(p) < unsigned(N);
+template <unsigned P> struct txp_traits {
+    static constexpr bool is_max = false;
+};
+template <> struct txp_traits<txp_max_set> {
+    static constexpr bool is_max = true;
+};
+
+template <unsigned P, unsigned N, bool Less = (P < N)> struct txp_helper;
+template <unsigned P, unsigned N> struct txp_helper<P, N, true> {
+    static bool counter_exists(unsigned p) {
+        return p < N;
+    }
+    static void account_array(txp_counter_type* p, txp_counter_type v) {
+        if (txp_traits<P>::is_max)
+            p[P] = std::max(p[P], v);
+        else
+            p[P] += v;
     }
 };
-template <> struct has_txp_struct<0> {
-    static constexpr bool test(int) {
+template <unsigned P, unsigned N> struct txp_helper<P, N, false> {
+    static bool counter_exists(unsigned) {
         return false;
     }
+    static void account_array(txp_counter_type*, txp_counter_type) {
+    }
 };
-inline constexpr bool has_txp(int p) {
-    return has_txp_struct<txp_count>::test(p);
-}
+
 struct txp_counters {
-    uint64_t p_[txp_count];
+    txp_counter_type p_[txp_count];
     txp_counters() {
         for (unsigned i = 0; i != txp_count; ++i)
             p_[i] = 0;
     }
-    static bool p_combine_by_max(int p) {
-        return p == txp_max_set;
-    }
     unsigned long long p(int p) {
-        return has_txp(p) ? p_[p] : 0;
-    }
-    void inc_p(int p) {
-        add_p(p, 1);
-    }
-    void add_p(int p, uint64_t n) {
-        if (has_txp(p))
-            p_[p] += n;
-    }
-    void max_p(int p, unsigned long long n) {
-        if (has_txp(p) && n > p_[p])
-            p_[p] = n;
-    }
-    void combine_p(int p, unsigned long long n) {
-        if (has_txp(p)) {
-            if (!p_combine_by_max(p))
-                p_[p] += n;
-            else if (n > p_[p])
-                p_[p] = n;
-        }
+        return txp_helper<0, txp_count>::counter_exists(p) ? p_[p] : 0;
     }
     void reset() {
         for (int i = 0; i != txp_count; ++i)
@@ -185,10 +173,13 @@ public:
 
     static txp_counters txp_counters_combined() {
         txp_counters out;
-        for (int i = 0; i != MAX_THREADS; ++i) {
-            for (int p = 0; p != txp_count; ++p)
-                out.combine_p(p, tinfo[i].p_.p(p));
-        }
+        for (int i = 0; i != MAX_THREADS; ++i)
+            for (int p = 0; p != txp_count; ++p) {
+                if (p == txp_max_set)
+                    out.p_[p] = std::max(out.p_[p], tinfo[i].p_.p_[p]);
+                else
+                    out.p_[p] += tinfo[i].p_.p_[p];
+            }
         return out;
     }
 
@@ -222,27 +213,18 @@ public:
         tinfo[TThread::id()].epoch = 0;
     }
 
-#if PERF_LOGGING
-    static void inc_p(int p) {
-        add_p(p, 1);
+#if STO_PROFILE_COUNTERS
+    template <unsigned P> static void txp_account(txp_counter_type n) {
+        txp_helper<P, txp_count>::account_array(tinfo[TThread::id()].p_.p_, n);
     }
-    static void add_p(int p, uint64_t n) {
-        tinfo[TThread::id()].p_.add_p(p, n);
-    }
-    static void max_p(int p, unsigned long long n) {
-        tinfo[TThread::id()].p_.max_p(p, n);
+#else
+    template <unsigned P> static void txp_account(txp_counter_type) {
     }
 #endif
 
-#if PERF_LOGGING
-#define INC_P(p) Transaction::inc_p((p))
-#define ADD_P(p, n) Transaction::add_p((p), (n))
-#define MAX_P(p, n) Transaction::max_p((p), (n))
-#else
-#define INC_P(p) do {} while (0)
-#define ADD_P(p, n) do {} while (0)
-#define MAX_P(p, n) do {} while (0)
-#endif
+#define INC_P(p) Transaction::txp_account<(p)>(1)
+#define ADD_P(p, n) Transaction::txp_account<(p)>((n))
+#define MAX_P(p, n) Transaction::txp_account<(p)>((n))
 
 
   private:
@@ -638,9 +620,7 @@ template <typename T>
 inline TransProxy& TransProxy::add_read(T rdata) {
     assert(!has_stash());
     if (!has_read()) {
-#if DETAILED_LOGGING
-        Transaction::max_p(txp_max_rdata_size, sizeof(T));
-#endif
+        MAX_P(txp_max_rdata_size, sizeof(T));
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
     }
@@ -653,9 +633,7 @@ inline TransProxy& TransProxy::observe(TVersion version) {
         t()->abort();
     t()->check_opacity(version.value());
     if (!has_read()) {
-#if DETAILED_LOGGING
-        Transaction::max_p(txp_max_rdata_size, sizeof(TVersion));
-#endif
+        MAX_P(txp_max_rdata_size, sizeof(TVersion));
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
     }
@@ -667,9 +645,7 @@ inline TransProxy& TransProxy::observe(TNonopaqueVersion version) {
     if (version.is_locked_elsewhere())
         t()->abort();
     if (!has_read()) {
-#if DETAILED_LOGGING
-        Transaction::max_p(txp_max_rdata_size, sizeof(TNonopaqueVersion));
-#endif
+        MAX_P(txp_max_rdata_size, sizeof(TNonopaqueVersion));
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
     }
@@ -700,9 +676,7 @@ inline TransProxy& TransProxy::update_read(T old_rdata, T new_rdata) {
 template <typename T>
 inline TransProxy& TransProxy::set_predicate(T pdata) {
     assert(!has_read());
-#if DETAILED_LOGGING
-    Transaction::max_p(txp_max_rdata_size, sizeof(T));
-#endif
+    MAX_P(txp_max_rdata_size, sizeof(T));
     item().__or_flags(TransItem::predicate_bit);
     item().rdata_ = Packer<T>::pack(t()->buf_, std::move(pdata));
     return *this;
@@ -718,9 +692,7 @@ inline T& TransProxy::predicate_value(T default_pdata) {
 
 template <typename T>
 inline TransProxy& TransProxy::add_write(const T& wdata) {
-#if DETAILED_LOGGING
-    Transaction::max_p(txp_max_wdata_size, sizeof(T));
-#endif
+    MAX_P(txp_max_wdata_size, sizeof(T));
     if (!has_write()) {
         item().__or_flags(TransItem::write_bit);
         item().wdata_ = Packer<T>::pack(t()->buf_, wdata);
@@ -737,9 +709,7 @@ inline TransProxy& TransProxy::add_write(const T& wdata) {
 template <typename T>
 inline TransProxy& TransProxy::add_write(T&& wdata) {
     typedef typename std::decay<T>::type V;
-#if DETAILED_LOGGING
-    Transaction::max_p(txp_max_wdata_size, sizeof(V));
-#endif
+    MAX_P(txp_max_wdata_size, sizeof(V));
     if (!has_write()) {
         item().__or_flags(TransItem::write_bit);
         item().wdata_ = Packer<V>::pack(t()->buf_, std::move(wdata));
@@ -757,9 +727,7 @@ template <typename T>
 inline TransProxy& TransProxy::set_stash(T sdata) {
     assert(!has_read());
     if (!has_stash()) {
-#if DETAILED_LOGGING
-        Transaction::max_p(txp_max_sdata_size, sizeof(T));
-#endif
+        MAX_P(txp_max_sdata_size, sizeof(T));
         item().__or_flags(TransItem::stash_bit);
         item().rdata_ = Packer<T>::pack(t()->buf_, std::move(sdata));
     } else

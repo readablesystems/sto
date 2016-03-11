@@ -424,12 +424,12 @@ int main(int argc, char *argv[]) {
   printf("stime: ");
   print_time(ru1.ru_stime, ru2.ru_stime);
 /*  printf("Ran test %d with: ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f%% writes, blindrandwrites: %d\n\
- MAINTAIN_TRUE_ARRAY_STATE: %d, LOCAL_VECTOR: %d, SPIN_LOCK: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, TRY_READ_MY_WRITES: %d, PERF_LOGGING: %d\n",
+ MAINTAIN_TRUE_ARRAY_STATE: %d, LOCAL_VECTOR: %d, SPIN_LOCK: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, TRY_READ_MY_WRITES: %d, STO_PROFILE_COUNTERS: %d\n",
          test, ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, blindRandomWrite,
-         MAINTAIN_TRUE_ARRAY_STATE, LOCAL_VECTOR, SPIN_LOCK, INIT_SET_SIZE, GLOBAL_SEED, TRY_READ_MY_WRITES, PERF_LOGGING); */
+         MAINTAIN_TRUE_ARRAY_STATE, LOCAL_VECTOR, SPIN_LOCK, INIT_SET_SIZE, GLOBAL_SEED, TRY_READ_MY_WRITES, STO_PROFILE_COUNTERS); */
 #endif
 
-#if PERF_LOGGING
+#if STO_PROFILE_COUNTERS
 #define LLU(x) ((long long unsigned)x)
   printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", LLU(Transaction::total_n), LLU(Transaction::total_r), LLU(Transaction::total_w), LLU(Transaction::total_searched), LLU(Transaction::total_aborts), LLU(Transaction::commit_time_aborts));
 #if MASSTREE
