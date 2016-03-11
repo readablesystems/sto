@@ -23,6 +23,13 @@
 #define STO_DEBUG_HASH_COLLISIONS_FRACTION 0.00001
 #endif
 
+#ifndef STO_DEBUG_ABORTS
+#define STO_DEBUG_ABORTS 0
+#endif
+#ifndef STO_DEBUG_ABORTS_FRACTION
+#define STO_DEBUG_ABORTS_FRACTION 0.0001
+#endif
+
 #define CONSISTENCY_CHECK 1
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
@@ -280,6 +287,10 @@ public:
         first_write_ = 0;
         start_tid_ = commit_tid_ = 0;
         buf_.clear();
+#if STO_DEBUG_ABORTS
+        abort_item_ = nullptr;
+        abort_reason_ = nullptr;
+#endif
         TXP_INCREMENT(txp_total_starts);
         state_ = s_in_progress;
     }
@@ -395,12 +406,27 @@ private:
         return nullptr;
     }
 
-    bool preceding_read_exists(TransItem& ti) const {
+    bool preceding_read_exists(TransItem& item) const {
         if (may_duplicate_items_)
-            for (auto it = transSet_.begin(); it != &ti; ++it)
-                if (it->owner() == ti.owner() && it->key_ == ti.key_)
+            for (auto it = transSet_.begin(); it != &item; ++it)
+                if (it->owner() == item.owner() && it->key_ == item.key_)
                     return true;
         return false;
+    }
+
+#if STO_DEBUG_ABORTS
+    void mark_abort_because(TransItem* item, const char* reason) const {
+        abort_item_ = item;
+        abort_reason_ = reason;
+    }
+#else
+    void mark_abort_because(TransItem*, const char*) const {
+    }
+#endif
+
+    void abort_because(TransItem& item, const char* reason) {
+        mark_abort_because(&item, reason);
+        abort();
     }
 
 public:
@@ -439,12 +465,20 @@ public:
         return vers.try_lock();
     }
 
-    void check_opacity(TransactionTid::type t) {
+    void check_opacity(TransItem& item, TransactionTid::type v) {
         assert(state_ <= s_committing);
         if (!start_tid_)
             start_tid_ = _TID;
-        if (!TransactionTid::try_check_opacity(start_tid_, t))
-            hard_check_opacity(t);
+        if (!TransactionTid::try_check_opacity(start_tid_, v))
+            hard_check_opacity(&item, v);
+    }
+
+    void check_opacity(TransactionTid::type v) {
+        assert(state_ <= s_committing);
+        if (!start_tid_)
+            start_tid_ = _TID;
+        if (!TransactionTid::try_check_opacity(start_tid_, v))
+            hard_check_opacity(nullptr, v);
     }
 
     void check_opacity() {
@@ -458,6 +492,7 @@ public:
         return commit_tid_;
     }
 
+    static const char* state_name(int state);
     void print() const;
     void print(std::ostream& w) const;
 
@@ -479,12 +514,14 @@ private:
     mutable tid_type commit_tid_;
     TransactionBuffer buf_;
     mutable uint32_t lrng_state_;
+    mutable TransItem* abort_item_;
+    mutable const char* abort_reason_;
     bool is_test_;
 #if TRANSACTION_HASHTABLE
     uint16_t hashtable_[hash_size];
 #endif
 
-    void hard_check_opacity(TransactionTid::type t);
+    void hard_check_opacity(TransItem* item, TransactionTid::type t);
     void stop(bool committed);
 
     friend class TransProxy;
@@ -659,8 +696,8 @@ inline TransProxy& TransProxy::add_read(T rdata) {
 inline TransProxy& TransProxy::observe(TVersion version) {
     assert(!has_stash());
     if (version.is_locked_elsewhere())
-        t()->abort();
-    t()->check_opacity(version.value());
+        t()->abort_because(item(), "locked");
+    t()->check_opacity(item(), version.value());
     if (!has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
@@ -671,7 +708,7 @@ inline TransProxy& TransProxy::observe(TVersion version) {
 inline TransProxy& TransProxy::observe(TNonopaqueVersion version) {
     assert(!has_stash());
     if (version.is_locked_elsewhere())
-        t()->abort();
+        t()->abort_because(item(), "locked");
     if (!has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
@@ -681,14 +718,14 @@ inline TransProxy& TransProxy::observe(TNonopaqueVersion version) {
 
 inline TransProxy& TransProxy::observe_opacity(TVersion version) {
     if (version.is_locked_elsewhere())
-        t()->abort();
+        t()->abort_because(item(), "locked");
     t()->check_opacity(version.value());
     return *this;
 }
 
 inline TransProxy& TransProxy::observe_opacity(TNonopaqueVersion version) {
     if (version.is_locked_elsewhere())
-        t()->abort();
+        t()->abort_because(item(), "locked");
     return *this;
 }
 

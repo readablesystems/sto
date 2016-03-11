@@ -37,7 +37,7 @@ void* Transaction::epoch_advancer(void*) {
     return NULL;
 }
 
-void Transaction::hard_check_opacity(TransactionTid::type t) {
+void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
     // ignore opacity checks during commit; we're in the middle of checking
     // things anyway
     if (state_ == s_committing)
@@ -46,6 +46,7 @@ void Transaction::hard_check_opacity(TransactionTid::type t) {
     TXP_INCREMENT(txp_hco);
     if (t & TransactionTid::lock_bit) {
         TXP_INCREMENT(txp_hco_lock);
+        mark_abort_because(item, "locked");
     abort:
         TXP_INCREMENT(txp_hco_abort);
         abort();
@@ -59,18 +60,36 @@ void Transaction::hard_check_opacity(TransactionTid::type t) {
         if (it->has_read()) {
             TXP_INCREMENT(txp_total_check_read);
             if (!it->owner()->check(*it, *this)
-                && !preceding_read_exists(*it))
+                && !preceding_read_exists(*it)) {
+                mark_abort_because(item, "opacity check");
                 goto abort;
+            }
         } else if (it->has_predicate()) {
             TXP_INCREMENT(txp_total_check_predicate);
-            if (!it->owner()->check_predicate(*it, *this, false))
+            if (!it->owner()->check_predicate(*it, *this, false)) {
+                mark_abort_because(item, "opacity check_predicate");
                 goto abort;
+            }
         }
 }
 
- void Transaction::stop(bool committed) {
-    if (!committed)
+void Transaction::stop(bool committed) {
+    if (!committed) {
         TXP_INCREMENT(txp_total_aborts);
+#if STO_DEBUG_ABORTS
+        if (local_random() <= uint32_t(0xFFFFFFFF * STO_DEBUG_ABORTS_FRACTION)) {
+            std::ostringstream buf;
+            buf << "$ abort " << state_name(state_);
+            if (abort_reason_)
+                buf << " " << abort_reason_;
+            if (abort_item_)
+                buf << " " << *abort_item_;
+            buf << '\n';
+            std::cerr << buf.str();
+        }
+#endif
+    }
+
     TXP_ACCOUNT(txp_max_transbuffer, buf_.size());
     TXP_ACCOUNT(txp_total_transbuffer, buf_.size());
     if (any_writes_ && state_ == s_committing_locked) {
@@ -115,8 +134,10 @@ bool Transaction::try_commit() {
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
         if (it->has_predicate()) {
             TXP_INCREMENT(txp_total_check_predicate);
-            if (!it->owner()->check_predicate(*it, *this, true))
+            if (!it->owner()->check_predicate(*it, *this, true)) {
+                mark_abort_because(it, "commit check_predicate");
                 goto abort;
+            }
         }
         if (it->has_write())
             writeset[nwriteset++] = it - transSet_.begin();
@@ -137,8 +158,10 @@ bool Transaction::try_commit() {
         auto writeset_end = writeset + nwriteset;
         for (auto it = writeset; it != writeset_end; ) {
             TransItem* me = &transSet_[*it];
-            if (!me->owner()->lock(*me, *this))
+            if (!me->owner()->lock(*me, *this)) {
+                mark_abort_because(me, "commit lock");
                 goto abort;
+            }
             me->__or_flags(TransItem::lock_bit);
             ++it;
             if (may_duplicate_items_)
@@ -159,8 +182,10 @@ bool Transaction::try_commit() {
         if (it->has_read()) {
             TXP_INCREMENT(txp_total_check_read);
             if (!it->owner()->check(*it, *this)
-                && !preceding_read_exists(*it))
+                && !preceding_read_exists(*it)) {
+                mark_abort_because(it, "commit check");
                 goto abort;
+            }
         }
 
     // fence();
@@ -215,9 +240,16 @@ void Transaction::print_stats() {
                 out.p(txp_max_transbuffer), out.p(txp_total_transbuffer));
 }
 
-void Transaction::print(std::ostream& w) const {
+const char* Transaction::state_name(int state) {
     static const char* names[] = {"in-progress", "committing", "committing-locked", "aborted", "committed"};
-    w << "T0x" << (void*) this << " " << names[state_] << " [";
+    if (unsigned(state) < arraysize(names))
+        return names[state];
+    else
+        return "unknown-state";
+}
+
+void Transaction::print(std::ostream& w) const {
+    w << "T0x" << (void*) this << " " << state_name(state_) << " [";
     for (auto& ti : transSet_) {
         if (&ti != &transSet_[0])
             w << " ";
