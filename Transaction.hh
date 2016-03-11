@@ -82,6 +82,7 @@ enum txp {
     txp_total_check_predicate,
     txp_hash_find,
     txp_hash_collision,
+    txp_hash_collision2,
     txp_total_searched,
 #if !STO_PROFILE_COUNTERS
     txp_count = 0
@@ -158,7 +159,8 @@ struct __attribute__((aligned(128))) threadinfo_t {
 
 class Transaction {
 public:
-    static constexpr unsigned hashtable_size = 1024;
+    static constexpr unsigned hash_size = 1024;
+    static constexpr unsigned hash_step = 5;
     using epoch_type = TRcuSet::epoch_type;
     using signed_epoch_type = TRcuSet::signed_epoch_type;
 
@@ -292,16 +294,20 @@ public:
         auto n = reinterpret_cast<uintptr_t>(key) + 0x4000000;
         n += -uintptr_t(n < 0x8000000) & (reinterpret_cast<uintptr_t>(obj) >> 4);
         //2654435761
-        return (n + (n >> 16) * 9) % hashtable_size;
+        return (n + (n >> 16) * 9) % hash_size;
     }
 #endif
 
     TransItem* allocate_item(const TObject* obj, void* xkey) {
         transSet_.emplace_back(const_cast<TObject*>(obj), xkey);
 #if TRANSACTION_HASHTABLE
-        uint16_t& h = hashtable_[hash(obj, xkey)];
-        if (h <= hash_base_)
-            h = hash_base_ + transSet_.size();
+        unsigned hi = hash(obj, xkey);
+# if TRANSACTION_HASHTABLE > 1
+        if (hashtable_[hi] > hash_base_)
+            hi = (hi + hash_step) % hash_size;
+# endif
+        if (hashtable_[hi] <= hash_base_)
+            hashtable_[hi] = hash_base_ + transSet_.size();
 #endif
         return &transSet_.back();
     }
@@ -359,21 +365,27 @@ private:
     TransItem* find_item(TObject* obj, void* xkey) {
 #if TRANSACTION_HASHTABLE
         TXP_INCREMENT(txp_hash_find);
-        uint16_t idx = hashtable_[hash(obj, xkey)];
-        if (idx <= hash_base_)
-            return nullptr;
-        TransItem* ti = &transSet_[idx - hash_base_ - 1];
-        if (ti->owner() == obj && ti->key_ == xkey)
-            return ti;
-        TXP_INCREMENT(txp_hash_collision);
+        unsigned hi = hash(obj, xkey);
+        for (int steps = 0; steps < TRANSACTION_HASHTABLE; ++steps) {
+            if (hashtable_[hi] <= hash_base_)
+                return nullptr;
+            TransItem* ti = &transSet_[hashtable_[hi] - hash_base_ - 1];
+            if (ti->owner() == obj && ti->key_ == xkey)
+                return ti;
+            if (!steps) {
+                TXP_INCREMENT(txp_hash_collision);
 # if STO_DEBUG_HASH_COLLISIONS
-        if (local_random() <= uint32_t(0xFFFFFFFF * STO_DEBUG_HASH_COLLISIONS_FRACTION)) {
-            std::ostringstream buf;
-            TransItem fake_item(obj, xkey);
-            buf << "$ STO hash collision: search " << fake_item << ", find " << *ti << '\n';
-            std::cerr << buf.str();
-        }
+                if (local_random() <= uint32_t(0xFFFFFFFF * STO_DEBUG_HASH_COLLISIONS_FRACTION)) {
+                    std::ostringstream buf;
+                    TransItem fake_item(obj, xkey);
+                    buf << "$ STO hash collision: search " << fake_item << ", find " << *ti << '\n';
+                    std::cerr << buf.str();
+                }
 # endif
+            } else
+                TXP_INCREMENT(txp_hash_collision2);
+            hi = (hi + hash_step) % hash_size;
+        }
 #endif
         for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
             TXP_INCREMENT(txp_total_searched);
@@ -469,7 +481,7 @@ private:
     mutable uint32_t lrng_state_;
     bool is_test_;
 #if TRANSACTION_HASHTABLE
-    uint16_t hashtable_[hashtable_size];
+    uint16_t hashtable_[hash_size];
 #endif
 
     void hard_check_opacity(TransactionTid::type t);

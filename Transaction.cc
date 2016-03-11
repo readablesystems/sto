@@ -207,8 +207,9 @@ void Transaction::print_stats() {
         fprintf(stderr, "$ %llu HCO (%llu lock, %llu invalid, %llu aborts)\n",
                 out.p(txp_hco), out.p(txp_hco_lock), out.p(txp_hco_invalid), out.p(txp_hco_abort));
     if (txp_count >= txp_hash_collision)
-        fprintf(stderr, "$ %llu (%.3f%%) hash collisions\n", out.p(txp_hash_collision),
-                100.0 * (double) out.p(txp_hash_collision) / out.p(txp_hash_find));
+        fprintf(stderr, "$ %llu (%.3f%%) hash collisions, %llu second level\n", out.p(txp_hash_collision),
+                100.0 * (double) out.p(txp_hash_collision) / out.p(txp_hash_find),
+                out.p(txp_hash_collision2));
     if (txp_count >= txp_total_transbuffer)
         fprintf(stderr, "$ %llu max buffer per txn, %llu total buffer\n",
                 out.p(txp_max_transbuffer), out.p(txp_total_transbuffer));
