@@ -335,19 +335,16 @@ public:
     //}
 
     el->version.set_version(t.commit_tid()); // automatically sets valid to true
+    // nate: this has no visible perf change on vacation (maybe slightly slower).
 #if 0
-    if (Opacity)
-      TransactionTid::set_version(el->version, t.commit_tid());
-    else
-      TransactionTid::inc_nonopaque_version(el->version);
+    // convert nonopaque bucket version to a commit tid
     if (has_insert(item)) {
-      // need to update bucket version
       bucket_entry& buck = buck_entry(el->key);
       lock(buck.version);
-      if (Opacity)
-	TransactionTid::set_version(buck.version, t.commit_tid());
-      else
-	TransactionTid::inc_nonopaque_version(buck.version);
+      // only update if it's still nonopaque. Otherwise someone with a higher tid
+      // could've already updated it.
+      if (buck.version.value() & TransactionTid::nonopaque_bit)
+	buck.version.set_version(t.commit_tid());
       unlock(buck.version);
     }
 #endif
