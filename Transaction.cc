@@ -43,26 +43,26 @@ void Transaction::hard_check_opacity(TransactionTid::type t) {
     if (state_ == s_committing)
         return;
 
-    INC_P(txp_hco);
+    TXP_INCREMENT(txp_hco);
     if (t & TransactionTid::lock_bit) {
-        INC_P(txp_hco_lock);
+        TXP_INCREMENT(txp_hco_lock);
     abort:
-        INC_P(txp_hco_abort);
+        TXP_INCREMENT(txp_hco_abort);
         abort();
     }
     if (t & TransactionTid::nonopaque_bit)
-        INC_P(txp_hco_invalid);
+        TXP_INCREMENT(txp_hco_invalid);
 
     start_tid_ = _TID;
     release_fence();
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it)
         if (it->has_read()) {
-            INC_P(txp_total_check_read);
+            TXP_INCREMENT(txp_total_check_read);
             if (!it->owner()->check(*it, *this)
                 && !preceding_read_exists(*it))
                 goto abort;
         } else if (it->has_predicate()) {
-            INC_P(txp_total_check_predicate);
+            TXP_INCREMENT(txp_total_check_predicate);
             if (!it->owner()->check_predicate(*it, *this, false))
                 goto abort;
         }
@@ -70,7 +70,9 @@ void Transaction::hard_check_opacity(TransactionTid::type t) {
 
  void Transaction::stop(bool committed) {
     if (!committed)
-        INC_P(txp_total_aborts);
+        TXP_INCREMENT(txp_total_aborts);
+    TXP_ACCOUNT(txp_max_transbuffer, buf_.size());
+    TXP_ACCOUNT(txp_total_transbuffer, buf_.size());
     if (any_writes_ && state_ == s_committing_locked) {
         for (auto it = transSet_.begin() + first_write_; it != transSet_.end(); ++it)
             if (it->needs_unlock())
@@ -97,8 +99,8 @@ bool Transaction::try_commit() {
         assert(false);
     }
 #endif
-    MAX_P(txp_max_set, transSet_.size());
-    ADD_P(txp_total_n, transSet_.size());
+    TXP_ACCOUNT(txp_max_set, transSet_.size());
+    TXP_ACCOUNT(txp_total_n, transSet_.size());
 
     assert(state_ == s_in_progress || state_ >= s_aborted);
     if (state_ >= s_aborted)
@@ -112,14 +114,14 @@ bool Transaction::try_commit() {
 
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
         if (it->has_predicate()) {
-            INC_P(txp_total_check_predicate);
+            TXP_INCREMENT(txp_total_check_predicate);
             if (!it->owner()->check_predicate(*it, *this, true))
                 goto abort;
         }
         if (it->has_write())
             writeset[nwriteset++] = it - transSet_.begin();
         if (it->has_read())
-            INC_P(txp_total_r);
+            TXP_INCREMENT(txp_total_r);
     }
 
     first_write_ = writeset[0];
@@ -155,7 +157,7 @@ bool Transaction::try_commit() {
     //phase2
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it)
         if (it->has_read()) {
-            INC_P(txp_total_check_read);
+            TXP_INCREMENT(txp_total_check_read);
             if (!it->owner()->check(*it, *this)
                 && !preceding_read_exists(*it))
                 goto abort;
@@ -167,7 +169,7 @@ bool Transaction::try_commit() {
     for (auto it = transSet_.begin() + first_write_; it != transSet_.end(); ++it) {
         TransItem& ti = *it;
         if (ti.has_write()) {
-            INC_P(txp_total_w);
+            TXP_INCREMENT(txp_total_w);
             ti.owner()->install(ti, *this);
         }
     }
@@ -178,7 +180,7 @@ bool Transaction::try_commit() {
 
 abort:
     // fence();
-    INC_P(txp_commit_time_aborts);
+    TXP_INCREMENT(txp_commit_time_aborts);
     stop(false);
     return false;
 }
@@ -207,6 +209,9 @@ void Transaction::print_stats() {
     if (txp_count >= txp_hash_collision)
         fprintf(stderr, "$ %llu (%.3f%%) hash collisions\n", out.p(txp_hash_collision),
                 100.0 * (double) out.p(txp_hash_collision) / out.p(txp_hash_find));
+    if (txp_count >= txp_total_transbuffer)
+        fprintf(stderr, "$ %llu max buffer per txn, %llu total buffer\n",
+                out.p(txp_max_transbuffer), out.p(txp_total_transbuffer));
 }
 
 void Transaction::print(std::ostream& w) const {

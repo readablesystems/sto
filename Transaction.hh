@@ -66,9 +66,8 @@ enum txp {
     txp_total_n,
     txp_total_r,
     txp_total_w,
-    txp_max_rdata_size,
-    txp_max_wdata_size,
-    txp_max_sdata_size,
+    txp_max_transbuffer,
+    txp_total_transbuffer,
     txp_push_abort,
     txp_pop_abort,
     txp_total_check_read,
@@ -81,17 +80,14 @@ enum txp {
 #elif STO_PROFILE_COUNTERS == 1
     txp_count = txp_hco_abort + 1
 #else
-    txp_count = txp_hash_collision + 1
+    txp_count
 #endif
 };
 typedef uint64_t txp_counter_type;
 
-template <unsigned P> struct txp_traits {
-    static constexpr bool is_max = false;
-};
-template <> struct txp_traits<txp_max_set> {
-    static constexpr bool is_max = true;
-};
+inline constexpr bool txp_is_max(unsigned p) {
+    return p == txp_max_set || p == txp_max_transbuffer;
+}
 
 template <unsigned P, unsigned N, bool Less = (P < N)> struct txp_helper;
 template <unsigned P, unsigned N> struct txp_helper<P, N, true> {
@@ -99,7 +95,7 @@ template <unsigned P, unsigned N> struct txp_helper<P, N, true> {
         return p < N;
     }
     static void account_array(txp_counter_type* p, txp_counter_type v) {
-        if (txp_traits<P>::is_max)
+        if (txp_is_max(P))
             p[P] = std::max(p[P], v);
         else
             p[P] += v;
@@ -176,7 +172,7 @@ public:
         txp_counters out;
         for (int i = 0; i != MAX_THREADS; ++i)
             for (int p = 0; p != txp_count; ++p) {
-                if (p == txp_max_set)
+                if (txp_is_max(p))
                     out.p_[p] = std::max(out.p_[p], tinfo[i].p_.p_[p]);
                 else
                     out.p_[p] += tinfo[i].p_.p_[p];
@@ -223,9 +219,8 @@ public:
     }
 #endif
 
-#define INC_P(p) Transaction::txp_account<(p)>(1)
-#define ADD_P(p, n) Transaction::txp_account<(p)>((n))
-#define MAX_P(p, n) Transaction::txp_account<(p)>((n))
+#define TXP_INCREMENT(p) Transaction::txp_account<(p)>(1)
+#define TXP_ACCOUNT(p, n) Transaction::txp_account<(p)>((n))
 
 
   private:
@@ -275,7 +270,7 @@ public:
         first_write_ = 0;
         start_tid_ = commit_tid_ = 0;
         buf_.clear();
-        INC_P(txp_total_starts);
+        TXP_INCREMENT(txp_total_starts);
         state_ = s_in_progress;
     }
 
@@ -350,18 +345,18 @@ private:
     // tries to find an existing item with this key, returns NULL if not found
     TransItem* find_item(TObject* obj, void* xkey) {
 #if TRANSACTION_HASHTABLE
-        INC_P(txp_hash_find);
+        TXP_INCREMENT(txp_hash_find);
         uint16_t idx = hashtable_[hash(obj, xkey)];
         if (idx <= hash_base_)
             return nullptr;
         TransItem* ti = &transSet_[idx - hash_base_ - 1];
         if (ti->owner() == obj && ti->key_ == xkey)
             return ti;
-        INC_P(txp_hash_collision);
-        //std::cerr << *ti << " X " << (void*) obj << "," << xkey << '\n';
+        TXP_INCREMENT(txp_hash_collision);
+        //std::cerr << *ti << " X " << (void*) obj << "," << xkey << ' ' << idx << '>' << hash_base_ << '\n';
 #endif
         for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
-            INC_P(txp_total_searched);
+            TXP_INCREMENT(txp_total_searched);
             if (it->owner() == obj && it->key_ == xkey)
                 return &*it;
         }
@@ -622,7 +617,6 @@ template <typename T>
 inline TransProxy& TransProxy::add_read(T rdata) {
     assert(!has_stash());
     if (!has_read()) {
-        MAX_P(txp_max_rdata_size, sizeof(T));
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
     }
@@ -635,7 +629,6 @@ inline TransProxy& TransProxy::observe(TVersion version) {
         t()->abort();
     t()->check_opacity(version.value());
     if (!has_read()) {
-        MAX_P(txp_max_rdata_size, sizeof(TVersion));
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
     }
@@ -647,7 +640,6 @@ inline TransProxy& TransProxy::observe(TNonopaqueVersion version) {
     if (version.is_locked_elsewhere())
         t()->abort();
     if (!has_read()) {
-        MAX_P(txp_max_rdata_size, sizeof(TNonopaqueVersion));
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
     }
@@ -678,7 +670,6 @@ inline TransProxy& TransProxy::update_read(T old_rdata, T new_rdata) {
 template <typename T>
 inline TransProxy& TransProxy::set_predicate(T pdata) {
     assert(!has_read());
-    MAX_P(txp_max_rdata_size, sizeof(T));
     item().__or_flags(TransItem::predicate_bit);
     item().rdata_ = Packer<T>::pack(t()->buf_, std::move(pdata));
     return *this;
@@ -694,7 +685,6 @@ inline T& TransProxy::predicate_value(T default_pdata) {
 
 template <typename T>
 inline TransProxy& TransProxy::add_write(const T& wdata) {
-    MAX_P(txp_max_wdata_size, sizeof(T));
     if (!has_write()) {
         item().__or_flags(TransItem::write_bit);
         item().wdata_ = Packer<T>::pack(t()->buf_, wdata);
@@ -711,7 +701,6 @@ inline TransProxy& TransProxy::add_write(const T& wdata) {
 template <typename T>
 inline TransProxy& TransProxy::add_write(T&& wdata) {
     typedef typename std::decay<T>::type V;
-    MAX_P(txp_max_wdata_size, sizeof(V));
     if (!has_write()) {
         item().__or_flags(TransItem::write_bit);
         item().wdata_ = Packer<V>::pack(t()->buf_, std::move(wdata));
@@ -729,7 +718,6 @@ template <typename T>
 inline TransProxy& TransProxy::set_stash(T sdata) {
     assert(!has_read());
     if (!has_stash()) {
-        MAX_P(txp_max_sdata_size, sizeof(T));
         item().__or_flags(TransItem::stash_bit);
         item().rdata_ = Packer<T>::pack(t()->buf_, std::move(sdata));
     } else

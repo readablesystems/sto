@@ -1,11 +1,15 @@
 #include "Packer.hh"
 
+constexpr size_t TransactionBuffer::default_capacity;
+
 void TransactionBuffer::hard_get_space(size_t needed) {
-    size_t s = std::max(needed, e_ ? e_->size * 2 : 256);
+    size_t s = std::max(needed, e_ ? e_->size * 2 : default_capacity);
     elt* ne = (elt*) new char[sizeof(elthdr) + s];
     ne->next = e_;
     ne->pos = 0;
     ne->size = s;
+    if (e_)
+        size_ += e_->pos;
     e_ = ne;
 }
 
@@ -18,6 +22,7 @@ void TransactionBuffer::hard_clear(bool delete_all) {
     }
     if (e_)
         e_->clear();
+    size_ = 0;
     if (e_ && delete_all) {
         delete[] (char*) e_;
         e_ = 0;

@@ -63,12 +63,16 @@ public:
     template <typename T, typename U = T>
     const T* find(const U& x) const;
 
+    size_t size() const {
+        return size_ + (e_ ? e_->pos : 0);
+    }
     void clear() {
-        if (e_)
+        if (e_ && e_->pos)
             hard_clear(false);
     }
 
 private:
+    static constexpr size_t default_capacity = 4080;
     struct itemhdr {
         void (*destroyer)(void*);
         size_t size;
@@ -94,6 +98,7 @@ private:
         }
     };
     elt* e_;
+    size_t size_;
 
     item* get_space(size_t needed) {
         if (!e_ || e_->pos + needed > e_->size)
