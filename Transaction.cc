@@ -205,7 +205,8 @@ void Transaction::print_stats() {
         fprintf(stderr, "$ %llu HCO (%llu lock, %llu invalid, %llu aborts)\n",
                 out.p(txp_hco), out.p(txp_hco_lock), out.p(txp_hco_invalid), out.p(txp_hco_abort));
     if (txp_count >= txp_hash_collision)
-        fprintf(stderr, "$ %llu hash collisions\n", out.p(txp_hash_collision));
+        fprintf(stderr, "$ %llu (%.3f%%) hash collisions\n", out.p(txp_hash_collision),
+                100.0 * (double) out.p(txp_hash_collision) / out.p(txp_hash_find));
 }
 
 void Transaction::print(std::ostream& w) const {

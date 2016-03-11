@@ -69,12 +69,13 @@ enum txp {
     txp_max_rdata_size,
     txp_max_wdata_size,
     txp_max_sdata_size,
-    txp_total_searched,
     txp_push_abort,
     txp_pop_abort,
     txp_total_check_read,
     txp_total_check_predicate,
+    txp_hash_find,
     txp_hash_collision,
+    txp_total_searched,
 #if !STO_PROFILE_COUNTERS
     txp_count = 0
 #elif STO_PROFILE_COUNTERS == 1
@@ -349,6 +350,7 @@ private:
     // tries to find an existing item with this key, returns NULL if not found
     TransItem* find_item(TObject* obj, void* xkey) {
 #if TRANSACTION_HASHTABLE
+        INC_P(txp_hash_find);
         uint16_t idx = hashtable_[hash(obj, xkey)];
         if (idx <= hash_base_)
             return nullptr;
