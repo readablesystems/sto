@@ -6,15 +6,17 @@
 #define BOOSTING_BLOOMFILTER_SIZE 0
 
 // size 0 means no hashtable
-#define BOOSTING_HASHTABLE_SIZE 0
-#define BOOSTING_HASHTABLE_THRESHOLD 8
+#define BOOSTING_HASHTABLE_SIZE 1024
 
 template <typename T, unsigned Size = 512>
 class FastSet {
 public:
+#if BOOSTING_HASHTABLE_SIZE
+  static constexpr uint16_t max_base = 1<<15;
+#endif
   FastSet() : lockVec_()
 #if BOOSTING_HASHTABLE_SIZE
-            , hashtable_(), nhashed_()
+            , hash_base_(0), hashtable_()
 #endif
 #if BOOSTING_BLOOMFILTER_SIZE
             , bloom_()
@@ -27,6 +29,11 @@ public:
     uint64_t idx = hash / 64;
     hash = hash % 64;
     bloom_[idx] |= 1 << hash;
+#endif
+#if BOOSTING_HASHTABLE_SIZE
+    auto& h = hashtable_[hash(obj)];
+    if (h <= hash_base_)
+      h = hash_base_ + lockVec_.size();
 #endif
   }
   typename local_vector<T, Size>::iterator find (T& obj) {
@@ -50,36 +57,38 @@ public:
       return false;
 #endif
 #if BOOSTING_HASHTABLE_SIZE
-    if (lockVec_.size() > BOOSTING_HASHTABLE_THRESHOLD) {
-      if (nhashed_ < lockVec_.size()) {
-        update_hash();
-      }
-      uint64_t idx = hashtable_[hash(obj)];
-      if (!idx) {
-        return false;
-      } else if (lockVec_[idx-1] == obj) {
+    auto idx = hashtable_[hash(obj)];
+    if (idx <= hash_base_)
+      return false;
+    else if (lockVec_[idx - hash_base_ - 1] == obj)
         return true;
-      }
-    }
 #endif
     return find(obj) != lockVec_.end();
   }
   void clear() {
+#if BOOSTING_HASHTABLE_SIZE
+    hash_base_ += lockVec_.size();
+    if (hash_base_ >= max_base) {
+      memset(hashtable_, 0, sizeof(hashtable_));
+      hash_base_ = 0;
+    }
+#endif
     lockVec_.clear();
 #if BOOSTING_BLOOMFILTER_SIZE
     memset(bloom_, 0, sizeof(bloom_));
 #endif
-#if BOOSTING_HASHTABLE_SIZE
-    nhashed_ = 0;
-#endif
   }
   void unsafe_clear() {
+#if BOOSTING_HASHTABLE_SIZE
+    hash_base_ += lockVec_.size();
+    if (hash_base_ >= max_base) {
+      memset(hashtable_, 0, sizeof(hashtable_));
+      hash_base_ = 0;
+    }
+#endif
     lockVec_.unsafe_clear();
 #if BOOSTING_BLOOMFILTER_SIZE
     memset(bloom_, 0, sizeof(bloom_));
-#endif
-#if BOOSTING_HASHTABLE_SIZE
-    nhashed_ = 0;
 #endif
   }
   bool insert(T& obj) {
@@ -99,19 +108,13 @@ public:
 private:
   local_vector<T, Size> lockVec_;
 #if BOOSTING_HASHTABLE_SIZE
-  uint64_t hashtable_[BOOSTING_HASHTABLE_SIZE];
-  int nhashed_;
+  uint16_t hash_base_;
+  uint16_t hashtable_[BOOSTING_HASHTABLE_SIZE];
   static inline int hash(T& obj) {
     uintptr_t n = (uintptr_t)obj;
+    //    return (n >> 4) % BOOSTING_HASHTABLE_SIZE;
+    return (n + (n>>16)*9) % BOOSTING_HASHTABLE_SIZE;
     return ((n >> 4) ^ (n >> 20)) % BOOSTING_HASHTABLE_SIZE;
-  }
-  inline void update_hash() {
-    if (nhashed_ == 0)
-      memset(hashtable_, 0, sizeof(hashtable_));
-    for (auto it = lockVec_.begin() + nhashed_; it != lockVec_.end(); ++it, ++nhashed_) {
-      int h = hash(*it);
-      hashtable_[h] = nhashed_ + 1;
-    }
   }
 #endif
 #if BOOSTING_BLOOMFILTER_SIZE
