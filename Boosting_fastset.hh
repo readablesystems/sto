@@ -1,6 +1,7 @@
 #pragma once
 
 #include "local_vector.hh"
+#include <string.h>
 
 // should be a multiple of 64
 #define BOOSTING_BLOOMFILTER_SIZE 0
