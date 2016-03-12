@@ -313,7 +313,7 @@ public:
             return false;
         if (different_end(x)) {
             difference_type d = cend1_ ? x.i_ - i_ : i_ - x.i_;
-            a_->size_predicate().observe_eq(d + cend1_ + x.cend1_ - 1, i_ == x.i_);
+            a_->size_predicate().observe_test_eq(cend1_ + x.cend1_ - 1, d + cend1_ + x.cend1_ - 1);
         }
         return i_ == x.i_;
     }

@@ -114,10 +114,10 @@ private:
             return v_.snapshot(item, vers_);
     }
     bool observe_eq(TransProxy item, T value) const {
-        bool result = snapshot(item) == value;
+        T s = snapshot(item);
         if (!item.has_write())
-            get(item).observe_eq(value, result);
-        return result;
+            get(item).observe_test_eq(s, value);
+        return s == value;
     }
     bool observe_lt(TransProxy item, T value) const {
         bool result = snapshot(item) < value;

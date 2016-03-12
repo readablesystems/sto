@@ -17,16 +17,14 @@ struct TIntRange {
         else
             Sto::abort();
     }
-    void observe_eq(T value, bool was_eq) {
-        if (was_eq) {
+    void observe_test_eq(T value, T comparison) {
+        if (value == comparison) {
             first = std::max(first, value);
             second = std::min(second, value);
-        } else if (value < first || second < value)
-            /* do nothing */;
-        else if (value - first <= second - value)
-            first = value + 1;
+        } else if (value < comparison)
+            second = std::min(second, comparison - 1);
         else
-            second = value - 1;
+            first = std::max(first, comparison + 1);
         if (first > second)
             Sto::abort();
     }
@@ -84,7 +82,7 @@ public:
     bool operator==(value_type x) const {
         x -= delta_;
         if (r_)
-            r_->observe_eq(x, original_ == x);
+            r_->observe_test_eq(original_, x);
         return original_ == x;
     }
     bool operator!=(value_type x) const {
@@ -154,7 +152,7 @@ public:
     bool operator==(value_type x) const {
         x -= delta_;
         if (r_)
-            r_->observe_eq(x, original_ == x);
+            r_->observe_test_eq(original_, x);
         return original_ == x;
     }
     bool operator!=(value_type x) const {
@@ -205,7 +203,7 @@ public:
     bool operator==(difference_type x) const {
         x -= delta_;
         if (r_ && x >= 0)
-            r_->observe_eq(x, original_ == size_type(x));
+            r_->observe_test_eq(original_, x);
         return x >= 0 && original_ == size_type(x);
     }
     bool operator!=(difference_type x) const {
