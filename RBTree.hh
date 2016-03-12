@@ -862,9 +862,6 @@ inline size_t RBTree<K, T, GlobalSize>::erase(const K& key) {
             return 0; 
         }
 
-        // add a read here to make sure the key still exists when wen commit
-        // XXX better to use a predicate (or just a special bit?)
-        item.observe(ver);
         // found item that has already been installed and not deleted
         item.add_write(0).add_flags(delete_tag);
         // add a write to size item of the current size minus one
