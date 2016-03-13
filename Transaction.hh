@@ -295,11 +295,6 @@ public:
         state_ = s_in_progress;
     }
 
-    uint32_t local_random() const {
-        lrng_state_ = lrng_state_ * 1664525 + 1013904223;
-        return lrng_state_;
-    }
-
 #if TRANSACTION_HASHTABLE
     static int hash(const TObject* obj, void* key) {
         auto n = reinterpret_cast<uintptr_t>(key) + 0x4000000;
@@ -516,6 +511,14 @@ public:
 
     class Abort {};
 
+    uint32_t local_random() const {
+        lrng_state_ = lrng_state_ * 1664525 + 1013904223;
+        return lrng_state_;
+    }
+    void local_srandom(uint32_t state) {
+        lrng_state_ = state;
+    }
+
 private:
     enum {
         s_in_progress = 0, s_committing = 1, s_committing_locked = 2,
@@ -551,11 +554,16 @@ private:
 
 class Sto {
 public:
-    static void start_transaction() {
+    static Transaction* transaction() {
         if (!TThread::txn)
             TThread::txn = new Transaction(Transaction::uninitialized());
-        always_assert(!TThread::txn->in_progress());
-        TThread::txn->start();
+        return TThread::txn;
+    }
+
+    static void start_transaction() {
+        Transaction* t = transaction();
+        always_assert(!t->in_progress());
+        t->start();
     }
 
     static bool in_progress() {

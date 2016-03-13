@@ -110,6 +110,10 @@ class TransItem {
         assert(has_write());
         return Packer<T>::unpack(wdata_);
     }
+    template <typename T>
+    T write_value(T default_value) const {
+        return has_write() ? Packer<T>::unpack(wdata_) : default_value;
+    }
 
     template <typename T>
     T& xwrite_value() {
