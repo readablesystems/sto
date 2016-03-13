@@ -1,12 +1,14 @@
 #pragma once
 
-#include "Vector.hh"
+#include "TVector.hh"
 #include <algorithm>
 
 template <typename T, int INIT_CAPACITY = 10000>
 class PriorityQueue1 {
 public:
-    PriorityQueue1() : elems(INIT_CAPACITY) {}
+    PriorityQueue1() {
+        elems.nontrans_reserve(INIT_CAPACITY);
+    }
 
     
     void push(T v) {
@@ -38,5 +40,5 @@ public:
     }
     
 private:
-    Vector<T> elems;
+    TVector<T> elems;
 };
