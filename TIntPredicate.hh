@@ -73,7 +73,7 @@ public:
     virtual bool check_predicate(TransItem& item, Transaction& txn, bool committing) {
         TransProxy p(txn, item);
         pred_type pred = item.template predicate_value<pred_type>();
-        T value = committing ? v_.read(p, vers_) : v_.snapshot(p, vers_);
+        T value = v_.wait_snapshot(p, vers_, committing);
         return pred.verify(value);
     }
     virtual bool check(const TransItem& item, const Transaction&) {
