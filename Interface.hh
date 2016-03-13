@@ -333,7 +333,7 @@ public:
     virtual bool lock(TransItem& item, Transaction& txn) = 0;
     virtual bool check_predicate(TransItem& item, Transaction& txn, bool committing) {
         (void) item, (void) txn, (void) committing;
-        always_assert(false);
+	//        always_assert(false);
         return false;
     }
     virtual bool check(const TransItem& item, const Transaction& txn) = 0;

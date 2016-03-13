@@ -14,7 +14,7 @@ private:
 public:
   SpinLock() : lock(0) {}
 
-  bool tryLock(int spin = 0) {
+  bool tryLock(long spin = 0) {
     while (spin >= 0) {
       lock_type cur = lock;
       if (!(cur & lock_bit) && bool_cmpxchg(&lock, cur, lock_bit)) {
@@ -50,7 +50,7 @@ private:
 public:
   RWLock() : lock(0) {}
 
-  bool tryReadLock(int spin = 0) {
+  bool tryReadLock(long spin = 0) {
     while (spin >= 0) {
       lock_type cur = lock;
       if (!(cur & write_lock_bit) && !(cur & waiting_write_bit)) {
@@ -75,7 +75,7 @@ public:
     __sync_fetch_and_add(&lock, -1);
   }
 
-  bool tryWriteLock(int spin = 0) {
+  bool tryWriteLock(long spin = 0) {
     bool registered = false;
     while (spin >= 0) {
       lock_type cur = lock;
@@ -105,7 +105,7 @@ public:
   
   // if successful, we now hold a write lock. doesn't release the read lock in
   // either case.
-  bool tryUpgrade(int spin = 0) {
+  bool tryUpgrade(long spin = 0) {
     while (spin >= 0) {
       lock_type cur = lock;
       assert(cur & readerMask);

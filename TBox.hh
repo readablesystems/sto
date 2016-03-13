@@ -48,6 +48,9 @@ public:
     const T& nontrans_read() const {
         return v_.access();
     }
+    T& nontrans_access() {
+        return v_.access();
+    }
     void nontrans_write(const T& x) {
         v_.access() = x;
     }
