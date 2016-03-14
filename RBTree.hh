@@ -213,6 +213,7 @@ public:
     bool nontrans_insert(const K& key, const T& value);
     bool nontrans_contains(const K& key);
     bool nontrans_remove(const K& key);
+    bool nontrans_remove(const K& key, T& oldval);
     T nontrans_find(const K& key); // returns T() if not found, works for STAMP
     bool nontrans_find(const K& key, T& val);
 
@@ -1212,6 +1213,27 @@ bool RBTree<K, T, GlobalSize>::nontrans_remove(const K& key) {
     if (found) {
         size_--;
         wrapper_type* n = std::get<0>(results);
+        wrapper_tree_.erase(*n);
+        free(n);
+    }
+    unlock_write(&treelock_);
+    return found;
+}
+
+// same as normal nontrans_remove, but, if the key is successfully removed, oldval
+// is set to the value of the key before removal
+template <typename K, typename T, bool GlobalSize>
+bool RBTree<K, T, GlobalSize>::nontrans_remove(const K& key, T& oldval) {
+    lock_write(&treelock_);
+    wrapper_type idx_pair(rbpair<K, T>(key, T()));
+    auto results = wrapper_tree_.find_any(idx_pair,
+            rbpriv::make_compare<wrapper_type, wrapper_type>(wrapper_tree_.r_.get_compare()));
+    bool found = std::get<2>(results);
+    if (found) {
+        size_--;
+        wrapper_type* n = std::get<0>(results);
+	// set the old value for the caller
+	oldval = n->writeable_value();
         wrapper_tree_.erase(*n);
         free(n);
     }
