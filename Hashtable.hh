@@ -432,8 +432,8 @@ public:
             if (item.has_read())
                 w << " R" << item.read_value<Version_type>();
         } else {
-            auto el = item.key<internal_elem*>();
-            w << "[" << el->key << "]";
+            //auto el = item.key<internal_elem*>();
+            //w << "[" << el->key << "]";
             if (item.has_read())
                 w << " R" << item.read_value<Version_type>();
             if (item.has_write()) {
