@@ -57,14 +57,10 @@ public:
   bool transDelete(const Key& k) {
     lockKey_.writeLock(k);
     Value oldval;
-    // XXX: two O(logn) lookups for a RBTree. Could make a customized nontrans_remove that gets the old value for us to avoid.
-    if (!map_.nontrans_find(k, oldval)) {
-      return false;
+    bool success = map_.nontrans_remove(k, oldval);
+    if (success) {
+      ON_ABORT(TransMap::_undoDelete, this, k, oldval);
     }
-    bool success = map_.nontrans_remove(k);
-    assert(success);
-
-    ON_ABORT(TransMap::_undoDelete, this, k, oldval);
 
     return success;
   }

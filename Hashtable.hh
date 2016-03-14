@@ -647,6 +647,9 @@ public:
 
   bool nontrans_remove(const Key& k) { return remove(k); }
 
+  // XXX: there's a race between the read and the remove (oldval might be stale) but mehh
+  bool nontrans_remove(const Key& k, Value& oldval) { if (read(k,oldval)) return remove(k); else return false; }
+
 private:
   bucket_entry& buck_entry(const Key& k) {
     return map_[bucket(k)];
