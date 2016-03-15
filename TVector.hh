@@ -41,6 +41,7 @@ private:
     static constexpr TransItem::flags_type indexed_bit = TransItem::user0_bit;
 public:
     class iterator;
+    class dumb_iterator;
     class const_iterator;
     using size_proxy = TIntRangeProxy<size_type>;
     using difference_proxy = TIntRangeDifferenceProxy<size_type>;
@@ -83,6 +84,8 @@ public:
     inline const_iterator cend() const;
     inline const_iterator begin() const;
     inline const_iterator end() const;
+    inline dumb_iterator dbegin() const;
+    inline dumb_iterator dend() const;
 
     void push_back(T x) {
         auto sitem = size_item();
@@ -285,6 +288,7 @@ private:
 
     friend class iterator;
     friend class const_iterator;
+    friend class dumb_iterator;
 };
 
 
@@ -444,6 +448,33 @@ private:
 };
 
 template <typename T, template <typename> typename W>
+class TVector<T, W>::dumb_iterator : public const_iterator {
+public:
+  typedef TVector<T, W> vector_type;
+  typedef typename vector_type::size_type size_type;
+  typedef typename vector_type::difference_type difference_type;
+  
+  dumb_iterator() {
+  }
+  dumb_iterator(const TVector<T, W>* a, size_type i, size_type cend1)
+  : const_iterator(a, i, cend1) {
+  }
+  
+  bool operator==(const const_iterator& x) const {
+    if (this->a_ != x.a_)
+      return false;
+    if (this->different_end(x)) {
+      difference_type d = this->cend1_ ? x.i_ - this->i_ : this->i_ - x.i_;
+      return this->a_->size() == d;
+    }
+    return this->i_ == x.i_;
+  }
+  private:
+  friend class TVector<T, W>;
+};
+
+
+template <typename T, template <typename> typename W>
 inline auto TVector<T, W>::begin() -> iterator {
     return iterator(this, 0, 0);
 }
@@ -475,6 +506,18 @@ inline auto TVector<T, W>::end() const -> const_iterator {
     auto& sinfo = size_info();
     return iterator(this, sinfo.second, sinfo.first + 1);
 }
+
+template <typename T, template <typename> typename W>
+inline auto TVector<T, W>::dbegin() const -> dumb_iterator {
+  return dumb_iterator(this, 0, 0);
+}
+
+template <typename T, template <typename> typename W>
+inline auto TVector<T, W>::dend() const -> dumb_iterator {
+  auto& sinfo = size_info();
+  return dumb_iterator(this, sinfo.second, sinfo.first + 1);
+}
+
 
 
 template <typename T, template <typename> typename W>
