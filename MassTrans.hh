@@ -222,8 +222,9 @@ public:
     }
   }
 
-  template <bool CopyVals = true, bool INSERT = true, bool SET = true, typename StringType, typename ValueType>
-  bool transPut(const StringType& key, const ValueType& value, threadinfo_type& ti = mythreadinfo) {
+private:
+  template <bool CopyVals, bool INSERT, bool SET, typename StringType, typename ValueType>
+  bool trans_write(const StringType& key, const ValueType& value, threadinfo_type& ti = mythreadinfo) {
     // optimization to do an unlocked lookup first
     if (SET) {
       unlocked_cursor_type lp(table_, key);
@@ -287,14 +288,20 @@ public:
     }
   }
 
+public:
+  template <bool CopyVals = true, typename StringType, typename ValueType>
+  bool transPut(StringType& k, const ValueType& v, threadinfo_type& ti = mythreadinfo) {
+    return trans_write<CopyVals, /*insert*/true, /*set*/true>(k, v, ti);
+  }
+
   template <bool CopyVals = true, typename StringType>
   bool transUpdate(StringType& k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
-    return transPut<CopyVals, /*insert*/false, /*set*/true>(k, v, ti);
+    return trans_write<CopyVals, /*insert*/false, /*set*/true>(k, v, ti);
   }
 
   template <bool CopyVals = true, typename StringType>
   bool transInsert(StringType& k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
-    return !transPut<CopyVals, /*insert*/true, /*set*/false>(k, v, ti);
+    return !trans_write<CopyVals, /*insert*/true, /*set*/false>(k, v, ti);
   }
 
 
@@ -593,7 +600,7 @@ public:
 
 protected:
   // called once we've checked our own writes for a found put()
-  template <bool CopyVals = true, typename ValueType>
+  template <bool CopyVals, typename ValueType>
   void reallyHandlePutFound(TransProxy& item, versioned_value *e, Str key, const ValueType& value) {
     // resizing takes a lot of effort, so we first check if we'll need to
     // (values never shrink in size, so if we don't need to resize, we'll never need to)
@@ -654,7 +661,7 @@ protected:
 
   // returns true if already in tree, false otherwise
   // handles a transactional put when the given key is already in the tree
-  template <bool CopyVals = true, bool INSERT=true, bool SET=true, typename ValueType>
+  template <bool CopyVals, bool INSERT, bool SET, typename ValueType>
   bool handlePutFound(versioned_value *e, Str key, const ValueType& value) {
     auto item = t_item(e);
     if (!validityCheck(item, e)) {
