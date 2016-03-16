@@ -4,6 +4,9 @@
 #include <vector>
 #include "Transaction.hh"
 #include "TBox.hh"
+#include "StringWrapper.hh"
+
+#define GUARDED if (TransactionGuard tguard{})
 
 void testSimpleInt() {
 	TBox<int> f;
@@ -148,11 +151,98 @@ void testNoOpacity1() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testStringWrapper() {
+    TBox<std::string> f;
+
+    GUARDED {
+        f = "100";
+    }
+
+    assert(f.nontrans_read() == "100");
+
+    GUARDED {
+        std::string x("200");
+        // normal assignment makes a copy
+        f = x;
+        assert(f.read() == "200");
+        assert(f.nontrans_read() == "100");
+        assert(x == "200");
+    }
+
+    assert(f.nontrans_read() == "200");
+
+    GUARDED {
+        std::string x("300");
+        // move assignment does a move
+        f = std::move(x);
+        assert(f.read() == "300");
+        assert(f.nontrans_read() == "200");
+        if (x != "")
+            std::cerr << "move assignment to string box did not appear to move\n"
+                << "(although this might be compiler sensitive)\n";
+        assert(x == "");
+    }
+
+    assert(f.nontrans_read() == "300");
+
+    GUARDED {
+        f = "400";
+        assert(f.read().compare("400") == 0);
+    }
+
+    assert(f.nontrans_read() == "400");
+
+    GUARDED {
+        std::string x("500");
+        f = x;
+        assert(f.read().compare("500") == 0);
+        assert(Sto::item(&f, 0).has_write());
+        // stored write value has different address from assigned value
+        assert(&Sto::item(&f, 0).write_value<std::string>() != &x);
+        // in fact we can assign to x...
+        x = "501";
+        // and not change the write value
+        assert(f.read().compare("500") == 0);
+    }
+
+    assert(f.nontrans_read() == "500");
+
+    // NB: The usual `GUARDED` semantics are not good enough here.
+    // We must commit `t` BEFORE `x` is destroyed, and in C++, destructors
+    // are called in reverse declaration order.
+    {
+        TestTransaction t(1);
+        std::string x("600");
+        f = StringWrapper(x);
+        assert(f.read().compare("600") == 0);
+        assert(Sto::item(&f, 0).has_write());
+        // thanks to StringWrapper, stored write value has same address
+        // as local string
+        assert(&Sto::item(&f, 0).write_value<std::string>() == &x);
+        // in fact we can assign to x...
+        x = "601";
+        // and change the write value
+        assert(f.read().compare("601") == 0);
+        assert(t.try_commit());
+        // in fact, thanks to std::move in TBox::install, successful commit
+        // clears `x`
+        if (x != "")
+            std::cerr << "commit of StringWrapper did not appear to move\n"
+                << "(although this might be compiler sensitive)\n";
+        assert(x == "");
+    }
+
+    assert(f.nontrans_read() == "601");
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
 int main() {
     testSimpleInt();
     testSimpleString();
     testConcurrentInt();
     testOpacity1();
     testNoOpacity1();
+    testStringWrapper();
     return 0;
 }

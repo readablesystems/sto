@@ -28,6 +28,10 @@ public:
     void write(T&& x) {
         Sto::item(this, 0).add_write(std::move(x));
     }
+    template <typename... Args>
+    void write(Args&&... args) {
+        Sto::item(this, 0).template add_write<T>(std::forward<Args>(args)...);
+    }
 
     operator read_type() const {
         return read();
@@ -38,6 +42,11 @@ public:
     }
     TBox<T, W>& operator=(T&& x) {
         write(std::move(x));
+        return *this;
+    }
+    template <typename V>
+    TBox<T, W>& operator=(V&& x) {
+        write(std::forward<V>(x));
         return *this;
     }
     TBox<T, W>& operator=(const TBox<T, W>& x) {

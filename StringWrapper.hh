@@ -8,15 +8,15 @@ public:
         : sptr_(&s) {
     }
     StringWrapper(const std::string& s)
-	: sptr_((std::string *) &s) {
+        : sptr_(const_cast<std::string*>(&s)) {
     }
     std::string* value() const {
         return sptr_;
     }
-    operator std::string& () {
+    operator std::string&() {
         return *sptr_;
     }
-    operator const std::string& () const {
+    operator const std::string&() const {
         return *sptr_;
     }
 private:
