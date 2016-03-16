@@ -142,7 +142,7 @@ public:
     }
     static bool try_check_opacity(type start_tid, type v) {
         signed_type delta = start_tid - v;
-        return delta >= 0 && !(v & (lock_bit | nonopaque_bit));
+        return delta > 0 && !(v & (lock_bit | nonopaque_bit));
     }
 
     static void print(type v, std::ostream& w) {
