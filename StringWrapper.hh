@@ -7,6 +7,9 @@ public:
     StringWrapper(std::string& s)
         : sptr_(&s) {
     }
+    StringWrapper(const std::string& s)
+	: sptr_((std::string *) &s) {
+    }
     std::string* value() const {
         return sptr_;
     }
@@ -33,10 +36,10 @@ struct Packer<std::string, false> {
         return wrapper.value();
     }
     static void* pack_unique(TransactionBuffer& buf, const std::string& x) {
-        if (const void* ptr = buf.template find<UniqueKey<std::string> >(x))
+        if (const void* ptr = buf.find<UniqueKey<std::string> >(x))
             return const_cast<void*>(ptr);
         else
-            return buf.template allocate<UniqueKey<std::string> >(x);
+            return buf.allocate<UniqueKey<std::string> >(x);
     }
     template <typename... Args>
     static void* repack(TransactionBuffer& buf, void*, Args&&... args) {
