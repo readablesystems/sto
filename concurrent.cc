@@ -31,6 +31,7 @@
 #define USE_VECTOR 6
 #define USE_TVECTOR 7
 #define USE_MASSTREE_STR 8
+#define USE_HASHTABLE_STR 9
 
 // set this to USE_DATASTRUCTUREYOUWANT
 #define DATA_STRUCTURE USE_TVECTOR
@@ -365,6 +366,38 @@ template <> struct Container<USE_HASHTABLE> {
     static void init() {
     }
     static void thread_init(Container<USE_HASHTABLE>&) {
+    }
+private:
+    type v_;
+};
+
+template <> struct Container<USE_HASHTABLE_STR> {
+    typedef Hashtable<int, std::string, false, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
+    typedef int index_type;
+    static constexpr bool has_delete = true;
+    value_type nontrans_get(index_type key) {
+        return strtoval(v_.unsafe_get(key));
+    }
+    value_type transGet(index_type key) {
+        std::string v;
+        v_.transGet(key, v);
+        return strtoval(v);
+    }
+    void transPut(index_type key, value_type value) {
+        v_.transPut(key, valtostr(value));
+    }
+    bool transDelete(index_type key) {
+        return v_.transDelete(key);
+    }
+    bool transInsert(index_type key, value_type value) {
+        return v_.transInsert(key, valtostr(value));
+    }
+    bool transUpdate(index_type key, value_type value) {
+        return v_.transUpdate(key, valtostr(value));
+    }
+    static void init() {
+    }
+    static void thread_init(Container<USE_HASHTABLE_STR>&) {
     }
 private:
     type v_;
@@ -1075,7 +1108,8 @@ void print_time(struct timeval tv1, struct timeval tv2) {
     {name, desc, 4, new type<4, ## __VA_ARGS__>},     \
     {name, desc, 6, new type<6, ## __VA_ARGS__>},     \
     {name, desc, 7, new type<7, ## __VA_ARGS__>},     \
-    {name, desc, 8, new type<8, ## __VA_ARGS__>}
+    {name, desc, 8, new type<8, ## __VA_ARGS__>},     \
+    {name, desc, 9, new type<9, ## __VA_ARGS__>}
 
 struct Test {
     const char* name;
@@ -1100,6 +1134,7 @@ struct {
     {"array", USE_ARRAY},
     {"hashtable", USE_HASHTABLE},
     {"hash", USE_HASHTABLE},
+    {"hash-str", USE_HASHTABLE_STR},
     {"masstree", USE_MASSTREE},
     {"mass", USE_MASSTREE},
     {"masstree-str", USE_MASSTREE_STR},
