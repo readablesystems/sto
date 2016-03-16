@@ -262,6 +262,8 @@ class TransProxy {
     }
 
     inline TransProxy& add_write();
+    template <typename T, typename V>
+    inline TransProxy& add_write(const V& wdata);
     template <typename T>
     inline TransProxy& add_write(const T& wdata);
     template <typename T>

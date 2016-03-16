@@ -10,6 +10,12 @@ public:
     std::string* value() const {
         return sptr_;
     }
+    operator std::string& () {
+        return *sptr_;
+    }
+    operator const std::string& () const {
+        return *sptr_;
+    }
 private:
     std::string* sptr_;
 };

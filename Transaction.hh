@@ -792,6 +792,11 @@ inline TransProxy& TransProxy::add_write() {
 
 template <typename T>
 inline TransProxy& TransProxy::add_write(const T& wdata) {
+    return add_write<T, T>(wdata);
+}
+
+template <typename T, typename V>
+inline TransProxy& TransProxy::add_write(const V& wdata) {
     if (!has_write()) {
         item().__or_flags(TransItem::write_bit);
         item().wdata_ = Packer<T>::pack(t()->buf_, wdata);

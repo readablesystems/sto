@@ -222,8 +222,8 @@ public:
     }
   }
 
-  template <bool CopyVals = true, bool INSERT = true, bool SET = true, typename StringType>
-  bool transPut(const StringType& key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
+  template <bool CopyVals = true, bool INSERT = true, bool SET = true, typename StringType, typename ValueType>
+  bool transPut(const StringType& key, const ValueType& value, threadinfo_type& ti = mythreadinfo) {
     // optimization to do an unlocked lookup first
     if (SET) {
       unlocked_cursor_type lp(table_, key);
@@ -246,7 +246,7 @@ public:
       return handlePutFound<CopyVals, INSERT, SET>(e, key, value);
     } else {
       //      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
-      versioned_value* val = (versioned_value*)versioned_value::make(value, invalid_bit);
+      versioned_value* val = (versioned_value*)versioned_value::make((value_type&)value, invalid_bit);
       lp.value() = val;
 #if ABORT_ON_WRITE_READ_CONFLICT
       auto orig_node = lp.node();
@@ -593,12 +593,12 @@ public:
 
 protected:
   // called once we've checked our own writes for a found put()
-  template <bool CopyVals = true>
-  void reallyHandlePutFound(TransProxy& item, versioned_value *e, Str key, const value_type& value) {
+  template <bool CopyVals = true, typename ValueType>
+  void reallyHandlePutFound(TransProxy& item, versioned_value *e, Str key, const ValueType& value) {
     // resizing takes a lot of effort, so we first check if we'll need to
     // (values never shrink in size, so if we don't need to resize, we'll never need to)
     auto *new_location = e;
-    bool needsResize = e->needsResize(value);
+    bool needsResize = e->needsResize(value_type(value));
     if (needsResize) {
       if (!has_insert(item)) {
         // TODO: might be faster to do this part at commit time but easiest to just do it now
@@ -615,7 +615,7 @@ protected:
       }
       // does the actual realloc. at this point e is marked invalid so we don't have to worry about
       // other threads changing e's value
-      new_location = e->resizeIfNeeded(value);
+      new_location = e->resizeIfNeeded(value_type(value));
       // e can't get bigger so this should always be true
       assert(new_location != e);
       if (!has_insert(item)) {
@@ -640,12 +640,12 @@ protected:
     {
       if (new_location == e) {
 	if (CopyVals)
-	  item.add_write(value).add_flags(copyvals_bit);
+	  item.template add_write<value_type, ValueType>(value).add_flags(copyvals_bit);
 	else
 	  item.add_write(pack(value));
       } else {
 	if (CopyVals)
-	  Sto::new_item(this, new_location).add_write(value).add_flags(copyvals_bit);
+	  Sto::new_item(this, new_location).template add_write<value_type, ValueType>(value).add_flags(copyvals_bit);
 	else
 	  Sto::new_item(this, new_location).add_write(pack(value));
       }
@@ -654,8 +654,8 @@ protected:
 
   // returns true if already in tree, false otherwise
   // handles a transactional put when the given key is already in the tree
-  template <bool CopyVals = true, bool INSERT=true, bool SET=true>
-  bool handlePutFound(versioned_value *e, Str key, const value_type& value) {
+  template <bool CopyVals = true, bool INSERT=true, bool SET=true, typename ValueType>
+  bool handlePutFound(versioned_value *e, Str key, const ValueType& value) {
     auto item = t_item(e);
     if (!validityCheck(item, e)) {
       Sto::abort();
