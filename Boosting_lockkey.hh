@@ -20,7 +20,7 @@ public:
     transWriteLock(lock);
   }
 
-private:
+public:
   Hashtable<K, RWLock, true, Init_size, RWLock, Hash, Pred> lockMap;
 
   RWLock *getLock(const K& key) {

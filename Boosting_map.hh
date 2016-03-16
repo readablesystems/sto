@@ -56,6 +56,8 @@ public:
 
   bool transDelete(const Key& k) {
     lockKey_.writeLock(k);
+    // TODO: remove this once we're convinced that it will never fire
+    assert(lockKey_.getLock(k)->isWriteLocked());
     Value oldval;
     bool success = map_.nontrans_remove(k, oldval);
     if (success) {

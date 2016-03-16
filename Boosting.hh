@@ -32,9 +32,9 @@ void boosting_releaseLocksCallback(void*, void*, void*);
 void transReadLock(RWLock *lock);
 void transWriteLock(RWLock *lock);
 
-#define READ_SPIN 100
+#define READ_SPIN 100000
 //(long(1)<<60)
-#define WRITE_SPIN 100
+#define WRITE_SPIN 100000
 //(long(1)<<60)
 
 #define DO_ABORT() TxAbort(STM_CUR_SELF)

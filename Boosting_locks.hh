@@ -53,6 +53,7 @@ public:
   bool tryReadLock(long spin = 0) {
     while (spin >= 0) {
       lock_type cur = lock;
+      fence();
       if (!(cur & write_lock_bit) && !(cur & waiting_write_bit)) {
         // apparently this is faster than cmpxchg
         lock_type prev = __sync_fetch_and_add(&lock, 1);
@@ -79,7 +80,10 @@ public:
     bool registered = false;
     while (spin >= 0) {
       lock_type cur = lock;
+      fence();
       if (!(cur & write_lock_bit) && !(cur & readerMask)) {
+	// we try to set the lock to just write_lock_bit, which will clear any
+	// other flags
         if (bool_cmpxchg(&lock, cur, write_lock_bit)) {
           acquire_fence();
           return true;
@@ -106,30 +110,38 @@ public:
   // if successful, we now hold a write lock. doesn't release the read lock in
   // either case.
   bool tryUpgrade(long spin = 0) {
-    while (spin >= 0) {
-      lock_type cur = lock;
-      assert(cur & readerMask);
-      // someone else upgraded it first
-      if ((cur & write_lock_bit) || (__sync_fetch_and_or(&lock, write_lock_bit) & write_lock_bit)) {
-        spin--;
-        relax_fence();
-        continue;
-      }
-      // we have the upgrade, now just have to wait for readers
-      while (spin >= 0) {
-        lock_type cur = lock;
-        // no new readers should be adding themselves, so once this is won't go
-        // back up
-        if ((cur & readerMask) == 1) {
-          acquire_fence();
-          return true;
-        }
-        spin--;
-        relax_fence();
-      }
-      // we got tired of waiting for other readers, didn't upgrade after all
-      __sync_fetch_and_and(&lock, ~write_lock_bit);
+    lock_type cur = lock;
+    assert(cur & readerMask);
+    // XXX: it could be more clear to have a separate bit for this rather than overloading waiting_write_bit
+    if ((cur & waiting_write_bit) || (__sync_fetch_and_or(&lock, waiting_write_bit) & waiting_write_bit)) {
+      // either someone else is trying to upgrade this lock, or some other
+      // writer is waiting for the lock. In the former case we're in a bit
+      // of a deadlock with the other upgrader, so we may as well as let
+      // them have it. In the latter case, it still seems okay to just
+      // let the other writer win this one.
+      return false;
     }
+    fence();
+    while (spin >= 0) {
+      // now just have to wait for readers
+      lock_type cur = lock;
+      // no new readers should be adding themselves, so once this is 1 it won't go
+      // back up (except temporarily)
+      if ((cur & readerMask) == 1) {
+	// simultaneously write lock and discard our read lock.
+	// I think we should always be able to get this since
+	// we have a read lock, and only one upgrader should
+	// run at a time.
+	if (bool_cmpxchg(&lock, cur, write_lock_bit)) {
+	  acquire_fence();
+	  return true;
+	}
+      }
+      spin--;
+      relax_fence();
+    }
+    // we got tired of waiting for other readers, didn't upgrade after all
+    __sync_fetch_and_and(&lock, ~waiting_write_bit);
     return false;
   }
 
@@ -137,22 +149,6 @@ public:
   bool isWriteLocked() {
     lock_type cur = lock;
     fence();
-    // eek. There are several possible states:
-    // * write locked with no readers: normal write lock
-    // * write locked with 1 reader: upgraded lock (you own it)
-    // * write locked with >1 reader: someone else is trying to upgrade this
-    //   lock and is waiting for our read to finish. In that case the answer
-    //   to our question is no (it's still technically only a read lock).
-    //   Chances are we'll also conflict the other upgrader so we should maybe just abort.
-
-    // might be better to just get a slightly better boosting semantics
-    return (cur & write_lock_bit) && (cur & readerMask) <= 1;
-  }
-  // I'm not sure if it's actually useful to distinguish upgraded (MAYBE for optimizations?)
-  // if not we could just readUnlock in tryUpgrade and then at least we have one less weird case.
-  bool isUpgraded() {
-    lock_type cur = lock;
-    fence();
-    return (cur & write_lock_bit) && (cur & readerMask) == 1;
+    return (cur & write_lock_bit);
   }
 };
