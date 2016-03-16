@@ -11,20 +11,20 @@ public:
 
     // used to free things only if successful commit
     void transFree(void *ptr) {
-        Sto::new_item(this, ptr).template add_write<free_type>(::free);
+        Sto::new_item(this, ptr).template add_write<free_type, free_type>(::free);
     }
 
     // malloc() which will be freed on abort
     void* transMalloc(size_t sz) {
         void *ptr = malloc(sz);
-        Sto::new_item(this, ptr).template add_write<free_type>(::free).add_flags(alloc_flag);
+        Sto::new_item(this, ptr).template add_write<free_type, free_type>(::free).add_flags(alloc_flag);
         return ptr;
     }
 
     // delete which only applies if transaction commits
     template <typename T>
     void transDelete(T *x) {
-        Sto::new_item(this, x).template add_write<free_type>(&ObjectDestroyer<T>::destroy_and_free);
+        Sto::new_item(this, x).template add_write<free_type, free_type>(&ObjectDestroyer<T>::destroy_and_free);
     }
 
     // new which will be delete'd on abort.
@@ -32,7 +32,7 @@ public:
     template <typename T, typename... Args>
     T* transNew(Args&&... args) {
         T* x = new T(std::forward<Args>(args)...);
-        Sto::new_item(this, x).template add_write<free_type>(&ObjectDestroyer<T>::destroy_and_free).add_flags(alloc_flag);
+        Sto::new_item(this, x).template add_write<free_type, free_type>(&ObjectDestroyer<T>::destroy_and_free).add_flags(alloc_flag);
         return x;
     }
 
@@ -42,7 +42,7 @@ public:
     void unlock(TransItem&) {}
     void cleanup(TransItem& item, bool committed) {
         if (committed == !item.has_flag(alloc_flag))
-            Transaction::rcu_call(item.write_value<free_type>(), item.key<void*>());
+	  Transaction::rcu_call(item.write_value<free_type>(), item.key<void*>());
     }
     void print(std::ostream& w, const TransItem& item) const {
         w << "{TransAlloc @" << item.key<void*>();
