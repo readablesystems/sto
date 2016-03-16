@@ -647,12 +647,12 @@ protected:
     {
       if (new_location == e) {
 	if (CopyVals)
-	  item.template add_write<value_type, ValueType>(value).add_flags(copyvals_bit);
+	  item.template add_write<value_type>(value).add_flags(copyvals_bit);
 	else
 	  item.add_write(pack(value));
       } else {
 	if (CopyVals)
-	  Sto::new_item(this, new_location).template add_write<value_type, ValueType>(value).add_flags(copyvals_bit);
+	  Sto::new_item(this, new_location).template add_write<value_type>(value).add_flags(copyvals_bit);
 	else
 	  Sto::new_item(this, new_location).add_write(pack(value));
       }

@@ -262,12 +262,12 @@ class TransProxy {
     }
 
     inline TransProxy& add_write();
-    template <typename T, typename V>
-    inline TransProxy& add_write(const V& wdata);
     template <typename T>
     inline TransProxy& add_write(const T& wdata);
     template <typename T>
     inline TransProxy& add_write(T&& wdata);
+    template <typename T, typename... Args>
+    inline TransProxy& add_write(Args&&... wdata);
     inline TransProxy& clear_write() {
         item().__rm_flags(TransItem::write_bit);
         return *this;

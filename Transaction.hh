@@ -678,6 +678,10 @@ class TransactionGuard {
     ~TransactionGuard() {
         Sto::commit();
     }
+    typedef void (TransactionGuard::* unspecified_bool_type)(std::ostream&) const;
+    operator unspecified_bool_type() const {
+        return &TransactionGuard::print;
+    }
     void print(std::ostream& w) const {
         TThread::txn->print(w);
     }
@@ -792,37 +796,27 @@ inline TransProxy& TransProxy::add_write() {
 
 template <typename T>
 inline TransProxy& TransProxy::add_write(const T& wdata) {
-    return add_write<T, T>(wdata);
-}
-
-template <typename T, typename V>
-inline TransProxy& TransProxy::add_write(const V& wdata) {
-    if (!has_write()) {
-        item().__or_flags(TransItem::write_bit);
-        item().wdata_ = Packer<T>::pack(t()->buf_, wdata);
-        t()->any_writes_ = true;
-    } else
-        // TODO: this assumes that a given writer data always has the same type.
-        // this is certainly true now but we probably shouldn't assume this in general
-        // (hopefully we'll have a system that can automatically call destructors and such
-        // which will make our lives much easier)
-        item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, wdata);
-    return *this;
+    return add_write<T, const T&>(wdata);
 }
 
 template <typename T>
 inline TransProxy& TransProxy::add_write(T&& wdata) {
     typedef typename std::decay<T>::type V;
+    return add_write<V, V&&>(std::move(wdata));
+}
+
+template <typename T, typename... Args>
+inline TransProxy& TransProxy::add_write(Args&&... args) {
     if (!has_write()) {
         item().__or_flags(TransItem::write_bit);
-        item().wdata_ = Packer<V>::pack(t()->buf_, std::move(wdata));
+        item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
         t()->any_writes_ = true;
     } else
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general
         // (hopefully we'll have a system that can automatically call destructors and such
         // which will make our lives much easier)
-        item().wdata_ = Packer<V>::repack(t()->buf_, item().wdata_, std::move(wdata));
+        item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
     return *this;
 }
 
