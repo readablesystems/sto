@@ -192,9 +192,10 @@ public:
   }
 #endif
 
+private:
   // returns true if item already existed, false if it did not
-  template <bool CopyVals = true, bool INSERT = true, bool SET = true>
-  bool transPut(const Key& k, const Value& v) {
+  template <bool CopyVals, bool INSERT, bool SET>
+  bool trans_write(const Key& k, const Value& v) {
     // TODO: technically puts don't need to look into the table at all until lock time
     bucket_entry& buck = buck_entry(k);
     // TODO: update doesn't need to lock the table
@@ -283,13 +284,19 @@ public:
     }
   }
 
+public:
+  template <bool CopyVals = true>
+  bool transPut(const Key& k, const Value& v) {
+    return trans_write<CopyVals, /*insert*/true, /*set*/true>(k, v);
+  }
+
   // returns true if successful
   bool transInsert(const Key& k, const Value& v) {
-    return !transPut</*copyvals*/true, /*insert*/true, /*set*/false>(k, v);
+    return !trans_write</*copyvals*/true, /*insert*/true, /*set*/false>(k, v);
   }
 
   bool transUpdate(const Key& k, const Value& v) {
-    return transPut</*copyvals*/true, /*insert*/false, /*set*/true>(k, v);
+    return trans_write</*copyvals*/true, /*insert*/false, /*set*/true>(k, v);
   }
 
 
