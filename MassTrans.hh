@@ -634,7 +634,7 @@ protected:
     }
 #if READ_MY_WRITES
     if (has_insert(item)) {
-      new_location->set_value(value);
+      new_location->set_value(value_type(value));
     } else
 #endif
     {
