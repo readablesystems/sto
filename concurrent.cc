@@ -30,6 +30,7 @@
 #define USE_QUEUE 5
 #define USE_VECTOR 6
 #define USE_TVECTOR 7
+#define USE_MASSTREE_STR 8
 
 // set this to USE_DATASTRUCTUREYOUWANT
 #define DATA_STRUCTURE USE_TVECTOR
@@ -92,6 +93,38 @@ typedef std::string value_type;
 #else
 typedef int value_type;
 #endif
+
+inline value_type val(int v) {
+#if STRING_VALUES
+  return std::to_string(v);
+#else
+  return v;
+#endif
+}
+
+inline int unval(const value_type& v) {
+#if STRING_VALUES
+  return std::stoi(v);
+#else
+  return v;
+#endif
+}
+
+inline std::string valtostr(value_type v) {
+#if STRING_VALUES
+  return v;
+#else
+  return std::to_string(v);
+#endif
+}
+
+inline value_type strtoval(const std::string& s) {
+#if STRING_VALUES
+  return s;
+#else
+  return s.empty() ? 0 : std::stoi(s);
+#endif
+}
 
 
 template <int DS> struct Container {};
@@ -259,6 +292,52 @@ private:
     type v_;
 };
 
+template <> struct Container<USE_MASSTREE_STR> {
+#if UNBOXED_STRINGS
+    typedef MassTrans<std::string, versioned_str_struct> type;
+#else
+    typedef MassTrans<std::string> type;
+#endif
+    typedef int index_type;
+    static constexpr bool has_delete = true;
+    value_type nontrans_get(index_type key) {
+        std::string v;
+        {
+            TransactionGuard guard;
+            v_.transGet(IntStr(key), v);
+        }
+        return strtoval(v);
+    }
+    value_type transGet(index_type key) {
+        std::string v;
+        v_.transGet(IntStr(key), v);
+        return strtoval(v);
+    }
+    void transPut(index_type key, value_type value) {
+        v_.transPut(IntStr(key).str(), valtostr(value));
+    }
+    bool transDelete(index_type key) {
+        return v_.transDelete(IntStr(key).str());
+    }
+    bool transInsert(index_type key, value_type value) {
+        return v_.transInsert(IntStr(key).str(), valtostr(value));
+    }
+    bool transUpdate(index_type key, value_type value) {
+        return v_.transUpdate(IntStr(key).str(), valtostr(value));
+    }
+    static void init() {
+        Transaction::epoch_advance_callback = [] (unsigned) {
+            // just advance blindly because of the way Masstree uses epochs
+            globalepoch++;
+        };
+    }
+    static void thread_init(Container<USE_MASSTREE_STR>&) {
+        type::thread_init();
+    }
+private:
+    type v_;
+};
+
 template <> struct Container<USE_HASHTABLE> {
     typedef Hashtable<int, value_type, false, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
     typedef int index_type;
@@ -335,24 +414,6 @@ struct Rand {
     return 0;
   }
 };
-
-inline value_type val(int v) {
-#if STRING_VALUES
-  char s[64];
-  sprintf(s, "%d", v);
-  return std::move(std::string(s));
-#else
-  return v;
-#endif
-}
-
-inline int unval(const value_type& v) {
-#if STRING_VALUES
-  return atoi(v.c_str());
-#else
-  return v;
-#endif
-}
 
 template <typename T>
 void prepopulate_func(T& a) {
@@ -1013,7 +1074,8 @@ void print_time(struct timeval tv1, struct timeval tv2) {
     {name, desc, 3, new type<3, ## __VA_ARGS__>},     \
     {name, desc, 4, new type<4, ## __VA_ARGS__>},     \
     {name, desc, 6, new type<6, ## __VA_ARGS__>},     \
-    {name, desc, 7, new type<7, ## __VA_ARGS__>}
+    {name, desc, 7, new type<7, ## __VA_ARGS__>},     \
+    {name, desc, 8, new type<8, ## __VA_ARGS__>}
 
 struct Test {
     const char* name;
@@ -1040,6 +1102,7 @@ struct {
     {"hash", USE_HASHTABLE},
     {"masstree", USE_MASSTREE},
     {"mass", USE_MASSTREE},
+    {"masstree-str", USE_MASSTREE_STR},
     {"genstm", USE_GENSTMARRAY},
     {"tgeneric", USE_TGENERICARRAY},
     {"queue", USE_QUEUE},
