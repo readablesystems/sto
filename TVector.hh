@@ -6,7 +6,7 @@
 template <typename T, template <typename> typename W = TOpaqueWrapped>
 class TVector : public TObject {
 public:
-    using size_type = unsigned;
+    using size_type = int;
     using difference_type = int;
 private:
     static constexpr size_type default_capacity = 128;
@@ -460,14 +460,17 @@ public:
   : const_iterator(a, i, cend1) {
   }
   
-  bool operator==(const const_iterator& x) const {
+  bool operator==(const dumb_iterator& x) const {
     if (this->a_ != x.a_)
       return false;
     if (this->different_end(x)) {
-      difference_type d = this->cend1_ ? x.i_ - this->i_ : this->i_ - x.i_;
-      return this->a_->size() == d;
+      this->a_->size_predicate().observe_test_eq(this->cend1_ + x.cend1_ - 1, this->cend1_ + x.cend1_ - 1);
     }
     return this->i_ == x.i_;
+  }
+  
+  bool operator!=(const dumb_iterator& x) const {
+    return !(*this == x);
   }
   private:
   friend class TVector<T, W>;

@@ -8,19 +8,20 @@
 #include "TVector.hh"
 #include "clp.h"
 #include <sys/time.h>
-
-int max_value = 10000;
+int max_range = 10000;
+int max_value = 1000;
 int global_seed = 11;
 int nthreads = 2;
 int ntrans = 1000000;
 int opspertrans = 1;
 int prepopulate = 1000;
 int max_key = 1000;
-double search_percent = 0.3;
+double search_percent = 0.6;
 double pushback_percent = 0.2; // pop_percent will be the same to keep the size of array roughly the same
 bool dumb_iterator = false;
 
-
+int find_aborts[16];
+int unsuccessful_finds = 0;
 TransactionTid::type lock;
 
 typedef TVector<int> data_structure;
@@ -52,18 +53,29 @@ struct TesterPair {
   int me;
 };
 
+template<class InputIt, class T>
+InputIt findIt(InputIt first, InputIt last, const T& value)
+{
+  for (; first != last; ++first) {
+    if (*first == value) {
+      return first;
+    }
+  }
+  return first;
+  return last;
+}
 
 template <typename T>
 int findK(T* q, int val) {
   if (dumb_iterator) {
     typename T::dumb_iterator fit = q->dbegin();
     typename T::dumb_iterator eit = q->dend();
-    typename T::dumb_iterator it = std::find(fit, eit, val);
+    typename T::dumb_iterator it = findIt(fit, eit, val);
     return it-fit;
   }
-  typename T::iterator fit = q->begin();
-  typename T::iterator eit = q->end();
-  typename T::iterator it = std::find(fit, eit, val);
+  typename T::const_iterator fit = q->cbegin();
+  typename T::const_iterator eit = q->cend();
+  typename T::const_iterator it = findIt(fit, eit, val);
   return it-fit;
 }
 
@@ -71,13 +83,12 @@ template <typename T>
 void run(T* q, int me) {
   TThread::set_id(me);
   
-  std::uniform_int_distribution<long> slotdist(0, max_value);
+  std::uniform_int_distribution<long> slotdist(0, max_range);
   int N = ntrans/nthreads;
   int OPS = opspertrans;
-  
+  bool find_op = false;
   for (int i = 0; i < N; ++i) {
     // so that retries of this transaction do the same thing
-    //std::cout << i << std::endl;
     auto transseed = i;
     while (1) {
       Sto::start_transaction();
@@ -86,11 +97,12 @@ void run(T* q, int me) {
         auto seedlow = seed & 0xffff;
         auto seedhigh = seed >> 16;
         Rand transgen(seed, seedlow << 16 | seedhigh);
-        
         for (int j = 0; j < OPS; ++j) {
+          find_op = false;
           int op = slotdist(transgen) % 100;
           if (op < search_percent * 100) {
-            int val = slotdist(transgen);
+            int val = slotdist(transgen) % int(max_key * 0.5); // This is always a successful find
+            find_op = true;
             findK(q, val);
           } else if (op < (search_percent + pushback_percent) *100){
             int sz = q->size();
@@ -121,7 +133,11 @@ void run(T* q, int me) {
           break;
         }
         
-      } catch (Transaction::Abort e) { }
+      } catch (Transaction::Abort e) {
+        if (find_op) {
+          find_aborts[me]++;
+        }
+      }
     }
   }
 }
@@ -185,14 +201,14 @@ static void help() {
 
 template <typename T>
 void init(T* q) {
-  std::uniform_int_distribution<long> slotdist(0, max_value);
+  std::uniform_int_distribution<long> slotdist(0, max_range);
   uint32_t seed = global_seed * 11;
   auto seedlow = seed & 0xffff;
   auto seedhigh = seed >> 16;
   Rand transgen(seed, seedlow << 16 | seedhigh);
   for (int i = 0; i < prepopulate; i++) {
     TRANSACTION {
-      q->push_back(slotdist(transgen));
+      q->push_back(i);//slotdist(transgen) % max_value);
     } RETRY(false);
   }
 }
@@ -233,7 +249,12 @@ int main(int argc, char *argv[]) {
   }
   Clp_DeleteParser(clp);
   
-  // Run a parallel test with lots of transactions doing pushes and pops
+  dumb_iterator = false;
+  for (int i = 0; i < 16; i++) {
+    find_aborts[i] = 0;
+  }
+
+  unsuccessful_finds = 0;
   data_structure q;
   q.nontrans_reserve(4096);
   init(&q);
@@ -243,6 +264,11 @@ int main(int argc, char *argv[]) {
   startAndWait(nthreads, &q);
   
   gettimeofday(&tv2, NULL);
+  int total_aborts = 0;
+  for (int i = 0; i < 16; i++) {
+    total_aborts += find_aborts[i];
+  }
+  printf("Find aborts: %i, unsuccessful finds: %i\n", total_aborts, unsuccessful_finds);
   printf("Smart iterator: ");
   print_time(tv1, tv2);
   
@@ -255,6 +281,10 @@ int main(int argc, char *argv[]) {
   Transaction::clear_stats();
 #endif
   dumb_iterator = true;
+  for (int i = 0; i < 16; i++) {
+    find_aborts[i] = 0;
+  }
+  unsuccessful_finds = 0;
   data_structure q2;
   q2.nontrans_reserve(4096);
   
@@ -264,6 +294,11 @@ int main(int argc, char *argv[]) {
   startAndWait(nthreads, &q2);
   
   gettimeofday(&tv2, NULL);
+  total_aborts = 0;
+  for (int i = 0; i < 16; i++) {
+    total_aborts += find_aborts[i];
+  }
+  printf("Find aborts: %i, unsuccessful finds: %i\n", total_aborts, unsuccessful_finds);
   printf("Normal iterator: ");
   print_time(tv1, tv2);
   
