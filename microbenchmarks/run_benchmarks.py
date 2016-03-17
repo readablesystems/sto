@@ -32,29 +32,29 @@ def print_cmd(args):
 def extract_numbers(output):
 	time = float(re.search("(?<=real time: )[0-9]*\.[0-9]*", output).group(0))
 	size = int(re.search("(?<=ARRAY_SZ: )[0-9]*", output).group(0))
-	numtx = int(re.split(" ", re.search("(?<=, )[0-9]* transactions", output).group(0))[0])
-	tx_starts = int(re.split(" ", re.search("(?<=\$ )[0-9]* starts", output).group(0))[0])
-	tx_commits = int(re.split(" ", re.search("(?<=, )[0-9]* commits", output).group(0))[0])
-	tx_aborts = tx_starts - tx_commits
-	if tx_aborts > 0:
-		commit_aborts = int(re.split(" ", re.search("(?<=\$ )[0-9]* \(", output).group(0))[0])
-		abort_rate = float(tx_aborts) / float(tx_starts)
-		ct_abort_ratio = float(commit_aborts) / float(tx_aborts)
-	else:
-		commit_aborts = 0
-		abort_rate = 0.0
-		ct_abort_ratio = 0.0
+#	numtx = int(re.split(" ", re.search("(?<=, )[0-9]* transactions", output).group(0))[0])
+#	tx_starts = int(re.split(" ", re.search("(?<=\$ )[0-9]* starts", output).group(0))[0])
+#	tx_commits = int(re.split(" ", re.search("(?<=, )[0-9]* commits", output).group(0))[0])
+#	tx_aborts = tx_starts - tx_commits
+#	if tx_aborts > 0:
+#		commit_aborts = int(re.split(" ", re.search("(?<=\$ )[0-9]* \(", output).group(0))[0])
+#		abort_rate = float(tx_aborts) / float(tx_starts)
+#		ct_abort_ratio = float(commit_aborts) / float(tx_aborts)
+#	else:
+#		commit_aborts = 0
+#		abort_rate = 0.0
+#		ct_abort_ratio = 0.0
 
 	results = dict()
 	results["time"] = time
-	results["num_txs"] = numtx
+#	results["num_txs"] = numtx
 	results["array_size"] = size
-	results["tx_starts"] = tx_starts
-	results["tx_commits"] = tx_commits
-	results["tx_aborts"] = tx_aborts
-	results["commit_aborts"] = commit_aborts
-	results["abort_rate"] = abort_rate
-	results["commit_time_abort_ratio"] = ct_abort_ratio
+#	results["tx_starts"] = tx_starts
+#	results["tx_commits"] = tx_commits
+#	results["tx_aborts"] = tx_aborts
+#	results["commit_aborts"] = commit_aborts
+#	results["abort_rate"] = abort_rate
+#	results["commit_time_abort_ratio"] = ct_abort_ratio
 
 	return results
 

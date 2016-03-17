@@ -34,7 +34,7 @@ def print_scalability_overhead(records, config):
 	curr_row = ["number of cores", "speedup"]
 	rows.append(curr_row)
 
-	data = process_results(name, config[name], records, ["time", "abort_rate"])
+	data = process_results(name, config[name], records, ["time"])
 
 	for f_tl in tls:
 		baseline = data[f_on][f_tl][1]["med_time"]
