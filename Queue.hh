@@ -88,7 +88,7 @@ public:
                 if (index == tail_) {
                     auto pushitem = Sto::item(this,-1);
                     if (!pushitem.has_read())
-                        pushitem.add_read(tv);
+                        pushitem.observe(tv);
                     if (pushitem.has_write()) {
                         if (is_list(pushitem)) {
                             auto& write_list = pushitem.template write_value<std::list<T>>();
@@ -120,7 +120,7 @@ public:
         // ensure that head is not modified by time of commit 
         auto lockitem = Sto::item(this, -2);
         if (!lockitem.has_read()) {
-            lockitem.add_read(hv);
+            lockitem.observe(hv);
         }
         lockitem.add_write(0);
         item.add_flags(delete_bit);
@@ -142,7 +142,7 @@ public:
                 if (index == tail_) {
                     auto pushitem = Sto::item(this,-1);
                     if (!pushitem.has_read())
-                        pushitem.add_read(tv);
+                        pushitem.observe(tv);
                     if (pushitem.has_write()) {
                         if (is_list(pushitem)) {
                             auto& write_list= pushitem.template write_value<std::list<T>>();
@@ -173,7 +173,7 @@ public:
         // ensure that head was not modified at time of commit
         auto lockitem = Sto::item(this, -2);
         if (!lockitem.has_read()) {
-            lockitem.add_read(hv);
+            lockitem.observe(hv);
         }  
         val = queueSlots[index];
         return true;

@@ -254,11 +254,11 @@ public:
         if (start == nullptr) {
             // tree empty, read tree version
             // TODO(nate): this would race without the lock
-            Sto::item(this, tree_key_).add_read(treeversion_);
+            Sto::item(this, tree_key_).observe(treeversion_);
         } else {
             // READ-MY-WRITES: skip our own deletes!
             while(has_delete(Sto::item(this, start))) {
-                Sto::item(this, (reinterpret_cast<uintptr_t>(start)|0x1)).add_read(start->nodeversion());
+                Sto::item(this, (reinterpret_cast<uintptr_t>(start)|0x1)).observe(start->nodeversion());
                 start = rbalgorithms<wrapper_type>::next_node(start);
             }
             if (start != nullptr) {
@@ -267,7 +267,7 @@ public:
                     Sto::abort();
                 }
                 // valid start node, read nodeversion
-                Sto::item(this, (reinterpret_cast<uintptr_t>(start)|0x1)).add_read(start->nodeversion());
+                Sto::item(this, (reinterpret_cast<uintptr_t>(start)|0x1)).observe(start->nodeversion());
             }
         }
         unlock(&treelock_);
@@ -301,7 +301,7 @@ private:
         // READ-MY-WRITES: skip our own deletes
         while (has_delete(Sto::item(this, next_node))) {
             // add read of nodeversions of all deleted nodes; gosh, read-my-write is really a nightmare...
-            Sto::item(this, (reinterpret_cast<uintptr_t>(next_node) | 0x1)).add_read(next_node->nodeversion());
+            Sto::item(this, (reinterpret_cast<uintptr_t>(next_node) | 0x1)).observe(next_node->nodeversion());
             next_node = rbalgorithms<wrapper_type>::next_node(next_node);
         }
 
@@ -310,9 +310,9 @@ private:
                 unlock(&treelock_);
                 Sto::abort();
             }
-            Sto::item(this, (reinterpret_cast<uintptr_t>(next_node)|0x1)).add_read(next_node->nodeversion());
+            Sto::item(this, (reinterpret_cast<uintptr_t>(next_node)|0x1)).observe(next_node->nodeversion());
         }
-        Sto::item(this, (reinterpret_cast<uintptr_t>(node)|0x1)).add_read(node->nodeversion());
+        Sto::item(this, (reinterpret_cast<uintptr_t>(node)|0x1)).observe(node->nodeversion());
         unlock(&treelock_);
         return next_node;
     }
@@ -328,7 +328,7 @@ private:
         }
         // READ-MY-WRITES: skip our own deletes
         while (has_delete(Sto::item(this, prev_node))) {
-            Sto::item(this, (reinterpret_cast<uintptr_t>(prev_node) | 0x1)).add_read(prev_node->nodeversion());
+            Sto::item(this, (reinterpret_cast<uintptr_t>(prev_node) | 0x1)).observe(prev_node->nodeversion());
             prev_node = rbalgorithms<wrapper_type>::prev_node(prev_node);
         }
         // check again after reading-my-writes...
@@ -342,10 +342,10 @@ private:
             Sto::abort();
         }
         if (node) {
-            Sto::item(this, (reinterpret_cast<uintptr_t>(node)|0x1)).add_read(node->nodeversion());
+            Sto::item(this, (reinterpret_cast<uintptr_t>(node)|0x1)).observe(node->nodeversion());
         }
         if (prev_node) {
-            Sto::item(this, (reinterpret_cast<uintptr_t>(prev_node)|0x1)).add_read(prev_node->nodeversion());
+            Sto::item(this, (reinterpret_cast<uintptr_t>(prev_node)|0x1)).observe(prev_node->nodeversion());
         }
         unlock(&treelock_);
         return prev_node;
