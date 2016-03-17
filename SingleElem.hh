@@ -81,9 +81,8 @@ public:
         TransactionTid::unlock(s_.version());
     }
 
-    bool lock(TransItem&, Transaction&) {
-        lock();
-        return true;
+    bool lock(TransItem& item, Transaction& txn) {
+        return txn.try_lock(item, s_.version());
     }
 
     bool check(const TransItem& item, const Transaction&) {

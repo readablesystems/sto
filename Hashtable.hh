@@ -307,11 +307,10 @@ public:
     return el->version.check_version(read_version);
   }
 
-  bool lock(TransItem& item, Transaction&) {
+  bool lock(TransItem& item, Transaction& txn) {
     assert(!is_bucket(item));
     auto el = item.key<internal_elem*>();
-    lock(el);
-    return true;
+    return txn.try_lock(item, el->version);
   }
 
   void install(TransItem& item, const Transaction& t) {
@@ -353,7 +352,7 @@ public:
   void unlock(TransItem& item) {
     assert(!is_bucket(item));
     auto el = item.key<internal_elem*>();
-    unlock(el);
+    unlock(el->version);
   }
 
   void cleanup(TransItem& item, bool committed) {
@@ -380,21 +379,6 @@ public:
   }
 
 #endif /* STO_NO_STM */
-
-  void lock(internal_elem *el) {
-    lock(el->version);
-  }
-
-  void lock(const Key& k) {
-    lock(elem(k));
-  }
-  void unlock(internal_elem *el) {
-    unlock(el->version);
-  }
-
-  void unlock(const Key& k) {
-    unlock(elem(k));
-  }
 
   bool is_locked(internal_elem *el) {
     return is_locked(el->version);

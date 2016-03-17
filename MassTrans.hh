@@ -495,18 +495,15 @@ public:
   // implementation of Shared object methods
 
   void lock(versioned_value *e) {
-#if NOSORT
-    if (!is_locked(e->version()))
-#endif
     lock(&e->version());
   }
   void unlock(versioned_value *e) {
     unlock(&e->version());
   }
 
-    bool lock(TransItem& item, Transaction&) {
-        lock(item.key<versioned_value*>());
-        return true;
+    bool lock(TransItem& item, Transaction& txn) {
+        versioned_value* vv = item.key<versioned_value*>();
+        return txn.try_lock(item, vv->version());
     }
   bool check(const TransItem& item, const Transaction&) {
     if (is_inter(item)) {

@@ -454,26 +454,39 @@ public:
     bool try_lock(TransItem& item, TVersion& vers) {
         // This function will eventually help us track the commit TID when we
         // have no opacity, or for GV7 opacity.
-        int i = (item.has_read() << 3);
+        int i = 0;
         while (1) {
             if (vers.try_lock())
                 return true;
-            if (!i)
+            if (i > (!item.has_read() << 3))
                 return false;
-            --i;
+            ++i;
             relax_fence();
         }
     }
     bool try_lock(TransItem& item, TNonopaqueVersion& vers) {
         // This function will eventually help us track the commit TID when we
         // have no opacity, or for GV7 opacity.
-        int i = (!item.has_read() << 3);
+        int i = 0;
         while (1) {
             if (vers.try_lock())
                 return true;
-            if (!i)
+            if (i > (!item.has_read() << 3))
                 return false;
-            --i;
+            ++i;
+            relax_fence();
+        }
+    }
+    bool try_lock(TransItem& item, TransactionTid::type& vers) {
+        // This function will eventually help us track the commit TID when we
+        // have no opacity, or for GV7 opacity.
+        int i = 0;
+        while (1) {
+            if (TransactionTid::try_lock(vers))
+                return true;
+            if (i > (!item.has_read() << 3))
+                return false;
+            ++i;
             relax_fence();
         }
     }

@@ -879,23 +879,24 @@ inline size_t RBTree<K, T, GlobalSize>::erase(const K& key) {
 }
 
 template <typename K, typename T, bool GlobalSize>
-bool RBTree<K, T, GlobalSize>::lock(TransItem& item, Transaction&) {
-    if (item.key<uintptr_t>() == size_key_) {
-        sizeversion_.lock();
-    } else if (item.key<uintptr_t>() == tree_key_) {
-        wrapper_tree_.treeversion_.lock();
-    } else if (item.key<uintptr_t>() & uintptr_t(1)) {
-        uintptr_t x = item.key<uintptr_t>() & ~uintptr_t(1);
-        wrapper_type* n = reinterpret_cast<wrapper_type*>(x);
-        if (!n->nodeversion().is_locked_here())
-            n->lock_nv();
-    } else {
-        wrapper_type* n = item.key<wrapper_type*>();
-        n->lock();
-        if (has_delete(item) && !n->nodeversion().is_locked_here())
-            n->lock_nv();
+bool RBTree<K, T, GlobalSize>::lock(TransItem& item, Transaction& txn) {
+    if (item.key<uintptr_t>() == size_key_)
+        return txn.try_lock(item, sizeversion_);
+    else if (item.key<uintptr_t>() == tree_key_)
+        return txn.try_lock(item, wrapper_tree_.treeversion_);
+    else {
+        uintptr_t x = item.key<uintptr_t>();
+        wrapper_type* n = reinterpret_cast<wrapper_type*>(x & ~uintptr_t(1));
+        if (((!(x & 1) && !has_delete(item))
+             || n->nodeversion().is_locked_here()
+             || txn.try_lock(item, n->nodeversion()))
+            && ((x & 1) || txn.try_lock(item, n->version())))
+            return true;
+        else {
+            n->unlock_nv();
+            return false;
+        }
     }
-    return true;
 }
 
 template <typename K, typename T, bool GlobalSize>
