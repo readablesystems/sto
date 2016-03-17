@@ -93,17 +93,15 @@ def save_results(exp_name, stdout, records):
 	f.write(json.dumps(records, sort_keys=True, indent=2))
 	f.close()
 
-def exp_scalability_overhead(repetitions, records):
+def exp_scalability_overhead(repetitions, records, opacity, txlens):
 	print "@@@@\n@@@ Starting experiment: scalability-overhead:"
 	ntxs = 8000000
 	ttr = [1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24]
-	#txlens = [10, 50]
-	txlens = [50]
 	combined_stdout = ""
 
 	for trail in range(0, repetitions):
 		for txlen in txlens:
-			combined_stdout += run_series(0, trail, txlen, 0, records, ttr, ntxs)
+			combined_stdout += run_series(0, trail, txlen, opacity, records, ttr, ntxs)
 
 	save_results("scalability_overhead", combined_stdout, records)
 
@@ -177,7 +175,8 @@ def main(argc, argv):
 	with open("experiment_data.json") as data_file:
 		records = json.load(data_file)
 
-	exp_scalability_overhead(repetitions, records)
+	exp_scalability_overhead(repetitions, records, 0, [50])
+	exp_scalability_overhead(repetitions, records, 1, [10, 50])
 	#exp_scalability_hi_contention(repetitions, records)
 	#exp_scalability_largetx(repetitions, records)
 	#exp_opacity_modes(repetitions, records)
