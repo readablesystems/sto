@@ -36,7 +36,7 @@
 #define USE_MASSTREE_STR 8
 
 // set this to USE_DATASTRUCTUREYOUWANT
-#define DATA_STRUCTURE USE_ARRAY
+#define DATA_STRUCTURE USE_TVECTOR
 
 // if true, then all threads perform non-conflicting operations
 #define NON_CONFLICTING 0
