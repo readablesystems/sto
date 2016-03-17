@@ -10,6 +10,7 @@
 #include "string.hh"
 #include "Transaction.hh"
 
+#include "StringWrapper.hh"
 #include "versioned_value.hh"
 #include "stuffed_str.hh"
 
@@ -44,8 +45,14 @@ struct versioned_str_struct : public versioned_str {
     return (versioned_str_struct*)this->reserve(versioned_str::size_for(potential_new_value.length()));
   }
 
-  template <typename StringType>
-  inline void set_value(const StringType& v) {
+  inline void set_value(const value_type& v) {
+    auto *ret = this->replace(v.data(), v.length());
+    // we should already be the proper size at this point
+    (void)ret;
+    assert(ret == this);
+  }
+
+  inline void set_value(const std::string& v) {
     auto *ret = this->replace(v.data(), v.length());
     // we should already be the proper size at this point
     (void)ret;
@@ -90,6 +97,8 @@ protected:
   typedef Box versioned_value;
   
 public:
+    typedef V write_value_type;
+    typedef std::string key_write_value_type;
 
   MassTrans() {
 #if RCU
@@ -154,12 +163,7 @@ public:
         if (has_insert(item)) {
 	  assign_val(retval, e->read_value());
         } else {
-	  if (item.flags() & copyvals_bit)
-	    retval = item.template write_value<value_type>();
-	  else {
-	    // TODO: should we refcount, copy, or...?
-	    retval = (value_type&)item.template write_value<void*>();
-	  }
+	    retval = item.template write_value<write_value_type>();
         }
         return true;
       }
@@ -175,9 +179,10 @@ public:
     return found;
   }
 
-  template <bool CopyVals = true, typename StringType>
-  bool transDelete(StringType& key, threadinfo_type& ti = mythreadinfo) {
-    unlocked_cursor_type lp(table_, key);
+  template <typename K>
+  bool transDelete(const K& key, threadinfo_type& ti = mythreadinfo) {
+    auto strKey = Str(key);
+    unlocked_cursor_type lp(table_, strKey);
     bool found = lp.find_unlocked(*ti.ti);
     if (found) {
       versioned_value *e = lp.value();
@@ -213,15 +218,7 @@ public:
       if (Opacity)
         check_opacity(e->version());
       // same as inserts we need to Store (copy) key so we can lookup to remove later
-      item.clear_write();
-      if (std::is_same<const std::string, const StringType>::value) {
-        if (CopyVals)
-          item.add_write(key).add_flags(copyvals_bit);
-        else
-          item.add_write(pack(key));
-      } else
-        item.add_write(std::string(key)).add_flags(copyvals_bit);
-      item.add_flags(delete_bit);
+      item.template add_write<key_write_value_type>(key).add_flags(delete_bit);
       return found;
     } else {
       ensureNotFound(lp.node(), lp.full_version_value());
@@ -230,14 +227,15 @@ public:
   }
 
 private:
-  template <bool CopyVals, bool INSERT, bool SET, typename StringType, typename ValueType>
+  template <bool INSERT, bool SET, typename StringType, typename ValueType>
   bool trans_write(const StringType& key, const ValueType& value, threadinfo_type& ti = mythreadinfo) {
+    auto strKey = Str(key);
     // optimization to do an unlocked lookup first
     if (SET) {
-      unlocked_cursor_type lp(table_, key);
+      unlocked_cursor_type lp(table_, strKey);
       bool found = lp.find_unlocked(*ti.ti);
       if (found) {
-        return handlePutFound<CopyVals, INSERT, SET>(lp.value(), key, value);
+        return handlePutFound<INSERT, SET>(lp.value(), strKey, value);
       } else {
         if (!INSERT) {
           ensureNotFound(lp.node(), lp.full_version_value());
@@ -246,15 +244,15 @@ private:
       }
     }
 
-    cursor_type lp(table_, key);
+    cursor_type lp(table_, strKey);
     bool found = lp.find_insert(*ti.ti);
     if (found) {
       versioned_value *e = lp.value();
       lp.finish(0, *ti.ti);
-      return handlePutFound<CopyVals, INSERT, SET>(e, key, value);
+      return handlePutFound<INSERT, SET>(e, strKey, value);
     } else {
       //      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
-      versioned_value* val = (versioned_value*)versioned_value::make((value_type&)value, invalid_bit);
+      versioned_value* val = (versioned_value*)versioned_value::make(value, invalid_bit);
       lp.value() = val;
 #if ABORT_ON_WRITE_READ_CONFLICT
       auto orig_node = lp.node();
@@ -279,36 +277,25 @@ private:
 #endif
       }
       auto item = Sto::new_item(this, val);
-      if (std::is_same<const std::string, const StringType>::value) {
-	if (CopyVals)
-	  item.add_write(key).add_flags(copyvals_bit);
-	else
-	  item.add_write(pack(key));
-      } else
-        // force a copy
-	// technically a user could request CopyVals=false and pass non-std::string keys
-	// but we don't support that
-        item.add_write(std::string(key)).add_flags(copyvals_bit);
-
-      item.add_flags(insert_bit);
+      item.template add_write<key_write_value_type>(key).add_flags(insert_bit);
       return found;
     }
   }
 
 public:
-  template <bool CopyVals = true, typename StringType, typename ValueType>
-  bool transPut(StringType& k, const ValueType& v, threadinfo_type& ti = mythreadinfo) {
-    return trans_write<CopyVals, /*insert*/true, /*set*/true>(k, v, ti);
+  template <typename KT, typename VT>
+  bool transPut(const KT& k, const VT& v, threadinfo_type& ti = mythreadinfo) {
+    return trans_write</*insert*/true, /*set*/true>(k, v, ti);
   }
 
-  template <bool CopyVals = true, typename StringType>
-  bool transUpdate(StringType& k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
-    return trans_write<CopyVals, /*insert*/false, /*set*/true>(k, v, ti);
+  template <typename KT, typename VT>
+  bool transUpdate(const KT& k, const VT& v, threadinfo_type& ti = mythreadinfo) {
+    return trans_write</*insert*/false, /*set*/true>(k, v, ti);
   }
 
-  template <bool CopyVals = true, typename StringType>
-  bool transInsert(StringType& k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
-    return !trans_write<CopyVals, /*insert*/true, /*set*/false>(k, v, ti);
+  template <typename KT, typename VT>
+  bool transInsert(const KT& k, const VT& v, threadinfo_type& ti = mythreadinfo) {
+    return !trans_write</*insert*/true, /*set*/false>(k, v, ti);
   }
 
 
@@ -354,15 +341,10 @@ public:
       if (item.has_write()) {
         // read directly from the element if we're inserting it
         if (has_insert(item)) {
-	  return range_query_has_insert(callback, key, e, va);
+	      return range_query_has_insert(callback, key, e, va);
 	  //return callback(key, val);
         } else {
-	  if (item.flags() & copyvals_bit)
-	    return callback(key, item.template write_value<value_type>());
-	  else {
-	    // TODO: should we refcount, copy, or...?
-	    return callback(key, (value_type&)item.template write_value<void*>());
-	  }
+          return callback(key, item.template write_value<write_value_type>());
         }
       }
 #endif
@@ -399,13 +381,9 @@ public:
       if (item.has_write()) {
         // read directly from the element if we're inserting it
         if (has_insert(item)) {
-	  return range_query_has_insert(callback, key, e, va);
+	        return range_query_has_insert(callback, key, e, va);
         } else {
-	  if (item.flags() & copyvals_bit)
-	    return callback(key, item.template write_value<value_type>());
-	  else {
-	    return callback(key, (value_type&)item.template write_value<void*>());
-	  }
+            return callback(key, item.template write_value<write_value_type>());
         }
       }
 #endif
@@ -539,9 +517,7 @@ public:
       // TODO: hashtable did this in afterC, we're doing this now, unclear really which is better
       // (if we do it now, we take more time while holding other locks, if we wait, we make other transactions abort more
       // from looking up an invalid node)
-      auto &s = item.flags() & copyvals_bit ? 
-        item.template write_value<std::string>()
-        : (std::string&)item.template write_value<void*>();
+      key_write_value_type& s = item.template write_value<key_write_value_type>();
       bool success = remove(Str(s));
       // no one should be able to remove since we hold the lock
       (void)success;
@@ -549,10 +525,8 @@ public:
       return;
     }
     if (!has_insert(item)) {
-      value_type& v = item.flags() & copyvals_bit ?
-	item.template write_value<value_type>()
-	: (value_type&)item.template write_value<void*>();
-      e->set_value(v);
+        write_value_type& v = item.template write_value<write_value_type>();
+        e->set_value(v);
     }
     if (Opacity)
       TransactionTid::set_version(e->version(), t.commit_tid());
@@ -572,22 +546,13 @@ public:
   void cleanup(TransItem& item, bool committed) {
       if (!committed && has_insert(item)) {
         // remove node
-        auto& stdstr = item.flags() & copyvals_bit ?
-	  item.template write_value<std::string>()
-	  : (std::string&)item.template write_value<void*>();
+        key_write_value_type& stdstr = item.template write_value<key_write_value_type>();
         // does not copy
         Str s(stdstr);
         bool success = remove(s);
         (void)success;
         assert(success);
     }
-  }
-
-  template <typename ValType>
-  static inline void *pack(const ValType& value) {
-    assert(sizeof(ValType) <= sizeof(void*));
-    void *placed_val = *(void**)&value;
-    return placed_val;
   }
 
   bool remove(const Str& key, threadinfo_type& ti = mythreadinfo) {
@@ -604,7 +569,7 @@ public:
 
 protected:
   // called once we've checked our own writes for a found put()
-  template <bool CopyVals, typename ValueType>
+  template <typename ValueType>
   void reallyHandlePutFound(TransProxy& item, versioned_value *e, Str key, const ValueType& value) {
     // resizing takes a lot of effort, so we first check if we'll need to
     // (values never shrink in size, so if we don't need to resize, we'll never need to)
@@ -645,27 +610,19 @@ protected:
     }
 #if READ_MY_WRITES
     if (has_insert(item)) {
-      new_location->set_value(value_type(value));
+      new_location->set_value(value);
     } else
 #endif
     {
-      if (new_location == e) {
-	if (CopyVals)
-	  item.template add_write<value_type>(value).add_flags(copyvals_bit);
-	else
-	  item.add_write(pack(value));
-      } else {
-	if (CopyVals)
-	  Sto::new_item(this, new_location).template add_write<value_type>(value).add_flags(copyvals_bit);
-	else
-	  Sto::new_item(this, new_location).add_write(pack(value));
-      }
+      if (new_location != e)
+        item = Sto::new_item(this, new_location);
+      item.template add_write<write_value_type>(value);
     }
   }
 
   // returns true if already in tree, false otherwise
   // handles a transactional put when the given key is already in the tree
-  template <bool CopyVals, bool INSERT, bool SET, typename ValueType>
+  template <bool INSERT, bool SET, typename ValueType>
   bool handlePutFound(versioned_value *e, Str key, const ValueType& value) {
     auto item = t_item(e);
     if (!validityCheck(item, e)) {
@@ -679,7 +636,7 @@ protected:
       if (INSERT) {
         item.clear_flags(delete_bit);
         assert(!has_delete(item));
-        reallyHandlePutFound<CopyVals>(item, e, key, value);
+        reallyHandlePutFound(item, e, key, value);
       } else {
         // delete-then-update == not found
         // delete will check for other deletes so we don't need to re-log that check
@@ -699,7 +656,7 @@ protected:
         check_opacity(e->version());
     }
     if (SET) {
-      reallyHandlePutFound<CopyVals>(item, e, key, value);
+      reallyHandlePutFound(item, e, key, value);
     }
     return true;
   }
@@ -762,7 +719,6 @@ protected:
 
   static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
   static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
-  static constexpr TransItem::flags_type copyvals_bit = TransItem::user0_bit<<2;
 
   template <typename T>
   static T* tag_inter(T* p) {

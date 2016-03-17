@@ -28,6 +28,8 @@ public:
     typedef V Value;
     typedef W Value_type;
 
+    typedef V write_value_type;
+
     static constexpr TVersion::type invalid_bit = TransactionTid::user_bit;
 private:
   // our hashtable is an array of linked lists. 
@@ -75,7 +77,6 @@ private:
 
   static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
   static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
-  static constexpr TransItem::flags_type copyvals_bit = TransItem::user0_bit<<2;
 
 public:
   Hashtable(unsigned size = Init_size, Hash h = Hash(), Pred p = Pred()) : map_(), hasher_(h), pred_(p) {
@@ -96,7 +97,8 @@ public:
 
 #ifndef STO_NO_STM
   // returns true if found false if not
-  bool transGet(const Key& k, Value& retval) {
+  template <typename KT, typename VT>
+  bool transGet(const KT& k, VT& retval) {
     bucket_entry& buck = buck_entry(k);
     Version_type buck_version = buck.version;
     fence();
@@ -113,10 +115,7 @@ public:
         return false;
       }
       if (item.has_write()) {
-        if (item.flags() & copyvals_bit)
-          retval = item.template write_value<Value>();
-        else
-          retval = (Value&)item.template write_value<void*>();
+        retval = item.template write_value<write_value_type>();
         return true;
       }
 #endif
@@ -178,9 +177,7 @@ public:
       //  check_opacity(e->version);
       // we use delete_bit to detect deletes so we don't need any other data
       // for deletes, just to mark it as a write
-      if (!item.has_write())
-          item.add_write(0).add_flags(copyvals_bit); // XXX is this the right type?
-      item.add_flags(delete_bit);
+      item.add_write().add_flags(delete_bit);
       return true;
     } else {
       // add a read that yes this element doesn't exist
@@ -192,9 +189,10 @@ public:
   }
 #endif
 
+private:
   // returns true if item already existed, false if it did not
-  template <bool CopyVals = true, bool INSERT = true, bool SET = true>
-  bool transPut(const Key& k, const Value& v) {
+  template <bool INSERT, bool SET, typename KT, typename VT>
+  bool trans_write(const KT& k, const VT& v) {
     // TODO: technically puts don't need to look into the table at all until lock time
     bucket_entry& buck = buck_entry(k);
     // TODO: update doesn't need to lock the table
@@ -217,11 +215,7 @@ public:
         // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
         // if user can't read v#)
         if (INSERT) {
-          item.clear_flags(delete_bit);
-          if (CopyVals)
-            item.add_write(v).add_flags(copyvals_bit);
-          else
-            item.add_write(pack(v));
+          item.clear_flags(delete_bit).clear_write().add_write(v);
         } else {
           // delete-then-update == not found
           // delete will check for other deletes so we don't need to re-log that check
@@ -237,10 +231,7 @@ public:
       //  check_opacity(e->version);
 #endif
       if (SET) {
-        if (CopyVals)
-            item.add_write(v).add_flags(copyvals_bit);
-        else
-            item.add_write(pack(v));
+        item.add_write(v);
 #if READ_MY_WRITES
         if (has_insert(item)) {
           // Updating the value here, as we won't update it during install
@@ -273,23 +264,28 @@ public:
       auto item = Sto::new_item(this, new_head);
       // don't actually need to Store anything for the write, just mark as valid on install
       // (for now insert and set will just do the same thing on install, set a value and then mark valid)
-      if (CopyVals)
-            item.add_write(v).add_flags(copyvals_bit);
-      else
-            item.add_write(pack(v));
+      item.add_write(v);
       // need to remove this item if we abort
       item.add_flags(insert_bit);
       return false;
     }
   }
 
-  // returns true if successful
-  bool transInsert(const Key& k, const Value& v) {
-    return !transPut</*copyvals*/true, /*insert*/true, /*set*/false>(k, v);
+public:
+  template <typename KT, typename VT>
+  bool transPut(const KT& k, const VT& v) {
+    return trans_write</*insert*/true, /*set*/true>(k, v);
   }
 
-  bool transUpdate(const Key& k, const Value& v) {
-    return transPut</*copyvals*/true, /*insert*/false, /*set*/true>(k, v);
+  // returns true if successful
+  template <typename KT, typename VT>
+  bool transInsert(const KT& k, const VT& v) {
+    return !trans_write</*insert*/true, /*set*/false>(k, v);
+  }
+
+  template <typename KT, typename VT>
+  bool transUpdate(const KT& k, const VT& v) {
+    return trans_write</*insert*/false, /*set*/true>(k, v);
   }
 
 
@@ -326,7 +322,7 @@ public:
     // else must be insert/update
     if (!(item.flags() & insert_bit)) {
       // Update
-      Value& new_v = item.flags() & copyvals_bit ? item.template write_value<Value>() : (Value&)item.template write_value<void*>();
+      Value& new_v = item.template write_value<write_value_type>();
       el->value.write(new_v);
     }
     //if (!__has_trivial_copy(Value)) {
@@ -420,13 +416,8 @@ public:
             //w << "[" << el->key << "]";
             if (item.has_read())
                 w << " R" << item.read_value<Version_type>();
-            if (item.has_write()) {
-                w << " =";
-                if (item.flags() & copyvals_bit)
-                    w << item.write_value<Value>();
-                else
-                    w << (Value&) item.write_value<void*>();
-            }
+            if (item.has_write())
+                w << " =" << item.write_value<write_value_type>();
         }
         w << "}";
     }
@@ -725,13 +716,6 @@ private:
   }
 #endif
 
-  template <typename ValType>
-  static inline void *pack(const ValType& value) {
-    assert(sizeof(ValType) <= sizeof(void*));
-    void *placed_val = *(void**)&value;
-    return placed_val;
-  }
-  
   TransProxy t_item(internal_elem* e) {
     return Sto::item(this, e);
   }

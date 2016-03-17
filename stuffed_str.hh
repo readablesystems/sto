@@ -21,8 +21,8 @@ public:
     return vs;
   }
 
-  template <typename StringType, typename Malloc = StandardMalloc>
-  static stuffed_str *make(const StringType& s, const Stuff& val, Malloc m = Malloc()) {
+  template <typename Malloc = StandardMalloc>
+  static stuffed_str *make(const std::string& s, const Stuff& val, Malloc m = Malloc()) {
     return make(s.data(), s.length(), size_for(s.length()), val, m);
   }
 
