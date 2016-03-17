@@ -175,7 +175,7 @@ def main(argc, argv):
 	with open("experiment_data.json") as data_file:
 		records = json.load(data_file)
 
-	exp_scalability_overhead(repetitions, records, 0, [50])
+	exp_scalability_overhead(repetitions, records, 0, [10, 50])
 	exp_scalability_overhead(repetitions, records, 1, [10, 50])
 	#exp_scalability_hi_contention(repetitions, records)
 	#exp_scalability_largetx(repetitions, records)
