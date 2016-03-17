@@ -2,7 +2,7 @@
 
 import os, re, sys, json, subprocess, multiprocessing
 
-bm_execs = ["./concurrent", "./concurrent-50"]
+bm_execs = ["../concurrent", "./concurrent-50"]
 
 opacity_names = ["no opacity", "TL2 opacity", "slow opacity"]
 scaling_txlens = [1, 2, 4, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 30, 32, 36,
@@ -12,11 +12,14 @@ nthreads_to_run_full = [1, 2, 4, 8, 16, 24]
 nthreads_to_run_dual = [1, 24]
 
 def attach_args(bm_idx, nthreads, txlen, opacity, ntrans):
-	args = [bm_execs[bm_idx], "3", "array"]
+	args = [bm_execs[bm_idx], "3"]
+	if opacity == 0:
+		args.append("array-nonopaque")
+	else:
+		args.append("array")
 	args.append("--ntrans=%d" % ntrans)
 	args.append("--nthreads=%d" % nthreads)
 	args.append("--opspertrans=%d" % txlen)
-	args.append("--opacity=%d" % opacity)
 	return args
 
 def to_strcmd(args):
@@ -172,9 +175,9 @@ def main(argc, argv):
 		print "Please specify number of repetitions within integer range [1, 10]"
 		sys.exit(0)
 
-	with open("experiment_data.json") as data_file:
-		records = json.load(data_file)
-
+#	with open("experiment_data.json", "w+") as data_file:
+#		records = json.load(data_file)
+	records = dict()
 	exp_scalability_overhead(repetitions, records, 0, [10, 50])
 	exp_scalability_overhead(repetitions, records, 1, [10, 50])
 	#exp_scalability_hi_contention(repetitions, records)
