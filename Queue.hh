@@ -3,41 +3,41 @@
 #include <list>
 #include "TaggedLow.hh"
 #include "Transaction.hh"
-#include "VersionFunctions.hh"
+#include "TWrapped.hh"
 
-template <typename T, unsigned BUF_SIZE = 1000000> 
+template <typename T, unsigned BUF_SIZE = 1000000,
+          template <typename> typename W = TOpaqueWrapped>
 class Queue: public Shared {
 public:
+    typedef typename W<T>::version_type version_type;
+
     Queue() : head_(0), tail_(0), tailversion_(0), headversion_(0) {}
 
-    typedef uint64_t Version;
-    typedef VersionFunctions<Version> QueueVersioning;
-    
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<1;
     static constexpr TransItem::flags_type list_bit = TransItem::user0_bit<<2;
     static constexpr TransItem::flags_type empty_bit = TransItem::user0_bit<<3;
 
     // NONTRANSACTIONAL PUSH/POP/EMPTY
-    void push(T v) {
+    void nontrans_push(T v) {
         queueSlots[tail_] = v;
         tail_ = (tail_+1)%BUF_SIZE;
         assert(head_ != tail_);
     }
     
-    T pop() {
+    T nontrans_pop() {
         assert(head_ != tail_);
         T v = queueSlots[head_];
         head_ = (head_+1)%BUF_SIZE;
         return v;
     }
 
-    bool empty() {
-        return (head_ == tail_);
+    bool nontrans_empty() const {
+        return head_ == tail_;
     }
 
     template <typename RandomGen>
-    void shuffle(RandomGen gen) {
+    void nontrans_shuffle(RandomGen gen) {
         auto head = &queueSlots[head_];
         auto tail = &queueSlots[tail_];
         // don't support wrap-around shuffle
@@ -45,10 +45,9 @@ public:
         std::shuffle(head, tail, gen);
     }
 
-    void clear() {
-        while (!empty()) {
-            pop();
-	}
+    void nontrans_clear() {
+        while (!nontrans_empty())
+            nontrans_pop();
     }
 
     // TRANSACTIONAL CALLS
@@ -83,7 +82,7 @@ public:
 
         while (1) {
            if (index == tail_) {
-               Version tv = tailversion_;
+               auto tv = tailversion_;
                fence();
                 // if someone has pushed onto tail, can successfully do a front read, so don't read our own writes
                 if (index == tail_) {
@@ -137,7 +136,7 @@ public:
         while (1) {
             // empty queue
             if (index == tail_) {
-                Version tv = tailversion_;
+                auto tv = tailversion_;
                 fence();
                 // if someone has pushed onto tail, can successfully do a front read, so skip reading from our pushes 
                 if (index == tail_) {
@@ -197,41 +196,29 @@ private:
         return item.flags() & empty_bit;
     }
 
-    void lock(Version& v) {
-        QueueVersioning::lock(v);
-    }
-
-    void unlock(Version& v) {
-        QueueVersioning::unlock(v);
-    }
-     
-    bool lock(TransItem& item, Transaction&) {
+    bool lock(TransItem& item, Transaction& txn) {
         if (item.key<int>() == -1)
-            lock(tailversion_);
+            return txn.try_lock(item, tailversion_);
         else if (item.key<int>() == -2)
-            lock(headversion_);
-        return true;
+            return txn.try_lock(item, headversion_);
+        else
+            return true;
     }
 
     bool check(const TransItem& item, const Transaction& t) {
         (void) t;
         // check if was a pop or front 
-        if (item.key<int>() == -2) {
-            auto hv = headversion_;
-            return QueueVersioning::versionCheck(hv, item.template read_value<Version>()) && (!QueueVersioning::is_locked(hv) || item.has_write());
-        }
-
+        if (item.key<int>() == -2)
+            return item.check_version(headversion_);
         // check if we read off the write_list (and locked tailversion)
-        else if (item.key<int>() == -1) {
-            auto tv = tailversion_;
-            return QueueVersioning::versionCheck(tv, item.template read_value<Version>()) && (!QueueVersioning::is_locked(tv) || item.has_write());
-        }
+        else if (item.key<int>() == -1)
+            return item.check_version(tailversion_);
         // shouldn't reach this
         assert(0);
         return false;
     }
 
-    void install(TransItem& item, const Transaction&) {
+    void install(TransItem& item, const Transaction& txn) {
 	    // ignore lock_headversion marker item
         if (item.key<int>() == -2)
             return;
@@ -240,7 +227,7 @@ private:
             // only increment head if item popped from actual q
             if (!is_rw(item))
                 head_ = (head_+1) % BUF_SIZE;
-            QueueVersioning::inc_version(headversion_);
+            headversion_.set_version(txn.commit_tid());
         }
         // install pushes
         else if (item.key<int>() == -1) {
@@ -262,21 +249,21 @@ private:
                 tail_ = (tail_+1) % BUF_SIZE;
             }
 
-            QueueVersioning::inc_version(tailversion_);
+            tailversion_.set_version(txn.commit_tid());
         }
     }
     
     void unlock(TransItem& item) {
         if (item.key<int>() == -1)
-            unlock(tailversion_);
+            tailversion_.unlock();
         else if (item.key<int>() == -2)
-            unlock(headversion_);
+            headversion_.unlock();
     }
 
     T queueSlots[BUF_SIZE];
 
     unsigned head_;
     unsigned tail_;
-    Version tailversion_;
-    Version headversion_;
+    version_type tailversion_;
+    version_type headversion_;
 };

@@ -9,7 +9,6 @@
 #include "Transaction.hh"
 #include "TArrayProxy.hh"
 #include "Box.hh"
-#include "VersionFunctions.hh"
 #include "rwlock.hh"
 #include <stdexcept>
 
@@ -30,7 +29,6 @@ private:
   typedef Vector<T, Opacity, Elem, SmartIterator> vector_type;
   
   typedef TransactionTid::type Version;
-  typedef VersionFunctions<Version> Versioning;
   
   static constexpr int vector_key = -1;
   static constexpr int push_back_key = -2;

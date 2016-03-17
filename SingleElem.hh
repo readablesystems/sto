@@ -1,7 +1,6 @@
 #pragma once
 #include "Interface.hh"
 #include "versioned_value.hh"
-#include "VersionFunctions.hh"
 
 template <typename T, bool GenericSTM = false, typename Structure = versioned_value_struct<T>>
 // if we're inheriting from Shared then a SingleElem adds both a version word and a vtable word

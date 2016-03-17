@@ -2,7 +2,6 @@
 
 #include "TaggedLow.hh"
 #include "Interface.hh"
-#include "VersionFunctions.hh"
 
 #ifndef STO_NO_STM
 #include "Transaction.hh"

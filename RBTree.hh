@@ -5,7 +5,6 @@
 #include "TaggedLow.hh"
 #include "Interface.hh"
 #include "TWrapped.hh"
-#include "VersionFunctions.hh"
 #include "RBTreeInternal.hh"
 
 #ifndef STO_NO_STM

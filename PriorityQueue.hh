@@ -4,13 +4,11 @@
 #include "TaggedLow.hh"
 #include "Transaction.hh"
 #include "versioned_value.hh"
-#include "VersionFunctions.hh"
 
 
 template <typename T, bool Opacity = false>
 class PriorityQueue: public Shared {
     typedef TransactionTid::type Version;
-    typedef VersionFunctions<Version> Versioning;
     typedef versioned_value_struct<T> versioned_value;
     
     static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;

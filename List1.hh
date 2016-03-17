@@ -2,7 +2,6 @@
 
 #include "TaggedLow.hh"
 #include "Transaction.hh"
-#include "VersionFunctions.hh"
 #include "List.hh"
 #include "SingleElem.hh"
 
