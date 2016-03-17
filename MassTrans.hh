@@ -244,7 +244,7 @@ private:
       return handlePutFound<INSERT, SET>(e, key, value);
     } else {
       //      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
-      versioned_value* val = (versioned_value*)versioned_value::make((value_type&)value, invalid_bit);
+      versioned_value* val = (versioned_value*)versioned_value::make(value, invalid_bit);
       lp.value() = val;
 #if ABORT_ON_WRITE_READ_CONFLICT
       auto orig_node = lp.node();
