@@ -23,7 +23,7 @@ void* Transaction::epoch_advancer(void*) {
         epoch_type g = global_epochs.global_epoch;
         epoch_type e = g;
         for (auto& t : tinfo) {
-            if (t.epoch != 0 && signed_epoch_type(t.epoch - g) < 0)
+            if (t.epoch != 0 && signed_epoch_type(t.epoch - e) < 0)
                 e = t.epoch;
         }
         global_epochs.global_epoch = std::max(g + 1, epoch_type(1));
