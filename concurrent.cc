@@ -31,6 +31,7 @@
 #define USE_VECTOR 6
 #define USE_TVECTOR 7
 #define USE_MASSTREE_STR 8
+#define USE_ARRAY_NONOPAQUE 9
 
 // set this to USE_DATASTRUCTUREYOUWANT
 #define DATA_STRUCTURE USE_TVECTOR
@@ -145,6 +146,27 @@ template <> struct Container<USE_ARRAY> {
     static void init() {
     }
     static void thread_init(Container<USE_ARRAY>&) {
+    }
+private:
+    type v_;
+};
+
+template <> struct Container<USE_ARRAY_NONOPAQUE> {
+    typedef TArray<value_type, ARRAY_SZ, TNonopaqueWrapped> type;
+    typedef int index_type;
+    static constexpr bool has_delete = false;
+    value_type nontrans_get(index_type key) {
+        return v_.nontrans_get(key);
+    }
+    value_type transGet(index_type key) {
+        return v_.transGet(key);
+    }
+    void transPut(index_type key, value_type value) {
+        v_.transPut(key, value);
+    }
+    static void init() {
+    }
+    static void thread_init(Container<USE_ARRAY_NONOPAQUE>&) {
     }
 private:
     type v_;
@@ -1075,7 +1097,8 @@ void print_time(struct timeval tv1, struct timeval tv2) {
     {name, desc, 4, new type<4, ## __VA_ARGS__>},     \
     {name, desc, 6, new type<6, ## __VA_ARGS__>},     \
     {name, desc, 7, new type<7, ## __VA_ARGS__>},     \
-    {name, desc, 8, new type<8, ## __VA_ARGS__>}
+    {name, desc, 8, new type<8, ## __VA_ARGS__>},     \
+    {name, desc, 9, new type<9, ## __VA_ARGS__>}
 
 struct Test {
     const char* name;
@@ -1098,6 +1121,7 @@ struct {
     int ds;
 } ds_names[] = {
     {"array", USE_ARRAY},
+    {"array-nonopaque", USE_ARRAY_NONOPAQUE},
     {"hashtable", USE_HASHTABLE},
     {"hash", USE_HASHTABLE},
     {"masstree", USE_MASSTREE},
