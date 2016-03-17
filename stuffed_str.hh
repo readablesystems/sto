@@ -1,4 +1,5 @@
 #pragma once
+#include "string_base.hh"
 
 template <typename Stuff>
 class stuffed_str {
@@ -12,7 +13,7 @@ public:
   };
 
   template <typename Malloc = StandardMalloc>
-  static stuffed_str *make(const char *str, int len, int capacity, const Stuff& val, Malloc m = Malloc()) {
+  static stuffed_str* make(const char *str, int len, int capacity, const Stuff& val, Malloc m = Malloc()) {
     // TODO: it might be better if we just take the max of size_for() and capacity
     assert(size_for(len) <= capacity);
     //    printf("%d from %lu\n", alloc_size, len + sizeof(stuffed_str));
@@ -22,7 +23,12 @@ public:
   }
 
   template <typename Malloc = StandardMalloc>
-  static stuffed_str *make(const std::string& s, const Stuff& val, Malloc m = Malloc()) {
+  static stuffed_str* make(const std::string& s, const Stuff& val, Malloc m = Malloc()) {
+    return make(s.data(), s.length(), size_for(s.length()), val, m);
+  }
+
+  template <typename Str, typename Malloc = StandardMalloc>
+  static stuffed_str* make(const lcdf::String_base<Str>& s, const Stuff& val, Malloc m = Malloc()) {
     return make(s.data(), s.length(), size_for(s.length()), val, m);
   }
 
