@@ -2,7 +2,7 @@
 
 import os, re, sys, json, subprocess, multiprocessing
 
-bm_execs = ["./concurrent-1M", "./concurrent-50"]
+bm_execs = ["./concurrent", "./concurrent-50"]
 
 opacity_names = ["no opacity", "TL2 opacity", "slow opacity"]
 scaling_txlens = [1, 2, 4, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 30, 32, 36,
