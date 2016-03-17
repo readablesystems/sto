@@ -314,6 +314,10 @@ public:
     return listsize_ + trans_size_offs();
   }
 
+  size_t nontrans_size() const {
+    return listsize_;
+  }
+
 #endif /* !STO_NO_STM */
     
   iterator begin() { return iterator(this, head_); }
