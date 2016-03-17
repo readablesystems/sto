@@ -81,8 +81,7 @@ public:
     }
     virtual void install(TransItem& item, const Transaction& txn) {
         v_.write(item.template write_value<T>());
-        vers_.set_version_unlock(txn.commit_tid());
-        item.clear_needs_unlock();
+        txn.set_version_unlock(vers_, item);
     }
     virtual void unlock(TransItem&) {
         vers_.unlock();

@@ -32,6 +32,7 @@
 #define USE_TVECTOR 7
 #define USE_MASSTREE_STR 8
 #define USE_HASHTABLE_STR 9
+#define USE_ARRAY_NONOPAQUE 10
 
 // set this to USE_DATASTRUCTUREYOUWANT
 #define DATA_STRUCTURE USE_TVECTOR
@@ -146,6 +147,27 @@ template <> struct Container<USE_ARRAY> {
     static void init() {
     }
     static void thread_init(Container<USE_ARRAY>&) {
+    }
+private:
+    type v_;
+};
+
+template <> struct Container<USE_ARRAY_NONOPAQUE> {
+    typedef TArray<value_type, ARRAY_SZ, TNonopaqueWrapped> type;
+    typedef int index_type;
+    static constexpr bool has_delete = false;
+    value_type nontrans_get(index_type key) {
+        return v_.nontrans_get(key);
+    }
+    value_type transGet(index_type key) {
+        return v_.transGet(key);
+    }
+    void transPut(index_type key, value_type value) {
+        v_.transPut(key, value);
+    }
+    static void init() {
+    }
+    static void thread_init(Container<USE_ARRAY_NONOPAQUE>&) {
     }
 private:
     type v_;
@@ -1132,6 +1154,7 @@ struct {
     int ds;
 } ds_names[] = {
     {"array", USE_ARRAY},
+    {"array-nonopaque", USE_ARRAY_NONOPAQUE},
     {"hashtable", USE_HASHTABLE},
     {"hash", USE_HASHTABLE},
     {"hash-str", USE_HASHTABLE_STR},

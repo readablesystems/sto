@@ -5,7 +5,6 @@
 #include "TaggedLow.hh"
 #include "Interface.hh"
 #include "TWrapped.hh"
-#include "VersionFunctions.hh"
 #include "RBTreeInternal.hh"
 
 #ifndef STO_NO_STM
@@ -92,7 +91,7 @@ public:
     }
     void install(TransItem& item, const Transaction& txn) {
         val_.write(item.template write_value<T>());
-        vers_.set_version_unlock(txn.commit_tid());
+        txn.set_version_unlock(vers_, item);
     }
 
     // transactional access to node version
@@ -106,9 +105,9 @@ public:
     bool check_nv(const TransItem& item) {
         return item.check_version(nodevers_);
     }
-    void install_nv(const Transaction& txn) {
+    void install_nv(TransItem& item, const Transaction& txn) {
         if (nodevers_.is_locked_here())
-            nodevers_.set_version_unlock(txn.commit_tid());
+            txn.set_version_unlock(nodevers_, item);
     }
 
     // key access and comparisons
@@ -880,23 +879,24 @@ inline size_t RBTree<K, T, GlobalSize>::erase(const K& key) {
 }
 
 template <typename K, typename T, bool GlobalSize>
-bool RBTree<K, T, GlobalSize>::lock(TransItem& item, Transaction&) {
-    if (item.key<uintptr_t>() == size_key_) {
-        sizeversion_.lock();
-    } else if (item.key<uintptr_t>() == tree_key_) {
-        wrapper_tree_.treeversion_.lock();
-    } else if (item.key<uintptr_t>() & uintptr_t(1)) {
-        uintptr_t x = item.key<uintptr_t>() & ~uintptr_t(1);
-        wrapper_type* n = reinterpret_cast<wrapper_type*>(x);
-        if (!n->nodeversion().is_locked_here())
-            n->lock_nv();
-    } else {
-        wrapper_type* n = item.key<wrapper_type*>();
-        n->lock();
-        if (has_delete(item) && !n->nodeversion().is_locked_here())
-            n->lock_nv();
+bool RBTree<K, T, GlobalSize>::lock(TransItem& item, Transaction& txn) {
+    if (item.key<uintptr_t>() == size_key_)
+        return txn.try_lock(item, sizeversion_);
+    else if (item.key<uintptr_t>() == tree_key_)
+        return txn.try_lock(item, wrapper_tree_.treeversion_);
+    else {
+        uintptr_t x = item.key<uintptr_t>();
+        wrapper_type* n = reinterpret_cast<wrapper_type*>(x & ~uintptr_t(1));
+        if (((!(x & 1) && !has_delete(item))
+             || n->nodeversion().is_locked_here()
+             || txn.try_lock(item, n->nodeversion()))
+            && ((x & 1) || txn.try_lock(item, n->version())))
+            return true;
+        else {
+            n->unlock_nv();
+            return false;
+        }
     }
-    return true;
 }
 
 template <typename K, typename T, bool GlobalSize>
@@ -972,17 +972,17 @@ void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction& t) {
     // we did something to an empty tree, so update treeversion
     if ((void*)e == (wrapper_type*)tree_key_) {
         assert(wrapper_tree_.treeversion_.is_locked_here());
-        wrapper_tree_.treeversion_.set_version_unlock(t.commit_tid());
+        t.set_version_unlock(wrapper_tree_.treeversion_, item);
     // we changed the size of the tree, so update size
     } else if ((void*)e == (wrapper_type*)size_key_) {
         always_assert(GlobalSize);
         assert(sizeversion_.is_locked_here());
         size_ += item.template write_value<ssize_t>();
-        sizeversion_.set_version_unlock(t.commit_tid());
+        t.set_version_unlock(sizeversion_, item);
         assert((ssize_t)size_ >= 0);
     } else if (uintptr_t(e) & uintptr_t(1)) {
         auto n = reinterpret_cast<wrapper_type*>(uintptr_t(e) & ~uintptr_t(1));
-        n->install_nv(t);
+        n->install_nv(item, t);
     } else {
         assert(e->version().is_locked_here());
         assert(((uintptr_t)e & 0x1) == 0);
@@ -998,15 +998,14 @@ void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction& t) {
             wrapper_tree_.erase(*e);
             unlock_write(&treelock_);
 
-            e->version().set_version_unlock(t.commit_tid());
-            e->install_nv(t);
+            t.set_version_unlock(e->version(), item);
+            e->install_nv(item, t);
             Transaction::rcu_free(e);
         } else {
             // inserts/updates should be handled the same way
             e->install(item, t);
         }
     }
-    item.clear_needs_unlock();
 }
 
 template <typename K, typename T, bool GlobalSize>

@@ -2,7 +2,6 @@
 
 #include "TaggedLow.hh"
 #include "Transaction.hh"
-#include "VersionFunctions.hh"
 #include "List.hh"
 #include "SingleElem.hh"
 
@@ -410,13 +409,12 @@ public:
         return TransactionTid::is_locked(v);
     }
 
-    bool lock(TransItem& item, Transaction&) {
+    bool lock(TransItem& item, Transaction& txn) {
         // this lock is useless given that we also lock the listversion_
         // currently
         // XXX: this isn't great, but I think we need it to update the size...
-        if (item.key<List1*>() == this)
-            lock(listversion_);
-        return true;
+        return item.key<List1*>() != this
+            || txn.try_lock(item, listversion_);
     }
 
     bool check(const TransItem& item, const Transaction&) {

@@ -4,13 +4,11 @@
 #include "TaggedLow.hh"
 #include "Transaction.hh"
 #include "versioned_value.hh"
-#include "VersionFunctions.hh"
 
 
 template <typename T, bool Opacity = false>
 class PriorityQueue: public Shared {
     typedef TransactionTid::type Version;
-    typedef VersionFunctions<Version> Versioning;
     typedef versioned_value_struct<T> versioned_value;
     
     static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
@@ -274,13 +272,9 @@ public:
         unlock(&e->version());
     }
     
-    bool lock(TransItem& item, Transaction&) {
-        if (item.key<int>() == pop_key){
-            lock(&popversion_);
-        } else {
-            //lock(item.key<versioned_value*>());
-        }
-        return true;
+    bool lock(TransItem& item, Transaction& txn) {
+        return item.key<int>() != pop_key
+            || txn.try_lock(item, popversion_);
     }
     
     bool check(const TransItem& item, const Transaction&){

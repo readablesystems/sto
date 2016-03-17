@@ -239,6 +239,7 @@ void Transaction::print_stats() {
     if (txp_count >= txp_total_transbuffer)
         fprintf(stderr, "$ %llu max buffer per txn, %llu total buffer\n",
                 out.p(txp_max_transbuffer), out.p(txp_total_transbuffer));
+    fprintf(stderr, "$ %llu next commit-tid\n", (unsigned long long) _TID);
 }
 
 const char* Transaction::state_name(int state) {

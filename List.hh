@@ -2,7 +2,6 @@
 
 #include "TaggedLow.hh"
 #include "Interface.hh"
-#include "VersionFunctions.hh"
 
 #ifndef STO_NO_STM
 #include "Transaction.hh"
@@ -435,15 +434,14 @@ private:
   }
 
 #ifndef STO_NO_STM
-    bool lock(TransItem& item, Transaction&) {
+    bool lock(TransItem& item, Transaction& txn) {
         // XXX: this isn't great, but I think we need it to update the size...
         // nate: we might be able to remove this if we updated the listversion_
         // immediately after a remove/insert. That would give semantics that:
         // inserts/deletes to different locations didn't conflict, but iteration
         // conflicted with insert/remove even before the write committed.
-        if (item.key<list_node*>() == list_key)
-            lock(listversion_);
-        return true;
+        return item.key<list_node*>() != list_key
+            || txn.try_lock(item, listversion_);
     }
 
   bool check(const TransItem& item, const Transaction&) {

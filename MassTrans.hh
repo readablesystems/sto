@@ -32,8 +32,15 @@ struct versioned_str_struct : public versioned_str {
   bool needsResize(const value_type& v) {
     return needs_resize(v.length());
   }
+  bool needsResize(const std::string& v) {
+    return needs_resize(v.length());
+  }
 
   versioned_str_struct* resizeIfNeeded(const value_type& potential_new_value) {
+    // TODO: this cast is only safe because we have no ivars or virtual methods
+    return (versioned_str_struct*)this->reserve(versioned_str::size_for(potential_new_value.length()));
+  }
+  versioned_str_struct* resizeIfNeeded(const std::string& potential_new_value) {
     // TODO: this cast is only safe because we have no ivars or virtual methods
     return (versioned_str_struct*)this->reserve(versioned_str::size_for(potential_new_value.length()));
   }
@@ -465,18 +472,15 @@ public:
   // implementation of Shared object methods
 
   void lock(versioned_value *e) {
-#if NOSORT
-    if (!is_locked(e->version()))
-#endif
     lock(&e->version());
   }
   void unlock(versioned_value *e) {
     unlock(&e->version());
   }
 
-    bool lock(TransItem& item, Transaction&) {
-        lock(item.key<versioned_value*>());
-        return true;
+    bool lock(TransItem& item, Transaction& txn) {
+        versioned_value* vv = item.key<versioned_value*>();
+        return txn.try_lock(item, vv->version());
     }
   bool check(const TransItem& item, const Transaction&) {
     if (is_inter(item)) {
@@ -562,7 +566,7 @@ protected:
     // resizing takes a lot of effort, so we first check if we'll need to
     // (values never shrink in size, so if we don't need to resize, we'll never need to)
     auto *new_location = e;
-    bool needsResize = e->needsResize(value_type(value));
+    bool needsResize = e->needsResize(value);
     if (needsResize) {
       if (!has_insert(item)) {
         // TODO: might be faster to do this part at commit time but easiest to just do it now
@@ -579,7 +583,7 @@ protected:
       }
       // does the actual realloc. at this point e is marked invalid so we don't have to worry about
       // other threads changing e's value
-      new_location = e->resizeIfNeeded(value_type(value));
+      new_location = e->resizeIfNeeded(value);
       // e can't get bigger so this should always be true
       assert(new_location != e);
       if (!has_insert(item)) {

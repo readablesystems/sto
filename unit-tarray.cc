@@ -205,7 +205,7 @@ void testOpacity1() {
 }
 
 void testNoOpacity1() {
-    TArray<int, 10, TNonopaqueWrapped<int> > f;
+    TArray<int, 10, TNonopaqueWrapped> f;
     for (int i = 0; i < 10; i++)
         f.nontrans_put(i, i);
 

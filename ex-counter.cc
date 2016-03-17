@@ -49,7 +49,7 @@ public:
     }
     void install(TransItem& it, const Transaction& txn) override {
         n_.access() += wval(it);
-        v_.set_version(txn.commit_tid());
+        txn.set_version_unlock(v_, it);
     }
     void unlock(TransItem&) override {
         v_.unlock();
@@ -106,9 +106,9 @@ public:
     }
     void install(TransItem& it, const Transaction& txn) override {
         n_.access() += wval(it);
-        v_.set_version(txn.commit_tid());
+        txn.set_version_unlock(v_, it);
         if (zc_v_.is_locked_here())
-            zc_v_.set_version(txn.commit_tid());
+            txn.set_version_unlock(zc_v_, it);
     }
     void unlock(TransItem&) override {
         v_.unlock();
@@ -168,7 +168,7 @@ public:
     }
     void install(TransItem& it, const Transaction& txn) override {
         n_.access() += wval(it);
-        v_.set_version(txn.commit_tid());
+        txn.set_version_unlock(v_, it);
     }
     void unlock(TransItem&) override {
         v_.unlock();

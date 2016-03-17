@@ -1,7 +1,6 @@
 #pragma once
 #include "Interface.hh"
 #include "versioned_value.hh"
-#include "VersionFunctions.hh"
 
 template <typename T, bool GenericSTM = false, typename Structure = versioned_value_struct<T>>
 // if we're inheriting from Shared then a SingleElem adds both a version word and a vtable word
@@ -82,9 +81,8 @@ public:
         TransactionTid::unlock(s_.version());
     }
 
-    bool lock(TransItem&, Transaction&) {
-        lock();
-        return true;
+    bool lock(TransItem& item, Transaction& txn) {
+        return txn.try_lock(item, s_.version());
     }
 
     bool check(const TransItem& item, const Transaction&) {
