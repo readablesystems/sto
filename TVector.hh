@@ -181,7 +181,7 @@ public:
             original_size_ = size_.access();
             pred_type& wval = item.template xwrite_value<pred_type>();
             size_.write(original_size_ + wval.second - wval.first);
-            size_vers_.set_version(txn.commit_tid());
+            txn.set_version(size_vers_);
             return;
         }
         size_type idx = key - 1;
@@ -204,8 +204,7 @@ public:
             ++max_size_;
         } else
             data_[idx].v.write(std::move(item.write_value<T>()));
-        data_[idx].vers = txn.commit_tid(); // set_version_unlock
-        item.clear_needs_unlock();
+        txn.set_version_unlock(data_[idx].vers, item);
     }
     void unlock(TransItem& item) {
         auto key = item.template key<key_type>();

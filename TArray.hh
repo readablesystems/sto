@@ -72,8 +72,7 @@ public:
     void install(TransItem& item, const Transaction& txn) {
         size_type i = item.key<size_type>();
         data_[i].v.write(item.write_value<T>());
-        data_[i].vers.set_version_unlock(txn.commit_tid());
-        item.clear_needs_unlock();
+        txn.set_version_unlock(data_[i].vers, item);
     }
     void unlock(TransItem& item) {
         data_[item.key<size_type>()].vers.unlock();

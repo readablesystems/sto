@@ -115,8 +115,7 @@ public:
         if (item.has_flag(delta_bit))
             result += v_.access();
         v_.write(result);
-        vers_.set_version_unlock(txn.commit_tid());
-        item.clear_needs_unlock();
+        txn.set_version_unlock(vers_, item);
     }
     void unlock(TransItem&) override {
         vers_.unlock();

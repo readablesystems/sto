@@ -36,11 +36,11 @@ public:
     bool check(const TransItem& item, const Transaction&) {
         return item.check_version(version(item.template key<void*>()));
     }
-    void install(TransItem& item, const Transaction& t) {
+    void install(TransItem& item, const Transaction& txn) {
         void* word = item.template key<void*>();
         void* data = item.template write_value<void*>();
         memcpy(word, &data, item.shifted_user_flags());
-        version(word).set_version(t.commit_tid());
+        txn.set_version(version(word));
     }
     void unlock(TransItem& item) {
         version_type& vers = version(item.template key<void*>());

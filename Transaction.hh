@@ -451,31 +451,13 @@ public:
     }
 
     // opacity checking
+    // These function will eventually help us track the commit TID when we
+    // have no opacity, or for GV7 opacity.
     bool try_lock(TransItem& item, TVersion& vers) {
-        // This function will eventually help us track the commit TID when we
-        // have no opacity, or for GV7 opacity.
-        int i = 0;
-        while (1) {
-            if (vers.try_lock())
-                return true;
-            if (i > (!item.has_read() << 3))
-                return false;
-            ++i;
-            relax_fence();
-        }
+        return try_lock(item, const_cast<TransactionTid::type&>(vers.value()));
     }
     bool try_lock(TransItem& item, TNonopaqueVersion& vers) {
-        // This function will eventually help us track the commit TID when we
-        // have no opacity, or for GV7 opacity.
-        int i = 0;
-        while (1) {
-            if (vers.try_lock())
-                return true;
-            if (i > (!item.has_read() << 3))
-                return false;
-            ++i;
-            relax_fence();
-        }
+        return try_lock(item, const_cast<TransactionTid::type&>(vers.value()));
     }
     bool try_lock(TransItem& item, TransactionTid::type& vers) {
         // This function will eventually help us track the commit TID when we
@@ -511,11 +493,30 @@ public:
         check_opacity(_TID);
     }
 
+    // committing
     tid_type commit_tid() const {
         assert(state_ == s_committing_locked || state_ == s_committing);
         if (!commit_tid_)
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
+    }
+    void set_version(TVersion& vers) const {
+        vers.set_version(commit_tid());
+    }
+    void set_version_unlock(TVersion& vers, TransItem& item) const {
+        vers.set_version_unlock(commit_tid());
+        item.clear_needs_unlock();
+    }
+    void set_version(TNonopaqueVersion& vers) const {
+        assert(state_ == s_committing_locked || state_ == s_committing);
+        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_nonopaque_version(vers.value());
+        vers.set_version(v);
+    }
+    void set_version_unlock(TNonopaqueVersion& vers, TransItem& item) const {
+        assert(state_ == s_committing_locked || state_ == s_committing);
+        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_nonopaque_version(vers.value());
+        vers.set_version_unlock(v);
+        item.clear_needs_unlock();
     }
 
     static const char* state_name(int state);
