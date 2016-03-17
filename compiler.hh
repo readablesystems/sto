@@ -26,6 +26,8 @@
 #if HAVE_TYPE_TRAITS
 #include <type_traits>
 #endif
+#include <utility>
+#include <new>
 
 #define arraysize(a) (sizeof(a) / sizeof((a)[0]))
 

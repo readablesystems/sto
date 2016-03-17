@@ -4,51 +4,15 @@
 #include <string.h>
 #include <assert.h>
 #include "Interface.hh"
+#include "Packer.hh"
 #include "compiler.hh"
-
-// Packer
-template <typename T>
-struct __attribute__((may_alias)) Aliasable {
-    T x __attribute__((may_alias));
-};
-
-template <typename T,
-          bool simple = (__has_trivial_copy(T) && sizeof(T) <= sizeof(void*))>
-  struct Packer {};
-template <typename T> struct Packer<T, true> {
-    typedef T type;
-    typedef int is_simple_type;
-    static constexpr bool is_simple = true;
-    typedef const T& argument_type;
-    typedef T& return_type;
-    static void* pack(const T& x) {
-        void* v = 0;
-        memcpy(&v, &x, sizeof(T));
-        return v;
-    }
-    static T& unpack(void*& x) {
-        return *(T*) &x;
-    }
-    static const T& unpack(void* const& x) {
-        return *(const T*) &x;
-    }
-};
-template <typename T> struct Packer<T, false> {
-    typedef T type;
-    typedef void* is_simple_type;
-    static constexpr bool is_simple = false;
-    static T& unpack(void* x) {
-        return *(T*) x;
-    }
-};
-
 
 class TransProxy;
 
 class TransItem {
   public:
 #if SIZEOF_VOID_P == 8
-    typedef Shared* sharedstore_type;
+    typedef TObject* sharedstore_type;
     typedef uintptr_t flags_type;
 #else
     typedef uint64_t sharedstore_type;
@@ -57,19 +21,26 @@ class TransItem {
 
     static constexpr flags_type write_bit = flags_type(1) << 63;
     static constexpr flags_type read_bit = flags_type(1) << 62;
+    static constexpr flags_type lock_bit = flags_type(1) << 61;
+    static constexpr flags_type predicate_bit = flags_type(1) << 60;
+    static constexpr flags_type stash_bit = flags_type(1) << 59;
     static constexpr flags_type pointer_mask = (flags_type(1) << 48) - 1;
     static constexpr flags_type user0_bit = flags_type(1) << 48;
     static constexpr int userf_shift = 48;
-    static constexpr flags_type shifted_userf_mask = 0x3FFF;
-    static constexpr flags_type special_mask = pointer_mask | read_bit | write_bit;
+    static constexpr flags_type shifted_userf_mask = 0x7FF;
+    static constexpr flags_type special_mask = pointer_mask | read_bit | write_bit | lock_bit | predicate_bit | stash_bit;
 
 
-    TransItem(Shared* s, void* k)
+    TransItem() = default;
+    TransItem(TObject* s, void* k)
         : s_(reinterpret_cast<sharedstore_type>(s)), key_(k) {
     }
 
-    Shared* sharedObj() const {
-        return reinterpret_cast<Shared*>(reinterpret_cast<flags_type>(s_) & pointer_mask);
+    TObject* owner() const {
+        return reinterpret_cast<TObject*>(reinterpret_cast<flags_type>(s_) & pointer_mask);
+    }
+    TObject* sharedObj() const {
+        return owner();
     }
 
     bool has_write() const {
@@ -78,9 +49,20 @@ class TransItem {
     bool has_read() const {
         return flags() & read_bit;
     }
-    bool has_lock(const Transaction& t) const;
+    bool has_predicate() const {
+        return flags() & predicate_bit;
+    }
+    bool has_stash() const {
+        return flags() & stash_bit;
+    }
+    bool needs_unlock() const {
+        return flags() & lock_bit;
+    }
     bool same_item(const TransItem& x) const {
-        return sharedObj() == x.sharedObj() && key_ == x.key_;
+        return owner() == x.owner() && key_ == x.key_;
+    }
+    bool has_flag(flags_type f) const {
+        return flags() & f;
     }
 
     template <typename T>
@@ -98,6 +80,26 @@ class TransItem {
         assert(has_read());
         return Packer<T>::unpack(rdata_);
     }
+    bool check_version(TVersion v) const {
+        assert(has_read());
+        return v.check_version(this->read_value<TVersion>());
+    }
+    bool check_version(TNonopaqueVersion v) const {
+        assert(has_read());
+        return v.check_version(this->read_value<TNonopaqueVersion>());
+    }
+
+    template <typename T>
+    T& predicate_value() {
+        assert(has_predicate() && !has_read());
+        return Packer<T>::unpack(rdata_);
+    }
+    template <typename T>
+    const T& predicate_value() const {
+        assert(has_predicate() && !has_read());
+        return Packer<T>::unpack(rdata_);
+    }
+
     template <typename T>
     T& write_value() {
         assert(has_write());
@@ -108,15 +110,49 @@ class TransItem {
         assert(has_write());
         return Packer<T>::unpack(wdata_);
     }
+    template <typename T>
+    T write_value(T default_value) const {
+        return has_write() ? Packer<T>::unpack(wdata_) : default_value;
+    }
+
+    template <typename T>
+    T& xwrite_value() {
+        static_assert(Packer<T>::is_simple, "xwrite_value only works on simple types");
+        return Packer<T>::unpack(wdata_);
+    }
+    template <typename T>
+    const T& xwrite_value() const {
+        static_assert(Packer<T>::is_simple, "xwrite_value only works on simple types");
+        return Packer<T>::unpack(wdata_);
+    }
+
+    template <typename T>
+    T& stash_value() {
+        assert(has_stash());
+        return Packer<T>::unpack(rdata_);
+    }
+    template <typename T>
+    const T& stash_value() const {
+        assert(has_stash());
+        return Packer<T>::unpack(rdata_);
+    }
+    template <typename T>
+    T stash_value(T default_value) const {
+        assert(!has_read());
+        if (has_stash())
+            return Packer<T>::unpack(rdata_);
+        else
+            return std::move(default_value);
+    }
 
     inline bool operator==(const TransItem& t2) const {
-        return key_ == t2.key_ && sharedObj() == t2.sharedObj();
+        return key_ == t2.key_ && owner() == t2.owner();
     }
     inline bool operator<(const TransItem& t2) const {
         // we compare keys and THEN shared objects here so that read and write keys with the same value
         // are next to each other
         return key_ < t2.key_
-                      || (key_ == t2.key_ && sharedObj() < t2.sharedObj());
+            || (key_ == t2.key_ && owner() < t2.owner());
     }
 
     // these methods are all for user flags (currently we give them 8 bits, the high 8 of the 16 total flag bits we have)
@@ -144,9 +180,13 @@ class TransItem {
         return *this;
     }
 
-  private:
-    friend class Transaction;
-    friend class TransProxy;
+    TransItem& clear_needs_unlock() {
+        assert(flags() & lock_bit);
+        __rm_flags(lock_bit);
+        return *this;
+    }
+
+private:
     Shared* s_;
     // this word must be unique (to a particular item) and consistently ordered across transactions
     void* key_;
@@ -159,98 +199,177 @@ class TransItem {
     void __or_flags(flags_type flags) {
         s_ = reinterpret_cast<sharedstore_type>(reinterpret_cast<flags_type>(s_) | flags);
     }
+    friend class Transaction;
+    friend class TransProxy;
 };
 
 
 class TransProxy {
   public:
+    TransProxy(Transaction& t, unsigned idx)
+        : t_(&t), idx_(idx) {
+        assert(&t == TThread::txn);
+    }
+    inline TransProxy(Transaction& t, TransItem& item);
+
     TransProxy* operator->() { // make OptionalTransProxy work
         return this;
     }
     operator TransItem&() {
-        return *i_;
+        return item();
     }
 
     bool has_read() const {
-        return i_->has_read();
+        return item().has_read();
     }
     template <typename T>
     bool has_read(const T& value) const {
         return has_read() && this->template read_value<T>() == value;
     }
-    bool has_write() const {
-        return i_->has_write();
+    bool has_predicate() const {
+        return item().has_predicate();
     }
-    bool has_lock() const;
+    bool has_write() const {
+        return item().has_write();
+    }
+    bool has_stash() const {
+        return item().has_stash();
+    }
+    bool has_flag(TransItem::flags_type f) const {
+        return item().flags() & f;
+    }
 
     template <typename T>
     inline TransProxy& add_read(T rdata);
+    inline TransProxy& observe(TVersion version, bool add_read);
+    inline TransProxy& observe(TNonopaqueVersion version, bool add_read);
+    inline TransProxy& observe(TVersion version);
+    inline TransProxy& observe(TNonopaqueVersion version);
+    inline TransProxy& observe_opacity(TVersion version);
+    inline TransProxy& observe_opacity(TNonopaqueVersion version);
     inline TransProxy& clear_read() {
-        i_->__rm_flags(TransItem::read_bit);
+        item().__rm_flags(TransItem::read_bit);
         return *this;
     }
-    template <typename T, typename U>
-    inline TransProxy& update_read(T old_rdata, U new_rdata);
+    template <typename T>
+    inline TransProxy& update_read(T old_rdata, T new_rdata);
 
     template <typename T>
-    inline TransProxy& add_write(T wdata);
+    inline TransProxy& set_predicate(T pdata);
+    inline TransProxy& clear_predicate() {
+        item().__rm_flags(TransItem::predicate_bit);
+        return *this;
+    }
+
+    inline TransProxy& add_write();
+    template <typename T>
+    inline TransProxy& add_write(const T& wdata);
+    template <typename T>
+    inline TransProxy& add_write(T&& wdata);
+    template <typename T, typename... Args>
+    inline TransProxy& add_write(Args&&... wdata);
     inline TransProxy& clear_write() {
-        i_->__rm_flags(TransItem::write_bit);
+        item().__rm_flags(TransItem::write_bit);
+        return *this;
+    }
+
+    template <typename T>
+    inline TransProxy& set_stash(T sdata);
+    inline TransProxy& clear_stash() {
+        item().__rm_flags(TransItem::stash_bit);
         return *this;
     }
 
     template <typename T>
     T& read_value() {
-        return i_->read_value<T>();
+        return item().read_value<T>();
     }
     template <typename T>
     const T& read_value() const {
-        return i_->read_value<T>();
+        return item().read_value<T>();
+    }
+
+    template <typename T>
+    T& predicate_value() {
+        return item().predicate_value<T>();
     }
     template <typename T>
+    inline T& predicate_value(T default_value);
+    template <typename T>
+    const T& predicate_value() const {
+        return item().predicate_value<T>();
+    }
+
+    template <typename T>
     T& write_value() {
-        return i_->write_value<T>();
+        return item().write_value<T>();
+    }
+    template <typename T>
+    const T& write_value(const T& default_value) {
+        if (item().has_write())
+            return item().write_value<T>();
+        else
+            return default_value;
     }
     template <typename T>
     const T& write_value() const {
-        return i_->write_value<T>();
+        return item().write_value<T>();
     }
 
-    TransProxy& remove_write() { // XXX should also cleanup_write
-        i_->__rm_flags(TransItem::write_bit);
+    template <typename T>
+    T& xwrite_value() {
+        return item().xwrite_value<T>();
+    }
+
+    template <typename T>
+    T& stash_value() {
+        return item().stash_value<T>();
+    }
+    template <typename T>
+    const T& stash_value() const {
+        return item().stash_value<T>();
+    }
+    template <typename T>
+    T stash_value(T default_value) const {
+        return item().stash_value<T>(std::move(default_value));
+    }
+
+    TransProxy& remove_read() { // XXX should also cleanup_read
+        item().__rm_flags(TransItem::read_bit);
         return *this;
     }
-    TransProxy& remove_read() { // XXX should also cleanup_read
-        i_->__rm_flags(TransItem::read_bit);
+    TransProxy& remove_write() { // XXX should also cleanup_write
+        item().__rm_flags(TransItem::write_bit);
         return *this;
     }
 
     // these methods are all for user flags (currently we give them 8 bits, the high 8 of the 16 total flag bits we have)
     TransItem::flags_type flags() const {
-        return i_->flags();
+        return item().flags();
     }
     TransItem::flags_type shifted_user_flags() const {
-        return i_->shifted_user_flags();
+        return item().shifted_user_flags();
     }
     TransProxy& assign_flags(TransItem::flags_type flags) {
-        i_->assign_flags(flags);
+        item().assign_flags(flags);
         return *this;
     }
     TransProxy& clear_flags(TransItem::flags_type flags) {
-        i_->clear_flags(flags);
+        item().clear_flags(flags);
         return *this;
     }
     TransProxy& add_flags(TransItem::flags_type flags) {
-        i_->add_flags(flags);
+        item().add_flags(flags);
         return *this;
     }
 
   private:
     Transaction* t_;
-    TransItem* i_;
-    TransProxy(Transaction& t, TransItem& i)
-        : t_(&t), i_(&i) {
+    unsigned idx_;
+    inline Transaction* t() const {
+        return t_;
     }
+    inline TransItem& item() const;
     friend class Transaction;
     friend class OptionalTransProxy;
 };
@@ -260,11 +379,11 @@ class OptionalTransProxy {
   public:
     typedef TransProxy (OptionalTransProxy::*unspecified_bool_type)() const;
     operator unspecified_bool_type() const {
-        return i_ ? &OptionalTransProxy::get : 0;
+        return idx_ != unsigned(-1) ? &OptionalTransProxy::get : 0;
     }
     TransProxy get() const {
-        assert(i_);
-        return TransProxy(*t_, *i_);
+        assert(idx_ != unsigned(-1));
+        return TransProxy(*t(), idx_);
     }
     TransProxy operator*() const {
         return get();
@@ -273,10 +392,19 @@ class OptionalTransProxy {
         return get();
     }
   private:
-    Transaction* t_;
-    TransItem* i_;
-    OptionalTransProxy(Transaction& t, TransItem* i)
-        : t_(&t), i_(i) {
+    unsigned idx_;
+    OptionalTransProxy(Transaction& t, unsigned idx)
+        : idx_(idx) {
+        assert(&t == TThread::txn);
+    }
+    inline Transaction* t() const {
+        return TThread::txn;
     }
     friend class Transaction;
 };
+
+
+inline std::ostream& operator<<(std::ostream& w, const TransItem& item) {
+    item.owner()->print(w, item);
+    return w;
+}

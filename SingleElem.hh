@@ -1,7 +1,6 @@
 #pragma once
 #include "Interface.hh"
 #include "versioned_value.hh"
-#include "VersionFunctions.hh"
 
 #ifdef UBENCHMARK
 #  define OPACITY_NONE 0
@@ -15,22 +14,23 @@ template <typename T, bool GenericSTM = false, typename Structure = versioned_va
 // (not much else we can do though)
 class SingleElem : public Shared {
 public:
-    T read() {
+    T unsafe_read() const {
         return s_.read_value();
+    }
+    void unsafe_write(T v) {
+        s_.set_value(v);
     }
     
     void write(T v) {
         TransactionTid::lock(s_.version());
         s_.set_value(v);
-        TransactionTid::type newv = (s_.version() + TransactionTid::increment_value) & ~(TransactionTid::lock_bit | TransactionTid::valid_bit);
-        release_fence();
-        s_.version() = newv;
+        TransactionTid::set_version_unlock(s_.version(), TransactionTid::next_nonopaque_version(s_.version()));
     }
 
 private:
     typedef TransactionTid::type version_type;
 
-    inline void atomicRead(version_type& v, T& val) {
+    inline void atomicRead(version_type& v, T& val) const {
         version_type v2;
         do {
             v2 = s_.version();
@@ -44,7 +44,7 @@ private:
     }
 
 public:
-    T transRead() {
+    T transRead() const {
         auto item = Sto::item(this, this);
         if (item.has_write())
             return item.template write_value<T>();
@@ -60,7 +60,7 @@ public:
                 Sto::check_opacity(v);
 #ifdef UBENCHMARK
             } else if (opacity == OPACITY_SLOW) {
-                Sto::check_reads();
+                Sto::check_opacity(TransactionTid::nonopaque_bit);
 #endif
             }
             item.add_read(v);
@@ -70,10 +70,10 @@ public:
     
     /* Overloading cast operation so that we can now directly read values from SingleElem objects */
     operator T() {
-        if (Sto::trans_in_progress())
+        if (Sto::in_progress())
             return transRead();
         else
-            return read();
+            return unsafe_read();
     }
 
     void transWrite(const T& v) {
@@ -82,10 +82,10 @@ public:
   
     /* Overloads = operator with transWrite */
     SingleElem& operator= (const T& v) {
-        if (Sto::trans_in_progress())
+        if (Sto::in_progress())
             transWrite(v);
         else
-            write(v);
+            unsafe_write(v);
         return *this;
     }
 
@@ -97,17 +97,12 @@ public:
         TransactionTid::unlock(s_.version());
     }
 
-    void lock(TransItem&) {
-        lock();
-    }
-
-    void unlock(TransItem&) {
-        unlock();
+    bool lock(TransItem& item, Transaction& txn) {
+        return txn.try_lock(item, s_.version());
     }
 
     bool check(const TransItem& item, const Transaction&) {
-        return TransactionTid::same_version(s_.version(), item.template read_value<version_type>())
-            && (!TransactionTid::is_locked(s_.version()) || item.has_write());
+        return TransactionTid::check_version(s_.version(), item.template read_value<version_type>());
     }
 
     void install(TransItem& item, const Transaction& t) {
@@ -119,8 +114,12 @@ public:
 #endif
             TransactionTid::set_version(s_.version(), Sto::commit_tid());
         } else {
-            TransactionTid::inc_invalid_version(s_.version());
+            TransactionTid::inc_nonopaque_version(s_.version());
         }
+    }
+
+    void unlock(TransItem&) {
+        unlock();
     }
 
   protected:

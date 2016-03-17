@@ -112,13 +112,13 @@ public:
 #else
 
     if (!mythreadinfo.ti) {
-      auto* ti = threadinfo::make(threadinfo::TI_PROCESS, Transaction::threadid);
+      auto* ti = threadinfo::make(threadinfo::TI_PROCESS, TThread::id());
       mythreadinfo.ti = ti;
     }
-    Transaction::tinfo[Transaction::threadid].trans_start_callback = [] () {
+    Transaction::tinfo[TThread::id()].trans_start_callback = [] () {
       mythreadinfo.ti->rcu_start();
     };
-    Transaction::tinfo[Transaction::threadid].trans_end_callback = [] () {
+    Transaction::tinfo[TThread::id()].trans_end_callback = [] () {
       mythreadinfo.ti->rcu_stop();
     };
 #endif
@@ -208,12 +208,12 @@ public:
       // same as inserts we need to Store (copy) key so we can lookup to remove later
       item.clear_write();
       if (std::is_same<const std::string, const StringType>::value) {
-	if (CopyVals)
-	  item.add_write(key).add_flags(copyvals_bit);
-	else
-	  item.add_write(pack(key));
+        if (CopyVals)
+          item.add_write(key).add_flags(copyvals_bit);
+        else
+          item.add_write(pack(key));
       } else
-	item.add_write(std::string(key)).add_flags(copyvals_bit);
+        item.add_write(std::string(key)).add_flags(copyvals_bit);
       item.add_flags(delete_bit);
       return found;
     } else {
@@ -222,8 +222,9 @@ public:
     }
   }
 
-  template <bool CopyVals = true, bool INSERT = true, bool SET = true, typename StringType>
-  bool transPut(StringType& key, const value_type& value, threadinfo_type& ti = mythreadinfo) {
+private:
+  template <bool CopyVals, bool INSERT, bool SET, typename StringType, typename ValueType>
+  bool trans_write(const StringType& key, const ValueType& value, threadinfo_type& ti = mythreadinfo) {
     // optimization to do an unlocked lookup first
     if (SET) {
       unlocked_cursor_type lp(table_, key);
@@ -246,7 +247,7 @@ public:
       return handlePutFound<CopyVals, INSERT, SET>(e, key, value);
     } else {
       //      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
-      versioned_value* val = (versioned_value*)versioned_value::make(value, invalid_bit);
+      versioned_value* val = (versioned_value*)versioned_value::make((value_type&)value, invalid_bit);
       lp.value() = val;
 #if ABORT_ON_WRITE_READ_CONFLICT
       auto orig_node = lp.node();
@@ -287,14 +288,20 @@ public:
     }
   }
 
+public:
+  template <bool CopyVals = true, typename StringType, typename ValueType>
+  bool transPut(StringType& k, const ValueType& v, threadinfo_type& ti = mythreadinfo) {
+    return trans_write<CopyVals, /*insert*/true, /*set*/true>(k, v, ti);
+  }
+
   template <bool CopyVals = true, typename StringType>
   bool transUpdate(StringType& k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
-    return transPut<CopyVals, /*insert*/false, /*set*/true>(k, v, ti);
+    return trans_write<CopyVals, /*insert*/false, /*set*/true>(k, v, ti);
   }
 
   template <bool CopyVals = true, typename StringType>
   bool transInsert(StringType& k, const value_type& v, threadinfo_type& ti = mythreadinfo) {
-    return !transPut<CopyVals, /*insert*/true, /*set*/false>(k, v, ti);
+    return !trans_write<CopyVals, /*insert*/true, /*set*/false>(k, v, ti);
   }
 
 
@@ -488,22 +495,17 @@ public:
   // implementation of Shared object methods
 
   void lock(versioned_value *e) {
-#if NOSORT
-    if (!is_locked(e->version()))
-#endif
     lock(&e->version());
   }
   void unlock(versioned_value *e) {
     unlock(&e->version());
   }
 
-  void lock(TransItem& item) {
-    lock(item.key<versioned_value*>());
-  }
-  void unlock(TransItem& item) {
-    unlock(item.key<versioned_value*>());
-  }
-  bool check(const TransItem& item, const Transaction& t) {
+    bool lock(TransItem& item, Transaction& txn) {
+        versioned_value* vv = item.key<versioned_value*>();
+        return txn.try_lock(item, vv->version());
+    }
+  bool check(const TransItem& item, const Transaction&) {
     if (is_inter(item)) {
       auto n = untag_inter(item.key<leaf_type*>());
       auto cur_version = n->full_version_value();
@@ -515,12 +517,7 @@ public:
     bool valid = validityCheck(item, e);
     if (!valid)
       return false;
-#if NOSORT
-    bool lockedCheck = true;
-#else
-    bool lockedCheck = !is_locked(e->version()) || item.has_lock(t);
-#endif
-    return lockedCheck && versionCheck(read_version, e->version());
+    return TransactionTid::check_version(e->version(), read_version);
   }
   void install(TransItem& item, const Transaction& t) {
     assert(!is_inter(item));
@@ -536,8 +533,8 @@ public:
       // (if we do it now, we take more time while holding other locks, if we wait, we make other transactions abort more
       // from looking up an invalid node)
       auto &s = item.flags() & copyvals_bit ? 
-	item.template write_value<std::string>()
-	: (std::string&)item.template write_value<void*>();
+        item.template write_value<std::string>()
+        : (std::string&)item.template write_value<void*>();
       bool success = remove(Str(s));
       // no one should be able to remove since we hold the lock
       (void)success;
@@ -557,8 +554,12 @@ public:
       fence();
       e->version() = v;
     } else
-      TransactionTid::inc_invalid_version(e->version());
+      TransactionTid::inc_nonopaque_version(e->version());
     
+  }
+
+  void unlock(TransItem& item) {
+      unlock(item.key<versioned_value*>());
   }
 
   void cleanup(TransItem& item, bool committed) {
@@ -593,69 +594,15 @@ public:
   void print() {
     //    table_.print();
   }
-  
-
-  // these are mostly for concurrent.cc (which currently requires specifically named methods)
-  void transWrite(int k, value_type v) {
-    char s[16];
-    sprintf(s, "%d", k);
-    transPut(s, v);
-  }
-  value_type transRead(int k) {
-    char s[16];
-    sprintf(s, "%d", k);
-    value_type v;
-    if (!transGet(s, v)) {
-      return value_type();
-    }
-    return v;
-  }
-  bool transGet(int k, value_type& v) {
-    char s[16];
-    sprintf(s, "%d", k);
-    return transGet(s, v);
-  }
-  bool transPut(int k, value_type v) {
-    char s[16];
-    sprintf(s, "%d", k);
-    return transPut(s, v);
-  }
-  bool transUpdate(int k, value_type v) {
-    char s[16];
-    sprintf(s, "%d", k);
-    return transUpdate(s, v);
-  }
-  bool transInsert(int k, value_type v) {
-    char s[16];
-    sprintf(s, "%d", k);
-    return transInsert(s, v);
-  }
-  bool transDelete(int k) {
-    char s[16];
-    sprintf(s, "%d", k);
-    return transDelete(s);
-  }
-  value_type transRead_nocheck(Transaction& , int ) { return value_type(); }
-  void transWrite_nocheck(Transaction&, int , value_type ) {}
-  value_type read(int k) {
-    return transRead(k);
-  }
-
-  void put(int k, value_type v) {
-    char s[16];
-    sprintf(s, "%d", k);
-    put(s, v);
-  }
-
 
 protected:
   // called once we've checked our own writes for a found put()
-  template <bool CopyVals = true>
-  void reallyHandlePutFound(TransProxy& item, versioned_value *e, Str key, const value_type& value) {
+  template <bool CopyVals, typename ValueType>
+  void reallyHandlePutFound(TransProxy& item, versioned_value *e, Str key, const ValueType& value) {
     // resizing takes a lot of effort, so we first check if we'll need to
     // (values never shrink in size, so if we don't need to resize, we'll never need to)
     auto *new_location = e;
-    bool needsResize = e->needsResize(value);
+    bool needsResize = e->needsResize(value_type(value));
     if (needsResize) {
       if (!has_insert(item)) {
         // TODO: might be faster to do this part at commit time but easiest to just do it now
@@ -672,7 +619,7 @@ protected:
       }
       // does the actual realloc. at this point e is marked invalid so we don't have to worry about
       // other threads changing e's value
-      new_location = e->resizeIfNeeded(value);
+      new_location = e->resizeIfNeeded(value_type(value));
       // e can't get bigger so this should always be true
       assert(new_location != e);
       if (!has_insert(item)) {
@@ -691,18 +638,18 @@ protected:
     }
 #if READ_MY_WRITES
     if (has_insert(item)) {
-      new_location->set_value(value);
+      new_location->set_value(value_type(value));
     } else
 #endif
     {
       if (new_location == e) {
 	if (CopyVals)
-	  item.add_write(value).add_flags(copyvals_bit);
+	  item.template add_write<value_type>(value).add_flags(copyvals_bit);
 	else
 	  item.add_write(pack(value));
       } else {
 	if (CopyVals)
-	  Sto::new_item(this, new_location).add_write(value).add_flags(copyvals_bit);
+	  Sto::new_item(this, new_location).template add_write<value_type>(value).add_flags(copyvals_bit);
 	else
 	  Sto::new_item(this, new_location).add_write(pack(value));
       }
@@ -711,8 +658,8 @@ protected:
 
   // returns true if already in tree, false otherwise
   // handles a transactional put when the given key is already in the tree
-  template <bool CopyVals = true, bool INSERT=true, bool SET=true>
-  bool handlePutFound(versioned_value *e, Str key, const value_type& value) {
+  template <bool CopyVals, bool INSERT, bool SET, typename ValueType>
+  bool handlePutFound(versioned_value *e, Str key, const ValueType& value) {
     auto item = t_item(e);
     if (!validityCheck(item, e)) {
       Sto::abort();
@@ -777,11 +724,7 @@ protected:
 
   template <typename T>
   TransProxy t_item(T e) {
-#if READ_MY_WRITES
     return Sto::item(this, e);
-#else
-    return Sto::fresh_item(this, e);
-#endif
   }
 
   template <typename T>
@@ -806,10 +749,7 @@ protected:
     return v;
   }
 
-  static constexpr Version lock_bit = (Version)1<<(sizeof(Version)*8 - 1);
-  static constexpr Version invalid_bit = TransactionTid::user_bit1;
-  //(Version)1<<(sizeof(Version)*8 - 2);
-  static constexpr Version version_mask = ~(lock_bit|invalid_bit);
+  static constexpr Version invalid_bit = TransactionTid::user_bit;
 
   static constexpr uintptr_t internode_bit = 1<<0;
 
@@ -839,18 +779,6 @@ protected:
     Sto::check_opacity(v2);
   }
 
-  static bool versionCheck(Version v1, Version v2) {
-    return TransactionTid::same_version(v1, v2);
-    //return ((v1 ^ v2) & version_mask) == 0;
-  }
-  static void inc_version(Version& v) {
-    assert(0);
-    assert(is_locked(v));
-    Version cur = v & version_mask;
-    cur = (cur+1) & version_mask;
-    // set new version and ensure invalid bit is off
-    v = (cur | (v & ~version_mask)) & ~invalid_bit;
-  }
   static bool is_locked(Version v) {
     return TransactionTid::is_locked(v);
   }

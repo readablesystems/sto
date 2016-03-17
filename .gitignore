@@ -1,6 +1,7 @@
 .DS_Store
 *.o
 *.d
+*.dSYM
 *.a
 *.swp
 *~
@@ -11,6 +12,7 @@
 /config.h
 /config.h.in
 /config.log
+/config.mk
 /config.status
 /configure
 /stamp-h
@@ -25,4 +27,15 @@
 /tags
 /trans_test
 /vector
+/hashtable_nostm
 /ht_mt
+/iterators
+/pqVsIt
+/unit-rcu
+/unit-tarray
+/unit-tbox
+/unit-tgeneric
+/unit-tintpredicate
+/unit-tcounter
+/unit-tvector
+.ycm_*

@@ -83,14 +83,16 @@ void run_conc(data_structure* q, int me) {
 }
 template <typename T>
 void run(T* q, int me) {
-    Transaction::threadid = me;
+    TThread::set_id(me);
     
     std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
     for (int i = 0; i < NTRANS; ++i) {
         // so that retries of this transaction do the same thing
         auto transseed = i;
         txn_record *tr = new txn_record;
-        TRANSACTION {
+        while (1) {
+        Sto::start_transaction();
+        try {
             tr->pushes.clear();
             tr->pops = 0;
             tr->tops.clear();
@@ -140,25 +142,25 @@ void run(T* q, int me) {
             //std::cout << "[" << me << "] popped " << pval << std::endl;
             //TransactionTid::unlock(lock);
             //q->pop();
-            
+
             tr->pushes.push_back(val1);
             tr->pushes.push_back(val2);
             tr->pushes.push_back(val3);
             tr->pops = 1;
             tr->tops.push_back(rval);
-        }
-        if (Sto::try_commit()) {
-            //TransactionTid::lock(lock);
-            //std::cout << "[" << me << "] committed "  << std::endl;
-            //TransactionTid::unlock(lock);
-            txn_list[me][Sto::commit_tid()] = tr;
-            break;
-        }
-        
+
+            if (Sto::try_commit()) {
+                //TransactionTid::lock(lock);
+                //std::cout << "[" << me << "] committed "  << std::endl;
+                //TransactionTid::unlock(lock);
+                txn_list[me][Sto::commit_tid()] = tr;
+                break;
+            }
+
         } catch (Transaction::Abort e) {
             //TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
         }
-    }
+        }
     }
 }
 
@@ -203,8 +205,7 @@ void queueTests() {
     // NONEMPTY TESTS
     {
         // ensure pops read pushes in FIFO order
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         // q is empty
         q.push(1);
         q.push(2);
@@ -212,31 +213,25 @@ void queueTests() {
         q.pop();
         assert(q.top() == 1);
         q.pop();
-        assert(t.try_commit());
     }
     
     {
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         // q is empty
         q.push(1);
         q.push(2);
-        assert(t.try_commit());
     }
     
     {
         // front with no pops
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         assert(q.top() == 2);
         assert(q.top() == 2);
-        assert(t.try_commit());
     }
     
     {
         // pop until empty
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         q.pop();
         q.pop(); // After this, queue is empty
         
@@ -244,13 +239,11 @@ void queueTests() {
         q.push(1);
         q.push(2);
         q.push(3);
-        assert(t.try_commit());
     }
     
     {
         // fronts intermixed with pops
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         assert(q.top() == 3);
         q.pop();
         assert(q.top() == 2);
@@ -263,25 +256,21 @@ void queueTests() {
         q.push(1);
         q.push(2);
         q.push(3);
-        assert(t.try_commit());
     }
     
     {
         // front intermixed with pushes on nonempty
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         assert(q.top() == 3);
         assert(q.top() == 3);
         q.push(4);
         assert(q.top() == 4);
-        assert(t.try_commit());
     }
     
     {
         // pops intermixed with pushes and front on nonempty
         // q = [4 3 2 1]
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         q.pop();
         assert(q.top() == 3);
         q.push(5);
@@ -290,14 +279,12 @@ void queueTests() {
         assert(q.top() == 3);
         q.push(6);
         // q = [6 3 2 1]
-        assert(t.try_commit());
     }
     
     // EMPTY TESTS
     {
         // front with empty queue
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         // empty the queue
         q.pop();
         q.pop();
@@ -310,13 +297,11 @@ void queueTests() {
         q.push(1);
         assert(q.top() == 1);
         assert(q.top() == 1);
-        assert(t.try_commit());
     }
     
     {
         // pop with empty queue
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         // empty the queue
         q.pop();
         //q.pop();
@@ -326,13 +311,11 @@ void queueTests() {
         q.push(1);
         q.pop();
         //q.pop();
-        assert(t.try_commit());
     }
     
     {
         // pop and front with empty queue
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         //q.top();
         
         q.push(1);
@@ -347,113 +330,91 @@ void queueTests() {
         // add items for next test
         q.push(1);
         q.push(2);
-        
-        assert(t.try_commit());
     }
     
     // CONFLICTING TRANSACTIONS TEST
     {
         // test abortion due to pops
-        Transaction t1;
-        Transaction t2;
+        TestTransaction t1(1);
+        TestTransaction t2(2);
         // q has >1 element
-        Transaction::threadid = 0;
-        Sto::set_transaction(&t1);
+        t1.use();
         q.pop();
-        Transaction::threadid = 1;
-        Sto::set_transaction(&t2);
+        t2.use();
         bool aborted = false;
         try {
             q.pop();
         } catch (Transaction::Abort e) {
             aborted = true;
         }
-        Transaction::threadid = 0;
         assert(t1.try_commit());
-        Transaction::threadid = 1;
         assert(aborted);
     }
     
     {
         // test nonabortion T1 pops, T2 pushes on nonempty q
-        Transaction t1;
-        Transaction t2;
+        TestTransaction t1(1);
+        TestTransaction t2(2);
         // q has 1 element
-        Transaction::threadid = 0;
-        Sto::set_transaction(&t1);
+        t1.use();
         
         q.pop();
-        Transaction::threadid = 1;
-        Sto::set_transaction(&t2);
+        t2.use();
         bool aborted = false;
         try {
             q.push(3);
         } catch (Transaction::Abort e) {
             aborted = true;
         }
-        Transaction::threadid = 0;
         assert(t1.try_commit());
-        Transaction::threadid = 1;
         assert(aborted); // TODO: this also depends on queue implementation
-        
-        Transaction t3;
-        Sto::set_transaction(&t3);
+    }
+    {
+        TransactionGuard t3;
         q.push(3);
-        assert(t3.try_commit());
-        
     }
 
     {
-        Transaction t1;
-        Sto::set_transaction(&t1);
+        TransactionGuard t1;
         assert(q.top() == 3);
         q.pop(); // q is empty after this
-        assert(t1.try_commit());
     }
     
     {
         // test abortion due to empty q pops
-        Transaction t1;
-        Transaction t2;
+        TestTransaction t1(1);
+        TestTransaction t2(2);
         // q has 0 elements
-        Transaction::threadid = 0;
-        Sto::set_transaction(&t1);
-        
+        t1.use();
         q.pop();
         q.push(1);
         q.push(2);
-        Transaction::threadid = 1;
-        Sto::set_transaction(&t2);
-        
+
+        t2.use();
         q.push(3);
         q.push(4);
         q.push(5);
-        
         q.pop();
-        
-        Transaction::threadid = 0;
+
         assert(!t1.try_commit()); // TODO: this can actually commit
-        Transaction::threadid = 1;
         assert(t2.try_commit());
     }
     
     {
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         q.pop();
         q.pop();
         q.push(1);
         q.push(2);
-        assert(t.try_commit());
     }
     
     {
         // test nonabortion T1 pops/fronts and pushes, T2 pushes on nonempty q
-        Transaction t1;
-        Transaction t2;
+        TestTransaction t1(1);
+        TestTransaction t2(2);
         
         // q has 2 elements [2, 1]
-        Sto::set_transaction(&t1);
+        t1.use();
         assert(q.top() == 2);
         q.push(4);
         
@@ -461,41 +422,37 @@ void queueTests() {
         q.pop();
         assert(q.top() == 2);
         assert(t1.try_commit());
-        Sto::set_transaction(&t2);
-        
+
+        t2.use();
         q.push(3);
         // order of pushes doesn't matter, commits succeed
         assert(t2.try_commit());
-        
+    }
+
+    {
         // check if q is in order
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         assert(q.top() == 3);
         q.pop();
         assert(q.top() == 2);
         q.pop();
         assert(q.top() == 1);
         q.pop();
-        assert(t.try_commit());
     }
     
     {
-        Transaction t;
-        Transaction::threadid = 0;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         q.push(10);
         q.push(4);
         q.push(5);
-        assert(t.try_commit());
-        
-        Transaction t1;
-        Sto::set_transaction(&t1);
+    }
+
+    {
+        TestTransaction t1(1);
         q.pop();
         q.push(20);
         
-        Transaction t2;
-        Transaction::threadid = 1;
-        Sto::set_transaction(&t2);
+        TestTransaction t2(2);
         bool aborted = false;
         try {
             q.push(12);
@@ -503,120 +460,84 @@ void queueTests() {
             aborted = true;
         }
         
-        Transaction::threadid = 0;
         assert(t1.try_commit());
         assert(aborted);
     }
     
     {
-        Transaction t;
-        Transaction::threadid = 0;
-        Sto::set_transaction(&t);
+        TestTransaction t(1);
         q.top();
         
-        Transaction t1;
-        Transaction::threadid = 1;
-        Sto::set_transaction(&t1);
+        TestTransaction t1(2);
         q.push(100);
         
         assert(t1.try_commit());
-        Transaction::threadid = 0;
-        Sto::set_transaction(&t);
         assert(!t.try_commit());
-        
     }
     
     {
         // prepare queue for next test
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         q.pop();
         q.pop();
         q.pop();
         q.pop();
         q.push(5);
-        assert(t.try_commit());
     }
     
     {
-        Transaction t;
-        Sto::set_transaction(&t);
+        TestTransaction t(1);
         q.top(); // gets 5
         q.push(10);
-        
-        Transaction t1;
-        Sto::set_transaction(&t1);
+
+        TestTransaction t1(2);
         q.push(7);
         assert(t1.try_commit());
-        
-        Sto::set_transaction(&t);
         assert(!t.try_commit());
     }
     
     {
         // prepare queue for next test
-        Transaction t;
-        Sto::set_transaction(&t);
+        TransactionGuard t;
         q.pop();
         q.pop();
-        assert(t.try_commit());
     }
     
     {
-        Transaction t;
-        Sto::set_transaction(&t);
+        TestTransaction t(1);
         q.pop(); // poping froming an empty queue
-        
-        Transaction t1;
-        Sto::set_transaction(&t1);
+
+        TestTransaction t1(2);
         q.push(4);
         assert(t1.try_commit());
-        
-        Sto::set_transaction(&t);
         assert(!t.try_commit());
     }
     
     {
-        Transaction t;
-        Transaction::threadid = 0;
-        Sto::set_transaction(&t);
+        TestTransaction t(1);
         assert(q.top() == 4);
-        
-        Transaction t1;
-        Transaction::threadid = 1;
-        Sto::set_transaction(&t1);
+
+        TestTransaction t1(2);
         q.push(6);
         assert(t1.try_commit());
-        
-        Transaction t2;
-        Sto::set_transaction(&t2);
+
+        TestTransaction t2(3);
         q.pop();
-        
-        Transaction::threadid = 0;
-        Sto::set_transaction(&t);
+
         assert(!t.try_commit());
-        
-        Transaction::threadid = 1;
-        Sto::set_transaction(&t2);
         assert(t2.try_commit());
-        
     }
 
     
     {
-        Transaction t;
-        Transaction::threadid = 0;
-        Sto::set_transaction(&t);
+        TestTransaction t(1);
         assert(q.top() == 4);
-        
-        Transaction t1;
-        Transaction::threadid = 1;
-        Sto::set_transaction(&t1);
+
+        TestTransaction t1(2);
         q.push(6);
         assert(t1.try_commit());
         
-        Transaction::threadid = 0;
-        Sto::set_transaction(&t);
+        t.use();
         bool aborted = false;
         try {
             q.pop();
@@ -661,11 +582,10 @@ int main() {
     printf("Parallel time: ");
     print_time(tv1, tv2);
     
-#if PERF_LOGGING
+#if STO_PROFILE_COUNTERS
     Transaction::print_stats();
     {
-        using thd = threadinfo_t;
-        thd tc = Transaction::tinfo_combined();
+        txp_counters tc = Transaction::txp_counters_combined();
         printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
     }
 #endif
@@ -725,11 +645,10 @@ int main() {
     //printf("Vector rep time: ");
     //print_time(tv1, tv2);
     
-/*#if PERF_LOGGING
+/*#if STO_PROFILE_COUNTERS
     Transaction::print_stats();
     {
-        using thd = threadinfo_t;
-        thd tc = Transaction::tinfo_combined();
+        txp_counters tc = Transaction::txp_counters_combined();
         printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
     }
 #endif*/
@@ -741,8 +660,8 @@ int main() {
     } RETRY(false);
     //std::cout << q.size() << " " << q1.size() << std::endl;
     //assert(q.size() == q1.size());
-    assert(q1.size() == N_THREADS* NTRANS*2 + 1);
-    int size = q1.size();
+    assert(q1.unsafe_size() == N_THREADS* NTRANS*2 + 1);
+    int size = q1.unsafe_size();
     for (int i = 0; i < size; i++) {
         TRANSACTION {
             int v1 = q.top();
@@ -753,7 +672,7 @@ int main() {
             assert(v1 == v2);
             assert(q.pop() == v1);
             assert(q1.pop() == v2);
-        } RETRY(false)
+        } RETRY(false);
     }
         TRANSACTION {
             q.print();

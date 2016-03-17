@@ -6,31 +6,49 @@
 
 class TransAlloc : public Shared {
 public:
-  static constexpr int alloc_flag = 1;
-  
-  // used to free things only if successful commit
-  void transFree(void *ptr) {
-    Sto::new_item(this, ptr).add_write(0);
-  }
+    static constexpr TransItem::flags_type alloc_flag = TransItem::user0_bit;
+    typedef void (*free_type)(void*);
 
-  // malloc() which will be freed on abort
-  void* transMalloc(size_t sz) {
-    void *ptr = malloc(sz);
-    Sto::new_item(this, ptr).add_write(alloc_flag);
-    return ptr;
-  }
+    // used to free things only if successful commit
+    void transFree(void *ptr) {
+        Sto::new_item(this, ptr).template add_write<free_type, free_type>(::free);
+    }
 
-  void lock(TransItem&) {}
-  void unlock(TransItem&) {}
-  bool check(const TransItem&, const Transaction&) { assert(0); return false; }
-  void install(TransItem& item, const Transaction&) {
-    if (item.write_value<int>() == alloc_flag)
-      return;
-    void *ptr = item.key<void*>();
-    Transaction::rcu_free(ptr);
-  }
-  void cleanup(TransItem& item, bool committed) {
-    if (!committed && item.write_value<int>() == alloc_flag)
-      free(item.key<void*>());
-  }
+    // malloc() which will be freed on abort
+    void* transMalloc(size_t sz) {
+        void *ptr = malloc(sz);
+        Sto::new_item(this, ptr).template add_write<free_type, free_type>(::free).add_flags(alloc_flag);
+        return ptr;
+    }
+
+    // delete which only applies if transaction commits
+    template <typename T>
+    void transDelete(T *x) {
+        Sto::new_item(this, x).template add_write<free_type, free_type>(&ObjectDestroyer<T>::destroy_and_free);
+    }
+
+    // new which will be delete'd on abort.
+    // arguments go to T's constructor
+    template <typename T, typename... Args>
+    T* transNew(Args&&... args) {
+        T* x = new T(std::forward<Args>(args)...);
+        Sto::new_item(this, x).template add_write<free_type, free_type>(&ObjectDestroyer<T>::destroy_and_free).add_flags(alloc_flag);
+        return x;
+    }
+
+    bool lock(TransItem&, Transaction&) { return true; }
+    bool check(const TransItem&, const Transaction&) { return false; }
+    void install(TransItem&, const Transaction&) {}
+    void unlock(TransItem&) {}
+    void cleanup(TransItem& item, bool committed) {
+        if (committed == !item.has_flag(alloc_flag))
+	  Transaction::rcu_call(item.write_value<free_type>(), item.key<void*>());
+    }
+    void print(std::ostream& w, const TransItem& item) const {
+        w << "{TransAlloc @" << item.key<void*>();
+        if (item.write_value<int>())
+            w << ".alloc}";
+        else
+            w << ".free}";
+    }
 };

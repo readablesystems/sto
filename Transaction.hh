@@ -1,33 +1,45 @@
 #pragma once
 
-#include "local_vector.hh"
+#include "config.h"
 #include "compiler.hh"
+#include "small_vector.hh"
+#include "TRcu.hh"
 #include <algorithm>
 #include <functional>
 #include <memory>
 #include <type_traits>
 #include <unistd.h>
 #include <iostream>
+#include <sstream>
+
+#ifndef STO_PROFILE_COUNTERS
+#define STO_PROFILE_COUNTERS 0
+#endif
+
+#ifndef STO_DEBUG_HASH_COLLISIONS
+#define STO_DEBUG_HASH_COLLISIONS 0
+#endif
+#ifndef STO_DEBUG_HASH_COLLISIONS_FRACTION
+#define STO_DEBUG_HASH_COLLISIONS_FRACTION 0.00001
+#endif
+
+#ifndef STO_DEBUG_ABORTS
+#define STO_DEBUG_ABORTS 0
+#endif
+#ifndef STO_DEBUG_ABORTS_FRACTION
+#define STO_DEBUG_ABORTS_FRACTION 0.0001
+#endif
 
 #define CONSISTENCY_CHECK 0
-#define PERF_LOGGING 1
-#define DETAILED_LOGGING 0
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
 
 #if ASSERT_TX_SIZE
-#if DETAILED_LOGGING
-#  define TX_SIZE_LIMIT 20000
-#  include <cassert>
+#if STO_PROFILE_COUNTERS > 1
+#    define TX_SIZE_LIMIT 20000
+#    include <cassert>
 #else
-#  error "ASSERT_TX_SIZE requires DETAILED_LOGGING!"
-#endif
-#endif
-
-#if DETAILED_LOGGING
-#if PERF_LOGGING
-#else
-#  error "DETAILED_LOGGING requires PERF_LOGGING!"
+#    error "ASSERT_TX_SIZE requires STO_PROFILE_COUNTERS > 1!"
 #endif
 #endif
 
@@ -37,12 +49,22 @@
 
 #define MAX_THREADS 32
 
-#define HASHTABLE_SIZE 512
-#define HASHTABLE_THRESHOLD 16
-
 // TRANSACTION macros that can be used to wrap transactional code
-#define TRANSACTION while(1) { try { Sto::start_transaction();
-#define RETRY(retry) if (Sto::try_commit()) break; else if (!retry) throw Transaction::Abort();} catch (Transaction::Abort e) {if (!retry) throw e;}}
+#define TRANSACTION                               \
+    do {                                          \
+        TransactionLoopGuard __txn_guard;         \
+        while (1) {                               \
+            __txn_guard.start();                  \
+            try {
+#define RETRY(retry)                              \
+                if (__txn_guard.try_commit())     \
+                    break;                        \
+            } catch (Transaction::Abort e) {      \
+            }                                     \
+            if (!(retry))                         \
+                throw Transaction::Abort();       \
+        }                                         \
+    } while (0)
 
 // transaction performance counters
 enum txp {
@@ -55,36 +77,68 @@ enum txp {
     txp_hco_lock,
     txp_hco_invalid,
     txp_hco_abort,
-    // DETAILED_LOGGING only
+    // STO_PROFILE_COUNTERS > 1 only
     txp_total_n,
     txp_total_r,
     txp_total_w,
-    txp_max_rdata_size,
-    txp_max_wdata_size,
-    txp_total_searched,
+    txp_max_transbuffer,
+    txp_total_transbuffer,
+    txp_push_abort,
+    txp_pop_abort,
     txp_total_check_read,
-#if !PERF_LOGGING
+    txp_total_check_predicate,
+    txp_hash_find,
+    txp_hash_collision,
+    txp_hash_collision2,
+    txp_total_searched,
+#if !STO_PROFILE_COUNTERS
     txp_count = 0
-#elif !DETAILED_LOGGING
+#elif STO_PROFILE_COUNTERS == 1
     txp_count = txp_hco_abort + 1
 #else
-    txp_count = txp_total_check_read + 1
+    txp_count
 #endif
 };
+typedef uint64_t txp_counter_type;
 
-template <int N> struct has_txp_struct {
-    static bool test(int p) {
-        return unsigned(p) < unsigned(N);
+inline constexpr bool txp_is_max(unsigned p) {
+    return p == txp_max_set || p == txp_max_transbuffer;
+}
+
+template <unsigned P, unsigned N, bool Less = (P < N)> struct txp_helper;
+template <unsigned P, unsigned N> struct txp_helper<P, N, true> {
+    static bool counter_exists(unsigned p) {
+        return p < N;
+    }
+    static void account_array(txp_counter_type* p, txp_counter_type v) {
+        if (txp_is_max(P))
+            p[P] = std::max(p[P], v);
+        else
+            p[P] += v;
     }
 };
-template <> struct has_txp_struct<0> {
-    static bool test(int) {
+template <unsigned P, unsigned N> struct txp_helper<P, N, false> {
+    static bool counter_exists(unsigned) {
         return false;
     }
+    static void account_array(txp_counter_type*, txp_counter_type) {
+    }
 };
-inline bool has_txp(int p) {
-    return has_txp_struct<txp_count>::test(p);
-}
+
+struct txp_counters {
+    txp_counter_type p_[txp_count];
+    txp_counters() {
+        for (unsigned i = 0; i != txp_count; ++i)
+            p_[i] = 0;
+    }
+    unsigned long long p(int p) {
+        return txp_helper<0, txp_count>::counter_exists(p) ? p_[p] : 0;
+    }
+    void reset() {
+        for (int i = 0; i != txp_count; ++i)
+            p_[i] = 0;
+    }
+};
 
 
 #include "Interface.hh"
@@ -96,836 +150,697 @@ void reportPerf();
 #define STO_SHUTDOWN() reportPerf()
 
 struct __attribute__((aligned(128))) threadinfo_t {
-  unsigned epoch;
-  unsigned spin_lock;
-  local_vector<std::pair<unsigned, std::function<void(void)>>, 8> callbacks;
-  local_vector<std::pair<unsigned, void*>, 8> needs_free;
-  // XXX(NH): these should be vectors so multiple data structures can register
-  // callbacks for these
-  std::function<void(void)> trans_start_callback;
-  std::function<void(void)> trans_end_callback;
-  uint64_t p_[txp_count];
-  threadinfo_t() : epoch(), spin_lock() {
-#if PERF_LOGGING
-      for (int i = 0; i != txp_count; ++i)
-          p_[i] = 0;
-#endif
-  }
-  static bool p_is_max(int p) {
-      return p == txp_max_set;
-  }
-  unsigned long long p(int p) {
-      return has_txp(p) ? p_[p] : 0;
-  }
-  void inc_p(int p) {
-      add_p(p, 1);
-  }
-  void add_p(int p, uint64_t n) {
-      if (has_txp(p))
-          p_[p] += n;
-  }
-  void max_p(int p, unsigned long long n) {
-      if (has_txp(p) && n > p_[p])
-          p_[p] = n;
-  }
-  void combine_p(int p, unsigned long long n) {
-      if (has_txp(p)) {
-          if (!p_is_max(p))
-              p_[p] += n;
-          else if (n > p_[p])
-              p_[p] = n;
-      }
-  }
-  void reset_p(int p) {
-    p_[p] = 0;
-  }
-};
-
-
-// TransactionBuffer
-template <typename T> struct ObjectDestroyer {
-    static void destroy(void* object) {
-        ((T*) object)->~T();
+    using epoch_type = TRcuSet::epoch_type;
+    epoch_type epoch;
+    TRcuSet rcu_set;
+    // XXX(NH): these should be vectors so multiple data structures can register
+    // callbacks for these
+    std::function<void(void)> trans_start_callback;
+    std::function<void(void)> trans_end_callback;
+    txp_counters p_;
+    threadinfo_t()
+        : epoch(0) {
     }
 };
 
-class TransactionBuffer {
-    struct elt;
-    struct item;
-
-  public:
-    TransactionBuffer()
-        : e_() {
-    }
-    ~TransactionBuffer() {
-        if (e_)
-            hard_clear(true);
-    }
-
-    static constexpr size_t aligned_size(size_t x) {
-        return (x + 7) & ~7;
-    }
-
-    template <typename T>
-    void* pack_unique(T x) {
-        return pack_unique(std::move(x), (typename Packer<T>::is_simple_type) 0);
-    }
-    template <typename T>
-    void* pack(T x) {
-        return pack(std::move(x), (typename Packer<T>::is_simple_type) 0);
-    }
-
-    void clear() {
-        if (e_)
-            hard_clear(false);
-    }
-
-  private:
-    struct itemhdr {
-        void (*destroyer)(void*);
-        size_t size;
-    };
-    struct item : public itemhdr {
-        char buf[0];
-    };
-    struct elthdr {
-        elt* next;
-        size_t pos;
-        size_t size;
-    };
-    struct elt : public elthdr {
-        char buf[0];
-        void clear() {
-            size_t off = 0;
-            while (off < pos) {
-                itemhdr* i = (itemhdr*) &buf[off];
-                i->destroyer(i + 1);
-                off += i->size;
-            }
-            pos = 0;
-        }
-    };
-    elt* e_;
-
-    item* get_space(size_t needed) {
-        if (!e_ || e_->pos + needed > e_->size) {
-            size_t s = std::max(needed, e_ ? e_->size * 2 : 256);
-            elt* ne = (elt*) new char[sizeof(elthdr) + s];
-            ne->next = e_;
-            ne->pos = 0;
-            ne->size = s;
-            e_ = ne;
-        }
-        e_->pos += needed;
-        return (item*) &e_->buf[e_->pos - needed];
-    }
-
-    template <typename T>
-    void* pack(T x, int) {
-        return Packer<T>::pack(x);
-    }
-    template <typename T>
-    void* pack(T x, void*) {
-        size_t isize = aligned_size(sizeof(itemhdr) + sizeof(T));
-        item* space = this->get_space(isize);
-        space->destroyer = ObjectDestroyer<T>::destroy;
-        space->size = isize;
-        new (&space->buf[0]) T(std::move(x));
-        return &space->buf[0];
-    }
-
-    template <typename T>
-    void* pack_unique(T x, int) {
-        return Packer<T>::pack(x);
-    }
-    template <typename T>
-    void* pack_unique(T x, void*);
-
-    void hard_clear(bool delete_all);
-};
-
-template <typename T>
-void* TransactionBuffer::pack_unique(T x, void*) {
-    void (*destroyer)(void*) = ObjectDestroyer<T>::destroy;
-    for (elt* e = e_; e; e = e->next) {
-        size_t off = 0;
-        while (off < e->pos) {
-            item* i = (item*) &e->buf[off];
-            if (i->destroyer == destroyer
-                && ((Aliasable<T>*) &i->buf[0])->x == x)
-                return &i->buf[0];
-            off += i->size;
-        }
-    }
-    return pack(std::move(x));
-}
 
 class Transaction {
 public:
-  static threadinfo_t tinfo[MAX_THREADS];
-  static __thread int threadid;
-  static unsigned global_epoch;
-  static bool run_epochs;
-  typedef TransactionTid::type tid_type;
+    static constexpr unsigned hash_size = 1024;
+    static constexpr unsigned hash_step = 5;
+    using epoch_type = TRcuSet::epoch_type;
+    using signed_epoch_type = TRcuSet::signed_epoch_type;
+
+    static threadinfo_t tinfo[MAX_THREADS];
+    static struct epoch_state {
+        epoch_type global_epoch; // != 0
+        epoch_type active_epoch; // no thread is before this epoch
+        TransactionTid::type recent_tid;
+        bool run;
+    } global_epochs;
+    typedef TransactionTid::type tid_type;
 private:
-  static TransactionTid::type _TID;
+    static TransactionTid::type _TID;
 public:
 
-  static std::function<void(unsigned)> epoch_advance_callback;
+    static std::function<void(threadinfo_t::epoch_type)> epoch_advance_callback;
 
-  static threadinfo_t tinfo_combined() {
-    threadinfo_t out;
-    for (int i = 0; i != MAX_THREADS; ++i) {
-        for (int p = 0; p != txp_count; ++p)
-            out.combine_p(p, tinfo[i].p(p));
+    static txp_counters txp_counters_combined() {
+        txp_counters out;
+        for (int i = 0; i != MAX_THREADS; ++i)
+            for (int p = 0; p != txp_count; ++p) {
+                if (txp_is_max(p))
+                    out.p_[p] = std::max(out.p_[p], tinfo[i].p_.p_[p]);
+                else
+                    out.p_[p] += tinfo[i].p_.p_[p];
+            }
+        return out;
     }
-    return out;
-  }
 
-  static void print_stats();
-  static void clear_stats() {
-    for (int i = 0; i != MAX_THREADS; ++i) {
-      for (int p = 0; p!= txp_count; ++p) 
-         tinfo[i].reset_p(p);
+    static void print_stats();
+
+    static void clear_stats() {
+        for (int i = 0; i != MAX_THREADS; ++i)
+            tinfo[i].p_.reset();
     }
-  }
 
-  static void acquire_spinlock(unsigned& spin_lock) {
-    unsigned cur;
-    while (1) {
-      cur = spin_lock;
-      if (cur == 0 && bool_cmpxchg(&spin_lock, cur, 1)) {
-        break;
-      }
-      relax_fence();
+    static void* epoch_advancer(void*);
+    template <typename T>
+    static void rcu_delete(T* x) {
+        auto& thr = tinfo[TThread::id()];
+        thr.rcu_set.add(thr.epoch, ObjectDestroyer<T>::destroy_and_free, x);
     }
-  }
-  static void release_spinlock(unsigned& spin_lock) {
-    spin_lock = 0;
-    fence();
-  }
-
-  static void* epoch_advancer(void*) {
-    // don't bother epoch'ing til things have picked up
-    usleep(100000);
-    while (run_epochs) {
-      auto g = global_epoch;
-      for (auto&& t : tinfo) {
-        if (t.epoch != 0 && t.epoch < g)
-          g = t.epoch;
-      }
-
-      global_epoch = ++g;
-
-      if (epoch_advance_callback)
-        epoch_advance_callback(global_epoch);
-
-      for (auto&& t : tinfo) {
-        acquire_spinlock(t.spin_lock);
-        auto deletetil = t.callbacks.begin();
-        for (auto it = t.callbacks.begin(); it != t.callbacks.end(); ++it) {
-          // TODO: check for overflow
-          if ((int)it->first <= (int)g-2) {
-            it->second();
-            ++deletetil;
-          } else {
-            // callbacks are in ascending order so if this one is too soon of an epoch the rest will be too
-            break;
-          }
-        }
-        if (t.callbacks.begin() != deletetil) {
-          t.callbacks.erase(t.callbacks.begin(), deletetil);
-        }
-        auto deletetil2 = t.needs_free.begin();
-        for (auto it = t.needs_free.begin(); it != t.needs_free.end(); ++it) {
-          // TODO: overflow
-          if ((int)it->first <= (int)g-2) {
-            free(it->second);
-            ++deletetil2;
-          } else {
-            break;
-          }
-        }
-        if (t.needs_free.begin() != deletetil2) {
-          t.needs_free.erase(t.needs_free.begin(), deletetil2);
-        }
-        release_spinlock(t.spin_lock);
-      }
-      usleep(100000);
+    template <typename T>
+    static void rcu_delete_array(T* x) {
+        auto& thr = tinfo[TThread::id()];
+        thr.rcu_set.add(thr.epoch, ObjectDestroyer<T>::destroy_and_free_array, x);
     }
-    return NULL;
-  }
+    static void rcu_free(void* ptr) {
+        auto& thr = tinfo[TThread::id()];
+        thr.rcu_set.add(thr.epoch, ::free, ptr);
+    }
+    static void rcu_call(void (*function)(void*), void* argument) {
+        auto& thr = tinfo[TThread::id()];
+        thr.rcu_set.add(thr.epoch, function, argument);
+    }
+    static void rcu_quiesce() {
+        tinfo[TThread::id()].epoch = 0;
+    }
 
-  static void rcu_cleanup(std::function<void(void)> callback) {
-    acquire_spinlock(tinfo[threadid].spin_lock);
-    tinfo[threadid].callbacks.emplace_back(global_epoch, callback);
-    release_spinlock(tinfo[threadid].spin_lock);
-  }
-
-  static void rcu_free(void *ptr) {
-    acquire_spinlock(tinfo[threadid].spin_lock);
-    tinfo[threadid].needs_free.emplace_back(global_epoch, ptr);
-    release_spinlock(tinfo[threadid].spin_lock);
-  }
-
-#if PERF_LOGGING
-  static void inc_p(int p) {
-      add_p(p, 1);
-  }
-  static void add_p(int p, uint64_t n) {
-      tinfo[threadid].add_p(p, n);
-  }
-  static void max_p(int p, unsigned long long n) {
-      tinfo[threadid].max_p(p, n);
-  }
-#endif
-
-#if PERF_LOGGING
-#define INC_P(p) inc_p((p))
-#define ADD_P(p, n) add_p((p), (n))
-#define MAX_P(p, n) max_p((p), (n))
+#if STO_PROFILE_COUNTERS
+    template <unsigned P> static void txp_account(txp_counter_type n) {
+        txp_helper<P, txp_count>::account_array(tinfo[TThread::id()].p_.p_, n);
+    }
 #else
-#define INC_P(p) do {} while (0)
-#define ADD_P(p, n) do {} while (0)
-#define MAX_P(p, n) do {} while (0)
-#endif
-
-  
-  Transaction() : transSet_() {
-    reset();
-  }
-
-  ~Transaction() {
-    if (!isAborted_ && !transSet_.empty()) {
-      silent_abort();
+    template <unsigned P> static void txp_account(txp_counter_type) {
     }
-    end_trans();
-  }
-
-  void end_trans() {
-    // TODO: this will probably mess up with nested transactions
-    tinfo[threadid].epoch = 0;
-    if (tinfo[threadid].trans_end_callback) tinfo[threadid].trans_end_callback();
-    inProgress_ = false;
-  }
-
-  // reset data so we can be reused for another transaction
-  void reset() {
-     //if (isAborted_
-     //   && tinfo[threadid].p(txp_total_aborts) % 0x10000 == 0xFFFF)
-        //print_stats();
-    tinfo[threadid].epoch = global_epoch;
-    if (tinfo[threadid].trans_start_callback) tinfo[threadid].trans_start_callback();
-    transSet_.clear();
-    writeset_ = NULL;
-    nwriteset_ = 0;
-    nhashed_ = 0;
-    may_duplicate_items_ = false;
-    isAborted_ = false;
-    firstWrite_ = -1;
-    start_tid_ = commit_tid_ = 0;
-    buf_.clear();
-    INC_P(txp_total_starts);
-    inProgress_ = true;
-  }
-
-private:
-  void consolidateReads() {
-    // TODO: should be stable sort technically, but really we want to use insertion sort
-    auto first = transSet_.begin();
-    auto last = transSet_.end();
-    std::sort(first, last);
-    // takes the first element of any duplicates which is what we want. that is, we want to verify
-    // only the oldest read
-    transSet_.erase(std::unique(first, last), last);
-    may_duplicate_items_ = false;
-  }
-
-public:
-  // adds item for a key that is known to be new (must NOT exist in the set)
-  template <typename T>
-  TransProxy new_item(Shared* s, T key) {
-      void *xkey = buf_.pack(std::move(key));
-      transSet_.emplace_back(s, xkey);
-      return TransProxy(*this, transSet_.back());
-  }
-
-  // adds item without checking its presence in the array
-  template <typename T>
-  TransProxy fresh_item(Shared *s, T key) {
-      may_duplicate_items_ = !transSet_.empty();
-      transSet_.emplace_back(s, buf_.pack_unique(std::move(key)));
-      return TransProxy(*this, transSet_.back());
-  }
-
-  // tries to find an existing item with this key, otherwise adds it
-  template <typename T>
-  TransProxy item(Shared* s, T key) {
-      void* xkey = buf_.pack_unique(std::move(key));
-      TransItem* ti = find_item(s, xkey, 0);
-      if (!ti) {
-          transSet_.emplace_back(s, xkey);
-          ti = &transSet_.back();
-      }
-      return TransProxy(*this, *ti);
-  }
-
-  // gets an item that is intended to be read only. this method essentially allows for duplicate items
-  // in the set in some cases
-  template <typename T>
-  TransProxy read_item(Shared *s, T key) {
-      void* xkey = buf_.pack_unique(std::move(key));
-      TransItem* ti = nullptr;
-      if (firstWrite_ >= 0)
-          ti = find_item(s, xkey, firstWrite_);
-      if (!ti) {
-          may_duplicate_items_ = !transSet_.empty();
-          transSet_.emplace_back(s, xkey);
-          ti = &transSet_.back();
-      }
-      return TransProxy(*this, *ti);
-  }
-
-  template <typename T>
-  OptionalTransProxy check_item(Shared* s, T key) {
-      void* xkey = buf_.pack_unique(std::move(key));
-      return OptionalTransProxy(*this, find_item(s, xkey, 0));
-  }
-
-private:
-  static int hash(Shared* s, void* key) {
-      auto n = (uintptr_t) key;
-      n += -(n <= 0xFFFF) & reinterpret_cast<uintptr_t>(s);
-      //2654435761
-      return ((n >> 4) ^ (n & 15)) % HASHTABLE_SIZE;
-  }
-
-  // tries to find an existing item with this key, returns NULL if not found
-  TransItem* find_item(Shared* s, void* key, int delta) {
-#if TRANSACTION_HASHTABLE
-      if (transSet_.size() > HASHTABLE_THRESHOLD) {
-          if (nhashed_ < transSet_.size())
-              update_hash();
-          uint16_t idx = hashtable_[hash(s, key)];
-          if (!idx)
-              return NULL;
-          else if (transSet_[idx - 1].sharedObj() == s && transSet_[idx - 1].key_ == key)
-              return &transSet_[idx - 1];
-      }
 #endif
-      for (auto it = transSet_.begin() + delta; it != transSet_.end(); ++it) {
-          INC_P(txp_total_searched);
-          if (it->sharedObj() == s && it->key_ == key)
-              return &*it;
-      }
-      return NULL;
-  }
 
-private:
-  typedef int item_index_type;
-  item_index_type item_index(TransItem& ti) {
-      return &ti - transSet_.begin();
-  }
+#define TXP_INCREMENT(p) Transaction::txp_account<(p)>(1)
+#define TXP_ACCOUNT(p, n) Transaction::txp_account<(p)>((n))
 
-  void mark_write(TransItem& ti) {
-    item_index_type idx = item_index(ti);
-    if (firstWrite_ < 0 || idx < firstWrite_)
-      firstWrite_ = idx;
-  }
-
-  bool check_for_write(const TransItem& item) const {
-    // if writeset_ is NULL, we're not in commit (just an opacity check), so no need to check our writes (we
-    // haven't locked anything yet)
-    if (!writeset_)
-      return false;
-    auto it = &item;
-    bool has_write = it->has_write();
-    if (!has_write && may_duplicate_items_) {
-      has_write = std::binary_search(writeset_, writeset_ + nwriteset_, -1, [&] (const int& i, const int& j) {
-	  auto& e1 = unlikely(i < 0) ? item : transSet_[i];
-	  auto& e2 = likely(j < 0) ? item : transSet_[j];
-	  auto ret = likely(e1.key_ < e2.key_) || (unlikely(e1.key_ == e2.key_) && unlikely(e1.sharedObj() < e2.sharedObj()));
-#if 0
-	  if (likely(i >= 0)) {
-	    auto cur = &i;
-	    int idx;
-	    if (ret) {
-	      idx = (cur - writeset_) / 2;
-	    } else {
-	      idx = (writeset_ + nwriteset_ - cur) / 2;
-	    }
-	    __builtin_prefetch(&transSet_[idx]);
-	  }
-#endif
-	  return ret;
-	});
-    }
-    return has_write;
-  }
-
-  public:
-  void check_reads() {
-      if (!check_reads(transSet_.begin(), transSet_.end())) {
-          abort();
-      }
-  }
 
   private:
-  bool check_reads(const TransItem *trans_first, const TransItem *trans_last) const {
-    for (auto it = trans_first; it != trans_last; ++it)
-      if (it->has_read()) {
-        INC_P(txp_total_check_read);
-        if (!it->sharedObj()->check(*it, *this)) {
-          // XXX: only do this if we're dup'ing reads
-            for (auto jt = trans_first; jt != it; ++jt)
-                if (*jt == *it)
-                    goto ok;
-            return false;
+    Transaction()
+        : hash_base_(32768), lrng_state_(12897), is_test_(false) {
+        start();
+    }
+
+    struct testing_type {};
+    static testing_type testing;
+
+    Transaction(const testing_type&)
+        : hash_base_(32768), lrng_state_(12897), is_test_(true) {
+        start();
+    }
+
+    struct uninitialized {};
+    Transaction(uninitialized)
+        : hash_base_(32768), lrng_state_(12897), is_test_(false) {
+        state_ = s_aborted;
+    }
+
+    ~Transaction() { /* XXX should really be private */
+        if (in_progress())
+            silent_abort();
+    }
+
+    // reset data so we can be reused for another transaction
+    void start() {
+        threadinfo_t& thr = tinfo[TThread::id()];
+        //if (isAborted_
+        //   && tinfo[TThread::id()].p(txp_total_aborts) % 0x10000 == 0xFFFF)
+           //print_stats();
+        thr.epoch = global_epochs.global_epoch;
+        thr.rcu_set.clean_until(global_epochs.active_epoch);
+        if (thr.trans_start_callback)
+            thr.trans_start_callback();
+        hash_base_ += transSet_.size() + 1;
+        transSet_.clear();
+#if TRANSACTION_HASHTABLE
+        if (hash_base_ >= 32768) {
+            memset(hashtable_, 0, sizeof(hashtable_));
+            hash_base_ = 0;
         }
-      ok: ;
-      }
-    return true;
-  }
+#endif
+        any_writes_ = may_duplicate_items_ = false;
+        first_write_ = 0;
+        start_tid_ = commit_tid_ = 0;
+        buf_.clear();
+#if STO_DEBUG_ABORTS
+        abort_item_ = nullptr;
+        abort_reason_ = nullptr;
+#endif
+        TXP_INCREMENT(txp_total_starts);
+        state_ = s_in_progress;
+    }
 
-  public:
-  bool try_commit() {
-#if ASSERT_TX_SIZE
-    if (transSet_.size() > TX_SIZE_LIMIT) {
-        std::cerr << "transSet_ size at " << transSet_.size()
-            << ", abort." << std::endl;
-        assert(false);
+#if TRANSACTION_HASHTABLE
+    static int hash(const TObject* obj, void* key) {
+        auto n = reinterpret_cast<uintptr_t>(key) + 0x4000000;
+        n += -uintptr_t(n < 0x8000000) & (reinterpret_cast<uintptr_t>(obj) >> 4);
+        //2654435761
+        return (n + (n >> 16) * 9) % hash_size;
     }
 #endif
-    MAX_P(txp_max_set, transSet_.size());
-    ADD_P(txp_total_n, transSet_.size());
 
-    if (isAborted_)
-      return false;
-
-    bool success = true;
-
-    if (firstWrite_ < 0)
-        firstWrite_ = transSet_.size();
-
-    int writeset_alloc[transSet_.size() - firstWrite_];
-    writeset_ = writeset_alloc;
-    nwriteset_ = 0;
-    for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
-
-      if (it->has_write()) {
-        writeset_[nwriteset_++] = it - transSet_.begin();
-      }
-#ifdef DETAILED_LOGGING
-      if (it->has_read()) {
-	INC_P(txp_total_r);
-      }
+    TransItem* allocate_item(const TObject* obj, void* xkey) {
+        transSet_.emplace_back(const_cast<TObject*>(obj), xkey);
+#if TRANSACTION_HASHTABLE
+        unsigned hi = hash(obj, xkey);
+# if TRANSACTION_HASHTABLE > 1
+        if (hashtable_[hi] > hash_base_)
+            hi = (hi + hash_step) % hash_size;
+# endif
+        if (hashtable_[hi] <= hash_base_)
+            hashtable_[hi] = hash_base_ + transSet_.size();
 #endif
+        return &transSet_.back();
     }
 
-    //phase1
-#if !NOSORT
-    std::sort(writeset_, writeset_ + nwriteset_, [&] (int i, int j) {
-	return transSet_[i] < transSet_[j];
-      });
+public:
+    // adds item for a key that is known to be new (must NOT exist in the set)
+    template <typename T>
+    TransProxy new_item(const TObject* obj, T key) {
+        void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
+        return TransProxy(*this, allocate_item(obj, xkey) - transSet_.begin());
+    }
+
+    // adds item without checking its presence in the array
+    template <typename T>
+    TransProxy fresh_item(const TObject* obj, T key) {
+        may_duplicate_items_ = !transSet_.empty();
+        void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
+        return TransProxy(*this, allocate_item(obj, xkey) - transSet_.begin());
+    }
+
+    // tries to find an existing item with this key, otherwise adds it
+    template <typename T>
+    TransProxy item(const TObject* obj, T key) {
+        void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
+        TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
+        if (!ti)
+            ti = allocate_item(obj, xkey);
+        return TransProxy(*this, ti - transSet_.begin());
+    }
+
+    // gets an item that is intended to be read only. this method essentially allows for duplicate items
+    // in the set in some cases
+    template <typename T>
+    TransProxy read_item(const TObject* obj, T key) {
+        void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
+        TransItem* ti = nullptr;
+        if (any_writes_)
+            ti = find_item(const_cast<TObject*>(obj), xkey);
+        else
+            may_duplicate_items_ = !transSet_.empty();
+        if (!ti)
+            ti = allocate_item(obj, xkey);
+        return TransProxy(*this, ti - transSet_.begin());
+    }
+
+    template <typename T>
+    OptionalTransProxy check_item(const TObject* obj, T key) {
+        void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
+        TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
+        return OptionalTransProxy(*this, ti ? ti - transSet_.begin() : unsigned(-1));
+    }
+
+private:
+    // tries to find an existing item with this key, returns NULL if not found
+    TransItem* find_item(TObject* obj, void* xkey) {
+#if TRANSACTION_HASHTABLE
+        TXP_INCREMENT(txp_hash_find);
+        unsigned hi = hash(obj, xkey);
+        for (int steps = 0; steps < TRANSACTION_HASHTABLE; ++steps) {
+            if (hashtable_[hi] <= hash_base_)
+                return nullptr;
+            TransItem* ti = &transSet_[hashtable_[hi] - hash_base_ - 1];
+            if (ti->owner() == obj && ti->key_ == xkey)
+                return ti;
+            if (!steps) {
+                TXP_INCREMENT(txp_hash_collision);
+# if STO_DEBUG_HASH_COLLISIONS
+                if (local_random() <= uint32_t(0xFFFFFFFF * STO_DEBUG_HASH_COLLISIONS_FRACTION)) {
+                    std::ostringstream buf;
+                    TransItem fake_item(obj, xkey);
+                    buf << "$ STO hash collision: search " << fake_item << ", find " << *ti << '\n';
+                    std::cerr << buf.str();
+                }
+# endif
+            } else
+                TXP_INCREMENT(txp_hash_collision2);
+            hi = (hi + hash_step) % hash_size;
+        }
 #endif
-    TransItem* trans_first = &transSet_[0];
-    TransItem* trans_last = trans_first + transSet_.size();
-
-    auto writeset_end = writeset_ + nwriteset_;
-    for (auto it = writeset_; it != writeset_end; ) {
-      TransItem *me = &transSet_[*it];
-      me->sharedObj()->lock(*me);
-      ++it;
-      if (may_duplicate_items_)
-          for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
-              /* do nothing */;
+        for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
+            TXP_INCREMENT(txp_total_searched);
+            if (it->owner() == obj && it->key_ == xkey)
+                return &*it;
+        }
+        return nullptr;
     }
 
-#if CONSISTENCY_CHECK
-    fence();
-    commit_tid();
-    fence();
-#endif 
-
-    //phase2
-    if (!check_reads(trans_first, trans_last)) {
-      success = false;
-      goto end;
+    bool preceding_read_exists(TransItem& item) const {
+        if (may_duplicate_items_)
+            for (auto it = transSet_.begin(); it != &item; ++it)
+                if (it->owner() == item.owner() && it->key_ == item.key_)
+                    return true;
+        return false;
     }
 
-    //    fence();
+#if STO_DEBUG_ABORTS
+    void mark_abort_because(TransItem* item, const char* reason) const {
+        abort_item_ = item;
+        abort_reason_ = reason;
+    }
+#else
+    void mark_abort_because(TransItem*, const char*) const {
+    }
+#endif
 
-    //phase3
-    for (auto it = trans_first + firstWrite_; it != trans_last; ++it) {
-      TransItem& ti = *it;
-      if (ti.has_write()) {
-        INC_P(txp_total_w);
-        ti.sharedObj()->install(ti, *this);
-      }
+    void abort_because(TransItem& item, const char* reason) {
+        mark_abort_because(&item, reason);
+        abort();
     }
 
-  end:
-    //    fence();
-
-    for (auto it = writeset_; it != writeset_end; ) {
-      TransItem *me = &transSet_[*it];
-      me->sharedObj()->unlock(*me);
-      ++it;
-      if (may_duplicate_items_)
-          for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
-              /* do nothing */;
+public:
+    void silent_abort() {
+        if (in_progress())
+            stop(false);
     }
 
-    //    fence();
-
-    if (success) {
-      commitSuccess();
-    } else {
-      INC_P(txp_commit_time_aborts);
-      silent_abort();
+    void abort() {
+        silent_abort();
+        throw Abort();
     }
 
-    // Nate: we need this line because the Transaction destructor decides
-    // whether to do an abort based on whether transSet_ is empty (meh)
-    transSet_.clear();
-    return success;
-  }
-
-  void silent_abort() {
-    if (isAborted_)
-      return;
-    INC_P(txp_total_aborts);
-    isAborted_ = true;
-    for (auto& ti : transSet_) {
-      ti.sharedObj()->cleanup(ti, false);
-    }
-    end_trans();
-  }
-
-  void abort() {
-    silent_abort();
-    throw Abort();
-  }
+    bool try_commit();
 
     void commit() {
         if (!try_commit())
             throw Abort();
     }
 
-  bool aborted() {
-    return isAborted_;
-  }
-
-  bool inProgress() {
-    return inProgress_;
-  }
-
-    // opacity checking
-    void check_opacity(TransactionTid::type t) {
-        assert(!writeset_);
-        if (!start_tid_)
-            start_tid_ = _TID;
-        if (!TransactionTid::try_check_opacity(start_tid_, t))
-            hard_check_opacity(t);
+    bool aborted() {
+        return state_ == s_aborted;
     }
 
+    bool in_progress() {
+        return state_ < s_aborted;
+    }
+
+    // opacity checking
+    // These function will eventually help us track the commit TID when we
+    // have no opacity, or for GV7 opacity.
+    bool try_lock(TransItem& item, TVersion& vers) {
+        return try_lock(item, const_cast<TransactionTid::type&>(vers.value()));
+    }
+    bool try_lock(TransItem& item, TNonopaqueVersion& vers) {
+        return try_lock(item, const_cast<TransactionTid::type&>(vers.value()));
+    }
+    bool try_lock(TransItem& item, TransactionTid::type& vers) {
+        // This function will eventually help us track the commit TID when we
+        // have no opacity, or for GV7 opacity.
+        int i = 0;
+        while (1) {
+            if (TransactionTid::try_lock(vers))
+                return true;
+            if (i > (!item.has_read() << 3))
+                return false;
+            ++i;
+            relax_fence();
+        }
+    }
+
+    void check_opacity(TransItem& item, TransactionTid::type v) {
+        assert(state_ <= s_committing);
+        if (!start_tid_)
+            start_tid_ = _TID;
+        if (!TransactionTid::try_check_opacity(start_tid_, v))
+            hard_check_opacity(&item, v);
+    }
+
+    void check_opacity(TransactionTid::type v) {
+        assert(state_ <= s_committing);
+        if (!start_tid_)
+            start_tid_ = _TID;
+        if (!TransactionTid::try_check_opacity(start_tid_, v))
+            hard_check_opacity(nullptr, v);
+    }
+
+    void check_opacity() {
+        check_opacity(_TID);
+    }
+
+    // committing
     tid_type commit_tid() const {
-        assert(writeset_);
+        assert(state_ == s_committing_locked || state_ == s_committing);
         if (!commit_tid_)
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
     }
+    void set_version(TVersion& vers) const {
+        vers.set_version(commit_tid());
+    }
+    void set_version_unlock(TVersion& vers, TransItem& item) const {
+        vers.set_version_unlock(commit_tid());
+        item.clear_needs_unlock();
+    }
+    void set_version(TNonopaqueVersion& vers) const {
+        assert(state_ == s_committing_locked || state_ == s_committing);
+        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_nonopaque_version(vers.value());
+        vers.set_version(v);
+    }
+    void set_version_unlock(TNonopaqueVersion& vers, TransItem& item) const {
+        assert(state_ == s_committing_locked || state_ == s_committing);
+        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_nonopaque_version(vers.value());
+        vers.set_version_unlock(v);
+        item.clear_needs_unlock();
+    }
+
+    static const char* state_name(int state);
+    void print() const;
+    void print(std::ostream& w) const;
 
     class Abort {};
 
-private:
-
-  void commitSuccess() {
-    for (TransItem& ti : transSet_) {
-      ti.sharedObj()->cleanup(ti, true);
+    uint32_t local_random() const {
+        lrng_state_ = lrng_state_ * 1664525 + 1013904223;
+        return lrng_state_;
     }
-    end_trans();
-  }
+    void local_srandom(uint32_t state) {
+        lrng_state_ = state;
+    }
 
 private:
-    int firstWrite_;
+    enum {
+        s_in_progress = 0, s_committing = 1, s_committing_locked = 2,
+        s_aborted = 3, s_committed = 4
+    };
+
+    uint16_t hash_base_;
+    uint16_t first_write_;
+    uint8_t state_;
+    bool any_writes_;
     bool may_duplicate_items_;
-    bool isAborted_;
-    uint16_t nhashed_;
-    TransactionBuffer buf_;
-    local_vector<TransItem, INIT_SET_SIZE> transSet_;
-    int* writeset_;
-    int nwriteset_;
+    small_vector<TransItem, INIT_SET_SIZE> transSet_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
-    uint16_t hashtable_[HASHTABLE_SIZE];
-    bool inProgress_;
+    TransactionBuffer buf_;
+    mutable uint32_t lrng_state_;
+    mutable TransItem* abort_item_;
+    mutable const char* abort_reason_;
+    bool is_test_;
+#if TRANSACTION_HASHTABLE
+    uint16_t hashtable_[hash_size];
+#endif
+
+    void hard_check_opacity(TransItem* item, TransactionTid::type t);
+    void stop(bool committed);
 
     friend class TransProxy;
     friend class TransItem;
-    void hard_check_opacity(TransactionTid::type t);
-    void update_hash();
+    friend class Sto;
+    friend class TestTransaction;
 };
 
 
 class Sto {
 public:
-  static __thread Transaction* __transaction;
-  
-  static void start_transaction() {
-    if (!__transaction) {
-      __transaction = new Transaction();
-    } else {
-      if (__transaction->inProgress()) {
-        assert(false);
-      } else {
-        __transaction->reset();
-      }
-      
+    static Transaction* transaction() {
+        if (!TThread::txn)
+            TThread::txn = new Transaction(Transaction::uninitialized());
+        return TThread::txn;
     }
-  }
-  
-  /* Only used for testing purposes */
-  static void set_transaction(Transaction* t) {
-    __transaction = t;
-  }
-  
-  class NotInTransaction{};
-  
-  static bool trans_in_progress() {
-    if (__transaction == NULL)
-      return false;
-    else
-      return __transaction->inProgress();
-  }
-  
-  static void abort() {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
-    }
-    __transaction->abort();
-  }
-  
-  static void silent_abort() {
-    if (trans_in_progress()) {
-      __transaction->silent_abort();
-    }
-  }
 
- 
-  template <typename T>
-  static TransProxy item(Shared* s, T key) {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
+    static void start_transaction() {
+        Transaction* t = transaction();
+        always_assert(!t->in_progress());
+        t->start();
     }
-    return __transaction->item(s, key);
-  }
-  
-  static void check_opacity(TransactionTid::type t) {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
-    }
-    __transaction->check_opacity(t);
-  }
 
-  static void check_reads() {
-    __transaction->check_reads();
-  }
-  
-  template <typename T>
-  static OptionalTransProxy check_item(Shared* s, T key) {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
+    static bool in_progress() {
+        return TThread::txn && TThread::txn->in_progress();
     }
-    return __transaction->check_item(s, key);
-  }
-  
-  template <typename T>
-  static TransProxy new_item(Shared* s, T key) {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
+
+    static void abort() {
+        always_assert(in_progress());
+        TThread::txn->abort();
     }
-    return __transaction->new_item(s, key);
-  }
-  
-  template <typename T>
-  static TransProxy read_item(Shared *s, T key) {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
+
+    static void silent_abort() {
+        if (in_progress())
+            TThread::txn->silent_abort();
     }
-    return __transaction->read_item(s, key);
-  }
-  
-  template <typename T>
-  static TransProxy fresh_item(Shared *s, T key) {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
+
+    template <typename T>
+    static TransProxy item(const TObject* s, T key) {
+        always_assert(in_progress());
+        return TThread::txn->item(s, key);
     }
-    return __transaction->fresh_item(s, key);
-  }
-  
-  static void commit() {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
+
+    static void check_opacity(TransactionTid::type t) {
+        always_assert(in_progress());
+        TThread::txn->check_opacity(t);
     }
-    __transaction->commit();
-  }
-  
-  static bool try_commit() {
-    if (!trans_in_progress()) {
-      throw NotInTransaction();
+
+    static void check_opacity() {
+        always_assert(in_progress());
+        TThread::txn->check_opacity();
     }
-    return __transaction->try_commit();
-  }
-  
-  static TransactionTid::type commit_tid() {
-    return __transaction->commit_tid();
-  }
+
+    template <typename T>
+    static OptionalTransProxy check_item(const TObject* s, T key) {
+        always_assert(in_progress());
+        return TThread::txn->check_item(s, key);
+    }
+
+    template <typename T>
+    static TransProxy new_item(const TObject* s, T key) {
+        always_assert(in_progress());
+        return TThread::txn->new_item(s, key);
+    }
+
+    template <typename T>
+    static TransProxy read_item(const TObject* s, T key) {
+        always_assert(in_progress());
+        return TThread::txn->read_item(s, key);
+    }
+
+    template <typename T>
+    static TransProxy fresh_item(const TObject* s, T key) {
+        always_assert(in_progress());
+        return TThread::txn->fresh_item(s, key);
+    }
+
+    static void commit() {
+        always_assert(in_progress());
+        TThread::txn->commit();
+    }
+
+    static bool try_commit() {
+        always_assert(in_progress());
+        return TThread::txn->try_commit();
+    }
+
+    static TransactionTid::type commit_tid() {
+        return TThread::txn->commit_tid();
+    }
+
+    static TransactionTid::type recent_tid() {
+        return Transaction::global_epochs.recent_tid;
+    }
+
+    static TransactionTid::type initialized_tid() {
+        return TransactionTid::increment_value;
+    }
+};
+
+class TestTransaction {
+public:
+    TestTransaction(int threadid)
+        : t_(Transaction::testing), base_(TThread::txn), threadid_(threadid) {
+        use();
+    }
+    ~TestTransaction() {
+        if (base_ && !base_->is_test_)
+            TThread::txn = base_;
+    }
+    void use() {
+        TThread::txn = &t_;
+        TThread::set_id(threadid_);
+    }
+    void print(std::ostream& w) const {
+        t_.print(w);
+    }
+    bool try_commit() {
+        use();
+        return t_.try_commit();
+    }
+private:
+    Transaction t_;
+    Transaction* base_;
+    int threadid_;
+};
+
+class TransactionGuard {
+  public:
+    TransactionGuard() {
+        Sto::start_transaction();
+    }
+    ~TransactionGuard() {
+        Sto::commit();
+    }
+    typedef void (TransactionGuard::* unspecified_bool_type)(std::ostream&) const;
+    operator unspecified_bool_type() const {
+        return &TransactionGuard::print;
+    }
+    void print(std::ostream& w) const {
+        TThread::txn->print(w);
+    }
+};
+
+class TransactionLoopGuard {
+  public:
+    TransactionLoopGuard() {
+    }
+    ~TransactionLoopGuard() {
+        if (TThread::txn->in_progress())
+            TThread::txn->silent_abort();
+    }
+    void start() {
+        Sto::start_transaction();
+    }
+    bool try_commit() {
+        return TThread::txn->try_commit();
+    }
 };
 
 
+inline TransProxy::TransProxy(Transaction& t, TransItem& item)
+    : t_(&t), idx_(&item - t.transSet_.begin()) {
+    assert(&t == TThread::txn);
+}
+
+inline TransItem& TransProxy::item() const {
+    return t()->transSet_[idx_];
+}
+
 template <typename T>
 inline TransProxy& TransProxy::add_read(T rdata) {
+    assert(!has_stash());
     if (!has_read()) {
-#if DETAILED_LOGGING
-        Transaction::max_p(txp_max_rdata_size, sizeof(T));
-#endif
-        i_->__or_flags(TransItem::read_bit);
-        i_->rdata_ = t_->buf_.pack(std::move(rdata));
+        item().__or_flags(TransItem::read_bit);
+        item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
     }
     return *this;
 }
 
-template <typename T, typename U>
-inline TransProxy& TransProxy::update_read(T old_rdata, U new_rdata) {
+inline TransProxy& TransProxy::observe(TVersion version, bool add_read) {
+    assert(!has_stash());
+    if (version.is_locked_elsewhere())
+        t()->abort_because(item(), "locked");
+    t()->check_opacity(item(), version.value());
+    if (add_read && !has_read()) {
+        item().__or_flags(TransItem::read_bit);
+        item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
+    }
+    return *this;
+}
+
+inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read) {
+    assert(!has_stash());
+    if (version.is_locked_elsewhere())
+        t()->abort_because(item(), "locked");
+    if (add_read && !has_read()) {
+        item().__or_flags(TransItem::read_bit);
+        item().rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
+    }
+    return *this;
+}
+
+inline TransProxy& TransProxy::observe(TVersion version) {
+    return observe(version, true);
+}
+
+inline TransProxy& TransProxy::observe(TNonopaqueVersion version) {
+    return observe(version, true);
+}
+
+inline TransProxy& TransProxy::observe_opacity(TVersion version) {
+    return observe(version, false);
+}
+
+inline TransProxy& TransProxy::observe_opacity(TNonopaqueVersion version) {
+    return observe(version, false);
+}
+
+template <typename T>
+inline TransProxy& TransProxy::update_read(T old_rdata, T new_rdata) {
     if (has_read() && this->read_value<T>() == old_rdata)
-        i_->rdata_ = t_->buf_.pack(std::move(new_rdata));
+        item().rdata_ = Packer<T>::repack(t()->buf_, item().rdata_, new_rdata);
+    return *this;
+}
+
+
+template <typename T>
+inline TransProxy& TransProxy::set_predicate(T pdata) {
+    assert(!has_read());
+    item().__or_flags(TransItem::predicate_bit);
+    item().rdata_ = Packer<T>::pack(t()->buf_, std::move(pdata));
     return *this;
 }
 
 template <typename T>
-inline TransProxy& TransProxy::add_write(T wdata) {
-#if DETAILED_LOGGING
-    Transaction::max_p(txp_max_wdata_size, sizeof(T));
-#endif
-    if (has_write())
+inline T& TransProxy::predicate_value(T default_pdata) {
+    assert(!has_read());
+    if (!has_predicate())
+        set_predicate(default_pdata);
+    return this->template predicate_value<T>();
+}
+
+inline TransProxy& TransProxy::add_write() {
+    if (!has_write()) {
+        item().__or_flags(TransItem::write_bit);
+        t()->any_writes_ = true;
+    }
+    return *this;
+}
+
+template <typename T>
+inline TransProxy& TransProxy::add_write(const T& wdata) {
+    return add_write<T, const T&>(wdata);
+}
+
+template <typename T>
+inline TransProxy& TransProxy::add_write(T&& wdata) {
+    typedef typename std::decay<T>::type V;
+    return add_write<V, V&&>(std::move(wdata));
+}
+
+template <typename T, typename... Args>
+inline TransProxy& TransProxy::add_write(Args&&... args) {
+    if (!has_write()) {
+        item().__or_flags(TransItem::write_bit);
+        item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
+        t()->any_writes_ = true;
+    } else
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general
         // (hopefully we'll have a system that can automatically call destructors and such
         // which will make our lives much easier)
-        this->template write_value<T>() = std::move(wdata);
-    else {
-        i_->__or_flags(TransItem::write_bit);
-        i_->wdata_ = t_->buf_.pack(std::move(wdata));
-        t_->mark_write(*i_);
-    }
+        item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
     return *this;
 }
 
-inline bool TransItem::has_lock(const Transaction& t) const {
-    return t.check_for_write(*this);
-}
-
-inline bool TransProxy::has_lock() const {
-    return t_->check_for_write(*i_);
+template <typename T>
+inline TransProxy& TransProxy::set_stash(T sdata) {
+    assert(!has_read());
+    if (!has_stash()) {
+        item().__or_flags(TransItem::stash_bit);
+        item().rdata_ = Packer<T>::pack(t()->buf_, std::move(sdata));
+    } else
+        item().rdata_ = Packer<T>::repack(t()->buf_, item().rdata_, std::move(sdata));
+    return *this;
 }

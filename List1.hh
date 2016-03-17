@@ -2,7 +2,6 @@
 
 #include "TaggedLow.hh"
 #include "Transaction.hh"
-#include "VersionFunctions.hh"
 #include "List.hh"
 #include "SingleElem.hh"
 
@@ -15,17 +14,17 @@ class List1 : public Shared {
 public:
     List1(Compare comp = Compare()) : head_(NULL), listsize_(0), listversion_(0), comp_(comp) {
     }
-    
+
 private:
     typedef TransactionTid::type version_type;
-    
+
 public:
     static constexpr uint8_t invalid_bit = 1<<0;
-    
+
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
     static constexpr TransItem::flags_type doupdate_bit = TransItem::user0_bit<<2;
-    
+
     static constexpr void* size_key = (void*)0;
     
     struct list_node {
@@ -378,12 +377,12 @@ public:
         return ListIter(this, head_, true);
     }
     
-    size_t transSize() {
+    size_t size() {
         verify_list(listversion_);
         return listsize_ + trans_size_offs();
     }
     
-    size_t size() const {
+    size_t unsafe_size() const {
         return listsize_;
     }
     
@@ -409,34 +408,22 @@ public:
     bool is_locked(version_type& v) {
         return TransactionTid::is_locked(v);
     }
-    
-    void lock(TransItem& item) {
+
+    bool lock(TransItem& item, Transaction& txn) {
         // this lock is useless given that we also lock the listversion_
         // currently
         // XXX: this isn't great, but I think we need it to update the size...
-        if (item.key<List1*>() == this)
-            lock(listversion_);
+        return item.key<List1*>() != this
+            || txn.try_lock(item, listversion_);
     }
-    
-    void unlock(TransItem& item) {
+
+    bool check(const TransItem& item, const Transaction&) {
         if (item.key<List1*>() == this)
-            unlock(listversion_);
-    }
-    
-    bool check(const TransItem& item, const Transaction& t) {
-        if (item.key<void*>() == size_key) {
-            return true;
-        }
-        if (item.key<List1*>() == this) {
-            auto lv = listversion_;
-            return
-            TransactionTid::same_version(lv, item.template read_value<version_type>())
-            && (!is_locked(lv) || item.has_lock(t));
-        }
+            return TransactionTid::check_version(listversion_, item.template read_value<version_type>());
         auto n = item.key<list_node*>();
         return n->is_valid() || has_insert(item);
     }
-    
+
     void install(TransItem& item, const Transaction& t) {
         if (item.key<List1*>() == this)
             return;
@@ -449,7 +436,7 @@ public:
             if (Opacity) {
                 TransactionTid::set_version(listversion_, t.commit_tid());
             } else {
-                TransactionTid::inc_invalid_version(listversion_);
+                TransactionTid::inc_nonopaque_version(listversion_);
             }
         } else if (has_doupdate(item)) {
             // XXX BUG
@@ -460,11 +447,16 @@ public:
             if (Opacity) {
                 TransactionTid::set_version(listversion_, t.commit_tid());
             } else {
-                TransactionTid::inc_invalid_version(listversion_);
+                TransactionTid::inc_nonopaque_version(listversion_);
             }
         }
     }
     
+    void unlock(TransItem& item) {
+        if (item.key<List1*>() == this)
+            unlock(listversion_);
+    }
+
     void cleanup(TransItem& item, bool committed) {
         if (!committed && (item.flags() & insert_bit)) {
             list_node *n = item.key<list_node*>();
@@ -503,27 +495,18 @@ public:
         // TODO: it would be more efficient to store this directly in Transaction,
         // since the "key" is fixed (rather than having to search the transset each time)
         auto item = t_item(size_key);
-        int cur_offs = 0;
-        // XXX: this is sorta ugly
-        if (item.has_read()) {
-            cur_offs = item.template read_value<int>();
-            item.update_read(cur_offs, cur_offs + size_offs);
-        } else
-            item.add_read(cur_offs + size_offs);
+        item.template set_stash<int>(item.template stash_value<int>(0) + size_offs);
     }
     
     int trans_size_offs() {
-        auto item = t_item(size_key);
-        if (item.has_read())
-            return item.template read_value<int>();
-        return 0;
+        return t_item(size_key).template stash_value<int>(0);
     }
     
     list_node *head_;
     long listsize_;
     version_type listversion_;
     Compare comp_;
-    };
+};
     
     
     
@@ -597,5 +580,3 @@ public:
         list_type * myList;
         list_node * myPtr;
     };
-    
-    

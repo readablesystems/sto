@@ -7,6 +7,7 @@
 
 typedef int Key;
 typedef int Value;
+extern volatile uint64_t globalepoch;
 
 int main() {
   Transaction::epoch_advance_callback = [] (unsigned) {
@@ -19,19 +20,15 @@ int main() {
   
   GenericSTM stm_;
   int x = 5;
-  Transaction t1;
-  Sto::set_transaction(&t1);
-  int x_ = stm_.transRead(&x);
-  assert(x_ == 5);
+  {
+      TestTransaction t1(1);
+      int x_ = stm_.transRead(&x);
+      assert(x_ == 5);
   
-  Transaction t2;
-  Sto::set_transaction(&t2);
-  stm_.transWrite(&x, 4);
-  assert(t2.try_commit());
-  assert(x == 4);
-  
-  
-  assert(!t1.try_commit());
-  
-  
+      TestTransaction t2(2);
+      stm_.transWrite(&x, 4);
+      assert(t2.try_commit());
+      assert(x == 4);
+      assert(!t1.try_commit());
+  }
 }
