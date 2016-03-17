@@ -413,7 +413,7 @@ public:
       return size == pred_value;
   }
   
-  bool check(const TransItem& item, const Transaction& trans){
+  bool check(const TransItem& item, const Transaction&){
     if (item.key<int>() == vector_key || item.key<int>() == push_back_key)
       return TransactionTid::check_version(vecversion_, item.template read_value<Version>());
     key_type i = item.key<key_type>();

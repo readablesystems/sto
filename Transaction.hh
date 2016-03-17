@@ -463,6 +463,7 @@ public:
     }
     bool try_lock(TransItem& item, TransactionTid::type& vers) {
 #if STO_SORT_WRITESET
+        (void) item;
         TransactionTid::lock(vers);
         return true;
 #else
