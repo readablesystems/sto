@@ -215,7 +215,7 @@ private:
         // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
         // if user can't read v#)
         if (INSERT) {
-          item.clear_flags(delete_bit).clear_write().add_write(v);
+          item.clear_flags(delete_bit).clear_write().template add_write<write_value_type>(v);
         } else {
           // delete-then-update == not found
           // delete will check for other deletes so we don't need to re-log that check
@@ -231,7 +231,7 @@ private:
       //  check_opacity(e->version);
 #endif
       if (SET) {
-        item.add_write(v);
+        item.template add_write<write_value_type>(v);
 #if READ_MY_WRITES
         if (has_insert(item)) {
           // Updating the value here, as we won't update it during install
@@ -264,7 +264,7 @@ private:
       auto item = Sto::new_item(this, new_head);
       // don't actually need to Store anything for the write, just mark as valid on install
       // (for now insert and set will just do the same thing on install, set a value and then mark valid)
-      item.add_write(v);
+      item.template add_write<write_value_type>(v);
       // need to remove this item if we abort
       item.add_flags(insert_bit);
       return false;
