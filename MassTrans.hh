@@ -45,14 +45,8 @@ struct versioned_str_struct : public versioned_str {
     return (versioned_str_struct*)this->reserve(versioned_str::size_for(potential_new_value.length()));
   }
 
-  inline void set_value(const value_type& v) {
-    auto *ret = this->replace(v.data(), v.length());
-    // we should already be the proper size at this point
-    (void)ret;
-    assert(ret == this);
-  }
-
-  inline void set_value(const std::string& v) {
+  template <typename StringType>
+  inline void set_value(const StringType& v) {
     auto *ret = this->replace(v.data(), v.length());
     // we should already be the proper size at this point
     (void)ret;
@@ -181,8 +175,7 @@ public:
 
   template <typename K>
   bool transDelete(const K& key, threadinfo_type& ti = mythreadinfo) {
-    auto strKey = Str(key);
-    unlocked_cursor_type lp(table_, strKey);
+    unlocked_cursor_type lp(table_, key);
     bool found = lp.find_unlocked(*ti.ti);
     if (found) {
       versioned_value *e = lp.value();
@@ -229,13 +222,12 @@ public:
 private:
   template <bool INSERT, bool SET, typename StringType, typename ValueType>
   bool trans_write(const StringType& key, const ValueType& value, threadinfo_type& ti = mythreadinfo) {
-    auto strKey = Str(key);
     // optimization to do an unlocked lookup first
     if (SET) {
-      unlocked_cursor_type lp(table_, strKey);
+      unlocked_cursor_type lp(table_, key);
       bool found = lp.find_unlocked(*ti.ti);
       if (found) {
-        return handlePutFound<INSERT, SET>(lp.value(), strKey, value);
+        return handlePutFound<INSERT, SET>(lp.value(), key, value);
       } else {
         if (!INSERT) {
           ensureNotFound(lp.node(), lp.full_version_value());
@@ -244,12 +236,12 @@ private:
       }
     }
 
-    cursor_type lp(table_, strKey);
+    cursor_type lp(table_, key);
     bool found = lp.find_insert(*ti.ti);
     if (found) {
       versioned_value *e = lp.value();
       lp.finish(0, *ti.ti);
-      return handlePutFound<INSERT, SET>(e, strKey, value);
+      return handlePutFound<INSERT, SET>(e, key, value);
     } else {
       //      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
       versioned_value* val = (versioned_value*)versioned_value::make(value, invalid_bit);
@@ -610,7 +602,7 @@ protected:
     }
 #if READ_MY_WRITES
     if (has_insert(item)) {
-      new_location->set_value(value);
+      new_location->set_value(value_type(value));
     } else
 #endif
     {
