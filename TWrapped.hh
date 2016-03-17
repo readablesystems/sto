@@ -9,59 +9,37 @@ template <typename T, bool Opaque = true,
 
 namespace TWrappedAccess {
 template <typename T, typename V>
-static T read_opaque(const T* v, TransProxy item, const V& version) {
-    V v0 = version, v1;
-    fence();
+static T read_atomic(const T* v, TransProxy item, const V& version, bool add_read) {
     while (1) {
+        V v0 = version;
+        fence();
         T result = *v;
         fence();
-        v1 = version;
+        V v1 = version;
         if (v0 == v1 || v1.is_locked()) {
-            item.observe(v1);
+            item.observe(v1, add_read);
             return result;
         }
-        v0 = v1;
         relax_fence();
     }
 }
 template <typename T, typename V>
-static T read_nonopaque_small(const T* v, TransProxy item, const V& version) {
-    item.observe(version);
+static T read_nonatomic(const T* v, TransProxy item, const V& version, bool add_read) {
+    item.observe(version, add_read);
     fence();
     return *v;
 }
 template <typename T, typename V>
-static T read_snapshot_small(const T* v, TransProxy item, const V& version) {
-    T result = *v;
-    fence();
-    item.observe_opacity(version);
-    return result;
-}
-template <typename T, typename V>
-static T read_snapshot_large(const T* v, TransProxy item, const V& version) {
-    V v0 = version, v1;
-    fence();
-    while (1) {
-        T result = *v;
-        fence();
-        v1 = version;
-        if (v0 == v1 || v1.is_locked()) {
-            item.observe_opacity(v1);
-            return result;
-        }
-        v0 = v1;
-        relax_fence();
-    }
-}
-template <typename T, typename V>
-static T wait_snapshot_small(const T* v, TransProxy item, const V& version, bool add_read) {
+static T read_wait_atomic(const T* v, TransProxy item, const V& version, bool add_read) {
     unsigned n = 0;
     while (1) {
+        V v0 = version;
+        fence();
         T result = *v;
         fence();
-        V v0 = version;
-        if (!v0.is_locked_elsewhere()) {
-            item.observe(version, add_read);
+        V v1 = version;
+        if (v0 == v1 && !v1.is_locked_elsewhere()) {
+            item.observe(v1, add_read);
             return result;
         }
         relax_fence();
@@ -70,19 +48,15 @@ static T wait_snapshot_small(const T* v, TransProxy item, const V& version, bool
     }
 }
 template <typename T, typename V>
-static T wait_snapshot_large(const T* v, TransProxy item, const V& version, bool add_read) {
+static T read_wait_nonatomic(const T* v, TransProxy item, const V& version, bool add_read) {
     unsigned n = 0;
-    V v0 = version, v1;
-    fence();
     while (1) {
-        T result = *v;
+        V v0 = version;
         fence();
-        v1 = version;
-        if (v0 == v1 && !v1.is_locked_elsewhere()) {
-            item.observe(v1, add_read);
-            return result;
+        if (!v0.is_locked_elsewhere()) {
+            item.observe(v0, add_read);
+            return *v;
         }
-        v0 = v1;
         relax_fence();
         if (++n > 0xFFFFFF)
             Sto::abort();
@@ -107,16 +81,16 @@ public:
         return v_;
     }
     read_type snapshot(TransProxy item, const version_type& version) const {
-        return TWrappedAccess::read_snapshot_small(&v_, item, version);
+        return TWrappedAccess::read_atomic(&v_, item, version, false);
     }
     read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
-        return TWrappedAccess::wait_snapshot_small(&v_, item, version, add_read);
+        return TWrappedAccess::read_wait_atomic(&v_, item, version, add_read);
     }
     read_type read(TransProxy item, const version_type& version) const {
-        return TWrappedAccess::read_opaque(&v_, item, version);
+        return TWrappedAccess::read_atomic(&v_, item, version, true);
     }
     static read_type read(const T* v, TransProxy item, const version_type& version) {
-        return TWrappedAccess::read_opaque(v, item, version);
+        return TWrappedAccess::read_atomic(v, item, version, true);
     }
     void write(const T& v) {
         v_ = v;
@@ -146,13 +120,13 @@ public:
         return v_;
     }
     read_type snapshot(TransProxy item, const version_type& version) const {
-        return TWrappedAccess::read_snapshot_large(&v_, item, version);
+        return TWrappedAccess::read_atomic(&v_, item, version, false);
     }
     read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
-        return TWrappedAccess::wait_snapshot_large(&v_, item, version, add_read);
+        return TWrappedAccess::read_wait_atomic(&v_, item, version, add_read);
     }
     read_type read(TransProxy item, const version_type& version) const {
-        return TWrappedAccess::read_opaque(&v_, item, version);
+        return TWrappedAccess::read_atomic(&v_, item, version, true);
     }
     void write(const T& v) {
         v_ = v;
@@ -194,13 +168,13 @@ public:
         return v_;
     }
     read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
-        return TWrappedAccess::wait_snapshot_small(&v_, item, version, add_read);
+        return TWrappedAccess::read_wait_nonatomic(&v_, item, version, add_read);
     }
     read_type read(TransProxy item, const version_type& version) const {
-        return TWrappedAccess::read_nonopaque_small(&v_, item, version);
+        return TWrappedAccess::read_nonatomic(&v_, item, version, true);
     }
     static read_type read(const T* vp, TransProxy item, const version_type& version) {
-        return TWrappedAccess::read_nonopaque_small(vp, item, version);
+        return TWrappedAccess::read_nonatomic(vp, item, version, true);
     }
     void write(T v) {
         v_ = v;
@@ -236,13 +210,13 @@ public:
         return v_;
     }
     read_type snapshot(TransProxy item, const version_type& version) const {
-        return TWrappedAccess::read_snapshot_large(&v_, item, version);
+        return TWrappedAccess::read_atomic(&v_, item, version, false);
     }
     read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
-        return TWrappedAccess::wait_snapshot_large(&v_, item, version, add_read);
+        return TWrappedAccess::read_wait_atomic(&v_, item, version, add_read);
     }
     read_type read(TransProxy item, const version_type& version) const {
-        return TWrappedAccess::read_snapshot_large(&v_, item, version);
+        return TWrappedAccess::read_atomic(&v_, item, version, true);
     }
     void write(const T& v) {
         v_ = v;
@@ -284,13 +258,13 @@ public:
         return *vp_;
     }
     read_type snapshot(TransProxy item, const version_type& version) const {
-        return *TWrappedAccess::read_snapshot_small(&vp_, item, version);
+        return *TWrappedAccess::read_atomic(&vp_, item, version, false);
     }
     read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
-        return *TWrappedAccess::wait_snapshot_small(&vp_, item, version, add_read);
+        return *TWrappedAccess::read_wait_atomic(&vp_, item, version, add_read);
     }
     read_type read(TransProxy item, const version_type& version) const {
-        return *TWrappedAccess::read_opaque(&vp_, item, version);
+        return *TWrappedAccess::read_atomic(&vp_, item, version, true);
     }
     void write(const T& v) {
         save(new T(v));
@@ -340,10 +314,10 @@ public:
         return *vp_;
     }
     read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
-        return *TWrappedAccess::wait_snapshot_small(&vp_, item, version, add_read);
+        return *TWrappedAccess::read_wait_nonatomic(&vp_, item, version, add_read);
     }
     read_type read(TransProxy item, const version_type& version) const {
-        return *TWrappedAccess::read_nonopaque_small(&vp_, item, version);
+        return *TWrappedAccess::read_nonatomic(&vp_, item, version, true);
     }
     void write(const T& v) {
         save(new T(v));
