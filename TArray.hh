@@ -2,14 +2,14 @@
 #include "TWrapped.hh"
 #include "TArrayProxy.hh"
 
-template <typename T, unsigned N, typename W = TWrapped<T> >
+template <typename T, unsigned N, template <typename> typename W = TOpaqueWrapped>
 class TArray : public TObject {
 public:
     class iterator;
     class const_iterator;
     typedef T value_type;
-    typedef typename W::read_type get_type;
-    typedef typename W::version_type version_type;
+    typedef typename W<T>::read_type get_type;
+    typedef typename W<T>::version_type version_type;
     typedef unsigned size_type;
     typedef int difference_type;
     typedef TConstArrayProxy<TArray<T, N, W> > const_proxy_type;
@@ -81,7 +81,7 @@ public:
 private:
     struct elem {
         version_type vers;
-        W v;
+        W<T> v;
     };
     elem data_[N];
 
@@ -90,7 +90,7 @@ private:
 };
 
 
-template <typename T, unsigned N, typename W>
+template <typename T, unsigned N, template <typename> typename W>
 class TArray<T, N, W>::const_iterator : public std::iterator<std::random_access_iterator_tag, T> {
 public:
     typedef TArray<T, N, W> array_type;
@@ -169,7 +169,7 @@ protected:
     size_type i_;
 };
 
-template <typename T, unsigned N, typename W>
+template <typename T, unsigned N, template <typename> typename W>
 class TArray<T, N, W>::iterator : public const_iterator {
 public:
     typedef TArray<T, N, W> array_type;
@@ -216,32 +216,32 @@ public:
     }
 };
 
-template <typename T, unsigned N, typename W>
+template <typename T, unsigned N, template <typename> typename W>
 inline auto TArray<T, N, W>::begin() -> iterator {
     return iterator(this, 0);
 }
 
-template <typename T, unsigned N, typename W>
+template <typename T, unsigned N, template <typename> typename W>
 inline auto TArray<T, N, W>::end() -> iterator {
     return iterator(this, N);
 }
 
-template <typename T, unsigned N, typename W>
+template <typename T, unsigned N, template <typename> typename W>
 inline auto TArray<T, N, W>::cbegin() const -> const_iterator {
     return const_iterator(this, 0);
 }
 
-template <typename T, unsigned N, typename W>
+template <typename T, unsigned N, template <typename> typename W>
 inline auto TArray<T, N, W>::cend() const -> const_iterator {
     return const_iterator(this, N);
 }
 
-template <typename T, unsigned N, typename W>
+template <typename T, unsigned N, template <typename> typename W>
 inline auto TArray<T, N, W>::begin() const -> const_iterator {
     return const_iterator(this, 0);
 }
 
-template <typename T, unsigned N, typename W>
+template <typename T, unsigned N, template <typename> typename W>
 inline auto TArray<T, N, W>::end() const -> const_iterator {
     return const_iterator(this, N);
 }
