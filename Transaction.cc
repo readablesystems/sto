@@ -149,11 +149,12 @@ bool Transaction::try_commit() {
     first_write_ = writeset[0];
 
     //phase1
-#if !NOSORT
+#if STO_SORT_WRITESET
     std::sort(writeset, writeset + nwriteset, [&] (int i, int j) {
         return transSet_[i] < transSet_[j];
     });
 #endif
+
     if (nwriteset) {
         state_ = s_committing_locked;
         auto writeset_end = writeset + nwriteset;
@@ -192,6 +193,7 @@ bool Transaction::try_commit() {
     // fence();
 
     //phase3
+#if STO_SORT_WRITESET
     for (auto it = transSet_.begin() + first_write_; it != transSet_.end(); ++it) {
         TransItem& ti = *it;
         if (ti.has_write()) {
@@ -199,6 +201,16 @@ bool Transaction::try_commit() {
             ti.owner()->install(ti, *this);
         }
     }
+#else
+    if (nwriteset) {
+        auto writeset_end = writeset + nwriteset;
+        for (auto it = writeset; it != writeset_end; ++it) {
+            TransItem* me = &transSet_[*it];
+            TXP_INCREMENT(txp_total_w);
+            me->owner()->install(*me, *this);
+        }
+    }
+#endif
 
     // fence();
     stop(true);

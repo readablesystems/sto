@@ -30,6 +30,10 @@
 #define STO_DEBUG_ABORTS_FRACTION 0.0001
 #endif
 
+#ifndef STO_SORT_WRITESET
+#define STO_SORT_WRITESET 0
+#endif
+
 #define CONSISTENCY_CHECK 0
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
@@ -44,8 +48,6 @@
 #endif
 
 #include "config.h"
-
-#define NOSORT 0
 
 #define MAX_THREADS 32
 
@@ -460,6 +462,10 @@ public:
         return try_lock(item, const_cast<TransactionTid::type&>(vers.value()));
     }
     bool try_lock(TransItem& item, TransactionTid::type& vers) {
+#if STO_SORT_WRITESET
+        TransactionTid::lock(vers);
+        return true;
+#else
         // This function will eventually help us track the commit TID when we
         // have no opacity, or for GV7 opacity.
         int i = 0;
@@ -471,6 +477,7 @@ public:
             ++i;
             relax_fence();
         }
+#endif
     }
 
     void check_opacity(TransItem& item, TransactionTid::type v) {

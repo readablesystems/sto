@@ -1294,6 +1294,9 @@ int main(int argc, char *argv[]) {
  MAINTAIN_TRUE_ARRAY_STATE: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, STO_PROFILE_COUNTERS: %d\n",
          ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, prepopulate, blindRandomWrite,
          MAINTAIN_TRUE_ARRAY_STATE, INIT_SET_SIZE, GLOBAL_SEED, STO_PROFILE_COUNTERS);
+# if STO_SORT_WRITESET
+  printf("  STO_SORT_WRITESET: 1\n");
+# endif
 #endif
 
 #if STO_PROFILE_COUNTERS
