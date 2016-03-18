@@ -534,7 +534,7 @@ void testPushNPop() {
     printf("PASS: testPushNPop2\n");
 }
 
-void testPopAndUdpate() {
+void testPopAndUpdate() {
     TVector<int> f;
 
     TRANSACTION {
@@ -1128,7 +1128,7 @@ int main() {
     testErase();
     testInsert();
     testPushNPop();
-    testPopAndUdpate();
+    testPopAndUpdate();
     testMulPushPops();
     testMulPushPops1();
     testUpdatePop();

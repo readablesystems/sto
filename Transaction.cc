@@ -45,7 +45,7 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
         return;
 
     TXP_INCREMENT(txp_hco);
-    if (TransactionTid::is_locked_elsewhere(t)) {
+    if (TransactionTid::is_locked_elsewhere(t, threadid_)) {
         TXP_INCREMENT(txp_hco_lock);
         mark_abort_because(item, "locked");
     abort:
@@ -112,6 +112,7 @@ void Transaction::stop(bool committed) {
 }
 
 bool Transaction::try_commit() {
+    assert(TThread::id() == threadid_);
 #if ASSERT_TX_SIZE
     if (transSet_.size() > TX_SIZE_LIMIT) {
         std::cerr << "transSet_ size at " << transSet_.size()

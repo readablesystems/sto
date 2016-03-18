@@ -244,21 +244,24 @@ public:
 
   private:
     Transaction()
-        : hash_base_(32768), lrng_state_(12897), is_test_(false) {
+        : threadid_(TThread::id()), hash_base_(32768), lrng_state_(12897),
+          is_test_(false) {
         start();
     }
 
     struct testing_type {};
     static testing_type testing;
 
-    Transaction(const testing_type&)
-        : hash_base_(32768), lrng_state_(12897), is_test_(true) {
+    Transaction(int threadid, const testing_type&)
+        : threadid_(threadid), hash_base_(32768), lrng_state_(12897),
+          is_test_(true) {
         start();
     }
 
     struct uninitialized {};
     Transaction(uninitialized)
-        : hash_base_(32768), lrng_state_(12897), is_test_(false) {
+        : threadid_(TThread::id()), hash_base_(32768), lrng_state_(12897),
+          is_test_(false) {
         state_ = s_aborted;
     }
 
@@ -464,14 +467,14 @@ public:
     bool try_lock(TransItem& item, TransactionTid::type& vers) {
 #if STO_SORT_WRITESET
         (void) item;
-        TransactionTid::lock(vers);
+        TransactionTid::lock(vers, threadid_);
         return true;
 #else
         // This function will eventually help us track the commit TID when we
         // have no opacity, or for GV7 opacity.
         int i = 0;
         while (1) {
-            if (TransactionTid::try_lock(vers))
+            if (TransactionTid::try_lock(vers, threadid_))
                 return true;
             if (i > (!item.has_read() << 3))
                 return false;
@@ -485,7 +488,8 @@ public:
         assert(state_ <= s_committing_locked);
         if (!start_tid_)
             start_tid_ = _TID;
-        if (!TransactionTid::try_check_opacity(start_tid_, v))
+        if (!TransactionTid::try_check_opacity(start_tid_, v)
+            && state_ < s_committing)
             hard_check_opacity(&item, v);
     }
 
@@ -493,7 +497,8 @@ public:
         assert(state_ <= s_committing_locked);
         if (!start_tid_)
             start_tid_ = _TID;
-        if (!TransactionTid::try_check_opacity(start_tid_, v))
+        if (!TransactionTid::try_check_opacity(start_tid_, v)
+            && state_ < s_committing)
             hard_check_opacity(nullptr, v);
     }
 
@@ -556,6 +561,7 @@ private:
         s_aborted = 3, s_committed = 4
     };
 
+    int threadid_;
     uint16_t hash_base_;
     uint16_t first_write_;
     uint8_t state_;
@@ -677,12 +683,14 @@ public:
 class TestTransaction {
 public:
     TestTransaction(int threadid)
-        : t_(Transaction::testing), base_(TThread::txn), threadid_(threadid) {
+        : t_(threadid, Transaction::testing), base_(TThread::txn), threadid_(threadid) {
         use();
     }
     ~TestTransaction() {
-        if (base_ && !base_->is_test_)
+        if (base_ && !base_->is_test_) {
             TThread::txn = base_;
+            TThread::set_id(base_->threadid_);
+        }
     }
     void use() {
         TThread::txn = &t_;
@@ -756,7 +764,7 @@ inline TransProxy& TransProxy::add_read(T rdata) {
 
 inline TransProxy& TransProxy::observe(TVersion version, bool add_read) {
     assert(!has_stash());
-    if (version.is_locked_elsewhere())
+    if (version.is_locked_elsewhere(t()->threadid_))
         t()->abort_because(item(), "locked");
     t()->check_opacity(item(), version.value());
     if (add_read && !has_read()) {
@@ -768,7 +776,7 @@ inline TransProxy& TransProxy::observe(TVersion version, bool add_read) {
 
 inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read) {
     assert(!has_stash());
-    if (version.is_locked_elsewhere())
+    if (version.is_locked_elsewhere(t()->threadid_))
         t()->abort_because(item(), "locked");
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);

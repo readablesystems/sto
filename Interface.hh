@@ -77,22 +77,44 @@ public:
     static bool is_locked_here(type v) {
         return (v & (lock_bit | threadid_mask)) == (lock_bit | TThread::id());
     }
+    static bool is_locked_here(type v, int here) {
+        return (v & (lock_bit | threadid_mask)) == (lock_bit | here);
+    }
     static bool is_locked_elsewhere(type v) {
         type m = v & (lock_bit | threadid_mask);
         return m != 0 && m != (lock_bit | TThread::id());
+    }
+    static bool is_locked_elsewhere(type v, int here) {
+        type m = v & (lock_bit | threadid_mask);
+        return m != 0 && m != (lock_bit | here);
     }
 
     static bool try_lock(type& v) {
         type vv = v;
         return bool_cmpxchg(&v, vv & ~lock_bit, vv | lock_bit | TThread::id());
     }
+    static bool try_lock(type& v, int here) {
+        type vv = v;
+        return bool_cmpxchg(&v, vv & ~lock_bit, vv | lock_bit | here);
+    }
     static void lock(type& v) {
         while (!try_lock(v))
             relax_fence();
         acquire_fence();
     }
+    static void lock(type& v, int here) {
+        while (!try_lock(v, here))
+            relax_fence();
+        acquire_fence();
+    }
     static void unlock(type& v) {
         assert(is_locked_here(v));
+        type new_v = v & ~(lock_bit | threadid_mask);
+        release_fence();
+        v = new_v;
+    }
+    static void unlock(type& v, int here) {
+        assert(is_locked_here(v, here));
         type new_v = v & ~(lock_bit | threadid_mask);
         release_fence();
         v = new_v;
@@ -108,15 +130,35 @@ public:
         release_fence();
         v = new_v;
     }
+    static void set_version(type& v, type new_v, int here) {
+        assert(is_locked_here(v, here));
+        assert(!(new_v & (lock_bit | threadid_mask)));
+        new_v |= lock_bit | here;
+        release_fence();
+        v = new_v;
+    }
     static void set_version_locked(type& v, type new_v) {
         assert(is_locked_here(v));
         assert(is_locked_here(new_v));
         release_fence();
         v = new_v;
     }
+    static void set_version_locked(type& v, type new_v, int here) {
+        assert(is_locked_here(v, here));
+        assert(is_locked_here(new_v, here));
+        release_fence();
+        v = new_v;
+    }
     static void set_version_unlock(type& v, type new_v) {
         assert(is_locked_here(v));
         assert(!is_locked(new_v) || is_locked_here(new_v));
+        new_v &= ~(lock_bit | threadid_mask);
+        release_fence();
+        v = new_v;
+    }
+    static void set_version_unlock(type& v, type new_v, int here) {
+        assert(is_locked_here(v, here));
+        assert(!is_locked(new_v) || is_locked_here(new_v, here));
         new_v &= ~(lock_bit | threadid_mask);
         release_fence();
         v = new_v;
@@ -142,6 +184,11 @@ public:
         assert(!is_locked_elsewhere(old_vers));
         // cur_vers allowed to be locked by us
         return cur_vers == old_vers || cur_vers == (old_vers | lock_bit | TThread::id());
+    }
+    static bool check_version(type cur_vers, type old_vers, int here) {
+        assert(!is_locked_elsewhere(old_vers));
+        // cur_vers allowed to be locked by us
+        return cur_vers == old_vers || cur_vers == (old_vers | lock_bit | here);
     }
     static bool try_check_opacity(type start_tid, type v) {
         signed_type delta = start_tid - v;
@@ -187,8 +234,14 @@ public:
     bool is_locked_here() const {
         return TransactionTid::is_locked_here(v_);
     }
+    bool is_locked_here(int here) const {
+        return TransactionTid::is_locked_here(v_, here);
+    }
     bool is_locked_elsewhere() const {
         return TransactionTid::is_locked_elsewhere(v_);
+    }
+    bool is_locked_elsewhere(int here) const {
+        return TransactionTid::is_locked_elsewhere(v_, here);
     }
 
     bool bool_cmpxchg(TVersion expected, TVersion desired) {
@@ -198,11 +251,20 @@ public:
     bool try_lock() {
         return TransactionTid::try_lock(v_);
     }
+    bool try_lock(int here) {
+        return TransactionTid::try_lock(v_, here);
+    }
     void lock() {
         TransactionTid::lock(v_);
     }
+    void lock(int here) {
+        TransactionTid::lock(v_, here);
+    }
     void unlock() {
         TransactionTid::unlock(v_);
+    }
+    void unlock(int here) {
+        TransactionTid::unlock(v_, here);
     }
     type unlocked() const {
         return TransactionTid::unlocked(v_);
@@ -221,11 +283,20 @@ public:
     void set_version(TVersion new_v) {
         TransactionTid::set_version(v_, new_v.v_);
     }
+    void set_version(TVersion new_v, int here) {
+        TransactionTid::set_version(v_, new_v.v_, here);
+    }
     void set_version_locked(TVersion new_v) {
         TransactionTid::set_version_locked(v_, new_v.v_);
     }
+    void set_version_locked(TVersion new_v, int here) {
+        TransactionTid::set_version_locked(v_, new_v.v_, here);
+    }
     void set_version_unlock(TVersion new_v) {
         TransactionTid::set_version_unlock(v_, new_v.v_);
+    }
+    void set_version_unlock(TVersion new_v, int here) {
+        TransactionTid::set_version_unlock(v_, new_v.v_, here);
     }
 
     void set_nonopaque() {
@@ -236,8 +307,11 @@ public:
     }
 
     bool check_version(TVersion old_vers) const {
-        // XXX opacity
+        // XXX opacity <- THis comment is irrelevant on new API
         return TransactionTid::check_version(v_, old_vers.v_);
+    }
+    bool check_version(TVersion old_vers, int here) const {
+        return TransactionTid::check_version(v_, old_vers.v_, here);
     }
 
     friend std::ostream& operator<<(std::ostream& w, TVersion v) {
@@ -279,8 +353,14 @@ public:
     bool is_locked_here() const {
         return TransactionTid::is_locked_here(v_);
     }
+    bool is_locked_here(int here) const {
+        return TransactionTid::is_locked_here(v_, here);
+    }
     bool is_locked_elsewhere() const {
         return TransactionTid::is_locked_elsewhere(v_);
+    }
+    bool is_locked_elsewhere(int here) const {
+        return TransactionTid::is_locked_elsewhere(v_, here);
     }
 
     bool bool_cmpxchg(TNonopaqueVersion expected, TNonopaqueVersion desired) {
@@ -290,11 +370,20 @@ public:
     bool try_lock() {
         return TransactionTid::try_lock(v_);
     }
+    bool try_lock(int here) {
+        return TransactionTid::try_lock(v_, here);
+    }
     void lock() {
         TransactionTid::lock(v_);
     }
+    void lock(int here) {
+        TransactionTid::lock(v_, here);
+    }
     void unlock() {
         TransactionTid::unlock(v_);
+    }
+    void unlock(int here) {
+        TransactionTid::unlock(v_, here);
     }
     type unlocked() const {
         return TransactionTid::unlocked(v_);
@@ -313,16 +402,27 @@ public:
     void set_version(TNonopaqueVersion new_v) {
         TransactionTid::set_version(v_, new_v.v_);
     }
+    void set_version(TNonopaqueVersion new_v, int here) {
+        TransactionTid::set_version(v_, new_v.v_, here);
+    }
     void set_version_locked(TNonopaqueVersion new_v) {
         TransactionTid::set_version_locked(v_, new_v.v_);
+    }
+    void set_version_locked(TNonopaqueVersion new_v, int here) {
+        TransactionTid::set_version_locked(v_, new_v.v_, here);
     }
     void set_version_unlock(TNonopaqueVersion new_v) {
         TransactionTid::set_version_unlock(v_, new_v.v_);
     }
+    void set_version_unlock(TNonopaqueVersion new_v, int here) {
+        TransactionTid::set_version_unlock(v_, new_v.v_, here);
+    }
 
     bool check_version(TNonopaqueVersion old_vers) const {
-        // XXX opacity
         return TransactionTid::check_version(v_, old_vers.v_);
+    }
+    bool check_version(TNonopaqueVersion old_vers, int here) const {
+        return TransactionTid::check_version(v_, old_vers.v_, here);
     }
 
     friend std::ostream& operator<<(std::ostream& w, TNonopaqueVersion v) {
