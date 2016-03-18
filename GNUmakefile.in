@@ -26,7 +26,7 @@ CXXFLAGS += -g
 endif
 
 PROGRAMS = concurrent singleelems genericTest list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single ex-counter $(UNIT_PROGRAMS)
-UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric unit-rcu unit-tvector
+UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric unit-rcu unit-tvector unit-tvector-nopred
 
 all: $(PROGRAMS)
 
@@ -83,6 +83,9 @@ unit-tgeneric: unit-tgeneric.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tvector: unit-tvector.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-tvector-nopred: unit-tvector-nopred.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 list1: list1.o $(STO_DEPS)

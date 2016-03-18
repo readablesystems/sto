@@ -508,31 +508,31 @@ public:
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
     }
-    void set_version(TVersion& vers) const {
-        vers.set_version(commit_tid());
+    void set_version(TVersion& vers, TVersion::type flags = 0) const {
+        vers.set_version(commit_tid() | flags);
     }
-    void set_version_unlock(TVersion& vers, TransItem& item) const {
-        vers.set_version_unlock(commit_tid());
+    void set_version_unlock(TVersion& vers, TransItem& item, TVersion::type flags = 0) const {
+        vers.set_version_unlock(commit_tid() | flags);
         item.clear_needs_unlock();
     }
-    void assign_version_unlock(TVersion& vers, TransItem& item) const {
-        vers = commit_tid();
+    void assign_version_unlock(TVersion& vers, TransItem& item, TVersion::type flags = 0) const {
+        vers = commit_tid() | flags;
         item.clear_needs_unlock();
     }
-    void set_version(TNonopaqueVersion& vers) const {
+    void set_version(TNonopaqueVersion& vers, TNonopaqueVersion::type flags = 0) const {
         assert(state_ == s_committing_locked || state_ == s_committing);
-        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_unlocked_nonopaque_version(vers.value());
-        vers.set_version(v);
+        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_unflagged_nonopaque_version(vers.value());
+        vers.set_version(v | flags);
     }
-    void set_version_unlock(TNonopaqueVersion& vers, TransItem& item) const {
+    void set_version_unlock(TNonopaqueVersion& vers, TransItem& item, TNonopaqueVersion::type flags = 0) const {
         assert(state_ == s_committing_locked || state_ == s_committing);
-        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_unlocked_nonopaque_version(vers.value());
-        vers.set_version_unlock(v);
+        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_unflagged_nonopaque_version(vers.value());
+        vers.set_version_unlock(v | flags);
         item.clear_needs_unlock();
     }
-    void assign_version_unlock(TNonopaqueVersion& vers, TransItem& item) const {
-        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_unlocked_nonopaque_version(vers.value());
-        vers = v;
+    void assign_version_unlock(TNonopaqueVersion& vers, TransItem& item, TNonopaqueVersion::type flags = 0) const {
+        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_unflagged_nonopaque_version(vers.value());
+        vers = v | flags;
         item.clear_needs_unlock();
     }
 

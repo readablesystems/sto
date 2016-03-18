@@ -128,8 +128,8 @@ public:
     static type next_nonopaque_version(type v) {
         return (v + increment_value) | nonopaque_bit;
     }
-    static type next_unlocked_nonopaque_version(type v) {
-        return unlocked((v + increment_value) | nonopaque_bit);
+    static type next_unflagged_nonopaque_version(type v) {
+        return ((v + increment_value) & ~(increment_value - 1)) | nonopaque_bit;
     }
     static void inc_nonopaque_version(type& v) {
         assert(is_locked_here(v));

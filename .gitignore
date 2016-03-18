@@ -38,4 +38,5 @@
 /unit-tintpredicate
 /unit-tcounter
 /unit-tvector
+/unit-tvector-nopred
 .ycm_*
