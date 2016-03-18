@@ -19,7 +19,6 @@ int prepopulate = 1000;
 int max_key = 1000;
 double search_percent = 0.6;
 double pushback_percent = 0.2; // pop_percent will be the same to keep the size of array roughly the same
-bool dumb_iterator = false;
 
 int find_aborts[32];
 uint32_t initial_seeds[64];
@@ -242,8 +241,14 @@ int main(int argc, char *argv[]) {
     }
   }
   Clp_DeleteParser(clp);
-  
-  dumb_iterator = false;
+
+  if (global_seed)
+    srandom(global_seed);
+  else
+    srandomdev();
+  for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
+    initial_seeds[i] = random();
+
   for (int i = 0; i < 16; i++) {
     find_aborts[i] = 0;
   }
@@ -274,17 +279,9 @@ int main(int argc, char *argv[]) {
   }
   Transaction::clear_stats();
 #endif
-  dumb_iterator = true;
 
   for (unsigned i = 0; i < arraysize(find_aborts); ++i)
     find_aborts[i] = 0;
-
-  if (global_seed)
-    srandom(global_seed);
-  else
-    srandomdev();
-  for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
-    initial_seeds[i] = random();
 
   unsuccessful_finds = 0;
   nopred_data_structure q2;
