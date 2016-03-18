@@ -128,6 +128,8 @@ inline value_type strtoval(const std::string& s) {
 #endif
 }
 
+unsigned initial_seeds[64];
+
 
 template <int DS> struct Container {};
 
@@ -606,21 +608,18 @@ template <int DS> void ReadThenWrite<DS>::run(int me) {
   container_type::thread_init(*a);
 
   std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
+  Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
 
   int N = ntrans/nthreads;
   int OPS = opspertrans;
   for (int i = 0; i < N; ++i) {
     // so that retries of this transaction do the same thing
-    auto transseed = i;
-
+    Rand transgen_snap = transgen;
     TRANSACTION {
-      Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
-
+      transgen = transgen_snap;
       auto gen = [&]() { return slotdist(transgen); };
-
       nreads(*a, OPS - OPS*write_percent, gen);
       nwrites(*a, OPS*write_percent, gen);
-
     } RETRY(true);
   }
 }
@@ -646,6 +645,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
 #endif  
   
   uint32_t write_thresh = (uint32_t) (write_percent * Rand::max());
+  Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
 
 #if RANDOM_REPORT
   int *slot_spread = (int*)calloc(sizeof(*slot_spread) * ARRAY_SZ, 1);
@@ -656,7 +656,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
   int OPS = opspertrans;
   for (int i = 0; i < N; ++i) {
     // so that retries of this transaction do the same thing
-    auto transseed = i;
+    Rand transgen_snap = transgen;
 #if MAINTAIN_TRUE_ARRAY_STATE
     int slots_written[OPS], nslots_written;
 #endif
@@ -665,10 +665,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
 #if MAINTAIN_TRUE_ARRAY_STATE
       nslots_written = 0;
 #endif
-      uint32_t seed = transseed*3 + (uint32_t)me*N*7 + (uint32_t)GLOBAL_SEED*MAX_THREADS*N*11;
-      auto seedlow = seed & 0xffff;
-      auto seedhigh = seed >> 16;
-      Rand transgen(seed, seedlow << 16 | seedhigh);
+      transgen = transgen_snap;
 #if ALL_UNIQUE_SLOTS
       bool used[ARRAY_SZ] = {false};
 #endif
@@ -845,14 +842,15 @@ template <int DS> void XorDelete<DS, true>::run(int me) {
   // we never pick slot 0 so we can detect if table is populated
   std::uniform_int_distribution<long> slotdist(1, ARRAY_SZ-1);
   uint32_t delete_thresh = (uint32_t) (write_percent * Rand::max());
+  Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
 
   int N = ntrans/nthreads;
   int OPS = opspertrans;
 
   for (int i = 0; i < N; ++i) {
-    auto transseed = i;
+    Rand transgen_snap = transgen;
     TRANSACTION {
-      Rand transgen(transseed + me + GLOBAL_SEED, transseed + me + GLOBAL_SEED);
+        transgen = transgen_snap;
         for (int j = 0; j < OPS; ++j) {
           int slot = slotdist(transgen);
           auto r = transgen();
@@ -1258,6 +1256,14 @@ int main(int argc, char *argv[]) {
     }
   }
   Clp_DeleteParser(clp);
+
+#if GLOBAL_SEED
+  srandom(GLOBAL_SEED);
+#else
+  srandomdev();
+#endif
+  for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
+    initial_seeds[i] = random();
 
 #if DATA_STRUCTURE == USE_QUEUE
     QueueType stack_q;
