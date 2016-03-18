@@ -2,6 +2,7 @@
 #include <iostream>
 #include <assert.h>
 #include <vector>
+#include <sstream>
 #include <random>
 #include <map>
 #include "Transaction.hh"
@@ -75,7 +76,7 @@ int findK(T* q, int val) {
 }
 
 template <typename T>
-void run(T* q, int me) {
+void run_find_push_pop_get(T* q, int me) {
   TThread::set_id(me);
   
   std::uniform_int_distribution<long> slotdist(0, max_range);
@@ -139,10 +140,52 @@ void run(T* q, int me) {
 }
 
 template <typename T>
+void run_push_pop(T* q, int me) {
+    TThread::set_id(me);
+    std::uniform_int_distribution<long> slotdist(0, 999);
+    Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
+
+    int N = ntrans/nthreads;
+    int OPS = opspertrans;
+    unsigned nretries = 0;
+    std::ostringstream ob;
+
+    for (int i = 0; i < N; ++i) {
+        Rand transgen_snap = transgen;
+        while (1) {
+            Sto::start_transaction();
+            try {
+                for (int j = 0; j < OPS; ++j) {
+                    if (q->size() < 1001)
+                        q->push_back(slotdist(transgen));
+                    else if (q->size() > 4000 || (*q)[slotdist(transgen)] % 2)
+                        q->pop_back();
+                    else
+                        q->push_back(slotdist(transgen));
+                }
+                if (Sto::try_commit())
+                    break;
+            } catch (Transaction::Abort) {}
+            transgen = transgen_snap;
+            ++nretries;
+        }
+    }
+
+    find_aborts[me] = nretries;
+}
+
+static const char* test_name = "find-push-pop-get";
+
+template <typename T>
 void* runFunc(void* x) {
-  TesterPair<T>* tp = (TesterPair<T>*) x;
-  run(tp->t, tp->me);
-  return nullptr;
+    TesterPair<T>* tp = (TesterPair<T>*) x;
+    if (strcmp(test_name, "find-push-pop-get") == 0)
+        run_find_push_pop_get(tp->t, tp->me);
+    else if (strcmp(test_name, "push-pop") == 0)
+        run_push_pop(tp->t, tp->me);
+    else
+        abort();
+    return nullptr;
 }
 
 template <typename T>
@@ -168,7 +211,7 @@ void print_time(struct timeval tv1, struct timeval tv2) {
 }
 
 enum {
-  opt_nthreads, opt_ntrans, opt_opspertrans, opt_searchpercent, opt_pushbackpercent, opt_prepopulate, opt_seed
+  opt_nthreads = 1, opt_ntrans, opt_opspertrans, opt_searchpercent, opt_pushbackpercent, opt_prepopulate, opt_seed
 };
 
 static const Clp_Option options[] = {
@@ -182,7 +225,7 @@ static const Clp_Option options[] = {
 };
 
 static void help() {
-  printf("Usage: [OPTIONS]\n\
+  printf("Usage: [OPTIONS] [find-push-pop-get|push-pop]\n\
          Options:\n\
          --nthreads=NTHREADS (default %d)\n\
          --ntrans=NTRANS, how many total transactions to run (they'll be split between threads) (default %d)\n\
@@ -197,11 +240,11 @@ static void help() {
 
 template <typename T>
 void init(T* q) {
-  std::uniform_int_distribution<long> slotdist(0, max_range);
+  std::uniform_int_distribution<long> slotdist(0, max_value - 1);
   Rand transgen(random(), random());
   for (int i = 0; i < prepopulate; i++) {
     TRANSACTION {
-      q->push_back(i);//slotdist(transgen) % max_value);
+      q->push_back(slotdist(transgen));
     } RETRY(false);
   }
 }
@@ -227,7 +270,7 @@ void run_and_report(const char* name) {
   for (int i = 0; i < 16; i++) {
     total_aborts += find_aborts[i];
   }
-  printf("Find aborts: %i, unsuccessful finds: %i\n", total_aborts, unsuccessful_finds);
+  printf("Retries: %i, unsuccessful finds: %i\n", total_aborts, unsuccessful_finds);
   printf("%s: ", name);
   print_time(tv1, tv2);
 
@@ -270,6 +313,9 @@ int main(int argc, char *argv[]) {
       case opt_seed:
         global_seed = clp->val.i;
         break;
+    case Clp_NotOption:
+        test_name = clp->vstr;
+        break;
       default:
         help();
     }
@@ -283,6 +329,7 @@ int main(int argc, char *argv[]) {
   for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
     initial_seeds[i] = random();
 
+    printf("%s, %d threads, %d trans, %d opspertrans\n", test_name, nthreads, ntrans, opspertrans);
     run_and_report<pred_data_structure>("Predicates");
     run_and_report<nopred_data_structure>("No predicates");
 	return 0;
