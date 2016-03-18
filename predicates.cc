@@ -206,9 +206,43 @@ void init(T* q) {
   }
 }
 
+template <typename T>
+void run_and_report(const char* name) {
+  struct timeval tv1,tv2;
+
+  for (unsigned i = 0; i < arraysize(find_aborts); ++i)
+    find_aborts[i] = 0;
+
+  unsuccessful_finds = 0;
+  T q;
+  q.nontrans_reserve(4096);
+  init(&q);
+
+  gettimeofday(&tv1, NULL);
+
+  startAndWait(nthreads, &q);
+
+  gettimeofday(&tv2, NULL);
+  int total_aborts = 0;
+  for (int i = 0; i < 16; i++) {
+    total_aborts += find_aborts[i];
+  }
+  printf("Find aborts: %i, unsuccessful finds: %i\n", total_aborts, unsuccessful_finds);
+  printf("%s: ", name);
+  print_time(tv1, tv2);
+
+#if STO_PROFILE_COUNTERS
+  Transaction::print_stats();
+  {
+    txp_counters tc = Transaction::txp_counters_combined();
+    printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+  }
+  Transaction::clear_stats();
+#endif
+}
+
 int main(int argc, char *argv[]) {
   lock = 0;
-  struct timeval tv1,tv2;
   
   Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
   
@@ -249,66 +283,7 @@ int main(int argc, char *argv[]) {
   for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
     initial_seeds[i] = random();
 
-  for (int i = 0; i < 16; i++) {
-    find_aborts[i] = 0;
-  }
-
-  unsuccessful_finds = 0;
-  pred_data_structure q;
-  q.nontrans_reserve(4096);
-  init(&q);
-  
-  gettimeofday(&tv1, NULL);
-  
-  startAndWait(nthreads, &q);
-  
-  gettimeofday(&tv2, NULL);
-  int total_aborts = 0;
-  for (int i = 0; i < 16; i++) {
-    total_aborts += find_aborts[i];
-  }
-  printf("Find aborts: %i, unsuccessful finds: %i\n", total_aborts, unsuccessful_finds);
-  printf("Predicates: ");
-  print_time(tv1, tv2);
-  
-#if STO_PROFILE_COUNTERS
-  Transaction::print_stats();
-  {
-    txp_counters tc = Transaction::txp_counters_combined();
-    printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
-  }
-  Transaction::clear_stats();
-#endif
-
-  for (unsigned i = 0; i < arraysize(find_aborts); ++i)
-    find_aborts[i] = 0;
-
-  unsuccessful_finds = 0;
-  nopred_data_structure q2;
-  q2.nontrans_reserve(4096);
-  
-  init(&q2);
-  gettimeofday(&tv1, NULL);
-  
-  startAndWait(nthreads, &q2);
-  
-  gettimeofday(&tv2, NULL);
-  total_aborts = 0;
-  for (int i = 0; i < 16; i++) {
-    total_aborts += find_aborts[i];
-  }
-  printf("Find aborts: %i, unsuccessful finds: %i\n", total_aborts, unsuccessful_finds);
-  printf("No predicates: ");
-  print_time(tv1, tv2);
-  
-#if STO_PROFILE_COUNTERS
-  Transaction::print_stats();
-  {
-    txp_counters tc = Transaction::txp_counters_combined();
-    printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
-  }
-  Transaction::clear_stats();
-#endif
-  
+    run_and_report<pred_data_structure>("Predicates");
+    run_and_report<nopred_data_structure>("No predicates");
 	return 0;
 }
