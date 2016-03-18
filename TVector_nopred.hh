@@ -211,8 +211,9 @@ public:
         w << "{TVector_nopred<" << typeid(T).name() << "> " << (void*) this;
         key_type key = item.key<key_type>();
         if (key == size_key) {
-            w << ".size " << item.predicate_value<pred_type>()
-              << '@' << item.xwrite_value<pred_type>().first;
+            w << ".size @" << item.xwrite_value<pred_type>().first;
+            if (item.has_read())
+                w << " R" << item.read_value<version_type>();
             if (item.has_write())
                 w << " =" << item.xwrite_value<pred_type>().second;
         } else {
