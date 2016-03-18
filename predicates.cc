@@ -21,7 +21,8 @@ double search_percent = 0.6;
 double pushback_percent = 0.2; // pop_percent will be the same to keep the size of array roughly the same
 bool dumb_iterator = false;
 
-int find_aborts[16];
+int find_aborts[32];
+uint32_t initial_seeds[64];
 int unsuccessful_finds = 0;
 TransactionTid::type lock;
 
@@ -79,10 +80,7 @@ void run(T* q, int me) {
   TThread::set_id(me);
   
   std::uniform_int_distribution<long> slotdist(0, max_range);
-  uint32_t seed = (uint32_t)me*ntrans*7 + (uint32_t)global_seed*MAX_THREADS*ntrans*11;
-  auto seedlow = seed & 0xffff;
-  auto seedhigh = seed >> 16;
-  Rand transgen(seed, seedlow << 16 | seedhigh);
+  Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
 
   int N = ntrans/nthreads;
   int OPS = opspertrans;
@@ -201,10 +199,7 @@ static void help() {
 template <typename T>
 void init(T* q) {
   std::uniform_int_distribution<long> slotdist(0, max_range);
-  uint32_t seed = global_seed * 11;
-  auto seedlow = seed & 0xffff;
-  auto seedhigh = seed >> 16;
-  Rand transgen(seed, seedlow << 16 | seedhigh);
+  Rand transgen(random(), random());
   for (int i = 0; i < prepopulate; i++) {
     TRANSACTION {
       q->push_back(i);//slotdist(transgen) % max_value);
@@ -280,8 +275,11 @@ int main(int argc, char *argv[]) {
   Transaction::clear_stats();
 #endif
   dumb_iterator = true;
-  for (int i = 0; i < 16; i++) {
+  srandomdev();
+  for (int i = 0; i < 32; i++) {
     find_aborts[i] = 0;
+    initial_seeds[2*i] = random();
+    initial_seeds[2*i + 1] = random();
   }
   unsuccessful_finds = 0;
   nopred_data_structure q2;
