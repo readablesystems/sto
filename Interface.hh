@@ -245,6 +245,11 @@ public:
         return w;
     }
 
+    template <typename Exception>
+    static void opaque_throw(const Exception& exception) {
+        throw exception;
+    }
+
 private:
     type v_;
 };
@@ -324,6 +329,9 @@ public:
         TransactionTid::print(v.value(), w);
         return w;
     }
+
+    template <typename Exception>
+    static inline void opaque_throw(const Exception&);
 
 private:
     type v_;

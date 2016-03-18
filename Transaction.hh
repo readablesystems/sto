@@ -362,24 +362,24 @@ public:
     }
 
     template <typename T>
-    OptionalTransProxy check_item(const TObject* obj, T key) {
+    OptionalTransProxy check_item(const TObject* obj, T key) const {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
         TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
-        return OptionalTransProxy(*this, ti ? ti - transSet_.begin() : unsigned(-1));
+        return OptionalTransProxy(const_cast<Transaction&>(*this), ti ? ti - transSet_.begin() : unsigned(-1));
     }
 
 private:
     // tries to find an existing item with this key, returns NULL if not found
-    TransItem* find_item(TObject* obj, void* xkey) {
+    TransItem* find_item(TObject* obj, void* xkey) const {
 #if TRANSACTION_HASHTABLE
         TXP_INCREMENT(txp_hash_find);
         unsigned hi = hash(obj, xkey);
         for (int steps = 0; steps < TRANSACTION_HASHTABLE; ++steps) {
             if (hashtable_[hi] <= hash_base_)
                 return nullptr;
-            TransItem* ti = &transSet_[hashtable_[hi] - hash_base_ - 1];
+            const TransItem* ti = &transSet_[hashtable_[hi] - hash_base_ - 1];
             if (ti->owner() == obj && ti->key_ == xkey)
-                return ti;
+                return const_cast<TransItem*>(ti);
             if (!steps) {
                 TXP_INCREMENT(txp_hash_collision);
 # if STO_DEBUG_HASH_COLLISIONS
@@ -398,7 +398,7 @@ private:
         for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
             TXP_INCREMENT(txp_total_searched);
             if (it->owner() == obj && it->key_ == xkey)
-                return &*it;
+                return const_cast<TransItem*>(&*it);
         }
         return nullptr;
     }
@@ -564,7 +564,7 @@ private:
     small_vector<TransItem, INIT_SET_SIZE> transSet_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
-    TransactionBuffer buf_;
+    mutable TransactionBuffer buf_;
     mutable uint32_t lrng_state_;
     mutable TransItem* abort_item_;
     mutable const char* abort_reason_;
@@ -860,4 +860,9 @@ inline TransProxy& TransProxy::set_stash(T sdata) {
     } else
         item().rdata_ = Packer<T>::repack(t()->buf_, item().rdata_, std::move(sdata));
     return *this;
+}
+
+template <typename Exception>
+inline void TNonopaqueVersion::opaque_throw(const Exception&) {
+    Sto::abort();
 }
