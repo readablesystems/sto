@@ -9,12 +9,13 @@
 #include "PriorityQueue.hh"
 #include "PriorityQueue1.hh"
 
-#define GLOBAL_SEED 11
+#define GLOBAL_SEED 0
 #define MAX_VALUE  100000
 #define NTRANS 1000
 #define N_THREADS 4
 
 typedef PriorityQueue<int> data_structure;
+unsigned initial_seeds[128];
 
 struct Rand {
     typedef uint32_t result_type;
@@ -59,36 +60,31 @@ Version lock;
 
 void run_conc(data_structure* q, int me) {
     std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
-    
+    Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
+
     for (int i = 0; i < NTRANS; ++i) {
         // so that retries of this transaction do the same thing
-        auto transseed = i;
-            uint32_t seed = transseed*3 + (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_THREADS*NTRANS*11;
-            auto seedlow = seed & 0xffff;
-            auto seedhigh = seed >> 16;
-            Rand transgen(seed, seedlow << 16 | seedhigh);
-            
-            int val1 = slotdist(transgen);
-            int val2 = slotdist(transgen);
-            int val3 = slotdist(transgen);
-            q->push_nontrans(val1);
-            q->push_nontrans(val2);
-            q->push_nontrans(val3);
-            
-            //q->pop();
-            //q->pop();
-        
+        int val1 = slotdist(transgen);
+        int val2 = slotdist(transgen);
+        int val3 = slotdist(transgen);
+        q->push_nontrans(val1);
+        q->push_nontrans(val2);
+        q->push_nontrans(val3);
+        //q->pop();
+        //q->pop();
     }
-
 }
+
 template <typename T>
 void run(T* q, int me) {
     TThread::set_id(me);
-    
+
     std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
+    Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
+
     for (int i = 0; i < NTRANS; ++i) {
         // so that retries of this transaction do the same thing
-        auto transseed = i;
+        Rand transgen_snap = transgen;
         txn_record *tr = new txn_record;
         while (1) {
         Sto::start_transaction();
@@ -160,6 +156,7 @@ void run(T* q, int me) {
         } catch (Transaction::Abort e) {
             //TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
         }
+        transgen = transgen_snap;
         }
     }
 }
@@ -568,7 +565,15 @@ int main() {
             q.pop();
         } RETRY(false);
     }*/
-    
+
+#if GLOBAL_SEED
+    srandom(GLOBAL_SEED);
+#else
+    srandomdev();
+#endif
+    for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
+        initial_seeds[i] = random();
+
     struct timeval tv1,tv2;
     gettimeofday(&tv1, NULL);
     

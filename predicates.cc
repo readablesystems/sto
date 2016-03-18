@@ -11,7 +11,7 @@
 #include <sys/time.h>
 int max_range = 10000;
 int max_value = 1000;
-int global_seed = 11;
+int global_seed = 0;
 int nthreads = 2;
 int ntrans = 1000000;
 int opspertrans = 1;
@@ -275,12 +275,17 @@ int main(int argc, char *argv[]) {
   Transaction::clear_stats();
 #endif
   dumb_iterator = true;
-  srandomdev();
-  for (int i = 0; i < 32; i++) {
+
+  for (unsigned i = 0; i < arraysize(find_aborts); ++i)
     find_aborts[i] = 0;
-    initial_seeds[2*i] = random();
-    initial_seeds[2*i + 1] = random();
-  }
+
+  if (global_seed)
+    srandom(global_seed);
+  else
+    srandomdev();
+  for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
+    initial_seeds[i] = random();
+
   unsuccessful_finds = 0;
   nopred_data_structure q2;
   q2.nontrans_reserve(4096);

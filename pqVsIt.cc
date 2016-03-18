@@ -11,13 +11,14 @@
 #include "clp.h"
 int waiting = 5000;
 int max_value = 100000;
-int global_seed = 11;
+int global_seed = 0;
 int nthreads = 4;
 int opspertrans = 1;
 int prepopulate = 1000;
 double push_percent = 0.75;
 int blocks = 1000;
 int runtime = 10;
+unsigned initial_seeds[128];
 
 volatile bool running = true;
 
@@ -70,6 +71,7 @@ uint64_t run(T* q, int me) {
 #else
     std::uniform_int_distribution<long> slotdist(0, max_value);
 #endif
+    Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
     uint64_t num_trans = 0;
     int N = ntrans/nthreads;
     int OPS = opspertrans;
@@ -90,39 +92,34 @@ uint64_t run(T* q, int me) {
     for (int i = 0; i < N; ++i) {
 #endif
         // so that retries of this transaction do the same thing
-        auto transseed = i;
+        Rand transgen_snap = transgen;
         while (1) {
-        Sto::start_transaction();
-        try {
-            uint32_t seed = transseed*3 + (uint32_t)me*ntrans*7 + (uint32_t)global_seed*MAX_THREADS*ntrans*11;
-            auto seedlow = seed & 0xffff;
-            auto seedhigh = seed >> 16;
-            Rand transgen(seed, seedlow << 16 | seedhigh);
-            
-            for (int j = 0; j < OPS; ++j) {
-                int op = slotdist(transgen) % 100;
-                if (only_push || (!only_pop && op < push_percent * 100)) {
-	            int val = slotdist(transgen);
+            Sto::start_transaction();
+            try {
+                for (int j = 0; j < OPS; ++j) {
+                    int op = slotdist(transgen) % 100;
+                    if (only_push || (!only_pop && op < push_percent * 100)) {
+                            int val = slotdist(transgen);
 #if SMALLER_READS
-                    val = val + (1 - (i/N))*max_value;
+                        val = val + (1 - (i/N))*max_value;
 #endif
-	            q->push(val);
-                } else {
-                    for (int r = 0; r < ratio; r++) {
-                        q->pop();
+                            q->push(val);
+                    } else {
+                        for (int r = 0; r < ratio; r++) {
+                            q->pop();
+                        }
                     }
                 }
-
-            }
  
-        if (Sto::try_commit()) {
+                if (Sto::try_commit()) {
 #if FIX_RUNTIME
-	    num_trans++;
+                    num_trans++;
 #endif
-            break;
-        }
+                    break;
+                }
         
-        } catch (Transaction::Abort e) { }
+            } catch (Transaction::Abort e) { }
+            transgen = transgen_snap;
         }
         /* Waiting time */
         for (int k = 0; k < waiting; k++) {__asm__ __volatile__("");}
@@ -201,10 +198,7 @@ static void help() {
 template <typename T>
 void init(T* q) {
     std::uniform_int_distribution<long> slotdist(0, max_value);
-    uint32_t seed = global_seed * 11;
-    auto seedlow = seed & 0xffff;
-    auto seedhigh = seed >> 16;
-    Rand transgen(seed, seedlow << 16 | seedhigh);
+    Rand transgen(random(), random());
     for (int i = 0; i < prepopulate; i++) {
         TRANSACTION {
             int val = slotdist(transgen);
@@ -251,6 +245,13 @@ int main(int argc, char *argv[]) {
         }
     }
     Clp_DeleteParser(clp);
+
+    if (global_seed)
+        srandom(global_seed);
+    else
+        srandomdev();
+    for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
+        initial_seeds[i] = random();
 
     // Run a parallel test with lots of transactions doing pushes and pops
     data_structure q;
@@ -303,5 +304,5 @@ int main(int argc, char *argv[]) {
     Transaction::clear_stats();
 #endif
     
-	return 0;
+        return 0;
 }
