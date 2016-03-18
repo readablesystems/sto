@@ -292,7 +292,7 @@ private:
         auto item = Sto::item(this, size_key);
         if (!item.has_predicate()) {
             item.set_predicate(pred_type::unconstrained());
-            size_type sz = size_.snapshot(item, size_vers_);
+            size_type sz = size_.wait_snapshot(item, size_vers_, false);
             item.template xwrite_value<pred_type>() = pred_type{sz, sz};
         }
         return item;
