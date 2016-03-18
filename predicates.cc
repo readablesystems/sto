@@ -82,6 +82,7 @@ void run(T* q, int me) {
   int N = ntrans/nthreads;
   int OPS = opspertrans;
   bool find_op = false;
+  unsigned naborts = 0;
   for (int i = 0; i < N; ++i) {
     // so that retries of this transaction do the same thing
     auto transseed = i;
@@ -129,12 +130,12 @@ void run(T* q, int me) {
         }
         
       } catch (Transaction::Abort e) {
-        if (find_op) {
-          find_aborts[me]++;
-        }
       }
+      if (find_op)
+        ++naborts;
     }
   }
+  find_aborts[me] = naborts;
 }
 
 template <typename T>
