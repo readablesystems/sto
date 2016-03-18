@@ -183,7 +183,8 @@ public:
         auto key = item.template key<key_type>();
         if (key == size_key)
             return txn.try_lock(item, size_vers_);
-        else if (key > 0)
+        else if (key > 0
+                 && (item.has_flag(indexed_bit) || !size_vers_.is_locked_here()))
             return txn.try_lock(item, data_[key - 1].vers);
         else {
             assert(size_vers_.is_locked_here());
@@ -216,7 +217,7 @@ public:
                 idx = original_size_ - (size_info(sitem).first - idx);
             }
             if (idx >= size_.access()) {
-                item.clear_needs_unlock();
+                item.clear_needs_unlock_if_set();
                 return;
             }
         }
