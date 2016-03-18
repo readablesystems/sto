@@ -12,7 +12,11 @@ LDFLAGS = @LDFLAGS@
 MASSTREEDIR = @MASSTREEDIR@
 
 # if CXXFLAGS changes, rebuild
-CXXFLAGS :=
+CXXFLAGS =
+
+ifeq ($(NDEBUG),1)
+CXXFLAGS += -DNDEBUG
+endif
 
 # OPTFLAGS can change without rebuild
 OPTFLAGS := -W -Wall
