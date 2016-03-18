@@ -239,10 +239,11 @@ public:
         w << "{TVector<" << typeid(T).name() << "> " << (void*) this;
         key_type key = item.key<key_type>();
         if (key == size_key) {
-            w << ".size";
-            if (item.has_predicate())
-                w << ' ' << item.predicate_value<pred_type>()
-                  << '@' << item.xwrite_value<pred_type>().first;
+            w << ".size @" << item.xwrite_value<pred_type>().second;
+            if (item.has_read())
+                w << " R" << item.read_value<version_type>();
+            else if (item.has_predicate())
+                w << ' ' << item.predicate_value<pred_type>();
             if (item.has_write())
                 w << " =" << item.xwrite_value<pred_type>().second;
         } else {
