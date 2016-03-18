@@ -324,6 +324,10 @@ public:
     }
 
 public:
+    int threadid() const {
+        return threadid_;
+    }
+
     // adds item for a key that is known to be new (must NOT exist in the set)
     template <typename T>
     TransProxy new_item(const TObject* obj, T key) {
@@ -873,4 +877,12 @@ inline TransProxy& TransProxy::set_stash(T sdata) {
 template <typename Exception>
 inline void TNonopaqueVersion::opaque_throw(const Exception&) {
     Sto::abort();
+}
+
+inline bool TVersion::is_locked_here(const Transaction& txn) const {
+    return is_locked_here(txn.threadid());
+}
+
+inline bool TNonopaqueVersion::is_locked_here(const Transaction& txn) const {
+    return is_locked_here(txn.threadid());
 }

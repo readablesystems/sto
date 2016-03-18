@@ -240,6 +240,7 @@ public:
     bool is_locked_here(int here) const {
         return TransactionTid::is_locked_here(v_, here);
     }
+    inline bool is_locked_here(const Transaction& txn) const;
     bool is_locked_elsewhere() const {
         return TransactionTid::is_locked_elsewhere(v_);
     }
@@ -359,6 +360,7 @@ public:
     bool is_locked_here(int here) const {
         return TransactionTid::is_locked_here(v_, here);
     }
+    inline bool is_locked_here(const Transaction& txn) const;
     bool is_locked_elsewhere() const {
         return TransactionTid::is_locked_elsewhere(v_);
     }

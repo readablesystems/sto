@@ -184,10 +184,10 @@ public:
         if (key == size_key)
             return txn.try_lock(item, size_vers_);
         else if (key > 0
-                 && (item.has_flag(indexed_bit) || !size_vers_.is_locked_here()))
+                 && (item.has_flag(indexed_bit) || !size_vers_.is_locked_here(txn)))
             return txn.try_lock(item, data_[key - 1].vers);
         else {
-            assert(size_vers_.is_locked_here());
+            assert(size_vers_.is_locked_here(txn));
             return true;
         }
     }
@@ -208,7 +208,7 @@ public:
             return;
         }
         size_type idx = key - 1;
-        if (size_vers_.is_locked_here()) {
+        if (size_vers_.is_locked_here(txn)) {
             // maybe we have popped past this point
             if (key < 0)
                 idx = original_size_ - key - 1;
