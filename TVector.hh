@@ -267,9 +267,20 @@ public:
         for (size_type i = 0; i < size_.access(); ++i) {
             if (i)
                 w << ", ";
+            if (i >= 10)
+                w << '[' << i << ']';
             w << data_[i].v.access() << '@' << data_[i].vers;
         }
         w << "]}";
+    }
+    bool check_not_locked_here(int here) const {
+        if (size_vers_.is_locked_here(here))
+            return false;
+        size_type max_size = max_size_;
+        for (size_type i = 0; i != max_size; ++i)
+            if (data_[i].vers.is_locked_here(here))
+                return false;
+        return true;
     }
     friend std::ostream& operator<<(std::ostream& w, const TVector<T, W>& v) {
         v.print(w);
