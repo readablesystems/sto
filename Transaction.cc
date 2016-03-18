@@ -41,7 +41,7 @@ void* Transaction::epoch_advancer(void*) {
 void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
     // ignore opacity checks during commit; we're in the middle of checking
     // things anyway
-    if (state_ == s_committing)
+    if (state_ == s_committing || state_ == s_committing_locked)
         return;
 
     TXP_INCREMENT(txp_hco);
@@ -133,6 +133,17 @@ bool Transaction::try_commit() {
     writeset[0] = transSet_.size();
 
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
+        if (it->has_write()) {
+            writeset[nwriteset++] = it - transSet_.begin();
+#if !STO_SORT_WRITESET
+            state_ = s_committing_locked;
+            if (!it->owner()->lock(*it, *this)) {
+                mark_abort_because(it, "commit lock");
+                goto abort;
+            }
+            it->__or_flags(TransItem::lock_bit);
+#endif
+        }
         if (it->has_predicate()) {
             TXP_INCREMENT(txp_total_check_predicate);
             if (!it->owner()->check_predicate(*it, *this, true)) {
@@ -140,8 +151,6 @@ bool Transaction::try_commit() {
                 goto abort;
             }
         }
-        if (it->has_write())
-            writeset[nwriteset++] = it - transSet_.begin();
         if (it->has_read())
             TXP_INCREMENT(txp_total_r);
     }
@@ -153,7 +162,6 @@ bool Transaction::try_commit() {
     std::sort(writeset, writeset + nwriteset, [&] (int i, int j) {
         return transSet_[i] < transSet_[j];
     });
-#endif
 
     if (nwriteset) {
         state_ = s_committing_locked;
@@ -166,11 +174,14 @@ bool Transaction::try_commit() {
             }
             me->__or_flags(TransItem::lock_bit);
             ++it;
+# if 0
             if (may_duplicate_items_)
                 for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
                     /* do nothing */;
+# endif
         }
     }
+#endif
 
 
 #if CONSISTENCY_CHECK

@@ -482,7 +482,7 @@ public:
     }
 
     void check_opacity(TransItem& item, TransactionTid::type v) {
-        assert(state_ <= s_committing);
+        assert(state_ <= s_committing_locked);
         if (!start_tid_)
             start_tid_ = _TID;
         if (!TransactionTid::try_check_opacity(start_tid_, v))
@@ -490,7 +490,7 @@ public:
     }
 
     void check_opacity(TransactionTid::type v) {
-        assert(state_ <= s_committing);
+        assert(state_ <= s_committing_locked);
         if (!start_tid_)
             start_tid_ = _TID;
         if (!TransactionTid::try_check_opacity(start_tid_, v))
