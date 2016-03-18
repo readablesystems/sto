@@ -204,7 +204,7 @@ public:
             ++max_size_;
         } else
             data_[idx].v.write(std::move(item.write_value<T>()));
-        txn.set_version_unlock(data_[idx].vers, item);
+        txn.assign_version_unlock(data_[idx].vers, item);
     }
     void unlock(TransItem& item) {
         auto key = item.template key<key_type>();

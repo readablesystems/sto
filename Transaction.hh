@@ -515,15 +515,24 @@ public:
         vers.set_version_unlock(commit_tid());
         item.clear_needs_unlock();
     }
+    void assign_version_unlock(TVersion& vers, TransItem& item) const {
+        vers = commit_tid();
+        item.clear_needs_unlock();
+    }
     void set_version(TNonopaqueVersion& vers) const {
         assert(state_ == s_committing_locked || state_ == s_committing);
-        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_nonopaque_version(vers.value());
+        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_unlocked_nonopaque_version(vers.value());
         vers.set_version(v);
     }
     void set_version_unlock(TNonopaqueVersion& vers, TransItem& item) const {
         assert(state_ == s_committing_locked || state_ == s_committing);
-        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_nonopaque_version(vers.value());
+        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_unlocked_nonopaque_version(vers.value());
         vers.set_version_unlock(v);
+        item.clear_needs_unlock();
+    }
+    void assign_version_unlock(TNonopaqueVersion& vers, TransItem& item) const {
+        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_unlocked_nonopaque_version(vers.value());
+        vers = v;
         item.clear_needs_unlock();
     }
 
