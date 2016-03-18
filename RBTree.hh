@@ -970,11 +970,11 @@ void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction& t) {
     // we don't need to check for nodeversion updates because those are done during execution
     wrapper_type* e = item.key<wrapper_type*>();
     // we did something to an empty tree, so update treeversion
-    if ((void*)e == (wrapper_type*)tree_key_) {
+    if (e == (wrapper_type*)tree_key_) {
         assert(wrapper_tree_.treeversion_.is_locked_here());
         t.set_version_unlock(wrapper_tree_.treeversion_, item);
     // we changed the size of the tree, so update size
-    } else if ((void*)e == (wrapper_type*)size_key_) {
+    } else if (e == (wrapper_type*)size_key_) {
         always_assert(GlobalSize);
         assert(sizeversion_.is_locked_here());
         size_ += item.template write_value<ssize_t>();
@@ -998,7 +998,7 @@ void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction& t) {
             wrapper_tree_.erase(*e);
             unlock_write(&treelock_);
 
-            t.set_version_unlock(e->version(), item);
+            e->version().set_version_unlock(t.commit_tid());
             e->install_nv(item, t);
             Transaction::rcu_free(e);
         } else {
