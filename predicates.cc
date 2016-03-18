@@ -6,6 +6,7 @@
 #include <map>
 #include "Transaction.hh"
 #include "TVector.hh"
+#include "TVector_nopred.hh"
 #include "clp.h"
 #include <sys/time.h>
 int max_range = 10000;
@@ -24,7 +25,8 @@ int find_aborts[16];
 int unsuccessful_finds = 0;
 TransactionTid::type lock;
 
-typedef TVector<int> data_structure;
+typedef TVector<int> pred_data_structure;
+typedef TVector_nopred<int> nopred_data_structure;
 
 struct Rand {
   typedef uint32_t result_type;
@@ -61,18 +63,11 @@ InputIt findIt(InputIt first, InputIt last, const T& value)
       return first;
     }
   }
-  return first;
   return last;
 }
 
 template <typename T>
 int findK(T* q, int val) {
-  if (dumb_iterator) {
-    typename T::dumb_iterator fit = q->dbegin();
-    typename T::dumb_iterator eit = q->dend();
-    typename T::dumb_iterator it = findIt(fit, eit, val);
-    return it-fit;
-  }
   typename T::const_iterator fit = q->cbegin();
   typename T::const_iterator eit = q->cend();
   typename T::const_iterator it = findIt(fit, eit, val);
@@ -255,7 +250,7 @@ int main(int argc, char *argv[]) {
   }
 
   unsuccessful_finds = 0;
-  data_structure q;
+  pred_data_structure q;
   q.nontrans_reserve(4096);
   init(&q);
   
@@ -269,7 +264,7 @@ int main(int argc, char *argv[]) {
     total_aborts += find_aborts[i];
   }
   printf("Find aborts: %i, unsuccessful finds: %i\n", total_aborts, unsuccessful_finds);
-  printf("Smart iterator: ");
+  printf("Predicates: ");
   print_time(tv1, tv2);
   
 #if STO_PROFILE_COUNTERS
@@ -285,7 +280,7 @@ int main(int argc, char *argv[]) {
     find_aborts[i] = 0;
   }
   unsuccessful_finds = 0;
-  data_structure q2;
+  nopred_data_structure q2;
   q2.nontrans_reserve(4096);
   
   init(&q2);
@@ -299,7 +294,7 @@ int main(int argc, char *argv[]) {
     total_aborts += find_aborts[i];
   }
   printf("Find aborts: %i, unsuccessful finds: %i\n", total_aborts, unsuccessful_finds);
-  printf("Normal iterator: ");
+  printf("No predicates: ");
   print_time(tv1, tv2);
   
 #if STO_PROFILE_COUNTERS

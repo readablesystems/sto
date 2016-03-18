@@ -25,7 +25,7 @@ ifneq ($(NDEBUG),1)
 CXXFLAGS += -g
 endif
 
-PROGRAMS = concurrent singleelems genericTest list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single ex-counter $(UNIT_PROGRAMS)
+PROGRAMS = concurrent singleelems genericTest list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter $(UNIT_PROGRAMS)
 UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric unit-rcu unit-tvector unit-tvector-nopred
 
 all: $(PROGRAMS)
@@ -113,6 +113,9 @@ pqVsIt: pqVsIt.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 iterators: iterators.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+predicates: predicates.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 hashtable_nostm: hashtable_nostm.o $(STO_DEPS)

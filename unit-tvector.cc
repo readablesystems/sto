@@ -97,7 +97,7 @@ void testPushBackNRead() {
 
 void testPushBackNRead1() {
     TVector<int> f;
-
+    {
     {
         TransactionGuard t;
         f.push_back(10);
@@ -111,6 +111,18 @@ void testPushBackNRead1() {
     f.push_back(20);
     assert(t3.try_commit());
     assert(!t2.try_commit());
+    }
+  
+  {
+    TestTransaction t1(1);
+    assert(f.transGet(0) == 10);
+    
+    TestTransaction t2(2);
+    f.pop_back();
+    assert(t2.try_commit());
+    assert(t1.try_commit());
+  }
+
 
     printf("PASS: %s\n", __FUNCTION__);
 }
