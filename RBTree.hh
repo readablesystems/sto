@@ -84,14 +84,15 @@ public:
         vers_.lock();
     }
     void unlock() {
-        vers_.unlock();
+        if (vers_.is_locked_here())
+            vers_.unlock();
     }
     bool check(const TransItem& item) {
         return item.check_version(vers_);
     }
     void install(TransItem& item, const Transaction& txn) {
         val_.write(item.template write_value<T>());
-        txn.set_version_unlock(vers_, item);
+        txn.set_version(vers_);
     }
 
     // transactional access to node version
@@ -105,9 +106,9 @@ public:
     bool check_nv(const TransItem& item) {
         return item.check_version(nodevers_);
     }
-    void install_nv(TransItem& item, const Transaction& txn) {
-        if (nodevers_.is_locked_here())
-            txn.set_version_unlock(nodevers_, item);
+    void install_nv(const Transaction& txn) {
+        assert(nodevers_.is_locked_here());
+        txn.set_version(nodevers_);
     }
 
     // key access and comparisons
@@ -908,8 +909,11 @@ void RBTree<K, T, GlobalSize>::unlock(TransItem& item) {
     } else {
         uintptr_t x = item.key<uintptr_t>();
         wrapper_type* n = reinterpret_cast<wrapper_type*>(x & ~uintptr_t(1));
-        if (!(x & 1))
+        if (!(x & 1)) {
             n->unlock();
+            if (!has_delete(item))
+                return;
+        }
         n->unlock_nv();
     }
 }
@@ -982,7 +986,7 @@ void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction& t) {
         assert((ssize_t)size_ >= 0);
     } else if (uintptr_t(e) & uintptr_t(1)) {
         auto n = reinterpret_cast<wrapper_type*>(uintptr_t(e) & ~uintptr_t(1));
-        n->install_nv(item, t);
+        n->install_nv(t);
     } else {
         assert(e->version().is_locked_here());
         assert(((uintptr_t)e & 0x1) == 0);
@@ -998,8 +1002,8 @@ void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction& t) {
             wrapper_tree_.erase(*e);
             unlock_write(&treelock_);
 
-            e->version().set_version_unlock(t.commit_tid());
-            e->install_nv(item, t);
+            e->version().set_version(t.commit_tid());
+            e->install_nv(t);
             Transaction::rcu_free(e);
         } else {
             // inserts/updates should be handled the same way
