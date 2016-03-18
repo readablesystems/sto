@@ -4,6 +4,7 @@
 #include <vector>
 #include "Transaction.hh"
 #include "TVector.hh"
+#define GUARDED if (TransactionGuard tguard{})
 
 void testSimpleInt() {
     TVector<int> f;
@@ -852,6 +853,34 @@ void testResize() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testFrontBack() {
+    TVector<int> v;
+
+    GUARDED {
+        for (int i = 0; i < 10; ++i)
+            v.push_back(i);
+    }
+
+    GUARDED {
+        assert(v.size() == 10);
+    }
+
+    GUARDED {
+        assert(v.front() == 0);
+        assert(v.back() == 9);
+
+        v.pop_back();
+
+        assert(v.back() == 8);
+
+        v.push_back(30);
+
+        assert(v.back() == 30);
+    }
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
 void testOpacity() {
     TVector<int> f;
 
@@ -1096,6 +1125,7 @@ int main() {
     testSizePredicates();
     testIterPredicates();
     testResize();
+    testFrontBack();
     testOpacity();
     testNoOpacity();
     return 0;

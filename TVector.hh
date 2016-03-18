@@ -77,6 +77,28 @@ public:
     proxy_type operator[](size_type i) {
         return proxy_type(this, i);
     }
+    const_proxy_type front() const {
+        return const_proxy_type(this, 0);
+    }
+    proxy_type front() {
+        return proxy_type(this, 0);
+    }
+    const_proxy_type back() const {
+        auto sitem = size_item();
+        auto& sinfo = size_info(sitem);
+        size_predicate(sitem).observe(sinfo.first);
+        if (!sinfo.second)
+            throw std::out_of_range("TVector::back");
+        return const_proxy_type(this, sinfo.second - 1);
+    }
+    proxy_type back() {
+        auto sitem = size_item();
+        auto& sinfo = size_info(sitem);
+        size_predicate(sitem).observe(sinfo.first);
+        if (!sinfo.second)
+            throw std::out_of_range("TVector::back");
+        return proxy_type(this, sinfo.second - 1);
+    }
 
     inline iterator begin();
     inline iterator end();
