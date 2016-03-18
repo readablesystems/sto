@@ -137,7 +137,10 @@ bool Transaction::try_commit() {
         if (it->has_write()) {
             writeset[nwriteset++] = it - transSet_.begin();
 #if !STO_SORT_WRITESET
-            state_ = s_committing_locked;
+            if (nwriteset == 1) {
+                first_write_ = writeset[0];
+                state_ = s_committing_locked;
+            }
             if (!it->owner()->lock(*it, *this)) {
                 mark_abort_because(it, "commit lock");
                 goto abort;
