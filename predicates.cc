@@ -79,20 +79,22 @@ void run(T* q, int me) {
   TThread::set_id(me);
   
   std::uniform_int_distribution<long> slotdist(0, max_range);
+  uint32_t seed = (uint32_t)me*ntrans*7 + (uint32_t)global_seed*MAX_THREADS*ntrans*11;
+  auto seedlow = seed & 0xffff;
+  auto seedhigh = seed >> 16;
+  Rand transgen(seed, seedlow << 16 | seedhigh);
+
   int N = ntrans/nthreads;
   int OPS = opspertrans;
   bool find_op = false;
   unsigned naborts = 0;
+
   for (int i = 0; i < N; ++i) {
     // so that retries of this transaction do the same thing
-    auto transseed = i;
+    Rand snap_transgen = transgen;
     while (1) {
       Sto::start_transaction();
       try {
-        uint32_t seed = transseed*3 + (uint32_t)me*ntrans*7 + (uint32_t)global_seed*MAX_THREADS*ntrans*11;
-        auto seedlow = seed & 0xffff;
-        auto seedhigh = seed >> 16;
-        Rand transgen(seed, seedlow << 16 | seedhigh);
         for (int j = 0; j < OPS; ++j) {
           find_op = false;
           int op = slotdist(transgen) % 100;
@@ -133,6 +135,7 @@ void run(T* q, int me) {
       }
       if (find_op)
         ++naborts;
+      transgen = snap_transgen;
     }
   }
   find_aborts[me] = naborts;
