@@ -5,24 +5,31 @@ AR = ar
 CC = @CC@
 CXX = @CXX@
 CPPFLAGS = -I$(MASSTREEDIR)
-CXXFLAGS = -W -Wall
 DEPSDIR := .deps
 DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
 LIBS = @LIBS@ $(MASSTREEDIR)/libjson.a -lpthread -lm
 LDFLAGS = @LDFLAGS@
 MASSTREEDIR = @MASSTREEDIR@
 
-ifeq ($(PROFILE),1)
-CXXFLAGS += -g -pg -fno-inline
-endif
+# if CXXFLAGS changes, rebuild
+CXXFLAGS :=
 
-ifneq ($(OPT),0)
-CXXFLAGS += -O3
+# OPTFLAGS can change without rebuild
+OPTFLAGS := -W -Wall
+
+ifndef OPT
+OPTFLAGS += -O3
+else
+OPTFLAGS += -O$(OPT)
 endif
 
 # debugging on by default
 ifneq ($(NDEBUG),1)
-CXXFLAGS += -g
+OPTFLAGS += -g
+endif
+
+ifeq ($(PROFILE),1)
+OPTFLAGS += -g -pg -fno-inline
 endif
 
 PROGRAMS = concurrent singleelems genericTest list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter $(UNIT_PROGRAMS)
@@ -33,10 +40,10 @@ all: $(PROGRAMS)
 unit: $(UNIT_PROGRAMS)
 
 %.o: %.c config.h $(DEPSDIR)/stamp
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
 
 %.o: %.cc config.h $(DEPSDIR)/stamp
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
 
 %.S: %.o
 	objdump -S $< > $@
@@ -53,73 +60,73 @@ STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
 MSTO_DEPS = $(MSTO_OBJS) $(MASSTREEDIR)/libjson.a
 
 concurrent: concurrent.o $(MSTO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
 
 single: single.o $(MSTO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
 
 singleelems: singleelems.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 ex-counter: ex-counter.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-rcu: unit-rcu.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tarray: unit-tarray.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tintpredicate: unit-tintpredicate.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tcounter: unit-tcounter.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tbox: unit-tbox.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tgeneric: unit-tgeneric.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tvector: unit-tvector.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tvector-nopred: unit-tvector-nopred.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 list1: list1.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 vector: vector.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 pqueue: pqueue.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 rbtree: rbtree.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 genericTest: genericTest.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 trans_test: trans_test.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 ht_mt: ht_mt.o $(MSTO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
 
 pqVsIt: pqVsIt.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 iterators: iterators.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 predicates: predicates.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 hashtable_nostm: hashtable_nostm.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;
 
@@ -158,6 +165,10 @@ clean:
 DEPFILES := $(wildcard $(DEPSDIR)/*.d)
 ifneq ($(DEPFILES),)
 include $(DEPFILES)
+endif
+
+ifneq ($(strip $(CXX) $(CXXFLAGS)),$(strip $(DEP_CXX_CONFIG)))
+DEP_CXX_CONFIG := $(shell mkdir -p $(DEPSDIR); echo >$(DEPSDIR)/stamp; echo DEP_CXX_CONFIG:='$(CXX) $(CXXFLAGS)' >$(DEPSDIR)/_cxxconfig.d)
 endif
 
 .PHONY: clean all unit
