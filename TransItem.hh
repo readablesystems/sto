@@ -395,6 +395,7 @@ class OptionalTransProxy {
     unsigned idx_;
     OptionalTransProxy(Transaction& t, unsigned idx)
         : idx_(idx) {
+        (void) t;
         assert(&t == TThread::txn);
     }
     inline Transaction* t() const {

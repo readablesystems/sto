@@ -114,6 +114,7 @@ public:
         v = new_v;
     }
     static void unlock(type& v, int here) {
+        (void) here;
         assert(is_locked_here(v, here));
         type new_v = v & ~(lock_bit | threadid_mask);
         release_fence();
@@ -144,6 +145,7 @@ public:
         v = new_v;
     }
     static void set_version_locked(type& v, type new_v, int here) {
+        (void) here;
         assert(is_locked_here(v, here));
         assert(is_locked_here(new_v, here));
         release_fence();
@@ -157,6 +159,7 @@ public:
         v = new_v;
     }
     static void set_version_unlock(type& v, type new_v, int here) {
+        (void) here;
         assert(is_locked_here(v, here));
         assert(!is_locked(new_v) || is_locked_here(new_v, here));
         new_v &= ~(lock_bit | threadid_mask);
