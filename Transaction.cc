@@ -45,7 +45,7 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
         return;
 
     TXP_INCREMENT(txp_hco);
-    if (t & TransactionTid::lock_bit) {
+    if (TransactionTid::is_locked_elsewhere(t)) {
         TXP_INCREMENT(txp_hco_lock);
         mark_abort_because(item, "locked");
     abort:
