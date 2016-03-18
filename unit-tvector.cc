@@ -420,8 +420,19 @@ void testInsert() {
 
     TRANSACTION {
         assert(f.size() == 11);
-        int x[11] = {0, 1, 2, 3, 4, 25, 5, 6, 7, 8, 9};
+        int x[] = {0, 1, 2, 3, 4, 25, 5, 6, 7, 8, 9};
         for (int i = 0; i < 11; ++i)
+            assert(f[i] == x[i]);
+    } RETRY(false);
+
+    GUARDED {
+        f.insert(f.end(), 30);
+    }
+
+    TRANSACTION {
+        assert(f.size() == 12);
+        int x[] = {0, 1, 2, 3, 4, 25, 5, 6, 7, 8, 9, 30};
+        for (int i = 0; i < 12; ++i)
             assert(f[i] == x[i]);
     } RETRY(false);
 

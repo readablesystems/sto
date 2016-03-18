@@ -8,6 +8,7 @@ class TVector : public TObject {
 public:
     using size_type = int;
     using difference_type = int;
+    typedef typename W<T>::version_type version_type;
 private:
     static constexpr size_type default_capacity = 128;
     using pred_type = TIntRange<size_type>;
@@ -28,7 +29,7 @@ private:
         pred_type& pval = sitem.predicate_value<pred_type>();
         pred_type& wval = sitem.xwrite_value<pred_type>();
         if (idx >= wval.second)
-            Sto::abort();
+            version_type::opaque_throw(std::out_of_range("TVector[]"));
         key_type key = idx >= wval.first ? -key_type(idx - wval.first) - 1 : idx + 1;
         TransProxy item = Sto::item(this, key);
         if (key < 0 || (item.has_write() && !item.has_flag(indexed_bit)))
@@ -47,7 +48,6 @@ public:
     using difference_proxy = TIntRangeDifferenceProxy<size_type>;
     typedef T value_type;
     typedef typename W<T>::read_type get_type;
-    typedef typename W<T>::version_type version_type;
     typedef TConstArrayProxy<TVector<T, W> > const_proxy_type;
     typedef TArrayProxy<TVector<T, W> > proxy_type;
 
@@ -88,7 +88,7 @@ public:
         auto& sinfo = size_info(sitem);
         size_predicate(sitem).observe(sinfo.first);
         if (!sinfo.second)
-            throw std::out_of_range("TVector::back");
+            version_type::opaque_throw(std::out_of_range("TVector::back"));
         return const_proxy_type(this, sinfo.second - 1);
     }
     proxy_type back() {
@@ -96,7 +96,7 @@ public:
         auto& sinfo = size_info(sitem);
         size_predicate(sitem).observe(sinfo.first);
         if (!sinfo.second)
-            throw std::out_of_range("TVector::back");
+            version_type::opaque_throw(std::out_of_range("TVector::back"));
         return proxy_type(this, sinfo.second - 1);
     }
 
@@ -567,7 +567,7 @@ auto TVector<T, W>::erase(iterator pos) -> iterator {
     auto sitem = size_item();
     pred_type& wval = sitem.template xwrite_value<pred_type>();
     if (pos.i_ >= wval.second)
-        Sto::abort();
+        version_type::opaque_throw(std::out_of_range("TVector::erase"));
     size_predicate(sitem).observe(wval.first);
     for (auto idx = pos.i_; idx != wval.second - 1; ++idx)
         transPut(idx, transGet(idx + 1));
@@ -579,8 +579,8 @@ template <typename T, template <typename> typename W>
 auto TVector<T, W>::insert(iterator pos, T value) -> iterator {
     auto sitem = size_item();
     pred_type& wval = sitem.template xwrite_value<pred_type>();
-    if (pos.i_ >= wval.second)
-        Sto::abort();
+    if (pos.i_ > wval.second)
+        version_type::opaque_throw(std::out_of_range("TVector::insert"));
     sitem.add_write(pred_type{wval.first, wval.second + 1});
     size_predicate(sitem).observe(wval.first);
     for (auto idx = wval.second - 1; idx != pos.i_; --idx)
