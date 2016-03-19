@@ -244,7 +244,7 @@ void init(T* q) {
   Rand transgen(random(), random());
   for (int i = 0; i < prepopulate; i++) {
     TRANSACTION {
-      q->push_back(slotdist(transgen));
+        q->push_back(i);
     } RETRY(false);
   }
 }
