@@ -130,6 +130,14 @@ bool Transaction::try_commit() {
     if (state_ >= s_aborted)
         return state_ > s_aborted;
 
+    // TODO: can only do this if opacity was used for the whole transaction.
+    // commit immediately if read-only transaction with opacity
+    if (!any_writes_) {
+      // XXX: probably going to break trans_test since we don't generate a tid.
+      stop(true);
+      return true;
+    }
+
     state_ = s_committing;
 
     int writeset[transSet_.size()];
