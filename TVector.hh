@@ -577,7 +577,7 @@ void TVector<T, W>::nontrans_reserve(size_type size) {
         elem* new_data = reinterpret_cast<elem*>(new char[sizeof(elem) * new_capacity]);
         memcpy(new_data, data_, sizeof(elem) * capacity_);
         for (size_type i = capacity_; i != new_capacity; ++i)
-            data_[i].vers = 0;
+            new_data[i].vers = 0;
         Transaction::rcu_delete_array(reinterpret_cast<char*>(data_));
         data_ = new_data;
         capacity_ = new_capacity;
