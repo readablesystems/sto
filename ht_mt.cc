@@ -6,6 +6,7 @@
 #include "MassTrans.hh"
 #include "Transaction.hh"
 #include "simple_str.hh"
+#include "randgen.hh"
 
 #define DS 0
 #define USE_STRINGS 1
@@ -26,27 +27,6 @@ typedef MassTrans<std::string> ds;
 using namespace std;
 
 std::string value;
-
-struct Rand {
-    typedef uint32_t result_type;
-    
-    result_type u, v;
-    Rand(result_type u, result_type v) : u(u|1), v(v|1) {}
-    
-    inline result_type operator()() {
-        v = 36969*(v & 65535) + (v >> 16);
-        u = 18000*(u & 65535) + (u >> 16);
-        return (v << 16) + u;
-    }
-    
-    static constexpr result_type max() {
-        return (uint32_t)-1;
-    }
-    
-    static constexpr result_type min() {
-        return 0;
-    }
-};
 
 
 void run(ds& h) {

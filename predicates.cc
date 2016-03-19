@@ -9,6 +9,7 @@
 #include "TVector.hh"
 #include "TVector_nopred.hh"
 #include "clp.h"
+#include "randgen.hh"
 #include <sys/time.h>
 int max_range = 10000;
 int max_value = 1000;
@@ -29,26 +30,6 @@ TransactionTid::type lock;
 typedef TVector<int> pred_data_structure;
 typedef TVector_nopred<int> nopred_data_structure;
 
-struct Rand {
-  typedef uint32_t result_type;
-  
-  result_type u, v;
-  Rand(result_type u, result_type v) : u(u|1), v(v|1) {}
-  
-  inline result_type operator()() {
-    v = 36969*(v & 65535) + (v >> 16);
-    u = 18000*(u & 65535) + (u >> 16);
-    return (v << 16) + u;
-  }
-  
-  static constexpr result_type max() {
-    return (uint32_t)-1;
-  }
-  
-  static constexpr result_type min() {
-    return 0;
-  }
-};
 
 template <typename T>
 struct TesterPair {
@@ -78,7 +59,6 @@ int findK(T* q, int val) {
 template <typename T>
 void run_find_push_pop_get(T* q, int me) {
   TThread::set_id(me);
-  
   std::uniform_int_distribution<long> slotdist(0, max_range);
   Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
 

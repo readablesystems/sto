@@ -7,6 +7,7 @@
 #include "Transaction.hh"
 #include "Vector.hh"
 #include "clp.h"
+#include "randgen.hh"
 
 int max_value = 10000;
 int global_seed = 11;
@@ -23,27 +24,6 @@ bool use_iterators = false;
 TransactionTid::type lock;
 
 typedef Vector<int> data_structure;
-
-struct Rand {
-    typedef uint32_t result_type;
-    
-    result_type u, v;
-    Rand(result_type u, result_type v) : u(u|1), v(v|1) {}
-    
-    inline result_type operator()() {
-        v = 36969*(v & 65535) + (v >> 16);
-        u = 18000*(u & 65535) + (u >> 16);
-        return (v << 16) + u;
-    }
-    
-    static constexpr result_type max() {
-        return (uint32_t)-1;
-    }
-    
-    static constexpr result_type min() {
-        return 0;
-    }
-};
 
 template <typename T>
 struct TesterPair {

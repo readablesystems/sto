@@ -8,6 +8,7 @@
 #include "Vector.hh"
 #include "PriorityQueue.hh"
 #include "PriorityQueue1.hh"
+#include "randgen.hh"
 
 #define GLOBAL_SEED 0
 #define MAX_VALUE  100000
@@ -16,27 +17,6 @@
 
 typedef PriorityQueue<int> data_structure;
 unsigned initial_seeds[128];
-
-struct Rand {
-    typedef uint32_t result_type;
-    
-    result_type u, v;
-    Rand(result_type u, result_type v) : u(u|1), v(v|1) {}
-    
-    inline result_type operator()() {
-        v = 36969*(v & 65535) + (v >> 16);
-        u = 18000*(u & 65535) + (u >> 16);
-        return (v << 16) + u;
-    }
-    
-    static constexpr result_type max() {
-        return (uint32_t)-1;
-    }
-    
-    static constexpr result_type min() {
-        return 0;
-    }
-};
 
 
 struct txn_record {

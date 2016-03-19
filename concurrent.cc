@@ -15,6 +15,7 @@
 #include "Transaction.hh"
 #include "IntStr.hh"
 #include "clp.h"
+#include "randgen.hh"
 
 #include "MassTrans.hh"
 
@@ -450,27 +451,6 @@ using namespace std;
 bool maintain_true_array_state = true;
 int true_array_state[ARRAY_SZ];
 #endif
-
-struct Rand {
-  typedef uint32_t result_type;
-
-  result_type u, v;
-  Rand(result_type u, result_type v) : u(u|1), v(v|1) {}
-
-  inline result_type operator()() {
-    v = 36969*(v & 65535) + (v >> 16);
-    u = 18000*(u & 65535) + (u >> 16);
-    return (v << 16) + u;
-  }
-
-  static constexpr result_type max() {
-    return (uint32_t)-1;
-  }
-
-  static constexpr result_type min() {
-    return 0;
-  }
-};
 
 template <typename T>
 void prepopulate_func(T& a) {

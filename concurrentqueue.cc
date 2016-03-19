@@ -8,6 +8,7 @@
 #include "Transaction.hh"
 #include "clp.h"
 #include "Queue.hh"
+#include "randgen.hh"
 
 // size of queue
 #define QUEUE_SZ 4096
@@ -51,27 +52,6 @@ double write_percent = 0.5;
 bool blindRandomWrite = false;
 
 using namespace std;
-
-struct Rand {
-  typedef uint32_t result_type;
-
-  result_type u, v;
-  Rand(result_type u, result_type v) : u(u|1), v(v|1) {}
-
-  inline result_type operator()() {
-    v = 36969*(v & 65535) + (v >> 16);
-    u = 18000*(u & 65535) + (u >> 16);
-    return (v << 16) + u;
-  }
-
-  static constexpr result_type max() {
-    return (uint32_t)-1;
-  }
-
-  static constexpr result_type min() {
-    return 0;
-  }
-};
 
 inline value_type val(int v) {
 #if STRING_VALUES
