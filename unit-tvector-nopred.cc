@@ -4,6 +4,7 @@
 #include <vector>
 #include "Transaction.hh"
 #include "TVector_nopred.hh"
+#include "TBox.hh"
 #define GUARDED if (TransactionGuard tguard{})
 
 void testSimpleInt() {
@@ -201,6 +202,7 @@ void testIter() {
 
 void testConflictingIter() {
     TVector_nopred<int> f;
+    TBox<int> box;
     TRANSACTION {
     for (int i = 0; i < 10; i++) {
         f.push_back(i);
@@ -209,6 +211,7 @@ void testConflictingIter() {
 
     TestTransaction t(1);
     std::max_element(f.begin(), f.end());
+    box = 9; /* avoid read-only txn */
 
     TestTransaction t1(2);
     f[4] = 10;
@@ -295,6 +298,7 @@ void testConflictingModifyIter2() {
 
 void testConflictingModifyIter3() {
     TVector_nopred<int> f;
+    TBox<int> box;
     TRANSACTION {
     for (int i = 0; i < 10; i++) {
         f.push_back(i);
@@ -303,6 +307,7 @@ void testConflictingModifyIter3() {
 
     TestTransaction t1(1);
     (int) f[4];
+    box = 9; /* avoid read-only txn */
 
     TestTransaction t(2);
     std::replace(f.begin(), f.end(), 4, 6);
@@ -361,6 +366,7 @@ void testIterNPushBack1() {
 
 void testIterNPushBack2() {
     TVector_nopred<int> f;
+    TBox<int> box;
 
     {
         TransactionGuard tt;
@@ -371,6 +377,7 @@ void testIterNPushBack2() {
 
     TestTransaction t1(1);
     std::max_element(f.begin(), f.end());
+    box = 9; /* avoid read-only txn */
 
     TestTransaction t2(2);
     f.push_back(2);
@@ -440,6 +447,7 @@ void testInsert() {
 
 void testPushNPop() {
     TVector_nopred<int> f;
+    TBox<int> box;
 
     TRANSACTION {
         for (int i = 0; i < 10; i++) {
@@ -521,6 +529,7 @@ void testPushNPop() {
 
     TestTransaction t7(3);
     (int) f[8];
+    box = 9; /* avoid read-only txn */
 
     assert(t5.try_commit());
     assert(!t7.try_commit());
@@ -608,6 +617,7 @@ void testUpdatePop() {
 
 void testIteratorBetterSemantics() {
     TVector_nopred<int> f;
+    TBox<int> box;
 
     TRANSACTION {
         for (int i = 0; i < 10; i++) {
@@ -622,6 +632,7 @@ void testIteratorBetterSemantics() {
     for (it = f.begin(); it != f.end(); ++it)
         if (*it == 5)
             break;
+    box = 9; /* avoid read-only txn */
 
     TestTransaction t2(2);
     f.push_back(12);
@@ -636,6 +647,7 @@ void testIteratorBetterSemantics() {
 
 void testSizePredicates() {
     TVector_nopred<int> f;
+    TBox<int> box;
 
     TRANSACTION {
         for (int i = 0; i < 10; i++)
@@ -645,6 +657,7 @@ void testSizePredicates() {
     {
         TestTransaction t1(1);
         assert(f.size() > 5);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         for (int i = 0; i < 4; ++i)
@@ -658,6 +671,7 @@ void testSizePredicates() {
     {
         TestTransaction t1(1);
         assert(f.size() > 4);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() > 4)
@@ -676,6 +690,7 @@ void testSizePredicates() {
 
         TestTransaction t1(1);
         assert(f.size() > 4);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() > 4)
@@ -689,6 +704,7 @@ void testSizePredicates() {
     {
         TestTransaction t1(1);
         assert(f.size() < 6);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() < 6)
@@ -702,6 +718,7 @@ void testSizePredicates() {
     {
         TestTransaction t1(1);
         assert(f.size() < 8);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() < 8)
@@ -717,6 +734,7 @@ void testSizePredicates() {
 
 void testIterPredicates() {
     TVector_nopred<int> f;
+    TBox<int> box;
 
     TRANSACTION {
         for (int i = 0; i < 10; i++)
@@ -726,6 +744,7 @@ void testIterPredicates() {
     {
         TestTransaction t1(1);
         assert(f.begin() + 5 < f.end());
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         for (int i = 0; i < 4; ++i)
@@ -739,6 +758,7 @@ void testIterPredicates() {
     {
         TestTransaction t1(1);
         assert(f.begin() + 4 < f.end());
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() > 4)
@@ -757,6 +777,7 @@ void testIterPredicates() {
 
         TestTransaction t1(1);
         assert(f.end() > f.begin() + 4);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() > 4)
@@ -770,6 +791,7 @@ void testIterPredicates() {
     {
         TestTransaction t1(1);
         assert(f.end() <= f.begin() + 5);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() < 6)
@@ -783,6 +805,7 @@ void testIterPredicates() {
     {
         TestTransaction t1(1);
         assert(f.end() - f.begin() < 8);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() < 8)
@@ -796,6 +819,7 @@ void testIterPredicates() {
     {
         TestTransaction t1(1);
         assert(f.end() - f.begin() < 9);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() < 9)
@@ -819,6 +843,7 @@ void testIterPredicates() {
 
 void testResize() {
     TVector_nopred<int> f;
+    TBox<int> box;
 
     TRANSACTION {
         for (int i = 0; i < 10; i++)
@@ -828,6 +853,7 @@ void testResize() {
     {
         TestTransaction t1(1);
         assert(f[1] == 1);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         f.resize(4);
@@ -844,6 +870,7 @@ void testResize() {
         TestTransaction t1(1);
         assert(f[1] == 1);
         assert(f.size() >= 4);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         f.resize(5, -100);
@@ -893,6 +920,7 @@ void testFrontBack() {
 
 void testOpacity() {
     TVector_nopred<int> f;
+    TBox<int> box;
 
     TRANSACTION {
         for (int i = 0; i < 10; i++)
@@ -902,6 +930,7 @@ void testOpacity() {
     {
         TestTransaction t1(1);
         assert(f[1] == 1);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         f.pop_back();
@@ -918,6 +947,7 @@ void testOpacity() {
         TestTransaction t1(1);
         assert(f[1] == 1);
         assert(f[4] == 4);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() > 3)
@@ -940,6 +970,7 @@ void testOpacity() {
         TestTransaction t1(1);
         assert(f[1] == 1);
         assert(f[4] == 4);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() > 3)
@@ -962,6 +993,7 @@ void testOpacity() {
         TestTransaction t1(1);
         assert(f[1] == 1);
         assert(f[4] == 4);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() > 3)
@@ -984,6 +1016,7 @@ void testOpacity() {
         TestTransaction t1(1);
         assert(f[1] == 1);
         assert(f[4] == 4);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() > 5)
@@ -1001,6 +1034,7 @@ void testOpacity() {
 
 void testNoOpacity() {
     TVector_nopred<int, TNonopaqueWrapped> f;
+    TBox<int, TNonopaqueWrapped<int> > box;
 
     TRANSACTION {
         for (int i = 0; i < 10; i++)
@@ -1010,6 +1044,7 @@ void testNoOpacity() {
     {
         TestTransaction t1(1);
         assert(f[1] == 1);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         f.pop_back();
@@ -1026,6 +1061,7 @@ void testNoOpacity() {
         TestTransaction t1(1);
         assert(f[1] == 1);
         assert(f[4] == 4);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() > 3)
@@ -1048,6 +1084,7 @@ void testNoOpacity() {
         TestTransaction t1(1);
         assert(f[1] == 1);
         assert(f[4] == 4);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() > 3)
@@ -1069,6 +1106,7 @@ void testNoOpacity() {
         TestTransaction t1(1);
         assert(f[1] == 1);
         assert(f[4] == 4);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() > 3)
@@ -1090,6 +1128,7 @@ void testNoOpacity() {
         TestTransaction t1(1);
         assert(f[1] == 1);
         assert(f[4] == 4);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         while (f.size() > 5)
