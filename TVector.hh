@@ -109,19 +109,19 @@ public:
     inline const_iterator end() const;
 
     void push_back(T x) {
-        auto sitem = size_item();
+        auto sitem = size_item().add_write();
         pred_type& wval = sitem.template xwrite_value<pred_type>();
-        size_type new_size = wval.second + 1;
-        sitem.add_write(pred_type{wval.first, new_size});
-        Sto::item(this, new_size - 1).add_write(std::move(x));
+        ++wval.second;
+        Sto::item(this, wval.second - 1).add_write(std::move(x));
     }
     void pop_back() {
-        auto sitem = size_item();
+        auto sitem = size_item().add_write();
         pred_type& wval = sitem.template xwrite_value<pred_type>();
-        size_type new_size = wval.second - 1;
-        sitem.add_write(pred_type{wval.first, new_size});
-        if (new_size < wval.first)
-            size_predicate(sitem).observe_ge(wval.first - new_size);
+        if (!wval.second)
+            version_type::opaque_throw(std::out_of_range("TVector::pop_back"));
+        --wval.second;
+        if (wval.second < wval.first)
+            size_predicate(sitem).observe_ge(wval.first - wval.second);
     }
 
     void clear();
@@ -520,31 +520,31 @@ inline auto TVector<T, W>::const_iterator::operator-(const const_iterator& x) co
 
 template <typename T, template <typename> typename W>
 void TVector<T, W>::clear() {
-    auto sitem = size_item();
+    auto sitem = size_item().add_write();
     pred_type& wval = sitem.template xwrite_value<pred_type>();
-    sitem.add_write(pred_type{wval.first, 0});
+    wval.second = 0;
 }
 
 template <typename T, template <typename> typename W>
 auto TVector<T, W>::erase(iterator pos) -> iterator {
-    auto sitem = size_item();
+    auto sitem = size_item().add_write();
     pred_type& wval = sitem.template xwrite_value<pred_type>();
     if (pos.i_ >= wval.second)
         version_type::opaque_throw(std::out_of_range("TVector::erase"));
     size_predicate(sitem).observe(wval.first);
     for (auto idx = pos.i_; idx != wval.second - 1; ++idx)
         transPut(idx, transGet(idx + 1));
-    sitem.add_write(pred_type{wval.first, wval.second - 1});
+    --wval.second;
     return pos;
 }
 
 template <typename T, template <typename> typename W>
 auto TVector<T, W>::insert(iterator pos, T value) -> iterator {
-    auto sitem = size_item();
+    auto sitem = size_item().add_write();
     pred_type& wval = sitem.template xwrite_value<pred_type>();
     if (pos.i_ > wval.second)
         version_type::opaque_throw(std::out_of_range("TVector::insert"));
-    sitem.add_write(pred_type{wval.first, wval.second + 1});
+    ++wval.second;
     size_predicate(sitem).observe(wval.first);
     for (auto idx = wval.second - 1; idx != pos.i_; --idx)
         transPut(idx, transGet(idx - 1));
@@ -554,10 +554,10 @@ auto TVector<T, W>::insert(iterator pos, T value) -> iterator {
 
 template <typename T, template <typename> typename W>
 void TVector<T, W>::resize(size_type size, T value) {
-    auto sitem = size_item();
+    auto sitem = size_item().add_write();
     pred_type& wval = sitem.template xwrite_value<pred_type>();
     size_type old_size = wval.second;
-    sitem.add_write(pred_type{wval.first, size});
+    wval.second = size;
     if (old_size < size) {
         size_predicate(sitem).observe(wval.first);
         do {
