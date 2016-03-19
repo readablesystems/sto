@@ -200,7 +200,7 @@ void print_time(struct timeval tv1, struct timeval tv2) {
 }
 
 enum {
-  opt_nthreads = 1, opt_ntrans, opt_opspertrans, opt_searchpercent, opt_pushbackpercent, opt_prepopulate, opt_seed
+    opt_nthreads = 1, opt_ntrans, opt_opspertrans, opt_searchpercent, opt_pushbackpercent, opt_prepopulate, opt_seed, opt_predicates
 };
 
 static const Clp_Option options[] = {
@@ -211,6 +211,7 @@ static const Clp_Option options[] = {
   { "pushbackpercent", 0, opt_pushbackpercent, Clp_ValDouble, Clp_Optional },
   { "prepopulate", 0, opt_prepopulate, Clp_ValInt, Clp_Optional },
   { "seed", 0, opt_seed, Clp_ValInt, Clp_Optional },
+  { "predicates", 0, opt_predicates, 0, Clp_Negate }
 };
 
 static void help() {
@@ -275,10 +276,11 @@ void run_and_report(const char* name) {
 
 int main(int argc, char *argv[]) {
   lock = 0;
-  
+
   Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
-  
   int opt;
+  int actions = 3;
+
   while ((opt = Clp_Next(clp)) != Clp_Done) {
     switch (opt) {
       case opt_nthreads:
@@ -302,6 +304,9 @@ int main(int argc, char *argv[]) {
       case opt_seed:
         global_seed = clp->val.i;
         break;
+    case opt_predicates:
+        actions = clp->negated ? 2 : 1;
+        break;
     case Clp_NotOption:
         test_name = clp->vstr;
         break;
@@ -311,18 +316,20 @@ int main(int argc, char *argv[]) {
   }
   Clp_DeleteParser(clp);
 
-  if (global_seed)
-    srandom(global_seed);
-  else
-    srandomdev();
-  for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
-    initial_seeds[i] = random();
+    if (global_seed)
+        srandom(global_seed);
+    else
+        srandomdev();
+    for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
+        initial_seeds[i] = random();
 
     printf("%s, %d threads, %d trans, %d opspertrans\n", test_name, nthreads, ntrans, opspertrans);
 #if !NDEBUG
     printf("THIS IS NOT AN NDEBUG RUN, predicates assertions are $$expensive$$\n");
 #endif
-    run_and_report<pred_data_structure>("Predicates");
-    run_and_report<nopred_data_structure>("No predicates");
-	return 0;
+    if (actions & 1)
+        run_and_report<pred_data_structure>("Predicates");
+    if (actions & 2)
+        run_and_report<nopred_data_structure>("No predicates");
+    return 0;
 }
