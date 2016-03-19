@@ -259,6 +259,7 @@ class TransProxy {
     template <typename T>
     inline TransProxy& update_read(T old_rdata, T new_rdata);
 
+    inline TransProxy& set_predicate();
     template <typename T>
     inline TransProxy& set_predicate(T pdata);
     inline TransProxy& clear_predicate() {

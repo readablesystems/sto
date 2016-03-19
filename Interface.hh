@@ -5,6 +5,7 @@
 
 class Transaction;
 class TransItem;
+class TransProxy;
 
 class TThread {
     static __thread int the_id;
@@ -231,6 +232,8 @@ public:
     volatile type& value() {
         return v_;
     }
+    inline type snapshot(const TransItem& item, const Transaction& txn);
+    inline type snapshot(TransProxy& item);
 
     bool is_locked() const {
         return TransactionTid::is_locked(v_);
@@ -351,6 +354,8 @@ public:
     volatile type& value() {
         return v_;
     }
+    inline type snapshot(const TransItem& item, const Transaction& txn);
+    inline type snapshot(TransProxy& item);
 
     bool is_locked() const {
         return TransactionTid::is_locked(v_);

@@ -1012,6 +1012,28 @@ void testOpacity() {
             f.push_back(f.size());
     } RETRY(false);
 
+    try {
+        TestTransaction t1(1);
+        f[1] = 1;
+        f[4] = 4;
+
+        TestTransaction t2(2);
+        while (f.size() > 3)
+            f.pop_back();
+        f[2] = -1;
+        assert(t2.try_commit());
+
+        t1.use();
+        assert(f.size() > 4);
+        assert(false && "should not get here b/c opacity");
+    } catch (Transaction::Abort e) {
+    }
+
+    TRANSACTION {
+        while (f.size() < 10)
+            f.push_back(f.size());
+    } RETRY(false);
+
     {
         TestTransaction t1(1);
         assert(f[1] == 1);

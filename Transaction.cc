@@ -170,15 +170,15 @@ bool Transaction::try_commit() {
             it->__or_flags(TransItem::lock_bit);
 #endif
         }
-        if (it->has_predicate()) {
+        if (it->has_read())
+            TXP_INCREMENT(txp_total_r);
+        else if (it->has_predicate()) {
             TXP_INCREMENT(txp_total_check_predicate);
             if (!it->owner()->check_predicate(*it, *this, true)) {
                 mark_abort_because(it, "commit check_predicate");
                 goto abort;
             }
         }
-        if (it->has_read())
-            TXP_INCREMENT(txp_total_r);
     }
 
     first_write_ = writeset[0];
