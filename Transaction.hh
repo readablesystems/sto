@@ -73,6 +73,7 @@ enum txp {
     // all logging levels
     txp_total_aborts = 0,
     txp_total_starts,
+    txp_commit_time_nonopaque,
     txp_commit_time_aborts,
     txp_max_set,
     txp_hco,
@@ -288,7 +289,7 @@ public:
             hash_base_ = 0;
         }
 #endif
-        any_writes_ = may_duplicate_items_ = false;
+        any_writes_ = any_nonopaque_ = may_duplicate_items_ = false;
         first_write_ = 0;
         start_tid_ = commit_tid_ = 0;
         buf_.clear();
@@ -577,6 +578,7 @@ private:
     uint16_t first_write_;
     uint8_t state_;
     bool any_writes_;
+    bool any_nonopaque_;
     bool may_duplicate_items_;
     small_vector<TransItem, INIT_SET_SIZE> transSet_;
     mutable tid_type start_tid_;
@@ -763,6 +765,7 @@ inline TransProxy& TransProxy::add_read(T rdata) {
     if (!has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
+        t()->any_nonopaque_ = true;
     }
     return *this;
 }
@@ -786,6 +789,7 @@ inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read)
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
+        t()->any_nonopaque_ = true;
     }
     return *this;
 }

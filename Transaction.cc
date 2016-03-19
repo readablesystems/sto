@@ -130,13 +130,15 @@ bool Transaction::try_commit() {
     if (state_ >= s_aborted)
         return state_ > s_aborted;
 
-    // TODO: can only do this if opacity was used for the whole transaction.
+    if (any_nonopaque_)
+        TXP_INCREMENT(txp_commit_time_nonopaque);
+#if !CONSISTENCY_CHECK
     // commit immediately if read-only transaction with opacity
-    if (!any_writes_) {
-      // XXX: probably going to break trans_test since we don't generate a tid.
-      stop(true);
-      return true;
+    if (!any_writes_ && !any_nonopaque_) {
+        stop(true);
+        return true;
     }
+#endif
 
     state_ = s_committing;
 
@@ -252,11 +254,13 @@ abort:
 void Transaction::print_stats() {
     txp_counters out = txp_counters_combined();
     if (txp_count >= txp_max_set) {
+        unsigned long long txc_total_starts = out.p(txp_total_starts);
+        unsigned long long txc_total_aborts = out.p(txp_total_aborts);
+        unsigned long long txc_commit_aborts = out.p(txp_commit_time_aborts);
+        unsigned long long txc_total_commits = txc_total_starts - txc_total_aborts;
         fprintf(stderr, "$ %llu starts, %llu max read set, %llu commits",
-                out.p(txp_total_starts),
-                out.p(txp_max_set),
-                out.p(txp_total_starts) - out.p(txp_total_aborts));
-        if (out.p(txp_total_aborts)) {
+                txc_total_starts, out.p(txp_max_set), txc_total_commits);
+        if (txc_total_aborts) {
             fprintf(stderr, ", %llu (%.3f%%) aborts",
                     out.p(txp_total_aborts),
                     100.0 * (double) out.p(txp_total_aborts) / out.p(txp_total_starts));
@@ -265,7 +269,10 @@ void Transaction::print_stats() {
                         out.p(txp_commit_time_aborts),
                         100.0 * (double) out.p(txp_commit_time_aborts) / out.p(txp_total_aborts));
         }
-        fprintf(stderr, "\n");
+        unsigned long long txc_commit_attempts = txc_total_starts - (txc_total_aborts - txc_commit_aborts);
+        fprintf(stderr, "\n$ %llu commit attempts, %llu (%.3f%%) nonopaque\n",
+                txc_commit_attempts, out.p(txp_commit_time_nonopaque),
+                100.0 * (double) out.p(txp_commit_time_nonopaque) / txc_commit_attempts);
     }
     if (txp_count >= txp_hco_abort)
         fprintf(stderr, "$ %llu HCO (%llu lock, %llu invalid, %llu aborts)\n",
