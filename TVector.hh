@@ -30,9 +30,9 @@ private:
         pred_type& wval = sitem.xwrite_value<pred_type>();
         if (idx >= wval.second)
             version_type::opaque_throw(std::out_of_range("TVector[]"));
-        key_type key = idx >= wval.first ? -key_type(idx - wval.first) - 1 : idx + 1;
+        key_type key = idx + 1;
         TransProxy item = Sto::item(this, key);
-        if (key < 0 || (item.has_write() && !item.has_flag(indexed_bit)))
+        if (idx >= wval.first || (item.has_write() && !item.has_flag(indexed_bit)))
             pval.observe(wval.first);
         else
             pval.observe_gt(idx);
@@ -111,7 +111,7 @@ public:
         pred_type& wval = sitem.template xwrite_value<pred_type>();
         size_type new_size = wval.second + 1;
         sitem.add_write(pred_type{wval.first, new_size});
-        key_type key = new_size <= wval.first ? new_size : -(new_size - wval.first);
+        key_type key = new_size;
         Sto::item(this, key).add_write(std::move(x));
     }
     void pop_back() {
@@ -180,7 +180,7 @@ public:
         auto key = item.template key<key_type>();
         if (key == size_key)
             return txn.try_lock(item, size_vers_);
-        else if (key > 0 && item.has_flag(indexed_bit))
+        else if (item.has_flag(indexed_bit))
             return txn.try_lock(item, data_[key - 1].vers);
         else {
             assert(size_vers_.is_locked_here(txn));
@@ -207,9 +207,7 @@ public:
         size_type idx = key - 1;
         if (size_vers_.is_locked_here(txn)) {
             // maybe we have popped past this point
-            if (key < 0)
-                idx = original_size_ - key - 1;
-            else if (!item.has_flag(indexed_bit))
+            if (!item.has_flag(indexed_bit))
                 idx = original_size_ - (expected_size_ - idx);
             if (idx >= size_.access()) {
                 item.clear_needs_unlock_if_set();
@@ -228,7 +226,7 @@ public:
         auto key = item.template key<key_type>();
         if (key == size_key)
             size_vers_.unlock();
-        else if (key > 0 && item.has_flag(indexed_bit))
+        else if (item.has_flag(indexed_bit))
             data_[key - 1].vers.unlock();
     }
     void print(std::ostream& w, const TransItem& item) const {
@@ -243,12 +241,7 @@ public:
             if (item.has_write())
                 w << " =" << item.xwrite_value<pred_type>().second;
         } else {
-            w << "[";
-            if (key > 0)
-                w << (key - 1);
-            else
-                w << "push" << key;
-            w << "]";
+            w << "[" << (key - 1) << "]";
             if (item.has_read())
                 w << " R" << item.read_value<version_type>();
             if (item.has_write())
@@ -569,7 +562,7 @@ void TVector<T, W>::resize(size_type size, T value) {
         do {
             // inlined portion of push_back (don't double-change size)
             ++old_size;
-            key_type key = old_size <= wval.first ? old_size : -(old_size - wval.first);
+            key_type key = old_size;
             Sto::item(this, key).add_write(value);
         } while (old_size < size);
     }
