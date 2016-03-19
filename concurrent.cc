@@ -1270,17 +1270,17 @@ int main(int argc, char *argv[]) {
     QueueType stack_q2;
     q = &stack_q;
     q2 = &stack_q2;
-    
+
     empty_func();
-    prepopulate_func();    
+    prepopulate_func();
     qstartAndWait(nthreads, xorrunfunc);
     assert(Qxordeletecheck());
-    
+
     empty_func();
     prepopulate_func();
     qstartAndWait(nthreads, transferrunfunc);
     assert(Qtransfercheck());
-#else 
+#else
 
   int testidx = 0;
   int test = -1;

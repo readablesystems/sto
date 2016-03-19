@@ -330,6 +330,9 @@ int main(int argc, char *argv[]) {
     initial_seeds[i] = random();
 
     printf("%s, %d threads, %d trans, %d opspertrans\n", test_name, nthreads, ntrans, opspertrans);
+#if !NDEBUG
+    printf("THIS IS NOT AN NDEBUG RUN, predicates assertions are $$expensive$$\n");
+#endif
     run_and_report<pred_data_structure>("Predicates");
     run_and_report<nopred_data_structure>("No predicates");
 	return 0;
