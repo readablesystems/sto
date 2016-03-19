@@ -112,11 +112,11 @@ void testPushBackNRead1() {
     assert(t3.try_commit());
     assert(!t2.try_commit());
     }
-  
+
   {
     TestTransaction t1(1);
     assert(f.transGet(0) == 10);
-    
+
     TestTransaction t2(2);
     f.pop_back();
     assert(t2.try_commit());
@@ -904,6 +904,51 @@ void testFrontBack() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testIndexPushOverlap() {
+    TVector<int> v;
+
+    TRANSACTION {
+        for (int i = 0; i < 3; i++)
+            v.push_back(i);
+    } RETRY(false);
+
+    {
+        TestTransaction t1(1);
+        v[0] = -1;
+        v.pop_back();
+        v.pop_back();
+        v.push_back(-2);
+        v[0] = -3;
+        assert(t1.try_commit());
+        assert(v.nontrans_size() == 2);
+        assert(v.nontrans_get(0) == -3);
+        assert(v.nontrans_get(1) == -2);
+    }
+
+    TRANSACTION {
+        v.clear();
+        for (int i = 0; i < 3; i++)
+            v.push_back(i);
+    } RETRY(false);
+
+    {
+        TestTransaction t1(1);
+        v[0] = -1;
+        v.pop_back();
+        v.pop_back();
+        v.push_back(-2);
+        v[0] = -3;
+        v.print(std::cerr);
+
+        TestTransaction t2(2);
+        v.pop_back();
+        assert(t2.try_commit());
+        assert(!t1.try_commit());
+    }
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
 void testOpacity() {
     TVector<int> f;
 
@@ -1149,6 +1194,7 @@ int main() {
     testIterPredicates();
     testResize();
     testFrontBack();
+    testIndexPushOverlap();
     testOpacity();
     testNoOpacity();
     return 0;
