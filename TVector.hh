@@ -24,22 +24,10 @@ private:
        If xwrite_value.first > xwrite_value.second, the vector shrank.
        Note that the xwrite_value exists even if !has_write(). */
 
-    TransProxy index_item(size_type idx) const {
-        TransProxy sitem = size_item();
-        pred_type& pval = sitem.predicate_value<pred_type>();
-        pred_type& wval = sitem.xwrite_value<pred_type>();
-        if (idx >= wval.second)
-            version_type::opaque_throw(std::out_of_range("TVector[]"));
-        TransProxy item = Sto::item(this, idx);
-        if (item.has_write() && !item.has_flag(indexed_bit))
-            // observing a pushed-back thing
-            pval.observe(wval.first);
-        else if (idx < wval.first)
-            pval.observe_gt(idx);
-        return item.add_flags(indexed_bit);
-    }
-
-    static constexpr TransItem::flags_type indexed_bit = TransItem::user0_bit;
+    static constexpr TransItem::flags_type pop_bit = TransItem::user0_bit;
+    static constexpr TransItem::flags_type onlyexists_bit = pop_bit << 1;
+    static constexpr TransItem::flags_type indexed_bit = pop_bit << 2;
+    static constexpr typename version_type::type dead_bit = version_type::user_bit;
 public:
     class iterator;
     class const_iterator;
@@ -54,7 +42,7 @@ public:
         : size_(0), max_size_(0), capacity_(default_capacity) {
         data_ = reinterpret_cast<elem*>(new char[sizeof(elem) * capacity_]);
         for (size_type i = 0; i != capacity_; ++i)
-            data_[i].vers = 0;
+            data_[i].vers = dead_bit;
     }
     ~TVector() {
         using WT = W<T>;
@@ -110,18 +98,18 @@ public:
 
     void push_back(T x) {
         auto sitem = size_item().add_write();
-        pred_type& wval = sitem.template xwrite_value<pred_type>();
+        pred_type& wval = size_info(sitem);
         ++wval.second;
-        Sto::item(this, wval.second - 1).add_write(std::move(x));
+        Sto::item(this, wval.second - 1).clear_write().clear_flags(pop_bit)
+            .add_write(std::move(x));
     }
     void pop_back() {
         auto sitem = size_item().add_write();
-        pred_type& wval = sitem.template xwrite_value<pred_type>();
+        pred_type& wval = size_info(sitem);
         if (!wval.second)
             version_type::opaque_throw(std::out_of_range("TVector::pop_back"));
         --wval.second;
-        if (wval.second < wval.first)
-            size_predicate(sitem).observe_ge(wval.first - wval.second);
+        Sto::item(this, wval.second).add_write().add_flags(pop_bit);
     }
 
     void clear();
@@ -143,15 +131,36 @@ public:
 
     // transGet and friends
     get_type transGet(size_type i) const {
-        auto item = index_item(i);
-        if (item.has_write())
-            return item.template write_value<T>();
-        else
-            return data_[i].v.read(item, data_[i].vers);
+        TransProxy item = Sto::item(this, i);
+        if (item.has_write()) {
+            if (item.has_flag(pop_bit)) {
+            out_of_range:
+                version_type::opaque_throw(std::out_of_range("TVector::transGet"));
+            }
+            if (!item.has_flag(indexed_bit)) {
+                auto sitem = size_item();
+                size_predicate(sitem).observe(size_info(sitem).first);
+            }
+            item.add_flags(indexed_bit);
+            return item.write_value<T>();
+        } else {
+            get_type result = data_[i].v.read(item, data_[i].vers);
+            if (item.read_value<version_type>().value() & dead_bit)
+                goto out_of_range;
+            item.add_flags(indexed_bit);
+            return result;
+        }
     }
     void transPut(size_type i, T x) {
-        auto item = index_item(i);
-        item.add_write(std::move(x));
+        auto item = Sto::item(this, i);
+        if (item.has_flag(pop_bit)
+            || (!item.has_read() && !item.has_write() && !put_in_range(item, i)))
+            version_type::opaque_throw(std::out_of_range("TVector::transPut"));
+        if (item.has_write() && !item.has_flag(indexed_bit)) {
+            auto sitem = size_item();
+            size_predicate(sitem).observe(size_info(sitem).first);
+        }
+        item.add_write(std::move(x)).add_flags(indexed_bit);
     }
 
     size_type nontrans_size() const {
@@ -179,19 +188,22 @@ public:
     }
     bool lock(TransItem& item, Transaction& txn) {
         auto key = item.template key<key_type>();
-        if (key == size_key)
-            return txn.try_lock(item, size_vers_);
-        else if (item.has_flag(indexed_bit))
-            return txn.try_lock(item, data_[key].vers);
-        else {
-            assert(size_vers_.is_locked_here(txn));
+        if (key == size_key) {
+            if (!txn.try_lock(item, size_vers_))
+                return false;
+            size_delta_ = size_.access() - size_info(item).first;
             return true;
+        } else {
+            key += item.has_flag(indexed_bit) ? 0 : size_delta_;
+            return txn.try_lock(item, data_[key].vers);
         }
     }
-    bool check(const TransItem& item, const Transaction&) {
+    bool check(const TransItem& item, const Transaction& txn) {
         auto key = item.template key<key_type>();
         if (key == size_key)
             return item.check_version(size_vers_);
+        else if (item.has_flag(onlyexists_bit))
+            return !(data_[key].vers.snapshot(item, txn) & dead_bit);
         else {
             assert(item.has_flag(indexed_bit));
             return item.check_version(data_[key].vers);
@@ -200,53 +212,52 @@ public:
     void install(TransItem& item, const Transaction& txn) {
         auto key = item.template key<key_type>();
         if (key == size_key) {
-            pred_type& wval = item.template xwrite_value<pred_type>();
-            original_size_ = size_.access();
-            expected_size_ = wval.first;
-            size_.write(original_size_ + wval.second - expected_size_);
+            pred_type& wval = size_info(item);
+            size_.write(wval.second + size_delta_);
             txn.set_version(size_vers_);
             return;
         }
-        if (size_vers_.is_locked_here(txn)) {
-            // maybe we have popped past this point
-            if (!item.has_flag(indexed_bit))
-                key = original_size_ - (expected_size_ - key);
-            if (key >= size_.access()) {
-                item.clear_needs_unlock_if_set();
-                return;
-            }
+        key += item.has_flag(indexed_bit) ? 0 : size_delta_;
+        if (!item.has_flag(pop_bit)) {
+            assert(key <= max_size_ && key < capacity_);
+            if (key == max_size_) {
+                new(reinterpret_cast<void*>(&data_[key].v)) W<T>(std::move(item.write_value<T>()));
+                ++max_size_;
+            } else
+                data_[key].v.write(std::move(item.write_value<T>()));
         }
-        assert(key <= max_size_ && key < capacity_);
-        if (key == max_size_) {
-            new(reinterpret_cast<void*>(&data_[key].v)) W<T>(std::move(item.write_value<T>()));
-            ++max_size_;
-        } else
-            data_[key].v.write(std::move(item.write_value<T>()));
-        txn.assign_version_unlock(data_[key].vers, item);
+        txn.set_version_unlock(data_[key].vers, item, item.has_flag(pop_bit) ? dead_bit : 0);
     }
     void unlock(TransItem& item) {
         auto key = item.template key<key_type>();
         if (key == size_key)
             size_vers_.unlock();
-        else if (item.has_flag(indexed_bit))
+        else {
+            key += item.has_flag(indexed_bit) ? 0 : size_delta_;
             data_[key].vers.unlock();
+        }
     }
     void print(std::ostream& w, const TransItem& item) const {
         w << "{TVector<" << typeid(T).name() << "> " << (void*) this;
         key_type key = item.key<key_type>();
         if (key == size_key) {
-            w << ".size @" << item.xwrite_value<pred_type>().second;
+            w << ".size @" << size_info(item).first;
             if (item.has_read())
                 w << " R" << item.read_value<version_type>();
             else if (item.has_predicate())
                 w << ' ' << item.predicate_value<pred_type>();
             if (item.has_write())
-                w << " =" << item.xwrite_value<pred_type>().second;
+                w << " =" << size_info(item).second;
         } else {
-            w << "[" << key << "]";
+            w << "[" << key;
+            if (!item.has_flag(indexed_bit))
+                w << "?";
+            w << "]";
             if (item.has_read())
                 w << " R" << item.read_value<version_type>();
-            if (item.has_write())
+            if (item.has_write() && item.has_flag(pop_bit))
+                w << " =X";
+            else if (item.has_write())
                 w << " =" << item.write_value<T>();
         }
         w << "}";
@@ -270,8 +281,7 @@ private:
     elem* data_;
     W<size_type> size_;
     version_type size_vers_;
-    size_type original_size_; // protected by size_vers_ lock
-    size_type expected_size_;
+    size_type size_delta_; // protected by size_vers_ lock
     size_type max_size_; // protected by size_vers_ lock
     size_type capacity_;
 
@@ -300,8 +310,27 @@ private:
     static pred_type& size_info(TransProxy sitem) {
         return sitem.template xwrite_value<pred_type>();
     }
+    static pred_type& size_info(TransItem& sitem) {
+        return sitem.template xwrite_value<pred_type>();
+    }
+    static const pred_type& size_info(const TransItem& sitem) {
+        return sitem.template xwrite_value<pred_type>();
+    }
     pred_type& size_info() const {
         return size_info(size_item());
+    }
+
+    get_type transGet(size_type i, TransProxy item) {
+        if (item.has_write())
+            return item.template write_value<T>();
+        else
+            return data_[i].v.read(item, data_[i].vers);
+    }
+    bool put_in_range(TransProxy& item, size_type i) const {
+        if (i >= capacity_)
+            return false;
+        item.observe(data_[i].vers).add_flags(onlyexists_bit);
+        return !(item.read_value<version_type>().value() & dead_bit);
     }
 
     friend class iterator;
@@ -521,51 +550,60 @@ inline auto TVector<T, W>::const_iterator::operator-(const const_iterator& x) co
 template <typename T, template <typename> typename W>
 void TVector<T, W>::clear() {
     auto sitem = size_item().add_write();
-    pred_type& wval = sitem.template xwrite_value<pred_type>();
+    pred_type& wval = size_info(sitem);
+    for (size_type i = 0; i != wval.second; ++i)
+        Sto::item(this, i).add_write().add_flags(pop_bit);
     wval.second = 0;
 }
 
 template <typename T, template <typename> typename W>
 auto TVector<T, W>::erase(iterator pos) -> iterator {
     auto sitem = size_item().add_write();
-    pred_type& wval = sitem.template xwrite_value<pred_type>();
+    pred_type& wval = size_info(sitem);
     if (pos.i_ >= wval.second)
         version_type::opaque_throw(std::out_of_range("TVector::erase"));
     size_predicate(sitem).observe(wval.first);
-    for (auto idx = pos.i_; idx != wval.second - 1; ++idx)
-        transPut(idx, transGet(idx + 1));
     --wval.second;
+    TransProxy item = Sto::item(this, pos.i_).add_flags(indexed_bit);
+    for (size_type i = pos.i_; i != wval.second; ++i) {
+        TransProxy next_item = Sto::item(this, i + 1).add_flags(indexed_bit);
+        item.add_write(transGet(i + 1, next_item));
+        item = next_item;
+    }
+    item.add_write().add_flags(pop_bit);
     return pos;
 }
 
 template <typename T, template <typename> typename W>
 auto TVector<T, W>::insert(iterator pos, T value) -> iterator {
     auto sitem = size_item().add_write();
-    pred_type& wval = sitem.template xwrite_value<pred_type>();
+    pred_type& wval = size_info(sitem);
     if (pos.i_ > wval.second)
         version_type::opaque_throw(std::out_of_range("TVector::insert"));
-    ++wval.second;
     size_predicate(sitem).observe(wval.first);
-    for (auto idx = wval.second - 1; idx != pos.i_; --idx)
-        transPut(idx, transGet(idx - 1));
-    transPut(pos.i_, std::move(value));
+    ++wval.second;
+    TransProxy item = Sto::item(this, wval.second - 1).clear_write().clear_flags(pop_bit).add_flags(indexed_bit);
+    for (size_type i = wval.second - 1; i != pos.i_; --i) {
+        TransProxy next_item = Sto::item(this, i - 1).add_flags(indexed_bit);
+        item.add_write(transGet(i - 1, next_item));
+        item = next_item;
+    }
+    item.add_write(std::move(value));
     return pos;
 }
 
 template <typename T, template <typename> typename W>
 void TVector<T, W>::resize(size_type size, T value) {
     auto sitem = size_item().add_write();
-    pred_type& wval = sitem.template xwrite_value<pred_type>();
+    pred_type& wval = size_info(sitem);
+    size_predicate(sitem).observe(wval.first);
     size_type old_size = wval.second;
     wval.second = size;
-    if (old_size < size) {
-        size_predicate(sitem).observe(wval.first);
-        do {
-            // inlined portion of push_back (don't double-change size)
-            Sto::item(this, old_size).add_write(value);
-            ++old_size;
-        } while (old_size < size);
-    }
+    for (; old_size > wval.second; --old_size)
+        Sto::item(this, old_size - 1).add_write().add_flags(indexed_bit | pop_bit);
+    for (; old_size < wval.second; ++old_size)
+        Sto::item(this, old_size).clear_write().clear_flags(pop_bit).add_flags(indexed_bit)
+            .add_write(value);
 }
 
 template <typename T, template <typename> typename W>
@@ -577,7 +615,7 @@ void TVector<T, W>::nontrans_reserve(size_type size) {
         elem* new_data = reinterpret_cast<elem*>(new char[sizeof(elem) * new_capacity]);
         memcpy(new_data, data_, sizeof(elem) * capacity_);
         for (size_type i = capacity_; i != new_capacity; ++i)
-            new_data[i].vers = 0;
+            new_data[i].vers = dead_bit;
         Transaction::rcu_delete_array(reinterpret_cast<char*>(data_));
         data_ = new_data;
         capacity_ = new_capacity;
@@ -586,16 +624,26 @@ void TVector<T, W>::nontrans_reserve(size_type size) {
 
 template <typename T, template <typename> typename W>
 void TVector<T, W>::print(std::ostream& w) const {
+    size_type sz = size_.access();
     w << "TVector<" << typeid(T).name() << ">{" << (void*) this
-      << "size=" << size_.access() << '@' << size_vers_ << " [";
-    for (size_type i = 0; i < size_.access(); ++i) {
+      << "size=" << sz << '@' << size_vers_ << " [";
+    for (size_type i = 0; i < sz; ++i) {
         if (i)
             w << ", ";
         if (i >= 10)
             w << '[' << i << ']';
         w << data_[i].v.access() << '@' << data_[i].vers;
     }
-    w << "]}";
+    w << "]";
+    for (size_type i = sz; i < max_size_ && i < sz + 10; ++i) {
+        w << ", ";
+        if (i >= 10)
+            w << '[' << i << ']';
+        w << '@' << data_[i].vers;
+    }
+    if (sz + 10 < max_size_)
+        w << "...";
+    w << "}";
 }
 
 template <typename T, template <typename> typename W>
