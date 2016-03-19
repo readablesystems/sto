@@ -367,6 +367,9 @@ class TransProxy {
         return *this;
     }
 
+    inline Transaction& transaction() const {
+        return *t_;
+    }
     inline TransItem& item() const;
 
 private:

@@ -247,6 +247,7 @@ public:
     bool is_locked_elsewhere(int here) const {
         return TransactionTid::is_locked_elsewhere(v_, here);
     }
+    inline bool is_locked_elsewhere(const Transaction& txn) const;
 
     bool bool_cmpxchg(TVersion expected, TVersion desired) {
         return ::bool_cmpxchg(&v_, expected.v_, desired.v_);
@@ -367,6 +368,7 @@ public:
     bool is_locked_elsewhere(int here) const {
         return TransactionTid::is_locked_elsewhere(v_, here);
     }
+    inline bool is_locked_elsewhere(const Transaction& txn) const;
 
     bool bool_cmpxchg(TNonopaqueVersion expected, TNonopaqueVersion desired) {
         return ::bool_cmpxchg(&v_, expected.v_, desired.v_);

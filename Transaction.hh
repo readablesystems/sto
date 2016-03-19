@@ -896,3 +896,11 @@ inline bool TVersion::is_locked_here(const Transaction& txn) const {
 inline bool TNonopaqueVersion::is_locked_here(const Transaction& txn) const {
     return is_locked_here(txn.threadid());
 }
+
+inline bool TVersion::is_locked_elsewhere(const Transaction& txn) const {
+    return is_locked_elsewhere(txn.threadid());
+}
+
+inline bool TNonopaqueVersion::is_locked_elsewhere(const Transaction& txn) const {
+    return is_locked_elsewhere(txn.threadid());
+}

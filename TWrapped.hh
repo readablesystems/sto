@@ -38,7 +38,7 @@ static T read_wait_atomic(const T* v, TransProxy item, const V& version, bool ad
         T result = *v;
         fence();
         V v1 = version;
-        if (v0 == v1 && !v1.is_locked_elsewhere()) {
+        if (v0 == v1 && !v1.is_locked_elsewhere(item.transaction())) {
             item.observe(v1, add_read);
             return result;
         }
@@ -53,7 +53,7 @@ static T read_wait_nonatomic(const T* v, TransProxy item, const V& version, bool
     while (1) {
         V v0 = version;
         fence();
-        if (!v0.is_locked_elsewhere()) {
+        if (!v0.is_locked_elsewhere(item.transaction())) {
             item.observe(v0, add_read);
             return *v;
         }
