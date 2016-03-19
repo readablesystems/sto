@@ -100,16 +100,21 @@ void Transaction::stop(bool committed) {
 
     TXP_ACCOUNT(txp_max_transbuffer, buf_.size());
     TXP_ACCOUNT(txp_total_transbuffer, buf_.size());
-    if (any_writes_ && state_ == s_committing_locked) {
-        for (auto it = transSet_.begin() + first_write_; it != transSet_.end(); ++it)
-            if (it->needs_unlock())
-                it->owner()->unlock(*it);
-    }
     if (any_writes_) {
-        for (auto it = transSet_.begin() + first_write_; it != transSet_.end(); ++it)
+        auto fwit = transSet_.begin() + first_write_;
+        if (state_ == s_committing_locked)
+            for (auto it = transSet_.end(); it != fwit; ) {
+                --it;
+                if (it->needs_unlock())
+                    it->owner()->unlock(*it);
+            }
+        for (auto it = transSet_.end(); it != fwit; ) {
+            --it;
             if (it->has_write())
                 it->owner()->cleanup(*it, committed);
+        }
     }
+
     // TODO: this will probably mess up with nested transactions
     threadinfo_t& thr = tinfo[TThread::id()];
     if (thr.trans_end_callback)
