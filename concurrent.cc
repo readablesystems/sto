@@ -1109,7 +1109,8 @@ void print_time(struct timeval tv1, struct timeval tv2) {
     {name, desc, 6, new type<6, ## __VA_ARGS__>},     \
     {name, desc, 7, new type<7, ## __VA_ARGS__>},     \
     {name, desc, 8, new type<8, ## __VA_ARGS__>},     \
-    {name, desc, 9, new type<9, ## __VA_ARGS__>}
+    {name, desc, 9, new type<9, ## __VA_ARGS__>},     \
+    {name, desc, 10, new type<10, ## __VA_ARGS__>}
 
 struct Test {
     const char* name;
