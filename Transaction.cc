@@ -44,6 +44,10 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
     if (state_ == s_committing || state_ == s_committing_locked)
         return;
 
+    // ignore if version hasn't changed
+    if (item && item->has_read() && item->read_value<TransactionTid::type>() == t)
+        return;
+
     TXP_INCREMENT(txp_hco);
     if (TransactionTid::is_locked_elsewhere(t, threadid_)) {
         TXP_INCREMENT(txp_hco_lock);
