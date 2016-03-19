@@ -200,9 +200,10 @@ public:
     void install(TransItem& item, const Transaction& txn) {
         auto key = item.template key<key_type>();
         if (key == size_key) {
-            original_size_ = size_.access();
             pred_type& wval = item.template xwrite_value<pred_type>();
-            size_.write(original_size_ + wval.second - wval.first);
+            original_size_ = size_.access();
+            expected_size_ = wval.first;
+            size_.write(original_size_ + wval.second - expected_size_);
             txn.set_version(size_vers_);
             return;
         }
@@ -211,10 +212,8 @@ public:
             // maybe we have popped past this point
             if (key < 0)
                 idx = original_size_ - key - 1;
-            else if (!item.has_flag(indexed_bit)) {
-                TransProxy sitem = const_cast<Transaction&>(txn).item(this, size_key);
-                idx = original_size_ - (size_info(sitem).first - idx);
-            }
+            else if (!item.has_flag(indexed_bit))
+                idx = original_size_ - (expected_size_ - idx);
             if (idx >= size_.access()) {
                 item.clear_needs_unlock_if_set();
                 return;
@@ -295,6 +294,7 @@ private:
     W<size_type> size_;
     version_type size_vers_;
     size_type original_size_; // protected by size_vers_ lock
+    size_type expected_size_;
     size_type max_size_; // protected by size_vers_ lock
     size_type capacity_;
 
