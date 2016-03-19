@@ -52,6 +52,8 @@ public:
     TVector()
         : size_(0), max_size_(0), capacity_(default_capacity) {
         data_ = reinterpret_cast<elem*>(new char[sizeof(elem) * capacity_]);
+        for (size_type i = 0; i != capacity_; ++i)
+            data_[i].vers = 0;
     }
     ~TVector() {
         using WT = W<T>;
@@ -195,8 +197,10 @@ public:
         auto key = item.template key<key_type>();
         if (key == size_key)
             return item.check_version(size_vers_);
-        else
+        else {
+            assert(item.has_flag(indexed_bit));
             return item.check_version(data_[key].vers);
+        }
     }
     void install(TransItem& item, const Transaction& txn) {
         auto key = item.template key<key_type>();
@@ -587,7 +591,9 @@ void TVector<T, W>::nontrans_reserve(size_type size) {
         new_capacity <<= 1;
     if (new_capacity > capacity_) {
         elem* new_data = reinterpret_cast<elem*>(new char[sizeof(elem) * new_capacity]);
-        memcpy(new_data, data_, sizeof(elem) * max_size_);
+        memcpy(new_data, data_, sizeof(elem) * capacity_);
+        for (size_type i = capacity_; i != new_capacity; ++i)
+            data_[i].vers = 0;
         Transaction::rcu_delete_array(reinterpret_cast<char*>(data_));
         data_ = new_data;
         capacity_ = new_capacity;
