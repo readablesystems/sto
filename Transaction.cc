@@ -47,7 +47,7 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
     TXP_INCREMENT(txp_hco);
     if (TransactionTid::is_locked_elsewhere(t, threadid_)) {
         TXP_INCREMENT(txp_hco_lock);
-        mark_abort_because(item, "locked");
+        mark_abort_because(item, "locked", t);
     abort:
         TXP_INCREMENT(txp_hco_abort);
         abort();
@@ -86,6 +86,8 @@ void Transaction::stop(bool committed) {
                 buf << " " << abort_reason_;
             if (abort_item_)
                 buf << " " << *abort_item_;
+            if (abort_version_)
+                buf << " V" << TVersion(abort_version_);
             buf << '\n';
             std::cerr << buf.str();
         }

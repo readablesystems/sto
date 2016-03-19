@@ -295,6 +295,7 @@ public:
 #if STO_DEBUG_ABORTS
         abort_item_ = nullptr;
         abort_reason_ = nullptr;
+        abort_version_ = 0;
 #endif
         TXP_INCREMENT(txp_total_starts);
         state_ = s_in_progress;
@@ -419,17 +420,19 @@ private:
     }
 
 #if STO_DEBUG_ABORTS
-    void mark_abort_because(TransItem* item, const char* reason) const {
+    void mark_abort_because(TransItem* item, const char* reason, TVersion::type version = 0) const {
         abort_item_ = item;
         abort_reason_ = reason;
+        if (version)
+            abort_version_ = version;
     }
 #else
-    void mark_abort_because(TransItem*, const char*) const {
+    void mark_abort_because(TransItem*, const char*, TVersion::type = 0) const {
     }
 #endif
 
-    void abort_because(TransItem& item, const char* reason) {
-        mark_abort_because(&item, reason);
+    void abort_because(TransItem& item, const char* reason, TVersion::type version = 0) {
+        mark_abort_because(&item, reason, version);
         abort();
     }
 
@@ -480,8 +483,12 @@ public:
         while (1) {
             if (TransactionTid::try_lock(vers, threadid_))
                 return true;
-            if (i > (!item.has_read() << 3))
+            if (i > (!item.has_read() << 3)) {
+# if STO_DEBUG_ABORTS
+                abort_version_ = vers;
+# endif
                 return false;
+            }
             ++i;
             relax_fence();
         }
@@ -576,8 +583,11 @@ private:
     mutable tid_type commit_tid_;
     mutable TransactionBuffer buf_;
     mutable uint32_t lrng_state_;
+#if STO_DEBUG_ABORTS
     mutable TransItem* abort_item_;
     mutable const char* abort_reason_;
+    mutable TVersion::type abort_version_;
+#endif
     bool is_test_;
 #if TRANSACTION_HASHTABLE
     uint16_t hashtable_[hash_size];
@@ -769,7 +779,7 @@ inline TransProxy& TransProxy::add_read(T rdata) {
 inline TransProxy& TransProxy::observe(TVersion version, bool add_read) {
     assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_))
-        t()->abort_because(item(), "locked");
+        t()->abort_because(item(), "locked", version.value());
     t()->check_opacity(item(), version.value());
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
@@ -781,7 +791,7 @@ inline TransProxy& TransProxy::observe(TVersion version, bool add_read) {
 inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read) {
     assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_))
-        t()->abort_because(item(), "locked");
+        t()->abort_because(item(), "locked", version.value());
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
