@@ -69,13 +69,13 @@ public:
     const_proxy_type back() const {
         auto& sinfo = size_info();
         if (!sinfo.second)
-            version_type::opaque_throw(std::out_of_range("TVector::back"));
+            version_type::opaque_throw(std::out_of_range("TVector_nopred::back"));
         return const_proxy_type(this, sinfo.second - 1);
     }
     proxy_type back() {
         auto& sinfo = size_info();
         if (!sinfo.second)
-            version_type::opaque_throw(std::out_of_range("TVector::back"));
+            version_type::opaque_throw(std::out_of_range("TVector_nopred::back"));
         return proxy_type(this, sinfo.second - 1);
     }
 
@@ -96,7 +96,7 @@ public:
         auto sitem = size_item().add_write();
         pred_type& wval = sitem.template xwrite_value<pred_type>();
         if (!wval.second)
-            throw std::out_of_range("TVector_nopred::pop_back");
+            version_type::opaque_throw(std::out_of_range("TVector_nopred::pop_back"));
         --wval.second;
         Sto::item(this, wval.second).add_write().add_flags(pop_bit);
     }

@@ -899,3 +899,7 @@ inline bool TVersion::is_locked_elsewhere(const Transaction& txn) const {
 inline bool TNonopaqueVersion::is_locked_elsewhere(const Transaction& txn) const {
     return is_locked_elsewhere(txn.threadid());
 }
+
+std::ostream& operator<<(std::ostream& w, const Transaction& txn);
+std::ostream& operator<<(std::ostream& w, const TestTransaction& txn);
+std::ostream& operator<<(std::ostream& w, const TransactionGuard& txn);

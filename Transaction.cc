@@ -319,3 +319,18 @@ void TObject::print(std::ostream& w, const TransItem& item) const {
         w << " P" << item.predicate_value<void*>();
     w << "}";
 }
+
+std::ostream& operator<<(std::ostream& w, const Transaction& txn) {
+    txn.print(w);
+    return w;
+}
+
+std::ostream& operator<<(std::ostream& w, const TestTransaction& txn) {
+    txn.print(w);
+    return w;
+}
+
+std::ostream& operator<<(std::ostream& w, const TransactionGuard& txn) {
+    txn.print(w);
+    return w;
+}

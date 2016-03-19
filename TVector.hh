@@ -251,18 +251,6 @@ public:
         }
         w << "}";
     }
-    void print(std::ostream& w) const {
-        w << "TVector<" << typeid(T).name() << ">{" << (void*) this
-          << "size=" << size_.access() << '@' << size_vers_ << " [";
-        for (size_type i = 0; i < size_.access(); ++i) {
-            if (i)
-                w << ", ";
-            if (i >= 10)
-                w << '[' << i << ']';
-            w << data_[i].v.access() << '@' << data_[i].vers;
-        }
-        w << "]}";
-    }
     bool check_not_locked_here(int here) const {
         if (size_vers_.is_locked_here(here))
             return false;
@@ -272,10 +260,7 @@ public:
                 return false;
         return true;
     }
-    friend std::ostream& operator<<(std::ostream& w, const TVector<T, W>& v) {
-        v.print(w);
-        return w;
-    }
+    void print(std::ostream& w) const;
 
 private:
     struct elem {
@@ -597,4 +582,24 @@ void TVector<T, W>::nontrans_reserve(size_type size) {
         data_ = new_data;
         capacity_ = new_capacity;
     }
+}
+
+template <typename T, template <typename> typename W>
+void TVector<T, W>::print(std::ostream& w) const {
+    w << "TVector<" << typeid(T).name() << ">{" << (void*) this
+      << "size=" << size_.access() << '@' << size_vers_ << " [";
+    for (size_type i = 0; i < size_.access(); ++i) {
+        if (i)
+            w << ", ";
+        if (i >= 10)
+            w << '[' << i << ']';
+        w << data_[i].v.access() << '@' << data_[i].vers;
+    }
+    w << "]}";
+}
+
+template <typename T, template <typename> typename W>
+std::ostream& operator<<(std::ostream& w, const TVector<T, W>& v) {
+    v.print(w);
+    return w;
 }
