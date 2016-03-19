@@ -80,7 +80,8 @@ void Transaction::stop(bool committed) {
 #if STO_DEBUG_ABORTS
         if (local_random() <= uint32_t(0xFFFFFFFF * STO_DEBUG_ABORTS_FRACTION)) {
             std::ostringstream buf;
-            buf << "$ abort " << state_name(state_);
+            buf << "$" << (threadid_ < 10 ? "0" : "") << threadid_
+                << " abort " << state_name(state_);
             if (abort_reason_)
                 buf << " " << abort_reason_;
             if (abort_item_)

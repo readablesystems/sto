@@ -19,6 +19,10 @@ ifeq ($(NDEBUG),1)
 CXXFLAGS += -DNDEBUG
 endif
 
+ifeq ($(DEBUG_ABORTS),1)
+CXXFLAGS += -DSTO_DEBUG_ABORTS=1
+endif
+
 # OPTFLAGS can change without rebuild
 OPTFLAGS := -W -Wall
 
