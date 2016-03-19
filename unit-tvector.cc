@@ -4,6 +4,7 @@
 #include <vector>
 #include "Transaction.hh"
 #include "TVector.hh"
+#include "TBox.hh"
 #define GUARDED if (TransactionGuard tguard{})
 
 void testSimpleInt() {
@@ -214,6 +215,7 @@ void testIter() {
 
 void testConflictingIter() {
     TVector<int> f;
+    TBox<int> box;
     TRANSACTION {
     for (int i = 0; i < 10; i++) {
         f.push_back(i);
@@ -222,6 +224,7 @@ void testConflictingIter() {
 
     TestTransaction t(1);
     std::max_element(f.begin(), f.end());
+    box = 9; /* not read-only txn */
 
     TestTransaction t1(2);
     f[4] = 10;
@@ -308,6 +311,7 @@ void testConflictingModifyIter2() {
 
 void testConflictingModifyIter3() {
     TVector<int> f;
+    TBox<int> box;
     TRANSACTION {
     for (int i = 0; i < 10; i++) {
         f.push_back(i);
@@ -316,6 +320,7 @@ void testConflictingModifyIter3() {
 
     TestTransaction t1(1);
     (int) f[4];
+    box = 9; /* not read-only txn */
 
     TestTransaction t(2);
     std::replace(f.begin(), f.end(), 4, 6);
@@ -374,6 +379,7 @@ void testIterNPushBack1() {
 
 void testIterNPushBack2() {
     TVector<int> f;
+    TBox<int> box;
 
     {
         TransactionGuard tt;
@@ -384,6 +390,7 @@ void testIterNPushBack2() {
 
     TestTransaction t1(1);
     std::max_element(f.begin(), f.end());
+    box = 9; /* not read-only txn */
 
     TestTransaction t2(2);
     f.push_back(2);
@@ -453,6 +460,7 @@ void testInsert() {
 
 void testPushNPop() {
     TVector<int> f;
+    TBox<int> box;
 
     TRANSACTION {
         for (int i = 0; i < 10; i++) {
@@ -534,6 +542,7 @@ void testPushNPop() {
 
     TestTransaction t7(3);
     (int) f[8];
+    box = 9; /* not read-only txn */
 
     assert(t5.try_commit());
     assert(!t7.try_commit());
@@ -649,6 +658,7 @@ void testIteratorBetterSemantics() {
 
 void testSizePredicates() {
     TVector<int> f;
+    TBox<int> box;
 
     TRANSACTION {
         for (int i = 0; i < 10; i++)
@@ -658,6 +668,7 @@ void testSizePredicates() {
     {
         TestTransaction t1(1);
         assert(f.size() > 5);
+        box = 9; /* not read-only txn */
 
         TestTransaction t2(2);
         for (int i = 0; i < 4; ++i)
@@ -671,6 +682,7 @@ void testSizePredicates() {
     {
         TestTransaction t1(1);
         assert(f.size() > 4);
+        box = 9; /* not read-only txn */
 
         TestTransaction t2(2);
         while (f.size() > 4)
@@ -689,6 +701,7 @@ void testSizePredicates() {
 
         TestTransaction t1(1);
         assert(f.size() > 4);
+        box = 9; /* not read-only txn */
 
         TestTransaction t2(2);
         while (f.size() > 4)
@@ -702,6 +715,7 @@ void testSizePredicates() {
     {
         TestTransaction t1(1);
         assert(f.size() < 6);
+        box = 9; /* not read-only txn */
 
         TestTransaction t2(2);
         while (f.size() < 6)
@@ -715,6 +729,7 @@ void testSizePredicates() {
     {
         TestTransaction t1(1);
         assert(f.size() < 8);
+        box = 9; /* not read-only txn */
 
         TestTransaction t2(2);
         while (f.size() < 8)
@@ -730,6 +745,7 @@ void testSizePredicates() {
 
 void testIterPredicates() {
     TVector<int> f;
+    TBox<int> box;
 
     TRANSACTION {
         for (int i = 0; i < 10; i++)
@@ -739,6 +755,7 @@ void testIterPredicates() {
     {
         TestTransaction t1(1);
         assert(f.begin() + 5 < f.end());
+        box = 9; /* not read-only txn */
 
         TestTransaction t2(2);
         for (int i = 0; i < 4; ++i)
@@ -752,6 +769,7 @@ void testIterPredicates() {
     {
         TestTransaction t1(1);
         assert(f.begin() + 4 < f.end());
+        box = 9; /* not read-only txn */
 
         TestTransaction t2(2);
         while (f.size() > 4)
@@ -770,6 +788,7 @@ void testIterPredicates() {
 
         TestTransaction t1(1);
         assert(f.end() > f.begin() + 4);
+        box = 9; /* not read-only txn */
 
         TestTransaction t2(2);
         while (f.size() > 4)
@@ -783,6 +802,7 @@ void testIterPredicates() {
     {
         TestTransaction t1(1);
         assert(f.end() <= f.begin() + 5);
+        box = 9; /* not read-only txn */
 
         TestTransaction t2(2);
         while (f.size() < 6)
@@ -796,6 +816,7 @@ void testIterPredicates() {
     {
         TestTransaction t1(1);
         assert(f.end() - f.begin() < 8);
+        box = 9; /* not read-only txn */
 
         TestTransaction t2(2);
         while (f.size() < 8)
@@ -809,6 +830,7 @@ void testIterPredicates() {
     {
         TestTransaction t1(1);
         assert(f.end() - f.begin() < 9);
+        box = 9; /* not read-only txn */
 
         TestTransaction t2(2);
         while (f.size() < 9)

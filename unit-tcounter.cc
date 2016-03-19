@@ -5,6 +5,7 @@
 #include <algorithm>
 #include "Transaction.hh"
 #include "TCounter.hh"
+#include "TBox.hh"
 
 void testTrivial() {
 	TCounter<int> c;
@@ -84,6 +85,7 @@ void testConcurrentUpdate() {
 
 void testSimpleRangesOk() {
     TCounter<int> c;
+    TBox<int> box;
     bool match;
 
     {
@@ -101,6 +103,7 @@ void testSimpleRangesOk() {
         TestTransaction t1(1);
         match = c > -4;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         c = -1;
@@ -114,6 +117,7 @@ void testSimpleRangesOk() {
         TestTransaction t1(1);
         match = c == 1;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         c = 2;
@@ -131,12 +135,14 @@ void testSimpleRangesOk() {
 
 void testSimpleRangesFail() {
     TCounter<int> c;
+    TBox<int> box;
     bool match;
 
     {
         TestTransaction t1(1);
         match = c < 3;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         c = 5;
@@ -150,6 +156,7 @@ void testSimpleRangesFail() {
         TestTransaction t1(1);
         match = c < 3;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         c = 5;
@@ -168,6 +175,7 @@ void testSimpleRangesFail() {
         TestTransaction t1(1);
         match = c < 3;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         c = 5;
@@ -191,6 +199,7 @@ void testSimpleRangesFail() {
         TestTransaction t1(1);
         match = c > 1;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         c = 0;
@@ -208,12 +217,14 @@ void testSimpleRangesFail() {
 
 void testSimpleRangesFailNoOpacity() {
     TCounter<int, TNonopaqueWrapped<int> > c;
+    TBox<int> box;
     bool match;
 
     {
         TestTransaction t1(1);
         match = c < 3;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         c = 5;
@@ -227,6 +238,7 @@ void testSimpleRangesFailNoOpacity() {
         TestTransaction t1(1);
         match = c < 3;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         c = 5;
@@ -244,6 +256,7 @@ void testSimpleRangesFailNoOpacity() {
         TestTransaction t1(1);
         match = c < 3;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         c = 5;
@@ -266,6 +279,7 @@ void testSimpleRangesFailNoOpacity() {
         TestTransaction t1(1);
         match = c > 1;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         c = 0;
@@ -282,6 +296,7 @@ void testSimpleRangesFailNoOpacity() {
 
 void testUpdateRead() {
     TCounter<int> c;
+    TBox<int> box;
     bool match;
 
     {
