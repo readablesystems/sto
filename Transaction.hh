@@ -770,6 +770,20 @@ inline TransProxy& TransProxy::add_read(T rdata) {
     return *this;
 }
 
+// like add_read but checks opacity too.
+// should be used by data structures that have non-TransactionTid
+// versions and still need to respect opacity.
+template <typename T>
+inline TransProxy& TransProxy::add_read_opaque(T rdata) {
+    assert(!has_stash());
+    t()->check_opacity();
+    if (!has_read()) {
+        item().__or_flags(TransItem::read_bit);
+        item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
+    }
+    return *this;
+}
+
 inline TransProxy& TransProxy::observe(TVersion version, bool add_read) {
     assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_))
