@@ -183,8 +183,7 @@ public:
         auto key = item.template key<key_type>();
         if (key == size_key)
             return txn.try_lock(item, size_vers_);
-        else if (key > 0
-                 && (item.has_flag(indexed_bit) || !size_vers_.is_locked_here(txn)))
+        else if (key > 0 && item.has_flag(indexed_bit))
             return txn.try_lock(item, data_[key - 1].vers);
         else {
             assert(size_vers_.is_locked_here(txn));
@@ -233,7 +232,7 @@ public:
         auto key = item.template key<key_type>();
         if (key == size_key)
             size_vers_.unlock();
-        else if (key > 0)
+        else if (key > 0 && item.has_flag(indexed_bit))
             data_[key - 1].vers.unlock();
     }
     void print(std::ostream& w, const TransItem& item) const {
