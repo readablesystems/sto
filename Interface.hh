@@ -325,9 +325,7 @@ public:
     }
 
     template <typename Exception>
-    static void opaque_throw(const Exception& exception) {
-        throw exception;
-    }
+    static inline void opaque_throw(const Exception& exception);
 
 private:
     type v_;
@@ -443,6 +441,12 @@ public:
 private:
     type v_;
 };
+
+template <typename Exception>
+inline void TVersion::opaque_throw(const Exception& exception) {
+    throw exception;
+}
+
 
 class TObject {
 public:
