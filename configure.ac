@@ -289,6 +289,7 @@ AC_CHECK_SIZEOF([long long])
 AC_CHECK_SIZEOF([void *])
 
 AC_CHECK_DECLS([getline])
+AC_REPLACE_FUNCS([srandomdev])
 
 AC_CHECK_HEADERS([time.h execinfo.h])
 AC_CHECK_DECLS([clock_gettime], [], [], [#if HAVE_TIME_H
@@ -431,6 +432,16 @@ extern void fail_masstree_precondition(const char* file, int line, const char* a
 #endif
 #ifndef precondition
 #define precondition masstree_precondition
+#endif
+
+#if !HAVE_SRANDOMDEV
+#if __cplusplus
+extern "C" {
+#endif
+extern void srandomdev(void);
+#if __cplusplus
+}
+#endif
 #endif
 
 #endif])

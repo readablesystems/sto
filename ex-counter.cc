@@ -2,6 +2,7 @@
 #include <iostream>
 #include <sys/time.h>
 #include <assert.h>
+#include <sys/resource.h>
 #include "Transaction.hh"
 #include "TWrapped.hh"
 #include "clp.h"

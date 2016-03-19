@@ -92,11 +92,7 @@ void run(T* q, int me) {
             tr->pushes.clear();
             tr->pops = 0;
             tr->tops.clear();
-            uint32_t seed = transseed*3 + (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_THREADS*NTRANS*11;
-            auto seedlow = seed & 0xffff;
-            auto seedhigh = seed >> 16;
-            Rand transgen(seed, seedlow << 16 | seedhigh);
-            
+
             int val1 = slotdist(transgen);
             int val2 = slotdist(transgen);
             int val3 = slotdist(transgen);
