@@ -216,6 +216,7 @@ class TVersion {
 public:
     typedef TransactionTid::type type;
     typedef TransactionTid::signed_type signed_type;
+    static constexpr type user_bit = TransactionTid::user_bit;
 
     TVersion()
         : v_() {
@@ -335,6 +336,7 @@ class TNonopaqueVersion {
 public:
     typedef TransactionTid::type type;
     typedef TransactionTid::signed_type signed_type;
+    static constexpr type user_bit = TransactionTid::user_bit;
 
     TNonopaqueVersion()
         : v_(TransactionTid::nonopaque_bit) {
