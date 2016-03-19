@@ -13,7 +13,9 @@ LDFLAGS = @LDFLAGS@
 MASSTREEDIR = @MASSTREEDIR@
 
 # if CXXFLAGS changes, rebuild
-CXXFLAGS =
+ifndef CXXFLAGS
+CXXFLAGS :=
+endif
 
 ifeq ($(NDEBUG),1)
 CXXFLAGS += -DNDEBUG
