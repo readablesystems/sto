@@ -299,6 +299,12 @@ private:
     static pred_type& size_predicate(TransProxy sitem) {
         return sitem.template predicate_value<pred_type>();
     }
+    static pred_type& size_predicate(TransItem* sitem) {
+        return sitem->template predicate_value<pred_type>();
+    }
+    static size_type original_size(const TransItem* sitem) {
+        return sitem->template xwrite_value<pred_type>().first;
+    }
     pred_type& size_predicate() const {
         return size_predicate(size_item());
     }
@@ -326,8 +332,8 @@ public:
     const_iterator()
         : a_() {
     }
-    const_iterator(const TVector<T, W>* a, size_type i, size_type cend1)
-        : a_(const_cast<vector_type*>(a)), i_(i), cend1_(cend1) {
+    const_iterator(const TVector<T, W>* a, size_type i, TransItem* eitem)
+        : a_(const_cast<vector_type*>(a)), i_(i), eitem_(eitem) {
     }
 
     typename vector_type::const_proxy_type operator*() const {
@@ -338,8 +344,10 @@ public:
         if (a_ != x.a_)
             return false;
         if (different_end(x)) {
-            difference_type d = cend1_ ? x.i_ - i_ : i_ - x.i_;
-            a_->size_predicate().observe_test_eq(cend1_ + x.cend1_ - 1, d + cend1_ + x.cend1_ - 1);
+            difference_type d = eitem_ ? x.i_ - i_ : i_ - x.i_;
+            TransItem* eitem = eitem_ ? eitem_ : x.eitem_;
+            size_type sz = a_->original_size(eitem);
+            a_->size_predicate(eitem).observe_test_eq(sz, d + sz);
         }
         return i_ == x.i_;
     }
@@ -348,18 +356,24 @@ public:
     }
     bool operator<(const const_iterator& x) const {
         assert(a_ == x.a_);
-        if (cend1_ && !x.cend1_)
-            a_->size_predicate().observe_lt(x.i_ - i_ + cend1_ - 1, i_ < x.i_);
-        else if (x.cend1_ && !cend1_)
-            a_->size_predicate().observe_gt(i_ - x.i_ + x.cend1_ - 1, i_ < x.i_);
+        if (eitem_ && !x.eitem_) {
+            size_type sz = a_->original_size(eitem_);
+            a_->size_predicate(eitem_).observe_lt(x.i_ - i_ + sz, i_ < x.i_);
+        } else if (x.eitem_ && !eitem_) {
+            size_type sz = a_->original_size(x.eitem_);
+            a_->size_predicate(x.eitem_).observe_gt(i_ - x.i_ + sz, i_ < x.i_);
+        }
         return i_ < x.i_;
     }
     bool operator<=(const const_iterator& x) const {
         assert(a_ == x.a_);
-        if (cend1_ && !x.cend1_)
-            a_->size_predicate().observe_le(x.i_ - i_ + cend1_ - 1, i_ <= x.i_);
-        else if (x.cend1_ && !cend1_)
-            a_->size_predicate().observe_ge(i_ - x.i_ + x.cend1_ - 1, i_ <= x.i_);
+        if (eitem_ && !x.eitem_) {
+            size_type sz = a_->original_size(eitem_);
+            a_->size_predicate(eitem_).observe_le(x.i_ - i_ + sz, i_ <= x.i_);
+        } else if (x.eitem_ && !eitem_) {
+            size_type sz = a_->original_size(x.eitem_);
+            a_->size_predicate(x.eitem_).observe_ge(i_ - x.i_ + sz, i_ <= x.i_);
+        }
         return i_ <= x.i_;
     }
     bool operator>(const const_iterator& x) const {
@@ -378,10 +392,10 @@ public:
         return *this;
     }
     const_iterator operator+(difference_type delta) const {
-        return const_iterator(a_, i_ + delta, cend1_);
+        return const_iterator(a_, i_ + delta, eitem_);
     }
     const_iterator operator-(difference_type delta) const {
-        return const_iterator(a_, i_ - delta, cend1_);
+        return const_iterator(a_, i_ - delta, eitem_);
     }
     const_iterator& operator++() {
         ++i_;
@@ -389,7 +403,7 @@ public:
     }
     const_iterator operator++(int) {
         ++i_;
-        return const_iterator(a_, i_ - 1, cend1_);
+        return const_iterator(a_, i_ - 1, eitem_);
     }
     const_iterator& operator--() {
         --i_;
@@ -397,7 +411,7 @@ public:
     }
     const_iterator operator--(int) {
         --i_;
-        return const_iterator(a_, i_ + 1, cend1_);
+        return const_iterator(a_, i_ + 1, eitem_);
     }
 
     inline difference_proxy operator-(const const_iterator& x) const;
@@ -405,10 +419,10 @@ public:
 protected:
     vector_type* a_;
     size_type i_;
-    size_type cend1_;
+    TransItem* eitem_;
 
     bool different_end(const const_iterator& x) const {
-        return (cend1_ ^ x.cend1_) && !(cend1_ & x.cend1_);
+        return eitem_ != x.eitem_;
     }
     friend class TVector<T, W>;
 };
@@ -422,8 +436,8 @@ public:
 
     iterator() {
     }
-    iterator(const TVector<T, W>* a, size_type i, size_type cend1)
-        : const_iterator(a, i, cend1) {
+    iterator(const TVector<T, W>* a, size_type i, TransItem* eitem)
+        : const_iterator(a, i, eitem) {
     }
 
     typename vector_type::proxy_type operator*() const {
@@ -439,10 +453,10 @@ public:
         return *this;
     }
     iterator operator+(difference_type delta) const {
-        return iterator(this->a_, this->i_ + delta, this->cend1_);
+        return iterator(this->a_, this->i_ + delta, this->eitem_);
     }
     iterator operator-(difference_type delta) const {
-        return iterator(this->a_, this->i_ - delta, this->cend1_);
+        return iterator(this->a_, this->i_ - delta, this->eitem_);
     }
     iterator& operator++() {
         ++this->i_;
@@ -450,7 +464,7 @@ public:
     }
     iterator operator++(int) {
         ++this->i_;
-        return iterator(this->a_, this->i_ - 1, this->cend1_);
+        return iterator(this->a_, this->i_ - 1, this->eitem_);
     }
     iterator& operator--() {
         --this->i_;
@@ -458,7 +472,7 @@ public:
     }
     iterator operator--(int) {
         --this->i_;
-        return iterator(this->a_, this->i_ + 1, this->cend1_);
+        return iterator(this->a_, this->i_ + 1, this->eitem_);
     }
 
     difference_proxy operator-(const const_iterator& x) const {
@@ -477,8 +491,8 @@ inline auto TVector<T, W>::begin() -> iterator {
 
 template <typename T, template <typename> typename W>
 inline auto TVector<T, W>::end() -> iterator {
-    auto& sinfo = size_info();
-    return iterator(this, sinfo.second, sinfo.first + 1);
+    TransProxy sitem = size_item();
+    return iterator(this, size_info(sitem).second, &sitem.item());
 }
 
 template <typename T, template <typename> typename W>
@@ -488,19 +502,18 @@ inline auto TVector<T, W>::cbegin() const -> const_iterator {
 
 template <typename T, template <typename> typename W>
 inline auto TVector<T, W>::cend() const -> const_iterator {
-    auto& sinfo = size_info();
-    return iterator(this, sinfo.second, sinfo.first + 1);
+    TransProxy sitem = size_item();
+    return const_iterator(this, size_info(sitem).second, &sitem.item());
 }
 
 template <typename T, template <typename> typename W>
 inline auto TVector<T, W>::begin() const -> const_iterator {
-    return const_iterator(this, 0, 0);
+    return cbegin();
 }
 
 template <typename T, template <typename> typename W>
 inline auto TVector<T, W>::end() const -> const_iterator {
-    auto& sinfo = size_info();
-    return iterator(this, sinfo.second, sinfo.first + 1);
+    return cend();
 }
 
 
@@ -508,8 +521,9 @@ template <typename T, template <typename> typename W>
 inline auto TVector<T, W>::const_iterator::operator-(const const_iterator& x) const -> difference_proxy {
     assert(a_ == x.a_);
     if (different_end(x)) {
-        size_type cend1 = cend1_ + x.cend1_ - 1;
-        return difference_proxy(&a_->size_predicate(), cend1, i_ - x.i_ - cend1);
+        TransItem* eitem = eitem_ ? eitem_ : x.eitem_;
+        size_type sz = a_->original_size(eitem);
+        return difference_proxy(&a_->size_predicate(eitem), sz, i_ - x.i_ - sz);
     } else
         return difference_proxy(nullptr, 0, i_ - x.i_);
 }

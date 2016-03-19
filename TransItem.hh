@@ -367,13 +367,14 @@ class TransProxy {
         return *this;
     }
 
-  private:
+    inline TransItem& item() const;
+
+private:
     Transaction* t_;
     unsigned idx_;
     inline Transaction* t() const {
         return t_;
     }
-    inline TransItem& item() const;
     friend class Transaction;
     friend class OptionalTransProxy;
 };
