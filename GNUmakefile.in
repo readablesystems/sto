@@ -23,6 +23,10 @@ ifeq ($(DEBUG_ABORTS),1)
 CXXFLAGS += -DSTO_DEBUG_ABORTS=1
 endif
 
+ifdef PROFILE_COUNTERS
+CXXFLAGS += -DSTO_PROFILE_COUNTERS=$(PROFILE_COUNTERS)
+endif
+
 # OPTFLAGS can change without rebuild
 OPTFLAGS := -W -Wall
 
