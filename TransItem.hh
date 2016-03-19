@@ -210,11 +210,10 @@ private:
 
 class TransProxy {
   public:
-    TransProxy(Transaction& t, unsigned idx)
-        : t_(&t), idx_(idx) {
+    TransProxy(Transaction& t, TransItem& item)
+        : t_(&t), item_(&item) {
         assert(&t == TThread::txn);
     }
-    inline TransProxy(Transaction& t, TransItem& item);
 
     TransProxy* operator->() { // make OptionalTransProxy work
         return this;
@@ -370,11 +369,13 @@ class TransProxy {
     inline Transaction& transaction() const {
         return *t_;
     }
-    inline TransItem& item() const;
+    inline TransItem& item() const {
+        return *item_;
+    }
 
 private:
     Transaction* t_;
-    unsigned idx_;
+    TransItem* item_;
     inline Transaction* t() const {
         return t_;
     }
@@ -387,11 +388,11 @@ class OptionalTransProxy {
   public:
     typedef TransProxy (OptionalTransProxy::*unspecified_bool_type)() const;
     operator unspecified_bool_type() const {
-        return idx_ != unsigned(-1) ? &OptionalTransProxy::get : 0;
+        return item_ ? &OptionalTransProxy::get : 0;
     }
     TransProxy get() const {
-        assert(idx_ != unsigned(-1));
-        return TransProxy(*t(), idx_);
+        assert(item_);
+        return TransProxy(*t(), *item_);
     }
     TransProxy operator*() const {
         return get();
@@ -400,9 +401,9 @@ class OptionalTransProxy {
         return get();
     }
   private:
-    unsigned idx_;
-    OptionalTransProxy(Transaction& t, unsigned idx)
-        : idx_(idx) {
+    TransItem* item_;
+    OptionalTransProxy(Transaction& t, TransItem* item)
+        : item_(item) {
         (void) t;
         assert(&t == TThread::txn);
     }

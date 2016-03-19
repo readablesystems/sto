@@ -333,7 +333,7 @@ public:
     template <typename T>
     TransProxy new_item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        return TransProxy(*this, allocate_item(obj, xkey) - transSet_.begin());
+        return TransProxy(*this, *allocate_item(obj, xkey));
     }
 
     // adds item without checking its presence in the array
@@ -341,7 +341,7 @@ public:
     TransProxy fresh_item(const TObject* obj, T key) {
         may_duplicate_items_ = !transSet_.empty();
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        return TransProxy(*this, allocate_item(obj, xkey) - transSet_.begin());
+        return TransProxy(*this, *allocate_item(obj, xkey));
     }
 
     // tries to find an existing item with this key, otherwise adds it
@@ -351,7 +351,7 @@ public:
         TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
         if (!ti)
             ti = allocate_item(obj, xkey);
-        return TransProxy(*this, ti - transSet_.begin());
+        return TransProxy(*this, *ti);
     }
 
     // gets an item that is intended to be read only. this method essentially allows for duplicate items
@@ -366,14 +366,14 @@ public:
             may_duplicate_items_ = !transSet_.empty();
         if (!ti)
             ti = allocate_item(obj, xkey);
-        return TransProxy(*this, ti - transSet_.begin());
+        return TransProxy(*this, *ti);
     }
 
     template <typename T>
     OptionalTransProxy check_item(const TObject* obj, T key) const {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
         TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
-        return OptionalTransProxy(const_cast<Transaction&>(*this), ti ? ti - transSet_.begin() : unsigned(-1));
+        return OptionalTransProxy(const_cast<Transaction&>(*this), ti);
     }
 
 private:
@@ -756,15 +756,6 @@ class TransactionLoopGuard {
     }
 };
 
-
-inline TransProxy::TransProxy(Transaction& t, TransItem& item)
-    : t_(&t), idx_(&item - t.transSet_.begin()) {
-    assert(&t == TThread::txn);
-}
-
-inline TransItem& TransProxy::item() const {
-    return t()->transSet_[idx_];
-}
 
 template <typename T>
 inline TransProxy& TransProxy::add_read(T rdata) {
