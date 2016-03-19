@@ -122,23 +122,30 @@ void run_find_push_pop_get(T* q, int me) {
 template <typename T>
 void run_push_pop(T* q, int me) {
     TThread::set_id(me);
-    std::uniform_int_distribution<long> slotdist(0, 999);
+    std::uniform_int_distribution<unsigned> slotdist(0, 999);
     Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
 
     int N = ntrans/nthreads;
     int OPS = opspertrans;
     unsigned nretries = 0;
     std::ostringstream ob;
+    unsigned kinds[3] = {0, 0, 0};
 
     for (int i = 0; i < N; ++i) {
         Rand transgen_snap = transgen;
+        unsigned what;
         while (1) {
             Sto::start_transaction();
+            what = 0;
             try {
                 for (int j = 0; j < OPS; ++j) {
-                    if (q->size() < 1001)
+                    if (q->size() < 1001) {
                         q->push_back(slotdist(transgen));
-                    else if (q->size() > 4000 || (*q)[slotdist(transgen)] % 2)
+                        what = 1;
+                    } else if (q->size() > 4000) {
+                        q->pop_back();
+                        what = 2;
+                    } else if ((*q)[slotdist(transgen)] >= 500)
                         q->pop_back();
                     else
                         q->push_back(slotdist(transgen));
@@ -149,8 +156,10 @@ void run_push_pop(T* q, int me) {
             transgen = transgen_snap;
             ++nretries;
         }
+        ++kinds[what];
     }
 
+    //printf("%d: %u %u %u\n", me, kinds[0], kinds[1], kinds[2]);
     find_aborts[me] = nretries;
 }
 
