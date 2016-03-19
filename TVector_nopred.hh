@@ -163,8 +163,9 @@ public:
         else if (!(data_[key].vers.value() & dead_bit))
             return true;
         else {
-            OptionalTransProxy item = txn.check_item(this, size_key);
-            if (item && key >= item->template xwrite_value<pred_type>().first)
+            OptionalTransProxy sitem = txn.check_item(this, size_key);
+            // ok to access dead item if we are adding it
+            if (sitem && key >= sitem->template xwrite_value<pred_type>().first)
                 return true;
             else {
                 data_[key].vers.unlock();
@@ -188,9 +189,9 @@ public:
         } else {
             bool exists = true;
             {
-                OptionalTransProxy si = txn.check_item(this, size_key);
-                if (si)
-                    exists = key < si->template xwrite_value<pred_type>().second;
+                OptionalTransProxy sitem = txn.check_item(this, size_key);
+                if (sitem)
+                    exists = key < sitem->template xwrite_value<pred_type>().second;
             }
             if (exists && key == max_size_) {
                 new(reinterpret_cast<void*>(&data_[key].v)) W<T>(std::move(item.write_value<T>()));
@@ -504,7 +505,9 @@ void TVector_nopred<T, W>::nontrans_reserve(size_type size) {
         new_capacity <<= 1;
     if (new_capacity > capacity_) {
         elem* new_data = reinterpret_cast<elem*>(new char[sizeof(elem) * new_capacity]);
-        memcpy(new_data, data_, sizeof(elem) * max_size_);
+        memcpy(new_data, data_, sizeof(elem) * capacity_);
+        for (size_type x = capacity_; x != new_capacity; ++x)
+            new_data[x].vers = dead_bit;
         Transaction::rcu_delete_array(reinterpret_cast<char*>(data_));
         data_ = new_data;
         capacity_ = new_capacity;
