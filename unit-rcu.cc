@@ -1,3 +1,4 @@
+#undef NDEBUG
 #include "Transaction.hh"
 #include "clp.h"
 #include <stdlib.h>
