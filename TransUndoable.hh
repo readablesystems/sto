@@ -18,13 +18,13 @@ class TransUndoable : public Shared {
 
   void lock(TransItem&) {}
   void unlock(TransItem&) {}
-  bool check(TransItem&, Transaction&) {}
-  void install(TransItem&) {}
+  bool check(const TransItem&, const Transaction&) {}
+  void install(TransItem&, const Transaction&) {}
 
   void cleanup(TransItem& item, bool committed) {
     if (!committed) {
-      auto undo_func = item.key<CallbackFunction>();
-      undo_func(item.stash_value<void*>(), item.write_value<void*>());
+      auto undo_func = item.key<UndoFunction>();
+      undo_func(this, item.stash_value<void*>(), item.write_value<void*>());
     }
   }
-}
+};

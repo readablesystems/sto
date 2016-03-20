@@ -1,6 +1,6 @@
 #pragma once
 
-#if BOOSTING_TL2
+#if defined(BOOSTING) && defined(STM)
 
 #include <assert.h>
 

@@ -9,6 +9,7 @@ class TransPessimisticLocking : public Shared {
   static constexpr bit_type read_lock = 1<<1;
   static constexpr bit_type write_lock = 1<<2;
 
+public:
   // XXX: it might be cleaner if we had 1 method that took a lock and its
   // unlock method. But this specificity allows us to inline the unlock methods.
   // We could potentially also make RWLock and SpinLock shared objects
@@ -49,8 +50,13 @@ class TransPessimisticLocking : public Shared {
       item.add_write(spin_lock);
     }
   }
+
+  void lock(TransItem&, Transaction&) {}
+  bool check(const TransItem&, const Transaction&) {}
+  void install(TransItem&, const Transaction&) {}
+
   void unlock(TransItem& item) {
-    auto type = item.template write_value<bit_type>;
+    auto type = item.template write_value<bit_type>();
     if (type == spin_lock) {
       item.template key<SpinLock*>()->unlock();
       return;

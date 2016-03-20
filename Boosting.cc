@@ -1,4 +1,4 @@
-#include "Boosting.hh"
+#include "Boosting_tl2.hh"
 
 boosting_threadinfo boosting_threads[BOOSTING_MAX_THREADS];
 __thread int boosting_threadid;

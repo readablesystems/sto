@@ -3,6 +3,9 @@
 #include <assert.h>
 #include <iostream>
 
+#include "config.h"
+#include "compiler.hh"
+
 class Transaction;
 class TransItem;
 class TransProxy;
