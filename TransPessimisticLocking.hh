@@ -2,6 +2,7 @@
 
 #include "Boosting_locks.hh"
 
+// TODO: kind of an awkward name :)
 class TransPessimisticLocking : public Shared {
   typedef uint64_t bit_type;
   static constexpr bit_type spin_lock = 1<<0;

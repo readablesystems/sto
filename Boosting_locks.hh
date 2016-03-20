@@ -3,6 +3,13 @@
 #include "config.h"
 #include "compiler.hh"
 
+// XXX: these should really be standalone classes rather than a boosting specific header.
+
+#define READ_SPIN 100000
+//(long(1)<<60)
+#define WRITE_SPIN 100000
+//(long(1)<<60)
+
 class SpinLock {
 public:
   typedef uint64_t lock_type;

@@ -1,13 +1,17 @@
 #pragma once
 
-#include "Boosting.hh"
+#include "Boosting_tl2.hh"
+#include "Boosting_sto.hh"
 #include "Boosting_lockkey.hh"
 
-#define STO_NO_STM
 #include "List.hh"
 
 template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true>
-class TransList {
+class TransList 
+#ifdef BOOSTING_STO
+  : public TransUndoable
+#endif
+{
 public:
   typedef List<T, Duplicates, Compare, Sorted> inner_list_t;
 
@@ -28,34 +32,35 @@ public:
   bool transInsert(const T& elem) {
     // TODO: assuming T is a pair_t (always is in STAMP)
     static_assert(sizeof(T) == 16, "we assume T is pair_t");
-    transWriteLock(&listlock_);
+    TRANS_WRITE_LOCK(&listlock_);
     bool inserted = list_.insert(elem);
     if (inserted) {
       void *words[2];
       new (words) T(elem);
-      ON_ABORT(TransList::_undoInsert, this, words[0], words[1]);
+      ADD_UNDO(TransList::_undoInsert, this, words[0], words[1]);
     }
     return inserted;
   }
 
   T* transFind(const T& elem) {
     printf("never happens\n");
-    transReadLock(&listlock_);
+    TRANS_READ_LOCK(&listlock_);
     T* ret = list_.find(elem);
     return ret;
   }
 
   bool transDelete(const T& elem) {
     printf("never happens either\n");
-    transWriteLock(&listlock_);
+    TRANS_WRITE_LOCK(&listlock_);
     bool removed = list_.template remove<false>(elem);
-    if (removed)
-      ON_ABORT(TransList::_undoDelete, this, new T(elem), NULL);
+    if (removed) {
+      ADD_UNDO(TransList::_undoDelete, this, new T(elem), NULL);
+    }
     return removed;
   }
 
   typename inner_list_t::ListIter transIter() {
-    transReadLock(&listlock_);
+    TRANS_READ_LOCK(&listlock_);
     return list_.iter();
   }
 
@@ -64,7 +69,7 @@ public:
   }
 
   size_t transSize() {
-    transReadLock(&listlock_);
+    TRANS_READ_LOCK(&listlock_);
     return list_.size();
   }
   

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Boosting.hh"
+#include "Boosting_tl2.hh"
+#include "Boosting_sto.hh"
 
-#define STO_NO_STM
 #include "Hashtable.hh"
 
 template <typename K, unsigned Init_size = 129, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
@@ -12,12 +12,12 @@ public:
 
   void readLock(const K& key) {
     RWLock *lock = getLock(key);
-    transReadLock(lock);
+    TRANS_READ_LOCK(lock);
   }
 
   void writeLock(const K& key) {
     RWLock *lock = getLock(key);
-    transWriteLock(lock);
+    TRANS_WRITE_LOCK(lock);
   }
 
 public:

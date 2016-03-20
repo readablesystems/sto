@@ -1,15 +1,19 @@
 #pragma once
 
-#include "Boosting.hh"
+#include "Boosting_tl2.hh"
+#include "Boosting_sto.hh"
 #include "Boosting_lockkey.hh"
 
-#define STO_NO_STM
 #include "Hashtable.hh"
 #include "RBTree.hh"
 
 template <typename K, typename V, unsigned Init_size = 129, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>, 
           typename MapType = Hashtable<K, V, true, Init_size, V, Hash, Pred>>
-class TransMap {
+class TransMap 
+#if BOOSTING_STO
+  : public TransUndoable
+#endif
+{
 public:
   typedef MapType map_type;
 private:
@@ -61,7 +65,7 @@ public:
     Value oldval;
     bool success = map_.nontrans_remove(k, oldval);
     if (success) {
-      ON_ABORT(TransMap::_undoDelete, this, k, oldval);
+      ADD_UNDO(TransMap::_undoDelete, this, k, oldval);
     }
 
     return success;
@@ -72,7 +76,7 @@ public:
     bool success = map_.nontrans_insert(k, val);
     
     if (success) {
-      ON_ABORT(TransMap::_undoInsert, this, k, NULL);
+      ADD_UNDO(TransMap::_undoInsert, this, k, NULL);
     }
 
     return success;
