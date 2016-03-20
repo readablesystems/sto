@@ -244,22 +244,26 @@ private:
       return true;
     } else {
       if (!INSERT) {
+        auto buck_vers = buck.version.unlocked();
+        fence();
         unlock(buck.version);
-        Sto::item(this, pack_bucket(bucket(k))).observe(Version_type(buck.version.unlocked()));
+        Sto::item(this, pack_bucket(bucket(k))).observe(Version_type(buck_vers));
         //if (Opacity)
         //    check_opacity(buck.version);
         return false;
       }
 
+      auto prev_version = buck.version.unlocked();
       // not there so need to insert
       insert_locked<false>(buck, k, v); // marked as invalid
       auto new_head = buck.head;
+      auto new_version = buck.version.unlocked();
+      fence();
       unlock(buck.version);
-      auto new_version = buck.version;
       // see if this item was previously read
       auto bucket_item = Sto::check_item(this, pack_bucket(bucket(k)));
       if (bucket_item) {
-        bucket_item->update_read(Version_type(new_version.value() - TransactionTid::increment_value), new_version);
+        bucket_item->update_read(Version_type(prev_version), Version_type(new_version));
         //} else { could abort transaction now
       }
       // use new_item because we know there are no collisions
@@ -294,7 +298,10 @@ public:
   bool check(const TransItem& item, const Transaction&) {
     if (is_bucket(item)) {
       bucket_entry& buck = map_[bucket_key(item)];
-      return buck.version.check_version(item.template read_value<Version_type>());
+      auto ret= buck.version.check_version(item.template read_value<Version_type>());
+      if (!ret)
+        printf("buck\n");
+      return ret;
     }
     auto el = item.key<internal_elem*>();
     auto read_version = item.template read_value<Version_type>();
@@ -302,7 +309,10 @@ public:
     // otherwise we check that it is both valid and not locked
     // XXX bool validity_check = has_insert(item) || (el->valid() && (!is_locked(el->version) || item.has_lock(t)));
     // XXX Why isn't it enough to just do the versionCheck?
-    return el->version.check_version(read_version);
+    auto ret= el->version.check_version(read_version);
+    if (!ret)
+      printf("key\n");;
+    return ret;
   }
 
   bool lock(TransItem& item, Transaction& txn) {
