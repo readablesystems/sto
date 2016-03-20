@@ -14,15 +14,63 @@ void print_time(struct timeval tv1, struct timeval tv2) {
   printf("%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
 }
 
+class TCounter0 : public TObject {
+    TWrapped<int> n_;
+    TVersion v_;
+public:
+    TCounter0(int n = 0)
+        : n_(n) {
+    }
+    int nontrans_access() {
+        return n_.access();
+    }
+    void increment() {
+        TransProxy it = Sto::item(this, 0);
+        int n = it.has_write() ? it.write_value<int>() : n_.read(it, v_);
+        it.add_write(n + 1);
+    }
+  void decrement() {
+        TransProxy it = Sto::item(this, 0);
+        int n = it.has_write() ? it.write_value<int>() : n_.read(it, v_);
+        it.add_write(n - 1);
+  }
+  bool test() const {
+     TransProxy it = Sto::item(this, 0);
+     return (it.has_write() ? it.write_value<int>() : n_.read(it, v_)) > 0;
+  }
+
+    bool lock(TransItem& item, Transaction& txn) override {
+        return txn.try_lock(item, v_);
+    }
+    bool check(const TransItem& it, const Transaction&) override {
+        return it.check_version(v_);
+    }
+    void install(TransItem& it, const Transaction& txn) override {
+        n_.access() = it.write_value<int>();
+        txn.set_version_unlock(v_, it);
+    }
+    void unlock(TransItem&) override {
+        v_.unlock();
+    }
+
+    void print(std::ostream& w) const {
+        w << "{TCounter0 " << n_.access() << " V" << v_ << "}";
+    }
+    friend std::ostream& operator<<(std::ostream& w, const TCounter0& tc) {
+        tc.print(w);
+        return w;
+    }
+};
+
 class TCounter1 : public TObject {
-  TWrapped<int> n_;
-  TVersion v_;
-  static int wval(TransProxy it) {
-     return it.write_value<int>(0);
-  }
-  static int wval(const TransItem& it) {
-     return it.write_value<int>(0);
-  }
+    TWrapped<int> n_;
+    TVersion v_;
+    static int wval(TransProxy it) {
+       return it.write_value<int>(0);
+    }
+    static int wval(const TransItem& it) {
+       return it.write_value<int>(0);
+    }
 public:
     TCounter1(int n = 0)
         : n_(n) {
@@ -312,7 +360,7 @@ result TTester<T>::run() {
     return result{total, counter->nontrans_access()};
 }
 
-static Tester* ttesters[] = { new TTester<TCounter1>,
+static Tester* ttesters[] = { new TTester<TCounter0>, new TTester<TCounter1>,
     new TTester<TCounter2>, new TTester<TCounter3> };
 
 int main(int argc, char *argv[]) {
@@ -341,7 +389,7 @@ int main(int argc, char *argv[]) {
         break;
     case Clp_NotOption:
       testnum = atoi(clp->vstr);
-      assert(testnum >= 1 && testnum <= 3);
+      assert(testnum >= 0 && testnum <= 3);
       break;
     default:
       assert(0);
@@ -360,7 +408,7 @@ int main(int argc, char *argv[]) {
   struct rusage ru1,ru2;
   gettimeofday(&tv1, NULL);
   getrusage(RUSAGE_SELF, &ru1);
-  result r = ttesters[testnum - 1]->run();
+  result r = ttesters[testnum]->run();
   gettimeofday(&tv2, NULL);
   getrusage(RUSAGE_SELF, &ru2);
   printf("real time: ");
