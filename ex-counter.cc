@@ -335,7 +335,6 @@ void* TTester<T>::runfunc(void* arg) {
     while (go) {
         Rand snap_transgen = transgen;
         unsigned na, nb, nc, ngt, nfind;
-        unsigned last_ab = 0, last_op = 0;
         while (1) {
             na = nb = nc = ngt = nfind = 0;
             ++retry;
@@ -343,9 +342,6 @@ void* TTester<T>::runfunc(void* arg) {
                 Sto::start_transaction();
                 for (unsigned k = 0; k < ops_per_trans; ++k) {
                     unsigned op = transgen();
-                    assert(!last_ab || k || op == last_op);
-                    if (!last_ab && !k)
-                        last_op = op;
                     if (op < test_threshold) {
                         ngt += counter->test();
                         ++na;
@@ -364,7 +360,6 @@ void* TTester<T>::runfunc(void* arg) {
             } catch (Transaction::Abort e) {
             }
             transgen = snap_transgen;
-            ++last_ab;
         }
         a += na;
         b += nb;
