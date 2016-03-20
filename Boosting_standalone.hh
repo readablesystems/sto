@@ -7,6 +7,7 @@
 class Boosting {
 public:
   class Abort {};
+  typedef void (*Callback)(void*, void*, void*);
 
   Boosting() : commitCallbacks(), abortCallbacks() {}
 
@@ -34,8 +35,6 @@ public:
     abortCallbacks.emplace_back(func, c1, c2, c3);
   }
 
-  typedef void (*Callback)(void*, void*, void*);
-
 private:
   struct _Callback {
     _Callback(Callback callback, void *context1, void *context2, void *context3) : callback(callback), context1(context1), context2(context2), context3(context3) {}
@@ -50,24 +49,25 @@ private:
   local_vector<_Callback, 16> abortCallbacks;
 };
 
-// TODO: should maybe be an array indexed by threadid instead
-extern __thread Boosting __boostingtransaction;
+extern Boosting __boostingtransactions[BOOSTING_MAX_THREADS];
+#define BOOSTING_T() (__boostingtransactions[boosting_threadid])
 
 #define TRANSACTION \
-  do { \
-    while (1) { \
-      try { 
-#define RETRY \
-        __boostingtransaction.did_commit(); \
-        break; \
-      } catch(Boosting::Abort e) {}           \
-      __boostingtransaction.did_abort(); \
-      if (!(retry)) \
-        throw Boosting::Abort();                \
-    } \
+  do {              \
+    while (1) {     \
+      boosting_txStartHook(); \
+      try {
+#define RETRY(retry)                        \
+        BOOSTING_T().did_commit();          \
+        break;                              \
+      } catch(Boosting::Abort e) {}         \
+      BOOSTING_T().did_abort();             \
+      if (!(retry))                         \
+        throw Boosting::Abort();            \
+    }                                       \
   } while(0)
 
 #define DO_ABORT() (throw Boosting::Abort())
-#define POST_COMMIT(callback, context1, context2, context3) __boostingtransaction.add_commit_callback((callback), (context1), (context2), (context3))
-#define ON_ABORT(callback, context1, context2, context3) __boostingtransaction.add_abort_callback((callback), (context1), (context2), (context3))
+#define POST_COMMIT(callback, context1, context2, context3) BOOSTING_T().add_commit_callback((callback), (context1), (context2), (context3))
+#define ON_ABORT(callback, context1, context2, context3) BOOSTING_T().add_abort_callback((callback), (context1), (context2), (context3))
 #endif

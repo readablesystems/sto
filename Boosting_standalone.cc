@@ -1,3 +1,3 @@
 #include "Boosting_standalone.hh"
 
-__thread Boosting __boostingtransaction;
+Boosting __boostingtransactions[BOOSTING_MAX_THREADS];
