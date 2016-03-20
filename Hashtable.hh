@@ -298,10 +298,7 @@ public:
   bool check(const TransItem& item, const Transaction&) {
     if (is_bucket(item)) {
       bucket_entry& buck = map_[bucket_key(item)];
-      auto ret= buck.version.check_version(item.template read_value<Version_type>());
-      if (!ret)
-        printf("buck\n");
-      return ret;
+      return buck.version.check_version(item.template read_value<Version_type>());
     }
     auto el = item.key<internal_elem*>();
     auto read_version = item.template read_value<Version_type>();
@@ -309,10 +306,7 @@ public:
     // otherwise we check that it is both valid and not locked
     // XXX bool validity_check = has_insert(item) || (el->valid() && (!is_locked(el->version) || item.has_lock(t)));
     // XXX Why isn't it enough to just do the versionCheck?
-    auto ret= el->version.check_version(read_version);
-    if (!ret)
-      printf("key\n");;
-    return ret;
+    return el->version.check_version(read_version);
   }
 
   bool lock(TransItem& item, Transaction& txn) {
