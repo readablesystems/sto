@@ -55,7 +55,9 @@ public:
   bool check(const TransItem&, const Transaction&) { return false; }
   void install(TransItem&, const Transaction&) {}
 
-  void unlock(TransItem& item) {
+  void unlock(TransItem&) {}
+
+  void cleanup(TransItem& item, bool committed) {
     auto type = item.template write_value<bit_type>();
     if (type == spin_lock) {
       item.template key<SpinLock*>()->unlock();
