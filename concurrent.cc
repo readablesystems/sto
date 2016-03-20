@@ -629,6 +629,9 @@ template <int DS> template <bool do_delete>
 void RandomRWs_parent<DS>::do_run(int me) {
   TThread::set_id(me);
   Sto::update_threadid();
+#ifdef BOOSTING_STANDALONE
+  boosting_threadid = me;
+#endif
   container_type* a = this->a;
   container_type::thread_init(*a);
 
@@ -831,6 +834,9 @@ template <int DS> struct XorDelete<DS, true> : public DSTester<DS> {
 
 template <int DS> void XorDelete<DS, true>::run(int me) {
   TThread::set_id(me);
+#ifdef BOOSTING_STANDALONE
+  boosting_threadid = me;
+#endif
   container_type* a = this->a;
   container_type::thread_init(*a);
 

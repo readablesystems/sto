@@ -32,6 +32,7 @@ public:
 
   void add_commit_callback(Callback func, void *c1, void *c2, void *c3) {
     commitCallbacks.emplace_back(func, c1, c2, c3);
+    assert(commitCallbacks.size() == 1);
   }
   void add_abort_callback(Callback func, void *c1, void *c2, void *c3) {
     abortCallbacks.emplace_back(func, c1, c2, c3);
