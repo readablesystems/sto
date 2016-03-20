@@ -1,14 +1,18 @@
+#define STO_SPIN_BOUND_WRITE 30
 #include <string>
 #include <iostream>
 #include <sys/time.h>
 #include <assert.h>
 #include <sys/resource.h>
 #include "Transaction.hh"
+#include "TIntRange.hh"
 #include "TWrapped.hh"
 #include "randgen.hh"
 #include "clp.h"
 #define GUARDED if (TransactionGuard tguard{})
 unsigned initial_seeds[64];
+unsigned ops_per_trans = 1;
+unsigned malloc_per_trans = 1;
 
 void print_time(struct timeval tv1, struct timeval tv2) {
   printf("%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
@@ -191,18 +195,15 @@ public:
 };
 
 class TCounter3 : public TObject {
-  TWrapped<int> n_;
-  TVersion v_;
-  struct precord {
-    int value;
-    bool gt;
-  };
-  static int wval(TransProxy it) {
-     return it.write_value<int>(0);
-  }
-  static int wval(const TransItem& it) {
-     return it.write_value<int>(0);
-  }
+    TWrapped<int> n_;
+    TVersion v_;
+    typedef TIntRange<int> pred_type;
+    static int wval(TransProxy it) {
+        return it.write_value<int>(0);
+    }
+    static int wval(const TransItem& it) {
+        return it.write_value<int>(0);
+    }
 public:
     TCounter3(int n = 0)
         : n_(n) {
@@ -210,31 +211,32 @@ public:
     int nontrans_access() {
         return n_.access();
     }
-  void increment() {
-     auto it = Sto::item(this, 0);
-     it.add_write(wval(it) + 1);
-  }
-  void decrement() {
-     auto it = Sto::item(this, 0);
-     it.add_write(wval(it) - 1);
-  }
-  bool test() const {
-     auto it = Sto::item(this, 0);
-     assert(!it.has_predicate());
-     int n = n_.snapshot(it, v_);
-     bool gt = n + wval(it) > 0;
-     it.set_predicate(precord{-wval(it), gt});
-     return gt;
-  }
+    void increment() {
+        auto it = Sto::item(this, 0);
+        it.add_write(wval(it) + 1);
+    }
+    void decrement() {
+        auto it = Sto::item(this, 0);
+        it.add_write(wval(it) - 1);
+    }
+    bool test() const {
+        TransProxy it = Sto::item(this, 0);
+        if (!it.has_predicate())
+            it.set_predicate(pred_type::unconstrained());
+        int n = n_.snapshot(it, v_);
+        bool gt = n + wval(it) > 0;
+        it.predicate_value<pred_type>().observe_gt(-wval(it), gt);
+        return gt;
+    }
 
     bool lock(TransItem& item, Transaction& txn) override {
         return txn.try_lock(item, v_);
     }
     bool check_predicate(TransItem& item, Transaction& txn, bool committing) override {
         TransProxy p(txn, item);
-        precord pred = item.template predicate_value<precord>();
+        pred_type pred = item.template predicate_value<pred_type>();
         int n = n_.wait_snapshot(p, v_, committing);
-        return (n > pred.value) == pred.gt;
+        return pred.verify(n);
     }
     bool check(const TransItem& it, const Transaction&) override {
         return it.check_version(v_);
@@ -257,18 +259,21 @@ public:
 };
 
 
-static int initial_value = 100;
+static int initial_value = -100;
 static double test_fraction = 0.5;
-static uint64_t nops = 100000000;
+static uint64_t nops = 10000000;
 static int nthreads = 4;
 
-enum { opt_nthreads = 1, opt_nops, opt_test_fraction, opt_initial_value, opt_seed };
+enum { opt_nthreads = 1, opt_nops, opt_test_fraction, opt_initial_value, opt_seed,
+       opt_mallocs, opt_ops_per };
 
 static const Clp_Option options[] = {
   { "nthreads", 'j', opt_nthreads, Clp_ValInt, 0 },
   { "ntrans", 'n', opt_nops, Clp_ValInt, 0 },
   { "test-fraction", 'f', opt_test_fraction, Clp_ValDouble, 0 },
   { "initial-value", 'i', opt_initial_value, Clp_ValInt, 0 },
+  { "mallocs", 'm', opt_mallocs, Clp_ValUnsigned, 0 },
+  { "opspertrans", 'o', opt_ops_per, Clp_ValUnsigned, 0 },
   { "seed", 0, opt_seed, Clp_ValUnsigned, 0 }
 };
 
@@ -305,31 +310,46 @@ void* TTester<T>::runfunc(void* arg) {
     unsigned increment_threshold = (0.499 * test_fraction + 0.501) * transgen.max();
     uint64_t ops_per_thread = nops / nthreads;
     uintptr_t count_test = 0;
+    void* mallocs[malloc_per_trans];
 
     while (!go)
         relax_fence();
     uint64_t a = 0, b = 0, c = 0;
 
-    for (uint64_t i = 0; i < ops_per_thread; ++i) {
-        unsigned op = transgen();
-        if (op < test_threshold) {
-            bool isgt;
-            TRANSACTION {
-                isgt = counter->test();
-            } RETRY(true);
-            count_test += isgt;
-            ++a;
-        } else if (op < increment_threshold) {
-            TRANSACTION {
-                counter->increment();
-            } RETRY(true);
-            ++b;
-        } else {
-            TRANSACTION {
-                counter->decrement();
-            } RETRY(true);
-            ++c;
+    for (uint64_t i = 0; i < ops_per_thread; i += ops_per_trans) {
+        Rand snap_transgen = transgen;
+        unsigned na, nb, nc, ngt;
+        while (1) {
+            na = nb = nc = ngt = 0;
+            try {
+                Sto::start_transaction();
+                for (unsigned k = 0; k < ops_per_trans; ++k) {
+                    unsigned op = transgen();
+                    if (op < test_threshold) {
+                        ngt += counter->test();
+                        ++na;
+                    } else if (op < increment_threshold) {
+                        counter->increment();
+                        ++nb;
+                    } else {
+                        counter->decrement();
+                        ++nc;
+                    }
+                }
+                for (unsigned m = 0; m < malloc_per_trans; ++m)
+                    mallocs[m] = malloc(transgen() % 512 + 4);
+                for (unsigned m = 0; m < malloc_per_trans; ++m)
+                    free(mallocs[m]);
+                if (Sto::try_commit())
+                    break;
+            } catch (Transaction::Abort e) {
+            }
+            transgen = snap_transgen;
         }
+        a += na;
+        b += nb;
+        c += nc;
+        count_test += ngt;
     }
 
     printf("%d: %llu tests, %llu increments, %llu decrements\n", me, (unsigned long long) a, (unsigned long long) b, (unsigned long long) c);
@@ -378,6 +398,12 @@ int main(int argc, char *argv[]) {
     case opt_nops:
       nops = clp->val.i;
       break;
+    case opt_mallocs:
+      malloc_per_trans = clp->val.u;
+      break;
+    case opt_ops_per:
+      ops_per_trans = clp->val.u;
+      break;
     case opt_test_fraction:
       test_fraction = clp->val.d;
       break;
@@ -418,8 +444,9 @@ int main(int argc, char *argv[]) {
   printf("stime: ");
   print_time(ru1.ru_stime, ru2.ru_stime);
 
-  printf("test %d, nthreads %d, ntrans %llu, test_fraction %g, initial_value %d\n",
-         testnum, nthreads, (unsigned long long) nops, test_fraction, initial_value);
+  printf("./ex-counter -j%d -n%llu -f%g -i%d -o%u -m%u %d\n",
+         nthreads, (unsigned long long) nops, test_fraction,
+         initial_value, ops_per_trans, malloc_per_trans, testnum);
   printf("test() true %llu, value %d\n", (unsigned long long) r.ngt, r.final_value);
 #if STO_PROFILE_COUNTERS
   Transaction::print_stats();
