@@ -26,7 +26,7 @@ public:
   typedef K Key;
   typedef V Value;
 
-  TransMap() : map_(Init_size, Hash(), Pred()), lockKey_(Init_size, Hash(), Pred()) {}
+  TransMap() : map_(), lockKey_(Init_size, Hash(), Pred()) {}
 
   TransMap(MapType&& map, unsigned size = Init_size, Hash h = Hash(), Pred p = Pred()) : map_(std::move(map)), lockKey_(size, h, p) {}
 
