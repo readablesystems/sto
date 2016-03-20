@@ -504,6 +504,11 @@ public:
             && state_ < s_committing)
             hard_check_opacity(&item, v);
     }
+    void check_opacity(TransItem& item, TVersion v) {
+        check_opacity(item, v.value());
+    }
+    void check_opacity(TransItem&, TNonopaqueVersion) {
+    }
 
     void check_opacity(TransactionTid::type v) {
         assert(state_ <= s_committing_locked);
@@ -602,6 +607,7 @@ private:
     friend class TransItem;
     friend class Sto;
     friend class TestTransaction;
+    friend class TNonopaqueVersion;
 };
 
 
@@ -770,6 +776,20 @@ inline TransProxy& TransProxy::add_read(T rdata) {
     return *this;
 }
 
+// like add_read but checks opacity too.
+// should be used by data structures that have non-TransactionTid
+// versions and still need to respect opacity.
+template <typename T>
+inline TransProxy& TransProxy::add_read_opaque(T rdata) {
+    assert(!has_stash());
+    t()->check_opacity();
+    if (!has_read()) {
+        item().__or_flags(TransItem::read_bit);
+        item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
+    }
+    return *this;
+}
+
 inline TransProxy& TransProxy::observe(TVersion version, bool add_read) {
     assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_))
@@ -817,6 +837,12 @@ inline TransProxy& TransProxy::update_read(T old_rdata, T new_rdata) {
     return *this;
 }
 
+
+inline TransProxy& TransProxy::set_predicate() {
+    assert(!has_read());
+    item().__or_flags(TransItem::predicate_bit);
+    return *this;
+}
 
 template <typename T>
 inline TransProxy& TransProxy::set_predicate(T pdata) {
@@ -884,6 +910,28 @@ inline void TNonopaqueVersion::opaque_throw(const Exception&) {
     Sto::abort();
 }
 
+inline auto TVersion::snapshot(TransProxy& item) -> type {
+    type v = value();
+    item.observe_opacity(TVersion(v));
+    return v;
+}
+
+inline auto TVersion::snapshot(const TransItem& item, const Transaction& txn) -> type {
+    type v = value();
+    const_cast<Transaction&>(txn).check_opacity(const_cast<TransItem&>(item), v);
+    return v;
+}
+
+inline auto TNonopaqueVersion::snapshot(TransProxy& item) -> type {
+    item.transaction().any_nonopaque_ = true;
+    return value();
+}
+
+inline auto TNonopaqueVersion::snapshot(const TransItem&, const Transaction& txn) -> type {
+    const_cast<Transaction&>(txn).any_nonopaque_ = true;
+    return value();
+}
+
 inline bool TVersion::is_locked_here(const Transaction& txn) const {
     return is_locked_here(txn.threadid());
 }
@@ -899,3 +947,7 @@ inline bool TVersion::is_locked_elsewhere(const Transaction& txn) const {
 inline bool TNonopaqueVersion::is_locked_elsewhere(const Transaction& txn) const {
     return is_locked_elsewhere(txn.threadid());
 }
+
+std::ostream& operator<<(std::ostream& w, const Transaction& txn);
+std::ostream& operator<<(std::ostream& w, const TestTransaction& txn);
+std::ostream& operator<<(std::ostream& w, const TransactionGuard& txn);

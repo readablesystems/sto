@@ -1,9 +1,11 @@
+#undef NDEBUG
 #include <string>
 #include <iostream>
 #include <assert.h>
 #include <vector>
 #include "Transaction.hh"
 #include "TArray.hh"
+#include "TBox.hh"
 
 void testSimpleInt() {
 	TArray<int, 100> f;
@@ -60,6 +62,7 @@ void testIter() {
 
 void testConflictingIter() {
     TArray<int, 10> f;
+    TBox<int> box;
     for (int i = 0; i < 10; i++) {
         f.nontrans_put(i, i);
     }
@@ -67,6 +70,7 @@ void testConflictingIter() {
     {
         TestTransaction t(1);
         std::max_element(f.begin(), f.end());
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t1(2);
         f[4] = 10;
@@ -147,6 +151,7 @@ void testConflictingModifyIter2() {
 
 void testConflictingModifyIter3() {
     TArray<int, 10> f;
+    TBox<int> box;
     for (int i = 0; i < 10; i++)
         f.nontrans_put(i, i);
 
@@ -154,6 +159,7 @@ void testConflictingModifyIter3() {
         TestTransaction t1(1);
         int x = f[4];
         assert(x == 4);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t(2);
         std::replace(f.begin(), f.end(), 4, 6);

@@ -13,7 +13,9 @@ LDFLAGS = @LDFLAGS@
 MASSTREEDIR = @MASSTREEDIR@
 
 # if CXXFLAGS changes, rebuild
-CXXFLAGS =
+ifndef CXXFLAGS
+CXXFLAGS :=
+endif
 
 ifeq ($(NDEBUG),1)
 CXXFLAGS += -DNDEBUG
@@ -51,6 +53,9 @@ UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgen
 all: $(PROGRAMS)
 
 unit: $(UNIT_PROGRAMS)
+
+check: unit
+	@for i in $(UNIT_PROGRAMS); do echo ./$$i; ./$$i || exit 1; done
 
 %.o: %.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
@@ -184,4 +189,4 @@ ifneq ($(strip $(CXX) $(CXXFLAGS)),$(strip $(DEP_CXX_CONFIG)))
 DEP_CXX_CONFIG := $(shell mkdir -p $(DEPSDIR); echo >$(DEPSDIR)/stamp; echo DEP_CXX_CONFIG:='$(CXX) $(CXXFLAGS)' >$(DEPSDIR)/_cxxconfig.d)
 endif
 
-.PHONY: clean all unit
+.PHONY: clean all unit check

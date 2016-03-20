@@ -92,7 +92,7 @@ public:
             w << " R" << item.template read_value<version_type>();
         if (item.has_write())
             w << " =" << item.template write_value<T>();
-        if (item.has_predicate()) {
+        if (item.has_predicate() && !item.has_read()) {
             auto& p = item.predicate_value<pred_type>();
             w << " P[" << p.first << "," << p.second << "]";
         }

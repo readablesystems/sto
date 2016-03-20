@@ -1,3 +1,4 @@
+#undef NDEBUG
 #include <string>
 #include <iostream>
 #include <assert.h>
@@ -44,12 +45,14 @@ void testSimpleString() {
 
 void testConcurrentInt() {
     TBox<int> ib;
+    TBox<int> box;
     bool match;
 
     {
         TestTransaction t1(1);
         match = ib < 3;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         ib = 1;
@@ -75,6 +78,7 @@ void testConcurrentInt() {
         TestTransaction t1(1);
         match = ib == 2;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         ib = 0;
@@ -93,12 +97,14 @@ void testConcurrentInt() {
 
 void testOpacity1() {
     TBox<int> f, g;
+    TBox<int> box;
     f.nontrans_write(3);
 
     try {
         TestTransaction t1(1);
         int x = f;
         assert(x == 3);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t(2);
         f = 2;
@@ -124,12 +130,14 @@ void testOpacity1() {
 
 void testNoOpacity1() {
     TBox<int, TNonopaqueWrapped<int> > f, g;
+    TBox<int, TNonopaqueWrapped<int> > box;
     f.nontrans_write(3);
 
     {
         TestTransaction t1(1);
         int x = f;
         assert(x == 3);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t(2);
         f = 2;

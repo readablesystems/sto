@@ -244,6 +244,8 @@ class TransProxy {
 
     template <typename T>
     inline TransProxy& add_read(T rdata);
+    template <typename T>
+    inline TransProxy& add_read_opaque(T rdata);
     inline TransProxy& observe(TVersion version, bool add_read);
     inline TransProxy& observe(TNonopaqueVersion version, bool add_read);
     inline TransProxy& observe(TVersion version);
@@ -257,6 +259,7 @@ class TransProxy {
     template <typename T>
     inline TransProxy& update_read(T old_rdata, T new_rdata);
 
+    inline TransProxy& set_predicate();
     template <typename T>
     inline TransProxy& set_predicate(T pdata);
     inline TransProxy& clear_predicate() {

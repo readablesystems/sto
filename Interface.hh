@@ -5,6 +5,7 @@
 
 class Transaction;
 class TransItem;
+class TransProxy;
 
 class TThread {
     static __thread int the_id;
@@ -216,6 +217,7 @@ class TVersion {
 public:
     typedef TransactionTid::type type;
     typedef TransactionTid::signed_type signed_type;
+    static constexpr type user_bit = TransactionTid::user_bit;
 
     TVersion()
         : v_() {
@@ -230,6 +232,8 @@ public:
     volatile type& value() {
         return v_;
     }
+    inline type snapshot(const TransItem& item, const Transaction& txn);
+    inline type snapshot(TransProxy& item);
 
     bool is_locked() const {
         return TransactionTid::is_locked(v_);
@@ -335,6 +339,7 @@ class TNonopaqueVersion {
 public:
     typedef TransactionTid::type type;
     typedef TransactionTid::signed_type signed_type;
+    static constexpr type user_bit = TransactionTid::user_bit;
 
     TNonopaqueVersion()
         : v_(TransactionTid::nonopaque_bit) {
@@ -349,6 +354,8 @@ public:
     volatile type& value() {
         return v_;
     }
+    inline type snapshot(const TransItem& item, const Transaction& txn);
+    inline type snapshot(TransProxy& item);
 
     bool is_locked() const {
         return TransactionTid::is_locked(v_);

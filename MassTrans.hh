@@ -83,6 +83,7 @@ public:
   typedef Masstree::Str Str;
 
   typedef typename Box::version_type Version;
+  typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type tversion_type;
 
   static __thread threadinfo_type mythreadinfo;
 
@@ -164,9 +165,7 @@ public:
 #endif
       Version elem_vers;
       atomicRead(e, elem_vers, retval);
-      item.add_read(elem_vers);
-      if (Opacity)
-        check_opacity(e->version());
+      item.observe(tversion_type(elem_vers));
     } else {
       ensureNotFound(lp.node(), lp.full_version_value());
     }
@@ -207,9 +206,7 @@ public:
         return false;
       }
 #endif
-      item.add_read(v);
-      if (Opacity)
-        check_opacity(e->version());
+      item.observe(tversion_type(v));
       // same as inserts we need to Store (copy) key so we can lookup to remove later
       item.template add_write<key_write_value_type>(key).add_flags(delete_bit);
       return found;
@@ -264,7 +261,11 @@ private:
         // add any new nodes as a result of splits, etc. to the read/absent set
 #if !ABORT_ON_WRITE_READ_CONFLICT
         for (auto&& pair : lp.new_nodes()) {
-          Sto::new_item(this, tag_inter(pair.first)).add_read(pair.second);
+          auto nodeitem = Sto::new_item(this, tag_inter(pair.first));
+          if (Opacity)
+            nodeitem.add_read_opaque(pair.second);
+          else
+            nodeitem.add_read(pair.second);
         }
 #endif
       }
@@ -345,9 +346,7 @@ public:
       value_type& val = va ? *(*va)() : stack_val;
       Version v;
       atomicRead(e, v, val);
-      item.add_read(v);
-      if (Opacity)
-        check_opacity(e->version());
+      item.observe(tversion_type(v));
       // key and val are both only guaranteed until callback returns
       return callback(key, val);//query_callback_overload(key, val, callback);
     };
@@ -381,9 +380,7 @@ public:
 #endif
       Version v;
       atomicRead(e, v, val);
-      item.add_read(v);
-      if (Opacity)
-        check_opacity(e->version());
+      item.observe(tversion_type(v));
       return callback(key, val);
     };
 
@@ -643,9 +640,7 @@ protected:
       // version before we check if the node is valid
       Version v = e->version();
       fence();
-      item.add_read(v);
-      if (Opacity)
-        check_opacity(e->version());
+      item.observe(tversion_type(v));
     }
     if (SET) {
       reallyHandlePutFound(item, e, key, value);
@@ -657,12 +652,10 @@ protected:
   void ensureNotFound(NODE n, VERSION v) {
     // TODO: could be more efficient to use fresh_item here, but that will also require more work for read-then-insert
     auto item = t_read_only_item(tag_inter(n));
-    if (!item.has_read()) {
+    if (Opacity)
+      item.add_read_opaque(v);
+    else
       item.add_read(v);
-    }
-    if (Opacity) {
-      // XXX: would be annoying to do this with node versions
-    }
   }
 
   template <typename NODE, typename VERSION>

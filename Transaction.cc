@@ -44,6 +44,10 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
     if (state_ == s_committing || state_ == s_committing_locked)
         return;
 
+    // ignore if version hasn't changed
+    if (item && item->has_read() && item->read_value<TransactionTid::type>() == t)
+        return;
+
     TXP_INCREMENT(txp_hco);
     if (TransactionTid::is_locked_elsewhere(t, threadid_)) {
         TXP_INCREMENT(txp_hco_lock);
@@ -96,16 +100,21 @@ void Transaction::stop(bool committed) {
 
     TXP_ACCOUNT(txp_max_transbuffer, buf_.size());
     TXP_ACCOUNT(txp_total_transbuffer, buf_.size());
-    if (any_writes_ && state_ == s_committing_locked) {
-        for (auto it = transSet_.begin() + first_write_; it != transSet_.end(); ++it)
-            if (it->needs_unlock())
-                it->owner()->unlock(*it);
-    }
     if (any_writes_) {
-        for (auto it = transSet_.begin() + first_write_; it != transSet_.end(); ++it)
+        auto fwit = transSet_.begin() + first_write_;
+        if (state_ == s_committing_locked)
+            for (auto it = transSet_.end(); it != fwit; ) {
+                --it;
+                if (it->needs_unlock())
+                    it->owner()->unlock(*it);
+            }
+        for (auto it = transSet_.end(); it != fwit; ) {
+            --it;
             if (it->has_write())
                 it->owner()->cleanup(*it, committed);
+        }
     }
+
     // TODO: this will probably mess up with nested transactions
     threadinfo_t& thr = tinfo[TThread::id()];
     if (thr.trans_end_callback)
@@ -161,15 +170,15 @@ bool Transaction::try_commit() {
             it->__or_flags(TransItem::lock_bit);
 #endif
         }
-        if (it->has_predicate()) {
+        if (it->has_read())
+            TXP_INCREMENT(txp_total_r);
+        else if (it->has_predicate()) {
             TXP_INCREMENT(txp_total_check_predicate);
             if (!it->owner()->check_predicate(*it, *this, true)) {
                 mark_abort_because(it, "commit check_predicate");
                 goto abort;
             }
         }
-        if (it->has_read())
-            TXP_INCREMENT(txp_total_r);
     }
 
     first_write_ = writeset[0];
@@ -318,4 +327,19 @@ void TObject::print(std::ostream& w, const TransItem& item) const {
     if (item.has_predicate())
         w << " P" << item.predicate_value<void*>();
     w << "}";
+}
+
+std::ostream& operator<<(std::ostream& w, const Transaction& txn) {
+    txn.print(w);
+    return w;
+}
+
+std::ostream& operator<<(std::ostream& w, const TestTransaction& txn) {
+    txn.print(w);
+    return w;
+}
+
+std::ostream& operator<<(std::ostream& w, const TransactionGuard& txn) {
+    txn.print(w);
+    return w;
 }

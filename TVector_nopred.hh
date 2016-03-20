@@ -25,6 +25,7 @@ private:
        Note that the xwrite_value exists even if !has_write(). */
 
     static constexpr TransItem::flags_type pop_bit = TransItem::user0_bit;
+    static constexpr TransItem::flags_type onlyexists_bit = pop_bit << 1;
 public:
     class iterator;
     class const_iterator;
@@ -69,13 +70,13 @@ public:
     const_proxy_type back() const {
         auto& sinfo = size_info();
         if (!sinfo.second)
-            version_type::opaque_throw(std::out_of_range("TVector::back"));
+            version_type::opaque_throw(std::out_of_range("TVector_nopred::back"));
         return const_proxy_type(this, sinfo.second - 1);
     }
     proxy_type back() {
         auto& sinfo = size_info();
         if (!sinfo.second)
-            version_type::opaque_throw(std::out_of_range("TVector::back"));
+            version_type::opaque_throw(std::out_of_range("TVector_nopred::back"));
         return proxy_type(this, sinfo.second - 1);
     }
 
@@ -96,7 +97,7 @@ public:
         auto sitem = size_item().add_write();
         pred_type& wval = sitem.template xwrite_value<pred_type>();
         if (!wval.second)
-            throw std::out_of_range("TVector_nopred::pop_back");
+            version_type::opaque_throw(std::out_of_range("TVector_nopred::pop_back"));
         --wval.second;
         Sto::item(this, wval.second).add_write().add_flags(pop_bit);
     }
@@ -136,7 +137,8 @@ public:
     }
     void transPut(size_type i, T x) {
         auto item = Sto::item(this, i);
-        if (item.has_write() ? item.has_flag(pop_bit) : !put_in_range(i))
+        if (item.has_flag(pop_bit)
+            || (!item.has_read() && !item.has_write() && !put_in_range(item, i)))
             version_type::opaque_throw(std::out_of_range("TVector_nopred::transPut"));
         item.add_write(std::move(x));
     }
@@ -162,25 +164,15 @@ public:
         auto key = item.template key<key_type>();
         if (key == size_key)
             return txn.try_lock(item, size_vers_);
-        else if (!txn.try_lock(item, data_[key].vers))
-            return false;
-        else if (!(data_[key].vers.value() & dead_bit))
-            return true;
-        else {
-            OptionalTransProxy sitem = txn.check_item(this, size_key);
-            // ok to access dead item if we are adding it
-            if (sitem && key >= sitem->template xwrite_value<pred_type>().first)
-                return true;
-            else {
-                data_[key].vers.unlock();
-                return false;
-            }
-        }
+        else
+            return txn.try_lock(item, data_[key].vers);
     }
-    bool check(const TransItem& item, const Transaction&) {
+    bool check(const TransItem& item, const Transaction& txn) {
         auto key = item.template key<key_type>();
         if (key == size_key)
             return item.check_version(size_vers_);
+        else if (item.has_flag(onlyexists_bit))
+            return !(data_[key].vers.snapshot(item, txn) & dead_bit);
         else
             return item.check_version(data_[key].vers);
     }
@@ -274,9 +266,17 @@ private:
     pred_type& size_info() const {
         return size_item().template xwrite_value<pred_type>();
     }
-    bool put_in_range(size_type i) const {
-        return (i < capacity_ && !(data_[i].vers.value() & dead_bit))
-            || i < size_info().second;
+    bool put_in_range(TransProxy& item, size_type i) const {
+        if (i >= capacity_)
+            return false;
+        item.observe(data_[i].vers).add_flags(onlyexists_bit);
+        return !(item.read_value<version_type>().value() & dead_bit);
+    }
+    get_type transGet(size_type i, TransProxy item) const {
+        if (item.has_write())
+            return item.template write_value<T>();
+        else
+            return data_[i].v.read(item, data_[i].vers);
     }
 
     friend class iterator;
@@ -483,9 +483,13 @@ auto TVector_nopred<T, W>::insert(iterator pos, T value) -> iterator {
     if (pos.i_ > wval.second)
         Sto::abort();
     ++wval.second;
-    for (auto idx = wval.second - 1; idx != pos.i_; --idx)
-        transPut(idx, transGet(idx - 1));
-    transPut(pos.i_, std::move(value));
+    TransProxy item = Sto::item(this, wval.second - 1).clear_write().clear_flags(pop_bit);
+    for (size_type i = wval.second - 1; i != pos.i_; --i) {
+        TransProxy next_item = Sto::item(this, i - 1);
+        item.add_write(transGet(i - 1, next_item));
+        item = next_item;
+    }
+    item.add_write(std::move(value));
     return pos;
 }
 

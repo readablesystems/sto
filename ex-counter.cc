@@ -5,8 +5,10 @@
 #include <sys/resource.h>
 #include "Transaction.hh"
 #include "TWrapped.hh"
+#include "randgen.hh"
 #include "clp.h"
 #define GUARDED if (TransactionGuard tguard{})
+unsigned initial_seeds[64];
 
 void print_time(struct timeval tv1, struct timeval tv2) {
   printf("%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
@@ -55,50 +57,63 @@ public:
     void unlock(TransItem&) override {
         v_.unlock();
     }
+
+    void print(std::ostream& w) const {
+        w << "{TCounter1 " << n_.access() << " V" << v_ << "}";
+    }
+    friend std::ostream& operator<<(std::ostream& w, const TCounter1& tc) {
+        tc.print(w);
+        return w;
+    }
 };
 
 class TCounter2 : public TObject {
-  TWrapped<int> n_;
-  TVersion v_;
-  TVersion zc_v_;
-  static int wval(TransProxy it) {
-     return it.write_value<int>(0);
-  }
-  static int wval(const TransItem& it) {
-     return it.write_value<int>(0);
-  }
+    TWrapped<int> n_;
+    TVersion v_;
+    unsigned next_cache_line_[32];
+    TWrapped<int> zc_n_;
+    TVersion zc_v_;
+    static int wval(TransProxy it) {
+        return it.write_value<int>(0);
+    }
+    static int wval(const TransItem& it) {
+        return it.write_value<int>(0);
+    }
+    static constexpr TransItem::flags_type zc_bit = TransItem::user0_bit;
 public:
     TCounter2(int n = 0)
-        : n_(n) {
+        : n_(n), zc_n_(n) {
     }
     int nontrans_access() {
         return n_.access();
     }
-  void increment() {
-     auto it = Sto::item(this, 0);
-     it.add_write(wval(it) + 1);
-  }
-  void decrement() {
-     auto it = Sto::item(this, 0);
-     it.add_write(wval(it) - 1);
-  }
-  bool test() const {
-     auto it = Sto::item(this, 0);
-     int n;
-     if (!it.has_write()) {
-        auto zc_it = Sto::item(this, 1);
-        n = n_.read(zc_it, zc_v_);
-     } else
-        n = n_.read(it, v_);
-     return n + wval(it) > 0;
-  }
+    void increment() {
+        auto it = Sto::item(this, 0);
+        it.add_write(wval(it) + 1);
+    }
+    void decrement() {
+        auto it = Sto::item(this, 0);
+        it.add_write(wval(it) - 1);
+    }
+    bool test() const {
+        auto it = Sto::item(this, 0);
+        int n;
+        if (!it.has_write()) {
+            auto zc_it = Sto::item(this, 1);
+            n = zc_n_.read(zc_it, zc_v_);
+        } else
+            n = n_.read(it, v_);
+        return n + wval(it) > 0;
+    }
 
     bool lock(TransItem& it, Transaction& txn) override {
         bool ok = txn.try_lock(it, v_);
         if (ok) {
             int n = n_.access();
-            if ((n > 0) != (n + wval(it) > 0))
-                zc_v_.lock();
+            if ((n > 0) != (n + wval(it) > 0)) {
+                txn.try_lock(it, zc_v_);
+                it.add_flags(zc_bit);
+            }
         }
         return ok;
     }
@@ -107,14 +122,23 @@ public:
     }
     void install(TransItem& it, const Transaction& txn) override {
         n_.access() += wval(it);
-        txn.set_version_unlock(v_, it);
-        if (zc_v_.is_locked_here())
+        if (it.has_flag(zc_bit)) {
+            zc_n_.access() = n_.access();
             txn.set_version_unlock(zc_v_, it);
+        }
+        txn.set_version_unlock(v_, it);
     }
-    void unlock(TransItem&) override {
-        v_.unlock();
-        if (zc_v_.is_locked_here())
+    void unlock(TransItem& it) override {
+        if (it.has_flag(zc_bit))
             zc_v_.unlock();
+        v_.unlock();
+    }
+    void print(std::ostream& w) const {
+        w << "{TCounter2 " << n_.access() << " V" << v_ << " ZCV" << zc_v_ << "}";
+    }
+    friend std::ostream& operator<<(std::ostream& w, const TCounter2& tc) {
+        tc.print(w);
+        return w;
     }
 };
 
@@ -149,7 +173,7 @@ public:
   bool test() const {
      auto it = Sto::item(this, 0);
      assert(!it.has_predicate());
-     int n = n_.wait_snapshot(it, v_, false);
+     int n = n_.snapshot(it, v_);
      bool gt = n + wval(it) > 0;
      it.set_predicate(precord{-wval(it), gt});
      return gt;
@@ -174,6 +198,14 @@ public:
     void unlock(TransItem&) override {
         v_.unlock();
     }
+
+    void print(std::ostream& w) const {
+        w << "{TCounter3 " << n_.access() << " V" << v_ << "}";
+    }
+    friend std::ostream& operator<<(std::ostream& w, const TCounter3& tc) {
+        tc.print(w);
+        return w;
+    }
 };
 
 
@@ -182,13 +214,14 @@ static double test_fraction = 0.5;
 static uint64_t nops = 100000000;
 static int nthreads = 4;
 
-enum { opt_nthreads = 1, opt_nops, opt_test_fraction, opt_initial_value };
+enum { opt_nthreads = 1, opt_nops, opt_test_fraction, opt_initial_value, opt_seed };
 
 static const Clp_Option options[] = {
   { "nthreads", 'j', opt_nthreads, Clp_ValInt, 0 },
   { "ntrans", 'n', opt_nops, Clp_ValInt, 0 },
   { "test-fraction", 'f', opt_test_fraction, Clp_ValDouble, 0 },
   { "initial-value", 'i', opt_initial_value, Clp_ValInt, 0 },
+  { "seed", 0, opt_seed, Clp_ValUnsigned, 0 }
 };
 
 
@@ -216,11 +249,12 @@ template <typename T> volatile unsigned TTester<T>::go;
 
 template <typename T>
 void* TTester<T>::runfunc(void* arg) {
+    int me = (int) (uintptr_t) arg;
     T* counter = TTester<T>::counter;
-    TThread::set_id((int) (uintptr_t) arg);
-    Transaction* txn = Sto::transaction();
-    txn->local_srandom(random());
-    unsigned test_threshold = test_fraction * 0xFFFFFFFFU;
+    TThread::set_id(me);
+    Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
+    unsigned test_threshold = test_fraction * transgen.max();
+    unsigned increment_threshold = (0.499 * test_fraction + 0.501) * transgen.max();
     uint64_t ops_per_thread = nops / nthreads;
     uintptr_t count_test = 0;
 
@@ -229,7 +263,7 @@ void* TTester<T>::runfunc(void* arg) {
     uint64_t a = 0, b = 0, c = 0;
 
     for (uint64_t i = 0; i < ops_per_thread; ++i) {
-        unsigned op = txn->local_random();
+        unsigned op = transgen();
         if (op < test_threshold) {
             bool isgt;
             TRANSACTION {
@@ -237,7 +271,7 @@ void* TTester<T>::runfunc(void* arg) {
             } RETRY(true);
             count_test += isgt;
             ++a;
-        } else if (op & 1024) {
+        } else if (op < increment_threshold) {
             TRANSACTION {
                 counter->increment();
             } RETRY(true);
@@ -250,7 +284,7 @@ void* TTester<T>::runfunc(void* arg) {
         }
     }
 
-    //printf("%llu %llu %llu\n", (unsigned long long) a, (unsigned long long) b, (unsigned long long) c);
+    printf("%d: %llu tests, %llu increments, %llu decrements\n", me, (unsigned long long) a, (unsigned long long) b, (unsigned long long) c);
     return reinterpret_cast<void*>(count_test);
 }
 
@@ -274,6 +308,7 @@ result TTester<T>::run() {
         pthread_join(tids[i], &mine);
         total += reinterpret_cast<uintptr_t>(mine);
     }
+    std::cout << *counter << '\n';
     return result{total, counter->nontrans_access()};
 }
 
@@ -284,6 +319,7 @@ int main(int argc, char *argv[]) {
   Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
   srandomdev();
   int testnum = 1;
+  unsigned seed = 0;
 
   int opt;
   while ((opt = Clp_Next(clp)) != Clp_Done) {
@@ -300,6 +336,9 @@ int main(int argc, char *argv[]) {
     case opt_initial_value:
       initial_value = clp->val.i;
       break;
+    case opt_seed:
+        seed = clp->val.u;
+        break;
     case Clp_NotOption:
       testnum = atoi(clp->vstr);
       assert(testnum >= 1 && testnum <= 3);
@@ -309,6 +348,13 @@ int main(int argc, char *argv[]) {
     }
   }
   Clp_DeleteParser(clp);
+
+  if (seed)
+      srandom(seed);
+  else
+      srandomdev();
+  for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
+      initial_seeds[i] = random();
 
   struct timeval tv1,tv2;
   struct rusage ru1,ru2;

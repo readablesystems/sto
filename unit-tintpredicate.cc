@@ -1,3 +1,4 @@
+#undef NDEBUG
 #include <string>
 #include <iostream>
 #include <assert.h>
@@ -5,6 +6,7 @@
 #include "Transaction.hh"
 #include "TIntPredicate.hh"
 #include "StringWrapper.hh"
+#include "TBox.hh"
 
 void testTrivial() {
 	TIntPredicate<int> ip;
@@ -25,17 +27,18 @@ void testTrivial() {
 
 void testSimpleRangesOk() {
     TIntPredicate<int> ip;
+    TBox<int> box;
     bool match;
 
     {
         TestTransaction t1(1);
         match = ip < 3;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         ip = 1;
         assert(t2.try_commit());
-        t1.use();
         assert(t1.try_commit());
     }
 
@@ -43,11 +46,11 @@ void testSimpleRangesOk() {
         TestTransaction t1(1);
         match = ip < 0;
         assert(!match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         ip = 0;
         assert(t2.try_commit());
-        t1.use();
         assert(t1.try_commit());
     }
 
@@ -55,11 +58,11 @@ void testSimpleRangesOk() {
         TestTransaction t1(1);
         match = ip > -1;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         ip = -1;
         assert(t2.try_commit());
-        t1.use();
         assert(!t1.try_commit());
     }
 
@@ -67,11 +70,11 @@ void testSimpleRangesOk() {
         TestTransaction t1(1);
         match = ip > 0;
         assert(!match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         ip = 0;
         assert(t2.try_commit());
-        t1.use();
         assert(t1.try_commit());
     }
 
@@ -81,11 +84,11 @@ void testSimpleRangesOk() {
         assert(match);
         match = ip < 4;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         ip = 3;
         assert(t2.try_commit());
-        t1.use();
         assert(t1.try_commit());
     }
 
@@ -95,11 +98,11 @@ void testSimpleRangesOk() {
         assert(match);
         match = ip < 4;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         ip = -1;
         assert(t2.try_commit());
-        t1.use();
         assert(!t1.try_commit());
     }
 
@@ -111,11 +114,11 @@ void testSimpleRangesOk() {
         assert(match);
         match = ip < 4;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         ip = 4;
         assert(t2.try_commit());
-        t1.use();
         assert(!t1.try_commit());
     }
 
@@ -123,6 +126,7 @@ void testSimpleRangesOk() {
         TestTransaction t1(1);
         match = ip > -4;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         ip = -1;
@@ -136,6 +140,7 @@ void testSimpleRangesOk() {
         TestTransaction t1(1);
         match = ip == 1;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         ip = 2;
@@ -153,12 +158,14 @@ void testSimpleRangesOk() {
 
 void testSimpleRangesFail() {
     TIntPredicate<int> ip;
+    TBox<int> box;
     bool match;
 
     {
         TestTransaction t1(1);
         match = ip < 3;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         ip = 5;
@@ -173,6 +180,7 @@ void testSimpleRangesFail() {
         TestTransaction t1(1);
         match = ip < 3;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         ip = 5;
@@ -191,6 +199,7 @@ void testSimpleRangesFail() {
         TestTransaction t1(1);
         match = ip < 3;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         ip = 5;
@@ -215,6 +224,7 @@ void testSimpleRangesFail() {
         TestTransaction t1(1);
         match = ip > 1;
         assert(match);
+        box = 9; /* avoid read-only txn */
 
         TestTransaction t2(2);
         ip = 0;
