@@ -1,4 +1,3 @@
-#define STO_SPIN_BOUND_WRITE 30
 #include <string>
 #include <iostream>
 #include <sys/time.h>
@@ -127,7 +126,7 @@ public:
 class TCounter2 : public TObject {
     TWrapped<int> n_;
     TVersion v_;
-    unsigned next_cache_line_[17];
+    //unsigned next_cache_line_[17];
     TWrapped<int> zc_n_;
     TVersion zc_v_;
     static int wval(TransProxy it) {
@@ -191,6 +190,18 @@ public:
         if (it.has_flag(zc_set_bit))
             zc_v_.unlock();
         v_.unlock();
+    }
+    void print(std::ostream& w, const TransItem& item) const {
+        w << "{TCounter2";
+        if (item.has_flag(zc_bit))
+            w << ".ZC";
+        if (item.has_read())
+            w << " R" << item.read_value<TVersion>();
+        if (item.has_write())
+            w << " Δ" << item.write_value<int>();
+        if (item.has_flag(zc_set_bit))
+            w << "ZC";
+        w << "}";
     }
     void print(std::ostream& w) const {
         w << "{TCounter2 " << n_.access() << " V" << v_ << " ZCV" << zc_v_ << "}";
@@ -319,17 +330,22 @@ void* TTester<T>::runfunc(void* arg) {
 
     while (!go)
         relax_fence();
-    uint64_t trans = 0, a = 0, b = 0, c = 0, count_test = 0, rbuf_find = 0;
+    uint64_t trans = 0, a = 0, b = 0, c = 0, count_test = 0, rbuf_find = 0, retry = 0;
 
     while (go) {
         Rand snap_transgen = transgen;
         unsigned na, nb, nc, ngt, nfind;
+        unsigned last_ab = 0, last_op = 0;
         while (1) {
             na = nb = nc = ngt = nfind = 0;
+            ++retry;
             try {
                 Sto::start_transaction();
                 for (unsigned k = 0; k < ops_per_trans; ++k) {
                     unsigned op = transgen();
+                    assert(!last_ab || k || op == last_op);
+                    if (!last_ab && !k)
+                        last_op = op;
                     if (op < test_threshold) {
                         ngt += counter->test();
                         ++na;
@@ -348,6 +364,7 @@ void* TTester<T>::runfunc(void* arg) {
             } catch (Transaction::Abort e) {
             }
             transgen = snap_transgen;
+            ++last_ab;
         }
         a += na;
         b += nb;
@@ -398,7 +415,7 @@ static Tester* ttesters[] = { new TTester<TCounter0>, new TTester<TCounter1>,
 int main(int argc, char *argv[]) {
   Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
   srandomdev();
-  int testnum = 1;
+  std::vector<int> tests;
   unsigned seed = 0;
 
   int opt;
@@ -425,10 +442,12 @@ int main(int argc, char *argv[]) {
     case opt_usleep_fraction:
         usleep_fraction = clp->val.d;
         break;
-    case Clp_NotOption:
-      testnum = atoi(clp->vstr);
-      assert(testnum >= 0 && testnum <= 3);
-      break;
+    case Clp_NotOption: {
+        int testnum = atoi(clp->vstr);
+        assert(testnum >= 0 && testnum <= 3);
+        tests.push_back(testnum);
+        break;
+    }
     default:
       assert(0);
     }
@@ -442,55 +461,60 @@ int main(int argc, char *argv[]) {
   for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
       initial_seeds[i] = random();
 
-  struct timeval tv1,tv2;
-  struct rusage ru1,ru2;
-  gettimeofday(&tv1, NULL);
-  getrusage(RUSAGE_SELF, &ru1);
-  result r = ttesters[testnum]->run();
-  gettimeofday(&tv2, NULL);
-  getrusage(RUSAGE_SELF, &ru2);
+    if (tests.empty())
+        tests.push_back(1);
+    for (auto testnum : tests) {
+        struct timeval tv1,tv2;
+        struct rusage ru1,ru2;
+        gettimeofday(&tv1, NULL);
+        getrusage(RUSAGE_SELF, &ru1);
+        result r = ttesters[testnum]->run();
+        gettimeofday(&tv2, NULL);
+        getrusage(RUSAGE_SELF, &ru2);
 
-  uint64_t total_trans = 0;
-  for (int i = 0; i != nthreads; ++i)
-      total_trans += results[i].trans;
-  printf("THROUGHPUT: %f TRANS/SEC\n", total_trans / exptime);
+        uint64_t total_trans = 0;
+        for (int i = 0; i != nthreads; ++i)
+            total_trans += results[i].trans;
+        printf("THROUGHPUT: %f TRANS/SEC\n", total_trans / exptime);
 
-  printf("  real time: ");
-  print_time(tv1,tv2);
-  printf(", utime: ");
-  print_time(ru1.ru_utime, ru2.ru_utime);
-  printf(", stime: ");
-  print_time(ru1.ru_stime, ru2.ru_stime);
+        printf("  real time: ");
+        print_time(tv1,tv2);
+        printf(", utime: ");
+        print_time(ru1.ru_utime, ru2.ru_utime);
+        printf(", stime: ");
+        print_time(ru1.ru_stime, ru2.ru_stime);
 
-  printf("\n  ./ex-counter -j%d -t%g -f%g -u%g -i%d -o%u %d\n",
-         nthreads, exptime, test_fraction, usleep_fraction,
-         initial_value, ops_per_trans, testnum);
-  printf("  test() true %llu, value %d\n", (unsigned long long) r.ngt, r.final_value);
-  printf("  duration: ");
-  for (int i = 0; i != nthreads; ++i) {
-      printf(i ? ", %llu/" : "%llu/", (unsigned long long) results[i].trans);
-      print_time(tv1, results[i].finished);
-  }
-  printf("\n");
+        printf("\n  ./ex-counter -j%d -t%g -f%g -u%g -i%d -o%u %d\n",
+               nthreads, exptime, test_fraction, usleep_fraction,
+               initial_value, ops_per_trans, testnum);
+        printf("  test() true %llu, value %d\n", (unsigned long long) r.ngt, r.final_value);
+        printf("  duration: ");
+        for (int i = 0; i != nthreads; ++i) {
+            printf(i ? ", %llu/" : "%llu/", (unsigned long long) results[i].trans);
+            print_time(tv1, results[i].finished);
+        }
+        printf("\n");
 #if STO_PROFILE_COUNTERS
-  Transaction::print_stats();
-  if (txp_count >= txp_total_aborts) {
-      txp_counters tc = Transaction::txp_counters_combined();
-      const char* sep = "";
-      if (txp_count > txp_total_w) {
-          printf("%stotal_n: %llu, total_r: %llu, total_w: %llu", sep, tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w));
-          sep = ", ";
-      }
-      if (txp_count > txp_total_searched) {
-          printf("%stotal_searched: %llu", sep, tc.p(txp_total_searched));
-          sep = ", ";
-      }
-      if (txp_count > txp_total_aborts) {
-          printf("%stotal_aborts: %llu (%llu aborts at commit time)\n", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
-          sep = ", ";
-      }
-      if (*sep)
-          printf("\n");
-  }
+        Transaction::print_stats();
+        if (txp_count >= txp_total_aborts) {
+            txp_counters tc = Transaction::txp_counters_combined();
+            const char* sep = "";
+            if (txp_count > txp_total_w) {
+                printf("%stotal_n: %llu, total_r: %llu, total_w: %llu", sep, tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w));
+                sep = ", ";
+            }
+            if (txp_count > txp_total_searched) {
+                printf("%stotal_searched: %llu", sep, tc.p(txp_total_searched));
+                sep = ", ";
+            }
+            if (txp_count > txp_total_aborts) {
+                printf("%stotal_aborts: %llu (%llu aborts at commit time)\n", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+                sep = ", ";
+            }
+            if (*sep)
+                printf("\n");
+        }
+        Transaction::clear_stats();
 #endif
+    }
 }
