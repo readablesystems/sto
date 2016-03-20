@@ -581,8 +581,8 @@ public:
 
 private:
     enum {
-        s_in_progress = 0, s_committing = 1, s_committing_locked = 2,
-        s_aborted = 3, s_committed = 4
+        s_in_progress = 0, s_opacity_check = 1, s_committing = 2,
+        s_committing_locked = 3, s_aborted = 4, s_committed = 5
     };
 
     int threadid_;
