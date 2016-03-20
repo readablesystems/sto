@@ -34,6 +34,13 @@
 #define STO_SORT_WRITESET 0
 #endif
 
+#ifndef STO_SPIN_BOUND_READ
+#define STO_SPIN_BOUND_READ 0
+#endif
+#ifndef STO_SPIN_BOUND_WRITE
+#define STO_SPIN_BOUND_WRITE (1 << 3)
+#endif
+
 #define CONSISTENCY_CHECK 0
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
@@ -480,17 +487,17 @@ public:
 #else
         // This function will eventually help us track the commit TID when we
         // have no opacity, or for GV7 opacity.
-        int i = 0;
+        int i = item.has_read() ? STO_SPIN_BOUND_READ : STO_SPIN_BOUND_WRITE;
         while (1) {
             if (TransactionTid::try_lock(vers, threadid_))
                 return true;
-            if (i > (!item.has_read() << 3)) {
+            if (i == 0) {
 # if STO_DEBUG_ABORTS
                 abort_version_ = vers;
 # endif
                 return false;
             }
-            ++i;
+            --i;
             relax_fence();
         }
 #endif
