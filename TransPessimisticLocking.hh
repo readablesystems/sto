@@ -51,8 +51,8 @@ public:
     }
   }
 
-  void lock(TransItem&, Transaction&) {}
-  bool check(const TransItem&, const Transaction&) {}
+  bool lock(TransItem&, Transaction&) { return true; }
+  bool check(const TransItem&, const Transaction&) { return false; }
   void install(TransItem&, const Transaction&) {}
 
   void unlock(TransItem& item) {

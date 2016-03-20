@@ -406,6 +406,7 @@ public:
   }
 
     void print(std::ostream& w, const TransItem& item) const {
+#if 0
         w << "{Hashtable<" << typeid(K).name() << "," << typeid(V).name() << "> " << (void*) this;
         if (is_bucket(item)) {
             w << ".b[" << bucket_key(item) << "]";
@@ -420,6 +421,7 @@ public:
                 w << " =" << item.write_value<write_value_type>();
         }
         w << "}";
+#endif
     }
 
   void print() {

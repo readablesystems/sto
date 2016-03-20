@@ -3,6 +3,7 @@
 #include "Transaction.hh"
 
 class TransUndoable : public Shared {
+public:
   typedef void (*UndoFunction)(void*, void*, void*);
   void add_undo(UndoFunction undo_func, void *context1, void *context2) {
     // abusing semantics a bit here: technically there *could* be duplicates, but we're only
@@ -16,9 +17,9 @@ class TransUndoable : public Shared {
   // TODO: would be nice to have an add_undo that takes a std::function or something too.
 
 
-  void lock(TransItem&) {}
+  bool lock(TransItem&, Transaction&) { return true; }
   void unlock(TransItem&) {}
-  bool check(const TransItem&, const Transaction&) {}
+  bool check(const TransItem&, const Transaction&) { return false; }
   void install(TransItem&, const Transaction&) {}
 
   void cleanup(TransItem& item, bool committed) {

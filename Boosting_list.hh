@@ -8,7 +8,7 @@
 
 template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true>
 class TransList 
-#ifdef BOOSTING_STO
+#if defined(BOOSTING) && defined(STO)
   : public TransUndoable
 #endif
 {

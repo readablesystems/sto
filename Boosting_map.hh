@@ -10,7 +10,7 @@
 template <typename K, typename V, unsigned Init_size = 129, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>, 
           typename MapType = Hashtable<K, V, true, Init_size, V, Hash, Pred>>
 class TransMap 
-#if BOOSTING_STO
+#if defined(BOOSTING) && defined(STO)
   : public TransUndoable
 #endif
 {
