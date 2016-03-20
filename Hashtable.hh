@@ -22,15 +22,17 @@ class Hashtable {
 class Hashtable : public Shared {
 #endif
 public:
-    typedef TVersion Version_type;
     typedef K Key;
     typedef K key_type;
     typedef V Value;
     typedef W Value_type;
 
+    typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type Version_type;
+    typedef typename std::conditional<Opacity, TWrapped<Value>, TNonopaqueWrapped<Value>>::type wrapped_type;
+
     typedef V write_value_type;
 
-    static constexpr TVersion::type invalid_bit = TransactionTid::user_bit;
+    static constexpr typename Version_type::type invalid_bit = TransactionTid::user_bit;
 private:
   // our hashtable is an array of linked lists. 
   // an internal_elem is the node type for these linked lists
@@ -40,7 +42,7 @@ private:
     Key key;
     internal_elem *next;
     Version_type version;
-    TWrapped<Value> value;
+    wrapped_type value;
 #ifndef STO_NO_STM
     internal_elem(Key k, Value val, bool mark_valid)
         : key(k), next(NULL), version(Sto::initialized_tid() | (mark_valid ? 0 : invalid_bit)), value(val) {}
@@ -129,7 +131,7 @@ public:
       retval = e->value.read(item, e->version);
       return true;
     } else {
-      Sto::item(this, pack_bucket(bucket(k))).observe(TVersion(buck_version.unlocked()));
+      Sto::item(this, pack_bucket(bucket(k))).observe(Version_type(buck_version.unlocked()));
       //if (Opacity)
       //  check_opacity(buck.version);
       return false;
@@ -156,7 +158,7 @@ public:
         // so we just unmark all attributes so the item is ignored
         item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
         // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
-        Sto::item(this, pack_bucket(bucket(k))).observe(TVersion(buck_version.unlocked()));
+        Sto::item(this, pack_bucket(bucket(k))).observe(Version_type(buck_version.unlocked()));
         return true;
       } else
 #endif
@@ -181,7 +183,7 @@ public:
       return true;
     } else {
       // add a read that yes this element doesn't exist
-      Sto::item(this, pack_bucket(bucket(k))).observe(TVersion(buck_version.unlocked()));
+      Sto::item(this, pack_bucket(bucket(k))).observe(Version_type(buck_version.unlocked()));
       //if (Opacity)
       //  check_opacity(buck.version);
       return false;
@@ -243,7 +245,7 @@ private:
     } else {
       if (!INSERT) {
         unlock(buck.version);
-        Sto::item(this, pack_bucket(bucket(k))).observe(TVersion(buck.version.unlocked()));
+        Sto::item(this, pack_bucket(bucket(k))).observe(Version_type(buck.version.unlocked()));
         //if (Opacity)
         //    check_opacity(buck.version);
         return false;
@@ -257,7 +259,7 @@ private:
       // see if this item was previously read
       auto bucket_item = Sto::check_item(this, pack_bucket(bucket(k)));
       if (bucket_item) {
-        bucket_item->update_read(TVersion(new_version.value() - TransactionTid::increment_value), new_version);
+        bucket_item->update_read(Version_type(new_version.value() - TransactionTid::increment_value), new_version);
         //} else { could abort transaction now
       }
       // use new_item because we know there are no collisions
