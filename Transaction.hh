@@ -273,6 +273,7 @@ public:
 
     // reset data so we can be reused for another transaction
     void start() {
+        threadid_ = TThread::id();
         threadinfo_t& thr = tinfo[TThread::id()];
         //if (isAborted_
         //   && tinfo[TThread::id()].p(txp_total_aborts) % 0x10000 == 0xFFFF)

@@ -36,7 +36,7 @@
 #define USE_ARRAY_NONOPAQUE 10
 
 // set this to USE_DATASTRUCTUREYOUWANT
-#define DATA_STRUCTURE USE_TVECTOR
+#define DATA_STRUCTURE USE_HASHTABLE
 
 // if true, then all threads perform non-conflicting operations
 #define NON_CONFLICTING 0
@@ -68,7 +68,7 @@
  * we are checking our concurrent run not only with a single-threaded run
  * but also with a guaranteed correct implementation
  */
-#define MAINTAIN_TRUE_ARRAY_STATE 0
+#define MAINTAIN_TRUE_ARRAY_STATE 1
 
 // assert reading our writes works
 #define TRY_READ_MY_WRITES 0
@@ -83,6 +83,16 @@
 // Masstree globals
 //kvepoch_t global_log_epoch = 0;
 //kvtimestamp_t initial_timestamp;
+
+#ifdef BOOSTING
+#ifdef BOOSTING_STANDALONE
+#include "Boosting_standalone.hh"
+#else
+#include "Boosting_sto.hh"
+TransPessimisticLocking __pessimistLocking;
+#endif
+#include "Boosting_map.hh"
+#endif
 
 //#define DEBUG
 #ifdef DEBUG
@@ -365,14 +375,18 @@ private:
 };
 
 template <> struct Container<USE_HASHTABLE> {
+#ifndef BOOSTING
     typedef Hashtable<int, value_type, false, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
+#else
+    typedef TransMap<int, value_type, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
+#endif
     typedef int index_type;
     static constexpr bool has_delete = true;
     value_type nontrans_get(index_type key) {
         return v_.unsafe_get(key);
     }
     value_type transGet(index_type key) {
-        value_type v;
+        value_type v = value_type();
         v_.transGet(key, v);
         return v;
     }
@@ -504,10 +518,10 @@ static void doWrite(T& a, int slot, int& ctr) {
       a.transPut(slot, val(unval(v0)+1));
 #if TRY_READ_MY_WRITES
           // read my own writes
-          assert(a.transGet(t,slot) == v0+1);
-          a.transPut(t, slot, v0+2);
+          assert(a.transGet(slot) == v0+1);
+          a.transPut(slot, v0+2);
           // read my own second writes
-          assert(a.transGet(t,slot) == v0+2);
+          assert(a.transGet(slot) == v0+2);
 #endif
     }
     ++ctr; // because we've done a read and a write

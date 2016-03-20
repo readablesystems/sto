@@ -586,18 +586,20 @@ public:
   }
 
   // returns true if item already existed
-  template <bool InsertOnly = false>
+  template <bool Insert = true, bool Set = true>
   bool put(const Key& k, const Value& val) {
     bool exists = false;
     bucket_entry& buck = buck_entry(k);
     lock(buck.version);
     internal_elem *e = find(buck, k);
     if (e) {
-      if (!InsertOnly)
+      // XXX: kind of a stupid Set-only (still locks bucket)
+      if (Set)
         set(e, val);
       exists = true;
     } else {
-      insert_locked<true>(buck, k, val);
+      if (Insert)
+        insert_locked<true>(buck, k, val);
       exists = false;
     }
     unlock(buck.version);
@@ -605,11 +607,13 @@ public:
   }
   // returns true if successfully inserted
   bool insert(const Key& k, const Value& val) {
-    return !put<true>(k, val);
+    return !put<true, false>(k, val);
   }
 
   void set(internal_elem *e, const Value& val) {
     assert(e);
+    // XXX: we probably don't need this lock since we have the bucket lock still
+    // (or we could do an optimistic set without the bucket lock)
     lock(e->version);
     e->value.access() = val;
 #ifndef STO_NO_STM

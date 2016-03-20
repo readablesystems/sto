@@ -2,6 +2,7 @@
 
 #include "Boosting_tl2.hh"
 #include "Boosting_sto.hh"
+#include "Boosting_locks.hh"
 
 #include "Hashtable.hh"
 
