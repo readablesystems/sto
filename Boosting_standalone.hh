@@ -16,6 +16,7 @@ public:
       auto& cb = *it;
       cb.callback(cb.context1, cb.context2, cb.context3);
     }
+    abortCallbacks.unsafe_clear();
     commitCallbacks.unsafe_clear();
   }
   void did_abort() {
@@ -26,6 +27,7 @@ public:
     }
     // callbacks have trivial destructors
     abortCallbacks.unsafe_clear();
+    commitCallbacks.unsafe_clear();
   }
 
   void add_commit_callback(Callback func, void *c1, void *c2, void *c3) {
