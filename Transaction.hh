@@ -633,6 +633,11 @@ public:
         t->start();
     }
 
+    static void update_threadid() {
+        if (TThread::txn)
+            TThread::txn->threadid_ = TThread::id();
+    }
+
     static bool in_progress() {
         return TThread::txn && TThread::txn->in_progress();
     }
@@ -713,7 +718,7 @@ public:
 class TestTransaction {
 public:
     TestTransaction(int threadid)
-        : t_(threadid, Transaction::testing), base_(TThread::txn), threadid_(threadid) {
+        : t_(threadid, Transaction::testing), base_(TThread::txn) {
         use();
     }
     ~TestTransaction() {
@@ -724,7 +729,7 @@ public:
     }
     void use() {
         TThread::txn = &t_;
-        TThread::set_id(threadid_);
+        TThread::set_id(t_.threadid_);
     }
     void print(std::ostream& w) const {
         t_.print(w);
@@ -736,7 +741,6 @@ public:
 private:
     Transaction t_;
     Transaction* base_;
-    int threadid_;
 };
 
 class TransactionGuard {

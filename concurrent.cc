@@ -628,6 +628,7 @@ template <int DS> struct RandomRWs_parent : public DSTester<DS> {
 template <int DS> template <bool do_delete>
 void RandomRWs_parent<DS>::do_run(int me) {
   TThread::set_id(me);
+  Sto::update_threadid();
   container_type* a = this->a;
   container_type::thread_init(*a);
 
@@ -636,8 +637,8 @@ void RandomRWs_parent<DS>::do_run(int me) {
   std::uniform_int_distribution<long> slotdist(me*range, (me + 1) * range - 1);
 #else
   std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
-#endif  
-  
+#endif
+
   uint32_t write_thresh = (uint32_t) (write_percent * Rand::max());
   Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
 
