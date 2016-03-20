@@ -68,7 +68,7 @@
  * we are checking our concurrent run not only with a single-threaded run
  * but also with a guaranteed correct implementation
  */
-#define MAINTAIN_TRUE_ARRAY_STATE 1
+#define MAINTAIN_TRUE_ARRAY_STATE 0
 
 // assert reading our writes works
 #define TRY_READ_MY_WRITES 0
