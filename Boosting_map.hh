@@ -105,11 +105,8 @@ public:
   void transPut(const Key& k, const Value& val) {
     lockKey_.writeLock(k);
     Value oldval;
-    bool there = map_.nontrans_find(k, oldval);
-    bool exists = map_.put(k, val);
-    // we have the boosting writeLock which should protect a race
-    assert(there == exists);
-    if (there) {
+    bool exists = map_.put_getold(k, val, oldval);
+    if (exists) {
       ADD_UNDO(TransMap::_undoSet, this, VOIDP(k), VOIDP(oldval));
     } else {
       ADD_UNDO(TransMap::_undoInsert, this, VOIDP(k), NULL);

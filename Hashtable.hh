@@ -337,7 +337,7 @@ public:
 
     el->version.set_version(t.commit_tid()); // automatically sets valid to true
     // nate: this has no visible perf change on vacation (maybe slightly slower).
-#if 0
+#if 1
     // convert nonopaque bucket version to a commit tid
     if (has_insert(item)) {
       bucket_entry& buck = buck_entry(el->key);
@@ -611,6 +611,30 @@ public:
     unlock(buck.version);
     return exists;
   }
+
+  // returns true if item already existed
+  // if item did exist, oldval is its old value
+  template <bool Insert = true, bool Set = true>
+  bool put_getold(const Key& k, const Value& val, Value& oldval) {
+    bool exists = false;
+    bucket_entry& buck = buck_entry(k);
+    lock(buck.version);
+    internal_elem *e = find(buck, k);
+    if (e) {
+      assign_val(oldval, e->value.access());
+      // XXX: kind of a stupid Set-only (still locks bucket)
+      if (Set)
+        set(e, val);
+      exists = true;
+    } else {
+      if (Insert)
+        insert_locked<true>(buck, k, val);
+      exists = false;
+    }
+    unlock(buck.version);
+    return exists;
+  }
+
   // returns true if successfully inserted
   bool insert(const Key& k, const Value& val) {
     return !put<true, false>(k, val);
