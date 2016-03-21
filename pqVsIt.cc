@@ -8,6 +8,7 @@
 #include <queue>
 #include "Transaction.hh"
 #include "TVector.hh"
+#include "TVector_nopred.hh"
 #include "PriorityQueue.hh"
 #include "PriorityQueue1.hh"
 #include "clp.h"
@@ -37,7 +38,8 @@ int ntrans = 300000;
 TransactionTid::type lock;
 
 typedef PriorityQueue<int> data_structure;
-typedef PriorityQueue1<int> base_data_structure;
+//typedef PriorityQueue1<int> base_data_structure;
+typedef std::priority_queue<int, TVector_nopred<int>> base_data_structure;
 //typedef std::priority_queue<int, TVector<int>> base_data_structure;
 
 template <typename T>
@@ -155,7 +157,7 @@ void print_time(struct timeval tv1, struct timeval tv2) {
 }
 
 enum {
-    opt_nthreads, opt_ntrans, opt_opspertrans, opt_pushpercent, opt_toppercent, opt_prepopulate, opt_seed
+    opt_nthreads = 1, opt_ntrans, opt_opspertrans, opt_pushpercent, opt_toppercent, opt_prepopulate, opt_seed
 };
 
 static const Clp_Option options[] = {
@@ -230,6 +232,7 @@ void run_and_report(const char* name) {
 int main(int argc, char *argv[]) {
     lock = 0;
     Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
+    std::vector<const char*> tests;
         
     int opt;
     while ((opt = Clp_Next(clp)) != Clp_Done) {
@@ -252,11 +255,19 @@ int main(int argc, char *argv[]) {
             case opt_seed:
                 global_seed = clp->val.i;
                 break;
+            case Clp_NotOption:
+                tests.push_back(clp->vstr);
+                break;
             default:
                 help();
         }
     }
     Clp_DeleteParser(clp);
+
+    if (tests.empty()) {
+        tests.push_back("PQ");
+        tests.push_back("it");
+    }
 
     if (global_seed)
         srandom(global_seed);
@@ -270,8 +281,18 @@ int main(int argc, char *argv[]) {
     pthread_detach(advancer);
 
     // Run a parallel test with lots of transactions doing pushes and pops
-    run_and_report<data_structure>("PQ");
-    run_and_report<base_data_structure>("it");
+    for (auto test : tests) {
+        if (strcmp(test, "PQ") == 0 || strcmp(test, "pq") == 0)
+            run_and_report<PriorityQueue<int>>("PQ");
+        else if (strcmp(test, "PQ1") == 0 || strcmp(test, "pq1") == 0)
+            run_and_report<PriorityQueue1<int>>("PQ1");
+        else if (strcmp(test, "std") == 0)
+            run_and_report<std::priority_queue<int, TVector<int>>>("std");
+        else if (strcmp(test, "std-nopred") == 0)
+            run_and_report<std::priority_queue<int, TVector_nopred<int>>>("std-nopred");
+        else
+            assert(false);
+    }
     
     return 0;
 }

@@ -9,7 +9,11 @@ public:
     using size_type = int;
     using difference_type = int;
 private:
+#ifdef TVECTOR_DEFAULT_CAPACITY
+    static constexpr size_type default_capacity = TVECTOR_DEFAULT_CAPACITY;
+#else
     static constexpr size_type default_capacity = 128;
+#endif
     static constexpr TransactionTid::type dead_bit = TransactionTid::user_bit;
     static constexpr TransItem::flags_type size_flag = TransItem::user0_bit;
     using pred_type = TIntRange<size_type>;
@@ -34,6 +38,8 @@ public:
     typedef typename W<T>::version_type version_type;
     typedef TConstArrayProxy<TVector_nopred<T, W> > const_proxy_type;
     typedef TArrayProxy<TVector_nopred<T, W> > proxy_type;
+    typedef proxy_type reference;
+    typedef const_proxy_type const_reference;
 
     TVector_nopred()
         : size_(0), max_size_(0), capacity_(default_capacity) {
