@@ -10,7 +10,11 @@ public:
     using difference_type = int;
     typedef typename W<T>::version_type version_type;
 private:
+#ifdef TVECTOR_DEFAULT_CAPACITY
+    static constexpr size_type default_capacity = TVECTOR_DEFAULT_CAPACITY;
+#else
     static constexpr size_type default_capacity = 128;
+#endif
     using pred_type = TIntRange<size_type>;
     using key_type = int;
     static constexpr key_type size_key = -1;
@@ -37,6 +41,8 @@ public:
     typedef typename W<T>::read_type get_type;
     typedef TConstArrayProxy<TVector<T, W> > const_proxy_type;
     typedef TArrayProxy<TVector<T, W> > proxy_type;
+    typedef proxy_type reference;
+    typedef const_proxy_type const_reference;
 
     TVector()
         : size_(0), max_size_(0), capacity_(default_capacity) {
