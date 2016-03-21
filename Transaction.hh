@@ -38,11 +38,11 @@
 #define STO_SPIN_BOUND_READ 0
 #endif
 #ifndef STO_SPIN_BOUND_WRITE
-#define STO_SPIN_BOUND_WRITE (1 << 3)
+#define STO_SPIN_BOUND_WRITE (1 << 13)
 #endif
 
 #ifndef STO_EXPO_BACKOFF
-#define STO_EXPO_BACKOFF 0
+#define STO_EXPO_BACKOFF 1
 #endif
 
 #define CONSISTENCY_CHECK 0

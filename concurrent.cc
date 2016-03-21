@@ -21,7 +21,7 @@
 
 // size of array (for hashtables or other non-array structures, this is the
 // size of the key space)
-#define ARRAY_SZ 1000000
+#define ARRAY_SZ 10000000
 
 #define USE_ARRAY 0
 #define USE_HASHTABLE 1
@@ -55,7 +55,7 @@
 #define DATA_COLLECT 0
 
 // If we have N keys, we make our hashtable have size N/HASHTABLE_LOAD_FACTOR
-#define HASHTABLE_LOAD_FACTOR 2
+#define HASHTABLE_LOAD_FACTOR 1.1
 
 // additional seed to randomness used in tests (otherwise each run of
 // ./concurrent does the exact same operations)
@@ -376,9 +376,9 @@ private:
 
 template <> struct Container<USE_HASHTABLE> {
 #ifndef BOOSTING
-    typedef Hashtable<int, value_type, false, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
+    typedef Hashtable<int, value_type, false, static_cast<unsigned>(ARRAY_SZ/HASHTABLE_LOAD_FACTOR)> type;
 #else
-    typedef TransMap<int, value_type, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
+    typedef TransMap<int, value_type, static_cast<unsigned>(ARRAY_SZ/HASHTABLE_LOAD_FACTOR)> type;
 #endif
     typedef int index_type;
     static constexpr bool has_delete = true;
@@ -411,7 +411,7 @@ private:
 };
 
 template <> struct Container<USE_HASHTABLE_STR> {
-    typedef Hashtable<int, std::string, false, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
+    typedef Hashtable<int, std::string, false, static_cast<unsigned>(ARRAY_SZ/HASHTABLE_LOAD_FACTOR)> type;
     typedef int index_type;
     static constexpr bool has_delete = true;
     value_type nontrans_get(index_type key) {
