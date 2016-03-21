@@ -41,6 +41,10 @@
 #define STO_SPIN_BOUND_WRITE (1 << 3)
 #endif
 
+#ifndef STO_EXPO_BACKOFF
+#define STO_EXPO_BACKOFF 0
+#endif
+
 #define CONSISTENCY_CHECK 0
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1

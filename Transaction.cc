@@ -130,6 +130,14 @@ void Transaction::stop(bool committed) {
         thr.trans_end_callback();
     // XXX should reset trans_end_callback after calling it...
     state_ = s_aborted + committed;
+#if STO_EXPO_BACKOFF
+    // not technically "exponential" but seems to sort of help
+    if (!committed) {
+      long spin_for = (threadid_+1) * 10000;
+      for (int i = 0; i < spin_for; ++i)
+        relax_fence();
+    }
+#endif
 }
 
 bool Transaction::try_commit() {
