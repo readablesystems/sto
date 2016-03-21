@@ -38,6 +38,15 @@ else
 OPTFLAGS += -O$(OPT)
 endif
 
+ifeq ($(BOOSTING_STANDALONE),1)
+CXXFLAGS += -DBOOSTING -DBOOSTING_STANDALONE
+LIBOBJS += Boosting.o Boosting_standalone.o
+endif
+
+ifeq ($(BOOSTING_STO),1)
+CXXFLAGS += -DBOOSTING -DSTO
+endif
+
 # debugging on by default
 ifneq ($(NDEBUG),1)
 OPTFLAGS += -g

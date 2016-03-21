@@ -48,17 +48,25 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
     if (item && item->has_read() && item->read_value<TransactionTid::type>() == t)
         return;
 
-    TXP_INCREMENT(txp_hco);
-    if (TransactionTid::is_locked_elsewhere(t, threadid_)) {
-        TXP_INCREMENT(txp_hco_lock);
-        mark_abort_because(item, "locked", t);
+    // die on recursive opacity check; this is only possible for predicates
+    if (unlikely(state_ == s_opacity_check)) {
+        mark_abort_because(item, "recursive opacity check", t);
     abort:
         TXP_INCREMENT(txp_hco_abort);
         abort();
     }
+    assert(state_ == s_in_progress);
+
+    TXP_INCREMENT(txp_hco);
+    if (TransactionTid::is_locked_elsewhere(t, threadid_)) {
+        TXP_INCREMENT(txp_hco_lock);
+        mark_abort_because(item, "locked", t);
+        goto abort;
+    }
     if (t & TransactionTid::nonopaque_bit)
         TXP_INCREMENT(txp_hco_invalid);
 
+    state_ = s_opacity_check;
     start_tid_ = _TID;
     release_fence();
     for (auto it = transSet_.begin(); it != transSet_.end(); ++it)
@@ -76,6 +84,7 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
                 goto abort;
             }
         }
+    state_ = s_in_progress;
 }
 
 void Transaction::stop(bool committed) {
@@ -121,6 +130,14 @@ void Transaction::stop(bool committed) {
         thr.trans_end_callback();
     // XXX should reset trans_end_callback after calling it...
     state_ = s_aborted + committed;
+#if STO_EXPO_BACKOFF
+    // not technically "exponential" but seems to sort of help
+    if (!committed) {
+      long spin_for = (threadid_+1) * 10000;
+      for (int i = 0; i < spin_for; ++i)
+        relax_fence();
+    }
+#endif
 }
 
 bool Transaction::try_commit() {
@@ -297,7 +314,7 @@ void Transaction::print_stats() {
 }
 
 const char* Transaction::state_name(int state) {
-    static const char* names[] = {"in-progress", "committing", "committing-locked", "aborted", "committed"};
+    static const char* names[] = {"in-progress", "opacity-check", "committing", "committing-locked", "aborted", "committed"};
     if (unsigned(state) < arraysize(names))
         return names[state];
     else

@@ -181,11 +181,6 @@ class TransItem {
     }
 
     TransItem& clear_needs_unlock() {
-        assert(flags() & lock_bit);
-        __rm_flags(lock_bit);
-        return *this;
-    }
-    TransItem& clear_needs_unlock_if_set() {
         __rm_flags(lock_bit);
         return *this;
     }

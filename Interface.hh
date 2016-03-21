@@ -432,6 +432,9 @@ public:
     void set_version_unlock(TNonopaqueVersion new_v, int here) {
         TransactionTid::set_version_unlock(v_, new_v.v_, here);
     }
+    void inc_nonopaque_version() {
+        TransactionTid::inc_nonopaque_version(v_);
+    }
 
     bool check_version(TNonopaqueVersion old_vers) const {
         return TransactionTid::check_version(v_, old_vers.v_);

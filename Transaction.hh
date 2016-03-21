@@ -34,6 +34,17 @@
 #define STO_SORT_WRITESET 0
 #endif
 
+#ifndef STO_SPIN_BOUND_READ
+#define STO_SPIN_BOUND_READ 0
+#endif
+#ifndef STO_SPIN_BOUND_WRITE
+#define STO_SPIN_BOUND_WRITE (1 << 13)
+#endif
+
+#ifndef STO_EXPO_BACKOFF
+#define STO_EXPO_BACKOFF 1
+#endif
+
 #define CONSISTENCY_CHECK 0
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
@@ -480,17 +491,17 @@ public:
 #else
         // This function will eventually help us track the commit TID when we
         // have no opacity, or for GV7 opacity.
-        int i = 0;
+        int i = item.has_read() ? STO_SPIN_BOUND_READ : STO_SPIN_BOUND_WRITE;
         while (1) {
             if (TransactionTid::try_lock(vers, threadid_))
                 return true;
-            if (i > (!item.has_read() << 3)) {
+            if (i == 0) {
 # if STO_DEBUG_ABORTS
                 abort_version_ = vers;
 # endif
                 return false;
             }
-            ++i;
+            --i;
             relax_fence();
         }
 #endif
@@ -574,8 +585,8 @@ public:
 
 private:
     enum {
-        s_in_progress = 0, s_committing = 1, s_committing_locked = 2,
-        s_aborted = 3, s_committed = 4
+        s_in_progress = 0, s_opacity_check = 1, s_committing = 2,
+        s_committing_locked = 3, s_aborted = 4, s_committed = 5
     };
 
     int threadid_;
@@ -623,6 +634,11 @@ public:
         Transaction* t = transaction();
         always_assert(!t->in_progress());
         t->start();
+    }
+
+    static void update_threadid() {
+        if (TThread::txn)
+            TThread::txn->threadid_ = TThread::id();
     }
 
     static bool in_progress() {
@@ -705,7 +721,7 @@ public:
 class TestTransaction {
 public:
     TestTransaction(int threadid)
-        : t_(threadid, Transaction::testing), base_(TThread::txn), threadid_(threadid) {
+        : t_(threadid, Transaction::testing), base_(TThread::txn) {
         use();
     }
     ~TestTransaction() {
@@ -716,7 +732,7 @@ public:
     }
     void use() {
         TThread::txn = &t_;
-        TThread::set_id(threadid_);
+        TThread::set_id(t_.threadid_);
     }
     void print(std::ostream& w) const {
         t_.print(w);
@@ -728,7 +744,6 @@ public:
 private:
     Transaction t_;
     Transaction* base_;
-    int threadid_;
 };
 
 class TransactionGuard {

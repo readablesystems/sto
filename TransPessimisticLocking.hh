@@ -5,9 +5,10 @@
 // TODO: kind of an awkward name :)
 class TransPessimisticLocking : public Shared {
   typedef uint64_t bit_type;
-  static constexpr bit_type spin_lock = 1<<0;
-  static constexpr bit_type read_lock = 1<<1;
-  static constexpr bit_type write_lock = 1<<2;
+  // constexprs are too strange to use :|
+  static inline bit_type spin_lock() { return 1<<0; }
+  static inline bit_type read_lock() { return 1<<1; }
+  static inline bit_type write_lock() { return 1<<2; }
 
 public:
   // XXX: it might be cleaner if we had 1 method that took a lock and its
@@ -21,7 +22,7 @@ public:
         Sto::abort();
         return;
       }
-      item.add_write(read_lock);
+      item.add_write(read_lock());
     }
   }
   void transWriteLock(RWLock *lock) {
@@ -31,13 +32,13 @@ public:
         Sto::abort();
         return;
       }
-      item.add_write(write_lock);
-    } else if (item.template write_value<bit_type>() == read_lock) {
+      item.add_write(write_lock());
+    } else if (item.template write_value<bit_type>() == read_lock()) {
       if (!lock->tryUpgrade(WRITE_SPIN)) {
         Sto::abort();
         return;
       }
-      item.add_write(write_lock);
+      item.add_write(write_lock());
     }
   }
   void transSpinLock(SpinLock *lock) {
@@ -47,7 +48,7 @@ public:
         Sto::abort();
         return;
       }
-      item.add_write(spin_lock);
+      item.add_write(spin_lock());
     }
   }
 
@@ -59,14 +60,14 @@ public:
 
   void cleanup(TransItem& item, bool committed) {
     auto type = item.template write_value<bit_type>();
-    if (type == spin_lock) {
+    if (type == spin_lock()) {
       item.template key<SpinLock*>()->unlock();
       return;
     }
     auto *lock = item.template key<RWLock*>();
-    if (type == read_lock) {
+    if (type == read_lock()) {
       lock->readUnlock();
-    } else if (type == write_lock) {
+    } else if (type == write_lock()) {
       lock->writeUnlock();
     }
   }

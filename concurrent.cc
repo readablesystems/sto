@@ -21,7 +21,7 @@
 
 // size of array (for hashtables or other non-array structures, this is the
 // size of the key space)
-#define ARRAY_SZ 1000000
+#define ARRAY_SZ 10000000
 
 #define USE_ARRAY 0
 #define USE_HASHTABLE 1
@@ -36,7 +36,7 @@
 #define USE_ARRAY_NONOPAQUE 10
 
 // set this to USE_DATASTRUCTUREYOUWANT
-#define DATA_STRUCTURE USE_TVECTOR
+#define DATA_STRUCTURE USE_HASHTABLE
 
 // if true, then all threads perform non-conflicting operations
 #define NON_CONFLICTING 0
@@ -55,7 +55,7 @@
 #define DATA_COLLECT 0
 
 // If we have N keys, we make our hashtable have size N/HASHTABLE_LOAD_FACTOR
-#define HASHTABLE_LOAD_FACTOR 2
+#define HASHTABLE_LOAD_FACTOR 1.1
 
 // additional seed to randomness used in tests (otherwise each run of
 // ./concurrent does the exact same operations)
@@ -83,6 +83,16 @@
 // Masstree globals
 //kvepoch_t global_log_epoch = 0;
 //kvtimestamp_t initial_timestamp;
+
+#ifdef BOOSTING
+#ifdef BOOSTING_STANDALONE
+#include "Boosting_standalone.hh"
+#else
+#include "Boosting_sto.hh"
+TransPessimisticLocking __pessimistLocking;
+#endif
+#include "Boosting_map.hh"
+#endif
 
 //#define DEBUG
 #ifdef DEBUG
@@ -365,14 +375,18 @@ private:
 };
 
 template <> struct Container<USE_HASHTABLE> {
-    typedef Hashtable<int, value_type, false, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
+#ifndef BOOSTING
+    typedef Hashtable<int, value_type, false, static_cast<unsigned>(ARRAY_SZ/HASHTABLE_LOAD_FACTOR)> type;
+#else
+    typedef TransMap<int, value_type, static_cast<unsigned>(ARRAY_SZ/HASHTABLE_LOAD_FACTOR)> type;
+#endif
     typedef int index_type;
     static constexpr bool has_delete = true;
     value_type nontrans_get(index_type key) {
         return v_.unsafe_get(key);
     }
     value_type transGet(index_type key) {
-        value_type v;
+        value_type v = value_type();
         v_.transGet(key, v);
         return v;
     }
@@ -397,7 +411,7 @@ private:
 };
 
 template <> struct Container<USE_HASHTABLE_STR> {
-    typedef Hashtable<int, std::string, false, ARRAY_SZ/HASHTABLE_LOAD_FACTOR> type;
+    typedef Hashtable<int, std::string, false, static_cast<unsigned>(ARRAY_SZ/HASHTABLE_LOAD_FACTOR)> type;
     typedef int index_type;
     static constexpr bool has_delete = true;
     value_type nontrans_get(index_type key) {
@@ -504,10 +518,10 @@ static void doWrite(T& a, int slot, int& ctr) {
       a.transPut(slot, val(unval(v0)+1));
 #if TRY_READ_MY_WRITES
           // read my own writes
-          assert(a.transGet(t,slot) == v0+1);
-          a.transPut(t, slot, v0+2);
+          assert(a.transGet(slot) == v0+1);
+          a.transPut(slot, v0+2);
           // read my own second writes
-          assert(a.transGet(t,slot) == v0+2);
+          assert(a.transGet(slot) == v0+2);
 #endif
     }
     ++ctr; // because we've done a read and a write
@@ -614,6 +628,10 @@ template <int DS> struct RandomRWs_parent : public DSTester<DS> {
 template <int DS> template <bool do_delete>
 void RandomRWs_parent<DS>::do_run(int me) {
   TThread::set_id(me);
+  Sto::update_threadid();
+#ifdef BOOSTING_STANDALONE
+  boosting_threadid = me;
+#endif
   container_type* a = this->a;
   container_type::thread_init(*a);
 
@@ -622,8 +640,8 @@ void RandomRWs_parent<DS>::do_run(int me) {
   std::uniform_int_distribution<long> slotdist(me*range, (me + 1) * range - 1);
 #else
   std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
-#endif  
-  
+#endif
+
   uint32_t write_thresh = (uint32_t) (write_percent * Rand::max());
   Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
 
@@ -816,6 +834,9 @@ template <int DS> struct XorDelete<DS, true> : public DSTester<DS> {
 
 template <int DS> void XorDelete<DS, true>::run(int me) {
   TThread::set_id(me);
+#ifdef BOOSTING_STANDALONE
+  boosting_threadid = me;
+#endif
   container_type* a = this->a;
   container_type::thread_init(*a);
 
