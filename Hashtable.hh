@@ -15,7 +15,7 @@
 #define READ_MY_WRITES 1
 #endif 
 
-template <typename K, typename V, bool Opacity = false, unsigned Init_size = 129, typename W = V, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
+template <typename K, typename V, bool Opacity = true, unsigned Init_size = 129, typename W = V, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
 #ifdef STO_NO_STM
 class Hashtable {
 #else
@@ -339,7 +339,7 @@ public:
     // nate: this has no visible perf change on vacation (maybe slightly slower).
 #if 1
     // convert nonopaque bucket version to a commit tid
-    if (has_insert(item)) {
+    if (Opacity && has_insert(item)) {
       bucket_entry& buck = buck_entry(el->key);
       lock(buck.version);
       // only update if it's still nonopaque. Otherwise someone with a higher tid
