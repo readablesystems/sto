@@ -201,6 +201,8 @@ public:
             return true;
         } else {
             key += item.has_flag(indexed_bit) ? 0 : size_delta_;
+            if (key < 0)
+                return false; // popped too much!
             return txn.try_lock(item, data_[key].vers);
         }
     }
