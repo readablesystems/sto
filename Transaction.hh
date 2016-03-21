@@ -34,15 +34,24 @@
 #define STO_SORT_WRITESET 0
 #endif
 
-#ifndef STO_SPIN_BOUND_READ
-#define STO_SPIN_BOUND_READ 0
-#endif
-#ifndef STO_SPIN_BOUND_WRITE
-#define STO_SPIN_BOUND_WRITE (1 << 13)
+#ifndef STO_SPIN_EXPBACKOFF
+#define STO_SPIN_EXPBACKOFF 0
 #endif
 
-#ifndef STO_EXPO_BACKOFF
-#define STO_EXPO_BACKOFF 1
+#ifndef STO_SPIN_BOUND_WRITE
+#if STO_SPIN_EXPBACKOFF
+#define STO_SPIN_BOUND_WRITE 7
+#else
+#define STO_SPIN_BOUND_WRITE 3
+#endif
+#endif
+
+#ifndef STO_SPIN_BOUND_WAIT
+#if STO_SPIN_EXPBACKOFF
+#define STO_SPIN_BOUND_WAIT 18
+#else
+#define STO_SPIN_BOUND_WAIT 20
+#endif
 #endif
 
 #define CONSISTENCY_CHECK 0
@@ -491,17 +500,29 @@ public:
 #else
         // This function will eventually help us track the commit TID when we
         // have no opacity, or for GV7 opacity.
-        int i = item.has_read() ? STO_SPIN_BOUND_READ : STO_SPIN_BOUND_WRITE;
+        unsigned n = 0;
         while (1) {
             if (TransactionTid::try_lock(vers, threadid_))
                 return true;
-            if (i == 0) {
-# if STO_DEBUG_ABORTS
+            ++n;
+# if STO_SPIN_EXPBACKOFF
+            if (item.has_read() || n == STO_SPIN_BOUND_WRITE) {
+#  if STO_DEBUG_ABORTS
                 abort_version_ = vers;
-# endif
+#  endif
                 return false;
             }
-            --i;
+            if (n > 3)
+                for (unsigned x = 1 << std::min(15U, n - 2); x; --x)
+                    relax_fence();
+# else
+            if (item.has_read() || n == (1 << STO_SPIN_BOUND_WRITE)) {
+#  if STO_DEBUG_ABORTS
+                abort_version_ = vers;
+#  endif
+                return false;
+            }
+# endif
             relax_fence();
         }
 #endif
