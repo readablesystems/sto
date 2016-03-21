@@ -1,9 +1,11 @@
+#define TVECTOR_DEFAULT_CAPACITY 16384
 #include <string>
 #include <iostream>
 #include <assert.h>
 #include <vector>
 #include <random>
 #include <map>
+#include <queue>
 #include "Transaction.hh"
 #include "TVector.hh"
 #include "PriorityQueue.hh"
@@ -35,6 +37,8 @@ int ntrans = 300000;
 TransactionTid::type lock;
 
 typedef PriorityQueue<int> data_structure;
+typedef PriorityQueue1<int> base_data_structure;
+//typedef std::priority_queue<int, TVector<int>> base_data_structure;
 
 template <typename T>
 struct TesterPair {
@@ -81,12 +85,16 @@ uint64_t run(T* q, int me) {
                     if (only_push || (!only_pop && op < push_percent * 100)) {
                             int val = slotdist(transgen);
 #if SMALLER_READS
-                        val = val + (1 - (i/N))*max_value;
+                            val = val + (1 - (i/N))*max_value;
 #endif
                             q->push(val);
                     } else {
                         for (int r = 0; r < ratio; r++) {
-                            q->pop();
+                            try {
+                                q->pop();
+                            } catch (std::out_of_range e) {
+                                // gross but whatever
+                            }
                         }
                     }
                 }
@@ -125,11 +133,9 @@ uint64_t startAndWait(int n, T* queue) {
         testers[i].me = i;
         pthread_create(&tids[i], NULL, runFunc<T>, &testers[i]);
     }
-    pthread_t advancer;
-    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
-    pthread_detach(advancer);
 #if FIX_RUNTIME
     sleep(runtime);
+    printf("stopping...\n");
     running = false;
 #endif 
     __sync_synchronize();
@@ -190,13 +196,39 @@ void init(T* q) {
     }
 }
 
+template <typename T>
+void run_and_report(const char* name) {
+    T* q;
+    TRANSACTION {
+        q = new T;
+    } RETRY(true);
+    init(q);
+
+    struct timeval tv1, tv2;
+    gettimeofday(&tv1, NULL);
+    unsigned long long num_trans = startAndWait(nthreads, q);
+    gettimeofday(&tv2, NULL);
+
+#if FIX_RUNTIME
+    double time = tv2.tv_sec - tv1.tv_sec + (tv2.tv_usec-tv1.tv_usec)/1000000.0;
+    unsigned long long throughput = num_trans/time;
+    printf("%s: %llu\n", name, throughput);
+#else
+    printf("%s time: ", name);
+    print_time(tv1, tv2);
+#endif
+#if STO_PROFILE_COUNTERS
+    Transaction::print_stats();
+    {
+        txp_counters tc = Transaction::txp_counters_combined();
+        printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+    }
+    Transaction::clear_stats();
+#endif
+}
+
 int main(int argc, char *argv[]) {
     lock = 0;
-    struct timeval tv1,tv2;
-    uint64_t num_trans;
-    uint64_t time;
-    uint64_t throughput;
-    
     Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
         
     int opt;
@@ -233,56 +265,13 @@ int main(int argc, char *argv[]) {
     for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
         initial_seeds[i] = random();
 
+    pthread_t advancer;
+    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
+    pthread_detach(advancer);
+
     // Run a parallel test with lots of transactions doing pushes and pops
-    data_structure q;
-    init(&q);
+    run_and_report<data_structure>("PQ");
+    run_and_report<base_data_structure>("it");
     
-    gettimeofday(&tv1, NULL);
-    
-    num_trans = startAndWait(nthreads, &q);
-    
-    gettimeofday(&tv2, NULL);
-#if FIX_RUNTIME
-    time = tv2.tv_sec - tv1.tv_sec + (tv2.tv_usec-tv1.tv_usec)/1000000.0;
-    throughput = num_trans/time;
-    printf("PQ: %llu\n", throughput);
-#else
-    printf("Parallel PQ time: ");
-    print_time(tv1, tv2);
-#endif
-    
-#if STO_PROFILE_COUNTERS
-    Transaction::print_stats();
-    {
-        txp_counters tc = Transaction::txp_counters_combined();
-        printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time), pop_aborts: %llu, push_aborts: %llu\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts), tc.p(txp_pop_abort), tc.p(txp_push_abort));
-    }
-    Transaction::clear_stats();
-#endif
-    
-    PriorityQueue1<int> q2;
-    init(&q2);
-    gettimeofday(&tv1, NULL);
-    
-    num_trans = startAndWait(nthreads, &q2);
-    
-    gettimeofday(&tv2, NULL);
-#if FIX_RUNTIME
-    time = tv2.tv_sec - tv1.tv_sec + (tv2.tv_usec-tv1.tv_usec)/1000000.0;
-    throughput = num_trans/time;
-    printf("it: %llu\n", throughput);
-#else
-    printf("Parallel iterator time: ");
-    print_time(tv1, tv2);
-#endif
-#if STO_PROFILE_COUNTERS
-    Transaction::print_stats();
-    {
-        txp_counters tc = Transaction::txp_counters_combined();
-        printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
-    }
-    Transaction::clear_stats();
-#endif
-    
-        return 0;
+    return 0;
 }
