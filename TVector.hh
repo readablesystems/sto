@@ -150,10 +150,10 @@ public:
             item.add_flags(indexed_bit);
             return item.write_value<T>();
         } else {
+            item.add_flags(indexed_bit);
             get_type result = data_[i].v.read(item, data_[i].vers);
             if (item.read_value<version_type>().value() & dead_bit)
                 goto out_of_range;
-            item.add_flags(indexed_bit);
             return result;
         }
     }
