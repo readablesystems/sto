@@ -540,21 +540,24 @@ public:
   }
 
   bool read(const Key& k, Value& retval) {
-    auto e = find(buck_entry(k), k);
+    auto &buck = buck_entry(k);
+    auto e = find(buck, k);
     if (e) {
       TRANS_READ_LOCK(&e->rwlock);
+      if (e->value.access() == INT_MAX)
+	return false;
       // TODO(nate): this isn't safe for non-trivial types (need an atomic read)
       assign_val(retval, e->value.access());
     } else {
-      // we insert a dummy element to ensure this stays absent. No can do 
-      // anything with it because we have the write lock on it.
-      bool inserted = insert(k, Value(INT_MAX));
-      if (!inserted) {
-	//race
+      lock(buck.version);
+      auto e = find(buck, k);
+      if (e) {
+	//raced
+	unlock(buck.version);
 	return read(k, retval);
       }
-      // and we'll haxily rely on Boosting_map to remove this elem at commit 
-      // time, so no one will ever observe this element.
+      insert_locked<true, true>(buck, k, Value(INT_MAX));
+      unlock(buck.version);
     }
     return !!e;
   }
@@ -608,7 +611,7 @@ public:
   }
 
   // returns true if item already existed
-  template <bool Insert = true, bool Set = true, bool Trans = true>
+  template <bool Insert = true, bool Set = true, bool Trans=true>
   bool put(const Key& k, const Value& val) {
     bool exists = false;
     bucket_entry& buck = buck_entry(k);
@@ -616,7 +619,7 @@ public:
     internal_elem *e = find(buck, k);
     if (e) {
       // safe because we don't do removes in concurrent.cc
-      if(Trans) {
+      if (Trans) {
 	unlock(buck.version);
 	TRANS_WRITE_LOCK(&e->rwlock);
       }
@@ -645,12 +648,13 @@ public:
     internal_elem *e = find(buck, k);
     if (e) {
       unlock(buck.version);
-      TRANS_READ_LOCK(&e->rwlock);
+      TRANS_WRITE_LOCK(&e->rwlock);
+      bool absent = e->value.access() == INT_MAX;
       assign_val(oldval, e->value.access());
       // XXX: kind of a stupid Set-only (still locks bucket)
-      if (Set)
+      if ((!absent && Set) || (absent && Insert))
         set(e, val);
-      exists = true;
+      exists = !absent;
     } else {
       if (Insert)
         insert_locked<true>(buck, k, val);
@@ -750,12 +754,15 @@ private:
     v.unlock();
   }
 
-  template <bool markValid>
+  template <bool markValid, bool absentGet=false>
   void insert_locked(bucket_entry& buck, const Key& k, const Value& val) {
     assert(is_locked(buck.version));
     auto new_head = new internal_elem(k, val, markValid);
     // should always succeed
-    TRANS_WRITE_LOCK(&new_head->rwlock);
+    if (!absentGet)
+      TRANS_WRITE_LOCK(&new_head->rwlock);
+    else
+      TRANS_READ_LOCK(&new_head->rwlock);
     internal_elem *cur_head = buck.head;
     new_head->next = cur_head;
     buck.head = new_head;

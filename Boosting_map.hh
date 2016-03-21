@@ -30,29 +30,9 @@ public:
 
   TransMap(MapType&& map, unsigned size = Init_size, Hash h = Hash(), Pred p = Pred()) : map_(std::move(map)){}//, lockKey_(size, h, p) {}
 
-  static void _undoAbsentGet(void *self, void *c1, void *c2) {
-    Key key = (Key)(uintptr_t)c1;
-    // lol
-    Value* v = ((TransMap*)self)->map_.readPtr(key);
-    assert(v);
-    if (*v != INT_MAX)
-      return;
-    bool success = ((TransMap*)self)->map_.nontrans_remove(key);
-    assert(success);
-    //    delete key;
-  }
-
   bool transGet(const Key& k, Value& retval) {
     //lockKey_.readLock(k);
-    Value oldretval = retval;
     bool ret = map_.nontrans_find(k, retval);
-    if (!ret) {
-      this->add_undo(TransMap::_undoAbsentGet, VOIDP(k), NULL, true);
-    }
-    if (ret && retval == INT_MAX) {
-      retval = oldretval;
-      return false;
-    }
     return ret;
   }
 
