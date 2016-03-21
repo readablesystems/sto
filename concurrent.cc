@@ -376,7 +376,7 @@ private:
 
 template <> struct Container<USE_HASHTABLE> {
 #ifndef BOOSTING
-    typedef Hashtable<int, value_type, false, static_cast<unsigned>(ARRAY_SZ/HASHTABLE_LOAD_FACTOR)> type;
+    typedef Hashtable<int, value_type, true, static_cast<unsigned>(ARRAY_SZ/HASHTABLE_LOAD_FACTOR)> type;
 #else
     typedef TransMap<int, value_type, static_cast<unsigned>(ARRAY_SZ/HASHTABLE_LOAD_FACTOR)> type;
 #endif

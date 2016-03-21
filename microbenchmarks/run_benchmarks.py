@@ -4,6 +4,10 @@ import os, re, sys, json, subprocess, multiprocessing
 
 bm_execs = ["../concurrent", "./concurrent-50"]
 
+# for use with boosting
+# I compiled these with 022d56df086cbddc618a2feadc9ddbb9c3efc889's options.
+bm_execs += ["../concurrent-sto", "../concurrent-boostingsto", "../concurrent-boostingstandalone"]
+
 opacity_names = ["no opacity", "TL2 opacity", "slow opacity"]
 scaling_txlens = [1, 2, 4, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 30, 32, 36,
 		  40, 44, 48, 56, 64, 128, 256, 512]
@@ -11,15 +15,19 @@ nthreads_max = multiprocessing.cpu_count()
 nthreads_to_run_full = [1, 2, 4, 8, 16, 24]
 nthreads_to_run_dual = [1, 24]
 
-def attach_args(bm_idx, nthreads, txlen, opacity, ntrans):
+def attach_args(bm_idx, nthreads, txlen, opacity, ntrans, writepercent=None):
 	args = [bm_execs[bm_idx], "3"]
 	if opacity == 0:
 		args.append("array-nonopaque")
+	elif bm_idx > 1:
+		args.append("hash")
 	else:
 		args.append("array")
 	args.append("--ntrans=%d" % ntrans)
 	args.append("--nthreads=%d" % nthreads)
 	args.append("--opspertrans=%d" % txlen)
+	if writepercent is not None:
+		args.append("--writepercent=%s" % writepercent)
 	return args
 
 def to_strcmd(args):
@@ -61,12 +69,15 @@ def extract_numbers(output):
 
 	return results
 
-def getRecordKey(bm_idx, trail, ntrans, nthreads, txlen, opacity):
-	return "%d/%d/%d/%d/%d/%d" % (bm_idx, trail, ntrans, nthreads, txlen, opacity)
+def getRecordKey(bm_idx, trail, ntrans, nthreads, txlen, opacity, writepercent=None):
+	ret = "%d/%d/%d/%d/%d/%d" % (bm_idx, trail, ntrans, nthreads, txlen, opacity)
+	if writepercent:
+		ret += "/%s" % writepercent
+	return ret
 
-def run_single(bm_idx, trail, txlen, opacity, records, nthreads, ntrans):
-	run_key = getRecordKey(bm_idx, trail, nthreads, txlen, opacity, ntrans)
-	args = attach_args(bm_idx, nthreads, txlen, opacity, ntrans)
+def run_single(bm_idx, trail, txlen, opacity, records, nthreads, ntrans, writepercent=None):
+	run_key = getRecordKey(bm_idx, trail, nthreads, txlen, opacity, ntrans, writepercent)
+	args = attach_args(bm_idx, nthreads, txlen, opacity, ntrans, writepercent)
 	print_cmd(args)
 	bm_stdout = (to_strcmd(args) + "\n")
 
@@ -75,7 +86,7 @@ def run_single(bm_idx, trail, txlen, opacity, records, nthreads, ntrans):
 	bm_stdout += single_out
 	return bm_stdout
 
-def run_series(bm_idx, trail, txlen, opacity, records, nthreads_to_run, ntrans):
+def run_series(bm_idx, trail, txlen, opacity, records, nthreads_to_run, ntrans, writepercent=None):
 	assert opacity >= 0 and opacity <= 2
 
 	bm_stdout = "@@@ Running with %s, txlen %d. Trail #%d" % (opacity_names[opacity], txlen, trail)
@@ -83,7 +94,7 @@ def run_series(bm_idx, trail, txlen, opacity, records, nthreads_to_run, ntrans):
 	bm_stdout += "\n"
 
 	for nthreads in nthreads_to_run:
-		bm_stdout += run_single(bm_idx, trail, txlen, opacity, records, nthreads, ntrans)
+		bm_stdout += run_single(bm_idx, trail, txlen, opacity, records, nthreads, ntrans, writepercent)
 
 	return bm_stdout
 
@@ -119,6 +130,20 @@ def exp_scalability_hi_contention(repetitions, records):
 		combined_stdout += run_series(1, trail, txlen, 0, records, ttr, ntxs)
 
 	save_results("scalability_hi_contention", combined_stdout, records)
+
+def exp_boosting_micro(repetitions, records):
+	print "@@@@\n@@@ Starting experiment: boosting-microbenchmark:"
+	ntxs = 10000000
+	ttr = [16]
+	writepercent = "0.1"
+	txlen = 50
+	combined_stdout = ""
+	for trail in xrange(repetitions):
+		for bm_idx in [2, 3, 4]:
+			combined_stdout += run_series(bm_idx, trail, txlen, 1, records, ttr, ntxs, writepercent)
+
+	save_results("boosting_micro", combined_stdout, records)
+	#make concurrent BOOSTING_STO=1 && ./concurrent 3 hash --nthreads=16 --opspertrans=50 --ntrans=10000000 --writepercent=.1
 
 def exp_scalability_largetx(repetitions, records):
 	print "@@@@\n@@@ Starting experiment: scalability-largetx:"
@@ -178,8 +203,9 @@ def main(argc, argv):
 #	with open("experiment_data.json", "w+") as data_file:
 #		records = json.load(data_file)
 	records = dict()
-	exp_scalability_overhead(repetitions, records, 0, [10, 50])
-	exp_scalability_overhead(repetitions, records, 1, [10, 50])
+	exp_boosting_micro(repetitions, records)
+	#exp_scalability_overhead(repetitions, records, 0, [10, 50])
+	#exp_scalability_overhead(repetitions, records, 1, [10, 50])
 	#exp_scalability_hi_contention(repetitions, records)
 	#exp_scalability_largetx(repetitions, records)
 	#exp_opacity_modes(repetitions, records)

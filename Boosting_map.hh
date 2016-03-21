@@ -66,8 +66,6 @@ public:
 
   bool transDelete(const Key& k) {
     lockKey_.writeLock(k);
-    // TODO: remove this once we're convinced that it will never fire
-    assert(lockKey_.getLock(k)->isWriteLocked());
     Value oldval;
     bool success = map_.nontrans_remove(k, oldval);
     if (success) {
@@ -105,11 +103,8 @@ public:
   void transPut(const Key& k, const Value& val) {
     lockKey_.writeLock(k);
     Value oldval;
-    bool there = map_.nontrans_find(k, oldval);
-    bool exists = map_.put(k, val);
-    // we have the boosting writeLock which should protect a race
-    assert(there == exists);
-    if (there) {
+    bool exists = map_.put_getold(k, val, oldval);
+    if (exists) {
       ADD_UNDO(TransMap::_undoSet, this, VOIDP(k), VOIDP(oldval));
     } else {
       ADD_UNDO(TransMap::_undoInsert, this, VOIDP(k), NULL);
