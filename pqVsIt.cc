@@ -37,11 +37,6 @@ int ntrans = 300000;
 
 TransactionTid::type lock;
 
-typedef PriorityQueue<int> data_structure;
-//typedef PriorityQueue1<int> base_data_structure;
-typedef std::priority_queue<int, TVector_nopred<int>> base_data_structure;
-//typedef std::priority_queue<int, TVector<int>> base_data_structure;
-
 template <typename T>
 struct TesterPair {
     T* t;
@@ -59,7 +54,9 @@ uint64_t run(T* q, int me) {
 #endif
     Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
     uint64_t num_trans = 0;
+#if !FIX_RUNTIME
     int N = ntrans/nthreads;
+#endif
     int OPS = opspertrans;
     int ratio = ( push_percent / (1 - push_percent));
     if (ratio < 1) ratio = 1;
@@ -284,7 +281,7 @@ int main(int argc, char *argv[]) {
     for (auto test : tests) {
         if (strcmp(test, "PQ") == 0 || strcmp(test, "pq") == 0)
             run_and_report<PriorityQueue<int>>("PQ");
-        else if (strcmp(test, "PQ1") == 0 || strcmp(test, "pq1") == 0)
+        else if (strcmp(test, "PQ1") == 0 || strcmp(test, "pq1") == 0 || strcmp(test, "it") == 0)
             run_and_report<PriorityQueue1<int>>("PQ1");
         else if (strcmp(test, "std") == 0)
             run_and_report<std::priority_queue<int, TVector<int>>>("std");
