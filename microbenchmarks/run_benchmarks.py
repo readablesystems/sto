@@ -9,8 +9,7 @@ bm_execs = ["../concurrent", "./concurrent-50"]
 bm_execs += ["../concurrent-sto", "../concurrent-boostingsto", "../concurrent-boostingstandalone"]
 
 opacity_names = ["no opacity", "TL2 opacity", "slow opacity"]
-scaling_txlens = [1, 2, 4, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 30, 32, 36,
-		  40, 44, 48, 56, 64, 128, 256, 512]
+scaling_txlens = [1, 4, 8, 128, 256, 512]
 nthreads_max = multiprocessing.cpu_count()
 nthreads_to_run_full = [1, 2, 4, 8, 16, 24]
 nthreads_to_run_dual = [1, 24]
@@ -152,7 +151,11 @@ def exp_scalability_largetx(repetitions, records):
 
 	for txlen in scaling_txlens:
 		for trail in range(0, repetitions):
-			combined_stdout += run_single(0, trail, txlen, 0, records, 1, nitems/txlen)	
+			combined_stdout += run_single(0, trail, txlen, 0, records, 1, nitems/txlen)
+
+	for txlen in scaling_txlens:
+		for trail in range(0, repetitions):
+			combined_stdout += run_single(0, trail, txlen, 0, records, 16, nitems/txlen)	
 
 	save_results("scalability_largetx", combined_stdout, records)
 
@@ -203,9 +206,9 @@ def main(argc, argv):
 #	with open("experiment_data.json", "w+") as data_file:
 #		records = json.load(data_file)
 	records = dict()
-	exp_boosting_micro(repetitions, records)
-	#exp_scalability_overhead(repetitions, records, 0, [10, 50])
-	#exp_scalability_overhead(repetitions, records, 1, [10, 50])
+	#exp_boosting_micro(repetitions, records)
+	exp_scalability_overhead(repetitions, records, 0, [10, 50])
+	exp_scalability_overhead(repetitions, records, 1, [10, 50])
 	#exp_scalability_hi_contention(repetitions, records)
 	#exp_scalability_largetx(repetitions, records)
 	#exp_opacity_modes(repetitions, records)

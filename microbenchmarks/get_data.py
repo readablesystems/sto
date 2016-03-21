@@ -78,17 +78,18 @@ def print_scalability_hi_contention(records, config):
 def print_scalability_largetx(records, config):
 	name = "scalability_largetx"
 	f_on = run_benchmarks.opacity_names[config[name]["opacity"][0]]
-	f_tr = config[name]["ttr"][0]
+	trs = config[name]["ttr"]
 	txlens = config[name]["txlen"]
 
 	rows = []
-	rows.append(["transaction size", "time"])
+	rows.append(["transaction size", "time-1th", "time-16th", "scal"])
 
-	data = process_results(name, config[name], records, ["time", "abort_rate"])
+	data = process_results(name, config[name], records, ["time"])
 	
 	for txlen in txlens:
-		time = data[f_on][txlen][f_tr]["med_time"]
-		rows.append(["%d" % txlen, "%.4f" % time])
+		time1 = data[f_on][txlen][trs[0]]["med_time"]
+		time16 = data[f_on][txlen][trs[1]]["med_time"]
+		rows.append(["%d" % txlen, "%.4f" % time1, "%.4f" % time16, "%.4f" % (time1/time16)])
 
 	print "Experiment: %s\n" % name
 	print_csv(rows)
