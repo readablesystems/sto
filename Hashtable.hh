@@ -9,6 +9,10 @@
 #include "TWrapped.hh"
 #include "simple_str.hh"
 
+#include "Boosting_sto.hh"
+#include "Boosting_locks.hh"
+#include "TransPessimisticLocking.hh"
+
 #define HASHTABLE_DELETE 1
 
 #ifndef READ_MY_WRITES
@@ -41,11 +45,12 @@ private:
     // cache line.
     Key key;
     internal_elem *next;
+    RWLock rwlock;
     Version_type version;
     wrapped_type value;
 #ifndef STO_NO_STM
     internal_elem(Key k, Value val, bool mark_valid)
-        : key(k), next(NULL), version(Sto::initialized_tid() | (mark_valid ? 0 : invalid_bit)), value(val) {}
+       : key(k), next(NULL), rwlock(), version(Sto::initialized_tid() | (mark_valid ? 0 : invalid_bit)), value(val) {}
     bool valid() const {
         return !(version.value() & invalid_bit);
     }
@@ -537,8 +542,19 @@ public:
   bool read(const Key& k, Value& retval) {
     auto e = find(buck_entry(k), k);
     if (e) {
+      TRANS_READ_LOCK(&e->rwlock);
       // TODO(nate): this isn't safe for non-trivial types (need an atomic read)
       assign_val(retval, e->value.access());
+    } else {
+      // we insert a dummy element to ensure this stays absent. No can do 
+      // anything with it because we have the write lock on it.
+      bool inserted = insert(k, Value(INT_MAX));
+      if (!inserted) {
+	//race
+	return read(k, retval);
+      }
+      // and we'll haxily rely on Boosting_map to remove this elem at commit 
+      // time, so no one will ever observe this element.
     }
     return !!e;
   }
@@ -592,23 +608,30 @@ public:
   }
 
   // returns true if item already existed
-  template <bool Insert = true, bool Set = true>
+  template <bool Insert = true, bool Set = true, bool Trans = true>
   bool put(const Key& k, const Value& val) {
     bool exists = false;
     bucket_entry& buck = buck_entry(k);
     lock(buck.version);
     internal_elem *e = find(buck, k);
     if (e) {
+      // safe because we don't do removes in concurrent.cc
+      if(Trans) {
+	unlock(buck.version);
+	TRANS_WRITE_LOCK(&e->rwlock);
+      }
       // XXX: kind of a stupid Set-only (still locks bucket)
       if (Set)
         set(e, val);
       exists = true;
+      if (!Trans)
+	unlock(buck.version);
     } else {
       if (Insert)
         insert_locked<true>(buck, k, val);
       exists = false;
+      unlock(buck.version);
     }
-    unlock(buck.version);
     return exists;
   }
 
@@ -621,6 +644,8 @@ public:
     lock(buck.version);
     internal_elem *e = find(buck, k);
     if (e) {
+      unlock(buck.version);
+      TRANS_READ_LOCK(&e->rwlock);
       assign_val(oldval, e->value.access());
       // XXX: kind of a stupid Set-only (still locks bucket)
       if (Set)
@@ -630,8 +655,8 @@ public:
       if (Insert)
         insert_locked<true>(buck, k, val);
       exists = false;
+      unlock(buck.version);
     }
-    unlock(buck.version);
     return exists;
   }
 
@@ -729,6 +754,8 @@ private:
   void insert_locked(bucket_entry& buck, const Key& k, const Value& val) {
     assert(is_locked(buck.version));
     auto new_head = new internal_elem(k, val, markValid);
+    // should always succeed
+    TRANS_WRITE_LOCK(&new_head->rwlock);
     internal_elem *cur_head = buck.head;
     new_head->next = cur_head;
     buck.head = new_head;

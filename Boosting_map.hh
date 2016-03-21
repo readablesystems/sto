@@ -20,19 +20,40 @@ public:
   typedef MapType map_type;
 private:
   MapType map_;
-  LockKey<K, Init_size, Hash, Pred> lockKey_;
+  //  LockKey<K, Init_size, Hash, Pred> lockKey_;
 
 public:
   typedef K Key;
   typedef V Value;
 
-  TransMap() : map_(), lockKey_(Init_size, Hash(), Pred()) {}
+  TransMap() : map_(){}//, lockKey_(Init_size, Hash(), Pred()) {}
 
-  TransMap(MapType&& map, unsigned size = Init_size, Hash h = Hash(), Pred p = Pred()) : map_(std::move(map)), lockKey_(size, h, p) {}
+  TransMap(MapType&& map, unsigned size = Init_size, Hash h = Hash(), Pred p = Pred()) : map_(std::move(map)){}//, lockKey_(size, h, p) {}
+
+  static void _undoAbsentGet(void *self, void *c1, void *c2) {
+    Key key = (Key)(uintptr_t)c1;
+    // lol
+    Value* v = ((TransMap*)self)->map_.readPtr(key);
+    assert(v);
+    if (*v != INT_MAX)
+      return;
+    bool success = ((TransMap*)self)->map_.nontrans_remove(key);
+    assert(success);
+    //    delete key;
+  }
 
   bool transGet(const Key& k, Value& retval) {
-    lockKey_.readLock(k);
-    return map_.nontrans_find(k, retval);
+    //lockKey_.readLock(k);
+    Value oldretval = retval;
+    bool ret = map_.nontrans_find(k, retval);
+    if (!ret) {
+      this->add_undo(TransMap::_undoAbsentGet, VOIDP(k), NULL, true);
+    }
+    if (ret && retval == INT_MAX) {
+      retval = oldretval;
+      return false;
+    }
+    return ret;
   }
 
   bool remove(const Key& k) {
@@ -46,6 +67,7 @@ public:
   }
 
   static void _undoDelete(void *self, void *c1, void *c2) {
+    assert(0);
     static_assert(sizeof(Key) <= 8, "must be trivial and word sized");
     static_assert(sizeof(Value) <= 8, "must be trivial and word sized");
     Key key = (Key)(uintptr_t)c1;
@@ -65,7 +87,8 @@ public:
   }
 
   bool transDelete(const Key& k) {
-    lockKey_.writeLock(k);
+    assert(0);
+    //    lockKey_.writeLock(k);
     Value oldval;
     bool success = map_.nontrans_remove(k, oldval);
     if (success) {
@@ -76,7 +99,7 @@ public:
   }
 
   bool transInsert(const Key& k, const Value& val) {
-    lockKey_.writeLock(k);
+    //    lockKey_.writeLock(k);
     bool success = map_.nontrans_insert(k, val);
     
     if (success) {
@@ -95,13 +118,13 @@ public:
   static void _undoSet(void *self, void *c1, void *c2) {
     Key key = (Key)(uintptr_t)c1;
     Value value = (Value)(uintptr_t)c2;
-    bool exists = ((TransMap*)self)->map_.put(key, value);
+    bool exists = ((TransMap*)self)->map_.template put<false, true, false>(key, value);
     assert(exists);
     //    delete key;
   }
 
   void transPut(const Key& k, const Value& val) {
-    lockKey_.writeLock(k);
+    //    lockKey_.writeLock(k);
     Value oldval;
     bool exists = map_.put_getold(k, val, oldval);
     if (exists) {
@@ -111,7 +134,8 @@ public:
     }
   }
   bool transUpdate(const Key& k, const Value& val) {
-    lockKey_.writeLock(k);
+    assert(0);
+    //    lockKey_.writeLock(k);
     Value oldval;
     bool there = map_.nontrans_find(k, oldval);
     bool exists = map_.template put<false/*Insert*/, true/*Set*/>(k, val);
