@@ -219,6 +219,7 @@ public:
         auto key = item.template key<key_type>();
         if (key == size_key) {
             pred_type& wval = size_info(item);
+            assert(wval.second + size_delta_ >= 0);
             size_.write(wval.second + size_delta_);
             txn.set_version(size_vers_);
             return;
