@@ -32,6 +32,7 @@
 /ht_mt
 /iterators
 /pqVsIt
+/ex-counter
 /unit-rcu
 /unit-tarray
 /unit-tbox
