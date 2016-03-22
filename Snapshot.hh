@@ -27,21 +27,25 @@ class NodeBase;
 
 class ObjectID {
 public:
+    static constexpr uintptr_t direct_bit = 1;
+    static constexpr uintptr_t mask = ~(direct_bit);
+
     template <typename N>
     ObjectID(NodeBase<N>* baseptr, bool direct = false) {
         oid_ = reinterpret_cast<uintptr_t>(baseptr);
         if (direct) {
-            oid_ |= 1;
+            oid_ |= direct_bit;
         }
     }
+
     bool direct() const {
-        return (oid_ & 1);
+        return (oid_ & direct_bit);
     }
 
     // can only be called on an immutable object
     template <typename N>
     void set_direct_link(N* ptr) {
-        oid_ = reinterpret_cast<uintptr_t>(ptr) | 1;
+        oid_ = reinterpret_cast<uintptr_t>(ptr) | direct_bit;
     }
 
     // the only indirection needed: translating ObjectID to a reference to "node"
@@ -49,13 +53,20 @@ public:
     template <typename N>
     N& dereference(sid_type sid) const {
         if (direct()) {
-            return *reinterpret_cast<N*>(oid_ & ~1);
+            return *reinterpret_cast<N*>(oid_ & mask);
         } else {
             N* rawptr = reinterpret_cast<NodeBase<N>*>(oid_)->search_history(sid);
             assert(rawptr);
             return *rawptr;
         }
     }
+
+    template <typename N>
+    void unlink() {
+        assert(!direct());
+        reinterpret_cast<NodeBase<N>*>(oid_)->set_unlinked();
+    }
+
 private:
     uintptr_t oid_;
 };
@@ -90,7 +101,7 @@ private:
 template <typename N>
 class NodeBase {
 public:
-    explicit NodeBase() : h_(), nw_(object_id()) {}
+    explicit NodeBase() : unlinked(false), h_(), nw_(object_id()) {}
 
     oid_type object_id() const {return reinterpret_cast<oid_type>(this);}
     N& node() {return nw_.n_;}
@@ -99,8 +110,11 @@ public:
     bool is_immutable() {return nw_.s_sid < Sto::GSC_snapshot();};
     void save_copy_in_history() {h_.add_snapshot(nw_, Sto::GSC_snapshot());}
 
-    N* search_history(sid_type sid) {h_.search(sid);};
+    void set_unlinked() {unlinked = true;}
+
+    N* search_history(sid_type sid) {h_.search(sid);}
 private:
+    bool unlinked;
     History<N> h_;
     NodeWrapper<N> nw_;
 };
@@ -119,7 +133,7 @@ N* get_object(oid_type oid, sid_type sid) {
 template <typename N>
 std::pair<oid_type, N*> new_object() {
     NodeBase<N>* obj = new NodeBase<N>();
-    return std::make_pair(reinterpret_cast<oid_type>(obj), &(obj->node()));
+    return std::make_pair(oid_type(obj), &(obj->node()));
 }
 
 // STOSnapshot::History methods
@@ -130,7 +144,7 @@ void History<N>::add_snapshot(NodeWrapper<N>& n, sid_type time) {
 
     // XXX garbage collection / pool-chain fancy stuff happens here
     
-    n.s_sid = time; // XXX probably not here?
+    n.s_sid = time;
     assert(n.c_sid == 0);
 
     lock_write(lock_);
@@ -146,7 +160,9 @@ void History<N>::cleanup_until(sid_type sid) {
     while (list_.begin() != list_.end()) {
         NodeWrapper<N>* e = list_.front();
         if(e->s_sid <= sid) {
-            Transaction::rcu_delete(e);
+            // XXX rcu_deletes called outside of this right
+            // in the gc loop
+            //Transaction::rcu_delete(e);
             list_.pop_front();
         } else {
             break;
