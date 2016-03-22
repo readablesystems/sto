@@ -55,7 +55,14 @@ public:
         if (direct()) {
             return *reinterpret_cast<N*>(oid_ & mask);
         } else {
-            N* rawptr = reinterpret_cast<NodeBase<N>*>(oid_)->search_history(sid);
+            NodeBase<N>* baseptr = reinterpret_cast<NodeBase<N>*>(oid_);
+            auto read_sid = baseptr->root_sid();
+            if (read_sid <= sid) {
+                // we may need to read the root-level thing
+                // XXX err what about concurrent updates to the root-level copy...?!
+                abort();
+            }
+            N* rawptr = baseptr->search_history(sid);
             assert(rawptr);
             return *rawptr;
         }
@@ -104,6 +111,9 @@ public:
     explicit NodeBase() : unlinked(false), h_(), nw_(object_id()) {}
 
     oid_type object_id() const {return reinterpret_cast<oid_type>(this);}
+    sid_type root_sid() const {return nw_.s_sid;}
+    NodeWrapper<N>& wrapper() {return nw_;}
+
     N& node() {return nw_.n_;}
 
     // Copy-on-Write: only allowed at STO install time!!
