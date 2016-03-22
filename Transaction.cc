@@ -9,8 +9,10 @@ Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epoch
 };
 __thread Transaction *TThread::txn = nullptr;
 std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callback;
+
+// reserve TransactionTid::increment_value for prepopulated
 TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = 2 * TransactionTid::increment_value;
-   // reserve TransactionTid::increment_value for prepopulated
+TransactionTid::type Transaction::_GSC = 0; // global snapshot clock
 
 static void __attribute__((used)) check_static_assertions() {
     static_assert(sizeof(threadinfo_t) % 128 == 0, "threadinfo is 2-cache-line aligned");

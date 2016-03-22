@@ -204,6 +204,7 @@ public:
     typedef TransactionTid::type tid_type;
 private:
     static TransactionTid::type _TID;
+    static TransactionTid::type _GSC;
 public:
 
     static std::function<void(threadinfo_t::epoch_type)> epoch_advance_callback;
@@ -311,7 +312,7 @@ public:
 #endif
         any_writes_ = any_nonopaque_ = may_duplicate_items_ = false;
         first_write_ = 0;
-        start_tid_ = commit_tid_ = 0;
+        start_tid_ = commit_tid_ = gsc_snapshot_ = 0;
         buf_.clear();
 #if STO_DEBUG_ABORTS
         abort_item_ = nullptr;
@@ -562,6 +563,12 @@ public:
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
     }
+    tid_type gsc_snapshot() const {
+        assert(state_ == s_committing_locked || state_ == s_committing);
+        if (!gsc_snapshot_)
+            gsc_snapshot_ = _GSC;
+        return gsc_snapshot_;
+    }
     void set_version(TVersion& vers, TVersion::type flags = 0) const {
         vers.set_version(commit_tid() | flags);
     }
@@ -620,6 +627,7 @@ private:
     small_vector<TransItem, INIT_SET_SIZE> transSet_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
+    mutable tid_type gsc_snapshot_;
     mutable TransactionBuffer buf_;
     mutable uint32_t lrng_state_;
 #if STO_DEBUG_ABORTS
@@ -728,6 +736,14 @@ public:
 
     static TransactionTid::type commit_tid() {
         return TThread::txn->commit_tid();
+    }
+
+    static TransactionTid::type GSC_snapshot() {
+        return TThread::txn->gsc_snapshot();
+    }
+
+    static TransactionTid::type take_snapshot() {
+        return fetch_and_add(&Transaction::_GSC, 1);
     }
 
     static TransactionTid::type recent_tid() {
