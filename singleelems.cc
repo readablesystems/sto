@@ -1,6 +1,6 @@
 #include "Transaction.hh"
 #include "SingleElem.hh"
-#include "GenericSTM.hh"
+#include "TGeneric.hh"
 #include <string>
 #include <assert.h>
 
@@ -45,28 +45,28 @@ void nontrivialObjTests() {
 
 float y = 1.1;
 void genericSTMTests() {
-  GenericSTM stm;
+  TGeneric stm;
   int x = 4;
   uint64_t *z = (uint64_t*)malloc(sizeof(*z));
   *z = 0xffffffffffULL;
   {TransactionGuard t;
-    assert(stm.transRead(&x) == 4);
-    stm.transWrite(&x, 5);
-    assert(stm.transRead(&x) == 5);
+    assert(stm.read(&x) == 4);
+    stm.write(&x, 5);
+    assert(stm.read(&x) == 5);
     
-    assert(stm.transRead(&y) - 1.1 < 0.01);
+    assert(stm.read(&y) - 1.1 < 0.01);
     
-    assert(stm.transRead(z) == (uint64_t)0xffffffffffULL);
-    stm.transWrite(z, (uint64_t)0x7777777777ULL);
-    assert(stm.transRead(z) == (uint64_t)0x7777777777ULL);
+    assert(stm.read(z) == (uint64_t)0xffffffffffULL);
+    stm.write(z, (uint64_t)0x7777777777ULL);
+    assert(stm.read(z) == (uint64_t)0x7777777777ULL);
   }
 
   assert(x == 5);
 
   {TransactionGuard t;
-    assert(stm.transRead(&x) == 5);
-    assert(stm.transRead(&y) - 1.1 < 0.01);
-    assert(stm.transRead(z) == (uint64_t)0x7777777777ULL);
+    assert(stm.read(&x) == 5);
+    assert(stm.read(&y) - 1.1 < 0.01);
+    assert(stm.read(z) == (uint64_t)0x7777777777ULL);
   }
 }
 
