@@ -1,5 +1,4 @@
 #pragma once
-
 #include "config.h"
 #include "compiler.hh"
 // XXX: honestly hashtable should probably use local_vector too
@@ -8,6 +7,7 @@
 #include "Transaction.hh"
 #include "TWrapped.hh"
 #include "simple_str.hh"
+#include "print_value.hh"
 
 #define HASHTABLE_DELETE 1
 
@@ -412,22 +412,20 @@ public:
   }
 
     void print(std::ostream& w, const TransItem& item) const override {
-#if 0
         w << "{Hashtable<" << typeid(K).name() << "," << typeid(V).name() << "> " << (void*) this;
         if (is_bucket(item)) {
             w << ".b[" << bucket_key(item) << "]";
             if (item.has_read())
                 w << " R" << item.read_value<Version_type>();
         } else {
-            //auto el = item.key<internal_elem*>();
-            //w << "[" << el->key << "]";
+            auto el = item.key<internal_elem*>();
+            w << "[" << mass::print_value(el->key) << "]";
             if (item.has_read())
                 w << " R" << item.read_value<Version_type>();
             if (item.has_write())
-                w << " =" << item.write_value<write_value_type>();
+                w << " =" << mass::print_value(item.write_value<write_value_type>());
         }
         w << "}";
-#endif
     }
 
   void print() {
