@@ -166,14 +166,14 @@ public:
     }
 
     // transactional methods
-    bool lock(TransItem& item, Transaction& txn) {
+    bool lock(TransItem& item, Transaction& txn) override {
         auto key = item.template key<key_type>();
         if (key == size_key)
             return txn.try_lock(item, size_vers_);
         else
             return txn.try_lock(item, data_[key].vers);
     }
-    bool check(const TransItem& item, const Transaction& txn) {
+    bool check(const TransItem& item, const Transaction& txn) override {
         auto key = item.template key<key_type>();
         if (key == size_key)
             return item.check_version(size_vers_);
@@ -182,7 +182,7 @@ public:
         else
             return item.check_version(data_[key].vers);
     }
-    void install(TransItem& item, const Transaction& txn) {
+    void install(TransItem& item, const Transaction& txn) override {
         auto key = item.template key<key_type>();
         if (key == size_key) {
             pred_type& wval = item.template xwrite_value<pred_type>();
@@ -198,14 +198,14 @@ public:
         } else
             txn.set_version_unlock(data_[key].vers, item, dead_bit);
     }
-    void unlock(TransItem& item) {
+    void unlock(TransItem& item) override {
         auto key = item.template key<key_type>();
         if (key == size_key)
             size_vers_.unlock();
         else
             data_[key].vers.unlock();
     }
-    void print(std::ostream& w, const TransItem& item) const {
+    void print(std::ostream& w, const TransItem& item) const override {
         w << "{TVector_nopred<" << typeid(T).name() << "> " << (void*) this;
         key_type key = item.key<key_type>();
         if (key == size_key) {

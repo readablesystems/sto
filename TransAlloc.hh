@@ -36,15 +36,15 @@ public:
         return x;
     }
 
-    bool lock(TransItem&, Transaction&) { return true; }
-    bool check(const TransItem&, const Transaction&) { return false; }
-    void install(TransItem&, const Transaction&) {}
-    void unlock(TransItem&) {}
-    void cleanup(TransItem& item, bool committed) {
+    bool lock(TransItem&, Transaction&) override { return true; }
+    bool check(const TransItem&, const Transaction&) override { return false; }
+    void install(TransItem&, const Transaction&) override {}
+    void unlock(TransItem&) override {}
+    void cleanup(TransItem& item, bool committed) override {
         if (committed == !item.has_flag(alloc_flag))
 	  Transaction::rcu_call(item.write_value<free_type>(), item.key<void*>());
     }
-    void print(std::ostream& w, const TransItem& item) const {
+    void print(std::ostream& w, const TransItem& item) const override {
         w << "{TransAlloc @" << item.key<void*>();
         if (item.write_value<int>())
             w << ".alloc}";

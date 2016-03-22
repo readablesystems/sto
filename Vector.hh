@@ -388,7 +388,7 @@ public:
     return vector_item().add_read(ver);
   }
   
-  bool lock(TransItem& item, Transaction&){
+  bool lock(TransItem& item, Transaction&) override {
     if (item.key<int>() == vector_key) {
       lock_version(vecversion_); // TODO: no need to lock vecversion_ if trans_size_offs() is 0
     } else if (item.key<int>() != push_back_key) {
@@ -397,7 +397,7 @@ public:
     return true;
   }
   
-  bool check_predicate(TransItem& item, Transaction&, bool) {
+  bool check_predicate(TransItem& item, Transaction&, bool) override {
     assert(item.key<int>() == size_pred_key);
     auto lv = vecversion_;
     if (is_locked(lv))
@@ -413,7 +413,7 @@ public:
       return size == pred_value;
   }
   
-  bool check(const TransItem& item, const Transaction&){
+  bool check(const TransItem& item, const Transaction&) override {
     if (item.key<int>() == vector_key || item.key<int>() == push_back_key)
       return TransactionTid::check_version(vecversion_, item.template read_value<Version>());
     key_type i = item.key<key_type>();
@@ -425,7 +425,7 @@ public:
       return data_[i].check_version(item.template read_value<Version>());
   }
   
-  void install(TransItem& item, const Transaction& t) {
+  void install(TransItem& item, const Transaction& t) override {
     //install value
     if (item.key<int>() == vector_key)
       return;
@@ -487,14 +487,14 @@ public:
     }
   }
   
-  void unlock(TransItem& item) {
+  void unlock(TransItem& item) override {
     if (item.key<int>() == vector_key)
       unlock_version(vecversion_);
     else if (item.key<int>() != push_back_key)
       unlock(item.key<key_type>());
   }
   
-  void print(std::ostream& w, const TransItem& item) const {
+  void print(std::ostream& w, const TransItem& item) const override {
     w << "{Vector<";
     const char* pf = strstr(__PRETTY_FUNCTION__, "with T = ");
     if (pf) {

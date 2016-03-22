@@ -409,7 +409,7 @@ public:
         return TransactionTid::is_locked(v);
     }
 
-    bool lock(TransItem& item, Transaction& txn) {
+    bool lock(TransItem& item, Transaction& txn) override {
         // this lock is useless given that we also lock the listversion_
         // currently
         // XXX: this isn't great, but I think we need it to update the size...
@@ -417,14 +417,14 @@ public:
             || txn.try_lock(item, listversion_);
     }
 
-    bool check(const TransItem& item, const Transaction&) {
+    bool check(const TransItem& item, const Transaction&) override {
         if (item.key<List1*>() == this)
             return TransactionTid::check_version(listversion_, item.template read_value<version_type>());
         auto n = item.key<list_node*>();
         return n->is_valid() || has_insert(item);
     }
 
-    void install(TransItem& item, const Transaction& t) {
+    void install(TransItem& item, const Transaction& t) override {
         if (item.key<List1*>() == this)
             return;
         list_node *n = item.key<list_node*>();
@@ -452,12 +452,12 @@ public:
         }
     }
     
-    void unlock(TransItem& item) {
+    void unlock(TransItem& item) override {
         if (item.key<List1*>() == this)
             unlock(listversion_);
     }
 
-    void cleanup(TransItem& item, bool committed) {
+    void cleanup(TransItem& item, bool committed) override {
         if (!committed && (item.flags() & insert_bit)) {
             list_node *n = item.key<list_node*>();
             remove<true>(n);

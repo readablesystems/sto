@@ -17,12 +17,11 @@ public:
   // TODO: would be nice to have an add_undo that takes a std::function or something too.
 
 
-  bool lock(TransItem&, Transaction&) { return true; }
-  void unlock(TransItem&) {}
-  bool check(const TransItem&, const Transaction&) { return false; }
-  void install(TransItem&, const Transaction&) {}
-
-  void cleanup(TransItem& item, bool committed) {
+  bool lock(TransItem&, Transaction&) override { return true; }
+  void unlock(TransItem&) override {}
+  bool check(const TransItem&, const Transaction&) override { return false; }
+  void install(TransItem&, const Transaction&) override {}
+  void cleanup(TransItem& item, bool committed) override {
     if (!committed) {
       auto undo_func = item.key<UndoFunction>();
       undo_func(this, item.stash_value<void*>(), item.write_value<void*>());

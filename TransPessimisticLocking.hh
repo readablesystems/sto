@@ -52,13 +52,11 @@ public:
     }
   }
 
-  bool lock(TransItem&, Transaction&) { return true; }
-  bool check(const TransItem&, const Transaction&) { return false; }
-  void install(TransItem&, const Transaction&) {}
-
-  void unlock(TransItem&) {}
-
-  void cleanup(TransItem& item, bool committed) {
+  bool lock(TransItem&, Transaction&) override { return true; }
+  bool check(const TransItem&, const Transaction&) override { return false; }
+  void install(TransItem&, const Transaction&) override {}
+  void unlock(TransItem&) override {}
+  void cleanup(TransItem& item, bool committed) override {
     auto type = item.template write_value<bit_type>();
     if (type == spin_lock()) {
       item.template key<SpinLock*>()->unlock();

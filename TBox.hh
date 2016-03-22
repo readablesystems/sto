@@ -68,20 +68,20 @@ public:
     }
 
     // transactional methods
-    bool lock(TransItem& item, Transaction& txn) {
+    bool lock(TransItem& item, Transaction& txn) override {
         return txn.try_lock(item, vers_);
     }
-    bool check(const TransItem& item, const Transaction&) {
+    bool check(const TransItem& item, const Transaction&) override {
         return item.check_version(vers_);
     }
-    void install(TransItem& item, const Transaction& txn) {
+    void install(TransItem& item, const Transaction& txn) override {
         v_.write(std::move(item.template write_value<T>()));
         txn.set_version_unlock(vers_, item);
     }
-    void unlock(TransItem&) {
+    void unlock(TransItem&) override {
         vers_.unlock();
     }
-    void print(std::ostream& w, const TransItem& item) const {
+    void print(std::ostream& w, const TransItem& item) const override {
         w << "{TBox<" << typeid(T).name() << "> " << (void*) this;
         if (item.has_read())
             w << " R" << item.read_value<version_type>();

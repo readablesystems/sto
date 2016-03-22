@@ -196,7 +196,7 @@ private:
         return item.flags() & empty_bit;
     }
 
-    bool lock(TransItem& item, Transaction& txn) {
+    bool lock(TransItem& item, Transaction& txn) override {
         if (item.key<int>() == -1)
             return txn.try_lock(item, tailversion_);
         else if (item.key<int>() == -2)
@@ -205,7 +205,7 @@ private:
             return true;
     }
 
-    bool check(const TransItem& item, const Transaction& t) {
+    bool check(const TransItem& item, const Transaction& t) override {
         (void) t;
         // check if was a pop or front 
         if (item.key<int>() == -2)
@@ -218,7 +218,7 @@ private:
         return false;
     }
 
-    void install(TransItem& item, const Transaction& txn) {
+    void install(TransItem& item, const Transaction& txn) override {
 	    // ignore lock_headversion marker item
         if (item.key<int>() == -2)
             return;
@@ -253,7 +253,7 @@ private:
         }
     }
     
-    void unlock(TransItem& item) {
+    void unlock(TransItem& item) override {
         if (item.key<int>() == -1)
             tailversion_.unlock();
         else if (item.key<int>() == -2)

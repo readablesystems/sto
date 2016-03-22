@@ -295,7 +295,7 @@ public:
   }
 
 
-  bool check(const TransItem& item, const Transaction&) {
+  bool check(const TransItem& item, const Transaction&) override {
     if (is_bucket(item)) {
       bucket_entry& buck = map_[bucket_key(item)];
       return buck.version.check_version(item.template read_value<Version_type>());
@@ -309,13 +309,13 @@ public:
     return el->version.check_version(read_version);
   }
 
-  bool lock(TransItem& item, Transaction& txn) {
+  bool lock(TransItem& item, Transaction& txn) override {
     assert(!is_bucket(item));
     auto el = item.key<internal_elem*>();
     return txn.try_lock(item, el->version);
   }
 
-  void install(TransItem& item, const Transaction& t) {
+  void install(TransItem& item, const Transaction& t) override {
     assert(!is_bucket(item));
     auto el = item.key<internal_elem*>();
     assert(is_locked(el));
@@ -351,13 +351,13 @@ public:
 #endif
   }
 
-  void unlock(TransItem& item) {
+  void unlock(TransItem& item) override {
     assert(!is_bucket(item));
     auto el = item.key<internal_elem*>();
     unlock(el->version);
   }
 
-  void cleanup(TransItem& item, bool committed) {
+  void cleanup(TransItem& item, bool committed) override {
     if (committed ? has_delete(item) : has_insert(item)) {
       auto el = item.key<internal_elem*>();
       assert(!el->valid());
@@ -411,7 +411,7 @@ public:
     printf("Total count: %d, Empty buckets: %d, Avg chaining: %f, Max chaining: %d\n", tot_count, num_empty, ((double)(tot_count))/(map_.size() - num_empty), max_chaining);
   }
 
-    void print(std::ostream& w, const TransItem& item) const {
+    void print(std::ostream& w, const TransItem& item) const override {
 #if 0
         w << "{Hashtable<" << typeid(K).name() << "," << typeid(V).name() << "> " << (void*) this;
         if (is_bucket(item)) {

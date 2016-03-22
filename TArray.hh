@@ -63,18 +63,18 @@ public:
     }
 
     // transactional methods
-    bool lock(TransItem& item, Transaction& txn) {
+    bool lock(TransItem& item, Transaction& txn) override {
         return txn.try_lock(item, data_[item.key<size_type>()].vers);
     }
-    bool check(const TransItem& item, const Transaction&) {
+    bool check(const TransItem& item, const Transaction&) override {
         return item.check_version(data_[item.key<size_type>()].vers);
     }
-    void install(TransItem& item, const Transaction& txn) {
+    void install(TransItem& item, const Transaction& txn) override {
         size_type i = item.key<size_type>();
         data_[i].v.write(item.write_value<T>());
         txn.set_version_unlock(data_[i].vers, item);
     }
-    void unlock(TransItem& item) {
+    void unlock(TransItem& item) override {
         data_[item.key<size_type>()].vers.unlock();
     }
 

@@ -29,25 +29,25 @@ public:
     }
 
 
-    bool lock(TransItem& item, Transaction& txn) {
+    bool lock(TransItem& item, Transaction& txn) override {
         version_type& vers = version(item.template key<void*>());
         return vers.is_locked_here() || txn.try_lock(item, vers);
     }
-    bool check(const TransItem& item, const Transaction&) {
+    bool check(const TransItem& item, const Transaction&) override {
         return item.check_version(version(item.template key<void*>()));
     }
-    void install(TransItem& item, const Transaction& txn) {
+    void install(TransItem& item, const Transaction& txn) override {
         void* word = item.template key<void*>();
         void* data = item.template write_value<void*>();
         memcpy(word, &data, item.shifted_user_flags());
         txn.set_version(version(word));
     }
-    void unlock(TransItem& item) {
+    void unlock(TransItem& item) override {
         version_type& vers = version(item.template key<void*>());
         if (vers.is_locked_here())
             vers.unlock();
     }
-    void print(std::ostream& w, const TransItem& item) const {
+    void print(std::ostream& w, const TransItem& item) const override {
         w << "{TGeneric @" << item.key<void*>();
         if (item.has_read())
             w << " R" << item.read_value<version_type>();

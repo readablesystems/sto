@@ -191,7 +191,7 @@ public:
             zc_v_.unlock();
         v_.unlock();
     }
-    void print(std::ostream& w, const TransItem& item) const {
+    void print(std::ostream& w, const TransItem& item) const override {
         w << "{TCounter2";
         if (item.has_flag(zc_bit))
             w << ".ZC";

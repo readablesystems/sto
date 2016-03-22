@@ -280,15 +280,15 @@ public:
     }
 
 */
-    bool lock(TransItem& item, Transaction&);
-    void unlock(TransItem& item);
-    bool check(const TransItem& item, const Transaction& trans);
-    void install(TransItem& item, const Transaction& t);
-    void cleanup(TransItem& item, bool committed);
+    bool lock(TransItem& item, Transaction&) override;
+    void unlock(TransItem& item) override;
+    bool check(const TransItem& item, const Transaction& trans) override;
+    void install(TransItem& item, const Transaction& t) override;
+    void cleanup(TransItem& item, bool committed) override;
 #if DEBUG
     void print_absent_reads();
 #endif
-    void print(std::ostream& w, const TransItem& item) const;
+    void print(std::ostream& w, const TransItem& item) const override;
 
 private:
     size_t debug_size() const {

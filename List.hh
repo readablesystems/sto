@@ -438,7 +438,7 @@ private:
   }
 
 #ifndef STO_NO_STM
-    bool lock(TransItem& item, Transaction& txn) {
+    bool lock(TransItem& item, Transaction& txn) override {
         // XXX: this isn't great, but I think we need it to update the size...
         // nate: we might be able to remove this if we updated the listversion_
         // immediately after a remove/insert. That would give semantics that:
@@ -448,7 +448,7 @@ private:
             || txn.try_lock(item, listversion_);
     }
 
-  bool check(const TransItem& item, const Transaction&) {
+  bool check(const TransItem& item, const Transaction&) override {
     if (item.key<list_node*>() == list_key) {
       auto lv = listversion_;
       return TransactionTid::check_version(lv, item.template read_value<version_type>());
@@ -463,7 +463,7 @@ private:
     return !TransactionTid::is_locked_elsewhere(listversion_);
   }
 
-  void install(TransItem& item, const Transaction& t) {
+  void install(TransItem& item, const Transaction& t) override {
     if (item.key<list_node*>() == list_key)
       return;
     list_node *n = item.key<list_node*>();
@@ -493,12 +493,12 @@ private:
     }
   }
 
-  void unlock(TransItem& item) {
+  void unlock(TransItem& item) override {
       if (item.key<list_node*>() == list_key)
           unlock(listversion_);
   }
 
-  void cleanup(TransItem& item, bool committed) {
+  void cleanup(TransItem& item, bool committed) override {
       if (!committed && (item.flags() & insert_bit)) {
           list_node *n = item.key<list_node*>();
           remove<true>(n);

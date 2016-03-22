@@ -81,15 +81,15 @@ public:
         TransactionTid::unlock(s_.version());
     }
 
-    bool lock(TransItem& item, Transaction& txn) {
+    bool lock(TransItem& item, Transaction& txn) override {
         return txn.try_lock(item, s_.version());
     }
 
-    bool check(const TransItem& item, const Transaction&) {
+    bool check(const TransItem& item, const Transaction&) override {
         return TransactionTid::check_version(s_.version(), item.template read_value<version_type>());
     }
 
-    void install(TransItem& item, const Transaction& t) {
+    void install(TransItem& item, const Transaction& t) override {
         s_.set_value(item.template write_value<T>());
         if (GenericSTM) {
             TransactionTid::set_version(s_.version(), t.commit_tid());
@@ -98,7 +98,7 @@ public:
         }
     }
 
-    void unlock(TransItem&) {
+    void unlock(TransItem&) override {
         unlock();
     }
 

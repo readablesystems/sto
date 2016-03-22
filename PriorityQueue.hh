@@ -272,12 +272,12 @@ public:
         unlock(&e->version());
     }
     
-    bool lock(TransItem& item, Transaction& txn) {
+    bool lock(TransItem& item, Transaction& txn) override {
         return item.key<int>() != pop_key
             || txn.try_lock(item, popversion_);
     }
     
-    bool check(const TransItem& item, const Transaction&){
+    bool check(const TransItem& item, const Transaction&) override {
         if (item.key<int>() == top_key) { return true; }
         else if (item.key<int>() == empty_key) {
             // check that no other transaction  pushed items onto the queue
@@ -322,7 +322,7 @@ public:
     }
     
     
-    void install(TransItem& item, const Transaction& t) {
+    void install(TransItem& item, const Transaction& t) override {
         if (item.key<int>() == pop_key){
             if (Opacity) {
                 TransactionTid::set_version(popversion_, t.commit_tid());
@@ -337,12 +337,12 @@ public:
         }
     }
     
-    void unlock(TransItem& item) {
+    void unlock(TransItem& item) override {
         if (item.key<int>() == pop_key)
             unlock(&popversion_);
     }
 
-    void cleanup(TransItem& item, bool committed) {
+    void cleanup(TransItem& item, bool committed) override {
         if (committed && dirtytid_ == TThread::id()) {
             dirtytid_ = -1;
         }
