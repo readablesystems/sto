@@ -479,7 +479,7 @@ public:
         versioned_value* vv = item.key<versioned_value*>();
         return txn.try_lock(item, vv->version());
     }
-  bool check(const TransItem& item, const Transaction&) override {
+  bool check(TransItem& item, Transaction&) override {
     if (is_inter(item)) {
       auto n = untag_inter(item.key<leaf_type*>());
       auto cur_version = n->full_version_value();
@@ -493,7 +493,7 @@ public:
       return false;
     return TransactionTid::check_version(e->version(), read_version);
   }
-  void install(TransItem& item, const Transaction& t) override {
+  void install(TransItem& item, Transaction& t) override {
     assert(!is_inter(item));
     auto e = item.key<versioned_value*>();
     assert(is_locked(e->version()));

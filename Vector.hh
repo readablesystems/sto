@@ -413,7 +413,7 @@ public:
       return size == pred_value;
   }
   
-  bool check(const TransItem& item, const Transaction&) override {
+  bool check(TransItem& item, Transaction&) override {
     if (item.key<int>() == vector_key || item.key<int>() == push_back_key)
       return TransactionTid::check_version(vecversion_, item.template read_value<Version>());
     key_type i = item.key<key_type>();
@@ -425,7 +425,7 @@ public:
       return data_[i].check_version(item.template read_value<Version>());
   }
   
-  void install(TransItem& item, const Transaction& t) override {
+  void install(TransItem& item, Transaction& t) override {
     //install value
     if (item.key<int>() == vector_key)
       return;

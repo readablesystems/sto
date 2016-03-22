@@ -50,10 +50,10 @@ public:
     bool lock(TransItem& item, Transaction& txn) override {
         return txn.try_lock(item, v_);
     }
-    bool check(const TransItem& it, const Transaction&) override {
+    bool check(TransItem& it, Transaction&) override {
         return it.check_version(v_);
     }
-    void install(TransItem& it, const Transaction& txn) override {
+    void install(TransItem& it, Transaction& txn) override {
         n_.access() = it.write_value<int>();
         txn.set_version_unlock(v_, it);
     }
@@ -103,10 +103,10 @@ public:
     bool lock(TransItem& item, Transaction& txn) override {
         return txn.try_lock(item, v_);
     }
-    bool check(const TransItem& it, const Transaction&) override {
+    bool check(TransItem& it, Transaction&) override {
         return it.check_version(v_);
     }
-    void install(TransItem& it, const Transaction& txn) override {
+    void install(TransItem& it, Transaction& txn) override {
         n_.access() += wval(it);
         txn.set_version_unlock(v_, it);
     }
@@ -175,10 +175,10 @@ public:
         }
         return ok;
     }
-    bool check(const TransItem& it, const Transaction&) override {
+    bool check(TransItem& it, Transaction&) override {
         return it.check_version(it.has_flag(zc_bit) ? zc_v_ : v_);
     }
-    void install(TransItem& it, const Transaction& txn) override {
+    void install(TransItem& it, Transaction& txn) override {
         n_.access() += wval(it);
         if (it.has_flag(zc_set_bit)) {
             zc_n_.access() = n_.access();
@@ -256,10 +256,10 @@ public:
         int n = n_.wait_snapshot(p, v_, committing);
         return pred.verify(n);
     }
-    bool check(const TransItem& it, const Transaction&) override {
+    bool check(TransItem& it, Transaction&) override {
         return it.check_version(v_);
     }
-    void install(TransItem& it, const Transaction& txn) override {
+    void install(TransItem& it, Transaction& txn) override {
         n_.access() += wval(it);
         txn.set_version_unlock(v_, it);
     }

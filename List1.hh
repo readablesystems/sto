@@ -417,14 +417,14 @@ public:
             || txn.try_lock(item, listversion_);
     }
 
-    bool check(const TransItem& item, const Transaction&) override {
+    bool check(TransItem& item, Transaction&) override {
         if (item.key<List1*>() == this)
             return TransactionTid::check_version(listversion_, item.template read_value<version_type>());
         auto n = item.key<list_node*>();
         return n->is_valid() || has_insert(item);
     }
 
-    void install(TransItem& item, const Transaction& t) override {
+    void install(TransItem& item, Transaction& t) override {
         if (item.key<List1*>() == this)
             return;
         list_node *n = item.key<list_node*>();

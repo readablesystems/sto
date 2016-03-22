@@ -107,10 +107,10 @@ public:
         T value = v_.wait_snapshot(p, vers_, committing);
         return pred.verify(value);
     }
-    bool check(const TransItem& item, const Transaction&) override {
+    bool check(TransItem& item, Transaction&) override {
         return item.check_version(vers_);
     }
-    void install(TransItem& item, const Transaction& txn) override {
+    void install(TransItem& item, Transaction& txn) override {
         T result = item.template write_value<T>();
         if (item.has_flag(delta_bit))
             result += v_.access();

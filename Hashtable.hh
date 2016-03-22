@@ -295,7 +295,7 @@ public:
   }
 
 
-  bool check(const TransItem& item, const Transaction&) override {
+  bool check(TransItem& item, Transaction&) override {
     if (is_bucket(item)) {
       bucket_entry& buck = map_[bucket_key(item)];
       return buck.version.check_version(item.template read_value<Version_type>());
@@ -315,7 +315,7 @@ public:
     return txn.try_lock(item, el->version);
   }
 
-  void install(TransItem& item, const Transaction& t) override {
+  void install(TransItem& item, Transaction& t) override {
     assert(!is_bucket(item));
     auto el = item.key<internal_elem*>();
     assert(is_locked(el));

@@ -282,8 +282,8 @@ public:
 */
     bool lock(TransItem& item, Transaction&) override;
     void unlock(TransItem& item) override;
-    bool check(const TransItem& item, const Transaction& trans) override;
-    void install(TransItem& item, const Transaction& t) override;
+    bool check(TransItem& item, Transaction& trans) override;
+    void install(TransItem& item, Transaction& t) override;
     void cleanup(TransItem& item, bool committed) override;
 #if DEBUG
     void print_absent_reads();
@@ -919,7 +919,7 @@ void RBTree<K, T, GlobalSize>::unlock(TransItem& item) {
 }
 
 template <typename K, typename T, bool GlobalSize>
-bool RBTree<K, T, GlobalSize>::check(const TransItem& item, const Transaction&) {
+bool RBTree<K, T, GlobalSize>::check(TransItem& item, Transaction&) {
     auto e = item.key<uintptr_t>();
     bool is_treekey = ((uintptr_t)e == (uintptr_t)tree_key_);
     bool is_sizekey = ((uintptr_t)e == (uintptr_t)size_key_);
@@ -970,7 +970,7 @@ bool RBTree<K, T, GlobalSize>::check(const TransItem& item, const Transaction&) 
 
 // key-versionedvalue pairs with the same key will have two different items
 template <typename K, typename T, bool GlobalSize>
-void RBTree<K, T, GlobalSize>::install(TransItem& item, const Transaction& t) {
+void RBTree<K, T, GlobalSize>::install(TransItem& item, Transaction& t) {
     // we don't need to check for nodeversion updates because those are done during execution
     wrapper_type* e = item.key<wrapper_type*>();
     // we did something to an empty tree, so update treeversion

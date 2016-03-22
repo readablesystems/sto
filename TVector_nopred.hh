@@ -173,7 +173,7 @@ public:
         else
             return txn.try_lock(item, data_[key].vers);
     }
-    bool check(const TransItem& item, const Transaction& txn) override {
+    bool check(TransItem& item, Transaction& txn) override {
         auto key = item.template key<key_type>();
         if (key == size_key)
             return item.check_version(size_vers_);
@@ -182,7 +182,7 @@ public:
         else
             return item.check_version(data_[key].vers);
     }
-    void install(TransItem& item, const Transaction& txn) override {
+    void install(TransItem& item, Transaction& txn) override {
         auto key = item.template key<key_type>();
         if (key == size_key) {
             pred_type& wval = item.template xwrite_value<pred_type>();

@@ -205,7 +205,7 @@ private:
             return true;
     }
 
-    bool check(const TransItem& item, const Transaction& t) override {
+    bool check(TransItem& item, Transaction& t) override {
         (void) t;
         // check if was a pop or front 
         if (item.key<int>() == -2)
@@ -218,7 +218,7 @@ private:
         return false;
     }
 
-    void install(TransItem& item, const Transaction& txn) override {
+    void install(TransItem& item, Transaction& txn) override {
 	    // ignore lock_headversion marker item
         if (item.key<int>() == -2)
             return;

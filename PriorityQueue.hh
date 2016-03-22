@@ -277,7 +277,7 @@ public:
             || txn.try_lock(item, popversion_);
     }
     
-    bool check(const TransItem& item, const Transaction&) override {
+    bool check(TransItem& item, Transaction&) override {
         if (item.key<int>() == top_key) { return true; }
         else if (item.key<int>() == empty_key) {
             // check that no other transaction  pushed items onto the queue
@@ -322,7 +322,7 @@ public:
     }
     
     
-    void install(TransItem& item, const Transaction& t) override {
+    void install(TransItem& item, Transaction& t) override {
         if (item.key<int>() == pop_key){
             if (Opacity) {
                 TransactionTid::set_version(popversion_, t.commit_tid());

@@ -448,7 +448,7 @@ private:
             || txn.try_lock(item, listversion_);
     }
 
-  bool check(const TransItem& item, const Transaction&) override {
+  bool check(TransItem& item, Transaction&) override {
     if (item.key<list_node*>() == list_key) {
       auto lv = listversion_;
       return TransactionTid::check_version(lv, item.template read_value<version_type>());
@@ -463,7 +463,7 @@ private:
     return !TransactionTid::is_locked_elsewhere(listversion_);
   }
 
-  void install(TransItem& item, const Transaction& t) override {
+  void install(TransItem& item, Transaction& t) override {
     if (item.key<list_node*>() == list_key)
       return;
     list_node *n = item.key<list_node*>();

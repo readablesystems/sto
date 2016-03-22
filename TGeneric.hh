@@ -33,10 +33,10 @@ public:
         version_type& vers = version(item.template key<void*>());
         return vers.is_locked_here() || txn.try_lock(item, vers);
     }
-    bool check(const TransItem& item, const Transaction&) override {
+    bool check(TransItem& item, Transaction&) override {
         return item.check_version(version(item.template key<void*>()));
     }
-    void install(TransItem& item, const Transaction& txn) override {
+    void install(TransItem& item, Transaction& txn) override {
         void* word = item.template key<void*>();
         void* data = item.template write_value<void*>();
         memcpy(word, &data, item.shifted_user_flags());
