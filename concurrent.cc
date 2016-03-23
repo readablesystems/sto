@@ -1142,7 +1142,7 @@ struct {
 };
 
 enum {
-  opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_blindrandwrites, opt_prepopulate
+    opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_blindrandwrites, opt_prepopulate, opt_seed
 };
 
 static const Clp_Option options[] = {
@@ -1154,6 +1154,7 @@ static const Clp_Option options[] = {
   { "writepercent", 0, opt_writepercent, Clp_ValDouble, Clp_Optional },
   { "blindrandwrites", 0, opt_blindrandwrites, 0, Clp_Negate },
   { "prepopulate", 0, opt_prepopulate, Clp_ValInt, Clp_Optional },
+  { "seed", 's', opt_seed, Clp_ValUnsigned, 0 }
 };
 
 static void help(const char *name) {
@@ -1166,7 +1167,8 @@ Options:\n\
  --opspertrans=OPSPERTRANS, how many operations to run per transaction (default %d)\n\
  --writepercent=WRITEPERCENT, probability with which to do writes versus reads (default %f)\n\
  --blindrandwrites, do blind random writes for random tests. makes checking impossible\n\
- --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n",
+ --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n\
+ --seed=SEED\n",
          name, nthreads, ntrans, opspertrans, write_percent, prepopulate);
   printf("\nTests:\n");
   size_t testidx = 0;
@@ -1190,6 +1192,7 @@ int main(int argc, char *argv[]) {
 
   int ds = DATA_STRUCTURE;
   const char* test_name = nullptr;
+  unsigned seed = GLOBAL_SEED;
 
   int opt;
   while ((opt = Clp_Next(clp)) != Clp_Done) {
@@ -1226,19 +1229,21 @@ int main(int argc, char *argv[]) {
     case opt_prepopulate:
       prepopulate = clp->val.i;
       break;
+    case opt_seed:
+        seed = clp->val.u;
+        break;
     default:
       help(argv[0]);
     }
   }
   Clp_DeleteParser(clp);
 
-#if GLOBAL_SEED
-  srandom(GLOBAL_SEED);
-#else
-  srandomdev();
-#endif
-  for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
-    initial_seeds[i] = random();
+    if (seed)
+        srandom(seed);
+    else
+        srandomdev();
+    for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
+        initial_seeds[i] = random();
 
 #if DATA_STRUCTURE == USE_QUEUE
     QueueType stack_q;
