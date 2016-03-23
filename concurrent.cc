@@ -728,14 +728,14 @@ template <int DS, bool do_delete> bool RandomRWs<DS, do_delete>::check() {
       return false;
 
   container_type* old = this->a;
-  container_type ch;
-  this->a = &ch;
+  container_type* ch = new container_type;;
+  this->a = ch;
 
   // rerun transactions one-by-one
 #if MAINTAIN_TRUE_ARRAY_STATE
   maintain_true_array_state = !maintain_true_array_state;
 #endif
-  prepopulate_func(ch);
+  prepopulate_func(*ch);
 
   for (int i = 0; i < nthreads; ++i) {
       this->template do_run<false>(i);
@@ -751,11 +751,12 @@ template <int DS, bool do_delete> bool RandomRWs<DS, do_delete>::check() {
         fprintf(stderr, "index [%d]: parallel %d, atomic %d\n",
                 i, old->nontrans_get(i), true_array_state[i]);
 # endif
-    if (old->nontrans_get(i) != ch.nontrans_get(i))
+    if (old->nontrans_get(i) != ch->nontrans_get(i))
         fprintf(stderr, "index [%d]: parallel %d, sequential %d\n",
-                i, old->nontrans_get(i), ch.nontrans_get(i));
-    assert(old->nontrans_get(i) == ch.nontrans_get(i));
+                i, old->nontrans_get(i), ch->nontrans_get(i));
+    assert(old->nontrans_get(i) == ch->nontrans_get(i));
   }
+  delete ch;
   return true;
 }
 
@@ -809,6 +810,7 @@ template <int DS> struct XorDelete<DS, true> : public DSTester<DS> {
 
 template <int DS> void XorDelete<DS, true>::run(int me) {
   TThread::set_id(me);
+  Sto::update_threadid();
 #ifdef BOOSTING_STANDALONE
   boosting_threadid = me;
 #endif
@@ -846,8 +848,8 @@ template <int DS> void XorDelete<DS, true>::run(int me) {
 
 template <int DS> bool XorDelete<DS, true>::check() {
   container_type* old = this->a;
-  container_type ch;
-  this->a = &ch;
+  container_type* ch = new container_type;
+  this->a = ch;
   prepopulate_func(*this->a);
 
   for (int i = 0; i < nthreads; ++i) {
@@ -856,8 +858,9 @@ template <int DS> bool XorDelete<DS, true>::check() {
   this->a = old;
 
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    assert(old->nontrans_get(i) == ch.nontrans_get(i));
+    assert(old->nontrans_get(i) == ch->nontrans_get(i));
   }
+  delete ch;
   return true;
 }
 
@@ -957,6 +960,7 @@ template <int DS> bool InterferingRWs<DS>::check() {
 #if DATA_STRUCTURE == USE_QUEUE
 void Qxordeleterun(int me) {
   TThread::set_id(me);
+  Sto::update_threadid();
 
   int N = ntrans/nthreads;
   int OPS = opspertrans;
