@@ -1317,7 +1317,7 @@ int main(int argc, char *argv[]) {
   printf("  ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f%% writes, prepopulate: %d, blindrandwrites: %d\n \
  MAINTAIN_TRUE_ARRAY_STATE: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, STO_PROFILE_COUNTERS: %d\n",
          ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, prepopulate, blindRandomWrite,
-         MAINTAIN_TRUE_ARRAY_STATE, INIT_SET_SIZE, seed, STO_PROFILE_COUNTERS);
+         MAINTAIN_TRUE_ARRAY_STATE, Transaction::tset_initial_capacity, seed, STO_PROFILE_COUNTERS);
   printf("  STO_SORT_WRITESET: %d\n", STO_SORT_WRITESET);
 #endif
 
