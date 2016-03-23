@@ -56,11 +56,10 @@ public:
             return *reinterpret_cast<N*>(oid_ & mask);
         } else {
             NodeBase<N>* baseptr = reinterpret_cast<NodeBase<N>*>(oid_);
-            auto read_sid = baseptr->root_sid();
-            if (read_sid <= sid) {
-                // we may need to read the root-level thing
-                // XXX err what about concurrent updates to the root-level copy...?!
-                abort();
+            NodeWrapper<N>* root = baseptr->root_wrapper();
+            if (root->s_sid <= sid) {
+               // thanks to rcu at the top level this is safe (should be)
+               return root->node();
             }
             N* rawptr = baseptr->search_history(sid);
             assert(rawptr);
@@ -88,6 +87,7 @@ public:
     sid_type c_sid;
 
     explicit NodeWrapper(oid_type id) : oid(id), s_sid(), c_sid(), n_() {}
+    N& node(){return n_;}
 private:
     N n_;
 };
@@ -108,17 +108,24 @@ private:
 template <typename N>
 class NodeBase {
 public:
-    explicit NodeBase() : unlinked(false), h_(), nw_(object_id()) {}
+    explicit NodeBase() : unlinked(false), h_(), nw_(new NodeWrapper<N>(object_id())) {}
 
     oid_type object_id() const {return reinterpret_cast<oid_type>(this);}
-    sid_type root_sid() const {return nw_.s_sid;}
-    NodeWrapper<N>& wrapper() {return nw_;}
+    NodeWrapper<N>* root_wrapper() {return nw_;}
 
-    N& node() {return nw_.n_;}
+    N& node() {return nw_->node();}
 
     // Copy-on-Write: only allowed at STO install time!!
-    bool is_immutable() {return nw_.s_sid < Sto::GSC_snapshot();};
-    void save_copy_in_history() {h_.add_snapshot(nw_, Sto::GSC_snapshot());}
+    bool is_immutable() {return nw_->s_sid < Sto::GSC_snapshot();};
+
+    void save_copy_in_history() {
+        assert(is_immutable());
+	sid_type time = Sto::GSC_snapshot();
+	NodeWrapper<N>* rcu = new NodeWrapper<N>(*nw_);
+	rcu->s_sid = time;
+        h_.add_snapshot(nw_, time);
+	nw_ = rcu;
+    }
 
     void set_unlinked() {unlinked = true;}
 
@@ -126,7 +133,7 @@ public:
 private:
     bool unlinked;
     History<N> h_;
-    NodeWrapper<N> nw_;
+    NodeWrapper<N> *nw_;
 };
 
 // precondition: when properly casted, @oid must be pointing to a
@@ -148,19 +155,16 @@ std::pair<oid_type, N*> new_object() {
 
 // STOSnapshot::History methods
 template <typename N>
-void History<N>::add_snapshot(NodeWrapper<N>& n, sid_type time) {
-    auto history_item = new NodeWrapper<N>(n);
-    history_item->c_sid = time;
+void History<N>::add_snapshot(NodeWrapper<N>* n, sid_type time) {
+    assert(n->c_sid == 0);
+    n->c_sid = time;
 
     // XXX garbage collection / pool-chain fancy stuff happens here
     
-    n.s_sid = time;
-    assert(n.c_sid == 0);
-
     lock_write(lock_);
     // History::list_ should always be sorted
-    assert(list_.back()->s_sid < history_item->s_sid);
-    list_.push_back(history_item);
+    assert(list_.back()->s_sid < n->s_sid);
+    list_.push_back(n);
     unlock_write(lock_);
 }
 
