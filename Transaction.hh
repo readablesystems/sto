@@ -861,6 +861,18 @@ inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read)
     return *this;
 }
 
+inline TransProxy& TransProxy::observe(TCommutativeVersion version, bool add_read) {
+    assert(!has_stash());
+    if (version.is_locked())
+        t()->abort_because(item(), "locked", version.value());
+    t()->check_opacity(item(), version.value());
+    if (add_read && !has_read()) {
+        item().__or_flags(TransItem::read_bit);
+        item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
+    }
+    return *this;
+}
+
 inline TransProxy& TransProxy::observe(TVersion version) {
     return observe(version, true);
 }

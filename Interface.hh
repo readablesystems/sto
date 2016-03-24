@@ -455,6 +455,101 @@ private:
     type v_;
 };
 
+class TCommutativeVersion {
+public:
+    typedef TransactionTid::type type;
+    typedef TransactionTid::signed_type signed_type;
+    static constexpr type user_bit = TransactionTid::user_bit;
+
+    TCommutativeVersion()
+        : v_() {
+    }
+    TCommutativeVersion(type v)
+        : v_(v) {
+    }
+
+    type value() const {
+        return v_;
+    }
+    volatile type& value() {
+        return v_;
+    }
+
+    bool is_locked() const {
+        return (v_ & threadid_mask) > 0;
+    }
+    unsigned num_locks() const {
+        return v & threadid_mask;
+    }
+
+    bool try_lock() {
+        lock();
+        // never fails
+        return true;
+    }
+    void lock() {
+        __sync_fetch_and_add(&v_, 1);
+    }
+    void unlock() {
+        __sync_fetch_and_add(&v_, -1);
+    }
+
+    type unlocked() const {
+        return TransactionTid::unlocked(v_);
+    }
+
+    void set_version(TCommutativeVersion new_v) {
+        assert((new_v & TransactionTid::threadid_mask) == 0);
+        while (1) {
+            type cur = v_;
+            fence();
+            // It's possible that someone else has already set the version to
+            // a higher tid than us. That's okay--that had to have happened
+            // after we got our lock, so readers are still invalidated, and a
+            // higher tid will still invalidate old readers after we've
+            // unlocked. We're done in that case.
+            // (I think it'd be ok to downgrade the TID too but it's harder to
+            // reason about).
+            if (TransactionTid::unlocked(cur) > new_v.unlocked())
+                return;
+            // we maintain the lock state.
+            type cur_acquired = cur & threadid_mask;
+            if (bool_cmpxchg(&v_, cur, new_v | cur_acquired))
+                break;
+            relax_fence();
+        }
+    }
+
+    void inc_nonopaque_version() {
+        assert(is_locked());
+        // can't quite fetch and add here either because we need to both
+        // increment and OR in the nonopaque_bit.
+        while (1) {
+            type cur = v;
+            fence();
+            type new_v = (cur + TransactionTid::increment_value) | nonopaque_bit;
+            release_fence();
+            if (bool_cmpxchg(&v_, cur, new_v))
+                break;
+            relax_fence();
+        }
+    }
+
+    bool check_version(TCommutativeVersion old_vers, bool locked_by_us=false) const {
+        int lock = locked_by_us ? 1 : 0;
+        return v_ == (old_vers | lock);
+    }
+
+    friend std::ostream& operator<<(std::ostream& w, TCommutativeVersion v) {
+        // XXX: not super accurate for this but meh
+        TransactionTid::print(v.value(), w);
+        return w;
+    }
+
+private:
+    type v_;
+};
+
 template <typename Exception>
 inline void TVersion::opaque_throw(const Exception& exception) {
     throw exception;
