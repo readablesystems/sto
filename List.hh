@@ -36,7 +36,7 @@ private:
   // versions :)
   typedef TransactionTid::type version_type;
   typedef TVersion node_version_type;
-  typedef TCommutativeVersion size_version_type;
+  typedef TVersion size_version_type;
 
 public:
     static constexpr version_type invalid_bit = TransactionTid::user_bit;
@@ -486,7 +486,7 @@ private:
   bool check(TransItem& item, Transaction&) override {
     if (item.key<list_node*>() == list_key) {
       auto lv = sizeversion_;
-      return lv.check_version(item.template read_value<size_version_type>(), item.needs_unlock());
+      return lv.check_version(item.template read_value<size_version_type>());
     }
     auto n = item.key<list_node*>();
     if (!n->is_valid()) {
@@ -503,7 +503,7 @@ private:
     list_node *n = item.key<list_node*>();
     if (has_delete(item)) {
       remove<true>(n, true);
-      __sync_fetch_and_add(&listsize_, -1);
+      listsize_--;
       // not super ideal that we have to change version
       // but we need to invalidate transSize() calls
       if (Opacity) {
@@ -518,7 +518,7 @@ private:
       // insert
       // clears the invalid bit too
       n->set_version_unlock(t.commit_tid());
-      __sync_fetch_and_add(&listsize_, 1);
+      listsize_++;
       assert(Opacity);
       if (Opacity) {
         sizeversion_.set_version(t.commit_tid());
