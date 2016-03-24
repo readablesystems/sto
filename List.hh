@@ -347,7 +347,7 @@ public:
     if (sizev != sizeversion_)
       Sto::abort();
     verify_list(sizev);
-    return ListIter(this, head_, true);
+    return ListIter(this, head, true);
   }
 
   size_t size() {
