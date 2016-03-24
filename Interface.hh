@@ -539,7 +539,7 @@ public:
         }
     }
 
-    bool check_version(TCommutativeVersion old_vers, bool locked_by_us=false) const {
+    bool check_version(TCommutativeVersion old_vers, bool locked_by_us = false) const {
         int lock = locked_by_us ? 1 : 0;
         return v_ == (old_vers.v_ | lock);
     }
