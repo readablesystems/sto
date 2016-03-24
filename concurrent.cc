@@ -55,8 +55,8 @@
 // If we have N keys, we make our hashtable have size N/HASHTABLE_LOAD_FACTOR
 #define HASHTABLE_LOAD_FACTOR 1.1
 
-// additional seed to randomness used in tests (otherwise each run of
-// ./concurrent does the exact same operations)
+// initial seed; if 0, set randomly from /dev/urandom
+// this is the default value for `--seed`
 #define GLOBAL_SEED 0
 
 /* Track the array state during concurrent execution using atomic increments.
