@@ -38,7 +38,7 @@ public:
     static constexpr type user_bit = type(0x80);
     static constexpr type increment_value = type(0x400);
 
-    // NOTE: not compatible with the normal lock() methods
+    // TODO: probably remove these once RBTree stops referencing them.
     static void lock_read(type& v) {
         while (1) {
             type vv = v;
