@@ -459,7 +459,11 @@ class TCommutativeVersion {
 public:
     typedef TransactionTid::type type;
     typedef TransactionTid::signed_type signed_type;
+    // we don't store thread ids and instead use those bits as a count of
+    // how many threads own the lock (aka a read lock)
+    static constexpr type lock_mask = TransactionTid::threadid_mask;
     static constexpr type user_bit = TransactionTid::user_bit;
+    static constexpr type nonopaque_bit = TransactionTid::nonopaque_bit;
 
     TCommutativeVersion()
         : v_() {
@@ -476,10 +480,10 @@ public:
     }
 
     bool is_locked() const {
-        return (v_ & threadid_mask) > 0;
+        return (v_ & lock_mask) > 0;
     }
     unsigned num_locks() const {
-        return v & threadid_mask;
+        return v_ & lock_mask;
     }
 
     bool try_lock() {
@@ -499,7 +503,7 @@ public:
     }
 
     void set_version(TCommutativeVersion new_v) {
-        assert((new_v & TransactionTid::threadid_mask) == 0);
+        assert((new_v.v_ & lock_mask) == 0);
         while (1) {
             type cur = v_;
             fence();
@@ -513,8 +517,8 @@ public:
             if (TransactionTid::unlocked(cur) > new_v.unlocked())
                 return;
             // we maintain the lock state.
-            type cur_acquired = cur & threadid_mask;
-            if (bool_cmpxchg(&v_, cur, new_v | cur_acquired))
+            type cur_acquired = cur & lock_mask;
+            if (bool_cmpxchg(&v_, cur, new_v.v_ | cur_acquired))
                 break;
             relax_fence();
         }
@@ -525,7 +529,7 @@ public:
         // can't quite fetch and add here either because we need to both
         // increment and OR in the nonopaque_bit.
         while (1) {
-            type cur = v;
+            type cur = v_;
             fence();
             type new_v = (cur + TransactionTid::increment_value) | nonopaque_bit;
             release_fence();
@@ -537,7 +541,7 @@ public:
 
     bool check_version(TCommutativeVersion old_vers, bool locked_by_us=false) const {
         int lock = locked_by_us ? 1 : 0;
-        return v_ == (old_vers | lock);
+        return v_ == (old_vers.v_ | lock);
     }
 
     friend std::ostream& operator<<(std::ostream& w, TCommutativeVersion v) {

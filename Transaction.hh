@@ -868,7 +868,7 @@ inline TransProxy& TransProxy::observe(TCommutativeVersion version, bool add_rea
     t()->check_opacity(item(), version.value());
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
-        item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
+        item().rdata_ = Packer<TCommutativeVersion>::pack(t()->buf_, std::move(version));
     }
     return *this;
 }
@@ -881,11 +881,19 @@ inline TransProxy& TransProxy::observe(TNonopaqueVersion version) {
     return observe(version, true);
 }
 
+inline TransProxy& TransProxy::observe(TCommutativeVersion version) {
+    return observe(version, true);
+}
+
 inline TransProxy& TransProxy::observe_opacity(TVersion version) {
     return observe(version, false);
 }
 
 inline TransProxy& TransProxy::observe_opacity(TNonopaqueVersion version) {
+    return observe(version, false);
+}
+
+inline TransProxy& TransProxy::observe_opacity(TCommutativeVersion version) {
     return observe(version, false);
 }
 

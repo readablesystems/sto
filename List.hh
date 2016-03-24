@@ -28,11 +28,12 @@ class List
   friend class ListIterator<T, Duplicates, Compare, Sorted, Opacity>;
   typedef ListIterator<T, Duplicates, Compare, Sorted, Opacity> iterator;
 public:
-  List(Compare comp = Compare()) : head_(NULL), listsize_(0), listversion_(0), comp_(comp) {
+  List(Compare comp = Compare()) : head_(NULL), listsize_(0), listversion_(0), sizeversion_(0), comp_(comp) {
   }
 
 private:
   typedef TransactionTid::type version_type;
+  typedef TCommutativeVersion size_version_type;
 
 public:
     static constexpr uint8_t invalid_bit = 1<<0;
@@ -189,7 +190,7 @@ public:
 
 #ifndef STO_NO_STM
   T* transFind(const T& elem) {
-    auto listv = listversion_;
+    auto listv = sizeversion_;
     fence();
     auto *n = _find(elem);
     if (n) {
@@ -248,7 +249,7 @@ public:
   }
 
   bool transDelete(const T& elem) {
-    auto listv = listversion_;
+    auto listv = sizeversion_;
     fence();
     auto *n = _find(elem);
     if (n) {
@@ -294,23 +295,25 @@ public:
   }
 
   inline void opacity_check() {
+    // unused AFAIK
+    assert(0);
     // When we check for opacity, we need to compare the latest listversion and not
     // the one at the beginning of the operation.
     assert(Opacity);
-    auto listv = listversion_;
+    auto listv = sizeversion_;
     fence();
-    Sto::check_opacity(listv);
+    Sto::check_opacity(listv.value());
   }
 
   struct ListIter;
 
   ListIter transIter() {
-    verify_list(listversion_);//TODO: rename
+    verify_list(sizeversion_);//TODO: rename
     return ListIter(this, head_, true);
   }
 
   size_t size() {
-    verify_list(listversion_);
+    verify_list(sizeversion_);
     return listsize_ + trans_size_offs();
   }
 
@@ -419,9 +422,9 @@ private:
         remove<false>(head_, true);
   }
 
-  void verify_list(version_type readv) {
-      t_item(list_key).observe(TVersion(readv));
-      acquire_fence();
+  void verify_list(size_version_type readv) {
+    t_item(list_key).observe(readv);
+    acquire_fence();
   }
 
 
@@ -444,14 +447,15 @@ private:
         // immediately after a remove/insert. That would give semantics that:
         // inserts/deletes to different locations didn't conflict, but iteration
         // conflicted with insert/remove even before the write committed.
-        return item.key<list_node*>() != list_key
-            || txn.try_lock(item, listversion_);
+      if (item.key<list_node*>() == list_key)
+        sizeversion_.lock();
+      return true;
     }
 
   bool check(TransItem& item, Transaction&) override {
     if (item.key<list_node*>() == list_key) {
-      auto lv = listversion_;
-      return TransactionTid::check_version(lv, item.template read_value<version_type>());
+      auto lv = sizeversion_;
+      return lv.check_version(item.template read_value<version_type>(), item.needs_unlock());
     }
     auto n = item.key<list_node*>();
     if (!n->is_valid()) {
@@ -460,22 +464,24 @@ private:
     // We need to check listversion_ for locks here
     // otherwise we might be conflicting with a concurrent delete.
     // XXX Shouldn't we handle this locally?
-    return !TransactionTid::is_locked_elsewhere(listversion_);
+    return true;//!TransactionTid::is_locked_elsewhere(listversion_);
   }
 
   void install(TransItem& item, Transaction& t) override {
+    // TODO: this item tracks the total size differential so we could just do 
+    // a single fetch and add of the size delta here.
     if (item.key<list_node*>() == list_key)
       return;
     list_node *n = item.key<list_node*>();
     if (has_delete(item)) {
       remove<true>(n, true);
-      listsize_--;
+      __sync_fetch_and_add(&listsize_, -1);
       // not super ideal that we have to change version
       // but we need to invalidate transSize() calls
       if (Opacity) {
-        TransactionTid::set_version(listversion_, t.commit_tid());
+	sizeversion_.set_version(t.commit_tid());
       } else {
-        TransactionTid::inc_nonopaque_version(listversion_);
+	sizeversion_.inc_nonopaque_version();
       }
     } else if (has_doupdate(item)) {
       // nate: Not sure what the bug here is? We'll have a lock on the whole list because 
@@ -484,18 +490,19 @@ private:
       n->val = item.template write_value<T>();
     } else {
       n->mark_valid();
-      listsize_++;
+      __sync_fetch_and_add(&listsize_, 1);
+      assert(Opacity);
       if (Opacity) {
-        TransactionTid::set_version(listversion_, t.commit_tid());
+	sizeversion_.set_version(t.commit_tid());
       } else {
-        TransactionTid::inc_nonopaque_version(listversion_);
+	sizeversion_.inc_nonopaque_version();
       }
     }
   }
 
   void unlock(TransItem& item) override {
       if (item.key<list_node*>() == list_key)
-          unlock(listversion_);
+	sizeversion_.unlock();
   }
 
   void cleanup(TransItem& item, bool committed) override {
@@ -527,8 +534,8 @@ private:
   }
 
   void add_trans_size_offs(int size_offs) {
-    // TODO: it would be more efficient to store this directly in Transaction,
-    // since the "key" is fixed (rather than having to search the transset each time)
+    // TODO: it'd be simpler and maybe even faster if this was just the 
+    // write_value of our list_key item (and we renamed list_key to size_key)
     auto item = t_item(size_key());
     item.template set_stash<int>(item.template stash_value<int>(0) + size_offs);
   }
@@ -544,7 +551,10 @@ private:
 
   list_node *head_;
   long listsize_;
+  // XXX: the current state is that listversion_ is just a lock, and
+  // sizeversion_ is the list version ... :|
   version_type listversion_;
+  size_version_type sizeversion_;
   Compare comp_;
 };
 
@@ -556,7 +566,7 @@ class ListIterator : public std::iterator<std::forward_iterator_tag, T> {
     typedef typename list_type::list_node list_node;
 public:
     ListIterator(list_type * list, list_node* ptr) : myList(list), myPtr(ptr) {
-        myList->list_verify(myList->listversion_);
+        myList->list_verify(myList->sizeversion_);
     }
     ListIterator(const ListIterator& itr) : myList(itr.myList), myPtr(itr.myPtr) {}
     
