@@ -321,8 +321,10 @@ public:
     assert(is_locked(el));
     // delete
     if (item.flags() & delete_bit) {
+      // XXX: think we need an extra bit in here for opacity, or we should remove this now 
+      // rather than in cleanup
       el->version.set_version_locked(el->version.value() | invalid_bit);
-      // we wait to remove the node til afterC() (unclear that this is actually necessary)
+      // we wait to remove the node til cleanup() (unclear that this is actually necessary)
       return;
     }
     // else must be insert/update

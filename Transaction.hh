@@ -746,6 +746,7 @@ public:
     }
 
     static TransactionTid::type initialized_tid() {
+        // XXX: we might want a nonopaque_bit in here too.
         return TransactionTid::increment_value;
     }
 };

@@ -32,11 +32,14 @@ public:
   }
 
 private:
+  // XXX: barf. version_type is the only one of these not actually used for
+  // versions :)
   typedef TransactionTid::type version_type;
+  typedef TVersion node_version_type;
   typedef TCommutativeVersion size_version_type;
 
 public:
-    static constexpr uint8_t invalid_bit = 1<<0;
+    static constexpr version_type invalid_bit = TransactionTid::user_bit;
 
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
@@ -44,23 +47,43 @@ public:
 
   struct list_node {
     list_node(const T& val, list_node *next, bool invalid)
-        : val(val), next(next, invalid ? invalid_bit : 0) {
+      : val(val), next(next), vers(Sto::initialized_tid() | (invalid ? (invalid_bit | TransactionTid::lock_bit | TThread::id()) : 0)) {
     }
 
+    // used for delete commit
     void mark_invalid() {
-      next.or_flags(invalid_bit);
+      assert(vers.is_locked_here());
+      auto new_version = vers | invalid_bit;
+      fence();
+      vers = new_version;
     }
 
-    void mark_valid() {
-      next.assign_flags(next.flags() & ~invalid_bit);
+    node_version_type version() {
+      return vers;
+    }
+
+    void set_version(node_version_type new_v) {
+      vers.set_version(new_v);
+    }
+
+    void set_version_unlock(version_type new_v) {
+      vers.set_version_unlock(new_v);
+    }
+
+    bool try_lock() {
+      return vers.try_lock();
+    }
+    void unlock() {
+      vers.unlock();
     }
 
     bool is_valid() {
-        return !(next.flags() & invalid_bit);
+      return !(vers.value() & invalid_bit);
     }
 
     T val;
-    TaggedLow<list_node> next;
+    list_node *next;
+    node_version_type vers;
   };
 
   static constexpr list_node* list_key = nullptr;
@@ -127,7 +150,7 @@ public:
     }
     auto ret = new list_node(elem, cur, Txnal);
     if (prev) {
-        prev->next.assign_ptr(ret);
+        prev->next = ret;
     } else {
         head_ = ret;
     }
@@ -165,7 +188,7 @@ public:
       if (found_f(cur)) {
         cur->mark_invalid();
         if (prev) {
-            prev->next.assign_ptr(cur->next);
+            prev->next = cur->next;
         } else {
             head_ = cur->next;
         }
@@ -194,6 +217,8 @@ public:
     fence();
     auto *n = _find(elem);
     if (n) {
+      auto version = n->version();
+      fence();
       auto item = t_item(n);
       if (!validityCheck(n, item)) {
         Sto::abort();
@@ -202,7 +227,7 @@ public:
       if (has_delete(item)) {
         return NULL;
       }
-      item.add_read(0);
+      item.observe(version);
     } else {
       // log list v#
       verify_list(listv);
@@ -216,6 +241,8 @@ public:
     auto *node = _insert<true>(elem, &inserted);
     auto item = t_item(node);
     if (!inserted) {
+      auto version = node->version();
+      fence();
       if (!validityCheck(node, item)) {
         Sto::abort();
         return false;
@@ -230,14 +257,15 @@ public:
       }
       // delete-then-insert... (should really become an update...)
       if (has_delete(item)) {
+	// delete already should have observed a version
         item.clear_write().add_write(elem);
         item.assign_flags(doupdate_bit);
         add_trans_size_offs(1);
         return true;
       }
-      // "normal" insert-then-insert = failed insert
+      // "normal" failed insert
       // need to make sure it's still there at commit time
-      item.add_read(0);
+      item.observe(version);
       return false;
     }
     add_trans_size_offs(1);
@@ -253,6 +281,8 @@ public:
     fence();
     auto *n = _find(elem);
     if (n) {
+      auto version = n->version();
+      fence();
       auto item = t_item(n);
       if (!validityCheck(n, item)) {
         Sto::abort();
@@ -269,7 +299,7 @@ public:
         add_trans_size_offs(-1);
         return true;
       }
-      // insert-then-delete becomes nothing
+      // insert-then-delete becomes absent-get
       if (has_insert(item)) {
         remove<true>(n);
         item.remove_read().remove_write().clear_flags(insert_bit);
@@ -284,7 +314,7 @@ public:
       item.add_write(0);
       // we also need to check that it's still valid at commit time (not
       // bothering with valid_check_only_bit optimization right now)
-      item.add_read(0);
+      item.observe(version);
       add_lock_list_item();
       add_trans_size_offs(-1);
       return true;
@@ -385,7 +415,7 @@ private:
     void ensureValid() {
 #ifndef STO_NO_STM
       while (cur) {
-	// need to check if this item already exists
+        // need to check if this item already exists
         auto item = Sto::check_item(us, cur);
         if (!cur->is_valid()) {
           if (!item || !us->has_insert(*item)) {
@@ -442,29 +472,27 @@ private:
 
 #ifndef STO_NO_STM
     bool lock(TransItem& item, Transaction& txn) override {
-        // XXX: this isn't great, but I think we need it to update the size...
-        // nate: we might be able to remove this if we updated the listversion_
-        // immediately after a remove/insert. That would give semantics that:
-        // inserts/deletes to different locations didn't conflict, but iteration
-        // conflicted with insert/remove even before the write committed.
-      if (item.key<list_node*>() == list_key)
-        sizeversion_.lock();
+      list_node *n = item.key<list_node*>();
+      if (n == list_key) {
+        return sizeversion_.try_lock();
+      } else if (!has_insert(item)) {
+        // we only lock non-inserts (removes, updates) so as to make our 
+	// life harder (also it's not necessary for inserts).
+        return n->try_lock();
+      }
       return true;
     }
 
   bool check(TransItem& item, Transaction&) override {
     if (item.key<list_node*>() == list_key) {
       auto lv = sizeversion_;
-      return lv.check_version(item.template read_value<version_type>(), item.needs_unlock());
+      return lv.check_version(item.template read_value<size_version_type>(), item.needs_unlock());
     }
     auto n = item.key<list_node*>();
     if (!n->is_valid()) {
       return has_insert(item);
     }
-    // We need to check listversion_ for locks here
-    // otherwise we might be conflicting with a concurrent delete.
-    // XXX Shouldn't we handle this locally?
-    return true;//!TransactionTid::is_locked_elsewhere(listversion_);
+    return n->version().check_version(item.template read_value<node_version_type>());
   }
 
   void install(TransItem& item, Transaction& t) override {
@@ -479,30 +507,34 @@ private:
       // not super ideal that we have to change version
       // but we need to invalidate transSize() calls
       if (Opacity) {
-	sizeversion_.set_version(t.commit_tid());
+        sizeversion_.set_version(t.commit_tid());
       } else {
-	sizeversion_.inc_nonopaque_version();
+        sizeversion_.inc_nonopaque_version();
       }
     } else if (has_doupdate(item)) {
-      // nate: Not sure what the bug here is? We'll have a lock on the whole list because 
-      // we were going to delete it earlier
-        // XXX BUG
+      n->set_version(t.commit_tid());
       n->val = item.template write_value<T>();
     } else {
-      n->mark_valid();
+      // insert
+      // clears the invalid bit too
+      n->set_version_unlock(t.commit_tid());
       __sync_fetch_and_add(&listsize_, 1);
       assert(Opacity);
       if (Opacity) {
-	sizeversion_.set_version(t.commit_tid());
+        sizeversion_.set_version(t.commit_tid());
       } else {
-	sizeversion_.inc_nonopaque_version();
+        sizeversion_.inc_nonopaque_version();
       }
     }
   }
 
   void unlock(TransItem& item) override {
-      if (item.key<list_node*>() == list_key)
-	sizeversion_.unlock();
+    auto n = item.key<list_node*>();
+    if (n == list_key) {
+      sizeversion_.unlock();
+    } else if (!has_insert(item)) {
+      n->unlock();
+    }
   }
 
   void cleanup(TransItem& item, bool committed) override {
