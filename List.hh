@@ -324,27 +324,42 @@ public:
     }
   }
 
-  inline void opacity_check() {
-    // unused AFAIK
-    assert(0);
+  inline size_version_type opacity_check() {
     // When we check for opacity, we need to compare the latest listversion and not
     // the one at the beginning of the operation.
     assert(Opacity);
     auto listv = sizeversion_;
     fence();
+    if (listv.is_locked_elsewhere()) {
+      Sto::abort();
+    }
     Sto::check_opacity(listv.value());
+    return listv;
   }
 
   struct ListIter;
 
   ListIter transIter() {
-    verify_list(sizeversion_);//TODO: rename
+    auto sizev = sizeversion_;
+    fence();
+    auto head = head_;
+    fence();
+    if (sizev != sizeversion_)
+      Sto::abort();
+    verify_list(sizev);
     return ListIter(this, head_, true);
   }
 
   size_t size() {
-    verify_list(sizeversion_);
-    return listsize_ + trans_size_offs();
+    auto sizev = sizeversion_;
+    fence();
+    auto size = listsize_;
+    fence();
+    // doesn't seem worth putting much effort in here--if we got different versions just abort.
+    if (sizev != sizeversion_)
+      Sto::abort();
+    verify_list(sizev);
+    return size + trans_size_offs();
   }
 
   size_t nontrans_size() const {
@@ -414,8 +429,13 @@ private:
 
     void ensureValid() {
 #ifndef STO_NO_STM
+      auto sizev = us->opacity_check();
+      fence();
       while (cur) {
         // need to check if this item already exists
+	// XXX: we could probably use threadids in inserted items so this
+	// doesn't have to search the write set. But I'm not sure there's
+	// a way to avoid checking for if we deleted the item?
         auto item = Sto::check_item(us, cur);
         if (!cur->is_valid()) {
           if (!item || !us->has_insert(*item)) {
@@ -431,6 +451,10 @@ private:
         }
         break;
       }
+      fence();
+      // I think this is right?
+      if (sizev != us->sizeversion_)
+	Sto::abort();
 #endif
     }
 
