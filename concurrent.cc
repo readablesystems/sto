@@ -55,8 +55,8 @@
 // If we have N keys, we make our hashtable have size N/HASHTABLE_LOAD_FACTOR
 #define HASHTABLE_LOAD_FACTOR 1.1
 
-// additional seed to randomness used in tests (otherwise each run of
-// ./concurrent does the exact same operations)
+// initial seed; if 0, set randomly from /dev/urandom
+// this is the default value for `--seed`
 #define GLOBAL_SEED 0
 
 /* Track the array state during concurrent execution using atomic increments.
@@ -728,14 +728,14 @@ template <int DS, bool do_delete> bool RandomRWs<DS, do_delete>::check() {
       return false;
 
   container_type* old = this->a;
-  container_type ch;
-  this->a = &ch;
+  container_type* ch = new container_type;;
+  this->a = ch;
 
   // rerun transactions one-by-one
 #if MAINTAIN_TRUE_ARRAY_STATE
   maintain_true_array_state = !maintain_true_array_state;
 #endif
-  prepopulate_func(ch);
+  prepopulate_func(*ch);
 
   for (int i = 0; i < nthreads; ++i) {
       this->template do_run<false>(i);
@@ -751,11 +751,12 @@ template <int DS, bool do_delete> bool RandomRWs<DS, do_delete>::check() {
         fprintf(stderr, "index [%d]: parallel %d, atomic %d\n",
                 i, old->nontrans_get(i), true_array_state[i]);
 # endif
-    if (old->nontrans_get(i) != ch.nontrans_get(i))
+    if (old->nontrans_get(i) != ch->nontrans_get(i))
         fprintf(stderr, "index [%d]: parallel %d, sequential %d\n",
-                i, old->nontrans_get(i), ch.nontrans_get(i));
-    assert(old->nontrans_get(i) == ch.nontrans_get(i));
+                i, old->nontrans_get(i), ch->nontrans_get(i));
+    assert(old->nontrans_get(i) == ch->nontrans_get(i));
   }
+  delete ch;
   return true;
 }
 
@@ -809,6 +810,7 @@ template <int DS> struct XorDelete<DS, true> : public DSTester<DS> {
 
 template <int DS> void XorDelete<DS, true>::run(int me) {
   TThread::set_id(me);
+  Sto::update_threadid();
 #ifdef BOOSTING_STANDALONE
   boosting_threadid = me;
 #endif
@@ -846,8 +848,8 @@ template <int DS> void XorDelete<DS, true>::run(int me) {
 
 template <int DS> bool XorDelete<DS, true>::check() {
   container_type* old = this->a;
-  container_type ch;
-  this->a = &ch;
+  container_type* ch = new container_type;
+  this->a = ch;
   prepopulate_func(*this->a);
 
   for (int i = 0; i < nthreads; ++i) {
@@ -856,8 +858,9 @@ template <int DS> bool XorDelete<DS, true>::check() {
   this->a = old;
 
   for (int i = 0; i < ARRAY_SZ; ++i) {
-    assert(old->nontrans_get(i) == ch.nontrans_get(i));
+    assert(old->nontrans_get(i) == ch->nontrans_get(i));
   }
+  delete ch;
   return true;
 }
 
@@ -957,6 +960,7 @@ template <int DS> bool InterferingRWs<DS>::check() {
 #if DATA_STRUCTURE == USE_QUEUE
 void Qxordeleterun(int me) {
   TThread::set_id(me);
+  Sto::update_threadid();
 
   int N = ntrans/nthreads;
   int OPS = opspertrans;
@@ -1142,7 +1146,7 @@ struct {
 };
 
 enum {
-  opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_blindrandwrites, opt_prepopulate
+    opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_blindrandwrites, opt_prepopulate, opt_seed
 };
 
 static const Clp_Option options[] = {
@@ -1154,6 +1158,7 @@ static const Clp_Option options[] = {
   { "writepercent", 0, opt_writepercent, Clp_ValDouble, Clp_Optional },
   { "blindrandwrites", 0, opt_blindrandwrites, 0, Clp_Negate },
   { "prepopulate", 0, opt_prepopulate, Clp_ValInt, Clp_Optional },
+  { "seed", 's', opt_seed, Clp_ValUnsigned, 0 }
 };
 
 static void help(const char *name) {
@@ -1166,7 +1171,8 @@ Options:\n\
  --opspertrans=OPSPERTRANS, how many operations to run per transaction (default %d)\n\
  --writepercent=WRITEPERCENT, probability with which to do writes versus reads (default %f)\n\
  --blindrandwrites, do blind random writes for random tests. makes checking impossible\n\
- --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n",
+ --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n\
+ --seed=SEED\n",
          name, nthreads, ntrans, opspertrans, write_percent, prepopulate);
   printf("\nTests:\n");
   size_t testidx = 0;
@@ -1190,6 +1196,7 @@ int main(int argc, char *argv[]) {
 
   int ds = DATA_STRUCTURE;
   const char* test_name = nullptr;
+  unsigned seed = GLOBAL_SEED;
 
   int opt;
   while ((opt = Clp_Next(clp)) != Clp_Done) {
@@ -1226,19 +1233,21 @@ int main(int argc, char *argv[]) {
     case opt_prepopulate:
       prepopulate = clp->val.i;
       break;
+    case opt_seed:
+        seed = clp->val.u;
+        break;
     default:
       help(argv[0]);
     }
   }
   Clp_DeleteParser(clp);
 
-#if GLOBAL_SEED
-  srandom(GLOBAL_SEED);
-#else
-  srandomdev();
-#endif
-  for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
-    initial_seeds[i] = random();
+    if (seed)
+        srandom(seed);
+    else
+        srandomdev();
+    for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
+        initial_seeds[i] = random();
 
 #if DATA_STRUCTURE == USE_QUEUE
     QueueType stack_q;
@@ -1308,7 +1317,7 @@ int main(int argc, char *argv[]) {
   printf("  ARRAY_SZ: %d, readmywrites: %d, result check: %d, %d threads, %d transactions, %d ops per transaction, %f%% writes, prepopulate: %d, blindrandwrites: %d\n \
  MAINTAIN_TRUE_ARRAY_STATE: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, STO_PROFILE_COUNTERS: %d\n",
          ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, prepopulate, blindRandomWrite,
-         MAINTAIN_TRUE_ARRAY_STATE, INIT_SET_SIZE, GLOBAL_SEED, STO_PROFILE_COUNTERS);
+         MAINTAIN_TRUE_ARRAY_STATE, Transaction::tset_initial_capacity, seed, STO_PROFILE_COUNTERS);
   printf("  STO_SORT_WRITESET: %d\n", STO_SORT_WRITESET);
 #endif
 

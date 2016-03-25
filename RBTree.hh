@@ -623,6 +623,8 @@ private:
     // only add a write to size if we erase or do an absent insert
     size_t size_;
     Version sizeversion_;
+    // XXX: this isn't actually a rwlock anymore so we could just make it a
+    // normal tid or something
     mutable RWVersion treelock_;
     // used to mark whether a key is for the tree structure (for tree version checks)
     // or a pointer (which will always have the lower 3 bits as 0)

@@ -243,10 +243,13 @@ class TransProxy {
     inline TransProxy& add_read_opaque(T rdata);
     inline TransProxy& observe(TVersion version, bool add_read);
     inline TransProxy& observe(TNonopaqueVersion version, bool add_read);
+    inline TransProxy& observe(TCommutativeVersion version, bool add_read);
     inline TransProxy& observe(TVersion version);
     inline TransProxy& observe(TNonopaqueVersion version);
+    inline TransProxy& observe(TCommutativeVersion version);
     inline TransProxy& observe_opacity(TVersion version);
     inline TransProxy& observe_opacity(TNonopaqueVersion version);
+    inline TransProxy& observe_opacity(TCommutativeVersion version);
     inline TransProxy& clear_read() {
         item().__rm_flags(TransItem::read_bit);
         return *this;

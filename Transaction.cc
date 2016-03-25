@@ -18,6 +18,34 @@ static void __attribute__((used)) check_static_assertions() {
     static_assert(sizeof(threadinfo_t) % 128 == 0, "threadinfo is 2-cache-line aligned");
 }
 
+void Transaction::initialize() {
+    static_assert(tset_initial_capacity % tset_chunk == 0, "tset_initial_capacity not an even multiple of tset_chunk");
+    hash_base_ = 32768;
+    tset_size_ = 0;
+    lrng_state_ = 12897;
+    for (unsigned i = 0; i != tset_initial_capacity / tset_chunk; ++i)
+        tset_[i] = &tset0_[i * tset_chunk];
+    for (unsigned i = tset_initial_capacity / tset_chunk; i != arraysize(tset_); ++i)
+        tset_[i] = nullptr;
+}
+
+Transaction::~Transaction() {
+    if (in_progress())
+        silent_abort();
+    TransItem* live = tset0_;
+    for (unsigned i = 0; i != arraysize(tset_); ++i, live += tset_chunk)
+        if (live != tset_[i])
+            delete[] tset_[i];
+}
+
+void Transaction::refresh_tset_chunk() {
+    assert(tset_size_ % tset_chunk == 0);
+    assert(tset_size_ < tset_max_capacity);
+    if (!tset_[tset_size_ / tset_chunk])
+        tset_[tset_size_ / tset_chunk] = new TransItem[tset_chunk];
+    tset_next_ = tset_[tset_size_ / tset_chunk];
+}
+
 void* Transaction::epoch_advancer(void*) {
     // don't bother epoch'ing til things have picked up
     usleep(100000);
@@ -38,6 +66,18 @@ void* Transaction::epoch_advancer(void*) {
         usleep(100000);
     }
     return NULL;
+}
+
+bool Transaction::preceding_duplicate_read(TransItem* needle) const {
+    const TransItem* it = nullptr;
+    for (unsigned tidx = 0; ; ++tidx) {
+        it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
+        if (it == needle)
+            return false;
+        if (it->owner() == needle->owner() && it->key_ == needle->key_
+            && it->has_read())
+            return true;
+    }
 }
 
 void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
@@ -71,11 +111,13 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
     state_ = s_opacity_check;
     start_tid_ = _TID;
     release_fence();
-    for (auto it = transSet_.begin(); it != transSet_.end(); ++it)
+    TransItem* it = nullptr;
+    for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
+        it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
         if (it->has_read()) {
             TXP_INCREMENT(txp_total_check_read);
             if (!it->owner()->check(*it, *this)
-                && !preceding_read_exists(*it)) {
+                && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
                 mark_abort_because(item, "opacity check");
                 goto abort;
             }
@@ -86,10 +128,11 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
                 goto abort;
             }
         }
+    }
     state_ = s_in_progress;
 }
 
-void Transaction::stop(bool committed) {
+void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
     if (!committed) {
         TXP_INCREMENT(txp_total_aborts);
 #if STO_DEBUG_ABORTS
@@ -111,21 +154,48 @@ void Transaction::stop(bool committed) {
 
     TXP_ACCOUNT(txp_max_transbuffer, buf_.size());
     TXP_ACCOUNT(txp_total_transbuffer, buf_.size());
-    if (any_writes_) {
-        auto fwit = transSet_.begin() + first_write_;
-        if (state_ == s_committing_locked)
-            for (auto it = transSet_.end(); it != fwit; ) {
-                --it;
+
+    TransItem* it;
+    if (!any_writes_)
+        goto after_unlock;
+
+    if (committed && !STO_SORT_WRITESET) {
+        for (unsigned* idxit = writeset + nwriteset; idxit != writeset; ) {
+            --idxit;
+            if (*idxit < tset_initial_capacity)
+                it = &tset0_[*idxit];
+            else
+                it = &tset_[*idxit / tset_chunk][*idxit % tset_chunk];
+            if (it->needs_unlock())
+                it->owner()->unlock(*it);
+        }
+        for (unsigned* idxit = writeset + nwriteset; idxit != writeset; ) {
+            --idxit;
+            if (*idxit < tset_initial_capacity)
+                it = &tset0_[*idxit];
+            else
+                it = &tset_[*idxit / tset_chunk][*idxit % tset_chunk];
+            if (it->has_write()) // always true unless a user turns it off in install()/check()
+                it->owner()->cleanup(*it, committed);
+        }
+    } else {
+        if (state_ == s_committing_locked) {
+            it = &tset_[tset_size_ / tset_chunk][tset_size_ % tset_chunk];
+            for (unsigned tidx = tset_size_; tidx != first_write_; --tidx) {
+                it = (tidx % tset_chunk ? it - 1 : &tset_[(tidx - 1) / tset_chunk][tset_chunk - 1]);
                 if (it->needs_unlock())
                     it->owner()->unlock(*it);
             }
-        for (auto it = transSet_.end(); it != fwit; ) {
-            --it;
+        }
+        it = &tset_[tset_size_ / tset_chunk][tset_size_ % tset_chunk];
+        for (unsigned tidx = tset_size_; tidx != first_write_; --tidx) {
+            it = (tidx % tset_chunk ? it - 1 : &tset_[(tidx - 1) / tset_chunk][tset_chunk - 1]);
             if (it->has_write())
                 it->owner()->cleanup(*it, committed);
         }
     }
 
+after_unlock:
     // TODO: this will probably mess up with nested transactions
     threadinfo_t& thr = tinfo[TThread::id()];
     if (thr.trans_end_callback)
@@ -137,14 +207,14 @@ void Transaction::stop(bool committed) {
 bool Transaction::try_commit() {
     assert(TThread::id() == threadid_);
 #if ASSERT_TX_SIZE
-    if (transSet_.size() > TX_SIZE_LIMIT) {
-        std::cerr << "transSet_ size at " << transSet_.size()
+    if (tset_size_ > TX_SIZE_LIMIT) {
+        std::cerr << "transSet_ size at " << tset_size_
             << ", abort." << std::endl;
         assert(false);
     }
 #endif
-    TXP_ACCOUNT(txp_max_set, transSet_.size());
-    TXP_ACCOUNT(txp_total_n, transSet_.size());
+    TXP_ACCOUNT(txp_max_set, tset_size_);
+    TXP_ACCOUNT(txp_total_n, tset_size_);
 
     assert(state_ == s_in_progress || state_ >= s_aborted);
     if (state_ >= s_aborted)
@@ -155,20 +225,22 @@ bool Transaction::try_commit() {
 #if !CONSISTENCY_CHECK
     // commit immediately if read-only transaction with opacity
     if (!any_writes_ && !any_nonopaque_) {
-        stop(true);
+        stop(true, nullptr, 0);
         return true;
     }
 #endif
 
     state_ = s_committing;
 
-    int writeset[transSet_.size()];
-    int nwriteset = 0;
-    writeset[0] = transSet_.size();
+    unsigned writeset[tset_size_];
+    unsigned nwriteset = 0;
+    writeset[0] = tset_size_;
 
-    for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
+    TransItem* it = nullptr;
+    for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
+        it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
         if (it->has_write()) {
-            writeset[nwriteset++] = it - transSet_.begin();
+            writeset[nwriteset++] = tidx;
 #if !STO_SORT_WRITESET
             if (nwriteset == 1) {
                 first_write_ = writeset[0];
@@ -196,26 +268,23 @@ bool Transaction::try_commit() {
 
     //phase1
 #if STO_SORT_WRITESET
-    std::sort(writeset, writeset + nwriteset, [&] (int i, int j) {
-        return transSet_[i] < transSet_[j];
+    std::sort(writeset, writeset + nwriteset, [&] (unsigned i, unsigned j) {
+        TransItem* ti = &tset_[i / tset_chunk][i % tset_chunk];
+        TransItem* tj = &tset_[j / tset_chunk][j % tset_chunk];
+        return *ti < *tj;
     });
 
     if (nwriteset) {
         state_ = s_committing_locked;
         auto writeset_end = writeset + nwriteset;
         for (auto it = writeset; it != writeset_end; ) {
-            TransItem* me = &transSet_[*it];
+            TransItem* me = &tset_[*it / tset_chunk][*it % tset_chunk];
             if (!me->owner()->lock(*me, *this)) {
                 mark_abort_because(me, "commit lock");
                 goto abort;
             }
             me->__or_flags(TransItem::lock_bit);
             ++it;
-# if 0
-            if (may_duplicate_items_)
-                for (; it != writeset_end && transSet_[*it].same_item(*me); ++it)
-                    /* do nothing */;
-# endif
         }
     }
 #endif
@@ -228,46 +297,51 @@ bool Transaction::try_commit() {
 #endif
 
     //phase2
-    for (auto it = transSet_.begin(); it != transSet_.end(); ++it)
+    for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
+        it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
         if (it->has_read()) {
             TXP_INCREMENT(txp_total_check_read);
             if (!it->owner()->check(*it, *this)
-                && !preceding_read_exists(*it)) {
+                && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
                 mark_abort_because(it, "commit check");
                 goto abort;
             }
         }
+    }
 
     // fence();
 
     //phase3
 #if STO_SORT_WRITESET
-    for (auto it = transSet_.begin() + first_write_; it != transSet_.end(); ++it) {
-        TransItem& ti = *it;
-        if (ti.has_write()) {
+    for (unsigned tidx = first_write_; tidx != tset_size_; ++tidx) {
+        it = &tset_[tidx / tset_chunk][tidx % tset_chunk];
+        if (it->has_write()) {
             TXP_INCREMENT(txp_total_w);
-            ti.owner()->install(ti, *this);
+            it->owner()->install(*it, *this);
         }
     }
 #else
     if (nwriteset) {
         auto writeset_end = writeset + nwriteset;
-        for (auto it = writeset; it != writeset_end; ++it) {
-            TransItem* me = &transSet_[*it];
+        for (auto idxit = writeset; idxit != writeset_end; ++idxit) {
+            if (likely(*idxit < tset_initial_capacity))
+                it = &tset0_[*idxit];
+            else
+                it = &tset_[*idxit / tset_chunk][*idxit % tset_chunk];
             TXP_INCREMENT(txp_total_w);
-            me->owner()->install(*me, *this);
+            it->owner()->install(*it, *this);
         }
     }
 #endif
 
     // fence();
-    stop(true);
+    stop(true, writeset, nwriteset);
     return true;
 
 abort:
     // fence();
     TXP_INCREMENT(txp_commit_time_aborts);
-    stop(false);
+    stop(false, nullptr, 0);
     return false;
 }
 
@@ -317,10 +391,12 @@ const char* Transaction::state_name(int state) {
 
 void Transaction::print(std::ostream& w) const {
     w << "T0x" << (void*) this << " " << state_name(state_) << " [";
-    for (auto& ti : transSet_) {
-        if (&ti != &transSet_[0])
+    const TransItem* it = nullptr;
+    for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
+        it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
+        if (tidx)
             w << " ";
-        ti.owner()->print(w, ti);
+        it->owner()->print(w, *it);
     }
     w << "]\n";
 }

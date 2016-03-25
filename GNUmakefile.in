@@ -196,7 +196,7 @@ stamp-h: config.h.in config.status
 
 clean:
 	rm -f $(PROGRAMS) *.o
-	rm -rf .deps
+	rm -rf .deps *.dSYM
 	$(MAKE) -C $(MASSTREEDIR) clean
 
 DEPFILES := $(wildcard $(DEPSDIR)/*.d)

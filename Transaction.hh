@@ -167,8 +167,6 @@ struct txp_counters {
 #include "Interface.hh"
 #include "TransItem.hh"
 
-#define INIT_SET_SIZE 512
-
 void reportPerf();
 #define STO_SHUTDOWN() reportPerf()
 
@@ -189,6 +187,8 @@ struct __attribute__((aligned(128))) threadinfo_t {
 
 class Transaction {
 public:
+    static constexpr unsigned tset_initial_capacity = 512;
+
     static constexpr unsigned hash_size = 1024;
     static constexpr unsigned hash_step = 5;
     using epoch_type = TRcuSet::epoch_type;
@@ -264,10 +264,15 @@ public:
 #define TXP_ACCOUNT(p, n) Transaction::txp_account<(p)>((n))
 
 
-  private:
+private:
+    static constexpr unsigned tset_chunk = 512;
+    static constexpr unsigned tset_max_capacity = 32768;
+
+    void initialize();
+
     Transaction()
-        : threadid_(TThread::id()), hash_base_(32768), lrng_state_(12897),
-          is_test_(false) {
+        : threadid_(TThread::id()), is_test_(false) {
+        initialize();
         start();
     }
 
@@ -275,22 +280,18 @@ public:
     static testing_type testing;
 
     Transaction(int threadid, const testing_type&)
-        : threadid_(threadid), hash_base_(32768), lrng_state_(12897),
-          is_test_(true) {
+        : threadid_(threadid), is_test_(true) {
+        initialize();
         start();
     }
 
-    struct uninitialized {};
-    Transaction(uninitialized)
-        : threadid_(TThread::id()), hash_base_(32768), lrng_state_(12897),
-          is_test_(false) {
+    Transaction(bool)
+        : threadid_(TThread::id()), is_test_(false) {
+        initialize();
         state_ = s_aborted;
     }
 
-    ~Transaction() { /* XXX should really be private */
-        if (in_progress())
-            silent_abort();
-    }
+    ~Transaction();
 
     // reset data so we can be reused for another transaction
     void start() {
@@ -302,8 +303,9 @@ public:
         thr.rcu_set.clean_until(global_epochs.active_epoch);
         if (thr.trans_start_callback)
             thr.trans_start_callback();
-        hash_base_ += transSet_.size() + 1;
-        transSet_.clear();
+        hash_base_ += tset_size_ + 1;
+        tset_size_ = 0;
+        tset_next_ = tset0_;
 #if TRANSACTION_HASHTABLE
         if (hash_base_ >= 32768) {
             memset(hashtable_, 0, sizeof(hashtable_));
@@ -332,8 +334,13 @@ public:
     }
 #endif
 
+    void refresh_tset_chunk();
+
     TransItem* allocate_item(const TObject* obj, void* xkey) {
-        transSet_.emplace_back(const_cast<TObject*>(obj), xkey);
+        if (tset_size_ && tset_size_ % tset_chunk == 0)
+            refresh_tset_chunk();
+        ++tset_size_;
+        new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey);
 #if TRANSACTION_HASHTABLE
         unsigned hi = hash(obj, xkey);
 # if TRANSACTION_HASHTABLE > 1
@@ -341,9 +348,9 @@ public:
             hi = (hi + hash_step) % hash_size;
 # endif
         if (hashtable_[hi] <= hash_base_)
-            hashtable_[hi] = hash_base_ + transSet_.size();
+            hashtable_[hi] = hash_base_ + tset_size_;
 #endif
-        return &transSet_.back();
+        return tset_next_++;
     }
 
 public:
@@ -361,7 +368,7 @@ public:
     // adds item without checking its presence in the array
     template <typename T>
     TransProxy fresh_item(const TObject* obj, T key) {
-        may_duplicate_items_ = !transSet_.empty();
+        may_duplicate_items_ = tset_size_ > 0;
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
         return TransProxy(*this, *allocate_item(obj, xkey));
     }
@@ -385,7 +392,7 @@ public:
         if (any_writes_)
             ti = find_item(const_cast<TObject*>(obj), xkey);
         else
-            may_duplicate_items_ = !transSet_.empty();
+            may_duplicate_items_ = tset_size_ > 0;
         if (!ti)
             ti = allocate_item(obj, xkey);
         return TransProxy(*this, *ti);
@@ -407,7 +414,12 @@ private:
         for (int steps = 0; steps < TRANSACTION_HASHTABLE; ++steps) {
             if (hashtable_[hi] <= hash_base_)
                 return nullptr;
-            const TransItem* ti = &transSet_[hashtable_[hi] - hash_base_ - 1];
+            unsigned tidx = hashtable_[hi] - hash_base_ - 1;
+            const TransItem* ti;
+            if (likely(tidx < tset_initial_capacity))
+                ti = &tset0_[tidx];
+            else
+                ti = &tset_[tidx / tset_chunk][tidx % tset_chunk];
             if (ti->owner() == obj && ti->key_ == xkey)
                 return const_cast<TransItem*>(ti);
             if (!steps) {
@@ -425,21 +437,17 @@ private:
             hi = (hi + hash_step) % hash_size;
         }
 #endif
-        for (auto it = transSet_.begin(); it != transSet_.end(); ++it) {
+        const TransItem* it = nullptr;
+        for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
+            it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
             TXP_INCREMENT(txp_total_searched);
             if (it->owner() == obj && it->key_ == xkey)
-                return const_cast<TransItem*>(&*it);
+                return const_cast<TransItem*>(it);
         }
         return nullptr;
     }
 
-    bool preceding_read_exists(TransItem& item) const {
-        if (may_duplicate_items_)
-            for (auto it = transSet_.begin(); it != &item; ++it)
-                if (it->owner() == item.owner() && it->key_ == item.key_)
-                    return true;
-        return false;
-    }
+    bool preceding_duplicate_read(TransItem *it) const;
 
 #if STO_DEBUG_ABORTS
     void mark_abort_because(TransItem* item, const char* reason, TVersion::type version = 0) const {
@@ -461,7 +469,7 @@ private:
 public:
     void silent_abort() {
         if (in_progress())
-            stop(false);
+            stop(false, nullptr, 0);
     }
 
     void abort() {
@@ -624,7 +632,9 @@ private:
     bool any_writes_;
     bool any_nonopaque_;
     bool may_duplicate_items_;
-    small_vector<TransItem, INIT_SET_SIZE> transSet_;
+    bool is_test_;
+    TransItem* tset_next_;
+    unsigned tset_size_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
     mutable tid_type gsc_snapshot_;
@@ -635,13 +645,14 @@ private:
     mutable const char* abort_reason_;
     mutable TVersion::type abort_version_;
 #endif
-    bool is_test_;
+    TransItem* tset_[tset_max_capacity / tset_chunk];
 #if TRANSACTION_HASHTABLE
     uint16_t hashtable_[hash_size];
 #endif
+    TransItem tset0_[tset_initial_capacity];
 
     void hard_check_opacity(TransItem* item, TransactionTid::type t);
-    void stop(bool committed);
+    void stop(bool committed, unsigned* writes, unsigned nwrites);
 
     friend class TransProxy;
     friend class TransItem;
@@ -655,7 +666,7 @@ class Sto {
 public:
     static Transaction* transaction() {
         if (!TThread::txn)
-            TThread::txn = new Transaction(Transaction::uninitialized());
+            TThread::txn = new Transaction(false);
         return TThread::txn;
     }
 
@@ -751,6 +762,7 @@ public:
     }
 
     static TransactionTid::type initialized_tid() {
+        // XXX: we might want a nonopaque_bit in here too.
         return TransactionTid::increment_value;
     }
 };
@@ -866,6 +878,18 @@ inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read)
     return *this;
 }
 
+inline TransProxy& TransProxy::observe(TCommutativeVersion version, bool add_read) {
+    assert(!has_stash());
+    if (version.is_locked())
+        t()->abort_because(item(), "locked", version.value());
+    t()->check_opacity(item(), version.value());
+    if (add_read && !has_read()) {
+        item().__or_flags(TransItem::read_bit);
+        item().rdata_ = Packer<TCommutativeVersion>::pack(t()->buf_, std::move(version));
+    }
+    return *this;
+}
+
 inline TransProxy& TransProxy::observe(TVersion version) {
     return observe(version, true);
 }
@@ -874,11 +898,19 @@ inline TransProxy& TransProxy::observe(TNonopaqueVersion version) {
     return observe(version, true);
 }
 
+inline TransProxy& TransProxy::observe(TCommutativeVersion version) {
+    return observe(version, true);
+}
+
 inline TransProxy& TransProxy::observe_opacity(TVersion version) {
     return observe(version, false);
 }
 
 inline TransProxy& TransProxy::observe_opacity(TNonopaqueVersion version) {
+    return observe(version, false);
+}
+
+inline TransProxy& TransProxy::observe_opacity(TCommutativeVersion version) {
     return observe(version, false);
 }
 

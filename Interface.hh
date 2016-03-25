@@ -38,7 +38,7 @@ public:
     static constexpr type user_bit = type(0x80);
     static constexpr type increment_value = type(0x400);
 
-    // NOTE: not compatible with the normal lock() methods
+    // TODO: probably remove these once RBTree stops referencing them.
     static void lock_read(type& v) {
         while (1) {
             type vv = v;
@@ -450,6 +450,105 @@ public:
 
     template <typename Exception>
     static inline void opaque_throw(const Exception&);
+
+private:
+    type v_;
+};
+
+class TCommutativeVersion {
+public:
+    typedef TransactionTid::type type;
+    typedef TransactionTid::signed_type signed_type;
+    // we don't store thread ids and instead use those bits as a count of
+    // how many threads own the lock (aka a read lock)
+    static constexpr type lock_mask = TransactionTid::threadid_mask;
+    static constexpr type user_bit = TransactionTid::user_bit;
+    static constexpr type nonopaque_bit = TransactionTid::nonopaque_bit;
+
+    TCommutativeVersion()
+        : v_() {
+    }
+    TCommutativeVersion(type v)
+        : v_(v) {
+    }
+
+    type value() const {
+        return v_;
+    }
+    volatile type& value() {
+        return v_;
+    }
+
+    bool is_locked() const {
+        return (v_ & lock_mask) > 0;
+    }
+    unsigned num_locks() const {
+        return v_ & lock_mask;
+    }
+
+    bool try_lock() {
+        lock();
+        // never fails
+        return true;
+    }
+    void lock() {
+        __sync_fetch_and_add(&v_, 1);
+    }
+    void unlock() {
+        __sync_fetch_and_add(&v_, -1);
+    }
+
+    type unlocked() const {
+        return TransactionTid::unlocked(v_);
+    }
+
+    void set_version(TCommutativeVersion new_v) {
+        assert((new_v.v_ & lock_mask) == 0);
+        while (1) {
+            type cur = v_;
+            fence();
+            // It's possible that someone else has already set the version to
+            // a higher tid than us. That's okay--that had to have happened
+            // after we got our lock, so readers are still invalidated, and a
+            // higher tid will still invalidate old readers after we've
+            // unlocked. We're done in that case.
+            // (I think it'd be ok to downgrade the TID too but it's harder to
+            // reason about).
+            if (TransactionTid::unlocked(cur) > new_v.unlocked())
+                return;
+            // we maintain the lock state.
+            type cur_acquired = cur & lock_mask;
+            if (bool_cmpxchg(&v_, cur, new_v.v_ | cur_acquired))
+                break;
+            relax_fence();
+        }
+    }
+
+    void inc_nonopaque_version() {
+        assert(is_locked());
+        // can't quite fetch and add here either because we need to both
+        // increment and OR in the nonopaque_bit.
+        while (1) {
+            type cur = v_;
+            fence();
+            type new_v = (cur + TransactionTid::increment_value) | nonopaque_bit;
+            release_fence();
+            if (bool_cmpxchg(&v_, cur, new_v))
+                break;
+            relax_fence();
+        }
+    }
+
+    bool check_version(TCommutativeVersion old_vers, bool locked_by_us = false) const {
+        int lock = locked_by_us ? 1 : 0;
+        return v_ == (old_vers.v_ | lock);
+    }
+
+    friend std::ostream& operator<<(std::ostream& w, TCommutativeVersion v) {
+        // XXX: not super accurate for this but meh
+        TransactionTid::print(v.value(), w);
+        return w;
+    }
 
 private:
     type v_;

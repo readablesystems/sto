@@ -37,8 +37,8 @@ public:
     }
 
     bool lock(TransItem&, Transaction&) override { return true; }
-    bool check(const TransItem&, const Transaction&) override { return false; }
-    void install(TransItem&, const Transaction&) override {}
+    bool check(TransItem&, Transaction&) override { return false; }
+    void install(TransItem&, Transaction&) override {}
     void unlock(TransItem&) override {}
     void cleanup(TransItem& item, bool committed) override {
         if (committed == !item.has_flag(alloc_flag))
