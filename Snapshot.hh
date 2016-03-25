@@ -25,6 +25,9 @@ void unlock_write(RWLock& l) {
 template <typename N>
 class NodeBase;
 
+template <typename N>
+class NodeWrapper;
+
 class ObjectID {
 public:
     static constexpr uintptr_t direct_bit = 1;
@@ -48,6 +51,11 @@ public:
         oid_ = reinterpret_cast<uintptr_t>(ptr) | direct_bit;
     }
 
+    template <typename N>
+    void operator=(N* ptr) {
+        oid_ = reinterpret_cast<uintptr_t>(ptr);
+    }
+
     // the only indirection needed: translating ObjectID to a reference to "node"
     // given the specific time in sid
     template <typename N>
@@ -57,7 +65,7 @@ public:
         } else {
             NodeBase<N>* baseptr = reinterpret_cast<NodeBase<N>*>(oid_);
             NodeWrapper<N>* root = baseptr->root_wrapper();
-            if (root->s_sid <= sid) {
+            if (!sid || root->s_sid <= sid) {
                // thanks to rcu at the top level this is safe (should be)
                return root->node();
             }
@@ -80,23 +88,21 @@ private:
 typedef ObjectID oid_type;
 
 template <typename N>
-class NodeWrapper {
+class NodeWrapper : public N {
 public:
     oid_type oid;
     sid_type s_sid;
     sid_type c_sid;
 
-    explicit NodeWrapper(oid_type id) : oid(id), s_sid(), c_sid(), n_() {}
-    N& node(){return n_;}
-private:
-    N n_;
+    explicit NodeWrapper(oid_type id) : N(), oid(id), s_sid(), c_sid() {}
+    N& node(){return *this;}
 };
 
 template <typename N>
 class History {
 public:
     void cleanup_until(sid_type sid);
-    void add_snapshot(NodeWrapper<N>& n, sid_type time);
+    void add_snapshot(NodeWrapper<N>* n, sid_type time);
     N* search(sid_type sid);
 private:
     RWLock lock_;
@@ -120,11 +126,11 @@ public:
 
     void save_copy_in_history() {
         assert(is_immutable());
-	sid_type time = Sto::GSC_snapshot();
-	NodeWrapper<N>* rcu = new NodeWrapper<N>(*nw_);
-	rcu->s_sid = time;
+        sid_type time = Sto::GSC_snapshot();
+        NodeWrapper<N>* rcu = new NodeWrapper<N>(*nw_);
+        rcu->s_sid = time;
         h_.add_snapshot(nw_, time);
-	nw_ = rcu;
+        nw_ = rcu;
     }
 
     void set_unlinked() {unlinked = true;}
@@ -154,6 +160,8 @@ std::pair<oid_type, N*> new_object() {
 }
 
 // STOSnapshot::History methods
+// add_snapshot: add pointer @n (pointing to a snapshot object)
+// to history list
 template <typename N>
 void History<N>::add_snapshot(NodeWrapper<N>* n, sid_type time) {
     assert(n->c_sid == 0);
