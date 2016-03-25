@@ -51,8 +51,8 @@ public:
     }
 
     // used for delete commit
-    void mark_invalid() {
-      assert(vers.is_locked_here());
+    void mark_invalid(bool Txnal) {
+      assert(!Txnal || vers.is_locked_here());
       auto new_version = vers | invalid_bit;
       fence();
       vers = new_version;
@@ -186,7 +186,7 @@ public:
     list_node *cur = head_;
     while (cur != NULL) {
       if (found_f(cur)) {
-        cur->mark_invalid();
+        cur->mark_invalid(Txnal);
         if (prev) {
             prev->next = cur->next;
         } else {
@@ -429,13 +429,11 @@ private:
 
     void ensureValid() {
 #ifndef STO_NO_STM
-      auto sizev = us->opacity_check();
-      fence();
       while (cur) {
         // need to check if this item already exists
 	// XXX: we could probably use threadids in inserted items so this
-	// doesn't have to search the write set. But I'm not sure there's
-	// a way to avoid checking for if we deleted the item?
+        // doesn't have to search the write set. But I'm not sure there's
+        // a way to avoid checking for if we deleted the item?
         auto item = Sto::check_item(us, cur);
         if (!cur->is_valid()) {
           if (!item || !us->has_insert(*item)) {
@@ -452,9 +450,7 @@ private:
         break;
       }
       fence();
-      // I think this is right?
-      if (sizev != us->sizeversion_)
-	Sto::abort();
+      us->opacity_check();
 #endif
     }
 
