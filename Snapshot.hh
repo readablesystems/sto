@@ -28,12 +28,12 @@ class NodeBase;
 template <typename N>
 class NodeWrapper;
 
+template <typename N>
 class ObjectID {
 public:
     static constexpr uintptr_t direct_bit = 1;
     static constexpr uintptr_t mask = ~(direct_bit);
 
-    template <typename N>
     ObjectID(NodeBase<N>* baseptr, bool direct = false) {
         oid_ = reinterpret_cast<uintptr_t>(baseptr);
         if (direct) {
@@ -46,20 +46,17 @@ public:
     }
 
     // can only be called on an immutable object
-    template <typename N>
     void set_direct_link(N* ptr) {
         oid_ = reinterpret_cast<uintptr_t>(ptr) | direct_bit;
     }
 
-    template <typename N>
     void operator=(N* ptr) {
         oid_ = reinterpret_cast<uintptr_t>(ptr);
     }
 
     // the only indirection needed: translating ObjectID to a reference to "node"
     // given the specific time in sid
-    template <typename N>
-    N& dereference(sid_type sid) const {
+    N& deref(sid_type sid) {
         if (direct()) {
             return *reinterpret_cast<N*>(oid_ & mask);
         } else {
@@ -75,7 +72,6 @@ public:
         }
     }
 
-    template <typename N>
     void unlink() {
         assert(!direct());
         reinterpret_cast<NodeBase<N>*>(oid_)->set_unlinked();
@@ -85,11 +81,10 @@ private:
     uintptr_t oid_;
 };
 
-typedef ObjectID oid_type;
-
 template <typename N>
 class NodeWrapper : public N {
 public:
+    typedef ObjectID<N> oid_type;
     oid_type oid;
     sid_type s_sid;
     sid_type c_sid;
@@ -114,6 +109,7 @@ private:
 template <typename N>
 class NodeBase {
 public:
+    typedef ObjectID<N> oid_type;
     explicit NodeBase() : unlinked(false), h_(), nw_(new NodeWrapper<N>(object_id())) {}
 
     oid_type object_id() const {return reinterpret_cast<oid_type>(this);}
@@ -146,17 +142,17 @@ private:
 // NodeBase-typed object in memory
 //
 // returns nullptr if no applicable history item found
-// XXX seems equivalent and worse (interface-wise) than ObjectID::dereference()
-template <typename N>
-N* get_object(oid_type oid, sid_type sid) {
-    auto obj = reinterpret_cast<NodeBase<N>*>(oid);
-    return obj->search_history(sid);
-}
+// XXX seems equivalent and worse (interface-wise) than ObjectID::deref()
+//template <typename N>
+//N* get_object(oid_type oid, sid_type sid) {
+//    auto obj = reinterpret_cast<NodeBase<N>*>(oid);
+//    return obj->search_history(sid);
+//}
 
 template <typename N>
-std::pair<oid_type, N*> new_object() {
+std::pair<ObjectID<N>, N*> new_object() {
     NodeBase<N>* obj = new NodeBase<N>();
-    return std::make_pair(oid_type(obj), &(obj->node()));
+    return std::make_pair(ObjectID<N>(obj), &(obj->node()));
 }
 
 // STOSnapshot::History methods
