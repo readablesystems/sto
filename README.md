@@ -2,10 +2,11 @@ Install
 -------
 
 To build:
+```
     $ ./bootstrap.sh
     $ ./configure
     $ make
-
+```
 (NOTE: if you are using OS X you should probably run `./configure CXX='clang++ -stdlib=libc++ -std=c++11'`)
 
 Run single-threaded tests:
