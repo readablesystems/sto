@@ -54,22 +54,38 @@ public:
         oid_ = reinterpret_cast<uintptr_t>(ptr);
     }
 
+    bool is_null() const {
+        return ((oid_ & mask) == 0);
+    }
+
     // the only indirection needed: translating ObjectID to a reference to "node"
     // given the specific time in sid
-    N& deref(sid_type sid) {
+    std::pair<N*, N*> deref(sid_type sid) {
+        std::pair<N*, N*> ret(nullptr, nullptr);
         if (direct()) {
-            return *reinterpret_cast<N*>(oid_ & mask);
+            ret.first = reinterpret_cast<N*>(oid_ & mask);
         } else {
             NodeBase<N>* baseptr = reinterpret_cast<NodeBase<N>*>(oid_);
             NodeWrapper<N>* root = baseptr->root_wrapper();
-            if (!sid || root->s_sid <= sid) {
+            sid_type root_sid = root->s_sid;
+
+            ret.second = reinterpret_cast<N*>(root);
+
+            if (!sid || (root_sid > 0 && root_sid <= sid)) {
+               if (!sid && baseptr->is_unlinked()) {
+                   // do not return an unlinked node if we are doing non-snapshot reads
+                   return ret;
+               }
                // thanks to rcu at the top level this is safe (should be)
-               return root->node();
+               ret.first = &root->node();
+               return ret;
             }
-            N* rawptr = baseptr->search_history(sid);
-            assert(rawptr);
-            return *rawptr;
+
+            if (root_sid > 0) {
+                ret.first = baseptr->search_history(sid);
+            }
         }
+        return ret;
     }
 
     void unlink() {
@@ -130,6 +146,7 @@ public:
     }
 
     void set_unlinked() {unlinked = true;}
+    bool is_unlinked() const {return unlinked;}
 
     N* search_history(sid_type sid) {h_.search(sid);}
 private:
