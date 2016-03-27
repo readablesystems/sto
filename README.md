@@ -24,9 +24,6 @@ Check delete multithreaded correctness (not applicable for arrays):
 You can get a list of both available tests and data structures by
 running `./concurrent` without arguments.
 
-Note that the list tests are O(n^2) and generally not that great. Probably the
-only one worth running is `./concurrent xordelete list -c --prepopulate=0`
-
 Benchmark singlethreaded:
 `./concurrent 3 DATASTRUCTURE --nthreads=1`
 or
