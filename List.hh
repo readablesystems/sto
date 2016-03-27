@@ -28,7 +28,7 @@ class List
   friend class ListIterator<T, Duplicates, Compare, Sorted, Opacity>;
   typedef ListIterator<T, Duplicates, Compare, Sorted, Opacity> iterator;
 public:
-  List(Compare comp = Compare()) : head_(NULL), listsize_(0), listversion_(0), sizeversion_(0), comp_(comp) {
+  List(Compare comp = Compare()) : head_(NULL), listsize_(0), listlock_(0), listversion_(0), comp_(comp) {
   }
 
 private:
@@ -125,11 +125,11 @@ public:
   list_node* _insert(const T& elem, bool *inserted = NULL) {
     if (inserted)
       *inserted = true;
-    lock(listversion_);
+    lock(listlock_);
     if (!Sorted && !Duplicates) {
       list_node *new_head = new list_node(elem, head_, Txnal);
       head_ = new_head;
-      unlock(listversion_);
+      unlock(listlock_);
       return new_head;
     }
 
@@ -138,7 +138,7 @@ public:
     while (cur != NULL) {
       int c = comp_(cur->val, elem);
       if (!Duplicates && c == 0) {
-        unlock(listversion_);
+        unlock(listlock_);
         if (inserted)
           *inserted = false;
         return cur;
@@ -156,7 +156,7 @@ public:
     }
     if (!Txnal)
       listsize_++;
-    unlock(listversion_);
+    unlock(listlock_);
     return ret;
   }
 
@@ -181,7 +181,7 @@ public:
   template <bool Txnal, typename FoundFunc>
   bool _remove(FoundFunc found_f, bool locked = false) {
     if (!locked)
-      lock(listversion_);
+      lock(listlock_);
     list_node *prev = NULL;
     list_node *cur = head_;
     while (cur != NULL) {
@@ -200,20 +200,20 @@ public:
         if (!Txnal)
           listsize_--;
         if (!locked)
-          unlock(listversion_);
+          unlock(listlock_);
         return true;
       }
       prev = cur;
       cur = cur->next;
     }
     if (!locked)
-      unlock(listversion_);
+      unlock(listlock_);
     return false;
   }
 
 #ifndef STO_NO_STM
   T* transFind(const T& elem) {
-    auto listv = sizeversion_;
+    auto listv = listversion_;
     fence();
     auto *n = _find(elem);
     if (n) {
@@ -277,7 +277,7 @@ public:
   }
 
   bool transDelete(const T& elem) {
-    auto listv = sizeversion_;
+    auto listv = listversion_;
     fence();
     auto *n = _find(elem);
     if (n) {
@@ -328,7 +328,7 @@ public:
     // When we check for opacity, we need to compare the latest listversion and not
     // the one at the beginning of the operation.
     assert(Opacity);
-    auto listv = sizeversion_;
+    auto listv = listversion_;
     fence();
     if (listv.is_locked_elsewhere()) {
       Sto::abort();
@@ -340,25 +340,25 @@ public:
   struct ListIter;
 
   ListIter transIter() {
-    auto sizev = sizeversion_;
+    auto listv = listversion_;
     fence();
     auto head = head_;
     fence();
-    if (sizev != sizeversion_)
+    if (listv != listversion_)
       Sto::abort();
-    verify_list(sizev);
+    verify_list(listv);
     return ListIter(this, head, true);
   }
 
   size_t size() {
-    auto sizev = sizeversion_;
+    auto listv = listversion_;
     fence();
     auto size = listsize_;
     fence();
     // doesn't seem worth putting much effort in here--if we got different versions just abort.
-    if (sizev != sizeversion_)
+    if (listv != listversion_)
       Sto::abort();
-    verify_list(sizev);
+    verify_list(listv);
     return size + trans_size_offs();
   }
 
@@ -491,10 +491,10 @@ private:
   }
 
 #ifndef STO_NO_STM
-    bool lock(TransItem& item, Transaction& txn) override {
+    bool lock(TransItem& item, Transaction&) override {
       list_node *n = item.key<list_node*>();
       if (n == list_key) {
-        return sizeversion_.try_lock();
+        return listversion_.try_lock();
       } else if (!has_insert(item)) {
         // we only lock non-inserts (removes, updates) so as to make our 
 	// life harder (also it's not necessary for inserts).
@@ -505,7 +505,7 @@ private:
 
   bool check(TransItem& item, Transaction&) override {
     if (item.key<list_node*>() == list_key) {
-      auto lv = sizeversion_;
+      auto lv = listversion_;
       return lv.check_version(item.template read_value<size_version_type>());
     }
     auto n = item.key<list_node*>();
@@ -527,9 +527,9 @@ private:
       // not super ideal that we have to change version
       // but we need to invalidate transSize() calls
       if (Opacity) {
-        sizeversion_.set_version(t.commit_tid());
+        listversion_.set_version(t.commit_tid());
       } else {
-        sizeversion_.inc_nonopaque_version();
+        listversion_.inc_nonopaque_version();
       }
     } else if (has_doupdate(item)) {
       n->set_version(t.commit_tid());
@@ -541,9 +541,9 @@ private:
       listsize_++;
       assert(Opacity);
       if (Opacity) {
-        sizeversion_.set_version(t.commit_tid());
+        listversion_.set_version(t.commit_tid());
       } else {
-        sizeversion_.inc_nonopaque_version();
+        listversion_.inc_nonopaque_version();
       }
     }
   }
@@ -551,7 +551,7 @@ private:
   void unlock(TransItem& item) override {
     auto n = item.key<list_node*>();
     if (n == list_key) {
-      sizeversion_.unlock();
+      listversion_.unlock();
     } else if (!has_insert(item)) {
       n->unlock();
     }
@@ -603,10 +603,8 @@ private:
 
   list_node *head_;
   long listsize_;
-  // XXX: the current state is that listversion_ is just a lock, and
-  // sizeversion_ is the list version ... :|
-  version_type listversion_;
-  size_version_type sizeversion_;
+  version_type listlock_;
+  size_version_type listversion_;
   Compare comp_;
 };
 
@@ -618,7 +616,7 @@ class ListIterator : public std::iterator<std::forward_iterator_tag, T> {
     typedef typename list_type::list_node list_node;
 public:
     ListIterator(list_type * list, list_node* ptr) : myList(list), myPtr(ptr) {
-        myList->list_verify(myList->sizeversion_);
+        myList->list_verify(myList->listversion_);
     }
     ListIterator(const ListIterator& itr) : myList(itr.myList), myPtr(itr.myPtr) {}
     
