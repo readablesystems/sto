@@ -27,7 +27,6 @@ STAMP
 
 Microbenchmarks
 ---------------
-    $ git checkout ubenchmark
     $ make concurrent
     $ mv concurrent microbenchmarks/concurrent-1M
 Now make sure the microbenchmark you wish to run is not commented out in
