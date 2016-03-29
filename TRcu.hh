@@ -3,8 +3,8 @@
 #include <assert.h>
 
 struct TRcuGroup {
-    typedef unsigned epoch_type;
-    typedef int signed_epoch_type;
+    typedef uint64_t epoch_type;
+    typedef int64_t signed_epoch_type;
 
     struct TRcuElement {
         void (*function)(void*);
@@ -74,8 +74,8 @@ public:
 
 class TRcuSet {
 public:
-    using epoch_type = uint64_t;
-    using signed_epoch_type = int64_t;
+    typedef TRcuGroup::epoch_type epoch_type;
+    typedef TRcuGroup::signed_epoch_type signed_epoch_type;
 
     TRcuSet();
     ~TRcuSet();
