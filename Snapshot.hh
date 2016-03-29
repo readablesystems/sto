@@ -58,6 +58,11 @@ public:
         return ((oid_ & mask) == 0);
     }
 
+    NodeBase<N>* base_ptr() const {
+        assert(!direct());
+        return reinterpret_cast<NodeBase<N>*>(oid_);
+    }
+
     // the only indirection needed: translating ObjectID to a reference to "node"
     // given the specific time in sid
     std::pair<N*, N*> deref(sid_type sid) {
@@ -86,11 +91,6 @@ public:
             }
         }
         return ret;
-    }
-
-    void unlink() {
-        assert(!direct());
-        reinterpret_cast<NodeBase<N>*>(oid_)->set_unlinked();
     }
 
 private:
@@ -147,6 +147,7 @@ public:
     }
 
     void set_unlinked() {unlinked = true;}
+    void clear_unlinked() {unlinked = false;}
     bool is_unlinked() const {return unlinked;}
 
     N* search_history(sid_type sid) {h_.search(sid);}
@@ -209,15 +210,19 @@ void History<N>::cleanup_until(sid_type sid) {
 
 template <typename N>
 N* History<N>::search(sid_type sid) {
-    N* ret = nullptr;
+    NodeWrapper<N>* ret = nullptr;
     lock_read(lock_);
     if (!list_.empty()) {
         auto it = std::upper_bound(list_.begin(), list_.end(), sid, sid_comp);
         if (it != list_.begin())
             ret = *(--it);
+        if (ret && ret->c_sid < sid) {
+            // this implies a deleted snapshot
+            ret = nullptr;
+        }
     }
     unlock_read(lock_);
-    return ret;
+    return reinterpret_cast<N*>(ret);
 }
 
 }; // namespace StoSnapshot

@@ -33,8 +33,8 @@ public:
 
     static constexpr TransactionTid::type invalid_bit = TransactionTid::user_bit;
 
-    ListNode(const K& key, const V& val, ListNode *next, bool invalid)
-    : key(key), val(val), next_id(next, false),
+    ListNode(const K& key, const V& val, oid_type next_id, bool invalid)
+    : key(key), val(val), next_id(next_id),
       vers(Sto::initialized_tid() | (invalid ? (invalid_bit | TransactionTid::lock_bit | TThread::id()) : 0)) {}
 
     void mark_invalid() {
@@ -145,6 +145,54 @@ private:
             cur = next;
         }
         return cur;
+    }
+
+    // XXX note to cleanup: never structurally remove a node until history is empty
+    std::pair<bool, node_type*> _insert(const K& key, const V& value) {
+        lock(listlock_);
+
+        oid_type prev_obj = oid_type(nullptr);
+        oid_type cur_obj = head_id_;
+
+        while (!cur_obj.is_null()) {
+            // it's okay to always look at the root level
+            node_type* cur = cur_obj.deref(0).second;
+            int c = comp_(cur->key, key);
+            if (c == 0) {
+                if (cur_obj.base_ptr()->is_unlinked()) {
+                    // reuse root-level deleted node
+                    oid_type nid = cur->next_id;
+                    new (cur) node_type(key, value, nid, true);
+                    cur_obj.base_ptr()->clear_unlinked();
+
+                    unlock(listlock_);
+                    return std::make_pair(true, cur);
+                }
+                unlock(listlock_);
+                return std::make_pair(false, cur);
+            } else if (c > 0) {
+                // insertion point
+                break;
+            }
+            prev_obj = cur_obj;
+            cur_obj = cur->next_id;
+        }
+
+        // allocate a new object for the newly inserted node (key)
+        auto new_obj = StoSnapshot::new_object<node_type>();
+        oid_type new_id = new_obj.first;
+        node_type* new_node = new_obj.second;
+
+        new (new_node) node_type(key, value, cur_obj, true);
+
+        if (!prev_obj.is_null()) {
+            prev_obj.deref(0).second->next_id = new_id;
+        } else {
+            head_id_ = new_id;
+        }
+
+        unlock(listlock_);
+        return std::make_pair(true, new_node);
     }
 
     // skip nodes that are not part of the snapshot we look for
