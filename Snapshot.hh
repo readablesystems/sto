@@ -140,9 +140,10 @@ public:
         assert(is_immutable());
         sid_type time = Sto::GSC_snapshot();
         NodeWrapper<N>* rcu = new NodeWrapper<N>(*nw_);
+        NodeWrapper<N>* old = nw_;
         rcu->s_sid = time;
-        h_.add_snapshot(nw_, time);
         nw_ = rcu;
+        h_.add_snapshot(old, time);
     }
 
     void set_unlinked() {unlinked = true;}
