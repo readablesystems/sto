@@ -23,10 +23,16 @@ template <typename K, typename V, typename Compare=DefaultCompare<K>>
 class List;
 
 template <typename K, typename V>
+class ListProxy;
+
+template <typename K, typename V>
 class ListNode {
 public:
     template <typename KK, typename VV, typename C>
     friend class List;
+
+    template <typename KK, typename VV>
+    friend class ListProxy;
 
     typedef StoSnapshot::ObjectID<ListNode<K, V>> oid_type;
     typedef StoSnapshot::sid_type sid_type;
@@ -68,6 +74,38 @@ protected:
     TVersion vers;
 };
 
+// proxy type for List::operator[]
+template <typename K, typename V>
+class ListProxy {
+public:
+    typedef ListNode<K, V> node_type;
+
+    explicit ListProxy(node_type* node) noexcept : node_(node) {}
+
+    // transactional non-snapshot read
+    operator V() {
+        auto item = Sto::item(this, node_);
+        if (item.has_write()) {
+            return item.template write_value<V>();
+        } else {
+            return node_->val.read(node_->version());
+        }
+    }
+
+    // transactional assignment
+    ListProxy& operator=(const V& other) {
+        Sto::item(this, node_).add_write(other);
+        return *this;
+    }
+
+    ListProxy& operator=(const ListProxy& other) {
+        Sto::item(this, node_).add_write((V)other);
+        return *this;
+    }
+private:
+    node_type* node_;
+};
+
 // always sorted, no duplicates
 template <typename K, typename V, typename Compare>
 class List : public TObject {
@@ -76,6 +114,8 @@ public:
     typedef StoSnapshot::ObjectID<node_type> oid_type;
     typedef StoSnapshot::NodeWrapper<node_type> wrapper_type;
     typedef StoSnapshot::sid_type sid_type;
+
+    enum TxnStage {execution, commit, cleanup, none};
 
     static constexpr uintptr_t list_key = 0;
     static constexpr uintptr_t size_key = 1;
@@ -88,7 +128,7 @@ public:
         return std::make_pair(n, n ? n->val.access() : V());
     }
 
-    std::pair<bool, V> find(const K& k) {
+    std::pair<bool, V> trans_find(const K& k) {
         sid_type sid = Sto::active_snapshot();
         if (sid) {
             // snapshot reads are safe as nontrans
@@ -117,7 +157,28 @@ public:
         return ret_pair;
     }
 
+    ListProxy<K, V> operator[](const K& key) {
+        return ListProxy<K, V>(insert_position(key));
+    }
+
 private:
+    // returns the node the key points to, or abort if observes uncommitted state
+    node_type* insert_position(const K& key){
+        lock(listlock_);
+        auto results = _insert(key, V());
+        unlock(listlock_);
+
+        if (results.first) {
+            return results.second;
+        }
+        auto item = Sto::item(this, results.second);
+        if (!item.has_write() && !results.second->is_valid()) {
+            Sto::abort();
+        } else {
+            return results.second;
+        }
+    }
+
     node_type* _find(const K& key, sid_type sid) {
         node_type* cur = next_snapshot(head_id_, sid);
         bool cur_history = false;
@@ -148,10 +209,9 @@ private:
     }
 
     // XXX note to cleanup: never structurally remove a node until history is empty
+    // needs lock
     std::pair<bool, node_type*> _insert(const K& key, const V& value) {
-        lock(listlock_);
-
-        oid_type prev_obj = oid_type(nullptr);
+        oid_type prev_obj = nullptr;
         oid_type cur_obj = head_id_;
 
         while (!cur_obj.is_null()) {
@@ -165,10 +225,8 @@ private:
                     new (cur) node_type(key, value, nid, true);
                     cur_obj.base_ptr()->clear_unlinked();
 
-                    unlock(listlock_);
                     return std::make_pair(true, cur);
                 }
-                unlock(listlock_);
                 return std::make_pair(false, cur);
             } else if (c > 0) {
                 // insertion point
@@ -191,8 +249,62 @@ private:
             head_id_ = new_id;
         }
 
-        unlock(listlock_);
         return std::make_pair(true, new_node);
+    }
+
+    // needs lock
+    bool _remove(const K& key, TxnStage stage) {
+        oid_type prev_obj = nullptr;
+        oid_type cur_obj = head_id_;
+        while (!cur_obj.is_null()) {
+            node_type* cur = cur_obj.deref(0).second;
+            auto bp = cur_obj.base_ptr();
+            if (comp_(cur->key, key) == 0) {
+                if (stage == commit) {
+                    assert(cur->is_valid());
+                    assert(!bp->is_unlinked());
+                    // never physically unlink the object since it must contain snapshots!
+                    // (the one we just saved!)
+                    bp->save_copy_in_history();
+                    cur->mark_invalid();
+                    bp->set_unlinked();
+                } else if (stage == cleanup) {
+                    assert(!cur->is_valid());
+                    assert(!bp->is_unlinked());
+                    if (bp->history_is_empty()) {
+                        // unlink the entire object if that's all we've instered
+                        _do_unlink(prev_obj, cur_obj, stage);
+                    } else {
+                        cur->mark_invalid();
+                        bp->set_unlinked();
+                    }
+                } else if (stage == none) {
+                    _do_unlink(prev_obj, cur_obj, stage);
+                }
+                return true;
+            }
+            prev_obj = cur_obj;
+            cur_obj = cur->next_id;
+        }
+        return false;
+    }
+
+    inline void _do_unlink(oid_type& prev_obj, oid_type cur_obj, TxnStage stage) {
+        node_type* cur = cur_obj.deref(0).second;
+        if (!prev_obj.is_null()) {
+            prev_obj.deref(0).second->next_id = cur->next_id;
+        } else {
+            head_id_ = cur->next_id;
+        }
+
+        auto bp = cur_obj.base_ptr();
+        if (stage == none) {
+            delete cur;
+            delete bp;
+        } else {
+            Transaction::rcu_delete(cur);
+            Transaction::rcu_delete(bp);
+        }
     }
 
     // skip nodes that are not part of the snapshot we look for

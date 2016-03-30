@@ -68,6 +68,7 @@ public:
     std::pair<N*, N*> deref(sid_type sid) {
         std::pair<N*, N*> ret(nullptr, nullptr);
         if (direct()) {
+            assert(sid);
             ret.first = reinterpret_cast<N*>(oid_ & mask);
         } else {
             NodeBase<N>* baseptr = reinterpret_cast<NodeBase<N>*>(oid_);
@@ -115,8 +116,14 @@ public:
     void cleanup_until(sid_type sid);
     void add_snapshot(NodeWrapper<N>* n, sid_type time);
     N* search(sid_type sid);
+    bool is_empty() const {
+        lock_read(lock_);
+        bool ret = list_.empty();
+        unlock_read(lock_);
+        return ret;
+    }
 private:
-    RWLock lock_;
+    mutable RWLock lock_;
     std::deque<NodeWrapper<N>*> list_;
 
     static bool sid_comp(const NodeWrapper<N>* n, sid_type sid) {return n->s_sid < sid;};
@@ -151,6 +158,7 @@ public:
     bool is_unlinked() const {return unlinked;}
 
     N* search_history(sid_type sid) {h_.search(sid);}
+    bool history_is_empty() const {return h_.is_empty();}
 private:
     bool unlinked;
     History<N> h_;
