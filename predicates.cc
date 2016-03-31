@@ -102,9 +102,11 @@ void run_find_push_pop_get(T* q, int me) {
                             int val = slotdist(transgen) % max_value;
                             q->push_back(val);
                         }
+                    } else if (q->size() >= size_type(max_key)) {
+                        int key = slotdist(transgen) % max_key;
+                        q->transGet(key);
                     } else {
-                        int sz = q->size();
-                        int key = slotdist(transgen) % (sz - 50);
+                        int key = slotdist(transgen) % q->size();
                         q->transGet(key);
                     }
                 }
