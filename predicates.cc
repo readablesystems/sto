@@ -22,7 +22,8 @@ int max_key = 1000;
 double search_percent = 0.6;
 double pushback_percent = 0.2; // pop_percent will be the same to keep the size of array roughly the same
 
-int find_aborts[32];
+unsigned find_aborts[32];
+uint64_t checksums[32];
 uint32_t initial_seeds[64];
 int unsuccessful_finds = 0;
 TransactionTid::type lock;
@@ -50,10 +51,10 @@ InputIt findIt(InputIt first, InputIt last, const T& value)
 
 template <typename T>
 int findK(T* q, int val) {
-  typename T::const_iterator fit = q->cbegin();
-  typename T::const_iterator eit = q->cend();
-  typename T::const_iterator it = findIt(fit, eit, val);
-  return it-fit;
+    typename T::const_iterator fit = q->cbegin();
+    typename T::const_iterator eit = q->cend();
+    typename T::const_iterator it = findIt(fit, eit, val);
+    return it-fit;
 }
 
 template <typename T>
@@ -75,11 +76,16 @@ void run_find_push_pop_get(T* q, int me) {
     Rand::result_type pushback_thresh = (search_percent + pushback_percent) * Rand::max();
     Rand::result_type popback_thresh = (search_percent + 2 * pushback_percent) * Rand::max();
 
+    typename T::value_type results[OPS];
+    unsigned nresults;
+    uint64_t checksum = 0;
+
     for (int i = 0; i < N; ++i) {
         // so that retries of this transaction do the same thing
         Rand snap_transgen = transgen;
         while (1) {
             Sto::start_transaction();
+            nresults = 0;
             try {
                 for (int j = 0; j < OPS; ++j) {
                     find_op = false;
@@ -87,7 +93,7 @@ void run_find_push_pop_get(T* q, int me) {
                     if (op < search_thresh) {
                         int val = slotdist(transgen) % maxkey50; // This is always a successful find
                         find_op = true;
-                        findK(q, val);
+                        results[nresults++] = findK(q, val);
                     } else if (op < pushback_thresh) {
                         if (q->size() < size_type(maxkey110)) {
                             int val = slotdist(transgen) % max_value;
@@ -104,10 +110,10 @@ void run_find_push_pop_get(T* q, int me) {
                         }
                     } else if (q->size() >= size_type(max_key)) {
                         int key = slotdist(transgen) % max_key;
-                        q->transGet(key);
+                        results[nresults++] = q->transGet(key);
                     } else {
                         int key = slotdist(transgen) % q->size();
-                        q->transGet(key);
+                        results[nresults++] = q->transGet(key);
                     }
                 }
 
@@ -119,8 +125,13 @@ void run_find_push_pop_get(T* q, int me) {
                 ++naborts;
             transgen = snap_transgen;
         }
+
+        for (unsigned x = 0; x != nresults; ++x)
+            checksum += results[x] << x;
     }
+
     find_aborts[me] = naborts;
+    checksums[me] = checksum;
 }
 
 template <typename T>
@@ -250,36 +261,40 @@ void init(T* q) {
 
 template <typename T>
 void run_and_report(const char* name) {
-  struct timeval tv1,tv2;
+    struct timeval tv1,tv2;
 
-  for (unsigned i = 0; i < arraysize(find_aborts); ++i)
-    find_aborts[i] = 0;
+    for (unsigned i = 0; i < arraysize(find_aborts); ++i)
+        find_aborts[i] = checksums[i] = 0;
+    unsuccessful_finds = 0;
 
-  unsuccessful_finds = 0;
-  T q;
-  q.nontrans_reserve(4096);
-  init(&q);
+    T q;
+    q.nontrans_reserve(4096);
+    init(&q);
 
-  gettimeofday(&tv1, NULL);
+    gettimeofday(&tv1, NULL);
 
-  startAndWait(nthreads, &q);
+    startAndWait(nthreads, &q);
 
-  gettimeofday(&tv2, NULL);
-  int total_aborts = 0;
-  for (int i = 0; i < 16; i++) {
-    total_aborts += find_aborts[i];
-  }
-  printf("Retries: %i, unsuccessful finds: %i\n", total_aborts, unsuccessful_finds);
-  printf("%s: ", name);
-  print_time(tv1, tv2);
+    gettimeofday(&tv2, NULL);
+
+    unsigned long long total_aborts = 0, checksum = 0;
+    for (unsigned i = 0; i < arraysize(find_aborts); i++) {
+        total_aborts += find_aborts[i];
+        checksum += checksums[i] << i;
+    }
+    printf("Retries: %llu, unsuccessful finds: %i", total_aborts, unsuccessful_finds);
+    if (nthreads == 1)
+        printf(", checksum: %llx", checksum);
+    printf("\n%s: ", name);
+    print_time(tv1, tv2);
 
 #if STO_PROFILE_COUNTERS
-  Transaction::print_stats();
-  {
-    txp_counters tc = Transaction::txp_counters_combined();
-    printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
-  }
-  Transaction::clear_stats();
+    Transaction::print_stats();
+    {
+        txp_counters tc = Transaction::txp_counters_combined();
+        printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+    }
+    Transaction::clear_stats();
 #endif
 }
 
