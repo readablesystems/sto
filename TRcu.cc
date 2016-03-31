@@ -49,6 +49,21 @@ void TRcuSet::grow() {
     assert(current_->head_ == 0 && current_->tail_ == 0);
 }
 
+inline bool TRcuGroup::clean_until(epoch_type max_epoch) {
+    while (head_ != tail_ && signed_epoch_type(max_epoch - e_[head_].u.epoch) > 0) {
+        ++head_;
+        while (head_ != tail_ && e_[head_].function) {
+            e_[head_].function(e_[head_].u.argument);
+            ++head_;
+        }
+    }
+    if (head_ == tail_) {
+        head_ = tail_ = 0;
+        return true;
+    } else
+        return false;
+}
+
 void TRcuSet::hard_clean_until(epoch_type max_epoch) {
     TRcuGroup* empty_head = nullptr;
     TRcuGroup* empty_tail = nullptr;

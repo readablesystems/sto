@@ -56,20 +56,7 @@ public:
         e_[tail_].u.argument = argument;
         ++tail_;
     }
-    bool clean_until(epoch_type max_epoch) {
-        while (head_ != tail_ && signed_epoch_type(max_epoch - e_[head_].u.epoch) > 0) {
-            ++head_;
-            while (head_ != tail_ && e_[head_].function) {
-                e_[head_].function(e_[head_].u.argument);
-                ++head_;
-            }
-        }
-        if (head_ == tail_) {
-            head_ = tail_ = 0;
-            return true;
-        } else
-            return false;
-    }
+    inline bool clean_until(epoch_type max_epoch);
 };
 
 class TRcuSet {
