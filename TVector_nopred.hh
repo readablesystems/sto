@@ -8,6 +8,7 @@ class TVector_nopred : public TObject {
 public:
     using size_type = int;
     using difference_type = int;
+    typedef typename W<T>::version_type version_type;
 private:
 #ifdef TVECTOR_DEFAULT_CAPACITY
     static constexpr size_type default_capacity = TVECTOR_DEFAULT_CAPACITY;
@@ -35,7 +36,6 @@ public:
     class const_iterator;
     typedef T value_type;
     typedef typename W<T>::read_type get_type;
-    typedef typename W<T>::version_type version_type;
     typedef TConstArrayProxy<TVector_nopred<T, W> > const_proxy_type;
     typedef TArrayProxy<TVector_nopred<T, W> > proxy_type;
     typedef proxy_type reference;
@@ -44,7 +44,7 @@ public:
     TVector_nopred()
         : size_(0), max_size_(0), capacity_(default_capacity) {
         data_ = reinterpret_cast<elem*>(new char[sizeof(elem) * capacity_]);
-        for (size_type i = 0; i < capacity_; ++i)
+        for (size_type i = 0; i != capacity_; ++i)
             data_[i].vers = dead_bit;
     }
     ~TVector_nopred() {
@@ -97,11 +97,12 @@ public:
         auto sitem = size_item().add_write();
         pred_type& wval = sitem.template xwrite_value<pred_type>();
         ++wval.second;
-        Sto::item(this, wval.second - 1).clear_write().add_write(std::move(x)).clear_flags(pop_bit);
+        Sto::item(this, wval.second - 1).clear_write().clear_flags(pop_bit)
+            .add_write(std::move(x));
     }
     void pop_back() {
         auto sitem = size_item().add_write();
-        pred_type& wval = sitem.template xwrite_value<pred_type>();
+        pred_type& wval = size_info(sitem);
         if (!wval.second)
             version_type::opaque_throw(std::out_of_range("TVector_nopred::pop_back"));
         --wval.second;
@@ -127,18 +128,18 @@ public:
 
     // transGet and friends
     get_type transGet(size_type i) const {
-        auto item = Sto::item(this, i);
+        TransProxy item = Sto::item(this, i);
         if (item.has_write()) {
             if (item.has_flag(pop_bit)) {
             out_of_range:
                 version_type::opaque_throw(std::out_of_range("TVector_nopred::transGet"));
             }
-            return item.template write_value<T>();
+            return item.write_value<T>();
         } else {
-            get_type value = data_[i].v.read(item, data_[i].vers);
-            if (item.template read_value<version_type>().value() & dead_bit)
+            get_type result = data_[i].v.read(item, data_[i].vers);
+            if (item.read_value<version_type>().value() & dead_bit)
                 goto out_of_range;
-            return value;
+            return result;
         }
     }
     void transPut(size_type i, T x) {
@@ -185,18 +186,19 @@ public:
     void install(TransItem& item, Transaction& txn) override {
         auto key = item.template key<key_type>();
         if (key == size_key) {
-            pred_type& wval = item.template xwrite_value<pred_type>();
+            pred_type& wval = size_info(item);
             size_.write(wval.second);
             txn.set_version(size_vers_);
-        } else if (!item.has_flag(pop_bit)) {
+            return;
+        }
+        if (!item.has_flag(pop_bit)) {
             if (key == max_size_) {
                 new(reinterpret_cast<void*>(&data_[key].v)) W<T>(std::move(item.write_value<T>()));
                 ++max_size_;
             } else
                 data_[key].v.write(std::move(item.write_value<T>()));
-            txn.set_version_unlock(data_[key].vers, item);
-        } else
-            txn.set_version_unlock(data_[key].vers, item, dead_bit);
+        }
+        txn.set_version_unlock(data_[key].vers, item, item.has_flag(pop_bit) ? dead_bit : 0);
     }
     void unlock(TransItem& item) override {
         auto key = item.template key<key_type>();
@@ -209,31 +211,21 @@ public:
         w << "{TVector_nopred<" << typeid(T).name() << "> " << (void*) this;
         key_type key = item.key<key_type>();
         if (key == size_key) {
-            w << ".size @" << item.xwrite_value<pred_type>().first;
+            w << ".size @" << size_info(item).first;
             if (item.has_read())
                 w << " R" << item.read_value<version_type>();
             if (item.has_write())
-                w << " =" << item.xwrite_value<pred_type>().second;
+                w << " =" << size_info(item).second;
         } else {
             w << "[" << key << "]";
             if (item.has_read())
                 w << " R" << item.read_value<version_type>();
-            if (item.has_write())
+            if (item.has_write() && item.has_flag(pop_bit))
+                w << " =X";
+            else if (item.has_write())
                 w << " =" << item.write_value<T>();
         }
         w << "}";
-    }
-    void print(std::ostream& w) const {
-        w << "TVector_nopred<" << typeid(T).name() << ">{" << (void*) this
-          << "size=" << size_.access() << '@' << size_vers_ << " [";
-        for (size_type i = 0; i < size_.access(); ++i) {
-            if (i)
-                w << ", ";
-            if (i >= 10)
-                w << '[' << i << ']';
-            w << data_[i].v.access() << '@' << data_[i].vers;
-        }
-        w << "]}";
     }
     bool check_not_locked_here(int here) const {
         if (size_vers_.is_locked_here(here))
@@ -244,10 +236,7 @@ public:
                 return false;
         return true;
     }
-    friend std::ostream& operator<<(std::ostream& w, const TVector_nopred<T, W>& v) {
-        v.print(w);
-        return w;
-    }
+    void print(std::ostream& w) const;
 
 private:
     struct elem {
@@ -269,20 +258,30 @@ private:
         }
         return item;
     }
+    static pred_type& size_info(TransProxy sitem) {
+        return sitem.template xwrite_value<pred_type>();
+    }
+    static pred_type& size_info(TransItem& sitem) {
+        return sitem.template xwrite_value<pred_type>();
+    }
+    static const pred_type& size_info(const TransItem& sitem) {
+        return sitem.template xwrite_value<pred_type>();
+    }
     pred_type& size_info() const {
-        return size_item().template xwrite_value<pred_type>();
+        return size_info(size_item());
+    }
+
+    get_type transGet(size_type i, TransProxy item) const {
+        if (item.has_write())
+            return item.template write_value<T>();
+        else
+            return data_[i].v.read(item, data_[i].vers);
     }
     bool put_in_range(TransProxy& item, size_type i) const {
         if (i >= capacity_)
             return false;
         item.observe(data_[i].vers).add_flags(onlyexists_bit);
         return !(item.read_value<version_type>().value() & dead_bit);
-    }
-    get_type transGet(size_type i, TransProxy item) const {
-        if (item.has_write())
-            return item.template write_value<T>();
-        else
-            return data_[i].v.read(item, data_[i].vers);
     }
 
     friend class iterator;
@@ -448,12 +447,12 @@ inline auto TVector_nopred<T, W>::cend() const -> const_iterator {
 
 template <typename T, template <typename> typename W>
 inline auto TVector_nopred<T, W>::begin() const -> const_iterator {
-    return const_iterator(this, 0);
+    return cbegin();
 }
 
 template <typename T, template <typename> typename W>
 inline auto TVector_nopred<T, W>::end() const -> const_iterator {
-    return iterator(this, size_info().second);
+    return cend();
 }
 
 
@@ -466,28 +465,36 @@ inline auto TVector_nopred<T, W>::const_iterator::operator-(const const_iterator
 
 template <typename T, template <typename> typename W>
 void TVector_nopred<T, W>::clear() {
-    resize(0);
+    auto sitem = size_item().add_write();
+    pred_type& wval = size_info(sitem);
+    for (size_type i = 0; i != wval.second; ++i)
+        Sto::item(this, i).add_write().add_flags(pop_bit);
+    wval.second = 0;
 }
 
 template <typename T, template <typename> typename W>
 auto TVector_nopred<T, W>::erase(iterator pos) -> iterator {
     auto sitem = size_item().add_write();
-    pred_type& wval = sitem.template xwrite_value<pred_type>();
+    pred_type& wval = size_info(sitem);
     if (pos.i_ >= wval.second)
         version_type::opaque_throw(std::out_of_range("TVector_nopred::erase"));
-    for (auto idx = pos.i_; idx != wval.second - 1; ++idx)
-        transPut(idx, transGet(idx + 1));
     --wval.second;
-    Sto::item(this, wval.second).add_write().add_flags(pop_bit);
+    TransProxy item = Sto::item(this, pos.i_);
+    for (size_type i = pos.i_; i != wval.second; ++i) {
+        TransProxy next_item = Sto::item(this, i + 1);
+        item.add_write(transGet(i + 1, next_item));
+        item = next_item;
+    }
+    item.add_write().add_flags(pop_bit);
     return pos;
 }
 
 template <typename T, template <typename> typename W>
 auto TVector_nopred<T, W>::insert(iterator pos, T value) -> iterator {
     auto sitem = size_item().add_write();
-    pred_type& wval = sitem.template xwrite_value<pred_type>();
+    pred_type& wval = size_info(sitem);
     if (pos.i_ > wval.second)
-        Sto::abort();
+        version_type::opaque_throw(std::out_of_range("TVector_nopred::insert"));
     ++wval.second;
     TransProxy item = Sto::item(this, wval.second - 1).clear_write().clear_flags(pop_bit);
     for (size_type i = wval.second - 1; i != pos.i_; --i) {
@@ -501,15 +508,15 @@ auto TVector_nopred<T, W>::insert(iterator pos, T value) -> iterator {
 
 template <typename T, template <typename> typename W>
 void TVector_nopred<T, W>::resize(size_type size, T value) {
-    auto sitem = size_item();
-    pred_type& wval = sitem.template xwrite_value<pred_type>();
+    auto sitem = size_item().add_write();
+    pred_type& wval = size_info(sitem);
     size_type old_size = wval.second;
-    sitem.add_write();
-    for (; old_size < size; ++old_size)
-        Sto::item(this, old_size).add_write(value).clear_flags(pop_bit);
-    for (; old_size > size; --old_size)
-        Sto::item(this, old_size - 1).add_write().add_flags(pop_bit);
     wval.second = size;
+    for (; old_size > wval.second; --old_size)
+        Sto::item(this, old_size - 1).add_write().add_flags(pop_bit);
+    for (; old_size < wval.second; ++old_size)
+        Sto::item(this, old_size).clear_write().clear_flags(pop_bit)
+            .add_write(value);
 }
 
 template <typename T, template <typename> typename W>
@@ -520,10 +527,40 @@ void TVector_nopred<T, W>::nontrans_reserve(size_type size) {
     if (new_capacity > capacity_) {
         elem* new_data = reinterpret_cast<elem*>(new char[sizeof(elem) * new_capacity]);
         memcpy(new_data, data_, sizeof(elem) * capacity_);
-        for (size_type x = capacity_; x != new_capacity; ++x)
-            new_data[x].vers = dead_bit;
+        for (size_type i = capacity_; i != new_capacity; ++i)
+            new_data[i].vers = dead_bit;
         Transaction::rcu_delete_array(reinterpret_cast<char*>(data_));
         data_ = new_data;
         capacity_ = new_capacity;
     }
+}
+
+template <typename T, template <typename> typename W>
+void TVector_nopred<T, W>::print(std::ostream& w) const {
+    size_type sz = size_.access();
+    w << "TVector_nopred<" << typeid(T).name() << ">{" << (void*) this
+      << "size=" << sz << '@' << size_vers_ << " [";
+    for (size_type i = 0; i < sz; ++i) {
+        if (i)
+            w << ", ";
+        if (i >= 10)
+            w << '[' << i << ']';
+        w << data_[i].v.access() << '@' << data_[i].vers;
+    }
+    w << "]";
+    for (size_type i = sz; i < max_size_ && i < sz + 10; ++i) {
+        w << ", ";
+        if (i >= 10)
+            w << '[' << i << ']';
+        w << '@' << data_[i].vers;
+    }
+    if (sz + 10 < max_size_)
+        w << "...";
+    w << "}";
+}
+
+template <typename T, template <typename> typename W>
+std::ostream& operator<<(std::ostream& w, const TVector_nopred<T, W>& v) {
+    v.print(w);
+    return w;
 }

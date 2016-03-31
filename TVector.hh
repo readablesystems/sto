@@ -329,7 +329,7 @@ private:
         return size_info(size_item());
     }
 
-    get_type transGet(size_type i, TransProxy item) {
+    get_type transGet(size_type i, TransProxy item) const {
         if (item.has_write())
             return item.template write_value<T>();
         else

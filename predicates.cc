@@ -204,7 +204,7 @@ enum {
 };
 
 static const Clp_Option options[] = {
-  { "nthreads", 0, opt_nthreads, Clp_ValInt, Clp_Optional },
+  { "nthreads", 'j', opt_nthreads, Clp_ValInt, Clp_Optional },
   { "ntrans", 0, opt_ntrans, Clp_ValInt, Clp_Optional },
   { "opspertrans", 0, opt_opspertrans, Clp_ValInt, Clp_Optional },
   { "searchpercent", 0, opt_searchpercent, Clp_ValDouble, Clp_Optional },
