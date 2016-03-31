@@ -15,8 +15,6 @@ private:
 #else
     static constexpr size_type default_capacity = 128;
 #endif
-    static constexpr TransactionTid::type dead_bit = TransactionTid::user_bit;
-    static constexpr TransItem::flags_type size_flag = TransItem::user0_bit;
     using pred_type = TIntRange<size_type>;
     using key_type = int;
     static constexpr key_type size_key = -1;
@@ -31,6 +29,7 @@ private:
 
     static constexpr TransItem::flags_type pop_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type onlyexists_bit = pop_bit << 1;
+    static constexpr typename version_type::type dead_bit = version_type::user_bit;
 public:
     class iterator;
     class const_iterator;
