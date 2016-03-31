@@ -68,6 +68,13 @@ void run_find_push_pop_get(T* q, int me) {
     bool find_op = false;
     unsigned naborts = 0;
 
+    size_type maxkey50 = size_type(max_key * 0.5);
+    size_type maxkey90 = size_type(max_key * 0.9);
+    size_type maxkey110 = size_type(max_key * 1.1);
+    Rand::result_type search_thresh = search_percent * Rand::max();
+    Rand::result_type pushback_thresh = (search_percent + pushback_percent) * Rand::max();
+    Rand::result_type popback_thresh = (search_percent + 2 * pushback_percent) * Rand::max();
+
     for (int i = 0; i < N; ++i) {
         // so that retries of this transaction do the same thing
         Rand snap_transgen = transgen;
@@ -76,20 +83,20 @@ void run_find_push_pop_get(T* q, int me) {
             try {
                 for (int j = 0; j < OPS; ++j) {
                     find_op = false;
-                    int op = slotdist(transgen) % 100;
-                    if (op < search_percent * 100) {
-                        int val = slotdist(transgen) % int(max_key * 0.5); // This is always a successful find
+                    Rand::result_type op = transgen();
+                    if (op < search_thresh) {
+                        int val = slotdist(transgen) % maxkey50; // This is always a successful find
                         find_op = true;
                         findK(q, val);
-                    } else if (op < (search_percent + pushback_percent) *100){
-                        if (q->size() < size_type(1.1 * max_key)) {
+                    } else if (op < pushback_thresh) {
+                        if (q->size() < size_type(maxkey110)) {
                             int val = slotdist(transgen) % max_value;
                             q->push_back(val);
                         } else {
                             q->pop_back();
                         }
-                    } else if (op < (search_percent + 2*pushback_percent) * 100) {
-                        if (q->size() > size_type(0.9 * max_key)) {
+                    } else if (op < popback_thresh) {
+                        if (q->size() > size_type(maxkey90)) {
                             q->pop_back();
                         } else {
                             int val = slotdist(transgen) % max_value;
