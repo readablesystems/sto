@@ -45,6 +45,10 @@ void Transaction::refresh_tset_chunk() {
 }
 
 void* Transaction::epoch_advancer(void*) {
+    static int num_epoch_advancers = 0;
+    if (fetch_and_add(&num_epoch_advancers, 1) != 0)
+        std::cerr << "WARNING: more than one epoch_advancer thread\n";
+
     // don't bother epoch'ing til things have picked up
     usleep(100000);
     while (global_epochs.run) {
@@ -63,6 +67,7 @@ void* Transaction::epoch_advancer(void*) {
 
         usleep(100000);
     }
+    fetch_and_add(&num_epoch_advancers, -1);
     return NULL;
 }
 

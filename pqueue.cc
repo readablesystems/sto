@@ -162,10 +162,7 @@ void startAndWait(T* queue, bool parallel = true) {
         else
             pthread_create(&tids[i], NULL, runConcFunc, &testers[i]);
     }
-    pthread_t advancer;
-    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
-    pthread_detach(advancer);
-    
+
     for (int i = 0; i < N_THREADS; ++i) {
         pthread_join(tids[i], NULL);
     }
@@ -556,7 +553,11 @@ int main() {
     for (int i = 0; i < N_THREADS; i++) {
         txn_list.emplace_back();
     }
-    
+
+    pthread_t advancer;
+    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
+    pthread_detach(advancer);
+
     startAndWait(&q);
     
     gettimeofday(&tv2, NULL);
