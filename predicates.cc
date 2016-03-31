@@ -59,6 +59,7 @@ int findK(T* q, int val) {
 template <typename T>
 void run_find_push_pop_get(T* q, int me) {
     TThread::set_id(me);
+    using size_type = typename T::size_type;
     std::uniform_int_distribution<long> slotdist(0, max_range);
     Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
 
@@ -81,16 +82,14 @@ void run_find_push_pop_get(T* q, int me) {
                         find_op = true;
                         findK(q, val);
                     } else if (op < (search_percent + pushback_percent) *100){
-                        int sz = q->size();
-                        if (sz < 1.1 * max_key) {
+                        if (q->size() < size_type(1.1 * max_key)) {
                             int val = slotdist(transgen) % max_value;
                             q->push_back(val);
                         } else {
                             q->pop_back();
                         }
                     } else if (op < (search_percent + 2*pushback_percent) * 100) {
-                        int sz = q->size();
-                        if (sz > 0.9*max_key) {
+                        if (q->size() > size_type(0.9 * max_key)) {
                             q->pop_back();
                         } else {
                             int val = slotdist(transgen) % max_value;
