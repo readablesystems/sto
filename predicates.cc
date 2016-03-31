@@ -58,65 +58,61 @@ int findK(T* q, int val) {
 
 template <typename T>
 void run_find_push_pop_get(T* q, int me) {
-  TThread::set_id(me);
-  std::uniform_int_distribution<long> slotdist(0, max_range);
-  Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
+    TThread::set_id(me);
+    std::uniform_int_distribution<long> slotdist(0, max_range);
+    Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
 
-  int N = ntrans/nthreads;
-  int OPS = opspertrans;
-  bool find_op = false;
-  unsigned naborts = 0;
+    int N = ntrans/nthreads;
+    int OPS = opspertrans;
+    bool find_op = false;
+    unsigned naborts = 0;
 
-  for (int i = 0; i < N; ++i) {
-    // so that retries of this transaction do the same thing
-    Rand snap_transgen = transgen;
-    while (1) {
-      Sto::start_transaction();
-      try {
-        for (int j = 0; j < OPS; ++j) {
-          find_op = false;
-          int op = slotdist(transgen) % 100;
-          if (op < search_percent * 100) {
-            int val = slotdist(transgen) % int(max_key * 0.5); // This is always a successful find
-            find_op = true;
-            findK(q, val);
-          } else if (op < (search_percent + pushback_percent) *100){
-            int sz = q->size();
-            if (sz < 1.1 * max_key) {
-              int val = slotdist(transgen) % max_value;
-              q->push_back(val);
-            } else {
-              q->pop_back();
+    for (int i = 0; i < N; ++i) {
+        // so that retries of this transaction do the same thing
+        Rand snap_transgen = transgen;
+        while (1) {
+            Sto::start_transaction();
+            try {
+                for (int j = 0; j < OPS; ++j) {
+                    find_op = false;
+                    int op = slotdist(transgen) % 100;
+                    if (op < search_percent * 100) {
+                        int val = slotdist(transgen) % int(max_key * 0.5); // This is always a successful find
+                        find_op = true;
+                        findK(q, val);
+                    } else if (op < (search_percent + pushback_percent) *100){
+                        int sz = q->size();
+                        if (sz < 1.1 * max_key) {
+                            int val = slotdist(transgen) % max_value;
+                            q->push_back(val);
+                        } else {
+                            q->pop_back();
+                        }
+                    } else if (op < (search_percent + 2*pushback_percent) * 100) {
+                        int sz = q->size();
+                        if (sz > 0.9*max_key) {
+                            q->pop_back();
+                        } else {
+                            int val = slotdist(transgen) % max_value;
+                            q->push_back(val);
+                        }
+                    } else {
+                        int sz = q->size();
+                        int key = slotdist(transgen) % (sz - 50);
+                        q->transGet(key);
+                    }
+                }
+
+                if (Sto::try_commit())
+                    break;
+            } catch (Transaction::Abort e) {
             }
-          } else if (op < (search_percent + 2*pushback_percent) * 100) {
-            int sz = q->size();
-            if (sz > 0.9*max_key) {
-              q->pop_back();
-            } else {
-              int val = slotdist(transgen) % max_value;
-              q->push_back(val);
-            }
-          } else {
-            int sz = q->size();
-            int key = slotdist(transgen) % (sz - 50);
-            
-            q->transGet(key);
-          }
-          
+            if (find_op)
+                ++naborts;
+            transgen = snap_transgen;
         }
-        
-        if (Sto::try_commit()) {
-          break;
-        }
-        
-      } catch (Transaction::Abort e) {
-      }
-      if (find_op)
-        ++naborts;
-      transgen = snap_transgen;
     }
-  }
-  find_aborts[me] = naborts;
+    find_aborts[me] = naborts;
 }
 
 template <typename T>
