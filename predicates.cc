@@ -38,23 +38,14 @@ struct TesterPair {
   int me;
 };
 
-template<class InputIt, class T>
-InputIt findIt(InputIt first, InputIt last, const T& value)
-{
-  for (; first != last; ++first) {
-    if (*first == value) {
-      return first;
-    }
-  }
-  return last;
-}
-
 template <typename T>
 int findK(T* q, int val) {
     typename T::const_iterator fit = q->cbegin();
     typename T::const_iterator eit = q->cend();
-    typename T::const_iterator it = findIt(fit, eit, val);
-    return it-fit;
+    typename T::const_iterator it = fit;
+    while (it != eit && *it != val)
+        ++it;
+    return it - fit;
 }
 
 template <typename T>
