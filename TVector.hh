@@ -3,7 +3,7 @@
 #include "TArrayProxy.hh"
 #include "TIntPredicate.hh"
 
-template <typename T, template <typename> typename W = TOpaqueWrapped>
+template <typename T, template <typename> class W = TOpaqueWrapped>
 class TVector : public TObject {
 public:
     using size_type = int;
@@ -347,7 +347,7 @@ private:
 };
 
 
-template <typename T, template <typename> typename W>
+template <typename T, template <typename> class W>
 class TVector<T, W>::const_iterator : public std::iterator<std::random_access_iterator_tag, T> {
 public:
     typedef TVector<T, W> vector_type;
@@ -454,7 +454,7 @@ protected:
     friend class TVector<T, W>;
 };
 
-template <typename T, template <typename> typename W>
+template <typename T, template <typename> class W>
 class TVector<T, W>::iterator : public const_iterator {
 public:
     typedef TVector<T, W> vector_type;
@@ -511,40 +511,40 @@ private:
 };
 
 
-template <typename T, template <typename> typename W>
+template <typename T, template <typename> class W>
 inline auto TVector<T, W>::begin() -> iterator {
     return iterator(this, 0, 0);
 }
 
-template <typename T, template <typename> typename W>
+template <typename T, template <typename> class W>
 inline auto TVector<T, W>::end() -> iterator {
     TransProxy sitem = size_item();
     return iterator(this, size_info(sitem).second, &sitem.item());
 }
 
-template <typename T, template <typename> typename W>
+template <typename T, template <typename> class W>
 inline auto TVector<T, W>::cbegin() const -> const_iterator {
     return const_iterator(this, 0, 0);
 }
 
-template <typename T, template <typename> typename W>
+template <typename T, template <typename> class W>
 inline auto TVector<T, W>::cend() const -> const_iterator {
     TransProxy sitem = size_item();
     return const_iterator(this, size_info(sitem).second, &sitem.item());
 }
 
-template <typename T, template <typename> typename W>
+template <typename T, template <typename> class W>
 inline auto TVector<T, W>::begin() const -> const_iterator {
     return cbegin();
 }
 
-template <typename T, template <typename> typename W>
+template <typename T, template <typename> class W>
 inline auto TVector<T, W>::end() const -> const_iterator {
     return cend();
 }
 
 
-template <typename T, template <typename> typename W>
+template <typename T, template <typename> class W>
 inline auto TVector<T, W>::const_iterator::operator-(const const_iterator& x) const -> difference_proxy {
     assert(a_ == x.a_);
     if (different_end(x)) {
@@ -556,7 +556,7 @@ inline auto TVector<T, W>::const_iterator::operator-(const const_iterator& x) co
 }
 
 
-template <typename T, template <typename> typename W>
+template <typename T, template <typename> class W>
 void TVector<T, W>::clear() {
     auto sitem = size_item().add_write();
     pred_type& wval = size_info(sitem);
@@ -565,7 +565,7 @@ void TVector<T, W>::clear() {
     wval.second = 0;
 }
 
-template <typename T, template <typename> typename W>
+template <typename T, template <typename> class W>
 auto TVector<T, W>::erase(iterator pos) -> iterator {
     auto sitem = size_item().add_write();
     pred_type& wval = size_info(sitem);
@@ -583,7 +583,7 @@ auto TVector<T, W>::erase(iterator pos) -> iterator {
     return pos;
 }
 
-template <typename T, template <typename> typename W>
+template <typename T, template <typename> class W>
 auto TVector<T, W>::insert(iterator pos, T value) -> iterator {
     auto sitem = size_item().add_write();
     pred_type& wval = size_info(sitem);
@@ -601,7 +601,7 @@ auto TVector<T, W>::insert(iterator pos, T value) -> iterator {
     return pos;
 }
 
-template <typename T, template <typename> typename W>
+template <typename T, template <typename> class W>
 void TVector<T, W>::resize(size_type size, T value) {
     auto sitem = size_item().add_write();
     pred_type& wval = size_info(sitem);
@@ -615,7 +615,7 @@ void TVector<T, W>::resize(size_type size, T value) {
             .add_write(value);
 }
 
-template <typename T, template <typename> typename W>
+template <typename T, template <typename> class W>
 void TVector<T, W>::nontrans_reserve(size_type size) {
     size_type new_capacity = capacity_;
     while (size > new_capacity)
@@ -631,7 +631,7 @@ void TVector<T, W>::nontrans_reserve(size_type size) {
     }
 }
 
-template <typename T, template <typename> typename W>
+template <typename T, template <typename> class W>
 void TVector<T, W>::print(std::ostream& w) const {
     size_type sz = size_.access();
     w << "TVector<" << typeid(T).name() << ">{" << (void*) this
@@ -655,7 +655,7 @@ void TVector<T, W>::print(std::ostream& w) const {
     w << "}";
 }
 
-template <typename T, template <typename> typename W>
+template <typename T, template <typename> class W>
 std::ostream& operator<<(std::ostream& w, const TVector<T, W>& v) {
     v.print(w);
     return w;

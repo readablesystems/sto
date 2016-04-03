@@ -6,7 +6,7 @@
 #include "TWrapped.hh"
 
 template <typename T, unsigned BUF_SIZE = 1000000,
-          template <typename> typename W = TOpaqueWrapped>
+          template <typename> class W = TOpaqueWrapped>
 class Queue: public Shared {
 public:
     typedef typename W<T>::version_type version_type;
