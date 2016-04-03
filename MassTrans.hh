@@ -67,7 +67,7 @@ struct versioned_str_struct : public versioned_str {
   }
 };
 
-template <typename V, typename Box = versioned_value_struct<V>, bool Opacity = false>
+template <typename V, typename Box = versioned_value_struct<V>, bool Opacity = true>
 class MassTrans : public Shared {
 public:
 #if !RCU

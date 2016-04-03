@@ -452,7 +452,6 @@ void basicQueryTests(T&) {}
 
 template <typename MapType>
 void basicMapTests(MapType& h) {
-  typedef int Key;
   typedef int Value;
   Value v1,v2,vunused;
 
@@ -494,6 +493,8 @@ void basicMapTests(MapType& h) {
 
   TestTransaction t7(1);
   assert(!h.transGet(2, vunused));
+  // need a write as well otherwise this txn would successfully commit as read-only
+  h.transPut(1000, 0);
   TestTransaction t8(2);
   assert(h.transInsert(2, 2));
   assert(t8.try_commit());

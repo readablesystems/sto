@@ -17,9 +17,9 @@ public:
   }
 };
 
-template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true, bool Opacity = false> class ListIterator;
+template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true, bool Opacity = true> class ListIterator;
 
-template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true, bool Opacity = false>
+template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true, bool Opacity = true>
 class List 
 #ifndef STO_NO_STM
 : public Shared 
@@ -450,7 +450,8 @@ private:
         break;
       }
       fence();
-      us->opacity_check();
+      if (Opacity)
+        us->opacity_check();
 #endif
     }
 
@@ -539,7 +540,6 @@ private:
       // clears the invalid bit too
       n->set_version_unlock(t.commit_tid());
       listsize_++;
-      assert(Opacity);
       if (Opacity) {
         listversion_.set_version(t.commit_tid());
       } else {
