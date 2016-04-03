@@ -552,10 +552,6 @@ public:
     return found;
   }
 
-  void print() {
-    //    table_.print();
-  }
-
 protected:
   // called once we've checked our own writes for a found put()
   template <typename ValueType>

@@ -269,7 +269,7 @@ public:
       
       auto extra_items = Sto::item(this, push_back_key);
       // We need to register the vecversion_ to invalidate other concurrent push_backs.
-      add_vector_version(TransactionTid::unlocked(vecversion_));
+      add_vector_version(TransactionTid::unlocked(ver));
       if (extra_items.has_write()) {
         if (is_list(extra_items)) {
           auto& write_list= extra_items.template write_value<std::vector<T>>();
