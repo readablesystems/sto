@@ -314,7 +314,7 @@ private:
 #endif
         any_writes_ = any_nonopaque_ = may_duplicate_items_ = false;
         first_write_ = 0;
-        start_tid_ = commit_tid_ = gsc_snapshot_ = 0;
+        start_tid_ = commit_tid_ = active_sid_ = gsc_snapshot_ = 0;
         buf_.clear();
 #if STO_DEBUG_ABORTS
         abort_item_ = nullptr;
@@ -571,6 +571,15 @@ public:
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
     }
+    void set_active_sid(tid_type sid) {
+        assert(state_ == s_in_progress);
+        assert(!active_sid_);
+        active_sid_ = sid;
+    }
+    tid_type active_sid() const {
+        assert(state_ == s_in_progress);
+        return active_sid_;
+    }
     tid_type gsc_snapshot() const {
         assert(state_ == s_committing_locked || state_ == s_committing);
         if (!gsc_snapshot_)
@@ -638,6 +647,7 @@ private:
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
     mutable tid_type gsc_snapshot_;
+    mutable tid_type active_sid_;
     mutable TransactionBuffer buf_;
     mutable uint32_t lrng_state_;
 #if STO_DEBUG_ABORTS
@@ -751,6 +761,14 @@ public:
 
     static TransactionTid::type GSC_snapshot() {
         return TThread::txn->gsc_snapshot();
+    }
+
+    static void set_active_sid(TransactionTid::type sid) {
+        TThread::txn->set_active_sid(sid);
+    }
+
+    static TransactionTid::type active_sid() {
+        return TThread::txn->active_sid();
     }
 
     static TransactionTid::type take_snapshot() {

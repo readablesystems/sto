@@ -132,7 +132,7 @@ public:
     }
 
     std::pair<bool, V> trans_find(const K& k) {
-        sid_type sid = Sto::active_snapshot();
+        sid_type sid = Sto::active_sid();
         if (sid) {
             // snapshot reads are safe as nontrans
             return nontrans_find(k, sid);
