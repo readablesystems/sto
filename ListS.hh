@@ -115,10 +115,13 @@ public:
     typedef StoSnapshot::NodeWrapper<node_type> wrapper_type;
     typedef StoSnapshot::sid_type sid_type;
 
-    enum TxnStage {execution, commit, cleanup, none};
+    enum class TxnStage {execution, commit, cleanup, none};
 
     static constexpr uintptr_t list_key = 0;
     static constexpr uintptr_t size_key = 1;
+
+    static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
+    static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
 
     List(Compare comp = Compare())
     : head_id_(nullptr), listlock_(0), listversion_(0), comp_(comp) {}
@@ -140,9 +143,10 @@ public:
         fence();
 
         node_type* n =  _find(k, sid);
+        oid_type oid = reinterpret_cast<wrapper_type*>(n)->oid;
         
         if (n) {
-            auto item = Sto::item(this, n);
+            auto item = Sto::item(this, oid);
             if (!validityCheck(n, item)) {
                 Sto::abort();
             }
@@ -161,9 +165,46 @@ public:
         return ListProxy<K, V>(insert_position(key));
     }
 
+    // "STAMP"-ish insert
+    bool trans_insert(const K& key, const V& value) {
+        lock(listlock_);
+        auto results = _insert(key, V());
+        unlock(listlock_);
+
+        auto item = Sto::item(this,
+                        reinterpret_cast<wrapper_type*>(results.second)->oid);
+        if (results.first) {
+            // successfully inserted
+            item.add_write(value);
+            item.add_flags(insert_tag);
+            return true;
+        }
+
+        // not inserted if we fall through
+        node_type* node = results.second;
+        TVersion ver = node->version();
+        bool poisoned = !node->is_valid();
+        if (!item.has_write() && poisoned) {
+            Sto::abort();
+        } else if (has_delete(item)) {
+            item.clear_flags(delete_tag);
+            if (poisoned) {
+                // THIS txn inserted this node, now cleanup
+                item.add_flags(insert_tag);
+            }
+            item.add_write(value);
+            return true;
+        } else if (has_insert(item)) {
+            return false;
+        }
+
+        item.observe(ver);
+        return false;
+    }
+
 private:
     // returns the node the key points to, or abort if observes uncommitted state
-    node_type* insert_position(const K& key){
+    node_type* insert_position(const K& key) {
         lock(listlock_);
         auto results = _insert(key, V());
         unlock(listlock_);
@@ -171,12 +212,19 @@ private:
         if (results.first) {
             return results.second;
         }
-        auto item = Sto::item(this, results.second);
-        if (!item.has_write() && !results.second->is_valid()) {
+        auto item = Sto::item(this,
+                        reinterpret_cast<wrapper_type*>(results.second)->oid);
+        bool poisoned = !results.second->is_value();
+        if (!item.has_write() && poisoned) {
             Sto::abort();
-        } else {
-            return results.second;
+        } else if (has_delete(item)) {
+            item.clear_flags(delete_tag);
+            if (poisoned) {
+                item.add_flags(insert_tag);
+            }
+            item.add_write(V());
         }
+        return results.second;
     }
 
     node_type* _find(const K& key, sid_type sid) {
@@ -260,7 +308,7 @@ private:
             node_type* cur = cur_obj.deref(0).second;
             auto bp = cur_obj.base_ptr();
             if (comp_(cur->key, key) == 0) {
-                if (stage == commit) {
+                if (stage == TxnStage::commit) {
                     assert(cur->is_valid());
                     assert(!bp->is_unlinked());
                     // never physically unlink the object since it must contain snapshots!
@@ -268,7 +316,7 @@ private:
                     bp->save_copy_in_history();
                     cur->mark_invalid();
                     bp->set_unlinked();
-                } else if (stage == cleanup) {
+                } else if (stage == TxnStage::cleanup) {
                     assert(!cur->is_valid());
                     assert(!bp->is_unlinked());
                     if (bp->history_is_empty()) {
@@ -278,7 +326,7 @@ private:
                         cur->mark_invalid();
                         bp->set_unlinked();
                     }
-                } else if (stage == none) {
+                } else if (stage == TxnStage::none) {
                     _do_unlink(prev_obj, cur_obj, stage);
                 }
                 return true;
@@ -298,7 +346,7 @@ private:
         }
 
         auto bp = cur_obj.base_ptr();
-        if (stage == none) {
+        if (stage == TxnStage::none) {
             delete cur;
             delete bp;
         } else {
