@@ -79,12 +79,14 @@ template <typename K, typename V>
 class ListProxy {
 public:
     typedef ListNode<K, V> node_type;
+    typedef StoSnapshot::NodeWrapper<node_type> wrapper_type;
 
     explicit ListProxy(node_type* node) noexcept : node_(node) {}
 
     // transactional non-snapshot read
     operator V() {
-        auto item = Sto::item(this, node_);
+        auto item = Sto::item(this,
+                        reinterpret_cast<wrapper_type*>(node_)->oid);
         if (item.has_write()) {
             return item.template write_value<V>();
         } else {
@@ -175,6 +177,9 @@ public:
                         reinterpret_cast<wrapper_type*>(results.second)->oid);
         if (results.first) {
             // successfully inserted
+            auto litem = Sto::item(this, list_key);
+            litem.add_write(0);
+
             item.add_write(value);
             item.add_flags(insert_tag);
             return true;
@@ -183,6 +188,7 @@ public:
         // not inserted if we fall through
         node_type* node = results.second;
         TVersion ver = node->version();
+        fence();
         bool poisoned = !node->is_valid();
         if (!item.has_write() && poisoned) {
             Sto::abort();
@@ -202,6 +208,42 @@ public:
         return false;
     }
 
+    bool trans_erase(const K& key) {
+        TVersion lv = listversion_;
+        fence();
+
+        node_type* n = _find(key, 0);
+        if (n == nullptr) {
+            auto item = Sto::item(this, list_key);
+            item.observe(lv);
+            return false;
+        }
+
+        bool poisoned = !n->is_valid();
+        auto item = Sto::item(this,
+                        reinterpret_cast<wrapper_type*>(n)->oid);
+        if (!has_write(item) && poisoned) {
+            Sto::abort();
+        }
+        if (has_delete(item)) {
+            return false;
+        } else if (has_insert(item)) {
+            // deleting a key inserted by THIS transaction
+            // defer cleanups to cleanup()
+            item.remove_read().remove_write().add_flags(delete_tag);
+            // XXX insert_tag && delete_tag means needs cleanup after committed
+        } else {
+            // increment list version
+            auto litem = Sto::item(this, list_key);
+            litem.add_write(0);
+
+            item.assign_flags(delete_tag);
+            item.add_write(0);
+            item.observe(lv);
+        }
+        return true;
+    }
+
 private:
     // returns the node the key points to, or abort if observes uncommitted state
     node_type* insert_position(const K& key) {
@@ -214,7 +256,7 @@ private:
         }
         auto item = Sto::item(this,
                         reinterpret_cast<wrapper_type*>(results.second)->oid);
-        bool poisoned = !results.second->is_value();
+        bool poisoned = !results.second->is_valid();
         if (!item.has_write() && poisoned) {
             Sto::abort();
         } else if (has_delete(item)) {
