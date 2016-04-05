@@ -772,7 +772,7 @@ public:
     }
 
     static TransactionTid::type take_snapshot() {
-        return fetch_and_add(&Transaction::_GSC, 1);
+        return fetch_and_add(&Transaction::_GSC, TransactionTid::type(1));
     }
 
     static TransactionTid::type recent_tid() {
