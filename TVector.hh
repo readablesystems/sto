@@ -52,7 +52,7 @@ public:
     }
     ~TVector() {
         using WT = W<T>;
-        for (size_type i = 0; i < max_size_; ++i)
+        for (size_type i = 0; i != max_size_; ++i)
             data_[i].v.~WT();
         delete[] reinterpret_cast<char*>(data_);
     }
