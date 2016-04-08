@@ -141,7 +141,7 @@ public:
     N& node() {return nw_->node();}
 
     // Copy-on-Write: only allowed at STO install time!!
-    bool is_immutable() {return nw_->s_sid < Sto::GSC_snapshot();};
+    bool is_immutable() {return nw_->s_sid != 0 && nw_->s_sid < Sto::GSC_snapshot();};
 
     void save_copy_in_history() {
         assert(is_immutable());

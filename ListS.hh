@@ -230,7 +230,7 @@ public:
         } else if (has_insert(item)) {
             // deleting a key inserted by THIS transaction
             // defer cleanups to cleanup()
-            item.remove_read().remove_write().add_flags(delete_tag);
+            item.remove_read().add_flags(delete_tag);
             // XXX insert_tag && delete_tag means needs cleanup after committed
         } else {
             // increment list version
@@ -242,6 +242,69 @@ public:
             item.observe(lv);
         }
         return true;
+    }
+
+    bool lock(TransItem& item, Transaction&) override {
+        uintptr_t n = item.key<uintptr_t>();
+        if (n == list_key) {
+            return listversion_.try_lock();
+        } else if (!has_insert(item)) {
+            return oid_type(n).base_ptr()->node().try_lock();
+        }
+        return true;
+    }
+
+    void unlock(TransItem& item) override {
+        uintptr_t n = item.key<uintptr_t>();
+        if (n == list_key) {
+            return listversion_.unlock();
+        } else if (!has_insert(item)) {
+            oid_type(n).base_ptr()->node().unlock();
+        }
+    }
+
+    bool check(TransItem& item, Transaction&) override {
+        uintptr_t n = item.key<uintptr_t>();
+        if (n == list_key) {
+            auto lv = listversion_;
+            return lv.check_version(item.template read_value<TVersion>());
+        }
+        node_type *nn = &(reinterpret_cast<oid_type>(n).base_ptr()->node());
+        if (!nn->is_valid()) {
+            return has_insert(item);
+        }
+        return nn->version().check_version(item.template read_value<TVersion>());
+    }
+
+    void install(TransItem& item, Transaction& t) override {
+        if (item.key<uintptr_t>() == list_key) {
+            listversion_.set_version(t.commit_tid());
+            return;
+        }
+        oid_type oid = item.key<oid_type>();
+        auto bp = oid.base_ptr();
+
+        // copy-on-write for both deletes and updates
+        if (bp->is_immutable())
+            bp->save_copy_in_history();
+
+        if (has_delete(item)) {
+            bp->set_unlinked();
+            reinterpret_cast<wrapper_type*>(&bp->node())->s_sid = 0;
+        } else {
+            bp->node().val.write(item.template write_value<V>());
+            bp->node().set_version_unlock(t.commit_tid());
+        }
+    }
+
+    void cleanup(TransItem& item, bool committed) override {
+        if (has_insert(item)) {
+            if (!committed || (committed && has_delete(item))) {
+                lock(listlock_);
+                _remove(item.key<oid_type>().base_ptr()->node().key, TxnStage::cleanup);
+                unlock(listlock_);
+            }
+        }
     }
 
 private:
@@ -419,6 +482,22 @@ private:
             }
         }
         return ret;
+    }
+
+    static void lock(TVersion& ver) {
+        ver.lock();
+    }
+
+    static void unlock(TVersion& ver) {
+        ver.unlock();
+    }
+
+    static bool has_insert(const TransItem& item) {
+        return item.flags() & insert_tag;
+    }
+
+    static bool has_delete(const TransItem& item) {
+        return item.flags() & delete_tag;
     }
 
     oid_type head_id_;
