@@ -293,6 +293,11 @@ public:
             reinterpret_cast<wrapper_type*>(&bp->node())->s_sid = 0;
         } else {
             bp->node().val.write(item.template write_value<V>());
+            if (has_insert(item)) {
+                sid_type& s_sid = reinterpret_cast<wrapper_type*>(&bp->node())->s_sid;
+                assert(s_sid == 0);
+                s_sid = Sto::GSC_snapshot();
+            }
             bp->node().set_version_unlock(t.commit_tid());
         }
     }
