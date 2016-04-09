@@ -292,6 +292,8 @@ bool Transaction::try_commit() {
 
 #if CONSISTENCY_CHECK
     fence();
+    gsc_snapshot();
+    fence();
     commit_tid();
     fence();
 #endif
