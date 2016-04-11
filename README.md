@@ -1,7 +1,5 @@
 Install
 -------
-
-To build:
 ```
     $ ./bootstrap.sh
     $ ./configure
@@ -9,18 +7,20 @@ To build:
 ```
 (NOTE: if you are using OS X you should probably run `./configure CXX='clang++ -stdlib=libc++ -std=c++11'`)
 
+Tests
+-----
 Run single-threaded tests:
 `./single`
 
 Multi-threaded test:
 Check multithreaded correctness:
-`./concurrent 3 DATASTRUCTURE -c`
+`./concurrent randomrw DATASTRUCTURE -c`
 
 ^ runs with 4 threads, 1 million total transactions of size 10 each, half of 
 which are read-writes
 
 If this is too fast:
-`./concurrent 3 DATASTRUCTURE --ntrans=10000000 -c`
+`./concurrent randomrw DATASTRUCTURE --ntrans=10000000 -c`
 
 Check delete multithreaded correctness (not applicable for arrays):
 `./concurrent xordelete DATASTRUCTURE -c`
@@ -30,15 +30,15 @@ running `./concurrent` without arguments.
 
 Benchmark singlethreaded:
 
-`./concurrent 3 DATASTRUCTURE --nthreads=1`
+`./concurrent randomrw DATASTRUCTURE --nthreads=1`
 
 or
 
-`./concurrent 3 DATASTRUCTURE --nthreads=1 --ntrans=10000000`
+`./concurrent randomrw DATASTRUCTURE --nthreads=1 --ntrans=10000000`
 
 Or if you want to test transaction system overhead, read-my-writes overhead, 
 etc. (larger transactions):
-`./concurrent 3 DATASTRUCTURE --nthreads=1 --opspertrans=100`
+`./concurrent randomrw DATASTRUCTURE --nthreads=1 --opspertrans=100`
 
 (and benchmarking multithreaded just involves changing the --nthreads argument)
 
