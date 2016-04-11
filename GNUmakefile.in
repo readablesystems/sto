@@ -99,6 +99,16 @@ MSTO_DEPS = $(MSTO_OBJS) $(MASSTREEDIR)/libjson.a
 concurrent: concurrent.o $(MSTO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
 
+concurrent-50: concurrent-50.o $(MSTO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
+concurrent-50.o: concurrent.cc config.h $(DEPSDIR)/stamp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -DARRAY_SZ=50 $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+
+concurrent-1M: concurrent-1M.o $(MSTO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
+concurrent-1M.o: concurrent.cc config.h $(DEPSDIR)/stamp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -DARRAY_SZ=1000000 $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+
 single: single.o $(MSTO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
 

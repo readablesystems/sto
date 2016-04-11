@@ -2,7 +2,7 @@
 
 import os, re, sys, json, subprocess, multiprocessing
 
-bm_execs = ["../concurrent", "./concurrent-50"]
+bm_execs = ["../concurrent-1M", "./concurrent-50"]
 
 # for use with boosting
 # I compiled these with 022d56df086cbddc618a2feadc9ddbb9c3efc889's options.

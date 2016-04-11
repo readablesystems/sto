@@ -28,7 +28,7 @@ Test results will be in results.txt
 
 Microbenchmarks
 ---------------
-    $ make concurrent
+    $ make concurrent-50 && make concurrent-1M
 Now make sure the microbenchmark you wish to run is not commented out in
 `microbenchmarks/run_benchmarks.py` and `microbenchmarks/get_data.py`, then run 
 
