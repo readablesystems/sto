@@ -13,9 +13,7 @@ Run single-threaded tests:
 
 `./single`
 
-Multi-threaded test:
-
-Check multithreaded correctness:
+Multi-threaded test: (`-c` performs a check of the multithreaded correctness)
 
 `./concurrent randomrw DATASTRUCTURE -c`
 
