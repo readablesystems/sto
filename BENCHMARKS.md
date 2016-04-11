@@ -9,7 +9,7 @@ This will take a while (45 minutes or so). Once it's done
 `python plot.py benchmarks/data/OUTPUT_FILENAME tpcc.pdf` will generate
 a graph like in the paper in the file `tpcc.pdf`.
 
-If you don't want to wait 45 minutes, you can run i.e.
+If you don't want to wait 45 minutes, you can run e.g.
     $ MODE=perf make -j dbtest
     $ out-perf.masstree/benchmarks/dbtest --runtime 30 --num-threads 16 --scale-factor 16 --bench tpcc -dmbta
 which will run STO on the TPCC benchmark once with 16 threads and print the
@@ -24,6 +24,7 @@ STAMP
     $ cd ../stamp-0.9.10
     $ cd BENCHMARK_OF_YOUR_CHOICE
     $ python script.py
+Test results will be in results.txt
 
 Microbenchmarks
 ---------------
