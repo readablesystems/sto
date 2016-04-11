@@ -10,19 +10,24 @@ Install
 Tests
 -----
 Run single-threaded tests:
+
 `./single`
 
 Multi-threaded test:
+
 Check multithreaded correctness:
+
 `./concurrent randomrw DATASTRUCTURE -c`
 
 ^ runs with 4 threads, 1 million total transactions of size 10 each, half of 
 which are read-writes
 
 If this is too fast:
+
 `./concurrent randomrw DATASTRUCTURE --ntrans=10000000 -c`
 
 Check delete multithreaded correctness (not applicable for arrays):
+
 `./concurrent xordelete DATASTRUCTURE -c`
 
 You can get a list of both available tests and data structures by
@@ -38,6 +43,7 @@ or
 
 Or if you want to test transaction system overhead, read-my-writes overhead, 
 etc. (larger transactions):
+
 `./concurrent randomrw DATASTRUCTURE --nthreads=1 --opspertrans=100`
 
 (and benchmarking multithreaded just involves changing the --nthreads argument)
