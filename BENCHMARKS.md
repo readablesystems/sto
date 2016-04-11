@@ -29,10 +29,11 @@ Test results will be in results.txt
 Microbenchmarks
 ---------------
     $ make concurrent
-    $ mv concurrent microbenchmarks/concurrent-1M
 Now make sure the microbenchmark you wish to run is not commented out in
-`microbenchmarks/run_benchmarks.py`, then run 
+`microbenchmarks/run_benchmarks.py` and `microbenchmarks/get_data.py`, then run 
+
     $ python microbenchmarks/run_benchmarks.py 5
+And either use the data in `experiment_data.json` directly or run:
+
     $ python microbenchmarks/get_data.py 5
-and the raw json data for the benchmark will be in 
-`microbenchmarks/processed_MICROBENCHMARK_NAME.json`.
+to output a csv.
