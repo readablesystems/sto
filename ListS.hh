@@ -6,7 +6,6 @@
 #include "TaggedLow.hh"
 #include "Interface.hh"
 #include "Transaction.hh"
-#include "TWrapped.hh"
 #include "Snapshot.hh"
 
 template <typename T>
@@ -22,56 +21,34 @@ public:
 template <typename K, typename V, typename Compare=DefaultCompare<K>>
 class List;
 
+template <typename K, typename V, typename Compare>
+class ListCursor;
+
 template <typename K, typename V>
 class ListProxy;
 
 template <typename K, typename V>
 class ListNode {
 public:
-    template <typename KK, typename VV, typename C>
-    friend class List;
-
-    template <typename KK, typename VV>
-    friend class ListProxy;
-
-    typedef StoSnapshot::ObjectID<ListNode<K, V>> oid_type;
     typedef StoSnapshot::sid_type sid_type;
+    ListNode(const K& key, const V& val) : key(key), val(val) {}
 
-    static constexpr TransactionTid::type invalid_bit = TransactionTid::user_bit;
-
-    ListNode(const K& key, const V& val, oid_type next_id, bool invalid)
-    : key(key), val(val), next_id(next_id),
-      vers(Sto::initialized_tid() | (invalid ? (invalid_bit | TransactionTid::lock_bit | TThread::id()) : 0)) {}
-
-    void mark_invalid() {
-        TVersion newv = vers | invalid_bit;
-        fence();
-        vers = newv;
-    }
-    TVersion& version() {
-        return vers;
-    }
-    void set_version(const TVersion& new_v) {
-        vers.set_version(new_v);
-    }
-    void set_version_unlock(const TVersion& new_v) {
-        vers.set_version_unlock(new_v);
-    }
-    bool try_lock() {
-        return vers.try_lock();
-    }
-    void unlock() {
-        vers.unlock();
-    }
     bool is_valid() {
-        return !(vers.value() & invalid_bit);
     }
 
-protected:
-    oid_type next_id;
     K key;
-    TWrapped<V> val;
-    TVersion vers;
+    V val;
+};
+
+template <typename K, typename V>
+class ListLink {
+public:
+    typedef StoSnapshot::ObjectID<ListNode<K, V>, ListLink<K, V>> oid_type;
+    static constexpr uintptr_t use_base = 0x1;
+    oid_type next_id;
+
+    ListLink() : next_id(use_base) {}
+    ListLink(oid_type next) : next_id(next) {}
 };
 
 // proxy type for List::operator[]
@@ -79,33 +56,34 @@ template <typename K, typename V>
 class ListProxy {
 public:
     typedef ListNode<K, V> node_type;
-    typedef StoSnapshot::NodeWrapper<node_type> wrapper_type;
+    typedef ListLink<K, V> link_type;
+    typedef StoSnapshot::ObjectID<node_type, link_type> oid_type;
+    typedef StoSnapshot::NodeWrapper<node_type, link_type> wrapper_type;
 
-    explicit ListProxy(node_type* node) noexcept : node_(node) {}
+    explicit ListProxy(oid_type ins_oid) noexcept : oid(ins_oid) {}
 
     // transactional non-snapshot read
     operator V() {
-        auto item = Sto::item(this,
-                        reinterpret_cast<wrapper_type*>(node_)->oid);
+        auto item = Sto::item(this, oid);
         if (item.has_write()) {
             return item.template write_value<V>();
         } else {
-            return node_->val.read(node_->version());
+            return atomic_rootlv_value_by_oid(item, oid);
         }
     }
 
     // transactional assignment
     ListProxy& operator=(const V& other) {
-        Sto::item(this, node_).add_write(other);
+        Sto::item(this, oid).add_write(other);
         return *this;
     }
 
     ListProxy& operator=(const ListProxy& other) {
-        Sto::item(this, node_).add_write((V)other);
+        Sto::item(this, oid).add_write((V)other);
         return *this;
     }
 private:
-    node_type* node_;
+    oid_type oid;
 };
 
 // always sorted, no duplicates
@@ -113,15 +91,20 @@ template <typename K, typename V, typename Compare>
 class List : public TObject {
 public:
     typedef ListNode<K, V> node_type;
-    typedef StoSnapshot::ObjectID<node_type> oid_type;
-    typedef StoSnapshot::NodeWrapper<node_type> wrapper_type;
+    typedef ListLink<K, V> link_type;
+    typedef StoSnapshot::ObjectID<node_type, link_type> oid_type;
+    typedef StoSnapshot::NodeWrapper<node_type, link_type> wrapper_type;
     typedef StoSnapshot::sid_type sid_type;
+    typedef ListCursor<K, V, Compare> cursor_type;
+
+    friend cursor_type;
 
     enum class TxnStage {execution, commit, cleanup, none};
 
     static constexpr uintptr_t list_key = 0;
     static constexpr uintptr_t size_key = 1;
 
+    static constexpr TransactionTid::type poisoned_bit = TransactionTid::user_bit;
     static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
 
@@ -129,34 +112,43 @@ public:
     : head_id_(nullptr), listlock_(0), listversion_(0), comp_(comp) {}
 
     std::pair<bool, V> nontrans_find(const K& k, sid_type sid) {
-        node_type* n = _find(k, sid); 
-        return std::make_pair(n, n ? n->val.access() : V());
+        cursor_type cursor(*this);
+        bool found = cursor.find(k, sid);
+        return std::make_pair(found, found ? cursor.last_node->val : V());
+    }
+
+    V atomic_rootlv_value_by_oid(TransItem& item, oid_type oid) {
+        auto bp = oid.base_ptr();
+        TVersion& r_ver = bp->version();
+        return bp->atomic_root_wrapper(item, r_ver)->node().val;
     }
 
     std::pair<bool, V> trans_find(const K& k) {
         sid_type sid = Sto::active_sid();
-        if (sid) {
+        if (sid != Sto::initialized_tid()) {
             // snapshot reads are safe as nontrans
             return nontrans_find(k, sid);
         }
-        // making sure size version hasn't changed
+
+        // being conservative: making sure listversion_ doesn't change
         std::pair<bool, V> ret_pair(false, V());
+        cursor_type cursor(*this);
         TVersion lv = listversion_;
         fence();
 
-        node_type* n =  _find(k, sid);
-        oid_type oid = reinterpret_cast<wrapper_type*>(n)->oid;
+        bool found = cursor.find(k, sid);
         
-        if (n) {
-            auto item = Sto::item(this, oid);
-            if (!validityCheck(n, item)) {
+        if (found) {
+            auto item = Sto::item(this, cursor.last_oid);
+            TVersion& r_ver = cursor.last_oid.base_ptr()->version();
+            if (is_poisoned(r_ver) && !has_insert(item)) {
                 Sto::abort();
             }
             if (has_delete(item)) {
                 return ret_pair;
             }
             ret_pair.first = true;
-            ret_pair.second = n->val.read(item, n->version());
+            ret_pair.second = atomic_rootlv_value_by_oid(item, cursor.last_oid);
         } else {
             Sto::item(this, list_key).observe(lv);
         }
@@ -167,7 +159,7 @@ public:
         return ListProxy<K, V>(insert_position(key));
     }
 
-    // "STAMP"-ish insert
+    // "STAMP"-ish insert XXX TODO
     bool trans_insert(const K& key, const V& value) {
         lock(listlock_);
         auto results = _insert(key, V());
@@ -208,6 +200,7 @@ public:
         return false;
     }
 
+    // XXX TODO
     bool trans_erase(const K& key) {
         TVersion lv = listversion_;
         fence();
@@ -314,7 +307,7 @@ public:
 
 private:
     // returns the node the key points to, or abort if observes uncommitted state
-    node_type* insert_position(const K& key) {
+    oid_type insert_position(const K& key) {
         lock(listlock_);
         auto results = _insert(key, V());
         unlock(listlock_);
@@ -322,9 +315,9 @@ private:
         if (results.first) {
             return results.second;
         }
-        auto item = Sto::item(this,
-                        reinterpret_cast<wrapper_type*>(results.second)->oid);
-        bool poisoned = !results.second->is_valid();
+        auto item = Sto::item(this, results.second);
+        auto bp = results.second.base_ptr();
+        bool poisoned = is_poisoned(bp->version());
         if (!item.has_write() && poisoned) {
             Sto::abort();
         } else if (has_delete(item)) {
@@ -337,6 +330,7 @@ private:
         return results.second;
     }
 
+/*
     node_type* _find(const K& key, sid_type sid) {
         node_type* cur = next_snapshot(head_id_, sid);
         bool cur_history = false;
@@ -365,52 +359,51 @@ private:
         }
         return cur;
     }
+*/
 
     // XXX note to cleanup: never structurally remove a node until history is empty
     // needs lock
-    std::pair<bool, node_type*> _insert(const K& key, const V& value) {
+    std::pair<bool, oid_type> _insert(const K& key, const V& value) {
         oid_type prev_obj = nullptr;
         oid_type cur_obj = head_id_;
 
-        while (!cur_obj.is_null()) {
-            // it's okay to always look at the root level
-            node_type* cur = cur_obj.deref(0).second;
-            int c = comp_(cur->key, key);
-            if (c == 0) {
-                if (cur_obj.base_ptr()->is_unlinked()) {
-                    // reuse root-level deleted node
-                    oid_type nid = cur->next_id;
-                    new (cur) node_type(key, value, nid, true);
-                    cur_obj.base_ptr()->clear_unlinked();
+        cursor_type cursor(*this);
 
-                    return std::make_pair(true, cur);
-                }
-                return std::make_pair(false, cur);
-            } else if (c > 0) {
-                // insertion point
-                break;
-            }
-            prev_obj = cur_obj;
-            cur_obj = cur->next_id;
+        // all the magic in one line :D
+        bool found = cursor.find(key, Sto::initialized_tid());
+
+        auto cbp = cursor.last_oid.base_ptr();
+        auto node = cursor.last_node;
+        if (found && cbp->is_unlinked()) {
+            // found an unlinked object with the same key, reuse this object
+            mark_poisoned_init(cbp->version());
+            new (node) node_type(key, value);
+            cbp->clear_unlinked();
+
+            return std::make_pair(true, cursor.last_oid);
+        } else if (found) {
+            return std::make_pair(false, cursor.last_oid);
         }
 
-        // allocate a new object for the newly inserted node (key)
-        auto new_obj = StoSnapshot::new_object<node_type>();
-        oid_type new_id = new_obj.first;
-        node_type* new_node = new_obj.second;
+        // if we fall through we have to insert a new object
+        // prev_oid, last_oid is the insertion point
 
-        new (new_node) node_type(key, value, cur_obj, true);
+        auto new_obj = StoSnapshot::new_object<node_type, link_type>();
+        auto new_bp = new_obj.first.base_ptr();
+        new_bp->links.next_id = cursor.last_oid;
+        mark_poisoned_init(new_bp->version());
+        new (new_obj.second) node_type(key, value);
 
-        if (!prev_obj.is_null()) {
-            prev_obj.deref(0).second->next_id = new_id;
+        if (!cursor.prev_oid.is_null()) {
+            cursor.prev_oid.base_ptr()->links.next_id = new_obj.first;
         } else {
-            head_id_ = new_id;
+            head_id_ = new_obj.first;
         }
 
-        return std::make_pair(true, new_node);
+        return std::make_pair(true, new_obj.first);
     }
 
-    // needs lock
+    // needs lock XXX TODO
     bool _remove(const K& key, TxnStage stage) {
         oid_type prev_obj = nullptr;
         oid_type cur_obj = head_id_;
@@ -447,6 +440,7 @@ private:
         return false;
     }
 
+    // XXX TODO
     inline void _do_unlink(oid_type& prev_obj, oid_type cur_obj, TxnStage stage) {
         node_type* cur = cur_obj.deref(0).second;
         if (!prev_obj.is_null()) {
@@ -469,7 +463,7 @@ private:
     node_type* next_snapshot(oid_type start, sid_type sid) {
         oid_type cur_obj = start;
         node_type* ret = nullptr;
-        while (sid) {
+        while (sid != Sto::initialized_tid()) {
             if (cur_obj.is_null()) {
                 break;
             }
@@ -479,7 +473,7 @@ private:
                 // object id exists but no snapshot is found at sid
                 // this should cover nodes that are more up-to-date than sid (when doing a snapshot read)
                 // or when the node is unlinked (when doing a non-snapshot read, or sid==0)
-                cur_obj = n.second->next_id;
+                cur_obj = cur_obj.base_ptr()->links.next_id;
             } else {
                 // snapshot node found
                 ret = n.first;
@@ -487,6 +481,20 @@ private:
             }
         }
         return ret;
+    }
+
+    static inline void mark_poisoned(TVersion& ver) {
+        TVersion newv = ver | poisoned_bit;
+        fence();
+        ver = newv;
+    }
+
+    static inline void mark_poisoned_init(TVersion& ver) {
+        ver = (Sto::initialized_tid() | (poisoned_bit | TransactionTid::lock_bit | TThread::id()));
+    }
+
+    static inline bool is_poisoned(TVersion& ver) {
+        return (ver.value() & poisoned_bit);
     }
 
     static void lock(TVersion& ver) {
@@ -509,4 +517,115 @@ private:
     TVersion listlock_;
     TVersion listversion_;
     Compare comp_;
+};
+
+// ListCursor is read-only and can be used lock-free if not looking for insertion points
+template <typename K, typename V, typename Compare>
+class ListCursor {
+public:
+    typedef List<K, V, Compare> list_type;
+    typedef ListNode<K, V> node_type;
+    typedef ListLink<K, V> link_type;
+    typedef StoSnapshot::ObjectID<node_type, link_type> oid_type;
+    typedef StoSnapshot::NodeWrapper<node_type, link_type> wrapper_type;
+    typedef StoSnapshot::sid_type sid_type;
+
+    oid_type prev_oid;
+    oid_type last_oid;
+    wrapper_type* prev_node;
+    wrapper_type* last_node;
+
+    ListCursor(list_type& l) : last_oid(nullptr, false), prev_oid(nullptr, false),
+        last_node(nullptr), prev_node(nullptr), list(l) {}
+
+    void reset() {
+        prev_oid = last_oid = nullptr;
+        prev_node = last_node = nullptr;
+    }
+
+    // find the node containing the key at the given sid
+    // only searches at the root level if @sid == Sto::initialized_tid()
+    // this will return unlinked nodes!
+    bool find(const K& key, sid_type sid) {
+        bool in_snapshot = next_snapshot(list.head_id_, sid);
+        while (last_node) {
+            int c = list.comp_(last_node->node().key, key);
+            if (c == 0) {
+                return true;
+            } else if (c > 0) {
+                // prev_oid, last_oid indicates (structural) insertion point!
+                return false;
+            }
+
+            // skip nodes not part of the snapshot we look for
+            oid_type nid = last_oid.base_ptr()->links.next_id;
+            oid_type cur_oid = last_oid;
+            wrapper_type* cur = last_node;
+            bool next_in_snapshot = next_snapshot(nid, sid);
+
+            // lazily fix up direct links when possible
+            if (in_snapshot && (!last_node || next_in_snapshot)) {
+                assert((uintptr_t)cur->links.next_id.base_ptr() == link_type::use_base);
+                last_node->links.next_id.set_direct_link(last_node);
+            }
+
+            in_snapshot = next_in_snapshot;
+        }
+
+        return false;
+    }
+private:
+    // skip nodes that are not part of the snapshot (based on sid) we look for
+    // modifies last_oid and last_node: not found if last_node == nullptr
+    // return value indicates whether the returned node is part of a history list (immutable)
+    bool next_snapshot(oid_type& start, sid_type sid) {
+        prev_oid = start;
+        auto cbp = prev_oid.base_ptr();
+
+        // always return false if we are not doing a snapshot search
+        if (sid == Sto::initialized_tid()) {
+            cbp = prev_oid.base_ptr();
+            if (!prev_oid.is_null()) {
+                prev_node = cbp->root_wrapper();
+                // no need to skip unlinked nodes
+                last_oid = cbp->links.next_id;
+                if (last_oid.is_null()) {
+                    last_node = nullptr;
+                    return false;
+                } else {
+                    cbp = last_oid.base_ptr();
+                    last_node = cbp->root_wrapper();
+                }
+            } else {
+                this->reset();
+                return false;
+            }
+
+            return false;
+        }
+
+        // we are doing a snapshot search here; need to search through history in this case
+        // not using prev_* fields here since we can't insert
+        last_oid = start;
+        while (!last_oid.is_null()) {
+            cbp = last_oid.base_ptr();
+
+            // ObjectID::deref searches through all available history (include root level)
+            // and returns the wrapper containing the matching sid, if any
+            last_node = last_oid.deref(sid);
+            if (last_node == nullptr) {
+                // ObjectID exists but no snapshot is found at sid
+                last_oid = cbp->links.next_id;
+            } else {
+                // a wrapper is found with the exact match
+                // the corresponding node is "in snapshot" (immutable), thus returning true
+                return true;
+            }
+        }
+
+        this->reset();
+        return false;
+    }
+
+    list_type& list;
 };

@@ -2,6 +2,7 @@
 
 #include "Transaction.hh"
 #include "Interface.hh"
+#include "TWrapped.hh"
 #include <deque>
 
 namespace StoSnapshot {
@@ -22,19 +23,24 @@ void unlock_write(RWLock& l) {
     TransactionTid::unlock_write(l);
 }
 
-template <typename N>
+// template arguments
+// N: node type, L: structural link type
+
+template <typename N, typename L>
 class NodeBase;
 
-template <typename N>
+template <typename N, typename L>
 class NodeWrapper;
 
-template <typename N>
+template <typename N, typename L>
 class ObjectID {
 public:
     static constexpr uintptr_t direct_bit = 1;
     static constexpr uintptr_t mask = ~(direct_bit);
 
-    ObjectID(NodeBase<N>* baseptr, bool direct = false) {
+    ObjectID(uintptr_t val) : oid_(val) {}
+
+    ObjectID(NodeBase<N, L>* baseptr, bool direct = false) {
         oid_ = reinterpret_cast<uintptr_t>(baseptr);
         if (direct) {
             oid_ |= direct_bit;
@@ -58,9 +64,9 @@ public:
         return ((oid_ & mask) == 0);
     }
 
-    NodeBase<N>* base_ptr() const {
+    NodeBase<N, L>* base_ptr() const {
         assert(!direct());
-        return reinterpret_cast<NodeBase<N>*>(oid_);
+        return reinterpret_cast<NodeBase<N, L>*>(oid_);
     }
 
     // the only indirection needed: translating ObjectID to a reference to "node"
@@ -71,24 +77,24 @@ public:
             assert(sid);
             ret.first = reinterpret_cast<N*>(oid_ & mask);
         } else {
-            NodeBase<N>* baseptr = reinterpret_cast<NodeBase<N>*>(oid_);
-            NodeWrapper<N>* root = baseptr->root_wrapper();
-            sid_type root_sid = root->s_sid;
+            NodeBase<N, L>* baseptr = base_ptr();
+            NodeWrapper<N, L>* root = baseptr->root_wrapper();
+            sid_type root_sid = root->sid;
 
             ret.second = reinterpret_cast<N*>(root);
 
-            if (!sid || (root_sid > 0 && root_sid <= sid)) {
+            if (!sid || (root_sid != Sto::initialized_tid() && root_sid <= sid)) {
                if (!sid && baseptr->is_unlinked()) {
                    // do not return an unlinked node if we are doing non-snapshot reads
                    return ret;
                }
                // thanks to rcu at the top level this is safe (should be)
-               ret.first = &root->node();
+               ret.first = ret.second;
                return ret;
             }
 
-            if (root_sid > 0) {
-                ret.first = baseptr->search_history(sid);
+            if (root_sid != Sto::initialized_tid()) {
+                ret.first = reinterpret_cast<N*>(baseptr->search_history(sid));
             }
         }
         return ret;
@@ -98,24 +104,27 @@ private:
     uintptr_t oid_;
 };
 
-template <typename N>
+template <typename N, typename L>
 class NodeWrapper : public N {
 public:
-    typedef ObjectID<N> oid_type;
+    typedef ObjectID<N, L> oid_type;
+    L links;
+    bool deleted;
     oid_type oid;
-    sid_type s_sid;
-    sid_type c_sid;
+    sid_type sid; // bascially commit_tid
 
-    explicit NodeWrapper(oid_type id) : N(), oid(id), s_sid(), c_sid() {}
+    explicit NodeWrapper(oid_type id) : N(), links(), deleted(false), oid(id), sid() {}
     N& node(){return *this;}
 };
 
-template <typename N>
+template <typename N, typename L>
 class History {
 public:
+    typedef std::pair<sid_type, NodeWrapper<N, L>*> history_entry_type;
+
     void cleanup_until(sid_type sid);
-    void add_snapshot(NodeWrapper<N>* n, sid_type time);
-    N* search(sid_type sid);
+    void add_snapshot(NodeWrapper<N, L>* n, sid_type time);
+    NodeWrapper<N, L>* search(sid_type sid);
     bool is_empty() const {
         lock_read(lock_);
         bool ret = list_.empty();
@@ -124,45 +133,51 @@ public:
     }
 private:
     mutable RWLock lock_;
-    std::deque<NodeWrapper<N>*> list_;
+    std::deque<history_entry_type> list_;
 
-    static bool sid_comp(const NodeWrapper<N>* n, sid_type sid) {return n->s_sid < sid;};
+    static bool sid_comp(const history_entry_type& ent, sid_type sid) {return ent.first < sid;};
 };
 
-template <typename N>
+template <typename N, typename L>
 class NodeBase {
 public:
-    typedef ObjectID<N> oid_type;
-    explicit NodeBase() : unlinked(false), h_(), nw_(new NodeWrapper<N>(object_id())) {}
+    typedef ObjectID<N, L> oid_type;
+    static constexpr TransactionTid::type invalid_bit = TransactionTid::user_bit;
+    explicit NodeBase() : unlinked(false), vers_(),
+        h_(), nw_(new NodeWrapper<N, L>(object_id())) {}
 
     oid_type object_id() const {return reinterpret_cast<oid_type>(this);}
-    NodeWrapper<N>* root_wrapper() {return nw_;}
+    NodeWrapper<N, L>* root_wrapper() {return nw_.access();}
+    NodeWrapper<N, L>* atomic_root_wrapper(TransItem& item, TVersion& vers) {return nw_.read(item, vers);}
 
-    N& node() {return nw_->node();}
+    N& node() {return nw_.access()->node();}
 
     // Copy-on-Write: only allowed at STO install time!!
-    bool is_immutable() {return nw_->s_sid != 0 && nw_->s_sid < Sto::GSC_snapshot();};
+    bool is_immutable() {return nw_.access()->sid != 0 && nw_.access()->sid < Sto::GSC_snapshot();};
 
     void save_copy_in_history() {
         assert(is_immutable());
         sid_type time = Sto::GSC_snapshot();
-        NodeWrapper<N>* rcu = new NodeWrapper<N>(*nw_);
-        NodeWrapper<N>* old = nw_;
-        rcu->s_sid = time;
-        nw_ = rcu;
+        NodeWrapper<N, L>* rcu = new NodeWrapper<N, L>(*nw_.access());
+        NodeWrapper<N, L>* old = nw_.access();
+        rcu->sid = time;
+        nw_.write(rcu);
         h_.add_snapshot(old, time);
     }
 
     void set_unlinked() {unlinked = true;}
     void clear_unlinked() {unlinked = false;}
     bool is_unlinked() const {return unlinked;}
+    TVersion& version() {return vers_;}
 
-    N* search_history(sid_type sid) {h_.search(sid);}
+    NodeWrapper<N, L>* search_history(sid_type sid) {return h_.search(sid);}
     bool history_is_empty() const {return h_.is_empty();}
 private:
     bool unlinked;
-    History<N> h_;
-    NodeWrapper<N> *nw_;
+    TVersion vers_;
+    History<N, L> h_;
+    TWrapped<NodeWrapper<N, L>*> nw_;
+    L links;
 };
 
 // precondition: when properly casted, @oid must be pointing to a
@@ -176,38 +191,40 @@ private:
 //    return obj->search_history(sid);
 //}
 
-template <typename N>
-std::pair<ObjectID<N>, N*> new_object() {
-    NodeBase<N>* obj = new NodeBase<N>();
-    return std::make_pair(ObjectID<N>(obj), &(obj->node()));
+template <typename N, typename L>
+std::pair<ObjectID<N, L>, N*> new_object() {
+    NodeBase<N, L>* obj = new NodeBase<N, L>();
+    return std::make_pair(ObjectID<N, L>(obj), &(obj->node()));
 }
 
 // STOSnapshot::History methods
 // add_snapshot: add pointer @n (pointing to a snapshot object)
 // to history list
-template <typename N>
-void History<N>::add_snapshot(NodeWrapper<N>* n, sid_type time) {
-    assert(n->c_sid == 0);
-    n->c_sid = time;
+// @sid is the sid version of the root-level object, @time is the GSC (commit_tid) snapshot
+template <typename N, typename L>
+void History<N, L>::add_snapshot(NodeWrapper<N, L>* n, sid_type time) {
+    //assert(n->c_sid == 0);
+    //n->c_sid = time;
+    (void)time;
 
     // XXX garbage collection / pool-chain fancy stuff happens here
     
     lock_write(lock_);
     // History::list_ should always be sorted
-    assert(list_.back()->s_sid < n->s_sid);
-    list_.push_back(n);
+    assert(list_.back().first < n->sid);
+    list_.push_back(std::make_pair(n->sid, n));
     unlock_write(lock_);
 }
 
-template <typename N>
-void History<N>::cleanup_until(sid_type sid) {
+template <typename N, typename L>
+void History<N, L>::cleanup_until(sid_type sid) {
     lock_write(lock_);
     while (list_.begin() != list_.end()) {
-        NodeWrapper<N>* e = list_.front();
-        if(e->s_sid <= sid) {
+        auto e = list_.front();
+        if(e.first <= sid) {
             // XXX rcu_deletes called outside of this right
             // in the gc loop
-            //Transaction::rcu_delete(e);
+            //Transaction::rcu_delete(e.second);
             list_.pop_front();
         } else {
             break;
@@ -216,9 +233,9 @@ void History<N>::cleanup_until(sid_type sid) {
     unlock_write(lock_);
 }
 
-template <typename N>
-N* History<N>::search(sid_type sid) {
-    NodeWrapper<N>* ret = nullptr;
+template <typename N, typename L>
+NodeWrapper<N, L>* History<N, L>::search(sid_type sid) {
+    NodeWrapper<N, L>* ret = nullptr;
     lock_read(lock_);
     if (!list_.empty()) {
         auto it = std::upper_bound(list_.begin(), list_.end(), sid, sid_comp);
@@ -230,7 +247,7 @@ N* History<N>::search(sid_type sid) {
         }
     }
     unlock_read(lock_);
-    return reinterpret_cast<N*>(ret);
+    return ret;
 }
 
 }; // namespace StoSnapshot
