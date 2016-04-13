@@ -64,6 +64,15 @@ public:
         return ((oid_ & mask) == 0);
     }
 
+    uintptr_t value() const {
+        return oid_;
+    }
+
+    NodeWrapper<N, L>* wrapper_ptr() const {
+        assert(direct());
+        return reinterpret_cast<NodeWrapper<N, L>*>(oid_ & mask);
+    }
+
     NodeBase<N, L>* base_ptr() const {
         assert(!direct());
         return reinterpret_cast<NodeBase<N, L>*>(oid_);
@@ -72,30 +81,26 @@ public:
     // the only indirection needed: translating ObjectID to a reference to "node"
     // given the specific time in sid
     std::pair<N*, N*> deref(sid_type sid) {
+        assert(!direct());
         std::pair<N*, N*> ret(nullptr, nullptr);
-        if (direct()) {
-            assert(sid);
-            ret.first = reinterpret_cast<N*>(oid_ & mask);
-        } else {
-            NodeBase<N, L>* baseptr = base_ptr();
-            NodeWrapper<N, L>* root = baseptr->root_wrapper();
-            sid_type root_sid = root->sid;
+        NodeBase<N, L>* baseptr = base_ptr();
+        NodeWrapper<N, L>* root = baseptr->root_wrapper();
+        sid_type root_sid = root->sid;
 
-            ret.second = reinterpret_cast<N*>(root);
+        ret.second = reinterpret_cast<N*>(root);
 
-            if (!sid || (root_sid != Sto::initialized_tid() && root_sid <= sid)) {
-               if (!sid && baseptr->is_unlinked()) {
-                   // do not return an unlinked node if we are doing non-snapshot reads
-                   return ret;
-               }
-               // thanks to rcu at the top level this is safe (should be)
-               ret.first = ret.second;
+        if (!sid || (root_sid != Sto::initialized_tid() && root_sid <= sid)) {
+           if (!sid && baseptr->is_unlinked()) {
+               // do not return an unlinked node if we are doing non-snapshot reads
                return ret;
-            }
+           }
+           // thanks to rcu at the top level this is safe (should be)
+           ret.first = ret.second;
+           return ret;
+        }
 
-            if (root_sid != Sto::initialized_tid()) {
-                ret.first = reinterpret_cast<N*>(baseptr->search_history(sid));
-            }
+        if (root_sid != Sto::initialized_tid()) {
+            ret.first = reinterpret_cast<N*>(baseptr->search_history(sid));
         }
         return ret;
     }
@@ -144,9 +149,9 @@ public:
     typedef ObjectID<N, L> oid_type;
     static constexpr TransactionTid::type invalid_bit = TransactionTid::user_bit;
     explicit NodeBase() : unlinked(false), vers_(),
-        h_(), nw_(new NodeWrapper<N, L>(object_id())) {}
+        h_(), nw_(new NodeWrapper<N, L>(oid_type(this))) {}
 
-    oid_type object_id() const {return reinterpret_cast<oid_type>(this);}
+    oid_type object_id() const {return oid_type(this);}
     NodeWrapper<N, L>* root_wrapper() {return nw_.access();}
     NodeWrapper<N, L>* atomic_root_wrapper(TransItem& item, TVersion& vers) {return nw_.read(item, vers);}
 

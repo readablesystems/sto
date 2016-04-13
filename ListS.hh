@@ -327,37 +327,6 @@ private:
         return results.second;
     }
 
-/*
-    node_type* _find(const K& key, sid_type sid) {
-        node_type* cur = next_snapshot(head_id_, sid);
-        bool cur_history = false;
-        while (cur) {
-            // to see if @cur is part of the history list
-            cur_history = reinterpret_cast<wrapper_type*>(cur)->c_sid != 0;
-
-            int c = comp_(cur->key, key);
-            if (c == 0) {
-                return cur;
-            } else if (c > 0) {
-                return nullptr;
-            }
-
-            // skip nodes that are not part of the snapshot we look for
-            oid_type nid = cur->next_id;
-            node_type* next = next_snapshot(nid, sid);
-
-            // direct-link two immutable nodes if detected
-            if (cur_history &&
-                (!next || reinterpret_cast<wrapper_type*>(next)->c_sid)) {
-                cur->next_id.set_direct_link(next);
-            }
-
-            cur = next;
-        }
-        return cur;
-    }
-*/
-
     // XXX note to cleanup: never structurally remove a node until history is empty
     // needs lock
     std::pair<bool, oid_type> _insert(const K& key, const V& value) {
@@ -512,16 +481,25 @@ public:
                 return false;
             }
 
+            // cut the short path if we have a lazy direct link available
+            bool direct_link = !link_use_base(last_node->links.next_id);
+            oid_type cur_oid = last_oid;
+            wrapper_type* cur_node = last_node;
+            if (direct_link) {
+                last_node = last_node->links.next_id.wrapper_ptr();
+                last_oid = last_node->oid;
+                in_snapshot = true;
+                continue;
+            }
+
             // skip nodes not part of the snapshot we look for
             oid_type nid = last_oid.base_ptr()->links.next_id;
-            oid_type cur_oid = last_oid;
-            wrapper_type* cur = last_node;
             bool next_in_snapshot = next_snapshot(nid, sid);
 
             // lazily fix up direct links when possible
             if (in_snapshot && (!last_node || next_in_snapshot)) {
-                assert((uintptr_t)cur->links.next_id.base_ptr() == link_type::use_base);
-                last_node->links.next_id.set_direct_link(last_node);
+                assert(cur_node->links.next_id.value() == link_type::use_base);
+                cur_node->links.next_id.set_direct_link(last_node);
             }
 
             in_snapshot = next_in_snapshot;
@@ -564,7 +542,6 @@ private:
         last_oid = start;
         while (!last_oid.is_null()) {
             cbp = last_oid.base_ptr();
-
             // ObjectID::deref searches through all available history (include root level)
             // and returns the wrapper containing the matching sid, if any
             last_node = last_oid.deref(sid);
@@ -581,6 +558,10 @@ private:
         // maybe we can say that nullptr is always in snapshot?
         this->reset();
         return false;
+    }
+
+    static inline bool link_use_base(const oid_type& next_id) {
+        return (next_id.value() == link_type::use_base);
     }
 
     list_type& list;
