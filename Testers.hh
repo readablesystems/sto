@@ -449,7 +449,7 @@ public:
     static const int num_ops_ = 4;
 };
 
-/*
+#if 0
 template <typename T>
 class PqueueTester : Tester<T> {
 public:
@@ -850,4 +850,82 @@ public:
     
     static const int num_ops_ = 5;
 };
-*/
+#endif
+
+template <typename DT, typename RT>
+class ListTester : public Tester<DT, RT> {
+public:
+    template <typename T>
+    void init(T* q) {
+        for (int i = 0; i < MAX_VALUE; i++) {
+            TRANSACTION {
+                (*q)[i] = i;
+            } RETRY(false);
+        }
+    }
+
+    void init_sut(DT* q) override {init<DT>(q);}
+    void init_ref(RT* q) override {init<RT>(q);}
+
+    op_record* doOp(DT* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) override {
+#if !PRINT_DEBUG
+        (void)me;
+#endif
+        int key = slotdist(transgen);
+        op_record* rec = new op_record;
+        rec->op = op;
+        rec->args.push_back(key);
+        if (op == 0) {
+            int val = slotdist(transgen);
+            {
+                OpPrintGuard p(op, me, key, val);
+                (*q)[key] = val;
+            }
+            rec->args.push_back(val);
+            return rec;
+        } else if (op == 1) {
+            int num = 0;
+            {
+                OpPrintGuard p(op, me, key, num);
+                num = q->erase(key);
+                p.val = num;
+            }
+            rec->rdata.push_back(num);
+            return rec;
+        } else {
+            abort();
+        }
+        return rec;
+    }
+
+    void redoOp(RT* q, op_record *op) override {
+        if (op->op == 0) {
+            int key = op->args[0];
+            int val = op->args[1];
+            {
+                OpPrintGuard p(op, 0);
+                (*q)[key] = val;
+            }
+        } else if (op->op == 1) {
+            int key = op->args[0];
+            int erased = 0;
+            {
+                OpPrintGuard p(op, erased);
+                int erased = q->erase(key);
+                p.val = erased;
+            }
+            assert(erased == op->rdata[0]);
+        } else {
+            abort();
+        }
+    }
+private:
+    struct OpPrintGuard {
+        int op;
+        int me;
+        int key;
+        int val;
+        bool replay;
+        static std::string op_names[2];
+    };
+};
