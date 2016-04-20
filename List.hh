@@ -32,14 +32,13 @@ public:
   }
 
 private:
-  // XXX: barf. version_type is the only one of these not actually used for
-  // versions :)
-  typedef TransactionTid::type version_type;
+  // not an actual tid but we use that type for the spinlock implementations
+  typedef TransactionTid::type list_lock_type;
   typedef TVersion node_version_type;
-  typedef TVersion size_version_type;
+  typedef TVersion list_version_type;
 
 public:
-    static constexpr version_type invalid_bit = TransactionTid::user_bit;
+    static constexpr TransactionTid::type invalid_bit = TransactionTid::user_bit;
 
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
@@ -66,7 +65,7 @@ public:
       vers.set_version(new_v);
     }
 
-    void set_version_unlock(version_type new_v) {
+    void set_version_unlock(node_version_type new_v) {
       vers.set_version_unlock(new_v);
     }
 
@@ -324,7 +323,7 @@ public:
     }
   }
 
-  inline size_version_type opacity_check() {
+  inline list_version_type opacity_check() {
     // When we check for opacity, we need to compare the latest listversion and not
     // the one at the beginning of the operation.
     assert(Opacity);
@@ -473,21 +472,21 @@ private:
         remove<false>(head_, true);
   }
 
-  void verify_list(size_version_type readv) {
+  void verify_list(list_version_type readv) {
     t_item(list_key).observe(readv);
     acquire_fence();
   }
 
 
-  void lock(version_type& v) {
+  void lock(list_lock_type& v) {
     TransactionTid::lock(v);
   }
 
-  void unlock(version_type& v) {
+  void unlock(list_lock_type& v) {
     TransactionTid::unlock(v);
   }
 
-  bool is_locked(version_type& v) {
+  bool is_locked(list_lock_type& v) {
     return TransactionTid::is_locked(v);
   }
 
@@ -507,7 +506,7 @@ private:
   bool check(TransItem& item, Transaction&) override {
     if (item.key<list_node*>() == list_key) {
       auto lv = listversion_;
-      return lv.check_version(item.template read_value<size_version_type>());
+      return lv.check_version(item.template read_value<list_version_type>());
     }
     auto n = item.key<list_node*>();
     if (!n->is_valid()) {
@@ -603,8 +602,8 @@ private:
 
   list_node *head_;
   long listsize_;
-  version_type listlock_;
-  size_version_type listversion_;
+  list_lock_type listlock_;
+  list_version_type listversion_;
   Compare comp_;
 };
 
