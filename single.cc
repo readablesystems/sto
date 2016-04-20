@@ -378,6 +378,8 @@ void insertDeleteSeparateTest() {
   TestTransaction t(1);
   int x;
   assert(!h.transGet(IntStr(12).str(), x));
+  // need a write as well otherwise this txn would successfully commit as read-only
+  h.transPut(IntStr(1000).str(), 0);
 
   TestTransaction t2(2);
   assert(h.transInsert(IntStr(12).str(), 13));
@@ -388,7 +390,9 @@ void insertDeleteSeparateTest() {
 
   TestTransaction t3(3);
   assert(!h.transGet(IntStr(13).str(), x));
-  
+  // need a write as well otherwise this txn would successfully commit as read-only
+  h.transPut(IntStr(1000).str(), 0);
+
   TestTransaction t4(4);
   assert(h.transInsert(IntStr(10).str(), 11));
   assert(h.transInsert(IntStr(13).str(), 14));
@@ -396,7 +400,6 @@ void insertDeleteSeparateTest() {
   assert(h.transDelete(IntStr(12).str()));
   assert(t4.try_commit());
   assert(!t3.try_commit());
-
 }
 
 void rangeQueryTest() {
