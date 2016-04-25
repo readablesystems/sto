@@ -12,7 +12,6 @@ std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callbac
 
 // reserve TransactionTid::increment_value for prepopulated
 TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = 2 * TransactionTid::increment_value;
-TransactionTid::type Transaction::_GSC = 0; // global snapshot clock
 
 static void __attribute__((used)) check_static_assertions() {
     static_assert(sizeof(threadinfo_t) % 128 == 0, "threadinfo is 2-cache-line aligned");
@@ -291,8 +290,6 @@ bool Transaction::try_commit() {
 
 
 #if CONSISTENCY_CHECK
-    fence();
-    gsc_snapshot();
     fence();
     commit_tid();
     fence();

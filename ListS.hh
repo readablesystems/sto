@@ -33,9 +33,6 @@ public:
     typedef StoSnapshot::sid_type sid_type;
     ListNode(const K& key, const V& val) : key(key), val(val) {}
 
-    bool is_valid() {
-    }
-
     K key;
     V val;
 };
