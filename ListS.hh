@@ -125,7 +125,7 @@ public:
 
     std::pair<bool, V> trans_find(const K& k) {
         sid_type sid = Sto::active_sid();
-        if (sid != Sto::initialized_tid()) {
+        if (sid != Sto::disable_snapshot) {
             // snapshot reads are safe as nontrans
             return nontrans_find(k, sid);
         }
@@ -205,7 +205,7 @@ public:
         TVersion lv = listversion_;
         fence();
 
-        bool found = cursor.find(key, Sto::initialized_tid());
+        bool found = cursor.find(key, Sto::disable_snapshot);
         if (!found) {
             auto item = Sto::item(this, list_key);
             item.observe(lv);
@@ -273,7 +273,7 @@ public:
             listversion_.set_version(t.commit_tid());
             return;
         }
-        oid_type oid = item.key<oid_type>();
+        oid_type oid(item.key<uintptr_t>());
         auto bp = oid.base_ptr();
 
         // copy-on-write for both deletes and updates
@@ -309,12 +309,16 @@ private:
         auto results = _insert(key, V());
         unlock(listlock_);
 
-        if (results.first) {
-            return results.second;
-        }
         auto item = Sto::item(this, results.second.value());
         auto bp = results.second.base_ptr();
         bool poisoned = is_poisoned(bp->version());
+        if (results.first) {
+            if (poisoned) {
+                item.add_flags(insert_tag);
+            }
+            return results.second;
+        }
+
         if (!item.has_write() && poisoned) {
             Sto::abort();
         } else if (has_delete(item)) {
@@ -336,7 +340,7 @@ private:
         cursor_type cursor(*this);
 
         // all the magic in one line :D
-        bool found = cursor.find(key, Sto::initialized_tid());
+        bool found = cursor.find(key, Sto::disable_snapshot);
 
         auto cbp = cursor.last_oid.base_ptr();
         auto node = cursor.last_node;
@@ -372,7 +376,7 @@ private:
     // needs lock
     bool _remove(const K& key, TxnStage stage) {
         cursor_type cursor(*this);
-        bool found = cursor.find(key, Sto::initialized_tid());
+        bool found = cursor.find(key, Sto::disable_snapshot);
         if (found) {
             auto bp = cursor.last_oid.base_ptr();
             if (stage == TxnStage::cleanup) {
@@ -459,8 +463,8 @@ public:
     wrapper_type* prev_node;
     wrapper_type* last_node;
 
-    ListCursor(list_type& l) : last_oid(nullptr, false), prev_oid(nullptr, false),
-        last_node(nullptr), prev_node(nullptr), list(l) {}
+    ListCursor(list_type& l) : prev_oid(nullptr, false), last_oid(nullptr, false),
+        prev_node(nullptr), last_node(nullptr), list(l) {}
 
     void reset() {
         prev_oid = nullptr;
@@ -469,7 +473,7 @@ public:
     }
 
     // find the node containing the key at the given sid
-    // only searches at the root level if @sid == Sto::initialized_tid()
+    // only searches at the root level if @sid == Sto::disable_snapshot
     // this will return unlinked nodes!
     bool find(const K& key, sid_type sid) {
         bool in_snapshot = next_snapshot(list.head_id_, sid);
@@ -517,7 +521,7 @@ private:
         auto cbp = prev_oid.base_ptr();
 
         // always return false if we are not doing a snapshot search
-        if (sid == Sto::initialized_tid()) {
+        if (sid == Sto::disable_snapshot) {
             cbp = prev_oid.base_ptr();
             if (!prev_oid.is_null()) {
                 prev_node = cbp->root_wrapper();

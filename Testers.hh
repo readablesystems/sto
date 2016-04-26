@@ -892,7 +892,7 @@ public:
         }
         // operator[] read-only
         else if (op == 1) {
-            int val;
+            int val = 0;
             {
                 OpPrintGuard p(op, me, key, val);
                 val = (*q)[key];
@@ -972,6 +972,7 @@ private:
         int val;
 
         OpPrintGuard(int op, int me, int key, int val) : op(op), me(me), key(key), val(val) {
+#if PRINT_DEBUG
             std::stringstream ss;
             ss << "[" << me << "] ";
             if (op == 0) {
@@ -985,9 +986,11 @@ private:
             TransactionTid::lock(lock);
             std::cout << ss.str() << std::endl;
             TransactionTid::unlock(lock);
+#endif
         }
 
         ~OpPrintGuard() {
+#if PRINT_DEBUG
             std::stringstream ss;
             ss << "[" << me << "] ";
             if (op == 0) {
@@ -1001,6 +1004,7 @@ private:
             TransactionTid::lock(lock);
             std::cout << ss.str() << std::endl;
             TransactionTid::unlock(lock);
+#endif
         }
     };
 
@@ -1012,6 +1016,7 @@ private:
         int expected;
 
         ReplayPrintGuard(int op, int key, int val) : op(op), key(key), val(val), expected() {
+#if PRINT_DEBUG
             std::stringstream ss;
             ss << "replay ";
             if (op == 0) {
@@ -1025,9 +1030,11 @@ private:
             TransactionTid::lock(lock);
             std::cout << ss.str() << std::endl;
             TransactionTid::unlock(lock);
+#endif
         }
 
         ~ReplayPrintGuard() {
+#if PRINT_DEBUG
             std::stringstream ss;
             if (op == 0) {
                 ss << "inserted";
@@ -1042,6 +1049,7 @@ private:
             TransactionTid::lock(lock);
             std::cout << ss.str() << std::endl;
             TransactionTid::unlock(lock);
+#endif
         }
     };
 };

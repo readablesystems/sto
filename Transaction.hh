@@ -54,7 +54,7 @@
 #endif
 #endif
 
-#define CONSISTENCY_CHECK 0
+#define CONSISTENCY_CHECK 1
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
 
@@ -184,13 +184,15 @@ struct __attribute__((aligned(128))) threadinfo_t {
     }
 };
 
-
 class Transaction {
 public:
     static constexpr unsigned tset_initial_capacity = 512;
 
     static constexpr unsigned hash_size = 1024;
     static constexpr unsigned hash_step = 5;
+
+    static constexpr TransactionTid::type disable_snapshot = 0;
+
     using epoch_type = TRcuSet::epoch_type;
     using signed_epoch_type = TRcuSet::signed_epoch_type;
 
@@ -313,7 +315,8 @@ private:
 #endif
         any_writes_ = any_nonopaque_ = may_duplicate_items_ = false;
         first_write_ = 0;
-        start_tid_ = commit_tid_ = active_sid_ = 0;
+        start_tid_ = commit_tid_ = 0;
+        active_sid_ = disable_snapshot;
         buf_.clear();
 #if STO_DEBUG_ABORTS
         abort_item_ = nullptr;
@@ -565,7 +568,7 @@ public:
 
     // committing
     tid_type commit_tid() const {
-        assert(state_ == s_committing_locked || state_ == s_committing);
+        //assert(state_ == s_committing_locked || state_ == s_committing);
         if (!commit_tid_)
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
@@ -753,6 +756,9 @@ public:
     static TransactionTid::type commit_tid() {
         return TThread::txn->commit_tid();
     }
+
+    static constexpr TransactionTid::type disable_snapshot = Transaction::disable_snapshot;
+    static constexpr TransactionTid::type invalid_snapshot = 0;
 
     static TransactionTid::type GSC_snapshot() {
         return TThread::txn->gsc_snapshot();

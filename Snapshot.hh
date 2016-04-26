@@ -89,7 +89,7 @@ public:
         NodeWrapper<N, L>* root = baseptr->root_wrapper();
         sid_type root_sid = root->sid;
 
-        if (!sid || (root_sid != Sto::initialized_tid() && root_sid <= sid)) {
+        if (!sid || (root_sid != Sto::invalid_snapshot && root_sid <= sid)) {
            if (!sid && baseptr->is_unlinked()) {
                // do not return an unlinked node if we are doing non-snapshot reads
                return ret;
@@ -98,7 +98,7 @@ public:
            return root;
         }
 
-        if (root_sid != Sto::initialized_tid()) {
+        if (root_sid != Sto::invalid_snapshot) {
             ret = baseptr->search_history(sid);
         }
         return ret;
@@ -157,7 +157,7 @@ public:
     N& node() {return nw_.access()->node();}
 
     // Copy-on-Write: only allowed at STO install time!!
-    bool is_immutable() {return nw_.access()->sid != 0 && nw_.access()->sid < Sto::GSC_snapshot();};
+    bool is_immutable() {return nw_.access()->sid != Sto::invalid_snapshot && nw_.access()->sid < Sto::GSC_snapshot();};
 
     void save_copy_in_history() {
         assert(is_immutable());
