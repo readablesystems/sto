@@ -192,6 +192,7 @@ public:
     static constexpr unsigned hash_step = 5;
 
     static constexpr TransactionTid::type disable_snapshot = 0;
+    static constexpr TransactionTid::type invalid_snapshot = 0;
 
     using epoch_type = TRcuSet::epoch_type;
     using signed_epoch_type = TRcuSet::signed_epoch_type;
@@ -206,6 +207,7 @@ public:
     typedef TransactionTid::type tid_type;
 private:
     static TransactionTid::type _TID;
+    static TransactionTid::type _GSC;
 public:
 
     static std::function<void(threadinfo_t::epoch_type)> epoch_advance_callback;
@@ -316,6 +318,7 @@ private:
         any_writes_ = any_nonopaque_ = may_duplicate_items_ = false;
         first_write_ = 0;
         start_tid_ = commit_tid_ = 0;
+        gsc_snapshot_ = invalid_snapshot;
         active_sid_ = disable_snapshot;
         buf_.clear();
 #if STO_DEBUG_ABORTS
@@ -583,7 +586,12 @@ public:
         return active_sid_;
     }
     tid_type gsc_snapshot() const {
-        return commit_tid();
+        assert(state_ == s_committing_locked || state_ == s_committing);
+        if (gsc_snapshot_ == invalid_snapshot) {
+            gsc_snapshot_ = _GSC;
+            fence();
+        }
+        return gsc_snapshot_;
     }
     void set_version(TVersion& vers, TVersion::type flags = 0) const {
         vers.set_version(commit_tid() | flags);
@@ -645,6 +653,7 @@ private:
     unsigned tset_size_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
+    mutable tid_type gsc_snapshot_;
     mutable tid_type active_sid_;
     mutable TransactionBuffer buf_;
     mutable uint32_t lrng_state_;
@@ -758,7 +767,7 @@ public:
     }
 
     static constexpr TransactionTid::type disable_snapshot = Transaction::disable_snapshot;
-    static constexpr TransactionTid::type invalid_snapshot = 0;
+    static constexpr TransactionTid::type invalid_snapshot = Transaction::invalid_snapshot;
 
     static TransactionTid::type GSC_snapshot() {
         return TThread::txn->gsc_snapshot();
@@ -773,7 +782,11 @@ public:
     }
 
     static TransactionTid::type take_snapshot() {
-        return fetch_and_add(&Transaction::_TID, TransactionTid::increment_value);
+        TransactionTid::lock(Transaction::_GSC);
+        TransactionTid::type sid = fetch_and_add(&Transaction::_TID, TransactionTid::increment_value);
+        Transaction::_GSC = sid;
+        fence();
+        return sid;
     }
 
     static TransactionTid::type recent_tid() {

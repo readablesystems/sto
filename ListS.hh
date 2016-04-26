@@ -270,7 +270,7 @@ public:
 
     void install(TransItem& item, Transaction& t) override {
         if (item.key<uintptr_t>() == list_key) {
-            listversion_.set_version(t.commit_tid());
+            listversion_.set_version_unlock(t.commit_tid());
             return;
         }
         oid_type oid(item.key<uintptr_t>());
