@@ -270,7 +270,7 @@ public:
 
     void install(TransItem& item, Transaction& t) override {
         if (item.key<uintptr_t>() == list_key) {
-            listversion_.set_version_unlock(t.commit_tid());
+            listversion_.set_version(t.commit_tid());
             return;
         }
         oid_type oid(item.key<uintptr_t>());
@@ -289,7 +289,10 @@ public:
         }
         rw->sid = t.commit_tid();
 
-        bp->version().set_version_unlock(t.commit_tid());
+        if (has_insert(item))
+            bp->version().set_version_unlock(t.commit_tid());
+        else
+            bp->version().set_version(t.commit_tid());
     }
 
     void cleanup(TransItem& item, bool committed) override {
