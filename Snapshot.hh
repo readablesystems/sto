@@ -55,7 +55,9 @@ public:
     void set_direct_link(N* ptr) {
         oid_ = reinterpret_cast<uintptr_t>(ptr) | direct_bit;
     }
-
+    void operator=(const ObjectID& rhs) {
+        oid_ = rhs.oid_;
+    }
     void operator=(N* ptr) {
         oid_ = reinterpret_cast<uintptr_t>(ptr);
     }
@@ -80,27 +82,24 @@ public:
 
     // the only indirection needed: translating ObjectID to a reference to "node"
     // given the specific time in sid
-    std::pair<N*, N*> deref(sid_type sid) {
+    NodeWrapper<N, L>* deref(sid_type sid) {
         assert(!direct());
-        std::pair<N*, N*> ret(nullptr, nullptr);
+        NodeWrapper<N, L>* ret = nullptr;
         NodeBase<N, L>* baseptr = base_ptr();
         NodeWrapper<N, L>* root = baseptr->root_wrapper();
         sid_type root_sid = root->sid;
-
-        ret.second = reinterpret_cast<N*>(root);
 
         if (!sid || (root_sid != Sto::initialized_tid() && root_sid <= sid)) {
            if (!sid && baseptr->is_unlinked()) {
                // do not return an unlinked node if we are doing non-snapshot reads
                return ret;
            }
-           // thanks to rcu at the top level this is safe (should be)
-           ret.first = ret.second;
-           return ret;
+           // thanks to the pointer trick at the top level this should be safe
+           return root;
         }
 
         if (root_sid != Sto::initialized_tid()) {
-            ret.first = reinterpret_cast<N*>(baseptr->search_history(sid));
+            ret = baseptr->search_history(sid);
         }
         return ret;
     }
@@ -140,7 +139,7 @@ private:
     mutable RWLock lock_;
     std::deque<history_entry_type> list_;
 
-    static bool sid_comp(const history_entry_type& ent, sid_type sid) {return ent.first < sid;};
+    static bool sid_comp(sid_type sid, const history_entry_type& ent) {return sid < ent.first;};
 };
 
 template <typename N, typename L>
@@ -153,7 +152,7 @@ public:
 
     oid_type object_id() const {return oid_type(this);}
     NodeWrapper<N, L>* root_wrapper() {return nw_.access();}
-    NodeWrapper<N, L>* atomic_root_wrapper(TransItem& item, TVersion& vers) {return nw_.read(item, vers);}
+    NodeWrapper<N, L>* atomic_root_wrapper(TransProxy& item, TVersion& vers) {return nw_.read(item, vers);}
 
     N& node() {return nw_.access()->node();}
 
@@ -182,6 +181,7 @@ private:
     TVersion vers_;
     History<N, L> h_;
     TWrapped<NodeWrapper<N, L>*> nw_;
+public:
     L links;
 };
 
@@ -245,11 +245,12 @@ NodeWrapper<N, L>* History<N, L>::search(sid_type sid) {
     if (!list_.empty()) {
         auto it = std::upper_bound(list_.begin(), list_.end(), sid, sid_comp);
         if (it != list_.begin())
-            ret = *(--it);
-        if (ret && ret->c_sid < sid) {
+            ret = (--it)->second;
+        // looks like the following check is unecessary and actually wrong...
+        //if (ret && ret->c_sid < sid) {
             // this implies a deleted snapshot
-            ret = nullptr;
-        }
+            //ret = nullptr;
+        //}
     }
     unlock_read(lock_);
     return ret;

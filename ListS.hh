@@ -31,6 +31,7 @@ template <typename K, typename V>
 class ListNode {
 public:
     typedef StoSnapshot::sid_type sid_type;
+    ListNode() : key(), val() {}
     ListNode(const K& key, const V& val) : key(key), val(val) {}
 
     K key;
@@ -52,34 +53,36 @@ public:
 template <typename K, typename V>
 class ListProxy {
 public:
+    typedef List<K, V> list_type;
     typedef ListNode<K, V> node_type;
     typedef ListLink<K, V> link_type;
     typedef StoSnapshot::ObjectID<node_type, link_type> oid_type;
     typedef StoSnapshot::NodeWrapper<node_type, link_type> wrapper_type;
 
-    explicit ListProxy(oid_type ins_oid) noexcept : oid(ins_oid) {}
+    explicit ListProxy(list_type& l, oid_type ins_oid) noexcept : list(l), oid(ins_oid) {}
 
     // transactional non-snapshot read
     operator V() {
-        auto item = Sto::item(this, oid);
+        auto item = Sto::item(&list, oid.value());
         if (item.has_write()) {
             return item.template write_value<V>();
         } else {
-            return atomic_rootlv_value_by_oid(item, oid);
+            return list.atomic_rootlv_value_by_oid(item, oid);
         }
     }
 
     // transactional assignment
     ListProxy& operator=(const V& other) {
-        Sto::item(this, oid).add_write(other);
+        Sto::item(&list, oid.value()).add_write(other);
         return *this;
     }
 
     ListProxy& operator=(const ListProxy& other) {
-        Sto::item(this, oid).add_write((V)other);
+        Sto::item(&list, oid.value()).add_write((V)other);
         return *this;
     }
 private:
+    list_type& list;
     oid_type oid;
 };
 
@@ -114,7 +117,7 @@ public:
         return std::make_pair(found, found ? cursor.last_node->val : V());
     }
 
-    V atomic_rootlv_value_by_oid(TransItem& item, oid_type oid) {
+    V atomic_rootlv_value_by_oid(TransProxy& item, oid_type oid) {
         auto bp = oid.base_ptr();
         TVersion& r_ver = bp->version();
         return bp->atomic_root_wrapper(item, r_ver)->node().val;
@@ -136,7 +139,7 @@ public:
         bool found = cursor.find(k, sid);
         
         if (found) {
-            auto item = Sto::item(this, cursor.last_oid);
+            auto item = Sto::item(this, cursor.last_oid.value());
             TVersion& r_ver = cursor.last_oid.base_ptr()->version();
             if (is_poisoned(r_ver) && !has_insert(item)) {
                 Sto::abort();
@@ -153,7 +156,7 @@ public:
     }
 
     ListProxy<K, V> operator[](const K& key) {
-        return ListProxy<K, V>(insert_position(key));
+        return ListProxy<K, V>(*this, insert_position(key));
     }
 
     // "STAMP"-ish insert
@@ -162,7 +165,7 @@ public:
         auto results = _insert(key, V());
         unlock(listlock_);
 
-        auto item = Sto::item(this, results.second);
+        auto item = Sto::item(this, results.second.value());
 
         if (results.first) {
             // successfully inserted
@@ -210,8 +213,8 @@ public:
         }
 
         bool poisoned = is_poisoned(cursor.last_oid.base_ptr()->version());
-        auto item = Sto::item(this, cursor.last_oid);
-        if (!has_write(item) && poisoned) {
+        auto item = Sto::item(this, cursor.last_oid.value());
+        if (!item.has_write() && poisoned) {
             Sto::abort();
         }
         if (has_delete(item)) {
@@ -309,7 +312,7 @@ private:
         if (results.first) {
             return results.second;
         }
-        auto item = Sto::item(this, results.second);
+        auto item = Sto::item(this, results.second.value());
         auto bp = results.second.base_ptr();
         bool poisoned = is_poisoned(bp->version());
         if (!item.has_write() && poisoned) {
@@ -460,7 +463,8 @@ public:
         last_node(nullptr), prev_node(nullptr), list(l) {}
 
     void reset() {
-        prev_oid = last_oid = nullptr;
+        prev_oid = nullptr;
+        last_oid = nullptr;
         prev_node = last_node = nullptr;
     }
 

@@ -16,7 +16,8 @@
 #define HASHTABLE 1
 #define RBTREE 2
 #define VECTOR 3
-#define DS RBTREE 
+#define LIST 4
+#define DS LIST
 
 #if DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
@@ -26,6 +27,8 @@ HashtableTester<Hashtable<int, int, false, 1000000>> tester = HashtableTester<Ha
 RBTreeTester<RBTree<int, int, true>, std::map<int, int>> tester = RBTreeTester<RBTree<int, int, true>, std::map<int, int>>();
 #elif DS == VECTOR
 VectorTester<Vector<int>> tester = VectorTester<Vector<int>>();
+#elif DS == LIST
+ListTester<List<int, int>, std::map<int, int>> tester;
 #endif
 
 template <typename T>
@@ -127,6 +130,9 @@ int main() {
 #elif DS == VECTOR
     Vector<int> q;
     Vector<int> q1;
+#elif DS == LIST
+    List<int, int> q;
+    std::map<int, int> q1;
 #endif  
 
     tester.init(&q);

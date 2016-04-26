@@ -10,6 +10,7 @@
 #include "Hashtable.hh"
 #include "RBTree.hh"
 #include "Vector.hh"
+#include "ListS.hh"
 
 #define MAX_VALUE 10 // Max value of integers used in data structures
 #define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements
@@ -856,6 +857,8 @@ public:
 template <typename DT, typename RT>
 class ListTester : public Tester<DT, RT> {
 public:
+    static const int num_ops_ = 3;
+
     template <typename T>
     void init(T* q) {
         for (int i = 0; i < MAX_VALUE; i++) {
@@ -892,7 +895,7 @@ public:
             int val;
             {
                 OpPrintGuard p(op, me, key, val);
-                val = *(q)[key];
+                val = (*q)[key];
                 p.val = val;
             }
             rec->rdata.push_back(val);
@@ -903,7 +906,7 @@ public:
             int num = 0;
             {
                 OpPrintGuard p(op, me, key, num);
-                num = q->erase(key);
+                num = q->trans_erase(key);
                 p.val = num;
             }
             rec->rdata.push_back(num);
@@ -954,6 +957,10 @@ public:
     void check(DT* q, RT* q1) override {
         (void)q; (void)q1;
         std::cout << "check() skipped" << std::endl;
+    }
+
+    void print_stats(DT* q) {
+        (void)q;
     }
 
 private:
