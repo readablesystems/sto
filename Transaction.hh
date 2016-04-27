@@ -782,8 +782,8 @@ public:
     }
 
     static TransactionTid::type take_snapshot() {
-        TransactionTid::lock(Transaction::_GSC);
-        TransactionTid::type sid = fetch_and_add(&Transaction::_TID, TransactionTid::increment_value);
+        // XXX not correct right now, probably need DCAS
+        TransactionTid::type sid = Transaction::_TID | 0x1;
         Transaction::_GSC = sid;
         fence();
         return sid;

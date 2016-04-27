@@ -142,6 +142,7 @@ public:
             auto item = Sto::item(this, cursor.last_oid.value());
             TVersion& r_ver = cursor.last_oid.base_ptr()->version();
             if (is_poisoned(r_ver) && !has_insert(item)) {
+                std::cout << "poisoned in trans_find" << std::endl;
                 Sto::abort();
             }
             if (has_delete(item)) {
@@ -183,6 +184,7 @@ public:
         fence();
         bool poisoned = is_poisoned(ver);
         if (!item.has_write() && poisoned) {
+            std::cout << "poisoned in trans_insert" << std::endl;
             Sto::abort();
         } else if (has_delete(item)) {
             item.clear_flags(delete_tag);
@@ -212,9 +214,11 @@ public:
             return false;
         }
 
-        bool poisoned = is_poisoned(cursor.last_oid.base_ptr()->version());
+        TVersion nv = cursor.last_oid.base_ptr()->version();
+        bool poisoned = is_poisoned(nv);
         auto item = Sto::item(this, cursor.last_oid.value());
         if (!item.has_write() && poisoned) {
+            std::cout << "poisoned in trans_erase" << std::endl;
             Sto::abort();
         }
         if (has_delete(item)) {
@@ -231,7 +235,7 @@ public:
 
             item.assign_flags(delete_tag);
             item.add_write(0);
-            item.observe(lv);
+            item.observe(nv);
         }
         return true;
     }
@@ -263,7 +267,11 @@ public:
         }
         TVersion vers = oid_type(n).base_ptr()->version();
         if (is_poisoned(vers)) {
-            return has_insert(item);
+            if (!has_insert(item)) {
+                std::cout << "poisoned in check" << std::endl;
+                return false;
+            }
+            return true;
         }
         return vers.check_version(item.template read_value<TVersion>());
     }
@@ -299,7 +307,7 @@ public:
         if (has_insert(item)) {
             if (!committed || (committed && has_delete(item))) {
                 lock(listlock_);
-                _remove(item.key<oid_type>().base_ptr()->node().key, TxnStage::cleanup);
+                _remove(oid_type(item.key<uintptr_t>()).base_ptr()->node().key, TxnStage::cleanup);
                 unlock(listlock_);
             }
         }
@@ -316,6 +324,7 @@ private:
         auto bp = results.second.base_ptr();
         bool poisoned = is_poisoned(bp->version());
         if (results.first) {
+            item.add_write(V());
             if (poisoned) {
                 item.add_flags(insert_tag);
             }
@@ -323,6 +332,7 @@ private:
         }
 
         if (!item.has_write() && poisoned) {
+            std::cout << "poisoned in insert_position" << std::endl;
             Sto::abort();
         } else if (has_delete(item)) {
             item.clear_flags(delete_tag);
@@ -479,7 +489,9 @@ public:
     // only searches at the root level if @sid == Sto::disable_snapshot
     // this will return unlinked nodes!
     bool find(const K& key, sid_type sid) {
-        bool in_snapshot = next_snapshot(list.head_id_, sid);
+        bool in_snapshot = false;
+        last_oid = list.head_id_;
+        last_node = last_oid.is_null() ? nullptr : last_oid.base_ptr()->root_wrapper();
         while (last_node) {
             int c = list.comp_(last_node->node().key, key);
             if (c == 0) {
@@ -501,8 +513,8 @@ public:
             }
 
             // skip nodes not part of the snapshot we look for
-            oid_type nid = last_oid.base_ptr()->links.next_id;
-            bool next_in_snapshot = next_snapshot(nid, sid);
+            //oid_type nid = last_oid.base_ptr()->links.next_id;
+            bool next_in_snapshot = next_snapshot(last_oid, sid);
 
             // lazily fix up direct links when possible
             if (in_snapshot && (!last_node || next_in_snapshot)) {
@@ -519,7 +531,7 @@ private:
     // skip nodes that are not part of the snapshot (based on sid) we look for
     // modifies last_oid and last_node: not found if last_node == nullptr
     // return value indicates whether the returned node is part of a history list (immutable)
-    bool next_snapshot(oid_type& start, sid_type sid) {
+    bool next_snapshot(oid_type start, sid_type sid) {
         prev_oid = start;
         auto cbp = prev_oid.base_ptr();
 
