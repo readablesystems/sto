@@ -228,6 +228,10 @@ public:
             // defer cleanups to cleanup()
             item.remove_read().add_flags(delete_tag);
             // XXX insert_tag && delete_tag means needs cleanup after committed
+        } else if (cursor.last_oid.base_ptr()->is_unlinked()) {
+            auto item = Sto::item(this, list_key);
+            item.observe(lv);
+            return false;
         } else {
             // increment list version
             auto litem = Sto::item(this, list_key);
@@ -393,7 +397,7 @@ private:
         if (found) {
             auto bp = cursor.last_oid.base_ptr();
             if (stage == TxnStage::cleanup) {
-                assert(!bp->is_unlinked());
+                //assert(!bp->is_unlinked());
                 if (bp->history_is_empty()) {
                     _do_unlink(cursor.prev_oid, cursor.last_oid, stage);
                 }
@@ -489,9 +493,11 @@ public:
     // only searches at the root level if @sid == Sto::disable_snapshot
     // this will return unlinked nodes!
     bool find(const K& key, sid_type sid) {
-        bool in_snapshot = false;
-        last_oid = list.head_id_;
-        last_node = last_oid.is_null() ? nullptr : last_oid.base_ptr()->root_wrapper();
+        prev_oid = list.head_id_;
+        fence();
+        prev_node = prev_oid.is_null() ? nullptr : prev_oid.base_ptr()->root_wrapper();
+
+        bool in_snapshot = next_snapshot(prev_oid, sid);
         while (last_node) {
             int c = list.comp_(last_node->node().key, key);
             if (c == 0) {
@@ -506,6 +512,8 @@ public:
             oid_type cur_oid = last_oid;
             wrapper_type* cur_node = last_node;
             if (direct_link) {
+                prev_oid = last_oid;
+                prev_node = last_node;
                 last_node = last_node->links.next_id.wrapper_ptr();
                 last_oid = last_node->oid;
                 in_snapshot = true;
@@ -513,8 +521,8 @@ public:
             }
 
             // skip nodes not part of the snapshot we look for
-            //oid_type nid = last_oid.base_ptr()->links.next_id;
-            bool next_in_snapshot = next_snapshot(last_oid, sid);
+            oid_type nid = last_oid.base_ptr()->links.next_id;
+            bool next_in_snapshot = next_snapshot(nid, sid);
 
             // lazily fix up direct links when possible
             if (in_snapshot && (!last_node || next_in_snapshot)) {
@@ -523,6 +531,8 @@ public:
             }
 
             in_snapshot = next_in_snapshot;
+            prev_oid = cur_oid;
+            prev_node = cur_node;
         }
 
         return false;
@@ -532,26 +542,16 @@ private:
     // modifies last_oid and last_node: not found if last_node == nullptr
     // return value indicates whether the returned node is part of a history list (immutable)
     bool next_snapshot(oid_type start, sid_type sid) {
-        prev_oid = start;
-        auto cbp = prev_oid.base_ptr();
+        last_oid = start;
+        auto cbp = last_oid.base_ptr();
 
         // always return false if we are not doing a snapshot search
         if (sid == Sto::disable_snapshot) {
-            cbp = prev_oid.base_ptr();
-            if (!prev_oid.is_null()) {
-                prev_node = cbp->root_wrapper();
-                // no need to skip unlinked nodes
-                last_oid = cbp->links.next_id;
-                if (last_oid.is_null()) {
-                    last_node = nullptr;
-                    return false;
-                } else {
-                    cbp = last_oid.base_ptr();
-                    last_node = cbp->root_wrapper();
-                }
+            cbp = last_oid.base_ptr();
+            if (!last_oid.is_null()) {
+                last_node = cbp->root_wrapper();
             } else {
-                this->reset();
-                return false;
+                last_node = nullptr;
             }
 
             return false;

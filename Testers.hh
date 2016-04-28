@@ -944,11 +944,10 @@ public:
             int erased = 0;
             {
                 ReplayPrintGuard p(op->op, key, 0);
-                int erased = q->erase(key);
+                erased = q->erase(key);
                 p.val = erased;
                 p.expected = op->rdata[0];
             }
-            assert(erased == op->rdata[0]);
         } else {
             abort();
         }
