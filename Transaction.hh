@@ -184,6 +184,13 @@ struct __attribute__((aligned(128))) threadinfo_t {
     }
 };
 
+// StoSnapshot:
+// Unified struct that contains both TID and GSC for easy use with D-CAS
+struct uint128_t {
+    TransactionTid::type _TID;
+    TransactionTid::type _GSC;
+};
+
 class Transaction {
 public:
     static constexpr unsigned tset_initial_capacity = 512;
@@ -206,8 +213,7 @@ public:
     } global_epochs;
     typedef TransactionTid::type tid_type;
 private:
-    static TransactionTid::type _TID;
-    static TransactionTid::type _GSC;
+    static uint128_t _GCLKS;
 public:
 
     static std::function<void(threadinfo_t::epoch_type)> epoch_advance_callback;
@@ -545,7 +551,7 @@ public:
     void check_opacity(TransItem& item, TransactionTid::type v) {
         assert(state_ <= s_committing_locked);
         if (!start_tid_)
-            start_tid_ = _TID;
+            start_tid_ = _GCLKS._TID;
         if (!TransactionTid::try_check_opacity(start_tid_, v)
             && state_ < s_committing)
             hard_check_opacity(&item, v);
@@ -559,21 +565,21 @@ public:
     void check_opacity(TransactionTid::type v) {
         assert(state_ <= s_committing_locked);
         if (!start_tid_)
-            start_tid_ = _TID;
+            start_tid_ = _GCLKS._TID;
         if (!TransactionTid::try_check_opacity(start_tid_, v)
             && state_ < s_committing)
             hard_check_opacity(nullptr, v);
     }
 
     void check_opacity() {
-        check_opacity(_TID);
+        check_opacity(_GCLKS._TID);
     }
 
     // committing
     tid_type commit_tid() const {
         //assert(state_ == s_committing_locked || state_ == s_committing);
         if (!commit_tid_)
-            commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
+            commit_tid_ = fetch_and_add(&_GCLKS._TID, TransactionTid::increment_value);
         return commit_tid_;
     }
     void set_active_sid(tid_type sid) {
@@ -588,7 +594,7 @@ public:
     tid_type gsc_snapshot() const {
         assert(state_ == s_committing_locked || state_ == s_committing);
         if (gsc_snapshot_ == invalid_snapshot) {
-            gsc_snapshot_ = _GSC;
+            gsc_snapshot_ = _GCLKS._GSC;
             fence();
         }
         return gsc_snapshot_;
@@ -782,10 +788,16 @@ public:
     }
 
     static TransactionTid::type take_snapshot() {
-        // XXX not correct right now, probably need DCAS
-        TransactionTid::type sid = Transaction::_TID | 0x1;
-        Transaction::_GSC = sid;
-        fence();
+        TransactionTid::type sid;
+        while (true) {
+            uint128_t v = Transaction::_GCLKS;
+            uint128_t vv;
+            sid = vv._GSC = v._TID | 0x1;
+            vv._TID = v._TID + TransactionTid::increment_value;
+            if (cas_16b(&Transaction::_GCLKS, v, vv))
+                break;
+            fence();
+        }
         return sid;
     }
 
@@ -796,6 +808,23 @@ public:
     static TransactionTid::type initialized_tid() {
         // XXX: we might want a nonopaque_bit in here too.
         return TransactionTid::increment_value;
+    }
+private:
+    static inline bool cas_16b(uint128_t *src, uint128_t cmp, uint128_t with) {
+        bool result;
+        __asm__ __volatile__
+        (
+            "lock cmpxchg16b oword ptr %1\n\t"
+            "setz %0"
+            : "=q" ( result )
+            , "+m" ( *src )
+            , "+d" ( cmp._GSC )
+            , "+a" ( cmp._TID )
+            : "c" ( with._GSC )
+            , "b" ( with._TID )
+            : "cc"
+        );
+        return result;
     }
 };
 
