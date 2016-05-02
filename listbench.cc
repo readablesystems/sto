@@ -1,8 +1,9 @@
-#define LISTBENCH
+#define LISTBENCH 1
 
 #include <iostream>
 #include <vector>
 #include <random>
+#include <cassert>
 #include "listbench.hh"
 #include "ListS.hh"
 

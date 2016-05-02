@@ -815,7 +815,7 @@ private:
         bool result;
         __asm__ __volatile__
         (
-            "lock cmpxchg16b oword ptr %1\n\t"
+            "lock cmpxchg16b %1\n\t"
             "setz %0"
             : "=q" ( result )
             , "+m" ( *src )

@@ -10,7 +10,7 @@
 
 #if LISTBENCH
 #include "listbench.hh"
-extern uint64_t *bm_ctrs;
+extern uint64_t bm_ctrs[2];
 #endif
 
 template <typename T>
