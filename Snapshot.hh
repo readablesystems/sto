@@ -216,7 +216,7 @@ void History<N, L>::add_snapshot(NodeWrapper<N, L>* n, sid_type time) {
     
     lock_write(lock_);
     // History::list_ should always be sorted
-    assert(list_.back().first < n->sid);
+    assert(list_.empty() || list_.back().first < n->sid);
     list_.push_back(std::make_pair(n->sid, n));
     unlock_write(lock_);
 }

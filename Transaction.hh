@@ -798,6 +798,7 @@ public:
                 break;
             fence();
         }
+        // TODO: wait until all active txns finish
         return sid;
     }
 
