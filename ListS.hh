@@ -8,6 +8,11 @@
 #include "Transaction.hh"
 #include "Snapshot.hh"
 
+#if LISTBENCH
+#include "listbench.hh"
+extern uint64_t *bm_ctrs;
+#endif
+
 template <typename T>
 class DefaultCompare {
 public:
@@ -524,11 +529,15 @@ public:
             oid_type nid = last_oid.base_ptr()->links.next_id;
             bool next_in_snapshot = next_snapshot(nid, sid);
 
-            // lazily fix up direct links when possible
-            if (in_snapshot && (!last_node || next_in_snapshot)) {
-                assert(cur_node->links.next_id.value() == link_type::use_base);
-                cur_node->links.next_id.set_direct_link(last_node);
-            }
+            // [DISABLED DUE TO BUGS] lazily fix up direct links when possible
+//            if (in_snapshot && (!last_node || next_in_snapshot)) {
+//                assert(cur_node->links.next_id.value() == link_type::use_base);
+//                cur_node->links.next_id.set_direct_link(last_node);
+//            }
+
+#if LISTBENCH
+            bm_ctrs[base_visited]++;
+#endif
 
             in_snapshot = next_in_snapshot;
             prev_oid = cur_oid;
@@ -568,6 +577,9 @@ private:
             if (last_node == nullptr) {
                 // ObjectID exists but no snapshot is found at sid
                 last_oid = cbp->links.next_id;
+#if LISTBENCH
+                bm_ctrs[base_skipped]++;
+#endif
             } else {
                 // a wrapper is found with the exact match
                 // the corresponding node is "in snapshot" (immutable), thus returning true
