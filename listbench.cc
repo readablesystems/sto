@@ -49,12 +49,14 @@ void random_populate_snapshot(list_type* l, size_t ntxn, size_t max_txn_len, int
     int snapshot_threshold = MAX_ELEMENTS / snap_factor;
     for (size_t i = 0; i < ntxn; ++i) {
         size_t txnlen = ((size_t)dis(gen)) % max_txn_len + 1;
+        std::cout << "txn " << i << ", len " << txnlen << std::endl;
         TRANSACTION {
             for (size_t j = 0; j < txnlen; ++j)
                 (*l)[dis(gen)] = dis(gen);
         } RETRY(false);
 
         if (snapshot_ids.empty() || dis(gen) <= snapshot_threshold) {
+            std::cout << "snapshot" << std::endl;
             snapshot_ids.push_back(Sto::take_snapshot());
         }
     }
@@ -76,4 +78,12 @@ void random_search_snapshot(list_type* l, size_t ntxn, size_t max_txn_len) {
             }
         } RETRY(false);
     }
+}
+
+int main() {
+    list_type l;
+    random_populate_snapshot(&l, 1000, 5, 2);
+    std::cout << "base visited = " << bm_ctrs[base_visited]
+            << ", base skipped = " << bm_ctrs[base_skipped] << std::endl;
+    return 0;
 }

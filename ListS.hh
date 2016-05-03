@@ -498,11 +498,12 @@ public:
     // only searches at the root level if @sid == Sto::disable_snapshot
     // this will return unlinked nodes!
     bool find(const K& key, sid_type sid) {
-        prev_oid = list.head_id_;
-        fence();
-        prev_node = prev_oid.is_null() ? nullptr : prev_oid.base_ptr()->root_wrapper();
+        prev_oid = nullptr;
+        prev_node = nullptr;
 
-        bool in_snapshot = next_snapshot(prev_oid, sid);
+        bool in_snapshot = false;
+        last_oid = list.head_id_;
+        last_node = last_oid.is_null() ? nullptr : last_oid.base_ptr()->root_wrapper();
         while (last_node) {
             int c = list.comp_(last_node->node().key, key);
             if (c == 0) {
@@ -512,18 +513,18 @@ public:
                 return false;
             }
 
-            // cut the short path if we have a lazy direct link available
-            bool direct_link = !link_use_base(last_node->links.next_id);
             oid_type cur_oid = last_oid;
             wrapper_type* cur_node = last_node;
-            if (direct_link) {
-                prev_oid = last_oid;
-                prev_node = last_node;
-                last_node = last_node->links.next_id.wrapper_ptr();
-                last_oid = last_node->oid;
-                in_snapshot = true;
-                continue;
-            }
+            // [DISABLED DUE TO BUGS] cut the short path if we have a lazy direct link available
+//            bool direct_link = !link_use_base(last_node->links.next_id);
+//            if (direct_link) {
+//                prev_oid = last_oid;
+//                prev_node = last_node;
+//                last_node = last_node->links.next_id.wrapper_ptr();
+//                last_oid = last_node->oid;
+//                in_snapshot = true;
+//                continue;
+//            }
 
             // skip nodes not part of the snapshot we look for
             oid_type nid = last_oid.base_ptr()->links.next_id;
