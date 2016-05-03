@@ -12,13 +12,17 @@
 
 #define MAX_ELEMENTS 4096
 using list_type = List<int, int>;
-uint64_t bm_ctrs[2];
+uint64_t bm_ctrs[4];
 std::vector<TransactionTid::type> snapshot_ids;
 
 static inline void print_progress(size_t i) {
     if (i % 4096 == 0) {
         std::cout << "begin txn " << i << std::endl;
     }
+}
+
+static inline void reset_counters() {
+    bzero(bm_ctrs, sizeof(bm_ctrs));
 }
 
 void random_populate(list_type* l, size_t ntxn, size_t max_txn_len) {
@@ -67,6 +71,7 @@ void random_populate_snapshot(list_type* l, size_t ntxn, size_t max_txn_len, int
         } RETRY(false);
 
         if (snapshot_ids.empty() || dis(gen) <= snapshot_threshold) {
+            bm_ctrs[snapshots_taken]++;
             snapshot_ids.push_back(Sto::take_snapshot());
         }
     }
@@ -179,16 +184,14 @@ int main(int argc, char** argv) {
     print_info();
 
     list_type l;
+    std::cout << "prepopulating list..." << std::endl;
     if (test_no == TEST_FIND || test_no == TEST_FIND_SNAP) {
-        std::cout << "prepopulating list..." << std::endl;
         random_populate_snapshot(&l, ntxns, max_txn_len, snap_factor);
-        bm_ctrs[base_visited] = bm_ctrs[base_skipped] = 0;
     } else {
-        std::cout << "prepopulating list..." << std::endl;
         random_populate(&l, ntxns, max_txn_len);
-        bm_ctrs[base_visited] = bm_ctrs[base_skipped] = 0;
     }
 
+    reset_counters();
     std::cout << "starting test..." << std::endl;
 
     auto start = std::chrono::system_clock::now();
@@ -208,6 +211,8 @@ int main(int argc, char** argv) {
     std::cout << "time elapsed: " << elapsed.count() << " ms" << std::endl;
     std::cout << "base visited = " << bm_ctrs[base_visited]
             << ", base skipped = " << bm_ctrs[base_skipped] << std::endl;
+    std::cout << "snapshot taken = " << bm_ctrs[snapshots_taken]
+            << ", copy-on-writes = " << bm_ctrs[cow_performed] << std::endl;
     double top_spd = (double)bm_ctrs[base_visited] / (double)elapsed.count() * 1000.0;
     std::cout << "speed: " << top_spd << " elements/sec" << std::endl;
     return 0;

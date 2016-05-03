@@ -10,7 +10,7 @@
 
 #if LISTBENCH
 #include "listbench.hh"
-extern uint64_t bm_ctrs[2];
+extern uint64_t bm_ctrs[4];
 #endif
 
 template <typename T>
@@ -295,6 +295,9 @@ public:
 
         // copy-on-write for both deletes and updates
         if (bp->is_immutable()) {
+#if LISTBENCH
+            bm_ctrs[cow_performed]++;
+#endif
             bp->save_copy_in_history();
         }
 
