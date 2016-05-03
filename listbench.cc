@@ -10,13 +10,13 @@
 #include "listbench.hh"
 #include "ListS.hh"
 
-#define MAX_ELEMENTS 8192
+#define MAX_ELEMENTS 4096
 using list_type = List<int, int>;
 uint64_t bm_ctrs[2];
 std::vector<TransactionTid::type> snapshot_ids;
 
 static inline void print_progress(size_t i) {
-    if (i % 10000 == 0) {
+    if (i % 4096 == 0) {
         std::cout << "begin txn " << i << std::endl;
     }
 }
@@ -98,8 +98,8 @@ void random_search_snapshot(list_type* l, size_t ntxn, size_t max_txn_len) {
 
 static int test_no = 0;
 static int snap_factor = 2;
-static size_t ntxns = 81920;
-static size_t max_txn_len = 5;
+static size_t ntxns = 16384;
+static size_t max_txn_len = 15;
 
 static const std::string test_names[4] = {
     "random-insert",
