@@ -502,9 +502,8 @@ public:
         prev_oid = nullptr;
         prev_node = nullptr;
 
-        bool in_snapshot = false;
         last_oid = list.head_id_;
-        last_node = last_oid.is_null() ? nullptr : last_oid.base_ptr()->root_wrapper();
+        bool in_snapshot = next_snapshot(last_oid, sid);
         while (last_node) {
             int c = list.comp_(last_node->node().key, key);
             if (c == 0) {
