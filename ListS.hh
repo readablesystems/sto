@@ -294,8 +294,9 @@ public:
         auto bp = oid.base_ptr();
 
         // copy-on-write for both deletes and updates
-        if (bp->is_immutable())
+        if (bp->is_immutable()) {
             bp->save_copy_in_history();
+        }
 
         auto rw = bp->root_wrapper();
         if (has_delete(item)) {

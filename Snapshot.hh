@@ -117,7 +117,7 @@ public:
     oid_type oid;
     sid_type sid; // bascially commit_tid
 
-    explicit NodeWrapper(oid_type id) : N(), links(), deleted(false), oid(id), sid() {}
+    explicit NodeWrapper(oid_type id) : N(), links(), deleted(false), oid(id), sid(Sto::invalid_snapshot) {}
     N& node(){return *this;}
 };
 
