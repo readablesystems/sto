@@ -103,7 +103,7 @@ void random_search_snapshot(list_type* l, size_t ntxn, size_t max_txn_len) {
 
 static int test_no = 0;
 static int snap_factor = 2;
-static size_t ntxns = 16384;
+static size_t ntxns = 32768;
 static size_t max_txn_len = 15;
 
 static const std::string test_names[4] = {
