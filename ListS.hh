@@ -506,18 +506,16 @@ public:
         prev_node = nullptr;
 
         last_oid = list.head_id_;
-        bool in_snapshot = next_snapshot(last_oid, sid);
-        while (last_node) {
-            int c = list.comp_(last_node->node().key, key);
+        while (!last_oid.is_null()) {
+            int c = list.comp_(last_oid.base_ptr()->root_wrapper()->node().key, key);
             if (c == 0) {
-                return (!in_snapshot || !last_node->deleted);
+                last_node = find_copy(last_oid, sid); // this sets last_node
+                return ((last_node != nullptr)  && !last_node->deleted);
             } else if (c > 0) {
                 // prev_oid, last_oid indicates (structural) insertion point!
                 return false;
             }
 
-            oid_type cur_oid = last_oid;
-            wrapper_type* cur_node = last_node;
             // [DISABLED DUE TO BUGS] cut the short path if we have a lazy direct link available
 //            bool direct_link = !link_use_base(last_node->links.next_id);
 //            if (direct_link) {
@@ -529,10 +527,6 @@ public:
 //                continue;
 //            }
 
-            // skip nodes not part of the snapshot we look for
-            oid_type nid = last_oid.base_ptr()->links.next_id;
-            bool next_in_snapshot = next_snapshot(nid, sid);
-
             // [DISABLED DUE TO BUGS] lazily fix up direct links when possible
 //            if (in_snapshot && (!last_node || next_in_snapshot)) {
 //                assert(cur_node->links.next_id.value() == link_type::use_base);
@@ -543,9 +537,10 @@ public:
             bm_ctrs[base_visited]++;
 #endif
 
-            in_snapshot = next_in_snapshot;
-            prev_oid = cur_oid;
-            prev_node = cur_node;
+            prev_oid = last_oid;
+            prev_node = last_node;
+            last_oid = last_oid.base_ptr()->links.next_id;
+            last_node = nullptr;
         }
 
         return false;
@@ -554,46 +549,20 @@ private:
     // skip nodes that are not part of the snapshot (based on sid) we look for
     // modifies last_oid and last_node: not found if last_node == nullptr
     // return value indicates whether the returned node is part of a history list (immutable)
-    bool next_snapshot(oid_type start, sid_type sid) {
-        last_oid = start;
-        auto cbp = last_oid.base_ptr();
+    wrapper_type* find_copy(oid_type obj, sid_type sid) {
+        auto cbp = obj.base_ptr();
 
-        // always return false if we are not doing a snapshot search
+        // return top-level directly if not doing a snapshot search
         if (sid == Sto::disable_snapshot) {
-            cbp = last_oid.base_ptr();
-            if (!last_oid.is_null()) {
-                last_node = cbp->root_wrapper();
-            } else {
-                last_node = nullptr;
-            }
-
-            return false;
+            return obj.is_null() ? nullptr : cbp->root_wrapper();
         }
 
-        // we are doing a snapshot search here; need to search through history in this case
-        // not using prev_* fields here since we can't insert
-        last_oid = start;
-        while (!last_oid.is_null()) {
-            cbp = last_oid.base_ptr();
-            // ObjectID::deref searches through all available history (include root level)
-            // and returns the wrapper containing the matching sid, if any
-            last_node = last_oid.deref(sid);
-            if (last_node == nullptr) {
-                // ObjectID exists but no snapshot is found at sid
-                last_oid = cbp->links.next_id;
+        // ObjectID::deref searches through all available history (include root level)
+        // and returns the wrapper containing the matching sid, if any
 #if LISTBENCH
-                bm_ctrs[base_skipped]++;
+        bm_ctrs[histories_searched]++;
 #endif
-            } else {
-                // a wrapper is found with the exact match
-                // the corresponding node is "in snapshot" (immutable), thus returning true
-                return true;
-            }
-        }
-
-        // maybe we can say that nullptr is always in snapshot?
-        this->reset();
-        return false;
+        return last_oid.deref(sid);
     }
 
     static inline bool link_use_base(const oid_type& next_id) {

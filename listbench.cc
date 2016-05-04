@@ -210,7 +210,7 @@ int main(int argc, char** argv) {
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "time elapsed: " << elapsed.count() << " ms" << std::endl;
     std::cout << "base visited = " << bm_ctrs[base_visited]
-            << ", base skipped = " << bm_ctrs[base_skipped] << std::endl;
+            << ", histories searched = " << bm_ctrs[histories_searched] << std::endl;
     std::cout << "snapshot taken = " << bm_ctrs[snapshots_taken]
             << ", copy-on-writes = " << bm_ctrs[cow_performed] << std::endl;
     double top_spd = (double)bm_ctrs[base_visited] / (double)elapsed.count() * 1000.0;
