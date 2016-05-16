@@ -15,17 +15,23 @@
 #define MAX_VALUE  100000
 #define INIT_SIZE 100
 #define NTXN 200 // Number of transactions each thread should run.
-#define TXN_OPS 3 // Number of operations in a transaction.
 #define N_THREADS 10 // Number of concurrent threads
 
 // type of data structure to be used
 #define STO 0
 #define CDS 1
 
-// XXX CDS data structures don't have "top" functionality?
-enum op {push, pop}//, top}
-double weights[] = {.8, .2}
-op operations[] = {push, pop}
+enum op {push, pop}
+
+// set of transactions to choose from
+// approximately equivalent pushes and pops
+// no transaction that includes both pushes and pops
+std::vector<op> txns1[] = {
+    {push, push, push},
+    {pop, pop, pop},
+    {pop}, {pop}, {pop},
+    {push}, {push}, {push}
+};
 
 template <typename T>
 struct Tester {
@@ -36,15 +42,14 @@ struct Tester {
 
 template <typename T>
 void run_txn(T* pq, Rand transgen) {
-    for (int j = 0; j < TXN_OPS; ++j) {
-        op = opsdist(transgen);
+    // randomly select a transaction to run
+    auto txn = txns1[transgen() % sizeof(txns1)/sizeof(*txns1)];
+    // run the txn with random values
+    for (int j = 0; j < txn.size(); ++j) {
         int val = slotdist(transgen);
         switch(op) {
             case push:
                 pq->push(val);
-                break;
-            case top:
-                val = pq->top();
                 break;
             case pop:
                 pq->pop();
@@ -67,10 +72,6 @@ void run(void* x) {
     auto seedlow = seed & 0xffff;
     auto seedhigh = seed >> 16;
     Rand transgen(seed, seedlow << 16 | seedhigh);
-    std::piecewise_constant_distribution<> opsdist(
-            std::begin(operations), 
-            std::end(operations), 
-            std::begin(weights));
     std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
 
     // do the proper initialization depending on which library we're using
@@ -154,7 +155,7 @@ int main() {
     startAndWait(&sto_pqueue, STO);
     
     gettimeofday(&tv2, NULL);
-    printf("STO: Priority Queue: ");
+    printf("STO: Priority Queue, init size %d: ", INIT_SIZE);
     print_time(tv1, tv2);
     
     cds::Initialize();
@@ -165,7 +166,7 @@ int main() {
         startAndWait(&fc_pqueue, CDS);
         
         gettimeofday(&tv2, NULL);
-        printf("CDS: FC Priority Queue: ");
+        printf("CDS: FC Priority Queue, init size %d: ", INIT_SIZE);
         print_time(tv1, tv2);
         
         // benchmark  
@@ -174,7 +175,7 @@ int main() {
         startAndWait(&ms_pqueue, CDS);
         
         gettimeofday(&tv2, NULL);
-        printf("CDS: MS Priority Queue: ");
+        printf("CDS: MS Priority Queue, init size %d: ", INIT_SIZE);
         print_time(tv1, tv2);
     }
     cds::Terminate();
