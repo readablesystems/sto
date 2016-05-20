@@ -15,7 +15,6 @@
 #define GLOBAL_SEED 10
 
 #define MAX_VALUE  100000
-#define INIT_SIZE 100
 #define MAX_SIZE 100000
 #define NTRANS 200 // Number of transactions each thread should run.
 #define N_THREADS 10 // Number of concurrent threads
@@ -96,6 +95,8 @@ std::vector<std::vector<op>> all_txns[] =
         {push}
     }
 };
+
+std::vector<int> sizes = {100, 200, 300, 400, 500};
 
 template <typename T>
 struct Tester {
@@ -212,58 +213,55 @@ int main() {
     std::ios_base::sync_with_stdio(true);
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
 
-    // initialize all data structures
-    PriorityQueue<int> sto_pqueue;
-    WrappedFCPriorityQueue<int> fc_pqueue;
-    WrappedMSPriorityQueue<int> ms_pqueue(MAX_SIZE);
+    cds::Initialize();
 
     // create the epoch advancer thread
     pthread_t advancer;
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
 
-    for (auto it = begin (all_txns); it != end (all_txns); ++it) {
-        printf("Running Txn Set %ld\n", it-begin( all_txns ));
-        printf("Init size %d\n", INIT_SIZE);
-        cds::Initialize();
-        Sto::start_transaction();
-        for (int i = 0; i < INIT_SIZE; i++) {
-            sto_pqueue.push(i);
-            fc_pqueue.push(i);
-            ms_pqueue.push(i);
-        }
-        assert(Sto::try_commit());
+    // iterate through the txn set for all different sizes
+    for (auto size = begin(sizes); size != end(sizes); ++size) {
+        printf("Init size %d\n", size);
+        for (auto it = begin(all_txns); it != end(all_txns); ++it) {
+            printf("Running Txn Set %ld\n", it-begin(all_txns));
 
-        // benchmark STO
-        struct timeval tv1,tv2;
-        gettimeofday(&tv1, NULL);
-        
-        startAndWait(&sto_pqueue, STO, *it);
-        
-        gettimeofday(&tv2, NULL);
-        printf("STO: Priority Queue");
-        printf("\tFinal Size %d", sto_pqueue.unsafe_size());
-        print_time(tv1, tv2);
-        
-        // benchmark FC Pqueue
-        gettimeofday(&tv1, NULL);
-        
-        startAndWait(&fc_pqueue, CDS, *it);
-        
-        gettimeofday(&tv2, NULL);
-        printf("CDS: FC Priority Queue");
-        printf("\tFinal Size %lu", fc_pqueue.size());
-        print_time(tv1, tv2);
-   
-        // benchmark MS Pqueue
-        gettimeofday(&tv1, NULL);
-        
-        startAndWait(&ms_pqueue, CDS, *it);
-        
-        gettimeofday(&tv2, NULL);
-        printf("CDS: MS Priority Queue");
-        printf("\tFinal Size %lu", ms_pqueue.size());
-        print_time(tv1, tv2);
+            // initialize all data structures
+            PriorityQueue<int> sto_pqueue;
+            WrappedFCPriorityQueue<int> fc_pqueue;
+            WrappedMSPriorityQueue<int> ms_pqueue(MAX_SIZE);
+            Sto::start_transaction();
+            for (int i = 0; i < *size; i++) {
+                sto_pqueue.push(i);
+                fc_pqueue.push(i);
+                ms_pqueue.push(i);
+            }
+            assert(Sto::try_commit());
+
+            // benchmark STO
+            struct timeval tv1,tv2;
+            gettimeofday(&tv1, NULL);
+            
+            startAndWait(&sto_pqueue, STO, *it);
+            
+            gettimeofday(&tv2, NULL);
+            printf("STO: Priority Queue \tFinal Size %d", sto_pqueue.unsafe_size());
+            print_time(tv1, tv2);
+            
+            // benchmark FC Pqueue
+            gettimeofday(&tv1, NULL);
+            startAndWait(&fc_pqueue, CDS, *it);
+            gettimeofday(&tv2, NULL);
+            printf("CDS: FC Priority Queue \tFinal Size %lu", fc_pqueue.size());
+            print_time(tv1, tv2);
+       
+            // benchmark MS Pqueue
+            gettimeofday(&tv1, NULL);
+            startAndWait(&ms_pqueue, CDS, *it);
+            gettimeofday(&tv2, NULL);
+            printf("CDS: MS Priority Queue \tFinal Size %lu", ms_pqueue.size());
+            print_time(tv1, tv2);
+        }
     }
     cds::Terminate();
     return 0;
