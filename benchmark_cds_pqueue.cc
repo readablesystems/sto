@@ -30,15 +30,12 @@ class WrappedMSPriorityQueue : cds::container::MSPriorityQueue<T> {
     
     public:
         WrappedMSPriorityQueue(size_t nCapacity) : base_class(nCapacity) {};
-        
         void pop() {
             int ret;
             base_class::pop(ret);
         }
-        
-        void push(T v) {
-            base_class::push(v);
-        }
+        void push(T v) { base_class::push(v); }
+        size_t size() { return base_class::size(); }
 };
 template <typename T>
 class WrappedFCPriorityQueue : cds::container::FCPriorityQueue<T> {
@@ -49,21 +46,55 @@ class WrappedFCPriorityQueue : cds::container::FCPriorityQueue<T> {
             int ret;
             base_class::pop(ret);
         }
-        void push(T v) {
-            base_class::push(v);
-        }
+        void push(T v) { base_class::push(v); }
+        size_t size() { return base_class::size(); }
 };
 
 enum op {push, pop};
 
 // set of transactions to choose from
 // approximately equivalent pushes and pops
-// no transaction that includes both pushes and pops
-std::vector<op> txns1[] = {
-    {push, push, push, pop},
-    {pop, pop, pop, push},
-    {pop}, {pop}, {pop},
-    {push}, {push}, {push}
+
+std::vector<std::vector<op>> all_txns[] = 
+{
+    // short txns
+    {
+        {push, push, push},
+        {pop, pop, pop},
+        {pop}, {pop}, {pop},
+        {push}, {push}, {push}
+    },
+    // longer txns
+    {
+        {push, push, push, push, push},
+        {pop, pop, pop, pop, pop},
+        {pop}, {pop}, {pop}, {pop}, {pop}, 
+        {push}, {push}, {push}, {push}, {push}
+    },
+    // 100% include both pushes and pops
+    {
+        {push, push, pop},
+        {pop, pop, push},
+    },
+    // 50% include both pushes and pops
+    {
+        {push, push, pop},
+        {pop, pop, push},
+        {pop}, {push}
+    },
+    // 33% include both pushes and pops
+    {
+        {push, push, pop},
+        {pop, pop, push},
+        {pop}, {pop},
+        {push}, {push}
+    },
+    // 33%: longer push + pop txns
+    {
+        {push, pop, push, pop, push, pop},
+        {pop}, 
+        {push}
+    }
 };
 
 template <typename T>
@@ -71,6 +102,7 @@ struct Tester {
     T* ds;
     int ds_type;
     int me;
+    std::vector<std::vector<op>> txn_set;
 };
 
 template <typename T>
@@ -96,6 +128,7 @@ void* run_sto(void* x) {
     Tester<T>* tp = (Tester<T>*) x;
     int me = tp->me;
     T* pq = tp->ds;
+    auto txn_set = tp->txn_set;
     
     TThread::set_id(me);
 
@@ -108,7 +141,7 @@ void* run_sto(void* x) {
         Rand transgen(seed, seedlow << 16 | seedhigh);
 
         // randomly select a transaction to run
-        auto txn = txns1[transgen() % sizeof(txns1)/sizeof(*txns1)];
+        auto txn = txn_set[transgen() % txn_set.size()];
 
         // so that retries of this transaction do the same thing
         Rand transgen_snap = transgen;
@@ -131,6 +164,7 @@ void* run_cds(void* x) {
     Tester<T>* tp = (Tester<T>*) x;
     int me = tp->me;
     T* pq = tp->ds;
+    auto txn_set = tp->txn_set;
     
     cds::threading::Manager::attachThread();
 
@@ -143,7 +177,7 @@ void* run_cds(void* x) {
         Rand transgen(seed, seedlow << 16 | seedhigh);
 
         // randomly select a transaction to run
-        auto txn = txns1[transgen() % sizeof(txns1)/sizeof(*txns1)];
+        auto txn = txn_set[transgen() % txn_set.size()];
         do_txn(pq, transgen, txn);
     }
     cds::threading::Manager::detachThread();
@@ -151,22 +185,18 @@ void* run_cds(void* x) {
 }
 
 template <typename T>
-void startAndWait(T* ds, int ds_type) {
+void startAndWait(T* ds, int ds_type, std::vector<std::vector<op>> txn_set) {
     pthread_t tids[N_THREADS];
     Tester<T> testers[N_THREADS];
     for (int i = 0; i < N_THREADS; ++i) {
         testers[i].ds = ds;
         testers[i].me = i;
+        testers[i].txn_set = txn_set;
         if (ds_type == CDS) {
             pthread_create(&tids[i], NULL, run_cds<T>, &testers[i]);
         } else {
             pthread_create(&tids[i], NULL, run_sto<T>, &testers[i]);
         }
-    }
-    if (ds_type == STO) {
-        pthread_t advancer;
-        pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
-        pthread_detach(advancer);
     }
     
     for (int i = 0; i < N_THREADS; ++i) {
@@ -175,7 +205,7 @@ void startAndWait(T* ds, int ds_type) {
 }
 
 void print_time(struct timeval tv1, struct timeval tv2) {
-    printf("%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
+    printf("\t%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
 }
 
 int main() {
@@ -186,43 +216,53 @@ int main() {
     PriorityQueue<int> sto_pqueue;
     WrappedFCPriorityQueue<int> fc_pqueue;
     WrappedMSPriorityQueue<int> ms_pqueue(MAX_SIZE);
-    
-    Sto::start_transaction();
-    for (int i = 0; i < INIT_SIZE; i++) {
-        sto_pqueue.push(i);
-        fc_pqueue.push(i);
-        ms_pqueue.push(i);
-    }
-    assert(Sto::try_commit());
 
-    // benchmark STO
-    struct timeval tv1,tv2;
-    gettimeofday(&tv1, NULL);
-    
-    startAndWait(&sto_pqueue, STO);
-    
-    gettimeofday(&tv2, NULL);
-    printf("STO: Priority Queue, init size %d: ", INIT_SIZE);
-    print_time(tv1, tv2);
-    
-    cds::Initialize();
-    {
+    // create the epoch advancer thread
+    pthread_t advancer;
+    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
+    pthread_detach(advancer);
+
+    for (auto it = begin (all_txns); it != end (all_txns); ++it) {
+        printf("Running Txn Set %ld\n", it-begin( all_txns ));
+        printf("Init size %d\n", INIT_SIZE);
+        cds::Initialize();
+        Sto::start_transaction();
+        for (int i = 0; i < INIT_SIZE; i++) {
+            sto_pqueue.push(i);
+            fc_pqueue.push(i);
+            ms_pqueue.push(i);
+        }
+        assert(Sto::try_commit());
+
+        // benchmark STO
+        struct timeval tv1,tv2;
+        gettimeofday(&tv1, NULL);
+        
+        startAndWait(&sto_pqueue, STO, *it);
+        
+        gettimeofday(&tv2, NULL);
+        printf("STO: Priority Queue");
+        printf("\tFinal Size %d", sto_pqueue.unsafe_size());
+        print_time(tv1, tv2);
+        
         // benchmark FC Pqueue
         gettimeofday(&tv1, NULL);
         
-        startAndWait(&fc_pqueue, CDS);
+        startAndWait(&fc_pqueue, CDS, *it);
         
         gettimeofday(&tv2, NULL);
-        printf("CDS: FC Priority Queue, init size %d: ", INIT_SIZE);
+        printf("CDS: FC Priority Queue");
+        printf("\tFinal Size %lu", fc_pqueue.size());
         print_time(tv1, tv2);
    
         // benchmark MS Pqueue
         gettimeofday(&tv1, NULL);
         
-        startAndWait(&ms_pqueue, CDS);
+        startAndWait(&ms_pqueue, CDS, *it);
         
         gettimeofday(&tv2, NULL);
-        printf("CDS: MS Priority Queue, init size %d: ", INIT_SIZE);
+        printf("CDS: MS Priority Queue");
+        printf("\tFinal Size %lu", ms_pqueue.size());
         print_time(tv1, tv2);
     }
     cds::Terminate();
