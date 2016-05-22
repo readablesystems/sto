@@ -13,7 +13,7 @@
 #include <sstream>
 
 #ifndef STO_PROFILE_COUNTERS
-#define STO_PROFILE_COUNTERS 0
+#define STO_PROFILE_COUNTERS 1
 #endif
 
 #ifndef STO_DEBUG_HASH_COLLISIONS

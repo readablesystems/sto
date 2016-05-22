@@ -68,7 +68,7 @@ endif
 
 PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter $(UNIT_PROGRAMS) $(BENCHMARK_CDS_PROGRAMS)
 UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric unit-rcu unit-tvector unit-tvector-nopred
-BENCHMARK_CDS_PROGRAMS = benchmark_cds_pqueue
+BENCHMARK_CDS_PROGRAMS = cds_benchmark_pqueue
 
 all: $(PROGRAMS) 
 
@@ -99,7 +99,7 @@ MSTO_OBJS = $(STO_OBJS) $(MASSTREE_OBJS)
 STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
 MSTO_DEPS = $(MSTO_OBJS) $(MASSTREEDIR)/libjson.a
 
-benchmark_cds_pqueue: benchmark_cds_pqueue.o $(STO_DEPS)
+cds_benchmark_pqueue: cds_benchmark_pqueue.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 concurrent: concurrent.o $(MSTO_DEPS)
