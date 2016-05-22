@@ -136,7 +136,7 @@ void startAndWait(T* ds, int ds_type, int benchmark, std::vector<std::vector<op>
 }
 
 void print_time(struct timeval tv1, struct timeval tv2) {
-    printf("\t%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
+    fprintf(stderr, "\t%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
 }
 
 void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set) {
@@ -158,21 +158,21 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set) {
     gettimeofday(&tv1, NULL);
     startAndWait(&fc_pqueue, CDS, bm, txn_set);
     gettimeofday(&tv2, NULL);
-    printf("CDS: FC Priority Queue \tFinal Size %lu", fc_pqueue.size());
+    fprintf(stderr, "CDS: FC Priority Queue \tFinal Size %lu", fc_pqueue.size());
     print_time(tv1, tv2);
 
     // benchmark MS Pqueue
     gettimeofday(&tv1, NULL);
     startAndWait(&ms_pqueue, CDS, bm, txn_set);
     gettimeofday(&tv2, NULL);
-    printf("CDS: MS Priority Queue \tFinal Size %lu", ms_pqueue.size());
+    fprintf(stderr, "CDS: MS Priority Queue \tFinal Size %lu", ms_pqueue.size());
     print_time(tv1, tv2);
 
     // benchmark STO
     gettimeofday(&tv1, NULL);
     startAndWait(&sto_pqueue, STO, bm, txn_set);
     gettimeofday(&tv2, NULL);
-    printf("STO: Priority Queue \tFinal Size %d", sto_pqueue.unsafe_size());
+    fprintf(stderr, "STO: Priority Queue \tFinal Size %d", sto_pqueue.unsafe_size());
     print_time(tv1, tv2);
 
 #if STO_PROFILE_COUNTERS
@@ -181,25 +181,25 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set) {
         txp_counters tc = Transaction::txp_counters_combined();
         const char* sep = "$ ";
         if (txp_count > txp_total_w) {
-            printf("%stotal_n: %llu, total_r: %llu, total_w: %llu", sep, tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w));
+            fprintf(stderr, "%stotal_n: %llu, total_r: %llu, total_w: %llu", sep, tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w));
             sep = ", ";
         }
         if (txp_count > txp_total_searched) {
-            printf("%stotal_searched: %llu", sep, tc.p(txp_total_searched));
+            fprintf(stderr, "%stotal_searched: %llu", sep, tc.p(txp_total_searched));
             sep = ", ";
         }
         if (txp_count > txp_total_aborts) {
-            printf("%stotal_aborts: %llu (%llu aborts at commit time)\n", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+            fprintf(stderr, "%stotal_aborts: %llu (%llu aborts at commit time)\n", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
             sep = ", ";
         }
         if (*sep)
-            printf("\n");
+            fprintf(stderr, "\n");
     }
 #endif
 }
 
 int main() {
-    printf("nthreads: %d, ntxns/thread: %d, max_value: %d, max_size: %d\n", N_THREADS, NTRANS, MAX_VALUE, MAX_SIZE);
+    fprintf(stderr, "nthreads: %d, ntxns/thread: %d, max_value: %d, max_size: %d\n", N_THREADS, NTRANS, MAX_VALUE, MAX_SIZE);
 
     std::ios_base::sync_with_stdio(true);
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
@@ -213,21 +213,21 @@ int main() {
 
     // iterate through the txn set for all different sizes
     for (auto txn_set = begin(q_txn_sets); txn_set != end(q_txn_sets); ++txn_set) {
-        printf("-------------------------------------------------------------------\n");
-        printf("\n****************TXN SET %ld*****************\n", txn_set-begin(q_txn_sets));
+        fprintf(stderr, "-------------------------------------------------------------------\n");
+        fprintf(stderr, "\n****************TXN SET %ld*****************\n", txn_set-begin(q_txn_sets));
         for (auto size = begin(sizes); size != end(sizes); ++size) {
-            printf("Init size: %d\n", *size);
+            fprintf(stderr, "Init size: %d\n", *size);
             
             // benchmark with random values. pushes can conflict with pops
-            printf("\tBenchmark: Random\n");
+            fprintf(stderr, "\tBenchmark: Random\n");
             run_benchmark(RANDOM, *size, *txn_set);
           
             // benchmark with decreasing values 
             // pushes and pops will never conflict (only pops conflict)
-            printf("\tBenchmark: Decreasing\n");
+            fprintf(stderr, "\tBenchmark: Decreasing\n");
             run_benchmark(DECREASING, *size, *txn_set);
 
-            printf("\tBenchmark: No Aborts (2 threads: one pushing, one popping\n");
+            fprintf(stderr, "\tBenchmark: No Aborts (2 threads: one pushing, one popping\n");
             run_benchmark(NOABORTS, *size, *txn_set);
         }
     }
