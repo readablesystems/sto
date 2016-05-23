@@ -288,7 +288,10 @@ bool Transaction::try_commit() {
     }
 #endif
 
-
+    // for snapshot purposes
+    // mark txn as installing (XXX super-overloaded LSB here...)
+    // before obtaining tid
+    tinfo[TThread::id()].last_installed |= 1;
 #if CONSISTENCY_CHECK
     fence();
     commit_tid();
@@ -332,6 +335,10 @@ bool Transaction::try_commit() {
         }
     }
 #endif
+    // for snapshot purposes
+    // the new `last_installed` should be greater than the previous one
+    fence();
+    tinfo[TThread::id()].last_installed = commit_tid();
 
     // fence();
     stop(true, writeset, nwriteset);

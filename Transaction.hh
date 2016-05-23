@@ -174,13 +174,15 @@ struct __attribute__((aligned(128))) threadinfo_t {
     using epoch_type = TRcuSet::epoch_type;
     epoch_type epoch;
     TRcuSet rcu_set;
+    // for snapshot purpose
+    TransactionTid::type last_installed;
     // XXX(NH): these should be vectors so multiple data structures can register
     // callbacks for these
     std::function<void(void)> trans_start_callback;
     std::function<void(void)> trans_end_callback;
     txp_counters p_;
     threadinfo_t()
-        : epoch(0) {
+        : epoch(0), last_installed(0) {
     }
 };
 
@@ -798,7 +800,23 @@ public:
                 break;
             fence();
         }
-        // TODO: wait until all active txns finish
+
+        // do not return prematurely
+        // waiting for tids up to `sid - increment_value` to install
+        const TransactionTid::type bound = sid - TransactionTid::increment_value;
+        int count = 0;
+        while (count < MAX_THREADS) {
+            count = 0;
+            for (auto& t : Transaction::tinfo) {
+                // LSB of @last_installed indicates whether
+                // an installation is on-going
+                if (t.last_installed >= bound ||
+                    ((t.last_installed & 0x1) == 0)) {
+                    ++count;
+                }
+            }
+        }
+
         return sid;
     }
 
