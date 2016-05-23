@@ -216,7 +216,7 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set) {
     startAndWait(&sto_pqueue_opaque, STO, bm, txn_set);
     gettimeofday(&tv2, NULL);
     fprintf(stderr, "STO: Priority Queue (Opaque) \tFinal Size %d", sto_pqueue_opaque.unsafe_size());
-    printf("STO (O) pq\t");
+    printf("STO(O)\t");
     print_time(tv1, tv2);
     
     print_abort_stats();
@@ -241,7 +241,7 @@ int main() {
         printf("\n****************TXN SET %ld*****************\n", txn_set-begin(q_txn_sets));
         for (auto size = begin(sizes); size != end(sizes); ++size) {
             fprintf(stderr, "Init size: %d\n", *size);
-            printf("Init size: %d\n", *size);
+            printf("\nInit size: %d\n", *size);
             
             // benchmark with random values. pushes can conflict with pops
             fprintf(stderr, "\tBenchmark: Random\n");
@@ -251,7 +251,7 @@ int main() {
             // benchmark with decreasing values 
             // pushes and pops will never conflict (only pops conflict)
             fprintf(stderr, "\tBenchmark: Decreasing\n");
-            printf("\tBenchmark: Decreasing\n");
+            printf("\nBenchmark: Decreasing\n");
             run_benchmark(DECREASING, *size, *txn_set);
         }
     }
@@ -261,7 +261,7 @@ int main() {
         fprintf(stderr, "Init size: %d\n", *size);
         printf("Init size: %d\n", *size);
         fprintf(stderr, "\tBenchmark: No Aborts (2 threads: one pushing, one popping)\n");
-        printf("\tBenchmark: No Aborts (2 threads: one pushing, one popping)\n");
+        printf("\nBenchmark: No Aborts (2 threads: one pushing, one popping)\n");
         run_benchmark(NOABORTS, *size, {});
     }
 
