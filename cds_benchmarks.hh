@@ -33,7 +33,7 @@ std::atomic_int global_val(INT_MAX);
 
 enum op {push, pop};
 
-std::vector<int> sizes = {100, 300, 500};
+std::vector<int> sizes = {100, 1000, 10000};
 
 template <typename T>
 struct Tester {
@@ -48,51 +48,51 @@ struct Tester {
 // approximately equivalent pushes and pops
 std::vector<std::vector<op>> q_txn_sets[] = 
 {
-    // only-growing data structure (no conflicts)
+    // 0. only-growing data structure (no conflicts)
     {
         {push, push, push},
         {push, push},
         {push}, {push}, {push}
     },
-    // only-shrinking data structure (no conflicts)
+    // 1. only-shrinking data structure
     {
         {pop, pop, pop},
         {pop, pop},
         {pop}, {pop}, {pop}
     },
-    // short txns
+    // 2. short txns
     {
         {push, push, push},
         {pop, pop, pop},
         {pop}, {pop}, {pop},
         {push}, {push}, {push}
     },
-    // longer txns
+    // 3. longer txns
     {
         {push, push, push, push, push},
         {pop, pop, pop, pop, pop},
         {pop}, {pop}, {pop}, {pop}, {pop}, 
         {push}, {push}, {push}, {push}, {push}
     },
-    // 100% include both pushes and pops
+    // 4. 100% include both pushes and pops
     {
         {push, push, pop},
         {pop, pop, push},
     },
-    // 50% include both pushes and pops
+    // 5. 50% include both pushes and pops
     {
         {push, push, pop},
         {pop, pop, push},
         {pop}, {push}
     },
-    // 33% include both pushes and pops
+    // 6. 33% include both pushes and pops
     {
         {push, push, pop},
         {pop, pop, push},
         {pop}, {pop},
         {push}, {push}
     },
-    // 33%: longer push + pop txns
+    // 7. 33%: longer push + pop txns
     {
         {push, pop, push, pop, push, pop},
         {pop}, 
