@@ -13,8 +13,8 @@
 #include "cds_benchmarks.hh"
 #include "randgen.hh"
 
-int global_thread_push_ctrs[N_THREADS];
-int global_thread_pop_ctrs[N_THREADS];
+txp_counter_type global_thread_push_ctrs[N_THREADS];
+txp_counter_type global_thread_pop_ctrs[N_THREADS];
 void clear_balance_ctrs() {
     for(int i = 0; i < N_THREADS; ++i) {
         global_thread_pop_ctrs[i] = 0;
@@ -143,9 +143,21 @@ void startAndWait(T* ds, int ds_type, int benchmark, std::vector<std::vector<op>
     }
 }
 
-void print_time(struct timeval tv1, struct timeval tv2) {
-    fprintf(stderr, "\t%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
-    printf("\t%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
+void print_stats(struct timeval tv1, struct timeval tv2, int bm) {
+    float seconds = (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0;
+    fprintf(stderr, "\t%f", seconds); 
+    printf("\t%f\n", seconds); 
+
+    int nthreads;
+    if (bm == NOABORTS) nthreads = 2;
+    else nthreads = N_THREADS;
+    int total = 0;
+    for (int i = 0; i < nthreads; ++i) {
+        //fprintf(stderr, "Thread %d \tpushes: %d \tpops: %d\n", 
+        //        i, global_thread_push_ctrs[i], global_thread_pop_ctrs[i]);
+        total += global_thread_push_ctrs[i] + global_thread_pop_ctrs[i];
+    }
+    fprintf(stderr, "\tops/ms: %f\n", total*1000/seconds);
 }
 
 void print_abort_stats() {
@@ -177,15 +189,6 @@ void print_abort_stats() {
 #endif
 }
 
-void print_balance_ctrs(int bm) {
-    int nthreads;
-    if (bm == NOABORTS) nthreads = 2;
-    else nthreads = N_THREADS;
-    for (int i = 0; i < nthreads; ++i) {
-        fprintf(stderr, "Thread %d \tpushes: %d \tpops: %d\n", 
-                i, global_thread_push_ctrs[i], global_thread_pop_ctrs[i]);
-    }
-}
 
 void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set) {
     global_val = INT_MAX;
@@ -210,8 +213,7 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set) {
     gettimeofday(&tv2, NULL);
     fprintf(stderr, "CDS: FC Priority Queue \tFinal Size %lu", fc_pqueue.size());
     fprintf(stdout, "CDS: FC Priority Queue \tFinal Size %lu", fc_pqueue.size());
-    print_time(tv1, tv2);
-    print_balance_ctrs(bm);
+    print_stats(tv1, tv2, bm);
     clear_balance_ctrs();
 
     // benchmark MS Pqueue
@@ -220,8 +222,7 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set) {
     gettimeofday(&tv2, NULL);
     fprintf(stderr, "CDS: MS Priority Queue \tFinal Size %lu", ms_pqueue.size());
     fprintf(stdout, "CDS: MS Priority Queue \tFinal Size %lu", ms_pqueue.size());
-    print_time(tv1, tv2);
-    print_balance_ctrs(bm);
+    print_stats(tv1, tv2, bm);
     clear_balance_ctrs();
 
     // benchmark STO
@@ -230,9 +231,8 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set) {
     gettimeofday(&tv2, NULL);
     fprintf(stderr, "STO: Priority Queue \tFinal Size %d", sto_pqueue.unsafe_size());
     fprintf(stdout, "STO: Priority Queue \tFinal Size %d", sto_pqueue.unsafe_size());
-    print_time(tv1, tv2);
+    print_stats(tv1, tv2, bm);
     print_abort_stats();
-    print_balance_ctrs(bm);
     clear_balance_ctrs();
     
     // benchmark STO w/Opacity
@@ -241,9 +241,8 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set) {
     gettimeofday(&tv2, NULL);
     fprintf(stderr, "STO: Priority Queue/O \tFinal Size %d", sto_pqueue_opaque.unsafe_size());
     fprintf(stdout, "STO: Priority Queue/O \tFinal Size %d", sto_pqueue_opaque.unsafe_size());
-    print_time(tv1, tv2);
+    print_stats(tv1, tv2, bm);
     print_abort_stats();
-    print_balance_ctrs(bm);
     clear_balance_ctrs();
 }
 
