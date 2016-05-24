@@ -41,6 +41,7 @@ struct Tester {
     int me;         // tid
     int ds_type;    // cds or sto
     int bm;         // which benchmark to run
+    size_t size;    // initial size of the ds 
     std::vector<std::vector<op>> txn_set;
 };
 

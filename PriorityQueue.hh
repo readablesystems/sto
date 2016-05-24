@@ -263,6 +263,9 @@ public:
     
     int unsafe_size() {
         return size_; // TODO: this is not transactional yet
+    } 
+    int size() {
+        return size_; // TODO: this is not transactional yet
     }
     
     void lock(versioned_value *e) {
