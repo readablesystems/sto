@@ -1,5 +1,6 @@
 #include <string>
 #include <iostream>
+#include <cstdarg>
 #include <assert.h>
 #include <vector>
 #include <random>
@@ -20,6 +21,59 @@ void clear_balance_ctrs() {
         global_thread_pop_ctrs[i] = 0;
         global_thread_push_ctrs[i] = 0;
     }
+}
+
+void dualprint(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    fprintf(stderr, fmt, args);
+    fprintf(stdout, fmt, args);
+    va_end(args);
+}
+
+void print_stats(struct timeval tv1, struct timeval tv2, int bm) {
+    float seconds = (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0;
+    dualprint("\t%f", seconds); 
+
+    int nthreads;
+    if (bm == NOABORTS) nthreads = 2;
+    else nthreads = N_THREADS;
+    int total = 0;
+    for (int i = 0; i < nthreads; ++i) {
+        //fprintf(stderr, "Thread %d \tpushes: %d \tpops: %d\n", 
+        //        i, global_thread_push_ctrs[i], global_thread_pop_ctrs[i]);
+        total += global_thread_push_ctrs[i] + global_thread_pop_ctrs[i];
+    }
+    dualprint("\tops/ms: %f\n", total/(seconds*1000));
+}
+
+void print_abort_stats() {
+#if STO_PROFILE_COUNTERS
+    if (txp_count >= txp_total_aborts) {
+        txp_counters tc = Transaction::txp_counters_combined();
+
+        unsigned long long txc_total_starts = tc.p(txp_total_starts);
+        unsigned long long txc_total_aborts = tc.p(txp_total_aborts);
+        unsigned long long txc_commit_aborts = tc.p(txp_commit_time_aborts);
+        unsigned long long txc_total_commits = txc_total_starts - txc_total_aborts;
+        fprintf(stderr, "\t$ %llu starts, %llu max read set, %llu commits",
+                txc_total_starts, tc.p(txp_max_set), txc_total_commits);
+        if (txc_total_aborts) {
+            fprintf(stderr, ", %llu (%.3f%%) aborts",
+                    tc.p(txp_total_aborts),
+                    100.0 * (double) tc.p(txp_total_aborts) / tc.p(txp_total_starts));
+            if (tc.p(txp_commit_time_aborts))
+                fprintf(stderr, "\n$ %llu (%.3f%%) of aborts at commit time",
+                        tc.p(txp_commit_time_aborts),
+                        100.0 * (double) tc.p(txp_commit_time_aborts) / tc.p(txp_total_aborts));
+        }
+        unsigned long long txc_commit_attempts = txc_total_starts - (txc_total_aborts - txc_commit_aborts);
+        fprintf(stderr, "\n\t$ %llu commit attempts, %llu (%.3f%%) nonopaque\n",
+                txc_commit_attempts, tc.p(txp_commit_time_nonopaque),
+                100.0 * (double) tc.p(txp_commit_time_nonopaque) / txc_commit_attempts);
+    }
+    Transaction::clear_stats();
+#endif
 }
 
 // run the specified transaction for the particular benchmark
@@ -115,12 +169,11 @@ void* run_cds(void* x) {
 }
 
 template <typename T>
-void startAndWait(T* ds, int ds_type, int benchmark, std::vector<std::vector<op>> txn_set, size_t size) {
-    int nthreads;
-    // if we want to avoid all aborts, then only spawn two threads and 
-    // have one only push and the other only pop
-    if (benchmark == NOABORTS) nthreads = 2;
-    else nthreads = N_THREADS;
+void startAndWait(T* ds, int ds_type, 
+        int benchmark, 
+        std::vector<std::vector<op>> txn_set, 
+        size_t size,
+        int nthreads) {
 
     pthread_t tids[nthreads];
     Tester<T> testers[nthreads];
@@ -143,55 +196,10 @@ void startAndWait(T* ds, int ds_type, int benchmark, std::vector<std::vector<op>
     }
 }
 
-void print_stats(struct timeval tv1, struct timeval tv2, int bm) {
-    float seconds = (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0;
-    fprintf(stderr, "\t%f", seconds); 
-    printf("\t%f\n", seconds); 
 
-    int nthreads;
-    if (bm == NOABORTS) nthreads = 2;
-    else nthreads = N_THREADS;
-    int total = 0;
-    for (int i = 0; i < nthreads; ++i) {
-        //fprintf(stderr, "Thread %d \tpushes: %d \tpops: %d\n", 
-        //        i, global_thread_push_ctrs[i], global_thread_pop_ctrs[i]);
-        total += global_thread_push_ctrs[i] + global_thread_pop_ctrs[i];
-    }
-    fprintf(stderr, "\tops/ms: %f\n", total*1000/seconds);
-}
-
-void print_abort_stats() {
-#if STO_PROFILE_COUNTERS
-    if (txp_count >= txp_total_aborts) {
-        txp_counters tc = Transaction::txp_counters_combined();
-
-        unsigned long long txc_total_starts = tc.p(txp_total_starts);
-        unsigned long long txc_total_aborts = tc.p(txp_total_aborts);
-        unsigned long long txc_commit_aborts = tc.p(txp_commit_time_aborts);
-        unsigned long long txc_total_commits = txc_total_starts - txc_total_aborts;
-        fprintf(stderr, "\t$ %llu starts, %llu max read set, %llu commits",
-                txc_total_starts, tc.p(txp_max_set), txc_total_commits);
-        if (txc_total_aborts) {
-            fprintf(stderr, ", %llu (%.3f%%) aborts",
-                    tc.p(txp_total_aborts),
-                    100.0 * (double) tc.p(txp_total_aborts) / tc.p(txp_total_starts));
-            if (tc.p(txp_commit_time_aborts))
-                fprintf(stderr, "\n$ %llu (%.3f%%) of aborts at commit time",
-                        tc.p(txp_commit_time_aborts),
-                        100.0 * (double) tc.p(txp_commit_time_aborts) / tc.p(txp_total_aborts));
-        }
-        unsigned long long txc_commit_attempts = txc_total_starts - (txc_total_aborts - txc_commit_aborts);
-        fprintf(stderr, "\n\t$ %llu commit attempts, %llu (%.3f%%) nonopaque\n",
-                txc_commit_attempts, tc.p(txp_commit_time_nonopaque),
-                100.0 * (double) tc.p(txp_commit_time_nonopaque) / txc_commit_attempts);
-    }
-    Transaction::clear_stats();
-#endif
-}
-
-
-void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set) {
+void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int nthreads) {
     global_val = INT_MAX;
+    
     // initialize all data structures
     PriorityQueue<int> sto_pqueue;
     PriorityQueue<int, true> sto_pqueue_opaque;
@@ -209,46 +217,41 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set) {
     
     // benchmark FC Pqueue
     gettimeofday(&tv1, NULL);
-    startAndWait(&fc_pqueue, CDS, bm, txn_set, size);
+    startAndWait(&fc_pqueue, CDS, bm, txn_set, size, nthreads);
     gettimeofday(&tv2, NULL);
-    fprintf(stderr, "CDS: FC Priority Queue \tFinal Size %lu", fc_pqueue.size());
-    fprintf(stdout, "CDS: FC Priority Queue \tFinal Size %lu", fc_pqueue.size());
+    dualprint("CDS: FC Priority Queue \tFinal Size %lu", fc_pqueue.size());
     print_stats(tv1, tv2, bm);
     clear_balance_ctrs();
 
     // benchmark MS Pqueue
     gettimeofday(&tv1, NULL);
-    startAndWait(&ms_pqueue, CDS, bm, txn_set, size);
+    startAndWait(&ms_pqueue, CDS, bm, txn_set, size, nthreads);
     gettimeofday(&tv2, NULL);
-    fprintf(stderr, "CDS: MS Priority Queue \tFinal Size %lu", ms_pqueue.size());
-    fprintf(stdout, "CDS: MS Priority Queue \tFinal Size %lu", ms_pqueue.size());
+    dualprint("CDS: MS Priority Queue \tFinal Size %lu", ms_pqueue.size());
     print_stats(tv1, tv2, bm);
     clear_balance_ctrs();
 
     // benchmark STO
     gettimeofday(&tv1, NULL);
-    startAndWait(&sto_pqueue, STO, bm, txn_set, size);
+    startAndWait(&sto_pqueue, STO, bm, txn_set, size, nthreads);
     gettimeofday(&tv2, NULL);
-    fprintf(stderr, "STO: Priority Queue \tFinal Size %d", sto_pqueue.unsafe_size());
-    fprintf(stdout, "STO: Priority Queue \tFinal Size %d", sto_pqueue.unsafe_size());
+    dualprint("STO: Priority Queue \tFinal Size %d", sto_pqueue.unsafe_size());
     print_stats(tv1, tv2, bm);
     print_abort_stats();
     clear_balance_ctrs();
     
     // benchmark STO w/Opacity
     gettimeofday(&tv1, NULL);
-    startAndWait(&sto_pqueue_opaque, STO, bm, txn_set, size);
+    startAndWait(&sto_pqueue_opaque, STO, bm, txn_set, size, nthreads);
     gettimeofday(&tv2, NULL);
-    fprintf(stderr, "STO: Priority Queue/O \tFinal Size %d", sto_pqueue_opaque.unsafe_size());
-    fprintf(stdout, "STO: Priority Queue/O \tFinal Size %d", sto_pqueue_opaque.unsafe_size());
+    dualprint("STO: Priority Queue/O \tFinal Size %d", sto_pqueue_opaque.unsafe_size());
     print_stats(tv1, tv2, bm);
     print_abort_stats();
     clear_balance_ctrs();
 }
 
 int main() {
-    fprintf(stderr, "nthreads: %d, ntxns/thread: %d, max_value: %d, max_size: %d\n", N_THREADS, NTRANS, MAX_VALUE, MAX_SIZE);
-    fprintf(stdout, "nthreads: %d, ntxns/thread: %d, max_value: %d, max_size: %d\n", N_THREADS, NTRANS, MAX_VALUE, MAX_SIZE);
+    dualprint("nthreads: %d, ntxns/thread: %d, max_value: %d, max_size: %d\n", N_THREADS, NTRANS, MAX_VALUE, MAX_SIZE);
 
     std::ios_base::sync_with_stdio(true);
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
@@ -260,35 +263,46 @@ int main() {
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
 
-    // iterate through the txn set for all different sizes
+    /*
+    // run the different txn set workloads with different initial sizes
+    // test both random and decreasing-only values
     for (auto txn_set = begin(q_txn_sets); txn_set != end(q_txn_sets); ++txn_set) {
-        fprintf(stderr, "\n****************TXN SET %ld*****************\n", txn_set-begin(q_txn_sets));
-        fprintf(stdout, "\n****************TXN SET %ld*****************\n", txn_set-begin(q_txn_sets));
+        dualprint("\n****************TXN SET %ld*****************\n", txn_set-begin(q_txn_sets));
         for (auto size = begin(sizes); size != end(sizes); ++size) {
-            fprintf(stderr, "\nInit size: %d\n", *size);
-            fprintf(stdout, "\nInit size: %d\n", *size);
+            dualprint("\nInit size: %d\n", *size);
             
             // benchmark with random values. pushes can conflict with pops
-            fprintf(stderr, "---------Benchmark: Random-----------\n");
-            fprintf(stdout, "---------Benchmark: Random-----------\n");
-            run_benchmark(RANDOM, *size, *txn_set);
+            dualprint("---------Benchmark: Random-----------\n");
+            run_benchmark(RANDOM, *size, *txn_set, N_THREADS);
           
             // benchmark with decreasing values 
             // pushes and pops will never conflict (only pops conflict)
             fprintf(stderr, "---------Benchmark: Decreasing-----------\n");
             fprintf(stdout, "---------Benchmark: Decreasing-----------\n");
-            run_benchmark(DECREASING, *size, *txn_set);
+            run_benchmark(DECREASING, *size, *txn_set, N_THREADS);
         }
     }
 
-    fprintf(stderr, "\nBenchmark: No Aborts (2 threads: one pushing, one popping)\n");
-    fprintf(stdout, "\nBenchmark: No Aborts (2 threads: one pushing, one popping)\n");
+    // run the two-thread test where one thread only pushes and the other only pops
+    dualprint("\nBenchmark: No Aborts (2 threads: one pushing, one popping)\n");
     for (auto size = begin(sizes); size != end(sizes); ++size) {
-        fprintf(stderr, "-------------------------------------------------------------------\n");
-        fprintf(stderr, "Init size: %d\n", *size);
-        fprintf(stdout, "-------------------------------------------------------------------\n");
-        fprintf(stdout, "Init size: %d\n", *size);
-        run_benchmark(NOABORTS, *size, {});
+        dualprint("-------------------------------------------------------------------\n");
+        dualprint("Init size: %d\n", *size);
+        run_benchmark(NOABORTS, *size, {}, 2);
+    }
+    */
+
+    // run single-operation txns with different nthreads
+    std::vector<int> nthreads = {1, 2, 4, 8, 12, 16, 20, 24};
+    dualprint("Init size: 10000, Random Values\n");
+    for (auto n = begin(nthreads); n != end(nthreads); ++n) {
+        dualprint("nthreads: %d\n", *n);
+        run_benchmark(RANDOM, 10000, q_single_op_txn_set, *n);
+    }
+    dualprint("Init size: 10000, Decreasing Values\n");
+    for (auto n = begin(nthreads); n != end(nthreads); ++n) {
+        dualprint("%d, ", *n);
+        run_benchmark(DECREASING, 10000, q_single_op_txn_set, *n);
     }
 
     cds::Terminate();
