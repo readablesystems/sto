@@ -35,7 +35,7 @@ void dualprint(const char* fmt,...) {
 
 void print_stats(struct timeval tv1, struct timeval tv2, int bm) {
     float seconds = (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0;
-    dualprint("\t%f", seconds); 
+    //dualprint("\t%f", seconds); 
 
     int nthreads;
     if (bm == NOABORTS) nthreads = 2;
@@ -46,7 +46,8 @@ void print_stats(struct timeval tv1, struct timeval tv2, int bm) {
         //        i, global_thread_push_ctrs[i], global_thread_pop_ctrs[i]);
         total += global_thread_push_ctrs[i] + global_thread_pop_ctrs[i];
     }
-    dualprint("\tops/ms: %f\n", total/(seconds*1000));
+    //dualprint("\tops/ms: %f\n", total/(seconds*1000));
+    dualprint("\t%f, ", total/(seconds*1000));
 }
 
 void print_abort_stats() {
@@ -99,11 +100,8 @@ void do_txn(Tester<T>* tp, Rand transgen) {
             case RANDOM:
                 val = slotdist(transgen);
                 break;
-            case NOABORTS:
-            case DECREASING:
+            default: // NOABORTS or DECREASING
                 val = --global_val;
-                break;
-            default:
                 break;
         }
         // avoid shrinking/growing the queue too much
@@ -221,7 +219,7 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
     gettimeofday(&tv1, NULL);
     startAndWait(&fc_pqueue, CDS, bm, txn_set, size, nthreads);
     gettimeofday(&tv2, NULL);
-    dualprint("CDS: FC Priority Queue \tFinal Size %lu", fc_pqueue.size());
+    //dualprint("CDS: FC Priority Queue \tFinal Size %lu", fc_pqueue.size());
     print_stats(tv1, tv2, bm);
     clear_balance_ctrs();
 
@@ -229,7 +227,7 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
     gettimeofday(&tv1, NULL);
     startAndWait(&ms_pqueue, CDS, bm, txn_set, size, nthreads);
     gettimeofday(&tv2, NULL);
-    dualprint("CDS: MS Priority Queue \tFinal Size %lu", ms_pqueue.size());
+    //dualprint("CDS: MS Priority Queue \tFinal Size %lu", ms_pqueue.size());
     print_stats(tv1, tv2, bm);
     clear_balance_ctrs();
 
@@ -237,7 +235,7 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
     gettimeofday(&tv1, NULL);
     startAndWait(&sto_pqueue, STO, bm, txn_set, size, nthreads);
     gettimeofday(&tv2, NULL);
-    dualprint("STO: Priority Queue \tFinal Size %d", sto_pqueue.unsafe_size());
+    //dualprint("STO: Priority Queue \tFinal Size %d", sto_pqueue.unsafe_size());
     print_stats(tv1, tv2, bm);
     print_abort_stats();
     clear_balance_ctrs();
@@ -246,7 +244,7 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
     gettimeofday(&tv1, NULL);
     startAndWait(&sto_pqueue_opaque, STO, bm, txn_set, size, nthreads);
     gettimeofday(&tv2, NULL);
-    dualprint("STO: Priority Queue/O \tFinal Size %d", sto_pqueue_opaque.unsafe_size());
+    //dualprint("STO: Priority Queue/O \tFinal Size %d", sto_pqueue_opaque.unsafe_size());
     print_stats(tv1, tv2, bm);
     print_abort_stats();
     clear_balance_ctrs();
@@ -296,14 +294,14 @@ int main() {
 
     // run single-operation txns with different nthreads
     std::vector<int> nthreads = {1, 2, 4, 8, 12, 16, 20, 24};
-    dualprint("Init size: 10000, Random Values\n");
+    dualprint("\nInit size: 10000, Random Values\n");
     for (auto n = begin(nthreads); n != end(nthreads); ++n) {
-        dualprint("nthreads: %d\n", *n);
+        dualprint("nthreads: %d, ", *n);
         run_benchmark(RANDOM, 10000, q_single_op_txn_set, *n);
     }
-    dualprint("Init size: 10000, Decreasing Values\n");
+    dualprint("\nInit size: 10000, Decreasing Values\n");
     for (auto n = begin(nthreads); n != end(nthreads); ++n) {
-        dualprint("%d, ", *n);
+        dualprint("nthreads: %d, ", *n);
         run_benchmark(DECREASING, 10000, q_single_op_txn_set, *n);
     }
     cds::Terminate();
