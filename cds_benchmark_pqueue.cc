@@ -23,12 +23,14 @@ void clear_balance_ctrs() {
     }
 }
 
-void dualprint(const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    fprintf(stderr, fmt, args);
-    fprintf(stdout, fmt, args);
-    va_end(args);
+void dualprint(const char* fmt,...) {
+    va_list args1, args2;
+    va_start(args1, fmt);
+    va_start(args2, fmt);
+    vfprintf(stderr, fmt, args1);
+    vfprintf(stdout, fmt, args2);
+    va_end(args1);
+    va_end(args2);
 }
 
 void print_stats(struct timeval tv1, struct timeval tv2, int bm) {
@@ -304,7 +306,6 @@ int main() {
         dualprint("%d, ", *n);
         run_benchmark(DECREASING, 10000, q_single_op_txn_set, *n);
     }
-
     cds::Terminate();
     return 0;
 }
