@@ -18,7 +18,7 @@
 #define MAX_VALUE  100000
 #define MAX_SIZE 100000
 #define NTRANS 20000 // Number of transactions each thread should run.
-#define N_THREADS 4 // Number of concurrent threads
+#define N_THREADS 30 // Number of concurrent threads
 
 // type of data structure to be used
 #define STO 0
