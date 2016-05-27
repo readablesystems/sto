@@ -28,12 +28,15 @@
 #define RANDOM 10
 #define DECREASING 11
 #define NOABORTS 12
+#define PUSHTHENPOP_RANDOM 13
+#define PUSHTHENPOP_DECREASING 14
 
 std::atomic_int global_val(INT_MAX);
 
 enum op {push, pop};
 
 std::vector<int> sizes = {100, 1000, 10000};
+std::vector<int> nthreads = {1, 2, 4, 8, 12, 16, 20, 24};
 
 template <typename T>
 struct Tester {
@@ -46,56 +49,46 @@ struct Tester {
 };
 
 std::vector<std::vector<op>> q_single_op_txn_set = {{push}, {pop}};
+std::vector<std::vector<op>> q_push_only_txn_set = {{push}};
+std::vector<std::vector<op>> q_pop_only_txn_set = {{push}};
 
 // set of transactions to choose from
 // approximately equivalent pushes and pops
 std::vector<std::vector<op>> q_txn_sets[] = 
 {
-    // 0. only-growing data structure (no conflicts)
-    {
-        {push, push, push},
-        {push, push},
-        {push}, {push}, {push}
-    },
-    // 1. only-shrinking data structure
-    {
-        {pop, pop, pop},
-        {pop, pop},
-        {pop}, {pop}, {pop}
-    },
-    // 2. short txns
+    // 0. short txns
     {
         {push, push, push},
         {pop, pop, pop},
         {pop}, {pop}, {pop},
         {push}, {push}, {push}
     },
-    // 3. longer txns
+    // 1. longer txns
     {
         {push, push, push, push, push},
         {pop, pop, pop, pop, pop},
         {pop}, {pop}, {pop}, {pop}, {pop}, 
         {push}, {push}, {push}, {push}, {push}
     },
-    // 4. 100% include both pushes and pops
+    // 2. 100% include both pushes and pops
     {
         {push, push, pop},
         {pop, pop, push},
     },
-    // 5. 50% include both pushes and pops
+    // 3. 50% include both pushes and pops
     {
         {push, push, pop},
         {pop, pop, push},
         {pop}, {push}
     },
-    // 6. 33% include both pushes and pops
+    // 4. 33% include both pushes and pops
     {
         {push, push, pop},
         {pop, pop, push},
         {pop}, {pop},
         {push}, {push}
     },
-    // 7. 33%: longer push + pop txns
+    // 5. 33%: longer push + pop txns
     {
         {push, pop, push, pop, push, pop},
         {pop}, 
