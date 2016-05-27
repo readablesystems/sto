@@ -31,7 +31,7 @@
 #define PUSHTHENPOP_RANDOM 13
 #define PUSHTHENPOP_DECREASING 14
 
-std::atomic_int global_val(INT_MAX);
+std::atomic_int global_val(MAX_VALUE);
 
 enum op {push, pop};
 

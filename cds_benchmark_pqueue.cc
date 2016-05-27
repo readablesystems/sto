@@ -221,19 +221,19 @@ void startAndWait(T* ds, int ds_type,
 
 
 void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int nthreads) {
-    global_val = INT_MAX;
+    global_val = MAX_VALUE;
     
     // initialize all data structures
     PriorityQueue<int> sto_pqueue;
     PriorityQueue<int, true> sto_pqueue_opaque;
     WrappedFCPriorityQueue<int> fc_pqueue;
     WrappedMSPriorityQueue<int> ms_pqueue(MAX_SIZE);
-    for (int i = 0; i < size; i++) {
+    for (int i = global_val; i < size; ++i) {
     Sto::start_transaction();
-        sto_pqueue.push(i);
+        sto_pqueue.push(global_val--);
     assert(Sto::try_commit());
-        fc_pqueue.push(i);
-        ms_pqueue.push(i);
+        fc_pqueue.push(global_val--);
+        ms_pqueue.push(global_val--);
     }
 
     struct timeval tv1,tv2;
@@ -312,6 +312,7 @@ int main() {
         dualprint("Init size: %d\n", *size);
         run_benchmark(NOABORTS, *size, {}, 2);
     }
+    */
  
     // run the push-only test (with single-thread all-pops at the end) 
     dualprint("\nBenchmark: Multithreaded Push, Singlethreaded Pops, Random Values\n");
@@ -326,24 +327,28 @@ int main() {
         run_benchmark(PUSHTHENPOP_DECREASING, 100000, q_push_only_txn_set, *n);
 	dualprint("\n");
     }
-    */
 
     // run single-operation txns with different nthreads
-    dualprint("\nSingle-Op Txns, Init size: 100000, Random Values\n");
+    dualprint("\nSingle-Op Txns, Random Values\n");
     for (auto n = begin(nthreads); n != end(nthreads); ++n) {
         dualprint("nthreads: %d, ", *n);
+	    dualprint("50000\n");
         run_benchmark(RANDOM, 50000, q_single_op_txn_set, *n);
+	    dualprint("100000\n");
         run_benchmark(RANDOM, 100000, q_single_op_txn_set, *n);
+	    dualprint("150000\n");
         run_benchmark(RANDOM, 150000, q_single_op_txn_set, *n);
 	dualprint("\n");
     }
-    dualprint("\nSingle-Op Txns, Init size: 100000, Decreasing Values\n");
+    dualprint("\nSingle-Op Txns, Decreasing Values\n");
     for (auto n = begin(nthreads); n != end(nthreads); ++n) {
         dualprint("nthreads: %d, ", *n);
         run_benchmark(DECREASING, 50000, q_single_op_txn_set, *n);
+	    dualprint("100000\n");
         run_benchmark(DECREASING, 100000, q_single_op_txn_set, *n);
+	    dualprint("150000\n");
         run_benchmark(DECREASING, 150000, q_single_op_txn_set, *n);
-	dualprint("\n");
+	    dualprint("\n");
     }
 
     cds::Terminate();
