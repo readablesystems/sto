@@ -1,5 +1,6 @@
 #include <string>
 #include <iostream>
+#include <sstream>
 #include <assert.h>
 #include <vector>
 #include <random>
@@ -9,6 +10,7 @@
 #include "Hashtable.hh"
 #include "RBTree.hh"
 #include "Vector.hh"
+#include "ListS.hh"
 
 #define MAX_VALUE 10 // Max value of integers used in data structures
 #define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements
@@ -449,7 +451,7 @@ public:
     static const int num_ops_ = 4;
 };
 
-/*
+#if 0
 template <typename T>
 class PqueueTester : Tester<T> {
 public:
@@ -850,4 +852,203 @@ public:
     
     static const int num_ops_ = 5;
 };
-*/
+#endif
+
+template <typename DT, typename RT>
+class ListTester : public Tester<DT, RT> {
+public:
+    static const int num_ops_ = 3;
+
+    template <typename T>
+    void init(T* q) {
+        for (int i = 0; i < MAX_VALUE; i++) {
+            TRANSACTION {
+                (*q)[i] = i;
+            } RETRY(false);
+        }
+    }
+
+    void init_sut(DT* q) override {init<DT>(q);}
+    void init_ref(RT* q) override {init<RT>(q);}
+
+    op_record* doOp(DT* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) override {
+#if !PRINT_DEBUG
+        (void)me;
+#endif
+        int key = slotdist(transgen);
+        op_record* rec = new op_record;
+        rec->op = op;
+        rec->args.push_back(key);
+
+        // operator[] assignment
+        if (op == 0) {
+            int val = slotdist(transgen);
+            {
+                OpPrintGuard p(op, me, key, val);
+                (*q)[key] = val;
+            }
+            rec->args.push_back(val);
+            return rec;
+        }
+        // operator[] read-only
+        else if (op == 1) {
+            int val = 0;
+            {
+                OpPrintGuard p(op, me, key, val);
+                val = (*q)[key];
+                p.val = val;
+            }
+            rec->rdata.push_back(val);
+            return rec;
+        }
+        // erase
+        else if (op == 2) {
+            int num = 0;
+            {
+                OpPrintGuard p(op, me, key, num);
+                num = q->trans_erase(key);
+                p.val = num;
+            }
+            rec->rdata.push_back(num);
+            return rec;
+        }
+
+        abort();
+        return rec;
+    }
+
+    void redoOp(RT* q, op_record *op) override {
+        // operator[] assignment
+        if (op->op == 0) {
+            int key = op->args[0];
+            int val = op->args[1];
+            {
+                ReplayPrintGuard p(op->op, key, val);
+                (*q)[key] = val;
+            }
+        }
+        // operator[] read-only
+        else if (op->op == 1) {
+            int key = op->args[0];
+            int val = 0;
+            {
+                ReplayPrintGuard p(op->op, key, 0);
+                val = (*q)[key];
+                p.val = val;
+                p.expected = op->rdata[0];
+            }
+        }
+        // erase
+        else if (op->op == 2) {
+            int key = op->args[0];
+            int erased = 0;
+            {
+                ReplayPrintGuard p(op->op, key, 0);
+                erased = q->erase(key);
+                p.val = erased;
+                p.expected = op->rdata[0];
+            }
+        } else {
+            abort();
+        }
+    }
+
+    void check(DT* q, RT* q1) override {
+        (void)q; (void)q1;
+        std::cout << "check() skipped" << std::endl;
+    }
+
+    void print_stats(DT* q) {
+        (void)q;
+    }
+
+private:
+    // for doOp
+    struct OpPrintGuard {
+        int op;
+        int me;
+        int key;
+        int val;
+
+        OpPrintGuard(int op, int me, int key, int val) : op(op), me(me), key(key), val(val) {
+#if PRINT_DEBUG
+            std::stringstream ss;
+            ss << "[" << me << "] ";
+            if (op == 0) {
+                ss << "inserting kv pair (" << key << ", " << val << ")";
+            } else if (op == 1) {
+                ss << "looking up key " << key;
+            } else if (op == 2) {
+                ss << "erasing key " << key;
+            }
+
+            TransactionTid::lock(lock);
+            std::cout << ss.str() << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+        }
+
+        ~OpPrintGuard() {
+#if PRINT_DEBUG
+            std::stringstream ss;
+            ss << "[" << me << "] ";
+            if (op == 0) {
+                ss << "inserted";
+            } else if (op == 1) {
+                ss << "found value " << val;
+            } else if (op == 2) {
+                ss << "erased " << val << " item";
+            }
+
+            TransactionTid::lock(lock);
+            std::cout << ss.str() << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+        }
+    };
+
+    // for redoOp
+    struct ReplayPrintGuard {
+        int op;
+        int key;
+        int val;
+        int expected;
+
+        ReplayPrintGuard(int op, int key, int val) : op(op), key(key), val(val), expected() {
+#if PRINT_DEBUG
+            std::stringstream ss;
+            ss << "replay ";
+            if (op == 0) {
+                ss << "insert kv pair (" << key << ", " << val <<  ")";
+            } else if (op == 1) {
+                ss << "look up key " << key;
+            } else if (op == 2) {
+                ss << "erase key " << key;
+            }
+
+            TransactionTid::lock(lock);
+            std::cout << ss.str() << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+        }
+
+        ~ReplayPrintGuard() {
+#if PRINT_DEBUG
+            std::stringstream ss;
+            if (op == 0) {
+                ss << "inserted";
+            } else if (op == 1) {
+                ss << "found " << val << ", expecting " << expected;
+                assert(val == expected);
+            } else if (op == 2) {
+                ss << "erased " << val << ", expecting " << expected;
+                assert(val == expected);
+            }
+
+            TransactionTid::lock(lock);
+            std::cout << ss.str() << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+        }
+    };
+};

@@ -16,7 +16,7 @@
 #define GLOBAL_SEED 10
 
 #define MAX_VALUE  100000
-#define MAX_SIZE 100000
+#define MAX_SIZE 1000000
 #define NTRANS 20000 // Number of transactions each thread should run.
 #define N_THREADS 30 // Number of concurrent threads
 

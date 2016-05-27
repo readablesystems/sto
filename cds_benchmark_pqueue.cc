@@ -209,11 +209,13 @@ void startAndWait(T* ds, int ds_type,
     }
 
     // clear the q if the benchmark calls for it
+    Sto::start_transaction();
     if (bm == PUSHTHENPOP_RANDOM || bm == PUSHTHENPOP_DECREASING) { 
         while (ds->size() != 0) {
             ds->pop();
         }
     }
+    assert(Sto::try_commit());
 }
 
 
