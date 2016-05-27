@@ -15,7 +15,7 @@
 
 #define GLOBAL_SEED 10
 
-#define MAX_VALUE  100000
+#define MAX_VALUE  INT_MAX
 #define MAX_SIZE 1000000
 #define NTRANS 20000 // Number of transactions each thread should run.
 #define N_THREADS 30 // Number of concurrent threads
@@ -35,7 +35,7 @@ std::atomic_int global_val(INT_MAX);
 
 enum op {push, pop};
 
-std::vector<int> sizes = {100, 1000, 10000};
+std::vector<int> sizes = {10000, 50000, 100000, 150000};
 std::vector<int> nthreads = {1, 2, 4, 8, 12, 16, 20, 24};
 
 template <typename T>

@@ -208,14 +208,15 @@ void startAndWait(T* ds, int ds_type,
         pthread_join(tids[i], NULL);
     }
 
-    // clear the q if the benchmark calls for it
-    Sto::start_transaction();
     if (bm == PUSHTHENPOP_RANDOM || bm == PUSHTHENPOP_DECREASING) { 
         while (ds->size() != 0) {
+    	    Sto::start_transaction();
             ds->pop();
+	    // so that totals are correct
+            global_thread_pop_ctrs[0]++;
+            assert(Sto::try_commit());
         }
     }
-    assert(Sto::try_commit());
 }
 
 
@@ -227,13 +228,13 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
     PriorityQueue<int, true> sto_pqueue_opaque;
     WrappedFCPriorityQueue<int> fc_pqueue;
     WrappedMSPriorityQueue<int> ms_pqueue(MAX_SIZE);
-    Sto::start_transaction();
     for (int i = 0; i < size; i++) {
+    Sto::start_transaction();
         sto_pqueue.push(i);
+    assert(Sto::try_commit());
         fc_pqueue.push(i);
         ms_pqueue.push(i);
     }
-    assert(Sto::try_commit());
 
     struct timeval tv1,tv2;
     
@@ -304,12 +305,10 @@ int main() {
             run_benchmark(DECREASING, *size, *txn_set, N_THREADS);
         }
     }
-    */
    
     // run the two-thread test where one thread only pushes and the other only pops
     dualprint("\nBenchmark: No Aborts (2 threads: one pushing, one popping)\n");
     for (auto size = begin(sizes); size != end(sizes); ++size) {
-        dualprint("-------------------------------------------------------------------\n");
         dualprint("Init size: %d\n", *size);
         run_benchmark(NOABORTS, *size, {}, 2);
     }
@@ -318,25 +317,32 @@ int main() {
     dualprint("\nBenchmark: Multithreaded Push, Singlethreaded Pops, Random Values\n");
     for (auto n = begin(nthreads); n != end(nthreads); ++n) {
         dualprint("nthreads: %d, ", *n);
-        run_benchmark(PUSHTHENPOP_RANDOM, 10000, q_push_only_txn_set, *n);
+        run_benchmark(PUSHTHENPOP_RANDOM, 100000, q_push_only_txn_set, *n);
+	dualprint("\n");
     }
     dualprint("\nBenchmark: Multithreaded Push, Singlethreaded Pops, Decreasing Values\n");
     for (auto n = begin(nthreads); n != end(nthreads); ++n) {
         dualprint("nthreads: %d, ", *n);
-        run_benchmark(PUSHTHENPOP_DECREASING, 10000, q_push_only_txn_set, *n);
-    }
-
-    // run single-operation txns with different nthreads
-    dualprint("\nSingle-Op Txns, Init size: 10000, Random Values\n");
-    for (auto n = begin(nthreads); n != end(nthreads); ++n) {
-        dualprint("nthreads: %d, ", *n);
-        run_benchmark(RANDOM, 10000, q_single_op_txn_set, *n);
+        run_benchmark(PUSHTHENPOP_DECREASING, 100000, q_push_only_txn_set, *n);
 	dualprint("\n");
     }
-    dualprint("\nSingle-Op Txns, Init size: 10000, Decreasing Values\n");
+    */
+
+    // run single-operation txns with different nthreads
+    dualprint("\nSingle-Op Txns, Init size: 100000, Random Values\n");
     for (auto n = begin(nthreads); n != end(nthreads); ++n) {
         dualprint("nthreads: %d, ", *n);
-        run_benchmark(DECREASING, 10000, q_single_op_txn_set, *n);
+        run_benchmark(RANDOM, 50000, q_single_op_txn_set, *n);
+        run_benchmark(RANDOM, 100000, q_single_op_txn_set, *n);
+        run_benchmark(RANDOM, 150000, q_single_op_txn_set, *n);
+	dualprint("\n");
+    }
+    dualprint("\nSingle-Op Txns, Init size: 100000, Decreasing Values\n");
+    for (auto n = begin(nthreads); n != end(nthreads); ++n) {
+        dualprint("nthreads: %d, ", *n);
+        run_benchmark(DECREASING, 50000, q_single_op_txn_set, *n);
+        run_benchmark(DECREASING, 100000, q_single_op_txn_set, *n);
+        run_benchmark(DECREASING, 150000, q_single_op_txn_set, *n);
 	dualprint("\n");
     }
 
