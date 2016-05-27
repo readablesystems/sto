@@ -329,11 +329,13 @@ int main() {
     for (auto n = begin(nthreads); n != end(nthreads); ++n) {
         dualprint("nthreads: %d, ", *n);
         run_benchmark(RANDOM, 10000, q_single_op_txn_set, *n);
+	dualprint("\n");
     }
     dualprint("\nSingle-Op Txns, Init size: 10000, Decreasing Values\n");
     for (auto n = begin(nthreads); n != end(nthreads); ++n) {
         dualprint("nthreads: %d, ", *n);
         run_benchmark(DECREASING, 10000, q_single_op_txn_set, *n);
+	dualprint("\n");
     }
 
     cds::Terminate();
