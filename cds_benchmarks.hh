@@ -1,3 +1,5 @@
+#pragma once
+
 #include <string>
 #include <iostream>
 #include <assert.h>
@@ -8,9 +10,19 @@
 #include <cds/init.h>
 #include <cds/container/fcpriority_queue.h>
 #include <cds/container/mspriority_queue.h>
+#include <cds/container/basket_queue.h>
+#include <cds/container/fcqueue.h>
+#include <cds/container/moir_queue.h>
+#include <cds/container/msqueue.h>
+#include <cds/container/rwqueue.h>
+#include <cds/container/optimistic_queue.h>
+#include <cds/container/segmented_queue.h>
+#include <cds/container/tsigas_cycle_queue.h>
+#include <cds/container/vyukov_mpmc_cycle_queue.h>
 
 #include "Transaction.hh"
 #include "PriorityQueue.hh"
+#include "Queue.hh"
 #include "randgen.hh"
 
 #define GLOBAL_SEED 10
@@ -31,12 +43,37 @@
 #define PUSHTHENPOP_RANDOM 13
 #define PUSHTHENPOP_DECREASING 14
 
-std::atomic_int global_val(MAX_VALUE);
-
 enum op {push, pop};
 
-std::vector<int> sizes = {10000, 50000, 100000, 150000};
-std::vector<int> nthreads = {1, 2, 4, 8, 12, 16, 20, 24};
+// globals
+extern std::atomic_int global_val;
+extern std::vector<int> sizes;
+extern std::vector<int> nthreads_set;
+extern txp_counter_type global_thread_push_ctrs[N_THREADS];
+extern txp_counter_type global_thread_pop_ctrs[N_THREADS];
+extern txp_counter_type global_thread_skip_ctrs[N_THREADS];
+
+// helper functions
+void clear_balance_ctrs(void);
+void dualprint(const char* fmt,...);
+void print_stats(struct timeval tv1, struct timeval tv2, int bm);
+void print_abort_stats(void);
+void* run_sto(void* x);
+void* run_cds(void* x);
+template <typename T>
+void startAndWait(
+        T* ds, 
+        int ds_type, 
+        int bm, 
+        std::vector<std::vector<op>> txn_set, 
+        size_t size, 
+        int nthreads);
+
+// txn sets
+extern std::vector<std::vector<op>> q_single_op_txn_set;
+extern std::vector<std::vector<op>> q_push_only_txn_set;
+extern std::vector<std::vector<op>> q_pop_only_txn_set;
+extern std::vector<std::vector<op>> q_txn_sets[];
 
 template <typename T>
 struct Tester {
@@ -46,54 +83,6 @@ struct Tester {
     int bm;         // which benchmark to run
     size_t size;    // initial size of the ds 
     std::vector<std::vector<op>> txn_set;
-};
-
-std::vector<std::vector<op>> q_single_op_txn_set = {{push}, {pop}};
-std::vector<std::vector<op>> q_push_only_txn_set = {{push}};
-std::vector<std::vector<op>> q_pop_only_txn_set = {{push}};
-
-// set of transactions to choose from
-// approximately equivalent pushes and pops
-std::vector<std::vector<op>> q_txn_sets[] = 
-{
-    // 0. short txns
-    {
-        {push, push, push},
-        {pop, pop, pop},
-        {pop}, {pop}, {pop},
-        {push}, {push}, {push}
-    },
-    // 1. longer txns
-    {
-        {push, push, push, push, push},
-        {pop, pop, pop, pop, pop},
-        {pop}, {pop}, {pop}, {pop}, {pop}, 
-        {push}, {push}, {push}, {push}, {push}
-    },
-    // 2. 100% include both pushes and pops
-    {
-        {push, push, pop},
-        {pop, pop, push},
-    },
-    // 3. 50% include both pushes and pops
-    {
-        {push, push, pop},
-        {pop, pop, push},
-        {pop}, {push}
-    },
-    // 4. 33% include both pushes and pops
-    {
-        {push, push, pop},
-        {pop, pop, push},
-        {pop}, {pop},
-        {push}, {push}
-    },
-    // 5. 33%: longer push + pop txns
-    {
-        {push, pop, push, pop, push, pop},
-        {pop}, 
-        {push}
-    }
 };
 
 /* 
@@ -114,7 +103,133 @@ class WrappedMSPriorityQueue : cds::container::MSPriorityQueue<T> {
 };
 template <typename T>
 class WrappedFCPriorityQueue : cds::container::FCPriorityQueue<T> {
-        typedef cds::container::FCPriorityQueue< T> base_class;
+        typedef cds::container::FCPriorityQueue<T> base_class;
+
+    public:
+        void pop() {
+            int ret;
+            base_class::pop(ret);
+        }
+        void push(T v) { base_class::push(v); }
+        size_t size() { return base_class::size(); }
+};
+/* 
+ * QUEUE WRAPPERS
+ */
+template <typename T>
+class STOQueue : Queue<T> {
+    typedef Queue< T> base_class;
+    
+    public:
+        void pop() {
+            base_class::transpop();
+        }
+        void push(T v) { base_class::transpush(v); }
+        size_t size() { return -1; } // no size of STO queue
+};
+
+// wrapper class for all the CDS queues
+class CDSQueue {};
+
+template <typename T>
+class BasketQueue : cds::container::BasketQueue<cds::gc::HP, T>, CDSQueue {
+   typedef cds::container::BasketQueue<cds::gc::HP, T> base_class;
+
+    public:
+        void pop() {
+            int ret;
+            base_class::pop(ret);
+        }
+        void push(T v) { base_class::push(v); }
+        size_t size() { return base_class::size(); }
+};
+template <typename T>
+class FCQueue : cds::container::FCQueue<cds::gc::HP, T>, CDSQueue {
+    typedef cds::container::FCQueue<cds::gc::HP, T> base_class;
+
+    public:
+        void pop() {
+            int ret;
+            base_class::pop(ret);
+        }
+        void push(T v) { base_class::push(v); }
+        size_t size() { return base_class::size(); }
+};
+template <typename T>
+class MoirQueue : cds::container::MoirQueue<cds::gc::HP,T>, CDSQueue {
+    typedef cds::container::MoirQueue<cds::gc::HP, T> base_class;
+
+    public:
+        void pop() {
+            int ret;
+            base_class::pop(ret);
+        }
+        void push(T v) { base_class::push(v); }
+        size_t size() { return base_class::size(); }
+};
+template <typename T>
+class MSQueue : cds::container::MSQueue<cds::gc::HP,T>, CDSQueue {
+    typedef cds::container::MSQueue<cds::gc::HP, T> base_class;
+
+    public:
+        void pop() {
+            int ret;
+            base_class::pop(ret);
+        }
+        void push(T v) { base_class::push(v); }
+        size_t size() { return base_class::size(); }
+};
+template <typename T>
+class OptimisticQueue : cds::container::OptimisticQueue<cds::gc::HP, T>, CDSQueue {
+    typedef cds::container::OptimisticQueue<cds::gc::HP, T> base_class;
+
+    public:
+        void pop() {
+            int ret;
+            base_class::pop(ret);
+        }
+        void push(T v) { base_class::push(v); }
+        size_t size() { return base_class::size(); }
+};
+template <typename T>
+class RWQueue : cds::container::RWQueue<cds::gc::HP,T>, CDSQueue {
+    typedef cds::container::RWQueue<cds::gc::HP, T> base_class;
+
+    public:
+        void pop() {
+            int ret;
+            base_class::pop(ret);
+        }
+        void push(T v) { base_class::push(v); }
+        size_t size() { return base_class::size(); }
+};
+template <typename T>
+class SegmentedQueue : cds::container::SegmentedQueue<cds::gc::HP,T>, CDSQueue {
+    typedef cds::container::SegmentedQueue<cds::gc::HP, T> base_class;
+
+    public:
+        void pop() {
+            int ret;
+            base_class::pop(ret);
+        }
+        void push(T v) { base_class::push(v); }
+        size_t size() { return base_class::size(); }
+};
+template <typename T>
+class TsigasCycleQueue : cds::container::TsigasCycleQueue<cds::gc::HP,T>, CDSQueue {
+    typedef cds::container::TsigasCycleQueue<cds::gc::HP, T> base_class;
+
+    public:
+        void pop() {
+            int ret;
+            base_class::pop(ret);
+        }
+        void push(T v) { base_class::push(v); }
+        size_t size() { return base_class::size(); }
+};
+template <typename T>
+class VyukovMPMCCycleQueue : cds::container::VyukovMPMCCycleQueue<cds::gc::HP,T>, CDSQueue {
+    typedef cds::container::TsigasCycleQueue<cds::gc::HP, T> base_class;
 
     public:
         void pop() {

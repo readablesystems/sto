@@ -6,11 +6,17 @@
 #include <random>
 
 #include <cds/init.h>
-#include <cds/container/fcpriority_queue.h>
-#include <cds/container/mspriority_queue.h>
+#include <cds/container/basket_queue.h>
+#include <cds/container/fcqueue.h>
+#include <cds/container/moir_queue.h>
+#include <cds/container/msqueue.h>
+#include <cds/container/rwqueue.h>
+#include <cds/container/segmented_queue.h>
+#include <cds/container/tsigas_cycle_queue.h>
+#include <cds/container/vyukov_mpmc_cycle_queue.h>
 
 #include "Transaction.hh"
-#include "PriorityQueue.hh"
+#include "Queue.hh"
 #include "cds_benchmarks.hh"
 #include "randgen.hh"
 
@@ -20,7 +26,7 @@ void do_txn(Tester<T>* tp, Rand transgen) {
     int me = tp->me;
     int bm = tp->bm;
     size_t size = tp->size;
-    T* pq = tp->ds;
+    T* q = tp->ds;
     auto txn_set = tp->txn_set;
 
     // randomly select a transaction to run
@@ -45,17 +51,17 @@ void do_txn(Tester<T>* tp, Rand transgen) {
         switch(txn[j]) {
             case push:
                 if (bm != PUSHTHENPOP_RANDOM && bm != PUSHTHENPOP_DECREASING) {
-                    if (pq->size() > size*1.5) {
+                    if (q->size() > size*1.5) {
                         global_thread_skip_ctrs[me]++;
                         break;
                     }
                 }
-                pq->push(val);
+                q->push(val);
                 global_thread_push_ctrs[me]++;
                 break;
             case pop:
-                if (pq->size() < size*.5) break;
-                pq->pop();
+                if (q->size() < size*.5) break;
+                q->pop();
                 global_thread_pop_ctrs[me]++;
                 break;
             default:
@@ -68,50 +74,69 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
     global_val = MAX_VALUE;
     
     // initialize all data structures
-    PriorityQueue<int> sto_pqueue;
-    PriorityQueue<int, true> sto_pqueue_opaque;
-    WrappedFCPriorityQueue<int> fc_pqueue;
-    WrappedMSPriorityQueue<int> ms_pqueue(MAX_SIZE);
+    STOQueue<int> sto_queue;
+    BasketQueue<int> basket_queue;
+    FCQueue<int> fc_queue;
+    MoirQueue<int> moir_queue;
+    MSQueue<int> ms_queue;
+    OptimisticQueue<int> optimistic_queue;
+    RWQueue<int> rw_queue;
+    SegmentedQueue<int> segmented_queue;
+    TsigasCycleQueue<int> tc_queue;
+    VyukovMPMCCycleQueue<int> vm_queue;
+
+    std::vector<CDSQueue> cds_queues = {
+        basket_queue,
+        fc_queue,
+        moir_queue,
+        ms_queue,
+        optimistic_queue,
+        rw_queue,
+        segmented_queue,
+        tc_queue,
+        vm_queue,
+    };
+
     for (int i = global_val; i < size; ++i) {
     Sto::start_transaction();
-        sto_pqueue.push(global_val--);
+        sto_queue.push(global_val--);
     assert(Sto::try_commit());
-        fc_pqueue.push(global_val--);
-        ms_pqueue.push(global_val--);
+        fc_queue.push(global_val--);
+        ms_queue.push(global_val--);
     }
 
     struct timeval tv1,tv2;
     
-    // benchmark FC Pqueue
+    // benchmark FC queue
     gettimeofday(&tv1, NULL);
-    startAndWait(&fc_pqueue, CDS, bm, txn_set, size, nthreads);
+    startAndWait(&fc_queue, CDS, bm, txn_set, size, nthreads);
     gettimeofday(&tv2, NULL);
-    //dualprint("CDS: FC Priority Queue \tFinal Size %lu", fc_pqueue.size());
+    //dualprint("CDS: FC Priority Queue \tFinal Size %lu", fc_queue.size());
     print_stats(tv1, tv2, bm);
     clear_balance_ctrs();
 
-    // benchmark MS Pqueue
+    // benchmark MS queue
     gettimeofday(&tv1, NULL);
-    startAndWait(&ms_pqueue, CDS, bm, txn_set, size, nthreads);
+    startAndWait(&ms_queue, CDS, bm, txn_set, size, nthreads);
     gettimeofday(&tv2, NULL);
-    //dualprint("CDS: MS Priority Queue \tFinal Size %lu", ms_pqueue.size());
+    //dualprint("CDS: MS Priority Queue \tFinal Size %lu", ms_queue.size());
     print_stats(tv1, tv2, bm);
     clear_balance_ctrs();
 
     // benchmark STO
     gettimeofday(&tv1, NULL);
-    startAndWait(&sto_pqueue, STO, bm, txn_set, size, nthreads);
+    startAndWait(&sto_queue, STO, bm, txn_set, size, nthreads);
     gettimeofday(&tv2, NULL);
-    //dualprint("STO: Priority Queue \tFinal Size %d", sto_pqueue.unsafe_size());
+    //dualprint("STO: Priority Queue \tFinal Size %d", sto_queue.unsafe_size());
     print_stats(tv1, tv2, bm);
     print_abort_stats();
     clear_balance_ctrs();
     
     // benchmark STO w/Opacity
     gettimeofday(&tv1, NULL);
-    startAndWait(&sto_pqueue_opaque, STO, bm, txn_set, size, nthreads);
+    startAndWait(&sto_queue_opaque, STO, bm, txn_set, size, nthreads);
     gettimeofday(&tv2, NULL);
-    //dualprint("STO: Priority Queue/O \tFinal Size %d", sto_pqueue_opaque.unsafe_size());
+    //dualprint("STO: Priority Queue/O \tFinal Size %d", sto_queue_opaque.unsafe_size());
     print_stats(tv1, tv2, bm);
     print_abort_stats();
     clear_balance_ctrs();
@@ -157,7 +182,7 @@ int main() {
         run_benchmark(NOABORTS, *size, {}, 2);
     }
     */
- 
+   
     // run the push-only test (with single-thread all-pops at the end) 
     dualprint("\nBenchmark: Multithreaded Push, Singlethreaded Pops, Random Values\n");
     for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
