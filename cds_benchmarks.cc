@@ -1,10 +1,3 @@
-#include <string>
-#include <iostream>
-#include <cstdarg>
-#include <assert.h>
-#include <vector>
-#include <random>
-
 #include "cds_benchmarks.hh"
 
 std::atomic_int global_val(MAX_VALUE);
@@ -18,7 +11,7 @@ txp_counter_type global_thread_skip_ctrs[N_THREADS];
 std::vector<std::vector<op>> q_single_op_txn_set = {{push}, {pop}};
 std::vector<std::vector<op>> q_push_only_txn_set = {{push}};
 std::vector<std::vector<op>> q_pop_only_txn_set = {{push}};
-std::vector<std::vector<op>> q_txn_sets[] = 
+std::vector<std::vector<std::vector<op>>> q_txn_sets = 
 {
     // 0. short txns
     {
@@ -124,91 +117,3 @@ void print_abort_stats() {
     Transaction::clear_stats();
 #endif
 }
-
-template <typename T>
-void* run_sto(void* x) {
-    Tester<T>* tp = (Tester<T>*) x;
-    TThread::set_id(tp->me);
-
-    for (int i = 0; i < NTRANS; ++i) {
-        auto transseed = i;
-        uint32_t seed = transseed*3 + (uint32_t)tp->me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_THREADS*NTRANS*11;
-        auto seedlow = seed & 0xffff;
-        auto seedhigh = seed >> 16;
-        Rand transgen(seed, seedlow << 16 | seedhigh);
-
-        // so that retries of this transaction do the same thing
-        Rand transgen_snap = transgen;
-        while (1) {
-            Sto::start_transaction();
-            try {
-                do_txn(tp, transgen);
-                if (Sto::try_commit()) {
-                    break;
-                }
-            } catch (Transaction::Abort e) {}
-            transgen = transgen_snap;
-        }
-    }
-    return nullptr;
-}
-
-template <typename T>
-void* run_cds(void* x) {
-    Tester<T>* tp = (Tester<T>*) x;
-    cds::threading::Manager::attachThread();
-
-    // generate all transactions the thread will run
-    for (int i = 0; i < NTRANS; ++i) {
-        auto transseed = i;
-        uint32_t seed = transseed*3 + (uint32_t)tp->me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_THREADS*NTRANS*11;
-        auto seedlow = seed & 0xffff;
-        auto seedhigh = seed >> 16;
-        Rand transgen(seed, seedlow << 16 | seedhigh);
-        do_txn(tp, transgen);
-    }
-    cds::threading::Manager::detachThread();
-    return nullptr;
-}
-
-template <typename T>
-void startAndWait(T* ds, int ds_type, 
-        int bm, 
-        std::vector<std::vector<op>> txn_set, 
-        size_t size,
-        int nthreads) {
-
-    pthread_t tids[nthreads];
-    Tester<T> testers[nthreads];
-    for (int i = 0; i < nthreads; ++i) {
-        // set the txn_set to be only pushes or pops if running the NOABORTS bm
-        if (bm == NOABORTS) {
-            testers[0].txn_set = q_push_only_txn_set;
-            testers[1].txn_set = q_pop_only_txn_set;
-        }
-        else testers[i].txn_set = txn_set;
-        testers[i].ds = ds;
-        testers[i].me = i;
-        testers[i].bm = bm;
-        testers[i].size = size;
-        if (ds_type == CDS) {
-            pthread_create(&tids[i], NULL, run_cds<T>, &testers[i]);
-        } else {
-            pthread_create(&tids[i], NULL, run_sto<T>, &testers[i]);
-        }
-    }
-    for (int i = 0; i < nthreads; ++i) {
-        pthread_join(tids[i], NULL);
-    }
-
-    if (bm == PUSHTHENPOP_RANDOM || bm == PUSHTHENPOP_DECREASING) { 
-        while (ds->size() != 0) {
-    	    Sto::start_transaction();
-            ds->pop();
-	    // so that totals are correct
-            global_thread_pop_ctrs[0]++;
-            assert(Sto::try_commit());
-        }
-    }
-}
-

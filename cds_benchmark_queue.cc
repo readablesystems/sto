@@ -1,10 +1,4 @@
-#include <string>
-#include <iostream>
-#include <cstdarg>
-#include <assert.h>
-#include <vector>
-#include <random>
-
+#include <memory>
 #include <cds/init.h>
 #include <cds/container/basket_queue.h>
 #include <cds/container/fcqueue.h>
@@ -74,69 +68,46 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
     global_val = MAX_VALUE;
     
     // initialize all data structures
-    STOQueue<int> sto_queue;
-    BasketQueue<int> basket_queue;
-    FCQueue<int> fc_queue;
-    MoirQueue<int> moir_queue;
-    MSQueue<int> ms_queue;
-    OptimisticQueue<int> optimistic_queue;
-    RWQueue<int> rw_queue;
-    SegmentedQueue<int> segmented_queue;
-    TsigasCycleQueue<int> tc_queue;
-    VyukovMPMCCycleQueue<int> vm_queue;
+    STOQueue<int>sto_queue;
+    CDSQueue<int>q1(basket); 
+    CDSQueue<int>q2(fc); 
+    CDSQueue<int>q3(moir);
+    CDSQueue<int>q4(ms);
+    CDSQueue<int>q5(optimistic);
+    CDSQueue<int>q6(rw);
+    CDSQueue<int>q7(segmented);
+    CDSQueue<int>q8(tc);
+    CDSQueue<int>q9(vm);
 
-    std::vector<CDSQueue> cds_queues = {
-        basket_queue,
-        fc_queue,
-        moir_queue,
-        ms_queue,
-        optimistic_queue,
-        rw_queue,
-        segmented_queue,
-        tc_queue,
-        vm_queue,
-    };
+    std::vector<CDSQueue<int>*> cds_queues = {&q1, &q2, &q3, &q4, &q5, &q6, &q7, &q8, &q9};
 
     for (int i = global_val; i < size; ++i) {
     Sto::start_transaction();
-        sto_queue.push(global_val--);
+        sto_queue.push(global_val);
     assert(Sto::try_commit());
-        fc_queue.push(global_val--);
-        ms_queue.push(global_val--);
+        for (auto q = begin(cds_queues); q != end(cds_queues); ++q) {
+            (*q)->push(global_val);
+        }
+        global_val--;
     }
 
     struct timeval tv1,tv2;
     
-    // benchmark FC queue
-    gettimeofday(&tv1, NULL);
-    startAndWait(&fc_queue, CDS, bm, txn_set, size, nthreads);
-    gettimeofday(&tv2, NULL);
-    //dualprint("CDS: FC Priority Queue \tFinal Size %lu", fc_queue.size());
-    print_stats(tv1, tv2, bm);
-    clear_balance_ctrs();
-
-    // benchmark MS queue
-    gettimeofday(&tv1, NULL);
-    startAndWait(&ms_queue, CDS, bm, txn_set, size, nthreads);
-    gettimeofday(&tv2, NULL);
-    //dualprint("CDS: MS Priority Queue \tFinal Size %lu", ms_queue.size());
-    print_stats(tv1, tv2, bm);
-    clear_balance_ctrs();
+    // benchmark CDS queues
+    for (auto q = begin(cds_queues); q != end(cds_queues); ++q) {
+        gettimeofday(&tv1, NULL);
+        startAndWait(*q, CDS, bm, txn_set, size, nthreads);
+        gettimeofday(&tv2, NULL);
+        dualprint("CDS: Queue %ld", q-begin(cds_queues));
+        print_stats(tv1, tv2, bm);
+        clear_balance_ctrs();
+    }
 
     // benchmark STO
     gettimeofday(&tv1, NULL);
     startAndWait(&sto_queue, STO, bm, txn_set, size, nthreads);
     gettimeofday(&tv2, NULL);
-    //dualprint("STO: Priority Queue \tFinal Size %d", sto_queue.unsafe_size());
-    print_stats(tv1, tv2, bm);
-    print_abort_stats();
-    clear_balance_ctrs();
-    
-    // benchmark STO w/Opacity
-    gettimeofday(&tv1, NULL);
-    startAndWait(&sto_queue_opaque, STO, bm, txn_set, size, nthreads);
-    gettimeofday(&tv2, NULL);
-    //dualprint("STO: Priority Queue/O \tFinal Size %d", sto_queue_opaque.unsafe_size());
+    dualprint("STO: Queue");
     print_stats(tv1, tv2, bm);
     print_abort_stats();
     clear_balance_ctrs();
@@ -149,6 +120,7 @@ int main() {
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
 
     cds::Initialize();
+    cds::gc::HP hpGC;
 
     // create the epoch advancer thread
     pthread_t advancer;
@@ -163,17 +135,11 @@ int main() {
         for (auto size = begin(sizes); size != end(sizes); ++size) {
             dualprint("\nInit size: %d\n", *size);
             
-            // benchmark with random values. pushes can conflict with pops
             dualprint("---------Benchmark: Random-----------\n");
             run_benchmark(RANDOM, *size, *txn_set, N_THREADS);
-          
-            // benchmark with decreasing values 
-            // pushes and pops will never conflict (only pops conflict)
-            fprintf(stderr, "---------Benchmark: Decreasing-----------\n");
-            fprintf(stdout, "---------Benchmark: Decreasing-----------\n");
-            run_benchmark(DECREASING, *size, *txn_set, N_THREADS);
         }
     }
+    */
    
     // run the two-thread test where one thread only pushes and the other only pops
     dualprint("\nBenchmark: No Aborts (2 threads: one pushing, one popping)\n");
@@ -181,20 +147,13 @@ int main() {
         dualprint("Init size: %d\n", *size);
         run_benchmark(NOABORTS, *size, {}, 2);
     }
-    */
    
     // run the push-only test (with single-thread all-pops at the end) 
     dualprint("\nBenchmark: Multithreaded Push, Singlethreaded Pops, Random Values\n");
     for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
         dualprint("nthreads: %d, ", *n);
         run_benchmark(PUSHTHENPOP_RANDOM, 100000, q_push_only_txn_set, *n);
-	dualprint("\n");
-    }
-    dualprint("\nBenchmark: Multithreaded Push, Singlethreaded Pops, Decreasing Values\n");
-    for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
-        dualprint("nthreads: %d, ", *n);
-        run_benchmark(PUSHTHENPOP_DECREASING, 100000, q_push_only_txn_set, *n);
-	dualprint("\n");
+    	dualprint("\n");
     }
 
     // run single-operation txns with different nthreads
@@ -207,17 +166,7 @@ int main() {
         run_benchmark(RANDOM, 100000, q_single_op_txn_set, *n);
 	    dualprint("150000\n");
         run_benchmark(RANDOM, 150000, q_single_op_txn_set, *n);
-	dualprint("\n");
-    }
-    dualprint("\nSingle-Op Txns, Decreasing Values\n");
-    for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
-        dualprint("nthreads: %d, ", *n);
-        run_benchmark(DECREASING, 50000, q_single_op_txn_set, *n);
-	    dualprint("100000\n");
-        run_benchmark(DECREASING, 100000, q_single_op_txn_set, *n);
-	    dualprint("150000\n");
-        run_benchmark(DECREASING, 150000, q_single_op_txn_set, *n);
-	    dualprint("\n");
+    	dualprint("\n");
     }
 
     cds::Terminate();

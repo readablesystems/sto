@@ -1,10 +1,3 @@
-#include <string>
-#include <iostream>
-#include <cstdarg>
-#include <assert.h>
-#include <vector>
-#include <random>
-
 #include <cds/init.h>
 #include <cds/container/fcpriority_queue.h>
 #include <cds/container/mspriority_queue.h>
@@ -70,14 +63,15 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
     // initialize all data structures
     PriorityQueue<int> sto_pqueue;
     PriorityQueue<int, true> sto_pqueue_opaque;
-    WrappedFCPriorityQueue<int> fc_pqueue;
-    WrappedMSPriorityQueue<int> ms_pqueue(MAX_SIZE);
+    FCPriorityQueue<int> fc_pqueue;
+    MSPriorityQueue<int> ms_pqueue(MAX_SIZE);
     for (int i = global_val; i < size; ++i) {
     Sto::start_transaction();
-        sto_pqueue.push(global_val--);
+        sto_pqueue.push(global_val);
     assert(Sto::try_commit());
-        fc_pqueue.push(global_val--);
-        ms_pqueue.push(global_val--);
+        fc_pqueue.push(global_val);
+        ms_pqueue.push(global_val);
+        global_val--;
     }
 
     struct timeval tv1,tv2;
