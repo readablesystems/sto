@@ -1,7 +1,7 @@
 #include "cds_benchmarks.hh"
 
 std::atomic_int global_val(MAX_VALUE);
-std::vector<int> sizes = {10000, 50000, 100000, 150000};
+std::vector<int> sizes = {1000, 10000, 50000, 100000, 150000};
 std::vector<int> nthreads_set = {1, 2, 4, 8, 12, 16, 20, 24};
 txp_counter_type global_thread_push_ctrs[N_THREADS];
 txp_counter_type global_thread_pop_ctrs[N_THREADS];

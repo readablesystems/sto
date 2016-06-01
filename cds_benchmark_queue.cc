@@ -98,7 +98,7 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
         gettimeofday(&tv1, NULL);
         startAndWait(*q, CDS, bm, txn_set, size, nthreads);
         gettimeofday(&tv2, NULL);
-        dualprint("CDS: Queue %ld", q-begin(cds_queues));
+        //dualprint("CDS: Queue %ld", q-begin(cds_queues));
         print_stats(tv1, tv2, bm);
         clear_balance_ctrs();
     }
@@ -107,7 +107,7 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
     gettimeofday(&tv1, NULL);
     startAndWait(&sto_queue, STO, bm, txn_set, size, nthreads);
     gettimeofday(&tv2, NULL);
-    dualprint("STO: Queue");
+    //dualprint("STO: Queue");
     print_stats(tv1, tv2, bm);
     print_abort_stats();
     clear_balance_ctrs();
@@ -145,10 +145,10 @@ int main() {
     // run the two-thread test where one thread only pushes and the other only pops
     dualprint("\nBenchmark: No Aborts (2 threads: one pushing, one popping)\n");
     for (auto size = begin(sizes); size != end(sizes); ++size) {
-        dualprint("Init size: %d\n", *size);
+        dualprint("\nInit size: %d\n", *size);
         run_benchmark(NOABORTS, *size, {}, 2);
     }
-   
+  /* 
     // run the push-only test (with single-thread all-pops at the end) 
     dualprint("\nBenchmark: Multithreaded Push, Singlethreaded Pops, Random Values\n");
     for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
@@ -156,18 +156,15 @@ int main() {
         run_benchmark(PUSHTHENPOP_RANDOM, 100000, q_push_only_txn_set, *n);
     	dualprint("\n");
     }
-
+*/
     // run single-operation txns with different nthreads
     dualprint("\nSingle-Op Txns, Random Values\n");
     for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
-        dualprint("nthreads: %d, ", *n);
-	    dualprint("50000\n");
-        run_benchmark(RANDOM, 50000, q_single_op_txn_set, *n);
-	    dualprint("100000\n");
-        run_benchmark(RANDOM, 100000, q_single_op_txn_set, *n);
-	    dualprint("150000\n");
-        run_benchmark(RANDOM, 150000, q_single_op_txn_set, *n);
-    	dualprint("\n");
+        for (auto size = begin(sizes); size != end(sizes); ++size) {
+            dualprint("\nInit size: %d\n", *size);
+            run_benchmark(RANDOM, *size, q_single_op_txn_set, *n);
+    	    dualprint("\n");
+        }
     }
     
     cds::threading::Manager::detachThread();
