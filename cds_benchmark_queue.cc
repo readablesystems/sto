@@ -121,6 +121,7 @@ int main() {
 
     cds::Initialize();
     cds::gc::HP hpGC;
+    cds::threading::Manager::attachThread();
 
     // create the epoch advancer thread
     pthread_t advancer;
@@ -168,7 +169,8 @@ int main() {
         run_benchmark(RANDOM, 150000, q_single_op_txn_set, *n);
     	dualprint("\n");
     }
-
+    
+    cds::threading::Manager::detachThread();
     cds::Terminate();
     return 0;
 }

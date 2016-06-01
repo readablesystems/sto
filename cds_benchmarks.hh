@@ -20,6 +20,7 @@
 #include <cds/container/tsigas_cycle_queue.h>
 #include <cds/container/vyukov_mpmc_cycle_queue.h>
 #include <cds/gc/hp.h> 
+
 #include "Transaction.hh"
 #include "PriorityQueue.hh"
 #include "Queue.hh"
@@ -190,6 +191,7 @@ class FCPriorityQueue : cds::container::FCPriorityQueue<T> {
         void push(T v) { base_class::push(v); }
         size_t size() { return base_class::size(); }
 };
+
 /* 
  * QUEUE WRAPPERS
  */
