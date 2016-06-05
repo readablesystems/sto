@@ -41,8 +41,6 @@
 #define RANDOM 10
 #define DECREASING 11
 #define NOABORTS 12
-#define PUSHTHENPOP_RANDOM 13
-#define PUSHTHENPOP_DECREASING 14
 
 enum op {push, pop};
 enum q_type { basket, fc, moir, ms, optimistic, rw, segmented, tc, vm };
@@ -102,6 +100,7 @@ void* run_sto(void* x) {
             transgen = transgen_snap;
         }
     }
+
     return nullptr;
 }
 
@@ -118,6 +117,7 @@ void* run_cds(void* x) {
         auto seedhigh = seed >> 16;
         Rand transgen(seed, seedlow << 16 | seedhigh);
         do_txn(tp, transgen);
+        
     }
     cds::threading::Manager::detachThread();
     return nullptr;
@@ -150,16 +150,6 @@ void startAndWait(T* ds, int ds_type,
     }
     for (int i = 0; i < nthreads; ++i) {
         pthread_join(tids[i], NULL);
-    }
-
-    if (bm == PUSHTHENPOP_RANDOM || bm == PUSHTHENPOP_DECREASING) { 
-        while (ds->size() != 0) {
-    	    Sto::start_transaction();
-            ds->pop();
-	        // so that totals are correct
-            global_thread_pop_ctrs[0]++;
-            assert(Sto::try_commit());
-        }
     }
 }
 
@@ -202,7 +192,6 @@ class STOQueue : Queue<T> {
     public:
         void pop() { base_class::transPop(); }
         void push(T v) { base_class::transPush(v); }
-        size_t size() { return -1; } // no size of STO queue
 };
 
 template <typename T>
@@ -215,7 +204,6 @@ class BasketQueue : cds::container::BasketQueue<cds::gc::HP, T> {
             base_class::pop(ret);
         }
         void push(T v) { base_class::push(v); }
-        size_t size() { return base_class::size(); }
 };
 template <typename T>
 class FCQueue : cds::container::FCQueue<T> {
@@ -227,7 +215,6 @@ class FCQueue : cds::container::FCQueue<T> {
             base_class::pop(ret);
         }
         void push(T v) { base_class::push(v); }
-        size_t size() { return base_class::size(); }
 };
 template <typename T>
 class MoirQueue : cds::container::MoirQueue<cds::gc::HP,T> {
@@ -239,7 +226,6 @@ class MoirQueue : cds::container::MoirQueue<cds::gc::HP,T> {
             base_class::pop(ret);
         }
         void push(T v) { base_class::push(v); }
-        size_t size() { return base_class::size(); }
 };
 template <typename T>
 class MSQueue : cds::container::MSQueue<cds::gc::HP,T> {
@@ -251,7 +237,6 @@ class MSQueue : cds::container::MSQueue<cds::gc::HP,T> {
             base_class::pop(ret);
         }
         void push(T v) { base_class::push(v); }
-        size_t size() { return base_class::size(); }
 };
 template <typename T>
 class OptimisticQueue : cds::container::OptimisticQueue<cds::gc::HP, T> {
@@ -263,7 +248,6 @@ class OptimisticQueue : cds::container::OptimisticQueue<cds::gc::HP, T> {
             base_class::pop(ret);
         }
         void push(T v) { base_class::push(v); }
-        size_t size() { return base_class::size(); }
 };
 template <typename T>
 class RWQueue : cds::container::RWQueue<T> {
@@ -275,7 +259,6 @@ class RWQueue : cds::container::RWQueue<T> {
             base_class::pop(ret);
         }
         void push(T v) { base_class::push(v); }
-        size_t size() { return base_class::size(); }
 };
 template <typename T>
 class SegmentedQueue : cds::container::SegmentedQueue<cds::gc::HP,T> {
@@ -288,7 +271,6 @@ class SegmentedQueue : cds::container::SegmentedQueue<cds::gc::HP,T> {
             base_class::pop(ret);
         }
         void push(T v) { base_class::push(v); }
-        size_t size() { return base_class::size(); }
 };
 template <typename T>
 class TsigasCycleQueue : cds::container::TsigasCycleQueue<T> {
@@ -301,7 +283,6 @@ class TsigasCycleQueue : cds::container::TsigasCycleQueue<T> {
             base_class::pop(ret);
         }
         void push(T v) { base_class::push(v); }
-        size_t size() { return base_class::size(); }
 };
 template <typename T>
 class VyukovMPMCCycleQueue : cds::container::VyukovMPMCCycleQueue<T> {
@@ -314,7 +295,6 @@ class VyukovMPMCCycleQueue : cds::container::VyukovMPMCCycleQueue<T> {
             base_class::pop(ret);
         }
         void push(T v) { base_class::push(v); }
-        size_t size() { return base_class::size(); }
 };
 
 // wrapper class for all the CDS queues
@@ -360,20 +340,6 @@ class CDSQueue {
                 case tc: tc_queue.push(v); break;
                 case vm: vm_queue.push(v); break;
                 default: break;
-            };
-        };
-        size_t size() {
-            switch(_qtype) {
-                case basket: return basket_queue.size(); 
-                case fc: return fc_queue.size(); 
-                case moir: return moir_queue.size(); 
-                case ms: return  ms_queue.size(); 
-                case optimistic: return optimistic_queue.size(); 
-                case rw: return rw_queue.size(); 
-                case segmented: segmented_queue.size(); 
-                case tc: return tc_queue.size(); 
-                case vm: return vm_queue.size(); 
-                default: return -1;
             };
         };
 };

@@ -2,7 +2,7 @@
 
 std::atomic_int global_val(MAX_VALUE);
 std::vector<int> sizes = {1000, 10000, 50000, 100000, 150000};
-std::vector<int> nthreads_set = {1, 2, 4, 8, 12, 16, 20, 24};
+std::vector<int> nthreads_set = {1};//, 2, 4, 8, 12, 16, 20, 24};
 txp_counter_type global_thread_push_ctrs[N_THREADS];
 txp_counter_type global_thread_pop_ctrs[N_THREADS];
 txp_counter_type global_thread_skip_ctrs[N_THREADS];
@@ -10,7 +10,7 @@ txp_counter_type global_thread_skip_ctrs[N_THREADS];
 // txn sets
 std::vector<std::vector<op>> q_single_op_txn_set = {{push}, {pop}};
 std::vector<std::vector<op>> q_push_only_txn_set = {{push}};
-std::vector<std::vector<op>> q_pop_only_txn_set = {{push}};
+std::vector<std::vector<op>> q_pop_only_txn_set = {{pop}};
 std::vector<std::vector<std::vector<op>>> q_txn_sets = 
 {
     // 0. short txns
@@ -72,21 +72,26 @@ void dualprint(const char* fmt,...) {
 }
 
 void print_stats(struct timeval tv1, struct timeval tv2, int bm) {
-    float seconds = (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0;
-    //dualprint("\t%f", seconds); 
+    float microseconds = ((tv2.tv_sec-tv1.tv_sec)*1000000.0) + ((tv2.tv_usec-tv1.tv_usec)/1000.0);
+    fprintf(stderr, "\tms: %f", microseconds); 
 
     int n_threads;
     if (bm == NOABORTS) n_threads = 2;
     else n_threads = N_THREADS;
     int total = 0;
     for (int i = 0; i < n_threads; ++i) {
+        // prints the number of pushes, pops, and skips
+        /*
         fprintf(stderr, "Thread %ld \tpushes: %d \tpops: %ld, \tskips: %ld\n",
                 i, global_thread_push_ctrs[i], 
                 global_thread_pop_ctrs[i], global_thread_skip_ctrs[i]);
-        total += global_thread_push_ctrs[i] + global_thread_pop_ctrs[i];
+        */
+        total += (global_thread_push_ctrs[i] + global_thread_pop_ctrs[i]);
     }
-    //dualprint("\tops/ms: %f\n", total/(seconds*1000));
-    dualprint("\t%f, ", total/(seconds*1000));
+    fprintf(stderr, "\t#ops: %d, ", total);
+    fprintf(stderr, "\tops/ms: ");
+    dualprint("%f, ", total/microseconds);
+    fprintf(stderr, "\n");
 }
 
 void print_abort_stats() {

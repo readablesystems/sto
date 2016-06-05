@@ -33,32 +33,24 @@ void do_txn(Tester<T>* tp, Rand transgen) {
         // based on which benchmark we are running
         switch(bm) {
             case RANDOM:
-            case PUSHTHENPOP_RANDOM:
                 val = slotdist(transgen);
                 break;
-            default: // NOABORTS, PUSHTHENPOP_D, or DECREASING
+            default: // NOABORTS, DECREASING
                 val = --global_val;
                 break;
         }
-        // avoid shrinking/growing the queue too much
-        // but not for the push-only test
+        // avoid shrinking the queue too much
         switch(txn[j]) {
             case push:
-                if (bm != PUSHTHENPOP_RANDOM && bm != PUSHTHENPOP_DECREASING) {
-                    if (q->size() > size*1.5) {
-                        global_thread_skip_ctrs[me]++;
-                        break;
-                    }
-                }
                 q->push(val);
                 global_thread_push_ctrs[me]++;
                 break;
             case pop:
-                if (q->size() < size*.5) break;
                 q->pop();
                 global_thread_pop_ctrs[me]++;
                 break;
             default:
+                assert(0);
                 break;
         }
     }
@@ -75,16 +67,16 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
     CDSQueue<int>q4(ms);
     CDSQueue<int>q5(optimistic);
     CDSQueue<int>q6(rw);
-    CDSQueue<int>q7(segmented);
+    //CDSQueue<int>q7(segmented);
     CDSQueue<int>q8(tc);
     CDSQueue<int>q9(vm);
 
-    std::vector<CDSQueue<int>*> cds_queues = {&q1, &q2, &q3, &q4, &q5, &q6, &q7, &q8, &q9};
+    std::vector<CDSQueue<int>*> cds_queues = {&q1, &q2, &q3, &q4, &q5, &q6, &q8, &q9};
 
     for (int i = global_val; i < size; ++i) {
-    Sto::start_transaction();
+        Sto::start_transaction();
         sto_queue.push(global_val);
-    assert(Sto::try_commit());
+        assert(Sto::try_commit());
         for (auto q = begin(cds_queues); q != end(cds_queues); ++q) {
             (*q)->push(global_val);
         }
@@ -98,7 +90,6 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
         gettimeofday(&tv1, NULL);
         startAndWait(*q, CDS, bm, txn_set, size, nthreads);
         gettimeofday(&tv2, NULL);
-        //dualprint("CDS: Queue %ld", q-begin(cds_queues));
         print_stats(tv1, tv2, bm);
         clear_balance_ctrs();
     }
@@ -107,7 +98,6 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
     gettimeofday(&tv1, NULL);
     startAndWait(&sto_queue, STO, bm, txn_set, size, nthreads);
     gettimeofday(&tv2, NULL);
-    //dualprint("STO: Queue");
     print_stats(tv1, tv2, bm);
     print_abort_stats();
     clear_balance_ctrs();
@@ -153,7 +143,7 @@ int main() {
     dualprint("\nBenchmark: Multithreaded Push, Singlethreaded Pops, Random Values\n");
     for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
         dualprint("nthreads: %d, ", *n);
-        run_benchmark(PUSHTHENPOP_RANDOM, 100000, q_push_only_txn_set, *n);
+        run_benchmark(RANDOM, 100000, q_push_only_txn_set, *n);
     	dualprint("\n");
     }
 */

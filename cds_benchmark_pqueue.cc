@@ -26,32 +26,28 @@ void do_txn(Tester<T>* tp, Rand transgen) {
         // based on which benchmark we are running
         switch(bm) {
             case RANDOM:
-            case PUSHTHENPOP_RANDOM:
                 val = slotdist(transgen);
                 break;
-            default: // NOABORTS, PUSHTHENPOP_D, or DECREASING
+            default: // NOABORTS, DECREASING
                 val = --global_val;
                 break;
         }
-        // avoid shrinking/growing the queue too much
-        // but not for the push-only test
+        // avoid shrinking the queue too much
         switch(txn[j]) {
             case push:
-                if (bm != PUSHTHENPOP_RANDOM && bm != PUSHTHENPOP_DECREASING) {
-                    if (pq->size() > size*1.5) {
-                        global_thread_skip_ctrs[me]++;
-                        break;
-                    }
-                }
                 pq->push(val);
                 global_thread_push_ctrs[me]++;
                 break;
             case pop:
-                if (pq->size() < size*.5) break;
+                if (pq->size() < size*.25) {
+                    global_thread_skip_ctrs[me]++;
+                    break;
+                }
                 pq->pop();
                 global_thread_pop_ctrs[me]++;
                 break;
             default:
+                assert(0);
                 break;
         }
     }
@@ -109,10 +105,13 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
     print_stats(tv1, tv2, bm);
     print_abort_stats();
     clear_balance_ctrs();
+	    
+    dualprint("\n");
 }
 
 int main() {
     dualprint("nthreads: %d, ntxns/thread: %d, max_value: %d, max_size: %d\n", N_THREADS, NTRANS, MAX_VALUE, MAX_SIZE);
+    dualprint("FC, MS, STO, STO(O)\n");
 
     std::ios_base::sync_with_stdio(true);
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
@@ -155,36 +154,33 @@ int main() {
     // run the push-only test (with single-thread all-pops at the end) 
     dualprint("\nBenchmark: Multithreaded Push, Singlethreaded Pops, Random Values\n");
     for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
-        dualprint("nthreads: %d, ", *n);
-        run_benchmark(PUSHTHENPOP_RANDOM, 100000, q_push_only_txn_set, *n);
-	dualprint("\n");
+        fprintf(stderr, "nthreads: %d\n", *n);
+        run_benchmark(RANDOM, 100000, q_push_only_txn_set, *n);
     }
     dualprint("\nBenchmark: Multithreaded Push, Singlethreaded Pops, Decreasing Values\n");
     for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
-        dualprint("nthreads: %d, ", *n);
-        run_benchmark(PUSHTHENPOP_DECREASING, 100000, q_push_only_txn_set, *n);
-	dualprint("\n");
+        fprintf(stderr, "nthreads: %d\n", *n);
+        run_benchmark(DECREASING, 100000, q_push_only_txn_set, *n);
     }
 
     // run single-operation txns with different nthreads
     dualprint("\nSingle-Op Txns, Random Values\n");
     for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
-        dualprint("nthreads: %d, ", *n);
-	    dualprint("50000\n");
+        fprintf(stderr, "nthreads: %d\n", *n);
+	    fprintf(stderr, "size: 50000\n");
         run_benchmark(RANDOM, 50000, q_single_op_txn_set, *n);
-	    dualprint("100000\n");
+	    fprintf(stderr, "size: 100000\n");
         run_benchmark(RANDOM, 100000, q_single_op_txn_set, *n);
-	    dualprint("150000\n");
+	    fprintf(stderr, "size: 150000\n");
         run_benchmark(RANDOM, 150000, q_single_op_txn_set, *n);
-	dualprint("\n");
     }
     dualprint("\nSingle-Op Txns, Decreasing Values\n");
     for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
-        dualprint("nthreads: %d, ", *n);
+        fprintf(stderr, "nthreads: %d, ", *n);
         run_benchmark(DECREASING, 50000, q_single_op_txn_set, *n);
-	    dualprint("100000\n");
+	    fprintf(stderr, "size: 100000\n");
         run_benchmark(DECREASING, 100000, q_single_op_txn_set, *n);
-	    dualprint("150000\n");
+	    fprintf(stderr, "size: 150000\n");
         run_benchmark(DECREASING, 150000, q_single_op_txn_set, *n);
 	    dualprint("\n");
     }
