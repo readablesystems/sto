@@ -37,7 +37,7 @@ inline void do_txn(T* q, int me, std::vector<op> txn_ops, int txn_val, size_t si
 
 void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int nthreads) {
     global_val = MAX_VALUE;
-    
+   
     // initialize all data structures
     STOQueue<int>sto_queue;
     CDSQueue<int>q1(basket); 
@@ -70,6 +70,7 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
 
 int main() {
     dualprint("nthreads: %d, ntxns/thread: %d, max_value: %d, max_size: %d\n", N_THREADS, NTRANS, MAX_VALUE, MAX_SIZE);
+    dualprint("\nSTO, Basket, FC, Moir, MS, Optimistic, RW, TsigasCycle, VyukovMPMCCycle\n");
 
     std::ios_base::sync_with_stdio(true);
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
@@ -109,14 +110,16 @@ int main() {
     // run the two-thread test where one thread only pushes and the other only pops
     dualprint("\nBenchmark: No Aborts (2 threads: one pushing, one popping)\n");
     for (auto size = begin(sizes); size != end(sizes); ++size) {
-        dualprint("\nInit size: %d\n", *size);
+        dualprint("Init size: %d\n", *size);
         run_benchmark(NOABORTS, *size, {}, 2);
+        dualprint("\n");
     }
     // run single-operation txns with different nthreads
     dualprint("\nSingle-Op Txns, Random Values\n");
     for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
+        fprintf(stderr, "nthreads: %d\n", *n);
         for (auto size = begin(sizes); size != end(sizes); ++size) {
-            dualprint("\nInit size: %d\n", *size);
+            dualprint("Init size: %d\n", *size);
             run_benchmark(RANDOM, *size, q_single_op_txn_set, *n);
     	    dualprint("\n");
         }

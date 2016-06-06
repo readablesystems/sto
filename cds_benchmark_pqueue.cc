@@ -57,7 +57,7 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
 
 int main() {
     dualprint("nthreads: %d, ntxns/thread: %d, max_value: %d, max_size: %d\n", N_THREADS, NTRANS, MAX_VALUE, MAX_SIZE);
-    dualprint("FC, MS, STO, STO(O)\n");
+    dualprint("\nFC, MS, STO, STO(O)\n");
 
     std::ios_base::sync_with_stdio(true);
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
@@ -113,22 +113,20 @@ int main() {
     dualprint("\nSingle-Op Txns, Random Values\n");
     for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
         fprintf(stderr, "nthreads: %d\n", *n);
-	    fprintf(stderr, "size: 50000\n");
-        run_benchmark(RANDOM, 50000, q_single_op_txn_set, *n);
-	    fprintf(stderr, "size: 100000\n");
-        run_benchmark(RANDOM, 100000, q_single_op_txn_set, *n);
-	    fprintf(stderr, "size: 150000\n");
-        run_benchmark(RANDOM, 150000, q_single_op_txn_set, *n);
+        for (auto size = begin(sizes); size != end(sizes); ++size) {
+            dualprint("Init size: %d\n", *size);
+            run_benchmark(RANDOM, *size, q_single_op_txn_set, *n);
+    	    dualprint("\n");
+        }
     }
     dualprint("\nSingle-Op Txns, Decreasing Values\n");
     for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
-        fprintf(stderr, "nthreads: %d, ", *n);
-        run_benchmark(DECREASING, 50000, q_single_op_txn_set, *n);
-	    fprintf(stderr, "size: 100000\n");
-        run_benchmark(DECREASING, 100000, q_single_op_txn_set, *n);
-	    fprintf(stderr, "size: 150000\n");
-        run_benchmark(DECREASING, 150000, q_single_op_txn_set, *n);
-	    dualprint("\n");
+        fprintf(stderr, "nthreads: %d\n", *n);
+        for (auto size = begin(sizes); size != end(sizes); ++size) {
+            dualprint("Init size: %d\n", *size);
+            run_benchmark(DECREASING, *size, q_single_op_txn_set, *n);
+    	    dualprint("\n");
+        }
     }
 
     cds::Terminate();

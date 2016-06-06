@@ -34,7 +34,7 @@ public:
 
     // Adds v to the priority queue
     void add(versioned_value* v) {
-        int child = size_;
+        unsigned child = size_;
         if (child >= heap_.size()) {
             heap_.push_back(v);
         } else {
@@ -44,8 +44,6 @@ public:
 
         while (child > 0) {
             int parent = (child - 1) / 2;
-            versioned_value* before = heap_[parent];
-            int old = child;
             versioned_value* parent_val = heap_[parent];
             if (heap_[child]->read_value() > parent_val->read_value()) {
                 swap(child, parent);
