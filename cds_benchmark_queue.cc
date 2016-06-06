@@ -14,35 +14,14 @@
 #include "cds_benchmarks.hh"
 #include "randgen.hh"
 
-// run the specified transaction for the particular benchmark
+// run the specified transactions for the particular benchmark
 template <typename T>
-void do_txn(Tester<T>* tp, Rand transgen) {
-    int me = tp->me;
-    int bm = tp->bm;
-    size_t size = tp->size;
-    T* q = tp->ds;
-    auto txn_set = tp->txn_set;
-
-    // randomly select a transaction to run
-    auto txn = txn_set[transgen() % txn_set.size()];
-
-    std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
-    int val = 0;
-    for (unsigned j = 0; j < txn.size(); ++j) {
-        // figure out what type of value to push into the queue
-        // based on which benchmark we are running
-        switch(bm) {
-            case RANDOM:
-                val = slotdist(transgen);
-                break;
-            default: // NOABORTS, DECREASING
-                val = --global_val;
-                break;
-        }
-        // avoid shrinking the queue too much
-        switch(txn[j]) {
+inline void do_txn(T* q, int me, std::vector<op> txn_ops, int txn_val, size_t size) {
+    (void)size;
+    for (unsigned j = 0; j < txn_ops.size(); ++j) {
+        switch(txn_ops[j]) {
             case push:
-                q->push(val);
+                q->push(txn_val);
                 global_thread_push_ctrs[me]++;
                 break;
             case pop:
@@ -83,24 +62,10 @@ void run_benchmark(int bm, int size, std::vector<std::vector<op>> txn_set, int n
         global_val--;
     }
 
-    struct timeval tv1,tv2;
-    
-    // benchmark CDS queues
     for (auto q = begin(cds_queues); q != end(cds_queues); ++q) {
-        gettimeofday(&tv1, NULL);
         startAndWait(*q, CDS, bm, txn_set, size, nthreads);
-        gettimeofday(&tv2, NULL);
-        print_stats(tv1, tv2, bm);
-        clear_balance_ctrs();
     }
-
-    // benchmark STO
-    gettimeofday(&tv1, NULL);
     startAndWait(&sto_queue, STO, bm, txn_set, size, nthreads);
-    gettimeofday(&tv2, NULL);
-    print_stats(tv1, tv2, bm);
-    print_abort_stats();
-    clear_balance_ctrs();
 }
 
 int main() {
@@ -131,6 +96,15 @@ int main() {
         }
     }
     */
+    /* 
+    // run the push-only test (with single-thread all-pops at the end) 
+    dualprint("\nBenchmark: Multithreaded Push, Singlethreaded Pops, Random Values\n");
+    for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
+        dualprint("nthreads: %d, ", *n);
+        run_benchmark(RANDOM, 100000, q_push_only_txn_set, *n);
+        dualprint("\n");
+    }
+    */
    
     // run the two-thread test where one thread only pushes and the other only pops
     dualprint("\nBenchmark: No Aborts (2 threads: one pushing, one popping)\n");
@@ -138,15 +112,6 @@ int main() {
         dualprint("\nInit size: %d\n", *size);
         run_benchmark(NOABORTS, *size, {}, 2);
     }
-  /* 
-    // run the push-only test (with single-thread all-pops at the end) 
-    dualprint("\nBenchmark: Multithreaded Push, Singlethreaded Pops, Random Values\n");
-    for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
-        dualprint("nthreads: %d, ", *n);
-        run_benchmark(RANDOM, 100000, q_push_only_txn_set, *n);
-    	dualprint("\n");
-    }
-*/
     // run single-operation txns with different nthreads
     dualprint("\nSingle-Op Txns, Random Values\n");
     for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {

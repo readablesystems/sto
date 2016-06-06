@@ -53,7 +53,7 @@ std::vector<std::vector<std::vector<op>>> q_txn_sets =
     }
 };
 
-void clear_balance_ctrs() {
+void clear_op_ctrs() {
     for(int i = 0; i < N_THREADS; ++i) {
         global_thread_pop_ctrs[i] = 0;
         global_thread_push_ctrs[i] = 0;
@@ -81,8 +81,7 @@ void print_stats(struct timeval tv1, struct timeval tv2, int bm) {
     int total = 0;
     for (int i = 0; i < n_threads; ++i) {
         // prints the number of pushes, pops, and skips
-        /*
-        fprintf(stderr, "Thread %ld \tpushes: %d \tpops: %ld, \tskips: %ld\n",
+        /*fprintf(stderr, "Thread %ld \tpushes: %d \tpops: %ld, \tskips: %ld\n",
                 i, global_thread_push_ctrs[i], 
                 global_thread_pop_ctrs[i], global_thread_skip_ctrs[i]);
         */

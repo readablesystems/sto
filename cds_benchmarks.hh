@@ -54,7 +54,7 @@ extern txp_counter_type global_thread_pop_ctrs[N_THREADS];
 extern txp_counter_type global_thread_skip_ctrs[N_THREADS];
 
 // helper functions
-void clear_balance_ctrs(void);
+void clear_op_ctrs(void);
 void dualprint(const char* fmt,...);
 void print_stats(struct timeval tv1, struct timeval tv2, int bm);
 void print_abort_stats(void);
@@ -70,9 +70,8 @@ struct Tester {
     T* ds;          // pointer to the data structure
     int me;         // tid
     int ds_type;    // cds or sto
-    int bm;         // which benchmark to run
     size_t size;    // initial size of the ds 
-    std::vector<std::vector<op>> txn_set;
+    std::vector<std::pair<std::vector<op>, int>> txns_to_run;
 };
 
 template <typename T>
@@ -80,24 +79,18 @@ void* run_sto(void* x) {
     Tester<T>* tp = (Tester<T>*) x;
     TThread::set_id(tp->me);
 
-    for (int i = 0; i < NTRANS; ++i) {
-        auto transseed = i;
-        uint32_t seed = transseed*3 + (uint32_t)tp->me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_THREADS*NTRANS*11;
-        auto seedlow = seed & 0xffff;
-        auto seedhigh = seed >> 16;
-        Rand transgen(seed, seedlow << 16 | seedhigh);
-
-        // so that retries of this transaction do the same thing
-        Rand transgen_snap = transgen;
+    auto txns_to_run = tp->txns_to_run;
+    for (auto txn = begin(txns_to_run); txn != end(txns_to_run); ++txn) {
+        std::vector<op> txn_ops = txn->first;
+        int txn_val = txn->second;
         while (1) {
             Sto::start_transaction();
             try {
-                do_txn(tp, transgen);
+                do_txn(tp->ds, tp->me, txn_ops, txn_val, tp->size);
                 if (Sto::try_commit()) {
                     break;
                 }
             } catch (Transaction::Abort e) {}
-            transgen = transgen_snap;
         }
     }
 
@@ -108,49 +101,218 @@ template <typename T>
 void* run_cds(void* x) {
     Tester<T>* tp = (Tester<T>*) x;
     cds::threading::Manager::attachThread();
-
-    // generate all transactions the thread will run
-    for (int i = 0; i < NTRANS; ++i) {
-        auto transseed = i;
-        uint32_t seed = transseed*3 + (uint32_t)tp->me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_THREADS*NTRANS*11;
-        auto seedlow = seed & 0xffff;
-        auto seedhigh = seed >> 16;
-        Rand transgen(seed, seedlow << 16 | seedhigh);
-        do_txn(tp, transgen);
-        
+    auto txns_to_run = tp->txns_to_run;
+    for (auto txn = begin(txns_to_run); txn != end(txns_to_run); ++txn) {
+        std::vector<op> txn_ops = txn->first;
+        int txn_val = txn->second;
+        do_txn(tp->ds, tp->me, txn_ops, txn_val, tp->size);
     }
     cds::threading::Manager::detachThread();
     return nullptr;
 }
 template <typename T>
-void startAndWait(T* ds, int ds_type, 
-        int bm, 
+void* run_sto_random_op_thread(void* x) {
+    Tester<T>* tp = (Tester<T>*) x;
+    auto q = tp->ds;
+    TThread::set_id(tp->me);
+
+    for (int i = NTRANS; i > 0; --i) {
+        auto transseed = i;
+        uint32_t seed = transseed*3 + (uint32_t)tp->me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_THREADS*NTRANS*11;
+        auto seedlow = seed & 0xffff;
+        auto seedhigh = seed >> 16;
+        Rand transgen(seed, seedlow << 16 | seedhigh);
+        auto transgen_snap = transgen;
+
+        while (1) {
+            Sto::start_transaction();
+            try {
+                if (transgen() % 2 == 0) {
+                    q->push(i);
+                    global_thread_push_ctrs[tp->me]++;
+                } else {
+                    q->pop();
+                    global_thread_pop_ctrs[tp->me]++;
+                }
+                if (Sto::try_commit()) {
+                    break;
+                }
+            }
+            catch (Transaction::Abort e) {
+                global_thread_pop_ctrs[tp->me]--;
+                global_thread_push_ctrs[tp->me]--;;
+                transgen = transgen_snap;
+            }
+        }
+    }
+
+    return nullptr;
+}
+template <typename T>
+void* run_cds_random_op_thread(void* x) {
+    Tester<T>* tp = (Tester<T>*) x;
+    auto q = tp->ds;
+    cds::threading::Manager::attachThread();
+    
+    for (int i = NTRANS; i > 0; --i) {
+        auto transseed = i;
+        uint32_t seed = transseed*3 + (uint32_t)tp->me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_THREADS*NTRANS*11;
+        auto seedlow = seed & 0xffff;
+        auto seedhigh = seed >> 16;
+        Rand transgen(seed, seedlow << 16 | seedhigh);
+
+        if (transgen() % 2 == 0) {
+            q->push(i);
+            global_thread_push_ctrs[tp->me]++;
+        } else {
+            q->pop();
+            global_thread_pop_ctrs[tp->me]++;
+        }
+    }
+
+    cds::threading::Manager::detachThread();
+    return nullptr;
+}
+template <typename T>
+void* run_sto_push_thread(void* x) {
+    Tester<T>* tp = (Tester<T>*) x;
+    auto q = tp->ds;
+    TThread::set_id(tp->me);
+
+    for (int i = NTRANS; i > 0; --i) {
+        while (1) {
+            Sto::start_transaction();
+            try {
+                q->push(i);
+                if (Sto::try_commit()) {
+                    break;
+                }
+            } catch (Transaction::Abort e) {}
+        }
+        global_thread_push_ctrs[tp->me]++;
+    }
+
+    return nullptr;
+}
+template <typename T>
+void* run_sto_pop_thread(void* x) {
+    Tester<T>* tp = (Tester<T>*) x;
+    auto q = tp->ds;
+    TThread::set_id(tp->me);
+
+    for (int i = NTRANS; i > 0; --i) {
+        while (1) {
+            Sto::start_transaction();
+            try {
+                q->pop();
+                if (Sto::try_commit()) {
+                    break;
+                }
+            } catch (Transaction::Abort e) {}
+        }
+        global_thread_pop_ctrs[tp->me]++;
+    }
+    
+    return nullptr;
+}
+template <typename T>
+void* run_cds_push_thread(void* x) {
+    Tester<T>* tp = (Tester<T>*) x;
+    auto q = tp->ds;
+    cds::threading::Manager::attachThread();
+
+    for (int i = NTRANS; i > 0; --i) {
+        q->push(i);
+        global_thread_push_ctrs[tp->me]++;
+    }
+
+    cds::threading::Manager::detachThread();
+    return nullptr;
+}
+template <typename T>
+void* run_cds_pop_thread(void* x) {
+    Tester<T>* tp = (Tester<T>*) x;
+    auto q = tp->ds;
+    cds::threading::Manager::attachThread();
+
+    for (int i = NTRANS; i > 0; --i) {
+        q->pop();
+        global_thread_pop_ctrs[tp->me]++;
+    }
+
+    cds::threading::Manager::detachThread();
+    return nullptr;
+}
+
+template <typename T>
+void startAndWait(T* ds, int ds_type, int bm, 
         std::vector<std::vector<op>> txn_set, 
-        size_t size,
-        int nthreads) {
+        size_t size, int nthreads) {
 
     pthread_t tids[nthreads];
     Tester<T> testers[nthreads];
-    for (int i = 0; i < nthreads; ++i) {
-        // set the txn_set to be only pushes or pops if running the NOABORTS bm
-        if (bm == NOABORTS) {
-            testers[0].txn_set = q_push_only_txn_set;
-            testers[1].txn_set = q_pop_only_txn_set;
+    int val;
+    std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
+    
+    /* 
+     * Allocate the operations and values for all threads to run.
+     * Only allow pushes or pops if running the NOABORTS bm.
+     */
+    for (int me = 0; me < nthreads; ++me) {
+        for (int j = 0; j < NTRANS; ++j) {
+            auto transseed = j;
+            uint32_t seed = transseed*3 + (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_THREADS*NTRANS*11;
+            auto seedlow = seed & 0xffff;
+            auto seedhigh = seed >> 16;
+            Rand transgen(seed, seedlow << 16 | seedhigh);
+
+            switch(bm) {
+                case RANDOM:
+                    val = slotdist(transgen);
+                    break;
+                default: // NOABORTS, DECREASING
+                    val = --global_val;
+                    break;
+            }
+            // randomly select an operation to run unless we're doing the push/pop noaborts test
+            if (bm != NOABORTS) {
+                auto txn = txn_set[transgen() % txn_set.size()];
+                testers[me].txns_to_run.push_back(std::make_pair(txn, val));
+            }
         }
-        else testers[i].txn_set = txn_set;
+    }
+    for (int i = 0; i < nthreads; ++i) {
         testers[i].ds = ds;
         testers[i].me = i;
-        testers[i].bm = bm;
         testers[i].size = size;
+    }
+   
+    /* 
+     * Run the threads and track performance.
+     */
+    struct timeval tv1,tv2;
+    gettimeofday(&tv1, NULL);
+    if (bm == NOABORTS) {
         if (ds_type == CDS) {
-            pthread_create(&tids[i], NULL, run_cds<T>, &testers[i]);
+            pthread_create(&tids[0], NULL, run_cds_pop_thread<T>, &testers[0]);
+            pthread_create(&tids[1], NULL, run_cds_push_thread<T>, &testers[1]);
         } else {
-            pthread_create(&tids[i], NULL, run_sto<T>, &testers[i]);
+            pthread_create(&tids[0], NULL, run_sto_pop_thread<T>, &testers[0]);
+            pthread_create(&tids[1], NULL, run_sto_push_thread<T>, &testers[1]);
+        }
+    } else {
+        for (int i = 0; i < nthreads; ++i) {
+            if (ds_type == CDS) pthread_create(&tids[i], NULL, run_cds_random_op_thread<T>, &testers[i]);
+            else pthread_create(&tids[i], NULL, run_sto_random_op_thread<T>, &testers[i]);
         }
     }
     for (int i = 0; i < nthreads; ++i) {
         pthread_join(tids[i], NULL);
     }
+    gettimeofday(&tv2, NULL);
+    print_stats(tv1, tv2, bm);
+    if (ds_type == STO) print_abort_stats();
+    clear_op_ctrs();
 }
 
 /* 
