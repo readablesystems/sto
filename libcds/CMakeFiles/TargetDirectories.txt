@@ -1,0 +1,2 @@
+/home/tslilyai/sto/libcds/CMakeFiles/cds.dir
+/home/tslilyai/sto/libcds/CMakeFiles/cds-s.dir
