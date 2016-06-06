@@ -110,19 +110,20 @@ int main() {
     // run the two-thread test where one thread only pushes and the other only pops
     dualprint("\nBenchmark: No Aborts (2 threads: one pushing, one popping)\n");
     for (auto size = begin(sizes); size != end(sizes); ++size) {
-        dualprint("Init size: %d\n", *size);
+        fprintf(stderr, "Init size: %d\n", *size);
         run_benchmark(NOABORTS, *size, {}, 2);
         dualprint("\n");
     }
     // run single-operation txns with different nthreads
     dualprint("\nSingle-Op Txns, Random Values\n");
-    for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
+    for (auto size = begin(sizes); size != end(sizes); ++size) {
+        fprintf(stderr, "Init size: %d\n", *size);
+    	for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
         fprintf(stderr, "nthreads: %d\n", *n);
-        for (auto size = begin(sizes); size != end(sizes); ++size) {
-            dualprint("Init size: %d\n", *size);
             run_benchmark(RANDOM, *size, q_single_op_txn_set, *n);
     	    dualprint("\n");
         }
+    	dualprint("\n");
     }
     
     cds::threading::Manager::detachThread();
