@@ -4,10 +4,10 @@
 AR = ar
 CC = @CC@
 CXX = @CXX@
-CPPFLAGS = -I$(MASSTREEDIR) -Icds-2.1.0
+CPPFLAGS = -I$(MASSTREEDIR) -Ilibcds
 DEPSDIR := .deps
 DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
-LIBS = @LIBS@ $(MASSTREEDIR)/libjson.a cds/bin/libcds-s.a -lpthread -lm -lboost_thread
+LIBS = @LIBS@ $(MASSTREEDIR)/libjson.a libcds/bin/libcds-s.a -lpthread -lm -lboost_thread
 LIBOBJS = @LIBOBJS@
 LDFLAGS = @LDFLAGS@
 MASSTREEDIR = @MASSTREEDIR@
