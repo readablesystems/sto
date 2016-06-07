@@ -376,7 +376,7 @@ namespace cds { namespace intrusive {
 
 #       ifdef _DEBUG
                 assert( m_List.empty() || populated( m_List.back() ));
-#       endif
+#       endif 
 
                 segment * pNew = allocate_segment();
                 m_Stat.onSegmentCreated();
@@ -410,7 +410,7 @@ namespace cds { namespace intrusive {
 
 #       ifdef _DEBUG
                     assert( exhausted(m_List.front()) );
-#       endif
+#       endif 
 
                     m_List.pop_front();
                     if ( m_List.empty() ) {

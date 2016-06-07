@@ -6,6 +6,9 @@
 #include <assert.h>
 #include <vector>
 #include <random>
+#include <time.h>
+#include <condition_variable>
+#include <mutex>
 
 #include <cds/init.h>
 #include <cds/container/fcpriority_queue.h>
@@ -31,7 +34,7 @@
 #define MAX_VALUE  INT_MAX
 #define MAX_SIZE 1000000
 #define NTRANS 20000 // Number of transactions each thread should run.
-#define N_THREADS 30 // Number of concurrent threads
+#define N_THREADS 24 // Number of concurrent threads
 
 // type of data structure to be used
 #define STO 0
@@ -40,7 +43,9 @@
 // type of benchmark to use
 #define RANDOM 10
 #define DECREASING 11
-#define NOABORTS 12
+#define PUSHPOP 12
+#define PUSHONLY 13
+#define GENERAL 14
 
 enum op {push, pop};
 enum q_type { basket, fc, moir, ms, optimistic, rw, segmented, tc, vm };
@@ -53,10 +58,16 @@ extern txp_counter_type global_thread_push_ctrs[N_THREADS];
 extern txp_counter_type global_thread_pop_ctrs[N_THREADS];
 extern txp_counter_type global_thread_skip_ctrs[N_THREADS];
 
+extern std::atomic_int spawned;
+extern std::mutex run_mtx;
+extern std::mutex spawned_mtx;
+extern std::condition_variable global_run_cv;
+extern std::condition_variable global_spawned_cv;
+
 // helper functions
+void* record_perf_thread(void*);
 void clear_op_ctrs(void);
 void dualprint(const char* fmt,...);
-void print_stats(struct timeval tv1, struct timeval tv2, int bm);
 void print_abort_stats(void);
 
 // txn sets
@@ -96,7 +107,6 @@ void* run_sto(void* x) {
 
     return nullptr;
 }
-
 template <typename T>
 void* run_cds(void* x) {
     Tester<T>* tp = (Tester<T>*) x;
@@ -115,6 +125,13 @@ void* run_sto_random_op_thread(void* x) {
     Tester<T>* tp = (Tester<T>*) x;
     auto q = tp->ds;
     TThread::set_id(tp->me);
+    
+    spawned++; 
+    global_spawned_cv.notify_one();
+    
+    std::unique_lock<std::mutex> run_lk(run_mtx);
+    global_run_cv.wait(run_lk);
+    run_lk.unlock();
 
     for (int i = NTRANS; i > 0; --i) {
         auto transseed = i;
@@ -123,7 +140,7 @@ void* run_sto_random_op_thread(void* x) {
         auto seedhigh = seed >> 16;
         Rand transgen(seed, seedlow << 16 | seedhigh);
         auto transgen_snap = transgen;
-
+    
         while (1) {
             Sto::start_transaction();
             try {
@@ -139,8 +156,6 @@ void* run_sto_random_op_thread(void* x) {
                 }
             }
             catch (Transaction::Abort e) {
-                global_thread_pop_ctrs[tp->me]--;
-                global_thread_push_ctrs[tp->me]--;;
                 transgen = transgen_snap;
             }
         }
@@ -153,6 +168,13 @@ void* run_cds_random_op_thread(void* x) {
     Tester<T>* tp = (Tester<T>*) x;
     auto q = tp->ds;
     cds::threading::Manager::attachThread();
+    
+    spawned++; 
+    global_spawned_cv.notify_one();
+
+    std::unique_lock<std::mutex> run_lk(run_mtx);
+    global_run_cv.wait(run_lk);
+    run_lk.unlock();
     
     for (int i = NTRANS; i > 0; --i) {
         auto transseed = i;
@@ -178,6 +200,14 @@ void* run_sto_push_thread(void* x) {
     Tester<T>* tp = (Tester<T>*) x;
     auto q = tp->ds;
     TThread::set_id(tp->me);
+  
+    spawned++; 
+    global_spawned_cv.notify_one();
+ 
+    std::unique_lock<std::mutex> run_lk(run_mtx);
+    global_run_cv.wait(run_lk);
+    run_lk.unlock();
+    
 
     for (int i = NTRANS; i > 0; --i) {
         while (1) {
@@ -199,6 +229,13 @@ void* run_sto_pop_thread(void* x) {
     Tester<T>* tp = (Tester<T>*) x;
     auto q = tp->ds;
     TThread::set_id(tp->me);
+  
+    spawned++; 
+    global_spawned_cv.notify_one();
+  
+    std::unique_lock<std::mutex> run_lk(run_mtx);
+    global_run_cv.wait(run_lk);
+    run_lk.unlock();
 
     for (int i = NTRANS; i > 0; --i) {
         while (1) {
@@ -220,6 +257,13 @@ void* run_cds_push_thread(void* x) {
     Tester<T>* tp = (Tester<T>*) x;
     auto q = tp->ds;
     cds::threading::Manager::attachThread();
+  
+    spawned++; 
+    global_spawned_cv.notify_one();
+  
+    std::unique_lock<std::mutex> run_lk(run_mtx);
+    global_run_cv.wait(run_lk);
+    run_lk.unlock();
 
     for (int i = NTRANS; i > 0; --i) {
         q->push(i);
@@ -234,6 +278,13 @@ void* run_cds_pop_thread(void* x) {
     Tester<T>* tp = (Tester<T>*) x;
     auto q = tp->ds;
     cds::threading::Manager::attachThread();
+  
+    spawned++; 
+    global_spawned_cv.notify_one();
+  
+    std::unique_lock<std::mutex> run_lk(run_mtx);
+    global_run_cv.wait(run_lk);
+    run_lk.unlock();
 
     for (int i = NTRANS; i > 0; --i) {
         q->pop();
@@ -249,14 +300,14 @@ void startAndWait(T* ds, int ds_type, int bm,
         std::vector<std::vector<op>> txn_set, 
         size_t size, int nthreads) {
 
-    pthread_t tids[nthreads];
+    pthread_t tids[nthreads+1];
     Tester<T> testers[nthreads];
     int val;
     std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
     
     /* 
      * Allocate the operations and values for all threads to run.
-     * Only allow pushes or pops if running the NOABORTS bm.
+     * Only allow pushes or pops if running the PUSHPOP bm.
      */
     for (int me = 0; me < nthreads; ++me) {
         for (int j = 0; j < NTRANS; ++j) {
@@ -270,12 +321,12 @@ void startAndWait(T* ds, int ds_type, int bm,
                 case RANDOM:
                     val = slotdist(transgen);
                     break;
-                default: // NOABORTS, DECREASING
+                default: // PUSHPOP, DECREASING
                     val = --global_val;
                     break;
             }
             // randomly select an operation to run unless we're doing the push/pop noaborts test
-            if (bm != NOABORTS) {
+            if (bm == GENERAL) {
                 auto txn = txn_set[transgen() % txn_set.size()];
                 testers[me].txns_to_run.push_back(std::make_pair(txn, val));
             }
@@ -286,13 +337,16 @@ void startAndWait(T* ds, int ds_type, int bm,
         testers[i].me = i;
         testers[i].size = size;
     }
-   
+  
     /* 
-     * Run the threads and track performance.
+     * Create the thread to track performance and print stats
      */
-    struct timeval tv1,tv2;
-    gettimeofday(&tv1, NULL);
-    if (bm == NOABORTS) {
+    pthread_create(&tids[nthreads], NULL, record_perf_thread, NULL);
+      
+    /* 
+     * Run the threads that do the operations.
+     */
+    if (bm == PUSHPOP) {
         if (ds_type == CDS) {
             pthread_create(&tids[0], NULL, run_cds_pop_thread<T>, &testers[0]);
             pthread_create(&tids[1], NULL, run_cds_push_thread<T>, &testers[1]);
@@ -300,19 +354,34 @@ void startAndWait(T* ds, int ds_type, int bm,
             pthread_create(&tids[0], NULL, run_sto_pop_thread<T>, &testers[0]);
             pthread_create(&tids[1], NULL, run_sto_push_thread<T>, &testers[1]);
         }
+    } else if (bm == PUSHONLY) {
+        for (int i = 0; i < nthreads; ++i) {
+            if (ds_type == CDS) pthread_create(&tids[i], NULL, run_cds_push_thread<T>, &testers[i]);
+            else pthread_create(&tids[i], NULL, run_sto_push_thread<T>, &testers[i]);
+        }
     } else {
         for (int i = 0; i < nthreads; ++i) {
             if (ds_type == CDS) pthread_create(&tids[i], NULL, run_cds_random_op_thread<T>, &testers[i]);
             else pthread_create(&tids[i], NULL, run_sto_random_op_thread<T>, &testers[i]);
         }
     }
-    for (int i = 0; i < nthreads; ++i) {
+  
+    /* 
+     * Wait until all threads are ready, then tell all threads to begin execution.
+    */ 
+    std::unique_lock<std::mutex> spawned_lk(spawned_mtx);
+    global_spawned_cv.wait(spawned_lk, [&nthreads]{return spawned==nthreads;});
+    spawned_lk.unlock();
+    sleep(0.01*nthreads);
+    global_run_cv.notify_all();
+    
+    for (int i = 0; i < nthreads+1; ++i) {
         pthread_join(tids[i], NULL);
     }
-    gettimeofday(&tv2, NULL);
-    print_stats(tv1, tv2, bm);
     if (ds_type == STO) print_abort_stats();
+
     clear_op_ctrs();
+    spawned = 0;
 }
 
 /* 

@@ -63,6 +63,8 @@ int main() {
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
 
     cds::Initialize();
+    cds::gc::HP hpGC;
+    cds::threading::Manager::attachThread();
 
     // create the epoch advancer thread
     pthread_t advancer;
@@ -88,25 +90,28 @@ int main() {
             run_benchmark(DECREASING, *size, *txn_set, N_THREADS);
         }
     }
-   
     */
+   
     // run the two-thread test where one thread only pushes and the other only pops
-    dualprint("\nBenchmark: No Aborts (2 threads: one pushing, one popping)\n");
+    dualprint("\nBenchmark: 2 threads: one pushing, one popping\n");
     for (auto size = begin(sizes); size != end(sizes); ++size) {
-        dualprint("Init size: %d\n", *size);
-        run_benchmark(NOABORTS, *size, {}, 2);
+        fprintf(stderr, "Init size: %d\n", *size);
+	    run_benchmark(PUSHPOP, *size, {}, 2);
     }
- 
+    
     // run the push-only test (with single-thread all-pops at the end) 
-    dualprint("\nBenchmark: Multithreaded Push, Singlethreaded Pops, Random Values\n");
+    dualprint("\nBenchmark: Multithreaded Push, Decreasing Values\n");
     for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
         fprintf(stderr, "nthreads: %d\n", *n);
-        run_benchmark(RANDOM, 100000, q_push_only_txn_set, *n);
+        run_benchmark(PUSHONLY, 100000, q_push_only_txn_set, *n);
+	    dualprint("\n");
     }
-    dualprint("\nBenchmark: Multithreaded Push, Singlethreaded Pops, Decreasing Values\n");
+    /*
+    dualprint("\nBenchmark: Multithreaded Push, Random Values\n");
     for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
         fprintf(stderr, "nthreads: %d\n", *n);
-        run_benchmark(DECREASING, 100000, q_push_only_txn_set, *n);
+        run_benchmark(PUSHONLY, 100000, q_push_only_txn_set, *n);
+	    dualprint("\n");
     }
 
     // run single-operation txns with different nthreads
@@ -124,13 +129,13 @@ int main() {
     for (auto size = begin(sizes); size != end(sizes); ++size) {
         fprintf(stderr, "Init size: %d\n", *size);
     	for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
-        fprintf(stderr, "nthreads: %d\n", *n);
-            run_benchmark(DECREASING, *size, q_single_op_txn_set, *n);
+            fprintf(stderr, "nthreads: %d\n", *n);
+            run_benchmark(DECREASING, *size, {}, *n);
     	    dualprint("\n");
         }
     	dualprint("\n");
     }
-
+    */
     cds::Terminate();
     return 0;
 }
