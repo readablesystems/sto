@@ -70,7 +70,7 @@ void* record_perf_thread(void*) {
     global_run_cv.wait(run_lk);
     run_lk.unlock();
 
-    struct timespec ts = {0, 100000};
+    struct timespec ts = {0, 200000};
     nanosleep(&ts, NULL);
     ts = {0, 10000};
     for (int i = 3000; i > 0; --i) {

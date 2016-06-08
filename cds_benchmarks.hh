@@ -33,7 +33,7 @@
 
 #define MAX_VALUE  INT_MAX
 #define MAX_SIZE 1000000
-#define NTRANS 20000 // Number of transactions each thread should run.
+#define NTRANS 100000 // Number of transactions each thread should run.
 #define N_THREADS 24 // Number of concurrent threads
 
 // type of data structure to be used
@@ -325,7 +325,7 @@ void startAndWait(T* ds, int ds_type, int bm,
                     val = --global_val;
                     break;
             }
-            // randomly select an operation to run unless we're doing the push/pop noaborts test
+            // randomly select a txn to run if we're doing the general benchmark
             if (bm == GENERAL) {
                 auto txn = txn_set[transgen() % txn_set.size()];
                 testers[me].txns_to_run.push_back(std::make_pair(txn, val));
@@ -372,7 +372,8 @@ void startAndWait(T* ds, int ds_type, int bm,
     std::unique_lock<std::mutex> spawned_lk(spawned_mtx);
     global_spawned_cv.wait(spawned_lk, [&nthreads]{return spawned==nthreads;});
     spawned_lk.unlock();
-    sleep(0.01*nthreads);
+   
+    sleep(1*nthreads);
     global_run_cv.notify_all();
     
     for (int i = 0; i < nthreads+1; ++i) {

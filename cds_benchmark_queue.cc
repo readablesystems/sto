@@ -105,8 +105,8 @@ int main() {
         run_benchmark(RANDOM, 100000, q_push_only_txn_set, *n);
         dualprint("\n");
     }
-    */ 
    
+    */ 
     // run the two-thread test where one thread only pushes and the other only pops
     dualprint("\nBenchmark: No Aborts (2 threads: one pushing, one popping)\n");
     for (auto size = begin(sizes); size != end(sizes); ++size) {
@@ -114,6 +114,7 @@ int main() {
         run_benchmark(PUSHPOP, *size, {}, 2);
         dualprint("\n");
     }
+    /*
     // run single-operation txns with different nthreads
     dualprint("\nSingle-Op Txns, Random Values\n");
     for (auto size = begin(sizes); size != end(sizes); ++size) {
@@ -125,6 +126,7 @@ int main() {
         }
     	dualprint("\n");
     }
+    */
     
     cds::threading::Manager::detachThread();
     cds::Terminate();

@@ -90,10 +90,10 @@ int main() {
             run_benchmark(DECREASING, *size, *txn_set, N_THREADS);
         }
     }
-    */
    
     // run the two-thread test where one thread only pushes and the other only pops
     dualprint("\nBenchmark: 2 threads: one pushing, one popping\n");
+    for (int i = 0; i < 4; ++i) {
     for (auto size = begin(sizes); size != end(sizes); ++size) {
         fprintf(stderr, "Init size: %d\n", *size);
 	    run_benchmark(PUSHPOP, *size, {}, 2);
@@ -125,6 +125,7 @@ int main() {
         }
     	dualprint("\n");
     }
+    */
     dualprint("\nSingle-Op Txns, Decreasing Values\n");
     for (auto size = begin(sizes); size != end(sizes); ++size) {
         fprintf(stderr, "Init size: %d\n", *size);
@@ -135,7 +136,6 @@ int main() {
         }
     	dualprint("\n");
     }
-    */
     cds::Terminate();
     return 0;
 }
