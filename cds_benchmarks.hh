@@ -60,6 +60,7 @@ enum q_type { basket, fc, moir, ms, optimistic, rw, segmented, tc, vm };
 extern std::atomic_int global_val;              // used to insert decreasing vals into ds
 extern std::vector<int> init_sizes;             // initial sizes upon to which to run the test 
 extern std::vector<int> nthreads_set;           // nthreads with which to run the benchmark
+extern std::vector<std::vector<std::vector<op>>> q_txn_sets; // txn sets for the general benchmark
 
 // counters of operations done by each thread
 extern txp_counter_type global_thread_push_ctrs[MAX_NUM_THREADS];
@@ -83,8 +84,20 @@ void* record_perf_thread(void*);
 void dualprint(const char* fmt,...); // prints to both the verbose and csv files
 void print_abort_stats(void);        // prints how many aborts/commits, etc. for STO ds
 
-// txn sets for the general benchmark
-extern std::vector<std::vector<std::vector<op>>> q_txn_sets;
+// runs the operations within one transaction, using the given txn_val as the value to insert
+template <typename T>
+inline void do_txn(T* q, int me, std::vector<op> txn_ops, int txn_val, size_t size);
+// run the thread executing operations on the CDS data structure
+template <typename T>
+void* run_cds_thread(void* x);
+// run the thread executing operations on the STO data structure
+template <typename T>
+void* run_sto_thread(void* x);
+// start the STO or CDS threads for the given benchmark and wait for them all to finish
+template <typename T>
+void startAndWait(T* ds, int ds_type, int bm, int val_type, 
+        std::vector<std::vector<op>> txn_set, 
+        size_t size, int nthreads);
 
 template <typename T>
 struct Tester {
@@ -329,7 +342,7 @@ void startAndWait(T* ds, int ds_type,
     global_spawned_cv.wait(spawned_lk, [&nthreads]{return spawned==nthreads;});
     spawned_lk.unlock();
   
-    sleep(0.5*nthreads); // sleep so that the threads will wait before the notification
+    sleep(1*nthreads); // sleep so that the threads will wait before the notification
     global_run_cv.notify_all();
  
     /* 
@@ -337,7 +350,7 @@ void startAndWait(T* ds, int ds_type,
      */
     pthread_create(&tids[nthreads], NULL, record_perf_thread, NULL);
 
-    sleep(0.1);
+    sleep(1);
     global_run_cv.notify_all(); // notify again just to be paranoid
 
     for (int i = 0; i < nthreads+1; ++i) {
