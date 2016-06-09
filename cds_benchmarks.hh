@@ -71,14 +71,12 @@ extern txp_counter_type global_thread_skip_ctrs[MAX_NUM_THREADS];
 extern std::mutex run_mtx;                      // mutex for the global_run_cv
 extern std::condition_variable global_run_cv;   // broadcasts to the threads to begin running the benchmark
 extern std::atomic_int spawned;                 // count of how many threads have successfully spawned
-extern std::mutex spawned_mtx;                  // mutex for the global_spawned_cv
-extern std::condition_variable global_spawned_cv; // each thread signals on this cv when it has spawned
                                                   // the main thread waits on this cv until spawned=nthreads
                                                   
 // this thread is run after all threads modifying the data structure 
-// have been spawned. It then iterates for 300 cycles of 0.1ms (a total of 30 ms) 
+// have been spawned. It then iterates until a thread finishes, 
 // measuring the maximum rate at which the threads are operating on the data structure.
-void* record_perf_thread(void*);
+void* record_perf_thread(void* x);
 
 // helper functions for printing
 void dualprint(const char* fmt,...); // prints to both the verbose and csv files
@@ -117,7 +115,6 @@ void* run_sto_thread(void* x) {
     TThread::set_id(tp->me);
 
     spawned++; 
-    global_spawned_cv.notify_one();
     
     std::unique_lock<std::mutex> run_lk(run_mtx);
     global_run_cv.wait(run_lk);
@@ -204,6 +201,7 @@ void* run_sto_thread(void* x) {
         }
         default: assert(0);
     }
+    spawned--; 
     return nullptr;
 }
 
@@ -215,7 +213,6 @@ void* run_cds_thread(void* x) {
     cds::threading::Manager::attachThread();
 
     spawned++; 
-    global_spawned_cv.notify_one();
     
     std::unique_lock<std::mutex> run_lk(run_mtx);
     global_run_cv.wait(run_lk);
@@ -270,6 +267,7 @@ void* run_cds_thread(void* x) {
         }
         default: assert(0);
     }
+    spawned--;
     cds::threading::Manager::detachThread();
     return nullptr;
 }
@@ -338,9 +336,9 @@ void startAndWait(T* ds, int ds_type,
     /* 
      * Wait until all threads are ready, then tell all threads to begin execution.
     */ 
-    std::unique_lock<std::mutex> spawned_lk(spawned_mtx);
-    global_spawned_cv.wait(spawned_lk, [&nthreads]{return spawned==nthreads;});
-    spawned_lk.unlock();
+    while (spawned != nthreads) {
+        sleep(0.01);
+    }
   
     sleep(1*nthreads); // sleep so that the threads will wait before the notification
     global_run_cv.notify_all();
@@ -348,7 +346,7 @@ void startAndWait(T* ds, int ds_type,
     /* 
      * Create the thread to track performance and print stats
      */
-    pthread_create(&tids[nthreads], NULL, record_perf_thread, NULL);
+    pthread_create(&tids[nthreads], NULL, record_perf_thread, &nthreads);
 
     sleep(1);
     global_run_cv.notify_all(); // notify again just to be paranoid

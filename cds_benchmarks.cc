@@ -2,7 +2,7 @@
 
 std::atomic_int global_val(MAX_VALUE);
 std::vector<int> init_sizes = {1000, 10000, 50000, 100000, 150000};
-std::vector<int> nthreads_set = {1, 2, 4, 8, 12, 16, 20, 23};
+std::vector<int> nthreads_set = {1, 2, 4, 8, 12, 16, 20, 22};
 txp_counter_type global_thread_push_ctrs[MAX_NUM_THREADS];
 txp_counter_type global_thread_pop_ctrs[MAX_NUM_THREADS];
 txp_counter_type global_thread_skip_ctrs[MAX_NUM_THREADS];
@@ -17,13 +17,14 @@ std::mutex spawned_mtx;
 std::condition_variable global_run_cv;
 std::condition_variable global_spawned_cv;
 
-void* record_perf_thread(void*) {
+void* record_perf_thread(void* x) {
+    int nthreads = *(int*)x;
     int total1, total2;
     struct timeval tv1, tv2;
     float ops_per_ms = 0; 
 
     struct timespec ts = {0, 10000};
-    for (int i = 3000; i > 0; --i) {
+    while (spawned == nthreads) {
         total1 = total2 = 0;
         gettimeofday(&tv1, NULL);
         for (int i = 0; i < MAX_NUM_THREADS; ++i) {
@@ -58,19 +59,19 @@ void print_benchmark(int bm, int val_type, int size, int nthreads) {
     }
     switch(bm) {
         case PUSHPOP: 
-            dualprint("-------2 THREAD PUSH/POP TEST, %s VALUES, INIT SIZE %d, NTHREADS %d--------\n", 
+            fprintf(global_verbose_stats_file, "-------2 THREAD PUSH/POP TEST, %s VALUES, INIT SIZE %d, NTHREADS %d--------\n", 
                     val, size, nthreads);
         break;
         case PUSHONLY:
-            dualprint("-------PUSH-ONLY TEST, %s VALUES, INIT SIZE %d, NTHREADS %d--------\n", 
+            fprintf(global_verbose_stats_file, "-------PUSH-ONLY TEST, %s VALUES, INIT SIZE %d, NTHREADS %d--------\n", 
                     val, size, nthreads);
         break;
         case RANDOMOP:
-            dualprint("-------RANDOM OP TEST, %s VALUES, INIT SIZE %d, NTHREADS %d--------\n", 
+            fprintf(global_verbose_stats_file, "-------RANDOM OP TEST, %s VALUES, INIT SIZE %d, NTHREADS %d--------\n", 
                     val, size, nthreads);
         break;
         case GENERAL:
-            dualprint("-------GENERAL TXNS TEST, %s VALUES, INIT SIZE %d, NTHREADS %d--------\n", 
+            fprintf(global_verbose_stats_file, "-------GENERAL TXNS TEST, %s VALUES, INIT SIZE %d, NTHREADS %d--------\n", 
                     val, size, nthreads);
         break;
         default: assert(0);
@@ -153,6 +154,7 @@ void run_all_queue_benchmarks() {
     }
     */
     // run the two-thread test where one thread only pushes and the other only pops
+    dualprint("\nQUEUE PUSHPOP\n");
     for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
 	    run_queue_benchmark(PUSHPOP, RANDOM_VALS, *size, {}, 2);
         fprintf(stderr, "Done running pushpop with size %d\n", *size);
@@ -161,8 +163,7 @@ void run_all_queue_benchmarks() {
     for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
     	for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
             run_queue_benchmark(RANDOMOP, RANDOM_VALS, *size, {}, *n);
-            run_queue_benchmark(RANDOMOP,DECREASING_VALS, *size, {}, *n);
-            fprintf(stderr, "Done running randomop with size %d nthreads %d\n", *size, *n);
+            fprintf(stderr, "Done running randomop random with size %d nthreads %d\n", *size, *n);
         }
     }
 }
@@ -179,24 +180,33 @@ void run_all_pqueue_benchmarks() {
             fprintf(stderr, "Done running general txn set with size %d nthreads %d", *size, MAX_NUM_THREADS);
         }
     }
-    */
     // run the two-thread test where one thread only pushes and the other only pops
+    dualprint("\nPQUEUE PUSHPOP\n");
     for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
 	    run_pqueue_benchmark(PUSHPOP, RANDOM_VALS, *size, {}, 2);
         fprintf(stderr, "Done running pushpop with size %d\n", *size);
     }
     // run the push-only test
+    dualprint("\nPQUEUE PUSHONLY\n");
     for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
         run_pqueue_benchmark(PUSHONLY, RANDOM_VALS, 100000, {}, *n);
         fprintf(stderr, "Done running pushonly random with nthreads %d\n", *n);
+    }
+    for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
         run_pqueue_benchmark(PUSHONLY, DECREASING_VALS, 100000, {}, *n);
         fprintf(stderr, "Done running pushonly decreasing with nthreads %d\n", *n);
-    }
+    }*/
     // run single-operation txns with different nthreads
+    dualprint("\nPQUEUE RANDOMOP RANDOM\n");
     for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
     	for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
             run_pqueue_benchmark(RANDOMOP, RANDOM_VALS, *size, {}, *n);
             fprintf(stderr, "Done running randomop random with size %d nthreads %d\n", *size, *n);
+        }
+    }
+    dualprint("\nPQUEUE RANDOMOP DECREASING\n");
+    for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
+    	for (auto n = begin(nthreads_set); n != end(nthreads_set); ++n) {
             run_pqueue_benchmark(RANDOMOP,DECREASING_VALS, *size, {}, *n);
             fprintf(stderr, "Done running randomop decreasing with size %d nthreads %d\n", *size, *n);
         }
@@ -263,7 +273,7 @@ int main() {
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
 
-    run_all_queue_benchmarks();
+    //run_all_queue_benchmarks();
     run_all_pqueue_benchmarks();
 
     cds::threading::Manager::detachThread();
