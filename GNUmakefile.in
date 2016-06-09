@@ -66,15 +66,12 @@ ifeq ($(PROFILE),1)
 OPTFLAGS += -g -pg -fno-inline
 endif
 
-PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter $(UNIT_PROGRAMS) $(BENCHMARK_CDS_PROGRAMS)
+PROGRAMS = cds_benchmarks concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter $(UNIT_PROGRAMS)
 UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric unit-rcu unit-tvector unit-tvector-nopred
-BENCHMARK_CDS_PROGRAMS = cds_benchmark_queue cds_benchmark_pqueue
 
 all: $(PROGRAMS) 
 
 unit: $(UNIT_PROGRAMS)
-
-cds_benchmarks: $(BENCHMARK_CDS_PROGRAMS)
 
 check: unit
 	@for i in $(UNIT_PROGRAMS); do echo ./$$i; ./$$i || exit 1; done
@@ -94,14 +91,12 @@ MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 	$(MASSTREEDIR)/checkpoint.o \
 	$(MASSTREEDIR)/string_slice.o
 
-STO_OBJS = Packer.o Transaction.o TRcu.o MassTrans.o clp.o cds_benchmarks.o $(LIBOBJS)
+STO_OBJS = Packer.o Transaction.o TRcu.o MassTrans.o clp.o $(LIBOBJS)
 MSTO_OBJS = $(STO_OBJS) $(MASSTREE_OBJS)
 STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
 MSTO_DEPS = $(MSTO_OBJS) $(MASSTREEDIR)/libjson.a
 
-cds_benchmark_queue:  cds_benchmark_queue.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
-cds_benchmark_pqueue: cds_benchmark_pqueue.o $(STO_DEPS)
+cds_benchmarks:  cds_benchmarks.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 concurrent: concurrent.o $(MSTO_DEPS)

@@ -44,10 +44,10 @@ to output a csv.
 
 Run `make cds_benchmarks` in the parent `sto` directory.
 
-Run `./cds_benchmark_queue 2> queue_stats.err 1> queue_stats.out` to benchmark the queue or `./cds_benchmark_pqueue 2> pqueue_stats.err 1> pqueue_stats.out` to benchmark the priority queue.
+Run `./cds_benchmarks to benchmark both STO/CDS queues and STO/CDS priority queues. Information about which benchmarks have been run will print to stderr.
 
-`(p)queue_stats.out` will contain data in csv format for easy transfer to excel/other graph-making tools.
-`(p)queue_stats.err` will contain extra information about the number of aborts, time, and number of operations.
+`cds_benchmarks_stats.txt` will contain data in csv format for easy transfer to excel/other graph-making tools.
+`cds_benchmarks_stats_verbose.txt` will contain extra information about the number of aborts, time, and number of operations.
 
 Benchmarks:
 - 2 threads, one pusher and one popper in single-operation txns. Run on different initial queue sizes
