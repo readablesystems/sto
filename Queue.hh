@@ -178,7 +178,7 @@ public:
         val = queueSlots[index];
         return true;
     }
-    
+
 private:
     bool has_delete(const TransItem& item) {
         return item.flags() & delete_bit;

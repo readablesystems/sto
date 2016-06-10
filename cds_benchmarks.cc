@@ -1,21 +1,181 @@
-#include "cds_benchmarks.hh"
+#include <string>
+#include <iostream>
+#include <cstdarg>
+#include <assert.h>
+#include <vector>
+#include <random>
+#include <time.h>
+#include <condition_variable>
+#include <mutex>
 
-std::atomic_int global_val(MAX_VALUE);
+#include <cds/init.h>
+#include <cds/container/fcpriority_queue.h>
+#include <cds/container/mspriority_queue.h>
+#include <cds/container/basket_queue.h>
+#include <cds/container/fcqueue.h>
+#include <cds/container/moir_queue.h>
+#include <cds/container/msqueue.h>
+#include <cds/container/rwqueue.h>
+#include <cds/container/optimistic_queue.h>
+#include <cds/container/segmented_queue.h>
+#include <cds/container/tsigas_cycle_queue.h>
+#include <cds/container/vyukov_mpmc_cycle_queue.h>
+#include <cds/gc/hp.h> 
+
+#include "Transaction.hh"
+#include "PriorityQueue.hh"
+#include "Queue.hh"
+#include "randgen.hh"
+
+#define GLOBAL_SEED 10
+
+#define MAX_VALUE INT_MAX
+#define MAX_SIZE 1000000
+#define NTRANS 100000 // Number of transactions each thread should run.
+#define MAX_NUM_THREADS 24 // Maximum number of concurrent threads
+#define INITIAL_THREAD 0 // Maximum number of concurrent threads
+
+// type of data structure to be used
+#define STO 0
+#define CDS 1
+
+// value types
+#define RANDOM_VALS 10
+#define DECREASING_VALS 11
+
+// benchmarks types
+#define PUSHPOP 12      // two threads, one pushing one popping
+#define POPONLY 13     // multiple threads, all only pushing
+#define PUSHONLY 14     // multiple threads, all only pushing
+#define RANDOMOP 15  // choose one operation at random per txn
+#define GENERAL 16      // run arbitrary txns of arbitrary length
+
+// types of operations available
+enum op {push, pop};
+// types of queues
+enum q_type { basket, fc, moir, ms, optimistic, rw, segmented, tc, vm };
+
+// globals
+std::atomic_int global_push_val(MAX_VALUE);
 std::vector<int> init_sizes = {1000, 10000, 50000, 100000, 150000};
-std::vector<int> nthreads_set = {1, 2, 4, 8, 12, 16, 20, 22};
+std::vector<int> nthreads_set = {1, 2, 4, 8, 12, 16, 20, 24};
+
+std::atomic_int spawned_barrier(0);
+
 txp_counter_type global_thread_push_ctrs[MAX_NUM_THREADS];
 txp_counter_type global_thread_pop_ctrs[MAX_NUM_THREADS];
 txp_counter_type global_thread_skip_ctrs[MAX_NUM_THREADS];
-double global_thread_performance[MAX_NUM_THREADS];
 
 FILE *global_verbose_stats_file;
 FILE *global_stats_file;
 
-std::atomic_int spawned(0);
-std::mutex run_mtx;
-std::mutex spawned_mtx;
-std::condition_variable global_run_cv;
-std::condition_variable global_spawned_cv;
+// This thread is run after all threads modifying the data structure have been spawned. 
+// It then iterates until a thread finishes and measures the max rate of ops/ms on the data structure. 
+void* record_perf_thread(void* x);
+// Takes a Tester (Test + params) struct and runs the requested test.
+void* test_thread(void* data);
+
+// Helper functions for printing
+void dualprint(const char* fmt,...); // prints to both the verbose and csv files
+void print_abort_stats(void);        // prints how many aborts/commits, etc. for STO ds
+
+template <typename T>
+void startAndWait(Test* test, size_t size, int nthreads);
+
+/*
+ * Datatype Harnesses
+ */
+template <typename DS> DatatypeHarness{};
+
+template <typename DS> CDSDatatypeHarness {
+    typedef typename value_type DS::value_type;
+public:
+    CDSDatatypeHarness() {};
+    CDSDatatypeHarness(size_t nCapacity) {};
+    void pop() { int ret; v_::pop(ret); }
+    void push(T v) { v_::push(v); }
+    void init_push(T v) { v_::push(v); }
+    size_t size() { return v_::size(); }
+private:
+    DS v_;
+}
+
+/* 
+ * Priority Queue Templates
+ */
+template <T> DatatypeHarness<cds::container::MSPriorityQueue<T>> : public CDSDatatypeHarness<cds::container::MSPriorityQueue<T>>;
+template <T> DatatypeHarness<cds::container::FCPriorityQueue<T>> : public CDSDatatypeHarness<cds::container::FCPriorityQueue<T>>;
+template <T> DatatypeHarness<PriorityQueue<T>> {
+    typedef typename value_type T;
+public:
+    DatatypeHarness() {};
+    void pop() { v_::pop(); }
+    void push(value_type v) { v_::push(v); }
+    void init_push(value_type v) { v_::push(v); }
+    size_t size() { return v_::unsafe_size(); }
+private:
+    PriorityQueue<T> v_;
+}
+template <T> DatatypeHarness<PriorityQueue<T, true>> {
+    typedef typename value_type T;
+public:
+    DatatypeHarness() {};
+    void pop() { v_::pop(); }
+    void push(value_type v) { v_::push(v); }
+    void init_push(value_type v) { v_::push(v); }
+    size_t size() { return v_::unsafe_size(); }
+private:
+    PriorityQueue<T, true> v_;
+}
+/* 
+ * Queue Templates
+ */
+template <T> DatatypeHarness<Queue<T>> {
+    typedef typename value_type T;
+public:
+    void pop() { v_.transPop(); }
+    void push(T v) { v_.transPush(v); }
+    size_t size() { return 0; }
+private:
+    Queue<T> v_;
+}
+template <T> DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, T>> : public CDSDatatypeHarness<cds::container::BasketQueue<cds::gc::HP, T>>;
+template <T> DatatypeHarnes<cds::container::FCQueue<T>> : public CDSDatatypeHarness<cds::container::FCQueue<T>>;
+template <T> DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, T>> : public CDSDatatypeHarness<cds::container::MoirQueue<cds::gc::HP, T>>;
+template <T> DatatypeHarness<cds::container::MSQueue<cds::gc::HP, T>> : public CDSDatatypeHarness<cds::container::MSQueue<cds::gc::HP, T>>;
+template <T> DatatypeHarness<cds::container::OptimisticQueue<cds::gc::HP, T>> : public CDSDatatypeHarness<cds::container::OptimisticQueue<cds::gc::HP, T>>:
+template <T> DatatypeHarness<cds::container::RWQueue<T>> : public CDSDatatypeHarness<RWQueue<T>>:
+template <T> DatatypeHarness<cds::container::SegmentedQueue<cds::gc::HP, T>> : public CDSDatatypeHarness<cds::container::SegmentedQueue<cds::gc::HP, T>
+template <T> DatatypeHarness<cds::container::TsigasCycleQueue<T>> : public CDSDatatypeHarness<cds::container::TsigasCycleQueue<T>>;
+template <T> DatatypeHarness<cds::container::VyukovMPMCCycleQueue<T>> : public CDSDatatypeHarness<cds::container::VyukovMPMCCycleQueue<T>>;
+
+Tester {
+    int me; // tid
+    int nthreads;
+    size_t size;
+    GenericTest* test;   
+}
+
+void* test_thread(void *data) {
+    GenericTest *gt = (Tester*)data->test;
+    int me = (Tester*)data->me;
+    int nthreads = (Tester*)data->nthreads;
+    size_t size = (Tester*)data->size;
+
+    if (me == INITIAL_THREAD) {
+        gt->initialize(size); 
+    }
+    
+    spawned_barrier++;
+    while (spawned_barrier != nthreads) {
+        sched_yield();
+    }
+   
+    gt->run();
+
+    spawned_barrier--;
+    return nullptr;
+}
 
 void* record_perf_thread(void* x) {
     int nthreads = *(int*)x;
@@ -23,6 +183,11 @@ void* record_perf_thread(void* x) {
     struct timeval tv1, tv2;
     float ops_per_ms = 0; 
 
+    while (spawned_barrier != nthreads) {
+        sched_yield();
+    }
+
+    // benchmark until the first thread finishes
     struct timespec ts = {0, 10000};
     while (spawned == nthreads) {
         total1 = total2 = 0;
@@ -80,7 +245,7 @@ void print_benchmark(int bm, int val_type, int size, int nthreads) {
 
 void run_queue_benchmark(int bm, int val_type, int size, std::vector<std::vector<op>> txn_set, int nthreads) {
     print_benchmark(bm, val_type, size, nthreads);
-    global_val = MAX_VALUE;
+    global_push_val = MAX_VALUE;
    
     // initialize all data structures
     STOQueue<int>sto_queue;
@@ -117,7 +282,7 @@ void run_queue_benchmark(int bm, int val_type, int size, std::vector<std::vector
 }
 
 void run_pqueue_benchmark(int bm, int val_type, int size, std::vector<std::vector<op>> txn_set, int nthreads) {
-    global_val = MAX_VALUE;
+    global_push_val = MAX_VALUE;
     print_benchmark(bm, val_type, size, nthreads);
 
     // initialize all data structures
@@ -125,13 +290,13 @@ void run_pqueue_benchmark(int bm, int val_type, int size, std::vector<std::vecto
     PriorityQueue<int, true> sto_pqueue_opaque;
     FCPriorityQueue<int> fc_pqueue;
     MSPriorityQueue<int> ms_pqueue(MAX_SIZE);
-    for (int i = global_val; i < size; ++i) {
+    for (int i = global_push_val; i < size; ++i) {
         Sto::start_transaction();
-        sto_pqueue.push(global_val);
+        sto_pqueue.push(global_push_val);
         assert(Sto::try_commit());
-        fc_pqueue.push(global_val);
-        ms_pqueue.push(global_val);
-        global_val--;
+        fc_pqueue.push(global_push_val);
+        ms_pqueue.push(global_push_val);
+        global_push_val--;
     }
    
     startAndWait(&fc_pqueue, CDS, bm, val_type, txn_set, size, nthreads);

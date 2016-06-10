@@ -57,21 +57,16 @@ enum op {push, pop};
 enum q_type { basket, fc, moir, ms, optimistic, rw, segmented, tc, vm };
 
 // globals
-extern std::atomic_int global_val;              // used to insert decreasing vals into ds
+extern std::atomic_int global_push_val;         // used to insert decreasing vals into ds
 extern std::vector<int> init_sizes;             // initial sizes upon to which to run the test 
 extern std::vector<int> nthreads_set;           // nthreads with which to run the benchmark
 extern std::vector<std::vector<std::vector<op>>> q_txn_sets; // txn sets for the general benchmark
+extern std::atomic_int spawned_barrier;         // count of how many threads have successfully spawned
 
 // counters of operations done by each thread
 extern txp_counter_type global_thread_push_ctrs[MAX_NUM_THREADS];
 extern txp_counter_type global_thread_pop_ctrs[MAX_NUM_THREADS];
 extern txp_counter_type global_thread_skip_ctrs[MAX_NUM_THREADS];
-
-// condition variables for synchronizing benchmark starts
-extern std::mutex run_mtx;                      // mutex for the global_run_cv
-extern std::condition_variable global_run_cv;   // broadcasts to the threads to begin running the benchmark
-extern std::atomic_int spawned;                 // count of how many threads have successfully spawned
-                                                  // the main thread waits on this cv until spawned=nthreads
                                                   
 // this thread is run after all threads modifying the data structure 
 // have been spawned. It then iterates until a thread finishes, 
@@ -307,7 +302,7 @@ void startAndWait(T* ds, int ds_type,
                     val = slotdist(transgen);
                     break;
                 case DECREASING_VALS:
-                    val = --global_val;
+                    val = --global_push_val;
                     break;
                 default: assert(0);
             }
