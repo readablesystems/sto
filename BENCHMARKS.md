@@ -53,4 +53,4 @@ Benchmarks:
 - 2 threads, one pusher and one popper in single-operation txns. Run on different initial queue sizes
 - Single operation txns in which a thread randomly pops or pushes. Run on different initial queue sizes and different numbers of threads.
 
-For priority queue, benchmarks are run with both the values pushed always decreasing (to avoid conflicts with inserting to the head) and with random values. The queue benchmarks are run only with random values being pushed.
+Benchmarks are run with both the values pushed always decreasing (to avoid conflicts with inserting to the head) and with random values.

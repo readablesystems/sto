@@ -512,6 +512,7 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
         global_thread_push_ctrs[i] = 0;
         global_thread_skip_ctrs[i] = 0;
     }
+    print_abort_stats();
 }
 
 void dualprintf(const char* fmt,...) {
