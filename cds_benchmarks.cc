@@ -55,46 +55,19 @@ std::atomic_int global_push_val(MAX_VALUE);
 std::vector<int> init_sizes = {1000, 10000, 50000, 100000, 150000};
 std::vector<int> nthreads_set = {1, 2, 4, 8, 12, 16, 20, 24};
 // txn sets
-std::vector<std::vector<std::vector<op>>> q_txn_sets = 
-{
+std::vector<std::vector<std::vector<op>>> q_txn_sets = {
     // 0. short txns
-    {
-        {push, push, push},
-        {pop, pop, pop},
-        {pop}, {pop}, {pop},
-        {push}, {push}, {push}
-    },
+    {{push, push, push}, {pop, pop, pop}, {pop}, {pop}, {pop}, {push}, {push}, {push}},
     // 1. longer txns
-    {
-        {push, push, push, push, push},
-        {pop, pop, pop, pop, pop},
-        {pop}, {pop}, {pop}, {pop}, {pop}, 
-        {push}, {push}, {push}, {push}, {push}
-    },
+    {{push, push, push, push, push},{pop, pop, pop, pop, pop}}, 
     // 2. 100% include both pushes and ptps
-    {
-        {push, push, pop},
-        {pop, pop, push},
-    },
+    {{push, push, pop},{pop, pop, push}},
     // 3. 50% include both pushes and pops
-    {
-        {push, push, pop},
-        {pop, pop, push},
-        {pop}, {push}
-    },
+    {{push, push, pop},{pop, pop, push},{pop}, {push}},
     // 4. 33% include both pushes and pops
-    {
-        {push, push, pop},
-        {pop, pop, push},
-        {pop}, {pop},
-        {push}, {push}
-    },
+    {{push, push, pop},{pop, pop, push},{pop}, {pop},{push}, {push}},
     // 5. 33%: longer push + pop txns
-    {
-        {push, pop, push, pop, push, pop},
-        {pop}, 
-        {push}
-    }
+    {{push, pop, push, pop, push, pop},{pop}, {push}}
 };
 
 std::atomic_int spawned_barrier(0);
@@ -169,8 +142,18 @@ private:
     PriorityQueue<T, true> v_;
 };
 
-template <typename T> struct DatatypeHarness<cds::container::MSPriorityQueue<T>> : 
-    public CDSDatatypeHarness<cds::container::MSPriorityQueue<T>>{};
+template <typename T> struct DatatypeHarness<cds::container::MSPriorityQueue<T>> {
+    typedef T value_type;
+public:
+    DatatypeHarness() : v_(100000) {};
+    void pop() { int ret; v_.pop(ret); }
+    void push(value_type v) { v_.push(v); }
+    void init_push(value_type v) { v_.push(v); }
+    size_t size() { return v_.size(); }
+private:
+    cds::container::MSPriorityQueue<T> v_;
+};
+
 template <typename T> struct DatatypeHarness<cds::container::FCPriorityQueue<T>> : 
     public CDSDatatypeHarness<cds::container::FCPriorityQueue<T>>{};
 
@@ -199,18 +182,45 @@ template <typename T> struct DatatypeHarness<cds::container::FCQueue<T>> :
 template <typename T> struct DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, T>> : 
     public CDSDatatypeHarness<cds::container::MoirQueue<cds::gc::HP, T>>{};
 template <typename T> struct DatatypeHarness<cds::container::MSQueue<cds::gc::HP, T>> : 
-    public CDSDatatypeHarness<cds::container::MSQueue<cds::gc::HP, T>>{};
+    public CDSDatatypeHarness<cds::container::MSQueue<cds::gc::HP, T>> {};
 template <typename T> struct DatatypeHarness<cds::container::OptimisticQueue<cds::gc::HP, T>> : 
     public CDSDatatypeHarness<cds::container::OptimisticQueue<cds::gc::HP, T>>{};
 template <typename T> struct DatatypeHarness<cds::container::RWQueue<T>> : 
     public CDSDatatypeHarness<cds::container::RWQueue<T>>{};
-template <typename T> struct DatatypeHarness<cds::container::SegmentedQueue<cds::gc::HP, T>> : 
-    public CDSDatatypeHarness<cds::container::SegmentedQueue<cds::gc::HP, T>>{};
-template <typename T> struct DatatypeHarness<cds::container::TsigasCycleQueue<T>> : 
-    public CDSDatatypeHarness<cds::container::TsigasCycleQueue<T>>{};
-template <typename T> struct DatatypeHarness<cds::container::VyukovMPMCCycleQueue<T>> : 
-    public CDSDatatypeHarness<cds::container::VyukovMPMCCycleQueue<T>>{};
 
+template <typename T> struct DatatypeHarness<cds::container::SegmentedQueue<cds::gc::HP, T>> {
+    typedef T value_type;
+public:
+    DatatypeHarness() : v_(32) {};
+    void pop() { int ret; v_.pop(ret); }
+    void push(value_type v) { v_.push(v); }
+    void init_push(value_type v) { v_.push(v); }
+    size_t size() { return v_.size(); }
+private:
+    cds::container::SegmentedQueue<cds::gc::HP, T> v_;
+};
+template <typename T> struct DatatypeHarness<cds::container::TsigasCycleQueue<T>> {
+    typedef T value_type;
+public:
+    DatatypeHarness() : v_(100000) {};
+    void pop() { int ret; v_.pop(ret); }
+    void push(value_type v) { v_.push(v); }
+    void init_push(value_type v) { v_.push(v); }
+    size_t size() { return v_.size(); }
+private:
+    cds::container::TsigasCycleQueue<T> v_;
+};
+template <typename T> struct DatatypeHarness<cds::container::VyukovMPMCCycleQueue<T>> {
+    typedef T value_type;
+public:
+    DatatypeHarness() : v_(100000) {};
+    void pop() { int ret; v_.pop(ret); }
+    void push(value_type v) { v_.push(v); }
+    void init_push(value_type v) { v_.push(v); }
+    size_t size() { return v_.size(); }
+private:
+    cds::container::VyukovMPMCCycleQueue<T> v_;
+};
 /*
  * Test interfaces and templates.
  */
