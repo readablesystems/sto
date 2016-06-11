@@ -270,7 +270,7 @@ public:
         while (v_.cleanup_pop()){/*keep popping*/}
     }
 
-    void do_op(op op, Rand transgen) {
+    inline void do_op(op op, Rand transgen) {
         std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
 
         int val;
