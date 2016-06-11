@@ -505,9 +505,9 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
         testers[i].nthreads = nthreads;
         pthread_create(&tids[i], NULL, test_thread, &testers[i]);
     }
-
     for (int i = 0; i < nthreads; ++i) {
         pthread_join(tids[i], NULL);
+        assert(spawned_barrier == 0);
     }
 }
 
