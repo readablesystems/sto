@@ -94,8 +94,7 @@ void print_abort_stats(void);        // prints how many aborts/commits, etc. for
  */
 template <typename DS> struct DatatypeHarness{};
 
-template <typename DS> struct CDSDatatypeHarness {
-    typedef typename DS::value_type value_type;
+template <typename DS> struct CDSDatatypeHarness { typedef typename DS::value_type value_type;
 public:
     CDSDatatypeHarness() {};
     CDSDatatypeHarness(size_t nCapacity) : v_(nCapacity) {};
@@ -117,14 +116,17 @@ public:
     DatatypeHarness() {};
     bool pop() { return v_.pop(); }
     bool cleanup_pop() { 
-        Sto::start_transaction();
-        return pop();
-        assert(Sto::try_commit());
+        if (v_.unsafe_size() > 0) {
+            Sto::start_transaction();
+            v_.pop();
+            assert(Sto::try_commit());
+            return true;
+        } else return false;
     }
     void push(value_type v) { v_.push(v); }
-    void init_push(value_type v) {
+    void init_push(value_type v) { 
         Sto::start_transaction();
-        v_.push(v);
+        v_.push(v); 
         assert(Sto::try_commit());
     }
     size_t size() { return v_.unsafe_size(); }
@@ -138,14 +140,17 @@ public:
     DatatypeHarness() {};
     bool pop() { return v_.pop(); }
     bool cleanup_pop() { 
-        Sto::start_transaction();
-        return pop();
-        assert(Sto::try_commit());
-    }
+        if (v_.unsafe_size() > 0) {
+            Sto::start_transaction();
+            v_.pop();
+            assert(Sto::try_commit());
+            return true;
+        } else return false;
+    } 
     void push(value_type v) { v_.push(v); }
     void init_push(value_type v) { 
         Sto::start_transaction();
-        v_.push(v);
+        v_.push(v); 
         assert(Sto::try_commit());
     }
     size_t size() { return v_.unsafe_size(); }
@@ -178,8 +183,9 @@ public:
     bool pop() { return v_.transPop(); }
     bool cleanup_pop() { 
         Sto::start_transaction();
-        return pop();
+        bool ret = pop();
         assert(Sto::try_commit());
+        return ret;
     }
     void push(T v) { v_.transPush(v); }
     void init_push(T v) { 
@@ -462,6 +468,7 @@ void* test_thread(void *data) {
     size_t init_size = ((Tester*)data)->init_size;
 
     if (me == INITIAL_THREAD) {
+        gt->cleanup();
         gt->initialize(init_size); 
     }
     
@@ -471,7 +478,6 @@ void* test_thread(void *data) {
     }
    
     gt->run(me);
-    gt->cleanup();
 
     cds::threading::Manager::detachThread();
     return nullptr;
