@@ -447,7 +447,6 @@ void* test_thread(void *data) {
    
     gt->run(me);
 
-    spawned_barrier--;
     cds::threading::Manager::detachThread();
     return nullptr;
 }
@@ -507,8 +506,8 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
     }
     for (int i = 0; i < nthreads; ++i) {
         pthread_join(tids[i], NULL);
-        assert(spawned_barrier == 0);
     }
+    spawned_barrier = 0;
 }
 
 void dualprintf(const char* fmt,...) {
