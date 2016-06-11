@@ -145,7 +145,7 @@ private:
 template <typename T> struct DatatypeHarness<cds::container::MSPriorityQueue<T>> {
     typedef T value_type;
 public:
-    DatatypeHarness() : v_(100000) {};
+    DatatypeHarness() : v_(1000000) {};
     void pop() { int ret; v_.pop(ret); }
     void push(value_type v) { v_.push(v); }
     void init_push(value_type v) { v_.push(v); }
@@ -202,7 +202,7 @@ private:
 template <typename T> struct DatatypeHarness<cds::container::TsigasCycleQueue<T>> {
     typedef T value_type;
 public:
-    DatatypeHarness() : v_(100000) {};
+    DatatypeHarness() : v_(1000000) {};
     void pop() { int ret; v_.pop(ret); }
     void push(value_type v) { v_.push(v); }
     void init_push(value_type v) { v_.push(v); }
@@ -213,7 +213,7 @@ private:
 template <typename T> struct DatatypeHarness<cds::container::VyukovMPMCCycleQueue<T>> {
     typedef T value_type;
 public:
-    DatatypeHarness() : v_(100000) {};
+    DatatypeHarness() : v_(1000000) {};
     void pop() { int ret; v_.pop(ret); }
     void push(value_type v) { v_.push(v); }
     void init_push(value_type v) { v_.push(v); }
@@ -477,14 +477,6 @@ void* record_perf_thread(void* x) {
         float microseconds = ((tv2.tv_sec-tv1.tv_sec)*1000000.0) + ((tv2.tv_usec-tv1.tv_usec)/1000.0);
         ops_per_ms = (total2-total1)/microseconds > ops_per_ms ? (total2-total1)/microseconds : ops_per_ms;
     }
-    fprintf(global_verbose_stats_file, "\n");
-    for (int i = 0; i < MAX_NUM_THREADS; ++i) {
-        // prints the number of pushes, pops, and skips
-        fprintf(global_verbose_stats_file, "Thread %d \tpushes: %ld \tpops: %ld, \tskips: %ld\n", i, 
-                global_thread_push_ctrs[i], 
-                global_thread_pop_ctrs[i], 
-                global_thread_skip_ctrs[i]);
-    }
     dualprintf("%f, ", ops_per_ms);
     return nullptr;
 }
@@ -493,7 +485,6 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
     // create performance recording thread
     pthread_t recorder;
     pthread_create(&recorder, NULL, record_perf_thread, &nthreads);
-    pthread_detach(recorder);
     // create threads to run the test
     pthread_t tids[nthreads];
     Tester testers[nthreads];
@@ -507,12 +498,20 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
     for (int i = 0; i < nthreads; ++i) {
         pthread_join(tids[i], NULL);
     }
+    spawned_barrier = 0;
+    pthread_join(recorder, NULL);
+
+    fprintf(global_verbose_stats_file, "\n");
     for (int i = 0; i < nthreads; ++i) {
+        // prints the number of pushes, pops, and skips
+        fprintf(global_verbose_stats_file, "Thread %d \tpushes: %ld \tpops: %ld, \tskips: %ld\n", i, 
+                global_thread_push_ctrs[i], 
+                global_thread_pop_ctrs[i], 
+                global_thread_skip_ctrs[i]);
         global_thread_pop_ctrs[i] = 0;
         global_thread_push_ctrs[i] = 0;
         global_thread_skip_ctrs[i] = 0;
     }
-    spawned_barrier = 0;
 }
 
 void dualprintf(const char* fmt,...) {
@@ -621,11 +620,12 @@ int main() {
         dualprintf("\nNew Pqueue Test\n");
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
-                for (unsigned j = 0; j < num_pqueues; ++j) {
+                for (int j = 0; j < num_pqueues; ++j) {
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
                             pqueue_tests[i+j].desc, pqueue_tests[i+j].ds, *size, *nthreads);
                     startAndWait(pqueue_tests[i+j].test, *size, *nthreads);
-                    fprintf(stderr, "Ran Test %s on %s\n", pqueue_tests[i+j].desc, pqueue_tests[i+j].ds);
+                    fprintf(stderr, "\nRan Test %s on %s\t size: %d, nthreads: %d\n", 
+                            pqueue_tests[i+j].desc, pqueue_tests[i+j].ds, *size, *nthreads);
                 }
                 dualprintf("\n");
             }
@@ -637,11 +637,12 @@ int main() {
         dualprintf("\nNew Queue Test\n");
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
-                for (unsigned j = 0; j < num_queues; ++j) {
+                for (int j = 0; j < num_queues; ++j) {
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
                             queue_tests[i+j].desc, queue_tests[i+j].ds, *size, *nthreads);
                     startAndWait(queue_tests[i+j].test, *size, *nthreads);
-                    fprintf(stderr, "Ran Test %s on %s\n", queue_tests[i+j].desc, queue_tests[i+j].ds);
+                    fprintf(stderr, "\nRan Test %s on %s\t size: %d, nthreads: %d\n", 
+                            queue_tests[i+j].desc, queue_tests[i+j].ds, *size, *nthreads);
                 }
                 dualprintf("\n");
             }
