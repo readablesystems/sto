@@ -617,32 +617,36 @@ int main() {
     pthread_detach(advancer);
 
     dualprintf("\nRUNNING PQUEUE TESTS\n");
-    for (unsigned i = 0; i < arraysize(pqueue_tests); ++i) {
-        if (i % num_pqueues == 0) {dualprintf("\nNew Pqueue Test\n");}
+    for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {
+        dualprintf("\nNew Pqueue Test\n");
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
-                fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
-                        pqueue_tests[i].desc, pqueue_tests[i].ds, *size, *nthreads);
-                startAndWait(pqueue_tests[i].test, *size, *nthreads);
+                for (unsigned j = 0; j < num_pqueues; ++j) {
+                    fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
+                            pqueue_tests[i+j].desc, pqueue_tests[i+j].ds, *size, *nthreads);
+                    startAndWait(pqueue_tests[i+j].test, *size, *nthreads);
+                    fprintf(stderr, "Ran Test %s on %s\n", pqueue_tests[i+j].desc, pqueue_tests[i+j].ds);
+                }
                 dualprintf("\n");
             }
             dualprintf("\n");
         }
-        fprintf(stderr, "Ran Test %s on %s\n", pqueue_tests[i].desc, pqueue_tests[i].ds);
     }
     dualprintf("\nRUNNING QUEUE TESTS\n");
-    for (unsigned i = 0; i < arraysize(queue_tests); ++i) {
-        if (i % num_queues == 0) {dualprintf("\nNew Queue Test\n");}
+    for (unsigned i = 0; i < arraysize(queue_tests); i+=num_queues) {
+        dualprintf("\nNew Queue Test\n");
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
-                fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
-                        queue_tests[i].desc, queue_tests[i].ds, *size, *nthreads);
-                startAndWait(queue_tests[i].test, *size, *nthreads);
+                for (unsigned j = 0; j < num_queues; ++j) {
+                    fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
+                            queue_tests[i+j].desc, queue_tests[i+j].ds, *size, *nthreads);
+                    startAndWait(queue_tests[i+j].test, *size, *nthreads);
+                    fprintf(stderr, "Ran Test %s on %s\n", queue_tests[i+j].desc, queue_tests[i+j].ds);
+                }
                 dualprintf("\n");
             }
             dualprintf("\n");
         }
-        fprintf(stderr, "Ran Test %s on %s\n", queue_tests[i].desc, queue_tests[i].ds);
     }
 
     cds::Terminate();
