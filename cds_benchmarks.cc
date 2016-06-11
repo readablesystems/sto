@@ -99,7 +99,8 @@ template <typename DS> struct CDSDatatypeHarness {
 public:
     CDSDatatypeHarness() {};
     CDSDatatypeHarness(size_t nCapacity) : v_(nCapacity) {};
-    void pop() { int ret; v_.pop(ret); }
+    bool pop() { int ret; return v_.pop(ret); }
+    bool cleanup_pop() { return pop(); }
     void push(value_type v) { v_.push(v); }
     void init_push(value_type v) { v_.push(v); }
     size_t size() { return v_.size(); }
@@ -114,7 +115,12 @@ template <typename T> struct DatatypeHarness<PriorityQueue<T>> {
     typedef T value_type;
 public:
     DatatypeHarness() {};
-    void pop() { v_.pop(); }
+    bool pop() { return v_.pop(); }
+    bool cleanup_pop() { 
+        Sto::start_transaction();
+        return pop();
+        assert(Sto::try_commit());
+    }
     void push(value_type v) { v_.push(v); }
     void init_push(value_type v) {
         Sto::start_transaction();
@@ -130,7 +136,12 @@ template <typename T> struct DatatypeHarness<PriorityQueue<T, true>> {
     typedef T value_type;
 public:
     DatatypeHarness() {};
-    void pop() { v_.pop(); }
+    bool pop() { return v_.pop(); }
+    bool cleanup_pop() { 
+        Sto::start_transaction();
+        return pop();
+        assert(Sto::try_commit());
+    }
     void push(value_type v) { v_.push(v); }
     void init_push(value_type v) { 
         Sto::start_transaction();
@@ -146,7 +157,8 @@ template <typename T> struct DatatypeHarness<cds::container::MSPriorityQueue<T>>
     typedef T value_type;
 public:
     DatatypeHarness() : v_(1000000) {};
-    void pop() { int ret; v_.pop(ret); }
+    bool pop() { int ret; return v_.pop(ret); }
+    bool cleanup_pop() { return pop(); }
     void push(value_type v) { v_.push(v); }
     void init_push(value_type v) { v_.push(v); }
     size_t size() { return v_.size(); }
@@ -163,7 +175,12 @@ template <typename T> struct DatatypeHarness<cds::container::FCPriorityQueue<T>>
 template <typename T> struct DatatypeHarness<Queue<T>> {
     typedef T value_type;
 public:
-    void pop() { v_.transPop(); }
+    bool pop() { return v_.transPop(); }
+    bool cleanup_pop() { 
+        Sto::start_transaction();
+        return pop();
+        assert(Sto::try_commit());
+    }
     void push(T v) { v_.transPush(v); }
     void init_push(T v) { 
         Sto::start_transaction();
@@ -192,7 +209,8 @@ template <typename T> struct DatatypeHarness<cds::container::SegmentedQueue<cds:
     typedef T value_type;
 public:
     DatatypeHarness() : v_(32) {};
-    void pop() { int ret; v_.pop(ret); }
+    bool pop() { int ret; return v_.pop(ret); }
+    bool cleanup_pop() { return pop(); }
     void push(value_type v) { v_.push(v); }
     void init_push(value_type v) { v_.push(v); }
     size_t size() { return v_.size(); }
@@ -203,7 +221,8 @@ template <typename T> struct DatatypeHarness<cds::container::TsigasCycleQueue<T>
     typedef T value_type;
 public:
     DatatypeHarness() : v_(1000000) {};
-    void pop() { int ret; v_.pop(ret); }
+    bool pop() { int ret; return v_.pop(ret); }
+    bool cleanup_pop() { return pop(); }
     void push(value_type v) { v_.push(v); }
     void init_push(value_type v) { v_.push(v); }
     size_t size() { return v_.size(); }
@@ -214,7 +233,8 @@ template <typename T> struct DatatypeHarness<cds::container::VyukovMPMCCycleQueu
     typedef T value_type;
 public:
     DatatypeHarness() : v_(1000000) {};
-    void pop() { int ret; v_.pop(ret); }
+    bool pop() { int ret; return v_.pop(ret); }
+    bool cleanup_pop() { return pop(); }
     void push(value_type v) { v_.push(v); }
     void init_push(value_type v) { v_.push(v); }
     size_t size() { return v_.size(); }
@@ -228,6 +248,7 @@ class GenericTest {
 public:
     virtual void initialize(size_t init_sz) = 0;
     virtual void run(int me) = 0;
+    virtual void cleanup() = 0;
 };
 
 template <typename DH> class DHTest : public GenericTest {
@@ -237,6 +258,10 @@ public:
         for (unsigned i = 0; i < init_sz; ++i) {
             v_.init_push(i);
         }
+    }
+    
+    void cleanup() {
+        while (v_.cleanup_pop()){/*keep popping*/}
     }
 
     void do_op(op op, Rand transgen) {
@@ -446,6 +471,7 @@ void* test_thread(void *data) {
     }
    
     gt->run(me);
+    gt->cleanup();
 
     cds::threading::Manager::detachThread();
     return nullptr;
