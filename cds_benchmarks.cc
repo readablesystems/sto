@@ -507,6 +507,11 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
     for (int i = 0; i < nthreads; ++i) {
         pthread_join(tids[i], NULL);
     }
+    for (int i = 0; i < nthreads; ++i) {
+        global_thread_pop_ctrs[i] == 0;
+        global_thread_push_ctrs[i] == 0;
+        global_thread_skip_ctrs[i] == 0;
+    }
     spawned_barrier = 0;
 }
 
