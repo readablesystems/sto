@@ -274,7 +274,6 @@ template <typename DH> class SingleOpTest : public DHTest<DH> {
 public:
     SingleOpTest(int ds_type, int val_type, op op) : DHTest<DH>(val_type), op_(op), ds_type_(ds_type) {};
     void run(int me) {
-        cds::threading::Manager::attachThread();
         for (int i = NTRANS; i > 0; --i) {
             auto transseed = i;
             uint32_t seed = transseed*3 + (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_NUM_THREADS*NTRANS*11;
@@ -299,7 +298,6 @@ public:
                 DHTest<DH>::inc_ctrs(op_, me);
             }
         }
-        cds::threading::Manager::detachThread();
     }
 private:
     op op_;
@@ -311,7 +309,6 @@ public:
     PushPopTest(int ds_type, int val_type) : DHTest<DH>(val_type), ds_type_(ds_type) {};
     void run(int me) {
         if (me > 1) { return; }
-        cds::threading::Manager::attachThread();
         for (int i = NTRANS; i > 0; --i) {
             auto transseed = i;
             uint32_t seed = transseed*3 + (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_NUM_THREADS*NTRANS*11;
@@ -335,7 +332,6 @@ public:
                 DHTest<DH>::inc_ctrs(ops_array[me % arraysize(ops_array)], me);
             }
         }
-        cds::threading::Manager::detachThread();
     }
 private:
     int ds_type_;
@@ -345,7 +341,6 @@ template <typename DH> class RandomSingleOpTest : public DHTest<DH> {
 public:
     RandomSingleOpTest(int ds_type, int val_type) : DHTest<DH>(val_type), ds_type_(ds_type) {};
     void run(int me) {
-        cds::threading::Manager::attachThread();
         op my_op;
         for (int i = NTRANS; i > 0; --i) {
             auto transseed = i;
@@ -372,7 +367,6 @@ public:
                 DHTest<DH>::inc_ctrs(my_op, me);
             } 
         }
-        cds::threading::Manager::detachThread();
     }
 private:
     int ds_type_;
@@ -383,7 +377,6 @@ public:
     GeneralTxnsTest(int ds_type, int val_type, std::vector<std::vector<op>> txn_set) : 
         DHTest<DH>(val_type), ds_type_(ds_type), txn_set_(txn_set) {};
     void run(int me) {
-        cds::threading::Manager::attachThread();
         for (int i = NTRANS; i > 0; --i) {
             auto transseed = i;
             uint32_t seed = transseed*3 + (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_NUM_THREADS*NTRANS*11;
@@ -414,7 +407,6 @@ public:
                 }
             }
         }
-        cds::threading::Manager::detachThread();
     }
 private:
     int ds_type_;
@@ -437,6 +429,8 @@ struct Tester {
  * Threads to run the tests and record performance
  */
 void* test_thread(void *data) {
+    cds::threading::Manager::attachThread();
+
     GenericTest *gt = ((Tester*)data)->test;
     int me = ((Tester*)data)->me;
     int nthreads = ((Tester*)data)->nthreads;
@@ -454,6 +448,7 @@ void* test_thread(void *data) {
     gt->run(me);
 
     spawned_barrier--;
+    cds::threading::Manager::detachThread();
     return nullptr;
 }
 
@@ -496,9 +491,9 @@ void* record_perf_thread(void* x) {
 }
 
 void startAndWait(GenericTest* test, size_t size, int nthreads) {
-    pthread_t advancer, recorder;
     // create performance recording thread
-    pthread_create(&recorder, NULL, record_perf_thread, NULL);
+    pthread_t recorder;
+    pthread_create(&recorder, NULL, record_perf_thread, &nthreads);
     pthread_detach(recorder);
     // create threads to run the test
     pthread_t tids[nthreads];
@@ -510,9 +505,6 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
         testers[i].nthreads = nthreads;
         pthread_create(&tids[i], NULL, test_thread, &testers[i]);
     }
-    // create epoch advancer thread
-    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
-    pthread_detach(advancer);
 
     for (int i = 0; i < nthreads; ++i) {
         pthread_join(tids[i], NULL);
@@ -611,6 +603,11 @@ int main() {
     cds::Initialize();
     cds::gc::HP hpGC;
     cds::threading::Manager::attachThread();
+
+    // create epoch advancer thread
+    pthread_t advancer;
+    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
+    pthread_detach(advancer);
 
     dualprint("RUNNING PQUEUE TESTS\n");
     for (unsigned i = 0; i < arraysize(pqueue_tests); ++i) {
