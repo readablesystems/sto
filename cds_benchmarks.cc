@@ -86,7 +86,7 @@ void* record_perf_thread(void* x);
 void* test_thread(void* data);
 
 // Helper functions for printing
-void dualprint(const char* fmt,...); // prints to both the verbose and csv files
+void dualprintf(const char* fmt,...); // prints to both the verbose and csv files
 void print_abort_stats(void);        // prints how many aborts/commits, etc. for STO ds
 
 /*
@@ -486,7 +486,7 @@ void* record_perf_thread(void* x) {
                 global_thread_pop_ctrs[i], 
                 global_thread_skip_ctrs[i]);
     }
-    dualprint("%f, ", ops_per_ms);
+    dualprintf("%f, ", ops_per_ms);
     return nullptr;
 }
 
@@ -511,7 +511,7 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
     }
 }
 
-void dualprint(const char* fmt,...) {
+void dualprintf(const char* fmt,...) {
     va_list args1, args2;
     va_start(args1, fmt);
     va_start(args2, fmt);
@@ -551,12 +551,13 @@ void print_abort_stats() {
 }
 
 #define MAKE_PQUEUE_TESTS(desc, test, type, ...) \
-    {desc, new test<DatatypeHarness<PriorityQueue<type>>>(STO, ## __VA_ARGS__)},      \
-    {desc, new test<DatatypeHarness<PriorityQueue<type, true>>>(STO, ## __VA_ARGS__)},\
-    {desc, new test<DatatypeHarness<cds::container::MSPriorityQueue<type>>>(CDS, ## __VA_ARGS__)},\
-    {desc, new test<DatatypeHarness<cds::container::FCPriorityQueue<type>>>(CDS, ## __VA_ARGS__)}
+    {desc, "STO pqueue", new test<DatatypeHarness<PriorityQueue<type>>>(STO, ## __VA_ARGS__)},      \
+    {desc, "STO pqueue opaque", new test<DatatypeHarness<PriorityQueue<type, true>>>(STO, ## __VA_ARGS__)},\
+    {desc, "MS pqueue", new test<DatatypeHarness<cds::container::MSPriorityQueue<type>>>(CDS, ## __VA_ARGS__)},\
+    {desc, "FC pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type>>>(CDS, ## __VA_ARGS__)}
 struct Test {
     const char* desc;
+    const char* ds;
     GenericTest* test;
 } pqueue_tests[] = {
     MAKE_PQUEUE_TESTS("Push+Pop with Random Vals", PushPopTest, int, RANDOM_VALS),
@@ -568,18 +569,19 @@ struct Test {
     MAKE_PQUEUE_TESTS("Push-Only with Random Vals", SingleOpTest, int, RANDOM_VALS, push),
     MAKE_PQUEUE_TESTS("Push-Only with Random Vals", SingleOpTest, int, DECREASING_VALS, push),
 };
+int num_pqueues = 4;
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
-    {desc, new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  \
-    {desc, new test<DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},         \
-    {desc, new test<DatatypeHarness<cds::container::FCQueue<type>>>(CDS, ## __VA_ARGS__)},                 \
-    {desc, new test<DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
-    {desc, new test<DatatypeHarness<cds::container::MSQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},   \
-    {desc, new test<DatatypeHarness<cds::container::OptimisticQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},   \
-    {desc, new test<DatatypeHarness<cds::container::RWQueue<type>>>(CDS, ## __VA_ARGS__)}, \
-    {desc, new test<DatatypeHarness<cds::container::SegmentedQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
-    {desc, new test<DatatypeHarness<cds::container::TsigasCycleQueue<type>>>(CDS, ## __VA_ARGS__)}, \
-    {desc, new test<DatatypeHarness<cds::container::VyukovMPMCCycleQueue<type>>>(CDS, ## __VA_ARGS__)}
+    {desc, "STO queue", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  \
+    {desc, "Basket queue", new test<DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},         \
+    {desc, "FC queue", new test<DatatypeHarness<cds::container::FCQueue<type>>>(CDS, ## __VA_ARGS__)},                 \
+    {desc, "Moir queue", new test<DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
+    {desc, "MS queue", new test<DatatypeHarness<cds::container::MSQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},   \
+    {desc, "Opt queue", new test<DatatypeHarness<cds::container::OptimisticQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},   \
+    {desc, "RW queue", new test<DatatypeHarness<cds::container::RWQueue<type>>>(CDS, ## __VA_ARGS__)}, \
+    {desc, "Segmented queue", new test<DatatypeHarness<cds::container::SegmentedQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
+    {desc, "TC queue", new test<DatatypeHarness<cds::container::TsigasCycleQueue<type>>>(CDS, ## __VA_ARGS__)}, \
+    {desc, "VyukovMPMC queue", new test<DatatypeHarness<cds::container::VyukovMPMCCycleQueue<type>>>(CDS, ## __VA_ARGS__)}
 Test queue_tests[] = {
     MAKE_QUEUE_TESTS("Push+Pop with Random Vals", PushPopTest, int, RANDOM_VALS),
     MAKE_QUEUE_TESTS("Push+Pop with Decreasing Vals", PushPopTest, int, DECREASING_VALS),
@@ -588,6 +590,7 @@ Test queue_tests[] = {
     MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
     MAKE_QUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),
 };
+int num_queues = 10;
 
 int main() {
     global_verbose_stats_file = fopen("cds_benchmarks_stats_verbose.txt", "a");
@@ -609,15 +612,33 @@ int main() {
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
 
-    dualprint("RUNNING PQUEUE TESTS\n");
+    dualprintf("\nRUNNING PQUEUE TESTS\n");
     for (unsigned i = 0; i < arraysize(pqueue_tests); ++i) {
-        dualprint("Running Test %s\n", pqueue_tests[i].desc);
-        startAndWait(pqueue_tests[i].test, 10000, 2);
+        if (i % num_pqueues == 0) {dualprintf("\nNew Pqueue Test\n");}
+        for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
+            for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
+                fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
+                        pqueue_tests[i].desc, pqueue_tests[i].ds, *size, *nthreads);
+                startAndWait(pqueue_tests[i].test, *size, *nthreads);
+                dualprintf("\n");
+            }
+            dualprintf("\n");
+        }
+        fprintf(stderr, "Ran Test %s on %s\n", pqueue_tests[i].desc, pqueue_tests[i].ds);
     }
-    dualprint("RUNNING QUEUE TESTS\n");
+    dualprintf("\nRUNNING QUEUE TESTS\n");
     for (unsigned i = 0; i < arraysize(queue_tests); ++i) {
-        dualprint("Running Test %s\n", queue_tests[i].desc);
-        startAndWait(queue_tests[i].test, 10000, 2);
+        if (i % num_queues == 0) {dualprintf("\nNew Queue Test\n");}
+        for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
+            for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
+                fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
+                        queue_tests[i].desc, queue_tests[i].ds, *size, *nthreads);
+                startAndWait(queue_tests[i].test, *size, *nthreads);
+                dualprintf("\n");
+            }
+            dualprintf("\n");
+        }
+        fprintf(stderr, "Ran Test %s on %s\n", queue_tests[i].desc, queue_tests[i].ds);
     }
 
     cds::Terminate();
