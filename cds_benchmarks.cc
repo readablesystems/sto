@@ -24,6 +24,7 @@
 
 #include "Transaction.hh"
 #include "PriorityQueue.hh"
+#include "PairingHeap.hh"
 #include "Queue.hh"
 #include "randgen.hh"
 
@@ -173,6 +174,9 @@ private:
 
 template <typename T> struct DatatypeHarness<cds::container::FCPriorityQueue<T>> : 
     public CDSDatatypeHarness<cds::container::FCPriorityQueue<T>>{};
+
+template <typename T> struct DatatypeHarness<cds::container::FCPriorityQueue<T, PairingHeap<T>>> : 
+    public CDSDatatypeHarness<cds::container::FCPriorityQueue<T, PairingHeap<T>>>{};
 
 /* 
  * Queue Templates
@@ -587,7 +591,9 @@ void print_abort_stats() {
 }
 
 #define MAKE_PQUEUE_TESTS(desc, test, type, ...) \
-    {desc, "STO pqueue", new test<DatatypeHarness<PriorityQueue<type>>>(STO, ## __VA_ARGS__)},      \
+    {desc, "FC pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type>>>(CDS, ## __VA_ARGS__)}, \
+    {desc, "FC pairing heap pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type, PairingHeap<type>>>>(CDS, ## __VA_ARGS__)}
+    //{desc, "STO pqueue", new test<DatatypeHarness<PriorityQueue<type>>>(STO, ## __VA_ARGS__)},      \
     {desc, "STO pqueue opaque", new test<DatatypeHarness<PriorityQueue<type, true>>>(STO, ## __VA_ARGS__)},\
     {desc, "MS pqueue", new test<DatatypeHarness<cds::container::MSPriorityQueue<type>>>(CDS, ## __VA_ARGS__)},\
     {desc, "FC pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type>>>(CDS, ## __VA_ARGS__)}
@@ -596,16 +602,16 @@ struct Test {
     const char* ds;
     GenericTest* test;
 } pqueue_tests[] = {
+    MAKE_PQUEUE_TESTS("Random Single Operations with Random Vals", RandomSingleOpTest, int, RANDOM_VALS),/*
+    MAKE_PQUEUE_TESTS("Random Single Operations with Decreasing Vals", RandomSingleOpTest, int, DECREASING_VALS),
     MAKE_PQUEUE_TESTS("Push+Pop with Random Vals", PushPopTest, int, RANDOM_VALS),
     MAKE_PQUEUE_TESTS("Push+Pop with Decreasing Vals", PushPopTest, int, DECREASING_VALS),
-    MAKE_PQUEUE_TESTS("Random Single Operations with Random Vals", RandomSingleOpTest, int, RANDOM_VALS),
-    MAKE_PQUEUE_TESTS("Random Single Operations with Decreasing Vals", RandomSingleOpTest, int, DECREASING_VALS),
-    MAKE_PQUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
-    MAKE_PQUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),
     MAKE_PQUEUE_TESTS("Push-Only with Random Vals", SingleOpTest, int, RANDOM_VALS, push),
     MAKE_PQUEUE_TESTS("Push-Only with Random Vals", SingleOpTest, int, DECREASING_VALS, push),
+    MAKE_PQUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
+    MAKE_PQUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),*/
 };
-int num_pqueues = 4;
+int num_pqueues = 1;
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
     {desc, "STO queue", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  \
@@ -664,7 +670,7 @@ int main() {
             }
             dualprintf("\n");
         }
-    }
+    }/*
     dualprintf("\nRUNNING QUEUE TESTS\n");
     for (unsigned i = 0; i < arraysize(queue_tests); i+=num_queues) {
         dualprintf("\nNew Queue Test\n");
@@ -681,7 +687,7 @@ int main() {
             }
             dualprintf("\n");
         }
-    }
+    }*/
 
     cds::Terminate();
     return 0;
