@@ -43,7 +43,7 @@ endif
 OPTFLAGS := -W -Wall
 
 ifndef OPT
-OPTFLAGS += -O0
+OPTFLAGS += -O3
 else
 OPTFLAGS += -O$(OPT)
 endif

@@ -32,7 +32,7 @@
 
 #define MAX_VALUE INT_MAX
 #define MAX_SIZE 1000000
-#define NTRANS 20000 // Number of transactions each thread should run.
+#define NTRANS 100000 // Number of transactions each thread should run.
 #define MAX_NUM_THREADS 24 // Maximum number of concurrent threads
 #define INITIAL_THREAD 0 // tid of the first thread spawned
 
@@ -53,8 +53,8 @@ enum q_type { basket, fc, moir, ms, optimistic, rw, segmented, tc, vm };
 
 // globals
 std::atomic_int global_push_val(MAX_VALUE);
-std::vector<int> init_sizes = {10000};//{1000, 10000, 50000, 100000, 150000};
-std::vector<int> nthreads_set = {8};//{1, 2, 4, 8, 12, 16, 20, 24};
+std::vector<int> init_sizes = {1000, 10000, 50000, 100000, 150000};
+std::vector<int> nthreads_set = {1, 2, 4, 8, 12, 16, 20, 24};
 // txn sets
 std::vector<std::vector<std::vector<op>>> q_txn_sets = {
     // 0. short txns
@@ -73,9 +73,13 @@ std::vector<std::vector<std::vector<op>>> q_txn_sets = {
 
 std::atomic_int spawned_barrier(0);
 
-txp_counter_type global_thread_push_ctrs[MAX_NUM_THREADS];
-txp_counter_type global_thread_pop_ctrs[MAX_NUM_THREADS];
-txp_counter_type global_thread_skip_ctrs[MAX_NUM_THREADS];
+struct __attribute__((aligned(128))) cds_counters {
+    txp_counter_type push;
+    txp_counter_type pop;
+    txp_counter_type skip;
+};
+
+cds_counters global_thread_ctrs[MAX_NUM_THREADS];
 
 FILE *global_verbose_stats_file;
 FILE *global_stats_file;
@@ -274,9 +278,8 @@ public:
         while (v_.cleanup_pop()){/*keep popping*/}
     }
 
-    inline void do_op(op op, Rand transgen) {
-        std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
-
+    template <typename Dist>
+    inline void do_op(op op, Rand& transgen, Dist& slotdist) {
         int val;
         switch(val_type_) {
             case RANDOM_VALS:
@@ -295,12 +298,12 @@ public:
     }
     inline void inc_ctrs(op op, int me) {
         switch(op) {
-            case push: global_thread_push_ctrs[me]++; break;
-            case pop: global_thread_pop_ctrs[me]++; break;
+            case push: global_thread_ctrs[me].push++; break;
+            case pop: global_thread_ctrs[me].pop++; break;
             default: assert(0);
         }
     }
-private:
+protected:
     DH v_;
     int val_type_;
 };
@@ -309,28 +312,27 @@ template <typename DH> class SingleOpTest : public DHTest<DH> {
 public:
     SingleOpTest(int ds_type, int val_type, op op) : DHTest<DH>(val_type), op_(op), ds_type_(ds_type) {};
     void run(int me) {
+        uint32_t seed = (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_NUM_THREADS*NTRANS*11;
+        auto seedlow = seed & 0xffff;
+        auto seedhigh = seed >> 16;
+        Rand transgen(seed, seedlow << 16 | seedhigh);
+        std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
-            auto transseed = i;
-            uint32_t seed = transseed*3 + (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_NUM_THREADS*NTRANS*11;
-            auto seedlow = seed & 0xffff;
-            auto seedhigh = seed >> 16;
-            Rand transgen(seed, seedlow << 16 | seedhigh);
-
             if (ds_type_ == STO) {
                 Rand transgen_snap = transgen;
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        DHTest<DH>::do_op(op_, transgen);
+                        this->do_op(op_, transgen, slotdist);
                         if (Sto::try_commit()) break;
                     } catch (Transaction::Abort e) {
                         transgen = transgen_snap;
                     }
                 }
-                DHTest<DH>::inc_ctrs(op_, me);
+                this->inc_ctrs(op_, me);
             } else {
-                DHTest<DH>::do_op(op_, transgen);
-                DHTest<DH>::inc_ctrs(op_, me);
+                this->do_op(op_, transgen, slotdist);
+                this->inc_ctrs(op_, me);
             }
         }
     }
@@ -343,28 +345,28 @@ template <typename DH> class PushPopTest : public DHTest<DH> {
 public:
     PushPopTest(int ds_type, int val_type) : DHTest<DH>(val_type), ds_type_(ds_type) {};
     void run(int me) {
-        if (me > 1) { return; }
+        if (me > 1) { sleep(1); return; }
+        uint32_t seed = (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_NUM_THREADS*NTRANS*11;
+        auto seedlow = seed & 0xffff;
+        auto seedhigh = seed >> 16;
+        Rand transgen(seed, seedlow << 16 | seedhigh);
+        std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
-            auto transseed = i;
-            uint32_t seed = transseed*3 + (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_NUM_THREADS*NTRANS*11;
-            auto seedlow = seed & 0xffff;
-            auto seedhigh = seed >> 16;
-            Rand transgen(seed, seedlow << 16 | seedhigh);
             if (ds_type_ == STO) {
                 Rand transgen_snap = transgen;
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        DHTest<DH>::do_op(ops_array[me % arraysize(ops_array)], transgen);
+                        this->do_op(ops_array[me % arraysize(ops_array)], transgen, slotdist);
                         if (Sto::try_commit()) break;
                     } catch (Transaction::Abort e) {
                         transgen = transgen_snap;
                     }
                 }
-                DHTest<DH>::inc_ctrs(ops_array[me % arraysize(ops_array)], me);
+                this->inc_ctrs(ops_array[me % arraysize(ops_array)], me);
             } else {
-                DHTest<DH>::do_op(ops_array[me % arraysize(ops_array)], transgen);
-                DHTest<DH>::inc_ctrs(ops_array[me % arraysize(ops_array)], me);
+                this->do_op(ops_array[me % arraysize(ops_array)], transgen, slotdist);
+                this->inc_ctrs(ops_array[me % arraysize(ops_array)], me);
             }
         }
     }
@@ -377,32 +379,33 @@ public:
     RandomSingleOpTest(int ds_type, int val_type) : DHTest<DH>(val_type), ds_type_(ds_type) {};
     void run(int me) {
         op my_op;
+        uint32_t seed = (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_NUM_THREADS*NTRANS*11;
+        auto seedlow = seed & 0xffff;
+        auto seedhigh = seed >> 16;
+        Rand transgen(seed, seedlow << 16 | seedhigh);
+        std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
-            auto transseed = i;
-            uint32_t seed = transseed*3 + (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_NUM_THREADS*NTRANS*11;
-            auto seedlow = seed & 0xffff;
-            auto seedhigh = seed >> 16;
-            Rand transgen(seed, seedlow << 16 | seedhigh);
             if (ds_type_ == STO) {
                 Rand transgen_snap = transgen;
                 while (1) {
                     Sto::start_transaction();
                     try {
                         my_op = ops_array[transgen() % arraysize(ops_array)];
-                        DHTest<DH>::do_op(my_op, transgen);
+                        this->do_op(my_op, transgen, slotdist);
                         if (Sto::try_commit()) break;
                     } catch (Transaction::Abort e) {
                         transgen = transgen_snap;
                     }
                 }
-                DHTest<DH>::inc_ctrs(my_op, me);
+                this->inc_ctrs(my_op, me);
             } else {
                 my_op = ops_array[transgen() % arraysize(ops_array)];
-                DHTest<DH>::do_op(my_op, transgen);
-                DHTest<DH>::inc_ctrs(my_op, me);
-            } 
+                this->do_op(my_op, transgen, slotdist);
+                this->inc_ctrs(my_op, me);
+            }
         }
     }
+
 private:
     int ds_type_;
 };
@@ -412,13 +415,12 @@ public:
     GeneralTxnsTest(int ds_type, int val_type, std::vector<std::vector<op>> txn_set) : 
         DHTest<DH>(val_type), ds_type_(ds_type), txn_set_(txn_set) {};
     void run(int me) {
+        uint32_t seed = (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_NUM_THREADS*NTRANS*11;
+        auto seedlow = seed & 0xffff;
+        auto seedhigh = seed >> 16;
+        Rand transgen(seed, seedlow << 16 | seedhigh);
+        std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
-            auto transseed = i;
-            uint32_t seed = transseed*3 + (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_NUM_THREADS*NTRANS*11;
-            auto seedlow = seed & 0xffff;
-            auto seedhigh = seed >> 16;
-            Rand transgen(seed, seedlow << 16 | seedhigh);
-            std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
             if (ds_type_ == STO) {
                 Rand transgen_snap = transgen;
                 while (1) {
@@ -426,8 +428,8 @@ public:
                     try {
                         auto txn = txn_set_[transgen() % txn_set_.size()];
                         for (unsigned j = 0; j < txn.size(); ++j) {
-                            DHTest<DH>::do_op(txn[j], transgen);
-                            DHTest<DH>::inc_ctrs(txn[j], me); // XXX can lead to overcounting
+                            this->do_op(txn[j], transgen, slotdist);
+                            this->inc_ctrs(txn[j], me); // XXX can lead to overcounting
                         }
                         if (Sto::try_commit()) break;
                     } catch (Transaction::Abort e) {
@@ -437,8 +439,8 @@ public:
             } else {
                 auto txn = txn_set_[transgen() % txn_set_.size()];
                 for (unsigned j = 0; j < txn.size(); ++j) {
-                    DHTest<DH>::do_op(txn[j], transgen);
-                    DHTest<DH>::inc_ctrs(txn[j], me);
+                    this->do_op(txn[j], transgen, slotdist);
+                    this->inc_ctrs(txn[j], me);
                 }
             }
         }
@@ -483,6 +485,8 @@ void* test_thread(void *data) {
    
     gt->run(me);
 
+    spawned_barrier = 0;
+
     cds::threading::Manager::detachThread();
     return nullptr;
 }
@@ -491,28 +495,27 @@ void* record_perf_thread(void* x) {
     int nthreads = *(int*)x;
     int total1, total2;
     struct timeval tv1, tv2;
-    float ops_per_ms = 0; 
+    double ops_per_ms = 0; 
 
     while (spawned_barrier != nthreads) {
         sched_yield();
     }
 
     // benchmark until the first thread finishes
-    struct timespec ts = {0, 10000};
-    while (spawned_barrier == nthreads) {
-        total1 = total2 = 0;
-        gettimeofday(&tv1, NULL);
-        for (int i = 0; i < MAX_NUM_THREADS; ++i) {
-            total1 += (global_thread_push_ctrs[i] + global_thread_pop_ctrs[i]);
-        }
-        nanosleep(&ts, NULL);
-        for (int i = 0; i < MAX_NUM_THREADS; ++i) {
-            total2 += (global_thread_push_ctrs[i] + global_thread_pop_ctrs[i]);
-        }
-        gettimeofday(&tv2, NULL);
-        float microseconds = ((tv2.tv_sec-tv1.tv_sec)*1000000.0) + ((tv2.tv_usec-tv1.tv_usec)/1000.0);
-        ops_per_ms = (total2-total1)/microseconds > ops_per_ms ? (total2-total1)/microseconds : ops_per_ms;
+    gettimeofday(&tv1, NULL);
+    total1 = total2 = 0;
+    for (int i = 0; i < MAX_NUM_THREADS; ++i) {
+        total1 += (global_thread_ctrs[i].push + global_thread_ctrs[i].pop);
     }
+    while (spawned_barrier == nthreads) {
+        sched_yield();
+    }
+    for (int i = 0; i < MAX_NUM_THREADS; ++i) {
+        total2 += (global_thread_ctrs[i].push + global_thread_ctrs[i].pop);
+    }
+    gettimeofday(&tv2, NULL);
+    double milliseconds = ((tv2.tv_sec-tv1.tv_sec)*1000.0) + ((tv2.tv_usec-tv1.tv_usec)/1000.0);
+    ops_per_ms = (total2-total1)/milliseconds > ops_per_ms ? (total2-total1)/milliseconds : ops_per_ms;
     dualprintf("%f, ", ops_per_ms);
     return nullptr;
 }
@@ -534,19 +537,18 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
     for (int i = 0; i < nthreads; ++i) {
         pthread_join(tids[i], NULL);
     }
-    spawned_barrier = 0;
     pthread_join(recorder, NULL);
 
     fprintf(global_verbose_stats_file, "\n");
     for (int i = 0; i < nthreads; ++i) {
         // prints the number of pushes, pops, and skips
-        fprintf(global_verbose_stats_file, "Thread %d \tpushes: %ld \tpops: %ld, \tskips: %ld\n", i, 
+        /*fprintf(global_verbose_stats_file, "Thread %d \tpushes: %ld \tpops: %ld, \tskips: %ld\n", i, 
                 global_thread_push_ctrs[i], 
                 global_thread_pop_ctrs[i], 
                 global_thread_skip_ctrs[i]);
         global_thread_pop_ctrs[i] = 0;
         global_thread_push_ctrs[i] = 0;
-        global_thread_skip_ctrs[i] = 0;
+        global_thread_skip_ctrs[i] = 0;*/
     }
     print_abort_stats();
 }
@@ -591,27 +593,26 @@ void print_abort_stats() {
 }
 
 #define MAKE_PQUEUE_TESTS(desc, test, type, ...) \
-    {desc, "FC pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type>>>(CDS, ## __VA_ARGS__)}, \
-    {desc, "FC pairing heap pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type, PairingHeap<type>>>>(CDS, ## __VA_ARGS__)}
-    //{desc, "STO pqueue", new test<DatatypeHarness<PriorityQueue<type>>>(STO, ## __VA_ARGS__)},      \
+    {desc, "STO pqueue", new test<DatatypeHarness<PriorityQueue<type>>>(STO, ## __VA_ARGS__)},      \
     {desc, "STO pqueue opaque", new test<DatatypeHarness<PriorityQueue<type, true>>>(STO, ## __VA_ARGS__)},\
     {desc, "MS pqueue", new test<DatatypeHarness<cds::container::MSPriorityQueue<type>>>(CDS, ## __VA_ARGS__)},\
-    {desc, "FC pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type>>>(CDS, ## __VA_ARGS__)}
+    {desc, "FC pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type>>>(CDS, ## __VA_ARGS__)}, \
+    {desc, "FC pairing heap pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type, PairingHeap<type>>>>(CDS, ## __VA_ARGS__)} 
 struct Test {
     const char* desc;
     const char* ds;
     GenericTest* test;
 } pqueue_tests[] = {
-    MAKE_PQUEUE_TESTS("Random Single Operations with Random Vals", RandomSingleOpTest, int, RANDOM_VALS),/*
+    MAKE_PQUEUE_TESTS("Random Single Operations with Random Vals", RandomSingleOpTest, int, RANDOM_VALS),
     MAKE_PQUEUE_TESTS("Random Single Operations with Decreasing Vals", RandomSingleOpTest, int, DECREASING_VALS),
     MAKE_PQUEUE_TESTS("Push+Pop with Random Vals", PushPopTest, int, RANDOM_VALS),
     MAKE_PQUEUE_TESTS("Push+Pop with Decreasing Vals", PushPopTest, int, DECREASING_VALS),
     MAKE_PQUEUE_TESTS("Push-Only with Random Vals", SingleOpTest, int, RANDOM_VALS, push),
     MAKE_PQUEUE_TESTS("Push-Only with Random Vals", SingleOpTest, int, DECREASING_VALS, push),
     MAKE_PQUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
-    MAKE_PQUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),*/
+    MAKE_PQUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),
 };
-int num_pqueues = 2;
+int num_pqueues = 5;
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
     {desc, "STO queue", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  \
@@ -670,7 +671,7 @@ int main() {
             }
             dualprintf("\n");
         }
-    }/*
+    }
     dualprintf("\nRUNNING QUEUE TESTS\n");
     for (unsigned i = 0; i < arraysize(queue_tests); i+=num_queues) {
         dualprintf("\nNew Queue Test\n");
@@ -687,7 +688,7 @@ int main() {
             }
             dualprintf("\n");
         }
-    }*/
+    }
 
     cds::Terminate();
     return 0;
