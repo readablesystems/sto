@@ -385,7 +385,7 @@ combineSiblings( PairNode<Comparable> *firstSibling ) const
     static std::vector<PairNode<Comparable> *> treeArray( 5 );
 
         // Store the subtrees in an array
-    int numSiblings = 0;
+    unsigned numSiblings = 0;
     for( ; firstSibling != NULL; numSiblings++ )
     {
         if( numSiblings == treeArray.size( ) )
@@ -399,11 +399,11 @@ combineSiblings( PairNode<Comparable> *firstSibling ) const
     treeArray[ numSiblings ] = NULL;
 
         // Combine subtrees two at a time, going left to right
-    int i = 0;
+    unsigned i = 0;
     for( ; i + 1 < numSiblings; i += 2 )
         compareAndLink( treeArray[ i ], treeArray[ i + 1 ] );
 
-    int j = i - 2;
+    unsigned j = i - 2;
 
         // j has the result of last compareAndLink.
         // If an odd number of trees, get the last one.

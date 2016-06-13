@@ -53,8 +53,8 @@ enum q_type { basket, fc, moir, ms, optimistic, rw, segmented, tc, vm };
 
 // globals
 std::atomic_int global_push_val(MAX_VALUE);
-std::vector<int> init_sizes = {1000, 10000, 50000, 100000, 150000};
-std::vector<int> nthreads_set = {1, 2, 4, 8, 12, 16, 20, 24};
+std::vector<int> init_sizes = {10000};//{1000, 10000, 50000, 100000, 150000};
+std::vector<int> nthreads_set = {8};//{1, 2, 4, 8, 12, 16, 20, 24};
 // txn sets
 std::vector<std::vector<std::vector<op>>> q_txn_sets = {
     // 0. short txns
@@ -611,7 +611,7 @@ struct Test {
     MAKE_PQUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
     MAKE_PQUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),*/
 };
-int num_pqueues = 1;
+int num_pqueues = 2;
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
     {desc, "STO queue", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  \
