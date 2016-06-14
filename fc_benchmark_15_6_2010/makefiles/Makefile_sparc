@@ -1,0 +1,29 @@
+CPPSRCS	= main.cpp cpp_framework.cpp ITest.cpp
+TARGET	= test_sparc32
+
+CPP		= /opt/SUNWspro/bin/CC
+CPPFLAGS	= -m32 -lrt -mt -O5 -DNDEBUG -D_REENTRANT -DSPARC ./framework/sparc_mcas.il
+LFLAGS		= $(CPPFLAGS)
+
+OBJS		= $(CPPSRCS:.cpp=.o)
+
+all: $(TARGET)
+
+main.o:
+	$(CPP) $(CPPFLAGS) -c ./test/main.cpp
+
+cpp_framework.o:
+	$(CPP) $(CPPFLAGS) -c ./framework/cpp_framework.cpp
+
+ITest.o:
+	$(CPP) $(CPPFLAGS) -c ./data_structures/ITest.cpp
+
+$(TARGET): $(OBJS)
+	$(CPP) $(LFLAGS) $(OBJS) -o $(TARGET)
+
+clean:
+	rm -f $(OBJS) $(TARGET)
+
+depend:
+	mkdep $(SRCS)
+
