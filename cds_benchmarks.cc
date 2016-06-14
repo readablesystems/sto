@@ -54,7 +54,7 @@ enum q_type { basket, fc, moir, ms, optimistic, rw, segmented, tc, vm };
 // globals
 std::atomic_int global_push_val(MAX_VALUE);
 std::vector<int> init_sizes = {1000, 10000, 50000, 100000, 150000};
-std::vector<int> nthreads_set = {1, 2, 4, 8, 12, 16, 20, 24};
+std::vector<int> nthreads_set = {1, 2, 4, 8, 12, 16, 20};//, 24};
 // txn sets
 std::vector<std::vector<std::vector<op>>> q_txn_sets = {
     // 0. short txns
@@ -105,8 +105,8 @@ public:
     CDSDatatypeHarness(size_t nCapacity) : v_(nCapacity) {};
     bool pop() { int ret; return v_.pop(ret); }
     bool cleanup_pop() { return pop(); }
-    void push(value_type v) { v_.push(v); }
-    void init_push(value_type v) { v_.push(v); }
+    void push(value_type v) { assert(v_.push(v)); }
+    void init_push(value_type v) { assert(v_.push(v)); }
     size_t size() { return v_.size(); }
 private:
     DS v_;
@@ -169,8 +169,8 @@ public:
     DatatypeHarness() : v_(1000000) {};
     bool pop() { int ret; return v_.pop(ret); }
     bool cleanup_pop() { return pop(); }
-    void push(value_type v) { v_.push(v); }
-    void init_push(value_type v) { v_.push(v); }
+    void push(value_type v) { assert(v_.push(v)); }
+    void init_push(value_type v) { assert(v_.push(v)); }
     size_t size() { return v_.size(); }
 private:
     cds::container::MSPriorityQueue<T> v_;
@@ -225,8 +225,8 @@ public:
     DatatypeHarness() : v_(32) {};
     bool pop() { int ret; return v_.pop(ret); }
     bool cleanup_pop() { return pop(); }
-    void push(value_type v) { v_.push(v); }
-    void init_push(value_type v) { v_.push(v); }
+    void push(value_type v) { assert(v_.push(v)); }
+    void init_push(value_type v) { assert(v_.push(v)); }
     size_t size() { return v_.size(); }
 private:
     cds::container::SegmentedQueue<cds::gc::HP, T> v_;
@@ -237,8 +237,8 @@ public:
     DatatypeHarness() : v_(1000000) {};
     bool pop() { int ret; return v_.pop(ret); }
     bool cleanup_pop() { return pop(); }
-    void push(value_type v) { v_.push(v); }
-    void init_push(value_type v) { v_.push(v); }
+    void push(value_type v) { assert(v_.push(v)); }
+    void init_push(value_type v) { assert(v_.push(v)); }
     size_t size() { return v_.size(); }
 private:
     cds::container::TsigasCycleQueue<T> v_;
@@ -249,8 +249,8 @@ public:
     DatatypeHarness() : v_(1000000) {};
     bool pop() { int ret; return v_.pop(ret); }
     bool cleanup_pop() { return pop(); }
-    void push(value_type v) { v_.push(v); }
-    void init_push(value_type v) { v_.push(v); }
+    void push(value_type v) { assert(v_.push(v)); }
+    void init_push(value_type v) { assert(v_.push(v)); }
     size_t size() { return v_.size(); }
 private:
     cds::container::VyukovMPMCCycleQueue<T> v_;
