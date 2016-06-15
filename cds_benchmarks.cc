@@ -197,6 +197,10 @@ int main() {
         return 1;
     }
 
+    srandomdev();
+    for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
+        initial_seeds[i] = random();
+
     std::ios_base::sync_with_stdio(true);
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
 

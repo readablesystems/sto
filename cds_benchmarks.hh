@@ -84,6 +84,8 @@ cds_counters global_thread_ctrs[MAX_NUM_THREADS];
 FILE *global_verbose_stats_file;
 FILE *global_stats_file;
 
+unsigned initial_seeds[64];
+
 // This thread is run after all threads modifying the data structure have been spawned. 
 // It then iterates until a thread finishes and measures the max rate of ops/ms on the data structure. 
 void* record_perf_thread(void* x);
@@ -313,8 +315,8 @@ public:
             default: assert(0);
         }
         switch (op) {
-            case pop: v_.pop(); break;
-            case push: v_.push(val); break;
+            case pop: fprintf(stderr, "popping\n"); v_.pop(); break;
+            case push: fprintf(stderr, "pushing\n"); v_.push(val); break;
             default: assert(0);
         }
     }
@@ -334,10 +336,7 @@ template <typename DH> class SingleOpTest : public DHTest<DH> {
 public:
     SingleOpTest(int ds_type, int val_type, op op) : DHTest<DH>(val_type), op_(op), ds_type_(ds_type) {};
     void run(int me) {
-        uint32_t seed = (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_NUM_THREADS*NTRANS*11;
-        auto seedlow = seed & 0xffff;
-        auto seedhigh = seed >> 16;
-        Rand transgen(seed, seedlow << 16 | seedhigh);
+        Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
         std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
             if (ds_type_ == STO) {
@@ -368,10 +367,7 @@ public:
     PushPopTest(int ds_type, int val_type) : DHTest<DH>(val_type), ds_type_(ds_type) {};
     void run(int me) {
         if (me > 1) { sleep(1); return; }
-        uint32_t seed = (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_NUM_THREADS*NTRANS*11;
-        auto seedlow = seed & 0xffff;
-        auto seedhigh = seed >> 16;
-        Rand transgen(seed, seedlow << 16 | seedhigh);
+        Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
         std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
             if (ds_type_ == STO) {
@@ -401,18 +397,18 @@ public:
     RandomSingleOpTest(int ds_type, int val_type) : DHTest<DH>(val_type), ds_type_(ds_type) {};
     void run(int me) {
         op my_op;
-        uint32_t seed = (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_NUM_THREADS*NTRANS*11;
-        auto seedlow = seed & 0xffff;
-        auto seedhigh = seed >> 16;
-        Rand transgen(seed, seedlow << 16 | seedhigh);
+        Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
         std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
+            fprintf(stderr, "doing txn\n");
             if (ds_type_ == STO) {
                 Rand transgen_snap = transgen;
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        my_op = ops_array[transgen() % arraysize(ops_array)];
+                        auto index = transgen();
+                        fprintf(stderr, "%d\n", index);
+                        my_op = ops_array[index % arraysize(ops_array)];
                         this->do_op(my_op, transgen, slotdist);
                         if (Sto::try_commit()) break;
                     } catch (Transaction::Abort e) {
@@ -437,10 +433,7 @@ public:
     GeneralTxnsTest(int ds_type, int val_type, std::vector<std::vector<op>> txn_set) : 
         DHTest<DH>(val_type), ds_type_(ds_type), txn_set_(txn_set) {};
     void run(int me) {
-        uint32_t seed = (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_NUM_THREADS*NTRANS*11;
-        auto seedlow = seed & 0xffff;
-        auto seedhigh = seed >> 16;
-        Rand transgen(seed, seedlow << 16 | seedhigh);
+        Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
         std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
             if (ds_type_ == STO) {
@@ -471,5 +464,3 @@ private:
     int ds_type_;
     std::vector<std::vector<op>> txn_set_;
 };
-
-
