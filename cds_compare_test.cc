@@ -8,14 +8,15 @@
 #include "CDSTesters.hh"
 #include "cds_benchmarks.hh"
 
-#define N_THREADS 5
+#define N_THREADS 10
+#define MAX_OPS 5
 
 #define QUEUE 0
 #define PQUEUE 1
-#define DS PQUEUE
+#define DS QUEUE
 
 PqueueTester<cds::container::FCPriorityQueue<int>, PriorityQueue<int>> pqtester;
-QueueTester<cds::container::VyukovMPMCCycleQueue<int>, Queue<int>> qtester;
+QueueTester<Queue2<int>, cds::container::VyukovMPMCCycleQueue<int>> qtester;
 
 template <typename T>
 void run(T* q, int me) {
@@ -35,19 +36,21 @@ void run(T* q, int me) {
                 auto seedlow = seed & 0xffff;
                 auto seedhigh = seed >> 16;
                 Rand transgen(seed, seedlow << 16 | seedhigh);
-
-                op_id_mtx.lock();
+                
+                int numOps = slotdist(transgen) % MAX_OPS + 1;
+                
+                for (int j = 0; j < numOps; j++) {
 #if DS==QUEUE
-                int op = slotdist(transgen) % qtester.num_ops_;
-                tr->ops.push_back(qtester.doOp(q, op, me, slotdist, transgen));
+                    int op = slotdist(transgen) % qtester.num_ops_;
+                    tr->ops.push_back(qtester.doOp(q, op, me, slotdist, transgen));
 #elif DS==PQUEUE
-                int op = slotdist(transgen) % pqtester.num_ops_;
-                tr->ops.push_back(pqtester.doOp(q, op, me, slotdist, transgen));
+                    int op = slotdist(transgen) % pqtester.num_ops_;
+                    tr->ops.push_back(pqtester.doOp(q, op, me, slotdist, transgen));
 #endif
+                }
 
                 if (Sto::try_commit()) {
-                    txn_list[me][op_id++] = tr;
-                    op_id_mtx.unlock();
+                    txn_list[me][Sto::commit_tid()] = tr;
                     break;
                 }
             } catch (Transaction::Abort e) {}
@@ -87,16 +90,15 @@ int main() {
     lock = 0;
 
 #if DS==QUEUE
-    Queue<int> stoq;
+    Queue2<int> stoq;
     cds::container::VyukovMPMCCycleQueue<int> cdsq(100000);
-    qtester.init_sut(&cdsq);
-    qtester.init_ref(&stoq);
+    qtester.init_sut(&stoq);
+    qtester.init_ref(&cdsq);
     for (int i = 0; i < N_THREADS; i++) {
         txn_list.emplace_back();
     }
    
-    // run cdsq multithreaded, check against stoq 
-    startAndWait(&cdsq);
+    startAndWait(&stoq);
     
     std::map<uint64_t, txn_record *> combined_txn_list;
     
@@ -108,12 +110,12 @@ int main() {
     for(; it != combined_txn_list.end(); it++) {
         Sto::start_transaction();
         for (unsigned i = 0; i < it->second->ops.size(); i++) {
-            qtester.redoOp(&stoq, it->second->ops[i]);
+            qtester.redoOp(&cdsq, it->second->ops[i]);
         }
         assert(Sto::try_commit());
     }
     
-    qtester.check(&cdsq, &stoq);
+    qtester.check(&stoq, &cdsq);
 
 #elif DS==PQUEUE
     PriorityQueue<int> stopq;

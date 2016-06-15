@@ -9,7 +9,7 @@
 #include "Transaction.hh"
 
 #include "PriorityQueue.hh"
-#include "Queue.hh"
+#include "Queue2.hh"
 #include "randgen.hh"
 #include <cds/container/vyukov_mpmc_cycle_queue.h>
 #include <cds/container/fcpriority_queue.h>
@@ -69,7 +69,7 @@ public:
     void init_ref(RT* q) {
         for (int i = 0; i < 10000; i++) {
             TRANSACTION {
-                q->transPush(i);
+                q->push(i);
             } RETRY(false);
         }
     }
@@ -85,7 +85,8 @@ public:
             rec->args.push_back(val);
             return rec;
         } else {
-            q->pop(val);
+            q->front(val);
+            q->pop();
             std::cout << "[" << me << "] popped " << val << std::endl;
             op_record* rec = new op_record;
             rec->op = op;
@@ -98,10 +99,9 @@ public:
         int val = 0;
         if (op->op == 0) {
             val = op->args[0];
-            q->transPush(val);
+            q->push(val);
         } else if (op->op == 1) {
-            q->transFront(val);
-            assert(q->transPop());
+            q->pop(val);
             std::cout << "[" << val << "] [" << op->rdata[0] << "]" << std::endl;
             assert(val == op->rdata[0]);
         }
@@ -109,15 +109,14 @@ public:
 
     void check(DT* q, RT*q1) {
         TRANSACTION {
-            int v1;
-            if (q->pop(v1)) {
-                int v2;
-                q1->transFront(v2);
-                q1->transPop();
+            int v1, v2;
+            if (q->front(v1)) {
+                q->pop();
+                assert(q1->pop(v2));
                 std::cout << "[" << v1 << "] [" << v2 << "]" << std::endl;
                 assert(v1 == v2);
             } else {
-                assert(!q1->transPop());
+                assert(!q1->pop(v1));
             }
         }
         RETRY(false);

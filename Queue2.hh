@@ -7,50 +7,17 @@
 
 template <typename T, unsigned BUF_SIZE = 1000000,
           template <typename> class W = TOpaqueWrapped>
-class Queue: public Shared {
+class Queue2: public Shared {
 public:
     typedef typename W<T>::version_type version_type;
 
-    Queue() : head_(0), tail_(0), tailversion_(0), headversion_(0) {}
+    Queue2() : head_(0), tail_(0), queueversion_(0) {}
 
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<1;
     static constexpr TransItem::flags_type list_bit = TransItem::user0_bit<<2;
     static constexpr TransItem::flags_type empty_bit = TransItem::user0_bit<<3;
 
-    // NONTRANSACTIONAL PUSH/POP/EMPTY
-    void nontrans_push(T v) {
-        queueSlots[tail_] = v;
-        tail_ = (tail_+1)%BUF_SIZE;
-        assert(head_ != tail_);
-    }
-    
-    T nontrans_pop() {
-        assert(head_ != tail_);
-        T v = queueSlots[head_];
-        head_ = (head_+1)%BUF_SIZE;
-        return v;
-    }
-
-    bool nontrans_empty() const {
-        return head_ == tail_;
-    }
-
-    template <typename RandomGen>
-    void nontrans_shuffle(RandomGen gen) {
-        auto head = &queueSlots[head_];
-        auto tail = &queueSlots[tail_];
-        // don't support wrap-around shuffle
-        assert(head < tail);
-        std::shuffle(head, tail, gen);
-    }
-
-    void nontrans_clear() {
-        while (!nontrans_empty())
-            nontrans_pop();
-    }
-
-    // TRANSACTIONAL CALLS
     void push(const T& v) {
         auto item = Sto::item(this, -1);
         if (item.has_write()) {
@@ -75,19 +42,29 @@ public:
     }
 
     bool pop() {
-        auto hv = headversion_;
+        // lock the queue until done with txn
+        if (!queueversion_.is_locked_here()) {
+            queueversion_.lock();
+        }
+        // abort if any of the version numbers have since changed
+        if (Sto::item(this, -1).has_read() && !Sto::item(this, -1).item().check_version(queueversion_)) {
+            Sto::abort();
+            return false;
+        }
+
         fence();
         auto index = head_;
         auto item = Sto::item(this, index);
 
         while (1) {
            if (index == tail_) {
-               auto tv = tailversion_;
+               auto v = queueversion_;
                fence();
+                // empty queue, so we have to add a read of the queueversion
                 if (index == tail_) {
                     auto pushitem = Sto::item(this,-1);
                     if (!pushitem.has_read())
-                        pushitem.observe(tv);
+                        pushitem.observe(v);
                     if (pushitem.has_write()) {
                         if (is_list(pushitem)) {
                             auto& write_list = pushitem.template write_value<std::list<T>>();
@@ -116,32 +93,34 @@ public:
             }
             else break;
         }
-        // ensure that head is not modified by time of commit 
-        auto lockitem = Sto::item(this, -2);
-        if (!lockitem.has_read()) {
-            lockitem.observe(hv);
-        }
-        lockitem.add_write(0);
         item.add_flags(delete_bit);
         item.add_write(0);
         return true;
     }
 
     bool front(T& val) {
-        auto hv = headversion_;
+        // lock the queue until done with txn
+        if (!queueversion_.is_locked_here()) {
+            queueversion_.lock();
+        }
+        // abort if any of the version numbers have since changed
+        if (Sto::item(this, -1).has_read() && !Sto::item(this, -1).item().check_version(queueversion_)) {
+            Sto::abort();
+            return false;
+        }
+
         fence();
         unsigned index = head_;
         auto item = Sto::item(this, index);
         while (1) {
-            // empty queue
+            // empty queue, so we have to add a read of the queueversion
             if (index == tail_) {
-                auto tv = tailversion_;
+                auto v = queueversion_;
                 fence();
-                // if someone has pushed onto tail, can successfully do a front read, so skip reading from our pushes 
                 if (index == tail_) {
                     auto pushitem = Sto::item(this,-1);
                     if (!pushitem.has_read())
-                        pushitem.observe(tv);
+                        pushitem.observe(v);
                     if (pushitem.has_write()) {
                         if (is_list(pushitem)) {
                             auto& write_list= pushitem.template write_value<std::list<T>>();
@@ -169,11 +148,6 @@ public:
             }
             else break;
         }
-        // ensure that head was not modified at time of commit
-        auto lockitem = Sto::item(this, -2);
-        if (!lockitem.has_read()) {
-            lockitem.observe(hv);
-        }  
         val = queueSlots[index];
         return true;
     }
@@ -196,37 +170,34 @@ private:
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
-        if (item.key<int>() == -1)
-            return txn.try_lock(item, tailversion_);
-        else if (item.key<int>() == -2)
-            return txn.try_lock(item, headversion_);
-        else
+        if (item.key<int>() == -1) {
+            if(!queueversion_.is_locked_here()) {
+                return txn.try_lock(item, queueversion_);
+            }
             return true;
+        } else return true;
     }
 
     bool check(TransItem& item, Transaction& t) override {
         (void) t;
-        // check if was a pop or front 
-        if (item.key<int>() == -2)
-            return item.check_version(headversion_);
-        // check if we read off the write_list (and locked tailversion)
-        else if (item.key<int>() == -1)
-            return item.check_version(tailversion_);
+        // check if we read off the write_list. We should only abort if both: 
+        //      1) we saw the queue was empty during a pop/front and read off our own write list 
+        //      2) someone else has pushed onto the queue before we got here
+        if (item.key<int>() == -1)
+            return item.check_version(queueversion_);
         // shouldn't reach this
         assert(0);
         return false;
     }
 
     void install(TransItem& item, Transaction& txn) override {
-	    // ignore lock_headversion marker item
-        if (item.key<int>() == -2)
-            return;
         // install pops
         if (has_delete(item)) {
             // only increment head if item popped from actual q
             if (!is_rw(item))
                 head_ = (head_+1) % BUF_SIZE;
-            headversion_.set_version(txn.commit_tid());
+            // note that we don't need to change the queueversion here
+            // because it's been locked ever since we dqueued.
         }
         // install pushes
         else if (item.key<int>() == -1) {
@@ -247,22 +218,20 @@ private:
                 queueSlots[tail_] = val;
                 tail_ = (tail_+1) % BUF_SIZE;
             }
-
-            tailversion_.set_version(txn.commit_tid());
+            queueversion_.set_version(txn.commit_tid());
         }
     }
     
     void unlock(TransItem& item) override {
-        if (item.key<int>() == -1)
-            tailversion_.unlock();
-        else if (item.key<int>() == -2)
-            headversion_.unlock();
+        (void)item;
+        if (queueversion_.is_locked_here()) {
+            queueversion_.unlock();
+        }
     }
 
     T queueSlots[BUF_SIZE];
 
     unsigned head_;
     unsigned tail_;
-    version_type tailversion_;
-    version_type headversion_;
+    version_type queueversion_;
 };

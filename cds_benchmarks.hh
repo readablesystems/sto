@@ -188,22 +188,42 @@ template <typename T> struct DatatypeHarness<cds::container::FCPriorityQueue<T, 
 template <typename T> struct DatatypeHarness<Queue<T>> {
     typedef T value_type;
 public:
-    bool pop() { return v_.transPop(); }
+    bool pop() { return v_.pop(); }
     bool cleanup_pop() { 
         Sto::start_transaction();
         bool ret = pop();
         assert(Sto::try_commit());
         return ret;
     }
-    void push(T v) { v_.transPush(v); }
+    void push(T v) { v_.push(v); }
     void init_push(T v) { 
         Sto::start_transaction();
-        v_.transPush(v);
+        v_.push(v);
         assert(Sto::try_commit());
     }
     size_t size() { return 0; }
 private:
     Queue<T> v_;
+};
+template <typename T> struct DatatypeHarness<Queue2<T>> {
+    typedef T value_type;
+public:
+    bool pop() { return v_.pop(); }
+    bool cleanup_pop() { 
+        Sto::start_transaction();
+        bool ret = pop();
+        assert(Sto::try_commit());
+        return ret;
+    }
+    void push(T v) { v_.push(v); }
+    void init_push(T v) { 
+        Sto::start_transaction();
+        v_.push(v);
+        assert(Sto::try_commit());
+    }
+    size_t size() { return 0; }
+private:
+    Queue2<T> v_;
 };
 
 template <typename T> struct DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, T>> : 
@@ -255,6 +275,7 @@ public:
 private:
     cds::container::VyukovMPMCCycleQueue<T> v_;
 };
+
 /*
  * Test interfaces and templates.
  */
