@@ -51,6 +51,7 @@ public:
     }
 
     bool pop() {
+        auto pushitem = Sto::item(this,-1);
         // lock the queue until done with txn
         if (!queueversion_.is_locked_here()) {
             if (!queueversion_.try_lock()) { 
@@ -58,9 +59,11 @@ public:
             }
         }
         // abort if the queue version number has changed since the beginning of this txn
-        if (Sto::item(this, -1).has_read() && !Sto::item(this, -1).item().check_version(queueversion_)) {
-            queueversion_.unlock();
-            Sto::abort();
+        if (pushitem.has_read()) {
+            if (!pushitem.item().check_version(queueversion_)) {
+                queueversion_.unlock();
+                Sto::abort();
+            }
         }
 
         fence();
@@ -73,7 +76,6 @@ public:
                fence();
                 // empty queue, so we have to add a read of the queueversion
                 if (index == tail_) {
-                    auto pushitem = Sto::item(this,-1);
                     if (!pushitem.has_read())
                         pushitem.observe(v);
                     if (pushitem.has_write()) {
@@ -110,17 +112,19 @@ public:
     }
 
     bool front(T& val) {
+        auto pushitem = Sto::item(this,-1);
         // lock the queue until done with txn
         if (!queueversion_.is_locked_here()) {
             if (!queueversion_.try_lock()) { 
-                Sto::abort();
+                Sto::abort(); 
             }
         }
-        // abort if any of the version numbers have since changed
-        if (Sto::item(this, -1).has_read() && !Sto::item(this, -1).item().check_version(queueversion_)) {
-            queueversion_.unlock();
-            Sto::abort();
-            return false;
+        // abort if the queue version number has changed since the beginning of this txn
+        if (pushitem.has_read()) {
+            if (!pushitem.item().check_version(queueversion_)) {
+                queueversion_.unlock();
+                Sto::abort();
+            }
         }
 
         fence();
@@ -132,7 +136,6 @@ public:
                 auto v = queueversion_;
                 fence();
                 if (index == tail_) {
-                    auto pushitem = Sto::item(this,-1);
                     if (!pushitem.has_read())
                         pushitem.observe(v);
                     if (pushitem.has_write()) {
