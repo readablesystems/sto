@@ -8,7 +8,6 @@
 #include "CDSTesters.hh"
 #include "cds_benchmarks.hh"
 
-#define MAX_OPS 1
 #define N_THREADS 5
 
 #define QUEUE 0
