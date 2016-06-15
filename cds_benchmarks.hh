@@ -26,6 +26,7 @@
 #include "PriorityQueue.hh"
 #include "PairingHeap.hh"
 #include "Queue.hh"
+#include "Queue2.hh"
 #include "randgen.hh"
 
 #define GLOBAL_SEED 10
