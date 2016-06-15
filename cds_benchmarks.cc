@@ -23,6 +23,8 @@ void* test_thread(void *data) {
     int nthreads = ((Tester*)data)->nthreads;
     size_t init_size = ((Tester*)data)->init_size;
 
+    TThread::set_id(me);
+
     if (me == INITIAL_THREAD) {
         gt->cleanup();
         gt->initialize(init_size); 
