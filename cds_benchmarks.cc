@@ -180,7 +180,7 @@ int num_pqueues = 5;
     {desc, "TC queue", new test<DatatypeHarness<cds::container::TsigasCycleQueue<type>>>(CDS, ## __VA_ARGS__)}, \
     {desc, "VyukovMPMC queue", new test<DatatypeHarness<cds::container::VyukovMPMCCycleQueue<type>>>(CDS, ## __VA_ARGS__)}
 Test queue_tests[] = {
-    MAKE_QUEUE_TESTS("Push+Pop with Random Vals", PushPopTest, int, RANDOM_VALS),
+    //MAKE_QUEUE_TESTS("Push+Pop with Random Vals", PushPopTest, int, RANDOM_VALS),
    // MAKE_QUEUE_TESTS("Push+Pop with Decreasing Vals", PushPopTest, int, DECREASING_VALS),
     MAKE_QUEUE_TESTS("Random Single Operations with Random Vals", RandomSingleOpTest, int, RANDOM_VALS),
    // MAKE_QUEUE_TESTS("Random Single Operations with Decreasing Vals", RandomSingleOpTest, int, DECREASING_VALS),

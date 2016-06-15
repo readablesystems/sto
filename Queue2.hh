@@ -57,11 +57,10 @@ public:
                 Sto::abort(); 
             }
         }
-        // abort if any of the version numbers have since changed
+        // abort if the queue version number has changed since the beginning of this txn
         if (Sto::item(this, -1).has_read() && !Sto::item(this, -1).item().check_version(queueversion_)) {
             queueversion_.unlock();
             Sto::abort();
-            return false;
         }
 
         fence();
@@ -185,7 +184,7 @@ private:
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
-        if (!queueversion_.is_locked_here())  {
+        if ((item.key<int>() == -1) && !queueversion_.is_locked_here())  {
             return txn.try_lock(item, queueversion_);
         }
         return true;
@@ -204,22 +203,16 @@ private:
     }
 
     void install(TransItem& item, Transaction& txn) override {
-        assert(queueversion_.is_locked_here());
         // install pops
         if (has_delete(item)) {
             // only increment head if item popped from actual q
             if (!is_rw(item)) {
                 head_ = (head_+1) % BUF_SIZE;
-                // set queueversion appropriately (we don't really
-                // need to change queueversion if we never saw
-                // an empty queue, since all reads/modifications of head were
-                // done with queueversion locked, but it makes sense to change
-                // versions every time the queue is updated).
-                queueversion_.set_version(txn.commit_tid());
             }
         }
         // install pushes
         else if (item.key<int>() == -1) {
+            assert(queueversion_.is_locked_here());
             auto head_index = head_;
             // write all the elements
             if (is_list(item)) {
