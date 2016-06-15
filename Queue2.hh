@@ -5,6 +5,15 @@
 #include "Transaction.hh"
 #include "TWrapped.hh"
 
+/*
+ * This queue uses pessimistic locking (similar to the scheme proposed in the TDSL paper
+ * (http://dl.acm.org/citation.cfm?doid=2908080.2908112).
+ * 
+ * Any modification or read of the head of the list (pop/front) locks the queue for the remainder
+ * of the txn. This means that aborts only occur upon encountering empty queues.
+ */
+
+
 template <typename T, unsigned BUF_SIZE = 1000000,
           template <typename> class W = TOpaqueWrapped>
 class Queue2: public Shared {
