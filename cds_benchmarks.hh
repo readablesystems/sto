@@ -405,7 +405,7 @@ public:
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        my_op = ops_array[transgen() % arraysize(ops_array)];
+                        my_op = ops_array[slotdist(transgen) % arraysize(ops_array)];
                         this->do_op(my_op, transgen, slotdist);
                         if (Sto::try_commit()) break;
                     } catch (Transaction::Abort e) {
@@ -414,7 +414,7 @@ public:
                 }
                 this->inc_ctrs(my_op, me);
             } else {
-                my_op = ops_array[transgen() % arraysize(ops_array)];
+                my_op = ops_array[slotdist(transgen) % arraysize(ops_array)];
                 this->do_op(my_op, transgen, slotdist);
                 this->inc_ctrs(my_op, me);
             }

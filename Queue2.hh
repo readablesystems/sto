@@ -245,6 +245,14 @@ private:
         }
     }
 
+    void cleanup(TransItem& item, bool committed) override {
+        (void)item;
+        (void)committed;
+        if (queueversion_.is_locked_here()) {
+            queueversion_.unlock();
+        }
+    }
+
     T queueSlots[BUF_SIZE];
 
     unsigned head_;
