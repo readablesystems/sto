@@ -6,6 +6,7 @@
 #include "MassTrans.hh"
 #include "List.hh"
 #include "Queue.hh"
+#include "Queue2.hh"
 #include "Transaction.hh"
 #include "IntStr.hh"
 
@@ -36,8 +37,9 @@ public:
     }
 };
 
+template <typename T>
 void queueTests() {
-    Queue<int> q;
+    T q;
     int p;
 
     // NONEMPTY TESTS
@@ -601,5 +603,6 @@ int main() {
 
   linkedListTests();
   
-  queueTests();
+  queueTests<Queue<int>>();
+  queueTests<Queue2<int>>();
 }
