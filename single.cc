@@ -187,8 +187,8 @@ void queueTests() {
     // CONFLICTING TRANSACTIONS TEST
     {
         // test abortion due to pops 
+        TestTransaction t1(1);
         try {
-            TestTransaction t1(1);
             // q has >1 element
             assert(q.pop());
             TestTransaction t2(2);
@@ -196,7 +196,7 @@ void queueTests() {
             assert(t1.try_commit());
             assert(!t2.try_commit());
         } catch (Transaction::Abort e) {
-            assert(1);
+            assert(t1.try_commit());
         }
     }
 
@@ -213,8 +213,8 @@ void queueTests() {
 
     {
         // test abortion due to empty q pops
+        TestTransaction t1(1);
         try {
-            TestTransaction t1(1);
             assert(q.pop());
             // q has 0 elements
             assert(!q.pop());
@@ -231,6 +231,7 @@ void queueTests() {
             assert(t1.try_commit());
             assert(!t2.try_commit());
         } catch (Transaction::Abort e) {
+            assert(t1.try_commit());
             assert(1);
         }
     }
@@ -250,17 +251,17 @@ void queueTests() {
         TestTransaction t2(2);
         q.push(3);
         // order of pushes doesn't matter, commits succeed
-        assert(t2.try_commit());
         assert(t1.try_commit());
+        assert(t2.try_commit());
 
         // check if q is in order
         TestTransaction t(3);
         assert(q.pop());
         assert(q.front(p));
-        assert(p == 3);
+        assert(p == 4);
         assert(q.pop());
         assert(q.front(p));
-        assert(p == 4);
+        assert(p == 3);
         assert(q.pop());
         assert(!q.pop());
         assert(t.try_commit());
