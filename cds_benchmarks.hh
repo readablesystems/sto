@@ -315,8 +315,8 @@ public:
             default: assert(0);
         }
         switch (op) {
-            case pop: fprintf(stderr, "popping\n"); v_.pop(); break;
-            case push: fprintf(stderr, "pushing\n"); v_.push(val); break;
+            case pop: v_.pop(); break;
+            case push: v_.push(val); break;
             default: assert(0);
         }
     }
@@ -400,15 +400,15 @@ public:
         Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
         std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
-            fprintf(stderr, "doing txn\n");
             if (ds_type_ == STO) {
                 Rand transgen_snap = transgen;
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        auto index = transgen();
-                        fprintf(stderr, "%d\n", index);
-                        my_op = ops_array[index % arraysize(ops_array)];
+                        // XXX call transgen here so that we won't always get
+                        // even or odd numbers
+                        transgen();
+                        my_op = ops_array[transgen() % arraysize(ops_array)];
                         this->do_op(my_op, transgen, slotdist);
                         if (Sto::try_commit()) break;
                     } catch (Transaction::Abort e) {
@@ -417,6 +417,7 @@ public:
                 }
                 this->inc_ctrs(my_op, me);
             } else {
+                transgen();
                 my_op = ops_array[transgen() % arraysize(ops_array)];
                 this->do_op(my_op, transgen, slotdist);
                 this->inc_ctrs(my_op, me);
@@ -441,6 +442,7 @@ public:
                 while (1) {
                     Sto::start_transaction();
                     try {
+                        transgen();
                         auto txn = txn_set_[transgen() % txn_set_.size()];
                         for (unsigned j = 0; j < txn.size(); ++j) {
                             this->do_op(txn[j], transgen, slotdist);
@@ -452,6 +454,7 @@ public:
                     }
                 }
             } else {
+                transgen();
                 auto txn = txn_set_[transgen() % txn_set_.size()];
                 for (unsigned j = 0; j < txn.size(); ++j) {
                     this->do_op(txn[j], transgen, slotdist);
