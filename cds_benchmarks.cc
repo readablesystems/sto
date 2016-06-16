@@ -94,11 +94,10 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
     fprintf(global_verbose_stats_file, "\n");
     for (int i = 0; i < nthreads; ++i) {
         // prints the number of pushes, pops, and skips
-        /*fprintf(global_verbose_stats_file, "Thread %d \tpushes: %ld \tpops: %ld, \tskips: %ld\n", i, 
+        fprintf(global_verbose_stats_file, "Thread %d \tpushes: %ld \tpops: %ld, \tskips: %ld\n", i, 
                 global_thread_ctrs[i].push, 
                 global_thread_ctrs[i].pop, 
                 global_thread_ctrs[i].skip);
-        */
         global_thread_ctrs[i].push = 0;
         global_thread_ctrs[i].pop = 0;
         global_thread_ctrs[i].skip = 0;
