@@ -55,6 +55,8 @@ enum q_type { basket, fc, moir, ms, optimistic, rw, segmented, tc, vm };
 std::atomic_int global_push_val(MAX_VALUE);
 std::vector<int> init_sizes = {1000, 10000, 50000, 100000, 150000};
 std::vector<int> nthreads_set = {1, 2, 4, 8, 12, 16, 20};//, 24};
+int rand_vals[10000];
+
 // txn sets
 std::vector<std::vector<std::vector<op>>> q_txn_sets = {
     // 0. short txns
@@ -293,8 +295,11 @@ template <typename DH> class DHTest : public GenericTest {
 public:
     DHTest(int val_type) : val_type_(val_type){};
     void initialize(size_t init_sz) {
+        global_push_val = MAX_VALUE;
+        // initialize with the maximum values, so that
+        // at the beginning, pushes and pops will not conflict
         for (unsigned i = 0; i < init_sz; ++i) {
-            v_.init_push(i);
+            v_.init_push(global_push_val--);
         }
     }
     
@@ -302,12 +307,9 @@ public:
         while (v_.cleanup_pop()){/*keep popping*/}
     }
 
-    template <typename Dist>
-    inline void do_op(op op, Rand& transgen, Dist& slotdist) {
-        int val;
+    inline void do_op(op op, int val) {
         switch(val_type_) {
             case RANDOM_VALS:
-                val = slotdist(transgen);
                 break;
             case DECREASING_VALS:
                 val = --global_push_val;
@@ -344,7 +346,7 @@ public:
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        this->do_op(op_, transgen, slotdist);
+                        this->do_op(op_, rand_vals[(i*me + i) % arraysize(rand_vals)]);
                         if (Sto::try_commit()) break;
                     } catch (Transaction::Abort e) {
                         transgen = transgen_snap;
@@ -352,7 +354,7 @@ public:
                 }
                 this->inc_ctrs(op_, me);
             } else {
-                this->do_op(op_, transgen, slotdist);
+                this->do_op(op_, rand_vals[(i*me + i)% arraysize(rand_vals)]);
                 this->inc_ctrs(op_, me);
             }
         }
@@ -367,23 +369,23 @@ public:
     PushPopTest(int ds_type, int val_type) : DHTest<DH>(val_type), ds_type_(ds_type) {};
     void run(int me) {
         if (me > 1) { sleep(1); return; }
-        Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
-        std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
+        //Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
+        //std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
             if (ds_type_ == STO) {
-                Rand transgen_snap = transgen;
+                //Rand transgen_snap = transgen;
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        this->do_op(ops_array[me % arraysize(ops_array)], transgen, slotdist);
+                        this->do_op(ops_array[me % arraysize(ops_array)], rand_vals[(i*me + i) % arraysize(rand_vals)]);
                         if (Sto::try_commit()) break;
                     } catch (Transaction::Abort e) {
-                        transgen = transgen_snap;
+                        //transgen = transgen_snap;
                     }
                 }
                 this->inc_ctrs(ops_array[me % arraysize(ops_array)], me);
             } else {
-                this->do_op(ops_array[me % arraysize(ops_array)], transgen, slotdist);
+                this->do_op(ops_array[me % arraysize(ops_array)], rand_vals[(i*me + i) % arraysize(rand_vals)]);
                 this->inc_ctrs(ops_array[me % arraysize(ops_array)], me);
             }
         }
@@ -397,25 +399,27 @@ public:
     RandomSingleOpTest(int ds_type, int val_type) : DHTest<DH>(val_type), ds_type_(ds_type) {};
     void run(int me) {
         op my_op;
-        Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
-        std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
+        //Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
+        //std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
             if (ds_type_ == STO) {
-                Rand transgen_snap = transgen;
+                //Rand transgen_snap = transgen;
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        my_op = ops_array[slotdist(transgen) % arraysize(ops_array)];
-                        this->do_op(my_op, transgen, slotdist);
+                        my_op = ops_array[ops_array[i % 2]];
+                        //my_op = ops_array[slotdist(transgen) % arraysize(ops_array)];
+                        this->do_op(my_op, rand_vals[(i*me + i) % arraysize(rand_vals)]);
                         if (Sto::try_commit()) break;
                     } catch (Transaction::Abort e) {
-                        transgen = transgen_snap;
+                        //transgen = transgen_snap;
                     }
                 }
                 this->inc_ctrs(my_op, me);
             } else {
-                my_op = ops_array[slotdist(transgen) % arraysize(ops_array)];
-                this->do_op(my_op, transgen, slotdist);
+                my_op = ops_array[ops_array[i%2]];
+                //my_op = ops_array[slotdist(transgen) % arraysize(ops_array)];
+                this->do_op(my_op, rand_vals[(i*me + i) % arraysize(rand_vals)]);
                 this->inc_ctrs(my_op, me);
             }
         }
@@ -440,7 +444,7 @@ public:
                     try {
                         auto txn = txn_set_[slotdist(transgen) % txn_set_.size()];
                         for (unsigned j = 0; j < txn.size(); ++j) {
-                            this->do_op(txn[j], transgen, slotdist);
+                            this->do_op(txn[j], rand_vals[(i*me + i) % arraysize(rand_vals)]);
                             this->inc_ctrs(txn[j], me); // XXX can lead to overcounting
                         }
                         if (Sto::try_commit()) break;
@@ -451,7 +455,7 @@ public:
             } else {
                 auto txn = txn_set_[slotdist(transgen) % txn_set_.size()];
                 for (unsigned j = 0; j < txn.size(); ++j) {
-                    this->do_op(txn[j], transgen, slotdist);
+                    this->do_op(txn[j], rand_vals[(i*me + i) % arraysize(rand_vals)]);
                     this->inc_ctrs(txn[j], me);
                 }
             }

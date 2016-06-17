@@ -488,6 +488,16 @@ public:
         throw Abort();
     }
 
+    void abort_because(const char* reason, TVersion::type version = 0) {
+#if STO_DEBUG_ABORTS
+        mark_abort_because(NULL, reason, version);
+        abort();
+#else
+        (void)reason; (void)version;
+        abort();
+#endif
+    }
+
     bool try_commit();
 
     void commit() {
@@ -711,6 +721,11 @@ public:
     static void abort() {
         always_assert(in_progress());
         TThread::txn->abort();
+    }
+
+    static void abort_because(const char* reason) {
+        always_assert(in_progress());
+        TThread::txn->abort_because(reason);
     }
 
     static void silent_abort() {

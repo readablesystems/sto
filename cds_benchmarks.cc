@@ -200,6 +200,9 @@ int main() {
     for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
         initial_seeds[i] = random();
 
+    for (unsigned i = 0; i < arraysize(rand_vals); ++i)
+        rand_vals[i] = random() % MAX_VALUE;
+
     std::ios_base::sync_with_stdio(true);
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
 
@@ -212,13 +215,15 @@ int main() {
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
     
+    RandomSingleOpTest<DatatypeHarness<cds::container::FCQueue<int>>> fctest(CDS, RANDOM_VALS);
+    RandomSingleOpTest<DatatypeHarness<PriorityQueue<int>>> pqtestr(STO, RANDOM_VALS);
+    RandomSingleOpTest<DatatypeHarness<PriorityQueue<int>>> pqtestd(STO, DECREASING_VALS);
+    
     dualprintf("\nRUNNING PQUEUE TESTS\n");
     for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {
-        dualprintf("\nRunning %s\n", queue_tests[i*num_pqueues]);
+        dualprintf("\nRunning %s\n", pqueue_tests[i*num_pqueues].desc.c_str());
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
-            dualprintf("init_size, nthreads, STO, STO(O), MS, FC\n");
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
-                dualprintf("%d, %d, ", *size, *nthreads);
                 for (int j = 0; j < num_pqueues; ++j) {
                     // for the two-thread test, skip if nthreads != 2
                     if (!pqueue_tests[i+j].desc.find("Push+Pop") && *nthreads != 2) {
@@ -237,11 +242,10 @@ int main() {
     }
     dualprintf("\nRUNNING QUEUE TESTS\n");
     for (unsigned i = 0; i < arraysize(queue_tests); i+=num_queues) {
-        dualprintf("\nRunning %s\n", queue_tests[i*num_queues]);
+        dualprintf("\nRunning %s\n", queue_tests[i*num_queues].desc.c_str());
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
             dualprintf("init_size, nthreads, STO, STO(2), Basket, FC, Moir, MS, Optimistic, Segmented, RW, TsigasCycle, VyukovMPMCCycle, \n");
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
-                dualprintf("%d, %d, ", *size, *nthreads);
                 for (int j = 0; j < num_queues; ++j) {
                     if (!queue_tests[i+j].desc.find("Push+Pop") && *nthreads != 2) {
                         continue;
@@ -257,7 +261,6 @@ int main() {
             dualprintf("\n");
         }
     }
-
     cds::Terminate();
     return 0;
 }

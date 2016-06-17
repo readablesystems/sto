@@ -69,7 +69,7 @@ public:
 
         if (expVal != NULL && res != expVal) {
             unlock(&poplock_);
-            Sto::abort();
+            Sto::abort_because("top val not expected in removeMax");
             return NULL;
         }
         swap(bottom, 0);
@@ -122,7 +122,7 @@ public:
                 } else {
                     // Some other transaction is inserting a node with high priority
                     unlock(&poplock_);
-                    Sto::abort();
+                    Sto::abort_because("someone else inserted in getMax");
                     return NULL;
                 }
             } else if (is_deleted(val->version())) {
@@ -146,7 +146,7 @@ public:
                             // Can also try readers-writers lock
         if (dirtytid_ != -1 && dirtytid_ != TThread::id() && v > dirtyval_) {
             unlock(&poplock_);
-            Sto::abort();
+            Sto::abort_because("value is dirty in push");
             return;
         }
         versioned_value* val = versioned_value::make(v, TransactionTid::increment_value + insert_bit);
@@ -169,7 +169,7 @@ public:
         
         if (size_ == 0) {
             if (read_val != NULL) {
-                Sto::abort();
+                Sto::abort_because("read on empty queue in pop");
             }
             else Sto::item(this, empty_key).add_read(0);
             // XXX opacity
@@ -181,7 +181,7 @@ public:
         if (dirtytid_ != -1 && dirtytid_ != TThread::id()) {
             // queue is in dirty state
             unlock(&poplock_);
-            Sto::abort();
+            Sto::abort_because("queue is in dirty state in pop");
             return -1;
         }
         
@@ -197,7 +197,7 @@ public:
         auto item = Sto::item(this, val);
         if (shouldBeInserted && !has_insert(item)) {
                 unlock(&poplock_);
-                Sto::abort();
+                Sto::abort_because("item should be inserted in pop");
                 return -1;
         }
         
@@ -245,7 +245,7 @@ public:
         if (dirtytid_ != -1 && dirtytid_ != TThread::id()) {
             // queue is in dirty state
             unlock(&poplock_);
-            Sto::abort();
+            Sto::abort_because("dirty queue state in top");
         }
         versioned_value* val = getMax();
         unlock(&poplock_);
