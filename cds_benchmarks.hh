@@ -169,7 +169,7 @@ private:
 template <typename T> struct DatatypeHarness<cds::container::MSPriorityQueue<T>> {
     typedef T value_type;
 public:
-    DatatypeHarness() : v_(1000000) {};
+    DatatypeHarness() : v_(10000000) {};
     bool pop() { int ret; return v_.pop(ret); }
     bool cleanup_pop() { return pop(); }
     void push(value_type v) { assert(v_.push(v)); }
