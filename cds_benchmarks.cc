@@ -151,7 +151,7 @@ void print_abort_stats() {
     {desc, "FC pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type>>>(CDS, ## __VA_ARGS__)}, \
     {desc, "FC pairing heap pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type, PairingHeap<type>>>>(CDS, ## __VA_ARGS__)} 
 struct Test {
-    const char* desc;
+    std::string desc;
     const char* ds;
     GenericTest* test;
 } pqueue_tests[] = {
@@ -161,8 +161,8 @@ struct Test {
     MAKE_PQUEUE_TESTS("Push+Pop with Decreasing Vals", PushPopTest, int, DECREASING_VALS),
     MAKE_PQUEUE_TESTS("Push-Only with Random Vals", SingleOpTest, int, RANDOM_VALS, push),
     MAKE_PQUEUE_TESTS("Push-Only with Random Vals", SingleOpTest, int, DECREASING_VALS, push),
-    MAKE_PQUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
-    MAKE_PQUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),
+    //MAKE_PQUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
+    //MAKE_PQUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),
 };
 int num_pqueues = 5;
 
@@ -179,10 +179,10 @@ int num_pqueues = 5;
     {desc, "TC queue", new test<DatatypeHarness<cds::container::TsigasCycleQueue<type>>>(CDS, ## __VA_ARGS__)}, \
     {desc, "VyukovMPMC queue", new test<DatatypeHarness<cds::container::VyukovMPMCCycleQueue<type>>>(CDS, ## __VA_ARGS__)}
 Test queue_tests[] = {
-    //MAKE_QUEUE_TESTS("Push+Pop with Random Vals", PushPopTest, int, RANDOM_VALS),
-   // MAKE_QUEUE_TESTS("Push+Pop with Decreasing Vals", PushPopTest, int, DECREASING_VALS),
+    MAKE_QUEUE_TESTS("Push+Pop with Random Vals", PushPopTest, int, RANDOM_VALS),
+    //MAKE_QUEUE_TESTS("Push+Pop with Decreasing Vals", PushPopTest, int, DECREASING_VALS),
     MAKE_QUEUE_TESTS("Random Single Operations with Random Vals", RandomSingleOpTest, int, RANDOM_VALS),
-   // MAKE_QUEUE_TESTS("Random Single Operations with Decreasing Vals", RandomSingleOpTest, int, DECREASING_VALS),
+    //MAKE_QUEUE_TESTS("Random Single Operations with Decreasing Vals", RandomSingleOpTest, int, DECREASING_VALS),
     //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
     //MAKE_QUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),
 };
@@ -211,36 +211,46 @@ int main() {
     pthread_t advancer;
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
-/*
+    
     dualprintf("\nRUNNING PQUEUE TESTS\n");
     for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {
-        dualprintf("\nNew Pqueue Test\n");
+        dualprintf("\nRunning %s\n", queue_tests[i*num_pqueues]);
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
+            dualprintf("init_size, nthreads, STO, STO(O), MS, FC\n");
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
+                dualprintf("%d, %d, ", *size, *nthreads);
                 for (int j = 0; j < num_pqueues; ++j) {
+                    // for the two-thread test, skip if nthreads != 2
+                    if (!pqueue_tests[i+j].desc.find("Push+Pop") && *nthreads != 2) {
+                        continue;
+                    }
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
-                            pqueue_tests[i+j].desc, pqueue_tests[i+j].ds, *size, *nthreads);
+                            pqueue_tests[i+j].desc.c_str(), pqueue_tests[i+j].ds, *size, *nthreads);
                     startAndWait(pqueue_tests[i+j].test, *size, *nthreads);
                     fprintf(stderr, "\nRan Test %s on %s\t size: %d, nthreads: %d\n", 
-                            pqueue_tests[i+j].desc, pqueue_tests[i+j].ds, *size, *nthreads);
+                            pqueue_tests[i+j].desc.c_str(), pqueue_tests[i+j].ds, *size, *nthreads);
                 }
                 dualprintf("\n");
             }
             dualprintf("\n");
         }
     }
-    */
     dualprintf("\nRUNNING QUEUE TESTS\n");
     for (unsigned i = 0; i < arraysize(queue_tests); i+=num_queues) {
-        dualprintf("\nNew Queue Test\n");
+        dualprintf("\nRunning %s\n", queue_tests[i*num_queues]);
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
+            dualprintf("init_size, nthreads, STO, STO(2), Basket, FC, Moir, MS, Optimistic, Segmented, RW, TsigasCycle, VyukovMPMCCycle, \n");
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
+                dualprintf("%d, %d, ", *size, *nthreads);
                 for (int j = 0; j < num_queues; ++j) {
+                    if (!queue_tests[i+j].desc.find("Push+Pop") && *nthreads != 2) {
+                        continue;
+                    }
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
-                            queue_tests[i+j].desc, queue_tests[i+j].ds, *size, *nthreads);
+                            queue_tests[i+j].desc.c_str(), queue_tests[i+j].ds, *size, *nthreads);
                     startAndWait(queue_tests[i+j].test, *size, *nthreads);
                     fprintf(stderr, "\nRan Test %s on %s\t size: %d, nthreads: %d\n", 
-                            queue_tests[i+j].desc, queue_tests[i+j].ds, *size, *nthreads);
+                            queue_tests[i+j].desc.c_str(), queue_tests[i+j].ds, *size, *nthreads);
                 }
                 dualprintf("\n");
             }

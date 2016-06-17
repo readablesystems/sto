@@ -438,7 +438,7 @@ public:
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        auto txn = txn_set_[transgen() % txn_set_.size()];
+                        auto txn = txn_set_[slotdist(transgen) % txn_set_.size()];
                         for (unsigned j = 0; j < txn.size(); ++j) {
                             this->do_op(txn[j], transgen, slotdist);
                             this->inc_ctrs(txn[j], me); // XXX can lead to overcounting
@@ -449,7 +449,7 @@ public:
                     }
                 }
             } else {
-                auto txn = txn_set_[transgen() % txn_set_.size()];
+                auto txn = txn_set_[slotdist(transgen) % txn_set_.size()];
                 for (unsigned j = 0; j < txn.size(); ++j) {
                     this->do_op(txn[j], transgen, slotdist);
                     this->inc_ctrs(txn[j], me);
