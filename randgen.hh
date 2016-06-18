@@ -7,7 +7,7 @@ struct Rand {
         : x(a) {
     }
     result_type operator()() {
-        x = (1103515245 * x + 12345)/2;
+        x = 1103515245 * x + 12345;
         return x & 0x7fffffff;
     }
     static constexpr result_type min() {
