@@ -189,8 +189,8 @@ Test queue_tests[] = {
 int num_queues = 11;
 
 int main() {
-    global_verbose_stats_file = fopen("cds_benchmarks_stats_verbose.txt", "a");
-    global_stats_file = fopen("cds_benchmarks_stats.txt", "a");
+    global_verbose_stats_file = fopen("cds_benchmarks_stats_verbose.txt", "w");
+    global_stats_file = fopen("cds_benchmarks_stats.txt", "w");
     if ( !global_stats_file || !global_verbose_stats_file ) {
         fprintf(stderr, "Could not open file to write stats");
         return 1;
@@ -221,12 +221,13 @@ int main() {
     
     dualprintf("\nRUNNING PQUEUE TESTS\n");
     for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {
-        dualprintf("\nRunning %s\n", pqueue_tests[i*num_pqueues].desc.c_str());
+        dualprintf("\nRunning %s\n", pqueue_tests[i].desc.c_str());
+        dualprintf("STO, STO(O), MS, FC\n");
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
                 for (int j = 0; j < num_pqueues; ++j) {
                     // for the two-thread test, skip if nthreads != 2
-                    if (!pqueue_tests[i+j].desc.find("Push+Pop") && *nthreads != 2) {
+                    if (!pqueue_tests[i].desc.find("Push+Pop") && *nthreads != 2) {
                         continue;
                     }
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
@@ -235,19 +236,19 @@ int main() {
                     fprintf(stderr, "\nRan Test %s on %s\t size: %d, nthreads: %d\n", 
                             pqueue_tests[i+j].desc.c_str(), pqueue_tests[i+j].ds, *size, *nthreads);
                 }
-                dualprintf("\n");
+                if (pqueue_tests[i].desc.find("Push+Pop")) dualprintf("\n");
             }
             dualprintf("\n");
         }
     }
     dualprintf("\nRUNNING QUEUE TESTS\n");
     for (unsigned i = 0; i < arraysize(queue_tests); i+=num_queues) {
-        dualprintf("\nRunning %s\n", queue_tests[i*num_queues].desc.c_str());
+        dualprintf("\nRunning %s\n", queue_tests[i].desc.c_str());
+        dualprintf("STO, STO(2), Basket, FC, Moir, MS, Optimistic, Segmented, RW, TsigasCycle, VyukovMPMCCycle, \n");
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
-            dualprintf("init_size, nthreads, STO, STO(2), Basket, FC, Moir, MS, Optimistic, Segmented, RW, TsigasCycle, VyukovMPMCCycle, \n");
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
                 for (int j = 0; j < num_queues; ++j) {
-                    if (!queue_tests[i+j].desc.find("Push+Pop") && *nthreads != 2) {
+                    if (!queue_tests[i].desc.find("Push+Pop") && *nthreads != 2) {
                         continue;
                     }
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
@@ -256,7 +257,7 @@ int main() {
                     fprintf(stderr, "\nRan Test %s on %s\t size: %d, nthreads: %d\n", 
                             queue_tests[i+j].desc.c_str(), queue_tests[i+j].ds, *size, *nthreads);
                 }
-                dualprintf("\n");
+                if (queue_tests[i].desc.find("Push+Pop")) dualprintf("\n");
             }
             dualprintf("\n");
         }
