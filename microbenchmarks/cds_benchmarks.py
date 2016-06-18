@@ -1,6 +1,7 @@
 from __future__ import print_function
 import httplib2
 import os
+import pprint
 
 from apiclient import discovery
 import oauth2client
@@ -14,12 +15,14 @@ try:
 except ImportError:
     flags = None
 
+pp = pprint.PrettyPrinter(indent=1)
 BENCHMARK_FILE = "cds_benchmarks_stats.txt"
-INIT_SIZES = [1000, 10000, 50000, 100000, 150000];
+INIT_SIZES = [1000, 10000, 50000, 100000, 150000]
 NTHREADS = [1, 2, 4, 8, 12, 16, 20]
 TESTS = ["PQRandSingleOps:R","PQRandSingleOps:D","PQPushPop:R",
             "PQPushPop:D", "PQPushOnly:R", "PQPushOnly:D", 
             "Q:PushPop","Q:RandSingleOps"]
+
 # sheet id, row index, column index
 TEST_COORDS = {
     "PQRandSingleOps:R" : {
@@ -147,16 +150,17 @@ def main():
     size_index = 0
     test = ""
     with open(BENCHMARK_FILE, "r") as f:
-        line = f.readline().strip()
-        if (line == ""):
-            size_index += 1
-            size_index %= len(INIT_SIZES)
-        elif (line in TESTS):
-            test = line    
-        else:
-            if INIT_SIZES[size_index] not in TESTS:
-                TESTS[test][INIT_SIZES[size_index]] = defaultdict(list)
-                TESTS[test][INIT_SIZES[size_index]].append(line.split(","))
+        for line in f.read().splitlines():
+            if (line == ""):
+                size_index += 1
+                size_index %= len(INIT_SIZES)
+            elif line in TESTS:
+                test = line    
+            else:
+                if INIT_SIZES[size_index] not in tests[test]:
+                    tests[test][INIT_SIZES[size_index]] = []
+                tests[test][INIT_SIZES[size_index]].append(
+                        [float(x) for x in line.split(",")[:-1]])
 
     # Spreadsheet stuff
     credentials = get_credentials()
@@ -171,17 +175,19 @@ def main():
     # Set up request
     requests = []
     for test, size_dict in TEST_COORDS.iteritems():
-        if test not in TESTS: continue
+        if test not in tests: 
+            continue
         for size, (s,r,c) in size_dict.iteritems():
-            if size not in TESTS[test]: continue
+            if size not in tests[test]: 
+                continue
 
             # get the row data for the specified test/size combination
             rows = []
-            for row in TESTS[test][size]:
+            for row in tests[test][size]:
                 row_values = []
                 for d in row:
                     row_values.append({'userEnteredValue' : {'numberValue': d}})
-            rows.append({ row_values })
+                rows.append({ 'values' : row_values })
            
             # append the row data to the request
             requests.append({
@@ -196,8 +202,12 @@ def main():
                 }
             })
 
+    pp.pprint(requests)
+    
+    batchUpdateRequest = {'requests': requests}
+
     result = service.spreadsheets().batchUpdate(
-        spreadsheetId=spreadsheetId, body=requests).execute()
+        spreadsheetId=spreadsheetId, body=batchUpdateRequest).execute()
 
 if __name__ == '__main__':
     main()
