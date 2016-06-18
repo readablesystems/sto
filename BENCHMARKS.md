@@ -49,6 +49,8 @@ Run `./cds_benchmarks to benchmark both STO/CDS queues and STO/CDS priority queu
 `cds_benchmarks_stats.txt` will contain data in csv format for easy transfer to excel/other graph-making tools.
 `cds_benchmarks_stats_verbose.txt` will contain extra information about the number of aborts, time, and number of operations.
 
+To update graphs on the [google spreadsheet](https://docs.google.com/spreadsheets/d/15fHBqqtfJRCueLseBjBoBai-YIInzZFhCrCBiwzW-b4/edit?usp=sharing), simply run `python cds_benchmarks.py` from the `microbenchmarks` folder.
+
 Benchmarks:
 - 2 threads, one pusher and one popper in single-operation txns. Run on different initial queue sizes
 - Single operation txns in which a thread randomly pops or pushes. Run on different initial queue sizes and different numbers of threads.

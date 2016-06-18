@@ -155,12 +155,12 @@ struct Test {
     const char* ds;
     GenericTest* test;
 } pqueue_tests[] = {
-    MAKE_PQUEUE_TESTS("Random Single Operations with Random Vals", RandomSingleOpTest, int, RANDOM_VALS),
-    MAKE_PQUEUE_TESTS("Random Single Operations with Decreasing Vals", RandomSingleOpTest, int, DECREASING_VALS),
-    MAKE_PQUEUE_TESTS("Push+Pop with Random Vals", PushPopTest, int, RANDOM_VALS),
-    MAKE_PQUEUE_TESTS("Push+Pop with Decreasing Vals", PushPopTest, int, DECREASING_VALS),
-    MAKE_PQUEUE_TESTS("Push-Only with Random Vals", SingleOpTest, int, RANDOM_VALS, push),
-    MAKE_PQUEUE_TESTS("Push-Only with Random Vals", SingleOpTest, int, DECREASING_VALS, push),
+    MAKE_PQUEUE_TESTS("PQRandSingleOps:R", RandomSingleOpTest, int, RANDOM_VALS),
+    MAKE_PQUEUE_TESTS("PQRandSingleOps:D", RandomSingleOpTest, int, DECREASING_VALS),
+    MAKE_PQUEUE_TESTS("PQPushPop:R", PushPopTest, int, RANDOM_VALS),
+    MAKE_PQUEUE_TESTS("PQPushPop:D", PushPopTest, int, DECREASING_VALS),
+    MAKE_PQUEUE_TESTS("PQPushOnly:R", SingleOpTest, int, RANDOM_VALS, push),
+    MAKE_PQUEUE_TESTS("PQPushOnly:D", SingleOpTest, int, DECREASING_VALS, push),
     //MAKE_PQUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
     //MAKE_PQUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),
 };
@@ -179,12 +179,9 @@ int num_pqueues = 5;
     {desc, "TC queue", new test<DatatypeHarness<cds::container::TsigasCycleQueue<type>>>(CDS, ## __VA_ARGS__)}, \
     {desc, "VyukovMPMC queue", new test<DatatypeHarness<cds::container::VyukovMPMCCycleQueue<type>>>(CDS, ## __VA_ARGS__)}
 Test queue_tests[] = {
-    MAKE_QUEUE_TESTS("Push+Pop with Random Vals", PushPopTest, int, RANDOM_VALS),
-    //MAKE_QUEUE_TESTS("Push+Pop with Decreasing Vals", PushPopTest, int, DECREASING_VALS),
-    MAKE_QUEUE_TESTS("Random Single Operations with Random Vals", RandomSingleOpTest, int, RANDOM_VALS),
-    //MAKE_QUEUE_TESTS("Random Single Operations with Decreasing Vals", RandomSingleOpTest, int, DECREASING_VALS),
+    MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
+    MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomSingleOpTest, int, RANDOM_VALS),
     //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
-    //MAKE_QUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),
 };
 int num_queues = 11;
 
@@ -219,9 +216,8 @@ int main() {
     RandomSingleOpTest<DatatypeHarness<PriorityQueue<int>>> pqtestr(STO, RANDOM_VALS);
     RandomSingleOpTest<DatatypeHarness<PriorityQueue<int>>> pqtestd(STO, DECREASING_VALS);
     
-    dualprintf("\nRUNNING PQUEUE TESTS\n");
     for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {
-        dualprintf("\nRunning %s\n", pqueue_tests[i].desc.c_str());
+        dualprintf("\n%s\n", pqueue_tests[i].desc.c_str());
         dualprintf("STO, STO(O), MS, FC\n");
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
@@ -241,9 +237,8 @@ int main() {
             dualprintf("\n");
         }
     }
-    dualprintf("\nRUNNING QUEUE TESTS\n");
     for (unsigned i = 0; i < arraysize(queue_tests); i+=num_queues) {
-        dualprintf("\nRunning %s\n", queue_tests[i].desc.c_str());
+        dualprintf("\n%s\n", queue_tests[i].desc.c_str());
         dualprintf("STO, STO(2), Basket, FC, Moir, MS, Optimistic, Segmented, RW, TsigasCycle, VyukovMPMCCycle, \n");
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
