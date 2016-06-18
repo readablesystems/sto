@@ -86,7 +86,6 @@ SCOPES = 'https://www.googleapis.com/auth/spreadsheets'
 CLIENT_SECRET_FILE = 'client_secret_cds_benchmarks.json'
 APPLICATION_NAME = 'CDS Benchmarks'
 
-
 def get_credentials():
     """Gets valid user credentials from storage.
 
@@ -172,11 +171,13 @@ def main():
     # Set up request
     requests = []
     for test, size_dict in TEST_COORDS.iteritems():
+        if test not in TESTS: continue
         for size, (s,r,c) in size_dict.iteritems():
-            
+            if size not in TESTS[test]: continue
+
             # get the row data for the specified test/size combination
             rows = []
-            for row in TEST[test][size]:
+            for row in TESTS[test][size]:
                 row_values = []
                 for d in row:
                     row_values.append({'userEnteredValue' : {'numberValue': d}})
@@ -197,7 +198,6 @@ def main():
 
     result = service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheetId, body=requests).execute()
-
 
 if __name__ == '__main__':
     main()

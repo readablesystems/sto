@@ -218,7 +218,7 @@ int main() {
     
     for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {
         dualprintf("\n%s\n", pqueue_tests[i].desc.c_str());
-        dualprintf("STO, STO(O), MS, FC\n");
+        fprintf(global_verbose_stats_file, "STO, STO(O), MS, FC\n");
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
                 for (int j = 0; j < num_pqueues; ++j) {
@@ -239,7 +239,7 @@ int main() {
     }
     for (unsigned i = 0; i < arraysize(queue_tests); i+=num_queues) {
         dualprintf("\n%s\n", queue_tests[i].desc.c_str());
-        dualprintf("STO, STO(2), Basket, FC, Moir, MS, Optimistic, Segmented, RW, TsigasCycle, VyukovMPMCCycle, \n");
+        fprintf(global_verbose_stats_file, "STO, STO(2), Basket, FC, Moir, MS, Optimistic, Segmented, RW, TsigasCycle, VyukovMPMCCycle, \n");
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
                 for (int j = 0; j < num_queues; ++j) {
