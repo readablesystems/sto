@@ -223,7 +223,8 @@ int main() {
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
                 for (int j = 0; j < num_pqueues; ++j) {
                     // for the two-thread test, skip if nthreads != 2
-                    if (!pqueue_tests[i].desc.find("PushPop") && *nthreads != 2) {
+                    if (pqueue_tests[i].desc.find("PushPop")!=std::string::npos
+                            && *nthreads != 2) {
                         continue;
                     }
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
@@ -232,7 +233,7 @@ int main() {
                     fprintf(stderr, "\nRan Test %s on %s\t size: %d, nthreads: %d\n", 
                             pqueue_tests[i+j].desc.c_str(), pqueue_tests[i+j].ds, *size, *nthreads);
                 }
-                if (pqueue_tests[i].desc.find("PushPop")) dualprintf("\n");
+                if (pqueue_tests[i].desc.find("PushPop")==std::string::npos) dualprintf("\n");
             }
             dualprintf("\n");
         }
@@ -243,7 +244,7 @@ int main() {
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
                 for (int j = 0; j < num_queues; ++j) {
-                    if (!queue_tests[i].desc.find("PushPop") && *nthreads != 2) {
+                    if (queue_tests[i].desc.find("PushPop")!=std::string::npos && *nthreads != 2) {
                         continue;
                     }
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
@@ -252,7 +253,7 @@ int main() {
                     fprintf(stderr, "\nRan Test %s on %s\t size: %d, nthreads: %d\n", 
                             queue_tests[i+j].desc.c_str(), queue_tests[i+j].ds, *size, *nthreads);
                 }
-                if (queue_tests[i].desc.find("PushPop")) dualprintf("\n");
+                if (queue_tests[i].desc.find("PushPop")==std::string::npos) dualprintf("\n");
             }
             dualprintf("\n");
         }
