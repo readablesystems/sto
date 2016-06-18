@@ -43,6 +43,7 @@ to output a csv.
 #CDS Benchmarks
 
 To run all the tests and update [the online graphs](https://docs.google.com/spreadsheets/d/15fHBqqtfJRCueLseBjBoBai-YIInzZFhCrCBiwzW-b4/edit?usp=sharing), run `./cds_benchmarks.sh` from the `microbenchmarks` folder.
+(Note: this requires the Python packages `httplib2`, `oauth2client`, and the google apiclient (`$ pip install --upgrade google-api-python-client`).
 
 To just run the tests, run `./cds_benchmarks` from the `sto` directory.
 
