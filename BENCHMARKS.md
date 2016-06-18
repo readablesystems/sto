@@ -49,9 +49,9 @@ To just run the tests, run `./cds_benchmarks` from the `sto` directory.
 To just update graphs on the [google spreadsheet](https://docs.google.com/spreadsheets/d/15fHBqqtfJRCueLseBjBoBai-YIInzZFhCrCBiwzW-b4/edit?usp=sharing), simply run `python cds_benchmarks.py` from the `microbenchmarks` folder.
 
 To view results and more debugging printouts:
-    - `microbenchmarks/cds_benchmarks_stats.txt` will contain data in csv format for easy transfer to excel/other graph-making tools.
-    - `microbenchmarks/cds_benchmarks_stats_verbose.txt` will contain extra information about the number of aborts, time, and number of operations.
-    - `microbenchmarks/cds_benchmarks_stats_history.txt` contains the history of updates to the google sheet with the graphs
+- `microbenchmarks/cds_benchmarks_stats.txt` will contain data in csv format for easy transfer to excel/other graph-making tools.
+- `microbenchmarks/cds_benchmarks_stats_verbose.txt` will contain extra information about the number of aborts, time, and number of operations.
+- `microbenchmarks/cds_benchmarks_stats_history.txt` contains the history of updates to the google sheet with the graphs
 
 Benchmarks:
 - 2 threads, one pusher and one popper in single-operation txns. Run on different initial queue sizes
