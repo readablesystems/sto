@@ -155,6 +155,7 @@ def main():
                 size_index %= len(INIT_SIZES)
             elif line in TESTS:
                 test = line    
+                size_index = 0
             else:
                 if INIT_SIZES[size_index] not in tests[test]:
                     tests[test][INIT_SIZES[size_index]] = []
