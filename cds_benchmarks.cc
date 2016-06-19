@@ -235,6 +235,7 @@ int main() {
                 }
                 if (pqueue_tests[i].desc.find("PushPop")==std::string::npos) dualprintf("\n");
             }
+            if (pqueue_tests[i].desc.find("PushPop")!=std::string::npos) dualprintf("\n");
             dualprintf("\n");
         }
     }
@@ -255,6 +256,7 @@ int main() {
                 }
                 if (queue_tests[i].desc.find("PushPop")==std::string::npos) dualprintf("\n");
             }
+            if (queue_tests[i].desc.find("PushPop")!=std::string::npos) dualprintf("\n");
             dualprintf("\n");
         }
     }
