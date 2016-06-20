@@ -245,7 +245,7 @@ template <typename T> struct DatatypeHarness<cds::container::FCQueue<T>> :
     cds::opt::allocator<CDS_DEFAULT_ALLOCATOR>, \
     cds::opt::stat<cds::container::fcqueue::empty_stat>, \
     cds::opt::memory_model<cds::opt::v::relaxed_ordering>, \
-    cds::opt::enable_elimination<true>>
+    cds::opt::enable_elimination<true>>::type
 template <typename T> struct DatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS()>>  :
     public CDSDatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS()>>{};
 template <typename T> struct DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, T>> : 
