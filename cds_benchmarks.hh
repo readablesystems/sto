@@ -21,6 +21,7 @@
 #include <cds/container/tsigas_cycle_queue.h>
 #include <cds/container/vyukov_mpmc_cycle_queue.h>
 #include <cds/gc/hp.h> 
+#include <cds/algo/elimination_opt.h> 
 
 #include "Transaction.hh"
 #include "PriorityQueue.hh"
