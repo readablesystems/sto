@@ -7,6 +7,7 @@
 #include <vector>
 #include <random>
 #include <time.h>
+#include <memory>
 
 #include <cds/init.h>
 #include <cds/container/fcpriority_queue.h>
@@ -22,6 +23,8 @@
 #include <cds/container/vyukov_mpmc_cycle_queue.h>
 #include <cds/gc/hp.h> 
 #include <cds/algo/elimination_opt.h> 
+#include <cds/os/alloc_aligned.h> 
+#include <cds/opt/options.h> 
 
 #include "Transaction.hh"
 #include "PriorityQueue.hh"
@@ -236,6 +239,15 @@ template <typename T> struct DatatypeHarness<cds::container::BasketQueue<cds::gc
     public CDSDatatypeHarness<cds::container::BasketQueue<cds::gc::HP, T>>{};
 template <typename T> struct DatatypeHarness<cds::container::FCQueue<T>> : 
     public CDSDatatypeHarness<cds::container::FCQueue<T>>{};
+#define FCQUEUE_TRAITS() cds::container::fcqueue::make_traits< \
+    cds::opt::lock_type<cds::sync::spin>, \
+    cds::opt::back_off<cds::backoff::delay_of<2>>, \
+    cds::opt::allocator<CDS_DEFAULT_ALLOCATOR>, \
+    cds::opt::stat<cds::container::fcqueue::empty_stat>, \
+    cds::opt::memory_model<cds::opt::v::relaxed_ordering>, \
+    cds::opt::enable_elimination<true>>
+template <typename T> struct DatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS()>>  :
+    public CDSDatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS()>>{};
 template <typename T> struct DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, T>> : 
     public CDSDatatypeHarness<cds::container::MoirQueue<cds::gc::HP, T>>{};
 template <typename T> struct DatatypeHarness<cds::container::MSQueue<cds::gc::HP, T>> : 
