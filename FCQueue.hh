@@ -37,15 +37,14 @@
 
 // Tells the combiner thread the flags associated with each item in the 
 template <typename T>
-typedef struct val_wrapper {
-    T& val;
+struct val_wrapper {
+    T val;
     uint8_t flags; 
     Transaction::tid_type tid;
-}
+};
 
-template <typename T,
-    class Queue = std::deque<val_wrapper<T>>,
->
+template <typename T, class Queue = std::deque<val_wrapper<T>>,
+        template <typename> class W = TOpaqueWrapped>
 class FCQueue : public Shared,
     public flat_combining::container
 {
@@ -54,7 +53,7 @@ public:
     typedef Queue       queue_type;     ///< Sequential queue class
 
     // STO
-    typedef typename W<T>::version_type version_type;
+    typedef typename W<value_type>::version_type version_type;
 
     // For thread-specific txns
     static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<0;
@@ -62,7 +61,7 @@ public:
     static constexpr TransItem::flags_type empty_bit = TransItem::user0_bit<<2;
    
     // For the publication list records
-    static constexpr uint8_t delete_bit 1<<0;
+    static constexpr uint8_t delete_bit = 1<<0;
     static constexpr uint8_t popped_bit = 1<<1;
 
 private:
@@ -71,7 +70,7 @@ private:
         op_push = flat_combining::req_Operation, // Push
         op_mark_deleted,  // Pop (mark as poisoned)
         op_install_pops, // Pop (marking as not-a-value)
-        op_undo_mark_deleted, // Cleanup Pops (mark poisoned values with specified TID as clean)
+        op_undo_mark_deleted, // Cleanup Pops (mark poisoned values with specified tid as clean)
         op_clear,       // Clear
         op_empty        // Empty
     };
@@ -81,13 +80,14 @@ private:
     struct fc_record: public flat_combining::publication_record
     {
         union {
-            val_wrapper const *  pValPush; // Value to enqueue
-            val_wrapper *        pValPop;  // Pop destination
+            val_wrapper<value_type> const *  pValPush; // Value to enqueue
+            val_wrapper<value_type> *        pValPop;  // Pop destination
+            val_wrapper<value_type> *        pValEdit;  // Value to edit 
         };
         bool            is_empty; // true if the queue is empty
     };
 
-    flat_combining::kernel< fc_record, traits > fc_kernel_;
+    flat_combining::kernel< fc_record> fc_kernel_;
     queue_type  q_;
     version_type queueversion_;
  
@@ -109,8 +109,8 @@ public:
         auto item = Sto::item(this, -1);
         if (item.has_write()) {
             if (!is_list(item)) {
-                auto& val = item.template write_value<T>();
-                std::list<T> write_list;
+                auto& val = item.template write_value<value_type>();
+                std::list<value_type> write_list;
                 if (!is_empty(item)) {
                     write_list.push_back(val);
                     item.clear_flags(empty_bit);
@@ -121,7 +121,7 @@ public:
                 item.add_flags(list_bit);
             }
             else {
-                auto& write_list = item.template write_value<std::list<T>>();
+                auto& write_list = item.template write_value<std::list<value_type>>();
                 write_list.push_back(v);
             }
         }
@@ -133,14 +133,15 @@ public:
     bool pop( value_type& val ) {
         // try marking an item in the queue as deleted
         fc_record * pRec = fc_kernel_.acquire_record();
-        value_wrapper val_wrapper = {val, 0, txn.commit_tid()};
-        pRec->pValDeq = &val_wrapper;
+        val_wrapper<value_type> vw = {val, 0, Sto::commit_tid()};
+        pRec->pValPop = &vw;
         fc_kernel_.combine( op_mark_deleted, pRec, *this );
         assert( pRec->is_done() );
         fc_kernel_.release_record( pRec );
 
         if (!pRec->is_empty) {
-            *val = std::move(pRec->pValPop->val);
+            val = std::move(pRec->pValPop->val);
+            return true;
         } else { // queue is empty
             auto pushitem = Sto::item(this,-1);
             // add a read of the queueversion
@@ -148,7 +149,7 @@ public:
             // try read-my-writes
             if (pushitem.has_write()) {
                 if (is_list(pushitem)) {
-                    auto& write_list = pushitem.template write_value<std::list<T>>();
+                    auto& write_list = pushitem.template write_value<std::list<value_type>>();
                     // if there is an element to be pushed on the queue, return addr of queue element
                     if (!write_list.empty()) {
                         write_list.pop_front();
@@ -202,21 +203,21 @@ public: // flat combining cooperation, not for direct use!
         // this function is called under FC mutex, so switch TSan off
         CDS_TSAN_ANNOTATE_IGNORE_RW_BEGIN;
 
-
+        Transaction::tid_type tid;
         // do the operation requested
         switch ( pRec->op() ) {
         case op_push:
             assert( pRec->pValPush );
-            q_.push( *(pRec->pValPush ) );
+            q_.push_back( *(pRec->pValPush) );
             break;
 
         case op_mark_deleted:
             assert( pRec->pValPop );
-            if ( !q_empty() ) {
+            if ( !q_.empty() ) {
                 for (auto it = begin(q_); it != end(q_); ++it) {
                     if (!has_delete(*it)) {
-                        *(pRec->pValPop) = *it; 
-                        *it->flags &= delete_bit;
+                        *(pRec->pValPop) = std::move(*it); 
+                        it->flags &= delete_bit;
                         return;
                     }
                 }
@@ -226,19 +227,19 @@ public: // flat combining cooperation, not for direct use!
             break;
 
         case op_install_pops:
-            auto tid = pRec->tid;
+            tid = pRec->pValEdit->tid;
             for (auto it = begin(q_); it != end(q_); ++it) {
-                if (has_delete(*it) && (tid == *it->tid)) {
-                    *it->flags &= popped_bit;
+                if (has_delete(*it) && (tid == it->tid)) {
+                    it->flags &= popped_bit;
                 }
             }
             break;
         
         case op_undo_mark_deleted: 
-            auto tid = pRec->tid;
+            tid = pRec->pValEdit->tid;
             for (auto it = begin(q_); it != end(q_); ++it) {
-                if (has_delete(*it) && (tid == *it->tid)) {
-                    *it->flags &= 0; 
+                if (has_delete(*it) && (tid == it->tid)) {
+                   it->flags &= 0; 
                 }
             }
             break;
@@ -246,7 +247,7 @@ public: // flat combining cooperation, not for direct use!
         // the following are non-transactional
         case op_clear:
             while ( !q_.empty() )
-                q_.pop();
+                q_.pop_back();
             break;
         case op_empty:
             pRec->is_empty = q_.empty();
@@ -260,12 +261,12 @@ public: // flat combining cooperation, not for direct use!
 
 private: 
     // Fxns for the combiner thread
-    bool has_delete(const val_wrapper& val) {
-        return val->flags & delete_bit;
+    bool has_delete(const val_wrapper<value_type>& val) {
+        return val.flags & delete_bit;
     }
     
-    bool is_popped(const val_wrapper& val) {
-        return val->flags & popped_bit;
+    bool is_popped(const val_wrapper<value_type>& val) {
+        return val.flags & popped_bit;
     }
 
     // STO-specific functions for txn commit protocol
@@ -303,32 +304,36 @@ private:
     void install(TransItem& item, Transaction& txn) override {
         // install pops
         fc_record * pRec = fc_kernel_.acquire_record();
-        value_wrapper val_wrapper = {NULL, 0, txn.commit_tid()};
+        auto val = T();
+        val_wrapper<value_type> vw = {val, 0, txn.commit_tid()};
+        pRec->pValEdit = &vw;
         fc_kernel_.combine( op_install_pops, pRec, *this );
         assert( pRec->is_done() );
         fc_kernel_.release_record( pRec );
 
         // install pushes
-        else if (item.key<int>() == -1) {
+        if (item.key<int>() == -1) {
             assert(queueversion_.is_locked_here());
             // write all the elements
             if (is_list(item)) {
-                auto& write_list = item.template write_value<std::list<T>>();
+                auto& write_list = item.template write_value<std::list<value_type>>();
                 while (!write_list.empty()) {
                     // TODO not efficient -- should use batch processing here?
                     auto val = write_list.front();
                     write_list.pop_front();
                     fc_record * pRec = fc_kernel_.acquire_record();
-                    value_wrapper val_wrapper = {val, 0, 0};
+                    val_wrapper<value_type> vw = {val, 0, 0};
+                    pRec->pValPush = &vw; 
                     fc_kernel_.combine( op_push, pRec, *this );
                     assert( pRec->is_done() );
                     fc_kernel_.release_record( pRec );
                 }
             }
             else if (!is_empty(item)) {
-                auto& val = item.template write_value<T>();
+                auto& val = item.template write_value<value_type>();
                 fc_record * pRec = fc_kernel_.acquire_record();
-                value_wrapper val_wrapper = {val, 0, 0};
+                val_wrapper<value_type> vw = {val, 0, 0};
+                pRec->pValPush = &vw; 
                 fc_kernel_.combine( op_push, pRec, *this );
                 assert( pRec->is_done() );
                 fc_kernel_.release_record( pRec );
@@ -357,7 +362,9 @@ private:
 
         // Mark all deleted items in the queue as not deleted 
         fc_record * pRec = fc_kernel_.acquire_record();
-        value_wrapper val_wrapper = {NULL, 0, txn.commit_tid()};
+        auto val = T();
+        val_wrapper<value_type> vw = {val, 0, Sto::commit_tid()};
+        pRec->pValEdit = &vw;
         fc_kernel_.combine( op_undo_mark_deleted, pRec, *this );
         assert( pRec->is_done() );
         fc_kernel_.release_record( pRec );

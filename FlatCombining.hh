@@ -139,48 +139,10 @@ namespace flat_combining {
         }
     };
 
-    /// Type traits of \ref kernel class
-    /**
-        You can define different type traits for \ref kernel
-        by specifying your struct based on \p %traits
-        or by using \ref make_traits metafunction.
-    */
-    struct traits
-    {
-        typedef cds::sync::spin             lock_type;  ///< Lock type
-        typedef cds::backoff::delay_of<2>   back_off;   ///< Back-off strategy
-        typedef CDS_DEFAULT_ALLOCATOR       allocator;  ///< Allocator used for TLS data (allocating publication_record derivatives)
-        typedef opt::v::relaxed_ordering  memory_model; ///< /// C++ memory ordering model
-    };
-
-    /// Metafunction converting option list to traits
-    /**
-        \p Options are:
-        - \p opt::lock_type - mutex type, default is \p cds::sync::spin
-        - \p opt::back_off - back-off strategy, defalt is \p cds::backoff::delay_of<2>
-        - \p opt::allocator - allocator type, default is \ref CDS_DEFAULT_ALLOCATOR
-        - \p opt::memory_model - C++ memory ordering model.
-            List of all available memory ordering see \p opt::memory_model.
-            Default is \p cds::opt::v::relaxed_ordering
-    */
-    template <typename... Options>
-    struct make_traits {
-#   ifdef CDS_DOXYGEN_INVOKED
-        typedef implementation_defined type ;   ///< Metafunction result
-#   else
-        typedef typename cds::opt::make_options<
-            typename cds::opt::find_type_traits< traits, Options... >::type
-            ,Options...
-        >::type   type;
-#   endif
-    };
-
     /// The kernel of flat combining
     /**
         Template parameters:
         - \p PublicationRecord - a type derived from \ref publication_record
-        - \p Traits - a type traits of flat combining, default is \p flat_combining::traits.
-            \ref make_traits metafunction can be used to create type traits
 
         The kernel object should be a member of a container class. The container cooperates with flat combining
         kernel object. There are two ways to interact with the kernel:
@@ -193,17 +155,15 @@ namespace flat_combining {
     */
     template <
         typename PublicationRecord
-        ,typename Traits = traits
     >
     class kernel
     {
     public:
         typedef PublicationRecord   publication_record_type;   ///< publication record type
-        typedef Traits   traits;                               ///< Type traits
-        typedef typename traits::lock_type global_lock_type;   ///< Global lock type
-        typedef typename traits::back_off  back_off;           ///< back-off strategy type
-        typedef typename traits::allocator allocator;          ///< Allocator type (used for allocating publication_record_type data)
-        typedef typename traits::memory_model memory_model;    ///< C++ memory model
+        typedef typename cds::sync::spin global_lock_type;   ///< Global lock type
+        typedef typename cds::backoff::delay_of<2> back_off;           ///< back-off strategy type
+        typedef typename CDS_DEFAULT_ALLOCATOR allocator;          ///< Allocator type (used for allocating publication_record_type data)
+        typedef typename cds::opt::v::relaxed_ordering memory_model;    ///< C++ memory model
 
     protected:
         //@cond
@@ -319,6 +279,11 @@ namespace flat_combining {
             lock_guard l( m_Mutex );
         }
 
+        /// Marks \p rec as executed
+        void operation_done( publication_record& rec )
+        {
+            rec.nRequest.store( req_Response, memory_model::memory_order_release );
+        }
 
         /// Returns the compact factor
         unsigned int compact_factor() const

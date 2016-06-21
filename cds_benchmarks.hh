@@ -240,9 +240,8 @@ template <typename T> struct DatatypeHarness<FCQueue<T>> {
 public:
     bool pop() { int ret; return v_.pop(ret); }
     bool cleanup_pop() { 
-        int ret;
         Sto::start_transaction();
-        bool r = pop(ret);
+        bool r = pop();
         assert(Sto::try_commit());
         return r;
     }

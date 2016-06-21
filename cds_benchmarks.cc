@@ -170,7 +170,7 @@ int num_pqueues = 5;
     {desc, "STO queue", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "STO queue2", new test<DatatypeHarness<Queue2<type>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "FC queue", new test<DatatypeHarness<cds::container::FCQueue<type>>>(CDS, ## __VA_ARGS__)},                 \
-    {desc, "STO/FC queue", new test<DatatypeHarness<FCQueue<type>>(STO, ## __VA_ARGS__)}
+    {desc, "STO/FC queue", new test<DatatypeHarness<FCQueue<type>>>(STO, ## __VA_ARGS__)}
 /*
     {desc, "Basket queue", new test<DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},         \
     {desc, "Moir queue", new test<DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
@@ -215,10 +215,6 @@ int main() {
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
     
-    RandomSingleOpTest<DatatypeHarness<cds::container::FCQueue<int>>> fctest(CDS, RANDOM_VALS);
-    RandomSingleOpTest<DatatypeHarness<PriorityQueue<int>>> pqtestr(STO, RANDOM_VALS);
-    RandomSingleOpTest<DatatypeHarness<PriorityQueue<int>>> pqtestd(STO, DECREASING_VALS);
-    
     for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {
         dualprintf("\n%s\n", pqueue_tests[i].desc.c_str());
         fprintf(global_verbose_stats_file, "STO, STO(O), MS, FC\n");
@@ -244,7 +240,7 @@ int main() {
     }
     for (unsigned i = 0; i < arraysize(queue_tests); i+=num_queues) {
         dualprintf("\n%s\n", queue_tests[i].desc.c_str());
-        fprintf(global_verbose_stats_file, "STO, STO(2), FC, FC(elim), \n");
+        fprintf(global_verbose_stats_file, "STO, STO(2), FC, STO/FC, \n");
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
                 for (int j = 0; j < num_queues; ++j) {
