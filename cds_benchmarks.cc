@@ -155,7 +155,7 @@ struct Test {
     const char* ds;
     GenericTest* test;
 } pqueue_tests[] = {
-    MAKE_PQUEUE_TESTS("PQRandSingleOps:R", RandomSingleOpTest, int, RANDOM_VALS),
+    //MAKE_PQUEUE_TESTS("PQRandSingleOps:R", RandomSingleOpTest, int, RANDOM_VALS),
     //MAKE_PQUEUE_TESTS("PQRandSingleOps:D", RandomSingleOpTest, int, DECREASING_VALS),
     //MAKE_PQUEUE_TESTS("PQPushPop:R", PushPopTest, int, RANDOM_VALS),
     //MAKE_PQUEUE_TESTS("PQPushPop:D", PushPopTest, int, DECREASING_VALS),
@@ -184,10 +184,10 @@ int num_pqueues = 5;
 */
 Test queue_tests[] = {
     MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
-    //MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomSingleOpTest, int, RANDOM_VALS),
+    MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomSingleOpTest, int, RANDOM_VALS),
     //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
 };
-int num_queues = 11;
+int num_queues = 4;
 
 int main() {
     global_verbose_stats_file = fopen("microbenchmarks/cds_benchmarks_stats_verbose.txt", "w");
@@ -245,7 +245,7 @@ int main() {
     }
     for (unsigned i = 0; i < arraysize(queue_tests); i+=num_queues) {
         dualprintf("\n%s\n", queue_tests[i].desc.c_str());
-        fprintf(global_verbose_stats_file, "STO, STO(2), Basket, FC, Moir, MS, Optimistic, Segmented, RW, TsigasCycle, VyukovMPMCCycle, \n");
+        fprintf(global_verbose_stats_file, "STO, STO(2), FC, FC(elim), \n");
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
                 for (int j = 0; j < num_queues; ++j) {
