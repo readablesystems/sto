@@ -1,20 +1,119 @@
+/*
+    This file is a part of libcds - Concurrent Data Structures library
+
+    (C) Copyright Maxim Khizhinsky (libcds.dev@gmail.com) 2006-2016
+
+    Source code repo: http://github.com/khizmax/libcds/
+    Download: http://sourceforge.net/projects/libcds/files/
+    
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright notice, this
+      list of conditions and the following disclaimer.
+
+    * Redistributions in binary form must reproduce the above copyright notice,
+      this list of conditions and the following disclaimer in the documentation
+      and/or other materials provided with the distribution.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+    IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+    DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+    FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+    DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+    SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+    CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+    OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.     
+*/
+
 #ifndef FCQUEUE_H 
 #define FCQUEUE_H
 
-#include <cds/algo/flat_combining.h>
 #include <cds/algo/elimination_opt.h>
 #include <queue>
+#include "Flat_Combining.hh"
 #include "Transaction.hh"
+
+/// FCQueue related definitions
+namespace fcqueue {
+
+    /// FCQueue internal statistics
+    template <typename Counter = cds::atomicity::event_counter >
+    struct stat: public cds::algo::flat_combining::stat<Counter>
+    {
+        typedef cds::algo::flat_combining::stat<Counter>    flat_combining_stat; ///< Flat-combining statistics
+        typedef typename flat_combining_stat::counter_type  counter_type;        ///< Counter type
+
+        counter_type    m_nEnqueue     ;   ///< Count of enqueue operations
+        counter_type    m_nEnqMove     ;   ///< Count of enqueue operations with move semantics
+        counter_type    m_nDequeue     ;   ///< Count of success dequeue operations
+        counter_type    m_nFailedDeq   ;   ///< Count of failed dequeue operations (pop from empty queue)
+        counter_type    m_nCollided    ;   ///< How many pairs of enqueue/dequeue were collided, if elimination is enabled
+
+        //@cond
+        void    onEnqueue()               { ++m_nEnqueue; }
+        void    onEnqMove()               { ++m_nEnqMove; }
+        void    onDequeue( bool bFailed ) { if ( bFailed ) ++m_nFailedDeq; else ++m_nDequeue;  }
+        void    onCollide()               { ++m_nCollided; }
+        //@endcond
+    };
+
+    /// FCQueue dummy statistics, no overhead
+    struct empty_stat: public cds::algo::flat_combining::empty_stat
+    {
+        //@cond
+        void    onEnqueue()     {}
+        void    onEnqMove()     {}
+        void    onDequeue(bool) {}
+        void    onCollide()     {}
+        //@endcond
+    };
+
+    /// FCQueue type traits
+    struct traits: public cds::algo::flat_combining::traits
+    {
+        typedef empty_stat      stat;   ///< Internal statistics
+        static CDS_CONSTEXPR const bool enable_elimination = false; ///< Enable \ref cds_elimination_description "elimination"
+    };
+
+    /// Metafunction converting option list to traits
+    /**
+        \p Options are:
+        - \p opt::lock_type - mutex type, default is \p cds::sync::spin
+        - \p opt::back_off - back-off strategy, defalt is \p cds::backoff::delay_of<2>
+        - \p opt::allocator - allocator type, default is \ref CDS_DEFAULT_ALLOCATOR
+        - \p opt::stat - internal statistics, possible type: \p fcqueue::stat, \p fcqueue::empty_stat (the default)
+        - \p opt::memory_model - C++ memory ordering model.
+            List of all available memory ordering see \p opt::memory_model.
+            Default is \p cds::opt::v:relaxed_ordering
+        - \p opt::enable_elimination - enable/disable operation \ref cds_elimination_description "elimination"
+            By default, the elimination is disabled. For queue, the elimination is possible if the queue
+            is empty.
+    */
+    template <typename... Options>
+    struct make_traits {
+#   ifdef CDS_DOXYGEN_INVOKED
+        typedef implementation_defined type ;   ///< Metafunction result
+#   else
+        typedef typename cds::opt::make_options<
+            typename cds::opt::find_type_traits< traits, Options... >::type
+            ,Options...
+        >::type   type;
+#   endif
+    };
+
+} // namespace fcqueue
 
 template <typename T,
     class Queue = std::queue<T>,
-    typename Traits = cds::container::fcqueue::traits
+    typename Traits = fcqueue::traits
 >
 class FCQueue : public Shared,
-    public cds::algo::flat_combining::container
+    public flat_combining::container
 {
 public:
-    typedef typename W<T>::version_type version_type;
     typedef T           value_type;     ///< Value type
     typedef Queue       queue_type;     ///< Sequential queue class
     typedef Traits      traits;         ///< Queue type traits
@@ -22,10 +121,18 @@ public:
     typedef typename traits::stat  stat;   ///< Internal statistics type
     static CDS_CONSTEXPR const bool c_bEliminationEnabled = traits::enable_elimination;
 
+    // STO
+    typedef typename W<T>::version_type version_type;
+
+    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;
+    static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<1;
+    static constexpr TransItem::flags_type list_bit = TransItem::user0_bit<<2;
+    static constexpr TransItem::flags_type empty_bit = TransItem::user0_bit<<3;
+
 protected:
     /// Queue operation IDs
     enum fc_operation {
-        op_enq = cds::algo::flat_combining::req_Operation, ///< Enqueue
+        op_enq = flat_combining::req_Operation, ///< Enqueue
         op_enq_move,    ///< Enqueue (move semantics)
         op_deq,         ///< Dequeue
         op_clear,       ///< Clear
@@ -33,7 +140,7 @@ protected:
     };
 
     /// Flat combining publication list record
-    struct fc_record: public cds::algo::flat_combining::publication_record
+    struct fc_record: public flat_combining::publication_record
     {
         union {
             value_type const *  pValEnq;  ///< Value to enqueue
@@ -43,7 +150,7 @@ protected:
     };
 
     /// Flat combining kernel
-    typedef cds::algo::flat_combining::kernel< fc_record, traits > fc_kernel;
+    typedef flat_combining::kernel< fc_record, traits > fc_kernel;
 
 protected:
     fc_kernel   m_FlatCombining;
@@ -186,7 +293,7 @@ public:
 public: // flat combining cooperation, not for direct use!
     /// Flat combining supporting function. Do not call it directly!
     /**
-        The function is called by \ref cds::algo::flat_combining::kernel "flat combining kernel"
+        The function is called by \ref flat_combining::kernel "flat combining kernel"
         object if the current thread becomes a combiner. Invocation of the function means that
         the queue should perform an action recorded in \p pRec.
     */
