@@ -181,6 +181,7 @@ public:
     }
 
     // Returns the number of elements in the queue.
+    // Non-transactional
     size_t size() const {
         return q_.size();
     }
@@ -219,8 +220,8 @@ public: // flat combining cooperation, not for direct use!
             if ( !q_.empty() ) {
                 for (auto it = begin(q_); it != end(q_); ++it) {
                     if (!has_delete(*it)) {
-                        *(pRec->pValPop) = std::move(*it); 
-                        it->flags &= delete_bit;
+                        *(pRec->pValPop) = *it; 
+                        it->flags |= delete_bit;
                         return;
                     }
                 }
@@ -233,7 +234,7 @@ public: // flat combining cooperation, not for direct use!
             tid = pRec->pValEdit->tid;
             for (auto it = begin(q_); it != end(q_); ++it) {
                 if (has_delete(*it) && (tid == it->tid)) {
-                    it->flags &= popped_bit;
+                    it->flags |= popped_bit;
                 }
             }
             break;
