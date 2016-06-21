@@ -31,9 +31,11 @@
 #ifndef FCQUEUE_H 
 #define FCQUEUE_H
 
-#include <queue>
+#include <deque>
+#include <list>
 #include "FlatCombining.hh"
 #include "Transaction.hh"
+#include "TWrapped.hh"
 
 // Tells the combiner thread the flags associated with each item in the 
 template <typename T>
@@ -43,8 +45,9 @@ struct val_wrapper {
     Transaction::tid_type tid;
 };
 
-template <typename T, class Queue = std::deque<val_wrapper<T>>,
-        template <typename> class W = TOpaqueWrapped>
+template <typename T, 
+         class Queue = std::deque<val_wrapper<T>>,
+         template <typename> class W = TOpaqueWrapped>
 class FCQueue : public Shared,
     public flat_combining::container
 {
