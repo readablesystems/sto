@@ -139,61 +139,6 @@ namespace flat_combining {
         }
     };
 
-    /// Flat combining internal statistics
-    template <typename Counter = cds::atomicity::event_counter >
-    struct stat
-    {
-        typedef Counter counter_type;   ///< Event counter type
-
-        counter_type    m_nOperationCount   ;   ///< How many operations have been performed
-        counter_type    m_nCombiningCount   ;   ///< Combining call count
-        counter_type    m_nCompactPublicationList; ///< Count of publication list compacting
-        counter_type    m_nDeactivatePubRecord; ///< How many publication records were deactivated during compacting
-        counter_type    m_nActivatePubRecord;   ///< Count of publication record activating
-        counter_type    m_nPubRecordCreated ;   ///< Count of created publication records
-        counter_type    m_nPubRecordDeteted ;   ///< Count of deleted publication records
-        counter_type    m_nAcquirePubRecCount;  ///< Count of acquiring publication record
-        counter_type    m_nReleasePubRecCount;  ///< Count on releasing publication record
-
-        /// Returns current combining factor
-        /**
-            Combining factor is how many operations perform in one combine pass:
-            <tt>combining_factor := m_nOperationCount / m_nCombiningCount</tt>
-        */
-        double combining_factor() const
-        {
-            return m_nCombiningCount.get() ? double( m_nOperationCount.get()) / m_nCombiningCount.get() : 0.0;
-        }
-
-        //@cond
-        void    onOperation()               { ++m_nOperationCount; }
-        void    onCombining()               { ++m_nCombiningCount; }
-        void    onCompactPublicationList()  { ++m_nCompactPublicationList; }
-        void    onDeactivatePubRecord()     { ++m_nDeactivatePubRecord; }
-        void    onActivatePubRecord()       { ++m_nActivatePubRecord; }
-        void    onCreatePubRecord()         { ++m_nPubRecordCreated; }
-        void    onDeletePubRecord()         { ++m_nPubRecordDeteted; }
-        void    onAcquirePubRecord()        { ++m_nAcquirePubRecCount; }
-        void    onReleasePubRecord()        { ++m_nReleasePubRecCount; }
-        //@endcond
-    };
-
-    /// Flat combining dummy internal statistics
-    struct empty_stat
-    {
-        //@cond
-        void    onOperation()               {}
-        void    onCombining()               {}
-        void    onCompactPublicationList()  {}
-        void    onDeactivatePubRecord()     {}
-        void    onActivatePubRecord()       {}
-        void    onCreatePubRecord()         {}
-        void    onDeletePubRecord()         {}
-        void    onAcquirePubRecord()        {}
-        void    onReleasePubRecord()        {}
-        //@endcond
-    };
-
     /// Type traits of \ref kernel class
     /**
         You can define different type traits for \ref kernel
@@ -205,7 +150,6 @@ namespace flat_combining {
         typedef cds::sync::spin             lock_type;  ///< Lock type
         typedef cds::backoff::delay_of<2>   back_off;   ///< Back-off strategy
         typedef CDS_DEFAULT_ALLOCATOR       allocator;  ///< Allocator used for TLS data (allocating publication_record derivatives)
-        typedef empty_stat                  stat;       ///< Internal statistics
         typedef opt::v::relaxed_ordering  memory_model; ///< /// C++ memory ordering model
     };
 
@@ -215,7 +159,6 @@ namespace flat_combining {
         - \p opt::lock_type - mutex type, default is \p cds::sync::spin
         - \p opt::back_off - back-off strategy, defalt is \p cds::backoff::delay_of<2>
         - \p opt::allocator - allocator type, default is \ref CDS_DEFAULT_ALLOCATOR
-        - \p opt::stat - internal statistics, possible type: \ref stat, \ref empty_stat (the default)
         - \p opt::memory_model - C++ memory ordering model.
             List of all available memory ordering see \p opt::memory_model.
             Default is \p cds::opt::v::relaxed_ordering
@@ -247,16 +190,6 @@ namespace flat_combining {
           calls \p fc_apply() function of the container for each active non-empty record. Then, the container
           should release its publication record by \p release_record(). Only one pass through the publication
           list is possible.
-        - Batch processing - \p batch_combine() function. It this mode the container obtains access
-          to entire publication list. This mode allows the container to perform an elimination, for example,
-          the stack can collide \p push() and \p pop() requests. The sequence of invocations is the following:
-          the container acquires its publication record by \p acquire_record(), fills its field and call
-          \p batch_combine() function of its kernel object. If the current thread becomes a combiner,
-          the kernel calls \p fc_process() function of the container passing two iterators pointing to
-          the begin and the end of publication list (see \ref iterator class). The iterators allow
-          multiple pass through active records of publication list. For each processed record the container
-          should call \p operation_done() function. On the end, the container should release
-          its record by \p release_record().
     */
     template <
         typename PublicationRecord
@@ -270,7 +203,6 @@ namespace flat_combining {
         typedef typename traits::lock_type global_lock_type;   ///< Global lock type
         typedef typename traits::back_off  back_off;           ///< back-off strategy type
         typedef typename traits::allocator allocator;          ///< Allocator type (used for allocating publication_record_type data)
-        typedef typename traits::stat      stat;               ///< Internal statistics
         typedef typename traits::memory_model memory_model;    ///< C++ memory model
 
     protected:
@@ -284,7 +216,6 @@ namespace flat_combining {
         publication_record_type *   m_pHead;    ///< Head of publication list
         boost::thread_specific_ptr< publication_record_type >   m_pThreadRec;   ///< Thread-local publication record
         mutable global_lock_type    m_Mutex;    ///< Global mutex
-        mutable stat                m_Stat;     ///< Internal statistics
         unsigned int const          m_nCompactFactor; ///< Publication list compacting factor (the list will be compacted through \p %m_nCompactFactor combining passes)
         unsigned int const          m_nCombinePassCount; ///< Number of combining passes
 
@@ -346,7 +277,6 @@ namespace flat_combining {
                 pRec = cxx11_allocator().New();
                 pRec->pOwner = reinterpret_cast<void *>( this );
                 m_pThreadRec.reset( pRec );
-                m_Stat.onCreatePubRecord();
             }
 
             if ( pRec->nState.load( memory_model::memory_order_acquire ) != active )
@@ -354,7 +284,6 @@ namespace flat_combining {
 
             assert( pRec->nRequest.load( memory_model::memory_order_relaxed ) == req_EmptyRecord );
 
-            m_Stat.onAcquirePubRecord();
             return pRec;
         }
 
@@ -363,17 +292,15 @@ namespace flat_combining {
         {
             assert( pRec->is_done() );
             pRec->nRequest.store( req_EmptyRecord, memory_model::memory_order_release );
-            m_Stat.onReleasePubRecord();
         }
 
-        /// Trying to execute operation \p nOpId
-        /**
-            \p pRec is the publication record acquiring by \ref acquire_record earlier.
-            \p owner is a container that is owner of flat combining kernel object.
+        /*
+            pRec is the publication record acquiring by acquire_record earlier.
+            owner is a container that is owner of flat combining kernel object.
             As a result the current thread can become a combiner or can wait for
-            another combiner performs \p pRec operation.
+            another combiner performs pRec operation.
 
-            If the thread becomes a combiner, the kernel calls \p owner.fc_apply
+            If the thread becomes a combiner, the kernel calls owner.fc_apply
             for each active non-empty publication record.
         */
         template <class Container>
@@ -381,44 +308,9 @@ namespace flat_combining {
         {
             assert( nOpId >= req_Operation );
             assert( pRec );
-            //assert( pRec->nState.load( memory_model::memory_order_relaxed ) == active );
             pRec->nRequest.store( nOpId, memory_model::memory_order_release );
-
-            m_Stat.onOperation();
 
             try_combining( owner, pRec );
-        }
-
-        /// Trying to execute operation \p nOpId in batch-combine mode
-        /**
-            \p pRec is the publication record acquiring by \ref acquire_record earlier.
-            \p owner is a container that owns flat combining kernel object.
-            As a result the current thread can become a combiner or can wait for
-            another combiner performs \p pRec operation.
-
-            If the thread becomes a combiner, the kernel calls \p owner.fc_process
-            giving the container the full access over publication list. This function
-            is useful for an elimination technique if the container supports any kind of
-            that. The container can perform multiple pass through publication list.
-
-            \p owner.fc_process has two arguments - forward iterators on begin and end of
-            publication list, see \ref iterator class. For each processed record the container
-            should call \ref operation_done function to mark the record as processed.
-
-            On the end of \p %batch_combine the \ref combine function is called
-            to process rest of publication records.
-        */
-        template <class Container>
-        void batch_combine( unsigned int nOpId, publication_record_type * pRec, Container& owner )
-        {
-            assert( nOpId >= req_Operation );
-            assert( pRec );
-            //assert( pRec->nState.load( memory_model::memory_order_relaxed ) == active );
-            pRec->nRequest.store( nOpId, memory_model::memory_order_release );
-
-            m_Stat.onOperation();
-
-            try_batch_combining( owner, pRec );
         }
 
         /// Waits for end of combining
@@ -427,29 +319,6 @@ namespace flat_combining {
             lock_guard l( m_Mutex );
         }
 
-        /// Marks \p rec as executed
-        /**
-            This function should be called by container if batch_combine mode is used.
-            For usual combining (see \ref combine) this function is excess.
-        */
-        void operation_done( publication_record& rec )
-        {
-            rec.nRequest.store( req_Response, memory_model::memory_order_release );
-        }
-
-        /// Internal statistics
-        stat const& statistics() const
-        {
-            return m_Stat;
-        }
-
-        //@cond
-        // For container classes based on flat combining
-        stat& internal_statistics() const
-        {
-            return m_Stat;
-        }
-        //@endcond
 
         /// Returns the compact factor
         unsigned int compact_factor() const
@@ -463,101 +332,7 @@ namespace flat_combining {
             return m_nCombinePassCount;
         }
 
-    public:
-        /// Publication list iterator
-        /**
-            Iterators are intended for batch processing by container's
-            \p fc_process function.
-            The iterator allows iterate through active publication list.
-        */
-        class iterator
-        {
-            //@cond
-            friend class kernel;
-            publication_record_type * m_pRec;
-            //@endcond
-
-        protected:
-            //@cond
-            iterator( publication_record_type * pRec )
-                : m_pRec( pRec )
-            {
-                skip_inactive();
-            }
-
-            void skip_inactive()
-            {
-                while ( m_pRec && (m_pRec->nState.load( memory_model::memory_order_acquire ) != active
-                                || m_pRec->nRequest.load( memory_model::memory_order_relaxed) < req_Operation ))
-                {
-                    m_pRec = static_cast<publication_record_type *>(m_pRec->pNext.load( memory_model::memory_order_acquire ));
-                }
-            }
-            //@endcond
-
-        public:
-            /// Initializes an empty iterator object
-            iterator()
-                : m_pRec( nullptr )
-            {}
-
-            /// Copy ctor
-            iterator( iterator const& src )
-                : m_pRec( src.m_pRec )
-            {}
-
-            /// Pre-increment
-            iterator& operator++()
-            {
-                assert( m_pRec );
-                m_pRec = static_cast<publication_record_type *>( m_pRec->pNext.load( memory_model::memory_order_acquire ));
-                skip_inactive();
-                return *this;
-            }
-
-            /// Post-increment
-            iterator operator++(int)
-            {
-                assert( m_pRec );
-                iterator it(*this);
-                ++(*this);
-                return it;
-            }
-
-            /// Dereference operator, can return \p nullptr
-            publication_record_type * operator ->()
-            {
-                return m_pRec;
-            }
-
-            /// Dereference operator, the iterator should not be an end iterator
-            publication_record_type& operator*()
-            {
-                assert( m_pRec );
-                return *m_pRec;
-            }
-
-            /// Iterator equality
-            friend bool operator==( iterator it1, iterator it2 )
-            {
-                return it1.m_pRec == it2.m_pRec;
-            }
-
-            /// Iterator inequality
-            friend bool operator!=( iterator it1, iterator it2 )
-            {
-                return !( it1 == it2 );
-            }
-        };
-
-        /// Returns an iterator to the first active publication record
-        iterator begin()    { return iterator(m_pHead); }
-
-        /// Returns an iterator to the end of publication list. Should not be dereferenced.
-        iterator end()      { return iterator(); }
-
     private:
-        //@cond
         static void tls_cleanup( publication_record_type * pRec )
         {
             // Thread done
@@ -586,7 +361,6 @@ namespace flat_combining {
             m_pHead = pRec;
             pRec->pOwner = this;
             m_pThreadRec.reset( pRec );
-            m_Stat.onCreatePubRecord();
         }
 
         void publish( publication_record_type * pRec )
@@ -605,7 +379,6 @@ namespace flat_combining {
                         // Failed CAS changes p
                     } while ( !m_pHead->pNext.compare_exchange_weak( p, static_cast<publication_record *>(pRec),
                         memory_model::memory_order_release, atomics::memory_order_relaxed ));
-                    m_Stat.onActivatePubRecord();
                 }
             }
         }
@@ -647,34 +420,6 @@ namespace flat_combining {
         }
 
         template <class Container>
-        void try_batch_combining( Container& owner, publication_record_type * pRec )
-        {
-            if ( m_Mutex.try_lock() ) {
-                // The thread becomes a combiner
-                lock_guard l( m_Mutex, std::adopt_lock_t() );
-
-                // The record pRec can be excluded from publication list. Re-publish it
-                republish( pRec );
-
-                batch_combining( owner );
-                assert( pRec->nRequest.load( memory_model::memory_order_relaxed ) == req_Response );
-            }
-            else {
-                // There is another combiner, wait while it executes our request
-                if ( !wait_for_combining( pRec ) ) {
-                    // The thread becomes a combiner
-                    lock_guard l( m_Mutex, std::adopt_lock_t() );
-
-                    // The record pRec can be excluded from publication list. Re-publish it
-                    republish( pRec );
-
-                    batch_combining( owner );
-                    assert( pRec->nRequest.load( memory_model::memory_order_relaxed ) == req_Response );
-                }
-            }
-        }
-
-        template <class Container>
         void combining( Container& owner )
         {
             // The thread is a combiner
@@ -686,7 +431,6 @@ namespace flat_combining {
                 if ( !combining_pass( owner, nCurAge ))
                     break;
 
-            m_Stat.onCombining();
             if ( (nCurAge & m_nCompactFactor) == 0 )
                 compact_list( nCurAge );
         }
@@ -723,23 +467,6 @@ namespace flat_combining {
                 p = p->pNext.load( memory_model::memory_order_acquire );
             }
             return bOpDone;
-        }
-
-        template <class Container>
-        void batch_combining( Container& owner )
-        {
-            // The thread is a combiner
-            assert( !m_Mutex.try_lock() );
-
-            unsigned int const nCurAge = m_nCount.fetch_add( 1, memory_model::memory_order_release ) + 1;
-
-            for ( unsigned int nPass = 0; nPass < m_nCombinePassCount; ++nPass )
-                owner.fc_process( begin(), end() );
-
-            combining_pass( owner, nCurAge );
-            m_Stat.onCombining();
-            if ( (nCurAge & m_nCompactFactor) == 0 )
-                compact_list( nCurAge );
         }
 
         bool wait_for_combining( publication_record_type * pRec )
@@ -779,7 +506,6 @@ namespace flat_combining {
                         {
                             p->nState.store( inactive, memory_model::memory_order_release );
                             p = pNext;
-                            m_Stat.onDeactivatePubRecord();
                             continue;
                         }
                     }
@@ -787,8 +513,6 @@ namespace flat_combining {
                 pPrev = p;
                 p = p->pNext.load( memory_model::memory_order_acquire );
             }
-
-            m_Stat.onCompactPublicationList();
         }
 
         publication_record * unlink_and_delete_record( publication_record * pPrev, publication_record * p )
@@ -799,21 +523,17 @@ namespace flat_combining {
                     memory_model::memory_order_release, atomics::memory_order_relaxed ))
                 {
                     free_publication_record( static_cast<publication_record_type *>( p ));
-                    m_Stat.onDeletePubRecord();
                 }
                 return pNext;
             }
             else {
                 m_pHead = static_cast<publication_record_type *>( p->pNext.load( memory_model::memory_order_acquire ));
                 free_publication_record( static_cast<publication_record_type *>( p ));
-                m_Stat.onDeletePubRecord();
                 return m_pHead;
             }
         }
-        //@endcond
     };
 
-    //@cond
     class container
     {
     public:
@@ -829,7 +549,6 @@ namespace flat_combining {
             assert( false );
         }
     };
-    //@endcond
 
 } // namespace flat_combining
 

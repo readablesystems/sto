@@ -31,6 +31,7 @@
 #include "PairingHeap.hh"
 #include "Queue.hh"
 #include "Queue2.hh"
+#include "FCQueue.hh"
 #include "randgen.hh"
 
 #define GLOBAL_SEED 10
@@ -233,6 +234,27 @@ public:
     size_t size() { return 0; }
 private:
     Queue2<T> v_;
+};
+template <typename T> struct DatatypeHarness<FCQueue<T>> {
+    typedef T value_type;
+public:
+    bool pop() { int ret; return v_.pop(ret); }
+    bool cleanup_pop() { 
+        int ret;
+        Sto::start_transaction();
+        bool r = pop(ret);
+        assert(Sto::try_commit());
+        return r;
+    }
+    void push(T v) { v_.push(v); }
+    void init_push(T v) { 
+        Sto::start_transaction();
+        v_.push(v);
+        assert(Sto::try_commit());
+    }
+    size_t size() { return v_.size(); }
+private:
+    FCQueue<T> v_;
 };
 
 template <typename T> struct DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, T>> : 
