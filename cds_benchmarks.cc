@@ -182,7 +182,7 @@ int num_pqueues = 5;
     {desc, "VyukovMPMC queue", new test<DatatypeHarness<cds::container::VyukovMPMCCycleQueue<type>>>(CDS, ## __VA_ARGS__)}
 */
 Test queue_tests[] = {
-    //MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
+    MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
     MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomSingleOpTest, int, RANDOM_VALS),
     //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
 };

@@ -228,10 +228,10 @@ public: // flat combining cooperation, not for direct use!
                         it->threadid = pRec->pValPop->threadid;
                         it->flags = delete_bit;
                         *(pRec->pValPop) = *it; 
+                        pRec->is_empty = false;
                         auto index = it-q_.begin();
                         last_deleted_index_ = (last_deleted_index_ > index) ? last_deleted_index_ : index;
-                        fprintf(stderr, "\tmarked deleted! size %d", q_.size());
-                        fprintf(stderr, "\tldi %d", last_deleted_index_); 
+                        //fprintf(stderr, "\tmarked deleted! \tsize %d\tldi %d", q_.size(), last_deleted_index_);
                         return;
                     }
                 }
@@ -246,7 +246,7 @@ public: // flat combining cooperation, not for direct use!
             if (last_deleted_index_) {
                 for (auto it = q_.begin(); it != q_.begin() + last_deleted_index_; ++it) {
                     if (has_delete(*it) && (threadid == it->threadid)) {
-                        fprintf(stderr, "\tinstalling!");
+                        //fprintf(stderr, "\tinstalling!");
                         it->flags = popped_bit;
                     }
                 }
