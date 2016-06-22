@@ -42,7 +42,7 @@ template <typename T>
 struct val_wrapper {
     T val;
     uint8_t flags; 
-    Transaction::tid_type tid;
+    int threadid;
 };
 
 template <typename T, 
@@ -73,7 +73,8 @@ private:
         op_push = flat_combining::req_Operation, // Push
         op_mark_deleted,  // Pop (mark as poisoned)
         op_install_pops, // Pop (marking as not-a-value)
-        op_undo_mark_deleted, // Cleanup Pops (mark poisoned values with specified tid as clean)
+        op_undo_mark_deleted, // Cleanup Pops (mark poisoned values with specified threadid as clean)
+        op_clear_popped, // Clear Pops at front which were successfully popped
         op_clear,       // Clear
         op_empty        // Empty
     };
@@ -93,17 +94,18 @@ private:
     flat_combining::kernel< fc_record> fc_kernel_;
     queue_type  q_;
     version_type queueversion_;
+    unsigned last_deleted_index_;
  
 public:
     /// Initializes empty queue object
-    FCQueue() : queueversion_(0) {}
+    FCQueue() : queueversion_(0), last_deleted_index_(0) {}
 
     /// Initializes empty queue object and gives flat combining parameters
     FCQueue(
         unsigned int nCompactFactor     ///< Flat combining: publication list compacting factor
         ,unsigned int nCombinePassCount ///< Flat combining: number of combining passes for combiner thread
         )
-        : fc_kernel_( nCompactFactor, nCombinePassCount ), queueversion_(0)
+        : fc_kernel_( nCompactFactor, nCombinePassCount ), queueversion_(0), last_deleted_index_(0)
     {}
 
     // Adds an item to the write list of the txn, to be installed at commit time
@@ -136,7 +138,7 @@ public:
     bool pop( value_type& val ) {
         // try marking an item in the queue as deleted
         fc_record * pRec = fc_kernel_.acquire_record();
-        val_wrapper<value_type> vw = {val, 0, Sto::commit_tid()};
+        val_wrapper<value_type> vw = {val, 0, TThread::id()};
         pRec->pValPop = &vw;
         fc_kernel_.combine( op_mark_deleted, pRec, *this );
         assert( pRec->is_done() );
@@ -144,6 +146,9 @@ public:
 
         if (!pRec->is_empty) {
             val = std::move(pRec->pValPop->val);
+            // we marked an item as deleted in the queue, 
+            // so we have to install at commit time
+            Sto::item(this,0).add_write();
             return true;
         } else { // queue is empty
             auto pushitem = Sto::item(this,-1);
@@ -207,7 +212,7 @@ public: // flat combining cooperation, not for direct use!
         // this function is called under FC mutex, so switch TSan off
         CDS_TSAN_ANNOTATE_IGNORE_RW_BEGIN;
 
-        Transaction::tid_type tid;
+        int threadid;
         // do the operation requested
         switch ( pRec->op() ) {
         case op_push:
@@ -218,10 +223,15 @@ public: // flat combining cooperation, not for direct use!
         case op_mark_deleted:
             assert( pRec->pValPop );
             if ( !q_.empty() ) {
-                for (auto it = begin(q_); it != end(q_); ++it) {
-                    if (!has_delete(*it)) {
+                for (auto it = q_.begin(); it != q_.end(); ++it) {
+                    if (!has_delete(*it) && !is_popped(*it)) {
+                        it->threadid = pRec->pValPop->threadid;
+                        it->flags = delete_bit;
                         *(pRec->pValPop) = *it; 
-                        it->flags |= delete_bit;
+                        auto index = it-q_.begin();
+                        last_deleted_index_ = (last_deleted_index_ > index) ? last_deleted_index_ : index;
+                        fprintf(stderr, "\tmarked deleted! size %d", q_.size());
+                        fprintf(stderr, "\tldi %d", last_deleted_index_); 
                         return;
                     }
                 }
@@ -231,27 +241,55 @@ public: // flat combining cooperation, not for direct use!
             break;
 
         case op_install_pops:
-            tid = pRec->pValEdit->tid;
-            for (auto it = begin(q_); it != end(q_); ++it) {
-                if (has_delete(*it) && (tid == it->tid)) {
-                    it->flags |= popped_bit;
+            threadid = pRec->pValEdit->threadid;
+            // stop after the last item marked deleted
+            if (last_deleted_index_) {
+                for (auto it = q_.begin(); it != q_.begin() + last_deleted_index_; ++it) {
+                    if (has_delete(*it) && (threadid == it->threadid)) {
+                        fprintf(stderr, "\tinstalling!");
+                        it->flags = popped_bit;
+                    }
                 }
             }
             break;
         
-        case op_undo_mark_deleted: 
-            tid = pRec->pValEdit->tid;
-            for (auto it = begin(q_); it != end(q_); ++it) {
-                if (has_delete(*it) && (tid == it->tid)) {
-                   it->flags &= 0; 
+        case op_undo_mark_deleted: {
+            threadid = pRec->pValEdit->threadid;
+            auto begin_it = q_.begin();
+            auto new_di = 0;
+          
+            if (last_deleted_index_) {
+                for (auto it = begin_it; it != begin_it + last_deleted_index_; ++it) {
+                    if (has_delete(*it)) {
+                        if (threadid == it->threadid) {
+                            it->flags = 0;
+                        } else {
+                            new_di = it-begin_it;
+                        }
+                    }
                 }
             }
+            // set the last_deleted_index_ to the next greatest deleted element's index in the queue
+            // (which could be unchanged)
+            last_deleted_index_ = new_di;
             break;
-        
+        } 
+
+        case op_clear_popped: 
+            // remove all popped values from txns that have committed their pops
+            // XXX should this be done elsewhere?
+            while( is_popped(q_.front()) ) {
+                if (last_deleted_index_) --last_deleted_index_;
+                fprintf(stderr, "\tpopped!!! %d\n", last_deleted_index_);
+                q_.pop_front();
+            }
+            break;
+
         // the following are non-transactional
         case op_clear:
             while ( !q_.empty() )
                 q_.pop_back();
+            last_deleted_index_ = 0;
             break;
         case op_empty:
             pRec->is_empty = q_.empty();
@@ -306,15 +344,16 @@ private:
     }
 
     void install(TransItem& item, Transaction& txn) override {
-        // install pops
-        fc_record * pRec = fc_kernel_.acquire_record();
-        auto val = T();
-        val_wrapper<value_type> vw = {val, 0, txn.commit_tid()};
-        pRec->pValEdit = &vw;
-        fc_kernel_.combine( op_install_pops, pRec, *this );
-        assert( pRec->is_done() );
-        fc_kernel_.release_record( pRec );
-
+        // install pops if the txn marked a value as deleted
+        if (item.key<int>() == 0) {
+            fc_record * pRec = fc_kernel_.acquire_record();
+            auto val = T();
+            val_wrapper<value_type> vw = {val, 0, TThread::id()};
+            pRec->pValEdit = &vw;
+            fc_kernel_.combine( op_install_pops, pRec, *this );
+            assert( pRec->is_done() );
+            fc_kernel_.release_record( pRec );
+        }
         // install pushes
         if (item.key<int>() == -1) {
             assert(queueversion_.is_locked_here());
@@ -345,12 +384,6 @@ private:
             // set queueversion appropriately
             queueversion_.set_version(txn.commit_tid());
         }
-
-        // remove all popped values from txns that have committed their pops
-        // XXX should this be done elsewhere?
-        while( is_popped(q_.front()) ) {
-            q_.pop_front();
-        }
     }
     
     void unlock(TransItem& item) override {
@@ -362,17 +395,25 @@ private:
 
     void cleanup(TransItem& item, bool committed) override {
         (void)item;
-        (void)committed;
-
-        // Mark all deleted items in the queue as not deleted 
-        fc_record * pRec = fc_kernel_.acquire_record();
-        auto val = T();
-        val_wrapper<value_type> vw = {val, 0, Sto::commit_tid()};
-        pRec->pValEdit = &vw;
-        fc_kernel_.combine( op_undo_mark_deleted, pRec, *this );
-        assert( pRec->is_done() );
-        fc_kernel_.release_record( pRec );
-
+        if (!committed) {
+            // Mark all deleted items in the queue as not deleted 
+            fc_record * pRec = fc_kernel_.acquire_record();
+            auto val = T();
+            val_wrapper<value_type> vw = {val, 0, TThread::id()};
+            pRec->pValEdit = &vw;
+            fc_kernel_.combine( op_undo_mark_deleted, pRec, *this );
+            assert( pRec->is_done() );
+            fc_kernel_.release_record( pRec );
+        } else {
+            // clear all the popped values at the front of the queue 
+            fc_record * pRec = fc_kernel_.acquire_record();
+            auto val = T();
+            val_wrapper<value_type> vw = {val, 0, 0};
+            pRec->pValEdit = &vw;
+            fc_kernel_.combine( op_clear_popped, pRec, *this );
+            assert( pRec->is_done() );
+            fc_kernel_.release_record( pRec );
+        }
         if (queueversion_.is_locked_here()) {
             queueversion_.unlock();
         }
