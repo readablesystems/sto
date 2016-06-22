@@ -94,18 +94,19 @@ private:
     flat_combining::kernel< fc_record> fc_kernel_;
     queue_type  q_;
     version_type queueversion_;
-    unsigned last_deleted_index_;
+    int last_deleted_index_;   // index of the item in q_ last marked deleted. 
+                                    // -1 indicates an empty q_
  
 public:
     /// Initializes empty queue object
-    FCQueue() : queueversion_(0), last_deleted_index_(0) {}
+    FCQueue() : queueversion_(0), last_deleted_index_(-1) {}
 
     /// Initializes empty queue object and gives flat combining parameters
     FCQueue(
         unsigned int nCompactFactor     ///< Flat combining: publication list compacting factor
         ,unsigned int nCombinePassCount ///< Flat combining: number of combining passes for combiner thread
         )
-        : fc_kernel_( nCompactFactor, nCombinePassCount ), queueversion_(0), last_deleted_index_(0)
+        : fc_kernel_( nCompactFactor, nCombinePassCount ), queueversion_(0), last_deleted_index_(-1)
     {}
 
     // Adds an item to the write list of the txn, to be installed at commit time
@@ -231,7 +232,6 @@ public: // flat combining cooperation, not for direct use!
                         pRec->is_empty = false;
                         auto index = it-q_.begin();
                         last_deleted_index_ = (last_deleted_index_ > index) ? last_deleted_index_ : index;
-                        //fprintf(stderr, "\tmarked deleted! \tsize %d\tldi %d", q_.size(), last_deleted_index_);
                         return;
                     }
                 }
@@ -240,26 +240,30 @@ public: // flat combining cooperation, not for direct use!
             pRec->is_empty = true;
             break;
 
-        case op_install_pops:
+        case op_install_pops: {
             threadid = pRec->pValEdit->threadid;
-            // stop after the last item marked deleted
-            if (last_deleted_index_) {
-                for (auto it = q_.begin(); it != q_.begin() + last_deleted_index_; ++it) {
-                    if (has_delete(*it) && (threadid == it->threadid)) {
-                        //fprintf(stderr, "\tinstalling!");
-                        it->flags = popped_bit;
-                    }
+            bool found = false;
+            // we should only install if the txn actually did mark an item
+            // as deleted in the queue. this implies that the queue cannot be 
+            // nonempty
+            assert(last_deleted_index_ != -1);
+            for (auto it = q_.begin(); it != q_.begin() + last_deleted_index_ + 1; ++it) {
+                if (has_delete(*it) && (threadid == it->threadid)) {
+                    found = true;
+                    it->flags = popped_bit;
                 }
             }
+            assert(found);
             break;
+        }
         
         case op_undo_mark_deleted: {
             threadid = pRec->pValEdit->threadid;
             auto begin_it = q_.begin();
             auto new_di = 0;
           
-            if (last_deleted_index_) {
-                for (auto it = begin_it; it != begin_it + last_deleted_index_; ++it) {
+            if (last_deleted_index_ != -1) {
+                for (auto it = begin_it; it != begin_it + last_deleted_index_ + 1; ++it) {
                     if (has_delete(*it)) {
                         if (threadid == it->threadid) {
                             it->flags = 0;
@@ -278,9 +282,8 @@ public: // flat combining cooperation, not for direct use!
         case op_clear_popped: 
             // remove all popped values from txns that have committed their pops
             // XXX should this be done elsewhere?
-            while( is_popped(q_.front()) ) {
-                if (last_deleted_index_) --last_deleted_index_;
-                fprintf(stderr, "\tpopped!!! %d\n", last_deleted_index_);
+            while( !q_.empty() && is_popped(q_.front()) ) {
+                if (last_deleted_index_ != -1) --last_deleted_index_;
                 q_.pop_front();
             }
             break;
@@ -289,7 +292,7 @@ public: // flat combining cooperation, not for direct use!
         case op_clear:
             while ( !q_.empty() )
                 q_.pop_back();
-            last_deleted_index_ = 0;
+            last_deleted_index_ = -1;
             break;
         case op_empty:
             pRec->is_empty = q_.empty();

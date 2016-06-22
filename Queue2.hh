@@ -208,6 +208,8 @@ private:
     void install(TransItem& item, Transaction& txn) override {
         // install pops
         if (has_delete(item)) {
+            // queueversion_ should be locked here because we must have popped
+            assert(queueversion_.is_locked_here());
             // only increment head if item popped from actual q
             if (!is_rw(item)) {
                 head_ = (head_+1) % BUF_SIZE;
