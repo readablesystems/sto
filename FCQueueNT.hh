@@ -122,7 +122,8 @@ public:
         // try marking an item in the queue as deleted
         /*
         if (!q_.empty()) {
-            val = q_.front().val;
+            vw = std::move(q_.front())
+            val = vw.val;
             q_.pop_front();
             return true;
         }
@@ -205,6 +206,14 @@ public: // flat combining cooperation, not for direct use!
             break;
 
         case op_mark_deleted:
+            // XXX This doesn't cause a double free here... what??
+            assert( pRec->pValPop );
+            pRec->is_empty = q_.empty();
+            if ( !pRec->is_empty) {
+                *(pRec->pValPop) = std::move( q_.front());
+                q_.pop_front();
+            }
+            break;/*
             assert( pRec->pValPop );
             if ( !q_.empty() ) {
                 for (auto it = q_.begin(); it != q_.end(); ++it) {
@@ -222,8 +231,10 @@ public: // flat combining cooperation, not for direct use!
             // didn't find any non-deleted items, queue is empty
             pRec->is_empty = true;
             break;
+            */
 
         case op_install_pops: {
+            /*
             threadid = pRec->pValEdit->threadid;
             bool found = false;
             // we should only install if the txn actually did mark an item
@@ -236,7 +247,7 @@ public: // flat combining cooperation, not for direct use!
                     it->flags = popped_bit;
                 }
             }
-            assert(found);
+            assert(found);*/
             break;
         }
         
