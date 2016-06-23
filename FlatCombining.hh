@@ -89,8 +89,6 @@
     less impressive results.
 */
 
-std::atomic<int> waited(0);
-std::atomic<int> no_wait(0);
 namespace flat_combining {
 
     /// Special values of publication_record::nRequest
@@ -256,7 +254,6 @@ namespace flat_combining {
             pRec->nRequest.store( nOpId, memory_model::memory_order_release );
 
             try_combining( owner, pRec );
-            //fprintf(stderr, "%d : %d\n", int(waited), int(no_wait));
         }
 
         /// Marks \p rec as executed
@@ -326,7 +323,6 @@ namespace flat_combining {
         void try_combining( Container& owner, publication_record_type * pRec )
         {
             if ( m_Mutex.try_lock() ) {
-                no_wait++;
                 // The thread becomes a combiner
                 lock_guard l( m_Mutex, std::adopt_lock_t() );
 
@@ -399,7 +395,6 @@ namespace flat_combining {
         {
             back_off bkoff;
             while ( pRec->nRequest.load( memory_model::memory_order_acquire ) != req_Response ) {
-                waited++;
 
                 // The record can be excluded from publication list. Reinsert it
                 republish( pRec );

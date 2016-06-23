@@ -31,7 +31,7 @@
 #include "PairingHeap.hh"
 #include "Queue.hh"
 #include "Queue2.hh"
-#include "FCQueueNT.hh"
+#include "FCQueue.hh"
 #include "randgen.hh"
 
 #define GLOBAL_SEED 10

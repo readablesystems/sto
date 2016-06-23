@@ -37,10 +37,10 @@
 #include "Transaction.hh"
 #include "TWrapped.hh"
 
-#define FC 0
+#define FC 1
 #define ITER 0
 
-// Tells the combiner thread the flags associated with each item in the 
+// Tells the combiner thread the flags associated with each item in the q
 template <typename T>
 struct val_wrapper {
     T val;
@@ -158,8 +158,7 @@ public:
 #else
         /* XXX this is super fast, which means that doing all the above FC code 
          * slows it down by at least a factor of 2
-         * it ALSO causes double free errors, which doesn't make any sense, because
-         * there's only one thread doing pops...
+         * it ALSO causes double free errors, which makes sense because pushes aren't locking, etc.
          */
         if (!q_.empty()) {
             val = 1; 
@@ -267,7 +266,7 @@ public: // flat combining cooperation, not for direct use!
 #endif
 
         case op_install_pops: {
-            /*
+#if ITER
             threadid = pRec->pValEdit->threadid;
             bool found = false;
             // we should only install if the txn actually did mark an item
@@ -280,7 +279,8 @@ public: // flat combining cooperation, not for direct use!
                     it->flags = popped_bit;
                 }
             }
-            assert(found);*/
+            assert(found);
+#endif
             break;
         }
         
@@ -355,9 +355,7 @@ private:
 
     bool lock(TransItem& item, Transaction& txn) override {
         if ((item.key<int>() == -1) && !queueversion_.is_locked_here())  {
-            //queueversion_.lock();
-            return txn.try_lock(item, queueversion_);
-        }
+            return txn.try_lock(item, queueversion_); }
         return true;
     }
 
@@ -387,6 +385,7 @@ private:
         }
         // install pushes
         if (item.key<int>() == -1) {
+#if !FC
             assert(queueversion_.is_locked_here());
             // write all the elements
             if (is_list(item)) {
@@ -404,8 +403,12 @@ private:
                 q_.push_back(vw);
             }
             // set queueversion appropriately
-            queueversion_.set_version(txn.commit_tid());
-            /* XXX Using FC here slows things down immensely
+            if (!queueversion_.is_locked_here()) {
+                queueversion_.set_version(txn.commit_tid());
+            }
+        }
+#else
+            // XXX Using FC here slows things down immensely
             assert(queueversion_.is_locked_here());
             // write all the elements
             fc_record * pRec = fc_kernel_.acquire_record();
@@ -430,8 +433,9 @@ private:
             }
             fc_kernel_.release_record( pRec );
             // set queueversion appropriately
-            queueversion_.set_version(txn.commit_tid());*/
+            queueversion_.set_version(txn.commit_tid());
         }
+#endif 
     }
     
     void unlock(TransItem& item) override {
@@ -442,7 +446,7 @@ private:
     }
 
     void cleanup(TransItem& item, bool committed) override {
-        (void)item;/*
+        (void)item;
         if (!committed) {
             // Mark all deleted items in the queue as not deleted 
             fc_record * pRec = fc_kernel_.acquire_record();
@@ -461,7 +465,7 @@ private:
             fc_kernel_.combine( op_clear_popped, pRec, *this );
             assert( pRec->is_done() );
             fc_kernel_.release_record( pRec );
-        }*/
+        }
         if (queueversion_.is_locked_here()) {
             queueversion_.unlock();
         }
