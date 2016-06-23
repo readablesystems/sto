@@ -31,6 +31,9 @@
 #ifndef FCQUEUE_H 
 #define FCQUEUE_H
 
+#define FC 0
+#define ITER 0
+
 #include <deque>
 #include <list>
 #include "FlatCombining.hh"
@@ -104,10 +107,11 @@ public:
 
     // Adds an item to the write list of the txn, to be installed at commit time
     bool push( value_type const& v ) {
-        /*
+#if !FC
         q_.push_back({v,0,0});
         return true;
-        */
+#else
+        // XXX USING FC
         fc_record * pRec = fc_kernel_.acquire_record();
         val_wrapper<value_type> vw = {v, 0, 0};
         pRec->pValPush = &vw; 
@@ -115,12 +119,13 @@ public:
         assert( pRec->is_done() );
         fc_kernel_.release_record( pRec );
         return true;
+#endif
     }
 
     // Marks an item as poisoned in the queue
     bool pop( value_type& val ) {
         // try marking an item in the queue as deleted
-        /*
+#if !FC
         if (!q_.empty()) {
             vw = std::move(q_.front())
             val = vw.val;
@@ -128,8 +133,7 @@ public:
             return true;
         }
         return false;
-        */
-        // XXX
+#else
         fc_record * pRec = fc_kernel_.acquire_record();
         val_wrapper<value_type> vw = {val, 0, TThread::id()};
         pRec->pValPop = &vw;
@@ -160,6 +164,7 @@ public:
         } 
         // queue was empty
         return false;
+#endif
     }
 
     // Clears the queue
@@ -206,14 +211,15 @@ public: // flat combining cooperation, not for direct use!
             break;
 
         case op_mark_deleted:
-            // XXX This doesn't cause a double free here... what??
+#if !ITER
             assert( pRec->pValPop );
             pRec->is_empty = q_.empty();
             if ( !pRec->is_empty) {
-                *(pRec->pValPop) = std::move( q_.front());
+                *(pRec->pValPop) = std::move(q_.front());
                 q_.pop_front();
             }
-            break;/*
+            break;
+#else
             assert( pRec->pValPop );
             if ( !q_.empty() ) {
                 for (auto it = q_.begin(); it != q_.end(); ++it) {
@@ -231,10 +237,12 @@ public: // flat combining cooperation, not for direct use!
             // didn't find any non-deleted items, queue is empty
             pRec->is_empty = true;
             break;
-            */
+#endif
 
         case op_install_pops: {
-            /*
+#if !ITER
+            break;
+#else
             threadid = pRec->pValEdit->threadid;
             bool found = false;
             // we should only install if the txn actually did mark an item
@@ -247,8 +255,9 @@ public: // flat combining cooperation, not for direct use!
                     it->flags = popped_bit;
                 }
             }
-            assert(found);*/
+            assert(found);
             break;
+#endif
         }
         
         case op_undo_mark_deleted: {

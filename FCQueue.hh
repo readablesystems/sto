@@ -37,6 +37,9 @@
 #include "Transaction.hh"
 #include "TWrapped.hh"
 
+#define FC 0
+#define ITER 0
+
 // Tells the combiner thread the flags associated with each item in the 
 template <typename T>
 struct val_wrapper {
@@ -138,6 +141,7 @@ public:
     // Marks an item as poisoned in the queue
     bool pop( value_type& val ) {
         // try marking an item in the queue as deleted
+#if FC
         fc_record * pRec = fc_kernel_.acquire_record();
         val_wrapper<value_type> vw = {val, 0, TThread::id()};
         pRec->pValPop = &vw;
@@ -151,16 +155,17 @@ public:
             // so we have to install at commit time
             Sto::item(this,0).add_write();
             return true;
+#else
         /* XXX this is super fast, which means that doing all the above FC code 
          * slows it down by at least a factor of 2
          * it ALSO causes double free errors, which doesn't make any sense, because
          * there's only one thread doing pops...
-         * 
+         */
         if (!q_.empty()) {
             val = 1; 
             q_.pop_front();
             return true;
-        */
+#endif
         } else { // queue is empty
             auto pushitem = Sto::item(this,-1);
             // add a read of the queueversion
@@ -232,6 +237,7 @@ public: // flat combining cooperation, not for direct use!
             break;
 
         case op_mark_deleted:
+#if !ITER
             // XXX This causes a double free here... what??
             assert( pRec->pValPop );
             pRec->is_empty = q_.empty();
@@ -239,7 +245,8 @@ public: // flat combining cooperation, not for direct use!
                 *(pRec->pValPop) = std::move( q_.front());
                 q_.pop_front();
             }
-            break;/*
+            break;
+#else
             assert( pRec->pValPop );
             if ( !q_.empty() ) {
                 for (auto it = q_.begin(); it != q_.end(); ++it) {
@@ -257,7 +264,7 @@ public: // flat combining cooperation, not for direct use!
             // didn't find any non-deleted items, queue is empty
             pRec->is_empty = true;
             break;
-            */
+#endif
 
         case op_install_pops: {
             /*
