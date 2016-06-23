@@ -232,21 +232,16 @@ public: // flat combining cooperation, not for direct use!
             break;
 
         case op_mark_deleted:
-            // XXX why does this cause a double free?????
+            // XXX This causes a double free here... what??
             assert( pRec->pValPop );
             pRec->is_empty = q_.empty();
             if ( !pRec->is_empty) {
                 *(pRec->pValPop) = std::move( q_.front());
                 q_.pop_front();
             }
-            break;
-            /*
+            break;/*
             assert( pRec->pValPop );
-            // XXX why is this version slower than iterating, but iterating takes forever??
             if ( !q_.empty() ) {
-                *(pRec->pValPop) = {1, 1, 1}; 
-                pRec->is_empty = false;
-                break;
                 for (auto it = q_.begin(); it != q_.end(); ++it) {
                     if (!has_delete(*it) && !is_popped(*it)) {
                         it->threadid = pRec->pValPop->threadid;
@@ -265,7 +260,7 @@ public: // flat combining cooperation, not for direct use!
             */
 
         case op_install_pops: {
-            break;
+            /*
             threadid = pRec->pValEdit->threadid;
             bool found = false;
             // we should only install if the txn actually did mark an item
@@ -278,7 +273,7 @@ public: // flat combining cooperation, not for direct use!
                     it->flags = popped_bit;
                 }
             }
-            assert(found);
+            assert(found);*/
             break;
         }
         
