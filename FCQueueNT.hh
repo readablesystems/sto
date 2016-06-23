@@ -45,18 +45,12 @@ struct val_wrapper {
     int threadid;
 };
 
-template <typename T, 
-         class Queue = std::deque<val_wrapper<T>>,
-         template <typename> class W = TOpaqueWrapped>
-class FCQueue : public Shared,
-    public flat_combining::container
+template <typename T, class Queue = std::deque<val_wrapper<T>>>
+class FCQueue : public flat_combining::container
 {
 public:
     typedef T           value_type;     ///< Value type
     typedef Queue       queue_type;     ///< Sequential queue class
-
-    // STO
-    typedef typename W<value_type>::version_type version_type;
 
     // For thread-specific txns
     static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<0;
@@ -93,51 +87,48 @@ private:
 
     flat_combining::kernel< fc_record> fc_kernel_;
     queue_type  q_;
-    version_type queueversion_;
     int last_deleted_index_;   // index of the item in q_ last marked deleted. 
                                     // -1 indicates an empty q_
  
 public:
     /// Initializes empty queue object
-    FCQueue() : queueversion_(0), last_deleted_index_(-1) {}
+    FCQueue() : last_deleted_index_(-1) {}
 
     /// Initializes empty queue object and gives flat combining parameters
     FCQueue(
         unsigned int nCompactFactor     ///< Flat combining: publication list compacting factor
         ,unsigned int nCombinePassCount ///< Flat combining: number of combining passes for combiner thread
         )
-        : fc_kernel_( nCompactFactor, nCombinePassCount ), queueversion_(0), last_deleted_index_(-1)
+        : fc_kernel_( nCompactFactor, nCombinePassCount ), last_deleted_index_(-1)
     {}
 
     // Adds an item to the write list of the txn, to be installed at commit time
     bool push( value_type const& v ) {
-        // add the item to the write list (to be applied at commit time)
-        auto item = Sto::item(this, -1);
-        if (item.has_write()) {
-            if (!is_list(item)) {
-                auto& val = item.template write_value<value_type>();
-                std::list<value_type> write_list;
-                if (!is_empty(item)) {
-                    write_list.push_back(val);
-                    item.clear_flags(empty_bit);
-                }
-                write_list.push_back(v);
-                item.clear_write();
-                item.add_write(write_list);
-                item.add_flags(list_bit);
-            }
-            else {
-                auto& write_list = item.template write_value<std::list<value_type>>();
-                write_list.push_back(v);
-            }
-        }
-        else item.add_write(v);
+        /*
+        q_.push_back({v,0,0});
+        return true;
+        */
+        fc_record * pRec = fc_kernel_.acquire_record();
+        val_wrapper<value_type> vw = {v, 0, 0};
+        pRec->pValPush = &vw; 
+        fc_kernel_.combine( op_push, pRec, *this );
+        assert( pRec->is_done() );
+        fc_kernel_.release_record( pRec );
         return true;
     }
 
     // Marks an item as poisoned in the queue
     bool pop( value_type& val ) {
-        /*// try marking an item in the queue as deleted
+        // try marking an item in the queue as deleted
+        /*
+        if (!q_.empty()) {
+            val = q_.front().val;
+            q_.pop_front();
+            return true;
+        }
+        return false;
+        */
+        // XXX
         fc_record * pRec = fc_kernel_.acquire_record();
         val_wrapper<value_type> vw = {val, 0, TThread::id()};
         pRec->pValPop = &vw;
@@ -146,46 +137,28 @@ public:
         fc_kernel_.release_record( pRec );
 
         if (!pRec->is_empty) {
-            val = std::move(pRec->pValPop->val);
-            // we marked an item as deleted in the queue, 
-            // so we have to install at commit time
-            Sto::item(this,0).add_write();
+            // install the deleted item
+            pRec = fc_kernel_.acquire_record();
+            auto val = T();
+            val_wrapper<value_type> vw = {val, 0, TThread::id()};
+            pRec->pValEdit = &vw;
+            fc_kernel_.combine( op_install_pops, pRec, *this );
+            assert( pRec->is_done() );
+            fc_kernel_.release_record( pRec );
+
+            // clear all the popped values at the front of the queue 
+            pRec = fc_kernel_.acquire_record();
+            val = T();
+            vw = {val, 0, 0};
+            pRec->pValEdit = &vw;
+            fc_kernel_.combine( op_clear_popped, pRec, *this );
+            assert( pRec->is_done() );
+            fc_kernel_.release_record( pRec );
+
             return true;
-        */
-        /* XXX this is super fast, which means that doing all the above FC code 
-         * slows it down by at least a factor of 2
-         * it ALSO causes double free errors, which doesn't make any sense, because
-         * there's only one thread doing pops...
-         * */
-        if (!q_.empty()) {
-            val = 1; 
-            q_.pop_front();
-            return true;
-        } else { // queue is empty
-            auto pushitem = Sto::item(this,-1);
-            // add a read of the queueversion
-            if (!pushitem.has_read()) pushitem.observe(queueversion_); 
-            // try read-my-writes
-            if (pushitem.has_write()) {
-                if (is_list(pushitem)) {
-                    auto& write_list = pushitem.template write_value<std::list<value_type>>();
-                    // if there is an element to be pushed on the queue, return addr of queue element
-                    if (!write_list.empty()) {
-                        write_list.pop_front();
-                        return true;
-                    }
-                    else return false;
-                }
-                // not a list, has exactly one element
-                else if (!is_empty(pushitem)) {
-                    pushitem.add_flags(empty_bit);
-                    return true;
-                }
-                else return false;
-            }
-            // fail if trying to read from an empty queue
-            else return false;  
-        }
+        } 
+        // queue was empty
+        return false;
     }
 
     // Clears the queue
@@ -232,22 +205,8 @@ public: // flat combining cooperation, not for direct use!
             break;
 
         case op_mark_deleted:
-            // XXX why does this cause a double free?????
-            /*
-            if (!q_.empty()) {
-                *(pRec->pValPop) = {1, 1, 1}; 
-                pRec->is_empty = false;
-                q_.pop_front();
-                break;
-            }
-            pRec->is_empty = true;
-            break;*/
             assert( pRec->pValPop );
-            // XXX why is this version slower than iterating, but iterating takes forever??
             if ( !q_.empty() ) {
-                *(pRec->pValPop) = {1, 1, 1}; 
-                pRec->is_empty = false;
-                break;/*
                 for (auto it = q_.begin(); it != q_.end(); ++it) {
                     if (!has_delete(*it) && !is_popped(*it)) {
                         it->threadid = pRec->pValPop->threadid;
@@ -258,14 +217,13 @@ public: // flat combining cooperation, not for direct use!
                         last_deleted_index_ = (last_deleted_index_ > index) ? last_deleted_index_ : index;
                         break;
                     }
-                }*/
+                }
             }
             // didn't find any non-deleted items, queue is empty
             pRec->is_empty = true;
             break;
 
         case op_install_pops: {
-            break;
             threadid = pRec->pValEdit->threadid;
             bool found = false;
             // we should only install if the txn actually did mark an item
@@ -336,133 +294,6 @@ private:
     
     bool is_popped(const val_wrapper<value_type>& val) {
         return val.flags & popped_bit;
-    }
-
-    // STO-specific functions for txn commit protocol
-    bool is_rw(const TransItem& item) {
-        return item.flags() & read_writes;
-    }
- 
-    bool is_list(const TransItem& item) {
-        return item.flags() & list_bit;
-    }
- 
-    bool is_empty(const TransItem& item) {
-        return item.flags() & empty_bit;
-    }
-
-    bool lock(TransItem& item, Transaction& txn) override {
-        if ((item.key<int>() == -1) && !queueversion_.is_locked_here())  {
-            //queueversion_.lock();
-            return txn.try_lock(item, queueversion_);
-        }
-        return true;
-    }
-
-    bool check(TransItem& item, Transaction& t) override {
-        (void) t;
-        // check if we read off the write_list. We should only abort if both: 
-        //      1) we saw the queue was empty during a pop/front and read off our own write list 
-        //      2) someone else has pushed onto the queue before we got here
-        if (item.key<int>() == -1)
-            return item.check_version(queueversion_);
-        // shouldn't reach this
-        assert(0);
-        return false;
-    }
-
-    void install(TransItem& item, Transaction& txn) override {
-        // install pops if the txn marked a value as deleted
-        // XXX adding a FC call to pop() also adds one here 
-        if (item.key<int>() == 0) {
-            fc_record * pRec = fc_kernel_.acquire_record();
-            auto val = T();
-            val_wrapper<value_type> vw = {val, 0, TThread::id()};
-            pRec->pValEdit = &vw;
-            fc_kernel_.combine( op_install_pops, pRec, *this );
-            assert( pRec->is_done() );
-            fc_kernel_.release_record( pRec );
-        }
-        // install pushes
-        if (item.key<int>() == -1) {
-            assert(queueversion_.is_locked_here());
-            // write all the elements
-            if (is_list(item)) {
-                auto& write_list = item.template write_value<std::list<value_type>>();
-                while (!write_list.empty()) {
-                    auto val = write_list.front();
-                    write_list.pop_front();
-                    val_wrapper<value_type> vw = {val, 0, 0};
-                    q_.push_back(vw);
-                }
-            }
-            else if (!is_empty(item)) {
-                auto& val = item.template write_value<value_type>();
-                val_wrapper<value_type> vw = {val, 0, 0};
-                q_.push_back(vw);
-            }
-            // set queueversion appropriately
-            queueversion_.set_version(txn.commit_tid());
-            /* XXX Using FC here slows things down immensely
-            assert(queueversion_.is_locked_here());
-            // write all the elements
-            fc_record * pRec = fc_kernel_.acquire_record();
-            if (is_list(item)) {
-                auto& write_list = item.template write_value<std::list<value_type>>();
-                while (!write_list.empty()) {
-                    // TODO not efficient -- should use batch processing here?
-                    auto val = write_list.front();
-                    write_list.pop_front();
-                    val_wrapper<value_type> vw = {val, 0, 0};
-                    pRec->pValPush = &vw; 
-                    fc_kernel_.combine( op_push, pRec, *this );
-                    assert( pRec->is_done() );
-                }
-            }
-            else if (!is_empty(item)) {
-                auto& val = item.template write_value<value_type>();
-                val_wrapper<value_type> vw = {val, 0, 0};
-                pRec->pValPush = &vw; 
-                fc_kernel_.combine( op_push, pRec, *this );
-                assert( pRec->is_done() );
-            }
-            fc_kernel_.release_record( pRec );
-            // set queueversion appropriately
-            queueversion_.set_version(txn.commit_tid());*/
-        }
-    }
-    
-    void unlock(TransItem& item) override {
-        (void)item;
-        if (queueversion_.is_locked_here()) {
-            queueversion_.unlock();
-        }
-    }
-
-    void cleanup(TransItem& item, bool committed) override {
-        (void)item;/*
-        if (!committed) {
-            // Mark all deleted items in the queue as not deleted 
-            fc_record * pRec = fc_kernel_.acquire_record();
-            auto val = T();
-            val_wrapper<value_type> vw = {val, 0, TThread::id()};
-            pRec->pValEdit = &vw;
-            fc_kernel_.combine( op_undo_mark_deleted, pRec, *this );
-            assert( pRec->is_done() );
-            fc_kernel_.release_record( pRec );
-        } else {
-            // clear all the popped values at the front of the queue 
-            fc_record * pRec = fc_kernel_.acquire_record();
-            auto val = T();
-            val_wrapper<value_type> vw = {val, 0, 0};
-            pRec->pValEdit = &vw;
-            fc_kernel_.combine( op_clear_popped, pRec, *this );
-            assert( pRec->is_done() );
-            fc_kernel_.release_record( pRec );
-        }*/
-        if (queueversion_.is_locked_here()) {
-            queueversion_.unlock();
-        }
     }
 };
 

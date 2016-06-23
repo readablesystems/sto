@@ -88,6 +88,9 @@
     like stack, queue, deque. For intrusive concurrent containers the flat combining demonstrates
     less impressive results.
 */
+
+std::atomic<int> waited(0);
+std::atomic<int> no_wait(0);
 namespace flat_combining {
 
     /// Special values of publication_record::nRequest
@@ -95,7 +98,6 @@ namespace flat_combining {
     {
         req_EmptyRecord,    ///< Publication record is empty
         req_Response,       ///< Operation is done
-
         req_Operation       ///< First operation id for derived classes
     };
 
@@ -113,7 +115,6 @@ namespace flat_combining {
     struct publication_record {
         atomics::atomic<unsigned int>    nRequest;   ///< Request field (depends on data structure)
         atomics::atomic<unsigned int>    nState;     ///< Record state: inactive, active, removed
-        atomics::atomic<unsigned int>    nAge;       ///< Age of the record
         atomics::atomic<publication_record *> pNext; ///< Next record in publication list
         void *                              pOwner;    ///< [internal data] Pointer to \ref kernel object that manages the publication list
 
@@ -121,7 +122,6 @@ namespace flat_combining {
         publication_record()
             : nRequest( req_EmptyRecord )
             , nState( inactive )
-            , nAge(0)
             , pNext( nullptr )
             , pOwner( nullptr )
         {}
@@ -172,39 +172,24 @@ namespace flat_combining {
         //@endcond
 
     protected:
-        atomics::atomic<unsigned int>  m_nCount;   ///< Total count of combining passes. Used as an age.
         publication_record_type *   m_pHead;    ///< Head of publication list
         boost::thread_specific_ptr< publication_record_type >   m_pThreadRec;   ///< Thread-local publication record
         mutable global_lock_type    m_Mutex;    ///< Global mutex
-        unsigned int const          m_nCompactFactor; ///< Publication list compacting factor (the list will be compacted through \p %m_nCompactFactor combining passes)
         unsigned int const          m_nCombinePassCount; ///< Number of combining passes
 
     public:
         /// Initializes the object
-        /**
-            Compact factor = 64
-
-            Combiner pass count = 8
-        */
-        kernel()
-            : m_nCount(0)
-            , m_pHead( nullptr )
+        kernel() : m_pHead( nullptr )
             , m_pThreadRec( tls_cleanup )
-            , m_nCompactFactor( 64 - 1 ) // binary mask
             , m_nCombinePassCount( 8 )
         {
             init();
         }
 
         /// Initializes the object
-        kernel(
-            unsigned int nCompactFactor  ///< Publication list compacting factor (the list will be compacted through \p nCompactFactor combining passes)
-            ,unsigned int nCombinePassCount ///< Number of combining passes for combiner thread
-            )
-            : m_nCount(0)
-            , m_pHead( nullptr )
+        kernel(unsigned int nCombinePassCount) ///< Number of combining passes for combiner thread
+            : m_pHead( nullptr )
             , m_pThreadRec( tls_cleanup )
-            , m_nCompactFactor( (unsigned int)( cds::beans::ceil2( nCompactFactor ) - 1 ))   // binary mask
             , m_nCombinePassCount( nCombinePassCount )
         {
             init();
@@ -271,30 +256,13 @@ namespace flat_combining {
             pRec->nRequest.store( nOpId, memory_model::memory_order_release );
 
             try_combining( owner, pRec );
-        }
-
-        /// Waits for end of combining
-        void wait_while_combining() const
-        {
-            lock_guard l( m_Mutex );
+            //fprintf(stderr, "%d : %d\n", int(waited), int(no_wait));
         }
 
         /// Marks \p rec as executed
         void operation_done( publication_record& rec )
         {
             rec.nRequest.store( req_Response, memory_model::memory_order_release );
-        }
-
-        /// Returns the compact factor
-        unsigned int compact_factor() const
-        {
-            return m_nCompactFactor + 1;
-        }
-
-        /// Returns number of combining passes for combiner thread
-        unsigned int combine_pass_count() const
-        {
-            return m_nCombinePassCount;
         }
 
     private:
@@ -331,8 +299,6 @@ namespace flat_combining {
         void publish( publication_record_type * pRec )
         {
             assert( pRec->nState.load( memory_model::memory_order_relaxed ) == inactive );
-
-            pRec->nAge.store( m_nCount.load(memory_model::memory_order_acquire), memory_model::memory_order_release );
             pRec->nState.store( active, memory_model::memory_order_release );
 
             // Insert record to publication list
@@ -360,6 +326,7 @@ namespace flat_combining {
         void try_combining( Container& owner, publication_record_type * pRec )
         {
             if ( m_Mutex.try_lock() ) {
+                no_wait++;
                 // The thread becomes a combiner
                 lock_guard l( m_Mutex, std::adopt_lock_t() );
 
@@ -390,18 +357,13 @@ namespace flat_combining {
             // The thread is a combiner
             assert( !m_Mutex.try_lock() );
 
-            unsigned int const nCurAge = m_nCount.fetch_add( 1, memory_model::memory_order_release ) + 1;
-
             for ( unsigned int nPass = 0; nPass < m_nCombinePassCount; ++nPass )
-                if ( !combining_pass( owner, nCurAge ))
+                if ( !combining_pass( owner ))
                     break;
-
-            if ( (nCurAge & m_nCompactFactor) == 0 )
-                compact_list( nCurAge );
         }
 
         template <class Container>
-        bool combining_pass( Container& owner, unsigned int nCurAge )
+        bool combining_pass( Container& owner )
         {
             publication_record * pPrev = nullptr;
             publication_record * p = m_pHead;
@@ -410,7 +372,6 @@ namespace flat_combining {
                 switch ( p->nState.load( memory_model::memory_order_acquire )) {
                     case active:
                         if ( p->op() >= req_Operation ) {
-                            p->nAge.store( nCurAge, memory_model::memory_order_release );
                             owner.fc_apply( static_cast<publication_record_type *>(p) );
                             operation_done( *p );
                             bOpDone = true;
@@ -438,6 +399,7 @@ namespace flat_combining {
         {
             back_off bkoff;
             while ( pRec->nRequest.load( memory_model::memory_order_acquire ) != req_Response ) {
+                waited++;
 
                 // The record can be excluded from publication list. Reinsert it
                 republish( pRec );
@@ -454,30 +416,6 @@ namespace flat_combining {
                 }
             }
             return true;
-        }
-
-        void compact_list( unsigned int const nCurAge )
-        {
-            // Thinning publication list
-            publication_record * pPrev = nullptr;
-            for ( publication_record * p = m_pHead; p; ) {
-                if ( p->nState.load( memory_model::memory_order_acquire ) == active
-                  && p->nAge.load( memory_model::memory_order_acquire ) + m_nCompactFactor < nCurAge )
-                {
-                    if ( pPrev ) {
-                        publication_record * pNext = p->pNext.load( memory_model::memory_order_acquire );
-                        if ( pPrev->pNext.compare_exchange_strong( p, pNext,
-                            memory_model::memory_order_release, atomics::memory_order_relaxed ))
-                        {
-                            p->nState.store( inactive, memory_model::memory_order_release );
-                            p = pNext;
-                            continue;
-                        }
-                    }
-                }
-                pPrev = p;
-                p = p->pNext.load( memory_model::memory_order_acquire );
-            }
         }
 
         publication_record * unlink_and_delete_record( publication_record * pPrev, publication_record * p )

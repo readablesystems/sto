@@ -182,8 +182,8 @@ int num_pqueues = 5;
     {desc, "VyukovMPMC queue", new test<DatatypeHarness<cds::container::VyukovMPMCCycleQueue<type>>>(CDS, ## __VA_ARGS__)}
 */
 Test queue_tests[] = {
-    MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
-    MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomSingleOpTest, int, RANDOM_VALS),
+    //MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
+    //MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomSingleOpTest, int, RANDOM_VALS),
     //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
 };
 int num_queues = 4;
@@ -215,6 +215,12 @@ int main() {
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
     
+    PushPopTest<DatatypeHarness<FCQueue<int>>> test1(STO, RANDOM_VALS);
+    PushPopTest<DatatypeHarness<Queue2<int>>> test2(STO, RANDOM_VALS);
+    startAndWait(&test1, 10000, 2);
+    //startAndWait(&test2, 10000, 2);
+
+    /* 
     for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {
         dualprintf("\n%s\n", pqueue_tests[i].desc.c_str());
         fprintf(global_verbose_stats_file, "STO, STO(O), MS, FC\n");
@@ -258,7 +264,7 @@ int main() {
             if (queue_tests[i].desc.find("PushPop")!=std::string::npos) dualprintf("\n");
             dualprintf("\n");
         }
-    }
+    }*/
     cds::Terminate();
     return 0;
 }
