@@ -118,6 +118,7 @@ public:
     void push(value_type v) { assert(v_.push(v)); }
     void init_push(value_type v) { assert(v_.push(v)); }
     size_t size() { return v_.size(); }
+    int num_combines() { return v_.statistics().m_nCombiningCount; }
 private:
     DS v_;
 };
@@ -258,17 +259,24 @@ private:
 
 template <typename T> struct DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, T>> : 
     public CDSDatatypeHarness<cds::container::BasketQueue<cds::gc::HP, T>>{};
-template <typename T> struct DatatypeHarness<cds::container::FCQueue<T>> : 
-    public CDSDatatypeHarness<cds::container::FCQueue<T>>{};
 #define FCQUEUE_TRAITS() cds::container::fcqueue::make_traits< \
+    cds::opt::lock_type<cds::sync::spin>, \
+    cds::opt::back_off<cds::backoff::delay_of<2>>, \
+    cds::opt::allocator<CDS_DEFAULT_ALLOCATOR>, \
+    cds::opt::stat<cds::container::fcqueue::stat<cds::atomicity::event_counter>>, \
+    cds::opt::memory_model<cds::opt::v::relaxed_ordering>, \
+    cds::opt::enable_elimination<false>>::type
+template <typename T> struct DatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS()>> : 
+    public CDSDatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS()>>{};
+#define FCQUEUE_TRAITS_ELIM() cds::container::fcqueue::make_traits< \
     cds::opt::lock_type<cds::sync::spin>, \
     cds::opt::back_off<cds::backoff::delay_of<2>>, \
     cds::opt::allocator<CDS_DEFAULT_ALLOCATOR>, \
     cds::opt::stat<cds::container::fcqueue::empty_stat>, \
     cds::opt::memory_model<cds::opt::v::relaxed_ordering>, \
     cds::opt::enable_elimination<true>>::type
-template <typename T> struct DatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS()>>  :
-    public CDSDatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS()>>{};
+template <typename T> struct DatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS_ELIM()>>  :
+    public CDSDatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS_ELIM()>>{};
 template <typename T> struct DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, T>> : 
     public CDSDatatypeHarness<cds::container::MoirQueue<cds::gc::HP, T>>{};
 template <typename T> struct DatatypeHarness<cds::container::MSQueue<cds::gc::HP, T>> : 
@@ -424,6 +432,9 @@ public:
             }
         }
     }
+    void print() {
+        fprintf(stderr, "Num Combines %d\n", this->v_.num_combines());
+    }
 private:
     int ds_type_;
 };
@@ -499,3 +510,4 @@ private:
     int ds_type_;
     std::vector<std::vector<op>> txn_set_;
 };
+
