@@ -103,6 +103,7 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
         global_thread_ctrs[i].skip = 0;
     }
     print_abort_stats();
+    fprintf(stderr, "Num Combines: %d\n", int(num_combines));
 }
 
 void dualprintf(const char* fmt,...) {
@@ -216,9 +217,10 @@ int main() {
     pthread_detach(advancer);
     
     PushPopTest<DatatypeHarness<FCQueue<int>>> test1(STO, RANDOM_VALS);
-    PushPopTest<DatatypeHarness<Queue2<int>>> test2(STO, RANDOM_VALS);
+    PushPopTest<DatatypeHarness<cds::container::FCQueue<int, std::queue<int>, FCQUEUE_TRAITS()>>> test2(CDS, RANDOM_VALS);
     startAndWait(&test1, 10000, 2);
-    //startAndWait(&test2, 10000, 2);
+    startAndWait(&test2, 10000, 2);
+    test2.print();
 
     /* 
     for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {
@@ -268,5 +270,6 @@ int main() {
     cds::Terminate();
     return 0;
 }
+
 
 
