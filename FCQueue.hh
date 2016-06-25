@@ -38,7 +38,8 @@
 #include "TWrapped.hh"
 
 #define FC 1
-#define ITER 0
+#define ITER 1
+#define LOCKQV 1
 
 // Tells the combiner thread the flags associated with each item in the q
 template <typename T>
@@ -99,18 +100,41 @@ private:
     version_type queueversion_;
     int last_deleted_index_;   // index of the item in q_ last marked deleted. 
                                     // -1 indicates an empty q_
+    std::atomic<int> num_pop_iter;
+    std::atomic<int> num_pop;
+    std::atomic<int> num_clear_iter;
+    std::atomic<int> num_clear;
+    std::atomic<int> num_install_iter;
+    std::atomic<int> num_install;
  
 public:
     /// Initializes empty queue object
-    FCQueue() : queueversion_(0), last_deleted_index_(-1) {}
+    FCQueue() : queueversion_(0), last_deleted_index_(-1), 
+    num_pop_iter(0), num_pop(0),
+    num_clear_iter(0), num_clear(0),
+    num_install_iter(0), num_install(0)
+    {}
 
     /// Initializes empty queue object and gives flat combining parameters
     FCQueue(
         unsigned int nCompactFactor     ///< Flat combining: publication list compacting factor
         ,unsigned int nCombinePassCount ///< Flat combining: number of combining passes for combiner thread
         )
-        : fc_kernel_( nCompactFactor, nCombinePassCount ), queueversion_(0), last_deleted_index_(-1)
+        : fc_kernel_( nCompactFactor, nCombinePassCount ), queueversion_(0), last_deleted_index_(-1),
+        num_pop_iter(0), num_pop(0),
+        num_clear_iter(0), num_clear(0),
+        num_install_iter(0), num_install(0)
     {}
+
+    ~FCQueue() { 
+        fprintf(stderr, "Iterations / Attempts:\t \
+                Pops: %d / %d\t, \
+                Install: %d / %d\t, \
+                Clear: %d / %d\n",
+                int(num_pop_iter), int(num_pop), 
+                int(num_install_iter), int(num_install),
+                int(num_clear_iter), int(num_clear));
+    }
 
     // Adds an item to the write list of the txn, to be installed at commit time
     bool push( value_type const& v ) {
@@ -153,13 +177,9 @@ public:
             val = std::move(pRec->pValPop->val);
             // we marked an item as deleted in the queue, 
             // so we have to install at commit time
-            Sto::item(this,0).add_write();
+            Sto::item(this,0).add_write(0);
             return true;
 #else
-        /* XXX this is super fast, which means that doing all the above FC code 
-         * slows it down by at least a factor of 2
-         * it ALSO causes double free errors, which makes sense because pushes aren't locking, etc.
-         */
         if (!q_.empty()) {
             val = 1; 
             q_.pop_front();
@@ -235,9 +255,9 @@ public: // flat combining cooperation, not for direct use!
             q_.push_back( *(pRec->pValPush) );
             break;
 
-        case op_mark_deleted:
+        case op_mark_deleted: {
+            num_pop++;
 #if !ITER
-            // XXX This causes a double free here... what??
             assert( pRec->pValPop );
             pRec->is_empty = q_.empty();
             if ( !pRec->is_empty) {
@@ -247,13 +267,16 @@ public: // flat combining cooperation, not for direct use!
             break;
 #else
             assert( pRec->pValPop );
+            bool found = false;
             if ( !q_.empty() ) {
                 for (auto it = q_.begin(); it != q_.end(); ++it) {
+                    num_pop_iter++;
                     if (!has_delete(*it) && !is_popped(*it)) {
                         it->threadid = pRec->pValPop->threadid;
                         it->flags = delete_bit;
                         *(pRec->pValPop) = *it; 
                         pRec->is_empty = false;
+                        found = true;
                         auto index = it-q_.begin();
                         last_deleted_index_ = (last_deleted_index_ > index) ? last_deleted_index_ : index;
                         break;
@@ -261,11 +284,13 @@ public: // flat combining cooperation, not for direct use!
                 }
             }
             // didn't find any non-deleted items, queue is empty
-            pRec->is_empty = true;
+            if (!found) pRec->is_empty = true;
             break;
 #endif
+        }
 
         case op_install_pops: {
+            num_install++;
 #if ITER
             threadid = pRec->pValEdit->threadid;
             bool found = false;
@@ -274,6 +299,7 @@ public: // flat combining cooperation, not for direct use!
             // nonempty
             assert(last_deleted_index_ != -1);
             for (auto it = q_.begin(); it != q_.begin() + last_deleted_index_ + 1; ++it) {
+                num_install_iter++;
                 if (has_delete(*it) && (threadid == it->threadid)) {
                     found = true;
                     it->flags = popped_bit;
@@ -307,8 +333,10 @@ public: // flat combining cooperation, not for direct use!
         } 
 
         case op_clear_popped: 
+            num_clear++;
             // remove all popped values from txns that have committed their pops
             while( !q_.empty() && is_popped(q_.front()) ) {
+                num_clear_iter++;
                 if (last_deleted_index_ != -1) --last_deleted_index_;
                 q_.pop_front();
             }
@@ -355,7 +383,10 @@ private:
 
     bool lock(TransItem& item, Transaction& txn) override {
         if ((item.key<int>() == -1) && !queueversion_.is_locked_here())  {
-            return txn.try_lock(item, queueversion_); }
+#if LOCKQV
+            return txn.try_lock(item, queueversion_); 
+#endif
+        } 
         return true;
     }
 
@@ -373,7 +404,6 @@ private:
 
     void install(TransItem& item, Transaction& txn) override {
         // install pops if the txn marked a value as deleted
-        // XXX adding a FC call to pop() also adds one here 
         if (item.key<int>() == 0) {
             fc_record * pRec = fc_kernel_.acquire_record();
             auto val = T();
@@ -402,20 +432,13 @@ private:
                 val_wrapper<value_type> vw = {val, 0, 0};
                 q_.push_back(vw);
             }
-            // set queueversion appropriately
-            if (!queueversion_.is_locked_here()) {
-                queueversion_.set_version(txn.commit_tid());
-            }
         }
 #else
-            // XXX Using FC here slows things down immensely
-            assert(queueversion_.is_locked_here());
             // write all the elements
             fc_record * pRec = fc_kernel_.acquire_record();
             if (is_list(item)) {
                 auto& write_list = item.template write_value<std::list<value_type>>();
                 while (!write_list.empty()) {
-                    // TODO not efficient -- should use batch processing here?
                     auto val = write_list.front();
                     write_list.pop_front();
                     val_wrapper<value_type> vw = {val, 0, 0};
@@ -432,10 +455,13 @@ private:
                 assert( pRec->is_done() );
             }
             fc_kernel_.release_record( pRec );
-            // set queueversion appropriately
-            queueversion_.set_version(txn.commit_tid());
         }
 #endif 
+        // set queueversion appropriately
+        if (!queueversion_.is_locked_here()) {
+            queueversion_.lock();
+            queueversion_.set_version(txn.commit_tid());
+        }    
     }
     
     void unlock(TransItem& item) override {
@@ -447,6 +473,7 @@ private:
 
     void cleanup(TransItem& item, bool committed) override {
         (void)item;
+#if FC
         if (!committed) {
             // Mark all deleted items in the queue as not deleted 
             fc_record * pRec = fc_kernel_.acquire_record();
@@ -466,6 +493,7 @@ private:
             assert( pRec->is_done() );
             fc_kernel_.release_record( pRec );
         }
+#endif
         if (queueversion_.is_locked_here()) {
             queueversion_.unlock();
         }

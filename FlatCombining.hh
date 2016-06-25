@@ -89,6 +89,7 @@
     less impressive results.
 */
 
+std::atomic<int> num_combines(0);
 namespace flat_combining {
 
     /// Special values of publication_record::nRequest
@@ -291,6 +292,7 @@ namespace flat_combining {
             m_pHead = pRec;
             pRec->pOwner = this;
             m_pThreadRec.reset( pRec );
+            num_combines = 0;
         }
 
         void publish( publication_record_type * pRec )
@@ -322,6 +324,7 @@ namespace flat_combining {
         template <class Container>
         void try_combining( Container& owner, publication_record_type * pRec )
         {
+            num_combines++;
             if ( m_Mutex.try_lock() ) {
                 // The thread becomes a combiner
                 lock_guard l( m_Mutex, std::adopt_lock_t() );

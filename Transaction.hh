@@ -24,10 +24,10 @@
 #endif
 
 #ifndef STO_DEBUG_ABORTS
-#define STO_DEBUG_ABORTS 0
+#define STO_DEBUG_ABORTS 1
 #endif
 #ifndef STO_DEBUG_ABORTS_FRACTION
-#define STO_DEBUG_ABORTS_FRACTION 0.0001
+#define STO_DEBUG_ABORTS_FRACTION 0.001
 #endif
 
 #ifndef STO_SORT_WRITESET
@@ -934,7 +934,7 @@ inline TransProxy& TransProxy::add_read_opaque(T rdata) {
 inline TransProxy& TransProxy::observe(TVersion version, bool add_read) {
     assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_))
-        t()->abort_because(item(), "locked", version.value());
+        t()->abort_because(item(), "locked in observe", version.value());
     t()->check_opacity(item(), version.value());
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
@@ -946,7 +946,7 @@ inline TransProxy& TransProxy::observe(TVersion version, bool add_read) {
 inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read) {
     assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_))
-        t()->abort_because(item(), "locked", version.value());
+        t()->abort_because(item(), "locked in observe", version.value());
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
@@ -958,7 +958,7 @@ inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read)
 inline TransProxy& TransProxy::observe(TCommutativeVersion version, bool add_read) {
     assert(!has_stash());
     if (version.is_locked())
-        t()->abort_because(item(), "locked", version.value());
+        t()->abort_because(item(), "locked in observe", version.value());
     t()->check_opacity(item(), version.value());
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
