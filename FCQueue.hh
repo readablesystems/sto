@@ -37,6 +37,11 @@
 #include "Transaction.hh"
 #include "TWrapped.hh"
 
+/*
+ * The best results seem to come from a queue that is 
+ * FC, does not use iteration (so that only 1 FC is made per pop), 
+ * and does not lock the queue.
+ */
 #define FC 1
 #define ITER 1
 #define LOCKQV 1
@@ -416,7 +421,6 @@ private:
         // install pushes
         if (item.key<int>() == -1) {
 #if !FC
-            assert(queueversion_.is_locked_here());
             // write all the elements
             if (is_list(item)) {
                 auto& write_list = item.template write_value<std::list<value_type>>();
