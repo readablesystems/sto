@@ -10,6 +10,7 @@
 
 #include "PriorityQueue.hh"
 #include "Queue2.hh"
+#include "Queue.hh"
 #include "randgen.hh"
 #include <cds/container/vyukov_mpmc_cycle_queue.h>
 #include <cds/container/fcpriority_queue.h>
@@ -101,7 +102,8 @@ public:
             val = op->args[0];
             q->push(val);
         } else if (op->op == 1) {
-            q->pop(val);
+            q->front(val);
+            q->pop();
             std::cout << "[" << val << "] [" << op->rdata[0] << "]" << std::endl;
             assert(val == op->rdata[0]);
         }
@@ -112,11 +114,12 @@ public:
             int v1, v2;
             if (q->front(v1)) {
                 q->pop();
-                assert(q1->pop(v2));
+                q1->front(v2);
+                assert(q1->pop());
                 std::cout << "[" << v1 << "] [" << v2 << "]" << std::endl;
                 assert(v1 == v2);
             } else {
-                assert(!q1->pop(v1));
+                assert(!q1->pop());
             }
         }
         RETRY(false);

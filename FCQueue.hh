@@ -42,8 +42,7 @@
  * FC, does not use iteration (so that only 1 FC is made per pop), 
  * and does not lock the queue.
  */
-#define FC 1
-#define ITER 1
+#define ITER 0
 #define LOCKQV 0
 #define INSTALL 0
 #define CLEANUP 0
@@ -180,7 +179,6 @@ public:
     // Marks an item as poisoned in the queue
     bool pop( value_type& val ) {
         // try marking an item in the queue as deleted
-#if FC
         fc_record * pRec = fc_kernel_.acquire_record();
         val_wrapper<value_type> vw = {val, 0, TThread::id()};
         pRec->pValPop = &vw;
@@ -194,12 +192,6 @@ public:
             // so we have to install at commit time
             Sto::item(this,0).add_write(0);
             return true;
-#else
-        if (!q_.empty()) {
-            val = 1; 
-            q_.pop_front();
-            return true;
-#endif
         } else { // queue is empty
             auto pushitem = Sto::item(this,-1);
             // add a read of the queueversion
@@ -404,6 +396,8 @@ private:
         if ((item.key<int>() == -1) && !queueversion_.is_locked_here())  {
 #if LOCKQV
             return txn.try_lock(item, queueversion_); 
+#else
+        (void)txn;
 #endif
         } 
         return true;
@@ -436,24 +430,6 @@ private:
         }
         // install pushes
         if (item.key<int>() == -1) {
-#if !FC
-            // write all the elements
-            if (is_list(item)) {
-                auto& write_list = item.template write_value<std::list<value_type>>();
-                while (!write_list.empty()) {
-                    auto val = write_list.front();
-                    write_list.pop_front();
-                    val_wrapper<value_type> vw = {val, 0, 0};
-                    q_.push_back(vw);
-                }
-            }
-            else if (!is_empty(item)) {
-                auto& val = item.template write_value<value_type>();
-                val_wrapper<value_type> vw = {val, 0, 0};
-                q_.push_back(vw);
-            }
-        }
-#else
             // write all the elements
             fc_record * pRec = fc_kernel_.acquire_record();
             if (is_list(item)) {
@@ -476,7 +452,6 @@ private:
             }
             fc_kernel_.release_record( pRec );
         }
-#endif 
         // set queueversion appropriately
         if (!queueversion_.is_locked_here()) {
             queueversion_.lock();
@@ -493,7 +468,6 @@ private:
 
     void cleanup(TransItem& item, bool committed) override {
         (void)item;
-#if FC
 #if CLEANUP || ITER
         if (!committed) {
             // Mark all deleted items in the queue as not deleted 
@@ -514,7 +488,8 @@ private:
             assert( pRec->is_done() );
             fc_kernel_.release_record( pRec );
         }
-#endif
+#else
+        (void)committed;
 #endif
         if (queueversion_.is_locked_here()) {
             queueversion_.unlock();

@@ -9,14 +9,14 @@
 #include "cds_benchmarks.hh"
 
 #define N_THREADS 10
-#define MAX_OPS 5
+#define MAX_OPS 10
 
 #define QUEUE 0
 #define PQUEUE 1
 #define DS QUEUE
 
 PqueueTester<cds::container::FCPriorityQueue<int>, PriorityQueue<int>> pqtester;
-QueueTester<Queue2<int>, cds::container::VyukovMPMCCycleQueue<int>> qtester;
+QueueTester<Queue2<int>, Queue<int>> qtester;
 
 template <typename T>
 void run(T* q, int me) {
@@ -91,9 +91,9 @@ int main() {
 
 #if DS==QUEUE
     Queue2<int> stoq;
-    cds::container::VyukovMPMCCycleQueue<int> cdsq(100000);
+    Queue<int> stoq1;
     qtester.init_sut(&stoq);
-    qtester.init_ref(&cdsq);
+    qtester.init_ref(&stoq1);
     for (int i = 0; i < N_THREADS; i++) {
         txn_list.emplace_back();
     }
@@ -110,12 +110,12 @@ int main() {
     for(; it != combined_txn_list.end(); it++) {
         Sto::start_transaction();
         for (unsigned i = 0; i < it->second->ops.size(); i++) {
-            qtester.redoOp(&cdsq, it->second->ops[i]);
+            qtester.redoOp(&stoq1, it->second->ops[i]);
         }
         assert(Sto::try_commit());
     }
     
-    qtester.check(&stoq, &cdsq);
+    qtester.check(&stoq, &stoq1);
 
 #elif DS==PQUEUE
     PriorityQueue<int> stopq;

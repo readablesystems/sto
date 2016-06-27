@@ -5,7 +5,7 @@
 #include "Transaction.hh"
 #include "TWrapped.hh"
 
-template <typename T, unsigned BUF_SIZE = 5000000,
+template <typename T, unsigned BUF_SIZE = 1000000,
           template <typename> class W = TOpaqueWrapped>
 class Queue: public Shared {
 public:

@@ -31,16 +31,23 @@
 #ifndef FCQUEUE_H 
 #define FCQUEUE_H
 
-#define FC 0
-#define ITER 0
-
 #include <deque>
 #include <list>
 #include "FlatCombining.hh"
 #include "Transaction.hh"
 #include "TWrapped.hh"
 
-// Tells the combiner thread the flags associated with each item in the 
+/*
+ * The best results seem to come from a queue that is 
+ * FC, does not use iteration (so that only 1 FC is made per pop), 
+ * and does not lock the queue.
+ */
+#define ITER 0
+#define LOCKQV 0
+#define INSTALL 0
+#define CLEANUP 0
+
+// Tells the combiner thread the flags associated with each item in the q
 template <typename T>
 struct val_wrapper {
     T val;
@@ -48,12 +55,17 @@ struct val_wrapper {
     int threadid;
 };
 
-template <typename T, class Queue = std::deque<val_wrapper<T>>>
+template <typename T, 
+         class Queue = std::deque<val_wrapper<T>>,
+         template <typename> class W = TOpaqueWrapped>
 class FCQueue : public flat_combining::container
 {
 public:
     typedef T           value_type;     ///< Value type
     typedef Queue       queue_type;     ///< Sequential queue class
+
+    // STO
+    typedef typename W<value_type>::version_type version_type;
 
     // For thread-specific txns
     static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<0;
@@ -88,30 +100,57 @@ private:
         bool            is_empty; // true if the queue is empty
     };
 
-    flat_combining::kernel< fc_record> fc_kernel_;
+    flat_combining::kernel<fc_record> fc_kernel_;
     queue_type  q_;
+    version_type queueversion_;
     int last_deleted_index_;   // index of the item in q_ last marked deleted. 
                                     // -1 indicates an empty q_
+    std::atomic<int> num_mark_iter;
+    std::atomic<int> num_mark_tries;
+    std::atomic<int> num_marked;
+    std::atomic<int> num_clear_tries;
+    std::atomic<int> num_cleared;
+    std::atomic<int> num_install_iter;
+    std::atomic<int> num_install_tries;
+    std::atomic<int> num_installed;
+    std::atomic<int> num_undone;
+    std::atomic<int> num_undo_tries;
  
 public:
     /// Initializes empty queue object
-    FCQueue() : last_deleted_index_(-1) {}
+    FCQueue() : queueversion_(0), last_deleted_index_(-1), 
+        num_mark_iter(0), num_mark_tries(0), num_marked(0),
+        num_clear_tries(0), num_cleared(0),
+        num_install_iter(0), num_install_tries(0), num_installed(0),
+        num_undone(0), num_undo_tries(0)
+    {}
 
     /// Initializes empty queue object and gives flat combining parameters
     FCQueue(
         unsigned int nCompactFactor     ///< Flat combining: publication list compacting factor
         ,unsigned int nCombinePassCount ///< Flat combining: number of combining passes for combiner thread
         )
-        : fc_kernel_( nCompactFactor, nCombinePassCount ), last_deleted_index_(-1)
+        : fc_kernel_( nCompactFactor, nCombinePassCount ), queueversion_(0), last_deleted_index_(-1),
+        num_mark_iter(0), num_mark_tries(0), num_marked(0),
+        num_clear_tries(0), num_cleared(0),
+        num_install_iter(0), num_install_tries(0), num_installed(0),
+        num_undone(0), num_undo_tries(0)
     {}
 
-    // Adds an item to the write list of the txn, to be installed at commit time
+    ~FCQueue() { 
+        fprintf(stderr, "Iter Depth / Attempts:\n\
+                Marked: %d / %d\t Successful: %d\n\
+                Install: %d / %d\t Successful: %d\n\
+                Clear Attempts: %d\t Successful: %d\n\
+                Undo Attempts: %d\t Successful: %d\n",
+                int(num_mark_iter), int(num_mark_tries), int(num_marked),
+                int(num_install_iter), int(num_install_tries), int(num_installed),
+                int(num_clear_tries), int(num_cleared),
+                int(num_undo_tries), int(num_undone));
+    }
+
+    // Adds an item to the write list of the txn
     bool push( value_type const& v ) {
-#if !FC
-        q_.push_back({v,0,0});
-        return true;
-#else
-        // XXX USING FC
         fc_record * pRec = fc_kernel_.acquire_record();
         val_wrapper<value_type> vw = {v, 0, 0};
         pRec->pValPush = &vw; 
@@ -119,52 +158,21 @@ public:
         assert( pRec->is_done() );
         fc_kernel_.release_record( pRec );
         return true;
-#endif
     }
 
     // Marks an item as poisoned in the queue
     bool pop( value_type& val ) {
         // try marking an item in the queue as deleted
-#if !FC
-        if (!q_.empty()) {
-            vw = std::move(q_.front())
-            val = vw.val;
-            q_.pop_front();
-            return true;
-        }
-        return false;
-#else
         fc_record * pRec = fc_kernel_.acquire_record();
         val_wrapper<value_type> vw = {val, 0, TThread::id()};
         pRec->pValPop = &vw;
         fc_kernel_.combine( op_mark_deleted, pRec, *this );
         assert( pRec->is_done() );
         fc_kernel_.release_record( pRec );
-
         if (!pRec->is_empty) {
-            // install the deleted item
-            pRec = fc_kernel_.acquire_record();
-            auto val = T();
-            val_wrapper<value_type> vw = {val, 0, TThread::id()};
-            pRec->pValEdit = &vw;
-            fc_kernel_.combine( op_install_pops, pRec, *this );
-            assert( pRec->is_done() );
-            fc_kernel_.release_record( pRec );
-
-            // clear all the popped values at the front of the queue 
-            pRec = fc_kernel_.acquire_record();
-            val = T();
-            vw = {val, 0, 0};
-            pRec->pValEdit = &vw;
-            fc_kernel_.combine( op_clear_popped, pRec, *this );
-            assert( pRec->is_done() );
-            fc_kernel_.release_record( pRec );
-
+            val = std::move(pRec->pValPop->val);
             return true;
-        } 
-        // queue was empty
-        return false;
-#endif
+        } else return false;
     }
 
     // Clears the queue
@@ -210,24 +218,29 @@ public: // flat combining cooperation, not for direct use!
             q_.push_back( *(pRec->pValPush) );
             break;
 
-        case op_mark_deleted:
+        case op_mark_deleted: {
+            num_mark_tries++;
 #if !ITER
             assert( pRec->pValPop );
             pRec->is_empty = q_.empty();
             if ( !pRec->is_empty) {
-                *(pRec->pValPop) = std::move(q_.front());
+                *(pRec->pValPop) = std::move( q_.front());
                 q_.pop_front();
             }
             break;
 #else
             assert( pRec->pValPop );
+            bool found = false;
             if ( !q_.empty() ) {
                 for (auto it = q_.begin(); it != q_.end(); ++it) {
+                    num_mark_iter++;
                     if (!has_delete(*it) && !is_popped(*it)) {
+                        num_marked++;
                         it->threadid = pRec->pValPop->threadid;
                         it->flags = delete_bit;
                         *(pRec->pValPop) = *it; 
                         pRec->is_empty = false;
+                        found = true;
                         auto index = it-q_.begin();
                         last_deleted_index_ = (last_deleted_index_ > index) ? last_deleted_index_ : index;
                         break;
@@ -235,14 +248,14 @@ public: // flat combining cooperation, not for direct use!
                 }
             }
             // didn't find any non-deleted items, queue is empty
-            pRec->is_empty = true;
+            if (!found) pRec->is_empty = true;
             break;
 #endif
+        }
 
         case op_install_pops: {
-#if !ITER
-            break;
-#else
+            num_install_tries++;
+#if ITER
             threadid = pRec->pValEdit->threadid;
             bool found = false;
             // we should only install if the txn actually did mark an item
@@ -250,17 +263,20 @@ public: // flat combining cooperation, not for direct use!
             // nonempty
             assert(last_deleted_index_ != -1);
             for (auto it = q_.begin(); it != q_.begin() + last_deleted_index_ + 1; ++it) {
+                num_install_iter++;
                 if (has_delete(*it) && (threadid == it->threadid)) {
+                    num_installed++;
                     found = true;
                     it->flags = popped_bit;
                 }
             }
             assert(found);
-            break;
 #endif
+            break;
         }
         
         case op_undo_mark_deleted: {
+            num_undo_tries++;
             threadid = pRec->pValEdit->threadid;
             auto begin_it = q_.begin();
             auto new_di = 0;
@@ -269,6 +285,7 @@ public: // flat combining cooperation, not for direct use!
                 for (auto it = begin_it; it != begin_it + last_deleted_index_ + 1; ++it) {
                     if (has_delete(*it)) {
                         if (threadid == it->threadid) {
+                            num_undone++;
                             it->flags = 0;
                         } else {
                             new_di = it-begin_it;
@@ -283,8 +300,10 @@ public: // flat combining cooperation, not for direct use!
         } 
 
         case op_clear_popped: 
+            num_clear_tries++;
             // remove all popped values from txns that have committed their pops
             while( !q_.empty() && is_popped(q_.front()) ) {
+                num_cleared++;
                 if (last_deleted_index_ != -1) --last_deleted_index_;
                 q_.pop_front();
             }
