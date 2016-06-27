@@ -44,7 +44,9 @@
  */
 #define FC 1
 #define ITER 1
-#define LOCKQV 1
+#define LOCKQV 0
+#define INSTALL 0
+#define CLEANUP 0
 
 // Tells the combiner thread the flags associated with each item in the q
 template <typename T>
@@ -105,19 +107,24 @@ private:
     version_type queueversion_;
     int last_deleted_index_;   // index of the item in q_ last marked deleted. 
                                     // -1 indicates an empty q_
-    std::atomic<int> num_pop_iter;
-    std::atomic<int> num_pop;
-    std::atomic<int> num_clear_iter;
-    std::atomic<int> num_clear;
+    std::atomic<int> num_mark_iter;
+    std::atomic<int> num_mark_tries;
+    std::atomic<int> num_marked;
+    std::atomic<int> num_clear_tries;
+    std::atomic<int> num_cleared;
     std::atomic<int> num_install_iter;
-    std::atomic<int> num_install;
+    std::atomic<int> num_install_tries;
+    std::atomic<int> num_installed;
+    std::atomic<int> num_undone;
+    std::atomic<int> num_undo_tries;
  
 public:
     /// Initializes empty queue object
     FCQueue() : queueversion_(0), last_deleted_index_(-1), 
-    num_pop_iter(0), num_pop(0),
-    num_clear_iter(0), num_clear(0),
-    num_install_iter(0), num_install(0)
+        num_mark_iter(0), num_mark_tries(0), num_marked(0),
+        num_clear_tries(0), num_cleared(0),
+        num_install_iter(0), num_install_tries(0), num_installed(0),
+        num_undone(0), num_undo_tries(0)
     {}
 
     /// Initializes empty queue object and gives flat combining parameters
@@ -126,19 +133,22 @@ public:
         ,unsigned int nCombinePassCount ///< Flat combining: number of combining passes for combiner thread
         )
         : fc_kernel_( nCompactFactor, nCombinePassCount ), queueversion_(0), last_deleted_index_(-1),
-        num_pop_iter(0), num_pop(0),
-        num_clear_iter(0), num_clear(0),
-        num_install_iter(0), num_install(0)
+        num_mark_iter(0), num_mark_tries(0), num_marked(0),
+        num_clear_tries(0), num_cleared(0),
+        num_install_iter(0), num_install_tries(0), num_installed(0),
+        num_undone(0), num_undo_tries(0)
     {}
 
     ~FCQueue() { 
-        fprintf(stderr, "Iterations / Attempts:\t \
-                Pops: %d / %d\t, \
-                Install: %d / %d\t, \
-                Clear: %d / %d\n",
-                int(num_pop_iter), int(num_pop), 
-                int(num_install_iter), int(num_install),
-                int(num_clear_iter), int(num_clear));
+        fprintf(stderr, "Iter Depth / Attempts:\n\
+                Marked: %d / %d\t Successful: %d\n\
+                Install: %d / %d\t Successful: %d\n\
+                Clear Attempts: %d\t Successful: %d\n\
+                Undo Attempts: %d\t Successful: %d\n",
+                int(num_mark_iter), int(num_mark_tries), int(num_marked),
+                int(num_install_iter), int(num_install_tries), int(num_installed),
+                int(num_clear_tries), int(num_cleared),
+                int(num_undo_tries), int(num_undone));
     }
 
     // Adds an item to the write list of the txn, to be installed at commit time
@@ -261,7 +271,7 @@ public: // flat combining cooperation, not for direct use!
             break;
 
         case op_mark_deleted: {
-            num_pop++;
+            num_mark_tries++;
 #if !ITER
             assert( pRec->pValPop );
             pRec->is_empty = q_.empty();
@@ -275,8 +285,9 @@ public: // flat combining cooperation, not for direct use!
             bool found = false;
             if ( !q_.empty() ) {
                 for (auto it = q_.begin(); it != q_.end(); ++it) {
-                    num_pop_iter++;
+                    num_mark_iter++;
                     if (!has_delete(*it) && !is_popped(*it)) {
+                        num_marked++;
                         it->threadid = pRec->pValPop->threadid;
                         it->flags = delete_bit;
                         *(pRec->pValPop) = *it; 
@@ -295,7 +306,7 @@ public: // flat combining cooperation, not for direct use!
         }
 
         case op_install_pops: {
-            num_install++;
+            num_install_tries++;
 #if ITER
             threadid = pRec->pValEdit->threadid;
             bool found = false;
@@ -306,6 +317,7 @@ public: // flat combining cooperation, not for direct use!
             for (auto it = q_.begin(); it != q_.begin() + last_deleted_index_ + 1; ++it) {
                 num_install_iter++;
                 if (has_delete(*it) && (threadid == it->threadid)) {
+                    num_installed++;
                     found = true;
                     it->flags = popped_bit;
                 }
@@ -316,6 +328,7 @@ public: // flat combining cooperation, not for direct use!
         }
         
         case op_undo_mark_deleted: {
+            num_undo_tries++;
             threadid = pRec->pValEdit->threadid;
             auto begin_it = q_.begin();
             auto new_di = 0;
@@ -324,6 +337,7 @@ public: // flat combining cooperation, not for direct use!
                 for (auto it = begin_it; it != begin_it + last_deleted_index_ + 1; ++it) {
                     if (has_delete(*it)) {
                         if (threadid == it->threadid) {
+                            num_undone++;
                             it->flags = 0;
                         } else {
                             new_di = it-begin_it;
@@ -338,10 +352,10 @@ public: // flat combining cooperation, not for direct use!
         } 
 
         case op_clear_popped: 
-            num_clear++;
+            num_clear_tries++;
             // remove all popped values from txns that have committed their pops
             while( !q_.empty() && is_popped(q_.front()) ) {
-                num_clear_iter++;
+                num_cleared++;
                 if (last_deleted_index_ != -1) --last_deleted_index_;
                 q_.pop_front();
             }
@@ -410,6 +424,7 @@ private:
     void install(TransItem& item, Transaction& txn) override {
         // install pops if the txn marked a value as deleted
         if (item.key<int>() == 0) {
+#if INSTALL || ITER
             fc_record * pRec = fc_kernel_.acquire_record();
             auto val = T();
             val_wrapper<value_type> vw = {val, 0, TThread::id()};
@@ -417,6 +432,7 @@ private:
             fc_kernel_.combine( op_install_pops, pRec, *this );
             assert( pRec->is_done() );
             fc_kernel_.release_record( pRec );
+#endif
         }
         // install pushes
         if (item.key<int>() == -1) {
@@ -478,6 +494,7 @@ private:
     void cleanup(TransItem& item, bool committed) override {
         (void)item;
 #if FC
+#if CLEANUP || ITER
         if (!committed) {
             // Mark all deleted items in the queue as not deleted 
             fc_record * pRec = fc_kernel_.acquire_record();
@@ -497,6 +514,7 @@ private:
             assert( pRec->is_done() );
             fc_kernel_.release_record( pRec );
         }
+#endif
 #endif
         if (queueversion_.is_locked_here()) {
             queueversion_.unlock();

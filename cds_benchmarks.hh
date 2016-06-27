@@ -61,6 +61,7 @@ std::atomic_int global_push_val(MAX_VALUE);
 std::vector<int> init_sizes = {1000, 10000, 50000, 100000, 150000};
 std::vector<int> nthreads_set = {1, 2, 4, 8, 12, 16, 20};//, 24};
 int rand_vals[10000];
+int rand_txns[10000];
 
 // txn sets
 std::vector<std::vector<std::vector<op>>> q_txn_sets = {
@@ -75,7 +76,9 @@ std::vector<std::vector<std::vector<op>>> q_txn_sets = {
     // 4. 33% include both pushes and pops
     {{push, push, pop},{pop, pop, push},{pop}, {pop},{push}, {push}},
     // 5. 33%: longer push + pop txns
-    {{push, pop, push, pop, push, pop},{pop}, {push}}
+    {{push, pop, push, pop, push, pop},{pop}, {push}},
+    // 6. one-op txns
+    {{pop}, {push}}
 };
 
 std::atomic_int spawned_barrier(0);
@@ -433,7 +436,7 @@ public:
         }
     }
     void print() {
-        fprintf(stderr, "Num Combines %d\n", this->v_.num_combines());
+        fprintf(stderr, "Num Combines: %d\n", this->v_.num_combines()); // only for FC
     }
 private:
     int ds_type_;
@@ -479,32 +482,36 @@ public:
     GeneralTxnsTest(int ds_type, int val_type, std::vector<std::vector<op>> txn_set) : 
         DHTest<DH>(val_type), ds_type_(ds_type), txn_set_(txn_set) {};
     void run(int me) {
-        Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
-        std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
+        //Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
+        //std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
             if (ds_type_ == STO) {
-                Rand transgen_snap = transgen;
+                //Rand transgen_snap = transgen;
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        auto txn = txn_set_[slotdist(transgen) % txn_set_.size()];
+                        auto txn = txn_set_[rand_txns[(i*me+i) % arraysize(rand_txns)] % txn_set_.size()];
                         for (unsigned j = 0; j < txn.size(); ++j) {
                             this->do_op(txn[j], rand_vals[(i*me + i) % arraysize(rand_vals)]);
                             this->inc_ctrs(txn[j], me); // XXX can lead to overcounting
                         }
                         if (Sto::try_commit()) break;
                     } catch (Transaction::Abort e) {
-                        transgen = transgen_snap;
+                        //transgen = transgen_snap;
                     }
                 }
             } else {
-                auto txn = txn_set_[slotdist(transgen) % txn_set_.size()];
+                auto txn = txn_set_[rand_txns[(i*me+i) % arraysize(rand_txns)] % txn_set_.size()];
+                //auto txn = txn_set_[slotdist(transgen) % txn_set_.size()];
                 for (unsigned j = 0; j < txn.size(); ++j) {
                     this->do_op(txn[j], rand_vals[(i*me + i) % arraysize(rand_vals)]);
                     this->inc_ctrs(txn[j], me);
                 }
             }
         }
+    }
+    void print() {
+        fprintf(stderr, "Num Combines: %d\n", this->v_.num_combines()); // only for FC
     }
 private:
     int ds_type_;

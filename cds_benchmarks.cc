@@ -37,7 +37,7 @@ void* test_thread(void *data) {
    
     gt->run(me);
 
-    spawned_barrier = 0;
+    spawned_barrier--;
 
     cds::threading::Manager::detachThread();
     return nullptr;
@@ -59,7 +59,7 @@ void* record_perf_thread(void* x) {
     for (int i = 0; i < MAX_NUM_THREADS; ++i) {
         total1 += (global_thread_ctrs[i].push + global_thread_ctrs[i].pop);
     }
-    while (spawned_barrier == nthreads) {
+    while (spawned_barrier != 0) {
         sched_yield();
     }
     for (int i = 0; i < MAX_NUM_THREADS; ++i) {
@@ -205,6 +205,9 @@ int main() {
     for (unsigned i = 0; i < arraysize(rand_vals); ++i)
         rand_vals[i] = random() % MAX_VALUE;
 
+    for (unsigned i = 0; i < arraysize(rand_txns); ++i)
+        rand_txns[i] = random();
+
     std::ios_base::sync_with_stdio(true);
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
 
@@ -216,14 +219,27 @@ int main() {
     pthread_t advancer;
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
+  
+    GeneralTxnsTest<DatatypeHarness<FCQueue<int>>> test1(STO, RANDOM_VALS, q_txn_sets[6]);
+    GeneralTxnsTest<DatatypeHarness<cds::container::FCQueue<int, std::queue<int>, FCQUEUE_TRAITS()>>> test2(CDS, RANDOM_VALS, q_txn_sets[6]);
+    GeneralTxnsTest<DatatypeHarness<Queue2<int>>> test3(STO, RANDOM_VALS, q_txn_sets[6]);
    
     /*
-    PushPopTest<DatatypeHarness<FCQueue<int>>> test1(STO, RANDOM_VALS);
-    PushPopTest<DatatypeHarness<cds::container::FCQueue<int, std::queue<int>, FCQUEUE_TRAITS()>>> test2(CDS, RANDOM_VALS);
+    PushPopTest<DatatypeHarness<FCQueue<int>>> test4(STO, RANDOM_VALS);
+    PushPopTest<DatatypeHarness<cds::container::FCQueue<int, std::queue<int>, FCQUEUE_TRAITS()>>> test5(CDS, RANDOM_VALS);
+    PushPopTest<DatatypeHarness<Queue2<int>>> test6(STO, RANDOM_VALS);
+    */
     startAndWait(&test1, 10000, 2);
     startAndWait(&test2, 10000, 2);
+    startAndWait(&test3, 10000, 2);
     test2.print();
-    
+/*
+    startAndWait(&test4, 10000, 2);
+    startAndWait(&test5, 10000, 2);
+    startAndWait(&test6, 10000, 2);
+    test5.print();
+    */
+    /*
     for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {
         dualprintf("\n%s\n", pqueue_tests[i].desc.c_str());
         fprintf(global_verbose_stats_file, "STO, STO(O), MS, FC\n");
@@ -246,7 +262,7 @@ int main() {
             if (pqueue_tests[i].desc.find("PushPop")!=std::string::npos) dualprintf("\n");
             dualprintf("\n");
         }
-    }*/
+    }
     for (unsigned i = 0; i < arraysize(queue_tests); i+=num_queues) {
         dualprintf("\n%s\n", queue_tests[i].desc.c_str());
         fprintf(global_verbose_stats_file, "STO, STO(2), FC, STO/FC, \n");
@@ -267,7 +283,7 @@ int main() {
             if (queue_tests[i].desc.find("PushPop")!=std::string::npos) dualprintf("\n");
             dualprintf("\n");
         }
-    }
+    }*/
     cds::Terminate();
     return 0;
 }
