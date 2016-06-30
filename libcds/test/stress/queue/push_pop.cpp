@@ -25,7 +25,7 @@
     SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
     CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
     OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.     
+    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "queue_type.h"
@@ -174,10 +174,9 @@ namespace {
                         else
                             ++m_nBadWriter;
                     }
-                    else
+                    else {
                         ++m_nPopEmpty;
 
-                    if ( m_Queue.empty() ) {
                         if ( s_nProducerDone.load() >= nTotalWriters ) {
                             if ( m_Queue.empty() )
                                 break;
@@ -329,9 +328,10 @@ namespace {
     CDSSTRESS_StdQueue( queue_push_pop )
 
 #undef CDSSTRESS_Queue_F
-#define CDSSTRESS_Queue_F( test_fixture, type_name ) \
+#define CDSSTRESS_Queue_F( test_fixture, type_name, level ) \
     TEST_F( test_fixture, type_name ) \
     { \
+        if ( !check_detail_level( level )) return; \
         typedef queue::Types< value_type >::type_name queue_type; \
         queue_type queue( s_nQueueSize ); \
         test( queue ); \
@@ -389,9 +389,10 @@ namespace {
         }
     };
 
-#define CDSSTRESS_Queue_F( test_fixture, type_name ) \
+#define CDSSTRESS_Queue_F( test_fixture, type_name, level ) \
     TEST_P( test_fixture, type_name ) \
     { \
+        if ( !check_detail_level( level )) return; \
         typedef typename queue::Types<value_type>::type_name queue_type; \
         test< queue_type >(); \
     }

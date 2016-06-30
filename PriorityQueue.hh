@@ -8,6 +8,9 @@
 
 template <typename T, bool Opacity = false>
 class PriorityQueue: public Shared {
+public:
+    typedef T value_type;
+private:
     typedef TransactionTid::type Version;
     typedef versioned_value_struct<T> versioned_value;
     

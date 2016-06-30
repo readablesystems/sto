@@ -28,6 +28,8 @@
 
 #include "Transaction.hh"
 #include "PriorityQueue.hh"
+#include "PriorityQueue2.hh"
+#include "FCPriorityQueue.hh"
 #include "PairingHeap.hh"
 #include "Queue.hh"
 #include "Queue2.hh"
@@ -39,7 +41,7 @@
 
 #define MAX_VALUE 20 
 #define MAX_SIZE 1000000
-#define NTRANS 100000 // Number of transactions each thread should run.
+#define NTRANS 6000000 // Number of transactions each thread should run.
 #define MAX_NUM_THREADS 24 // Maximum number of concurrent threads
 #define INITIAL_THREAD 0 // tid of the first thread spawned
 
@@ -113,7 +115,24 @@ void print_abort_stats(void);        // prints how many aborts/commits, etc. for
  */
 template <typename DS> struct DatatypeHarness{};
 
-template <typename DS> struct CDSDatatypeHarness { typedef typename DS::value_type value_type;
+#define FCQUEUE_TRAITS() cds::container::fcqueue::make_traits< \
+    cds::opt::lock_type<cds::sync::spin>, \
+    cds::opt::back_off<cds::backoff::delay_of<2>>, \
+    cds::opt::allocator<CDS_DEFAULT_ALLOCATOR>, \
+    cds::opt::stat<cds::container::fcqueue::stat<cds::atomicity::event_counter>>, \
+    cds::opt::memory_model<cds::opt::v::relaxed_ordering>, \
+    cds::opt::enable_elimination<false>>::type
+
+#define FCPQUEUE_TRAITS() cds::container::fcqueue::make_traits< \
+    cds::opt::lock_type<cds::sync::spin>, \
+    cds::opt::back_off<cds::backoff::delay_of<2>>, \
+    cds::opt::allocator<CDS_DEFAULT_ALLOCATOR>, \
+    cds::opt::stat<cds::container::fcpqueue::stat<cds::atomicity::event_counter>>, \
+    cds::opt::memory_model<cds::opt::v::relaxed_ordering>, \
+    cds::opt::enable_elimination<false>>::type
+
+template <typename DS> struct CDSDatatypeHarness { 
+    typedef typename DS::value_type value_type;
 public:
     CDSDatatypeHarness() {};
     CDSDatatypeHarness(size_t nCapacity) : v_(nCapacity) {};
@@ -122,7 +141,29 @@ public:
     void push(value_type v) { assert(v_.push(v)); }
     void init_push(value_type v) { assert(v_.push(v)); }
     size_t size() { return v_.size(); }
-    int num_combines() { return v_.statistics().m_nCombiningCount; }
+
+    DS v_;
+};
+
+template <typename DS> struct STODatatypeHarness { 
+    typedef typename DS::value_type value_type;
+public:
+    bool pop() { return v_.pop(); }
+    bool cleanup_pop() { 
+        if (v_.unsafe_size() > 0) {
+            Sto::start_transaction();
+            v_.pop();
+            assert(Sto::try_commit());
+            return true;
+        } else return false;
+    }
+    void push(value_type v) { v_.push(v); }
+    void init_push(value_type v) { 
+        Sto::start_transaction();
+        v_.push(v); 
+        assert(Sto::try_commit());
+    }
+    size_t size() { return v_.unsafe_size(); }
 private:
     DS v_;
 };
@@ -130,53 +171,16 @@ private:
 /* 
  * Priority Queue Templates
  */
-template <typename T> struct DatatypeHarness<PriorityQueue<T>> {
-    typedef T value_type;
-public:
-    DatatypeHarness() {};
-    bool pop() { return v_.pop(); }
-    bool cleanup_pop() { 
-        if (v_.unsafe_size() > 0) {
-            Sto::start_transaction();
-            v_.pop();
-            assert(Sto::try_commit());
-            return true;
-        } else return false;
-    }
-    void push(value_type v) { v_.push(v); }
-    void init_push(value_type v) { 
-        Sto::start_transaction();
-        v_.push(v); 
-        assert(Sto::try_commit());
-    }
-    size_t size() { return v_.unsafe_size(); }
-private:
-    PriorityQueue<T> v_;
-};
-
-template <typename T> struct DatatypeHarness<PriorityQueue<T, true>> {
-    typedef T value_type;
-public:
-    DatatypeHarness() {};
-    bool pop() { return v_.pop(); }
-    bool cleanup_pop() { 
-        if (v_.unsafe_size() > 0) {
-            Sto::start_transaction();
-            v_.pop();
-            assert(Sto::try_commit());
-            return true;
-        } else return false;
-    } 
-    void push(value_type v) { v_.push(v); }
-    void init_push(value_type v) { 
-        Sto::start_transaction();
-        v_.push(v); 
-        assert(Sto::try_commit());
-    }
-    size_t size() { return v_.unsafe_size(); }
-private:
-    PriorityQueue<T, true> v_;
-};
+template <typename T> struct DatatypeHarness<FCPriorityQueue<T>> : 
+    public STODatatypeHarness<FCPriorityQueue<T>>{};
+template <typename T> struct DatatypeHarness<PriorityQueue<T>> : 
+    public STODatatypeHarness<PriorityQueue<T>>{};
+template <typename T> struct DatatypeHarness<PriorityQueue<T, true>> : 
+    public STODatatypeHarness<PriorityQueue<T, true>>{};
+template <typename T> struct DatatypeHarness<PriorityQueue2<T>> : 
+    public STODatatypeHarness<PriorityQueue2<T>>{};
+template <typename T> struct DatatypeHarness<PriorityQueue2<T, true>> : 
+    public STODatatypeHarness<PriorityQueue2<T, true>>{};
 
 template <typename T> struct DatatypeHarness<cds::container::MSPriorityQueue<T>> {
     typedef T value_type;
@@ -187,15 +191,20 @@ public:
     void push(value_type v) { assert(v_.push(v)); }
     void init_push(value_type v) { assert(v_.push(v)); }
     size_t size() { return v_.size(); }
-private:
     cds::container::MSPriorityQueue<T> v_;
 };
 
-template <typename T> struct DatatypeHarness<cds::container::FCPriorityQueue<T>> : 
-    public CDSDatatypeHarness<cds::container::FCPriorityQueue<T>>{};
+template <typename T> struct DatatypeHarness<cds::container::FCPriorityQueue<T, std::priority_queue<T>, FCPQUEUE_TRAITS()>> : 
+    public CDSDatatypeHarness<cds::container::FCPriorityQueue<T, std::priority_queue<T>, FCPQUEUE_TRAITS()>>{
+        int num_combines() { return int(this->v_.statistics().nCombiningCount); }
+        double combining_factor() { return double(this->v_.statistics().combining_factor()); }
+    };
 
 template <typename T> struct DatatypeHarness<cds::container::FCPriorityQueue<T, PairingHeap<T>>> : 
-    public CDSDatatypeHarness<cds::container::FCPriorityQueue<T, PairingHeap<T>>>{};
+    public CDSDatatypeHarness<cds::container::FCPriorityQueue<T, PairingHeap<T>>>{
+        int num_combines() { return int(this->v_.statistics().nCombiningCount); }
+        double combining_factor() { return double(this->v_.statistics().combining_factor()); }
+    };
 
 /* 
  * Queue Templates
@@ -257,21 +266,20 @@ public:
         assert(Sto::try_commit());
     }
     size_t size() { return v_.size(); }
+    int num_combines() { return int(this->v_.statistics().nCombiningCount); }
+    double combining_factor() { return double(this->v_.statistics().combining_factor()); }
+
 private:
     FCQueue<T> v_;
 };
 
 template <typename T> struct DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, T>> : 
     public CDSDatatypeHarness<cds::container::BasketQueue<cds::gc::HP, T>>{};
-#define FCQUEUE_TRAITS() cds::container::fcqueue::make_traits< \
-    cds::opt::lock_type<cds::sync::spin>, \
-    cds::opt::back_off<cds::backoff::delay_of<2>>, \
-    cds::opt::allocator<CDS_DEFAULT_ALLOCATOR>, \
-    cds::opt::stat<cds::container::fcqueue::stat<cds::atomicity::event_counter>>, \
-    cds::opt::memory_model<cds::opt::v::relaxed_ordering>, \
-    cds::opt::enable_elimination<false>>::type
 template <typename T> struct DatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS()>> : 
-    public CDSDatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS()>>{};
+    public CDSDatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS()>>{
+        int num_combines() { return int(this->v_.statistics().nCombiningCount); }
+        double combining_factor() { return double(this->v_.statistics().combining_factor()); }
+    };
 #define FCQUEUE_TRAITS_ELIM() cds::container::fcqueue::make_traits< \
     cds::opt::lock_type<cds::sync::spin>, \
     cds::opt::back_off<cds::backoff::delay_of<2>>, \
@@ -280,7 +288,10 @@ template <typename T> struct DatatypeHarness<cds::container::FCQueue<T, std::que
     cds::opt::memory_model<cds::opt::v::relaxed_ordering>, \
     cds::opt::enable_elimination<true>>::type
 template <typename T> struct DatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS_ELIM()>>  :
-    public CDSDatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS_ELIM()>>{};
+    public CDSDatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS_ELIM()>>{
+        int num_combines() { return int(this->v_.statistics().nCombiningCount); }
+        double combining_factor() { return double(this->v_.statistics().combining_factor()); }
+    };
 template <typename T> struct DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, T>> : 
     public CDSDatatypeHarness<cds::container::MoirQueue<cds::gc::HP, T>>{};
 template <typename T> struct DatatypeHarness<cds::container::MSQueue<cds::gc::HP, T>> : 
@@ -437,7 +448,8 @@ public:
         }
     }
     void print() {
-        fprintf(stderr, "Num Combines: %d\n", this->v_.num_combines()); // only for FC
+        fprintf(stderr, "Num Combines: %d\t", this->v_.num_combines()); // only for FC
+        fprintf(stderr, "Combining Factor: %f\n", this->v_.combining_factor()); // only for FC
     }
 private:
     int ds_type_;
@@ -473,7 +485,10 @@ public:
             }
         }
     }
-
+    void print() {
+        fprintf(stderr, "Num Combines: %d\t", this->v_.num_combines()); // only for FC
+        fprintf(stderr, "Combining Factor: %f\n", this->v_.combining_factor()); // only for FC
+    }
 private:
     int ds_type_;
 };
@@ -512,7 +527,8 @@ public:
         }
     }
     void print() {
-        fprintf(stderr, "Num Combines: %d\n", this->v_.num_combines()); // only for FC
+        fprintf(stderr, "Num Combines: %d\t", this->v_.num_combines()); // only for FC
+        fprintf(stderr, "Combining Factor: %f\n", this->v_.combining_factor()); // only for FC
     }
 private:
     int ds_type_;

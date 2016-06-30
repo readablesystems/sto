@@ -37,15 +37,10 @@
 #include "Transaction.hh"
 #include "TWrapped.hh"
 
-/*
- * The best results seem to come from a queue that is 
- * FC, does not use iteration (so that only 1 FC is made per pop), 
- * and does not lock the queue.
- */
-#define ITER 0
-#define LOCKQV 0
-#define INSTALL 0
-#define CLEANUP 0
+#define ITER 0 // should we iterate to mark deleted, or simply pop?
+#define LOCKQV 0 // should we lock the queuevalue during the entire commit?
+#define INSTALL 0 // should we invoke a FC call to install (mark-popped)? (necessary if ITER is true)
+#define CLEANUP 0 // should we invoke a FC call to cleanup marked-as-popped vals? (necessary if ITER is true)
 
 // Tells the combiner thread the flags associated with each item in the q
 template <typename T>
@@ -58,9 +53,7 @@ struct val_wrapper {
 template <typename T, 
          class Queue = std::deque<val_wrapper<T>>,
          template <typename> class W = TOpaqueWrapped>
-class FCQueue : public Shared,
-    public flat_combining::container
-{
+class FCQueue : public Shared, public flat_combining::container {
 public:
     typedef T           value_type;     ///< Value type
     typedef Queue       queue_type;     ///< Sequential queue class
@@ -88,7 +81,6 @@ private:
         op_clear,       // Clear
         op_empty        // Empty
     };
-
 
     // Flat combining publication list record
     struct fc_record: public flat_combining::publication_record
@@ -368,6 +360,8 @@ public: // flat combining cooperation, not for direct use!
         }
         CDS_TSAN_ANNOTATE_IGNORE_RW_END;
     }
+
+    flat_combining::stat<>& statistics() const { return fc_kernel_.statistics();}
 
 private: 
     // Fxns for the combiner thread

@@ -37,11 +37,6 @@
 #include "Transaction.hh"
 #include "TWrapped.hh"
 
-/*
- * The best results seem to come from a queue that is 
- * FC, does not use iteration (so that only 1 FC is made per pop), 
- * and does not lock the queue.
- */
 #define ITER 0
 #define LOCKQV 0
 #define INSTALL 0

@@ -374,9 +374,9 @@ namespace cds { namespace intrusive {
                     return guard.assign( &m_List.back() );
                 }
 
-#       ifdef _DEBUG
+#           ifdef _DEBUG
                 assert( m_List.empty() || populated( m_List.back() ));
-#       endif 
+#           endif
 
                 segment * pNew = allocate_segment();
                 m_Stat.onSegmentCreated();

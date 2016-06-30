@@ -25,7 +25,7 @@
     SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
     CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
     OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.     
+    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #ifndef CDSSTRESS_QUEUE_TYPES_H
@@ -52,6 +52,7 @@
 #include <boost/container/deque.hpp>
 
 #include <cds_test/stress_test.h>
+#include <cds_test/stat_flat_combining_out.h>
 #include "print_stat.h"
 
 namespace queue {
@@ -417,12 +418,44 @@ namespace queue {
         typedef cds::container::RWQueue< Value, traits_RWQueue_mutex > RWQueue_mutex;
 
         // FCQueue
-        class traits_FCQueue_elimination:
+        struct traits_FCQueue_stat:
+            public cds::container::fcqueue::make_traits<
+                cds::opt::stat< cds::container::fcqueue::stat<> >
+            >::type
+        {};
+        struct traits_FCQueue_single_mutex_single_condvar:
+            public cds::container::fcqueue::make_traits<
+                cds::opt::wait_strategy< cds::algo::flat_combining::wait_strategy::single_mutex_single_condvar<>>
+            >::type
+        {};
+        struct traits_FCQueue_single_mutex_single_condvar_stat: traits_FCQueue_single_mutex_single_condvar
+        {
+            typedef cds::container::fcqueue::stat<> stat;
+        };
+        struct traits_FCQueue_single_mutex_multi_condvar:
+            public cds::container::fcqueue::make_traits<
+                cds::opt::wait_strategy< cds::algo::flat_combining::wait_strategy::single_mutex_multi_condvar<>>
+            >::type
+        {};
+        struct traits_FCQueue_single_mutex_multi_condvar_stat: traits_FCQueue_single_mutex_multi_condvar
+        {
+            typedef cds::container::fcqueue::stat<> stat;
+        };
+        struct traits_FCQueue_multi_mutex_multi_condvar:
+            public cds::container::fcqueue::make_traits<
+                cds::opt::wait_strategy< cds::algo::flat_combining::wait_strategy::multi_mutex_multi_condvar<>>
+            >::type
+        {};
+        struct traits_FCQueue_multi_mutex_multi_condvar_stat: traits_FCQueue_multi_mutex_multi_condvar
+        {
+            typedef cds::container::fcqueue::stat<> stat;
+        };
+        struct traits_FCQueue_elimination:
             public cds::container::fcqueue::make_traits<
                 cds::opt::enable_elimination< true >
             >::type
         {};
-        class traits_FCQueue_elimination_stat:
+        struct traits_FCQueue_elimination_stat:
             public cds::container::fcqueue::make_traits<
                 cds::opt::enable_elimination< true >
                 ,cds::opt::stat< cds::container::fcqueue::stat<> >
@@ -430,10 +463,26 @@ namespace queue {
         {};
 
         typedef cds::container::FCQueue< Value > FCQueue_deque;
+        typedef cds::container::FCQueue< Value, std::queue<Value>, traits_FCQueue_stat > FCQueue_deque_stat;
+        typedef cds::container::FCQueue< Value, std::queue<Value>, traits_FCQueue_single_mutex_single_condvar> FCQueue_deque_wait_ss;
+        typedef cds::container::FCQueue< Value, std::queue<Value>, traits_FCQueue_single_mutex_single_condvar_stat> FCQueue_deque_wait_ss_stat;
+        typedef cds::container::FCQueue< Value, std::queue<Value>, traits_FCQueue_single_mutex_multi_condvar> FCQueue_deque_wait_sm;
+        typedef cds::container::FCQueue< Value, std::queue<Value>, traits_FCQueue_single_mutex_multi_condvar_stat> FCQueue_deque_wait_sm_stat;
+        typedef cds::container::FCQueue< Value, std::queue<Value>, traits_FCQueue_multi_mutex_multi_condvar> FCQueue_deque_wait_mm;
+        typedef cds::container::FCQueue< Value, std::queue<Value>, traits_FCQueue_multi_mutex_multi_condvar_stat> FCQueue_deque_wait_mm_stat;
+
         typedef cds::container::FCQueue< Value, std::queue<Value>, traits_FCQueue_elimination > FCQueue_deque_elimination;
         typedef cds::container::FCQueue< Value, std::queue<Value>, traits_FCQueue_elimination_stat > FCQueue_deque_elimination_stat;
 
-        typedef cds::container::FCQueue< Value, std::queue<Value, std::list<Value> > > FCQueue_list;
+        typedef cds::container::FCQueue< Value, std::queue<Value, std::list<Value>>> FCQueue_list;
+        typedef cds::container::FCQueue< Value, std::queue<Value, std::list<Value>>, traits_FCQueue_stat> FCQueue_list_stat;
+        typedef cds::container::FCQueue< Value, std::queue<Value, std::list<Value>>, traits_FCQueue_single_mutex_single_condvar> FCQueue_list_wait_ss;
+        typedef cds::container::FCQueue< Value, std::queue<Value, std::list<Value>>, traits_FCQueue_single_mutex_single_condvar_stat> FCQueue_list_wait_ss_stat;
+        typedef cds::container::FCQueue< Value, std::queue<Value, std::list<Value>>, traits_FCQueue_single_mutex_multi_condvar> FCQueue_list_wait_sm;
+        typedef cds::container::FCQueue< Value, std::queue<Value, std::list<Value>>, traits_FCQueue_single_mutex_multi_condvar_stat> FCQueue_list_wait_sm_stat;
+        typedef cds::container::FCQueue< Value, std::queue<Value, std::list<Value>>, traits_FCQueue_multi_mutex_multi_condvar> FCQueue_list_wait_mm;
+        typedef cds::container::FCQueue< Value, std::queue<Value, std::list<Value>>, traits_FCQueue_multi_mutex_multi_condvar_stat> FCQueue_list_wait_mm_stat;
+
         typedef cds::container::FCQueue< Value, std::queue<Value, std::list<Value> >, traits_FCQueue_elimination > FCQueue_list_elimination;
         typedef cds::container::FCQueue< Value, std::queue<Value, std::list<Value> >, traits_FCQueue_elimination_stat > FCQueue_list_elimination_stat;
 
@@ -461,9 +510,40 @@ namespace queue {
             >::type
         {};
 
+        struct traits_FCDeque_wait_ss: cds::container::fcdeque::traits
+        {
+            typedef cds::algo::flat_combining::wait_strategy::single_mutex_single_condvar<> wait_strategy;
+        };
+        struct traits_FCDeque_wait_ss_stat: traits_FCDeque_wait_ss
+        {
+            typedef cds::container::fcdeque::stat<> stat;
+        };
+        struct traits_FCDeque_wait_sm: cds::container::fcdeque::traits
+        {
+            typedef cds::algo::flat_combining::wait_strategy::single_mutex_multi_condvar<> wait_strategy;
+        };
+        struct traits_FCDeque_wait_sm_stat: traits_FCDeque_wait_sm
+        {
+            typedef cds::container::fcdeque::stat<> stat;
+        };
+        struct traits_FCDeque_wait_mm: cds::container::fcdeque::traits
+        {
+            typedef cds::algo::flat_combining::wait_strategy::multi_mutex_multi_condvar<> wait_strategy;
+        };
+        struct traits_FCDeque_wait_mm_stat: traits_FCDeque_wait_mm
+        {
+            typedef cds::container::fcdeque::stat<> stat;
+        };
+
         typedef details::FCDequeL< Value > FCDequeL_default;
         typedef details::FCDequeL< Value, traits_FCDeque_mutex > FCDequeL_mutex;
         typedef details::FCDequeL< Value, traits_FCDeque_stat > FCDequeL_stat;
+        typedef details::FCDequeL< Value, traits_FCDeque_wait_ss > FCDequeL_wait_ss;
+        typedef details::FCDequeL< Value, traits_FCDeque_wait_ss_stat > FCDequeL_wait_ss_stat;
+        typedef details::FCDequeL< Value, traits_FCDeque_wait_sm > FCDequeL_wait_sm;
+        typedef details::FCDequeL< Value, traits_FCDeque_wait_sm_stat > FCDequeL_wait_sm_stat;
+        typedef details::FCDequeL< Value, traits_FCDeque_wait_mm > FCDequeL_wait_mm;
+        typedef details::FCDequeL< Value, traits_FCDeque_wait_mm_stat > FCDequeL_wait_mm_stat;
         typedef details::FCDequeL< Value, traits_FCDeque_elimination > FCDequeL_elimination;
         typedef details::FCDequeL< Value, traits_FCDeque_elimination_stat > FCDequeL_elimination_stat;
 
@@ -475,6 +555,12 @@ namespace queue {
         typedef details::FCDequeR< Value > FCDequeR_default;
         typedef details::FCDequeR< Value, traits_FCDeque_mutex > FCDequeR_mutex;
         typedef details::FCDequeR< Value, traits_FCDeque_stat > FCDequeR_stat;
+        typedef details::FCDequeR< Value, traits_FCDeque_wait_ss > FCDequeR_wait_ss;
+        typedef details::FCDequeR< Value, traits_FCDeque_wait_ss_stat > FCDequeR_wait_ss_stat;
+        typedef details::FCDequeR< Value, traits_FCDeque_wait_sm > FCDequeR_wait_sm;
+        typedef details::FCDequeR< Value, traits_FCDeque_wait_sm_stat > FCDequeR_wait_sm_stat;
+        typedef details::FCDequeR< Value, traits_FCDeque_wait_mm > FCDequeR_wait_mm;
+        typedef details::FCDequeR< Value, traits_FCDeque_wait_mm_stat > FCDequeR_wait_mm_stat;
         typedef details::FCDequeR< Value, traits_FCDeque_elimination > FCDequeR_elimination;
         typedef details::FCDequeR< Value, traits_FCDeque_elimination_stat > FCDequeR_elimination_stat;
 
@@ -483,6 +569,7 @@ namespace queue {
         typedef details::FCDequeR< Value, traits_FCDeque_elimination, boost::container::deque<Value> > FCDequeR_boost_elimination;
         typedef details::FCDequeR< Value, traits_FCDeque_elimination_stat, boost::container::deque<Value> > FCDequeR_boost_elimination_stat;
 
+        // STL
         typedef StdQueue_deque<Value>               StdQueue_deque_Spinlock;
         typedef StdQueue_list<Value>                StdQueue_list_Spinlock;
         typedef StdQueue_deque<Value, std::mutex>   StdQueue_deque_Mutex;
@@ -553,16 +640,7 @@ namespace cds_test {
                 << CDSSTRESS_STAT_OUT( s, m_nDequeue )
                 << CDSSTRESS_STAT_OUT( s, m_nFailedDeq )
                 << CDSSTRESS_STAT_OUT( s, m_nCollided )
-                << CDSSTRESS_STAT_OUT_( "combining_factor", s.combining_factor() )
-                << CDSSTRESS_STAT_OUT( s, m_nOperationCount )
-                << CDSSTRESS_STAT_OUT( s, m_nCombiningCount )
-                << CDSSTRESS_STAT_OUT( s, m_nCompactPublicationList )
-                << CDSSTRESS_STAT_OUT( s, m_nDeactivatePubRecord )
-                << CDSSTRESS_STAT_OUT( s, m_nActivatePubRecord )
-                << CDSSTRESS_STAT_OUT( s, m_nPubRecordCreated )
-                << CDSSTRESS_STAT_OUT( s, m_nPubRecordDeteted )
-                << CDSSTRESS_STAT_OUT( s, m_nAcquirePubRecCount )
-                << CDSSTRESS_STAT_OUT( s, m_nReleasePubRecCount );
+                << static_cast<cds::algo::flat_combining::stat<> const&>(s);
     }
 
     static inline property_stream& operator <<( property_stream& o, cds::container::fcqueue::empty_stat const& /*s*/ )
@@ -587,138 +665,156 @@ namespace cds_test {
             << CDSSTRESS_STAT_OUT( s, m_nPopBack )
             << CDSSTRESS_STAT_OUT( s, m_nFailedPopBack )
             << CDSSTRESS_STAT_OUT( s, m_nCollided )
-            << CDSSTRESS_STAT_OUT_( "combining_factor", s.combining_factor() )
-            << CDSSTRESS_STAT_OUT( s, m_nOperationCount )
-            << CDSSTRESS_STAT_OUT( s, m_nCombiningCount )
-            << CDSSTRESS_STAT_OUT( s, m_nCompactPublicationList )
-            << CDSSTRESS_STAT_OUT( s, m_nDeactivatePubRecord )
-            << CDSSTRESS_STAT_OUT( s, m_nActivatePubRecord )
-            << CDSSTRESS_STAT_OUT( s, m_nPubRecordCreated )
-            << CDSSTRESS_STAT_OUT( s, m_nPubRecordDeteted )
-            << CDSSTRESS_STAT_OUT( s, m_nAcquirePubRecCount )
-            << CDSSTRESS_STAT_OUT( s, m_nReleasePubRecCount );
+            << static_cast<cds::algo::flat_combining::stat<> const&>(s);
     }
 
 } // namespace cds_test
 
-#define CDSSTRESS_Queue_F( test_fixture, type_name ) \
+#define CDSSTRESS_Queue_F( test_fixture, type_name, level ) \
     TEST_F( test_fixture, type_name ) \
     { \
+        if ( !check_detail_level( level )) return; \
         typedef queue::Types< value_type >::type_name queue_type; \
         queue_type queue; \
         test( queue ); \
     }
 
 #define CDSSTRESS_MSQueue( test_fixture ) \
-    CDSSTRESS_Queue_F( test_fixture, MSQueue_HP ) \
-    CDSSTRESS_Queue_F( test_fixture, MSQueue_HP_michaelAlloc ) \
-    CDSSTRESS_Queue_F( test_fixture, MSQueue_HP_seqcst ) \
-    CDSSTRESS_Queue_F( test_fixture, MSQueue_HP_ic ) \
-    CDSSTRESS_Queue_F( test_fixture, MSQueue_HP_stat ) \
-    CDSSTRESS_Queue_F( test_fixture, MSQueue_DHP ) \
-    CDSSTRESS_Queue_F( test_fixture, MSQueue_DHP_michaelAlloc ) \
-    CDSSTRESS_Queue_F( test_fixture, MSQueue_DHP_seqcst ) \
-    CDSSTRESS_Queue_F( test_fixture, MSQueue_DHP_ic ) \
-    CDSSTRESS_Queue_F( test_fixture, MSQueue_DHP_stat )
+    CDSSTRESS_Queue_F( test_fixture, MSQueue_HP,                0 ) \
+    CDSSTRESS_Queue_F( test_fixture, MSQueue_HP_michaelAlloc,   0 ) \
+    CDSSTRESS_Queue_F( test_fixture, MSQueue_HP_seqcst,         2 ) \
+    CDSSTRESS_Queue_F( test_fixture, MSQueue_HP_ic,             1 ) \
+    CDSSTRESS_Queue_F( test_fixture, MSQueue_HP_stat,           0 ) \
+    CDSSTRESS_Queue_F( test_fixture, MSQueue_DHP,               0 ) \
+    CDSSTRESS_Queue_F( test_fixture, MSQueue_DHP_michaelAlloc,  0 ) \
+    CDSSTRESS_Queue_F( test_fixture, MSQueue_DHP_seqcst,        2 ) \
+    CDSSTRESS_Queue_F( test_fixture, MSQueue_DHP_ic,            1 ) \
+    CDSSTRESS_Queue_F( test_fixture, MSQueue_DHP_stat,          0 )
 
 #define CDSSTRESS_MoirQueue( test_fixture ) \
-    CDSSTRESS_Queue_F( test_fixture, MoirQueue_HP ) \
-    CDSSTRESS_Queue_F( test_fixture, MoirQueue_HP_michaelAlloc ) \
-    CDSSTRESS_Queue_F( test_fixture, MoirQueue_HP_seqcst ) \
-    CDSSTRESS_Queue_F( test_fixture, MoirQueue_HP_ic ) \
-    CDSSTRESS_Queue_F( test_fixture, MoirQueue_HP_stat ) \
-    CDSSTRESS_Queue_F( test_fixture, MoirQueue_DHP ) \
-    CDSSTRESS_Queue_F( test_fixture, MoirQueue_DHP_michaelAlloc ) \
-    CDSSTRESS_Queue_F( test_fixture, MoirQueue_DHP_seqcst ) \
-    CDSSTRESS_Queue_F( test_fixture, MoirQueue_DHP_ic ) \
-    CDSSTRESS_Queue_F( test_fixture, MoirQueue_DHP_stat )
+    CDSSTRESS_Queue_F( test_fixture, MoirQueue_HP,              0 ) \
+    CDSSTRESS_Queue_F( test_fixture, MoirQueue_HP_michaelAlloc, 0 ) \
+    CDSSTRESS_Queue_F( test_fixture, MoirQueue_HP_seqcst,       2 ) \
+    CDSSTRESS_Queue_F( test_fixture, MoirQueue_HP_ic,           1 ) \
+    CDSSTRESS_Queue_F( test_fixture, MoirQueue_HP_stat,         0 ) \
+    CDSSTRESS_Queue_F( test_fixture, MoirQueue_DHP,             0 ) \
+    CDSSTRESS_Queue_F( test_fixture, MoirQueue_DHP_michaelAlloc,0 ) \
+    CDSSTRESS_Queue_F( test_fixture, MoirQueue_DHP_seqcst,      2 ) \
+    CDSSTRESS_Queue_F( test_fixture, MoirQueue_DHP_ic,          1 ) \
+    CDSSTRESS_Queue_F( test_fixture, MoirQueue_DHP_stat,        0 )
 
 #define CDSSTRESS_OptimsticQueue( test_fixture ) \
-    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_HP ) \
-    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_HP_michaelAlloc ) \
-    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_HP_seqcst ) \
-    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_HP_ic ) \
-    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_HP_stat ) \
-    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_DHP ) \
-    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_DHP_michaelAlloc ) \
-    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_DHP_seqcst ) \
-    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_DHP_ic ) \
-    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_DHP_stat )
+    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_HP,                0 ) \
+    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_HP_michaelAlloc,   0 ) \
+    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_HP_seqcst,         2 ) \
+    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_HP_ic,             1 ) \
+    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_HP_stat,           0 ) \
+    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_DHP,               0 ) \
+    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_DHP_michaelAlloc,  0 ) \
+    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_DHP_seqcst,        2 ) \
+    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_DHP_ic,            1 ) \
+    CDSSTRESS_Queue_F( test_fixture, OptimisticQueue_DHP_stat,          0 )
 
 #define CDSSTRESS_BasketQueue( test_fixture ) \
-    CDSSTRESS_Queue_F( test_fixture, BasketQueue_HP ) \
-    CDSSTRESS_Queue_F( test_fixture, BasketQueue_HP_michaelAlloc ) \
-    CDSSTRESS_Queue_F( test_fixture, BasketQueue_HP_seqcst ) \
-    CDSSTRESS_Queue_F( test_fixture, BasketQueue_HP_ic ) \
-    CDSSTRESS_Queue_F( test_fixture, BasketQueue_HP_stat ) \
-    CDSSTRESS_Queue_F( test_fixture, BasketQueue_DHP ) \
-    CDSSTRESS_Queue_F( test_fixture, BasketQueue_DHP_michaelAlloc ) \
-    CDSSTRESS_Queue_F( test_fixture, BasketQueue_DHP_seqcst ) \
-    CDSSTRESS_Queue_F( test_fixture, BasketQueue_DHP_ic ) \
-    CDSSTRESS_Queue_F( test_fixture, BasketQueue_DHP_stat )
+    CDSSTRESS_Queue_F( test_fixture, BasketQueue_HP,                0 ) \
+    CDSSTRESS_Queue_F( test_fixture, BasketQueue_HP_michaelAlloc,   0 ) \
+    CDSSTRESS_Queue_F( test_fixture, BasketQueue_HP_seqcst,         2 ) \
+    CDSSTRESS_Queue_F( test_fixture, BasketQueue_HP_ic,             1 ) \
+    CDSSTRESS_Queue_F( test_fixture, BasketQueue_HP_stat,           0 ) \
+    CDSSTRESS_Queue_F( test_fixture, BasketQueue_DHP,               0 ) \
+    CDSSTRESS_Queue_F( test_fixture, BasketQueue_DHP_michaelAlloc,  0 ) \
+    CDSSTRESS_Queue_F( test_fixture, BasketQueue_DHP_seqcst,        2 ) \
+    CDSSTRESS_Queue_F( test_fixture, BasketQueue_DHP_ic,            1 ) \
+    CDSSTRESS_Queue_F( test_fixture, BasketQueue_DHP_stat,          0 )
 
 #define CDSSTRESS_FCQueue( test_fixture ) \
-    CDSSTRESS_Queue_F( test_fixture, FCQueue_deque ) \
-    CDSSTRESS_Queue_F( test_fixture, FCQueue_deque_elimination ) \
-    CDSSTRESS_Queue_F( test_fixture, FCQueue_deque_elimination_stat ) \
-    CDSSTRESS_Queue_F( test_fixture, FCQueue_list ) \
-    CDSSTRESS_Queue_F( test_fixture, FCQueue_list_elimination ) \
-    CDSSTRESS_Queue_F( test_fixture, FCQueue_list_elimination_stat )
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_deque,                 0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_deque_stat,            0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_deque_wait_ss,         1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_deque_wait_ss_stat,    0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_deque_wait_sm,         1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_deque_wait_sm_stat,    0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_deque_wait_mm,         1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_deque_wait_mm_stat,    0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_deque_elimination,     1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_deque_elimination_stat,0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_list,                  0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_list_stat,             0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_list_wait_ss,          1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_list_wait_ss_stat,     0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_list_wait_sm,          1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_list_wait_sm_stat,     0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_list_wait_mm,          1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_list_wait_mm_stat,     0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_list_elimination,      1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCQueue_list_elimination_stat, 0 )
 
 #define CDSSTRESS_FCDeque( test_fixture ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeL_default ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeL_mutex ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeL_stat ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeL_elimination ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeL_elimination_stat ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeL_boost ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeL_boost_stat ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeL_boost_elimination ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeL_boost_elimination_stat ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeR_default ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeR_mutex ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeR_stat ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeR_elimination ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeR_elimination_stat ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeR_boost ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeR_boost_stat ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeR_boost_elimination ) \
-    CDSSTRESS_Queue_F( test_fixture, FCDequeR_boost_elimination_stat )
+    CDSSTRESS_Queue_F( test_fixture, FCDequeL_default,              0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeL_mutex,                0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeL_stat,                 0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeL_wait_ss,              1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeL_wait_ss_stat,         0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeL_wait_sm,              1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeL_wait_sm_stat,         0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeL_wait_mm,              1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeL_wait_mm_stat,         0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeL_elimination,          1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeL_elimination_stat,     0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeL_boost,                1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeL_boost_stat,           0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeL_boost_elimination,    1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeL_boost_elimination_stat, 1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeR_default,              0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeR_mutex,                0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeR_stat,                 0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeR_wait_ss,              1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeR_wait_ss_stat,         0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeR_wait_sm,              1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeR_wait_sm_stat,         0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeR_wait_mm,              1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeR_wait_mm_stat,         0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeR_elimination,          1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeR_elimination_stat,     0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeR_boost,                1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeR_boost_stat,           0 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeR_boost_elimination,    1 ) \
+    CDSSTRESS_Queue_F( test_fixture, FCDequeR_boost_elimination_stat, 1 )
 
 #define CDSSTRESS_RWQueue( test_fixture ) \
-    CDSSTRESS_Queue_F( test_fixture, RWQueue_Spin ) \
-    CDSSTRESS_Queue_F( test_fixture, RWQueue_Spin_ic ) \
-    CDSSTRESS_Queue_F( test_fixture, RWQueue_mutex )
+    CDSSTRESS_Queue_F( test_fixture, RWQueue_Spin,      0 ) \
+    CDSSTRESS_Queue_F( test_fixture, RWQueue_Spin_ic,   1 ) \
+    CDSSTRESS_Queue_F( test_fixture, RWQueue_mutex,     0 )
 
 #define CDSSTRESS_SegmentedQueue( test_fixture ) \
-    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_HP_spin ) \
-    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_HP_spin_padding ) \
-    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_HP_spin_stat ) \
-    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_HP_mutex ) \
-    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_HP_mutex_padding ) \
-    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_HP_mutex_stat ) \
-    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_DHP_spin ) \
-    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_DHP_spin_padding ) \
-    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_DHP_spin_stat ) \
-    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_DHP_mutex ) \
-    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_DHP_mutex_padding ) \
-    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_DHP_mutex_stat )
+    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_HP_spin,            0 ) \
+    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_HP_spin_padding,    0 ) \
+    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_HP_spin_stat,       0 ) \
+    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_HP_mutex,           0 ) \
+    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_HP_mutex_padding,   1 ) \
+    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_HP_mutex_stat,      0 ) \
+    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_DHP_spin,           0 ) \
+    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_DHP_spin_padding,   1 ) \
+    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_DHP_spin_stat,      0 ) \
+    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_DHP_mutex,          0 ) \
+    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_DHP_mutex_padding,  1 ) \
+    CDSSTRESS_Queue_F( test_fixture, SegmentedQueue_DHP_mutex_stat,     0 )
 
 
 #define CDSSTRESS_TsigasQueue( test_fixture ) \
-    CDSSTRESS_Queue_F( test_fixture, TsigasCycleQueue_dyn ) \
-    CDSSTRESS_Queue_F( test_fixture, TsigasCycleQueue_dyn_michaelAlloc ) \
-    CDSSTRESS_Queue_F( test_fixture, TsigasCycleQueue_dyn_ic )
+    CDSSTRESS_Queue_F( test_fixture, TsigasCycleQueue_dyn,              0 ) \
+    CDSSTRESS_Queue_F( test_fixture, TsigasCycleQueue_dyn_michaelAlloc, 0 ) \
+    CDSSTRESS_Queue_F( test_fixture, TsigasCycleQueue_dyn_ic,           1 )
 
 #define CDSSTRESS_VyukovQueue( test_fixture ) \
-    CDSSTRESS_Queue_F( test_fixture, VyukovMPMCCycleQueue_dyn ) \
-    CDSSTRESS_Queue_F( test_fixture, VyukovMPMCCycleQueue_dyn_michaelAlloc ) \
-    CDSSTRESS_Queue_F( test_fixture, VyukovMPMCCycleQueue_dyn_ic )
+    CDSSTRESS_Queue_F( test_fixture, VyukovMPMCCycleQueue_dyn,              0 ) \
+    CDSSTRESS_Queue_F( test_fixture, VyukovMPMCCycleQueue_dyn_michaelAlloc, 0 ) \
+    CDSSTRESS_Queue_F( test_fixture, VyukovMPMCCycleQueue_dyn_ic,           1 )
 
 #define CDSSTRESS_StdQueue( test_fixture ) \
-    CDSSTRESS_Queue_F( test_fixture, StdQueue_deque_Spinlock ) \
-    CDSSTRESS_Queue_F( test_fixture, StdQueue_list_Spinlock ) \
-    CDSSTRESS_Queue_F( test_fixture, StdQueue_deque_Mutex ) \
-    CDSSTRESS_Queue_F( test_fixture, StdQueue_list_Mutex )
+    CDSSTRESS_Queue_F( test_fixture, StdQueue_deque_Spinlock,   0 ) \
+    CDSSTRESS_Queue_F( test_fixture, StdQueue_list_Spinlock,    0 ) \
+    CDSSTRESS_Queue_F( test_fixture, StdQueue_deque_Mutex,      1 ) \
+    CDSSTRESS_Queue_F( test_fixture, StdQueue_list_Mutex,       1 )
 
 #endif // #ifndef CDSSTRESS_QUEUE_TYPES_H

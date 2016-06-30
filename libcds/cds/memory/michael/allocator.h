@@ -1517,48 +1517,27 @@ namespace michael {
 
         void free_processor_heap( processor_heap * pProcHeap )
         {
-            if ( pProcHeap->nPageIdx == processor_heap::c_nPageSelfAllocation ) {
-                superblock_desc * pDesc;
+            assert( pProcHeap->nPageIdx != processor_heap::c_nPageSelfAllocation );
 
-                for ( pDesc = pProcHeap->partialList.pop(); pDesc; pDesc = pProcHeap->partialList.pop()) {
-                    free( pDesc->pSB );
-                    m_AlignedHeap.free( pDesc );
-                }
+            page_heap& pageHeap = pProcHeap->pProcDesc->pageHeaps[pProcHeap->nPageIdx];
+            superblock_desc * pDesc;
 
-                superblock_desc * pPartial = pProcHeap->pPartial.load(atomics::memory_order_relaxed);
-                if ( pPartial ) {
-                    free( pPartial->pSB );
-                    m_AlignedHeap.free( pPartial );
-                }
-
-                pDesc = pProcHeap->active.load(atomics::memory_order_relaxed).ptr();
-                if ( pDesc ) {
-                    free( pDesc->pSB );
-                    m_AlignedHeap.free( pDesc );
-                }
+            for ( pDesc = pProcHeap->partialList.pop(); pDesc; pDesc = pProcHeap->partialList.pop()) {
+                pageHeap.free( pDesc->pSB );
+                m_AlignedHeap.free( pDesc );
             }
-            else {
-                page_heap& pageHeap = pProcHeap->pProcDesc->pageHeaps[pProcHeap->nPageIdx];
-                superblock_desc * pDesc;
 
-                for ( pDesc = pProcHeap->partialList.pop(); pDesc; pDesc = pProcHeap->partialList.pop()) {
-                    pageHeap.free( pDesc->pSB );
-                    m_AlignedHeap.free( pDesc );
-                }
-
-                superblock_desc * pPartial = pProcHeap->pPartial.load(atomics::memory_order_relaxed);
-                if ( pPartial ) {
-                    pageHeap.free( pPartial->pSB );
-                    m_AlignedHeap.free( pPartial );
-                }
-
-                pDesc = pProcHeap->active.load(atomics::memory_order_relaxed).ptr();
-                if ( pDesc ) {
-                    pageHeap.free( pDesc->pSB );
-                    m_AlignedHeap.free( pDesc );
-                }
+            superblock_desc * pPartial = pProcHeap->pPartial.load(atomics::memory_order_relaxed);
+            if ( pPartial ) {
+                pageHeap.free( pPartial->pSB );
+                m_AlignedHeap.free( pPartial );
             }
-            pProcHeap->~processor_heap();
+
+            pDesc = pProcHeap->active.load(atomics::memory_order_relaxed).ptr();
+            if ( pDesc ) {
+                pageHeap.free( pDesc->pSB );
+                m_AlignedHeap.free( pDesc );
+            }
         }
 
         /// Frees processor descriptor
@@ -1566,8 +1545,17 @@ namespace michael {
         {
             const size_t nPageHeapCount = m_SizeClassSelector.pageTypeCount();
 
-            for (unsigned int j = 0; j < m_SizeClassSelector.size(); ++j )
-                free_processor_heap( pDesc->arrProcHeap + j );
+            {
+                processor_heap * const pProcHeapEnd = pDesc->arrProcHeap + m_SizeClassSelector.size();
+
+                // free large blocks only
+                for ( processor_heap * pProcHeap = pDesc->arrProcHeap; pProcHeap < pProcHeapEnd; ++pProcHeap ) {
+                    if ( pProcHeap->nPageIdx != processor_heap::c_nPageSelfAllocation )
+                        free_processor_heap( pProcHeap );
+
+                    pProcHeap->~processor_heap();
+                }
+            }
 
             for ( superblock_desc * pSBDesc = pDesc->listSBDescFree.pop(); pSBDesc; pSBDesc = pDesc->listSBDescFree.pop())
                 m_AlignedHeap.free( pSBDesc );
@@ -1575,7 +1563,6 @@ namespace michael {
             for (size_t i = 0; i < nPageHeapCount; ++i )
                 (pDesc->pageHeaps + i)->page_heap::~page_heap();
 
-            //m_IntHeap.free( pDesc->pageHeaps );
             pDesc->pageHeaps = nullptr;
 
             pDesc->processor_desc::~processor_desc();
@@ -1627,12 +1614,10 @@ namespace michael {
             pDesc->pProcHeap->stat.incBlockDeallocated();
             processor_desc * pProcDesc = pDesc->pProcHeap->pProcDesc;
             if ( pDesc->pSB ) {
-                if ( pDesc->pProcHeap->nPageIdx == processor_heap::c_nPageSelfAllocation ) {
+                if ( pDesc->pProcHeap->nPageIdx == processor_heap::c_nPageSelfAllocation )
                     free( pDesc->pSB );
-                }
-                else {
+                else
                     pProcDesc->pageHeaps[pDesc->pProcHeap->nPageIdx].free( pDesc->pSB );
-                }
             }
             pProcDesc->listSBDescFree.push( pDesc );
         }

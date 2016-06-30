@@ -103,7 +103,6 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
         global_thread_ctrs[i].skip = 0;
     }
     print_abort_stats();
-    fprintf(stderr, "Num Combines: %d\n", int(num_combines));
 }
 
 void dualprintf(const char* fmt,...) {
@@ -145,58 +144,61 @@ void print_abort_stats() {
 #endif
 }
 
+/*
 #define MAKE_PQUEUE_TESTS(desc, test, type, ...) \
     {desc, "STO pqueue", new test<DatatypeHarness<PriorityQueue<type>>>(STO, ## __VA_ARGS__)},      \
     {desc, "STO pqueue opaque", new test<DatatypeHarness<PriorityQueue<type, true>>>(STO, ## __VA_ARGS__)},\
-    {desc, "MS pqueue", new test<DatatypeHarness<cds::container::MSPriorityQueue<type>>>(CDS, ## __VA_ARGS__)},\
-    {desc, "FC pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type>>>(CDS, ## __VA_ARGS__)}, \
+    {desc, "STO FC pqueue", new test<DatatypeHarness<FCPriorityQueue<type>>>(STO, ## __VA_ARGS__)},\
+    {desc, "FC pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type, std::priority_queue<type>, FCPQUEUE_TRAITS()>>>(CDS, ## __VA_ARGS__)}, \
     {desc, "FC pairing heap pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type, PairingHeap<type>>>>(CDS, ## __VA_ARGS__)} 
+   // {desc, "MS pqueue", new test<DatatypeHarness<cds::container::MSPriorityQueue<type>>>(CDS, ## __VA_ARGS__)},
+
 struct Test {
     std::string desc;
     const char* ds;
     GenericTest* test;
 } pqueue_tests[] = {
-    //MAKE_PQUEUE_TESTS("PQRandSingleOps:R", RandomSingleOpTest, int, RANDOM_VALS),
-    //MAKE_PQUEUE_TESTS("PQRandSingleOps:D", RandomSingleOpTest, int, DECREASING_VALS),
-    //MAKE_PQUEUE_TESTS("PQPushPop:R", PushPopTest, int, RANDOM_VALS),
-    //MAKE_PQUEUE_TESTS("PQPushPop:D", PushPopTest, int, DECREASING_VALS),
-    //MAKE_PQUEUE_TESTS("PQPushOnly:R", SingleOpTest, int, RANDOM_VALS, push),
-    //MAKE_PQUEUE_TESTS("PQPushOnly:D", SingleOpTest, int, DECREASING_VALS, push),
+    MAKE_PQUEUE_TESTS("PQRandSingleOps:R", RandomSingleOpTest, int, RANDOM_VALS),
+    MAKE_PQUEUE_TESTS("PQRandSingleOps:D", RandomSingleOpTest, int, DECREASING_VALS),
+    MAKE_PQUEUE_TESTS("PQPushPop:R", PushPopTest, int, RANDOM_VALS),
+    MAKE_PQUEUE_TESTS("PQPushPop:D", PushPopTest, int, DECREASING_VALS),
+    MAKE_PQUEUE_TESTS("PQPushOnly:R", SingleOpTest, int, RANDOM_VALS, push),
+    MAKE_PQUEUE_TESTS("PQPushOnly:D", SingleOpTest, int, DECREASING_VALS, push),
     //MAKE_PQUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
     //MAKE_PQUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),
 };
-int num_pqueues = 5;
+int num_pqueues = 6;
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
     {desc, "STO queue", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "STO queue2", new test<DatatypeHarness<Queue2<type>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "FC queue", new test<DatatypeHarness<cds::container::FCQueue<type, std::queue<type>, FCQUEUE_TRAITS()>>>(CDS, ## __VA_ARGS__)},                 \
     {desc, "STO/FC queue", new test<DatatypeHarness<FCQueue<type>>>(STO, ## __VA_ARGS__)}
-/*
-    {desc, "Basket queue", new test<DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},         \
-    {desc, "Moir queue", new test<DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
-    {desc, "MS queue", new test<DatatypeHarness<cds::container::MSQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},   \
-    {desc, "Opt queue", new test<DatatypeHarness<cds::container::OptimisticQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},   \
-    {desc, "RW queue", new test<DatatypeHarness<cds::container::RWQueue<type>>>(CDS, ## __VA_ARGS__)}, \
-    {desc, "Segmented queue", new test<DatatypeHarness<cds::container::SegmentedQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
-    {desc, "TC queue", new test<DatatypeHarness<cds::container::TsigasCycleQueue<type>>>(CDS, ## __VA_ARGS__)}, \
-    {desc, "VyukovMPMC queue", new test<DatatypeHarness<cds::container::VyukovMPMCCycleQueue<type>>>(CDS, ## __VA_ARGS__)}
-*/
+    //{desc, "Basket queue", new test<DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},         \
+    //{desc, "Moir queue", new test<DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
+    //{desc, "MS queue", new test<DatatypeHarness<cds::container::MSQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},   \
+    //{desc, "Opt queue", new test<DatatypeHarness<cds::container::OptimisticQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},   \
+    //{desc, "RW queue", new test<DatatypeHarness<cds::container::RWQueue<type>>>(CDS, ## __VA_ARGS__)}, \
+    //{desc, "Segmented queue", new test<DatatypeHarness<cds::container::SegmentedQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
+    //{desc, "TC queue", new test<DatatypeHarness<cds::container::TsigasCycleQueue<type>>>(CDS, ## __VA_ARGS__)}, \
+    //{desc, "VyukovMPMC queue", new test<DatatypeHarness<cds::container::VyukovMPMCCycleQueue<type>>>(CDS, ## __VA_ARGS__)}
 Test queue_tests[] = {
     //MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
     //MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomSingleOpTest, int, RANDOM_VALS),
-    MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[1]),
-    MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[2]),
+    //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[1]),
+    //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[2]),
 };
 int num_queues = 4;
+*/
 
 int main() {
-    global_verbose_stats_file = fopen("microbenchmarks/cds_benchmarks_stats_verbose.txt", "w");
-    global_stats_file = fopen("microbenchmarks/cds_benchmarks_stats.txt", "w");
+    global_verbose_stats_file = fopen("microbenchmarks/cds_benchmarks_stats_verbose.txt", "a");
+    global_stats_file = fopen("microbenchmarks/cds_benchmarks_stats.txt", "a");
     if ( !global_stats_file || !global_verbose_stats_file ) {
         fprintf(stderr, "Could not open file to write stats");
         return 1;
     }
+    dualprintf("\n--------------NEW TEST-----------------\n");
 
     srandomdev();
     for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
@@ -219,27 +221,40 @@ int main() {
     pthread_t advancer;
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
-  
-    GeneralTxnsTest<DatatypeHarness<FCQueue<int>>> test1(STO, RANDOM_VALS, q_txn_sets[6]);
-    GeneralTxnsTest<DatatypeHarness<cds::container::FCQueue<int, std::queue<int>, FCQUEUE_TRAITS()>>> test2(CDS, RANDOM_VALS, q_txn_sets[6]);
-    GeneralTxnsTest<DatatypeHarness<Queue2<int>>> test3(STO, RANDOM_VALS, q_txn_sets[6]);
+
+    /*
+    PushPopTest<DatatypeHarness<FCPriorityQueue<int>>> ptest1(STO, RANDOM_VALS);
+    PushPopTest<DatatypeHarness<PriorityQueue<int, true>>> ptest2(STO, RANDOM_VALS);
+    PushPopTest<DatatypeHarness<PriorityQueue<int>>> ptest3(STO, RANDOM_VALS);
+    PushPopTest<DatatypeHarness<cds::container::FCPriorityQueue<int, std::priority_queue<int>, FCPQUEUE_TRAITS()>>> ptest4(CDS, RANDOM_VALS);
+    
+    RandomSingleOpTest<DatatypeHarness<FCPriorityQueue<int>>> test1(STO, RANDOM_VALS);
+    RandomSingleOpTest<DatatypeHarness<PriorityQueue<int, true>>> test2(STO, RANDOM_VALS);
+    RandomSingleOpTest<DatatypeHarness<PriorityQueue<int>>> test3(STO, RANDOM_VALS);
+    RandomSingleOpTest<DatatypeHarness<cds::container::FCPriorityQueue<int, std::priority_queue<int>, FCPQUEUE_TRAITS()>>> test4(CDS, RANDOM_VALS);
+    */
+    
+    PushPopTest<DatatypeHarness<FCQueue<int>>> test1(STO, RANDOM_VALS);
+    PushPopTest<DatatypeHarness<Queue2<int>>> test2(STO, RANDOM_VALS);
+    PushPopTest<DatatypeHarness<cds::container::FCQueue<int, std::queue<int>, FCQUEUE_TRAITS()>>> test3(CDS, RANDOM_VALS);
+    
+    RandomSingleOpTest<DatatypeHarness<FCQueue<int>>> test4(STO, RANDOM_VALS);
+    RandomSingleOpTest<DatatypeHarness<Queue2<int>>> test5(STO, RANDOM_VALS);
+    RandomSingleOpTest<DatatypeHarness<cds::container::FCQueue<int, std::queue<int>, FCQUEUE_TRAITS()>>> test6(CDS, RANDOM_VALS); 
    
     /*
-    PushPopTest<DatatypeHarness<FCQueue<int>>> test4(STO, RANDOM_VALS);
-    PushPopTest<DatatypeHarness<cds::container::FCQueue<int, std::queue<int>, FCQUEUE_TRAITS()>>> test5(CDS, RANDOM_VALS);
-    PushPopTest<DatatypeHarness<Queue2<int>>> test6(STO, RANDOM_VALS);
-    */
     startAndWait(&test1, 10000, 2);
+    test1.print();
     startAndWait(&test2, 10000, 2);
     startAndWait(&test3, 10000, 2);
-    test2.print();
-/*
-    startAndWait(&test4, 10000, 2);
-    startAndWait(&test5, 10000, 2);
-    startAndWait(&test6, 10000, 2);
-    test5.print();
+    test3.print();
     */
+    startAndWait(&test4, 10000, 8);
+    test4.print();
     /*
+    startAndWait(&test5, 10000, 8);
+    startAndWait(&test6, 10000, 8);
+    test6.print();
     for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {
         dualprintf("\n%s\n", pqueue_tests[i].desc.c_str());
         fprintf(global_verbose_stats_file, "STO, STO(O), MS, FC\n");
@@ -287,6 +302,3 @@ int main() {
     cds::Terminate();
     return 0;
 }
-
-
-

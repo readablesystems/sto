@@ -25,7 +25,7 @@
     SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
     CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
     OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.     
+    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "map_type.h"
@@ -97,11 +97,15 @@ namespace map {
             Worker( cds_test::thread_pool& pool, Map& map )
                 : base_class( pool )
                 , m_Map( map )
+                , m_KeyExists()
+                , m_KeyNotExists()
             {}
 
             Worker( Worker& src )
                 : base_class( src )
                 , m_Map( src.m_Map )
+                , m_KeyExists()
+                , m_KeyNotExists()
             {}
 
             virtual thread * clone()
@@ -200,6 +204,12 @@ namespace map {
                 EXPECT_EQ( w.m_KeyNotExists.nSuccess, (s_Data.size() - s_nMapSize) * s_nPassCount ) << "thread " << i;
                 EXPECT_EQ( w.m_KeyNotExists.nFailed, 0 ) << "thread " << i;
             }
+
+            propout()
+                << std::make_pair( "exist_found", nExistSuccess )
+                << std::make_pair( "exist_not_found", nExistFailed )  // must = 0
+                << std::make_pair( "missing_not_found", nMissingSuccess )
+                << std::make_pair( "missing_found", nMissingFailed );  // must = 0
 
             check_before_cleanup( testMap );
 
