@@ -62,23 +62,11 @@ public:
     // STO
     typedef typename W<value_type>::version_type version_type;
 
-    // For thread-specific txns
-    static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<0;
-    static constexpr TransItem::flags_type list_bit = TransItem::user0_bit<<1;
-    static constexpr TransItem::flags_type empty_bit = TransItem::user0_bit<<2;
-   
-    // For the publication list records
-    static constexpr uint8_t delete_bit = 1<<0;
-    static constexpr uint8_t popped_bit = 1<<1;
-
 private:
     // Queue operation IDs
     enum fc_operation {
         op_push = flat_combining::req_Operation, // Push
-        op_mark_deleted,  // Pop (mark as poisoned)
-        op_install_pops, // Pop (marking as not-a-value)
-        op_undo_mark_deleted, // Cleanup Pops (mark poisoned values with specified threadid as clean)
-        op_clear_popped, // Clear Pops at front which were successfully popped
+        op_pop,  // Pop (mark as poisoned)
         op_clear,       // Clear
         op_empty        // Empty
     };
@@ -90,63 +78,33 @@ private:
         union {
             val_wrapper<value_type> const *  pValPush; // Value to enqueue
             val_wrapper<value_type> *        pValPop;  // Pop destination
+        };/*
+        union {
+            val_wrapper<value_type> const *  pValPush; // Value to enqueue
+            val_wrapper<value_type> *        pValPop;  // Pop destination
             val_wrapper<value_type> *        pValEdit;  // Value to edit 
-        };
+        };*/
         bool            is_empty; // true if the queue is empty
     };
 
-    flat_combining::kernel<fc_record> fc_kernel_;
+    flat_combining::kernel<fc_record > fc_kernel_;
     queue_type  q_;
     version_type queueversion_;
-    int last_deleted_index_;   // index of the item in q_ last marked deleted. 
-                                    // -1 indicates an empty q_
-    std::atomic<int> num_mark_iter;
-    std::atomic<int> num_mark_tries;
-    std::atomic<int> num_marked;
-    std::atomic<int> num_clear_tries;
-    std::atomic<int> num_cleared;
-    std::atomic<int> num_install_iter;
-    std::atomic<int> num_install_tries;
-    std::atomic<int> num_installed;
-    std::atomic<int> num_undone;
-    std::atomic<int> num_undo_tries;
- 
+
 public:
     /// Initializes empty queue object
-    FCQueue() : queueversion_(0), last_deleted_index_(-1), 
-        num_mark_iter(0), num_mark_tries(0), num_marked(0),
-        num_clear_tries(0), num_cleared(0),
-        num_install_iter(0), num_install_tries(0), num_installed(0),
-        num_undone(0), num_undo_tries(0)
-    {}
+    FCQueue() : queueversion_(0) {}
 
     /// Initializes empty queue object and gives flat combining parameters
     FCQueue(
         unsigned int nCompactFactor     ///< Flat combining: publication list compacting factor
         ,unsigned int nCombinePassCount ///< Flat combining: number of combining passes for combiner thread
         )
-        : fc_kernel_( nCompactFactor, nCombinePassCount ), queueversion_(0), last_deleted_index_(-1),
-        num_mark_iter(0), num_mark_tries(0), num_marked(0),
-        num_clear_tries(0), num_cleared(0),
-        num_install_iter(0), num_install_tries(0), num_installed(0),
-        num_undone(0), num_undo_tries(0)
-    {}
-
-    ~FCQueue() { 
-        fprintf(stderr, "Iter Depth / Attempts:\n\
-                Marked: %d / %d\t Successful: %d\n\
-                Install: %d / %d\t Successful: %d\n\
-                Clear Attempts: %d\t Successful: %d\n\
-                Undo Attempts: %d\t Successful: %d\n",
-                int(num_mark_iter), int(num_mark_tries), int(num_marked),
-                int(num_install_iter), int(num_install_tries), int(num_installed),
-                int(num_clear_tries), int(num_cleared),
-                int(num_undo_tries), int(num_undone));
-    }
+        : fc_kernel_( nCompactFactor, nCombinePassCount ), queueversion_(0) {}
 
     // Adds an item to the write list of the txn
     bool push( value_type const& v ) {
-        fc_record * pRec = fc_kernel_.acquire_record();
+        auto pRec = fc_kernel_.acquire_record();
         val_wrapper<value_type> vw = {v, 0, 0};
         pRec->pValPush = &vw; 
         fc_kernel_.combine( op_push, pRec, *this );
@@ -158,21 +116,21 @@ public:
     // Marks an item as poisoned in the queue
     bool pop( value_type& val ) {
         // try marking an item in the queue as deleted
-        fc_record * pRec = fc_kernel_.acquire_record();
+        auto pRec = fc_kernel_.acquire_record();
         val_wrapper<value_type> vw = {val, 0, TThread::id()};
         pRec->pValPop = &vw;
-        fc_kernel_.combine( op_mark_deleted, pRec, *this );
+        fc_kernel_.combine( op_pop, pRec, *this );
         assert( pRec->is_done() );
         fc_kernel_.release_record( pRec );
         if (!pRec->is_empty) {
-            val = std::move(pRec->pValPop->val);
+            //val = std::move(pRec->pValPop->val);
             return true;
         } else return false;
     }
 
     // Clears the queue
     void clear() {
-        fc_record * pRec = fc_kernel_.acquire_record();
+        auto pRec = fc_kernel_.acquire_record();
         fc_kernel_.combine( op_clear, pRec, *this );
         assert( pRec->is_done() );
         fc_kernel_.release_record( pRec );
@@ -186,7 +144,7 @@ public:
 
     // Checks if the queue is empty
     bool empty() {
-        fc_record * pRec = fc_kernel_.acquire_record();
+        auto pRec = fc_kernel_.acquire_record();
         fc_kernel_.combine( op_empty, pRec, *this );
         assert( pRec->is_done() );
         fc_kernel_.release_record( pRec );
@@ -205,17 +163,13 @@ public: // flat combining cooperation, not for direct use!
         // this function is called under FC mutex, so switch TSan off
         CDS_TSAN_ANNOTATE_IGNORE_RW_BEGIN;
 
-        int threadid;
         // do the operation requested
         switch ( pRec->op() ) {
         case op_push:
             assert( pRec->pValPush );
             q_.push_back( *(pRec->pValPush) );
             break;
-
-        case op_mark_deleted: {
-            num_mark_tries++;
-#if !ITER
+        case op_pop: {
             assert( pRec->pValPop );
             pRec->is_empty = q_.empty();
             if ( !pRec->is_empty) {
@@ -223,92 +177,10 @@ public: // flat combining cooperation, not for direct use!
                 q_.pop_front();
             }
             break;
-#else
-            assert( pRec->pValPop );
-            bool found = false;
-            if ( !q_.empty() ) {
-                for (auto it = q_.begin(); it != q_.end(); ++it) {
-                    num_mark_iter++;
-                    if (!has_delete(*it) && !is_popped(*it)) {
-                        num_marked++;
-                        it->threadid = pRec->pValPop->threadid;
-                        it->flags = delete_bit;
-                        *(pRec->pValPop) = *it; 
-                        pRec->is_empty = false;
-                        found = true;
-                        auto index = it-q_.begin();
-                        last_deleted_index_ = (last_deleted_index_ > index) ? last_deleted_index_ : index;
-                        break;
-                    }
-                }
-            }
-            // didn't find any non-deleted items, queue is empty
-            if (!found) pRec->is_empty = true;
-            break;
-#endif
         }
-
-        case op_install_pops: {
-            num_install_tries++;
-#if ITER
-            threadid = pRec->pValEdit->threadid;
-            bool found = false;
-            // we should only install if the txn actually did mark an item
-            // as deleted in the queue. this implies that the queue cannot be 
-            // nonempty
-            assert(last_deleted_index_ != -1);
-            for (auto it = q_.begin(); it != q_.begin() + last_deleted_index_ + 1; ++it) {
-                num_install_iter++;
-                if (has_delete(*it) && (threadid == it->threadid)) {
-                    num_installed++;
-                    found = true;
-                    it->flags = popped_bit;
-                }
-            }
-            assert(found);
-#endif
-            break;
-        }
-        
-        case op_undo_mark_deleted: {
-            num_undo_tries++;
-            threadid = pRec->pValEdit->threadid;
-            auto begin_it = q_.begin();
-            auto new_di = 0;
-          
-            if (last_deleted_index_ != -1) {
-                for (auto it = begin_it; it != begin_it + last_deleted_index_ + 1; ++it) {
-                    if (has_delete(*it)) {
-                        if (threadid == it->threadid) {
-                            num_undone++;
-                            it->flags = 0;
-                        } else {
-                            new_di = it-begin_it;
-                        }
-                    }
-                }
-            }
-            // set the last_deleted_index_ to the next greatest deleted element's index in the queue
-            // (which could be unchanged)
-            last_deleted_index_ = new_di;
-            break;
-        } 
-
-        case op_clear_popped: 
-            num_clear_tries++;
-            // remove all popped values from txns that have committed their pops
-            while( !q_.empty() && is_popped(q_.front()) ) {
-                num_cleared++;
-                if (last_deleted_index_ != -1) --last_deleted_index_;
-                q_.pop_front();
-            }
-            break;
-
-        // the following are non-transactional
         case op_clear:
             while ( !q_.empty() )
                 q_.pop_back();
-            last_deleted_index_ = -1;
             break;
         case op_empty:
             pRec->is_empty = q_.empty();
@@ -320,14 +192,25 @@ public: // flat combining cooperation, not for direct use!
         CDS_TSAN_ANNOTATE_IGNORE_RW_END;
     }
 
-private: 
-    // Fxns for the combiner thread
-    bool has_delete(const val_wrapper<value_type>& val) {
-        return val.flags & delete_bit;
-    }
-    
-    bool is_popped(const val_wrapper<value_type>& val) {
-        return val.flags & popped_bit;
+    void print_statistics() { 
+        fprintf(stderr, "\
+                Num Operations\t %lu\n\
+                Num Combines\t %lu\n\
+                Compacting Factor\t %f\n\
+                Num Compacting PubList\t %lu\n\
+                Num Deactivate Rec\t %lu\n\
+                Num Activate Rec\t %lu\n\
+                Num Create Rec\t %lu\n\
+                Num Delete Rec\t %lu\n\
+                Num Passive Calls\t %lu\n\
+                Num Passive Iters\t %lu\n\
+                Num Passive Wait Wakeups\t %lu\n\
+                Num Passive->Combiner\t %lu\n",
+        fc_kernel_.statistics().nOperationCount.get(), fc_kernel_.statistics().nCombiningCount.get(), fc_kernel_.statistics().combining_factor(),
+        fc_kernel_.statistics().nCompactPublicationList.get(), fc_kernel_.statistics().nDeactivatePubRecord.get(), 
+        fc_kernel_.statistics().nActivatePubRecord.get(), fc_kernel_.statistics().nPubRecordCreated.get(), fc_kernel_.statistics().nPubRecordDeleted.get(),
+        fc_kernel_.statistics().nPassiveWaitCall.get(), fc_kernel_.statistics().nPassiveWaitIteration.get(), fc_kernel_.statistics().nPassiveWaitWakeup.get(),
+        fc_kernel_.statistics().nPassiveToCombiner.get());
     }
 };
 

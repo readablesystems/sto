@@ -33,8 +33,8 @@
 #include "PairingHeap.hh"
 #include "Queue.hh"
 #include "Queue2.hh"
-#include "FCQueue.hh"
-//#include "FCQueueNT.hh"
+//#include "FCQueue.hh"
+#include "FCQueueNT.hh"
 #include "randgen.hh"
 
 #define GLOBAL_SEED 10
@@ -196,14 +196,12 @@ public:
 
 template <typename T> struct DatatypeHarness<cds::container::FCPriorityQueue<T, std::priority_queue<T>, FCPQUEUE_TRAITS()>> : 
     public CDSDatatypeHarness<cds::container::FCPriorityQueue<T, std::priority_queue<T>, FCPQUEUE_TRAITS()>>{
-        int num_combines() { return int(this->v_.statistics().nCombiningCount); }
-        double combining_factor() { return double(this->v_.statistics().combining_factor()); }
+        void print_statistics() { this->v_.print_statistics(); }
     };
 
 template <typename T> struct DatatypeHarness<cds::container::FCPriorityQueue<T, PairingHeap<T>>> : 
     public CDSDatatypeHarness<cds::container::FCPriorityQueue<T, PairingHeap<T>>>{
-        int num_combines() { return int(this->v_.statistics().nCombiningCount); }
-        double combining_factor() { return double(this->v_.statistics().combining_factor()); }
+        void print_statistics() { this->v_.print_statistics(); }
     };
 
 /* 
@@ -266,8 +264,7 @@ public:
         assert(Sto::try_commit());
     }
     size_t size() { return v_.size(); }
-    int num_combines() { return int(this->v_.statistics().nCombiningCount); }
-    double combining_factor() { return double(this->v_.statistics().combining_factor()); }
+    void print_statistics() { this->v_.print_statistics(); }
 
 private:
     FCQueue<T> v_;
@@ -277,8 +274,7 @@ template <typename T> struct DatatypeHarness<cds::container::BasketQueue<cds::gc
     public CDSDatatypeHarness<cds::container::BasketQueue<cds::gc::HP, T>>{};
 template <typename T> struct DatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS()>> : 
     public CDSDatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS()>>{
-        int num_combines() { return int(this->v_.statistics().nCombiningCount); }
-        double combining_factor() { return double(this->v_.statistics().combining_factor()); }
+        void print_statistics() { this->v_.print_statistics(); }
     };
 #define FCQUEUE_TRAITS_ELIM() cds::container::fcqueue::make_traits< \
     cds::opt::lock_type<cds::sync::spin>, \
@@ -289,8 +285,7 @@ template <typename T> struct DatatypeHarness<cds::container::FCQueue<T, std::que
     cds::opt::enable_elimination<true>>::type
 template <typename T> struct DatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS_ELIM()>>  :
     public CDSDatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS_ELIM()>>{
-        int num_combines() { return int(this->v_.statistics().nCombiningCount); }
-        double combining_factor() { return double(this->v_.statistics().combining_factor()); }
+        void print_statistics() { this->v_.print_statistics(); }
     };
 template <typename T> struct DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, T>> : 
     public CDSDatatypeHarness<cds::container::MoirQueue<cds::gc::HP, T>>{};
@@ -386,6 +381,11 @@ public:
             default: assert(0);
         }
     }
+
+    void print_fc_stats() {
+        v_.print_statistics();
+    }
+
 protected:
     DH v_;
     int val_type_;
@@ -447,10 +447,6 @@ public:
             }
         }
     }
-    void print() {
-        fprintf(stderr, "Num Combines: %d\t", this->v_.num_combines()); // only for FC
-        fprintf(stderr, "Combining Factor: %f\n", this->v_.combining_factor()); // only for FC
-    }
 private:
     int ds_type_;
 };
@@ -484,10 +480,6 @@ public:
                 this->inc_ctrs(my_op, me);
             }
         }
-    }
-    void print() {
-        fprintf(stderr, "Num Combines: %d\t", this->v_.num_combines()); // only for FC
-        fprintf(stderr, "Combining Factor: %f\n", this->v_.combining_factor()); // only for FC
     }
 private:
     int ds_type_;
@@ -525,10 +517,6 @@ public:
                 }
             }
         }
-    }
-    void print() {
-        fprintf(stderr, "Num Combines: %d\t", this->v_.num_combines()); // only for FC
-        fprintf(stderr, "Combining Factor: %f\n", this->v_.combining_factor()); // only for FC
     }
 private:
     int ds_type_;

@@ -303,6 +303,28 @@ namespace cds { namespace container {
             return m_FlatCombining.statistics();
         }
 
+        void print_statistics() { 
+            fprintf(stderr, "\
+                    Num Operations\t %lu\n\
+                    Num Combines\t %lu\n\
+                    Compacting Factor\t %f\n\
+                    Num Compacting PubList\t %lu\n\
+                    Num Deactivate Rec\t %lu\n\
+                    Num Activate Rec\t %lu\n\
+                    Num Create Rec\t %lu\n\
+                    Num Delete Rec\t %lu\n\
+                    Num Passive Calls\t %lu\n\
+                    Num Passive Iters\t %lu\n\
+                    Num Passive Wait Wakeups\t %lu\n\
+                    Num Passive->Combiner\t %lu\n",
+             m_FlatCombining.statistics().nOperationCount.get(), m_FlatCombining.statistics().nCombiningCount.get(), m_FlatCombining.statistics().combining_factor(),
+             m_FlatCombining.statistics().nCompactPublicationList.get(), m_FlatCombining.statistics().nDeactivatePubRecord.get(), 
+             m_FlatCombining.statistics().nActivatePubRecord.get(), m_FlatCombining.statistics().nPubRecordCreated.get(), m_FlatCombining.statistics().nPubRecordDeleted.get(),
+             m_FlatCombining.statistics().nPassiveWaitCall.get(), m_FlatCombining.statistics().nPassiveWaitIteration.get(), m_FlatCombining.statistics().nPassiveWaitWakeup.get(),
+             m_FlatCombining.statistics().nPassiveToCombiner.get());
+        }
+
+
     public: // flat combining cooperation, not for direct use!
         //@cond
         /// Flat combining supporting function. Do not call it directly!

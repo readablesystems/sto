@@ -243,18 +243,18 @@ int main() {
     RandomSingleOpTest<DatatypeHarness<cds::container::FCQueue<int, std::queue<int>, FCQUEUE_TRAITS()>>> test6(CDS, RANDOM_VALS); 
    
     /*
+    */
     startAndWait(&test1, 10000, 2);
-    test1.print();
+    test1.print_fc_stats();
     startAndWait(&test2, 10000, 2);
     startAndWait(&test3, 10000, 2);
-    test3.print();
-    */
+    test3.print_fc_stats();
     startAndWait(&test4, 10000, 8);
-    test4.print();
-    /*
+    test4.print_fc_stats();
     startAndWait(&test5, 10000, 8);
     startAndWait(&test6, 10000, 8);
-    test6.print();
+    test6.print_fc_stats();
+    /*
     for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {
         dualprintf("\n%s\n", pqueue_tests[i].desc.c_str());
         fprintf(global_verbose_stats_file, "STO, STO(O), MS, FC\n");
