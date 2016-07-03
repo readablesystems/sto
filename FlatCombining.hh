@@ -45,7 +45,7 @@ namespace flat_combining {
     class kernel {
     public:
         typedef typename TransactionTid::type global_lock_type;   //< Global lock type
-        typedef wait_strategy::backoff<> wait_strategy; ///< Wait strategy
+        typedef wait_strategy::backoff<cds::backoff::delay_of<2>> wait_strategy; ///< Wait strategy
         typedef typename CDS_DEFAULT_ALLOCATOR allocator;          //< Allocator type (used for allocating publication_record_type data)
         typedef typename cds::opt::v::relaxed_ordering memory_model;    //< C++ memory model
         typedef typename wait_strategy::template make_publication_record<PublicationRecord>::type publication_record_type; //< Publication record type
@@ -122,15 +122,6 @@ namespace flat_combining {
         }
 
         // Trying to execute operation nOpId
-        /**
-            pRec is the publication record acquiring by \ref acquire_record earlier.
-            owner is a container that is owner of flat combining kernel object.
-            As a result the current thread can become a combiner or can wait for
-            another combiner performs pRec operation.
-
-            If the thread becomes a combiner, the kernel calls owner.fc_apply
-            for each active non-empty publication record.
-        */
         template <class Container>
         void combine( unsigned int nOpId, publication_record_type * pRec, Container& owner )
         {
@@ -144,24 +135,6 @@ namespace flat_combining {
         }
 
         // Trying to execute operation nOpId in batch-combine mode
-        /**
-            pRec is the publication record acquiring by acquire_record() earlier.
-            owner is a container that owns flat combining kernel object.
-            As a result the current thread can become a combiner or can wait for
-            another combiner performs pRec operation.
-
-            If the thread becomes a combiner, the kernel calls owner.fc_process()
-            giving the container the full access over publication list. This function
-            is useful for an elimination technique if the container supports any kind of
-            that. The container can perform multiple pass through publication list.
-
-            owner.fc_process() has two arguments - forward iterators on begin and end of
-            publication list, see \ref iterator class. For each processed record the container
-            should call operation_done() function to mark the record as processed.
-
-            On the end of %batch_combine the combine() function is called
-            to process rest of publication records.
-        */
         template <class Container>
         void batch_combine( unsigned int nOpId, publication_record_type* pRec, Container& owner )
         {
@@ -175,15 +148,6 @@ namespace flat_combining {
         }
 
         // Invokes Func in exclusive mode
-        /**
-            Some operation in flat combining containers should be called in exclusive mode
-            i.e the current thread should become the combiner to process the operation.
-            The typical example is empty() function.
-            
-            %invoke_exclusive() allows do that: the current thread becomes the combiner,
-            invokes f exclusively but unlike a typical usage the thread does not process any pending request.
-            Instead, after end of f call the current thread wakes up a pending thread if any.
-        */
         template <typename Func>
         void invoke_exclusive( Func f )
         {
@@ -195,10 +159,6 @@ namespace flat_combining {
         }
 
         // Marks rec as executed
-        /**
-            This function should be called by container if batch_combine mode is used.
-            For usual combining (see combine() ) this function is excess.
-        */
         void operation_done( publication_record& rec )
         {
             rec.nRequest.store( req_Response, memory_model::memory_order_release );
@@ -304,18 +264,12 @@ namespace flat_combining {
 
     public:
         // Gets current value of rec.nRequest
-        /**
-            This function is intended for invoking from a wait strategy
-        */
         int get_operation( publication_record& rec )
         {
             return rec.op( memory_model::memory_order_acquire );
         }
 
         // Wakes up any waiting thread
-        /**
-            This function is intended for invoking from a wait strategy
-        */
         void wakeup_any()
         {
             publication_record* pRec = pHead;
@@ -331,7 +285,6 @@ namespace flat_combining {
         }
 
     private:
-        
         static void tls_cleanup( publication_record_type* pRec )
         {
             // Thread done

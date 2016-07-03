@@ -47,7 +47,6 @@ template <typename T>
 struct val_wrapper {
     T val;
     uint8_t flags; 
-    int threadid;
 };
 
 template <typename T, 
@@ -62,11 +61,20 @@ public:
     // STO
     typedef typename W<value_type>::version_type version_type;
 
+    // For thread-specific txns
+    static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<0;
+    static constexpr TransItem::flags_type list_bit = TransItem::user0_bit<<1;
+    static constexpr TransItem::flags_type empty_bit = TransItem::user0_bit<<2;
+   
+    // For the publication list records
+    static constexpr uint8_t delete_bit = 1<<0;
+    static constexpr uint8_t popped_bit = 1<<1;
+
 private:
     // Queue operation IDs
     enum fc_operation {
         op_push = flat_combining::req_Operation, // Push
-        op_pop,  // Pop (mark as poisoned)
+        op_pop,         // Pop (mark as poisoned)
         op_clear,       // Clear
         op_empty        // Empty
     };
@@ -78,16 +86,11 @@ private:
         union {
             val_wrapper<value_type> const *  pValPush; // Value to enqueue
             val_wrapper<value_type> *        pValPop;  // Pop destination
-        };/*
-        union {
-            val_wrapper<value_type> const *  pValPush; // Value to enqueue
-            val_wrapper<value_type> *        pValPop;  // Pop destination
-            val_wrapper<value_type> *        pValEdit;  // Value to edit 
-        };*/
+        };
         bool            is_empty; // true if the queue is empty
     };
 
-    flat_combining::kernel<fc_record > fc_kernel_;
+    flat_combining::kernel<fc_record> fc_kernel_;
     queue_type  q_;
     version_type queueversion_;
 
@@ -123,7 +126,7 @@ public:
         assert( pRec->is_done() );
         fc_kernel_.release_record( pRec );
         if (!pRec->is_empty) {
-            //val = std::move(pRec->pValPop->val);
+            val = std::move(pRec->pValPop->val);
             return true;
         } else return false;
     }

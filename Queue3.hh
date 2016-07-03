@@ -16,11 +16,11 @@
 
 template <typename T, unsigned BUF_SIZE = 100000,
           template <typename> class W = TOpaqueWrapped>
-class Queue2: public Shared {
+class Queue3: public Shared {
 public:
     typedef typename W<T>::version_type version_type;
 
-    Queue2() : head_(0), tail_(0), queueversion_(0) {}
+    Queue3() : head_(0), tail_(0), queueversion_(0) {}
 
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<1;
@@ -57,12 +57,10 @@ public:
             if (!queueversion_.try_lock()) { 
                 Sto::abort(); 
             }
-            fprintf(stderr, "locking in pop!\n");
         }
         // abort if the queue version number has changed since the beginning of this txn
         if (pushitem.has_read()) {
             if (!pushitem.item().check_version(queueversion_)) {
-                fprintf(stderr, "unlocking in pop!\n");
                 queueversion_.unlock();
                 Sto::abort();
             }
@@ -110,7 +108,6 @@ public:
         }
         item.add_flags(delete_bit);
         item.add_write(0);
-        assert(!pushitem.has_write());
         return true;
     }
 
@@ -121,12 +118,10 @@ public:
             if (!queueversion_.try_lock()) { 
                 Sto::abort(); 
             }
-            fprintf(stderr, "locking in front\n!");
         }
         // abort if the queue version number has changed since the beginning of this txn
         if (pushitem.has_read()) {
             if (!pushitem.item().check_version(queueversion_)) {
-                fprintf(stderr, "unlocking in front\n!");
                 queueversion_.unlock();
                 Sto::abort();
             }
@@ -174,11 +169,62 @@ public:
         return true;
     }
 
+    bool singleton_push(T& val) {
+        // lock the queue until done with operation
+        if (!queueversion_.is_locked_here()) {
+            if (!queueversion_.try_lock()) { 
+                Sto::abort(); 
+            }
+        }
+        assert(tail_ != (head_-1) % BUF_SIZE);
+        queueSlots[tail_] = val;
+        tail_ = (tail_+1) % BUF_SIZE;
+
+        queueversion_.set_version(Sto::commit_tid());
+        queueversion_.unlock();
+        return true;
+    }
+
+    bool singleton_pop() {
+        // lock the queue until done with operation
+        // note that we don't need to check queueversion_ 
+        // because this is the only operation in the txn
+        if (!queueversion_.is_locked_here()) {
+            if (!queueversion_.try_lock()) { 
+                Sto::abort(); 
+            }
+        }
+        if (head_ == tail_) return false;
+        else {
+            head_ = (head_+1) % BUF_SIZE;
+            queueversion_.unlock();
+            return true;
+        }
+    }
+
+    bool singleton_front(T& val) {
+        // lock the queue until done with operation
+        // note that we don't need to check queueversion_ 
+        // because this is the only operation in the txn
+        if (!queueversion_.is_locked_here()) {
+            if (!queueversion_.try_lock()) { 
+                Sto::abort(); 
+            }
+        }
+        while (1) {
+            if (head_ == tail_) return false;
+            else {
+                val = queueSlots[index];
+                queueversion_.unlock();
+                return true;
+            }
+        }
+    }
+
 private:
     bool has_delete(const TransItem& item) {
         return item.flags() & delete_bit;
     }
-    
     bool is_rw(const TransItem& item) {
         return item.flags() & read_writes;
     }
@@ -192,17 +238,8 @@ private:
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
-        if (item.key<int>() == -1 && item.has_write()) {
-            assert(!item.has_read());
-            assert(!queueversion_.is_locked_here());
-        }
-        else assert(queueversion_.is_locked_here());
         if ((item.key<int>() == -1) && !queueversion_.is_locked_here())  {
-            //return txn.try_lock(item, queueversion_);
-            if (txn.try_lock(item, queueversion_)) {
-                fprintf(stderr, "locking in lock\n!");
-                return true;
-            } else return false;
+            return txn.try_lock(item, queueversion_);
         }
         return true;
     }
@@ -245,6 +282,7 @@ private:
                 }
             }
             else if (!is_empty(item)) {
+                assert(tail_ != (head_index-1) % BUF_SIZE);
                 auto& val = item.template write_value<T>();
                 queueSlots[tail_] = val;
                 tail_ = (tail_+1) % BUF_SIZE;
@@ -258,7 +296,6 @@ private:
         (void)item;
         if (queueversion_.is_locked_here()) {
             queueversion_.unlock();
-            fprintf(stderr, "unlocking in cleanup\n!");
         }
     }
 
@@ -267,7 +304,6 @@ private:
         (void)committed;
         if (queueversion_.is_locked_here()) {
             queueversion_.unlock();
-            fprintf(stderr, "unlocking in cleanup\n!");
         }
     }
 

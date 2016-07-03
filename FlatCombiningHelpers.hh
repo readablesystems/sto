@@ -37,30 +37,31 @@
 #include <boost/thread/tss.hpp>  // thread_specific_ptr
 
 namespace flat_combining {
+    /// Special values of \p publication_record::nRequest
     enum request_value
     {
-        req_EmptyRecord,    //< Publication record is empty
-        req_Response,       //< Operation is done
-        req_Operation       //< First operation id for derived classes
+        req_EmptyRecord,    ///< Publication record is empty
+        req_Response,       ///< Operation is done
+
+        req_Operation       ///< First operation id for derived classes
     };
 
+    /// \p publication_record state
     enum record_state {
-        inactive,       //< Record is inactive
-        active,         //< Record is active
-        removed         //< Record should be removed
+        inactive,       ///< Record is inactive
+        active,         ///< Record is active
+        removed         ///< Record should be removed
     };
 
-    /* 
-     * Each data structure based on flat combining contains a class derived from publication_record
-    */
+    /// Record of publication list
     struct publication_record {
-        atomics::atomic<unsigned int>           nRequest;   //< Request field (depends on data structure)
-        atomics::atomic<unsigned int>           nState;     //< Record state: inactive, active, removed
-        atomics::atomic<unsigned int>           nAge;       //< Age of the record
-        atomics::atomic<publication_record *>   pNext;      //< Next record in publication list
-        void *                                  pOwner;     //< [internal data] Pointer to kernel object that manages the publication list
+        atomics::atomic<unsigned int>           nRequest;   ///< Request field (depends on data structure)
+        atomics::atomic<unsigned int>           nState;     ///< Record state: inactive, active, removed
+        atomics::atomic<unsigned int>           nAge;       ///< Age of the record
+        atomics::atomic<publication_record *>   pNext;      ///< Next record in publication list
+        void *                                  pOwner;     ///< [internal data] Pointer to \ref kernel object that manages the publication list
 
-        // Initializes publication record
+        /// Initializes publication record
         publication_record()
             : nRequest( req_EmptyRecord )
             , nState( inactive )
@@ -69,13 +70,13 @@ namespace flat_combining {
             , pOwner( nullptr )
         {}
 
-        // Returns the value of nRequest field
+        /// Returns the value of \p nRequest field
         unsigned int op( atomics::memory_order mo = atomics::memory_order_relaxed ) const
         {
             return nRequest.load( mo );
         }
 
-        // Checks if the operation is done
+        /// Checks if the operation is done
         bool is_done() const
         {
             return nRequest.load( atomics::memory_order_relaxed ) == req_Response;
