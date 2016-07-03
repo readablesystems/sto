@@ -144,6 +144,12 @@ void print_abort_stats() {
 #endif
 }
 
+struct Test {
+    std::string desc;
+    const char* ds;
+    GenericTest* test;
+};
+
 /*
 #define MAKE_PQUEUE_TESTS(desc, test, type, ...) \
     {desc, "STO pqueue", new test<DatatypeHarness<PriorityQueue<type>>>(STO, ## __VA_ARGS__)},      \
@@ -153,11 +159,7 @@ void print_abort_stats() {
     {desc, "FC pairing heap pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type, PairingHeap<type>>>>(CDS, ## __VA_ARGS__)} 
    // {desc, "MS pqueue", new test<DatatypeHarness<cds::container::MSPriorityQueue<type>>>(CDS, ## __VA_ARGS__)},
 
-struct Test {
-    std::string desc;
-    const char* ds;
-    GenericTest* test;
-} pqueue_tests[] = {
+Test pqueue_tests[] = {
     MAKE_PQUEUE_TESTS("PQRandSingleOps:R", RandomSingleOpTest, int, RANDOM_VALS),
     MAKE_PQUEUE_TESTS("PQRandSingleOps:D", RandomSingleOpTest, int, DECREASING_VALS),
     MAKE_PQUEUE_TESTS("PQPushPop:R", PushPopTest, int, RANDOM_VALS),
@@ -168,6 +170,7 @@ struct Test {
     //MAKE_PQUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),
 };
 int num_pqueues = 6;
+*/
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
     {desc, "STO queue", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  \
@@ -182,14 +185,14 @@ int num_pqueues = 6;
     //{desc, "Segmented queue", new test<DatatypeHarness<cds::container::SegmentedQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
     //{desc, "TC queue", new test<DatatypeHarness<cds::container::TsigasCycleQueue<type>>>(CDS, ## __VA_ARGS__)}, \
     //{desc, "VyukovMPMC queue", new test<DatatypeHarness<cds::container::VyukovMPMCCycleQueue<type>>>(CDS, ## __VA_ARGS__)}
+
 Test queue_tests[] = {
-    //MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
-    //MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomSingleOpTest, int, RANDOM_VALS),
+    MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
+    MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomSingleOpTest, int, RANDOM_VALS),
     //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[1]),
     //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[2]),
 };
 int num_queues = 4;
-*/
 
 int main() {
     global_verbose_stats_file = fopen("microbenchmarks/cds_benchmarks_stats_verbose.txt", "a");
@@ -254,8 +257,6 @@ int main() {
     startAndWait(&test6, 10000, 8);
     test6.print_fc_stats();
     */
-    //startAndWait(&test2, 10000, 2);
-    startAndWait(&test5, 10000, 2);
     /*
     for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {
         dualprintf("\n%s\n", pqueue_tests[i].desc.c_str());
@@ -280,6 +281,7 @@ int main() {
             dualprintf("\n");
         }
     }
+    */
     for (unsigned i = 0; i < arraysize(queue_tests); i+=num_queues) {
         dualprintf("\n%s\n", queue_tests[i].desc.c_str());
         fprintf(global_verbose_stats_file, "STO, STO(2), FC, STO/FC, \n");
@@ -300,7 +302,7 @@ int main() {
             if (queue_tests[i].desc.find("PushPop")!=std::string::npos) dualprintf("\n");
             dualprintf("\n");
         }
-    }*/
+    }
     cds::Terminate();
     return 0;
 }

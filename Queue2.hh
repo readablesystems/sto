@@ -57,12 +57,10 @@ public:
             if (!queueversion_.try_lock()) { 
                 Sto::abort(); 
             }
-            fprintf(stderr, "locking in pop!\n");
         }
         // abort if the queue version number has changed since the beginning of this txn
         if (pushitem.has_read()) {
             if (!pushitem.item().check_version(queueversion_)) {
-                fprintf(stderr, "unlocking in pop!\n");
                 queueversion_.unlock();
                 Sto::abort();
             }
@@ -71,9 +69,14 @@ public:
         fence();
         auto index = head_;
         auto item = Sto::item(this, index);
-
+        
         while (1) {
            if (index == tail_) {
+               // we need this item so that we invoke unlock() at the end of the txn
+               // XXX perhaps a better way is to have an "unlock" flag that invokes unlock?
+               auto unlock_item = Sto::item(this, -2);
+               unlock_item.add_write(0);
+
                auto v = queueversion_;
                fence();
                 // empty queue, so we have to add a read of the queueversion
@@ -121,12 +124,10 @@ public:
             if (!queueversion_.try_lock()) { 
                 Sto::abort(); 
             }
-            fprintf(stderr, "locking in front\n!");
         }
         // abort if the queue version number has changed since the beginning of this txn
         if (pushitem.has_read()) {
             if (!pushitem.item().check_version(queueversion_)) {
-                fprintf(stderr, "unlocking in front\n!");
                 queueversion_.unlock();
                 Sto::abort();
             }
@@ -138,6 +139,11 @@ public:
         while (1) {
             // empty queue, so we have to add a read of the queueversion
             if (index == tail_) {
+                // we need this item so that we invoke unlock() at the end of the txn
+                // XXX perhaps a better way is to have an "unlock" flag that invokes unlock?
+                auto unlock_item = Sto::item(this, -2);
+                unlock_item.add_write(0);
+
                 auto v = queueversion_;
                 fence();
                 if (index == tail_) {
@@ -192,17 +198,8 @@ private:
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
-        if (item.key<int>() == -1 && item.has_write()) {
-            assert(!item.has_read());
-            assert(!queueversion_.is_locked_here());
-        }
-        else assert(queueversion_.is_locked_here());
         if ((item.key<int>() == -1) && !queueversion_.is_locked_here())  {
-            //return txn.try_lock(item, queueversion_);
-            if (txn.try_lock(item, queueversion_)) {
-                fprintf(stderr, "locking in lock\n!");
-                return true;
-            } else return false;
+            return txn.try_lock(item, queueversion_);
         }
         return true;
     }
@@ -220,8 +217,11 @@ private:
     }
 
     void install(TransItem& item, Transaction& txn) override {
+        // ignore the dummy pop/front items that tell us to unlock
+        if (item.key<int>() == -2) return;
+        
         // install pops
-        if (has_delete(item)) {
+        else if (has_delete(item)) {
             // queueversion_ should be locked here because we must have popped
             assert(queueversion_.is_locked_here());
             // only increment head if item popped from actual q
@@ -229,6 +229,7 @@ private:
                 head_ = (head_+1) % BUF_SIZE;
             }
         }
+        
         // install pushes
         else if (item.key<int>() == -1) {
             assert(queueversion_.is_locked_here());
@@ -258,7 +259,6 @@ private:
         (void)item;
         if (queueversion_.is_locked_here()) {
             queueversion_.unlock();
-            fprintf(stderr, "unlocking in cleanup\n!");
         }
     }
 
@@ -267,7 +267,6 @@ private:
         (void)committed;
         if (queueversion_.is_locked_here()) {
             queueversion_.unlock();
-            fprintf(stderr, "unlocking in cleanup\n!");
         }
     }
 
