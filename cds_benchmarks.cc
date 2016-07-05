@@ -245,7 +245,6 @@ int main() {
     RandomSingleOpTest<DatatypeHarness<Queue2<int>>> test5(STO, RANDOM_VALS);
     RandomSingleOpTest<DatatypeHarness<cds::container::FCQueue<int, std::queue<int>, FCQUEUE_TRAITS()>>> test6(CDS, RANDOM_VALS); 
    
-    /*
     startAndWait(&test1, 10000, 2);
     test1.print_fc_stats();
     startAndWait(&test2, 10000, 2);
@@ -256,7 +255,7 @@ int main() {
     startAndWait(&test5, 10000, 8);
     startAndWait(&test6, 10000, 8);
     test6.print_fc_stats();
-    */
+    
     /*
     for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {
         dualprintf("\n%s\n", pqueue_tests[i].desc.c_str());
@@ -281,7 +280,6 @@ int main() {
             dualprintf("\n");
         }
     }
-    */
     for (unsigned i = 0; i < arraysize(queue_tests); i+=num_queues) {
         dualprintf("\n%s\n", queue_tests[i].desc.c_str());
         fprintf(global_verbose_stats_file, "STO, STO(2), FC, STO/FC, \n");
@@ -303,6 +301,7 @@ int main() {
             dualprintf("\n");
         }
     }
+    */
     cds::Terminate();
     return 0;
 }

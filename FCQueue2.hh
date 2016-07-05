@@ -37,7 +37,7 @@
 #include "Transaction.hh"
 #include "TWrapped.hh"
 
-#define LOCKQV 1
+#define LOCKQV 0
 
 // Tells the combiner thread the flags associated with each item in the q
 template <typename T>
@@ -285,8 +285,7 @@ private:
     bool lock(TransItem& item, Transaction& txn) override {
         if ((item.key<int>() == -1) && !queueversion_.is_locked_here())  {
 #if LOCKQV
-            queueversion_.lock();
-            //return txn.try_lock(item, queueversion_); 
+            return txn.try_lock(item, queueversion_); 
 #else
         (void)txn;
 #endif
