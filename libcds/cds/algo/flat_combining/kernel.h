@@ -110,6 +110,7 @@ namespace cds { namespace algo {
             counter_type    nCompactPublicationList; ///< Count of publication list compacting
             counter_type    nDeactivatePubRecord; ///< How many publication records were deactivated during compacting
             counter_type    nActivatePubRecord;   ///< Count of publication record activating
+            counter_type    nRepublishPubRecord;   ///< Count of publication record activating
             counter_type    nPubRecordCreated ;   ///< Count of created publication records
             counter_type    nPubRecordDeleted ;   ///< Count of deleted publication records
             counter_type    nPassiveWaitCall;     ///< Count of passive waiting call (\p kernel::wait_for_combining())
@@ -118,6 +119,7 @@ namespace cds { namespace algo {
             counter_type    nInvokeExclusive;     ///< Count of call \p kernel::invoke_exclusive()
             counter_type    nWakeupByNotifying;   ///< How many times the passive thread be waked up by a notification
             counter_type    nPassiveToCombiner;   ///< How many times the passive thread becomes the combiner
+            counter_type    nUsefulPasses;   ///< How many times the passive thread becomes the combiner
 
             /// Returns current combining factor
             /**
@@ -135,6 +137,7 @@ namespace cds { namespace algo {
             void    onCompactPublicationList()  { ++nCompactPublicationList;  }
             void    onDeactivatePubRecord()     { ++nDeactivatePubRecord;     }
             void    onActivatePubRecord()       { ++nActivatePubRecord;       }
+            void    onRepublishPubRecord()      { ++nRepublishPubRecord;      }
             void    onCreatePubRecord()         { ++nPubRecordCreated;        }
             void    onDeletePubRecord()         { ++nPubRecordDeleted;        }
             void    onPassiveWait()             { ++nPassiveWaitCall;         }
@@ -143,6 +146,7 @@ namespace cds { namespace algo {
             void    onInvokeExclusive()         { ++nInvokeExclusive;         }
             void    onWakeupByNotifying()       { ++nWakeupByNotifying;       }
             void    onPassiveToCombiner()       { ++nPassiveToCombiner;       }
+            void    usefulPasses(int useful_passes)       { nUsefulPasses += useful_passes; }
             
             //@endcond
         };
@@ -156,6 +160,7 @@ namespace cds { namespace algo {
             void    onCompactPublicationList()  const {}
             void    onDeactivatePubRecord()     const {}
             void    onActivatePubRecord()       const {}
+            void    onRepublishPubRecord()      const {}
             void    onCreatePubRecord()         const {}
             void    onDeletePubRecord()         const {}
             void    onPassiveWait()             const {}
@@ -164,6 +169,7 @@ namespace cds { namespace algo {
             void    onInvokeExclusive()         const {}
             void    onWakeupByNotifying()       const {}
             void    onPassiveToCombiner()       const {}
+            void    usefulPasses(int useful_passes)              const {}
             //@endcond
         };
 
@@ -624,6 +630,7 @@ namespace cds { namespace algo {
                 if ( pRec->nState.load( memory_model::memory_order_relaxed ) != active ) {
                     // The record has been excluded from publication list. Reinsert it
                     publish( pRec );
+                    Stat.onRepublishPubRecord();
                 }
             }
 
@@ -699,7 +706,7 @@ namespace cds { namespace algo {
                     else if ( ++nEmptyPassCount > nUsefulPassCount )
                         break;
                 }
-
+                Stat.usefulPasses(nUsefulPassCount);
                 Stat.onCombining();
                 if ( (nCurAge & nCompactFactor) == 0 )
                     compact_list( nCurAge );

@@ -94,6 +94,7 @@ namespace flat_combining {
         counter_type    nCompactPublicationList; //< Count of publication list compacting
         counter_type    nDeactivatePubRecord; //< How many publication records were deactivated during compacting
         counter_type    nActivatePubRecord;   //< Count of publication record activating
+        counter_type    nRepublishPubRecord; 
         counter_type    nPubRecordCreated ;   //< Count of created publication records
         counter_type    nPubRecordDeleted ;   //< Count of deleted publication records
         counter_type    nPassiveWaitCall;     //< Count of passive waiting call (kernel::wait_for_combining())
@@ -102,6 +103,7 @@ namespace flat_combining {
         counter_type    nInvokeExclusive;     //< Count of exclusive calls 
         counter_type    nWakeupByNotifying;   //< How many times the passive thread be waked up by a notification
         counter_type    nPassiveToCombiner;   //< How many times the passive thread becomes the combiner
+        counter_type    nUsefulPasses;   
 
         // Returns current combining factor
         double combining_factor() const {
@@ -113,6 +115,7 @@ namespace flat_combining {
         void    onCompactPublicationList()  { ++nCompactPublicationList;  }
         void    onDeactivatePubRecord()     { ++nDeactivatePubRecord;     }
         void    onActivatePubRecord()       { ++nActivatePubRecord;       }
+        void    onRepublishPubRecord()      { ++nRepublishPubRecord;      }
         void    onCreatePubRecord()         { ++nPubRecordCreated;        }
         void    onDeletePubRecord()         { ++nPubRecordDeleted;        }
         void    onPassiveWait()             { ++nPassiveWaitCall;         }
@@ -121,6 +124,7 @@ namespace flat_combining {
         void    onInvokeExclusive()         { ++nInvokeExclusive;         }
         void    onWakeupByNotifying()       { ++nWakeupByNotifying;       }
         void    onPassiveToCombiner()       { ++nPassiveToCombiner;       }
+        void    usefulPasses(int useful_passes)       { nUsefulPasses += useful_passes; }
     };
 
     namespace wait_strategy {

@@ -47,6 +47,7 @@ template <typename T>
 struct val_wrapper {
     T val;
     uint8_t flags; 
+    int threadid;
 };
 
 template <typename T, 
@@ -203,17 +204,19 @@ public: // flat combining cooperation, not for direct use!
                 Num Compacting PubList\t %lu\n\
                 Num Deactivate Rec\t %lu\n\
                 Num Activate Rec\t %lu\n\
+                Num Republish Rec\t %lu\n\
                 Num Create Rec\t %lu\n\
                 Num Delete Rec\t %lu\n\
                 Num Passive Calls\t %lu\n\
                 Num Passive Iters\t %lu\n\
                 Num Passive Wait Wakeups\t %lu\n\
-                Num Passive->Combiner\t %lu\n",
+                Num Passive->Combiner\t %lu\n\
+                Num Useful Passes\t %lu\n",
         fc_kernel_.statistics().nOperationCount.get(), fc_kernel_.statistics().nCombiningCount.get(), fc_kernel_.statistics().combining_factor(),
-        fc_kernel_.statistics().nCompactPublicationList.get(), fc_kernel_.statistics().nDeactivatePubRecord.get(), 
-        fc_kernel_.statistics().nActivatePubRecord.get(), fc_kernel_.statistics().nPubRecordCreated.get(), fc_kernel_.statistics().nPubRecordDeleted.get(),
+        fc_kernel_.statistics().nCompactPublicationList.get(), fc_kernel_.statistics().nDeactivatePubRecord.get(), fc_kernel_.statistics().nActivatePubRecord.get(), 
+        fc_kernel_.statistics().nRepublishPubRecord.get(), fc_kernel_.statistics().nPubRecordCreated.get(), fc_kernel_.statistics().nPubRecordDeleted.get(),
         fc_kernel_.statistics().nPassiveWaitCall.get(), fc_kernel_.statistics().nPassiveWaitIteration.get(), fc_kernel_.statistics().nPassiveWaitWakeup.get(),
-        fc_kernel_.statistics().nPassiveToCombiner.get());
+        fc_kernel_.statistics().nPassiveToCombiner.get(), fc_kernel_.statistics().nUsefulPasses.get());
     }
 };
 

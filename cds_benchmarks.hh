@@ -495,10 +495,12 @@ public:
                 }
                 this->inc_ctrs(my_op, me);
             } else {
+                //Sto::start_transaction();
                 my_op = ops_array[ops_array[i%2]];
                 //my_op = ops_array[slotdist(transgen) % arraysize(ops_array)];
                 this->do_op(my_op, rand_vals[(i*me + i) % arraysize(rand_vals)]);
                 this->inc_ctrs(my_op, me);
+                //Sto::try_commit();
             }
         }
     }

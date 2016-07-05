@@ -134,30 +134,6 @@ namespace flat_combining {
             try_combining( owner, pRec );
         }
 
-        // Trying to execute operation nOpId in batch-combine mode
-        template <class Container>
-        void batch_combine( unsigned int nOpId, publication_record_type* pRec, Container& owner )
-        {
-            assert( nOpId >= req_Operation );
-            assert( pRec );
-
-            pRec->nRequest.store( nOpId, memory_model::memory_order_release );
-            Stat.onOperation();
-
-            try_batch_combining( owner, pRec );
-        }
-
-        // Invokes Func in exclusive mode
-        template <typename Func>
-        void invoke_exclusive( Func f )
-        {
-            {
-                f();
-            }
-            waitStrategy.wakeup( *this );
-            Stat.onInvokeExclusive();
-        }
-
         // Marks rec as executed
         void operation_done( publication_record& rec )
         {
@@ -176,113 +152,6 @@ namespace flat_combining {
 
         // Returns number of combining passes for combiner thread
         unsigned int combine_pass_count() const { return nCombinePassCount; }
-
-    public:
-        // Publication list iterator
-        /**
-            Iterators are intended for batch processing by container's
-            fc_process function.
-            The iterator allows iterate through active publication list.
-        */
-        class iterator
-        {
-            friend class kernel;
-            publication_record_type * pRec;
-
-        protected:
-            iterator( publication_record_type * pRec )
-                : pRec( pRec )
-            {
-                skip_inactive();
-            }
-
-            void skip_inactive()
-            {
-                while ( pRec && (pRec->nState.load( memory_model::memory_order_acquire ) != active
-                                || pRec->op( memory_model::memory_order_relaxed) < req_Operation ))
-                {
-                    pRec = static_cast<publication_record_type*>(pRec->pNext.load( memory_model::memory_order_acquire ));
-                }
-            }
-
-        public:
-            // Initializes an empty iterator object
-            iterator() : pRec( nullptr ) {}
-
-            // Copy ctor
-            iterator( iterator const& src ) : pRec( src.pRec ) {}
-
-            // Pre-increment
-            iterator& operator++()
-            {
-                assert( pRec );
-                pRec = static_cast<publication_record_type *>( pRec->pNext.load( memory_model::memory_order_acquire ));
-                skip_inactive();
-                return *this;
-            }
-
-            // Post-increment
-            iterator operator++(int)
-            {
-                assert( pRec );
-                iterator it(*this);
-                ++(*this);
-                return it;
-            }
-
-            // Dereference operator, can return nullptr
-            publication_record_type* operator ->()
-            {
-                return pRec;
-            }
-
-            // Dereference operator, the iterator should not be an end iterator
-            publication_record_type& operator*()
-            {
-                assert( pRec );
-                return *pRec;
-            }
-
-            // Iterator equality
-            friend bool operator==( iterator it1, iterator it2 )
-            {
-                return it1.pRec == it2.pRec;
-            }
-
-            // Iterator inequality
-            friend bool operator!=( iterator it1, iterator it2 )
-            {
-                return !( it1 == it2 );
-            }
-        };
-
-        // Returns an iterator to the first active publication record
-        iterator begin()    { return iterator(pHead); }
-
-        // Returns an iterator to the end of publication list. Should not be dereferenced.
-        iterator end()      { return iterator(); }
-
-    public:
-        // Gets current value of rec.nRequest
-        int get_operation( publication_record& rec )
-        {
-            return rec.op( memory_model::memory_order_acquire );
-        }
-
-        // Wakes up any waiting thread
-        void wakeup_any()
-        {
-            publication_record* pRec = pHead;
-            while ( pRec ) {
-                if ( pRec->nState.load( memory_model::memory_order_acquire ) == active
-                  && pRec->op( memory_model::memory_order_acquire ) >= req_Operation )
-                {
-                    waitStrategy.notify( *this, static_cast<publication_record_type&>( *pRec ));
-                    break;
-                }
-                pRec = pRec->pNext.load( memory_model::memory_order_acquire );
-            }
-        }
 
     private:
         static void tls_cleanup( publication_record_type* pRec )
@@ -342,6 +211,7 @@ namespace flat_combining {
             if ( pRec->nState.load( memory_model::memory_order_relaxed ) != active ) {
                 // The record has been excluded from publication list. Reinsert it
                 publish( pRec );
+                Stat.onRepublishPubRecord();
             }
         }
 
@@ -453,23 +323,6 @@ namespace flat_combining {
             return bOpDone;
         }
 
-        template <class Container>
-        void batch_combining( Container& owner )
-        {
-            // The thread is a combiner
-            assert( !TransactionTid::try_lock(Mutex) );
-
-            unsigned int const nCurAge = nCount.fetch_add( 1, memory_model::memory_order_relaxed ) + 1;
-
-            for ( unsigned int nPass = 0; nPass < nCombinePassCount; ++nPass )
-                owner.fc_process( begin(), end() );
-
-            combining_pass( owner, nCurAge );
-            Stat.onCombining();
-            if ( (nCurAge & nCompactFactor) == 0 )
-                compact_list( nCurAge );
-        }
-
         bool wait_for_combining( publication_record_type * pRec )
         {
             waitStrategy.prepare( *pRec );
@@ -558,12 +411,6 @@ namespace flat_combining {
     public:
         template <typename PubRecord>
         void fc_apply( PubRecord * )
-        {
-            assert( false );
-        }
-
-        template <typename Iterator>
-        void fc_process( Iterator, Iterator )
         {
             assert( false );
         }

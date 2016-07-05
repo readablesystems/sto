@@ -311,17 +311,19 @@ namespace cds { namespace container {
                     Num Compacting PubList\t %lu\n\
                     Num Deactivate Rec\t %lu\n\
                     Num Activate Rec\t %lu\n\
+                    Num Republish Rec\t %lu\n\
                     Num Create Rec\t %lu\n\
                     Num Delete Rec\t %lu\n\
                     Num Passive Calls\t %lu\n\
                     Num Passive Iters\t %lu\n\
                     Num Passive Wait Wakeups\t %lu\n\
-                    Num Passive->Combiner\t %lu\n",
+                    Num Passive->Combiner\t %lu\n\
+                    Num Useful Passes\t %lu\n",
              m_FlatCombining.statistics().nOperationCount.get(), m_FlatCombining.statistics().nCombiningCount.get(), m_FlatCombining.statistics().combining_factor(),
-             m_FlatCombining.statistics().nCompactPublicationList.get(), m_FlatCombining.statistics().nDeactivatePubRecord.get(), 
-             m_FlatCombining.statistics().nActivatePubRecord.get(), m_FlatCombining.statistics().nPubRecordCreated.get(), m_FlatCombining.statistics().nPubRecordDeleted.get(),
+             m_FlatCombining.statistics().nCompactPublicationList.get(), m_FlatCombining.statistics().nDeactivatePubRecord.get(), m_FlatCombining.statistics().nActivatePubRecord.get(), 
+             m_FlatCombining.statistics().nRepublishPubRecord.get(), m_FlatCombining.statistics().nPubRecordCreated.get(), m_FlatCombining.statistics().nPubRecordDeleted.get(),
              m_FlatCombining.statistics().nPassiveWaitCall.get(), m_FlatCombining.statistics().nPassiveWaitIteration.get(), m_FlatCombining.statistics().nPassiveWaitWakeup.get(),
-             m_FlatCombining.statistics().nPassiveToCombiner.get());
+             m_FlatCombining.statistics().nPassiveToCombiner.get(), m_FlatCombining.statistics().nUsefulPasses.get());
         }
 
 
