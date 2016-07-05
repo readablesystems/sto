@@ -169,7 +169,7 @@ namespace cds { namespace algo {
             void    onInvokeExclusive()         const {}
             void    onWakeupByNotifying()       const {}
             void    onPassiveToCombiner()       const {}
-            void    usefulPasses(int useful_passes)              const {}
+            void    usefulPasses(int i)         const {(void)i;}
             //@endcond
         };
 

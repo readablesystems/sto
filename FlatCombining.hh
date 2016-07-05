@@ -57,10 +57,11 @@ namespace flat_combining {
         publication_record_type *   pHead;    //< Head of publication list
         boost::thread_specific_ptr< publication_record_type > pThreadRec;   //< Thread-local publication record
         mutable global_lock_type    Mutex;    //< Global mutex
-        mutable stat<>                Stat;     //< Internal statistics
+        mutable stat<>              Stat;     //< Internal statistics
         unsigned int const          nCompactFactor;    //< Publication list compacting factor
         unsigned int const          nCombinePassCount; //< Number of combining passes
         wait_strategy               waitStrategy;      //< Wait strategy
+//        timeval                     prev_t;      //< Wait strategy
 
     public:
         kernel() : kernel( 1024, 8 ) {}
@@ -72,6 +73,7 @@ namespace flat_combining {
             , Mutex( 0 )
             , nCompactFactor((unsigned int)( cds::beans::ceil2( nCompactFactor ) - 1 ))   // binary mask
             , nCombinePassCount( nCombinePassCount )
+            //, prev_t(0)
         {
             init();
         }
@@ -242,38 +244,18 @@ namespace flat_combining {
         }
 
         template <class Container>
-        void try_batch_combining( Container& owner, publication_record_type * pRec )
-        {
-            if ( TransactionTid::try_lock(Mutex) ) {
-                // The thread becomes a combiner
-                // The record pRec can be excluded from publication list. Re-publish it
-                republish( pRec );
-
-                batch_combining( owner );
-                assert( pRec->op( memory_model::memory_order_relaxed ) == req_Response );
-                TransactionTid::unlock(Mutex);
-            }
-            else {
-                // There is another combiner, wait while it executes our request
-                if ( !wait_for_combining( pRec ) ) {
-                    // The thread becomes a combiner
-                    // The record pRec can be excluded from publication list. Re-publish it
-                    republish( pRec );
-
-                    batch_combining( owner );
-                    assert( pRec->op( memory_model::memory_order_relaxed ) == req_Response );
-                    TransactionTid::unlock(Mutex);
-                }
-            }
-        }
-
-        template <class Container>
         void combining( Container& owner )
         {
             // The thread is a combiner
             assert( !TransactionTid::try_lock(Mutex) );
 
             unsigned int const nCurAge = nCount.fetch_add( 1, memory_model::memory_order_relaxed ) + 1;
+            /*if (prev_t.tv_usec == 0) {
+                gettimeofday(&prev_t);
+            } else {
+                timeval t;
+                gettimeofday(&t);
+            }*/
 
             unsigned int nEmptyPassCount = 0;
             unsigned int nUsefulPassCount = 0;

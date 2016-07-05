@@ -26,6 +26,7 @@ public:
     static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<1;
     static constexpr TransItem::flags_type list_bit = TransItem::user0_bit<<2;
     static constexpr TransItem::flags_type empty_bit = TransItem::user0_bit<<3;
+    static constexpr TransItem::flags_type push_bit = TransItem::user0_bit<<4;
 
     void push(const T& v) {
         auto item = Sto::item(this, -1);
@@ -40,7 +41,7 @@ public:
                 write_list.push_back(v);
                 item.clear_write();
                 item.add_write(write_list);
-                item.add_flags(list_bit);
+                item.add_flags(list_bit | push_bit);
             }
             else {
                 auto& write_list = item.template write_value<std::list<T>>();
@@ -51,7 +52,7 @@ public:
     }
 
     bool pop() {
-        auto pushitem = Sto::item(this,-1);
+        auto tailitem = Sto::item(this,-1);
         // lock the queue until done with txn
         if (!queueversion_.is_locked_here()) {
             if (!queueversion_.try_lock()) { 
@@ -59,8 +60,8 @@ public:
             }
         }
         // abort if the queue version number has changed since the beginning of this txn
-        if (pushitem.has_read()) {
-            if (!pushitem.item().check_version(queueversion_)) {
+        if (tailitem.has_read()) {
+            if (!tailitem.item().check_version(queueversion_)) {
                 queueversion_.unlock();
                 Sto::abort();
             }
@@ -72,20 +73,19 @@ public:
         
         while (1) {
            if (index == tail_) {
-               // we need this item so that we invoke unlock() at the end of the txn
-               // XXX perhaps a better way is to have an "unlock" flag that invokes unlock?
-               auto unlock_item = Sto::item(this, -2);
-               unlock_item.add_write(0);
+               // we need to make sure that we unlock, since no other item will have
+               // been written to if the queue is empty
+               if (!tailitem.has_write()) tailitem.add_write(0);
 
                auto v = queueversion_;
                fence();
                 // empty queue, so we have to add a read of the queueversion
                 if (index == tail_) {
-                    if (!pushitem.has_read())
-                        pushitem.observe(v);
-                    if (pushitem.has_write()) {
-                        if (is_list(pushitem)) {
-                            auto& write_list = pushitem.template write_value<std::list<T>>();
+                    if (!tailitem.has_read())
+                        tailitem.observe(v);
+                    if (tailitem.has_write() && has_push(tailitem)) {
+                        if (is_list(tailitem)) {
+                            auto& write_list = tailitem.template write_value<std::list<T>>();
                             // if there is an element to be pushed on the queue, return addr of queue element
                             if (!write_list.empty()) {
                                 write_list.pop_front();
@@ -95,8 +95,8 @@ public:
                             else return false;
                         }
                         // not a list, has exactly one element
-                        else if (!is_empty(pushitem)) {
-                            pushitem.add_flags(empty_bit);
+                        else if (!is_empty(tailitem) && has_push(tailitem)) {
+                            tailitem.add_flags(empty_bit);
                             return true;
                         }
                         else return false;
@@ -113,12 +113,12 @@ public:
         }
         item.add_flags(delete_bit);
         item.add_write(0);
-        assert(!pushitem.has_write());
+        assert(!tailitem.has_write());
         return true;
     }
 
     bool front(T& val) {
-        auto pushitem = Sto::item(this,-1);
+        auto tailitem = Sto::item(this,-1);
         // lock the queue until done with txn
         if (!queueversion_.is_locked_here()) {
             if (!queueversion_.try_lock()) { 
@@ -126,8 +126,8 @@ public:
             }
         }
         // abort if the queue version number has changed since the beginning of this txn
-        if (pushitem.has_read()) {
-            if (!pushitem.item().check_version(queueversion_)) {
+        if (tailitem.has_read()) {
+            if (!tailitem.item().check_version(queueversion_)) {
                 queueversion_.unlock();
                 Sto::abort();
             }
@@ -139,19 +139,18 @@ public:
         while (1) {
             // empty queue, so we have to add a read of the queueversion
             if (index == tail_) {
-                // we need this item so that we invoke unlock() at the end of the txn
-                // XXX perhaps a better way is to have an "unlock" flag that invokes unlock?
-                auto unlock_item = Sto::item(this, -2);
-                unlock_item.add_write(0);
+                // we need to make sure that we unlock, since no other item will have
+                // been written to if the queue is empty
+                if (!tailitem.has_write()) tailitem.add_write(0);
 
                 auto v = queueversion_;
                 fence();
                 if (index == tail_) {
-                    if (!pushitem.has_read())
-                        pushitem.observe(v);
-                    if (pushitem.has_write()) {
-                        if (is_list(pushitem)) {
-                            auto& write_list= pushitem.template write_value<std::list<T>>();
+                    if (!tailitem.has_read())
+                        tailitem.observe(v);
+                    if (tailitem.has_write() && has_push(tailitem)) {
+                        if (is_list(tailitem)) {
+                            auto& write_list= tailitem.template write_value<std::list<T>>();
                             // if there is an element to be pushed on the queue, return addr of queue element
                             if (!write_list.empty()) {
                                 val = write_list.front();
@@ -160,8 +159,8 @@ public:
                             else return false;
                         }
                         // not a list, has exactly one element
-                        else if (!is_empty(pushitem)) {
-                            auto& v = pushitem.template write_value<T>();
+                        else if (!is_empty(tailitem) && has_push(tailitem)) {
+                            auto& v = tailitem.template write_value<T>();
                             val = v;
                             return true;
                         }
@@ -181,6 +180,10 @@ public:
     }
 
 private:
+    bool has_push(const TransItem& item) {
+        return item.flags() & push_bit;
+    }
+
     bool has_delete(const TransItem& item) {
         return item.flags() & delete_bit;
     }
@@ -217,22 +220,19 @@ private:
     }
 
     void install(TransItem& item, Transaction& txn) override {
-        // ignore the dummy pop/front items that tell us to unlock
-        if (item.key<int>() == -2) return;
-        
+        // queueversion_ should be locked here because we must have popped
+        // or locked to push onto the queue
+        assert(queueversion_.is_locked_here());
         // install pops
-        else if (has_delete(item)) {
-            // queueversion_ should be locked here because we must have popped
-            assert(queueversion_.is_locked_here());
+        if (has_delete(item)) {
             // only increment head if item popped from actual q
             if (!is_rw(item)) {
                 head_ = (head_+1) % BUF_SIZE;
             }
         }
-        
-        // install pushes
-        else if (item.key<int>() == -1) {
-            assert(queueversion_.is_locked_here());
+        // install pushes, but only if we added a write to
+        //  the push/tail item on a push
+        else if (item.key<int>() == -1 && has_push(item)) {
             auto head_index = head_;
             // write all the elements
             if (is_list(item)) {
