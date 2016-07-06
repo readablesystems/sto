@@ -34,8 +34,8 @@
 #include "Queue.hh"
 #include "Queue2.hh"
 //#include "FCQueue2.hh"
-#include "FCQueueNT.hh"
-//#include "FCQueueOriginal.hh"
+//#include "FCQueueNT.hh"
+#include "FCQueueOriginal.hh"
 #include "randgen.hh"
 
 #define GLOBAL_SEED 10

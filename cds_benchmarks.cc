@@ -237,15 +237,14 @@ int main() {
     RandomSingleOpTest<DatatypeHarness<cds::container::FCPriorityQueue<int, std::priority_queue<int>, FCPQUEUE_TRAITS()>>> test4(CDS, RANDOM_VALS);
     */
     
-    PushPopTest<DatatypeHarness<FCQueue<int>>> test1(STO, RANDOM_VALS);
+    PushPopTest<DatatypeHarness<FCQueue<int>>> test1(CDS, RANDOM_VALS);
     PushPopTest<DatatypeHarness<Queue2<int>>> test2(STO, RANDOM_VALS);
     PushPopTest<DatatypeHarness<cds::container::FCQueue<int, std::queue<int>, FCQUEUE_TRAITS()>>> test3(CDS, RANDOM_VALS);
     
-    RandomSingleOpTest<DatatypeHarness<FCQueue<int>>> test4(STO, RANDOM_VALS);
+    RandomSingleOpTest<DatatypeHarness<FCQueue<int>>> test4(CDS, RANDOM_VALS);
     RandomSingleOpTest<DatatypeHarness<Queue2<int>>> test5(STO, RANDOM_VALS);
     RandomSingleOpTest<DatatypeHarness<cds::container::FCQueue<int, std::queue<int>, FCQUEUE_TRAITS()>>> test6(CDS, RANDOM_VALS); 
    
-    /*
     startAndWait(&test1, 10000, 2);
     test1.print_fc_stats();
     startAndWait(&test2, 10000, 2);
@@ -256,8 +255,6 @@ int main() {
     startAndWait(&test5, 10000, 8);
     startAndWait(&test6, 10000, 8);
     test6.print_fc_stats();
-    */
-    startAndWait(&test2, 10000, 2);
     
     /*
     for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {

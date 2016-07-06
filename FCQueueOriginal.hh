@@ -120,7 +120,6 @@ private:
 		int volatile * deq_value_ary = _tail->_values;
 		deq_value_ary += deq_value_ary[0];
 
-		//
 		int num_added = 0;
 		for (int iTry=0; iTry<_NUM_REP; ++iTry) {
 			Memory::read_barrier();
@@ -253,7 +252,7 @@ public:
 			bool is_cas = true;
 			if(lock_fc(_fc_lock, is_cas)) {
 				flat_combining();
-				fc_lock.set(0);
+				_fc_lock.set(0);
                 ret = -(my_re_ans);
 				return (ret != _NULL_VALUE); 
 			} else {
