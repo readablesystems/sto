@@ -1,16 +1,6 @@
 #include "cds_benchmarks.hh"
-
-/*
- * Tester defines the test parameters 
- * and the Test object to run the test
- */
-
-struct Tester {
-    int me; // tid
-    int nthreads;
-    size_t init_size;
-    GenericTest* test;   
-};
+#include "cds_bm_queues.hh"
+#include "cds_bm_maps.hh"
 
 /*
  * Threads to run the tests and record performance
@@ -29,14 +19,11 @@ void* test_thread(void *data) {
         gt->cleanup();
         gt->initialize(init_size); 
     }
-    
     spawned_barrier++;
     while (spawned_barrier != nthreads) {
         sched_yield();
     }
-   
     gt->run(me);
-
     spawned_barrier--;
 
     cds::threading::Manager::detachThread();
@@ -93,14 +80,23 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
 
     fprintf(global_verbose_stats_file, "\n");
     for (int i = 0; i < nthreads; ++i) {
-        // prints the number of pushes, pops, and skips
-        fprintf(global_verbose_stats_file, "Thread %d \tpushes: %ld \tpops: %ld, \tskips: %ld\n", i, 
-                global_thread_ctrs[i].push, 
-                global_thread_ctrs[i].pop, 
-                global_thread_ctrs[i].skip);
+        if (global_thread_ctrs[i].push || global_thread_ctrs[i].pop  || global_thread_ctrs[i].skip) {
+            fprintf(global_verbose_stats_file, "Thread %d \tpushes: %ld \tpops: %ld, \tskips: %ld\n", i, 
+                    global_thread_ctrs[i].push, 
+                    global_thread_ctrs[i].pop, 
+                    global_thread_ctrs[i].skip);
+        } else {
+            fprintf(global_verbose_stats_file, "Thread %d \tinserts: %ld \tremoves: %ld, \tfinds: %ld\n", i, 
+                    global_thread_ctrs[i].insert, 
+                    global_thread_ctrs[i].remove, 
+                    global_thread_ctrs[i].find);
+        }
         global_thread_ctrs[i].push = 0;
         global_thread_ctrs[i].pop = 0;
         global_thread_ctrs[i].skip = 0;
+        global_thread_ctrs[i].insert = 0;
+        global_thread_ctrs[i].remove = 0 ;
+        global_thread_ctrs[i].find= 0;
     }
     print_abort_stats();
 }
@@ -170,7 +166,6 @@ Test pqueue_tests[] = {
     //MAKE_PQUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),
 };
 int num_pqueues = 6;
-*/
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
     {desc, "STO queue", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  \
@@ -193,6 +188,21 @@ Test queue_tests[] = {
     //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[2]),
 };
 int num_queues = 4;
+*/
+#define MAKE_MAP_TESTS(desc, test, key, val, ...) \
+    {desc, "STO Opaque HashTable", new test<DatatypeHarness<Hashtable<key,val,true>>>(STO, ## __VA_ARGS__)},                                  \
+    {desc, "STO Nonopaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,false>>>(STO, ## __VA_ARGS__)},                                  \
+    {desc, "CuckooMap", new test<DatatypeHarness<cds::container::CuckooMap<key,val>>>(CDS, ## __VA_ARGS__)},                 \
+    {desc, "FeldmanHashMap", new test<DatatypeHarness<cds::container::FeldmanHashMap<key,val>>>(CDS, ## __VA_ARGS__)},                 \
+    {desc, "MichaelHashMap", new test<DatatypeHarness<cds::container::MichaelHashMap<key,val>>>(CDS, ## __VA_ARGS__)},                 \
+    {desc, "SkipListMap", new test<DatatypeHarness<cds::container::SkipListMap<key,val>>>(CDS, ## __VA_ARGS__)}, \
+    {desc, "StripedMap", new test<DatatypeHarness<cds::container::StripedMap<key,val>>>(CDS, ## __VA_ARGS__)}, \
+    {desc, "SplitListMap", new test<DatatypeHarness<cds::container::SplitListMap<key,val>>>(CDS, ## __VA_ARGS__)}
+
+Test map_tests[] = {
+    MAKE_MAP_TESTS("M:RandSingleOps", RandomSingleOpTest, int, int),
+};
+int num_maps= 8;
 
 int main() {
     global_verbose_stats_file = fopen("microbenchmarks/cds_benchmarks_stats_verbose.txt", "a");
@@ -225,37 +235,6 @@ int main() {
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
 
-    /*
-    PushPopTest<DatatypeHarness<FCPriorityQueue<int>>> ptest1(STO, RANDOM_VALS);
-    PushPopTest<DatatypeHarness<PriorityQueue<int, true>>> ptest2(STO, RANDOM_VALS);
-    PushPopTest<DatatypeHarness<PriorityQueue<int>>> ptest3(STO, RANDOM_VALS);
-    PushPopTest<DatatypeHarness<cds::container::FCPriorityQueue<int, std::priority_queue<int>, FCPQUEUE_TRAITS()>>> ptest4(CDS, RANDOM_VALS);
-    
-    RandomSingleOpTest<DatatypeHarness<FCPriorityQueue<int>>> test1(STO, RANDOM_VALS);
-    RandomSingleOpTest<DatatypeHarness<PriorityQueue<int, true>>> test2(STO, RANDOM_VALS);
-    RandomSingleOpTest<DatatypeHarness<PriorityQueue<int>>> test3(STO, RANDOM_VALS);
-    RandomSingleOpTest<DatatypeHarness<cds::container::FCPriorityQueue<int, std::priority_queue<int>, FCPQUEUE_TRAITS()>>> test4(CDS, RANDOM_VALS);
-    */
-    
-    PushPopTest<DatatypeHarness<FCQueue<int>>> test1(CDS, RANDOM_VALS);
-    PushPopTest<DatatypeHarness<Queue2<int>>> test2(STO, RANDOM_VALS);
-    PushPopTest<DatatypeHarness<cds::container::FCQueue<int, std::queue<int>, FCQUEUE_TRAITS()>>> test3(CDS, RANDOM_VALS);
-    
-    RandomSingleOpTest<DatatypeHarness<FCQueue<int>>> test4(CDS, RANDOM_VALS);
-    RandomSingleOpTest<DatatypeHarness<Queue2<int>>> test5(STO, RANDOM_VALS);
-    RandomSingleOpTest<DatatypeHarness<cds::container::FCQueue<int, std::queue<int>, FCQUEUE_TRAITS()>>> test6(CDS, RANDOM_VALS); 
-   
-    startAndWait(&test1, 10000, 2);
-    test1.print_fc_stats();
-    startAndWait(&test2, 10000, 2);
-    startAndWait(&test3, 10000, 2);
-    test3.print_fc_stats();
-    startAndWait(&test4, 10000, 8);
-    test4.print_fc_stats();
-    startAndWait(&test5, 10000, 8);
-    startAndWait(&test6, 10000, 8);
-    test6.print_fc_stats();
-    
     /*
     for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {
         dualprintf("\n%s\n", pqueue_tests[i].desc.c_str());

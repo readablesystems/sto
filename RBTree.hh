@@ -193,6 +193,10 @@ public:
 #endif
     }
 
+    typedef K key_type;
+    typedef T   mapped_type;
+    typedef std::pair<key_type const, mapped_type>   value_type;
+
     typedef rbwrapper<rbpair<K, T>> wrapper_type;
     typedef rbtree<wrapper_type> internal_tree_type;
 
