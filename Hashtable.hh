@@ -31,6 +31,9 @@ public:
     typedef typename std::conditional<Opacity, TWrapped<Value>, TNonopaqueWrapped<Value>>::type wrapped_type;
 
     typedef V write_value_type;
+   
+    // for benchmarking
+    typedef V mapped_type;
 
     static constexpr typename Version_type::type invalid_bit = TransactionTid::user_bit;
 private:
@@ -470,7 +473,7 @@ public:
     }
   private:
     const Hashtable *table;
-    int bucket;
+    unsigned bucket;
     internal_elem *node;
     friend class Hashtable;
   };
@@ -660,6 +663,24 @@ public:
 
   // XXX: there's a race between the read and the remove (oldval might be stale) but mehh
   bool nontrans_remove(const Key& k, Value& oldval) { if (read(k,oldval)) return remove(k); else return false; }
+  
+  void nontrans_clear() { 
+    for (auto it = map_.begin(); it != map_.end(); ++it) {
+        bucket_entry& buck = *it;
+        lock(buck.version);
+        internal_elem *prev = NULL;
+        internal_elem *cur = buck.head;
+        while (cur != NULL) {
+            if (prev) {
+              prev->next = cur->next;
+              buck.head = cur->next;
+              prev = cur;
+              cur = cur->next;
+            }
+        }
+        unlock(buck.version);    
+    }
+  }
 
 private:
   bucket_entry& buck_entry(const Key& k) {

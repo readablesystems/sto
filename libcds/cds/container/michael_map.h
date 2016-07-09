@@ -33,6 +33,7 @@
 
 #include <cds/container/details/michael_map_base.h>
 #include <cds/details/allocator.h>
+#include <cds/details/make_const_type.h>
 
 namespace cds { namespace container {
 

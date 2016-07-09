@@ -1,5 +1,5 @@
 #include "cds_benchmarks.hh"
-#include "cds_bm_queues.hh"
+//#include "cds_bm_queues.hh"
 #include "cds_bm_maps.hh"
 
 /*
@@ -86,16 +86,16 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
                     global_thread_ctrs[i].pop, 
                     global_thread_ctrs[i].skip);
         } else {
-            fprintf(global_verbose_stats_file, "Thread %d \tinserts: %ld \tremoves: %ld, \tfinds: %ld\n", i, 
+            fprintf(global_verbose_stats_file, "Thread %d \tinserts: %ld \terases: %ld, \tfinds: %ld\n", i, 
                     global_thread_ctrs[i].insert, 
-                    global_thread_ctrs[i].remove, 
+                    global_thread_ctrs[i].erase, 
                     global_thread_ctrs[i].find);
         }
         global_thread_ctrs[i].push = 0;
         global_thread_ctrs[i].pop = 0;
         global_thread_ctrs[i].skip = 0;
         global_thread_ctrs[i].insert = 0;
-        global_thread_ctrs[i].remove = 0 ;
+        global_thread_ctrs[i].erase = 0 ;
         global_thread_ctrs[i].find= 0;
     }
     print_abort_stats();
@@ -190,19 +190,14 @@ Test queue_tests[] = {
 int num_queues = 4;
 */
 #define MAKE_MAP_TESTS(desc, test, key, val, ...) \
-    {desc, "STO Opaque HashTable", new test<DatatypeHarness<Hashtable<key,val,true>>>(STO, ## __VA_ARGS__)},                                  \
+    {desc, "STO Opaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,true>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "STO Nonopaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,false>>>(STO, ## __VA_ARGS__)},                                  \
-    {desc, "CuckooMap", new test<DatatypeHarness<cds::container::CuckooMap<key,val>>>(CDS, ## __VA_ARGS__)},                 \
-    {desc, "FeldmanHashMap", new test<DatatypeHarness<cds::container::FeldmanHashMap<key,val>>>(CDS, ## __VA_ARGS__)},                 \
-    {desc, "MichaelHashMap", new test<DatatypeHarness<cds::container::MichaelHashMap<key,val>>>(CDS, ## __VA_ARGS__)},                 \
-    {desc, "SkipListMap", new test<DatatypeHarness<cds::container::SkipListMap<key,val>>>(CDS, ## __VA_ARGS__)}, \
-    {desc, "StripedMap", new test<DatatypeHarness<cds::container::StripedMap<key,val>>>(CDS, ## __VA_ARGS__)}, \
-    {desc, "SplitListMap", new test<DatatypeHarness<cds::container::SplitListMap<key,val>>>(CDS, ## __VA_ARGS__)}
-
-Test map_tests[] = {
-    MAKE_MAP_TESTS("M:RandSingleOps", RandomSingleOpTest, int, int),
-};
-int num_maps= 8;
+    {desc, "CuckooMap", new test<DatatypeHarness<cds::container::CuckooMap<key,val,cuckoo_traits<key>>>>(CDS, ## __VA_ARGS__)},                 \
+    {desc, "FeldmanHashMap", new test<DatatypeHarness<cds::container::FeldmanHashMap<cds::gc::HP,key,val>>>(CDS, ## __VA_ARGS__)},                 \
+    {desc, "MichaelHashMap", new test<DatatypeHarness<MICHAELMAP(key,val)>>(CDS, ## __VA_ARGS__)},                 \
+    {desc, "SkipListMap", new test<DatatypeHarness<cds::container::SkipListMap<cds::gc::HP,key,val>>>(CDS, ## __VA_ARGS__)}, \
+    {desc, "StripedMap", new test<DatatypeHarness<cds::container::StripedMap<std::map<key,val>>>>(CDS, ## __VA_ARGS__)}, \
+    {desc, "SplitListMap", new test<DatatypeHarness<cds::container::SplitListMap<cds::gc::HP,key,val,map_traits<key>>>>(CDS, ## __VA_ARGS__)}
 
 int main() {
     global_verbose_stats_file = fopen("microbenchmarks/cds_benchmarks_stats_verbose.txt", "a");
@@ -227,13 +222,36 @@ int main() {
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
 
     cds::Initialize();
-    cds::gc::HP hpGC;
+    cds::gc::HP hpGC(67);
     cds::threading::Manager::attachThread();
+    
+    Test map_tests[] = {
+        MAKE_MAP_TESTS("M:RandSingleOps", RandomSingleOpTest, int, int),
+    };
+    int num_maps= 8;
 
     // create epoch advancer thread
     pthread_t advancer;
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
+
+    for (unsigned i = 0; i < arraysize(map_tests); i+=num_maps) {
+        dualprintf("\n%s\n", map_tests[i].desc.c_str());
+        fprintf(global_verbose_stats_file, "STO, STO(O), MS, FC\n");
+        for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
+            for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
+                for (int j = 0; j < num_maps; ++j) {
+                    fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
+                            map_tests[i+j].desc.c_str(), map_tests[i+j].ds, *size, *nthreads);
+                    startAndWait(map_tests[i+j].test, *size, *nthreads);
+                    fprintf(stderr, "\nRan Test %s on %s\t size: %d, nthreads: %d\n", 
+                            map_tests[i+j].desc.c_str(), map_tests[i+j].ds, *size, *nthreads);
+                }
+                dualprintf("\n");
+            }
+            dualprintf("\n\n");
+        }
+    }
 
     /*
     for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {

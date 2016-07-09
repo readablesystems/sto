@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <vector>
 #include <random>
+#include <sys/time.h>
 #include <time.h>
 #include <memory>
 
@@ -43,7 +44,7 @@ struct __attribute__((aligned(128))) cds_counters {
     txp_counter_type pop;
     txp_counter_type skip;
     txp_counter_type insert;
-    txp_counter_type remove;
+    txp_counter_type erase;
     txp_counter_type find;
 };
 
