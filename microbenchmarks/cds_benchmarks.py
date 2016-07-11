@@ -20,7 +20,9 @@ INIT_SIZES = [1000, 10000, 50000, 100000, 150000]
 NTHREADS = [1, 2, 4, 8, 12, 16, 20]
 TESTS = ["PQRandSingleOps:R","PQRandSingleOps:D","PQPushPop:R",
             "PQPushPop:D", "PQPushOnly:R", "PQPushOnly:D", 
-            "Q:PushPop","Q:RandSingleOps"]
+            "Q:PushPop","Q:RandSingleOps",
+            "HM:RandSingleOps",
+        ]
 
 # sheet id, row index, column index
 TEST_COORDS = {
@@ -79,6 +81,13 @@ TEST_COORDS = {
         50000: (720124793, 58, 1),
         100000: (720124793, 67, 1),
         150000: (720124793, 76, 1)
+    }, 
+    "HM:RandSingleOps" : {
+        1000: (577880275, 40, 1),
+        10000: (577880275, 49, 1),
+        50000: (577880275, 58, 1),
+        100000: (577880275, 67, 1),
+        150000: (577880275, 76, 1)
     }, 
 }
 
