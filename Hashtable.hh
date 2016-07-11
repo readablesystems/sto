@@ -671,12 +671,12 @@ public:
         internal_elem *prev = NULL;
         internal_elem *cur = buck.head;
         while (cur != NULL) {
-            if (prev) {
-              prev->next = cur->next;
-              buck.head = cur->next;
-              prev = cur;
-              cur = cur->next;
-            }
+          if (prev) {
+            prev->next = cur->next;
+          }
+          buck.head = cur->next;
+          prev = cur;
+          cur = cur->next;
         }
         unlock(buck.version);    
     }

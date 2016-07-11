@@ -21,10 +21,6 @@
 
 #include "Hashtable.hh" 
 
-// value types
-#define RANDOM_VALS 10
-#define DECREASING_VALS 11
-
 // types of map_operations available
 enum map_op {insert, erase, find};
 std::array<map_op, 3> map_ops_array = {insert, erase, find};
@@ -37,7 +33,7 @@ public:
     bool insert(key_type k, mapped_type v) { return v_.insert(k, v); }
     bool erase(key_type k) { return v_.erase(k); }
     bool find(key_type k) { return v_.contains(k); }
-    void init_insert(key_type k, mapped_type v) { assert(v_.insert(k, v)); }
+    void init_insert(key_type k, mapped_type v) { v_.insert(k, v); }
     bool cleanup_erase() { v_.clear(); return false; }
 private:
     DS v_;
@@ -47,10 +43,11 @@ template <typename DS> struct STOMapHarness {
     typedef typename DS::mapped_type mapped_type;
     typedef typename DS::key_type key_type;
 public:
+    STOMapHarness() {};
     bool insert(key_type k, mapped_type v) { return v_.transInsert(k, v); }
     bool erase(key_type k) { return v_.transDelete(k); }
     bool find(key_type k) { mapped_type ret; return v_.transGet(k, ret); }
-    void init_insert(key_type k, mapped_type v) { assert(v_.nontrans_insert(k, v)); }
+    void init_insert(key_type k, mapped_type v) { v_.nontrans_insert(k, v); }
     bool cleanup_erase() { 
         v_.nontrans_clear();
         return false; 
@@ -62,12 +59,10 @@ private:
 /* 
  * Hashtable Templates
  */
-
-
-template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,true>> : 
-    public STOMapHarness<Hashtable<K,T,true>>{};
-template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,false>> : 
-    public STOMapHarness<Hashtable<K,T,false>>{};
+template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,true,1000000>> : 
+    public STOMapHarness<Hashtable<K,T,true,1000000>>{};
+template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,false,1000000>> : 
+    public STOMapHarness<Hashtable<K,T,false,1000000>>{};
 
 template <typename K>
 struct hash1 { size_t operator()(K const& k) const { return std::hash<K>()( k ); } };
@@ -110,11 +105,11 @@ template <typename K, typename T> struct DatatypeHarness<MICHAELMAP(K,T)> {
     typedef typename DS::mapped_type mapped_type;
     typedef typename DS::key_type key_type;
 public:
-    DatatypeHarness() : v_(100000, 5) {};
+    DatatypeHarness() : v_(1000000, 5) {};
     bool insert(key_type k, mapped_type v) { return v_.insert(k, v); }
     bool erase(key_type k) { return v_.erase(k); }
     bool find(key_type k) { return v_.contains(k); }
-    void init_insert(key_type k, mapped_type v) { assert(v_.insert(k, v)); }
+    void init_insert(key_type k, mapped_type v) { v_.insert(k, v); }
     bool cleanup_erase() { v_.clear(); return false; }
 private:
     DS v_;
@@ -143,11 +138,24 @@ template <typename K, typename T> struct DatatypeHarness<
  * Test interfaces and templates.
  */
 template <typename DH> class DHMapTest : public GenericTest {
+    typedef typename DH::mapped_type mapped_type;
+    typedef typename DH::key_type key_type;
 public:
-    DHMapTest() {};
+    DHMapTest(int p_insert, int p_erase) : p_insert_(p_insert), p_erase_(p_erase), op_ctr_(0) {};
     void initialize(size_t init_sz) {
         for (unsigned i = 0; i < init_sz; ++i) {
-            v_.init_insert(i,i); 
+            v_.init_insert(random() % MAX_SIZE,i); 
+        }
+    }
+
+    void prepare() {
+        for (unsigned i = 0; i < arraysize(rand_keys_); ++i)
+            rand_keys_[i] = random() % MAX_VALUE;
+        for (unsigned i = 0; i < arraysize(rand_ops_); ++i) {
+            int p = random() % 100;
+            if (p >= p_insert_ + p_erase_) rand_ops_[i] = erase;
+            else if (p < p_insert_) rand_ops_[i] = insert;
+            else rand_ops_[i] = find;
         }
     }
     
@@ -155,54 +163,67 @@ public:
         while (v_.cleanup_erase()){/*keep popping*/}
     }
 
-    inline void do_map_op(map_op map_op, int key, int val) {
-        switch (map_op) {
-            case insert: v_.insert(key,val); break;
-            case erase: v_.erase(key); break;
-            case find: v_.find(key); break;
-            default: assert(0);
-        }
-    }
-    inline void inc_ctrs(map_op map_op, int me) {
-        switch(map_op) {
-            case insert: global_thread_ctrs[me].insert++; break;
-            case erase: global_thread_ctrs[me].erase++; break;
-            case find: global_thread_ctrs[me].find++; break;
-            default: assert(0);
+    inline void do_map_op(int me) {
+        int key = rand_keys_[op_ctr_ % arraysize(rand_keys_)];
+        switch (rand_ops_[op_ctr_ % arraysize(rand_ops_)]) {
+            case erase:
+                if (v_.erase(key)) global_thread_ctrs[me].ke++;
+                global_thread_ctrs[me].erase++;
+                break;
+            case insert:
+                if (v_.insert(key,me)) global_thread_ctrs[me].ke++;
+                global_thread_ctrs[me].insert++;
+                break;
+            case find:
+                if (v_.find(key)) global_thread_ctrs[me].ke++;
+                global_thread_ctrs[me].find++;
+                break;
         }
     }
 
+    inline void on_op_success() {op_ctr_++;}
+
 protected:
     DH v_;
+    int p_insert_;
+    int p_erase_;
+    map_op rand_ops_[10000];
+    int rand_keys_[10000];
+    int op_ctr_;
 };
 
 template <typename DH> class RandomSingleOpTest : public DHMapTest<DH> {
 public:
-    RandomSingleOpTest(int ds_type) : ds_type_(ds_type) {};
+    RandomSingleOpTest(int ds_type, int p_insert, int p_erase) : DHMapTest<DH>(p_insert, p_erase), ds_type_(ds_type) {};
     void run(int me) {
-        map_op my_map_op;
-        for (int i = NTRANS; i > 0; --i) {
-            if (ds_type_ == STO) {
+        if (ds_type_ == STO) {
+            for (int i = NTRANS; i > 0; --i) {
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        my_map_op = map_ops_array[map_ops_array[i % 3]];
-                        this->do_map_op(my_map_op, 
-                            rand_vals[(i*me + i + 1) % arraysize(rand_vals)], 
-                            rand_vals[(i*me + i) % arraysize(rand_vals)]);
-                        if (Sto::try_commit()) break;
+                        this->do_map_op(me);
+                        if (Sto::try_commit()) this->on_op_success(); break;
                     } catch (Transaction::Abort e) {}
                 }
-                this->inc_ctrs(my_map_op, me);
-            } else {
-                my_map_op = map_ops_array[map_ops_array[i%3]];
-                this->do_map_op(my_map_op, 
-                    rand_vals[(i*me + i + 1) % arraysize(rand_vals)], 
-                    rand_vals[(i*me + i) % arraysize(rand_vals)]);
-                this->inc_ctrs(my_map_op, me);
+            }
+        } else {
+            for (int i = NTRANS; i > 0; --i) {
+                this->do_map_op(me);
+                this->on_op_success();
+                //this->do_map_op(my_map_op, rand_vals[(i*me + i + 1) % arraysize(rand_vals)], i, me, transgen, slotdist);
             }
         }
     }
 private:
     int ds_type_;
 };
+
+#define MAKE_MAP_TESTS(desc, test, key, val, ...) \
+    {desc, "STO Opaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,true,1000000>>>(STO, ## __VA_ARGS__)},                                  \
+    {desc, "STO Nonopaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,false,1000000>>>(STO, ## __VA_ARGS__)},                                  \
+    {desc, "CuckooMap", new test<DatatypeHarness<cds::container::CuckooMap<key,val,cuckoo_traits<key>>>>(CDS, ## __VA_ARGS__)},                 \
+    {desc, "FeldmanHashMap", new test<DatatypeHarness<cds::container::FeldmanHashMap<cds::gc::HP,key,val>>>(CDS, ## __VA_ARGS__)},                 \
+    {desc, "MichaelHashMap", new test<DatatypeHarness<MICHAELMAP(key,val)>>(CDS, ## __VA_ARGS__)},                 \
+    {desc, "SkipListMap", new test<DatatypeHarness<cds::container::SkipListMap<cds::gc::HP,key,val>>>(CDS, ## __VA_ARGS__)}, \
+    {desc, "StripedMap", new test<DatatypeHarness<cds::container::StripedMap<std::map<key,val>>>>(CDS, ## __VA_ARGS__)}, \
+    {desc, "SplitListMap", new test<DatatypeHarness<cds::container::SplitListMap<cds::gc::HP,key,val,map_traits<key>>>>(CDS, ## __VA_ARGS__)},

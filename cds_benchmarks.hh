@@ -20,7 +20,7 @@
 
 #define GLOBAL_SEED 10
 
-#define MAX_VALUE 20 
+#define MAX_VALUE 2000000
 #define MAX_SIZE 1000000
 #define NTRANS 6000000 // Number of transactions each thread should run.
 #define MAX_NUM_THREADS 24 // Maximum number of concurrent threads
@@ -31,6 +31,7 @@
 #define CDS 1
 
 // globals
+unsigned initial_seeds[64];
 std::atomic_int global_val(MAX_VALUE);
 std::vector<int> init_sizes = {1000, 10000, 50000, 100000, 150000};
 std::vector<int> nthreads_set = {1, 2, 4, 8, 12, 16, 20};//, 24};
@@ -46,14 +47,13 @@ struct __attribute__((aligned(128))) cds_counters {
     txp_counter_type insert;
     txp_counter_type erase;
     txp_counter_type find;
+    txp_counter_type ke; // key_exists
 };
 
 cds_counters global_thread_ctrs[MAX_NUM_THREADS];
 
 FILE *global_verbose_stats_file;
 FILE *global_stats_file;
-
-unsigned initial_seeds[64];
 
 // This thread is run after all threads modifying the data structure have been spawned. 
 // It then iterates until a thread finishes and measures the max rate of ops/ms on the data structure. 
@@ -70,6 +70,7 @@ template <typename DS> struct DatatypeHarness{};
 class GenericTest {
 public:
     virtual void initialize(size_t init_sz) = 0;
+    virtual void prepare() = 0;
     virtual void run(int me) = 0;
     virtual void cleanup() = 0;
 };
