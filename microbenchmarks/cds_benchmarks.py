@@ -21,7 +21,8 @@ NTHREADS = [1, 2, 4, 8, 12, 16, 20]
 TESTS = ["PQRandSingleOps:R","PQRandSingleOps:D","PQPushPop:R",
             "PQPushPop:D", "PQPushOnly:R", "PQPushOnly:D", 
             "Q:PushPop","Q:RandSingleOps",
-            "HM:RandSingleOps(F34,I33,E33)","HM:RandSingleOps(F10,I88,E2)","HM:RandSingleOps(F88,I10,E2)",
+            "HM:RandSingleOps(F34,I33,E33)","HM:RandSingleOps(F80,I10,E10)",
+            "HM:RandSingleOps(F88,I10,E2)","HM:RandSingleOps(F10,I88,E2)",
         ]
 
 # sheet id, row index, column index
@@ -102,6 +103,13 @@ TEST_COORDS = {
         50000: (91535127, 58, 1),
         100000: (91535127, 67, 1),
         150000: (91535127, 76, 1)
+    }, 
+    "HM:RandSingleOps(F80,I10,E10)" : {
+        1000: (660987677, 40, 1),
+        10000: (660987677, 49, 1),
+        50000: (660987677, 58, 1),
+        100000: (660987677, 67, 1),
+        150000: (660987677, 76, 1)
     }, 
 }
 
