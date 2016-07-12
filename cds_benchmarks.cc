@@ -19,7 +19,7 @@ void* test_thread(void *data) {
         gt->cleanup();
         gt->initialize(init_size); 
     }
-    gt->prepare(); 
+    gt->prepare(init_size); 
 
     spawned_barrier++;
     while (spawned_barrier != nthreads) {
@@ -82,8 +82,8 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
     pthread_join(recorder, NULL);
 
     fprintf(global_verbose_stats_file, "\n");
-    int total_ke = 0;
-    int total_ops = 0;
+    int total_ke_insert, total_ke_find, total_ke_erase, total_inserts, total_find, total_erase;
+    total_ke_insert = total_ke_find = total_ke_erase = total_inserts = total_find = total_erase = 0;
     for (int i = 0; i < nthreads; ++i) {
         if (global_thread_ctrs[i].push || global_thread_ctrs[i].pop  || global_thread_ctrs[i].skip) {
             fprintf(global_verbose_stats_file, "Thread %d \tpushes: %ld \tpops: %ld, \tskips: %ld\n", i, 
@@ -95,18 +95,22 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
                     global_thread_ctrs[i].insert, 
                     global_thread_ctrs[i].erase, 
                     global_thread_ctrs[i].find);
-            total_ke += global_thread_ctrs[i].ke;
-            total_ops += global_thread_ctrs[i].insert + global_thread_ctrs[i].erase + global_thread_ctrs[i].find;
+            total_ke_insert += global_thread_ctrs[i].ke_insert;
+            total_ke_find += global_thread_ctrs[i].ke_find;
+            total_ke_erase += global_thread_ctrs[i].ke_erase;
+            total_inserts += global_thread_ctrs[i].insert;
+            total_erase += global_thread_ctrs[i].erase;
+            total_find += global_thread_ctrs[i].find;
         }
-        global_thread_ctrs[i].ke = 0;
-        global_thread_ctrs[i].push = 0;
-        global_thread_ctrs[i].pop = 0;
-        global_thread_ctrs[i].skip = 0;
-        global_thread_ctrs[i].insert = 0;
-        global_thread_ctrs[i].erase = 0 ;
-        global_thread_ctrs[i].find = 0;
+        global_thread_ctrs[i].ke_insert = global_thread_ctrs[i].ke_find = global_thread_ctrs[i].ke_erase
+        = global_thread_ctrs[i].insert = global_thread_ctrs[i].erase = global_thread_ctrs[i].find
+        = global_thread_ctrs[i].push = global_thread_ctrs[i].pop = global_thread_ctrs[i].skip
+        = 0;
     }
-    fprintf(global_verbose_stats_file, "Proportion of Keys Found during Erase/Find: %f\n", (double)total_ke/total_ops);
+    fprintf(global_verbose_stats_file, "Present Inserts: %f%%\t Present Finds: %f%%\t Present Erase: %f%%\t\n", 
+            100*(double)total_ke_insert/total_inserts,
+            100*(double)total_ke_find/total_find,
+            100*(double)total_ke_erase/total_erase);
     print_abort_stats();
 }
 
@@ -180,6 +184,7 @@ int main() {
     // map tests
     Test map_tests[] = {
         MAKE_MAP_TESTS("HM:RandSingleOps(F34,I33,E33)", RandomSingleOpTest, int, int, 33, 33)
+        MAKE_MAP_TESTS("HM:RandSingleOps(F10,I80,E10)", RandomSingleOpTest, int, int, 88, 2)
         MAKE_MAP_TESTS("HM:RandSingleOps(F10,I88,E2)", RandomSingleOpTest, int, int, 88, 2)
         MAKE_MAP_TESTS("HM:RandSingleOps(F88,I10,E2)", RandomSingleOpTest, int, int, 10, 2)
     };

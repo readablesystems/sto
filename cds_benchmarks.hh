@@ -20,7 +20,7 @@
 
 #define GLOBAL_SEED 10
 
-#define MAX_VALUE 2000000
+#define MAX_VALUE 20000
 #define MAX_SIZE 1000000
 #define NTRANS 6000000 // Number of transactions each thread should run.
 #define MAX_NUM_THREADS 24 // Maximum number of concurrent threads
@@ -47,7 +47,9 @@ struct __attribute__((aligned(128))) cds_counters {
     txp_counter_type insert;
     txp_counter_type erase;
     txp_counter_type find;
-    txp_counter_type ke; // key_exists
+    txp_counter_type ke_insert; // key_exists during insert
+    txp_counter_type ke_erase; // key_exists during erase
+    txp_counter_type ke_find; // key_exists during find
 };
 
 cds_counters global_thread_ctrs[MAX_NUM_THREADS];
@@ -70,7 +72,7 @@ template <typename DS> struct DatatypeHarness{};
 class GenericTest {
 public:
     virtual void initialize(size_t init_sz) = 0;
-    virtual void prepare() = 0;
+    virtual void prepare(size_t init_sz) = 0;
     virtual void run(int me) = 0;
     virtual void cleanup() = 0;
 };

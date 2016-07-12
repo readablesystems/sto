@@ -100,7 +100,7 @@ MSTO_DEPS = $(MSTO_OBJS) $(MASSTREEDIR)/libjson.a
 test_sto:  test.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-cds_benchmarks:  cds_benchmarks.o $(STO_DEPS)
+cds_benchmarks: city.o cds_benchmarks.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 concurrent: concurrent.o $(MSTO_DEPS)

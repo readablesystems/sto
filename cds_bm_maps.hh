@@ -16,6 +16,9 @@
 #include <cds/opt/hash.h> 
 #include <cds/algo/atomic.h> 
 
+#include "cuckoohash_map.hh"
+#include "city_hasher.hh"
+
 #include <map> 
 #include <functional> 
 
@@ -64,6 +67,21 @@ template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,true,1000
 template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,false,1000000>> : 
     public STOMapHarness<Hashtable<K,T,false,1000000>>{};
 
+template <typename K, typename T> struct DatatypeHarness<cuckoohash_map<K, T, CityHasher<K>>> {
+    typedef cuckoohash_map<K,T,CityHasher<K>> DS;
+    typedef typename DS::mapped_type mapped_type;
+    typedef typename DS::key_type key_type;
+public:
+    DatatypeHarness() { v_ = new DS(); };
+    bool insert(key_type k, mapped_type v) { return v_->insert(k, v); }
+    bool erase(key_type k) { return v_->erase(k); }
+    bool find(key_type k) { mapped_type v; return v_->find(k,v); }
+    void init_insert(key_type k, mapped_type v) { v_->insert(k, v); }
+    bool cleanup_erase() { delete v_; v_ = new DS(); return false; }
+private:
+    DS* v_;
+};
+
 template <typename K>
 struct hash1 { size_t operator()(K const& k) const { return std::hash<K>()( k ); } };
 template <typename K>
@@ -83,6 +101,7 @@ struct cuckoo_traits: public cds::container::cuckoo::traits
 };
 template <typename K, typename T> struct DatatypeHarness<cds::container::CuckooMap<K,T,cuckoo_traits<K>>> :
     public CDSMapHarness<cds::container::CuckooMap<K,T,cuckoo_traits<K>>>{};
+
 template <typename K, typename T> struct DatatypeHarness<cds::container::FeldmanHashMap<cds::gc::HP,K,T>> :
     public CDSMapHarness<cds::container::FeldmanHashMap<cds::gc::HP,K,T>>{};
 
@@ -99,7 +118,6 @@ template <typename K, typename T> struct DatatypeHarness<cds::container::Feldman
             cds::opt::allocator<CDS_DEFAULT_ALLOCATOR>\
         >::type\
     >
-
 template <typename K, typename T> struct DatatypeHarness<MICHAELMAP(K,T)> {
     typedef MICHAELMAP(K,T) DS;
     typedef typename DS::mapped_type mapped_type;
@@ -144,13 +162,13 @@ public:
     DHMapTest(int p_insert, int p_erase) : p_insert_(p_insert), p_erase_(p_erase), op_ctr_(0) {};
     void initialize(size_t init_sz) {
         for (unsigned i = 0; i < init_sz; ++i) {
-            v_.init_insert(random() % MAX_SIZE,i); 
+            v_.init_insert(random() % (init_sz*2), i); 
         }
     }
 
-    void prepare() {
+    void prepare(size_t init_sz) {
         for (unsigned i = 0; i < arraysize(rand_keys_); ++i)
-            rand_keys_[i] = random() % MAX_VALUE;
+            rand_keys_[i] = random() % (init_sz*2);
         for (unsigned i = 0; i < arraysize(rand_ops_); ++i) {
             int p = random() % 100;
             if (p >= p_insert_ + p_erase_) rand_ops_[i] = erase;
@@ -167,15 +185,15 @@ public:
         int key = rand_keys_[op_ctr_ % arraysize(rand_keys_)];
         switch (rand_ops_[op_ctr_ % arraysize(rand_ops_)]) {
             case erase:
-                if (v_.erase(key)) global_thread_ctrs[me].ke++;
+                if (v_.erase(key)) global_thread_ctrs[me].ke_erase++;
                 global_thread_ctrs[me].erase++;
                 break;
             case insert:
-                if (v_.insert(key,me)) global_thread_ctrs[me].ke++;
+                if (v_.insert(key,me)) global_thread_ctrs[me].ke_insert++;
                 global_thread_ctrs[me].insert++;
                 break;
             case find:
-                if (v_.find(key)) global_thread_ctrs[me].ke++;
+                if (v_.find(key)) global_thread_ctrs[me].ke_find++;
                 global_thread_ctrs[me].find++;
                 break;
         }
@@ -210,7 +228,6 @@ public:
             for (int i = NTRANS; i > 0; --i) {
                 this->do_map_op(me);
                 this->on_op_success();
-                //this->do_map_op(my_map_op, rand_vals[(i*me + i + 1) % arraysize(rand_vals)], i, me, transgen, slotdist);
             }
         }
     }
@@ -221,6 +238,7 @@ private:
 #define MAKE_MAP_TESTS(desc, test, key, val, ...) \
     {desc, "STO Opaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,true,1000000>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "STO Nonopaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,false,1000000>>>(STO, ## __VA_ARGS__)},                                  \
+    {desc, "MGCuckooMap", new test<DatatypeHarness<cuckoohash_map<key, val, CityHasher<key>>>>(CDS, ## __VA_ARGS__)},                 \
     {desc, "CuckooMap", new test<DatatypeHarness<cds::container::CuckooMap<key,val,cuckoo_traits<key>>>>(CDS, ## __VA_ARGS__)},                 \
     {desc, "FeldmanHashMap", new test<DatatypeHarness<cds::container::FeldmanHashMap<cds::gc::HP,key,val>>>(CDS, ## __VA_ARGS__)},                 \
     {desc, "MichaelHashMap", new test<DatatypeHarness<MICHAELMAP(key,val)>>(CDS, ## __VA_ARGS__)},                 \
