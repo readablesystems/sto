@@ -19,7 +19,6 @@ void* test_thread(void *data) {
         gt->cleanup();
         gt->initialize(init_size); 
     }
-    gt->prepare(init_size); 
 
     spawned_barrier++;
     while (spawned_barrier != nthreads) {
@@ -184,7 +183,7 @@ int main() {
     // map tests
     Test map_tests[] = {
         MAKE_MAP_TESTS("HM:RandSingleOps(F34,I33,E33)", RandomSingleOpTest, int, int, 33, 33)
-        MAKE_MAP_TESTS("HM:RandSingleOps(F10,I80,E10)", RandomSingleOpTest, int, int, 88, 2)
+        MAKE_MAP_TESTS("HM:RandSingleOps(F80,I10,E10)", RandomSingleOpTest, int, int, 10, 10)
         MAKE_MAP_TESTS("HM:RandSingleOps(F10,I88,E2)", RandomSingleOpTest, int, int, 88, 2)
         MAKE_MAP_TESTS("HM:RandSingleOps(F88,I10,E2)", RandomSingleOpTest, int, int, 10, 2)
     };

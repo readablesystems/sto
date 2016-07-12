@@ -159,31 +159,27 @@ template <typename DH> class DHMapTest : public GenericTest {
     typedef typename DH::mapped_type mapped_type;
     typedef typename DH::key_type key_type;
 public:
-    DHMapTest(int p_insert, int p_erase) : p_insert_(p_insert), p_erase_(p_erase), op_ctr_(0) {};
+    DHMapTest(int p_insert, int p_erase) : p_insert_(p_insert), p_erase_(p_erase), op_ctr_(0), opdist_(0,100) {};
     void initialize(size_t init_sz) {
         for (unsigned i = 0; i < init_sz; ++i) {
             v_.init_insert(random() % (init_sz*2), i); 
         }
+        keydist_ = std::uniform_int_distribution<long>(0,init_sz*2);
     }
 
-    void prepare(size_t init_sz) {
-        for (unsigned i = 0; i < arraysize(rand_keys_); ++i)
-            rand_keys_[i] = random() % (init_sz*2);
-        for (unsigned i = 0; i < arraysize(rand_ops_); ++i) {
-            int p = random() % 100;
-            if (p >= p_insert_ + p_erase_) rand_ops_[i] = erase;
-            else if (p < p_insert_) rand_ops_[i] = insert;
-            else rand_ops_[i] = find;
-        }
-    }
-    
     void cleanup() {
         while (v_.cleanup_erase()){/*keep popping*/}
     }
+    
+    inline void do_map_op(int me, Rand& transgen) {
+        map_op my_op;
+        int p = opdist_(transgen) % 100;
+        if (p >= p_insert_ + p_erase_) my_op = erase;
+        else if (p < p_insert_) my_op = insert;
+        else my_op = find;
 
-    inline void do_map_op(int me) {
-        int key = rand_keys_[op_ctr_ % arraysize(rand_keys_)];
-        switch (rand_ops_[op_ctr_ % arraysize(rand_ops_)]) {
+        int key = keydist_(transgen); 
+        switch (my_op) {
             case erase:
                 if (v_.erase(key)) global_thread_ctrs[me].ke_erase++;
                 global_thread_ctrs[me].erase++;
@@ -199,35 +195,33 @@ public:
         }
     }
 
-    inline void on_op_success() {op_ctr_++;}
-
 protected:
     DH v_;
     int p_insert_;
     int p_erase_;
-    map_op rand_ops_[10000];
-    int rand_keys_[10000];
-    int op_ctr_;
+    std::uniform_int_distribution<long> keydist_;
+    std::uniform_int_distribution<long> opdist_;
 };
 
 template <typename DH> class RandomSingleOpTest : public DHMapTest<DH> {
 public:
     RandomSingleOpTest(int ds_type, int p_insert, int p_erase) : DHMapTest<DH>(p_insert, p_erase), ds_type_(ds_type) {};
     void run(int me) {
+        Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
         if (ds_type_ == STO) {
             for (int i = NTRANS; i > 0; --i) {
+                Rand transgen_snap = transgen;
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        this->do_map_op(me);
-                        if (Sto::try_commit()) this->on_op_success(); break;
-                    } catch (Transaction::Abort e) {}
+                        this->do_map_op(me, transgen);
+                        if (Sto::try_commit()) break;
+                    } catch (Transaction::Abort e) {transgen = transgen_snap;}
                 }
             }
         } else {
             for (int i = NTRANS; i > 0; --i) {
-                this->do_map_op(me);
-                this->on_op_success();
+                this->do_map_op(me, transgen);
             }
         }
     }

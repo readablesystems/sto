@@ -72,7 +72,6 @@ template <typename DS> struct DatatypeHarness{};
 class GenericTest {
 public:
     virtual void initialize(size_t init_sz) = 0;
-    virtual void prepare(size_t init_sz) = 0;
     virtual void run(int me) = 0;
     virtual void cleanup() = 0;
 };
