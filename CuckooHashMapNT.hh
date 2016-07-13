@@ -1,5 +1,5 @@
-#ifndef _CUCKOOHASH_MAP_HH
-#define _CUCKOOHASH_MAP_HH
+#ifndef _CuckooHashMapNT_HH
+#define _CuckooHashMapNT_HH
 
 #include <atomic>
 #include <bitset>
@@ -13,6 +13,7 @@
 #include <list>
 #include <memory>
 #include <mutex>
+#include <pthread.h>
 #include <stdexcept>
 #include <thread>
 #include <type_traits>
@@ -20,16 +21,27 @@
 #include <utility>
 #include <vector>
 #include <sys/time.h>
-#include "cuckoohash_config.h"
-#include "cuckoohash_util.h"
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
-/*! cuckoohash_map is the hash table class. */
+#define LIBCUCKOO_DEBUGNT 1
+#if LIBCUCKOO_DEBUGNT
+#  define LIBCUCKOO_DBG(fmt, args...)  fprintf(stderr, "\x1b[32m""[libcuckoo:%s:%d:%lu] " fmt"" "\x1b[0m",__FILE__,__LINE__, (unsigned long)pthread_self(), ##args)
+#else
+#  define LIBCUCKOO_DBG(fmt, args...)  do {} while (0)
+#endif
+
+//! SLOT_PER_BUCKET_NT is the maximum number of keys per bucket
+const size_t SLOT_PER_BUCKET_NT = 4;
+
+//! DEFAULT_SIZE_NT is the default number of elements in an empty hash table
+const size_t DEFAULT_SIZE_NT = (1U << 16) * SLOT_PER_BUCKET_NT;
+
+/*! CuckooHashMapNT is the hash table class. */
 template <class Key, class T, class Hash = std::hash<Key>, class Pred = std::equal_to<Key> >
-class cuckoohash_map {
+class CuckooHashMapNT {
 
     // Structs and functions used internally
 
@@ -80,9 +92,9 @@ class cuckoohash_map {
 
     /* This is a hazard pointer, used to indicate which version of the
      * TableInfo is currently being used in the thread. Since
-     * cuckoohash_map operations can run simultaneously in different
+     * CuckooHashMapNT operations can run simultaneously in different
      * threads, this variable is thread local. Note that this variable
-     * can be safely shared between different cuckoohash_map
+     * can be safely shared between different CuckooHashMapNT
      * instances, since multiple operations cannot occur
      * simultaneously in one thread. The hazard pointer variable
      * points to a pointer inside a global list of pointers, that each
@@ -140,9 +152,9 @@ class cuckoohash_map {
     };
 
     // As long as the thread_local hazard_pointer is static, which
-    // means each template instantiation of a cuckoohash_map class
+    // means each template instantiation of a CuckooHashMapNT class
     // gets its own per-thread hazard pointer, then each template
-    // instantiation of a cuckoohash_map class can get its own
+    // instantiation of a CuckooHashMapNT class can get its own
     // global_hazard_pointers list, since different template
     // instantiations won't interfere with each other.
     static GlobalHazardPointerList global_hazard_pointers;
@@ -189,8 +201,8 @@ class cuckoohash_map {
      * of slots for a table and returns the smallest hashpower that
      * will hold n elements. */
     size_t reserve_calc(size_t n) {
-        size_t new_hashpower = (size_t)ceil(log2((double)n / (double)SLOT_PER_BUCKET));
-        assert(n <= hashsize(new_hashpower) * SLOT_PER_BUCKET);
+        size_t new_hashpower = (size_t)ceil(log2((double)n / (double)SLOT_PER_BUCKET_NT));
+        assert(n <= hashsize(new_hashpower) * SLOT_PER_BUCKET_NT);
         return new_hashpower;
     }
 
@@ -209,17 +221,17 @@ public:
     /*! The constructor creates a new hash table with enough space for
      * \p n elements. If the constructor fails, it will throw an
      * exception. */
-    explicit cuckoohash_map(size_t n = DEFAULT_SIZE) {
+    explicit CuckooHashMapNT(size_t n = DEFAULT_SIZE_NT) {
         cuckoo_init(reserve_calc(n));
     }
 
-    void initialize(size_t n = DEFAULT_SIZE) {
+    void initialize(size_t n = DEFAULT_SIZE_NT) {
         cuckoo_init(reserve_calc(n));
     }
     /*! The destructor deletes any remaining table pointers managed by
      * the hash table, also destroying all remaining elements in the
      * table. */
-    ~cuckoohash_map() {
+    ~CuckooHashMapNT() {
         TableInfo *ti_old = table_info.load();
         TableInfo *ti_new = new_table_info.load();
         if (ti_old != nullptr) {
@@ -517,7 +529,7 @@ private:
         bitset &= ~(1 << pos);
     }
 
-    /* The Bucket type holds SLOT_PER_BUCKET keys and values, and a
+    /* The Bucket type holds SLOT_PER_BUCKET_NT keys and values, and a
      * occupied bitset, which indicates whether the slot at the given
      * bit index is in the table or not. It allows constructing and
      * destroying key-value pairs separate from allocating and
@@ -525,8 +537,8 @@ private:
     struct Bucket {
         rw_lock lock;
         char occupied;
-        key_type keys[SLOT_PER_BUCKET];
-        mapped_type vals[SLOT_PER_BUCKET];
+        key_type keys[SLOT_PER_BUCKET_NT];
+        mapped_type vals[SLOT_PER_BUCKET_NT];
         unsigned char overflow;
         bool hasmigrated;
 
@@ -543,7 +555,7 @@ private:
         }
 
         void clear() {
-            for (size_t i = 0; i < SLOT_PER_BUCKET; i++) {
+            for (size_t i = 0; i < SLOT_PER_BUCKET_NT; i++) {
                 if (getBit(occupied,i)) {
                     eraseKV(i);
                 }
@@ -867,7 +879,7 @@ private:
         key_type key;
         mapped_type val;
         cuckoo_status res;
-        for (size_t i = 0; i < SLOT_PER_BUCKET; i++) {
+        for (size_t i = 0; i < SLOT_PER_BUCKET_NT; i++) {
             if (!getBit(ti_old->buckets_[old_bucket].occupied, i)) {
                 continue;
             }
@@ -1066,7 +1078,7 @@ private:
     static std::atomic<size_t> numThreads;
 
     // The maximum number of cuckoo operations per insert. This must
-    // be less than or equal to SLOT_PER_BUCKET^(MAX_BFS_DEPTH+1)
+    // be less than or equal to SLOT_PER_BUCKET_NT^(MAX_BFS_DEPTH+1)
     static const size_t MAX_CUCKOO_COUNT = 500;
 
     // The maximum depth of a BFS path
@@ -1128,7 +1140,7 @@ private:
         // a compressed representation of the slots for each of the
         // buckets in the path.
         size_t pathcode;
-        // static_assert(pow(SLOT_PER_BUCKET, MAX_BFS_DEPTH+1) <
+        // static_assert(pow(SLOT_PER_BUCKET_NT, MAX_BFS_DEPTH+1) <
         //               std::numeric_limits<decltype(pathcode)>::max(),
         //               "pathcode may not be large enough to encode a cuckoo path");
         // The 0-indexed position in the cuckoo path this slot
@@ -1188,13 +1200,13 @@ private:
         while (q.not_full() && q.not_empty()) {
             b_slot x = q.dequeue();
             // Picks a random slot to start from
-            for (size_t slot = 0; slot < SLOT_PER_BUCKET && q.not_full(); slot++) {
+            for (size_t slot = 0; slot < SLOT_PER_BUCKET_NT && q.not_full(); slot++) {
                 if (ti->buckets_[x.bucket].hasmigrated) {
                     return b_slot(0, 0, -2);
                 }
                 if (!getBit(ti->buckets_[x.bucket].occupied, slot)) {
                     // We can terminate the search here
-                    x.pathcode = x.pathcode * SLOT_PER_BUCKET + slot;
+                    x.pathcode = x.pathcode * SLOT_PER_BUCKET_NT + slot;
                     return x;
                 }
                 // Create a new b_slot item, that represents the
@@ -1202,7 +1214,7 @@ private:
                 // for empty slots.
                 const size_t hv = hashed_key(ti->buckets_[x.bucket].keys[slot]);
                 b_slot y(alt_index(ti, hv, x.bucket),
-                         x.pathcode * SLOT_PER_BUCKET + slot, x.depth+1);
+                         x.pathcode * SLOT_PER_BUCKET_NT + slot, x.depth+1);
 
                 // Check if any of the slots in the prospective bucket
                 // are empty, and, if so, return that b_slot. We lock
@@ -1211,9 +1223,9 @@ private:
                 if (ti->buckets_[y.bucket].hasmigrated) {
                     return b_slot(0, 0, -2);
                 }
-                for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
+                for (size_t j = 0; j < SLOT_PER_BUCKET_NT; j++) {
                     if (!getBit(ti->buckets_[y.bucket].occupied, j)) {
-                        y.pathcode = y.pathcode * SLOT_PER_BUCKET + j;
+                        y.pathcode = y.pathcode * SLOT_PER_BUCKET_NT + j;
                         return y;
                     }
                 }
@@ -1247,8 +1259,8 @@ private:
         }
         // Fill in the cuckoo path slots from the end to the beginning
         for (int i = x.depth; i >= 0; i--) {
-            cuckoo_path[i].slot = x.pathcode % SLOT_PER_BUCKET;
-            x.pathcode /= SLOT_PER_BUCKET;
+            cuckoo_path[i].slot = x.pathcode % SLOT_PER_BUCKET_NT;
+            x.pathcode /= SLOT_PER_BUCKET_NT;
         }
         /* Fill in the cuckoo_path buckets and keys from the beginning
          * to the end, using the final pathcode to figure out which
@@ -1483,7 +1495,7 @@ private:
             return failure_key_moved;
         }
 
-        for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
+        for (size_t j = 0; j < SLOT_PER_BUCKET_NT; j++) {
             if (!getBit(ti->buckets_[i].occupied, j)) {
                 continue;
             }
@@ -1522,7 +1534,7 @@ private:
         if (ti->buckets_[i].hasmigrated) {
             return failure_key_moved;
         }
-        for (size_t k = 0; k < SLOT_PER_BUCKET; k++) {
+        for (size_t k = 0; k < SLOT_PER_BUCKET_NT; k++) {
             if (getBit(ti->buckets_[i].occupied, k)) {
                 if (eqfn(key, ti->buckets_[i].keys[k])) {
                     return failure_key_duplicated;
@@ -1545,7 +1557,7 @@ private:
             return failure_key_moved;
         }
 
-        for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
+        for (size_t j = 0; j < SLOT_PER_BUCKET_NT; j++) {
             if (!getBit(ti->buckets_[i].occupied, j)) {
                 continue;
             }
@@ -1667,7 +1679,7 @@ private:
 
     /* cuckoo_loadfactor returns the load factor of the given table. */
     float cuckoo_loadfactor(const TableInfo *ti) {
-        return 1.0 * cuckoo_size(ti) / SLOT_PER_BUCKET / hashsize(ti->hashpower_);
+        return 1.0 * cuckoo_size(ti) / SLOT_PER_BUCKET_NT / hashsize(ti->hashpower_);
     }
 
     /* cuckoo_expand_start tries to create a new table, succeeding as long as 
@@ -1744,36 +1756,36 @@ private:
 
 // Initializing the static members
 template <class Key, class T, class Hash, class Pred>
-__thread void** cuckoohash_map<Key, T, Hash, Pred>::hazard_pointer_old = nullptr;
+__thread void** CuckooHashMapNT<Key, T, Hash, Pred>::hazard_pointer_old = nullptr;
 
 template <class Key, class T, class Hash, class Pred>
-__thread void** cuckoohash_map<Key, T, Hash, Pred>::hazard_pointer_new = nullptr;
+__thread void** CuckooHashMapNT<Key, T, Hash, Pred>::hazard_pointer_new = nullptr;
 
 template <class Key, class T, class Hash, class Pred>
-__thread int cuckoohash_map<Key, T, Hash, Pred>::counterid = -1;
+__thread int CuckooHashMapNT<Key, T, Hash, Pred>::counterid = -1;
 
 template <class Key, class T, class Hash, class Pred>
-typename cuckoohash_map<Key, T, Hash, Pred>::hasher
-cuckoohash_map<Key, T, Hash, Pred>::hashfn;
+typename CuckooHashMapNT<Key, T, Hash, Pred>::hasher
+CuckooHashMapNT<Key, T, Hash, Pred>::hashfn;
 
 template <class Key, class T, class Hash, class Pred>
-typename cuckoohash_map<Key, T, Hash, Pred>::key_equal
-cuckoohash_map<Key, T, Hash, Pred>::eqfn;
+typename CuckooHashMapNT<Key, T, Hash, Pred>::key_equal
+CuckooHashMapNT<Key, T, Hash, Pred>::eqfn;
 
 template <class Key, class T, class Hash, class Pred>
-typename std::allocator<typename cuckoohash_map<Key, T, Hash, Pred>::Bucket>
-cuckoohash_map<Key, T, Hash, Pred>::bucket_allocator;
+typename std::allocator<typename CuckooHashMapNT<Key, T, Hash, Pred>::Bucket>
+CuckooHashMapNT<Key, T, Hash, Pred>::bucket_allocator;
 
 template <class Key, class T, class Hash, class Pred>
-typename cuckoohash_map<Key, T, Hash, Pred>::GlobalHazardPointerList
-cuckoohash_map<Key, T, Hash, Pred>::global_hazard_pointers;
+typename CuckooHashMapNT<Key, T, Hash, Pred>::GlobalHazardPointerList
+CuckooHashMapNT<Key, T, Hash, Pred>::global_hazard_pointers;
 
 template <class Key, class T, class Hash, class Pred>
-const size_t cuckoohash_map<Key, T, Hash, Pred>::kNumCores =
+const size_t CuckooHashMapNT<Key, T, Hash, Pred>::kNumCores =
     std::thread::hardware_concurrency() == 0 ?
     sysconf(_SC_NPROCESSORS_ONLN) : std::thread::hardware_concurrency();
 
 template <class Key, class T, class Hash, class Pred>
-std::atomic<size_t> cuckoohash_map<Key, T, Hash, Pred>::numThreads(0);
+std::atomic<size_t> CuckooHashMapNT<Key, T, Hash, Pred>::numThreads(0);
 
 #endif

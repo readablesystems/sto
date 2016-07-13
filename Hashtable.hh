@@ -439,10 +439,12 @@ public:
       bucket_entry& buck = map_[i];
       if (!buck.head)
         continue;
-      printf("bucket %d (version %d): ", i, buck.version);
+      printf("bucket %d", (int)i);
+      //printf("bucket %d (version %d): ", (int)i, (int)(buck.version));
       internal_elem *list = buck.head;
       while (list) {
-        printf("key: %d, val: %d, version: %d, valid: %d ; ", list->key, list->value, list->version, list->valid());
+        printf("key: %d, val: %d; ", list->key, list->value);
+        //printf("key: %d, val: %d, version: %d, valid: %d ; ", (int)list->key, (int)list->value, (int)list->version, (int)list->valid());
         list = list->next;
       }
       printf("\n");

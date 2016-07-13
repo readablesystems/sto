@@ -292,12 +292,10 @@ bool Transaction::try_commit() {
         }
     }
 #endif
-
-
 #if CONSISTENCY_CHECK
-    fence();
-    commit_tid();
-    fence();
+        fence();
+        commit_tid();
+        fence();
 #endif
 
     //phase2

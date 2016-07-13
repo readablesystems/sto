@@ -152,12 +152,6 @@ void print_abort_stats() {
 #endif
 }
 
-struct Test {
-    std::string desc;
-    const char* ds;
-    GenericTest* test;
-};
-
 int main() {
     global_verbose_stats_file = fopen("microbenchmarks/cds_benchmarks_stats_verbose.txt", "w");
     global_stats_file = fopen("microbenchmarks/cds_benchmarks_stats.txt", "w");
@@ -180,16 +174,20 @@ int main() {
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
 
-    // map tests
-    Test map_tests[] = {
-        MAKE_MAP_TESTS("HM:RandSingleOps(F34,I33,E33)", RandomSingleOpTest, int, int, 33, 33)
-        MAKE_MAP_TESTS("HM:RandSingleOps(F80,I10,E10)", RandomSingleOpTest, int, int, 10, 10)
-        MAKE_MAP_TESTS("HM:RandSingleOps(F10,I88,E2)", RandomSingleOpTest, int, int, 88, 2)
-        MAKE_MAP_TESTS("HM:RandSingleOps(F88,I10,E2)", RandomSingleOpTest, int, int, 10, 2)
-    };
-    int num_maps = 8;
+    std::vector<Test> map_tests = make_map_tests();
 
-    for (unsigned i = 0; i < arraysize(map_tests); i+=num_maps) {
+    /*
+    dualprintf("CHM, NontransCHM, MM, STO\n");
+    auto chm = new RandomSingleOpTest<DatatypeHarness<CuckooHashMap<int,int,CityHasher<int>>>>(STO, 33, 33);
+    auto stono = new RandomSingleOpTest<DatatypeHarness<Hashtable<int,int,false,1000000>>>(STO, 33, 33);
+    auto chmnt = new RandomSingleOpTest<DatatypeHarness<CuckooHashMapNT<int,int,CityHasher<int>>>>(CDS, 33, 33);
+    auto mm = new RandomSingleOpTest<DatatypeHarness<MICHAELMAP(int,int)>>(CDS, 33, 33);
+    startAndWait(chm, 50000, 8);
+    startAndWait(chmnt, 50000, 8);
+    startAndWait(mm, 50000, 8);
+    startAndWait(stono, 50000, 8);
+    */
+    for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
         fprintf(global_verbose_stats_file, "STO(O), STO(NO), Cuckoo, Feldman, Michael, SkipList, Striped, SplitList\n");
         for (auto init_keys = begin(init_sizes); init_keys != end(init_sizes); ++init_keys) {

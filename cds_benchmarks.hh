@@ -87,3 +87,8 @@ struct Tester {
     GenericTest* test;   
 };
 
+struct Test {
+    std::string desc;
+    const char* ds;
+    GenericTest* test;
+};
