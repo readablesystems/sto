@@ -1,5 +1,5 @@
 #include "cds_benchmarks.hh"
-//#include "cds_bm_queues.hh"
+#include "cds_bm_queues.hh"
 #include "cds_bm_maps.hh"
 
 /*
@@ -174,7 +174,7 @@ int main() {
     pthread_detach(advancer);
 
     std::vector<Test> map_tests = make_map_tests();
-/*
+    /*
     dualprintf("CHM, NontransCHM, MM, STO\n");
     auto chm = new RandomSingleOpTest<DatatypeHarness<CuckooHashMap<int,int,CityHasher<int>>>>(STO, 33, 33);
     auto chmnt = new RandomSingleOpTest<DatatypeHarness<CuckooHashMapNT<int,int,CityHasher<int>>>>(CDS, 33, 33);
@@ -184,6 +184,7 @@ int main() {
     startAndWait(chmnt, 150000, 8);
     startAndWait(mm, 150000, 8);
     startAndWait(stono, 150000, 8);*/
+    /*
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
         fprintf(global_verbose_stats_file, "STO(O), STO(NO), Cuckoo, Feldman, Michael, SkipList, Striped, SplitList\n");
@@ -201,24 +202,13 @@ int main() {
             dualprintf("\n\n");
         }
     }
-    /*
-    // queue tests
-    for (unsigned i = 0; i < arraysize(rand_vals); ++i)
-        rand_vals[i] = random() % MAX_VALUE;
-    Test pqueue_tests[] = {
-        MAKE_PQUEUE_TESTS("PQRandSingleOps:R", RandomSingleOpTest, int, RANDOM_VALS),
-        MAKE_PQUEUE_TESTS("PQRandSingleOps:D", RandomSingleOpTest, int, DECREASING_VALS),
-        MAKE_PQUEUE_TESTS("PQPushPop:R", PushPopTest, int, RANDOM_VALS),
-        MAKE_PQUEUE_TESTS("PQPushPop:D", PushPopTest, int, DECREASING_VALS),
-        MAKE_PQUEUE_TESTS("PQPushOnly:R", SingleOpTest, int, RANDOM_VALS, push),
-        MAKE_PQUEUE_TESTS("PQPushOnly:D", SingleOpTest, int, DECREASING_VALS, push),
-        //MAKE_PQUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
-        //MAKE_PQUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),
-    };
-    int num_pqueues = 6;
-    for (unsigned i = 0; i < arraysize(pqueue_tests); i+=num_pqueues) {
+    */
+    
+    // pqueue tests
+    std::vector<Test> pqueue_tests = make_pqueue_tests();
+    for (unsigned i = 0; i < pqueue_tests.size(); i+=num_pqueues) {
         dualprintf("\n%s\n", pqueue_tests[i].desc.c_str());
-        fprintf(global_verbose_stats_file, "STO, STO(O), MS, FC\n");
+        fprintf(global_verbose_stats_file, "STO, STO(O),STO/FC, FC, FC PairingHeap\n");
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
                 for (int j = 0; j < num_pqueues; ++j) {
@@ -239,14 +229,10 @@ int main() {
             dualprintf("\n");
         }
     }
-    Test queue_tests[] = {
-        MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
-        MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomSingleOpTest, int, RANDOM_VALS),
-        //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[1]),
-        //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[2]),
-    };
-    int num_queues = 4;
-    for (unsigned i = 0; i < arraysize(queue_tests); i+=num_queues) {
+
+    // queue tests
+    std::vector<Test> queue_tests = make_queue_tests();
+    for (unsigned i = 0; i < queue_tests.size(); i+=num_queues) {
         dualprintf("\n%s\n", queue_tests[i].desc.c_str());
         fprintf(global_verbose_stats_file, "STO, STO(2), FC, STO/FC, \n");
         for (auto size = begin(init_sizes); size != end(init_sizes); ++size) {
@@ -267,7 +253,6 @@ int main() {
             dualprintf("\n");
         }
     }
-    */
     cds::Terminate();
     return 0;
 }

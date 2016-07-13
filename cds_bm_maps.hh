@@ -257,9 +257,9 @@ protected:
     std::uniform_int_distribution<long> opdist_;
 };
 
-template <typename DH> class RandomSingleOpTest : public DHMapTest<DH> {
+template <typename DH> class MapSingleOpTest : public DHMapTest<DH> {
 public:
-    RandomSingleOpTest(int ds_type, int p_insert, int p_erase) : DHMapTest<DH>(p_insert, p_erase), ds_type_(ds_type) {};
+    MapSingleOpTest(int ds_type, int p_insert, int p_erase) : DHMapTest<DH>(p_insert, p_erase), ds_type_(ds_type) {};
     void run(int me) {
         Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
         if (ds_type_ == STO) {
@@ -297,12 +297,12 @@ private:
 
 std::vector<Test> make_map_tests() {
     return {
-        //MAKE_MAP_TESTS("HM1M:F34,I33,E33", RandomSingleOpTest, int, int, 1000000, 33, 33)
-        //MAKE_MAP_TESTS("HM1M:F90,I5,E5", RandomSingleOpTest, int, int, 1000000, 5, 5)
-        MAKE_MAP_TESTS("HM125K:F34,I33,E33", RandomSingleOpTest, int, int, 125000, 33, 33)
-        MAKE_MAP_TESTS("HM125K:F90,I5,E5", RandomSingleOpTest, int, int, 125000, 5, 5)
-        //MAKE_MAP_TESTS("HM:RandSingleOps(F10,I88,E2)", RandomSingleOpTest, int, int, 88, 2)
-        //MAKE_MAP_TESTS("HM:RandSingleOps(F88,I10,E2)", RandomSingleOpTest, int, int, 10, 2)
+        //MAKE_MAP_TESTS("HM1M:F34,I33,E33", MapSingleOpTest, int, int, 1000000, 33, 33)
+        //MAKE_MAP_TESTS("HM1M:F90,I5,E5", MapSingleOpTest, int, int, 1000000, 5, 5)
+        MAKE_MAP_TESTS("HM125K:F34,I33,E33", MapSingleOpTest, int, int, 125000, 33, 33)
+        MAKE_MAP_TESTS("HM125K:F90,I5,E5", MapSingleOpTest, int, int, 125000, 5, 5)
+        //MAKE_MAP_TESTS("HM:RandSingleOps(F10,I88,E2)", MapSingleOpTest, int, int, 88, 2)
+        //MAKE_MAP_TESTS("HM:RandSingleOps(F88,I10,E2)", MapSingleOpTest, int, int, 10, 2)
     };
 }
 int num_maps = 6;

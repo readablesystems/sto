@@ -17,6 +17,10 @@
 #include "PairingHeap.hh"
 #include "Queue.hh"
 #include "Queue2.hh"
+//#include "FCQueue.hh"
+#include "FCQueue2.hh"
+//#include "FCQueueNT.hh"
+//#include "FCQueueOriginal.hh"
 #include "cds_benchmarks.hh"
 
 // value types
@@ -24,6 +28,7 @@
 #define DECREASING_VALS 11
 
 // types of q_operations available
+std::atomic_int global_push_val(MAX_VALUE);
 enum q_op {push, pop};
 std::array<q_op, 2> q_ops_array = {push, pop};
 
@@ -46,20 +51,20 @@ std::vector<std::vector<std::vector<q_op>>> q_txn_sets = {
 };
 
 #define FCQUEUE_TRAITS() cds::container::fcqueue::make_traits< \
-    cds::q_opt::lock_type<cds::sync::spin>, \
-    cds::q_opt::back_off<cds::backoff::delay_of<2>>, \
-    cds::q_opt::allocator<CDS_DEFAULT_ALLOCATOR>, \
-    cds::q_opt::stat<cds::container::fcqueue::stat<cds::atomicity::event_counter>>, \
-    cds::q_opt::memory_model<cds::q_opt::v::relaxed_ordering>, \
-    cds::q_opt::enable_elimination<false>>::type
+    cds::opt::lock_type<cds::sync::spin>, \
+    cds::opt::back_off<cds::backoff::delay_of<2>>, \
+    cds::opt::allocator<CDS_DEFAULT_ALLOCATOR>, \
+    cds::opt::stat<cds::container::fcqueue::stat<cds::atomicity::event_counter>>, \
+    cds::opt::memory_model<cds::opt::v::relaxed_ordering>, \
+    cds::opt::enable_elimination<false>>::type
 
 #define FCPQUEUE_TRAITS() cds::container::fcqueue::make_traits< \
-    cds::q_opt::lock_type<cds::sync::spin>, \
-    cds::q_opt::back_off<cds::backoff::delay_of<2>>, \
-    cds::q_opt::allocator<CDS_DEFAULT_ALLOCATOR>, \
-    cds::q_opt::stat<cds::container::fcpqueue::stat<cds::atomicity::event_counter>>, \
-    cds::q_opt::memory_model<cds::q_opt::v::relaxed_ordering>, \
-    cds::q_opt::enable_elimination<false>>::type
+    cds::opt::lock_type<cds::sync::spin>, \
+    cds::opt::back_off<cds::backoff::delay_of<2>>, \
+    cds::opt::allocator<CDS_DEFAULT_ALLOCATOR>, \
+    cds::opt::stat<cds::container::fcpqueue::stat<cds::atomicity::event_counter>>, \
+    cds::opt::memory_model<cds::opt::v::relaxed_ordering>, \
+    cds::opt::enable_elimination<false>>::type
 
 template <typename DS> struct CDSQueueHarness { 
     typedef typename DS::value_type value_type;
@@ -101,16 +106,10 @@ private:
 /* 
  * Priority Queue Templates
  */
-template <typename T> struct DatatypeHarness<FCPriorityQueue<T>> : 
-    public STOQueueHarness<FCPriorityQueue<T>>{};
 template <typename T> struct DatatypeHarness<PriorityQueue<T>> : 
     public STOQueueHarness<PriorityQueue<T>>{};
 template <typename T> struct DatatypeHarness<PriorityQueue<T, true>> : 
     public STOQueueHarness<PriorityQueue<T, true>>{};
-template <typename T> struct DatatypeHarness<PriorityQueue2<T>> : 
-    public STOQueueHarness<PriorityQueue2<T>>{};
-template <typename T> struct DatatypeHarness<PriorityQueue2<T, true>> : 
-    public STOQueueHarness<PriorityQueue2<T, true>>{};
 
 template <typename T> struct DatatypeHarness<cds::container::MSPriorityQueue<T>> {
     typedef T value_type;
@@ -207,12 +206,12 @@ template <typename T> struct DatatypeHarness<cds::container::FCQueue<T, std::que
         void print_statistics() { this->v_.print_statistics(); }
     };
 #define FCQUEUE_TRAITS_ELIM() cds::container::fcqueue::make_traits< \
-    cds::q_opt::lock_type<cds::sync::spin>, \
-    cds::q_opt::back_off<cds::backoff::delay_of<2>>, \
-    cds::q_opt::allocator<CDS_DEFAULT_ALLOCATOR>, \
-    cds::q_opt::stat<cds::container::fcqueue::empty_stat>, \
-    cds::q_opt::memory_model<cds::q_opt::v::relaxed_ordering>, \
-    cds::q_opt::enable_elimination<true>>::type
+    cds::opt::lock_type<cds::sync::spin>, \
+    cds::opt::back_off<cds::backoff::delay_of<2>>, \
+    cds::opt::allocator<CDS_DEFAULT_ALLOCATOR>, \
+    cds::opt::stat<cds::container::fcqueue::empty_stat>, \
+    cds::opt::memory_model<cds::opt::v::relaxed_ordering>, \
+    cds::opt::enable_elimination<true>>::type
 template <typename T> struct DatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS_ELIM()>>  :
     public CDSQueueHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS_ELIM()>>{
         void print_statistics() { this->v_.print_statistics(); }
@@ -221,8 +220,8 @@ template <typename T> struct DatatypeHarness<cds::container::MoirQueue<cds::gc::
     public CDSQueueHarness<cds::container::MoirQueue<cds::gc::HP, T>>{};
 template <typename T> struct DatatypeHarness<cds::container::MSQueue<cds::gc::HP, T>> : 
     public CDSQueueHarness<cds::container::MSQueue<cds::gc::HP, T>> {};
-template <typename T> struct DatatypeHarness<cds::container::q_optimisticQueue<cds::gc::HP, T>> : 
-    public CDSQueueHarness<cds::container::q_optimisticQueue<cds::gc::HP, T>>{};
+template <typename T> struct DatatypeHarness<cds::container::OptimisticQueue<cds::gc::HP, T>> : 
+    public CDSQueueHarness<cds::container::OptimisticQueue<cds::gc::HP, T>>{};
 template <typename T> struct DatatypeHarness<cds::container::RWQueue<T>> : 
     public CDSQueueHarness<cds::container::RWQueue<T>>{};
 
@@ -314,9 +313,9 @@ protected:
     int val_type_;
 };
 
-template <typename DH> class SingleOpTest : public QueueTest<DH> {
+template <typename DH> class QSingleOpTest : public QueueTest<DH> {
 public:
-    SingleOpTest(int ds_type, int val_type, q_op q_op) : QueueTest<DH>(val_type), q_op_(q_op), ds_type_(ds_type) {};
+    QSingleOpTest(int ds_type, int val_type, q_op q_op) : QueueTest<DH>(val_type), q_op_(q_op), ds_type_(ds_type) {};
     void run(int me) {
         Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
         std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
@@ -374,9 +373,9 @@ private:
     int ds_type_;
 };
 
-template <typename DH> class RandomSingleOpTest : public QueueTest<DH> {
+template <typename DH> class RandomQSingleOpTest : public QueueTest<DH> {
 public:
-    RandomSingleOpTest(int ds_type, int val_type) : QueueTest<DH>(val_type), ds_type_(ds_type) {};
+    RandomQSingleOpTest(int ds_type, int val_type) : QueueTest<DH>(val_type), ds_type_(ds_type) {};
     void run(int me) {
         q_op my_q_op;
         //Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
@@ -449,22 +448,45 @@ private:
 #define MAKE_PQUEUE_TESTS(desc, test, type, ...) \
     {desc, "STO pqueue", new test<DatatypeHarness<PriorityQueue<type>>>(STO, ## __VA_ARGS__)},      \
     {desc, "STO pqueue opaque", new test<DatatypeHarness<PriorityQueue<type, true>>>(STO, ## __VA_ARGS__)},\
-    {desc, "STO FC pqueue", new test<DatatypeHarness<FCPriorityQueue<type>>>(STO, ## __VA_ARGS__)},\
     {desc, "FC pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type, std::priority_queue<type>, FCPQUEUE_TRAITS()>>>(CDS, ## __VA_ARGS__)}, \
     {desc, "FC pairing heap pqueue", new test<DatatypeHarness<cds::container::FCPriorityQueue<type, PairingHeap<type>>>>(CDS, ## __VA_ARGS__)} 
    // {desc, "MS pqueue", new test<DatatypeHarness<cds::container::MSPriorityQueue<type>>>(CDS, ## __VA_ARGS__)},
+
+std::vector<Test> make_pqueue_tests() {
+    return {
+        MAKE_PQUEUE_TESTS("PQRandSingleOps:R", RandomQSingleOpTest, int, RANDOM_VALS),
+        MAKE_PQUEUE_TESTS("PQRandSingleOps:D", RandomQSingleOpTest, int, DECREASING_VALS),
+        MAKE_PQUEUE_TESTS("PQPushPop:R", PushPopTest, int, RANDOM_VALS),
+        MAKE_PQUEUE_TESTS("PQPushPop:D", PushPopTest, int, DECREASING_VALS),
+        MAKE_PQUEUE_TESTS("PQPushOnly:R", QSingleOpTest, int, RANDOM_VALS, push),
+        MAKE_PQUEUE_TESTS("PQPushOnly:D", QSingleOpTest, int, DECREASING_VALS, push),
+        //MAKE_PQUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
+        //MAKE_PQUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),
+    };
+}
+int num_pqueues = 5;
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
     {desc, "STO queue", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "STO queue2", new test<DatatypeHarness<Queue2<type>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "FC queue", new test<DatatypeHarness<cds::container::FCQueue<type, std::queue<type>, FCQUEUE_TRAITS()>>>(CDS, ## __VA_ARGS__)},                 \
     {desc, "STO/FC queue", new test<DatatypeHarness<FCQueue<type>>>(STO, ## __VA_ARGS__)}
-    //{desc, "Basket queue", new test<DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},         \
-    //{desc, "Moir queue", new test<DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
-    //{desc, "MS queue", new test<DatatypeHarness<cds::container::MSQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},   \
-    //{desc, "Opt queue", new test<DatatypeHarness<cds::container::OptimisticQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},   \
-    //{desc, "RW queue", new test<DatatypeHarness<cds::container::RWQueue<type>>>(CDS, ## __VA_ARGS__)}, \
-    //{desc, "Segmented queue", new test<DatatypeHarness<cds::container::SegmentedQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
-    //{desc, "TC queue", new test<DatatypeHarness<cds::container::TsigasCycleQueue<type>>>(CDS, ## __VA_ARGS__)}, \
+    //{desc, "Basket queue", new test<DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},         
+    //{desc, "Moir queue", new test<DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, 
+    //{desc, "MS queue", new test<DatatypeHarness<cds::container::MSQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},   
+    //{desc, "Opt queue", new test<DatatypeHarness<cds::container::OptimisticQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},   
+    //{desc, "RW queue", new test<DatatypeHarness<cds::container::RWQueue<type>>>(CDS, ## __VA_ARGS__)}, 
+    //{desc, "Segmented queue", new test<DatatypeHarness<cds::container::SegmentedQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, 
+    //{desc, "TC queue", new test<DatatypeHarness<cds::container::TsigasCycleQueue<type>>>(CDS, ## __VA_ARGS__)}, 
     //{desc, "VyukovMPMC queue", new test<DatatypeHarness<cds::container::VyukovMPMCCycleQueue<type>>>(CDS, ## __VA_ARGS__)}
+
+std::vector<Test> make_queue_tests() {
+    return {
+        MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
+        MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomQSingleOpTest, int, RANDOM_VALS),
+        //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[1]),
+        //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[2]),
+    };
+}
+int num_queues = 4;
 
