@@ -290,12 +290,12 @@ bool Transaction::try_commit() {
             me->__or_flags(TransItem::lock_bit);
             ++it;
         }
-    }
-#endif
 #if CONSISTENCY_CHECK
         fence();
         commit_tid();
         fence();
+#endif
+    }
 #endif
 
     //phase2
