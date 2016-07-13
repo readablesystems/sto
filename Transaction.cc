@@ -9,9 +9,8 @@ Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epoch
 };
 __thread Transaction *TThread::txn = nullptr;
 std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callback;
-
-// reserve TransactionTid::increment_value for prepopulated
-uint128_t __attribute__((aligned(128))) Transaction::_GCLKS = {2 * TransactionTid::increment_value, Sto::invalid_snapshot};
+TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = 2 * TransactionTid::increment_value;
+   // reserve TransactionTid::increment_value for prepopulated
 
 static void __attribute__((used)) check_static_assertions() {
     static_assert(sizeof(threadinfo_t) % 128 == 0, "threadinfo is 2-cache-line aligned");
@@ -61,7 +60,7 @@ void* Transaction::epoch_advancer(void*) {
         }
         global_epochs.global_epoch = std::max(g + 1, epoch_type(1));
         global_epochs.active_epoch = e;
-        global_epochs.recent_tid = Transaction::_GCLKS._TID;
+        global_epochs.recent_tid = Transaction::_TID;
 
         if (epoch_advance_callback)
             epoch_advance_callback(global_epochs.global_epoch);
@@ -113,7 +112,7 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
         TXP_INCREMENT(txp_hco_invalid);
 
     state_ = s_opacity_check;
-    start_tid_ = _GCLKS._TID;
+    start_tid_ = _TID;
     release_fence();
     TransItem* it = nullptr;
     for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
@@ -380,7 +379,7 @@ void Transaction::print_stats() {
     if (txp_count >= txp_total_transbuffer)
         fprintf(stderr, "$ %llu max buffer per txn, %llu total buffer\n",
                 out.p(txp_max_transbuffer), out.p(txp_total_transbuffer));
-    fprintf(stderr, "$ %llu next commit-tid\n", (unsigned long long) _GCLKS._TID);
+    fprintf(stderr, "$ %llu next commit-tid\n", (unsigned long long) _TID);
 }
 
 const char* Transaction::state_name(int state) {
