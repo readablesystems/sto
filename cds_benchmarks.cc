@@ -163,7 +163,6 @@ int main() {
 
     srandomdev();
     std::ios_base::sync_with_stdio(true);
-    assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
 
     cds::Initialize();
     cds::gc::HP hpGC(67);
@@ -175,18 +174,16 @@ int main() {
     pthread_detach(advancer);
 
     std::vector<Test> map_tests = make_map_tests();
-
-    /*
+/*
     dualprintf("CHM, NontransCHM, MM, STO\n");
     auto chm = new RandomSingleOpTest<DatatypeHarness<CuckooHashMap<int,int,CityHasher<int>>>>(STO, 33, 33);
-    auto stono = new RandomSingleOpTest<DatatypeHarness<Hashtable<int,int,false,1000000>>>(STO, 33, 33);
     auto chmnt = new RandomSingleOpTest<DatatypeHarness<CuckooHashMapNT<int,int,CityHasher<int>>>>(CDS, 33, 33);
     auto mm = new RandomSingleOpTest<DatatypeHarness<MICHAELMAP(int,int)>>(CDS, 33, 33);
-    startAndWait(chm, 50000, 8);
-    startAndWait(chmnt, 50000, 8);
-    startAndWait(mm, 50000, 8);
-    startAndWait(stono, 50000, 8);
-    */
+    auto stono = new RandomSingleOpTest<DatatypeHarness<Hashtable<int,int,false,200000>>>(STO, 33, 33);
+    startAndWait(chm, 150000, 8);
+    startAndWait(chmnt, 150000, 8);
+    startAndWait(mm, 150000, 8);
+    startAndWait(stono, 150000, 8);*/
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
         fprintf(global_verbose_stats_file, "STO(O), STO(NO), Cuckoo, Feldman, Michael, SkipList, Striped, SplitList\n");

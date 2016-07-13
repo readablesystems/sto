@@ -36,11 +36,8 @@
 //! SLOT_PER_BUCKET_NT is the maximum number of keys per bucket
 const size_t SLOT_PER_BUCKET_NT = 4;
 
-//! DEFAULT_SIZE_NT is the default number of elements in an empty hash table
-const size_t DEFAULT_SIZE_NT = (1U << 16) * SLOT_PER_BUCKET_NT;
-
 /*! CuckooHashMapNT is the hash table class. */
-template <class Key, class T, class Hash = std::hash<Key>, class Pred = std::equal_to<Key> >
+template <class Key, class T, class Hash = std::hash<Key>, class Pred = std::equal_to<Key>, unsigned Init_size = 200000 * SLOT_PER_BUCKET>
 class CuckooHashMapNT {
 
     // Structs and functions used internally
@@ -221,11 +218,11 @@ public:
     /*! The constructor creates a new hash table with enough space for
      * \p n elements. If the constructor fails, it will throw an
      * exception. */
-    explicit CuckooHashMapNT(size_t n = DEFAULT_SIZE_NT) {
+    explicit CuckooHashMapNT(size_t n = Init_size) {
         cuckoo_init(reserve_calc(n));
     }
 
-    void initialize(size_t n = DEFAULT_SIZE_NT) {
+    void initialize(size_t n = Init_size) {
         cuckoo_init(reserve_calc(n));
     }
     /*! The destructor deletes any remaining table pointers managed by
@@ -1755,37 +1752,37 @@ private:
 };
 
 // Initializing the static members
-template <class Key, class T, class Hash, class Pred>
-__thread void** CuckooHashMapNT<Key, T, Hash, Pred>::hazard_pointer_old = nullptr;
+template <class Key, class T, class Hash, class Pred, unsigned Init_size>
+__thread void** CuckooHashMapNT<Key, T, Hash, Pred, Init_size>::hazard_pointer_old = nullptr;
 
-template <class Key, class T, class Hash, class Pred>
-__thread void** CuckooHashMapNT<Key, T, Hash, Pred>::hazard_pointer_new = nullptr;
+template <class Key, class T, class Hash, class Pred, unsigned Init_size>
+__thread void** CuckooHashMapNT<Key, T, Hash, Pred, Init_size>::hazard_pointer_new = nullptr;
 
-template <class Key, class T, class Hash, class Pred>
-__thread int CuckooHashMapNT<Key, T, Hash, Pred>::counterid = -1;
+template <class Key, class T, class Hash, class Pred, unsigned Init_size>
+__thread int CuckooHashMapNT<Key, T, Hash, Pred, Init_size>::counterid = -1;
 
-template <class Key, class T, class Hash, class Pred>
-typename CuckooHashMapNT<Key, T, Hash, Pred>::hasher
-CuckooHashMapNT<Key, T, Hash, Pred>::hashfn;
+template <class Key, class T, class Hash, class Pred, unsigned Init_size>
+typename CuckooHashMapNT<Key, T, Hash, Pred, Init_size>::hasher
+CuckooHashMapNT<Key, T, Hash, Pred, Init_size>::hashfn;
 
-template <class Key, class T, class Hash, class Pred>
-typename CuckooHashMapNT<Key, T, Hash, Pred>::key_equal
-CuckooHashMapNT<Key, T, Hash, Pred>::eqfn;
+template <class Key, class T, class Hash, class Pred, unsigned Init_size>
+typename CuckooHashMapNT<Key, T, Hash, Pred, Init_size>::key_equal
+CuckooHashMapNT<Key, T, Hash, Pred, Init_size>::eqfn;
 
-template <class Key, class T, class Hash, class Pred>
-typename std::allocator<typename CuckooHashMapNT<Key, T, Hash, Pred>::Bucket>
-CuckooHashMapNT<Key, T, Hash, Pred>::bucket_allocator;
+template <class Key, class T, class Hash, class Pred, unsigned Init_size>
+typename std::allocator<typename CuckooHashMapNT<Key, T, Hash, Pred, Init_size>::Bucket>
+CuckooHashMapNT<Key, T, Hash, Pred, Init_size>::bucket_allocator;
 
-template <class Key, class T, class Hash, class Pred>
-typename CuckooHashMapNT<Key, T, Hash, Pred>::GlobalHazardPointerList
-CuckooHashMapNT<Key, T, Hash, Pred>::global_hazard_pointers;
+template <class Key, class T, class Hash, class Pred, unsigned Init_size>
+typename CuckooHashMapNT<Key, T, Hash, Pred, Init_size>::GlobalHazardPointerList
+CuckooHashMapNT<Key, T, Hash, Pred, Init_size>::global_hazard_pointers;
 
-template <class Key, class T, class Hash, class Pred>
-const size_t CuckooHashMapNT<Key, T, Hash, Pred>::kNumCores =
+template <class Key, class T, class Hash, class Pred, unsigned Init_size>
+const size_t CuckooHashMapNT<Key, T, Hash, Pred, Init_size>::kNumCores =
     std::thread::hardware_concurrency() == 0 ?
     sysconf(_SC_NPROCESSORS_ONLN) : std::thread::hardware_concurrency();
 
-template <class Key, class T, class Hash, class Pred>
-std::atomic<size_t> CuckooHashMapNT<Key, T, Hash, Pred>::numThreads(0);
+template <class Key, class T, class Hash, class Pred, unsigned Init_size>
+std::atomic<size_t> CuckooHashMapNT<Key, T, Hash, Pred, Init_size>::numThreads(0);
 
 #endif
