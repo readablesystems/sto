@@ -50,12 +50,27 @@ public:
     bool erase(key_type k) { return v_.transDelete(k); }
     bool find(key_type k) { mapped_type ret; return v_.transGet(k, ret); }
     void init_insert(key_type k, mapped_type v) { v_.nontrans_insert(k, v); }
-    bool cleanup_erase() { 
-        v_.nontrans_clear();
-        return false; 
-    }
+    bool cleanup_erase() { v_.print_stats(); v_.nontrans_clear(); return false; }
 private:
     DS v_;
+};
+
+template <typename DS> struct CuckooHashMapHarness { 
+    typedef typename DS::mapped_type mapped_type;
+    typedef typename DS::key_type key_type;
+public:
+    CuckooHashMapHarness() { v_ = new DS(); };
+    bool insert(key_type k, mapped_type v) { return v_->insert(k, v); }
+    bool erase(key_type k) { return v_->erase(k); }
+    bool find(key_type k) { mapped_type v; return v_->find(k,v); }
+    void init_insert(key_type k, mapped_type v) { 
+        Sto::start_transaction();
+        v_->insert(k, v); 
+        assert(Sto::try_commit());
+    }
+    bool cleanup_erase() { delete v_; v_ = new DS(); return false; }
+private:
+    DS* v_;
 };
 
 /* 
@@ -69,71 +84,14 @@ template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,true,1250
     public STOMapHarness<Hashtable<K,T,false,125000>>{};
 template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,false,125000>> : 
     public STOMapHarness<Hashtable<K,T,false,125000>>{};
-
-template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K, T, CityHasher<K>,std::equal_to<K>,125000>> {
-    typedef CuckooHashMap<K,T,CityHasher<K>,std::equal_to<K>,125000> DS;
-    typedef typename DS::mapped_type mapped_type;
-    typedef typename DS::key_type key_type;
-public:
-    DatatypeHarness() { v_ = new DS(); };
-    bool insert(key_type k, mapped_type v) { return v_->insert(k, v); }
-    bool erase(key_type k) { return v_->erase(k); }
-    bool find(key_type k) { mapped_type v; return v_->find(k,v); }
-    void init_insert(key_type k, mapped_type v) { 
-        Sto::start_transaction();
-        v_->insert(k, v); 
-        assert(Sto::try_commit());
-    }
-    bool cleanup_erase() { delete v_; v_ = new DS(); return false; }
-private:
-    DS* v_;
-};
-template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K, T, CityHasher<K>,std::equal_to<K>,1000000>> {
-    typedef CuckooHashMap<K,T,CityHasher<K>,std::equal_to<K>,1000000> DS;
-    typedef typename DS::mapped_type mapped_type;
-    typedef typename DS::key_type key_type;
-public:
-    DatatypeHarness() { v_ = new DS(); };
-    bool insert(key_type k, mapped_type v) { return v_->insert(k, v); }
-    bool erase(key_type k) { return v_->erase(k); }
-    bool find(key_type k) { mapped_type v; return v_->find(k,v); }
-    void init_insert(key_type k, mapped_type v) { 
-        Sto::start_transaction();
-        v_->insert(k, v); 
-        assert(Sto::try_commit());
-    }
-    bool cleanup_erase() { delete v_; v_ = new DS(); return false; }
-private:
-    DS* v_;
-};
-template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,125000>> {
-    typedef CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,125000> DS;
-    typedef typename DS::mapped_type mapped_type;
-    typedef typename DS::key_type key_type;
-public:
-    DatatypeHarness() { v_ = new DS(); };
-    bool insert(key_type k, mapped_type v) { return v_->insert(k, v); }
-    bool erase(key_type k) { return v_->erase(k); }
-    bool find(key_type k) { mapped_type v; return v_->find(k,v); }
-    void init_insert(key_type k, mapped_type v) { v_->insert(k, v); }
-    bool cleanup_erase() { delete v_; v_ = new DS(); return false; }
-private:
-    DS* v_;
-};
-template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,1000000>> {
-    typedef CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,1000000> DS;
-    typedef typename DS::mapped_type mapped_type;
-    typedef typename DS::key_type key_type;
-public:
-    DatatypeHarness() { v_ = new DS(); };
-    bool insert(key_type k, mapped_type v) { return v_->insert(k, v); }
-    bool erase(key_type k) { return v_->erase(k); }
-    bool find(key_type k) { mapped_type v; return v_->find(k,v); }
-    void init_insert(key_type k, mapped_type v) { v_->insert(k, v); }
-    bool cleanup_erase() { delete v_; v_ = new DS(); return false; }
-private:
-    DS* v_;
-};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K, T, CityHasher<K>,std::equal_to<K>,125000,false>> :
+    public CuckooHashMapHarness<CuckooHashMap<K,T,CityHasher<K>,std::equal_to<K>,125000,false>>{};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K, T, CityHasher<K>,std::equal_to<K>,1000000,false>> :
+    public CuckooHashMapHarness<CuckooHashMap<K,T,CityHasher<K>,std::equal_to<K>,1000000,false>>{};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,125000>> :
+    public CuckooHashMapHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,125000>>{};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,1000000>> :
+    public CuckooHashMapHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,1000000>>{};
 
 template <typename K>
 struct hash1 { size_t operator()(K const& k) const { return std::hash<K>()( k ); } };
@@ -286,10 +244,10 @@ private:
 #define MAKE_MAP_TESTS(desc, test, key, val, size,...) \
     {desc, "STO Opaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,true,size>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "STO Nonopaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,false,size>>>(STO, ## __VA_ARGS__)},                                  \
-    {desc, "STO MGCuckooMap", new test<DatatypeHarness<CuckooHashMap<key, val, CityHasher<key>,std::equal_to<key>,size>>>(STO, ## __VA_ARGS__)},                 \
+    {desc, "STO MGCuckooMap", new test<DatatypeHarness<CuckooHashMap<key, val, CityHasher<key>,std::equal_to<key>,size,false>>>(STO, ## __VA_ARGS__)},                 \
     {desc, "MGCuckooMapNT", new test<DatatypeHarness<CuckooHashMapNT<key, val, CityHasher<key>,std::equal_to<key>,size>>>(CDS, ## __VA_ARGS__)},                 \
     {desc, "MichaelHashMap", new test<DatatypeHarness<MICHAELMAP(key,val)>>(CDS, ## __VA_ARGS__)},                 \
-    {desc, "SplitListMap", new test<DatatypeHarness<cds::container::SplitListMap<cds::gc::HP,key,val,map_traits<key>>>>(CDS, ## __VA_ARGS__)},\
+    //{desc, "SplitListMap", new test<DatatypeHarness<cds::container::SplitListMap<cds::gc::HP,key,val,map_traits<key>>>>(CDS, ## __VA_ARGS__)},
     //{desc, "FeldmanHashMap", new test<DatatypeHarness<cds::container::FeldmanHashMap<cds::gc::HP,key,val>>>(CDS, ## __VA_ARGS__)},                    
     //{desc, "StripedMap", new test<DatatypeHarness<cds::container::StripedMap<std::map<key,val>>>>(CDS, ## __VA_ARGS__)}, 
     //{desc, "SkipListMap", new test<DatatypeHarness<cds::container::SkipListMap<cds::gc::HP,key,val>>>(CDS, ## __VA_ARGS__)}, 
@@ -305,4 +263,4 @@ std::vector<Test> make_map_tests() {
         //MAKE_MAP_TESTS("HM:RandSingleOps(F88,I10,E2)", MapSingleOpTest, int, int, 10, 2)
     };
 }
-int num_maps = 6;
+int num_maps = 5;

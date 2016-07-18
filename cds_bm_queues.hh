@@ -458,13 +458,13 @@ std::vector<Test> make_pqueue_tests() {
         MAKE_PQUEUE_TESTS("PQRandSingleOps:D", RandomQSingleOpTest, int, DECREASING_VALS),
         MAKE_PQUEUE_TESTS("PQPushPop:R", PushPopTest, int, RANDOM_VALS),
         MAKE_PQUEUE_TESTS("PQPushPop:D", PushPopTest, int, DECREASING_VALS),
-        MAKE_PQUEUE_TESTS("PQPushOnly:R", QSingleOpTest, int, RANDOM_VALS, push),
-        MAKE_PQUEUE_TESTS("PQPushOnly:D", QSingleOpTest, int, DECREASING_VALS, push),
+        //MAKE_PQUEUE_TESTS("PQPushOnly:R", QSingleOpTest, int, RANDOM_VALS, push),
+        //MAKE_PQUEUE_TESTS("PQPushOnly:D", QSingleOpTest, int, DECREASING_VALS, push),
         //MAKE_PQUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[0]),
         //MAKE_PQUEUE_TESTS("General Txns Test with Decreasing Vals", GeneralTxnsTest, int, DECREASING_VALS, q_txn_sets[0]),
     };
 }
-int num_pqueues = 5;
+int num_pqueues = 4;
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
     {desc, "STO queue", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  \
