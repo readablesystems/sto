@@ -252,21 +252,36 @@ private: // STO private members
     typedef typename std::conditional<Opacity, TWrapped<mapped_type>, TNonopaqueWrapped<mapped_type>>::type 
         wrapped_type;
 
+    // used to mark if item has been inserted by the currently running txn
+    // mostly used at commit time to know whether to remove the item during cleanup
+    static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
     // used to mark if item has been deleted by the currently running txn
-    static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit;
-    // used to indicate that the value is a phantom: it has been inserted and not yet committed
+    static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<1;
+    
+    // used to indicate that the value is a phantom: it has been inserted and not yet committed,
+    // or has just been deleted
     static constexpr TransactionTid::type phantom_bit = TransactionTid::user_bit;
-    // TODO used to indicate that the value has been deleted: it can now be treated as an absent value
-    // right now, let's just delete at install time
-    //static constexpr TransactionTid::type deleted_bit = TransactionTid::user_bit<1;
 
     struct internal_elem {
         key_type key;
         version_type version;
         wrapped_type value;
+        // all items start off marked as phantom until the txn commits
         internal_elem(key_type k, mapped_type val)
-            : key(k), version(Sto::initialized_tid()), value(val) {}
+            : key(k), version(Sto::initialized_tid() | phantom_bit), value(val) {}
     };
+
+    static bool has_insert(const TransItem& item) {
+        return item.flags() & insert_tag;
+    }
+
+    static bool has_delete(const TransItem& item) {
+        return item.flags() & delete_tag;
+    }
+
+    static bool is_phantom(const TransItem& item, internal_elem *e) {
+        return has_insert(item) || !(e->version.value() & phantom_bit);
+    }
 
     static bool is_bucket(const TransItem& item) {
         return is_bucket(item.key<void*>());
@@ -571,26 +586,9 @@ private:
         }
     } __attribute__((aligned(64)));
 
-    static inline bool getBit( char& bitset, size_t pos) {
-        return bitset & (1 << pos);
-    }
-
-    static inline void setBit( char& bitset, size_t pos) {
-        bitset |= (1 << pos);
-    }
-
-    static inline void resetBit( char& bitset, size_t pos) {
-        bitset &= ~(1 << pos);
-    }
-
-    /* The Bucket type holds SLOT_PER_BUCKET keys and values, and a
-     * occupied bitset, which indicates whether the slot at the given
-     * bit index is in the table or not. It allows constructing and
-     * destroying key-value pairs separate from allocating and
-     * deallocating the memory. */
+    /* The Bucket type holds SLOT_PER_BUCKET keys and values. */
     struct Bucket {
         rw_lock lock;
-        char occupied;
         internal_elem* elems[SLOT_PER_BUCKET];
         unsigned char overflow;
         bool hasmigrated;
@@ -599,27 +597,24 @@ private:
         version_type bucketversion;
 
         void setKV(size_t pos, internal_elem* elem) {
-            setBit( occupied, pos );
             elems[pos] = elem;
         }
 
         // sets the value in the bucket to NULL, but doesn't actually
         // free it (used for transfers)
         void eraseKV(size_t pos) {
-            resetBit( occupied, pos);
             elems[pos] = NULL;
         }
 
         // actually frees the value
         void deleteKV(size_t pos) {
-            resetBit( occupied, pos);
-            free(elems[pos]);
+            Transaction::rcu_free(elems[pos]);
             elems[pos] = NULL;
         }
 
         void clear() {
             for (size_t i = 0; i < SLOT_PER_BUCKET; i++) {
-                if (getBit(occupied,i)) {
+                if (elems[i] != NULL) {
                     deleteKV(i);
                 }
             }
@@ -712,30 +707,74 @@ private:
         size_t v1_i, v2_i, v1_f, v2_f;
         bool overflow;
         cuckoo_status st;
+        internal_elem* e = NULL;
         
         //fast path
         get_version(ti, i1, v1_i);
-        st = try_read_from_bucket(ti, key, val, i1);
+        st = try_read_from_bucket(ti, key, e, i1);
         overflow = hasOverflow(ti,i1);
         get_version(ti, i1, v1_f);
         if( check_version( v1_i, v1_f) )
             if (st == ok || !overflow ) {
                 if (st == failure_key_not_found) {
-                    // STO: add reads here of the buckets in which the item could possibly be located
+                    // STO: add reads here of only the first bucket in which 
+                    // the item could possibly be located. Don't need to read the 2nd
+                    // because the bucket had no overflow
                     // this ensures that any adding of keys to the bucket results in this txn
                     // aborting
-                    //Sto::item(this, pack_bucket(i1)).observe(ti->buckets_[i1].bucketversion);
-                    //Sto::item(this, pack_bucket(i2)).observe(ti->buckets_[i2].bucketversion);
+                    Sto::item(this, pack_bucket(i1)).observe(ti->buckets_[i1].bucketversion);
+                } 
+                // we found the item!
+                else if (st == ok) {
+                    assert(e != NULL);
+                    auto item = Sto::item(this, e);
+                    // we don't need to update our read versions here because the previous add of 
+                    // has_write must check the proper versions
+                    if (item.has_write()) {
+                        if (has_delete(item)) {
+                            return failure_key_not_found;
+                        } else {
+                            // we should only have writes on this item if we delete or we insert...
+                            assert(has_insert(item));
+                            val = item.template write_value<mapped_type>();
+                            return ok;
+                        }
+                    }
+                    // this checks if the item has been deleted since we found it, or
+                    // someone other than ourselves inserted this item and hasn't
+                    // committed it yet
+                    if (is_phantom(item, e)) {
+                        Sto::abort();
+                        assert(0); // unreachable
+                    } 
+                    // we have found the item, haven't written to it yet, and
+                    // it's not currently being deleted / inserted by someone else!
+                    // add a read of the item so we know the value hasn't changed @ commit
+                    else val = e->value.read(item, e->version);
                 }
                 return st;
             }
         //we weren't lucky
         do {
             get_version_two(ti, i1, i2, v1_i, v2_i);
-            st = cuckoo_find(key, val, hv, ti, i1, i2);
+            st = cuckoo_find(key, e, hv, ti, i1, i2);
             get_version_two(ti, i1, i2, v1_f, v2_f);
         } while(!check_version_two(v1_i, v2_i, v1_f, v2_f));
 
+        if (st == failure_key_not_found) {
+            // STO: add reads here of the buckets in which the item could possibly be located
+            // this ensures that any adding of keys to the bucket results in this txn
+            // aborting
+            // XXX Note that the first bucket might not have overflow, and therefore we might be
+            // erroneously adding a read to the second bucket. This should actually be ok because
+            // items will have to be added to the first bucket before added to the second, so 
+            // we'd change the first bucketversion to begin with. It does add to the read set,
+            // though
+            // We shouldn't add reads in cuckoo_find, because that would result in adding reads
+            // during cuckoo hashing
+            Sto::item(this, pack_bucket(i1)).observe(ti->buckets_[i1].bucketversion);
+            Sto::item(this, pack_bucket(i2)).observe(ti->buckets_[i2].bucketversion);
+        }
         return st;
     }
 
@@ -803,13 +842,13 @@ private:
         mapped_type oldval;
         cuckoo_status st = run_cuckoo(ti, i1, i2, insert_bucket, insert_slot);
         if (st == ok) {
-            assert(!getBit(ti->buckets_[insert_bucket].occupied,insert_slot));
+            assert(ti->buckets_[insert_bucket].elems[insert_slot] == NULL);
             assert(insert_bucket == index_hash(ti, hv) || insert_bucket == alt_index(ti, hv, index_hash(ti, hv)));
             /* Since we unlocked the buckets during run_cuckoo,
              * another insert could have inserted the same key into
              * either i1 or i2, so we check for that before doing the
              * insert. */
-            if (cuckoo_find(elem->key, oldval, hv, ti, i1, i2) == ok) {
+            if (cuckoo_find(elem->key, elem, hv, ti, i1, i2) == ok) {
                 unlock_two(ti, i1, i2);
                 return failure_key_duplicated;
             }
@@ -933,10 +972,10 @@ private:
         internal_elem* elem;
         cuckoo_status res;
         for (size_t i = 0; i < SLOT_PER_BUCKET; i++) {
-            if (!getBit(ti_old->buckets_[old_bucket].occupied, i)) {
+            elem = ti_old->buckets_[old_bucket].elems[i];
+            if (elem == NULL) {
                 continue;
             }
-            elem = ti_old->buckets_[old_bucket].elems[i];
 
             hv = hashed_key(elem->key);
             i1 = index_hash(ti_new, hv);
@@ -1245,6 +1284,8 @@ private:
     static b_slot slot_search(const TableInfo *ti, const size_t i1,
                               const size_t i2) {
         b_queue q;
+        internal_elem* elem;
+
         // The initial pathcode informs cuckoopath_search which bucket
         // the path starts on
         q.enqueue(b_slot(i1, 0, 0));
@@ -1256,7 +1297,8 @@ private:
                 if (ti->buckets_[x.bucket].hasmigrated) {
                     return b_slot(0, 0, -2);
                 }
-                if (!getBit(ti->buckets_[x.bucket].occupied, slot)) {
+                elem = ti->buckets_[x.bucket].elems[slot];
+                if (elem == NULL) {
                     // We can terminate the search here
                     x.pathcode = x.pathcode * SLOT_PER_BUCKET + slot;
                     return x;
@@ -1264,10 +1306,7 @@ private:
                 // Create a new b_slot item, that represents the
                 // bucket we would look at after searching x.bucket
                 // for empty slots.
-                // XXX
-                assert(getBit(ti->buckets_[x.bucket].occupied, slot));
-                assert(ti->buckets_[x.bucket].elems[slot] != NULL);
-                const size_t hv = hashed_key(ti->buckets_[x.bucket].elems[slot]->key);
+                const size_t hv = hashed_key(elem->key);
                 b_slot y(alt_index(ti, hv, x.bucket),
                          x.pathcode * SLOT_PER_BUCKET + slot, x.depth+1);
 
@@ -1279,7 +1318,8 @@ private:
                     return b_slot(0, 0, -2);
                 }
                 for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
-                    if (!getBit(ti->buckets_[y.bucket].occupied, j)) {
+                    elem = ti->buckets_[y.bucket].elems[j];
+                    if (elem == NULL) {
                         y.pathcode = y.pathcode * SLOT_PER_BUCKET + j;
                         return y;
                     }
@@ -1323,28 +1363,30 @@ private:
          * modified between slot_search and the computation of the
          * cuckoo path, this could be an invalid cuckoo_path. */
         CuckooRecord *curr = cuckoo_path;
+        internal_elem* elem;
         if (x.pathcode == 0) {
             curr->bucket = i1;
             if (ti->buckets_[curr->bucket].hasmigrated) {
                 return -2;
             }
-            if (!getBit(ti->buckets_[curr->bucket].occupied, curr->slot)) {
+            elem = ti->buckets_[curr->bucket].elems[curr->slot];
+            if (elem == NULL) {
                 // We can terminate here
                 return 0;
             }
-            // XXX should be occupied and therefore not null...
-            curr->key = ti->buckets_[curr->bucket].elems[curr->slot]->key;
+            curr->key = elem->key;
         } else {
             assert(x.pathcode == 1);
             curr->bucket = i2;
             if (ti->buckets_[curr->bucket].hasmigrated) {
                 return -2;
             }
-            if (!getBit(ti->buckets_[curr->bucket].occupied, curr->slot)) {
+            elem = ti->buckets_[curr->bucket].elems[curr->slot];
+            if (elem == NULL) {
                 // We can terminate here
                 return 0;
             }
-            curr->key = ti->buckets_[curr->bucket].elems[curr->slot]->key;
+            curr->key = elem->key; 
         }
         for (int i = 1; i <= x.depth; i++) {
             CuckooRecord *prev = curr++;
@@ -1357,11 +1399,12 @@ private:
             if (ti->buckets_[curr->bucket].hasmigrated) {
                 return -2;
             }
-            if (!getBit(ti->buckets_[curr->bucket].occupied, curr->slot)) {
+            elem = ti->buckets_[curr->bucket].elems[curr->slot];
+            if (elem == NULL) {
                 // We can terminate here
                 return i;
             }
-            curr->key = ti->buckets_[curr->bucket].elems[curr->slot]->key;
+            curr->key = elem->key;
         }
         return x.depth;
     }
@@ -1377,6 +1420,7 @@ private:
     static cuckoo_status cuckoopath_move(TableInfo *ti, CuckooRecord* cuckoo_path,
                                 size_t depth, const size_t i1, const size_t i2) {
 
+        internal_elem* elem;
         if (depth == 0) {
             /* There is a chance that depth == 0, when
              * try_add_to_bucket sees i1 and i2 as full and
@@ -1392,7 +1436,8 @@ private:
                 unlock_two(ti, i1, i2);
                 return failure_key_moved;
             }
-            if (!getBit(ti->buckets_[bucket].occupied, cuckoo_path[0].slot)) {
+            elem = ti->buckets_[bucket].elems[cuckoo_path[0].slot];
+            if (elem == NULL) {
                 return ok;
             } else {
                 unlock_two(ti, i1, i2);
@@ -1437,16 +1482,9 @@ private:
              * the slot we are filling in may have already been filled
              * in by another thread, or the slot we are moving from
              * may be empty, both of which invalidate the swap. */
-            // XXX
-            internal_elem* elem;
-            if ((elem = ti->buckets_[fb].elems[fs]) == NULL) {
-                assert(!getBit(ti->buckets_[fb].occupied, fs));
-            }
-
-            if ((elem != NULL && !eqfn(elem->key, from->key)) ||
-                getBit(ti->buckets_[tb].occupied, ts) ||
-                !getBit(ti->buckets_[fb].occupied, fs) ) {
-
+            internal_elem* elem1 = ti->buckets_[tb].elems[ts];
+            internal_elem* elem2 = ti->buckets_[fb].elems[fs];
+            if (elem1 != NULL || elem2 == NULL || !eqfn(elem2->key, from->key)) {
                 if (depth == 1) {
                     unlock_three(ti, fb, tb, ob);
                 } else {
@@ -1454,7 +1492,7 @@ private:
                 }
                 return failure_too_slow;
             }
-            size_t hv = hashed_key( ti->buckets_[fb].elems[fs]->key );
+            size_t hv = hashed_key( elem2->key );
             size_t first_bucket = index_hash(ti, hv);
             if( fb == first_bucket ) { //we're moving from first bucket to alternate
                 ti->buckets_[first_bucket].overflow++;
@@ -1463,7 +1501,7 @@ private:
                 ti->buckets_[first_bucket].overflow--;
             }
 
-            ti->buckets_[tb].setKV(ts, ti->buckets_[fb].elems[fs]);
+            ti->buckets_[tb].setKV(ts, elem2);
             ti->buckets_[fb].eraseKV(fs);
             
             if (depth == 1) {
@@ -1535,7 +1573,7 @@ private:
                 assert(insert_bucket == i1 || insert_bucket == i2);
                 assert(ti->buckets_[i1].lock.get_version() & W);
                 assert(ti->buckets_[i2].lock.get_version() & W);
-                assert(!getBit(ti->buckets_[insert_bucket].occupied, insert_slot));
+                assert(ti->buckets_[insert_bucket].elems[insert_slot] == NULL);
                 return ok;
             }
 
@@ -1550,24 +1588,20 @@ private:
     
     /* try_read_from-bucket will search the bucket for the given key
      * and store the associated value if it finds it. */
-    cuckoo_status try_read_from_bucket(const TableInfo *ti, 
-                                     const key_type &key, mapped_type &val,
-                                     const size_t i) {
+    cuckoo_status try_read_from_bucket(const TableInfo *ti, const key_type key,
+                                     internal_elem*& e, const size_t i) {
         if (ti->buckets_[i].hasmigrated) {
             return failure_key_moved;
         }
 
         for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
-            if (!getBit(ti->buckets_[i].occupied, j)) {
+            internal_elem* elem = ti->buckets_[i].elems[j];
+            if (elem == NULL) {
                 continue;
             }
 
-            if (eqfn(key, ti->buckets_[i].elems[j]->key)) {
-                // STO: add a read of the item so we know the value hasn't changed
-                // after we found it
-                //auto item = Sto::item(this, elem);
-                //item.observe(elem->version);
-                val = 0;//elem->value.read(item, elem->version);
+            if (eqfn(key, elem->key)) {
+                e = elem;
                 return ok;
             }
         }
@@ -1579,7 +1613,7 @@ private:
     static inline void add_to_bucket(TableInfo *ti, 
                                      internal_elem* elem,
                                      const size_t i, const size_t j) {
-        assert(!getBit(ti->buckets_[i].occupied, j));
+        assert(ti->buckets_[i].elems[j] == NULL);
         
         ti->buckets_[i].setKV(j, elem);
         ti->num_inserts[counterid].num.fetch_add(1, std::memory_order_relaxed);
@@ -1593,16 +1627,17 @@ private:
     static cuckoo_status try_add_to_bucket(TableInfo *ti, 
                                   internal_elem* elem,
                                   const size_t i, int& j) {
-        (void)elem;
         j = -1;
         bool found_empty = false;
 
         if (ti->buckets_[i].hasmigrated) {
             return failure_key_moved;
         }
+        internal_elem* elem2;
         for (size_t k = 0; k < SLOT_PER_BUCKET; k++) {
-            if (getBit(ti->buckets_[i].occupied, k)) {
-                if (eqfn(elem->key, ti->buckets_[i].elems[k]->key)) {
+            elem2 = ti->buckets_[i].elems[k];
+            if (elem2 != NULL) {
+                if (eqfn(elem->key, elem2->key)) {
                     return failure_key_duplicated;
                 }
             } else {
@@ -1624,16 +1659,11 @@ private:
         }
 
         for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
-            if (!getBit(ti->buckets_[i].occupied, j)) {
+            internal_elem* elem = ti->buckets_[i].elems[j];
+            if (elem == NULL) {
                 continue;
             }
-            // XXX do i need to do this? why doesn't this happen in the other cuckoohash?
-            // occupied can be true, and yet the element is NULL?
-            internal_elem* elem;
-            if ((elem = ti->buckets_[i].elems[j]) == NULL) {
-                assert(!getBit(ti->buckets_[i].occupied, j));
-            }
-            if (eqfn(ti->buckets_[i].elems[j]->key, key)) {
+            if (eqfn(elem->key, key)) {
                 ti->buckets_[i].deleteKV(j);
                 ti->num_deletes[counterid].num.fetch_add(1, std::memory_order_relaxed);
                 return ok;
@@ -1645,30 +1675,22 @@ private:
     /* cuckoo_find searches the table for the given key and value,
      * storing the value in the val if it finds the key. It expects
      * the locks to be taken and released outside the function. */
-    cuckoo_status cuckoo_find(const key_type& key, mapped_type& val,
-                                     const size_t hv, const TableInfo *ti,
-                                     const size_t i1, const size_t i2) {
+    cuckoo_status cuckoo_find(const key_type key, internal_elem* e,
+                            const size_t hv, const TableInfo *ti,
+                            const size_t i1, const size_t i2) {
         (void)hv;
         cuckoo_status res1, res2;
-        res1 = try_read_from_bucket(ti, key, val, i1);
+        res1 = try_read_from_bucket(ti, key, e, i1);
         if (res1 == ok || !hasOverflow(ti, i1) ) {
             return res1;
         } 
-
-        res2 = try_read_from_bucket(ti, key, val, i2);
+        res2 = try_read_from_bucket(ti, key, e, i2);
         if(res2 == ok) {
             return ok;
         }
-
         if (res1 == failure_key_moved || res2 == failure_key_moved) {
             return failure_key_moved;
         }
-
-        // STO: add reads here of the buckets in which the item could possibly be located
-        // this ensures that any adding of keys to the bucket results in this txn
-        // aborting
-        //Sto::item(this, pack_bucket(i1)).observe(ti->buckets_[i1].bucketversion);
-        //Sto::item(this, pack_bucket(i2)).observe(ti->buckets_[i2].bucketversion);
         return failure_key_not_found;
     }
 

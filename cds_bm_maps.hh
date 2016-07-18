@@ -255,8 +255,8 @@ private:
 
 std::vector<Test> make_map_tests() {
     return {
-        //MAKE_MAP_TESTS("HM1M:F34,I33,E33", MapSingleOpTest, int, int, 1000000, 33, 33)
-        //MAKE_MAP_TESTS("HM1M:F90,I5,E5", MapSingleOpTest, int, int, 1000000, 5, 5)
+        MAKE_MAP_TESTS("HM1M:F34,I33,E33", MapSingleOpTest, int, int, 1000000, 33, 33)
+        MAKE_MAP_TESTS("HM1M:F90,I5,E5", MapSingleOpTest, int, int, 1000000, 5, 5)
         MAKE_MAP_TESTS("HM125K:F34,I33,E33", MapSingleOpTest, int, int, 125000, 33, 33)
         MAKE_MAP_TESTS("HM125K:F90,I5,E5", MapSingleOpTest, int, int, 125000, 5, 5)
         //MAKE_MAP_TESTS("HM:RandSingleOps(F10,I88,E2)", MapSingleOpTest, int, int, 88, 2)

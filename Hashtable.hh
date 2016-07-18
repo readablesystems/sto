@@ -131,6 +131,7 @@ public:
       //item.add_read(elem_vers);
       //if (Opacity)
       //  check_opacity(e->version);
+      // XXX what if someone erases the key/value pair here?
       retval = e->value.read(item, e->version);
       return true;
     } else {

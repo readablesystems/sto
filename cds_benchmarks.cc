@@ -188,7 +188,6 @@ int main() {
     //startAndWait(stono, 150000, 8);
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
-        fprintf(global_verbose_stats_file, "STO(O), STO(NO), Cuckoo, Feldman, Michael, SkipList, Striped, SplitList\n");
         for (auto init_keys = begin(init_sizes); init_keys != end(init_sizes); ++init_keys) {
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
                 for (int j = 0; j < num_maps; ++j) {
