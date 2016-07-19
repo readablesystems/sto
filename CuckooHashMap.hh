@@ -801,6 +801,9 @@ private:
             if( !hasOverflow(ti, i1) && open1 != -1 ) {
                 add_to_bucket(ti, elem, i1, open1);
                 unlock( ti, i1 );
+                // add a write to the bucket so that we update the bucketversion
+                Sto::item(this, elem).add_flags(insert_tag);
+                Sto::item(this, pack_bucket(i1)).add_write(0);
                 return ok;
             } else { //we need to try and get the second lock
                 if( !try_lock(ti, i2) ) {
@@ -826,6 +829,9 @@ private:
         if (open1 != -1) {
             add_to_bucket(ti, elem, i1, open1);
             unlock_two(ti, i1, i2);
+            // add a write to the bucket so that we update the bucketversion
+            Sto::item(this, pack_bucket(i1)).add_write(0);
+            Sto::item(this, elem).add_flags(insert_tag);
             return ok;
         }
 
@@ -833,6 +839,9 @@ private:
             ti->buckets_[i1].overflow++;
             add_to_bucket(ti, elem, i2, open2);
             unlock_two(ti, i1, i2);
+            // add a write to the bucket so that we update the bucketversion
+            Sto::item(this, pack_bucket(i2)).add_write(0);
+            Sto::item(this, elem).add_flags(insert_tag);
             return ok;
         }
 
@@ -858,6 +867,11 @@ private:
             }
             add_to_bucket(ti, elem, insert_bucket, insert_slot);
             unlock_two(ti, i1, i2);
+            // add a write to the bucket so that we update the bucketversion
+            // note that we don't need to add writes of all the buckets modified during
+            // cuckoo hashing because we only care that this bucket was empty
+            Sto::item(this, pack_bucket(insert_bucket)).add_write(0);
+            Sto::item(this, elem).add_flags(insert_tag);
             return ok;
         }
 
@@ -981,6 +995,9 @@ private:
             i1 = index_hash(ti_new, hv);
             i2 = alt_index(ti_new, hv, i1);
 
+            // XXX this updates the new ti's bucket's bucketversion
+            // BUT we don't need to update the old bucket's bucketversion, because
+            // it's not like we're inserting anything into it... in fact, it remains the same
             res = insert_one(ti_new, hv, elem, i1, i2);
 
             // this can't happen since nothing can have moved out of ti_new (so no failure_key_moved)
@@ -1624,7 +1641,7 @@ private:
      * it will search the entire bucket and return false if it finds
      * the key already in the table (duplicate key error) and true
      * otherwise. */
-    static cuckoo_status try_add_to_bucket(TableInfo *ti, 
+    cuckoo_status try_add_to_bucket(TableInfo *ti, 
                                   internal_elem* elem,
                                   const size_t i, int& j) {
         j = -1;
@@ -1638,6 +1655,28 @@ private:
             elem2 = ti->buckets_[i].elems[k];
             if (elem2 != NULL) {
                 if (eqfn(elem->key, elem2->key)) {
+                    auto item = Sto::item(this, elem2);
+                    if (item.has_write()) {
+                        if (has_delete(item)) {
+                            // XXX we don't install the item here, or mark as phantom
+                            // we didn't check for phantom? we would have checked earlier 
+                            // when we tried to delete the item, i suppose
+                            item.clear_flags(delete_tag).clear_write().template add_write<mapped_type>(elem->value.access());
+                            return ok;
+                        } else { // we tried to insert this item before
+                            assert (has_insert(item));
+                            return failure_key_duplicated;
+                        }
+                    } else {
+                        if (is_phantom(item, elem)) {
+                            Sto::abort(); assert(0);
+                        } else { // we found some valid key/value pair in the table!
+                            // just add a read of the item's version so we know it's not deleted
+                            // XXX this can result in false aborts if the element is deleted and
+                            // then inserted again? oh well... not sure how we can track "existence"
+                            item.observe(elem->version);
+                        }
+                    }
                     return failure_key_duplicated;
                 }
             } else {
