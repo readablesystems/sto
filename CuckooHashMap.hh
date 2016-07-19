@@ -1662,6 +1662,9 @@ private:
                             // we didn't check for phantom? we would have checked earlier 
                             // when we tried to delete the item, i suppose
                             item.clear_flags(delete_tag).clear_write().template add_write<mapped_type>(elem->value.access());
+                            // we don't actually want to allocate this element because it already exists
+                            // since we return ok, insert() will not free the element
+                            free(elem); 
                             return ok;
                         } else { // we tried to insert this item before
                             assert (has_insert(item));
