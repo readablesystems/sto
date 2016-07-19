@@ -269,6 +269,8 @@ private: // STO private members
         // all items start off marked as phantom until the txn commits
         internal_elem(key_type k, mapped_type val)
             : key(k), version(Sto::initialized_tid() | phantom_bit), value(val) {}
+        
+        bool phantom() { return e->version.value() & phantom_bit; }
     };
 
     static bool has_insert(const TransItem& item) {
@@ -280,7 +282,7 @@ private: // STO private members
     }
 
     static bool is_phantom(const TransItem& item, internal_elem *e) {
-        return !has_insert(item) || (e->version.value() & phantom_bit);
+        return !has_insert(item) || e->phantom();
     }
 
     static bool is_bucket(const TransItem& item) {
@@ -515,6 +517,8 @@ public:
         }
         if (res == failure_key_duplicated) {
             free(elem); // make sure to clean up element if it wasn't actually inserted
+        } else {
+            Sto::item(this, elem).add_flags(insert_tag);
         }
         unset_hazard_pointers();
         return (res == ok);
@@ -557,6 +561,7 @@ public:
                 goto RETRY;
             }
 
+            // delete_one added reads of the appropriate buckets if the key was not found
             assert(res == ok || res == failure_key_not_found);
         }
         unset_hazard_pointers();
@@ -735,7 +740,7 @@ private:
                             return failure_key_not_found;
                         } else {
                             // we should only have writes on this item if we delete or we insert...
-                            assert(has_insert(item));
+                            assert(has_insert(item) && elem->phantom());
                             val = item.template write_value<mapped_type>();
                             return ok;
                         }
@@ -802,7 +807,6 @@ private:
                 add_to_bucket(ti, elem, i1, open1);
                 unlock( ti, i1 );
                 // add a write to the bucket so that we update the bucketversion
-                Sto::item(this, elem).add_flags(insert_tag);
                 Sto::item(this, pack_bucket(i1)).add_write(0);
                 return ok;
             } else { //we need to try and get the second lock
@@ -831,7 +835,6 @@ private:
             unlock_two(ti, i1, i2);
             // add a write to the bucket so that we update the bucketversion
             Sto::item(this, pack_bucket(i1)).add_write(0);
-            Sto::item(this, elem).add_flags(insert_tag);
             return ok;
         }
 
@@ -841,7 +844,6 @@ private:
             unlock_two(ti, i1, i2);
             // add a write to the bucket so that we update the bucketversion
             Sto::item(this, pack_bucket(i2)).add_write(0);
-            Sto::item(this, elem).add_flags(insert_tag);
             return ok;
         }
 
@@ -871,7 +873,6 @@ private:
             // note that we don't need to add writes of all the buckets modified during
             // cuckoo hashing because we only care that this bucket was empty
             Sto::item(this, pack_bucket(insert_bucket)).add_write(0);
-            Sto::item(this, elem).add_flags(insert_tag);
             return ok;
         }
 
@@ -908,6 +909,10 @@ private:
         // if we found the element there, or nothing ever was added to second bucket, then we're done
         if (res1 == ok || res1 == failure_key_moved || !hasOverflow(ti, i1) ) {
             unlock( ti, i1 );
+            if (res1 == failure_key_not_found) {
+                // add a read of the bucket so that we know no items have been added @ commit
+                Sto::item(this, pack_bucket(i1)).observe(ti->buckets_[i1].bucketversion);
+            }
             return res1;
         } else {
             if( !try_lock(ti, i1) ) {
@@ -928,11 +933,16 @@ private:
             return res2;
         }
         if (res2 == failure_key_moved) {
+            // add a read of the bucket so that we know no items have been added @ commit
+            Sto::item(this, pack_bucket(i2)).observe(ti->buckets_[i2].bucketversion);
             unlock_two(ti, i1, i2);
             return res2;
         }
 
         unlock_two(ti, i1, i2);
+        // add a read of both buckets so that we know no items have been added @ commit
+        Sto::item(this, pack_bucket(i1)).observe(ti->buckets_[i1].bucketversion);
+        Sto::item(this, pack_bucket(i2)).observe(ti->buckets_[i2].bucketversion);
         return failure_key_not_found;
     }
 
@@ -1650,17 +1660,18 @@ private:
         if (ti->buckets_[i].hasmigrated) {
             return failure_key_moved;
         }
-        internal_elem* elem2;
+        internal_elem* elem_in_table;
         for (size_t k = 0; k < SLOT_PER_BUCKET; k++) {
-            elem2 = ti->buckets_[i].elems[k];
-            if (elem2 != NULL) {
-                if (eqfn(elem->key, elem2->key)) {
-                    auto item = Sto::item(this, elem2);
+            elem_in_table = ti->buckets_[i].elems[k];
+            auto elemver = elem_in_table->version;
+            if (elem_in_table != NULL) {
+                if (eqfn(elem->key, elem_in_table->key)) {
+                    auto item = Sto::item(this, elem_in_table);
                     if (item.has_write()) {
                         if (has_delete(item)) {
                             // XXX we don't install the item here, or mark as phantom
                             // we didn't check for phantom? we would have checked earlier 
-                            // when we tried to delete the item, i suppose
+                            // when we tried to delete the item, I suppose
                             item.clear_flags(delete_tag).clear_write().template add_write<mapped_type>(elem->value.access());
                             // we don't actually want to allocate this element because it already exists
                             // since we return ok, insert() will not free the element
@@ -1671,13 +1682,15 @@ private:
                             return failure_key_duplicated;
                         }
                     } else {
-                        if (is_phantom(item, elem)) {
+                        // check if item has been deleted since we read it, or
+                        // if the item was just inserted by someone else without commit
+                        if (is_phantom(item, elem_in_table)) {
                             Sto::abort(); assert(0);
                         } else { // we found some valid key/value pair in the table!
                             // just add a read of the item's version so we know it's not deleted
                             // XXX this can result in false aborts if the element is deleted and
                             // then inserted again? oh well... not sure how we can track "existence"
-                            item.observe(elem->version);
+                            item.observe(elemver);
                         }
                     }
                     return failure_key_duplicated;
@@ -1702,13 +1715,39 @@ private:
 
         for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
             internal_elem* elem = ti->buckets_[i].elems[j];
+            auto elemver = elem->version;
             if (elem == NULL) {
                 continue;
             }
             if (eqfn(elem->key, key)) {
-                ti->buckets_[i].deleteKV(j);
-                ti->num_deletes[counterid].num.fetch_add(1, std::memory_order_relaxed);
-                return ok;
+                auto item = Sto::item(this, elem);
+                if (item.has_write()) {
+                    // we already deleted! the item is "gone"
+                    if (has_delete(item)) {
+                        return failure_key_not_found;    
+                    } 
+                    // we are deleting our own insert, and no one has installed this item yet
+                    // remove the element immediately
+                    else {
+                        assert(has_insert(item) && elem->phantom());
+                        ti->buckets_[i].deleteKV(j);
+                        ti->num_deletes[counterid].num.fetch_add(1, std::memory_order_relaxed);
+                        // just unmark all attributes so the item is ignored
+                        item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
+                        // check that no one else inserts the node into the bucket 
+                        Sto::item(this, pack_bucket(bucket(k))).observe(ti->buckets_[i].bucketversion);
+                        return ok;
+                    }
+                } else if (is_phantom(item, elem)) {
+                    // someone just removed this item or hasn't committed it yet :(
+                    Sto::abort(); assert(0);
+                } else { 
+                    // this is an actual item in the table we haven't seen before
+                    // make sure no one deletes before we do
+                    item.observe(elemver);
+                    item.add_write().add_flags(delete_tag);
+                    return ok;
+                }
             }
         }
         return failure_key_not_found;
