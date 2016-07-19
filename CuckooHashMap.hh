@@ -280,7 +280,7 @@ private: // STO private members
     }
 
     static bool is_phantom(const TransItem& item, internal_elem *e) {
-        return has_insert(item) || !(e->version.value() & phantom_bit);
+        return !has_insert(item) || (e->version.value() & phantom_bit);
     }
 
     static bool is_bucket(const TransItem& item) {
