@@ -458,7 +458,7 @@ private: // STO private members
     }
 
     static bool is_phantom(const TransItem& item, internal_elem *e) {
-        return !has_insert(item) || e->phantom();
+        return !has_insert(item) && e->phantom();
     }
 
     static bool is_bucket(const TransItem& item) {
