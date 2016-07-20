@@ -38,6 +38,9 @@
 #  define LIBCUCKOO_DBG(fmt, args...)  do {} while (0)
 #endif
 
+// XXX pretty sure we never need to update our own read because we don't modify bucketversions 
+// until commit time. I'm not certain about this, but it seems correct.
+
 //! SLOT_PER_BUCKET is the maximum number of keys per bucket
 const size_t SLOT_PER_BUCKET = 4;
 
@@ -219,28 +222,73 @@ public:
 
     // STO functions
     bool check(TransItem& item, Transaction&) override {
-        (void)item;
-        return true;
+        if (is_bucket(item)) {
+            auto b = unpack_bucket(item.key<void*>());
+            return b->bucketversion.check_version(item.template read_value<version_type>());
+        } else {
+            auto e = item.key<internal_elem*>();
+            auto read_version = item.template read_value<version_type>();
+            return e->version.check_version(read_version);
+        }
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
-        (void)item;
-        (void)txn;
-        return true;
+        // XXX is there an issue that we're locking bucketversion, but
+        // the bucket's rw lock is allowing items to be shifted around (i.e. cuckoo-hashing,
+        // etc.) otherwise?
+        if (is_bucket(item)) {
+            auto b = unpack_bucket(item.key<void*>());
+            return txn.try_lock(item, b->bucketversion);
+        } else {
+            auto e = item.key<internal_elem*>();
+            return txn.try_lock(item, e->version);
+        }
     }
 
     void install(TransItem& item, Transaction& t) override {
-        (void)item;
-        (void)t;
+        // NOTE: we can't do the cool hack where we don't add writes to items
+        // during execution time because there is no clear mapping from an internal_elem to 
+        // which bucket it is in
+        if (is_bucket(item)) {
+            auto b = unpack_bucket(item.key<void*>());
+            b->inc_version();
+        } else {
+            auto e = item.key<internal_elem*>();
+            if (has_delete(item)) {
+                // will actually erase during cleanup (so we don't lock while we run the delete)
+                e->version.set_version(t.commit_tid() | phantom_bit);
+            }
+            // we don't need to set the actual value because we inserted this item, and 
+            // the value cannot have changed afterward
+            else if (has_insert(item)) {
+                assert(e->phantom());
+                e->version.set_version(t.commit_tid()); // automatically nonphantom
+            } 
+            // we had deleted and then inserted the same item
+            else {
+                e->value.write(item.template write_value<mapped_type>());
+                e->version.set_version(t.commit_tid()); // automatically nonphantom
+            }
+        }
     }
 
     void unlock(TransItem& item) override {
-        (void)item;
+        if (is_bucket(item)) {
+            auto b = unpack_bucket(item.key<void*>());
+            b->bucketversion.unlock();
+        } else {
+            auto e = item.key<internal_elem*>();
+            e->version.unlock();
+        }
     }
 
     void cleanup(TransItem& item, bool committed) override {
-        (void)item;
-        (void)committed;
+        if (committed ? has_delete(item) : has_insert(item)) {
+            auto e = item.key<internal_elem*>();
+            assert(e->phantom());
+            auto st = nontrans_erase(e->key);
+            assert(st == ok);
+        }
     }
 
 private: // STO private members
@@ -270,8 +318,136 @@ private: // STO private members
         internal_elem(key_type k, mapped_type val)
             : key(k), version(Sto::initialized_tid() | phantom_bit), value(val) {}
         
-        bool phantom() { return e->version.value() & phantom_bit; }
+        bool phantom() { return version.value() & phantom_bit; }
     };
+
+    /* cacheint is a cache-aligned atomic integer type. */
+    struct cacheint {
+        std::atomic<size_t> num;
+        cacheint() {}
+        cacheint(cacheint&& x) {
+            num.store(x.num.load());
+        }
+    } __attribute__((aligned(64)));
+
+    /* The Bucket type holds SLOT_PER_BUCKET keys and values. */
+    struct Bucket {
+        rw_lock lock;
+        internal_elem* elems[SLOT_PER_BUCKET];
+        unsigned char overflow;
+        bool hasmigrated;
+        // STO: bucketversions track if a bucket has been migrated, or if an item has been inserted/
+        // moved into this bucket
+        version_type bucketversion;
+
+        void setKV(size_t pos, internal_elem* elem) {
+            elems[pos] = elem;
+        }
+
+        // sets the value in the bucket to NULL, but doesn't actually
+        // free it (used for transfers)
+        void eraseKV(size_t pos) {
+            elems[pos] = NULL;
+        }
+
+        // actually frees the value
+        void deleteKV(size_t pos) {
+            Transaction::rcu_free(elems[pos]);
+            elems[pos] = NULL;
+        }
+
+        void clear() {
+            for (size_t i = 0; i < SLOT_PER_BUCKET; i++) {
+                if (elems[i] != NULL) {
+                    deleteKV(i);
+                }
+            }
+            overflow = 0;
+            hasmigrated = false;
+        }
+
+        // should lock around calling this
+        void inc_version() {
+            assert(bucketversion.is_locked_here());
+            // XXX opacity?
+            bucketversion.inc_nonopaque_version();
+        }
+        void lock_and_inc_version() {
+            if (!bucketversion.is_locked_here()) bucketversion.lock();
+            inc_version();
+            bucketversion.unlock();
+        }
+    };
+
+    /* TableInfo contains the entire state of the hashtable. We
+     * allocate one TableInfo pointer per hash table and store all of
+     * the table memory in it, so that all the data can be atomically
+     * swapped during expansion. */
+    struct TableInfo {
+        // 2**hashpower is the number of buckets
+        size_t hashpower_;
+
+        // unique pointer to the array of buckets
+        Bucket* buckets_;
+
+        // per-core counters for the number of inserts and deletes
+        std::vector<cacheint> num_inserts;
+        std::vector<cacheint> num_deletes;
+        std::vector<cacheint> num_migrated_buckets;
+
+        // counter for the position of the next bucket to try and migrate
+        cacheint migrate_bucket_ind;
+
+        /* The constructor allocates the memory for the table. For
+         * buckets, it uses the bucket_allocator, so that we can free
+         * memory independently of calling its destructor. It
+         * allocates one cacheint for each core in num_inserts and
+         * num_deletes. */
+        TableInfo(const size_t hashtable_init) {
+            buckets_ = nullptr;
+            hashpower_ = hashtable_init;
+            if( hashpower_ > 10) {
+                buckets_ = static_cast<Bucket*>( calloc(hashsize(hashpower_), sizeof(Bucket)));
+                if( buckets_ == nullptr ) {
+                    throw std::bad_alloc();
+                }
+            } else {
+                buckets_ = new Bucket[hashsize(hashpower_)];
+            }
+            
+            num_inserts.resize(kNumCores);
+            num_deletes.resize(kNumCores);
+            num_migrated_buckets.resize(kNumCores);
+
+            for (size_t i = 0; i < kNumCores; i++) {
+                num_inserts[i].num.store(0);
+                num_deletes[i].num.store(0);
+            }
+            migrate_bucket_ind.num.store(0); 
+        }
+
+        ~TableInfo() {
+            if( hashpower_ > 10) {
+                free(buckets_);
+            } else {
+                delete[] buckets_;
+            }
+        }
+
+    };
+    std::atomic<TableInfo*> table_info;
+    std::atomic<TableInfo*> new_table_info;
+    rw_lock snapshot_lock;
+
+    /* old_table_infos holds pointers to old TableInfos that were
+     * replaced during expansion. This keeps the memory alive for any
+     * leftover operations, until they are deleted by the global
+     * hazard pointer manager. */
+    std::list<TableInfo*> old_table_infos;
+
+    static hasher hashfn;
+    static key_equal eqfn;
+    static std::allocator<Bucket> bucket_allocator;
 
     static bool has_insert(const TransItem& item) {
         return item.flags() & insert_tag;
@@ -295,8 +471,11 @@ private: // STO private members
         assert(is_bucket(item));
         return (uintptr_t) item.key<void*>() >> 1;
     }
-    void* pack_bucket(unsigned bucket) {
-        return (void*) ((bucket << 1) | bucket_bit);
+    void* pack_bucket(Bucket* bucket) {
+        return (void*) ((uintptr_t)bucket | bucket_bit);
+    }
+    Bucket* unpack_bucket(void* bucket) {
+        return (Bucket*) ((uintptr_t)bucket & (~bucket_bit));
     }
 
 public:
@@ -490,7 +669,7 @@ public:
         if (ti_new != nullptr) {
             res = failure_key_moved; 
         } else {
-            res = insert_one(ti_old, hv, elem, i1_o, i2_o);
+            res = insert_one(ti_old, hv, elem, i1_o, i2_o, false/*is_migration*/);
         }
 
         // This is triggered only if we couldn't find the key in either
@@ -505,7 +684,7 @@ public:
             }
 
             migrate_something(ti_old, ti_new, i1_o, i2_o );
-            res = insert_one(ti_new, hv, elem, i1_n, i2_n);
+            res = insert_one(ti_new, hv, elem, i1_n, i2_n, false/*is_migration*/);
             
             // key moved from new table, meaning that an even newer table was created
             if (res == failure_key_moved || res == failure_table_full) {
@@ -517,8 +696,6 @@ public:
         }
         if (res == failure_key_duplicated) {
             free(elem); // make sure to clean up element if it wasn't actually inserted
-        } else {
-            Sto::item(this, elem).add_flags(insert_tag);
         }
         unset_hazard_pointers();
         return (res == ok);
@@ -528,6 +705,14 @@ public:
      * calling their destructors. If \p key is not there, it returns
      * false. */
     bool erase(const key_type& key) {
+        return erase_helper(key, true/*transactional*/);
+    }
+
+    bool nontrans_erase(const key_type& key) {
+        return erase_helper(key, false/*transactional*/);
+    }
+
+    bool erase_helper(const key_type& key, bool transactional) {
         check_hazard_pointers();
         check_counterid();
         size_t hv = hashed_key(key);
@@ -540,7 +725,7 @@ public:
         if (ti_new != nullptr) {
             res = failure_key_moved;
         } else {
-            res = delete_one(ti_old, hv, key, i1_o, i2_o);
+            res = delete_one(ti_old, hv, key, i1_o, i2_o, transactional);
         }
         
         if (res == failure_key_moved) {
@@ -552,7 +737,7 @@ public:
 
             migrate_something(ti_old, ti_new, i1_o, i2_o);
 
-            res = delete_one(ti_new, hv, key, i1_n, i2_n);
+            res = delete_one(ti_new, hv, key, i1_n, i2_n, transactional);
 
             // key moved from new table, meaning that an even newer table was created
             if (res == failure_key_moved) {
@@ -582,129 +767,6 @@ public:
 
 private:
 
-    /* cacheint is a cache-aligned atomic integer type. */
-    struct cacheint {
-        std::atomic<size_t> num;
-        cacheint() {}
-        cacheint(cacheint&& x) {
-            num.store(x.num.load());
-        }
-    } __attribute__((aligned(64)));
-
-    /* The Bucket type holds SLOT_PER_BUCKET keys and values. */
-    struct Bucket {
-        rw_lock lock;
-        internal_elem* elems[SLOT_PER_BUCKET];
-        unsigned char overflow;
-        bool hasmigrated;
-        // STO: bucketversions track if a bucket has been migrated, or if an item has been inserted/
-        // moved into this bucket
-        version_type bucketversion;
-
-        void setKV(size_t pos, internal_elem* elem) {
-            elems[pos] = elem;
-        }
-
-        // sets the value in the bucket to NULL, but doesn't actually
-        // free it (used for transfers)
-        void eraseKV(size_t pos) {
-            elems[pos] = NULL;
-        }
-
-        // actually frees the value
-        void deleteKV(size_t pos) {
-            Transaction::rcu_free(elems[pos]);
-            elems[pos] = NULL;
-        }
-
-        void clear() {
-            for (size_t i = 0; i < SLOT_PER_BUCKET; i++) {
-                if (elems[i] != NULL) {
-                    deleteKV(i);
-                }
-            }
-            overflow = 0;
-            hasmigrated = false;
-        }
-
-        void inc_version() {
-            bucketversion.lock();
-            bucketversion.set_version(bucketversion.value() + 1);
-            bucketversion.unlock();
-        }
-    };
-
-    /* TableInfo contains the entire state of the hashtable. We
-     * allocate one TableInfo pointer per hash table and store all of
-     * the table memory in it, so that all the data can be atomically
-     * swapped during expansion. */
-    struct TableInfo {
-        // 2**hashpower is the number of buckets
-        size_t hashpower_;
-
-        // unique pointer to the array of buckets
-        Bucket* buckets_;
-
-        // per-core counters for the number of inserts and deletes
-        std::vector<cacheint> num_inserts;
-        std::vector<cacheint> num_deletes;
-        std::vector<cacheint> num_migrated_buckets;
-
-        // counter for the position of the next bucket to try and migrate
-        cacheint migrate_bucket_ind;
-
-        /* The constructor allocates the memory for the table. For
-         * buckets, it uses the bucket_allocator, so that we can free
-         * memory independently of calling its destructor. It
-         * allocates one cacheint for each core in num_inserts and
-         * num_deletes. */
-        TableInfo(const size_t hashtable_init) {
-            buckets_ = nullptr;
-            hashpower_ = hashtable_init;
-            if( hashpower_ > 10) {
-                buckets_ = static_cast<Bucket*>( calloc(hashsize(hashpower_), sizeof(Bucket)));
-                if( buckets_ == nullptr ) {
-                    throw std::bad_alloc();
-                }
-            } else {
-                buckets_ = new Bucket[hashsize(hashpower_)];
-            }
-            
-            num_inserts.resize(kNumCores);
-            num_deletes.resize(kNumCores);
-            num_migrated_buckets.resize(kNumCores);
-
-            for (size_t i = 0; i < kNumCores; i++) {
-                num_inserts[i].num.store(0);
-                num_deletes[i].num.store(0);
-            }
-            migrate_bucket_ind.num.store(0); 
-        }
-
-        ~TableInfo() {
-            if( hashpower_ > 10) {
-                free(buckets_);
-            } else {
-                delete[] buckets_;
-            }
-        }
-
-    };
-    std::atomic<TableInfo*> table_info;
-    std::atomic<TableInfo*> new_table_info;
-    rw_lock snapshot_lock;
-
-    /* old_table_infos holds pointers to old TableInfos that were
-     * replaced during expansion. This keeps the memory alive for any
-     * leftover operations, until they are deleted by the global
-     * hazard pointer manager. */
-    std::list<TableInfo*> old_table_infos;
-
-    static hasher hashfn;
-    static key_equal eqfn;
-    static std::allocator<Bucket> bucket_allocator;
-
-
     /* find_one searches a specific table instance for the value corresponding to a given hash value 
      * It doesn't take any locks */
     cuckoo_status find_one(const TableInfo *ti, size_t hv, const key_type& key, mapped_type& val,
@@ -727,7 +789,7 @@ private:
                     // because the bucket had no overflow
                     // this ensures that any adding of keys to the bucket results in this txn
                     // aborting
-                    Sto::item(this, pack_bucket(i1)).observe(ti->buckets_[i1].bucketversion);
+                    Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
                 } 
                 // we found the item!
                 else if (st == ok) {
@@ -738,9 +800,7 @@ private:
                     if (item.has_write()) {
                         if (has_delete(item)) {
                             return failure_key_not_found;
-                        } else {
-                            // we should only have writes on this item if we delete or we insert...
-                            assert(has_insert(item) && elem->phantom());
+                        } else { // we deleted and then inserted this item, so we need to update its value
                             val = item.template write_value<mapped_type>();
                             return ok;
                         }
@@ -777,8 +837,8 @@ private:
             // though
             // We shouldn't add reads in cuckoo_find, because that would result in adding reads
             // during cuckoo hashing
-            Sto::item(this, pack_bucket(i1)).observe(ti->buckets_[i1].bucketversion);
-            Sto::item(this, pack_bucket(i2)).observe(ti->buckets_[i2].bucketversion);
+            Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
+            Sto::item(this, pack_bucket(&ti->buckets_[i2])).observe(ti->buckets_[i2].bucketversion);
         }
         return st;
     }
@@ -790,13 +850,16 @@ private:
      * The possible return values are ok, failure_key_duplicated, failure_key_moved, failure_table_full 
      * In particular, failure_too_slow will trigger a retry
      */
-    cuckoo_status insert_one(TableInfo *ti, size_t hv, internal_elem* elem, size_t& i1, size_t& i2) {
+    cuckoo_status insert_one(TableInfo *ti, 
+            size_t hv, internal_elem* elem, 
+            size_t& i1, size_t& i2,
+            bool is_migration) {
         int open1, open2;
         cuckoo_status res1, res2;
     RETRY:
         //fastpath: 
         lock( ti, i1 );
-        res1 = try_add_to_bucket(ti, elem, i1, open1);
+        res1 = try_add_to_bucket(ti, elem, i1, open1, is_migration);
         if (res1 == failure_key_duplicated || res1 == failure_key_moved) {
             unlock( ti, i1 );
             return res1;
@@ -806,15 +869,19 @@ private:
             if( !hasOverflow(ti, i1) && open1 != -1 ) {
                 add_to_bucket(ti, elem, i1, open1);
                 unlock( ti, i1 );
-                // add a write to the bucket so that we update the bucketversion
-                Sto::item(this, pack_bucket(i1)).add_write(0);
+                // update the bucketversion either now (for migration) or @ commit (add write)
+                if (is_migration) ti->buckets_[i1].lock_and_inc_version();
+                else {
+                    Sto::item(this, pack_bucket(&ti->buckets_[i1])).add_write();
+                    Sto::item(this, elem).add_flags(insert_tag).add_write(elem->value);
+                }
                 return ok;
             } else { //we need to try and get the second lock
                 if( !try_lock(ti, i2) ) {
                     unlock(ti, i1);
                     lock_two(ti, i1, i2);
                     // we need to make sure nothing happened to the first bucket while it was unlocked
-                    res1 = try_add_to_bucket(ti, elem, i1, open1);
+                    res1 = try_add_to_bucket(ti, elem, i1, open1, is_migration);
                     if (res1 == failure_key_duplicated || res1 == failure_key_moved) {
                         unlock_two(ti, i1, i2);
                         return res1;
@@ -824,7 +891,7 @@ private:
         }
 
         //at this point we must have both buckets locked
-        res2 = try_add_to_bucket(ti, elem, i2, open2);
+        res2 = try_add_to_bucket(ti, elem, i2, open2, is_migration);
         if (res2 == failure_key_duplicated || res2 == failure_key_moved) {
             unlock_two(ti, i1, i2);
             return res2;
@@ -833,8 +900,12 @@ private:
         if (open1 != -1) {
             add_to_bucket(ti, elem, i1, open1);
             unlock_two(ti, i1, i2);
-            // add a write to the bucket so that we update the bucketversion
-            Sto::item(this, pack_bucket(i1)).add_write(0);
+            // update the bucketversion either now (for migration) or @ commit (add write)
+            if (is_migration) ti->buckets_[i1].lock_and_inc_version();
+            else {
+                Sto::item(this, pack_bucket(&ti->buckets_[i1])).add_write();
+                Sto::item(this, elem).add_flags(insert_tag).add_write(elem->value);
+            }
             return ok;
         }
 
@@ -842,8 +913,12 @@ private:
             ti->buckets_[i1].overflow++;
             add_to_bucket(ti, elem, i2, open2);
             unlock_two(ti, i1, i2);
-            // add a write to the bucket so that we update the bucketversion
-            Sto::item(this, pack_bucket(i2)).add_write(0);
+            // update the bucketversion either now (for migration) or @ commit (add write)
+            if (is_migration) ti->buckets_[i2].lock_and_inc_version();
+            else {
+                Sto::item(this, pack_bucket(&ti->buckets_[i2])).add_write();
+                Sto::item(this, elem).add_flags(insert_tag).add_write(elem->value);
+            }
             return ok;
         }
 
@@ -872,7 +947,13 @@ private:
             // add a write to the bucket so that we update the bucketversion
             // note that we don't need to add writes of all the buckets modified during
             // cuckoo hashing because we only care that this bucket was empty
-            Sto::item(this, pack_bucket(insert_bucket)).add_write(0);
+            
+            // update the bucketversion either now (for migration) or @ commit (add write)
+            if (is_migration) ti->buckets_[insert_bucket].lock_and_inc_version();
+            else {
+                Sto::item(this, pack_bucket(&ti->buckets_[insert_bucket])).add_write();
+                Sto::item(this, elem).add_flags(insert_tag);
+            }
             return ok;
         }
 
@@ -893,32 +974,34 @@ private:
         return st;
     }
 
-
     /* delete_one tries to delete a key-value pair into a specific table instance.
      * It will return a failure only if the key wasn't found or a bucket was moved.
      * Regardless, it starts with the buckets unlocked and ends with buckets locked 
      */
     cuckoo_status delete_one(TableInfo *ti, size_t hv, const key_type& key,
-                             size_t& i1, size_t& i2) {
+                             size_t& i1, size_t& i2,
+                             bool transactional) {
         i1 = index_hash(ti, hv);
         i2 = alt_index(ti, hv, i1);
         cuckoo_status res1, res2;
         
         lock( ti, i1 );
-        res1 = try_del_from_bucket(ti, key, i1);
+        res1 = try_del_from_bucket(ti, key, i1, transactional);
         // if we found the element there, or nothing ever was added to second bucket, then we're done
         if (res1 == ok || res1 == failure_key_moved || !hasOverflow(ti, i1) ) {
             unlock( ti, i1 );
-            if (res1 == failure_key_not_found) {
-                // add a read of the bucket so that we know no items have been added @ commit
-                Sto::item(this, pack_bucket(i1)).observe(ti->buckets_[i1].bucketversion);
+            if (transactional) {
+                if (res1 == failure_key_not_found) {
+                    // add a read of the bucket so that we know no items have been added @ commit
+                    Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
+                }
             }
             return res1;
         } else {
             if( !try_lock(ti, i1) ) {
                 unlock(ti, i1);
                 lock_two(ti, i1, i2);
-                res1 = try_del_from_bucket(ti, key, i1);
+                res1 = try_del_from_bucket(ti, key, i1, transactional);
                 if( res1 == ok || res1 == failure_key_moved ) {
                     unlock_two(ti, i1, i2);
                     return res1;
@@ -926,23 +1009,27 @@ private:
             }
         }
 
-        res2 = try_del_from_bucket(ti, key, i2);
+        res2 = try_del_from_bucket(ti, key, i2, transactional);
         if( res2 == ok ) {
             ti->buckets_[i1].overflow--;
             unlock_two(ti, i1, i2);
             return res2;
         }
         if (res2 == failure_key_moved) {
-            // add a read of the bucket so that we know no items have been added @ commit
-            Sto::item(this, pack_bucket(i2)).observe(ti->buckets_[i2].bucketversion);
+            if (transactional) {
+                // add a read of the bucket so that we know no items have been added @ commit
+                Sto::item(this, pack_bucket(&ti->buckets_[i2])).observe(ti->buckets_[i2].bucketversion);
+            }
             unlock_two(ti, i1, i2);
             return res2;
         }
 
         unlock_two(ti, i1, i2);
-        // add a read of both buckets so that we know no items have been added @ commit
-        Sto::item(this, pack_bucket(i1)).observe(ti->buckets_[i1].bucketversion);
-        Sto::item(this, pack_bucket(i2)).observe(ti->buckets_[i2].bucketversion);
+        if (transactional) {
+            // add a read of both buckets so that we know no items have been added @ commit
+            Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
+            Sto::item(this, pack_bucket(&ti->buckets_[i2])).observe(ti->buckets_[i2].bucketversion);
+        }
         return failure_key_not_found;
     }
 
@@ -1007,8 +1094,8 @@ private:
 
             // XXX this updates the new ti's bucket's bucketversion
             // BUT we don't need to update the old bucket's bucketversion, because
-            // it's not like we're inserting anything into it... in fact, it remains the same
-            res = insert_one(ti_new, hv, elem, i1, i2);
+            // we're not inserting anything into it... in fact, its contents don't change 
+            res = insert_one(ti_new, hv, elem, i1, i2, true/*is_migration*/);
 
             // this can't happen since nothing can have moved out of ti_new (so no failure_key_moved)
             // our invariant ensures that the table can't be full (so no failure_table_full)
@@ -1653,7 +1740,8 @@ private:
      * otherwise. */
     cuckoo_status try_add_to_bucket(TableInfo *ti, 
                                   internal_elem* elem,
-                                  const size_t i, int& j) {
+                                  const size_t i, int& j,
+                                  bool is_migration) {
         j = -1;
         bool found_empty = false;
 
@@ -1663,22 +1751,28 @@ private:
         internal_elem* elem_in_table;
         for (size_t k = 0; k < SLOT_PER_BUCKET; k++) {
             elem_in_table = ti->buckets_[i].elems[k];
-            auto elemver = elem_in_table->version;
             if (elem_in_table != NULL) {
+                auto elemver = elem_in_table->version;
                 if (eqfn(elem->key, elem_in_table->key)) {
+                    // we only want to keep track clashes in the table if we're actually trying
+                    // to insert a new item (not migrate it over)
+                    // this should never occur if it is a migration...
+                    assert(!is_migration);
                     auto item = Sto::item(this, elem_in_table);
                     if (item.has_write()) {
                         if (has_delete(item)) {
-                            // XXX we don't install the item here, or mark as phantom
-                            // we didn't check for phantom? we would have checked earlier 
-                            // when we tried to delete the item, I suppose
+                            // we cannot have been the one to insert this item,
+                            // since the delete would have simply removed it
+                            assert(!has_insert(item));
+                            // add a write to install at commit time
+                            // we don't need to add any reads of the elem's version
+                            // because our delete already added checks for the elem's existence
                             item.clear_flags(delete_tag).clear_write().template add_write<mapped_type>(elem->value.access());
                             // we don't actually want to allocate this element because it already exists
                             // since we return ok, insert() will not free the element
                             free(elem); 
                             return ok;
                         } else { // we tried to insert this item before
-                            assert (has_insert(item));
                             return failure_key_duplicated;
                         }
                     } else {
@@ -1686,10 +1780,12 @@ private:
                         // if the item was just inserted by someone else without commit
                         if (is_phantom(item, elem_in_table)) {
                             Sto::abort(); assert(0);
-                        } else { // we found some valid key/value pair in the table!
-                            // just add a read of the item's version so we know it's not deleted
-                            // XXX this can result in false aborts if the element is deleted and
-                            // then inserted again? oh well... not sure how we can track "existence"
+                        } 
+                        // we found some valid key/value pair in the table!
+                        // just add a read of the item's version so we know it's not deleted
+                        // XXX this can result in false aborts if the element is deleted and
+                        // then inserted again? oh well... not sure how we can track "existence"
+                        else { 
                             item.observe(elemver);
                         }
                     }
@@ -1707,47 +1803,60 @@ private:
 
     /* try_del_from_bucket will search the bucket for the given key,
      * and set the slot of the key to empty if it finds it. */
-    static cuckoo_status try_del_from_bucket(TableInfo *ti, 
-                                    const key_type &key, const size_t i) {
+    cuckoo_status try_del_from_bucket(TableInfo *ti, 
+                                    const key_type &key, const size_t i,
+                                    bool transactional) {
         if (ti->buckets_[i].hasmigrated) {
             return failure_key_moved;
         }
 
         for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
             internal_elem* elem = ti->buckets_[i].elems[j];
-            auto elemver = elem->version;
             if (elem == NULL) {
                 continue;
             }
             if (eqfn(elem->key, key)) {
-                auto item = Sto::item(this, elem);
-                if (item.has_write()) {
-                    // we already deleted! the item is "gone"
-                    if (has_delete(item)) {
-                        return failure_key_not_found;    
-                    } 
-                    // we are deleting our own insert, and no one has installed this item yet
-                    // remove the element immediately
-                    else {
-                        assert(has_insert(item) && elem->phantom());
-                        ti->buckets_[i].deleteKV(j);
-                        ti->num_deletes[counterid].num.fetch_add(1, std::memory_order_relaxed);
-                        // just unmark all attributes so the item is ignored
-                        item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
-                        // check that no one else inserts the node into the bucket 
-                        Sto::item(this, pack_bucket(bucket(k))).observe(ti->buckets_[i].bucketversion);
-                        return ok;
+                auto elemver = elem->version;
+                if (transactional) {
+                    auto item = Sto::item(this, elem);
+                    if (item.has_write()) {
+                        // we already deleted! the item is "gone"
+                        if (has_delete(item)) {
+                            return failure_key_not_found;    
+                        } 
+                        // we are deleting our own insert, and no one has installed this item yet
+                        // remove the element immediately
+                        else if (has_insert(item)) {
+                            assert(elem->phantom());
+                            ti->buckets_[i].deleteKV(j);
+                            ti->num_deletes[counterid].num.fetch_add(1, std::memory_order_relaxed);
+                            // just unmark all attributes so the item is ignored
+                            item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
+                            // check that no one else inserts the node into the bucket 
+                            Sto::item(this, pack_bucket(&ti->buckets_[i])).observe(ti->buckets_[i].bucketversion);
+                            return ok;
+                        } 
+                        // we deleted before, then wrote to the item (inserted), and 
+                        // now we're deleting again...
+                        else { 
+                            // all we need to do is make sure no one deletes before we do
+                            item.observe(elemver);
+                            item.add_write().add_flags(delete_tag);
+                        }
+                    } else if (is_phantom(item, elem)) {
+                        // someone just removed this item or hasn't committed it yet :(
+                        Sto::abort(); assert(0);
+                    } else { 
+                        // make sure no one deletes before we do
+                        item.observe(elemver);
+                        item.add_write().add_flags(delete_tag);
                     }
-                } else if (is_phantom(item, elem)) {
-                    // someone just removed this item or hasn't committed it yet :(
-                    Sto::abort(); assert(0);
+                // non-transactional, so actually delete
                 } else { 
-                    // this is an actual item in the table we haven't seen before
-                    // make sure no one deletes before we do
-                    item.observe(elemver);
-                    item.add_write().add_flags(delete_tag);
-                    return ok;
+                    ti->buckets_[i].deleteKV(j);
+                    ti->num_deletes[counterid].num.fetch_add(1, std::memory_order_relaxed);
                 }
+                return ok;
             }
         }
         return failure_key_not_found;
