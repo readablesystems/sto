@@ -341,7 +341,12 @@ public:
       //Transaction::rcu_delete(new_v);
     //}
 
-    el->version.set_version(t.commit_tid()); // automatically sets valid to true
+    if (Opacity) {
+        el->version.set_version(t.commit_tid()); // automatically sets valid to true
+    } else {
+        el->version.inc_nonopaque_version(); // automatically sets valid to true
+        el->version.set_version(el->version.value() ^ invalid_bit);
+    }
     // nate: this has no visible perf change on vacation (maybe slightly slower).
 #if 1
     // convert nonopaque bucket version to a commit tid
@@ -350,8 +355,9 @@ public:
       lock(buck.version);
       // only update if it's still nonopaque. Otherwise someone with a higher tid
       // could've already updated it.
-      if (buck.version.value() & TransactionTid::nonopaque_bit)
-	buck.version.set_version(t.commit_tid());
+      if (buck.version.value() & TransactionTid::nonopaque_bit) {
+	    buck.version.set_version(t.commit_tid());
+      }
       unlock(buck.version);
     }
 #endif

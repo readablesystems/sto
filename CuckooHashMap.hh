@@ -38,8 +38,10 @@
 #  define LIBCUCKOO_DBG(fmt, args...)  do {} while (0)
 #endif
 
-// XXX pretty sure we never need to update our own read because we don't modify bucketversions 
-// until commit time. I'm not certain about this, but it seems correct.
+// XXX pretty sure we never need to update our own read of a bucket's version
+//  because we only modify bucketversions 
+//  1) at commit time or 2) during a migration. 
+//  I'm not certain about this, but it seems correct.
 
 //! SLOT_PER_BUCKET is the maximum number of keys per bucket
 const size_t SLOT_PER_BUCKET = 4;
@@ -60,7 +62,8 @@ class CuckooHashMap: public Shared {
         failure_table_full = 6,
         failure_under_expansion = 7,
         failure_key_moved = 8,
-        failure_already_migrating_all = 9
+        failure_already_migrating_all = 9,
+        failure_key_phantom = 10 // the key found was a phantom. abort!
     } cuckoo_status;
 
     struct rw_lock {
@@ -222,12 +225,18 @@ public:
 
     // STO functions
     bool check(TransItem& item, Transaction&) override {
+        auto read_version = item.template read_value<version_type>();
         if (is_bucket(item)) {
             auto b = unpack_bucket(item.key<void*>());
-            return b->bucketversion.check_version(item.template read_value<version_type>());
+            if (read_version.value() & underflow_bit) {
+                return b->bucketversion.check_version(read_version);
+            } else {
+                // unset the underflow bit because we don't care if it's overflowed or not
+                version_type bv(b->bucketversion.value() ^= underflow_bit);
+                return bv.check_version(read_version); 
+            }
         } else {
             auto e = item.key<internal_elem*>();
-            auto read_version = item.template read_value<version_type>();
             return e->version.check_version(read_version);
         }
     }
@@ -255,19 +264,34 @@ public:
         } else {
             auto e = item.key<internal_elem*>();
             if (has_delete(item)) {
-                // will actually erase during cleanup (so we don't lock while we run the delete)
-                e->version.set_version(t.commit_tid() | phantom_bit);
+                if (Opacity) {
+                    // will actually erase during cleanup (so we don't lock while we run the delete)
+                    e->version.set_version(t.commit_tid() | phantom_bit);
+                } else {
+                    e->version.inc_nonopaque_version();
+                    e->version.set_version(e->version.value() | phantom_bit);
+                }
             }
             // we don't need to set the actual value because we inserted this item, and 
             // the value cannot have changed afterward
             else if (has_insert(item)) {
                 assert(e->phantom());
-                e->version.set_version(t.commit_tid()); // automatically nonphantom
+                if (Opacity) {
+                    e->version.set_version(t.commit_tid()); // automatically nonphantom
+                } else {
+                    e->version.inc_nonopaque_version();
+                    e->version.set_version(e->version.value() ^ phantom_bit);
+                }
             } 
             // we had deleted and then inserted the same item
             else {
                 e->value.write(item.template write_value<mapped_type>());
-                e->version.set_version(t.commit_tid()); // automatically nonphantom
+                if (Opacity) {
+                    e->version.set_version(t.commit_tid()); // automatically nonphantom
+                } else {
+                    e->version.inc_nonopaque_version();
+                    e->version.set_version(e->version.value() ^ phantom_bit);
+                }
             }
         }
     }
@@ -309,6 +333,9 @@ private: // STO private members
     // used to indicate that the value is a phantom: it has been inserted and not yet committed,
     // or has just been deleted
     static constexpr TransactionTid::type phantom_bit = TransactionTid::user_bit;
+    // used to mark if we're only adding a read of this bucket if it is not overflowed (if it 
+    // overflows, the bucketversion is not updated, but the relevant key could have been inserted)
+    static constexpr TransactionTid::type underflow_bit = TransactionTid::user_bit<<1;
 
     struct internal_elem {
         key_type key;
@@ -475,7 +502,7 @@ private: // STO private members
         return (void*) ((uintptr_t)bucket | bucket_bit);
     }
     Bucket* unpack_bucket(void* bucket) {
-        return (Bucket*) ((uintptr_t)bucket & (~bucket_bit));
+        return (Bucket*) ((uintptr_t)bucket ^ bucket_bit);
     }
 
 public:
@@ -648,6 +675,8 @@ public:
         }
     }
 
+    internal_elem* alloc_elem(key_type key, mapped_type val) __attribute__((noinline));
+
     /*! insert puts the given key-value pair into the table. It first
      * checks that \p key isn't already in the table, since the table
      * doesn't support duplicate keys. If the table is out of space,
@@ -661,7 +690,8 @@ public:
         TableInfo *ti_old, *ti_new;
         size_t i1_o, i2_o, i1_n, i2_n; //bucket indices for old+new tables
         cuckoo_status res;
-        internal_elem* elem = new internal_elem(key, val);
+        internal_elem* elem = alloc_elem(key, val);
+        //internal_elem* elem = new internal_elem(key, val);
     RETRY:
         snapshot_both_get_buckets(ti_old, ti_new, hv, i1_o, i2_o, i1_n, i2_n);
 
@@ -670,6 +700,11 @@ public:
             res = failure_key_moved; 
         } else {
             res = insert_one(ti_old, hv, elem, i1_o, i2_o, false/*is_migration*/);
+            if (res == failure_key_phantom) {
+                unset_hazard_pointers();
+                free(elem);
+                Sto::abort(); assert(0);
+            }
         }
 
         // This is triggered only if we couldn't find the key in either
@@ -685,7 +720,11 @@ public:
 
             migrate_something(ti_old, ti_new, i1_o, i2_o );
             res = insert_one(ti_new, hv, elem, i1_n, i2_n, false/*is_migration*/);
-            
+            if (res == failure_key_phantom) {
+                unset_hazard_pointers();
+                free(elem);
+                Sto::abort(); assert(0);
+            }            
             // key moved from new table, meaning that an even newer table was created
             if (res == failure_key_moved || res == failure_table_full) {
                 LIBCUCKOO_DBG("Key already moved from new table, or already filled...that was fast, %d\n", res);
@@ -726,6 +765,10 @@ public:
             res = failure_key_moved;
         } else {
             res = delete_one(ti_old, hv, key, i1_o, i2_o, transactional);
+            if (res == failure_key_phantom) {
+                unset_hazard_pointers();
+                Sto::abort(); assert(0);
+            }
         }
         
         if (res == failure_key_moved) {
@@ -738,6 +781,10 @@ public:
             migrate_something(ti_old, ti_new, i1_o, i2_o);
 
             res = delete_one(ti_new, hv, key, i1_n, i2_n, transactional);
+            if (res == failure_key_phantom) {
+                unset_hazard_pointers();
+                Sto::abort(); assert(0);
+            }
 
             // key moved from new table, meaning that an even newer table was created
             if (res == failure_key_moved) {
@@ -809,8 +856,8 @@ private:
                     // someone other than ourselves inserted this item and hasn't
                     // committed it yet
                     if (is_phantom(item, e)) {
-                        Sto::abort();
-                        assert(0); // unreachable
+                        // no need to unlock here -- there are no locks!
+                        Sto::abort(); assert(0);
                     } 
                     // we have found the item, haven't written to it yet, and
                     // it's not currently being deleted / inserted by someone else!
@@ -860,7 +907,7 @@ private:
         //fastpath: 
         lock( ti, i1 );
         res1 = try_add_to_bucket(ti, elem, i1, open1, is_migration);
-        if (res1 == failure_key_duplicated || res1 == failure_key_moved) {
+        if (res1 == failure_key_duplicated || res1 == failure_key_moved || failure_key_phantom) {
             unlock( ti, i1 );
             return res1;
         } else {
@@ -882,7 +929,7 @@ private:
                     lock_two(ti, i1, i2);
                     // we need to make sure nothing happened to the first bucket while it was unlocked
                     res1 = try_add_to_bucket(ti, elem, i1, open1, is_migration);
-                    if (res1 == failure_key_duplicated || res1 == failure_key_moved) {
+                    if (res1 == failure_key_duplicated || res1 == failure_key_moved || res1 == failure_key_phantom) {
                         unlock_two(ti, i1, i2);
                         return res1;
                     }
@@ -892,7 +939,7 @@ private:
 
         //at this point we must have both buckets locked
         res2 = try_add_to_bucket(ti, elem, i2, open2, is_migration);
-        if (res2 == failure_key_duplicated || res2 == failure_key_moved) {
+        if (res1 == failure_key_duplicated || res1 == failure_key_moved || res1 == failure_key_phantom) {
             unlock_two(ti, i1, i2);
             return res2;
         }
@@ -911,6 +958,7 @@ private:
 
         if (open2 != -1) {
             ti->buckets_[i1].overflow++;
+            ti->buckets_[i1].bucketversion.value() |= underflow_bit;
             add_to_bucket(ti, elem, i2, open2);
             unlock_two(ti, i1, i2);
             // update the bucketversion either now (for migration) or @ commit (add write)
@@ -941,6 +989,7 @@ private:
             size_t first_bucket = index_hash(ti, hv);
             if( insert_bucket != first_bucket) {
                 ti->buckets_[first_bucket].overflow++;
+                ti->buckets_[first_bucket].bucketversion.value() |= underflow_bit;
             }
             add_to_bucket(ti, elem, insert_bucket, insert_slot);
             unlock_two(ti, i1, i2);
@@ -959,6 +1008,8 @@ private:
 
         assert(st == failure_too_slow || st == failure_table_full || st == failure_key_moved);
         if (st == failure_table_full) {
+            // TODO resizes not supported
+            assert(0);
             LIBCUCKOO_DBG("hash table is full (hashpower = %zu, hash_items = %zu, load factor = %.2f), need to increase hashpower\n",
                       ti->hashpower_, cuckoo_size(ti), cuckoo_loadfactor(ti));
 
@@ -988,13 +1039,12 @@ private:
         lock( ti, i1 );
         res1 = try_del_from_bucket(ti, key, i1, transactional);
         // if we found the element there, or nothing ever was added to second bucket, then we're done
-        if (res1 == ok || res1 == failure_key_moved || !hasOverflow(ti, i1) ) {
+        if (res1 == ok || res1 == failure_key_moved || !hasOverflow(ti, i1) || res1 == failure_key_phantom ) {
             unlock( ti, i1 );
-            if (transactional) {
-                if (res1 == failure_key_not_found) {
+            if (transactional && res1 == failure_key_not_found) {
                     // add a read of the bucket so that we know no items have been added @ commit
+                    ti->buckets_[i1].bucketversion.value() |= underflow_bit;
                     Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
-                }
             }
             return res1;
         } else {
@@ -1002,7 +1052,7 @@ private:
                 unlock(ti, i1);
                 lock_two(ti, i1, i2);
                 res1 = try_del_from_bucket(ti, key, i1, transactional);
-                if( res1 == ok || res1 == failure_key_moved ) {
+                if( res1 == ok || res1 == failure_key_moved || res1 == failure_key_phantom ) {
                     unlock_two(ti, i1, i2);
                     return res1;
                 }
@@ -1010,20 +1060,17 @@ private:
         }
 
         res2 = try_del_from_bucket(ti, key, i2, transactional);
-        if( res2 == ok ) {
-            ti->buckets_[i1].overflow--;
-            unlock_two(ti, i1, i2);
-            return res2;
-        }
-        if (res2 == failure_key_moved) {
-            if (transactional) {
-                // add a read of the bucket so that we know no items have been added @ commit
-                Sto::item(this, pack_bucket(&ti->buckets_[i2])).observe(ti->buckets_[i2].bucketversion);
+        if (res2 == ok || res2 == failure_key_moved || res1 == failure_key_phantom) {
+            if (res2 == ok) {
+                ti->buckets_[i1].overflow--;
+                if (hasOverflow(ti, i1)) ti->buckets_[i1].bucketversion.value() ^= underflow_bit;
             }
             unlock_two(ti, i1, i2);
             return res2;
         }
 
+        // failure_key_not_found. not that underflow bit is not set (because there was overflow --
+        // we had to check the second bucket)
         unlock_two(ti, i1, i2);
         if (transactional) {
             // add a read of both buckets so that we know no items have been added @ commit
@@ -1610,9 +1657,11 @@ private:
             size_t first_bucket = index_hash(ti, hv);
             if( fb == first_bucket ) { //we're moving from first bucket to alternate
                 ti->buckets_[first_bucket].overflow++;
+                ti->buckets_[first_bucket].bucketversion.value() |= underflow_bit;
             } else { //we're moving from alternate to first bucket
                 assert( tb == first_bucket );
                 ti->buckets_[first_bucket].overflow--;
+                if (hasOverflow(ti, first_bucket)) ti->buckets_[i1].bucketversion.value() ^= underflow_bit;
             }
 
             ti->buckets_[tb].setKV(ts, elem2);
@@ -1779,7 +1828,7 @@ private:
                         // check if item has been deleted since we read it, or
                         // if the item was just inserted by someone else without commit
                         if (is_phantom(item, elem_in_table)) {
-                            Sto::abort(); assert(0);
+                            return failure_key_phantom;
                         } 
                         // we found some valid key/value pair in the table!
                         // just add a read of the item's version so we know it's not deleted
@@ -1845,7 +1894,7 @@ private:
                         }
                     } else if (is_phantom(item, elem)) {
                         // someone just removed this item or hasn't committed it yet :(
-                        Sto::abort(); assert(0);
+                        return failure_key_phantom;
                     } else { 
                         // make sure no one deletes before we do
                         item.observe(elemver);
@@ -2038,5 +2087,10 @@ const size_t CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::kNumCores =
 
 template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
 std::atomic<size_t> CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::numThreads(0);
+
+template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
+typename CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::internal_elem* CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::alloc_elem(key_type key, mapped_type val) {
+        return new CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::internal_elem(key, val);
+}
 
 #endif
