@@ -176,16 +176,17 @@ int main() {
     std::vector<Test> map_tests = make_map_tests();
     
     dualprintf("CHM, NontransCHM, MM, STO\n");
-    //auto chm = new MapSingleOpTest<DatatypeHarness<CuckooHashMap<int,int,CityHasher<int>,std::equal_to<int>,125000, false>>>(CDS, 33, 33);
+    auto chm = new MapSingleOpTest<DatatypeHarness<CuckooHashMap<int,int,CityHasher<int>,std::equal_to<int>,125000, false>>>(STO, 33, 33);
     //auto chmnt = new MapSingleOpTest<DatatypeHarness<CuckooHashMapNT<int,int,CityHasher<int>,std::equal_to<int>,125000>>>(CDS, 33, 33);
     //auto mm = new MapSingleOpTest<DatatypeHarness<MICHAELMAP(int,int)>>(CDS, 33, 33);
     //auto stono = new MapSingleOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 33, 33);
-    //startAndWait(chm, 1000, 8);
+    startAndWait(chm, 50000, 8);
     //startAndWait(chmnt, 1000, 8);
     //startAndWait(mm, 1000, 8);
     //startAndWait(stono, 1000, 8);
     //startAndWait(stono, 150000, 8);
     //startAndWait(stono, 150000, 8);
+    /*
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
         for (auto init_keys = begin(init_sizes); init_keys != end(init_sizes); ++init_keys) {
@@ -201,7 +202,7 @@ int main() {
             }
             dualprintf("\n\n");
         }
-    }
+    }*/
     /*
     // pqueue tests
     std::vector<Test> pqueue_tests = make_pqueue_tests();
