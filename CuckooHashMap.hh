@@ -675,7 +675,7 @@ public:
         }
     }
 
-    internal_elem* alloc_elem(key_type key, mapped_type val) __attribute__((noinline));
+    //internal_elem* alloc_elem(key_type key, mapped_type val) __attribute__((noinline));
 
     /*! insert puts the given key-value pair into the table. It first
      * checks that \p key isn't already in the table, since the table
@@ -690,8 +690,8 @@ public:
         TableInfo *ti_old, *ti_new;
         size_t i1_o, i2_o, i1_n, i2_n; //bucket indices for old+new tables
         cuckoo_status res;
-        internal_elem* elem = alloc_elem(key, val);
-        //internal_elem* elem = new internal_elem(key, val);
+        //internal_elem* elem = alloc_elem(key, val);
+        internal_elem* elem = new internal_elem(key, val);
     RETRY:
         snapshot_both_get_buckets(ti_old, ti_new, hv, i1_o, i2_o, i1_n, i2_n);
 
@@ -2088,9 +2088,9 @@ const size_t CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::kNumCores =
 template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
 std::atomic<size_t> CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::numThreads(0);
 
-template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
+/*template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
 typename CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::internal_elem* CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::alloc_elem(key_type key, mapped_type val) {
         return new CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::internal_elem(key, val);
-}
+}*/
 
 #endif

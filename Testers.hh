@@ -8,6 +8,7 @@
 #include "PriorityQueue.hh"
 #include "Hashtable.hh"
 #include "CuckooHashMap.hh"
+#include "CuckooHashMapNT.hh"
 #include "RBTree.hh"
 #include "Vector.hh"
 
@@ -80,15 +81,18 @@ public:
 };
 
 template <typename DT, typename RT>
-class TreeTester: Tester<DT, RT> {
+class CuckooHashMapTester: Tester<DT, RT> {
+    size_t init_sz = 25000;
 public:
     template <typename T>
     void init(T* q) {
-        for (int i = 0; i < MAX_VALUE; i++) {
-            TRANSACTION {
-                (*q)[i] = i;
-            } RETRY(false);
-        }
+        TRANSACTION {
+            std::uniform_int_distribution<int> keydist(0,init_sz*2-1);
+            Rand transgen(0,0);
+            for (unsigned i = 0; i < init_sz; ++i) {
+                q->insert(keydist(transgen),i); 
+            }
+        } RETRY(false);
     }
 
     void init_sut(DT* q) {init<DT>(q);}
@@ -103,10 +107,10 @@ public:
             int val = slotdist(transgen);
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to operator[] key " << key << " and val " << val << std::endl;
+            std::cout << "[" << me << "] try to insert key " << key << " and val " << val << std::endl;
             TransactionTid::unlock(lock);
 #endif
-            (*q)[key] = val;
+            q->insert(key, val);
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] insert key " << key << " and val " << val << std::endl;
@@ -123,174 +127,39 @@ public:
             std::cout << "[" << me << "] try to erase " << key<< std::endl;
             TransactionTid::unlock(lock);
 #endif
-            int num = q->erase(key);
+            bool ret = q->erase(key);
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
-            std::cout << "[" << me << "] erased " << num << " items with key " << key << std::endl;
+            ret ? std::cout << "[" << me << "] success erase key " << key << std::endl 
+                : std::cout << "[" << me << "] failed erase key " << key << std::endl;
             TransactionTid::unlock(lock);
 #endif
             op_record* rec = new op_record;
             rec->op = op;
             rec->args.push_back(key);
-            rec->rdata.push_back(num);
+            rec->rdata.push_back(ret);
             return rec;
         } else if (op == 2) {
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to count " << key << std::endl;
+            std::cout << "[" << me << "] try to get " << key << std::endl;
             TransactionTid::unlock(lock);
 #endif
-            int num = q->count(key);
+            int val;
+            bool ret = q->find(key, val);
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
-            std::cout << "[" << me << "] counted " << num << " items with key " << key << std::endl;
+            ret ? std::cout << "[" << me << "] found " << val << " with key " << key << std::endl
+                : std::cout << "[" << me << "] didn't find key " << key << std::endl;
             TransactionTid::unlock(lock);
 #endif
             op_record* rec = new op_record;
             rec->op = op;
             rec->args.push_back(key);
-            rec->rdata.push_back(num);
-            return rec;
-        } else if (op == 3) {
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to size" << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            size_t size = q->size();
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] size " << size << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            op_record* rec = new op_record;
-            rec->op = op;
-            rec->rdata.push_back(size);
-            return rec;
-        } /*else if (op == 4) {
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to iterator* start" << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            if (q->size() == 0) {
-#if PRINT_DEBUG
-                TransactionTid::lock(lock);
-                std::cout << "[" << me << "] tried to *start empty tree" << std::endl;
-                TransactionTid::unlock(lock);
-#endif
-                op_record* rec = new op_record;
-                rec->op = op;
-                rec->rdata.push_back(-1);
-                return rec;
-            }
-            auto it = q->begin();
-            int val = it->second;
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] found value " << val << " at start" << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            op_record* rec = new op_record;
-            rec->op = op;
+            rec->rdata.push_back(ret);
             rec->rdata.push_back(val);
             return rec;
-        } else if (op == 5) {
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to iterator* --end" << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            if (q->size() == 0) {
-#if PRINT_DEBUG
-                TransactionTid::lock(lock);
-                std::cout << "[" << me << "] tried to -- empty tree" << std::endl;
-                TransactionTid::unlock(lock);
-#endif
-                op_record* rec = new op_record;
-                rec->op = op;
-                rec->rdata.push_back(-1);
-                return rec;
-            }
-            auto it = --(q->end());
-            int val = it->second;
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] found value " << val << " at end" << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            op_record* rec = new op_record;
-            rec->op = op;
-            rec->rdata.push_back(val);
-            return rec;
-        } else if (op == 6) {
-            int forward = slotdist(transgen);
-            int backward = slotdist(transgen);
-            backward = (forward < backward) ? forward : backward;
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to * " << forward << " forward and " << backward << " backward" << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            auto it = q->begin();
-            if (q->size() == 0) {
-#if PRINT_DEBUG
-                TransactionTid::lock(lock);
-                std::cout << "[" << me << "] tried to iterate empty tree" << std::endl;
-                TransactionTid::unlock(lock);
-#endif
-                op_record* rec = new op_record;
-                rec->op = op;
-                rec->rdata.push_back(-1);
-                return rec;
-            }
-            for (int i = 0; i <= forward && it != q->end(); i++, it++) {}
-            for (int i = backward; i > 0 && it != q->begin(); i--, it--) {}
-            if (it == q->end()) {
-                it = q->begin();
-                assert(it != q->end());
-#if PRINT_DEBUG
-                TransactionTid::lock(lock);
-                std::cout << "[" << me << "] \t iterator was at end" << std::endl;
-                TransactionTid::unlock(lock);
-#endif
-            }
-            int val = it->second;
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] found value " << val << " @ " << forward << " - " << backward<< std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            // comment block start
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] redoing "<<  forward << " forward and " << backward << " backward with prefix"<< std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            auto it2 = q->begin();
-            tmp = it2;
-            for (int i = 0; i <= forward && it2 != q->end(); i++, ++it2) {
-                tmp = it2;
-            }
-
-            for (int i = backward; i > 0 && it2 != q->begin(); i--, --it2) {
-                tmp = it2;
-            }
-            int val2 = *tmp;
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] found value2 " << val2 << " @ " << forward << " - " << backward << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            assert(val == val2);
-            // comment block end
-            op_record* rec = new op_record;
-            rec->op = op;
-            rec->args.push_back(forward);
-            rec->args.push_back(backward);
-            rec->rdata.push_back(val);
-            return rec;
-        }*/
+        }
         return nullptr;
     }
 
@@ -298,13 +167,13 @@ public:
         if (op->op == 0) {
             int key = op->args[0];
             int val = op->args[1];
-            (*q)[key] = val;
+            q->insert(key, val);
 #if PRINT_DEBUG
             std::cout << "inserting: " << key << ", " << val << std::endl;
 #endif
         } else if (op->op == 1) {
             int key = op->args[0];
-            int erased = q->erase(key);
+            bool erased = q->erase(key);
 #if PRINT_DEBUG
             std::cout << "erasing: " << key << std::endl;
             std::cout << "erase replay: " << erased << std::endl;
@@ -313,119 +182,41 @@ public:
             assert (erased == op->rdata[0]);
         } else if (op->op == 2) {
             int key = op->args[0];
-            int counted = q->count(key);
+            int val;
+            bool found = q->find(key, val);
 #if PRINT_DEBUG
-            std::cout << "counting: " << key << std::endl;
-            std::cout << "count replay: " << counted << std::endl;
-            std::cout << "count expected: " << op->rdata[0] << std::endl;
+            std::cout << "finding: " << key << std::endl;
+            found ? std::cout << "find replay: " << found << val << std::endl
+                : std::cout << "find replay: " << val << std::endl;
+            op->rdata[0] ? std::cout << "find expected: " << op->rdata[0] << std::endl
+                : std::cout << "find expected: " << op->rdata[1] << std::endl;
 #endif
-            assert(counted == op->rdata[0]);
-        } else if (op->op == 3) {
-            size_t size = q->size();
-#if PRINT_DEBUG
-            std::cout << "size replay: " << size << std::endl;
-            std::cout << "size expected: " << op->rdata[0] << std::endl;
-#endif
-            assert(size == (size_t) op->rdata[0]);
-        } /*else if (op->op == 4) {
-            if (q->size() == 0) {
-                assert(op->rdata[0] == -1);
-                return;
-            }
-            auto it = q->begin();
-            int val = it->second;
-#if PRINT_DEBUG
-            std::cout << "*it start replay: " << val << std::endl;
-            std::cout << "*it start expected: " << op->rdata[0]  << std::endl;
-#endif
-            assert(val == op->rdata[0]);
-        } else if (op->op == 5) {
-            auto it = q->end();
-            // deal with empty tree end()
-            if (q->size() == 0) {
-                assert(op->rdata[0] == -1);
-                return;
-            }
-            auto val1 = (--it)->second;
-            assert(++it == q->end());
-            it--;
-            auto val2 = it->second;
-#if PRINT_DEBUG
-            std::cout << "*it end-1 replay: " << val1 << std::endl;
-            std::cout << "*it end-1 expected: " << op->rdata[0]  << std::endl;
-#endif
-            assert(val1 == val2);
-            assert(val1 == op->rdata[0]);
-        } else if (op->op == 6) {
-            auto it = q->begin();
-            // deal with empty tree begin()
-            if (q->size() == 0) {
-                assert(op->rdata[0] == -1);
-                return;
-            }
-            int forward = op->args[0];
-            int backward = op->args[1];
-            for (int i = 0; i <= forward && it != q->end(); i++, it++) {}
-            for (int i = backward; i > 0 && it != q->begin(); i--, it--) {}
-            if (it == q->end()) it = q->begin();
-            int val = it->second;
-#if PRINT_DEBUG
-            std::cout << "*it replay at place " << forward << " - " << backward << ": " << val << std::endl;
-            std::cout << "*it expected at place " << forward << " - " << backward << ": " << op->rdata[0]  << std::endl;
-#endif
-            assert(val == op->rdata[0]);
-        }*/
+            assert(found == op->rdata[0]);
+        }
     }
 
     void check(DT* q, RT*q1) {
-        for (int i = 0; i < MAX_VALUE; i++) {
+        for (unsigned i = 0; i < init_sz*2; i++) {
 #if PRINT_DEBUG
             std::cout << "i is: " << i << std::endl;
 #endif
             TRANSACTION {
-/*
-                if (q->size() != 0) {
-                    auto it = q->begin();
-                    auto it1 = q1->begin();
-                    for (; (it != q->end() || it1 != q1->end()); it++, it1++) {
-                        assert(it->second == it1->second);
-                    }
-                }
-*/
-                size_t s = q->size();
-                size_t s1 = q1->size();
+                int v1, v2;
+                bool c = q->find(i, v1);
+                bool c1 = q1->find(i, v2);
 #if PRINT_DEBUG
-                std::cout << "q size: " << std::endl;
-                std::cout << "q1 size: " << s1 << std::endl;
-#endif
-                assert(s == s1);
-                size_t c = q->count(i);
-                size_t c1 = q1->count(i);
-#if PRINT_DEBUG
-                std::cout << "q count: " << c << std::endl;
-                std::cout << "q1 count: " << c1 << std::endl;
+                std::cout << "q find: " << c << std::endl;
+                std::cout << "q1 find: " << c1 << std::endl;
 #endif
                 assert(c == c1);
-                int v1 = (*q)[i];
-                int v2 = (*q1)[i];
 #if PRINT_DEBUG
                 std::cout << "v1: " << v1 << std::endl;
                 std::cout << "v2: " << v2 << std::endl;
 #endif
                 assert(v1 == v2);
 
-                s = q->size();
-                s1 = q1->size();
-#if PRINT_DEBUG
-                std::cout << "q size: " << s << std::endl;
-                std::cout << "q1 size: " << s1 << std::endl;
-#endif
-                assert(s == s1);
-
-                // this should always return 1 because we inserted an empty element if it
-                // did not exist before
-                size_t e = q->erase(i);
-                size_t e1 = q1->erase(i);
+                bool e = q->erase(i);
+                bool e1 = q1->erase(i);
 #if PRINT_DEBUG
                 std::cout << "q erased: " << e << std::endl;
                 std::cout << "q1 erased: " << e1 << std::endl;
@@ -435,7 +226,7 @@ public:
         }
         TRANSACTION {
             for (int i = 0; i < MAX_VALUE; i++) {
-                assert(q->count(i) == 0);
+                assert(!q->find(i));
             }
         } RETRY(false);
     }
@@ -447,7 +238,7 @@ public:
     }
 #endif
 
-    static const int num_ops_ = 4;
+    static const int num_ops_ = 3;
 };
 
 
@@ -466,7 +257,7 @@ public:
     void init_sut(DT* q) {init<DT>(q);}
     void init_ref(RT* q) {init<RT>(q);}
 
-    op_record* doOp(DT* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
+    op_record* doOp(DT* q, int op, int me, std::uniform_int_distribution<long>& slotdist, Rand& transgen) {
 #if !PRINT_DEBUG
         (void)me;
 #endif
