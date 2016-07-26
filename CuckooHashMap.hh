@@ -47,7 +47,7 @@
 const size_t SLOT_PER_BUCKET = 4;
 
 /*! CuckooHashMap is the hash table class. */
-template <class Key, class T, class Hash = std::hash<Key>, class Pred = std::equal_to<Key>, unsigned Init_size = 250000 * SLOT_PER_BUCKET, bool Opacity = true>
+template <class Key, class T, class Hash = std::hash<Key>, class Pred = std::equal_to<Key>, unsigned Init_size = 250000 * SLOT_PER_BUCKET, bool Opacity = false>
 class CuckooHashMap: public Shared {
 
     // Structs and functions used internally
@@ -232,7 +232,7 @@ public:
                 return b->bucketversion.check_version(read_version);
             } else {
                 // unset the underflow bit because we don't care if it's overflowed or not
-                version_type bv(b->bucketversion.value() ^ underflow_bit);
+                version_type bv(b->bucketversion.value() & ~underflow_bit);
                 return bv.check_version(read_version); 
             }
         } else {
@@ -269,7 +269,7 @@ public:
                     e->version.set_version(t.commit_tid() | phantom_bit);
                 } else {
                     e->version.inc_nonopaque_version();
-                    e->version.set_version(e->version.value() | phantom_bit);
+                    e->version.set_version_locked(e->version.value() | phantom_bit);
                 }
             }
             // we don't need to set the actual value because we inserted this item, and 
@@ -280,7 +280,7 @@ public:
                     e->version.set_version(t.commit_tid()); // automatically nonphantom
                 } else {
                     e->version.inc_nonopaque_version();
-                    e->version.set_version(e->version.value() ^ phantom_bit);
+                    e->version.set_version_locked(e->version.value() & ~phantom_bit);
                 }
             } 
             // we had deleted and then inserted the same item
@@ -290,7 +290,7 @@ public:
                     e->version.set_version(t.commit_tid()); // automatically nonphantom
                 } else {
                     e->version.inc_nonopaque_version();
-                    e->version.set_version(e->version.value() ^ phantom_bit);
+                    e->version.set_version_locked(e->version.value() & ~phantom_bit);
                 }
             }
         }
@@ -502,7 +502,7 @@ private: // STO private members
         return (void*) ((uintptr_t)bucket | bucket_bit);
     }
     Bucket* unpack_bucket(void* bucket) {
-        return (Bucket*) ((uintptr_t)bucket ^ bucket_bit);
+        return (Bucket*) ((uintptr_t)bucket & ~bucket_bit);
     }
 
 public:
@@ -1049,7 +1049,7 @@ private:
         if (res2 == ok || res2 == failure_key_moved || res1 == failure_key_phantom) {
             if (res2 == ok) {
                 ti->buckets_[i1].overflow--;
-                if (hasOverflow(ti, i1)) ti->buckets_[i1].bucketversion.value() ^= underflow_bit;
+                if (hasOverflow(ti, i1)) ti->buckets_[i1].bucketversion.value() &= ~underflow_bit;
             }
             unlock_two(ti, i1, i2);
             return res2;
@@ -1647,7 +1647,7 @@ private:
             } else { //we're moving from alternate to first bucket
                 assert( tb == first_bucket );
                 ti->buckets_[first_bucket].overflow--;
-                if (hasOverflow(ti, first_bucket)) ti->buckets_[i1].bucketversion.value() ^= underflow_bit;
+                if (hasOverflow(ti, first_bucket)) ti->buckets_[i1].bucketversion.value() &= ~underflow_bit;
             }
 
             ti->buckets_[tb].setKV(ts, elem2);
