@@ -82,17 +82,15 @@ public:
 
 template <typename DT, typename RT>
 class CuckooHashMapTester: Tester<DT, RT> {
-    size_t init_sz = 25000;
+    size_t init_sz = 25;
 public:
     template <typename T>
     void init(T* q) {
-        TRANSACTION {
-            std::uniform_int_distribution<int> keydist(0,init_sz*2-1);
-            Rand transgen(0,0);
-            for (unsigned i = 0; i < init_sz; ++i) {
-                q->insert(keydist(transgen),i); 
-            }
-        } RETRY(false);
+        for (unsigned i = 0; i < init_sz; ++i) {
+            TRANSACTION {
+                assert(q->insert(i,i)); 
+            } RETRY(false);
+        }
     }
 
     void init_sut(DT* q) {init<DT>(q);}
@@ -110,16 +108,18 @@ public:
             std::cout << "[" << me << "] try to insert key " << key << " and val " << val << std::endl;
             TransactionTid::unlock(lock);
 #endif
-            q->insert(key, val);
+            bool inserted = q->insert(key, val);
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
-            std::cout << "[" << me << "] insert key " << key << " and val " << val << std::endl;
+            inserted ? std::cout << "[" << me << "] insert key " << key << " and val " << val << std::endl
+                    : std::cout << "[" << me << "] failed insert key " << key << " and val " << val << std::endl;
             TransactionTid::unlock(lock);
 #endif
             op_record* rec = new op_record;
             rec->op = op;
             rec->args.push_back(key);
             rec->args.push_back(val);
+            rec->rdata.push_back(inserted);
             return rec;
         } else if (op == 1) {
 #if PRINT_DEBUG
@@ -127,17 +127,17 @@ public:
             std::cout << "[" << me << "] try to erase " << key<< std::endl;
             TransactionTid::unlock(lock);
 #endif
-            bool ret = q->erase(key);
+            bool erased = q->erase(key);
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
-            ret ? std::cout << "[" << me << "] success erase key " << key << std::endl 
+            erased ? std::cout << "[" << me << "] success erase key " << key << std::endl 
                 : std::cout << "[" << me << "] failed erase key " << key << std::endl;
             TransactionTid::unlock(lock);
 #endif
             op_record* rec = new op_record;
             rec->op = op;
             rec->args.push_back(key);
-            rec->rdata.push_back(ret);
+            rec->rdata.push_back(erased);
             return rec;
         } else if (op == 2) {
 #if PRINT_DEBUG
@@ -146,18 +146,18 @@ public:
             TransactionTid::unlock(lock);
 #endif
             int val;
-            bool ret = q->find(key, val);
+            bool found = q->find(key, val);
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
-            ret ? std::cout << "[" << me << "] found " << val << " with key " << key << std::endl
+            found ? std::cout << "[" << me << "] found " << val << " with key " << key << std::endl
                 : std::cout << "[" << me << "] didn't find key " << key << std::endl;
             TransactionTid::unlock(lock);
 #endif
             op_record* rec = new op_record;
             rec->op = op;
             rec->args.push_back(key);
-            rec->rdata.push_back(ret);
             rec->rdata.push_back(val);
+            rec->rdata.push_back(found);
             return rec;
         }
         return nullptr;
@@ -167,17 +167,21 @@ public:
         if (op->op == 0) {
             int key = op->args[0];
             int val = op->args[1];
-            q->insert(key, val);
+            bool inserted = q->insert(key, val);
 #if PRINT_DEBUG
-            std::cout << "inserting: " << key << ", " << val << std::endl;
+            inserted ? std::cout << "inserting: " << key << ", " << val << std::endl
+                    : std::cout << "inserting failed: " << key << ", " << val << std::endl;
+            op->rdata[1] ? std::cout << "\tinsert expected success" << std::endl 
+                        : std::cout << "\tinsert expected failed" << std::endl;
 #endif
+            assert(inserted == op->rdata[1]);
         } else if (op->op == 1) {
             int key = op->args[0];
             bool erased = q->erase(key);
 #if PRINT_DEBUG
-            std::cout << "erasing: " << key << std::endl;
-            std::cout << "erase replay: " << erased << std::endl;
-            std::cout << "erase expected: " << op->rdata[0] << std::endl;
+            erased ? std::cout << "erasing: " << key << std::endl 
+                : std::cout << "erasing failed: " << key << std::endl;
+            std::cout << "\terase expected: " << op->rdata[0] << std::endl;
 #endif
             assert (erased == op->rdata[0]);
         } else if (op->op == 2) {
@@ -185,13 +189,12 @@ public:
             int val;
             bool found = q->find(key, val);
 #if PRINT_DEBUG
-            std::cout << "finding: " << key << std::endl;
-            found ? std::cout << "find replay: " << found << val << std::endl
-                : std::cout << "find replay: " << val << std::endl;
-            op->rdata[0] ? std::cout << "find expected: " << op->rdata[0] << std::endl
-                : std::cout << "find expected: " << op->rdata[1] << std::endl;
+            found ? std::cout << "find replay: " << key << ", " << val << std::endl
+                : std::cout << "find replay failed: " << key << std::endl;
+            op->rdata[1] ? std::cout << "\tfind expected: " << op->rdata[0] << std::endl
+                : std::cout << "\tfind expected failed" << std::endl;
 #endif
-            assert(found == op->rdata[0]);
+            assert(found == op->rdata[1]);
         }
     }
 

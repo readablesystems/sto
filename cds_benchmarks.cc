@@ -182,11 +182,9 @@ int main() {
     //auto stono = new MapSingleOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 33, 33);
     startAndWait(chm, 50000, 8);
     //startAndWait(chmnt, 50000, 8);
-    //startAndWait(chmnt, 50000, 8);
     //startAndWait(mm, 1000, 8);
     //startAndWait(stono, 1000, 8);
     //startAndWait(stono, 50000, 8);
-    //startAndWait(stono, 150000, 8);
     //startAndWait(stono, 150000, 8);
     /*
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
