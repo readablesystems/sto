@@ -169,17 +169,17 @@ public:
             int val = op->args[1];
             bool inserted = q->insert(key, val);
 #if PRINT_DEBUG
-            inserted ? std::cout << "inserting: " << key << ", " << val << std::endl
+            inserted ? std::cout << "inserted: " << key << ", " << val << std::endl
                     : std::cout << "inserting failed: " << key << ", " << val << std::endl;
-            op->rdata[1] ? std::cout << "\tinsert expected success" << std::endl 
+            op->rdata[0] ? std::cout << "\tinsert expected success" << std::endl 
                         : std::cout << "\tinsert expected failed" << std::endl;
 #endif
-            assert(inserted == op->rdata[1]);
+            assert(inserted == op->rdata[0]);
         } else if (op->op == 1) {
             int key = op->args[0];
             bool erased = q->erase(key);
 #if PRINT_DEBUG
-            erased ? std::cout << "erasing: " << key << std::endl 
+            erased ? std::cout << "erased: " << key << std::endl 
                 : std::cout << "erasing failed: " << key << std::endl;
             std::cout << "\terase expected: " << op->rdata[0] << std::endl;
 #endif
@@ -189,8 +189,8 @@ public:
             int val;
             bool found = q->find(key, val);
 #if PRINT_DEBUG
-            found ? std::cout << "find replay: " << key << ", " << val << std::endl
-                : std::cout << "find replay failed: " << key << std::endl;
+            found ? std::cout << "find: " << key << ", " << val << std::endl
+                : std::cout << "find failed: " << key << std::endl;
             op->rdata[1] ? std::cout << "\tfind expected: " << op->rdata[0] << std::endl
                 : std::cout << "\tfind expected failed" << std::endl;
 #endif
@@ -212,12 +212,13 @@ public:
                 std::cout << "q1 find: " << c1 << std::endl;
 #endif
                 assert(c == c1);
+                if (c) {
 #if PRINT_DEBUG
-                std::cout << "v1: " << v1 << std::endl;
-                std::cout << "v2: " << v2 << std::endl;
+                    std::cout << "v1: " << v1 << std::endl;
+                    std::cout << "v2: " << v2 << std::endl;
 #endif
-                assert(v1 == v2);
-
+                    assert(v1 == v2);
+                }
                 bool e = q->erase(i);
                 bool e1 = q1->erase(i);
 #if PRINT_DEBUG
@@ -229,7 +230,8 @@ public:
         }
         TRANSACTION {
             for (int i = 0; i < MAX_VALUE; i++) {
-                assert(!q->find(i));
+                int val;
+                assert(!q->find(i, val));
             }
         } RETRY(false);
     }
@@ -241,7 +243,7 @@ public:
     }
 #endif
 
-    static const int num_ops_ = 3;
+    static const int num_ops_ = 2;
 };
 
 

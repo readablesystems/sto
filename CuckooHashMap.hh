@@ -232,7 +232,7 @@ public:
                 return b->bucketversion.check_version(read_version);
             } else {
                 // unset the underflow bit because we don't care if it's overflowed or not
-                version_type bv(b->bucketversion.value() ^= underflow_bit);
+                version_type bv(b->bucketversion.value() ^ underflow_bit);
                 return bv.check_version(read_version); 
             }
         } else {
@@ -310,8 +310,8 @@ public:
         if (committed ? has_delete(item) : has_insert(item)) {
             auto e = item.key<internal_elem*>();
             assert(e->phantom());
-            auto st = nontrans_erase(e->key);
-            assert(st == ok);
+            auto erased = nontrans_erase(e->key);
+            assert(erased == true);
         }
     }
 
@@ -328,7 +328,7 @@ private: // STO private members
     // mostly used at commit time to know whether to remove the item during cleanup
     static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
     // used to mark if item has been deleted by the currently running txn
-    static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<1;
+    static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
     
     // used to indicate that the value is a phantom: it has been inserted and not yet committed,
     // or has just been deleted
@@ -661,20 +661,6 @@ public:
         return (res == ok);
     }
 
-    /*! This version of find does the same thing as the two-argument
-     * version, except it returns the value it finds, throwing an \p
-     * std::out_of_range exception if the key isn't in the table. */
-    mapped_type find(const key_type& key) {
-        mapped_type val;
-        bool done = find(key, val);
-
-        if (done) {
-            return val;
-        } else {
-            throw std::out_of_range("key not found in table");
-        }
-    }
-
     //internal_elem* alloc_elem(key_type key, mapped_type val) __attribute__((noinline));
 
     /*! insert puts the given key-value pair into the table. It first
@@ -907,7 +893,7 @@ private:
         //fastpath: 
         lock( ti, i1 );
         res1 = try_add_to_bucket(ti, elem, i1, open1, is_migration);
-        if (res1 == failure_key_duplicated || res1 == failure_key_moved || failure_key_phantom) {
+        if (res1 == failure_key_duplicated || res1 == failure_key_moved || res1 == failure_key_phantom) {
             unlock( ti, i1 );
             return res1;
         } else {
