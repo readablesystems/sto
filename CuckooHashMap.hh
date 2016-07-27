@@ -932,7 +932,8 @@ private:
         }
 
         if (open2 != -1) {
-            ti->buckets_[i1].overflow++;
+            auto old_overflow = ti->buckets_[i1].overflow++;
+            if (!old_overflow) ti->buckets_[i1].lock_and_inc_version();
             add_to_bucket(ti, elem, i2, open2);
             unlock_two(ti, i1, i2);
             // update the bucketversion either now (for migration) or @ commit (add write)
@@ -962,7 +963,8 @@ private:
             }
             size_t first_bucket = index_hash(ti, hv);
             if( insert_bucket != first_bucket) {
-                ti->buckets_[first_bucket].overflow++;
+                auto old_overflow = ti->buckets_[first_bucket].overflow++;
+                if (!old_overflow) ti->buckets_[first_bucket].lock_and_inc_version();
             }
             add_to_bucket(ti, elem, insert_bucket, insert_slot);
             unlock_two(ti, i1, i2);
@@ -1626,7 +1628,8 @@ private:
             size_t hv = hashed_key( elem2->key );
             size_t first_bucket = index_hash(ti, hv);
             if( fb == first_bucket ) { //we're moving from first bucket to alternate
-                ti->buckets_[first_bucket].overflow++;
+                auto old_overflow = ti->buckets_[first_bucket].overflow++;
+                if (old_overflow) ti->buckets_[first_bucket].lock_and_inc_version();
             } else { //we're moving from alternate to first bucket
                 assert( tb == first_bucket );
                 ti->buckets_[first_bucket].overflow--;
