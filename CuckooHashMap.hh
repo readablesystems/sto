@@ -67,32 +67,27 @@ class CuckooHashMap: public Shared {
     } cuckoo_status;
 
     struct rw_lock {
-        std::atomic<size_t> num;
+    private:
+        TVersion num;
 
+    public:
         rw_lock() {
-            num.store(0);
         }
 
         inline size_t get_version() {
-            return num.load();
+            return num.value();
         }
 
         inline void lock() {
-            size_t start_version = get_version();
-            while( (start_version & 1) || !num.compare_exchange_strong(
-                    start_version, start_version+1, std::memory_order_release, std::memory_order_relaxed) ) {
-                start_version = get_version();
-            }
+            num.lock();
         }
 
         inline void unlock() {
-            num.fetch_add(1, std::memory_order_relaxed);
+            num.set_version_unlock(num.value() + TransactionTid::increment_value);
         }
 
         inline bool try_lock() {
-            size_t start_version = get_version();
-            return( !(start_version & 1) && num.compare_exchange_strong(
-                    start_version, start_version+1, std::memory_order_release, std::memory_order_relaxed) );
+            return num.try_lock();
         }
     } __attribute__((aligned(64)));
 
