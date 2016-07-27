@@ -227,13 +227,7 @@ public:
         auto read_version = item.template read_value<version_type>();
         if (is_bucket(item)) {
             auto b = unpack_bucket(item.key<void*>());
-            if (read_version.value() & underflow_bit) {
-                return b->bucketversion.check_version(read_version);
-            } else {
-                // unset the underflow bit because we don't care if it's overflowed or not
-                version_type bv(b->bucketversion.value() & ~underflow_bit);
-                return bv.check_version(read_version); 
-            }
+            return b->bucketversion.check_version(read_version);
         } else {
             auto e = item.key<internal_elem*>();
             return e->version.check_version(read_version);
@@ -331,9 +325,6 @@ private:
     // used to indicate that the value is a phantom: it has been inserted and not yet committed,
     // or has just been deleted
     static constexpr TransactionTid::type phantom_bit = TransactionTid::user_bit<<1;
-    // used to mark if we're only adding a read of this bucket if it is not overflowed (if it 
-    // overflows, the bucketversion is not updated, but the relevant key could have been inserted)
-    static constexpr TransactionTid::type underflow_bit = TransactionTid::user_bit<<2;
 
     struct internal_elem {
         key_type key;
@@ -942,7 +933,6 @@ private:
 
         if (open2 != -1) {
             ti->buckets_[i1].overflow++;
-            ti->buckets_[i1].bucketversion.value() |= underflow_bit;
             add_to_bucket(ti, elem, i2, open2);
             unlock_two(ti, i1, i2);
             // update the bucketversion either now (for migration) or @ commit (add write)
@@ -973,7 +963,6 @@ private:
             size_t first_bucket = index_hash(ti, hv);
             if( insert_bucket != first_bucket) {
                 ti->buckets_[first_bucket].overflow++;
-                ti->buckets_[first_bucket].bucketversion.value() |= underflow_bit;
             }
             add_to_bucket(ti, elem, insert_bucket, insert_slot);
             unlock_two(ti, i1, i2);
@@ -1026,8 +1015,6 @@ private:
         if (res1 == ok || res1 == failure_key_moved || !hasOverflow(ti, i1) || res1 == failure_key_phantom ) {
             unlock( ti, i1 );
             if (transactional && res1 == failure_key_not_found) {
-                // add a read of the bucket so that we know no items have been added @ commit
-                ti->buckets_[i1].bucketversion.value() |= underflow_bit;
                 Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
             }
             return res1;
@@ -1047,7 +1034,6 @@ private:
         if (res2 == ok || res2 == failure_key_moved || res2 == failure_key_phantom) {
             if (res2 == ok) {
                 ti->buckets_[i1].overflow--;
-                if (hasOverflow(ti, i1)) ti->buckets_[i1].bucketversion.value() &= ~underflow_bit;
             }
             unlock_two(ti, i1, i2);
             return res2;
@@ -1641,11 +1627,9 @@ private:
             size_t first_bucket = index_hash(ti, hv);
             if( fb == first_bucket ) { //we're moving from first bucket to alternate
                 ti->buckets_[first_bucket].overflow++;
-                ti->buckets_[first_bucket].bucketversion.value() |= underflow_bit;
             } else { //we're moving from alternate to first bucket
                 assert( tb == first_bucket );
                 ti->buckets_[first_bucket].overflow--;
-                if (hasOverflow(ti, first_bucket)) ti->buckets_[i1].bucketversion.value() &= ~underflow_bit;
             }
 
             ti->buckets_[tb].setKV(ts, elem2);
