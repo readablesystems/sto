@@ -231,7 +231,7 @@ public:
             return b->bucketversion.check_version(read_version);
         } else {
             auto e = item.key<internal_elem*>();
-            return e->version.check_version(read_version);
+            return !is_phantom(item, e) && e->version.check_version(read_version);
         }
     }
 
@@ -264,6 +264,8 @@ public:
                 } else {
                     e->version.inc_nonopaque_version();
                     e->version.set_version_locked(e->version.value() | phantom_bit);
+                    //auto erased = nontrans_erase(e->key);
+                    //assert(erased == true);
                 }
             }
             // we don't need to set the actual value because we inserted this item, and 
@@ -301,7 +303,7 @@ public:
     }
 
     void cleanup(TransItem& item, bool committed) override {
-        if (committed ? has_delete(item) : has_insert(item)) {
+        if ((committed ? has_delete(item) : has_insert(item)) && !is_bucket(item)) {
             auto e = item.key<internal_elem*>();
             assert(e->phantom());
             auto erased = nontrans_erase(e->key);
@@ -728,11 +730,21 @@ public:
      * calling their destructors. If \p key is not there, it returns
      * false. */
     bool erase(const key_type& key) {
-        return erase_helper(key, true/*transactional*/);
+        //return erase_helper(key, true/*transactional*/);
+        if (erase_helper(key, true/*transactional*/)) {
+            fprintf(stderr, "erased t %d\n", key);
+            return true;
+        }
+        return false;
     }
 
     bool nontrans_erase(const key_type& key) {
-        return erase_helper(key, false/*transactional*/);
+        //return erase_helper(key, false/*transactional*/);
+        if (erase_helper(key, false/*transactional*/)) {
+            fprintf(stderr, "erased nt %d\n", key);
+            return true;
+        }
+        return false;
     }
 
     bool erase_helper(const key_type& key, bool transactional) {
