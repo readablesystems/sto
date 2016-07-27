@@ -800,7 +800,7 @@ private:
             unlock( ti, i1 );
             return res1;
         } else {
-            if( !try_lock(ti, i1) ) {
+            if( !try_lock(ti, i2) ) {
                 unlock(ti, i1);
                 lock_two(ti, i1, i2);
                 res1 = try_del_from_bucket(ti, key, i1);

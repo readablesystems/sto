@@ -79,6 +79,7 @@ class CuckooHashMap: public Shared {
         }
 
         inline void lock() {
+            assert(!num.is_locked_here());
             num.lock();
         }
 
@@ -1015,13 +1016,15 @@ private:
         res1 = try_del_from_bucket(ti, key, i1, transactional);
         // if we found the element there, or nothing ever was added to second bucket, then we're done
         if (res1 == ok || res1 == failure_key_moved || !hasOverflow(ti, i1) || res1 == failure_key_phantom ) {
+            auto bv = ti->buckets_[i1].bucketversion;
             unlock( ti, i1 );
             if (transactional && res1 == failure_key_not_found) {
-                Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
+                //XXX
+                Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(bv);
             }
             return res1;
         } else {
-            if( !try_lock(ti, i1) ) {
+            if( !try_lock(ti, i2) ) {
                 unlock(ti, i1);
                 lock_two(ti, i1, i2);
                 res1 = try_del_from_bucket(ti, key, i1, transactional);
@@ -1043,11 +1046,13 @@ private:
 
         // failure_key_not_found. not that underflow bit is not set (because there was overflow --
         // we had to check the second bucket)
+        auto bv1 = ti->buckets_[i1].bucketversion;
+        auto bv2 = ti->buckets_[i2].bucketversion;
         unlock_two(ti, i1, i2);
         if (transactional) {
             // add a read of both buckets so that we know no items have been added @ commit
-            Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
-            Sto::item(this, pack_bucket(&ti->buckets_[i2])).observe(ti->buckets_[i2].bucketversion);
+            Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(bv1);
+            Sto::item(this, pack_bucket(&ti->buckets_[i2])).observe(bv2);
         }
         return failure_key_not_found;
     }

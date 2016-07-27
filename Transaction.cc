@@ -25,6 +25,9 @@ void Transaction::initialize() {
         tset_[i] = &tset0_[i * tset_chunk];
     for (unsigned i = tset_initial_capacity / tset_chunk; i != arraysize(tset_); ++i)
         tset_[i] = nullptr;
+#if STO_DEBUG_ABORTS
+    last_txn_aborted_ = false;
+#endif
 }
 
 Transaction::~Transaction() {
@@ -136,6 +139,10 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
 }
 
 void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
+#if STO_DEBUG_ABORTS
+    last_txn_aborted_ = !committed;
+#endif
+
     if (!committed) {
         TXP_INCREMENT(txp_total_aborts);
 #if STO_DEBUG_ABORTS

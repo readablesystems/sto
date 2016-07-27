@@ -24,7 +24,7 @@
 #endif
 
 #ifndef STO_DEBUG_ABORTS
-#define STO_DEBUG_ABORTS 0
+#define STO_DEBUG_ABORTS 1
 #endif
 #ifndef STO_DEBUG_ABORTS_FRACTION
 #define STO_DEBUG_ABORTS_FRACTION 0.001
@@ -648,6 +648,7 @@ private:
     mutable TransItem* abort_item_;
     mutable const char* abort_reason_;
     mutable TVersion::type abort_version_;
+    mutable bool last_txn_aborted_;
 #endif
     TransItem* tset_[tset_max_capacity / tset_chunk];
 #if TRANSACTION_HASHTABLE
