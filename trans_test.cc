@@ -8,9 +8,9 @@
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define NTRANS 10 // Number of transactions each thread should run.
-#define N_THREADS 1 // Number of concurrent threads
-#define MAX_OPS 1 // Maximum number of operations in a transaction.
+#define NTRANS 50 // Number of transactions each thread should run.
+#define N_THREADS 8 // Number of concurrent threads
+#define MAX_OPS 3 // Maximum number of operations in a transaction.
 
 #define PRIORITY_QUEUE 0
 #define HASHTABLE 1

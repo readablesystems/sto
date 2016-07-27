@@ -315,15 +315,14 @@ public:
         }
     }
 
-private: // STO private members
-    // used to mark whether a key is a bucket (for bucket version checks)
-    // or a pointer (which will always have the lower 3 bits as 0)
-    static constexpr uintptr_t bucket_bit = 1U<<0;
-
+private:
     typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type version_type;
     typedef typename std::conditional<Opacity, TWrapped<mapped_type>, TNonopaqueWrapped<mapped_type>>::type 
         wrapped_type;
 
+    // used to mark whether a key is a bucket (for bucket version checks)
+    // or a pointer (which will always have the lower 3 bits as 0)
+    static constexpr uintptr_t bucket_bit = 1U<<0;
     // used to mark if item has been inserted by the currently running txn
     // mostly used at commit time to know whether to remove the item during cleanup
     static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
@@ -332,10 +331,10 @@ private: // STO private members
     
     // used to indicate that the value is a phantom: it has been inserted and not yet committed,
     // or has just been deleted
-    static constexpr TransactionTid::type phantom_bit = TransactionTid::user_bit;
+    static constexpr TransactionTid::type phantom_bit = TransactionTid::user_bit<<1;
     // used to mark if we're only adding a read of this bucket if it is not overflowed (if it 
     // overflows, the bucketversion is not updated, but the relevant key could have been inserted)
-    static constexpr TransactionTid::type underflow_bit = TransactionTid::user_bit<<1;
+    static constexpr TransactionTid::type underflow_bit = TransactionTid::user_bit<<2;
 
     struct internal_elem {
         key_type key;
@@ -920,7 +919,7 @@ private:
                         return res1;
                     }
                 }
-           }
+            }
         }
 
         //at this point we must have both buckets locked
@@ -987,7 +986,7 @@ private:
             if (is_migration) ti->buckets_[insert_bucket].lock_and_inc_version();
             else {
                 Sto::item(this, pack_bucket(&ti->buckets_[insert_bucket])).add_write();
-                Sto::item(this, elem).add_flags(insert_tag);
+                Sto::item(this, elem).add_flags(insert_tag).add_write(elem->value);
             }
             return ok;
         }
@@ -1028,9 +1027,9 @@ private:
         if (res1 == ok || res1 == failure_key_moved || !hasOverflow(ti, i1) || res1 == failure_key_phantom ) {
             unlock( ti, i1 );
             if (transactional && res1 == failure_key_not_found) {
-                    // add a read of the bucket so that we know no items have been added @ commit
-                    ti->buckets_[i1].bucketversion.value() |= underflow_bit;
-                    Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
+                // add a read of the bucket so that we know no items have been added @ commit
+                ti->buckets_[i1].bucketversion.value() |= underflow_bit;
+                Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
             }
             return res1;
         } else {
@@ -1046,7 +1045,7 @@ private:
         }
 
         res2 = try_del_from_bucket(ti, key, i2, transactional);
-        if (res2 == ok || res2 == failure_key_moved || res1 == failure_key_phantom) {
+        if (res2 == ok || res2 == failure_key_moved || res2 == failure_key_phantom) {
             if (res2 == ok) {
                 ti->buckets_[i1].overflow--;
                 if (hasOverflow(ti, i1)) ti->buckets_[i1].bucketversion.value() &= ~underflow_bit;
