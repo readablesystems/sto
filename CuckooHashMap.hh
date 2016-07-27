@@ -89,6 +89,10 @@ class CuckooHashMap: public Shared {
         inline bool try_lock() {
             return num.try_lock();
         }
+
+        inline bool is_locked() const {
+            return num.is_locked();
+        }
     } __attribute__((aligned(64)));
 
     /* This is a hazard pointer, used to indicate which version of the
@@ -1161,7 +1165,7 @@ private:
      * that the initial version is not dirty
      */
     static inline bool check_version(const size_t v_i, const size_t v_f) {
-        return (v_i==v_f && (v_i & W) == 0);
+        return (v_i==v_f && !TransactionTid::is_locked(v_i));
     }
 
     static inline bool check_version_two(const size_t v1_i, const size_t v2_i,
@@ -1714,8 +1718,8 @@ private:
                 insert_bucket = cuckoo_path[0].bucket;
                 insert_slot = cuckoo_path[0].slot;
                 assert(insert_bucket == i1 || insert_bucket == i2);
-                assert(ti->buckets_[i1].lock.get_version() & W);
-                assert(ti->buckets_[i2].lock.get_version() & W);
+                assert(ti->buckets_[i1].lock.is_locked());
+                assert(ti->buckets_[i2].lock.is_locked());
                 assert(ti->buckets_[insert_bucket].elems[insert_slot] == NULL);
                 return ok;
             }
