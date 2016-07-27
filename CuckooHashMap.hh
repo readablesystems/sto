@@ -338,6 +338,14 @@ private:
         bool phantom() { return version.value() & phantom_bit; }
     };
 
+    struct version_to_observe {
+        bool observe_me;
+        void* ptr;
+        version_type version;
+
+        version_to_observe() : observe_me(false), ptr(NULL), version(0) {}
+    };
+
     /* cacheint is a cache-aligned atomic integer type. */
     struct cacheint {
         std::atomic<size_t> num;
@@ -879,12 +887,14 @@ private:
             bool is_migration) {
         int open1, open2;
         cuckoo_status res1, res2;
+        version_to_observe vto;
     RETRY:
         //fastpath: 
         lock( ti, i1 );
-        res1 = try_add_to_bucket(ti, elem, i1, open1, is_migration);
+        res1 = try_add_to_bucket(ti, elem, i1, open1, vto, is_migration);
         if (res1 == failure_key_duplicated || res1 == failure_key_moved || res1 == failure_key_phantom) {
             unlock( ti, i1 );
+            if (vto.observe_me) Sto::item(this, vto.ptr).observe(vto.version);
             return res1;
         } else {
             assert( res1 == ok ); 
@@ -898,15 +908,17 @@ private:
                     Sto::item(this, pack_bucket(&ti->buckets_[i1])).add_write();
                     Sto::item(this, elem).add_flags(insert_tag).add_write(elem->value);
                 }
+                assert(!vto.observe_me);
                 return ok;
             } else { //we need to try and get the second lock
                 if( !try_lock(ti, i2) ) {
                     unlock(ti, i1);
                     lock_two(ti, i1, i2);
                     // we need to make sure nothing happened to the first bucket while it was unlocked
-                    res1 = try_add_to_bucket(ti, elem, i1, open1, is_migration);
+                    res1 = try_add_to_bucket(ti, elem, i1, open1, vto, is_migration);
                     if (res1 == failure_key_duplicated || res1 == failure_key_moved || res1 == failure_key_phantom) {
                         unlock_two(ti, i1, i2);
+                        if (vto.observe_me) Sto::item(this, vto.ptr).observe(vto.version);
                         return res1;
                     }
                 }
@@ -914,9 +926,10 @@ private:
         }
 
         //at this point we must have both buckets locked
-        res2 = try_add_to_bucket(ti, elem, i2, open2, is_migration);
-        if (res1 == failure_key_duplicated || res1 == failure_key_moved || res1 == failure_key_phantom) {
+        res2 = try_add_to_bucket(ti, elem, i2, open2, vto, is_migration);
+        if (res2 == failure_key_duplicated || res2 == failure_key_moved || res2 == failure_key_phantom) {
             unlock_two(ti, i1, i2);
+            if (vto.observe_me) Sto::item(this, vto.ptr).observe(vto.version);
             return res2;
         }
 
@@ -929,6 +942,7 @@ private:
                 Sto::item(this, pack_bucket(&ti->buckets_[i1])).add_write();
                 Sto::item(this, elem).add_flags(insert_tag).add_write(elem->value);
             }
+            assert(!vto.observe_me);
             return ok;
         }
 
@@ -943,6 +957,7 @@ private:
                 Sto::item(this, pack_bucket(&ti->buckets_[i2])).add_write();
                 Sto::item(this, elem).add_flags(insert_tag).add_write(elem->value);
             }
+            assert(!vto.observe_me);
             return ok;
         }
 
@@ -1011,36 +1026,39 @@ private:
         i1 = index_hash(ti, hv);
         i2 = alt_index(ti, hv, i1);
         cuckoo_status res1, res2;
+        version_to_observe vto;
         
         lock( ti, i1 );
-        res1 = try_del_from_bucket(ti, key, i1, transactional);
+        res1 = try_del_from_bucket(ti, key, i1, vto, transactional);
         // if we found the element there, or nothing ever was added to second bucket, then we're done
         if (res1 == ok || res1 == failure_key_moved || !hasOverflow(ti, i1) || res1 == failure_key_phantom ) {
             auto bv = ti->buckets_[i1].bucketversion;
             unlock( ti, i1 );
             if (transactional && res1 == failure_key_not_found) {
-                //XXX
                 Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(bv);
             }
+            if (vto.observe_me) Sto::item(this, vto.ptr).observe(vto.version);
             return res1;
         } else {
             if( !try_lock(ti, i2) ) {
                 unlock(ti, i1);
                 lock_two(ti, i1, i2);
-                res1 = try_del_from_bucket(ti, key, i1, transactional);
+                res1 = try_del_from_bucket(ti, key, i1, vto, transactional);
                 if( res1 == ok || res1 == failure_key_moved || res1 == failure_key_phantom ) {
                     unlock_two(ti, i1, i2);
+                    if (vto.observe_me) Sto::item(this, vto.ptr).observe(vto.version);
                     return res1;
                 }
             }
         }
 
-        res2 = try_del_from_bucket(ti, key, i2, transactional);
+        res2 = try_del_from_bucket(ti, key, i2, vto, transactional);
         if (res2 == ok || res2 == failure_key_moved || res2 == failure_key_phantom) {
             if (res2 == ok) {
                 ti->buckets_[i1].overflow--;
             }
             unlock_two(ti, i1, i2);
+            if (vto.observe_me) Sto::item(this, vto.ptr).observe(vto.version);
             return res2;
         }
 
@@ -1049,6 +1067,7 @@ private:
         auto bv1 = ti->buckets_[i1].bucketversion;
         auto bv2 = ti->buckets_[i2].bucketversion;
         unlock_two(ti, i1, i2);
+        if (vto.observe_me) Sto::item(this, vto.ptr).observe(vto.version);
         if (transactional) {
             // add a read of both buckets so that we know no items have been added @ commit
             Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(bv1);
@@ -1766,9 +1785,11 @@ private:
     cuckoo_status try_add_to_bucket(TableInfo *ti, 
                                   internal_elem* elem,
                                   const size_t i, int& j,
+                                  version_to_observe& vto,
                                   bool is_migration) {
         j = -1;
         bool found_empty = false;
+        vto.observe_me = false;
 
         if (ti->buckets_[i].hasmigrated) {
             return failure_key_moved;
@@ -1777,7 +1798,7 @@ private:
         for (size_t k = 0; k < SLOT_PER_BUCKET; k++) {
             elem_in_table = ti->buckets_[i].elems[k];
             if (elem_in_table != NULL) {
-                auto elemver = elem_in_table->version;
+                auto ev = elem_in_table->version;
                 if (eqfn(elem->key, elem_in_table->key)) {
                     // we only want to keep track clashes in the table if we're actually trying
                     // to insert a new item (not migrate it over)
@@ -1811,7 +1832,9 @@ private:
                         // XXX this can result in false aborts if the element is deleted and
                         // then inserted again? oh well... not sure how we can track "existence"
                         else { 
-                            item.observe(elemver);
+                            vto.observe_me = true;
+                            vto.version = ev;
+                            vto.ptr = elem_in_table;
                         }
                     }
                     return failure_key_duplicated;
@@ -1828,9 +1851,9 @@ private:
 
     /* try_del_from_bucket will search the bucket for the given key,
      * and set the slot of the key to empty if it finds it. */
-    cuckoo_status try_del_from_bucket(TableInfo *ti, 
-                                    const key_type &key, const size_t i,
-                                    bool transactional) {
+    cuckoo_status try_del_from_bucket(TableInfo *ti, const key_type &key, const size_t i,
+                                    version_to_observe& vto, bool transactional) {
+        vto.observe_me = false;
         if (ti->buckets_[i].hasmigrated) {
             return failure_key_moved;
         }
@@ -1858,14 +1881,18 @@ private:
                             // just unmark all attributes so the item is ignored
                             item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
                             // check that no one else inserts the node into the bucket 
-                            Sto::item(this, pack_bucket(&ti->buckets_[i])).observe(ti->buckets_[i].bucketversion);
+                            vto.observe_me = true;
+                            vto.ptr = pack_bucket(&ti->buckets_[i]);
+                            vto.version = ti->buckets_[i].bucketversion;
                             return ok;
                         } 
                         // we deleted before, then wrote to the item (inserted), and 
                         // now we're deleting again...
                         else { 
                             // all we need to do is make sure no one deletes before we do
-                            item.observe(elemver);
+                            vto.observe_me = true;
+                            vto.ptr = elem;
+                            vto.version = elemver; 
                             item.add_write().add_flags(delete_tag);
                         }
                     } else if (is_phantom(item, elem)) {
@@ -1873,7 +1900,9 @@ private:
                         return failure_key_phantom;
                     } else { 
                         // make sure no one deletes before we do
-                        item.observe(elemver);
+                        vto.observe_me = true;
+                        vto.ptr = elem;
+                        vto.version = elemver; 
                         item.add_write().add_flags(delete_tag);
                     }
                 // non-transactional, so actually delete
