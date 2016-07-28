@@ -176,11 +176,11 @@ int main() {
     std::vector<Test> map_tests = make_map_tests();
     
     //dualprintf("CHM, NontransCHM, MM, STO\n");
-    auto chm = new MapSingleOpTest<DatatypeHarness<CuckooHashMap<int,int,CityHasher<int>,std::equal_to<int>,125000, false>>>(STO, 33, 33);
+    //auto chm = new MapSingleOpTest<DatatypeHarness<CuckooHashMap<int,int,CityHasher<int>,std::equal_to<int>,125000, false>>>(STO, 33, 33);
     //auto chmnt = new MapSingleOpTest<DatatypeHarness<CuckooHashMapNT<int,int,CityHasher<int>,std::equal_to<int>,125000>>>(CDS, 33, 33);
     //auto mm = new MapSingleOpTest<DatatypeHarness<MICHAELMAP(int,int)>>(CDS, 33, 33);
     //auto stono = new MapSingleOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 33, 33);
-    startAndWait(chm, 50000, 8);
+    //startAndWait(chm, 50000, 8);
     //startAndWait(chmnt, 50000, 8);
     //startAndWait(mm, 1000, 8);
     //startAndWait(stono, 1000, 8);
@@ -229,7 +229,7 @@ int main() {
             dualprintf("\n");
         }
     }
-
+*/
     // queue tests
     std::vector<Test> queue_tests = make_queue_tests();
     for (unsigned i = 0; i < queue_tests.size(); i+=num_queues) {
@@ -253,7 +253,6 @@ int main() {
             dualprintf("\n");
         }
     }
-    */
     cds::Terminate();
     return 0;
 }

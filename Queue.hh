@@ -5,11 +5,10 @@
 #include "Transaction.hh"
 #include "TWrapped.hh"
 
-template <typename T, unsigned BUF_SIZE = 1000000,
-          template <typename> class W = TOpaqueWrapped>
+template <typename T, bool Opacity = true, unsigned BUF_SIZE = 1000000>
 class Queue: public Shared {
 public:
-    typedef typename W<T>::version_type version_type;
+    typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type version_type;
 
     Queue() : head_(0), tail_(0), tailversion_(0), headversion_(0) {}
 
@@ -226,7 +225,11 @@ private:
             // only increment head if item popped from actual q
             if (!is_rw(item))
                 head_ = (head_+1) % BUF_SIZE;
-            headversion_.set_version(txn.commit_tid());
+            if (Opacity) {
+                headversion_.set_version(txn.commit_tid());
+            } else {
+                headversion_.inc_nonopaque_version();
+            }
         }
         // install pushes
         else if (item.key<int>() == -1) {
@@ -248,7 +251,11 @@ private:
                 tail_ = (tail_+1) % BUF_SIZE;
             }
 
-            tailversion_.set_version(txn.commit_tid());
+            if (Opacity) {
+                tailversion_.set_version(txn.commit_tid());
+            } else {
+                tailversion_.inc_nonopaque_version();
+            }
         }
     }
     

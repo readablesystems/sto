@@ -80,7 +80,7 @@ public:
     DS v_;
 };
 
-template <typename DS> struct STOQueueHarness { 
+template <typename DS> struct STOPQueueHarness { 
     typedef typename DS::value_type value_type;
 public:
     bool pop() { return v_.pop(); }
@@ -107,9 +107,9 @@ private:
  * Priority Queue Templates
  */
 template <typename T> struct DatatypeHarness<PriorityQueue<T>> : 
-    public STOQueueHarness<PriorityQueue<T>>{};
+    public STOPQueueHarness<PriorityQueue<T>>{};
 template <typename T> struct DatatypeHarness<PriorityQueue<T, true>> : 
-    public STOQueueHarness<PriorityQueue<T, true>>{};
+    public STOPQueueHarness<PriorityQueue<T, true>>{};
 
 template <typename T> struct DatatypeHarness<cds::container::MSPriorityQueue<T>> {
     typedef T value_type;
@@ -136,8 +136,8 @@ template <typename T> struct DatatypeHarness<cds::container::FCPriorityQueue<T, 
 /* 
  * Queue Templates
  */
-template <typename T> struct DatatypeHarness<Queue<T>> {
-    typedef T value_type;
+template <typename DS> struct STOQueueHarness {
+    typedef typename DS::value_type value_type;
 public:
     bool pop() { return v_.pop(); }
     bool cleanup_pop() { 
@@ -146,36 +146,21 @@ public:
         assert(Sto::try_commit());
         return ret;
     }
-    void push(T v) { v_.push(v); }
-    void init_push(T v) { 
+    void push(value_type v) { v_.push(v); }
+    void init_push(value_type v) { 
         Sto::start_transaction();
         v_.push(v);
         assert(Sto::try_commit());
     }
     size_t size() { return 0; }
 private:
-    Queue<T> v_;
+    DS v_;
 };
-template <typename T> struct DatatypeHarness<Queue2<T>> {
-    typedef T value_type;
-public:
-    bool pop() { return v_.pop(); }
-    bool cleanup_pop() { 
-        Sto::start_transaction();
-        bool ret = pop();
-        assert(Sto::try_commit());
-        return ret;
-    }
-    void push(T v) { v_.push(v); }
-    void init_push(T v) { 
-        Sto::start_transaction();
-        v_.push(v);
-        assert(Sto::try_commit());
-    }
-    size_t size() { return 0; }
-private:
-    Queue2<T> v_;
-};
+template <typename T> struct DatatypeHarness<Queue2<T>> : public STOQueueHarness<Queue<T>>{};
+template <typename T> struct DatatypeHarness<Queue2<T>> : public STOQueueHarness<Queue<T, false>>{};
+template <typename T> struct DatatypeHarness<Queue2<T>> : public STOQueueHarness<Queue2<T>>{};
+template <typename T> struct DatatypeHarness<Queue2<T>> : public STOQueueHarness<Queue2<T,false>>{};
+
 template <typename T> struct DatatypeHarness<FCQueue<T>> {
     typedef T value_type;
 public:
@@ -467,8 +452,10 @@ std::vector<Test> make_pqueue_tests() {
 int num_pqueues = 4;
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
-    {desc, "STO queue", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  \
-    {desc, "STO queue2", new test<DatatypeHarness<Queue2<type>>>(STO, ## __VA_ARGS__)},                                  \
+    {desc, "STO queue", new test<DatatypeHarness<Queue<type, false>>>(STO, ## __VA_ARGS__)},                                  \
+    {desc, "STO queue O", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  \
+    {desc, "STO queue2", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)},                                  \
+    {desc, "STO queue2 O", new test<DatatypeHarness<Queue2<type>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "FC queue", new test<DatatypeHarness<cds::container::FCQueue<type, std::queue<type>, FCQUEUE_TRAITS()>>>(CDS, ## __VA_ARGS__)},                 \
     {desc, "STO/FC queue", new test<DatatypeHarness<FCQueue<type>>>(STO, ## __VA_ARGS__)}
     //{desc, "Basket queue", new test<DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},         

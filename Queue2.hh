@@ -14,11 +14,10 @@
  */
 
 
-template <typename T, unsigned BUF_SIZE = 100000,
-          template <typename> class W = TOpaqueWrapped>
+template <typename T, bool Opacity = true, unsigned BUF_SIZE = 1000000>
 class Queue2: public Shared {
 public:
-    typedef typename W<T>::version_type version_type;
+    typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type version_type;
 
     Queue2() : head_(0), tail_(0), queueversion_(0) {}
 
@@ -251,7 +250,11 @@ private:
                 tail_ = (tail_+1) % BUF_SIZE;
             }
             // set queueversion appropriately
-            queueversion_.set_version(txn.commit_tid());
+            if (Opacity) {
+                queueversion_.set_version(txn.commit_tid());
+            } else {
+                queueversion_.inc_nonopaque_version();
+            }
         }
     }
     
