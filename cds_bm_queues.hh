@@ -156,10 +156,10 @@ public:
 private:
     DS v_;
 };
-template <typename T> struct DatatypeHarness<Queue2<T>> : public STOQueueHarness<Queue<T>>{};
-template <typename T> struct DatatypeHarness<Queue2<T>> : public STOQueueHarness<Queue<T, false>>{};
+template <typename T> struct DatatypeHarness<Queue<T>> : public STOQueueHarness<Queue<T>>{};
+template <typename T> struct DatatypeHarness<Queue<T, false>> : public STOQueueHarness<Queue<T, false>>{};
 template <typename T> struct DatatypeHarness<Queue2<T>> : public STOQueueHarness<Queue2<T>>{};
-template <typename T> struct DatatypeHarness<Queue2<T>> : public STOQueueHarness<Queue2<T,false>>{};
+template <typename T> struct DatatypeHarness<Queue2<T, false>> : public STOQueueHarness<Queue2<T,false>>{};
 
 template <typename T> struct DatatypeHarness<FCQueue<T>> {
     typedef T value_type;
