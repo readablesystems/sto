@@ -264,8 +264,6 @@ public:
                 } else {
                     e->version.inc_nonopaque_version();
                     e->version.set_version_locked(e->version.value() | phantom_bit);
-                    //auto erased = nontrans_erase(e->key);
-                    //assert(erased == true);
                 }
             }
             // we don't need to set the actual value because we inserted this item, and 
@@ -732,7 +730,6 @@ public:
     bool erase(const key_type& key) {
         //return erase_helper(key, true/*transactional*/);
         if (erase_helper(key, true/*transactional*/)) {
-            fprintf(stderr, "erased t %d\n", key);
             return true;
         }
         return false;
@@ -741,7 +738,6 @@ public:
     bool nontrans_erase(const key_type& key) {
         //return erase_helper(key, false/*transactional*/);
         if (erase_helper(key, false/*transactional*/)) {
-            fprintf(stderr, "erased nt %d\n", key);
             return true;
         }
         return false;
@@ -1066,7 +1062,7 @@ private:
 
         res2 = try_del_from_bucket(ti, key, i2, vto, transactional);
         if (res2 == ok || res2 == failure_key_moved || res2 == failure_key_phantom) {
-            if (res2 == ok) {
+            if (res2 == ok && !transactional) {
                 ti->buckets_[i1].overflow--;
             }
             unlock_two(ti, i1, i2);
