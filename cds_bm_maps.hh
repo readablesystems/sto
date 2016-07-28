@@ -60,9 +60,9 @@ template <typename DS> struct CuckooHashMapHarness {
     typedef typename DS::key_type key_type;
 public:
     CuckooHashMapHarness() { v_ = new DS(); };
-    bool insert(key_type k, mapped_type v) { return true;}// v_->insert(k, v); }
+    bool insert(key_type k, mapped_type v) { return v_->insert(k, v); }
     bool erase(key_type k) { return v_->erase(k); }
-    bool find(key_type k) { return true;}//mapped_type v; return v_->find(k,v); }
+    bool find(key_type k) { mapped_type v; return v_->find(k,v); }
     void init_insert(key_type k, mapped_type v) { 
         Sto::start_transaction();
         v_->insert(k, v); 
