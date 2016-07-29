@@ -186,7 +186,6 @@ int main() {
     //startAndWait(stono, 1000, 8);
     //startAndWait(stono, 50000, 8);
     //startAndWait(stono, 150000, 8);
-    /*
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
         for (auto init_keys = begin(init_sizes); init_keys != end(init_sizes); ++init_keys) {
@@ -202,8 +201,8 @@ int main() {
             }
             dualprintf("\n\n");
         }
-    */
-    /*
+    }
+/*
     // pqueue tests
     std::vector<Test> pqueue_tests = make_pqueue_tests();
     for (unsigned i = 0; i < pqueue_tests.size(); i+=num_pqueues) {
@@ -229,7 +228,6 @@ int main() {
             dualprintf("\n");
         }
     }
-*/
     // queue tests
     std::vector<Test> queue_tests = make_queue_tests();
     for (unsigned i = 0; i < queue_tests.size(); i+=num_queues) {
@@ -253,6 +251,7 @@ int main() {
             dualprintf("\n");
         }
     }
+*/
     cds::Terminate();
     return 0;
 }

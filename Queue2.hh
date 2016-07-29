@@ -18,6 +18,7 @@ template <typename T, bool Opacity = true, unsigned BUF_SIZE = 1000000>
 class Queue2: public Shared {
 public:
     typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type version_type;
+    typedef T value_type;
 
     Queue2() : head_(0), tail_(0), queueversion_(0) {}
 

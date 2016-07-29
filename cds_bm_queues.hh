@@ -475,5 +475,5 @@ std::vector<Test> make_queue_tests() {
         //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[2]),
     };
 }
-int num_queues = 4;
+int num_queues = 6;
 

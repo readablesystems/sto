@@ -258,6 +258,7 @@ public:
         } else {
             auto e = item.key<internal_elem*>();
             if (has_delete(item)) {
+                assert(!e->phantom());
                 if (Opacity) {
                     // will actually erase during cleanup (so we don't lock while we run the delete)
                     e->version.set_version(t.commit_tid() | phantom_bit);
