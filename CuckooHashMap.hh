@@ -306,7 +306,6 @@ public:
         if (((has_delete(item) && committed) || (has_insert(item) && !committed)) && !is_bucket(item)) {
             assert(!(has_insert(item) && has_delete(item)));
             auto e = item.key<internal_elem*>();
-            //if (!committed) fprintf(stderr, "\tcleaning up inserted %d, %d\n", e->key, e->value.access());
             assert(e->phantom());
             auto erased = nontrans_erase(e->key);
             assert(erased == true);
@@ -663,8 +662,6 @@ public:
         return (res == ok);
     }
 
-    //internal_elem* alloc_elem(key_type key, mapped_type val) __attribute__((noinline));
-
     /*! insert puts the given key-value pair into the table. It first
      * checks that \p key isn't already in the table, since the table
      * doesn't support duplicate keys. If the table is out of space,
@@ -678,8 +675,6 @@ public:
         TableInfo *ti_old, *ti_new;
         size_t i1_o, i2_o, i1_n, i2_n; //bucket indices for old+new tables
         cuckoo_status res;
-        //internal_elem* elem = alloc_elem(key, val);
-        internal_elem* elem = new internal_elem(key, val);
     RETRY:
         snapshot_both_get_buckets(ti_old, ti_new, hv, i1_o, i2_o, i1_n, i2_n);
 
@@ -687,7 +682,7 @@ public:
         if (ti_new != nullptr) {
             res = failure_key_moved; 
         } else {
-            res = insert_one(ti_old, hv, elem, i1_o, i2_o, false/*is_migration*/);
+            res = insert_one(ti_old, hv, key, val, i1_o, i2_o);
             if (res == failure_key_phantom) {
                 unset_hazard_pointers();
                 Sto::abort(); assert(0);
@@ -706,7 +701,7 @@ public:
             }
 
             migrate_something(ti_old, ti_new, i1_o, i2_o );
-            res = insert_one(ti_new, hv, elem, i1_n, i2_n, false/*is_migration*/);
+            res = insert_one(ti_new, hv, key, val, i1_n, i2_n);
             if (res == failure_key_phantom) {
                 unset_hazard_pointers();
                 Sto::abort(); assert(0);
@@ -860,7 +855,7 @@ private:
         //we weren't lucky
         do {
             get_version_two(ti, i1, i2, v1_i, v2_i);
-            st = cuckoo_find(key, e, hv, ti, i1, i2);
+            st = cuckoo_find(key, hv, ti, i1, i2);
             get_version_two(ti, i1, i2, v1_f, v2_f);
         } while(!check_version_two(v1_i, v2_i, v1_f, v2_f));
 
@@ -889,16 +884,15 @@ private:
      * In particular, failure_too_slow will trigger a retry
      */
     cuckoo_status insert_one(TableInfo *ti, 
-            size_t hv, internal_elem* elem, 
-            size_t& i1, size_t& i2,
-            bool is_migration) {
+            size_t hv, const key_type& key, const mapped_type& val, 
+            size_t& i1, size_t& i2) {
         int open1, open2;
         cuckoo_status res1, res2;
         version_to_observe vto;
     RETRY:
         //fastpath: 
         lock( ti, i1 );
-        res1 = try_add_to_bucket(ti, elem, i1, open1, vto, is_migration);
+        res1 = try_add_to_bucket(ti, key, val, i1, open1, vto);
         if (res1 == failure_key_duplicated || res1 == failure_key_moved || res1 == failure_key_phantom) {
             unlock( ti, i1 );
             if (vto.observe_me) Sto::item(this, vto.ptr).observe(vto.version);
@@ -909,16 +903,9 @@ private:
             if( !hasOverflow(ti, i1) && open1 != -1 ) {
                 // only add if it's not a delete_my_insert
                 if (res1 == ok) {
-                    //fprintf(stderr, "\tres1 was ok with %d\n", elem->key);
-                    add_to_bucket(ti, elem, i1, open1);
+                    add_to_bucket(ti, key, val, i1, open1);
                 }
                 unlock( ti, i1 );
-                // update the bucketversion either now (for migration) or @ commit (add write)
-                if (is_migration) ti->buckets_[i1].lock_and_inc_version();
-                else {
-                    Sto::item(this, pack_bucket(&ti->buckets_[i1])).add_write();
-                    if (res1 == ok) Sto::item(this, elem).add_write().add_flags(insert_tag);
-                }
                 assert(!vto.observe_me);
                 return ok;
             } else { //we need to try and get the second lock
@@ -926,7 +913,7 @@ private:
                     unlock(ti, i1);
                     lock_two(ti, i1, i2);
                     // we need to make sure nothing happened to the first bucket while it was unlocked
-                    res1 = try_add_to_bucket(ti, elem, i1, open1, vto, is_migration);
+                    res1 = try_add_to_bucket(ti, key, val, i1, open1, vto);
                     if (res1 == failure_key_duplicated || res1 == failure_key_moved || res1 == failure_key_phantom) {
                         unlock_two(ti, i1, i2);
                         if (vto.observe_me) Sto::item(this, vto.ptr).observe(vto.version);
@@ -937,7 +924,7 @@ private:
         }
 
         //at this point we must have both buckets locked
-        res2 = try_add_to_bucket(ti, elem, i2, open2, vto, is_migration);
+        res2 = try_add_to_bucket(ti, key, val, i2, open2, vto);
         if (res2 == failure_key_duplicated || res2 == failure_key_moved || res2 == failure_key_phantom) {
             unlock_two(ti, i1, i2);
             if (vto.observe_me) Sto::item(this, vto.ptr).observe(vto.version);
@@ -946,16 +933,9 @@ private:
 
         if (open1 != -1) {
             if (res1 == ok) {
-                //fprintf(stderr, "\tres1 was ok with %d\n", elem->key);
-                add_to_bucket(ti, elem, i1, open1);
+                add_to_bucket(ti, key, val, i1, open1);
             }
             unlock_two(ti, i1, i2);
-            // update the bucketversion either now (for migration) or @ commit (add write)
-            if (is_migration) ti->buckets_[i1].lock_and_inc_version();
-            else {
-                Sto::item(this, pack_bucket(&ti->buckets_[i1])).add_write();
-                if (res1 == ok) Sto::item(this, elem).add_write().add_flags(insert_tag);
-            }
             assert(!vto.observe_me);
             return ok;
         }
@@ -964,16 +944,9 @@ private:
             auto old_overflow = ti->buckets_[i1].overflow++;
             if (!old_overflow) ti->buckets_[i1].lock_and_inc_version();
             if (res2 == ok) {
-                //fprintf(stderr, "\tres2 was ok with %d\n", elem->key);
-                add_to_bucket(ti, elem, i2, open2);
+                add_to_bucket(ti, key, val, i2, open2);
             }
             unlock_two(ti, i1, i2);
-            // update the bucketversion either now (for migration) or @ commit (add write)
-            if (is_migration) ti->buckets_[i2].lock_and_inc_version();
-            else {
-                Sto::item(this, pack_bucket(&ti->buckets_[i2])).add_write();
-                if (res2 == ok) Sto::item(this, elem).add_write().add_flags(insert_tag);
-            }
             assert(!vto.observe_me);
             return ok;
         }
@@ -990,9 +963,8 @@ private:
              * another insert could have inserted the same key into
              * either i1 or i2, so we check for that before doing the
              * insert. */
-            auto res = cuckoo_find(elem->key, elem, hv, ti, i1, i2);
+            auto res = cuckoo_find(key, hv, ti, i1, i2);
             if (res == ok) {
-                assert(!Sto::item(this, elem).has_write());
                 unlock_two(ti, i1, i2);
                 return failure_key_duplicated;
             }
@@ -1001,19 +973,8 @@ private:
                 auto old_overflow = ti->buckets_[first_bucket].overflow++;
                 if (!old_overflow) ti->buckets_[first_bucket].lock_and_inc_version();
             }
-            add_to_bucket(ti, elem, insert_bucket, insert_slot);
+            add_to_bucket(ti, key, val, insert_bucket, insert_slot);
             unlock_two(ti, i1, i2);
-            // add a write to the bucket so that we update the bucketversion
-            // note that we don't need to add writes of all the buckets modified during
-            // cuckoo hashing because we only care that this bucket was empty
-            
-            // update the bucketversion either now (for migration) or @ commit (add write)
-            if (is_migration) ti->buckets_[insert_bucket].lock_and_inc_version();
-            else {
-                Sto::item(this, pack_bucket(&ti->buckets_[insert_bucket])).add_write();
-                //fprintf(stderr, "\tadd insert after cuckoo hashing %d\n", elem->key);
-                Sto::item(this, elem).add_flags(insert_tag).add_write();
-            }
             return ok;
         }
 
@@ -1138,6 +1099,7 @@ private:
      * then we know that ti_new is indeed the newest table pointer
      */
     bool try_migrate_bucket(TableInfo* ti_old, TableInfo* ti_new, size_t old_bucket) {
+        assert(0);
         if (ti_old->buckets_[old_bucket].hasmigrated) {
             //LIBCUCKOO_DBG("Already migrated bucket %zu\n", old_bucket);
             return false;
@@ -1158,7 +1120,8 @@ private:
             // XXX this updates the new ti's bucket's bucketversion
             // BUT we don't need to update the old bucket's bucketversion, because
             // we're not inserting anything into it... in fact, its contents don't change 
-            res = insert_one(ti_new, hv, elem, i1, i2, true/*is_migration*/);
+            (void)i2;
+            //res = migrate_insert_one(ti_new, hv, elem, i1, i2);
 
             // this can't happen since nothing can have moved out of ti_new (so no failure_key_moved)
             // our invariant ensures that the table can't be full (so no failure_table_full)
@@ -1766,7 +1729,7 @@ private:
     
     /* try_read_from-bucket will search the bucket for the given key
      * and store the associated value if it finds it. */
-    cuckoo_status try_read_from_bucket(const TableInfo *ti, const key_type key,
+    cuckoo_status try_read_from_bucket(const TableInfo *ti, const key_type& key,
                                      internal_elem*& e, const size_t i) {
         if (ti->buckets_[i].hasmigrated) {
             return failure_key_moved;
@@ -1788,13 +1751,16 @@ private:
 
     /* add_to_bucket will insert the given key-value pair into the
      * slot. */
-    static inline void add_to_bucket(TableInfo *ti, 
-                                     internal_elem* elem,
+    inline void add_to_bucket(TableInfo *ti, const key_type& key, const mapped_type& val,
                                      const size_t i, const size_t j) {
         assert(ti->buckets_[i].elems[j] == NULL);
-        //fprintf(stderr, "\tinsert %d\n", elem->key);
-        
+       
+        auto elem = new internal_elem(key, val);
         ti->buckets_[i].setKV(j, elem);
+        // update the bucketversion either now (for migration) or @ commit (add write)
+        //if (is_migration) ti->buckets_[i].lock_and_inc_version();
+        Sto::item(this, pack_bucket(&ti->buckets_[i])).add_write();
+        Sto::item(this, elem).add_write().add_flags(insert_tag);
         ti->num_inserts[counterid].num.fetch_add(1, std::memory_order_relaxed);
     }
 
@@ -1803,11 +1769,9 @@ private:
      * it will search the entire bucket and return false if it finds
      * the key already in the table (duplicate key error) and true
      * otherwise. */
-    cuckoo_status try_add_to_bucket(TableInfo *ti, 
-                                  internal_elem* elem,
+    cuckoo_status try_add_to_bucket(TableInfo *ti, const key_type& key, const mapped_type& val,
                                   const size_t i, int& j,
-                                  version_to_observe& vto,
-                                  bool is_migration) {
+                                  version_to_observe& vto) {
         j = -1;
         vto.observe_me = false;
 
@@ -1819,12 +1783,11 @@ private:
             elem_in_table = ti->buckets_[i].elems[k];
             if (elem_in_table != NULL) {
                 auto ev = elem_in_table->version;
-                if (eqfn(elem->key, elem_in_table->key)) {
+                if (eqfn(key, elem_in_table->key)) {
                     // we only want to keep track clashes in the table if we're actually trying
                     // to insert a new item (not migrate it over)
                     // this should never occur if it is a migration...
-                    assert(!is_migration);
-                    return sto_try_add_with_existing_key(elem, elem_in_table, ev, vto);
+                    return sto_try_add_with_existing_key(val, elem_in_table, ev, vto);
                 }
             } else {
                 j = k;
@@ -1833,7 +1796,7 @@ private:
         return ok;
     }
 
-    cuckoo_status sto_try_add_with_existing_key(internal_elem* new_e, 
+    cuckoo_status sto_try_add_with_existing_key(const mapped_type& val,
                                                 internal_elem* elem_in_table, 
                                                 version_type& ev,
                                                 version_to_observe& vto) {
@@ -1847,11 +1810,9 @@ private:
                 // add a write to install at commit time
                 // we don't need to add any reads of the elem's version
                 // because our delete already added checks for the elem's existence
-                item.clear_flags(delete_tag).clear_write().template add_write<mapped_type>(new_e->value.access());
+                item.clear_flags(delete_tag).clear_write().template add_write<mapped_type>(val);
                 // we don't actually want to allocate this element because it already exists
                 // since we return ok, insert() will not free the element
-                //fprintf(stderr, "\tcleared delete tag %d, %d\n", elem_in_table->key, new_e->key);
-                free(new_e); 
                 // we want to return ok, but also not insert the item
                 assert(!has_insert(item) && !has_delete(item));
                 return ok_delete_then_insert;
@@ -1862,7 +1823,6 @@ private:
             // check if item has been deleted since we read it, or
             // if the item was just inserted by someone else without commit
             if (is_phantom(item, elem_in_table)) {
-                free(new_e); 
                 return failure_key_phantom;
             } 
             // we found some valid key/value pair in the table!
@@ -1875,7 +1835,6 @@ private:
                 vto.ptr = elem_in_table;
             }
         }
-        free(new_e);
         return failure_key_duplicated;
     }
 
@@ -1910,7 +1869,6 @@ private:
                             ti->num_deletes[counterid].num.fetch_add(1, std::memory_order_relaxed);
                             // just unmark all attributes so the item is ignored
                             item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
-                            //fprintf(stderr, "\tdelete_my_insert %d\n", elem->key);
                             // check that no one else inserts the node into the bucket 
                             vto.observe_me = true;
                             vto.ptr = pack_bucket(&ti->buckets_[i]);
@@ -1935,7 +1893,6 @@ private:
                         vto.ptr = elem;
                         vto.version = elemver; 
                         item.add_write(-1).add_flags(delete_tag);
-                        //fprintf(stderr, "\tadded delete tag %d\n", elem->key);
                         assert(!has_insert(item));
                     }
                 // non-transactional, so actually delete
@@ -1952,11 +1909,12 @@ private:
     /* cuckoo_find searches the table for the given key and value,
      * storing the value in the val if it finds the key. It expects
      * the locks to be taken and released outside the function. */
-    cuckoo_status cuckoo_find(const key_type key, internal_elem* e,
+    cuckoo_status cuckoo_find(const key_type key,
                             const size_t hv, const TableInfo *ti,
                             const size_t i1, const size_t i2) {
         (void)hv;
         cuckoo_status res1, res2;
+        internal_elem* e;
         res1 = try_read_from_bucket(ti, key, e, i1);
         if (res1 == ok || !hasOverflow(ti, i1) ) {
             return res1;
@@ -2125,10 +2083,5 @@ const size_t CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::kNumCores =
 
 template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
 std::atomic<size_t> CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::numThreads(0);
-
-/*template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
-typename CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::internal_elem* CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::alloc_elem(key_type key, mapped_type val) {
-        return new CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::internal_elem(key, val);
-}*/
 
 #endif
