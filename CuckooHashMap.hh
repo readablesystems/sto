@@ -306,7 +306,7 @@ public:
         if (((has_delete(item) && committed) || (has_insert(item) && !committed)) && !is_bucket(item)) {
             assert(!(has_insert(item) && has_delete(item)));
             auto e = item.key<internal_elem*>();
-            if (!committed) fprintf(stderr, "\tcleaning up inserted %d\n", e->key);
+            //if (!committed) fprintf(stderr, "\tcleaning up inserted %d, %d\n", e->key, e->value.access());
             assert(e->phantom());
             auto erased = nontrans_erase(e->key);
             assert(erased == true);
@@ -719,9 +719,6 @@ public:
             }
             assert(res == failure_key_duplicated || res == ok);
         }
-        if (res == failure_key_duplicated) {
-            free(elem); // make sure to clean up element if it wasn't actually inserted
-        }
         unset_hazard_pointers();
         return (res == ok);
     }
@@ -911,7 +908,10 @@ private:
             
             if( !hasOverflow(ti, i1) && open1 != -1 ) {
                 // only add if it's not a delete_my_insert
-                if (res1 == ok) add_to_bucket(ti, elem, i1, open1);
+                if (res1 == ok) {
+                    //fprintf(stderr, "\tres1 was ok with %d\n", elem->key);
+                    add_to_bucket(ti, elem, i1, open1);
+                }
                 unlock( ti, i1 );
                 // update the bucketversion either now (for migration) or @ commit (add write)
                 if (is_migration) ti->buckets_[i1].lock_and_inc_version();
@@ -945,7 +945,10 @@ private:
         }
 
         if (open1 != -1) {
-            if (res1 == ok) add_to_bucket(ti, elem, i1, open1);
+            if (res1 == ok) {
+                //fprintf(stderr, "\tres1 was ok with %d\n", elem->key);
+                add_to_bucket(ti, elem, i1, open1);
+            }
             unlock_two(ti, i1, i2);
             // update the bucketversion either now (for migration) or @ commit (add write)
             if (is_migration) ti->buckets_[i1].lock_and_inc_version();
@@ -960,7 +963,10 @@ private:
         if (open2 != -1) {
             auto old_overflow = ti->buckets_[i1].overflow++;
             if (!old_overflow) ti->buckets_[i1].lock_and_inc_version();
-            if (res2 == ok) add_to_bucket(ti, elem, i2, open2);
+            if (res2 == ok) {
+                //fprintf(stderr, "\tres2 was ok with %d\n", elem->key);
+                add_to_bucket(ti, elem, i2, open2);
+            }
             unlock_two(ti, i1, i2);
             // update the bucketversion either now (for migration) or @ commit (add write)
             if (is_migration) ti->buckets_[i2].lock_and_inc_version();
@@ -977,7 +983,7 @@ private:
         size_t insert_slot = 0;
         mapped_type oldval;
         cuckoo_status st = run_cuckoo(ti, i1, i2, insert_bucket, insert_slot);
-        if (st == ok || st == ok_delete_then_insert) {
+        if (st == ok) {
             assert(ti->buckets_[insert_bucket].elems[insert_slot] == NULL);
             assert(insert_bucket == index_hash(ti, hv) || insert_bucket == alt_index(ti, hv, index_hash(ti, hv)));
             /* Since we unlocked the buckets during run_cuckoo,
@@ -986,6 +992,7 @@ private:
              * insert. */
             auto res = cuckoo_find(elem->key, elem, hv, ti, i1, i2);
             if (res == ok) {
+                assert(!Sto::item(this, elem).has_write());
                 unlock_two(ti, i1, i2);
                 return failure_key_duplicated;
             }
@@ -994,7 +1001,7 @@ private:
                 auto old_overflow = ti->buckets_[first_bucket].overflow++;
                 if (!old_overflow) ti->buckets_[first_bucket].lock_and_inc_version();
             }
-            if (st == ok) add_to_bucket(ti, elem, insert_bucket, insert_slot);
+            add_to_bucket(ti, elem, insert_bucket, insert_slot);
             unlock_two(ti, i1, i2);
             // add a write to the bucket so that we update the bucketversion
             // note that we don't need to add writes of all the buckets modified during
@@ -1004,7 +1011,8 @@ private:
             if (is_migration) ti->buckets_[insert_bucket].lock_and_inc_version();
             else {
                 Sto::item(this, pack_bucket(&ti->buckets_[insert_bucket])).add_write();
-                if (st == ok) Sto::item(this, elem).add_flags(insert_tag).add_write();
+                //fprintf(stderr, "\tadd insert after cuckoo hashing %d\n", elem->key);
+                Sto::item(this, elem).add_flags(insert_tag).add_write();
             }
             return ok;
         }
@@ -1784,7 +1792,7 @@ private:
                                      internal_elem* elem,
                                      const size_t i, const size_t j) {
         assert(ti->buckets_[i].elems[j] == NULL);
-        fprintf(stderr, "\tinsert %d\n", elem->key);
+        //fprintf(stderr, "\tinsert %d\n", elem->key);
         
         ti->buckets_[i].setKV(j, elem);
         ti->num_inserts[counterid].num.fetch_add(1, std::memory_order_relaxed);
@@ -1801,7 +1809,6 @@ private:
                                   version_to_observe& vto,
                                   bool is_migration) {
         j = -1;
-        bool found_empty = false;
         vto.observe_me = false;
 
         if (ti->buckets_[i].hasmigrated) {
@@ -1817,54 +1824,59 @@ private:
                     // to insert a new item (not migrate it over)
                     // this should never occur if it is a migration...
                     assert(!is_migration);
-                    auto item = Sto::item(this, elem_in_table);
-                    if (item.has_write()) {
-                        if (has_delete(item)) {
-                            // we cannot have been the one to insert this item,
-                            // since the delete would have simply removed the item
-                            // we inserted instead of adding a delete.
-                            assert(!has_insert(item));
-                            // add a write to install at commit time
-                            // we don't need to add any reads of the elem's version
-                            // because our delete already added checks for the elem's existence
-                            item.clear_flags(delete_tag).clear_write().template add_write<mapped_type>(elem->value.access());
-                            // we don't actually want to allocate this element because it already exists
-                            // since we return ok, insert() will not free the element
-                            fprintf(stderr, "\tcleared delete tag %d\n", elem->key);
-                            free(elem); 
-                            // we want to return ok, but also not insert the item
-                            assert(!has_insert(item) && !has_delete(item));
-                            return ok_delete_then_insert;
-                        } else { // we tried to insert this item before
-                            return failure_key_duplicated;
-                        }
-                    } else {
-                        // check if item has been deleted since we read it, or
-                        // if the item was just inserted by someone else without commit
-                        if (is_phantom(item, elem_in_table)) {
-                            free(elem); 
-                            return failure_key_phantom;
-                        } 
-                        // we found some valid key/value pair in the table!
-                        // just add a read of the item's version so we know it's not deleted
-                        // XXX this can result in false aborts if the element is deleted and
-                        // then inserted again? oh well... not sure how we can track "existence"
-                        else { 
-                            vto.observe_me = true;
-                            vto.version = ev;
-                            vto.ptr = elem_in_table;
-                        }
-                    }
-                    return failure_key_duplicated;
+                    return sto_try_add_with_existing_key(elem, elem_in_table, ev, vto);
                 }
             } else {
-                if (!found_empty) {
-                    found_empty = true;
-                    j = k;
-                }
+                j = k;
             }
         }
         return ok;
+    }
+
+    cuckoo_status sto_try_add_with_existing_key(internal_elem* new_e, 
+                                                internal_elem* elem_in_table, 
+                                                version_type& ev,
+                                                version_to_observe& vto) {
+        auto item = Sto::item(this, elem_in_table);
+        if (item.has_write()) {
+            if (has_delete(item)) {
+                // we cannot have been the one to insert this item,
+                // since the delete would have simply removed the item
+                // we inserted instead of adding a delete.
+                assert(!has_insert(item));
+                // add a write to install at commit time
+                // we don't need to add any reads of the elem's version
+                // because our delete already added checks for the elem's existence
+                item.clear_flags(delete_tag).clear_write().template add_write<mapped_type>(new_e->value.access());
+                // we don't actually want to allocate this element because it already exists
+                // since we return ok, insert() will not free the element
+                //fprintf(stderr, "\tcleared delete tag %d, %d\n", elem_in_table->key, new_e->key);
+                free(new_e); 
+                // we want to return ok, but also not insert the item
+                assert(!has_insert(item) && !has_delete(item));
+                return ok_delete_then_insert;
+            } else { // we tried to insert this item before
+                return failure_key_duplicated;
+            }
+        } else {
+            // check if item has been deleted since we read it, or
+            // if the item was just inserted by someone else without commit
+            if (is_phantom(item, elem_in_table)) {
+                free(new_e); 
+                return failure_key_phantom;
+            } 
+            // we found some valid key/value pair in the table!
+            // just add a read of the item's version so we know it's not deleted
+            // XXX this can result in false aborts if the element is deleted and
+            // then inserted again? oh well... not sure how we can track "existence"
+            else { 
+                vto.observe_me = true;
+                vto.version = ev;
+                vto.ptr = elem_in_table;
+            }
+        }
+        free(new_e);
+        return failure_key_duplicated;
     }
 
     /* try_del_from_bucket will search the bucket for the given key,
@@ -1898,7 +1910,7 @@ private:
                             ti->num_deletes[counterid].num.fetch_add(1, std::memory_order_relaxed);
                             // just unmark all attributes so the item is ignored
                             item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
-                            fprintf(stderr, "\tdelete_my_insert %d\n", elem->key);
+                            //fprintf(stderr, "\tdelete_my_insert %d\n", elem->key);
                             // check that no one else inserts the node into the bucket 
                             vto.observe_me = true;
                             vto.ptr = pack_bucket(&ti->buckets_[i]);
@@ -1923,7 +1935,7 @@ private:
                         vto.ptr = elem;
                         vto.version = elemver; 
                         item.add_write(-1).add_flags(delete_tag);
-                        fprintf(stderr, "\tadded delete tag %d\n", elem->key);
+                        //fprintf(stderr, "\tadded delete tag %d\n", elem->key);
                         assert(!has_insert(item));
                     }
                 // non-transactional, so actually delete

@@ -134,7 +134,7 @@ template <typename K, typename T> struct DatatypeHarness<MICHAELMAP(K,T)> {
     typedef typename DS::mapped_type mapped_type;
     typedef typename DS::key_type key_type;
 public:
-    DatatypeHarness() : v_(125000, 5) {};
+    DatatypeHarness() : v_(1000000, 5) {};
     bool insert(key_type k, mapped_type v) { return v_.insert(k, v); }
     bool erase(key_type k) { return v_.erase(k); }
     bool find(key_type k) { return v_.contains(k); }
@@ -257,8 +257,8 @@ std::vector<Test> make_map_tests() {
     return {
         MAKE_MAP_TESTS("HM1M:F34,I33,E33", MapSingleOpTest, int, int, 1000000, 33, 33)
         MAKE_MAP_TESTS("HM1M:F90,I5,E5", MapSingleOpTest, int, int, 1000000, 5, 5)
-        MAKE_MAP_TESTS("HM125K:F34,I33,E33", MapSingleOpTest, int, int, 125000, 33, 33)
-        MAKE_MAP_TESTS("HM125K:F90,I5,E5", MapSingleOpTest, int, int, 125000, 5, 5)
+        //MAKE_MAP_TESTS("HM125K:F34,I33,E33", MapSingleOpTest, int, int, 125000, 33, 33)
+        //MAKE_MAP_TESTS("HM125K:F90,I5,E5", MapSingleOpTest, int, int, 125000, 5, 5)
         //MAKE_MAP_TESTS("HM:RandSingleOps(F10,I88,E2)", MapSingleOpTest, int, int, 88, 2)
         //MAKE_MAP_TESTS("HM:RandSingleOps(F88,I10,E2)", MapSingleOpTest, int, int, 10, 2)
     };
