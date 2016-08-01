@@ -8,7 +8,7 @@
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define NTRANS 200 // Number of transactions each thread should run.
+#define NTRANS 50 // Number of transactions each thread should run.
 #define N_THREADS 3 // Number of concurrent threads
 #define MAX_OPS 5 // Maximum number of operations in a transaction.
 
@@ -60,20 +60,20 @@ void run(T* q, int me) {
             if (Sto::try_commit()) {
 #if PRINT_DEBUG
                 TransactionTid::lock(lock);
-                std::cout << "[" << me << "] committed " << Sto::commit_tid() << std::endl;
+                std::cerr << "[" << me << "] committed " << Sto::commit_tid() << std::endl;
                 TransactionTid::unlock(lock);
 #endif
                 txn_list[me][Sto::commit_tid()] = tr;
                 break;
             } else {
 #if PRINT_DEBUG
-                TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
+                TransactionTid::lock(lock); std::cerr << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
 #endif
             }
 
         } catch (Transaction::Abort e) {
 #if PRINT_DEBUG
-            TransactionTid::lock(lock); std::cout << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
+            TransactionTid::lock(lock); std::cerr << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
 #endif
         }
         }
@@ -166,13 +166,13 @@ int main() {
         combined_txn_list.insert(txn_list[i].begin(), txn_list[i].end());
     }
     
-    std::cout << "Single thread replay" << std::endl;
+    std::cerr << "Single thread replay" << std::endl;
     gettimeofday(&tv1, NULL);
     
     std::map<uint64_t, txn_record *>::iterator it = combined_txn_list.begin();
     for(; it != combined_txn_list.end(); it++) {
 #if PRINT_DEBUG
-        std::cout << "BEGIN txn " << it->first << std::endl;
+        std::cerr << "BEGIN txn " << it->first << std::endl;
 #endif
         Sto::start_transaction();
         for (unsigned i = 0; i < it->second->ops.size(); i++) {
@@ -180,7 +180,7 @@ int main() {
         }
         assert(Sto::try_commit());
 #if PRINT_DEBUG
-        std::cout << "COMMITTED" << std::endl;
+        std::cerr << "COMMITTED" << std::endl;
 #endif
     }
     

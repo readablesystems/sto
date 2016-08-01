@@ -63,7 +63,8 @@ class CuckooHashMap: public Shared {
         failure_under_expansion = 7,
         failure_key_moved = 8,
         failure_already_migrating_all = 9,
-        failure_key_phantom = 10 // the key found was a phantom. abort!
+        failure_key_phantom = 10, // the key found was a phantom. abort!
+        ok_delete_then_insert = 11 // we don't actually want to insert
     } cuckoo_status;
 
     struct rw_lock {
@@ -302,8 +303,10 @@ public:
     }
 
     void cleanup(TransItem& item, bool committed) override {
-        if ((committed ? has_delete(item) : has_insert(item)) && !is_bucket(item)) {
+        if (((has_delete(item) && committed) || (has_insert(item) && !committed)) && !is_bucket(item)) {
+            assert(!(has_insert(item) && has_delete(item)));
             auto e = item.key<internal_elem*>();
+            if (!committed) fprintf(stderr, "\tcleaning up inserted %d\n", e->key);
             assert(e->phantom());
             auto erased = nontrans_erase(e->key);
             assert(erased == true);
@@ -687,7 +690,6 @@ public:
             res = insert_one(ti_old, hv, elem, i1_o, i2_o, false/*is_migration*/);
             if (res == failure_key_phantom) {
                 unset_hazard_pointers();
-                free(elem);
                 Sto::abort(); assert(0);
             }
         }
@@ -707,7 +709,6 @@ public:
             res = insert_one(ti_new, hv, elem, i1_n, i2_n, false/*is_migration*/);
             if (res == failure_key_phantom) {
                 unset_hazard_pointers();
-                free(elem);
                 Sto::abort(); assert(0);
             }            
             // key moved from new table, meaning that an even newer table was created
@@ -906,16 +907,17 @@ private:
             if (vto.observe_me) Sto::item(this, vto.ptr).observe(vto.version);
             return res1;
         } else {
-            assert( res1 == ok ); 
+            assert( res1 == ok || res1 == ok_delete_then_insert ); 
             
             if( !hasOverflow(ti, i1) && open1 != -1 ) {
-                add_to_bucket(ti, elem, i1, open1);
+                // only add if it's not a delete_my_insert
+                if (res1 == ok) add_to_bucket(ti, elem, i1, open1);
                 unlock( ti, i1 );
                 // update the bucketversion either now (for migration) or @ commit (add write)
                 if (is_migration) ti->buckets_[i1].lock_and_inc_version();
                 else {
                     Sto::item(this, pack_bucket(&ti->buckets_[i1])).add_write();
-                    Sto::item(this, elem).add_flags(insert_tag).add_write(elem->value);
+                    if (res1 == ok) Sto::item(this, elem).add_write().add_flags(insert_tag);
                 }
                 assert(!vto.observe_me);
                 return ok;
@@ -943,13 +945,13 @@ private:
         }
 
         if (open1 != -1) {
-            add_to_bucket(ti, elem, i1, open1);
+            if (res1 == ok) add_to_bucket(ti, elem, i1, open1);
             unlock_two(ti, i1, i2);
             // update the bucketversion either now (for migration) or @ commit (add write)
             if (is_migration) ti->buckets_[i1].lock_and_inc_version();
             else {
                 Sto::item(this, pack_bucket(&ti->buckets_[i1])).add_write();
-                Sto::item(this, elem).add_flags(insert_tag).add_write(elem->value);
+                if (res1 == ok) Sto::item(this, elem).add_write().add_flags(insert_tag);
             }
             assert(!vto.observe_me);
             return ok;
@@ -958,13 +960,13 @@ private:
         if (open2 != -1) {
             auto old_overflow = ti->buckets_[i1].overflow++;
             if (!old_overflow) ti->buckets_[i1].lock_and_inc_version();
-            add_to_bucket(ti, elem, i2, open2);
+            if (res2 == ok) add_to_bucket(ti, elem, i2, open2);
             unlock_two(ti, i1, i2);
             // update the bucketversion either now (for migration) or @ commit (add write)
             if (is_migration) ti->buckets_[i2].lock_and_inc_version();
             else {
                 Sto::item(this, pack_bucket(&ti->buckets_[i2])).add_write();
-                Sto::item(this, elem).add_flags(insert_tag).add_write(elem->value);
+                if (res2 == ok) Sto::item(this, elem).add_write().add_flags(insert_tag);
             }
             assert(!vto.observe_me);
             return ok;
@@ -975,14 +977,15 @@ private:
         size_t insert_slot = 0;
         mapped_type oldval;
         cuckoo_status st = run_cuckoo(ti, i1, i2, insert_bucket, insert_slot);
-        if (st == ok) {
+        if (st == ok || st == ok_delete_then_insert) {
             assert(ti->buckets_[insert_bucket].elems[insert_slot] == NULL);
             assert(insert_bucket == index_hash(ti, hv) || insert_bucket == alt_index(ti, hv, index_hash(ti, hv)));
             /* Since we unlocked the buckets during run_cuckoo,
              * another insert could have inserted the same key into
              * either i1 or i2, so we check for that before doing the
              * insert. */
-            if (cuckoo_find(elem->key, elem, hv, ti, i1, i2) == ok) {
+            auto res = cuckoo_find(elem->key, elem, hv, ti, i1, i2);
+            if (res == ok) {
                 unlock_two(ti, i1, i2);
                 return failure_key_duplicated;
             }
@@ -991,7 +994,7 @@ private:
                 auto old_overflow = ti->buckets_[first_bucket].overflow++;
                 if (!old_overflow) ti->buckets_[first_bucket].lock_and_inc_version();
             }
-            add_to_bucket(ti, elem, insert_bucket, insert_slot);
+            if (st == ok) add_to_bucket(ti, elem, insert_bucket, insert_slot);
             unlock_two(ti, i1, i2);
             // add a write to the bucket so that we update the bucketversion
             // note that we don't need to add writes of all the buckets modified during
@@ -1001,7 +1004,7 @@ private:
             if (is_migration) ti->buckets_[insert_bucket].lock_and_inc_version();
             else {
                 Sto::item(this, pack_bucket(&ti->buckets_[insert_bucket])).add_write();
-                Sto::item(this, elem).add_flags(insert_tag).add_write(elem->value);
+                if (st == ok) Sto::item(this, elem).add_flags(insert_tag).add_write();
             }
             return ok;
         }
@@ -1781,6 +1784,7 @@ private:
                                      internal_elem* elem,
                                      const size_t i, const size_t j) {
         assert(ti->buckets_[i].elems[j] == NULL);
+        fprintf(stderr, "\tinsert %d\n", elem->key);
         
         ti->buckets_[i].setKV(j, elem);
         ti->num_inserts[counterid].num.fetch_add(1, std::memory_order_relaxed);
@@ -1817,7 +1821,8 @@ private:
                     if (item.has_write()) {
                         if (has_delete(item)) {
                             // we cannot have been the one to insert this item,
-                            // since the delete would have simply removed it
+                            // since the delete would have simply removed the item
+                            // we inserted instead of adding a delete.
                             assert(!has_insert(item));
                             // add a write to install at commit time
                             // we don't need to add any reads of the elem's version
@@ -1825,8 +1830,11 @@ private:
                             item.clear_flags(delete_tag).clear_write().template add_write<mapped_type>(elem->value.access());
                             // we don't actually want to allocate this element because it already exists
                             // since we return ok, insert() will not free the element
+                            fprintf(stderr, "\tcleared delete tag %d\n", elem->key);
                             free(elem); 
-                            return ok;
+                            // we want to return ok, but also not insert the item
+                            assert(!has_insert(item) && !has_delete(item));
+                            return ok_delete_then_insert;
                         } else { // we tried to insert this item before
                             return failure_key_duplicated;
                         }
@@ -1834,6 +1842,7 @@ private:
                         // check if item has been deleted since we read it, or
                         // if the item was just inserted by someone else without commit
                         if (is_phantom(item, elem_in_table)) {
+                            free(elem); 
                             return failure_key_phantom;
                         } 
                         // we found some valid key/value pair in the table!
@@ -1881,7 +1890,7 @@ private:
                         if (has_delete(item)) {
                             return failure_key_not_found;    
                         } 
-                        // we are deleting our own insert, and no one has installed this item yet
+                        // we are deleting our own insert, and haven't installed this item yet
                         // remove the element immediately
                         else if (has_insert(item)) {
                             assert(elem->phantom());
@@ -1889,6 +1898,7 @@ private:
                             ti->num_deletes[counterid].num.fetch_add(1, std::memory_order_relaxed);
                             // just unmark all attributes so the item is ignored
                             item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
+                            fprintf(stderr, "\tdelete_my_insert %d\n", elem->key);
                             // check that no one else inserts the node into the bucket 
                             vto.observe_me = true;
                             vto.ptr = pack_bucket(&ti->buckets_[i]);
@@ -1902,7 +1912,7 @@ private:
                             vto.observe_me = true;
                             vto.ptr = elem;
                             vto.version = elemver; 
-                            item.add_write().add_flags(delete_tag);
+                            item.add_write(-1).add_flags(delete_tag);
                         }
                     } else if (is_phantom(item, elem)) {
                         // someone just removed this item or hasn't committed it yet :(
@@ -1912,7 +1922,9 @@ private:
                         vto.observe_me = true;
                         vto.ptr = elem;
                         vto.version = elemver; 
-                        item.add_write().add_flags(delete_tag);
+                        item.add_write(-1).add_flags(delete_tag);
+                        fprintf(stderr, "\tadded delete tag %d\n", elem->key);
+                        assert(!has_insert(item));
                     }
                 // non-transactional, so actually delete
                 } else { 
