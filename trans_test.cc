@@ -17,7 +17,8 @@
 #define RBTREE 2
 #define VECTOR 3
 #define CUCKOOHASHMAP 4
-#define DS HASHTABLE
+//#define DS HASHTABLE
+#define DS CUCKOOHASHMAP
 
 #if DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
@@ -77,18 +78,26 @@ void run(T* q, int me) {
     }
 
     for (int i = 0; i < NTRANS; ++i) {
+#if CONSISTENCY_CHECK
         txn_record *tr = new txn_record;
+#endif
         // so that retries of this transaction do the same thing
         Rand transgen_snap = transgen;
         while (1) {
         Sto::start_transaction();
         try {
+#if CONSISTENCY_CHECK
             tr->ops.clear();
+#endif
             int numOps = slotdist(transgen) % MAX_OPS + 1;
             
             for (int j = 0; j < numOps; j++) {
                 int op = slotdist(transgen) % tester.num_ops_;
+#if CONSISTENCY_CHECK
                 tr->ops.push_back(tester.doOp(q, op, me, slotdist, transgen));
+#else
+                tester.doOp(q, op, me, slotdist, transgen);
+#endif
             }
 
             if (Sto::try_commit()) {
@@ -97,7 +106,9 @@ void run(T* q, int me) {
                 std::cerr << "[" << me << "] committed " << Sto::commit_tid() << std::endl;
                 TransactionTid::unlock(lock);
 #endif
+#if CONSISTENCY_CHECK
                 txn_list[me][Sto::commit_tid()] = tr;
+#endif
                 global_thread_ctrs[me] += numOps;
                 break;
             } else {
@@ -161,7 +172,6 @@ void startAndWait(T* ds) {
 
 int main() {
     std::ios_base::sync_with_stdio(true);
-    assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
     lock = 0;
 
     srandomdev();
@@ -188,10 +198,12 @@ int main() {
     tester.init(&q);
     tester.init(&q1);
 
+#if CONSISTENCY_CHECK
+    fprintf(stderr, "Multi-then-single thread execution with CONSISTENCY_CHECK\n");
     for (int i = 0; i < N_THREADS; i++) {
         txn_list.emplace_back();
     }
-   
+
     spawned_barrier = 0;
     startAndWait(&q);
 #if PRINT_DEBUG
@@ -235,5 +247,47 @@ int main() {
     pthread_join(recorder, NULL);
    
     tester.check(&q, &q1);
+#else 
+    fprintf(stderr, "Multi-then-single thread execution without CONSISTENCY_CHECK\n");
+    // no consistency check, so let's just see how fast our transactions run compared to running the same operations (maybe not 
+    // in the same order) sequentially
+
+    spawned_barrier = 0;
+    startAndWait(&q);
+#if PRINT_DEBUG
+#if STO_PROFILE_COUNTERS
+    Transaction::print_stats();
+    {
+        txp_counters tc = Transaction::txp_counters_combined();
+        printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+    }
+#endif
+#endif
+    
+    int nthreads = 1;
+    spawned_barrier = 0;
+    pthread_t recorder;
+    pthread_create(&recorder, NULL, record_perf_thread, &nthreads);
+
+    std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
+    Rand transgen(initial_seeds[0], initial_seeds[1]);
+   
+    spawned_barrier++;
+    for(int i = 0; i < N_THREADS*NTRANS; i++) {
+#if PRINT_DEBUG
+        std::cerr << "BEGIN txn " << it->first << std::endl;
+#endif
+        Sto::start_transaction();
+        int op = slotdist(transgen) % tester.num_ops_;
+        tester.doOp(&q1, op, 0, slotdist, transgen);
+        global_thread_ctrs[0]++;
+        assert(Sto::try_commit());
+#if PRINT_DEBUG
+        std::cerr << "COMMITTED" << std::endl;
+#endif
+    }
+    spawned_barrier--;
+    pthread_join(recorder, NULL);
+#endif 
 	return 0;
 }
