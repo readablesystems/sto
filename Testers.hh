@@ -12,7 +12,7 @@
 #include "RBTree.hh"
 #include "Vector.hh"
 
-#define MAX_VALUE 30 // Max value of integers used in data structures
+#define MAX_VALUE 100000 // Max value of integers used in data structures
 #define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements
 
 struct Rand {
@@ -69,7 +69,7 @@ public:
     // reference structure
     virtual void init_ref(RT* q) = 0;
     // Perform a particular operation on the data structure.    
-    virtual op_record* doOp(DT* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) = 0 ;
+    virtual op_record* doOp(DT* q, int op, int me, std::uniform_int_distribution<long>& slotdist, Rand& transgen) = 0 ;
     // Redo a operation. This is called during serial execution.
     virtual void redoOp(RT* q, op_record *op) = 0;
     // Checks that final state of the two data structures are the same.
@@ -82,7 +82,7 @@ public:
 
 template <typename DT, typename RT>
 class CuckooHashMapTester: Tester<DT, RT> {
-    size_t init_sz = 10;
+    size_t init_sz = 10000;
 public:
     template <typename T>
     void init(T* q) {
@@ -96,7 +96,7 @@ public:
     void init_sut(DT* q) {init<DT>(q);}
     void init_ref(RT* q) {init<RT>(q);}
 
-    op_record* doOp(DT* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
+    op_record* doOp(DT* q, int op, int me, std::uniform_int_distribution<long>& slotdist, Rand& transgen) {
 #if !PRINT_DEBUG
         (void)me;
 #endif
@@ -228,12 +228,12 @@ public:
                 assert(e == e1);
             } RETRY(false);
         }
-        TRANSACTION {
-            for (int i = 0; i < MAX_VALUE; i++) {
+        for (int i = 0; i < MAX_VALUE; i++) {
+            TRANSACTION {
                 int val;
                 assert(!q->find(i, val));
-            }
-        } RETRY(false);
+            } RETRY(false);
+        }
     }
 
 #if PRINT_DEBUG
@@ -246,7 +246,130 @@ public:
     static const int num_ops_ = 2;
 };
 
+template <typename T>
+class HashtableTester : Tester<T, T> {
+public:
+    void init(T* q) {
+        for (int i = 0; i < 10000; i++) {
+            TRANSACTION {
+                q->transPut(i, i);
+            } RETRY(false);
+        }
+    }
 
+    void init_sut(T* q) {init(q);}
+    void init_ref(T* q) {init(q);}
+
+    op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long>& slotdist, Rand& transgen) {
+#if !PRINT_DEBUG
+        (void)me;
+#endif
+        if (op == 0) {
+            int key = slotdist(transgen);
+            int val = slotdist(transgen);
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to put " << key << ", " << val << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            bool present = q->transPut(key, val);
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] put " << key << "," << val << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->args.push_back(key);
+            rec->args.push_back(val);
+            rec->rdata.push_back(present);
+            return rec;
+        } else if (op == 1) {
+            int key = slotdist(transgen);
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to get " << key << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            int val;
+            bool present = q->transGet(key, val);
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] read " << key << ", " << val << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->args.push_back(key);
+            rec->rdata.push_back(val);
+            rec->rdata.push_back(present);
+            return rec;
+        } else {
+            int key = slotdist(transgen);
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] try to delete " << key << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            bool success = q->transDelete(key);
+#if PRINT_DEBUG
+            TransactionTid::lock(lock);
+            std::cout << "[" << me << "] deleted " << key << ", " << success << std::endl;
+            TransactionTid::unlock(lock);
+#endif
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->args.push_back(key);
+            rec->rdata.push_back(success);
+            return rec;
+        }
+    }
+
+    void redoOp(T* q, op_record* op) {
+        if (op->op == 0) {
+            int key = op->args[0];
+            int val = op->args[1];
+            bool present = q->transPut(key, val);
+            assert(present == op->rdata[0]);
+        } else if (op->op == 1) {
+            int key = op->args[0];
+            int val;
+            bool present = q->transGet(key, val);
+            assert(present == op->rdata[1]);
+            if (present)
+                assert(val == op->rdata[0]);
+        } else {
+            int key = op->args[0];
+            bool success = q->transDelete(key);
+            assert(success == op->rdata[0]);
+        }
+    }
+
+    void check(T* q, T*q1) {
+        for (int i = 0; i < MAX_VALUE; i++) {
+            TRANSACTION {
+                int v1;
+                bool p1 = q->transGet(i, v1);
+                int v2;
+                bool p2 = q1->transGet(i, v2);
+                assert(p1 == p2);
+                if (p1) {
+                    assert(v1 == v2);
+                }
+            } RETRY(false);
+        }
+    }
+    
+#if PRINT_DEBUG
+    void print_stats(T* q) {
+       
+    }
+#endif
+
+    static const int num_ops_ = 3;
+};
+
+/*
 template <typename DT, typename RT>
 class RBTreeTester: Tester<DT, RT> {
 public:
@@ -335,7 +458,7 @@ public:
             rec->op = op;
             rec->rdata.push_back(size);
             return rec;
-        } /*else if (op == 4) {
+        } else if (op == 4) {
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
             std::cout << "[" << me << "] try to iterator* start" << std::endl;
@@ -458,7 +581,7 @@ public:
             rec->args.push_back(backward);
             rec->rdata.push_back(val);
             return rec;
-        }*/
+        }
         return nullptr;
     }
 
@@ -495,7 +618,7 @@ public:
             std::cout << "size expected: " << op->rdata[0] << std::endl;
 #endif
             assert(size == (size_t) op->rdata[0]);
-        } /*else if (op->op == 4) {
+        } else if (op->op == 4) {
             if (q->size() == 0) {
                 assert(op->rdata[0] == -1);
                 return;
@@ -542,7 +665,7 @@ public:
             std::cout << "*it expected at place " << forward << " - " << backward << ": " << op->rdata[0]  << std::endl;
 #endif
             assert(val == op->rdata[0]);
-        }*/
+        }
     }
 
     void check(DT* q, RT*q1) {
@@ -551,7 +674,7 @@ public:
             std::cout << "i is: " << i << std::endl;
 #endif
             TRANSACTION {
-/*
+
                 if (q->size() != 0) {
                     auto it = q->begin();
                     auto it1 = q1->begin();
@@ -559,7 +682,7 @@ public:
                         assert(it->second == it1->second);
                     }
                 }
-*/
+
                 size_t s = q->size();
                 size_t s1 = q1->size();
 #if PRINT_DEBUG
@@ -618,7 +741,7 @@ public:
     static const int num_ops_ = 4;
 };
 
-/*
+
 template <typename T>
 class PqueueTester : Tester<T> {
 public:
@@ -719,126 +842,6 @@ public:
             //q1.print();
         } RETRY(false);
     }
-
-    static const int num_ops_ = 3;
-};
-
-template <typename T>
-class HashtableTester : Tester<T> {
-public:
-    void init(T* q) {
-        for (int i = 0; i < 10000; i++) {
-            TRANSACTION {
-                q->transPut(i, i);
-            } RETRY(false);
-        }
-    }
-
-    op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
-#if !PRINT_DEBUG
-        (void)me;
-#endif
-        if (op == 0) {
-            int key = slotdist(transgen);
-            int val = slotdist(transgen);
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to put " << key << ", " << val << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            bool present = q->transPut(key, val);
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] put " << key << "," << val << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            op_record* rec = new op_record;
-            rec->op = op;
-            rec->args.push_back(key);
-            rec->args.push_back(val);
-            rec->rdata.push_back(present);
-            return rec;
-        } else if (op == 1) {
-            int key = slotdist(transgen);
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to get " << key << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            int val;
-            bool present = q->transGet(key, val);
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] read " << key << ", " << val << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            op_record* rec = new op_record;
-            rec->op = op;
-            rec->args.push_back(key);
-            rec->rdata.push_back(val);
-            rec->rdata.push_back(present);
-            return rec;
-        } else {
-            int key = slotdist(transgen);
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to delete " << key << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            bool success = q->transDelete(key);
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] deleted " << key << ", " << success << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            op_record* rec = new op_record;
-            rec->op = op;
-            rec->args.push_back(key);
-            rec->rdata.push_back(success);
-            return rec;
-        }
-    }
-
-    void redoOp(T* q, op_record* op) {
-        if (op->op == 0) {
-            int key = op->args[0];
-            int val = op->args[1];
-            bool present = q->transPut(key, val);
-            assert(present == op->rdata[0]);
-        } else if (op->op == 1) {
-            int key = op->args[0];
-            int val;
-            bool present = q->transGet(key, val);
-            assert(present == op->rdata[1]);
-            if (present)
-                assert(val == op->rdata[0]);
-        } else {
-            int key = op->args[0];
-            bool success = q->transDelete(key);
-            assert(success == op->rdata[0]);
-        }
-    }
-
-    void check(T* q, T*q1) {
-        for (int i = 0; i < MAX_VALUE; i++) {
-            TRANSACTION {
-                int v1;
-                bool p1 = q->transGet(i, v1);
-                int v2;
-                bool p2 = q1->transGet(i, v2);
-                assert(p1 == p2);
-                if (p1) {
-                    assert(v1 == v2);
-                }
-            } RETRY(false);
-        }
-    }
-    
-#if PRINT_DEBUG
-    void print_stats(T* q) {
-       
-    }
-#endif
 
     static const int num_ops_ = 3;
 };

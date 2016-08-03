@@ -8,8 +8,8 @@
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define NTRANS 100 // Number of transactions each thread should run.
-#define N_THREADS 3 // Number of concurrent threads
+#define NTRANS 1000 // Number of transactions each thread should run.
+#define N_THREADS 8 // Number of concurrent threads
 #define MAX_OPS 5 // Maximum number of operations in a transaction.
 
 #define PRIORITY_QUEUE 0
@@ -17,7 +17,7 @@
 #define RBTREE 2
 #define VECTOR 3
 #define CUCKOOHASHMAP 4
-#define DS CUCKOOHASHMAP
+#define DS HASHTABLE
 
 #if DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
@@ -28,28 +28,62 @@ RBTreeTester<RBTree<int, int, true>, std::map<int, int>> tester = RBTreeTester<R
 #elif DS == VECTOR
 VectorTester<Vector<int>> tester = VectorTester<Vector<int>>();
 #elif DS == CUCKOOHASHMAP 
-CuckooHashMapTester<CuckooHashMap<int, int>, CuckooHashMapNT<int,int>> tester = CuckooHashMapTester<CuckooHashMap<int, int>, CuckooHashMapNT<int,int>>();
+CuckooHashMapTester<CuckooHashMap<int, int>, CuckooHashMap<int,int>> tester = CuckooHashMapTester<CuckooHashMap<int, int>, CuckooHashMap<int,int>>();
 #endif
+
+unsigned initial_seeds[64];
+std::atomic<int> spawned_barrier(0);
+txp_counter_type global_thread_ctrs[N_THREADS];
+
+void* record_perf_thread(void* x) {
+    int nthreads = *(int*)x;
+    int total1, total2;
+    struct timeval tv1, tv2;
+    double ops_per_s = 0; 
+
+    while (spawned_barrier != nthreads) {
+        sched_yield();
+    }
+
+    // benchmark until the first thread finishes
+    gettimeofday(&tv1, NULL);
+    total1 = total2 = 0;
+    for (int i = 0; i < N_THREADS; ++i) {
+        total1 += global_thread_ctrs[i];
+    }
+    while (spawned_barrier != 0) {
+        sched_yield();
+    }
+    for (int i = 0; i < N_THREADS; ++i) {
+        total2 += global_thread_ctrs[i];
+    }
+    gettimeofday(&tv2, NULL);
+    double seconds = ((tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
+    ops_per_s = (total2-total1)/seconds > ops_per_s ? (total2-total1)/seconds : ops_per_s;
+    fprintf(stderr, "%d threads speed: %f ops/s\n", nthreads, ops_per_s);
+    return nullptr;
+}
 
 template <typename T>
 void run(T* q, int me) {
     TThread::set_id(me);
     
     std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
+    Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
+   
+    spawned_barrier++;
+    while (spawned_barrier != N_THREADS) {
+        sched_yield();
+    }
+
     for (int i = 0; i < NTRANS; ++i) {
-        // so that retries of this transaction do the same thing
-        auto transseed = i;
         txn_record *tr = new txn_record;
+        // so that retries of this transaction do the same thing
+        Rand transgen_snap = transgen;
         while (1) {
         Sto::start_transaction();
         try {
             tr->ops.clear();
-            
-            uint32_t seed = transseed*3 + (uint32_t)me*NTRANS*7 + (uint32_t)GLOBAL_SEED*MAX_THREADS*NTRANS*11;
-            auto seedlow = seed & 0xffff;
-            auto seedhigh = seed >> 16;
-            Rand transgen(seed, seedlow << 16 | seedhigh);
-            
             int numOps = slotdist(transgen) % MAX_OPS + 1;
             
             for (int j = 0; j < numOps; j++) {
@@ -64,11 +98,13 @@ void run(T* q, int me) {
                 TransactionTid::unlock(lock);
 #endif
                 txn_list[me][Sto::commit_tid()] = tr;
+                global_thread_ctrs[me] += numOps;
                 break;
             } else {
 #if PRINT_DEBUG
                 TransactionTid::lock(lock); std::cerr << "[" << me << "] aborted "<< std::endl; TransactionTid::unlock(lock);
 #endif
+                transgen = transgen_snap;
             }
 
         } catch (Transaction::Abort e) {
@@ -78,6 +114,8 @@ void run(T* q, int me) {
         }
         }
     }
+
+    spawned_barrier--;
 }
 
 template <typename T>
@@ -90,9 +128,13 @@ void* runFunc(void* x) {
     return nullptr;
 }
 
-
 template <typename T>
 void startAndWait(T* ds) {
+    // create performance recording thread
+    pthread_t recorder;
+    int nthreads = N_THREADS;
+    pthread_create(&recorder, NULL, record_perf_thread, &nthreads);
+
     pthread_t tids[N_THREADS];
     TesterPair<T> testers[N_THREADS];
     for (int i = 0; i < N_THREADS; ++i) {
@@ -103,20 +145,28 @@ void startAndWait(T* ds) {
     pthread_t advancer;
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
-    
+   
     for (int i = 0; i < N_THREADS; ++i) {
         pthread_join(tids[i], NULL);
     }
+    pthread_join(recorder, NULL);
+
+    int total_ops = 0;
+    for (int i = 0; i < N_THREADS; ++i) {
+        total_ops += global_thread_ctrs[i];
+        global_thread_ctrs[i] = 0;
+    }
 }
 
-void print_time(struct timeval tv1, struct timeval tv2) {
-    printf("%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
-}
 
 int main() {
     std::ios_base::sync_with_stdio(true);
     assert(CONSISTENCY_CHECK); // set CONSISTENCY_CHECK in Transaction.hh
     lock = 0;
+
+    srandomdev();
+    for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
+        initial_seeds[i] = random();
 
 #if DS == PRIORITY_QUEUE 
     PriorityQueue<int> q;
@@ -132,25 +182,19 @@ int main() {
     Vector<int> q1;
 #elif DS == CUCKOOHASHMAP
     CuckooHashMap<int, int> q;
-    CuckooHashMapNT<int, int> q1;
+    CuckooHashMap<int, int> q1;
 #endif  
 
     tester.init(&q);
     tester.init(&q1);
 
-    struct timeval tv1,tv2;
-    gettimeofday(&tv1, NULL);
-    
     for (int i = 0; i < N_THREADS; i++) {
         txn_list.emplace_back();
     }
-    
+   
+    spawned_barrier = 0;
     startAndWait(&q);
-    
-    gettimeofday(&tv2, NULL);
-    printf("Parallel time: ");
-    print_time(tv1, tv2);
-    
+#if PRINT_DEBUG
 #if STO_PROFILE_COUNTERS
     Transaction::print_stats();
     {
@@ -158,7 +202,7 @@ int main() {
         printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
     }
 #endif
-    
+#endif
     
     std::map<uint64_t, txn_record *> combined_txn_list;
     
@@ -166,9 +210,12 @@ int main() {
         combined_txn_list.insert(txn_list[i].begin(), txn_list[i].end());
     }
     
-    std::cerr << "Single thread replay" << std::endl;
-    gettimeofday(&tv1, NULL);
-    
+    int nthreads = 1;
+    spawned_barrier = 0;
+    pthread_t recorder;
+    pthread_create(&recorder, NULL, record_perf_thread, &nthreads);
+   
+    spawned_barrier++;
     std::map<uint64_t, txn_record *>::iterator it = combined_txn_list.begin();
     for(; it != combined_txn_list.end(); it++) {
 #if PRINT_DEBUG
@@ -176,6 +223,7 @@ int main() {
 #endif
         Sto::start_transaction();
         for (unsigned i = 0; i < it->second->ops.size(); i++) {
+            global_thread_ctrs[0]++;
             tester.redoOp(&q1, it->second->ops[i]);
         }
         assert(Sto::try_commit());
@@ -183,11 +231,8 @@ int main() {
         std::cerr << "COMMITTED" << std::endl;
 #endif
     }
-    
-    gettimeofday(&tv2, NULL);
-    printf("Serial time: ");
-    print_time(tv1, tv2);
-    
+    spawned_barrier--;
+    pthread_join(recorder, NULL);
    
     tester.check(&q, &q1);
 	return 0;

@@ -685,7 +685,7 @@ public:
             res = insert_one(ti_old, hv, key, val, i1_o, i2_o);
             if (res == failure_key_phantom) {
                 unset_hazard_pointers();
-                Sto::abort(); assert(0);
+                Sto::abort_because("phantom in insert"); assert(0);
             }
         }
 
@@ -704,7 +704,7 @@ public:
             res = insert_one(ti_new, hv, key, val, i1_n, i2_n);
             if (res == failure_key_phantom) {
                 unset_hazard_pointers();
-                Sto::abort(); assert(0);
+                Sto::abort_because("phantom in insert"); assert(0);
             }            
             // key moved from new table, meaning that an even newer table was created
             if (res == failure_key_moved || res == failure_table_full) {
@@ -753,7 +753,7 @@ public:
             res = delete_one(ti_old, hv, key, i1_o, i2_o, transactional);
             if (res == failure_key_phantom) {
                 unset_hazard_pointers();
-                Sto::abort(); assert(0);
+                Sto::abort_because("phantom in erase"); assert(0);
             }
         }
         
@@ -769,7 +769,7 @@ public:
             res = delete_one(ti_new, hv, key, i1_n, i2_n, transactional);
             if (res == failure_key_phantom) {
                 unset_hazard_pointers();
-                Sto::abort(); assert(0);
+                Sto::abort_because("phantom in erase"); assert(0);
             }
 
             // key moved from new table, meaning that an even newer table was created
@@ -843,7 +843,7 @@ private:
                     // committed it yet
                     if (is_phantom(item, e)) {
                         // no need to unlock here -- there are no locks!
-                        Sto::abort(); assert(0);
+                        Sto::abort_because("phantom in find"); assert(0);
                     } 
                     // we have found the item, haven't written to it yet, and
                     // it's not currently being deleted / inserted by someone else!
