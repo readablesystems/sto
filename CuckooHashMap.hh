@@ -638,13 +638,15 @@ public:
         size_t i1_o, i2_o, i1_n, i2_n;
         TableInfo *ti_old, *ti_new;
         cuckoo_status res;
-    RETRY:
+    //RETRY:
         snapshot_both_get_buckets(ti_old, ti_new, hv, i1_o, i2_o, i1_n, i2_n);
 
         res = find_one(ti_old, hv, key, val, i1_o, i2_o);
 
         // couldn't find key in bucket, and one of the buckets was moved to new table
         if (res == failure_key_moved) {
+            assert(0);
+            /*
             if (ti_new == nullptr) { // the new table's pointer has already moved
                 unset_hazard_pointers();
                 LIBCUCKOO_DBG("ti_new is nullptr in failure_key_moved with ptr %p\n",ti_new);
@@ -655,7 +657,7 @@ public:
                 unset_hazard_pointers();
                 goto RETRY;
             }
-
+            */
             assert( res == ok || res == failure_key_not_found);
         }
         unset_hazard_pointers(); 

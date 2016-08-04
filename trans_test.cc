@@ -8,8 +8,9 @@
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define NTRANS 1000 // Number of transactions each thread should run.
-#define N_THREADS 8 // Number of concurrent threads
+#define N_THREADS 20 // Number of concurrent threads
+#define TOTAL_OPS 10000000
+#define NTRANS TOTAL_OPS/N_THREADS // Number of transactions each thread should run.
 #define MAX_OPS 5 // Maximum number of operations in a transaction.
 
 #define PRIORITY_QUEUE 0
@@ -49,13 +50,13 @@ void* record_perf_thread(void* x) {
     // benchmark until the first thread finishes
     gettimeofday(&tv1, NULL);
     total1 = total2 = 0;
-    for (int i = 0; i < N_THREADS; ++i) {
+    for (int i = 0; i < nthreads; ++i) {
         total1 += global_thread_ctrs[i];
     }
     while (spawned_barrier != 0) {
         sched_yield();
     }
-    for (int i = 0; i < N_THREADS; ++i) {
+    for (int i = 0; i < nthreads; ++i) {
         total2 += global_thread_ctrs[i];
     }
     gettimeofday(&tv2, NULL);
@@ -66,14 +67,14 @@ void* record_perf_thread(void* x) {
 }
 
 template <typename T>
-void run(T* q, int me) {
+void run(T* q, int me, int nthreads) {
     TThread::set_id(me);
     
     std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
     Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
    
     spawned_barrier++;
-    while (spawned_barrier != N_THREADS) {
+    while (spawned_barrier != nthreads) {
         sched_yield();
     }
 
@@ -131,8 +132,8 @@ void run(T* q, int me) {
 
 template <typename T>
 void* runFunc(void* x) {
-    TesterPair<T>* tp = (TesterPair<T>*) x;
-    run(tp->t, tp->me);
+    TesterTuple<T>* tp = (TesterTuple<T>*) x;
+    run(tp->t, tp->me, tp->nthreads);
 #if PRINT_DEBUG 
     TransactionTid::lock(lock); tester.print_stats(tp->t); TransactionTid::unlock(lock);
 #endif
@@ -140,33 +141,23 @@ void* runFunc(void* x) {
 }
 
 template <typename T>
-void startAndWait(T* ds) {
+void startAndWait(T* ds, int nthreads) {
     // create performance recording thread
     pthread_t recorder;
-    int nthreads = N_THREADS;
     pthread_create(&recorder, NULL, record_perf_thread, &nthreads);
 
-    pthread_t tids[N_THREADS];
-    TesterPair<T> testers[N_THREADS];
-    for (int i = 0; i < N_THREADS; ++i) {
+    pthread_t tids[nthreads];
+    TesterTuple<T> testers[nthreads];
+    for (int i = 0; i < nthreads; ++i) {
         testers[i].t = ds;
         testers[i].me = i;
+        testers[i].nthreads = nthreads;
         pthread_create(&tids[i], NULL, runFunc<T>, &testers[i]);
     }
-    pthread_t advancer;
-    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
-    pthread_detach(advancer);
-   
-    for (int i = 0; i < N_THREADS; ++i) {
+    for (int i = 0; i < nthreads; ++i) {
         pthread_join(tids[i], NULL);
     }
     pthread_join(recorder, NULL);
-
-    int total_ops = 0;
-    for (int i = 0; i < N_THREADS; ++i) {
-        total_ops += global_thread_ctrs[i];
-        global_thread_ctrs[i] = 0;
-    }
 }
 
 
@@ -195,6 +186,10 @@ int main() {
     CuckooHashMap<int, int> q1;
 #endif  
 
+    pthread_t advancer;
+    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
+    pthread_detach(advancer);
+
     tester.init(&q);
     tester.init(&q1);
 
@@ -205,7 +200,7 @@ int main() {
     }
 
     spawned_barrier = 0;
-    startAndWait(&q);
+    startAndWait(&q, N_THREADS);
 #if PRINT_DEBUG
 #if STO_PROFILE_COUNTERS
     Transaction::print_stats();
@@ -247,47 +242,26 @@ int main() {
     pthread_join(recorder, NULL);
    
     tester.check(&q, &q1);
-#else 
-    fprintf(stderr, "Multi-then-single thread execution without CONSISTENCY_CHECK\n");
+#else // CONSISTENCY_CHECK
+
     // no consistency check, so let's just see how fast our transactions run compared to running the same operations (maybe not 
     // in the same order) sequentially
+    fprintf(stderr, "Multi-then-single thread execution without CONSISTENCY_CHECK\n");
 
-    spawned_barrier = 0;
-    startAndWait(&q);
+    // MULTI-THREADED 
+    for (int i = 1; i <= N_THREADS; ++i) {
+        spawned_barrier = 0;
+        startAndWait(&q, i);
 #if PRINT_DEBUG
 #if STO_PROFILE_COUNTERS
-    Transaction::print_stats();
-    {
-        txp_counters tc = Transaction::txp_counters_combined();
-        printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
-    }
+        Transaction::print_stats();
+        {
+            txp_counters tc = Transaction::txp_counters_combined();
+            printf("total_n: %llu, total_r: %llu, total_w: %llu, total_searched: %llu, total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_n), tc.p(txp_total_r), tc.p(txp_total_w), tc.p(txp_total_searched), tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+        }
 #endif
-#endif
-    
-    int nthreads = 1;
-    spawned_barrier = 0;
-    pthread_t recorder;
-    pthread_create(&recorder, NULL, record_perf_thread, &nthreads);
-
-    std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
-    Rand transgen(initial_seeds[0], initial_seeds[1]);
-   
-    spawned_barrier++;
-    for(int i = 0; i < N_THREADS*NTRANS; i++) {
-#if PRINT_DEBUG
-        std::cerr << "BEGIN txn " << it->first << std::endl;
-#endif
-        Sto::start_transaction();
-        int op = slotdist(transgen) % tester.num_ops_;
-        tester.doOp(&q1, op, 0, slotdist, transgen);
-        global_thread_ctrs[0]++;
-        assert(Sto::try_commit());
-#if PRINT_DEBUG
-        std::cerr << "COMMITTED" << std::endl;
 #endif
     }
-    spawned_barrier--;
-    pthread_join(recorder, NULL);
-#endif 
+#endif // CONSISTENCY_CHECK
 	return 0;
 }

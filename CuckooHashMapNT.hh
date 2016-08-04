@@ -349,7 +349,7 @@ public:
         cuckoo_status res;
     RETRY:
         snapshot_both_get_buckets(ti_old, ti_new, hv, i1_o, i2_o, i1_n, i2_n);
-
+        
         res = find_one(ti_old, hv, key, val, i1_o, i2_o);
 
         // couldn't find key in bucket, and one of the buckets was moved to new table

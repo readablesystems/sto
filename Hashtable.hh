@@ -345,7 +345,7 @@ public:
         el->version.set_version(t.commit_tid()); // automatically sets valid to true
     } else {
         el->version.inc_nonopaque_version(); // automatically sets valid to true
-        el->version.set_version_locked(el->version.value() ^ invalid_bit);
+        el->version.set_version_locked(el->version.value() & ~invalid_bit);
     }
     // nate: this has no visible perf change on vacation (maybe slightly slower).
 #if 1

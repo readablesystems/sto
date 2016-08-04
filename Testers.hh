@@ -49,9 +49,10 @@ struct txn_record {
 };
 
 template <typename T>
-struct TesterPair {
+struct TesterTuple {
     T* t;
     int me;
+    int nthreads;
 };
 
 std::vector<std::map<uint64_t, txn_record *> > txn_list;
@@ -115,12 +116,17 @@ public:
                     : std::cout << "[" << me << "] failed insert key " << key << " and val " << val << std::endl;
             TransactionTid::unlock(lock);
 #endif
+#if CONSISTENCY_CHECK
             op_record* rec = new op_record;
             rec->op = op;
             rec->args.push_back(key);
             rec->args.push_back(val);
             rec->rdata.push_back(inserted);
             return rec;
+#else 
+            (void)inserted;
+            return NULL;
+#endif
         } else if (op == 1) {
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
@@ -134,11 +140,16 @@ public:
                 : std::cout << "[" << me << "] failed erase key " << key << std::endl;
             TransactionTid::unlock(lock);
 #endif
+#if CONSISTENCY_CHECK
             op_record* rec = new op_record;
             rec->op = op;
             rec->args.push_back(key);
             rec->rdata.push_back(erased);
             return rec;
+#else 
+            (void)erased;
+            return NULL;
+#endif
         } else if (op == 2) {
 #if PRINT_DEBUG
             TransactionTid::lock(lock);
@@ -153,16 +164,22 @@ public:
                 : std::cout << "[" << me << "] didn't find key " << key << std::endl;
             TransactionTid::unlock(lock);
 #endif
+#if CONSISTENCY_CHECK
             op_record* rec = new op_record;
             rec->op = op;
             rec->args.push_back(key);
             rec->rdata.push_back(val);
             rec->rdata.push_back(found);
             return rec;
+#else 
+            (void)found;
+            return NULL;
+#endif
         }
         return nullptr;
     }
 
+#if CONSISTENCY_CHECK
     void redoOp(RT* q, op_record *op) {
         if (op->op == 0) {
             int key = op->args[0];
@@ -235,6 +252,10 @@ public:
             } RETRY(false);
         }
     }
+#else 
+    void redoOp(RT*, op_record*) {}
+    void check(DT*, RT*) {}
+#endif // CONSISTENCY_CHECK
 
 #if PRINT_DEBUG
     void print_stats(DT* q) {
@@ -278,12 +299,17 @@ public:
             std::cout << "[" << me << "] put " << key << "," << val << std::endl;
             TransactionTid::unlock(lock);
 #endif
+#if CONSISTENCY_CHECK
             op_record* rec = new op_record;
             rec->op = op;
             rec->args.push_back(key);
             rec->args.push_back(val);
             rec->rdata.push_back(present);
             return rec;
+#else
+            (void)present;
+            return NULL;
+#endif // CONSISTENCY_CHECK
         } else if (op == 1) {
             int key = slotdist(transgen);
 #if PRINT_DEBUG
@@ -298,12 +324,17 @@ public:
             std::cout << "[" << me << "] read " << key << ", " << val << std::endl;
             TransactionTid::unlock(lock);
 #endif
+#if CONSISTENCY_CHECK
             op_record* rec = new op_record;
             rec->op = op;
             rec->args.push_back(key);
             rec->rdata.push_back(val);
             rec->rdata.push_back(present);
             return rec;
+#else
+            (void)present;
+            return NULL;
+#endif // CONSISTENCY_CHECK
         } else {
             int key = slotdist(transgen);
 #if PRINT_DEBUG
@@ -317,14 +348,20 @@ public:
             std::cout << "[" << me << "] deleted " << key << ", " << success << std::endl;
             TransactionTid::unlock(lock);
 #endif
+#if CONSISTENCY_CHECK
             op_record* rec = new op_record;
             rec->op = op;
             rec->args.push_back(key);
             rec->rdata.push_back(success);
             return rec;
+#else
+            (void)success;
+            return NULL;
+#endif // CONSISTENCY_CHECK
         }
     }
 
+#if CONSISTENCY_CHECK
     void redoOp(T* q, op_record* op) {
         if (op->op == 0) {
             int key = op->args[0];
@@ -359,11 +396,13 @@ public:
             } RETRY(false);
         }
     }
+#else 
+    void redoOp(T*, op_record*) {}
+    void check(T*, T*) {}
+#endif // CONSISTENCY_CHECK
     
 #if PRINT_DEBUG
-    void print_stats(T* q) {
-       
-    }
+    void print_stats(T* q) {}
 #endif
 
     static const int num_ops_ = 3;
