@@ -8,9 +8,9 @@
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define N_THREADS 20 // Number of concurrent threads
-#define TOTAL_OPS 10000000
-#define NTRANS TOTAL_OPS/N_THREADS // Number of transactions each thread should run.
+#define N_THREADS 1 // Number of concurrent threads
+#define TOTAL_TRANS 10000000
+#define NTRANS TOTAL_TRANS/N_THREADS // Number of transactions each thread should run.
 #define MAX_OPS 5 // Maximum number of operations in a transaction.
 
 #define PRIORITY_QUEUE 0
@@ -102,12 +102,12 @@ void run(T* q, int me, int nthreads) {
             }
 
             if (Sto::try_commit()) {
+#if CONSISTENCY_CHECK
 #if PRINT_DEBUG
                 TransactionTid::lock(lock);
                 std::cerr << "[" << me << "] committed " << Sto::commit_tid() << std::endl;
                 TransactionTid::unlock(lock);
 #endif
-#if CONSISTENCY_CHECK
                 txn_list[me][Sto::commit_tid()] = tr;
 #endif
                 global_thread_ctrs[me] += numOps;

@@ -26,11 +26,11 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#define LIBCUCKOO_DEBUGNT 1
+#define LIBCUCKOO_DEBUGNT 0
 #if LIBCUCKOO_DEBUGNT
-#  define LIBCUCKOO_DBG(fmt, args...)  fprintf(stderr, "\x1b[32m""[libcuckoo:%s:%d:%lu] " fmt"" "\x1b[0m",__FILE__,__LINE__, (unsigned long)pthread_self(), ##args)
+#  define LIBCUCKOO_DBGNT(fmt, args...)  fprintf(stderr, "\x1b[32m""[libcuckoo:%s:%d:%lu] " fmt"" "\x1b[0m",__FILE__,__LINE__, (unsigned long)pthread_self(), ##args)
 #else
-#  define LIBCUCKOO_DBG(fmt, args...)  do {} while (0)
+#  define LIBCUCKOO_DBGNT(fmt, args...)  do {} while (0)
 #endif
 
 //! SLOT_PER_BUCKET_NT is the maximum number of keys per bucket
@@ -56,7 +56,38 @@ class CuckooHashMapNT {
     } cuckoo_status;
 
 
-    // Structs and functions used internally
+    struct rw_lock {
+    private:
+        TVersion num;
+
+    public:
+        rw_lock() {
+        }
+
+        inline size_t get_version() {
+            return num.value();
+        }
+
+        inline void lock() {
+#if LIBCUCKOO_DEBUG
+            assert(!num.is_locked_here());
+#endif
+            num.lock();
+        }
+
+        inline void unlock() {
+            num.set_version_unlock(num.value() + TransactionTid::increment_value);
+        }
+
+        inline bool try_lock() {
+            return num.try_lock();
+        }
+
+        inline bool is_locked() const {
+            return num.is_locked();
+        }
+    } __attribute__((aligned(64)));
+/*
     struct rw_lock {
         std::atomic<size_t> num;
 
@@ -86,7 +117,7 @@ class CuckooHashMapNT {
                     start_version, start_version+1, std::memory_order_release, std::memory_order_relaxed) );
         }
     } __attribute__((aligned(64)));
-
+*/
     /* This is a hazard pointer, used to indicate which version of the
      * TableInfo is currently being used in the thread. Since
      * CuckooHashMapNT operations can run simultaneously in different
@@ -128,7 +159,7 @@ class CuckooHashMapNT {
             lock_.lock();
             auto it = old_pointers.begin();
             while (it != old_pointers.end()) {
-                LIBCUCKOO_DBG("Hazard pointer %p\n", *it);
+                LIBCUCKOO_DBGNT("Hazard pointer %p\n", *it);
                 bool deleteable = true;
                 for (auto hpit = hp_.cbegin(); hpit != hp_.cend(); hpit++) {
                     if (*hpit == *it) {
@@ -137,7 +168,7 @@ class CuckooHashMapNT {
                     }
                 }
                 if (deleteable) {
-                    LIBCUCKOO_DBG("Deleting %p\n", *it);
+                    LIBCUCKOO_DBGNT("Deleting %p\n", *it);
                     delete *it;
                     it = old_pointers.erase(it);
                 } else {
@@ -190,7 +221,7 @@ class CuckooHashMapNT {
         if (counterid < 0) {
             //counterid = rand() % kNumCores;
             counterid = numThreads.fetch_add(1,std::memory_order_relaxed) % kNumCores;
-            //LIBCUCKOO_DBG("Counter id is %d", counterid);
+            //LIBCUCKOO_DBGNT("Counter id is %d", counterid);
         }
     }
 
@@ -266,8 +297,8 @@ public:
         snapshot_both_no_hazard(ti_old, ti_new);
         size_t s1 = cuckoo_size(ti_old);
         size_t s2 = cuckoo_size(ti_new);
-        LIBCUCKOO_DBG("Old table size %zu\n", s1);
-        LIBCUCKOO_DBG("New table size %zu\n", s2);
+        LIBCUCKOO_DBGNT("Old table size %zu\n", s1);
+        LIBCUCKOO_DBGNT("New table size %zu\n", s2);
         unset_hazard_pointers();
         return s1+s2;
     }
@@ -356,7 +387,7 @@ public:
         if (res == failure_key_moved) {
             if (ti_new == nullptr) { // the new table's pointer has already moved
                 unset_hazard_pointers();
-                LIBCUCKOO_DBG("ti_new is nullptr in failure_key_moved with ptr %p\n",ti_new);
+                LIBCUCKOO_DBGNT("ti_new is nullptr in failure_key_moved with ptr %p\n",ti_new);
                 goto RETRY;
             }
             res = find_one(ti_new, hv, key, val, i1_n, i2_n);
@@ -415,28 +446,28 @@ public:
             // all buckets have already been moved, and now old_table_ptr has the new one
             if (ti_new == nullptr) {
                 unset_hazard_pointers();
-                LIBCUCKOO_DBG("Table Info pointers have already swapped in insert");
+                LIBCUCKOO_DBGNT("Table Info pointers have already swapped in insert");
                 goto RETRY;
             }
 
             migrate_something(ti_old, ti_new, i1_o, i2_o );
 
-            // LIBCUCKOO_DBG("result is failure_key_moved or failure (too full)! with new pointer");
+            // LIBCUCKOO_DBGNT("result is failure_key_moved or failure (too full)! with new pointer");
             res = insert_one(ti_new, hv, key, val, i1_n, i2_n);
             
-            /*LIBCUCKOO_DBG("hashpower = %zu, %zu, hash_items = %zu,%zu, load factor = %.2f,%.2f), need to increase hashpower\n",
+            /*LIBCUCKOO_DBGNT("hashpower = %zu, %zu, hash_items = %zu,%zu, load factor = %.2f,%.2f), need to increase hashpower\n",
                       ti_old->hashpower_, ti_new->hashpower_, cuckoo_size(ti_old), cuckoo_size(ti_new),
                       cuckoo_loadfactor(ti_old), cuckoo_loadfactor(ti_new) );*/
             // key moved from new table, meaning that an even newer table was created
             if (res == failure_key_moved || res == failure_table_full) {
-                LIBCUCKOO_DBG("Key already moved from new table, or already filled...that was fast, %d\n", res);
+                LIBCUCKOO_DBGNT("Key already moved from new table, or already filled...that was fast, %d\n", res);
                 unset_hazard_pointers();
                 goto RETRY;
             }
 
             // Impossible case because of invariant with migrations
             /*if (res == failure) {
-                LIBCUCKOO_DBG("hashpower = %zu, %zu, hash_items = %zu,%zu, load factor = %.2f,%.2f), need to increase hashpower\n",
+                LIBCUCKOO_DBGNT("hashpower = %zu, %zu, hash_items = %zu,%zu, load factor = %.2f,%.2f), need to increase hashpower\n",
                       ti_old->hashpower_, ti_new->hashpower_, cuckoo_size(ti_old), cuckoo_size(ti_new),
                       cuckoo_loadfactor(ti_old), cuckoo_loadfactor(ti_new) );
                 exit(1);
@@ -470,7 +501,7 @@ public:
         if (res == failure_key_moved) {
             if (ti_new == nullptr) { // all buckets were moved, and tables swapped
                 unset_hazard_pointers();
-                LIBCUCKOO_DBG("ti_new is nullptr in failure_key_moved");
+                LIBCUCKOO_DBGNT("ti_new is nullptr in failure_key_moved");
                 goto RETRY;
             }
 
@@ -480,7 +511,7 @@ public:
 
             // key moved from new table, meaning that an even newer table was created
             if (res == failure_key_moved) {
-                LIBCUCKOO_DBG("Key already moved from new table...that was fast, %d\n", res);
+                LIBCUCKOO_DBGNT("Key already moved from new table...that was fast, %d\n", res);
                 unset_hazard_pointers();
                 goto RETRY;
             }
@@ -702,7 +733,7 @@ private:
             assert( res1 == ok ); 
             
             if( !hasOverflow(ti, i1) && open1 != -1 ) {
-                //LIBCUCKOO_DBG("We can shortcut in insert! Load factor: %0.2f\n", cuckoo_loadfactor( ti ));
+                //LIBCUCKOO_DBGNT("We can shortcut in insert! Load factor: %0.2f\n", cuckoo_loadfactor( ti ));
                 add_to_bucket(ti, key, val, i1, open1);
                 unlock( ti, i1 );
                 return ok;
@@ -767,15 +798,15 @@ private:
 
         assert(st == failure_too_slow || st == failure_table_full || st == failure_key_moved);
         if (st == failure_table_full) {
-            LIBCUCKOO_DBG("hash table is full (hashpower = %zu, hash_items = %zu, load factor = %.2f), need to increase hashpower\n",
+            LIBCUCKOO_DBGNT("hash table is full (hashpower = %zu, hash_items = %zu, load factor = %.2f), need to increase hashpower\n",
                       ti->hashpower_, cuckoo_size(ti), cuckoo_loadfactor(ti));
 
             //we will create a new table and set the new table pointer to it
             if (cuckoo_expand_start(ti, ti->hashpower_+1) == failure_under_expansion) {
-                LIBCUCKOO_DBG("Somebody swapped the table pointer before I did. Anyways, it's changed!\n");
+                LIBCUCKOO_DBGNT("Somebody swapped the table pointer before I did. Anyways, it's changed!\n");
             }
         } else if(st == failure_too_slow) {
-            LIBCUCKOO_DBG( "We were too slow, and another insert got between us!\n");
+            LIBCUCKOO_DBGNT( "We were too slow, and another insert got between us!\n");
             goto RETRY;
         }
 
@@ -854,7 +885,7 @@ private:
             unlock(ti_old, new_migrate_bucket);
             if( new_migrate_bucket == hashsize(ti_old->hashpower_) - 1 ) {
                 while(cuckoo_size( ti_old ) != 0 ) {
-                //    LIBCUCKOO_DBG("Im the chosen one! %zu\n", cuckoo_size( ti_old ) );
+                //    LIBCUCKOO_DBGNT("Im the chosen one! %zu\n", cuckoo_size( ti_old ) );
                 };
                 cuckoo_expand_end(ti_old, ti_new);
             }
@@ -869,7 +900,7 @@ private:
      */
     bool try_migrate_bucket(TableInfo* ti_old, TableInfo* ti_new, size_t old_bucket) {
         if (ti_old->buckets_[old_bucket].hasmigrated) {
-            //LIBCUCKOO_DBG("Already migrated bucket %zu\n", old_bucket);
+            //LIBCUCKOO_DBGNT("Already migrated bucket %zu\n", old_bucket);
             return false;
         }
         size_t i1, i2, hv;
@@ -893,7 +924,7 @@ private:
             // our invariant ensures that the table can't be full (so no failure_table_full)
             // and the same key can't have been inserted already (so no failure_key_duplicated)            
             if( res != ok ) {
-                LIBCUCKOO_DBG("In try_migrate_bucket: hashpower = %zu, %zu, hash_items = %zu,%zu, load factor = %.2f,%.2f), need to increase hashpower\n",
+                LIBCUCKOO_DBGNT("In try_migrate_bucket: hashpower = %zu, %zu, hash_items = %zu,%zu, load factor = %.2f,%.2f), need to increase hashpower\n",
                       ti_old->hashpower_, ti_new->hashpower_, cuckoo_size(ti_old), cuckoo_size(ti_new),
                       cuckoo_loadfactor(ti_old), cuckoo_loadfactor(ti_new) );
                 exit(1);
@@ -1475,11 +1506,11 @@ private:
             }
 
             if (res == failure_key_moved) {
-                LIBCUCKOO_DBG("Found moved bucket when running cuckoopath_move");
+                LIBCUCKOO_DBGNT("Found moved bucket when running cuckoopath_move");
                 return failure_key_moved;
             }
         }
-        LIBCUCKOO_DBG("Should never reach here");
+        LIBCUCKOO_DBGNT("Should never reach here");
         return failure_function_not_supported;
     }
     
@@ -1662,7 +1693,7 @@ private:
      * table. */
     size_t cuckoo_size(const TableInfo *ti) {
         if (ti == nullptr) {
-            LIBCUCKOO_DBG("New table doesn't exist yet\n");
+            LIBCUCKOO_DBGNT("New table doesn't exist yet\n");
             return 0;
         }
         size_t inserts = 0;
@@ -1688,7 +1719,7 @@ private:
         TableInfo *ti_new_expected = nullptr;
         snapshot_lock.lock();
         snapshot_both_no_hazard( ti_old_actual, ti_new_actual);
-        //LIBCUCKOO_DBG( "start expand %p, %p    %p, %p\n", ti_old_expected, ti_old_actual, ti_new_expected, ti_new_actual);
+        //LIBCUCKOO_DBGNT( "start expand %p, %p    %p, %p\n", ti_old_expected, ti_old_actual, ti_new_expected, ti_new_actual);
         
         //we only want to create a new table if there is no ongoing expansion already
         //Also accouunts for possibility of somebody already swapping the table pointer
@@ -1699,7 +1730,7 @@ private:
         //timeval t1, t2;
         //gettimeofday(&t1, NULL);
         new_table_info.store(new TableInfo(n));
-        //LIBCUCKOO_DBG("Some stuff: %zu, %zu\n", cuckoo_size(new_table_info.load()), new_table_info.load()->num_inserts[0].num.load());
+        //LIBCUCKOO_DBGNT("Some stuff: %zu, %zu\n", cuckoo_size(new_table_info.load()), new_table_info.load()->num_inserts[0].num.load());
         //gettimeofday(&t2, NULL);
         //double elapsed_time = (t2.tv_sec - t1.tv_sec) * 1000.0; // sec to ms
         //elapsed_time += (t2.tv_usec - t1.tv_usec) / 1000.0; // us to ms
@@ -1723,13 +1754,13 @@ private:
         TableInfo *ti_new_actual;
         snapshot_lock.lock();
         snapshot_both_no_hazard( ti_old_actual, ti_new_actual);
-        // LIBCUCKOO_DBG( "end expand %p, %p    %p, %p\n", ti_old_expected, ti_old_actual, ti_new_expected, ti_new_actual);
+        // LIBCUCKOO_DBGNT( "end expand %p, %p    %p, %p\n", ti_old_expected, ti_old_actual, ti_new_expected, ti_new_actual);
 
         if (ti_old_expected != ti_old_actual || ti_new_expected != ti_new_actual) {
             snapshot_lock.unlock();
             return failure_under_expansion;
         }
-        // LIBCUCKOO_DBG( "Size of old table is %zu, new one is %zu", cuckoo_size(ti_old_actual), cuckoo_size( ti_new_expected));
+        // LIBCUCKOO_DBGNT( "Size of old table is %zu, new one is %zu", cuckoo_size(ti_old_actual), cuckoo_size( ti_new_expected));
         assert( cuckoo_size(ti_old_actual) == 0 );
         table_info.store(ti_new_expected);
         new_table_info.store(nullptr);
@@ -1744,7 +1775,7 @@ private:
         gettimeofday(&t2, NULL);
         double elapsed_time = (t2.tv_sec - t1.tv_sec) * 1000.0; // sec to ms
         elapsed_time += (t2.tv_usec - t1.tv_usec) / 1000.0; // us to ms
-        LIBCUCKOO_DBG("Time to delete old table pointer: %0.04f\n", elapsed_time);
+        LIBCUCKOO_DBGNT("Time to delete old table pointer: %0.04f\n", elapsed_time);
         //std::cout << "Time to delete old table pointer" << elapsed_time << std::endl;
         snapshot_lock.unlock();
         return ok;
