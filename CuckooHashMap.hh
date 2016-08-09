@@ -61,7 +61,7 @@ class CuckooHashMap: public Shared {
         failure_function_not_supported = 5,
         failure_table_full = 6,
         failure_under_expansion = 7,
-        failure_key_moved = 8,
+        //failure_key_moved = 8,
         failure_already_migrating_all = 9,
         failure_key_phantom = 10, // the key found was a phantom. abort!
         ok_delete_then_insert = 11 // we don't actually want to insert
@@ -702,9 +702,8 @@ public:
         res = find_one(ti_old, hv, key, val, i1_o, i2_o);
 
         // couldn't find key in bucket, and one of the buckets was moved to new table
+        /*
         if (res == failure_key_moved) {
-            assert(0);
-            /*
             if (ti_new == nullptr) { // the new table's pointer has already moved
                 unset_hazard_pointers();
                 LIBCUCKOO_DBG("ti_new is nullptr in failure_key_moved with ptr %p\n",ti_new);
@@ -715,9 +714,9 @@ public:
                 unset_hazard_pointers();
                 goto RETRY;
             }
-            */
             assert( res == ok || res == failure_key_not_found);
         }
+        */
         unset_hazard_pointers(); 
         return (res == ok);
     }
@@ -740,7 +739,8 @@ public:
 
         // if two tables exist, then no point in inserting into old one
         if (ti_new != nullptr) {
-            res = failure_key_moved; 
+            //res = failure_key_moved; 
+            res = failure_key_phantom;
         } else {
             res = insert_one(ti_old, hv, key, val, i1_o, i2_o);
             if (res == failure_key_phantom) {
@@ -752,8 +752,7 @@ public:
         // This is triggered only if we couldn't find the key in either
         // old table bucket and one of the buckets was moved
         // or this thread expanded the table (so didn't insert into key into new table yet)
-        if (res == failure_key_moved || res == failure_table_full) {
-            assert(0);
+        if (/*res == failure_key_moved || */res == failure_table_full) {
             // all buckets have already been moved, and now old_table_ptr has the new one
             if (ti_new == nullptr) {
                 unset_hazard_pointers();
@@ -768,7 +767,7 @@ public:
                 Sto::abort_because("phantom in insert"); assert(0);
             }            
             // key moved from new table, meaning that an even newer table was created
-            if (res == failure_key_moved || res == failure_table_full) {
+            if (/*res == failure_key_moved || */res == failure_table_full) {
                 LIBCUCKOO_DBG("Key already moved from new table, or already filled...that was fast, %d\n", res);
                 unset_hazard_pointers();
                 goto RETRY;
@@ -805,11 +804,12 @@ public:
         TableInfo *ti_old, *ti_new;
         size_t i1_o, i2_o, i1_n, i2_n;
         cuckoo_status res;
-    RETRY:
+    //RETRY:
         snapshot_both_get_buckets(ti_old, ti_new, hv, i1_o, i2_o, i1_n, i2_n);
 
         if (ti_new != nullptr) {
-            res = failure_key_moved;
+            //res = failure_key_moved;
+            res = failure_key_phantom;
         } else {
             res = delete_one(ti_old, hv, key, i1_o, i2_o, transactional);
             if (res == failure_key_phantom) {
@@ -817,9 +817,9 @@ public:
                 Sto::abort_because("phantom in erase"); assert(0);
             }
         }
-        
+       
+        /*
         if (res == failure_key_moved) {
-            assert(0);
             if (ti_new == nullptr) { // all buckets were moved, and tables swapped
                 unset_hazard_pointers();
                 LIBCUCKOO_DBG("ti_new is nullptr in failure_key_moved");
@@ -844,6 +844,7 @@ public:
             // delete_one added reads of the appropriate buckets if the key was not found
             assert(res == ok || res == failure_key_not_found);
         }
+        */
         unset_hazard_pointers();
         return (res == ok);
     }
@@ -951,7 +952,7 @@ private:
         //fastpath: 
         lock( ti, i1 );
         res1 = try_add_to_bucket(ti, key, val, i1, open1, vto);
-        if (res1 == failure_key_duplicated || res1 == failure_key_moved || res1 == failure_key_phantom) {
+        if (res1 == failure_key_duplicated || /*res1 == failure_key_moved || */res1 == failure_key_phantom) {
             unlock( ti, i1 );
             if (vto.observe_me) Sto::item(this, vto.ptr).observe(vto.version);
             return res1;
@@ -972,7 +973,7 @@ private:
                     lock_two(ti, i1, i2);
                     // we need to make sure nothing happened to the first bucket while it was unlocked
                     res1 = try_add_to_bucket(ti, key, val, i1, open1, vto);
-                    if (res1 == failure_key_duplicated || res1 == failure_key_moved || res1 == failure_key_phantom) {
+                    if (res1 == failure_key_duplicated || /*res1 == failure_key_moved || */res1 == failure_key_phantom) {
                         unlock_two(ti, i1, i2);
                         if (vto.observe_me) Sto::item(this, vto.ptr).observe(vto.version);
                         return res1;
@@ -983,7 +984,7 @@ private:
 
         //at this point we must have both buckets locked
         res2 = try_add_to_bucket(ti, key, val, i2, open2, vto);
-        if (res2 == failure_key_duplicated || res2 == failure_key_moved || res2 == failure_key_phantom) {
+        if (res2 == failure_key_duplicated || /*res2 == failure_key_moved ||*/ res2 == failure_key_phantom) {
             unlock_two(ti, i1, i2);
             if (vto.observe_me) Sto::item(this, vto.ptr).observe(vto.version);
             return res2;
@@ -1037,7 +1038,7 @@ private:
             return ok;
         }
 
-        assert(st == failure_too_slow || st == failure_table_full || st == failure_key_moved);
+        assert(st == failure_too_slow || st == failure_table_full /*|| st == failure_key_moved*/);
         if (st == failure_table_full) {
             // TODO resizes not supported
             assert(0);
@@ -1071,7 +1072,7 @@ private:
         lock( ti, i1 );
         res1 = try_del_from_bucket(ti, key, i1, vto, transactional);
         // if we found the element there, or nothing ever was added to second bucket, then we're done
-        if (res1 == ok || res1 == failure_key_moved || !hasOverflow(ti, i1) || res1 == failure_key_phantom ) {
+        if (res1 == ok || /*res1 == failure_key_moved || */!hasOverflow(ti, i1) || res1 == failure_key_phantom ) {
             auto bv = ti->buckets_[i1].bucketversion;
             unlock( ti, i1 );
             if (transactional && res1 == failure_key_not_found) {
@@ -1084,7 +1085,7 @@ private:
                 unlock(ti, i1);
                 lock_two(ti, i1, i2);
                 res1 = try_del_from_bucket(ti, key, i1, vto, transactional);
-                if( res1 == ok || res1 == failure_key_moved || res1 == failure_key_phantom ) {
+                if( res1 == ok || /*res1 == failure_key_moved || */res1 == failure_key_phantom ) {
                     unlock_two(ti, i1, i2);
                     if (vto.observe_me) Sto::item(this, vto.ptr).observe(vto.version);
                     return res1;
@@ -1093,7 +1094,7 @@ private:
         }
 
         res2 = try_del_from_bucket(ti, key, i2, vto, transactional);
-        if (res2 == ok || res2 == failure_key_moved || res2 == failure_key_phantom) {
+        if (res2 == ok || /*res2 == failure_key_moved || */res2 == failure_key_phantom) {
             if (res2 == ok && !transactional) {
                 ti->buckets_[i1].overflow--;
             }
@@ -1120,9 +1121,9 @@ private:
      * Also ensures trying to migrate a new bucket. This invariant ensures that we never
      * fill up the new table before the old table has finished migrating.
      */
+    /*
     bool migrate_something(TableInfo *ti_old, TableInfo *ti_new, 
                                size_t i1_o, size_t i2_o) {
-        assert(0);
         assert(ti_old != ti_new);
 
         lock(ti_old, i1_o);
@@ -1152,14 +1153,14 @@ private:
         }
         return true;
     }
-
+    */
     /* assumes bucket in old table is locked the whole time
      * tries to migrate bucket, returning true on success, false on failure
      * since we return immediately if the bucket has already migrated, if continue
      * then we know that ti_new is indeed the newest table pointer
      */
+    /*
     bool try_migrate_bucket(TableInfo* ti_old, TableInfo* ti_new, size_t old_bucket) {
-        assert(0);
         if (ti_old->buckets_[old_bucket].hasmigrated) {
             //LIBCUCKOO_DBG("Already migrated bucket %zu\n", old_bucket);
             return false;
@@ -1180,7 +1181,6 @@ private:
             // XXX this updates the new ti's bucket's bucketversion
             // BUT we don't need to update the old bucket's bucketversion, because
             // we're not inserting anything into it... in fact, its contents don't change 
-            (void)i2;
             //res = migrate_insert_one(ti_new, hv, elem, i1, i2);
 
             // this can't happen since nothing can have moved out of ti_new (so no failure_key_moved)
@@ -1200,6 +1200,7 @@ private:
         ti_old->buckets_[old_bucket].hasmigrated = true;
         return true;
     }
+    */
 
     static inline bool hasOverflow(const TableInfo *ti, const size_t i) {
         return (ti->buckets_[i].overflow > 0);
@@ -1379,7 +1380,7 @@ private:
     static const size_t MAX_BFS_DEPTH = 4;
 
     // the % of moved buckets above which migrate_all is called
-    static constexpr double MIGRATE_THRESHOLD = 0.8;
+    //static constexpr double MIGRATE_THRESHOLD = 0.8;
 
     /* hashsize returns the number of buckets corresponding to a given
      * hashpower. */
@@ -1498,7 +1499,7 @@ private:
             // Picks a random slot to start from
             for (size_t slot = 0; slot < SLOT_PER_BUCKET && q.not_full(); slot++) {
                 //if (ti->buckets_[x.bucket].hasmigrated) {
-                 //   return b_slot(0, 0, -2);
+                //   return b_slot(0, 0, -2);
                 //}
                 elem = ti->buckets_[x.bucket].elems[slot];
                 if (elem == NULL) {
@@ -1518,7 +1519,7 @@ private:
                 // the bucket so that no changes occur while
                 // iterating.
                 //if (ti->buckets_[y.bucket].hasmigrated) {
-                 //   return b_slot(0, 0, -2);
+                //   return b_slot(0, 0, -2);
                 //}
                 for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
                     elem = ti->buckets_[y.bucket].elems[j];
@@ -1570,7 +1571,7 @@ private:
         if (x.pathcode == 0) {
             curr->bucket = i1;
             //if (ti->buckets_[curr->bucket].hasmigrated) {
-             //   return -2;
+            //   return -2;
             //}
             elem = ti->buckets_[curr->bucket].elems[curr->slot];
             if (elem == NULL) {
@@ -1582,7 +1583,7 @@ private:
             assert(x.pathcode == 1);
             curr->bucket = i2;
             //if (ti->buckets_[curr->bucket].hasmigrated) {
-             //   return -2;
+            //   return -2;
             //}
             elem = ti->buckets_[curr->bucket].elems[curr->slot];
             if (elem == NULL) {
@@ -1636,8 +1637,8 @@ private:
             assert(bucket == i1 || bucket == i2);
             lock_two(ti, i1, i2);
             //if (ti->buckets_[i1].hasmigrated || ti->buckets_[i2].hasmigrated) {
-             //   unlock_two(ti, i1, i2);
-              //  return failure_key_moved;
+            //  unlock_two(ti, i1, i2);
+            //  return failure_key_moved;
             //}
             elem = ti->buckets_[bucket].elems[cuckoo_path[0].slot];
             if (elem == NULL) {
@@ -1766,10 +1767,11 @@ private:
             if (depth == -1) {
                 return failure_table_full; //happens if path too long
             }
-
+            /*
             if (depth == -2) {
                 return failure_key_moved; //happens if found moved bucket along path
             }
+            */
             res = cuckoopath_move(ti, cuckoo_path, depth, i1, i2);
             if (res == ok) {
                 insert_bucket = cuckoo_path[0].bucket;
@@ -1783,10 +1785,12 @@ private:
                 return ok;
             }
 
+            /*
             if (res == failure_key_moved) {
                 LIBCUCKOO_DBG("Found moved bucket when running cuckoopath_move");
                 return failure_key_moved;
             }
+            */
         }
         LIBCUCKOO_DBG("Should never reach here");
         return failure_function_not_supported;
@@ -1797,7 +1801,7 @@ private:
     cuckoo_status try_read_from_bucket(const TableInfo *ti, const key_type& key,
                                      internal_elem*& e, const size_t i) {
         //if (ti->buckets_[i].hasmigrated) {
-         //   return failure_key_moved;
+        //   return failure_key_moved;
         //}
 
         for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
@@ -1841,7 +1845,7 @@ private:
         vto.observe_me = false;
 
         //if (ti->buckets_[i].hasmigrated) {
-         //   return failure_key_moved;
+        //   return failure_key_moved;
         //}
         internal_elem* elem_in_table;
         for (size_t k = 0; k < SLOT_PER_BUCKET; k++) {
@@ -1909,7 +1913,7 @@ private:
                                     version_to_observe& vto, bool transactional) {
         vto.observe_me = false;
         //if (ti->buckets_[i].hasmigrated) {
-         //   return failure_key_moved;
+        //   return failure_key_moved;
         //}
 
         for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
@@ -1990,9 +1994,11 @@ private:
         if(res2 == ok) {
             return ok;
         }
+        /*
         if (res1 == failure_key_moved || res2 == failure_key_moved) {
             return failure_key_moved;
         }
+        */
         return failure_key_not_found;
     }
 
@@ -2006,6 +2012,7 @@ private:
 
     /* count_migrated_buckets returns the number of migrated buckets in the given
      * table. */
+    /*
     size_t count_migrated_buckets(const TableInfo *ti) {
         size_t num_migrated = 0;
         for (size_t i = 0; i < ti->num_inserts.size(); i++) {
@@ -2013,6 +2020,7 @@ private:
         }
         return num_migrated;
     }
+    */
 
     /* cuckoo_clear empties the table, calling the destructors of all
      * the elements it removes from the table. It assumes the locks
@@ -2026,7 +2034,7 @@ private:
             ti->num_inserts[i].num.store(0);
             ti->num_deletes[i].num.store(0);
         }
-            //ti->migrate_bucket_ind.num.store(0);
+        //ti->migrate_bucket_ind.num.store(0);
 
         return ok;
     }
