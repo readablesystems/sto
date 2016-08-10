@@ -46,6 +46,7 @@
 //! SLOT_PER_BUCKET is the maximum number of keys per bucket
 const size_t SLOT_PER_BUCKET = 4;
 
+
 /*! CuckooHashMap is the hash table class. */
 template <class Key, class T, class Hash = std::hash<Key>, class Pred = std::equal_to<Key>, unsigned Init_size = 250000 * SLOT_PER_BUCKET, bool Opacity = false>
 class CuckooHashMap: public Shared {
@@ -373,27 +374,37 @@ private:
         bool phantom() { return version.value() & phantom_bit; }
     };
 
-    struct version_to_observe {
-        bool observe_me;
-        void* ptr;
-        version_type version;
+    /* A key frag allows for you to check key equality without (hopefully) reading
+    / in another cacheline by accessing the internal_elem pointer to the key/value
+    */
+    struct key_frag {
+        size_t hv_;
+        
+        key_frag(size_t hv) : hv_(hv) {}
 
-        version_to_observe() : observe_me(false), ptr(NULL), version(0) {}
-    };
-
-    /* cacheint is a cache-aligned atomic integer type. */
-    struct cacheint {
-        std::atomic<size_t> num;
-        cacheint() {}
-        cacheint(cacheint&& x) {
-            num.store(x.num.load());
+        // If the key itself is not a special type (e.g. int), compare the hashed value 
+        // If they are equal, you must compare the actual keys (reading in a new cache line)
+        bool is_equal(key_type key, internal_elem* elem) {
+            size_t hv = hashed_key(key);
+            if (hv == hv_) 
+                return (elem->key == key);
+            return false;
         }
-    } __attribute__((aligned(64)));
+    };
 
     /* The Bucket type holds SLOT_PER_BUCKET keys and values. */
     struct Bucket {
+        union bucket_elem {
+            key_frag kf;
+            internal_elem* ie;
+
+            bucket_elem() {} 
+        };
+        
         rw_lock lock;
-        internal_elem* elems[SLOT_PER_BUCKET];
+        // A bucket has BUCKET_SIZE key_frags, followed by BUCKET_SIZE internal_elem pointers.
+        // XXX what type?
+        bucket_elem elems[2*SLOT_PER_BUCKET];
         unsigned char overflow;
         //bool hasmigrated;
         // STO: bucketversions track if a bucket has been migrated, or if an item has been inserted/
@@ -403,27 +414,38 @@ private:
         unsigned num_times_locked;
 #endif
 
-        void setKV(size_t pos, internal_elem* elem) {
-            elems[pos] = elem;
+        void setKV(size_t pos, internal_elem* elem, key_type key) {
+            elems[pos].kf = key_frag(hashed_key(key));
+            elems[SLOT_PER_BUCKET + pos].ie = elem;
         }
 
         // sets the value in the bucket to NULL, but doesn't actually
         // free it (used for transfers)
         void eraseKV(size_t pos) {
-            elems[pos] = NULL;
+            elems[pos].kf = 0;
+            elems[SLOT_PER_BUCKET + pos].ie = NULL;
         }
 
         // actually frees the value
         void deleteKV(size_t pos) {
-            Transaction::rcu_free(elems[pos]);
-            elems[pos] = NULL;
+            elems[pos].kf = 0;
+            if (elems[SLOT_PER_BUCKET + pos].ie != NULL) {
+                Transaction::rcu_free(elems[SLOT_PER_BUCKET + pos].ie);
+                elems[SLOT_PER_BUCKET + pos].ie = NULL;
+            }
+        }
+
+        internal_elem* get_elem(size_t key_index) {
+            return elems[key_index + SLOT_PER_BUCKET].ie;
+        }
+
+        key_frag get_kf(size_t key_index) {
+            return elems[key_index].kf;
         }
 
         void clear() {
             for (size_t i = 0; i < SLOT_PER_BUCKET; i++) {
-                if (elems[i] != NULL) {
-                    deleteKV(i);
-                }
+                deleteKV(i);
             }
             overflow = 0;
             //hasmigrated = false;
@@ -442,7 +464,26 @@ private:
             inc_version();
             bucketversion.unlock();
         }
+
     };
+
+
+    struct version_to_observe {
+        bool observe_me;
+        void* ptr;
+        version_type version;
+
+        version_to_observe() : observe_me(false), ptr(NULL), version(0) {}
+    };
+
+    /* cacheint is a cache-aligned atomic integer type. */
+    struct cacheint {
+        std::atomic<size_t> num;
+        cacheint() {}
+        cacheint(cacheint&& x) {
+            num.store(x.num.load());
+        }
+    } __attribute__((aligned(64)));
 
     /* TableInfo contains the entire state of the hashtable. We
      * allocate one TableInfo pointer per hash table and store all of
@@ -518,7 +559,6 @@ private:
     std::list<TableInfo*> old_table_infos;
 
     static hasher hashfn;
-    static key_equal eqfn;
     static std::allocator<Bucket> bucket_allocator;
 
     static bool has_insert(const TransItem& item) {
@@ -862,12 +902,6 @@ public:
         return hashfn;
     }
 
-    /*! key_eq returns the equality predicate object used by the
-     * table. */
-    key_equal key_eq() {
-        return eqfn;
-    }
-
 private:
 
     /* find_one searches a specific table instance for the value corresponding to a given hash value 
@@ -1023,7 +1057,7 @@ private:
         mapped_type oldval;
         cuckoo_status st = run_cuckoo(ti, i1, i2, insert_bucket, insert_slot);
         if (st == ok) {
-            assert(ti->buckets_[insert_bucket].elems[insert_slot] == NULL);
+            assert(ti->buckets_[insert_bucket].get_elem(insert_slot) == NULL);
             assert(insert_bucket == index_hash(ti, hv) || insert_bucket == alt_index(ti, hv, index_hash(ti, hv)));
             /* Since we unlocked the buckets during run_cuckoo,
              * another insert could have inserted the same key into
@@ -1514,7 +1548,7 @@ private:
                 //if (ti->buckets_[x.bucket].hasmigrated) {
                 //   return b_slot(0, 0, -2);
                 //}
-                elem = ti->buckets_[x.bucket].elems[slot];
+                elem = ti->buckets_[x.bucket].get_elem(slot);
                 if (elem == NULL) {
                     // We can terminate the search here
                     x.pathcode = x.pathcode * SLOT_PER_BUCKET + slot;
@@ -1535,7 +1569,7 @@ private:
                 //   return b_slot(0, 0, -2);
                 //}
                 for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
-                    elem = ti->buckets_[y.bucket].elems[j];
+                    elem = ti->buckets_[y.bucket].get_elem(j);
                     if (elem == NULL) {
                         y.pathcode = y.pathcode * SLOT_PER_BUCKET + j;
                         return y;
@@ -1586,7 +1620,7 @@ private:
             //if (ti->buckets_[curr->bucket].hasmigrated) {
             //   return -2;
             //}
-            elem = ti->buckets_[curr->bucket].elems[curr->slot];
+            elem = ti->buckets_[curr->bucket].get_elem(curr->slot);
             if (elem == NULL) {
                 // We can terminate here
                 return 0;
@@ -1598,7 +1632,7 @@ private:
             //if (ti->buckets_[curr->bucket].hasmigrated) {
             //   return -2;
             //}
-            elem = ti->buckets_[curr->bucket].elems[curr->slot];
+            elem = ti->buckets_[curr->bucket].get_elem(curr->slot);
             if (elem == NULL) {
                 // We can terminate here
                 return 0;
@@ -1616,7 +1650,7 @@ private:
             //if (ti->buckets_[curr->bucket].hasmigrated) {
             //    return -2;
             //}
-            elem = ti->buckets_[curr->bucket].elems[curr->slot];
+            elem = ti->buckets_[curr->bucket].get_elem(curr->slot);
             if (elem == NULL) {
                 // We can terminate here
                 return i;
@@ -1653,7 +1687,7 @@ private:
             //  unlock_two(ti, i1, i2);
             //  return failure_key_moved;
             //}
-            elem = ti->buckets_[bucket].elems[cuckoo_path[0].slot];
+            elem = ti->buckets_[bucket].get_elem(cuckoo_path[0].slot);
             if (elem == NULL) {
                 return ok;
             } else {
@@ -1699,9 +1733,10 @@ private:
              * the slot we are filling in may have already been filled
              * in by another thread, or the slot we are moving from
              * may be empty, both of which invalidate the swap. */
-            internal_elem* elem1 = ti->buckets_[tb].elems[ts];
-            internal_elem* elem2 = ti->buckets_[fb].elems[fs];
-            if (elem1 != NULL || elem2 == NULL || !eqfn(elem2->key, from->key)) {
+            key_frag key2 = ti->buckets_[fb].get_kf(fs);
+            internal_elem* elem1 = ti->buckets_[tb].get_elem(ts);
+            internal_elem* elem2 = ti->buckets_[fb].get_elem(fs);
+            if (elem1 != NULL || elem2 == NULL || !key2.is_equal(from->key, elem2)) {
                 if (depth == 1) {
                     unlock_three(ti, fb, tb, ob);
                 } else {
@@ -1719,7 +1754,7 @@ private:
                 ti->buckets_[first_bucket].overflow--;
             }
 
-            ti->buckets_[tb].setKV(ts, elem2);
+            ti->buckets_[tb].setKV(ts, elem2, elem2->key);
             ti->buckets_[fb].eraseKV(fs);
             
             if (depth == 1) {
@@ -1794,7 +1829,7 @@ private:
                 assert(ti->buckets_[i1].lock.is_locked());
                 assert(ti->buckets_[i2].lock.is_locked());
 #endif
-                assert(ti->buckets_[insert_bucket].elems[insert_slot] == NULL);
+                assert(ti->buckets_[insert_bucket].get_elem(insert_slot) == NULL);
                 return ok;
             }
 
@@ -1818,12 +1853,13 @@ private:
         //}
 
         for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
-            internal_elem* elem = ti->buckets_[i].elems[j];
+            key_frag key_frag = ti->buckets_[i].get_kf(j);
+            internal_elem* elem = ti->buckets_[i].get_elem(j);
             if (elem == NULL) {
                 continue;
             }
 
-            if (eqfn(key, elem->key)) {
+            if (key_frag.is_equal(key, elem)) {
                 e = elem;
                 return ok;
             }
@@ -1835,10 +1871,10 @@ private:
      * slot. */
     inline void add_to_bucket(TableInfo *ti, const key_type& key, const mapped_type& val,
                                      const size_t i, const size_t j) {
-        assert(ti->buckets_[i].elems[j] == NULL);
+        assert(ti->buckets_[i].get_elem(j) == NULL);
        
         auto elem = new internal_elem(key, val);
-        ti->buckets_[i].setKV(j, elem);
+        ti->buckets_[i].setKV(j, elem, key);
         // update the bucketversion either now (for migration) or @ commit (add write)
         //if (is_migration) ti->buckets_[i].lock_and_inc_version();
         Sto::item(this, pack_bucket(&ti->buckets_[i])).add_write();
@@ -1862,10 +1898,11 @@ private:
         //}
         internal_elem* elem_in_table;
         for (size_t k = 0; k < SLOT_PER_BUCKET; k++) {
-            elem_in_table = ti->buckets_[i].elems[k];
+            key_frag key_frag = ti->buckets_[i].get_kf(k);
+            elem_in_table = ti->buckets_[i].get_elem(k);
             if (elem_in_table != NULL) {
                 auto ev = elem_in_table->version;
-                if (eqfn(key, elem_in_table->key)) {
+                if (key_frag.is_equal(key, elem_in_table)) {
                     // we only want to keep track clashes in the table if we're actually trying
                     // to insert a new item (not migrate it over)
                     // this should never occur if it is a migration...
@@ -1930,11 +1967,12 @@ private:
         //}
 
         for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
-            internal_elem* elem = ti->buckets_[i].elems[j];
+            key_frag key_frag = ti->buckets_[i].get_kf(j);
+            internal_elem* elem = ti->buckets_[i].get_elem(j);
             if (elem == NULL) {
                 continue;
             }
-            if (eqfn(elem->key, key)) {
+            if (key_frag.is_equal(key, elem)) {
                 auto elemver = elem->version;
                 if (transactional) {
                     auto item = Sto::item(this, elem);
@@ -2029,7 +2067,7 @@ private:
     size_t count_migrated_buckets(const TableInfo *ti) {
         size_t num_migrated = 0;
         for (size_t i = 0; i < ti->num_inserts.size(); i++) {
-            num_migrated += ti->num_migrated_buckets[i].num.load();
+            num_migrated += ti->num_migrated_buckets_[i].num.load();
         }
         return num_migrated;
     }
@@ -2133,9 +2171,6 @@ private:
         snapshot_lock.unlock();
         return ok;
     }
-
-  
-
 };
 
 // Initializing the static members
@@ -2151,10 +2186,6 @@ __thread int CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::counterid = 
 template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
 typename CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::hasher
 CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::hashfn;
-
-template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
-typename CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::key_equal
-CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::eqfn;
 
 template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
 typename std::allocator<typename CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::Bucket>
@@ -2176,4 +2207,23 @@ template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool O
 typename CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::cuckoo_stats 
 CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::stats(0,0);
 
+/*
+template <>
+void setKV<int>(size_t pos, internal_elem* elem, int key) {
+    elems[pos] = key_frag<int>(key);
+    elems[SLOT_PER_BUCKET + pos] = elem;
+}
+
+// specialized for ints
+template <> 
+template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
+CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::key_frag<int> {
+    int key_;
+
+    key_frag(int key) : key_(key) {}
+    bool is_equal(T key, internal_elem*) {
+        return key_ == key;
+    }
+};
+*/
 #endif

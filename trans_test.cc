@@ -9,7 +9,7 @@
 
 #define GLOBAL_SEED 10
 #define N_THREADS 1 // Number of concurrent threads
-#define TOTAL_TRANS 10000000
+#define TOTAL_TRANS 1000000
 #define NTRANS TOTAL_TRANS/N_THREADS // Number of transactions each thread should run.
 #define MAX_OPS 5 // Maximum number of operations in a transaction.
 
@@ -20,8 +20,8 @@
 #define CUCKOOHASHMAP 4
 #define CUCKOOHASHMAPNT 5
 //#define DS HASHTABLE
-//#define DS CUCKOOHASHMAP
-#define DS CUCKOOHASHMAPNT
+#define DS CUCKOOHASHMAP
+//#define DS CUCKOOHASHMAPNT
 
 #if DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
