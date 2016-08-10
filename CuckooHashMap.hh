@@ -66,7 +66,6 @@ class CuckooHashMap: public Shared {
         failure_key_phantom = 10, // the key found was a phantom. abort!
         ok_delete_then_insert = 11 // we don't actually want to insert
     } cuckoo_status;
-
     /*
     struct rw_lock {
         std::atomic<size_t> num;
@@ -505,6 +504,13 @@ private:
     std::atomic<TableInfo*> new_table_info;
     rw_lock snapshot_lock;
 
+    static struct cuckoo_stats {
+        std::atomic<int> num_times_lock_two;
+        std::atomic<int> num_times_lock_three;
+
+        cuckoo_stats(int x, int y) : num_times_lock_two(x), num_times_lock_three(y) {};
+    } stats;
+
     /* old_table_infos holds pointers to old TableInfos that were
      * replaced during expansion. This keeps the memory alive for any
      * leftover operations, until they are deleted by the global
@@ -571,6 +577,8 @@ public:
                 }
             }
             fprintf(stderr, "Total: %u\n", total);
+            fprintf(stderr, "Num Times Lock Two: %d\n", int(stats.num_times_lock_two));
+            fprintf(stderr, "Num Times Lock Three: %d\n", int(stats.num_times_lock_three));
 #endif
             delete ti_old;
         }
@@ -740,7 +748,6 @@ public:
         // if two tables exist, then no point in inserting into old one
         if (ti_new != nullptr) {
             //res = failure_key_moved; 
-            res = failure_key_phantom;
         } else {
             res = insert_one(ti_old, hv, key, val, i1_o, i2_o);
             if (res == failure_key_phantom) {
@@ -1247,6 +1254,9 @@ private:
     }
     
     static inline void lock_two(const TableInfo *ti, size_t i1, size_t i2) {
+#if LIBCUCKOO_DEBUG
+        stats.num_times_lock_two++;
+#endif
         if (i1 < i2) {
             lock(ti, i1);
             lock(ti, i2);
@@ -1267,6 +1277,9 @@ private:
 
     static inline void lock_three(const TableInfo *ti, size_t i1,
                                   size_t i2, size_t i3) {
+#if LIBCUCKOO_DEBUG
+        stats.num_times_lock_three++;
+#endif
         // If any are the same, we just run lock_two
         if (i1 == i2) {
             lock_two(ti, i1, i3);
@@ -2158,5 +2171,9 @@ const size_t CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::kNumCores =
 
 template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
 std::atomic<size_t> CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::numThreads(0);
+
+template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
+typename CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::cuckoo_stats 
+CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::stats(0,0);
 
 #endif

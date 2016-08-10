@@ -18,19 +18,31 @@
 #define RBTREE 2
 #define VECTOR 3
 #define CUCKOOHASHMAP 4
+#define CUCKOOHASHMAPNT 5
 //#define DS HASHTABLE
-#define DS CUCKOOHASHMAP
+//#define DS CUCKOOHASHMAP
+#define DS CUCKOOHASHMAPNT
 
 #if DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
 #elif DS == HASHTABLE
-HashtableTester<Hashtable<int, int, false, 1000000>> tester = HashtableTester<Hashtable<int, int, false, 1000000>>();
+HashtableTester<Hashtable<int, int, false, 8000>> tester = HashtableTester<Hashtable<int, int, false, 8000>>();
 #elif DS == RBTREE
 RBTreeTester<RBTree<int, int, true>, std::map<int, int>> tester = RBTreeTester<RBTree<int, int, true>, std::map<int, int>>();
 #elif DS == VECTOR
 VectorTester<Vector<int>> tester = VectorTester<Vector<int>>();
 #elif DS == CUCKOOHASHMAP 
-CuckooHashMapTester<CuckooHashMap<int, int>, CuckooHashMap<int,int>> tester = CuckooHashMapTester<CuckooHashMap<int, int>, CuckooHashMap<int,int>>();
+CuckooHashMapTester<
+        CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 8000, false>, 
+        CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 8000, false>> tester = 
+    CuckooHashMapTester<CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 8000, false>, 
+                        CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 8000, false>>();
+#elif DS == CUCKOOHASHMAPNT
+CuckooHashMapTester<
+        CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000>, 
+        CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000>> tester = 
+    CuckooHashMapTester<CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000>, 
+                        CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000>>();
 #endif
 
 unsigned initial_seeds[64];
@@ -70,7 +82,7 @@ template <typename T>
 void run(T* q, int me, int nthreads) {
     TThread::set_id(me);
     
-    std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
+    std::uniform_int_distribution<long> distinctdist(0, MAX_VALUE);
     Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
    
     spawned_barrier++;
@@ -90,14 +102,14 @@ void run(T* q, int me, int nthreads) {
 #if CONSISTENCY_CHECK
             tr->ops.clear();
 #endif
-            int numOps = slotdist(transgen) % MAX_OPS + 1;
+            int numOps = distinctdist(transgen) % MAX_OPS + 1;
             
             for (int j = 0; j < numOps; j++) {
-                int op = slotdist(transgen) % tester.num_ops_;
+                int op = distinctdist(transgen) % tester.num_ops_;
 #if CONSISTENCY_CHECK
-                tr->ops.push_back(tester.doOp(q, op, me, slotdist, transgen));
+                tr->ops.push_back(tester.doOp(q, op, me, distinctdist, transgen));
 #else
-                tester.doOp(q, op, me, slotdist, transgen);
+                tester.doOp(q, op, me, distinctdist, transgen);
 #endif
             }
 
@@ -173,8 +185,8 @@ int main() {
     PriorityQueue<int> q;
     PriorityQueue<int> q1;
 #elif DS == HASHTABLE
-    Hashtable<int, int, false, 1000000> q;
-    Hashtable<int, int, false, 1000000> q1;
+    Hashtable<int, int, false, 8000> q;
+    Hashtable<int, int, false, 8000> q1;
 #elif DS == RBTREE
     RBTree<int, int, true> q;
     std::map<int, int> q1;
@@ -182,8 +194,11 @@ int main() {
     Vector<int> q;
     Vector<int> q1;
 #elif DS == CUCKOOHASHMAP
-    CuckooHashMap<int, int> q;
-    CuckooHashMap<int, int> q1;
+    CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 8000, false> q;
+    CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 8000, false> q1;
+#elif DS == CUCKOOHASHMAPNT
+    CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000> q;
+    CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000> q1;
 #endif  
 
     pthread_t advancer;

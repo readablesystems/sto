@@ -12,7 +12,7 @@
 #include "RBTree.hh"
 #include "Vector.hh"
 
-#define MAX_VALUE 500000 // Max value of integers used in data structures
+#define MAX_VALUE 8000 // Max value of integers used in data structures
 #define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements
 
 struct Rand {
@@ -83,7 +83,7 @@ public:
 
 template <typename DT, typename RT>
 class CuckooHashMapTester: Tester<DT, RT> {
-    size_t init_sz = 100000;
+    size_t init_sz = 0;
 public:
     template <typename T>
     void init(T* q) {
