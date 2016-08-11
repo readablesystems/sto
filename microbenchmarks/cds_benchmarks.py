@@ -22,7 +22,7 @@ TESTS = ["PQRandSingleOps:R","PQRandSingleOps:D","PQPushPop:R",
             "PQPushPop:D", "PQPushOnly:R", "PQPushOnly:D", 
             "Q:PushPop","Q:RandSingleOps",
             "HM1M:F34,I33,E33","HM1M:F90,I5,E5",
-            "HM125K:F34,I33,E33","HM125K:F90,I5,E5",
+            "HM10K:F34,I33,E33","HM10K:F90,I5,E5",
         ]
 
 # sheet id, row index, column index
@@ -97,14 +97,14 @@ TEST_COORDS = {
         100000: (660987677, 67, 1),
         150000: (660987677, 76, 1)
     }, 
-    "HM125K:F34,I33,E33" : {
+    "HM10K:F34,I33,E33" : {
         1000: (1080807431, 40, 1),
         10000: (1080807431, 49, 1),
         50000: (1080807431, 58, 1),
         100000: (1080807431, 67, 1),
         150000: (1080807431, 76, 1)
     }, 
-    "HM125K:F90,I5,E5" : {
+    "HM10K:F90,I5,E5" : {
         1000: (91535127, 40, 1),
         10000: (91535127, 49, 1),
         50000: (91535127, 58, 1),

@@ -38,16 +38,14 @@
 #  define LIBCUCKOO_DBG(fmt, args...)  do {} while (0)
 #endif
 
-// XXX pretty sure we never need to update our own read of a bucket's version
-//  because we only modify bucketversions 
-//  1) at commit time or 2) during a migration. 
-//  I'm not certain about this, but it seems correct.
-
 //! SLOT_PER_BUCKET is the maximum number of keys per bucket
 const size_t SLOT_PER_BUCKET = 4;
 
 
-/*! CuckooHashMap is the hash table class. */
+/*! CuckooHashMap is the hash table class. This DOES use key fragments, so a bucket looks like:
+ *  [KF1][KF2][KF3][KF4][Ptr1][Ptr2][Ptr3][Ptr4]
+ * where Ptrs are pointers to internal elements (key/value pairs)
+ * */
 template <class Key, class T, class Hash = std::hash<Key>, class Pred = std::equal_to<Key>, unsigned Init_size = 250000 * SLOT_PER_BUCKET, bool Opacity = false>
 class CuckooHashMap: public Shared {
 
