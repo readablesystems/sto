@@ -19,14 +19,14 @@
 #define VECTOR 3
 #define CUCKOOHASHMAP 4
 #define CUCKOOHASHMAPNT 5
-//#define DS HASHTABLE
-#define DS CUCKOOHASHMAP
+#define DS HASHTABLE
+//#define DS CUCKOOHASHMAP
 //#define DS CUCKOOHASHMAPNT
 
 #if DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
 #elif DS == HASHTABLE
-HashtableTester<Hashtable<int, int, false, 1000000>> tester = HashtableTester<Hashtable<int, int, false, 8000>>();
+HashtableTester<Hashtable<int, int, false, 1000000>> tester = HashtableTester<Hashtable<int, int, false, 1000000>>();
 #elif DS == RBTREE
 RBTreeTester<RBTree<int, int, true>, std::map<int, int>> tester = RBTreeTester<RBTree<int, int, true>, std::map<int, int>>();
 #elif DS == VECTOR

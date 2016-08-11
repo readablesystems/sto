@@ -87,37 +87,7 @@ class CuckooHashMapNT {
             return num.is_locked();
         }
     } __attribute__((aligned(64)));
-/*
-    struct rw_lock {
-        std::atomic<size_t> num;
-
-        rw_lock() {
-            num.store(0);
-        }
-
-        inline size_t get_version() {
-            return num.load();
-        }
-
-        inline void lock() {
-            size_t start_version = get_version();
-            while( (start_version & 1) || !num.compare_exchange_strong(
-                    start_version, start_version+1, std::memory_order_release, std::memory_order_relaxed) ) {
-                start_version = get_version();
-            }
-        }
-
-        inline void unlock() {
-            num.fetch_add(1, std::memory_order_relaxed);
-        }
-
-        inline bool try_lock() {
-            size_t start_version = get_version();
-            return( !(start_version & 1) && num.compare_exchange_strong(
-                    start_version, start_version+1, std::memory_order_release, std::memory_order_relaxed) );
-        }
-    } __attribute__((aligned(64)));
-*/
+    
     /* This is a hazard pointer, used to indicate which version of the
      * TableInfo is currently being used in the thread. Since
      * CuckooHashMapNT operations can run simultaneously in different
@@ -1499,8 +1469,10 @@ private:
                 insert_bucket = cuckoo_path[0].bucket;
                 insert_slot = cuckoo_path[0].slot;
                 assert(insert_bucket == i1 || insert_bucket == i2);
-                assert(ti->buckets_[i1].lock.get_version() & W);
-                assert(ti->buckets_[i2].lock.get_version() & W);
+#if LIBCUCKOO_DEBUGNT
+                assert(ti->buckets_[i1].lock.is_locked());
+                assert(ti->buckets_[i2].lock.is_locked());
+#endif
                 assert(!getBit(ti->buckets_[insert_bucket].occupied, insert_slot));
                 return ok;
             }
