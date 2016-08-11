@@ -26,23 +26,23 @@
 #if DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
 #elif DS == HASHTABLE
-HashtableTester<Hashtable<int, int, false, 8000>> tester = HashtableTester<Hashtable<int, int, false, 8000>>();
+HashtableTester<Hashtable<int, int, false, 1000000>> tester = HashtableTester<Hashtable<int, int, false, 8000>>();
 #elif DS == RBTREE
 RBTreeTester<RBTree<int, int, true>, std::map<int, int>> tester = RBTreeTester<RBTree<int, int, true>, std::map<int, int>>();
 #elif DS == VECTOR
 VectorTester<Vector<int>> tester = VectorTester<Vector<int>>();
 #elif DS == CUCKOOHASHMAP 
 CuckooHashMapTester<
-        CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 8000, false>, 
-        CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 8000, false>> tester = 
-    CuckooHashMapTester<CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 8000, false>, 
-                        CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 8000, false>>();
+        CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 1000000, false>, 
+        CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 1000000, false>> tester = 
+    CuckooHashMapTester<CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 1000000, false>, 
+                        CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 1000000, false>>();
 #elif DS == CUCKOOHASHMAPNT
 CuckooHashMapTester<
-        CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000>, 
-        CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000>> tester = 
-    CuckooHashMapTester<CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000>, 
-                        CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000>>();
+        CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 1000000>, 
+        CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 1000000>> tester = 
+    CuckooHashMapTester<CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 1000000>, 
+                        CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 1000000>>();
 #endif
 
 unsigned initial_seeds[64];
@@ -185,8 +185,8 @@ int main() {
     PriorityQueue<int> q;
     PriorityQueue<int> q1;
 #elif DS == HASHTABLE
-    Hashtable<int, int, false, 8000> q;
-    Hashtable<int, int, false, 8000> q1;
+    Hashtable<int, int, false, 1000000> q;
+    Hashtable<int, int, false, 1000000> q1;
 #elif DS == RBTREE
     RBTree<int, int, true> q;
     std::map<int, int> q1;
@@ -194,11 +194,11 @@ int main() {
     Vector<int> q;
     Vector<int> q1;
 #elif DS == CUCKOOHASHMAP
-    CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 8000, false> q;
-    CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 8000, false> q1;
+    CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 1000000, false> q;
+    CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 1000000, false> q1;
 #elif DS == CUCKOOHASHMAPNT
-    CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000> q;
-    CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000> q1;
+    CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 1000000> q;
+    CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 1000000> q1;
 #endif  
 
     pthread_t advancer;

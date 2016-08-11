@@ -67,37 +67,7 @@ class CuckooHashMap: public Shared {
         failure_key_phantom = 10, // the key found was a phantom. abort!
         ok_delete_then_insert = 11 // we don't actually want to insert
     } cuckoo_status;
-    /*
-    struct rw_lock {
-        std::atomic<size_t> num;
-
-        rw_lock() {
-            num.store(0);
-        }
-
-        inline size_t get_version() {
-            return num.load();
-        }
-
-        inline void lock() {
-            size_t start_version = get_version();
-            while( (start_version & 1) || !num.compare_exchange_strong(
-                    start_version, start_version+1, std::memory_order_release, std::memory_order_relaxed) ) {
-                start_version = get_version();
-            }
-        }
-
-        inline void unlock() {
-            num.fetch_add(1, std::memory_order_relaxed);
-        }
-
-        inline bool try_lock() {
-            size_t start_version = get_version();
-            return( !(start_version & 1) && num.compare_exchange_strong(
-                    start_version, start_version+1, std::memory_order_release, std::memory_order_relaxed) );
-        }
-    } __attribute__((aligned(64)));
-    */
+    
     struct rw_lock {
     private:
         TVersion num;
@@ -386,8 +356,15 @@ private:
         // If they are equal, you must compare the actual keys (reading in a new cache line)
         bool is_equal(key_type key, internal_elem* elem) {
             size_t hv = hashed_key(key);
-            if (hv == hv_) 
-                return (elem->key == key);
+#if LIBCUCKOO_DEBUG
+            stats.num_check_elem_eq++;
+#endif
+            if (hv == hv_ && elem->key == key) {
+#if LIBCUCKOO_DEBUG
+               stats.num_elem_eq++;
+#endif
+               return true;
+            }
             return false;
         }
     };
@@ -403,10 +380,9 @@ private:
         
         rw_lock lock;
         // A bucket has BUCKET_SIZE key_frags, followed by BUCKET_SIZE internal_elem pointers.
-        // XXX what type?
         bucket_elem elems[2*SLOT_PER_BUCKET];
         unsigned char overflow;
-        //bool hasmigrated;
+        // bool hasmigrated;
         // STO: bucketversions track if a bucket has been migrated, or if an item has been inserted/
         // moved into this bucket
         version_type bucketversion;
@@ -548,8 +524,13 @@ private:
     static struct cuckoo_stats {
         std::atomic<int> num_times_lock_two;
         std::atomic<int> num_times_lock_three;
+        std::atomic<int> num_check_elem_eq;
+        std::atomic<int> num_elem_eq;
 
-        cuckoo_stats(int x, int y) : num_times_lock_two(x), num_times_lock_three(y) {};
+        cuckoo_stats() : 
+            num_times_lock_two(0), num_times_lock_three(0), 
+            num_check_elem_eq(0), num_elem_eq(0) 
+        {};
     } stats;
 
     /* old_table_infos holds pointers to old TableInfos that were
@@ -619,6 +600,8 @@ public:
             fprintf(stderr, "Total: %u\n", total);
             fprintf(stderr, "Num Times Lock Two: %d\n", int(stats.num_times_lock_two));
             fprintf(stderr, "Num Times Lock Three: %d\n", int(stats.num_times_lock_three));
+            fprintf(stderr, "Num Times Check Elem for Eq: %d\n", int(stats.num_check_elem_eq));
+            fprintf(stderr, "Num Times Elem Eq: %d\n", int(stats.num_elem_eq));
 #endif
             delete ti_old;
         }
@@ -2205,7 +2188,7 @@ std::atomic<size_t> CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::numTh
 
 template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
 typename CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::cuckoo_stats 
-CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::stats(0,0);
+CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::stats;
 
 /*
 template <>
