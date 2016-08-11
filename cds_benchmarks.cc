@@ -181,9 +181,9 @@ int main() {
     //dualprintf("CHM, NontransCHM, MM, STO\n");
     //auto mm = new MapSingleOpTest<DatatypeHarness<MICHAELMAP(int,int)>>(CDS, 33, 33);
     //auto stono = new MapSingleOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 33, 33);
-    //auto chm = new MapSingleOpTest<DatatypeHarness<CuckooHashMap<int,int,CityHasher<int>,std::equal_to<int>,125000, false>>>(STO, 33, 33);
+    //auto chm = new MapSingleOpTest<DatatypeHarness<CuckooHashMap<int,int,125000, false>>>(STO, 33, 33);
     //startAndWait(chm, 50000, 8);
-    //auto chmnt = new MapSingleOpTest<DatatypeHarness<CuckooHashMapNT<int,int,CityHasher<int>,std::equal_to<int>,125000>>>(CDS, 33, 33);
+    //auto chmnt = new MapSingleOpTest<DatatypeHarness<CuckooHashMapNT<int,int,125000>>>(CDS, 33, 33);
     //startAndWait(chmnt, 50000, 8);
     //startAndWait(mm, 1000, 8);
     //startAndWait(stono, 1000, 8);

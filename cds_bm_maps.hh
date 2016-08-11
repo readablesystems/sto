@@ -82,21 +82,24 @@ template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,true,1000
 template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,false,1000000>> : 
     public STOMapHarness<Hashtable<K,T,false,1000000>>{};
 template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,true,10000>> : 
-    public STOMapHarness<Hashtable<K,T,false,10000>>{};
+    public STOMapHarness<Hashtable<K,T,true,10000>>{};
 template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,false,10000>> : 
     public STOMapHarness<Hashtable<K,T,false,10000>>{};
-template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K, T, CityHasher<K>,std::equal_to<K>,10000,false>> :
-    public CuckooHashMapHarness<CuckooHashMap<K,T,CityHasher<K>,std::equal_to<K>,10000,false>>{};
-template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K, T, CityHasher<K>,std::equal_to<K>,1000000,false>> :
+
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K,T,1000000,false>> :
+    public CuckooHashMapHarness<CuckooHashMap<K,T,1000000,false>>{};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K,T,10000,false>> :
+    public CuckooHashMapHarness<CuckooHashMap<K,T,10000,false>>{};
+
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMap2<K,T,CityHasher<K>,std::equal_to<K>,1000000,false>> :
     public CuckooHashMapHarness<CuckooHashMap2<K,T,CityHasher<K>,std::equal_to<K>,1000000,false>>{};
-template <typename K, typename T> struct DatatypeHarness<CuckooHashMap2<K, T, CityHasher<K>,std::equal_to<K>,10000,false>> :
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMap2<K,T,CityHasher<K>,std::equal_to<K>,10000,false>> :
     public CuckooHashMapHarness<CuckooHashMap2<K,T,CityHasher<K>,std::equal_to<K>,10000,false>>{};
-template <typename K, typename T> struct DatatypeHarness<CuckooHashMap2<K, T, CityHasher<K>,std::equal_to<K>,1000000,false>> :
-    public CuckooHashMapHarness<CuckooHashMap<K,T,CityHasher<K>,std::equal_to<K>,1000000,false>>{};
-template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,10000>> :
-    public CuckooHashMapHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,10000>>{};
+
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,1000000>> :
     public CuckooHashMapHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,1000000>>{};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,10000>> :
+    public CuckooHashMapHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,10000>>{};
 
 template <typename K>
 struct hash1 { size_t operator()(K const& k) const { return std::hash<K>()( k ); } };
@@ -248,7 +251,7 @@ private:
 
 #define MAKE_MAP_TESTS(desc, test, key, val, size,...) \
     {desc, "STO Nonopaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,false,size>>>(STO, ## __VA_ARGS__)},                                  \
-    {desc, "STO KF CuckooMap", new test<DatatypeHarness<CuckooHashMap<key, val, CityHasher<key>,std::equal_to<key>,size,false>>>(STO, ## __VA_ARGS__)},                 \
+    {desc, "STO KF CuckooMap", new test<DatatypeHarness<CuckooHashMap<key, val, size,false>>>(STO, ## __VA_ARGS__)},                 \
     {desc, "STO CuckooMap", new test<DatatypeHarness<CuckooHashMap2<key, val, CityHasher<key>,std::equal_to<key>,size>>>(STO, ## __VA_ARGS__)}, \
     {desc, "CuckooMapNT", new test<DatatypeHarness<CuckooHashMapNT<key, val, CityHasher<key>,std::equal_to<key>,size>>>(CDS, ## __VA_ARGS__)}, 
     //{desc, "MichaelHashMap", new test<DatatypeHarness<MICHAELMAP(key,val)>>(CDS, ## __VA_ARGS__)},        

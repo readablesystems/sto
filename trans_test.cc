@@ -19,8 +19,8 @@
 #define VECTOR 3
 #define CUCKOOHASHMAP 4
 #define CUCKOOHASHMAPNT 5
-#define DS HASHTABLE
-//#define DS CUCKOOHASHMAP
+//#define DS HASHTABLE
+#define DS CUCKOOHASHMAP
 //#define DS CUCKOOHASHMAPNT
 
 #if DS == PRIORITY_QUEUE
@@ -33,10 +33,10 @@ RBTreeTester<RBTree<int, int, true>, std::map<int, int>> tester = RBTreeTester<R
 VectorTester<Vector<int>> tester = VectorTester<Vector<int>>();
 #elif DS == CUCKOOHASHMAP 
 CuckooHashMapTester<
-        CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 1000000, false>, 
-        CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 1000000, false>> tester = 
-    CuckooHashMapTester<CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 1000000, false>, 
-                        CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 1000000, false>>();
+        CuckooHashMap<int, int, 1000000, false>, 
+        CuckooHashMap<int, int, 1000000, false>> tester = 
+    CuckooHashMapTester<CuckooHashMap<int, int, 1000000, false>, 
+                        CuckooHashMap<int, int, 1000000, false>>();
 #elif DS == CUCKOOHASHMAPNT
 CuckooHashMapTester<
         CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 1000000>, 
@@ -194,8 +194,8 @@ int main() {
     Vector<int> q;
     Vector<int> q1;
 #elif DS == CUCKOOHASHMAP
-    CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 1000000, false> q;
-    CuckooHashMap<int, int, std::hash<int>, std::equal_to<int>, 1000000, false> q1;
+    CuckooHashMap<int, int, 1000000, false> q;
+    CuckooHashMap<int, int, 1000000, false> q1;
 #elif DS == CUCKOOHASHMAPNT
     CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 1000000> q;
     CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 1000000> q1;

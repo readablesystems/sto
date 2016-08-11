@@ -41,12 +41,49 @@
 //! SLOT_PER_BUCKET is the maximum number of keys per bucket
 const size_t SLOT_PER_BUCKET = 4;
 
+/* hashed_key<key_type> hashes the given key. */
+template <class Key>
+inline size_t hashed_key(const Key &key) {
+    return std::hash<Key>()(key);
+}
+
+typedef enum {
+    check_elem = -1,
+    true_match = -2,
+    false_match = -3,
+} compare_key_status;
+
+template <typename Key> class Cuckoo_KeyFragment {
+    public:
+    typedef size_t fragment_type;
+    static fragment_type create_fragment(const Key& k) {
+        return hashed_key<Key>(k);
+    }
+    static compare_key_status compare_fragment(fragment_type kf, const Key& k) {
+        if (kf == hashed_key<Key>(k)) return check_elem;
+        else return false_match;
+    }
+};
+template <> class Cuckoo_KeyFragment<int> {
+    public:
+    typedef int fragment_type;
+    static fragment_type create_fragment(const int& k) {
+        return k;
+    }
+    static compare_key_status compare_fragment(fragment_type kf, const int& k) {
+        if (kf == k) return true_match;
+        else return false_match;
+    }
+   
+    private:
+    fragment_type kf_;
+};
 
 /*! CuckooHashMap is the hash table class. This DOES use key fragments, so a bucket looks like:
  *  [KF1][KF2][KF3][KF4][Ptr1][Ptr2][Ptr3][Ptr4]
  * where Ptrs are pointers to internal elements (key/value pairs)
  * */
-template <class Key, class T, class Hash = std::hash<Key>, class Pred = std::equal_to<Key>, unsigned Init_size = 250000 * SLOT_PER_BUCKET, bool Opacity = false>
+template <class Key, class T, unsigned Init_size = 250000 * SLOT_PER_BUCKET, bool Opacity = false>
 class CuckooHashMap: public Shared {
 
     // Structs and functions used internally
@@ -65,14 +102,14 @@ class CuckooHashMap: public Shared {
         failure_key_phantom = 10, // the key found was a phantom. abort!
         ok_delete_then_insert = 11 // we don't actually want to insert
     } cuckoo_status;
-    
+
+
     struct rw_lock {
     private:
         TVersion num;
 
     public:
-        rw_lock() {
-        }
+        rw_lock() {}
 
         inline size_t get_version() {
             return num.value();
@@ -220,10 +257,6 @@ public:
     typedef std::pair<Key, T> value_type;
     //! mapped_type is the type of values.
     typedef T                 mapped_type;
-    //! hasher is the type of the hash function.
-    typedef Hash              hasher;
-    //! key_equal is the type of the equality predicate.
-    typedef Pred              key_equal;
 
     // STO functions
     bool check(TransItem& item, Transaction&) override {
@@ -330,7 +363,7 @@ private:
     // used to indicate that the value is a phantom: it has been inserted and not yet committed,
     // or has just been deleted
     static constexpr TransactionTid::type phantom_bit = TransactionTid::user_bit<<1;
-
+    
     struct internal_elem {
         key_type key;
         version_type version;
@@ -342,84 +375,55 @@ private:
         bool phantom() { return version.value() & phantom_bit; }
     };
 
-    /* A key frag allows for you to check key equality without (hopefully) reading
-    / in another cacheline by accessing the internal_elem pointer to the key/value
-    */
-    struct key_frag {
-        size_t hv_;
-        
-        key_frag(size_t hv) : hv_(hv) {}
+    struct Bucket {
+        /* A key frag allows for you to check key equality without (hopefully) reading
+        / in another cacheline by accessing the internal_elem pointer to the key/value
+        */
+        typedef typename Cuckoo_KeyFragment<Key>::fragment_type key_frag;
 
         // If the key itself is not a special type (e.g. int), compare the hashed value 
         // If they are equal, you must compare the actual keys (reading in a new cache line)
-        bool is_equal(key_type key, internal_elem* elem) {
-            size_t hv = hashed_key(key);
-#if LIBCUCKOO_DEBUG
-            stats.num_check_elem_eq++;
-#endif
-            if (hv == hv_ && elem->key == key) {
-#if LIBCUCKOO_DEBUG
-               stats.num_elem_eq++;
-#endif
-               return true;
+        bool keys_equal(key_type key, size_t pos) {
+            compare_key_status st = Cuckoo_KeyFragment<Key>::compare_fragment(kfs[pos], key);
+            switch (st) {
+                case false_match: return false;
+                case true_match: return ie[pos] != NULL;
+                case check_elem: return (ie[pos]!= NULL && ie[pos]->key == key);
+                default: assert(0);
             }
             return false;
         }
-    };
 
-    /* The Bucket type holds SLOT_PER_BUCKET keys and values. */
-    struct Bucket {
-        union bucket_elem {
-            key_frag kf;
-            internal_elem* ie;
-
-            bucket_elem() {} 
-        };
-        
-        rw_lock lock;
-        // A bucket has BUCKET_SIZE key_frags, followed by BUCKET_SIZE internal_elem pointers.
-        bucket_elem elems[2*SLOT_PER_BUCKET];
-        unsigned char overflow;
-        // bool hasmigrated;
-        // STO: bucketversions track if a bucket has been migrated, or if an item has been inserted/
-        // moved into this bucket
-        version_type bucketversion;
-#if LIBCUCKOO_DEBUG
-        unsigned num_times_locked;
-#endif
+        bool has_elem(size_t pos) {
+            return ie[pos] != NULL;
+        }
 
         void setKV(size_t pos, internal_elem* elem, key_type key) {
-            elems[pos].kf = key_frag(hashed_key(key));
-            elems[SLOT_PER_BUCKET + pos].ie = elem;
+            kfs[pos] = Cuckoo_KeyFragment<Key>::create_fragment(key);
+            ie[pos] = elem;
         }
 
         // sets the value in the bucket to NULL, but doesn't actually
         // free it (used for transfers)
         void eraseKV(size_t pos) {
-            elems[pos].kf = 0;
-            elems[SLOT_PER_BUCKET + pos].ie = NULL;
+            ie[pos] = NULL;
         }
 
         // actually frees the value
         void deleteKV(size_t pos) {
-            elems[pos].kf = 0;
-            if (elems[SLOT_PER_BUCKET + pos].ie != NULL) {
-                Transaction::rcu_free(elems[SLOT_PER_BUCKET + pos].ie);
-                elems[SLOT_PER_BUCKET + pos].ie = NULL;
-            }
+            Transaction::rcu_free(ie[pos]);
+            ie[pos] = NULL;
         }
 
         internal_elem* get_elem(size_t key_index) {
-            return elems[key_index + SLOT_PER_BUCKET].ie;
-        }
-
-        key_frag get_kf(size_t key_index) {
-            return elems[key_index].kf;
+            return ie[key_index];
         }
 
         void clear() {
             for (size_t i = 0; i < SLOT_PER_BUCKET; i++) {
-                deleteKV(i);
+                if (has_elem(i)) {
+                    deleteKV(i);
+                }
             }
             overflow = 0;
             //hasmigrated = false;
@@ -430,7 +434,6 @@ private:
 #if LIBCUCKOO_DEBUG
             assert(bucketversion.is_locked_here());
 #endif
-            // XXX opacity?
             bucketversion.inc_nonopaque_version();
         }
         void lock_and_inc_version() {
@@ -439,8 +442,16 @@ private:
             bucketversion.unlock();
         }
 
+        rw_lock lock;
+        unsigned char overflow;
+        version_type bucketversion;
+        // bool hasmigrated;
+#if LIBCUCKOO_DEBUG
+        unsigned num_times_locked;
+#endif
+        key_frag kfs[SLOT_PER_BUCKET];
+        internal_elem* ie[SLOT_PER_BUCKET];
     };
-
 
     struct version_to_observe {
         bool observe_me;
@@ -522,13 +533,8 @@ private:
     static struct cuckoo_stats {
         std::atomic<int> num_times_lock_two;
         std::atomic<int> num_times_lock_three;
-        std::atomic<int> num_check_elem_eq;
-        std::atomic<int> num_elem_eq;
 
-        cuckoo_stats() : 
-            num_times_lock_two(0), num_times_lock_three(0), 
-            num_check_elem_eq(0), num_elem_eq(0) 
-        {};
+        cuckoo_stats() : num_times_lock_two(0), num_times_lock_three(0) {};
     } stats;
 
     /* old_table_infos holds pointers to old TableInfos that were
@@ -537,7 +543,6 @@ private:
      * hazard pointer manager. */
     std::list<TableInfo*> old_table_infos;
 
-    static hasher hashfn;
     static std::allocator<Bucket> bucket_allocator;
 
     static bool has_insert(const TransItem& item) {
@@ -562,11 +567,11 @@ private:
         assert(is_bucket(item));
         return (uintptr_t) item.key<void*>() >> 1;
     }
-    void* pack_bucket(Bucket* bucket) {
-        return (void*) ((uintptr_t)bucket | bucket_bit);
+    void* pack_bucket(Bucket* b) {
+        return (void*) ((uintptr_t)b | bucket_bit);
     }
-    Bucket* unpack_bucket(void* bucket) {
-        return (Bucket*) ((uintptr_t)bucket & ~bucket_bit);
+    Bucket* unpack_bucket(void* b) {
+        return (Bucket*) ((uintptr_t)b & ~bucket_bit);
     }
 
 public:
@@ -591,15 +596,13 @@ public:
             unsigned total = 0;
             for (size_t i = 0; i < hashsize(ti_old->hashpower_); ++i) {
                 if (ti_old->buckets_[i].num_times_locked > 100) {
-                    fprintf(stderr, "Bucket %lu locked %u times\n", i, ti_old->buckets_[i].num_times_locked);
+                    fprintf(stderr, "bucket %lu locked %u times\n", i, ti_old->buckets_[i].num_times_locked);
                     total += ti_old->buckets_[i].num_times_locked;
                 }
             }
             fprintf(stderr, "Total: %u\n", total);
             fprintf(stderr, "Num Times Lock Two: %d\n", int(stats.num_times_lock_two));
             fprintf(stderr, "Num Times Lock Three: %d\n", int(stats.num_times_lock_three));
-            fprintf(stderr, "Num Times Check Elem for Eq: %d\n", int(stats.num_check_elem_eq));
-            fprintf(stderr, "Num Times Elem Eq: %d\n", int(stats.num_elem_eq));
 #endif
             delete ti_old;
         }
@@ -608,7 +611,7 @@ public:
             unsigned total = 0;
             for (size_t i = 0; i < hashsize(ti_new->hashpower_); ++i) {
                 if (ti_new->buckets_[i].num_times_locked > 100) {
-                    fprintf(stderr, "Bucket %lu locked %u times\n", i, ti_new->buckets_[i].num_times_locked);
+                    fprintf(stderr, "bucket %lu locked %u times\n", i, ti_new->buckets_[i].num_times_locked);
                     total += ti_old->buckets_[i].num_times_locked;
                 }
             }
@@ -721,7 +724,7 @@ public:
      * the associated value it finds in \p val. */
     bool find(const key_type& key, mapped_type& val) {
         check_hazard_pointers();
-        size_t hv = hashed_key(key);
+        size_t hv = hashed_key<key_type>(key);
         size_t i1_o, i2_o, i1_n, i2_n;
         TableInfo *ti_old, *ti_new;
         cuckoo_status res;
@@ -759,7 +762,7 @@ public:
     bool insert(const key_type& key, const mapped_type& val) {
         check_hazard_pointers();
         check_counterid();
-        size_t hv = hashed_key(key);
+        size_t hv = hashed_key<key_type>(key);
         TableInfo *ti_old, *ti_new;
         size_t i1_o, i2_o, i1_n, i2_n; //bucket indices for old+new tables
         cuckoo_status res;
@@ -828,7 +831,7 @@ public:
     bool erase_helper(const key_type& key, bool transactional) {
         check_hazard_pointers();
         check_counterid();
-        size_t hv = hashed_key(key);
+        size_t hv = hashed_key<key_type>(key);
         TableInfo *ti_old, *ti_new;
         size_t i1_o, i2_o, i1_n, i2_n;
         cuckoo_status res;
@@ -875,12 +878,6 @@ public:
         */
         unset_hazard_pointers();
         return (res == ok);
-    }
-
-    /*! hash_function returns the hash function object used by the
-     * table. */
-    hasher hash_function() {
-        return hashfn;
     }
 
 private:
@@ -1038,7 +1035,7 @@ private:
         mapped_type oldval;
         cuckoo_status st = run_cuckoo(ti, i1, i2, insert_bucket, insert_slot);
         if (st == ok) {
-            assert(ti->buckets_[insert_bucket].get_elem(insert_slot) == NULL);
+            assert(!ti->buckets_[insert_bucket].has_elem(insert_slot));
             assert(insert_bucket == index_hash(ti, hv) || insert_bucket == alt_index(ti, hv, index_hash(ti, hv)));
             /* Since we unlocked the buckets during run_cuckoo,
              * another insert could have inserted the same key into
@@ -1196,7 +1193,7 @@ private:
                 continue;
             }
 
-            hv = hashed_key(elem->key);
+            hv = hashed_key<key_type>(elem->key);
             i1 = index_hash(ti_new, hv);
             i2 = alt_index(ti_new, hv, i1);
 
@@ -1422,11 +1419,6 @@ private:
         return hashsize(hashpower) - 1;
     }
 
-    /* hashed_key hashes the given key. */
-    static inline size_t hashed_key(const key_type &key) {
-        return hashfn(key);
-    }
-
     /* index_hash returns the first possible bucket that the given
      * hashed key could be. */
     static inline size_t index_hash (const TableInfo *ti, const size_t hv) {
@@ -1529,8 +1521,7 @@ private:
                 //if (ti->buckets_[x.bucket].hasmigrated) {
                 //   return b_slot(0, 0, -2);
                 //}
-                elem = ti->buckets_[x.bucket].get_elem(slot);
-                if (elem == NULL) {
+                if (!ti->buckets_[x.bucket].has_elem(slot)) {
                     // We can terminate the search here
                     x.pathcode = x.pathcode * SLOT_PER_BUCKET + slot;
                     return x;
@@ -1538,7 +1529,8 @@ private:
                 // Create a new b_slot item, that represents the
                 // bucket we would look at after searching x.bucket
                 // for empty slots.
-                const size_t hv = hashed_key(elem->key);
+                elem = ti->buckets_[x.bucket].get_elem(slot);
+                const size_t hv = hashed_key<key_type>(elem->key);
                 b_slot y(alt_index(ti, hv, x.bucket),
                          x.pathcode * SLOT_PER_BUCKET + slot, x.depth+1);
 
@@ -1550,8 +1542,7 @@ private:
                 //   return b_slot(0, 0, -2);
                 //}
                 for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
-                    elem = ti->buckets_[y.bucket].get_elem(j);
-                    if (elem == NULL) {
+                    if (!ti->buckets_[y.bucket].has_elem(j)) {
                         y.pathcode = y.pathcode * SLOT_PER_BUCKET + j;
                         return y;
                     }
@@ -1595,34 +1586,31 @@ private:
          * modified between slot_search and the computation of the
          * cuckoo path, this could be an invalid cuckoo_path. */
         CuckooRecord *curr = cuckoo_path;
-        internal_elem* elem;
         if (x.pathcode == 0) {
             curr->bucket = i1;
             //if (ti->buckets_[curr->bucket].hasmigrated) {
             //   return -2;
             //}
-            elem = ti->buckets_[curr->bucket].get_elem(curr->slot);
-            if (elem == NULL) {
+            if (!ti->buckets_[curr->bucket].has_elem(curr->slot)) {
                 // We can terminate here
                 return 0;
             }
-            curr->key = elem->key;
+            curr->key = ti->buckets_[curr->bucket].get_elem(curr->slot)->key; 
         } else {
             assert(x.pathcode == 1);
             curr->bucket = i2;
             //if (ti->buckets_[curr->bucket].hasmigrated) {
             //   return -2;
             //}
-            elem = ti->buckets_[curr->bucket].get_elem(curr->slot);
-            if (elem == NULL) {
+            if (!ti->buckets_[curr->bucket].has_elem(curr->slot)) {
                 // We can terminate here
                 return 0;
             }
-            curr->key = elem->key; 
+            curr->key = ti->buckets_[curr->bucket].get_elem(curr->slot)->key; 
         }
         for (int i = 1; i <= x.depth; i++) {
             CuckooRecord *prev = curr++;
-            const size_t prevhv = hashed_key(prev->key);
+            const size_t prevhv = hashed_key<key_type>(prev->key);
             assert(prev->bucket == index_hash(ti, prevhv) ||
                    prev->bucket == alt_index(ti, prevhv, index_hash(ti, prevhv)));
             // We get the bucket that this slot is on by computing the
@@ -1631,12 +1619,11 @@ private:
             //if (ti->buckets_[curr->bucket].hasmigrated) {
             //    return -2;
             //}
-            elem = ti->buckets_[curr->bucket].get_elem(curr->slot);
-            if (elem == NULL) {
+            if (!ti->buckets_[curr->bucket].has_elem(curr->slot)) {
                 // We can terminate here
                 return i;
             }
-            curr->key = elem->key;
+            curr->key = ti->buckets_[curr->bucket].get_elem(curr->slot)->key; 
         }
         return x.depth;
     }
@@ -1652,7 +1639,6 @@ private:
     static cuckoo_status cuckoopath_move(TableInfo *ti, CuckooRecord* cuckoo_path,
                                 size_t depth, const size_t i1, const size_t i2) {
 
-        internal_elem* elem;
         if (depth == 0) {
             /* There is a chance that depth == 0, when
              * try_add_to_bucket sees i1 and i2 as full and
@@ -1668,8 +1654,7 @@ private:
             //  unlock_two(ti, i1, i2);
             //  return failure_key_moved;
             //}
-            elem = ti->buckets_[bucket].get_elem(cuckoo_path[0].slot);
-            if (elem == NULL) {
+            if (!ti->buckets_[bucket].has_elem(cuckoo_path[0].slot)) {
                 return ok;
             } else {
                 unlock_two(ti, i1, i2);
@@ -1714,10 +1699,7 @@ private:
              * the slot we are filling in may have already been filled
              * in by another thread, or the slot we are moving from
              * may be empty, both of which invalidate the swap. */
-            key_frag key2 = ti->buckets_[fb].get_kf(fs);
-            internal_elem* elem1 = ti->buckets_[tb].get_elem(ts);
-            internal_elem* elem2 = ti->buckets_[fb].get_elem(fs);
-            if (elem1 != NULL || elem2 == NULL || !key2.is_equal(from->key, elem2)) {
+            if (ti->buckets_[tb].has_elem(ts) || !ti->buckets_[fb].has_elem(fs) || ti->buckets_[fb].keys_equal(from->key, fs)) {
                 if (depth == 1) {
                     unlock_three(ti, fb, tb, ob);
                 } else {
@@ -1725,7 +1707,8 @@ private:
                 }
                 return failure_too_slow;
             }
-            size_t hv = hashed_key( elem2->key );
+            internal_elem* elem2 = ti->buckets_[fb].get_elem(fs);
+            size_t hv = hashed_key<key_type>( elem2->key );
             size_t first_bucket = index_hash(ti, hv);
             if( fb == first_bucket ) { //we're moving from first bucket to alternate
                 auto old_overflow = ti->buckets_[first_bucket].overflow++;
@@ -1810,7 +1793,7 @@ private:
                 assert(ti->buckets_[i1].lock.is_locked());
                 assert(ti->buckets_[i2].lock.is_locked());
 #endif
-                assert(ti->buckets_[insert_bucket].get_elem(insert_slot) == NULL);
+                assert(!ti->buckets_[insert_bucket].has_elem(insert_slot));
                 return ok;
             }
 
@@ -1834,14 +1817,12 @@ private:
         //}
 
         for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
-            key_frag key_frag = ti->buckets_[i].get_kf(j);
-            internal_elem* elem = ti->buckets_[i].get_elem(j);
-            if (elem == NULL) {
+            if (!ti->buckets_[i].has_elem(j)) {
                 continue;
             }
 
-            if (key_frag.is_equal(key, elem)) {
-                e = elem;
+            if (ti->buckets_[i].keys_equal(key, j)) {
+                e = ti->buckets_[i].get_elem(j);
                 return ok;
             }
         }
@@ -1852,7 +1833,7 @@ private:
      * slot. */
     inline void add_to_bucket(TableInfo *ti, const key_type& key, const mapped_type& val,
                                      const size_t i, const size_t j) {
-        assert(ti->buckets_[i].get_elem(j) == NULL);
+        assert(!ti->buckets_[i].has_elem(j));
        
         auto elem = new internal_elem(key, val);
         ti->buckets_[i].setKV(j, elem, key);
@@ -1879,16 +1860,14 @@ private:
         //}
         internal_elem* elem_in_table;
         for (size_t k = 0; k < SLOT_PER_BUCKET; k++) {
-            key_frag key_frag = ti->buckets_[i].get_kf(k);
-            elem_in_table = ti->buckets_[i].get_elem(k);
-            if (elem_in_table != NULL) {
-                auto ev = elem_in_table->version;
-                if (key_frag.is_equal(key, elem_in_table)) {
-                    // we only want to keep track clashes in the table if we're actually trying
-                    // to insert a new item (not migrate it over)
-                    // this should never occur if it is a migration...
+            if (ti->buckets_[i].has_elem(k)) {
+                if (!ti->buckets_[i].keys_equal(key, k)) {
+                    continue;
+                } else {
+                    elem_in_table = ti->buckets_[i].get_elem(k);
+                    auto ev = elem_in_table->version;
                     return sto_try_add_with_existing_key(val, elem_in_table, ev, vto);
-                }
+                } 
             } else {
                 j = k;
             }
@@ -1948,12 +1927,12 @@ private:
         //}
 
         for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
-            key_frag key_frag = ti->buckets_[i].get_kf(j);
-            internal_elem* elem = ti->buckets_[i].get_elem(j);
-            if (elem == NULL) {
+            internal_elem* elem;
+            if (!ti->buckets_[i].has_elem(j)) {
                 continue;
             }
-            if (key_frag.is_equal(key, elem)) {
+            if (ti->buckets_[i].keys_equal(key, j)) {
+                elem = ti->buckets_[i].get_elem(j);
                 auto elemver = elem->version;
                 if (transactional) {
                     auto item = Sto::item(this, elem);
@@ -2155,56 +2134,32 @@ private:
 };
 
 // Initializing the static members
-template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
-__thread void** CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::hazard_pointer_old = nullptr;
+template <class Key, class T, unsigned Init_size, bool Opacity>
+__thread void** CuckooHashMap<Key, T, Init_size, Opacity>::hazard_pointer_old = nullptr;
 
-template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
-__thread void** CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::hazard_pointer_new = nullptr;
+template <class Key, class T, unsigned Init_size, bool Opacity>
+__thread void** CuckooHashMap<Key, T, Init_size, Opacity>::hazard_pointer_new = nullptr;
 
-template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
-__thread int CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::counterid = -1;
+template <class Key, class T, unsigned Init_size, bool Opacity>
+__thread int CuckooHashMap<Key, T, Init_size, Opacity>::counterid = -1;
 
-template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
-typename CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::hasher
-CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::hashfn;
+template <class Key, class T, unsigned Init_size, bool Opacity>
+typename std::allocator<typename CuckooHashMap<Key, T, Init_size, Opacity>::Bucket>
+CuckooHashMap<Key, T, Init_size, Opacity>::bucket_allocator;
 
-template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
-typename std::allocator<typename CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::Bucket>
-CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::bucket_allocator;
+template <class Key, class T, unsigned Init_size, bool Opacity>
+typename CuckooHashMap<Key, T, Init_size, Opacity>::GlobalHazardPointerList
+CuckooHashMap<Key, T, Init_size, Opacity>::global_hazard_pointers;
 
-template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
-typename CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::GlobalHazardPointerList
-CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::global_hazard_pointers;
-
-template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
-const size_t CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::kNumCores =
+template <class Key, class T, unsigned Init_size, bool Opacity>
+const size_t CuckooHashMap<Key, T, Init_size, Opacity>::kNumCores =
     std::thread::hardware_concurrency() == 0 ?
     sysconf(_SC_NPROCESSORS_ONLN) : std::thread::hardware_concurrency();
 
-template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
-std::atomic<size_t> CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::numThreads(0);
+template <class Key, class T, unsigned Init_size, bool Opacity>
+std::atomic<size_t> CuckooHashMap<Key, T, Init_size, Opacity>::numThreads(0);
 
-template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
-typename CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::cuckoo_stats 
-CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::stats;
-
-/*
-template <>
-void setKV<int>(size_t pos, internal_elem* elem, int key) {
-    elems[pos] = key_frag<int>(key);
-    elems[SLOT_PER_BUCKET + pos] = elem;
-}
-
-// specialized for ints
-template <> 
-template <class Key, class T, class Hash, class Pred, unsigned Init_size, bool Opacity>
-CuckooHashMap<Key, T, Hash, Pred, Init_size, Opacity>::key_frag<int> {
-    int key_;
-
-    key_frag(int key) : key_(key) {}
-    bool is_equal(T key, internal_elem*) {
-        return key_ == key;
-    }
-};
-*/
+template <class Key, class T, unsigned Init_size, bool Opacity>
+typename CuckooHashMap<Key, T, Init_size, Opacity>::cuckoo_stats 
+CuckooHashMap<Key, T, Init_size, Opacity>::stats;
 #endif
