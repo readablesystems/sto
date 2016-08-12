@@ -58,6 +58,7 @@ void* record_perf_thread(void* x) {
     double milliseconds = ((tv2.tv_sec-tv1.tv_sec)*1000.0) + ((tv2.tv_usec-tv1.tv_usec)/1000.0);
     ops_per_ms = (total2-total1)/milliseconds > ops_per_ms ? (total2-total1)/milliseconds : ops_per_ms;
     dualprintf("%f, ", ops_per_ms);
+    fprintf(stderr, "%f\n", ops_per_ms);
     return nullptr;
 }
 
@@ -176,19 +177,22 @@ int main() {
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
 
-    std::vector<Test> map_tests = make_map_tests();
+    //std::vector<Test> map_tests = make_map_tests();
     
-    //dualprintf("CHM, NontransCHM, MM, STO\n");
-    //auto mm = new MapSingleOpTest<DatatypeHarness<MICHAELMAP(int,int)>>(CDS, 33, 33);
-    //auto stono = new MapSingleOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 33, 33);
-    //auto chm = new MapSingleOpTest<DatatypeHarness<CuckooHashMap<int,int,125000, false>>>(STO, 33, 33);
-    //startAndWait(chm, 50000, 8);
-    //auto chmnt = new MapSingleOpTest<DatatypeHarness<CuckooHashMapNT<int,int,125000>>>(CDS, 33, 33);
-    //startAndWait(chmnt, 50000, 8);
-    //startAndWait(mm, 1000, 8);
-    //startAndWait(stono, 1000, 8);
-    //startAndWait(stono, 50000, 8);
-    //startAndWait(stono, 150000, 8);
+    /*auto defaultsto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,1000000>>>(STO, 0, 33, 33);
+    startAndWait(defaultsto, 500000, 1);
+    auto defaultcds = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,1000000>>>(STO, 0, 33, 33);
+    startAndWait(defaultcds, 500000, 1);
+    */
+    //auto sto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,1000000>>>(STO, 5, 33, 33);
+    //startAndWait(sto, 500000, 1);
+    //auto chm = new MapOpTest<DatatypeHarness<CuckooHashMap<int,int,1000000,false>>>(STO, 5, 33, 33);
+    //startAndWait(chm, 500000, 1);
+    //auto chm2 = new MapOpTest<DatatypeHarness<CuckooHashMap2<int, int, CityHasher<int>,std::equal_to<int>,1000000>>>(STO, 5, 33, 33);
+    //startAndWait(chm2, 500000, 1);
+    auto chmnt = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, CityHasher<int>,std::equal_to<int>,1000000>>>(CDS, 5, 33, 33);
+    startAndWait(chmnt, 500000, 1);
+    /*
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
         for (auto init_keys = begin(init_sizes); init_keys != end(init_sizes); ++init_keys) {
@@ -202,10 +206,9 @@ int main() {
                 }
                 dualprintf("\n");
             }
-            dualprintf("\n\n");
+            dualprintf("\n");
         }
     }
-/*
     // pqueue tests
     std::vector<Test> pqueue_tests = make_pqueue_tests();
     for (unsigned i = 0; i < pqueue_tests.size(); i+=num_pqueues) {

@@ -8,11 +8,14 @@
 #include "PriorityQueue.hh"
 #include "Hashtable.hh"
 #include "CuckooHashMap.hh"
+#include "CuckooHashMap2.hh"
 #include "CuckooHashMapNT.hh"
 #include "RBTree.hh"
 #include "Vector.hh"
+#include "Queue2.hh"
+#include "Queue.hh"
 
-#define MAX_VALUE 1000000 // Max value of integers used in data structures
+#define MAX_VALUE 500000 // Max value of integers used in data structures
 #define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements
 
 struct Rand {
@@ -54,6 +57,7 @@ struct TesterTuple {
     int me;
     int nthreads;
 };
+
 
 std::vector<std::map<uint64_t, txn_record *> > txn_list;
 
@@ -407,6 +411,152 @@ public:
 
     static const int num_ops_ = 3;
 };
+
+template <typename DT, typename RT>
+class QueueTester : Tester<DT, RT> {
+public:
+    void init_sut(DT* q) {
+        for (int i = 0; i < 10000; i++) {
+            TRANSACTION {
+                q->push(i);
+            } RETRY(false);
+        }
+    }
+    void init_ref(RT* q) {
+        for (int i = 0; i < 10000; i++) {
+            TRANSACTION {
+                q->push(i);
+            } RETRY(false);
+        }
+    }
+
+    op_record* doOp(DT* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
+        int val;
+        if (op == 0) {
+            val = slotdist(transgen);
+            q->push(val);
+            std::cout << "[" << me << "] pushed " << val << std::endl;
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->args.push_back(val);
+            return rec;
+        } else {
+            q->front(val);
+            q->pop();
+            std::cout << "[" << me << "] popped " << val << std::endl;
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->rdata.push_back(val);
+            return rec;
+        }
+    }
+
+    void redoOp(RT* q, op_record *op) {
+        int val = 0;
+        if (op->op == 0) {
+            val = op->args[0];
+            q->push(val);
+        } else if (op->op == 1) {
+            q->front(val);
+            q->pop();
+            std::cout << "[" << val << "] [" << op->rdata[0] << "]" << std::endl;
+            assert(val == op->rdata[0]);
+        }
+    }
+
+    void check(DT* q, RT*q1) {
+        TRANSACTION {
+            int v1, v2;
+            if (q->front(v1)) {
+                q->pop();
+                q1->front(v2);
+                assert(q1->pop());
+                std::cout << "[" << v1 << "] [" << v2 << "]" << std::endl;
+                assert(v1 == v2);
+            } else {
+                assert(!q1->pop());
+            }
+        }
+        RETRY(false);
+    }
+
+    static const int num_ops_ = 2;
+};
+template <typename DT, typename RT>
+class PqueueTester : Tester<DT, RT> {
+public:
+    void init_sut(DT* q) {
+        for (int i = 0; i < 10000; i++) {
+            TRANSACTION {
+                q->push(i);
+            } RETRY(false);
+        }
+        assert(q->size() == 10000);
+    }
+    void init_ref(RT* q) {
+        for (int i = 0; i < 10000; i++) {
+            TRANSACTION {
+                q->push(i);
+            } RETRY(false);
+        }
+        assert(q->unsafe_size() == 10000);
+    }
+
+    op_record* doOp(DT* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
+        if (op == 0) {
+            int val = slotdist(transgen);
+            q->push(val);
+            std::cout << "[" << me << "] pushed " << val << std::endl;
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->args.push_back(val);
+            return rec;
+        } else {
+            int val;
+            q->pop(val);
+            std::cout << "[" << me << "] popped " << val << std::endl;
+            op_record* rec = new op_record;
+            rec->op = op;
+            rec->rdata.push_back(val);
+            return rec;
+        }
+    }
+
+    void redoOp(RT* q, op_record *op) {
+        if (op->op == 0) {
+            int val = op->args[0];
+            q->push(val);
+            std::cout << "pushed " << val << std::endl;
+        } else if (op->op == 1) {
+            int val = q->pop();
+            std::cout << "popped " << val << std::endl;
+            assert(val == op->rdata[0]);
+        }
+    }
+
+    void check(DT* q, RT*q1) {
+        int size = q1->unsafe_size();
+        int size1 = q->size();
+        std::cout << "[" << size << "] [" << size1 << "]" << std::endl;
+        assert(size == size1);
+        for (int i = 0; i < size; i++) {
+            TRANSACTION {
+                int v1;
+                q->pop(v1);
+                int v2 = q1->pop();
+                std::cout << "[" << v1 << "] [" << v2 << "]" << std::endl;
+                assert(v1 == v2);
+            } RETRY(false);
+        }
+        TRANSACTION {
+            assert((size_t)q->size() == (size_t)q1->unsafe_size());
+        } RETRY(false);
+    }
+
+    static const int num_ops_ = 2;
+};
+
+
 
 /*
 template <typename DT, typename RT>
@@ -778,111 +928,6 @@ public:
 #endif
 
     static const int num_ops_ = 4;
-};
-
-
-template <typename T>
-class PqueueTester : Tester<T> {
-public:
-    void init(T* q) {
-        for (int i = 0; i < 10000; i++) {
-            TRANSACTION {
-                q->push(i);
-            } RETRY(false);
-        }
-    }
-
-    op_record* doOp(T* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
-#if !PRINT_DEBUG
-        (void)me;
-#endif
-        if (op == 0) {
-            int val = slotdist(transgen);
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to push " << val << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            q->push(val);
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] pushed " << val << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            op_record* rec = new op_record;
-            rec->op = op;
-            rec->args.push_back(val);
-            return rec;
-        } else if (op == 1) {
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to pop " << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            int val = q->pop();
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] popped " << val << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            op_record* rec = new op_record;
-            rec->op = op;
-            rec->rdata.push_back(val);
-            return rec;
-        } else {
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] try to read " << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            int val = q->top();
-#if PRINT_DEBUG
-            TransactionTid::lock(lock);
-            std::cout << "[" << me << "] read " << val << std::endl;
-            TransactionTid::unlock(lock);
-#endif
-            op_record* rec = new op_record;
-            rec->op = op;
-            rec->rdata.push_back(val);
-            return rec;
-        }
-    }
-
-    void redoOp(T* q, op_record *op) {
-        if (op->op == 0) {
-            int val = op->args[0];
-            q->push(val);
-        } else if (op->op == 1) {
-            int val = q->pop();
-            assert(val == op->rdata[0]);
-        } else {
-            int val = q->top();
-            assert(val == op->rdata[0]);
-        }
-    }
-
-    void check(T* q, T*q1) {
-        int size = q1->size();
-        for (int i = 0; i < size; i++) {
-            TRANSACTION {
-                int v1 = q->top();
-                int v2 = q1->top();
-                //std::cout << v1 << " " << v2 << std::endl;
-                if (v1 != v2)
-                    q1->print();
-                assert(v1 == v2);
-                assert(q->pop() == v1);
-                assert(q1->pop() == v2);
-            } RETRY(false);
-        }
-        TRANSACTION {
-            q->print();
-            assert(q->top() == -1);
-            //q1.print();
-        } RETRY(false);
-    }
-
-    static const int num_ops_ = 3;
 };
 
 template <typename T>

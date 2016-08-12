@@ -191,30 +191,31 @@ public:
         while (v_.cleanup_erase()){/*keep popping*/}
     }
     
-    inline void do_map_op(int me, Rand& transgen) {
+    inline void do_map_op(int me, Rand& transgen, int num_ops) {
         map_op my_op;
-        int p = opdist_(transgen);
-        if (p >= p_insert_ + p_erase_) my_op = erase;
-        else if (p < p_insert_) my_op = insert;
-        else my_op = find;
-
-        int key = keydist_(transgen); 
-        switch (my_op) {
-            case erase:
-                if (v_.erase(key)) global_thread_ctrs[me].ke_erase++;
-                global_thread_ctrs[me].erase++;
-                break;
-            case insert:
-                if (v_.insert(key,me)) global_thread_ctrs[me].ke_insert++;
-                global_thread_ctrs[me].insert++;
-                break;
-            case find:
-                if (v_.find(key)) global_thread_ctrs[me].ke_find++;
-                global_thread_ctrs[me].find++;
-                break;
+        int numOps = num_ops ? opdist_(transgen) % num_ops + 1 : 0;
+        for (int j = 0; j < numOps; j++) {
+            int p = opdist_(transgen);
+            if (p >= p_insert_ + p_erase_) my_op = erase;
+            else if (p < p_insert_) my_op = insert;
+            else my_op = find;
+            int key = keydist_(transgen); 
+            switch (my_op) {
+                case erase:
+                    if (v_.erase(key)) global_thread_ctrs[me].ke_erase++;
+                    global_thread_ctrs[me].erase++;
+                    break;
+                case insert:
+                    if (v_.insert(key,me)) global_thread_ctrs[me].ke_insert++;
+                    global_thread_ctrs[me].insert++;
+                    break;
+                case find:
+                    if (v_.find(key)) global_thread_ctrs[me].ke_find++;
+                    global_thread_ctrs[me].find++;
+                    break;
+            }
         }
     }
-
 protected:
     DH v_;
     int p_insert_;
@@ -223,9 +224,9 @@ protected:
     std::uniform_int_distribution<long> opdist_;
 };
 
-template <typename DH> class MapSingleOpTest : public DHMapTest<DH> {
+template <typename DH> class MapOpTest : public DHMapTest<DH> {
 public:
-    MapSingleOpTest(int ds_type, int p_insert, int p_erase) : DHMapTest<DH>(p_insert, p_erase), ds_type_(ds_type) {};
+    MapOpTest(int ds_type, int num_ops, int p_insert, int p_erase) : DHMapTest<DH>(p_insert, p_erase), ds_type_(ds_type), num_ops_(num_ops) {};
     void run(int me) {
         Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
         if (ds_type_ == STO) {
@@ -234,24 +235,26 @@ public:
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        this->do_map_op(me, transgen);
+                        this->do_map_op(me, transgen, num_ops_);
                         if (Sto::try_commit()) break;
                     } catch (Transaction::Abort e) {transgen = transgen_snap;}
                 }
             }
         } else {
             for (int i = NTRANS; i > 0; --i) {
-                this->do_map_op(me, transgen);
+                this->do_map_op(me, transgen, num_ops_);
             }
         }
     }
 private:
     int ds_type_;
+    int num_ops_;
 };
+
 
 #define MAKE_MAP_TESTS(desc, test, key, val, size,...) \
     {desc, "STO Nonopaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,false,size>>>(STO, ## __VA_ARGS__)},                                  \
-    {desc, "STO KF CuckooMap", new test<DatatypeHarness<CuckooHashMap<key, val, size,false>>>(STO, ## __VA_ARGS__)},                 \
+    {desc, "STO KF CuckooMap", new test<DatatypeHarness<CuckooHashMap<key, val, size, false>>>(STO, ## __VA_ARGS__)},                 \
     {desc, "STO CuckooMap", new test<DatatypeHarness<CuckooHashMap2<key, val, CityHasher<key>,std::equal_to<key>,size>>>(STO, ## __VA_ARGS__)}, \
     {desc, "CuckooMapNT", new test<DatatypeHarness<CuckooHashMapNT<key, val, CityHasher<key>,std::equal_to<key>,size>>>(CDS, ## __VA_ARGS__)}, 
     //{desc, "MichaelHashMap", new test<DatatypeHarness<MICHAELMAP(key,val)>>(CDS, ## __VA_ARGS__)},        
@@ -264,10 +267,12 @@ private:
 
 std::vector<Test> make_map_tests() {
     return {
-        //MAKE_MAP_TESTS("HM1M:F34,I33,E33", MapSingleOpTest, int, int, 1000000, 33, 33)
-        //MAKE_MAP_TESTS("HM1M:F90,I5,E5", MapSingleOpTest, int, int, 1000000, 5, 5)
-        MAKE_MAP_TESTS("HM10K:F34,I33,E33", MapSingleOpTest, int, int, 10000, 33, 33)
-        MAKE_MAP_TESTS("HM10K:F90,I5,E5", MapSingleOpTest, int, int, 10000, 5, 5)
+        MAKE_MAP_TESTS("HM1MSingleOp:F34,I33,E33", MapOpTest, int, int, 1000000, 1, 33, 33)
+        MAKE_MAP_TESTS("HM1MSingleOp:F90,I5,E5", MapOpTest, int, int, 1000000, 1, 5, 5)
+        MAKE_MAP_TESTS("HM1MMultiOp:F34,I33,E33", MapOpTest, int, int, 1000000, 5, 33, 33)
+        MAKE_MAP_TESTS("HM1MMultiOp:F90,I5,E5", MapOpTest, int, int, 1000000, 5, 5, 5)
+        //MAKE_MAP_TESTS("HM10K:F34,I33,E33", MapSingleOpTest, int, int, 10000, 33, 33)
+        //MAKE_MAP_TESTS("HM10K:F90,I5,E5", MapSingleOpTest, int, int, 10000, 5, 5)
         //MAKE_MAP_TESTS("HM:RandSingleOps(F10,I88,E2)", MapSingleOpTest, int, int, 88, 2)
         //MAKE_MAP_TESTS("HM:RandSingleOps(F88,I10,E2)", MapSingleOpTest, int, int, 10, 2)
     };

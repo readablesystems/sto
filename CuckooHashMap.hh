@@ -1699,7 +1699,7 @@ private:
              * the slot we are filling in may have already been filled
              * in by another thread, or the slot we are moving from
              * may be empty, both of which invalidate the swap. */
-            if (ti->buckets_[tb].has_elem(ts) || !ti->buckets_[fb].has_elem(fs) || ti->buckets_[fb].keys_equal(from->key, fs)) {
+            if (ti->buckets_[tb].has_elem(ts) || !ti->buckets_[fb].has_elem(fs) || !ti->buckets_[fb].keys_equal(from->key, fs)) {
                 if (depth == 1) {
                     unlock_three(ti, fb, tb, ob);
                 } else {
