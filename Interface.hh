@@ -216,6 +216,116 @@ public:
     }
 };
 
+// Transaction timestamp (TID) as described in the TicToc concurrency control paper
+class TicTocTid {
+public:
+    typedef uint64_t type;
+    static constexpr type delta_shift = type(8);
+    static constexpr type wts_shift = type(16);
+    static constexpr type threadid_mask = type(0x1f);             // lowest 5 bits
+    static constexpr type lock_bit = type(0x1<<5);                // bit 5
+    static constexpr type nonopaque_bit = type(0x1<<6);           // bit 6
+    static constexpr type user_bit = type(0x1<<7);                // bit 7
+    static constexpr type delta_mask = type(0xff<<delta_shift);   // bits 8-15 hold "delta"
+    static constexpr type increment_value = type(0x1<<wts_shift); // bits 16-63 hold "wts"
+
+    // retrieving read/write timestamps
+    static type write_timestamp(type& v) {
+        return v >> wts_shift;
+    }
+    static type read_timestamp(type& v) {
+        type delta = (v & delta_mask) >> delta_shift;
+        return write_timestamp(v) + delta;
+    }
+
+    // locking; copy-n-pasted
+    static bool is_locked(type v) {
+        return v & lock_bit;
+    }
+    static bool is_locked_here(type v) {
+        return (v & (lock_bit | threadid_mask)) == (lock_bit | TThread::id());
+    }
+    static bool is_locked_here(type v, int here) {
+        return (v & (lock_bit | threadid_mask)) == (lock_bit | here);
+    }
+    static bool is_locked_elsewhere(type v) {
+        type m = v & (lock_bit | threadid_mask);
+        return m != 0 && m != (lock_bit | TThread::id());
+    }
+    static bool is_locked_elsewhere(type v, int here) {
+        type m = v & (lock_bit | threadid_mask);
+        return m != 0 && m != (lock_bit | here);
+    }
+
+    static bool try_lock(type& v) {
+        type vv = v;
+        return bool_cmpxchg(&v, vv & ~lock_bit, vv | lock_bit | TThread::id());
+    }
+    static bool try_lock(type& v, int here) {
+        type vv = v;
+        return bool_cmpxchg(&v, vv & ~lock_bit, vv | lock_bit | here);
+    }
+    static void lock(type& v) {
+        while (!try_lock(v))
+            relax_fence();
+        acquire_fence();
+    }
+    static void lock(type& v, int here) {
+        while (!try_lock(v, here))
+            relax_fence();
+        acquire_fence();
+    }
+    static void unlock(type& v) {
+        assert(is_locked_here(v));
+        type new_v = v & ~(lock_bit | threadid_mask);
+        release_fence();
+        v = new_v;
+    }
+    static void unlock(type& v, int here) {
+        (void) here;
+        assert(is_locked_here(v, here));
+        type new_v = v & ~(lock_bit | threadid_mask);
+        release_fence();
+        v = new_v;
+    }
+    static type unlocked(type v) {
+      return v & ~(lock_bit | threadid_mask);
+    }
+
+    // setting/verifying timestamps
+    static void set_timestamps(type& v, type new_ts) {
+        assert(is_locked_here(v));
+        new_ts = (new_ts << wts_shift) | lock_bit | TThread::id();
+        release_fence();
+        v = new_ts;
+    }
+    static void set_timestamps_unlock(type& v, type new_ts) {
+        assert(is_locked_here(v));
+        new_ts <<= wts_shift;
+        release_fence();
+        v = new_ts;
+    }
+    static bool validate_read_timestamp(type& tuple_ts, type readset_ts, type commit_ts) {
+        while (1) {
+            type v = tuple_ts;
+            acquire_fence();
+            if (write_timestamp(v) != write_timestamp(readset_ts) ||
+                ((read_timestamp(v) <= commit_ts) && is_locked_elsewhere(v)))
+                return false;
+            if (read_timestamp(v) <= commit_ts) {
+                type vv = v;
+                type delta = commit_ts - write_timestamp(v);
+                type shift = delta - delta & 0xff;
+                vv += shift << wts_shift;
+                vv &= ~delta_mask;
+                vv |= delta & 0xff << delta_shift;
+                if (bool_cmpxchg(&tuple_ts, v, vv))
+                    return true;
+            }
+        }
+    }
+};
+
 class TVersion {
 public:
     typedef TransactionTid::type type;
@@ -333,6 +443,84 @@ public:
 
     template <typename Exception>
     static inline void opaque_throw(const Exception& exception);
+
+private:
+    type v_;
+};
+
+class TicTocVersion {
+public:
+    typedef TicTocTid::type type;
+    static constexpr type user_bit = TicTocTid::user_bit;
+
+    TicTocVersion() : v_() {}
+    TicTocVersion(type v) : v_(v) {}
+
+    bool operator==(TicTocVersion x) const {
+        return v_ == x.v_;
+    }
+    bool operator!=(TicTocVersion x) const {
+        return v_ != x.v_;
+    }
+
+    type value() const {
+        return v_;
+    }
+    volatile type& value() {
+        return v_;
+    }
+    inline type snapshot(const TransItem& item, const Transaction& txn);
+    inline type snapshot(TransProxy& item);
+
+    bool is_locked() const {
+        return TicTocTid::is_locked(v_);
+    }
+    bool is_locked_here() const {
+        return TicTocTid::is_locked_here(v_);
+    }
+    bool is_locked_here(int here) const {
+        return TicTocTid::is_locked_here(v_, here);
+    }
+    inline bool is_locked_here(const Transaction& txn) const;
+    bool is_locked_elsewhere() const {
+        return TicTocTid::is_locked_elsewhere(v_);
+    }
+    bool is_locked_elsewhere(int here) const {
+        return TicTocTid::is_locked_elsewhere(v_, here);
+    }
+    inline bool is_locked_elsewhere(const Transaction& txn) const;
+
+    bool try_lock() {
+        return TicTocTid::try_lock(v_);
+    }
+    bool try_lock(int here) {
+        return TicTocTid::try_lock(v_, here);
+    }
+    void lock() {
+        TicTocTid::lock(v_);
+    }
+    void lock(int here) {
+        TicTocTid::lock(v_, here);
+    }
+    void unlock() {
+        TicTocTid::unlock(v_);
+    }
+    void unlock(int here) {
+        TicTocTid::unlock(v_, here);
+    }
+    type unlocked() const {
+        return TicTocTid::unlocked(v_);
+    }
+
+    void set_timestamps(type commit_ts) {
+        TicTocTid::set_timestamps(v_, commit_ts);
+    }
+    void set_timestamps_unlock(type commit_ts) {
+        TicTocTid::set_timestamps_unlock(v_, commit_ts);
+    }
+    bool validate_read_timestamp(type old_ts, type commit_ts) {
+        return TicTocTid::validate_read_timestamp(v_, old_ts, commit_ts);
+    }
 
 private:
     type v_;
