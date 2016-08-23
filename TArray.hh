@@ -66,8 +66,9 @@ public:
     bool lock(TransItem& item, Transaction& txn) override {
         return txn.try_lock(item, data_[item.key<size_type>()].vers);
     }
+    // commit-time check
     bool check(TransItem& item, Transaction& txn) override {
-        return item.check_version(data_[item.key<size_type>()].vers, txn.commit_tid());
+        return item.check_version(data_[item.key<size_type>()].vers, txn.timestamp());
     }
     void install(TransItem& item, Transaction& txn) override {
         size_type i = item.key<size_type>();

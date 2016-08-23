@@ -588,20 +588,32 @@ public:
 
     tid_type commit_tid() const {
         assert(state_ == s_committing_locked || state_ == s_committing);
-        if (!commit_tid_)
+        if (!commit_tid_) {
             commit_tid_ = compute_commit_ts();
-        // _TID now used as a "recently committed" timestamp
-        while (1) {
-            tid_type t = _TID;
-            if (commit_tid_ > t) {
-                if (bool_cmpxchg(&_TID, t, commit_tid_))
+            // _TID now used as a "recently committed" timestamp
+            while (1) {
+                tid_type t = _TID;
+                if (commit_tid_ > t) {
+                    if (bool_cmpxchg(&_TID, t, commit_tid_))
+                        break;
+                } else {
                     break;
-            } else {
-                break;
+                }
             }
         }
         return commit_tid_;
     }
+
+    // Return a timestamp suitable to use in check() methods
+    // Compute and return a timestamp during execution-time opacity checks
+    // Return the computed and stored commit_ts when we are actually committing
+    tid_type timestamp() const {
+        if (state_ < s_committing)
+            return compute_commit_ts();
+        else
+            return commit_tid();
+    }
+
     void set_timestamps(TicTocVersion& vers, TicTocVersion::type flags = 0) const {
         vers.set_timestamps(commit_tid(), flags);
     }
