@@ -80,14 +80,18 @@ class TransItem {
         assert(has_read());
         return Packer<T>::unpack(rdata_);
     }
-    bool check_version(TVersion v) const {
+    bool check_version(TicTocVersion& tuple_ts, TicTocTid::type commit_ts) const {
         assert(has_read());
-        return v.check_version(this->read_value<TVersion>());
+        return tuple_ts.validate_read_timestamp(
+                        this->read_value<TicTocVersion>().value(),
+                        commit_ts);
     }
+    /*
     bool check_version(TNonopaqueVersion v) const {
         assert(has_read());
         return v.check_version(this->read_value<TNonopaqueVersion>());
     }
+    */
 
     template <typename T>
     T& predicate_value() {
@@ -241,15 +245,15 @@ class TransProxy {
     inline TransProxy& add_read(T rdata);
     template <typename T>
     inline TransProxy& add_read_opaque(T rdata);
-    inline TransProxy& observe(TVersion version, bool add_read);
-    inline TransProxy& observe(TNonopaqueVersion version, bool add_read);
-    inline TransProxy& observe(TCommutativeVersion version, bool add_read);
-    inline TransProxy& observe(TVersion version);
-    inline TransProxy& observe(TNonopaqueVersion version);
-    inline TransProxy& observe(TCommutativeVersion version);
-    inline TransProxy& observe_opacity(TVersion version);
-    inline TransProxy& observe_opacity(TNonopaqueVersion version);
-    inline TransProxy& observe_opacity(TCommutativeVersion version);
+    inline TransProxy& observe(TicTocVersion version, bool add_read);
+//    inline TransProxy& observe(TNonopaqueVersion version, bool add_read);
+//    inline TransProxy& observe(TCommutativeVersion version, bool add_read);
+    inline TransProxy& observe(TicTocVersion version);
+//    inline TransProxy& observe(TNonopaqueVersion version);
+//    inline TransProxy& observe(TCommutativeVersion version);
+    inline TransProxy& observe_opacity(TicTocVersion version);
+//    inline TransProxy& observe_opacity(TNonopaqueVersion version);
+//    inline TransProxy& observe_opacity(TCommutativeVersion version);
     inline TransProxy& clear_read() {
         item().__rm_flags(TransItem::read_bit);
         return *this;
@@ -267,11 +271,11 @@ class TransProxy {
 
     inline TransProxy& add_write();
     template <typename T>
-    inline TransProxy& add_write(const T& wdata);
+    inline TransProxy& add_write(const T& wdata, TicTocVersion& ts);
     template <typename T>
-    inline TransProxy& add_write(T&& wdata);
+    inline TransProxy& add_write(T&& wdata, TicTocVersion& ts);
     template <typename T, typename... Args>
-    inline TransProxy& add_write(Args&&... wdata);
+    inline TransProxy& add_write(TicTocVersion& ts, Args&&... wdata);
     inline TransProxy& clear_write() {
         item().__rm_flags(TransItem::write_bit);
         return *this;

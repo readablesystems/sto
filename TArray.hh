@@ -46,7 +46,7 @@ public:
     }
     void transPut(size_type i, T x) const {
         assert(i < N);
-        Sto::item(this, i).add_write(x);
+        Sto::item(this, i).add_write(x, data_[i].vers);
     }
 
     get_type nontrans_get(size_type i) const {
@@ -66,13 +66,13 @@ public:
     bool lock(TransItem& item, Transaction& txn) override {
         return txn.try_lock(item, data_[item.key<size_type>()].vers);
     }
-    bool check(TransItem& item, Transaction&) override {
-        return item.check_version(data_[item.key<size_type>()].vers);
+    bool check(TransItem& item, Transaction& txn) override {
+        return item.check_version(data_[item.key<size_type>()].vers, txn.commit_tid());
     }
     void install(TransItem& item, Transaction& txn) override {
         size_type i = item.key<size_type>();
         data_[i].v.write(item.write_value<T>());
-        txn.set_version_unlock(data_[i].vers, item);
+        txn.set_timestamps_unlock(data_[i].vers, item);
     }
     void unlock(TransItem& item) override {
         data_[item.key<size_type>()].vers.unlock();
