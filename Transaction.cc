@@ -9,7 +9,7 @@ Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epoch
 };
 __thread Transaction *TThread::txn = nullptr;
 std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callback;
-TicTocTid::type __attribute__((aligned(128))) Transaction::_TID = 2 * TicTocTid::increment_value;
+TicTocTid::type __attribute__((aligned(128))) Transaction::_TID = 0;
    // reserve TransactionTid::increment_value for prepopulated
 
 static void __attribute__((used)) check_static_assertions() {
@@ -148,7 +148,7 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
             if (abort_item_)
                 buf << " " << *abort_item_;
             if (abort_version_)
-                buf << " V" << TVersion(abort_version_);
+                buf << " V:" << TicTocVersion(abort_version_);
             buf << '\n';
             std::cerr << buf.str();
         }

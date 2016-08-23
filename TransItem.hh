@@ -72,9 +72,7 @@ class TransItem {
 
     template <typename T>
     T& read_value() {
-        // the following assertion is no longer true because
-        // we also add read for writes in TicToc
-        //assert(has_read());
+        assert(has_read());
         return Packer<T>::unpack(rdata_);
     }
     template <typename T>
@@ -82,11 +80,13 @@ class TransItem {
         assert(has_read());
         return Packer<T>::unpack(rdata_);
     }
+    TicTocVersion* write_tuple_ts() const {
+        return tuple_ts_;
+    }
     bool check_version(TicTocVersion& tuple_ts, TicTocTid::type commit_ts) const {
         assert(has_read());
         return tuple_ts.validate_read_timestamp(
-                        this->read_value<TicTocVersion>().value(),
-                        commit_ts);
+                read_value<TicTocVersion>().value(), commit_ts);
     }
     /*
     bool check_version(TNonopaqueVersion v) const {
@@ -196,6 +196,7 @@ private:
     // this word must be unique (to a particular item) and consistently ordered across transactions
     void* key_;
     void* rdata_;
+    TicTocVersion *tuple_ts_;
     void* wdata_;
 
     void __rm_flags(flags_type flags) {
@@ -277,7 +278,7 @@ class TransProxy {
     template <typename T>
     inline TransProxy& add_write(T&& wdata, TicTocVersion& ts);
     template <typename T, typename... Args>
-    inline TransProxy& add_write(TicTocVersion& ts, Args&&... wdata);
+    inline TransProxy& add_write(Args&&... wdata, TicTocVersion& ts);
     inline TransProxy& clear_write() {
         item().__rm_flags(TransItem::write_bit);
         return *this;

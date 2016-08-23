@@ -449,7 +449,7 @@ private:
     bool preceding_duplicate_read(TransItem *it) const;
 
 #if STO_DEBUG_ABORTS
-    void mark_abort_because(TransItem* item, const char* reason, TVersion::type version = 0) const {
+    void mark_abort_because(TransItem* item, const char* reason, TicTocVersion::type version = 0) const {
         abort_item_ = item;
         abort_reason_ = reason;
         if (version)
@@ -577,7 +577,7 @@ public:
             it = (tidx % tset_chunk ? it + 1 : tset_[tidx/tset_chunk]);
             if (it->has_write()) {
                 commit_ts = std::max(commit_ts,
-                        it->read_value<TicTocVersion*>()->read_timestamp() + 1);
+                        it->write_tuple_ts()->read_timestamp() + 1);
             } else if (it->has_read()) {
                 commit_ts = std::max(commit_ts,
                         it->read_value<TicTocVersion>().write_timestamp());
@@ -669,7 +669,7 @@ private:
 #if STO_DEBUG_ABORTS
     mutable TransItem* abort_item_;
     mutable const char* abort_reason_;
-    mutable TVersion::type abort_version_;
+    mutable TicTocVersion::type abort_version_;
 #endif
     TransItem* tset_[tset_max_capacity / tset_chunk];
 #if TRANSACTION_HASHTABLE
@@ -978,29 +978,30 @@ inline TransProxy& TransProxy::add_write() {
 
 template <typename T>
 inline TransProxy& TransProxy::add_write(const T& wdata, TicTocVersion& ts) {
-    return add_write<T, const T&>(ts, wdata);
+    return add_write<T, const T&>(wdata, ts);
 }
 
 template <typename T>
 inline TransProxy& TransProxy::add_write(T&& wdata, TicTocVersion& ts) {
     typedef typename std::decay<T>::type V;
-    return add_write<V, V&&>(ts, std::move(wdata));
+    return add_write<V, V&&>(std::move(wdata), ts);
 }
 
 template <typename T, typename... Args>
-inline TransProxy& TransProxy::add_write(TicTocVersion& ts, Args&&... args) {
+inline TransProxy& TransProxy::add_write(Args&&... args, TicTocVersion& ts) {
     if (!has_write()) {
         item().__or_flags(TransItem::write_bit);
+        // store a reference to the version in the actual TObject segment
+        item().tuple_ts_ = &ts;
         item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
         t()->any_writes_ = true;
-    } else
+    } else {
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general
         // (hopefully we'll have a system that can automatically call destructors and such
         // which will make our lives much easier)
         item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
-    // store a reference to the version in the actual TObject segment
-    item().rdata_ = Packer<TicTocVersion*>::pack(t()->buf_, &ts);
+    }
     return *this;
 }
 

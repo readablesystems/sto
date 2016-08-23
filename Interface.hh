@@ -322,11 +322,13 @@ public:
                 type vv = v;
                 type delta = commit_ts - write_timestamp(v);
                 type shift = delta - (delta & 0xff);
-                vv += shift << wts_shift;
+                vv += (shift << wts_shift);
                 vv &= ~delta_mask;
-                vv |= delta & 0xff << delta_shift;
+                vv |= (delta & 0xff << delta_shift);
                 if (bool_cmpxchg(&tuple_ts, v, vv))
                     return true;
+            } else {
+                return true;
             }
         }
     }

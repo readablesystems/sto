@@ -82,6 +82,8 @@ private:
     struct elem {
         mutable version_type vers;
         W<T> v;
+
+        elem() : vers(Sto::initialized_tid()) {}
     };
     elem data_[N];
 
