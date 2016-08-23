@@ -220,6 +220,7 @@ public:
 class TicTocTid {
 public:
     typedef uint64_t type;
+    typedef int64_t signed_type;
     static constexpr type delta_shift = type(8);
     static constexpr type wts_shift = type(16);
     static constexpr type threadid_mask = type(0x1f);             // lowest 5 bits
@@ -293,6 +294,9 @@ public:
     }
 
     // setting/verifying timestamps
+    static void set_nonopaque(type& v) {
+        v |= nonopaque_bit;
+    }
     static void set_timestamps(type& v, type new_ts) {
         assert(is_locked_here(v));
         new_ts = (new_ts << wts_shift) | lock_bit | TThread::id();
@@ -323,6 +327,11 @@ public:
                     return true;
             }
         }
+    }
+
+    static bool try_check_opacity(type start_cts, type v) {
+        signed_type delta = start_cts - write_timestamp(v);
+        return delta > 0 && !(v & (lock_bit | nonopaque_bit));
     }
 };
 
