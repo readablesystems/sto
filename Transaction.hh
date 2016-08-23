@@ -198,12 +198,12 @@ public:
     static struct epoch_state {
         epoch_type global_epoch; // != 0
         epoch_type active_epoch; // no thread is before this epoch
-        TransactionTid::type recent_tid;
+        TicTocTid::type recent_tid;
         bool run;
     } global_epochs;
-    typedef TransactionTid::type tid_type;
+    typedef TicTocTid::type tid_type;
 private:
-    static TransactionTid::type _TID;
+    static TicTocTid::type _TID;
 public:
 
     static std::function<void(threadinfo_t::epoch_type)> epoch_advance_callback;
@@ -456,11 +456,11 @@ private:
             abort_version_ = version;
     }
 #else
-    void mark_abort_because(TransItem*, const char*, TVersion::type = 0) const {
+    void mark_abort_because(TransItem*, const char*, TicTocVersion::type = 0) const {
     }
 #endif
 
-    void abort_because(TransItem& item, const char* reason, TVersion::type version = 0) {
+    void abort_because(TransItem& item, const char* reason, TicTocVersion::type version = 0) {
         mark_abort_because(&item, reason, version);
         abort();
     }
@@ -494,23 +494,25 @@ public:
     // opacity checking
     // These function will eventually help us track the commit TID when we
     // have no opacity, or for GV7 opacity.
-    bool try_lock(TransItem& item, TVersion& vers) {
-        return try_lock(item, const_cast<TransactionTid::type&>(vers.value()));
+    bool try_lock(TransItem& item, TicTocVersion& vers) {
+        return try_lock(item, const_cast<TicTocTid::type&>(vers.value()));
     }
+/*
     bool try_lock(TransItem& item, TNonopaqueVersion& vers) {
         return try_lock(item, const_cast<TransactionTid::type&>(vers.value()));
     }
-    bool try_lock(TransItem& item, TransactionTid::type& vers) {
+*/
+    bool try_lock(TransItem& item, TicTocTid::type& vers) {
 #if STO_SORT_WRITESET
         (void) item;
-        TransactionTid::lock(vers, threadid_);
+        TicTocTid::lock(vers, threadid_);
         return true;
 #else
         // This function will eventually help us track the commit TID when we
         // have no opacity, or for GV7 opacity.
         unsigned n = 0;
         while (1) {
-            if (TransactionTid::try_lock(vers, threadid_))
+            if (TicTocTid::try_lock(vers, threadid_))
                 return true;
             ++n;
 # if STO_SPIN_EXPBACKOFF
@@ -536,25 +538,26 @@ public:
 #endif
     }
 
-    void check_opacity(TransItem& item, TransactionTid::type v) {
+    void check_opacity(TransItem& item, TicTocTid::type v) {
         assert(state_ <= s_committing_locked);
         if (!start_tid_)
             start_tid_ = _TID;
-        if (!TransactionTid::try_check_opacity(start_tid_, v)
+        if (!TicTocTid::try_check_opacity(start_tid_, v)
             && state_ < s_committing)
             hard_check_opacity(&item, v);
     }
-    void check_opacity(TransItem& item, TVersion v) {
+    void check_opacity(TransItem& item, TicTocVersion v) {
         check_opacity(item, v.value());
     }
+/*
     void check_opacity(TransItem&, TNonopaqueVersion) {
     }
-
-    void check_opacity(TransactionTid::type v) {
+*/
+    void check_opacity(TicTocTid::type v) {
         assert(state_ <= s_committing_locked);
         if (!start_tid_)
             start_tid_ = _TID;
-        if (!TransactionTid::try_check_opacity(start_tid_, v)
+        if (!TicTocTid::try_check_opacity(start_tid_, v)
             && state_ < s_committing)
             hard_check_opacity(nullptr, v);
     }
@@ -564,19 +567,49 @@ public:
     }
 
     // committing
+    //
+    // Compute a commit timestamp from things in the transaction set so far
+    // This may get called in execution-time opacity checks as well
+    tid_type compute_commit_ts() const {
+        tid_type commit_ts = 0;
+        TransItem* it = nullptr;
+        for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
+            it = (tidx % tset_chunk ? it + 1 : tset_[tidx/tset_chunk]);
+            if (it->has_write()) {
+                commit_ts = std::max(commit_ts,
+                        it->read_value<TicTocVersion*>()->read_timestamp() + 1);
+            } else if (it->has_read()) {
+                commit_ts = std::max(commit_ts,
+                        it->read_value<TicTocVersion>().write_timestamp());
+            }
+        }
+        return commit_ts;
+    }
+
     tid_type commit_tid() const {
         assert(state_ == s_committing_locked || state_ == s_committing);
         if (!commit_tid_)
-            commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
+            commit_tid_ = compute_commit_ts();
+        // _TID now used as a "recently committed" timestamp
+        while (1) {
+            tid_type t = _TID;
+            if (commit_tid_ > t) {
+                if (bool_cmpxchg(&_TID, t, commit_tid_))
+                    break;
+            } else {
+                break;
+            }
+        }
         return commit_tid_;
     }
-    void set_version(TVersion& vers, TVersion::type flags = 0) const {
-        vers.set_version(commit_tid() | flags);
+    void set_timestamps(TicTocVersion& vers, TicTocVersion::type flags = 0) const {
+        vers.set_timestamps(commit_tid(), flags);
     }
-    void set_version_unlock(TVersion& vers, TransItem& item, TVersion::type flags = 0) const {
-        vers.set_version_unlock(commit_tid() | flags);
+    void set_timestamps_unlock(TicTocVersion& vers, TransItem& item, TicTocVersion::type flags = 0) const {
+        vers.set_timestamps_unlock(commit_tid(), flags);
         item.clear_needs_unlock();
     }
+/*
     void assign_version_unlock(TVersion& vers, TransItem& item, TVersion::type flags = 0) const {
         vers = commit_tid() | flags;
         item.clear_needs_unlock();
@@ -597,6 +630,7 @@ public:
         vers = v | flags;
         item.clear_needs_unlock();
     }
+*/
 
     static const char* state_name(int state);
     void print() const;
@@ -643,7 +677,7 @@ private:
 #endif
     TransItem tset0_[tset_initial_capacity];
 
-    void hard_check_opacity(TransItem* item, TransactionTid::type t);
+    void hard_check_opacity(TransItem* item, TicTocTid::type t);
     void stop(bool committed, unsigned* writes, unsigned nwrites);
 
     friend class TransProxy;
@@ -937,18 +971,18 @@ inline TransProxy& TransProxy::add_write() {
 }
 
 template <typename T>
-inline TransProxy& TransProxy::add_write(const T& wdata) {
-    return add_write<T, const T&>(wdata);
+inline TransProxy& TransProxy::add_write(const T& wdata, TicTocVersion& ts) {
+    return add_write<T, const T&>(ts, wdata);
 }
 
 template <typename T>
-inline TransProxy& TransProxy::add_write(T&& wdata) {
+inline TransProxy& TransProxy::add_write(T&& wdata, TicTocVersion& ts) {
     typedef typename std::decay<T>::type V;
-    return add_write<V, V&&>(std::move(wdata));
+    return add_write<V, V&&>(ts, std::move(wdata));
 }
 
 template <typename T, typename... Args>
-inline TransProxy& TransProxy::add_write(Args&&... args) {
+inline TransProxy& TransProxy::add_write(TicTocVersion& ts, Args&&... args) {
     if (!has_write()) {
         item().__or_flags(TransItem::write_bit);
         item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
@@ -959,6 +993,8 @@ inline TransProxy& TransProxy::add_write(Args&&... args) {
         // (hopefully we'll have a system that can automatically call destructors and such
         // which will make our lives much easier)
         item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
+    // store a reference to the version in the actual TObject segment
+    item().rdata_ = Packer<TicTocVersion*>::pack(t()->buf_, &ts);
     return *this;
 }
 

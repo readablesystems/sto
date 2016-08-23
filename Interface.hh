@@ -299,17 +299,17 @@ public:
     static void set_nonopaque(type& v) {
         v |= nonopaque_bit;
     }
-    static void set_timestamps(type& v, type new_ts) {
+    static void set_timestamps(type& v, type new_ts, type flags = 0) {
         assert(is_locked_here(v));
         new_ts = (new_ts << wts_shift) | lock_bit | TThread::id();
         release_fence();
-        v = new_ts;
+        v = new_ts | flags;
     }
-    static void set_timestamps_unlock(type& v, type new_ts) {
+    static void set_timestamps_unlock(type& v, type new_ts, type flags = 0) {
         assert(is_locked_here(v));
         new_ts <<= wts_shift;
         release_fence();
-        v = new_ts;
+        v = new_ts | flags;
     }
     static bool validate_read_timestamp(type& tuple_ts, type readset_ts, type commit_ts) {
         while (1) {
@@ -525,11 +525,18 @@ public:
         return TicTocTid::unlocked(v_);
     }
 
-    void set_timestamps(type commit_ts) {
-        TicTocTid::set_timestamps(v_, commit_ts);
+    type read_timestamp() {
+        return TicTocTid::read_timestamp(v_);
     }
-    void set_timestamps_unlock(type commit_ts) {
-        TicTocTid::set_timestamps_unlock(v_, commit_ts);
+    type write_timestamp() {
+        return TicTocTid::write_timestamp(v_);
+    }
+
+    void set_timestamps(type commit_ts, type flags) {
+        TicTocTid::set_timestamps(v_, commit_ts, flags);
+    }
+    void set_timestamps_unlock(type commit_ts, type flags) {
+        TicTocTid::set_timestamps_unlock(v_, commit_ts, flags);
     }
     bool validate_read_timestamp(type old_ts, type commit_ts) {
         return TicTocTid::validate_read_timestamp(v_, old_ts, commit_ts);
