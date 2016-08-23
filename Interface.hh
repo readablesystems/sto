@@ -24,6 +24,7 @@ public:
     }
 };
 
+/*
 class TransactionTid {
 public:
     typedef uint64_t type;
@@ -215,6 +216,7 @@ public:
         w.flags(f);
     }
 };
+*/
 
 // Transaction timestamp (TID) as described in the TicToc concurrency control paper
 class TicTocTid {
@@ -335,6 +337,7 @@ public:
     }
 };
 
+/*
 class TVersion {
 public:
     typedef TransactionTid::type type;
@@ -456,6 +459,7 @@ public:
 private:
     type v_;
 };
+*/
 
 class TicTocVersion {
 public:
@@ -535,6 +539,7 @@ private:
     type v_;
 };
 
+/*
 class TNonopaqueVersion {
 public:
     typedef TransactionTid::type type;
@@ -755,6 +760,7 @@ template <typename Exception>
 inline void TVersion::opaque_throw(const Exception& exception) {
     throw exception;
 }
+*/
 
 
 class TObject {

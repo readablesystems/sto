@@ -87,7 +87,7 @@ template <typename T>
 class TWrapped<T, true /* opaque */, true /* trivial */, true /* small */> {
 public:
     typedef T read_type;
-    typedef TVersion version_type;
+    typedef TicTocVersion version_type;
 
     template <typename... Args> TWrapped(Args&&... args)
         : v_(std::forward<Args>(args)...) {
@@ -126,7 +126,7 @@ template <typename T>
 class TWrapped<T, true /* opaque */, true /* trivial */, false /* !small */> {
 public:
     typedef T read_type;
-    typedef TVersion version_type;
+    typedef TicTocVersion version_type;
 
     template <typename... Args> TWrapped(Args&&... args)
         : v_(std::forward<Args>(args)...) {
@@ -158,6 +158,7 @@ protected:
     T v_;
 };
 
+#if 0
 template <typename T>
 class TWrapped<T, false /* !opaque */, true /* trivial */, true /* small */> {
 public:
@@ -247,12 +248,13 @@ public:
 private:
     T v_;
 };
+#endif
 
 template <typename T, bool Small>
 class TWrapped<T, true /* opaque */, false /* !trivial */, Small> {
 public:
     typedef const T& read_type;
-    typedef TVersion version_type;
+    typedef TicTocVersion version_type;
 
     TWrapped()
         : vp_(new T) {
@@ -301,6 +303,7 @@ private:
     }
 };
 
+#if 0
 template <typename T, bool Small>
 class TWrapped<T, false /* !opaque */, false /* !trivial */, Small> {
 public:
@@ -353,7 +356,7 @@ private:
         vp_ = new_vp;
     }
 };
-
+#endif
 
 template <typename T> using TOpaqueWrapped = TWrapped<T>;
-template <typename T> using TNonopaqueWrapped = TWrapped<T, false>;
+//template <typename T> using TNonopaqueWrapped = TWrapped<T, false>;
