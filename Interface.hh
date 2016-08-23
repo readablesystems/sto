@@ -321,7 +321,7 @@ public:
             if (read_timestamp(v) <= commit_ts) {
                 type vv = v;
                 type delta = commit_ts - write_timestamp(v);
-                type shift = delta - delta & 0xff;
+                type shift = delta - (delta & 0xff);
                 vv += shift << wts_shift;
                 vv &= ~delta_mask;
                 vv |= delta & 0xff << delta_shift;
@@ -334,6 +334,20 @@ public:
     static bool try_check_opacity(type start_cts, type v) {
         signed_type delta = start_cts - write_timestamp(v);
         return delta > 0 && !(v & (lock_bit | nonopaque_bit));
+    }
+
+    static void print(type v, std::ostream& w) {
+        auto f = w.flags();
+        w << "w:" << std::hex << write_timestamp(v);
+        w << "r:" << std::hex << read_timestamp(v);
+        v &= increment_value - 1;
+        if (v & ~(user_bit - 1))
+            w << "U" << (v & ~(user_bit - 1));
+        if (v & nonopaque_bit)
+            w << "!";
+        if (v & lock_bit)
+            w << "L" << std::dec << (v & (lock_bit - 1));
+        w.flags(f);
     }
 };
 
@@ -542,6 +556,13 @@ public:
         return TicTocTid::validate_read_timestamp(v_, old_ts, commit_ts);
     }
 
+    friend std::ostream& operator<<(std::ostream& w, TicTocVersion v) {
+        TicTocTid::print(v.value(), w);
+        return w;
+    }
+
+    template <typename Exception>
+    static inline void opaque_throw(const Exception& exception);
 private:
     type v_;
 };
@@ -762,13 +783,12 @@ public:
 private:
     type v_;
 };
-
-template <typename Exception>
-inline void TVersion::opaque_throw(const Exception& exception) {
-    throw exception;
-}
 */
 
+template <typename Exception>
+inline void TicTocVersion::opaque_throw(const Exception& exception) {
+    throw exception;
+}
 
 class TObject {
 public:

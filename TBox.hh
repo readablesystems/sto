@@ -23,14 +23,14 @@ public:
             return v_.read(item, vers_);
     }
     void write(const T& x) {
-        Sto::item(this, 0).add_write(x);
+        Sto::item(this, 0).add_write(x, vers_);
     }
     void write(T&& x) {
-        Sto::item(this, 0).add_write(std::move(x));
+        Sto::item(this, 0).add_write(std::move(x), vers_);
     }
     template <typename... Args>
     void write(Args&&... args) {
-        Sto::item(this, 0).template add_write<T>(std::forward<Args>(args)...);
+        Sto::item(this, 0).template add_write<T>(vers_, std::forward<Args>(args)...);
     }
 
     operator read_type() const {
@@ -71,12 +71,12 @@ public:
     bool lock(TransItem& item, Transaction& txn) override {
         return txn.try_lock(item, vers_);
     }
-    bool check(TransItem& item, Transaction&) override {
-        return item.check_version(vers_);
+    bool check(TransItem& item, Transaction& txn) override {
+        return item.check_version(vers_, txn.commit_tid());
     }
     void install(TransItem& item, Transaction& txn) override {
         v_.write(std::move(item.template write_value<T>()));
-        txn.set_version_unlock(vers_, item);
+        txn.set_timestamps_unlock(vers_, item);
     }
     void unlock(TransItem&) override {
         vers_.unlock();

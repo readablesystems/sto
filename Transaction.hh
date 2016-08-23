@@ -1015,23 +1015,25 @@ inline TransProxy& TransProxy::set_stash(T sdata) {
     return *this;
 }
 
+/*
 template <typename Exception>
 inline void TNonopaqueVersion::opaque_throw(const Exception&) {
     Sto::abort();
 }
-
-inline auto TVersion::snapshot(TransProxy& item) -> type {
+*/
+inline auto TicTocVersion::snapshot(TransProxy& item) -> type {
     type v = value();
-    item.observe_opacity(TVersion(v));
+    item.observe_opacity(TicTocVersion(v));
     return v;
 }
 
-inline auto TVersion::snapshot(const TransItem& item, const Transaction& txn) -> type {
+inline auto TicTocVersion::snapshot(const TransItem& item, const Transaction& txn) -> type {
     type v = value();
     const_cast<Transaction&>(txn).check_opacity(const_cast<TransItem&>(item), v);
     return v;
 }
 
+/*
 inline auto TNonopaqueVersion::snapshot(TransProxy& item) -> type {
     item.transaction().any_nonopaque_ = true;
     return value();
@@ -1041,22 +1043,24 @@ inline auto TNonopaqueVersion::snapshot(const TransItem&, const Transaction& txn
     const_cast<Transaction&>(txn).any_nonopaque_ = true;
     return value();
 }
+*/
 
-inline bool TVersion::is_locked_here(const Transaction& txn) const {
+inline bool TicTocVersion::is_locked_here(const Transaction& txn) const {
     return is_locked_here(txn.threadid());
 }
-
+/*
 inline bool TNonopaqueVersion::is_locked_here(const Transaction& txn) const {
     return is_locked_here(txn.threadid());
 }
-
-inline bool TVersion::is_locked_elsewhere(const Transaction& txn) const {
+*/
+inline bool TicTocVersion::is_locked_elsewhere(const Transaction& txn) const {
     return is_locked_elsewhere(txn.threadid());
 }
-
+/*
 inline bool TNonopaqueVersion::is_locked_elsewhere(const Transaction& txn) const {
     return is_locked_elsewhere(txn.threadid());
 }
+*/
 
 std::ostream& operator<<(std::ostream& w, const Transaction& txn);
 std::ostream& operator<<(std::ostream& w, const TestTransaction& txn);

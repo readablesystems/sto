@@ -80,7 +80,7 @@ public:
 
 private:
     struct elem {
-        version_type vers;
+        mutable version_type vers;
         W<T> v;
     };
     elem data_[N];

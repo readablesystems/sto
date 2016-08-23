@@ -210,6 +210,7 @@ void testOpacity1() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+/*
 void testNoOpacity1() {
     TArray<int, 10, TNonopaqueWrapped> f;
     for (int i = 0; i < 10; i++)
@@ -239,6 +240,7 @@ void testNoOpacity1() {
 
     printf("PASS: %s\n", __FUNCTION__);
 }
+*/
 
 int main() {
     testSimpleInt();
@@ -250,6 +252,6 @@ int main() {
     testConflictingModifyIter2();
     testConflictingModifyIter3();
     testOpacity1();
-    testNoOpacity1();
+//    testNoOpacity1();
     return 0;
 }

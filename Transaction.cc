@@ -5,11 +5,11 @@ Transaction::testing_type Transaction::testing;
 threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int TThread::the_id;
 Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epochs = {
-    1, 0, TransactionTid::increment_value, true
+    1, 0, TicTocTid::increment_value, true
 };
 __thread Transaction *TThread::txn = nullptr;
 std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callback;
-TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = 2 * TransactionTid::increment_value;
+TicTocTid::type __attribute__((aligned(128))) Transaction::_TID = 2 * TicTocTid::increment_value;
    // reserve TransactionTid::increment_value for prepopulated
 
 static void __attribute__((used)) check_static_assertions() {

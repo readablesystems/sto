@@ -72,7 +72,9 @@ class TransItem {
 
     template <typename T>
     T& read_value() {
-        assert(has_read());
+        // the following assertion is no longer true because
+        // we also add read for writes in TicToc
+        //assert(has_read());
         return Packer<T>::unpack(rdata_);
     }
     template <typename T>
