@@ -540,8 +540,8 @@ public:
 
     void check_opacity(TransItem& item, TicTocTid::type v) {
         assert(state_ <= s_committing_locked);
-        if (!start_tid_)
-            start_tid_ = _TID;
+        //if (!start_tid_)
+        //    start_tid_ = _TID;
         if (!TicTocTid::try_check_opacity(start_tid_, v)
             && state_ < s_committing)
             hard_check_opacity(&item, v);
@@ -555,15 +555,16 @@ public:
 */
     void check_opacity(TicTocTid::type v) {
         assert(state_ <= s_committing_locked);
-        if (!start_tid_)
-            start_tid_ = _TID;
+        //if (!start_tid_)
+        //    start_tid_ = _TID;
         if (!TicTocTid::try_check_opacity(start_tid_, v)
             && state_ < s_committing)
             hard_check_opacity(nullptr, v);
     }
 
     void check_opacity() {
-        check_opacity(_TID);
+        //check_opacity(_TID);
+	assert(false || "Opacity unavailable when TicTocVersion is not used");
     }
 
     // committing
@@ -590,6 +591,7 @@ public:
         assert(state_ == s_committing_locked || state_ == s_committing);
         if (!commit_tid_) {
             commit_tid_ = compute_commit_ts();
+            /*
             // _TID now used as a "recently committed" timestamp
             while (1) {
                 tid_type t = _TID;
@@ -600,6 +602,7 @@ public:
                     break;
                 }
             }
+            */
         }
         return commit_tid_;
     }

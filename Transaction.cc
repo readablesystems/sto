@@ -112,7 +112,7 @@ void Transaction::hard_check_opacity(TransItem* item, TicTocTid::type t) {
         TXP_INCREMENT(txp_hco_invalid);
 
     state_ = s_opacity_check;
-    start_tid_ = _TID;
+    //start_tid_ = _TID;
     release_fence();
     TransItem* it = nullptr;
     for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {

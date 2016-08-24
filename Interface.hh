@@ -333,9 +333,15 @@ public:
         }
     }
 
-    static bool try_check_opacity(type start_cts, type v) {
-        signed_type delta = start_cts - write_timestamp(v);
-        return delta > 0 && !(v & (lock_bit | nonopaque_bit));
+    static bool try_check_opacity(type& start_cts, type v) {
+        auto wts = write_timestamp(v);
+        signed_type delta = start_cts - wts;
+        if (delta > 0 && !(v & (lock_bit | nonopaque_bit))) {
+            start_cts = wts;
+            return true;
+        } else {
+            return false;
+        }
     }
 
     static void print(type v, std::ostream& w) {
