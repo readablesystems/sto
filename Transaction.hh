@@ -564,7 +564,7 @@ public:
 
     void check_opacity() {
         //check_opacity(_TID);
-	assert(false || "Opacity unavailable when TicTocVersion is not used");
+        assert(false || "Opacity unavailable when TicTocVersion is not used");
     }
 
     // committing
