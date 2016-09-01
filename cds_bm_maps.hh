@@ -77,27 +77,41 @@ private:
 /* 
  * Hashtable Templates
  */
+// STO-CHAINING
 template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,true,1000000>> : 
     public STOMapHarness<Hashtable<K,T,true,1000000>>{};
 template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,false,1000000>> : 
     public STOMapHarness<Hashtable<K,T,false,1000000>>{};
+template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,true,125000>> : 
+    public STOMapHarness<Hashtable<K,T,true,125000>>{};
+template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,false,125000>> : 
+    public STOMapHarness<Hashtable<K,T,false,125000>>{};
 template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,true,10000>> : 
     public STOMapHarness<Hashtable<K,T,true,10000>>{};
 template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,false,10000>> : 
     public STOMapHarness<Hashtable<K,T,false,10000>>{};
 
+// STO-CUCKOO KF
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K,T,1000000,false>> :
     public CuckooHashMapHarness<CuckooHashMap<K,T,1000000,false>>{};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K,T,125000,false>> :
+    public CuckooHashMapHarness<CuckooHashMap<K,T,10000,false>>{};
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K,T,10000,false>> :
     public CuckooHashMapHarness<CuckooHashMap<K,T,10000,false>>{};
 
+// STO-CUCKOO IE
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMap2<K,T,CityHasher<K>,std::equal_to<K>,1000000,false>> :
     public CuckooHashMapHarness<CuckooHashMap2<K,T,CityHasher<K>,std::equal_to<K>,1000000,false>>{};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMap2<K,T,CityHasher<K>,std::equal_to<K>,125000,false>> :
+    public CuckooHashMapHarness<CuckooHashMap2<K,T,CityHasher<K>,std::equal_to<K>,125000,false>>{};
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMap2<K,T,CityHasher<K>,std::equal_to<K>,10000,false>> :
     public CuckooHashMapHarness<CuckooHashMap2<K,T,CityHasher<K>,std::equal_to<K>,10000,false>>{};
 
+// NT CUCKOO
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,1000000>> :
     public CuckooHashMapHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,1000000>>{};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,125000>> :
+    public CuckooHashMapHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,125000>>{};
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,10000>> :
     public CuckooHashMapHarness<CuckooHashMapNT<K,T,CityHasher<K>,std::equal_to<K>,10000>>{};
 
@@ -268,13 +282,13 @@ private:
 std::vector<Test> make_map_tests() {
     return {
         MAKE_MAP_TESTS("HM1MSingleOp:F34,I33,E33", MapOpTest, int, int, 1000000, 1, 33, 33)
-        MAKE_MAP_TESTS("HM1MSingleOp:F90,I5,E5", MapOpTest, int, int, 1000000, 1, 5, 5)
-        MAKE_MAP_TESTS("HM1MMultiOp:F34,I33,E33", MapOpTest, int, int, 1000000, 5, 33, 33)
-        MAKE_MAP_TESTS("HM1MMultiOp:F90,I5,E5", MapOpTest, int, int, 1000000, 5, 5, 5)
-        //MAKE_MAP_TESTS("HM10K:F34,I33,E33", MapSingleOpTest, int, int, 10000, 33, 33)
-        //MAKE_MAP_TESTS("HM10K:F90,I5,E5", MapSingleOpTest, int, int, 10000, 5, 5)
-        //MAKE_MAP_TESTS("HM:RandSingleOps(F10,I88,E2)", MapSingleOpTest, int, int, 88, 2)
-        //MAKE_MAP_TESTS("HM:RandSingleOps(F88,I10,E2)", MapSingleOpTest, int, int, 10, 2)
+        MAKE_MAP_TESTS("HM1MOp:F90,I5,E5", MapOpTest, int, int, 1000000, 1, 5, 5)
+        MAKE_MAP_TESTS("HM10K:F34,I33,E33", MapOpTest, int, int, 125000, 1, 33, 33)
+        MAKE_MAP_TESTS("HM10K:F90,I5,E5", MapOpTest, int, int, 125000, 1, 5, 5)
+        MAKE_MAP_TESTS("HM10K:F34,I33,E33", MapOpTest, int, int, 10000, 1, 33, 33)
+        MAKE_MAP_TESTS("HM10K:F90,I5,E5", MapOpTest, int, int, 10000, 1, 5, 5)
+        //MAKE_MAP_TESTS("HM1MMultiOp:F34,I33,E33", MapOpTest, int, int, 1000000, 5, 33, 33)
+        //MAKE_MAP_TESTS("HM1MMultiOp:F90,I5,E5", MapOpTest, int, int, 1000000, 5, 5, 5)
     };
 }
 int num_maps = 4;

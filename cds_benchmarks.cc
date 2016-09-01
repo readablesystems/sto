@@ -177,7 +177,7 @@ int main() {
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
 
-    //std::vector<Test> map_tests = make_map_tests();
+    std::vector<Test> map_tests = make_map_tests();
     
     /*auto defaultsto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,1000000>>>(STO, 0, 33, 33);
     startAndWait(defaultsto, 500000, 1);
@@ -190,9 +190,8 @@ int main() {
     //startAndWait(chm, 500000, 1);
     //auto chm2 = new MapOpTest<DatatypeHarness<CuckooHashMap2<int, int, CityHasher<int>,std::equal_to<int>,1000000>>>(STO, 5, 33, 33);
     //startAndWait(chm2, 500000, 1);
-    auto chmnt = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, CityHasher<int>,std::equal_to<int>,1000000>>>(CDS, 5, 33, 33);
-    startAndWait(chmnt, 500000, 1);
-    /*
+    //auto chmnt = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, CityHasher<int>,std::equal_to<int>,1000000>>>(CDS, 5, 33, 33);
+    //startAndWait(chmnt, 500000, 1);
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
         for (auto init_keys = begin(init_sizes); init_keys != end(init_sizes); ++init_keys) {
@@ -209,6 +208,7 @@ int main() {
             dualprintf("\n");
         }
     }
+    /*
     // pqueue tests
     std::vector<Test> pqueue_tests = make_pqueue_tests();
     for (unsigned i = 0; i < pqueue_tests.size(); i+=num_pqueues) {

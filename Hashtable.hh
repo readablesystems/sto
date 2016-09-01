@@ -15,7 +15,7 @@
 #define READ_MY_WRITES 1
 #endif 
 
-template <typename K, typename V, bool Opacity = true, unsigned Init_size = 129, typename W = V, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
+template <typename K, typename V, bool Opacity = true, unsigned Init_num_buckets = 129, typename W = V, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
 #ifdef STO_NO_STM
 class Hashtable {
 #else
@@ -84,7 +84,7 @@ private:
   static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
 
 public:
-  Hashtable(unsigned size = Init_size, Hash h = Hash(), Pred p = Pred()) : map_(), hasher_(h), pred_(p) {
+  Hashtable(unsigned size = Init_num_buckets, Hash h = Hash(), Pred p = Pred()) : map_(), hasher_(h), pred_(p) {
     map_.resize(size);
   }
 
