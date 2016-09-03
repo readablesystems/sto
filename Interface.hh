@@ -223,22 +223,16 @@ class TicTocTid {
 public:
     typedef uint64_t type;
     typedef int64_t signed_type;
-    static constexpr type delta_shift = type(8);
-    static constexpr type wts_shift = type(16);
+    static constexpr type ts_shift = type(8);
     static constexpr type threadid_mask = type(0x1f);             // lowest 5 bits
     static constexpr type lock_bit = type(0x1<<5);                // bit 5
     static constexpr type nonopaque_bit = type(0x1<<6);           // bit 6
     static constexpr type user_bit = type(0x1<<7);                // bit 7
-    static constexpr type delta_mask = type(0xff<<delta_shift);   // bits 8-15 hold "delta"
-    static constexpr type increment_value = type(0x1<<wts_shift); // bits 16-63 hold "wts"
+    static constexpr type increment_value = type(0x1<<ts_shift); // bits 8-63 hold the actual timestamp
 
-    // retrieving read/write timestamps
-    static type write_timestamp(type& v) {
-        return v >> wts_shift;
-    }
-    static type read_timestamp(type& v) {
-        type delta = (v & delta_mask) >> delta_shift;
-        return write_timestamp(v) + delta;
+    // retrieving timestamp
+    static type timestamp(const type& v) {
+        return v >> ts_shift;
     }
 
     // locking; copy-n-pasted
@@ -299,40 +293,32 @@ public:
     static void set_nonopaque(type& v) {
         v |= nonopaque_bit;
     }
-    static void set_timestamps(type& v, type new_ts, type flags = 0) {
+    static void set_timestamp(type& v, type new_ts, type flags = 0) {
         assert(is_locked_here(v));
-        new_ts = (new_ts << wts_shift) | lock_bit | TThread::id();
+        new_ts = (new_ts << ts_shift) | lock_bit | TThread::id();
         release_fence();
         v = new_ts | flags;
     }
-    static void set_timestamps_unlock(type& v, type new_ts, type flags = 0) {
+    static void set_timestamp_unlock(type& v, type new_ts, type flags = 0) {
         assert(is_locked_here(v));
-        new_ts <<= wts_shift;
+        new_ts <<= ts_shift;
         release_fence();
         v = new_ts | flags;
     }
-    static bool validate_read_timestamp(type& tuple_ts, type readset_ts, type commit_ts) {
-        while (1) {
-            type v = tuple_ts;
-            acquire_fence();
-            if (write_timestamp(v) != write_timestamp(readset_ts) ||
-                ((read_timestamp(v) <= commit_ts) && is_locked_elsewhere(v)))
-                return false;
-            if (read_timestamp(v) <= commit_ts) {
-                type vv = v;
-                type delta = commit_ts - write_timestamp(v);
-                type shift = delta - (delta & 0xff);
-                vv += (shift << wts_shift);
-                vv &= ~delta_mask;
-                vv |= (delta & 0xff << delta_shift);
-                if (bool_cmpxchg(&tuple_ts, v, vv))
-                    return true;
-            } else {
-                return true;
-            }
+    static bool validate_timestamps(type& tuple_wts, type& tuple_rts, type read_wts, type read_rts, type commit_ts) {
+        type t_wts = tuple_wts;
+        acquire_fence();
+        type t_rts = tuple_rts;
+        acquire_fence();
+        if (t_wts != read_wts || ((t_rts <= commit_ts) && is_locked_elsewhere(t_wts)))
+            return false;
+        if (read_rts <= commit_ts) {
+            type v = std::max(t_rts, commit_ts);
+            bool_cmpxchg(&tuple_rts, t_rts, v); // should be fine if CAS fails (?)
         }
+        return true;
     }
-
+/* XXX fix opacity later
     static bool try_check_opacity(type& start_cts, type v) {
         auto wts = write_timestamp(v);
         signed_type delta = start_cts - wts;
@@ -343,11 +329,10 @@ public:
             return false;
         }
     }
-
+*/
     static void print(type v, std::ostream& w) {
         auto f = w.flags();
-        w << "w:" << std::hex << write_timestamp(v);
-        w << "r:" << std::hex << read_timestamp(v);
+        w << "ts:" << std::hex << timestamp(v);
         v &= increment_value - 1;
         if (v & ~(user_bit - 1))
             w << "U" << (v & ~(user_bit - 1));
@@ -488,91 +473,110 @@ public:
     typedef TicTocTid::type type;
     static constexpr type user_bit = TicTocTid::user_bit;
 
-    TicTocVersion() : v_() {}
-    TicTocVersion(type v) : v_(v) {}
+    TicTocVersion() : wts_(), rts_(1) {}
+    TicTocVersion(type ts) : wts_(ts), rts_(ts | 0x1) {}
+    TicTocVersion(type wts, type rts) : wts_(wts), rts_(rts) {}
 
     bool operator==(TicTocVersion x) const {
-        return v_ == x.v_;
+        return ((wts_ == x.wts_) && (rts_ == x.rts_));
     }
     bool operator!=(TicTocVersion x) const {
-        return v_ != x.v_;
+        return ((wts_ != x.wts_) || (rts_ != x.rts_));
+    }
+    TicTocVersion& operator=(const TicTocVersion& rhs) {
+        wts_ = rhs.wts_;
+        fence(); // XXX the correct fence?
+        rts_ = rhs.rts_;
+        return *this;
     }
 
-    type value() const {
-        return v_;
+    type wts_value() const {
+        return wts_;
     }
-    volatile type& value() {
-        return v_;
+    volatile type& wts_value() {
+        return wts_;
+    }
+    type rts_value() const {
+        return rts_;
+    }
+    volatile type& rts_value() {
+        return rts_;
     }
     inline type snapshot(const TransItem& item, const Transaction& txn);
     inline type snapshot(TransProxy& item);
 
     bool is_locked() const {
-        return TicTocTid::is_locked(v_);
+        return TicTocTid::is_locked(wts_);
     }
     bool is_locked_here() const {
-        return TicTocTid::is_locked_here(v_);
+        return TicTocTid::is_locked_here(wts_);
     }
     bool is_locked_here(int here) const {
-        return TicTocTid::is_locked_here(v_, here);
+        return TicTocTid::is_locked_here(wts_, here);
     }
     inline bool is_locked_here(const Transaction& txn) const;
     bool is_locked_elsewhere() const {
-        return TicTocTid::is_locked_elsewhere(v_);
+        return TicTocTid::is_locked_elsewhere(wts_);
     }
     bool is_locked_elsewhere(int here) const {
-        return TicTocTid::is_locked_elsewhere(v_, here);
+        return TicTocTid::is_locked_elsewhere(wts_, here);
     }
     inline bool is_locked_elsewhere(const Transaction& txn) const;
 
     bool try_lock() {
-        return TicTocTid::try_lock(v_);
+        return TicTocTid::try_lock(wts_);
     }
     bool try_lock(int here) {
-        return TicTocTid::try_lock(v_, here);
+        return TicTocTid::try_lock(wts_, here);
     }
     void lock() {
-        TicTocTid::lock(v_);
+        TicTocTid::lock(wts_);
     }
     void lock(int here) {
-        TicTocTid::lock(v_, here);
+        TicTocTid::lock(wts_, here);
     }
     void unlock() {
-        TicTocTid::unlock(v_);
+        TicTocTid::unlock(wts_);
     }
     void unlock(int here) {
-        TicTocTid::unlock(v_, here);
+        TicTocTid::unlock(wts_, here);
     }
     type unlocked() const {
-        return TicTocTid::unlocked(v_);
+        return TicTocTid::unlocked(wts_);
     }
 
-    type read_timestamp() {
-        return TicTocTid::read_timestamp(v_);
+    type read_timestamp() const {
+        return TicTocTid::timestamp(rts_);
     }
-    type write_timestamp() {
-        return TicTocTid::write_timestamp(v_);
+    type write_timestamp() const {
+        return TicTocTid::timestamp(wts_);
     }
 
     void set_timestamps(type commit_ts, type flags) {
-        TicTocTid::set_timestamps(v_, commit_ts, flags);
+        TicTocTid::set_timestamp(wts_, commit_ts, flags);
+        TicTocTid::set_timestamp(rts_, commit_ts, flags);
     }
     void set_timestamps_unlock(type commit_ts, type flags) {
-        TicTocTid::set_timestamps_unlock(v_, commit_ts, flags);
+        TicTocTid::set_timestamp_unlock(wts_, commit_ts, flags);
+        TicTocTid::set_timestamp_unlock(rts_, commit_ts, flags);
     }
-    bool validate_read_timestamp(type old_ts, type commit_ts) {
-        return TicTocTid::validate_read_timestamp(v_, old_ts, commit_ts);
+    bool validate_timestamps(type old_wts, type old_rts, type commit_ts) {
+        return TicTocTid::validate_timestamps(wts_, rts_, old_wts, old_rts, commit_ts);
     }
 
     friend std::ostream& operator<<(std::ostream& w, TicTocVersion v) {
-        TicTocTid::print(v.value(), w);
+        w << "w:";
+        TicTocTid::print(v.wts_, w);
+        w << "r:";
+        TicTocTid::print(v.rts_, w);
         return w;
     }
 
     template <typename Exception>
     static inline void opaque_throw(const Exception& exception);
 private:
-    type v_;
+    type wts_;
+    type rts_;
 };
 
 /*

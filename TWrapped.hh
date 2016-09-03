@@ -19,7 +19,7 @@ static T read_atomic(const T* v, TransProxy item, const V& version, bool add_rea
         T result = *v;
         fence();
         V v1 = version;
-        if (v0 == v1 || v1.is_locked()) {
+        if (v0.write_timestamp() == v1.write_timestamp() || v1.is_locked()) {
             item.observe(v1, add_read);
             return result;
         }

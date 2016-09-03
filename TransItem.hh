@@ -70,6 +70,9 @@ class TransItem {
         return Packer<T>::unpack(key_);
     }
 
+    const TicTocVersion& read_timestamp() const {
+        return rtss_;
+    }
     template <typename T>
     T& read_value() {
         assert(has_read());
@@ -85,8 +88,9 @@ class TransItem {
     }
     bool check_version(TicTocVersion& tuple_ts, TicTocTid::type commit_ts) const {
         assert(has_read());
-        return tuple_ts.validate_read_timestamp(
-                read_value<TicTocVersion>().value(), commit_ts);
+        return tuple_ts.validate_timestamps(
+                    read_timestamp().wts_value(),
+                    read_timestamp().rts_value(), commit_ts);
     }
     /*
     bool check_version(TNonopaqueVersion v) const {
@@ -196,6 +200,7 @@ private:
     // this word must be unique (to a particular item) and consistently ordered across transactions
     void* key_;
     void* rdata_;
+    TicTocVersion rtss_;
     TicTocVersion *tuple_ts_;
     void* wdata_;
 

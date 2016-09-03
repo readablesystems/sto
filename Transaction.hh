@@ -495,7 +495,7 @@ public:
     // These function will eventually help us track the commit TID when we
     // have no opacity, or for GV7 opacity.
     bool try_lock(TransItem& item, TicTocVersion& vers) {
-        return try_lock(item, const_cast<TicTocTid::type&>(vers.value()));
+        return try_lock(item, const_cast<TicTocTid::type&>(vers.wts_value()));
     }
 /*
     bool try_lock(TransItem& item, TNonopaqueVersion& vers) {
@@ -538,6 +538,7 @@ public:
 #endif
     }
 
+/*
     void check_opacity(TransItem& item, TicTocTid::type v) {
         assert(state_ <= s_committing_locked);
         //if (!start_tid_)
@@ -549,10 +550,10 @@ public:
     void check_opacity(TransItem& item, TicTocVersion v) {
         check_opacity(item, v.value());
     }
-/*
+
     void check_opacity(TransItem&, TNonopaqueVersion) {
     }
-*/
+
     void check_opacity(TicTocTid::type v) {
         assert(state_ <= s_committing_locked);
         //if (!start_tid_)
@@ -561,7 +562,7 @@ public:
             && state_ < s_committing)
             hard_check_opacity(nullptr, v);
     }
-
+*/
     void check_opacity() {
         //check_opacity(_TID);
         assert(false || "Opacity unavailable when TicTocVersion is not used");
@@ -584,7 +585,7 @@ public:
                         it->read_value<TicTocVersion>().write_timestamp());
             }
         }
-        return commit_ts;
+        return commit_ts << TicTocTid::ts_shift;
     }
 
     tid_type commit_tid() const {
@@ -743,8 +744,9 @@ public:
     }
 
     static void check_opacity(TicTocTid::type t) {
+        (void)t;
         always_assert(in_progress());
-        TThread::txn->check_opacity(t);
+        //XXX TThread::txn->check_opacity(t);
     }
 
     static void check_opacity() {
@@ -890,11 +892,12 @@ inline TransProxy& TransProxy::add_read_opaque(T rdata) {
 inline TransProxy& TransProxy::observe(TicTocVersion version, bool add_read) {
     assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_))
-        t()->abort_because(item(), "locked", version.value());
-    t()->check_opacity(item(), version.value());
+        t()->abort_because(item(), "locked", version.wts_value());
+    //XXX t()->check_opacity(item(), version.wts_value());
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
-        item().rdata_ = Packer<TicTocVersion>::pack(t()->buf_, std::move(version));
+        //item().rdata_ = Packer<TicTocVersion>::pack(t()->buf_, std::move(version));
+        item().rtss_ = version;
     }
     return *this;
 }
@@ -1036,7 +1039,7 @@ template <typename Exception>
 inline void TNonopaqueVersion::opaque_throw(const Exception&) {
     Sto::abort();
 }
-*/
+
 inline auto TicTocVersion::snapshot(TransProxy& item) -> type {
     type v = value();
     item.observe_opacity(TicTocVersion(v));
@@ -1049,7 +1052,6 @@ inline auto TicTocVersion::snapshot(const TransItem& item, const Transaction& tx
     return v;
 }
 
-/*
 inline auto TNonopaqueVersion::snapshot(TransProxy& item) -> type {
     item.transaction().any_nonopaque_ = true;
     return value();
