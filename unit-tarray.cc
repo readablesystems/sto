@@ -81,6 +81,26 @@ void testConflictingIter() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testSimpleModify() {
+    TArray<int, 10> f;
+    for (int i = 0; i < 10; i++)
+        f.nontrans_put(i, i);
+    {
+        TransactionGuard t;
+        int v = f[4];
+        assert(v == 4);
+        f.transPut(4, 6);
+    }
+
+    {
+        TransactionGuard t;
+        int v = f[4];
+        assert(v == 6);
+    }
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
 void testModifyingIter() {
     TArray<int, 10> f;
     for (int i = 0; i < 10; i++)
@@ -247,6 +267,7 @@ int main() {
     testSimpleString();
     testIter();
     testConflictingIter();
+    testSimpleModify();
     testModifyingIter();
     testConflictingModifyIter1();
     testConflictingModifyIter2();

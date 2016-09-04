@@ -83,6 +83,7 @@ bool Transaction::preceding_duplicate_read(TransItem* needle) const {
     }
 }
 
+/*
 void Transaction::hard_check_opacity(TransItem* item, TicTocTid::type t) {
     // ignore opacity checks during commit; we're in the middle of checking
     // things anyway
@@ -90,7 +91,7 @@ void Transaction::hard_check_opacity(TransItem* item, TicTocTid::type t) {
         return;
 
     // ignore if version hasn't changed
-    if (item && item->has_read() && item->read_value<TicTocTid::type>() == t)
+    if (item && item->has_read() && item->read_timestamp().write_timestamp() == t)
         return;
 
     // die on recursive opacity check; this is only possible for predicates
@@ -134,6 +135,7 @@ void Transaction::hard_check_opacity(TransItem* item, TicTocTid::type t) {
     }
     state_ = s_in_progress;
 }
+*/
 
 void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
     if (!committed) {

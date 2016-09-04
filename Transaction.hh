@@ -582,7 +582,7 @@ public:
                         it->write_tuple_ts()->read_timestamp() + 1);
             } else if (it->has_read()) {
                 commit_ts = std::max(commit_ts,
-                        it->read_value<TicTocVersion>().write_timestamp());
+                        it->read_timestamp().write_timestamp());
             }
         }
         return commit_ts << TicTocTid::ts_shift;

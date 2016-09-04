@@ -305,12 +305,18 @@ public:
         release_fence();
         v = new_ts | flags;
     }
+    static void set_read_timestamp(type& v, type new_ts, type flags = 0) {
+        new_ts <<= ts_shift;
+        release_fence();
+        v = new_ts | flags;
+    }
     static bool validate_timestamps(type& tuple_wts, type& tuple_rts, type read_wts, type read_rts, type commit_ts) {
         type t_wts = tuple_wts;
         acquire_fence();
         type t_rts = tuple_rts;
         acquire_fence();
-        if (t_wts != read_wts || ((t_rts <= commit_ts) && is_locked_elsewhere(t_wts)))
+        if (TicTocTid::timestamp(t_wts) != TicTocTid::timestamp(read_wts)
+                        || ((TicTocTid::timestamp(t_rts) <= commit_ts) && is_locked_elsewhere(t_wts)))
             return false;
         if (read_rts <= commit_ts) {
             type v = std::max(t_rts, commit_ts);
@@ -554,11 +560,11 @@ public:
 
     void set_timestamps(type commit_ts, type flags) {
         TicTocTid::set_timestamp(wts_, commit_ts, flags);
-        TicTocTid::set_timestamp(rts_, commit_ts, flags);
+        TicTocTid::set_read_timestamp(rts_, commit_ts, flags);
     }
     void set_timestamps_unlock(type commit_ts, type flags) {
+        TicTocTid::set_read_timestamp(rts_, commit_ts, flags);
         TicTocTid::set_timestamp_unlock(wts_, commit_ts, flags);
-        TicTocTid::set_timestamp_unlock(rts_, commit_ts, flags);
     }
     bool validate_timestamps(type old_wts, type old_rts, type commit_ts) {
         return TicTocTid::validate_timestamps(wts_, rts_, old_wts, old_rts, commit_ts);
