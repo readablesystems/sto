@@ -219,6 +219,21 @@ public:
 */
 
 // Transaction timestamp (TID) as described in the TicToc concurrency control paper
+class RawTid {
+    uint64_t t_;
+public:
+    RawTid(uint64_t x) : t_(x) {};
+    RawTid() : t_() {};
+    bool operator==(const RawTid& rhs) const {
+        return t_ == rhs.t_;
+    }
+    bool operator!=(const RawTid& rhs) const {
+        return t_ != rhs.t_;
+    }
+    uint64_t value() const {return t_;}
+    uint64_t& value() {return t_;}
+};
+
 class TicTocTid {
 public:
     typedef uint64_t type;
@@ -231,96 +246,97 @@ public:
     static constexpr type increment_value = type(0x1<<ts_shift); // bits 8-63 hold the actual timestamp
 
     // retrieving timestamp
-    static type timestamp(const type& v) {
-        return v >> ts_shift;
+    static type timestamp(const RawTid& t) {
+        return t.value() >> ts_shift;
     }
 
     // locking; copy-n-pasted
-    static bool is_locked(type v) {
-        return v & lock_bit;
+    static bool is_locked(RawTid t) {
+        return t.value() & lock_bit;
     }
-    static bool is_locked_here(type v) {
-        return (v & (lock_bit | threadid_mask)) == (lock_bit | TThread::id());
+    static bool is_locked_here(RawTid t) {
+        return (t.value() & (lock_bit | threadid_mask)) == (lock_bit | TThread::id());
     }
-    static bool is_locked_here(type v, int here) {
-        return (v & (lock_bit | threadid_mask)) == (lock_bit | here);
+    static bool is_locked_here(RawTid t, int here) {
+        return (t.value() & (lock_bit | threadid_mask)) == (lock_bit | here);
     }
-    static bool is_locked_elsewhere(type v) {
-        type m = v & (lock_bit | threadid_mask);
+    static bool is_locked_elsewhere(RawTid t) {
+        type m = t.value() & (lock_bit | threadid_mask);
         return m != 0 && m != (lock_bit | TThread::id());
     }
-    static bool is_locked_elsewhere(type v, int here) {
-        type m = v & (lock_bit | threadid_mask);
+    static bool is_locked_elsewhere(RawTid t, int here) {
+        type m = t.value() & (lock_bit | threadid_mask);
         return m != 0 && m != (lock_bit | here);
     }
 
-    static bool try_lock(type& v) {
-        type vv = v;
-        return bool_cmpxchg(&v, vv & ~lock_bit, vv | lock_bit | TThread::id());
+    static bool try_lock(RawTid& t) {
+        type vv = t.value();
+        return bool_cmpxchg(&t.value(), vv & ~lock_bit, vv | lock_bit | TThread::id());
     }
-    static bool try_lock(type& v, int here) {
-        type vv = v;
-        return bool_cmpxchg(&v, vv & ~lock_bit, vv | lock_bit | here);
+    static bool try_lock(RawTid& t, int here) {
+        type vv = t.value();
+        return bool_cmpxchg(&t.value(), vv & ~lock_bit, vv | lock_bit | here);
     }
-    static void lock(type& v) {
-        while (!try_lock(v))
+    static void lock(RawTid& t) {
+        while (!try_lock(t))
             relax_fence();
         acquire_fence();
     }
-    static void lock(type& v, int here) {
-        while (!try_lock(v, here))
+    static void lock(RawTid& t, int here) {
+        while (!try_lock(t, here))
             relax_fence();
         acquire_fence();
     }
-    static void unlock(type& v) {
-        assert(is_locked_here(v));
-        type new_v = v & ~(lock_bit | threadid_mask);
+    static void unlock(RawTid& t) {
+        assert(is_locked_here(t));
+        type new_v = t.value() & ~(lock_bit | threadid_mask);
         release_fence();
-        v = new_v;
+        t.value() = new_v;
     }
-    static void unlock(type& v, int here) {
+    static void unlock(RawTid& t, int here) {
         (void) here;
-        assert(is_locked_here(v, here));
-        type new_v = v & ~(lock_bit | threadid_mask);
+        assert(is_locked_here(t, here));
+        type new_v = t.value() & ~(lock_bit | threadid_mask);
         release_fence();
-        v = new_v;
+        t.value() = new_v;
     }
-    static type unlocked(type v) {
-      return v & ~(lock_bit | threadid_mask);
+    static RawTid unlocked(RawTid t) {
+        t.value() &= ~(lock_bit | threadid_mask);
+        return t;
     }
 
     // setting/verifying timestamps
-    static void set_nonopaque(type& v) {
-        v |= nonopaque_bit;
+    static void set_nonopaque(RawTid& t) {
+        t.value() |= nonopaque_bit;
     }
-    static void set_timestamp(type& v, type new_ts, type flags = 0) {
-        assert(is_locked_here(v));
+    static void set_timestamp(RawTid& t, type new_ts, type flags = 0) {
+        assert(is_locked_here(t));
         new_ts = (new_ts << ts_shift) | lock_bit | TThread::id();
         release_fence();
-        v = new_ts | flags;
+        t.value() = new_ts | flags;
     }
-    static void set_timestamp_unlock(type& v, type new_ts, type flags = 0) {
-        assert(is_locked_here(v));
+    static void set_timestamp_unlock(RawTid& t, type new_ts, type flags = 0) {
+        assert(is_locked_here(t));
         new_ts <<= ts_shift;
         release_fence();
-        v = new_ts | flags;
+        t.value() = new_ts | flags;
     }
-    static void set_read_timestamp(type& v, type new_ts, type flags = 0) {
+    static void set_read_timestamp(RawTid& t, type new_ts, type flags = 0) {
         new_ts <<= ts_shift;
         release_fence();
-        v = new_ts | flags;
+        t.value() = new_ts | flags;
     }
-    static bool validate_timestamps(type& tuple_wts, type& tuple_rts, type read_wts, type read_rts, type commit_ts) {
-        type t_wts = tuple_wts;
+    static bool validate_timestamps(RawTid& tuple_wts, RawTid& tuple_rts, RawTid read_wts, RawTid read_rts, type commit_ts) {
+        auto t_wts = tuple_wts;
         acquire_fence();
-        type t_rts = tuple_rts;
+        auto t_rts = tuple_rts;
         acquire_fence();
-        if (TicTocTid::timestamp(t_wts) != TicTocTid::timestamp(read_wts)
-                        || ((TicTocTid::timestamp(t_rts) <= commit_ts) && is_locked_elsewhere(t_wts)))
+        if (timestamp(t_wts) != timestamp(read_wts)
+                        || ((timestamp(t_rts) <= commit_ts) && is_locked_elsewhere(t_wts)))
             return false;
-        if (read_rts <= commit_ts) {
-            type v = std::max(t_rts, commit_ts);
-            bool_cmpxchg(&tuple_rts, t_rts, v); // should be fine if CAS fails (?)
+        if (timestamp(read_rts) <= commit_ts) {
+            type v = std::max(t_rts.value(), commit_ts);
+            bool_cmpxchg(&tuple_rts.value(), t_rts.value(), v); // should be fine if CAS fails (?)
         }
         return true;
     }
@@ -336,9 +352,10 @@ public:
         }
     }
 */
-    static void print(type v, std::ostream& w) {
+    static void print(RawTid t, std::ostream& w) {
         auto f = w.flags();
-        w << "ts:" << std::hex << timestamp(v);
+        auto& v = t.value();
+        w << "ts:" << std::hex << timestamp(t);
         v &= increment_value - 1;
         if (v & ~(user_bit - 1))
             w << "U" << (v & ~(user_bit - 1));
@@ -479,14 +496,14 @@ public:
     typedef TicTocTid::type type;
     static constexpr type user_bit = TicTocTid::user_bit;
 
-    TicTocVersion() : wts_(), rts_(1) {}
-    TicTocVersion(type ts) : wts_(ts), rts_(ts | 0x1) {}
+    TicTocVersion() : wts_(), rts_() {}
+    TicTocVersion(type ts) : wts_(ts), rts_(ts) {}
     TicTocVersion(type wts, type rts) : wts_(wts), rts_(rts) {}
 
-    bool operator==(TicTocVersion x) const {
+    bool operator==(const TicTocVersion& x) const {
         return ((wts_ == x.wts_) && (rts_ == x.rts_));
     }
-    bool operator!=(TicTocVersion x) const {
+    bool operator!=(const TicTocVersion& x) const {
         return ((wts_ != x.wts_) || (rts_ != x.rts_));
     }
     TicTocVersion& operator=(const TicTocVersion& rhs) {
@@ -496,16 +513,16 @@ public:
         return *this;
     }
 
-    type wts_value() const {
+    RawTid wts_value() const {
         return wts_;
     }
-    volatile type& wts_value() {
+    volatile RawTid& wts_value() {
         return wts_;
     }
-    type rts_value() const {
+    RawTid rts_value() const {
         return rts_;
     }
-    volatile type& rts_value() {
+    volatile RawTid& rts_value() {
         return rts_;
     }
     inline type snapshot(const TransItem& item, const Transaction& txn);
@@ -547,7 +564,7 @@ public:
     void unlock(int here) {
         TicTocTid::unlock(wts_, here);
     }
-    type unlocked() const {
+    RawTid unlocked() const {
         return TicTocTid::unlocked(wts_);
     }
 
@@ -566,7 +583,7 @@ public:
         TicTocTid::set_read_timestamp(rts_, commit_ts, flags);
         TicTocTid::set_timestamp_unlock(wts_, commit_ts, flags);
     }
-    bool validate_timestamps(type old_wts, type old_rts, type commit_ts) {
+    bool validate_timestamps(RawTid old_wts, RawTid old_rts, type commit_ts) {
         return TicTocTid::validate_timestamps(wts_, rts_, old_wts, old_rts, commit_ts);
     }
 
@@ -581,8 +598,8 @@ public:
     template <typename Exception>
     static inline void opaque_throw(const Exception& exception);
 private:
-    type wts_;
-    type rts_;
+    RawTid wts_;
+    RawTid rts_;
 };
 
 /*
