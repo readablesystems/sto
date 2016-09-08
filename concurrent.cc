@@ -6,11 +6,11 @@
 #include <sys/resource.h>
 
 #include "TArray.hh"
-#include "TGeneric.hh"
-#include "Hashtable.hh"
-#include "Queue.hh"
-#include "Vector.hh"
-#include "TVector.hh"
+//#include "TGeneric.hh"
+//#include "Hashtable.hh"
+//#include "Queue.hh"
+//#include "Vector.hh"
+//#include "TVector.hh"
 #include "Transaction.hh"
 #include "IntStr.hh"
 #include "clp.h"
@@ -36,7 +36,7 @@
 #define USE_ARRAY_NONOPAQUE 10
 
 // set this to USE_DATASTRUCTUREYOUWANT
-#define DATA_STRUCTURE USE_HASHTABLE
+#define DATA_STRUCTURE USE_ARRAY
 
 // if true, then all threads perform non-conflicting operations
 #define NON_CONFLICTING 0
@@ -166,7 +166,7 @@ private:
 };
 
 template <> struct Container<USE_ARRAY_NONOPAQUE> {
-    typedef TArray<value_type, ARRAY_SZ, TNonopaqueWrapped> type;
+    typedef TArray<value_type, ARRAY_SZ> type;
     typedef int index_type;
     static constexpr bool has_delete = false;
     value_type nontrans_get(index_type key) {
@@ -186,6 +186,7 @@ private:
     type v_;
 };
 
+#if 0
 template <> struct Container<USE_VECTOR> {
     typedef Vector<value_type> type;
     typedef typename type::size_type index_type;
@@ -260,6 +261,7 @@ private:
     TGeneric stm_;
     value_type a_[ARRAY_SZ];
 };
+#endif
 
 template <> struct Container<USE_MASSTREE> {
 #if STRING_VALUES && UNBOXED_STRINGS
@@ -351,6 +353,7 @@ private:
     type v_;
 };
 
+#if 0
 template <> struct Container<USE_HASHTABLE> {
 #ifndef BOOSTING
     typedef Hashtable<int, value_type, true, static_cast<unsigned>(ARRAY_SZ/HASHTABLE_LOAD_FACTOR)> type;
@@ -418,6 +421,7 @@ template <> struct Container<USE_HASHTABLE_STR> {
 private:
     type v_;
 };
+#endif
 
 #if DATA_STRUCTURE == USE_QUEUE
 typedef Queue<value_type, ARRAY_SZ> QueueType;

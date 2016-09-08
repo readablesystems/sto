@@ -67,7 +67,7 @@ struct versioned_str_struct : public versioned_str {
   }
 };
 
-template <typename V, typename Box = versioned_value_struct<V>, bool Opacity = true>
+template <typename V, typename Box = versioned_value_struct<V>, bool Opacity = false>
 class MassTrans : public Shared {
 public:
 #if !RCU
@@ -83,7 +83,7 @@ public:
   typedef Masstree::Str Str;
 
   typedef typename Box::version_type Version;
-  typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type tversion_type;
+  typedef TicTocVersion tversion_type;
 
   static __thread threadinfo_type mythreadinfo;
 
@@ -156,16 +156,17 @@ public:
       if (item.has_write()) {
         // read directly from the element if we're inserting it
         if (has_insert(item)) {
-	  assign_val(retval, e->read_value());
+          assign_val(retval, e->read_value());
         } else {
-	    retval = item.template write_value<write_value_type>();
+          retval = item.template write_value<write_value_type>();
         }
         return true;
       }
 #endif
-      Version elem_vers;
-      atomicRead(e, elem_vers, retval);
-      item.observe(tversion_type(elem_vers));
+      retval = e->atomic_read(item);
+      //Version elem_vers;
+      //atomicRead(e, elem_vers, retval);
+      //item.observe(tversion_type(elem_vers));
     } else {
       ensureNotFound(lp.node(), lp.full_version_value());
     }
@@ -181,7 +182,7 @@ public:
       Version v = e->version();
       fence();
       auto item = t_item(e);
-      bool valid = !(v & invalid_bit);
+      bool valid = version_is_valid(v);
 #if READ_MY_WRITES
       if (!valid && has_insert(item)) {
         if (has_delete(item)) {
@@ -206,7 +207,7 @@ public:
         return false;
       }
 #endif
-      item.observe(tversion_type(v));
+      item.observe(v);
       // same as inserts we need to Store (copy) key so we can lookup to remove later
       item.template add_write<key_write_value_type>(key).add_flags(delete_bit);
       return found;
@@ -241,7 +242,8 @@ private:
       return handlePutFound<INSERT, SET>(e, key, value);
     } else {
       //      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
-      versioned_value* val = (versioned_value*)versioned_value::make(value, invalid_bit);
+      versioned_value* val = (versioned_value*)versioned_value::make(value, tversion_type());
+      val->version().set_user_bit();
       lp.value() = val;
 #if ABORT_ON_WRITE_READ_CONFLICT
       auto orig_node = lp.node();
@@ -273,6 +275,10 @@ private:
       item.template add_write<key_write_value_type>(key).add_flags(insert_bit);
       return found;
     }
+  }
+
+  static bool version_is_valid(const tversion_type& v) {
+    return !v.has_user_bit_set();
   }
 
 public:
@@ -344,9 +350,10 @@ public:
       // not sure of a better way to do this
       value_type stack_val;
       value_type& val = va ? *(*va)() : stack_val;
-      Version v;
-      atomicRead(e, v, val);
-      item.observe(tversion_type(v));
+      val = e->atomic_read(item);
+      //Version v;
+      //atomicRead(e, v, val);
+      //item.observe(tversion_type(v));
       // key and val are both only guaranteed until callback returns
       return callback(key, val);//query_callback_overload(key, val, callback);
     };
@@ -378,9 +385,10 @@ public:
         }
       }
 #endif
-      Version v;
-      atomicRead(e, v, val);
-      item.observe(tversion_type(v));
+      val = e->atomic_read(item);
+      //Version v;
+      //atomicRead(e, v, val);
+      //item.observe(tversion_type(v));
       return callback(key, val);
     };
 
@@ -475,11 +483,11 @@ public:
     unlock(&e->version());
   }
 
-    bool lock(TransItem& item, Transaction& txn) override {
-        versioned_value* vv = item.key<versioned_value*>();
-        return txn.try_lock(item, vv->version());
-    }
-  bool check(TransItem& item, Transaction&) override {
+  bool lock(TransItem& item, Transaction& txn) override {
+      versioned_value* vv = item.key<versioned_value*>();
+      return txn.try_lock(item, vv->version());
+  }
+  bool check(TransItem& item, Transaction& txn) override {
     if (is_inter(item)) {
       auto n = untag_inter(item.key<leaf_type*>());
       auto cur_version = n->full_version_value();
@@ -487,11 +495,10 @@ public:
       return cur_version == read_version;
     }
     auto e = item.key<versioned_value*>();
-    auto read_version = item.template read_value<Version>();
     bool valid = validityCheck(item, e);
     if (!valid)
       return false;
-    return TransactionTid::check_version(e->version(), read_version);
+    return item.check_timestamps(e->version(), txn.timestamp());
   }
   void install(TransItem& item, Transaction& t) override {
     assert(!is_inter(item));
@@ -499,8 +506,8 @@ public:
     assert(is_locked(e->version()));
     if (has_delete(item)) {
       if (!has_insert(item)) {
-        assert(!(e->version() & invalid_bit));
-        e->version() |= invalid_bit;
+        assert(version_is_valid(e->version()));
+        e->version().set_user_bit();
         fence();
       }
       // TODO: hashtable did this in afterC, we're doing this now, unclear really which is better
@@ -518,13 +525,14 @@ public:
         e->set_value(v);
     }
     if (Opacity)
-      TransactionTid::set_version(e->version(), t.commit_tid());
+      e->version().set_timestamps(t.timestamp());
     else if (has_insert(item)) {
-      Version v = e->version() & ~invalid_bit;
-      fence();
-      e->version() = v;
+      e->version().clear_user_bit();
+      //Version v = e->version() & ~invalid_bit;
+      //fence();
+      //e->version() = v;
     } else
-      TransactionTid::inc_nonopaque_version(e->version());
+      e->version().set_timestamps(t.timestamp());
     
   }
 
@@ -565,12 +573,12 @@ protected:
         // TODO: might be faster to do this part at commit time but easiest to just do it now
         lock(e);
         // we had a weird race condition and now this element is gone. just abort at this point
-        if (e->version() & invalid_bit) {
+        if (!version_is_valid(e->version())) {
           unlock(e);
           Sto::abort();
           return;
         }
-        e->version() |= invalid_bit;
+        e->version().set_user_bit();
         // should be ok to unlock now because any attempted writes will be forced to abort
         unlock(e);
       }
@@ -581,7 +589,8 @@ protected:
       assert(new_location != e);
       if (!has_insert(item)) {
         // copied version is going to be invalid because we just had to mark e invalid
-        new_location->version() &= ~invalid_bit;
+        //new_location->version() &= ~invalid_bit;
+        new_location->version().clear_user_bit();
       }
       cursor_type lp(table_, key);
       // TODO: not even trying to pass around threadinfo here
@@ -636,7 +645,7 @@ protected:
       // version before we check if the node is valid
       Version v = e->version();
       fence();
-      item.observe(tversion_type(v));
+      item.observe(v);
     }
     if (SET) {
       reallyHandlePutFound(item, e, key, value);
@@ -659,8 +668,7 @@ protected:
     if (auto node_item = Sto::check_item(this, tag_inter(node))) {
       if (node_item->has_read() &&
           prev_version == node_item->template read_value<VERSION>()) {
-        node_item->update_read(node_item->template read_value<VERSION>(),
-                               new_version);
+        node_item->update_read(prev_version, new_version);
         return true;
       }
     }
@@ -690,11 +698,9 @@ protected:
 
   static bool validityCheck(const TransItem& item, versioned_value *e) {
     bool v =  //likely(has_insert(item)) || !(e->version & invalid_bit);
-      likely(!(e->version() & invalid_bit)) || has_insert(item);
+      likely(version_is_valid(e->version())) || has_insert(item);
     return v;
   }
-
-  static constexpr Version invalid_bit = TransactionTid::user_bit;
 
   static constexpr uintptr_t internode_bit = 1<<0;
 
@@ -724,10 +730,10 @@ protected:
   }
 
   static bool is_locked(Version v) {
-    return TransactionTid::is_locked(v);
+    return v.is_locked();
   }
   static void lock(Version *v) {
-    TransactionTid::lock(*v);
+    v->lock();
 #if 0
     while (1) {
       Version cur = *v;
@@ -739,7 +745,7 @@ protected:
 #endif
   }
   static void unlock(Version *v) {
-    TransactionTid::unlock(*v);
+    v->unlock();
 #if 0
     assert(is_locked(*v));
     Version cur = *v;
@@ -747,7 +753,7 @@ protected:
     *v = cur;
 #endif
   }
-
+#if 0
   static void atomicRead(versioned_value *e, Version& vers, value_type& val) {
     Version v2;
     do {
@@ -762,7 +768,7 @@ protected:
       fence();
     } while (vers != v2);
   }
-
+#endif
   template <typename ValType>
   static void assign_val(ValType& val, const ValType& val_to_assign) {
     val = val_to_assign;
@@ -786,6 +792,6 @@ protected:
 template <typename V, typename Box, bool Opacity>
 __thread typename MassTrans<V, Box, Opacity>::threadinfo_type MassTrans<V, Box, Opacity>::mythreadinfo;
 
-template <typename V, typename Box, bool Opacity>
-constexpr typename MassTrans<V, Box, Opacity>::Version MassTrans<V, Box, Opacity>::invalid_bit;
+//template <typename V, typename Box, bool Opacity>
+//constexpr typename MassTrans<V, Box, Opacity>::Version MassTrans<V, Box, Opacity>::invalid_bit;
 

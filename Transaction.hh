@@ -582,7 +582,7 @@ public:
                         it->write_tuple_ts()->read_timestamp() + 1);
             } else if (it->has_read()) {
                 commit_ts = std::max(commit_ts,
-                        it->read_timestamp().write_timestamp());
+                        it->observed_timestamps().write_timestamp());
             }
         }
         return commit_ts << TicTocTid::ts_shift;
@@ -889,15 +889,15 @@ inline TransProxy& TransProxy::add_read_opaque(T rdata) {
     return *this;
 }
 
-inline TransProxy& TransProxy::observe(TicTocVersion version, bool add_read) {
+inline TransProxy& TransProxy::observe(TicTocVersion version, bool add_observation) {
     assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_))
         t()->abort_because(item(), "locked", const_cast<RawTid&>(version.wts_value()).value());
     //XXX t()->check_opacity(item(), version.wts_value());
-    if (add_read && !has_read()) {
-        item().__or_flags(TransItem::read_bit);
+    if (add_observation && !has_observation()) {
+        item().__or_flags(TransItem::observe_bit);
         //item().rdata_ = Packer<TicTocVersion>::pack(t()->buf_, std::move(version));
-        item().rtss_ = version;
+        item().otss_ = version;
     }
     return *this;
 }
@@ -963,6 +963,12 @@ inline TransProxy& TransProxy::update_read(T old_rdata, T new_rdata) {
     return *this;
 }
 
+inline TransProxy& TransProxy::update_timestamps(TicTocVersion old_tss, TicTocVersion new_tss) {
+    if (has_observation() && item().otss_ == old_tss) {
+        item().otss_ = new_tss;
+    }
+    return *this;
+}
 
 inline TransProxy& TransProxy::set_predicate() {
     assert(!has_read());
@@ -1009,7 +1015,7 @@ template <typename T, typename... Args>
 inline TransProxy& TransProxy::add_write(Args&&... args, TicTocVersion& ts) {
     if (!has_write()) {
         item().__or_flags(TransItem::write_bit);
-        // store a reference to the version in the actual TObject segment
+        // store a reference to the timestamps in the actual TObject segment
         item().tuple_ts_ = &ts;
         item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
         t()->any_writes_ = true;

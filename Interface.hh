@@ -224,6 +224,7 @@ class RawTid {
 public:
     RawTid(uint64_t x) : t_(x) {};
     RawTid() : t_() {};
+    RawTid(const RawTid& rhs) : t_(rhs.t_) {}
     bool operator==(const RawTid& rhs) const {
         return t_ == rhs.t_;
     }
@@ -267,6 +268,16 @@ public:
     static bool is_locked_elsewhere(RawTid t, int here) {
         type m = t.value() & (lock_bit | threadid_mask);
         return m != 0 && m != (lock_bit | here);
+    }
+
+    static bool has_user_bit_set(RawTid t) {
+        return (t.value() & user_bit);
+    }
+    static void set_user_bit(RawTid& t) {
+        t.value() |= user_bit;
+    }
+    static void clear_user_bit(RawTid& t) {
+        t.value() &= ~user_bit;
     }
 
     static bool try_lock(RawTid& t) {
@@ -497,6 +508,7 @@ public:
     static constexpr type user_bit = TicTocTid::user_bit;
 
     TicTocVersion() : wts_(), rts_() {}
+    TicTocVersion(const TicTocVersion& rhs) : wts_(rhs.wts_), rts_(rhs.rts_) {}
     TicTocVersion(type ts) : wts_(ts), rts_(ts) {}
     TicTocVersion(type wts, type rts) : wts_(wts), rts_(rts) {}
 
@@ -545,6 +557,15 @@ public:
         return TicTocTid::is_locked_elsewhere(wts_, here);
     }
     inline bool is_locked_elsewhere(const Transaction& txn) const;
+    bool has_user_bit_set() const {
+        return TicTocTid::has_user_bit_set(wts_);
+    }
+    void set_user_bit() {
+        TicTocTid::set_user_bit(wts_);
+    }
+    void clear_user_bit() {
+        TicTocTid::clear_user_bit(wts_);
+    }
 
     bool try_lock() {
         return TicTocTid::try_lock(wts_);
@@ -564,8 +585,11 @@ public:
     void unlock(int here) {
         TicTocTid::unlock(wts_, here);
     }
-    RawTid unlocked() const {
-        return TicTocTid::unlocked(wts_);
+    TicTocVersion unlocked() const {
+        auto ts = *this;
+        acquire_fence();
+        ts.wts_ = TicTocTid::unlocked(ts.wts_);
+        return ts;
     }
 
     type read_timestamp() const {

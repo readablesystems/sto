@@ -24,11 +24,12 @@ class TransItem {
     static constexpr flags_type lock_bit = flags_type(1) << 61;
     static constexpr flags_type predicate_bit = flags_type(1) << 60;
     static constexpr flags_type stash_bit = flags_type(1) << 59;
+    static constexpr flags_type observe_bit = flags_type(1) << 58;
     static constexpr flags_type pointer_mask = (flags_type(1) << 48) - 1;
     static constexpr flags_type user0_bit = flags_type(1) << 48;
     static constexpr int userf_shift = 48;
     static constexpr flags_type shifted_userf_mask = 0x7FF;
-    static constexpr flags_type special_mask = pointer_mask | read_bit | write_bit | lock_bit | predicate_bit | stash_bit;
+    static constexpr flags_type special_mask = pointer_mask | read_bit | write_bit | lock_bit | predicate_bit | stash_bit | observe_bit;
 
 
     TransItem() = default;
@@ -55,6 +56,9 @@ class TransItem {
     bool has_stash() const {
         return flags() & stash_bit;
     }
+    bool has_observation() const {
+        return flags() & observe_bit;
+    }
     bool needs_unlock() const {
         return flags() & lock_bit;
     }
@@ -70,8 +74,9 @@ class TransItem {
         return Packer<T>::unpack(key_);
     }
 
-    const TicTocVersion& read_timestamp() const {
-        return rtss_;
+    const TicTocVersion& observed_timestamps() const {
+        assert(has_observation());
+        return otss_;
     }
     template <typename T>
     T& read_value() {
@@ -86,11 +91,9 @@ class TransItem {
     TicTocVersion* write_tuple_ts() const {
         return tuple_ts_;
     }
-    bool check_version(TicTocVersion& tuple_ts, TicTocTid::type commit_ts) const {
+    bool check_timestamps(TicTocVersion& tuple_ts, TicTocTid::type commit_ts) const {
         assert(has_read());
-        return tuple_ts.validate_timestamps(
-                    read_timestamp().wts_value(),
-                    read_timestamp().rts_value(), commit_ts);
+        return tuple_ts.validate_timestamps(otss_.wts_value(), otss_.rts_value(), commit_ts);
     }
     /*
     bool check_version(TNonopaqueVersion v) const {
@@ -101,12 +104,12 @@ class TransItem {
 
     template <typename T>
     T& predicate_value() {
-        assert(has_predicate() && !has_read());
+        assert(has_predicate() && !has_read() && !has_observation());
         return Packer<T>::unpack(rdata_);
     }
     template <typename T>
     const T& predicate_value() const {
-        assert(has_predicate() && !has_read());
+        assert(has_predicate() && !has_read() && !has_observation());
         return Packer<T>::unpack(rdata_);
     }
 
@@ -148,7 +151,7 @@ class TransItem {
     }
     template <typename T>
     T stash_value(T default_value) const {
-        assert(!has_read());
+        assert(!has_read() && !has_observation());
         if (has_stash())
             return Packer<T>::unpack(rdata_);
         else
@@ -200,7 +203,8 @@ private:
     // this word must be unique (to a particular item) and consistently ordered across transactions
     void* key_;
     void* rdata_;
-    TicTocVersion rtss_;
+    // TicTocVersion's used to represent "observations"
+    TicTocVersion otss_;
     TicTocVersion *tuple_ts_;
     void* wdata_;
 
@@ -213,7 +217,6 @@ private:
     friend class Transaction;
     friend class TransProxy;
 };
-
 
 class TransProxy {
   public:
@@ -245,6 +248,9 @@ class TransProxy {
     bool has_stash() const {
         return item().has_stash();
     }
+    bool has_observation() const {
+        return item().has_observation();
+    }
     bool has_flag(TransItem::flags_type f) const {
         return item().flags() & f;
     }
@@ -253,7 +259,7 @@ class TransProxy {
     inline TransProxy& add_read(T rdata);
     template <typename T>
     inline TransProxy& add_read_opaque(T rdata);
-    inline TransProxy& observe(TicTocVersion version, bool add_read);
+    inline TransProxy& observe(TicTocVersion version, bool add_observation);
 //    inline TransProxy& observe(TNonopaqueVersion version, bool add_read);
 //    inline TransProxy& observe(TCommutativeVersion version, bool add_read);
     inline TransProxy& observe(TicTocVersion version);
@@ -268,6 +274,7 @@ class TransProxy {
     }
     template <typename T>
     inline TransProxy& update_read(T old_rdata, T new_rdata);
+    inline TransProxy& update_timestamps(TicTocVersion old_tss, TicTocVersion new_tss);
 
     inline TransProxy& set_predicate();
     template <typename T>

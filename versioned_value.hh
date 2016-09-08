@@ -1,6 +1,7 @@
 #pragma once
 #include <iostream>
 #include "Interface.hh"
+#include "TWrapped.hh"
 
 // TODO(nate): ugh. really we should have a MassTrans subclass of this with the
 // deallocate_rcu functions so we 1) don't have to include Masstree headers in
@@ -8,14 +9,16 @@
 // function (deallocate_rcu) in some other context.
 #include "kvthread.hh"
 
-template <typename T, typename=void>
+template <typename T>
 struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
   typedef T value_type;
-  typedef TransactionTid::type version_type;
+  typedef TWrapped<T> wv_type;
+  typedef typename wv_type::read_type read_type;
+  typedef TicTocVersion version_type;
 
-  versioned_value_struct() : version_(), value_() {}
+  versioned_value_struct() : version_(), wrapped_value_() {}
   // XXX Yihe: I made it public; is there any reason why it should be private?
-  versioned_value_struct(const value_type& val, version_type v) : version_(v), value_(val) {}
+  versioned_value_struct(const value_type& val, version_type v) : version_(v), wrapped_value_(val) {}
   
   static versioned_value_struct* make(const value_type& val, version_type version) {
     return new versioned_value_struct<T>(val, version);
@@ -29,26 +32,22 @@ struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
     return NULL;
   }
   
-  inline void set_value(const value_type& v) {
-    value_ = v;
+  void set_value(const value_type& v) {
+    wrapped_value_.write(v);
   }
   
-  inline const value_type& read_value() const {
-    return value_;
-  }
-
-  inline value_type& writeable_value() {
-    return value_;
-  }
-  
-  inline const version_type& version() const {
+  const version_type& version() const {
     return version_;
   }
-  inline version_type& version() {
+  version_type& version() {
     return version_;
   }
 
-  inline void deallocate_rcu(threadinfo& ti) {
+  read_type atomic_read(TransProxy item) const {
+    return wrapped_value_.read(item, version_);
+  }
+
+  void deallocate_rcu(threadinfo& ti) {
     ti.deallocate_rcu(this, sizeof(versioned_value_struct), memtag_value);
   }
 
@@ -64,15 +63,16 @@ struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
   
 private: 
   version_type version_;
-  value_type value_;
+  TWrapped<value_type> wrapped_value_;
 };
 
+#if 0
 // double box for non trivially copyable types!
 template<typename T>
 struct versioned_value_struct<T, typename std::enable_if<!__has_trivial_copy(T)>::type> {
 public:
   typedef T value_type;
-  typedef TransactionTid::type version_type;
+  typedef TicTocVersion version_type;
 
   static versioned_value_struct* make(const value_type& val, version_type version) {
     return new versioned_value_struct(val, version);
@@ -115,3 +115,4 @@ private:
   version_type version_;
   value_type* valueptr_;
 };
+#endif
