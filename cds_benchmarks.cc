@@ -177,21 +177,25 @@ int main() {
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
 
-    std::vector<Test> map_tests = make_map_tests();
+  
+    //auto defaultsto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,1000000>>>(STO, 1000000, 0, 33, 33);
+    //startAndWait(defaultsto, 500000, 12);
+    //auto defaultcds = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,10000>>>(STO, 10000, 0, 33, 33);
+    //startAndWait(defaultcds, 500000, 12);
     
-    /*auto defaultsto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,1000000>>>(STO, 0, 33, 33);
-    startAndWait(defaultsto, 500000, 1);
-    auto defaultcds = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,1000000>>>(STO, 0, 33, 33);
-    startAndWait(defaultcds, 500000, 1);
-    */
-    //auto sto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,1000000>>>(STO, 5, 33, 33);
-    //startAndWait(sto, 500000, 1);
-    //auto chm = new MapOpTest<DatatypeHarness<CuckooHashMap<int,int,1000000,false>>>(STO, 5, 33, 33);
-    //startAndWait(chm, 500000, 1);
-    //auto chm2 = new MapOpTest<DatatypeHarness<CuckooHashMap2<int, int, CityHasher<int>,std::equal_to<int>,1000000>>>(STO, 5, 33, 33);
-    //startAndWait(chm2, 500000, 1);
-    //auto chmnt = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, CityHasher<int>,std::equal_to<int>,1000000>>>(CDS, 5, 33, 33);
-    //startAndWait(chmnt, 500000, 1);
+    //auto sto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,10000>>>(STO, 10000, 1, 33, 33);
+    //startAndWait(sto, 500000, 12);
+    
+    //auto chmkf = new MapOpTest<DatatypeHarness<CuckooHashMap<int,int,1000000,false>>>(STO, 1000000, 1, 33, 33);
+    //startAndWait(chmkf, 500000, 12);
+
+    //auto chmie = new MapOpTest<DatatypeHarness<CuckooHashMap2<int, int, 1000000, false>>>(STO, 1000000, 1, 33, 33);
+    //startAndWait(chmie, 500000, 12);
+    
+    //auto chmnt = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 1000000>>>(CDS, 1000000, 1, 33, 33);
+    //startAndWait(chmnt, 500000, 12);
+   
+    std::vector<Test> map_tests = make_map_tests();
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
         for (auto init_keys = begin(init_sizes); init_keys != end(init_sizes); ++init_keys) {

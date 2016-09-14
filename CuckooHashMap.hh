@@ -30,22 +30,7 @@
 #include "Interface.hh"
 #include "TWrapped.hh"
 #include "Transaction.hh"
-
-#define LIBCUCKOO_DEBUG 0
-#if LIBCUCKOO_DEBUG
-#  define LIBCUCKOO_DBG(fmt, args...)  fprintf(stderr, "\x1b[32m""[libcuckoo:%s:%d:%lu] " fmt"" "\x1b[0m",__FILE__,__LINE__, (unsigned long)pthread_self(), ##args)
-#else
-#  define LIBCUCKOO_DBG(fmt, args...)  do {} while (0)
-#endif
-
-//! SLOT_PER_BUCKET is the maximum number of keys per bucket
-const size_t SLOT_PER_BUCKET = 4;
-
-/* hashed_key<key_type> hashes the given key. */
-template <class Key>
-inline size_t hashed_key(const Key &key) {
-    return std::hash<Key>()(key);
-}
+#include "cuckoohelpers.hh"
 
 typedef enum {
     check_elem = -1,
@@ -1060,10 +1045,10 @@ private:
         assert(st == failure_too_slow || st == failure_table_full /*|| st == failure_key_moved*/);
         if (st == failure_table_full) {
             // TODO resizes not supported
-            assert(0);
             LIBCUCKOO_DBG("hash table is full (hashpower = %zu, hash_items = %zu, load factor = %.2f), need to increase hashpower\n",
                       ti->hashpower_, cuckoo_size(ti), cuckoo_loadfactor(ti));
 
+            assert(0);
             //we will create a new table and set the new table pointer to it
             if (cuckoo_expand_start(ti, ti->hashpower_+1) == failure_under_expansion) {
                 LIBCUCKOO_DBG("Somebody swapped the table pointer before I did. Anyways, it's changed!\n");
@@ -1397,13 +1382,6 @@ private:
     //counter for number of threads
     static std::atomic<size_t> numThreads;
 
-    // The maximum number of cuckoo operations per insert. This must
-    // be less than or equal to SLOT_PER_BUCKET^(MAX_BFS_DEPTH+1)
-    static const size_t MAX_CUCKOO_COUNT = 500;
-
-    // The maximum depth of a BFS path
-    static const size_t MAX_BFS_DEPTH = 4;
-
     // the % of moved buckets above which migrate_all is called
     //static constexpr double MIGRATE_THRESHOLD = 0.8;
 
@@ -1551,10 +1529,11 @@ private:
                 // No empty slots were found, so we push this onto the
                 // queue
                 if (y.depth != static_cast<int>(MAX_BFS_DEPTH)) {
-                    //std::cout << "enqueueing" << y.depth << std::endl;
+                    //std::cout << "enqueueing " << y.bucket << std::endl;
                     q.enqueue(y);
                 }
             }
+            assert(q.not_full());
         }
         // We didn't find a short-enough cuckoo path, so the queue ran
         // out of space. Return a failure value.
@@ -1775,7 +1754,7 @@ private:
 
         while (true) {
             int depth = cuckoopath_search(ti, cuckoo_path, i1, i2);
-            // std::cout << "Depth of cuckoopath_search is" << depth << std::endl;
+             //std::cout << "Depth of cuckoopath_search is" << depth << std::endl;
             if (depth == -1) {
                 return failure_table_full; //happens if path too long
             }

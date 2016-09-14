@@ -8,7 +8,7 @@
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define N_THREADS 1 // Number of concurrent threads
+#define N_THREADS 5 // Number of concurrent threads
 #define TOTAL_TRANS 50000000
 #define NTRANS TOTAL_TRANS/N_THREADS // Number of transactions each thread should run.
 #define MAX_OPS 5 // Maximum number of operations in a transaction.
@@ -21,9 +21,9 @@
 #define CUCKOOHASHMAPNT 5
 #define CUCKOOHASHMAP2 6 
 //#define DS HASHTABLE
-#define DS CUCKOOHASHMAP
+//#define DS CUCKOOHASHMAP
 //#define DS CUCKOOHASHMAP2
-//#define DS CUCKOOHASHMAPNT
+#define DS CUCKOOHASHMAPNT
 
 #if DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
@@ -47,10 +47,10 @@ CuckooHashMapTester<
                         CuckooHashMap2<int, int, std::hash<int>, std::equal_to<int>, 8000, false>>();
 #elif DS == CUCKOOHASHMAPNT
 CuckooHashMapTester<
-        CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000>, 
-        CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000>> tester = 
-    CuckooHashMapTester<CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000>, 
-                        CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000>>();
+        CuckooHashMapNT<int, int, 10000>, 
+        CuckooHashMapNT<int, int, 10000>> tester = 
+    CuckooHashMapTester<CuckooHashMapNT<int, int, 10000>, 
+                        CuckooHashMapNT<int, int, 10000>>();
 #endif
 
 unsigned initial_seeds[64];
@@ -208,8 +208,8 @@ int main() {
     CuckooHashMap2<int, int, std::hash<int>, std::equal_to<int>, 8000, false> q;
     CuckooHashMap2<int, int, std::hash<int>, std::equal_to<int>, 8000, false> q1;
 #elif DS == CUCKOOHASHMAPNT
-    CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000> q;
-    CuckooHashMapNT<int, int, std::hash<int>, std::equal_to<int>, 8000> q1;
+    CuckooHashMapNT<int, int, 10000> q;
+    CuckooHashMapNT<int, int, 10000> q1;
 #endif  
 
     pthread_t advancer;

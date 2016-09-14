@@ -26,18 +26,10 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#define LIBCUCKOO_DEBUGNT 0
-#if LIBCUCKOO_DEBUGNT
-#  define LIBCUCKOO_DBGNT(fmt, args...)  fprintf(stderr, "\x1b[32m""[libcuckoo:%s:%d:%lu] " fmt"" "\x1b[0m",__FILE__,__LINE__, (unsigned long)pthread_self(), ##args)
-#else
-#  define LIBCUCKOO_DBGNT(fmt, args...)  do {} while (0)
-#endif
-
-//! SLOT_PER_BUCKET_NT is the maximum number of keys per bucket
-const size_t SLOT_PER_BUCKET_NT = 4;
+#include "cuckoohelpers.hh"
 
 /*! CuckooHashMapNT is the hash table class. */
-template <class Key, class T, class Hash = std::hash<Key>, class Pred = std::equal_to<Key>, unsigned Num_Buckets = 250000>
+template <class Key, class T, unsigned Num_Buckets = 250000>
 class CuckooHashMapNT {
 
     // Structs and functions used internally
@@ -129,7 +121,7 @@ class CuckooHashMapNT {
             lock_.lock();
             auto it = old_pointers.begin();
             while (it != old_pointers.end()) {
-                LIBCUCKOO_DBGNT("Hazard pointer %p\n", *it);
+                LIBCUCKOO_DBG("Hazard pointer %p\n", *it);
                 bool deleteable = true;
                 for (auto hpit = hp_.cbegin(); hpit != hp_.cend(); hpit++) {
                     if (*hpit == *it) {
@@ -138,7 +130,7 @@ class CuckooHashMapNT {
                     }
                 }
                 if (deleteable) {
-                    LIBCUCKOO_DBGNT("Deleting %p\n", *it);
+                    LIBCUCKOO_DBG("Deleting %p\n", *it);
                     delete *it;
                     it = old_pointers.erase(it);
                 } else {
@@ -191,7 +183,7 @@ class CuckooHashMapNT {
         if (counterid < 0) {
             //counterid = rand() % kNumCores;
             counterid = numThreads.fetch_add(1,std::memory_order_relaxed) % kNumCores;
-            //LIBCUCKOO_DBGNT("Counter id is %d", counterid);
+            //LIBCUCKOO_DBG("Counter id is %d", counterid);
         }
     }
 
@@ -199,8 +191,8 @@ class CuckooHashMapNT {
      * of slots for a table and returns the smallest hashpower that
      * will hold n elements. */
     size_t reserve_calc(size_t n) {
-        size_t new_hashpower = (size_t)ceil(log2((double)n / (double)SLOT_PER_BUCKET_NT));
-        assert(n <= hashsize(new_hashpower) * SLOT_PER_BUCKET_NT);
+        size_t new_hashpower = (size_t)ceil(log2((double)n / (double)SLOT_PER_BUCKET));
+        assert(n <= hashsize(new_hashpower) * SLOT_PER_BUCKET);
         return new_hashpower;
     }
 
@@ -212,18 +204,18 @@ public:
     //! mapped_type is the type of values.
     typedef T                 mapped_type;
     //! hasher is the type of the hash function.
-    typedef Hash              hasher;
+    typedef std::hash<key_type> hasher;
     //! key_equal is the type of the equality predicate.
-    typedef Pred              key_equal;
+    typedef std::equal_to<key_type> key_equal;
 
     /*! The constructor creates a new hash table with enough space for
      * \p n elements. If the constructor fails, it will throw an
      * exception. */
-    explicit CuckooHashMapNT(size_t n = Num_Buckets * SLOT_PER_BUCKET_NT) {
+    explicit CuckooHashMapNT(size_t n = Num_Buckets * SLOT_PER_BUCKET) {
         cuckoo_init(reserve_calc(n));
     }
 
-    void initialize(size_t n = Num_Buckets * SLOT_PER_BUCKET_NT) {
+    void initialize(size_t n = Num_Buckets * SLOT_PER_BUCKET) {
         cuckoo_init(reserve_calc(n));
     }
     /*! The destructor deletes any remaining table pointers managed by
@@ -267,8 +259,8 @@ public:
         snapshot_both_no_hazard(ti_old, ti_new);
         size_t s1 = cuckoo_size(ti_old);
         size_t s2 = cuckoo_size(ti_new);
-        LIBCUCKOO_DBGNT("Old table size %zu\n", s1);
-        LIBCUCKOO_DBGNT("New table size %zu\n", s2);
+        LIBCUCKOO_DBG("Old table size %zu\n", s1);
+        LIBCUCKOO_DBG("New table size %zu\n", s2);
         unset_hazard_pointers();
         return s1+s2;
     }
@@ -357,7 +349,7 @@ public:
         if (res == failure_key_moved) {
             if (ti_new == nullptr) { // the new table's pointer has already moved
                 unset_hazard_pointers();
-                LIBCUCKOO_DBGNT("ti_new is nullptr in failure_key_moved with ptr %p\n",ti_new);
+                LIBCUCKOO_DBG("ti_new is nullptr in failure_key_moved with ptr %p\n",ti_new);
                 goto RETRY;
             }
             res = find_one(ti_new, hv, key, val, i1_n, i2_n);
@@ -416,28 +408,28 @@ public:
             // all buckets have already been moved, and now old_table_ptr has the new one
             if (ti_new == nullptr) {
                 unset_hazard_pointers();
-                LIBCUCKOO_DBGNT("Table Info pointers have already swapped in insert");
+                LIBCUCKOO_DBG("Table Info pointers have already swapped in insert");
                 goto RETRY;
             }
 
-            migrate_something(ti_old, ti_new, i1_o, i2_o );
+            //migrate_something(ti_old, ti_new, i1_o, i2_o );
 
-            // LIBCUCKOO_DBGNT("result is failure_key_moved or failure (too full)! with new pointer");
+            // LIBCUCKOO_DBG("result is failure_key_moved or failure (too full)! with new pointer");
             res = insert_one(ti_new, hv, key, val, i1_n, i2_n);
             
-            /*LIBCUCKOO_DBGNT("hashpower = %zu, %zu, hash_items = %zu,%zu, load factor = %.2f,%.2f), need to increase hashpower\n",
+            /*LIBCUCKOO_DBG("hashpower = %zu, %zu, hash_items = %zu,%zu, load factor = %.2f,%.2f), need to increase hashpower\n",
                       ti_old->hashpower_, ti_new->hashpower_, cuckoo_size(ti_old), cuckoo_size(ti_new),
                       cuckoo_loadfactor(ti_old), cuckoo_loadfactor(ti_new) );*/
             // key moved from new table, meaning that an even newer table was created
             if (res == failure_key_moved || res == failure_table_full) {
-                LIBCUCKOO_DBGNT("Key already moved from new table, or already filled...that was fast, %d\n", res);
+                LIBCUCKOO_DBG("Key already moved from new table, or already filled...that was fast, %d\n", res);
                 unset_hazard_pointers();
                 goto RETRY;
             }
 
             // Impossible case because of invariant with migrations
             /*if (res == failure) {
-                LIBCUCKOO_DBGNT("hashpower = %zu, %zu, hash_items = %zu,%zu, load factor = %.2f,%.2f), need to increase hashpower\n",
+                LIBCUCKOO_DBG("hashpower = %zu, %zu, hash_items = %zu,%zu, load factor = %.2f,%.2f), need to increase hashpower\n",
                       ti_old->hashpower_, ti_new->hashpower_, cuckoo_size(ti_old), cuckoo_size(ti_new),
                       cuckoo_loadfactor(ti_old), cuckoo_loadfactor(ti_new) );
                 exit(1);
@@ -471,17 +463,17 @@ public:
         if (res == failure_key_moved) {
             if (ti_new == nullptr) { // all buckets were moved, and tables swapped
                 unset_hazard_pointers();
-                LIBCUCKOO_DBGNT("ti_new is nullptr in failure_key_moved");
+                LIBCUCKOO_DBG("ti_new is nullptr in failure_key_moved");
                 goto RETRY;
             }
 
-            migrate_something(ti_old, ti_new, i1_o, i2_o);
+            //migrate_something(ti_old, ti_new, i1_o, i2_o);
 
             res = delete_one(ti_new, hv, key, i1_n, i2_n);
 
             // key moved from new table, meaning that an even newer table was created
             if (res == failure_key_moved) {
-                LIBCUCKOO_DBGNT("Key already moved from new table...that was fast, %d\n", res);
+                LIBCUCKOO_DBG("Key already moved from new table...that was fast, %d\n", res);
                 unset_hazard_pointers();
                 goto RETRY;
             }
@@ -515,30 +507,30 @@ private:
         }
     } __attribute__((aligned(64)));
 
-    static inline bool getBit( char& bitset, size_t pos) {
+    static inline bool getBit( int& bitset, size_t pos) {
         return bitset & (1 << pos);
     }
 
-    static inline void setBit( char& bitset, size_t pos) {
+    static inline void setBit( int& bitset, size_t pos) {
         bitset |= (1 << pos);
     }
 
-    static inline void resetBit( char& bitset, size_t pos) {
+    static inline void resetBit( int& bitset, size_t pos) {
         bitset &= ~(1 << pos);
     }
 
-    /* The Bucket type holds SLOT_PER_BUCKET_NT keys and values, and a
+    /* The Bucket type holds SLOT_PER_BUCKET keys and values, and a
      * occupied bitset, which indicates whether the slot at the given
      * bit index is in the table or not. It allows constructing and
      * destroying key-value pairs separate from allocating and
      * deallocating the memory. */
     struct Bucket {
         rw_lock lock;
-        char occupied;
-        key_type keys[SLOT_PER_BUCKET_NT];
-        mapped_type vals[SLOT_PER_BUCKET_NT];
+        int occupied;
+        key_type keys[SLOT_PER_BUCKET];
+        mapped_type vals[SLOT_PER_BUCKET];
         unsigned char overflow;
-        bool hasmigrated;
+        //bool hasmigrated;
 
         void setKV(size_t pos, const key_type& k, const mapped_type& v) {
             setBit( occupied, pos);
@@ -553,13 +545,13 @@ private:
         }
 
         void clear() {
-            for (size_t i = 0; i < SLOT_PER_BUCKET_NT; i++) {
+            for (size_t i = 0; i < SLOT_PER_BUCKET; i++) {
                 if (getBit(occupied,i)) {
                     eraseKV(i);
                 }
             }
             overflow = 0;
-            hasmigrated = false;
+            //hasmigrated = false;
         }
     };
 
@@ -577,10 +569,10 @@ private:
         // per-core counters for the number of inserts and deletes
         std::vector<cacheint> num_inserts;
         std::vector<cacheint> num_deletes;
-        std::vector<cacheint> num_migrated_buckets;
+        //std::vector<cacheint> num_migrated_buckets;
 
         // counter for the position of the next bucket to try and migrate
-        cacheint migrate_bucket_ind;
+        //cacheint migrate_bucket_ind;
 
         /* The constructor allocates the memory for the table. For
          * buckets, it uses the bucket_allocator, so that we can free
@@ -619,13 +611,13 @@ private:
                 
                 num_inserts.resize(kNumCores);
                 num_deletes.resize(kNumCores);
-                num_migrated_buckets.resize(kNumCores);
+                //num_migrated_buckets.resize(kNumCores);
 
                 for (size_t i = 0; i < kNumCores; i++) {
                     num_inserts[i].num.store(0);
                     num_deletes[i].num.store(0);
                 }
-                migrate_bucket_ind.num.store(0); 
+                //migrate_bucket_ind.num.store(0); 
         }
 
         ~TableInfo() {
@@ -703,7 +695,7 @@ private:
             assert( res1 == ok ); 
             
             if( !hasOverflow(ti, i1) && open1 != -1 ) {
-                //LIBCUCKOO_DBGNT("We can shortcut in insert! Load factor: %0.2f\n", cuckoo_loadfactor( ti ));
+                //LIBCUCKOO_DBG("We can shortcut in insert! Load factor: %0.2f\n", cuckoo_loadfactor( ti ));
                 add_to_bucket(ti, key, val, i1, open1);
                 unlock( ti, i1 );
                 return ok;
@@ -768,15 +760,16 @@ private:
 
         assert(st == failure_too_slow || st == failure_table_full || st == failure_key_moved);
         if (st == failure_table_full) {
-            LIBCUCKOO_DBGNT("hash table is full (hashpower = %zu, hash_items = %zu, load factor = %.2f), need to increase hashpower\n",
+            assert(0);
+            LIBCUCKOO_DBG("hash table is full (hashpower = %zu, hash_items = %zu, load factor = %.2f), need to increase hashpower\n",
                       ti->hashpower_, cuckoo_size(ti), cuckoo_loadfactor(ti));
 
             //we will create a new table and set the new table pointer to it
             if (cuckoo_expand_start(ti, ti->hashpower_+1) == failure_under_expansion) {
-                LIBCUCKOO_DBGNT("Somebody swapped the table pointer before I did. Anyways, it's changed!\n");
+                LIBCUCKOO_DBG("Somebody swapped the table pointer before I did. Anyways, it's changed!\n");
             }
         } else if(st == failure_too_slow) {
-            LIBCUCKOO_DBGNT( "We were too slow, and another insert got between us!\n");
+            LIBCUCKOO_DBG( "We were too slow, and another insert got between us!\n");
             goto RETRY;
         }
 
@@ -831,8 +824,10 @@ private:
      * Also ensures trying to migrate a new bucket. This invariant ensures that we never
      * fill up the new table before the old table has finished migrating.
      */
+    /*
     bool migrate_something(TableInfo *ti_old, TableInfo *ti_new, 
                                size_t i1_o, size_t i2_o) {
+        assert(0);
         assert(ti_old != ti_new);
 
         lock(ti_old, i1_o);
@@ -855,29 +850,31 @@ private:
             unlock(ti_old, new_migrate_bucket);
             if( new_migrate_bucket == hashsize(ti_old->hashpower_) - 1 ) {
                 while(cuckoo_size( ti_old ) != 0 ) {
-                //    LIBCUCKOO_DBGNT("Im the chosen one! %zu\n", cuckoo_size( ti_old ) );
+                //    LIBCUCKOO_DBG("Im the chosen one! %zu\n", cuckoo_size( ti_old ) );
                 };
                 cuckoo_expand_end(ti_old, ti_new);
             }
         }
         return true;
     }
-
+    */
     /* assumes bucket in old table is locked the whole time
      * tries to migrate bucket, returning true on success, false on failure
      * since we return immediately if the bucket has already migrated, if continue
      * then we know that ti_new is indeed the newest table pointer
      */
+    /*
     bool try_migrate_bucket(TableInfo* ti_old, TableInfo* ti_new, size_t old_bucket) {
+        assert(0);
         if (ti_old->buckets_[old_bucket].hasmigrated) {
-            //LIBCUCKOO_DBGNT("Already migrated bucket %zu\n", old_bucket);
+            //LIBCUCKOO_DBG("Already migrated bucket %zu\n", old_bucket);
             return false;
         }
         size_t i1, i2, hv;
         key_type key;
         mapped_type val;
         cuckoo_status res;
-        for (size_t i = 0; i < SLOT_PER_BUCKET_NT; i++) {
+        for (size_t i = 0; i < SLOT_PER_BUCKET; i++) {
             if (!getBit(ti_old->buckets_[old_bucket].occupied, i)) {
                 continue;
             }
@@ -894,7 +891,7 @@ private:
             // our invariant ensures that the table can't be full (so no failure_table_full)
             // and the same key can't have been inserted already (so no failure_key_duplicated)            
             if( res != ok ) {
-                LIBCUCKOO_DBGNT("In try_migrate_bucket: hashpower = %zu, %zu, hash_items = %zu,%zu, load factor = %.2f,%.2f), need to increase hashpower\n",
+                LIBCUCKOO_DBG("In try_migrate_bucket: hashpower = %zu, %zu, hash_items = %zu,%zu, load factor = %.2f,%.2f), need to increase hashpower\n",
                       ti_old->hashpower_, ti_new->hashpower_, cuckoo_size(ti_old), cuckoo_size(ti_new),
                       cuckoo_loadfactor(ti_old), cuckoo_loadfactor(ti_new) );
                 exit(1);
@@ -907,6 +904,7 @@ private:
         ti_old->buckets_[old_bucket].hasmigrated = true;
         return true;
     }
+    */
 
     static inline bool hasOverflow(const TableInfo *ti, const size_t i) {
         return (ti->buckets_[i].overflow > 0);
@@ -1076,14 +1074,14 @@ private:
     static std::atomic<size_t> numThreads;
 
     // The maximum number of cuckoo operations per insert. This must
-    // be less than or equal to SLOT_PER_BUCKET_NT^(MAX_BFS_DEPTH+1)
+    // be less than or equal to SLOT_PER_BUCKET^(MAX_BFS_DEPTH+1)
     static const size_t MAX_CUCKOO_COUNT = 500;
 
     // The maximum depth of a BFS path
     static const size_t MAX_BFS_DEPTH = 4;
 
     // the % of moved buckets above which migrate_all is called
-    static constexpr double MIGRATE_THRESHOLD = 0.8;
+    //static constexpr double MIGRATE_THRESHOLD = 0.8;
 
     /* hashsize returns the number of buckets corresponding to a given
      * hashpower. */
@@ -1138,10 +1136,12 @@ private:
         // a compressed representation of the slots for each of the
         // buckets in the path.
         size_t pathcode;
-        // static_assert(pow(SLOT_PER_BUCKET_NT, MAX_BFS_DEPTH+1) <
+        // static_assert(pow(SLOT_PER_BUCKET, MAX_BFS_DEPTH+1) <
         //               std::numeric_limits<decltype(pathcode)>::max(),
         //               "pathcode may not be large enough to encode a cuckoo path");
         // The 0-indexed position in the cuckoo path this slot
+        key_type keys[MAX_BFS_DEPTH];
+        size_t hvs[MAX_BFS_DEPTH];
         // occupies
         int depth;
         b_slot() {}
@@ -1197,33 +1197,41 @@ private:
         q.enqueue(b_slot(i2, 1, 0));
         while (q.not_full() && q.not_empty()) {
             b_slot x = q.dequeue();
+            
             // Picks a random slot to start from
-            for (size_t slot = 0; slot < SLOT_PER_BUCKET_NT && q.not_full(); slot++) {
-                if (ti->buckets_[x.bucket].hasmigrated) {
-                    return b_slot(0, 0, -2);
-                }
+            for (size_t slot = 0; slot < SLOT_PER_BUCKET && q.not_full(); slot++) {
+
+                key_type key = ti->buckets_[x.bucket].keys[slot];
+                size_t hv = hashed_key(key);
+                
                 if (!getBit(ti->buckets_[x.bucket].occupied, slot)) {
                     // We can terminate the search here
-                    x.pathcode = x.pathcode * SLOT_PER_BUCKET_NT + slot;
+                    size_t old_pathcode = x.pathcode;
+                    x.pathcode = x.pathcode * SLOT_PER_BUCKET + slot;
+                    assert(x.pathcode >= old_pathcode);
                     return x;
                 }
+                
                 // Create a new b_slot item, that represents the
                 // bucket we would look at after searching x.bucket
                 // for empty slots.
-                const size_t hv = hashed_key(ti->buckets_[x.bucket].keys[slot]);
                 b_slot y(alt_index(ti, hv, x.bucket),
-                         x.pathcode * SLOT_PER_BUCKET_NT + slot, x.depth+1);
+                        x.pathcode * SLOT_PER_BUCKET + slot, x.depth+1);
 
                 // Check if any of the slots in the prospective bucket
                 // are empty, and, if so, return that b_slot. We lock
                 // the bucket so that no changes occur while
                 // iterating.
-                if (ti->buckets_[y.bucket].hasmigrated) {
-                    return b_slot(0, 0, -2);
-                }
-                for (size_t j = 0; j < SLOT_PER_BUCKET_NT; j++) {
+                //if (ti->buckets_[y.bucket].hasmigrated) {
+                    //return b_slot(0, 0, -2);
+                //}
+                for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
+                    key = ti->buckets_[y.bucket].keys[j];
+                    hv = hashed_key(key);
                     if (!getBit(ti->buckets_[y.bucket].occupied, j)) {
-                        y.pathcode = y.pathcode * SLOT_PER_BUCKET_NT + j;
+                        size_t old_pathcode = y.pathcode;
+                        y.pathcode = y.pathcode * SLOT_PER_BUCKET + j;
+                        assert(y.pathcode >= old_pathcode);
                         return y;
                     }
                 }
@@ -1231,7 +1239,6 @@ private:
                 // No empty slots were found, so we push this onto the
                 // queue
                 if (y.depth != static_cast<int>(MAX_BFS_DEPTH)) {
-                    //std::cout << "enqueueing" << y.depth << std::endl;
                     q.enqueue(y);
                 }
             }
@@ -1251,26 +1258,27 @@ private:
      * matches the cuckoo path before changing it. */
     static int cuckoopath_search(const TableInfo *ti, CuckooRecord* cuckoo_path,
                                  const size_t i1, const size_t i2) {
-        b_slot x = slot_search(ti, i1, i2);
+        b_slot x;
+        CuckooRecord *curr, *prev;
+        size_t prevhv;
+        
+        x = slot_search(ti, i1, i2);
         if (x.depth < 0) {
             return x.depth;
         }
         // Fill in the cuckoo path slots from the end to the beginning
         for (int i = x.depth; i >= 0; i--) {
-            cuckoo_path[i].slot = x.pathcode % SLOT_PER_BUCKET_NT;
-            x.pathcode /= SLOT_PER_BUCKET_NT;
+            cuckoo_path[i].slot = x.pathcode % SLOT_PER_BUCKET;
+            x.pathcode /= SLOT_PER_BUCKET;
         }
         /* Fill in the cuckoo_path buckets and keys from the beginning
          * to the end, using the final pathcode to figure out which
          * bucket the path starts on. Since data could have been
          * modified between slot_search and the computation of the
          * cuckoo path, this could be an invalid cuckoo_path. */
-        CuckooRecord *curr = cuckoo_path;
+        curr = cuckoo_path;
         if (x.pathcode == 0) {
             curr->bucket = i1;
-            if (ti->buckets_[curr->bucket].hasmigrated) {
-                return -2;
-            }
             if (!getBit(ti->buckets_[curr->bucket].occupied, curr->slot)) {
                 // We can terminate here
                 return 0;
@@ -1279,9 +1287,6 @@ private:
         } else {
             assert(x.pathcode == 1);
             curr->bucket = i2;
-            if (ti->buckets_[curr->bucket].hasmigrated) {
-                return -2;
-            }
             if (!getBit(ti->buckets_[curr->bucket].occupied, curr->slot)) {
                 // We can terminate here
                 return 0;
@@ -1289,20 +1294,22 @@ private:
             curr->key = ti->buckets_[curr->bucket].keys[curr->slot];
         }
         for (int i = 1; i <= x.depth; i++) {
-            CuckooRecord *prev = curr++;
-            const size_t prevhv = hashed_key(prev->key);
-            assert(prev->bucket == index_hash(ti, prevhv) ||
-                   prev->bucket == alt_index(ti, prevhv, index_hash(ti, prevhv)));
+            prev = curr++;
+            prevhv = hashed_key(prev->key);
+           
+            assert((prev->bucket == index_hash(ti, prevhv) ||
+                   prev->bucket == alt_index(ti, prevhv, index_hash(ti, prevhv))));
+            
             // We get the bucket that this slot is on by computing the
             // alternate index of the previous bucket
             curr->bucket = alt_index(ti, prevhv, prev->bucket);
-            if (ti->buckets_[curr->bucket].hasmigrated) {
-                return -2;
-            }
             if (!getBit(ti->buckets_[curr->bucket].occupied, curr->slot)) {
                 // We can terminate here
                 return i;
             }
+            // XXX the problem here is that the key could have changed since we
+            // last found item. Therefore, the cuckoo path found by the slot_search 
+            // may no longer be accurate.
             curr->key = ti->buckets_[curr->bucket].keys[curr->slot];
         }
         return x.depth;
@@ -1330,10 +1337,10 @@ private:
             const size_t bucket = cuckoo_path[0].bucket;
             assert(bucket == i1 || bucket == i2);
             lock_two(ti, i1, i2);
-            if (ti->buckets_[i1].hasmigrated || ti->buckets_[i2].hasmigrated) {
-                unlock_two(ti, i1, i2);
-                return failure_key_moved;
-            }
+            //if (ti->buckets_[i1].hasmigrated || ti->buckets_[i2].hasmigrated) {
+                //unlock_two(ti, i1, i2);
+                //return failure_key_moved;
+            //}
             if (!getBit(ti->buckets_[bucket].occupied, cuckoo_path[0].slot)) {
                 return ok;
             } else {
@@ -1362,6 +1369,7 @@ private:
                 lock_two(ti, fb, tb);
             }
 
+            /*
             if (ti->buckets_[fb].hasmigrated ||
                 ti->buckets_[tb].hasmigrated ||
                 ti->buckets_[ob].hasmigrated) {
@@ -1373,6 +1381,7 @@ private:
                 }
                 return failure_key_moved;
             }
+            */
             /* We plan to kick out fs, but let's check if it is still
              * there; there's a small chance we've gotten scooped by a
              * later cuckoo. If that happened, just... try again. Also
@@ -1456,7 +1465,6 @@ private:
 
         while (true) {
             int depth = cuckoopath_search(ti, cuckoo_path, i1, i2);
-            // std::cout << "Depth of cuckoopath_search is" << depth << std::endl;
             if (depth == -1) {
                 return failure_table_full; //happens if path too long
             }
@@ -1469,7 +1477,7 @@ private:
                 insert_bucket = cuckoo_path[0].bucket;
                 insert_slot = cuckoo_path[0].slot;
                 assert(insert_bucket == i1 || insert_bucket == i2);
-#if LIBCUCKOO_DEBUGNT
+#if LIBCUCKOO_DEBUG
                 assert(ti->buckets_[i1].lock.is_locked());
                 assert(ti->buckets_[i2].lock.is_locked());
 #endif
@@ -1478,11 +1486,11 @@ private:
             }
 
             if (res == failure_key_moved) {
-                LIBCUCKOO_DBGNT("Found moved bucket when running cuckoopath_move");
+                LIBCUCKOO_DBG("Found moved bucket when running cuckoopath_move");
                 return failure_key_moved;
             }
         }
-        LIBCUCKOO_DBGNT("Should never reach here");
+        LIBCUCKOO_DBG("Should never reach here");
         return failure_function_not_supported;
     }
     
@@ -1491,11 +1499,11 @@ private:
     static cuckoo_status try_read_from_bucket(const TableInfo *ti, 
                                      const key_type &key, mapped_type &val,
                                      const size_t i) {
-        if (ti->buckets_[i].hasmigrated) {
-            return failure_key_moved;
-        }
+        //if (ti->buckets_[i].hasmigrated) {
+            //return failure_key_moved;
+        //}
 
-        for (size_t j = 0; j < SLOT_PER_BUCKET_NT; j++) {
+        for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
             if (!getBit(ti->buckets_[i].occupied, j)) {
                 continue;
             }
@@ -1531,10 +1539,10 @@ private:
         j = -1;
         bool found_empty = false;
 
-        if (ti->buckets_[i].hasmigrated) {
-            return failure_key_moved;
-        }
-        for (size_t k = 0; k < SLOT_PER_BUCKET_NT; k++) {
+        //if (ti->buckets_[i].hasmigrated) {
+            //return failure_key_moved;
+        //}
+        for (size_t k = 0; k < SLOT_PER_BUCKET; k++) {
             if (getBit(ti->buckets_[i].occupied, k)) {
                 if (eqfn(key, ti->buckets_[i].keys[k])) {
                     return failure_key_duplicated;
@@ -1553,11 +1561,11 @@ private:
      * and set the slot of the key to empty if it finds it. */
     static cuckoo_status try_del_from_bucket(TableInfo *ti, 
                                     const key_type &key, const size_t i) {
-        if (ti->buckets_[i].hasmigrated) {
-            return failure_key_moved;
-        }
+        //if (ti->buckets_[i].hasmigrated) {
+            //return failure_key_moved;
+        //}
 
-        for (size_t j = 0; j < SLOT_PER_BUCKET_NT; j++) {
+        for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
             if (!getBit(ti->buckets_[i].occupied, j)) {
                 continue;
             }
@@ -1636,6 +1644,7 @@ private:
 
     /* count_migrated_buckets returns the number of migrated buckets in the given
      * table. */
+    /*
     size_t count_migrated_buckets(const TableInfo *ti) {
         size_t num_migrated = 0;
         for (size_t i = 0; i < ti->num_inserts.size(); i++) {
@@ -1643,6 +1652,7 @@ private:
         }
         return num_migrated;
     }
+    */
 
     /* cuckoo_clear empties the table, calling the destructors of all
      * the elements it removes from the table. It assumes the locks
@@ -1656,7 +1666,7 @@ private:
             ti->num_inserts[i].num.store(0);
             ti->num_deletes[i].num.store(0);
         }
-            ti->migrate_bucket_ind.num.store(0);
+        //ti->migrate_bucket_ind.num.store(0);
 
         return ok;
     }
@@ -1665,7 +1675,7 @@ private:
      * table. */
     size_t cuckoo_size(const TableInfo *ti) {
         if (ti == nullptr) {
-            LIBCUCKOO_DBGNT("New table doesn't exist yet\n");
+            LIBCUCKOO_DBG("New table doesn't exist yet\n");
             return 0;
         }
         size_t inserts = 0;
@@ -1679,7 +1689,7 @@ private:
 
     /* cuckoo_loadfactor returns the load factor of the given table. */
     float cuckoo_loadfactor(const TableInfo *ti) {
-        return 1.0 * cuckoo_size(ti) / SLOT_PER_BUCKET_NT / hashsize(ti->hashpower_);
+        return 1.0 * cuckoo_size(ti) / SLOT_PER_BUCKET / hashsize(ti->hashpower_);
     }
 
     /* cuckoo_expand_start tries to create a new table, succeeding as long as 
@@ -1691,7 +1701,7 @@ private:
         TableInfo *ti_new_expected = nullptr;
         snapshot_lock.lock();
         snapshot_both_no_hazard( ti_old_actual, ti_new_actual);
-        //LIBCUCKOO_DBGNT( "start expand %p, %p    %p, %p\n", ti_old_expected, ti_old_actual, ti_new_expected, ti_new_actual);
+        //LIBCUCKOO_DBG( "start expand %p, %p    %p, %p\n", ti_old_expected, ti_old_actual, ti_new_expected, ti_new_actual);
         
         //we only want to create a new table if there is no ongoing expansion already
         //Also accouunts for possibility of somebody already swapping the table pointer
@@ -1702,7 +1712,7 @@ private:
         //timeval t1, t2;
         //gettimeofday(&t1, NULL);
         new_table_info.store(new TableInfo(n));
-        //LIBCUCKOO_DBGNT("Some stuff: %zu, %zu\n", cuckoo_size(new_table_info.load()), new_table_info.load()->num_inserts[0].num.load());
+        //LIBCUCKOO_DBG("Some stuff: %zu, %zu\n", cuckoo_size(new_table_info.load()), new_table_info.load()->num_inserts[0].num.load());
         //gettimeofday(&t2, NULL);
         //double elapsed_time = (t2.tv_sec - t1.tv_sec) * 1000.0; // sec to ms
         //elapsed_time += (t2.tv_usec - t1.tv_usec) / 1000.0; // us to ms
@@ -1726,13 +1736,13 @@ private:
         TableInfo *ti_new_actual;
         snapshot_lock.lock();
         snapshot_both_no_hazard( ti_old_actual, ti_new_actual);
-        // LIBCUCKOO_DBGNT( "end expand %p, %p    %p, %p\n", ti_old_expected, ti_old_actual, ti_new_expected, ti_new_actual);
+        // LIBCUCKOO_DBG( "end expand %p, %p    %p, %p\n", ti_old_expected, ti_old_actual, ti_new_expected, ti_new_actual);
 
         if (ti_old_expected != ti_old_actual || ti_new_expected != ti_new_actual) {
             snapshot_lock.unlock();
             return failure_under_expansion;
         }
-        // LIBCUCKOO_DBGNT( "Size of old table is %zu, new one is %zu", cuckoo_size(ti_old_actual), cuckoo_size( ti_new_expected));
+        // LIBCUCKOO_DBG( "Size of old table is %zu, new one is %zu", cuckoo_size(ti_old_actual), cuckoo_size( ti_new_expected));
         assert( cuckoo_size(ti_old_actual) == 0 );
         table_info.store(ti_new_expected);
         new_table_info.store(nullptr);
@@ -1747,7 +1757,7 @@ private:
         gettimeofday(&t2, NULL);
         double elapsed_time = (t2.tv_sec - t1.tv_sec) * 1000.0; // sec to ms
         elapsed_time += (t2.tv_usec - t1.tv_usec) / 1000.0; // us to ms
-        LIBCUCKOO_DBGNT("Time to delete old table pointer: %0.04f\n", elapsed_time);
+        LIBCUCKOO_DBG("Time to delete old table pointer: %0.04f\n", elapsed_time);
         //std::cout << "Time to delete old table pointer" << elapsed_time << std::endl;
         snapshot_lock.unlock();
         return ok;
@@ -1755,37 +1765,29 @@ private:
 };
 
 // Initializing the static members
-template <class Key, class T, class Hash, class Pred, unsigned Num_Buckets>
-__thread void** CuckooHashMapNT<Key, T, Hash, Pred, Num_Buckets>::hazard_pointer_old = nullptr;
+template <class Key, class T, unsigned Num_Buckets>
+__thread void** CuckooHashMapNT<Key, T, Num_Buckets>::hazard_pointer_old = nullptr;
 
-template <class Key, class T, class Hash, class Pred, unsigned Num_Buckets>
-__thread void** CuckooHashMapNT<Key, T, Hash, Pred, Num_Buckets>::hazard_pointer_new = nullptr;
+template <class Key, class T, unsigned Num_Buckets>
+__thread void** CuckooHashMapNT<Key, T, Num_Buckets>::hazard_pointer_new = nullptr;
 
-template <class Key, class T, class Hash, class Pred, unsigned Num_Buckets>
-__thread int CuckooHashMapNT<Key, T, Hash, Pred, Num_Buckets>::counterid = -1;
+template <class Key, class T, unsigned Num_Buckets>
+__thread int CuckooHashMapNT<Key, T, Num_Buckets>::counterid = -1;
 
-template <class Key, class T, class Hash, class Pred, unsigned Num_Buckets>
-typename CuckooHashMapNT<Key, T, Hash, Pred, Num_Buckets>::hasher
-CuckooHashMapNT<Key, T, Hash, Pred, Num_Buckets>::hashfn;
+template <class Key, class T, unsigned Num_Buckets>
+typename std::allocator<typename CuckooHashMapNT<Key, T, Num_Buckets>::Bucket>
+CuckooHashMapNT<Key, T, Num_Buckets>::bucket_allocator;
 
-template <class Key, class T, class Hash, class Pred, unsigned Num_Buckets>
-typename CuckooHashMapNT<Key, T, Hash, Pred, Num_Buckets>::key_equal
-CuckooHashMapNT<Key, T, Hash, Pred, Num_Buckets>::eqfn;
+template <class Key, class T, unsigned Num_Buckets>
+typename CuckooHashMapNT<Key, T, Num_Buckets>::GlobalHazardPointerList
+CuckooHashMapNT<Key, T, Num_Buckets>::global_hazard_pointers;
 
-template <class Key, class T, class Hash, class Pred, unsigned Num_Buckets>
-typename std::allocator<typename CuckooHashMapNT<Key, T, Hash, Pred, Num_Buckets>::Bucket>
-CuckooHashMapNT<Key, T, Hash, Pred, Num_Buckets>::bucket_allocator;
-
-template <class Key, class T, class Hash, class Pred, unsigned Num_Buckets>
-typename CuckooHashMapNT<Key, T, Hash, Pred, Num_Buckets>::GlobalHazardPointerList
-CuckooHashMapNT<Key, T, Hash, Pred, Num_Buckets>::global_hazard_pointers;
-
-template <class Key, class T, class Hash, class Pred, unsigned Num_Buckets>
-const size_t CuckooHashMapNT<Key, T, Hash, Pred, Num_Buckets>::kNumCores =
+template <class Key, class T, unsigned Num_Buckets>
+const size_t CuckooHashMapNT<Key, T, Num_Buckets>::kNumCores =
     std::thread::hardware_concurrency() == 0 ?
     sysconf(_SC_NPROCESSORS_ONLN) : std::thread::hardware_concurrency();
 
-template <class Key, class T, class Hash, class Pred, unsigned Num_Buckets>
-std::atomic<size_t> CuckooHashMapNT<Key, T, Hash, Pred, Num_Buckets>::numThreads(0);
+template <class Key, class T, unsigned Num_Buckets>
+std::atomic<size_t> CuckooHashMapNT<Key, T, Num_Buckets>::numThreads(0);
 
 #endif
