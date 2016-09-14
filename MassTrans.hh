@@ -209,7 +209,7 @@ public:
 #endif
       item.observe(v);
       // same as inserts we need to Store (copy) key so we can lookup to remove later
-      item.template add_write<key_write_value_type>(key).add_flags(delete_bit);
+      item.template add_write<key_write_value_type>(key, e->version()).add_flags(delete_bit);
       return found;
     } else {
       ensureNotFound(lp.node(), lp.full_version_value());
@@ -272,7 +272,7 @@ private:
 #endif
       }
       auto item = Sto::new_item(this, val);
-      item.template add_write<key_write_value_type>(key).add_flags(insert_bit);
+      item.template add_write<key_write_value_type>(key, val->version()).add_flags(insert_bit);
       return found;
     }
   }
@@ -610,7 +610,7 @@ protected:
     {
       if (new_location != e)
         item = Sto::new_item(this, new_location);
-      item.template add_write<write_value_type>(value);
+      item.template add_write<write_value_type>(value, e->version());
     }
   }
 

@@ -47,6 +47,10 @@ struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
     return wrapped_value_.read(item, version_);
   }
 
+  read_type read_value() const {
+    return wrapped_value_.access();
+  }
+
   void deallocate_rcu(threadinfo& ti) {
     ti.deallocate_rcu(this, sizeof(versioned_value_struct), memtag_value);
   }

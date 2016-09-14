@@ -72,7 +72,7 @@ public:
         return txn.try_lock(item, vers_);
     }
     bool check(TransItem& item, Transaction& txn) override {
-        return item.check_version(vers_, txn.timestamp());
+        return item.check_timestamps(vers_, txn.timestamp());
     }
     void install(TransItem& item, Transaction& txn) override {
         v_.write(std::move(item.template write_value<T>()));

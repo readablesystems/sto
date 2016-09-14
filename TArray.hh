@@ -68,7 +68,7 @@ public:
     }
     // commit-time check
     bool check(TransItem& item, Transaction& txn) override {
-        return item.check_version(data_[item.key<size_type>()].vers, txn.timestamp());
+        return item.check_timestamps(data_[item.key<size_type>()].vers, txn.timestamp());
     }
     void install(TransItem& item, Transaction& txn) override {
         size_type i = item.key<size_type>();
