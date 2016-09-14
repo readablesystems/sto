@@ -11,6 +11,8 @@
 
 #define N 100
 
+volatile mrcu_epoch_type active_epoch = 1;
+
 using namespace std;
 
 template <typename T> class IntMassTrans {

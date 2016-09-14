@@ -139,6 +139,8 @@ inline value_type strtoval(const std::string& s) {
 #endif
 }
 
+volatile mrcu_epoch_type active_epoch = 1;
+
 unsigned initial_seeds[64];
 
 

@@ -3,6 +3,7 @@
 #include <sys/time.h>
 #include <assert.h>
 #include <sys/resource.h>
+#include <vector>
 #include "Transaction.hh"
 #include "TIntRange.hh"
 #include "TWrapped.hh"
