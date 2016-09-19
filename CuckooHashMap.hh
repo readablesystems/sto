@@ -59,9 +59,6 @@ template <> class Cuckoo_KeyFragment<int> {
         if (kf == k) return true_match;
         else return false_match;
     }
-   
-    private:
-    fragment_type kf_;
 };
 
 /*! CuckooHashMap is the hash table class. This DOES use key fragments, so a bucket looks like:
@@ -373,7 +370,7 @@ private:
             switch (st) {
                 case false_match: return false;
                 case true_match: return ie[pos] != NULL;
-                case check_elem: return (ie[pos]!= NULL && ie[pos]->key == key);
+                case check_elem: return (ie[pos] != NULL && ie[pos]->key == key);
                 default: assert(0);
             }
             return false;
@@ -1476,6 +1473,13 @@ private:
         bool not_empty() {
             return first != last;
         }
+
+        void print_queue() {
+            while (first != last) {
+                std::cout << "bucket: " << slots[first].bucket << ", depth: " << slots[first].depth << std::endl;
+                first = (first == MAX_CUCKOO_COUNT) ? 0 : first+1;
+            }
+        }
     } __attribute__((__packed__));
 
     /* slot_search searches for a cuckoo path using breadth-first
@@ -1496,9 +1500,6 @@ private:
             b_slot x = q.dequeue();
             // Picks a random slot to start from
             for (size_t slot = 0; slot < SLOT_PER_BUCKET && q.not_full(); slot++) {
-                //if (ti->buckets_[x.bucket].hasmigrated) {
-                //   return b_slot(0, 0, -2);
-                //}
                 if (!ti->buckets_[x.bucket].has_elem(slot)) {
                     // We can terminate the search here
                     x.pathcode = x.pathcode * SLOT_PER_BUCKET + slot;
@@ -1516,9 +1517,6 @@ private:
                 // are empty, and, if so, return that b_slot. We lock
                 // the bucket so that no changes occur while
                 // iterating.
-                //if (ti->buckets_[y.bucket].hasmigrated) {
-                //   return b_slot(0, 0, -2);
-                //}
                 for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
                     if (!ti->buckets_[y.bucket].has_elem(j)) {
                         y.pathcode = y.pathcode * SLOT_PER_BUCKET + j;
@@ -1533,7 +1531,9 @@ private:
                     q.enqueue(y);
                 }
             }
-            assert(q.not_full());
+            if (!q.not_full()) {
+                q.print_queue();
+            }
         }
         // We didn't find a short-enough cuckoo path, so the queue ran
         // out of space. Return a failure value.

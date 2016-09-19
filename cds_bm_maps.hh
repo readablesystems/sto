@@ -196,7 +196,7 @@ public:
         p_insert_(p_insert), p_erase_(p_erase), size_(size), opdist_(0,99) {};
 
     void initialize(size_t) {
-        keydist_ = std::uniform_int_distribution<long>(50,size_*35);
+        keydist_ = std::uniform_int_distribution<long>(0,size_*35);
     }
 
     void cleanup() {
@@ -214,11 +214,15 @@ public:
             int key = keydist_(transgen); 
             switch (my_op) {
                 case erase:
-                    if (v_.erase(key)) global_thread_ctrs[me].ke_erase++;
+                    if (v_.erase(key)) {
+                        global_thread_ctrs[me].ke_erase++;
+                    }
                     global_thread_ctrs[me].erase++;
                     break;
                 case insert:
-                    if (v_.insert(key,me)) global_thread_ctrs[me].ke_insert++;
+                    if (v_.insert(key,me)) {
+                        global_thread_ctrs[me].ke_insert++;
+                    }
                     global_thread_ctrs[me].insert++;
                     break;
                 case find:
@@ -281,12 +285,12 @@ private:
 
 std::vector<Test> make_map_tests() {
     return {
-        //MAKE_MAP_TESTS("HM10K:F34,I33,E33", MapOpTest, int, int, 10000, 1, 33, 33)
-        //MAKE_MAP_TESTS("HM10K:F90,I5,E5", MapOpTest, int, int, 10000, 1, 5, 5)
         MAKE_MAP_TESTS("HM125K:F34,I33,E33", MapOpTest, int, int, 125000, 1, 33, 33)
         MAKE_MAP_TESTS("HM125K:F90,I5,E5", MapOpTest, int, int, 125000, 1, 5, 5)
         MAKE_MAP_TESTS("HM1M:F34,I33,E33", MapOpTest, int, int, 1000000, 1, 33, 33)
         MAKE_MAP_TESTS("HM1M:F90,I5,E5", MapOpTest, int, int, 1000000, 1, 5, 5)
+        MAKE_MAP_TESTS("HM10K:F34,I33,E33", MapOpTest, int, int, 10000, 1, 33, 33)
+        MAKE_MAP_TESTS("HM10K:F90,I5,E5", MapOpTest, int, int, 10000, 1, 5, 5)
         //MAKE_MAP_TESTS("HM1MMultiOp:F34,I33,E33", MapOpTest, int, int, 1000000, 5, 33, 33)
         //MAKE_MAP_TESTS("HM1MMultiOp:F90,I5,E5", MapOpTest, int, int, 1000000, 5, 5, 5)
     };

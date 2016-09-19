@@ -222,6 +222,8 @@ public:
      * the hash table, also destroying all remaining elements in the
      * table. */
     ~CuckooHashMapNT() {
+        std::cerr << size() << std::endl;
+
         TableInfo *ti_old = table_info.load();
         TableInfo *ti_new = new_table_info.load();
         if (ti_old != nullptr) {
@@ -621,7 +623,6 @@ private:
         }
 
         ~TableInfo() {
-
             if( hashpower_ > 10) {
                 //munmap( buckets_, hashsize(hashpower_)*sizeof(Bucket));
                 free(buckets_);

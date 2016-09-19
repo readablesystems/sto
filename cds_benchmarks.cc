@@ -107,9 +107,9 @@ void startAndWait(GenericTest* test, size_t size, int nthreads) {
         = global_thread_ctrs[i].push = global_thread_ctrs[i].pop = global_thread_ctrs[i].skip
         = 0;
     }
-    fprintf(global_verbose_stats_file, "Present Inserts: %f%%\t Present Finds: %f%%\t Present Erase: %f%%\t\n", 
-            100*(double)total_ke_insert/total_inserts,
-            100*(double)total_ke_find/total_find,
+    fprintf(global_verbose_stats_file, "Success Inserts: %f%%\t Success Finds: %f%%\t Success Erase: %f%%\t\n", 
+            100 - 100*(double)total_ke_insert/total_inserts,
+            100 - 100*(double)total_ke_find/total_find,
             100*(double)total_ke_erase/total_erase);
     print_abort_stats();
 }
@@ -178,23 +178,26 @@ int main() {
     pthread_detach(advancer);
 
   
-    //auto defaultsto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,1000000>>>(STO, 1000000, 0, 33, 33);
+    //auto defaultsto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 125000, 0, 33, 33);
     //startAndWait(defaultsto, 500000, 12);
     //auto defaultcds = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,10000>>>(STO, 10000, 0, 33, 33);
     //startAndWait(defaultcds, 500000, 12);
     
-    //auto sto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,10000>>>(STO, 10000, 1, 33, 33);
+    //auto sto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 125000, 1, 33, 33);
     //startAndWait(sto, 500000, 12);
     
-    //auto chmkf = new MapOpTest<DatatypeHarness<CuckooHashMap<int,int,1000000,false>>>(STO, 1000000, 1, 33, 33);
-    //startAndWait(chmkf, 500000, 12);
+    auto chmie = new MapOpTest<DatatypeHarness<CuckooHashMap2<int, int, 125000, false>>>(STO, 125000, 1, 33, 33);
+    startAndWait(chmie, 500000, 1);
+    std::cout << "new test!" << std::endl;
+    auto chmkf = new MapOpTest<DatatypeHarness<CuckooHashMap<int,int,125000,false>>>(STO, 125000, 1, 33, 33);
+    startAndWait(chmkf, 500000, 1);
 
-    //auto chmie = new MapOpTest<DatatypeHarness<CuckooHashMap2<int, int, 1000000, false>>>(STO, 1000000, 1, 33, 33);
-    //startAndWait(chmie, 500000, 12);
+    //startAndWait(chmie, 500000, 1);
     
-    //auto chmnt = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 1000000>>>(CDS, 1000000, 1, 33, 33);
-    //startAndWait(chmnt, 500000, 12);
+    //auto chmnt = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 125000>>>(CDS, 125000, 1, 33, 33);
+    //startAndWait(chmnt, 500000, 1);
    
+    /*
     std::vector<Test> map_tests = make_map_tests();
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
@@ -212,7 +215,6 @@ int main() {
             dualprintf("\n");
         }
     }
-    /*
     // pqueue tests
     std::vector<Test> pqueue_tests = make_pqueue_tests();
     for (unsigned i = 0; i < pqueue_tests.size(); i+=num_pqueues) {

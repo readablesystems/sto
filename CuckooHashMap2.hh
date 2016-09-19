@@ -519,6 +519,7 @@ public:
      * the hash table, also destroying all remaining elements in the
      * table. */
     ~CuckooHashMap2() {
+        std::cerr << size() << std::endl;
         TableInfo *ti_old = table_info.load();
         TableInfo *ti_new = new_table_info.load();
         if (ti_old != nullptr) {
@@ -1421,6 +1422,14 @@ private:
         bool not_empty() {
             return first != last;
         }
+
+        void print_queue() {
+            while (first != last) {
+                std::cout << "bucket: " << slots[first].bucket << ", depth: " << slots[first].depth << std::endl;
+                first = (first == MAX_CUCKOO_COUNT) ? 0 : first+1;
+            }
+        }
+
     } __attribute__((__packed__));
 
     /* slot_search searches for a cuckoo path using breadth-first
@@ -1448,6 +1457,7 @@ private:
                 if (elem == NULL) {
                     // We can terminate the search here
                     x.pathcode = x.pathcode * SLOT_PER_BUCKET + slot;
+                    q.print_queue();
                     return x;
                 }
                 // Create a new b_slot item, that represents the
@@ -1468,6 +1478,7 @@ private:
                     elem = ti->buckets_[y.bucket].elems[j];
                     if (elem == NULL) {
                         y.pathcode = y.pathcode * SLOT_PER_BUCKET + j;
+                        q.print_queue();
                         return y;
                     }
                 }
