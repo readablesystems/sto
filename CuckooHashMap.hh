@@ -1527,12 +1527,8 @@ private:
                 // No empty slots were found, so we push this onto the
                 // queue
                 if (y.depth != static_cast<int>(MAX_BFS_DEPTH)) {
-                    //std::cout << "enqueueing " << y.bucket << std::endl;
                     q.enqueue(y);
                 }
-            }
-            if (!q.not_full()) {
-                q.print_queue();
             }
         }
         // We didn't find a short-enough cuckoo path, so the queue ran
@@ -1567,25 +1563,19 @@ private:
         CuckooRecord *curr = cuckoo_path;
         if (x.pathcode == 0) {
             curr->bucket = i1;
-            //if (ti->buckets_[curr->bucket].hasmigrated) {
-            //   return -2;
-            //}
             if (!ti->buckets_[curr->bucket].has_elem(curr->slot)) {
                 // We can terminate here
                 return 0;
             }
-            curr->key = ti->buckets_[curr->bucket].get_elem(curr->slot)->key; 
+            curr->key = ti->buckets_[curr->bucket].kfs[curr->slot]; 
         } else {
             assert(x.pathcode == 1);
             curr->bucket = i2;
-            //if (ti->buckets_[curr->bucket].hasmigrated) {
-            //   return -2;
-            //}
             if (!ti->buckets_[curr->bucket].has_elem(curr->slot)) {
                 // We can terminate here
                 return 0;
             }
-            curr->key = ti->buckets_[curr->bucket].get_elem(curr->slot)->key; 
+            curr->key = ti->buckets_[curr->bucket].kfs[curr->slot]; 
         }
         for (int i = 1; i <= x.depth; i++) {
             CuckooRecord *prev = curr++;
@@ -1595,14 +1585,11 @@ private:
             // We get the bucket that this slot is on by computing the
             // alternate index of the previous bucket
             curr->bucket = alt_index(ti, prevhv, prev->bucket);
-            //if (ti->buckets_[curr->bucket].hasmigrated) {
-            //    return -2;
-            //}
             if (!ti->buckets_[curr->bucket].has_elem(curr->slot)) {
                 // We can terminate here
                 return i;
             }
-            curr->key = ti->buckets_[curr->bucket].get_elem(curr->slot)->key; 
+            curr->key = ti->buckets_[curr->bucket].kfs[curr->slot]; 
         }
         return x.depth;
     }
@@ -1660,18 +1647,6 @@ private:
             } else {
                 lock_two(ti, fb, tb);
             }
-            /*
-            if (ti->buckets_[fb].hasmigrated ||
-                ti->buckets_[tb].hasmigrated ||
-                ti->buckets_[ob].hasmigrated) {
-
-                if (depth == 1) {
-                    unlock_three(ti, fb, tb, ob);
-                } else {
-                    unlock_two(ti, fb, tb);
-                }
-                return failure_key_moved;
-            }*/
             /* We plan to kick out fs, but let's check if it is still
              * there; there's a small chance we've gotten scooped by a
              * later cuckoo. If that happened, just... try again. Also
@@ -1754,7 +1729,6 @@ private:
 
         while (true) {
             int depth = cuckoopath_search(ti, cuckoo_path, i1, i2);
-             //std::cout << "Depth of cuckoopath_search is" << depth << std::endl;
             if (depth == -1) {
                 return failure_table_full; //happens if path too long
             }

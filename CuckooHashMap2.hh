@@ -519,7 +519,6 @@ public:
      * the hash table, also destroying all remaining elements in the
      * table. */
     ~CuckooHashMap2() {
-        std::cerr << size() << std::endl;
         TableInfo *ti_old = table_info.load();
         TableInfo *ti_new = new_table_info.load();
         if (ti_old != nullptr) {
@@ -1457,7 +1456,6 @@ private:
                 if (elem == NULL) {
                     // We can terminate the search here
                     x.pathcode = x.pathcode * SLOT_PER_BUCKET + slot;
-                    q.print_queue();
                     return x;
                 }
                 // Create a new b_slot item, that represents the
@@ -1478,7 +1476,6 @@ private:
                     elem = ti->buckets_[y.bucket].elems[j];
                     if (elem == NULL) {
                         y.pathcode = y.pathcode * SLOT_PER_BUCKET + j;
-                        q.print_queue();
                         return y;
                     }
                 }
@@ -1486,7 +1483,6 @@ private:
                 // No empty slots were found, so we push this onto the
                 // queue
                 if (y.depth != static_cast<int>(MAX_BFS_DEPTH)) {
-                    //std::cout << "enqueueing" << y.depth << std::endl;
                     q.enqueue(y);
                 }
             }
@@ -1717,7 +1713,6 @@ private:
 
         while (true) {
             int depth = cuckoopath_search(ti, cuckoo_path, i1, i2);
-            // std::cout << "Depth of cuckoopath_search is" << depth << std::endl;
             if (depth == -1) {
                 return failure_table_full; //happens if path too long
             }

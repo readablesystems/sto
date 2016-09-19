@@ -95,7 +95,7 @@ template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,false,100
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K,T,1000000,false>> :
     public CuckooHashMapHarness<CuckooHashMap<K,T,1000000,false>>{};
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K,T,125000,false>> :
-    public CuckooHashMapHarness<CuckooHashMap<K,T,10000,false>>{};
+    public CuckooHashMapHarness<CuckooHashMap<K,T,125000,false>>{};
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K,T,10000,false>> :
     public CuckooHashMapHarness<CuckooHashMap<K,T,10000,false>>{};
 
@@ -272,9 +272,9 @@ private:
 
 #define MAKE_MAP_TESTS(desc, test, key, val, size,...) \
     {desc, "STO Nonopaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,false,size>>>(STO, size, ## __VA_ARGS__)},                                  \
+    {desc, "STO KF CuckooMap", new test<DatatypeHarness<CuckooHashMap<key,val,size, false>>>(STO, size, ## __VA_ARGS__)},                \
     {desc, "STO IE CuckooMap", new test<DatatypeHarness<CuckooHashMap2<key,val,size, false>>>(STO, size, ## __VA_ARGS__)}, \
     {desc, "CuckooMapNT", new test<DatatypeHarness<CuckooHashMapNT<key, val, size>>>(CDS, size, ## __VA_ARGS__)}, 
-    //{desc, "STO KF CuckooMap", new test<DatatypeHarness<CuckooHashMap<key,val,size, false>>>(STO, size, ## __VA_ARGS__)},                \
     //{desc, "MichaelHashMap", new test<DatatypeHarness<MICHAELMAP(key,val)>>(CDS, ## __VA_ARGS__)},        
     //{desc, "STO Opaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,true,size>>>(STO, ## __VA_ARGS__)},                                  
     //{desc, "SplitListMap", new test<DatatypeHarness<cds::container::SplitListMap<cds::gc::HP,key,val,map_traits<key>>>>(CDS, ## __VA_ARGS__)},
