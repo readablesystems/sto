@@ -195,7 +195,11 @@ int main() {
     
     //auto chmnt = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 125000>>>(CDS, 125000, 1, 33, 33);
     //startAndWait(chmnt, 500000, 1);
+
+    auto chmna = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 125000>>>(STO, 125000, 1, 33, 33);
+    startAndWait(chmna, 500000, 1);
    
+    /*
     std::vector<Test> map_tests = make_map_tests();
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
@@ -213,7 +217,6 @@ int main() {
             dualprintf("\n");
         }
     }
-    /*
     // pqueue tests
     std::vector<Test> pqueue_tests = make_pqueue_tests();
     for (unsigned i = 0; i < pqueue_tests.size(); i+=num_pqueues) {
