@@ -14,7 +14,7 @@ inline size_t hashed_key(const Key &key) {
 }
 
 /* number of keys that can be stored in one bucket */
-const size_t SLOT_PER_BUCKET = 20;
+const size_t SLOT_PER_BUCKET = 4;
 
 // The maximum number of cuckoo operations per insert. This must
 // be less than or equal to SLOT_PER_BUCKET^(MAX_BFS_DEPTH+1)

@@ -215,10 +215,10 @@ public:
     bool check(TransItem& item, Transaction&) override {
         auto read_version = item.template read_value<version_type>();
         if (is_bucket(item)) {
-            auto b = unpack_bucket(item.key<void*>());
+            auto b = unpack_bucket(item);
             return b->bucketversion.check_version(read_version);
         } else {
-            auto key = item.key<key_type>();
+            auto key = unpack_key(item);
             internal_elem* e;
             bool found = find_elem_ptr(key, e, false/*lock bucket*/, false/*unlock bucket*/);
             return (found && !is_phantom(item, *e) && e->version.check_version(read_version));
@@ -227,10 +227,10 @@ public:
 
     bool lock(TransItem& item, Transaction& txn) override {
         if (is_bucket(item)) {
-            auto b = unpack_bucket(item.key<void*>());
+            auto b = unpack_bucket(item);
             return txn.try_lock(item, b->bucketversion);
         } else {
-            auto key = item.key<key_type>();
+            auto key = unpack_key(item);
             internal_elem* e;
             // XXX we're going to be locking buckets twice?
             bool found = find_elem_ptr(key, e, true/*lock bucket*/, false/*unlock bucket*/);
@@ -240,12 +240,12 @@ public:
 
     void install(TransItem& item, Transaction& t) override {
         if (is_bucket(item)) {
-            auto b = unpack_bucket(item.key<void*>());
+            auto b = unpack_bucket(item);
             b->inc_version();
         } else {
             // We know the element must exist in the map. It is locked, so no thread can 
             // move it.
-            auto key = item.key<key_type>();
+            auto key = unpack_key(item);
             internal_elem* e;
             assert(find_elem_ptr(key, e, false/*lock bucket*/, false/*unlock bucket*/));
 
@@ -285,10 +285,10 @@ public:
 
     void unlock(TransItem& item) override {
         if (is_bucket(item)) {
-            auto b = unpack_bucket(item.key<void*>());
+            auto b = unpack_bucket(item);
             b->bucketversion.unlock();
         } else {
-            auto key = item.key<key_type>();
+            auto key = unpack_key(item);
             internal_elem* e;
             // XXX we're going to be unlocking twice?
             assert(find_elem_ptr(key, e, false/*lock bucket*/, true/*unlock bucket*/));
@@ -300,7 +300,7 @@ public:
         if (((has_delete(item) && committed) || (has_insert(item) && !committed)) && !is_bucket(item)) {
             assert(!(has_insert(item) && has_delete(item)));
             
-            auto key = item.key<key_type>();
+            auto key = unpack_key(item);
             //internal_elem* e;
             //assert(find_elem_ptr(key, e, false/*lock bucket*/));
             // XXX this assertion might fail because the element may have moved?
@@ -317,7 +317,7 @@ private:
 
     // used to mark whether a key is a bucket (for bucket version checks)
     // or a pointer (which will always have the lower 3 bits as 0)
-    static constexpr uintptr_t bucket_bit = 1U<<0;
+    //static constexpr uintptr_t bucket_bit = 1U<<0;
     // used to mark if item has been inserted by the currently running txn
     // mostly used at commit time to know whether to remove the item during cleanup
     static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
@@ -344,16 +344,6 @@ private:
         e.version = Sto::initialized_tid() | phantom_bit;
         return e;
     }
-
-
-    struct version_to_observe {
-        bool observe_me;
-        void* ptr;
-        key_type key;
-        version_type version;
-
-        version_to_observe() : observe_me(false), ptr(NULL), version(0) {}
-    };
 
     /* cacheint is a cache-aligned atomic integer type. */
     struct cacheint {
@@ -422,6 +412,29 @@ private:
             inc_version();
             bucketversion.unlock();
         }
+    };
+
+    typedef struct packed_type {
+        bool bucket_bit;
+        union {
+            key_type key;
+            Bucket* bucket;
+        };
+
+        inline bool operator==(const packed_type x) const {
+          if (bucket_bit)
+             return x.bucket_bit && bucket == x.bucket;
+          else
+             return !x.bucket_bit && key == x.key;
+       }
+    } packed_type;
+
+    struct version_to_observe {
+        bool observe_me;
+        packed_type package;
+        version_type version;
+
+        version_to_observe() : observe_me(false), version(0) {}
     };
 
     /* TableInfo contains the entire state of the hashtable. We
@@ -512,6 +525,7 @@ private:
         return !has_insert(item) && e.phantom();
     }
 
+    /*
     static bool is_bucket(const TransItem& item) {
         return is_bucket(item.key<void*>());
     }
@@ -522,11 +536,28 @@ private:
         assert(is_bucket(item));
         return (uintptr_t) item.key<void*>() >> 1;
     }
-    void* pack_bucket(Bucket* bucket) {
-        return (void*) ((uintptr_t)bucket | bucket_bit);
+    */
+
+    static bool is_bucket(const TransItem& item) {
+        return item.key<packed_type>().bucket_bit;
     }
-    Bucket* unpack_bucket(void* bucket) {
-        return (Bucket*) ((uintptr_t)bucket & ~bucket_bit);
+    packed_type pack_bucket(Bucket* bucket) {
+        packed_type pt;
+        pt.bucket = bucket;
+        pt.bucket_bit = true;
+        return pt; 
+    }
+    packed_type pack_key(key_type& key) {
+        packed_type pt;
+        pt.key = key;
+        pt.bucket_bit = false;
+        return pt; 
+    }
+    Bucket* unpack_bucket(const TransItem& item) {
+        return item.key<packed_type>().bucket;
+    }
+    key_type unpack_key(const TransItem& item) {
+        return item.key<packed_type>().key;
     }
 
 public:
@@ -845,7 +876,7 @@ private:
                 } 
                 // we found the item!
                 else if (st == ok) {
-                    auto item = Sto::item(this, e.key);
+                    auto item = Sto::item(this, pack_key(e.key));
                     // we don't need to update our read versions here because the previous add of 
                     // has_write must check the proper versions
                     if (item.has_write()) {
@@ -910,11 +941,7 @@ private:
         res1 = try_add_to_bucket(ti, key, val, i1, open1, vto);
         if (res1 == failure_key_duplicated || /*res1 == failure_key_moved || */res1 == failure_key_phantom) {
             unlock( ti, i1 );
-            if (vto.observe_me) {
-                vto.ptr == NULL ? 
-                    Sto::item(this, vto.ptr).observe(vto.version) : 
-                    Sto::item(this, vto.key).observe(vto.version);
-            }
+            if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
             return res1;
         } else {
             assert( res1 == ok || res1 == ok_delete_then_insert ); 
@@ -935,11 +962,7 @@ private:
                     res1 = try_add_to_bucket(ti, key, val, i1, open1, vto);
                     if (res1 == failure_key_duplicated || /*res1 == failure_key_moved || */res1 == failure_key_phantom) {
                         unlock_two(ti, i1, i2);
-                        if (vto.observe_me) {
-                            vto.ptr == NULL ? 
-                                Sto::item(this, vto.ptr).observe(vto.version) : 
-                                Sto::item(this, vto.key).observe(vto.version);
-                        }
+                        if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
                         return res1;
                     }
                 }
@@ -950,11 +973,7 @@ private:
         res2 = try_add_to_bucket(ti, key, val, i2, open2, vto);
         if (res2 == failure_key_duplicated || /*res2 == failure_key_moved ||*/ res2 == failure_key_phantom) {
             unlock_two(ti, i1, i2);
-            if (vto.observe_me) {
-                vto.ptr == NULL ? 
-                    Sto::item(this, vto.ptr).observe(vto.version) : 
-                    Sto::item(this, vto.key).observe(vto.version);
-            }
+            if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
             return res2;
         }
 
@@ -971,6 +990,7 @@ private:
             auto old_overflow = ti->buckets_[i1].overflow++;
             if (!old_overflow) ti->buckets_[i1].lock_and_inc_version();
             if (res2 == ok) {
+                assert(!getBit(ti->buckets_[i2].occupied,open2));
                 add_to_bucket(ti, key, val, i2, open2);
             }
             unlock_two(ti, i1, i2);
@@ -1046,11 +1066,7 @@ private:
             if (transactional && res1 == failure_key_not_found) {
                 Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(bv);
             }
-            if (vto.observe_me) {
-                vto.ptr == NULL ? 
-                    Sto::item(this, vto.ptr).observe(vto.version) : 
-                    Sto::item(this, vto.key).observe(vto.version);
-            }
+            if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
 
             return res1;
         } else {
@@ -1060,11 +1076,7 @@ private:
                 res1 = try_del_from_bucket(ti, key, i1, vto, transactional);
                 if( res1 == ok || /*res1 == failure_key_moved || */res1 == failure_key_phantom ) {
                     unlock_two(ti, i1, i2);
-                    if (vto.observe_me) {
-                        vto.ptr == NULL ? 
-                            Sto::item(this, vto.ptr).observe(vto.version) : 
-                            Sto::item(this, vto.key).observe(vto.version);
-                    }
+                    if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
                     return res1;
                 }
             }
@@ -1076,11 +1088,7 @@ private:
                 ti->buckets_[i1].overflow--;
             }
             unlock_two(ti, i1, i2);
-            if (vto.observe_me) {
-                vto.ptr == NULL ? 
-                    Sto::item(this, vto.ptr).observe(vto.version) : 
-                    Sto::item(this, vto.key).observe(vto.version);
-            }
+            if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
             return res2;
         }
 
@@ -1089,11 +1097,7 @@ private:
         auto bv1 = ti->buckets_[i1].bucketversion;
         auto bv2 = ti->buckets_[i2].bucketversion;
         unlock_two(ti, i1, i2);
-        if (vto.observe_me) {
-            vto.ptr == NULL ? 
-                Sto::item(this, vto.ptr).observe(vto.version) : 
-                Sto::item(this, vto.key).observe(vto.version);
-        }
+        if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
         if (transactional) {
             // add a read of both buckets so that we know no items have been added @ commit
             Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(bv1);
@@ -1704,7 +1708,7 @@ private:
         internal_elem elem = create_internal_elem(key, val);
         ti->buckets_[i].setKV(j, elem);
         Sto::item(this, pack_bucket(&ti->buckets_[i])).add_write();
-        Sto::item(this, elem.key).add_write().add_flags(insert_tag);
+        Sto::item(this, pack_key(elem.key)).add_write().add_flags(insert_tag);
         ti->num_inserts[counterid].num.fetch_add(1, std::memory_order_relaxed);
     }
 
@@ -1722,7 +1726,7 @@ private:
         internal_elem elem_in_table;
         for (size_t k = 0; k < SLOT_PER_BUCKET; k++) {
             elem_in_table = ti->buckets_[i].elems[k];
-            if (!getBit(ti->buckets_[i].occupied, k)) {
+            if (getBit(ti->buckets_[i].occupied, k)) {
                 auto ev = elem_in_table.version;
                 if (eqfn(key, elem_in_table.key)) {
                     // we only want to keep track clashes in the table if we're actually trying
@@ -1741,7 +1745,7 @@ private:
                                                 internal_elem& elem_in_table, 
                                                 version_type& ev,
                                                 version_to_observe& vto) {
-        auto item = Sto::item(this, elem_in_table.key);
+        auto item = Sto::item(this, pack_key(elem_in_table.key));
         if (item.has_write()) {
             if (has_delete(item)) {
                 // we cannot have been the one to insert this item,
@@ -1773,8 +1777,7 @@ private:
             else { 
                 vto.observe_me = true;
                 vto.version = ev;
-                vto.ptr = NULL;
-                vto.key = elem_in_table.key;
+                vto.package = pack_key(elem_in_table.key);
             }
         }
         return failure_key_duplicated;
@@ -1797,7 +1800,7 @@ private:
             if (eqfn(elem.key, key)) {
                 auto elemver = elem.version;
                 if (transactional) {
-                    auto item = Sto::item(this, elem.key);
+                    auto item = Sto::item(this, pack_key(elem.key));
                     if (item.has_write()) {
                         // we already deleted! the item is "gone"
                         if (has_delete(item)) {
@@ -1813,7 +1816,7 @@ private:
                             item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
                             // check that no one else inserts the node into the bucket 
                             vto.observe_me = true;
-                            vto.ptr = pack_bucket(&ti->buckets_[i]);
+                            vto.package = pack_bucket(&ti->buckets_[i]);
                             vto.version = ti->buckets_[i].bucketversion;
                             return ok;
                         } 
@@ -1822,8 +1825,7 @@ private:
                         else { 
                             // all we need to do is make sure no one deletes before we do
                             vto.observe_me = true;
-                            vto.ptr = NULL;
-                            vto.key = elem.key;
+                            vto.package = pack_key(elem.key);
                             vto.version = elemver; 
                             item.add_write().add_flags(delete_tag);
                         }
@@ -1834,8 +1836,7 @@ private:
                         // make sure no one deletes before we do
                         vto.observe_me = true;
                         vto.version = elemver; 
-                        vto.ptr = NULL;
-                        vto.key = elem.key;
+                        vto.package = pack_key(elem.key);
                         item.add_write().add_flags(delete_tag);
                         assert(!has_insert(item));
                     }

@@ -196,7 +196,7 @@ int main() {
     //auto chmnt = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 125000>>>(CDS, 125000, 1, 33, 33);
     //startAndWait(chmnt, 500000, 1);
 
-    auto chmna = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 125000>>>(STO, 125000, 1, 33, 33);
+    auto chmna = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 10000>>>(STO, 10000, 1, 33, 33);
     startAndWait(chmna, 500000, 1);
    
     /*

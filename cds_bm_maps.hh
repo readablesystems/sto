@@ -258,6 +258,8 @@ public:
         Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
         if (ds_type_ == STO) {
             for (int i = NTRANS; i > 0; --i) {
+                if (i % 10000 == 0)
+                    std::cout << i << std::endl;
                 Rand transgen_snap = transgen;
                 while (1) {
                     Sto::start_transaction();
