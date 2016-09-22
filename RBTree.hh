@@ -165,7 +165,7 @@ template <typename K, typename T, bool GlobalSize> class RBProxy;
 template <typename K, typename T, bool GlobalSize>
 class RBTree 
 #ifndef STO_NO_STM
-: public Shared 
+: public TObject
 #endif
 {
     friend class RBTreeIterator<K, T, GlobalSize>;

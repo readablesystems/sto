@@ -3,7 +3,7 @@
 #include "Boosting_locks.hh"
 
 // TODO: kind of an awkward name :)
-class TransPessimisticLocking : public Shared {
+class TransPessimisticLocking : public TObject {
   typedef uint64_t bit_type;
   // constexprs are too strange to use :|
   static inline bit_type spin_lock() { return 1<<0; }

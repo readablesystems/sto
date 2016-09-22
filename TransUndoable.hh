@@ -2,7 +2,7 @@
 
 #include "Transaction.hh"
 
-class TransUndoable : public Shared {
+class TransUndoable : public TObject {
 public:
   typedef void (*UndoFunction)(void*, void*, void*);
   void add_undo(UndoFunction undo_func, void *context1, void *context2) {

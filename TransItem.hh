@@ -12,10 +12,10 @@ class TransProxy;
 class TransItem {
   public:
 #if SIZEOF_VOID_P == 8
-    typedef TObject* sharedstore_type;
+    typedef TObject* ownerstore_type;
     typedef uintptr_t flags_type;
 #else
-    typedef uint64_t sharedstore_type;
+    typedef uint64_t ownerstore_type;
     typedef uint64_t flags_type;
 #endif
 
@@ -33,14 +33,11 @@ class TransItem {
 
     TransItem() = default;
     TransItem(TObject* s, void* k)
-        : s_(reinterpret_cast<sharedstore_type>(s)), key_(k) {
+        : s_(reinterpret_cast<ownerstore_type>(s)), key_(k) {
     }
 
     TObject* owner() const {
         return reinterpret_cast<TObject*>(reinterpret_cast<flags_type>(s_) & pointer_mask);
-    }
-    TObject* sharedObj() const {
-        return owner();
     }
 
     bool has_write() const {
@@ -165,18 +162,18 @@ class TransItem {
     // removes any existing flags, too
     TransItem& assign_flags(flags_type flags) {
         assert(!(flags & special_mask));
-        s_ = reinterpret_cast<sharedstore_type>((reinterpret_cast<flags_type>(s_) & special_mask) | flags);
+        s_ = reinterpret_cast<ownerstore_type>((reinterpret_cast<flags_type>(s_) & special_mask) | flags);
         return *this;
     }
     TransItem& clear_flags(flags_type flags) {
         assert(!(flags & special_mask));
-        s_ = reinterpret_cast<sharedstore_type>(reinterpret_cast<flags_type>(s_) & ~flags);
+        s_ = reinterpret_cast<ownerstore_type>(reinterpret_cast<flags_type>(s_) & ~flags);
         return *this;
     }
     // adds to existing flags
     TransItem& add_flags(flags_type flags) {
         assert(!(flags & special_mask));
-        s_ = reinterpret_cast<sharedstore_type>(reinterpret_cast<flags_type>(s_) | flags);
+        s_ = reinterpret_cast<ownerstore_type>(reinterpret_cast<flags_type>(s_) | flags);
         return *this;
     }
 
@@ -186,17 +183,17 @@ class TransItem {
     }
 
 private:
-    Shared* s_;
+    ownerstore_type s_;
     // this word must be unique (to a particular item) and consistently ordered across transactions
     void* key_;
     void* rdata_;
     void* wdata_;
 
     void __rm_flags(flags_type flags) {
-        s_ = reinterpret_cast<sharedstore_type>(reinterpret_cast<flags_type>(s_) & ~flags);
+        s_ = reinterpret_cast<ownerstore_type>(reinterpret_cast<flags_type>(s_) & ~flags);
     }
     void __or_flags(flags_type flags) {
-        s_ = reinterpret_cast<sharedstore_type>(reinterpret_cast<flags_type>(s_) | flags);
+        s_ = reinterpret_cast<ownerstore_type>(reinterpret_cast<flags_type>(s_) | flags);
     }
     friend class Transaction;
     friend class TransProxy;

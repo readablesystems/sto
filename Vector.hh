@@ -19,7 +19,7 @@ template<typename T, bool Opacity = false, typename Elem = Box<T>, bool SmartIte
 template<typename T, bool Opacity = false, typename Elem = Box<T>, bool SmartIterator = true> class VecIterator;
 
 template <typename T, bool Opacity, typename Elem, bool SmartIterator>
-class Vector : public Shared {
+class Vector : public TObject {
 public:
   typedef unsigned index_type;
   

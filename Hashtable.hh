@@ -19,7 +19,7 @@ template <typename K, typename V, bool Opacity = true, unsigned Init_size = 129,
 #ifdef STO_NO_STM
 class Hashtable {
 #else
-class Hashtable : public Shared {
+class Hashtable : public TObject {
 #endif
 public:
     typedef K Key;

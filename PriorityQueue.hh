@@ -7,7 +7,7 @@
 
 
 template <typename T, bool Opacity = false>
-class PriorityQueue: public Shared {
+class PriorityQueue: public TObject {
     typedef TransactionTid::type Version;
     typedef versioned_value_struct<T> versioned_value;
     
