@@ -82,6 +82,14 @@ class CuckooHashMapNA: public Shared {
             return num.try_lock();
         }
 
+        inline bool try_lock_if_unlocked_here() {
+            return num.is_locked_here() || num.try_lock();
+        }
+
+        inline void unlock_if_locked_here() {
+            if (num.is_locked_here()) unlock();
+        }
+
         inline bool is_locked() const {
             return num.is_locked();
         }
@@ -290,7 +298,6 @@ public:
         } else {
             auto key = unpack_key(item);
             internal_elem* e;
-            // XXX we're going to be unlocking twice?
             assert(find_elem_ptr(key, e, false/*lock bucket*/, true/*unlock bucket*/));
             e->version.unlock();
         }
@@ -378,14 +385,14 @@ private:
 #endif
 
         void setKV(size_t pos, internal_elem elem) {
-            setBit( occupied, pos);
+            setBit(occupied, pos);
             elems[pos] = elem;
         }
 
         // sets the value in the bucket to NULL, but doesn't actually
         // free it (used for transfers)
         void eraseKV(size_t pos) {
-            resetBit( occupied, pos);
+            resetBit(occupied, pos);
             (elems + pos)->~internal_elem();
         }
 
@@ -838,14 +845,20 @@ private:
         i1 = index_hash(ti, hv);
         auto res1 = try_read_ptr_from_bucket(ti, key, e, i1);
         if (res1 == ok || !hasOverflow(ti, i1) ) {
-            if (unlock_bucket) unlock(ti, i1);
-            return lock_bucket ? try_lock(ti, i1) : (res1 == ok);
+            if (unlock_bucket) {
+                ti->buckets_[i1].lock.unlock_if_locked_here();
+                return true;
+            } else return lock_bucket ? ti->buckets_[i1].lock.try_lock_if_unlocked_here() 
+                                    : (res1 == ok);
         } 
         i2 = alt_index(ti, hv, i1);
         auto res2 = try_read_ptr_from_bucket(ti, key, e, i2);
         if(res2 == ok) {
-            if (unlock_bucket) unlock(ti, i2);
-            return lock_bucket ? try_lock(ti, i2) : (res2 == ok);
+            if (unlock_bucket) {
+                ti->buckets_[i2].lock.unlock_if_locked_here();
+                return true;
+            } else return lock_bucket ? ti->buckets_[i2].lock.try_lock_if_unlocked_here() 
+                                    : (res2 == ok);
         }
         return false;
     }
@@ -1404,10 +1417,9 @@ private:
             b_slot x = q.dequeue();
             // Picks a random slot to start from
             for (size_t slot = 0; slot < SLOT_PER_BUCKET && q.not_full(); slot++) {
-                //if (ti->buckets_[x.bucket].hasmigrated) {
-                //   return b_slot(0, 0, -2);
-                //}
                 elem = ti->buckets_[x.bucket].elems[slot];
+                const size_t hv = hashed_key<key_type>(elem.key);
+
                 if (!getBit(ti->buckets_[x.bucket].occupied, slot)) {
                     // We can terminate the search here
                     x.pathcode = x.pathcode * SLOT_PER_BUCKET + slot;
@@ -1416,7 +1428,6 @@ private:
                 // Create a new b_slot item, that represents the
                 // bucket we would look at after searching x.bucket
                 // for empty slots.
-                const size_t hv = hashed_key<key_type>(elem.key);
                 b_slot y(alt_index(ti, hv, x.bucket),
                          x.pathcode * SLOT_PER_BUCKET + slot, x.depth+1);
 
@@ -1428,8 +1439,7 @@ private:
                 //   return b_slot(0, 0, -2);
                 //}
                 for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
-                    elem = ti->buckets_[y.bucket].elems[j];
-                    if (!getBit(ti->buckets_[y.bucket].occupied, slot)) {
+                    if (!getBit(ti->buckets_[y.bucket].occupied, j)) {
                         y.pathcode = y.pathcode * SLOT_PER_BUCKET + j;
                         return y;
                     }
@@ -1722,6 +1732,7 @@ private:
                                   version_to_observe& vto) {
         j = -1;
         vto.observe_me = false;
+        bool found_empty = false;
 
         internal_elem elem_in_table;
         for (size_t k = 0; k < SLOT_PER_BUCKET; k++) {
@@ -1734,7 +1745,8 @@ private:
                     // this should never occur if it is a migration...
                     return sto_try_add_with_existing_key(val, elem_in_table, ev, vto);
                 }
-            } else {
+            } else if (!found_empty) {
+                found_empty = true;
                 j = k;
             }
         }

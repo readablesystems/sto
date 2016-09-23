@@ -205,7 +205,7 @@ public:
         p_insert_(p_insert), p_erase_(p_erase), size_(size), opdist_(0,99) {};
 
     void initialize(size_t) {
-        keydist_ = std::uniform_int_distribution<long>(0,size_*35);
+        keydist_ = std::uniform_int_distribution<long>(0,size_*6);
     }
 
     void cleanup() {
@@ -258,8 +258,6 @@ public:
         Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
         if (ds_type_ == STO) {
             for (int i = NTRANS; i > 0; --i) {
-                if (i % 10000 == 0)
-                    std::cout << i << std::endl;
                 Rand transgen_snap = transgen;
                 while (1) {
                     Sto::start_transaction();

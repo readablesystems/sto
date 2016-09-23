@@ -1225,8 +1225,6 @@ private:
                     //return b_slot(0, 0, -2);
                 //}
                 for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
-                    key = ti->buckets_[y.bucket].keys[j];
-                    hv = hashed_key(key);
                     if (!getBit(ti->buckets_[y.bucket].occupied, j)) {
                         size_t old_pathcode = y.pathcode;
                         y.pathcode = y.pathcode * SLOT_PER_BUCKET + j;
