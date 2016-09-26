@@ -9,7 +9,7 @@ void TransactionBuffer::hard_get_space(size_t needed) {
     ne->pos = 0;
     ne->size = s;
     if (e_)
-        size_ += e_->pos;
+        linked_size_ += e_->pos;
     e_ = ne;
 }
 
@@ -22,7 +22,7 @@ void TransactionBuffer::hard_clear(bool delete_all) {
     }
     if (e_)
         e_->clear();
-    size_ = 0;
+    linked_size_ = 0;
     if (e_ && delete_all) {
         delete[] (char*) e_;
         e_ = 0;

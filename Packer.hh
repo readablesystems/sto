@@ -46,7 +46,7 @@ class TransactionBuffer {
 
 public:
     TransactionBuffer()
-        : e_() {
+        : e_(), linked_size_(0) {
     }
     ~TransactionBuffer() {
         if (e_)
@@ -63,8 +63,8 @@ public:
     template <typename T, typename U = T>
     const T* find(const U& x) const;
 
-    size_t size() const {
-        return size_ + (e_ ? e_->pos : 0);
+    size_t buffer_size() const {
+        return linked_size_ + (e_ ? e_->pos : 0);
     }
     void clear() {
         if (e_ && e_->pos)
@@ -98,7 +98,7 @@ private:
         }
     };
     elt* e_;
-    size_t size_;
+    size_t linked_size_;
 
     item* get_space(size_t needed) {
         if (!e_ || e_->pos + needed > e_->size)
