@@ -83,7 +83,7 @@ private:
     struct elthdr {
         elt* next;
         size_t pos;
-        size_t size;
+        size_t capacity;
     };
     struct elt : public elthdr {
         char buf[0];
@@ -101,7 +101,7 @@ private:
     size_t linked_size_;
 
     item* get_space(size_t needed) {
-        if (!e_ || e_->pos + needed > e_->size)
+        if (!e_ || e_->pos + needed > e_->capacity)
             hard_get_space(needed);
         e_->pos += needed;
         return (item*) &e_->buf[e_->pos - needed];

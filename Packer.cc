@@ -3,11 +3,11 @@
 constexpr size_t TransactionBuffer::default_capacity;
 
 void TransactionBuffer::hard_get_space(size_t needed) {
-    size_t s = std::max(needed, e_ ? e_->size * 2 : default_capacity);
+    size_t s = std::max(needed, e_ ? e_->capacity * 2 : default_capacity);
     elt* ne = (elt*) new char[sizeof(elthdr) + s];
     ne->next = e_;
     ne->pos = 0;
-    ne->size = s;
+    ne->capacity = s;
     if (e_)
         linked_size_ += e_->pos;
     e_ = ne;
