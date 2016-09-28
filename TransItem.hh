@@ -92,7 +92,7 @@ class TransItem {
         return tuple_ts_;
     }
     bool check_timestamps(TicTocVersion& tuple_ts, TicTocTid::type commit_ts) const {
-        assert(has_read());
+        assert(has_observation());
         return tuple_ts.validate_timestamps(otss_.wts_value(), otss_.rts_value(), commit_ts);
     }
     /*
