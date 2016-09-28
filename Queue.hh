@@ -7,7 +7,7 @@
 
 template <typename T, unsigned BUF_SIZE = 1000000,
           template <typename> class W = TOpaqueWrapped>
-class Queue: public Shared {
+class Queue: public TObject {
 public:
     typedef typename W<T>::version_type version_type;
 

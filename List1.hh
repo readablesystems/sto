@@ -8,7 +8,7 @@
 template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true, bool Opacity = false, typename Elem = SingleElem<T>> class List1Iterator;
 
 template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true, bool Opacity = false, typename Elem = SingleElem<T>>
-class List1 : public Shared {
+class List1 : public TObject {
     friend class List1Iterator<T, Duplicates, Compare, Sorted, Opacity, Elem>;
     typedef List1Iterator<T, Duplicates, Compare, Sorted, Opacity, Elem> iterator;
 public:

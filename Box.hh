@@ -3,7 +3,7 @@
 #include "versioned_value.hh"
 
 template <typename T,  bool GenericSTM = false, typename Structure = versioned_value_struct<T>>
-// if we're inheriting from Shared then a SingleElem adds both a version word and a vtable word
+// if we're inheriting from TObject then a SingleElem adds both a version word and a vtable word
 // (not much else we can do though)
 class Box {
 public:

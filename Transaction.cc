@@ -157,8 +157,8 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
 #endif
     }
 
-    TXP_ACCOUNT(txp_max_transbuffer, buf_.size());
-    TXP_ACCOUNT(txp_total_transbuffer, buf_.size());
+    TXP_ACCOUNT(txp_max_transbuffer, buf_.buffer_size());
+    TXP_ACCOUNT(txp_total_transbuffer, buf_.buffer_size());
 
     TransItem* it;
     if (!any_writes_)
