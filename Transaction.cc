@@ -258,7 +258,7 @@ bool Transaction::try_commit() {
             it->__or_flags(TransItem::lock_bit);
 #endif
         }
-        if (it->has_read())
+        if (it->has_read() || it->has_observation())
             TXP_INCREMENT(txp_total_r);
         else if (it->has_predicate()) {
             TXP_INCREMENT(txp_total_check_predicate);
@@ -304,7 +304,7 @@ bool Transaction::try_commit() {
     //phase2
     for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
         it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
-        if (it->has_read()) {
+        if (it->has_read() || it->has_observation()) {
             TXP_INCREMENT(txp_total_check_read);
             if (!it->owner()->check(*it, *this)
                 && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {

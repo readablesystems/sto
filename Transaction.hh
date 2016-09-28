@@ -580,7 +580,7 @@ public:
             if (it->has_write()) {
                 commit_ts = std::max(commit_ts,
                         it->write_tuple_ts()->read_timestamp() + 1);
-            } else if (it->has_read()) {
+            } else if (it->has_observation()) {
                 commit_ts = std::max(commit_ts,
                         it->observed_timestamps().write_timestamp());
             }
