@@ -68,7 +68,7 @@ struct versioned_str_struct : public versioned_str {
 };
 
 template <typename V, typename Box = versioned_value_struct<V>, bool Opacity = true>
-class MassTrans : public Shared {
+class MassTrans : public TObject {
 public:
 #if !RCU
   typedef debug_threadinfo threadinfo;
@@ -466,7 +466,7 @@ public:
     return ret;
   }
 
-  // implementation of Shared object methods
+  // implementation of TObject methods
 
   void lock(versioned_value *e) {
     lock(&e->version());

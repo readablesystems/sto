@@ -4,7 +4,7 @@
 #include "Interface.hh"
 #include "Transaction.hh"
 
-class TransAlloc : public Shared {
+class TransAlloc : public TObject {
 public:
     static constexpr TransItem::flags_type alloc_flag = TransItem::user0_bit;
     typedef void (*free_type)(void*);

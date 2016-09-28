@@ -22,7 +22,7 @@ template <typename T, bool Duplicates = false, typename Compare = DefaultCompare
 template <typename T, bool Duplicates = false, typename Compare = DefaultCompare<T>, bool Sorted = true, bool Opacity = true>
 class List 
 #ifndef STO_NO_STM
-: public Shared 
+: public TObject
 #endif
 {
   friend class ListIterator<T, Duplicates, Compare, Sorted, Opacity>;
