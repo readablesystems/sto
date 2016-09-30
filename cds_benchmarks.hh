@@ -31,7 +31,7 @@
 
 // globals
 unsigned initial_seeds[64];
-std::vector<int> init_sizes = {10000, 50000, 100000};//, 150000};
+std::vector<int> init_sizes = {10000};//, 50000, 100000};//, 150000};
 std::vector<int> nthreads_set = {1, 4, 12, 16};//, 24};
 int rand_vals[10000];
 int rand_txns[10000];

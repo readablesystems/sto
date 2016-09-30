@@ -66,7 +66,7 @@ ifeq ($(PROFILE),1)
 OPTFLAGS += -g -pg -fno-inline
 endif
 
-PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter $(UNIT_PROGRAMS) $(CDS_PROGRAMS)
+PROGRAMS = concurrent singleelems list1 vector pqueue trans_test rbtree ht_mt pqVsIt iterators single predicates ex-counter $(UNIT_PROGRAMS) $(CDS_PROGRAMS)
 UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric unit-rcu unit-tvector unit-tvector-nopred 
 CDS_PROGRAMS = cds_benchmarks 
 

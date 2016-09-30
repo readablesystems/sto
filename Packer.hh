@@ -1,6 +1,7 @@
 #pragma once
 #include "compiler.hh"
 #include <algorithm>
+#include <iostream>
 
 class TransactionBuffer;
 
@@ -146,6 +147,7 @@ template <typename T> struct Packer<T, true> {
         return v;
     }
     static void* pack_unique(TransactionBuffer& buf, const T& x) {
+        //std::cout<< sizeof(x) << std::endl;
         return pack(buf, x);
     }
     static void* repack(TransactionBuffer& buf, void*, const T& x) {
@@ -167,6 +169,7 @@ template <typename T> struct Packer<T, false> {
         return buf.template allocate<T>(std::forward<Args>(args)...);
     }
     static void* pack_unique(TransactionBuffer& buf, const T& x) {
+        //std::cout<< sizeof(x) << std::endl;
         if (const void* ptr = buf.template find<UniqueKey<T> >(x))
             return const_cast<void*>(ptr);
         else

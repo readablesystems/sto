@@ -8,7 +8,7 @@
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define N_THREADS 5 // Number of concurrent threads
+#define N_THREADS 2 // Number of concurrent threads
 #define TOTAL_TRANS 50000000
 #define NTRANS TOTAL_TRANS/N_THREADS // Number of transactions each thread should run.
 #define MAX_OPS 5 // Maximum number of operations in a transaction.
@@ -20,10 +20,12 @@
 #define CUCKOOHASHMAP 4
 #define CUCKOOHASHMAPNT 5
 #define CUCKOOHASHMAP2 6 
+#define CUCKOOHASHMAPNA 7
 //#define DS HASHTABLE
 //#define DS CUCKOOHASHMAP
 //#define DS CUCKOOHASHMAP2
-#define DS CUCKOOHASHMAPNT
+//#define DS CUCKOOHASHMAPNT
+#define DS CUCKOOHASHMAPNA
 
 #if DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
@@ -51,6 +53,12 @@ CuckooHashMapTester<
         CuckooHashMapNT<int, int, 10000>> tester = 
     CuckooHashMapTester<CuckooHashMapNT<int, int, 10000>, 
                         CuckooHashMapNT<int, int, 10000>>();
+#elif DS == CUCKOOHASHMAPNA
+CuckooHashMapTester<
+        CuckooHashMapNA<int, int, 10000,false>, 
+        CuckooHashMapNA<int, int, 10000,false>> tester = 
+    CuckooHashMapTester<CuckooHashMapNA<int, int, 10000,false>, 
+                        CuckooHashMapNA<int, int, 10000,false>>();
 #endif
 
 unsigned initial_seeds[64];
@@ -210,6 +218,9 @@ int main() {
 #elif DS == CUCKOOHASHMAPNT
     CuckooHashMapNT<int, int, 10000> q;
     CuckooHashMapNT<int, int, 10000> q1;
+#elif DS == CUCKOOHASHMAPNA
+    CuckooHashMapNA<int, int, 10000, false> q;
+    CuckooHashMapNA<int, int, 10000, false> q1;
 #endif  
 
     pthread_t advancer;
@@ -277,7 +288,8 @@ int main() {
     // MULTI-THREADED 
     for (int i = 1; i <= N_THREADS; ++i) {
         spawned_barrier = 0;
-        startAndWait(&q, i);
+        //startAndWait(&q, i);
+        startAndWait(&q, N_THREADS);
 #if PRINT_DEBUG
 #if STO_PROFILE_COUNTERS
         Transaction::print_stats();

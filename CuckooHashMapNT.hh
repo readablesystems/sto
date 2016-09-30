@@ -1787,4 +1787,12 @@ const size_t CuckooHashMapNT<Key, T, Num_Buckets>::kNumCores =
 template <class Key, class T, unsigned Num_Buckets>
 std::atomic<size_t> CuckooHashMapNT<Key, T, Num_Buckets>::numThreads(0);
 
+template <class Key, class T, unsigned Num_Buckets>
+typename CuckooHashMapNT<Key, T, Num_Buckets>::key_equal 
+CuckooHashMapNT<Key, T, Num_Buckets>::eqfn;
+
+template <class Key, class T, unsigned Num_Buckets>
+typename CuckooHashMapNT<Key, T, Num_Buckets>::hasher
+CuckooHashMapNT<Key, T, Num_Buckets>::hashfn;
+
 #endif

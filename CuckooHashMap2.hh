@@ -471,7 +471,8 @@ private:
      * hazard pointer manager. */
     std::list<TableInfo*> old_table_infos;
 
-    static std::equal_to<key_type> eqfn;
+    typedef std::equal_to<key_type> key_equal;
+    static key_equal  eqfn;
     static std::allocator<Bucket> bucket_allocator;
 
     static bool has_insert(const TransItem& item) {
@@ -1793,19 +1794,19 @@ private:
         j = -1;
         vto.observe_me = false;
 
-        //if (ti->buckets_[i].hasmigrated) {
-        //   return failure_key_moved;
-        //}
         internal_elem* elem_in_table;
         for (size_t k = 0; k < SLOT_PER_BUCKET; k++) {
             elem_in_table = ti->buckets_[i].elems[k];
             if (elem_in_table != NULL) {
                 auto ev = elem_in_table->version;
                 if (eqfn(key, elem_in_table->key)) {
-                    // we only want to keep track clashes in the table if we're actually trying
-                    // to insert a new item (not migrate it over)
-                    // this should never occur if it is a migration...
-                    return sto_try_add_with_existing_key(val, elem_in_table, ev, vto);
+                    auto res = sto_try_add_with_existing_key(val, elem_in_table, ev, vto);
+                    assert(res == ok_delete_then_insert 
+                            || res == failure_key_phantom 
+                            || res == failure_key_duplicated);
+                    // make sure to set the open1 value
+                    if (res == ok_delete_then_insert) j = k;
+                    return res;
                 }
             } else {
                 j = k;
@@ -2103,5 +2104,9 @@ std::atomic<size_t> CuckooHashMap2<Key, T, Num_Buckets, Opacity>::numThreads(0);
 template <class Key, class T, unsigned Num_Buckets, bool Opacity>
 typename CuckooHashMap2<Key, T, Num_Buckets, Opacity>::cuckoo_stats 
 CuckooHashMap2<Key, T, Num_Buckets, Opacity>::stats(0,0);
+
+template <class Key, class T, unsigned Num_Buckets, bool Opacity>
+typename CuckooHashMap2<Key, T, Num_Buckets, Opacity>::key_equal
+CuckooHashMap2<Key, T, Num_Buckets, Opacity>::eqfn;
 
 #endif

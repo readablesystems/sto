@@ -82,12 +82,8 @@ class CuckooHashMapNA: public Shared {
             return num.try_lock();
         }
 
-        inline bool try_lock_if_unlocked_here() {
-            return num.is_locked_here() || num.try_lock();
-        }
-
-        inline void unlock_if_locked_here() {
-            if (num.is_locked_here()) unlock();
+        inline bool is_locked_here() {
+            return num.is_locked_here();
         }
 
         inline bool is_locked() const {
@@ -227,7 +223,7 @@ public:
             return b->bucketversion.check_version(read_version);
         } else {
             auto key = unpack_key(item);
-            internal_elem* e;
+            internal_elem* e = NULL;
             bool found = find_elem_ptr(key, e, false/*lock bucket*/, false/*unlock bucket*/);
             return (found && !is_phantom(item, *e) && e->version.check_version(read_version));
         }
@@ -239,8 +235,7 @@ public:
             return txn.try_lock(item, b->bucketversion);
         } else {
             auto key = unpack_key(item);
-            internal_elem* e;
-            // XXX we're going to be locking buckets twice?
+            internal_elem* e = NULL;
             bool found = find_elem_ptr(key, e, true/*lock bucket*/, false/*unlock bucket*/);
             return (found && txn.try_lock(item, e->version));
         }
@@ -254,7 +249,7 @@ public:
             // We know the element must exist in the map. It is locked, so no thread can 
             // move it.
             auto key = unpack_key(item);
-            internal_elem* e;
+            internal_elem* e = NULL;
             assert(find_elem_ptr(key, e, false/*lock bucket*/, false/*unlock bucket*/));
 
             if (has_delete(item)) {
@@ -297,7 +292,7 @@ public:
             b->bucketversion.unlock();
         } else {
             auto key = unpack_key(item);
-            internal_elem* e;
+            internal_elem* e = NULL;
             assert(find_elem_ptr(key, e, false/*lock bucket*/, true/*unlock bucket*/));
             e->version.unlock();
         }
@@ -428,7 +423,7 @@ private:
             Bucket* bucket;
         };
 
-        inline bool operator==(const packed_type x) const {
+        inline bool operator==(const packed_type& x) const {
           if (bucket_bit)
              return x.bucket_bit && bucket == x.bucket;
           else
@@ -517,7 +512,8 @@ private:
      * hazard pointer manager. */
     std::list<TableInfo*> old_table_infos;
 
-    static std::equal_to<key_type> eqfn;
+    typedef std::equal_to<key_type> key_equal;
+    static key_equal  eqfn;
     static std::allocator<Bucket> bucket_allocator;
 
     static bool has_insert(const TransItem& item) {
@@ -832,6 +828,7 @@ private:
 
             if (eqfn(key, elem->key)) {
                 e = elem;
+                assert(e);
                 return ok;
             }
         }
@@ -843,24 +840,71 @@ private:
         auto ti = table_info.load();
         hv = hashed_key(key);
         i1 = index_hash(ti, hv);
-        auto res1 = try_read_ptr_from_bucket(ti, key, e, i1);
-        if (res1 == ok || !hasOverflow(ti, i1) ) {
-            if (unlock_bucket) {
-                ti->buckets_[i1].lock.unlock_if_locked_here();
-                return true;
-            } else return lock_bucket ? ti->buckets_[i1].lock.try_lock_if_unlocked_here() 
-                                    : (res1 == ok);
-        } 
-        i2 = alt_index(ti, hv, i1);
-        auto res2 = try_read_ptr_from_bucket(ti, key, e, i2);
-        if(res2 == ok) {
-            if (unlock_bucket) {
-                ti->buckets_[i2].lock.unlock_if_locked_here();
-                return true;
-            } else return lock_bucket ? ti->buckets_[i2].lock.try_lock_if_unlocked_here() 
-                                    : (res2 == ok);
+      
+        // lock only if we don't already have the bucket locked
+        bool i1_was_locked = ti->buckets_[i1].lock.is_locked_here();
+        if (!i1_was_locked) {
+            ti->buckets_[i1].lock.lock();
         }
-        return false;
+
+        auto res1 = try_read_ptr_from_bucket(ti, key, e, i1);
+        if (res1 == ok || !hasOverflow(ti, i1)) {
+            // we found the item
+            if (res1 == ok) {
+                assert(e != NULL);
+                // we want to truly unlock this bucket
+                if (unlock_bucket) {
+                    ti->buckets_[i1].lock.unlock();
+                }
+                // we don't want to lock the bucket if it wasn't already
+                if (!lock_bucket && !i1_was_locked) {
+                    ti->buckets_[i1].lock.unlock();
+                }
+                // else we want to leave the bucket locked
+                return true;
+            } 
+            // we failed to find the item in the first bucket and there was no overflow
+            else goto failed_to_find;
+        } else { // we need to check the other bucket.
+            i2 = alt_index(ti, hv, index_hash(ti, hv));
+            bool i2_was_locked = ti->buckets_[i2].lock.is_locked_here();
+            // if we already have it locked or the bucket is unlocked and we can lock it,
+            // then continue!
+            if (i2_was_locked || (!i2_was_locked && ti->buckets_[i2].lock.try_lock())) {
+                auto res2 = try_read_ptr_from_bucket(ti, key, e, i2);
+                // we found the item
+                if (res2 == ok) {
+                    assert(e != NULL);
+                    // we want to truly unlock this bucket.
+                    if (unlock_bucket) {
+                        ti->buckets_[i2].lock.unlock();
+                    }
+                    // we don't want to lock the bucket if it wasn't already
+                    if (!lock_bucket && !i2_was_locked) {
+                        ti->buckets_[i2].lock.unlock();
+                    }
+                    // else we want to leave the bucket locked
+                    // keep i1 how it was before
+                    if (!i1_was_locked) {
+                        ti->buckets_[i1].lock.unlock();
+                    }
+                    return true;
+                } 
+                // we failed to find the item in the second bucket
+                else {
+                    if (!i2_was_locked) ti->buckets_[i2].lock.unlock();
+                    goto failed_to_find;
+                }
+            }
+            // bucket was locked by someone else! goto fail
+            else goto failed_to_lock;
+        }
+
+failed_to_lock:
+failed_to_find:
+        assert(!e);
+        if (!i1_was_locked) ti->buckets_[i1].lock.unlock();
+        return false; 
     }
 
     /* find_one searches a specific table instance for the value corresponding to a given hash value 
@@ -1743,7 +1787,13 @@ private:
                     // we only want to keep track clashes in the table if we're actually trying
                     // to insert a new item (not migrate it over)
                     // this should never occur if it is a migration...
-                    return sto_try_add_with_existing_key(val, elem_in_table, ev, vto);
+                    auto res = sto_try_add_with_existing_key(val, elem_in_table, ev, vto);
+                    assert(res == ok_delete_then_insert 
+                            || res == failure_key_phantom 
+                            || res == failure_key_duplicated);
+                    // make sure to set the open1 value
+                    if (res == ok_delete_then_insert) j = k;
+                    return res;
                 }
             } else if (!found_empty) {
                 found_empty = true;
@@ -2025,5 +2075,9 @@ std::atomic<size_t> CuckooHashMapNA<Key, T, Num_Buckets, Opacity>::numThreads(0)
 template <class Key, class T, unsigned Num_Buckets, bool Opacity>
 typename CuckooHashMapNA<Key, T, Num_Buckets, Opacity>::cuckoo_stats 
 CuckooHashMapNA<Key, T, Num_Buckets, Opacity>::stats(0,0);
+
+template <class Key, class T, unsigned Num_Buckets, bool Opacity>
+typename CuckooHashMapNA<Key, T, Num_Buckets, Opacity>::key_equal
+CuckooHashMapNA<Key, T, Num_Buckets, Opacity>::eqfn;
 
 #endif

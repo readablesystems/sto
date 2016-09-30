@@ -20,6 +20,7 @@
 #include "Hashtable.hh" 
 #include "CuckooHashMap.hh"
 #include "CuckooHashMap2.hh"
+#include "CuckooHashMapWK.hh"
 #include "CuckooHashMapNA.hh"
 #include "CuckooHashMapNT.hh"
 #include "city_hasher.hh"
@@ -107,6 +108,14 @@ template <typename K, typename T> struct DatatypeHarness<CuckooHashMap2<K,T,1250
     public CuckooHashMapHarness<CuckooHashMap2<K,T,125000,false>>{};
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMap2<K,T,10000,false>> :
     public CuckooHashMapHarness<CuckooHashMap2<K,T,10000,false>>{};
+
+// STO-CUCKOO WK
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMapWK<K,T,1000000,false>> :
+    public CuckooHashMapHarness<CuckooHashMapWK<K,T,1000000,false>>{};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMapWK<K,T,125000,false>> :
+    public CuckooHashMapHarness<CuckooHashMapWK<K,T,125000,false>>{};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMapWK<K,T,10000,false>> :
+    public CuckooHashMapHarness<CuckooHashMapWK<K,T,10000,false>>{};
 
 // STO-CUCKOO NOALLOC
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNA<K,T,1000000,false>> :
@@ -205,7 +214,7 @@ public:
         p_insert_(p_insert), p_erase_(p_erase), size_(size), opdist_(0,99) {};
 
     void initialize(size_t) {
-        keydist_ = std::uniform_int_distribution<long>(0,size_*6);
+        keydist_ = std::uniform_int_distribution<long>(0,size_*20);
     }
 
     void cleanup() {
@@ -280,9 +289,10 @@ private:
 
 
 #define MAKE_MAP_TESTS(desc, test, key, val, size,...) \
-    {desc, "STO Nonopaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,false,size>>>(STO, size, ## __VA_ARGS__)},                                  \
-    {desc, "STO KF CuckooMap", new test<DatatypeHarness<CuckooHashMap<key,val,size, false>>>(STO, size, ## __VA_ARGS__)},                \
+    {desc, "STO WK CuckooMap", new test<DatatypeHarness<CuckooHashMapWK<key,val,size, false>>>(STO, size, ## __VA_ARGS__)}, \
     {desc, "STO IE CuckooMap", new test<DatatypeHarness<CuckooHashMap2<key,val,size, false>>>(STO, size, ## __VA_ARGS__)}, \
+    //{desc, "STO Nonopaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,false,size>>>(STO, size, ## __VA_ARGS__)},                                  \
+    //{desc, "STO KF CuckooMap", new test<DatatypeHarness<CuckooHashMap<key,val,size, false>>>(STO, size, ## __VA_ARGS__)},                \
     {desc, "CuckooMapNT", new test<DatatypeHarness<CuckooHashMapNT<key, val, size>>>(CDS, size, ## __VA_ARGS__)}, \
     {desc, "STO NA CuckooMap", new test<DatatypeHarness<CuckooHashMapNA<key,val,size, false>>>(STO, size, ## __VA_ARGS__)},                
     //{desc, "MichaelHashMap", new test<DatatypeHarness<MICHAELMAP(key,val)>>(CDS, ## __VA_ARGS__)},        
@@ -305,4 +315,4 @@ std::vector<Test> make_map_tests() {
         //MAKE_MAP_TESTS("HM1MMultiOp:F90,I5,E5", MapOpTest, int, int, 1000000, 5, 5, 5)
     };
 }
-int num_maps = 5;
+int num_maps = 2;

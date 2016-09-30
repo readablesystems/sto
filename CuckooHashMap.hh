@@ -1819,7 +1819,13 @@ private:
                 } else {
                     elem_in_table = ti->buckets_[i].get_elem(k);
                     auto ev = elem_in_table->version;
-                    return sto_try_add_with_existing_key(val, elem_in_table, ev, vto);
+                    auto res = sto_try_add_with_existing_key(val, elem_in_table, ev, vto);
+                    assert(res == ok_delete_then_insert 
+                            || res == failure_key_phantom 
+                            || res == failure_key_duplicated);
+                    // make sure to set the open1 value
+                    if (res == ok_delete_then_insert) j = k;
+                    return res;
                 } 
             } else {
                 j = k;
