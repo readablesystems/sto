@@ -24,10 +24,12 @@ class TransItem {
     static constexpr flags_type lock_bit = flags_type(1) << 61;
     static constexpr flags_type predicate_bit = flags_type(1) << 60;
     static constexpr flags_type stash_bit = flags_type(1) << 59;
-    static constexpr flags_type pointer_mask = (flags_type(1) << 48) - 1;
-    static constexpr flags_type user0_bit = flags_type(1) << 48;
+    static constexpr flags_type user0_bit = flags_type(1) << 50;
+    static constexpr flags_type keytype1_bit = flags_type(1) << 48;
+    static constexpr flags_type keytype2_bit = flags_type(1) << 49;
     static constexpr int userf_shift = 48;
     static constexpr flags_type shifted_userf_mask = 0x7FF;
+    static constexpr flags_type pointer_mask = (flags_type(1) << 48) - 1;
     static constexpr flags_type special_mask = pointer_mask | read_bit | write_bit | lock_bit | predicate_bit | stash_bit;
 
 

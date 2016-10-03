@@ -8,8 +8,8 @@
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define N_THREADS 2 // Number of concurrent threads
-#define TOTAL_TRANS 50000000
+#define N_THREADS 5 // Number of concurrent threads
+#define TOTAL_TRANS 10000000
 #define NTRANS TOTAL_TRANS/N_THREADS // Number of transactions each thread should run.
 #define MAX_OPS 5 // Maximum number of operations in a transaction.
 
@@ -56,9 +56,9 @@ CuckooHashMapTester<
 #elif DS == CUCKOOHASHMAPNA
 CuckooHashMapTester<
         CuckooHashMapNA<int, int, 10000,false>, 
-        CuckooHashMapNA<int, int, 10000,false>> tester = 
-    CuckooHashMapTester<CuckooHashMapNA<int, int, 10000,false>, 
-                        CuckooHashMapNA<int, int, 10000,false>>();
+        CuckooHashMapNT<int, int, 10000>> tester = 
+    CuckooHashMapTester<CuckooHashMapNA<int, int, 10000, false>, 
+                        CuckooHashMapNT<int, int, 10000>>();
 #endif
 
 unsigned initial_seeds[64];
@@ -220,7 +220,7 @@ int main() {
     CuckooHashMapNT<int, int, 10000> q1;
 #elif DS == CUCKOOHASHMAPNA
     CuckooHashMapNA<int, int, 10000, false> q;
-    CuckooHashMapNA<int, int, 10000, false> q1;
+    CuckooHashMapNT<int, int, 10000> q1;
 #endif  
 
     pthread_t advancer;
@@ -231,8 +231,7 @@ int main() {
     tester.init(&q1);
 
 #if CONSISTENCY_CHECK
-    fprintf(stderr, "Multi-then-single thread execution with CONSISTENCY_CHECK\n");
-    for (int i = 0; i < N_THREADS; i++) {
+    fprintf(stderr, "Multi-then-single thread execution with CONSISTENCY_CHECK\n"); for (int i = 0; i < N_THREADS; i++) {
         txn_list.emplace_back();
     }
 
@@ -253,7 +252,8 @@ int main() {
     for (int i = 0; i < N_THREADS; i++) {
         combined_txn_list.insert(txn_list[i].begin(), txn_list[i].end());
     }
-    
+   
+    // spawn recorder thread for redoing operations
     int nthreads = 1;
     spawned_barrier = 0;
     pthread_t recorder;
@@ -289,7 +289,7 @@ int main() {
     for (int i = 1; i <= N_THREADS; ++i) {
         spawned_barrier = 0;
         //startAndWait(&q, i);
-        startAndWait(&q, N_THREADS);
+        startAndWait(&q, i);
 #if PRINT_DEBUG
 #if STO_PROFILE_COUNTERS
         Transaction::print_stats();

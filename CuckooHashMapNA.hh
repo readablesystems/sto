@@ -214,18 +214,21 @@ public:
     //! mapped_type is the type of values.
     typedef T                 mapped_type;
 
-    
+    typedef enum {
+        sto_check = 1,
+        sto_lock = 2,
+        sto_unlock = 3,
+        sto_install = 4
+    } sto_action;
+
     // STO functions
     bool check(TransItem& item, Transaction&) override {
-        auto read_version = item.template read_value<version_type>();
         if (is_bucket(item)) {
+            auto read_version = item.template read_value<version_type>();
             auto b = unpack_bucket(item);
             return b->bucketversion.check_version(read_version);
         } else {
-            auto key = unpack_key(item);
-            internal_elem* e = NULL;
-            bool found = find_elem_ptr(key, e, false/*lock bucket*/, false/*unlock bucket*/);
-            return (found && !is_phantom(item, *e) && e->version.check_version(read_version));
+            return check_item(item);
         }
     }
 
@@ -234,10 +237,7 @@ public:
             auto b = unpack_bucket(item);
             return txn.try_lock(item, b->bucketversion);
         } else {
-            auto key = unpack_key(item);
-            internal_elem* e = NULL;
-            bool found = find_elem_ptr(key, e, true/*lock bucket*/, false/*unlock bucket*/);
-            return (found && txn.try_lock(item, e->version));
+            return lock_item(item, txn);
         }
     }
 
@@ -246,43 +246,7 @@ public:
             auto b = unpack_bucket(item);
             b->inc_version();
         } else {
-            // We know the element must exist in the map. It is locked, so no thread can 
-            // move it.
-            auto key = unpack_key(item);
-            internal_elem* e = NULL;
-            assert(find_elem_ptr(key, e, false/*lock bucket*/, false/*unlock bucket*/));
-
-            if (has_delete(item)) {
-                assert(!e->phantom());
-                if (Opacity) {
-                    // will actually erase during cleanup (so we don't lock while we run the delete)
-                    e->version.set_version(t.commit_tid() | phantom_bit);
-                } else {
-                    e->version.inc_nonopaque_version();
-                    e->version.set_version_locked(e->version.value() | phantom_bit);
-                }
-            }
-            // we don't need to set the actual value because we inserted this item, and 
-            // the value cannot have changed afterward
-            else if (has_insert(item)) {
-                assert(e->phantom());
-                if (Opacity) {
-                    e->version.set_version(t.commit_tid()); // automatically nonphantom
-                } else {
-                    e->version.inc_nonopaque_version();
-                    e->version.set_version_locked(e->version.value() & ~phantom_bit);
-                }
-            } 
-            // we had deleted and then inserted the same item
-            else {
-                e->value.write(item.template write_value<mapped_type>());
-                if (Opacity) {
-                    e->version.set_version(t.commit_tid()); // automatically nonphantom
-                } else {
-                    e->version.inc_nonopaque_version();
-                    e->version.set_version_locked(e->version.value() & ~phantom_bit);
-                }
-            }
+            assert(install_item(item, t));
         }
     }
 
@@ -291,22 +255,14 @@ public:
             auto b = unpack_bucket(item);
             b->bucketversion.unlock();
         } else {
-            auto key = unpack_key(item);
-            internal_elem* e = NULL;
-            assert(find_elem_ptr(key, e, false/*lock bucket*/, true/*unlock bucket*/));
-            e->version.unlock();
+            assert(unlock_item(item));
         }
     }
 
     void cleanup(TransItem& item, bool committed) override {
+        assert(!(has_insert(item) && has_delete(item)));
         if (((has_delete(item) && committed) || (has_insert(item) && !committed)) && !is_bucket(item)) {
-            assert(!(has_insert(item) && has_delete(item)));
-            
             auto key = unpack_key(item);
-            //internal_elem* e;
-            //assert(find_elem_ptr(key, e, false/*lock bucket*/));
-            // XXX this assertion might fail because the element may have moved?
-            //assert(e->phantom());
             auto erased = nontrans_erase(key);
             assert(erased == true);
         }
@@ -818,93 +774,122 @@ public:
     }
 
 private:
-    cuckoo_status try_read_ptr_from_bucket(const TableInfo *ti, const key_type& key,
-                                     internal_elem*& e, const size_t i) {
-        for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
-            internal_elem* elem = &ti->buckets_[i].elems[j];
-            if (!getBit(ti->buckets_[i].occupied, j)) {
-                continue;
-            }
-
-            if (eqfn(key, elem->key)) {
-                e = elem;
-                assert(e);
-                return ok;
-            }
-        }
-        return failure_key_not_found;
+    bool check_item(TransItem& item) {
+        return sto_find_and_act(item, NULL, sto_check);
+    }
+    bool lock_item(TransItem& item, Transaction& txn) {
+        return sto_find_and_act(item, &txn, sto_lock);
+    }
+    bool unlock_item(TransItem& item) {
+        return sto_find_and_act(item, NULL, sto_unlock);
+    }
+    bool install_item(TransItem& item, Transaction& txn) {
+        return sto_find_and_act(item, &txn, sto_install);
     }
 
-    bool find_elem_ptr(key_type key, internal_elem*& e, bool lock_bucket, bool unlock_bucket) {
+    // requires that the bucket containing e is locked
+    bool execute_sto_action(TransItem& item, Transaction* txn, internal_elem*& e, sto_action sa)  {
+        assert(e);
+        switch(sa) {
+            case sto_check: {
+                auto read_version = item.template read_value<version_type>();
+                return !is_phantom(item, *e) && e->version.check_version(read_version);
+            }
+            case sto_lock: {
+                return txn->try_lock(item, e->version);
+            }
+            case sto_unlock: {
+                e->version.unlock();
+                return true;
+            }
+            case sto_install: {
+                assert(!(has_insert(item) && has_delete(item)));
+
+                if (has_delete(item)) {
+                    assert(!e->phantom());
+                    if (Opacity) {
+                        // will actually erase during cleanup (so we don't lock while we run the delete)
+                        e->version.set_version(txn->commit_tid() | phantom_bit);
+                    } else {
+                        e->version.inc_nonopaque_version();
+                        e->version.set_version_locked(e->version.value() | phantom_bit);
+                    }
+                }
+                // we don't need to set the actual value because we inserted this item, and 
+                // the value cannot have changed afterward
+                else if (has_insert(item)) {
+                    assert(e->phantom());
+                    if (Opacity) {
+                        e->version.set_version(txn->commit_tid()); // automatically nonphantom
+                    } else {
+                        e->version.inc_nonopaque_version();
+                        e->version.set_version_locked(e->version.value() & ~phantom_bit);
+                    }
+                } 
+                // we had deleted and then inserted the same item
+                else {
+                    e->value.write(item.template write_value<mapped_type>());
+                    if (Opacity) {
+                        e->version.set_version(txn->commit_tid()); // automatically nonphantom
+                    } else {
+                        e->version.inc_nonopaque_version();
+                        e->version.set_version_locked(e->version.value() & ~phantom_bit);
+                    }
+                }
+                return true;
+            }
+            default: return false;
+        }
+    }
+
+    bool sto_find_and_act(TransItem& item, Transaction* txn, sto_action sa) {
+        auto key = unpack_key(item);
         size_t hv, i1, i2;
         auto ti = table_info.load();
+        bool ret;
+        internal_elem* e = NULL;
         hv = hashed_key(key);
         i1 = index_hash(ti, hv);
       
         // lock only if we don't already have the bucket locked
-        bool i1_was_locked = ti->buckets_[i1].lock.is_locked_here();
-        if (!i1_was_locked) {
-            ti->buckets_[i1].lock.lock();
-        }
-
+        lock( ti, i1 );
         auto res1 = try_read_ptr_from_bucket(ti, key, e, i1);
         if (res1 == ok || !hasOverflow(ti, i1)) {
             // we found the item
             if (res1 == ok) {
                 assert(e != NULL);
-                // we want to truly unlock this bucket
-                if (unlock_bucket) {
-                    ti->buckets_[i1].lock.unlock();
-                }
-                // we don't want to lock the bucket if it wasn't already
-                if (!lock_bucket && !i1_was_locked) {
-                    ti->buckets_[i1].lock.unlock();
-                }
-                // else we want to leave the bucket locked
-                return true;
+                ret = execute_sto_action(item, txn, e, sa);
+                unlock(ti, i1);
+                return ret;
             } 
             // we failed to find the item in the first bucket and there was no overflow
-            else goto failed_to_find;
+            else {
+                unlock( ti, i1 );
+                return false;
+            }
         } else { // we need to check the other bucket.
             i2 = alt_index(ti, hv, index_hash(ti, hv));
-            bool i2_was_locked = ti->buckets_[i2].lock.is_locked_here();
-            // if we already have it locked or the bucket is unlocked and we can lock it,
-            // then continue!
-            if (i2_was_locked || (!i2_was_locked && ti->buckets_[i2].lock.try_lock())) {
+            if (try_lock( ti, i2 )) {
                 auto res2 = try_read_ptr_from_bucket(ti, key, e, i2);
                 // we found the item
                 if (res2 == ok) {
                     assert(e != NULL);
-                    // we want to truly unlock this bucket.
-                    if (unlock_bucket) {
-                        ti->buckets_[i2].lock.unlock();
-                    }
-                    // we don't want to lock the bucket if it wasn't already
-                    if (!lock_bucket && !i2_was_locked) {
-                        ti->buckets_[i2].lock.unlock();
-                    }
-                    // else we want to leave the bucket locked
-                    // keep i1 how it was before
-                    if (!i1_was_locked) {
-                        ti->buckets_[i1].lock.unlock();
-                    }
-                    return true;
-                } 
+                    ret = execute_sto_action(item, txn, e, sa);
+                    unlock_two(ti, i1, i2);
+                    return ret;
+                }
                 // we failed to find the item in the second bucket
                 else {
-                    if (!i2_was_locked) ti->buckets_[i2].lock.unlock();
-                    goto failed_to_find;
+                    unlock_two( ti, i1, i2 );
+                    return false;
                 }
             }
-            // bucket was locked by someone else! goto fail
-            else goto failed_to_lock;
+            // i2 bucket was locked by someone else
+            // XXX we're not spinning on the locks; we'll just fail instead of unlocking 
+            // i1 and then trying to lock both.
+            unlock( ti, i1 );
+            return false;
         }
-
-failed_to_lock:
-failed_to_find:
-        assert(!e);
-        if (!i1_was_locked) ti->buckets_[i1].lock.unlock();
-        return false; 
     }
 
     /* find_one searches a specific table instance for the value corresponding to a given hash value 
@@ -1746,6 +1731,24 @@ failed_to_find:
             }
 
             if (eqfn(key, elem.key)) {
+                e = elem;
+                return ok;
+            }
+        }
+        return failure_key_not_found;
+    } 
+
+    /* try_read_from-bucket will search the bucket for the given key
+     * and store the associated value if it finds it. */
+    cuckoo_status try_read_ptr_from_bucket(const TableInfo *ti, const key_type& key,
+                                     internal_elem*& e, const size_t i) {
+        for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
+            internal_elem* elem = &ti->buckets_[i].elems[j];
+            if (!getBit(ti->buckets_[i].occupied, j)) {
+                continue;
+            }
+
+            if (eqfn(key, elem->key)) {
                 e = elem;
                 return ok;
             }
