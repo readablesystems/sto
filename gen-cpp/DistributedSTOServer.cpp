@@ -21,7 +21,7 @@ class DistributedSTOHandler : virtual public DistributedSTOIf {
   }
 
   void read(std::string& _return, const int64_t objid) {
-    // Your implementation goes here
+    
     printf("read\n");
   }
 
