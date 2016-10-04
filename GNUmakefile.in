@@ -12,6 +12,15 @@ LIBOBJS = @LIBOBJS@
 LDFLAGS = @LDFLAGS@
 MASSTREEDIR = @MASSTREEDIR@
 
+DISTRIBUTEDSTO_SRC := DistributedSTO.cpp DistributedSTO_constants.cpp DistributedSTO_types.cpp
+DISTRIBUTEDSTO_OBJ := $(patsubst %.cpp,%.o, $(DISTRIBUTEDSTO_SRC))
+
+THRIFT_DIR := /usr/local/include/thrift
+BOOST_DIR := /usr/local/include
+
+INC := -I$(THRIFT_DIR) -I$(BOOST_DIR)
+
+
 # if CXXFLAGS changes, rebuild
 ifndef CXXFLAGS
 CXXFLAGS :=
@@ -66,7 +75,7 @@ ifeq ($(PROFILE),1)
 OPTFLAGS += -g -pg -fno-inline
 endif
 
-PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter $(UNIT_PROGRAMS)
+PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter DistributedSTOHandler $(UNIT_PROGRAMS)
 UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric unit-rcu unit-tvector unit-tvector-nopred
 
 all: $(PROGRAMS)
@@ -85,6 +94,8 @@ check: unit
 %.S: %.o
 	objdump -S $< > $@
 
+%.o: %.cpp
+	$(CXX) -Wall -DHAVE_INTTYPES_H -DHAVE_NETINET_IN_H $(INC) -c $< -o $@
 
 MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 	$(MASSTREEDIR)/misc.o \
@@ -174,6 +185,9 @@ predicates: predicates.o $(STO_DEPS)
 
 hashtable_nostm: hashtable_nostm.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+DistributedSTOHandler: DistributedSTOHandler.o $(DISTRIBUTEDSTO_OBJ)
+	$(CXX) $^ -o $@ -L/usr/local/lib -lthrift 
 
 $(MASSTREE_OBJS): masstree ;
 
