@@ -655,7 +655,14 @@ private:
 
 
 class Sto {
+private:
+
+    //DistributedSTOServer server;
+    //DistributedSTOClient client;
+
 public:
+    //static void startDistributedSTO(int numOfMachines);
+
     static Transaction* transaction() {
         if (!TThread::txn)
             TThread::txn = new Transaction(false);

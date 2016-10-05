@@ -14,19 +14,31 @@ using namespace ::apache::thrift::server;
 
 using boost::shared_ptr;
 
-class DistributedSTOHandler : virtual public DistributedSTOIf {
+class DistributedSTOServer : virtual public DistributedSTOIf {
+ private:
+  TSimpleServer *server; 
+
  public:
-  DistributedSTOHandler() {
-    // Your initialization goes here
+  DistributedSTOServer(int port) {
+    shared_ptr<DistributedSTOServer> handler(this);
+    shared_ptr<TProcessor> processor(new DistributedSTOProcessor(handler));
+    shared_ptr<TServerTransport> serverTransport(new TServerSocket(port));
+    shared_ptr<TTransportFactory> transportFactory(new TBufferedTransportFactory());
+    shared_ptr<TProtocolFactory> protocolFactory(new TBinaryProtocolFactory());
+    server = new TSimpleServer(processor, serverTransport, transportFactory, protocolFactory); 
+  }
+
+  void serve() {
+    server->serve();
   }
 
   void read(std::string& _return, const int64_t objid) {
-    
+    // Your implementation goes here 
     printf("read\n");
   }
 
   bool lock(const int64_t tuid, const std::vector<int64_t> & objids) {
-    // Your implementation goes here
+    
     printf("lock\n");
   }
 
@@ -46,17 +58,3 @@ class DistributedSTOHandler : virtual public DistributedSTOIf {
   }
 
 };
-
-int main(int argc, char **argv) {
-  int port = 9090;
-  shared_ptr<DistributedSTOHandler> handler(new DistributedSTOHandler());
-  shared_ptr<TProcessor> processor(new DistributedSTOProcessor(handler));
-  shared_ptr<TServerTransport> serverTransport(new TServerSocket(port));
-  shared_ptr<TTransportFactory> transportFactory(new TBufferedTransportFactory());
-  shared_ptr<TProtocolFactory> protocolFactory(new TBinaryProtocolFactory());
-
-  TSimpleServer server(processor, serverTransport, transportFactory, protocolFactory);
-  server.serve();
-  return 0;
-}
-

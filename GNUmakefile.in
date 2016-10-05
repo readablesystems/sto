@@ -75,7 +75,7 @@ ifeq ($(PROFILE),1)
 OPTFLAGS += -g -pg -fno-inline
 endif
 
-PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter DistributedSTOHandler $(UNIT_PROGRAMS)
+PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter DistributedSTOServer DistributedSTOClient $(UNIT_PROGRAMS)
 UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric unit-rcu unit-tvector unit-tvector-nopred
 
 all: $(PROGRAMS)
@@ -186,7 +186,10 @@ predicates: predicates.o $(STO_DEPS)
 hashtable_nostm: hashtable_nostm.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-DistributedSTOHandler: DistributedSTOHandler.o $(DISTRIBUTEDSTO_OBJ)
+DistributedSTOServer: DistributedSTOServer.o $(DISTRIBUTEDSTO_OBJ)
+	$(CXX) $^ -o $@ -L/usr/local/lib -lthrift 
+
+DistributedSTOClient: DistributedSTOClient.o $(DISTRIBUTEDSTO_OBJ)
 	$(CXX) $^ -o $@ -L/usr/local/lib -lthrift 
 
 $(MASSTREE_OBJS): masstree ;
