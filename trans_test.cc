@@ -8,10 +8,10 @@
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define N_THREADS 5 // Number of concurrent threads
+#define N_THREADS 12 // Number of concurrent threads
 #define TOTAL_TRANS 10000000
 #define NTRANS TOTAL_TRANS/N_THREADS // Number of transactions each thread should run.
-#define MAX_OPS 5 // Maximum number of operations in a transaction.
+#define MAX_OPS 1 // Maximum number of operations in a transaction.
 
 #define PRIORITY_QUEUE 0
 #define HASHTABLE 1
@@ -289,7 +289,7 @@ int main() {
     for (int i = 1; i <= N_THREADS; ++i) {
         spawned_barrier = 0;
         //startAndWait(&q, i);
-        startAndWait(&q, i);
+        startAndWait(&q, N_THREADS);
 #if PRINT_DEBUG
 #if STO_PROFILE_COUNTERS
         Transaction::print_stats();

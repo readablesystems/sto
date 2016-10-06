@@ -246,7 +246,7 @@ public:
             auto b = unpack_bucket(item);
             b->inc_version();
         } else {
-            assert(install_item(item, t));
+            install_item(item, t);
         }
     }
 
@@ -255,16 +255,16 @@ public:
             auto b = unpack_bucket(item);
             b->bucketversion.unlock();
         } else {
-            assert(unlock_item(item));
+            unlock_item(item);
         }
     }
 
     void cleanup(TransItem& item, bool committed) override {
         assert(!(has_insert(item) && has_delete(item)));
-        if (((has_delete(item) && committed) || (has_insert(item) && !committed)) && !is_bucket(item)) {
+        if (!is_bucket(item) && ((committed && has_delete(item)) || (has_insert(item) && !committed))) {
             auto key = unpack_key(item);
             auto erased = nontrans_erase(key);
-            assert(erased == true);
+            assert(erased);
         }
     }
 
@@ -336,6 +336,7 @@ private:
 #endif
 
         void setKV(size_t pos, internal_elem elem) {
+            assert(!getBit(occupied, pos));
             setBit(occupied, pos);
             elems[pos] = elem;
         }
@@ -344,6 +345,7 @@ private:
         // free it (used for transfers)
         void eraseKV(size_t pos) {
             resetBit(occupied, pos);
+            assert(!elems[pos].version.is_locked_here());
             (elems + pos)->~internal_elem();
         }
 
@@ -354,7 +356,6 @@ private:
                 }
             }
             overflow = 0;
-            //hasmigrated = false;
         }
 
         // should lock around calling this
@@ -362,7 +363,6 @@ private:
 #if LIBCUCKOO_DEBUG
             assert(bucketversion.is_locked_here());
 #endif
-            // XXX opacity?
             bucketversion.inc_nonopaque_version();
         }
         void lock_and_inc_version() {
@@ -409,10 +409,6 @@ private:
         // per-core counters for the number of inserts and deletes
         std::vector<cacheint> num_inserts;
         std::vector<cacheint> num_deletes;
-        //std::vector<cacheint> num_migrated_buckets;
-
-        // counter for the position of the next bucket to try and migrate
-        //cacheint migrate_bucket_ind;
 
         /* The constructor allocates the memory for the table. For
          * buckets, it uses the bucket_allocator, so that we can free
@@ -433,13 +429,11 @@ private:
             
             num_inserts.resize(kNumCores);
             num_deletes.resize(kNumCores);
-            //num_migrated_buckets.resize(kNumCores);
 
             for (size_t i = 0; i < kNumCores; i++) {
                 num_inserts[i].num.store(0);
                 num_deletes[i].num.store(0);
             }
-            //migrate_bucket_ind.num.store(0); 
         }
 
         ~TableInfo() {
@@ -483,19 +477,6 @@ private:
     static bool is_phantom(const TransItem& item, internal_elem& e) {
         return !has_insert(item) && e.phantom();
     }
-
-    /*
-    static bool is_bucket(const TransItem& item) {
-        return is_bucket(item.key<void*>());
-    }
-    static bool is_bucket(void* key) {
-        return (uintptr_t)key & bucket_bit;
-    }
-    static unsigned bucket_key(const TransItem& item) {
-        assert(is_bucket(item));
-        return (uintptr_t) item.key<void*>() >> 1;
-    }
-    */
 
     static bool is_bucket(const TransItem& item) {
         return item.key<packed_type>().bucket_bit;
@@ -720,7 +701,6 @@ public:
                 goto RETRY;
             }
 
-            //migrate_something(ti_old, ti_new, i1_o, i2_o );
             res = insert_one(ti_new, hv, key, val, i1_n, i2_n);
             if (res == failure_key_phantom) {
                 unset_hazard_pointers();
@@ -768,7 +748,7 @@ public:
                 Sto::abort_because("phantom in erase"); assert(0);
             }
         }
-       
+      
         unset_hazard_pointers();
         return (res == ok);
     }
@@ -780,15 +760,16 @@ private:
     bool lock_item(TransItem& item, Transaction& txn) {
         return sto_find_and_act(item, &txn, sto_lock);
     }
-    bool unlock_item(TransItem& item) {
-        return sto_find_and_act(item, NULL, sto_unlock);
+    void unlock_item(TransItem& item) {
+        assert(sto_find_and_act(item, NULL, sto_unlock));
     }
-    bool install_item(TransItem& item, Transaction& txn) {
-        return sto_find_and_act(item, &txn, sto_install);
+    void install_item(TransItem& item, Transaction& txn) {
+        assert(sto_find_and_act(item, &txn, sto_install));
     }
 
     // requires that the bucket containing e is locked
-    bool execute_sto_action(TransItem& item, Transaction* txn, internal_elem*& e, sto_action sa)  {
+    bool execute_sto_action(TransItem& item, Transaction* txn, 
+            internal_elem*& e, sto_action sa)  {
         assert(e);
         switch(sa) {
             case sto_check: {
@@ -808,7 +789,6 @@ private:
                 if (has_delete(item)) {
                     assert(!e->phantom());
                     if (Opacity) {
-                        // will actually erase during cleanup (so we don't lock while we run the delete)
                         e->version.set_version(txn->commit_tid() | phantom_bit);
                     } else {
                         e->version.inc_nonopaque_version();
@@ -838,7 +818,7 @@ private:
                 }
                 return true;
             }
-            default: return false;
+            default: assert(0); return false;
         }
     }
 
@@ -850,46 +830,37 @@ private:
         internal_elem* e = NULL;
         hv = hashed_key(key);
         i1 = index_hash(ti, hv);
+        i2 = alt_index(ti, hv, index_hash(ti, hv));
       
-        // lock only if we don't already have the bucket locked
-        lock( ti, i1 );
+        lock_two(ti, i1, i2);
         auto res1 = try_read_ptr_from_bucket(ti, key, e, i1);
         if (res1 == ok || !hasOverflow(ti, i1)) {
             // we found the item
             if (res1 == ok) {
                 assert(e != NULL);
                 ret = execute_sto_action(item, txn, e, sa);
-                unlock(ti, i1);
+                unlock_two(ti, i1, i2);
                 return ret;
             } 
-            // we failed to find the item in the first bucket and there was no overflow
-            else {
-                unlock( ti, i1 );
+            // we didn't find the item and there was no overflow
+            unlock_two(ti, i1, i2);
+            return false;
+        // we failed to find the item in the first bucket, but there was overflow
+        } else {
+            // we have both buckets locked 
+            auto res2 = try_read_ptr_from_bucket(ti, key, e, i2);
+            // we found the item
+            if (res2 == ok) {
+                assert(e != NULL);
+                ret = execute_sto_action(item, txn, e, sa);
+                unlock_two(ti, i1, i2);
+                return ret;
+            } else { // we failed to find the item in the second bucket
+                unlock_two( ti, i1, i2 );
                 return false;
             }
-        } else { // we need to check the other bucket.
-            i2 = alt_index(ti, hv, index_hash(ti, hv));
-            if (try_lock( ti, i2 )) {
-                auto res2 = try_read_ptr_from_bucket(ti, key, e, i2);
-                // we found the item
-                if (res2 == ok) {
-                    assert(e != NULL);
-                    ret = execute_sto_action(item, txn, e, sa);
-                    unlock_two(ti, i1, i2);
-                    return ret;
-                }
-                // we failed to find the item in the second bucket
-                else {
-                    unlock_two( ti, i1, i2 );
-                    return false;
-                }
-            }
-            // i2 bucket was locked by someone else
-            // XXX we're not spinning on the locks; we'll just fail instead of unlocking 
-            // i1 and then trying to lock both.
-            unlock( ti, i1 );
-            return false;
         }
+        assert(0);
     }
 
     /* find_one searches a specific table instance for the value corresponding to a given hash value 
@@ -1041,6 +1012,8 @@ private:
         }
 
         // we are unlucky, so let's perform cuckoo hashing
+        // XXX just to make sure that cuckoohashing isn't messing with things
+        assert(0);
         size_t insert_bucket = 0;
         size_t insert_slot = 0;
         mapped_type oldval;
@@ -1102,35 +1075,37 @@ private:
         lock( ti, i1 );
         res1 = try_del_from_bucket(ti, key, i1, vto, transactional);
         // if we found the element there, or nothing ever was added to second bucket, then we're done
-        if (res1 == ok || /*res1 == failure_key_moved || */!hasOverflow(ti, i1) || res1 == failure_key_phantom ) {
+        if (res1 == ok || hasOverflow(ti, i1) || res1 == failure_key_phantom ) {
             auto bv = ti->buckets_[i1].bucketversion;
             unlock( ti, i1 );
             if (transactional && res1 == failure_key_not_found) {
                 Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(bv);
+            } else if (transactional) {
+                if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
             }
-            if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
-
             return res1;
         } else {
             if( !try_lock(ti, i2) ) {
                 unlock(ti, i1);
                 lock_two(ti, i1, i2);
                 res1 = try_del_from_bucket(ti, key, i1, vto, transactional);
-                if( res1 == ok || /*res1 == failure_key_moved || */res1 == failure_key_phantom ) {
+                if( res1 == ok || res1 == failure_key_phantom ) {
                     unlock_two(ti, i1, i2);
-                    if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
+                    if (transactional)
+                        if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
                     return res1;
                 }
             }
         }
 
         res2 = try_del_from_bucket(ti, key, i2, vto, transactional);
-        if (res2 == ok || /*res2 == failure_key_moved || */res2 == failure_key_phantom) {
+        if (res2 == ok || res2 == failure_key_phantom) {
             if (res2 == ok && !transactional) {
                 ti->buckets_[i1].overflow--;
             }
             unlock_two(ti, i1, i2);
-            if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
+            if (transactional) 
+                if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
             return res2;
         }
 
@@ -1139,8 +1114,8 @@ private:
         auto bv1 = ti->buckets_[i1].bucketversion;
         auto bv2 = ti->buckets_[i2].bucketversion;
         unlock_two(ti, i1, i2);
-        if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
         if (transactional) {
+            if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
             // add a read of both buckets so that we know no items have been added @ commit
             Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(bv1);
             Sto::item(this, pack_bucket(&ti->buckets_[i2])).observe(bv2);
@@ -1324,9 +1299,6 @@ private:
     //counter for number of threads
     static std::atomic<size_t> numThreads;
 
-    // the % of moved buckets above which migrate_all is called
-    //static constexpr double MIGRATE_THRESHOLD = 0.8;
-
     /* hashsize returns the number of buckets corresponding to a given
      * hashpower. */
     static inline size_t hashsize(const size_t hashpower) {
@@ -1464,9 +1436,6 @@ private:
                 // are empty, and, if so, return that b_slot. We lock
                 // the bucket so that no changes occur while
                 // iterating.
-                //if (ti->buckets_[y.bucket].hasmigrated) {
-                //   return b_slot(0, 0, -2);
-                //}
                 for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
                     if (!getBit(ti->buckets_[y.bucket].occupied, j)) {
                         y.pathcode = y.pathcode * SLOT_PER_BUCKET + j;
@@ -1514,9 +1483,6 @@ private:
         internal_elem elem;
         if (x.pathcode == 0) {
             curr->bucket = i1;
-            //if (ti->buckets_[curr->bucket].hasmigrated) {
-            //   return -2;
-            //}
             elem = ti->buckets_[curr->bucket].elems[curr->slot];
             if (!getBit(ti->buckets_[curr->bucket].occupied, curr->slot)) {
                 // We can terminate here
@@ -1526,9 +1492,6 @@ private:
         } else {
             assert(x.pathcode == 1);
             curr->bucket = i2;
-            //if (ti->buckets_[curr->bucket].hasmigrated) {
-            //   return -2;
-            //}
             elem = ti->buckets_[curr->bucket].elems[curr->slot];
             if (!getBit(ti->buckets_[curr->bucket].occupied, curr->slot)) {
                 // We can terminate here
@@ -1544,9 +1507,6 @@ private:
             // We get the bucket that this slot is on by computing the
             // alternate index of the previous bucket
             curr->bucket = alt_index(ti, prevhv, prev->bucket);
-            //if (ti->buckets_[curr->bucket].hasmigrated) {
-            //    return -2;
-            //}
             elem = ti->buckets_[curr->bucket].elems[curr->slot];
             if (!getBit(ti->buckets_[curr->bucket].occupied, curr->slot)) {
                 // We can terminate here
@@ -1580,10 +1540,6 @@ private:
             const size_t bucket = cuckoo_path[0].bucket;
             assert(bucket == i1 || bucket == i2);
             lock_two(ti, i1, i2);
-            //if (ti->buckets_[i1].hasmigrated || ti->buckets_[i2].hasmigrated) {
-            //  unlock_two(ti, i1, i2);
-            //  return failure_key_moved;
-            //}
             elem = ti->buckets_[bucket].elems[cuckoo_path[0].slot];
             if (!getBit(ti->buckets_[bucket].occupied, cuckoo_path[0].slot)) {
                 return ok;
@@ -1720,7 +1676,7 @@ private:
         return failure_function_not_supported;
     }
     
-    /* try_read_from-bucket will search the bucket for the given key
+    /* try_read_from_bucket will search the bucket for the given key
      * and store the associated value if it finds it. */
     cuckoo_status try_read_from_bucket(const TableInfo *ti, const key_type& key,
                                      internal_elem& e, const size_t i) {
@@ -1738,8 +1694,11 @@ private:
         return failure_key_not_found;
     } 
 
-    /* try_read_from-bucket will search the bucket for the given key
-     * and store the associated value if it finds it. */
+    /* try_read_ptr_from_bucket will search the bucket for the given key
+     * and store the associated value if it finds it. 
+     * the bucket is assumed to be locked during this function call, so that
+     * the associated element memory will not be modified
+     * */
     cuckoo_status try_read_ptr_from_bucket(const TableInfo *ti, const key_type& key,
                                      internal_elem*& e, const size_t i) {
         for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
@@ -1787,9 +1746,6 @@ private:
             if (getBit(ti->buckets_[i].occupied, k)) {
                 auto ev = elem_in_table.version;
                 if (eqfn(key, elem_in_table.key)) {
-                    // we only want to keep track clashes in the table if we're actually trying
-                    // to insert a new item (not migrate it over)
-                    // this should never occur if it is a migration...
                     auto res = sto_try_add_with_existing_key(val, elem_in_table, ev, vto);
                     assert(res == ok_delete_then_insert 
                             || res == failure_key_phantom 
@@ -1853,9 +1809,6 @@ private:
     cuckoo_status try_del_from_bucket(TableInfo *ti, const key_type &key, const size_t i,
                                     version_to_observe& vto, bool transactional) {
         vto.observe_me = false;
-        //if (ti->buckets_[i].hasmigrated) {
-        //   return failure_key_moved;
-        //}
 
         for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
             internal_elem elem = ti->buckets_[i].elems[j];
@@ -1907,12 +1860,15 @@ private:
                     }
                 // non-transactional, so actually delete
                 } else { 
+                    auto item = Sto::item(this, pack_key(elem.key));
+                    assert(!is_phantom(item, elem) || has_delete(item));
                     ti->buckets_[i].eraseKV(j);
                     ti->num_deletes[counterid].num.fetch_add(1, std::memory_order_relaxed);
                 }
                 return ok;
             }
         }
+        assert(transactional);
         return failure_key_not_found;
     }
 
@@ -1958,7 +1914,6 @@ private:
             ti->num_inserts[i].num.store(0);
             ti->num_deletes[i].num.store(0);
         }
-        //ti->migrate_bucket_ind.num.store(0);
 
         return ok;
     }

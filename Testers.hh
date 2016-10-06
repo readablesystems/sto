@@ -16,7 +16,7 @@
 #include "Queue2.hh"
 #include "Queue.hh"
 
-#define MAX_VALUE 10000 // Max value of integers used in data structures
+#define MAX_VALUE 100 // Max value of integers used in data structures
 #define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements
 
 struct Rand {

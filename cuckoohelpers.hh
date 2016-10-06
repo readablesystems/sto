@@ -1,6 +1,6 @@
 #pragma once
 
-#define LIBCUCKOO_DEBUG 1
+#define LIBCUCKOO_DEBUG 1 
 #if LIBCUCKOO_DEBUG
 #  define LIBCUCKOO_DBG(fmt, args...)  fprintf(stderr, "\x1b[32m""[libcuckoo:%s:%d:%lu] " fmt"" "\x1b[0m",__FILE__,__LINE__, (unsigned long)pthread_self(), ##args)
 #else
