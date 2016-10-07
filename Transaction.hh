@@ -165,6 +165,7 @@ struct txp_counters {
 
 
 #include "Interface.hh"
+#include "TicTocVersions.hh"
 #include "TransItem.hh"
 
 void reportPerf();
@@ -495,14 +496,14 @@ public:
     // These function will eventually help us track the commit TID when we
     // have no opacity, or for GV7 opacity.
     bool try_lock(TransItem& item, TicTocVersion& vers) {
-        return try_lock(item, const_cast<RawTid&>(vers.wts_value()));
+        return try_lock(item, vers.get_lockable());
     }
 /*
     bool try_lock(TransItem& item, TNonopaqueVersion& vers) {
         return try_lock(item, const_cast<TransactionTid::type&>(vers.value()));
     }
 */
-    bool try_lock(TransItem& item, RawTid& ts) {
+    bool try_lock(TransItem& item, LockableTid& ts) {
 #if STO_SORT_WRITESET
         (void) item;
         TicTocTid::lock(ts, threadid_);
@@ -512,7 +513,7 @@ public:
         // have no opacity, or for GV7 opacity.
         unsigned n = 0;
         while (1) {
-            if (TicTocTid::try_lock(ts, threadid_))
+            if (ts.try_lock(threadid_))
                 return true;
             ++n;
 # if STO_SPIN_EXPBACKOFF
@@ -892,7 +893,7 @@ inline TransProxy& TransProxy::add_read_opaque(T rdata) {
 inline TransProxy& TransProxy::observe(TicTocVersion version, bool add_observation) {
     assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_))
-        t()->abort_because(item(), "locked", const_cast<RawTid&>(version.wts_value()).value());
+        t()->abort_because(item(), "locked", version.get_lockable().t_);
     //XXX t()->check_opacity(item(), version.wts_value());
     if (add_observation && !has_observation()) {
         item().__or_flags(TransItem::observe_bit);

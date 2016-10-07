@@ -4,6 +4,7 @@
 #include <string.h>
 #include <assert.h>
 #include "Interface.hh"
+#include "TicTocVersions.hh"
 #include "Packer.hh"
 #include "compiler.hh"
 
@@ -90,7 +91,7 @@ class TransItem {
     }
     bool check_timestamps(TicTocVersion& tuple_ts, TicTocTid::type commit_ts) const {
         assert(has_observation());
-        return tuple_ts.validate_timestamps(otss_.wts_value(), otss_.rts_value(), commit_ts);
+        return tuple_ts.validate_timestamps(otss_, commit_ts);
     }
     /*
     bool check_version(TNonopaqueVersion v) const {
