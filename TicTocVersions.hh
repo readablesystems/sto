@@ -200,12 +200,47 @@ public:
         return t_ != rhs.t_;
     }
 
-    type wts_value() const;
-    type rts_value() const;
+    type wts_value() const {
+        return t_ >> wts_shift;
+    }
+    type rts_value() const {
+        type delta = (t_ & delta_mask) >> delta_shift;
+        return wts_value() + delta;
+    }
 
-    void set_timestamps(type commit_ts, type flags);
-    void set_timestamps_unlock(type commit_ts, type flags);
-    bool validate_timestamps(CompoundTid read_tss, type commit_ts);
+    void set_timestamps(type commit_ts, type flags) {
+        assert(is_locked_here());
+        commit_ts = (commit_ts << wts_shift) | lock_bit | TThread::id();
+        release_fence();
+        t_ = commit_ts | flags;
+    }
+    void set_timestamps_unlock(type commit_ts, type flags) {
+        commit_ts <<= wts_shift;
+        release_fence();
+        t_ = commit_ts | flags;
+    }
+    bool validate_timestamps(CompoundTid read_tss, type commit_ts) {
+        while (1) {
+            type v = t_;
+            acquire_fence();
+            CompoundTid ct(v);
+            if (ct.wts_value() != read_tss.wts_value() ||
+                ((ct.rts_value() <= commit_ts) && is_locked_elsewhere()))
+                return false;
+            if (ct.rts_value() <= commit_ts) {
+                type vv = v;
+                type delta = commit_ts - ct.wts_value();
+                type shift = delta - (delta & 0xff);
+                vv += (shift << wts_shift);
+                vv &= ~delta_mask;
+                vv |= (delta & 0xff << delta_shift);
+                if (bool_cmpxchg(&t_, v, vv))
+                    return true;
+            } else {
+                 return true;
+            }
+        }
+    }
 };
 
 typedef LockableTid TicTocTid;
@@ -216,14 +251,14 @@ public:
     static constexpr type user_bit = LockableTid::user_bit;
 
     // constructors
-    TicTocVersion();
-    TicTocVersion(const TicTocVersion& rhs);
-    TicTocVersion(type ts);
+    inline TicTocVersion();
+    inline TicTocVersion(const TicTocVersion& rhs);
+    inline TicTocVersion(type ts);
 
     // operators
-    bool operator==(const TicTocVersion& x) const;
-    bool operator!=(const TicTocVersion& x) const;
-    TicTocVersion& operator=(const TicTocVersion& rhs);
+    inline bool operator==(const TicTocVersion& x) const;
+    inline bool operator!=(const TicTocVersion& x) const;
+    inline TicTocVersion& operator=(const TicTocVersion& rhs);
 
     inline type snapshot(const TransItem& item, const Transaction& txn);
     inline type snapshot(TransProxy& item);
@@ -232,13 +267,13 @@ public:
     inline const LockableTid& get_lockable() const;
 
     // locking
-    bool is_locked() {
+    bool is_locked() const {
         return get_lockable().is_locked();
     }
-    bool is_locked_here() {
+    bool is_locked_here() const {
         return get_lockable().is_locked_here();
     }
-    bool is_locked_here(int here) {
+    bool is_locked_here(int here) const {
         return get_lockable().is_locked_here(here);
     }
     bool is_locked_elsewhere() const {

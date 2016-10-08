@@ -586,7 +586,7 @@ public:
                         it->observed_timestamps().write_timestamp());
             }
         }
-        return commit_ts << TicTocTid::ts_shift;
+        return commit_ts;
     }
 
     tid_type commit_tid() const {
@@ -799,7 +799,7 @@ public:
 
     static TicTocTid::type initialized_tid() {
         // XXX: we might want a nonopaque_bit in here too.
-        return TicTocTid::increment_value;
+        return TicTocTid::lockable_mask + 1;
     }
 };
 
