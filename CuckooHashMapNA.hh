@@ -261,10 +261,12 @@ public:
 
     void cleanup(TransItem& item, bool committed) override {
         assert(!(has_insert(item) && has_delete(item)));
-        if (!is_bucket(item) && ((committed && has_delete(item)) || (has_insert(item) && !committed))) {
+        if (!is_bucket(item) && (has_insert(item) && !committed)) {
             auto key = unpack_key(item);
-            auto erased = nontrans_erase(key);
-            assert(erased);
+            // cleanup_erase may or may not succeed---someone may have the item locked
+            // if so, we need to retry
+            // XXX
+            cleanup_erase(key);
         }
     }
 
@@ -344,8 +346,9 @@ private:
         // sets the value in the bucket to NULL, but doesn't actually
         // free it (used for transfers)
         void eraseKV(size_t pos) {
+            assert(getBit(occupied, pos));
             resetBit(occupied, pos);
-            assert(!elems[pos].version.is_locked_here());
+            elems[pos].key = 0;
             (elems + pos)->~internal_elem();
         }
 
@@ -725,7 +728,7 @@ public:
         return erase_helper(key, true/*transactional*/);
     }
 
-    bool nontrans_erase(const key_type& key) {
+    bool cleanup_erase(const key_type& key) {
         return erase_helper(key, false/*transactional*/);
     }
 
@@ -738,15 +741,10 @@ public:
         cuckoo_status res;
         snapshot_both_get_buckets(ti_old, ti_new, hv, i1_o, i2_o, i1_n, i2_n);
 
-        if (ti_new != nullptr) {
-            assert(0);
-            res = failure_key_phantom;
-        } else {
-            res = delete_one(ti_old, hv, key, i1_o, i2_o, transactional);
-            if (res == failure_key_phantom) {
-                unset_hazard_pointers();
-                Sto::abort_because("phantom in erase"); assert(0);
-            }
+        res = delete_one(ti_old, hv, key, i1_o, i2_o, transactional);
+        if (res == failure_key_phantom) {
+            unset_hazard_pointers();
+            Sto::abort_because("phantom in erase"); assert(0);
         }
       
         unset_hazard_pointers();
@@ -755,45 +753,55 @@ public:
 
 private:
     bool check_item(TransItem& item) {
-        return sto_find_and_act(item, NULL, sto_check);
+        return sto_find_and_act(item, NULL, sto_check) > 0;
     }
     bool lock_item(TransItem& item, Transaction& txn) {
-        return sto_find_and_act(item, &txn, sto_lock);
+        return sto_find_and_act(item, &txn, sto_lock) > 0;
     }
     void unlock_item(TransItem& item) {
-        assert(sto_find_and_act(item, NULL, sto_unlock));
+      int last = sto_find_and_act(item, NULL, sto_unlock);
+      if (last <= 0) fprintf(stderr, "%d\n", last);
+      assert(last > 0);
     }
     void install_item(TransItem& item, Transaction& txn) {
-        assert(sto_find_and_act(item, &txn, sto_install));
+        assert(sto_find_and_act(item, &txn, sto_install) > 0);
     }
 
     // requires that the bucket containing e is locked
     bool execute_sto_action(TransItem& item, Transaction* txn, 
-            internal_elem*& e, sto_action sa)  {
+            internal_elem*& e, sto_action sa,
+            TableInfo*& ti, size_t bi, size_t ei)  {
         assert(e);
         switch(sa) {
             case sto_check: {
                 auto read_version = item.template read_value<version_type>();
+                // XXX
+                if (is_phantom(item, *e)) {
+                    item.clear_needs_unlock();
+                }
                 return !is_phantom(item, *e) && e->version.check_version(read_version);
             }
             case sto_lock: {
                 return txn->try_lock(item, e->version);
             }
             case sto_unlock: {
-                e->version.unlock();
+                // it could be the case that someone inserted after the phantom item
+                // we previously locked was removed 
+                if (e->version.is_locked_here()) {
+                    e->version.unlock();
+                }
                 return true;
             }
             case sto_install: {
                 assert(!(has_insert(item) && has_delete(item)));
-
+                // if another transaction has this item in its read/write set, it will not be able
+                // to find the item to lock. therefore, that transaction will abort before ever
+                // locking
                 if (has_delete(item)) {
-                    assert(!e->phantom());
-                    if (Opacity) {
-                        e->version.set_version(txn->commit_tid() | phantom_bit);
-                    } else {
-                        e->version.inc_nonopaque_version();
-                        e->version.set_version_locked(e->version.value() | phantom_bit);
-                    }
+                    //XXX
+                    ti->buckets_[bi].eraseKV(ei);
+                    // we don't need to unlock this anymore because it's gone
+                    item.clear_needs_unlock();  
                 }
                 // we don't need to set the actual value because we inserted this item, and 
                 // the value cannot have changed afterward
@@ -822,42 +830,48 @@ private:
         }
     }
 
-    bool sto_find_and_act(TransItem& item, Transaction* txn, sto_action sa) {
+    int sto_find_and_act(TransItem& item, Transaction* txn, sto_action sa) {
         auto key = unpack_key(item);
-        size_t hv, i1, i2;
+        size_t hv, i1, i2, j;
         auto ti = table_info.load();
         bool ret;
         internal_elem* e = NULL;
         hv = hashed_key(key);
         i1 = index_hash(ti, hv);
         i2 = alt_index(ti, hv, index_hash(ti, hv));
-      
+     
         lock_two(ti, i1, i2);
-        auto res1 = try_read_ptr_from_bucket(ti, key, e, i1);
+        auto res1 = try_read_ptr_from_bucket(ti, key, e, i1, j);
         if (res1 == ok || !hasOverflow(ti, i1)) {
             // we found the item
             if (res1 == ok) {
                 assert(e != NULL);
-                ret = execute_sto_action(item, txn, e, sa);
+                ret = execute_sto_action(item, txn, e, sa, ti, i1, j);
                 unlock_two(ti, i1, i2);
-                return ret;
+                return ret ? 1 : -1;
             } 
             // we didn't find the item and there was no overflow
+	    if (sa == sto_unlock) {
+	        auto& bp = ti->buckets_[i1];
+	        for (unsigned j = 0; j < SLOT_PER_BUCKET; ++j)
+                fprintf(stderr, "%d occupied %d %p\n", j, getBit(bp.occupied, j), (void*) bp.elems[j].key);
+                fprintf(stderr, "looking for %p / %p\n", (void*) key, (void*) hv);
+            }
             unlock_two(ti, i1, i2);
-            return false;
+            return -2;
         // we failed to find the item in the first bucket, but there was overflow
         } else {
             // we have both buckets locked 
-            auto res2 = try_read_ptr_from_bucket(ti, key, e, i2);
+            auto res2 = try_read_ptr_from_bucket(ti, key, e, i2, j);
             // we found the item
             if (res2 == ok) {
                 assert(e != NULL);
-                ret = execute_sto_action(item, txn, e, sa);
+                ret = execute_sto_action(item, txn, e, sa, ti, i2, j);
                 unlock_two(ti, i1, i2);
-                return ret;
+                return ret ? 2 : -3;
             } else { // we failed to find the item in the second bucket
                 unlock_two( ti, i1, i2 );
-                return false;
+                return -4;
             }
         }
         assert(0);
@@ -1012,8 +1026,6 @@ private:
         }
 
         // we are unlucky, so let's perform cuckoo hashing
-        // XXX just to make sure that cuckoohashing isn't messing with things
-        assert(0);
         size_t insert_bucket = 0;
         size_t insert_slot = 0;
         mapped_type oldval;
@@ -1040,19 +1052,7 @@ private:
             unlock_two(ti, i1, i2);
             return ok;
         }
-
-        assert(st == failure_too_slow || st == failure_table_full /*|| st == failure_key_moved*/);
-        if (st == failure_table_full) {
-            // TODO resizes not supported
-            LIBCUCKOO_DBG("hash table is full (hashpower = %zu, hash_items = %zu, load factor = %.2f), need to increase hashpower\n",
-                      ti->hashpower_, cuckoo_size(ti), cuckoo_loadfactor(ti));
-
-            assert(0);
-            //we will create a new table and set the new table pointer to it
-            if (cuckoo_expand_start(ti, ti->hashpower_+1) == failure_under_expansion) {
-                LIBCUCKOO_DBG("Somebody swapped the table pointer before I did. Anyways, it's changed!\n");
-            }
-        } else if(st == failure_too_slow) {
+        if(st == failure_too_slow) {
             LIBCUCKOO_DBG( "We were too slow, and another insert got between us!\n");
             goto RETRY;
         }
@@ -1071,7 +1071,8 @@ private:
         i2 = alt_index(ti, hv, i1);
         cuckoo_status res1, res2;
         version_to_observe vto;
-        
+       
+RETRY:
         lock( ti, i1 );
         res1 = try_del_from_bucket(ti, key, i1, vto, transactional);
         // if we found the element there, or nothing ever was added to second bucket, then we're done
@@ -1082,6 +1083,11 @@ private:
                 Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(bv);
             } else if (transactional) {
                 if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
+            // not transactional and we couldn't find/lock the key
+            // XXX this is badly named
+            // we want to try to delete again
+            } else if (res1 == failure_key_not_found) {
+                goto RETRY; 
             }
             return res1;
         } else {
@@ -1106,6 +1112,9 @@ private:
             unlock_two(ti, i1, i2);
             if (transactional) 
                 if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
+            // XXX we want to retry if this is a cleanup
+            else if (res2 == failure_key_not_found)
+                goto RETRY; 
             return res2;
         }
 
@@ -1700,7 +1709,7 @@ private:
      * the associated element memory will not be modified
      * */
     cuckoo_status try_read_ptr_from_bucket(const TableInfo *ti, const key_type& key,
-                                     internal_elem*& e, const size_t i) {
+                                     internal_elem*& e, const size_t i, size_t& k) {
         for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
             internal_elem* elem = &ti->buckets_[i].elems[j];
             if (!getBit(ti->buckets_[i].occupied, j)) {
@@ -1709,6 +1718,7 @@ private:
 
             if (eqfn(key, elem->key)) {
                 e = elem;
+                k = j;
                 return ok;
             }
         }
@@ -1809,9 +1819,8 @@ private:
     cuckoo_status try_del_from_bucket(TableInfo *ti, const key_type &key, const size_t i,
                                     version_to_observe& vto, bool transactional) {
         vto.observe_me = false;
-
         for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
-            internal_elem elem = ti->buckets_[i].elems[j];
+            internal_elem& elem = ti->buckets_[i].elems[j];
             if (!getBit(ti->buckets_[i].occupied, j)) {
                 continue;
             }
@@ -1827,7 +1836,7 @@ private:
                         // we are deleting our own insert, and haven't installed this item yet
                         // remove the element immediately
                         else if (has_insert(item)) {
-                            assert(elem.phantom());
+                            assert(elem.phantom() && !is_phantom(item, elem));
                             ti->buckets_[i].eraseKV(j);
                             ti->num_deletes[counterid].num.fetch_add(1, std::memory_order_relaxed);
                             // just unmark all attributes so the item is ignored
@@ -1862,13 +1871,22 @@ private:
                 } else { 
                     auto item = Sto::item(this, pack_key(elem.key));
                     assert(!is_phantom(item, elem) || has_delete(item));
-                    ti->buckets_[i].eraseKV(j);
-                    ti->num_deletes[counterid].num.fetch_add(1, std::memory_order_relaxed);
+                    // lock the version here so that no one can lock this elem while we're deleting
+                    // OR conversely so that we cannot delete UNTIL a transaction has unlocked the
+                    // elem
+                    // if we fail to lock the item, that means another transaction is currently
+                    // dealing with it in commit. we should try again in cleanup
+                    // XXX
+                    if (elem.version.try_lock()) {
+                        ti->buckets_[i].eraseKV(j);
+                        ti->num_deletes[counterid].num.fetch_add(1, std::memory_order_relaxed);
+                        return ok;
+                    }
+                    else return failure_key_not_found;
                 }
                 return ok;
             }
         }
-        assert(transactional);
         return failure_key_not_found;
     }
 
