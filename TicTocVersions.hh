@@ -1,7 +1,9 @@
 #pragma once
 #include "Interface.hh"
 
-#define TICTOC_IMPL_COMPOUND 1
+#ifndef TICTOC_IMPL_COMPOUND
+#define TICTOC_IMPL_COMPOUND 0
+#endif
 
 // Transaction timestamp (TID) as described in the TicToc concurrency control paper
 
@@ -150,32 +152,22 @@ public:
     }
 
     static bool validate_timestamps(RawTid& tuple_wts, RawTid& tuple_rts, RawTid read_wts, RawTid read_rts, type commit_ts) {
-        auto t_wts = tuple_wts;
-        acquire_fence();
-        auto t_rts = tuple_rts;
-        acquire_fence();
-        if (t_wts.timestamp() != read_wts.timestamp()
-            || ((t_rts.timestamp() <= commit_ts) && t_wts.is_locked_elsewhere()))
-            return false;
-        if (read_rts.timestamp() <= commit_ts) {
-            type v = std::max(t_rts.t_, commit_ts);
-            bool_cmpxchg(&tuple_rts.t_, t_rts.t_, v); // should be fine if CAS fails (?)
+        while (1) {
+            auto t_wts = tuple_wts;
+            acquire_fence();
+            auto t_rts = tuple_rts;
+            acquire_fence();
+            if (t_wts.timestamp() != read_wts.timestamp()
+                || ((t_rts.timestamp() <= commit_ts) && t_wts.is_locked_elsewhere()))
+                return false;
+            if (read_rts.timestamp() <= commit_ts) {
+                type v = std::max(t_rts.t_, commit_ts << ts_shift);
+                if (bool_cmpxchg(&tuple_rts.t_, t_rts.t_, v))
+                    return true;
+            } else {
+                return true;
+            }
         }
-        return true;
-    }
-
-    static void print(RawTid t, std::ostream& w) {
-        auto f = w.flags();
-        auto& v = t.t_;
-        w << "ts:" << std::hex << t.timestamp();
-        v &= increment_value - 1;
-        if (v & ~(user_bit - 1))
-            w << "U" << (v & ~(user_bit - 1));
-        if (v & nonopaque_bit)
-            w << "!";
-        if (v & lock_bit)
-            w << "L" << std::dec << (v & (lock_bit - 1));
-        w.flags(f);
     }
 };
 
@@ -324,8 +316,9 @@ public:
 
     friend std::ostream& operator<<(std::ostream& w, TicTocVersion v) {
         LockableTid l = v.get_lockable();
-        w << l << " w:"
-            << v.write_timestamp() << "r:" << v.read_timestamp() << std::endl;
+        w << l;
+        w << " w:" << v.write_timestamp();
+        w << "r:" << v.read_timestamp();
         return w;
     }
 

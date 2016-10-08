@@ -39,6 +39,10 @@ ifdef BOUND
 CXXFLAGS += -DSTO_SPIN_BOUND_WRITE=$(BOUND) -DSTO_SPIN_BOUND_WAIT=$(BOUND)
 endif
 
+ifdef ($(TICTOC_COMPOUND),1)
+CXXFLAGS += -DTICTOC_IMPL_COMPOUND=1
+endif
+
 # OPTFLAGS can change without rebuild
 OPTFLAGS := -W -Wall
 

@@ -519,7 +519,7 @@ public:
 # if STO_SPIN_EXPBACKOFF
             if (item.has_read() || n == STO_SPIN_BOUND_WRITE) {
 #  if STO_DEBUG_ABORTS
-                abort_version_ = vers;
+                abort_version_ = ts.t_;
 #  endif
                 return false;
             }
@@ -529,7 +529,7 @@ public:
 # else
             if (item.has_read() || n == (1 << STO_SPIN_BOUND_WRITE)) {
 #  if STO_DEBUG_ABORTS
-                abort_version_ = vers;
+                abort_version_ = ts.t_;
 #  endif
                 return false;
             }
