@@ -12,9 +12,6 @@ LIBOBJS = @LIBOBJS@
 LDFLAGS = @LDFLAGS@
 MASSTREEDIR = @MASSTREEDIR@
 
-DISTRIBUTEDSTO_SRC := DistributedSTO.cpp DistributedSTO_constants.cpp DistributedSTO_types.cpp
-DISTRIBUTEDSTO_OBJ := $(patsubst %.cpp,%.o, $(DISTRIBUTEDSTO_SRC))
-
 THRIFT_DIR := /usr/local/include/thrift
 BOOST_DIR := /usr/local/include
 
@@ -75,7 +72,7 @@ ifeq ($(PROFILE),1)
 OPTFLAGS += -g -pg -fno-inline
 endif
 
-PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter DistributedSTOServer DistributedSTOClient $(UNIT_PROGRAMS)
+PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single distributedSingle predicates ex-counter DistributedSTOServer DistributedSTOClient $(UNIT_PROGRAMS)
 UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric unit-rcu unit-tvector unit-tvector-nopred
 
 all: $(PROGRAMS)
@@ -107,6 +104,11 @@ MSTO_OBJS = $(STO_OBJS) $(MASSTREE_OBJS)
 STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
 MSTO_DEPS = $(MSTO_OBJS) $(MASSTREEDIR)/libjson.a
 
+DISTRIBUTEDSTO_SRC := DistributedSTO.cpp DistributedSTO_constants.cpp DistributedSTO_types.cpp
+DISTRIBUTEDSTO_OBJ := $(patsubst %.cpp,%.o, $(DISTRIBUTEDSTO_SRC))
+DISTRIBUTEDSTO_OBJS := $(DISTRIBUTEDSTO_OBJ) $(MSTO_OBJS)
+DISTRIBUTEDSTO_DEPS := $(DISTRIBUTEDSTO_OBJ) $(MSTO_DEPS)
+
 concurrent: concurrent.o $(MSTO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
 
@@ -122,6 +124,9 @@ concurrent-1M.o: concurrent.cc config.h $(DEPSDIR)/stamp
 
 single: single.o $(MSTO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
+
+distributedSingle: distributedSingle.o $(DISTRIBUTEDSTO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(DISTRIBUTEDSTO_DEPS) $(LDFLAGS) $(LIBS) -L/usr/local/lib -lthrift
 
 singleelems: singleelems.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
