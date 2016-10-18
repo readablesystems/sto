@@ -4,6 +4,7 @@
 #include "compiler.hh"
 #include "small_vector.hh"
 #include "TRcu.hh"
+
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -68,6 +69,8 @@
 #endif
 
 #include "config.h"
+#include "DistributedSTO.h"
+#include "DistributedSTOServer.hh"
 
 #define MAX_THREADS 32
 
@@ -656,12 +659,11 @@ private:
 
 class Sto {
 private:
-
-    //DistributedSTOServer server;
-    //DistributedSTOClient client;
+    DistributedSTOServer server;
+    DistributedSTOClient client;
 
 public:
-    //static void startDistributedSTO(int numOfMachines);
+    static void startDistributedSTO(int numOfMachines);
 
     static Transaction* transaction() {
         if (!TThread::txn)

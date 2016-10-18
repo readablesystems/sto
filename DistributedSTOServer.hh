@@ -38,13 +38,14 @@ class DistributedSTOServer : virtual public DistributedSTOIf {
   }
 
   bool lock(const int64_t tuid, const std::vector<int64_t> & objids) {
-    
     printf("lock\n");
+    return true;
   }
 
   bool check(const int64_t tuid, const std::map<int64_t, int64_t> & objid_ver_pairs) {
     // Your implementation goes here
     printf("check\n");
+    return true;
   }
 
   void install(const int64_t tuid, const int64_t tid, const std::map<int64_t, std::string> & objid_data_pairs) {

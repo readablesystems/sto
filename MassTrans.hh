@@ -644,8 +644,8 @@ protected:
     return true;
   }
 
-  template <typename NODE, typename VERSION>
-  void ensureNotFound(NODE n, VERSION v) {
+  template <typename Node, typename Version>
+  void ensureNotFound(Node n, Version v) {
     // TODO: could be more efficient to use fresh_item here, but that will also require more work for read-then-insert
     auto item = t_read_only_item(tag_inter(n));
     if (Opacity)
@@ -654,12 +654,12 @@ protected:
       item.add_read(v);
   }
 
-  template <typename NODE, typename VERSION>
-  bool updateNodeVersion(NODE *node, VERSION prev_version, VERSION new_version) {
+  template <typename Node, typename Version>
+  bool updateNodeVersion(Node *node, Version prev_version, Version new_version) {
     if (auto node_item = Sto::check_item(this, tag_inter(node))) {
       if (node_item->has_read() &&
-          prev_version == node_item->template read_value<VERSION>()) {
-        node_item->update_read(node_item->template read_value<VERSION>(),
+          prev_version == node_item->template read_value<Version>()) {
+        node_item->update_read(node_item->template read_value<Version>(),
                                new_version);
         return true;
       }
