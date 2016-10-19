@@ -714,15 +714,15 @@ class DistributedSTOServer : virtual public DistributedSTOIf {
 
 };
 
-#define MAX_MACHINES 128 
+#define MAX_MACHINES 16
 
 class Sto {
   
 public:
     static int machineID; 
     static DistributedSTOServer *server;
-    static DistributedSTOClient *client;
-    static void initializeDistributedSTO(int, int);
+    static std::vector<DistributedSTOClient*> clients;
+    static void initializeDistributedSTO(int thisMachineID, int numOfPeers);
 
     static Transaction* transaction() {
         if (!TThread::txn)

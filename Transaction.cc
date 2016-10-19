@@ -436,26 +436,28 @@ std::ostream& operator<<(std::ostream& w, const TransactionGuard& txn) {
 
 int Sto::machineID = -1; 
 DistributedSTOServer* Sto::server = nullptr;
-DistributedSTOClient* Sto::client = nullptr;
+std::vector<DistributedSTOClient*> Sto::clients;
 
 void* runServer(void *server) {
     ((DistributedSTOServer *) server)->serve();
     return nullptr;
 }
 
-void Sto::initializeDistributedSTO(int thisMachineID, int numOfMachines) {
-    boost::shared_ptr<TSocket> socket(new apache::thrift::transport::TSocket("localhost", 9090));
-    boost::shared_ptr<TTransport> transport(new TBufferedTransport(socket));
-    boost::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
-    Sto::client = new DistributedSTOClient(protocol);
 
-    transport->open();
-    Sto::client->abort(12);
-    transport->close();
+void Sto::initializeDistributedSTO(int thisMachineID, int numOfPeers) {
+
+    for (int i = 0; i < numOfPeers - 1; i++) {
+        boost::shared_ptr<TSocket> socket(new TSocket("localhost", 9090));
+        boost::shared_ptr<TTransport> transport(new TBufferedTransport(socket));
+        boost::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
+        Sto::clients.push_back(new DistributedSTOClient(protocol));
+    }
 
     pthread_t thread;
     Sto::machineID = thisMachineID;
     Sto::server = new DistributedSTOServer(9090);
     pthread_create(&thread, NULL, runServer, Sto::server);
+    Sto::server->serve();
+
 }
 
