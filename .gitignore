@@ -45,10 +45,10 @@
 /distributedSingle
 /DistributedSTOClient
 /DistributedSTOServer
-/DistributedSTO.cpp
+/DistributedSTO.cc
 /DistributedSTO.h
-/DistributedSTO_constants.cpp
+/DistributedSTO_constants.cc
 /DistributedSTO_constants.h
-/DistributedSTO_types.cpp
+/DistributedSTO_types.cc
 /DistributedSTO_types.h
-*.skeleton.cpp
+/DistributedSTO_server.skeleton.cc

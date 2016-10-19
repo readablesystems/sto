@@ -4,7 +4,7 @@
 AR = ar
 CC = @CC@
 CXX = @CXX@
-CPPFLAGS = -I$(MASSTREEDIR)
+CPPFLAGS = -I$(MASSTREEDIR) -I$(THRIFT_DIR) -I$(BOOST_DIR) -DHAVE_INTTYPES_H -DHAVE_NETINET_IN_H
 DEPSDIR := .deps
 DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
 LIBS = @LIBS@ $(MASSTREEDIR)/libjson.a -lpthread -lm -L/usr/local/lib -lthrift
@@ -14,9 +14,6 @@ MASSTREEDIR = @MASSTREEDIR@
 
 THRIFT_DIR := /usr/local/include/thrift
 BOOST_DIR := /usr/local/include
-
-INC := -I$(THRIFT_DIR) -I$(BOOST_DIR)
-
 
 # if CXXFLAGS changes, rebuild
 ifndef CXXFLAGS
@@ -91,16 +88,14 @@ check: unit
 %.S: %.o
 	objdump -S $< > $@
 
-%.o: %.cpp
-	$(CXX) -Wall -DHAVE_INTTYPES_H -DHAVE_NETINET_IN_H $(INC) -c $< -o $@
-
 MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 	$(MASSTREEDIR)/misc.o \
 	$(MASSTREEDIR)/checkpoint.o \
 	$(MASSTREEDIR)/string_slice.o
 
-DISTRIBUTEDSTO_SRC := DistributedSTO.cpp DistributedSTO_constants.cpp DistributedSTO_types.cpp
-DISTRIBUTEDSTO_OBJS := $(patsubst %.cpp,%.o, $(DISTRIBUTEDSTO_SRC))
+DISTRIBUTEDSTO_SRC := DistributedSTO.cc DistributedSTO_constants.cc DistributedSTO_types.cc
+DISTRIBUTEDSTO_DEPS := $(patsubst %.cpp,%.o, $(DISTRIBUTEDSTO_SRC) $(DISTRIBUTEDSTO_GEN_SRC))
+DISTRIBUTEDSTO_OBJS := $(DISTRIBUTEDSTO_DEPS)
 
 STO_OBJS = Packer.o Transaction.o TRcu.o MassTrans.o clp.o $(LIBOBJS) $(DISTRIBUTEDSTO_OBJS)
 MSTO_OBJS = $(STO_OBJS) $(MASSTREE_OBJS)
@@ -189,16 +184,18 @@ predicates: predicates.o $(STO_DEPS)
 hashtable_nostm: hashtable_nostm.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-DistributedSTO.cpp: DistributedSTO.thrift
+.PHONY: thrift
+thrift: DistributedSTO.thrift
 	thrift --gen cpp $<
-	mv gen-cpp/* .
+	for f in gen-cpp/*.cpp; do mv "$$f" $$(basename "$${f%.cpp}.cc"); done
+	mv gen-cpp/*.h .
 	rmdir gen-cpp
 
-DistributedSTOServer: DistributedSTOServer.o $(DISTRIBUTEDSTO_OBJS)
-	$(CXX) $^ -o $@ -L/usr/local/lib -lthrift 
+DistributedSTOServer: DistributedSTOServer.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-DistributedSTOClient: DistributedSTOClient.o $(DISTRIBUTEDSTO_OBJS)
-	$(CXX) $^ -o $@ -L/usr/local/lib -lthrift 
+DistributedSTOClient: DistributedSTOClient.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;
 
@@ -232,6 +229,8 @@ stamp-h: config.h.in config.status
 clean:
 	rm -f $(PROGRAMS) *.o
 	rm -rf .deps *.dSYM
+	rm -f $(DISTRIBUTEDSTO_GEN_SRC)
+	rm -f $(DISTRIBUTEDSTO_GEN_HEADERS)
 	$(MAKE) -C $(MASSTREEDIR) clean
 
 DEPFILES := $(wildcard $(DEPSDIR)/*.d)
