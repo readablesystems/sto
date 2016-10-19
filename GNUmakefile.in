@@ -189,6 +189,11 @@ predicates: predicates.o $(STO_DEPS)
 hashtable_nostm: hashtable_nostm.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
+DistributedSTO.cpp: DistributedSTO.thrift
+	thrift --gen cpp $<
+	mv gen-cpp/* .
+	rmdir gen-cpp
+
 DistributedSTOServer: DistributedSTOServer.o $(DISTRIBUTEDSTO_OBJS)
 	$(CXX) $^ -o $@ -L/usr/local/lib -lthrift 
 

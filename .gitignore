@@ -42,3 +42,13 @@
 /unit-tvector
 /unit-tvector-nopred
 .ycm_*
+/distributedSingle
+/DistributedSTOClient
+/DistributedSTOServer
+/DistributedSTO.cpp
+/DistributedSTO.h
+/DistributedSTO_constants.cpp
+/DistributedSTO_constants.h
+/DistributedSTO_types.cpp
+/DistributedSTO_types.h
+*.skeleton.cpp
