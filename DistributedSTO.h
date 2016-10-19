@@ -23,8 +23,8 @@ class DistributedSTOIf {
   virtual ~DistributedSTOIf() {}
   virtual void read(std::string& _return, const int64_t objid) = 0;
   virtual bool lock(const int64_t tuid, const std::vector<int64_t> & objids) = 0;
-  virtual bool check(const int64_t tuid, const std::map<int64_t, int64_t> & objid_ver_pairs) = 0;
-  virtual void install(const int64_t tuid, const int64_t tid, const std::map<int64_t, std::string> & objid_data_pairs) = 0;
+  virtual bool check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions) = 0;
+  virtual void install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values) = 0;
   virtual void abort(const int64_t tuid) = 0;
 };
 
@@ -62,11 +62,11 @@ class DistributedSTONull : virtual public DistributedSTOIf {
     bool _return = false;
     return _return;
   }
-  bool check(const int64_t /* tuid */, const std::map<int64_t, int64_t> & /* objid_ver_pairs */) {
+  bool check(const int64_t /* tuid */, const std::vector<int64_t> & /* objids */, const std::vector<int64_t> & /* versions */) {
     bool _return = false;
     return _return;
   }
-  void install(const int64_t /* tuid */, const int64_t /* tid */, const std::map<int64_t, std::string> & /* objid_data_pairs */) {
+  void install(const int64_t /* tuid */, const int64_t /* tid */, const std::vector<std::string> & /* written_values */) {
     return;
   }
   void abort(const int64_t /* tuid */) {
@@ -290,9 +290,10 @@ class DistributedSTO_lock_presult {
 };
 
 typedef struct _DistributedSTO_check_args__isset {
-  _DistributedSTO_check_args__isset() : tuid(false), objid_ver_pairs(false) {}
+  _DistributedSTO_check_args__isset() : tuid(false), objids(false), versions(false) {}
   bool tuid :1;
-  bool objid_ver_pairs :1;
+  bool objids :1;
+  bool versions :1;
 } _DistributedSTO_check_args__isset;
 
 class DistributedSTO_check_args {
@@ -305,19 +306,24 @@ class DistributedSTO_check_args {
 
   virtual ~DistributedSTO_check_args() throw();
   int64_t tuid;
-  std::map<int64_t, int64_t>  objid_ver_pairs;
+  std::vector<int64_t>  objids;
+  std::vector<int64_t>  versions;
 
   _DistributedSTO_check_args__isset __isset;
 
   void __set_tuid(const int64_t val);
 
-  void __set_objid_ver_pairs(const std::map<int64_t, int64_t> & val);
+  void __set_objids(const std::vector<int64_t> & val);
+
+  void __set_versions(const std::vector<int64_t> & val);
 
   bool operator == (const DistributedSTO_check_args & rhs) const
   {
     if (!(tuid == rhs.tuid))
       return false;
-    if (!(objid_ver_pairs == rhs.objid_ver_pairs))
+    if (!(objids == rhs.objids))
+      return false;
+    if (!(versions == rhs.versions))
       return false;
     return true;
   }
@@ -339,7 +345,8 @@ class DistributedSTO_check_pargs {
 
   virtual ~DistributedSTO_check_pargs() throw();
   const int64_t* tuid;
-  const std::map<int64_t, int64_t> * objid_ver_pairs;
+  const std::vector<int64_t> * objids;
+  const std::vector<int64_t> * versions;
 
   uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
 
@@ -401,10 +408,10 @@ class DistributedSTO_check_presult {
 };
 
 typedef struct _DistributedSTO_install_args__isset {
-  _DistributedSTO_install_args__isset() : tuid(false), tid(false), objid_data_pairs(false) {}
+  _DistributedSTO_install_args__isset() : tuid(false), tid(false), written_values(false) {}
   bool tuid :1;
   bool tid :1;
-  bool objid_data_pairs :1;
+  bool written_values :1;
 } _DistributedSTO_install_args__isset;
 
 class DistributedSTO_install_args {
@@ -418,7 +425,7 @@ class DistributedSTO_install_args {
   virtual ~DistributedSTO_install_args() throw();
   int64_t tuid;
   int64_t tid;
-  std::map<int64_t, std::string>  objid_data_pairs;
+  std::vector<std::string>  written_values;
 
   _DistributedSTO_install_args__isset __isset;
 
@@ -426,7 +433,7 @@ class DistributedSTO_install_args {
 
   void __set_tid(const int64_t val);
 
-  void __set_objid_data_pairs(const std::map<int64_t, std::string> & val);
+  void __set_written_values(const std::vector<std::string> & val);
 
   bool operator == (const DistributedSTO_install_args & rhs) const
   {
@@ -434,7 +441,7 @@ class DistributedSTO_install_args {
       return false;
     if (!(tid == rhs.tid))
       return false;
-    if (!(objid_data_pairs == rhs.objid_data_pairs))
+    if (!(written_values == rhs.written_values))
       return false;
     return true;
   }
@@ -457,7 +464,7 @@ class DistributedSTO_install_pargs {
   virtual ~DistributedSTO_install_pargs() throw();
   const int64_t* tuid;
   const int64_t* tid;
-  const std::map<int64_t, std::string> * objid_data_pairs;
+  const std::vector<std::string> * written_values;
 
   uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
 
@@ -617,11 +624,11 @@ class DistributedSTOClient : virtual public DistributedSTOIf {
   bool lock(const int64_t tuid, const std::vector<int64_t> & objids);
   void send_lock(const int64_t tuid, const std::vector<int64_t> & objids);
   bool recv_lock();
-  bool check(const int64_t tuid, const std::map<int64_t, int64_t> & objid_ver_pairs);
-  void send_check(const int64_t tuid, const std::map<int64_t, int64_t> & objid_ver_pairs);
+  bool check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions);
+  void send_check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions);
   bool recv_check();
-  void install(const int64_t tuid, const int64_t tid, const std::map<int64_t, std::string> & objid_data_pairs);
-  void send_install(const int64_t tuid, const int64_t tid, const std::map<int64_t, std::string> & objid_data_pairs);
+  void install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values);
+  void send_install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values);
   void recv_install();
   void abort(const int64_t tuid);
   void send_abort(const int64_t tuid);
@@ -701,22 +708,22 @@ class DistributedSTOMultiface : virtual public DistributedSTOIf {
     return ifaces_[i]->lock(tuid, objids);
   }
 
-  bool check(const int64_t tuid, const std::map<int64_t, int64_t> & objid_ver_pairs) {
+  bool check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions) {
     size_t sz = ifaces_.size();
     size_t i = 0;
     for (; i < (sz - 1); ++i) {
-      ifaces_[i]->check(tuid, objid_ver_pairs);
+      ifaces_[i]->check(tuid, objids, versions);
     }
-    return ifaces_[i]->check(tuid, objid_ver_pairs);
+    return ifaces_[i]->check(tuid, objids, versions);
   }
 
-  void install(const int64_t tuid, const int64_t tid, const std::map<int64_t, std::string> & objid_data_pairs) {
+  void install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values) {
     size_t sz = ifaces_.size();
     size_t i = 0;
     for (; i < (sz - 1); ++i) {
-      ifaces_[i]->install(tuid, tid, objid_data_pairs);
+      ifaces_[i]->install(tuid, tid, written_values);
     }
-    ifaces_[i]->install(tuid, tid, objid_data_pairs);
+    ifaces_[i]->install(tuid, tid, written_values);
   }
 
   void abort(const int64_t tuid) {
@@ -764,11 +771,11 @@ class DistributedSTOConcurrentClient : virtual public DistributedSTOIf {
   bool lock(const int64_t tuid, const std::vector<int64_t> & objids);
   int32_t send_lock(const int64_t tuid, const std::vector<int64_t> & objids);
   bool recv_lock(const int32_t seqid);
-  bool check(const int64_t tuid, const std::map<int64_t, int64_t> & objid_ver_pairs);
-  int32_t send_check(const int64_t tuid, const std::map<int64_t, int64_t> & objid_ver_pairs);
+  bool check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions);
+  int32_t send_check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions);
   bool recv_check(const int32_t seqid);
-  void install(const int64_t tuid, const int64_t tid, const std::map<int64_t, std::string> & objid_data_pairs);
-  int32_t send_install(const int64_t tuid, const int64_t tid, const std::map<int64_t, std::string> & objid_data_pairs);
+  void install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values);
+  int32_t send_install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values);
   void recv_install(const int32_t seqid);
   void abort(const int64_t tuid);
   int32_t send_abort(const int64_t tuid);

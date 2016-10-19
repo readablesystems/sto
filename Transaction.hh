@@ -671,6 +671,7 @@ using boost::shared_ptr;
 class DistributedSTOServer : virtual public DistributedSTOIf {
  private:
   TSimpleServer *server;
+  std::map<const int64_t, const std::vector<int64_t>&> *tuid_objids;
 
  public:
   DistributedSTOServer(int port) {
@@ -680,6 +681,7 @@ class DistributedSTOServer : virtual public DistributedSTOIf {
     shared_ptr<TTransportFactory> transportFactory(new TBufferedTransportFactory());
     shared_ptr<TProtocolFactory> protocolFactory(new TBinaryProtocolFactory());
     server = new TSimpleServer(processor, serverTransport, transportFactory, protocolFactory); 
+    tuid_objids = new std::map<const int64_t, const std::vector<int64_t>&>;
   }
 
   void serve() {
@@ -687,22 +689,21 @@ class DistributedSTOServer : virtual public DistributedSTOIf {
   }
 
   void read(std::string& _return, const int64_t objid) {
-    // Your implementation goes here 
+    // Your implementation goes here
     printf("read\n");
   }
 
   bool lock(const int64_t tuid, const std::vector<int64_t> & objids) {
+    // Your implementation goes here
     printf("lock\n");
-    return true;
   }
 
-  bool check(const int64_t tuid, const std::map<int64_t, int64_t> & objid_ver_pairs) {
+  bool check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions) {
     // Your implementation goes here
     printf("check\n");
-    return true;
   }
 
-  void install(const int64_t tuid, const int64_t tid, const std::map<int64_t, std::string> & objid_data_pairs) {
+  void install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values) {
     // Your implementation goes here
     printf("install\n");
   }
@@ -713,8 +714,6 @@ class DistributedSTOServer : virtual public DistributedSTOIf {
   }
 
 };
-
-#define MAX_MACHINES 16
 
 class Sto {
   
