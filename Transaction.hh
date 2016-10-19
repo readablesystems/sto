@@ -13,6 +13,14 @@
 #include <iostream>
 #include <sstream>
 
+#include "DistributedSTO.h"
+#include <thrift/protocol/TBinaryProtocol.h>
+#include <thrift/server/TSimpleServer.h>
+#include <thrift/transport/TServerSocket.h>
+#include <thrift/transport/TBufferTransports.h>
+#include <thrift/transport/TSocket.h>
+#include <thrift/transport/TBufferTransports.h>
+
 #ifndef STO_PROFILE_COUNTERS
 #define STO_PROFILE_COUNTERS 0
 #endif
@@ -69,8 +77,6 @@
 #endif
 
 #include "config.h"
-#include "DistributedSTO.h"
-#include "DistributedSTOServer.hh"
 
 #define MAX_THREADS 32
 
@@ -656,14 +662,67 @@ private:
     friend class TNonopaqueVersion;
 };
 
+using namespace ::apache::thrift;
+using namespace ::apache::thrift::protocol;
+using namespace ::apache::thrift::transport;
+using namespace ::apache::thrift::server;
+using boost::shared_ptr;
+
+class DistributedSTOServer : virtual public DistributedSTOIf {
+ private:
+  TSimpleServer *server;
+
+ public:
+  DistributedSTOServer(int port) {
+    shared_ptr<DistributedSTOServer> handler(this);
+    shared_ptr<TProcessor> processor(new DistributedSTOProcessor(handler));
+    shared_ptr<TServerTransport> serverTransport(new TServerSocket(port));
+    shared_ptr<TTransportFactory> transportFactory(new TBufferedTransportFactory());
+    shared_ptr<TProtocolFactory> protocolFactory(new TBinaryProtocolFactory());
+    server = new TSimpleServer(processor, serverTransport, transportFactory, protocolFactory); 
+  }
+
+  void serve() {
+    server->serve();
+  }
+
+  void read(std::string& _return, const int64_t objid) {
+    // Your implementation goes here 
+    printf("read\n");
+  }
+
+  bool lock(const int64_t tuid, const std::vector<int64_t> & objids) {
+    printf("lock\n");
+    return true;
+  }
+
+  bool check(const int64_t tuid, const std::map<int64_t, int64_t> & objid_ver_pairs) {
+    // Your implementation goes here
+    printf("check\n");
+    return true;
+  }
+
+  void install(const int64_t tuid, const int64_t tid, const std::map<int64_t, std::string> & objid_data_pairs) {
+    // Your implementation goes here
+    printf("install\n");
+  }
+
+  void abort(const int64_t tuid) {
+    // Your implementation goes here
+    printf("abort\n");
+  }
+
+};
+
+#define MAX_MACHINES 128 
 
 class Sto {
-private:
-    DistributedSTOServer server;
-    DistributedSTOClient client;
-
+  
 public:
-    static void startDistributedSTO(int numOfMachines);
+    static int machineID; 
+    static DistributedSTOServer *server;
+    static DistributedSTOClient *client;
+    static void initializeDistributedSTO(int, int);
 
     static Transaction* transaction() {
         if (!TThread::txn)

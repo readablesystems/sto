@@ -7,7 +7,7 @@ CXX = @CXX@
 CPPFLAGS = -I$(MASSTREEDIR)
 DEPSDIR := .deps
 DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
-LIBS = @LIBS@ $(MASSTREEDIR)/libjson.a -lpthread -lm
+LIBS = @LIBS@ $(MASSTREEDIR)/libjson.a -lpthread -lm -L/usr/local/lib -lthrift
 LIBOBJS = @LIBOBJS@
 LDFLAGS = @LDFLAGS@
 MASSTREEDIR = @MASSTREEDIR@
@@ -99,15 +99,13 @@ MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 	$(MASSTREEDIR)/checkpoint.o \
 	$(MASSTREEDIR)/string_slice.o
 
-STO_OBJS = Packer.o Transaction.o TRcu.o MassTrans.o clp.o $(LIBOBJS)
+DISTRIBUTEDSTO_SRC := DistributedSTO.cpp DistributedSTO_constants.cpp DistributedSTO_types.cpp
+DISTRIBUTEDSTO_OBJS := $(patsubst %.cpp,%.o, $(DISTRIBUTEDSTO_SRC))
+
+STO_OBJS = Packer.o Transaction.o TRcu.o MassTrans.o clp.o $(LIBOBJS) $(DISTRIBUTEDSTO_OBJS)
 MSTO_OBJS = $(STO_OBJS) $(MASSTREE_OBJS)
 STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
 MSTO_DEPS = $(MSTO_OBJS) $(MASSTREEDIR)/libjson.a
-
-DISTRIBUTEDSTO_SRC := DistributedSTO.cpp DistributedSTO_constants.cpp DistributedSTO_types.cpp
-DISTRIBUTEDSTO_OBJ := $(patsubst %.cpp,%.o, $(DISTRIBUTEDSTO_SRC))
-DISTRIBUTEDSTO_OBJS := $(DISTRIBUTEDSTO_OBJ) $(MSTO_OBJS)
-DISTRIBUTEDSTO_DEPS := $(DISTRIBUTEDSTO_OBJ) $(MSTO_DEPS)
 
 concurrent: concurrent.o $(MSTO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
@@ -125,8 +123,8 @@ concurrent-1M.o: concurrent.cc config.h $(DEPSDIR)/stamp
 single: single.o $(MSTO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
 
-distributedSingle: distributedSingle.o $(DISTRIBUTEDSTO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(DISTRIBUTEDSTO_DEPS) $(LDFLAGS) $(LIBS) -L/usr/local/lib -lthrift
+distributedSingle: distributedSingle.o $(MSTO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS) -L/usr/local/lib -lthrift
 
 singleelems: singleelems.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
@@ -191,10 +189,10 @@ predicates: predicates.o $(STO_DEPS)
 hashtable_nostm: hashtable_nostm.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-DistributedSTOServer: DistributedSTOServer.o $(DISTRIBUTEDSTO_OBJ)
+DistributedSTOServer: DistributedSTOServer.o $(DISTRIBUTEDSTO_OBJS)
 	$(CXX) $^ -o $@ -L/usr/local/lib -lthrift 
 
-DistributedSTOClient: DistributedSTOClient.o $(DISTRIBUTEDSTO_OBJ)
+DistributedSTOClient: DistributedSTOClient.o $(DISTRIBUTEDSTO_OBJS)
 	$(CXX) $^ -o $@ -L/usr/local/lib -lthrift 
 
 $(MASSTREE_OBJS): masstree ;

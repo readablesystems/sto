@@ -590,8 +590,8 @@ int main() {
   m.thread_init();
   basicMapTests(m);
 
-  // Start sto server
-  Sto::initializeDistributedSTO(2);
+  // Initialize sto server and clients
+  Sto::initializeDistributedSTO(0, 2);
 
   // insert-then-delete node test
   insertDeleteTest(false);
