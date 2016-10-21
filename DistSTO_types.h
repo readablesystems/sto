@@ -4,8 +4,8 @@
  * DO NOT EDIT UNLESS YOU ARE SURE THAT YOU KNOW WHAT YOU ARE DOING
  *  @generated
  */
-#ifndef DistributedSTO_TYPES_H
-#define DistributedSTO_TYPES_H
+#ifndef DistSTO_TYPES_H
+#define DistSTO_TYPES_H
 
 #include <iosfwd>
 

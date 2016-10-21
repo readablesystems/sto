@@ -4,12 +4,12 @@
  * DO NOT EDIT UNLESS YOU ARE SURE THAT YOU KNOW WHAT YOU ARE DOING
  *  @generated
  */
-#ifndef DistributedSTO_H
-#define DistributedSTO_H
+#ifndef DistSTO_H
+#define DistSTO_H
 
 #include <thrift/TDispatchProcessor.h>
 #include <thrift/async/TConcurrentClientSyncInfo.h>
-#include "DistributedSTO_types.h"
+#include "DistSTO_types.h"
 
 
 
@@ -18,9 +18,9 @@
   #pragma warning (disable : 4250 ) //inheriting methods via dominance 
 #endif
 
-class DistributedSTOIf {
+class DistSTOIf {
  public:
-  virtual ~DistributedSTOIf() {}
+  virtual ~DistSTOIf() {}
   virtual void read(std::string& _return, const int64_t objid) = 0;
   virtual bool lock(const int64_t tuid, const std::vector<int64_t> & objids) = 0;
   virtual bool check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions) = 0;
@@ -28,33 +28,33 @@ class DistributedSTOIf {
   virtual void abort(const int64_t tuid) = 0;
 };
 
-class DistributedSTOIfFactory {
+class DistSTOIfFactory {
  public:
-  typedef DistributedSTOIf Handler;
+  typedef DistSTOIf Handler;
 
-  virtual ~DistributedSTOIfFactory() {}
+  virtual ~DistSTOIfFactory() {}
 
-  virtual DistributedSTOIf* getHandler(const ::apache::thrift::TConnectionInfo& connInfo) = 0;
-  virtual void releaseHandler(DistributedSTOIf* /* handler */) = 0;
+  virtual DistSTOIf* getHandler(const ::apache::thrift::TConnectionInfo& connInfo) = 0;
+  virtual void releaseHandler(DistSTOIf* /* handler */) = 0;
 };
 
-class DistributedSTOIfSingletonFactory : virtual public DistributedSTOIfFactory {
+class DistSTOIfSingletonFactory : virtual public DistSTOIfFactory {
  public:
-  DistributedSTOIfSingletonFactory(const boost::shared_ptr<DistributedSTOIf>& iface) : iface_(iface) {}
-  virtual ~DistributedSTOIfSingletonFactory() {}
+  DistSTOIfSingletonFactory(const boost::shared_ptr<DistSTOIf>& iface) : iface_(iface) {}
+  virtual ~DistSTOIfSingletonFactory() {}
 
-  virtual DistributedSTOIf* getHandler(const ::apache::thrift::TConnectionInfo&) {
+  virtual DistSTOIf* getHandler(const ::apache::thrift::TConnectionInfo&) {
     return iface_.get();
   }
-  virtual void releaseHandler(DistributedSTOIf* /* handler */) {}
+  virtual void releaseHandler(DistSTOIf* /* handler */) {}
 
  protected:
-  boost::shared_ptr<DistributedSTOIf> iface_;
+  boost::shared_ptr<DistSTOIf> iface_;
 };
 
-class DistributedSTONull : virtual public DistributedSTOIf {
+class DistSTONull : virtual public DistSTOIf {
  public:
-  virtual ~DistributedSTONull() {}
+  virtual ~DistSTONull() {}
   void read(std::string& /* _return */, const int64_t /* objid */) {
     return;
   }
@@ -74,37 +74,37 @@ class DistributedSTONull : virtual public DistributedSTOIf {
   }
 };
 
-typedef struct _DistributedSTO_read_args__isset {
-  _DistributedSTO_read_args__isset() : objid(false) {}
+typedef struct _DistSTO_read_args__isset {
+  _DistSTO_read_args__isset() : objid(false) {}
   bool objid :1;
-} _DistributedSTO_read_args__isset;
+} _DistSTO_read_args__isset;
 
-class DistributedSTO_read_args {
+class DistSTO_read_args {
  public:
 
-  DistributedSTO_read_args(const DistributedSTO_read_args&);
-  DistributedSTO_read_args& operator=(const DistributedSTO_read_args&);
-  DistributedSTO_read_args() : objid(0) {
+  DistSTO_read_args(const DistSTO_read_args&);
+  DistSTO_read_args& operator=(const DistSTO_read_args&);
+  DistSTO_read_args() : objid(0) {
   }
 
-  virtual ~DistributedSTO_read_args() throw();
+  virtual ~DistSTO_read_args() throw();
   int64_t objid;
 
-  _DistributedSTO_read_args__isset __isset;
+  _DistSTO_read_args__isset __isset;
 
   void __set_objid(const int64_t val);
 
-  bool operator == (const DistributedSTO_read_args & rhs) const
+  bool operator == (const DistSTO_read_args & rhs) const
   {
     if (!(objid == rhs.objid))
       return false;
     return true;
   }
-  bool operator != (const DistributedSTO_read_args &rhs) const {
+  bool operator != (const DistSTO_read_args &rhs) const {
     return !(*this == rhs);
   }
 
-  bool operator < (const DistributedSTO_read_args & ) const;
+  bool operator < (const DistSTO_read_args & ) const;
 
   uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
   uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
@@ -112,97 +112,97 @@ class DistributedSTO_read_args {
 };
 
 
-class DistributedSTO_read_pargs {
+class DistSTO_read_pargs {
  public:
 
 
-  virtual ~DistributedSTO_read_pargs() throw();
+  virtual ~DistSTO_read_pargs() throw();
   const int64_t* objid;
 
   uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
 
 };
 
-typedef struct _DistributedSTO_read_result__isset {
-  _DistributedSTO_read_result__isset() : success(false) {}
+typedef struct _DistSTO_read_result__isset {
+  _DistSTO_read_result__isset() : success(false) {}
   bool success :1;
-} _DistributedSTO_read_result__isset;
+} _DistSTO_read_result__isset;
 
-class DistributedSTO_read_result {
+class DistSTO_read_result {
  public:
 
-  DistributedSTO_read_result(const DistributedSTO_read_result&);
-  DistributedSTO_read_result& operator=(const DistributedSTO_read_result&);
-  DistributedSTO_read_result() : success() {
+  DistSTO_read_result(const DistSTO_read_result&);
+  DistSTO_read_result& operator=(const DistSTO_read_result&);
+  DistSTO_read_result() : success() {
   }
 
-  virtual ~DistributedSTO_read_result() throw();
+  virtual ~DistSTO_read_result() throw();
   std::string success;
 
-  _DistributedSTO_read_result__isset __isset;
+  _DistSTO_read_result__isset __isset;
 
   void __set_success(const std::string& val);
 
-  bool operator == (const DistributedSTO_read_result & rhs) const
+  bool operator == (const DistSTO_read_result & rhs) const
   {
     if (!(success == rhs.success))
       return false;
     return true;
   }
-  bool operator != (const DistributedSTO_read_result &rhs) const {
+  bool operator != (const DistSTO_read_result &rhs) const {
     return !(*this == rhs);
   }
 
-  bool operator < (const DistributedSTO_read_result & ) const;
+  bool operator < (const DistSTO_read_result & ) const;
 
   uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
   uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
 
 };
 
-typedef struct _DistributedSTO_read_presult__isset {
-  _DistributedSTO_read_presult__isset() : success(false) {}
+typedef struct _DistSTO_read_presult__isset {
+  _DistSTO_read_presult__isset() : success(false) {}
   bool success :1;
-} _DistributedSTO_read_presult__isset;
+} _DistSTO_read_presult__isset;
 
-class DistributedSTO_read_presult {
+class DistSTO_read_presult {
  public:
 
 
-  virtual ~DistributedSTO_read_presult() throw();
+  virtual ~DistSTO_read_presult() throw();
   std::string* success;
 
-  _DistributedSTO_read_presult__isset __isset;
+  _DistSTO_read_presult__isset __isset;
 
   uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
 
 };
 
-typedef struct _DistributedSTO_lock_args__isset {
-  _DistributedSTO_lock_args__isset() : tuid(false), objids(false) {}
+typedef struct _DistSTO_lock_args__isset {
+  _DistSTO_lock_args__isset() : tuid(false), objids(false) {}
   bool tuid :1;
   bool objids :1;
-} _DistributedSTO_lock_args__isset;
+} _DistSTO_lock_args__isset;
 
-class DistributedSTO_lock_args {
+class DistSTO_lock_args {
  public:
 
-  DistributedSTO_lock_args(const DistributedSTO_lock_args&);
-  DistributedSTO_lock_args& operator=(const DistributedSTO_lock_args&);
-  DistributedSTO_lock_args() : tuid(0) {
+  DistSTO_lock_args(const DistSTO_lock_args&);
+  DistSTO_lock_args& operator=(const DistSTO_lock_args&);
+  DistSTO_lock_args() : tuid(0) {
   }
 
-  virtual ~DistributedSTO_lock_args() throw();
+  virtual ~DistSTO_lock_args() throw();
   int64_t tuid;
   std::vector<int64_t>  objids;
 
-  _DistributedSTO_lock_args__isset __isset;
+  _DistSTO_lock_args__isset __isset;
 
   void __set_tuid(const int64_t val);
 
   void __set_objids(const std::vector<int64_t> & val);
 
-  bool operator == (const DistributedSTO_lock_args & rhs) const
+  bool operator == (const DistSTO_lock_args & rhs) const
   {
     if (!(tuid == rhs.tuid))
       return false;
@@ -210,11 +210,11 @@ class DistributedSTO_lock_args {
       return false;
     return true;
   }
-  bool operator != (const DistributedSTO_lock_args &rhs) const {
+  bool operator != (const DistSTO_lock_args &rhs) const {
     return !(*this == rhs);
   }
 
-  bool operator < (const DistributedSTO_lock_args & ) const;
+  bool operator < (const DistSTO_lock_args & ) const;
 
   uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
   uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
@@ -222,11 +222,11 @@ class DistributedSTO_lock_args {
 };
 
 
-class DistributedSTO_lock_pargs {
+class DistSTO_lock_pargs {
  public:
 
 
-  virtual ~DistributedSTO_lock_pargs() throw();
+  virtual ~DistSTO_lock_pargs() throw();
   const int64_t* tuid;
   const std::vector<int64_t> * objids;
 
@@ -234,82 +234,82 @@ class DistributedSTO_lock_pargs {
 
 };
 
-typedef struct _DistributedSTO_lock_result__isset {
-  _DistributedSTO_lock_result__isset() : success(false) {}
+typedef struct _DistSTO_lock_result__isset {
+  _DistSTO_lock_result__isset() : success(false) {}
   bool success :1;
-} _DistributedSTO_lock_result__isset;
+} _DistSTO_lock_result__isset;
 
-class DistributedSTO_lock_result {
+class DistSTO_lock_result {
  public:
 
-  DistributedSTO_lock_result(const DistributedSTO_lock_result&);
-  DistributedSTO_lock_result& operator=(const DistributedSTO_lock_result&);
-  DistributedSTO_lock_result() : success(0) {
+  DistSTO_lock_result(const DistSTO_lock_result&);
+  DistSTO_lock_result& operator=(const DistSTO_lock_result&);
+  DistSTO_lock_result() : success(0) {
   }
 
-  virtual ~DistributedSTO_lock_result() throw();
+  virtual ~DistSTO_lock_result() throw();
   bool success;
 
-  _DistributedSTO_lock_result__isset __isset;
+  _DistSTO_lock_result__isset __isset;
 
   void __set_success(const bool val);
 
-  bool operator == (const DistributedSTO_lock_result & rhs) const
+  bool operator == (const DistSTO_lock_result & rhs) const
   {
     if (!(success == rhs.success))
       return false;
     return true;
   }
-  bool operator != (const DistributedSTO_lock_result &rhs) const {
+  bool operator != (const DistSTO_lock_result &rhs) const {
     return !(*this == rhs);
   }
 
-  bool operator < (const DistributedSTO_lock_result & ) const;
+  bool operator < (const DistSTO_lock_result & ) const;
 
   uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
   uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
 
 };
 
-typedef struct _DistributedSTO_lock_presult__isset {
-  _DistributedSTO_lock_presult__isset() : success(false) {}
+typedef struct _DistSTO_lock_presult__isset {
+  _DistSTO_lock_presult__isset() : success(false) {}
   bool success :1;
-} _DistributedSTO_lock_presult__isset;
+} _DistSTO_lock_presult__isset;
 
-class DistributedSTO_lock_presult {
+class DistSTO_lock_presult {
  public:
 
 
-  virtual ~DistributedSTO_lock_presult() throw();
+  virtual ~DistSTO_lock_presult() throw();
   bool* success;
 
-  _DistributedSTO_lock_presult__isset __isset;
+  _DistSTO_lock_presult__isset __isset;
 
   uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
 
 };
 
-typedef struct _DistributedSTO_check_args__isset {
-  _DistributedSTO_check_args__isset() : tuid(false), objids(false), versions(false) {}
+typedef struct _DistSTO_check_args__isset {
+  _DistSTO_check_args__isset() : tuid(false), objids(false), versions(false) {}
   bool tuid :1;
   bool objids :1;
   bool versions :1;
-} _DistributedSTO_check_args__isset;
+} _DistSTO_check_args__isset;
 
-class DistributedSTO_check_args {
+class DistSTO_check_args {
  public:
 
-  DistributedSTO_check_args(const DistributedSTO_check_args&);
-  DistributedSTO_check_args& operator=(const DistributedSTO_check_args&);
-  DistributedSTO_check_args() : tuid(0) {
+  DistSTO_check_args(const DistSTO_check_args&);
+  DistSTO_check_args& operator=(const DistSTO_check_args&);
+  DistSTO_check_args() : tuid(0) {
   }
 
-  virtual ~DistributedSTO_check_args() throw();
+  virtual ~DistSTO_check_args() throw();
   int64_t tuid;
   std::vector<int64_t>  objids;
   std::vector<int64_t>  versions;
 
-  _DistributedSTO_check_args__isset __isset;
+  _DistSTO_check_args__isset __isset;
 
   void __set_tuid(const int64_t val);
 
@@ -317,7 +317,7 @@ class DistributedSTO_check_args {
 
   void __set_versions(const std::vector<int64_t> & val);
 
-  bool operator == (const DistributedSTO_check_args & rhs) const
+  bool operator == (const DistSTO_check_args & rhs) const
   {
     if (!(tuid == rhs.tuid))
       return false;
@@ -327,11 +327,11 @@ class DistributedSTO_check_args {
       return false;
     return true;
   }
-  bool operator != (const DistributedSTO_check_args &rhs) const {
+  bool operator != (const DistSTO_check_args &rhs) const {
     return !(*this == rhs);
   }
 
-  bool operator < (const DistributedSTO_check_args & ) const;
+  bool operator < (const DistSTO_check_args & ) const;
 
   uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
   uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
@@ -339,11 +339,11 @@ class DistributedSTO_check_args {
 };
 
 
-class DistributedSTO_check_pargs {
+class DistSTO_check_pargs {
  public:
 
 
-  virtual ~DistributedSTO_check_pargs() throw();
+  virtual ~DistSTO_check_pargs() throw();
   const int64_t* tuid;
   const std::vector<int64_t> * objids;
   const std::vector<int64_t> * versions;
@@ -352,82 +352,82 @@ class DistributedSTO_check_pargs {
 
 };
 
-typedef struct _DistributedSTO_check_result__isset {
-  _DistributedSTO_check_result__isset() : success(false) {}
+typedef struct _DistSTO_check_result__isset {
+  _DistSTO_check_result__isset() : success(false) {}
   bool success :1;
-} _DistributedSTO_check_result__isset;
+} _DistSTO_check_result__isset;
 
-class DistributedSTO_check_result {
+class DistSTO_check_result {
  public:
 
-  DistributedSTO_check_result(const DistributedSTO_check_result&);
-  DistributedSTO_check_result& operator=(const DistributedSTO_check_result&);
-  DistributedSTO_check_result() : success(0) {
+  DistSTO_check_result(const DistSTO_check_result&);
+  DistSTO_check_result& operator=(const DistSTO_check_result&);
+  DistSTO_check_result() : success(0) {
   }
 
-  virtual ~DistributedSTO_check_result() throw();
+  virtual ~DistSTO_check_result() throw();
   bool success;
 
-  _DistributedSTO_check_result__isset __isset;
+  _DistSTO_check_result__isset __isset;
 
   void __set_success(const bool val);
 
-  bool operator == (const DistributedSTO_check_result & rhs) const
+  bool operator == (const DistSTO_check_result & rhs) const
   {
     if (!(success == rhs.success))
       return false;
     return true;
   }
-  bool operator != (const DistributedSTO_check_result &rhs) const {
+  bool operator != (const DistSTO_check_result &rhs) const {
     return !(*this == rhs);
   }
 
-  bool operator < (const DistributedSTO_check_result & ) const;
+  bool operator < (const DistSTO_check_result & ) const;
 
   uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
   uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
 
 };
 
-typedef struct _DistributedSTO_check_presult__isset {
-  _DistributedSTO_check_presult__isset() : success(false) {}
+typedef struct _DistSTO_check_presult__isset {
+  _DistSTO_check_presult__isset() : success(false) {}
   bool success :1;
-} _DistributedSTO_check_presult__isset;
+} _DistSTO_check_presult__isset;
 
-class DistributedSTO_check_presult {
+class DistSTO_check_presult {
  public:
 
 
-  virtual ~DistributedSTO_check_presult() throw();
+  virtual ~DistSTO_check_presult() throw();
   bool* success;
 
-  _DistributedSTO_check_presult__isset __isset;
+  _DistSTO_check_presult__isset __isset;
 
   uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
 
 };
 
-typedef struct _DistributedSTO_install_args__isset {
-  _DistributedSTO_install_args__isset() : tuid(false), tid(false), written_values(false) {}
+typedef struct _DistSTO_install_args__isset {
+  _DistSTO_install_args__isset() : tuid(false), tid(false), written_values(false) {}
   bool tuid :1;
   bool tid :1;
   bool written_values :1;
-} _DistributedSTO_install_args__isset;
+} _DistSTO_install_args__isset;
 
-class DistributedSTO_install_args {
+class DistSTO_install_args {
  public:
 
-  DistributedSTO_install_args(const DistributedSTO_install_args&);
-  DistributedSTO_install_args& operator=(const DistributedSTO_install_args&);
-  DistributedSTO_install_args() : tuid(0), tid(0) {
+  DistSTO_install_args(const DistSTO_install_args&);
+  DistSTO_install_args& operator=(const DistSTO_install_args&);
+  DistSTO_install_args() : tuid(0), tid(0) {
   }
 
-  virtual ~DistributedSTO_install_args() throw();
+  virtual ~DistSTO_install_args() throw();
   int64_t tuid;
   int64_t tid;
   std::vector<std::string>  written_values;
 
-  _DistributedSTO_install_args__isset __isset;
+  _DistSTO_install_args__isset __isset;
 
   void __set_tuid(const int64_t val);
 
@@ -435,7 +435,7 @@ class DistributedSTO_install_args {
 
   void __set_written_values(const std::vector<std::string> & val);
 
-  bool operator == (const DistributedSTO_install_args & rhs) const
+  bool operator == (const DistSTO_install_args & rhs) const
   {
     if (!(tuid == rhs.tuid))
       return false;
@@ -445,11 +445,11 @@ class DistributedSTO_install_args {
       return false;
     return true;
   }
-  bool operator != (const DistributedSTO_install_args &rhs) const {
+  bool operator != (const DistSTO_install_args &rhs) const {
     return !(*this == rhs);
   }
 
-  bool operator < (const DistributedSTO_install_args & ) const;
+  bool operator < (const DistSTO_install_args & ) const;
 
   uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
   uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
@@ -457,11 +457,11 @@ class DistributedSTO_install_args {
 };
 
 
-class DistributedSTO_install_pargs {
+class DistSTO_install_pargs {
  public:
 
 
-  virtual ~DistributedSTO_install_pargs() throw();
+  virtual ~DistSTO_install_pargs() throw();
   const int64_t* tuid;
   const int64_t* tid;
   const std::vector<std::string> * written_values;
@@ -471,25 +471,25 @@ class DistributedSTO_install_pargs {
 };
 
 
-class DistributedSTO_install_result {
+class DistSTO_install_result {
  public:
 
-  DistributedSTO_install_result(const DistributedSTO_install_result&);
-  DistributedSTO_install_result& operator=(const DistributedSTO_install_result&);
-  DistributedSTO_install_result() {
+  DistSTO_install_result(const DistSTO_install_result&);
+  DistSTO_install_result& operator=(const DistSTO_install_result&);
+  DistSTO_install_result() {
   }
 
-  virtual ~DistributedSTO_install_result() throw();
+  virtual ~DistSTO_install_result() throw();
 
-  bool operator == (const DistributedSTO_install_result & /* rhs */) const
+  bool operator == (const DistSTO_install_result & /* rhs */) const
   {
     return true;
   }
-  bool operator != (const DistributedSTO_install_result &rhs) const {
+  bool operator != (const DistSTO_install_result &rhs) const {
     return !(*this == rhs);
   }
 
-  bool operator < (const DistributedSTO_install_result & ) const;
+  bool operator < (const DistSTO_install_result & ) const;
 
   uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
   uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
@@ -497,47 +497,47 @@ class DistributedSTO_install_result {
 };
 
 
-class DistributedSTO_install_presult {
+class DistSTO_install_presult {
  public:
 
 
-  virtual ~DistributedSTO_install_presult() throw();
+  virtual ~DistSTO_install_presult() throw();
 
   uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
 
 };
 
-typedef struct _DistributedSTO_abort_args__isset {
-  _DistributedSTO_abort_args__isset() : tuid(false) {}
+typedef struct _DistSTO_abort_args__isset {
+  _DistSTO_abort_args__isset() : tuid(false) {}
   bool tuid :1;
-} _DistributedSTO_abort_args__isset;
+} _DistSTO_abort_args__isset;
 
-class DistributedSTO_abort_args {
+class DistSTO_abort_args {
  public:
 
-  DistributedSTO_abort_args(const DistributedSTO_abort_args&);
-  DistributedSTO_abort_args& operator=(const DistributedSTO_abort_args&);
-  DistributedSTO_abort_args() : tuid(0) {
+  DistSTO_abort_args(const DistSTO_abort_args&);
+  DistSTO_abort_args& operator=(const DistSTO_abort_args&);
+  DistSTO_abort_args() : tuid(0) {
   }
 
-  virtual ~DistributedSTO_abort_args() throw();
+  virtual ~DistSTO_abort_args() throw();
   int64_t tuid;
 
-  _DistributedSTO_abort_args__isset __isset;
+  _DistSTO_abort_args__isset __isset;
 
   void __set_tuid(const int64_t val);
 
-  bool operator == (const DistributedSTO_abort_args & rhs) const
+  bool operator == (const DistSTO_abort_args & rhs) const
   {
     if (!(tuid == rhs.tuid))
       return false;
     return true;
   }
-  bool operator != (const DistributedSTO_abort_args &rhs) const {
+  bool operator != (const DistSTO_abort_args &rhs) const {
     return !(*this == rhs);
   }
 
-  bool operator < (const DistributedSTO_abort_args & ) const;
+  bool operator < (const DistSTO_abort_args & ) const;
 
   uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
   uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
@@ -545,11 +545,11 @@ class DistributedSTO_abort_args {
 };
 
 
-class DistributedSTO_abort_pargs {
+class DistSTO_abort_pargs {
  public:
 
 
-  virtual ~DistributedSTO_abort_pargs() throw();
+  virtual ~DistSTO_abort_pargs() throw();
   const int64_t* tuid;
 
   uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
@@ -557,25 +557,25 @@ class DistributedSTO_abort_pargs {
 };
 
 
-class DistributedSTO_abort_result {
+class DistSTO_abort_result {
  public:
 
-  DistributedSTO_abort_result(const DistributedSTO_abort_result&);
-  DistributedSTO_abort_result& operator=(const DistributedSTO_abort_result&);
-  DistributedSTO_abort_result() {
+  DistSTO_abort_result(const DistSTO_abort_result&);
+  DistSTO_abort_result& operator=(const DistSTO_abort_result&);
+  DistSTO_abort_result() {
   }
 
-  virtual ~DistributedSTO_abort_result() throw();
+  virtual ~DistSTO_abort_result() throw();
 
-  bool operator == (const DistributedSTO_abort_result & /* rhs */) const
+  bool operator == (const DistSTO_abort_result & /* rhs */) const
   {
     return true;
   }
-  bool operator != (const DistributedSTO_abort_result &rhs) const {
+  bool operator != (const DistSTO_abort_result &rhs) const {
     return !(*this == rhs);
   }
 
-  bool operator < (const DistributedSTO_abort_result & ) const;
+  bool operator < (const DistSTO_abort_result & ) const;
 
   uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
   uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
@@ -583,22 +583,22 @@ class DistributedSTO_abort_result {
 };
 
 
-class DistributedSTO_abort_presult {
+class DistSTO_abort_presult {
  public:
 
 
-  virtual ~DistributedSTO_abort_presult() throw();
+  virtual ~DistSTO_abort_presult() throw();
 
   uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
 
 };
 
-class DistributedSTOClient : virtual public DistributedSTOIf {
+class DistSTOClient : virtual public DistSTOIf {
  public:
-  DistributedSTOClient(boost::shared_ptr< ::apache::thrift::protocol::TProtocol> prot) {
+  DistSTOClient(boost::shared_ptr< ::apache::thrift::protocol::TProtocol> prot) {
     setProtocol(prot);
   }
-  DistributedSTOClient(boost::shared_ptr< ::apache::thrift::protocol::TProtocol> iprot, boost::shared_ptr< ::apache::thrift::protocol::TProtocol> oprot) {
+  DistSTOClient(boost::shared_ptr< ::apache::thrift::protocol::TProtocol> iprot, boost::shared_ptr< ::apache::thrift::protocol::TProtocol> oprot) {
     setProtocol(iprot,oprot);
   }
  private:
@@ -640,12 +640,12 @@ class DistributedSTOClient : virtual public DistributedSTOIf {
   ::apache::thrift::protocol::TProtocol* oprot_;
 };
 
-class DistributedSTOProcessor : public ::apache::thrift::TDispatchProcessor {
+class DistSTOProcessor : public ::apache::thrift::TDispatchProcessor {
  protected:
-  boost::shared_ptr<DistributedSTOIf> iface_;
+  boost::shared_ptr<DistSTOIf> iface_;
   virtual bool dispatchCall(::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, const std::string& fname, int32_t seqid, void* callContext);
  private:
-  typedef  void (DistributedSTOProcessor::*ProcessFunction)(int32_t, ::apache::thrift::protocol::TProtocol*, ::apache::thrift::protocol::TProtocol*, void*);
+  typedef  void (DistSTOProcessor::*ProcessFunction)(int32_t, ::apache::thrift::protocol::TProtocol*, ::apache::thrift::protocol::TProtocol*, void*);
   typedef std::map<std::string, ProcessFunction> ProcessMap;
   ProcessMap processMap_;
   void process_read(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext);
@@ -654,38 +654,38 @@ class DistributedSTOProcessor : public ::apache::thrift::TDispatchProcessor {
   void process_install(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext);
   void process_abort(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext);
  public:
-  DistributedSTOProcessor(boost::shared_ptr<DistributedSTOIf> iface) :
+  DistSTOProcessor(boost::shared_ptr<DistSTOIf> iface) :
     iface_(iface) {
-    processMap_["read"] = &DistributedSTOProcessor::process_read;
-    processMap_["lock"] = &DistributedSTOProcessor::process_lock;
-    processMap_["check"] = &DistributedSTOProcessor::process_check;
-    processMap_["install"] = &DistributedSTOProcessor::process_install;
-    processMap_["abort"] = &DistributedSTOProcessor::process_abort;
+    processMap_["read"] = &DistSTOProcessor::process_read;
+    processMap_["lock"] = &DistSTOProcessor::process_lock;
+    processMap_["check"] = &DistSTOProcessor::process_check;
+    processMap_["install"] = &DistSTOProcessor::process_install;
+    processMap_["abort"] = &DistSTOProcessor::process_abort;
   }
 
-  virtual ~DistributedSTOProcessor() {}
+  virtual ~DistSTOProcessor() {}
 };
 
-class DistributedSTOProcessorFactory : public ::apache::thrift::TProcessorFactory {
+class DistSTOProcessorFactory : public ::apache::thrift::TProcessorFactory {
  public:
-  DistributedSTOProcessorFactory(const ::boost::shared_ptr< DistributedSTOIfFactory >& handlerFactory) :
+  DistSTOProcessorFactory(const ::boost::shared_ptr< DistSTOIfFactory >& handlerFactory) :
       handlerFactory_(handlerFactory) {}
 
   ::boost::shared_ptr< ::apache::thrift::TProcessor > getProcessor(const ::apache::thrift::TConnectionInfo& connInfo);
 
  protected:
-  ::boost::shared_ptr< DistributedSTOIfFactory > handlerFactory_;
+  ::boost::shared_ptr< DistSTOIfFactory > handlerFactory_;
 };
 
-class DistributedSTOMultiface : virtual public DistributedSTOIf {
+class DistSTOMultiface : virtual public DistSTOIf {
  public:
-  DistributedSTOMultiface(std::vector<boost::shared_ptr<DistributedSTOIf> >& ifaces) : ifaces_(ifaces) {
+  DistSTOMultiface(std::vector<boost::shared_ptr<DistSTOIf> >& ifaces) : ifaces_(ifaces) {
   }
-  virtual ~DistributedSTOMultiface() {}
+  virtual ~DistSTOMultiface() {}
  protected:
-  std::vector<boost::shared_ptr<DistributedSTOIf> > ifaces_;
-  DistributedSTOMultiface() {}
-  void add(boost::shared_ptr<DistributedSTOIf> iface) {
+  std::vector<boost::shared_ptr<DistSTOIf> > ifaces_;
+  DistSTOMultiface() {}
+  void add(boost::shared_ptr<DistSTOIf> iface) {
     ifaces_.push_back(iface);
   }
  public:
@@ -740,12 +740,12 @@ class DistributedSTOMultiface : virtual public DistributedSTOIf {
 // The 'concurrent' client is a thread safe client that correctly handles
 // out of order responses.  It is slower than the regular client, so should
 // only be used when you need to share a connection among multiple threads
-class DistributedSTOConcurrentClient : virtual public DistributedSTOIf {
+class DistSTOConcurrentClient : virtual public DistSTOIf {
  public:
-  DistributedSTOConcurrentClient(boost::shared_ptr< ::apache::thrift::protocol::TProtocol> prot) {
+  DistSTOConcurrentClient(boost::shared_ptr< ::apache::thrift::protocol::TProtocol> prot) {
     setProtocol(prot);
   }
-  DistributedSTOConcurrentClient(boost::shared_ptr< ::apache::thrift::protocol::TProtocol> iprot, boost::shared_ptr< ::apache::thrift::protocol::TProtocol> oprot) {
+  DistSTOConcurrentClient(boost::shared_ptr< ::apache::thrift::protocol::TProtocol> iprot, boost::shared_ptr< ::apache::thrift::protocol::TProtocol> oprot) {
     setProtocol(iprot,oprot);
   }
  private:

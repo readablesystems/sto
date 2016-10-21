@@ -4,13 +4,14 @@
  * DO NOT EDIT UNLESS YOU ARE SURE THAT YOU KNOW WHAT YOU ARE DOING
  *  @generated
  */
-#include "DistributedSTO_types.h"
+#include "DistSTO_constants.h"
 
-#include <algorithm>
-#include <ostream>
 
-#include <thrift/TToString.h>
 
+const DistSTOConstants g_DistSTO_constants;
+
+DistSTOConstants::DistSTOConstants() {
+}
 
 
 

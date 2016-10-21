@@ -72,7 +72,7 @@ ifeq ($(PROFILE),1)
 OPTFLAGS += -g -pg -fno-inline
 endif
 
-PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single distributedSingle predicates ex-counter DistributedSTOClient $(UNIT_PROGRAMS)
+PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter DistSTOClient $(UNIT_PROGRAMS)
 UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-dist-tbox unit-tgeneric unit-rcu unit-tvector unit-tvector-nopred
 
 all: $(PROGRAMS)
@@ -99,10 +99,10 @@ MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 	$(MASSTREEDIR)/checkpoint.o \
 	$(MASSTREEDIR)/string_slice.o
 
-DISTRIBUTEDSTO_SRC := DistributedSTO.cpp DistributedSTO_constants.cpp DistributedSTO_types.cpp
-DISTRIBUTEDSTO_OBJS := $(patsubst %.cpp,%.o, $(DISTRIBUTEDSTO_SRC))
+DISTSTO_SRC := DistSTO.cpp DistSTO_constants.cpp DistSTO_types.cpp
+DISTSTO_OBJS := $(patsubst %.cpp,%.o, $(DISTSTO_SRC))
 
-STO_OBJS = Packer.o Transaction.o TRcu.o MassTrans.o clp.o $(LIBOBJS) $(DISTRIBUTEDSTO_OBJS)
+STO_OBJS = Packer.o Transaction.o TRcu.o MassTrans.o clp.o $(LIBOBJS) $(DISTSTO_OBJS)
 MSTO_OBJS = $(STO_OBJS) $(MASSTREE_OBJS)
 STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
 MSTO_DEPS = $(MSTO_OBJS) $(MASSTREEDIR)/libjson.a
@@ -122,9 +122,6 @@ concurrent-1M.o: concurrent.cc config.h $(DEPSDIR)/stamp
 
 single: single.o $(MSTO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
-
-distributedSingle: distributedSingle.o $(MSTO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS) -L/usr/local/lib -lthrift
 
 singleelems: singleelems.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
@@ -192,7 +189,7 @@ predicates: predicates.o $(STO_DEPS)
 hashtable_nostm: hashtable_nostm.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-DistributedSTOClient: DistributedSTOClient.o $(DISTRIBUTEDSTO_OBJS)
+DistSTOClient: DistSTOClient.o $(DISTSTO_OBJS)
 	$(CXX) $^ -o $@ -L/usr/local/lib -lthrift 
 
 $(MASSTREE_OBJS): masstree ;

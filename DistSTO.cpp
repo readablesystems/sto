@@ -4,16 +4,16 @@
  * DO NOT EDIT UNLESS YOU ARE SURE THAT YOU KNOW WHAT YOU ARE DOING
  *  @generated
  */
-#include "DistributedSTO.h"
+#include "DistSTO.h"
 
 
 
 
-DistributedSTO_read_args::~DistributedSTO_read_args() throw() {
+DistSTO_read_args::~DistSTO_read_args() throw() {
 }
 
 
-uint32_t DistributedSTO_read_args::read(::apache::thrift::protocol::TProtocol* iprot) {
+uint32_t DistSTO_read_args::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
   uint32_t xfer = 0;
@@ -54,10 +54,10 @@ uint32_t DistributedSTO_read_args::read(::apache::thrift::protocol::TProtocol* i
   return xfer;
 }
 
-uint32_t DistributedSTO_read_args::write(::apache::thrift::protocol::TProtocol* oprot) const {
+uint32_t DistSTO_read_args::write(::apache::thrift::protocol::TProtocol* oprot) const {
   uint32_t xfer = 0;
   apache::thrift::protocol::TOutputRecursionTracker tracker(*oprot);
-  xfer += oprot->writeStructBegin("DistributedSTO_read_args");
+  xfer += oprot->writeStructBegin("DistSTO_read_args");
 
   xfer += oprot->writeFieldBegin("objid", ::apache::thrift::protocol::T_I64, 1);
   xfer += oprot->writeI64(this->objid);
@@ -69,14 +69,14 @@ uint32_t DistributedSTO_read_args::write(::apache::thrift::protocol::TProtocol* 
 }
 
 
-DistributedSTO_read_pargs::~DistributedSTO_read_pargs() throw() {
+DistSTO_read_pargs::~DistSTO_read_pargs() throw() {
 }
 
 
-uint32_t DistributedSTO_read_pargs::write(::apache::thrift::protocol::TProtocol* oprot) const {
+uint32_t DistSTO_read_pargs::write(::apache::thrift::protocol::TProtocol* oprot) const {
   uint32_t xfer = 0;
   apache::thrift::protocol::TOutputRecursionTracker tracker(*oprot);
-  xfer += oprot->writeStructBegin("DistributedSTO_read_pargs");
+  xfer += oprot->writeStructBegin("DistSTO_read_pargs");
 
   xfer += oprot->writeFieldBegin("objid", ::apache::thrift::protocol::T_I64, 1);
   xfer += oprot->writeI64((*(this->objid)));
@@ -88,11 +88,11 @@ uint32_t DistributedSTO_read_pargs::write(::apache::thrift::protocol::TProtocol*
 }
 
 
-DistributedSTO_read_result::~DistributedSTO_read_result() throw() {
+DistSTO_read_result::~DistSTO_read_result() throw() {
 }
 
 
-uint32_t DistributedSTO_read_result::read(::apache::thrift::protocol::TProtocol* iprot) {
+uint32_t DistSTO_read_result::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
   uint32_t xfer = 0;
@@ -133,11 +133,11 @@ uint32_t DistributedSTO_read_result::read(::apache::thrift::protocol::TProtocol*
   return xfer;
 }
 
-uint32_t DistributedSTO_read_result::write(::apache::thrift::protocol::TProtocol* oprot) const {
+uint32_t DistSTO_read_result::write(::apache::thrift::protocol::TProtocol* oprot) const {
 
   uint32_t xfer = 0;
 
-  xfer += oprot->writeStructBegin("DistributedSTO_read_result");
+  xfer += oprot->writeStructBegin("DistSTO_read_result");
 
   if (this->__isset.success) {
     xfer += oprot->writeFieldBegin("success", ::apache::thrift::protocol::T_STRING, 0);
@@ -150,11 +150,11 @@ uint32_t DistributedSTO_read_result::write(::apache::thrift::protocol::TProtocol
 }
 
 
-DistributedSTO_read_presult::~DistributedSTO_read_presult() throw() {
+DistSTO_read_presult::~DistSTO_read_presult() throw() {
 }
 
 
-uint32_t DistributedSTO_read_presult::read(::apache::thrift::protocol::TProtocol* iprot) {
+uint32_t DistSTO_read_presult::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
   uint32_t xfer = 0;
@@ -196,11 +196,11 @@ uint32_t DistributedSTO_read_presult::read(::apache::thrift::protocol::TProtocol
 }
 
 
-DistributedSTO_lock_args::~DistributedSTO_lock_args() throw() {
+DistSTO_lock_args::~DistSTO_lock_args() throw() {
 }
 
 
-uint32_t DistributedSTO_lock_args::read(::apache::thrift::protocol::TProtocol* iprot) {
+uint32_t DistSTO_lock_args::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
   uint32_t xfer = 0;
@@ -261,10 +261,10 @@ uint32_t DistributedSTO_lock_args::read(::apache::thrift::protocol::TProtocol* i
   return xfer;
 }
 
-uint32_t DistributedSTO_lock_args::write(::apache::thrift::protocol::TProtocol* oprot) const {
+uint32_t DistSTO_lock_args::write(::apache::thrift::protocol::TProtocol* oprot) const {
   uint32_t xfer = 0;
   apache::thrift::protocol::TOutputRecursionTracker tracker(*oprot);
-  xfer += oprot->writeStructBegin("DistributedSTO_lock_args");
+  xfer += oprot->writeStructBegin("DistSTO_lock_args");
 
   xfer += oprot->writeFieldBegin("tuid", ::apache::thrift::protocol::T_I64, 1);
   xfer += oprot->writeI64(this->tuid);
@@ -288,14 +288,14 @@ uint32_t DistributedSTO_lock_args::write(::apache::thrift::protocol::TProtocol* 
 }
 
 
-DistributedSTO_lock_pargs::~DistributedSTO_lock_pargs() throw() {
+DistSTO_lock_pargs::~DistSTO_lock_pargs() throw() {
 }
 
 
-uint32_t DistributedSTO_lock_pargs::write(::apache::thrift::protocol::TProtocol* oprot) const {
+uint32_t DistSTO_lock_pargs::write(::apache::thrift::protocol::TProtocol* oprot) const {
   uint32_t xfer = 0;
   apache::thrift::protocol::TOutputRecursionTracker tracker(*oprot);
-  xfer += oprot->writeStructBegin("DistributedSTO_lock_pargs");
+  xfer += oprot->writeStructBegin("DistSTO_lock_pargs");
 
   xfer += oprot->writeFieldBegin("tuid", ::apache::thrift::protocol::T_I64, 1);
   xfer += oprot->writeI64((*(this->tuid)));
@@ -319,11 +319,11 @@ uint32_t DistributedSTO_lock_pargs::write(::apache::thrift::protocol::TProtocol*
 }
 
 
-DistributedSTO_lock_result::~DistributedSTO_lock_result() throw() {
+DistSTO_lock_result::~DistSTO_lock_result() throw() {
 }
 
 
-uint32_t DistributedSTO_lock_result::read(::apache::thrift::protocol::TProtocol* iprot) {
+uint32_t DistSTO_lock_result::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
   uint32_t xfer = 0;
@@ -364,11 +364,11 @@ uint32_t DistributedSTO_lock_result::read(::apache::thrift::protocol::TProtocol*
   return xfer;
 }
 
-uint32_t DistributedSTO_lock_result::write(::apache::thrift::protocol::TProtocol* oprot) const {
+uint32_t DistSTO_lock_result::write(::apache::thrift::protocol::TProtocol* oprot) const {
 
   uint32_t xfer = 0;
 
-  xfer += oprot->writeStructBegin("DistributedSTO_lock_result");
+  xfer += oprot->writeStructBegin("DistSTO_lock_result");
 
   if (this->__isset.success) {
     xfer += oprot->writeFieldBegin("success", ::apache::thrift::protocol::T_BOOL, 0);
@@ -381,11 +381,11 @@ uint32_t DistributedSTO_lock_result::write(::apache::thrift::protocol::TProtocol
 }
 
 
-DistributedSTO_lock_presult::~DistributedSTO_lock_presult() throw() {
+DistSTO_lock_presult::~DistSTO_lock_presult() throw() {
 }
 
 
-uint32_t DistributedSTO_lock_presult::read(::apache::thrift::protocol::TProtocol* iprot) {
+uint32_t DistSTO_lock_presult::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
   uint32_t xfer = 0;
@@ -427,11 +427,11 @@ uint32_t DistributedSTO_lock_presult::read(::apache::thrift::protocol::TProtocol
 }
 
 
-DistributedSTO_check_args::~DistributedSTO_check_args() throw() {
+DistSTO_check_args::~DistSTO_check_args() throw() {
 }
 
 
-uint32_t DistributedSTO_check_args::read(::apache::thrift::protocol::TProtocol* iprot) {
+uint32_t DistSTO_check_args::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
   uint32_t xfer = 0;
@@ -512,10 +512,10 @@ uint32_t DistributedSTO_check_args::read(::apache::thrift::protocol::TProtocol* 
   return xfer;
 }
 
-uint32_t DistributedSTO_check_args::write(::apache::thrift::protocol::TProtocol* oprot) const {
+uint32_t DistSTO_check_args::write(::apache::thrift::protocol::TProtocol* oprot) const {
   uint32_t xfer = 0;
   apache::thrift::protocol::TOutputRecursionTracker tracker(*oprot);
-  xfer += oprot->writeStructBegin("DistributedSTO_check_args");
+  xfer += oprot->writeStructBegin("DistSTO_check_args");
 
   xfer += oprot->writeFieldBegin("tuid", ::apache::thrift::protocol::T_I64, 1);
   xfer += oprot->writeI64(this->tuid);
@@ -551,14 +551,14 @@ uint32_t DistributedSTO_check_args::write(::apache::thrift::protocol::TProtocol*
 }
 
 
-DistributedSTO_check_pargs::~DistributedSTO_check_pargs() throw() {
+DistSTO_check_pargs::~DistSTO_check_pargs() throw() {
 }
 
 
-uint32_t DistributedSTO_check_pargs::write(::apache::thrift::protocol::TProtocol* oprot) const {
+uint32_t DistSTO_check_pargs::write(::apache::thrift::protocol::TProtocol* oprot) const {
   uint32_t xfer = 0;
   apache::thrift::protocol::TOutputRecursionTracker tracker(*oprot);
-  xfer += oprot->writeStructBegin("DistributedSTO_check_pargs");
+  xfer += oprot->writeStructBegin("DistSTO_check_pargs");
 
   xfer += oprot->writeFieldBegin("tuid", ::apache::thrift::protocol::T_I64, 1);
   xfer += oprot->writeI64((*(this->tuid)));
@@ -594,11 +594,11 @@ uint32_t DistributedSTO_check_pargs::write(::apache::thrift::protocol::TProtocol
 }
 
 
-DistributedSTO_check_result::~DistributedSTO_check_result() throw() {
+DistSTO_check_result::~DistSTO_check_result() throw() {
 }
 
 
-uint32_t DistributedSTO_check_result::read(::apache::thrift::protocol::TProtocol* iprot) {
+uint32_t DistSTO_check_result::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
   uint32_t xfer = 0;
@@ -639,11 +639,11 @@ uint32_t DistributedSTO_check_result::read(::apache::thrift::protocol::TProtocol
   return xfer;
 }
 
-uint32_t DistributedSTO_check_result::write(::apache::thrift::protocol::TProtocol* oprot) const {
+uint32_t DistSTO_check_result::write(::apache::thrift::protocol::TProtocol* oprot) const {
 
   uint32_t xfer = 0;
 
-  xfer += oprot->writeStructBegin("DistributedSTO_check_result");
+  xfer += oprot->writeStructBegin("DistSTO_check_result");
 
   if (this->__isset.success) {
     xfer += oprot->writeFieldBegin("success", ::apache::thrift::protocol::T_BOOL, 0);
@@ -656,11 +656,11 @@ uint32_t DistributedSTO_check_result::write(::apache::thrift::protocol::TProtoco
 }
 
 
-DistributedSTO_check_presult::~DistributedSTO_check_presult() throw() {
+DistSTO_check_presult::~DistSTO_check_presult() throw() {
 }
 
 
-uint32_t DistributedSTO_check_presult::read(::apache::thrift::protocol::TProtocol* iprot) {
+uint32_t DistSTO_check_presult::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
   uint32_t xfer = 0;
@@ -702,11 +702,11 @@ uint32_t DistributedSTO_check_presult::read(::apache::thrift::protocol::TProtoco
 }
 
 
-DistributedSTO_install_args::~DistributedSTO_install_args() throw() {
+DistSTO_install_args::~DistSTO_install_args() throw() {
 }
 
 
-uint32_t DistributedSTO_install_args::read(::apache::thrift::protocol::TProtocol* iprot) {
+uint32_t DistSTO_install_args::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
   uint32_t xfer = 0;
@@ -775,10 +775,10 @@ uint32_t DistributedSTO_install_args::read(::apache::thrift::protocol::TProtocol
   return xfer;
 }
 
-uint32_t DistributedSTO_install_args::write(::apache::thrift::protocol::TProtocol* oprot) const {
+uint32_t DistSTO_install_args::write(::apache::thrift::protocol::TProtocol* oprot) const {
   uint32_t xfer = 0;
   apache::thrift::protocol::TOutputRecursionTracker tracker(*oprot);
-  xfer += oprot->writeStructBegin("DistributedSTO_install_args");
+  xfer += oprot->writeStructBegin("DistSTO_install_args");
 
   xfer += oprot->writeFieldBegin("tuid", ::apache::thrift::protocol::T_I64, 1);
   xfer += oprot->writeI64(this->tuid);
@@ -806,14 +806,14 @@ uint32_t DistributedSTO_install_args::write(::apache::thrift::protocol::TProtoco
 }
 
 
-DistributedSTO_install_pargs::~DistributedSTO_install_pargs() throw() {
+DistSTO_install_pargs::~DistSTO_install_pargs() throw() {
 }
 
 
-uint32_t DistributedSTO_install_pargs::write(::apache::thrift::protocol::TProtocol* oprot) const {
+uint32_t DistSTO_install_pargs::write(::apache::thrift::protocol::TProtocol* oprot) const {
   uint32_t xfer = 0;
   apache::thrift::protocol::TOutputRecursionTracker tracker(*oprot);
-  xfer += oprot->writeStructBegin("DistributedSTO_install_pargs");
+  xfer += oprot->writeStructBegin("DistSTO_install_pargs");
 
   xfer += oprot->writeFieldBegin("tuid", ::apache::thrift::protocol::T_I64, 1);
   xfer += oprot->writeI64((*(this->tuid)));
@@ -841,11 +841,11 @@ uint32_t DistributedSTO_install_pargs::write(::apache::thrift::protocol::TProtoc
 }
 
 
-DistributedSTO_install_result::~DistributedSTO_install_result() throw() {
+DistSTO_install_result::~DistSTO_install_result() throw() {
 }
 
 
-uint32_t DistributedSTO_install_result::read(::apache::thrift::protocol::TProtocol* iprot) {
+uint32_t DistSTO_install_result::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
   uint32_t xfer = 0;
@@ -873,11 +873,11 @@ uint32_t DistributedSTO_install_result::read(::apache::thrift::protocol::TProtoc
   return xfer;
 }
 
-uint32_t DistributedSTO_install_result::write(::apache::thrift::protocol::TProtocol* oprot) const {
+uint32_t DistSTO_install_result::write(::apache::thrift::protocol::TProtocol* oprot) const {
 
   uint32_t xfer = 0;
 
-  xfer += oprot->writeStructBegin("DistributedSTO_install_result");
+  xfer += oprot->writeStructBegin("DistSTO_install_result");
 
   xfer += oprot->writeFieldStop();
   xfer += oprot->writeStructEnd();
@@ -885,11 +885,11 @@ uint32_t DistributedSTO_install_result::write(::apache::thrift::protocol::TProto
 }
 
 
-DistributedSTO_install_presult::~DistributedSTO_install_presult() throw() {
+DistSTO_install_presult::~DistSTO_install_presult() throw() {
 }
 
 
-uint32_t DistributedSTO_install_presult::read(::apache::thrift::protocol::TProtocol* iprot) {
+uint32_t DistSTO_install_presult::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
   uint32_t xfer = 0;
@@ -918,11 +918,11 @@ uint32_t DistributedSTO_install_presult::read(::apache::thrift::protocol::TProto
 }
 
 
-DistributedSTO_abort_args::~DistributedSTO_abort_args() throw() {
+DistSTO_abort_args::~DistSTO_abort_args() throw() {
 }
 
 
-uint32_t DistributedSTO_abort_args::read(::apache::thrift::protocol::TProtocol* iprot) {
+uint32_t DistSTO_abort_args::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
   uint32_t xfer = 0;
@@ -963,10 +963,10 @@ uint32_t DistributedSTO_abort_args::read(::apache::thrift::protocol::TProtocol* 
   return xfer;
 }
 
-uint32_t DistributedSTO_abort_args::write(::apache::thrift::protocol::TProtocol* oprot) const {
+uint32_t DistSTO_abort_args::write(::apache::thrift::protocol::TProtocol* oprot) const {
   uint32_t xfer = 0;
   apache::thrift::protocol::TOutputRecursionTracker tracker(*oprot);
-  xfer += oprot->writeStructBegin("DistributedSTO_abort_args");
+  xfer += oprot->writeStructBegin("DistSTO_abort_args");
 
   xfer += oprot->writeFieldBegin("tuid", ::apache::thrift::protocol::T_I64, 1);
   xfer += oprot->writeI64(this->tuid);
@@ -978,14 +978,14 @@ uint32_t DistributedSTO_abort_args::write(::apache::thrift::protocol::TProtocol*
 }
 
 
-DistributedSTO_abort_pargs::~DistributedSTO_abort_pargs() throw() {
+DistSTO_abort_pargs::~DistSTO_abort_pargs() throw() {
 }
 
 
-uint32_t DistributedSTO_abort_pargs::write(::apache::thrift::protocol::TProtocol* oprot) const {
+uint32_t DistSTO_abort_pargs::write(::apache::thrift::protocol::TProtocol* oprot) const {
   uint32_t xfer = 0;
   apache::thrift::protocol::TOutputRecursionTracker tracker(*oprot);
-  xfer += oprot->writeStructBegin("DistributedSTO_abort_pargs");
+  xfer += oprot->writeStructBegin("DistSTO_abort_pargs");
 
   xfer += oprot->writeFieldBegin("tuid", ::apache::thrift::protocol::T_I64, 1);
   xfer += oprot->writeI64((*(this->tuid)));
@@ -997,11 +997,11 @@ uint32_t DistributedSTO_abort_pargs::write(::apache::thrift::protocol::TProtocol
 }
 
 
-DistributedSTO_abort_result::~DistributedSTO_abort_result() throw() {
+DistSTO_abort_result::~DistSTO_abort_result() throw() {
 }
 
 
-uint32_t DistributedSTO_abort_result::read(::apache::thrift::protocol::TProtocol* iprot) {
+uint32_t DistSTO_abort_result::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
   uint32_t xfer = 0;
@@ -1029,11 +1029,11 @@ uint32_t DistributedSTO_abort_result::read(::apache::thrift::protocol::TProtocol
   return xfer;
 }
 
-uint32_t DistributedSTO_abort_result::write(::apache::thrift::protocol::TProtocol* oprot) const {
+uint32_t DistSTO_abort_result::write(::apache::thrift::protocol::TProtocol* oprot) const {
 
   uint32_t xfer = 0;
 
-  xfer += oprot->writeStructBegin("DistributedSTO_abort_result");
+  xfer += oprot->writeStructBegin("DistSTO_abort_result");
 
   xfer += oprot->writeFieldStop();
   xfer += oprot->writeStructEnd();
@@ -1041,11 +1041,11 @@ uint32_t DistributedSTO_abort_result::write(::apache::thrift::protocol::TProtoco
 }
 
 
-DistributedSTO_abort_presult::~DistributedSTO_abort_presult() throw() {
+DistSTO_abort_presult::~DistSTO_abort_presult() throw() {
 }
 
 
-uint32_t DistributedSTO_abort_presult::read(::apache::thrift::protocol::TProtocol* iprot) {
+uint32_t DistSTO_abort_presult::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
   uint32_t xfer = 0;
@@ -1073,18 +1073,18 @@ uint32_t DistributedSTO_abort_presult::read(::apache::thrift::protocol::TProtoco
   return xfer;
 }
 
-void DistributedSTOClient::read(std::string& _return, const int64_t objid)
+void DistSTOClient::read(std::string& _return, const int64_t objid)
 {
   send_read(objid);
   recv_read(_return);
 }
 
-void DistributedSTOClient::send_read(const int64_t objid)
+void DistSTOClient::send_read(const int64_t objid)
 {
   int32_t cseqid = 0;
   oprot_->writeMessageBegin("read", ::apache::thrift::protocol::T_CALL, cseqid);
 
-  DistributedSTO_read_pargs args;
+  DistSTO_read_pargs args;
   args.objid = &objid;
   args.write(oprot_);
 
@@ -1093,7 +1093,7 @@ void DistributedSTOClient::send_read(const int64_t objid)
   oprot_->getTransport()->flush();
 }
 
-void DistributedSTOClient::recv_read(std::string& _return)
+void DistSTOClient::recv_read(std::string& _return)
 {
 
   int32_t rseqid = 0;
@@ -1118,7 +1118,7 @@ void DistributedSTOClient::recv_read(std::string& _return)
     iprot_->readMessageEnd();
     iprot_->getTransport()->readEnd();
   }
-  DistributedSTO_read_presult result;
+  DistSTO_read_presult result;
   result.success = &_return;
   result.read(iprot_);
   iprot_->readMessageEnd();
@@ -1131,18 +1131,18 @@ void DistributedSTOClient::recv_read(std::string& _return)
   throw ::apache::thrift::TApplicationException(::apache::thrift::TApplicationException::MISSING_RESULT, "read failed: unknown result");
 }
 
-bool DistributedSTOClient::lock(const int64_t tuid, const std::vector<int64_t> & objids)
+bool DistSTOClient::lock(const int64_t tuid, const std::vector<int64_t> & objids)
 {
   send_lock(tuid, objids);
   return recv_lock();
 }
 
-void DistributedSTOClient::send_lock(const int64_t tuid, const std::vector<int64_t> & objids)
+void DistSTOClient::send_lock(const int64_t tuid, const std::vector<int64_t> & objids)
 {
   int32_t cseqid = 0;
   oprot_->writeMessageBegin("lock", ::apache::thrift::protocol::T_CALL, cseqid);
 
-  DistributedSTO_lock_pargs args;
+  DistSTO_lock_pargs args;
   args.tuid = &tuid;
   args.objids = &objids;
   args.write(oprot_);
@@ -1152,7 +1152,7 @@ void DistributedSTOClient::send_lock(const int64_t tuid, const std::vector<int64
   oprot_->getTransport()->flush();
 }
 
-bool DistributedSTOClient::recv_lock()
+bool DistSTOClient::recv_lock()
 {
 
   int32_t rseqid = 0;
@@ -1178,7 +1178,7 @@ bool DistributedSTOClient::recv_lock()
     iprot_->getTransport()->readEnd();
   }
   bool _return;
-  DistributedSTO_lock_presult result;
+  DistSTO_lock_presult result;
   result.success = &_return;
   result.read(iprot_);
   iprot_->readMessageEnd();
@@ -1190,18 +1190,18 @@ bool DistributedSTOClient::recv_lock()
   throw ::apache::thrift::TApplicationException(::apache::thrift::TApplicationException::MISSING_RESULT, "lock failed: unknown result");
 }
 
-bool DistributedSTOClient::check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions)
+bool DistSTOClient::check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions)
 {
   send_check(tuid, objids, versions);
   return recv_check();
 }
 
-void DistributedSTOClient::send_check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions)
+void DistSTOClient::send_check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions)
 {
   int32_t cseqid = 0;
   oprot_->writeMessageBegin("check", ::apache::thrift::protocol::T_CALL, cseqid);
 
-  DistributedSTO_check_pargs args;
+  DistSTO_check_pargs args;
   args.tuid = &tuid;
   args.objids = &objids;
   args.versions = &versions;
@@ -1212,7 +1212,7 @@ void DistributedSTOClient::send_check(const int64_t tuid, const std::vector<int6
   oprot_->getTransport()->flush();
 }
 
-bool DistributedSTOClient::recv_check()
+bool DistSTOClient::recv_check()
 {
 
   int32_t rseqid = 0;
@@ -1238,7 +1238,7 @@ bool DistributedSTOClient::recv_check()
     iprot_->getTransport()->readEnd();
   }
   bool _return;
-  DistributedSTO_check_presult result;
+  DistSTO_check_presult result;
   result.success = &_return;
   result.read(iprot_);
   iprot_->readMessageEnd();
@@ -1250,18 +1250,18 @@ bool DistributedSTOClient::recv_check()
   throw ::apache::thrift::TApplicationException(::apache::thrift::TApplicationException::MISSING_RESULT, "check failed: unknown result");
 }
 
-void DistributedSTOClient::install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values)
+void DistSTOClient::install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values)
 {
   send_install(tuid, tid, written_values);
   recv_install();
 }
 
-void DistributedSTOClient::send_install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values)
+void DistSTOClient::send_install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values)
 {
   int32_t cseqid = 0;
   oprot_->writeMessageBegin("install", ::apache::thrift::protocol::T_CALL, cseqid);
 
-  DistributedSTO_install_pargs args;
+  DistSTO_install_pargs args;
   args.tuid = &tuid;
   args.tid = &tid;
   args.written_values = &written_values;
@@ -1272,7 +1272,7 @@ void DistributedSTOClient::send_install(const int64_t tuid, const int64_t tid, c
   oprot_->getTransport()->flush();
 }
 
-void DistributedSTOClient::recv_install()
+void DistSTOClient::recv_install()
 {
 
   int32_t rseqid = 0;
@@ -1297,7 +1297,7 @@ void DistributedSTOClient::recv_install()
     iprot_->readMessageEnd();
     iprot_->getTransport()->readEnd();
   }
-  DistributedSTO_install_presult result;
+  DistSTO_install_presult result;
   result.read(iprot_);
   iprot_->readMessageEnd();
   iprot_->getTransport()->readEnd();
@@ -1305,18 +1305,18 @@ void DistributedSTOClient::recv_install()
   return;
 }
 
-void DistributedSTOClient::abort(const int64_t tuid)
+void DistSTOClient::abort(const int64_t tuid)
 {
   send_abort(tuid);
   recv_abort();
 }
 
-void DistributedSTOClient::send_abort(const int64_t tuid)
+void DistSTOClient::send_abort(const int64_t tuid)
 {
   int32_t cseqid = 0;
   oprot_->writeMessageBegin("abort", ::apache::thrift::protocol::T_CALL, cseqid);
 
-  DistributedSTO_abort_pargs args;
+  DistSTO_abort_pargs args;
   args.tuid = &tuid;
   args.write(oprot_);
 
@@ -1325,7 +1325,7 @@ void DistributedSTOClient::send_abort(const int64_t tuid)
   oprot_->getTransport()->flush();
 }
 
-void DistributedSTOClient::recv_abort()
+void DistSTOClient::recv_abort()
 {
 
   int32_t rseqid = 0;
@@ -1350,7 +1350,7 @@ void DistributedSTOClient::recv_abort()
     iprot_->readMessageEnd();
     iprot_->getTransport()->readEnd();
   }
-  DistributedSTO_abort_presult result;
+  DistSTO_abort_presult result;
   result.read(iprot_);
   iprot_->readMessageEnd();
   iprot_->getTransport()->readEnd();
@@ -1358,7 +1358,7 @@ void DistributedSTOClient::recv_abort()
   return;
 }
 
-bool DistributedSTOProcessor::dispatchCall(::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, const std::string& fname, int32_t seqid, void* callContext) {
+bool DistSTOProcessor::dispatchCall(::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, const std::string& fname, int32_t seqid, void* callContext) {
   ProcessMap::iterator pfn;
   pfn = processMap_.find(fname);
   if (pfn == processMap_.end()) {
@@ -1377,34 +1377,34 @@ bool DistributedSTOProcessor::dispatchCall(::apache::thrift::protocol::TProtocol
   return true;
 }
 
-void DistributedSTOProcessor::process_read(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
+void DistSTOProcessor::process_read(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
 {
   void* ctx = NULL;
   if (this->eventHandler_.get() != NULL) {
-    ctx = this->eventHandler_->getContext("DistributedSTO.read", callContext);
+    ctx = this->eventHandler_->getContext("DistSTO.read", callContext);
   }
-  ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "DistributedSTO.read");
+  ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "DistSTO.read");
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->preRead(ctx, "DistributedSTO.read");
+    this->eventHandler_->preRead(ctx, "DistSTO.read");
   }
 
-  DistributedSTO_read_args args;
+  DistSTO_read_args args;
   args.read(iprot);
   iprot->readMessageEnd();
   uint32_t bytes = iprot->getTransport()->readEnd();
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->postRead(ctx, "DistributedSTO.read", bytes);
+    this->eventHandler_->postRead(ctx, "DistSTO.read", bytes);
   }
 
-  DistributedSTO_read_result result;
+  DistSTO_read_result result;
   try {
     iface_->read(result.success, args.objid);
     result.__isset.success = true;
   } catch (const std::exception& e) {
     if (this->eventHandler_.get() != NULL) {
-      this->eventHandler_->handlerError(ctx, "DistributedSTO.read");
+      this->eventHandler_->handlerError(ctx, "DistSTO.read");
     }
 
     ::apache::thrift::TApplicationException x(e.what());
@@ -1417,7 +1417,7 @@ void DistributedSTOProcessor::process_read(int32_t seqid, ::apache::thrift::prot
   }
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->preWrite(ctx, "DistributedSTO.read");
+    this->eventHandler_->preWrite(ctx, "DistSTO.read");
   }
 
   oprot->writeMessageBegin("read", ::apache::thrift::protocol::T_REPLY, seqid);
@@ -1427,38 +1427,38 @@ void DistributedSTOProcessor::process_read(int32_t seqid, ::apache::thrift::prot
   oprot->getTransport()->flush();
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->postWrite(ctx, "DistributedSTO.read", bytes);
+    this->eventHandler_->postWrite(ctx, "DistSTO.read", bytes);
   }
 }
 
-void DistributedSTOProcessor::process_lock(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
+void DistSTOProcessor::process_lock(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
 {
   void* ctx = NULL;
   if (this->eventHandler_.get() != NULL) {
-    ctx = this->eventHandler_->getContext("DistributedSTO.lock", callContext);
+    ctx = this->eventHandler_->getContext("DistSTO.lock", callContext);
   }
-  ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "DistributedSTO.lock");
+  ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "DistSTO.lock");
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->preRead(ctx, "DistributedSTO.lock");
+    this->eventHandler_->preRead(ctx, "DistSTO.lock");
   }
 
-  DistributedSTO_lock_args args;
+  DistSTO_lock_args args;
   args.read(iprot);
   iprot->readMessageEnd();
   uint32_t bytes = iprot->getTransport()->readEnd();
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->postRead(ctx, "DistributedSTO.lock", bytes);
+    this->eventHandler_->postRead(ctx, "DistSTO.lock", bytes);
   }
 
-  DistributedSTO_lock_result result;
+  DistSTO_lock_result result;
   try {
     result.success = iface_->lock(args.tuid, args.objids);
     result.__isset.success = true;
   } catch (const std::exception& e) {
     if (this->eventHandler_.get() != NULL) {
-      this->eventHandler_->handlerError(ctx, "DistributedSTO.lock");
+      this->eventHandler_->handlerError(ctx, "DistSTO.lock");
     }
 
     ::apache::thrift::TApplicationException x(e.what());
@@ -1471,7 +1471,7 @@ void DistributedSTOProcessor::process_lock(int32_t seqid, ::apache::thrift::prot
   }
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->preWrite(ctx, "DistributedSTO.lock");
+    this->eventHandler_->preWrite(ctx, "DistSTO.lock");
   }
 
   oprot->writeMessageBegin("lock", ::apache::thrift::protocol::T_REPLY, seqid);
@@ -1481,38 +1481,38 @@ void DistributedSTOProcessor::process_lock(int32_t seqid, ::apache::thrift::prot
   oprot->getTransport()->flush();
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->postWrite(ctx, "DistributedSTO.lock", bytes);
+    this->eventHandler_->postWrite(ctx, "DistSTO.lock", bytes);
   }
 }
 
-void DistributedSTOProcessor::process_check(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
+void DistSTOProcessor::process_check(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
 {
   void* ctx = NULL;
   if (this->eventHandler_.get() != NULL) {
-    ctx = this->eventHandler_->getContext("DistributedSTO.check", callContext);
+    ctx = this->eventHandler_->getContext("DistSTO.check", callContext);
   }
-  ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "DistributedSTO.check");
+  ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "DistSTO.check");
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->preRead(ctx, "DistributedSTO.check");
+    this->eventHandler_->preRead(ctx, "DistSTO.check");
   }
 
-  DistributedSTO_check_args args;
+  DistSTO_check_args args;
   args.read(iprot);
   iprot->readMessageEnd();
   uint32_t bytes = iprot->getTransport()->readEnd();
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->postRead(ctx, "DistributedSTO.check", bytes);
+    this->eventHandler_->postRead(ctx, "DistSTO.check", bytes);
   }
 
-  DistributedSTO_check_result result;
+  DistSTO_check_result result;
   try {
     result.success = iface_->check(args.tuid, args.objids, args.versions);
     result.__isset.success = true;
   } catch (const std::exception& e) {
     if (this->eventHandler_.get() != NULL) {
-      this->eventHandler_->handlerError(ctx, "DistributedSTO.check");
+      this->eventHandler_->handlerError(ctx, "DistSTO.check");
     }
 
     ::apache::thrift::TApplicationException x(e.what());
@@ -1525,7 +1525,7 @@ void DistributedSTOProcessor::process_check(int32_t seqid, ::apache::thrift::pro
   }
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->preWrite(ctx, "DistributedSTO.check");
+    this->eventHandler_->preWrite(ctx, "DistSTO.check");
   }
 
   oprot->writeMessageBegin("check", ::apache::thrift::protocol::T_REPLY, seqid);
@@ -1535,37 +1535,37 @@ void DistributedSTOProcessor::process_check(int32_t seqid, ::apache::thrift::pro
   oprot->getTransport()->flush();
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->postWrite(ctx, "DistributedSTO.check", bytes);
+    this->eventHandler_->postWrite(ctx, "DistSTO.check", bytes);
   }
 }
 
-void DistributedSTOProcessor::process_install(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
+void DistSTOProcessor::process_install(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
 {
   void* ctx = NULL;
   if (this->eventHandler_.get() != NULL) {
-    ctx = this->eventHandler_->getContext("DistributedSTO.install", callContext);
+    ctx = this->eventHandler_->getContext("DistSTO.install", callContext);
   }
-  ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "DistributedSTO.install");
+  ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "DistSTO.install");
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->preRead(ctx, "DistributedSTO.install");
+    this->eventHandler_->preRead(ctx, "DistSTO.install");
   }
 
-  DistributedSTO_install_args args;
+  DistSTO_install_args args;
   args.read(iprot);
   iprot->readMessageEnd();
   uint32_t bytes = iprot->getTransport()->readEnd();
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->postRead(ctx, "DistributedSTO.install", bytes);
+    this->eventHandler_->postRead(ctx, "DistSTO.install", bytes);
   }
 
-  DistributedSTO_install_result result;
+  DistSTO_install_result result;
   try {
     iface_->install(args.tuid, args.tid, args.written_values);
   } catch (const std::exception& e) {
     if (this->eventHandler_.get() != NULL) {
-      this->eventHandler_->handlerError(ctx, "DistributedSTO.install");
+      this->eventHandler_->handlerError(ctx, "DistSTO.install");
     }
 
     ::apache::thrift::TApplicationException x(e.what());
@@ -1578,7 +1578,7 @@ void DistributedSTOProcessor::process_install(int32_t seqid, ::apache::thrift::p
   }
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->preWrite(ctx, "DistributedSTO.install");
+    this->eventHandler_->preWrite(ctx, "DistSTO.install");
   }
 
   oprot->writeMessageBegin("install", ::apache::thrift::protocol::T_REPLY, seqid);
@@ -1588,37 +1588,37 @@ void DistributedSTOProcessor::process_install(int32_t seqid, ::apache::thrift::p
   oprot->getTransport()->flush();
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->postWrite(ctx, "DistributedSTO.install", bytes);
+    this->eventHandler_->postWrite(ctx, "DistSTO.install", bytes);
   }
 }
 
-void DistributedSTOProcessor::process_abort(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
+void DistSTOProcessor::process_abort(int32_t seqid, ::apache::thrift::protocol::TProtocol* iprot, ::apache::thrift::protocol::TProtocol* oprot, void* callContext)
 {
   void* ctx = NULL;
   if (this->eventHandler_.get() != NULL) {
-    ctx = this->eventHandler_->getContext("DistributedSTO.abort", callContext);
+    ctx = this->eventHandler_->getContext("DistSTO.abort", callContext);
   }
-  ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "DistributedSTO.abort");
+  ::apache::thrift::TProcessorContextFreer freer(this->eventHandler_.get(), ctx, "DistSTO.abort");
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->preRead(ctx, "DistributedSTO.abort");
+    this->eventHandler_->preRead(ctx, "DistSTO.abort");
   }
 
-  DistributedSTO_abort_args args;
+  DistSTO_abort_args args;
   args.read(iprot);
   iprot->readMessageEnd();
   uint32_t bytes = iprot->getTransport()->readEnd();
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->postRead(ctx, "DistributedSTO.abort", bytes);
+    this->eventHandler_->postRead(ctx, "DistSTO.abort", bytes);
   }
 
-  DistributedSTO_abort_result result;
+  DistSTO_abort_result result;
   try {
     iface_->abort(args.tuid);
   } catch (const std::exception& e) {
     if (this->eventHandler_.get() != NULL) {
-      this->eventHandler_->handlerError(ctx, "DistributedSTO.abort");
+      this->eventHandler_->handlerError(ctx, "DistSTO.abort");
     }
 
     ::apache::thrift::TApplicationException x(e.what());
@@ -1631,7 +1631,7 @@ void DistributedSTOProcessor::process_abort(int32_t seqid, ::apache::thrift::pro
   }
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->preWrite(ctx, "DistributedSTO.abort");
+    this->eventHandler_->preWrite(ctx, "DistSTO.abort");
   }
 
   oprot->writeMessageBegin("abort", ::apache::thrift::protocol::T_REPLY, seqid);
@@ -1641,30 +1641,30 @@ void DistributedSTOProcessor::process_abort(int32_t seqid, ::apache::thrift::pro
   oprot->getTransport()->flush();
 
   if (this->eventHandler_.get() != NULL) {
-    this->eventHandler_->postWrite(ctx, "DistributedSTO.abort", bytes);
+    this->eventHandler_->postWrite(ctx, "DistSTO.abort", bytes);
   }
 }
 
-::boost::shared_ptr< ::apache::thrift::TProcessor > DistributedSTOProcessorFactory::getProcessor(const ::apache::thrift::TConnectionInfo& connInfo) {
-  ::apache::thrift::ReleaseHandler< DistributedSTOIfFactory > cleanup(handlerFactory_);
-  ::boost::shared_ptr< DistributedSTOIf > handler(handlerFactory_->getHandler(connInfo), cleanup);
-  ::boost::shared_ptr< ::apache::thrift::TProcessor > processor(new DistributedSTOProcessor(handler));
+::boost::shared_ptr< ::apache::thrift::TProcessor > DistSTOProcessorFactory::getProcessor(const ::apache::thrift::TConnectionInfo& connInfo) {
+  ::apache::thrift::ReleaseHandler< DistSTOIfFactory > cleanup(handlerFactory_);
+  ::boost::shared_ptr< DistSTOIf > handler(handlerFactory_->getHandler(connInfo), cleanup);
+  ::boost::shared_ptr< ::apache::thrift::TProcessor > processor(new DistSTOProcessor(handler));
   return processor;
 }
 
-void DistributedSTOConcurrentClient::read(std::string& _return, const int64_t objid)
+void DistSTOConcurrentClient::read(std::string& _return, const int64_t objid)
 {
   int32_t seqid = send_read(objid);
   recv_read(_return, seqid);
 }
 
-int32_t DistributedSTOConcurrentClient::send_read(const int64_t objid)
+int32_t DistSTOConcurrentClient::send_read(const int64_t objid)
 {
   int32_t cseqid = this->sync_.generateSeqId();
   ::apache::thrift::async::TConcurrentSendSentry sentry(&this->sync_);
   oprot_->writeMessageBegin("read", ::apache::thrift::protocol::T_CALL, cseqid);
 
-  DistributedSTO_read_pargs args;
+  DistSTO_read_pargs args;
   args.objid = &objid;
   args.write(oprot_);
 
@@ -1676,7 +1676,7 @@ int32_t DistributedSTOConcurrentClient::send_read(const int64_t objid)
   return cseqid;
 }
 
-void DistributedSTOConcurrentClient::recv_read(std::string& _return, const int32_t seqid)
+void DistSTOConcurrentClient::recv_read(std::string& _return, const int32_t seqid)
 {
 
   int32_t rseqid = 0;
@@ -1714,7 +1714,7 @@ void DistributedSTOConcurrentClient::recv_read(std::string& _return, const int32
         using ::apache::thrift::protocol::TProtocolException;
         throw TProtocolException(TProtocolException::INVALID_DATA);
       }
-      DistributedSTO_read_presult result;
+      DistSTO_read_presult result;
       result.success = &_return;
       result.read(iprot_);
       iprot_->readMessageEnd();
@@ -1736,19 +1736,19 @@ void DistributedSTOConcurrentClient::recv_read(std::string& _return, const int32
   } // end while(true)
 }
 
-bool DistributedSTOConcurrentClient::lock(const int64_t tuid, const std::vector<int64_t> & objids)
+bool DistSTOConcurrentClient::lock(const int64_t tuid, const std::vector<int64_t> & objids)
 {
   int32_t seqid = send_lock(tuid, objids);
   return recv_lock(seqid);
 }
 
-int32_t DistributedSTOConcurrentClient::send_lock(const int64_t tuid, const std::vector<int64_t> & objids)
+int32_t DistSTOConcurrentClient::send_lock(const int64_t tuid, const std::vector<int64_t> & objids)
 {
   int32_t cseqid = this->sync_.generateSeqId();
   ::apache::thrift::async::TConcurrentSendSentry sentry(&this->sync_);
   oprot_->writeMessageBegin("lock", ::apache::thrift::protocol::T_CALL, cseqid);
 
-  DistributedSTO_lock_pargs args;
+  DistSTO_lock_pargs args;
   args.tuid = &tuid;
   args.objids = &objids;
   args.write(oprot_);
@@ -1761,7 +1761,7 @@ int32_t DistributedSTOConcurrentClient::send_lock(const int64_t tuid, const std:
   return cseqid;
 }
 
-bool DistributedSTOConcurrentClient::recv_lock(const int32_t seqid)
+bool DistSTOConcurrentClient::recv_lock(const int32_t seqid)
 {
 
   int32_t rseqid = 0;
@@ -1800,7 +1800,7 @@ bool DistributedSTOConcurrentClient::recv_lock(const int32_t seqid)
         throw TProtocolException(TProtocolException::INVALID_DATA);
       }
       bool _return;
-      DistributedSTO_lock_presult result;
+      DistSTO_lock_presult result;
       result.success = &_return;
       result.read(iprot_);
       iprot_->readMessageEnd();
@@ -1821,19 +1821,19 @@ bool DistributedSTOConcurrentClient::recv_lock(const int32_t seqid)
   } // end while(true)
 }
 
-bool DistributedSTOConcurrentClient::check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions)
+bool DistSTOConcurrentClient::check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions)
 {
   int32_t seqid = send_check(tuid, objids, versions);
   return recv_check(seqid);
 }
 
-int32_t DistributedSTOConcurrentClient::send_check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions)
+int32_t DistSTOConcurrentClient::send_check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions)
 {
   int32_t cseqid = this->sync_.generateSeqId();
   ::apache::thrift::async::TConcurrentSendSentry sentry(&this->sync_);
   oprot_->writeMessageBegin("check", ::apache::thrift::protocol::T_CALL, cseqid);
 
-  DistributedSTO_check_pargs args;
+  DistSTO_check_pargs args;
   args.tuid = &tuid;
   args.objids = &objids;
   args.versions = &versions;
@@ -1847,7 +1847,7 @@ int32_t DistributedSTOConcurrentClient::send_check(const int64_t tuid, const std
   return cseqid;
 }
 
-bool DistributedSTOConcurrentClient::recv_check(const int32_t seqid)
+bool DistSTOConcurrentClient::recv_check(const int32_t seqid)
 {
 
   int32_t rseqid = 0;
@@ -1886,7 +1886,7 @@ bool DistributedSTOConcurrentClient::recv_check(const int32_t seqid)
         throw TProtocolException(TProtocolException::INVALID_DATA);
       }
       bool _return;
-      DistributedSTO_check_presult result;
+      DistSTO_check_presult result;
       result.success = &_return;
       result.read(iprot_);
       iprot_->readMessageEnd();
@@ -1907,19 +1907,19 @@ bool DistributedSTOConcurrentClient::recv_check(const int32_t seqid)
   } // end while(true)
 }
 
-void DistributedSTOConcurrentClient::install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values)
+void DistSTOConcurrentClient::install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values)
 {
   int32_t seqid = send_install(tuid, tid, written_values);
   recv_install(seqid);
 }
 
-int32_t DistributedSTOConcurrentClient::send_install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values)
+int32_t DistSTOConcurrentClient::send_install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values)
 {
   int32_t cseqid = this->sync_.generateSeqId();
   ::apache::thrift::async::TConcurrentSendSentry sentry(&this->sync_);
   oprot_->writeMessageBegin("install", ::apache::thrift::protocol::T_CALL, cseqid);
 
-  DistributedSTO_install_pargs args;
+  DistSTO_install_pargs args;
   args.tuid = &tuid;
   args.tid = &tid;
   args.written_values = &written_values;
@@ -1933,7 +1933,7 @@ int32_t DistributedSTOConcurrentClient::send_install(const int64_t tuid, const i
   return cseqid;
 }
 
-void DistributedSTOConcurrentClient::recv_install(const int32_t seqid)
+void DistSTOConcurrentClient::recv_install(const int32_t seqid)
 {
 
   int32_t rseqid = 0;
@@ -1971,7 +1971,7 @@ void DistributedSTOConcurrentClient::recv_install(const int32_t seqid)
         using ::apache::thrift::protocol::TProtocolException;
         throw TProtocolException(TProtocolException::INVALID_DATA);
       }
-      DistributedSTO_install_presult result;
+      DistSTO_install_presult result;
       result.read(iprot_);
       iprot_->readMessageEnd();
       iprot_->getTransport()->readEnd();
@@ -1987,19 +1987,19 @@ void DistributedSTOConcurrentClient::recv_install(const int32_t seqid)
   } // end while(true)
 }
 
-void DistributedSTOConcurrentClient::abort(const int64_t tuid)
+void DistSTOConcurrentClient::abort(const int64_t tuid)
 {
   int32_t seqid = send_abort(tuid);
   recv_abort(seqid);
 }
 
-int32_t DistributedSTOConcurrentClient::send_abort(const int64_t tuid)
+int32_t DistSTOConcurrentClient::send_abort(const int64_t tuid)
 {
   int32_t cseqid = this->sync_.generateSeqId();
   ::apache::thrift::async::TConcurrentSendSentry sentry(&this->sync_);
   oprot_->writeMessageBegin("abort", ::apache::thrift::protocol::T_CALL, cseqid);
 
-  DistributedSTO_abort_pargs args;
+  DistSTO_abort_pargs args;
   args.tuid = &tuid;
   args.write(oprot_);
 
@@ -2011,7 +2011,7 @@ int32_t DistributedSTOConcurrentClient::send_abort(const int64_t tuid)
   return cseqid;
 }
 
-void DistributedSTOConcurrentClient::recv_abort(const int32_t seqid)
+void DistSTOConcurrentClient::recv_abort(const int32_t seqid)
 {
 
   int32_t rseqid = 0;
@@ -2049,7 +2049,7 @@ void DistributedSTOConcurrentClient::recv_abort(const int32_t seqid)
         using ::apache::thrift::protocol::TProtocolException;
         throw TProtocolException(TProtocolException::INVALID_DATA);
       }
-      DistributedSTO_abort_presult result;
+      DistSTO_abort_presult result;
       result.read(iprot_);
       iprot_->readMessageEnd();
       iprot_->getTransport()->readEnd();

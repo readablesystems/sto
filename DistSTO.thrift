@@ -1,4 +1,4 @@
-service DistributedSTO {
+service DistSTO {
     binary read(1:i64 objid);
     bool lock(1:i64 tuid, 2:list<i64> objids);
     bool check(1:i64 tuid, 2:list<i64> objids, 3:list<i64> versions);

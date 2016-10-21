@@ -13,7 +13,7 @@
 #include <iostream>
 #include <sstream>
 
-#include "DistributedSTO.h"
+#include "DistSTO.h"
 #include <thrift/protocol/TBinaryProtocol.h>
 #include <thrift/server/TSimpleServer.h>
 #include <thrift/transport/TServerSocket.h>
@@ -662,7 +662,7 @@ private:
     friend class TNonopaqueVersion;
 };
 
-class DistributedSTOServer;
+class DistSTOServer;
 
 using namespace ::apache::thrift;
 using namespace ::apache::thrift::protocol;
@@ -674,11 +674,11 @@ class Sto {
   
 public:
     static int machineID; 
-    static DistributedSTOServer *server;
-    static std::vector<DistributedSTOClient*> clients;
+    static DistSTOServer *server;
+    static std::vector<DistSTOClient*> clients;
     static std::map<int64_t, std::vector<int64_t>> tuid_objids;
 
-    static void initializeDistributedSTO(int thisMachineID, int numOfPeers);
+    static void initializeDistSTO(int thisMachineID, int numOfPeers);
 
     static Transaction* transaction() {
         if (!TThread::txn)
@@ -775,14 +775,14 @@ public:
     }
 };
 
-class DistributedSTOServer : virtual public DistributedSTOIf {
+class DistSTOServer : virtual public DistSTOIf {
  private:
   TSimpleServer *_server;
 
  public:
-  DistributedSTOServer(int port) {
-    shared_ptr<DistributedSTOServer> handler(this);
-    shared_ptr<TProcessor> processor(new DistributedSTOProcessor(handler));
+  DistSTOServer(int port) {
+    shared_ptr<DistSTOServer> handler(this);
+    shared_ptr<TProcessor> processor(new DistSTOProcessor(handler));
     shared_ptr<TServerTransport> serverTransport(new TServerSocket(port));
     shared_ptr<TTransportFactory> transportFactory(new TBufferedTransportFactory());
     shared_ptr<TProtocolFactory> protocolFactory(new TBinaryProtocolFactory());
