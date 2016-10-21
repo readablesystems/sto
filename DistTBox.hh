@@ -1,9 +1,21 @@
 #pragma once
-#include "TBox.hh"
+#include "Interface.hh"
+#include "TWrapped.hh"
 
 template <typename T, typename W = TWrapped<T> >
-class DistTBox : public TBox {
+class DistTBox : public TObject {
 public:
+    typedef typename W::read_type read_type;
+    typedef typename W::version_type version_type;
+
+    DistTBox() {
+    }
+
+    template <typename... Args>
+    explicit DistTBox(Args&&... args)
+        : v_(std::forward<Args>(args)...) {
+    }
+
     read_type read() const {
         auto item = Sto::item(this, 0);
         if (item.has_write())
@@ -92,4 +104,8 @@ public:
             w << " =" << item.write_value<T>();
         w << "}";
     }
+
+protected:
+    version_type vers_;
+    W v_;
 };
