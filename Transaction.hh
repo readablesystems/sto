@@ -662,58 +662,13 @@ private:
     friend class TNonopaqueVersion;
 };
 
+class DistributedSTOServer;
+
 using namespace ::apache::thrift;
 using namespace ::apache::thrift::protocol;
 using namespace ::apache::thrift::transport;
 using namespace ::apache::thrift::server;
 using boost::shared_ptr;
-
-class DistributedSTOServer : virtual public DistributedSTOIf {
- private:
-  TSimpleServer *server;
-  std::map<const int64_t, const std::vector<int64_t>&> *tuid_objids;
-
- public:
-  DistributedSTOServer(int port) {
-    shared_ptr<DistributedSTOServer> handler(this);
-    shared_ptr<TProcessor> processor(new DistributedSTOProcessor(handler));
-    shared_ptr<TServerTransport> serverTransport(new TServerSocket(port));
-    shared_ptr<TTransportFactory> transportFactory(new TBufferedTransportFactory());
-    shared_ptr<TProtocolFactory> protocolFactory(new TBinaryProtocolFactory());
-    server = new TSimpleServer(processor, serverTransport, transportFactory, protocolFactory); 
-    tuid_objids = new std::map<const int64_t, const std::vector<int64_t>&>;
-  }
-
-  void serve() {
-    server->serve();
-  }
-
-  void read(std::string& _return, const int64_t objid) {
-    // Your implementation goes here
-    printf("read\n");
-  }
-
-  bool lock(const int64_t tuid, const std::vector<int64_t> & objids) {
-    // Your implementation goes here
-    printf("lock\n");
-  }
-
-  bool check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions) {
-    // Your implementation goes here
-    printf("check\n");
-  }
-
-  void install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values) {
-    // Your implementation goes here
-    printf("install\n");
-  }
-
-  void abort(const int64_t tuid) {
-    // Your implementation goes here
-    printf("abort\n");
-  }
-
-};
 
 class Sto {
   
@@ -721,6 +676,8 @@ public:
     static int machineID; 
     static DistributedSTOServer *server;
     static std::vector<DistributedSTOClient*> clients;
+    static std::map<int64_t, std::vector<int64_t>> tuid_objids;
+
     static void initializeDistributedSTO(int thisMachineID, int numOfPeers);
 
     static Transaction* transaction() {
@@ -816,6 +773,52 @@ public:
         // XXX: we might want a nonopaque_bit in here too.
         return TransactionTid::increment_value;
     }
+};
+
+class DistributedSTOServer : virtual public DistributedSTOIf {
+ private:
+  TSimpleServer *_server;
+
+ public:
+  DistributedSTOServer(int port) {
+    shared_ptr<DistributedSTOServer> handler(this);
+    shared_ptr<TProcessor> processor(new DistributedSTOProcessor(handler));
+    shared_ptr<TServerTransport> serverTransport(new TServerSocket(port));
+    shared_ptr<TTransportFactory> transportFactory(new TBufferedTransportFactory());
+    shared_ptr<TProtocolFactory> protocolFactory(new TBinaryProtocolFactory());
+    _server = new TSimpleServer(processor, serverTransport, transportFactory, protocolFactory); 
+  }
+
+  void serve() {
+    _server->serve();
+  }
+
+  void read(std::string& _return, const int64_t objid) {
+    printf("read\n");
+  }
+
+  bool lock(const int64_t tuid, const std::vector<int64_t> & objids) {
+    // This tuid should not exist yet in tuid_objids map
+    always_assert(Sto::tuid_objids.find(tuid) == Sto::tuid_objids.end());
+    // record tuid for later use
+    Sto::tuid_objids[tuid] = objids;
+    // lock all modified objects
+    for (auto objid : objids) {
+      
+    } 
+  }
+
+  bool check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions) {
+    printf("check\n");
+  }
+
+  void install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values) {
+    printf("install\n");
+  }
+
+  void abort(const int64_t tuid) {
+    printf("abort\n");
+  }
 };
 
 class TestTransaction {

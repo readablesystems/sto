@@ -437,7 +437,7 @@ std::ostream& operator<<(std::ostream& w, const TransactionGuard& txn) {
 int Sto::machineID = -1; 
 DistributedSTOServer* Sto::server = nullptr;
 std::vector<DistributedSTOClient*> Sto::clients;
-// std::map<int64_t, std::vector<int64_t>> DistributedSTOServer::tuid_objids;
+std::map<int64_t, std::vector<int64_t>> Sto::tuid_objids;
 
 void* runServer(void *server) {
     ((DistributedSTOServer *) server)->serve();
