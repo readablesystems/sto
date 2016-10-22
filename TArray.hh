@@ -76,8 +76,7 @@ public:
     }
     bool check(TransItem& item, Transaction&) override {
         auto& entry = data_[item.key<size_type>()];
-        auto owner = entry.lock.owner();
-        if (owner != 0 && owner != TThread::id()+1)
+        if (entry.lock.is_locked() && !entry.lock.i_own(TThread::id()))
           return false;
         return entry.lock.version() == item.read_value<version_type>();
         //        return item.check_version(data_[item.key<size_type>()].vers);

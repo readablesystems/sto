@@ -6,8 +6,8 @@ class LocalityLock {
 public:
   typedef unsigned word_type;
 
-  static constexpr word_type in_use = word_type(1) << 15;//(sizeof(word_type)*8 - 1);
-  static constexpr word_type increment_value = word_type(1) << 16;
+  static constexpr word_type in_use = word_type(1) << 7;//(sizeof(word_type)*8 - 1);
+  static constexpr word_type increment_value = word_type(1) << 8;
   static constexpr word_type thread_mask = increment_value-1;
 
   LocalityLock() : owner_(), mode_() {}
@@ -21,10 +21,14 @@ public:
     return owner_ & in_use;
   }
 
+  bool i_own(unsigned threadid) {
+    return owner() == threadid+1;
+  }
+
   word_type version() const {
     return owner_ & ~thread_mask;
   }
-  word_type inc_version() {
+  void inc_version() {
     owner_ = owner_ + increment_value;
   }
 
