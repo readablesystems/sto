@@ -68,9 +68,7 @@ public:
       acquire(threadid);
     }
   }
-  inline __attribute__((always_inline)) void release(unsigned threadid) {
-    threadid = threadid+1;
-    fence();
+  inline __attribute__((always_inline)) void release() {
     owner_ = owner_ & ~in_use;
   }
   word_type owner_;
