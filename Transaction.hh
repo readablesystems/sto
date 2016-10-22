@@ -874,6 +874,18 @@ inline TransProxy& TransProxy::observe(TCommutativeVersion version, bool add_rea
     return *this;
 }
 
+template <typename T>
+inline TransProxy& TransProxy::observe(T shitty_version, bool is_locked, bool add_read) {
+    assert(!has_stash());
+    if (is_locked)
+      t()->abort_because(item(), "locked", shitty_version);
+    if (add_read && !has_read()) {
+        item().__or_flags(TransItem::read_bit);
+        item().rdata_ = Packer<T>::pack(t()->buf_, std::move(shitty_version));
+    }
+    return *this;
+}
+
 inline TransProxy& TransProxy::observe(TVersion version) {
     return observe(version, true);
 }

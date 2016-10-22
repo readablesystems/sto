@@ -13,11 +13,15 @@ public:
   LocalityLock() : owner_(), mode_() {}
   LocalityLock(int initialowner) : owner_(initialowner), mode_() {}
 
-  word_type owner() {
+  word_type owner() const {
     return (owner_ & thread_mask) & ~in_use;
   }
 
-  word_type version() {
+  bool is_locked() const {
+    return owner_ & in_use;
+  }
+
+  word_type version() const {
     return owner_ & ~thread_mask;
   }
   word_type inc_version() {

@@ -247,6 +247,8 @@ class TransProxy {
     inline TransProxy& observe(TVersion version);
     inline TransProxy& observe(TNonopaqueVersion version);
     inline TransProxy& observe(TCommutativeVersion version);
+    template <typename T>
+    inline TransProxy& observe(T shitty_version, bool is_locked, bool add_read);
     inline TransProxy& observe_opacity(TVersion version);
     inline TransProxy& observe_opacity(TNonopaqueVersion version);
     inline TransProxy& observe_opacity(TCommutativeVersion version);

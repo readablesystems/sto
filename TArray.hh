@@ -1,6 +1,7 @@
 #pragma once
 #include "TWrapped.hh"
 #include "TArrayProxy.hh"
+#include "LocalityLock.hh"
 
 template <typename T, unsigned N, template <typename> class W = TOpaqueWrapped>
 class TArray : public TObject {
@@ -9,7 +10,8 @@ public:
     class const_iterator;
     typedef T value_type;
     typedef typename W<T>::read_type get_type;
-    typedef typename W<T>::version_type version_type;
+  //    typedef typename W<T>::version_type version_type;
+    typedef LocalityLock::word_type version_type;
     typedef unsigned size_type;
     typedef int difference_type;
     typedef TConstArrayProxy<TArray<T, N, W> > const_proxy_type;
@@ -41,8 +43,11 @@ public:
         auto item = Sto::item(this, i);
         if (item.has_write())
             return item.template write_value<T>();
-        else
-            return data_[i].v.read(item, data_[i].vers);
+        else {
+            auto vers = data_[i].lock.version();
+            item.observe(vers, data_[i].lock.is_locked(), true);
+            return data_[i].v.access();
+        }
     }
     void transPut(size_type i, T x) const {
         assert(i < N);
@@ -64,23 +69,33 @@ public:
 
     // transactional methods
     bool lock(TransItem& item, Transaction& txn) override {
-        return txn.try_lock(item, data_[item.key<size_type>()].vers);
+        auto& entry = data_[item.key<size_type>()];
+        entry.lock.acquire(TThread::id());
+        return true;
+        //        return txn.try_lock(item, data_[item.key<size_type>()].vers);
     }
     bool check(TransItem& item, Transaction&) override {
-        return item.check_version(data_[item.key<size_type>()].vers);
+        auto& entry = data_[item.key<size_type>()];
+        auto owner = entry.lock.owner();
+        if (owner != 0 && owner != TThread::id()+1)
+          return false;
+        return entry.lock.version() == item.read_value<version_type>();
+        //        return item.check_version(data_[item.key<size_type>()].vers);
     }
     void install(TransItem& item, Transaction& txn) override {
         size_type i = item.key<size_type>();
         data_[i].v.write(item.write_value<T>());
-        txn.set_version_unlock(data_[i].vers, item);
+        data_[i].lock.inc_version();
+        //txn.set_version_unlock(data_[i].vers, item);
     }
     void unlock(TransItem& item) override {
-        data_[item.key<size_type>()].vers.unlock();
+      data_[item.key<size_type>()].lock.release(TThread::id());
+      //data_[item.key<size_type>()].vers.unlock();
     }
 
 private:
     struct elem {
-        version_type vers;
+        LocalityLock lock;
         W<T> v;
     };
     elem data_[N];
