@@ -13,7 +13,7 @@
 #include <iostream>
 #include <sstream>
 
-#include "DistributedSTO.h"
+#include "DistSTO.h"
 #include <thrift/protocol/TBinaryProtocol.h>
 #include <thrift/server/TSimpleServer.h>
 #include <thrift/transport/TServerSocket.h>
@@ -662,67 +662,23 @@ private:
     friend class TNonopaqueVersion;
 };
 
+class DistSTOServer;
+
 using namespace ::apache::thrift;
 using namespace ::apache::thrift::protocol;
 using namespace ::apache::thrift::transport;
 using namespace ::apache::thrift::server;
 using boost::shared_ptr;
 
-class DistributedSTOServer : virtual public DistributedSTOIf {
- private:
-  TSimpleServer *server;
-
- public:
-  DistributedSTOServer(int port) {
-    shared_ptr<DistributedSTOServer> handler(this);
-    shared_ptr<TProcessor> processor(new DistributedSTOProcessor(handler));
-    shared_ptr<TServerTransport> serverTransport(new TServerSocket(port));
-    shared_ptr<TTransportFactory> transportFactory(new TBufferedTransportFactory());
-    shared_ptr<TProtocolFactory> protocolFactory(new TBinaryProtocolFactory());
-    server = new TSimpleServer(processor, serverTransport, transportFactory, protocolFactory); 
-  }
-
-  void serve() {
-    server->serve();
-  }
-
-  void read(std::string& _return, const int64_t objid) {
-    // Your implementation goes here 
-    printf("read\n");
-  }
-
-  bool lock(const int64_t tuid, const std::vector<int64_t> & objids) {
-    printf("lock\n");
-    return true;
-  }
-
-  bool check(const int64_t tuid, const std::map<int64_t, int64_t> & objid_ver_pairs) {
-    // Your implementation goes here
-    printf("check\n");
-    return true;
-  }
-
-  void install(const int64_t tuid, const int64_t tid, const std::map<int64_t, std::string> & objid_data_pairs) {
-    // Your implementation goes here
-    printf("install\n");
-  }
-
-  void abort(const int64_t tuid) {
-    // Your implementation goes here
-    printf("abort\n");
-  }
-
-};
-
-#define MAX_MACHINES 16
-
 class Sto {
   
 public:
     static int machineID; 
-    static DistributedSTOServer *server;
-    static std::vector<DistributedSTOClient*> clients;
-    static void initializeDistributedSTO(int thisMachineID, int numOfPeers);
+    static DistSTOServer *server;
+    static std::vector<DistSTOClient*> clients;
+    static std::map<int64_t, std::vector<int64_t>> tuid_objids;
+
+    static void initializeDistSTO(int thisMachineID, int numOfPeers);
 
     static Transaction* transaction() {
         if (!TThread::txn)
@@ -817,6 +773,52 @@ public:
         // XXX: we might want a nonopaque_bit in here too.
         return TransactionTid::increment_value;
     }
+};
+
+class DistSTOServer : virtual public DistSTOIf {
+ private:
+  TSimpleServer *_server;
+
+ public:
+  DistSTOServer(int port) {
+    shared_ptr<DistSTOServer> handler(this);
+    shared_ptr<TProcessor> processor(new DistSTOProcessor(handler));
+    shared_ptr<TServerTransport> serverTransport(new TServerSocket(port));
+    shared_ptr<TTransportFactory> transportFactory(new TBufferedTransportFactory());
+    shared_ptr<TProtocolFactory> protocolFactory(new TBinaryProtocolFactory());
+    _server = new TSimpleServer(processor, serverTransport, transportFactory, protocolFactory); 
+  }
+
+  void serve() {
+    _server->serve();
+  }
+
+  void read(std::string& _return, const int64_t objid) {
+    printf("read\n");
+  }
+
+  bool lock(const int64_t tuid, const std::vector<int64_t> & objids) {
+    // This tuid should not exist yet in tuid_objids map
+    always_assert(Sto::tuid_objids.find(tuid) == Sto::tuid_objids.end());
+    // record tuid for later use
+    Sto::tuid_objids[tuid] = objids;
+    // lock all modified objects
+    for (auto objid : objids) {
+      
+    } 
+  }
+
+  bool check(const int64_t tuid, const std::vector<int64_t> & objids, const std::vector<int64_t> & versions) {
+    printf("check\n");
+  }
+
+  void install(const int64_t tuid, const int64_t tid, const std::vector<std::string> & written_values) {
+    printf("install\n");
+  }
+
+  void abort(const int64_t tuid) {
+    printf("abort\n");
+  }
 };
 
 class TestTransaction {

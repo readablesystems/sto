@@ -435,29 +435,33 @@ std::ostream& operator<<(std::ostream& w, const TransactionGuard& txn) {
 }
 
 int Sto::machineID = -1; 
-DistributedSTOServer* Sto::server = nullptr;
-std::vector<DistributedSTOClient*> Sto::clients;
+DistSTOServer* Sto::server = nullptr;
+std::vector<DistSTOClient*> Sto::clients;
+std::map<int64_t, std::vector<int64_t>> Sto::tuid_objids;
 
 void* runServer(void *server) {
-    ((DistributedSTOServer *) server)->serve();
+    ((DistSTOServer *) server)->serve();
     return nullptr;
 }
 
 
-void Sto::initializeDistributedSTO(int thisMachineID, int numOfPeers) {
+void Sto::initializeDistSTO(int thisMachineID, int numOfPeers) {
 
-    for (int i = 0; i < numOfPeers - 1; i++) {
+    // Use to uniquely identify this server
+    Sto::machineID = thisMachineID;
+
+    // Initialize a client for each peer this server talks to
+    for (int i = 0; i < numOfPeers; i++) {
         boost::shared_ptr<TSocket> socket(new TSocket("localhost", 9090));
         boost::shared_ptr<TTransport> transport(new TBufferedTransport(socket));
         boost::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
-        Sto::clients.push_back(new DistributedSTOClient(protocol));
+        Sto::clients.push_back(new DistSTOClient(protocol));
     }
 
+    // start the server itself (this returns immediately after the server starts)
     pthread_t thread;
-    Sto::machineID = thisMachineID;
-    Sto::server = new DistributedSTOServer(9090);
+    Sto::server = new DistSTOServer(9090);
     pthread_create(&thread, NULL, runServer, Sto::server);
-    Sto::server->serve();
-
+    // Sto::server->serve();
 }
 

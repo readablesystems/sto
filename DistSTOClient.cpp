@@ -1,4 +1,4 @@
-#include "DistributedSTO.h"  // As an example
+#include "DistSTO.h"  // As an example
 #include <transport/TSocket.h>
 #include <transport/TBufferTransports.h>
 #include <protocol/TBinaryProtocol.h>
@@ -13,7 +13,7 @@ int main(int argc, char **argv) {
   boost::shared_ptr<TTransport> transport(new TBufferedTransport(socket));
   boost::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
 
-  DistributedSTOClient client(protocol);
+  DistSTOClient client(protocol);
   transport->open();
   client.abort(12);
   transport->close();

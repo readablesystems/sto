@@ -69,8 +69,8 @@ ifeq ($(PROFILE),1)
 OPTFLAGS += -g -pg -fno-inline
 endif
 
-PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single distributedSingle predicates ex-counter DistributedSTOServer DistributedSTOClient $(UNIT_PROGRAMS)
-UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric unit-rcu unit-tvector unit-tvector-nopred
+PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter DistSTOClient $(UNIT_PROGRAMS)
+UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-dist-tbox unit-tgeneric unit-rcu unit-tvector unit-tvector-nopred
 
 all: $(PROGRAMS)
 
@@ -93,11 +93,11 @@ MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 	$(MASSTREEDIR)/checkpoint.o \
 	$(MASSTREEDIR)/string_slice.o
 
-DISTRIBUTEDSTO_SRC := DistributedSTO.cc DistributedSTO_constants.cc DistributedSTO_types.cc
-DISTRIBUTEDSTO_DEPS := $(patsubst %.cpp,%.o, $(DISTRIBUTEDSTO_SRC) $(DISTRIBUTEDSTO_GEN_SRC))
-DISTRIBUTEDSTO_OBJS := $(DISTRIBUTEDSTO_DEPS)
+DISTSTO_SRC := DistSTO.cpp DistSTO_constants.cpp DistSTO_types.cpp
+DISTSTO_DEPS := $(patsubst %.cpp,%.o, $(DISTSTO_SRC))
+DISTSTO_OBJS := $(DISTSTO_DEPS)
 
-STO_OBJS = Packer.o Transaction.o TRcu.o MassTrans.o clp.o $(LIBOBJS) $(DISTRIBUTEDSTO_OBJS)
+STO_OBJS = Packer.o Transaction.o TRcu.o MassTrans.o clp.o $(LIBOBJS) $(DISTSTO_OBJS)
 MSTO_OBJS = $(STO_OBJS) $(MASSTREE_OBJS)
 STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
 MSTO_DEPS = $(MSTO_OBJS) $(MASSTREEDIR)/libjson.a
@@ -118,9 +118,6 @@ concurrent-1M.o: concurrent.cc config.h $(DEPSDIR)/stamp
 single: single.o $(MSTO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
 
-distributedSingle: distributedSingle.o $(MSTO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS) -L/usr/local/lib -lthrift
-
 singleelems: singleelems.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
@@ -140,6 +137,9 @@ unit-tcounter: unit-tcounter.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tbox: unit-tbox.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-dist-tbox: unit-dist-tbox.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tgeneric: unit-tgeneric.o $(STO_DEPS)
@@ -185,16 +185,13 @@ hashtable_nostm: hashtable_nostm.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 .PHONY: thrift
-thrift: DistributedSTO.thrift
+thrift: DistSTO.thrift
 	thrift --gen cpp $<
 	for f in gen-cpp/*.cpp; do mv "$$f" $$(basename "$${f%.cpp}.cc"); done
 	mv gen-cpp/*.h .
 	rmdir gen-cpp
 
-DistributedSTOServer: DistributedSTOServer.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
-
-DistributedSTOClient: DistributedSTOClient.o $(STO_DEPS)
+DistSTOClient: DistSTOClient.o $(DISTSTO_OBJS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;
@@ -229,8 +226,8 @@ stamp-h: config.h.in config.status
 clean:
 	rm -f $(PROGRAMS) *.o
 	rm -rf .deps *.dSYM
-	rm -f $(DISTRIBUTEDSTO_GEN_SRC)
-	rm -f $(DISTRIBUTEDSTO_GEN_HEADERS)
+	rm -f $(DISTSTO_GEN_SRC)
+	rm -f $(DISTSTO_GEN_HEADERS)
 	$(MAKE) -C $(MASSTREEDIR) clean
 
 DEPFILES := $(wildcard $(DEPSDIR)/*.d)
