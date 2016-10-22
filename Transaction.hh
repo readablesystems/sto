@@ -31,7 +31,7 @@
 #endif
 
 #ifndef STO_SORT_WRITESET
-#define STO_SORT_WRITESET 0
+#define STO_SORT_WRITESET 1
 #endif
 
 #ifndef STO_SPIN_EXPBACKOFF
