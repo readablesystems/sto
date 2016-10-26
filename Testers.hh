@@ -13,6 +13,7 @@
 #include "CuckooHashMapNA.hh"
 #include "RBTree.hh"
 #include "Vector.hh"
+#include "QueueLP.hh"
 #include "Queue2.hh"
 #include "Queue.hh"
 
@@ -431,12 +432,14 @@ public:
         }
     }
 
-    op_record* doOp(DT* q, int op, int me, std::uniform_int_distribution<long> slotdist, Rand transgen) {
+    op_record* doOp(DT* q, int op, int me, std::uniform_int_distribution<long>& slotdist, Rand& transgen) {
         int val;
         if (op == 0) {
             val = slotdist(transgen);
             q->push(val);
+#if PRINT_DEBUG
             std::cout << "[" << me << "] pushed " << val << std::endl;
+#endif
             op_record* rec = new op_record;
             rec->op = op;
             rec->args.push_back(val);
@@ -444,7 +447,9 @@ public:
         } else {
             q->front(val);
             q->pop();
+#if PRINT_DEBUG
             std::cout << "[" << me << "] popped " << val << std::endl;
+#endif
             op_record* rec = new op_record;
             rec->op = op;
             rec->rdata.push_back(val);
@@ -460,7 +465,9 @@ public:
         } else if (op->op == 1) {
             q->front(val);
             q->pop();
+#if PRINT_DEBUG
             std::cout << "[" << val << "] [" << op->rdata[0] << "]" << std::endl;
+#endif
             assert(val == op->rdata[0]);
         }
     }
@@ -468,11 +475,13 @@ public:
     void check(DT* q, RT*q1) {
         TRANSACTION {
             int v1, v2;
-            if (q->front(v1)) {
+            if (!q->nontrans_empty()) {
                 q->pop();
                 q1->front(v2);
                 assert(q1->pop());
+#if PRINT_DEBUG
                 std::cout << "[" << v1 << "] [" << v2 << "]" << std::endl;
+#endif
                 assert(v1 == v2);
             } else {
                 assert(!q1->pop());
@@ -483,6 +492,7 @@ public:
 
     static const int num_ops_ = 2;
 };
+
 template <typename DT, typename RT>
 class PqueueTester : Tester<DT, RT> {
 public:

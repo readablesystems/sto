@@ -1,4 +1,4 @@
-FILE(REMOVE_RECURSE
+file(REMOVE_RECURSE
   "CMakeFiles/cds-s.dir/src/hp_gc.cpp.o"
   "CMakeFiles/cds-s.dir/src/init.cpp.o"
   "CMakeFiles/cds-s.dir/src/dhp_gc.cpp.o"
@@ -14,6 +14,6 @@ FILE(REMOVE_RECURSE
 )
 
 # Per-language clean rules from dependency scanning.
-FOREACH(lang CXX)
-  INCLUDE(CMakeFiles/cds-s.dir/cmake_clean_${lang}.cmake OPTIONAL)
-ENDFOREACH(lang)
+foreach(lang CXX)
+  include(CMakeFiles/cds-s.dir/cmake_clean_${lang}.cmake OPTIONAL)
+endforeach()

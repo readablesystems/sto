@@ -8,10 +8,10 @@
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define N_THREADS 12 // Number of concurrent threads
-#define TOTAL_TRANS 10000000
+#define N_THREADS 3 // Number of concurrent threads
+#define TOTAL_TRANS 100000
 #define NTRANS TOTAL_TRANS/N_THREADS // Number of transactions each thread should run.
-#define MAX_OPS 1 // Maximum number of operations in a transaction.
+#define MAX_OPS 3 // Maximum number of operations in a transaction.
 
 #define PRIORITY_QUEUE 0
 #define HASHTABLE 1
@@ -21,13 +21,13 @@
 #define CUCKOOHASHMAPNT 5
 #define CUCKOOHASHMAP2 6 
 #define CUCKOOHASHMAPNA 7
-//#define DS HASHTABLE
-//#define DS CUCKOOHASHMAP
-//#define DS CUCKOOHASHMAP2
-//#define DS CUCKOOHASHMAPNT
-#define DS CUCKOOHASHMAPNA
+#define QUEUE 8 
+#define DS QUEUE
+//#define DS CUCKOOHASHMAPNA
 
-#if DS == PRIORITY_QUEUE
+#if DS == QUEUE 
+QueueTester<QueueLP<int,true,1000000>, Queue<int,true,1000000>> tester = QueueTester<QueueLP<int,true,1000000>, Queue<int,true,1000000>>();
+#elif DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
 #elif DS == HASHTABLE
 HashtableTester<Hashtable<int, int, false, 8000>> tester = HashtableTester<Hashtable<int, int, false, 8000>>();
@@ -197,7 +197,10 @@ int main() {
     for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
         initial_seeds[i] = random();
 
-#if DS == PRIORITY_QUEUE 
+#if DS == QUEUE
+    QueueLP<int> q;
+    Queue<int> q1;
+#elif DS == PRIORITY_QUEUE 
     PriorityQueue<int> q;
     PriorityQueue<int> q1;
 #elif DS == HASHTABLE
@@ -227,8 +230,8 @@ int main() {
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
 
-    tester.init(&q);
-    tester.init(&q1);
+    tester.init_sut(&q);
+    tester.init_ref(&q1);
 
 #if CONSISTENCY_CHECK
     fprintf(stderr, "Multi-then-single thread execution with CONSISTENCY_CHECK\n"); for (int i = 0; i < N_THREADS; i++) {

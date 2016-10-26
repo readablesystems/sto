@@ -319,7 +319,7 @@ public:
     }
 
     bool check_version(TVersion old_vers) const {
-        // XXX opacity <- THis comment is irrelevant on new API
+        // XXX opacity <- This comment is irrelevant on new API
         return TransactionTid::check_version(v_, old_vers.v_);
     }
     bool check_version(TVersion old_vers, int here) const {

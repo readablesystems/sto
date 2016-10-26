@@ -1110,8 +1110,9 @@ RETRY:
                 ti->buckets_[i1].overflow--;
             }
             unlock_two(ti, i1, i2);
-            if (transactional) 
+            if (transactional) {
                 if (vto.observe_me) Sto::item(this, vto.package).observe(vto.version);
+            }
             // XXX we want to retry if this is a cleanup
             else if (res2 == failure_key_not_found)
                 goto RETRY; 

@@ -1,2 +1,10 @@
+/home/tslilyai/Documents/Research/sto/libcds-release/CMakeFiles/edit_cache.dir
+/home/tslilyai/Documents/Research/sto/libcds-release/CMakeFiles/package_source.dir
+/home/tslilyai/Documents/Research/sto/libcds-release/CMakeFiles/rebuild_cache.dir
+/home/tslilyai/Documents/Research/sto/libcds-release/CMakeFiles/list_install_components.dir
+/home/tslilyai/Documents/Research/sto/libcds-release/CMakeFiles/install.dir
+/home/tslilyai/Documents/Research/sto/libcds-release/CMakeFiles/package.dir
 /home/tslilyai/Documents/Research/sto/libcds-release/CMakeFiles/cds.dir
 /home/tslilyai/Documents/Research/sto/libcds-release/CMakeFiles/cds-s.dir
+/home/tslilyai/Documents/Research/sto/libcds-release/CMakeFiles/install/strip.dir
+/home/tslilyai/Documents/Research/sto/libcds-release/CMakeFiles/install/local.dir

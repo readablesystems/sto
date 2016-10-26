@@ -5,38 +5,43 @@
 #include "Transaction.hh"
 #include "TWrapped.hh"
 
+template <typename T, bool Opacity, unsigned BUF_SIZE> class QueueLP;
+
 template <typename T, bool Opacity = true, unsigned BUF_SIZE = 1000000>
 class LazyPop {
 public:
     typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type version_type;
-    typedef Queue<T, Opacity, BUF_SIZE> queue_t;
+    typedef QueueLP<T, Opacity, BUF_SIZE> queue_t;
     typedef T value_type;
     static constexpr int popitem_key = -2;
     
-    LazyPop(queue_t& q) 
-        : q_(q), popped_(false), fulfilled_(false) {
-        auto item = Sto::item(&q, popitem_key);
+    LazyPop(queue_t* q) : q_(q), popped_(false), fulfilled_(false), reassigned_(false) {
+        auto item = Sto::item(q, popitem_key);
         // XXX for now just keep the item as a list
         if (!item.has_write()) {
-            std::list<T> write_list;
-            write_list.push_back(*this);
+            std::list<LazyPop*> write_list;
+            write_list.push_back(this);
             item.add_write(write_list);
         } else {
-            auto& write_list = item.template write_value<std::list<LazyPop&>>();
-            write_list.push_back(*this);
+            auto& write_list = item.template write_value<std::list<LazyPop*>>();
+            write_list.push_back(this);
         }
     }
     // someone is reassigning a lazypop (used on LHS)
-    bool operator=(const bool b) {
+    LazyPop* operator=(bool b) {
         fulfilled_ = true;
-        return b;
-    };
-    bool operator=(bool b) {
-        fulfilled_ = true;
-        return b;
+        popped_ = b;
+        reassigned_ = true;
+        return *this;
     };
     bool is_fulfilled() const {
         return fulfilled_;
+    }
+    bool is_popped() const {
+        return popped_;
+    }
+    bool is_reassigned() const {
+        return reassigned_;
     }
     void set_fulfilled() {
         fulfilled_ = true;
@@ -54,21 +59,24 @@ public:
         }
 
         // we haven't collapsed this promise yet
-        version_type qv = q.queueversion_;
-        auto popitem = Sto::item(&q_, popitem_key);
-        auto lazy_pops = popitem.template write_value<std::list<LazyPop&>>();
+        version_type qv = q_->queueversion_;
+        auto popitem = Sto::item(q_, popitem_key);
+        assert(popitem.has_write());
+
+        auto lazy_pops = popitem.template write_value<std::list<LazyPop*>>();
        
         // we should always have the fulfilled lazypops at the front of the list, since if we collapse
         // a lazypop at time t, all the lazypops in the list added before time t are also collapsed
         size_t popped_count = 0;
-        for (std::list<LazyPop*>::const_iterator i = lazy_pops.begin(), end = lazy_pops.end(); i != end; ++i) {
+        auto head = q_->head_;
+        auto tail = q_->tail_;
+        for (auto i = lazy_pops.begin(); i != lazy_pops.end(); ++i) {
             auto lazypop = lazy_pops.front();
-            if (lazypop->is_fulfilled()) 
+            if (lazypop->is_fulfilled()) {
                 popped_count++;
                 continue;
+            }
             else {
-                auto head = q.head_;
-                auto tail = q.tail_;
                 // XXX does this abort here if the read queueversion has changed? since we'll abort anyway?
                 // this can also falsely abort if the queue is never empty, but we're pushing? (maybe we
                 // should have an emptyversion or something? that only increments when the queue is empty?)
@@ -76,7 +84,7 @@ public:
                 lazypop->set_fulfilled();
                 // check if we're out of space in the queue
                 if ((head <= tail && ((head + popped_count) % BUF_SIZE > tail)) 
-                        || (head > tail && ((head_ + popped_count) % BUF_SIZE <= tail))) {
+                        || (head > tail && ((head + popped_count) % BUF_SIZE <= tail))) {
                     lazypop->setpopped(false);
                 } else {
                     lazypop->setpopped(true);
@@ -86,23 +94,25 @@ public:
         }
         // collapse this specific lazypop
         popped_ = !((head <= tail && ((head + popped_count) % BUF_SIZE > tail)) 
-                || (head > tail && ((head_ + popped_count) % BUF_SIZE <= tail)));
+                || (head > tail && ((head + popped_count) % BUF_SIZE <= tail)));
         set_fulfilled();
     }
 
 private:
-    queue_t& q_;
+    queue_t* q_;
     bool popped_;
     bool fulfilled_;
+    bool reassigned_;
 };
 
 template <typename T, bool Opacity = true, unsigned BUF_SIZE = 1000000>
-class Queue: public Shared {
+class QueueLP: public Shared {
 public:
     typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type version_type;
     typedef T value_type;
+    typedef LazyPop<T, Opacity, BUF_SIZE> pop_type;
 
-    Queue() : head_(0), tail_(0), queueversion_(0), queueversion_(0) {}
+    QueueLP() : head_(0), tail_(0), queueversion_(0) {}
 
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<1;
@@ -167,18 +177,17 @@ public:
         else item.add_write(v);
     }
 
-    LazyPop* pop() {
-        // add to the lazypops list
-        auto popitem = Sto::item(this, popitem_key);
-        auto lazy_pops = popitem.template write_value<std::list<LazyPop&>>();
-        Lazy_Pop* new_lp = new LazyPop(&this);
-        lazy_pops.push_back(new_lp);
+    pop_type* pop() {
+        // this adds to the lazypops list
+        pop_type* new_lp = new pop_type(this);
         return new_lp;
     }
 
-    void front(T& val) {
+    bool front(T& val) {
         // TODO
         //return LazyFront(&this);
+        val = T();
+        return true;
     }
 
 private:
@@ -215,17 +224,18 @@ private:
     void install(TransItem& item, Transaction& txn) override {
         // install pops
         if (item.key<int>() == popitem_key) {
-            auto lazy_pops = popitem.template write_value<std::list<LazyPop&>>();
+            auto popitem = Sto::item(this, popitem_key);
+            auto lazy_pops = popitem.template write_value<std::list<pop_type*>>();
             
             bool found_empty = false;
             bool popped = false;
-            for (std::list<LazyPop*>::const_iterator i = lazy_pops.begin(), end = lazy_pops.end(); i != end; ++i) {
+            for (auto i = lazy_pops.begin(); i != lazy_pops.end(); ++i) {
                 auto lazypop = lazy_pops.front();
                 
                 // we already instantiated this lazypop, no need to assign it a value
                 // either do the pop or don't if the queue is supposed to be empty
                 if (lazypop->is_fulfilled()) {
-                    if (lazypop->popped_) {
+                    if (lazypop->is_popped() && !lazypop->is_reassigned()) {
                         head_ = (head_+1) % BUF_SIZE;
                         popped = true;
                     } else {
@@ -233,6 +243,8 @@ private:
                         found_empty = true;
                     }
                 }
+                
+                lazypop->set_fulfilled();
                 // we had found that the queue is empty. all unfulfilled pops should fail 
                 if (found_empty) {
                     lazypop->set_popped(false);
@@ -246,9 +258,11 @@ private:
                 // the queue is nonempty. pop and set popped=true
                 else {
                     popped = true;
-                    lazypop->setpopped(true);
+                    lazypop->set_popped(true);
                     head_ = (head_+1) % BUF_SIZE;
                 }
+                // XXX free the lazypop as soon as the thread is no longer using it.
+                //Transaction::rcu_free(lazypop);
             }
             // update queueversion if we actually modified the head
             if (popped) {
@@ -258,9 +272,6 @@ private:
                     queueversion_.inc_nonopaque_version();
                 }
             }
-            lazypop->set_fulfilled();
-            // XXX free the lazypop as soon as the thread is no longer using it.
-            rcu_free(lazypop);
         }
 
         // install pushes
@@ -291,7 +302,7 @@ private:
         }
     }
     
-    void unlock(TransItem& item) override {
+    void unlock(TransItem&) override {
         queueversion_.unlock();
     }
 
