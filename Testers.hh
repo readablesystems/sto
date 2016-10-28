@@ -264,10 +264,10 @@ public:
 #endif // CONSISTENCY_CHECK
 
 #if PRINT_DEBUG
-    void print_stats(DT* q) {
-        (void)q;
+    //void print_stats(DT* q) {
+     //   (void)q;
         //q->print_absent_reads();
-    }
+    //}
 #endif
 
     static const int num_ops_ = 2;
@@ -408,7 +408,7 @@ public:
 #endif // CONSISTENCY_CHECK
     
 #if PRINT_DEBUG
-    void print_stats(T* q) {}
+    //void print_stats(T* q) {}
 #endif
 
     static const int num_ops_ = 3;

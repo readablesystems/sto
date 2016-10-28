@@ -8,10 +8,10 @@
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define N_THREADS 3 // Number of concurrent threads
-#define TOTAL_TRANS 100000
+#define N_THREADS 2 // Number of concurrent threads
+#define TOTAL_TRANS 1000000
 #define NTRANS TOTAL_TRANS/N_THREADS // Number of transactions each thread should run.
-#define MAX_OPS 3 // Maximum number of operations in a transaction.
+#define MAX_OPS 2 // Maximum number of operations in a transaction.
 
 #define PRIORITY_QUEUE 0
 #define HASHTABLE 1
@@ -163,7 +163,7 @@ void* runFunc(void* x) {
     TesterTuple<T>* tp = (TesterTuple<T>*) x;
     run(tp->t, tp->me, tp->nthreads);
 #if PRINT_DEBUG 
-    TransactionTid::lock(lock); tester.print_stats(tp->t); TransactionTid::unlock(lock);
+//TransactionTid::lock(lock); tester.print_stats(tp->t); TransactionTid::unlock(lock);
 #endif
     return nullptr;
 }

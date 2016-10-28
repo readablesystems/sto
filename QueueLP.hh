@@ -120,6 +120,7 @@ public:
     static constexpr TransItem::flags_type empty_bit = TransItem::user0_bit<<3;
     static constexpr int pushitem_key = -1;
     static constexpr int popitem_key = -2;
+    static constexpr int queue_key = -3;
 
     // NONTRANSACTIONAL PUSH/POP/EMPTY
     void nontrans_push(T v) {
@@ -175,11 +176,13 @@ public:
             }
         }
         else item.add_write(v);
+        Sto::item(this, queue_key).add_write();
     }
 
     pop_type* pop() {
         // this adds to the lazypops list
         pop_type* new_lp = new pop_type(this);
+        Sto::item(this, queue_key).add_write();
         return new_lp;
     }
 
@@ -208,14 +211,17 @@ private:
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
-        return txn.try_lock(item, queueversion_);
+        if (item.key<int>() == queue_key)
+            return txn.try_lock(item, queueversion_);
+        return true;
     }
 
     bool check(TransItem& item, Transaction& t) override {
         (void) t;
         // check if was a pop or front 
-        if (item.key<int>() == popitem_key)
+        if (item.key<int>() == popitem_key) {
             return item.check_version(queueversion_);
+        }
         // shouldn't reach this
         assert(0);
         return false;
@@ -239,30 +245,28 @@ private:
                         head_ = (head_+1) % BUF_SIZE;
                         popped = true;
                     } else {
-                        assert(head_ == tail_);
+                        assert((head_+1 % BUF_SIZE) == tail_);
                         found_empty = true;
                     }
+                } else {
+                    lazypop->set_fulfilled();
+                    // we had found that the queue is empty. all unfulfilled pops should fail 
+                    if (found_empty) {
+                        lazypop->set_popped(false);
+                    } 
+                    // the queue is empty at this point. set popped to false and 
+                    // mark that we found queue empty to short circuit the next round
+                    else if ((head_+1) % BUF_SIZE  == tail_) {
+                        found_empty = true;
+                        lazypop->set_popped(false);
+                    }
+                    // the queue is nonempty. pop and set popped=true
+                    else {
+                        popped = true;
+                        lazypop->set_popped(true);
+                        head_ = (head_+1) % BUF_SIZE;
+                    }
                 }
-                
-                lazypop->set_fulfilled();
-                // we had found that the queue is empty. all unfulfilled pops should fail 
-                if (found_empty) {
-                    lazypop->set_popped(false);
-                } 
-                // the queue is empty at this point. set popped to false and 
-                // mark that we found empty queue to short circuit the next round
-                else if ((head_+1) % BUF_SIZE  == tail_) {
-                    found_empty = true;
-                    lazypop->set_popped(false);
-                }
-                // the queue is nonempty. pop and set popped=true
-                else {
-                    popped = true;
-                    lazypop->set_popped(true);
-                    head_ = (head_+1) % BUF_SIZE;
-                }
-                // XXX free the lazypop as soon as the thread is no longer using it.
-                //Transaction::rcu_free(lazypop);
             }
             // update queueversion if we actually modified the head
             if (popped) {
@@ -302,8 +306,22 @@ private:
         }
     }
     
-    void unlock(TransItem&) override {
-        queueversion_.unlock();
+    void unlock(TransItem& item) override {
+        if (item.key<int>() == queue_key)
+            queueversion_.unlock();
+    }
+
+
+    void cleanup(TransItem& item, bool committed) override {
+        (void)committed;
+        if (item.key<int>() == popitem_key) {
+            auto lazy_pops = item.template write_value<std::list<pop_type*>>();
+            while (!lazy_pops.empty()) {
+                auto lazypop = lazy_pops.front();
+                lazy_pops.pop_front();
+                Transaction::rcu_free(lazypop);
+            }
+        }
     }
 
     T queueSlots[BUF_SIZE];
