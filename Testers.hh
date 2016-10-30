@@ -446,9 +446,10 @@ public:
             return rec;
         } else {
             q->front(val);
-            q->pop();
+            bool ret = q->pop();
+            std::cout << "[" << me << "] popped " << ret << std::endl;
 #if PRINT_DEBUG
-            std::cout << "[" << me << "] popped " << val << std::endl;
+            std::cout << "[" << me << "] front " << val << std::endl;
 #endif
             op_record* rec = new op_record;
             rec->op = op;
@@ -464,7 +465,7 @@ public:
             q->push(val);
         } else if (op->op == 1) {
             q->front(val);
-            q->pop();
+            bool ret = q->pop();
 #if PRINT_DEBUG
             std::cout << "[" << val << "] [" << op->rdata[0] << "]" << std::endl;
 #endif

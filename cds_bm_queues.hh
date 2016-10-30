@@ -17,6 +17,7 @@
 #include "PairingHeap.hh"
 #include "Queue.hh"
 #include "Queue2.hh"
+#include "QueueLP.hh"
 //#include "FCQueue.hh"
 #include "FCQueue2.hh"
 //#include "FCQueueNT.hh"
@@ -141,9 +142,11 @@ template <typename DS> struct STOQueueHarness {
 public:
     bool pop() { return v_.pop(); }
     bool cleanup_pop() { 
+        std::cout << "cleanup" << std::endl;
         Sto::start_transaction();
         bool ret = pop();
         assert(Sto::try_commit());
+        std::cout<<ret<<std::endl;
         return ret;
     }
     void push(value_type v) { v_.push(v); }
@@ -160,6 +163,7 @@ template <typename T> struct DatatypeHarness<Queue<T>> : public STOQueueHarness<
 template <typename T> struct DatatypeHarness<Queue<T, false>> : public STOQueueHarness<Queue<T, false>>{};
 template <typename T> struct DatatypeHarness<Queue2<T>> : public STOQueueHarness<Queue2<T>>{};
 template <typename T> struct DatatypeHarness<Queue2<T, false>> : public STOQueueHarness<Queue2<T,false>>{};
+template <typename T> struct DatatypeHarness<QueueLP<T, false>> : public STOQueueHarness<QueueLP<T,false>>{};
 
 template <typename T> struct DatatypeHarness<FCQueue<T>> {
     typedef T value_type;
@@ -453,11 +457,12 @@ int num_pqueues = 4;
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
     {desc, "STO queue", new test<DatatypeHarness<Queue<type, false>>>(STO, ## __VA_ARGS__)},                                  \
-    {desc, "STO queue O", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "STO queue2", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)},                                  \
-    {desc, "STO queue2 O", new test<DatatypeHarness<Queue2<type>>>(STO, ## __VA_ARGS__)},                                  \
+    {desc, "STO queueLP", new test<DatatypeHarness<QueueLP<type, false>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "FC queue", new test<DatatypeHarness<cds::container::FCQueue<type, std::queue<type>, FCQUEUE_TRAITS()>>>(CDS, ## __VA_ARGS__)},                 \
     {desc, "STO/FC queue", new test<DatatypeHarness<FCQueue<type>>>(STO, ## __VA_ARGS__)}
+    //{desc, "STO queue O", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  
+    //{desc, "STO queue2 O", new test<DatatypeHarness<Queue2<type>>>(STO, ## __VA_ARGS__)},                                  
     //{desc, "Basket queue", new test<DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},         
     //{desc, "Moir queue", new test<DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, 
     //{desc, "MS queue", new test<DatatypeHarness<cds::container::MSQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},   
@@ -475,5 +480,5 @@ std::vector<Test> make_queue_tests() {
         //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[2]),
     };
 }
-int num_queues = 6;
+int num_queues = 5;
 

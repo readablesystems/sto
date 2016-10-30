@@ -53,6 +53,7 @@ public:
     // someone is accessing a lazypop during a transaction (used on RHS)
     operator bool() {
         // we already instantiated this lazy pop
+        std::cout << "accessing" << q_->head_ << " " << q_->tail_ << std::endl;
         if (fulfilled_) {
             // XXX should we check queueversion here to make sure it's still valid, or else abort
             return popped_;
