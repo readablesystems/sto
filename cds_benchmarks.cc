@@ -198,6 +198,10 @@ int main() {
 
     //auto chmna = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 125000, false>>>(STO, 125000, 1, 33, 33);
     //startAndWait(chmna, 500000, 12);
+    auto queue2 = new RandomQSingleOpTest<DatatypeHarness<Queue2<int, false>>>(STO, RANDOM_VALS);
+    startAndWait(queue2, 10000, 8);
+    //auto queuelp = new RandomQSingleOpTest<DatatypeHarness<QueueLP<int, false>>>(STO, RANDOM_VALS);
+    //startAndWait(queuelp, 10000, 8);
   /* 
     std::vector<Test> map_tests = make_map_tests();
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
@@ -241,7 +245,6 @@ int main() {
             dualprintf("\n");
         }
     }
-*/
     // queue tests
     std::vector<Test> queue_tests = make_queue_tests();
     for (unsigned i = 0; i < queue_tests.size(); i+=num_queues) {
@@ -265,6 +268,7 @@ int main() {
             dualprintf("\n");
         }
     }
+*/
     cds::Terminate();
     return 0;
 }

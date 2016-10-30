@@ -18,7 +18,7 @@
 #include "Queue.hh"
 
 #define MAX_VALUE 100 // Max value of integers used in data structures
-#define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements
+#define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements
 
 struct Rand {
     typedef uint32_t result_type;
@@ -447,8 +447,8 @@ public:
         } else {
             q->front(val);
             bool ret = q->pop();
-            std::cout << "[" << me << "] popped " << ret << std::endl;
 #if PRINT_DEBUG
+            std::cout << "[" << me << "] popped " << ret << std::endl;
             std::cout << "[" << me << "] front " << val << std::endl;
 #endif
             op_record* rec = new op_record;

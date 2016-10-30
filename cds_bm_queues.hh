@@ -142,11 +142,9 @@ template <typename DS> struct STOQueueHarness {
 public:
     bool pop() { return v_.pop(); }
     bool cleanup_pop() { 
-        std::cout << "cleanup" << std::endl;
         Sto::start_transaction();
         bool ret = pop();
         assert(Sto::try_commit());
-        std::cout<<ret<<std::endl;
         return ret;
     }
     void push(value_type v) { v_.push(v); }

@@ -28,7 +28,7 @@ public:
         }
     }
     // someone is reassigning a lazypop (used on LHS)
-    LazyPop* operator=(bool b) {
+    LazyPop& operator=(bool b) {
         fulfilled_ = true;
         popped_ = b;
         reassigned_ = true;
@@ -53,7 +53,7 @@ public:
     // someone is accessing a lazypop during a transaction (used on RHS)
     operator bool() {
         // we already instantiated this lazy pop
-        std::cout << "accessing" << q_->head_ << " " << q_->tail_ << std::endl;
+        //std::cout << "accessing " << q_->head_ << " " << q_->tail_ << std::endl;
         if (fulfilled_) {
             // XXX should we check queueversion here to make sure it's still valid, or else abort
             return popped_;
@@ -84,19 +84,23 @@ public:
                 popitem.observe(qv);
                 lazypop->set_fulfilled();
                 // check if we're out of space in the queue
-                if ((head <= tail && ((head + popped_count) % BUF_SIZE > tail)) 
-                        || (head > tail && ((head + popped_count) % BUF_SIZE <= tail))) {
-                    lazypop->setpopped(false);
+                if (head == tail 
+                    || (head < tail && tail-head < popped_count) 
+                    || (head > tail && (tail + BUF_SIZE + 1 - head) < popped_count)) {
+                    lazypop->set_popped(false);
                 } else {
-                    lazypop->setpopped(true);
+                    lazypop->set_popped(true);
                     popped_count++;
                 }
             }
         }
+
         // collapse this specific lazypop
-        popped_ = !((head <= tail && ((head + popped_count) % BUF_SIZE > tail)) 
-                || (head > tail && ((head + popped_count) % BUF_SIZE <= tail)));
+        popped_ = !(head == tail 
+                    || (head < tail && tail-head < popped_count) 
+                    || (head > tail && (tail + BUF_SIZE + 1 - head) < popped_count));
         set_fulfilled();
+        return popped_;
     }
 
 private:
@@ -108,6 +112,8 @@ private:
 
 template <typename T, bool Opacity = true, unsigned BUF_SIZE = 1000000>
 class QueueLP: public Shared {
+    friend class LazyPop<T, Opacity, BUF_SIZE>;
+
 public:
     typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type version_type;
     typedef T value_type;
@@ -180,11 +186,11 @@ public:
         Sto::item(this, queue_key).add_write();
     }
 
-    pop_type* pop() {
+    pop_type& pop() {
         // this adds to the lazypops list
         pop_type* new_lp = new pop_type(this);
         Sto::item(this, queue_key).add_write();
-        return new_lp;
+        return *new_lp;
     }
 
     bool front(T& val) {
@@ -246,7 +252,7 @@ private:
                         head_ = (head_+1) % BUF_SIZE;
                         popped = true;
                     } else {
-                        assert((head_+1 % BUF_SIZE) == tail_);
+                        assert(head_ == tail_);
                         found_empty = true;
                     }
                 } else {
@@ -257,7 +263,7 @@ private:
                     } 
                     // the queue is empty at this point. set popped to false and 
                     // mark that we found queue empty to short circuit the next round
-                    else if ((head_+1) % BUF_SIZE  == tail_) {
+                    else if (head_  == tail_) {
                         found_empty = true;
                         lazypop->set_popped(false);
                     }
