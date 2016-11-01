@@ -28,6 +28,37 @@ public:
     static constexpr TransItem::flags_type empty_bit = TransItem::user0_bit<<3;
     static constexpr TransItem::flags_type push_bit = TransItem::user0_bit<<4;
 
+    // NONTRANSACTIONAL PUSH/POP/EMPTY
+    void nontrans_push(T v) {
+        queueSlots[tail_] = v;
+        tail_ = (tail_+1)%BUF_SIZE;
+        assert(head_ != tail_);
+    }
+    
+    T nontrans_pop() {
+        assert(head_ != tail_);
+        T v = queueSlots[head_];
+        head_ = (head_+1)%BUF_SIZE;
+        return v;
+    }
+
+    bool nontrans_empty() const {
+        return head_ == tail_;
+    }
+
+    template <typename RandomGen>
+    void nontrans_shuffle(RandomGen gen) {
+        auto head = &queueSlots[head_];
+        auto tail = &queueSlots[tail_];
+        // don't support wrap-around shuffle
+        assert(head < tail);
+        std::shuffle(head, tail, gen);
+    }
+
+    void nontrans_clear() {
+        while (!nontrans_empty())
+            nontrans_pop();
+    }
     void push(const T& v) {
         auto item = Sto::item(this, -1);
         if (item.has_write()) {

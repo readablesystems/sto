@@ -142,10 +142,8 @@ template <typename DS> struct STOQueueHarness {
 public:
     bool pop() { return v_.pop(); }
     bool cleanup_pop() { 
-        Sto::start_transaction();
-        bool ret = pop();
-        assert(Sto::try_commit());
-        return ret;
+        v_.nontrans_clear();
+        return false;
     }
     void push(value_type v) { v_.push(v); }
     void init_push(value_type v) { 
@@ -161,8 +159,24 @@ template <typename T> struct DatatypeHarness<Queue<T>> : public STOQueueHarness<
 template <typename T> struct DatatypeHarness<Queue<T, false>> : public STOQueueHarness<Queue<T, false>>{};
 template <typename T> struct DatatypeHarness<Queue2<T>> : public STOQueueHarness<Queue2<T>>{};
 template <typename T> struct DatatypeHarness<Queue2<T, false>> : public STOQueueHarness<Queue2<T,false>>{};
-template <typename T> struct DatatypeHarness<QueueLP<T, false>> : public STOQueueHarness<QueueLP<T,false>>{};
-
+template <typename T> struct DatatypeHarness<QueueLP<T, false>> { 
+    typedef T value_type;
+public:
+    LazyPop<T, false>& pop() { return v_.pop(); }
+    bool cleanup_pop() { 
+        v_.nontrans_clear();
+        return false;
+    }
+    void push(value_type v) { v_.push(v); }
+    void init_push(value_type v) { 
+        Sto::start_transaction();
+        v_.push(v);
+        assert(Sto::try_commit());
+    }
+    size_t size() { return 0; }
+private:
+    QueueLP<T, false> v_;
+};
 template <typename T> struct DatatypeHarness<FCQueue<T>> {
     typedef T value_type;
 public:
