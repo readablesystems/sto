@@ -83,19 +83,19 @@ bool Transaction::preceding_duplicate_read(TransItem* needle) const {
     }
 }
 
-void Transaction::hard_check_opacity(TransItem* item, TicTocTid::type t) {
+void Transaction::hard_check_opacity(TransItem* item, const TicTocVersion& tss) {
     // ignore opacity checks during commit; we're in the middle of checking
     // things anyway
     if (state_ == s_committing || state_ == s_committing_locked)
         return;
 
     // ignore if version hasn't changed
-    if (item && item->has_read() && item->read_timestamp().write_timestamp() == t)
+    if (item && item->has_observation() && item->observed_timestamps() == tss)
         return;
 
     // die on recursive opacity check; this is only possible for predicates
     if (unlikely(state_ == s_opacity_check)) {
-        mark_abort_because(item, "recursive opacity check", t);
+        mark_abort_because(item, "recursive opacity check", tss.get_lockable().value());
     abort:
         TXP_INCREMENT(txp_hco_abort);
         abort();
@@ -103,15 +103,19 @@ void Transaction::hard_check_opacity(TransItem* item, TicTocTid::type t) {
     assert(state_ == s_in_progress);
 
     TXP_INCREMENT(txp_hco);
-    if (TicTocTid::is_locked_elsewhere(t, threadid_)) {
+    if (tss.is_locked_elsewhere(threadid_)) {
         TXP_INCREMENT(txp_hco_lock);
-        mark_abort_because(item, "locked", t);
+        mark_abort_because(item, "locked", tss.get_lockable().value());
         goto abort;
     }
-    if (t & TicTocTid::nonopaque_bit)
+
+    if (tss.get_lockable().is_nonopaque())
         TXP_INCREMENT(txp_hco_invalid);
 
     state_ = s_opacity_check;
+
+    potential_cts_ = compute_commit_ts();
+
     //start_tid_ = _TID;
     release_fence();
     TransItem* it = nullptr;
@@ -124,14 +128,20 @@ void Transaction::hard_check_opacity(TransItem* item, TicTocTid::type t) {
                 mark_abort_because(item, "opacity check");
                 goto abort;
             }
+            min_rts_ = std::min(min_rts_, tss.read_timestamp());
         } else if (it->has_predicate()) {
             TXP_INCREMENT(txp_total_check_predicate);
             if (!it->owner()->check_predicate(*it, *this, false)) {
                 mark_abort_because(item, "opacity check_predicate");
                 goto abort;
             }
+            // XXX No predicates for now
+            // min_rts_ = std::min(min_rts_, tss.read_timestamp());
         }
     }
+
+    min_rts_ = std::min(min_rts_, tss.read_timestamp());
+
     state_ = s_in_progress;
 }
 

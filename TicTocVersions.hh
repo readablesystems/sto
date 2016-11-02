@@ -21,6 +21,10 @@ public:
     // MEAT
     type t_;
 
+    type value() const {
+        return t_;
+    }
+
     LockableTid(type t) : t_(t) {}
     LockableTid() : t_() {}
 

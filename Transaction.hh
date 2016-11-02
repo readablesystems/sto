@@ -315,6 +315,7 @@ private:
 #endif
         any_writes_ = any_nonopaque_ = may_duplicate_items_ = false;
         first_write_ = 0;
+        min_rts_ = potential_cts_ = ~0ul;
         start_tid_ = commit_tid_ = 0;
         buf_.clear();
 #if STO_DEBUG_ABORTS
@@ -544,13 +545,13 @@ public:
         return v < min_rts_;
     }
 
-    void check_opacity(TransItem& item, tid_type v) {
+    void check_opacity(TransItem& item, const TicTocVersion& tss) {
         assert(state_ <= s_committing_locked);
         //if (!start_tid_)
         //    start_tid_ = _TID;
-        if (!try_check_opacity(v)
+        if (!try_check_opacity(tss.write_timestamp())
             && state_ < s_committing)
-            hard_check_opacity(&item, v);
+            hard_check_opacity(&item, tss);
     }
 /*
     void check_opacity(TransItem& item, TicTocVersion v) {
@@ -619,10 +620,15 @@ public:
     // Compute and return a timestamp during execution-time opacity checks
     // Return the computed and stored commit_ts when we are actually committing
     tid_type timestamp() const {
-        if (state_ < s_committing)
-            return compute_commit_ts();
+        if (state_ == s_opacity_check)
+            return potential_commit_ts();
         else
             return commit_tid();
+    }
+
+    tid_type potential_commit_ts() const {
+        assert(state_ == s_opacity_check);
+        return potential_cts_;
     }
 
     void set_timestamps(TicTocVersion& vers, TicTocVersion::type flags = 0) const {
@@ -687,6 +693,7 @@ private:
     unsigned tset_size_;
     mutable tid_type start_tid_;
     mutable tid_type min_rts_;
+    mutable tid_type potential_cts_;
     mutable tid_type commit_tid_;
     mutable TransactionBuffer buf_;
     mutable uint32_t lrng_state_;
@@ -701,7 +708,7 @@ private:
 #endif
     TransItem tset0_[tset_initial_capacity];
 
-    void hard_check_opacity(TransItem* item, TicTocTid::type t);
+    void hard_check_opacity(TransItem* item, const TicTocVersion& tss);
     void stop(bool committed, unsigned* writes, unsigned nwrites);
 
     friend class TransProxy;
@@ -756,12 +763,12 @@ public:
         always_assert(in_progress());
         //XXX TThread::txn->check_opacity(t);
     }
-
+/*
     static void check_opacity() {
         always_assert(in_progress());
         TThread::txn->check_opacity();
     }
-
+*/
     template <typename T>
     static OptionalTransProxy check_item(const TObject* s, T key) {
         always_assert(in_progress());
@@ -889,7 +896,7 @@ inline TransProxy& TransProxy::add_read(T rdata) {
 template <typename T>
 inline TransProxy& TransProxy::add_read_opaque(T rdata) {
     assert(!has_stash());
-    t()->check_opacity();
+    // XXX t()->check_opacity();
     if (!has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
@@ -901,7 +908,7 @@ inline TransProxy& TransProxy::observe(TicTocVersion version, bool add_observati
     assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_))
         t()->abort_because(item(), "locked", version.get_lockable().t_);
-    t()->check_opacity(item(), version.write_timestamp());
+    t()->check_opacity(item(), version);
     if (add_observation && !has_observation()) {
         item().__or_flags(TransItem::observe_bit);
         //item().rdata_ = Packer<TicTocVersion>::pack(t()->buf_, std::move(version));
