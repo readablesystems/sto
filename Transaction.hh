@@ -204,6 +204,7 @@ public:
     } global_epochs;
     typedef TicTocTid::type tid_type;
 private:
+    // XXX not used
     static TicTocTid::type _TID;
 public:
 
@@ -539,15 +540,19 @@ public:
 #endif
     }
 
-/*
-    void check_opacity(TransItem& item, TicTocTid::type v) {
+    bool try_check_opacity(tid_type v) {
+        return v < min_rts_;
+    }
+
+    void check_opacity(TransItem& item, tid_type v) {
         assert(state_ <= s_committing_locked);
         //if (!start_tid_)
         //    start_tid_ = _TID;
-        if (!TicTocTid::try_check_opacity(start_tid_, v)
+        if (!try_check_opacity(v)
             && state_ < s_committing)
             hard_check_opacity(&item, v);
     }
+/*
     void check_opacity(TransItem& item, TicTocVersion v) {
         check_opacity(item, v.value());
     }
@@ -563,11 +568,12 @@ public:
             && state_ < s_committing)
             hard_check_opacity(nullptr, v);
     }
-*/
+
     void check_opacity() {
         //check_opacity(_TID);
         assert(false || "Opacity unavailable when TicTocVersion is not used");
     }
+*/
 
     // committing
     //
@@ -680,6 +686,7 @@ private:
     TransItem* tset_next_;
     unsigned tset_size_;
     mutable tid_type start_tid_;
+    mutable tid_type min_rts_;
     mutable tid_type commit_tid_;
     mutable TransactionBuffer buf_;
     mutable uint32_t lrng_state_;
@@ -894,7 +901,7 @@ inline TransProxy& TransProxy::observe(TicTocVersion version, bool add_observati
     assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_))
         t()->abort_because(item(), "locked", version.get_lockable().t_);
-    //XXX t()->check_opacity(item(), version.wts_value());
+    t()->check_opacity(item(), version.write_timestamp());
     if (add_observation && !has_observation()) {
         item().__or_flags(TransItem::observe_bit);
         //item().rdata_ = Packer<TicTocVersion>::pack(t()->buf_, std::move(version));

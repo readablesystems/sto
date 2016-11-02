@@ -83,7 +83,6 @@ bool Transaction::preceding_duplicate_read(TransItem* needle) const {
     }
 }
 
-/*
 void Transaction::hard_check_opacity(TransItem* item, TicTocTid::type t) {
     // ignore opacity checks during commit; we're in the middle of checking
     // things anyway
@@ -135,7 +134,6 @@ void Transaction::hard_check_opacity(TransItem* item, TicTocTid::type t) {
     }
     state_ = s_in_progress;
 }
-*/
 
 void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
     if (!committed) {
