@@ -77,7 +77,6 @@ public:
     static constexpr TransItem::flags_type pop_bit = TransItem::user0_bit<<3;
     static constexpr int pushitem_key = -1;
     static constexpr int popitem_key = -2;
-    static constexpr int queue_key = -3;
 
     // NONTRANSACTIONAL PUSH/POP/EMPTY
     void nontrans_push(T v) {
@@ -88,7 +87,6 @@ public:
     
     T nontrans_pop() {
         assert(head_ != tail_);
-        std::cout << head_ << " " << tail_ << std::endl;
         T v = queueSlots[head_];
         head_ = (head_+1)%BUF_SIZE;
         return v;
@@ -137,7 +135,8 @@ public:
         pop_type* my_lazypop = &global_thread_layzpops[TThread::id()];
         auto item = Sto::item(this, my_lazypop);
         item.add_flags(pop_bit);
-        if (!Sto::item(this, queue_key).has_write()) Sto::item(this, queue_key).add_write();
+        item.add_write();
+        Sto::item(this, popitem_key).add_write();
         return *my_lazypop;
     }
 
@@ -162,10 +161,10 @@ private:
     }
  
     bool lock(TransItem& item, Transaction& txn) override {
-        if (item.key<int>() == pushitem_key)
-            return txn.try_lock(item, tailversion_);
         if (item.key<int>() == popitem_key)
             return txn.try_lock(item, headversion_);
+        else if (item.key<int>() == pushitem_key)
+            return txn.try_lock(item, tailversion_);
         return true;
     }
 

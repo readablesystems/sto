@@ -200,8 +200,10 @@ int main() {
     //startAndWait(chmna, 500000, 12);
     //auto queue2 = new RandomQSingleOpTest<DatatypeHarness<Queue2<int, false>>>(STO, RANDOM_VALS);
     //startAndWait(queue2, 10000, 8);
+    //auto queue1 = new RandomQSingleOpTest<DatatypeHarness<Queue<int, false>>>(STO, RANDOM_VALS);
+    //startAndWait(queue1, 10000, 8);
     auto queuelp = new RandomQSingleOpTest<DatatypeHarness<QueueLP<int, false>>>(STO, RANDOM_VALS);
-    startAndWait(queuelp, 10000, 8);
+    startAndWait(queuelp, 10000, 12);
   /* 
     std::vector<Test> map_tests = make_map_tests();
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
@@ -268,7 +270,7 @@ int main() {
             dualprintf("\n");
         }
     }
-*/
+    */
     cds::Terminate();
     return 0;
 }
