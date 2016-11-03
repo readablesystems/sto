@@ -28,45 +28,78 @@
     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.     
 */
 
-#ifndef FCQUEUE_H 
-#define FCQUEUE_H
+#ifndef FCQUEUELP_H 
+#define FCQUEUELP_H
 
 #include <deque>
 #include <list>
 #include "FlatCombining.hh"
 #include "Transaction.hh"
-#include "TWrapped.hh"
 
-// Tells the combiner thread the flags associated with each item in the q
-template <typename T>
-struct val_wrapper {
-    T val;
-    uint8_t flags; 
-    int threadid;
+template <typename T, class Queue> class FCQueueLP;
+template <typename T, class Queue = std::deque<T>>
+class LazyPop {
+public:
+    typedef FCQueueLP<T, Queue> queue_t;
+    typedef T value_type;
+    static constexpr int popitem_key = -2;
+    
+    LazyPop() : q_(NULL), popped_(false), fulfilled_(false), reassigned_(false) {};
+    LazyPop(queue_t* q) : q_(q), popped_(false), fulfilled_(false), reassigned_(false) {};
+  
+    // someone is reassigning a lazypop (used on LHS)
+    LazyPop& operator=(bool b) {
+        fulfilled_ = true;
+        popped_ = b;
+        reassigned_ = true;
+        return *this;
+    };
+    bool is_fulfilled() const {
+        return fulfilled_;
+    }
+    bool is_popped() const {
+        return popped_;
+    }
+    bool is_reassigned() const {
+        return reassigned_;
+    }
+    void set_fulfilled() {
+        fulfilled_ = true;
+    }
+    void set_popped(bool b) {
+        assert(fulfilled_);
+        popped_ = b;
+    }
+    // someone is accessing a lazypop. must be done after a transaction or 
+    // after the lazypop has been reassigned
+    operator bool() {
+        assert(fulfilled_ || reassigned_);
+        return popped_;
+    }
+
+private:
+    queue_t* q_;
+    bool popped_;
+    bool fulfilled_;
+    bool reassigned_;
 };
 
-template <typename T, 
-         class Queue = std::deque<val_wrapper<T>>,
-         template <typename> class W = TOpaqueWrapped>
-class FCQueue : public flat_combining::container
-{
+
+template <typename T, class Queue = std::deque<T>>
+class FCQueueLP : public Shared, public flat_combining::container {
 public:
     typedef T           value_type;     ///< Value type
     typedef Queue       queue_type;     ///< Sequential queue class
 
-    // STO
-    typedef typename W<value_type>::version_type version_type;
-
-    // For thread-specific txns
-    static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<0;
-    static constexpr TransItem::flags_type list_bit = TransItem::user0_bit<<1;
-    static constexpr TransItem::flags_type empty_bit = TransItem::user0_bit<<2;
-   
-    // For the publication list records
-    static constexpr uint8_t delete_bit = 1<<0;
-    static constexpr uint8_t popped_bit = 1<<1;
-
 private:
+    // STO
+    typedef LazyPop<T, Queue> pop_type;
+
+    static constexpr TransItem::flags_type list_bit = TransItem::user0_bit<<2;
+    static constexpr TransItem::flags_type pop_bit = TransItem::user0_bit<<3;
+    static constexpr int pushitem_key = -1;
+    static constexpr int popitem_key = -2;
+
     // Queue operation IDs
     enum fc_operation {
         op_push = flat_combining::req_Operation, // Push
@@ -79,50 +112,28 @@ private:
     // Flat combining publication list record
     struct fc_record: public flat_combining::publication_record
     {
-        union {
-            val_wrapper<value_type> const *  pValPush; // Value to enqueue
-            val_wrapper<value_type> *        pValPop;  // Pop destination
-        };
+        value_type const *  pValPush; // Value to enqueue
         bool            is_empty; // true if the queue is empty
     };
 
     flat_combining::kernel<fc_record> fc_kernel_;
-    queue_type  q_;
-    version_type queueversion_;
+    queue_type q_;
+    pop_type global_thread_layzpops[24];
 
 public:
     /// Initializes empty queue object
-    FCQueue() : queueversion_(0) {}
+    FCQueueLP() {
+        for (int i = 0; i < 24; ++i) {
+            global_thread_layzpops[i] = pop_type(this);
+        }
+    }
 
     /// Initializes empty queue object and gives flat combining parameters
-    FCQueue(
+    FCQueueLP(
         unsigned int nCompactFactor     ///< Flat combining: publication list compacting factor
         ,unsigned int nCombinePassCount ///< Flat combining: number of combining passes for combiner thread
         )
-        : fc_kernel_( nCompactFactor, nCombinePassCount ), queueversion_(0) {}
-
-    bool push( value_type const& v ) {
-        auto pRec = fc_kernel_.acquire_record();
-        val_wrapper<value_type> vw = {v, 0, 0};
-        pRec->pValPush = &vw; 
-        fc_kernel_.combine( op_push, pRec, *this );
-        assert( pRec->is_done() );
-        fc_kernel_.release_record( pRec );
-        return true;
-    }
-
-    bool pop( value_type& val ) {
-        auto pRec = fc_kernel_.acquire_record();
-        val_wrapper<value_type> vw = {val, 0, TThread::id()};
-        pRec->pValPop = &vw;
-        fc_kernel_.combine( op_pop, pRec, *this );
-        assert( pRec->is_done() );
-        fc_kernel_.release_record( pRec );
-        if (!pRec->is_empty) {
-            val = std::move(pRec->pValPop->val);
-            return true;
-        } else return false;
-    }
+        : fc_kernel_( nCompactFactor, nCombinePassCount ) {}
 
     // Clears the queue
     // Non-transactional
@@ -140,12 +151,114 @@ public:
     }
 
     // Checks if the queue is empty
+    // Non-transactional
     bool empty() {
         auto pRec = fc_kernel_.acquire_record();
         fc_kernel_.combine( op_empty, pRec, *this );
         assert( pRec->is_done() );
         fc_kernel_.release_record( pRec );
         return pRec->is_empty;
+    }
+
+    void push(const T& v) {
+        auto item = Sto::item(this, pushitem_key);
+        if (item.has_write()) {
+            if (!is_list(item)) {
+                auto& val = item.template write_value<T>();
+                std::list<T> write_list;
+                write_list.push_back(val);
+                write_list.push_back(v);
+                item.clear_write();
+                item.add_write(write_list);
+                item.add_flags(list_bit);
+            }
+            else {
+                auto& write_list = item.template write_value<std::list<T>>();
+                write_list.push_back(v);
+            }
+        }
+        else item.add_write(v);
+    }
+
+    pop_type& pop() {
+        pop_type* my_lazypop = &global_thread_layzpops[TThread::id()];
+        auto item = Sto::item(this, my_lazypop);
+        item.add_flags(pop_bit);
+        item.add_write();
+        Sto::item(this, popitem_key).add_write();
+        return *my_lazypop;
+    }
+
+private:
+    bool is_pop(const TransItem& item) {
+        return item.flags() & pop_bit;
+    }
+ 
+    bool is_list(const TransItem& item) {
+        return item.flags() & list_bit;
+    }
+ 
+    bool lock(TransItem& item, Transaction& txn) override {
+        return true;
+    }
+
+    bool check(TransItem& item, Transaction& t) override {
+        (void) t;
+        (void) item;
+        return true;
+    }
+
+    void install(TransItem& item, Transaction& txn) override {
+        (void)txn;
+        // install pops
+        if (is_pop(item)) {
+            auto lazypop = item.key<pop_type*>();
+            lazypop->set_fulfilled();
+            lazypop->set_popped(fc_pop());
+        }
+        // install pushes
+        else if (item.key<int>() == pushitem_key) {
+            // write all the elements
+            if (is_list(item)) {
+                auto& write_list = item.template write_value<std::list<T>>();
+                while (!write_list.empty()) {
+                    fc_push(write_list.front());
+                    write_list.pop_front();
+                }
+            } else {
+                auto& val = item.template write_value<T>();
+                fc_push(val);
+            }
+        }
+    }
+    
+    void unlock(TransItem& item) override {
+        (void)item;
+        return;
+    }
+
+
+    void cleanup(TransItem& item, bool committed) override {
+        (void)committed;
+        (void)item;
+        (global_thread_layzpops + TThread::id())->~pop_type();
+    }
+
+    bool fc_push( value_type const& val ) {
+        auto pRec = fc_kernel_.acquire_record();
+        pRec->pValPush = &val; 
+        fc_kernel_.combine( op_push, pRec, *this );
+        assert( pRec->is_done() );
+        fc_kernel_.release_record( pRec );
+        return true;
+    }
+
+    bool fc_pop() {
+        auto pRec = fc_kernel_.acquire_record();
+        fc_kernel_.combine( op_pop, pRec, *this );
+        assert( pRec->is_done() );
+        fc_kernel_.release_record( pRec );
+        return !pRec->is_empty;
     }
 
 public: // flat combining cooperation, not for direct use!
@@ -164,20 +277,18 @@ public: // flat combining cooperation, not for direct use!
         switch ( pRec->op() ) {
         case op_push:
             assert( pRec->pValPush );
-            q_.push_back( *(pRec->pValPush) );
+            q_.push( *(pRec->pValPush) );
             break;
         case op_pop: {
-            assert( pRec->pValPop );
             pRec->is_empty = q_.empty();
             if ( !pRec->is_empty) {
-                *(pRec->pValPop) = std::move( q_.front());
-                q_.pop_front();
+                q_.pop();
             }
             break;
         }
         case op_clear:
             while ( !q_.empty() )
-                q_.pop_back();
+                q_.pop();
             break;
         case op_empty:
             pRec->is_empty = q_.empty();
@@ -213,4 +324,4 @@ public: // flat combining cooperation, not for direct use!
     }
 };
 
-#endif // #ifndef FCQUEUE_H
+#endif // #ifndef FCQUEUELP_H

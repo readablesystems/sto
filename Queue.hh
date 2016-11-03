@@ -243,6 +243,8 @@ private:
                     assert(tail_ != (head_index-1) % BUF_SIZE);
                     queueSlots[tail_] = write_list.front();
                     write_list.pop_front();
+                    //XXX
+                    head_ = (head_+1) % BUF_SIZE;
                     tail_ = (tail_+1) % BUF_SIZE;
                 }
             }

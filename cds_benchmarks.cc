@@ -15,9 +15,7 @@ void* test_thread(void *data) {
 
     TThread::set_id(me);
 
-    if (me == INITIAL_THREAD) {
-        gt->cleanup();
-        gt->initialize(init_size); 
+    if (me == INITIAL_THREAD) { gt->cleanup(); gt->initialize(init_size); 
     }
 
     spawned_barrier++;
@@ -201,9 +199,9 @@ int main() {
     //auto queue2 = new RandomQSingleOpTest<DatatypeHarness<Queue2<int, false>>>(STO, RANDOM_VALS);
     //startAndWait(queue2, 10000, 8);
     //auto queue1 = new RandomQSingleOpTest<DatatypeHarness<Queue<int, false>>>(STO, RANDOM_VALS);
-    //startAndWait(queue1, 10000, 8);
-    auto queuelp = new RandomQSingleOpTest<DatatypeHarness<QueueLP<int, false>>>(STO, RANDOM_VALS);
-    startAndWait(queuelp, 10000, 12);
+    //startAndWait(queue1, 10000, 5);
+    auto queuelp = new RandomQSingleOpTest<DatatypeHarness<FCQueueLP<int, std::queue<int>>>>(STO, RANDOM_VALS);
+    startAndWait(queuelp, 10000, 5);
   /* 
     std::vector<Test> map_tests = make_map_tests();
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {

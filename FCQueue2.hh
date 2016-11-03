@@ -47,8 +47,8 @@ struct val_wrapper {
 };
 
 template <typename T, 
-         class Queue = std::deque<val_wrapper<T>>,
-         template <typename> class W = TOpaqueWrapped>
+         template <typename> class W = TOpaqueWrapped,
+         class Queue = std::queue<val_wrapper<T>>>
 class FCQueue : public flat_combining::container, public Shared
 {
 public:
@@ -214,20 +214,20 @@ public: // flat combining cooperation, not for direct use!
         switch ( pRec->op() ) {
         case op_push:
             assert( pRec->pValPush );
-            q_.push_back( *(pRec->pValPush) );
+            q_.push( *(pRec->pValPush) );
             break;
         case op_pop: {
             assert( pRec->pValPop );
             pRec->is_empty = q_.empty();
             if ( !pRec->is_empty ) {
                 *(pRec->pValPop) = std::move( q_.front());
-                q_.pop_front();
+                q_.pop();
             }
             break;
         }
         case op_clear:
             while ( !q_.empty() )
-                q_.pop_back();
+                q_.pop();
             break;
         case op_empty:
             pRec->is_empty = q_.empty();

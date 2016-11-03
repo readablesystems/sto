@@ -71,8 +71,6 @@ public:
         }
     }
 
-    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;
-    static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<1;
     static constexpr TransItem::flags_type list_bit = TransItem::user0_bit<<2;
     static constexpr TransItem::flags_type pop_bit = TransItem::user0_bit<<3;
     static constexpr int pushitem_key = -1;
@@ -148,10 +146,6 @@ public:
     }
 
 private:
-    bool has_delete(const TransItem& item) {
-        return item.flags() & delete_bit;
-    }
-    
     bool is_pop(const TransItem& item) {
         return item.flags() & pop_bit;
     }
@@ -205,6 +199,8 @@ private:
                     assert(tail_ != (curhead-1) % BUF_SIZE);
                     queueSlots[tail_] = write_list.front();
                     write_list.pop_front();
+                    // XXX
+                    head_ = (head_ +1) % BUF_SIZE;
                     tail_ = (tail_+1) % BUF_SIZE;
                 }
             } else {

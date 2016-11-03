@@ -445,8 +445,9 @@ public:
             rec->args.push_back(val);
             return rec;
         } else {
-            q->front(val);
-            q->pop();
+            //q->front(val);
+            q->push(val);
+            //q->pop();
 #if PRINT_DEBUG
             //std::cout << "[" << me << "] popped " << ret << std::endl;
             std::cout << "[" << me << "] front " << val << std::endl;
@@ -466,6 +467,7 @@ public:
         } else if (op->op == 1) {
             q->front(val);
             bool ret = q->pop();
+            (void)ret;
 #if PRINT_DEBUG
             std::cout << "[" << val << "] [" << op->rdata[0] << "]" << std::endl;
 #endif

@@ -17,9 +17,9 @@
 #include "PairingHeap.hh"
 #include "Queue.hh"
 #include "Queue2.hh"
-#include "QueueLP.hh"
 //#include "FCQueue.hh"
 #include "FCQueue2.hh"
+#include "FCQueueLP.hh"
 //#include "FCQueueNT.hh"
 //#include "FCQueueOriginal.hh"
 #include "cds_benchmarks.hh"
@@ -159,12 +159,12 @@ template <typename T> struct DatatypeHarness<Queue<T>> : public STOQueueHarness<
 template <typename T> struct DatatypeHarness<Queue<T, false>> : public STOQueueHarness<Queue<T, false>>{};
 template <typename T> struct DatatypeHarness<Queue2<T>> : public STOQueueHarness<Queue2<T>>{};
 template <typename T> struct DatatypeHarness<Queue2<T, false>> : public STOQueueHarness<Queue2<T,false>>{};
-template <typename T> struct DatatypeHarness<QueueLP<T, false>> { 
+template <typename T> struct DatatypeHarness<FCQueueLP<T, std::queue<T>>> { 
     typedef T value_type;
 public:
-    LazyPop<T, false>& pop() { return v_.pop(); }
+    LazyPop<T, std::queue<T>>& pop() { return v_.pop(); }
     bool cleanup_pop() { 
-        v_.nontrans_clear();
+        v_.clear();
         return false;
     }
     void push(value_type v) { v_.push(v); }
@@ -175,9 +175,9 @@ public:
     }
     size_t size() { return 0; }
 private:
-    QueueLP<T, false> v_;
+    FCQueueLP<T, std::queue<T>> v_;
 };
-template <typename T> struct DatatypeHarness<FCQueue<T>> {
+template <typename T> struct DatatypeHarness<FCQueue<T, TNonopaqueWrapped>> {
     typedef T value_type;
 public:
     bool pop() { int ret; return v_.pop(ret); }
@@ -197,7 +197,7 @@ public:
     void print_statistics() { this->v_.print_statistics(); }
 
 private:
-    FCQueue<T> v_;
+    FCQueue<T, TNonopaqueWrapped> v_;
 };
 
 template <typename T> struct DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, T>> : 
@@ -470,9 +470,9 @@ int num_pqueues = 4;
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
     {desc, "STO queue", new test<DatatypeHarness<Queue<type, false>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "STO queue2", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)},                                  \
-    {desc, "STO queueLP", new test<DatatypeHarness<QueueLP<type, false>>>(STO, ## __VA_ARGS__)},                                  \
+    {desc, "STO/FC queueLP", new test<DatatypeHarness<FCQueueLP<type, std::queue<type>>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "FC queue", new test<DatatypeHarness<cds::container::FCQueue<type, std::queue<type>, FCQUEUE_TRAITS()>>>(CDS, ## __VA_ARGS__)},                 \
-    {desc, "STO/FC queue", new test<DatatypeHarness<FCQueue<type>>>(STO, ## __VA_ARGS__)}
+    {desc, "STO/FC queue", new test<DatatypeHarness<FCQueue<type, TNonopaqueWrapped>>>(STO, ## __VA_ARGS__)}\
     //{desc, "STO queue O", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  
     //{desc, "STO queue2 O", new test<DatatypeHarness<Queue2<type>>>(STO, ## __VA_ARGS__)},                                  
     //{desc, "Basket queue", new test<DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},         
