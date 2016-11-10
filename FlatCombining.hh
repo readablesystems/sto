@@ -247,7 +247,7 @@ namespace flat_combining {
         void combining( Container& owner )
         {
             // The thread is a combiner
-            assert( !TransactionTid::try_lock(Mutex) );
+            //assert( !TransactionTid::try_lock(Mutex) );
 
             unsigned int const nCurAge = nCount.fetch_add( 1, memory_model::memory_order_relaxed ) + 1;
             /*if (prev_t.tv_usec == 0) {

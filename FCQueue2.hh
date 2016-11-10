@@ -28,8 +28,8 @@
     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.     
 */
 
-#ifndef FCQUEUE_H 
-#define FCQUEUE_H
+#ifndef FCQUEUE2_H 
+#define FCQUEUE2_H
 
 #include <deque>
 #include <list>
@@ -49,7 +49,7 @@ struct val_wrapper {
 template <typename T, 
          template <typename> class W = TOpaqueWrapped,
          class Queue = std::queue<val_wrapper<T>>>
-class FCQueue : public flat_combining::container, public Shared
+class FCQueue2 : public flat_combining::container, public Shared
 {
 public:
     typedef T           value_type;     ///< Value type
@@ -103,7 +103,7 @@ private:
 
 public:
     /// Initializes empty queue object
-    FCQueue() : queueversion_(0),
+    FCQueue2() : queueversion_(0),
                 num_mark_iter(0), num_mark_tries(0), num_marked(0),
                 num_clear_tries(0), num_cleared(0),
                 num_install_iter(0), num_install_tries(0), num_installed(0),
@@ -111,7 +111,7 @@ public:
     {}
 
     /// Initializes empty queue object and gives flat combining parameters
-    FCQueue(
+    FCQueue2(
         unsigned int nCompactFactor     ///< Flat combining: publication list compacting factor
         ,unsigned int nCombinePassCount ///< Flat combining: number of combining passes for combiner thread
         )
@@ -121,7 +121,7 @@ public:
             num_install_iter(0), num_install_tries(0), num_installed(0),
             num_undone(0), num_undo_tries(0) {}
 
-    ~FCQueue() { 
+    ~FCQueue2() { 
         fprintf(stderr, "Iter Depth / Attempts:\n\
                 Marked: %d / %d\t Successful: %d\n\
                 Install: %d / %d\t Successful: %d\n\
@@ -360,4 +360,4 @@ private:
         }
     }
 };
-#endif // #ifndef FCQUEUE_H
+#endif // #ifndef FCQUEUE2_H

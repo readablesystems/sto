@@ -851,14 +851,16 @@ private:
                 return ret ? 1 : -1;
             } 
             // we didn't find the item and there was no overflow
-	    if (sa == sto_unlock) {
-	        auto& bp = ti->buckets_[i1];
-	        for (unsigned j = 0; j < SLOT_PER_BUCKET; ++j)
-                fprintf(stderr, "%d occupied %d %p\n", j, getBit(bp.occupied, j), (void*) bp.elems[j].key);
-                fprintf(stderr, "looking for %p / %p\n", (void*) key, (void*) hv);
-            }
-            unlock_two(ti, i1, i2);
-            return -2;
+            /*
+            if (sa == sto_unlock) {
+                /auto& bp = ti->buckets_[i1];
+                for (unsigned j = 0; j < SLOT_PER_BUCKET; ++j) {
+                    //fprintf(stderr, "%d occupied %d %p\n", j, getBit(bp.occupied, j), (void*) bp.elems[j].key);
+                    //fprintf(stderr, "looking for %p / %p\n", (void*) key, (void*) hv);
+                }
+                unlock_two(ti, i1, i2);
+                return -2;
+            }*/
         // we failed to find the item in the first bucket, but there was overflow
         } else {
             // we have both buckets locked 

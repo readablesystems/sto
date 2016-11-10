@@ -12,13 +12,15 @@
 #include "CuckooHashMapNT.hh"
 #include "CuckooHashMapNA.hh"
 #include "RBTree.hh"
-#include "Vector.hh"
-#include "QueueLP.hh"
+//#include "Vector.hh"
+//#include "QueueLP.hh"
 #include "Queue2.hh"
-#include "Queue.hh"
+#include "Queue1.hh"
+#include "FCQueueLP2.hh"
+#include "FCQueueNT2.hh"
 
 #define MAX_VALUE 100 // Max value of integers used in data structures
-#define PRINT_DEBUG 1 // Set this to 1 to print some debugging statements
+#define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements
 
 struct Rand {
     typedef uint32_t result_type;
@@ -446,11 +448,10 @@ public:
             return rec;
         } else {
             //q->front(val);
-            q->push(val);
-            //q->pop();
+            q->pop();
 #if PRINT_DEBUG
-            //std::cout << "[" << me << "] popped " << ret << std::endl;
-            std::cout << "[" << me << "] front " << val << std::endl;
+            std::cout << "[" << me << "] popped " << std::endl;
+            //std::cout << "[" << me << "] front " << val << std::endl;
 #endif
             op_record* rec = new op_record;
             rec->op = op;
@@ -465,7 +466,7 @@ public:
             val = op->args[0];
             q->push(val);
         } else if (op->op == 1) {
-            q->front(val);
+            //q->front(val);
             bool ret = q->pop();
             (void)ret;
 #if PRINT_DEBUG
@@ -478,9 +479,8 @@ public:
     void check(DT* q, RT*q1) {
         TRANSACTION {
             int v1, v2;
-            if (!q->nontrans_empty()) {
-                q->pop();
-                q1->front(v2);
+            if (q->pop()) {
+                //q1->front(v2);
                 assert(q1->pop());
 #if PRINT_DEBUG
                 std::cout << "[" << v1 << "] [" << v2 << "]" << std::endl;

@@ -6,12 +6,12 @@
 #include "TWrapped.hh"
 
 template <typename T, bool Opacity = true, unsigned BUF_SIZE = 1000000>
-class Queue: public Shared {
+class Queue1: public Shared {
 public:
     typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type version_type;
     typedef T value_type;
 
-    Queue() : head_(0), tail_(0), tailversion_(0), headversion_(0) {}
+    Queue1() : head_(0), tail_(0), tailversion_(0), headversion_(0) {}
 
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<1;

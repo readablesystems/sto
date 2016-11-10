@@ -1,36 +1,51 @@
-#ifndef __FC_QUEUE__
-#define __FC_QUEUE__
+/*
+    This file is a part of libcds - Concurrent Data Structures library
 
-////////////////////////////////////////////////////////////////////////////////
-// File    : FCQueue.h
-// Author  : Ms.Moran Tzafrir;  email: morantza@gmail.com; tel: 0505-779961
-// Written : 27 October 2009
-//
-// Copyright (C) 2009 Moran Tzafrir.
-//
-// This program is free software; you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation; either version 2 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful, but
-// WITHOUT ANY WARRANTY; without even the implied warranty of 
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
-// General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License 
-// along with this program; if not, write to the Free Software Foundation
-// Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
-////////////////////////////////////////////////////////////////////////////////
+    (C) Copyright Maxim Khizhinsky (libcds.dev@gmail.com) 2006-2016
 
-#include "FCQueueOriginalHelpers.hh"
+    Source code repo: http://github.com/khizmax/libcds/
+    Download: http://sourceforge.net/projects/libcds/files/
+    
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright notice, this
+      list of conditions and the following disclaimer.
+
+    * Redistributions in binary form must reproduce the above copyright notice,
+      this list of conditions and the following disclaimer in the documentation
+      and/or other materials provided with the distribution.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+    IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+    DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+    FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+    DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+    SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+    CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+    OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.     
+*/
+
+#ifndef FCQUEUELP2_H 
+#define FCQUEUELP2_H
+
+#include <deque>
+#include <list>
+#include <math.h>
+#include "FlatCombining.hh"
+#include "Transaction.hh"
+#include "cpp_framework.hh"
+#include "LazyPop.hh"
 
 using namespace CCP;
 
 template <typename T>
-class FCQueue {
+class FCQueueLP2 : public Shared {
 
 private:
+
 	static const int _MAX_THREADS	= 1024;
 	static const int _NULL_VALUE	= 0;
 	static const int _DEQ_VALUE		= (INT_MIN+2);
@@ -42,19 +57,17 @@ private:
 		int volatile		_req_ans;		//here 1 can post the request and wait for answer
 		int volatile		_time_stamp;	//when 0 not connected
 		SlotInfo* volatile	_next;			//when NULL not connected
-		void*				_custem_info;
 
 		SlotInfo() {
 			_req_ans	 = _NULL_VALUE;
 			_time_stamp  = 0;
 			_next		 = NULL;
-			_custem_info = NULL;
 		}
 	};
 
 	//list fields -----------------------------------
 	static thread_local SlotInfo*   _tls_slot_info;
-	CCP::AtomicReference<SlotInfo>	_tail_slot;
+    AtomicReference<SlotInfo>       _tail_slot;
 	int volatile					_timestamp;
 
 	//list helper function --------------------------
@@ -98,8 +111,8 @@ private:
 		}
 	};
 
-	AtomicInteger	    _fc_lock;
-	char							_pad1[CACHE_LINE_SIZE];
+    AtomicInteger   _fc_lock;
+	char			_pad1[CACHE_LINE_SIZE];
 	const int		_NUM_REP;
 	const int		_REP_THRESHOLD;
 	Node* volatile	_head;
@@ -185,11 +198,22 @@ private:
 		} 
 	}
 
+
 public:
-	//public operations ---------------------------
-	FCQueue() 
+    typedef T           value_type;     ///< Value type
+    typedef LazyPop<T, FCQueueLP2<T>> pop_type;
+
+private:
+    // STO
+    static constexpr TransItem::flags_type list_bit = TransItem::user0_bit<<2;
+    static constexpr TransItem::flags_type pop_bit = TransItem::user0_bit<<3;
+    static constexpr int pushitem_key = -1;
+    static constexpr int popitem_key = -2;
+
+public:
+	FCQueueLP2() 
 	:	_NUM_REP(_NUM_THREADS),
-		_REP_THRESHOLD((int)(Math::ceil(_NUM_THREADS/(1.7))))
+		_REP_THRESHOLD((int)(ceil(_NUM_THREADS/(1.7))))
 	{
 		_head = Node::get_new(_NUM_THREADS);
 		_tail = _head;
@@ -201,9 +225,39 @@ public:
 		_NODE_SIZE = 4;
 		_new_node = NULL;
 	}
-	virtual ~FCQueue() { }
 
-	bool push(const int inValue) {
+	virtual ~FCQueueLP2() { }
+
+    void push(const T& v) {
+        auto item = Sto::item(this, pushitem_key);
+        if (item.has_write()) {
+            if (!is_list(item)) {
+                auto& val = item.template write_value<T>();
+                std::list<T> write_list;
+                write_list.push_back(val);
+                write_list.push_back(v);
+                item.clear_write();
+                item.add_write(write_list);
+                item.add_flags(list_bit);
+            }
+            else {
+                auto& write_list = item.template write_value<std::list<T>>();
+                write_list.push_back(v);
+            }
+        }
+        else item.add_write(v);
+    }
+
+    pop_type& pop() {
+        pop_type* my_lazypop = &global_thread_lazypops[TThread::id()];
+        auto item = Sto::item(this, my_lazypop);
+        item.add_flags(pop_bit);
+        item.add_write();
+        Sto::item(this, popitem_key).add_write();
+        return *my_lazypop;
+    }
+
+	bool fc_push(const int inValue) {
 
 		SlotInfo* my_slot = _tls_slot_info;
 		if(NULL == my_slot)
@@ -236,7 +290,7 @@ public:
 		} while(true);
 	}
 
-	bool pop(int& ret) {
+	bool fc_pop() {
 		SlotInfo* my_slot = _tls_slot_info;
 		if(NULL == my_slot)
 			my_slot = get_new_slot();
@@ -253,8 +307,7 @@ public:
 			if(lock_fc(_fc_lock, is_cas)) {
 				flat_combining();
 				_fc_lock.set(0);
-                ret = -(my_re_ans);
-				return (ret != _NULL_VALUE); 
+				return ((-my_re_ans) != _NULL_VALUE); 
 			} else {
 				Memory::write_barrier();
 				if(!is_cas)
@@ -263,24 +316,70 @@ public:
 				}
 				Memory::read_barrier();
 				if(_DEQ_VALUE != my_re_ans) {
-                    ret = -(my_re_ans);
-				    return (ret != _NULL_VALUE); 
+				    return ((-my_re_ans) != _NULL_VALUE); 
 				}
 			}
 		} while(true);
 	}
 
-	//general .....................................................
-	int size() {
-		return 0;
-	}
 
-    void print_statistics() {
+private:
+    bool is_pop(const TransItem& item) {
+        return item.flags() & pop_bit;
+    }
+ 
+    bool is_list(const TransItem& item) {
+        return item.flags() & list_bit;
+    }
+ 
+    bool lock(TransItem&, Transaction&) override {
+        return true;
+    }
+
+    bool check(TransItem&, Transaction&) override {
+        return true;
+    }
+
+    void install(TransItem& item, Transaction& txn) override {
+        (void)txn;
+        // install pops
+        if (is_pop(item)) {
+            auto lazypop = item.key<pop_type*>();
+            lazypop->set_fulfilled();
+            lazypop->set_popped(fc_pop());
+        }
+        // install pushes
+        else if (item.key<int>() == pushitem_key) {
+            // write all the elements
+            if (is_list(item)) {
+                auto& write_list = item.template write_value<std::list<T>>();
+                while (!write_list.empty()) {
+                    fc_push(write_list.front());
+                    write_list.pop_front();
+                }
+            } else {
+                auto& val = item.template write_value<T>();
+                fc_push(val);
+            }
+        }
+    }
+    
+    void unlock(TransItem& item) override {
+        (void)item;
         return;
     }
+
+
+    void cleanup(TransItem& item, bool committed) override {
+        (void)committed;
+        (void)item;
+        (global_thread_lazypops + TThread::id())->~pop_type();
+    }
+
+    pop_type global_thread_lazypops[24];
 };
 
 template <typename T>
-thread_local typename FCQueue<T>::SlotInfo* FCQueue<T>::_tls_slot_info = NULL;
+thread_local typename FCQueueLP2<T>::SlotInfo* FCQueueLP2<T>::_tls_slot_info = NULL;
 
-#endif
+#endif // #ifndef FCQUEUELP2_H

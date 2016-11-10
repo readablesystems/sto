@@ -9,7 +9,7 @@
 
 #define GLOBAL_SEED 10
 #define N_THREADS 4 // Number of concurrent threads
-#define TOTAL_TRANS 1000000
+#define TOTAL_TRANS 10000000
 #define NTRANS TOTAL_TRANS/N_THREADS // Number of transactions each thread should run.
 #define MAX_OPS 1 // Maximum number of operations in a transaction.
 
@@ -26,7 +26,7 @@
 //#define DS CUCKOOHASHMAPNA
 
 #if DS == QUEUE 
-QueueTester<QueueLP<int,true,1000000>, Queue<int,true,1000000>> tester = QueueTester<QueueLP<int,true,1000000>, Queue<int,true,1000000>>();
+QueueTester<Queue2<int,false,100000>, Queue2<int,false,100000>> tester = QueueTester<Queue2<int,false,100000>, Queue2<int,false,100000>>();
 #elif DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
 #elif DS == HASHTABLE
@@ -81,15 +81,13 @@ void* record_perf_thread(void* x) {
     for (int i = 0; i < nthreads; ++i) {
         total1 += global_thread_ctrs[i];
     }
-    while (spawned_barrier != 0) {
-        sched_yield();
-    }
+    while (spawned_barrier != 0) {}
     for (int i = 0; i < nthreads; ++i) {
         total2 += global_thread_ctrs[i];
     }
     gettimeofday(&tv2, NULL);
-    double seconds = ((tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/8000.0);
-    ops_per_s = (total2-total1)/seconds > ops_per_s ? (total2-total1)/seconds : ops_per_s;
+    double seconds = ((tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
+    ops_per_s = (total2-total1)/seconds;
     fprintf(stderr, "%d threads speed: %f ops/s\n", nthreads, ops_per_s);
     return nullptr;
 }
@@ -154,7 +152,6 @@ void run(T* q, int me, int nthreads) {
         }
         }
     }
-
     spawned_barrier--;
 }
 
@@ -198,8 +195,8 @@ int main() {
         initial_seeds[i] = random();
 
 #if DS == QUEUE
-    QueueLP<int> q;
-    Queue<int> q1;
+    Queue2<int,false,100000> q;
+    Queue2<int,false,100000> q1;
 #elif DS == PRIORITY_QUEUE 
     PriorityQueue<int> q;
     PriorityQueue<int> q1;
@@ -291,8 +288,8 @@ int main() {
     // MULTI-THREADED 
     for (int i = 1; i <= N_THREADS; ++i) {
         spawned_barrier = 0;
-        //startAndWait(&q, i);
         startAndWait(&q, N_THREADS);
+        startAndWait(&q, i);
 #if PRINT_DEBUG
 #if STO_PROFILE_COUNTERS
         Transaction::print_stats();

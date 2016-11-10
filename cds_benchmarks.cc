@@ -33,7 +33,7 @@ void* record_perf_thread(void* x) {
     int nthreads = *(int*)x;
     int total1, total2;
     struct timeval tv1, tv2;
-    double ops_per_ms = 0; 
+    double ops_per_s = 0; 
 
     while (spawned_barrier != nthreads) {
         sched_yield();
@@ -53,10 +53,10 @@ void* record_perf_thread(void* x) {
         total2 += (global_thread_ctrs[i].insert + global_thread_ctrs[i].erase + global_thread_ctrs[i].find);
     }
     gettimeofday(&tv2, NULL);
-    double milliseconds = ((tv2.tv_sec-tv1.tv_sec)*1000.0) + ((tv2.tv_usec-tv1.tv_usec)/1000.0);
-    ops_per_ms = (total2-total1)/milliseconds > ops_per_ms ? (total2-total1)/milliseconds : ops_per_ms;
-    dualprintf("%f, ", ops_per_ms);
-    fprintf(stderr, "%f\n", ops_per_ms);
+    double seconds = ((tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
+    ops_per_s = (total2-total1)/seconds;
+    dualprintf("%f, ", ops_per_s);
+    fprintf(stderr, "%d threads speed: %f ops/s\n", nthreads, ops_per_s);
     return nullptr;
 }
 
@@ -199,9 +199,11 @@ int main() {
     //auto queue2 = new RandomQSingleOpTest<DatatypeHarness<Queue2<int, false>>>(STO, RANDOM_VALS);
     //startAndWait(queue2, 10000, 8);
     //auto queue1 = new RandomQSingleOpTest<DatatypeHarness<Queue<int, false>>>(STO, RANDOM_VALS);
-    //startAndWait(queue1, 10000, 5);
-    auto queuelp = new RandomQSingleOpTest<DatatypeHarness<FCQueueLP<int, std::queue<int>>>>(STO, RANDOM_VALS);
-    startAndWait(queuelp, 10000, 5);
+    //startAndWait(queue1, 10000, 12);
+    //auto queuelp = new RandomQSingleOpTest<DatatypeHarness<FCQueueLP<int, std::queue<int>>>>(STO, RANDOM_VALS);
+    //startAndWait(queuelp, 10000, 12);
+    //auto queuefc = new RandomQSingleOpTest<DatatypeHarness<FCQueue<int, TNonopaqueWrapped>>>(STO, RANDOM_VALS);
+    //startAndWait(queuefc, 10000, 12);
   /* 
     std::vector<Test> map_tests = make_map_tests();
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
@@ -245,6 +247,7 @@ int main() {
             dualprintf("\n");
         }
     }
+    */
     // queue tests
     std::vector<Test> queue_tests = make_queue_tests();
     for (unsigned i = 0; i < queue_tests.size(); i+=num_queues) {
@@ -258,9 +261,9 @@ int main() {
                     }
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
                             queue_tests[i+j].desc.c_str(), queue_tests[i+j].ds, *size, *nthreads);
-                    startAndWait(queue_tests[i+j].test, *size, *nthreads);
-                    fprintf(stderr, "\nRan Test %s on %s\t size: %d, nthreads: %d\n", 
+                    fprintf(stderr, "Running Test %s on %s\t size: %d, nthreads: %d\n", 
                             queue_tests[i+j].desc.c_str(), queue_tests[i+j].ds, *size, *nthreads);
+                    startAndWait(queue_tests[i+j].test, *size, *nthreads);
                 }
                 if (queue_tests[i].desc.find("PushPop")==std::string::npos) dualprintf("\n");
             }
@@ -268,7 +271,6 @@ int main() {
             dualprintf("\n");
         }
     }
-    */
     cds::Terminate();
     return 0;
 }

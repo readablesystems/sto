@@ -5,7 +5,7 @@
 #include "Hashtable.hh"
 #include "MassTrans.hh"
 #include "List.hh"
-#include "Queue.hh"
+#include "Queue1.hh"
 #include "Queue2.hh"
 #include "Transaction.hh"
 #include "IntStr.hh"
@@ -605,6 +605,6 @@ int main() {
 
   linkedListTests();
   
-  queueTests<Queue<int>>();
+  queueTests<Queue1<int>>();
   queueTests<Queue2<int>>();
 }
