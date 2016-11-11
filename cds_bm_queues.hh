@@ -531,7 +531,7 @@ int num_pqueues = 4;
     {desc, "FCQueueLP2", new test<DatatypeHarness<FCQueueLP2<type>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "Wrapped NT FC Queue1", new test<DatatypeHarness<FCQueueNT1<type>>>(STO, ## __VA_ARGS__)},\
     {desc, "Wrapped NT FC Queue2", new test<DatatypeHarness<FCQueueNT2<type>>>(STO, ## __VA_ARGS__)},\
-    {desc, "Wrapped CDS FC queue", new test<DatatypeHarness<cds::container::FCQueue<type, std::queue<type>, FCQUEUE_TRAITS()>>>(STO, ## __VA_ARGS__)},                 \
+    {desc, "Wrapped CDS FC Queue", new test<DatatypeHarness<cds::container::FCQueue<type, std::queue<type>, FCQUEUE_TRAITS()>>>(STO, ## __VA_ARGS__)},                 \
     {desc, "NT FC Queue1", new test<DatatypeHarness<FCQueueNT1<type>>>(CDS, ## __VA_ARGS__)},\
     {desc, "NT FC Queue2", new test<DatatypeHarness<FCQueueNT2<type>>>(CDS, ## __VA_ARGS__)},\
     {desc, "CDS FC queue", new test<DatatypeHarness<cds::container::FCQueue<type, std::queue<type>, FCQUEUE_TRAITS()>>>(CDS, ## __VA_ARGS__)}
