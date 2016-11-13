@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 #set up matplotlib and the figure
 import matplotlib.pyplot as plt
 from collections import defaultdict
@@ -5,7 +7,7 @@ from collections import defaultdict
 
 BENCHMARK_FILE = "cds_benchmarks_stats.txt"
 INIT_SIZES = [1000, 10000, 50000, 100000, 150000]
-NTHREADS = [1,2,4,8]#4, 8, 12, 16, 20]
+NTHREADS = [1,2,4,8,12,16,20]
 TESTS = ["PQRandSingleOps:R","PQRandSingleOps:D","PQPushPop:R",
             "PQPushPop:D", "PQPushOnly:R", "PQPushOnly:D", 
             "Q:PushPop","Q:RandSingleOps",
@@ -54,12 +56,13 @@ with open(BENCHMARK_FILE, "r") as f:
                     [float(x) for x in line.split(",")[:-1]])
 
 for test, results in tests.items():
-    for size, data_lists in results.items():
+    plt.figure(figsize=(10,20))
+    for i, (size, data_lists) in enumerate(results.items()):
+        qdata = defaultdict(list)
         if len(data_lists[0]) == 0:
             continue
-        plt.figure
+        plt.subplot(len(results),1,i+1)
         #plot data
-        qdata = defaultdict(list)
         for q_index in range(len(data_lists[0])):
             for i in range(len(data_lists)):
                 qdata[q_index].append(data_lists[i][q_index])
@@ -67,17 +70,17 @@ for test, results in tests.items():
             plt.plot(NTHREADS, qdata[i], label=QUEUES[i])
 
         #add in labels and title
-        plt.xlabel("Number of Threads")
         plt.ylabel("Speed (ops/s)")
-        plt.title("Queue Performance")
+        plt.title("%s Size %d Performance" % (test, size))
 
         #add limits to the x and y axis
-        plt.xlim(0, 24)
-        plt.ylim(-5, 20000000) 
+        plt.xlim(1, 20)
+        plt.ylim(0, 30000000) 
+        plt.legend(bbox_to_anchor=(1,1), loc='upper left', ncol=1, prop={'size':8})
 
-        #create legend
-        plt.legend(loc="upper left")
-
-        #save figure to png
-        plt.show()
-        plt.savefig("QueueSize%d.png" % size)
+    #save figure to png
+    #create legend
+    plt.tight_layout(pad=10)
+    plt.xlabel("Number of Threads")
+    plt.show()
+    plt.savefig("%s.png" % test)
