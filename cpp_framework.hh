@@ -14,13 +14,6 @@
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
-#ifndef __INTEL64_DEFNS_H__
-#define __INTEL64_DEFNS_H__
-
-#ifndef INTEL64
-#define INTEL64
-#endif
-
 ////////////////////////////////////////////////////////////////////////////////
 //include directives 
 ////////////////////////////////////////////////////////////////////////////////
@@ -47,7 +40,6 @@ typedef _u64               ptr_t;
 ////////////////////////////////////////////////////////////////////////////////
 //constants
 ////////////////////////////////////////////////////////////////////////////////
-#define inline_ __inline__
 #define null (0)
 #define CACHE_LINE_SIZE 64
 #define lock_fc(x,b) ( 0 == x.getNotSafe() && 0 == x.getNotSafe() && 0 == x.getNotSafe() && (b=x.compareAndSet(0, 0xFF)) )
@@ -83,74 +75,28 @@ typedef _u64               ptr_t;
 #define WMB() _GLIBCXX_WRITE_MEM_BARRIER
 #define MB()  __sync_synchronize()
 
-inline unsigned MUTEX_ENTER(unsigned volatile* x) {
-    return __sync_lock_test_and_set(x, 0xFF);
-}
-
-inline void MUTEX_EXIT(unsigned volatile* x) {
-    return __sync_lock_release (x);
-}
-
-//////////////////////////////////////////////////////////////////////////
-//CPU counters
-//////////////////////////////////////////////////////////////////////////
-#define RDTICK() \
-    ({ tick_t __t; __asm__ __volatile__ ("rdtsc" : "=A" (__t)); __t; })
-
-//////////////////////////////////////////////////////////////////////////
-//bit operations
-//////////////////////////////////////////////////////////////////////////
-#define bit_count(x) __builtin_popcount (x)
-#define bit_count64(x) __builtin_popcountll (x)
-
-inline_ int first_lsb_bit_indx(_u32 x) {
-    if(0==x) 
-        return -1;
-    return __builtin_ffs(x)-1;
-}
-
-inline_ int first_lsb_bit_indx64(_u64 x) {
-    if(0==x) 
-        return -1;
-    return __builtin_ffsll(x)-1;
-}
-
-inline_ int first_msb_bit_indx(_u32 x) {
-    if(0==x) 
-        return -1;
-    return  __builtin_clz(x)-1;
-}
-
-inline_ int first_msb_bit_indx64(_u64 x) {
-    if(0==x) 
-        return -1;
-    return  __builtin_clzll(x)-1;
-}
-
-#endif /* __INTEL_DEFNS_H__ */
-
 namespace CCP {
     class Memory {
     public:
         static const int CACHELINE_SIZE = CACHE_LINE_SIZE;
 
-        inline_ static void* byte_malloc(const size_t size) {return malloc(size);}
-        inline_ static void  byte_free(void* mem)                   {free(mem);}
+        __inline__ static void* byte_malloc(const size_t size) {return malloc(size);}
+        __inline__ static void  byte_free(void* mem)                   {free(mem);}
 
-        inline_ static void* byte_aligned_malloc(const size_t size) {return ALIGNED_MALLOC(size, CACHELINE_SIZE);}
-        inline_ static void* byte_aligned_malloc(const size_t size, const size_t alignment) {return ALIGNED_MALLOC(size,alignment);}
-        inline_ static void  byte_aligned_free(void* mem)   {ALIGNED_FREE(mem);}
+        __inline__ static void* byte_aligned_malloc(const size_t size) {return ALIGNED_MALLOC(size, CACHELINE_SIZE);}
+        __inline__ static void* byte_aligned_malloc(const size_t size, const size_t alignment) {return ALIGNED_MALLOC(size,alignment);}
+        __inline__ static void  byte_aligned_free(void* mem)   {ALIGNED_FREE(mem);}
 
-        inline_ static void  read_write_barrier()   { MB(); }
-        inline_ static void  write_barrier()        { WMB(); }
-        inline_ static void  read_barrier()         { RMB(); }
+        __inline__ static void  read_write_barrier()   { MB(); }
+        __inline__ static void  write_barrier()        { WMB(); }
+        __inline__ static void  read_barrier()         { RMB(); }
 
-        inline_ static _u32  compare_and_set(_u32 volatile* _a, _u32 _o, _u32 _n)       {return CAS32(_a,_o,_n);}
-        inline_ static void* compare_and_set(void* volatile * _a, void* _o, void* _n)   {return (void*)CASPO(_a,_o,_n);}
-        inline_ static _u64  compare_and_set(_u64 volatile* _a, _u64 _o, _u64 _n)       {return CAS64(_a,_o,_n);}
+        __inline__ static _u32  compare_and_set(_u32 volatile* _a, _u32 _o, _u32 _n)       {return CAS32(_a,_o,_n);}
+        __inline__ static void* compare_and_set(void* volatile * _a, void* _o, void* _n)   {return (void*)CASPO(_a,_o,_n);}
+        __inline__ static _u64  compare_and_set(_u64 volatile* _a, _u64 _o, _u64 _n)       {return CAS64(_a,_o,_n);}
 
-        inline_ static _u32  exchange_and_set(_u32 volatile *   _a, _u32  _n)   {return SWAP32(_a,_n);}
-        inline_ static void* exchange_and_set(void * volatile * _a, void* _n)   {return SWAPPO(_a,_n);}
+        __inline__ static _u32  exchange_and_set(_u32 volatile *   _a, _u32  _n)   {return SWAP32(_a,_n);}
+        __inline__ static void* exchange_and_set(void * volatile * _a, void* _n)   {return SWAPPO(_a,_n);}
     };
 
     /////////////////////////////////////////////////////////////////////////////
@@ -160,82 +106,82 @@ namespace CCP {
     class VolatileType {
         V volatile _value;
     public:
-        inline_ explicit VolatileType() { }
-        inline_ explicit VolatileType(const V& x) {
+        __inline__ explicit VolatileType() { }
+        __inline__ explicit VolatileType(const V& x) {
             _value = x;
             Memory::write_barrier();
         }
-        inline_ V get() const {
+        __inline__ V get() const {
             Memory::read_barrier();
             return _value;
         }
 
-        inline_ V getNotSafe() const {
+        __inline__ V getNotSafe() const {
             return _value;
         }
 
-        inline_ void set(const V& x) {
+        __inline__ void set(const V& x) {
             _value = x;
             Memory::write_barrier();
         }
-        inline_ void setNotSafe(const V& x) {
+        __inline__ void setNotSafe(const V& x) {
             _value = x;
         }
 
         //--------------
-        inline_ operator V() const {  //convention
+        __inline__ operator V() const {  //convention
             return get();
         }
-        inline_ V operator->() const {
+        __inline__ V operator->() const {
             return get();
         }
-        inline_ V volatile * operator&() {
+        __inline__ V volatile * operator&() {
             Memory::read_barrier();
             return &_value;
         }
 
         //--------------
-        inline_ VolatileType<V>& operator=(const V x) { 
+        __inline__ VolatileType<V>& operator=(const V x) { 
             _value = x;
             Memory::write_barrier();
             return *this;
         }
         //--------------
-        inline_ bool operator== (const V& right) const {
+        __inline__ bool operator== (const V& right) const {
             Memory::read_barrier();
             return _value == right;
         }
-        inline_ bool operator!= (const V& right) const {
+        __inline__ bool operator!= (const V& right) const {
             Memory::read_barrier();
             return _value != right;
         }
-        inline_ bool operator== (const VolatileType<V>& right) const {
+        __inline__ bool operator== (const VolatileType<V>& right) const {
             Memory::read_barrier();
             return _value == right._value;
         }
-        inline_ bool operator!= (const VolatileType<V>& right) const {
+        __inline__ bool operator!= (const VolatileType<V>& right) const {
             Memory::read_barrier();
             return _value != right._value;
         }
 
         //--------------
-        inline_ VolatileType<V>& operator++ () { //prefix ++
+        __inline__ VolatileType<V>& operator++ () { //prefix ++
             ++_value;
             Memory::write_barrier();
             return *this;
         }
-        inline_ V operator++ (int) { //postfix ++
+        __inline__ V operator++ (int) { //postfix ++
             const V tmp(_value);
             ++_value;
             Memory::write_barrier();
             return tmp;
         }
-        inline_ VolatileType<V>& operator-- () {// prefix --
+        __inline__ VolatileType<V>& operator-- () {// prefix --
             --_value;
             Memory::write_barrier();
             return *this;
         }
-        inline_ V operator-- (int) {// postfix --
+        __inline__ V operator-- (int) {// postfix --
             const V tmp(_value);
             --_value;
             Memory::write_barrier();
@@ -243,40 +189,40 @@ namespace CCP {
         }
 
         //--------------
-        inline_ VolatileType<V>& operator+=(const V& x) { 
+        __inline__ VolatileType<V>& operator+=(const V& x) { 
             _value += x;
             Memory::write_barrier();
             return *this;
         }
-        inline_ VolatileType<V>& operator-=(const V& x) { 
+        __inline__ VolatileType<V>& operator-=(const V& x) { 
             _value -= x;
             Memory::write_barrier();
             return *this;
         }
-        inline_ VolatileType<V>& operator*=(const V& x) { 
+        __inline__ VolatileType<V>& operator*=(const V& x) { 
             _value *= x;
             Memory::write_barrier();
             return *this;
         }
-        inline_ VolatileType<V>& operator/=(const V& x) { 
+        __inline__ VolatileType<V>& operator/=(const V& x) { 
             _value /= x;
             Memory::write_barrier();
             return *this;
         }
         //--------------
-        inline_ V operator+(const V& x) { 
+        __inline__ V operator+(const V& x) { 
             Memory::read_barrier();
             return _value + x;
         }
-        inline_ V operator-(const V& x) { 
+        __inline__ V operator-(const V& x) { 
             Memory::read_barrier();
             return _value - x;
         }
-        inline_ V operator*(const V& x) { 
+        __inline__ V operator*(const V& x) { 
             Memory::read_barrier();
             return _value * x;
         }
-        inline_ V operator/(const V& x) { 
+        __inline__ V operator/(const V& x) { 
             Memory::read_barrier();
             return _value / x;
         }
@@ -293,18 +239,18 @@ namespace CCP {
             _value = value;
         }
 
-        inline_ void set(const int newValue) {
+        __inline__ void set(const int newValue) {
             _value = newValue;
         }
 
-        inline_ void setNotSafe(const int newValue) {
+        __inline__ void setNotSafe(const int newValue) {
             _value.setNotSafe(newValue);
         }
 
-        inline_ bool compareAndSet(const int expect, const int update) {
+        __inline__ bool compareAndSet(const int expect, const int update) {
             return (expect == int(CAS32(&_value, expect, update)));
         }  
-        inline_ int getAndIncrement() {
+        __inline__ int getAndIncrement() {
             do {
                 const int value = _value;
                 if (value == int(CAS32(&_value, value, value + 1)))  {
@@ -312,7 +258,7 @@ namespace CCP {
                 }
             } while(true);
         }
-        inline_ int getAndDecrement() {
+        __inline__ int getAndDecrement() {
             do {
                 const int value = _value;
                 if (value == int(CAS32(&_value, value, value - 1)))  {
@@ -320,7 +266,7 @@ namespace CCP {
                 }
             } while(true);
         }
-        inline_ int incrementAndGet() {
+        __inline__ int incrementAndGet() {
             do {
                 const int value = _value;
                 if (value == int(CAS32(&_value, value, value + 1)))  {
@@ -328,7 +274,7 @@ namespace CCP {
                 }
             } while(true);
         }
-        inline_ int decrementAndGet() {
+        __inline__ int decrementAndGet() {
             do {
                 const int value = _value;
                 if (value == int(CAS32(&_value, value, value - 1)))  {
@@ -336,10 +282,10 @@ namespace CCP {
                 }
             } while(true);
         }
-        inline_ int getAndSet(const _u32 newValue) {
+        __inline__ int getAndSet(const _u32 newValue) {
             return Memory::exchange_and_set((_u32 volatile*)&_value, newValue);
         }
-        inline_ int getAndAdd(const int delta) {
+        __inline__ int getAndAdd(const int delta) {
             do {
                 const int value = _value;
                 if (value == int(CAS32(&_value, value, value+delta))) {
@@ -347,7 +293,7 @@ namespace CCP {
                 }
             } while(true);
         } 
-        inline_ int addAndGet(const int delta) {
+        __inline__ int addAndGet(const int delta) {
             do {
                 const int value = _value;
                 if (value == int(CAS32(&_value, value, value+delta))) {
@@ -356,16 +302,16 @@ namespace CCP {
             } while(true);
         }
 
-        inline_ int intValue() {
+        __inline__ int intValue() {
             return _value;
         }
-        inline_ _u64 longValue()  {
+        __inline__ _u64 longValue()  {
             return (_u64)_value;
         }
-        inline_ int get() {
+        __inline__ int get() {
             return _value;
         } 
-        inline_ int getNotSafe() {
+        __inline__ int getNotSafe() {
             return _value.getNotSafe();
         } 
     };
@@ -378,29 +324,29 @@ namespace CCP {
         explicit AtomicReference() {_value=null;}
         explicit AtomicReference(V* value) {_value.set(value);}
 
-        inline_ operator V*() const {  //convention
+        __inline__ operator V*() const {  //convention
             return get();
         }
 
-        inline_ void set(V* newValue) {
+        __inline__ void set(V* newValue) {
             _value.set(newValue);
         }
 
-        inline_ V* getAndSet(const V* newValue) {
+        __inline__ V* getAndSet(const V* newValue) {
             return (V*) Memory::exchange_and_set((void * volatile *)&_value, (void*)newValue);
         }
 
-        inline_ bool compareAndSet(const V* expect, const V* update) {
+        __inline__ bool compareAndSet(const V* expect, const V* update) {
             return ((void*)expect == (CASPO((volatile void *)&_value, (void *)expect, (void *)update)));
         }  
 
-        inline_ V* get() const {
+        __inline__ V* get() const {
             return _value.get();
         }
-        inline_ V* getReference() const {
+        __inline__ V* getReference() const {
             return _value.get();
         }
-        inline_ V* getRefNotSafe() const {
+        __inline__ V* getRefNotSafe() const {
             return _value.getNotSafe();
         }
     };

@@ -27,6 +27,7 @@ public:
     static constexpr TransItem::flags_type list_bit = TransItem::user0_bit<<2;
     static constexpr TransItem::flags_type empty_bit = TransItem::user0_bit<<3;
     static constexpr TransItem::flags_type push_bit = TransItem::user0_bit<<4;
+    static constexpr int pushitem_key = -1;
 
     // NONTRANSACTIONAL PUSH/POP/EMPTY
     void nontrans_push(T v) {
@@ -60,7 +61,7 @@ public:
             nontrans_pop();
     }
     void push(const T& v) {
-        auto item = Sto::item(this, -1);
+        auto item = Sto::item(this, pushitem_key);
         if (item.has_write()) {
             if (!is_list(item)) {
                 auto& val = item.template write_value<T>();
@@ -83,7 +84,7 @@ public:
     }
 
     bool pop() {
-        auto tailitem = Sto::item(this,-1);
+        auto tailitem = Sto::item(this,pushitem_key);
         // lock the queue until done with txn
         if (!queueversion_.is_locked_here()) {
             if (!queueversion_.try_lock()) { 
@@ -149,7 +150,7 @@ public:
     }
 
     bool front(T& val) {
-        auto tailitem = Sto::item(this,-1);
+        auto tailitem = Sto::item(this,pushitem_key);
         // lock the queue until done with txn
         if (!queueversion_.is_locked_here()) {
             if (!queueversion_.try_lock()) { 
@@ -232,7 +233,7 @@ private:
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
-        if ((item.key<int>() == -1) && !queueversion_.is_locked_here())  {
+        if ((item.key<int>() == pushitem_key) && !queueversion_.is_locked_here())  {
             return txn.try_lock(item, queueversion_);
         }
         return true;
@@ -243,7 +244,7 @@ private:
         // check if we read off the write_list. We should only abort if both: 
         //      1) we saw the queue was empty during a pop/front and read off our own write list 
         //      2) someone else has pushed onto the queue before we got here
-        if (item.key<int>() == -1)
+        if (item.key<int>() == pushitem_key)
             return item.check_version(queueversion_);
         // shouldn't reach this
         assert(0);
@@ -263,7 +264,7 @@ private:
         }
         // install pushes, but only if we added a write to
         //  the push/tail item on a push
-        else if (item.key<int>() == -1 && has_push(item)) {
+        else if (item.key<int>() == pushitem_key && has_push(item)) {
             auto head_index = head_;
             // write all the elements
             if (is_list(item)) {

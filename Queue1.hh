@@ -18,6 +18,9 @@ public:
     static constexpr TransItem::flags_type list_bit = TransItem::user0_bit<<2;
     static constexpr TransItem::flags_type empty_bit = TransItem::user0_bit<<3;
 
+    static constexpr int pushitem_key = -1;
+    static constexpr int popitem_key = -2;
+
     // NONTRANSACTIONAL PUSH/POP/EMPTY
     void nontrans_push(T v) {
         queueSlots[tail_] = v;
@@ -52,7 +55,7 @@ public:
 
     // TRANSACTIONAL CALLS
     void push(const T& v) {
-        auto item = Sto::item(this, -1);
+        auto item = Sto::item(this, pushitem_key);
         if (item.has_write()) {
             if (!is_list(item)) {
                 auto& val = item.template write_value<T>();
@@ -85,7 +88,7 @@ public:
                auto tv = tailversion_;
                fence();
                 if (index == tail_) {
-                    auto pushitem = Sto::item(this,-1);
+                    auto pushitem = Sto::item(this,pushitem_key);
                     if (!pushitem.has_read())
                         pushitem.observe(tv);
                     if (pushitem.has_write()) {
@@ -117,7 +120,7 @@ public:
             else break;
         }
         // ensure that head is not modified by time of commit 
-        auto lockitem = Sto::item(this, -2);
+        auto lockitem = Sto::item(this, popitem_key);
         if (!lockitem.has_read()) {
             lockitem.observe(hv);
         }
@@ -139,7 +142,7 @@ public:
                 fence();
                 // if someone has pushed onto tail, can successfully do a front read, so skip reading from our pushes 
                 if (index == tail_) {
-                    auto pushitem = Sto::item(this,-1);
+                    auto pushitem = Sto::item(this,pushitem_key);
                     if (!pushitem.has_read())
                         pushitem.observe(tv);
                     if (pushitem.has_write()) {
@@ -170,7 +173,7 @@ public:
             else break;
         }
         // ensure that head was not modified at time of commit
-        auto lockitem = Sto::item(this, -2);
+        auto lockitem = Sto::item(this, popitem_key);
         if (!lockitem.has_read()) {
             lockitem.observe(hv);
         }  
@@ -196,9 +199,9 @@ private:
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
-        if (item.key<int>() == -1)
+        if (item.key<int>() == pushitem_key)
             return txn.try_lock(item, tailversion_);
-        else if (item.key<int>() == -2)
+        else if (item.key<int>() == popitem_key)
             return txn.try_lock(item, headversion_);
         else
             return true;
@@ -207,10 +210,10 @@ private:
     bool check(TransItem& item, Transaction& t) override {
         (void) t;
         // check if was a pop or front 
-        if (item.key<int>() == -2)
+        if (item.key<int>() == popitem_key)
             return item.check_version(headversion_);
         // check if we read off the write_list (and locked tailversion)
-        else if (item.key<int>() == -1)
+        else if (item.key<int>() == pushitem_key)
             return item.check_version(tailversion_);
         // shouldn't reach this
         assert(0);
@@ -219,7 +222,7 @@ private:
 
     void install(TransItem& item, Transaction& txn) override {
 	    // ignore lock_headversion marker item
-        if (item.key<int>() == -2)
+        if (item.key<int>() == popitem_key)
             return;
         // install pops
         if (has_delete(item)) {
@@ -233,7 +236,7 @@ private:
             }
         }
         // install pushes
-        else if (item.key<int>() == -1) {
+        else if (item.key<int>() == pushitem_key) {
             auto head_index = head_;
             // write all the elements
             if (is_list(item)) {
@@ -243,8 +246,6 @@ private:
                     assert(tail_ != (head_index-1) % BUF_SIZE);
                     queueSlots[tail_] = write_list.front();
                     write_list.pop_front();
-                    //XXX
-                    head_ = (head_+1) % BUF_SIZE;
                     tail_ = (tail_+1) % BUF_SIZE;
                 }
             }
@@ -263,9 +264,9 @@ private:
     }
     
     void unlock(TransItem& item) override {
-        if (item.key<int>() == -1)
+        if (item.key<int>() == pushitem_key)
             tailversion_.unlock();
-        else if (item.key<int>() == -2)
+        else if (item.key<int>() == popitem_key)
             headversion_.unlock();
     }
 

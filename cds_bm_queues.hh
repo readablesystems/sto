@@ -375,7 +375,7 @@ public:
     QSingleOpTest(int ds_type, int val_type, q_op q_op) : QueueTest<DH>(val_type), q_op_(q_op), ds_type_(ds_type) {};
     void run(int me) {
         Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
-        std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
+        std::uniform_int_distribution<long> slotdist(1, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
             if (ds_type_ == STO) {
                 Rand transgen_snap = transgen;
@@ -406,7 +406,7 @@ public:
     void run(int me) {
         if (me > 1) { sleep(1); return; }
         //Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
-        //std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
+        //std::uniform_int_distribution<long> slotdist(1, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
             if (ds_type_ == STO) {
                 //Rand transgen_snap = transgen;
@@ -436,7 +436,7 @@ public:
     void run(int me) {
         q_op my_q_op;
         //Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
-        //std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
+        //std::uniform_int_distribution<long> slotdist(1, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
             if (ds_type_ == STO) {
                 //Rand transgen_snap = transgen;
@@ -470,7 +470,7 @@ public:
         QueueTest<DH>(val_type), ds_type_(ds_type), txn_set_(txn_set) {};
     void run(int me) {
         //Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
-        //std::uniform_int_distribution<long> slotdist(0, MAX_VALUE);
+        //std::uniform_int_distribution<long> slotdist(1, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
             if (ds_type_ == STO) {
                 //Rand transgen_snap = transgen;

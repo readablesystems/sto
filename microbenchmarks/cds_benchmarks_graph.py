@@ -16,10 +16,12 @@ TESTS = ["PQRandSingleOps:R","PQRandSingleOps:D","PQPushPop:R",
             "HM125K:F34,I33,E33","HM125K:F90,I5,E5",
             "HM10K:F34,I33,E33","HM10K:F90,I5,E5",
         ]
+
 QUEUES = [
-    "Queue1", "Queue2", "FCQueue2", "FCQueueLP1", "FCQueueLP2", 
-    "Wrapped FCQueueNT1", "Wrapped FCQueueNT2", "Wrapped CDSFCQueue",
-    "FCQueueNT1", "FCQueueNT2", "CDSFCQueue"]
+    "Queue2", "FCQueue2", "FCQueueLP1", "FCQueueLP2", 
+    "Wrapped FCQueueNT1", "Wrapped FCQueueNT2",
+    "FCQueueNT1", "FCQueueNT2"]
+
 '''
 Parse the data file cds_benchmarks_stats.txt
 We should end up with a dictionary with the following format:
