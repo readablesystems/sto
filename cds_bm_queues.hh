@@ -19,6 +19,7 @@
 #include "Queue2.hh"
 //#include "FCQueue.hh"
 #include "FCQueue2.hh"
+#include "FCQueue3.hh"
 #include "FCQueueLP1.hh"
 #include "FCQueueNT1.hh"
 #include "FCQueueLP2.hh"
@@ -181,6 +182,26 @@ public:
 
 private:
     FCQueue2<T, TNonopaqueWrapped> v_;
+};
+template <typename T> struct DatatypeHarness<FCQueue3<T>> {
+    typedef T value_type;
+public:
+    bool pop() { return v_.pop(); }
+    bool cleanup_pop() { 
+        Sto::start_transaction();
+        bool r = pop();
+        assert(Sto::try_commit());
+        return r;
+    }
+    void push(T v) { v_.push(v); }
+    void init_push(T v) { 
+        Sto::start_transaction();
+        v_.push(v);
+        assert(Sto::try_commit());
+    }
+
+private:
+    FCQueue3<T> v_;
 };
 template <typename T> struct DatatypeHarness<FCQueueLP1<T>> { 
     typedef T value_type;
@@ -525,7 +546,8 @@ int num_pqueues = 4;
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
     {desc, "STO queue2", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)},                                  \
-    {desc, "FC Queue", new test<DatatypeHarness<FCQueue2<type, TNonopaqueWrapped>>>(STO, ## __VA_ARGS__)},\
+    {desc, "FC Queue 2", new test<DatatypeHarness<FCQueue2<type, TNonopaqueWrapped>>>(STO, ## __VA_ARGS__)},\
+    {desc, "FC Queue 3", new test<DatatypeHarness<FCQueue3<type>>>(STO, ## __VA_ARGS__)},\
     {desc, "FCQueueLP1", new test<DatatypeHarness<FCQueueLP1<type>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "FCQueueLP2", new test<DatatypeHarness<FCQueueLP2<type>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "Wrapped NT FC Queue1", new test<DatatypeHarness<FCQueueNT1<type>>>(STO, ## __VA_ARGS__)},\

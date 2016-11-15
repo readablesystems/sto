@@ -44,15 +44,21 @@ template <typename T>
 class FCQueue3 : public Shared {
 
 private:
+
 	static const int _MAX_THREADS	= 1024;
 	static const int _NULL_VALUE	= 0;
-	static const int _DEQ_VALUE		= (INT_MIN+2);
-	static const int _OK_DEQ		= (INT_MIN+3);
+	static const int _ENQ_VALUE     = (INT_MIN+0); // have we enqueued anything? 
+	static const int _ABORT_VALUE   = (INT_MIN+1); // should abort!
+	static const int _DEQ_VALUE	    = (INT_MIN+2); // remove the phantom items from the queue 
+	static const int _POP_VALUE     = (INT_MIN+3); // pop() was called. Mark an item phantom (or abort)
+	static const int _CLEANUP_VALUE = (INT_MIN+4); // cleanup() was called. erase phantom flags
+	static const int _EMPTY_VALUE   = (INT_MIN+5); // check if queue is empty. 
 	const int		_NUM_THREADS    = 8;
 
 	//list inner types ------------------------------
 	struct SlotInfo {
 		int volatile		_req_ans;		//here 1 can post the request and wait for answer
+		int volatile		_tid;	        //which thread is making the request
 		int volatile		_time_stamp;	//when 0 not connected
 		SlotInfo* volatile	_next;			//when NULL not connected
 
@@ -96,12 +102,32 @@ private:
 		}
 	}
 
+    struct internal_elem {
+        bool is_phantom_;
+        int tid_;
+        int value_;
+        // all items start off marked as phantom until the txn commits
+        internal_elem(int val) : is_phantom_(0), value_(val) {}
+        
+        bool phantom() const { return is_phantom_; } 
+        void mark_phantom(int tid) { 
+            assert(tid_ = -1);
+            tid = tid_; 
+            is_phantom_ = 1; 
+        }
+        void unmark_phantom(int tid) { 
+            assert(tid = tid_); 
+            is_phantom_ = 0; 
+            tid_ = -1;
+        }
+    };
+
 	struct Node {
 		Node* volatile	_next;
-		int	volatile	_values[256];
+		internal_elem volatile	_values[256];
 
 		static Node* get_new(const int in_num_values) {
-			const size_t new_size = (sizeof(Node) + (in_num_values + 2 - 256) * sizeof(int));
+			const size_t new_size = (sizeof(Node) + (in_num_values + 2 - 256) * sizeof(internal_elem));
 
 			Node* const new_node = (Node*) malloc(new_size);
 			new_node->_next = NULL;
@@ -120,16 +146,16 @@ private:
 
 	inline void flat_combining() {
 		// prepare for enq
-		int volatile* enq_value_ary;
+		internal_elem volatile* enq_value_ary;
 		if(NULL == _new_node) 
 			_new_node = Node::get_new(_NODE_SIZE);
 		enq_value_ary = _new_node->_values;
-		*enq_value_ary = 1;
+		*enq_value_ary = internal_elem(1);
 		++enq_value_ary;
 
 		// prepare for deq
-		int volatile * deq_value_ary = _tail->_values;
-		deq_value_ary += deq_value_ary[0];
+		internal_elem volatile * deq_value_ary = _tail->_values;
+		deq_value_ary += deq_value_ary->value_;
 
 		int num_added = 0;
 		for (int iTry=0; iTry<_NUM_REP; ++iTry) {
@@ -137,11 +163,15 @@ private:
 
 			int num_changes=0;
 			SlotInfo* curr_slot = _tail_slot.get();
+            int tid = curr_slot->_tid;
 			while(NULL != curr_slot->_next) {
 				const int curr_value = curr_slot->_req_ans;
+
+                // PUSHES
+                // done when sets curr_value to NULL
 				if(curr_value > _NULL_VALUE) {
 					++num_changes;
-					*enq_value_ary = curr_value;
+					*enq_value_ary = internal_elem(curr_value);
 					++enq_value_ary;
 					curr_slot->_req_ans = _NULL_VALUE;
 					curr_slot->_time_stamp = _NULL_VALUE;
@@ -149,31 +179,164 @@ private:
 					++num_added;
 					if(num_added >= _NODE_SIZE) {
 						Node* const new_node2 = Node::get_new(_NODE_SIZE+4);
-						memcpy((void*)(new_node2->_values), (void*)(_new_node->_values), (_NODE_SIZE+2)*sizeof(int) );
+						memcpy((void*)(new_node2->_values), (void*)(_new_node->_values), (_NODE_SIZE+2)*sizeof(internal_elem) );
 						_new_node = new_node2; 
 						enq_value_ary = _new_node->_values;
-						*enq_value_ary = 1;
+						*enq_value_ary = internal_elem(1);
 						++enq_value_ary;
 						enq_value_ary += _NODE_SIZE;
 						_NODE_SIZE += 4;
 					}
+
+                // ACTUAL DEQS
+                // done when sets curr_value NULL 
+                // we actually want to dequeue all the values that we marked as dirty!
 				} else if(_DEQ_VALUE == curr_value) {
 					++num_changes;
-					const int curr_deq = *deq_value_ary;
-					if(0 != curr_deq) {
-						curr_slot->_req_ans = -curr_deq;
-						curr_slot->_time_stamp = _NULL_VALUE;
-						++deq_value_ary;
-					} else if(NULL != _tail->_next) {
-						_tail = _tail->_next;
-						deq_value_ary = _tail->_values;
-                        // they could have just said += 1 here...
-						deq_value_ary += deq_value_ary[0];
-						continue;
-					} else {
-						curr_slot->_req_ans = _NULL_VALUE;
-						curr_slot->_time_stamp = _NULL_VALUE;
+                    while(1) {
+					    const int curr_deq = deq_value_ary->value_;
+                        if(0 != curr_deq) {
+                            if (deq_value_ary->phantom()) {
+                                // we're actually going to pop this.
+                                // must be ours!
+                                assert(deq_value_ary->tid_ == tid);
+                                deq_value_ary++;
+                            } else {
+                                // no one has popped this far yet. just return.
+                                curr_slot->_req_ans = _NULL_VALUE;
+					            curr_slot->_time_stamp = _NULL_VALUE;
+                                return;
+                            }
+                        } else if(NULL != _tail->_next) {
+                            _tail = _tail->next;
+                            deq_value_ary = _tail->_values;
+                            deq_value_ary += deq_value_ary[0]->value_;
+                            continue;
+                        } else {
+                            curr_slot->_req_ans = _NULL_VALUE;
+                            curr_slot->_time_stamp = _NULL_VALUE;
+                            break;
+                        }
 					} 
+                
+                // POP WAS CALLED 
+                // done when sets curr_value to some negative value (found) or NULL (empty)
+                // we want to mark an item as dirty. this should make no modifications
+                // to the queue itself
+				} else if(_POP_VALUE == curr_value) {
+					++num_changes;
+					auto curr_deq_pos = deq_value_ary;
+                    while(1) {
+                        if(0 != curr_deq_pos->value_) {
+                            // we found an item to pop!
+                            if (curr_deq_pos->tid == tid && curr_deq_pos->phantom()) {
+                                // keep going... we've already popped within this txn
+                                curr_deq_pos++;
+                            } else {
+                                if (curr_deq_pos->phantom()) {
+                                    // someone else is popping! abort
+                                    curr_slot->_req_ans = _ABORT_VALUE;
+                                } else {
+                                    // we can actually mark this as ours to pop
+                                    curr_deq_pos.mark_phantom(tid);
+                                    curr_slot->_req_ans = -(curr_deq_pos->value_);
+                                    curr_slot->_time_stamp = _NULL_VALUE;
+                                    return;
+                                }
+                            }
+                        } else if(NULL != _tail->_next) {
+                            curr_deq_pos = _tail->next->_values;
+                            curr_deq_pos += curr_deq_pos->value_;
+                            continue;
+                        } else {
+                            // empty queue! (or we've popped off everything)
+                            // for now, let's not deal with RMW
+                            curr_slot->_req_ans = _NULL_VALUE;
+                            curr_slot->_time_stamp = _NULL_VALUE;
+                            break;
+                        }
+                    }
+               
+                // CLEANUP WAS CALLED
+                // done when sets curr_value to NULL
+                // this is a cleanup call---unmark any values we marked as dirty
+                // if we didn't mark any items at the front dirty, just return
+				} else if(_CLEANUP_VALUE == curr_value) {
+					++num_changes;
+					auto curr_deq_pos = deq_value_ary;
+                    while(1) {
+                        if(0 != curr_deq_pos->value_) {
+                            // we found an item to pop!
+                            if (curr_deq_pos->tid == tid && curr_deq_pos->phantom()) {
+                                // we were going to pop this!
+                                // keep going... we've already popped within this txn
+                                curr_deq_pos->unmark_phantom(tid);
+                                curr_deq_pos++;
+                            } else {
+                                // someone else is popping or we didn't pop at all
+                                curr_slot->_req_ans = _NULL_VALUE;
+                                curr_slot->_time_stamp = _NULL_VALUE;
+                                break;
+                            }
+                        } else if(NULL != _tail->_next) {
+                            curr_deq_pos = _tail->next->_values;
+                            curr_deq_pos += curr_deq_pos->value_;
+                            continue;
+                        } else {
+                            // we're at the end of the queue!
+                            curr_slot->_req_ans = _NULL_VALUE;
+                            curr_slot->_time_stamp = _NULL_VALUE;
+                            break;
+                        }
+                    }
+                
+                // CHECKING IF EMPTY
+                // Note we only call this if we did in fact see an empty queue!
+				} else if(_EMPTY_VALUE == curr_value) {
+					++num_changes;
+					auto curr_deq_pos = deq_value_ary;
+                    while(1) {
+                        if(0 != curr_deq_pos->value_) {
+                            if (curr_deq_pos->tid_ == tid && curr_deq_pos->is_phantom()) {
+                                // keep going... we're going to pop this
+                                curr_deq_pos++;
+                            } else {
+                                // it wasn't empty!!
+                                curr_slot->req_ans = -curr_deq_pos->value_;
+                                curr_slot->_time_stamp = _NULL_VALUE;
+                                break;
+                            }
+                        } else if(NULL != _tail->_next) {
+                            curr_deq_pos = _tail->next->_values;
+                            curr_deq_pos += curr_deq_pos->value_;
+                            continue;
+                        } else {
+                            // empty! but check if we're going to enq anything... 
+                            if (enq_value_ary != (_new_node->_values + 1)) {
+                                curr_slot->_req_ans = _ENQ_VALUE;
+                                curr_slot->_time_stamp = _NULL_VALUE;
+                            } else {
+                                curr_slot->_req_ans = _NULL_VALUE;
+                                curr_slot->_time_stamp = _NULL_VALUE;
+                            }
+                            // we can't allow anyone else to enq or the previous value
+                            // is no longer valid
+                            if(0 == deq_value_ary->value_ && NULL != _tail->_next) {
+                                _tail = _tail->_next;
+                            } else {
+                                // set where to start next in dequeing
+                                _tail->_values[0] = (deq_value_ary -  _tail->_values);
+                            }
+
+                            if(enq_value_ary != (_new_node->_values + 1)) {
+                                *enq_value_ary = 0;
+                                _head->_next = _new_node;
+                                _head = _new_node;
+                                _new_node  = NULL;
+                            } 
+                            return;
+                        }
+                    }
 				}
 				curr_slot = curr_slot->_next;
 			}//while on slots
@@ -182,7 +345,7 @@ private:
 				break;
 		}//for repetition
 
-		if(0 == *deq_value_ary && NULL != _tail->_next) {
+		if(0 == deq_value_ary->value_ && NULL != _tail->_next) {
 			_tail = _tail->_next;
 		} else {
             // set where to start next in dequeing
@@ -203,8 +366,8 @@ public:
 
 private:
     // STO
+    static constexpr TransItem::flags_type empty_q_bit = TransItem::user0_bit<<1;
     static constexpr TransItem::flags_type list_bit = TransItem::user0_bit<<2;
-    static constexpr TransItem::flags_type pop_bit = TransItem::user0_bit<<3;
     static constexpr int pushitem_key = -1;
     static constexpr int popitem_key = -2;
 
@@ -213,8 +376,8 @@ public:
 	{
 		_head = Node::get_new(_NUM_THREADS);
 		_tail = _head;
-		_head->_values[0] = 1;
-		_head->_values[1] = 0;
+		_head->_values[0] = internal_elem(1);
+		_head->_values[1] = internal_elem(0);
 
 		_tail_slot.set(new SlotInfo());
 		_timestamp = 0;
@@ -231,10 +394,7 @@ public:
             if (!is_list(item)) {
                 auto& val = item.template write_value<T>();
                 std::list<T> write_list;
-                if (!is_empty(item)) {
-                    write_list.push_back(val);
-                    item.clear_flags(empty_bit);
-                }
+                write_list.push_back(val);
                 write_list.push_back(v);
                 item.clear_write();
                 item.add_write(write_list);
@@ -248,57 +408,59 @@ public:
         else item.add_write(v);
     }
 
-    bool pop() {
-        auto qv = queueversion_;
-        fence();
-        auto index = head_;
-        auto item = Sto::item(this, index);
+	bool pop() {
+        bool popped = fc_pop(); 
+        auto item = Sto::item(this, popitem_key);
+        // we saw an empty queue in a previous pop, but it's no longer empty!
+        if (saw_empty(item) && popped) {
+            Sto::abort();
+        }
+        // things are still consistent... record that we saw an empty queue or that we popped
+        item.add_write();
+        if (!popped) {
+            item.add_flags(empty_q_bit);
+            item.observe();
+        }
+        return popped;
+	}
 
-        while (1) {
-           if (index == tail_) {
-               auto qv = queueversion_;
-               fence();
-                if (index == tail_) {
-                    auto pushitem = Sto::item(this,pushitem_key);
-                    if (!pushitem.has_read())
-                        pushitem.observe(qv);
-                    if (pushitem.has_write()) {
-                        if (is_list(pushitem)) {
-                            auto& write_list = pushitem.template write_value<std::list<T>>();
-                            // if there is an element to be pushed on the queue, return addr of queue element
-                            if (!write_list.empty()) {
-                                write_list.pop_front();
-                                item.add_flags(read_writes);
-                                return true;
-                            }
-                            else return false;
-                        }
-                        // not a list, has exactly one element
-                        else if (!is_empty(pushitem)) {
-                            pushitem.add_flags(empty_bit);
-                            return true;
-                        }
-                        else return false;
-                    }
-                    // fail if trying to read from an empty queue
-                    else return false;  
-                } 
-            }
-            if (has_delete(item)) {
-                index = (index + 1) % BUF_SIZE;
-                item = Sto::item(this, index);
-            }
-            else break;
-        }
-        // ensure that head is not modified by time of commit 
-        auto lockitem = Sto::item(this, popitem_key);
-        if (!lockitem.has_read()) {
-            lockitem.observe(qv);
-        }
-        lockitem.add_write(0);
-        item.add_flags(delete_bit);
-        item.add_write(0);
-        return true;
+    bool fc_pop() {
+		SlotInfo* my_slot = _tls_slot_info;
+		if(NULL == my_slot)
+			my_slot = get_new_slot();
+
+		SlotInfo* volatile&	my_next = my_slot->_next;
+		int volatile& my_re_ans = my_slot->_req_ans;
+		int volatile& my_re_tid = my_slot->_tid;
+		my_re_tid = TThread::id();
+		my_re_ans = _POP_VALUE;
+
+		do {
+			if(NULL == my_next)
+				enq_slot(my_slot);
+
+			bool is_cas = true;
+			if(lock_fc(_fc_lock, is_cas)) {
+				flat_combining();
+				_fc_lock.set(0);
+                if (-my_re_ans == _ABORT_VALUE)
+                    Sto::abort();
+                break;
+			} else {
+				Memory::write_barrier();
+				if(!is_cas)
+				while(_POP_VALUE == my_re_ans && 0 != _fc_lock.getNotSafe()) {
+                    sched_yield();
+				}
+				Memory::read_barrier();
+				if(_POP_VALUE != my_re_ans) {
+                    if (-my_re_ans == _ABORT_VALUE)
+                        Sto::abort();
+                    break;
+				}
+			}
+		} while(true);
+        return (-my_re_ans) != _NULL_VALUE;
     }
 
 	bool fc_push(const int inValue) {
@@ -308,6 +470,8 @@ public:
 
 		SlotInfo* volatile&	my_next = my_slot->_next;
 		int volatile& my_re_ans = my_slot->_req_ans;
+		int volatile& my_re_tid = my_slot->_tid;
+		my_re_tid = TThread::id();
 		my_re_ans = inValue;
 
 		do {
@@ -333,136 +497,161 @@ public:
 		} while(true);
 	}
 
-	bool fc_pop() {
+	void fc_cleanup() {
 		SlotInfo* my_slot = _tls_slot_info;
 		if(NULL == my_slot)
 			my_slot = get_new_slot();
 
 		SlotInfo* volatile&	my_next = my_slot->_next;
 		int volatile& my_re_ans = my_slot->_req_ans;
-		my_re_ans = _DEQ_VALUE;
+		int volatile& my_re_tid = my_slot->_tid;
+		my_re_tid = TThread::id();
+		my_re_ans = _CLEANUP_VALUE;
 
 		do {
-			if(NULL == my_next)
+			if (NULL == my_next)
 				enq_slot(my_slot);
 
 			bool is_cas = true;
 			if(lock_fc(_fc_lock, is_cas)) {
 				flat_combining();
 				_fc_lock.set(0);
-				return ((-my_re_ans) != _NULL_VALUE); 
+                break;
 			} else {
 				Memory::write_barrier();
 				if(!is_cas)
-				while(_DEQ_VALUE == my_re_ans && 0 != _fc_lock.getNotSafe()) {
+				while(_NULL_VALUE != my_re_ans && 0 != _fc_lock.getNotSafe()) {
                     sched_yield();
-				}
+				} 
 				Memory::read_barrier();
-				if(_DEQ_VALUE != my_re_ans) {
-				    return ((-my_re_ans) != _NULL_VALUE); 
+				if(_NULL_VALUE == my_re_ans) {
+					return;
 				}
 			}
 		} while(true);
 	}
 
+    bool fc_empty() {
+        SlotInfo* my_slot = _tls_slot_info;
+		if(NULL == my_slot)
+			my_slot = get_new_slot();
+
+		SlotInfo* volatile&	my_next = my_slot->_next;
+		int volatile& my_re_ans = my_slot->_req_ans;
+		int volatile& my_re_tid = my_slot->_tid;
+		my_re_tid = TThread::id();
+		my_re_ans = _EMPTY_VALUE;
+
+		do {
+			if (NULL == my_next)
+				enq_slot(my_slot);
+
+			bool is_cas = true;
+			if(lock_fc(_fc_lock, is_cas)) {
+				flat_combining();
+				_fc_lock.set(0);
+                return (my_re_ans == _NULL_VALUE);
+			} else {
+				Memory::write_barrier();
+				if(!is_cas)
+				while(_NULL_VALUE != my_re_ans && 0 != _fc_lock.getNotSafe()) {
+                    sched_yield();
+				} 
+				Memory::read_barrier();
+                if (my_re_ans != _EMPTY_VALUE) {
+                    return (my_re_ans == _NULL_VALUE);
+                }
+			}
+		} while(true);
+    }
+
+    void fc_perform_deques() {
+        SlotInfo* my_slot = _tls_slot_info;
+		if(NULL == my_slot)
+			my_slot = get_new_slot();
+
+		SlotInfo* volatile&	my_next = my_slot->_next;
+		int volatile& my_re_ans = my_slot->_req_ans;
+		int volatile& my_re_tid = my_slot->_tid;
+		my_re_tid = TThread::id();
+		my_re_ans = _DEQ_VALUE;
+
+		do {
+			if (NULL == my_next)
+				enq_slot(my_slot);
+
+			bool is_cas = true;
+			if(lock_fc(_fc_lock, is_cas)) {
+				flat_combining();
+				_fc_lock.set(0);
+				return;
+			} else {
+				Memory::write_barrier();
+				if(!is_cas)
+				while(_NULL_VALUE != my_re_ans && 0 != _fc_lock.getNotSafe()) {
+                    sched_yield();
+				} 
+				Memory::read_barrier();
+				if(_NULL_VALUE == my_re_ans) {
+					return;
+				}
+			}
+		} while(true);
+    }
 
 private:
-    bool has_delete(const TransItem& item) {
-        return item.flags() & delete_bit;
-    }
-    
-    bool is_rw(const TransItem& item) {
-        return item.flags() & read_writes;
+    bool saw_empty(const TransItem& item) {
+        return item.flags() & empty_q_bit;
     }
  
     bool is_list(const TransItem& item) {
         return item.flags() & list_bit;
     }
  
-    bool is_empty(const TransItem& item) {
-        return item.flags() & empty_bit;
+    bool lock(TransItem&, Transaction&) override {
+        return true;
     }
 
-    bool lock(TransItem& item, Transaction& txn) override {
-        if (item.key<int>() == pushitem_key)
-            return txn.try_lock(item, tailversion_);
-        else if (item.key<int>() == popitem_key)
-            return txn.try_lock(item, queueversion_);
-        else
-            return true;
+    bool check(TransItem& item, Transaction&) override {
+        if (saw_empty(item)) {
+            return fc_empty();
+        }
+        return true;
     }
 
-    bool check(TransItem& item, Transaction& t) override {
-        (void) t;
-        // check if was a pop or front 
-        if (item.key<int>() == popitem_key)
-            return item.check_version(queueversion_);
-        // check if we read off the write_list (and locked tailversion)
-        else if (item.key<int>() == pushitem_key)
-            return item.check_version(tailversion_);
-        // shouldn't reach this
-        assert(0);
-        return false;
-    }
-
-    void install(TransItem& item, Transaction& txn) override {
-	    // ignore lock_headversion marker item
-        if (item.key<int>() == popitem_key)
+    void install(TransItem& item, Transaction&) override {
+        if (item.key<int>() == popitem_key) {
+            // we popped something!
+            fc_perform_deques();
             return;
-        // install pops
-        if (has_delete(item)) {
-            // only increment head if item popped from actual q
-            if (!is_rw(item))
-                head_ = (head_+1) % BUF_SIZE;
-            if (Opacity) {
-                queueversion_.set_version(txn.commit_tid());
-            } else {
-                queueversion_.inc_nonopaque_version();
-            }
         }
         // install pushes
         else if (item.key<int>() == pushitem_key) {
-            auto head_index = head_;
             // write all the elements
             if (is_list(item)) {
                 auto& write_list = item.template write_value<std::list<T>>();
                 while (!write_list.empty()) {
-                    // assert queue is not out of space            
-                    assert(tail_ != (head_index-1) % BUF_SIZE);
-                    queueSlots[tail_] = write_list.front();
+                    //XXX batch process?
+                    fc_push(write_list.front());
                     write_list.pop_front();
-                    tail_ = (tail_+1) % BUF_SIZE;
                 }
-            }
-            else if (!is_empty(item)) {
-                auto& val = item.template write_value<T>();
-                queueSlots[tail_] = val;
-                tail_ = (tail_+1) % BUF_SIZE;
-            }
-
-            if (Opacity) {
-                tailversion_.set_version(txn.commit_tid());
             } else {
-                tailversion_.inc_nonopaque_version();
+                auto& val = item.template write_value<T>();
+                fc_push(val);
             }
         }
     }
     
-    void unlock(TransItem& item) override {
-        if (item.key<int>() == pushitem_key)
-            tailversion_.unlock();
-        else if (item.key<int>() == popitem_key)
-            queueversion_.unlock();
+    void unlock(TransItem&) override {
+        return;
     }
 
     void cleanup(TransItem& item, bool committed) override {
-        (void)committed;
         (void)item;
-        (global_thread_lazypops + TThread::id())->~pop_type();
+        if (!committed) {
+            fc_cleanup();
+        }
     }
-
-    version_type tailversion_;
-    version_type queueversion_;
 };
 
 template <typename T>
