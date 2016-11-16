@@ -204,6 +204,8 @@ int main() {
     //startAndWait(queuelp, 10000, 12);
     //auto queuefc = new RandomQSingleOpTest<DatatypeHarness<FCQueue<int, TNonopaqueWrapped>>>(STO, RANDOM_VALS);
     //startAndWait(queuefc, 10000, 12);
+    //auto queuefc3 = new RandomQSingleOpTest<DatatypeHarness<FCQueue3<int>>>(STO, RANDOM_VALS);
+    //startAndWait(queuefc3, 10000, 3);
   /* 
     std::vector<Test> map_tests = make_map_tests();
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
@@ -246,8 +248,7 @@ int main() {
             if (pqueue_tests[i].desc.find("PushPop")!=std::string::npos) dualprintf("\n");
             dualprintf("\n");
         }
-    }
-    */
+    }*/
     // queue tests
     std::vector<Test> queue_tests = make_queue_tests();
     for (unsigned i = 0; i < queue_tests.size(); i+=num_queues) {

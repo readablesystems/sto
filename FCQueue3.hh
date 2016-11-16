@@ -103,21 +103,27 @@ private:
 	}
 
     struct internal_elem {
-        bool is_phantom_;
-        int tid_;
-        int value_;
-        // all items start off marked as phantom until the txn commits
-        internal_elem(int val) : is_phantom_(0), value_(val) {}
-        
-        bool phantom() const { return is_phantom_; } 
-        void mark_phantom(int tid) { 
-            assert(tid_ = -1);
-            tid = tid_; 
-            is_phantom_ = 1; 
+        bool volatile is_phantom_;
+        int volatile tid_;
+        int volatile value_;
+
+        internal_elem() : is_phantom_(0), tid_(-1), value_(0) {}
+
+        void set_internal_elem(int val) volatile {
+            assert(!is_phantom_);
+            value_ = val;
         }
-        void unmark_phantom(int tid) { 
+        
+        bool phantom() volatile { return is_phantom_; } 
+        
+        void mark_phantom(int tid) volatile { 
+            assert(tid_ = -1);
+            tid_ = tid;
+            is_phantom_ = true; 
+        }
+        void unmark_phantom(int tid) volatile { 
             assert(tid = tid_); 
-            is_phantom_ = 0; 
+            is_phantom_ = false; 
             tid_ = -1;
         }
     };
@@ -129,7 +135,7 @@ private:
 		static Node* get_new(const int in_num_values) {
 			const size_t new_size = (sizeof(Node) + (in_num_values + 2 - 256) * sizeof(internal_elem));
 
-			Node* const new_node = (Node*) malloc(new_size);
+			Node* const new_node = (Node*) calloc(1,new_size);
 			new_node->_next = NULL;
 			return new_node;
 		}
@@ -150,7 +156,7 @@ private:
 		if(NULL == _new_node) 
 			_new_node = Node::get_new(_NODE_SIZE);
 		enq_value_ary = _new_node->_values;
-		*enq_value_ary = internal_elem(1);
+		enq_value_ary->set_internal_elem(1);
 		++enq_value_ary;
 
 		// prepare for deq
@@ -163,15 +169,15 @@ private:
 
 			int num_changes=0;
 			SlotInfo* curr_slot = _tail_slot.get();
-            int tid = curr_slot->_tid;
 			while(NULL != curr_slot->_next) {
+                int tid = curr_slot->_tid;
 				const int curr_value = curr_slot->_req_ans;
 
                 // PUSHES
                 // done when sets curr_value to NULL
 				if(curr_value > _NULL_VALUE) {
 					++num_changes;
-					*enq_value_ary = internal_elem(curr_value);
+					enq_value_ary->set_internal_elem(curr_value);
 					++enq_value_ary;
 					curr_slot->_req_ans = _NULL_VALUE;
 					curr_slot->_time_stamp = _NULL_VALUE;
@@ -182,7 +188,7 @@ private:
 						memcpy((void*)(new_node2->_values), (void*)(_new_node->_values), (_NODE_SIZE+2)*sizeof(internal_elem) );
 						_new_node = new_node2; 
 						enq_value_ary = _new_node->_values;
-						*enq_value_ary = internal_elem(1);
+						enq_value_ary->set_internal_elem(1);
 						++enq_value_ary;
 						enq_value_ary += _NODE_SIZE;
 						_NODE_SIZE += 4;
@@ -200,17 +206,20 @@ private:
                                 // we're actually going to pop this.
                                 // must be ours!
                                 assert(deq_value_ary->tid_ == tid);
-                                deq_value_ary++;
+#ifdef DEBUGQ
+                                std::cout << deq_value_ary << " deq " << tid << std::endl;
+#endif
+                                ++deq_value_ary;
                             } else {
                                 // no one has popped this far yet. just return.
                                 curr_slot->_req_ans = _NULL_VALUE;
 					            curr_slot->_time_stamp = _NULL_VALUE;
-                                return;
+                                break;
                             }
                         } else if(NULL != _tail->_next) {
-                            _tail = _tail->next;
+                            _tail = _tail->_next;
                             deq_value_ary = _tail->_values;
-                            deq_value_ary += deq_value_ary[0]->value_;
+                            deq_value_ary += deq_value_ary->value_;
                             continue;
                         } else {
                             curr_slot->_req_ans = _NULL_VALUE;
@@ -229,7 +238,7 @@ private:
                     while(1) {
                         if(0 != curr_deq_pos->value_) {
                             // we found an item to pop!
-                            if (curr_deq_pos->tid == tid && curr_deq_pos->phantom()) {
+                            if (curr_deq_pos->tid_ == tid && curr_deq_pos->phantom()) {
                                 // keep going... we've already popped within this txn
                                 curr_deq_pos++;
                             } else {
@@ -238,14 +247,17 @@ private:
                                     curr_slot->_req_ans = _ABORT_VALUE;
                                 } else {
                                     // we can actually mark this as ours to pop
-                                    curr_deq_pos.mark_phantom(tid);
+#ifdef DEBUGQ
+                                    std::cout << curr_deq_pos << " marked " << tid << std::endl;
+#endif
+                                    curr_deq_pos->mark_phantom(tid);
                                     curr_slot->_req_ans = -(curr_deq_pos->value_);
                                     curr_slot->_time_stamp = _NULL_VALUE;
-                                    return;
                                 }
+                                break;
                             }
                         } else if(NULL != _tail->_next) {
-                            curr_deq_pos = _tail->next->_values;
+                            curr_deq_pos = _tail->_next->_values;
                             curr_deq_pos += curr_deq_pos->value_;
                             continue;
                         } else {
@@ -267,10 +279,13 @@ private:
                     while(1) {
                         if(0 != curr_deq_pos->value_) {
                             // we found an item to pop!
-                            if (curr_deq_pos->tid == tid && curr_deq_pos->phantom()) {
+                            if (curr_deq_pos->tid_ == tid && curr_deq_pos->phantom()) {
                                 // we were going to pop this!
                                 // keep going... we've already popped within this txn
                                 curr_deq_pos->unmark_phantom(tid);
+#ifdef DEBUGQ
+                                std::cout << curr_deq_pos << " clean " << tid << std::endl;
+#endif
                                 curr_deq_pos++;
                             } else {
                                 // someone else is popping or we didn't pop at all
@@ -279,7 +294,7 @@ private:
                                 break;
                             }
                         } else if(NULL != _tail->_next) {
-                            curr_deq_pos = _tail->next->_values;
+                            curr_deq_pos = _tail->_next->_values;
                             curr_deq_pos += curr_deq_pos->value_;
                             continue;
                         } else {
@@ -297,17 +312,17 @@ private:
 					auto curr_deq_pos = deq_value_ary;
                     while(1) {
                         if(0 != curr_deq_pos->value_) {
-                            if (curr_deq_pos->tid_ == tid && curr_deq_pos->is_phantom()) {
+                            if (curr_deq_pos->tid_ == tid && curr_deq_pos->phantom()) {
                                 // keep going... we're going to pop this
                                 curr_deq_pos++;
                             } else {
                                 // it wasn't empty!!
-                                curr_slot->req_ans = -curr_deq_pos->value_;
+                                curr_slot->_req_ans = -curr_deq_pos->value_;
                                 curr_slot->_time_stamp = _NULL_VALUE;
                                 break;
                             }
                         } else if(NULL != _tail->_next) {
-                            curr_deq_pos = _tail->next->_values;
+                            curr_deq_pos = _tail->_next->_values;
                             curr_deq_pos += curr_deq_pos->value_;
                             continue;
                         } else {
@@ -319,17 +334,19 @@ private:
                                 curr_slot->_req_ans = _NULL_VALUE;
                                 curr_slot->_time_stamp = _NULL_VALUE;
                             }
+
                             // we can't allow anyone else to enq or the previous value
                             // is no longer valid
+                            // install all enques/deques and return
                             if(0 == deq_value_ary->value_ && NULL != _tail->_next) {
                                 _tail = _tail->_next;
                             } else {
                                 // set where to start next in dequeing
-                                _tail->_values[0] = (deq_value_ary -  _tail->_values);
+                                _tail->_values->set_internal_elem(deq_value_ary -  _tail->_values);
                             }
 
                             if(enq_value_ary != (_new_node->_values + 1)) {
-                                *enq_value_ary = 0;
+                                enq_value_ary->set_internal_elem(0);
                                 _head->_next = _new_node;
                                 _head = _new_node;
                                 _new_node  = NULL;
@@ -349,11 +366,11 @@ private:
 			_tail = _tail->_next;
 		} else {
             // set where to start next in dequeing
-			_tail->_values[0] = (deq_value_ary -  _tail->_values);
+			_tail->_values->set_internal_elem(deq_value_ary -  _tail->_values);
 		}
 
 		if(enq_value_ary != (_new_node->_values + 1)) {
-			*enq_value_ary = 0;
+			enq_value_ary->set_internal_elem(0);
 			_head->_next = _new_node;
 			_head = _new_node;
 			_new_node  = NULL;
@@ -376,8 +393,8 @@ public:
 	{
 		_head = Node::get_new(_NUM_THREADS);
 		_tail = _head;
-		_head->_values[0] = internal_elem(1);
-		_head->_values[1] = internal_elem(0);
+		_head->_values[0].set_internal_elem(1);
+		_head->_values[1].set_internal_elem(0);
 
 		_tail_slot.set(new SlotInfo());
 		_timestamp = 0;
@@ -416,10 +433,12 @@ public:
             Sto::abort();
         }
         // things are still consistent... record that we saw an empty queue or that we popped
-        item.add_write();
         if (!popped) {
             item.add_flags(empty_q_bit);
-            item.observe();
+            item.add_read(0);
+        } else {
+            // we actually need to deque something at commit time
+            item.add_write();
         }
         return popped;
 	}
@@ -443,7 +462,7 @@ public:
 			if(lock_fc(_fc_lock, is_cas)) {
 				flat_combining();
 				_fc_lock.set(0);
-                if (-my_re_ans == _ABORT_VALUE)
+                if (my_re_ans == _ABORT_VALUE)
                     Sto::abort();
                 break;
 			} else {
@@ -454,7 +473,7 @@ public:
 				}
 				Memory::read_barrier();
 				if(_POP_VALUE != my_re_ans) {
-                    if (-my_re_ans == _ABORT_VALUE)
+                    if (my_re_ans == _ABORT_VALUE)
                         Sto::abort();
                     break;
 				}

@@ -21,7 +21,7 @@
 #define GLOBAL_SEED 10
 
 #define MAX_VALUE 20000
-#define NTRANS 100000 // Number of transactions each thread should run.
+#define NTRANS 5000000 // Number of transactions each thread should run.
 #define MAX_NUM_THREADS 24 // Maximum number of concurrent threads
 #define INITIAL_THREAD 0 // tid of the first thread spawned
 
