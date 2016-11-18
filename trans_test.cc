@@ -3,13 +3,14 @@
 #include <assert.h>
 #include <vector>
 #include <random>
+#include <queue>
 #include <map>
 #include "Transaction.hh"
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define N_THREADS 4 // Number of concurrent threads
-#define TOTAL_TRANS 10000000
+#define N_THREADS 5 // Number of concurrent threads
+#define TOTAL_TRANS 1000000
 #define NTRANS TOTAL_TRANS/N_THREADS // Number of transactions each thread should run.
 #define MAX_OPS 1 // Maximum number of operations in a transaction.
 
@@ -26,7 +27,8 @@
 //#define DS CUCKOOHASHMAPNA
 
 #if DS == QUEUE 
-QueueTester<Queue2<int,false,100000>, Queue2<int,false,100000>> tester = QueueTester<Queue2<int,false,100000>, Queue2<int,false,100000>>();
+QueueTester<FCQueue3<int>, std::queue<int>> tester = QueueTester<FCQueue3<int>, std::queue<int>>();
+//QueueTester<Queue2<int,false,100000>, std::queue<int>> tester = QueueTester<Queue2<int,false,100000>, std::queue<int>>();
 #elif DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
 #elif DS == HASHTABLE
@@ -96,7 +98,7 @@ template <typename T>
 void run(T* q, int me, int nthreads) {
     TThread::set_id(me);
     
-    std::uniform_int_distribution<long> distinctdist(0, MAX_VALUE);
+    std::uniform_int_distribution<long> distinctdist(1, MAX_VALUE);
     Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
    
     spawned_barrier++;
@@ -195,8 +197,9 @@ int main() {
         initial_seeds[i] = random();
 
 #if DS == QUEUE
-    Queue2<int,false,100000> q;
-    Queue2<int,false,100000> q1;
+    FCQueue3<int> q;
+    //Queue2<int,false,100000> q;
+    std::queue<int> q1;
 #elif DS == PRIORITY_QUEUE 
     PriorityQueue<int> q;
     PriorityQueue<int> q1;

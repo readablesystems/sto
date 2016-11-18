@@ -548,12 +548,12 @@ int num_pqueues = 4;
     {desc, "STO queue2", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "FC Queue 2", new test<DatatypeHarness<FCQueue2<type, TNonopaqueWrapped>>>(STO, ## __VA_ARGS__)},\
     {desc, "FC Queue 3", new test<DatatypeHarness<FCQueue3<type>>>(STO, ## __VA_ARGS__)},\
-    {desc, "FCQueueLP1", new test<DatatypeHarness<FCQueueLP1<type>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "FCQueueLP2", new test<DatatypeHarness<FCQueueLP2<type>>>(STO, ## __VA_ARGS__)},                                  \
-    {desc, "Wrapped NT FC Queue1", new test<DatatypeHarness<FCQueueNT1<type>>>(STO, ## __VA_ARGS__)},\
     {desc, "Wrapped NT FC Queue2", new test<DatatypeHarness<FCQueueNT2<type>>>(STO, ## __VA_ARGS__)},\
-    {desc, "NT FC Queue1", new test<DatatypeHarness<FCQueueNT1<type>>>(CDS, ## __VA_ARGS__)},\
     {desc, "NT FC Queue2", new test<DatatypeHarness<FCQueueNT2<type>>>(CDS, ## __VA_ARGS__)}
+    //{desc, "Wrapped NT FC Queue1", new test<DatatypeHarness<FCQueueNT1<type>>>(STO, ## __VA_ARGS__)},\
+    //{desc, "NT FC Queue1", new test<DatatypeHarness<FCQueueNT1<type>>>(CDS, ## __VA_ARGS__)},\
+    //{desc, "FCQueueLP1", new test<DatatypeHarness<FCQueueLP1<type>>>(STO, ## __VA_ARGS__)},                                  \
     //{desc, "STO queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)},                                  
 //{desc, "Wrapped CDS FC Queue", new test<DatatypeHarness<cds::container::FCQueue<type, std::queue<type>, FCQUEUE_TRAITS()>>>(STO, ## __VA_ARGS__)},                 
 //    {desc, "CDS FC queue", new test<DatatypeHarness<cds::container::FCQueue<type, std::queue<type>, FCQUEUE_TRAITS()>>>(CDS, ## __VA_ARGS__)}
@@ -576,4 +576,4 @@ std::vector<Test> make_queue_tests() {
         //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[2]),
     };
 }
-int num_queues = 9;
+int num_queues = 6;

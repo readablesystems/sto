@@ -54,7 +54,7 @@
 #endif
 #endif
 
-#define CONSISTENCY_CHECK 0
+#define CONSISTENCY_CHECK 1
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
 

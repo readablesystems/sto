@@ -18,6 +18,7 @@
 #include "Queue1.hh"
 #include "FCQueueLP2.hh"
 #include "FCQueueNT2.hh"
+#include "FCQueue3.hh"
 
 #define MAX_VALUE 100 // Max value of integers used in data structures
 #define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements
@@ -467,8 +468,7 @@ public:
             q->push(val);
         } else if (op->op == 1) {
             //q->front(val);
-            bool ret = q->pop();
-            (void)ret;
+            q->pop();
 #if PRINT_DEBUG
             std::cout << "[" << val << "] [" << op->rdata[0] << "]" << std::endl;
 #endif
@@ -478,16 +478,17 @@ public:
 
     void check(DT* q, RT*q1) {
         TRANSACTION {
-            int v1, v2;
+            //int v1, v2;
             if (q->pop()) {
                 //q1->front(v2);
-                assert(q1->pop());
+                assert(!q1->empty());
+                q1->pop();
 #if PRINT_DEBUG
-                std::cout << "[" << v1 << "] [" << v2 << "]" << std::endl;
+                //std::cout << "[" << v1 << "] [" << v2 << "]" << std::endl;
 #endif
-                assert(v1 == v2);
+                //assert(v1 == v2);
             } else {
-                assert(!q1->pop());
+                assert(q1->empty());
             }
         }
         RETRY(false);

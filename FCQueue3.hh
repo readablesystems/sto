@@ -53,7 +53,7 @@ private:
 	static const int _POP_VALUE     = (INT_MIN+3); // pop() was called. Mark an item phantom (or abort)
 	static const int _CLEANUP_VALUE = (INT_MIN+4); // cleanup() was called. erase phantom flags
 	static const int _EMPTY_VALUE   = (INT_MIN+5); // check if queue is empty. 
-	const int		_NUM_THREADS    = 8;
+	const int		_NUM_THREADS    = 20;
 
 	//list inner types ------------------------------
 	struct SlotInfo {
