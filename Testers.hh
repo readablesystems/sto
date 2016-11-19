@@ -419,6 +419,10 @@ public:
 
 template <typename DT, typename RT>
 class QueueTester : Tester<DT, RT> {
+    int num_pushes = 0;
+    int num_redo_pushes = 0;
+    int num_pops = 0;
+    int num_redo_pops = 0;
 public:
     void init_sut(DT* q) {
         for (int i = 0; i < 10000; i++) {
@@ -442,14 +446,17 @@ public:
             q->push(val);
 #if PRINT_DEBUG
             std::cout << "[" << me << "] pushed " << val << std::endl;
+#else
+            (void)me;
 #endif
             op_record* rec = new op_record;
             rec->op = op;
             rec->args.push_back(val);
+            num_pushes++;
             return rec;
         } else {
             //q->front(val);
-            q->pop();
+            if (q->pop()) {num_pops++;}
 #if PRINT_DEBUG
             std::cout << "[" << me << "] popped " << std::endl;
             //std::cout << "[" << me << "] front " << val << std::endl;
@@ -466,8 +473,10 @@ public:
         if (op->op == 0) {
             val = op->args[0];
             q->push(val);
+            num_redo_pushes++;
         } else if (op->op == 1) {
             //q->front(val);
+            if (!q->empty()) {num_redo_pops++;}
             q->pop();
 #if PRINT_DEBUG
             std::cout << "[" << val << "] [" << op->rdata[0] << "]" << std::endl;
@@ -477,6 +486,8 @@ public:
     }
 
     void check(DT* q, RT*q1) {
+        std::cout << "Number Pops: " << num_pops << " Number Redone Pops: " << num_redo_pops << std::endl;
+        std::cout << "Number Pushes: " << num_pushes << " Number Redone Pushes: " << num_redo_pushes << std::endl;
         TRANSACTION {
             //int v1, v2;
             if (q->pop()) {

@@ -80,7 +80,9 @@ public:
                 write_list.push_back(v);
             }
         }
-        else item.add_write(v);
+        else {
+            item.add_write(v);
+        }
     }
 
     bool pop() {
@@ -115,8 +117,8 @@ public:
                 if (index == tail_) {
                     if (!tailitem.has_read())
                         tailitem.observe(v);
-                    if (tailitem.has_write() && has_push(tailitem)) {
-                        if (is_list(tailitem)) {
+                    if (tailitem.has_write()) {
+                        if (is_list(tailitem) && has_push(tailitem)) {
                             auto& write_list = tailitem.template write_value<std::list<T>>();
                             // if there is an element to be pushed on the queue, return addr of queue element
                             if (!write_list.empty()) {
@@ -127,14 +129,16 @@ public:
                             else return false;
                         }
                         // not a list, has exactly one element
-                        else if (!is_empty(tailitem) && has_push(tailitem)) {
+                        else if (!is_empty(tailitem)) {
                             tailitem.add_flags(empty_bit);
                             return true;
                         }
                         else return false;
                     }
                     // fail if trying to read from an empty queue
-                    else return false;  
+                    else {
+                        return false;  
+                    }
                 } 
             }
             if (has_delete(item)) {
@@ -264,10 +268,10 @@ private:
         }
         // install pushes, but only if we added a write to
         //  the push/tail item on a push
-        else if (item.key<int>() == pushitem_key && has_push(item)) {
+        else if (item.key<int>() == pushitem_key) {
             auto head_index = head_;
             // write all the elements
-            if (is_list(item)) {
+            if (is_list(item) && has_push(item)) {
                 auto& write_list = item.template write_value<std::list<T>>();
                 while (!write_list.empty()) {
                     // assert queue is not out of space            

@@ -18,9 +18,9 @@ TESTS = ["PQRandSingleOps:R","PQRandSingleOps:D","PQPushPop:R",
         ]
 
 QUEUES = [
-    "Queue2", "FCQueue2", "FCQueueLP1", "FCQueueLP2", 
-    "Wrapped FCQueueNT1", "Wrapped FCQueueNT2",
-    "FCQueueNT1", "FCQueueNT2"]
+    "Queue2", "FCQueue2", "FCQueue3", "FCQueueLP2", 
+    "Wrapped FCQueueNT2",
+    "FCQueueNT2"]
 
 '''
 Parse the data file cds_benchmarks_stats.txt
