@@ -113,10 +113,8 @@ public:
 
                auto v = queueversion_;
                fence();
-                // empty queue, so we have to add a read of the queueversion
+                // empty queue
                 if (index == tail_) {
-                    if (!tailitem.has_read())
-                        tailitem.observe(v);
                     if (tailitem.has_write()) {
                         if (is_list(tailitem) && has_push(tailitem)) {
                             auto& write_list = tailitem.template write_value<std::list<T>>();
@@ -149,7 +147,6 @@ public:
         }
         item.add_flags(delete_bit);
         item.add_write(0);
-        assert(!tailitem.has_write());
         return true;
     }
 
@@ -182,8 +179,6 @@ public:
                 auto v = queueversion_;
                 fence();
                 if (index == tail_) {
-                    if (!tailitem.has_read())
-                        tailitem.observe(v);
                     if (tailitem.has_write() && has_push(tailitem)) {
                         if (is_list(tailitem)) {
                             auto& write_list= tailitem.template write_value<std::list<T>>();
@@ -245,12 +240,12 @@ private:
 
     bool check(TransItem& item, Transaction& t) override {
         (void) t;
-        // check if we read off the write_list. We should only abort if both: 
-        //      1) we saw the queue was empty during a pop/front and read off our own write list 
+        // we should actually never call this function because we always lock when we observe some
+        // state of the queue (during a pop/front!) This means that no one could push/pop
+        // from the queue after we called pop/front.`
+        // THIS IS WRONG: check if we read off the write_list. We should only abort if both: 
+        //      1) we saw the queue was empty during a pop/front and read off our own write list AND
         //      2) someone else has pushed onto the queue before we got here
-        if (item.key<int>() == pushitem_key)
-            return item.check_version(queueversion_);
-        // shouldn't reach this
         assert(0);
         return false;
     }
