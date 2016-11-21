@@ -93,13 +93,6 @@ public:
                 Sto::abort(); 
             }
         }
-        // abort if the queue version number has changed since the beginning of this txn
-        if (tailitem.has_read()) {
-            if (!tailitem.item().check_version(queueversion_)) {
-                queueversion_.unlock();
-                Sto::abort();
-            }
-        }
 
         fence();
         auto index = head_;
@@ -111,7 +104,6 @@ public:
                // been written to if the queue is empty
                if (!tailitem.has_write()) tailitem.add_write(0);
 
-               auto v = queueversion_;
                fence();
                 // empty queue
                 if (index == tail_) {
@@ -158,13 +150,6 @@ public:
                 Sto::abort(); 
             }
         }
-        // abort if the queue version number has changed since the beginning of this txn
-        if (tailitem.has_read()) {
-            if (!tailitem.item().check_version(queueversion_)) {
-                queueversion_.unlock();
-                Sto::abort();
-            }
-        }
 
         fence();
         unsigned index = head_;
@@ -176,7 +161,6 @@ public:
                 // been written to if the queue is empty
                 if (!tailitem.has_write()) tailitem.add_write(0);
 
-                auto v = queueversion_;
                 fence();
                 if (index == tail_) {
                     if (tailitem.has_write() && has_push(tailitem)) {
@@ -238,8 +222,7 @@ private:
         return true;
     }
 
-    bool check(TransItem& item, Transaction& t) override {
-        (void) t;
+    bool check(TransItem&, Transaction&) override {
         // we should actually never call this function because we always lock when we observe some
         // state of the queue (during a pop/front!) This means that no one could push/pop
         // from the queue after we called pop/front.`
@@ -251,6 +234,7 @@ private:
     }
 
     void install(TransItem& item, Transaction& txn) override {
+        (void)txn;
         // queueversion_ should be locked here because we must have popped
         // or locked to push onto the queue
         assert(queueversion_.is_locked_here());
@@ -280,12 +264,6 @@ private:
                 auto& val = item.template write_value<T>();
                 queueSlots[tail_] = val;
                 tail_ = (tail_+1) % BUF_SIZE;
-            }
-            // set queueversion appropriately
-            if (Opacity) {
-                queueversion_.set_version(txn.commit_tid());
-            } else {
-                queueversion_.inc_nonopaque_version();
             }
         }
     }

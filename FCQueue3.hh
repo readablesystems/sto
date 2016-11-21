@@ -58,12 +58,14 @@ private:
 	//list inner types ------------------------------
 	struct SlotInfo {
 		int volatile		_req_ans;		//here 1 can post the request and wait for answer
+		void* volatile		_req_list;		//here 1 can post the request and wait for answer
 		int volatile		_tid;	        //which thread is making the request
 		int volatile		_time_stamp;	//when 0 not connected
 		SlotInfo* volatile	_next;			//when NULL not connected
 
 		SlotInfo() {
 			_req_ans	 = _NULL_VALUE;
+            _req_list    = NULL;
 			_time_stamp  = 0;
 			_next		 = NULL;
 		}
@@ -174,8 +176,35 @@ private:
 				const int curr_value = curr_slot->_req_ans;
 
                 // PUSHES
+                // we want to push a list
+                // done when sets curr_list to NULL
+                if (curr_slot->_req_list) {
+                    auto write_list = (std::list<int>*) curr_slot->_req_list;
+                    while(!write_list->empty()) {
+                        const int value = write_list->front();
+                        ++num_changes;
+                        enq_value_ary->set_internal_elem(value);
+                        ++enq_value_ary;
+
+                        ++num_added;
+                        if(num_added >= _NODE_SIZE) {
+                            Node* const new_node2 = Node::get_new(_NODE_SIZE+4);
+                            memcpy((void*)(new_node2->_values), (void*)(_new_node->_values), (_NODE_SIZE+2)*sizeof(internal_elem) );
+                            _new_node = new_node2; 
+                            enq_value_ary = _new_node->_values;
+                            enq_value_ary->set_internal_elem(1);
+                            ++enq_value_ary;
+                            enq_value_ary += _NODE_SIZE;
+                            _NODE_SIZE += 4;
+                        }
+                        write_list->pop_front();
+                    }
+                    curr_slot->_req_list = NULL;
+                    curr_slot->_time_stamp = _NULL_VALUE;
+                }
+                // we want to push a value
                 // done when sets curr_value to NULL
-				if(curr_value > _NULL_VALUE) {
+				else if(curr_value > _NULL_VALUE) {
 					++num_changes;
 					enq_value_ary->set_internal_elem(curr_value);
 					++enq_value_ary;
@@ -482,7 +511,7 @@ public:
         return (-my_re_ans) != _NULL_VALUE;
     }
 
-	bool fc_push(const int inValue) {
+	bool fc_push_val(const int inValue) {
 		SlotInfo* my_slot = _tls_slot_info;
 		if(NULL == my_slot)
 			my_slot = get_new_slot();
@@ -510,6 +539,40 @@ public:
 				} 
 				Memory::read_barrier();
 				if(_NULL_VALUE == my_re_ans) {
+					return true;
+				}
+			}
+		} while(true);
+	}
+
+	bool fc_push(std::list<int>& inValue) {
+		SlotInfo* my_slot = _tls_slot_info;
+		if(NULL == my_slot)
+			my_slot = get_new_slot();
+
+		SlotInfo* volatile&	my_next = my_slot->_next;
+        void* volatile& my_re_list = my_slot->_req_list;
+		int volatile& my_re_tid = my_slot->_tid;
+		my_re_tid = TThread::id();
+		my_re_list = (void*)&inValue;
+
+		do {
+			if (NULL == my_next)
+				enq_slot(my_slot);
+
+			bool is_cas = true;
+			if(lock_fc(_fc_lock, is_cas)) {
+				flat_combining();
+				_fc_lock.set(0);
+				return true;
+			} else {
+				Memory::write_barrier();
+				if(!is_cas)
+				while(NULL != my_re_list && 0 != _fc_lock.getNotSafe()) {
+                    sched_yield();
+				} 
+				Memory::read_barrier();
+				if(NULL == my_re_list) {
 					return true;
 				}
 			}
@@ -649,14 +712,10 @@ private:
             // write all the elements
             if (is_list(item)) {
                 auto& write_list = item.template write_value<std::list<T>>();
-                while (!write_list.empty()) {
-                    //XXX batch process?
-                    fc_push(write_list.front());
-                    write_list.pop_front();
-                }
+                fc_push(write_list);
             } else {
                 auto& val = item.template write_value<T>();
-                fc_push(val);
+                fc_push_val(val);
             }
         }
     }
