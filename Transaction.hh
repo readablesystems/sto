@@ -542,7 +542,7 @@ public:
     }
 
     bool try_check_opacity(tid_type v) {
-        return v < min_rts_;
+        return v > min_rts_;
     }
 
     void check_opacity(TransItem& item, const TicTocVersion& tss) {

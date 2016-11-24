@@ -115,6 +115,7 @@ void Transaction::hard_check_opacity(TransItem* item, const TicTocVersion& tss) 
     state_ = s_opacity_check;
 
     potential_cts_ = compute_commit_ts();
+    potential_cts_ = std::max(potential_cts_, tss.read_timestamp());
 
     //start_tid_ = _TID;
     release_fence();
