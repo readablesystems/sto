@@ -542,7 +542,7 @@ public:
     }
 
     bool try_check_opacity(tid_type v) {
-        return v > min_rts_;
+        return v <= min_rts_;
     }
 
     void check_opacity(TransItem& item, const TicTocVersion& tss) {
@@ -910,6 +910,7 @@ inline TransProxy& TransProxy::observe(TicTocVersion version, bool add_observati
         t()->abort_because(item(), "locked", version.get_lockable().t_);
     t()->check_opacity(item(), version);
     if (add_observation && !has_observation()) {
+        t()->min_rts_ = std::min(t()->min_rts_, version.read_timestamp());
         item().__or_flags(TransItem::observe_bit);
         //item().rdata_ = Packer<TicTocVersion>::pack(t()->buf_, std::move(version));
         item().otss_ = version;
