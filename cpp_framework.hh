@@ -228,6 +228,37 @@ namespace CCP {
         }
     };
 
+    template<typename T>
+	class ThreadLocal {
+		pthread_key_t	_key_handle;
+	public:
+		ThreadLocal() {
+			pthread_key_create(&_key_handle, 0);
+		}
+
+		~ThreadLocal() {
+			pthread_key_delete(_key_handle);
+		}
+
+                // JME: made this not a pure virtual function
+		virtual T initialValue() {
+                   return (T) null; 
+                }
+
+		T get() {
+			void* curr_key = pthread_getspecific(_key_handle);
+			if(0 == curr_key) {
+				pthread_setspecific(_key_handle, (void*) initialValue());
+				curr_key = pthread_getspecific(_key_handle);
+			}
+			return (T)((ptr_t)curr_key);
+		}
+
+		void set(const T& value) {
+			pthread_setspecific(_key_handle, (void*)value);
+		}
+    };
+
     class AtomicInteger {
     private:
         VolatileType<_u32> _value;
