@@ -35,24 +35,6 @@ std::atomic_int global_push_val(MAX_VALUE);
 enum q_op {push, pop};
 std::array<q_op, 2> q_ops_array = {push, pop};
 
-// txn sets
-std::vector<std::vector<std::vector<q_op>>> q_txn_sets = {
-    // 0. short txns
-    {{push, push, push}, {pop, pop, pop}, {pop}, {pop}, {pop}, {push}, {push}, {push}},
-    // 1. longer txns
-    {{push, push, push, push, push},{pop, pop, pop, pop, pop}}, 
-    // 2. 100% include both pushes and ptps
-    {{push, push, pop},{pop, pop, push}},
-    // 3. 50% include both pushes and pops
-    {{push, push, pop},{pop, pop, push},{pop}, {push}},
-    // 4. 33% include both pushes and pops
-    {{push, push, pop},{pop, pop, push},{pop}, {pop},{push}, {push}},
-    // 5. 33%: longer push + pop txns
-    {{push, pop, push, pop, push, pop},{pop}, {push}},
-    // 6. one-q_op txns
-    {{pop}, {push}}
-};
-
 #define FCQUEUE_TRAITS() cds::container::fcqueue::make_traits< \
     cds::opt::lock_type<cds::sync::spin>, \
     cds::opt::back_off<cds::backoff::delay_of<2>>, \
@@ -489,40 +471,48 @@ private:
 
 template <typename DH> class GeneralTxnsTest : public QueueTest<DH> {
 public:
-    GeneralTxnsTest(int ds_type, int val_type, std::vector<std::vector<q_op>> txn_set) : 
-        QueueTest<DH>(val_type), ds_type_(ds_type), txn_set_(txn_set) {};
+    GeneralTxnsTest(int ds_type, int val_type, int num_ops) : 
+        QueueTest<DH>(val_type), ds_type_(ds_type), num_ops_(num_ops) {};
     void run(int me) {
-        //Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
-        //std::uniform_int_distribution<long> slotdist(1, MAX_VALUE);
+        q_op my_op;
+        int numOps;
+        int p;
+
+        Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
+        std::uniform_int_distribution<long> opdist(0, 100);
+
         for (int i = NTRANS; i > 0; --i) {
+            numOps = num_ops_ ? opdist(transgen) % num_ops_ + 1 : 0;
+            p = opdist(transgen);
+            if (p > 50) my_op = pop;
+            else my_op = push;
+            
             if (ds_type_ == STO) {
-                //Rand transgen_snap = transgen;
+                Rand transgen_snap = transgen;
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        auto txn = txn_set_[rand_txns[(i*me+i) % arraysize(rand_txns)] % txn_set_.size()];
-                        for (unsigned j = 0; j < txn.size(); ++j) {
-                            this->do_q_op(txn[j], rand_vals[(i*me + i) % arraysize(rand_vals)]);
-                            this->inc_ctrs(txn[j], me); // XXX can lead to overcounting
+                        for (int j = 0; j < numOps; ++j) {
+                            this->do_q_op(my_op, j);
+                            this->inc_ctrs(my_op, me); // XXX can lead to overcounting
                         }
                         if (Sto::try_commit()) break;
                     } catch (Transaction::Abort e) {
-                        //transgen = transgen_snap;
+                        transgen = transgen_snap;
                     }
                 }
             } else {
-                auto txn = txn_set_[rand_txns[(i*me+i) % arraysize(rand_txns)] % txn_set_.size()];
-                //auto txn = txn_set_[slotdist(transgen) % txn_set_.size()];
-                for (unsigned j = 0; j < txn.size(); ++j) {
-                    this->do_q_op(txn[j], rand_vals[(i*me + i) % arraysize(rand_vals)]);
-                    this->inc_ctrs(txn[j], me);
+                for (int j = 0; j < numOps; ++j) {
+                    this->do_q_op(my_op, j);
+                    this->inc_ctrs(my_op, me);
                 }
             }
         }
     }
+    
 private:
     int ds_type_;
-    std::vector<std::vector<q_op>> txn_set_;
+    int num_ops_;
 };
 
 #define MAKE_PQUEUE_TESTS(desc, test, type, ...) \
@@ -559,12 +549,12 @@ int num_pqueues = 4;
     {desc, "VyukovMPMC queue", new test<DatatypeHarness<cds::container::VyukovMPMCCycleQueue<type>>>(CDS, ## __VA_ARGS__)},\
     {desc, "NonTrans FC Queue", new test<DatatypeHarness<FCQueueNT2<type>>>(CDS, ## __VA_ARGS__)}
 
-    //{desc, "FC Queue 2", new test<DatatypeHarness<FCQueue2<type, TNonopaqueWrapped>>>(STO, ## __VA_ARGS__)},\
-    //{desc, "FC Queue 3", new test<DatatypeHarness<FCQueue3<type>>>(STO, ## __VA_ARGS__)},\
-    //{desc, "FCQueueLP2", new test<DatatypeHarness<FCQueueLP2<type>>>(STO, ## __VA_ARGS__)},                                  \
-    //{desc, "Wrapped NT FC Queue2", new test<DatatypeHarness<FCQueueNT2<type>>>(STO, ## __VA_ARGS__)},\
-    //{desc, "Wrapped NT FC Queue1", new test<DatatypeHarness<FCQueueNT1<type>>>(STO, ## __VA_ARGS__)},\
-    //{desc, "NT FC Queue1", new test<DatatypeHarness<FCQueueNT1<type>>>(CDS, ## __VA_ARGS__)},\
+    //{desc, "FC Queue 2", new test<DatatypeHarness<FCQueue2<type, TNonopaqueWrapped>>>(STO, ## __VA_ARGS__)},
+    //{desc, "FC Queue 3", new test<DatatypeHarness<FCQueue3<type>>>(STO, ## __VA_ARGS__)},
+    //{desc, "FCQueueLP2", new test<DatatypeHarness<FCQueueLP2<type>>>(STO, ## __VA_ARGS__)},                                  
+    //{desc, "Wrapped NT FC Queue2", new test<DatatypeHarness<FCQueueNT2<type>>>(STO, ## __VA_ARGS__)},
+    //{desc, "Wrapped NT FC Queue1", new test<DatatypeHarness<FCQueueNT1<type>>>(STO, ## __VA_ARGS__)},
+    //{desc, "NT FC Queue1", new test<DatatypeHarness<FCQueueNT1<type>>>(CDS, ## __VA_ARGS__)},
     //{desc, "FCQueueLP1", new test<DatatypeHarness<FCQueueLP1<type>>>(STO, ## __VA_ARGS__)},                                  \
 //{desc, "Wrapped CDS FC Queue", new test<DatatypeHarness<cds::container::FCQueue<type, std::queue<type>, FCQUEUE_TRAITS()>>>(STO, ## __VA_ARGS__)},                 
 //    {desc, "CDS FC queue", new test<DatatypeHarness<cds::container::FCQueue<type, std::queue<type>, FCQUEUE_TRAITS()>>>(CDS, ## __VA_ARGS__)}
@@ -572,9 +562,10 @@ int num_pqueues = 4;
     //{desc, "STO queue2 O", new test<DatatypeHarness<Queue2<type>>>(STO, ## __VA_ARGS__)},                                  
 std::vector<Test> make_queue_tests() {
     return {
-        MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
-        MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomQSingleOpTest, int, RANDOM_VALS),
-        //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[1]),
+        //MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
+        //MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomQSingleOpTest, int, RANDOM_VALS),
+        MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, 5),
+        MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, 10),
         //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[2]),
     };
 }
