@@ -27,8 +27,8 @@
 //#define DS CUCKOOHASHMAPNA
 
 #if DS == QUEUE 
-//QueueTester<FCQueue3<int>, std::queue<int>> tester = QueueTester<FCQueue3<int>, std::queue<int>>();
-QueueTester<Queue2<int,false,100000>, std::queue<int>> tester = QueueTester<Queue2<int,false,100000>, std::queue<int>>();
+QueueTester<FCQueue3<int>, std::queue<int>> tester = QueueTester<FCQueue3<int>, std::queue<int>>();
+//QueueTester<Queue2<int,false,100000>, std::queue<int>> tester = QueueTester<Queue2<int,false,100000>, std::queue<int>>();
 #elif DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
 #elif DS == HASHTABLE
@@ -197,8 +197,8 @@ int main() {
         initial_seeds[i] = random();
 
 #if DS == QUEUE
-    //FCQueue3<int> q;
-    Queue2<int,false,100000> q;
+    FCQueue3<int> q;
+    //Queue2<int,false,100000> q;
     std::queue<int> q1;
 #elif DS == PRIORITY_QUEUE 
     PriorityQueue<int> q;
