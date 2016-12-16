@@ -30,6 +30,7 @@
 
 #ifndef FCQUEUE3_H 
 #define FCQUEUE3_H
+//#define DEBUGQ
 
 #include <deque>
 #include <list>
@@ -264,9 +265,13 @@ private:
 				} else if(_POP_VALUE == curr_value) {
 					++num_changes;
 					auto curr_deq_pos = deq_value_ary;
+                    auto tmp_tail = _tail;
                     while(1) {
+#ifdef DEBUGQ
+                        std::cout << curr_deq_pos->value_ << " at " << (void*)curr_deq_pos << std::endl;
+#endif
                         if(0 != curr_deq_pos->value_) {
-                            // we found an item to pop!
+                            // the queue is nonempty! 
                             if (curr_deq_pos->tid_ == tid && curr_deq_pos->phantom()) {
                                 // keep going... we've already popped within this txn
                                 curr_deq_pos++;
@@ -277,7 +282,7 @@ private:
                                 } else {
                                     // we can actually mark this as ours to pop
 #ifdef DEBUGQ
-                                    std::cout << curr_deq_pos << " marked " << tid << std::endl;
+                                    std::cout << (void*)curr_deq_pos << " marked " << tid << std::endl;
 #endif
                                     curr_deq_pos->mark_phantom(tid);
                                     curr_slot->_req_ans = -(curr_deq_pos->value_);
@@ -285,9 +290,13 @@ private:
                                 }
                                 break;
                             }
-                        } else if(NULL != _tail->_next) {
-                            curr_deq_pos = _tail->_next->_values;
+                        } else if(NULL != tmp_tail->_next) {
+                            tmp_tail = tmp_tail->_next;
+                            curr_deq_pos = tmp_tail->_values;
                             curr_deq_pos += curr_deq_pos->value_;
+#ifdef DEBUGQ
+                            std::cout << (void*) curr_deq_pos << " next " << tid << std::endl;
+#endif
                             continue;
                         } else {
                             // empty queue! (or we've popped off everything)
