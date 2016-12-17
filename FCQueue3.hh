@@ -180,6 +180,7 @@ private:
                 // we want to push a list
                 // done when sets curr_list to NULL
                 if (curr_slot->_req_list) {
+                    /*
                     auto write_list = (std::list<int>*) curr_slot->_req_list;
                     while(!write_list->empty()) {
                         const int value = write_list->front();
@@ -201,7 +202,7 @@ private:
                         write_list->pop_front();
                     }
                     curr_slot->_req_list = NULL;
-                    curr_slot->_time_stamp = _NULL_VALUE;
+                    curr_slot->_time_stamp = _NULL_VALUE;*/
                 }
                 // we want to push a value
                 // done when sets curr_value to NULL
@@ -233,12 +234,12 @@ private:
 					    const int curr_deq = deq_value_ary->value_;
                         if(0 != curr_deq) {
                             if (deq_value_ary->phantom()) {
+#ifdef DEBUGQ
+                                std::cout << (void*)deq_value_ary << " deq " << tid << std::endl;
+#endif
                                 // we're actually going to pop this.
                                 // must be ours!
                                 assert(deq_value_ary->tid_ == tid);
-#ifdef DEBUGQ
-                                std::cout << deq_value_ary << " deq " << tid << std::endl;
-#endif
                                 ++deq_value_ary;
                             } else {
                                 // no one has popped this far yet. just return.
@@ -314,25 +315,28 @@ private:
 				} else if(_CLEANUP_VALUE == curr_value) {
 					++num_changes;
 					auto curr_deq_pos = deq_value_ary;
+                    auto tmp_tail = _tail;
                     while(1) {
                         if(0 != curr_deq_pos->value_) {
                             // we found an item to pop!
-                            if (curr_deq_pos->tid_ == tid && curr_deq_pos->phantom()) {
+                            if (curr_deq_pos->phantom()) {
+                                assert(curr_deq_pos->tid_ == tid);
                                 // we were going to pop this!
                                 // keep going... we've already popped within this txn
                                 curr_deq_pos->unmark_phantom(tid);
 #ifdef DEBUGQ
-                                std::cout << curr_deq_pos << " clean " << tid << std::endl;
+                                std::cout << (void*)curr_deq_pos << " clean " << tid << std::endl;
 #endif
                                 curr_deq_pos++;
                             } else {
-                                // someone else is popping or we didn't pop at all
+                                // we didn't pop at all
                                 curr_slot->_req_ans = _NULL_VALUE;
                                 curr_slot->_time_stamp = _NULL_VALUE;
                                 break;
                             }
-                        } else if(NULL != _tail->_next) {
-                            curr_deq_pos = _tail->_next->_values;
+                        } else if(NULL != tmp_tail->_next) {
+                            tmp_tail = tmp_tail->_next;
+                            curr_deq_pos = tmp_tail->_values;
                             curr_deq_pos += curr_deq_pos->value_;
                             continue;
                         } else {
@@ -348,6 +352,13 @@ private:
 				} else if(_EMPTY_VALUE == curr_value) {
 					++num_changes;
 					auto curr_deq_pos = deq_value_ary;
+                    auto tmp_tail = _tail;
+                    
+                    if (enq_value_ary != (_new_node->_values + 1)) {
+                        curr_slot->_req_ans = _ENQ_VALUE;
+                        curr_slot->_time_stamp = _NULL_VALUE;
+                        continue;
+                    }
                     while(1) {
                         if(0 != curr_deq_pos->value_) {
                             if (curr_deq_pos->tid_ == tid && curr_deq_pos->phantom()) {
@@ -359,19 +370,15 @@ private:
                                 curr_slot->_time_stamp = _NULL_VALUE;
                                 break;
                             }
-                        } else if(NULL != _tail->_next) {
-                            curr_deq_pos = _tail->_next->_values;
+                        } else if(NULL != tmp_tail->_next) {
+                            tmp_tail = tmp_tail->_next;
+                            curr_deq_pos = tmp_tail->_values;
                             curr_deq_pos += curr_deq_pos->value_;
                             continue;
                         } else {
                             // empty! but check if we're going to enq anything... 
-                            if (enq_value_ary != (_new_node->_values + 1)) {
-                                curr_slot->_req_ans = _ENQ_VALUE;
-                                curr_slot->_time_stamp = _NULL_VALUE;
-                            } else {
-                                curr_slot->_req_ans = _NULL_VALUE;
-                                curr_slot->_time_stamp = _NULL_VALUE;
-                            }
+                            curr_slot->_req_ans = _NULL_VALUE;
+                            curr_slot->_time_stamp = _NULL_VALUE;
 
                             // we can't allow anyone else to enq or the previous value
                             // is no longer valid
@@ -474,8 +481,8 @@ public:
         if (!popped) {
             item.add_flags(empty_q_bit);
             item.add_read(0);
-        } else {
-            // we actually need to deque something at commit time
+        // we actually need to deque something at commit time
+        } else if (!item.has_write()) {
             item.add_write();
         }
         return popped;
@@ -721,7 +728,11 @@ private:
             // write all the elements
             if (is_list(item)) {
                 auto& write_list = item.template write_value<std::list<T>>();
-                fc_push(write_list);
+                while(write_list.empty()) {
+                    fc_push_val(write_list.front());
+                    write_list.pop_front();
+                }
+                //fc_push(write_list);
             } else {
                 auto& val = item.template write_value<T>();
                 fc_push_val(val);

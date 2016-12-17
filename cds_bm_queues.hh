@@ -551,11 +551,11 @@ int num_pqueues = 4;
 */
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
-    {desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)},                                  \
+    {desc, "FC Queue 3", new test<DatatypeHarness<FCQueue3<type>>>(STO, ## __VA_ARGS__)}
+    //{desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "STO2 queue", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)}, \
     {desc, "NonTrans FC Queue", new test<DatatypeHarness<FCQueueNT2<type>>>(CDS, ## __VA_ARGS__)}, \
     {desc, "Wrapped NT FC Queue2", new test<DatatypeHarness<FCQueueNT2<type>>>(STO, ## __VA_ARGS__)},\
-    {desc, "FC Queue 3", new test<DatatypeHarness<FCQueue3<type>>>(STO, ## __VA_ARGS__)}
     //{desc, "STO queue O", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  
     //{desc, "STO queue2 O", new test<DatatypeHarness<Queue2<type>>>(STO, ## __VA_ARGS__)},                                  
     //{desc, "FCQueueLP2", new test<DatatypeHarness<FCQueueLP2<type>>>(STO, ## __VA_ARGS__)},                                  
@@ -569,4 +569,4 @@ std::vector<Test> make_queue_tests() {
     };
 }
 //int num_queues = 11;
-int num_queues = 5;
+int num_queues = 1;
