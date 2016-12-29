@@ -18,8 +18,8 @@
 #include <functional> 
 
 #include "Hashtable.hh" 
-#include "CuckooHashMap.hh"
-#include "CuckooHashMap2.hh"
+#include "CuckooHashMapIE.hh"
+#include "CuckooHashMapKF.hh"
 #include "CuckooHashMapWK.hh"
 #include "CuckooHashMapNA.hh"
 #include "CuckooHashMapNT.hh"
@@ -94,20 +94,20 @@ template <typename K, typename T> struct DatatypeHarness<Hashtable<K,T,false,100
     public STOMapHarness<Hashtable<K,T,false,10000>>{};
 
 // STO-CUCKOO KF
-template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K,T,1000000,false>> :
-    public CuckooHashMapHarness<CuckooHashMap<K,T,1000000,false>>{};
-template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K,T,125000,false>> :
-    public CuckooHashMapHarness<CuckooHashMap<K,T,125000,false>>{};
-template <typename K, typename T> struct DatatypeHarness<CuckooHashMap<K,T,10000,false>> :
-    public CuckooHashMapHarness<CuckooHashMap<K,T,10000,false>>{};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMapKF<K,T,1000000,false>> :
+    public CuckooHashMapHarness<CuckooHashMapKF<K,T,1000000,false>>{};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMapKF<K,T,125000,false>> :
+    public CuckooHashMapHarness<CuckooHashMapKF<K,T,125000,false>>{};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMapKF<K,T,10000,false>> :
+    public CuckooHashMapHarness<CuckooHashMapKF<K,T,10000,false>>{};
 
 // STO-CUCKOO IE
-template <typename K, typename T> struct DatatypeHarness<CuckooHashMap2<K,T,1000000,false>> :
-    public CuckooHashMapHarness<CuckooHashMap2<K,T,1000000,false>>{};
-template <typename K, typename T> struct DatatypeHarness<CuckooHashMap2<K,T,125000,false>> :
-    public CuckooHashMapHarness<CuckooHashMap2<K,T,125000,false>>{};
-template <typename K, typename T> struct DatatypeHarness<CuckooHashMap2<K,T,10000,false>> :
-    public CuckooHashMapHarness<CuckooHashMap2<K,T,10000,false>>{};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMapIE<K,T,1000000,false>> :
+    public CuckooHashMapHarness<CuckooHashMapIE<K,T,1000000,false>>{};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMapIE<K,T,125000,false>> :
+    public CuckooHashMapHarness<CuckooHashMapIE<K,T,125000,false>>{};
+template <typename K, typename T> struct DatatypeHarness<CuckooHashMapIE<K,T,10000,false>> :
+    public CuckooHashMapHarness<CuckooHashMapIE<K,T,10000,false>>{};
 
 // STO-CUCKOO WK
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMapWK<K,T,1000000,false>> :
@@ -290,8 +290,8 @@ private:
 
 #define MAKE_MAP_TESTS(desc, test, key, val, size,...) \
     {desc, "STO Nonopaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,false,size>>>(STO, size, ## __VA_ARGS__)},                                  \
-    {desc, "STO IE CuckooMap", new test<DatatypeHarness<CuckooHashMap2<key,val,size, false>>>(STO, size, ## __VA_ARGS__)}, \
-    {desc, "STO KF CuckooMap", new test<DatatypeHarness<CuckooHashMap<key,val,size, false>>>(STO, size, ## __VA_ARGS__)},                \
+    {desc, "STO IE CuckooMap", new test<DatatypeHarness<CuckooHashMapIE<key,val,size, false>>>(STO, size, ## __VA_ARGS__)}, \
+    {desc, "STO KF CuckooMap", new test<DatatypeHarness<CuckooHashMapKF<key,val,size, false>>>(STO, size, ## __VA_ARGS__)},                \
     {desc, "CuckooMapNT", new test<DatatypeHarness<CuckooHashMapNT<key, val, size>>>(CDS, size, ## __VA_ARGS__)}, \
     {desc, "STO NA CuckooMap", new test<DatatypeHarness<CuckooHashMapNA<key,val,size, false>>>(STO, size, ## __VA_ARGS__)},                \
     //{desc, "STO WK CuckooMap", new test<DatatypeHarness<CuckooHashMapWK<key,val,size, false>>>(STO, size, ## __VA_ARGS__)}, 

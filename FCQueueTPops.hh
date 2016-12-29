@@ -215,7 +215,7 @@ private:
 			_tail = _tail->_next;
 		} else {
             // set where to start next in dequeing
-			_tail->_values = (deq_value_ary -  _tail->_values);
+			*_tail->_values = (deq_value_ary -  _tail->_values);
 		}
 
 		if(repushed_value_ary != (_repushed_vals_node->_values + 1)) {
@@ -449,7 +449,7 @@ private:
         return true;
     }
 
-    bool check(TransItem& item, Transaction&) override {
+    bool check(TransItem&, Transaction&) override {
         return true;
     }
 
@@ -460,6 +460,7 @@ private:
             if (is_list(item)) {
                 auto& write_list = item.template write_value<std::list<T>>();
                 while(!write_list.empty()) {
+                    //XXX
                     fc_push_val(write_list.front());
                     write_list.pop_front();
                 }

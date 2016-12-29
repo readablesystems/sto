@@ -32,7 +32,8 @@
 #include "Transaction.hh"
 #include "cuckoohelpers.hh"
 
-/*! CuckooHashMapWK is the hash table class. It uses wrapped keys.
+/*! CuckooHashMapWK is the hash table class. It uses wrapped keys to see if this is more expensive
+ * than using a key that fits in a word. Otherwise, it is no different than the CuckooHashMapIE.
  * */
 template <class Key, class T, unsigned Num_Buckets = 250000, bool Opacity = false>
 class CuckooHashMapWK: public Shared {

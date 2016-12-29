@@ -32,8 +32,7 @@
 #include "Transaction.hh"
 #include "cuckoohelpers.hh"
 
-/*! CuckooHashMapNA is the hash table class. This DOES NOT use key fragments, but stores the pointer
- * to the internal element directly inside the map.
+/*! CuckooHashMapNA is the hash table class that does not allocate internal elements.
  * */
 template <class Key, class T, unsigned Num_Buckets = 250000, bool Opacity = false>
 class CuckooHashMapNA: public Shared {

@@ -7,8 +7,8 @@
 #include "Transaction.hh"
 #include "PriorityQueue.hh"
 #include "Hashtable.hh"
-#include "CuckooHashMap.hh"
-#include "CuckooHashMap2.hh"
+#include "CuckooHashMapIE.hh"
+#include "CuckooHashMapKF.hh"
 #include "CuckooHashMapNT.hh"
 #include "CuckooHashMapNA.hh"
 #include "RBTree.hh"
@@ -16,9 +16,11 @@
 //#include "QueueLP.hh"
 #include "Queue2.hh"
 #include "Queue1.hh"
-#include "FCQueueLP2.hh"
-#include "FCQueueNT2.hh"
-#include "FCQueue3.hh"
+#include "QueuePops.hh"
+#include "FCQueueLP.hh"
+#include "FCQueueNT.hh"
+#include "FCQueueT.hh"
+#include "FCQueueTPops.hh"
 
 #define MAX_VALUE 100 // Max value of integers used in data structures
 #define PRINT_DEBUG 0 // Set this to 1 to print some debugging statements

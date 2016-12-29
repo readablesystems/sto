@@ -21,11 +21,11 @@ public:
     QueuePops() : head_(0), tail_(0), queueversion_(0) {}
 
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit;
-    static constexpr TransItem::flags_type read_writes = TransItem::user0_bit<<1;
     static constexpr TransItem::flags_type list_bit = TransItem::user0_bit<<2;
     static constexpr TransItem::flags_type empty_bit = TransItem::user0_bit<<3;
     static constexpr TransItem::flags_type push_bit = TransItem::user0_bit<<4;
     static constexpr int pushitem_key = -1;
+    static constexpr int popitem_key = -2;
 
     // NONTRANSACTIONAL PUSH/POP/EMPTY
     void nontrans_push(T v) {
@@ -94,49 +94,49 @@ public:
 
         fence();
         auto index = head_;
-        auto item = Sto::item(this, index);
+        auto headitem = Sto::item(this, popitem_key);
+        headitem.add_write();
         
-        while (1) {
-           if (index == tail_) {
-               // we need to make sure that we unlock, since no other item will have
-               // been written to if the queue is empty
-               if (!tailitem.has_write()) tailitem.add_write(0);
+        if (index == tail_) {
+           // we need to make sure that we unlock, since no other item will have
+           // been written to if the queue is empty
+           if (!tailitem.has_write()) tailitem.add_write(0);
 
-               fence();
-                // empty queue
-                if (index == tail_) {
-                    if (tailitem.has_write()) {
-                        if (is_list(tailitem) && has_push(tailitem)) {
-                            auto& write_list = tailitem.template write_value<std::list<T>>();
-                            // if there is an element to be pushed on the queue, return addr of queue element
-                            if (!write_list.empty()) {
-                                write_list.pop_front();
-                                item.add_flags(read_writes);
-                                return true;
-                            }
-                            else return false;
-                        }
-                        // not a list, has exactly one element
-                        else if (!is_empty(tailitem)) {
-                            tailitem.add_flags(empty_bit);
+           fence();
+            // empty queue
+            if (index == tail_) {
+                if (tailitem.has_write()) {
+                    if (is_list(tailitem) && has_push(tailitem)) {
+                        auto& write_list = tailitem.template write_value<std::list<T>>();
+                        // if there is an element to be pushed on the queue, return addr of queue element
+                        if (!write_list.empty()) {
+                            write_list.pop_front();
                             return true;
                         }
                         else return false;
                     }
-                    // fail if trying to read from an empty queue
-                    else {
-                        return false;  
+                    // not a list, has exactly one element
+                    else if (!is_empty(tailitem)) {
+                        tailitem.add_flags(empty_bit);
+                        return true;
                     }
-                } 
-            }
-            if (has_delete(item)) {
-                index = (index + 1) % BUF_SIZE;
-                item = Sto::item(this, index);
-            }
-            else break;
+                    else return false;
+                }
+                // fail if trying to read from an empty queue
+                else {
+                    return false;  
+                }
+            } 
         }
-        item.add_flags(delete_bit);
-        item.add_write(0);
+        if (headitem.has_write()) {
+            std::list<T> popped_list;
+            popped_list.push_back(queueSlots[head_]);
+            headitem.add_write(popped_list);
+        } else {
+            auto& popped_list = headitem.template write_value<std::list<T>>();
+            popped_list.push_back(queueSlots[head_]);
+        }
+        head_ = (head_+1)%BUF_SIZE;
         return true;
     }
 
@@ -201,10 +201,6 @@ private:
         return item.flags() & delete_bit;
     }
     
-    bool is_rw(const TransItem& item) {
-        return item.flags() & read_writes;
-    }
- 
     bool is_list(const TransItem& item) {
         return item.flags() & list_bit;
     }
@@ -236,16 +232,9 @@ private:
         // queueversion_ should be locked here because we must have popped
         // or locked to push onto the queue
         assert(queueversion_.is_locked_here());
-        // install pops
-        if (has_delete(item)) {
-            // only increment head if item popped from actual q
-            if (!is_rw(item)) {
-                head_ = (head_+1) % BUF_SIZE;
-            }
-        }
         // install pushes, but only if we added a write to
         //  the push/tail item on a push
-        else if (item.key<int>() == pushitem_key) {
+        if (item.key<int>() == pushitem_key) {
             auto head_index = head_;
             // write all the elements
             if (is_list(item) && has_push(item)) {
@@ -274,8 +263,16 @@ private:
     }
 
     void cleanup(TransItem& item, bool committed) override {
-        (void)item;
-        (void)committed;
+        if (!committed && item.key<int>() == popitem_key) {
+            auto& popped_list = item.template write_value<std::list<T>>();
+            while (!popped_list.empty()) {
+                // assert queue is not out of space            
+                assert(tail_ != (head_-1) % BUF_SIZE);
+                queueSlots[head_-1] = popped_list.front();
+                popped_list.pop_front();
+                head_ = (head_-1) % BUF_SIZE;
+            }
+        }
         if (queueversion_.is_locked_here()) {
             queueversion_.unlock();
         }

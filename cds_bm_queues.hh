@@ -17,13 +17,11 @@
 #include "PairingHeap.hh"
 #include "Queue1.hh"
 #include "Queue2.hh"
-//#include "FCQueue.hh"
-#include "FCQueue2.hh"
-#include "FCQueue3.hh"
-#include "FCQueueLP1.hh"
-#include "FCQueueNT1.hh"
-#include "FCQueueLP2.hh"
-#include "FCQueueNT2.hh"
+#include "QueuePops.hh"
+#include "FCQueueLP.hh"
+#include "FCQueueNT.hh"
+#include "FCQueueT.hh"
+#include "FCQueueTPops.hh"
 #include "cds_benchmarks.hh"
 
 // value types
@@ -143,29 +141,7 @@ template <typename T> struct DatatypeHarness<Queue1<T>> : public STOQueueHarness
 template <typename T> struct DatatypeHarness<Queue1<T, false>> : public STOQueueHarness<Queue1<T, false>>{};
 template <typename T> struct DatatypeHarness<Queue2<T>> : public STOQueueHarness<Queue2<T>>{};
 template <typename T> struct DatatypeHarness<Queue2<T, false>> : public STOQueueHarness<Queue2<T,false>>{};
-template <typename T> struct DatatypeHarness<FCQueue2<T, TNonopaqueWrapped>> {
-    typedef T value_type;
-public:
-    bool pop() { int ret; return v_.pop(ret); }
-    bool cleanup_pop() { 
-        Sto::start_transaction();
-        bool r = pop();
-        assert(Sto::try_commit());
-        return r;
-    }
-    void push(T v) { v_.push(v); }
-    void init_push(T v) { 
-        Sto::start_transaction();
-        v_.push(v);
-        assert(Sto::try_commit());
-    }
-    size_t size() { return v_.size(); }
-    void print_statistics() { this->v_.print_statistics(); }
-
-private:
-    FCQueue2<T, TNonopaqueWrapped> v_;
-};
-template <typename T> struct DatatypeHarness<FCQueue3<T>> {
+template <typename T> struct DatatypeHarness<FCQueueT<T>> {
     typedef T value_type;
 public:
     bool pop() { return v_.pop(); }
@@ -183,30 +159,31 @@ public:
     }
 
 private:
-    FCQueue3<T> v_;
+    FCQueueT<T> v_;
 };
-template <typename T> struct DatatypeHarness<FCQueueLP1<T>> { 
+template <typename T> struct DatatypeHarness<FCQueueTPops<T>> {
     typedef T value_type;
-    typedef typename FCQueueLP1<T>::pop_type pop_type;
 public:
-    pop_type& pop() { return v_.pop(); }
+    bool pop() { return v_.pop(); }
     bool cleanup_pop() { 
-        v_.clear();
-        return false;
+        Sto::start_transaction();
+        bool r = pop();
+        assert(Sto::try_commit());
+        return r;
     }
-    void push(value_type v) { v_.push(v); }
-    void init_push(value_type v) { 
+    void push(T v) { v_.push(v); }
+    void init_push(T v) { 
         Sto::start_transaction();
         v_.push(v);
         assert(Sto::try_commit());
     }
-    size_t size() { return 0; }
+
 private:
-    FCQueueLP1<T> v_;
+    FCQueueTPops<T> v_;
 };
-template <typename T> struct DatatypeHarness<FCQueueLP2<T>> { 
+template <typename T> struct DatatypeHarness<FCQueueLP<T>> { 
     typedef T value_type;
-    typedef typename FCQueueLP2<T>::pop_type pop_type;
+    typedef typename FCQueueLP<T>::pop_type pop_type;
 public:
     pop_type& pop() { return v_.pop(); }
     bool cleanup_pop() { 
@@ -219,9 +196,9 @@ public:
         assert(Sto::try_commit());
     }
 private:
-    FCQueueLP2<T> v_;
+    FCQueueLP<T> v_;
 };
-template <typename T> struct DatatypeHarness<FCQueueNT1<T>> {
+template <typename T> struct DatatypeHarness<FCQueueNT<T>> {
     typedef T value_type;
 public:
     bool pop() { return v_.pop(); }
@@ -239,43 +216,8 @@ public:
     }
 
 private:
-    FCQueueNT1<T> v_;
+    FCQueueNT<T> v_;
 };
-template <typename T> struct DatatypeHarness<FCQueueNT2<T>> {
-    typedef T value_type;
-public:
-    bool pop() { return v_.pop(); }
-    bool cleanup_pop() { 
-        Sto::start_transaction();
-        bool r = pop();
-        assert(Sto::try_commit());
-        return r;
-    }
-    void push(T v) { v_.push(v); }
-    void init_push(T v) { 
-        Sto::start_transaction();
-        v_.push(v);
-        assert(Sto::try_commit());
-    }
-
-private:
-    FCQueueNT2<T> v_;
-};
-template <typename T> struct DatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS()>> : 
-    public CDSQueueHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS()>>{
-        void print_statistics() { this->v_.print_statistics(); }
-    };
-#define FCQUEUE_TRAITS_ELIM() cds::container::fcqueue::make_traits< \
-    cds::opt::lock_type<cds::sync::spin>, \
-    cds::opt::back_off<cds::backoff::delay_of<2>>, \
-    cds::opt::allocator<CDS_DEFAULT_ALLOCATOR>, \
-    cds::opt::stat<cds::container::fcqueue::empty_stat>, \
-    cds::opt::memory_model<cds::opt::v::relaxed_ordering>, \
-    cds::opt::enable_elimination<true>>::type
-template <typename T> struct DatatypeHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS_ELIM()>>  :
-    public CDSQueueHarness<cds::container::FCQueue<T, std::queue<T>, FCQUEUE_TRAITS_ELIM()>>{
-        void print_statistics() { this->v_.print_statistics(); }
-    };
 template <typename T> struct DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, T>> : 
     public CDSQueueHarness<cds::container::BasketQueue<cds::gc::HP, T>>{};
 template <typename T> struct DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, T>> : 
@@ -547,18 +489,16 @@ int num_pqueues = 4;
     {desc, "RW queue", new test<DatatypeHarness<cds::container::RWQueue<type>>>(CDS, ## __VA_ARGS__)}, \
     {desc, "Segmented queue", new test<DatatypeHarness<cds::container::SegmentedQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
     {desc, "TC queue", new test<DatatypeHarness<cds::container::TsigasCycleQueue<type>>>(CDS, ## __VA_ARGS__)}, \
-    {desc, "NonTrans FC Queue", new test<DatatypeHarness<FCQueueNT2<type>>>(CDS, ## __VA_ARGS__)}
+    {desc, "NonTrans FC Queue", new test<DatatypeHarness<FCQueueNT<type>>>(CDS, ## __VA_ARGS__)}
 */
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
-    {desc, "FC Queue 3", new test<DatatypeHarness<FCQueue3<type>>>(STO, ## __VA_ARGS__)}
+    {desc, "FC Queue 3", new test<DatatypeHarness<FCQueueT<type>>>(STO, ## __VA_ARGS__)}
     //{desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "STO2 queue", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)}, \
-    {desc, "NonTrans FC Queue", new test<DatatypeHarness<FCQueueNT2<type>>>(CDS, ## __VA_ARGS__)}, \
-    {desc, "Wrapped NT FC Queue2", new test<DatatypeHarness<FCQueueNT2<type>>>(STO, ## __VA_ARGS__)},\
-    //{desc, "STO queue O", new test<DatatypeHarness<Queue<type>>>(STO, ## __VA_ARGS__)},                                  
-    //{desc, "STO queue2 O", new test<DatatypeHarness<Queue2<type>>>(STO, ## __VA_ARGS__)},                                  
-    //{desc, "FCQueueLP2", new test<DatatypeHarness<FCQueueLP2<type>>>(STO, ## __VA_ARGS__)},                                  
+    {desc, "NonTrans FC Queue", new test<DatatypeHarness<FCQueueNT<type>>>(CDS, ## __VA_ARGS__)}, \
+    {desc, "Wrapped NT FC Queue", new test<DatatypeHarness<FCQueueNT<type>>>(STO, ## __VA_ARGS__)},\
+    //{desc, "FCQueueLP", new test<DatatypeHarness<FCQueueLP<type>>>(STO, ## __VA_ARGS__)},                                  
 std::vector<Test> make_queue_tests() {
     return {
         //MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
