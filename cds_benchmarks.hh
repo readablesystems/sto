@@ -63,7 +63,7 @@ void* test_thread(void* data);
 
 // Helper functions for printing
 void dualprintf(const char* fmt,...); // prints to both the verbose and csv files
-void print_abort_stats(void);        // prints how many aborts/commits, etc. for STO ds
+float get_abort_stats(void);        // prints how many aborts/commits, etc. for STO ds
 
 // Abstract types to generalize running tests
 template <typename DS> struct DatatypeHarness{};
@@ -89,4 +89,9 @@ struct Test {
     std::string desc;
     const char* ds;
     GenericTest* test;
+};
+
+struct Record {
+    int nthreads;
+    float speed;
 };

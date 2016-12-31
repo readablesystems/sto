@@ -30,7 +30,7 @@ void* test_thread(void *data) {
 }
 
 void* record_perf_thread(void* x) {
-    int nthreads = *(int*)x;
+    int nthreads = ((Record*)x)->nthreads;
     int total1, total2;
     struct timeval tv1, tv2;
     double ops_per_s = 0; 
@@ -55,76 +55,67 @@ void* record_perf_thread(void* x) {
     gettimeofday(&tv2, NULL);
     double seconds = ((tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
     ops_per_s = (total2-total1)/seconds;
-    
-    dualprintf("%f, ", ops_per_s);
-    fprintf(stderr, "%d threads speed: %f ops/s, ", nthreads, ops_per_s);
+   
+    ((Record*)x)->speed = ops_per_s;
     return nullptr;
 }
 
-void startAndWait(GenericTest* test, size_t size, int nthreads) {
+void startAndWait(GenericTest* test, size_t size, int nthreads, int repeats) {
+    // to record abort and perf results
+    std::vector<float> aborts, speeds;
     // create performance recording thread
     pthread_t recorder;
-    pthread_create(&recorder, NULL, record_perf_thread, &nthreads);
     // create threads to run the test
     pthread_t tids[nthreads];
     Tester testers[nthreads];
-    for (int i = 0; i < nthreads; ++i) {
-        testers[i].me = i;
-        testers[i].test = test;
-        testers[i].init_size = size;
-        testers[i].nthreads = nthreads;
-        pthread_create(&tids[i], NULL, test_thread, &testers[i]);
-    }
-    for (int i = 0; i < nthreads; ++i) {
-        pthread_join(tids[i], NULL);
-    }
-    pthread_join(recorder, NULL);
+    Record record;
+   
+    for (int r = 0; r < repeats; ++r) {
+        record.speed = 0;
+        record.nthreads = nthreads;
+        pthread_create(&recorder, NULL, record_perf_thread, &record);
 
-    fprintf(global_verbose_stats_file, "\n");
-    int total_ke_insert, total_ke_find, total_ke_erase, total_inserts, total_find, total_erase;
-    total_ke_insert = total_ke_find = total_ke_erase = total_inserts = total_find = total_erase = 0;
-    for (int i = 0; i < nthreads; ++i) {
-        if (global_thread_ctrs[i].push || global_thread_ctrs[i].pop  || global_thread_ctrs[i].skip) {
-            fprintf(global_verbose_stats_file, "Thread %d \tpushes: %ld \tpops: %ld, \tskips: %ld\n", i, 
-                    global_thread_ctrs[i].push, 
-                    global_thread_ctrs[i].pop, 
-                    global_thread_ctrs[i].skip);
-        } else {
-            fprintf(global_verbose_stats_file, "Thread %d \tinserts: %ld \terases: %ld, \tfinds: %ld\n", i, 
-                    global_thread_ctrs[i].insert, 
-                    global_thread_ctrs[i].erase, 
-                    global_thread_ctrs[i].find);
-            total_ke_insert += global_thread_ctrs[i].ke_insert;
-            total_ke_find += global_thread_ctrs[i].ke_find;
-            total_ke_erase += global_thread_ctrs[i].ke_erase;
-            total_inserts += global_thread_ctrs[i].insert;
-            total_erase += global_thread_ctrs[i].erase;
-            total_find += global_thread_ctrs[i].find;
+        for (int i = 0; i < nthreads; ++i) {
+            testers[i].me = i;
+            testers[i].test = test;
+            testers[i].init_size = size;
+            testers[i].nthreads = nthreads;
+            pthread_create(&tids[i], NULL, test_thread, &testers[i]);
         }
-        global_thread_ctrs[i].ke_insert = global_thread_ctrs[i].ke_find = global_thread_ctrs[i].ke_erase
-        = global_thread_ctrs[i].insert = global_thread_ctrs[i].erase = global_thread_ctrs[i].find
-        = global_thread_ctrs[i].push = global_thread_ctrs[i].pop = global_thread_ctrs[i].skip
-        = 0;
+        for (int i = 0; i < nthreads; ++i) {
+            pthread_join(tids[i], NULL);
+        }
+        pthread_join(recorder, NULL);
+
+        speeds.push_back(record.speed);
+        aborts.push_back(get_abort_stats());
     }
-    fprintf(global_verbose_stats_file, "Success Inserts: %f%%\t Success Finds: %f%%\t Success Erase: %f%%\t\n", 
-            100 - 100*(double)total_ke_insert/total_inserts,
-            100 - 100*(double)total_ke_find/total_find,
-            100*(double)total_ke_erase/total_erase);
-    print_abort_stats();
+
+    for (float s: speeds) {
+        dualprintf("%3f,", s);
+    }
+    dualprintf(":");
+    for (float a: aborts) {
+        dualprintf("%3f,", a);
+    }
 }
 
 void dualprintf(const char* fmt,...) {
-    va_list args1, args2;
+    va_list args1, args2, args3;
     va_start(args1, fmt);
     va_start(args2, fmt);
+    va_start(args3, fmt);
     vfprintf(global_verbose_stats_file, fmt, args1);
     vfprintf(global_stats_file, fmt, args2);
+    vfprintf(stderr, fmt, args3);
     va_end(args1);
     va_end(args2);
+    va_end(args3);
 }
 
-void print_abort_stats() {
+float get_abort_stats() {
 #if STO_PROFILE_COUNTERS
+    float aborts = 0;
     if (txp_count >= txp_total_aborts) {
         txp_counters tc = Transaction::txp_counters_combined();
 
@@ -135,10 +126,7 @@ void print_abort_stats() {
         fprintf(global_verbose_stats_file, "\t$ %llu starts, %llu max read set, %llu commits",
                 txc_total_starts, tc.p(txp_max_set), txc_total_commits);
         if (txc_total_aborts) {
-            // print aborts to global stats file
-            fprintf(global_stats_file, "%.3f;", 100.0 * (double) tc.p(txp_total_aborts) / tc.p(txp_total_starts));
-            fprintf(stderr, "%.3f;\n", 100.0 * (double) tc.p(txp_total_aborts) / tc.p(txp_total_starts));
-
+            aborts = 100.0 * (double) tc.p(txp_total_aborts) / tc.p(txp_total_starts);
             fprintf(global_verbose_stats_file, ", %llu (%.3f%%) aborts",
                     tc.p(txp_total_aborts),
                     100.0 * (double) tc.p(txp_total_aborts) / tc.p(txp_total_starts));
@@ -146,15 +134,13 @@ void print_abort_stats() {
                 fprintf(global_verbose_stats_file, "\n$ %llu (%.3f%%) of aborts at commit time",
                         tc.p(txp_commit_time_aborts),
                         100.0 * (double) tc.p(txp_commit_time_aborts) / tc.p(txp_total_aborts));
-        } else {
-            fprintf(global_stats_file, "0;");
-            fprintf(stderr, "0;\n");
         }
         unsigned long long txc_commit_attempts = txc_total_starts - (txc_total_aborts - txc_commit_aborts);
         fprintf(global_verbose_stats_file, "\n\t$ %llu commit attempts, %llu (%.3f%%) nonopaque\n",
                 txc_commit_attempts, tc.p(txp_commit_time_nonopaque),
                 100.0 * (double) tc.p(txp_commit_time_nonopaque) / txc_commit_attempts);
     }
+    return aborts;
     Transaction::clear_stats();
 #endif
 }
@@ -223,8 +209,7 @@ int main() {
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t init_keys: %d, nthreads: %d\n", 
                             map_tests[i+j].desc.c_str(), map_tests[i+j].ds, *init_keys, *nthreads);
                     startAndWait(map_tests[i+j].test, *init_keys, *nthreads);
-                    fprintf(stderr, "\nRan Test %s on %s\t init_keys: %d, nthreads: %d\n", 
-                            map_tests[i+j].desc.c_str(), map_tests[i+j].ds, *init_keys, *nthreads);
+                    dualprintf(";");
                 }
                 dualprintf("\n");
             }
@@ -247,8 +232,7 @@ int main() {
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
                             pqueue_tests[i+j].desc.c_str(), pqueue_tests[i+j].ds, *size, *nthreads);
                     startAndWait(pqueue_tests[i+j].test, *size, *nthreads);
-                    fprintf(stderr, "\nRan Test %s on %s\t size: %d, nthreads: %d\n", 
-                            pqueue_tests[i+j].desc.c_str(), pqueue_tests[i+j].ds, *size, *nthreads);
+                    dualprintf(";");
                 }
                 if (pqueue_tests[i].desc.find("PushPop")==std::string::npos) dualprintf("\n");
             }
@@ -270,9 +254,8 @@ int main() {
                     }
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
                             queue_tests[i+j].desc.c_str(), queue_tests[i+j].ds, *size, *nthreads);
-                    fprintf(stderr, "Running Test %s on %s\t size: %d, nthreads: %d\n", 
-                            queue_tests[i+j].desc.c_str(), queue_tests[i+j].ds, *size, *nthreads);
-                    startAndWait(queue_tests[i+j].test, *size, *nthreads);
+                    startAndWait(queue_tests[i+j].test, *size, *nthreads, 5);
+                    dualprintf(";");
                 }
                 if (queue_tests[i].desc.find("PushPop")==std::string::npos) dualprintf("\n");
             }
@@ -283,3 +266,37 @@ int main() {
     cds::Terminate();
     return 0;
 }
+
+/*
+        fprintf(global_verbose_stats_file, "\n");
+        int total_ke_insert, total_ke_find, total_ke_erase, total_inserts, total_find, total_erase;
+        total_ke_insert = total_ke_find = total_ke_erase = total_inserts = total_find = total_erase = 0;
+        for (int i = 0; i < nthreads; ++i) {
+            if (global_thread_ctrs[i].push || global_thread_ctrs[i].pop  || global_thread_ctrs[i].skip) {
+                fprintf(global_verbose_stats_file, "Thread %d \tpushes: %ld \tpops: %ld, \tskips: %ld\n", i, 
+                        global_thread_ctrs[i].push, 
+                        global_thread_ctrs[i].pop, 
+                        global_thread_ctrs[i].skip);
+            } else {
+                fprintf(global_verbose_stats_file, "Thread %d \tinserts: %ld \terases: %ld, \tfinds: %ld\n", i, 
+                        global_thread_ctrs[i].insert, 
+                        global_thread_ctrs[i].erase, 
+                        global_thread_ctrs[i].find);
+                total_ke_insert += global_thread_ctrs[i].ke_insert;
+                total_ke_find += global_thread_ctrs[i].ke_find;
+                total_ke_erase += global_thread_ctrs[i].ke_erase;
+                total_inserts += global_thread_ctrs[i].insert;
+                total_erase += global_thread_ctrs[i].erase;
+                total_find += global_thread_ctrs[i].find;
+            }
+            global_thread_ctrs[i].ke_insert = global_thread_ctrs[i].ke_find = global_thread_ctrs[i].ke_erase
+            = global_thread_ctrs[i].insert = global_thread_ctrs[i].erase = global_thread_ctrs[i].find
+            = global_thread_ctrs[i].push = global_thread_ctrs[i].pop = global_thread_ctrs[i].skip
+            = 0;
+        }
+        fprintf(global_verbose_stats_file, "Success Inserts: %f%%\t Success Finds: %f%%\t Success Erase: %f%%\t\n", 
+                100 - 100*(double)total_ke_insert/total_inserts,
+                100 - 100*(double)total_ke_find/total_find,
+                100*(double)total_ke_erase/total_erase);
+
+ * */
