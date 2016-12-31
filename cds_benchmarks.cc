@@ -55,8 +55,9 @@ void* record_perf_thread(void* x) {
     gettimeofday(&tv2, NULL);
     double seconds = ((tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
     ops_per_s = (total2-total1)/seconds;
+    
     dualprintf("%f, ", ops_per_s);
-    fprintf(stderr, "%d threads speed: %f ops/s\n", nthreads, ops_per_s);
+    fprintf(stderr, "%d threads speed: %f ops/s, ", nthreads, ops_per_s);
     return nullptr;
 }
 
@@ -134,6 +135,10 @@ void print_abort_stats() {
         fprintf(global_verbose_stats_file, "\t$ %llu starts, %llu max read set, %llu commits",
                 txc_total_starts, tc.p(txp_max_set), txc_total_commits);
         if (txc_total_aborts) {
+            // print aborts to global stats file
+            fprintf(global_stats_file, "%.3f;", 100.0 * (double) tc.p(txp_total_aborts) / tc.p(txp_total_starts));
+            fprintf(stderr, "%.3f;\n", 100.0 * (double) tc.p(txp_total_aborts) / tc.p(txp_total_starts));
+
             fprintf(global_verbose_stats_file, ", %llu (%.3f%%) aborts",
                     tc.p(txp_total_aborts),
                     100.0 * (double) tc.p(txp_total_aborts) / tc.p(txp_total_starts));
