@@ -22,12 +22,11 @@ private:
 
 	static const int _MAX_THREADS	= 1024;
 	static const int _NULL_VALUE	= 0;
-	static const int _ENQ_VALUE     = (INT_MIN+0); // have we enqueued anything? 
 	static const int _ABORT_VALUE   = (INT_MIN+1); // should abort!
-	static const int _CLEANUP_VALUE  = (INT_MIN+2); 
+	static const int _CLEANUP_VALUE = (INT_MIN+2); 
 	static const int _UNLOCK_VALUE  = (INT_MIN+3); 
 	static const int _POP_VALUE     = (INT_MIN+4); 
-	static const int _PUSH_VALUE     = (INT_MIN+5); 
+	static const int _PUSH_VALUE    = (INT_MIN+5); 
 	const int		_NUM_THREADS    = 20;
 
 	//list inner types ------------------------------
@@ -130,11 +129,15 @@ private:
 			SlotInfo* curr_slot = _tail_slot.get();
 			while(NULL != curr_slot->_next) {
                 int tid = curr_slot->_tid;
+
+                // check if the queue is "locked" and if this thread is the 
+                // locking thread. abort if the queue is indeed locked.
                 if (_locked_tid >= 0 && tid != _locked_tid) {
                     curr_slot->_req_ans = _ABORT_VALUE;
                     curr_slot = curr_slot->_next;
                     continue;
                 }
+
 				const int curr_value = curr_slot->_req_ans;
 
                 // PUSHES
@@ -158,6 +161,7 @@ private:
 						_NODE_SIZE += 4;
 					}
 
+                // CLEANUP repushes the nodes on the front of the queue.
                 } else if(_CLEANUP_VALUE == curr_value) {
                     auto popped_list = (std::list<int>*) curr_slot->_req_list;
                     while(!popped_list->empty()) {
@@ -182,7 +186,7 @@ private:
                     }
                     curr_slot->_req_list = NULL;
 
-                // ACTUAL DEQS
+                // POPS 
                 // done when sets curr_value to some negative value (found), NULL (empty), or ABORT
                 // this pops an item off the queue and locks the queue, or aborts if the queue is locked
                 // by someone else
@@ -202,6 +206,7 @@ private:
                         curr_slot->_req_ans = _NULL_VALUE;
                     }
 
+                // UNLOCK by setting the locked_tid to -1.
                 } else if(_UNLOCK_VALUE == curr_value) {
                     _locked_tid = -1;
                     curr_slot->_req_ans = _NULL_VALUE;
@@ -285,20 +290,20 @@ public:
 
 	bool pop() {
         int popped = fc_pop(); 
-        if (popped == _NULL_VALUE) {
-            return false;
-        } else {
-            auto item = Sto::item(this, popitem_key);
-            if (!item.has_write()) {
-                std::list<T> popped_list;
-                popped_list.push_back(popped);
-                item.add_write(popped_list);
-            } else {
-                auto& popped_list = item.template write_value<std::list<T>>();
+        std::list<T> popped_list;
+        auto popitem = Sto::item(this, popitem_key);
+        if (!popitem.has_write()) {
+            if (popped) {
                 popped_list.push_back(popped);
             }
-            return true;
+            popitem.add_write(popped_list);
+        } else {
+            auto& popped_list = popitem.template write_value<std::list<T>>();
+            if (popped) {
+                popped_list.push_back(popped);
+            }
         }
+        return popped;
 	}
 
 	bool fc_push_val(const int inValue) {
@@ -512,9 +517,10 @@ private:
         }
     }
     
-    void unlock(TransItem&) override {
-        fc_unlock();
-        return;
+    void unlock(TransItem& item) override {
+        if (item.key<int>() == popitem_key) {
+            fc_unlock();
+        }
     }
 
     void cleanup(TransItem& item, bool committed) override {

@@ -141,6 +141,8 @@ template <typename T> struct DatatypeHarness<Queue1<T>> : public STOQueueHarness
 template <typename T> struct DatatypeHarness<Queue1<T, false>> : public STOQueueHarness<Queue1<T, false>>{};
 template <typename T> struct DatatypeHarness<Queue2<T>> : public STOQueueHarness<Queue2<T>>{};
 template <typename T> struct DatatypeHarness<Queue2<T, false>> : public STOQueueHarness<Queue2<T,false>>{};
+template <typename T> struct DatatypeHarness<QueuePops<T>> : public STOQueueHarness<QueuePops<T>>{};
+template <typename T> struct DatatypeHarness<QueuePops<T, false>> : public STOQueueHarness<QueuePops<T,false>>{};
 template <typename T> struct DatatypeHarness<FCQueueT<T>> {
     typedef T value_type;
 public:
@@ -352,23 +354,23 @@ public:
     PushPopTest(int ds_type, int val_type) : QueueTest<DH>(val_type), ds_type_(ds_type) {};
     void run(int me) {
         if (me > 1) { sleep(1); return; }
-        //Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
-        //std::uniform_int_distribution<long> slotdist(1, MAX_VALUE);
+        Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
+        std::uniform_int_distribution<long> slotdist(1, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
             if (ds_type_ == STO) {
-                //Rand transgen_snap = transgen;
+                Rand transgen_snap = transgen;
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        this->do_q_op(q_ops_array[me % arraysize(q_ops_array)], rand_vals[(i*me + i) % arraysize(rand_vals)]);
+                        this->do_q_op(q_ops_array[me % arraysize(q_ops_array)], slotdist(transgen));
                         if (Sto::try_commit()) break;
                     } catch (Transaction::Abort e) {
-                        //transgen = transgen_snap;
+                        transgen = transgen_snap;
                     }
                 }
                 this->inc_ctrs(q_ops_array[me % arraysize(q_ops_array)], me);
             } else {
-                this->do_q_op(q_ops_array[me % arraysize(q_ops_array)], rand_vals[(i*me + i) % arraysize(rand_vals)]);
+                this->do_q_op(q_ops_array[me % arraysize(q_ops_array)], slotdist(transgen));
                 this->inc_ctrs(q_ops_array[me % arraysize(q_ops_array)], me);
             }
         }
@@ -382,27 +384,25 @@ public:
     RandomQSingleOpTest(int ds_type, int val_type) : QueueTest<DH>(val_type), ds_type_(ds_type) {};
     void run(int me) {
         q_op my_q_op;
-        //Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
-        //std::uniform_int_distribution<long> slotdist(1, MAX_VALUE);
+        Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
+        std::uniform_int_distribution<long> slotdist(1, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
             if (ds_type_ == STO) {
-                //Rand transgen_snap = transgen;
+                Rand transgen_snap = transgen;
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        my_q_op = q_ops_array[q_ops_array[i % 2]];
-                        //my_q_op = q_ops_array[slotdist(transgen) % arraysize(q_ops_array)];
-                        this->do_q_op(my_q_op, rand_vals[(i*me + i) % arraysize(rand_vals)]);
+                        my_q_op = q_ops_array[slotdist(transgen) % arraysize(q_ops_array)];
+                        this->do_q_op(my_q_op, slotdist(transgen)); 
                         if (Sto::try_commit()) break;
                     } catch (Transaction::Abort e) {
-                        //transgen = transgen_snap;
+                        transgen = transgen_snap;
                     }
                 }
                 this->inc_ctrs(my_q_op, me);
             } else {
-                my_q_op = q_ops_array[q_ops_array[i%2]];
-                //my_q_op = q_ops_array[slotdist(transgen) % arraysize(q_ops_array)];
-                this->do_q_op(my_q_op, rand_vals[(i*me + i) % arraysize(rand_vals)]);
+                my_q_op = q_ops_array[slotdist(transgen) % arraysize(q_ops_array)];
+                this->do_q_op(my_q_op, slotdist(transgen));
                 this->inc_ctrs(my_q_op, me);
             }
         }
@@ -493,20 +493,24 @@ int num_pqueues = 4;
 */
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
-    {desc, "FC Queue 3", new test<DatatypeHarness<FCQueueT<type>>>(STO, ## __VA_ARGS__)}
-    //{desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)},                                  \
-    {desc, "STO2 queue", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)}, \
-    {desc, "NonTrans FC Queue", new test<DatatypeHarness<FCQueueNT<type>>>(CDS, ## __VA_ARGS__)}, \
-    {desc, "Wrapped NT FC Queue", new test<DatatypeHarness<FCQueueNT<type>>>(STO, ## __VA_ARGS__)},\
-    //{desc, "FCQueueLP", new test<DatatypeHarness<FCQueueLP<type>>>(STO, ## __VA_ARGS__)},                                  
+    {desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)},      \
+    {desc, "STO2 queue", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)},      \
+    {desc, "STOPops queue", new test<DatatypeHarness<QueuePops<type, false>>>(STO, ## __VA_ARGS__)},\
+    {desc, "FCQueueNT", new test<DatatypeHarness<FCQueueNT<type>>>(CDS, ## __VA_ARGS__)},           \
+    {desc, "Wrapped FCQueueNT", new test<DatatypeHarness<FCQueueNT<type>>>(STO, ## __VA_ARGS__)},   \
+    {desc, "FCQueueT", new test<DatatypeHarness<FCQueueT<type>>>(STO, ## __VA_ARGS__)},             \
+    {desc, "FCQueueTPops", new test<DatatypeHarness<FCQueueTPops<type>>>(STO, ## __VA_ARGS__)},     \
+    {desc, "FCQueueLP", new test<DatatypeHarness<FCQueueLP<type>>>(STO, ## __VA_ARGS__)}
+             
 std::vector<Test> make_queue_tests() {
     return {
-        //MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
-        //MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomQSingleOpTest, int, RANDOM_VALS),
-        MAKE_QUEUE_TESTS("Q:RandMultiOps", GeneralTxnsTest, int, RANDOM_VALS, 5),
-        MAKE_QUEUE_TESTS("Q:RandMultiOps", GeneralTxnsTest, int, RANDOM_VALS, 10),
+        MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
+        MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomQSingleOpTest, int, RANDOM_VALS),
+        //MAKE_QUEUE_TESTS("Q:RandMultiOps", GeneralTxnsTest, int, RANDOM_VALS, 5),
+        //MAKE_QUEUE_TESTS("Q:RandMultiOps", GeneralTxnsTest, int, RANDOM_VALS, 10),
         //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[2]),
     };
 }
 //int num_queues = 11;
-int num_queues = 1;
+int num_queues = 8;
+//int num_queues = 1;
