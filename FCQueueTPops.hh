@@ -24,9 +24,10 @@ private:
 	static const int _NULL_VALUE	= 0;
 	static const int _ENQ_VALUE     = (INT_MIN+0); // have we enqueued anything? 
 	static const int _ABORT_VALUE   = (INT_MIN+1); // should abort!
-	static const int _CLEANUP_VALUE  = (INT_MIN+2); // pop() was called. Mark an item phantom (or abort)
-	static const int _UNLOCK_VALUE  = (INT_MIN+2); // pop() was called. Mark an item phantom (or abort)
-	static const int _POP_VALUE     = (INT_MIN+3); // pop() was called. Mark an item phantom (or abort)
+	static const int _CLEANUP_VALUE  = (INT_MIN+2); 
+	static const int _UNLOCK_VALUE  = (INT_MIN+3); 
+	static const int _POP_VALUE     = (INT_MIN+4); 
+	static const int _PUSH_VALUE     = (INT_MIN+5); 
 	const int		_NUM_THREADS    = 20;
 
 	//list inner types ------------------------------
@@ -131,6 +132,7 @@ private:
                 int tid = curr_slot->_tid;
                 if (_locked_tid >= 0 && tid != _locked_tid) {
                     curr_slot->_req_ans = _ABORT_VALUE;
+                    curr_slot = curr_slot->_next;
                     continue;
                 }
 				const int curr_value = curr_slot->_req_ans;
@@ -287,13 +289,13 @@ public:
             return false;
         } else {
             auto item = Sto::item(this, popitem_key);
-            if (item.has_write()) {
-                std::list<T> write_list;
-                write_list.push_back(popped);
-                item.add_write(write_list);
+            if (!item.has_write()) {
+                std::list<T> popped_list;
+                popped_list.push_back(popped);
+                item.add_write(popped_list);
             } else {
-                auto& write_list = item.template write_value<std::list<T>>();
-                write_list.push_back(popped);
+                auto& popped_list = item.template write_value<std::list<T>>();
+                popped_list.push_back(popped);
             }
             return true;
         }
@@ -333,16 +335,18 @@ public:
 		} while(true);
 	}
 
-	bool fc_push(std::list<int>& inValue) {
+	bool fc_push(std::list<int>* write_list) {
 		SlotInfo* my_slot = _tls_slot_info;
 		if(NULL == my_slot)
 			my_slot = get_new_slot();
 
 		SlotInfo* volatile&	my_next = my_slot->_next;
         void* volatile& my_re_list = my_slot->_req_list;
+		int volatile& my_re_ans = my_slot->_req_ans;
 		int volatile& my_re_tid = my_slot->_tid;
 		my_re_tid = TThread::id();
-		my_re_list = (void*)&inValue;
+		my_re_list = write_list;
+        my_re_ans = _PUSH_VALUE;
 
 		do {
 			if (NULL == my_next)
@@ -440,6 +444,42 @@ public:
         return my_re_ans;
     }
 
+    void fc_cleanup(std::list<int>* popped_list) {
+		SlotInfo* my_slot = _tls_slot_info;
+		if(NULL == my_slot)
+			my_slot = get_new_slot();
+
+		SlotInfo* volatile&	my_next = my_slot->_next;
+        void* volatile& my_re_list = my_slot->_req_list;
+		int volatile& my_re_tid = my_slot->_tid;
+		int volatile& my_re_ans = my_slot->_req_ans;
+		my_re_tid = TThread::id();
+		my_re_list = popped_list;
+		my_re_ans = _CLEANUP_VALUE;
+
+		do {
+			if (NULL == my_next)
+				enq_slot(my_slot);
+
+			bool is_cas = true;
+			if(lock_fc(_fc_lock, is_cas)) {
+				flat_combining();
+				_fc_lock.set(0);
+                return;
+			} else {
+				Memory::write_barrier();
+				if(!is_cas)
+				while(NULL != my_re_list && 0 != _fc_lock.getNotSafe()) {
+                    sched_yield();
+				} 
+				Memory::read_barrier();
+				if(NULL == my_re_list) {
+                    return;
+				}
+			}
+		} while(true);
+    }
+
 private:
     bool is_list(const TransItem& item) {
         return item.flags() & list_bit;
@@ -481,10 +521,7 @@ private:
         (void)item;
         if (!committed && item.key<int>() == popitem_key) {
             auto& popped_list = item.template write_value<std::list<T>>();
-            while(!popped_list.empty()) {
-                fc_push_val(popped_list.front());
-                popped_list.pop_front();
-            }
+            fc_cleanup(&popped_list);
             fc_unlock();
         }
     }

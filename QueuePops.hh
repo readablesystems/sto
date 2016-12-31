@@ -95,7 +95,6 @@ public:
         fence();
         auto index = head_;
         auto headitem = Sto::item(this, popitem_key);
-        headitem.add_write();
         
         if (index == tail_) {
            // we need to make sure that we unlock, since no other item will have
@@ -128,7 +127,7 @@ public:
                 }
             } 
         }
-        if (headitem.has_write()) {
+        if (!headitem.has_write()) {
             std::list<T> popped_list;
             popped_list.push_back(queueSlots[head_]);
             headitem.add_write(popped_list);

@@ -9,7 +9,7 @@
 #include "Testers.hh"
 
 #define GLOBAL_SEED 10
-#define N_THREADS 2 // Number of concurrent threads
+#define N_THREADS 5 // Number of concurrent threads
 #define TOTAL_TRANS 100000
 #define NTRANS TOTAL_TRANS/N_THREADS // Number of transactions each thread should run.
 #define MAX_OPS 5 // Maximum number of operations in a transaction.
@@ -27,8 +27,8 @@
 //#define DS CUCKOOHASHMAPNA
 
 #if DS == QUEUE 
-QueueTester<FCQueueTPops<int>, std::queue<int>> tester = QueueTester<FCQueueTPops<int>, std::queue<int>>();
-//QueueTester<Queue2<int,false,100000>, std::queue<int>> tester = QueueTester<Queue2<int,false,100000>, std::queue<int>>();
+//QueueTester<FCQueueTPops<int>, std::queue<int>> tester = QueueTester<FCQueueTPops<int>, std::queue<int>>();
+QueueTester<QueuePops<int,false,100000>, std::queue<int>> tester = QueueTester<QueuePops<int,false,100000>, std::queue<int>>();
 #elif DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
 #elif DS == HASHTABLE
@@ -197,8 +197,8 @@ int main() {
         initial_seeds[i] = random();
 
 #if DS == QUEUE
-    FCQueueTPops<int> q;
-    //Queue2<int,false,100000> q;
+    //FCQueueTPops<int> q;
+    QueuePops<int,false,100000> q;
     std::queue<int> q1;
 #elif DS == PRIORITY_QUEUE 
     PriorityQueue<int> q;
