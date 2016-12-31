@@ -146,6 +146,9 @@ void print_abort_stats() {
                 fprintf(global_verbose_stats_file, "\n$ %llu (%.3f%%) of aborts at commit time",
                         tc.p(txp_commit_time_aborts),
                         100.0 * (double) tc.p(txp_commit_time_aborts) / tc.p(txp_total_aborts));
+        } else {
+            fprintf(global_stats_file, "0;");
+            fprintf(stderr, "0;\n");
         }
         unsigned long long txc_commit_attempts = txc_total_starts - (txc_total_aborts - txc_commit_aborts);
         fprintf(global_verbose_stats_file, "\n\t$ %llu commit attempts, %llu (%.3f%%) nonopaque\n",
@@ -180,7 +183,6 @@ int main() {
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
 
-  
     //auto defaultsto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 125000, 0, 33, 33);
     //startAndWait(defaultsto, 500000, 12);
     //auto defaultcds = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,10000>>>(STO, 10000, 0, 33, 33);
