@@ -495,13 +495,13 @@ int num_pqueues = 4;
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
     {desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)},      \
     {desc, "STO2 queue", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)},      \
-    {desc, "STOPops queue", new test<DatatypeHarness<QueuePops<type, false>>>(STO, ## __VA_ARGS__)},\
     {desc, "FCQueueNT", new test<DatatypeHarness<FCQueueNT<type>>>(CDS, ## __VA_ARGS__)},           \
     {desc, "Wrapped FCQueueNT", new test<DatatypeHarness<FCQueueNT<type>>>(STO, ## __VA_ARGS__)},   \
     {desc, "FCQueueT", new test<DatatypeHarness<FCQueueT<type>>>(STO, ## __VA_ARGS__)},             \
-    {desc, "FCQueueTPops", new test<DatatypeHarness<FCQueueTPops<type>>>(STO, ## __VA_ARGS__)},     \
     {desc, "FCQueueLP", new test<DatatypeHarness<FCQueueLP<type>>>(STO, ## __VA_ARGS__)}
              
+    //{desc, "STOPops queue", new test<DatatypeHarness<QueuePops<type, false>>>(STO, ## __VA_ARGS__)},
+    //{desc, "FCQueueTPops", new test<DatatypeHarness<FCQueueTPops<type>>>(STO, ## __VA_ARGS__)},     
 std::vector<Test> make_queue_tests() {
     return {
         MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
@@ -512,5 +512,5 @@ std::vector<Test> make_queue_tests() {
     };
 }
 //int num_queues = 11;
-int num_queues = 8;
+int num_queues = 6;
 //int num_queues = 1;

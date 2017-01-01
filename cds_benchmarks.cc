@@ -140,8 +140,8 @@ float get_abort_stats() {
                 txc_commit_attempts, tc.p(txp_commit_time_nonopaque),
                 100.0 * (double) tc.p(txp_commit_time_nonopaque) / txc_commit_attempts);
     }
-    return aborts;
     Transaction::clear_stats();
+    return aborts;
 #endif
 }
 
