@@ -151,7 +151,9 @@ private:
 						curr_slot->_time_stamp = _NULL_VALUE;
 						++deq_value_ary;
 					} else if(NULL != _head->_next) {
-						_head = _head->_next;
+			        	auto tmp = _head;
+                        _head = _head->_next;
+                        free(tmp);
 						deq_value_ary = _head->_values;
 						deq_value_ary += deq_value_ary[0];
 						continue;
@@ -201,7 +203,7 @@ public:
 	}
 	~FCQueueNT() { 
         auto node = _head;
-        while (node->_next != NULL) {
+        while (node != NULL) {
             auto tmp = node;
             node = node->_next;
             free(tmp);

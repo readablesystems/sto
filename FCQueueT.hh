@@ -192,7 +192,9 @@ private:
                                 break;
                             }
                         } else if(NULL != _head->_next) {
+                            auto tmp = _head;
                             _head = _head->_next;
+                            free(tmp);
                             deq_value_ary = _head->_values;
                             deq_value_ary += deq_value_ary->value_;
                             continue;
@@ -359,7 +361,6 @@ private:
             auto tmp = _head;
             _head = _head->_next;
             free(tmp);
-            tmp = NULL;
 		} else {
             // set where to start next in dequeing
 			_head->_values->set_internal_elem(deq_value_ary -  _head->_values);
@@ -400,7 +401,7 @@ public:
 
 	~FCQueueT() {
         auto node = _head;
-        while (node->_next != NULL) {
+        while (node != NULL) {
             auto tmp = node;
             node = node->_next;
             free(tmp);
