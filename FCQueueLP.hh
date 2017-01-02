@@ -66,7 +66,7 @@ private:
 
 	//list fields -----------------------------------
 	static thread_local SlotInfo*   _tls_slot_info;
-    AtomicReference<SlotInfo>       _tail_slot;
+    AtomicReference<SlotInfo>       _head_slot;
 	int volatile					_timestamp;
 
 	//list helper function --------------------------
@@ -74,21 +74,21 @@ private:
 		SlotInfo* my_slot= new SlotInfo();
 		_tls_slot_info = my_slot;
 
-		SlotInfo* curr_tail;
+		SlotInfo* curr_head;
 		do {
-			curr_tail = _tail_slot.get();
-			my_slot->_next = curr_tail;
-		} while(false == _tail_slot.compareAndSet(curr_tail, my_slot));
+			curr_head = _head_slot.get();
+			my_slot->_next = curr_head;
+		} while(false == _head_slot.compareAndSet(curr_head, my_slot));
 
 		return my_slot;
 	}
 
 	void enq_slot(SlotInfo* p_slot) {
-		SlotInfo* curr_tail;
+		SlotInfo* curr_head;
 		do {
-			curr_tail = _tail_slot.get();
-			p_slot->_next = curr_tail;
-		} while(false == _tail_slot.compareAndSet(curr_tail, p_slot));
+			curr_head = _head_slot.get();
+			p_slot->_next = curr_head;
+		} while(false == _head_slot.compareAndSet(curr_head, p_slot));
 	}
 
 	void enq_slot_if_needed(SlotInfo* p_slot) {
@@ -114,8 +114,8 @@ private:
 	char			_pad1[CACHE_LINE_SIZE];
 	const int		_NUM_REP;
 	const int		_REP_THRESHOLD;
-	Node* volatile	_head;
 	Node* volatile	_tail;
+	Node* volatile	_head;
 	int volatile	_NODE_SIZE;
 	Node* volatile	_new_node;
 
@@ -129,7 +129,7 @@ private:
 		++enq_value_ary;
 
 		// prepare for deq
-		int volatile * deq_value_ary = _tail->_values;
+		int volatile * deq_value_ary = _head->_values;
 		deq_value_ary += deq_value_ary[0];
 
 		int num_added = 0;
@@ -137,7 +137,7 @@ private:
 			Memory::read_barrier();
 
 			int num_changes=0;
-			SlotInfo* curr_slot = _tail_slot.get();
+			SlotInfo* curr_slot = _head_slot.get();
 			while(NULL != curr_slot->_next) {
 				const int curr_value = curr_slot->_req_ans;
 				if(curr_value > _NULL_VALUE) {
@@ -151,7 +151,7 @@ private:
 					if(num_added >= _NODE_SIZE) {
 						Node* const new_node2 = Node::get_new(_NODE_SIZE+4);
 						memcpy((void*)(new_node2->_values), (void*)(_new_node->_values), (_NODE_SIZE+2)*sizeof(int) );
-						//free(_new_node);
+						free(_new_node);
 						_new_node = new_node2; 
 						enq_value_ary = _new_node->_values;
 						*enq_value_ary = 1;
@@ -166,9 +166,11 @@ private:
 						curr_slot->_req_ans = -curr_deq;
 						curr_slot->_time_stamp = _NULL_VALUE;
 						++deq_value_ary;
-					} else if(NULL != _tail->_next) {
-						_tail = _tail->_next;
-						deq_value_ary = _tail->_values;
+					} else if(NULL != _head->_next) {
+                        auto tmp = _head;
+						_head = _head->_next;
+                        free(tmp)
+						deq_value_ary = _head->_values;
 						deq_value_ary += deq_value_ary[0];
 						continue;
 					} else {
@@ -183,16 +185,18 @@ private:
 				break;
 		}//for repetition
 
-		if(0 == *deq_value_ary && NULL != _tail->_next) {
-			_tail = _tail->_next;
+		if(0 == *deq_value_ary && NULL != _head->_next) {
+            auto tmp = _head;
+			_head = _head->_next;
+            free(tmp);
 		} else {
-			_tail->_values[0] = (deq_value_ary -  _tail->_values);
+			_head->_values[0] = (deq_value_ary -  _head->_values);
 		}
 
 		if(enq_value_ary != (_new_node->_values + 1)) {
 			*enq_value_ary = 0;
-			_head->_next = _new_node;
-			_head = _new_node;
+			_tail->_next = _new_node;
+			_tail = _new_node;
 			_new_node  = NULL;
 		} 
 	}
@@ -212,18 +216,25 @@ private:
 public:
 	FCQueueLP() :	_NUM_REP(_NUM_THREADS), _REP_THRESHOLD((int)(ceil(_NUM_THREADS/(1.7))))
 	{
-		_head = Node::get_new(_NUM_THREADS);
-		_tail = _head;
-		_head->_values[0] = 1;
-		_head->_values[1] = 0;
+		_tail = Node::get_new(_NUM_THREADS);
+		_head = _tail;
+		_tail->_values[0] = 1;
+		_tail->_values[1] = 0;
 
-		_tail_slot.set(new SlotInfo());
+		_head_slot.set(new SlotInfo());
 		_timestamp = 0;
 		_NODE_SIZE = 4;
 		_new_node = NULL;
 	}
 
-	virtual ~FCQueueLP() { }
+	~FCQueueLP() { 
+        auto node = _head;
+        while (node != NULL) {
+            auto tmp = node;
+            node = node->_next;
+            free(tmp);
+        }
+    }
 
     void push(const T& v) {
         auto item = Sto::item(this, pushitem_key);

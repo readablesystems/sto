@@ -231,7 +231,7 @@ int main() {
                     }
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
                             queue_tests[i+j].desc.c_str(), queue_tests[i+j].ds, *size, *nthreads);
-                    startAndWait(queue_tests[i+j].test, *size, *nthreads, 1);
+                    startAndWait(queue_tests[i+j].test, *size, *nthreads, 5);
                     dualprintf(";");
                 }
                 if (queue_tests[i].desc.find("PushPop")==std::string::npos) dualprintf("\n");

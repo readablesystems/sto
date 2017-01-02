@@ -233,7 +233,6 @@ template <typename T> struct DatatypeHarness<cds::container::RWQueue<T>> :
 template <typename T> struct DatatypeHarness<cds::container::SegmentedQueue<cds::gc::HP, T>> {
     typedef T value_type;
 public:
-    DatatypeHarness() : v_(32) {};
     void init() {v_ = new cds::container::SegmentedQueue<cds::gc::HP, T>(32);}
     bool pop() { int ret; return v_->pop(ret); }
     void cleanup() { delete v_;}
@@ -246,8 +245,7 @@ private:
 template <typename T> struct DatatypeHarness<cds::container::TsigasCycleQueue<T>> {
     typedef T value_type;
 public:
-    DatatypeHarness() : v_(1000000) {};
-    void init() {}
+    void init() {v_ = new cds::container::TsigasCycleQueue<T>(1000000);}
     bool pop() { int ret; return v_->pop(ret); }
     void cleanup() { delete v_; v_ = new cds::container::TsigasCycleQueue<T>(1000000); }
     void push(value_type v) { assert(v_->push(v)); }
@@ -468,11 +466,10 @@ std::vector<Test> make_pqueue_tests() {
 }
 int num_pqueues = 4;
 
-/*
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
     {desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)},                                  \
     {desc, "STO2 queue", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)},                                  \
-    {desc, "NonTrans FC Queue", new test<DatatypeHarness<FCQueueNT<type>>>(CDS, ## __VA_ARGS__)},
+    {desc, "NonTrans FC Queue", new test<DatatypeHarness<FCQueueNT<type>>>(CDS, ## __VA_ARGS__)},\
     {desc, "Basket queue", new test<DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},         \
     {desc, "Moir queue", new test<DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
     {desc, "MS queue", new test<DatatypeHarness<cds::container::MSQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},   \
@@ -480,27 +477,27 @@ int num_pqueues = 4;
     {desc, "RW queue", new test<DatatypeHarness<cds::container::RWQueue<type>>>(CDS, ## __VA_ARGS__)}, \
     {desc, "Segmented queue", new test<DatatypeHarness<cds::container::SegmentedQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
     {desc, "TC queue", new test<DatatypeHarness<cds::container::TsigasCycleQueue<type>>>(CDS, ## __VA_ARGS__)} 
-*/
 
+/*
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
-    {desc, "FCQueueT", new test<DatatypeHarness<FCQueueT<type>>>(STO, ## __VA_ARGS__)}
-    //{desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)},      \
+    {desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)},      \
     {desc, "STO2 queue", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)},      \
     {desc, "FCQueueNT", new test<DatatypeHarness<FCQueueNT<type>>>(CDS, ## __VA_ARGS__)},           \
     {desc, "Wrapped FCQueueNT", new test<DatatypeHarness<FCQueueNT<type>>>(STO, ## __VA_ARGS__)},   \
+    {desc, "FCQueueT", new test<DatatypeHarness<FCQueueT<type>>>(STO, ## __VA_ARGS__)}, \
     {desc, "FCQueueLP", new test<DatatypeHarness<FCQueueLP<type>>>(STO, ## __VA_ARGS__)}
              
     //{desc, "STOPops queue", new test<DatatypeHarness<QueuePops<type, false>>>(STO, ## __VA_ARGS__)},
-    //{desc, "FCQueueTPops", new test<DatatypeHarness<FCQueueTPops<type>>>(STO, ## __VA_ARGS__)},     
+*/
 std::vector<Test> make_queue_tests() {
     return {
-        //MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
+        MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
         MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomQSingleOpTest, int, RANDOM_VALS),
         //MAKE_QUEUE_TESTS("Q:RandMultiOps", GeneralTxnsTest, int, RANDOM_VALS, 5),
         //MAKE_QUEUE_TESTS("Q:RandMultiOps", GeneralTxnsTest, int, RANDOM_VALS, 10),
         //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[2]),
     };
 }
-//int num_queues = 11;
-int num_queues = 1;
+int num_queues = 10;
+//int num_queues = 6;
 //int num_queues = 1;
