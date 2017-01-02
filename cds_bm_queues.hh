@@ -54,36 +54,31 @@ template <typename DS> struct CDSQueueHarness {
 public:
     CDSQueueHarness() {};
     CDSQueueHarness(size_t nCapacity) : v_(nCapacity) {};
-    bool pop() { int ret; return v_.pop(ret); }
-    bool cleanup_pop() { return pop(); }
-    void push(value_type v) { assert(v_.push(v)); }
-    void init_push(value_type v) { assert(v_.push(v)); }
-    size_t size() { return v_.size(); }
+    void init() { v_ = new DS(); }
+    bool pop() { int ret; return v_->pop(ret); }
+    void cleanup() { delete v_; }
+    void push(value_type v) { assert(v_->push(v)); }
+    void init_push(value_type v) { assert(v_->push(v)); }
+    size_t size() { return v_->size(); }
 
-    DS v_;
+    DS* v_;
 };
 
 template <typename DS> struct STOPQueueHarness { 
     typedef typename DS::value_type value_type;
 public:
-    bool pop() { return v_.pop(); }
-    bool cleanup_pop() { 
-        if (v_.unsafe_size() > 0) {
-            Sto::start_transaction();
-            v_.pop();
-            assert(Sto::try_commit());
-            return true;
-        } else return false;
-    }
-    void push(value_type v) { v_.push(v); }
+    void init() { v_ = new DS(); }
+    bool pop() { return v_->pop(); }
+    void cleanup() { v_ = new DS(); }
+    void push(value_type v) { v_->push(v); }
     void init_push(value_type v) { 
         Sto::start_transaction();
-        v_.push(v); 
+        v_->push(v); 
         assert(Sto::try_commit());
     }
-    size_t size() { return v_.unsafe_size(); }
+    size_t size() { return v_->unsafe_size(); }
 private:
-    DS v_;
+    DS* v_;
 };
 
 /* 
@@ -98,6 +93,7 @@ template <typename T> struct DatatypeHarness<cds::container::MSPriorityQueue<T>>
     typedef T value_type;
 public:
     DatatypeHarness() : v_(10000000) {};
+    void init() { v_ = NULL; }
     bool pop() { int ret; return v_.pop(ret); }
     bool cleanup_pop() { return pop(); }
     void push(value_type v) { assert(v_.push(v)); }
@@ -122,20 +118,22 @@ template <typename T> struct DatatypeHarness<cds::container::FCPriorityQueue<T, 
 template <typename DS> struct STOQueueHarness {
     typedef typename DS::value_type value_type;
 public:
-    bool pop() { return v_.pop(); }
-    bool cleanup_pop() { 
-        v_.nontrans_clear();
-        return false;
+    void init() {
+        v_ = new DS();
     }
-    void push(value_type v) { v_.push(v); }
+    bool pop() { return v_->pop(); }
+    void cleanup() { 
+        delete v_;
+    }
+    void push(value_type v) { v_->push(v); }
     void init_push(value_type v) { 
         Sto::start_transaction();
-        v_.push(v);
+        v_->push(v);
         assert(Sto::try_commit());
     }
     size_t size() { return 0; }
 private:
-    DS v_;
+    DS* v_;
 };
 template <typename T> struct DatatypeHarness<Queue1<T>> : public STOQueueHarness<Queue1<T>>{};
 template <typename T> struct DatatypeHarness<Queue1<T, false>> : public STOQueueHarness<Queue1<T, false>>{};
@@ -146,79 +144,80 @@ template <typename T> struct DatatypeHarness<QueuePops<T, false>> : public STOQu
 template <typename T> struct DatatypeHarness<FCQueueT<T>> {
     typedef T value_type;
 public:
-    bool pop() { return v_.pop(); }
-    bool cleanup_pop() { 
-        Sto::start_transaction();
-        bool r = pop();
-        assert(Sto::try_commit());
-        return r;
+    void init() {
+        v_ = new FCQueueT<T>();
     }
-    void push(T v) { v_.push(v); }
+    bool pop() { return v_->pop(); }
+    void cleanup() { 
+        delete v_;
+    }
+    void push(T v) { v_->push(v); }
     void init_push(T v) { 
         Sto::start_transaction();
-        v_.push(v);
+        v_->push(v);
         assert(Sto::try_commit());
     }
 
 private:
-    FCQueueT<T> v_;
+    FCQueueT<T>* v_;
 };
 template <typename T> struct DatatypeHarness<FCQueueTPops<T>> {
     typedef T value_type;
 public:
-    bool pop() { return v_.pop(); }
-    bool cleanup_pop() { 
-        Sto::start_transaction();
-        bool r = pop();
-        assert(Sto::try_commit());
-        return r;
+    void init() {
+        v_ = new FCQueueTPops<T>();
     }
-    void push(T v) { v_.push(v); }
+    bool pop() { return v_->pop(); }
+    void cleanup() { 
+        delete v_;
+    }
+    void push(T v) { v_->push(v); }
     void init_push(T v) { 
         Sto::start_transaction();
-        v_.push(v);
+        v_->push(v);
         assert(Sto::try_commit());
     }
 
 private:
-    FCQueueTPops<T> v_;
+    FCQueueTPops<T>* v_;
 };
 template <typename T> struct DatatypeHarness<FCQueueLP<T>> { 
     typedef T value_type;
     typedef typename FCQueueLP<T>::pop_type pop_type;
 public:
-    pop_type& pop() { return v_.pop(); }
-    bool cleanup_pop() { 
-        return v_.fc_pop();
+    void init() {
+        v_ = new FCQueueLP<T>();
     }
-    void push(value_type v) { v_.push(v); }
+    pop_type& pop() { return v_->pop(); }
+    void cleanup() { 
+        delete v_;
+    }
+    void push(value_type v) { v_->push(v); }
     void init_push(value_type v) { 
         Sto::start_transaction();
-        v_.push(v);
+        v_->push(v);
         assert(Sto::try_commit());
     }
 private:
-    FCQueueLP<T> v_;
+    FCQueueLP<T>* v_;
 };
 template <typename T> struct DatatypeHarness<FCQueueNT<T>> {
     typedef T value_type;
 public:
-    bool pop() { return v_.pop(); }
-    bool cleanup_pop() { 
-        Sto::start_transaction();
-        bool r = pop();
-        assert(Sto::try_commit());
-        return r;
+    void init() {
+        v_ = new FCQueueNT<T>();
     }
-    void push(T v) { v_.push(v); }
+    bool pop() { return v_->pop(); }
+    void cleanup() { 
+        delete v_;
+    }
+    void push(T v) { v_->push(v); }
     void init_push(T v) { 
-        Sto::start_transaction();
-        v_.push(v);
-        assert(Sto::try_commit());
+        v_->push(v);
     }
 
 private:
-    FCQueueNT<T> v_;
+    FCQueueNT<T>* v_;
 };
 template <typename T> struct DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, T>> : 
     public CDSQueueHarness<cds::container::BasketQueue<cds::gc::HP, T>>{};
@@ -235,37 +234,27 @@ template <typename T> struct DatatypeHarness<cds::container::SegmentedQueue<cds:
     typedef T value_type;
 public:
     DatatypeHarness() : v_(32) {};
-    bool pop() { int ret; return v_.pop(ret); }
-    bool cleanup_pop() { return pop(); }
-    void push(value_type v) { assert(v_.push(v)); }
-    void init_push(value_type v) { assert(v_.push(v)); }
-    size_t size() { return v_.size(); }
+    void init() {v_ = new cds::container::SegmentedQueue<cds::gc::HP, T>(32);}
+    bool pop() { int ret; return v_->pop(ret); }
+    void cleanup() { delete v_;}
+    void push(value_type v) { assert(v_->push(v)); }
+    void init_push(value_type v) { assert(v_->push(v)); }
+    size_t size() { return v_->size(); }
 private:
-    cds::container::SegmentedQueue<cds::gc::HP, T> v_;
+    cds::container::SegmentedQueue<cds::gc::HP, T>* v_;
 };
 template <typename T> struct DatatypeHarness<cds::container::TsigasCycleQueue<T>> {
     typedef T value_type;
 public:
     DatatypeHarness() : v_(1000000) {};
-    bool pop() { int ret; return v_.pop(ret); }
-    bool cleanup_pop() { return pop(); }
-    void push(value_type v) { assert(v_.push(v)); }
-    void init_push(value_type v) { assert(v_.push(v)); }
-    size_t size() { return v_.size(); }
+    void init() {}
+    bool pop() { int ret; return v_->pop(ret); }
+    void cleanup() { delete v_; v_ = new cds::container::TsigasCycleQueue<T>(1000000); }
+    void push(value_type v) { assert(v_->push(v)); }
+    void init_push(value_type v) { assert(v_->push(v)); }
+    size_t size() { return v_->size(); }
 private:
-    cds::container::TsigasCycleQueue<T> v_;
-};
-template <typename T> struct DatatypeHarness<cds::container::VyukovMPMCCycleQueue<T>> {
-    typedef T value_type;
-public:
-    DatatypeHarness() : v_(1000000) {};
-    bool pop() { int ret; return v_.pop(ret); }
-    bool cleanup_pop() { return pop(); }
-    void push(value_type v) { assert(v_.push(v)); }
-    void init_push(value_type v) { assert(v_.push(v)); }
-    size_t size() { return v_.size(); }
-private:
-    cds::container::VyukovMPMCCycleQueue<T> v_;
+    cds::container::TsigasCycleQueue<T>* v_;
 };
 
 /*
@@ -275,6 +264,7 @@ template <typename DH> class QueueTest : public GenericTest {
 public:
     QueueTest(int val_type) : val_type_(val_type){};
     void initialize(size_t init_sz) {
+        v_.init();
         global_push_val = MAX_VALUE;
         // initialize with the maximum values, so that
         // at the beginning, pushes and pops will not conflict
@@ -284,7 +274,7 @@ public:
     }
 
     void cleanup() {
-        while (v_.cleanup_pop()){/*keep popping*/}
+        v_.cleanup();
     }
 
     inline void do_q_op(q_op q_op, int val) {
@@ -331,7 +321,7 @@ public:
                 while (1) {
                     Sto::start_transaction();
                     try {
-                        this->do_q_op(q_op_, rand_vals[(i*me + i) % arraysize(rand_vals)]);
+                        this->do_q_op(q_op_, slotdist(transgen));
                         if (Sto::try_commit()) break;
                     } catch (Transaction::Abort e) {
                         transgen = transgen_snap;
@@ -339,7 +329,7 @@ public:
                 }
                 this->inc_ctrs(q_op_, me);
             } else {
-                this->do_q_op(q_op_, rand_vals[(i*me + i)% arraysize(rand_vals)]);
+                this->do_q_op(q_op_, slotdist(transgen)); 
                 this->inc_ctrs(q_op_, me);
             }
         }
@@ -493,18 +483,18 @@ int num_pqueues = 4;
 */
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
-    {desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)},      \
+    {desc, "FCQueueT", new test<DatatypeHarness<FCQueueT<type>>>(STO, ## __VA_ARGS__)}
+    //{desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)},      \
     {desc, "STO2 queue", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)},      \
     {desc, "FCQueueNT", new test<DatatypeHarness<FCQueueNT<type>>>(CDS, ## __VA_ARGS__)},           \
     {desc, "Wrapped FCQueueNT", new test<DatatypeHarness<FCQueueNT<type>>>(STO, ## __VA_ARGS__)},   \
-    {desc, "FCQueueT", new test<DatatypeHarness<FCQueueT<type>>>(STO, ## __VA_ARGS__)},             \
     {desc, "FCQueueLP", new test<DatatypeHarness<FCQueueLP<type>>>(STO, ## __VA_ARGS__)}
              
     //{desc, "STOPops queue", new test<DatatypeHarness<QueuePops<type, false>>>(STO, ## __VA_ARGS__)},
     //{desc, "FCQueueTPops", new test<DatatypeHarness<FCQueueTPops<type>>>(STO, ## __VA_ARGS__)},     
 std::vector<Test> make_queue_tests() {
     return {
-        MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
+        //MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
         MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomQSingleOpTest, int, RANDOM_VALS),
         //MAKE_QUEUE_TESTS("Q:RandMultiOps", GeneralTxnsTest, int, RANDOM_VALS, 5),
         //MAKE_QUEUE_TESTS("Q:RandMultiOps", GeneralTxnsTest, int, RANDOM_VALS, 10),
@@ -512,5 +502,5 @@ std::vector<Test> make_queue_tests() {
     };
 }
 //int num_queues = 11;
-int num_queues = 6;
+int num_queues = 1;
 //int num_queues = 1;

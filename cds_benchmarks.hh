@@ -21,7 +21,7 @@
 #define GLOBAL_SEED 10
 
 #define MAX_VALUE 20000
-#define NTRANS 5000000 // Number of transactions each thread should run.
+#define NTRANS 5000 // Number of transactions each thread should run.
 #define MAX_NUM_THREADS 24 // Maximum number of concurrent threads
 #define INITIAL_THREAD 0 // tid of the first thread spawned
 
@@ -31,10 +31,8 @@
 
 // globals
 unsigned initial_seeds[64];
-std::vector<int> init_sizes = {10000, 50000, 100000};//, 150000};
-std::vector<int> nthreads_set = {1, 2, 6, 12, 18};//, 24};
-int rand_vals[10000];
-int rand_txns[10000];
+std::vector<int> init_sizes = {50000};//, 150000};
+std::vector<int> nthreads_set = {4};//, 24};
 
 std::atomic_int spawned_barrier(0);
 

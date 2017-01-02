@@ -11,12 +11,8 @@ void* test_thread(void *data) {
     GenericTest *gt = ((Tester*)data)->test;
     int me = ((Tester*)data)->me;
     int nthreads = ((Tester*)data)->nthreads;
-    size_t init_size = ((Tester*)data)->init_size;
 
     TThread::set_id(me);
-
-    if (me == INITIAL_THREAD) { gt->cleanup(); gt->initialize(init_size); 
-    }
 
     spawned_barrier++;
     while (spawned_barrier != nthreads) {
@@ -71,6 +67,7 @@ void startAndWait(GenericTest* test, size_t size, int nthreads, int repeats) {
     Record record;
    
     for (int r = 0; r < repeats; ++r) {
+        test->initialize(size);
         record.speed = 0;
         record.nthreads = nthreads;
         pthread_create(&recorder, NULL, record_perf_thread, &record);
@@ -78,7 +75,6 @@ void startAndWait(GenericTest* test, size_t size, int nthreads, int repeats) {
         for (int i = 0; i < nthreads; ++i) {
             testers[i].me = i;
             testers[i].test = test;
-            testers[i].init_size = size;
             testers[i].nthreads = nthreads;
             pthread_create(&tids[i], NULL, test_thread, &testers[i]);
         }
@@ -89,6 +85,7 @@ void startAndWait(GenericTest* test, size_t size, int nthreads, int repeats) {
 
         speeds.push_back(record.speed);
         aborts.push_back(get_abort_stats());
+        test->cleanup();
     }
 
     for (float s: speeds) {
@@ -171,35 +168,15 @@ int main() {
 
     //auto defaultsto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 125000, 0, 33, 33);
     //startAndWait(defaultsto, 500000, 12);
-    //auto defaultcds = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,10000>>>(STO, 10000, 0, 33, 33);
-    //startAndWait(defaultcds, 500000, 12);
-    
-    //auto sto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 125000, 1, 33, 33);
-    //startAndWait(sto, 500000, 12);
-    
-    //auto chmie = new MapOpTest<DatatypeHarness<CuckooHashMap2<int, int, 125000, false>>>(STO, 125000, 1, 33, 33);
-    //startAndWait(chmie, 500000, 1);
-    //auto chmkf = new MapOpTest<DatatypeHarness<CuckooHashMap<int,int,125000,false>>>(STO, 125000, 1, 33, 33);
-    //startAndWait(chmkf, 500000, 1);
-
-    //startAndWait(chmie, 500000, 1);
-    
-    //auto chmnt = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 125000>>>(CDS, 125000, 1, 33, 33);
-    //startAndWait(chmnt, 500000, 1);
-
     //auto chmna = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 125000, false>>>(STO, 125000, 1, 33, 33);
     //startAndWait(chmna, 500000, 12);
-    //auto queue2 = new RandomQSingleOpTest<DatatypeHarness<Queue2<int, false>>>(STO, RANDOM_VALS);
-    //startAndWait(queue2, 10000, 8);
-    //auto queue1 = new RandomQSingleOpTest<DatatypeHarness<Queue<int, false>>>(STO, RANDOM_VALS);
-    //startAndWait(queue1, 10000, 12);
     //auto queuelp = new RandomQSingleOpTest<DatatypeHarness<FCQueueLP<int, std::queue<int>>>>(STO, RANDOM_VALS);
     //startAndWait(queuelp, 10000, 12);
     //auto queuefc = new RandomQSingleOpTest<DatatypeHarness<FCQueue<int, TNonopaqueWrapped>>>(STO, RANDOM_VALS);
     //startAndWait(queuefc, 10000, 12);
-    //auto queuefc3 = new RandomQSingleOpTest<DatatypeHarness<FCQueue3<int>>>(STO, RANDOM_VALS);
-    //startAndWait(queuefc3, 50000, 12);
-  /* 
+    //auto queuefc = new RandomQSingleOpTest<DatatypeHarness<FCQueueT<int>>>(STO, RANDOM_VALS);
+    //startAndWait(queuefc, 10000, 18, 2);
+  /*  
     std::vector<Test> map_tests = make_map_tests();
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
@@ -254,7 +231,7 @@ int main() {
                     }
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
                             queue_tests[i+j].desc.c_str(), queue_tests[i+j].ds, *size, *nthreads);
-                    startAndWait(queue_tests[i+j].test, *size, *nthreads, 5);
+                    startAndWait(queue_tests[i+j].test, *size, *nthreads, 1);
                     dualprintf(";");
                 }
                 if (queue_tests[i].desc.find("PushPop")==std::string::npos) dualprintf("\n");
@@ -264,9 +241,10 @@ int main() {
         }
     }
     cds::Terminate();
+    fclose(global_stats_file);
+    fclose(global_verbose_stats_file);
     return 0;
 }
-
 /*
         fprintf(global_verbose_stats_file, "\n");
         int total_ke_insert, total_ke_find, total_ke_erase, total_inserts, total_find, total_erase;
