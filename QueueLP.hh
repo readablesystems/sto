@@ -4,70 +4,21 @@
 #include "TaggedLow.hh"
 #include "Transaction.hh"
 #include "TWrapped.hh"
+#include "LazyPop.hh"
 
 template <typename T, bool Opacity, unsigned BUF_SIZE> class QueueLP;
-template <typename T, bool Opacity, unsigned BUF_SIZE> class LazyPop;
-
-template <typename T, bool Opacity = true, unsigned BUF_SIZE = 1000000>
-class LazyPop {
-public:
-    typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type version_type;
-    typedef QueueLP<T, Opacity, BUF_SIZE> queue_t;
-    typedef T value_type;
-    static constexpr int popitem_key = -2;
-    
-    LazyPop() : q_(NULL), popped_(false), fulfilled_(false), reassigned_(false) {};
-    LazyPop(queue_t* q) : q_(q), popped_(false), fulfilled_(false), reassigned_(false) {};
-  
-    // someone is reassigning a lazypop (used on LHS)
-    LazyPop& operator=(bool b) {
-        fulfilled_ = true;
-        popped_ = b;
-        reassigned_ = true;
-        return *this;
-    };
-    bool is_fulfilled() const {
-        return fulfilled_;
-    }
-    bool is_popped() const {
-        return popped_;
-    }
-    bool is_reassigned() const {
-        return reassigned_;
-    }
-    void set_fulfilled() {
-        fulfilled_ = true;
-    }
-    void set_popped(bool b) {
-        assert(fulfilled_);
-        popped_ = b;
-    }
-    // someone is accessing a lazypop. must be done after a transaction or 
-    // after the lazypop has been reassigned
-    operator bool() {
-        assert(fulfilled_ || reassigned_);
-        return popped_;
-    }
-
-private:
-    queue_t* q_;
-    bool popped_;
-    bool fulfilled_;
-    bool reassigned_;
-};
 
 template <typename T, bool Opacity = true, unsigned BUF_SIZE = 1000000>
 class QueueLP: public Shared {
-    friend class LazyPop<T, Opacity, BUF_SIZE>;
 
 public:
     typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type version_type;
     typedef T value_type;
-    typedef LazyPop<T, Opacity, BUF_SIZE> pop_type;
+    typedef LazyPop<T, QueueLP<T, false, BUF_SIZE>> pop_type;
 
     QueueLP() : head_(0), tail_(0), headversion_(0), tailversion_(0) {
         for (int i = 0; i < 24; ++i) {
-            global_thread_layzpops[i] = pop_type(this);
+            global_thread_layzpops[i] = new pop_type(this);
         }
     }
 
@@ -130,7 +81,7 @@ public:
     }
 
     pop_type& pop() {
-        pop_type* my_lazypop = &global_thread_layzpops[TThread::id()];
+        pop_type* my_lazypop = global_thread_layzpops[TThread::id()];
         auto item = Sto::item(this, my_lazypop);
         item.add_flags(pop_bit);
         item.add_write();
@@ -225,9 +176,8 @@ private:
 
 
     void cleanup(TransItem& item, bool committed) override {
-        (void)committed;
-        (void)item;
-        (global_thread_layzpops + TThread::id())->~pop_type();
+        if (!committed && item.key<int>() == popitem_key)
+            (*(global_thread_layzpops + TThread::id()))->~pop_type();
         /*
         if (item.key<int>() == popitem_key) {
             auto lazy_pops = item.template write_value<std::list<pop_type*>>();
@@ -245,5 +195,5 @@ private:
     unsigned tail_;
     version_type headversion_;
     version_type tailversion_;
-    pop_type global_thread_layzpops[24];
+    pop_type* global_thread_layzpops[24];
 };

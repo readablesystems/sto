@@ -1,6 +1,6 @@
 #pragma once
 
-#define LIBCUCKOO_DEBUG 1 
+#define LIBCUCKOO_DEBUG 0
 #if LIBCUCKOO_DEBUG
 #  define LIBCUCKOO_DBG(fmt, args...)  fprintf(stderr, "\x1b[32m""[libcuckoo:%s:%d:%lu] " fmt"" "\x1b[0m",__FILE__,__LINE__, (unsigned long)pthread_self(), ##args)
 #else
@@ -14,7 +14,7 @@ inline size_t hashed_key(const Key &key) {
 }
 
 /* number of keys that can be stored in one bucket */
-const size_t SLOT_PER_BUCKET = 15;
+const size_t SLOT_PER_BUCKET = 5; 
 
 // The maximum number of cuckoo operations per insert. This must
 // be less than or equal to SLOT_PER_BUCKET^(MAX_BFS_DEPTH+1)

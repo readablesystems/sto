@@ -169,7 +169,7 @@ private:
 					} else if(NULL != _head->_next) {
                         auto tmp = _head;
 						_head = _head->_next;
-                        free(tmp)
+                        free(tmp);
 						deq_value_ary = _head->_values;
 						deq_value_ary += deq_value_ary[0];
 						continue;

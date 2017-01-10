@@ -27,7 +27,7 @@ void* test_thread(void *data) {
 
 void* record_perf_thread(void* x) {
     int nthreads = ((Record*)x)->nthreads;
-    int total1, total2;
+    long long total1, total2;
     struct timeval tv1, tv2;
     double ops_per_s = 0; 
 
@@ -180,18 +180,18 @@ int main() {
     std::vector<Test> map_tests = make_map_tests();
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
-        for (auto init_keys = begin(init_sizes); init_keys != end(init_sizes); ++init_keys) {
+        //for (auto init_keys = begin(init_sizes); init_keys != end(init_sizes); ++init_keys) {
             for (auto nthreads = begin(nthreads_set); nthreads != end(nthreads_set); ++nthreads) {
                 for (int j = 0; j < num_maps; ++j) {
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t init_keys: %d, nthreads: %d\n", 
-                            map_tests[i+j].desc.c_str(), map_tests[i+j].ds, *init_keys, *nthreads);
-                    startAndWait(map_tests[i+j].test, *init_keys, *nthreads);
+                            map_tests[i+j].desc.c_str(), map_tests[i+j].ds, 0, *nthreads);
+                    startAndWait(map_tests[i+j].test, 0, *nthreads, 5);
                     dualprintf(";");
                 }
                 dualprintf("\n");
             }
             dualprintf("\n");
-        }
+        //}
     }
     // pqueue tests
     std::vector<Test> pqueue_tests = make_pqueue_tests();
