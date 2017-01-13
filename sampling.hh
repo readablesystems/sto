@@ -8,6 +8,8 @@
 #include <random>
 #include <algorithm>
 
+namespace StoSampling {
+
 typedef size_t index_t;
 typedef std::vector<size_t> pmf_type;
 typedef std::vector<index_t> trace_type;
@@ -117,6 +119,8 @@ public:
         : n_(n), index_transform(true), index_translation_table(index_table),
         prefix_sums(n), uis(resolution) {}
 
+    virtual ~StoRandomDistribution() {}
+
     // generate a probability mass function (pmf) according zipf distribution
     // and then build a prefix-sum tree based on the pmf
     void generate() {
@@ -154,6 +158,11 @@ protected:
 // specialization 1: uniform random distribution
 class StoUniformDistribution : public StoRandomDistribution {
 public:
+    StoUniformDistribution(size_t n, bool shuffle = false) :
+        StoRandomDistribution(n, shuffle) {}
+    StoUniformDistribution(size_t n, std::vector<index_t> index_table) :
+        StoRandomDistribution(n, index_table) {}
+
     pmf_type generate_pmf() override {
         std::uniform_int_distribution<size_t> d(0, n_-1); 
         uis.set_params(d.param());
@@ -174,6 +183,11 @@ class StoZipfDistribution : public StoRandomDistribution {
 public:
     static constexpr double skewness = 1.0;
 
+    StoZipfDistribution(size_t n, bool shuffle = false) :
+        StoRandomDistribution(n, shuffle) {}
+    StoZipfDistribution(size_t n, std::vector<index_t> index_table) :
+        StoRandomDistribution(n, index_table) {}
+
     pmf_type generate_pmf() override {
         pmf_type pmf;
         for (size_t i = 0; i < n_; ++i) {
@@ -187,3 +201,5 @@ public:
         return pmf;
     }
 };
+
+}; // namespace StoSampling
