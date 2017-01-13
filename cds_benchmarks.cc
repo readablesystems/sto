@@ -167,16 +167,15 @@ int main() {
     pthread_detach(advancer);
 
     //auto defaultsto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 125000, 0, 33, 33);
-    //startAndWait(defaultsto, 500000, 12);
-    //auto chmna = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 125000, false>>>(STO, 125000, 1, 33, 33);
-    //startAndWait(chmna, 500000, 12);
+    //startAndWait(defaultsto, 0, 12, 5);
+    //auto chmkf = new MapOpTest<DatatypeHarness<CuckooHashMapKF<int, int, 15000, false>>>(STO, 125000, 1, 33, 33);
+    //startAndWait(chmkf, 500000, 16, 5);
     //auto queuelp = new RandomQSingleOpTest<DatatypeHarness<FCQueueLP<int, std::queue<int>>>>(STO, RANDOM_VALS);
     //startAndWait(queuelp, 10000, 12);
     //auto queuefc = new RandomQSingleOpTest<DatatypeHarness<FCQueue<int, TNonopaqueWrapped>>>(STO, RANDOM_VALS);
     //startAndWait(queuefc, 10000, 12);
-    //auto queuefc = new RandomQSingleOpTest<DatatypeHarness<FCQueueT<int>>>(STO, RANDOM_VALS);
+    //auto queuefc = new RandomQSingleOpTest<DatatypeHarness<QueueLP<int, false>>>(STO, RANDOM_VALS);
     //startAndWait(queuefc, 10000, 18, 2);
-  /*  
     std::vector<Test> map_tests = make_map_tests();
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
@@ -193,6 +192,7 @@ int main() {
             dualprintf("\n");
         //}
     }
+  /*  
     // pqueue tests
     std::vector<Test> pqueue_tests = make_pqueue_tests();
     for (unsigned i = 0; i < pqueue_tests.size(); i+=num_pqueues) {
@@ -217,7 +217,6 @@ int main() {
             dualprintf("\n");
         }
     }
-    */
     // queue tests
     std::vector<Test> queue_tests = make_queue_tests();
     for (unsigned i = 0; i < queue_tests.size(); i+=num_queues) {
@@ -240,6 +239,7 @@ int main() {
             dualprintf("\n");
         }
     }
+    */
     cds::Terminate();
     fclose(global_stats_file);
     fclose(global_verbose_stats_file);

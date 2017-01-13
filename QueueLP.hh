@@ -17,9 +17,6 @@ public:
     typedef LazyPop<T, QueueLP<T, false, BUF_SIZE>> pop_type;
 
     QueueLP() : head_(0), tail_(0), headversion_(0), tailversion_(0) {
-        for (int i = 0; i < 24; ++i) {
-            global_thread_layzpops[i] = new pop_type(this);
-        }
     }
 
     static constexpr TransItem::flags_type list_bit = TransItem::user0_bit<<2;
@@ -81,7 +78,7 @@ public:
     }
 
     pop_type& pop() {
-        pop_type* my_lazypop = global_thread_layzpops[TThread::id()];
+        pop_type* my_lazypop = &global_thread_layzpops[TThread::id()];
         auto item = Sto::item(this, my_lazypop);
         item.add_flags(pop_bit);
         item.add_write();
@@ -119,7 +116,7 @@ private:
         return true;
     }
 
-    void install(TransItem& item, Transaction& txn) override {
+    void install(TransItem& item, Transaction&) override {
         // install pops
         if (is_pop(item)) {
             auto curtail = tail_;
@@ -130,13 +127,6 @@ private:
             } else {
                 lazypop->set_popped(true);
                 head_ = (head_+1) % BUF_SIZE;
-                
-                // update the version
-                if (Opacity) {
-                    headversion_.set_version(txn.commit_tid());
-                } else {
-                    headversion_.inc_nonopaque_version();
-                }
             }
         }
         // install pushes
@@ -150,19 +140,12 @@ private:
                     assert(tail_ != (curhead-1) % BUF_SIZE);
                     queueSlots[tail_] = write_list.front();
                     write_list.pop_front();
-                    // XXX
-                    head_ = (head_ +1) % BUF_SIZE;
                     tail_ = (tail_+1) % BUF_SIZE;
                 }
             } else {
                 auto& val = item.template write_value<T>();
                 queueSlots[tail_] = val;
                 tail_ = (tail_+1) % BUF_SIZE;
-            }
-            if (Opacity) {
-                tailversion_.set_version(txn.commit_tid());
-            } else {
-                tailversion_.inc_nonopaque_version();
             }
         }
     }
@@ -177,7 +160,7 @@ private:
 
     void cleanup(TransItem& item, bool committed) override {
         if (!committed && item.key<int>() == popitem_key)
-            (*(global_thread_layzpops + TThread::id()))->~pop_type();
+            (global_thread_layzpops + TThread::id())->~pop_type();
         /*
         if (item.key<int>() == popitem_key) {
             auto lazy_pops = item.template write_value<std::list<pop_type*>>();
@@ -195,5 +178,5 @@ private:
     unsigned tail_;
     version_type headversion_;
     version_type tailversion_;
-    pop_type* global_thread_layzpops[24];
+    pop_type global_thread_layzpops[24];
 };
