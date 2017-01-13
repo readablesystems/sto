@@ -15,6 +15,7 @@
 #include "IntStr.hh"
 #include "clp.h"
 #include "randgen.hh"
+#include "sampling.hh"
 
 #include "MassTrans.hh"
 
@@ -572,7 +573,70 @@ template <int DS> void DSTester<DS>::initialize() {
     container_type::init();
 }
 
+// New test: Random R/W with zipf distribution to simulate skewed contention
+template <int DS> struct ZipfRW : public DSTester<DS> {
+    typedef typename DSTester<DS>::container_type container_type;
+    ZipfRW() {}
+    void run(int me);
+    bool prepopulate() override;
+private:
+    std::vector<typename StoSampling::trace_type> slot_traces;
+};
 
+template <int DS> bool ZipfRW<DS>::prepopulate() {
+    StoSampling::StoRandomDistribution *dist
+        = new StoSampling::StoZipfDistribution(ARRAY_SZ);
+
+    std::cout << "Generating zipf distribution..." << std::endl;
+
+    dist->generate();
+    int opsperthread = ntrans/nthreads*opspertrans;
+    for (int i = 0; i < nthreads; ++i) {
+        slot_traces.push_back(dist->sample_trace(opsperthread));
+    }
+
+    std::cout << "Generation complete." << std::endl;
+    delete dist;
+    return true;
+}
+
+template <int DS> void ZipfRW<DS>::run(int me) {
+    TThread::set_id(me);
+    container_type* a = this->a;
+    container_type::thread_init(*a);
+
+    Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
+    uint32_t write_thresh = (uint32_t)(write_percent * Rand::max());
+
+    int N = ntrans/nthreads;
+    int OPS = opspertrans;
+
+    StoSampling::trace_type::const_iterator slot_it
+        = slot_traces[me].begin();
+
+    for (int i = 0; i < N; ++i) {
+        StoSampling::trace_type::const_iterator slot_it_snap = slot_it;
+        Rand transgen_snap = transgen;
+        TRANSACTION {
+            for (int j = 0; j < OPS; ++j) {
+                assert(slot_it_snap != slot_traces[me].end());
+
+                auto r = transgen_snap();
+                if (r > write_thresh) {
+                    doRead(*a, *slot_it_snap);
+                } else {
+                    doWrite(*a, *slot_it_snap, j);
+                }
+                ++slot_it_snap;
+            }
+        } RETRY(true);
+
+        slot_it = slot_it_snap;
+        transgen = transgen_snap;
+    }
+}
+
+// Test: ReadThenWrite
 template <int DS> struct ReadThenWrite : public DSTester<DS> {
     typedef typename DSTester<DS>::container_type container_type;
     ReadThenWrite() {}
