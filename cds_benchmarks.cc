@@ -53,6 +53,12 @@ void* record_perf_thread(void* x) {
     ops_per_s = (total2-total1)/seconds;
    
     ((Record*)x)->speed = ops_per_s;
+    for (int i = 0; i < nthreads; ++i) {
+        global_thread_ctrs[i].ke_insert = global_thread_ctrs[i].ke_find = global_thread_ctrs[i].ke_erase
+        = global_thread_ctrs[i].insert = global_thread_ctrs[i].erase = global_thread_ctrs[i].find
+        = global_thread_ctrs[i].push = global_thread_ctrs[i].pop = global_thread_ctrs[i].skip
+        = 0;
+    }
     return nullptr;
 }
 
@@ -166,8 +172,8 @@ int main() {
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
 
-    //auto defaultsto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 125000, 0, 33, 33);
-    //startAndWait(defaultsto, 0, 12, 5);
+    //auto defaultsto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 125000, 1, 33, 33);
+    ////startAndWait(defaultsto, 0, 12, 10);
     //auto chmkf = new MapOpTest<DatatypeHarness<CuckooHashMapKF<int, int, 15000, false>>>(STO, 125000, 1, 33, 33);
     //startAndWait(chmkf, 500000, 16, 5);
     //auto queuelp = new RandomQSingleOpTest<DatatypeHarness<FCQueueLP<int, std::queue<int>>>>(STO, RANDOM_VALS);
@@ -176,6 +182,7 @@ int main() {
     //startAndWait(queuefc, 10000, 12);
     //auto queuefc = new RandomQSingleOpTest<DatatypeHarness<QueueLP<int, false>>>(STO, RANDOM_VALS);
     //startAndWait(queuefc, 10000, 18, 2);
+  /*  
     std::vector<Test> map_tests = make_map_tests();
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
@@ -192,7 +199,6 @@ int main() {
             dualprintf("\n");
         //}
     }
-  /*  
     // pqueue tests
     std::vector<Test> pqueue_tests = make_pqueue_tests();
     for (unsigned i = 0; i < pqueue_tests.size(); i+=num_pqueues) {
@@ -217,6 +223,7 @@ int main() {
             dualprintf("\n");
         }
     }
+    */
     // queue tests
     std::vector<Test> queue_tests = make_queue_tests();
     for (unsigned i = 0; i < queue_tests.size(); i+=num_queues) {
@@ -239,7 +246,6 @@ int main() {
             dualprintf("\n");
         }
     }
-    */
     cds::Terminate();
     fclose(global_stats_file);
     fclose(global_verbose_stats_file);
