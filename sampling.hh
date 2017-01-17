@@ -57,6 +57,10 @@ public:
         return p - leaves_idx; 
     }
 
+    size_t adjusted_resolution() const {
+        return array[0];
+    }
+
 private:
     // helper function which incrementally updates the content of the tree
     // while maintaining data structure invariants
@@ -128,6 +132,9 @@ public:
     void generate() {
         pmf_type pmf = generate_pmf();
         prefix_sums.load(pmf);
+
+        std::uniform_int_distribution<size_t> d(0, prefix_sums.adjusted_resolution()-1);
+        uis.set_params(d.param());
     }
 
     // this is the method specific to each prob. distribution
@@ -183,14 +190,14 @@ public:
 // specialization 2: zipf distribution
 class StoZipfDistribution : public StoRandomDistribution {
 public:
-    static constexpr double skewness = 1.0;
+    static constexpr double default_skew = 1.0;
 
-    StoZipfDistribution(size_t n, bool shuffle = false) :
-        StoRandomDistribution(n, shuffle) {
+    StoZipfDistribution(size_t n, double skew = default_skew, bool shuffle = false) :
+        StoRandomDistribution(n, shuffle), skewness(skew) {
         calculate_sum();
     }
-    StoZipfDistribution(size_t n, std::vector<index_t> index_table) :
-        StoRandomDistribution(n, index_table) {
+    StoZipfDistribution(size_t n, double skew, std::vector<index_t> index_table) :
+        StoRandomDistribution(n, index_table), skewness(skew) {
         calculate_sum();
     }
 
@@ -212,6 +219,7 @@ private:
         sum_ = s;
     }
 
+    double skewness;
     double sum_;
 };
 
