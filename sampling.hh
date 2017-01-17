@@ -1,5 +1,7 @@
 #pragma once
 
+//#include <iostream>
+
 #include <cstdlib>
 #include <cassert>
 #include <cstring>
@@ -101,7 +103,7 @@ private:
 //   one for easy processing (no floating-point)
 class StoRandomDistribution {
 public:
-    static constexpr size_t resolution = 10000;
+    static constexpr size_t resolution = 1000000;
 
     StoRandomDistribution(size_t n, bool shuffle = false)
         : n_(n), index_transform(false), prefix_sums(n), uis(resolution) {
@@ -184,22 +186,33 @@ public:
     static constexpr double skewness = 1.0;
 
     StoZipfDistribution(size_t n, bool shuffle = false) :
-        StoRandomDistribution(n, shuffle) {}
+        StoRandomDistribution(n, shuffle) {
+        calculate_sum();
+    }
     StoZipfDistribution(size_t n, std::vector<index_t> index_table) :
-        StoRandomDistribution(n, index_table) {}
+        StoRandomDistribution(n, index_table) {
+        calculate_sum();
+    }
 
     pmf_type generate_pmf() override {
         pmf_type pmf;
         for (size_t i = 0; i < n_; ++i) {
-            double xi = 0.0;
-            for (size_t ii = 0; ii < n_; ++ii) {
-                xi += std::pow(1.0/(double)ii, skewness);
-            }
-            double p = 1.0/(std::pow((double)i, skewness)*xi);
+            double p = 1.0/(std::pow((double)(i+1), skewness)*sum_);
+            //std::cout << p << std::endl;
             pmf.push_back((size_t)(p*resolution));
         }
         return pmf;
     }
+
+private:
+    void calculate_sum() {
+        double s = 0.0;
+        for (size_t i = 1; i <= n_; ++i)
+            s += std::pow(1.0/(double)i, skewness);
+        sum_ = s;
+    }
+
+    double sum_;
 };
 
 }; // namespace StoSampling
