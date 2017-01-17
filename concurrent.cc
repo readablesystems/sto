@@ -574,16 +574,18 @@ template <int DS> void DSTester<DS>::initialize() {
 }
 
 // New test: Random R/W with zipf distribution to simulate skewed contention
-template <int DS> struct ZipfRW : public DSTester<DS> {
+template <int DS>
+struct ZipfRW : public DSTester<DS> {
     typedef typename DSTester<DS>::container_type container_type;
     ZipfRW() {}
-    void run(int me);
+    void run(int me) override;
     bool prepopulate() override;
 private:
     std::vector<typename StoSampling::trace_type> slot_traces;
 };
 
-template <int DS> bool ZipfRW<DS>::prepopulate() {
+template <int DS>
+bool ZipfRW<DS>::prepopulate() {
     StoSampling::StoRandomDistribution *dist
         = new StoSampling::StoZipfDistribution(ARRAY_SZ);
 
@@ -600,7 +602,8 @@ template <int DS> bool ZipfRW<DS>::prepopulate() {
     return true;
 }
 
-template <int DS> void ZipfRW<DS>::run(int me) {
+template <int DS>
+void ZipfRW<DS>::run(int me) {
     TThread::set_id(me);
     container_type* a = this->a;
     container_type::thread_init(*a);
@@ -617,6 +620,7 @@ template <int DS> void ZipfRW<DS>::run(int me) {
     for (int i = 0; i < N; ++i) {
         StoSampling::trace_type::const_iterator slot_it_snap = slot_it;
         Rand transgen_snap = transgen;
+
         TRANSACTION {
             for (int j = 0; j < OPS; ++j) {
                 assert(slot_it_snap != slot_traces[me].end());
@@ -1202,7 +1206,8 @@ struct Test {
     MAKE_TESTER("readthenwrite", 0, ReadThenWrite),
     MAKE_TESTER("kingofthedelete", 0, KingDelete),
     MAKE_TESTER("xordelete", 0, XorDelete),
-    MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true)
+    MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true),
+    MAKE_TESTER("zipfrw", "skewness measures contention level", ZipfRW) 
 };
 
 struct {
