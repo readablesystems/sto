@@ -441,6 +441,7 @@ int prepopulate =
     ARRAY_SZ/10;
 double write_percent = 0.5;
 bool blindRandomWrite = false;
+double zipf_skew = 1.0;
 
 
 using namespace std;
@@ -587,7 +588,7 @@ private:
 template <int DS>
 bool ZipfRW<DS>::prepopulate() {
     StoSampling::StoRandomDistribution *dist
-        = new StoSampling::StoZipfDistribution(ARRAY_SZ);
+        = new StoSampling::StoZipfDistribution(ARRAY_SZ, zipf_skew);
 
     std::cout << "Generating zipf distribution..." << std::endl;
 
@@ -1229,7 +1230,7 @@ struct {
 };
 
 enum {
-    opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_blindrandwrites, opt_prepopulate, opt_seed
+    opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew
 };
 
 static const Clp_Option options[] = {
@@ -1241,7 +1242,8 @@ static const Clp_Option options[] = {
   { "writepercent", 0, opt_writepercent, Clp_ValDouble, Clp_Optional },
   { "blindrandwrites", 0, opt_blindrandwrites, 0, Clp_Negate },
   { "prepopulate", 0, opt_prepopulate, Clp_ValInt, Clp_Optional },
-  { "seed", 's', opt_seed, Clp_ValUnsigned, 0 }
+  { "seed", 's', opt_seed, Clp_ValUnsigned, 0 },
+  { "skew", 0, opt_skew, Clp_ValDouble, Clp_Optional}
 };
 
 static void help(const char *name) {
@@ -1255,8 +1257,9 @@ Options:\n\
  --writepercent=WRITEPERCENT, probability with which to do writes versus reads (default %f)\n\
  --blindrandwrites, do blind random writes for random tests. makes checking impossible\n\
  --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n\
- --seed=SEED\n",
-         name, nthreads, ntrans, opspertrans, write_percent, prepopulate);
+ --seed=SEED\n\
+ --skew=SKEW, skew parameter for zipfrw test type (default %f)\n",
+         name, nthreads, ntrans, opspertrans, write_percent, prepopulate, zipf_skew);
   printf("\nTests:\n");
   size_t testidx = 0;
   for (size_t ti = 0; ti != sizeof(tests)/sizeof(tests[0]); ++ti)
@@ -1319,6 +1322,9 @@ int main(int argc, char *argv[]) {
     case opt_seed:
         seed = clp->val.u;
         break;
+    case opt_skew:
+        zipf_skew = clp->val.d;
+        break;
     default:
       help(argv[0]);
     }
@@ -1373,6 +1379,11 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
+  if (!strcmp(tests[test].name, "zipfrw") && (zipf_skew <= 0.0 || zipf_skew >= 1000.0)) {
+    printf("Please enter a skew parameter between 0 and 1000 (currently entered %f)\n", zipf_skew);
+    exit(1);
+  }
+
   Tester* tester = tests[test].tester;
   tester->initialize();
 
@@ -1401,6 +1412,8 @@ int main(int argc, char *argv[]) {
  MAINTAIN_TRUE_ARRAY_STATE: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, STO_PROFILE_COUNTERS: %d\n",
          ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, prepopulate, blindRandomWrite,
          MAINTAIN_TRUE_ARRAY_STATE, Transaction::tset_initial_capacity, seed, STO_PROFILE_COUNTERS);
+  if (!strcmp(tests[test].name, "zipfrw"))
+    printf("  Zipf distribution parameter(s): resolution = %lu, zipf_skew = %f\n", StoSampling::StoZipfDistribution::resolution, zipf_skew);
   printf("  STO_SORT_WRITESET: %d\n", STO_SORT_WRITESET);
 #endif
 
