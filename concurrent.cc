@@ -588,7 +588,6 @@ bool ZipfRW<DS>::prepopulate() {
 
     std::cout << "Generating zipf distribution..." << std::endl;
 
-    dist->generate();
     int opsperthread = ntrans/nthreads*opspertrans;
     for (int i = 0; i < nthreads; ++i) {
         slot_traces.push_back(dist->sample_trace(opsperthread));
@@ -1403,7 +1402,7 @@ int main(int argc, char *argv[]) {
          ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, prepopulate, blindRandomWrite,
          MAINTAIN_TRUE_ARRAY_STATE, Transaction::tset_initial_capacity, seed, STO_PROFILE_COUNTERS);
   if (!strcmp(tests[test].name, "zipfrw"))
-    printf("  Zipf distribution parameter(s): resolution = %lu, zipf_skew = %f\n", StoSampling::StoZipfDistribution::resolution, zipf_skew);
+    printf("  Zipf distribution parameter(s): zipf_skew = %f\n", zipf_skew);
   printf("  STO_SORT_WRITESET: %d\n", STO_SORT_WRITESET);
 #endif
 
