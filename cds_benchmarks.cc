@@ -1,6 +1,7 @@
 #include "cds_benchmarks.hh"
 #include "cds_bm_queues.hh"
 #include "cds_bm_maps.hh"
+#include <stdlib.h>
 
 /*
  * Threads to run the tests and record performance
@@ -148,41 +149,144 @@ float get_abort_stats() {
 #endif
 }
 
-int main() {
+void simpleStartAndWait(GenericTest* test, size_t size, int nthreads, int repeats) {
+    // create threads to run the test
+    pthread_t tids[nthreads];
+    Tester testers[nthreads];
+   
+    for (int r = 0; r < repeats; ++r) {
+        test->initialize(size);
+        for (int i = 0; i < nthreads; ++i) {
+            testers[i].me = i;
+            testers[i].test = test;
+            testers[i].nthreads = nthreads;
+            pthread_create(&tids[i], NULL, test_thread, &testers[i]);
+        }
+        for (int i = 0; i < nthreads; ++i) {
+            pthread_join(tids[i], NULL);
+        }
+        test->cleanup();
+    }
+}
+
+int main(int argc, char* argv[]) { 
+    cds::Initialize();
+    cds::gc::HP hpGC(67);
+    cds::threading::Manager::attachThread();
+        srandomdev();
+    for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
+        initial_seeds[i] = random();
+
+    std::ios_base::sync_with_stdio(true);
+
+    // create epoch advancer thread
+    pthread_t advancer;
+    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
+    pthread_detach(advancer);
+
+    if (argc >= 2) {
+        int test = std::atoi(argv[1]);
+       
+        //hashmaps
+        auto chaining = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 125000, 1, 33, 33);
+        auto chmkf = new MapOpTest<DatatypeHarness<CuckooHashMapKF<int, int, 125000, false>>>(STO, 125000, 1, 33, 33);
+        auto chmie = new MapOpTest<DatatypeHarness<CuckooHashMapIE<int, int, 125000, false>>>(STO, 125000, 1, 33, 33);
+        auto chaining2 = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,10000>>>(STO, 10000, 1, 33, 33);
+        auto chmkf2 = new MapOpTest<DatatypeHarness<CuckooHashMapKF<int, int, 10000, false>>>(STO, 10000, 1, 33, 33);
+        auto chmie2 = new MapOpTest<DatatypeHarness<CuckooHashMapIE<int, int, 10000, false>>>(STO, 10000, 1, 33, 33);
+        auto chaining3 = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,1000000>>>(STO, 1000000, 1, 33, 33);
+        auto chmkf3 = new MapOpTest<DatatypeHarness<CuckooHashMapKF<int, int, 1000000, false>>>(STO, 1000000, 1, 33, 33);
+        auto chmie3 = new MapOpTest<DatatypeHarness<CuckooHashMapIE<int, int, 1000000, false>>>(STO, 1000000, 1, 33, 33);
+        //queues
+        auto fcqueuelp = new RandomQSingleOpTest<DatatypeHarness<FCQueueLP<int>>>(STO, RANDOM_VALS);
+        auto fcqueuet = new RandomQSingleOpTest<DatatypeHarness<FCQueueT<int>>>(STO, RANDOM_VALS);
+        auto fcqueuent = new RandomQSingleOpTest<DatatypeHarness<FCQueueNT<int>>>(CDS, RANDOM_VALS);
+        auto wrappedfcqueuent = new RandomQSingleOpTest<DatatypeHarness<FCQueueNT<int>>>(STO, RANDOM_VALS);
+        auto queuelp = new RandomQSingleOpTest<DatatypeHarness<QueueLP<int, false>>>(STO, RANDOM_VALS);
+        auto queue1 = new RandomQSingleOpTest<DatatypeHarness<Queue1<int, false>>>(STO, RANDOM_VALS);
+        auto queue2 = new RandomQSingleOpTest<DatatypeHarness<Queue2<int, false>>>(STO, RANDOM_VALS);
+
+        switch(test) {
+            case 0:
+            simpleStartAndWait(chaining, 0, 8, 5);
+            break;
+
+            case 1:
+            simpleStartAndWait(chmkf, 0, 8, 5);
+            break;
+
+            case 2:
+            simpleStartAndWait(chmie, 0, 8, 5);
+            break;
+
+            case 3:
+            simpleStartAndWait(chaining2, 0, 8, 5);
+            break;
+
+            case 4:
+            simpleStartAndWait(chmkf2, 0, 8, 5);
+            break;
+
+            case 5:
+            simpleStartAndWait(chmie2, 0, 8, 5);
+            break;
+
+            case 6:
+            simpleStartAndWait(chaining3, 0, 8, 5);
+            break;
+
+            case 7:
+            simpleStartAndWait(chmkf3, 0, 8, 5);
+            break;
+
+            case 8:
+            simpleStartAndWait(chmie3, 0, 8, 5);
+            break;
+        
+            case 9:
+            simpleStartAndWait(fcqueuelp, 10000, 8, 5);
+            break;
+
+            case 10:
+            simpleStartAndWait(fcqueuet, 10000, 8, 5);
+            break;
+
+            case 11:
+            simpleStartAndWait(fcqueuent, 10000, 8, 5);
+            break;
+
+            case 12:
+            simpleStartAndWait(wrappedfcqueuent, 10000, 8, 5);
+            break;
+
+            case 13:
+            simpleStartAndWait(queuelp, 10000, 8, 5);
+            break;
+
+            case 14:
+            simpleStartAndWait(queue1, 10000, 8, 5);
+            break;
+
+            case 15:
+            simpleStartAndWait(queue2, 10000, 8, 5);
+            break;
+
+            default:
+            assert(0);
+        }
+        cds::Terminate();
+        return 0;
+    }
+        
     global_verbose_stats_file = fopen("microbenchmarks/cds_benchmarks_stats_verbose.txt", "w");
     global_stats_file = fopen("microbenchmarks/cds_benchmarks_stats.txt", "w");
     if ( !global_stats_file || !global_verbose_stats_file ) {
         fprintf(stderr, "Could not open file to write stats");
         return 1;
     }
+    
     dualprintf("\n--------------NEW TEST-----------------\n");
 
-    srandomdev();
-    for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
-        initial_seeds[i] = random();
-
-    std::ios_base::sync_with_stdio(true);
-
-    cds::Initialize();
-    cds::gc::HP hpGC(67);
-    cds::threading::Manager::attachThread();
-    
-    // create epoch advancer thread
-    pthread_t advancer;
-    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
-    pthread_detach(advancer);
-
-    //auto defaultsto = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 125000, 1, 33, 33);
-    ////startAndWait(defaultsto, 0, 12, 10);
-    //auto chmkf = new MapOpTest<DatatypeHarness<CuckooHashMapKF<int, int, 15000, false>>>(STO, 125000, 1, 33, 33);
-    //startAndWait(chmkf, 500000, 16, 5);
-    //auto queuelp = new RandomQSingleOpTest<DatatypeHarness<FCQueueLP<int, std::queue<int>>>>(STO, RANDOM_VALS);
-    //startAndWait(queuelp, 10000, 12);
-    //auto queuefc = new RandomQSingleOpTest<DatatypeHarness<FCQueue<int, TNonopaqueWrapped>>>(STO, RANDOM_VALS);
-    //startAndWait(queuefc, 10000, 12);
-    //auto queuefc = new RandomQSingleOpTest<DatatypeHarness<QueueLP<int, false>>>(STO, RANDOM_VALS);
-    //startAndWait(queuefc, 10000, 18, 2);
-  /*  
     std::vector<Test> map_tests = make_map_tests();
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
@@ -214,7 +318,7 @@ int main() {
                     }
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
                             pqueue_tests[i+j].desc.c_str(), pqueue_tests[i+j].ds, *size, *nthreads);
-                    startAndWait(pqueue_tests[i+j].test, *size, *nthreads);
+                    startAndWait(pqueue_tests[i+j].test, *size, *nthreads, 5);
                     dualprintf(";");
                 }
                 if (pqueue_tests[i].desc.find("PushPop")==std::string::npos) dualprintf("\n");
@@ -223,7 +327,6 @@ int main() {
             dualprintf("\n");
         }
     }
-    */
     // queue tests
     std::vector<Test> queue_tests = make_queue_tests();
     for (unsigned i = 0; i < queue_tests.size(); i+=num_queues) {
@@ -246,6 +349,7 @@ int main() {
             dualprintf("\n");
         }
     }
+
     cds::Terminate();
     fclose(global_stats_file);
     fclose(global_verbose_stats_file);
