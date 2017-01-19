@@ -13,9 +13,11 @@
 namespace StoSampling {
 
 typedef size_t index_t;
-typedef std::vector<size_t> pmf_type;
+typedef std::vector<double> weight_type;
 typedef std::vector<index_t> trace_type;
 
+#if 0
+// commented out since we use std::discrete_distribution now to do the sampling
 // prefix-sum tree data structure used to sample a given (scaled) pmf
 class PrefixSumTree {
 public:
@@ -78,10 +80,12 @@ private:
     size_t size;
     size_t leaves_idx;
 };
+#endif
 
 template <typename IntType>
 class StoUniformIntSampler {
 public:
+    StoUniformIntSampler() : rd(), gen(rd()), dis() {}
     StoUniformIntSampler(IntType range)
         : rd(), gen(rd()), dis(0, range-1) {}
 
@@ -91,6 +95,10 @@ public:
 
     void set_params(typename std::uniform_int_distribution<IntType>::param_type p) {
         dis.param(p);
+    }
+
+    std::mt19937& generator() {
+        return gen;
     }
 
 private:
@@ -103,14 +111,10 @@ private:
 // n: size of the universe
 // shuffle: generate a random mapping from sampled indices to actual indices used in experiments
 // index_table: set a custom index translation table
-// resolution: scaling factor that transforms a normalized pmf (with probs adding up to 1) to an integral
-//   one for easy processing (no floating-point)
 class StoRandomDistribution {
 public:
-    static constexpr size_t resolution = 1000000;
-
     StoRandomDistribution(size_t n, bool shuffle = false)
-        : n_(n), index_transform(false), prefix_sums(n), uis(resolution) {
+        : n_(n), index_transform(false), uis(), dist() {
         if (shuffle) {
             std::random_device rd;
             std::mt19937 gen(rd());
@@ -123,25 +127,12 @@ public:
     }
     StoRandomDistribution(size_t n, std::vector<index_t> index_table)
         : n_(n), index_transform(true), index_translation_table(index_table),
-        prefix_sums(n), uis(resolution) {}
+        uis(), dist() {}
 
     virtual ~StoRandomDistribution() {}
 
-    // generate a probability mass function (pmf) according zipf distribution
-    // and then build a prefix-sum tree based on the pmf
-    void generate() {
-        pmf_type pmf = generate_pmf();
-        prefix_sums.load(pmf);
-
-        std::uniform_int_distribution<size_t> d(0, prefix_sums.adjusted_resolution()-1);
-        uis.set_params(d.param());
-    }
-
-    // this is the method specific to each prob. distribution
-    virtual pmf_type generate_pmf() = 0;
-
     virtual index_t sample() const {
-        auto s_index = prefix_sums.find_interval(uis.sample());
+        auto s_index = dist(uis.generator());
         if (index_transform) {
             return index_translation_table[s_index];
         } else {
@@ -157,33 +148,45 @@ public:
     }
 
 protected:
+    void generate() {
+        weight_type pmf = generate_weights();
+        std::discrete_distribution<index_t> d_(pmf.begin(), pmf.end());
+        dist.param(d_.param());
+    }
+
+    // this is the method specific to each prob. distribution
+    virtual weight_type generate_weights() = 0;
+
     size_t n_;
     bool index_transform;
     std::vector<index_t> index_translation_table;
-    PrefixSumTree prefix_sums;
-    mutable StoUniformIntSampler<size_t> uis;
+
+    mutable StoUniformIntSampler<index_t> uis;
+    // the core distribution
+    mutable std::discrete_distribution<index_t> dist;
 };
 
 // specialization 1: uniform random distribution
 class StoUniformDistribution : public StoRandomDistribution {
 public:
     StoUniformDistribution(size_t n, bool shuffle = false) :
-        StoRandomDistribution(n, shuffle) {}
+        StoRandomDistribution(n, shuffle) {generate();}
     StoUniformDistribution(size_t n, std::vector<index_t> index_table) :
-        StoRandomDistribution(n, index_table) {}
-
-    pmf_type generate_pmf() override {
-        std::uniform_int_distribution<size_t> d(0, n_-1); 
-        uis.set_params(d.param());
-        return pmf_type();
-    }
+        StoRandomDistribution(n, index_table) {generate();}
 
     index_t sample() const override {
-        auto s_index = (index_t)uis.sample();
+        auto s_index = uis.sample();
         if (index_transform)
             return index_translation_table[s_index];
         else
             return s_index;
+    }
+
+protected:
+    weight_type generate_weights() override {
+        std::uniform_int_distribution<index_t> d(0, n_-1);
+        uis.set_params(d.param());
+        return weight_type();
     }
 };
 
@@ -195,18 +198,21 @@ public:
     StoZipfDistribution(size_t n, double skew = default_skew, bool shuffle = false) :
         StoRandomDistribution(n, shuffle), skewness(skew) {
         calculate_sum();
+        generate();
     }
     StoZipfDistribution(size_t n, double skew, std::vector<index_t> index_table) :
         StoRandomDistribution(n, index_table), skewness(skew) {
         calculate_sum();
+        generate();
     }
 
-    pmf_type generate_pmf() override {
-        pmf_type pmf;
+protected:
+    weight_type generate_weights() override {
+        weight_type pmf;
         for (size_t i = 0; i < n_; ++i) {
             double p = 1.0/(std::pow((double)(i+1), skewness)*sum_);
             //std::cout << p << std::endl;
-            pmf.push_back((size_t)(p*resolution));
+            pmf.push_back(p);
         }
         return pmf;
     }
