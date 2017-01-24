@@ -35,7 +35,7 @@
 /*! CuckooHashMapWK is the hash table class. It uses wrapped keys to see if this is more expensive
  * than using a key that fits in a word. Otherwise, it is no different than the CuckooHashMapIE.
  * */
-template <class Key, class T, unsigned Num_Buckets = 250000, bool Opacity = false>
+template <class Key, class T, unsigned Num_Buckets = 250000, bool Opacity = false, unsigned SLOT_PER_BUCKET=5>
 class CuckooHashMapWK: public Shared {
 
     // Structs and functions used internally
@@ -2092,36 +2092,36 @@ private:
 };
 
 // Initializing the static members
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-__thread void** CuckooHashMapWK<Key, T, Num_Buckets, Opacity>::hazard_pointer_old = nullptr;
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+__thread void** CuckooHashMapWK<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::hazard_pointer_old = nullptr;
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-__thread void** CuckooHashMapWK<Key, T, Num_Buckets, Opacity>::hazard_pointer_new = nullptr;
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+__thread void** CuckooHashMapWK<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::hazard_pointer_new = nullptr;
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-__thread int CuckooHashMapWK<Key, T, Num_Buckets, Opacity>::counterid = -1;
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+__thread int CuckooHashMapWK<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::counterid = -1;
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-typename std::allocator<typename CuckooHashMapWK<Key, T, Num_Buckets, Opacity>::Bucket>
-CuckooHashMapWK<Key, T, Num_Buckets, Opacity>::bucket_allocator;
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+typename std::allocator<typename CuckooHashMapWK<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::Bucket>
+CuckooHashMapWK<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::bucket_allocator;
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-typename CuckooHashMapWK<Key, T, Num_Buckets, Opacity>::GlobalHazardPointerList
-CuckooHashMapWK<Key, T, Num_Buckets, Opacity>::global_hazard_pointers;
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+typename CuckooHashMapWK<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::GlobalHazardPointerList
+CuckooHashMapWK<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::global_hazard_pointers;
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-const size_t CuckooHashMapWK<Key, T, Num_Buckets, Opacity>::kNumCores =
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+const size_t CuckooHashMapWK<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::kNumCores =
     std::thread::hardware_concurrency() == 0 ?
     sysconf(_SC_NPROCESSORS_ONLN) : std::thread::hardware_concurrency();
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-std::atomic<size_t> CuckooHashMapWK<Key, T, Num_Buckets, Opacity>::numThreads(0);
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+std::atomic<size_t> CuckooHashMapWK<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::numThreads(0);
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-typename CuckooHashMapWK<Key, T, Num_Buckets, Opacity>::cuckoo_stats 
-CuckooHashMapWK<Key, T, Num_Buckets, Opacity>::stats(0,0);
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+typename CuckooHashMapWK<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::cuckoo_stats 
+CuckooHashMapWK<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::stats(0,0);
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-typename CuckooHashMapWK<Key, T, Num_Buckets, Opacity>::key_equal
-CuckooHashMapWK<Key, T, Num_Buckets, Opacity>::eqfn;
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+typename CuckooHashMapWK<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::key_equal
+CuckooHashMapWK<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::eqfn;
 #endif

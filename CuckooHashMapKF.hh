@@ -65,7 +65,7 @@ template <> class Cuckoo_KeyFragment<int> {
  *  [KF1][KF2][KF3][KF4][Ptr1][Ptr2][Ptr3][Ptr4]
  * where Ptrs are pointers to internal elements (key/value pairs)
  * */
-template <class Key, class T, unsigned Num_Buckets = 250000, bool Opacity = false>
+template <class Key, class T, unsigned Num_Buckets = 250000, bool Opacity = false, unsigned SLOT_PER_BUCKET=5>
 class CuckooHashMapKF: public Shared {
 
     // Structs and functions used internally
@@ -2093,32 +2093,32 @@ private:
 };
 
 // Initializing the static members
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-__thread void** CuckooHashMapKF<Key, T, Num_Buckets, Opacity>::hazard_pointer_old = nullptr;
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+__thread void** CuckooHashMapKF<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::hazard_pointer_old = nullptr;
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-__thread void** CuckooHashMapKF<Key, T, Num_Buckets, Opacity>::hazard_pointer_new = nullptr;
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+__thread void** CuckooHashMapKF<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::hazard_pointer_new = nullptr;
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-__thread int CuckooHashMapKF<Key, T, Num_Buckets, Opacity>::counterid = -1;
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+__thread int CuckooHashMapKF<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::counterid = -1;
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-typename std::allocator<typename CuckooHashMapKF<Key, T, Num_Buckets, Opacity>::Bucket>
-CuckooHashMapKF<Key, T, Num_Buckets, Opacity>::bucket_allocator;
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+typename std::allocator<typename CuckooHashMapKF<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::Bucket>
+CuckooHashMapKF<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::bucket_allocator;
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-typename CuckooHashMapKF<Key, T, Num_Buckets, Opacity>::GlobalHazardPointerList
-CuckooHashMapKF<Key, T, Num_Buckets, Opacity>::global_hazard_pointers;
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+typename CuckooHashMapKF<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::GlobalHazardPointerList
+CuckooHashMapKF<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::global_hazard_pointers;
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-const size_t CuckooHashMapKF<Key, T, Num_Buckets, Opacity>::kNumCores =
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+const size_t CuckooHashMapKF<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::kNumCores =
     std::thread::hardware_concurrency() == 0 ?
     sysconf(_SC_NPROCESSORS_ONLN) : std::thread::hardware_concurrency();
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-std::atomic<size_t> CuckooHashMapKF<Key, T, Num_Buckets, Opacity>::numThreads(0);
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+std::atomic<size_t> CuckooHashMapKF<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::numThreads(0);
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-typename CuckooHashMapKF<Key, T, Num_Buckets, Opacity>::cuckoo_stats 
-CuckooHashMapKF<Key, T, Num_Buckets, Opacity>::stats;
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+typename CuckooHashMapKF<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::cuckoo_stats 
+CuckooHashMapKF<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::stats;
 #endif
