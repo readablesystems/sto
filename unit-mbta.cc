@@ -4,6 +4,7 @@
 #include "MassTrans.hh"
 #include <cassert>
 
+#include <chrono>
 #include <thread>
 
 // unit testing with key range 0000000-9999999
@@ -21,7 +22,7 @@ void scanner(mbta_type& mbta) {
             mbta.transQuery("0000000", "9999999", [&] (Masstree::Str key, mbta_type::value_type& value) {
                 assert(value == (std::string(key.s, key.len)+"v"));
                 ++cnt;
-                return false;
+                return true;
             });
         } RETRY(true);
 
@@ -29,10 +30,11 @@ void scanner(mbta_type& mbta) {
             std::stringstream ss;
             ss << "Invalid number of keys: " << cnt << std::endl;
             std::cerr << ss.str() << std::flush;
+            //mbta.print_table();
             assert(0);
         }
 
-        if (cnt == 10000000)
+        if (cnt > 9999999ul)
             break;
     }
 }
@@ -47,10 +49,11 @@ void inserter(mbta_type& mbta) {
                 ss << std::setw(7) << std::setfill('0') << key;
                 mbta.transInsert(ss.str(), ss.str()+"v");
                 ++key;
+                //std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
         } RETRY(true);
 
-        if (key > 9999999)
+        if (key > 9999999ul)
             break;
     }
 }
@@ -62,5 +65,6 @@ int main() {
     std::thread ins(inserter, std::ref(mbta));
     scn.join();
     ins.join();
+    std::cout << "Test pass." << std::endl;
     return 0;
 }

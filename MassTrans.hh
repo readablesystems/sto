@@ -65,6 +65,13 @@ struct versioned_str_struct : public versioned_str {
   inline void deallocate_rcu(threadinfo& ti) {
     ti.deallocate_rcu(this, this->capacity() + sizeof(versioned_str_struct), memtag_value);
   }
+
+  // Masstree debug printer
+  void print(FILE* f, const char* prefix,
+    int indent, Masstree::Str key, kvtimestamp_t, char* suffix) {
+    fprintf(f, "%s%*s%.*s = versioned_str_struct%s\n",
+        prefix, indent, "", key.len, key.s, suffix);
+  }
 };
 
 template <typename V, typename Box = versioned_value_struct<V>, bool Opacity = true>
@@ -133,6 +140,11 @@ public:
       mythreadinfo.ti->rcu_stop();
     };
 #endif
+  }
+
+  // print the content of the underlying Masstree
+  void print_table() const {
+    table_.print();
   }
 
   template <typename ValType>

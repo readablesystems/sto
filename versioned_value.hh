@@ -1,6 +1,7 @@
 #pragma once
 #include <iostream>
 #include "Interface.hh"
+#include "masstree_print.hh"
 
 // TODO(nate): ugh. really we should have a MassTrans subclass of this with the
 // deallocate_rcu functions so we 1) don't have to include Masstree headers in
@@ -50,6 +51,15 @@ struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
 
   inline void deallocate_rcu(threadinfo& ti) {
     ti.deallocate_rcu(this, sizeof(versioned_value_struct), memtag_value);
+  }
+
+  // Masstree debug printer
+  void print(FILE *f, const char *prefix, int indent, lcdf::Str key,
+    kvtimestamp_t, char *suffix) {
+    std::stringstream vss;
+    vss << value_;
+    fprintf(f, "%s%*s%.*s = %s%s\n", prefix, indent, "",
+        key.len, key.s, vss.str().c_str(), suffix);
   }
 
 #if 0
@@ -109,6 +119,15 @@ public:
     ti.deallocate_rcu(this, sizeof(versioned_value_struct), memtag_value);
   }
   
+  // Masstree debug printer
+  void print(FILE *f, const char *prefix, int indent, lcdf::Str key,
+    kvtimestamp_t, char *suffix) {
+    std::stringstream vss;
+    vss << *valueptr_;
+    fprintf(f, "%s%*s%.*s = %s%s\n", prefix, indent, "",
+        key.len, key.s, vss.str().c_str(), suffix);
+  }
+
 private:
   versioned_value_struct(const value_type& val, version_type version) : version_(version), valueptr_(new value_type(std::move(val))) {}
 
