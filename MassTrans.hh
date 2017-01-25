@@ -359,6 +359,11 @@ public:
       Version v;
       atomicRead(e, v, val);
       item.observe(tversion_type(v));
+
+      // skip nodes that are marked invalid
+      if (v & invalid_bit)
+        return true;
+
       // key and val are both only guaranteed until callback returns
       return callback(key, val);//query_callback_overload(key, val, callback);
     };
