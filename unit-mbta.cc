@@ -14,46 +14,58 @@
 
 typedef MassTrans<std::string> mbta_type;
 
-void scanner(mbta_type& mbta) {
+void scanner(mbta_type* mbta) {
+    mbta->thread_init();
     std::cout << "scanner started" << std::endl;
     while (true) {
         unsigned long cnt = 0;
+        unsigned long cnt_snap;
+
         TRANSACTION {
-            mbta.transQuery("0000000", "9999999", [&] (Masstree::Str key, mbta_type::value_type& value) {
+            cnt_snap = cnt;
+            mbta->transQuery("00000", "99999", [&] (Masstree::Str key, mbta_type::value_type& value) {
                 assert(value == (std::string(key.s, key.len)+"v"));
-                ++cnt;
+                ++cnt_snap;
                 return true;
             });
         } RETRY(true);
+
+        assert(cnt_snap >= cnt);
+        cnt = cnt_snap;
 
         if (cnt % 5) {
             std::stringstream ss;
             ss << "Invalid number of keys: " << cnt << std::endl;
             std::cerr << ss.str() << std::flush;
-            //mbta.print_table();
+            //mbta->print_table();
             assert(0);
         }
 
-        if (cnt > 9999999ul)
+        if (cnt > 999ul)
             break;
     }
 }
 
-void inserter(mbta_type& mbta) {
+void inserter(mbta_type* mbta) {
+    mbta->thread_init();
     std::cout << "inserter started" << std::endl;
     unsigned long key = 0;
     while (true) {
+        unsigned long key_snap;
         TRANSACTION {
+            key_snap = key;
             for (int i = 0; i < 5; ++i) {
                 std::stringstream ss;
-                ss << std::setw(7) << std::setfill('0') << key;
-                mbta.transInsert(ss.str(), ss.str()+"v");
-                ++key;
+                ss << std::setw(5) << std::setfill('0') << key_snap;
+                mbta->transInsert(ss.str(), ss.str()+"v");
+                ++key_snap;
                 //std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
         } RETRY(true);
 
-        if (key > 9999999ul)
+        key = key_snap;
+
+        if (key > 999ul)
             break;
     }
 }
@@ -61,8 +73,8 @@ void inserter(mbta_type& mbta) {
 int main() {
     mbta_type mbta;
 
-    std::thread scn(scanner, std::ref(mbta));
-    std::thread ins(inserter, std::ref(mbta));
+    std::thread scn(scanner, &mbta);
+    std::thread ins(inserter, &mbta);
     scn.join();
     ins.join();
     std::cout << "Test pass." << std::endl;
