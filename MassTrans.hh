@@ -398,6 +398,10 @@ public:
       Version v;
       atomicRead(e, v, val);
       item.observe(tversion_type(v));
+
+      if (v & invalid_bit)
+        return true;
+
       return callback(key, val);
     };
 
