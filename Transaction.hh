@@ -925,6 +925,7 @@ inline TransProxy& TransProxy::observe(TicTocNonopaqueVersion version, bool add_
     if (add_observation && !has_observation()) {
         item().__or_flags(TransItem::observe_bit);
         //item().rdata_ = Packer<TicTocNonopaqueVersion>::pack(t()->buf_, std::move(version));
+        item().otss_ = version;
         t()->any_nonopaque_ = true;
     }
     return *this;

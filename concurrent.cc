@@ -618,10 +618,12 @@ void ZipfRW<DS>::run(int me) {
         = slot_traces[me].begin();
 
     for (int i = 0; i < N; ++i) {
-        StoSampling::trace_type::const_iterator slot_it_snap = slot_it;
+        StoSampling::trace_type::const_iterator slot_it_snap;
         Rand transgen_snap = transgen;
 
         TRANSACTION {
+            slot_it_snap = slot_it;
+            transgen_snap = transgen;
             for (int j = 0; j < OPS; ++j) {
                 assert(slot_it_snap != slot_traces[me].end());
 
