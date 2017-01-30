@@ -328,13 +328,21 @@ public:
 
     template <typename Exception>
     static inline void opaque_throw(const Exception& exception);
-private:
+protected:
 #if TICTOC_IMPL_COMPOUND == 1
     CompoundTid tss_;
 #else
     RawTid wts_;
     RawTid rts_;
 #endif
+};
+
+class TicTocNonopaqueVersion : public TicTocVersion {
+public:
+    static constexpr type nonopaque_bit = LockableTid::nonopaque_bit;
+    TicTocNonopaqueVersion() : TicTocVersion(nonopaque_bit) {}
+    TicTocNonopaqueVersion(const TicTocNonopaqueVersion& rhs) : TicTocVersion(rhs) {}
+    TicTocNonopaqueVersion(type ts) : TicTocVersion(ts | nonopaque_bit) {}
 };
 
 // The guts of TicTocVersion depend on the actual underlying

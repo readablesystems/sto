@@ -257,10 +257,10 @@ class TransProxy {
     template <typename T>
     inline TransProxy& add_read_opaque(T rdata);
     inline TransProxy& observe(TicTocVersion version, bool add_observation);
-//    inline TransProxy& observe(TNonopaqueVersion version, bool add_read);
+    inline TransProxy& observe(TicTocNonopaqueVersion version, bool add_observation);
 //    inline TransProxy& observe(TCommutativeVersion version, bool add_read);
     inline TransProxy& observe(TicTocVersion version);
-//    inline TransProxy& observe(TNonopaqueVersion version);
+    inline TransProxy& observe(TicTocNonopaqueVersion version);
 //    inline TransProxy& observe(TCommutativeVersion version);
     inline TransProxy& observe_opacity(TicTocVersion version);
 //    inline TransProxy& observe_opacity(TNonopaqueVersion version);

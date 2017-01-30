@@ -918,19 +918,19 @@ inline TransProxy& TransProxy::observe(TicTocVersion version, bool add_observati
     return *this;
 }
 
-/*
-inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read) {
+inline TransProxy& TransProxy::observe(TicTocNonopaqueVersion version, bool add_observation) {
     assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_))
-        t()->abort_because(item(), "locked", version.value());
-    if (add_read && !has_read()) {
-        item().__or_flags(TransItem::read_bit);
-        item().rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
+        t()->abort_because(item(), "locked", version.get_lockable().t_);
+    if (add_observation && !has_observation()) {
+        item().__or_flags(TransItem::observe_bit);
+        //item().rdata_ = Packer<TicTocNonopaqueVersion>::pack(t()->buf_, std::move(version));
         t()->any_nonopaque_ = true;
     }
     return *this;
 }
 
+/*
 inline TransProxy& TransProxy::observe(TCommutativeVersion version, bool add_read) {
     assert(!has_stash());
     if (version.is_locked())
@@ -948,11 +948,11 @@ inline TransProxy& TransProxy::observe(TicTocVersion version) {
     return observe(version, true);
 }
 
-/*
-inline TransProxy& TransProxy::observe(TNonopaqueVersion version) {
+inline TransProxy& TransProxy::observe(TicTocNonopaqueVersion version) {
     return observe(version, true);
 }
 
+/*
 inline TransProxy& TransProxy::observe(TCommutativeVersion version) {
     return observe(version, true);
 }

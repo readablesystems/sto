@@ -22,7 +22,7 @@
 // size of array (for hashtables or other non-array structures, this is the
 // size of the key space)
 #ifndef ARRAY_SZ
-#define ARRAY_SZ 10000000
+#define ARRAY_SZ 1000000
 #endif
 
 #define USE_ARRAY 0
@@ -169,7 +169,7 @@ private:
 };
 
 template <> struct Container<USE_ARRAY_NONOPAQUE> {
-    typedef TArray<value_type, ARRAY_SZ> type;
+    typedef TArray<value_type, ARRAY_SZ, TNonopaqueWrapped> type;
     typedef int index_type;
     static constexpr bool has_delete = false;
     value_type nontrans_get(index_type key) {
@@ -1185,13 +1185,13 @@ void print_time(struct timeval tv1, struct timeval tv2) {
     {name, desc, 6, new type<6, ## __VA_ARGS__>},     \
     {name, desc, 7, new type<7, ## __VA_ARGS__>},     \
     {name, desc, 8, new type<8, ## __VA_ARGS__>},     \
-    {name, desc, 9, new type<9, ## __VA_ARGS__>},     \
-    {name, desc, 10, new type<10, ## __VA_ARGS__>}
+    {name, desc, 9, new type<9, ## __VA_ARGS__>},
 #endif
 
 #define MAKE_TESTER(name, desc, type, ...)            \
     {name, desc, 0, new type<0, ## __VA_ARGS__>},     \
-    {name, desc, 2, new type<2, ## __VA_ARGS__>}
+    {name, desc, 2, new type<2, ## __VA_ARGS__>},     \
+    {name, desc, 10, new type<10, ## __VA_ARGS__>}
 
 struct Test {
     const char* name;
