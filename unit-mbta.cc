@@ -15,6 +15,7 @@
 typedef MassTrans<std::string> mbta_type;
 
 void scanner(mbta_type* mbta) {
+    TThread::set_id(0);
     mbta->thread_init();
     std::cout << "scanner started" << std::endl;
     while (true) {
@@ -47,6 +48,7 @@ void scanner(mbta_type* mbta) {
 }
 
 void inserter(mbta_type* mbta) {
+    TThread::set_id(1);
     mbta->thread_init();
     std::cout << "inserter started" << std::endl;
     unsigned long key = 0;
