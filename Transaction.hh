@@ -908,6 +908,7 @@ inline TransProxy& TransProxy::observe(TicTocVersion version, bool add_observati
     assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_))
         t()->abort_because(item(), "locked", version.get_lockable().t_);
+    //printf("[%d] OBS: R%luW%lu\n", t()->threadid_, version.read_timestamp(), version.write_timestamp());
     t()->check_opacity(item(), version);
     if (add_observation && !has_observation()) {
         t()->min_rts_ = std::min(t()->min_rts_, version.read_timestamp());
