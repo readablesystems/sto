@@ -67,7 +67,7 @@ struct versioned_str_struct : public versioned_str {
   }
 };
 
-template <typename V, typename Box = versioned_value_struct<V>, bool Opacity = false>
+template <typename V, typename Box = versioned_value_struct<V>, bool Opacity = true>
 class MassTrans : public TObject {
 public:
 #if !RCU
@@ -83,7 +83,7 @@ public:
   typedef Masstree::Str Str;
 
   typedef typename Box::version_type Version;
-  typedef TicTocVersion tversion_type;
+  typedef typename std::conditional<Opacity, TicTocVersion, TicTocNonopaqueVersion>::type tversion_type;
 
   static __thread threadinfo_type mythreadinfo;
 
@@ -351,9 +351,13 @@ public:
       value_type stack_val;
       value_type& val = va ? *(*va)() : stack_val;
       val = e->atomic_read(item);
+
       //Version v;
       //atomicRead(e, v, val);
       //item.observe(tversion_type(v));
+      if (!version_is_valid(item.observed_timestamps()))
+        return true;
+
       // key and val are both only guaranteed until callback returns
       return callback(key, val);//query_callback_overload(key, val, callback);
     };
@@ -386,9 +390,14 @@ public:
       }
 #endif
       val = e->atomic_read(item);
+
       //Version v;
       //atomicRead(e, v, val);
       //item.observe(tversion_type(v));
+
+      if (!version_is_valid(item.observed_timestamps()))
+        return true;
+
       return callback(key, val);
     };
 

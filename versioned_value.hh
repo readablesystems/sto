@@ -44,7 +44,7 @@ struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
   }
 
   read_type atomic_read(TransProxy item) const {
-    return wrapped_value_.wait_snapshot(item, version_, true);
+    return wrapped_value_.read(item, version_);
   }
 
   read_type read_value() const {
