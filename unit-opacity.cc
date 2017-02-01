@@ -1,4 +1,5 @@
 #include <iostream>
+#include <sstream>
 #include <thread>
 
 #include "TArray.hh"
@@ -9,6 +10,7 @@ constexpr int array_size = 512;
 typedef TArray<int, array_size> array_type;
 
 void writer(array_type& arr) {
+    TThread::set_id(0);
     std::cout << "writer advances with steps of 2." << std::endl;
     for (int n = 0; n < 10000; ++n) {
         TRANSACTION {
@@ -26,6 +28,7 @@ void writer(array_type& arr) {
 }
 
 void reader(array_type& arr) {
+    TThread::set_id(1);
     std::cout << "reader advances with steps of 4." << std::endl;
     for (int n = 0; n < 10000; ++n) {
         TRANSACTION {
@@ -37,9 +40,11 @@ void reader(array_type& arr) {
                 if (val == -1)
                     val = v_;
                 else if (val != v_) {
-                    std::cerr << "Error at index " << idx
-                        << ", expecting " << val << ", got "
-                        << v_ << "." << std::endl;
+                    std::stringstream ss;
+                    ss << "Error at index " << idx
+                       << ", expecting " << val << ", got "
+                       << v_ << "." << std::endl;
+                    std::cout << ss.str() << std::flush;
                     abort();
                 }
 
