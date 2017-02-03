@@ -173,6 +173,18 @@ public:
             }
         }
     }
+
+    static bool opacity_validate_timestamps(const RawTid& tuple_wts, const RawTid& tuple_rts, RawTid read_wts, type commit_ts) {
+        auto t_wts = tuple_wts;
+        acquire_fence();
+        auto t_rts = tuple_rts;
+        acquire_fence();
+        if (t_wts.timestamp() != read_wts.timestamp()
+            || ((t_rts.timestamp() <= commit_ts) && t_wts.is_locked_elsewhere()))
+            return false;
+        else
+            return true;
+    }
 };
 
 class CompoundTid : public LockableTid {
@@ -236,6 +248,17 @@ public:
                  return true;
             }
         }
+    }
+
+    bool opacity_validate_timestamps(CompoundTid read_tss, type commit_ts) const {
+        type v = t_;
+        acquire_fence();
+        CompoundTid ct(v);
+        if (ct.wts_value() != read_tss.wts_value() ||
+            ((ct.rts_value() <= commit_ts) && is_locked_elsewhere()))
+            return false;
+        else
+            return true;
     }
 };
 
@@ -317,6 +340,7 @@ public:
     inline void set_timestamps(type commit_ts, type flags = 0);
     inline void set_timestamps_unlock(type commit_ts, type flags = 0);
     inline bool validate_timestamps(const TicTocVersion& old_tss, type commit_ts);
+    inline bool opacity_validate_timestamps(const TicTocVersion& old_tss, type commit_ts) const;
 
     friend std::ostream& operator<<(std::ostream& w, TicTocVersion v) {
         LockableTid l = v.get_lockable();
@@ -397,6 +421,9 @@ void TicTocVersion::set_timestamps_unlock(type commit_ts, type flags) {
 bool TicTocVersion::validate_timestamps(const TicTocVersion& old_tss, type commit_ts) {
     return tss_.validate_timestamps(old_tss.tss_, commit_ts);
 }
+bool TicTocVersion::opacity_validate_timestamps(const TicTocVersion& old_tss, type commit_ts) const {
+    return tss_.opacity_validate_timestamps(old_tss.tss_, commit_ts);
+}
 
 #else
 
@@ -450,6 +477,9 @@ void TicTocVersion::set_timestamps_unlock(type commit_ts, type flags) {
 }
 bool TicTocVersion::validate_timestamps(const TicTocVersion& old_tss, type commit_ts) {
     return RawTid::validate_timestamps(wts_, rts_, old_tss.wts_, old_tss.rts_, commit_ts);
+}
+bool TicTocVersion::opacity_validate_timestamps(const TicTocVersion& old_tss, type commit_ts) const {
+    return RawTid::opacity_validate_timestamps(wts_, rts_, old_tss.wts_, commit_ts);
 }
 #endif
 

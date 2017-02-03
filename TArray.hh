@@ -66,6 +66,10 @@ public:
     bool lock(TransItem& item, Transaction& txn) override {
         return txn.try_lock(item, data_[item.key<size_type>()].vers);
     }
+    // execution-time check
+    bool opacity_check(TransItem& item, Transaction& txn) override {
+        return item.opacity_check_timestamps(data_[item.key<size_type>()].vers, txn.timestamp());
+    }
     // commit-time check
     bool check(TransItem& item, Transaction& txn) override {
         return item.check_timestamps(data_[item.key<size_type>()].vers, txn.timestamp());

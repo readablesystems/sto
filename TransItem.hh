@@ -93,6 +93,9 @@ class TransItem {
         assert(has_observation());
         return tuple_ts.validate_timestamps(otss_, commit_ts);
     }
+    bool opacity_check_timestamps(const TicTocVersion& tuple_ts, TicTocTid::type commit_ts) const {
+        return tuple_ts.opacity_validate_timestamps(otss_, commit_ts);
+    }
     /*
     bool check_version(TNonopaqueVersion v) const {
         assert(has_read());

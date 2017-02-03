@@ -566,6 +566,9 @@ public:
 	//        always_assert(false);
         return false;
     }
+    virtual bool opacity_check(TransItem& item, Transaction& txn) {
+        return check(item, txn);
+    }
     virtual bool check(TransItem& item, Transaction& txn) = 0;
     virtual void install(TransItem& item, Transaction& txn) = 0;
     virtual void unlock(TransItem& item) = 0;

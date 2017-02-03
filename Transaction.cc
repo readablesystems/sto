@@ -125,7 +125,7 @@ void Transaction::hard_check_opacity(TransItem* item, const TicTocVersion& tss) 
         it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
         if (it->has_observation()) {
             TXP_INCREMENT(txp_total_check_read);
-            if (!it->owner()->check(*it, *this)
+            if (!it->owner()->opacity_check(*it, *this)
                 && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
                 mark_abort_because(item, "opacity check");
                 goto abort;
