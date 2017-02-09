@@ -384,8 +384,9 @@ void Transaction::print_stats() {
                 100.0 * (double) out.p(txp_commit_time_nonopaque) / txc_commit_attempts);
     }
     if (txp_count >= txp_hco_abort)
-        fprintf(stderr, "$ %llu HCO (%llu lock, %llu invalid, %llu aborts)\n",
-                out.p(txp_hco), out.p(txp_hco_lock), out.p(txp_hco_invalid), out.p(txp_hco_abort));
+        fprintf(stderr, "$ %llu HCO (%llu lock, %llu invalid, %llu aborts) out of %llu check attempts (%.3f%%)\n",
+                out.p(txp_hco), out.p(txp_hco_lock), out.p(txp_hco_invalid), out.p(txp_hco_abort), out.p(txp_tco),
+                100.0 * (double) out.p(txp_hco) / out.p(txp_tco));
     if (txp_count >= txp_hash_collision)
         fprintf(stderr, "$ %llu (%.3f%%) hash collisions, %llu second level\n", out.p(txp_hash_collision),
                 100.0 * (double) out.p(txp_hash_collision) / out.p(txp_hash_find),

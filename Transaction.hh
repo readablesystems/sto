@@ -96,6 +96,7 @@ enum txp {
     txp_commit_time_nonopaque,
     txp_commit_time_aborts,
     txp_max_set,
+    txp_tco,
     txp_hco,
     txp_hco_lock,
     txp_hco_invalid,
@@ -547,6 +548,7 @@ public:
 
     void check_opacity(TransItem& item, const TicTocVersion& tss) {
         assert(state_ <= s_committing_locked);
+        TXP_INCREMENT(txp_tco);
         //if (!start_tid_)
         //    start_tid_ = _TID;
         if (!try_check_opacity(tss.write_timestamp())
