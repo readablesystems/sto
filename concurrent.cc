@@ -18,6 +18,8 @@
 
 #include "MassTrans.hh"
 
+#include "LocalityLock.hh"
+
 // size of array (for hashtables or other non-array structures, this is the
 // size of the key space)
 #ifndef ARRAY_SZ
@@ -959,6 +961,32 @@ template <int DS> bool InterferingRWs<DS>::check() {
   return true;
 }
 
+
+template <int DS> struct LockThroughput : public DSTester<DS> {
+    int *theInt;
+    LocalityLock lock;
+    LockThroughput() : theInt(new int()), lock() {}
+    void run(int me);
+    bool check();
+};
+
+template <int DS> void LockThroughput<DS>::run(int me) {
+  TThread::set_id(me);
+
+  int * a = this->theInt;
+  int N = ntrans/nthreads;
+  for (int i = 0; i < N; i++) {
+    lock.acquire(me);
+    *a += 1;
+    lock.release(me);
+  }
+}
+
+template <int DS> bool LockThroughput<DS>::check() {
+  printf("i%d\n", *this->theInt);
+  return *this->theInt == ntrans/nthreads*nthreads;
+}
+
 #if DATA_STRUCTURE == USE_QUEUE
 void Qxordeleterun(int me) {
   TThread::set_id(me);
@@ -1126,7 +1154,8 @@ struct Test {
     MAKE_TESTER("readthenwrite", 0, ReadThenWrite),
     MAKE_TESTER("kingofthedelete", 0, KingDelete),
     MAKE_TESTER("xordelete", 0, XorDelete),
-    MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true)
+    MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true),
+    MAKE_TESTER("lock", "lock throughput", LockThroughput),
 };
 
 struct {

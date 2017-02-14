@@ -56,20 +56,46 @@ public:
       }
     }
     fence();
-    owner_ = (owner_ & ~thread_mask) | threadid | in_use;
+    auto to_set = (owner_ & ~thread_mask) | threadid | in_use;
+    fence();
+    owner_ = to_set;
     fence();
     if (mode_ == threadid) {
-      mode_ = 0;
     } else
     // someone else got dibs
     if (mode_ != 0) {
-      // release and retry
-      owner_ = owner_ & ~thread_mask;
+      assert(mode_ != threadid);
+      // the other thread thinks they have the lock, but the lock owner
+      // could be marked as owned by either of us (we might've done our
+      // set after theirs). 
+      // If the other thread hasn't released the lock yet when that happens,
+      // their release will make things right.
+      // But, it's also possible that we're racing with their release()
+      // right now (e.g., they just set the lock unowned but then we set it
+      // back to owned by us).
+      while (owner_ & in_use) {
+        if (mode_ == 0 && (owner_ & in_use))
+          return;
+        //printf("reached %d\n", threadid);
+        relax_fence();
+      }
       acquire(threadid);
     }
+
+    fence();
   }
-  inline __attribute__((always_inline)) void release() {
-    owner_ = owner_ & ~in_use;
+  inline __attribute__((always_inline)) void release(int threadid) {
+    fence();
+
+    assert(owner_ & in_use);
+    threadid=threadid+1;
+    fence();
+    owner_ = threadid;//owner_ & ~in_use;
+    fence();
+    // need to make sure other threads can grab the lock
+    if (mode_ == threadid)
+      mode_ = 0;
+    fence();
   }
   word_type owner_;
   word_type mode_;

@@ -88,7 +88,7 @@ public:
         //txn.set_version_unlock(data_[i].vers, item);
     }
     void unlock(TransItem& item) override {
-      data_[item.key<size_type>()].lock.release();
+      data_[item.key<size_type>()].lock.release(TThread::id());
       //data_[item.key<size_type>()].vers.unlock();
     }
 
