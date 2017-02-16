@@ -439,6 +439,7 @@ int ntrans = 1000000;
 int opspertrans = 10;
 int prepopulate = 
     ARRAY_SZ/10;
+double readonly_percent = 0.0;
 double write_percent = 0.5;
 bool blindRandomWrite = false;
 double zipf_skew = 1.0;
@@ -609,6 +610,7 @@ void ZipfRW<DS>::run(int me) {
     container_type::thread_init(*a);
 
     Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
+    uint32_t readonly_thresh = (uint32_t)(readonly_percent * Rand::max());
     uint32_t write_thresh = (uint32_t)(write_percent * Rand::max());
 
     int N = ntrans/nthreads;
@@ -627,11 +629,16 @@ void ZipfRW<DS>::run(int me) {
             for (int j = 0; j < OPS; ++j) {
                 assert(slot_it_snap != slot_traces[me].end());
 
-                auto r = transgen_snap();
-                if (r > write_thresh) {
+                auto r1 = transgen_snap();
+                if (r1 < readonly_thresh) {
                     doRead(*a, *slot_it_snap);
                 } else {
-                    doWrite(*a, *slot_it_snap, j);
+                    auto r2 = transgen_snap();
+                    if (r2 > write_thresh) {
+                        doRead(*a, *slot_it_snap);
+                    } else {
+                        doWrite(*a, *slot_it_snap, j);
+                    }
                 }
                 ++slot_it_snap;
             }
@@ -1233,7 +1240,7 @@ struct {
 };
 
 enum {
-    opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew
+    opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew
 };
 
 static const Clp_Option options[] = {
@@ -1243,6 +1250,7 @@ static const Clp_Option options[] = {
   { "ntrans", 0, opt_ntrans, Clp_ValInt, Clp_Optional },
   { "opspertrans", 0, opt_opspertrans, Clp_ValInt, Clp_Optional },
   { "writepercent", 0, opt_writepercent, Clp_ValDouble, Clp_Optional },
+  { "readonlypercent", 0, opt_readonlypercent, Clp_ValDouble, Clp_Optional },
   { "blindrandwrites", 0, opt_blindrandwrites, 0, Clp_Negate },
   { "prepopulate", 0, opt_prepopulate, Clp_ValInt, Clp_Optional },
   { "seed", 's', opt_seed, Clp_ValUnsigned, 0 },
@@ -1258,11 +1266,12 @@ Options:\n\
  --ntrans=NTRANS, how many total transactions to run (they'll be split between threads) (default %d)\n\
  --opspertrans=OPSPERTRANS, how many operations to run per transaction (default %d)\n\
  --writepercent=WRITEPERCENT, probability with which to do writes versus reads (default %f)\n\
+ --readonlypercent=ROPERCENT, probability with which a transaction is read-only (default %f)\n\
  --blindrandwrites, do blind random writes for random tests. makes checking impossible\n\
  --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n\
  --seed=SEED\n\
  --skew=SKEW, skew parameter for zipfrw test type (default %f)\n",
-         name, nthreads, ntrans, opspertrans, write_percent, prepopulate, zipf_skew);
+         name, nthreads, ntrans, opspertrans, write_percent, readonly_percent, prepopulate, zipf_skew);
   printf("\nTests:\n");
   size_t testidx = 0;
   for (size_t ti = 0; ti != sizeof(tests)/sizeof(tests[0]); ++ti)
@@ -1315,6 +1324,9 @@ int main(int argc, char *argv[]) {
       break;
     case opt_writepercent:
       write_percent = clp->val.d;
+      break;
+    case opt_readonlypercent:
+      readonly_percent = clp->val.d;
       break;
     case opt_blindrandwrites:
       blindRandomWrite = !clp->negated;
@@ -1416,7 +1428,7 @@ int main(int argc, char *argv[]) {
          ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, prepopulate, blindRandomWrite,
          MAINTAIN_TRUE_ARRAY_STATE, Transaction::tset_initial_capacity, seed, STO_PROFILE_COUNTERS);
   if (!strcmp(tests[test].name, "zipfrw"))
-    printf("  Zipf distribution parameter(s): zipf_skew = %f\n", zipf_skew);
+    printf("  Zipf distribution parameter(s): zipf_skew = %f, read-only txn prob. = %f, write prob. = %f\n", zipf_skew, readonly_percent, write_percent);
   printf("  STO_SORT_WRITESET: %d\n", STO_SORT_WRITESET);
 #endif
 
