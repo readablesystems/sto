@@ -14,8 +14,7 @@
 
 namespace Profiler {
 
-template <class... Args>
-void profile(const std::string& name, std::function<void(Args...)> profilee, Args... args) {
+void profile(const std::string& name, std::function<void(void)> profilee) {
     std::stringstream ss;
     ss << getpid();
 
@@ -25,20 +24,19 @@ void profile(const std::string& name, std::function<void(Args...)> profilee, Arg
     if (pid == 0) {
         int console = open("/dev/null", O_RDWR);
         assert(console > 0);
-        assert(dup2(console, STDOUT_FILENO) == 0);
-        assert(dup2(console, STDERR_FILENO) == 0);
+        assert(dup2(console, STDOUT_FILENO) != -1);
+        assert(dup2(console, STDERR_FILENO) != -1);
         exit(execl("/usr/bin/perf", "perf", "record", "-o", profile_name.c_str(), "-p", ss.str().c_str(), nullptr));
     }
 
-    profilee(args...);
+    profilee();
 
     kill(pid, SIGINT);
     waitpid(pid, nullptr, 0);
 }
 
-template <class... Args>
-void profile(std::function<void(Args...)> profilee, Args... args) {
-    profile("perf", profilee, args...);
+void profile(std::function<void(void)> profilee) {
+    profile("perf", profilee);
 }
 
 };

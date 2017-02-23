@@ -16,6 +16,7 @@
 #include "clp.h"
 #include "randgen.hh"
 #include "sampling.hh"
+#include "SystemProfiler.hh"
 
 #include "MassTrans.hh"
 
@@ -439,6 +440,7 @@ double readonly_percent = 0.0;
 double write_percent = 0.5;
 bool blindRandomWrite = false;
 double zipf_skew = 1.0;
+bool profile = false;
 
 
 using namespace std;
@@ -607,7 +609,7 @@ void ZipfRW<DS>::run(int me) {
 
     Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
     uint32_t readonly_thresh = (uint32_t)(readonly_percent * Rand::max());
-    uint32_t write_thresh = (uint32_t)(write_percent * Rand::max());
+    int write_thresh = (int)((1.0-write_percent)*(double)opspertrans);
 
     int N = ntrans/nthreads;
     int OPS = opspertrans;
@@ -629,8 +631,7 @@ void ZipfRW<DS>::run(int me) {
                 if (r1 < readonly_thresh) {
                     doRead(*a, *slot_it_snap);
                 } else {
-                    auto r2 = transgen_snap();
-                    if (r2 > write_thresh) {
+                    if (j < write_thresh) {
                         doRead(*a, *slot_it_snap);
                     } else {
                         doWrite(*a, *slot_it_snap, j);
@@ -1228,12 +1229,13 @@ struct {
 };
 
 enum {
-    opt_test = 1, opt_nrmyw, opt_check, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew
+    opt_test = 1, opt_nrmyw, opt_check, opt_profile, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew
 };
 
 static const Clp_Option options[] = {
   { "no-readmywrites", 'n', opt_nrmyw, 0, 0 },
   { "check", 'c', opt_check, 0, Clp_Negate },
+  { "profile", 'p', opt_profile, 0, Clp_Negate},
   { "nthreads", 'j', opt_nthreads, Clp_ValInt, Clp_Optional },
   { "ntrans", 0, opt_ntrans, Clp_ValInt, Clp_Optional },
   { "opspertrans", 0, opt_opspertrans, Clp_ValInt, Clp_Optional },
@@ -1242,7 +1244,7 @@ static const Clp_Option options[] = {
   { "blindrandwrites", 0, opt_blindrandwrites, 0, Clp_Negate },
   { "prepopulate", 0, opt_prepopulate, Clp_ValInt, Clp_Optional },
   { "seed", 's', opt_seed, Clp_ValUnsigned, 0 },
-  { "skew", 0, opt_skew, Clp_ValDouble, Clp_Optional}
+  { "skew", 0, opt_skew, Clp_ValDouble, Clp_Optional},
 };
 
 static void help(const char *name) {
@@ -1250,6 +1252,7 @@ static void help(const char *name) {
 Options:\n\
  -n, --no-readmywrites\n\
  -c, --check, run a check of the results afterwards\n\
+ -p, --profile, run a perf profile of the execution porition of the benchmark\n\
  --nthreads=NTHREADS (default %d)\n\
  --ntrans=NTRANS, how many total transactions to run (they'll be split between threads) (default %d)\n\
  --opspertrans=OPSPERTRANS, how many operations to run per transaction (default %d)\n\
@@ -1277,6 +1280,16 @@ Options:\n\
   exit(1);
 }
 
+void time_and_run(struct timeval* tv1, struct timeval* tv2,
+                  struct rusage* ru1, struct rusage* ru2,
+                  int nthreads, Tester* tester) {
+    gettimeofday(tv1, nullptr);
+    getrusage(RUSAGE_SELF, ru1);
+    startAndWait(nthreads, tester);
+    gettimeofday(tv2, nullptr);
+    getrusage(RUSAGE_SELF, ru2);
+}
+
 int main(int argc, char *argv[]) {
   Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
 
@@ -1300,6 +1313,9 @@ int main(int argc, char *argv[]) {
       break;
     case opt_check:
       runCheck = !clp->negated;
+      break;
+    case opt_profile:
+      profile = !clp->negated;
       break;
     case opt_nthreads:
       nthreads = clp->val.i;
@@ -1387,16 +1403,22 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
+  if (profile) {
+    printf("INFO: System profiler will be spawned after initialization.\n");
+  }
+
   Tester* tester = tests[test].tester;
   tester->initialize();
 
   struct timeval tv1,tv2;
   struct rusage ru1,ru2;
-  gettimeofday(&tv1, NULL);
-  getrusage(RUSAGE_SELF, &ru1);
-  startAndWait(nthreads, tester);
-  gettimeofday(&tv2, NULL);
-  getrusage(RUSAGE_SELF, &ru2);
+  if (profile) {
+    Profiler::profile([&]() {
+        time_and_run(&tv1, &tv2, &ru1, &ru2, nthreads, tester);
+    });
+  } else {
+    time_and_run(&tv1, &tv2, &ru1, &ru2, nthreads, tester);
+  }
 #if !DATA_COLLECT
   printf("real time: ");
 #endif
