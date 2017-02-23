@@ -22,7 +22,7 @@
 // size of array (for hashtables or other non-array structures, this is the
 // size of the key space)
 #ifndef ARRAY_SZ
-#define ARRAY_SZ 1000000
+#define ARRAY_SZ 10000000
 #endif
 
 #define USE_ARRAY 0
