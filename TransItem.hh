@@ -73,7 +73,7 @@ class TransItem {
     }
 
     const TicTocVersion& observed_timestamps() const {
-        assert(has_observation());
+        //assert(has_observation());
         return otss_;
     }
     template <typename T>

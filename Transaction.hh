@@ -317,7 +317,7 @@ private:
         any_writes_ = any_nonopaque_ = may_duplicate_items_ = false;
         first_write_ = 0;
         min_rts_ = potential_cts_ = ~0ul;
-        start_tid_ = commit_tid_ = 0;
+        approx_cts_ = start_tid_ = commit_tid_ = 0;
         buf_.clear();
 #if STO_DEBUG_ABORTS
         abort_item_ = nullptr;
@@ -598,6 +598,28 @@ public:
         return commit_ts;
     }
 
+    tid_type compute_approx_commit_ts() const {
+        tid_type commit_ts = 0;
+        TransItem* it = nullptr;
+        for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
+            it = (tidx % tset_chunk ? it + 1 : tset_[tidx/tset_chunk]);
+            if (it->has_write()) {
+                commit_ts = std::max(commit_ts,
+                    it->observed_timestamps().read_timestamp() + 1);
+            } else if (it->has_observation()) {
+                commit_ts = std::max(commit_ts,
+                    it->observed_timestamps().write_timestamp());
+            }
+        }
+        return commit_ts;
+    }
+
+    tid_type approx_timestamp() const {
+        if (!approx_cts_)
+            approx_cts_ = compute_approx_commit_ts();
+        return approx_cts_;
+    }
+
     tid_type commit_tid() const {
         assert(state_ == s_committing_locked || state_ == s_committing);
         if (!commit_tid_) {
@@ -696,6 +718,7 @@ private:
     mutable tid_type start_tid_;
     mutable tid_type min_rts_;
     mutable tid_type potential_cts_;
+    mutable tid_type approx_cts_;
     mutable tid_type commit_tid_;
     mutable TransactionBuffer buf_;
     mutable uint32_t lrng_state_;
@@ -1037,6 +1060,7 @@ inline TransProxy& TransProxy::add_write(Args&&... args, TicTocVersion& ts) {
         item().__or_flags(TransItem::write_bit);
         // store a reference to the timestamps in the actual TObject segment
         item().tuple_ts_ = &ts;
+        item().otss_ = ts;
         item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
         t()->any_writes_ = true;
     } else {

@@ -70,6 +70,10 @@ public:
     bool opacity_check(TransItem& item, Transaction& txn) override {
         return item.opacity_check_timestamps(data_[item.key<size_type>()].vers, txn.timestamp());
     }
+    // commit-time preemptive abort check
+    bool pre_commit_check(TransItem& item, Transaction& txn) override {
+        return item.opacity_check_timestamps(data_[item.key<size_type>()].vers, txn.approx_timestamp());
+    }
     // commit-time check
     bool check(TransItem& item, Transaction& txn) override {
         return item.check_timestamps(data_[item.key<size_type>()].vers, txn.timestamp());

@@ -245,6 +245,25 @@ bool Transaction::try_commit() {
     }
 #endif
 
+#if TICTOC_PRE_ABORT
+    // pre-abort checks
+    {
+    TransItem* it = nullptr;
+    for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
+        it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
+        if (it->has_observation()) {
+            TXP_INCREMENT(txp_total_check_read);
+            if (!it->owner()->pre_commit_check(*it, *this)
+                && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
+                mark_abort_because(it, "pre-abort check");
+                stop(false, nullptr, 0);
+                return false;
+            }
+        }
+    }
+    }
+#endif
+
     state_ = s_committing;
 
     unsigned writeset[tset_size_];
