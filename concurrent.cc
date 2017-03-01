@@ -580,7 +580,7 @@ struct ZipfRW : public DSTester<DS> {
     ZipfRW() {}
     void run(int me) override;
     bool prepopulate() override;
-private:
+
     std::vector<typename StoSampling::trace_type> slot_traces;
 };
 
@@ -624,11 +624,14 @@ void ZipfRW<DS>::run(int me) {
         TRANSACTION {
             slot_it_snap = slot_it;
             transgen_snap = transgen;
+
+            auto r1 = transgen_snap();
+            bool ro_txn = (r1 < readonly_thresh);
+
             for (int j = 0; j < OPS; ++j) {
                 assert(slot_it_snap != slot_traces[me].end());
 
-                auto r1 = transgen_snap();
-                if (r1 < readonly_thresh) {
+                if (ro_txn) {
                     doRead(*a, *slot_it_snap);
                 } else {
                     if (j < write_thresh) {
@@ -639,6 +642,68 @@ void ZipfRW<DS>::run(int me) {
                 }
                 ++slot_it_snap;
             }
+        } RETRY(true);
+
+        slot_it = slot_it_snap;
+        transgen = transgen_snap;
+    }
+}
+
+// HotspotRW: The hypothetical test case where TicToc should do well
+template <int DS>
+struct HotspotRW : public ZipfRW<DS> {
+    typedef typename ZipfRW<DS>::container_type container_type;
+    static constexpr uint32_t num_hotspots = 4;
+    void run(int me) override;
+};
+
+template <int DS>
+void HotspotRW<DS>::run(int me) {
+    TThread::set_id(me);
+    container_type* a = this->a;
+    container_type::thread_init(*a);
+
+    Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
+    uint32_t readonly_thresh = (uint32_t)(readonly_percent * Rand::max());
+    int write_thresh = (int)((1.0-write_percent)*(double)opspertrans);
+
+    int N = ntrans/nthreads;
+    int OPS = opspertrans;
+
+    StoSampling::trace_type::const_iterator slot_it
+        = this->slot_traces[me].begin();
+
+    for (int i = 0; i < N; ++i) {
+        StoSampling::trace_type::const_iterator slot_it_snap;
+        Rand transgen_snap = transgen;
+
+        TRANSACTION {
+            slot_it_snap = slot_it;
+            transgen_snap = transgen;
+
+            auto r1 = transgen_snap();
+            auto hotspot = transgen_snap() % num_hotspots;
+            bool ro_txn = (r1 < readonly_thresh);
+
+            if (ro_txn)
+                doRead(*a, hotspot);
+
+            for (int j = 0; j < OPS; ++j) {
+                assert(slot_it_snap != this->slot_traces[me].end());
+                if (ro_txn) {
+                    doRead(*a, *slot_it_snap);
+                } else {
+                    if (j < write_thresh) {
+                        doRead(*a, *slot_it_snap);
+                    } else {
+                        doWrite(*a, *slot_it_snap, j);
+                    }
+                }
+                ++slot_it_snap;
+            }
+
+            if (!ro_txn)
+                doWrite(*a, hotspot, i);
         } RETRY(true);
 
         slot_it = slot_it_snap;
@@ -1207,7 +1272,8 @@ struct Test {
     MAKE_TESTER("kingofthedelete", 0, KingDelete),
     MAKE_TESTER("xordelete", 0, XorDelete),
     MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true),
-    MAKE_TESTER("zipfrw", "skewness measures contention level", ZipfRW) 
+    MAKE_TESTER("zipfrw", "skewness measures contention level", ZipfRW),
+    MAKE_TESTER("hotspot", "zipfrw plus an additional hotspot access", HotspotRW)
 };
 
 struct {
@@ -1437,7 +1503,7 @@ int main(int argc, char *argv[]) {
  MAINTAIN_TRUE_ARRAY_STATE: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, STO_PROFILE_COUNTERS: %d\n",
          ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, prepopulate, blindRandomWrite,
          MAINTAIN_TRUE_ARRAY_STATE, Transaction::tset_initial_capacity, seed, STO_PROFILE_COUNTERS);
-  if (!strcmp(tests[test].name, "zipfrw"))
+  if (!strcmp(tests[test].name, "zipfrw") || !strcmp(tests[test].name, "hotspot"))
     printf("  Zipf distribution parameter(s): zipf_skew = %f, read-only txn prob. = %f, write prob. = %f\n", zipf_skew, readonly_percent, write_percent);
   printf("  STO_SORT_WRITESET: %d\n", STO_SORT_WRITESET);
 #endif
