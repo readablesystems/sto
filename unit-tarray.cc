@@ -60,7 +60,7 @@ void testIter() {
 }
 
 void testTicToc1() {
-    TArray<int, 10> f;
+    TArray<int, 10, TNonopaqueWrapped> f;
     for (int i = 0; i < 10; ++i) {
         f.nontrans_put(i, i);
     }
@@ -73,6 +73,9 @@ void testTicToc1() {
         TestTransaction t2(2);
         f[4] = 5;
         assert(t2.try_commit());
+
+        t1.use();
+        a = f[5];
         assert(t1.try_commit());
     }
 
