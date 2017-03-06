@@ -59,6 +59,26 @@ void testIter() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testTicToc1() {
+    TArray<int, 10> f;
+    for (int i = 0; i < 10; ++i) {
+        f.nontrans_put(i, i);
+    }
+
+    {
+        TestTransaction t1(1);
+        int a = f[4];
+        assert(a == 4);
+
+        TestTransaction t2(2);
+        f[4] = 5;
+        assert(t2.try_commit());
+        assert(t1.try_commit());
+    }
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
 
 void testConflictingIter() {
     TArray<int, 10> f;
@@ -264,6 +284,7 @@ int main() {
     testSimpleInt();
     testSimpleString();
     testIter();
+    testTicToc1();
     testConflictingIter();
     testSimpleModify();
     testModifyingIter();

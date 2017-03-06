@@ -8,11 +8,11 @@ public:
     typedef typename W::read_type read_type;
     typedef typename W::version_type version_type;
 
-    TBox() {
+    TBox() : vers_(Sto::initialized_tid()), v_() {
     }
     template <typename... Args>
     explicit TBox(Args&&... args)
-        : v_(std::forward<Args>(args)...) {
+        : vers_(Sto::initialized_tid()), v_(std::forward<Args>(args)...) {
     }
 
     read_type read() const {

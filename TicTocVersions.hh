@@ -161,29 +161,37 @@ public:
             acquire_fence();
             auto t_rts = tuple_rts;
             acquire_fence();
-            if (t_wts.timestamp() != read_wts.timestamp()
-                || ((t_rts.timestamp() <= commit_ts) && t_wts.is_locked_elsewhere()))
-                return false;
-            if (read_rts.timestamp() <= commit_ts) {
-                type v = std::max(t_rts.t_, commit_ts << ts_shift);
-                if (bool_cmpxchg(&tuple_rts.t_, t_rts.t_, v))
-                    return true;
-            } else {
+            if (read_rts.timestamp() >= commit_ts)
                 return true;
+            else {
+                if (t_wts.timestamp() != read_wts.timestamp()
+                    || ((t_rts.timestamp() <= commit_ts) && t_wts.is_locked_elsewhere()))
+                    return false;
+                if (t_rts.timestamp() <= commit_ts) {
+                    type v = commit_ts << ts_shift;
+                    if (bool_cmpxchg(&tuple_rts.t_, t_rts.t_, v))
+                        return true;
+                } else {
+                    return true;
+                }
             }
         }
     }
 
-    static bool opacity_validate_timestamps(const RawTid& tuple_wts, const RawTid& tuple_rts, RawTid read_wts, type commit_ts) {
+    static bool opacity_validate_timestamps(const RawTid& tuple_wts, const RawTid& tuple_rts, RawTid read_wts, RawTid read_rts, type commit_ts) {
         auto t_wts = tuple_wts;
         acquire_fence();
         auto t_rts = tuple_rts;
         acquire_fence();
-        if (t_wts.timestamp() != read_wts.timestamp()
-            || ((t_rts.timestamp() <= commit_ts) && t_wts.is_locked_elsewhere()))
-            return false;
-        else
+        if (read_rts.timestamp() >= commit_ts)
             return true;
+        else {
+            if (t_wts.timestamp() != read_wts.timestamp()
+                || ((t_rts.timestamp() <= commit_ts) && t_wts.is_locked_elsewhere()))
+                return false;
+            else
+                return true;
+        }
     }
 };
 
@@ -232,20 +240,24 @@ public:
             type v = t_;
             acquire_fence();
             CompoundTid ct(v);
-            if (ct.wts_value() != read_tss.wts_value() ||
-                ((ct.rts_value() <= commit_ts) && is_locked_elsewhere()))
-                return false;
-            if (ct.rts_value() <= commit_ts) {
-                type vv = v;
-                type delta = commit_ts - ct.wts_value();
-                type shift = delta - (delta & 0xff);
-                vv += (shift << wts_shift);
-                vv &= ~delta_mask;
-                vv |= (delta & 0xff << delta_shift);
-                if (bool_cmpxchg(&t_, v, vv))
-                    return true;
-            } else {
-                 return true;
+            if (read_tss.rts_value() >= commit_ts)
+                return true;
+            else {
+                if (ct.wts_value() != read_tss.wts_value() ||
+                    ((ct.rts_value() <= commit_ts) && is_locked_elsewhere()))
+                    return false;
+                if (ct.rts_value() <= commit_ts) {
+                    type vv = v;
+                    type delta = commit_ts - ct.wts_value();
+                    type shift = delta - (delta & 0xff);
+                    vv += (shift << wts_shift);
+                    vv &= ~delta_mask;
+                    vv |= (delta & 0xff << delta_shift);
+                    if (bool_cmpxchg(&t_, v, vv))
+                        return true;
+                } else {
+                     return true;
+                }
             }
         }
     }
@@ -254,11 +266,15 @@ public:
         type v = t_;
         acquire_fence();
         CompoundTid ct(v);
-        if (ct.wts_value() != read_tss.wts_value() ||
-            ((ct.rts_value() <= commit_ts) && is_locked_elsewhere()))
-            return false;
-        else
+        if (read_tss.rts_value() >= commit_ts)
             return true;
+        else {
+            if (ct.wts_value() != read_tss.wts_value() ||
+                ((ct.rts_value() <= commit_ts) && is_locked_elsewhere()))
+                return false;
+            else
+                return true;
+        }
     }
 };
 
@@ -479,7 +495,7 @@ bool TicTocVersion::validate_timestamps(const TicTocVersion& old_tss, type commi
     return RawTid::validate_timestamps(wts_, rts_, old_tss.wts_, old_tss.rts_, commit_ts);
 }
 bool TicTocVersion::opacity_validate_timestamps(const TicTocVersion& old_tss, type commit_ts) const {
-    return RawTid::opacity_validate_timestamps(wts_, rts_, old_tss.wts_, commit_ts);
+    return RawTid::opacity_validate_timestamps(wts_, rts_, old_tss.wts_, old_tss.rts_, commit_ts);
 }
 #endif
 
