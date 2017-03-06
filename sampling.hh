@@ -87,7 +87,7 @@ class StoUniformIntSampler {
 public:
     StoUniformIntSampler() : rd(), gen(rd()), dis() {}
     StoUniformIntSampler(IntType range)
-        : rd(), gen(rd()), dis(0, range-1) {}
+        : rd(), gen(rd()), dis(0, range) {}
 
     IntType sample() {
         return dis(gen);
@@ -113,21 +113,22 @@ private:
 // index_table: set a custom index translation table
 class StoRandomDistribution {
 public:
-    StoRandomDistribution(size_t n, bool shuffle = false)
-        : n_(n), index_transform(false), uis(), dist() {
+    StoRandomDistribution(index_t a, index_t b, bool shuffle = false)
+        : begin(a), end(b), index_transform(false), uis(), dist() {
+        assert(a < b);
         if (shuffle) {
             std::random_device rd;
             std::mt19937 gen(rd());
             index_transform = true;
 
-            for (size_t i = 0; i < n_; ++i)
+            for (auto i = begin; i <= end; ++i)
                 index_translation_table.push_back(i);
             std::shuffle(index_translation_table.begin(), index_translation_table.end(), gen);
         }
     }
-    StoRandomDistribution(size_t n, std::vector<index_t> index_table)
-        : n_(n), index_transform(true), index_translation_table(index_table),
-        uis(), dist() {}
+    StoRandomDistribution(index_t a, index_t b, std::vector<index_t> index_table)
+        : begin(a), end(b), index_transform(true), index_translation_table(index_table),
+        uis(), dist() {assert(a < b);}
 
     virtual ~StoRandomDistribution() {}
 
@@ -136,7 +137,7 @@ public:
         if (index_transform) {
             return index_translation_table[s_index];
         } else {
-            return s_index;
+            return s_index + begin;
         }
     }
 
@@ -157,7 +158,8 @@ protected:
     // this is the method specific to each prob. distribution
     virtual weight_type generate_weights() = 0;
 
-    size_t n_;
+    index_t begin;
+    index_t end;
     bool index_transform;
     std::vector<index_t> index_translation_table;
 
@@ -169,10 +171,10 @@ protected:
 // specialization 1: uniform random distribution
 class StoUniformDistribution : public StoRandomDistribution {
 public:
-    StoUniformDistribution(size_t n, bool shuffle = false) :
-        StoRandomDistribution(n, shuffle) {generate();}
-    StoUniformDistribution(size_t n, std::vector<index_t> index_table) :
-        StoRandomDistribution(n, index_table) {generate();}
+    StoUniformDistribution(index_t a, index_t b, bool shuffle = false) :
+        StoRandomDistribution(a, b, shuffle) {generate();}
+    StoUniformDistribution(index_t a, index_t b, std::vector<index_t> index_table) :
+        StoRandomDistribution(a, b, index_table) {generate();}
 
     index_t sample() const override {
         auto s_index = uis.sample();
@@ -184,7 +186,7 @@ public:
 
 protected:
     weight_type generate_weights() override {
-        std::uniform_int_distribution<index_t> d(0, n_-1);
+        std::uniform_int_distribution<index_t> d(begin, end);
         uis.set_params(d.param());
         return weight_type();
     }
@@ -195,13 +197,13 @@ class StoZipfDistribution : public StoRandomDistribution {
 public:
     static constexpr double default_skew = 1.0;
 
-    StoZipfDistribution(size_t n, double skew = default_skew, bool shuffle = false) :
-        StoRandomDistribution(n, shuffle), skewness(skew) {
+    StoZipfDistribution(index_t a, index_t b, double skew = default_skew, bool shuffle = false) :
+        StoRandomDistribution(a, b, shuffle), skewness(skew) {
         calculate_sum();
         generate();
     }
-    StoZipfDistribution(size_t n, double skew, std::vector<index_t> index_table) :
-        StoRandomDistribution(n, index_table), skewness(skew) {
+    StoZipfDistribution(index_t a, index_t b, double skew, std::vector<index_t> index_table) :
+        StoRandomDistribution(a, b, index_table), skewness(skew) {
         calculate_sum();
         generate();
     }
@@ -209,8 +211,8 @@ public:
 protected:
     weight_type generate_weights() override {
         weight_type pmf;
-        for (size_t i = 0; i < n_; ++i) {
-            double p = 1.0/(std::pow((double)(i+1), skewness)*sum_);
+        for (auto i = begin; i <= end; ++i) {
+            double p = 1.0/(std::pow((double)(i-begin+1), skewness)*sum_);
             //std::cout << p << std::endl;
             pmf.push_back(p);
         }
@@ -220,8 +222,8 @@ protected:
 private:
     void calculate_sum() {
         double s = 0.0;
-        for (size_t i = 1; i <= n_; ++i)
-            s += std::pow(1.0/(double)i, skewness);
+        for (auto i = begin; i <= end; ++i)
+            s += std::pow(1.0/(double)(i-begin+1), skewness);
         sum_ = s;
     }
 

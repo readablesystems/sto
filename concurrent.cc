@@ -1,6 +1,7 @@
 #include <iostream>
 #include <assert.h>
 #include <random>
+#include <thread>
 #include <climits>
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -438,8 +439,7 @@ bool runCheck = false;
 int nthreads = 4;
 int ntrans = 1000000;
 int opspertrans = 10;
-int prepopulate = 
-    ARRAY_SZ/10;
+int prepopulate = ARRAY_SZ;//ARRAY_SZ/10;
 double readonly_percent = 0.0;
 double write_percent = 0.5;
 bool blindRandomWrite = false;
@@ -578,88 +578,87 @@ template <int DS> void DSTester<DS>::initialize() {
 }
 
 // New test: Random R/W with zipf distribution to simulate skewed contention
+enum class OpType : int {read, write};
+
+struct RWOperation {
+    RWOperation() : type(OpType::read), key(), value() {}
+    RWOperation(OpType t, StoSampling::index_t k, value_type v = value_type())
+        : type(t), key(k), value(v) {}
+
+    OpType type;
+    StoSampling::index_t key;
+    value_type value;
+};
+
 template <int DS>
-struct ZipfRW : public DSTester<DS> {
+struct HotspotRW : public DSTester<DS> {
     typedef typename DSTester<DS>::container_type container_type;
-    ZipfRW() {}
+    typedef std::vector<RWOperation> query_type;
+    typedef std::vector<query_type> thread_workload;
+    HotspotRW() {}
     void run(int me) override;
     bool prepopulate() override;
 
-    std::vector<typename StoSampling::trace_type> slot_traces;
+    std::vector<thread_workload> workloads;
+    virtual void per_thread_workload_init(int thread_id);
 };
 
 template <int DS>
-bool ZipfRW<DS>::prepopulate() {
-    StoSampling::StoRandomDistribution *dist
-        = new StoSampling::StoZipfDistribution(ARRAY_SZ, zipf_skew);
+void HotspotRW<DS>::per_thread_workload_init(int thread_id) {
+    StoSampling::StoUniformDistribution ud(0, std::numeric_limits<uint32_t>::max());
 
-    std::cout << "Generating zipf distribution..." << std::endl;
+    auto& thread_workload = workloads[thread_id];
 
-    int opsperthread = ntrans/nthreads*opspertrans;
-    for (int i = 0; i < nthreads; ++i) {
-        slot_traces.push_back(dist->sample_trace(opsperthread));
+    int trans_per_thread = ntrans / nthreads;
+    uint64_t readonly_ceil = (uint64_t)(readonly_percent * std::numeric_limits<uint32_t>::max());
+    int write_thresh = (int)(write_percent * opspertrans);
+
+    for (int i = 0; i < trans_per_thread; ++i) {
+        query_type query;
+
+        auto r = ud.sample();
+        bool ro_txn = r < readonly_ceil;
+
+        if (ro_txn)
+            query.emplace_back(OpType::read, 0);
+
+        for (int j = 0; j < opspertrans; ++j) {
+            RWOperation op;
+            if (!ro_txn && j >= write_thresh)
+                op.type = OpType::write;
+            else
+                op.type = OpType::read;
+            while(1) {
+                op.key = ud.sample() % ARRAY_SZ;
+                if (op.key != 0 || op.type != OpType::write)
+                    break;
+            }
+            if (op.type == OpType::write)
+                op.value = op.key + 1;
+            query.push_back(op);
+        }
+
+        if (!ro_txn)
+            query.emplace_back(OpType::write, 0, thread_id);
+
+        thread_workload.push_back(query);
     }
+}
+
+template <int DS>
+bool HotspotRW<DS>::prepopulate() {
+    std::cout << "Generating workload..." << std::endl;
+    workloads.resize(nthreads);
+
+    std::vector<std::thread> thrs;
+    for (int i = 0; i < nthreads; ++i)
+        thrs.emplace_back(&HotspotRW::per_thread_workload_init, this, i);
+    for (auto &t : thrs)
+        t.join();
 
     std::cout << "Generation complete." << std::endl;
-    delete dist;
     return true;
 }
-
-template <int DS>
-void ZipfRW<DS>::run(int me) {
-    TThread::set_id(me);
-    container_type* a = this->a;
-    container_type::thread_init(*a);
-
-    Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
-    uint32_t readonly_thresh = (uint32_t)(readonly_percent * Rand::max());
-    int write_thresh = (int)((1.0-write_percent)*(double)opspertrans);
-
-    int N = ntrans/nthreads;
-    int OPS = opspertrans;
-
-    StoSampling::trace_type::const_iterator slot_it
-        = slot_traces[me].begin();
-
-    for (int i = 0; i < N; ++i) {
-        StoSampling::trace_type::const_iterator slot_it_snap;
-        Rand transgen_snap = transgen;
-
-        TRANSACTION {
-            slot_it_snap = slot_it;
-            transgen_snap = transgen;
-
-            auto r1 = transgen_snap();
-            bool ro_txn = (r1 < readonly_thresh);
-
-            for (int j = 0; j < OPS; ++j) {
-                assert(slot_it_snap != slot_traces[me].end());
-
-                if (ro_txn) {
-                    doRead(*a, *slot_it_snap);
-                } else {
-                    if (j < write_thresh) {
-                        doRead(*a, *slot_it_snap);
-                    } else {
-                        doWrite(*a, *slot_it_snap, j);
-                    }
-                }
-                ++slot_it_snap;
-            }
-        } RETRY(true);
-
-        slot_it = slot_it_snap;
-        transgen = transgen_snap;
-    }
-}
-
-// HotspotRW: The hypothetical test case where TicToc should do well
-template <int DS>
-struct HotspotRW : public ZipfRW<DS> {
-    typedef typename ZipfRW<DS>::container_type container_type;
-    static constexpr uint32_t num_hotspots = 4;
-    void run(int me) override;
-};
 
 template <int DS>
 void HotspotRW<DS>::run(int me) {
@@ -667,51 +666,17 @@ void HotspotRW<DS>::run(int me) {
     container_type* a = this->a;
     container_type::thread_init(*a);
 
-    Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
-    uint32_t readonly_thresh = (uint32_t)(readonly_percent * Rand::max());
-    int write_thresh = (int)((1.0-write_percent)*(double)opspertrans);
+    auto &tw = workloads[me];
 
-    int N = ntrans/nthreads;
-    int OPS = opspertrans;
-
-    StoSampling::trace_type::const_iterator slot_it
-        = this->slot_traces[me].begin();
-
-    for (int i = 0; i < N; ++i) {
-        StoSampling::trace_type::const_iterator slot_it_snap;
-        Rand transgen_snap = transgen;
-
+    for (auto txn_it = tw.begin(); txn_it != tw.end(); ++txn_it) {
         TRANSACTION {
-            slot_it_snap = slot_it;
-            transgen_snap = transgen;
-
-            auto r1 = transgen_snap();
-            auto hotspot = transgen_snap() % num_hotspots;
-            bool ro_txn = (r1 < readonly_thresh);
-
-            if (ro_txn)
-                doRead(*a, hotspot);
-
-            for (int j = 0; j < OPS; ++j) {
-                assert(slot_it_snap != this->slot_traces[me].end());
-                if (ro_txn) {
-                    doRead(*a, *slot_it_snap);
-                } else {
-                    if (j < write_thresh) {
-                        doRead(*a, *slot_it_snap);
-                    } else {
-                        doWrite(*a, *slot_it_snap, j);
-                    }
-                }
-                ++slot_it_snap;
+            for (auto &req : *txn_it) {
+                if (req.type == OpType::read)
+                    doRead(*a, req.key);
+                else
+                    doWrite(*a, req.key, req.value);
             }
-
-            if (!ro_txn)
-                doWrite(*a, hotspot, i);
         } RETRY(true);
-
-        slot_it = slot_it_snap;
-        transgen = transgen_snap;
     }
 }
 
@@ -1284,8 +1249,7 @@ struct Test {
     MAKE_TESTER("kingofthedelete", 0, KingDelete),
     MAKE_TESTER("xordelete", 0, XorDelete),
     MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true),
-    MAKE_TESTER("zipfrw", "skewness measures contention level", ZipfRW),
-    MAKE_TESTER("hotspot", "zipfrw plus an additional hotspot access", HotspotRW)
+    MAKE_TESTER("hotspot", "contending hotspot", HotspotRW)
 };
 
 struct {
@@ -1515,7 +1479,7 @@ int main(int argc, char *argv[]) {
  MAINTAIN_TRUE_ARRAY_STATE: %d, INIT_SET_SIZE: %d, GLOBAL_SEED: %d, STO_PROFILE_COUNTERS: %d\n",
          ARRAY_SZ, readMyWrites, runCheck, nthreads, ntrans, opspertrans, write_percent*100, prepopulate, blindRandomWrite,
          MAINTAIN_TRUE_ARRAY_STATE, Transaction::tset_initial_capacity, seed, STO_PROFILE_COUNTERS);
-  if (!strcmp(tests[test].name, "zipfrw") || !strcmp(tests[test].name, "hotspot"))
+  if (!strcmp(tests[test].name, "zipfrw"))
     printf("  Zipf distribution parameter(s): zipf_skew = %f, read-only txn prob. = %f, write prob. = %f\n", zipf_skew, readonly_percent, write_percent);
   printf("  STO_SORT_WRITESET: %d\n", STO_SORT_WRITESET);
 #endif
