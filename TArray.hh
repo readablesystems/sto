@@ -67,7 +67,7 @@ public:
         return txn.try_lock(item, data_[item.key<size_type>()].vers);
     }
     // execution-time check
-#if TICTOC_NO_RUNTIME_EXTEND
+#if TICTOC_RUNTIME_NO_EXTEND
     bool opacity_check(TransItem& item, Transaction& txn) override {
         return item.opacity_check_timestamps(data_[item.key<size_type>()].vers, txn.timestamp());
     }
