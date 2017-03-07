@@ -30,7 +30,7 @@ public:
     }
     template <typename... Args>
     void write(Args&&... args) {
-        Sto::item(this, 0).template add_write<T>(vers_, std::forward<Args>(args)...);
+        Sto::item(this, 0).template add_write<T>(std::forward<Args>(args)..., vers_);
     }
 
     operator read_type() const {
