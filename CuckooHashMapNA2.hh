@@ -1,5 +1,5 @@
-#ifndef _CuckooHashMapNA_HH
-#define _CuckooHashMapNA_HH
+#ifndef _CuckooHashMapNA2_HH
+#define _CuckooHashMapNA2_HH
 
 #include <atomic>
 #include <bitset>
@@ -33,7 +33,7 @@
 #include "cuckoohelpers.hh"
 
 /*! CuckooHashMapNA is the hash table class. */
-template <class Key, class T, unsigned Num_Buckets = 250000, bool Opacity=false>
+template <class Key, class T, unsigned Num_Buckets = 250000, bool Opacity=false, unsigned SLOT_PER_BUCKET=5>
 class CuckooHashMapNA : public Shared {
 
     // Structs and functions used internally
@@ -84,113 +84,6 @@ class CuckooHashMapNA : public Shared {
         }
     } __attribute__((aligned(64)));
     
-    /* This is a hazard pointer, used to indicate which version of the
-     * TableInfo is currently being used in the thread. Since
-     * CuckooHashMapNA operations can run simultaneously in different
-     * threads, this variable is thread local. Note that this variable
-     * can be safely shared between different CuckooHashMapNA
-     * instances, since multiple operations cannot occur
-     * simultaneously in one thread. The hazard pointer variable
-     * points to a pointer inside a global list of pointers, that each
-     * map checks before deleting any old TableInfo pointers. */
-
-
-    static __thread void** hazard_pointer_old;
-    static __thread void** hazard_pointer_new;
-
-    /* A GlobalHazardPointerList stores a list of pointers that cannot
-     * be deleted by an expansion thread. Each thread gets its own
-     * node in the list, whose data pointer it can modify without
-     * contention. */
-    class GlobalHazardPointerList {
-        std::list<void*> hp_;
-        std::mutex lock_;
-    public:
-        /* new_hazard_pointer creates and returns a new hazard pointer for
-         * a thread. */
-        void** new_hazard_pointer() {
-            lock_.lock();
-            hp_.emplace_back(nullptr);
-            void** ret = &hp_.back();
-            lock_.unlock();
-            return ret;
-        }
-
-        /* delete_unused scans the list of hazard pointers, deleting
-         * any pointers in old_pointers that aren't in this list.
-         * If it does delete a pointer in old_pointers, it deletes
-         * that node from the list. */
-        template <class Ptr>
-        void delete_unused(std::list<Ptr*>& old_pointers) {
-            lock_.lock();
-            auto it = old_pointers.begin();
-            while (it != old_pointers.end()) {
-                LIBCUCKOO_DBG("Hazard pointer %p\n", *it);
-                bool deleteable = true;
-                for (auto hpit = hp_.cbegin(); hpit != hp_.cend(); hpit++) {
-                    if (*hpit == *it) {
-                        deleteable = false;
-                        break;
-                    }
-                }
-                if (deleteable) {
-                    LIBCUCKOO_DBG("Deleting %p\n", *it);
-                    delete *it;
-                    it = old_pointers.erase(it);
-                } else {
-                    it++;
-                }
-            }
-            lock_.unlock();
-        }
-    };
-
-    // As long as the thread_local hazard_pointer is static, which
-    // means each template instantiation of a CuckooHashMapNA class
-    // gets its own per-thread hazard pointer, then each template
-    // instantiation of a CuckooHashMapNA class can get its own
-    // global_hazard_pointers list, since different template
-    // instantiations won't interfere with each other.
-    static GlobalHazardPointerList global_hazard_pointers;
-
-    /* check_hazard_pointers should be called before any public method
-     * that loads a table snapshot. It checks that the thread local
-     * hazard pointer pointer is not null, and gets a new pointer if
-     * it is null. */
-    static inline void check_hazard_pointers() {
-        if (hazard_pointer_old == nullptr) {
-            hazard_pointer_old = global_hazard_pointers.new_hazard_pointer();
-        }
-        if (hazard_pointer_new == nullptr) {
-            hazard_pointer_new = global_hazard_pointers.new_hazard_pointer();
-        }
-    }
-
-    /* Once a function is finished with a version of the table, it
-     * calls unset_hazard_pointers so that the pointer can be freed if
-     * it needs to. */
-    static inline void unset_hazard_pointers() {
-        *hazard_pointer_old = nullptr;
-        *hazard_pointer_new = nullptr;
-    }
-
-    /* counterid stores the per-thread counter index of each
-     * thread. */
-    static __thread int counterid;
-
-    /* check_counterid checks if the counterid has already been
-     * determined. If not, it assigns a counterid to the current
-     * thread by picking a random core. This should be called at the
-     * beginning of any function that changes the number of elements
-     * in the table. */
-    static inline void check_counterid() {
-        if (counterid < 0) {
-            //counterid = rand() % kNumCores;
-            counterid = numThreads.fetch_add(1,std::memory_order_relaxed) % kNumCores;
-            //LIBCUCKOO_DBG("Counter id is %d", counterid);
-        }
-    }
-
     /* reserve_calc takes in a parameter specifying a certain number
      * of slots for a table and returns the smallest hashpower that
      * will hold n elements. */
@@ -248,21 +141,7 @@ public:
             size_t i1, i2;
             TableInfo *ti;
             snapshot_get_buckets(ti, hv, i1, i2);
-            internal_elem* e;
-            cuckoo_status res = find_one_ptr(ti, key, e, i1, i2);
-            
-            if (has_insert(item)) {
-                return (res == failure_key_not_found);
-            } else if (has_delete(item)) {
-                return (res == ok);
-            } else { // was a find
-                if (res == failure_key_not_found) {
-                    return false;
-                } else {
-                    auto read_version = item.template read_value<version_type>();
-                    return !is_erased(*e) && e->version.check_version(read_version);
-                }
-            }
+            return find_one_value_check(item, ti, key, i1, i2);
         }
     }
 
@@ -270,6 +149,7 @@ public:
         if (is_bucket(item)) {
             auto b = unpack_bucket(item);
             if (!b->bucketversion.is_locked_here()) {
+                std::cout << "locking buck " << b <<  std::endl;
                 return txn.try_lock(item, b->bucketversion);
             } else {
                 return true;
@@ -280,52 +160,39 @@ public:
             size_t i1, i2;
             TableInfo *ti;
             snapshot_get_buckets(ti, hv, i1, i2);
-            internal_elem* e;
-            cuckoo_status res = find_one_ptr(ti, key, e, i1, i2);
 
-            return (res == ok) && try_lock_bucketversions(txn, item, ti, i1, i2) && txn.try_lock(item, e->version);
+            //assert(has_insert(item) || has_delete(item));
+            return try_lock_bucketversions(txn, item, ti, i1, i2);
         }
     }
 
-    void install(TransItem& item, Transaction& t) override {
+    void install(TransItem& item, Transaction&) override {
         if (is_bucket(item)) {
-            auto b = unpack_bucket(item);
-            b->inc_version();
+            assert(0);
         } else {
             auto key = unpack_key(item);
             size_t hv = hashed_key(key);
             size_t i1, i2;
             TableInfo *ti;
             snapshot_get_buckets(ti, hv, i1, i2);
-            internal_elem* e;
 
             mapped_type val = item.template write_value<mapped_type>();
+            assert(!(has_insert(item) && has_delete(item)));
             if (has_insert(item)) {
-                assert(insert_one(ti, hv, key, val, i1, i2, e) == ok);
-                if (Opacity) {
-                    e->version.set_version(t.commit_tid());
-                } else {
-                    e->version.inc_nonopaque_version();
-                    e->version.set_version_locked(e->version.value());
-                }
+                assert(insert_one_install(ti, hv, key, val, i1, i2) == ok);
             } else if (has_delete(item)) {
-                assert(delete_one(ti, hv, key, i1, i2, e) == ok);
-                if (Opacity) {
-                    e->version.set_version(t.commit_tid());
-                } else {
-                    e->version.inc_nonopaque_version();
-                    e->version.set_version_locked(e->version.value() & erased_bit);
-                    e->version.unlock(); 
-                }
+                assert(delete_one_install(ti, hv, key, i1, i2) == ok);
+            } else { // insert my delete
+                assert(update_one_install(ti, hv, key, val, i1, i2) == ok);
             }
         }
-        assert(0);
     }
 
     void unlock(TransItem& item) override {
         if (is_bucket(item)) {
             auto b = unpack_bucket(item);
             if (b->bucketversion.is_locked_here()) {
+                std::cout << "unlocking buck " << b <<  std::endl;
                 b->bucketversion.unlock();
             }
         } else {
@@ -338,14 +205,28 @@ public:
         }
     }
 
-    void cleanup(TransItem&, bool) override {
-        return;
+    void cleanup(TransItem& item, bool committed) override {
+        if (!committed) {
+            if (is_bucket(item)) {
+                auto b = unpack_bucket(item);
+                if (b->bucketversion.is_locked_here()) {
+                    std::cout << "unlocking buck " << b <<  std::endl;
+                    b->bucketversion.unlock();
+                }
+            } else {
+                auto key = unpack_key(item);
+                size_t hv = hashed_key(key);
+                size_t i1, i2;
+                TableInfo *ti;
+                snapshot_get_buckets(ti, hv, i1, i2);
+                unlock_bucketversions(ti, i1, i2);
+            }
+        }
     }
 
 
     size_t num_inserts() {
         TableInfo *ti;
-        snapshot_no_hazard(ti);
         size_t inserts = 0;
         for (size_t i = 0; i < ti->num_inserts.size(); i++) {
             inserts += ti->num_inserts[i].num.load();
@@ -355,7 +236,6 @@ public:
 
     size_t num_deletes() {
         TableInfo *ti;
-        snapshot_no_hazard(ti);
         size_t deletes = 0;
         for (size_t i = 0; i < ti->num_deletes.size(); i++) {
             deletes += ti->num_deletes[i].num.load();
@@ -364,71 +244,84 @@ public:
     }
 
     bool find(const key_type& key, mapped_type& val) {
-        check_hazard_pointers();
         size_t hv = hashed_key(key);
-        size_t i1_o, i2_o;
+        size_t i1, i2;
         TableInfo *ti;
         cuckoo_status res;
-        internal_elem e;
-        snapshot_get_buckets(ti, hv, i1_o, i2_o);
-        
-        res = find_one(ti, key, e, i1_o, i2_o);
-        val = e.value.access();
-
-        unset_hazard_pointers(); 
+        snapshot_get_buckets(ti, hv, i1, i2);
+        res = find_one(ti, key, val, i1, i2);
         return (res == ok);
     }
 
     bool insert(const key_type& key, const mapped_type& val) {
-        internal_elem e = create_internal_elem(key, val);
-        check_hazard_pointers();
+        // tried to insert the item before
+        auto item = Sto::item(this, pack_key((key_type&)key));
+        if (item.has_write()) {
+            if (has_delete(item)) {
+                item.clear_flags(delete_tag).clear_write().template add_write<mapped_type>(val);
+                return true;
+            } else if (has_insert(item)) {
+                return false;
+            } else {
+                // update the value we're inserting
+                item.clear_write().template add_write<mapped_type>(val);
+                return false;
+            }
+        }
+
         size_t hv = hashed_key(key);
-        size_t i1_o, i2_o;
+        size_t i1, i2;
         TableInfo *ti;
         cuckoo_status res;
+        mapped_type dummy;
         
-        snapshot_get_buckets(ti, hv, i1_o, i2_o);
-        //XXX adding additional reads of value but oh well
-        res = find_one(ti, key, e, i1_o, i2_o);
+        snapshot_get_buckets(ti, hv, i1, i2);
+        res = find_one(ti, key, dummy, i1, i2);
 
         // we're actually going to insert!
         if (res == failure_key_not_found) {
-            //XXX going to write to both buckets for now
-            Sto::item(this, pack_bucket(&ti->buckets_[i1_o])).add_write();
-            Sto::item(this, pack_bucket(&ti->buckets_[i2_o])).add_write();
             // make sure we insert at commit time
-            auto item = Sto::item(this, pack_key(e.key));
-            item.template add_write<mapped_type>(val);
-            item.clear_flags(delete_tag).add_flags(insert_tag);
+            item.template add_write<mapped_type>(val).add_flags(insert_tag);
+            return true;
         }
-        unset_hazard_pointers(); 
 
         // we don't need to add any writes---just need to make sure buckets aren't modified
-        return (res == failure_key_not_found);
+        return false; 
     }
 
     bool erase(const key_type& key) {
-        check_hazard_pointers();
+        auto item = Sto::item(this, pack_key((key_type&)key));
+        if (item.has_write()) {
+            // we already deleted! the item is "gone"
+            if (has_delete(item)) {
+                return false;    
+            } 
+            else if (has_insert(item)) {
+                // unmark all attributes so the item is ignored
+                item.remove_read().remove_write().clear_flags(insert_tag | delete_tag);
+                return true;
+            }
+        }
+
         size_t hv = hashed_key(key);
-        size_t i1_o, i2_o;
+        size_t i1, i2;
         TableInfo *ti;
         cuckoo_status res;
         internal_elem e;
+        mapped_type val;
         
-        snapshot_get_buckets(ti, hv, i1_o, i2_o);
-        //XXX adding additional reads of value but oh well
-        res = find_one(ti, key, e, i1_o, i2_o);
+        snapshot_get_buckets(ti, hv, i1, i2);
+        
+        // add a read of the element value if it is found
+        res = find_one(ti, key, val, i1, i2);
 
         // we are going to actually erase this
         if (res == ok) {
             // make sure we erase at commit time
-            Sto::item(this, pack_key(e.key)).add_write().add_flags(delete_tag);
+            item.add_write().add_flags(delete_tag);
+            return true;
         }
-        unset_hazard_pointers(); 
-
-        // XXX we're not going to read our own inserts---so we might end up deleting our own insert
-        // during install. oh well.
-        return (res == ok);
+        return false; 
     }
 
 private:
@@ -441,8 +334,7 @@ private:
     static constexpr TransItem::flags_type insert_tag = TransItem::user0_bit;
     // used to mark if item has been deleted by the currently running txn
     static constexpr TransItem::flags_type delete_tag = TransItem::user0_bit<<1;
-    static constexpr TransactionTid::type erased_bit = TransactionTid::user_bit<<1;
-    static constexpr TransactionTid::type inserted_bit = TransactionTid::user_bit<<2;
+    static constexpr TransactionTid::type erased_bit = TransactionTid::user_bit<<2;
 
     struct internal_elem {
         key_type key;
@@ -524,11 +416,6 @@ private:
 #endif
             bucketversion.inc_nonopaque_version();
         }
-        void lock_and_inc_version() {
-            if (!bucketversion.is_locked_here()) bucketversion.lock();
-            inc_version();
-            bucketversion.unlock();
-        }
     };
 
     typedef struct packed_type {
@@ -602,10 +489,6 @@ private:
     std::atomic<TableInfo*> new_table_info;
     rw_lock snapshot_lock;
 
-    /* old_table_infos holds pointers to old TableInfos that were
-     * replaced during expansion. This keeps the memory alive for any
-     * leftover operations, until they are deleted by the global
-     * hazard pointer manager. */
     std::list<TableInfo*> old_table_infos;
 
     static key_equal eqfn;
@@ -647,21 +530,32 @@ private:
 
     /* find_one searches a specific table instance for the value corresponding to a given hash value 
      * both i1 and i2 are locked */
-    cuckoo_status find_one_ptr(const TableInfo *ti, key_type& key, internal_elem*& e, size_t& i1, size_t& i2) {
+    bool find_one_value_check(TransItem& item, const TableInfo *ti, key_type& key, size_t& i1, size_t& i2) {
+        size_t v1_i, v2_i, v1_f, v2_f;
         cuckoo_status st;
-        st = try_read_ptr_from_bucket(ti, key, e, i1);
-        if (st == ok || !hasOverflow(ti, i1) ) {
-            if (st == ok) {
-                return ok;
+        bool is_valid;
+        internal_elem* e;
+        do {
+            get_version_two(ti, i1, i2, v1_i, v2_i);
+            st = try_read_ptr_from_bucket(ti, key, e, i1);
+            if (st == ok || !hasOverflow(ti, i1) ) {
+                if (st == ok) {
+                    auto read_version = item.template read_value<version_type>();
+                    is_valid = !is_erased(*e) && e->version.check_version(read_version);
+                } else {
+                    return false;
+                }
             } else {
-                return failure_key_not_found;
+                st = try_read_ptr_from_bucket(ti, key, e, i2);
+                if (st == ok) {
+                    auto read_version = item.template read_value<version_type>();
+                    is_valid = !is_erased(*e) && e->version.check_version(read_version);
+                }
             }
-        } 
-        st = try_read_ptr_from_bucket(ti, key, e, i2);
-        if(st == ok) {
-            return ok;
-        }
-        return failure_key_not_found;
+            get_version_two(ti, i1, i2, v1_f, v2_f);
+        } while(!check_version_two(v1_i, v2_i, v1_f, v2_f));
+
+        return (st == ok) ? is_valid : false;
     }
 
     cuckoo_status try_read_ptr_from_bucket(const TableInfo* ti, key_type& key, internal_elem*& e, size_t& i) {
@@ -670,7 +564,6 @@ private:
             if (!getBit(ti->buckets_[i].occupied, j)) {
                 continue;
             }
-
             if (eqfn(key, elem->key)) {
                 e = elem;
                 return ok;
@@ -680,11 +573,15 @@ private:
     }
 
 
-    /* find_one searches a specific table instance for the value corresponding to a given hash value 
-     * It doesn't take any locks */
-    cuckoo_status find_one(const TableInfo *ti, key_type key, internal_elem& e, size_t& i1, size_t& i2) {
+    // adds a read of the version of the element found
+    // XXX may add extra reads of invalid element versions---this is fine (will just result in more aborts
+    // if cuckoo hashing is occurring)
+    // aborts if the item found has been erased.
+    cuckoo_status find_one(const TableInfo *ti, const key_type& key, mapped_type& val, size_t& i1, size_t& i2) {
         size_t v1_i, v2_i, v1_f, v2_f;
+        auto item = Sto::item(this, pack_key((key_type&) key));
         cuckoo_status st;
+        internal_elem e;
         do {
             get_version_two(ti, i1, i2, v1_i, v2_i);
             st = try_read_from_bucket(ti, key, e, i1);
@@ -697,54 +594,42 @@ private:
                 } 
                 // we found the item!
                 else if (st == ok) {
-                    goto item_found;
+                    val = e.value.access();
+                    if (is_erased(e)) {
+                        Sto::abort_because("erased element in find"); assert(0);
+                    }
+                    item.observe(e.version);
                 }
-            } 
-
-            st = try_read_from_bucket(ti, key, e, i2);
-            if(st == ok) {
-                goto item_found;
+            } else {
+                st = try_read_from_bucket(ti, key, e, i2);
+                if(st == ok) {
+                    val = e.value.access();
+                    if (is_erased(e)) {
+                        Sto::abort_because("erased element in find"); assert(0);
+                    } 
+                    item.observe(e.version);
+                }
             }
             get_version_two(ti, i1, i2, v1_f, v2_f);
         } while(!check_version_two(v1_i, v2_i, v1_f, v2_f));
-        
-        // didn't find item
-        Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
-        Sto::item(this, pack_bucket(&ti->buckets_[i2])).observe(ti->buckets_[i2].bucketversion);
-        return failure_key_not_found;
-
-item_found:
-        auto item = Sto::item(this, pack_key(e.key));
-        // we don't need to update our read versions here because the previous add of 
-        // has_write must check the proper versions
-        if (item.has_write()) {
-            if (has_delete(item)) {
-                return failure_key_not_found;
-            } else { // we deleted and then inserted this item, so we need to update its value
-                e.value = item.template write_value<mapped_type>();
-                return ok;
-            }
+       
+        if (st != ok) {
+            // didn't find item
+            Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
+            Sto::item(this, pack_bucket(&ti->buckets_[i2])).observe(ti->buckets_[i2].bucketversion);
+            return failure_key_not_found;
         }
-        // add a read of the item so we know the value hasn't changed @ commit
-        e.value = e.value.read(item, e.version);
-        // this checks if the item has been deleted since we found it
-        if (is_erased(e)) {
-            // no need to unlock here -- there are no locks!
-            Sto::abort_because("erased element in find"); assert(0);
-        } 
-        return ok;
+        return st;
     }
 
-    /* insert_one tries to insert a key-value pair into a specific table instance.
-     * It will return a failure if the key is already in the table, we've started an expansion,
-     * or a bucket was moved.
-     * Regardless, it starts with the buckets unlocked and ends with buckets unlocked.
-     * In particular, failure_too_slow will trigger a retry
-     */
-    cuckoo_status insert_one(TableInfo *ti, size_t hv, const key_type& key,
-                            const mapped_type& val, size_t& i1, size_t& i2, internal_elem*& e) {
+    cuckoo_status insert_one_install(TableInfo *ti, size_t hv, const key_type& key,
+                            const mapped_type& val, size_t& i1, size_t& i2) {
         int open1, open2;
         cuckoo_status res1, res2;
+
+        ti->buckets_[i1].inc_version();
+        ti->buckets_[i2].inc_version();
+
     RETRY:
         //fastpath: 
         lock( ti, i1 );
@@ -756,7 +641,7 @@ item_found:
             assert( res1 == ok ); 
             
             if( !hasOverflow(ti, i1) && open1 != -1 ) {
-                add_to_bucket(ti, key, val, i1, open1, e);
+                add_to_bucket(ti, key, val, i1, open1);
                 unlock( ti, i1 );
                 return ok;
             } else { //we need to try and get the second lock
@@ -781,14 +666,14 @@ item_found:
         }
 
         if (open1 != -1) {
-            add_to_bucket(ti, key, val, i1, open1, e);
+            add_to_bucket(ti, key, val, i1, open1);
             unlock_two(ti, i1, i2);
             return ok;
         }
 
         if (open2 != -1) {
             ti->buckets_[i1].overflow++;
-            add_to_bucket(ti, key, val, i2, open2, e);
+            add_to_bucket(ti, key, val, i2, open2);
             unlock_two(ti, i1, i2);
             return ok;
         }
@@ -813,7 +698,7 @@ item_found:
             if( insert_bucket != first_bucket) {
                 ti->buckets_[first_bucket].overflow++;
             }
-            add_to_bucket(ti, key, val, insert_bucket, insert_slot, e);
+            add_to_bucket(ti, key, val, insert_bucket, insert_slot);
             unlock_two(ti, i1, i2);
             return ok;
         }
@@ -833,14 +718,14 @@ item_found:
      * It will return a failure only if the key wasn't found or a bucket was moved.
      * Regardless, it starts with the buckets unlocked and ends with buckets locked 
      */
-    cuckoo_status delete_one(TableInfo *ti, size_t hv, const key_type& key,
-                             size_t& i1, size_t& i2, internal_elem*& e) {
+    cuckoo_status delete_one_install(TableInfo *ti, size_t hv, const key_type& key,
+                             size_t& i1, size_t& i2) {
         i1 = index_hash(ti, hv);
         i2 = alt_index(ti, hv, i1);
         cuckoo_status res1, res2;
-        
+
         lock( ti, i1 );
-        res1 = try_del_from_bucket(ti, key, i1, e);
+        res1 = try_del_from_bucket(ti, key, i1);
         // if we found the element there, or nothing ever was added to second bucket, then we're done
         if (res1 == ok || !hasOverflow(ti, i1) ) {
             unlock( ti, i1 );
@@ -849,7 +734,7 @@ item_found:
             if( !try_lock(ti, i2) ) {
                 unlock(ti, i1);
                 lock_two(ti, i1, i2);
-                res1 = try_del_from_bucket(ti, key, i1, e);
+                res1 = try_del_from_bucket(ti, key, i1);
                 if( res1 == ok) {
                     unlock_two(ti, i1, i2);
                     return res1;
@@ -857,9 +742,44 @@ item_found:
             }
         }
 
-        res2 = try_del_from_bucket(ti, key, i2, e);
+        res2 = try_del_from_bucket(ti, key, i2);
         if( res2 == ok ) {
             ti->buckets_[i1].overflow--;
+            unlock_two(ti, i1, i2);
+            return res2;
+        }
+
+        unlock_two(ti, i1, i2);
+        return failure_key_not_found;
+    }
+
+    cuckoo_status update_one_install(TableInfo *ti, size_t hv, const key_type& key, mapped_type& val,
+                                    size_t& i1, size_t& i2) {
+        i1 = index_hash(ti, hv);
+        i2 = alt_index(ti, hv, i1);
+        cuckoo_status res1, res2;
+        internal_elem e;
+
+        lock( ti, i1 );
+        res1 = try_update_bucket(ti, key, val, i1);
+        // if we found the element there, or nothing ever was added to second bucket, then we're done
+        if (res1 == ok || !hasOverflow(ti, i1) ) {
+            unlock( ti, i1 );
+            return res1;
+        } else {
+            if( !try_lock(ti, i2) ) {
+                unlock(ti, i1);
+                lock_two(ti, i1, i2);
+                res1 = try_update_bucket(ti, key, val, i1);
+                if( res1 == ok) {
+                    unlock_two(ti, i1, i2);
+                    return res1;
+                }
+            }
+        }
+
+        res2 = try_update_bucket(ti, key, val, i2);
+        if( res2 == ok ) {
             unlock_two(ti, i1, i2);
             return res2;
         }
@@ -942,6 +862,8 @@ item_found:
                 locked &= txn.try_lock(item, (ti->buckets_[i1]).bucketversion);
             }
         }
+        if(locked) std::cout << "locked " << i1 << " AND " << i2 <<  std::endl;
+        else std::cout << "FAILED lock " << i1 << " AND " << i2 <<  std::endl;
         return locked;
     }
 
@@ -954,6 +876,7 @@ item_found:
                 (ti->buckets_[i2]).bucketversion.unlock();
             }
         }
+        std::cout << "unlocked " << i1 << " AND " << i2 <<  std::endl;
     }
 
     static inline void unlock_two(const TableInfo *ti, size_t i1, size_t i2) {
@@ -1021,20 +944,15 @@ item_found:
     TryAcquire:
         size_t start_version = snapshot_lock.get_version();
         ti = table_info.load();
-        *hazard_pointer_old = static_cast<void*>(ti);
         size_t end_version = snapshot_lock.get_version();
         if( start_version % 2 == 1 || start_version != end_version) {
             goto TryAcquire;
         }
     }
-    void snapshot_get_buckets(TableInfo*& ti, size_t hv, size_t& i1_o, size_t& i2_o) {
+    void snapshot_get_buckets(TableInfo*& ti, size_t hv, size_t& i1, size_t& i2) {
         snapshot(ti);
-        i1_o = index_hash(ti, hv);
-        i2_o = alt_index(ti, hv, i1_o);
-    }
-
-    void snapshot_no_hazard(TableInfo*& ti) {
-        ti = table_info.load();
+        i1 = index_hash(ti, hv);
+        i2 = alt_index(ti, hv, i1);
     }
 
     /* unlock_all increases the version of every counter (from 1mod2 to 0mod2)
@@ -1351,8 +1269,7 @@ item_found:
             size_t hv = hashed_key( ti->buckets_[fb].elems[fs].key);
             size_t first_bucket = index_hash(ti, hv);
             if( fb == first_bucket ) { //we're moving from first bucket to alternate
-                auto old_overflow = ti->buckets_[first_bucket].overflow++;
-                if (old_overflow) ti->buckets_[first_bucket].lock_and_inc_version();
+                ti->buckets_[first_bucket].overflow++;
             } else { //we're moving from alternate to first bucket
                 assert( tb == first_bucket );
                 ti->buckets_[first_bucket].overflow--;
@@ -1457,13 +1374,11 @@ item_found:
      * slot. */
     static inline void add_to_bucket(TableInfo *ti, 
                                      const key_type &key, const mapped_type &val,
-                                     const size_t i, const size_t j, internal_elem*& e) {
+                                     const size_t i, const size_t j) {
         assert(!getBit(ti->buckets_[i].occupied, j));
         
         internal_elem elem = create_internal_elem(key, val);
         ti->buckets_[i].setKV(j, elem);
-        e = &ti->buckets_[i].elems[j];
-        ti->num_inserts[counterid].num.fetch_add(1, std::memory_order_relaxed);
     }
 
     /* try_add_to_bucket will search the bucket and store the index of
@@ -1481,6 +1396,7 @@ item_found:
         for (size_t k = 0; k < SLOT_PER_BUCKET; k++) {
             elem_in_table = ti->buckets_[i].elems[k];
             if (getBit(ti->buckets_[i].occupied, k)) {
+
                 if (eqfn(key, elem_in_table.key)) {
                     return failure_key_duplicated;
                 }
@@ -1494,18 +1410,48 @@ item_found:
         return ok;
     }
 
-    /* try_del_from_bucket will search the bucket for the given key,
-     * and set the slot of the key to empty if it finds it. */
+    /* deletes the element and sets the erased bit */
     static cuckoo_status try_del_from_bucket(TableInfo *ti, 
-                                    const key_type &key, const size_t i, internal_elem*& e) {
+                                    const key_type &key, const size_t i) {
+        internal_elem* e;
         for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
             e = &ti->buckets_[i].elems[j];
             if (!getBit(ti->buckets_[i].occupied, j)) {
                 continue;
             }
             if (eqfn(key, e->key)) {
+                e = &ti->buckets_[i].elems[j];
+                assert(e->version.try_lock());
+                if (Opacity) {
+                    e->version.set_version(Sto::commit_tid());
+                } else {
+                    e->version.inc_nonopaque_version();
+                    e->version.set_version(e->version.value() & erased_bit);
+                }
                 ti->buckets_[i].eraseKV(j);
-                ti->num_deletes[counterid].num.fetch_add(1, std::memory_order_relaxed);
+                return ok;
+            }
+        }
+        return failure_key_not_found;
+    }
+
+    cuckoo_status try_update_bucket(TableInfo *ti, const key_type& key, mapped_type& val, size_t& i) {
+        internal_elem* e;
+        for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
+            e = &ti->buckets_[i].elems[j];
+            if (!getBit(ti->buckets_[i].occupied, j)) {
+                continue;
+            }
+            if (eqfn(key, e->key)) {
+                e = &ti->buckets_[i].elems[j];
+                assert(e->version.try_lock());
+                if (Opacity) {
+                    e->version.set_version(Sto::commit_tid());
+                } else {
+                    e->version.inc_nonopaque_version();
+                }
+                e->version.unlock();
+                e->value = val;
                 return ok;
             }
         }
@@ -1559,34 +1505,20 @@ item_found:
     }
 };
 
-// Initializing the static members
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-__thread void** CuckooHashMapNA<Key, T, Num_Buckets, Opacity>::hazard_pointer_old = nullptr;
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+typename std::allocator<typename CuckooHashMapNA<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::Bucket>
+CuckooHashMapNA<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::bucket_allocator;
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-__thread void** CuckooHashMapNA<Key, T, Num_Buckets, Opacity>::hazard_pointer_new = nullptr;
-
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-__thread int CuckooHashMapNA<Key, T, Num_Buckets, Opacity>::counterid = -1;
-
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-typename std::allocator<typename CuckooHashMapNA<Key, T, Num_Buckets, Opacity>::Bucket>
-CuckooHashMapNA<Key, T, Num_Buckets, Opacity>::bucket_allocator;
-
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-typename CuckooHashMapNA<Key, T, Num_Buckets, Opacity>::GlobalHazardPointerList
-CuckooHashMapNA<Key, T, Num_Buckets, Opacity>::global_hazard_pointers;
-
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-const size_t CuckooHashMapNA<Key, T, Num_Buckets, Opacity>::kNumCores =
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+const size_t CuckooHashMapNA<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::kNumCores =
     std::thread::hardware_concurrency() == 0 ?
     sysconf(_SC_NPROCESSORS_ONLN) : std::thread::hardware_concurrency();
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-std::atomic<size_t> CuckooHashMapNA<Key, T, Num_Buckets, Opacity>::numThreads(0);
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+std::atomic<size_t> CuckooHashMapNA<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::numThreads(0);
 
-template <class Key, class T, unsigned Num_Buckets, bool Opacity>
-typename CuckooHashMapNA<Key, T, Num_Buckets, Opacity>::key_equal
-CuckooHashMapNA<Key, T, Num_Buckets, Opacity>::eqfn;
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+typename CuckooHashMapNA<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::key_equal
+CuckooHashMapNA<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::eqfn;
 
 #endif

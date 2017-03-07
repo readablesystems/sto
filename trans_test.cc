@@ -8,11 +8,11 @@
 #include "Transaction.hh"
 #include "Testers.hh"
 
-#define GLOBAL_SEED 10
-#define N_THREADS 5 // Number of concurrent threads
-#define TOTAL_TRANS 100000
+#define GLOBAL_SEED 100
+#define N_THREADS 1 // Number of concurrent threads
+#define TOTAL_TRANS 1000000
 #define NTRANS TOTAL_TRANS/N_THREADS // Number of transactions each thread should run.
-#define MAX_OPS 5 // Maximum number of operations in a transaction.
+#define MAX_OPS 4 // Maximum number of operations in a transaction.
 
 #define PRIORITY_QUEUE 0
 #define HASHTABLE 1
@@ -23,8 +23,8 @@
 #define CUCKOOHASHMAP2 6 
 #define CUCKOOHASHMAPNA 7
 #define QUEUE 8 
-#define DS QUEUE
-//#define DS CUCKOOHASHMAPNA
+//#define DS QUEUE
+#define DS CUCKOOHASHMAPNA
 
 #if DS == QUEUE 
 QueueTester<FCQueueTPops<int>, std::queue<int>> tester = QueueTester<FCQueueTPops<int>, std::queue<int>>();
@@ -291,7 +291,6 @@ int main() {
     // MULTI-THREADED 
     for (int i = 1; i <= N_THREADS; ++i) {
         spawned_barrier = 0;
-        startAndWait(&q, N_THREADS);
         startAndWait(&q, i);
 #if PRINT_DEBUG
 #if STO_PROFILE_COUNTERS
