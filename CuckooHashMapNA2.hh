@@ -141,6 +141,12 @@ public:
             size_t i1, i2;
             TableInfo *ti;
             snapshot_get_buckets(ti, hv, i1, i2);
+            mapped_type val;
+            
+            if (has_insert(item)) {
+                // ensure no one has inserted yet
+                return (find_one(ti, key, val, i1, i2, false) == failure_key_not_found);
+            }
             return find_one_value_check(item, ti, key, i1, i2);
         }
     }
@@ -149,7 +155,7 @@ public:
         if (is_bucket(item)) {
             auto b = unpack_bucket(item);
             if (!b->bucketversion.is_locked_here()) {
-                std::cout << "locking buck " << b <<  std::endl;
+                //std::cout << "locking buck " << b <<  std::endl;
                 return txn.try_lock(item, b->bucketversion);
             } else {
                 return true;
@@ -192,7 +198,7 @@ public:
         if (is_bucket(item)) {
             auto b = unpack_bucket(item);
             if (b->bucketversion.is_locked_here()) {
-                std::cout << "unlocking buck " << b <<  std::endl;
+                //std::cout << "unlocking buck " << b <<  std::endl;
                 b->bucketversion.unlock();
             }
         } else {
@@ -210,7 +216,7 @@ public:
             if (is_bucket(item)) {
                 auto b = unpack_bucket(item);
                 if (b->bucketversion.is_locked_here()) {
-                    std::cout << "unlocking buck " << b <<  std::endl;
+                    //std::cout << "unlocking buck " << b <<  std::endl;
                     b->bucketversion.unlock();
                 }
             } else {
@@ -249,7 +255,7 @@ public:
         TableInfo *ti;
         cuckoo_status res;
         snapshot_get_buckets(ti, hv, i1, i2);
-        res = find_one(ti, key, val, i1, i2);
+        res = find_one(ti, key, val, i1, i2, true);
         return (res == ok);
     }
 
@@ -262,11 +268,7 @@ public:
                 return true;
             } else if (has_insert(item)) {
                 return false;
-            } else {
-                // update the value we're inserting
-                item.clear_write().template add_write<mapped_type>(val);
-                return false;
-            }
+            } 
         }
 
         size_t hv = hashed_key(key);
@@ -276,12 +278,14 @@ public:
         mapped_type dummy;
         
         snapshot_get_buckets(ti, hv, i1, i2);
-        res = find_one(ti, key, dummy, i1, i2);
+        res = find_one(ti, key, dummy, i1, i2, true);
 
         // we're actually going to insert!
         if (res == failure_key_not_found) {
             // make sure we insert at commit time
             item.template add_write<mapped_type>(val).add_flags(insert_tag);
+            // perform a check that the element is still not inserted
+            item.add_read(0);
             return true;
         }
 
@@ -313,7 +317,7 @@ public:
         snapshot_get_buckets(ti, hv, i1, i2);
         
         // add a read of the element value if it is found
-        res = find_one(ti, key, val, i1, i2);
+        res = find_one(ti, key, val, i1, i2, true);
 
         // we are going to actually erase this
         if (res == ok) {
@@ -577,7 +581,7 @@ private:
     // XXX may add extra reads of invalid element versions---this is fine (will just result in more aborts
     // if cuckoo hashing is occurring)
     // aborts if the item found has been erased.
-    cuckoo_status find_one(const TableInfo *ti, const key_type& key, mapped_type& val, size_t& i1, size_t& i2) {
+    cuckoo_status find_one(const TableInfo *ti, const key_type& key, mapped_type& val, size_t& i1, size_t& i2, bool txnal) {
         size_t v1_i, v2_i, v1_f, v2_f;
         auto item = Sto::item(this, pack_key((key_type&) key));
         cuckoo_status st;
@@ -589,25 +593,31 @@ private:
                 if (st == failure_key_not_found) {
                     // add reads here of only the first bucket in which the item could possibly be located. 
                     // Don't need to read the 2nd because the bucket had no overflow
-                    Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
+                    if (txnal) {
+                        Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
+                    }
                     return failure_key_not_found;
                 } 
                 // we found the item!
                 else if (st == ok) {
                     val = e.value.access();
-                    if (is_erased(e)) {
-                        Sto::abort_because("erased element in find"); assert(0);
+                    if (txnal) {
+                        if (is_erased(e)) {
+                            Sto::abort_because("erased element in find"); assert(0);
+                        }
+                        item.observe(e.version);
                     }
-                    item.observe(e.version);
                 }
             } else {
                 st = try_read_from_bucket(ti, key, e, i2);
                 if(st == ok) {
                     val = e.value.access();
-                    if (is_erased(e)) {
-                        Sto::abort_because("erased element in find"); assert(0);
-                    } 
-                    item.observe(e.version);
+                    if (txnal) {
+                        if (is_erased(e)) {
+                            Sto::abort_because("erased element in find"); assert(0);
+                        } 
+                        item.observe(e.version);
+                    }
                 }
             }
             get_version_two(ti, i1, i2, v1_f, v2_f);
@@ -615,8 +625,10 @@ private:
        
         if (st != ok) {
             // didn't find item
-            Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
-            Sto::item(this, pack_bucket(&ti->buckets_[i2])).observe(ti->buckets_[i2].bucketversion);
+            if (txnal) {
+                Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
+                Sto::item(this, pack_bucket(&ti->buckets_[i2])).observe(ti->buckets_[i2].bucketversion);
+            }
             return failure_key_not_found;
         }
         return st;
@@ -862,8 +874,8 @@ private:
                 locked &= txn.try_lock(item, (ti->buckets_[i1]).bucketversion);
             }
         }
-        if(locked) std::cout << "locked " << i1 << " AND " << i2 <<  std::endl;
-        else std::cout << "FAILED lock " << i1 << " AND " << i2 <<  std::endl;
+        //if(locked) std::cout << "locked " << i1 << " AND " << i2 <<  std::endl;
+        //else std::cout << "FAILED lock " << i1 << " AND " << i2 <<  std::endl;
         return locked;
     }
 
@@ -876,7 +888,7 @@ private:
                 (ti->buckets_[i2]).bucketversion.unlock();
             }
         }
-        std::cout << "unlocked " << i1 << " AND " << i2 <<  std::endl;
+        //std::cout << "unlocked " << i1 << " AND " << i2 <<  std::endl;
     }
 
     static inline void unlock_two(const TableInfo *ti, size_t i1, size_t i2) {
