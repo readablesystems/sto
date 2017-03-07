@@ -1,4 +1,6 @@
 #include <iostream>
+#include <sstream>
+#include <fstream>
 #include <assert.h>
 #include <random>
 #include <thread>
@@ -445,6 +447,7 @@ double write_percent = 0.5;
 bool blindRandomWrite = false;
 double zipf_skew = 1.0;
 bool profile = false;
+bool dump_trace = false;
 
 
 using namespace std;
@@ -590,22 +593,57 @@ struct RWOperation {
     value_type value;
 };
 
+inline std::ostream& operator<<(std::ostream& os, const RWOperation& op) {
+    os << "[";
+    if (op.type == OpType::read) {
+        os << "r,k=" << op.key;
+    } else {
+        assert(op.type == OpType::write);
+        os << "w,k=" << op.key << ",v=" << op.value;
+    }
+    os << "]";
+    return os;
+}
+
+inline std::ostream& operator <<(std::ostream& os, const std::vector<RWOperation>& query) {
+    os << "{";
+    for (auto& op : query)
+        os << op << ",";
+    os << "}" << std::endl;
+    return os;
+}
+
 template <int DS>
 struct HotspotRW : public DSTester<DS> {
     typedef typename DSTester<DS>::container_type container_type;
     typedef std::vector<RWOperation> query_type;
-    typedef std::vector<query_type> thread_workload;
+    typedef std::vector<query_type> workload_type;
     HotspotRW() {}
     void run(int me) override;
     bool prepopulate() override;
 
-    std::vector<thread_workload> workloads;
+    std::vector<workload_type> workloads;
     virtual void per_thread_workload_init(int thread_id);
 };
 
+inline void dump_thread_trace(int thread_id, const std::vector<std::vector<RWOperation>>& workload) {
+    std::stringstream fn;
+    fn << "thread_dump_" << thread_id << ".txt";
+    std::fstream fs(fn.str(), std::ios::out | std::ios::trunc);
+    if (!fs.is_open()) {
+        std::cerr << "Cannot open file " << fn.str() << std::endl;
+        assert(false);
+    }
+    for (auto& query : workload) {
+        fs << query;
+    }
+    fs.flush();
+    fs.close();
+}
+
 template <int DS>
 void HotspotRW<DS>::per_thread_workload_init(int thread_id) {
-    StoSampling::StoUniformDistribution ud(0, std::numeric_limits<uint32_t>::max());
+    StoSampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
 
     auto& thread_workload = workloads[thread_id];
 
@@ -643,6 +681,9 @@ void HotspotRW<DS>::per_thread_workload_init(int thread_id) {
 
         thread_workload.push_back(query);
     }
+
+    if (dump_trace)
+        dump_thread_trace(thread_id, thread_workload);
 }
 
 template <int DS>
@@ -1271,13 +1312,14 @@ struct {
 };
 
 enum {
-    opt_test = 1, opt_nrmyw, opt_check, opt_profile, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew
+    opt_test = 1, opt_nrmyw, opt_check, opt_profile, opt_dump, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew
 };
 
 static const Clp_Option options[] = {
   { "no-readmywrites", 'n', opt_nrmyw, 0, 0 },
   { "check", 'c', opt_check, 0, Clp_Negate },
   { "profile", 'p', opt_profile, 0, Clp_Negate},
+  { "dump", 'd', opt_dump, 0, Clp_Negate},
   { "nthreads", 'j', opt_nthreads, Clp_ValInt, Clp_Optional },
   { "ntrans", 0, opt_ntrans, Clp_ValInt, Clp_Optional },
   { "opspertrans", 0, opt_opspertrans, Clp_ValInt, Clp_Optional },
@@ -1295,6 +1337,7 @@ Options:\n\
  -n, --no-readmywrites\n\
  -c, --check, run a check of the results afterwards\n\
  -p, --profile, run a perf profile of the execution porition of the benchmark\n\
+ -d, --dump, dump the workload executed by each thread (works only for hotspotrw (8))\n\
  --nthreads=NTHREADS (default %d)\n\
  --ntrans=NTRANS, how many total transactions to run (they'll be split between threads) (default %d)\n\
  --opspertrans=OPSPERTRANS, how many operations to run per transaction (default %d)\n\
@@ -1358,6 +1401,9 @@ int main(int argc, char *argv[]) {
       break;
     case opt_profile:
       profile = !clp->negated;
+      break;
+    case opt_dump:
+      dump_trace = !clp->negated;
       break;
     case opt_nthreads:
       nthreads = clp->val.i;
