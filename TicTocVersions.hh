@@ -165,9 +165,9 @@ public:
                 return true;
             else {
                 if (t_wts.timestamp() != read_wts.timestamp()
-                    || ((t_rts.timestamp() <= commit_ts) && t_wts.is_locked_elsewhere()))
+                    || ((t_rts.timestamp() < commit_ts) && t_wts.is_locked_elsewhere()))
                     return false;
-                if (t_rts.timestamp() <= commit_ts) {
+                if (t_rts.timestamp() < commit_ts) {
                     type v = commit_ts << ts_shift;
                     if (bool_cmpxchg(&tuple_rts.t_, t_rts.t_, v))
                         return true;
@@ -187,7 +187,7 @@ public:
             return true;
         else {
             if (t_wts.timestamp() != read_wts.timestamp()
-                || ((t_rts.timestamp() <= commit_ts) && t_wts.is_locked_elsewhere()))
+                || ((t_rts.timestamp() < commit_ts) && t_wts.is_locked_elsewhere()))
                 return false;
             else
                 return true;
@@ -244,9 +244,9 @@ public:
                 return true;
             else {
                 if (ct.wts_value() != read_tss.wts_value() ||
-                    ((ct.rts_value() <= commit_ts) && is_locked_elsewhere()))
+                    ((ct.rts_value() < commit_ts) && is_locked_elsewhere()))
                     return false;
-                if (ct.rts_value() <= commit_ts) {
+                if (ct.rts_value() < commit_ts) {
                     type vv = v;
                     type delta = commit_ts - ct.wts_value();
                     type shift = delta - (delta & 0xff);
@@ -270,7 +270,7 @@ public:
             return true;
         else {
             if (ct.wts_value() != read_tss.wts_value() ||
-                ((ct.rts_value() <= commit_ts) && is_locked_elsewhere()))
+                ((ct.rts_value() < commit_ts) && is_locked_elsewhere()))
                 return false;
             else
                 return true;
