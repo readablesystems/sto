@@ -85,9 +85,13 @@ private:
 template <typename IntType>
 class StoUniformIntSampler {
 public:
-    StoUniformIntSampler() : rd(), gen(rd()), dis() {}
-    StoUniformIntSampler(IntType range)
-        : rd(), gen(rd()), dis(0, range) {}
+    StoUniformIntSampler(int thid) : rd(), gen(rd()), dis() {
+        gen.seed(thid);
+    }
+    StoUniformIntSampler(int thid, IntType range)
+        : rd(), gen(rd()), dis(0, range) {
+        gen.seed(thid);
+    }
 
     IntType sample() {
         return dis(gen);
@@ -113,8 +117,8 @@ private:
 // index_table: set a custom index translation table
 class StoRandomDistribution {
 public:
-    StoRandomDistribution(index_t a, index_t b, bool shuffle = false)
-        : begin(a), end(b), index_transform(false), uis(), dist() {
+    StoRandomDistribution(int thid, index_t a, index_t b, bool shuffle = false)
+        : begin(a), end(b), index_transform(false), uis(thid), dist() {
         assert(a < b);
         if (shuffle) {
             std::random_device rd;
@@ -126,9 +130,9 @@ public:
             std::shuffle(index_translation_table.begin(), index_translation_table.end(), gen);
         }
     }
-    StoRandomDistribution(index_t a, index_t b, std::vector<index_t> index_table)
+    StoRandomDistribution(int thid, index_t a, index_t b, std::vector<index_t> index_table)
         : begin(a), end(b), index_transform(true), index_translation_table(index_table),
-        uis(), dist() {assert(a < b);}
+        uis(thid), dist() {assert(a < b);}
 
     virtual ~StoRandomDistribution() {}
 
@@ -171,10 +175,10 @@ protected:
 // specialization 1: uniform random distribution
 class StoUniformDistribution : public StoRandomDistribution {
 public:
-    StoUniformDistribution(index_t a, index_t b, bool shuffle = false) :
-        StoRandomDistribution(a, b, shuffle) {generate();}
-    StoUniformDistribution(index_t a, index_t b, std::vector<index_t> index_table) :
-        StoRandomDistribution(a, b, index_table) {generate();}
+    StoUniformDistribution(int thid, index_t a, index_t b, bool shuffle = false) :
+        StoRandomDistribution(thid, a, b, shuffle) {generate();}
+    StoUniformDistribution(int thid, index_t a, index_t b, std::vector<index_t> index_table) :
+        StoRandomDistribution(thid, a, b, index_table) {generate();}
 
     index_t sample() const override {
         auto s_index = uis.sample();
@@ -197,13 +201,13 @@ class StoZipfDistribution : public StoRandomDistribution {
 public:
     static constexpr double default_skew = 1.0;
 
-    StoZipfDistribution(index_t a, index_t b, double skew = default_skew, bool shuffle = false) :
-        StoRandomDistribution(a, b, shuffle), skewness(skew) {
+    StoZipfDistribution(int thid, index_t a, index_t b, double skew = default_skew, bool shuffle = false) :
+        StoRandomDistribution(thid, a, b, shuffle), skewness(skew) {
         calculate_sum();
         generate();
     }
-    StoZipfDistribution(index_t a, index_t b, double skew, std::vector<index_t> index_table) :
-        StoRandomDistribution(a, b, index_table), skewness(skew) {
+    StoZipfDistribution(int thid, index_t a, index_t b, double skew, std::vector<index_t> index_table) :
+        StoRandomDistribution(thid, a, b, index_table), skewness(skew) {
         calculate_sum();
         generate();
     }
