@@ -1325,7 +1325,7 @@ Options:\n\
  -n, --no-readmywrites\n\
  -c, --check, run a check of the results afterwards\n\
  -p, --profile, run a perf profile of the execution porition of the benchmark\n\
- -d, --dump, dump the workload executed by each thread (works only for hotspotrw (8))\n\
+ -d, --dump, dump the workload executed by each thread (works only for hotspot (8))\n\
  --nthreads=NTHREADS (default %d)\n\
  --ntrans=NTRANS, how many total transactions to run (they'll be split between threads) (default %d)\n\
  --opspertrans=OPSPERTRANS, how many operations to run per transaction (default %d)\n\
