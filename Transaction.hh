@@ -735,6 +735,7 @@ private:
 
     void hard_check_opacity(TransItem* item, const TicTocVersion& tss);
     void stop(bool committed, unsigned* writes, unsigned nwrites);
+    TransItem* pre_abort_check();
 
     friend class TransProxy;
     friend class TransItem;

@@ -219,6 +219,22 @@ after_unlock:
     state_ = s_aborted + committed;
 }
 
+// returns ptr to the TransItem causing check to fail
+TransItem* Transaction::pre_abort_check() {
+    TransItem *it = nullptr;
+    for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
+        it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
+        if (it->has_observation()) {
+            TXP_INCREMENT(txp_total_check_read);
+            if (!it->owner()->pre_commit_check(*it, *this)
+                && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
+                return it;
+            }
+        }
+    }
+    return nullptr;
+}
+
 bool Transaction::try_commit() {
     assert(TThread::id() == threadid_);
 #if ASSERT_TX_SIZE
@@ -246,57 +262,78 @@ bool Transaction::try_commit() {
 #endif
 
 #if TICTOC_PRE_ABORT
-    // pre-abort checks
-    {
-    TransItem* it = nullptr;
-    for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
-        it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
-        if (it->has_observation()) {
-            TXP_INCREMENT(txp_total_check_read);
-            if (!it->owner()->pre_commit_check(*it, *this)
-                && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
-                mark_abort_because(it, "pre-abort check");
-                stop(false, nullptr, 0);
-                return false;
-            }
-        }
-    }
-    }
 #endif
 
     state_ = s_committing;
 
     unsigned writeset[tset_size_];
     unsigned nwriteset = 0;
-    writeset[0] = tset_size_;
 
     TransItem* it = nullptr;
-    for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
-        it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
-        if (it->has_write()) {
-            writeset[nwriteset++] = tidx;
+
+    while (1) {
+        writeset[0] = tset_size_;
+
+        unsigned tidx = 0;
+        nwriteset = 0;
+
+        for (tidx = 0; tidx != tset_size_; ++tidx) {
+            it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
+            if (it->has_write()) {
+                writeset[nwriteset++] = tidx;
 #if !STO_SORT_WRITESET
-            if (nwriteset == 1) {
-                first_write_ = writeset[0];
-                state_ = s_committing_locked;
+                if (nwriteset == 1) {
+                    first_write_ = writeset[0];
+                    state_ = s_committing_locked;
+                }
+                if (!it->owner()->lock(*it, *this)) {
+                    //mark_abort_because(it, "commit lock");
+                    //goto abort;
+                    break;
+                }
+                it->__or_flags(TransItem::lock_bit);
+#endif
             }
-            if (!it->owner()->lock(*it, *this)) {
-                mark_abort_because(it, "commit lock");
+            if (it->has_read() || it->has_observation())
+                TXP_INCREMENT(txp_total_r);
+            else if (it->has_predicate()) {
+                TXP_INCREMENT(txp_total_check_predicate);
+                if (!it->owner()->check_predicate(*it, *this, true)) {
+                    mark_abort_because(it, "commit check_predicate");
+                    goto abort;
+                }
+            }
+        }
+#if !STO_SORT_WRITESET
+        if (tidx == tset_size_)
+            break;
+        else {
+#if TICTOC_PRE_ABORT
+            for (unsigned wid = 0; wid < nwriteset; ++wid) {
+                unsigned idx = writeset[wid];
+                TransItem *it = &tset_[idx / tset_chunk][idx % tset_chunk];
+                assert(it->has_write());
+                if (it->needs_unlock()) {
+                    it->owner()->unlock(*it);
+                    it->clear_needs_unlock();
+                }
+            }
+            it = pre_abort_check();
+            if (it != nullptr) {
+                mark_abort_because(it, "pre-abort check");
                 goto abort;
             }
-            it->__or_flags(TransItem::lock_bit);
+            relax_fence();
+#else
+            mark_abort_because(it, "commit lock");
+            goto abort;
 #endif
         }
-        if (it->has_read() || it->has_observation())
-            TXP_INCREMENT(txp_total_r);
-        else if (it->has_predicate()) {
-            TXP_INCREMENT(txp_total_check_predicate);
-            if (!it->owner()->check_predicate(*it, *this, true)) {
-                mark_abort_because(it, "commit check_predicate");
-                goto abort;
-            }
-        }
+#else
+        break;
+#endif
     }
+
 
     first_write_ = writeset[0];
 
