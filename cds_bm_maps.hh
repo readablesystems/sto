@@ -347,10 +347,10 @@ private:
 
 
 #define MAKE_MAP_TESTS(desc, test, key, val, size, fullness, ...) \
-    {desc, "STO NA CuckooMap", new test<DatatypeHarness<CuckooHashMapNA<key,val,size, false, fullness>>>(STO, size, fullness, ## __VA_ARGS__)} ,\
-    //{desc, "STO Nonopaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,false,size>>>(STO, size, fullness,  ## __VA_ARGS__)},                                  \
+    {desc, "STO Nonopaque Hashtable", new test<DatatypeHarness<Hashtable<key,val,false,size>>>(STO, size, fullness,  ## __VA_ARGS__)},                                  \
     {desc, "STO IE CuckooMap", new test<DatatypeHarness<CuckooHashMapIE<key,val,size, false, fullness>>>(STO, size, fullness, ## __VA_ARGS__)}, \
     {desc, "STO KF CuckooMap", new test<DatatypeHarness<CuckooHashMapKF<key,val,size, false, fullness>>>(STO, size, fullness, ## __VA_ARGS__)},                \
+    {desc, "STO NA CuckooMap", new test<DatatypeHarness<CuckooHashMapNA<key,val,size, false, fullness>>>(STO, size, fullness, ## __VA_ARGS__)} ,\
     {desc, "CuckooMapNT", new test<DatatypeHarness<CuckooHashMapNT<key, val, size, fullness>>>(CDS, size, fullness, ## __VA_ARGS__)}, 
     //{desc, "STO WK CuckooMap", new test<DatatypeHarness<CuckooHashMapWK<key,val,size, false>>>(STO, size, ## __VA_ARGS__)}, 
     //{desc, "MichaelHashMap", new test<DatatypeHarness<MICHAELMAP(key,val)>>(CDS, ## __VA_ARGS__)},        

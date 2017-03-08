@@ -32,7 +32,7 @@
 // globals
 unsigned initial_seeds[64];
 std::vector<int> init_sizes = {10000, 100000};//, 150000};
-std::vector<int> nthreads_set = {8,12,16,20};//, 24};//{1,2,4,8,12,16,20};//, 24};
+std::vector<int> nthreads_set = {1,2,4,8,12,16,20};//, 24};
 
 std::atomic_int spawned_barrier(0);
 

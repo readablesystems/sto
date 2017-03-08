@@ -66,6 +66,7 @@ class CuckooHashMapNA : public Shared {
             assert(!num.is_locked_here());
 //#endif
             num.lock();
+            assert(num.is_locked_here());
         }
 
         inline void unlock() {
@@ -74,10 +75,7 @@ class CuckooHashMapNA : public Shared {
         }
 
         inline bool try_lock() {
-            if (!is_locked()) {
-                return num.try_lock();
-            }
-            return true;
+            return num.try_lock();
         }
 
         inline bool is_locked() const {
@@ -191,7 +189,7 @@ public:
             if (has_insert(item)) {
                 assert(insert_one_install(ti, hv, key, val, i1, i2) == ok);
             } else if (has_delete(item)) {
-                assert(delete_one_install(ti, hv, key, i1, i2) == ok);
+                assert(delete_one_install(ti, key, i1, i2) == ok);
             } else { // insert my delete
                 assert(update_one_install(ti, hv, key, val, i1, i2) == ok);
             }
@@ -278,7 +276,6 @@ public:
         TableInfo *ti;
         cuckoo_status res;
         mapped_type dummy;
-        
         snapshot_get_buckets(ti, hv, i1, i2);
         res = find_one(ti, key, dummy, i1, i2, true);
 
@@ -637,12 +634,12 @@ private:
     }
 
     cuckoo_status insert_one_install(TableInfo *ti, size_t hv, const key_type& key,
-                            const mapped_type& val, size_t& i1, size_t& i2) {
+                            const mapped_type& val, const size_t i1, const size_t i2) {
         int open1, open2;
         cuckoo_status res1, res2;
 
-        //ti->buckets_[i1].inc_version();
-        //ti->buckets_[i2].inc_version();
+        ti->buckets_[i1].inc_version();
+        ti->buckets_[i2].inc_version();
 
     RETRY:
         //fastpath: 
@@ -668,12 +665,6 @@ private:
                         unlock_two(ti, i1, i2);
                         return res1;
                     }
-                }
-                if (!(ti->buckets_[i1]).lock.is_locked_here()) {
-                    assert(0);
-                }
-                if (!ti->buckets_[i2].lock.is_locked_here()) {
-                    assert(0);
                 }
             }
         }
@@ -705,7 +696,7 @@ private:
         cuckoo_status st = run_cuckoo(ti, i1, i2, insert_bucket, insert_slot);
         if (st == ok) {
             assert(!getBit(ti->buckets_[insert_bucket].occupied,insert_slot));
-            assert(insert_bucket == index_hash(ti, hv) || insert_bucket == alt_index(ti, hv, index_hash(ti, hv)));
+            assert(insert_bucket == i1 || insert_bucket == i2);
             /* Since we unlocked the buckets during run_cuckoo,
              * another insert could have inserted the same key into
              * either i1 or i2, so we check for that before doing the
@@ -738,10 +729,8 @@ private:
      * It will return a failure only if the key wasn't found or a bucket was moved.
      * Regardless, it starts with the buckets unlocked and ends with buckets locked 
      */
-    cuckoo_status delete_one_install(TableInfo *ti, size_t hv, const key_type& key,
-                             size_t& i1, size_t& i2) {
-        i1 = index_hash(ti, hv);
-        i2 = alt_index(ti, hv, i1);
+    cuckoo_status delete_one_install(TableInfo *ti, const key_type& key,
+                             const size_t i1, const size_t i2) {
         cuckoo_status res1, res2;
 
         lock( ti, i1 );
@@ -760,12 +749,6 @@ private:
                     return res1;
                 }
             }
-        }
-        if (!(ti->buckets_[i1]).lock.is_locked_here()) {
-            assert(0);
-        }
-        if (!ti->buckets_[i2].lock.is_locked_here()) {
-            assert(0);
         }
 
         res2 = try_del_from_bucket(ti, key, i2);
