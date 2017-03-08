@@ -1,6 +1,7 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
+#include <unordered_set>
 #include <assert.h>
 #include <random>
 #include <thread>
@@ -653,24 +654,35 @@ void HotspotRW<DS>::per_thread_workload_init(int thread_id) {
         auto r = ud.sample();
         bool ro_txn = r < readonly_ceil;
 
+        std::unordered_set<StoSampling::index_t> req_keys;
+
+        while (1) {
+            auto k = ud.sample() % ARRAY_SZ;
+            if (k == 0)
+                continue;
+            req_keys.insert(k);
+            if (req_keys.size() == (size_t)opspertrans)
+                break;
+        }
+
         if (ro_txn)
             query.emplace_back(OpType::read, 0);
 
-        for (int j = 0; j < opspertrans; ++j) {
+        int idx = 0;
+        for (auto it = req_keys.begin(); it != req_keys.end(); ++it) {
             RWOperation op;
-            if (!ro_txn && j >= write_thresh)
+            if (!ro_txn && idx >= write_thresh)
                 op.type = OpType::write;
             else
                 op.type = OpType::read;
-            while(1) {
-                op.key = ud.sample() % ARRAY_SZ;
-                if (op.key != 0 || op.type != OpType::write)
-                    break;
-            }
+            op.key = *it;
             if (op.type == OpType::write)
                 op.value = op.key + 1;
             query.push_back(op);
+            idx++;
         }
+
+        assert((size_t)idx == req_keys.size());
 
         if (!ro_txn)
             query.emplace_back(OpType::write, 0, thread_id);
