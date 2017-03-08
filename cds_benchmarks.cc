@@ -438,6 +438,7 @@ int main(int argc, char* argv[]) {
             dualprintf("\n");
         //}
     }
+    /*
     // pqueue tests
     std::vector<Test> pqueue_tests = make_pqueue_tests();
     for (unsigned i = 0; i < pqueue_tests.size(); i+=num_pqueues) {
@@ -484,7 +485,7 @@ int main(int argc, char* argv[]) {
             dualprintf("\n");
         }
     }
-
+*/
     cds::Terminate();
     fclose(global_stats_file);
     fclose(global_verbose_stats_file);

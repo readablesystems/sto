@@ -247,7 +247,6 @@ private:
                             continue;
                         } else {
                             // empty queue! (or we've popped off everything)
-                            // for now, let's not deal with RMW
                             curr_slot->_req_ans = _NULL_VALUE;
                             curr_slot->_time_stamp = _NULL_VALUE;
                             break;
@@ -432,6 +431,19 @@ public:
 	bool pop() {
         bool popped = fc_pop(); 
         auto item = Sto::item(this, popitem_key);
+        auto pushitem = Sto::item(this, pushitem_key);
+        if (!popped && pushitem.has_write()) {
+            if (!is_list(pushitem)) {
+                pushitem.clear_write();
+            }
+            else {
+                auto& write_list = item.template write_value<std::list<T>>();
+                write_list.pop_front();
+            }
+            item.add_flags(empty_q_bit);
+            item.add_read(0);
+            return true;
+        }
         // we saw an empty queue in a previous pop, but it's no longer empty!
         if (saw_empty(item) && popped) {
             Sto::abort();

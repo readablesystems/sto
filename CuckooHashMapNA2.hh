@@ -62,13 +62,14 @@ class CuckooHashMapNA : public Shared {
         }
 
         inline void lock() {
-#if LIBCUCKOO_DEBUG
+//#if LIBCUCKOO_DEBUG
             assert(!num.is_locked_here());
-#endif
+//#endif
             num.lock();
         }
 
         inline void unlock() {
+            assert(num.is_locked_here());
             num.set_version_unlock(num.value() + TransactionTid::increment_value);
         }
 
@@ -81,6 +82,10 @@ class CuckooHashMapNA : public Shared {
 
         inline bool is_locked() const {
             return num.is_locked();
+        }
+
+        inline bool is_locked_here() const {
+            return num.is_locked_here();
         }
     } __attribute__((aligned(64)));
     
@@ -155,7 +160,6 @@ public:
         if (is_bucket(item)) {
             auto b = unpack_bucket(item);
             if (!b->bucketversion.is_locked_here()) {
-                //std::cout << "locking buck " << b <<  std::endl;
                 return txn.try_lock(item, b->bucketversion);
             } else {
                 return true;
@@ -198,7 +202,6 @@ public:
         if (is_bucket(item)) {
             auto b = unpack_bucket(item);
             if (b->bucketversion.is_locked_here()) {
-                //std::cout << "unlocking buck " << b <<  std::endl;
                 b->bucketversion.unlock();
             }
         } else {
@@ -216,7 +219,6 @@ public:
             if (is_bucket(item)) {
                 auto b = unpack_bucket(item);
                 if (b->bucketversion.is_locked_here()) {
-                    //std::cout << "unlocking buck " << b <<  std::endl;
                     b->bucketversion.unlock();
                 }
             } else {
@@ -639,8 +641,8 @@ private:
         int open1, open2;
         cuckoo_status res1, res2;
 
-        ti->buckets_[i1].inc_version();
-        ti->buckets_[i2].inc_version();
+        //ti->buckets_[i1].inc_version();
+        //ti->buckets_[i2].inc_version();
 
     RETRY:
         //fastpath: 
@@ -666,6 +668,12 @@ private:
                         unlock_two(ti, i1, i2);
                         return res1;
                     }
+                }
+                if (!(ti->buckets_[i1]).lock.is_locked_here()) {
+                    assert(0);
+                }
+                if (!ti->buckets_[i2].lock.is_locked_here()) {
+                    assert(0);
                 }
             }
         }
@@ -753,6 +761,12 @@ private:
                 }
             }
         }
+        if (!(ti->buckets_[i1]).lock.is_locked_here()) {
+            assert(0);
+        }
+        if (!ti->buckets_[i2].lock.is_locked_here()) {
+            assert(0);
+        }
 
         res2 = try_del_from_bucket(ti, key, i2);
         if( res2 == ok ) {
@@ -838,7 +852,10 @@ private:
     }
 
     static inline bool try_lock(const TableInfo *ti, const size_t i) {
-        return ti->buckets_[i].lock.try_lock();
+        if (ti->buckets_[i].lock.try_lock()) {
+            return true;
+        }
+        return false;
     }
     
     static inline void lock_two(const TableInfo *ti, size_t i1, size_t i2) {
@@ -874,8 +891,6 @@ private:
                 locked &= txn.try_lock(item, (ti->buckets_[i1]).bucketversion);
             }
         }
-        //if(locked) std::cout << "locked " << i1 << " AND " << i2 <<  std::endl;
-        //else std::cout << "FAILED lock " << i1 << " AND " << i2 <<  std::endl;
         return locked;
     }
 
@@ -888,7 +903,6 @@ private:
                 (ti->buckets_[i2]).bucketversion.unlock();
             }
         }
-        //std::cout << "unlocked " << i1 << " AND " << i2 <<  std::endl;
     }
 
     static inline void unlock_two(const TableInfo *ti, size_t i1, size_t i2) {
@@ -1103,37 +1117,45 @@ private:
     static b_slot slot_search(const TableInfo *ti, const size_t i1,
                               const size_t i2) {
         b_queue q;
-        internal_elem elem;
-
         // The initial pathcode informs cuckoopath_search which bucket
         // the path starts on
         q.enqueue(b_slot(i1, 0, 0));
         q.enqueue(b_slot(i2, 1, 0));
         while (q.not_full() && q.not_empty()) {
             b_slot x = q.dequeue();
+            
             // Picks a random slot to start from
             for (size_t slot = 0; slot < SLOT_PER_BUCKET && q.not_full(); slot++) {
-                elem = ti->buckets_[x.bucket].elems[slot];
-                const size_t hv = hashed_key<key_type>(elem.key);
 
+                key_type key = ti->buckets_[x.bucket].elems[slot].key;
+                size_t hv = hashed_key(key);
+                
                 if (!getBit(ti->buckets_[x.bucket].occupied, slot)) {
                     // We can terminate the search here
+                    size_t old_pathcode = x.pathcode;
                     x.pathcode = x.pathcode * SLOT_PER_BUCKET + slot;
+                    assert(x.pathcode >= old_pathcode);
                     return x;
                 }
+                
                 // Create a new b_slot item, that represents the
                 // bucket we would look at after searching x.bucket
                 // for empty slots.
                 b_slot y(alt_index(ti, hv, x.bucket),
-                         x.pathcode * SLOT_PER_BUCKET + slot, x.depth+1);
+                        x.pathcode * SLOT_PER_BUCKET + slot, x.depth+1);
 
                 // Check if any of the slots in the prospective bucket
                 // are empty, and, if so, return that b_slot. We lock
                 // the bucket so that no changes occur while
                 // iterating.
+                //if (ti->buckets_[y.bucket].hasmigrated) {
+                    //return b_slot(0, 0, -2);
+                //}
                 for (size_t j = 0; j < SLOT_PER_BUCKET; j++) {
                     if (!getBit(ti->buckets_[y.bucket].occupied, j)) {
+                        size_t old_pathcode = y.pathcode;
                         y.pathcode = y.pathcode * SLOT_PER_BUCKET + j;
+                        assert(y.pathcode >= old_pathcode);
                         return y;
                     }
                 }
@@ -1149,6 +1171,7 @@ private:
         // out of space. Return a failure value.
         return b_slot(0, 0, -1);
     }
+
     /* cuckoopath_search finds a cuckoo path from one of the starting
      * buckets to an empty slot in another bucket. It returns the
      * depth of the discovered cuckoo path on success, -1 for too long of 
@@ -1159,7 +1182,11 @@ private:
      * matches the cuckoo path before changing it. */
     static int cuckoopath_search(const TableInfo *ti, CuckooRecord* cuckoo_path,
                                  const size_t i1, const size_t i2) {
-        b_slot x = slot_search(ti, i1, i2);
+        b_slot x;
+        CuckooRecord *curr, *prev;
+        size_t prevhv;
+        
+        x = slot_search(ti, i1, i2);
         if (x.depth < 0) {
             return x.depth;
         }
@@ -1173,40 +1200,41 @@ private:
          * bucket the path starts on. Since data could have been
          * modified between slot_search and the computation of the
          * cuckoo path, this could be an invalid cuckoo_path. */
-        CuckooRecord *curr = cuckoo_path;
-        internal_elem elem;
+        curr = cuckoo_path;
         if (x.pathcode == 0) {
             curr->bucket = i1;
-            elem = ti->buckets_[curr->bucket].elems[curr->slot];
             if (!getBit(ti->buckets_[curr->bucket].occupied, curr->slot)) {
                 // We can terminate here
                 return 0;
             }
-            curr->key = elem.key;
+            curr->key = ti->buckets_[curr->bucket].elems[curr->slot].key;
         } else {
             assert(x.pathcode == 1);
             curr->bucket = i2;
-            elem = ti->buckets_[curr->bucket].elems[curr->slot];
             if (!getBit(ti->buckets_[curr->bucket].occupied, curr->slot)) {
                 // We can terminate here
                 return 0;
             }
-            curr->key = elem.key; 
+            curr->key = ti->buckets_[curr->bucket].elems[curr->slot].key;
         }
         for (int i = 1; i <= x.depth; i++) {
-            CuckooRecord *prev = curr++;
-            const size_t prevhv = hashed_key<key_type>(prev->key);
-            assert(prev->bucket == index_hash(ti, prevhv) ||
-                   prev->bucket == alt_index(ti, prevhv, index_hash(ti, prevhv)));
+            prev = curr++;
+            prevhv = hashed_key(prev->key);
+           
+            assert((prev->bucket == index_hash(ti, prevhv) ||
+                   prev->bucket == alt_index(ti, prevhv, index_hash(ti, prevhv))));
+            
             // We get the bucket that this slot is on by computing the
             // alternate index of the previous bucket
             curr->bucket = alt_index(ti, prevhv, prev->bucket);
-            elem = ti->buckets_[curr->bucket].elems[curr->slot];
             if (!getBit(ti->buckets_[curr->bucket].occupied, curr->slot)) {
                 // We can terminate here
                 return i;
             }
-            curr->key = elem.key;
+            // XXX the problem here is that the key could have changed since we
+            // last found item. Therefore, the cuckoo path found by the slot_search 
+            // may no longer be accurate.
+            curr->key = ti->buckets_[curr->bucket].elems[curr->slot].key;
         }
         return x.depth;
     }
@@ -1222,7 +1250,6 @@ private:
     static cuckoo_status cuckoopath_move(TableInfo *ti, CuckooRecord* cuckoo_path,
                                 size_t depth, const size_t i1, const size_t i2) {
 
-        internal_elem elem;
         if (depth == 0) {
             /* There is a chance that depth == 0, when
              * try_add_to_bucket sees i1 and i2 as full and
@@ -1234,7 +1261,6 @@ private:
             const size_t bucket = cuckoo_path[0].bucket;
             assert(bucket == i1 || bucket == i2);
             lock_two(ti, i1, i2);
-            elem = ti->buckets_[bucket].elems[cuckoo_path[0].slot];
             if (!getBit(ti->buckets_[bucket].occupied, cuckoo_path[0].slot)) {
                 return ok;
             } else {
@@ -1262,6 +1288,7 @@ private:
             } else {
                 lock_two(ti, fb, tb);
             }
+
             /* We plan to kick out fs, but let's check if it is still
              * there; there's a small chance we've gotten scooped by a
              * later cuckoo. If that happened, just... try again. Also
@@ -1271,6 +1298,7 @@ private:
             if (!eqfn(ti->buckets_[fb].elems[fs].key, from->key) ||
                 getBit(ti->buckets_[tb].occupied, ts) ||
                 !getBit(ti->buckets_[fb].occupied, fs) ) {
+
                 if (depth == 1) {
                     unlock_three(ti, fb, tb, ob);
                 } else {
@@ -1408,7 +1436,6 @@ private:
         for (size_t k = 0; k < SLOT_PER_BUCKET; k++) {
             elem_in_table = ti->buckets_[i].elems[k];
             if (getBit(ti->buckets_[i].occupied, k)) {
-
                 if (eqfn(key, elem_in_table.key)) {
                     return failure_key_duplicated;
                 }

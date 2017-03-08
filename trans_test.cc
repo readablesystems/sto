@@ -23,11 +23,11 @@
 #define CUCKOOHASHMAP2 6 
 #define CUCKOOHASHMAPNA 7
 #define QUEUE 8 
-//#define DS QUEUE
-#define DS CUCKOOHASHMAPNA
+#define DS QUEUE
+//#define DS CUCKOOHASHMAPNA
 
 #if DS == QUEUE 
-QueueTester<FCQueueTPops<int>, std::queue<int>> tester = QueueTester<FCQueueTPops<int>, std::queue<int>>();
+QueueTester<FCQueueT<int>, std::queue<int>> tester = QueueTester<FCQueueT<int>, std::queue<int>>();
 //QueueTester<QueuePops<int,false,100000>, std::queue<int>> tester = QueueTester<QueuePops<int,false,100000>, std::queue<int>>();
 #elif DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
@@ -197,7 +197,7 @@ int main() {
         initial_seeds[i] = random();
 
 #if DS == QUEUE
-    FCQueueTPops<int> q;
+    FCQueueT<int> q;
     //QueuePops<int,false,100000> q;
     std::queue<int> q1;
 #elif DS == PRIORITY_QUEUE 
