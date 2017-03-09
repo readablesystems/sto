@@ -147,23 +147,23 @@ template <typename K, typename T> struct DatatypeHarness<CuckooHashMapWK<K,T,100
 
 // STO-CUCKOO NOALLOC
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNA<K,T,1000000,false, 5>> :
-    public CuckooHashMapHarness<CuckooHashMapNA<K,T,1000000,false>>{};
+    public CuckooHashMapHarness<CuckooHashMapNA<K,T,1000000,false, 5>>{};
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNA<K,T,125000,false, 5>> :
-    public CuckooHashMapHarness<CuckooHashMapNA<K,T,125000,false>>{};
+    public CuckooHashMapHarness<CuckooHashMapNA<K,T,125000,false, 5>>{};
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNA<K,T,10000,false, 5>> :
-    public CuckooHashMapHarness<CuckooHashMapNA<K,T,10000,false>>{};
+    public CuckooHashMapHarness<CuckooHashMapNA<K,T,10000,false, 5>>{};
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNA<K,T,1000000,false, 10>> :
-    public CuckooHashMapHarness<CuckooHashMapNA<K,T,1000000,false>>{};
+    public CuckooHashMapHarness<CuckooHashMapNA<K,T,1000000,false, 10>>{};
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNA<K,T,125000,false, 10>> :
-    public CuckooHashMapHarness<CuckooHashMapNA<K,T,125000,false>>{};
+    public CuckooHashMapHarness<CuckooHashMapNA<K,T,125000,false, 10>>{};
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNA<K,T,10000,false, 10>> :
-    public CuckooHashMapHarness<CuckooHashMapNA<K,T,10000,false>>{};
+    public CuckooHashMapHarness<CuckooHashMapNA<K,T,10000,false, 10>>{};
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNA<K,T,1000000,false, 15>> :
-    public CuckooHashMapHarness<CuckooHashMapNA<K,T,1000000,false>>{};
+    public CuckooHashMapHarness<CuckooHashMapNA<K,T,1000000,false, 15>>{};
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNA<K,T,125000,false, 15>> :
-    public CuckooHashMapHarness<CuckooHashMapNA<K,T,125000,false>>{};
+    public CuckooHashMapHarness<CuckooHashMapNA<K,T,125000,false, 15>>{};
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNA<K,T,10000,false, 15>> :
-    public CuckooHashMapHarness<CuckooHashMapNA<K,T,10000,false>>{};
+    public CuckooHashMapHarness<CuckooHashMapNA<K,T,10000,false, 15>>{};
 
 // NT CUCKOO
 template <typename K, typename T> struct DatatypeHarness<CuckooHashMapNT<K,T,1000000,5>> :
@@ -290,12 +290,14 @@ public:
             switch (my_op) {
                 case erase:
                     if (v_.erase(key)) {
+                        //std::cout << "erased! " << global_thread_ctrs[me].ke_erase << std::endl;
                         global_thread_ctrs[me].ke_erase++;
                     }
                     global_thread_ctrs[me].erase++;
                     break;
                 case insert:
                     if (v_.insert(key,me)) {
+                        //std::cout << "inserted! " << global_thread_ctrs[me].ke_insert << std::endl;
                         global_thread_ctrs[me].ke_insert++;
                     }
                     global_thread_ctrs[me].insert++;
@@ -306,6 +308,24 @@ public:
                     break;
             }
         }
+        /*
+        fprintf(global_verbose_stats_file, "\n");
+        int total_ke_insert, total_ke_find, total_ke_erase, total_inserts, total_find, total_erase;
+        total_ke_insert = total_ke_find = total_ke_erase = total_inserts = total_find = total_erase = 0;
+        for (int i = 0; i < 8; ++i) {
+            total_ke_insert += global_thread_ctrs[i].ke_insert;
+            total_ke_find += global_thread_ctrs[i].ke_find;
+            total_ke_erase += global_thread_ctrs[i].ke_erase;
+            total_inserts += global_thread_ctrs[i].insert;
+            total_erase += global_thread_ctrs[i].erase;
+            total_find += global_thread_ctrs[i].find;
+        }
+        fprintf(global_verbose_stats_file, "Success Inserts: %f%%\t Success Finds: %f%%\t Success Erase: %f%%\t\n", 
+                100 - 100*(double)total_ke_insert/total_inserts,
+                100 - 100*(double)total_ke_find/total_find,
+                100*(double)total_ke_erase/total_erase);
+        */
+
     }
 protected:
     DH v_;
@@ -339,6 +359,12 @@ public:
                 this->do_map_op(me, transgen, num_ops_);
             }
         }
+        for (int i = 0; i < 8; ++i) {
+            global_thread_ctrs[i].ke_insert = global_thread_ctrs[i].ke_find = global_thread_ctrs[i].ke_erase
+            = global_thread_ctrs[i].insert = global_thread_ctrs[i].erase = global_thread_ctrs[i].find
+            = global_thread_ctrs[i].push = global_thread_ctrs[i].pop = global_thread_ctrs[i].skip
+            = 0;
+        }
     }
 private:
     int ds_type_;
@@ -363,12 +389,12 @@ private:
 
 std::vector<Test> make_map_tests() {
     return {
-        MAKE_MAP_TESTS("HM125K:F34,I33,E33", MapOpTest, int, int, 125000, 5, 1, 33, 33)
-        MAKE_MAP_TESTS("HM125K:F90,I5,E5", MapOpTest, int, int, 125000, 5, 1, 5, 5)
-        MAKE_MAP_TESTS("HM1M:F34,I33,E33", MapOpTest, int, int, 1000000, 5, 1, 33, 33)
-        MAKE_MAP_TESTS("HM1M:F90,I5,E5", MapOpTest, int, int, 1000000, 5, 1, 5, 5)
-        MAKE_MAP_TESTS("HM10K:F34,I33,E33", MapOpTest, int, int, 10000, 5, 1, 33, 33)
-        MAKE_MAP_TESTS("HM10K:F90,I5,E5", MapOpTest, int, int, 10000, 5, 1, 5, 5)
+        //MAKE_MAP_TESTS("HM125K:F34,I33,E33", MapOpTest, int, int, 125000, 5, 1, 33, 33)
+        //MAKE_MAP_TESTS("HM125K:F90,I5,E5", MapOpTest, int, int, 125000, 5, 1, 5, 5)
+        //MAKE_MAP_TESTS("HM1M:F34,I33,E33", MapOpTest, int, int, 1000000, 5, 1, 33, 33)
+        //MAKE_MAP_TESTS("HM1M:F90,I5,E5", MapOpTest, int, int, 1000000, 5, 1, 5, 5)
+        //MAKE_MAP_TESTS("HM10K:F34,I33,E33", MapOpTest, int, int, 10000, 5, 1, 33, 33)
+        //MAKE_MAP_TESTS("HM10K:F90,I5,E5", MapOpTest, int, int, 10000, 5, 1, 5, 5)
         MAKE_MAP_TESTS("HM125K:F34,I33,E33", MapOpTest, int, int, 125000, 10, 1, 33, 33)
         MAKE_MAP_TESTS("HM125K:F90,I5,E5", MapOpTest, int, int, 125000, 10, 1, 5, 5)
         MAKE_MAP_TESTS("HM1M:F34,I33,E33", MapOpTest, int, int, 1000000, 10, 1, 33, 33)

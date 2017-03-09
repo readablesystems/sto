@@ -586,45 +586,26 @@ private:
                 //gettimeofday(&t1, NULL);
 
                 if( hashpower_ > 10) {
-                    // void* res = mmap(NULL, hashsize(hashpower_)*sizeof(Bucket), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
-                    // if( res == (void*) MAP_FAILED) {
-                    //     std::cout << "MMap Failed" << errno << std::endl;
-                    //     exit(1);
-                    // }
-                    // buckets_ = static_cast<Bucket*>(res);
                     buckets_ = static_cast<Bucket*>( calloc(hashsize(hashpower_), sizeof(Bucket)));
                     if( buckets_ == nullptr ) {
                         throw std::bad_alloc();
                     }
-                    //buckets_ = new Bucket[hashsize(hashpower_)];
                 } else {
                     buckets_ = new Bucket[hashsize(hashpower_)];
                 }
-                /*buckets_ = static_cast<Bucket*>( calloc(hashsize(hashpower_), sizeof(Bucket)));
-                if( buckets_ == nullptr ) {
-                    throw std::bad_alloc();
-                }*/
-                //gettimeofday(&t2, NULL);
-                //double elapsed_time = (t2.tv_sec - t1.tv_sec) * 1000.0; // sec to ms
-                //elapsed_time += (t2.tv_usec - t1.tv_usec) / 1000.0; // us to ms
-                //std::cout << "To construct buckets" << elapsed_time << std::endl;
                 
                 num_inserts.resize(kNumCores);
                 num_deletes.resize(kNumCores);
-                //num_migrated_buckets.resize(kNumCores);
 
                 for (size_t i = 0; i < kNumCores; i++) {
                     num_inserts[i].num.store(0);
                     num_deletes[i].num.store(0);
                 }
-                //migrate_bucket_ind.num.store(0); 
         }
 
         ~TableInfo() {
             if( hashpower_ > 10) {
-                //munmap( buckets_, hashsize(hashpower_)*sizeof(Bucket));
                 free(buckets_);
-                //delete[] buckets_;
             } else {
                 delete[] buckets_;
             }

@@ -185,225 +185,53 @@ int main(int argc, char* argv[]) {
         int test = std::atoi(argv[1]);
        
         //hashmaps
-        auto ntch5m = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 10000, 5>>>(CDS, 10000, 5, 1, 5, 5);
-        auto ntch5m2 = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 125000, 5>>>(CDS, 125000, 5, 1, 5, 5);
-        auto ntch5m3 = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 1000000, 5>>>(CDS, 1000000, 5, 1, 5, 5);
-        auto ch5aining = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,10000>>>(STO, 10000, 5, 1, 5, 5);
-        auto ch5mkf = new MapOpTest<DatatypeHarness<CuckooHashMapKF<int, int, 10000, false, 5>>>(STO, 10000, 5, 1, 5, 5);
-        auto ch5mie = new MapOpTest<DatatypeHarness<CuckooHashMapIE<int, int, 10000, false, 5>>>(STO, 10000, 5, 1, 5, 5);
-        auto ch5aining2 = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 125000, 5, 1, 5, 5);
-        auto ch5mkf2 = new MapOpTest<DatatypeHarness<CuckooHashMapKF<int, int, 125000, false, 5>>>(STO, 125000, 5, 1, 5, 5);
-        auto ch5mie2 = new MapOpTest<DatatypeHarness<CuckooHashMapIE<int, int, 125000, false, 5>>>(STO, 125000, 5, 1, 5, 5);
-        auto ch5aining3 = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,1000000>>>(STO, 1000000, 5, 1, 5, 5);
-        auto ch5mkf3 = new MapOpTest<DatatypeHarness<CuckooHashMapKF<int, int, 1000000, false, 5>>>(STO, 1000000, 5, 1, 5, 5);
-        auto ch5mie3 = new MapOpTest<DatatypeHarness<CuckooHashMapIE<int, int, 1000000, false, 5>>>(STO, 1000000, 5, 1, 5, 5);
+        auto chmna51 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 10000, false, 5>>>(STO, 10000, 5, 1, 5, 5);
+        auto chmna52 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 125000, false, 5>>>(STO, 125000, 5, 1, 5, 5);
+        auto chmna53 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 1000000, false, 5>>>(STO, 1000000, 5, 1, 5, 5);
+        
+        auto chmna101 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 10000, false, 5>>>(STO, 10000, 10, 1, 5, 5);
+        auto chmna102 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 125000, false, 5>>>(STO, 125000, 10, 1, 5, 5);
+        auto chmna103 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 1000000, false, 5>>>(STO, 1000000, 10, 1, 5, 5);
 
-        auto ntch10m = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 10000, 10>>>(CDS, 10000, 10, 1, 5, 5);
-        auto ntch10m2 = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 125000, 10>>>(CDS, 125000, 10, 1, 5, 5);
-        auto ntch10m3 = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 1000000, 10>>>(CDS, 1000000, 10, 1, 5, 5);
-        auto ch10aining = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,10000>>>(STO, 10000, 10, 1, 5, 5);
-        auto ch10mkf = new MapOpTest<DatatypeHarness<CuckooHashMapKF<int, int, 10000, false, 10>>>(STO, 10000, 10, 1, 5, 5);
-        auto ch10mie = new MapOpTest<DatatypeHarness<CuckooHashMapIE<int, int, 10000, false, 10>>>(STO, 10000, 10, 1, 5, 5);
-        auto ch10aining2 = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 125000, 10, 1, 5, 5);
-        auto ch10mkf2 = new MapOpTest<DatatypeHarness<CuckooHashMapKF<int, int, 125000, false, 10>>>(STO, 125000, 10, 1, 5, 5);
-        auto ch10mie2 = new MapOpTest<DatatypeHarness<CuckooHashMapIE<int, int, 125000, false, 10>>>(STO, 125000, 10, 1, 5, 5);
-        auto ch10aining3 = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,1000000>>>(STO, 1000000, 10, 1, 5, 5);
-        auto ch10mkf3 = new MapOpTest<DatatypeHarness<CuckooHashMapKF<int, int, 1000000, false, 10>>>(STO, 1000000, 10, 1, 5, 5);
-        auto ch10mie3 = new MapOpTest<DatatypeHarness<CuckooHashMapIE<int, int, 1000000, false, 10>>>(STO, 1000000, 10, 1, 5, 5);
-        
-        auto ntch15m = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 10000, 15>>>(CDS, 10000, 15, 1, 5, 5);
-        auto ntch15m2 = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 125000, 15>>>(CDS, 125000, 15, 1, 5, 5);
-        auto ntch15m3 = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 1000000, 15>>>(CDS, 1000000, 15, 1, 5, 5);
-        auto ch15aining = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,10000>>>(STO, 10000, 15, 1, 5, 5);
-        auto ch15mkf = new MapOpTest<DatatypeHarness<CuckooHashMapKF<int, int, 10000, false, 15>>>(STO, 10000, 15, 1, 5, 5);
-        auto ch15mie = new MapOpTest<DatatypeHarness<CuckooHashMapIE<int, int, 10000, false, 15>>>(STO, 10000, 15, 1, 5, 5);
-        auto ch15aining2 = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,125000>>>(STO, 125000, 15, 1, 5, 5);
-        auto ch15mkf2 = new MapOpTest<DatatypeHarness<CuckooHashMapKF<int, int, 125000, false, 15>>>(STO, 125000, 15, 1, 5, 5);
-        auto ch15mie2 = new MapOpTest<DatatypeHarness<CuckooHashMapIE<int, int, 125000, false, 15>>>(STO, 125000, 15, 1, 5, 5);
-        auto ch15aining3 = new MapOpTest<DatatypeHarness<Hashtable<int,int,false,1000000>>>(STO, 1000000, 15, 1, 5, 5);
-        auto ch15mkf3 = new MapOpTest<DatatypeHarness<CuckooHashMapKF<int, int, 1000000, false, 15>>>(STO, 1000000, 15, 1, 5, 5);
-        auto ch15mie3 = new MapOpTest<DatatypeHarness<CuckooHashMapIE<int, int, 1000000, false, 15>>>(STO, 1000000, 15, 1, 5, 5);
-        
-        //queues
-        auto fcqueuelp = new RandomQSingleOpTest<DatatypeHarness<FCQueueLP<int>>>(STO, RANDOM_VALS);
-        auto fcqueuet = new RandomQSingleOpTest<DatatypeHarness<FCQueueT<int>>>(STO, RANDOM_VALS);
-        auto fcqueuent = new RandomQSingleOpTest<DatatypeHarness<FCQueueNT<int>>>(CDS, RANDOM_VALS);
-        auto wrappedfcqueuent = new RandomQSingleOpTest<DatatypeHarness<FCQueueNT<int>>>(STO, RANDOM_VALS);
-        auto queuelp = new RandomQSingleOpTest<DatatypeHarness<QueueLP<int, false>>>(STO, RANDOM_VALS);
-        auto queue1 = new RandomQSingleOpTest<DatatypeHarness<Queue1<int, false>>>(STO, RANDOM_VALS);
-        auto queue2 = new RandomQSingleOpTest<DatatypeHarness<Queue2<int, false>>>(STO, RANDOM_VALS);
+        auto chmna151 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 10000, false, 5>>>(STO, 10000, 15, 1, 5, 5);
+        auto chmna152 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 125000, false, 5>>>(STO, 125000, 15, 1, 5, 5);
+        auto chmna153 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 1000000, false, 5>>>(STO, 1000000, 15, 1, 5, 5);
 
         switch(test) {
             case 0:
-            simpleStartAndWait(ch5aining, 0, 8);
+            simpleStartAndWait(chmna51, 0, 8);
             break;
 
             case 1:
-            simpleStartAndWait(ch5mkf, 0, 8);
+            simpleStartAndWait(chmna52, 0, 8);
             break;
 
             case 2:
-            simpleStartAndWait(ch5mie, 0, 8);
+            simpleStartAndWait(chmna53, 0, 8);
             break;
 
             case 3:
-            simpleStartAndWait(ch5aining2, 0, 8);
+            simpleStartAndWait(chmna101, 0, 8);
             break;
 
             case 4:
-            simpleStartAndWait(ch5mkf2, 0, 8);
+            simpleStartAndWait(chmna102, 0, 8);
             break;
 
             case 5:
-            simpleStartAndWait(ch5mie2, 0, 8);
+            simpleStartAndWait(chmna103, 0, 8);
             break;
 
             case 6:
-            simpleStartAndWait(ch5aining3, 0, 8);
+            simpleStartAndWait(chmna151, 0, 8);
             break;
 
             case 7:
-            simpleStartAndWait(ch5mkf3, 0, 8);
+            simpleStartAndWait(chmna152, 0, 8);
             break;
 
             case 8:
-            simpleStartAndWait(ch5mie3, 0, 8);
-            break;
-
-            case 9:
-            simpleStartAndWait(ntch5m, 0, 8);
-            break;
-           
-            case 10:
-            simpleStartAndWait(ntch5m2, 0, 8);
-            break;
-           
-            case 11:
-            simpleStartAndWait(ntch5m3, 0, 8);
-            break;
-
-            case 110:
-            simpleStartAndWait(ch10aining, 0, 8);
-            break;
-
-            case 111:
-            simpleStartAndWait(ch10mkf, 0, 8);
-            break;
-
-            case 112:
-            simpleStartAndWait(ch10mie, 0, 8);
-            break;
-
-            case 113:
-            simpleStartAndWait(ch10aining2, 0, 8);
-            break;
-
-            case 114:
-            simpleStartAndWait(ch10mkf2, 0, 8);
-            break;
-
-            case 115:
-            simpleStartAndWait(ch10mie2, 0, 8);
-            break;
-
-            case 116:
-            simpleStartAndWait(ch10aining3, 0, 8);
-            break;
-
-            case 117:
-            simpleStartAndWait(ch10mkf3, 0, 8);
-            break;
-
-            case 118:
-            simpleStartAndWait(ch10mie3, 0, 8);
-            break;
-
-            case 119:
-            simpleStartAndWait(ntch10m, 0, 8);
-            break;
-           
-            case 120:
-            simpleStartAndWait(ntch10m2, 0, 8);
-            break;
-           
-            case 121:
-            simpleStartAndWait(ntch10m3, 0, 8);
-            break;
-
-            case 210:
-            simpleStartAndWait(ch15aining, 0, 8);
-            break;
-
-            case 211:
-            simpleStartAndWait(ch15mkf, 0, 8);
-            break;
-
-            case 212:
-            simpleStartAndWait(ch15mie, 0, 8);
-            break;
-
-            case 213:
-            simpleStartAndWait(ch15aining2, 0, 8);
-            break;
-
-            case 214:
-            simpleStartAndWait(ch15mkf2, 0, 8);
-            break;
-
-            case 215:
-            simpleStartAndWait(ch15mie2, 0, 8);
-            break;
-
-            case 216:
-            simpleStartAndWait(ch15aining3, 0, 8);
-            break;
-
-            case 217:
-            simpleStartAndWait(ch15mkf3, 0, 8);
-            break;
-
-            case 218:
-            simpleStartAndWait(ch15mie3, 0, 8);
-            break;
-
-            case 219:
-            simpleStartAndWait(ntch15m, 0, 8);
-            break;
-           
-            case 220:
-            simpleStartAndWait(ntch15m2, 0, 8);
-            break;
-           
-            case 221:
-            simpleStartAndWait(ntch15m3, 0, 8);
-            break;
-
-            case 12:
-            simpleStartAndWait(wrappedfcqueuent, 10000, 8);
-            break;
-
-            case 13:
-            simpleStartAndWait(queuelp, 10000, 8);
-            break;
-
-            case 14:
-            simpleStartAndWait(queue1, 10000, 8);
-            break;
-
-            case 15:
-            simpleStartAndWait(queue2, 10000, 8);
-            break;
-
-            case 16:
-            simpleStartAndWait(fcqueuelp, 10000, 8);
-            break;
-
-            case 17:
-            simpleStartAndWait(fcqueuet, 10000, 8);
-            break;
-
-            case 18:
-            simpleStartAndWait(fcqueuent, 10000, 8);
+            simpleStartAndWait(chmna153, 0, 8);
             break;
 
             default:

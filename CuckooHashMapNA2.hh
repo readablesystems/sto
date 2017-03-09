@@ -48,7 +48,6 @@ class CuckooHashMapNA : public Shared {
         failure_table_full = 6,
     } cuckoo_status;
 
-
     struct rw_lock {
     private:
         TVersion num;
@@ -62,15 +61,17 @@ class CuckooHashMapNA : public Shared {
         }
 
         inline void lock() {
-//#if LIBCUCKOO_DEBUG
-            assert(!num.is_locked_here());
-//#endif
+#if LIBCUCKOO_DEBUG
+           assert(!num.is_locked_here());
+#endif
             num.lock();
             assert(num.is_locked_here());
         }
 
         inline void unlock() {
+#if LIBCUCKOO_DEBUG
             assert(num.is_locked_here());
+#endif
             num.set_version_unlock(num.value() + TransactionTid::increment_value);
         }
 
@@ -87,6 +88,23 @@ class CuckooHashMapNA : public Shared {
         }
     } __attribute__((aligned(64)));
     
+    /* counterid stores the per-thread counter index of each
+     * thread. */
+    static __thread int counterid;
+
+    /* check_counterid checks if the counterid has already been
+     * determined. If not, it assigns a counterid to the current
+     * thread by picking a random core. This should be called at the
+     * beginning of any function that changes the number of elements
+     * in the table. */
+    static inline void check_counterid() {
+        if (counterid < 0) {
+            //counterid = rand() % kNumCores;
+            counterid = numThreads.fetch_add(1,std::memory_order_relaxed) % kNumCores;
+            //LIBCUCKOO_DBG("Counter id is %d", counterid);
+        }
+    }
+
     /* reserve_calc takes in a parameter specifying a certain number
      * of slots for a table and returns the smallest hashpower that
      * will hold n elements. */
@@ -125,10 +143,6 @@ public:
         TableInfo *ti = table_info.load();
         if (ti != nullptr) {
             delete ti;
-        }
-
-        for (auto it = old_table_infos.cbegin(); it != old_table_infos.cend(); it++) {
-            delete *it;
         }
     }
 
@@ -169,7 +183,6 @@ public:
             TableInfo *ti;
             snapshot_get_buckets(ti, hv, i1, i2);
 
-            //assert(has_insert(item) || has_delete(item));
             return try_lock_bucketversions(txn, item, ti, i1, i2);
         }
     }
@@ -185,7 +198,6 @@ public:
             snapshot_get_buckets(ti, hv, i1, i2);
 
             mapped_type val = item.template write_value<mapped_type>();
-            assert(!(has_insert(item) && has_delete(item)));
             if (has_insert(item)) {
                 assert(insert_one_install(ti, hv, key, val, i1, i2) == ok);
             } else if (has_delete(item)) {
@@ -233,6 +245,7 @@ public:
 
     size_t num_inserts() {
         TableInfo *ti;
+        snapshot(ti);
         size_t inserts = 0;
         for (size_t i = 0; i < ti->num_inserts.size(); i++) {
             inserts += ti->num_inserts[i].num.load();
@@ -242,6 +255,7 @@ public:
 
     size_t num_deletes() {
         TableInfo *ti;
+        snapshot(ti);
         size_t deletes = 0;
         for (size_t i = 0; i < ti->num_deletes.size(); i++) {
             deletes += ti->num_deletes[i].num.load();
@@ -287,8 +301,6 @@ public:
             item.add_read(0);
             return true;
         }
-
-        // we don't need to add any writes---just need to make sure buckets aren't modified
         return false; 
     }
 
@@ -489,10 +501,8 @@ private:
 
     };
     std::atomic<TableInfo*> table_info;
-    std::atomic<TableInfo*> new_table_info;
     rw_lock snapshot_lock;
 
-    std::list<TableInfo*> old_table_infos;
 
     static key_equal eqfn;
     static std::allocator<Bucket> bucket_allocator;
@@ -595,7 +605,7 @@ private:
                     if (txnal) {
                         Sto::item(this, pack_bucket(&ti->buckets_[i1])).observe(ti->buckets_[i1].bucketversion);
                     }
-                    return failure_key_not_found;
+                    return st;
                 } 
                 // we found the item!
                 else if (st == ok) {
@@ -1506,7 +1516,6 @@ private:
      * hashpower as the argument. */
     cuckoo_status cuckoo_init(const size_t hashtable_init) {
         table_info.store(new TableInfo(hashtable_init));
-        new_table_info.store(nullptr);
         return ok;
     }
 
@@ -1542,5 +1551,9 @@ std::atomic<size_t> CuckooHashMapNA<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKE
 template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
 typename CuckooHashMapNA<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::key_equal
 CuckooHashMapNA<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::eqfn;
+
+template <class Key, class T, unsigned Num_Buckets, bool Opacity, unsigned SLOT_PER_BUCKET>
+__thread int CuckooHashMapNA<Key, T, Num_Buckets, Opacity, SLOT_PER_BUCKET>::counterid = -1;
+
 
 #endif
