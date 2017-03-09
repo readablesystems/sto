@@ -359,12 +359,6 @@ public:
                 this->do_map_op(me, transgen, num_ops_);
             }
         }
-        for (int i = 0; i < 8; ++i) {
-            global_thread_ctrs[i].ke_insert = global_thread_ctrs[i].ke_find = global_thread_ctrs[i].ke_erase
-            = global_thread_ctrs[i].insert = global_thread_ctrs[i].erase = global_thread_ctrs[i].find
-            = global_thread_ctrs[i].push = global_thread_ctrs[i].pop = global_thread_ctrs[i].skip
-            = 0;
-        }
     }
 private:
     int ds_type_;
