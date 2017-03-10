@@ -218,7 +218,7 @@ after_unlock:
 
 bool Transaction::try_commit() {
 #if STO_TSC_PROFILE
-    TimeKeeper<Profiler::tc_commit> tk;
+    TimeKeeper<tc_commit> tk;
 #endif
     assert(TThread::id() == threadid_);
 #if ASSERT_TX_SIZE

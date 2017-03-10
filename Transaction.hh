@@ -180,10 +180,10 @@ enum TimingCounters {
 
 typedef uint64_t tc_counter_type;
 
-template <unsigned C, unsigned N, bool Less = (C < N)>
+template <int C, int N, bool Less = (C < N)>
 struct tc_helper;
 
-template <unsigned C, unsigned N>
+template <int C, int N>
 struct tc_helper<C, N, true> {
     static bool counter_exists(int tc) {
         return tc < N;
@@ -193,9 +193,9 @@ struct tc_helper<C, N, true> {
     }
 };
 
-template <unsigned C, unsigned N>
+template <int C, int N>
 struct tc_helper<C, N, false> {
-    static bool counter_exists(unsigned) { return false; }
+    static bool counter_exists(int) { return false; }
     static void account_array(tc_counter_type*, tc_counter_type) {}
 };
 
@@ -256,7 +256,10 @@ private:
     inline void sync_thread_counter_tmp();
 };
 
-#define TSC_ACCOUNT(tc, ticks) tc_helper<tc, tc_count>::account_array(ticks)
+#define TSC_ACCOUNT(tc, ticks)                       \
+    tc_helper<tc, tc_count>::account_array(          \
+        Transaction::tinfo[TThread::id()].tcs_.tcs_, \
+        ticks)
 
 class Transaction {
 public:
