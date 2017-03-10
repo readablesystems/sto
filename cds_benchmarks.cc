@@ -185,17 +185,18 @@ int main(int argc, char* argv[]) {
         int test = std::atoi(argv[1]);
        
         //hashmaps
-        auto chmna51 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 10000, false, 5>>>(STO, 10000, 5, 1, 5, 5);
-        auto chmna52 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 125000, false, 5>>>(STO, 125000, 5, 1, 5, 5);
-        auto chmna53 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 1000000, false, 5>>>(STO, 1000000, 5, 1, 5, 5);
+        auto chmna51 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 10000, false, 5>>>(STO, 10000, 5, 1, 33, 33);
+        auto chmna52 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 125000, false, 5>>>(STO, 125000, 5, 1, 33, 33);
+        auto chmna53 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 1000000, false, 5>>>(STO, 1000000, 5, 1, 33, 33);
         
-        auto chmna101 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 10000, false, 5>>>(STO, 10000, 10, 1, 5, 5);
-        auto chmna102 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 125000, false, 5>>>(STO, 125000, 10, 1, 5, 5);
-        auto chmna103 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 1000000, false, 5>>>(STO, 1000000, 10, 1, 5, 5);
+        auto chmna101 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 10000, false, 10>>>(STO, 10000, 10, 1, 33, 33);
+        auto chmna102 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 125000, false, 10>>>(STO, 125000, 10, 1, 33, 33);
+        auto chmna103 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 1000000, false, 10>>>(STO, 1000000, 10, 1, 33, 33);
 
-        auto chmna151 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 10000, false, 5>>>(STO, 10000, 15, 1, 5, 5);
-        auto chmna152 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 125000, false, 5>>>(STO, 125000, 15, 1, 5, 5);
-        auto chmna153 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 1000000, false, 5>>>(STO, 1000000, 15, 1, 5, 5);
+        auto chmna151 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 10000, false, 15>>>(STO, 10000, 15, 1, 33, 33);
+        auto chmna152 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 125000, false, 15>>>(STO, 125000, 15, 1, 33, 33);
+        auto chmna153 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 1000000, false, 15>>>(STO, 1000000, 15, 1, 33, 33);
+        auto chmnt = new MapOpTest<DatatypeHarness<CuckooHashMapNT<int, int, 1000000, 15>>>(STO, 1000000, 15, 1, 33, 33);
 
         switch(test) {
             case 0:
@@ -232,6 +233,10 @@ int main(int argc, char* argv[]) {
 
             case 8:
             simpleStartAndWait(chmna153, 0, 8);
+            break;
+ 
+            case 9:
+            simpleStartAndWait(chmnt, 0, 8);
             break;
 
             default:

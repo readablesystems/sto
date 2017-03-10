@@ -140,9 +140,9 @@ public:
      * the hash table, also destroying all remaining elements in the
      * table. */
     ~CuckooHashMapNA() {
-        TableInfo *ti = table_info.load();
-        if (ti != nullptr) {
-            delete ti;
+        TableInfo *ti_old = table_info.load();
+        if (ti_old != nullptr) {
+            delete ti_old;
         }
     }
 
