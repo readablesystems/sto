@@ -464,6 +464,20 @@ void Transaction::print_stats() {
         fprintf(stderr, "$ %llu max buffer per txn, %llu total buffer\n",
                 out.p(txp_max_transbuffer), out.p(txp_total_transbuffer));
     fprintf(stderr, "$ %llu next commit-tid\n", (unsigned long long) _TID);
+
+#if STO_TSC_PROFILE
+    tc_counters out_tcs = tc_counters_combined();
+    std::stringstream ss;
+    ss << std::endl << "$ Timing breakdown: " << std::endl;
+    ss << "   time_commit: " << out_tcs.to_realtime(tc_commit) << std::endl;
+    ss << "   time_commit_wasted: " << out_tcs.to_realtime(tc_commit_wasted) << std::endl;
+    ss << "   time_find_item: " << out_tcs.to_realtime(tc_find_item) << std::endl;
+    ss << "   time_abort: " << out_tcs.to_realtime(tc_abort) << std::endl;
+    ss << "   time_cleanup: " << out_tcs.to_realtime(tc_cleanup) << std::endl;
+    ss << "   time_opacity: " << out_tcs.to_realtime(tc_opacity) << std::endl;
+
+    fprintf(stderr, "%s\n", ss.str().c_str());
+#endif
 }
 
 const char* Transaction::state_name(int state) {
