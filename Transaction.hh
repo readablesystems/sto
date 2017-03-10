@@ -200,10 +200,15 @@ struct tc_helper<C, N, false> {
 };
 
 struct tc_counters {
+    static constexpr double Billion = 1000000000.0;
+    static constexpr double Proc_freq = 2.2;
     tc_counter_type tcs_[tc_count];
     tc_counters() { reset(); }
     tc_counter_type timing_counter(int name) {
         return tc_helper<0, tc_count>::counter_exists(name) ? tcs_[name] : 0;
+    }
+    double to_realtime(int name) {
+        return (double)timing_counter(name) / Billion / Proc_freq;
     }
     void reset() {
         for (int i = 0; i < tc_count; ++i)
@@ -294,6 +299,16 @@ public:
                     out.p_[p] += tinfo[i].p_.p_[p];
             }
         return out;
+    }
+
+    static tc_counters tc_counters_combined() {
+        tc_counters ret;
+        for (int i = 0; i < MAX_THREADS; ++i) {
+            for (int t = 0; t < tc_count; ++t) {
+                ret.tcs_[t] += tinfo[i].tcs_.tcs_[t];
+            }
+        }
+        return ret;
     }
 
     static void print_stats();
