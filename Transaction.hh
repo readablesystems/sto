@@ -15,6 +15,9 @@
 #ifndef STO_PROFILE_COUNTERS
 #define STO_PROFILE_COUNTERS 0
 #endif
+#ifndef STO_TSC_PROFILE
+#define STO_TSC_PROFILE 0
+#endif
 
 #ifndef STO_DEBUG_HASH_COLLISIONS
 #define STO_DEBUG_HASH_COLLISIONS 0
@@ -164,6 +167,49 @@ struct txp_counters {
     }
 };
 
+// Profiling counters measuring run time breakdowns
+enum TimingCounters {
+    tc_commit = 0,
+    tc_commit_wasted,
+    tc_find_item,
+    tc_abort,
+    tc_cleanup,
+    tc_opacity,
+    tc_count
+};
+
+typedef uint64_t tc_counter_type;
+
+template <unsigned C, unsigned N, bool Less = (C < N)>
+struct tc_helper;
+
+template <unsigned C, unsigned N>
+struct tc_helper<C, N, true> {
+    static bool counter_exists(int tc) {
+        return tc < N;
+    }
+    static void account_array(tc_counter_type *tcs, tc_counter_type v) {
+        tcs[C] += v;
+    }
+};
+
+template <unsigned C, unsigned N>
+struct tc_helper<C, N, false> {
+    static bool counter_exists(unsigned) { return false; }
+    static void account_array(tc_counter_type*, tc_counter_type) {}
+};
+
+struct tc_counters {
+    tc_counter_type tcs_[tc_count];
+    tc_counters() { reset(); }
+    tc_counter_type timing_counter(int name) {
+        return tc_helper<0, tc_count>::counter_exists(name) ? tcs_[name] : 0;
+    }
+    void reset() {
+        for (int i = 0; i < tc_count; ++i)
+            tcs_[i] = 0;
+    }
+};
 
 #include "Interface.hh"
 #include "TicTocVersions.hh"
@@ -181,11 +227,37 @@ struct __attribute__((aligned(128))) threadinfo_t {
     std::function<void(void)> trans_start_callback;
     std::function<void(void)> trans_end_callback;
     txp_counters p_;
+    tc_counters tcs_;
     threadinfo_t()
         : epoch(0) {
     }
 };
 
+template <int T, bool tmp_stats=false>
+class TimeKeeper {
+public:
+    TimeKeeper() {
+        init_tsc = read_tsc();
+    }
+    ~TimeKeeper() {
+        if (tmp_stats)
+            sync_thread_counter_tmp();
+        else
+            sync_thread_counter();
+    }
+
+    tc_counter_type init_tsc_val() const {
+        return init_tsc;
+    }
+
+private:
+    tc_counter_type init_tsc;
+
+    inline void sync_thread_counter();
+    inline void sync_thread_counter_tmp();
+};
+
+#define TSC_ACCOUNT(tc, ticks) tc_helper<tc, tc_count>::account_array(ticks)
 
 class Transaction {
 public:
@@ -226,8 +298,10 @@ public:
     static void print_stats();
 
     static void clear_stats() {
-        for (int i = 0; i != MAX_THREADS; ++i)
+        for (int i = 0; i != MAX_THREADS; ++i) {
             tinfo[i].p_.reset();
+            tinfo[i].tcs_.reset();
+        }
     }
 
     static void* epoch_advancer(void*);
@@ -301,6 +375,9 @@ private:
         //if (isAborted_
         //   && tinfo[TThread::id()].p(txp_total_aborts) % 0x10000 == 0xFFFF)
            //print_stats();
+#if STO_TSC_PROFILE
+        start_tsc_ = read_tsc();
+#endif
         thr.epoch = global_epochs.global_epoch;
         thr.rcu_set.clean_until(global_epochs.active_epoch);
         if (thr.trans_start_callback)
@@ -411,6 +488,9 @@ public:
 private:
     // tries to find an existing item with this key, returns NULL if not found
     TransItem* find_item(TObject* obj, void* xkey) const {
+#if STO_TSC_PROFILE
+        TimeKeeper<tc_find_item> tk;
+#endif
 #if TRANSACTION_HASHTABLE
         TXP_INCREMENT(txp_hash_find);
         unsigned hi = hash(obj, xkey);
@@ -547,6 +627,9 @@ public:
     }
 
     void check_opacity(TransItem& item, const TicTocVersion& tss) {
+#if STO_TSC_PROFILE
+        TimeKeeper<tc_opacity> tk;
+#endif
         assert(state_ <= s_committing_locked);
         TXP_INCREMENT(txp_tco);
         //if (!start_tid_)
@@ -727,6 +810,9 @@ private:
     mutable const char* abort_reason_;
     mutable TicTocVersion::type abort_version_;
 #endif
+#if STO_TSC_PROFILE
+    mutable tc_counter_type start_tsc_;
+#endif
     TransItem* tset_[tset_max_capacity / tset_chunk];
 #if TRANSACTION_HASHTABLE
     uint16_t hashtable_[hash_size];
@@ -744,6 +830,19 @@ private:
     friend class TNonopaqueVersion;
 };
 
+template <int T, bool tmp_stats>
+inline void TimeKeeper<T, tmp_stats>::sync_thread_counter() {
+    tc_helper<T, tc_count>::account_array(
+        Transaction::tinfo[TThread::id()].tcs_.tcs_,
+        read_tsc() - init_tsc
+    );
+}
+
+template <int T, bool tmp_stats>
+inline void TimeKeeper<T, tmp_stats>::sync_thread_counter_tmp() {
+    // not supported
+    abort();
+}
 
 class Sto {
 public:
