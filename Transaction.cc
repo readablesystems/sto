@@ -273,9 +273,6 @@ bool Transaction::try_commit() {
     }
 #endif
 
-#if TICTOC_PRE_ABORT
-#endif
-
     state_ = s_committing;
 
     unsigned writeset[tset_size_];
