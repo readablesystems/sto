@@ -136,6 +136,9 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
 }
 
 void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
+#if STO_TSC_PROFILE
+    TimeKeeper<tc_cleanup> tk;
+#endif
     if (!committed) {
         TXP_INCREMENT(txp_total_aborts);
 #if STO_DEBUG_ABORTS
@@ -205,9 +208,18 @@ after_unlock:
         thr.trans_end_callback();
     // XXX should reset trans_end_callback after calling it...
     state_ = s_aborted + committed;
+
+#if STO_TSC_PROFILE
+    auto endtime = read_tsc();
+    if (!committed)
+        TSC_ACCOUNT(tc_abort, endtime - start_tsc_);
+#endif
 }
 
 bool Transaction::try_commit() {
+#if STO_TSC_PROFILE
+    TimeKeeper<Profiler::tc_commit> tk;
+#endif
     assert(TThread::id() == threadid_);
 #if ASSERT_TX_SIZE
     if (tset_size_ > TX_SIZE_LIMIT) {
@@ -345,6 +357,10 @@ abort:
     // fence();
     TXP_INCREMENT(txp_commit_time_aborts);
     stop(false, nullptr, 0);
+#if STO_TSC_PROFILE
+    auto endtime = read_tsc();
+    TSC_ACCOUNT(tc_commit_wasted, endtime - tk.init_tsc_val());
+#endif
     return false;
 }
 
