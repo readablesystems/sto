@@ -1,5 +1,7 @@
 #pragma once
 
+#include "config.h"
+#include "compiler.hh"
 #include "masstree.hh"
 #include "kvthread.hh"
 #include "masstree_tcursor.hh"
@@ -269,20 +271,24 @@ private:
       auto upd_version = lp.updated_version_value();
 #endif
 
+      // this has to happen before we check opacity, so that aborts are safe.
+      auto item = Sto::new_item(this, val);
+      item.template add_write<key_write_value_type>(key).add_flags(insert_bit);
+
       if (updateNodeVersion(orig_node, orig_version, upd_version)) {
         // add any new nodes as a result of splits, etc. to the read/absent set
 #if !ABORT_ON_WRITE_READ_CONFLICT
         for (auto&& pair : lp.new_nodes()) {
           auto nodeitem = Sto::new_item(this, tag_inter(pair.first));
           if (Opacity)
+            // note that this could abort, so it's important that we're safe to
+            // abort when this runs (e.g., that we will revert inserts after abort).
             nodeitem.add_read_opaque(pair.second);
           else
             nodeitem.add_read(pair.second);
         }
 #endif
       }
-      auto item = Sto::new_item(this, val);
-      item.template add_write<key_write_value_type>(key).add_flags(insert_bit);
       return found;
     }
   }
