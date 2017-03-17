@@ -19,6 +19,16 @@
 #define STO_TSC_PROFILE 0
 #endif
 
+#ifndef BILLION
+#define BILLION 1000000000.0
+#else
+#error "BILLION already defined!"
+#endif
+
+#ifndef PROC_TSC_FREQ
+#define PROC_TSC_FREQ 2.2 // Default processor base freq in GHz
+#endif
+
 #ifndef STO_DEBUG_HASH_COLLISIONS
 #define STO_DEBUG_HASH_COLLISIONS 0
 #endif
@@ -200,15 +210,13 @@ struct tc_helper<C, N, false> {
 };
 
 struct tc_counters {
-    static constexpr double Billion = 1000000000.0;
-    static constexpr double Proc_freq = 2.2;
     tc_counter_type tcs_[tc_count];
     tc_counters() { reset(); }
     tc_counter_type timing_counter(int name) {
         return tc_helper<0, tc_count>::counter_exists(name) ? tcs_[name] : 0;
     }
     double to_realtime(int name) {
-        return (double)timing_counter(name) / Billion / Proc_freq;
+        return (double)timing_counter(name) / BILLION / PROC_TSC_FREQ;
     }
     void reset() {
         for (int i = 0; i < tc_count; ++i)
