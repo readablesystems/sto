@@ -1265,6 +1265,10 @@ void print_time(struct timeval tv1, struct timeval tv2) {
   printf("%f\n", (tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
 }
 
+void print_time(double time) {
+  printf("%f\n", time);
+}
+
 #define MAKE_TESTER(name, desc, type, ...)            \
     {name, desc, 0, new type<0, ## __VA_ARGS__>},     \
     {name, desc, 1, new type<1, ## __VA_ARGS__>},     \
@@ -1365,14 +1369,15 @@ Options:\n\
   exit(1);
 }
 
-void time_and_run(struct timeval* tv1, struct timeval* tv2,
+void time_and_run(double *real_time,
                   struct rusage* ru1, struct rusage* ru2,
                   int nthreads, Tester* tester) {
-    gettimeofday(tv1, nullptr);
+    unsigned long t1 = read_tsc();
     getrusage(RUSAGE_SELF, ru1);
     startAndWait(nthreads, tester);
-    gettimeofday(tv2, nullptr);
+    unsigned long t2 = read_tsc();
     getrusage(RUSAGE_SELF, ru2);
+    *real_time = ((double)(t2-t1)) / BILLION / PROC_TSC_FREQ;
 }
 
 int main(int argc, char *argv[]) {
@@ -1498,19 +1503,19 @@ int main(int argc, char *argv[]) {
   Tester* tester = tests[test].tester;
   tester->initialize();
 
-  struct timeval tv1,tv2;
+  double real_time;
   struct rusage ru1,ru2;
   if (profile) {
     Profiler::profile([&]() {
-        time_and_run(&tv1, &tv2, &ru1, &ru2, nthreads, tester);
+        time_and_run(&real_time, &ru1, &ru2, nthreads, tester);
     });
   } else {
-    time_and_run(&tv1, &tv2, &ru1, &ru2, nthreads, tester);
+    time_and_run(&real_time, &ru1, &ru2, nthreads, tester);
   }
 #if !DATA_COLLECT
   printf("real time: ");
 #endif
-  print_time(tv1,tv2);
+  print_time(real_time);
 #if !DATA_COLLECT
   printf("utime: ");
   print_time(ru1.ru_utime, ru2.ru_utime);
