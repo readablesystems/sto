@@ -289,6 +289,7 @@ class TransProxy {
     }
 
     inline TransProxy& add_write();
+    inline TransProxy& add_write(TicTocVersion& ts);
     template <typename T>
     inline TransProxy& add_write(const T& wdata, TicTocVersion& ts);
     template <typename T>
@@ -363,6 +364,10 @@ class TransProxy {
 
     TransProxy& remove_read() { // XXX should also cleanup_read
         item().__rm_flags(TransItem::read_bit);
+        return *this;
+    }
+    TransProxy& remove_observation() {
+        item().__rm_flags(TransItem::observe_bit);
         return *this;
     }
     TransProxy& remove_write() { // XXX should also cleanup_write

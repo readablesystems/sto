@@ -1159,6 +1159,18 @@ inline T& TransProxy::predicate_value(T default_pdata) {
 inline TransProxy& TransProxy::add_write() {
     if (!has_write()) {
         item().__or_flags(TransItem::write_bit);
+        item().tuple_ts_ = nullptr;
+        t()->any_writes_ = true;
+    }
+    return *this;
+}
+
+inline TransProxy& TransProxy::add_write(TicTocVersion& ts) {
+    if (!has_write()) {
+        item().__or_flags(TransItem::write_bit);
+        item().tuple_ts_ = &ts;
+        if (!has_observation())
+            item().otss_ = ts;
         t()->any_writes_ = true;
     }
     return *this;
@@ -1181,7 +1193,8 @@ inline TransProxy& TransProxy::add_write(Args&&... args, TicTocVersion& ts) {
         item().__or_flags(TransItem::write_bit);
         // store a reference to the timestamps in the actual TObject segment
         item().tuple_ts_ = &ts;
-        item().otss_ = ts;
+        if (!has_observation())
+            item().otss_ = ts;
         item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
         t()->any_writes_ = true;
     } else {

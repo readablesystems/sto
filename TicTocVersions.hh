@@ -326,6 +326,12 @@ public:
     void clear_user_bit() {
         get_lockable().clear_user_bit();
     }
+    bool is_nonopaque() const {
+        return get_lockable().is_nonopaque();
+    }
+    void set_nonopaque() {
+        return get_lockable().set_nonopaque();
+    }
 
     bool try_lock() {
         return get_lockable().try_lock();
