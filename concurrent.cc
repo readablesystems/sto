@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <sstream>
 #include <fstream>
 #include <unordered_set>
@@ -450,6 +451,8 @@ double zipf_skew = 1.0;
 bool profile = false;
 bool dump_trace = false;
 
+bool stop = false; // global stop signal
+
 
 using namespace std;
 
@@ -559,6 +562,10 @@ struct Tester {
         assert(0 && "Test not supported");
     }
     virtual bool check() { return false; }
+    virtual void report() {
+        std::cout << "reporting not available for this test"
+            << std::endl;
+    }
 };
 
 template <int DS> struct DSTester : public Tester {
@@ -614,17 +621,32 @@ inline std::ostream& operator <<(std::ostream& os, const std::vector<RWOperation
     return os;
 }
 
+typedef struct skew_account_struct {
+    unsigned long time_to_stop;  // in clock ticks
+    unsigned long ntxns_at_stop;
+    unsigned long time_to_quota; // in clock ticks
+
+    skew_account_struct() {
+        time_to_stop = 0;
+        ntxns_at_stop = 0;
+        time_to_quota = 0;
+    }
+} skew_account_t;
+
 template <int DS>
 struct HotspotRW : public DSTester<DS> {
     typedef typename DSTester<DS>::container_type container_type;
     typedef std::vector<RWOperation> query_type;
     typedef std::vector<query_type> workload_type;
-    HotspotRW() {}
+    HotspotRW() : skew_account(nthreads) {}
     void run(int me) override;
     bool prepopulate() override;
+    void report() override;
 
     std::vector<workload_type> workloads;
     virtual void per_thread_workload_init(int thread_id);
+
+    std::vector<skew_account_t> skew_account;
 };
 
 inline void dump_thread_trace(int thread_id, const std::vector<std::vector<RWOperation>>& workload) {
@@ -719,9 +741,19 @@ void HotspotRW<DS>::run(int me) {
     container_type* a = this->a;
     container_type::thread_init(*a);
 
+    bool seen_stop = false;
+
     auto &tw = workloads[me];
 
+    unsigned long start_tsc = read_tsc();
+
     for (auto txn_it = tw.begin(); txn_it != tw.end(); ++txn_it) {
+        if (stop && !seen_stop) {
+            auto ticks = read_tsc() - start_tsc;
+            skew_account[me].ntxns_at_stop = txn_it - tw.begin();
+            skew_account[me].time_to_stop = ticks;
+            seen_stop = true;
+        }
         TRANSACTION {
             for (auto &req : *txn_it) {
                 if (req.type == OpType::read)
@@ -731,6 +763,33 @@ void HotspotRW<DS>::run(int me) {
             }
         } RETRY(true);
     }
+
+    skew_account[me].time_to_quota = read_tsc() - start_tsc;
+
+    if (!stop) {
+        bool_cmpxchg(&stop, false, true);
+        if (!seen_stop) {
+            skew_account[me].ntxns_at_stop = tw.size();
+            skew_account[me].time_to_stop = skew_account[me].time_to_quota;
+        }
+    }
+}
+
+template <int DS>
+void HotspotRW<DS>::report() {
+    std::vector<unsigned long> times_to_quota;
+    std::stringstream ss;
+    for (int i = 0; i < nthreads; ++i) {
+        ss << "Thread " << i;
+        ss << ": n=" << skew_account[i].ntxns_at_stop;
+        ss << ", t_stop=" << (unsigned long)((double)skew_account[i].time_to_stop / PROC_TSC_FREQ);
+        auto ttq = (unsigned long)((double)skew_account[i].time_to_quota / PROC_TSC_FREQ);
+        times_to_quota.push_back(ttq);
+        ss << ", t_quota=" << ttq;
+        ss << std::endl;
+    }
+    ss << "Minimum time to quota: " << *std::min_element(times_to_quota.begin(), times_to_quota.end()) << std::endl;
+    std::cout << ss.str() << std::flush;
 }
 
 // Test: ReadThenWrite
@@ -1390,6 +1449,7 @@ void time_and_run(double *real_time,
     unsigned long t2 = read_tsc();
     getrusage(RUSAGE_SELF, ru2);
     *real_time = ((double)(t2-t1)) / BILLION / PROC_TSC_FREQ;
+    tester->report();
 }
 
 int main(int argc, char *argv[]) {
