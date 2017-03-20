@@ -103,34 +103,37 @@ void Transaction::hard_check_opacity(TransItem* item, const TicTocVersion& tss) 
     assert(state_ == s_in_progress);
 
     TXP_INCREMENT(txp_hco);
-    if (tss.is_locked_elsewhere(threadid_)) {
-        TXP_INCREMENT(txp_hco_lock);
-        mark_abort_because(item, "locked", tss.get_lockable().value());
-        goto abort;
-    }
+    if (item) {
+        if (tss.is_locked_elsewhere(threadid_)) {
+            TXP_INCREMENT(txp_hco_lock);
+            mark_abort_because(item, "locked", tss.get_lockable().value());
+            goto abort;
+        }
 
-    if (tss.get_lockable().is_nonopaque())
-        TXP_INCREMENT(txp_hco_invalid);
+        if (tss.get_lockable().is_nonopaque())
+            TXP_INCREMENT(txp_hco_invalid);
+    }
 
     state_ = s_opacity_check;
 
     potential_cts_ = compute_commit_ts();
-    potential_cts_ = std::max(potential_cts_, tss.read_timestamp());
-    min_rts_ = potential_cts_;
 
-    //start_tid_ = _TID;
+    // if item == nullptr, the read is observation of an absent record
+    // tss in this case is simply a placeholder value (not backed by any tuple)
+    if (item)
+        potential_cts_ = std::max(potential_cts_, tss.write_timestamp());
+
     release_fence();
     TransItem* it = nullptr;
     for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
         it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
-        if (it->has_observation()) {
+        if (it->has_observation() || it->has_read()) {
             TXP_INCREMENT(txp_total_check_read);
             if (!it->owner()->opacity_check(*it, *this)
                 && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
                 mark_abort_because(item, "opacity check");
                 goto abort;
             }
-            min_rts_ = std::min(min_rts_, tss.read_timestamp());
         } else if (it->has_predicate()) {
             TXP_INCREMENT(txp_total_check_predicate);
             if (!it->owner()->check_predicate(*it, *this, false)) {
@@ -138,11 +141,11 @@ void Transaction::hard_check_opacity(TransItem* item, const TicTocVersion& tss) 
                 goto abort;
             }
             // XXX No predicates for now
-            // min_rts_ = std::min(min_rts_, tss.read_timestamp());
         }
     }
 
-    min_rts_ = std::min(min_rts_, tss.read_timestamp());
+    // extend the opacity bound if the check succeeds
+    min_rts_ = potential_cts_;
 
     state_ = s_in_progress;
 }
@@ -233,7 +236,7 @@ TransItem* Transaction::pre_abort_check() {
     TransItem *it = nullptr;
     for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
         it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
-        if (it->has_observation()) {
+        if (it->has_read() || it->has_observation()) {
             TXP_INCREMENT(txp_total_check_read);
             if (!it->owner()->pre_commit_check(*it, *this)
                 && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {

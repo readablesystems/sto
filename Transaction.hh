@@ -658,34 +658,30 @@ public:
 #endif
         assert(state_ <= s_committing_locked);
         TXP_INCREMENT(txp_tco);
-        //if (!start_tid_)
-        //    start_tid_ = _TID;
         if (!try_check_opacity(tss.write_timestamp())
             && state_ < s_committing)
             hard_check_opacity(&item, tss);
     }
-/*
-    void check_opacity(TransItem& item, TicTocVersion v) {
-        check_opacity(item, v.value());
+
+    void check_opacity(TransItem&, TicTocNonopaqueVersion) {
     }
 
-    void check_opacity(TransItem&, TNonopaqueVersion) {
-    }
-
-    void check_opacity(TicTocTid::type v) {
+    void check_opacity(const TicTocVersion& tss) {
+#if STO_TSC_PROFILE
+        TimeKeeper<tc_opacity> tk;
+#endif
         assert(state_ <= s_committing_locked);
-        //if (!start_tid_)
-        //    start_tid_ = _TID;
-        if (!TicTocTid::try_check_opacity(start_tid_, v)
+        if (!try_check_opacity(tss.write_timestamp())
             && state_ < s_committing)
-            hard_check_opacity(nullptr, v);
+            hard_check_opacity(nullptr, tss);
     }
 
     void check_opacity() {
-        //check_opacity(_TID);
-        assert(false || "Opacity unavailable when TicTocVersion is not used");
+#if STO_TSC_PROFILE
+        TimeKeeper<tc_opacity> tk;
+#endif
+        hard_check_opacity(nullptr, TicTocVersion());
     }
-*/
 
     // committing
     //
@@ -909,17 +905,16 @@ public:
         return TThread::txn->item(s, key);
     }
 
-    static void check_opacity(TicTocTid::type t) {
-        (void)t;
+    static void check_opacity(TicTocVersion tss) {
         always_assert(in_progress());
-        //XXX TThread::txn->check_opacity(t);
+        TThread::txn->check_opacity(tss);
     }
-/*
+
     static void check_opacity() {
         always_assert(in_progress());
         TThread::txn->check_opacity();
     }
-*/
+
     template <typename T>
     static OptionalTransProxy check_item(const TObject* s, T key) {
         always_assert(in_progress());
@@ -1047,7 +1042,7 @@ inline TransProxy& TransProxy::add_read(T rdata) {
 template <typename T>
 inline TransProxy& TransProxy::add_read_opaque(T rdata) {
     assert(!has_stash());
-    // XXX t()->check_opacity();
+    t()->check_opacity();
     if (!has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
