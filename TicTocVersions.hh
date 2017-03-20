@@ -17,6 +17,8 @@ public:
     static constexpr type nonopaque_bit = type(0x1<<6); // bit 6
     static constexpr type user_bit = type(0x1<<7);      // bit 7
     static constexpr type lockable_mask = type(0xff);
+    static constexpr type ts_shift = type(8);
+    static constexpr type increment_value = type(0x1<<ts_shift);
 
     // MEAT
     type t_;
@@ -99,6 +101,22 @@ public:
         return t_ & nonopaque_bit;
     }
 
+    // legacy nonopaque version support
+    void inc_nonopaque_version() {
+        assert(is_locked());
+        // can't quite fetch and add here either because we need to both
+        // increment and OR in the nonopaque_bit.
+        while (1) {
+            type cur = t_;
+            fence();
+            type new_v = (cur + increment_value) | nonopaque_bit;
+            release_fence();
+            if (bool_cmpxchg(&t_, cur, new_v))
+                break;
+            relax_fence();
+        }
+    }
+
     friend std::ostream& operator<<(std::ostream& w, LockableTid t) {
         auto f = w.flags();
         auto& v = t.t_;
@@ -117,9 +135,6 @@ public:
 
 class RawTid : public LockableTid {
 public:
-    static constexpr type ts_shift = type(8);
-    static constexpr type increment_value = type(0x1<<ts_shift);
-
     RawTid(type x) : LockableTid(x) {};
     RawTid() : LockableTid() {};
     RawTid& operator=(const LockableTid& t) {
