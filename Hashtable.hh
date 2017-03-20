@@ -27,12 +27,13 @@ public:
     typedef V Value;
     typedef W Value_type;
 
-    typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type Version_type;
+    typedef typename std::conditional<Opacity, TicTocVersion, TicTocNonopaqueVersion>::type Version_type;
     typedef typename std::conditional<Opacity, TWrapped<Value>, TNonopaqueWrapped<Value>>::type wrapped_type;
+    typedef LockableTid BVersion_type;
 
     typedef V write_value_type;
 
-    static constexpr typename Version_type::type invalid_bit = TransactionTid::user_bit;
+    static constexpr typename Version_type::type invalid_bit = TicTocVersion::user_bit;
 private:
   // our hashtable is an array of linked lists. 
   // an internal_elem is the node type for these linked lists
@@ -47,7 +48,7 @@ private:
     internal_elem(Key k, Value val, bool mark_valid)
         : key(k), next(NULL), version(Sto::initialized_tid() | (mark_valid ? 0 : invalid_bit)), value(val) {}
     bool valid() const {
-        return !(version.value() & invalid_bit);
+        return !version.has_user_bit_set();
     }
 #else
     internal_elem(Key k, Value val, bool)
@@ -63,8 +64,8 @@ private:
     // we use it to make sure that an unsuccessful key lookup will still be
     // unsuccessful at commit time (because this will always be true if no
     // new inserts have occurred in this bucket)
-    Version_type version;
-    bucket_entry() : head(NULL), version(0) {}
+    BVersion_type version;
+    bucket_entry() : head(NULL), version(Sto::initialized_tid()) {}
   };
 
   typedef std::vector<bucket_entry> MapType;
@@ -102,7 +103,7 @@ public:
   template <typename KT, typename VT>
   bool transGet(const KT& k, VT& retval) {
     bucket_entry& buck = buck_entry(k);
-    Version_type buck_version = buck.version;
+    BVersion_type buck_version = buck.version;
     fence();
     internal_elem *e = find(buck, k);
     if (e) {
@@ -131,7 +132,7 @@ public:
       retval = e->value.read(item, e->version);
       return true;
     } else {
-      Sto::item(this, pack_bucket(bucket(k))).observe(Version_type(buck_version.unlocked()));
+      Sto::item(this, pack_bucket(bucket(k))).add_read(buck_version.unlocked());
       //if (Opacity)
       //  check_opacity(buck.version);
       return false;
@@ -142,7 +143,7 @@ public:
   // returns true if successful
   bool transDelete(const Key& k) {
     bucket_entry& buck = buck_entry(k);
-    Version_type buck_version = buck.version;
+    BVersion_type buck_version = buck.version;
     fence();
     internal_elem *e = find(buck, k);
     if (e) {
@@ -156,9 +157,9 @@ public:
         _remove(e);
         // no way to remove an item (would be pretty inefficient)
         // so we just unmark all attributes so the item is ignored
-        item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
+        item.remove_observation().remove_write().clear_flags(insert_bit | delete_bit);
         // insert-then-delete still can only succeed if no one else inserts this node so we add a check for that
-        Sto::item(this, pack_bucket(bucket(k))).observe(Version_type(buck_version.unlocked()));
+        Sto::item(this, pack_bucket(bucket(k))).add_read(buck_version.unlocked());
         return true;
       } else
 #endif
@@ -179,11 +180,11 @@ public:
       //  check_opacity(e->version);
       // we use delete_bit to detect deletes so we don't need any other data
       // for deletes, just to mark it as a write
-      item.add_write().add_flags(delete_bit);
+      item.add_write(e->version).add_flags(delete_bit);
       return true;
     } else {
       // add a read that yes this element doesn't exist
-      Sto::item(this, pack_bucket(bucket(k))).observe(Version_type(buck_version.unlocked()));
+      Sto::item(this, pack_bucket(bucket(k))).add_read(buck_version.unlocked());
       //if (Opacity)
       //  check_opacity(buck.version);
       return false;
@@ -217,7 +218,7 @@ private:
         // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
         // if user can't read v#)
         if (INSERT) {
-          item.clear_flags(delete_bit).clear_write().template add_write<write_value_type>(v);
+          item.clear_flags(delete_bit).clear_write().template add_write<write_value_type>(v, e->version);
         } else {
           // delete-then-update == not found
           // delete will check for other deletes so we don't need to re-log that check
@@ -233,7 +234,7 @@ private:
       //  check_opacity(e->version);
 #endif
       if (SET) {
-        item.template add_write<write_value_type>(v);
+        item.template add_write<write_value_type>(v, e->version);
 #if READ_MY_WRITES
         if (has_insert(item)) {
           // Updating the value here, as we won't update it during install
@@ -247,7 +248,7 @@ private:
         auto buck_vers = buck.version.unlocked();
         fence();
         unlock(buck.version);
-        Sto::item(this, pack_bucket(bucket(k))).observe(Version_type(buck_vers));
+        Sto::item(this, pack_bucket(bucket(k))).add_read(buck_vers);
         //if (Opacity)
         //    check_opacity(buck.version);
         return false;
@@ -263,14 +264,14 @@ private:
       // see if this item was previously read
       auto bucket_item = Sto::check_item(this, pack_bucket(bucket(k)));
       if (bucket_item) {
-        bucket_item->update_read(Version_type(prev_version), Version_type(new_version));
+        bucket_item->update_read(prev_version, new_version);
         //} else { could abort transaction now
       }
       // use new_item because we know there are no collisions
       auto item = Sto::new_item(this, new_head);
       // don't actually need to Store anything for the write, just mark as valid on install
       // (for now insert and set will just do the same thing on install, set a value and then mark valid)
-      item.template add_write<write_value_type>(v);
+      item.template add_write<write_value_type>(v, e->version);
       // need to remove this item if we abort
       item.add_flags(insert_bit);
       return false;
@@ -295,18 +296,23 @@ public:
   }
 
 
-  bool check(TransItem& item, Transaction&) override {
+  bool check(TransItem& item, Transaction& t) override {
     if (is_bucket(item)) {
       bucket_entry& buck = map_[bucket_key(item)];
-      return buck.version.check_version(item.template read_value<Version_type>());
+      auto bv = buck.version;
+      return (!bv.is_locked_elsewhere() &&
+        (bv.unlocked() == item.template read_value<BVersion_type>()));
     }
     auto el = item.key<internal_elem*>();
-    auto read_version = item.template read_value<Version_type>();
+    return item.check_timestamps(el->version, t.timestamp());
+    //auto read_version = item.template read_value<Version_type>();
     // if item has insert_bit then its an insert so no validity check needed.
     // otherwise we check that it is both valid and not locked
     // XXX bool validity_check = has_insert(item) || (el->valid() && (!is_locked(el->version) || item.has_lock(t)));
     // XXX Why isn't it enough to just do the versionCheck?
-    return el->version.check_version(read_version);
+    // XXX YH: Should be enough to just do the version check since elements with user bits set should never be added
+    // to the read set in the first place
+    //return el->version.check_version(read_version);
   }
 
   bool lock(TransItem& item, Transaction& txn) override {
@@ -323,7 +329,7 @@ public:
     if (item.flags() & delete_bit) {
       // XXX: think we need an extra bit in here for opacity, or we should remove this now 
       // rather than in cleanup
-      el->version.set_version_locked(el->version.value() | invalid_bit);
+      el->version.set_timestamps_unlock(t.commit_tid(), invalid_bit);
       // we wait to remove the node til cleanup() (unclear that this is actually necessary)
       return;
     }
@@ -337,17 +343,19 @@ public:
       //Transaction::rcu_delete(new_v);
     //}
 
-    el->version.set_version(t.commit_tid()); // automatically sets valid to true
+    el->version.set_timestamps(t.commit_tid()); // automatically sets valid to true
     // nate: this has no visible perf change on vacation (maybe slightly slower).
-#if 1
+#if 0
     // convert nonopaque bucket version to a commit tid
     if (Opacity && has_insert(item)) {
       bucket_entry& buck = buck_entry(el->key);
       lock(buck.version);
       // only update if it's still nonopaque. Otherwise someone with a higher tid
       // could've already updated it.
-      if (buck.version.value() & TransactionTid::nonopaque_bit)
-	buck.version.set_version(t.commit_tid());
+      // XXX YH: need to look closer to see if it still works under TicToc
+      if (buck.version.is_nonopaque()) {
+        buck.version.set_version(t.commit_tid());
+      }
       unlock(buck.version);
     }
 #endif
@@ -412,7 +420,7 @@ public:
 
     printf("Total count: %d, Empty buckets: %d, Avg chaining: %f, Max chaining: %d\n", tot_count, num_empty, ((double)(tot_count))/(map_.size() - num_empty), max_chaining);
   }
-
+/*
     void print(std::ostream& w, const TransItem& item) const override {
         w << "{Hashtable<" << typeid(K).name() << "," << typeid(V).name() << "> " << (void*) this;
         if (is_bucket(item)) {
@@ -429,7 +437,7 @@ public:
         }
         w << "}";
     }
-
+*/
   void print() {
     printf("Hashtable:\n");
     for (unsigned i = 0; i < map_.size(); ++i) {
@@ -715,13 +723,16 @@ private:
       return (void*) ((bucket << 1) | bucket_bit);
   }
 
-  static bool is_locked(Version_type &v) {
+  template <class VV>
+  static bool is_locked(VV &v) {
     return v.is_locked();
   }
-  static void lock(Version_type& v) {
+  template <class VV>
+  static void lock(VV& v) {
     v.lock();
   }
-  static void unlock(Version_type& v) {
+  template <class VV>
+  static void unlock(VV& v) {
     v.unlock();
   }
 
