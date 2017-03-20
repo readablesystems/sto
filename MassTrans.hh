@@ -263,7 +263,7 @@ private:
 
       // this has to happen before we check opacity, so that aborts are safe.
       auto item = Sto::new_item(this, val);
-      item.template add_write<key_write_value_type>(key).add_flags(insert_bit);
+      item.template add_write<key_write_value_type>(key, val->version()).add_flags(insert_bit);
 
       if (updateNodeVersion(orig_node, orig_version, upd_version)) {
         // add any new nodes as a result of splits, etc. to the read/absent set
