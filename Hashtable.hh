@@ -256,7 +256,7 @@ private:
 
       auto prev_version = buck.version.unlocked();
       // not there so need to insert
-      insert_locked<false>(buck, k, v); // marked as invalid
+      e = insert_locked<false>(buck, k, v); // marked as invalid
       auto new_head = buck.head;
       auto new_version = buck.version.unlocked();
       fence();
@@ -737,7 +737,7 @@ private:
   }
 
   template <bool markValid>
-  void insert_locked(bucket_entry& buck, const Key& k, const Value& val) {
+  internal_elem* insert_locked(bucket_entry& buck, const Key& k, const Value& val) {
     assert(is_locked(buck.version));
     auto new_head = new internal_elem(k, val, markValid);
     internal_elem *cur_head = buck.head;
@@ -746,6 +746,7 @@ private:
     // TODO(nate): this means we'll always have to do a hard opacity check on 
     // the bucket version (but I don't think we can get a commit tid yet).
     buck.version.inc_nonopaque_version();
+    return new_head;
   }
 
 #if 0
