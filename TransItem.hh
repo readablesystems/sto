@@ -317,6 +317,10 @@ class TransProxy {
         return item().read_value<T>();
     }
 
+    const TicTocVersion& observed_timestamps() const {
+        return item().observed_timestamps();
+    }
+
     template <typename T>
     T& predicate_value() {
         return item().predicate_value<T>();

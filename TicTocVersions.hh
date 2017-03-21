@@ -30,6 +30,17 @@ public:
     LockableTid(type t) : t_(t) {}
     LockableTid() : t_() {}
 
+    LockableTid& operator=(const LockableTid& rhs) {
+        t_ = rhs.t_;
+        return *this;
+    }
+    bool operator==(const LockableTid& rhs) {
+        return t_ == rhs.t_;
+    }
+    bool operator!=(const LockableTid& rhs) {
+        return t_ != rhs.t_;
+    }
+
     bool is_locked() const {
         return t_ & lock_bit;
     }

@@ -25,7 +25,7 @@
 
 #include "Debug_rcu.hh"
 
-typedef stuffed_str<uint64_t> versioned_str;
+typedef stuffed_str<TicTocVersion> versioned_str;
 
 struct versioned_str_struct : public versioned_str {
   typedef Masstree::Str value_type;
@@ -84,8 +84,10 @@ public:
   typedef ti_wrapper threadinfo_type;
   typedef Masstree::Str Str;
 
+  // XXX fix the repetitive stuff below
   typedef typename Box::version_type Version;
   typedef typename std::conditional<Opacity, TicTocVersion, TicTocNonopaqueVersion>::type tversion_type;
+  typedef TicTocVersion version_base_type;
 
   static __thread threadinfo_type mythreadinfo;
 
@@ -283,7 +285,7 @@ private:
     }
   }
 
-  static bool version_is_valid(const tversion_type& v) {
+  static bool version_is_valid(const version_base_type& v) {
     return !v.has_user_bit_set();
   }
 

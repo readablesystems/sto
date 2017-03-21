@@ -9,19 +9,19 @@
 // function (deallocate_rcu) in some other context.
 #include "kvthread.hh"
 
-template <typename T>
+template <typename T, bool Opacity=true>
 struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
   typedef T value_type;
-  typedef TWrapped<T> wv_type;
+  typedef typename std::conditional<Opacity, TOpaqueWrapped<T>, TNonopaqueWrapped<T>>::type wv_type;
   typedef typename wv_type::read_type read_type;
-  typedef TicTocVersion version_type;
+  typedef typename wv_type::version_type version_type;
 
   versioned_value_struct() : version_(), wrapped_value_() {}
   // XXX Yihe: I made it public; is there any reason why it should be private?
   versioned_value_struct(const value_type& val, version_type v) : version_(v), wrapped_value_(val) {}
   
   static versioned_value_struct* make(const value_type& val, version_type version) {
-    return new versioned_value_struct<T>(val, version);
+    return new versioned_value_struct<T, Opacity>(val, version);
   }
   
   bool needsResize(const value_type&) {
@@ -67,10 +67,10 @@ struct versioned_value_struct /*: public threadinfo::rcu_callback*/ {
   
 private: 
   version_type version_;
-  TWrapped<value_type> wrapped_value_;
+  wv_type wrapped_value_;
 };
 
-#if 0
+/*
 // double box for non trivially copyable types!
 template<typename T>
 struct versioned_value_struct<T, typename std::enable_if<!__has_trivial_copy(T)>::type> {
@@ -119,4 +119,4 @@ private:
   version_type version_;
   value_type* valueptr_;
 };
-#endif
+*/
