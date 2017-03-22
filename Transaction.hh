@@ -47,6 +47,10 @@
 #define STO_SORT_WRITESET 0
 #endif
 
+#ifndef TICTOC_PRE_ABORT
+#define TICTOC_PRE_ABORT 1
+#endif
+
 #ifndef STO_SPIN_EXPBACKOFF
 #define STO_SPIN_EXPBACKOFF 0
 #endif

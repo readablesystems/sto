@@ -8,6 +8,10 @@
 #include "Packer.hh"
 #include "compiler.hh"
 
+#ifndef TICTOC_RUNTIME_NO_EXTEND
+#define TICTOC_RUNTIME_NO_EXTEND false
+#endif
+
 class TransProxy;
 
 class TransItem {
