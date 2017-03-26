@@ -29,6 +29,7 @@ private:
 	//list inner types ------------------------------
 	struct SlotInfo {
 		int volatile		_req_ans;		//here 1 can post the request and wait for answer
+		int volatile        _read_version;	//here 1 can post the request and wait for answer
 		void* volatile		_req_list;		//here 1 can post the request and wait for answer
 		int volatile		_tid;	        //which thread is making the request
 		int volatile		_time_stamp;	//when 0 not connected
@@ -36,6 +37,7 @@ private:
 
 		SlotInfo() {
 			_req_ans	 = _NULL_VALUE;
+			_read_version = 0;
             _req_list    = NULL;
 			_time_stamp  = 0;
 			_next		 = NULL;
@@ -122,6 +124,7 @@ private:
 	Node* volatile	_head;
 	int volatile	_NODE_SIZE;
 	Node* volatile	_new_node;
+    int             _push_version;
 
 	inline void flat_combining() {
 		// prepare for enq
@@ -150,6 +153,7 @@ private:
                 // we want to push a value
                 // done when sets curr_value to NULL
 				if(curr_value > _NULL_VALUE) {
+                    ++_push_version;
 					++num_changes;
 					enq_value_ary->set_internal_elem(curr_value);
 					++enq_value_ary;
@@ -249,6 +253,7 @@ private:
                             // empty queue! (or we've popped off everything)
                             curr_slot->_req_ans = _NULL_VALUE;
                             curr_slot->_time_stamp = _NULL_VALUE;
+                            curr_slot->_read_version = _push_version;
                             break;
                         }
                     }
@@ -295,57 +300,8 @@ private:
                 // CHECKING IF EMPTY
                 // Note we only call this if we did in fact see an empty queue!
 				} else if(_EMPTY_VALUE == curr_value) {
-					++num_changes;
-					auto curr_deq_pos = deq_value_ary;
-                    auto tmp_head = _head;
-                    
-                    if (enq_value_ary != (_new_node->_values + 1)) {
-                        curr_slot->_req_ans = _ENQ_VALUE;
-                        curr_slot->_time_stamp = _NULL_VALUE;
-                        continue;
-                    }
-                    while(1) {
-                        if(0 != curr_deq_pos->value_) {
-                            if (curr_deq_pos->tid_ == tid && curr_deq_pos->phantom()) {
-                                // keep going... we're going to pop this
-                                curr_deq_pos++;
-                            } else {
-                                // it wasn't empty!!
-                                curr_slot->_req_ans = -curr_deq_pos->value_;
-                                curr_slot->_time_stamp = _NULL_VALUE;
-                                break;
-                            }
-                        } else if(NULL != tmp_head->_next) {
-                            tmp_head = tmp_head->_next;
-                            curr_deq_pos = tmp_head->_values;
-                            curr_deq_pos += curr_deq_pos->value_;
-                            continue;
-                        } else {
-                            // empty! but check if we're going to enq anything... 
-                            curr_slot->_req_ans = _NULL_VALUE;
-                            curr_slot->_time_stamp = _NULL_VALUE;
-
-                            // we can't allow anyone else to enq or the previous value
-                            // is no longer valid
-                            // install all enques/deques and return
-                            if(0 == deq_value_ary->value_ && NULL != _head->_next) {
-                                auto tmp = _head;
-                                _head = _head->_next;
-                                free(tmp);
-                            } else {
-                                // set where to start next in dequeing
-                                _head->_values->set_internal_elem(deq_value_ary -  _head->_values);
-                            }
-
-                            if(enq_value_ary != (_new_node->_values + 1)) {
-                                enq_value_ary->set_internal_elem(0);
-                                _tail->_next = _new_node;
-                                _tail = _new_node;
-                                _new_node  = NULL;
-                            } 
-                            return;
-                        }
-                    }
+				    const int read_version = curr_slot->_read_version;
+                    curr_slot->_req_ans = (_push_version == read_version);
 				}
 				curr_slot = curr_slot->_next;
 			}//while on slots
@@ -429,7 +385,7 @@ public:
     }
 
 	bool pop() {
-        bool popped = fc_pop(); 
+        int popped = fc_pop(); 
         auto item = Sto::item(this, popitem_key);
         auto pushitem = Sto::item(this, pushitem_key);
         if (!popped && pushitem.has_write()) {
@@ -441,7 +397,7 @@ public:
                 write_list.pop_front();
             }
             item.add_flags(empty_q_bit);
-            item.add_read(0);
+            item.add_read(popped);
             return true;
         }
         // we saw an empty queue in a previous pop, but it's no longer empty!
@@ -451,7 +407,7 @@ public:
         // things are still consistent... record that we saw an empty queue or that we popped
         if (!popped) {
             item.add_flags(empty_q_bit);
-            item.add_read(0);
+            item.add_read(popped);
         // we actually need to deque something at commit time
         } else if (!item.has_write()) {
             item.add_write();
@@ -459,7 +415,7 @@ public:
         return popped;
 	}
 
-    bool fc_pop() {
+    int fc_pop() {
 		SlotInfo* my_slot = _tls_slot_info;
 		if(NULL == my_slot)
 			my_slot = get_new_slot();
@@ -467,8 +423,10 @@ public:
 		SlotInfo* volatile&	my_next = my_slot->_next;
 		int volatile& my_re_ans = my_slot->_req_ans;
 		int volatile& my_re_tid = my_slot->_tid;
+		int volatile& my_re_ver = my_slot->_read_version;
 		my_re_tid = TThread::id();
 		my_re_ans = _POP_VALUE;
+        my_re_ver = 0;
 
 		do {
 			if(NULL == my_next)
@@ -495,7 +453,10 @@ public:
 				}
 			}
 		} while(true);
-        return (-my_re_ans) != _NULL_VALUE;
+        if (my_re_ans == _NULL_VALUE) {
+            return my_re_ver;
+        }
+        return 0;
     }
 
 	bool fc_push_val(const int inValue) {
@@ -600,7 +561,7 @@ public:
 		} while(true);
 	}
 
-    bool fc_empty() {
+    bool fc_empty(int read_version) {
         SlotInfo* my_slot = _tls_slot_info;
 		if(NULL == my_slot)
 			my_slot = get_new_slot();
@@ -608,8 +569,10 @@ public:
 		SlotInfo* volatile&	my_next = my_slot->_next;
 		int volatile& my_re_ans = my_slot->_req_ans;
 		int volatile& my_re_tid = my_slot->_tid;
+		int volatile& my_re_ver = my_slot->_read_version;
 		my_re_tid = TThread::id();
 		my_re_ans = _EMPTY_VALUE;
+		my_re_ver = read_version;
 
 		do {
 			if (NULL == my_next)
@@ -628,7 +591,7 @@ public:
 				} 
 				Memory::read_barrier();
                 if (my_re_ans != _EMPTY_VALUE) {
-                    return (my_re_ans == _NULL_VALUE);
+                    return my_re_ans;
                 }
 			}
 		} while(true);
@@ -683,7 +646,8 @@ private:
 
     bool check(TransItem& item, Transaction&) override {
         if (saw_empty(item)) {
-            return fc_empty();
+            auto read_version = item.template read_value<int>();
+            return fc_empty(read_version);
         }
         return true;
     }

@@ -13,6 +13,15 @@ void* test_thread(void *data) {
     int me = ((Tester*)data)->me;
     int nthreads = ((Tester*)data)->nthreads;
 
+    const pthread_t pid = pthread_self();
+    // cpu_set_t: This data set is a bitset where each bit represents a CPU.
+    cpu_set_t cpuset;
+    // CPU_ZERO: This macro initializes the CPU set set to be the empty set.
+    CPU_ZERO(&cpuset);
+    // CPU_SET: This macro adds cpu to the CPU set set.
+    CPU_SET(me, &cpuset);
+    assert(!pthread_setaffinity_np(pid, sizeof(cpu_set_t), &cpuset));
+    
     TThread::set_id(me);
 
     spawned_barrier++;
@@ -180,10 +189,11 @@ int main(int argc, char* argv[]) {
     pthread_t advancer;
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer);
-
+    
+        /*
     if (argc >= 2) {
         int test = std::atoi(argv[1]);
-       
+      
         //hashmaps
         auto chmna51 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 10000, false, 5>>>(STO, 10000, 5, 1, 33, 33);
         auto chmna52 = new MapOpTest<DatatypeHarness<CuckooHashMapNA<int, int, 125000, false, 5>>>(STO, 125000, 5, 1, 33, 33);
@@ -245,6 +255,7 @@ int main(int argc, char* argv[]) {
         cds::Terminate();
         return 0;
     }
+    */
         
     global_verbose_stats_file = fopen("microbenchmarks/cds_benchmarks_stats_verbose.txt", "w");
     global_stats_file = fopen("microbenchmarks/cds_benchmarks_stats.txt", "w");
@@ -255,6 +266,7 @@ int main(int argc, char* argv[]) {
     
     dualprintf("\n--------------NEW TEST-----------------\n");
 
+    /*
     std::vector<Test> map_tests = make_map_tests();
     for (unsigned i = 0; i < map_tests.size(); i+=num_maps) {
         dualprintf("\n%s\n", map_tests[i].desc.c_str());
@@ -271,7 +283,6 @@ int main(int argc, char* argv[]) {
             dualprintf("\n");
         //}
     }
-    /*
     // pqueue tests
     std::vector<Test> pqueue_tests = make_pqueue_tests();
     for (unsigned i = 0; i < pqueue_tests.size(); i+=num_pqueues) {
@@ -296,6 +307,7 @@ int main(int argc, char* argv[]) {
             dualprintf("\n");
         }
     }
+*/
     // queue tests
     std::vector<Test> queue_tests = make_queue_tests();
     for (unsigned i = 0; i < queue_tests.size(); i+=num_queues) {
@@ -318,7 +330,6 @@ int main(int argc, char* argv[]) {
             dualprintf("\n");
         }
     }
-*/
     cds::Terminate();
     fclose(global_stats_file);
     fclose(global_verbose_stats_file);
