@@ -385,7 +385,8 @@ public:
     }
 
 	bool pop() {
-        int popped = fc_pop(); 
+        int read_version = fc_pop(); 
+        bool popped = (read_version == 0);
         auto item = Sto::item(this, popitem_key);
         auto pushitem = Sto::item(this, pushitem_key);
         if (!popped && pushitem.has_write()) {
@@ -407,7 +408,7 @@ public:
         // things are still consistent... record that we saw an empty queue or that we popped
         if (!popped) {
             item.add_flags(empty_q_bit);
-            item.add_read(popped);
+            item.add_read(read_version);
         // we actually need to deque something at commit time
         } else if (!item.has_write()) {
             item.add_write();
