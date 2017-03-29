@@ -34,6 +34,8 @@ std::atomic_int global_push_val(MAX_VALUE);
 enum q_op {push, pop};
 std::array<q_op, 2> q_ops_array = {push, pop};
 
+std::vector<struct timeval> progress_times[2];
+
 #define FCQUEUE_TRAITS() cds::container::fcqueue::make_traits< \
     cds::opt::lock_type<cds::sync::spin>, \
     cds::opt::back_off<cds::backoff::delay_of<2>>, \
@@ -316,8 +318,18 @@ public:
     }
     inline void inc_ctrs(q_op q_op, int me) {
         switch(q_op) {
-            case push: global_thread_ctrs[me].push++; break;
-            case pop: global_thread_ctrs[me].pop++; break;
+            case push: 
+            if (!global_stop_flag) {
+                global_thread_ctrs_first[me].push++; 
+            }
+            global_thread_ctrs[me].push++; break;
+            
+            case pop: 
+            if (!global_stop_flag) {
+                global_thread_ctrs_first[me].pop++; 
+            }
+            global_thread_ctrs[me].pop++; break;
+            
             default: assert(0);
         }
     }
@@ -366,9 +378,20 @@ public:
     PushPopTest(int ds_type, int val_type) : QueueTest<DH>(val_type), ds_type_(ds_type) {};
     void run(int me) {
         if (me > 1) { sleep(1); return; }
+        struct timeval tv;
         Rand transgen(initial_seeds[2*me], initial_seeds[2*me + 1]);
         std::uniform_int_distribution<long> slotdist(1, MAX_VALUE);
         for (int i = NTRANS; i > 0; --i) {
+            if (!(i % 100000)) {
+                gettimeofday(&tv, NULL);
+                progress_times[me].push_back(tv);
+            }
+            /*if (global_stop_flag) {
+                if (!me) std::cerr << me << " pushed " << global_thread_ctrs[me].push << std::endl;
+                else std::cerr << me << " popped " << global_thread_ctrs[me].pop << std::endl;
+                return;
+            }
+            */
             if (ds_type_ == STO) {
                 Rand transgen_snap = transgen;
                 while (1) {
@@ -386,6 +409,11 @@ public:
                 this->inc_ctrs(q_ops_array[me % arraysize(q_ops_array)], me);
             }
         }
+        global_stop_flag = 1;
+        /*
+        if (!me) std::cerr << me << " pushed " << global_thread_ctrs[me].push << std::endl;
+        else std::cerr << me << " popped " << global_thread_ctrs[me].pop << std::endl;
+        */
     }
 private:
     int ds_type_;
@@ -490,10 +518,10 @@ std::vector<Test> make_pqueue_tests() {
 }
 int num_pqueues = 4;
 
-/*
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
-    {desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)},                                  \
-    {desc, "STO2 queue", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)},                                  \
+    {desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)} \
+    //{desc, "STO2 queue", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)} \
+    //{desc, "FCQueueT", new test<DatatypeHarness<FCQueueT<type>>>(STO, ## __VA_ARGS__)} \
     {desc, "NonTrans FC Queue", new test<DatatypeHarness<FCQueueNT<type>>>(CDS, ## __VA_ARGS__)},\
     {desc, "Basket queue", new test<DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},         \
     {desc, "Moir queue", new test<DatatypeHarness<cds::container::MoirQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
@@ -501,10 +529,12 @@ int num_pqueues = 4;
     {desc, "Opt queue", new test<DatatypeHarness<cds::container::OptimisticQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},   \
     {desc, "RW queue", new test<DatatypeHarness<cds::container::RWQueue<type>>>(CDS, ## __VA_ARGS__)}, \
     {desc, "Segmented queue", new test<DatatypeHarness<cds::container::SegmentedQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)}, \
-    {desc, "TC queue", new test<DatatypeHarness<cds::container::TsigasCycleQueue<type>>>(CDS, ## __VA_ARGS__)} 
-*/
+    {desc, "Wrapped FCQueueNT", new test<DatatypeHarness<FCQueueNT<type>>>(STO, ## __VA_ARGS__)},   \
+    {desc, "FCQueueLP", new test<DatatypeHarness<FCQueueLP<type>>>(STO, ## __VA_ARGS__)}\
+    //{desc, "TC queue", new test<DatatypeHarness<cds::container::TsigasCycleQueue<type>>>(CDS, ## __VA_ARGS__)} 
+/*
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
-    {desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)},      \
+    {desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)}      \
     {desc, "STO2 queue", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)},      \
     {desc, "FCQueueNT", new test<DatatypeHarness<FCQueueNT<type>>>(CDS, ## __VA_ARGS__)},           \
     {desc, "Wrapped FCQueueNT", new test<DatatypeHarness<FCQueueNT<type>>>(STO, ## __VA_ARGS__)},   \
@@ -513,14 +543,16 @@ int num_pqueues = 4;
     //{desc, "STO2-QueueLP queue", new test<DatatypeHarness<QueueLP<type, false>>>(STO, ## __VA_ARGS__)}
              
     //{desc, "STOPops queue", new test<DatatypeHarness<QueuePops<type, false>>>(STO, ## __VA_ARGS__)},
+*/
 std::vector<Test> make_queue_tests() {
     return {
         MAKE_QUEUE_TESTS("Q:PushPop", PushPopTest, int, RANDOM_VALS),
-        MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomQSingleOpTest, int, RANDOM_VALS),
+        //MAKE_QUEUE_TESTS("Q:RandSingleOps", RandomQSingleOpTest, int, RANDOM_VALS),
         //MAKE_QUEUE_TESTS("Q:RandMultiOps", GeneralTxnsTest, int, RANDOM_VALS, 5),
         //MAKE_QUEUE_TESTS("Q:RandMultiOps", GeneralTxnsTest, int, RANDOM_VALS, 10),
         //MAKE_QUEUE_TESTS("General Txns Test with Random Vals", GeneralTxnsTest, int, RANDOM_VALS, q_txn_sets[2]),
     };
 }
-int num_queues = 6;
-//int num_queues = 1;
+//int num_queues = 12;
+//int num_queues = 6;
+int num_queues = 1;

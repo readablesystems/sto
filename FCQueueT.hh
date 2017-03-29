@@ -37,7 +37,7 @@ private:
 
 		SlotInfo() {
 			_req_ans	 = _NULL_VALUE;
-			_read_version = 0;
+			_read_version = 1;
             _req_list    = NULL;
 			_time_stamp  = 0;
 			_next		 = NULL;
@@ -124,7 +124,7 @@ private:
 	Node* volatile	_head;
 	int volatile	_NODE_SIZE;
 	Node* volatile	_new_node;
-    int             _push_version;
+    int             _push_version = 1;
 
 	inline void flat_combining() {
 		// prepare for enq

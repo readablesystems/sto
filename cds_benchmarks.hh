@@ -35,6 +35,7 @@ std::vector<int> init_sizes = {10000, 100000};//, 150000};
 std::vector<int> nthreads_set = {1, 2,4,8,12,16,20};//, 24};
 
 std::atomic_int spawned_barrier(0);
+std::atomic_int global_stop_flag(0);
 
 struct __attribute__((aligned(128))) cds_counters {
     txp_counter_type push;
@@ -49,6 +50,7 @@ struct __attribute__((aligned(128))) cds_counters {
 };
 
 cds_counters global_thread_ctrs[MAX_NUM_THREADS];
+cds_counters global_thread_ctrs_first[MAX_NUM_THREADS];
 
 FILE *global_verbose_stats_file;
 FILE *global_stats_file;
@@ -91,5 +93,6 @@ struct Test {
 
 struct Record {
     int nthreads;
-    float speed;
+    float last_speed;
+    float first_speed;
 };

@@ -28,6 +28,7 @@ void* test_thread(void *data) {
     while (spawned_barrier != nthreads) {
         sched_yield();
     }
+    global_stop_flag = 0;
     gt->run(me);
     spawned_barrier--;
 
@@ -37,44 +38,93 @@ void* test_thread(void *data) {
 
 void* record_perf_thread(void* x) {
     int nthreads = ((Record*)x)->nthreads;
-    long long total1, total2;
-    struct timeval tv1, tv2;
-    double ops_per_s = 0; 
+    long long total1, total2, total3;
+    struct timeval tv1, tv2, tv3;
+    bool thread_exited = false;
+    double first_ops_per_s = 0; 
+    double last_ops_per_s = 0; 
+    double seconds;
 
     while (spawned_barrier != nthreads) {
         sched_yield();
     }
 
-    // benchmark until the first thread finishes
+    // benchmark until the last thread finishes
     gettimeofday(&tv1, NULL);
-    total1 = total2 = 0;
+    total1 = total2 = total3 = 0;
     for (int i = 0; i < MAX_NUM_THREADS; ++i) {
         total1 += (global_thread_ctrs[i].push + global_thread_ctrs[i].pop);
     }
+
     while (spawned_barrier != 0) {
+        if (spawned_barrier != nthreads) {
+            if (!thread_exited) {
+                gettimeofday(&tv3, NULL);
+                thread_exited = true;
+            }
+        }
         sched_yield();
     }
+
+    // calculate totals after all thread exited
     for (int i = 0; i < MAX_NUM_THREADS; ++i) {
         total2 += (global_thread_ctrs[i].push + global_thread_ctrs[i].pop);
         total2 += (global_thread_ctrs[i].insert + global_thread_ctrs[i].erase + global_thread_ctrs[i].find);
     }
     gettimeofday(&tv2, NULL);
-    double seconds = ((tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
-    ops_per_s = (total2-total1)/seconds;
-   
-    ((Record*)x)->speed = ops_per_s;
+    seconds = ((tv2.tv_sec-tv1.tv_sec) + (tv2.tv_usec-tv1.tv_usec)/1000000.0);
+    last_ops_per_s = (total2-total1)/seconds;
+
+    // calculate totals after first thread exited
+    for (int i = 0; i < MAX_NUM_THREADS; ++i) {
+        total3 += (global_thread_ctrs_first[i].push + global_thread_ctrs_first[i].pop);
+        total3 += (global_thread_ctrs_first[i].insert + global_thread_ctrs_first[i].erase + global_thread_ctrs_first[i].find);
+    }
+    seconds = ((tv3.tv_sec-tv1.tv_sec) + (tv3.tv_usec-tv1.tv_usec)/1000000.0);
+    first_ops_per_s = (total3-total1)/seconds;
+
+    ((Record*)x)->last_speed = last_ops_per_s;
+    ((Record*)x)->first_speed = first_ops_per_s;
+
+    for (auto pt : progress_times) {
+        for (struct timeval tv : pt) {
+            printf("%lu,", (tv.tv_sec * 1000000) + tv.tv_usec);
+        }
+        printf("NEW\n\n");
+    }
+    progress_times[0].clear();
+    progress_times[1].clear();
+    /*
+    for (int i = 0; i < nthreads; ++i) {
+        if (global_thread_ctrs[i].push || global_thread_ctrs[i].pop  || global_thread_ctrs[i].skip) {
+            fprintf(stdout, "Thread %d \tpushes: %ld \tpops: %ld, \tskips: %ld\n", i, 
+                    global_thread_ctrs[i].push, 
+                    global_thread_ctrs[i].pop, 
+                    global_thread_ctrs[i].skip);
+            fprintf(stdout, "Thread %d \tpushes: %ld \tpops: %ld, \tskips: %ld\n", i, 
+                    global_thread_ctrs_first[i].push, 
+                    global_thread_ctrs_first[i].pop, 
+                    global_thread_ctrs_first[i].skip);
+        }
+    }
+    */
+
+    // cleanup
     for (int i = 0; i < nthreads; ++i) {
         global_thread_ctrs[i].ke_insert = global_thread_ctrs[i].ke_find = global_thread_ctrs[i].ke_erase
         = global_thread_ctrs[i].insert = global_thread_ctrs[i].erase = global_thread_ctrs[i].find
         = global_thread_ctrs[i].push = global_thread_ctrs[i].pop = global_thread_ctrs[i].skip
         = 0;
     }
+    for (int i = 0; i < nthreads; ++i) {
+        global_thread_ctrs_first[i].ke_insert = global_thread_ctrs_first[i].ke_find = global_thread_ctrs_first[i].ke_erase = global_thread_ctrs_first[i].insert = global_thread_ctrs_first[i].erase = global_thread_ctrs_first[i].find = global_thread_ctrs_first[i].push = global_thread_ctrs_first[i].pop = global_thread_ctrs_first[i].skip = 0;
+    }
     return nullptr;
 }
 
 void startAndWait(GenericTest* test, size_t size, int nthreads, int repeats) {
     // to record abort and perf results
-    std::vector<float> aborts, speeds;
+    std::vector<float> aborts, first_speeds, last_speeds;
     // create performance recording thread
     pthread_t recorder;
     // create threads to run the test
@@ -84,7 +134,8 @@ void startAndWait(GenericTest* test, size_t size, int nthreads, int repeats) {
    
     for (int r = 0; r < repeats; ++r) {
         test->initialize(size);
-        record.speed = 0;
+        record.first_speed = 0;
+        record.last_speed = 0;
         record.nthreads = nthreads;
         pthread_create(&recorder, NULL, record_perf_thread, &record);
 
@@ -99,18 +150,21 @@ void startAndWait(GenericTest* test, size_t size, int nthreads, int repeats) {
         }
         pthread_join(recorder, NULL);
 
-        speeds.push_back(record.speed);
+        last_speeds.push_back(record.last_speed);
+        first_speeds.push_back(record.first_speed);
         aborts.push_back(get_abort_stats());
         test->cleanup();
     }
 
-    for (float s: speeds) {
+    /*
+    for (float s: last_speeds) {
         dualprintf("%3f,", s);
     }
     dualprintf(":");
     for (float a: aborts) {
         dualprintf("%3f,", a);
     }
+    */
 }
 
 void dualprintf(const char* fmt,...) {
@@ -321,7 +375,7 @@ int main(int argc, char* argv[]) {
                     }
                     fprintf(global_verbose_stats_file, "\nRunning Test %s on %s\t size: %d, nthreads: %d\n", 
                             queue_tests[i+j].desc.c_str(), queue_tests[i+j].ds, *size, *nthreads);
-                    startAndWait(queue_tests[i+j].test, *size, *nthreads, 5);
+                    startAndWait(queue_tests[i+j].test, *size, *nthreads, 1);
                     dualprintf(";");
                 }
                 if (queue_tests[i].desc.find("PushPop")==std::string::npos) dualprintf("\n");
