@@ -47,8 +47,16 @@
 #define STO_SORT_WRITESET 0
 #endif
 
+#ifndef DEBUG_SKEW
+#define DEBUG_SKEW 0
+#endif
+
 #ifndef STO_SPIN_EXPBACKOFF
 #define STO_SPIN_EXPBACKOFF 0
+#endif
+
+#ifndef STO_ABORT_ON_LOCKED
+#define STO_ABORT_ON_LOCKED 1
 #endif
 
 #ifndef STO_SPIN_BOUND_WRITE
