@@ -47,7 +47,6 @@ static T read_nonatomic(const T* v, TransProxy item, const V& version, bool add_
 }
 template <typename T, typename V>
 static T read_wait_atomic(const T* v, TransProxy item, const V& version, bool add_read) {
-    printf("here\n");
     unsigned n = 0;
     while (1) {
         V v0 = version;
