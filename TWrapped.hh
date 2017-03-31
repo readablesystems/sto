@@ -10,6 +10,8 @@ template <typename T, bool Opaque = true,
 namespace TWrappedAccess {
 template <typename T, typename V>
 static T read_wait_atomic(const T*, TransProxy, const V&, bool);
+template <typename T, typename V>
+static T read_wait_nonatomic(const T*, TransProxy, const V&, bool);
 
 template <typename T, typename V>
 static T read_atomic(const T* v, TransProxy item, const V& version, bool add_read) {
@@ -35,12 +37,17 @@ static T read_atomic(const T* v, TransProxy item, const V& version, bool add_rea
 }
 template <typename T, typename V>
 static T read_nonatomic(const T* v, TransProxy item, const V& version, bool add_read) {
+#if STO_ABORT_ON_LOCKED
     item.observe(version, add_read);
     fence();
     return *v;
+#else
+    return read_wait_nonatomic(v, item, version, add_read);
+#endif
 }
 template <typename T, typename V>
 static T read_wait_atomic(const T* v, TransProxy item, const V& version, bool add_read) {
+    printf("here\n");
     unsigned n = 0;
     while (1) {
         V v0 = version;
@@ -52,17 +59,21 @@ static T read_wait_atomic(const T* v, TransProxy item, const V& version, bool ad
             item.observe(v1, add_read);
             return result;
         }
+
+#if !STO_ABORT_ON_LOCKED
+        relax_fence();
+        continue;
+#endif
+
 #if STO_SPIN_EXPBACKOFF
         if (++n > STO_SPIN_BOUND_WAIT)
             Sto::abort();
         if (n > 3)
             for (unsigned x = 1 << std::min(15U, n - 2); x; --x)
                 relax_fence();
-#elif STO_ABORT_ON_LOCKED
+#else
         if (++n > (1 << STO_SPIN_BOUND_WAIT))
             Sto::abort();
-#else
-        (void)n;
 #endif
         relax_fence();
     }
@@ -78,6 +89,11 @@ static T read_wait_nonatomic(const T* v, TransProxy item, const V& version, bool
             return *v;
         }
         relax_fence();
+
+#if !STO_ABORT_ON_LOCKED
+        continue;
+#endif
+
 #if STO_SPIN_EXPBACKOFF
         if (++n > STO_SPIN_BOUND_WAIT)
             Sto::abort();
