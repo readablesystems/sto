@@ -9,7 +9,11 @@ template <typename T, bool Opaque = true,
 
 namespace TWrappedAccess {
 template <typename T, typename V>
+static T read_wait_atomic(const T*, TransProxy, const V&, bool);
+
+template <typename T, typename V>
 static T read_atomic(const T* v, TransProxy item, const V& version, bool add_read) {
+#if STO_ABORT_ON_LOCKED
     // This version returns immediately if v1 is locked. We assume as a result
     // that we will quickly converge to either `v0 == v1` or `v1.is_locked()`,
     // and don't bother to back off.
@@ -25,6 +29,9 @@ static T read_atomic(const T* v, TransProxy item, const V& version, bool add_rea
         }
         relax_fence();
     }
+#else
+    return read_wait_atomic(v, item, version, add_read);
+#endif
 }
 template <typename T, typename V>
 static T read_nonatomic(const T* v, TransProxy item, const V& version, bool add_read) {
@@ -51,9 +58,11 @@ static T read_wait_atomic(const T* v, TransProxy item, const V& version, bool ad
         if (n > 3)
             for (unsigned x = 1 << std::min(15U, n - 2); x; --x)
                 relax_fence();
-#else
+#elif STO_ABORT_ON_LOCKED
         if (++n > (1 << STO_SPIN_BOUND_WAIT))
             Sto::abort();
+#else
+        (void)n;
 #endif
         relax_fence();
     }

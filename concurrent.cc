@@ -563,8 +563,10 @@ struct Tester {
     }
     virtual bool check() { return false; }
     virtual void report() {
-        std::cout << "reporting not available for this test"
+#if DEBUG_SKEW
+        std::cout << "skew reporting not available for this test"
             << std::endl;
+#endif
     }
 };
 
@@ -638,7 +640,7 @@ struct HotspotRW : public DSTester<DS> {
     typedef typename DSTester<DS>::container_type container_type;
     typedef std::vector<RWOperation> query_type;
     typedef std::vector<query_type> workload_type;
-    HotspotRW() : skew_account(nthreads) {}
+    HotspotRW() {}
     void run(int me) override;
     bool prepopulate() override;
     void report() override;
@@ -646,7 +648,9 @@ struct HotspotRW : public DSTester<DS> {
     std::vector<workload_type> workloads;
     virtual void per_thread_workload_init(int thread_id);
 
+#if DEBUG_SKEW
     std::vector<skew_account_t> skew_account;
+#endif
 };
 
 inline void dump_thread_trace(int thread_id, const std::vector<std::vector<RWOperation>>& workload) {
@@ -732,6 +736,11 @@ bool HotspotRW<DS>::prepopulate() {
         t.join();
 
     std::cout << "Generation complete." << std::endl;
+
+#if DEBUG_SKEW
+    skew_account.resize(nthreads);
+#endif
+
     return true;
 }
 
@@ -741,19 +750,23 @@ void HotspotRW<DS>::run(int me) {
     container_type* a = this->a;
     container_type::thread_init(*a);
 
-    bool seen_stop = false;
 
     auto &tw = workloads[me];
 
+#if DEBUG_SKEW
+    bool seen_stop = false;
     unsigned long start_tsc = read_tsc();
+#endif
 
     for (auto txn_it = tw.begin(); txn_it != tw.end(); ++txn_it) {
+#if DEBUG_SKEW
         if (stop && !seen_stop) {
             auto ticks = read_tsc() - start_tsc;
             skew_account[me].ntxns_at_stop = txn_it - tw.begin();
             skew_account[me].time_to_stop = ticks;
             seen_stop = true;
         }
+#endif
         TRANSACTION {
             for (auto &req : *txn_it) {
                 if (req.type == OpType::read)
@@ -764,6 +777,7 @@ void HotspotRW<DS>::run(int me) {
         } RETRY(true);
     }
 
+#if DEBUG_SKEW
     skew_account[me].time_to_quota = read_tsc() - start_tsc;
 
     if (!stop) {
@@ -773,10 +787,12 @@ void HotspotRW<DS>::run(int me) {
             skew_account[me].time_to_stop = skew_account[me].time_to_quota;
         }
     }
+#endif
 }
 
 template <int DS>
 void HotspotRW<DS>::report() {
+#if DEBUG_SKEW
     std::vector<unsigned long> times_to_quota;
     std::stringstream ss;
     for (int i = 0; i < nthreads; ++i) {
@@ -790,6 +806,7 @@ void HotspotRW<DS>::report() {
     }
     ss << "Minimum time to quota: " << *std::min_element(times_to_quota.begin(), times_to_quota.end()) << std::endl;
     std::cout << ss.str() << std::flush;
+#endif
 }
 
 // Test: ReadThenWrite
