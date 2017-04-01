@@ -519,8 +519,8 @@ std::vector<Test> make_pqueue_tests() {
 int num_pqueues = 4;
 
 #define MAKE_QUEUE_TESTS(desc, test, type, ...) \
-    {desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)} \
-    //{desc, "STO2 queue", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)} \
+    {desc, "STO1 queue", new test<DatatypeHarness<Queue1<type, false>>>(STO, ## __VA_ARGS__)}, \
+    {desc, "STO2 queue", new test<DatatypeHarness<Queue2<type, false>>>(STO, ## __VA_ARGS__)} \
     //{desc, "FCQueueT", new test<DatatypeHarness<FCQueueT<type>>>(STO, ## __VA_ARGS__)} \
     {desc, "NonTrans FC Queue", new test<DatatypeHarness<FCQueueNT<type>>>(CDS, ## __VA_ARGS__)},\
     {desc, "Basket queue", new test<DatatypeHarness<cds::container::BasketQueue<cds::gc::HP, type>>>(CDS, ## __VA_ARGS__)},         \
@@ -555,4 +555,4 @@ std::vector<Test> make_queue_tests() {
 }
 //int num_queues = 12;
 //int num_queues = 6;
-int num_queues = 1;
+int num_queues = 2;

@@ -90,8 +90,9 @@ void* record_perf_thread(void* x) {
         for (struct timeval tv : pt) {
             printf("%lu,", (tv.tv_sec * 1000000) + tv.tv_usec);
         }
-        printf("NEW\n\n");
+        printf("\n");
     }
+    printf("\n\n");
     progress_times[0].clear();
     progress_times[1].clear();
     /*
