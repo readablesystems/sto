@@ -491,9 +491,11 @@ void empty_func() {
 
 // FUNCTIONS FOR ARRAY/MAP-TYPE
 template <typename T>
-static void doRead(T& a, int slot) {
+static value_type doRead(T& a, int slot) {
   if (readMyWrites)
-    a.transGet(slot);
+    return a.transGet(slot);
+  else
+    return value_type();
 }
 
 template <typename T>
@@ -587,7 +589,7 @@ template <int DS> void DSTester<DS>::initialize() {
 }
 
 // New test: Random R/W with zipf distribution to simulate skewed contention
-enum class OpType : int {read, write};
+enum class OpType : int {read, write, inc};
 
 struct RWOperation {
     RWOperation() : type(OpType::read), key(), value() {}
@@ -765,10 +767,23 @@ void HotspotRW<DS>::run(int me) {
 #endif
         TRANSACTION {
             for (auto &req : *txn_it) {
-                if (req.type == OpType::read)
+                switch (req.type) {
+                case OpType::read:
                     doRead(*a, req.key);
-                else
+                    break;
+                case OpType::write:
                     doWrite(*a, req.key, req.value);
+                    break;
+                case OpType::inc: {
+                    value_type r = doRead(*a, req.key);
+                    ++r;
+                    doWrite(*a, req.key, r);}
+                    break;
+                default:
+                    std::cerr << "unkown OpType: " << (int)req.type << std::endl;
+                    abort();
+                    break;
+                }
             }
         } RETRY(true);
     }
@@ -839,7 +854,7 @@ void Hotspot2RW<DS>::per_thread_workload_init(int thread_id) {
         }
 
         if (!ro_txn)
-            query.emplace_back(OpType::write, 0, thread_id);
+            query.emplace_back(OpType::inc, 0);
 
         int idx = 0;
         for (auto it = req_keys.begin(); it != req_keys.end(); ++it) {
