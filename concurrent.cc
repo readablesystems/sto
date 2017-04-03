@@ -805,6 +805,71 @@ void HotspotRW<DS>::report() {
 #endif
 }
 
+template <int DS>
+struct Hotspot2RW : public HotspotRW<DS> {
+    typedef std::vector<RWOperation> query_type;
+    void per_thread_workload_init(int thread_id) override;
+};
+
+template <int DS>
+void Hotspot2RW<DS>::per_thread_workload_init(int thread_id) {
+    StoSampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
+
+    auto& thread_workload = this->workloads[thread_id];
+
+    int trans_per_thread = ntrans / nthreads;
+    uint64_t readonly_ceil = (uint64_t)(readonly_percent * std::numeric_limits<uint32_t>::max());
+    int write_thresh = (int)(write_percent * opspertrans);
+
+    for (int i = 0; i < trans_per_thread; ++i) {
+        query_type query;
+
+        auto r = ud.sample();
+        bool ro_txn = r < readonly_ceil;
+
+        std::unordered_set<StoSampling::index_t> req_keys;
+
+        while (1) {
+            auto k = ud.sample() % ARRAY_SZ;
+            if (k == 0)
+                continue;
+            req_keys.insert(k);
+            if (req_keys.size() == (size_t)opspertrans)
+                break;
+        }
+
+        if (!ro_txn)
+            query.emplace_back(OpType::write, 0, thread_id);
+
+        int idx = 0;
+        for (auto it = req_keys.begin(); it != req_keys.end(); ++it) {
+            RWOperation op;
+            if (!ro_txn && idx >= write_thresh)
+                op.type = OpType::write;
+            else
+                op.type = OpType::read;
+            op.key = *it;
+            if (op.type == OpType::write)
+                op.value = op.key + 1;
+            query.push_back(op);
+            if (ro_txn && idx == (opspertrans/2))
+                query.emplace_back(OpType::read, 0);
+            idx++;
+        }
+
+        assert((size_t)idx == req_keys.size());
+        assert(query.size() == (size_t)opspertrans + 1);
+
+        //if (!ro_txn)
+        //    query.emplace_back(OpType::write, 0, thread_id);
+
+        thread_workload.push_back(query);
+    }
+
+    if (dump_trace)
+        dump_thread_trace(thread_id, thread_workload);
+}
+
 // Test: ReadThenWrite
 template <int DS> struct ReadThenWrite : public DSTester<DS> {
     typedef typename DSTester<DS>::container_type container_type;
@@ -1370,7 +1435,8 @@ struct Test {
     MAKE_TESTER("kingofthedelete", 0, KingDelete),
     MAKE_TESTER("xordelete", 0, XorDelete),
     MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true),
-    MAKE_TESTER("hotspot", "contending hotspot", HotspotRW)
+    MAKE_TESTER("hotspot", "contending hotspot", HotspotRW),
+    MAKE_TESTER("hotspot2", "contending hotspot (less stupid)", Hotspot2RW)
 };
 
 struct {
