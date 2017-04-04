@@ -51,6 +51,10 @@ ifdef DEBUG_SKEW
 CXXFLAGS += -DDEBUG_SKEW=$(DEBUG_SKEW)
 endif
 
+ifeq ($(GV7_OPACITY),1)
+CXXFLAGS += -DGV7_OPACITY
+endif
+
 # OPTFLAGS can change without rebuild
 OPTFLAGS := -W -Wall
 

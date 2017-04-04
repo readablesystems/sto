@@ -10,6 +10,7 @@ public:
     typedef T value_type;
     typedef typename W<T>::read_type get_type;
     typedef typename W<T>::version_type version_type;
+    typedef typename version_type::type tid_type;
     typedef unsigned size_type;
     typedef int difference_type;
     typedef TConstArrayProxy<TArray<T, N, W> > const_proxy_type;
@@ -65,6 +66,12 @@ public:
     // transactional methods
     bool lock(TransItem& item, Transaction& txn) override {
         return txn.try_lock(item, data_[item.key<size_type>()].vers);
+    }
+    bool lock(TransItem& item, Transaction& txn, tid_type& write_vers) override {
+        bool locked = txn.try_lock(item, data_[item.key<size_type>()].vers);
+        if (locked)
+            write_vers = data_[item.key<size_type>()].vers.unlocked();
+        return locked;
     }
     bool check(TransItem& item, Transaction&) override {
         return item.check_version(data_[item.key<size_type>()].vers);

@@ -21,6 +21,9 @@ void Transaction::initialize() {
     hash_base_ = 32768;
     tset_size_ = 0;
     lrng_state_ = 12897;
+#if STO_OPACITY_IMPL == GV7
+    start_tid_ = 0;
+#endif
     for (unsigned i = 0; i != tset_initial_capacity / tset_chunk; ++i)
         tset_[i] = &tset0_[i * tset_chunk];
     for (unsigned i = tset_initial_capacity / tset_chunk; i != arraysize(tset_); ++i)
@@ -252,6 +255,9 @@ bool Transaction::try_commit() {
     writeset[0] = tset_size_;
 
     TransItem* it = nullptr;
+#if STO_OPACITY_IMPL == GV7
+    tid_type write_bound = 0;
+#endif
     for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
         it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
         if (it->has_write()) {
@@ -261,10 +267,18 @@ bool Transaction::try_commit() {
                 first_write_ = writeset[0];
                 state_ = s_committing_locked;
             }
+#if STO_OPACITY_IMPL == GV7
+            tid_type wvers;
+            if (!it->owner()->lock(*it, *this, wvers)) {
+#else
             if (!it->owner()->lock(*it, *this)) {
+#endif
                 mark_abort_because(it, "commit lock");
                 goto abort;
             }
+#if STO_OPACITY_IMPL == GV7
+            write_bound = std::max(wvers, write_bound);
+#endif
             it->__or_flags(TransItem::lock_bit);
 #endif
         }
@@ -294,10 +308,18 @@ bool Transaction::try_commit() {
         auto writeset_end = writeset + nwriteset;
         for (auto it = writeset; it != writeset_end; ) {
             TransItem* me = &tset_[*it / tset_chunk][*it % tset_chunk];
+#if STO_OPACITY_IMPL == GV7
+            tid_type wvers;
+            if (!me->owner()->lock(*me, *this, wvers)) {
+#else
             if (!me->owner()->lock(*me, *this)) {
+#endif
                 mark_abort_because(me, "commit lock");
                 goto abort;
             }
+#if STO_OPACITY_IMPL == GV7
+            write_bound = std::max(wvers, write_bound);
+#endif
             me->__or_flags(TransItem::lock_bit);
             ++it;
         }
@@ -305,9 +327,13 @@ bool Transaction::try_commit() {
 #endif
 
 
-#if CONSISTENCY_CHECK
+#if CONSISTENCY_CHECK || STO_OPACITY_IMPL == GV7
     fence();
+#if STO_OPACITY_IMPL == GV7
+    commit_tid_gv7(write_bound);
+#else
     commit_tid();
+#endif
     fence();
 #endif
 

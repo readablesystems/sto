@@ -75,6 +75,16 @@
 #endif
 #endif
 
+// opacity
+#define TL2 0
+#define GV7 1
+
+#ifdef GV7_OPACITY
+#define STO_OPACITY_IMPL GV7
+#else
+#define STO_OPACITY_IMPL TL2
+#endif
+
 #define CONSISTENCY_CHECK 0
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
@@ -425,7 +435,11 @@ private:
 #endif
         any_writes_ = any_nonopaque_ = may_duplicate_items_ = false;
         first_write_ = 0;
+#if STO_OPACITY_IMPL == GV7
+        commit_tid_ = 0;
+#else
         start_tid_ = commit_tid_ = 0;
+#endif
         buf_.clear();
 #if STO_DEBUG_ABORTS
         abort_item_ = nullptr;
@@ -689,6 +703,20 @@ public:
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
     }
+#if STO_OPACITY_IMPL == GV7
+    void commit_tid_gv7(tid_type wr_bound) const {
+        assert(!commit_tid_);
+        assert(!TransactionTid::is_locked(wr_bound));
+        assert(!(TransactionTid::nonopaque_bit & wr_bound));
+        tid_type gv = _TID;
+        acquire_fence();
+        commit_tid_ = std::max(wr_bound + TransactionTid::increment_value, gv);
+        // commit_tid_ is going to be either gv + increment_value or gv at this point
+        if (commit_tid_ != gv)
+            bool_cmpxchg(&_TID, gv, commit_tid_);
+        start_tid_ = commit_tid_;
+    }
+#endif
     void set_version(TVersion& vers, TVersion::type flags = 0) const {
         vers.set_version(commit_tid() | flags);
     }

@@ -267,13 +267,17 @@ int main() {
     testSimpleInt();
     testSimpleString();
     testIter();
+#if STO_OPACITY_IMPL==TL2
     testTicToc0();
+#endif
     testConflictingIter();
     testModifyingIter();
     testConflictingModifyIter1();
     testConflictingModifyIter2();
     testConflictingModifyIter3();
     testOpacity1();
+#if STO_OPACITY_IMPL==TL2
     testNoOpacity1();
+#endif
     return 0;
 }
