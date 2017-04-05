@@ -885,6 +885,31 @@ void Hotspot2RW<DS>::per_thread_workload_init(int thread_id) {
         dump_thread_trace(thread_id, thread_workload);
 }
 
+// Test: SingleRW to test overhead of global TID in opacity
+template <int DS>
+struct SingleRW : public HotspotRW<DS> {
+    typedef std::vector<RWOperation> query_type;
+    void per_thread_workload_init(int thread_id) override;
+};
+
+template <int DS>
+void SingleRW<DS>::per_thread_workload_init(int thread_id) {
+    StoSampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
+
+    auto& thread_workload = this->workloads[thread_id];
+
+    int trans_per_thread = ntrans/nthreads;
+
+    for (int i = 0; i < trans_per_thread; ++i) {
+        query_type query;
+        query.emplace_back(OpType::inc, ud.sample() % ARRAY_SZ);
+        thread_workload.push_back(query);
+    }
+
+    if (dump_trace)
+        dump_thread_trace(thread_id, thread_workload);
+}
+
 // Test: ReadThenWrite
 template <int DS> struct ReadThenWrite : public DSTester<DS> {
     typedef typename DSTester<DS>::container_type container_type;
@@ -1451,7 +1476,8 @@ struct Test {
     MAKE_TESTER("xordelete", 0, XorDelete),
     MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true),
     MAKE_TESTER("hotspot", "contending hotspot", HotspotRW),
-    MAKE_TESTER("hotspot2", "contending hotspot (less stupid)", Hotspot2RW)
+    MAKE_TESTER("hotspot2", "contending hotspot (less stupid)", Hotspot2RW),
+    MAKE_TESTER("singlerw", "increment a single random element", SingleRW)
 };
 
 struct {
