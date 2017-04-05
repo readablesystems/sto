@@ -565,10 +565,6 @@ public:
     virtual ~TObject() {}
 
     virtual bool lock(TransItem& item, Transaction& txn) = 0;
-    virtual bool lock(TransItem& item, Transaction& txn, TransactionTid::type& write_version) {
-        write_version = 0;
-        return lock(item, txn);
-    };
     virtual bool check_predicate(TransItem& item, Transaction& txn, bool committing) {
         (void) item, (void) txn, (void) committing;
 	//        always_assert(false);

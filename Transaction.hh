@@ -436,7 +436,7 @@ private:
         any_writes_ = any_nonopaque_ = may_duplicate_items_ = false;
         first_write_ = 0;
 #if STO_OPACITY_IMPL == GV7
-        commit_tid_ = 0;
+        commit_wset_bound_ = commit_tid_ = 0;
 #else
         start_tid_ = commit_tid_ = 0;
 #endif
@@ -624,7 +624,16 @@ public:
     // These function will eventually help us track the commit TID when we
     // have no opacity, or for GV7 opacity.
     bool try_lock(TransItem& item, TVersion& vers) {
-        return try_lock(item, const_cast<TransactionTid::type&>(vers.value()));
+        bool locked = try_lock(item, const_cast<TransactionTid::type&>(vers.value()));
+#if STO_OPACITY_IMPL == GV7
+        if (locked) {
+            if (!commit_wset_bound_)
+                commit_wset_bound_ = vers.unlocked();
+            else
+                commit_wset_bound_ = std::max(commit_wset_bound_, vers.unlocked());
+        }
+#endif
+        return locked;
     }
     bool try_lock(TransItem& item, TNonopaqueVersion& vers) {
         return try_lock(item, const_cast<TransactionTid::type&>(vers.value()));
@@ -704,13 +713,13 @@ public:
         return commit_tid_;
     }
 #if STO_OPACITY_IMPL == GV7
-    void commit_tid_gv7(tid_type wr_bound) const {
+    void commit_tid_gv7() const {
         assert(!commit_tid_);
-        assert(!TransactionTid::is_locked(wr_bound));
-        assert(!(TransactionTid::nonopaque_bit & wr_bound));
+        assert(!TransactionTid::is_locked(commit_wset_bound_));
+        assert(!(TransactionTid::nonopaque_bit & commit_wset_bound_));
         tid_type gv = _TID;
         acquire_fence();
-        commit_tid_ = std::max(wr_bound + TransactionTid::increment_value, gv);
+        commit_tid_ = std::max(commit_wset_bound_ + TransactionTid::increment_value, gv);
         // commit_tid_ is going to be either gv + increment_value or gv at this point
         if (commit_tid_ != gv)
             bool_cmpxchg(&_TID, gv, commit_tid_);
@@ -776,6 +785,9 @@ private:
     TransItem* tset_next_;
     unsigned tset_size_;
     mutable tid_type start_tid_;
+#if STO_OPACITY_IMPL == GV7
+    mutable tid_type commit_wset_bound_;
+#endif
     mutable tid_type commit_tid_;
     mutable TransactionBuffer buf_;
     mutable uint32_t lrng_state_;

@@ -67,12 +67,6 @@ public:
     bool lock(TransItem& item, Transaction& txn) override {
         return txn.try_lock(item, data_[item.key<size_type>()].vers);
     }
-    bool lock(TransItem& item, Transaction& txn, tid_type& write_vers) override {
-        bool locked = txn.try_lock(item, data_[item.key<size_type>()].vers);
-        if (locked)
-            write_vers = data_[item.key<size_type>()].vers.unlocked();
-        return locked;
-    }
     bool check(TransItem& item, Transaction&) override {
         return item.check_version(data_[item.key<size_type>()].vers);
     }
