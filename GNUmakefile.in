@@ -51,8 +51,20 @@ ifdef DEBUG_SKEW
 CXXFLAGS += -DDEBUG_SKEW=$(DEBUG_SKEW)
 endif
 
+ifdef NO_READONLY_OPT
+CXXFLAGS += -DNO_READONLY_OPT
+endif
+
 ifeq ($(GV7_OPACITY),1)
 CXXFLAGS += -DGV7_OPACITY
+endif
+
+ifeq ($(CACHE_BOUND),1)
+CXXFLAGS += -DOPACITY_CACHE_BOUND
+endif
+
+ifeq ($(REUSE_TID),1)
+CXXFLAGS += -DOPACITY_REUSE_TID
 endif
 
 # OPTFLAGS can change without rebuild

@@ -77,12 +77,25 @@
 
 // opacity
 #define TL2 0
-#define GV7 1
+#define GV7 3
+// opacity feature flags
+#define CACHE_BOUND 1
+#define REUSE_TID   2
 
 #ifdef GV7_OPACITY
 #define STO_OPACITY_IMPL GV7
 #else
 #define STO_OPACITY_IMPL TL2
+#endif
+
+#ifdef OPACITY_CACHE_BOUND
+#undef STO_OPACITY_IMPL
+#define STO_OPACITY_IMPL (TL2 | CACHE_BOUND)
+#endif
+
+#ifdef OPACITY_REUSE_TID
+#undef STO_OPACITY_IMPL
+#define STO_OPACITY_IMPL (TL2 | REUSE_TID)
 #endif
 
 #define CONSISTENCY_CHECK 0
@@ -435,11 +448,13 @@ private:
 #endif
         any_writes_ = any_nonopaque_ = may_duplicate_items_ = false;
         first_write_ = 0;
-#if STO_OPACITY_IMPL == GV7
-        commit_wset_bound_ = commit_tid_ = 0;
-#else
-        start_tid_ = commit_tid_ = 0;
+#if STO_OPACITY_IMPL & REUSE_TID
+        commit_wset_bound_ = 0;
 #endif
+#if !(STO_OPACITY_IMPL & CACHE_BOUND)
+        start_tid_ = 0;
+#endif
+        commit_tid_ = 0;
         buf_.clear();
 #if STO_DEBUG_ABORTS
         abort_item_ = nullptr;
@@ -625,7 +640,7 @@ public:
     // have no opacity, or for GV7 opacity.
     bool try_lock(TransItem& item, TVersion& vers) {
         bool locked = try_lock(item, const_cast<TransactionTid::type&>(vers.value()));
-#if STO_OPACITY_IMPL == GV7
+#if STO_OPACITY_IMPL & REUSE_TID
         if (locked) {
             if (!commit_wset_bound_)
                 commit_wset_bound_ = vers.unlocked();
@@ -708,24 +723,25 @@ public:
     // committing
     tid_type commit_tid() const {
         assert(state_ == s_committing_locked || state_ == s_committing);
-        if (!commit_tid_)
+        if (!commit_tid_) {
+#if STO_OPACITY_IMPL & REUSE_TID
+            assert(!TransactionTid::is_locked(commit_wset_bound_));
+            assert(!(TransactionTid::nonopaque_bit & commit_wset_bound_));
+            tid_type gv = _TID;
+            acquire_fence();
+            commit_tid_ = std::max(commit_wset_bound_ + TransactionTid::increment_value, gv);
+            // commit_tid_ is going to be either gv + increment_value or gv at this point
+            if (commit_tid_ != gv)
+                bool_cmpxchg(&_TID, gv, commit_tid_);
+#else
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
+#endif
+#if STO_OPACITY_IMPL & CACHE_BOUND
+            start_tid_ = commit_tid_;
+#endif
+        }
         return commit_tid_;
     }
-#if STO_OPACITY_IMPL == GV7
-    void commit_tid_gv7() const {
-        assert(!commit_tid_);
-        assert(!TransactionTid::is_locked(commit_wset_bound_));
-        assert(!(TransactionTid::nonopaque_bit & commit_wset_bound_));
-        tid_type gv = _TID;
-        acquire_fence();
-        commit_tid_ = std::max(commit_wset_bound_ + TransactionTid::increment_value, gv);
-        // commit_tid_ is going to be either gv + increment_value or gv at this point
-        if (commit_tid_ != gv)
-            bool_cmpxchg(&_TID, gv, commit_tid_);
-        start_tid_ = commit_tid_;
-    }
-#endif
     void set_version(TVersion& vers, TVersion::type flags = 0) const {
         vers.set_version(commit_tid() | flags);
     }
@@ -785,7 +801,7 @@ private:
     TransItem* tset_next_;
     unsigned tset_size_;
     mutable tid_type start_tid_;
-#if STO_OPACITY_IMPL == GV7
+#if STO_OPACITY_IMPL & REUSE_TID
     mutable tid_type commit_wset_bound_;
 #endif
     mutable tid_type commit_tid_;

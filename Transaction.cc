@@ -21,7 +21,7 @@ void Transaction::initialize() {
     hash_base_ = 32768;
     tset_size_ = 0;
     lrng_state_ = 12897;
-#if STO_OPACITY_IMPL == GV7
+#if STO_OPACITY_IMPL & CACHE_BOUND
     start_tid_ = 0;
 #endif
     for (unsigned i = 0; i != tset_initial_capacity / tset_chunk; ++i)
@@ -240,12 +240,15 @@ bool Transaction::try_commit() {
 
     if (any_nonopaque_)
         TXP_INCREMENT(txp_commit_time_nonopaque);
+
+#ifndef NO_READONLY_OPT
 #if !CONSISTENCY_CHECK
     // commit immediately if read-only transaction with opacity
     if (!any_writes_ && !any_nonopaque_) {
         stop(true, nullptr, 0);
         return true;
     }
+#endif
 #endif
 
     state_ = s_committing;
@@ -308,13 +311,9 @@ bool Transaction::try_commit() {
 #endif
 
 
-#if CONSISTENCY_CHECK || STO_OPACITY_IMPL == GV7
+#if CONSISTENCY_CHECK
     fence();
-#if STO_OPACITY_IMPL == GV7
-    commit_tid_gv7();
-#else
     commit_tid();
-#endif
     fence();
 #endif
 
