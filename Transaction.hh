@@ -88,14 +88,26 @@
 #define STO_OPACITY_IMPL TL2
 #endif
 
+#ifndef GV7_OPACITY
+
 #ifdef OPACITY_CACHE_BOUND
 #undef STO_OPACITY_IMPL
-#define STO_OPACITY_IMPL (TL2 | CACHE_BOUND)
+#define STO_OPACITY_IMPL CACHE_BOUND
 #endif
 
 #ifdef OPACITY_REUSE_TID
 #undef STO_OPACITY_IMPL
-#define STO_OPACITY_IMPL (TL2 | REUSE_TID)
+#define STO_OPACITY_IMPL REUSE_TID
+#endif
+
+#endif
+
+#ifndef OPACITY_READONLY_OPT
+#define OPACITY_READONLY_OPT 1
+#endif
+
+#ifndef LESSER_OPACITY
+#define LESSER_OPACITY 0
 #endif
 
 #define CONSISTENCY_CHECK 0
@@ -698,8 +710,15 @@ public:
         if (!start_tid_)
             start_tid_ = _TID;
         if (!TransactionTid::try_check_opacity(start_tid_, v)
-            && state_ < s_committing)
+            && state_ < s_committing) {
+#if LESSER_OPACITY
+            (void)item;
+            if (!any_nonopaque_)
+                any_nonopaque_ = true;
+#else
             hard_check_opacity(&item, v);
+#endif
+        }
     }
     void check_opacity(TransItem& item, TVersion v) {
         check_opacity(item, v.value());
@@ -712,8 +731,14 @@ public:
         if (!start_tid_)
             start_tid_ = _TID;
         if (!TransactionTid::try_check_opacity(start_tid_, v)
-            && state_ < s_committing)
+            && state_ < s_committing) {
+#if LESSER_OPACITY
+            if (!any_nonopaque_)
+                any_nonopaque_ = true;
+#else
             hard_check_opacity(nullptr, v);
+#endif
+        }
     }
 
     void check_opacity() {

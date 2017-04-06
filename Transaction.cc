@@ -241,7 +241,7 @@ bool Transaction::try_commit() {
     if (any_nonopaque_)
         TXP_INCREMENT(txp_commit_time_nonopaque);
 
-#ifndef NO_READONLY_OPT
+#if OPACITY_READONLY_OPT
 #if !CONSISTENCY_CHECK
     // commit immediately if read-only transaction with opacity
     if (!any_writes_ && !any_nonopaque_) {
