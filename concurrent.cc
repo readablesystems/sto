@@ -584,6 +584,8 @@ template <int DS> void DSTester<DS>::initialize() {
 #if MAINTAIN_TRUE_ARRAY_STATE
         prepopulate_func(true_array_state);
 #endif
+        if (TThread::txn)
+            TThread::txn->clear_stats();
     }
     container_type::init();
 }
