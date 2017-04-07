@@ -912,6 +912,45 @@ void SingleRW<DS>::per_thread_workload_init(int thread_id) {
         dump_thread_trace(thread_id, thread_workload);
 }
 
+// Test: ZipfRW
+template <int DS>
+struct ZipfRW : public HotspotRW<DS> {
+    typedef std::vector<RWOperation> query_type;
+    void per_thread_workload_init(int thread_id) override;
+};
+
+template <int DS>
+void ZipfRW<DS>::per_thread_workload_init(int thread_id) {
+    StoSampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
+    StoSampling::StoZipfDistribution zd(thread_id, 0, ARRAY_SZ-1, zipf_skew);
+
+    uint32_t ro_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * readonly_percent);
+    uint32_t write_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * write_percent);
+
+    auto& thread_workload = this->workloads[thread_id];
+    int trans_per_thread = ntrans / nthreads;
+
+    for (int i = 0; i < trans_per_thread; ++i) {
+        query_type query;
+        bool read_only = ud.sample() < ro_threshold;
+        for (int j = 0; j < opspertrans; ++j) {
+            if (read_only)
+                query.emplace_back(OpType::read, zd.sample());
+            else {
+                if (ud.sample() < write_threshold)
+                    query.emplace_back(OpType::inc, zd.sample());
+                else
+                    query.emplace_back(OpType::read, zd.sample());
+            }
+        }
+        thread_workload.push_back(query);
+    }
+
+    if (dump_trace)
+        dump_thread_trace(thread_id, thread_workload);
+}
+
+
 // Test: ReadThenWrite
 template <int DS> struct ReadThenWrite : public DSTester<DS> {
     typedef typename DSTester<DS>::container_type container_type;
@@ -1479,7 +1518,8 @@ struct Test {
     MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true),
     MAKE_TESTER("hotspot", "contending hotspot", HotspotRW),
     MAKE_TESTER("hotspot2", "contending hotspot (less stupid)", Hotspot2RW),
-    MAKE_TESTER("singlerw", "increment a single random element", SingleRW)
+    MAKE_TESTER("singlerw", "increment a single random element", SingleRW),
+    MAKE_TESTER("zipfrw", "Zipf random rw", ZipfRW)
 };
 
 struct {
