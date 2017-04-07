@@ -12,6 +12,10 @@ LIBOBJS = @LIBOBJS@
 LDFLAGS = @LDFLAGS@
 MASSTREEDIR = @MASSTREEDIR@
 
+ifeq ($(LINK_STATIC),1)
+LDFLAGS += -static
+endif
+
 # if CXXFLAGS changes, rebuild
 ifndef CXXFLAGS
 CXXFLAGS :=
