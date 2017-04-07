@@ -862,12 +862,12 @@ void Hotspot2RW<DS>::per_thread_workload_init(int thread_id) {
         for (auto it = req_keys.begin(); it != req_keys.end(); ++it) {
             RWOperation op;
             if (!ro_txn && idx >= write_thresh)
-                op.type = OpType::write;
+                op.type = OpType::inc;
             else
                 op.type = OpType::read;
             op.key = *it;
-            if (op.type == OpType::write)
-                op.value = op.key + 1;
+            //if (op.type == OpType::write)
+            //    op.value = op.key + 1;
             query.push_back(op);
             if (ro_txn && idx == (opspertrans/2))
                 query.emplace_back(OpType::read, 0);
