@@ -710,12 +710,7 @@ public:
         TXP_INCREMENT(txp_tco);
         if (!start_tid_)
             start_tid_ = _TID;
-#if LESSER_OPACITY
-        if (!any_nonopaque_ &&
-#else
-        if (
-#endif
-            !TransactionTid::try_check_opacity(start_tid_, v)
+        if (!TransactionTid::try_check_opacity(start_tid_, v)
             && state_ < s_committing) {
 #if LESSER_OPACITY
             (void)item;
@@ -735,12 +730,7 @@ public:
         assert(state_ <= s_committing_locked);
         if (!start_tid_)
             start_tid_ = _TID;
-#if LESSER_OPACITY
-        if (!any_nonopaque_ &&
-#else
-        if (
-#endif
-            !TransactionTid::try_check_opacity(start_tid_, v)
+        if (!TransactionTid::try_check_opacity(start_tid_, v)
             && state_ < s_committing) {
 #if LESSER_OPACITY
             any_nonopaque_ = true;
@@ -1055,7 +1045,12 @@ inline TransProxy& TransProxy::add_read(T rdata) {
 template <typename T>
 inline TransProxy& TransProxy::add_read_opaque(T rdata) {
     assert(!has_stash());
+#if LESSER_OPACITY
+    if (!t()->any_nonopaque_)
+        t()->check_opacity();
+#else
     t()->check_opacity();
+#endif
     if (!has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
@@ -1067,7 +1062,12 @@ inline TransProxy& TransProxy::observe(TVersion version, bool add_read) {
     assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_))
         t()->abort_because(item(), "locked", version.value());
+#if LESSER_OPACITY
+    if (!t()->any_nonopaque_)
+        t()->check_opacity(item(), version.value());
+#else
     t()->check_opacity(item(), version.value());
+#endif
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
@@ -1091,7 +1091,12 @@ inline TransProxy& TransProxy::observe(TCommutativeVersion version, bool add_rea
     assert(!has_stash());
     if (version.is_locked())
         t()->abort_because(item(), "locked", version.value());
+#if LESSER_OPACITY
+    if (!t()->any_nonopaque_)
+        t()->check_opacity(item(), version.value());
+#else
     t()->check_opacity(item(), version.value());
+#endif
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TCommutativeVersion>::pack(t()->buf_, std::move(version));
