@@ -245,6 +245,7 @@ bool Transaction::try_commit() {
 #if !CONSISTENCY_CHECK
     // commit immediately if read-only transaction with opacity
     if (!any_writes_ && !any_nonopaque_) {
+        TXP_INCREMENT(txp_readonly_optimized);
         stop(true, nullptr, 0);
         return true;
     }
@@ -377,6 +378,7 @@ void Transaction::print_stats() {
         unsigned long long txc_total_aborts = out.p(txp_total_aborts);
         unsigned long long txc_commit_aborts = out.p(txp_commit_time_aborts);
         unsigned long long txc_total_commits = txc_total_starts - txc_total_aborts;
+        unsigned long long txc_total_readonly_optimized = out.p(txp_readonly_optimized);
         fprintf(stderr, "$ %llu starts, %llu max read set, %llu commits",
                 txc_total_starts, out.p(txp_max_set), txc_total_commits);
         if (txc_total_aborts) {
@@ -389,9 +391,10 @@ void Transaction::print_stats() {
                         100.0 * (double) out.p(txp_commit_time_aborts) / out.p(txp_total_aborts));
         }
         unsigned long long txc_commit_attempts = txc_total_starts - (txc_total_aborts - txc_commit_aborts);
-        fprintf(stderr, "\n$ %llu commit attempts, %llu (%.3f%%) nonopaque\n",
+        fprintf(stderr, "\n$ %llu commit attempts, %llu (%.3f%%) nonopaque",
                 txc_commit_attempts, out.p(txp_commit_time_nonopaque),
                 100.0 * (double) out.p(txp_commit_time_nonopaque) / txc_commit_attempts);
+        fprintf(stderr, "\n$ %llu read-only txns optimized at commit time\n", txc_total_readonly_optimized);
     }
     if (txp_count >= txp_hco_abort)
         fprintf(stderr, "$ %llu HCO (%llu lock, %llu invalid, %llu aborts) out of %llu check attempts (%.3f%%)\n",

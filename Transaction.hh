@@ -151,6 +151,7 @@ enum txp {
     txp_total_starts,
     txp_commit_time_nonopaque,
     txp_commit_time_aborts,
+    txp_readonly_optimized,
     txp_max_set,
     txp_tco,
     txp_hco,
@@ -709,12 +710,16 @@ public:
         TXP_INCREMENT(txp_tco);
         if (!start_tid_)
             start_tid_ = _TID;
-        if (!TransactionTid::try_check_opacity(start_tid_, v)
+#if LESSER_OPACITY
+        if (!any_nonopaque_ &&
+#else
+        if (
+#endif
+            !TransactionTid::try_check_opacity(start_tid_, v)
             && state_ < s_committing) {
 #if LESSER_OPACITY
             (void)item;
-            if (!any_nonopaque_)
-                any_nonopaque_ = true;
+            any_nonopaque_ = true;
 #else
             hard_check_opacity(&item, v);
 #endif
@@ -730,11 +735,15 @@ public:
         assert(state_ <= s_committing_locked);
         if (!start_tid_)
             start_tid_ = _TID;
-        if (!TransactionTid::try_check_opacity(start_tid_, v)
+#if LESSER_OPACITY
+        if (!any_nonopaque_ &&
+#else
+        if (
+#endif
+            !TransactionTid::try_check_opacity(start_tid_, v)
             && state_ < s_committing) {
 #if LESSER_OPACITY
-            if (!any_nonopaque_)
-                any_nonopaque_ = true;
+            any_nonopaque_ = true;
 #else
             hard_check_opacity(nullptr, v);
 #endif
