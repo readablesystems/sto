@@ -904,6 +904,9 @@ struct SingleRW : public HotspotRW<DS> {
 template <int DS>
 void SingleRW<DS>::per_thread_workload_init(int thread_id) {
     StoSampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
+    StoSampling::StoZipfDistribution zd(thread_id, 0, ARRAY_SZ-1, zipf_skew);
+
+    bool uniform = (zipf_skew == 0.0);
 
     auto& thread_workload = this->workloads[thread_id];
 
@@ -911,7 +914,7 @@ void SingleRW<DS>::per_thread_workload_init(int thread_id) {
 
     for (int i = 0; i < trans_per_thread; ++i) {
         query_type query;
-        query.emplace_back(OpType::inc, ud.sample() % ARRAY_SZ);
+        query.emplace_back(OpType::inc, uniform ? ud.sample() % ARRAY_SZ : zd.sample());
         thread_workload.push_back(query);
     }
 
