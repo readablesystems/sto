@@ -121,12 +121,12 @@ enum txp {
     txp_commit_time_nonopaque,
     txp_commit_time_aborts,
     txp_max_set,
-    txp_tco,
     txp_hco,
     txp_hco_lock,
     txp_hco_invalid,
     txp_hco_abort,
     // STO_PROFILE_COUNTERS > 1 only
+    txp_tco,
     txp_total_n,
     txp_total_r,
     txp_total_w,
