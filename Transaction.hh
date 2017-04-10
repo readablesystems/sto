@@ -151,14 +151,15 @@ enum txp {
     txp_total_starts,
     txp_commit_time_nonopaque,
     txp_commit_time_aborts,
-    txp_readonly_optimized,
     txp_max_set,
-    txp_tco,
     txp_hco,
     txp_hco_lock,
     txp_hco_invalid,
     txp_hco_abort,
     // STO_PROFILE_COUNTERS > 1 only
+    txp_tco,
+    txp_readonly_optimized,
+    // STO_PROFILE_COUNTERS > 2
     txp_total_n,
     txp_total_r,
     txp_total_w,
@@ -176,6 +177,8 @@ enum txp {
     txp_count = 0
 #elif STO_PROFILE_COUNTERS == 1
     txp_count = txp_hco_abort + 1
+#elif STO_PROFILE_COUNTERS == 2
+    txp_count = txp_readonly_optimized + 1
 #else
     txp_count
 #endif
