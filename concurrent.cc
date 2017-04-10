@@ -439,6 +439,7 @@ bool runCheck = false;
 int nthreads = 4;
 int ntrans = 1000000;
 int opspertrans = 10;
+int opspertrans_ro = -1;
 int prepopulate = ARRAY_SZ;//ARRAY_SZ/10;
 double readonly_percent = 0.0;
 double write_percent = 0.5;
@@ -846,12 +847,14 @@ void Hotspot2RW<DS>::per_thread_workload_init(int thread_id) {
 
         std::unordered_set<StoSampling::index_t> req_keys;
 
+        int nops = ro_txn ? opspertrans_ro : opspertrans;
+
         while (1) {
             auto k = ud.sample() % ARRAY_SZ;
             if (k == 0)
                 continue;
             req_keys.insert(k);
-            if (req_keys.size() == (size_t)opspertrans)
+            if (req_keys.size() == (size_t)nops)
                 break;
         }
 
@@ -869,13 +872,13 @@ void Hotspot2RW<DS>::per_thread_workload_init(int thread_id) {
             //if (op.type == OpType::write)
             //    op.value = op.key + 1;
             query.push_back(op);
-            if (ro_txn && idx == (opspertrans/2))
+            if (ro_txn && idx == (nops/2))
                 query.emplace_back(OpType::read, 0);
             idx++;
         }
 
         assert((size_t)idx == req_keys.size());
-        assert(query.size() == (size_t)opspertrans + 1);
+        assert(query.size() == (size_t)nops + 1);
 
         //if (!ro_txn)
         //    query.emplace_back(OpType::write, 0, thread_id);
@@ -933,7 +936,8 @@ void ZipfRW<DS>::per_thread_workload_init(int thread_id) {
     for (int i = 0; i < trans_per_thread; ++i) {
         query_type query;
         bool read_only = ud.sample() < ro_threshold;
-        for (int j = 0; j < opspertrans; ++j) {
+        int nops = read_only ? opspertrans_ro : opspertrans;
+        for (int j = 0; j < nops; ++j) {
             if (read_only)
                 query.emplace_back(OpType::read, zd.sample());
             else {
@@ -1541,7 +1545,7 @@ struct {
 };
 
 enum {
-    opt_test = 1, opt_nrmyw, opt_check, opt_profile, opt_dump, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew
+    opt_test = 1, opt_nrmyw, opt_check, opt_profile, opt_dump, opt_nthreads, opt_ntrans, opt_opspertrans, opt_opspertrans_ro, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew
 };
 
 static const Clp_Option options[] = {
@@ -1552,6 +1556,7 @@ static const Clp_Option options[] = {
   { "nthreads", 'j', opt_nthreads, Clp_ValInt, Clp_Optional },
   { "ntrans", 0, opt_ntrans, Clp_ValInt, Clp_Optional },
   { "opspertrans", 0, opt_opspertrans, Clp_ValInt, Clp_Optional },
+  { "opspertrans_ro", 0, opt_opspertrans_ro, Clp_ValInt, Clp_Optional },
   { "writepercent", 0, opt_writepercent, Clp_ValDouble, Clp_Optional },
   { "readonlypercent", 0, opt_readonlypercent, Clp_ValDouble, Clp_Optional },
   { "blindrandwrites", 0, opt_blindrandwrites, 0, Clp_Negate },
@@ -1570,6 +1575,7 @@ Options:\n\
  --nthreads=NTHREADS (default %d)\n\
  --ntrans=NTRANS, how many total transactions to run (they'll be split between threads) (default %d)\n\
  --opspertrans=OPSPERTRANS, how many operations to run per transaction (default %d)\n\
+ --opspertrans_ro=OPRP, how many operations in read only transactions (default to opspertrans)\n\
  --writepercent=WRITEPERCENT, probability with which to do writes versus reads (default %f)\n\
  --readonlypercent=ROPERCENT, probability with which a transaction is read-only (default %f)\n\
  --blindrandwrites, do blind random writes for random tests. makes checking impossible\n\
@@ -1645,6 +1651,9 @@ int main(int argc, char *argv[]) {
     case opt_opspertrans:
       opspertrans = clp->val.i;
       break;
+    case opt_opspertrans_ro:
+      opspertrans_ro = clp->val.i;
+      break;
     case opt_writepercent:
       write_percent = clp->val.d;
       break;
@@ -1667,6 +1676,9 @@ int main(int argc, char *argv[]) {
       help(argv[0]);
     }
   }
+
+  if (opspertrans_ro == -1)
+    opspertrans_ro = opspertrans;
   Clp_DeleteParser(clp);
 
     if (seed)
