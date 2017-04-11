@@ -26,7 +26,7 @@ void profile(const std::string& name, std::function<void(void)> profilee) {
         assert(console > 0);
         assert(dup2(console, STDOUT_FILENO) != -1);
         assert(dup2(console, STDERR_FILENO) != -1);
-        exit(execl("/usr/bin/perf", "perf", "record", "-o", profile_name.c_str(), "-p", ss.str().c_str(), nullptr));
+        exit(execl("/usr/bin/perf", "perf", "record", "-g", "-o", profile_name.c_str(), "-p", ss.str().c_str(), nullptr));
     }
 
     profilee();
