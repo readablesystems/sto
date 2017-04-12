@@ -686,13 +686,14 @@ void HotspotRW<DS>::per_thread_workload_init(int thread_id) {
         bool ro_txn = r < readonly_ceil;
 
         std::unordered_set<StoSampling::index_t> req_keys;
+        int nops = ro_txn ? opspertrans_ro : opspertrans;
 
         while (1) {
             auto k = ud.sample() % ARRAY_SZ;
             if (k == 0)
                 continue;
             req_keys.insert(k);
-            if (req_keys.size() == (size_t)opspertrans)
+            if (req_keys.size() == (size_t)nops)
                 break;
         }
 
