@@ -110,7 +110,9 @@
 #define LESSER_OPACITY 0
 #endif
 
+#ifndef CONSISTENCY_CHECK
 #define CONSISTENCY_CHECK 0
+#endif
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
 

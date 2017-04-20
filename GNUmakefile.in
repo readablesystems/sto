@@ -75,6 +75,10 @@ ifeq ($(REUSE_TID),1)
 CXXFLAGS += -DOPACITY_REUSE_TID
 endif
 
+ifeq ($(GLOBAL_TID),1)
+CXXFLAGS += -DCONSISTENCY_CHECK=1
+endif
+
 # OPTFLAGS can change without rebuild
 OPTFLAGS := -W -Wall
 
