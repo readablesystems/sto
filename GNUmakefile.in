@@ -67,6 +67,10 @@ ifeq ($(TICTOC_COMPOUND),1)
 CXXFLAGS += -DTICTOC_IMPL_COMPOUND=1
 endif
 
+ifeq ($(GLOBAL_TID),1)
+CXXFLAGS += -DCONSISTENCY_CHECK=1
+endif
+
 # OPTFLAGS can change without rebuild
 OPTFLAGS := -W -Wall
 

@@ -451,6 +451,8 @@ bool blindRandomWrite = false;
 double zipf_skew = 1.0;
 bool profile = false;
 bool dump_trace = false;
+double input_time_limit = 30.0;
+unsigned long global_time_limit;
 
 bool stop = false; // global stop signal
 
@@ -756,6 +758,10 @@ void HotspotRW<DS>::run(int me) {
     container_type* a = this->a;
     container_type::thread_init(*a);
 
+    unsigned long time_limit = global_time_limit;
+    static constexpr size_t block_mask = 0xffff;
+
+    unsigned long start_tsc = read_tsc();
 
     auto &tw = workloads[me];
 
@@ -796,6 +802,13 @@ void HotspotRW<DS>::run(int me) {
                 }
             }
         } RETRY(true);
+
+        if (((txn_it - tw.begin()) & block_mask) == 0) {
+            auto time_elapsed = read_tsc() - start_tsc;
+            if (time_elapsed >= time_limit) {
+                break;
+            }
+        }
     }
 
 #if DEBUG_SKEW
@@ -1563,7 +1576,7 @@ struct {
 };
 
 enum {
-    opt_test = 1, opt_nrmyw, opt_check, opt_profile, opt_dump, opt_nthreads, opt_ntrans, opt_opspertrans, opt_opspertrans_ro, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew
+    opt_test = 1, opt_nrmyw, opt_check, opt_profile, opt_dump, opt_nthreads, opt_ntrans, opt_opspertrans, opt_opspertrans_ro, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew, opt_timelimit
 };
 
 static const Clp_Option options[] = {
@@ -1581,6 +1594,7 @@ static const Clp_Option options[] = {
   { "prepopulate", 0, opt_prepopulate, Clp_ValInt, Clp_Optional },
   { "seed", 's', opt_seed, Clp_ValUnsigned, 0 },
   { "skew", 0, opt_skew, Clp_ValDouble, Clp_Optional},
+  { "timelimit", 0, opt_timelimit, Clp_ValDouble, Clp_Optional}
 };
 
 static void help(const char *name) {
@@ -1599,8 +1613,9 @@ Options:\n\
  --blindrandwrites, do blind random writes for random tests. makes checking impossible\n\
  --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n\
  --seed=SEED\n\
- --skew=SKEW, skew parameter for zipfrw test type (default %f)\n",
-         name, nthreads, ntrans, opspertrans, write_percent, readonly_percent, prepopulate, zipf_skew);
+ --skew=SKEW, skew parameter for zipfrw test type (default %f)\n\
+ --timelimit=TL, (in seconds) limits the total time the benchmark would run (default %f)\n",
+         name, nthreads, ntrans, opspertrans, write_percent, readonly_percent, prepopulate, zipf_skew, input_time_limit);
   printf("\nTests:\n");
   size_t testidx = 0;
   for (size_t ti = 0; ti != sizeof(tests)/sizeof(tests[0]); ++ti)
@@ -1690,6 +1705,9 @@ int main(int argc, char *argv[]) {
     case opt_skew:
         zipf_skew = clp->val.d;
         break;
+    case opt_timelimit:
+        input_time_limit = clp->val.d;
+        break;
     default:
       help(argv[0]);
     }
@@ -1697,6 +1715,10 @@ int main(int argc, char *argv[]) {
 
   if (opspertrans_ro == -1)
     opspertrans_ro = opspertrans;
+    
+  global_time_limit = (unsigned long)(input_time_limit*BILLION*PROC_TSC_FREQ);
+  printf("global time limit=%lu\n", global_time_limit);
+
   Clp_DeleteParser(clp);
 
     if (seed)
