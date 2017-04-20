@@ -608,6 +608,8 @@ inline std::ostream& operator<<(std::ostream& os, const RWOperation& op) {
     os << "[";
     if (op.type == OpType::read) {
         os << "r,k=" << op.key;
+    } else if (op.type == OpType::inc) {
+        os << "i,i=" << op.key;
     } else {
         assert(op.type == OpType::write);
         os << "w,k=" << op.key << ",v=" << op.value;
@@ -704,12 +706,10 @@ void HotspotRW<DS>::per_thread_workload_init(int thread_id) {
         for (auto it = req_keys.begin(); it != req_keys.end(); ++it) {
             RWOperation op;
             if (!ro_txn && idx >= write_thresh)
-                op.type = OpType::write;
+                op.type = OpType::inc;
             else
                 op.type = OpType::read;
             op.key = *it;
-            if (op.type == OpType::write)
-                op.value = op.key + 1;
             query.push_back(op);
             idx++;
         }
@@ -717,7 +717,7 @@ void HotspotRW<DS>::per_thread_workload_init(int thread_id) {
         assert((size_t)idx == req_keys.size());
 
         if (!ro_txn)
-            query.emplace_back(OpType::write, 0, thread_id);
+            query.emplace_back(OpType::inc, 0);
 
         thread_workload.push_back(query);
     }
@@ -774,14 +774,16 @@ void HotspotRW<DS>::run(int me) {
                 switch (req.type) {
                 case OpType::read:
                     doRead(*a, req.key);
+                    a->transGet(req.key);
                     break;
                 case OpType::write:
-                    doWrite(*a, req.key, req.value);
+                    a->transPut(req.key, req.value);
                     break;
                 case OpType::inc: {
-                    value_type r = doRead(*a, req.key);
+                    value_type r = a->transGet(req.key);
                     ++r;
-                    doWrite(*a, req.key, r);}
+                    a->transPut(req.key, r);
+                    }
                     break;
                 default:
                     std::cerr << "unkown OpType: " << (int)req.type << std::endl;
