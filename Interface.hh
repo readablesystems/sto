@@ -29,14 +29,14 @@ public:
     typedef uint64_t type;
     typedef int64_t signed_type;
 
-    static constexpr type threadid_mask = type(0x1F);
-    static constexpr type lock_bit = type(0x20);
+    static constexpr type threadid_mask = type(0xFF);
+    static constexpr type lock_bit = type(0x100);
     // Used for data structures that don't use opacity. When they increment
     // a version they set the nonopaque_bit, forcing any opacity check to be
     // hard (checking the full read set).
-    static constexpr type nonopaque_bit = type(0x40);
-    static constexpr type user_bit = type(0x80);
-    static constexpr type increment_value = type(0x400);
+    static constexpr type nonopaque_bit = type(0x200);
+    static constexpr type user_bit = type(0x400);
+    static constexpr type increment_value = type(0x800);
 
     // TODO: probably remove these once RBTree stops referencing them.
     static void lock_read(type& v) {
