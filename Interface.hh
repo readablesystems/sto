@@ -19,7 +19,7 @@ public:
         return the_id;
     }
     static void set_id(int id) {
-        assert(id >= 0 && id < 32);
+        assert(id >= 0 && id < 256);
         the_id = id;
     }
 };
