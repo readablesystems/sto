@@ -18,10 +18,7 @@ public:
     static int id() {
         return the_id;
     }
-    static void set_id(int id) {
-        assert(id >= 0 && id < 256);
-        the_id = id;
-    }
+    static void set_id(int id);
 };
 
 class TransactionTid {
@@ -580,3 +577,9 @@ public:
 };
 
 typedef TObject Shared;
+
+inline void TThread::set_id(int id)
+{
+    assert(id >= 0 && id <= TransactionTid::threadid_mask);
+    the_id = id;
+}
