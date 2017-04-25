@@ -37,14 +37,37 @@ static T read_atomic(const T* v, TransProxy item, const V& version, bool add_rea
 }
 template <typename T, typename V>
 static T read_nonatomic(const T* v, TransProxy item, const V& version, bool add_read) {
-#if STO_ABORT_ON_LOCKED
+    while (1) {
+        V v0 = version;
+        fence();
+
+	if (v0.is_locked()) {
+	    continue;
+	}
+
+        T result = *v;
+        fence();
+        V v1 = version;
+
+        if (v0 == v1) {
+            item.observe(v1, add_read);
+            return result;
+        }
+        relax_fence();
+    }
+    //item.observe(version, add_read);
+   // fence();
+    //return *v;
+
+/*#if STO_ABORT_ON_LOCKED
     item.observe(version, add_read);
     fence();
     return *v;
 #else
     return read_wait_nonatomic(v, item, version, add_read);
-#endif
+#endif*/
 }
+
 template <typename T, typename V>
 static T read_wait_atomic(const T* v, TransProxy item, const V& version, bool add_read) {
     unsigned n = 0;

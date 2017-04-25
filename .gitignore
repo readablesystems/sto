@@ -42,4 +42,8 @@
 /unit-tvector
 /unit-tvector-nopred
 /unit-mbta
+/unit-swisstarray
+/unit-swisstgeneric
+/perf.data
+/perf.data.old
 .ycm_*

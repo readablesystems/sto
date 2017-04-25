@@ -9,6 +9,7 @@
 #include <climits>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <fstream>
 
 #include "TArray.hh"
 #include "TGeneric.hh"
@@ -20,6 +21,8 @@
 #include "IntStr.hh"
 #include "clp.h"
 #include "randgen.hh"
+#include "SwissTArray.hh"
+#include "SwissTGeneric.hh"
 #include "sampling.hh"
 #include "SystemProfiler.hh"
 
@@ -41,6 +44,8 @@
 #define USE_MASSTREE_STR 8
 #define USE_HASHTABLE_STR 9
 #define USE_ARRAY_NONOPAQUE 10
+#define USE_SWISSARRAY 11
+#define USE_SWISSGENERICARRAY 12
 
 // set this to USE_DATASTRUCTUREYOUWANT
 #define DATA_STRUCTURE USE_HASHTABLE
@@ -174,6 +179,27 @@ private:
     type v_;
 };
 
+template <> struct Container<USE_SWISSARRAY> {
+    typedef SwissTArray<value_type, ARRAY_SZ, TNonopaqueWrapped> type;
+    typedef int index_type;
+    static constexpr bool has_delete = false;
+    value_type nontrans_get(index_type key) {
+        return v_.nontrans_get(key);
+    }
+    value_type transGet(index_type key) {
+        return v_.transGet(key);
+    }
+    void transPut(index_type key, value_type value) {
+        v_.transPut(key, value);
+    }
+    static void init() {
+    }
+    static void thread_init(Container<USE_SWISSARRAY>&) {
+    }
+private:
+    type v_;
+};
+
 template <> struct Container<USE_ARRAY_NONOPAQUE> {
     typedef TArray<value_type, ARRAY_SZ, TNonopaqueWrapped> type;
     typedef int index_type;
@@ -269,6 +295,40 @@ private:
     TGeneric stm_;
     value_type a_[ARRAY_SZ];
 };
+
+template <> struct Container<USE_SWISSGENERICARRAY> {
+    typedef int index_type;
+    static constexpr bool has_delete = false;
+    value_type nontrans_get(index_type key) {
+        return a_[key];
+    }
+    value_type transGet(index_type key) {
+        assert(key >= 0 && key < ARRAY_SZ);
+	//std::ofstream outfile;
+	//outfile.open(std::to_string(me), std::ios_base::app);
+	//outfile << "Get: Base = [" << (void*)&a_[0] << "], key = [" << key << "]." << std::endl;
+	//std::cout << "Base = [" << (void*)&a_[0] << "]" << std::endl;
+	//outfile.close();
+        return stm_.read(&a_[key]);
+    }
+    void transPut(index_type key, value_type value) {
+        //std::ofstream outfile;
+        //outfile.open(std::to_string(me), std::ios_base::app);
+        //outfile << "Get: Base = [" << (void*)&a_[0] << "], key = [" << key << "]." << std::endl;
+        //outfile.close();
+        assert(key >= 0 && key < ARRAY_SZ);
+        stm_.write(&a_[key], value);
+    }
+    static void init() {
+    }
+    static void thread_init(Container<USE_SWISSGENERICARRAY>&) {
+    }
+private:
+    SwissTNonopaqueGeneric stm_;
+    value_type a_[ARRAY_SZ];
+};
+
+
 
 template <> struct Container<USE_MASSTREE> {
 #if STRING_VALUES && UNBOXED_STRINGS
@@ -1103,6 +1163,7 @@ template <int DS, bool do_delete> bool RandomRWs<DS, do_delete>::check() {
     assert(old->nontrans_get(i) == ch->nontrans_get(i));
   }
   delete ch;
+  std::cout << "Checked" << std::endl;
   return true;
 }
 
@@ -1285,15 +1346,27 @@ template <int DS> void InterferingRWs<DS>::run(int me) {
   TThread::set_id(me);
   container_type* a = this->a;
   container_type::thread_init(*a);
+  int N = ntrans / nthreads;
 
+  for (int j = 0; j < N; j++) {
   TRANSACTION {
     for (int i = 0; i < ARRAY_SZ; ++i) {
       if ((i % nthreads) >= me) {
         auto cur = a->transGet(i);
-        a->transPut(i, val(unval(cur)+1));
+        //std::ofstream outfile;
+        //outfile.open(std::to_string(me), std::ios_base::app);
+        //outfile << "Transaction on thread [" << me << "] writes array  [" << i << "]" << std::endl;
+        //outfile.close(); 
+	a->transPut(i, val(unval(cur)+1));
       }
-    }
+   }  
+      //std::ofstream outfile;
+      //outfile.open(std::to_string(me), std::ios_base::app);
+      //outfile << "Transaction on thread [" << me << "] starts commit, number = [" << j << "]" << std::endl;
+      //outfile.close();
+ 
   } RETRY(true);
+  }
 }
 
 template <int DS> bool InterferingRWs<DS>::check() {
@@ -1420,6 +1493,7 @@ struct TesterPair {
 
 void* runfunc(void* x) {
     TesterPair* tp = (TesterPair*) x;
+    std::cout << "runfunc: id = " << tp->me << std::endl;
     tp->t->run(tp->me);
     return nullptr;
 }
@@ -1459,7 +1533,9 @@ void print_time(double time) {
     {name, desc, 7, new type<7, ## __VA_ARGS__>},     \
     {name, desc, 8, new type<8, ## __VA_ARGS__>},     \
     {name, desc, 9, new type<9, ## __VA_ARGS__>},     \
-    {name, desc, 10, new type<10, ## __VA_ARGS__>}
+    {name, desc, 10, new type<10, ## __VA_ARGS__>},   \
+    {name, desc, 11, new type<11, ## __VA_ARGS__>},   \
+    {name, desc, 12, new type<12, ## __VA_ARGS__>}
 
 struct Test {
     const char* name;
@@ -1495,7 +1571,9 @@ struct {
     {"tgeneric", USE_TGENERICARRAY},
     {"queue", USE_QUEUE},
     {"vector", USE_VECTOR},
-    {"tvector", USE_TVECTOR}
+    {"tvector", USE_TVECTOR},
+    {"swissarray", USE_SWISSARRAY},
+    {"swissgeneric", USE_SWISSGENERICARRAY}
 };
 
 enum {
@@ -1733,7 +1811,7 @@ int main(int argc, char *argv[]) {
           sep = ", ";
       }
       if (txp_count > txp_total_aborts) {
-          printf("%stotal_aborts: %llu (%llu aborts at commit time)\n", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+          printf("%stotal_aborts: %llu (%llu aborts at commit time, %llu in observe, %llus due to w/w conflicts), voluntary context switches: %llu\n", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts), tc.p(txp_observe_lock_aborts), tc.p(txp_wwc_aborts), tc.p(txp_csws));
           sep = ", ";
       }
       if (*sep)
@@ -1749,4 +1827,3 @@ int main(int argc, char *argv[]) {
   }
 #endif
 }
-

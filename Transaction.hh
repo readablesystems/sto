@@ -11,9 +11,11 @@
 #include <unistd.h>
 #include <iostream>
 #include <sstream>
+#include <fstream>
+#include <setjmp.h>
 
 #ifndef STO_PROFILE_COUNTERS
-#define STO_PROFILE_COUNTERS 0
+#define STO_PROFILE_COUNTERS 1
 #endif
 #ifndef STO_TSC_PROFILE
 #define STO_TSC_PROFILE 0
@@ -40,7 +42,7 @@
 #define STO_DEBUG_ABORTS 0
 #endif
 #ifndef STO_DEBUG_ABORTS_FRACTION
-#define STO_DEBUG_ABORTS_FRACTION 0.0001
+#define STO_DEBUG_ABORTS_FRACTION 1
 #endif
 
 #ifndef STO_SORT_WRITESET
@@ -93,7 +95,7 @@
 #define MAX_THREADS 32
 
 // TRANSACTION macros that can be used to wrap transactional code
-#define TRANSACTION                               \
+/*#define TRANSACTION                               \
     do {                                          \
         TransactionLoopGuard __txn_guard;         \
         while (1) {                               \
@@ -107,6 +109,20 @@
             if (!(retry))                         \
                 throw Transaction::Abort();       \
         }                                         \
+    } while (0)*/
+
+#define TRANSACTION                               \
+    do {                                          \
+        TransactionLoopGuard __txn_guard;         \
+        setjmp(*__txn_guard.get_jmp_buf());       \
+        while (1) {                               \
+            __txn_guard.start();                  
+#define RETRY(retry)                              \
+            if (__txn_guard.try_commit())         \
+                break;                            \
+            if (!(retry))                         \
+                throw Transaction::Abort();       \
+        }                                         \
     } while (0)
 
 // transaction performance counters
@@ -116,7 +132,11 @@ enum txp {
     txp_total_starts,
     txp_commit_time_nonopaque,
     txp_commit_time_aborts,
+    txp_observe_lock_aborts,
+    txp_wwc_aborts,
+    txp_aborted_by_others,
     txp_max_set,
+    txp_csws,
     txp_tco,
     txp_hco,
     txp_hco_lock,
@@ -286,7 +306,7 @@ class Transaction {
 public:
     static constexpr unsigned tset_initial_capacity = 512;
 
-    static constexpr unsigned hash_size = 1024;
+    static constexpr unsigned hash_size = 32768;
     static constexpr unsigned hash_step = 5;
     using epoch_type = TRcuSet::epoch_type;
     using signed_epoch_type = TRcuSet::signed_epoch_type;
@@ -401,6 +421,8 @@ private:
 
     ~Transaction();
 
+    void callCMstart();
+
     // reset data so we can be reused for another transaction
     void start() {
         threadinfo_t& thr = tinfo[TThread::id()];
@@ -434,14 +456,103 @@ private:
 #endif
         TXP_INCREMENT(txp_total_starts);
         state_ = s_in_progress;
+        callCMstart();
     }
 
 #if TRANSACTION_HASHTABLE
-    static int hash(const TObject* obj, void* key) {
-        auto n = reinterpret_cast<uintptr_t>(key) + 0x4000000;
-        n += -uintptr_t(n < 0x8000000) & (reinterpret_cast<uintptr_t>(obj) >> 4);
+    static int hash0(const TObject* obj, void* key) {
+        //auto n = reinterpret_cast<uintptr_t>(key) + 0x4000000;
+        //n += -uintptr_t(n < 0x8000000) & (reinterpret_cast<uintptr_t>(obj) >> 4);
         //2654435761
-        return (n + (n >> 16) * 9) % hash_size;
+	return (reinterpret_cast<uintptr_t>(key) >> 2) % hash_size;
+        //return (n + (n >> 16) * 9) % hash_size;
+    }
+
+    /*template <class T>
+    static std::size_t hash_value_unsigned(T val)
+    {
+         const unsigned int size_t_bits = std::numeric_limits<std::size_t>::digits;
+         // ceiling(std::numeric_limits<T>::digits / size_t_bits) - 1
+         const int length = (std::numeric_limits<T>::digits - 1)
+             / static_cast<int>(size_t_bits);
+
+         std::size_t seed = 0;
+
+         // Hopefully, this loop can be unrolled.
+         for(unsigned int i = length * size_t_bits; i > 0; i -= size_t_bits)
+         {
+             seed ^= (std::size_t) (val >> i) + (seed<<6) + (seed>>2);
+         }
+         seed ^= (std::size_t) val + (seed<<6) + (seed>>2);
+
+         return seed;
+    }*/
+
+static unsigned long hash_value_unsigned(unsigned long key)
+{
+  key = (~key) + (key << 21); // key = (key << 21) - key - 1;
+  key = key ^ (key >> 24);
+  key = (key + (key << 3)) + (key << 8); // key * 265
+  key = key ^ (key >> 14);
+  key = (key + (key << 2)) + (key << 4); // key * 21
+  key = key ^ (key >> 28);
+  key = key + (key << 31);
+  return key;
+}
+
+/*static uint64_t hash_value_unsigned(uint64_t x) {
+    x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+    x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
+    x = x ^ (x >> 31);
+    return x;
+}*/
+
+    template <typename SizeT>
+    static void hash_combine_impl1(SizeT& seed, SizeT value)
+    {
+        seed ^= value + 0x9e3779b9 + (seed<<6) + (seed>>2);
+    }
+
+    static void hash_combine_impl2(uint64_t& h,
+            uint64_t k)
+    {
+        const uint64_t m = 0xc6a4a7935bd1e995ULL;
+        const int r = 47;
+
+        k *= m;
+        k ^= k >> r;
+        k *= m;
+
+        h ^= k;
+        h *= m;
+
+        // Completely arbitrary number, to prevent 0's
+        // from hashing to 0.
+        h += 0xe6546b64;
+    }
+
+    template <class T> 
+    static void hash_combine_impl3(std::size_t& seed, const T& v)
+    {
+        const std::size_t kMul = 0x9ddfea08eb382d69ULL;
+        std::size_t a = (v ^ seed) * kMul;
+        a ^= (a >> 47);
+        std::size_t b = (seed ^ a) * kMul;
+        b ^= (b >> 47);
+        seed = b * kMul;
+    }
+
+    static void hash_combine(std::size_t& seed, uintptr_t const& v)
+    {
+        return hash_combine_impl3(seed, hash_value_unsigned(v));
+    }
+
+    static int hash(const TObject* obj, void* key) {
+	return hash0(obj, key);
+        /*std::size_t seed = 0;
+        hash_combine(seed, reinterpret_cast<uintptr_t>(obj));
+        hash_combine(seed, reinterpret_cast<uintptr_t>(key));
+        return seed % hash_size;*/
     }
 #endif
 
@@ -588,7 +699,21 @@ public:
 
     void abort() {
         silent_abort();
-        throw Abort();
+        //throw Abort();
+        longjmp(env, 1);
+    }
+
+    void wwc_abort() {
+        // FIXME: Add a new state 
+        state_ = s_committing_locked;
+	//std::ofstream outfile;
+	//outfile.open(std::to_string(this->threadid()), std::ios_base::app);
+	//outfile << "Transaction [" << (void*)this << "] on thread [" << this->threadid() << "]: before silent_abort" << std::endl;
+        silent_abort();
+	//outfile << "Transaction [" << (void*)this << "] on thread [" << this->threadid() << "]: after silent_abort" << std::endl;
+	//outfile.close();
+        //throw Abort();
+       longjmp(env, 1);
     }
 
     bool try_commit();
@@ -731,12 +856,25 @@ public:
         lrng_state_ = state;
     }
 
+    bool is_restarted() {
+        return restarted;
+    }
+  
+    void set_restarted(bool r) {
+        restarted = r;
+    }
+
+    jmp_buf *get_jmp_buf() {
+        return &env;
+    }
+
 private:
     enum {
         s_in_progress = 0, s_opacity_check = 1, s_committing = 2,
         s_committing_locked = 3, s_aborted = 4, s_committed = 5
     };
 
+    jmp_buf env;
     int threadid_;
     uint16_t hash_base_;
     uint16_t first_write_;
@@ -745,6 +883,7 @@ private:
     bool any_nonopaque_;
     bool may_duplicate_items_;
     bool is_test_;
+    bool restarted;
     TransItem* tset_next_;
     unsigned tset_size_;
     mutable tid_type start_tid_;
@@ -815,6 +954,11 @@ public:
     static void abort() {
         always_assert(in_progress());
         TThread::txn->abort();
+    }
+
+    static void wwc_abort() {
+        always_assert(in_progress());
+        TThread::txn->wwc_abort();
     }
 
     static void silent_abort() {
@@ -909,6 +1053,9 @@ public:
         use();
         return t_.try_commit();
     }
+    Transaction &get_tx() {
+        return t_;
+    }
 private:
     Transaction t_;
     Transaction* base_;
@@ -934,7 +1081,13 @@ class TransactionGuard {
 class TransactionLoopGuard {
   public:
     TransactionLoopGuard() {
+        Transaction* t = Sto::transaction();
+        t->set_restarted(false);
+        //std::ostringstream buf;
+	//buf << "Thread [" << TThread::id() << "] starts a new transaction" << std::endl;
+        //std::cerr << buf.str();
     }
+
     ~TransactionLoopGuard() {
         if (TThread::txn->in_progress())
             TThread::txn->silent_abort();
@@ -944,6 +1097,9 @@ class TransactionLoopGuard {
     }
     bool try_commit() {
         return TThread::txn->try_commit();
+    }
+    jmp_buf *get_jmp_buf() {
+        return TThread::txn->get_jmp_buf();
     }
 };
 
@@ -975,8 +1131,10 @@ inline TransProxy& TransProxy::add_read_opaque(T rdata) {
 
 inline TransProxy& TransProxy::observe(TVersion version, bool add_read) {
     assert(!has_stash());
-    if (version.is_locked_elsewhere(t()->threadid_))
+    if (version.is_locked_elsewhere(t()->threadid_)) {
+        TXP_INCREMENT(txp_observe_lock_aborts);
         t()->abort_because(item(), "locked", version.value());
+    }
     t()->check_opacity(item(), version.value());
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
@@ -987,8 +1145,10 @@ inline TransProxy& TransProxy::observe(TVersion version, bool add_read) {
 
 inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read) {
     assert(!has_stash());
-    if (version.is_locked_elsewhere(t()->threadid_))
+    if (version.is_locked_elsewhere(t()->threadid_)) {
+        TXP_INCREMENT(txp_observe_lock_aborts);
         t()->abort_because(item(), "locked", version.value());
+    }
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
@@ -999,8 +1159,10 @@ inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read)
 
 inline TransProxy& TransProxy::observe(TCommutativeVersion version, bool add_read) {
     assert(!has_stash());
-    if (version.is_locked())
+    if (version.is_locked()) {
+        TXP_INCREMENT(txp_observe_lock_aborts);
         t()->abort_because(item(), "locked", version.value());
+    }
     t()->check_opacity(item(), version.value());
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);

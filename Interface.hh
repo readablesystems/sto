@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include <iostream>
+#include <bitset>
 
 #include "config.h"
 #include "compiler.hh"
@@ -203,6 +204,7 @@ public:
     }
 
     static void print(type v, std::ostream& w) {
+        w << "Binary: " << std::bitset<64> (v) << std::endl;
         auto f = w.flags();
         w << std::hex << (v & ~(increment_value - 1));
         v &= increment_value - 1;
@@ -290,6 +292,9 @@ public:
     }
     TVersion operator|(TVersion x) const {
         return TVersion(v_ | x.v_);
+    }
+    type operator&(TransactionTid::type x) const {
+        return (v_ & x);
     }
 
     void set_version(TVersion new_v) {
@@ -412,6 +417,9 @@ public:
     }
     TNonopaqueVersion operator|(TNonopaqueVersion x) const {
         return TNonopaqueVersion(v_ | x.v_);
+    }
+    type operator&(TransactionTid::type x) const {
+        return (v_ & x);
     }
 
     void set_version(TNonopaqueVersion new_v) {

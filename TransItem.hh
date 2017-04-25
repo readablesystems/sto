@@ -6,6 +6,7 @@
 #include "Interface.hh"
 #include "Packer.hh"
 #include "compiler.hh"
+#include "WriteLock.hh"
 
 class TransProxy;
 
@@ -274,6 +275,19 @@ class TransProxy {
         return *this;
     }
 
+    
+    template <typename T>
+    inline TransProxy& add_swiss_write(const T& wdata, WriteLock& wlock);
+    template <typename T>
+    inline TransProxy& add_swiss_write(T&& wdata, WriteLock& wlock);
+    template <typename T, typename... Args>
+    inline TransProxy& add_swiss_write(Args&&... wdata, WriteLock& lock);
+    // What is the use of clear_write?
+    //inline TransProxy& clear_write() {
+    //    item().__rm_flags(TransItem::write_bit);
+    //    return *this;
+    //}
+
     template <typename T>
     inline TransProxy& set_stash(T sdata);
     inline TransProxy& clear_stash() {
@@ -370,6 +384,7 @@ class TransProxy {
     inline TransItem& item() const {
         return *item_;
     }
+    
 
 private:
     Transaction* t_;

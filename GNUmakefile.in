@@ -79,7 +79,7 @@ OPTFLAGS += -g -pg -fno-inline
 endif
 
 PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter $(UNIT_PROGRAMS)
-UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric unit-rcu unit-tvector unit-tvector-nopred unit-mbta unit-sampling unit-opacity
+UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric unit-rcu unit-tvector unit-tvector-nopred unit-mbta unit-sampling unit-opacity unit-swisstarray unit-swisstgeneric
 
 all: $(PROGRAMS)
 
@@ -103,7 +103,7 @@ MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 	$(MASSTREEDIR)/checkpoint.o \
 	$(MASSTREEDIR)/string_slice.o
 
-STO_OBJS = Packer.o Transaction.o TRcu.o MassTrans.o clp.o $(LIBOBJS)
+STO_OBJS = Packer.o Transaction.o TRcu.o MassTrans.o clp.o ContentionManager.o $(LIBOBJS)
 MSTO_OBJS = $(STO_OBJS) $(MASSTREE_OBJS)
 STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
 MSTO_DEPS = $(MSTO_OBJS) $(MASSTREEDIR)/libjson.a
@@ -154,7 +154,10 @@ unit-tvector: unit-tvector.o $(STO_DEPS)
 unit-tvector-nopred: unit-tvector-nopred.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-unit-mbta: unit-mbta.o $(STO_DEPS)
+unit-swisstarray: unit-swisstarray.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-swisstgeneric: unit-swisstgeneric.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-sampling: unit-sampling.o $(STO_DEPS)
