@@ -163,7 +163,7 @@ public:
         return t_ >> ts_shift;
     }
 
-    void set_timestamp(type new_ts, type flags) {
+    void set_timestamp_locked(type new_ts, type flags) {
         assert(is_locked_here());
         new_ts = (new_ts << ts_shift) | lock_bit | TThread::id();
         release_fence();
@@ -175,7 +175,7 @@ public:
         release_fence();
         t_ = new_ts | flags;
     }
-    void set_read_timestamp(type new_ts, type flags) {
+    void set_timestamp(type new_ts, type flags) {
         new_ts <<= ts_shift;
         release_fence();
         t_ = new_ts | flags;
@@ -183,18 +183,18 @@ public:
 
     static bool validate_timestamps(RawTid& tuple_wts, RawTid& tuple_rts, RawTid read_wts, RawTid read_rts, type commit_ts) {
         while (1) {
-            auto t_wts = tuple_wts;
-            acquire_fence();
-            auto t_rts = tuple_rts;
-            acquire_fence();
             if (read_rts.timestamp() >= commit_ts)
                 return true;
             else {
+                auto t_wts = tuple_wts;
+                acquire_fence();
+                auto t_rts = tuple_rts;
+                acquire_fence();
                 if (t_wts.timestamp() != read_wts.timestamp()
-                    || ((t_rts.timestamp() < commit_ts) && t_wts.is_locked_elsewhere()))
+                    || ((t_rts.timestamp() < commit_ts) && t_rts.is_locked_elsewhere()))
                     return false;
                 if (t_rts.timestamp() < commit_ts) {
-                    type v = commit_ts << ts_shift;
+                    type v = commit_ts << ts_shift | (t_rts.t_ & lockable_mask);
                     if (bool_cmpxchg(&tuple_rts.t_, t_rts.t_, v))
                         return true;
                 } else {
@@ -205,15 +205,15 @@ public:
     }
 
     static bool validate_timestamps_noext(const RawTid& tuple_wts, const RawTid& tuple_rts, RawTid read_wts, RawTid read_rts, type commit_ts) {
-        auto t_wts = tuple_wts;
-        acquire_fence();
-        auto t_rts = tuple_rts;
-        acquire_fence();
         if (read_rts.timestamp() >= commit_ts)
             return true;
         else {
+            auto t_wts = tuple_wts;
+            acquire_fence();
+            auto t_rts = tuple_rts;
+            acquire_fence();
             if (t_wts.timestamp() != read_wts.timestamp()
-                || ((t_rts.timestamp() < commit_ts) && t_wts.is_locked_elsewhere()))
+                || ((t_rts.timestamp() < commit_ts) && t_rts.is_locked_elsewhere()))
                 return false;
             else
                 return true;
@@ -488,23 +488,23 @@ bool TicTocVersion::operator!=(const TicTocVersion& x) const {
     return ((wts_ != x.wts_) || (rts_ != x.rts_));
 }
 TicTocVersion& TicTocVersion::operator=(const TicTocVersion& rhs) {
-    wts_ = rhs.wts_;
-    fence(); // XXX the correct fence?
     rts_ = rhs.rts_;
+    fence(); // XXX the correct fence?
+    wts_ = rhs.wts_;
     return *this;
 }
 
 LockableTid& TicTocVersion::get_lockable() {
-    return wts_;
+    return rts_;
 }
 const LockableTid& TicTocVersion::get_lockable() const {
-    return wts_;
+    return rts_;
 }
 
 TicTocVersion TicTocVersion::unlocked() const {
     auto ts = *this;
     acquire_fence();
-    ts.wts_ = ts.wts_.unlocked();
+    ts.rts_ = ts.rts_.unlocked();
     return ts;
 }
 
@@ -516,12 +516,12 @@ TicTocVersion::type TicTocVersion::write_timestamp() const {
 }
 
 void TicTocVersion::set_timestamps(type commit_ts, type flags) {
+    rts_.set_timestamp_locked(commit_ts, flags);
     wts_.set_timestamp(commit_ts, flags);
-    rts_.set_read_timestamp(commit_ts, flags);
 }
 void TicTocVersion::set_timestamps_unlock(type commit_ts, type flags) {
-    rts_.set_read_timestamp(commit_ts, flags);
-    wts_.set_timestamp_unlock(commit_ts, flags);
+    wts_.set_timestamp(commit_ts, flags);
+    rts_.set_timestamp_unlock(commit_ts, flags);
 }
 bool TicTocVersion::validate_timestamps(const TicTocVersion& old_tss, type commit_ts) {
     return RawTid::validate_timestamps(wts_, rts_, old_tss.wts_, old_tss.rts_, commit_ts);
