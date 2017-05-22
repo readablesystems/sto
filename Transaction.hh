@@ -95,7 +95,7 @@
 #define MAX_THREADS 32
 
 // TRANSACTION macros that can be used to wrap transactional code
-/*#define TRANSACTION                               \
+#define TRANSACTION                               \
     do {                                          \
         TransactionLoopGuard __txn_guard;         \
         while (1) {                               \
@@ -109,9 +109,9 @@
             if (!(retry))                         \
                 throw Transaction::Abort();       \
         }                                         \
-    } while (0)*/
+    } while (0)
 
-#define TRANSACTION                               \
+/*#define TRANSACTION                               \
     do {                                          \
         TransactionLoopGuard __txn_guard;         \
         setjmp(*__txn_guard.get_jmp_buf());       \
@@ -123,7 +123,7 @@
             if (!(retry))                         \
                 throw Transaction::Abort();       \
         }                                         \
-    } while (0)
+    } while (0)*/
 
 // transaction performance counters
 enum txp {
@@ -703,8 +703,8 @@ public:
 
     void abort() {
         silent_abort();
-        //throw Abort();
-        longjmp(env, 1);
+        throw Abort();
+        //longjmp(env, 1);
     }
 
     void wwc_abort() {

@@ -51,7 +51,7 @@
 #define DATA_STRUCTURE USE_HASHTABLE
 
 // if true, then all threads perform non-conflicting operations
-#define NON_CONFLICTING 1
+#define NON_CONFLICTING 0
 
 // if true, each operation of a transaction will act on a different slot
 #define ALL_UNIQUE_SLOTS 0
