@@ -12,7 +12,7 @@ template <template <typename> class W = TOpaqueWrapped>
 class SwissTBasicGeneric : public TObject {
 public:
     typedef typename W<int>::version_type version_type;
-    static constexpr unsigned table_size = 1 << 15;
+    static constexpr unsigned table_size = 1 << 23;
 
     template <typename T>
     T read(T* word, int index) {
@@ -33,7 +33,7 @@ public:
         static_assert(mass::is_trivially_copyable<T>::value, "T nontrivial");
 	//struct rusage ru1, ru2;
         //getrusage(RUSAGE_THREAD, &ru1);
-        Sto::item(this, word).add_swiss_write(T(value), wlock(word), index).assign_flags(sizeof(T) << TransItem::userf_shift);
+        Sto::item(this, word).add_swiss_write(T(value), wlock(word, index), index).assign_flags(sizeof(T) << TransItem::userf_shift);
         //getrusage(RUSAGE_THREAD, &ru2);
         //long local_csws = ru2.ru_nvcsw - ru1.ru_nvcsw;
         //TXP_ACCOUNT(txp_csws, local_csws);
@@ -83,7 +83,18 @@ private:
 #endif
     }
 
-     inline WriteLock& wlock(void* k) {
+     inline WriteLock& wlock(void* k, int index) {
+#ifdef __x86_64__
+        //std::stringstream msg;
+	//msg << "Array index = [" << index << "]. Array address = [" << k << "]. Array address shifted = [" << (reinterpret_cast<uintptr_t>(k) >> 5) << "]. Array address mod = " << ((reinterpret_cast<uintptr_t>(k) >> 5) % table_size) << "]\n";
+        //std::cout << msg.str(); 
+        return wlock_table_[(reinterpret_cast<uintptr_t>(k) >> 5) % table_size];
+#else /* __i386__ */
+	return wlock_table_[(reinterpret_cast<uintptr_t>(k) >> 4) % table_size];
+#endif
+    }
+
+      inline WriteLock& wlock(void* k) {
 #ifdef __x86_64__
         return wlock_table_[(reinterpret_cast<uintptr_t>(k) >> 5) % table_size];
 #else /* __i386__ */
@@ -91,7 +102,7 @@ private:
 #endif
     }
 
-   
+  
 };
 
 typedef SwissTBasicGeneric<TOpaqueWrapped> SwissTGeneric;

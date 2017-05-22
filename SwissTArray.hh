@@ -297,6 +297,9 @@ inline TransProxy& TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock,
 		  //outfile << "Transaction [" << (void*)t() << "] on thread [" << t()->threadid() << "] abort for address [" << item().template key<void*>() << "]" << std::endl;
 		  //outfile.close();
 		//}
+                //std::stringstream msg;
+                //msg << "Thread " << (t()->threadid()) << " is aborting for index " << index << ". Owner thread is " << (wlock & TransactionTid::threadid_mask) << ". Lock address = [" << &wlock <<  "].\n";
+                //std::cout << msg.str();
                 Sto::abort();
             } else {
 		relax_fence();
@@ -306,7 +309,7 @@ inline TransProxy& TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock,
 
         if (wlock.try_lock()){
             //std::stringstream msg;
-            //msg << "Thread " << (t()->threadid()) << " acquires lock for index " << index << "\n";
+            //msg << "Thread " << (t()->threadid()) << " acquires lock for index " << index << ", lock address = [" << &wlock  << "].\n";
             //std::cout << msg.str();
             break;
         }

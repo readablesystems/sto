@@ -28,7 +28,7 @@ bool ContentionManager::should_abort(Transaction* tx, WriteLock wlock, bool& abo
     if (timestamp[owner_threadid] < timestamp[threadid]) {
         if (aborted[owner_threadid] == 0) {
            //std::stringstream msg;
-           //msg << "Thread " << (threadid / 4) << " is aborting for index " << index << ". Owner thread is " << (owner_threadid / 4) << "\n";
+           //msg << "Thread " << (threadid / 4) << " is aborting for index " << index << ". Owner thread is " << (owner_threadid / 4) << ". Lock address = [" << &wlock <<  "].\n";
            //std::cout << msg.str();
            return true; 
         } else {
