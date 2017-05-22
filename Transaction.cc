@@ -5,6 +5,7 @@
 #include <fstream>
 
 #include <sys/resource.h>
+#include <sys/time.h>
 
 Transaction::testing_type Transaction::testing;
 threadinfo_t Transaction::tinfo[MAX_THREADS];
@@ -257,6 +258,8 @@ after_unlock:
 }
 
 bool Transaction::try_commit() {
+    //struct timeval tv1, tv2;
+    //gettimeofday(&tv1, NULL);
 #if STO_TSC_PROFILE
     TimeKeeper<tc_commit> tk;
 #endif
@@ -412,6 +415,9 @@ bool Transaction::try_commit() {
     //getrusage(RUSAGE_THREAD, &ru2);
     //local_csws = ru2.ru_nvcsw - ru1.ru_nvcsw;
     //TXP_ACCOUNT(txp_csws, local_csws);
+
+    //gettimeofday(&tv2, NULL);
+    //printf("%f\n", (tv2.tv_sec - tv1.tv_sec) + (tv2.tv_usec - tv1.tv_usec) / 1000000.0);
     return true;
 
 abort:

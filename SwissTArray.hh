@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <bitset>
 #include <fstream>
+#include <sstream>
 #include <stdlib.h>
 
 
@@ -56,7 +57,7 @@ public:
     }
     void transPut(size_type i, T x) const {
         assert(i < N);
-        Sto::item(this, i).add_swiss_write(x, data_[i].wlock);
+        Sto::item(this, i).add_swiss_write(x, data_[i].wlock, i);
     }
 
     get_type nontrans_get(size_type i) const {
@@ -262,18 +263,18 @@ inline auto SwissTArray<T, N, W>::end() const -> const_iterator {
 }
 
 template <typename T>
-inline TransProxy& TransProxy::add_swiss_write(const T& wdata, WriteLock& wlock) {
-    return add_swiss_write<T, const T&>(wdata, wlock);
+inline TransProxy& TransProxy::add_swiss_write(const T& wdata, WriteLock& wlock, int index) {
+    return add_swiss_write<T, const T&>(wdata, wlock, index);
 }
 
 template <typename T>
-inline TransProxy& TransProxy::add_swiss_write(T&& wdata, WriteLock& wlock) {
+inline TransProxy& TransProxy::add_swiss_write(T&& wdata, WriteLock& wlock, int index) {
     typedef typename std::decay<T>::type V;
-    return add_swiss_write<V, V&&>(std::move(wdata), wlock);
+    return add_swiss_write<V, V&&>(std::move(wdata), wlock, index);
 }
 
 template <typename T, typename... Args>
-inline TransProxy& TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock) {
+inline TransProxy& TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock, int index) {
     if (wlock.is_locked_here()) {
         item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
         return *this;
@@ -282,7 +283,7 @@ inline TransProxy& TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock)
     while(true) {
         if (wlock.is_locked()) {
             bool aborted_by_others = false;
-            if (ContentionManager::should_abort(t(), wlock, aborted_by_others)) {
+            if (ContentionManager::should_abort(t(), wlock, aborted_by_others, index)) {
 		TXP_INCREMENT(txp_wwc_aborts);
                 if (aborted_by_others) {
                   TXP_INCREMENT(txp_aborted_by_others);
@@ -298,11 +299,15 @@ inline TransProxy& TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock)
 		//}
                 Sto::abort();
             } else {
+		relax_fence();
                 continue;
             }
         }
 
         if (wlock.try_lock()){
+            //std::stringstream msg;
+            //msg << "Thread " << (t()->threadid()) << " acquires lock for index " << index << "\n";
+            //std::cout << msg.str();
             break;
         }
     }

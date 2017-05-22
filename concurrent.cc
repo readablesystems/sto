@@ -309,7 +309,7 @@ template <> struct Container<USE_SWISSGENERICARRAY> {
 	//outfile << "Get: Base = [" << (void*)&a_[0] << "], key = [" << key << "]." << std::endl;
 	//std::cout << "Base = [" << (void*)&a_[0] << "]" << std::endl;
 	//outfile.close();
-        return stm_.read(&a_[key]);
+        return stm_.read(&a_[key], key);
     }
     void transPut(index_type key, value_type value) {
         //std::ofstream outfile;
@@ -317,7 +317,7 @@ template <> struct Container<USE_SWISSGENERICARRAY> {
         //outfile << "Get: Base = [" << (void*)&a_[0] << "], key = [" << key << "]." << std::endl;
         //outfile.close();
         assert(key >= 0 && key < ARRAY_SZ);
-        stm_.write(&a_[key], value);
+        stm_.write(&a_[key], value, key);
     }
     static void init() {
     }
@@ -482,10 +482,10 @@ template <> struct Container<USE_HASHTABLE_STR> {
     }
     static void init() {
     }
-    static void thread_init(Container<USE_HASHTABLE_STR>&) {
-    }
+static void thread_init(Container<USE_HASHTABLE_STR>&) {
+}
 private:
-    type v_;
+type v_;
 };
 
 #if DATA_STRUCTURE == USE_QUEUE
@@ -519,32 +519,32 @@ int true_array_state[ARRAY_SZ];
 
 template <typename T>
 void prepopulate_func(T& a) {
-  for (int i = 0; i < prepopulate; ++i) {
-      TRANSACTION {
-          a.transPut(i, val(i+1));
-      } RETRY(false);
-  }
-  std::cout << "Done prepopulating " << std::endl;
+//for (int i = 0; i < prepopulate; ++i) {
+//TRANSACTION {
+//  a.transPut(i, val(i+1));
+//} RETRY(false);
+//}
+std::cout << "Done prepopulating " << std::endl;
 }
 
 void prepopulate_func(int *array) {
-  for (int i = 0; i < prepopulate; ++i) {
-    array[i] = i+1;
-  }
+for (int i = 0; i < prepopulate; ++i) {
+array[i] = i+1;
+}
 }
 
 #if DATA_STRUCTURE == USE_QUEUE
 // FUNCTIONS FOR QUEUE
 void prepopulate_func() {
-  for (int i = 0; i < prepopulate; ++i) {
-    q->push(val(i));
-  }
+for (int i = 0; i < prepopulate; ++i) {
+q->push(val(i));
+}
 }
 
 void empty_func() {
-    while (!q->empty()) {
-        q->pop();
-    }
+while (!q->empty()) {
+q->pop();
+}
 }
 #endif
 
@@ -552,87 +552,87 @@ void empty_func() {
 // FUNCTIONS FOR ARRAY/MAP-TYPE
 template <typename T>
 static value_type doRead(T& a, int slot) {
-  if (readMyWrites)
-    return a.transGet(slot);
-  else
-    return value_type();
+if (readMyWrites)
+return a.transGet(slot);
+else
+return value_type();
 }
 
 template <typename T>
 static void doWrite(T& a, int slot, int& ctr) {
-  if (blindRandomWrite) {
-    if (readMyWrites) {
-      a.transPut(slot, val(ctr));
-    }
-  } else {
-    // increment current value (this lets us verify transaction correctness)
-    if (readMyWrites) {
-      auto v0 = a.transGet(slot);
-      a.transPut(slot, val(unval(v0)+1));
+if (blindRandomWrite) {
+if (readMyWrites) {
+a.transPut(slot, val(ctr));
+}
+} else {
+// increment current value (this lets us verify transaction correctness)
+if (readMyWrites) {
+auto v0 = a.transGet(slot);
+a.transPut(slot, val(unval(v0)+1));
 #if TRY_READ_MY_WRITES
-          // read my own writes
-          assert(a.transGet(slot) == v0+1);
-          a.transPut(slot, v0+2);
-          // read my own second writes
-          assert(a.transGet(slot) == v0+2);
+  // read my own writes
+  assert(a.transGet(slot) == v0+1);
+  a.transPut(slot, v0+2);
+  // read my own second writes
+  assert(a.transGet(slot) == v0+2);
 #endif
-    }
-    ++ctr; // because we've done a read and a write
-  }
+}
+++ctr; // because we've done a read and a write
+}
 }
 
 template <typename T>
 static inline void nreads(T& a, int n, std::function<int(void)> slotgen) {
-  for (int i = 0; i < n; ++i) {
-    doRead(a, slotgen());
-  }
+for (int i = 0; i < n; ++i) {
+doRead(a, slotgen());
+}
 }
 
 template <typename T>
 static inline void nwrites(T& a, int n, std::function<int(void)> slotgen) {
-  for (int i = 0; i < n; ++i) {
-    doWrite(a, slotgen(), i);
-  }
+for (int i = 0; i < n; ++i) {
+doWrite(a, slotgen(), i);
+}
 }
 
 template <typename T, bool Support = T::has_delete> struct DoDeleteHelper;
 template <typename T> struct DoDeleteHelper<T, true> {
-    static void run(T& a, typename T::index_type slot) {
-        a.transDelete(slot);
-    }
+static void run(T& a, typename T::index_type slot) {
+a.transDelete(slot);
+}
 };
 template <typename T> struct DoDeleteHelper<T, false> {
-    static void run(T&, typename T::index_type) {
-    }
+static void run(T&, typename T::index_type) {
+}
 };
 template <typename T>
 static void doDelete(T& a, int slot) {
-    DoDeleteHelper<T>::run(a, slot);
+DoDeleteHelper<T>::run(a, slot);
 }
 
 
 
 struct Tester {
-    Tester() {}
-    virtual void initialize() = 0;
-    virtual void run(int me) {
-        (void) me;
-        assert(0 && "Test not supported");
-    }
-    virtual bool check() { return false; }
-    virtual void report() {
+Tester() {}
+virtual void initialize() = 0;
+virtual void run(int me) {
+(void) me;
+assert(0 && "Test not supported");
+}
+virtual bool check() { return false; }
+virtual void report() {
 #if DEBUG_SKEW
-        std::cout << "skew reporting not available for this test"
-            << std::endl;
+std::cout << "skew reporting not available for this test"
+    << std::endl;
 #endif
-    }
+}
 };
 
 template <int DS> struct DSTester : public Tester {
-    DSTester() : a() {}
-    void initialize();
-    virtual bool prepopulate() { return true; }
-    typedef Container<DS> container_type;
+DSTester() : a() {}
+void initialize();
+virtual bool prepopulate() { return true; }
+typedef Container<DS> container_type;
   protected:
     container_type* a;
 };
@@ -1811,7 +1811,7 @@ int main(int argc, char *argv[]) {
           sep = ", ";
       }
       if (txp_count > txp_total_aborts) {
-          printf("%stotal_aborts: %llu (%llu aborts at commit time, %llu in observe, %llus due to w/w conflicts), voluntary context switches: %llu\n", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts), tc.p(txp_observe_lock_aborts), tc.p(txp_wwc_aborts), tc.p(txp_csws));
+          printf("%stotal_aborts: %llu (%llu aborts at commit time, %llu in observe, %llus due to w/w conflicts)\n CM::should_abort: %llu, CM::on_write: %llu, CM::on_rollback: %llu, CM::start: %llu", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts), tc.p(txp_observe_lock_aborts), tc.p(txp_wwc_aborts), tc.p(txp_cm_shouldabort), tc.p(txp_cm_onwrite), tc.p(txp_cm_onrollback), tc.p(txp_cm_start));
           sep = ", ";
       }
       if (*sep)

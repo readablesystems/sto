@@ -42,6 +42,7 @@ static T read_nonatomic(const T* v, TransProxy item, const V& version, bool add_
         fence();
 
 	if (v0.is_locked()) {
+	    relax_fence();
 	    continue;
 	}
 

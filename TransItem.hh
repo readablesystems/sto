@@ -277,11 +277,11 @@ class TransProxy {
 
     
     template <typename T>
-    inline TransProxy& add_swiss_write(const T& wdata, WriteLock& wlock);
+    inline TransProxy& add_swiss_write(const T& wdata, WriteLock& wlock, int index);
     template <typename T>
-    inline TransProxy& add_swiss_write(T&& wdata, WriteLock& wlock);
+    inline TransProxy& add_swiss_write(T&& wdata, WriteLock& wlock, int index);
     template <typename T, typename... Args>
-    inline TransProxy& add_swiss_write(Args&&... wdata, WriteLock& lock);
+    inline TransProxy& add_swiss_write(Args&&... wdata, WriteLock& lock, int index);
     // What is the use of clear_write?
     //inline TransProxy& clear_write() {
     //    item().__rm_flags(TransItem::write_bit);

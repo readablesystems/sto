@@ -93,7 +93,10 @@ public:
         type m = v & (lock_bit | threadid_mask);
         return m != 0 && m != (lock_bit | here);
     }
-
+    static bool set_lock(type& v) {
+        v = v | lock_bit | TThread::id();
+        return true;
+    }
     static bool try_lock(type& v) {
         type vv = v;
         return bool_cmpxchg(&v, vv & ~lock_bit, vv | lock_bit | TThread::id());
@@ -386,7 +389,9 @@ public:
     bool bool_cmpxchg(TNonopaqueVersion expected, TNonopaqueVersion desired) {
         return ::bool_cmpxchg(&v_, expected.v_, desired.v_);
     }
-
+    bool set_lock() {
+        return TransactionTid::set_lock(v_);
+    }
     bool try_lock() {
         return TransactionTid::try_lock(v_);
     }

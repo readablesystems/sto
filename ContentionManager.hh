@@ -9,7 +9,7 @@ typedef __uint128_t uint128_t;
 
 class ContentionManager {
 public:
-    static bool should_abort(Transaction* tx, WriteLock wlock, bool& aborted_by_others); 
+    static bool should_abort(Transaction* tx, WriteLock wlock, bool& aborted_by_others, int index); 
 
     static void on_write(Transaction* tx);
 

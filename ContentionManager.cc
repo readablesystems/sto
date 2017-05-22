@@ -1,6 +1,7 @@
 #include "ContentionManager.hh"
 #include "Transaction.hh"
 #include <fstream>
+#include <sstream>
 #include <string>
 
 #define MAX_TS UINT_MAX
@@ -8,7 +9,8 @@
 #define SUCC_ABORTS_MAX 10
 #define WAIT_CYCLES_MULTIPLICATOR 8000
 
-bool ContentionManager::should_abort(Transaction* tx, WriteLock wlock, bool& aborted_by_others) {	
+bool ContentionManager::should_abort(Transaction* tx, WriteLock wlock, bool& aborted_by_others, int index) {	
+    TXP_INCREMENT(txp_cm_shouldabort);
     int threadid = tx->threadid();
     threadid *= 4;
     if (aborted[threadid] == 1){
@@ -22,9 +24,12 @@ bool ContentionManager::should_abort(Transaction* tx, WriteLock wlock, bool& abo
     }
 
     int owner_threadid = wlock & TransactionTid::threadid_mask;
-    owner_threadid *= 4;  
+    owner_threadid *= 4;
     if (timestamp[owner_threadid] < timestamp[threadid]) {
         if (aborted[owner_threadid] == 0) {
+           //std::stringstream msg;
+           //msg << "Thread " << (threadid / 4) << " is aborting for index " << index << ". Owner thread is " << (owner_threadid / 4) << "\n";
+           //std::cout << msg.str();
            return true; 
         } else {
            return false;
@@ -42,6 +47,7 @@ bool ContentionManager::should_abort(Transaction* tx, WriteLock wlock, bool& abo
 }
 
 void ContentionManager::on_write(Transaction* tx) {
+    TXP_INCREMENT(txp_cm_onwrite);
     int threadid = tx->threadid();
     threadid *= 4;
     //if (aborted[threadid] == 1) {
@@ -54,6 +60,7 @@ void ContentionManager::on_write(Transaction* tx) {
 }
 
 void ContentionManager::start(Transaction *tx) {	
+    TXP_INCREMENT(txp_cm_start);
     int threadid = tx->threadid();
     threadid *= 4;
     if (tx->is_restarted()) {
@@ -70,6 +77,7 @@ void ContentionManager::start(Transaction *tx) {
 }
 
 void ContentionManager::on_rollback(Transaction *tx) {
+    TXP_INCREMENT(txp_cm_onrollback);
     int threadid = tx->threadid();
     threadid *= 4;
     if (abort_count[threadid] < SUCC_ABORTS_MAX)
