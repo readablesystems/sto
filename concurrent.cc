@@ -950,6 +950,9 @@ void ZipfRW<DS>::per_thread_workload_init(int thread_id) {
     StoSampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
     StoSampling::StoZipfDistribution zd(thread_id, 0, ARRAY_SZ-1, zipf_skew);
 
+    StoSampling::StoRandomDistribution *dd = (zipf_skew == 0.0) ? static_cast<StoSampling::StoRandomDistribution*>(&ud)
+                                                                : static_cast<StoSampling::StoRandomDistribution*>(&zd);
+
     uint32_t ro_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * readonly_percent);
     uint32_t write_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * write_percent);
 
@@ -962,12 +965,12 @@ void ZipfRW<DS>::per_thread_workload_init(int thread_id) {
         int nops = read_only ? opspertrans_ro : opspertrans;
         for (int j = 0; j < nops; ++j) {
             if (read_only)
-                query.emplace_back(OpType::read, zd.sample());
+                query.emplace_back(OpType::read, dd->sample());
             else {
                 if (ud.sample() < write_threshold)
-                    query.emplace_back(OpType::inc, zd.sample());
+                    query.emplace_back(OpType::inc, dd->sample());
                 else
-                    query.emplace_back(OpType::read, zd.sample());
+                    query.emplace_back(OpType::read, dd->sample());
             }
         }
         thread_workload.push_back(query);
