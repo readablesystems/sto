@@ -1,0 +1,251 @@
+# GNUmakefile.  Generated from GNUmakefile.in by configure.
+-include config.mk
+
+AR = ar
+CC = gcc
+CXX = g++ -std=gnu++0x
+CPPFLAGS = -I$(MASSTREEDIR)
+DEPSDIR := .deps
+DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
+LIBS = -lnuma  $(MASSTREEDIR)/libjson.a -lpthread -lm
+LIBOBJS =  ${LIBOBJDIR}srandomdev$U.o
+LDFLAGS = 
+MASSTREEDIR = masstree-beta
+
+# if CXXFLAGS changes, rebuild
+ifndef CXXFLAGS
+CXXFLAGS :=
+endif
+
+ifeq ($(NDEBUG),1)
+CXXFLAGS += -DNDEBUG
+endif
+
+ifeq ($(DEBUG_ABORTS),1)
+CXXFLAGS += -DSTO_DEBUG_ABORTS=1
+endif
+
+ifdef PROFILE_COUNTERS
+CXXFLAGS += -DSTO_PROFILE_COUNTERS=$(PROFILE_COUNTERS)
+endif
+
+ifeq ($(TSC_PROFILE),1)
+CXXFLAGS += -DSTO_TSC_PROFILE=1
+endif
+
+ifdef SPIN_EXPBACKOFF
+CXXFLAGS += -DSTO_SPIN_EXPBACKOFF=$(SPIN_EXPBACKOFF)
+else ifdef EXPBACKOFF
+CXXFLAGS += -DSTO_SPIN_EXPBACKOFF=$(EXPBACKOFF)
+endif
+
+ifdef BOUND
+CXXFLAGS += -DSTO_SPIN_BOUND_WRITE=$(BOUND) -DSTO_SPIN_BOUND_WAIT=$(BOUND)
+endif
+
+ifdef ABORT_ON_LOCKED
+CXXFLAGS += -DSTO_ABORT_ON_LOCKED=$(ABORT_ON_LOCKED)
+endif
+
+ifdef DEBUG_SKEW
+CXXFLAGS += -DDEBUG_SKEW=$(DEBUG_SKEW)
+endif
+
+# OPTFLAGS can change without rebuild
+OPTFLAGS := -W -Wall
+
+ifndef OPT
+OPTFLAGS += -O3
+else
+OPTFLAGS += -O$(OPT)
+endif
+
+ifeq ($(BOOSTING_STANDALONE),1)
+CXXFLAGS += -DBOOSTING -DBOOSTING_STANDALONE
+LIBOBJS += Boosting.o Boosting_standalone.o
+endif
+
+ifeq ($(BOOSTING_STO),1)
+CXXFLAGS += -DBOOSTING -DSTO
+endif
+
+# debugging on by default
+ifneq ($(NDEBUG),1)
+OPTFLAGS += -g
+endif
+
+ifeq ($(PROFILE),1)
+OPTFLAGS += -g -pg -fno-inline
+endif
+
+PROGRAMS = randomrws concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter $(UNIT_PROGRAMS)
+UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric unit-rcu unit-tvector unit-tvector-nopred unit-mbta unit-sampling unit-opacity unit-swisstarray unit-swisstgeneric
+
+all: $(PROGRAMS)
+
+unit: $(UNIT_PROGRAMS)
+
+check: unit
+	@for i in $(UNIT_PROGRAMS); do echo ./$$i; ./$$i || exit 1; done
+
+%.o: %.c config.h $(DEPSDIR)/stamp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+
+%.o: %.cc config.h $(DEPSDIR)/stamp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+
+%.S: %.o
+	objdump -S $< > $@
+
+
+MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
+	$(MASSTREEDIR)/misc.o \
+	$(MASSTREEDIR)/checkpoint.o \
+	$(MASSTREEDIR)/string_slice.o
+
+STO_OBJS = Packer.o Transaction.o TRcu.o MassTrans.o clp.o ContentionManager.o $(LIBOBJS)
+MSTO_OBJS = $(STO_OBJS) $(MASSTREE_OBJS)
+STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
+MSTO_DEPS = $(MSTO_OBJS) $(MASSTREEDIR)/libjson.a
+
+concurrent: concurrent.o $(MSTO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
+
+concurrent-50: concurrent-50.o $(MSTO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
+concurrent-50.o: concurrent.cc config.h $(DEPSDIR)/stamp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -DARRAY_SZ=50 $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+
+concurrent-1M: concurrent-1M.o $(MSTO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
+concurrent-1M.o: concurrent.cc config.h $(DEPSDIR)/stamp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -DARRAY_SZ=1000000 $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+
+single: single.o $(MSTO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
+
+randomrws: randomrws.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+singleelems: singleelems.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+ex-counter: ex-counter.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-rcu: unit-rcu.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-tarray: unit-tarray.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-tintpredicate: unit-tintpredicate.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-tcounter: unit-tcounter.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-tbox: unit-tbox.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-tgeneric: unit-tgeneric.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-tvector: unit-tvector.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-tvector-nopred: unit-tvector-nopred.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-mbta: unit-mbta.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-sampling: unit-sampling.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-opacity: unit-opacity.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-swisstarray: unit-swisstarray.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-swisstgeneric: unit-swisstgeneric.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+list1: list1.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+vector: vector.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+pqueue: pqueue.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+rbtree: rbtree.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+genericTest: genericTest.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+trans_test: trans_test.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+ht_mt: ht_mt.o $(MSTO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
+
+pqVsIt: pqVsIt.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+iterators: iterators.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+predicates: predicates.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+hashtable_nostm: hashtable_nostm.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+$(MASSTREE_OBJS): masstree ;
+
+.PHONY: masstree
+masstree: $(MASSTREEDIR)/config.status
+	$(MAKE) -C $(MASSTREEDIR)
+
+$(MASSTREEDIR)/libjson.a: $(MASSTREEDIR)/config.status
+	$(MAKE) -C $(MASSTREEDIR) libjson.a
+
+config.h: stamp-h
+
+GNUmakefile: GNUmakefile.in config.status
+	CONFIG_FILES=$@ CONFIG_HEADERS= $(SHELL) ./config.status
+
+configure config.h.in: configure.ac
+	autoreconf -i
+	touch config.h.in
+
+config.status: configure
+	./configure 
+
+$(DEPSDIR)/stamp:
+	mkdir -p $(DEPSDIR)
+	touch $@
+
+stamp-h: config.h.in config.status
+	CONFIG_FILES= $(SHELL) ./config.status
+	echo > stamp-h
+
+clean:
+	rm -f $(PROGRAMS) *.o
+	rm -rf .deps *.dSYM
+	$(MAKE) -C $(MASSTREEDIR) clean
+
+DEPFILES := $(wildcard $(DEPSDIR)/*.d)
+ifneq ($(DEPFILES),)
+include $(DEPFILES)
+endif
+
+ifneq ($(strip $(CXX) $(CXXFLAGS)),$(strip $(DEP_CXX_CONFIG)))
+DEP_CXX_CONFIG := $(shell mkdir -p $(DEPSDIR); echo >$(DEPSDIR)/stamp; echo DEP_CXX_CONFIG:='$(CXX) $(CXXFLAGS)' >$(DEPSDIR)/_cxxconfig.d)
+endif
+
+.PHONY: clean all unit check

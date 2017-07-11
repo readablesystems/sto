@@ -10,6 +10,7 @@
 Transaction::testing_type Transaction::testing;
 threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int TThread::the_id;
+__thread bool TThread::always_allocate_;
 Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epochs = {
     1, 0, TransactionTid::increment_value, true
 };
@@ -258,8 +259,8 @@ after_unlock:
 }
 
 bool Transaction::try_commit() {
-    //struct timeval tv1, tv2;
-    //gettimeofday(&tv1, NULL);
+    //struct timespec ts1, ts2, tsd;
+    //clock_gettime(CLOCK_REALTIME, &ts1);
 #if STO_TSC_PROFILE
     TimeKeeper<tc_commit> tk;
 #endif
@@ -370,11 +371,11 @@ bool Transaction::try_commit() {
         it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
         if (it->has_read()) {
             TXP_INCREMENT(txp_total_check_read);
-            if (!it->owner()->check(*it, *this)
-                && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
-                mark_abort_because(it, "commit check");
-                goto abort;
-            }
+            //if (!it->owner()->check(*it, *this)
+            //    && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
+            //    mark_abort_because(it, "commit check");
+            //    goto abort;
+            //}
         }
     }
 
@@ -412,12 +413,16 @@ bool Transaction::try_commit() {
 
     // fence();
     stop(true, writeset, nwriteset);
-    //getrusage(RUSAGE_THREAD, &ru2);
-    //local_csws = ru2.ru_nvcsw - ru1.ru_nvcsw;
-    //TXP_ACCOUNT(txp_csws, local_csws);
 
-    //gettimeofday(&tv2, NULL);
-    //printf("%f\n", (tv2.tv_sec - tv1.tv_sec) + (tv2.tv_usec - tv1.tv_usec) / 1000000.0);
+    /*clock_gettime(CLOCK_REALTIME, &ts2);
+    if (ts2.tv_nsec < ts1.tv_nsec) {
+            tsd.tv_sec = ts2.tv_sec - ts1.tv_sec - 1;
+            tsd.tv_nsec = 1000000000 + ts2.tv_nsec - ts1.tv_nsec;
+    } else {
+            tsd.tv_sec = ts2.tv_sec - ts1.tv_sec;
+            tsd.tv_nsec = ts2.tv_nsec - ts1.tv_nsec;
+    }
+    printf("%.9f\n", tsd.tv_sec + (tsd.tv_nsec / 1000000000.0));*/
     return true;
 
 abort:

@@ -141,6 +141,7 @@ enum txp {
     txp_cm_onrollback,
     txp_cm_onwrite,
     txp_cm_start,
+    txp_allocate,
     txp_tco,
     txp_hco,
     txp_hco_lock,
@@ -464,109 +465,16 @@ private:
     }
 
 #if TRANSACTION_HASHTABLE
-    static int hash0(const TObject* obj, void* key) {
-        //auto n = reinterpret_cast<uintptr_t>(key) + 0x4000000;
-        //n += -uintptr_t(n < 0x8000000) & (reinterpret_cast<uintptr_t>(obj) >> 4);
-        //2654435761
-	return (reinterpret_cast<uintptr_t>(key) >> 2) % hash_size;
-        //return (n + (n >> 16) * 9) % hash_size;
-    }
-
-    /*template <class T>
-    static std::size_t hash_value_unsigned(T val)
-    {
-         const unsigned int size_t_bits = std::numeric_limits<std::size_t>::digits;
-         // ceiling(std::numeric_limits<T>::digits / size_t_bits) - 1
-         const int length = (std::numeric_limits<T>::digits - 1)
-             / static_cast<int>(size_t_bits);
-
-         std::size_t seed = 0;
-
-         // Hopefully, this loop can be unrolled.
-         for(unsigned int i = length * size_t_bits; i > 0; i -= size_t_bits)
-         {
-             seed ^= (std::size_t) (val >> i) + (seed<<6) + (seed>>2);
-         }
-         seed ^= (std::size_t) val + (seed<<6) + (seed>>2);
-
-         return seed;
-    }*/
-
-static unsigned long hash_value_unsigned(unsigned long key)
-{
-  key = (~key) + (key << 21); // key = (key << 21) - key - 1;
-  key = key ^ (key >> 24);
-  key = (key + (key << 3)) + (key << 8); // key * 265
-  key = key ^ (key >> 14);
-  key = (key + (key << 2)) + (key << 4); // key * 21
-  key = key ^ (key >> 28);
-  key = key + (key << 31);
-  return key;
-}
-
-/*static uint64_t hash_value_unsigned(uint64_t x) {
-    x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
-    x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
-    x = x ^ (x >> 31);
-    return x;
-}*/
-
-    template <typename SizeT>
-    static void hash_combine_impl1(SizeT& seed, SizeT value)
-    {
-        seed ^= value + 0x9e3779b9 + (seed<<6) + (seed>>2);
-    }
-
-    static void hash_combine_impl2(uint64_t& h,
-            uint64_t k)
-    {
-        const uint64_t m = 0xc6a4a7935bd1e995ULL;
-        const int r = 47;
-
-        k *= m;
-        k ^= k >> r;
-        k *= m;
-
-        h ^= k;
-        h *= m;
-
-        // Completely arbitrary number, to prevent 0's
-        // from hashing to 0.
-        h += 0xe6546b64;
-    }
-
-    template <class T> 
-    static void hash_combine_impl3(std::size_t& seed, const T& v)
-    {
-        const std::size_t kMul = 0x9ddfea08eb382d69ULL;
-        std::size_t a = (v ^ seed) * kMul;
-        a ^= (a >> 47);
-        std::size_t b = (seed ^ a) * kMul;
-        b ^= (b >> 47);
-        seed = b * kMul;
-    }
-
-    static void hash_combine(std::size_t& seed, uintptr_t const& v)
-    {
-        return hash_combine_impl3(seed, hash_value_unsigned(v));
-    }
-
     static int hash(const TObject* obj, void* key) {
-	return hash0(obj, key);
-        /*std::size_t seed = 0;
-        hash_combine(seed, reinterpret_cast<uintptr_t>(obj));
-        hash_combine(seed, reinterpret_cast<uintptr_t>(key));
-        return seed % hash_size;*/
+	(void) obj;
+	return (reinterpret_cast<uintptr_t>(key) >> 2) % hash_size;
     }
 #endif
 
     void refresh_tset_chunk();
 
-    TransItem* allocate_item(const TObject* obj, void* xkey) {
-        if (tset_size_ && tset_size_ % tset_chunk == 0)
-            refresh_tset_chunk();
-        ++tset_size_;
-        new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey);
+    void allocate_item_update_hash(const TObject* obj, void* xkey) {
+        //asm ("");
 #if TRANSACTION_HASHTABLE
         unsigned hi = hash(obj, xkey);
 # if TRANSACTION_HASHTABLE > 1
@@ -575,7 +483,18 @@ static unsigned long hash_value_unsigned(unsigned long key)
 # endif
         if (hashtable_[hi] <= hash_base_)
             hashtable_[hi] = hash_base_ + tset_size_;
-#endif
+#endif	
+    }
+
+    TransItem* allocate_item(const TObject* obj, void* xkey) {
+	TXP_INCREMENT(txp_allocate);
+        if (tset_size_ && tset_size_ % tset_chunk == 0)
+            refresh_tset_chunk();
+        ++tset_size_;
+        new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey);
+	if (!TThread::always_allocate()) {
+            allocate_item_update_hash(obj, xkey);
+        }
         return tset_next_++;
     }
 
@@ -602,11 +521,16 @@ public:
     // tries to find an existing item with this key, otherwise adds it
     template <typename T>
     TransProxy item(const TObject* obj, T key) {
-        void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
-        if (!ti)
-            ti = allocate_item(obj, xkey);
-        return TransProxy(*this, *ti);
+        if (TThread::always_allocate()) {
+            return new_item(obj, key);
+        } else {
+        //return TransProxy(*this, gitem);
+            void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
+            TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
+            if (!ti)
+                ti = allocate_item(obj, xkey);
+            return TransProxy(*this, *ti);
+        }
     }
 
     // gets an item that is intended to be read only. this method essentially allows for duplicate items
@@ -632,6 +556,17 @@ public:
     }
 
 private:
+    TransItem* find_item_scan(TObject* obj, void* xkey) const {
+        //asm ("");
+        const TransItem* it = nullptr;
+        for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
+            it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
+            TXP_INCREMENT(txp_total_searched);
+            if (it->owner() == obj && it->key_ == xkey)
+                return const_cast<TransItem*>(it);
+        }
+        return nullptr;
+    }
     // tries to find an existing item with this key, returns NULL if not found
     TransItem* find_item(TObject* obj, void* xkey) const {
 #if STO_TSC_PROFILE
@@ -666,15 +601,9 @@ private:
             hi = (hi + hash_step) % hash_size;
         }
 #endif
-        const TransItem* it = nullptr;
-        for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
-            it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
-            TXP_INCREMENT(txp_total_searched);
-            if (it->owner() == obj && it->key_ == xkey)
-                return const_cast<TransItem*>(it);
-        }
-        return nullptr;
-    }
+	std::cout << "Not found!" << std::endl;
+	return find_item_scan(obj, xkey); 
+   }
 
     bool preceding_duplicate_read(TransItem *it) const;
 
@@ -879,6 +808,7 @@ private:
     };
 
     jmp_buf env;
+    TransItem gitem;
     int threadid_;
     uint16_t hash_base_;
     uint16_t first_write_;
@@ -972,7 +902,7 @@ public:
 
     template <typename T>
     static TransProxy item(const TObject* s, T key) {
-        always_assert(in_progress());
+        //always_assert(in_progress());
         return TThread::txn->item(s, key);
     }
 
@@ -1148,7 +1078,7 @@ inline TransProxy& TransProxy::observe(TVersion version, bool add_read) {
 }
 
 inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read) {
-    assert(!has_stash());
+    //assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_)) {
         TXP_INCREMENT(txp_observe_lock_aborts);
         t()->abort_because(item(), "locked", version.value());

@@ -277,6 +277,7 @@ template <typename T, typename... Args>
 inline TransProxy& TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock, int index) {
     if (wlock.is_locked_here()) {
         item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
+	//ContentionManager::on_write(t());
         return *this;
     }
 

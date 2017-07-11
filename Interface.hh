@@ -13,6 +13,7 @@ class TransProxy;
 
 class TThread {
     static __thread int the_id;
+    static __thread bool always_allocate_;
 public:
     static __thread Transaction* txn;
 
@@ -22,6 +23,12 @@ public:
     static void set_id(int id) {
         assert(id >= 0 && id < 32);
         the_id = id;
+    }
+    static bool always_allocate() {
+        return always_allocate_;
+    }
+    static void set_always_allocate(bool always_allocate) {
+        always_allocate_ = always_allocate;
     }
 };
 

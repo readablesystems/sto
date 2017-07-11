@@ -31,7 +31,7 @@
 // size of array (for hashtables or other non-array structures, this is the
 // size of the key space)
 #ifndef ARRAY_SZ
-#define ARRAY_SZ 10000000
+#define ARRAY_SZ 1000
 #endif
 
 #define USE_ARRAY 0
@@ -51,7 +51,7 @@
 #define DATA_STRUCTURE USE_HASHTABLE
 
 // if true, then all threads perform non-conflicting operations
-#define NON_CONFLICTING 0
+#define NON_CONFLICTING 1
 
 // if true, each operation of a transaction will act on a different slot
 #define ALL_UNIQUE_SLOTS 0
@@ -172,6 +172,10 @@ template <> struct Container<USE_ARRAY> {
         v_.transPut(key, value);
     }
     static void init() {
+    } 
+    void init_ns() {
+    }
+    void finalize() {
     }
     static void thread_init(Container<USE_ARRAY>&) {
     }
@@ -194,6 +198,10 @@ template <> struct Container<USE_SWISSARRAY> {
     }
     static void init() {
     }
+    void init_ns() {
+    }
+    void finalize() {
+    } 
     static void thread_init(Container<USE_SWISSARRAY>&) {
     }
 private:
@@ -214,6 +222,10 @@ template <> struct Container<USE_ARRAY_NONOPAQUE> {
         v_.transPut(key, value);
     }
     static void init() {
+    }
+    void init_ns() {
+    }
+    void finalize() {
     }
     static void thread_init(Container<USE_ARRAY_NONOPAQUE>&) {
     }
@@ -241,6 +253,10 @@ template <> struct Container<USE_VECTOR> {
     }
     static void init() {
     }
+    void init_ns() {
+    }
+    void finalize() {
+    }
     static void thread_init(Container<USE_VECTOR>&) {
     }
 private:
@@ -267,6 +283,10 @@ template <> struct Container<USE_TVECTOR> {
     }
     static void init() {
     }
+    void init_ns() {
+    }
+    void finalize() {
+    }
     static void thread_init(Container<USE_TVECTOR>&) {
     }
 private:
@@ -289,6 +309,10 @@ template <> struct Container<USE_TGENERICARRAY> {
     }
     static void init() {
     }
+    void init_ns() {
+    }
+    void finalize() {
+    }
     static void thread_init(Container<USE_TGENERICARRAY>&) {
     }
 private:
@@ -303,7 +327,7 @@ template <> struct Container<USE_SWISSGENERICARRAY> {
         return a_[key];
     }
     value_type transGet(index_type key) {
-        assert(key >= 0 && key < ARRAY_SZ);
+        //assert(key >= 0 && key < ARRAY_SZ);
 	//std::ofstream outfile;
 	//outfile.open(std::to_string(me), std::ios_base::app);
 	//outfile << "Get: Base = [" << (void*)&a_[0] << "], key = [" << key << "]." << std::endl;
@@ -316,16 +340,24 @@ template <> struct Container<USE_SWISSGENERICARRAY> {
         //outfile.open(std::to_string(me), std::ios_base::app);
         //outfile << "Get: Base = [" << (void*)&a_[0] << "], key = [" << key << "]." << std::endl;
         //outfile.close();
-        assert(key >= 0 && key < ARRAY_SZ);
+        //assert(key >= 0 && key < ARRAY_SZ);
         stm_.write(&a_[key], value, key);
     }
     static void init() {
+    }
+    void init_ns() {
+        std::cout << "Container<USE_SWISSGENERIC>::init starts!" << std::endl;
+        stm_.init_table_counts();
+    }
+    void finalize() {
+        std::cout << "Container<USE_SWISSGENERIC>::finalize starts!" << std::endl;
+        stm_.print_table_counts();
     }
     static void thread_init(Container<USE_SWISSGENERICARRAY>&) {
     }
 private:
     SwissTNonopaqueGeneric stm_;
-    value_type a_[ARRAY_SZ];
+    value_type a_[ARRAY_SZ] __attribute__ ((aligned (sizeof(value_type))));
 };
 
 
@@ -366,6 +398,10 @@ template <> struct Container<USE_MASSTREE> {
             // just advance blindly because of the way Masstree uses epochs
             globalepoch++;
         };
+    }
+    void init_ns() {
+    }
+    void finalize() {
     }
     static void thread_init(Container<USE_MASSTREE>&) {
         type::thread_init();
@@ -413,6 +449,10 @@ template <> struct Container<USE_MASSTREE_STR> {
             globalepoch++;
         };
     }
+    void init_ns() {
+    }
+    void finalize() {
+    }
     static void thread_init(Container<USE_MASSTREE_STR>&) {
         type::thread_init();
     }
@@ -450,6 +490,10 @@ template <> struct Container<USE_HASHTABLE> {
     }
     static void init() {
     }
+    void init_ns() {
+    }
+    void finalize() {
+    }
     static void thread_init(Container<USE_HASHTABLE>&) {
     }
 private:
@@ -482,8 +526,12 @@ template <> struct Container<USE_HASHTABLE_STR> {
     }
     static void init() {
     }
-static void thread_init(Container<USE_HASHTABLE_STR>&) {
-}
+    void init_ns() {
+    } 
+    void finalize() {
+    }
+    static void thread_init(Container<USE_HASHTABLE_STR>&) {
+    }
 private:
 type v_;
 };
@@ -519,11 +567,11 @@ int true_array_state[ARRAY_SZ];
 
 template <typename T>
 void prepopulate_func(T& a) {
-//for (int i = 0; i < prepopulate; ++i) {
-//TRANSACTION {
-//  a.transPut(i, val(i+1));
-//} RETRY(false);
-//}
+for (int i = 0; i < prepopulate; ++i) {
+TRANSACTION {
+  a.transPut(i, val(i+1));
+} RETRY(false);
+}
 std::cout << "Done prepopulating " << std::endl;
 }
 
@@ -552,21 +600,21 @@ q->pop();
 // FUNCTIONS FOR ARRAY/MAP-TYPE
 template <typename T>
 static value_type doRead(T& a, int slot) {
-if (readMyWrites)
+//if (readMyWrites)
 return a.transGet(slot);
-else
-return value_type();
+//else
+//return value_type();
 }
 
 template <typename T>
 static void doWrite(T& a, int slot, int& ctr) {
 if (blindRandomWrite) {
-if (readMyWrites) {
+//if (readMyWrites) {
 a.transPut(slot, val(ctr));
-}
+//}
 } else {
 // increment current value (this lets us verify transaction correctness)
-if (readMyWrites) {
+//if (readMyWrites) {
 auto v0 = a.transGet(slot);
 a.transPut(slot, val(unval(v0)+1));
 #if TRY_READ_MY_WRITES
@@ -576,7 +624,7 @@ a.transPut(slot, val(unval(v0)+1));
   // read my own second writes
   assert(a.transGet(slot) == v0+2);
 #endif
-}
+//}
 ++ctr; // because we've done a read and a write
 }
 }
@@ -615,6 +663,7 @@ DoDeleteHelper<T>::run(a, slot);
 struct Tester {
 Tester() {}
 virtual void initialize() = 0;
+virtual void finalize() = 0;
 virtual void run(int me) {
 (void) me;
 assert(0 && "Test not supported");
@@ -631,6 +680,9 @@ std::cout << "skew reporting not available for this test"
 template <int DS> struct DSTester : public Tester {
 DSTester() : a() {}
 void initialize();
+void finalize() {
+  a->finalize();
+}
 virtual bool prepopulate() { return true; }
 typedef Container<DS> container_type;
   protected:
@@ -646,6 +698,7 @@ template <int DS> void DSTester<DS>::initialize() {
 #endif
     }
     container_type::init();
+    a->init_ns();
 }
 
 // New test: Random R/W with zipf distribution to simulate skewed contention
@@ -1009,6 +1062,7 @@ template <int DS> struct RandomRWs_parent : public DSTester<DS> {
 template <int DS> template <bool do_delete>
 void RandomRWs_parent<DS>::do_run(int me) {
   TThread::set_id(me);
+  TThread::set_always_allocate(readMyWrites);
   Sto::update_threadid();
 #ifdef BOOSTING_STANDALONE
   boosting_threadid = me;
@@ -1018,7 +1072,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
 
 #if NON_CONFLICTING
   long range = ARRAY_SZ/nthreads;
-  std::uniform_int_distribution<long> slotdist(me*range, (me + 1) * range - 1);
+  std::uniform_int_distribution<long> slotdist(me*range + 10, (me + 1) * range - 1 - 10);
 #else
   std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
 #endif
@@ -1061,8 +1115,10 @@ void RandomRWs_parent<DS>::do_run(int me) {
           doDelete(*a, slot);
         } else if (r > write_thresh) {
           doRead(*a, slot);
+	  //doWrite(*a, slot, j);
         } else {
-          doWrite(*a, slot, j);
+          //doWrite(*a, slot, j);
+	  doRead(*a, slot);
 
 #if MAINTAIN_TRUE_ARRAY_STATE
           slots_written[nslots_written++] = slot;
@@ -1774,6 +1830,9 @@ int main(int argc, char *argv[]) {
   } else {
     time_and_run(&real_time, &ru1, &ru2, nthreads, tester);
   }
+
+  tester->finalize();
+
 #if !DATA_COLLECT
   printf("real time: ");
 #endif
@@ -1811,7 +1870,7 @@ int main(int argc, char *argv[]) {
           sep = ", ";
       }
       if (txp_count > txp_total_aborts) {
-          printf("%stotal_aborts: %llu (%llu aborts at commit time, %llu in observe, %llus due to w/w conflicts)\n CM::should_abort: %llu, CM::on_write: %llu, CM::on_rollback: %llu, CM::start: %llu", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts), tc.p(txp_observe_lock_aborts), tc.p(txp_wwc_aborts), tc.p(txp_cm_shouldabort), tc.p(txp_cm_onwrite), tc.p(txp_cm_onrollback), tc.p(txp_cm_start));
+          printf("%stotal_aborts: %llu (%llu aborts at commit time, %llu in observe, %llus due to w/w conflicts)\n CM::should_abort: %llu, CM::on_write: %llu, CM::on_rollback: %llu, CM::start: %llu\n Allocate new items: %llu", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts), tc.p(txp_observe_lock_aborts), tc.p(txp_wwc_aborts), tc.p(txp_cm_shouldabort), tc.p(txp_cm_onwrite), tc.p(txp_cm_onrollback), tc.p(txp_cm_start), tc.p(txp_allocate));
           sep = ", ";
       }
       if (*sep)

@@ -7,12 +7,13 @@
 #include "SwissTArray.hh"
 
 #include <sys/resource.h>
+#include <assert.h>
 
 template <template <typename> class W = TOpaqueWrapped>
 class SwissTBasicGeneric : public TObject {
 public:
     typedef typename W<int>::version_type version_type;
-    static constexpr unsigned table_size = 1 << 23;
+    static constexpr unsigned table_size = 1 << 22;
 
     template <typename T>
     T read(T* word, int index) {
@@ -22,7 +23,7 @@ public:
         static_assert(mass::is_trivially_copyable<T>::value, "T nontrivial");
         auto it = Sto::item(this, word);
         if (it.has_write()) {
-            assert(it.shifted_user_flags() == sizeof(T));
+            //assert(it.shifted_user_flags() == sizeof(T));
             return it.template write_value<T>();
         }
         return W<T>::read(word, it, version(word));
@@ -31,12 +32,7 @@ public:
     void write(T* word, U value, int index) {
         static_assert(sizeof(T) <= sizeof(void*), "T larger than void*");
         static_assert(mass::is_trivially_copyable<T>::value, "T nontrivial");
-	//struct rusage ru1, ru2;
-        //getrusage(RUSAGE_THREAD, &ru1);
-        Sto::item(this, word).add_swiss_write(T(value), wlock(word, index), index).assign_flags(sizeof(T) << TransItem::userf_shift);
-        //getrusage(RUSAGE_THREAD, &ru2);
-        //long local_csws = ru2.ru_nvcsw - ru1.ru_nvcsw;
-        //TXP_ACCOUNT(txp_csws, local_csws);
+        Sto::item(this, word).add_swiss_write(T(value), wlock(word), index).assign_flags(sizeof(T) << TransItem::userf_shift);
     }
 
 
@@ -70,20 +66,38 @@ public:
         //    w << " =" << item.write_value<void*>() << "/" << item.shifted_user_flags();
         w << "}";
     }
+    void init_table_counts() {
+      //for (unsigned i = 0; i < table_size; i++) {
+      //  table_count_[i] = 0;
+      //  wlock_table_count_[i] = 0;
+      //}
+    }
+    void print_table_counts() {
+      //for (unsigned i = 0; i < table_size; i++) {
+      //  printf("%d\n", table_count_[i]);
+      //}
+    }
 
 private:
     version_type table_[table_size];
     WriteLock wlock_table_[table_size];
+    //int table_count_[table_size];
+    //int wlock_table_count_[table_size];
 
     inline version_type& version(void* k) {
 #ifdef __x86_64__
-        return table_[(reinterpret_cast<uintptr_t>(k) >> 5) % table_size];
+        int index = (reinterpret_cast<uintptr_t>(k) >> 5) % table_size;
+        //table_count_[index] += 1;
+        return table_[index];
 #else /* __i386__ */
-	return table_[(reinterpret_cast<uintptr_t>(k) >> 4) % table_size];
+        int index = (reinterpret_cast<uintptr_t>(k) >> 4) % table_size;
+        //table_count_[index] += 1;
+	return table_[(index];
 #endif
     }
 
      inline WriteLock& wlock(void* k, int index) {
+        assert(false);
 #ifdef __x86_64__
         //std::stringstream msg;
 	//msg << "Array index = [" << index << "]. Array address = [" << k << "]. Array address shifted = [" << (reinterpret_cast<uintptr_t>(k) >> 5) << "]. Array address mod = " << ((reinterpret_cast<uintptr_t>(k) >> 5) % table_size) << "]\n";
@@ -96,9 +110,13 @@ private:
 
       inline WriteLock& wlock(void* k) {
 #ifdef __x86_64__
-        return wlock_table_[(reinterpret_cast<uintptr_t>(k) >> 5) % table_size];
+        int index = (reinterpret_cast<uintptr_t>(k) >> 5) % table_size;
+        //wlock_table_count_[index] += 1;
+        return wlock_table_[index];
 #else /* __i386__ */
-	return wlock_table_[(reinterpret_cast<uintptr_t>(k) >> 4) % table_size];
+        int index = (reinterpret_cast<uintptr_t>(k) >> 4) % table_size;
+        //wlock_table_count_[index] += 1;
+	return wlock_table_[index];
 #endif
     }
 
