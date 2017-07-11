@@ -921,10 +921,12 @@ struct ZipfRW : public HotspotRW<DS> {
 template <int DS>
 void ZipfRW<DS>::per_thread_workload_init(int thread_id) {
     StoSampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
-    StoSampling::StoZipfDistribution zd(thread_id, 0, ARRAY_SZ-1, zipf_skew);
+    StoSampling::StoRandomDistribution *dd = nullptr;
 
-    StoSampling::StoRandomDistribution *dd = (zipf_skew == 0.0) ? static_cast<StoSampling::StoRandomDistribution*>(&ud)
-                                                                : static_cast<StoSampling::StoRandomDistribution*>(&zd);
+    if (zipf_skew == 0.0)
+        dd = new StoSampling::StoUniformDistribution(thread_id, 0, ARRAY_SZ-1);
+    else
+        dd = new StoSampling::StoZipfDistribution(thread_id, 0, ARRAY_SZ-1, zipf_skew);
 
     uint32_t ro_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * readonly_percent);
     uint32_t write_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * write_percent);
@@ -1729,7 +1731,7 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  if (!strcmp(tests[test].name, "zipfrw") && (zipf_skew <= 0.0 || zipf_skew >= 1000.0)) {
+  if (!strcmp(tests[test].name, "zipfrw") && (zipf_skew < 0.0 || zipf_skew >= 1000.0)) {
     printf("Please enter a skew parameter between 0 and 1000 (currently entered %f)\n", zipf_skew);
     exit(1);
   }
