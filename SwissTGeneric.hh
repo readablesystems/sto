@@ -99,9 +99,6 @@ private:
      inline WriteLock& wlock(void* k, int index) {
         assert(false);
 #ifdef __x86_64__
-        //std::stringstream msg;
-	//msg << "Array index = [" << index << "]. Array address = [" << k << "]. Array address shifted = [" << (reinterpret_cast<uintptr_t>(k) >> 5) << "]. Array address mod = " << ((reinterpret_cast<uintptr_t>(k) >> 5) % table_size) << "]\n";
-        //std::cout << msg.str(); 
         return wlock_table_[(reinterpret_cast<uintptr_t>(k) >> 5) % table_size];
 #else /* __i386__ */
 	return wlock_table_[(reinterpret_cast<uintptr_t>(k) >> 4) % table_size];

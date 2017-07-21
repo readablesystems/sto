@@ -548,6 +548,7 @@ int nthreads = 4;
 int ntrans = 1000000;
 int opspertrans = 10;
 int prepopulate = ARRAY_SZ;//ARRAY_SZ/10;
+int hashsize = 32768;
 double readonly_percent = 0.0;
 double write_percent = 0.5;
 bool blindRandomWrite = false;
@@ -567,11 +568,12 @@ int true_array_state[ARRAY_SZ];
 
 template <typename T>
 void prepopulate_func(T& a) {
-for (int i = 0; i < prepopulate; ++i) {
-TRANSACTION {
-  a.transPut(i, val(i+1));
-} RETRY(false);
-}
+(void)a;
+/*for (int i = 0; i < prepopulate; ++i) {
+  TRANSACTION {
+    a.transPut(i, val(i+1));
+  } RETRY(false);
+}*/
 std::cout << "Done prepopulating " << std::endl;
 }
 
@@ -1633,7 +1635,7 @@ struct {
 };
 
 enum {
-    opt_test = 1, opt_nrmyw, opt_check, opt_profile, opt_dump, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew
+    opt_test = 1, opt_nrmyw, opt_check, opt_profile, opt_dump, opt_nthreads, opt_ntrans, opt_opspertrans, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew, opt_hashsize
 };
 
 static const Clp_Option options[] = {
@@ -1650,6 +1652,7 @@ static const Clp_Option options[] = {
   { "prepopulate", 0, opt_prepopulate, Clp_ValInt, Clp_Optional },
   { "seed", 's', opt_seed, Clp_ValUnsigned, 0 },
   { "skew", 0, opt_skew, Clp_ValDouble, Clp_Optional},
+  { "hashsize", 0, opt_hashsize, Clp_ValInt, Clp_Optional },
 };
 
 static void help(const char *name) {
@@ -1667,8 +1670,9 @@ Options:\n\
  --blindrandwrites, do blind random writes for random tests. makes checking impossible\n\
  --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n\
  --seed=SEED\n\
- --skew=SKEW, skew parameter for zipfrw test type (default %f)\n",
-         name, nthreads, ntrans, opspertrans, write_percent, readonly_percent, prepopulate, zipf_skew);
+ --skew=SKEW, skew parameter for zipfrw test type (default %f)\n\
+ --hashsize=HASHSIZE, size of the hash table (default %d)\n",
+         name, nthreads, ntrans, opspertrans, write_percent, readonly_percent, prepopulate, zipf_skew, hashsize);
   printf("\nTests:\n");
   size_t testidx = 0;
   for (size_t ti = 0; ti != sizeof(tests)/sizeof(tests[0]); ++ti)
@@ -1754,6 +1758,9 @@ int main(int argc, char *argv[]) {
         break;
     case opt_skew:
         zipf_skew = clp->val.d;
+        break;
+    case opt_hashsize:
+        hashsize = clp->val.i;
         break;
     default:
       help(argv[0]);

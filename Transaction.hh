@@ -15,7 +15,7 @@
 #include <setjmp.h>
 
 #ifndef STO_PROFILE_COUNTERS
-#define STO_PROFILE_COUNTERS 1
+#define STO_PROFILE_COUNTERS 0
 #endif
 #ifndef STO_TSC_PROFILE
 #define STO_TSC_PROFILE 0
@@ -312,6 +312,8 @@ public:
     static constexpr unsigned tset_initial_capacity = 512;
 
     static constexpr unsigned hash_size = 32768;
+    static constexpr unsigned hash_size_1024 = 1024;
+    static constexpr unsigned hash_size_32768 = 32768;
     static constexpr unsigned hash_step = 5;
     using epoch_type = TRcuSet::epoch_type;
     using signed_epoch_type = TRcuSet::signed_epoch_type;
@@ -447,6 +449,11 @@ private:
 #if TRANSACTION_HASHTABLE
         if (hash_base_ >= 32768) {
             memset(hashtable_, 0, sizeof(hashtable_));
+            /*if (TThread::always_allocate()) {
+                memset(hashtable_1024_, 0, sizeof(hashtable_1024_)); 
+            } else {
+                memset(hashtable_32768_, 0, sizeof(hashtable_32768_));
+            }*/
             hash_base_ = 0;
         }
 #endif
@@ -469,12 +476,19 @@ private:
 	(void) obj;
 	return (reinterpret_cast<uintptr_t>(key) >> 2) % hash_size;
     }
+    static int hash_1024(const TObject* obj, void* key) {
+	(void) obj;
+	return (reinterpret_cast<uintptr_t>(key) >> 2) % hash_size_1024;
+    }   
+    static int hash_32768(const TObject* obj, void* key) {
+	(void) obj;
+	return (reinterpret_cast<uintptr_t>(key) >> 2) % hash_size_32768;
+    }
 #endif
 
     void refresh_tset_chunk();
 
     void allocate_item_update_hash(const TObject* obj, void* xkey) {
-        //asm ("");
 #if TRANSACTION_HASHTABLE
         unsigned hi = hash(obj, xkey);
 # if TRANSACTION_HASHTABLE > 1
@@ -486,15 +500,65 @@ private:
 #endif	
     }
 
+    void allocate_item_update_hash_1024(const TObject* obj, void* xkey) {
+#if TRANSACTION_HASHTABLE
+        unsigned hi = hash_1024(obj, xkey);
+# if TRANSACTION_HASHTABLE > 1
+        if (hashtable_1024_[hi] > hash_base_)
+            hi = (hi + hash_step) % hash_size_1024;
+# endif
+        if (hashtable_1024_[hi] <= hash_base_)
+            hashtable_1024_[hi] = hash_base_ + tset_size_;
+#endif	
+    }
+
+     void allocate_item_update_hash_32768(const TObject* obj, void* xkey) {
+#if TRANSACTION_HASHTABLE
+        unsigned hi = hash_32768(obj, xkey);
+# if TRANSACTION_HASHTABLE > 1
+        if (hashtable_32768_[hi] > hash_base_)
+            hi = (hi + hash_step) % hash_size_32768;
+# endif
+        if (hashtable_32768_[hi] <= hash_base_)
+            hashtable_32768_[hi] = hash_base_ + tset_size_;
+#endif	
+    }
+
+ 
+
     TransItem* allocate_item(const TObject* obj, void* xkey) {
-	TXP_INCREMENT(txp_allocate);
+	//TXP_INCREMENT(txp_allocate);
         if (tset_size_ && tset_size_ % tset_chunk == 0)
             refresh_tset_chunk();
         ++tset_size_;
         new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey);
-	if (!TThread::always_allocate()) {
+	//if (!TThread::always_allocate()) {
             allocate_item_update_hash(obj, xkey);
-        }
+        //}
+        return tset_next_++;
+    }
+
+    TransItem* allocate_item_1024(const TObject* obj, void* xkey) {
+	//TXP_INCREMENT(txp_allocate);
+        if (tset_size_ && tset_size_ % tset_chunk == 0)
+            refresh_tset_chunk();
+        ++tset_size_;
+        new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey);
+	//if (!TThread::always_allocate()) {
+            allocate_item_update_hash_1024(obj, xkey);
+        //}
+        return tset_next_++;
+    }
+
+    TransItem* allocate_item_32768(const TObject* obj, void* xkey) {
+	//TXP_INCREMENT(txp_allocate);
+        if (tset_size_ && tset_size_ % tset_chunk == 0)
+            refresh_tset_chunk();
+        ++tset_size_;
+        new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey);
+	//if (!TThread::always_allocate()) {
+            allocate_item_update_hash_32768(obj, xkey);
+        //}
         return tset_next_++;
     }
 
@@ -521,16 +585,42 @@ public:
     // tries to find an existing item with this key, otherwise adds it
     template <typename T>
     TransProxy item(const TObject* obj, T key) {
-        if (TThread::always_allocate()) {
-            return new_item(obj, key);
-        } else {
-        //return TransProxy(*this, gitem);
+        //(void)obj, (void)key;
+        //if (TThread::always_allocate()) {
+        //    return new_item(obj, key);
+        //} else {
             void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
             TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
             if (!ti)
                 ti = allocate_item(obj, xkey);
             return TransProxy(*this, *ti);
-        }
+        //}
+	//return TransProxy(*this, gitem);
+        /*if (TThread::always_allocate()) {
+            return item_1024(obj, key);
+        } else {
+            return item_32768(obj, key);
+        }*/
+    }
+
+    template <typename T>
+    TransProxy item_1024(const TObject* obj, T key) {
+        (void)obj, (void)key;
+            void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
+            TransItem* ti = find_item_1024(const_cast<TObject*>(obj), xkey);
+            if (!ti)
+                ti = allocate_item_1024(obj, xkey);
+            return TransProxy(*this, *ti);
+    }
+
+    template <typename T>
+    TransProxy item_32768(const TObject* obj, T key) {
+        (void)obj, (void)key;
+            void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
+            TransItem* ti = find_item_32768(const_cast<TObject*>(obj), xkey);
+            if (!ti)
+                ti = allocate_item_32768(obj, xkey);
+            return TransProxy(*this, *ti);
     }
 
     // gets an item that is intended to be read only. this method essentially allows for duplicate items
@@ -557,7 +647,6 @@ public:
 
 private:
     TransItem* find_item_scan(TObject* obj, void* xkey) const {
-        //asm ("");
         const TransItem* it = nullptr;
         for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
             it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
@@ -604,6 +693,82 @@ private:
 	std::cout << "Not found!" << std::endl;
 	return find_item_scan(obj, xkey); 
    }
+
+    TransItem* find_item_1024(TObject* obj, void* xkey) const {
+#if STO_TSC_PROFILE
+        TimeKeeper<tc_find_item> tk;
+#endif
+#if TRANSACTION_HASHTABLE
+        TXP_INCREMENT(txp_hash_find);
+        unsigned hi = hash_1024(obj, xkey);
+        for (int steps = 0; steps < TRANSACTION_HASHTABLE; ++steps) {
+            if (hashtable_1024_[hi] <= hash_base_)
+                return nullptr;
+            unsigned tidx = hashtable_1024_[hi] - hash_base_ - 1;
+            const TransItem* ti;
+            if (likely(tidx < tset_initial_capacity))
+                ti = &tset0_[tidx];
+            else
+                ti = &tset_[tidx / tset_chunk][tidx % tset_chunk];
+            if (ti->owner() == obj && ti->key_ == xkey)
+                return const_cast<TransItem*>(ti);
+            if (!steps) {
+                TXP_INCREMENT(txp_hash_collision);
+# if STO_DEBUG_HASH_COLLISIONS
+                if (local_random() <= uint32_t(0xFFFFFFFF * STO_DEBUG_HASH_COLLISIONS_FRACTION)) {
+                    std::ostringstream buf;
+                    TransItem fake_item(obj, xkey);
+                    buf << "$ STO hash collision: search " << fake_item << ", find " << *ti << '\n';
+                    std::cerr << buf.str();
+                }
+# endif
+            } else
+                TXP_INCREMENT(txp_hash_collision2);
+            hi = (hi + hash_step) % hash_size_1024;
+        }
+#endif
+	std::cout << "Not found!" << std::endl;
+	return find_item_scan(obj, xkey); 
+   }
+
+    TransItem* find_item_32768(TObject* obj, void* xkey) const {
+#if STO_TSC_PROFILE
+        TimeKeeper<tc_find_item> tk;
+#endif
+#if TRANSACTION_HASHTABLE
+        TXP_INCREMENT(txp_hash_find);
+        unsigned hi = hash_32768(obj, xkey);
+        for (int steps = 0; steps < TRANSACTION_HASHTABLE; ++steps) {
+            if (hashtable_32768_[hi] <= hash_base_)
+                return nullptr;
+            unsigned tidx = hashtable_32768_[hi] - hash_base_ - 1;
+            const TransItem* ti;
+            if (likely(tidx < tset_initial_capacity))
+                ti = &tset0_[tidx];
+            else
+                ti = &tset_[tidx / tset_chunk][tidx % tset_chunk];
+            if (ti->owner() == obj && ti->key_ == xkey)
+                return const_cast<TransItem*>(ti);
+            if (!steps) {
+                TXP_INCREMENT(txp_hash_collision);
+# if STO_DEBUG_HASH_COLLISIONS
+                if (local_random() <= uint32_t(0xFFFFFFFF * STO_DEBUG_HASH_COLLISIONS_FRACTION)) {
+                    std::ostringstream buf;
+                    TransItem fake_item(obj, xkey);
+                    buf << "$ STO hash collision: search " << fake_item << ", find " << *ti << '\n';
+                    std::cerr << buf.str();
+                }
+# endif
+            } else
+                TXP_INCREMENT(txp_hash_collision2);
+            hi = (hi + hash_step) % hash_size_32768;
+        }
+#endif
+	std::cout << "Not found!" << std::endl;
+	return find_item_scan(obj, xkey); 
+   }
+
+
 
     bool preceding_duplicate_read(TransItem *it) const;
 
@@ -835,6 +1000,8 @@ private:
     TransItem* tset_[tset_max_capacity / tset_chunk];
 #if TRANSACTION_HASHTABLE
     uint16_t hashtable_[hash_size];
+    uint16_t hashtable_1024_[hash_size_1024];
+    uint16_t hashtable_32768_[hash_size_32768];
 #endif
     TransItem tset0_[tset_initial_capacity];
 
@@ -1020,6 +1187,7 @@ class TransactionLoopGuard {
         //std::ostringstream buf;
 	//buf << "Thread [" << TThread::id() << "] starts a new transaction" << std::endl;
         //std::cerr << buf.str();
+        //std::cout << TThread::id() << " starts!" << std::endl;
     }
 
     ~TransactionLoopGuard() {

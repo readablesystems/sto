@@ -100,6 +100,7 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
     if (item && item->has_read() && item->read_value<TransactionTid::type>() == t)
         return;
 
+
     // die on recursive opacity check; this is only possible for predicates
     if (unlikely(state_ == s_opacity_check)) {
         mark_abort_because(item, "recursive opacity check", t);
