@@ -488,9 +488,8 @@ private:
 
     void refresh_tset_chunk();
 
-    void allocate_item_update_hash(const TObject* obj, void* xkey) {
+    void allocate_item_update_hash(unsigned hi) {
 #if TRANSACTION_HASHTABLE
-        unsigned hi = hash(obj, xkey);
 # if TRANSACTION_HASHTABLE > 1
         if (hashtable_[hi] > hash_base_)
             hi = (hi + hash_step) % hash_size;
@@ -526,14 +525,14 @@ private:
 
  
 
-    TransItem* allocate_item(const TObject* obj, void* xkey) {
+    TransItem* allocate_item(const TObject* obj, void* xkey, unsigned hi) {
 	//TXP_INCREMENT(txp_allocate);
         if (tset_size_ && tset_size_ % tset_chunk == 0)
             refresh_tset_chunk();
         ++tset_size_;
         new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey);
 	//if (!TThread::always_allocate()) {
-            allocate_item_update_hash(obj, xkey);
+            allocate_item_update_hash(hi);
         //}
         return tset_next_++;
     }
@@ -571,16 +570,26 @@ public:
     template <typename T>
     TransProxy new_item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        return TransProxy(*this, *allocate_item(obj, xkey));
-    }
+#if TRANSACTION_HASHTABLE
+        unsigned hi = hash(obj, xkey);
+        return TransProxy(*this, *allocate_item(obj, xkey, hi));
+#else
+        return TransProxy(*this, *allocate_item(obj, xkey, 0));
+#endif
+        }
 
     // adds item without checking its presence in the array
     template <typename T>
     TransProxy fresh_item(const TObject* obj, T key) {
         may_duplicate_items_ = tset_size_ > 0;
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        return TransProxy(*this, *allocate_item(obj, xkey));
-    }
+#if TRANSACTION_HASHTABLE
+        unsigned hi = hash(obj, xkey);
+        return TransProxy(*this, *allocate_item(obj, xkey, hi));
+#else
+        return TrnasProxy(*this, *allocate_item(obj, xkey, 0));
+#endif
+       }
 
     // tries to find an existing item with this key, otherwise adds it
     template <typename T>
@@ -590,9 +599,18 @@ public:
         //    return new_item(obj, key);
         //} else {
             void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-            TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
+#if TRANSACTION_HASHTABLE
+            unsigned hi = hash(obj, xkey);
+            TransItem* ti = find_item(const_cast<TObject*>(obj), xkey, hi);
+#else
+            TransItem* ti = find_item(const_cast<TObject*>(obj), xkey, 0);
+#endif
             if (!ti)
-                ti = allocate_item(obj, xkey);
+#if TRANSACTION_HASHTABLE
+                ti = allocate_item(obj, xkey, hi);
+#else
+                ti = allocate_Item(obj, xkey, 0);
+#endif
             return TransProxy(*this, *ti);
         //}
 	//return TransProxy(*this, gitem);
@@ -629,20 +647,38 @@ public:
     TransProxy read_item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
         TransItem* ti = nullptr;
-        if (any_writes_)
-            ti = find_item(const_cast<TObject*>(obj), xkey);
-        else
+#if TRANSACTION_HASHTABLE
+        unsigned hi = hash(obj, xkey);
+#endif
+        if (any_writes_) {
+#if TRANSACTION_HASHTABLE
+            ti = find_item(const_cast<TObject*>(obj), xkey, hi);
+#else
+            ti = find_item(const_cast<TObject*>(obj), xkey, 0);
+#endif
+        }
+        else {
             may_duplicate_items_ = tset_size_ > 0;
+        }
         if (!ti)
-            ti = allocate_item(obj, xkey);
+#if TRANSACTION_HASHTABLE
+            ti = allocate_item(obj, xkey, hi);
+#else
+            ti = allocate_item(obj, xkey, 0);
+#endif
         return TransProxy(*this, *ti);
     }
 
     template <typename T>
     OptionalTransProxy check_item(const TObject* obj, T key) const {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
-        return OptionalTransProxy(const_cast<Transaction&>(*this), ti);
+#if TRANSACTION_HASHTABLE
+        unsigned hi = hash(obj, xkey);
+        TransItem* ti = find_item(const_cast<TObject*>(obj), xkey, hi); 
+#else
+	TransItem* ti = find_item(const_cast<TObject*>(obj), xkey, 0);
+#endif
+       return OptionalTransProxy(const_cast<Transaction&>(*this), ti);
     }
 
 private:
@@ -657,13 +693,12 @@ private:
         return nullptr;
     }
     // tries to find an existing item with this key, returns NULL if not found
-    TransItem* find_item(TObject* obj, void* xkey) const {
+    TransItem* find_item(TObject* obj, void* xkey, unsigned hi) const {
 #if STO_TSC_PROFILE
         TimeKeeper<tc_find_item> tk;
 #endif
 #if TRANSACTION_HASHTABLE
         TXP_INCREMENT(txp_hash_find);
-        unsigned hi = hash(obj, xkey);
         for (int steps = 0; steps < TRANSACTION_HASHTABLE; ++steps) {
             if (hashtable_[hi] <= hash_base_)
                 return nullptr;
@@ -690,7 +725,7 @@ private:
             hi = (hi + hash_step) % hash_size;
         }
 #endif
-	std::cout << "Not found!" << std::endl;
+	std::cout << "Hash not found!" << std::endl;
 	return find_item_scan(obj, xkey); 
    }
 
