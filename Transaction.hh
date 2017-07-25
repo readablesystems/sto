@@ -13,9 +13,10 @@
 #include <sstream>
 #include <fstream>
 #include <setjmp.h>
+#include <bitset>
 
 #ifndef STO_PROFILE_COUNTERS
-#define STO_PROFILE_COUNTERS 0
+#define STO_PROFILE_COUNTERS 1
 #endif
 #ifndef STO_TSC_PROFILE
 #define STO_TSC_PROFILE 0
@@ -142,6 +143,7 @@ enum txp {
     txp_cm_onwrite,
     txp_cm_start,
     txp_allocate,
+    txp_bv_hit,
     txp_tco,
     txp_hco,
     txp_hco_lock,
@@ -311,6 +313,7 @@ class Transaction {
 public:
     static constexpr unsigned tset_initial_capacity = 512;
 
+    static constexpr size_t bv_size = 1024;
     static constexpr unsigned hash_size = 32768;
     static constexpr unsigned hash_size_1024 = 1024;
     static constexpr unsigned hash_size_32768 = 32768;
@@ -446,8 +449,14 @@ private:
         hash_base_ += tset_size_ + 1;
         tset_size_ = 0;
         tset_next_ = tset0_;
+        //bitvector_.reset();
+        tx_counter += 1;
+        if (tx_counter % (50) == 0) {
+            bitvector_.reset();
+        }
 #if TRANSACTION_HASHTABLE
         if (hash_base_ >= 32768) {
+            //bitvector_.reset();
             memset(hashtable_, 0, sizeof(hashtable_));
             /*if (TThread::always_allocate()) {
                 memset(hashtable_1024_, 0, sizeof(hashtable_1024_)); 
@@ -491,6 +500,7 @@ private:
     void allocate_item_update_hash(const TObject* obj, void* xkey) {
 #if TRANSACTION_HASHTABLE
         unsigned hi = hash(obj, xkey);
+        bitvector_[hi % bv_size] = true;
 # if TRANSACTION_HASHTABLE > 1
         if (hashtable_[hi] > hash_base_)
             hi = (hi + hash_step) % hash_size;
@@ -666,6 +676,10 @@ private:
 #if TRANSACTION_HASHTABLE
         TXP_INCREMENT(txp_hash_find);
         unsigned hi = hash(obj, xkey);
+        if (!bitvector_[hi % bv_size]) {
+            TXP_INCREMENT(txp_bv_hit);
+            return nullptr;
+        }
         for (int steps = 0; steps < TRANSACTION_HASHTABLE; ++steps) {
             if (hashtable_[hi] <= hash_base_)
                 return nullptr;
@@ -974,6 +988,8 @@ private:
         s_committing_locked = 3, s_aborted = 4, s_committed = 5
     };
 
+    std::bitset<bv_size> bitvector_;
+    unsigned tx_counter;
     jmp_buf env;
     TransItem gitem;
     int threadid_;

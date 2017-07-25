@@ -1877,7 +1877,7 @@ int main(int argc, char *argv[]) {
           sep = ", ";
       }
       if (txp_count > txp_total_aborts) {
-          printf("%stotal_aborts: %llu (%llu aborts at commit time, %llu in observe, %llus due to w/w conflicts)\n CM::should_abort: %llu, CM::on_write: %llu, CM::on_rollback: %llu, CM::start: %llu\n Allocate new items: %llu", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts), tc.p(txp_observe_lock_aborts), tc.p(txp_wwc_aborts), tc.p(txp_cm_shouldabort), tc.p(txp_cm_onwrite), tc.p(txp_cm_onrollback), tc.p(txp_cm_start), tc.p(txp_allocate));
+          printf("%stotal_aborts: %llu (%llu aborts at commit time, %llu in observe, %llus due to w/w conflicts)\n CM::should_abort: %llu, CM::on_write: %llu, CM::on_rollback: %llu, CM::start: %llu\n Allocate new items: %llu, BV hit: %llu", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts), tc.p(txp_observe_lock_aborts), tc.p(txp_wwc_aborts), tc.p(txp_cm_shouldabort), tc.p(txp_cm_onwrite), tc.p(txp_cm_onrollback), tc.p(txp_cm_start), tc.p(txp_allocate), tc.p(txp_bv_hit));
           sep = ", ";
       }
       if (*sep)

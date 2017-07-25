@@ -25,6 +25,7 @@ static void __attribute__((used)) check_static_assertions() {
 
 void Transaction::initialize() {
     static_assert(tset_initial_capacity % tset_chunk == 0, "tset_initial_capacity not an even multiple of tset_chunk");
+    tx_counter = 0;
     hash_base_ = 32768;
     tset_size_ = 0;
     lrng_state_ = 12897;
