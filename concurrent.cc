@@ -953,6 +953,8 @@ void ZipfRW<DS>::per_thread_workload_init(int thread_id) {
 
     if (dump_trace)
         dump_thread_trace(thread_id, thread_workload);
+
+    delete dd;
 }
 
 
