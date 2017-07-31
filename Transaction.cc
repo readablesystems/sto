@@ -135,7 +135,7 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
     state_ = s_in_progress;
 }
 
-void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
+void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset, unsigned first_lock) {
 #if STO_TSC_PROFILE
     TimeKeeper<tc_cleanup> tk;
 #endif
@@ -163,7 +163,7 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
 
     TransItem* it;
     if (!any_writes_)
-        goto after_unlock;
+        goto unlock_all;
 
     if (committed && !STO_SORT_WRITESET) {
         for (unsigned* idxit = writeset + nwriteset; idxit != writeset; ) {
@@ -199,6 +199,16 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
             if (it->has_write())
                 it->owner()->cleanup(*it, committed);
         }
+    }
+
+unlock_all:
+    if (first_lock == tset_size_)
+        goto after_unlock;
+    it = &tset_[tset_size_ / tset_chunk][tset_size_ % tset_chunk];
+    for (unsigned tidx = tset_size_; tidx != first_lock; --tidx) {
+        it = (tidx % tset_chunk ? it - 1 : &tset_[(tidx - 1) / tset_chunk][tset_chunk - 1]);
+        if (it->needs_unlock())
+            it->owner()->unlock(*it);
     }
 
 after_unlock:
@@ -240,7 +250,7 @@ bool Transaction::try_commit() {
 #if !CONSISTENCY_CHECK
     // commit immediately if read-only transaction with opacity
     if (!any_writes_ && !any_nonopaque_) {
-        stop(true, nullptr, 0);
+        stop(true, nullptr, 0, 0);
         return true;
     }
 #endif
@@ -250,10 +260,13 @@ bool Transaction::try_commit() {
     unsigned writeset[tset_size_];
     unsigned nwriteset = 0;
     writeset[0] = tset_size_;
+    unsigned first_lock = tset_size_;
 
     TransItem* it = nullptr;
     for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
         it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
+        if (first_lock == tset_size_ && it->needs_unlock())
+            first_lock = tidx;
         if (it->has_write()) {
             writeset[nwriteset++] = tidx;
 #if !STO_SORT_WRITESET
@@ -261,7 +274,7 @@ bool Transaction::try_commit() {
                 first_write_ = writeset[0];
                 state_ = s_committing_locked;
             }
-            if (!it->owner()->lock(*it, *this)) {
+            if (!it->needs_unlock() && !it->owner()->lock(*it, *this)) {
                 mark_abort_because(it, "commit lock");
                 goto abort;
             }
@@ -294,8 +307,8 @@ bool Transaction::try_commit() {
         auto writeset_end = writeset + nwriteset;
         for (auto it = writeset; it != writeset_end; ) {
             TransItem* me = &tset_[*it / tset_chunk][*it % tset_chunk];
-            if (!me->owner()->lock(*me, *this)) {
-                mark_abort_because(me, "commit lock");
+            if (!me->needs_unlock() && !me->owner()->lock(*me, *this)) {
+                    mark_abort_because(me, "commit lock");
                 goto abort;
             }
             me->__or_flags(TransItem::lock_bit);
@@ -314,7 +327,7 @@ bool Transaction::try_commit() {
     //phase2
     for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
         it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
-        if (it->has_read()) {
+        if (it->has_read() && (it->get_cc_policy() != CCPolicy::lock)) {
             TXP_INCREMENT(txp_total_check_read);
             if (!it->owner()->check(*it, *this)
                 && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
@@ -350,13 +363,13 @@ bool Transaction::try_commit() {
 #endif
 
     // fence();
-    stop(true, writeset, nwriteset);
+    stop(true, writeset, nwriteset, first_lock);
     return true;
 
 abort:
     // fence();
     TXP_INCREMENT(txp_commit_time_aborts);
-    stop(false, nullptr, 0);
+    stop(false, nullptr, 0, first_lock);
 #if STO_TSC_PROFILE
     auto endtime = read_tsc();
     TSC_ACCOUNT(tc_commit_wasted, endtime - tk.init_tsc_val());

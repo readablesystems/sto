@@ -5,6 +5,7 @@
 
 #include "config.h"
 #include "compiler.hh"
+#include "ConflictPredictor.hh"
 
 class Transaction;
 class TransItem;
@@ -576,6 +577,7 @@ public:
     virtual void cleanup(TransItem& item, bool committed) {
         (void) item, (void) committed;
     }
+    virtual CCPolicy get_cc_policy(TransItem& item) = 0;
     virtual void print(std::ostream& w, const TransItem& item) const;
 };
 

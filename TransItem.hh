@@ -34,7 +34,7 @@ class TransItem {
 
     TransItem() = default;
     TransItem(TObject* owner, void* k)
-        : s_(reinterpret_cast<ownerstore_type>(owner)), key_(k) {
+        : s_(reinterpret_cast<ownerstore_type>(owner)), key_(k), policy_(CCPolicy::none) {
     }
 
     TObject* owner() const {
@@ -182,12 +182,20 @@ class TransItem {
         return *this;
     }
 
+    CCPolicy get_cc_policy() {
+        if (policy_ == CCPolicy::none)
+            policy_ = owner()->get_cc_policy(*this);
+        return policy_;
+    }
+
 private:
     ownerstore_type s_;
     // this word must be unique (to a particular item) and consistently ordered across transactions
     void* key_;
     void* rdata_;
     void* wdata_;
+
+    CCPolicy policy_;
 
     void __rm_flags(flags_type flags) {
         s_ = s_ & ~flags;
@@ -238,7 +246,7 @@ class TransProxy {
     inline TransProxy& add_read(T rdata);
     template <typename T>
     inline TransProxy& add_read_opaque(T rdata);
-    inline TransProxy& observe(TVersion version, bool add_read);
+    inline TransProxy& observe(TVersion& version, bool add_read);
     inline TransProxy& observe(TNonopaqueVersion version, bool add_read);
     inline TransProxy& observe(TCommutativeVersion version, bool add_read);
     inline TransProxy& observe(TVersion version);
@@ -273,6 +281,15 @@ class TransProxy {
         item().__rm_flags(TransItem::write_bit);
         return *this;
     }
+
+    // like "add_writes"s but used for pessimistic items
+    inline TransProxy& acquire_write(TVersion& vers);
+    template <typename T>
+    inline TransProxy& acquire_wirte(const T& wdata, TVersion& vers);
+    template <typename T>
+    inline TransProxy& acquire_write(T&& wdata, TVersion& vers);
+    template <typename T, typename... Args>
+    inline TransProxy& acquire_write(Args&&... args, TVersion& vers);
 
     template <typename T>
     inline TransProxy& set_stash(T sdata);
@@ -377,6 +394,8 @@ private:
     inline Transaction* t() const {
         return t_;
     }
+    enum class ReqType : int {read, write};
+    inline void acquire(TransItem& item, TVersion& vers, ReqType req);
     friend class Transaction;
     friend class OptionalTransProxy;
 };

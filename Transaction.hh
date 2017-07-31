@@ -583,7 +583,7 @@ private:
 public:
     void silent_abort() {
         if (in_progress())
-            stop(false, nullptr, 0);
+            stop(false, nullptr, 0, 0);
     }
 
     void abort() {
@@ -766,7 +766,7 @@ private:
     TransItem tset0_[tset_initial_capacity];
 
     void hard_check_opacity(TransItem* item, TransactionTid::type t);
-    void stop(bool committed, unsigned* writes, unsigned nwrites);
+    void stop(bool committed, unsigned* writes, unsigned nwrites, unsigned first_lock);
 
     friend class TransProxy;
     friend class TransItem;
@@ -973,14 +973,21 @@ inline TransProxy& TransProxy::add_read_opaque(T rdata) {
     return *this;
 }
 
-inline TransProxy& TransProxy::observe(TVersion version, bool add_read) {
+inline TransProxy& TransProxy::observe(TVersion& version, bool add_read) {
     assert(!has_stash());
+    CCPolicy cp = item().get_cc_policy();
     if (version.is_locked_elsewhere(t()->threadid_))
         t()->abort_because(item(), "locked", version.value());
-    t()->check_opacity(item(), version.value());
+    if (cp == CCPolicy::occ) {
+        t()->check_opacity(item(), version.value());
+    } else if (cp == CCPolicy::lock) {
+        // this is to prevent the commit protocol from skipping unlocks
+        t()->any_nonopaque_ = true;
+    }
     if (add_read && !has_read()) {
-        item().__or_flags(TransItem::read_bit);
+        //item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
+        acquire(item(), version, ReqType::read);
     }
     return *this;
 }
@@ -1095,6 +1102,52 @@ inline TransProxy& TransProxy::add_write(Args&&... args) {
         // which will make our lives much easier)
         item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
     return *this;
+}
+
+inline void TransProxy::acquire(TransItem& item, TVersion& vers, ReqType req) {
+    if (item.get_cc_policy() == CCPolicy::lock && !needs_unlock()) {
+        item.__or_flags(TransItem::lock_bit);
+        if (!t()->try_lock(item, vers)) {
+            t()->mark_abort_because(&item, "acquire_exclusive", vers.value());
+            Sto::abort();
+        }
+    }
+    if (req == ReqType::write)
+        item.__or_flags(TransItem::write_bit);
+    else
+        item.__or_flags(TransItem::read_bit);
+}
+
+inline TransProxy& TransProxy::acquire_write(TVersion& vers) {
+    if (!has_write()) {
+        item().__or_flags(TransItem::write_bit);
+        t()->any_writes_ = true;
+        acquire(item(), vers, ReqType::write);
+    }
+    return *this;
+}
+
+template <typename T>
+inline TransProxy& TransProxy::acquire_wirte(const T& wdata, TVersion& vers) {
+    return acquire_write<T, const T&>(wdata, vers);
+}
+
+template <typename T>
+inline TransProxy& TransProxy::acquire_write(T&& wdata, TVersion& vers) {
+    typedef typename std::decay<T>::type V;
+    return acquire_write<V, V&&>(std::move(wdata), vers);
+}
+
+template <typename T, typename... Args>
+inline TransProxy& TransProxy::acquire_write(Args&&... args, TVersion& vers) {
+    if (!has_write()) {
+        item().__or_flags(TransItem::write_bit);
+        item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
+        t()->any_writes_ = true;
+        acquire(item(), vers, ReqType::write);
+    } else {
+        item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
+    }
 }
 
 template <typename T>
