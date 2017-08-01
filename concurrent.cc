@@ -11,6 +11,7 @@
 #include <sys/resource.h>
 
 #include "TArray.hh"
+#include "TArrayAdaptive.hh"
 #include "TGeneric.hh"
 #include "Hashtable.hh"
 #include "Queue.hh"
@@ -41,6 +42,7 @@
 #define USE_MASSTREE_STR 8
 #define USE_HASHTABLE_STR 9
 #define USE_ARRAY_NONOPAQUE 10
+#define USE_ARRAY_ADAPTIVE 11
 
 // set this to USE_DATASTRUCTUREYOUWANT
 #define DATA_STRUCTURE USE_HASHTABLE
@@ -191,6 +193,25 @@ template <> struct Container<USE_ARRAY_NONOPAQUE> {
     }
     static void thread_init(Container<USE_ARRAY_NONOPAQUE>&) {
     }
+private:
+    type v_;
+};
+
+template <> struct Container<USE_ARRAY_ADAPTIVE> {
+    typedef TArrayAdaptive<value_type, ARRAY_SZ> type;
+    typedef int index_type;
+    static constexpr bool has_delete = false;
+    value_type nontrans_get(index_type key) {
+        return v_.nontrans_get(key);
+    }
+    value_type transGet(index_type key) {
+        return v_.transGet(key);
+    }
+    void transPut(index_type key, value_type value) {
+        v_.transPut(key, value);
+    }
+    static void init() {}
+    static void thread_init(Container<USE_ARRAY_ADAPTIVE>&) {}
 private:
     type v_;
 };

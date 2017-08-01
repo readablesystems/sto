@@ -166,6 +166,7 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset, u
         goto unlock_all;
 
     if (committed && !STO_SORT_WRITESET) {
+/*
         for (unsigned* idxit = writeset + nwriteset; idxit != writeset; ) {
             --idxit;
             if (*idxit < tset_initial_capacity)
@@ -175,6 +176,7 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset, u
             if (it->needs_unlock())
                 it->owner()->unlock(*it);
         }
+*/
         for (unsigned* idxit = writeset + nwriteset; idxit != writeset; ) {
             --idxit;
             if (*idxit < tset_initial_capacity)
@@ -185,6 +187,7 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset, u
                 it->owner()->cleanup(*it, committed);
         }
     } else {
+/*
         if (state_ == s_committing_locked) {
             it = &tset_[tset_size_ / tset_chunk][tset_size_ % tset_chunk];
             for (unsigned tidx = tset_size_; tidx != first_write_; --tidx) {
@@ -193,6 +196,7 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset, u
                     it->owner()->unlock(*it);
             }
         }
+*/
         it = &tset_[tset_size_ / tset_chunk][tset_size_ % tset_chunk];
         for (unsigned tidx = tset_size_; tidx != first_write_; --tidx) {
             it = (tidx % tset_chunk ? it - 1 : &tset_[(tidx - 1) / tset_chunk][tset_chunk - 1]);

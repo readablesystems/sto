@@ -577,7 +577,10 @@ public:
     virtual void cleanup(TransItem& item, bool committed) {
         (void) item, (void) committed;
     }
-    virtual CCPolicy get_cc_policy(TransItem& item) = 0;
+    virtual CCPolicy get_cc_policy(TransItem& item) {
+        (void)item;
+        return CCPolicy::none;
+    }
     virtual void print(std::ostream& w, const TransItem& item) const;
 };
 
