@@ -37,7 +37,7 @@
 #define USE_MASSTREE 2
 #define USE_TGENERICARRAY 4
 #define USE_QUEUE 5
-#define USE_VECTOR 6
+//#define USE_VECTOR 6
 #define USE_TVECTOR 7
 #define USE_MASSTREE_STR 8
 #define USE_HASHTABLE_STR 9
@@ -216,6 +216,7 @@ private:
     type v_;
 };
 
+/*
 template <> struct Container<USE_VECTOR> {
     typedef Vector<value_type> type;
     typedef typename type::size_type index_type;
@@ -241,6 +242,7 @@ template <> struct Container<USE_VECTOR> {
 private:
     type v_;
 };
+*/
 
 template <> struct Container<USE_TVECTOR> {
     typedef TVector<value_type> type;
@@ -1524,12 +1526,13 @@ void print_time(double time) {
     {name, desc, 1, new type<1, ## __VA_ARGS__>},     \
     {name, desc, 2, new type<2, ## __VA_ARGS__>},     \
     {name, desc, 4, new type<4, ## __VA_ARGS__>},     \
-    {name, desc, 6, new type<6, ## __VA_ARGS__>},     \
     {name, desc, 7, new type<7, ## __VA_ARGS__>},     \
     {name, desc, 8, new type<8, ## __VA_ARGS__>},     \
     {name, desc, 9, new type<9, ## __VA_ARGS__>},     \
-    {name, desc, 10, new type<10, ## __VA_ARGS__>}
+    {name, desc, 10, new type<10, ## __VA_ARGS__>},   \
+    {name, desc, 11, new type<11, ## __VA_ARGS__>}
 
+//    {name, desc, 6, new type<6, ## __VA_ARGS__>},
 struct Test {
     const char* name;
     const char* desc;
@@ -1556,6 +1559,7 @@ struct {
 } ds_names[] = {
     {"array", USE_ARRAY},
     {"array-nonopaque", USE_ARRAY_NONOPAQUE},
+    {"array-adaptive", USE_ARRAY_ADAPTIVE},
     {"hashtable", USE_HASHTABLE},
     {"hash", USE_HASHTABLE},
     {"hash-str", USE_HASHTABLE_STR},
@@ -1564,7 +1568,7 @@ struct {
     {"masstree-str", USE_MASSTREE_STR},
     {"tgeneric", USE_TGENERICARRAY},
     {"queue", USE_QUEUE},
-    {"vector", USE_VECTOR},
+//    {"vector", USE_VECTOR},
     {"tvector", USE_TVECTOR}
 };
 

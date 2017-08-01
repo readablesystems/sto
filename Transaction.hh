@@ -1105,7 +1105,7 @@ inline TransProxy& TransProxy::add_write(Args&&... args) {
 }
 
 inline void TransProxy::acquire(TransItem& item, TVersion& vers, ReqType req) {
-    if (item.get_cc_policy() == CCPolicy::lock && !needs_unlock()) {
+    if (item.get_cc_policy() == CCPolicy::lock && !item.needs_unlock()) {
         item.__or_flags(TransItem::lock_bit);
         if (!t()->try_lock(item, vers)) {
             t()->mark_abort_because(&item, "acquire_exclusive", vers.value());
@@ -1148,6 +1148,7 @@ inline TransProxy& TransProxy::acquire_write(Args&&... args, TVersion& vers) {
     } else {
         item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
     }
+    return *this;
 }
 
 template <typename T>

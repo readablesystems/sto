@@ -5,7 +5,9 @@
 
 template <unsigned N>
 class TArrayAdaptiveConflictPredictor : public ConflictPredictor {
+public:
     TArrayAdaptiveConflictPredictor() {}
+    ~TArrayAdaptiveConflictPredictor() override {}
 
     CCPolicy get_policy(TransItem& item) override {
         (void)item;
@@ -25,6 +27,13 @@ public:
     typedef int difference_type;
     typedef TConstArrayProxy<TArrayAdaptive<T, N, W> > const_proxy_type;
     typedef TArrayProxy<TArrayAdaptive<T, N, W> > proxy_type;
+
+    TArrayAdaptive() {
+        cp_ = new TArrayAdaptiveConflictPredictor<N>();
+    }
+    ~TArrayAdaptive() {
+        delete cp_;
+    }
 
     size_type size() const {
         return N;
@@ -94,7 +103,7 @@ public:
 
 private:
     struct elem {
-        version_type vers;
+        mutable version_type vers;
         W<T> v;
     };
     elem data_[N];
