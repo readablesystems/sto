@@ -58,14 +58,16 @@ public:
     // transGet and friends
     get_type transGet(size_type i) const {
         assert(i < N);
+        //printf("read [%lu]\n", i);
         auto item = Sto::item(this, i);
         if (item.has_write())
             return item.template write_value<T>();
         else
-            return data_[i].v.read(item, data_[i].vers);
+            return data_[i].v.read_pessimistic(item, data_[i].vers);
     }
     void transPut(size_type i, T x) const {
         assert(i < N);
+        //printf("write [%lu] = %lu\n", i, x);
         Sto::item(this, i).acquire_write(x, data_[i].vers);
     }
 

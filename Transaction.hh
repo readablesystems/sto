@@ -1106,11 +1106,11 @@ inline TransProxy& TransProxy::add_write(Args&&... args) {
 
 inline void TransProxy::acquire(TransItem& item, TVersion& vers, ReqType req) {
     if (item.get_cc_policy() == CCPolicy::lock && !item.needs_unlock()) {
-        item.__or_flags(TransItem::lock_bit);
         if (!t()->try_lock(item, vers)) {
             t()->mark_abort_because(&item, "acquire_exclusive", vers.value());
             Sto::abort();
         }
+        item.__or_flags(TransItem::lock_bit);
     }
     if (req == ReqType::write)
         item.__or_flags(TransItem::write_bit);

@@ -135,6 +135,10 @@ public:
     static read_type read(const T* v, TransProxy item, const version_type& version) {
         return TWrappedAccess::read_atomic(v, item, version, true);
     }
+    read_type read_pessimistic(TransProxy item, version_type& version) const {
+        item.observe(version, true);
+        return v_;
+    }
     void write(const T& v) {
         v_ = v;
     }
