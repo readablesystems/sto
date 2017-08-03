@@ -311,9 +311,14 @@ bool Transaction::try_commit() {
         auto writeset_end = writeset + nwriteset;
         for (auto it = writeset; it != writeset_end; ) {
             TransItem* me = &tset_[*it / tset_chunk][*it % tset_chunk];
-            if (!me->needs_unlock() && !me->owner()->lock(*me, *this)) {
+            if (!me->needs_unlock()) {
+                // rescan the whole read set for locks if optimistic writes
+                // are detected
+                first_lock = 0;
+                if (!me->owner()->lock(*me, *this)) {
                     mark_abort_because(me, "commit lock");
-                goto abort;
+                    goto abort;
+                }
             }
             me->__or_flags(TransItem::lock_bit);
             ++it;
@@ -373,7 +378,9 @@ bool Transaction::try_commit() {
 abort:
     // fence();
     TXP_INCREMENT(txp_commit_time_aborts);
-    stop(false, nullptr, 0, first_lock);
+    // scan the whole read set for locks if aborting
+    // XXX this can be optimized later
+    stop(false, nullptr, 0, 0);
 #if STO_TSC_PROFILE
     auto endtime = read_tsc();
     TSC_ACCOUNT(tc_commit_wasted, endtime - tk.init_tsc_val());

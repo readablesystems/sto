@@ -629,9 +629,11 @@ inline std::ostream& operator<<(std::ostream& os, const RWOperation& op) {
     os << "[";
     if (op.type == OpType::read) {
         os << "r,k=" << op.key;
-    } else {
-        assert(op.type == OpType::write);
+    } else if (op.type == OpType::write) {
         os << "w,k=" << op.key << ",v=" << op.value;
+    } else {
+        assert(op.type == OpType::inc);
+        os << "inc,k=" << op.key;
     }
     os << "]";
     return os;

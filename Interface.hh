@@ -568,7 +568,7 @@ public:
     virtual bool lock(TransItem& item, Transaction& txn) = 0;
     virtual bool check_predicate(TransItem& item, Transaction& txn, bool committing) {
         (void) item, (void) txn, (void) committing;
-	//        always_assert(false);
+        // always_assert(false);
         return false;
     }
     virtual bool check(TransItem& item, Transaction& txn) = 0;
@@ -579,7 +579,8 @@ public:
     }
     virtual CCPolicy get_cc_policy(TransItem& item) {
         (void)item;
-        return CCPolicy::none;
+        // defaulting to occ
+        return CCPolicy::occ;
     }
     virtual void print(std::ostream& w, const TransItem& item) const;
 };
