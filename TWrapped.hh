@@ -51,7 +51,17 @@ static T read_nonatomic(const T* v, TransProxy item, const V& version, bool add_
         V v1 = version;
 
         if (v0 == v1) {
-            item.observe(v1, add_read);
+            //item.observe(v1, add_read);
+            Transaction& t = item.transaction();
+            TransItem& it = item.item();
+            if (v1.is_locked_elsewhere(t.threadid())) {
+                t.abort_because(it, "locked,", v1.value());
+            }
+            if (add_read && !it.has_read()) {
+                it.__or_flags(TransItem::read_bit);
+                it.rdata_ = Packer<TNonopaqueVersion>::pack(t.buf_, std::move(version));
+                t.any_nonopaque_ = true;
+            }
             return result;
         }
         relax_fence();

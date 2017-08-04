@@ -57,7 +57,7 @@ public:
     }
     void transPut(size_type i, T x) const {
         assert(i < N);
-        Sto::item(this, i).add_swiss_write(x, data_[i].wlock, i);
+        Sto::item(this, i).add_swiss_write(x, data_[i].wlock);
     }
 
     get_type nontrans_get(size_type i) const {
@@ -263,18 +263,18 @@ inline auto SwissTArray<T, N, W>::end() const -> const_iterator {
 }
 
 template <typename T>
-inline TransProxy& TransProxy::add_swiss_write(const T& wdata, WriteLock& wlock, int index) {
-    return add_swiss_write<T, const T&>(wdata, wlock, index);
+inline TransProxy& TransProxy::add_swiss_write(const T& wdata, WriteLock& wlock) {
+    return add_swiss_write<T, const T&>(wdata, wlock);
 }
 
 template <typename T>
-inline TransProxy& TransProxy::add_swiss_write(T&& wdata, WriteLock& wlock, int index) {
+inline TransProxy& TransProxy::add_swiss_write(T&& wdata, WriteLock& wlock) {
     typedef typename std::decay<T>::type V;
-    return add_swiss_write<V, V&&>(std::move(wdata), wlock, index);
+    return add_swiss_write<V, V&&>(std::move(wdata), wlock);
 }
 
 template <typename T, typename... Args>
-inline TransProxy& TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock, int index) {
+inline TransProxy& TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock) {
     if (wlock.is_locked_here()) {
         item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
         return *this;
@@ -283,7 +283,7 @@ inline TransProxy& TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock,
     while(true) {
         if (wlock.is_locked()) {
             bool aborted_by_others = false;
-            if (ContentionManager::should_abort(t(), wlock, aborted_by_others, index)) {
+            if (ContentionManager::should_abort(t(), wlock, aborted_by_others)) {
 		TXP_INCREMENT(txp_wwc_aborts);
                 if (aborted_by_others) {
                   TXP_INCREMENT(txp_aborted_by_others);
@@ -291,16 +291,7 @@ inline TransProxy& TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock,
                 } else {
 		  t_->mark_abort_because(item_, "w/w conflict");
                 }
-		//if (uint32_t(rand()) <= uint32_t(0xFFFFFFFF * 0.001)) {
-		  //std::ofstream outfile;
-		  //outfile.open(std::to_string(t()->threadid()), std::ios_base::app);
-		  //outfile << "Transaction [" << (void*)t() << "] on thread [" << t()->threadid() << "] abort for address [" << item().template key<void*>() << "]" << std::endl;
-		  //outfile.close();
-		//}
-                //std::stringstream msg;
-                //msg << "Thread " << (t()->threadid()) << " is aborting for index " << index << ". Owner thread is " << (wlock & TransactionTid::threadid_mask) << ". Lock address = [" << &wlock <<  "].\n";
-                //std::cout << msg.str();
-                Sto::abort();
+	        Sto::abort();
             } else {
 		relax_fence();
                 continue;
@@ -308,26 +299,15 @@ inline TransProxy& TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock,
         }
 
         if (wlock.try_lock()){
-            //std::stringstream msg;
-            //msg << "Thread " << (t()->threadid()) << " acquires lock for index " << index << ", lock address = [" << &wlock  << "].\n";
-            //std::cout << msg.str();
             break;
         }
     }
 
-
-    //if (!has_write()) {
-        item().__or_flags(TransItem::write_bit | TransItem::lock_bit);
-        item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
-        t()->any_writes_ = true;
-    //} else
-        // TODO: this assumes that a given writer data always has the same type.
-        // this is certainly true now but we probably shouldn't assume this in general
-        // (hopefully we'll have a system that can automatically call destructors and such
-        // which will make our lives much easier)
-        // item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
-
+    item().__or_flags(TransItem::write_bit | TransItem::lock_bit);
+    item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
+    t()->any_writes_ = true;
     ContentionManager::on_write(t());
+
     return *this;
 }
 

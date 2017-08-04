@@ -9,7 +9,7 @@
 #define SUCC_ABORTS_MAX 10
 #define WAIT_CYCLES_MULTIPLICATOR 8000
 
-bool ContentionManager::should_abort(Transaction* tx, WriteLock wlock, bool& aborted_by_others, int index) {	
+bool ContentionManager::should_abort(Transaction* tx, WriteLock wlock, bool& aborted_by_others) {	
     TXP_INCREMENT(txp_cm_shouldabort);
     int threadid = tx->threadid();
     threadid *= 4;

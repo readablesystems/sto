@@ -16,7 +16,7 @@ public:
     static constexpr unsigned table_size = 1 << 22;
 
     template <typename T>
-    T read(T* word, int index) {
+    T read(T* word) {
         // XXX this code doesn't work right if `word` is a union member;
         // we assume that every value at location `word` has the same size
         static_assert(sizeof(T) <= sizeof(void*), "T larger than void*");
@@ -29,16 +29,17 @@ public:
         return W<T>::read(word, it, version(word));
     }
     template <typename T, typename U>
-    void write(T* word, U value, int index) {
+    void write(T* word, U value) {
         static_assert(sizeof(T) <= sizeof(void*), "T larger than void*");
         static_assert(mass::is_trivially_copyable<T>::value, "T nontrivial");
-        Sto::item(this, word).add_swiss_write(T(value), wlock(word), index).assign_flags(sizeof(T) << TransItem::userf_shift);
+        Sto::item(this, word).add_swiss_write(T(value), wlock(word)).assign_flags(sizeof(T) << TransItem::userf_shift);
     }
 
 
     bool lock(TransItem& item, Transaction& txn) override {
         version_type& vers = version(item.template key<void*>());
         //return vers.is_locked_here() || txn.try_lock(item, vers);
+        (void) txn;
         return vers.is_locked_here() || vers.set_lock();
     }
     bool check(TransItem& item, Transaction&) override {

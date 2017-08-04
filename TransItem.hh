@@ -187,12 +187,15 @@ private:
     ownerstore_type s_;
     // this word must be unique (to a particular item) and consistently ordered across transactions
     void* key_;
+public:
     void* rdata_;
+private:
     void* wdata_;
 
     void __rm_flags(flags_type flags) {
         s_ = s_ & ~flags;
     }
+public:
     void __or_flags(flags_type flags) {
         s_ = s_ | flags;
     }
@@ -277,11 +280,11 @@ class TransProxy {
 
     
     template <typename T>
-    inline TransProxy& add_swiss_write(const T& wdata, WriteLock& wlock, int index);
+    inline TransProxy& add_swiss_write(const T& wdata, WriteLock& wlock);
     template <typename T>
-    inline TransProxy& add_swiss_write(T&& wdata, WriteLock& wlock, int index);
+    inline TransProxy& add_swiss_write(T&& wdata, WriteLock& wlock);
     template <typename T, typename... Args>
-    inline TransProxy& add_swiss_write(Args&&... wdata, WriteLock& lock, int index);
+    inline TransProxy& add_swiss_write(Args&&... wdata, WriteLock& lock);
     // What is the use of clear_write?
     //inline TransProxy& clear_write() {
     //    item().__rm_flags(TransItem::write_bit);

@@ -333,7 +333,7 @@ template <> struct Container<USE_SWISSGENERICARRAY> {
 	//outfile << "Get: Base = [" << (void*)&a_[0] << "], key = [" << key << "]." << std::endl;
 	//std::cout << "Base = [" << (void*)&a_[0] << "]" << std::endl;
 	//outfile.close();
-        return stm_.read(&a_[key], key);
+        return stm_.read(&a_[key]);
     }
     void transPut(index_type key, value_type value) {
         //std::ofstream outfile;
@@ -341,7 +341,7 @@ template <> struct Container<USE_SWISSGENERICARRAY> {
         //outfile << "Get: Base = [" << (void*)&a_[0] << "], key = [" << key << "]." << std::endl;
         //outfile.close();
         //assert(key >= 0 && key < ARRAY_SZ);
-        stm_.write(&a_[key], value, key);
+        stm_.write(&a_[key], value);
     }
     static void init() {
     }
@@ -1064,13 +1064,15 @@ template <int DS> struct RandomRWs_parent : public DSTester<DS> {
 template <int DS> template <bool do_delete>
 void RandomRWs_parent<DS>::do_run(int me) {
   TThread::set_id(me);
-  TThread::set_always_allocate(readMyWrites);
+  //TThread::set_always_allocate(readMyWrites);
   Sto::update_threadid();
 #ifdef BOOSTING_STANDALONE
   boosting_threadid = me;
 #endif
   container_type* a = this->a;
   container_type::thread_init(*a);
+
+  unsigned ids[100] = {10, 240, 45, 205, 80, 170, 105, 140, 11, 239, 46, 204, 81, 169, 106, 141, 12, 238, 47, 203, 82, 168, 107, 142, 13, 237, 48, 202, 83, 167, 108, 143, 14, 236, 49, 201, 84, 166, 109, 144, 15, 235, 50, 200, 85, 165, 110, 145, 16, 234, 51, 199, 86, 164, 111, 146, 17, 233, 52, 198, 87, 163, 112, 147, 18, 232, 53, 197, 88, 162, 113, 148, 19, 231, 54, 196, 89, 161, 114, 149, 20, 230, 55, 195, 90, 160, 115, 150, 21, 229, 56, 194, 91, 159, 116, 151, 22, 228, 57, 193}; 
 
 #if NON_CONFLICTING
   long range = ARRAY_SZ/nthreads;
@@ -1106,7 +1108,8 @@ void RandomRWs_parent<DS>::do_run(int me) {
 #endif
 
       for (int j = 0; j < OPS; ++j) {
-        int slot = slotdist(transgen);
+        int slot  = slotdist(transgen);
+        slot = slot + me * range + ids[j] - slot;
 #if ALL_UNIQUE_SLOTS
         while (used[slot]) slot = slotdist(transgen);
         used[slot]=true;
