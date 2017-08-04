@@ -963,14 +963,20 @@ void ZipfRW<DS>::per_thread_workload_init(int thread_id) {
         query_type query;
         bool read_only = ud.sample() < ro_threshold;
         int nops = read_only ? opspertrans_ro : opspertrans;
-        for (int j = 0; j < nops; ++j) {
+
+        std::set<StoSampling::index_t> idx_set;
+        while (idx_set.size() != (size_t)nops) {
+            idx_set.insert(dd->sample());
+        }
+
+        for (auto idx : idx_set) {
             if (read_only)
-                query.emplace_back(OpType::read, dd->sample());
+                query.emplace_back(OpType::read, idx);
             else {
                 if (ud.sample() < write_threshold)
-                    query.emplace_back(OpType::inc, dd->sample());
+                    query.emplace_back(OpType::inc, idx);
                 else
-                    query.emplace_back(OpType::read, dd->sample());
+                    query.emplace_back(OpType::read, idx);
             }
         }
         thread_workload.push_back(query);

@@ -621,6 +621,10 @@ public:
         TransactionTid::lock(vers, threadid_);
         return true;
 #else
+        if (item.get_cc_policy() == CCPolicy::lock) {
+            TransactionTid::lock(vers, threadid_);
+            return true;
+        }
         // This function will eventually help us track the commit TID when we
         // have no opacity, or for GV7 opacity.
         unsigned n = 0;
@@ -976,9 +980,9 @@ inline TransProxy& TransProxy::add_read_opaque(T rdata) {
 inline TransProxy& TransProxy::observe(TVersion& version, bool add_read) {
     assert(!has_stash());
     CCPolicy cp = item().get_cc_policy();
-    if (version.is_locked_elsewhere(t()->threadid_))
-        t()->abort_because(item(), "locked", version.value());
     if (cp == CCPolicy::occ) {
+        if (version.is_locked_elsewhere(t()->threadid_))
+            t()->abort_because(item(), "locked", version.value());
         t()->check_opacity(item(), version.value());
     } else if (cp == CCPolicy::lock) {
         // this is to prevent the commit protocol from skipping unlocks
