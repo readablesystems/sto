@@ -81,6 +81,7 @@
 #define CONSISTENCY_CHECK 0
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
+//#define TRANSACTION_FILTER 0
 
 #if ASSERT_TX_SIZE
 #if STO_PROFILE_COUNTERS > 1
@@ -498,20 +499,6 @@ private:
 #endif
     }
 
-    // This version of update_hash_table is slower than the one below
-    /*void update_hash_table() {
-        const TransItem* it = nullptr;
-        if ((max_hashed % tset_chunk) != 0)
-            it = &tset_[(max_hashed - 1) / tset_chunk][(max_hashed - 1) % tset_chunk];
-        for (unsigned tidx = max_hashed; tidx != tset_size_; tidx++) {
-            it = tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk];
-            unsigned hi = hash(it->owner(), it->key_);
-            if (hashtable_[hi] <= hash_base_)
-                hashtable_[hi] = hash_base_ + tidx + 1;
-        }
-        max_hashed = tset_size_;
-    }*/
-
     // This version of update_hash_table has some optimizations and is faster
     void update_hash_table() {
         const TransItem* it = &tset_[tset_size_ / tset_chunk][tset_size_ % tset_chunk];
@@ -564,9 +551,8 @@ private:
         return TransProxy(*this, *allocate_item(obj, xkey));
        }
 
-    // tries to find an existing item with this key, otherwise adds it
     template <typename T>
-    TransProxy item0(const TObject* obj, T key) {
+    TransProxy item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
         TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
         if (!ti)
@@ -574,14 +560,22 @@ private:
         return TransProxy(*this, *ti);
     }
 
-    template <typename T>
+
+    // tries to find an existing item with this key, otherwise adds it
+    /*template <typename T>
     TransProxy item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
+# if TRANSACTION_FILTER
         TransItem* ti = find_item_filter(const_cast<TObject*>(obj), xkey);
         if (!ti)
             ti = allocate_item_filter(obj, xkey);
+#else
+        TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
+        if (!ti)
+            ti = allocate_item(obj, xkey);
+#endif
         return TransProxy(*this, *ti);
-    }
+    }*/
 
     template <typename T>
     TransProxy item_inlined(const TObject* obj, T key) {
@@ -751,7 +745,7 @@ private:
         }
 #endif
 	std::cout << "Hash not found! xkey = [" << xkey << "]" << std::endl;
-	return find_item_scan(obj, xkey); 
+	return find_item_scan(obj, xkey);
    }
 
     bool preceding_duplicate_read(TransItem *it) const;
