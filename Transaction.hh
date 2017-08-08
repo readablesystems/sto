@@ -1039,8 +1039,10 @@ inline TransProxy& TransProxy::observe(TVersion& version, bool add_read) {
 
     TVersion occ_version;
     CCPolicy cp = item().get_cc_policy();
-    if (cp == CCPolicy::occ)
+    if (cp == CCPolicy::occ) {
+        acquire_fence();
         occ_version = version;
+    }
 
     if (add_read && !has_read() && cp == CCPolicy::lock && !item().needs_unlock()) {
         auto response = t()->try_lock_read(item(), version);
