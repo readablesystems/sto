@@ -621,10 +621,6 @@ public:
         TransactionTid::lock(vers, threadid_);
         return true;
 #else
-        if (item.get_cc_policy() == CCPolicy::lock) {
-            TransactionTid::lock(vers, threadid_);
-            return true;
-        }
         // This function will eventually help us track the commit TID when we
         // have no opacity, or for GV7 opacity.
         unsigned n = 0;
@@ -653,6 +649,67 @@ public:
             relax_fence();
         }
 #endif
+    }
+
+    auto try_lock_write(TransItem& item, TVersion& vers) -> bool
+    {
+        return try_lock_write(item, const_cast<TransactionTid::type&>(vers.value()));
+    }
+    auto try_lock_write(TransItem& item, TNonopaqueVersion& vers) -> bool
+    {
+        return try_lock_write(item, const_cast<TransactionTid::type&>(vers.value()));
+    }
+    auto try_lock_write(TransItem& item, TransactionTid::type& vers) -> bool
+    {
+        (void)item;
+        unsigned n = 0;
+        while (1) {
+            if (TransactionTid::try_lock_write(vers) == LockResponse::locked)
+                return true;
+            ++n;
+            if (n == (1 << STO_SPIN_BOUND_WRITE))
+                return false;
+            relax_fence();
+        }
+    }
+
+    auto try_lock_read(TransItem& item, TVersion& vers) -> std::pair<LockResponse, TransactionTid::type>
+    {
+        return try_lock_read(item, const_cast<TransactionTid::type&>(vers.value()));
+    }
+    auto try_lock_read(TransItem& item, TransactionTid::type& vers) -> std::pair<LockResponse, TransactionTid::type>
+    {
+        (void)item;
+        unsigned n = 0;
+        while (1) {
+            auto response = TransactionTid::try_lock_read(vers);
+            if (response.first != LockResponse::failed)
+                return response;
+            ++n;
+            if (n == (1 << STO_SPIN_BOUND_WRITE))
+                return response;
+            relax_fence();
+        }
+    }
+
+    auto upgrade_lock(TransItem& item, TVersion& vers) -> void
+    {
+        (void)item;
+        TransactionTid::rwlock_upgrade(const_cast<TransactionTid::type&>(vers.value()));
+    }
+
+    static void unlock(TransItem& item, TVersion& vers) {
+        unlock(item, const_cast<TransactionTid::type&>(vers.value()));
+    }
+    static void unlock(TransItem& item, TNonopaqueVersion& vers) {
+        unlock(item, const_cast<TransactionTid::type&>(vers.value()));
+    }
+    static void unlock(TransItem& item, TransactionTid::type& v) {
+        assert(item.needs_unlock());
+        if (item.has_write())
+            TransactionTid::unlock_write(v);
+        else
+            TransactionTid::unlock_read(v);
     }
 
     void check_opacity(TransItem& item, TransactionTid::type v) {
@@ -979,20 +1036,44 @@ inline TransProxy& TransProxy::add_read_opaque(T rdata) {
 
 inline TransProxy& TransProxy::observe(TVersion& version, bool add_read) {
     assert(!has_stash());
+
+    TVersion occ_version;
     CCPolicy cp = item().get_cc_policy();
+    if (cp == CCPolicy::occ)
+        occ_version = version;
+
+    if (add_read && !has_read() && cp == CCPolicy::lock && !item().needs_unlock()) {
+        auto response = t()->try_lock_read(item(), version);
+        if (response.first == LockResponse::optmistic) {
+            // fall back to optimistic mode if the exclusive read
+            // lock has already been held
+            item().set_cc_policy(CCPolicy::occ);
+            cp = CCPolicy::occ;
+            occ_version = response.second;
+        } else if (response.first == LockResponse::locked) {
+            item().__or_flags(TransItem::lock_bit);
+            item().__or_flags(TransItem::read_bit);
+            // XXX hack to prevent the commit protocol from skipping unlocks
+            t()->any_nonopaque_ = true;
+        } else {
+            assert(response.first == LockResponse::failed);
+            t()->abort_because(item(), "observe_rlock_failed", version.value());
+        }
+    }
+
+    // Invariant: at this point, if cp == occ, then occ_version is set to the
+    // approperiate version observed at the time the concurrency control policy
+    // has been finally deteremined
     if (cp == CCPolicy::occ) {
-        if (version.is_locked_elsewhere(t()->threadid_))
-            t()->abort_because(item(), "locked", version.value());
-        t()->check_opacity(item(), version.value());
-    } else if (cp == CCPolicy::lock) {
-        // this is to prevent the commit protocol from skipping unlocks
-        t()->any_nonopaque_ = true;
+        if (occ_version.is_locked_elsewhere(t()->threadid_))
+            t()->abort_because(item(), "locked", occ_version.value());
+        t()->check_opacity(item(), occ_version.value());
+        if (add_read && !has_read()) {
+            item().__or_flags(TransItem::read_bit);
+            item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(occ_version));
+        }
     }
-    if (add_read && !has_read()) {
-        //item().__or_flags(TransItem::read_bit);
-        item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
-        acquire(item(), version, ReqType::read);
-    }
+
     return *this;
 }
 
@@ -1108,25 +1189,24 @@ inline TransProxy& TransProxy::add_write(Args&&... args) {
     return *this;
 }
 
-inline void TransProxy::acquire(TransItem& item, TVersion& vers, ReqType req) {
-    if (item.get_cc_policy() == CCPolicy::lock && !item.needs_unlock()) {
-        if (!t()->try_lock(item, vers)) {
-            t()->mark_abort_because(&item, "acquire_exclusive", vers.value());
-            Sto::abort();
-        }
+inline void TransProxy::lock_for_write(TransItem& item, TVersion& vers) {
+    if (has_read() && item.needs_unlock()) {
+        // already holding exclusive read lock; upgrade to write lock
+        t()->upgrade_lock(item, vers);
+    } else {
+        if (!t()->try_lock_write(item, vers))
+            t()->abort_because(item, "lock_for_write", vers.value());
         item.__or_flags(TransItem::lock_bit);
     }
-    if (req == ReqType::write)
-        item.__or_flags(TransItem::write_bit);
-    else
-        item.__or_flags(TransItem::read_bit);
+    // Invariant: after this function returns, item::lock_bit is set and the
+    // write lock is held on the corresponding TVersion
 }
 
 inline TransProxy& TransProxy::acquire_write(TVersion& vers) {
     if (!has_write()) {
         item().__or_flags(TransItem::write_bit);
         t()->any_writes_ = true;
-        acquire(item(), vers, ReqType::write);
+        lock_for_write(item(), vers);
     }
     return *this;
 }
@@ -1148,7 +1228,7 @@ inline TransProxy& TransProxy::acquire_write(Args&&... args, TVersion& vers) {
         item().__or_flags(TransItem::write_bit);
         item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
         t()->any_writes_ = true;
-        acquire(item(), vers, ReqType::write);
+        lock_for_write(item(), vers);
     } else {
         item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
     }

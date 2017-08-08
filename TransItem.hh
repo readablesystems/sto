@@ -188,6 +188,10 @@ class TransItem {
         return policy_;
     }
 
+    void set_cc_policy(CCPolicy cp) {
+        policy_ = cp;
+    }
+
 private:
     ownerstore_type s_;
     // this word must be unique (to a particular item) and consistently ordered across transactions
@@ -394,8 +398,7 @@ private:
     inline Transaction* t() const {
         return t_;
     }
-    enum class ReqType : int {read, write};
-    inline void acquire(TransItem& item, TVersion& vers, ReqType req);
+    inline void lock_for_write(TransItem& item, TVersion& vers);
     friend class Transaction;
     friend class OptionalTransProxy;
 };

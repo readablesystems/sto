@@ -25,6 +25,8 @@ public:
     }
 };
 
+enum class LockResponse : int {locked, failed, optmistic};
+
 class TransactionTid {
 public:
     typedef uint64_t type;
@@ -37,8 +39,11 @@ public:
     // hard (checking the full read set).
     static constexpr type nonopaque_bit = type(0x40);
     static constexpr type user_bit = type(0x80);
+    static constexpr type read_lock_bit = type(0x100);
+    static constexpr type opt_bit = type(0x200);
     static constexpr type increment_value = type(0x400);
 
+#if 0
     // TODO: probably remove these once RBTree stops referencing them.
     static void lock_read(type& v) {
         while (1) {
@@ -74,7 +79,54 @@ public:
     static void unlock_write(type& v) {
         v = v & ~lock_bit;
     }
+#endif
 
+    // read/write/optimistic combined lock
+    static std::pair<LockResponse, type> try_lock_read(type& v) {
+        while (1) {
+            type vv = v;
+            bool write_locked = vv & lock_bit;
+            bool read_locked = vv & read_lock_bit;
+            if (!write_locked && !read_locked && bool_cmpxchg(&v, vv, vv | read_lock_bit | TThread::id()))
+                return std::make_pair(LockResponse::locked, type());
+            if (write_locked)
+                return std::make_pair(LockResponse::failed, type());
+            if (read_locked)
+                return std::make_pair(LockResponse::optmistic, vv);
+            relax_fence();
+        }
+    }
+
+    static LockResponse try_lock_write(type& v) {
+        type vv = v;
+        bool write_locked = vv & lock_bit;
+        bool read_locked = vv & read_lock_bit;
+        if (!write_locked && !read_locked && bool_cmpxchg(&v, vv, vv | lock_bit | TThread::id()))
+            return LockResponse::locked;
+        else
+            return LockResponse::failed;
+    }
+
+    static void rwlock_upgrade(type& v) {
+        assert((v & (read_lock_bit | threadid_mask)) == (read_lock_bit | TThread::id()));
+        type new_v = (v & ~read_lock_bit) | lock_bit;
+        release_fence();
+        v = new_v;
+    }
+
+    static void unlock_read(type& v) {
+        assert((v & (read_lock_bit | threadid_mask)) == (read_lock_bit | TThread::id()));
+        type new_v = v & ~(read_lock_bit | threadid_mask);
+        release_fence();
+        v = new_v;
+    }
+
+    static void unlock_write(type& v) {
+        assert(is_locked_here(v));
+        type new_v = v & ~(lock_bit | threadid_mask);
+        release_fence();
+        v = new_v;
+    }
 
     static bool is_locked(type v) {
         return v & lock_bit;

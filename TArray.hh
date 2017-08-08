@@ -64,7 +64,7 @@ public:
 
     // transactional methods
     bool lock(TransItem& item, Transaction& txn) override {
-        return txn.try_lock(item, data_[item.key<size_type>()].vers);
+        return txn.try_lock_write(item, data_[item.key<size_type>()].vers);
     }
     bool check(TransItem& item, Transaction&) override {
         return item.check_version(data_[item.key<size_type>()].vers);
@@ -75,7 +75,7 @@ public:
         txn.set_version_unlock(data_[i].vers, item);
     }
     void unlock(TransItem& item) override {
-        data_[item.key<size_type>()].vers.unlock();
+        Transaction::unlock(item, data_[item.key<size_type>()].vers);
     }
 
 private:
