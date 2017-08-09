@@ -63,7 +63,7 @@ public:
         if (item.has_write())
             return item.template write_value<T>();
         else
-            return data_[i].v.read_pessimistic(item, data_[i].vers);
+            return data_[i].v.read(item, data_[i].vers);
     }
     void transPut(size_type i, T x) const {
         assert(i < N);

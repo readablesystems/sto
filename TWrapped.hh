@@ -38,7 +38,7 @@ static T read_atomic(const T* v, TransProxy item, const V& version, bool add_rea
 template <typename T, typename V>
 static T read_nonatomic(const T* v, TransProxy item, const V& version, bool add_read) {
 #if STO_ABORT_ON_LOCKED
-    item.observe(version, add_read);
+    item.observe(const_cast<V&>(version), add_read);
     fence();
     return *v;
 #else
@@ -130,14 +130,13 @@ public:
         return TWrappedAccess::read_wait_atomic(&v_, item, version, add_read);
     }
     read_type read(TransProxy item, const version_type& version) const {
-        return TWrappedAccess::read_atomic(&v_, item, version, true);
+        if (item.get_cc_policy() == CCPolicy::occ)
+            return TWrappedAccess::read_atomic(&v_, item, version, true);
+        else
+            return TWrappedAccess::read_nonatomic(&v_, item, version, true);
     }
     static read_type read(const T* v, TransProxy item, const version_type& version) {
         return TWrappedAccess::read_atomic(v, item, version, true);
-    }
-    read_type read_pessimistic(TransProxy item, version_type& version) const {
-        item.observe(version, true);
-        return v_;
     }
     void write(const T& v) {
         v_ = v;
@@ -311,7 +310,10 @@ public:
         return *TWrappedAccess::read_wait_atomic(&vp_, item, version, add_read);
     }
     read_type read(TransProxy item, const version_type& version) const {
-        return *TWrappedAccess::read_atomic(&vp_, item, version, true);
+        if (item.get_cc_policy() == CCPolicy::occ)
+            return *TWrappedAccess::read_atomic(&vp_, item, version, true);
+        else
+            return *TWrappedAccess::read_nonatomic(&vp_, item, version, true);
     }
     void write(const T& v) {
         save(new T(v));

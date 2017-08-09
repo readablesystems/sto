@@ -356,6 +356,10 @@ class TransProxy {
         return item().stash_value<T>(std::move(default_value));
     }
 
+    CCPolicy get_cc_policy() {
+        return item().get_cc_policy();
+    }
+
     TransProxy& remove_read() { // XXX should also cleanup_read
         item().__rm_flags(TransItem::read_bit);
         return *this;

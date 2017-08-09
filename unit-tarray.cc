@@ -5,10 +5,14 @@
 #include <vector>
 #include "Transaction.hh"
 #include "TArray.hh"
+#include "TArrayAdaptive.hh"
 #include "TBox.hh"
 
+template <typename T, unsigned N, template <typename> class W = TOpaqueWrapped>
+using TestArray = TArrayAdaptive<T, N, W>;
+
 void testSimpleInt() {
-	TArray<int, 100> f;
+	TestArray<int, 100> f;
 
     {
         TransactionGuard t;
@@ -25,7 +29,7 @@ void testSimpleInt() {
 }
 
 void testSimpleString() {
-	TArray<std::string, 100> f;
+	TestArray<std::string, 100> f;
 
 	{
         TransactionGuard t;
@@ -43,7 +47,7 @@ void testSimpleString() {
 
 void testIter() {
     std::vector<int> arr;
-    TArray<int, 10> f;
+    TestArray<int, 10> f;
     for (int i = 0; i < 10; i++) {
         int x = rand();
         arr.push_back(x);
@@ -105,7 +109,7 @@ void testConflictingIter() {
 }
 
 void testModifyingIter() {
-    TArray<int, 10> f;
+    TestArray<int, 10> f;
     for (int i = 0; i < 10; i++)
         f.nontrans_put(i, i);
 
@@ -149,7 +153,7 @@ void testConflictingModifyIter1() {
 }
 
 void testConflictingModifyIter2() {
-    TArray<int, 10> f;
+    TestArray<int, 10> f;
     for (int i = 0; i < 10; i++)
         f.nontrans_put(i, i);
 

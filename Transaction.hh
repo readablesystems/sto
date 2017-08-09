@@ -1044,7 +1044,7 @@ inline TransProxy& TransProxy::observe(TVersion& version, bool add_read) {
         occ_version = version;
     }
 
-    if (add_read && !has_read() && cp == CCPolicy::lock && !item().needs_unlock()) {
+    if ((cp == CCPolicy::lock) && !item().needs_unlock() && add_read && !has_read()) {
         auto response = t()->try_lock_read(item(), version);
         if (response.first == LockResponse::optmistic) {
             // fall back to optimistic mode if the exclusive read
