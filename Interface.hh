@@ -25,7 +25,7 @@ public:
     }
 };
 
-enum class LockResponse : int {locked, failed, optmistic};
+enum class LockResponse : int {locked, failed, optmistic, spin};
 
 class TransactionTid {
 public:
@@ -87,24 +87,31 @@ public:
             type vv = v;
             bool write_locked = vv & lock_bit;
             bool read_locked = vv & read_lock_bit;
-            if (!write_locked && !read_locked && bool_cmpxchg(&v, vv, vv | read_lock_bit | TThread::id()))
-                return std::make_pair(LockResponse::locked, type());
             if (write_locked)
-                return std::make_pair(LockResponse::failed, type());
+                return std::make_pair(LockResponse::spin, type());
             if (read_locked)
                 return std::make_pair(LockResponse::optmistic, vv);
-            relax_fence();
+            if (bool_cmpxchg(&v, vv, vv | read_lock_bit | TThread::id()))
+                return std::make_pair(LockResponse::locked, type());
+            else
+                relax_fence();
         }
     }
 
     static LockResponse try_lock_write(type& v) {
-        type vv = v;
-        bool write_locked = vv & lock_bit;
-        bool read_locked = vv & read_lock_bit;
-        if (!write_locked && !read_locked && bool_cmpxchg(&v, vv, vv | lock_bit | TThread::id()))
-            return LockResponse::locked;
-        else
-            return LockResponse::failed;
+        while (1) {
+            type vv = v;
+            bool write_locked = vv & lock_bit;
+            bool read_locked = vv & read_lock_bit;
+            if (write_locked)
+                return LockResponse::failed;
+            if (read_locked)
+                return LockResponse::spin;
+            if (bool_cmpxchg(&v, vv, vv | lock_bit | TThread::id()))
+                return LockResponse::locked;
+            else
+                relax_fence();
+        }
     }
 
     static void rwlock_upgrade(type& v) {
@@ -245,12 +252,18 @@ public:
     static bool check_version(type cur_vers, type old_vers) {
         assert(!is_locked_elsewhere(old_vers));
         // cur_vers allowed to be locked by us
-        return cur_vers == old_vers || cur_vers == (old_vers | lock_bit | TThread::id());
+        if ((cur_vers & lock_bit) && ((cur_vers & threadid_mask) != (type)TThread::id()))
+            return false;
+        return (cur_vers & ~(increment_value - 1)) == (old_vers & ~(increment_value - 1));
+        //return cur_vers == old_vers || cur_vers == (old_vers | lock_bit | TThread::id());
     }
     static bool check_version(type cur_vers, type old_vers, int here) {
         assert(!is_locked_elsewhere(old_vers));
         // cur_vers allowed to be locked by us
-        return cur_vers == old_vers || cur_vers == (old_vers | lock_bit | here);
+        if ((cur_vers & lock_bit) && ((cur_vers & threadid_mask) != (type)here))
+            return false;
+        return (cur_vers & ~(increment_value - 1)) == (old_vers & ~(increment_value - 1));
+        //return cur_vers == old_vers || cur_vers == (old_vers | lock_bit | here);
     }
     static bool try_check_opacity(type start_tid, type v) {
         signed_type delta = start_tid - v;

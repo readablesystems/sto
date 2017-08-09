@@ -664,11 +664,16 @@ public:
         (void)item;
         unsigned n = 0;
         while (1) {
-            if (TransactionTid::try_lock_write(vers) == LockResponse::locked)
+            auto response = TransactionTid::try_lock_write(vers);
+            if (response == LockResponse::locked)
                 return true;
-            ++n;
-            if (n == (1 << STO_SPIN_BOUND_WRITE))
+            else if (response == LockResponse::spin) {
+                ++n;
+                if (n == (1 << STO_SPIN_BOUND_WRITE))
+                    return false;
+            } else {
                 return false;
+            }
             relax_fence();
         }
     }
@@ -683,11 +688,11 @@ public:
         unsigned n = 0;
         while (1) {
             auto response = TransactionTid::try_lock_read(vers);
-            if (response.first != LockResponse::failed)
+            if (response.first != LockResponse::spin)
                 return response;
             ++n;
-            if (n == (1 << STO_SPIN_BOUND_WRITE))
-                return response;
+            if (n == 1 << STO_SPIN_BOUND_WRITE)
+                return std::make_pair(LockResponse::failed, TransactionTid::type());
             relax_fence();
         }
     }
