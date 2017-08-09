@@ -267,6 +267,49 @@ void testNoOpacity1() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testRWLock1() {
+    TArrayAdaptive<int, 10> f;
+    for (int i = 0; i < 10; i++)
+        f.nontrans_put(i, i);
+    {
+        TestTransaction t0(1);
+        int x = f[3];
+        assert(x == 3);
+
+        TestTransaction t1(2);
+        int y = f[3];
+        assert(y == 3);
+
+        assert(t1.try_commit());
+        assert(t0.try_commit());
+    }
+    {
+        TestTransaction t0(1);
+        int x = f[3];
+        assert(x == 3);
+
+        try {
+            TestTransaction t1(2);
+            f[3] = 4;
+            assert(!t1.try_commit());
+        } catch (Transaction::Abort e) {}
+
+        assert(t0.try_commit());
+    }
+    {
+        TestTransaction t0(1);
+        f[3] = 4;
+
+        try {
+            TestTransaction t1(2);
+            f[3] = 5;
+            assert(!t1.try_commit());
+        } catch (Transaction::Abort e) {}
+
+        assert(t0.try_commit());
+    }
+}
+
 int main() {
     testSimpleInt();
     testSimpleString();
@@ -279,5 +322,6 @@ int main() {
     testConflictingModifyIter3();
     testOpacity1();
     testNoOpacity1();
+    testRWLock1();
     return 0;
 }

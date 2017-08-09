@@ -138,12 +138,14 @@ public:
         return (v & (lock_bit | threadid_mask)) == (lock_bit | here);
     }
     static bool is_locked_elsewhere(type v) {
-        type m = v & (lock_bit | threadid_mask);
-        return m != 0 && m != (lock_bit | TThread::id());
+        type m = v & lock_bit;
+        type t = v & threadid_mask;
+        return m != 0 && (t != (type)TThread::id());
     }
     static bool is_locked_elsewhere(type v, int here) {
-        type m = v & (lock_bit | threadid_mask);
-        return m != 0 && m != (lock_bit | here);
+        type m = v & lock_bit;
+        type t = v & threadid_mask;
+        return m != 0 && t != (type)here;
     }
 
     static bool try_lock(type& v) {
