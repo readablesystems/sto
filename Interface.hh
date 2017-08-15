@@ -33,6 +33,7 @@ public:
     typedef int64_t signed_type;
 
     static constexpr type threadid_mask = type(0x1F);
+    static constexpr type rlock_cnt_max = type(0x1F);
     static constexpr type lock_bit = type(0x20);
     // Used for data structures that don't use opacity. When they increment
     // a version they set the nonopaque_bit, forcing any opacity check to be
@@ -86,12 +87,13 @@ public:
         while (1) {
             type vv = v;
             bool write_locked = vv & lock_bit;
-            bool read_locked = vv & read_lock_bit;
+            type rlock_cnt = vv & threadid_mask;
+            bool rlock_avail = rlock_cnt < rlock_cnt_max;
             if (write_locked)
                 return std::make_pair(LockResponse::spin, type());
-            if (read_locked)
+            if (!rlock_avail)
                 return std::make_pair(LockResponse::optmistic, vv);
-            if (bool_cmpxchg(&v, vv, vv | read_lock_bit | TThread::id()))
+            if (bool_cmpxchg(&v, vv, (vv & ~threadid_mask) | (rlock_cnt+1)))
                 return std::make_pair(LockResponse::locked, type());
             else
                 relax_fence();
@@ -102,35 +104,35 @@ public:
         while (1) {
             type vv = v;
             bool write_locked = vv & lock_bit;
-            bool read_locked = vv & read_lock_bit;
+            bool read_locked = vv & threadid_mask;
             if (write_locked)
                 return LockResponse::failed;
             if (read_locked)
                 return LockResponse::spin;
-            if (bool_cmpxchg(&v, vv, vv | lock_bit | TThread::id()))
+            if (bool_cmpxchg(&v, vv, vv | lock_bit))
                 return LockResponse::locked;
             else
                 relax_fence();
         }
     }
 
-    static void rwlock_upgrade(type& v) {
-        assert((v & (read_lock_bit | threadid_mask)) == (read_lock_bit | TThread::id()));
-        type new_v = (v & ~read_lock_bit) | lock_bit;
-        release_fence();
-        v = new_v;
+    static LockResponse rwlock_try_upgrade(type& v) {
+        type vv = v;
+        type rlock_cnt = vv & threadid_mask;
+        assert(rlock_cnt >= 1);
+        if ((rlock_cnt == 1) && bool_cmpxchg(&v, vv, (vv & ~threadid_mask) | lock_bit))
+            return LockResponse::locked;
+        else
+            return LockResponse::spin;
     }
 
     static void unlock_read(type& v) {
-        assert((v & (read_lock_bit | threadid_mask)) == (read_lock_bit | TThread::id()));
-        type new_v = v & ~(read_lock_bit | threadid_mask);
-        release_fence();
-        v = new_v;
+        __sync_fetch_and_add(&v, -1);
     }
 
     static void unlock_write(type& v) {
-        assert(is_locked_here(v));
-        type new_v = v & ~(lock_bit | threadid_mask);
+        assert(is_locked(v));
+        type new_v = v & ~lock_bit;
         release_fence();
         v = new_v;
     }

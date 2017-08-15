@@ -697,10 +697,19 @@ public:
         }
     }
 
-    auto upgrade_lock(TransItem& item, TVersion& vers) -> void
+    auto upgrade_lock(TransItem& item, TVersion& vers) -> bool
     {
         (void)item;
-        TransactionTid::rwlock_upgrade(const_cast<TransactionTid::type&>(vers.value()));
+        unsigned n = 0;
+        while (1) {
+            auto response = TransactionTid::rwlock_try_upgrade(const_cast<TransactionTid::type&>(vers.value()));
+            if (response == LockResponse::locked)
+                return true;
+            ++n;
+            if (n == 1 << STO_SPIN_BOUND_WRITE)
+                return false;
+            relax_fence();
+        }
     }
 
     static void unlock(TransItem& item, TVersion& vers) {
