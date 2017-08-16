@@ -83,22 +83,23 @@ bool Transaction::preceding_duplicate_read(TransItem* needle) const {
     }
 }
 
-void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
+bool Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
     // ignore opacity checks during commit; we're in the middle of checking
     // things anyway
     if (state_ == s_committing || state_ == s_committing_locked)
-        return;
+        return true;
 
     // ignore if version hasn't changed
     if (item && item->has_read() && item->read_value<TransactionTid::type>() == t)
-        return;
+        return true;
 
     // die on recursive opacity check; this is only possible for predicates
     if (unlikely(state_ == s_opacity_check)) {
         mark_abort_because(item, "recursive opacity check", t);
     abort:
         TXP_INCREMENT(txp_hco_abort);
-        abort();
+        state_ = s_in_progress;
+        return false;
     }
     assert(state_ == s_in_progress);
 
@@ -133,6 +134,7 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
         }
     }
     state_ = s_in_progress;
+    return true;
 }
 
 void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset, unsigned first_lock) {

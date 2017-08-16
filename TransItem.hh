@@ -80,6 +80,8 @@ class TransItem {
     }
     bool check_version(TVersion v) const {
         assert(has_read());
+        if (v.is_locked() && !has_write())
+            return false;
         return v.check_version(this->read_value<TVersion>());
     }
     bool check_version(TNonopaqueVersion v) const {
@@ -250,13 +252,13 @@ class TransProxy {
     inline TransProxy& add_read(T rdata);
     template <typename T>
     inline TransProxy& add_read_opaque(T rdata);
-    inline TransProxy& observe(TVersion& version, bool add_read);
+    inline bool observe(TVersion& version, bool add_read);
     inline TransProxy& observe(TNonopaqueVersion version, bool add_read);
     inline TransProxy& observe(TCommutativeVersion version, bool add_read);
-    inline TransProxy& observe(TVersion version);
+    inline bool observe(TVersion version);
     inline TransProxy& observe(TNonopaqueVersion version);
     inline TransProxy& observe(TCommutativeVersion version);
-    inline TransProxy& observe_opacity(TVersion version);
+    inline bool observe_opacity(TVersion version);
     inline TransProxy& observe_opacity(TNonopaqueVersion version);
     inline TransProxy& observe_opacity(TCommutativeVersion version);
     inline TransProxy& clear_read() {
@@ -287,13 +289,13 @@ class TransProxy {
     }
 
     // like "add_writes"s but used for pessimistic items
-    inline TransProxy& acquire_write(TVersion& vers);
+    inline bool acquire_write(TVersion& vers);
     template <typename T>
-    inline TransProxy& acquire_wirte(const T& wdata, TVersion& vers);
+    inline bool acquire_wirte(const T& wdata, TVersion& vers);
     template <typename T>
-    inline TransProxy& acquire_write(T&& wdata, TVersion& vers);
+    inline bool acquire_write(T&& wdata, TVersion& vers);
     template <typename T, typename... Args>
-    inline TransProxy& acquire_write(Args&&... args, TVersion& vers);
+    inline bool acquire_write(Args&&... args, TVersion& vers);
 
     template <typename T>
     inline TransProxy& set_stash(T sdata);
@@ -402,7 +404,7 @@ private:
     inline Transaction* t() const {
         return t_;
     }
-    inline void lock_for_write(TransItem& item, TVersion& vers);
+    inline bool lock_for_write(TransItem& item, TVersion& vers);
     friend class Transaction;
     friend class OptionalTransProxy;
 };

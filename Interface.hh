@@ -90,7 +90,7 @@ public:
             type rlock_cnt = vv & threadid_mask;
             bool rlock_avail = rlock_cnt < rlock_cnt_max;
             if (write_locked)
-                return std::make_pair(LockResponse::spin, type());
+                return std::make_pair(LockResponse::failed, type());
             if (!rlock_avail)
                 return std::make_pair(LockResponse::optmistic, vv);
             if (bool_cmpxchg(&v, vv, (vv & ~threadid_mask) | (rlock_cnt+1)))
@@ -119,6 +119,7 @@ public:
     static LockResponse rwlock_try_upgrade(type& v) {
         type vv = v;
         type rlock_cnt = vv & threadid_mask;
+        assert(!is_locked(vv));
         assert(rlock_cnt >= 1);
         if ((rlock_cnt == 1) && bool_cmpxchg(&v, vv, (vv & ~threadid_mask) | lock_bit))
             return LockResponse::locked;
@@ -127,7 +128,8 @@ public:
     }
 
     static void unlock_read(type& v) {
-        __sync_fetch_and_add(&v, -1);
+        type vv = __sync_fetch_and_add(&v, -1);
+        assert((vv & threadid_mask) >= 1);
     }
 
     static void unlock_write(type& v) {
@@ -220,8 +222,8 @@ public:
         v = new_v;
     }
     static void set_version_unlock(type& v, type new_v) {
-        assert(is_locked_here(v));
-        assert(!is_locked(new_v) || is_locked_here(new_v));
+        //assert(is_locked_here(v));
+        //assert(!is_locked(new_v) || is_locked_here(new_v));
         new_v &= ~(lock_bit | threadid_mask);
         release_fence();
         v = new_v;
@@ -252,10 +254,10 @@ public:
     }
 
     static bool check_version(type cur_vers, type old_vers) {
-        assert(!is_locked_elsewhere(old_vers));
+        //assert(!is_locked_elsewhere(old_vers));
         // cur_vers allowed to be locked by us
-        if ((cur_vers & lock_bit) && ((cur_vers & threadid_mask) != (type)TThread::id()))
-            return false;
+        //if ((cur_vers & lock_bit) && ((cur_vers & threadid_mask) != (type)TThread::id()))
+        //    return false;
         return (cur_vers & ~(increment_value - 1)) == (old_vers & ~(increment_value - 1));
         //return cur_vers == old_vers || cur_vers == (old_vers | lock_bit | TThread::id());
     }

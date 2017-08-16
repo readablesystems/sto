@@ -162,11 +162,11 @@ template <> struct Container<USE_ARRAY> {
     value_type nontrans_get(index_type key) {
         return v_.nontrans_get(key);
     }
-    value_type transGet(index_type key) {
-        return v_.transGet(key);
+    bool transGet(index_type key, value_type& ret) {
+        return v_.transGet(key, ret);
     }
-    void transPut(index_type key, value_type value) {
-        v_.transPut(key, value);
+    bool transPut(index_type key, value_type value) {
+        return v_.transPut(key, value);
     }
     static void init() {
     }
@@ -176,6 +176,7 @@ private:
     type v_;
 };
 
+#if 0
 template <> struct Container<USE_ARRAY_NONOPAQUE> {
     typedef TArray<value_type, ARRAY_SZ, TNonopaqueWrapped> type;
     typedef int index_type;
@@ -196,6 +197,7 @@ template <> struct Container<USE_ARRAY_NONOPAQUE> {
 private:
     type v_;
 };
+#endif
 
 template <> struct Container<USE_ARRAY_ADAPTIVE> {
     typedef TArrayAdaptive<value_type, ARRAY_SZ> type;
@@ -204,11 +206,11 @@ template <> struct Container<USE_ARRAY_ADAPTIVE> {
     value_type nontrans_get(index_type key) {
         return v_.nontrans_get(key);
     }
-    value_type transGet(index_type key) {
-        return v_.transGet(key);
+    bool transGet(index_type key, value_type& ret) {
+        return v_.transGet(key, ret);
     }
-    void transPut(index_type key, value_type value) {
-        v_.transPut(key, value);
+    bool transPut(index_type key, value_type value) {
+        return v_.transPut(key, value);
     }
     static void init() {}
     static void thread_init(Container<USE_ARRAY_ADAPTIVE>&) {}
@@ -244,6 +246,7 @@ private:
 };
 */
 
+#if 0
 template <> struct Container<USE_TVECTOR> {
     typedef TVector<value_type> type;
     typedef typename type::size_type index_type;
@@ -451,6 +454,8 @@ private:
     type v_;
 };
 
+#endif
+
 #if DATA_STRUCTURE == USE_QUEUE
 typedef Queue<value_type, ARRAY_SZ> QueueType;
 QueueType* q;
@@ -515,20 +520,15 @@ void empty_func() {
 
 // FUNCTIONS FOR ARRAY/MAP-TYPE
 template <typename T>
-static value_type doRead(T& a, int slot) {
-  if (readMyWrites)
-    return a.transGet(slot);
-  else
-    return value_type();
+static bool doRead(T& a, int slot, value_type& ret) {
+    return a.transGet(slot, ret);
 }
 
 template <typename T>
-static void doWrite(T& a, int slot, int& ctr) {
-  if (blindRandomWrite) {
-    if (readMyWrites) {
-      a.transPut(slot, val(ctr));
-    }
-  } else {
+static bool doWrite(T& a, int slot, int& ctr) {
+    return a.transPut(slot, val(ctr));
+#if 0
+else {
     // increment current value (this lets us verify transaction correctness)
     if (readMyWrites) {
       auto v0 = a.transGet(slot);
@@ -543,6 +543,7 @@ static void doWrite(T& a, int slot, int& ctr) {
     }
     ++ctr; // because we've done a read and a write
   }
+#endif
 }
 
 template <typename T>
@@ -792,25 +793,38 @@ void HotspotRW<DS>::run(int me) {
         }
 #endif
         TRANSACTION {
+            bool _abort = false;
             for (auto &req : *txn_it) {
                 switch (req.type) {
-                case OpType::read:
-                    doRead(*a, req.key);
+                case OpType::read: {
+                    value_type r;
+                    if (!doRead(*a, req.key, r))
+                        _abort = true;
+                    }
                     break;
                 case OpType::write:
-                    doWrite(*a, req.key, req.value);
+                    if (!doWrite(*a, req.key, req.value))
+                        _abort = true;
                     break;
                 case OpType::inc: {
-                    value_type r = doRead(*a, req.key);
+                    value_type r;
+                    if (!doRead(*a, req.key, r))
+                        _abort = true;
                     ++r;
-                    doWrite(*a, req.key, r);}
+                    if (!doWrite(*a, req.key, r))
+                        _abort = true;
+                    }
                     break;
                 default:
                     std::cerr << "unkown OpType: " << (int)req.type << std::endl;
                     abort();
                     break;
                 }
+                if (_abort)
+                    break;
             }
+            if (_abort)
+                __txn_guard.silent_abort();
         } RETRY(true);
     }
 
@@ -974,7 +988,7 @@ void ZipfRW<DS>::per_thread_workload_init(int thread_id) {
                 query.emplace_back(OpType::read, idx);
             else {
                 if (ud.sample() < write_threshold)
-                    query.emplace_back(OpType::inc, idx);
+                    query.emplace_back(OpType::write, idx);
                 else
                     query.emplace_back(OpType::read, idx);
             }
@@ -1531,15 +1545,16 @@ void print_time(double time) {
 
 #define MAKE_TESTER(name, desc, type, ...)            \
     {name, desc, 0, new type<0, ## __VA_ARGS__>},     \
-    {name, desc, 1, new type<1, ## __VA_ARGS__>},     \
-    {name, desc, 2, new type<2, ## __VA_ARGS__>},     \
-    {name, desc, 4, new type<4, ## __VA_ARGS__>},     \
-    {name, desc, 7, new type<7, ## __VA_ARGS__>},     \
-    {name, desc, 8, new type<8, ## __VA_ARGS__>},     \
-    {name, desc, 9, new type<9, ## __VA_ARGS__>},     \
-    {name, desc, 10, new type<10, ## __VA_ARGS__>},   \
     {name, desc, 11, new type<11, ## __VA_ARGS__>}
 
+
+//    {name, desc, 1, new type<1, ## __VA_ARGS__>},     
+//    {name, desc, 2, new type<2, ## __VA_ARGS__>},     
+//    {name, desc, 4, new type<4, ## __VA_ARGS__>},     
+//    {name, desc, 7, new type<7, ## __VA_ARGS__>},     
+//    {name, desc, 8, new type<8, ## __VA_ARGS__>},     
+//    {name, desc, 9, new type<9, ## __VA_ARGS__>},     
+//    {name, desc, 10, new type<10, ## __VA_ARGS__>},   
 //    {name, desc, 6, new type<6, ## __VA_ARGS__>},
 struct Test {
     const char* name;
@@ -1547,14 +1562,14 @@ struct Test {
     int ds;
     Tester* tester;
 } tests[] = {
-    MAKE_TESTER("isolatedwrites", 0, IsolatedWrites),
-    MAKE_TESTER("blindwrites", 0, BlindWrites),
-    MAKE_TESTER("interferingwrites", 0, InterferingRWs),
-    MAKE_TESTER("randomrw", "typically best choice", RandomRWs, false),
-    MAKE_TESTER("readthenwrite", 0, ReadThenWrite),
-    MAKE_TESTER("kingofthedelete", 0, KingDelete),
-    MAKE_TESTER("xordelete", 0, XorDelete),
-    MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true),
+//    MAKE_TESTER("isolatedwrites", 0, IsolatedWrites),
+//    MAKE_TESTER("blindwrites", 0, BlindWrites),
+//    MAKE_TESTER("interferingwrites", 0, InterferingRWs),
+//    MAKE_TESTER("randomrw", "typically best choice", RandomRWs, false),
+//    MAKE_TESTER("readthenwrite", 0, ReadThenWrite),
+//    MAKE_TESTER("kingofthedelete", 0, KingDelete),
+//    MAKE_TESTER("xordelete", 0, XorDelete),
+//    MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true),
     MAKE_TESTER("hotspot", "contending hotspot", HotspotRW),
     MAKE_TESTER("hotspot2", "contending hotspot (less stupid)", Hotspot2RW),
     MAKE_TESTER("singlerw", "increment a single random element", SingleRW),

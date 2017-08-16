@@ -97,13 +97,11 @@
     do {                                          \
         TransactionLoopGuard __txn_guard;         \
         while (1) {                               \
-            __txn_guard.start();                  \
-            try {
+            __txn_guard.start();
+
 #define RETRY(retry)                              \
-                if (__txn_guard.try_commit())     \
-                    break;                        \
-            } catch (Transaction::Abort e) {      \
-            }                                     \
+            if (__txn_guard.try_commit())         \
+                break;                            \
             if (!(retry))                         \
                 throw Transaction::Abort();       \
         }                                         \
@@ -722,11 +720,13 @@ public:
         assert(item.needs_unlock());
         if (item.has_write())
             TransactionTid::unlock_write(v);
-        else
+        else {
+            assert(item.has_read());
             TransactionTid::unlock_read(v);
+        }
     }
 
-    void check_opacity(TransItem& item, TransactionTid::type v) {
+    bool check_opacity(TransItem& item, TransactionTid::type v) {
 #if STO_TSC_PROFILE
         TimeKeeper<tc_opacity> tk;
 #endif
@@ -736,25 +736,28 @@ public:
             start_tid_ = _TID;
         if (!TransactionTid::try_check_opacity(start_tid_, v)
             && state_ < s_committing)
-            hard_check_opacity(&item, v);
+            return hard_check_opacity(&item, v);
+        return true;
     }
-    void check_opacity(TransItem& item, TVersion v) {
-        check_opacity(item, v.value());
+    bool check_opacity(TransItem& item, TVersion v) {
+        return check_opacity(item, v.value());
     }
-    void check_opacity(TransItem&, TNonopaqueVersion) {
+    bool check_opacity(TransItem&, TNonopaqueVersion) {
+        return true;
     }
 
-    void check_opacity(TransactionTid::type v) {
+    bool check_opacity(TransactionTid::type v) {
         assert(state_ <= s_committing_locked);
         if (!start_tid_)
             start_tid_ = _TID;
         if (!TransactionTid::try_check_opacity(start_tid_, v)
             && state_ < s_committing)
-            hard_check_opacity(nullptr, v);
+            return hard_check_opacity(nullptr, v);
+        return true;
     }
 
-    void check_opacity() {
-        check_opacity(_TID);
+    bool check_opacity() {
+        return check_opacity(_TID);
     }
 
     // committing
@@ -840,7 +843,7 @@ private:
 #endif
     TransItem tset0_[tset_initial_capacity];
 
-    void hard_check_opacity(TransItem* item, TransactionTid::type t);
+    bool hard_check_opacity(TransItem* item, TransactionTid::type t);
     void stop(bool committed, unsigned* writes, unsigned nwrites, unsigned first_lock);
 
     friend class TransProxy;
@@ -943,7 +946,8 @@ public:
     }
 
     static bool try_commit() {
-        always_assert(in_progress());
+        if (!in_progress())
+            return false;
         return TThread::txn->try_commit();
     }
 
@@ -1017,6 +1021,9 @@ class TransactionLoopGuard {
     void start() {
         Sto::start_transaction();
     }
+    void silent_abort() {
+        TThread::txn->silent_abort();
+    }
     bool try_commit() {
         return TThread::txn->try_commit();
     }
@@ -1048,7 +1055,7 @@ inline TransProxy& TransProxy::add_read_opaque(T rdata) {
     return *this;
 }
 
-inline TransProxy& TransProxy::observe(TVersion& version, bool add_read) {
+inline bool TransProxy::observe(TVersion& version, bool add_read) {
     assert(!has_stash());
 
     TVersion occ_version;
@@ -1073,7 +1080,8 @@ inline TransProxy& TransProxy::observe(TVersion& version, bool add_read) {
             t()->any_nonopaque_ = true;
         } else {
             assert(response.first == LockResponse::failed);
-            t()->abort_because(item(), "observe_rlock_failed", version.value());
+            t()->mark_abort_because(&item(), "observe_rlock_failed", version.value());
+            return false;
         }
     }
 
@@ -1081,8 +1089,11 @@ inline TransProxy& TransProxy::observe(TVersion& version, bool add_read) {
     // approperiate version observed at the time the concurrency control policy
     // has been finally deteremined
     if (cp == CCPolicy::occ) {
-        if (occ_version.is_locked_elsewhere(t()->threadid_))
-            t()->abort_because(item(), "locked", occ_version.value());
+        // abort if not locked here
+        if (occ_version.is_locked() && !item().needs_unlock()) {
+            t()->mark_abort_because(&item(), "locked", occ_version.value());
+            return false;
+        }
         t()->check_opacity(item(), occ_version.value());
         if (add_read && !has_read()) {
             item().__or_flags(TransItem::read_bit);
@@ -1090,7 +1101,7 @@ inline TransProxy& TransProxy::observe(TVersion& version, bool add_read) {
         }
     }
 
-    return *this;
+    return true;
 }
 
 inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read) {
@@ -1117,7 +1128,7 @@ inline TransProxy& TransProxy::observe(TCommutativeVersion version, bool add_rea
     return *this;
 }
 
-inline TransProxy& TransProxy::observe(TVersion version) {
+inline bool TransProxy::observe(TVersion version) {
     return observe(version, true);
 }
 
@@ -1129,7 +1140,7 @@ inline TransProxy& TransProxy::observe(TCommutativeVersion version) {
     return observe(version, true);
 }
 
-inline TransProxy& TransProxy::observe_opacity(TVersion version) {
+inline bool TransProxy::observe_opacity(TVersion version) {
     return observe(version, false);
 }
 
@@ -1205,50 +1216,57 @@ inline TransProxy& TransProxy::add_write(Args&&... args) {
     return *this;
 }
 
-inline void TransProxy::lock_for_write(TransItem& item, TVersion& vers) {
+inline bool TransProxy::lock_for_write(TransItem& item, TVersion& vers) {
     if (has_read() && item.needs_unlock()) {
-        // already holding exclusive read lock; upgrade to write lock
-        t()->upgrade_lock(item, vers);
+        // already holding read lock; upgrade to write lock
+        if (!t()->upgrade_lock(item, vers)) {
+            t()->mark_abort_because(&item, "upgrade_lock", vers.value());
+            return false;
+        }
     } else {
-        if (!t()->try_lock_write(item, vers))
-            t()->abort_because(item, "lock_for_write", vers.value());
+        if (!t()->try_lock_write(item, vers)) {
+            t()->mark_abort_because(&item, "lock_for_write", vers.value());
+            return false;
+        }
         item.__or_flags(TransItem::lock_bit);
     }
+    return true;
     // Invariant: after this function returns, item::lock_bit is set and the
     // write lock is held on the corresponding TVersion
 }
 
-inline TransProxy& TransProxy::acquire_write(TVersion& vers) {
+inline bool TransProxy::acquire_write(TVersion& vers) {
     if (!has_write()) {
+        lock_for_write(item(), vers);
         item().__or_flags(TransItem::write_bit);
         t()->any_writes_ = true;
-        lock_for_write(item(), vers);
     }
-    return *this;
+    return true;
 }
 
 template <typename T>
-inline TransProxy& TransProxy::acquire_wirte(const T& wdata, TVersion& vers) {
+inline bool TransProxy::acquire_wirte(const T& wdata, TVersion& vers) {
     return acquire_write<T, const T&>(wdata, vers);
 }
 
 template <typename T>
-inline TransProxy& TransProxy::acquire_write(T&& wdata, TVersion& vers) {
+inline bool TransProxy::acquire_write(T&& wdata, TVersion& vers) {
     typedef typename std::decay<T>::type V;
     return acquire_write<V, V&&>(std::move(wdata), vers);
 }
 
 template <typename T, typename... Args>
-inline TransProxy& TransProxy::acquire_write(Args&&... args, TVersion& vers) {
+inline bool TransProxy::acquire_write(Args&&... args, TVersion& vers) {
     if (!has_write()) {
+        if (!lock_for_write(item(), vers))
+            return false;
         item().__or_flags(TransItem::write_bit);
         item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
         t()->any_writes_ = true;
-        lock_for_write(item(), vers);
     } else {
         item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
     }
-    return *this;
+    return true;
 }
 
 template <typename T>

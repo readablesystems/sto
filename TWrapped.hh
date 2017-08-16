@@ -14,7 +14,7 @@ template <typename T, typename V>
 static T read_wait_nonatomic(const T*, TransProxy, const V&, bool);
 
 template <typename T, typename V>
-static T read_atomic(const T* v, TransProxy item, const V& version, bool add_read) {
+static std::pair<bool, T> read_atomic(const T* v, TransProxy item, const V& version, bool add_read) {
 #if STO_ABORT_ON_LOCKED
     // This version returns immediately if v1 is locked. We assume as a result
     // that we will quickly converge to either `v0 == v1` or `v1.is_locked()`,
@@ -26,8 +26,9 @@ static T read_atomic(const T* v, TransProxy item, const V& version, bool add_rea
         fence();
         V v1 = version;
         if (v0 == v1 || v1.is_locked()) {
-            item.observe(v1, add_read);
-            return result;
+            if (!item.observe(v1, add_read))
+                return std::make_pair(false, result);
+            return std::make_pair(true, result);
         }
         relax_fence();
     }
@@ -36,11 +37,12 @@ static T read_atomic(const T* v, TransProxy item, const V& version, bool add_rea
 #endif
 }
 template <typename T, typename V>
-static T read_nonatomic(const T* v, TransProxy item, const V& version, bool add_read) {
+static std::pair<bool, T> read_nonatomic(const T* v, TransProxy item, const V& version, bool add_read) {
 #if STO_ABORT_ON_LOCKED
-    item.observe(const_cast<V&>(version), add_read);
+    if (!item.observe(const_cast<V&>(version), add_read))
+        return std::make_pair(false, *v);
     fence();
-    return *v;
+    return std::make_pair(true, *v);
 #else
     return read_wait_nonatomic(v, item, version, add_read);
 #endif
@@ -129,13 +131,13 @@ public:
     read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
         return TWrappedAccess::read_wait_atomic(&v_, item, version, add_read);
     }
-    read_type read(TransProxy item, const version_type& version) const {
+    std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
         if (item.get_cc_policy() == CCPolicy::occ)
             return TWrappedAccess::read_atomic(&v_, item, version, true);
         else
             return TWrappedAccess::read_nonatomic(&v_, item, version, true);
     }
-    static read_type read(const T* v, TransProxy item, const version_type& version) {
+    static std::pair<bool, read_type> read(const T* v, TransProxy item, const version_type& version) {
         return TWrappedAccess::read_atomic(v, item, version, true);
     }
     void write(const T& v) {
