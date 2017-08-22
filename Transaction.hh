@@ -95,17 +95,27 @@
 // TRANSACTION macros that can be used to wrap transactional code
 #define TRANSACTION                               \
     do {                                          \
+        __label__ abort_in_progress;              \
+        __label__ try_commit;                     \
         TransactionLoopGuard __txn_guard;         \
         while (1) {                               \
             __txn_guard.start();
 
 #define RETRY(retry)                              \
+          goto try_commit;                        \
+abort_in_progress:                                \
+            __txn_guard.silent_abort();           \
+try_commit:                                       \
             if (__txn_guard.try_commit())         \
                 break;                            \
             if (!(retry))                         \
                 throw Transaction::Abort();       \
         }                                         \
     } while (0)
+
+#define TXN_DO(trans_op)     \
+if (!trans_op)               \
+    goto abort_in_progress
 
 // transaction performance counters
 enum txp {

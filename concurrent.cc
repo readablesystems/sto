@@ -797,26 +797,20 @@ void HotspotRW<DS>::run(int me) {
         }
 #endif
         TRANSACTION {
-            bool _abort = false;
             for (auto &req : *txn_it) {
                 switch (req.type) {
                 case OpType::read: {
                     value_type r;
-                    if (!doRead(*a, req.key, r))
-                        _abort = true;
-                    }
+                    TXN_DO(doRead(*a, req.key, r));}
                     break;
                 case OpType::write:
-                    if (!doWrite(*a, req.key, req.value))
-                        _abort = true;
+                    TXN_DO(doWrite(*a, req.key, req.value));
                     break;
                 case OpType::inc: {
                     value_type r;
-                    if (!doRead(*a, req.key, r))
-                        _abort = true;
+                    TXN_DO(doRead(*a, req.key, r));
                     ++r;
-                    if (!doWrite(*a, req.key, r))
-                        _abort = true;
+                    TXN_DO(doWrite(*a, req.key, r));
                     }
                     break;
                 default:
@@ -824,11 +818,7 @@ void HotspotRW<DS>::run(int me) {
                     abort();
                     break;
                 }
-                if (_abort)
-                    break;
             }
-            if (_abort)
-                __txn_guard.silent_abort();
         } RETRY(true);
     }
 
