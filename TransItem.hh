@@ -80,6 +80,7 @@ class TransItem {
     }
     bool check_version(TVersion v) const {
         assert(has_read());
+        // abort if not locked by us
         if (v.is_locked() && !has_write())
             return false;
         return v.check_version(this->read_value<TVersion>());

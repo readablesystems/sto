@@ -162,6 +162,9 @@ template <> struct Container<USE_ARRAY> {
     value_type nontrans_get(index_type key) {
         return v_.nontrans_get(key);
     }
+    void nontrans_put(index_type key, const value_type& val) {
+        v_.nontrans_put(key, val);
+    }
     bool transGet(index_type key, value_type& ret) {
         return v_.transGet(key, ret);
     }
@@ -205,6 +208,9 @@ template <> struct Container<USE_ARRAY_ADAPTIVE> {
     static constexpr bool has_delete = false;
     value_type nontrans_get(index_type key) {
         return v_.nontrans_get(key);
+    }
+    void nontrans_put(index_type key, const value_type& val) {
+        v_.nontrans_put(key, val);
     }
     bool transGet(index_type key, value_type& ret) {
         return v_.transGet(key, ret);
@@ -489,9 +495,7 @@ int true_array_state[ARRAY_SZ];
 template <typename T>
 void prepopulate_func(T& a) {
   for (int i = 0; i < prepopulate; ++i) {
-      TRANSACTION {
-          a.transPut(i, val(i+1));
-      } RETRY(false);
+      a.nontrans_put(i, val(i+1));
   }
   std::cout << "Done prepopulating " << std::endl;
 }
