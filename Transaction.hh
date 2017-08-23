@@ -736,7 +736,7 @@ public:
         }
     }
 
-    bool check_opacity(TransItem& item, TransactionTid::type v) {
+    bool check_opacity(TransItem& item, TransactionTid::type v) __attribute__ ((warn_unused_result)) {
 #if STO_TSC_PROFILE
         TimeKeeper<tc_opacity> tk;
 #endif
@@ -956,8 +956,7 @@ public:
     }
 
     static bool try_commit() {
-        if (!in_progress())
-            return false;
+        assert(in_progress());
         return TThread::txn->try_commit();
     }
 
@@ -1035,7 +1034,7 @@ class TransactionLoopGuard {
         TThread::txn->silent_abort();
     }
     bool try_commit() {
-        return TThread::txn->try_commit();
+        return TThread::txn->in_progress() && TThread::txn->try_commit();
     }
 };
 
@@ -1104,7 +1103,8 @@ inline bool TransProxy::observe(TVersion& version, bool add_read) {
             t()->mark_abort_because(&item(), "locked", occ_version.value());
             return false;
         }
-        t()->check_opacity(item(), occ_version.value());
+        if (!t()->check_opacity(item(), occ_version.value()))
+            return false;
         if (add_read && !has_read()) {
             item().__or_flags(TransItem::read_bit);
             item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(occ_version));
