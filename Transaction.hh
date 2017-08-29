@@ -1099,7 +1099,7 @@ inline bool TransProxy::observe(TVersion& version, bool add_read) {
     // has been finally deteremined
     if (cp == CCPolicy::occ) {
         // abort if not locked here
-        if (occ_version.is_locked() && !item().needs_unlock()) {
+        if (occ_version.is_locked() && !item().has_write()) {
             t()->mark_abort_because(&item(), "locked", occ_version.value());
             return false;
         }
