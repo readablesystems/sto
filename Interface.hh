@@ -121,7 +121,7 @@ public:
         type rlock_cnt = vv & threadid_mask;
         assert(!is_locked(vv));
         assert(rlock_cnt >= 1);
-        if ((rlock_cnt == 1) && bool_cmpxchg(&v, vv, (vv & ~threadid_mask) | lock_bit))
+        if ((rlock_cnt == 1) && bool_cmpxchg(&v, vv, (vv - 1) | lock_bit))
             return LockResponse::locked;
         else
             return LockResponse::spin;

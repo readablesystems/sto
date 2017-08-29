@@ -982,7 +982,7 @@ void ZipfRW<DS>::per_thread_workload_init(int thread_id) {
                 query.emplace_back(OpType::read, idx);
             else {
                 if (ud.sample() < write_threshold)
-                    query.emplace_back(OpType::write, idx);
+                    query.emplace_back(OpType::write, idx, idx + 1);
                 else
                     query.emplace_back(OpType::read, idx);
             }
