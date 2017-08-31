@@ -6,6 +6,11 @@ template <typename T, bool Opaque = true,
           bool Trivial = mass::is_trivially_copyable<T>::value,
           bool Small = sizeof(T) <= sizeof(uintptr_t) && alignof(T) == sizeof(T)
           > class TWrapped;
+template <typename T, bool Opaque = true,
+          bool Trivial = std::is_trivially_copyable<T>::value,
+          bool Small = sizeof(T) <= sizeof(uintptr_t) && alignof(T) == sizeof(T)
+          > class TLockWrapped;
+
 
 namespace TWrappedAccess {
 template <typename T, typename V>
@@ -110,6 +115,55 @@ static T read_wait_nonatomic(const T* v, TransProxy item, const V& version, bool
 }
 
 template <typename T>
+class TLockWrapped<T, true /* opaque */, true /* trivial */, true /* small */> {
+public:
+    typedef T read_type;
+    typedef TLockVersion version_type;
+
+    template <typename... Args> TLockWrapped(Args&&... args)
+        : v_(std::forward<Args>(args)...) {}
+
+    const T& access() const {
+        return v_;
+    }
+    T& access() {
+        return v_;
+    }
+    read_type snapshot(TransProxy item, const version_type& version) const {
+        return TWrappedAccess::read_atomic(&v_, item, version, false);
+    }
+    read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
+        return TWrappedAccess::read_wait_atomic(&v_, item, version, add_read);
+    }
+    std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
+        if (version.is_optimistic())
+            return TWrappedAccess::read_atomic(&v_, item, version, true);
+        else
+            return TWrappedAccess::read_nonatomic(&v_, item, version, true);
+    }
+    void write(const T& v) {
+        v_ = v;
+    }
+    void write(T&& v) {
+        v_ = std::move(v);
+    }
+
+protected:
+    T v_;
+};
+
+template <typename T, bool Opaque, bool Trivial, bool Small>
+class TLockWrapped {
+public:
+    template <typename... Args> TLockWrapped(Args&&... args)
+        : v_(std::forward<Args>(args)...) {
+        static_assert(Opaque && Trivial && Small, "not implemented");
+    }
+protected:
+    T v_;
+};
+
+template <typename T>
 class TWrapped<T, true /* opaque */, true /* trivial */, true /* small */> {
 public:
     typedef T read_type;
@@ -132,14 +186,11 @@ public:
         return TWrappedAccess::read_wait_atomic(&v_, item, version, add_read);
     }
     std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
-        if (item.get_cc_policy() == CCPolicy::occ)
-            return TWrappedAccess::read_atomic(&v_, item, version, true);
-        else
-            return TWrappedAccess::read_nonatomic(&v_, item, version, true);
+        return TWrappedAccess::read_atomic(&v_, item, version, true);
     }
-    static std::pair<bool, read_type> read(const T* v, TransProxy item, const version_type& version) {
-        return TWrappedAccess::read_atomic(v, item, version, true);
-    }
+    //static std::pair<bool, read_type> read(const T* v, TransProxy item, const version_type& version) {
+    //    return TWrappedAccess::read_atomic(v, item, version, true);
+    //}
     void write(const T& v) {
         v_ = v;
     }
@@ -312,10 +363,7 @@ public:
         return *TWrappedAccess::read_wait_atomic(&vp_, item, version, add_read);
     }
     read_type read(TransProxy item, const version_type& version) const {
-        if (item.get_cc_policy() == CCPolicy::occ)
-            return *TWrappedAccess::read_atomic(&vp_, item, version, true);
-        else
-            return *TWrappedAccess::read_nonatomic(&vp_, item, version, true);
+        return *TWrappedAccess::read_atomic(&vp_, item, version, true);
     }
     void write(const T& v) {
         save(new T(v));
@@ -389,3 +437,5 @@ private:
 
 template <typename T> using TOpaqueWrapped = TWrapped<T>;
 template <typename T> using TNonopaqueWrapped = TWrapped<T, false>;
+
+template <typename T> using TOpaqueLockWrapped = TLockWrapped<T>;

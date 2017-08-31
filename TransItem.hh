@@ -34,7 +34,7 @@ class TransItem {
 
     TransItem() = default;
     TransItem(TObject* owner, void* k)
-        : s_(reinterpret_cast<ownerstore_type>(owner)), key_(k), policy_(CCPolicy::none) {
+        : s_(reinterpret_cast<ownerstore_type>(owner)), key_(k) {
     }
 
     TObject* owner() const {
@@ -77,6 +77,12 @@ class TransItem {
     const T& read_value() const {
         assert(has_read());
         return Packer<T>::unpack(rdata_);
+    }
+    bool check_version(TLockVersion v) const {
+        assert(has_read());
+        if (v.is_locked() && !has_write())
+            return false;
+        return v.check_version(this->read_value<TLockVersion>());
     }
     bool check_version(TVersion v) const {
         assert(has_read());
@@ -185,15 +191,6 @@ class TransItem {
         return *this;
     }
 
-    CCPolicy get_cc_policy() {
-        if (policy_ == CCPolicy::none)
-            policy_ = owner()->get_cc_policy(*this);
-        return policy_;
-    }
-
-    void set_cc_policy(CCPolicy cp) {
-        policy_ = cp;
-    }
 
 private:
     ownerstore_type s_;
@@ -201,8 +198,6 @@ private:
     void* key_;
     void* rdata_;
     void* wdata_;
-
-    CCPolicy policy_;
 
     void __rm_flags(flags_type flags) {
         s_ = s_ & ~flags;
@@ -255,7 +250,8 @@ class TransProxy {
     inline TransProxy& add_read_opaque(T rdata);
 
     // new interface
-    inline bool observe(TVersion& version, bool add_read) __attribute__ ((warn_unused_result));
+    inline bool observe(TLockVersion& version, bool add_read) __attribute__ ((warn_unused_result));
+    inline bool observe(TVersion version, bool add_read) __attribute__ ((warn_unused_result));
     inline bool observe(TVersion version) __attribute__ ((warn_unused_result));
     inline bool observe_opacity(TVersion version) __attribute__ ((warn_unused_result));
 
@@ -293,13 +289,13 @@ class TransProxy {
     }
 
     // like "add_writes"s but used for pessimistic items
-    inline bool acquire_write(TVersion& vers);
+    inline bool acquire_write(TLockVersion& vers);
     template <typename T>
-    inline bool acquire_wirte(const T& wdata, TVersion& vers);
+    inline bool acquire_wirte(const T& wdata, TLockVersion& vers);
     template <typename T>
-    inline bool acquire_write(T&& wdata, TVersion& vers);
+    inline bool acquire_write(T&& wdata, TLockVersion& vers);
     template <typename T, typename... Args>
-    inline bool acquire_write(Args&&... args, TVersion& vers);
+    inline bool acquire_write(Args&&... args, TLockVersion& vers);
 
     template <typename T>
     inline TransProxy& set_stash(T sdata);
@@ -362,10 +358,6 @@ class TransProxy {
         return item().stash_value<T>(std::move(default_value));
     }
 
-    CCPolicy get_cc_policy() {
-        return item().get_cc_policy();
-    }
-
     TransProxy& remove_read() { // XXX should also cleanup_read
         item().__rm_flags(TransItem::read_bit);
         return *this;
@@ -408,7 +400,7 @@ private:
     inline Transaction* t() const {
         return t_;
     }
-    inline bool lock_for_write(TransItem& item, TVersion& vers);
+    inline bool lock_for_write(TransItem& item, TLockVersion& vers);
     friend class Transaction;
     friend class OptionalTransProxy;
 };

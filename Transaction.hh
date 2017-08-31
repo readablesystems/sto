@@ -659,20 +659,12 @@ public:
 #endif
     }
 
-    auto try_lock_write(TransItem& item, TVersion& vers) -> bool
-    {
-        return try_lock_write(item, const_cast<TransactionTid::type&>(vers.value()));
-    }
-    auto try_lock_write(TransItem& item, TNonopaqueVersion& vers) -> bool
-    {
-        return try_lock_write(item, const_cast<TransactionTid::type&>(vers.value()));
-    }
-    auto try_lock_write(TransItem& item, TransactionTid::type& vers) -> bool
+    auto try_lock_write(TransItem& item, TLockVersion& vers) -> bool
     {
         (void)item;
         unsigned n = 0;
         while (1) {
-            auto response = TransactionTid::try_lock_write(vers);
+            auto response = vers.try_lock_write();
             if (response == LockResponse::locked)
                 return true;
             else if (response == LockResponse::spin) {
@@ -686,16 +678,12 @@ public:
         }
     }
 
-    auto try_lock_read(TransItem& item, TVersion& vers) -> std::pair<LockResponse, TransactionTid::type>
-    {
-        return try_lock_read(item, const_cast<TransactionTid::type&>(vers.value()));
-    }
-    auto try_lock_read(TransItem& item, TransactionTid::type& vers) -> std::pair<LockResponse, TransactionTid::type>
+    auto try_lock_read(TransItem& item, TLockVersion& vers) -> std::pair<LockResponse, TransactionTid::type>
     {
         (void)item;
         unsigned n = 0;
         while (1) {
-            auto response = TransactionTid::try_lock_read(vers);
+            auto response = vers.try_lock_read();
             if (response.first != LockResponse::spin)
                 return response;
             ++n;
@@ -705,18 +693,28 @@ public:
         }
     }
 
-    auto upgrade_lock(TransItem& item, TVersion& vers) -> bool
+    auto upgrade_lock(TransItem& item, TLockVersion& vers) -> bool
     {
         (void)item;
         unsigned n = 0;
         while (1) {
-            auto response = TransactionTid::rwlock_try_upgrade(const_cast<TransactionTid::type&>(vers.value()));
+            auto response = vers.try_upgrade();
             if (response == LockResponse::locked)
                 return true;
             ++n;
             if (n == 1 << STO_SPIN_BOUND_WRITE)
                 return false;
             relax_fence();
+        }
+    }
+
+    static void unlock(TransItem& item, TLockVersion& vers) {
+        assert(item.needs_unlock());
+        if (item.has_write()) {
+            vers.unlock_write();
+        } else {
+            assert(item.has_read());
+            vers.unlock_read();
         }
     }
 
@@ -728,12 +726,7 @@ public:
     }
     static void unlock(TransItem& item, TransactionTid::type& v) {
         assert(item.needs_unlock());
-        if (item.has_write())
-            TransactionTid::unlock_write(v);
-        else {
-            assert(item.has_read());
-            TransactionTid::unlock_read(v);
-        }
+        TransactionTid::unlock(v);
     }
 
     bool check_opacity(TransItem& item, TransactionTid::type v) __attribute__ ((warn_unused_result)) {
@@ -776,6 +769,10 @@ public:
         if (!commit_tid_)
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
+    }
+    void set_version_unlock(TLockVersion& vers, TransItem& item, TLockVersion::type flags = 0) const {
+        vers.set_version_unlock(commit_tid() | flags);
+        item.clear_needs_unlock();
     }
     void set_version(TVersion& vers, TVersion::type flags = 0) const {
         vers.set_version(commit_tid() | flags);
@@ -1064,23 +1061,22 @@ inline TransProxy& TransProxy::add_read_opaque(T rdata) {
     return *this;
 }
 
-inline bool TransProxy::observe(TVersion& version, bool add_read) {
+inline bool TransProxy::observe(TLockVersion& version, bool add_read) {
     assert(!has_stash());
 
-    TVersion occ_version;
-    CCPolicy cp = item().get_cc_policy();
-    if (cp == CCPolicy::occ) {
+    TLockVersion occ_version;
+    bool optimistic = version.is_optimistic();
+    if (optimistic) {
         acquire_fence();
         occ_version = version;
     }
 
-    if ((cp == CCPolicy::lock) && !item().needs_unlock() && add_read && !has_read()) {
+    if (!optimistic && !item().needs_unlock() && add_read && !has_read()) {
         auto response = t()->try_lock_read(item(), version);
         if (response.first == LockResponse::optmistic) {
-            // fall back to optimistic mode if the exclusive read
-            // lock has already been held
-            item().set_cc_policy(CCPolicy::occ);
-            cp = CCPolicy::occ;
+            // fall back to optimistic mode if no more read
+            // locks can be acquired
+            optimistic = true;
             occ_version = response.second;
         } else if (response.first == LockResponse::locked) {
             item().__or_flags(TransItem::lock_bit);
@@ -1094,10 +1090,10 @@ inline bool TransProxy::observe(TVersion& version, bool add_read) {
         }
     }
 
-    // Invariant: at this point, if cp == occ, then occ_version is set to the
+    // Invariant: at this point, if optimistic, then occ_version is set to the
     // approperiate version observed at the time the concurrency control policy
     // has been finally deteremined
-    if (cp == CCPolicy::occ) {
+    if (optimistic) {
         // abort if not locked here
         if (occ_version.is_locked() && !item().has_write()) {
             t()->mark_abort_because(&item(), "locked", occ_version.value());
@@ -1107,8 +1103,24 @@ inline bool TransProxy::observe(TVersion& version, bool add_read) {
             return false;
         if (add_read && !has_read()) {
             item().__or_flags(TransItem::read_bit);
-            item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(occ_version));
+            item().rdata_ = Packer<TLockVersion>::pack(t()->buf_, std::move(occ_version));
         }
+    }
+
+    return true;
+}
+
+inline bool TransProxy::observe(TVersion version, bool add_read) {
+    assert(!has_stash());
+    if (version.is_locked_here(t()->threadid_)) {
+        t()->mark_abort_because(&item(), "locked", version.value());
+        return false;
+    }
+    if (!t()->check_opacity(item(), version.value()))
+        return false;
+    if (add_read && !has_read()) {
+        item().__or_flags(TransItem::read_bit);
+        item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
     }
 
     return true;
@@ -1226,7 +1238,7 @@ inline TransProxy& TransProxy::add_write(Args&&... args) {
     return *this;
 }
 
-inline bool TransProxy::lock_for_write(TransItem& item, TVersion& vers) {
+inline bool TransProxy::lock_for_write(TransItem& item, TLockVersion& vers) {
     if (has_read() && item.needs_unlock()) {
         // already holding read lock; upgrade to write lock
         if (!t()->upgrade_lock(item, vers)) {
@@ -1245,7 +1257,7 @@ inline bool TransProxy::lock_for_write(TransItem& item, TVersion& vers) {
     // write lock is held on the corresponding TVersion
 }
 
-inline bool TransProxy::acquire_write(TVersion& vers) {
+inline bool TransProxy::acquire_write(TLockVersion& vers) {
     if (!has_write()) {
         lock_for_write(item(), vers);
         item().__or_flags(TransItem::write_bit);
@@ -1255,18 +1267,18 @@ inline bool TransProxy::acquire_write(TVersion& vers) {
 }
 
 template <typename T>
-inline bool TransProxy::acquire_wirte(const T& wdata, TVersion& vers) {
+inline bool TransProxy::acquire_wirte(const T& wdata, TLockVersion& vers) {
     return acquire_write<T, const T&>(wdata, vers);
 }
 
 template <typename T>
-inline bool TransProxy::acquire_write(T&& wdata, TVersion& vers) {
+inline bool TransProxy::acquire_write(T&& wdata, TLockVersion& vers) {
     typedef typename std::decay<T>::type V;
     return acquire_write<V, V&&>(std::move(wdata), vers);
 }
 
 template <typename T, typename... Args>
-inline bool TransProxy::acquire_write(Args&&... args, TVersion& vers) {
+inline bool TransProxy::acquire_write(Args&&... args, TLockVersion& vers) {
     if (!has_write()) {
         if (!lock_for_write(item(), vers))
             return false;

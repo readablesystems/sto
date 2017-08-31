@@ -3,19 +3,7 @@
 #include "TWrapped.hh"
 #include "TArrayProxy.hh"
 
-template <unsigned N>
-class TArrayAdaptiveConflictPredictor : public ConflictPredictor {
-public:
-    TArrayAdaptiveConflictPredictor() {}
-    ~TArrayAdaptiveConflictPredictor() override {}
-
-    CCPolicy get_policy(TransItem& item) override {
-        (void)item;
-        return CCPolicy::lock;
-    }
-};
-
-template <typename T, unsigned N, template <typename> class W = TOpaqueWrapped>
+template <typename T, unsigned N, template <typename> class W = TOpaqueLockWrapped>
 class TArrayAdaptive : public TObject {
 public:
     class iterator;
@@ -27,13 +15,6 @@ public:
     typedef int difference_type;
     typedef TConstArrayProxy<TArrayAdaptive<T, N, W> > const_proxy_type;
     typedef TArrayProxy<TArrayAdaptive<T, N, W> > proxy_type;
-
-    TArrayAdaptive() {
-        cp_ = new TArrayAdaptiveConflictPredictor<N>();
-    }
-    ~TArrayAdaptive() {
-        delete cp_;
-    }
 
     size_type size() const {
         return N;
@@ -104,9 +85,6 @@ public:
     void unlock(TransItem& item) override {
         Transaction::unlock(item, data_[item.key<size_type>()].vers);
     }
-    CCPolicy get_cc_policy(TransItem& item) override {
-        return cp_->get_policy(item);
-    }
 
 private:
     struct elem {
@@ -114,8 +92,6 @@ private:
         W<T> v;
     };
     elem data_[N];
-
-    ConflictPredictor *cp_;
 
     friend class iterator;
     friend class const_iterator;

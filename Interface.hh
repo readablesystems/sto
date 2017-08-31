@@ -5,7 +5,6 @@
 
 #include "config.h"
 #include "compiler.hh"
-#include "ConflictPredictor.hh"
 
 class Transaction;
 class TransItem;
@@ -141,6 +140,9 @@ public:
 
     static bool is_locked(type v) {
         return v & lock_bit;
+    }
+    static bool is_optimistic(type v) {
+        return v & opt_bit;
     }
     static bool is_locked_here(type v) {
         return (v & (lock_bit | threadid_mask)) == (lock_bit | TThread::id());
@@ -286,6 +288,89 @@ public:
             w << "L" << std::dec << (v & (lock_bit - 1));
         w.flags(f);
     }
+};
+
+class TLockVersion {
+public:
+    typedef TransactionTid::type type;
+    static constexpr type user_bit = TransactionTid::user_bit;
+
+    TLockVersion()
+        : v_() {
+    }
+    TLockVersion(type v)
+        : v_(v) {
+    }
+
+    type value() const {
+        return v_;
+    }
+    volatile type& value() {
+        return v_;
+    }
+    inline type snapshot(const TransItem& item, const Transaction& txn);
+    inline type snapshot(TransProxy& item);
+
+    bool is_locked() const {
+        return TransactionTid::is_locked(v_);
+    }
+    bool is_optimistic() const {
+        return TransactionTid::is_optimistic(v_);
+    }
+    bool bool_cmpxchg(TLockVersion expected, TLockVersion desired) {
+        return ::bool_cmpxchg(&v_, expected.v_, desired.v_);
+    }
+
+    std::pair<LockResponse, type> try_lock_read() {
+        return TransactionTid::try_lock_read(v_);
+    }
+    LockResponse try_lock_write() {
+        return TransactionTid::try_lock_write(v_);
+    }
+    LockResponse try_upgrade() {
+        return TransactionTid::rwlock_try_upgrade(v_);
+    }
+    void unlock_read() {
+        TransactionTid::unlock_read(v_);
+    }
+    void unlock_write() {
+        TransactionTid::unlock_write(v_);
+    }
+    type unlocked() const {
+        return TransactionTid::unlocked(v_);
+    }
+
+    bool operator==(TLockVersion x) const {
+        return v_ == x.v_;
+    }
+    bool operator!=(TLockVersion x) const {
+        return v_ != x.v_;
+    }
+    TLockVersion operator|(TLockVersion x) const {
+        return TLockVersion(v_ | x.v_);
+    }
+
+    void set_version_unlock(TLockVersion new_v) {
+        TransactionTid::set_version_unlock(v_, new_v.v_);
+    }
+
+    bool check_version(TLockVersion old_vers) const {
+        // XXX opacity <- THis comment is irrelevant on new API
+        return TransactionTid::check_version(v_, old_vers.v_);
+    }
+    bool check_version(TLockVersion old_vers, int here) const {
+        return TransactionTid::check_version(v_, old_vers.v_, here);
+    }
+
+    friend std::ostream& operator<<(std::ostream& w, TLockVersion v) {
+        TransactionTid::print(v.value(), w);
+        return w;
+    }
+
+    template <typename Exception>
+    static inline void opaque_throw(const Exception& exception);
+private:
+    type v_;
 };
 
 class TVersion {
@@ -647,11 +732,6 @@ public:
     virtual void unlock(TransItem& item) = 0;
     virtual void cleanup(TransItem& item, bool committed) {
         (void) item, (void) committed;
-    }
-    virtual CCPolicy get_cc_policy(TransItem& item) {
-        (void)item;
-        // defaulting to occ
-        return CCPolicy::occ;
     }
     virtual void print(std::ostream& w, const TransItem& item) const;
 };
