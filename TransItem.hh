@@ -9,6 +9,8 @@
 
 class TransProxy;
 
+enum class CCMode : int {none = 0, opt, lock};
+
 class TransItem {
   public:
 #if SIZEOF_VOID_P == 8
@@ -191,6 +193,12 @@ class TransItem {
         return *this;
     }
 
+    CCMode cc_mode(CCMode observe_mode) {
+        if (mode_ == CCMode::none) {
+            mode_ = observe_mode;
+        }
+        return mode_;
+    }
 
 private:
     ownerstore_type s_;
@@ -198,6 +206,8 @@ private:
     void* key_;
     void* rdata_;
     void* wdata_;
+
+    CCMode mode_;
 
     void __rm_flags(flags_type flags) {
         s_ = s_ & ~flags;

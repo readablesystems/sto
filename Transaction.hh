@@ -1066,6 +1066,9 @@ inline bool TransProxy::observe(TLockVersion& version, bool add_read) {
 
     TLockVersion occ_version;
     bool optimistic = version.is_optimistic();
+
+    optimistic = (item().cc_mode(optimistic ? CCMode::opt : CCMode::lock) == CCMode::opt);
+
     if (optimistic) {
         acquire_fence();
         occ_version = version;

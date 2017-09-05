@@ -338,7 +338,7 @@ bool Transaction::try_commit() {
     //phase2
     for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
         it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
-        if (it->has_read() && (it->get_cc_policy() != CCPolicy::lock)) {
+        if (it->has_read() && !it->needs_unlock()) {
             TXP_INCREMENT(txp_total_check_read);
             if (!it->owner()->check(*it, *this)
                 && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
