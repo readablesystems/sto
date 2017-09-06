@@ -126,14 +126,22 @@ public:
                 return LockResponse::spin;
             //if (read_locked)
             //    return LockResponse::spin;
-            if (bool_cmpxchg(&v, vv, (vv | lock_bit) & ~opt_bit))
+            if (bool_cmpxchg(&v, vv,
+#if ADAPTIVE_RWLOCK == 0
+                (vv | lock_bit)
+#else
+                (vv | lock_bit) & ~opt_bit
+#endif
+            )) {
                 return LockResponse::locked;
+            }
             else
                 relax_fence();
         }
     }
 
     static LockResponse rwlock_try_upgrade(type& v) {
+        // XXX not used
         type vv = v;
         type rlock_cnt = vv & threadid_mask;
         assert(!is_locked(vv));
@@ -145,7 +153,10 @@ public:
     }
 
     static void unlock_read(type& v) {
-        //type vv = __sync_fetch_and_add(&v, -1);
+#if ADAPTIVE_RWLOCK == 0
+        type vv = __sync_fetch_and_add(&v, -1);
+        assert((vv & threadid_mask) >= 1);
+#else
         while (1) {
             type vv = v;
             assert((vv & threadid_mask) >= 1);
@@ -154,11 +165,16 @@ public:
                 break;
             relax_fence();
         }
+#endif
     }
 
     static void unlock_write(type& v) {
         assert(is_locked(v));
+#if ADAPTIVE_RWLOCK == 0
+        type new_v = v & ~lock_bit;
+#else
         type new_v = TThread::gen[TThread::id()].chance(30) ? ((v & ~lock_bit) | opt_bit) : (v & ~lock_bit);
+#endif
         release_fence();
         v = new_v;
     }
