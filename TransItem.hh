@@ -253,6 +253,9 @@ class TransProxy {
     bool has_flag(TransItem::flags_type f) const {
         return item().flags() & f;
     }
+    CCMode cc_mode(CCMode obs_mode) {
+        return item().cc_mode(obs_mode);
+    }
 
     template <typename T>
     inline TransProxy& add_read(T rdata);

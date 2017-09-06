@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include <iostream>
+#include <random>
 
 #include "config.h"
 #include "compiler.hh"
@@ -10,10 +11,27 @@ class Transaction;
 class TransItem;
 class TransProxy;
 
+struct PercentGen {
+    std::random_device rd;
+    std::mt19937 gen;
+    std::uniform_int_distribution<int> dist;
+
+    PercentGen() : rd(), gen(rd()), dist(0,99) {}
+    ~PercentGen() {}
+
+    int sample() {
+        return dist(gen);
+    }
+    bool chance(int percent) {
+        return (sample() < percent);
+    }
+};
+
 class TThread {
     static __thread int the_id;
 public:
     static __thread Transaction* txn;
+    static PercentGen gen[];
 
     static int id() {
         return the_id;
@@ -108,7 +126,7 @@ public:
                 return LockResponse::spin;
             //if (read_locked)
             //    return LockResponse::spin;
-            if (bool_cmpxchg(&v, vv, vv | lock_bit))
+            if (bool_cmpxchg(&v, vv, (vv | lock_bit) & ~opt_bit))
                 return LockResponse::locked;
             else
                 relax_fence();
@@ -127,13 +145,20 @@ public:
     }
 
     static void unlock_read(type& v) {
-        type vv = __sync_fetch_and_add(&v, -1);
-        assert((vv & threadid_mask) >= 1);
+        //type vv = __sync_fetch_and_add(&v, -1);
+        while (1) {
+            type vv = v;
+            assert((vv & threadid_mask) >= 1);
+            type new_v = TThread::gen[TThread::id()].chance(50) ? ((vv - 1) | opt_bit) : (vv - 1);
+            if (bool_cmpxchg(&v, vv, new_v))
+                break;
+            relax_fence();
+        }
     }
 
     static void unlock_write(type& v) {
         assert(is_locked(v));
-        type new_v = v & ~lock_bit;
+        type new_v = TThread::gen[TThread::id()].chance(30) ? ((v & ~lock_bit) | opt_bit) : (v & ~lock_bit);
         release_fence();
         v = new_v;
     }

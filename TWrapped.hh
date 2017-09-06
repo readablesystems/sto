@@ -136,7 +136,7 @@ public:
         return TWrappedAccess::read_wait_atomic(&v_, item, version, add_read);
     }
     std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
-        if (version.is_optimistic())
+        if (item.cc_mode(version.is_optimistic() ? CCMode::opt : CCMode::lock) == CCMode::opt)
             return TWrappedAccess::read_atomic(&v_, item, version, true);
         else
             return TWrappedAccess::read_nonatomic(&v_, item, version, true);
