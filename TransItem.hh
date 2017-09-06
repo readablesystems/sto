@@ -200,6 +200,10 @@ class TransItem {
         return mode_;
     }
 
+    bool cc_mode_is_optimistic(bool version_optimistic) {
+        return cc_mode(version_optimistic ? CCMode::opt : CCMode::lock) == CCMode::opt;
+    }
+
 private:
     ownerstore_type s_;
     // this word must be unique (to a particular item) and consistently ordered across transactions
@@ -255,6 +259,9 @@ class TransProxy {
     }
     CCMode cc_mode(CCMode obs_mode) {
         return item().cc_mode(obs_mode);
+    }
+    bool cc_mode_is_optimistic(bool v_opt) {
+        return item().cc_mode_is_optimistic(v_opt);
     }
 
     template <typename T>
