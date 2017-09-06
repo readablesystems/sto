@@ -269,7 +269,7 @@ public:
     read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
         return TWrappedAccess::read_wait_nonatomic(&v_, item, version, add_read);
     }
-    read_type read(TransProxy item, const version_type& version) const {
+    std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
         return TWrappedAccess::read_nonatomic(&v_, item, version, true);
     }
     static read_type read(const T* vp, TransProxy item, const version_type& version) {

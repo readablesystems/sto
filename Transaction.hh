@@ -1129,39 +1129,44 @@ inline bool TransProxy::observe(TVersion version, bool add_read) {
     return true;
 }
 
-inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read) {
+inline bool TransProxy::observe(TNonopaqueVersion version, bool add_read) {
     assert(!has_stash());
-    if (version.is_locked_elsewhere(t()->threadid_))
-        t()->abort_because(item(), "locked", version.value());
+    if (version.is_locked_elsewhere(t()->threadid_)) {
+        t()->mark_abort_because(&item(), "locked", version.value());
+        return false;
+    }
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
         t()->any_nonopaque_ = true;
     }
-    return *this;
+    return true;
 }
 
-inline TransProxy& TransProxy::observe(TCommutativeVersion version, bool add_read) {
+inline bool TransProxy::observe(TCommutativeVersion version, bool add_read) {
     assert(!has_stash());
-    if (version.is_locked())
-        t()->abort_because(item(), "locked", version.value());
-    t()->check_opacity(item(), version.value());
+    if (version.is_locked()) {
+        t()->mark_abort_because(&item(), "locked", version.value());
+        return false;
+    }
+    if (!t()->check_opacity(item(), version.value()))
+        return false;
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TCommutativeVersion>::pack(t()->buf_, std::move(version));
     }
-    return *this;
+    return true;
 }
 
 inline bool TransProxy::observe(TVersion version) {
     return observe(version, true);
 }
 
-inline TransProxy& TransProxy::observe(TNonopaqueVersion version) {
+inline bool TransProxy::observe(TNonopaqueVersion version) {
     return observe(version, true);
 }
 
-inline TransProxy& TransProxy::observe(TCommutativeVersion version) {
+inline bool TransProxy::observe(TCommutativeVersion version) {
     return observe(version, true);
 }
 
@@ -1169,11 +1174,11 @@ inline bool TransProxy::observe_opacity(TVersion version) {
     return observe(version, false);
 }
 
-inline TransProxy& TransProxy::observe_opacity(TNonopaqueVersion version) {
+inline bool TransProxy::observe_opacity(TNonopaqueVersion version) {
     return observe(version, false);
 }
 
-inline TransProxy& TransProxy::observe_opacity(TCommutativeVersion version) {
+inline bool TransProxy::observe_opacity(TCommutativeVersion version) {
     return observe(version, false);
 }
 

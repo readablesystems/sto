@@ -179,7 +179,6 @@ private:
     type v_;
 };
 
-#if 0
 template <> struct Container<USE_ARRAY_NONOPAQUE> {
     typedef TArray<value_type, ARRAY_SZ, TNonopaqueWrapped> type;
     typedef int index_type;
@@ -187,11 +186,14 @@ template <> struct Container<USE_ARRAY_NONOPAQUE> {
     value_type nontrans_get(index_type key) {
         return v_.nontrans_get(key);
     }
-    value_type transGet(index_type key) {
-        return v_.transGet(key);
+    void nontrans_put(index_type key, const value_type& val) {
+        v_.nontrans_put(key, val);
     }
-    void transPut(index_type key, value_type value) {
-        v_.transPut(key, value);
+    bool transGet(index_type key, value_type& ret) {
+        return v_.transGet(key, ret);
+    }
+    bool transPut(index_type key, value_type value) {
+        return v_.transPut(key, value);
     }
     static void init() {
     }
@@ -200,7 +202,6 @@ template <> struct Container<USE_ARRAY_NONOPAQUE> {
 private:
     type v_;
 };
-#endif
 
 template <> struct Container<USE_ARRAY_ADAPTIVE> {
     typedef TArrayAdaptive<value_type, ARRAY_SZ> type;
@@ -1539,6 +1540,7 @@ void print_time(double time) {
 
 #define MAKE_TESTER(name, desc, type, ...)            \
     {name, desc, 0, new type<0, ## __VA_ARGS__>},     \
+    {name, desc, 10, new type<10, ## __VA_ARGS__>},   \
     {name, desc, 11, new type<11, ## __VA_ARGS__>}
 
 
@@ -1548,7 +1550,6 @@ void print_time(double time) {
 //    {name, desc, 7, new type<7, ## __VA_ARGS__>},     
 //    {name, desc, 8, new type<8, ## __VA_ARGS__>},     
 //    {name, desc, 9, new type<9, ## __VA_ARGS__>},     
-//    {name, desc, 10, new type<10, ## __VA_ARGS__>},   
 //    {name, desc, 6, new type<6, ## __VA_ARGS__>},
 struct Test {
     const char* name;

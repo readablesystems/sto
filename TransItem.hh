@@ -261,16 +261,19 @@ class TransProxy {
 
     // new interface
     inline bool observe(TLockVersion& version, bool add_read) __attribute__ ((warn_unused_result));
+
     inline bool observe(TVersion version, bool add_read) __attribute__ ((warn_unused_result));
     inline bool observe(TVersion version) __attribute__ ((warn_unused_result));
     inline bool observe_opacity(TVersion version) __attribute__ ((warn_unused_result));
 
-    inline TransProxy& observe(TNonopaqueVersion version, bool add_read);
-    inline TransProxy& observe(TCommutativeVersion version, bool add_read);
-    inline TransProxy& observe(TNonopaqueVersion version);
-    inline TransProxy& observe(TCommutativeVersion version);
-    inline TransProxy& observe_opacity(TNonopaqueVersion version);
-    inline TransProxy& observe_opacity(TCommutativeVersion version);
+    inline bool observe(TNonopaqueVersion version, bool add_read) __attribute__ ((warn_unused_result));
+    inline bool observe(TNonopaqueVersion version) __attribute__ ((warn_unused_result));
+    inline bool observe_opacity(TNonopaqueVersion version) __attribute__ ((warn_unused_result));
+
+    inline bool observe(TCommutativeVersion version, bool add_read) __attribute__ ((warn_unused_result));
+    inline bool observe(TCommutativeVersion version) __attribute__ ((warn_unused_result));
+    inline bool observe_opacity(TCommutativeVersion version) __attribute__ ((warn_unused_result));
+
     inline TransProxy& clear_read() {
         item().__rm_flags(TransItem::read_bit);
         return *this;
