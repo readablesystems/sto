@@ -99,6 +99,10 @@ public:
     }
 #endif
 
+#if ADAPTIVE_RWLOCK
+    static int unlock_opt_chance;
+#endif
+
     // read/write/optimistic combined lock
     static std::pair<LockResponse, type> try_lock_read(type& v) {
         while (1) {
@@ -160,7 +164,7 @@ public:
         while (1) {
             type vv = v;
             assert((vv & threadid_mask) >= 1);
-            type new_v = TThread::gen[TThread::id()].chance(50) ? ((vv - 1) | opt_bit) : (vv - 1);
+            type new_v = TThread::gen[TThread::id()].chance(unlock_opt_chance) ? ((vv - 1) | opt_bit) : (vv - 1);
             if (bool_cmpxchg(&v, vv, new_v))
                 break;
             relax_fence();
@@ -173,7 +177,7 @@ public:
 #if ADAPTIVE_RWLOCK == 0
         type new_v = v & ~lock_bit;
 #else
-        type new_v = TThread::gen[TThread::id()].chance(30) ? ((v & ~lock_bit) | opt_bit) : (v & ~lock_bit);
+        type new_v = TThread::gen[TThread::id()].chance(unlock_opt_chance) ? ((v & ~lock_bit) | opt_bit) : (v & ~lock_bit);
 #endif
         release_fence();
         v = new_v;

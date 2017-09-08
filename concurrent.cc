@@ -1591,7 +1591,7 @@ struct {
 };
 
 enum {
-    opt_test = 1, opt_nrmyw, opt_check, opt_profile, opt_dump, opt_nthreads, opt_ntrans, opt_opspertrans, opt_opspertrans_ro, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew
+    opt_test = 1, opt_nrmyw, opt_check, opt_profile, opt_dump, opt_nthreads, opt_ntrans, opt_opspertrans, opt_opspertrans_ro, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew, opt_chance
 };
 
 static const Clp_Option options[] = {
@@ -1609,6 +1609,7 @@ static const Clp_Option options[] = {
   { "prepopulate", 0, opt_prepopulate, Clp_ValInt, Clp_Optional },
   { "seed", 's', opt_seed, Clp_ValUnsigned, 0 },
   { "skew", 0, opt_skew, Clp_ValDouble, Clp_Optional},
+  { "chance", 0, opt_chance, Clp_ValInt, Clp_Optional}
 };
 
 static void help(const char *name) {
@@ -1627,8 +1628,9 @@ Options:\n\
  --blindrandwrites, do blind random writes for random tests. makes checking impossible\n\
  --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n\
  --seed=SEED\n\
- --skew=SKEW, skew parameter for zipfrw test type (default %f)\n",
-         name, nthreads, ntrans, opspertrans, write_percent, readonly_percent, prepopulate, zipf_skew);
+ --skew=SKEW, skew parameter for zipfrw test type (default %f)\n\
+ --chance=PROB, chance of reverting to optimistic mode in adaptive RW lock (default %d)\n",
+         name, nthreads, ntrans, opspertrans, write_percent, readonly_percent, prepopulate, zipf_skew, TransactionTid::unlock_opt_chance);
   printf("\nTests:\n");
   size_t testidx = 0;
   for (size_t ti = 0; ti != sizeof(tests)/sizeof(tests[0]); ++ti)
@@ -1717,6 +1719,9 @@ int main(int argc, char *argv[]) {
         break;
     case opt_skew:
         zipf_skew = clp->val.d;
+        break;
+    case opt_chance:
+        TransactionTid::unlock_opt_chance = clp->val.d;
         break;
     default:
       help(argv[0]);

@@ -5,6 +5,7 @@ Transaction::testing_type Transaction::testing;
 threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int TThread::the_id;
 PercentGen TThread::gen[MAX_THREADS];
+int TransactionTid::unlock_opt_chance = 50;
 Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epochs = {
     1, 0, TransactionTid::increment_value, true
 };
