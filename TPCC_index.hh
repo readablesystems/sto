@@ -35,11 +35,12 @@ private:
         key_type key;
         version_type version;
         value_type value;
+        bool deleted;
 
         internal_elem(const key_type& k, const value_type& val, bool mark_valid)
             : key(k), next(nullptr),
               version(Sto::initialized_tid() | (mark_valid ? 0 : invalid_bit)),
-              value(val) {}
+              value(val), deleted(false) {}
 
         bool valid() const {
             return !(version.value() & invalid_bit);
@@ -72,6 +73,7 @@ private:
 public:
     typedef std::tuple<bool, bool, const value_type*> sel_return_type;
     typedef std::tuple<bool, bool>                    ins_return_type;
+    typedef std::tuple<bool, bool>                    del_return_type;
 
     unordered_index(size_t size = Init_size, Hash h = Hash(), Pred p = Pred()) :
             map_(), hasher_(h), pred_(p) {
@@ -172,7 +174,7 @@ public:
             //    goto abort;
 
             if (overwrite) {
-                if (!select_for_update(item, e->version, vptr))
+                if (!select_for_overwrite(item, e->version, vptr))
                     goto abort;
                 if (index_read_my_write) {
                     if (has_insert(item)) {
@@ -209,6 +211,56 @@ public:
 
     abort:
         return ins_return_type(false, false);
+    }
+
+    // returns (success : bool, found : bool)
+    // for rows that are not inserted by this transaction, the actual delete doesn't take place
+    // until commit time
+    del_return_type
+    delete_row(const key_type& k) {
+        bucket_entry& buck = map_[find_bucket_idx(k)];
+        bucket_version_type buck_vers = buck.version;
+        fence();
+
+        internal_elem *e = find_in_bucket(buck, k);
+        if (e) {
+            auto item = Sto::item(this, e);
+            bool valid = e->valid();
+            if (is_phantom(e, item))
+                goto abort;
+            if (index_read_my_write) {
+                if (!valid && has_insert(item)) {
+                    // deleting something we inserted
+                    _remove(e);
+                    item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
+                    Sto::item(this, make_bucket_key(&buck)).observe(buck_vers);
+                    return del_return_type(true, true);
+                }
+                assert(valid);
+                if (has_delete(item))
+                    return del_return_type(true, false);
+            }
+            // select_for_update() will automatically add an observation for OCC version types
+            // at commit/check time we check for the special "deleted" field to see if the row
+            // is still available for deletion
+            if (!select_for_update(item, e->version))
+                goto abort;
+            //fence();
+            //if (e->deleted)
+            //    goto abort;
+            item.add_flags(delete_bit);
+
+            return del_return_type(true, true);
+        } else {
+            // not found -- add observation of bucket version
+            bool ok = Sto::item(this, make_bucket_key(&buck)).observe(buck_vers);
+            if (!ok)
+                goto abort;
+            return del_return_type(true, false);
+        }
+
+    abort:
+        return del_return_type(false, false);
     }
 
     // TObject interface methods
@@ -268,24 +320,30 @@ private:
         return item.acquire_write(vers);
     }
     static bool select_for_update(TransProxy& item, TVersion& vers) {
-        (void)vers;
+        TVersion v = vers;
+        fence();
+        if (!item.observe(v))
+            return false;
         item.add_write();
         return true;
     }
     static bool select_for_update(TransProxy& item, TNonopaqueVersion& vers) {
-        (void)vers;
+        TNonopaqueVersion v = vers;
+        fence();
+        if (!item.observe(v))
+            return false;
         item.add_write();
         return true;
     }
-    static bool select_for_update(TransProxy& item, TLockVersion& vers, value_type *vptr) {
+    static bool select_for_overwrite(TransProxy& item, TLockVersion& vers, value_type *vptr) {
         return item.acquire_write(vers, vptr);
     }
-    static bool select_for_update(TransProxy& item, TVersion& vers, value_type* vptr) {
+    static bool select_for_overwrite(TransProxy& item, TVersion& vers, value_type* vptr) {
         (void)vers;
         item.add_write(vptr);
         return true;
     }
-    static bool select_for_update(TransProxy& item, TNonopaqueVersion& vers, value_type* vptr) {
+    static bool select_for_overwrite(TransProxy& item, TNonopaqueVersion& vers, value_type* vptr) {
         (void)vers;
         item.add_write(vptr);
         return true;
