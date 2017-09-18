@@ -264,11 +264,61 @@ public:
     }
 
     // TObject interface methods
-    bool lock(TransItem& item, Transaction& txn) override;
-    bool check(TransItem& item, Transaction&) override;
-    void install(TransItem& item, Transaction& txn) override;
-    void unlock(TransItem& item) override;
-    void cleanup(TransItem& item, bool committed) override;
+    bool lock(TransItem& item, Transaction& txn) override {
+        assert(!is_bucket(item));
+        internal_elem *el = item.key<internal_elem *>();
+        return txn.try_lock(item, el->version);
+    }
+
+    bool check(TransItem& item, Transaction&) override {
+        if (is_bucket(item)) {
+            bucket_entry &buck = *bucket_address(item);
+            return buck.version.check_version(item.read_value<bucket_version_type>());
+        } else {
+            internal_elem *el = item.key<internal_elem *>();
+            version_type rv = item.read_value<version_type>();
+            return el->version.check_version(rv);
+        }
+    }
+
+    void install(TransItem& item, Transaction& txn) override {
+        assert(!is_bucket(item));
+        internal_elem *el = item.key<internal_elem*>();
+        if (has_delete(item)) {
+            el->version.set_version_locked(el->version.value() + version_type::increment_value);
+            el->deleted = true;
+            fence();
+            return;
+        }
+        if (!has_insert(item)) {
+            // update
+            copy_row(el, item.write_value<const value_type *>());
+        }
+        el->version.set_version(txn.commit_tid());
+
+        if (Opacity && has_insert(item)) {
+            bucket_entry& buck = map_[find_bucket_idx(el->key)];
+            lock(buck.version);
+            if (buck.version.value() & TransactionTid::nonopaque_bit)
+                buck.version.set_version(txn.commit_tid());
+            unlock(buck.version);
+        }
+    }
+
+    void unlock(TransItem& item) override {
+        assert(!is_bucket(item));
+        internal_elem *el = item.key<internal_elem *>();
+        unlock(el->version);
+    }
+
+    void cleanup(TransItem& item, bool committed) override {
+        if (committed ? has_delete(item) : has_insert(item)) {
+            assert(!is_bucket(item));
+            internal_elem *el = item.key<internal_elem *>();
+            assert(!el->valid() || el->deleted);
+            _remove(el);
+        }
+    }
 
     // non-transactional methods
     value_type* nontrans_get(const key_type& k);
@@ -276,9 +326,44 @@ public:
 
 private:
     // remove a k-v node during transactions (with locks)
-    void _remove(internal_elem *el);
+    void _remove(internal_elem *el) {
+        bucket_entry& buck = map_[find_bucket_idx(el->key)];
+        lock(buck.version);
+        internal_elem *prev = nullptr;
+        internal_elem *curr = buck.head;
+        while (curr != nullptr && curr != el) {
+            prev = curr;
+            curr = curr->next;
+        }
+        assert(curr);
+        if (prev != nullptr)
+            prev->next = curr->next;
+        else
+            buck.head = curr->next;
+        unlock(buck.version);
+        Transaction::rcu_delete(curr);
+    }
     // non-transactional remove by key
-    bool remove(const key_type& k);
+    bool remove(const key_type& k) {
+        bucket_entry& buck = map_[find_bucket_idx(k)];
+        lock(buck.version);
+        internal_elem *prev = nullptr;
+        internal_elem *curr = buck.head;
+        while (curr != nullptr && !pred(curr->key, k)) {
+            prev = curr;
+            curr = curr->next;
+        }
+        if (curr == nullptr) {
+            unlock(buck.version);
+            return false;
+        }
+        if (prev != nullptr)
+            prev->next = curr->next;
+        else
+            buck.head = curr->next;
+        unlock(buck.version);
+        return true;
+    }
     // insert a k-v node to a bucket
     void insert_in_bucket(bucket_entry& buck, const key_type& k, const value_type& v, bool valid) {
         assert(is_locked(buck.version));
@@ -292,7 +377,12 @@ private:
         buck.version.inc_nonopaque_version();
     }
     // find a key's k-v node (internal_elem) within a bucket
-    internal_elem *find_in_bucket(const bucket_entry& buck, const key_type& k);
+    internal_elem *find_in_bucket(const bucket_entry& buck, const key_type& k) {
+        internal_elem *curr = buck.head;
+        while (curr && !pred_(curr->key, k))
+            curr = curr->next;
+        return curr;
+    }
 
     static bool has_delete(const TransItem& item) {
         return item.flags() & delete_bit;
