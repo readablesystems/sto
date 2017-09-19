@@ -14,8 +14,26 @@ template <typename T, typename V>
 static T read_wait_nonatomic(const T*, TransProxy, const V&, bool);
 
 template <typename T, typename V>
-static T read_atomic(const T* v, TransProxy item, const V& version, bool add_read) {
-#if STO_ABORT_ON_LOCKED
+static bool read_atomic(const T* v, TransProxy item, const V& version, bool add_read, T& ret) {
+    while (1) {
+        V v0 = version;
+        fence();
+
+	if (v0.is_locked()) {
+	    relax_fence();
+	    continue;
+	}
+
+        ret = *v;
+        fence();
+        V v1 = version;
+
+        if (v0 == v1) {
+           return item.observe(v1, add_read);
+        }
+        relax_fence();
+    }
+/*#if STO_ABORT_ON_LOCKED
     // This version returns immediately if v1 is locked. We assume as a result
     // that we will quickly converge to either `v0 == v1` or `v1.is_locked()`,
     // and don't bother to back off.
@@ -33,10 +51,13 @@ static T read_atomic(const T* v, TransProxy item, const V& version, bool add_rea
     }
 #else
     return read_wait_atomic(v, item, version, add_read);
-#endif
+#endif*/
 }
 template <typename T, typename V>
-static T read_nonatomic(const T* v, TransProxy item, const V& version, bool add_read) {
+static bool read_nonatomic(const T* v, TransProxy item, const V& version, bool add_read, T& ret) {
+    Transaction& t = item.transaction();
+    TransItem& it = item.item();
+
     while (1) {
         V v0 = version;
         fence();
@@ -46,23 +67,17 @@ static T read_nonatomic(const T* v, TransProxy item, const V& version, bool add_
 	    continue;
 	}
 
-        T result = *v;
+        ret = *v;
         fence();
         V v1 = version;
 
         if (v0 == v1) {
-            //item.observe(v1, add_read);
-            Transaction& t = item.transaction();
-            TransItem& it = item.item();
-            if (v1.is_locked_elsewhere(t.threadid())) {
-                t.abort_because(it, "locked,", v1.value());
-            }
             if (add_read && !it.has_read()) {
                 it.__or_flags(TransItem::read_bit);
-                it.rdata_ = Packer<TNonopaqueVersion>::pack(t.buf_, std::move(version));
+                it.rdata_ = Packer<TNonopaqueVersion>::pack(t.buf_, std::move(v1));
                 t.any_nonopaque_ = true;
             }
-            return result;
+            return true;
         }
         relax_fence();
     }
@@ -163,11 +178,11 @@ public:
     read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
         return TWrappedAccess::read_wait_atomic(&v_, item, version, add_read);
     }
-    read_type read(TransProxy item, const version_type& version) const {
-        return TWrappedAccess::read_atomic(&v_, item, version, true);
+    bool read(TransProxy item, const version_type& version, read_type& ret) const {
+        return TWrappedAccess::read_atomic(&v_, item, version, true, ret);
     }
-    static read_type read(const T* v, TransProxy item, const version_type& version) {
-        return TWrappedAccess::read_atomic(v, item, version, true);
+    static bool read(const T* v, TransProxy item, const version_type& version, read_type& ret) {
+        return TWrappedAccess::read_atomic(v, item, version, true, ret);
     }
     void write(const T& v) {
         v_ = v;
@@ -247,11 +262,11 @@ public:
     read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
         return TWrappedAccess::read_wait_nonatomic(&v_, item, version, add_read);
     }
-    read_type read(TransProxy item, const version_type& version) const {
-        return TWrappedAccess::read_nonatomic(&v_, item, version, true);
+    bool read(TransProxy item, const version_type& version, read_type& ret) const {
+        return TWrappedAccess::read_nonatomic(&v_, item, version, true, ret);
     }
-    static read_type read(const T* vp, TransProxy item, const version_type& version) {
-        return TWrappedAccess::read_nonatomic(vp, item, version, true);
+    static bool read(const T* vp, TransProxy item, const version_type& version, read_type& ret) {
+        return TWrappedAccess::read_nonatomic(vp, item, version, true, ret);
     }
     void write(T v) {
         v_ = v;

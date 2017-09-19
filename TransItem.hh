@@ -183,7 +183,7 @@ class TransItem {
         return *this;
     }
 
-private:
+public:
     ownerstore_type s_;
     // this word must be unique (to a particular item) and consistently ordered across transactions
     void* key_;
@@ -242,13 +242,13 @@ class TransProxy {
     inline TransProxy& add_read(T rdata);
     template <typename T>
     inline TransProxy& add_read_opaque(T rdata);
-    inline TransProxy& observe(TVersion version, bool add_read);
+    inline bool observe(TVersion version, bool add_read);
     inline TransProxy& observe(TNonopaqueVersion version, bool add_read);
     inline TransProxy& observe(TCommutativeVersion version, bool add_read);
-    inline TransProxy& observe(TVersion version);
+    inline bool observe(TVersion version);
     inline TransProxy& observe(TNonopaqueVersion version);
     inline TransProxy& observe(TCommutativeVersion version);
-    inline TransProxy& observe_opacity(TVersion version);
+    inline bool observe_opacity(TVersion version);
     inline TransProxy& observe_opacity(TNonopaqueVersion version);
     inline TransProxy& observe_opacity(TCommutativeVersion version);
     inline TransProxy& clear_read() {
@@ -280,11 +280,11 @@ class TransProxy {
 
     
     template <typename T>
-    inline TransProxy& add_swiss_write(const T& wdata, WriteLock& wlock);
+    inline bool add_swiss_write(const T& wdata, WriteLock& wlock);
     template <typename T>
-    inline TransProxy& add_swiss_write(T&& wdata, WriteLock& wlock);
+    inline bool add_swiss_write(T&& wdata, WriteLock& wlock);
     template <typename T, typename... Args>
-    inline TransProxy& add_swiss_write(Args&&... wdata, WriteLock& lock);
+    inline bool add_swiss_write(Args&&... wdata, WriteLock& lock);
     // What is the use of clear_write?
     //inline TransProxy& clear_write() {
     //    item().__rm_flags(TransItem::write_bit);

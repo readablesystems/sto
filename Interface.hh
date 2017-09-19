@@ -130,7 +130,7 @@ public:
         acquire_fence();
     }
     static void unlock(type& v) {
-        assert(is_locked_here(v));
+        //assert(is_locked_here(v));
         type new_v = v & ~(lock_bit | threadid_mask);
         release_fence();
         v = new_v;
@@ -278,7 +278,9 @@ public:
     bool bool_cmpxchg(TVersion expected, TVersion desired) {
         return ::bool_cmpxchg(&v_, expected.v_, desired.v_);
     }
-
+    bool set_lock() {
+        return TransactionTid::set_lock(v_);
+    }
     bool try_lock() {
         return TransactionTid::try_lock(v_);
     }

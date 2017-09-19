@@ -90,15 +90,15 @@ bool Transaction::preceding_duplicate_read(TransItem* needle) const {
     }
 }
 
-void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
+bool Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
     // ignore opacity checks during commit; we're in the middle of checking
     // things anyway
     if (state_ == s_committing || state_ == s_committing_locked)
-        return;
+        return true;
 
     // ignore if version hasn't changed
     if (item && item->has_read() && item->read_value<TransactionTid::type>() == t)
-        return;
+        return true;
 
 
     // die on recursive opacity check; this is only possible for predicates
@@ -106,7 +106,9 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
         mark_abort_because(item, "recursive opacity check", t);
     abort:
         TXP_INCREMENT(txp_hco_abort);
-        abort();
+        //abort();
+        state_ = s_in_progress;
+        return false;
     }
     assert(state_ == s_in_progress);
 
@@ -141,6 +143,7 @@ void Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
         }
     }
     state_ = s_in_progress;
+    return true;
 }
 
 void Transaction::callCMstart() {
@@ -257,6 +260,8 @@ after_unlock:
     if (!committed)
         TSC_ACCOUNT(tc_abort, endtime - start_tsc_);
 #endif
+    
+    //COZ_PROGRESS;
 }
 
 bool Transaction::try_commit() {
@@ -372,11 +377,11 @@ bool Transaction::try_commit() {
         it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
         if (it->has_read()) {
             TXP_INCREMENT(txp_total_check_read);
-            //if (!it->owner()->check(*it, *this)
-            //    && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
-            //    mark_abort_because(it, "commit check");
-            //    goto abort;
-            //}
+            if (!it->owner()->check(*it, *this)
+                && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
+                mark_abort_because(it, "commit check");
+                goto abort;
+            }
         }
     }
 
@@ -402,18 +407,15 @@ bool Transaction::try_commit() {
             else
                 it = &tset_[*idxit / tset_chunk][*idxit % tset_chunk];
             TXP_INCREMENT(txp_total_w);
-            //outfile << "Thread [" << threadid_ << "] committing! Item [" << it->key<unsigned>() << "] installing!" << std::endl;
             it->owner()->install(*it, *this);
-            //outfile << "Thread [" << threadid_ << "] committing! Item [" << it->key<unsigned>() << "] installed!" << std::endl;
         }
     }
 #endif
 
-    //outfile << "Thread [" << threadid_ << "] committing! Phase 3 finished" << std::endl;
-
-
     // fence();
     stop(true, writeset, nwriteset);
+
+    COZ_PROGRESS;
 
     /*clock_gettime(CLOCK_REALTIME, &ts2);
     if (ts2.tv_nsec < ts1.tv_nsec) {

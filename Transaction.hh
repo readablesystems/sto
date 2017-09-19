@@ -14,6 +14,7 @@
 #include <fstream>
 #include <setjmp.h>
 #include <bitset>
+#include <coz.h>
 
 #ifndef STO_PROFILE_COUNTERS
 #define STO_PROFILE_COUNTERS 0
@@ -101,13 +102,11 @@
     do {                                          \
         TransactionLoopGuard __txn_guard;         \
         while (1) {                               \
-            __txn_guard.start();                  \
-            try {
+            __txn_guard.start();            
+
 #define RETRY(retry)                              \
-                if (__txn_guard.try_commit())     \
-                    break;                        \
-            } catch (Transaction::Abort e) {      \
-            }                                     \
+            if (__txn_guard.try_commit())         \
+                break;                            \
             if (!(retry))                         \
                 throw Transaction::Abort();       \
         }                                         \
@@ -481,6 +480,7 @@ private:
     static int hash(const TObject* obj, void* key) {
 	(void) obj;
 	return (reinterpret_cast<uintptr_t>(key) >> 2) % hash_size;
+        //return reinterpret_cast<uintptr_t>(key) % hash_size;
     }
 #endif
 
@@ -517,6 +517,8 @@ private:
             refresh_tset_chunk();
         ++tset_size_;
         new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey);
+        //tset_next_->s_ = reinterpret_cast<TransItem::ownerstore_type>(const_cast<TObject*>(obj));
+        //tset_next_->key_ = xkey;
         allocate_item_update_hash(obj, xkey);
         return tset_next_++;
     }
@@ -585,10 +587,7 @@ private:
 #if TRANSACTION_HASHTABLE
         TXP_INCREMENT(txp_hash_find);
         unsigned hi = hash(obj, xkey);
-        unsigned bi = hi % bv_size;
-        //if (bitvector_[bi]) {
-            update_hash_table();
-            if (hashtable_[hi] > hash_base_) {
+        if (hashtable_[hi] > hash_base_) {
             unsigned tidx =  hashtable_[hi] - hash_base_ - 1;
             if (likely(tidx < tset_initial_capacity))
                 ti = &tset0_[tidx];
@@ -609,8 +608,7 @@ private:
                 }
 #if TRANSACTION_HASHTABLE
             }
-            }
-        //} 
+        }
 #endif
         
         if (!found) {
@@ -619,9 +617,8 @@ private:
             ++tset_size_;
             new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey);
  #if TRANSACTION_HASHTABLE
-            //bitvector_[bi] = true;
-            //if (hashtable_[hi] <= hash_base_)
-            //    hashtable_[hi] = hash_base_ + tset_size_;
+            if (hashtable_[hi] <= hash_base_)
+                hashtable_[hi] = hash_base_ + tset_size_;
 #endif	
             ti = tset_next_++;
         }
@@ -672,10 +669,6 @@ private:
 #if TRANSACTION_HASHTABLE
         TXP_INCREMENT(txp_hash_find);
         unsigned hi = hash(obj, xkey);
-        //if (!bitvector_[hi % bv_size]) {
-        //    TXP_INCREMENT(txp_bv_hit);
-        //    return nullptr;
-        //}
         for (int steps = 0; steps < TRANSACTION_HASHTABLE; ++steps) {
             if (hashtable_[hi] <= hash_base_)
                 return nullptr;
@@ -853,7 +846,7 @@ public:
 #endif
     }
 
-    void check_opacity(TransItem& item, TransactionTid::type v) {
+    bool check_opacity(TransItem& item, TransactionTid::type v) {
 #if STO_TSC_PROFILE
         TimeKeeper<tc_opacity> tk;
 #endif
@@ -863,25 +856,28 @@ public:
             start_tid_ = _TID;
         if (!TransactionTid::try_check_opacity(start_tid_, v)
             && state_ < s_committing)
-            hard_check_opacity(&item, v);
+            return hard_check_opacity(&item, v);
+        return true;
     }
-    void check_opacity(TransItem& item, TVersion v) {
-        check_opacity(item, v.value());
+    bool check_opacity(TransItem& item, TVersion v) {
+        return check_opacity(item, v.value());
     }
-    void check_opacity(TransItem&, TNonopaqueVersion) {
+    bool check_opacity(TransItem&, TNonopaqueVersion) {
+        return true;
     }
 
-    void check_opacity(TransactionTid::type v) {
+    bool check_opacity(TransactionTid::type v) {
         assert(state_ <= s_committing_locked);
         if (!start_tid_)
             start_tid_ = _TID;
         if (!TransactionTid::try_check_opacity(start_tid_, v)
             && state_ < s_committing)
-            hard_check_opacity(nullptr, v);
+            return hard_check_opacity(nullptr, v);
+        return true;
     }
 
-    void check_opacity() {
-        check_opacity(_TID);
+    bool check_opacity() {
+        return check_opacity(_TID);
     }
 
     // committing
@@ -990,7 +986,7 @@ private:
 #endif
     TransItem tset0_[tset_initial_capacity];
 
-    void hard_check_opacity(TransItem* item, TransactionTid::type t);
+    bool hard_check_opacity(TransItem* item, TransactionTid::type t);
     void stop(bool committed, unsigned* writes, unsigned nwrites);
 
     friend class TransProxy;
@@ -1098,7 +1094,9 @@ public:
     }
 
     static bool try_commit() {
-        always_assert(in_progress());
+        //always_assert(in_progress());
+        if (!in_progress())
+            return false;
         return TThread::txn->try_commit();
     }
 
@@ -1182,8 +1180,12 @@ class TransactionLoopGuard {
     void start() {
         Sto::start_transaction();
     }
+    void silent_abort() {
+        Sto::silent_abort();
+    }
     bool try_commit() {
-        return TThread::txn->try_commit();
+        return Sto::try_commit();
+        //return TThread::txn->try_commit();
     }
     jmp_buf *get_jmp_buf() {
         return TThread::txn->get_jmp_buf();
@@ -1216,18 +1218,21 @@ inline TransProxy& TransProxy::add_read_opaque(T rdata) {
     return *this;
 }
 
-inline TransProxy& TransProxy::observe(TVersion version, bool add_read) {
-    assert(!has_stash());
+inline bool TransProxy::observe(TVersion version, bool add_read) {
+    /*assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_)) {
         TXP_INCREMENT(txp_observe_lock_aborts);
-        t()->abort_because(item(), "locked", version.value());
+        t()->mark_abort_because(&item(), "locked", version.value());
+        return false;
+    }*/
+    if (!t()->check_opacity(item(), version.value())) {
+        return false;
     }
-    t()->check_opacity(item(), version.value());
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
     }
-    return *this;
+    return true;
 }
 
 inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read) {
@@ -1258,7 +1263,7 @@ inline TransProxy& TransProxy::observe(TCommutativeVersion version, bool add_rea
     return *this;
 }
 
-inline TransProxy& TransProxy::observe(TVersion version) {
+inline bool TransProxy::observe(TVersion version) {
     return observe(version, true);
 }
 
@@ -1270,7 +1275,7 @@ inline TransProxy& TransProxy::observe(TCommutativeVersion version) {
     return observe(version, true);
 }
 
-inline TransProxy& TransProxy::observe_opacity(TVersion version) {
+inline bool TransProxy::observe_opacity(TVersion version) {
     return observe(version, false);
 }
 

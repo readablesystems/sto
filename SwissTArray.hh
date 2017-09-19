@@ -47,17 +47,19 @@ public:
     inline const_iterator end() const;
 
     // transGet and friends
-    get_type transGet(size_type i) const {
+    bool transGet(size_type i, T& ret) const {
         assert(i < N);
         auto item = Sto::item(this, i);
-        if (item.has_write())
-            return item.template write_value<T>();
-        else
-            return data_[i].v.read(item, data_[i].vers);
+        if (item.has_write()) {
+            ret = item.template write_value<T>();
+            return true;
+        } else {
+            return data_[i].v.read(item, data_[i].vers, ret);
+        }
     }
-    void transPut(size_type i, T x) const {
+    bool transPut(size_type i, T x) const {
         assert(i < N);
-        Sto::item(this, i).add_swiss_write(x, data_[i].wlock);
+        return Sto::item(this, i).add_swiss_write(x, data_[i].wlock);
     }
 
     get_type nontrans_get(size_type i) const {
@@ -75,7 +77,8 @@ public:
 
     // transactional methods
     bool lock(TransItem& item, Transaction& txn) override {
-        return txn.try_lock(item, data_[item.key<size_type>()].vers);
+        //return txn.try_lock(item, data_[item.key<size_type>()].vers);
+        return data_[item.key<size_type>()].vers.set_lock();
     }
     bool check(TransItem& item, Transaction&) override {
         return item.check_version(data_[item.key<size_type>()].vers);
@@ -263,35 +266,30 @@ inline auto SwissTArray<T, N, W>::end() const -> const_iterator {
 }
 
 template <typename T>
-inline TransProxy& TransProxy::add_swiss_write(const T& wdata, WriteLock& wlock) {
+inline bool TransProxy::add_swiss_write(const T& wdata, WriteLock& wlock) {
     return add_swiss_write<T, const T&>(wdata, wlock);
 }
 
 template <typename T>
-inline TransProxy& TransProxy::add_swiss_write(T&& wdata, WriteLock& wlock) {
+inline bool TransProxy::add_swiss_write(T&& wdata, WriteLock& wlock) {
     typedef typename std::decay<T>::type V;
     return add_swiss_write<V, V&&>(std::move(wdata), wlock);
 }
 
 template <typename T, typename... Args>
-inline TransProxy& TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock) {
+inline bool TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock) {
     if (wlock.is_locked_here()) {
         item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
-        return *this;
+        //return *this;
+        return true;
     }
 
     while(true) {
         if (wlock.is_locked()) {
-            bool aborted_by_others = false;
-            if (ContentionManager::should_abort(t(), wlock, aborted_by_others)) {
+            if (ContentionManager::should_abort(t(), wlock)) {
 		TXP_INCREMENT(txp_wwc_aborts);
-                if (aborted_by_others) {
-                  TXP_INCREMENT(txp_aborted_by_others);
-		  t_->mark_abort_because(item_, "w/w conflict aborted by others" );
-                } else {
-		  t_->mark_abort_because(item_, "w/w conflict");
-                }
-	        Sto::abort();
+	        //Sto::abort();
+                return false;
             } else {
 		relax_fence();
                 continue;
@@ -308,7 +306,8 @@ inline TransProxy& TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock)
     t()->any_writes_ = true;
     ContentionManager::on_write(t());
 
-    return *this;
+    //return *this;
+    return true;
 }
 
 

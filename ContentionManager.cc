@@ -9,12 +9,11 @@
 #define SUCC_ABORTS_MAX 10
 #define WAIT_CYCLES_MULTIPLICATOR 8000
 
-bool ContentionManager::should_abort(Transaction* tx, WriteLock wlock, bool& aborted_by_others) {	
+bool ContentionManager::should_abort(Transaction* tx, WriteLock wlock) {	
     TXP_INCREMENT(txp_cm_shouldabort);
     int threadid = tx->threadid();
     threadid *= 4;
     if (aborted[threadid] == 1){
-	aborted_by_others = true;
         return true;
     }
 
@@ -25,22 +24,16 @@ bool ContentionManager::should_abort(Transaction* tx, WriteLock wlock, bool& abo
 
     int owner_threadid = wlock & TransactionTid::threadid_mask;
     owner_threadid *= 4;
+    //if (write_set_size[threadid] < write_set_size[owner_threadid]) {
     if (timestamp[owner_threadid] < timestamp[threadid]) {
         if (aborted[owner_threadid] == 0) {
-           //std::stringstream msg;
-           //msg << "Thread " << (threadid / 4) << " is aborting for index " << index << ". Owner thread is " << (owner_threadid / 4) << ". Lock address = [" << &wlock <<  "].\n";
-           //std::cout << msg.str();
            return true; 
         } else {
            return false;
         }
     } else {
     	//FIXME: this might abort a new transaction on that thread
-	//FXIME: potential race condition with ContentionManager::start
         aborted[owner_threadid] = 1;
-	//std::string out = "Thread [" + std::to_string(threadid) + "] sets thread [" + std::to_string(owner_threadid) + "] to abort";
-	//std::cout << out << std::endl;
-        //outfile.close();
         return false;
     }
 
@@ -56,6 +49,7 @@ void ContentionManager::on_write(Transaction* tx) {
     write_set_size[threadid] += 1;
     if (timestamp[threadid] == MAX_TS && write_set_size[threadid] == TS_THRESHOLD) {
         timestamp[threadid] = fetch_and_add(&ts, uint64_t(1));
+        //timestamp[threadid] = 1;
     }
 }
 
@@ -64,8 +58,8 @@ void ContentionManager::start(Transaction *tx) {
     int threadid = tx->threadid();
     threadid *= 4;
     if (tx->is_restarted()) {
-        // Do not reset timestamp and abort count
-	//std::string out = "Thread [" + std::to_string(threadid) + "] resets aborted.";
+        // Do not reset abort count
+        timestamp[threadid] = MAX_TS;
         aborted[threadid] = 0;
 	write_set_size[threadid] = 0;
     } else {

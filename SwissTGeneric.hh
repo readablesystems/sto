@@ -16,30 +16,33 @@ public:
     static constexpr unsigned table_size = 1 << 22;
 
     template <typename T>
-    T read(T* word) {
+    bool read(T* word, T& ret) {
         // XXX this code doesn't work right if `word` is a union member;
         // we assume that every value at location `word` has the same size
         static_assert(sizeof(T) <= sizeof(void*), "T larger than void*");
         static_assert(mass::is_trivially_copyable<T>::value, "T nontrivial");
-        auto it = Sto::item(this, word);
-        if (it.has_write()) {
+        auto item = Sto::item(this, word);
+        if (item.has_write()) {
             //assert(it.shifted_user_flags() == sizeof(T));
-            return it.template write_value<T>();
-        }
-        return W<T>::read(word, it, version(word));
+            ret = item.template write_value<T>();
+            return true;
+        } else {
+            return W<T>::read(word, item, version(word), ret);
+       }
     }
+
     template <typename T, typename U>
-    void write(T* word, U value) {
+    bool write(T* word, U value) {
         static_assert(sizeof(T) <= sizeof(void*), "T larger than void*");
         static_assert(mass::is_trivially_copyable<T>::value, "T nontrivial");
-        Sto::item(this, word).add_swiss_write(T(value), wlock(word)).assign_flags(sizeof(T) << TransItem::userf_shift);
+        auto item = Sto::item(this, word);
+        return item.add_swiss_write(T(value), wlock(word)); //.assign_flags(sizeof(T) << TransItem::userf_shift
     }
 
 
     bool lock(TransItem& item, Transaction& txn) override {
-        version_type& vers = version(item.template key<void*>());
-        //return vers.is_locked_here() || txn.try_lock(item, vers);
         (void) txn;
+        version_type& vers = version(item.template key<void*>());
         return vers.is_locked_here() || vers.set_lock();
     }
     bool check(TransItem& item, Transaction&) override {
@@ -48,35 +51,26 @@ public:
     void install(TransItem& item, Transaction& txn) override {
         void* word = item.template key<void*>();
         void* data = item.template write_value<void*>();
-        memcpy(word, &data, item.shifted_user_flags());
+        memcpy(word, &data, 4);
+        //memcpy(word, &data, item.shifted_user_flags());
         txn.set_version(version(word));
     }
-    void unlock(TransItem& item) override {
+    inline void unlock(TransItem& item) override {
         version_type& vers = version(item.template key<void*>());
-        if (vers.is_locked_here())
+        WriteLock& wl = wlock(item.template key<void*>());
+	if (vers.is_locked_here())
             vers.unlock();
-	WriteLock& wl = wlock(item.template key<void*>());
 	if (wl.is_locked())
 	    wl.unlock();
     }
+
     void print(std::ostream& w, const TransItem& item) const override {
         w << "{SwissTGeneric @" << item.key<void*>();
-        //if (item.has_read())
-        //    w << " R" << item.read_value<version_type>();
-        //if (item.has_write())
-        //    w << " =" << item.write_value<void*>() << "/" << item.shifted_user_flags();
         w << "}";
     }
     void init_table_counts() {
-      //for (unsigned i = 0; i < table_size; i++) {
-      //  table_count_[i] = 0;
-      //  wlock_table_count_[i] = 0;
-      //}
     }
     void print_table_counts() {
-      //for (unsigned i = 0; i < table_size; i++) {
-      //  printf("%d\n", table_count_[i]);
-      //}
     }
 
 private:

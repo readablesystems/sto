@@ -11,12 +11,12 @@
 #include <sys/resource.h>
 #include <fstream>
 
-#include "TArray.hh"
-#include "TGeneric.hh"
-#include "Hashtable.hh"
-#include "Queue.hh"
-#include "Vector.hh"
-#include "TVector.hh"
+//#include "TArray.hh"
+//#include "TGeneric.hh"
+//#include "Hashtable.hh"
+//#include "Queue.hh"
+//#include "Vector.hh"
+//#include "TVector.hh"
 #include "Transaction.hh"
 #include "IntStr.hh"
 #include "clp.h"
@@ -51,7 +51,7 @@
 #define DATA_STRUCTURE USE_HASHTABLE
 
 // if true, then all threads perform non-conflicting operations
-#define NON_CONFLICTING 1
+#define NON_CONFLICTING 0
 
 // if true, each operation of a transaction will act on a different slot
 #define ALL_UNIQUE_SLOTS 0
@@ -158,7 +158,8 @@ unsigned initial_seeds[64];
 
 template <int DS> struct Container {};
 
-template <> struct Container<USE_ARRAY> {
+
+/*template <> struct Container<USE_ARRAY> {
     typedef TArray<value_type, ARRAY_SZ> type;
     typedef int index_type;
     static constexpr bool has_delete = false;
@@ -181,7 +182,7 @@ template <> struct Container<USE_ARRAY> {
     }
 private:
     type v_;
-};
+};*/
 
 template <> struct Container<USE_SWISSARRAY> {
     typedef SwissTArray<value_type, ARRAY_SZ, TNonopaqueWrapped> type;
@@ -190,11 +191,11 @@ template <> struct Container<USE_SWISSARRAY> {
     value_type nontrans_get(index_type key) {
         return v_.nontrans_get(key);
     }
-    value_type transGet(index_type key) {
-        return v_.transGet(key);
+    bool transGet(index_type key, value_type& ret) {
+        return v_.transGet(key, ret);
     }
-    void transPut(index_type key, value_type value) {
-        v_.transPut(key, value);
+    bool transPut(index_type key, value_type value) {
+        return v_.transPut(key, value);
     }
     static void init() {
     }
@@ -208,7 +209,7 @@ private:
     type v_;
 };
 
-template <> struct Container<USE_ARRAY_NONOPAQUE> {
+/*template <> struct Container<USE_ARRAY_NONOPAQUE> {
     typedef TArray<value_type, ARRAY_SZ, TNonopaqueWrapped> type;
     typedef int index_type;
     static constexpr bool has_delete = false;
@@ -318,7 +319,7 @@ template <> struct Container<USE_TGENERICARRAY> {
 private:
     TGeneric stm_;
     value_type a_[ARRAY_SZ];
-};
+};*/
 
 template <> struct Container<USE_SWISSGENERICARRAY> {
     typedef int index_type;
@@ -326,43 +327,32 @@ template <> struct Container<USE_SWISSGENERICARRAY> {
     value_type nontrans_get(index_type key) {
         return a_[key];
     }
-    value_type transGet(index_type key) {
-        //assert(key >= 0 && key < ARRAY_SZ);
-	//std::ofstream outfile;
-	//outfile.open(std::to_string(me), std::ios_base::app);
-	//outfile << "Get: Base = [" << (void*)&a_[0] << "], key = [" << key << "]." << std::endl;
-	//std::cout << "Base = [" << (void*)&a_[0] << "]" << std::endl;
-	//outfile.close();
-        return stm_.read(&a_[key]);
+    bool transGet(index_type key, value_type& ret) {
+        return stm_.read(&a_[key], ret);
     }
-    void transPut(index_type key, value_type value) {
-        //std::ofstream outfile;
-        //outfile.open(std::to_string(me), std::ios_base::app);
-        //outfile << "Get: Base = [" << (void*)&a_[0] << "], key = [" << key << "]." << std::endl;
-        //outfile.close();
-        //assert(key >= 0 && key < ARRAY_SZ);
-        stm_.write(&a_[key], value);
+    bool transPut(index_type key, value_type value) {
+        return stm_.write(&a_[key], value);
     }
     static void init() {
     }
     void init_ns() {
         std::cout << "Container<USE_SWISSGENERIC>::init starts!" << std::endl;
-        stm_.init_table_counts();
+        //stm_.init_table_counts();
     }
     void finalize() {
         std::cout << "Container<USE_SWISSGENERIC>::finalize starts!" << std::endl;
-        stm_.print_table_counts();
+        //stm_.print_table_counts();
     }
     static void thread_init(Container<USE_SWISSGENERICARRAY>&) {
     }
 private:
+    //SwissTGeneric stm_;
     SwissTNonopaqueGeneric stm_;
     value_type a_[ARRAY_SZ] __attribute__ ((aligned (sizeof(value_type))));
 };
 
 
-
-template <> struct Container<USE_MASSTREE> {
+/*template <> struct Container<USE_MASSTREE> {
 #if STRING_VALUES && UNBOXED_STRINGS
     typedef MassTrans<value_type, versioned_str_struct> type;
 #else
@@ -534,7 +524,7 @@ template <> struct Container<USE_HASHTABLE_STR> {
     }
 private:
 type v_;
-};
+};*/
 
 #if DATA_STRUCTURE == USE_QUEUE
 typedef Queue<value_type, ARRAY_SZ> QueueType;
@@ -555,7 +545,6 @@ bool blindRandomWrite = false;
 double zipf_skew = 1.0;
 bool profile = false;
 bool dump_trace = false;
-
 bool stop = false; // global stop signal
 
 
@@ -601,34 +590,18 @@ q->pop();
 
 // FUNCTIONS FOR ARRAY/MAP-TYPE
 template <typename T>
-static value_type doRead(T& a, int slot) {
-//if (readMyWrites)
-return a.transGet(slot);
-//else
-//return value_type();
+static bool doRead(T& a, int slot, value_type& ret) {
+    return a.transGet(slot, ret);
 }
 
 template <typename T>
-static void doWrite(T& a, int slot, int& ctr) {
-if (blindRandomWrite) {
-//if (readMyWrites) {
-a.transPut(slot, val(ctr));
-//}
-} else {
-// increment current value (this lets us verify transaction correctness)
-//if (readMyWrites) {
-auto v0 = a.transGet(slot);
-a.transPut(slot, val(unval(v0)+1));
-#if TRY_READ_MY_WRITES
-  // read my own writes
-  assert(a.transGet(slot) == v0+1);
-  a.transPut(slot, v0+2);
-  // read my own second writes
-  assert(a.transGet(slot) == v0+2);
-#endif
-//}
-++ctr; // because we've done a read and a write
-}
+static bool doWrite(T& a, int slot, int& ctr) {
+   ++ctr; // because we've done a read and a write
+   value_type get_result;
+    if(!a.transGet(slot, get_result)) {
+        return false;
+    }
+    return a.transPut(slot, val(unval(get_result)+1));
 }
 
 template <typename T>
@@ -857,7 +830,7 @@ bool HotspotRW<DS>::prepopulate() {
     return true;
 }
 
-template <int DS>
+/*template <int DS>
 void HotspotRW<DS>::run(int me) {
     TThread::set_id(me);
     container_type* a = this->a;
@@ -914,7 +887,7 @@ void HotspotRW<DS>::run(int me) {
         }
     }
 #endif
-}
+}*/
 
 template <int DS>
 void HotspotRW<DS>::report() {
@@ -1078,6 +1051,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
   long range = ARRAY_SZ/nthreads;
   std::uniform_int_distribution<long> slotdist(me*range + 10, (me + 1) * range - 1 - 10);
 #else
+  long range = ARRAY_SZ/nthreads;
   std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
 #endif
 
@@ -1099,6 +1073,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
 #endif
 
     TRANSACTION {
+      bool success = true;
 #if MAINTAIN_TRUE_ARRAY_STATE
       nslots_written = 0;
 #endif
@@ -1109,28 +1084,42 @@ void RandomRWs_parent<DS>::do_run(int me) {
 
       for (int j = 0; j < OPS; ++j) {
         int slot  = slotdist(transgen);
-        slot = slot + me * range + ids[j] - slot;
+        //slot = slot +  ids[j] * 4 - slot;
+        //int slot = me * range + j;
 #if ALL_UNIQUE_SLOTS
         while (used[slot]) slot = slotdist(transgen);
         used[slot]=true;
 #endif
+        //doRead(*a, slot);
         auto r = transgen();
-        if (do_delete && r > (write_thresh+write_thresh/2)) {
+        //if (do_delete && r > (write_thresh+write_thresh/2)) {
           // TODO: this doesn't make that much sense if write_percent != 50%
-          doDelete(*a, slot);
-        } else if (r > write_thresh) {
-          doRead(*a, slot);
-	  //doWrite(*a, slot, j);
+          //doDelete(*a, slot);
+        //} else 
+        if (r > write_thresh) {
+          //doRead(*a, slot);
+	  success = doWrite(*a, slot, j);
         } else {
           //doWrite(*a, slot, j);
-	  doRead(*a, slot);
+          value_type r;
+	  success = doRead(*a, slot, r);
 
 #if MAINTAIN_TRUE_ARRAY_STATE
           slots_written[nslots_written++] = slot;
 #endif
         }
+
+        if (!success)
+	    break;
+      }
+
+      if (!success) {
+          __txn_guard.silent_abort();
       }
     } RETRY(true);
+
+
+
 #if MAINTAIN_TRUE_ARRAY_STATE
     if (maintain_true_array_state) {
         std::sort(slots_written, slots_written + nslots_written);
@@ -1585,7 +1574,7 @@ void print_time(double time) {
   printf("%f\n", time);
 }
 
-#define MAKE_TESTER(name, desc, type, ...)            \
+/*#define MAKE_TESTER(name, desc, type, ...)            \
     {name, desc, 0, new type<0, ## __VA_ARGS__>},     \
     {name, desc, 1, new type<1, ## __VA_ARGS__>},     \
     {name, desc, 2, new type<2, ## __VA_ARGS__>},     \
@@ -1597,6 +1586,11 @@ void print_time(double time) {
     {name, desc, 10, new type<10, ## __VA_ARGS__>},   \
     {name, desc, 11, new type<11, ## __VA_ARGS__>},   \
     {name, desc, 12, new type<12, ## __VA_ARGS__>}
+*/
+
+#define MAKE_TESTER(name, desc, type, ...)            \
+    {name, desc, 11, new type<11, ## __VA_ARGS__>},   \
+    {name, desc, 12, new type<12, ## __VA_ARGS__>}
 
 struct Test {
     const char* name;
@@ -1604,17 +1598,17 @@ struct Test {
     int ds;
     Tester* tester;
 } tests[] = {
-    MAKE_TESTER("isolatedwrites", 0, IsolatedWrites),
-    MAKE_TESTER("blindwrites", 0, BlindWrites),
-    MAKE_TESTER("interferingwrites", 0, InterferingRWs),
+    //MAKE_TESTER("isolatedwrites", 0, IsolatedWrites),
+    //MAKE_TESTER("blindwrites", 0, BlindWrites),
+    //MAKE_TESTER("interferingwrites", 0, InterferingRWs),
     MAKE_TESTER("randomrw", "typically best choice", RandomRWs, false),
-    MAKE_TESTER("readthenwrite", 0, ReadThenWrite),
-    MAKE_TESTER("kingofthedelete", 0, KingDelete),
-    MAKE_TESTER("xordelete", 0, XorDelete),
-    MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true),
-    MAKE_TESTER("hotspot", "contending hotspot", HotspotRW),
-    MAKE_TESTER("hotspot2", "contending hotspot (less stupid)", Hotspot2RW),
-    MAKE_TESTER("singlerw", "increment a single random element", SingleRW)
+    //MAKE_TESTER("readthenwrite", 0, ReadThenWrite),
+    //MAKE_TESTER("kingofthedelete", 0, KingDelete),
+    //MAKE_TESTER("xordelete", 0, XorDelete),
+    //MAKE_TESTER("randomrw-d", "uncheckable", RandomRWs, true),
+    //MAKE_TESTER("hotspot", "contending hotspot", HotspotRW),
+    //MAKE_TESTER("hotspot2", "contending hotspot (less stupid)", Hotspot2RW),
+    //MAKE_TESTER("singlerw", "increment a single random element", SingleRW)
 };
 
 struct {
@@ -1775,8 +1769,12 @@ int main(int argc, char *argv[]) {
         srandom(seed);
     else
         srandomdev();
-    for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
-        initial_seeds[i] = random();
+    for (unsigned i = 0; i < arraysize(initial_seeds); ++i) {
+        auto ra = random();
+        //std::cout << ra << std::endl;
+        initial_seeds[i] = ra;
+    }
+        //initial_seeds[i] = random();
 
 #if DATA_STRUCTURE == USE_QUEUE
     QueueType stack_q;
