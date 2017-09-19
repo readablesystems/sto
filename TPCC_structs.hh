@@ -99,6 +99,7 @@ private:
 // WAREHOUSE
 
 struct warehouse_key {
+    warehouse_key(uint64_t id) : w_id(id) {}
     uint64_t w_id;
 };
 
@@ -116,6 +117,7 @@ struct warehouse_value {
 // DISTRICT
 
 struct district_key {
+    district_key(uint64_t wid, uint64_t did) : d_w_id(wid), d_id(did) {}
     uint64_t d_w_id;
     uint64_t d_id;
 };
@@ -135,6 +137,7 @@ struct district_value {
 // CUSTOMER
 
 struct customer_key {
+    customer_key(uint64_t wid, uint64_t did, uint64_t cid) : c_w_id(wid), c_d_id(did), c_id(cid) {}
     uint64_t c_w_id;
     uint64_t c_d_id;
     uint64_t c_id;
@@ -189,6 +192,7 @@ struct neworder_key {
 // ORDER
 
 struct order_key {
+    order_key(uint64_t wid, uint64_t did, uint64_t oid) : o_w_id(wid), o_d_id(did), o_id(oid) {}
     uint64_t o_w_id;
     uint64_t o_d_id;
     uint64_t o_id;
@@ -223,6 +227,7 @@ struct orderline_value {
 // ITEM
 
 struct item_key {
+    item_key(uint64_t id) : i_id(id) {}
     uint64_t i_id;
 };
 
@@ -236,6 +241,7 @@ struct item_value {
 // STOCK
 
 struct stock_key {
+    stock_key(uint64_t w, uint64_t i) : s_w_id(w), s_i_id(i) {}
     uint64_t s_w_id;
     uint64_t s_i_id;
 };
@@ -245,16 +251,7 @@ struct stock_value {
     uint32_t       s_ytd;
     uint32_t       s_order_cnt;
     uint32_t       s_remote_cnt;
-    fix_string<24> s_dist_01;
-    fix_string<24> s_dist_02;
-    fix_string<24> s_dist_03;
-    fix_string<24> s_dist_04;
-    fix_string<24> s_dist_05;
-    fix_string<24> s_dist_06;
-    fix_string<24> s_dist_07;
-    fix_string<24> s_dist_08;
-    fix_string<24> s_dist_09;
-    fix_string<24> s_dist_10;
+    fix_string<24> s_dists[10];
     var_string<50> s_data;
 };
 

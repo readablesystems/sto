@@ -63,37 +63,4 @@ private:
     uint64_t w_id_end;
 };
 
-bool tpcc_runner::run_txn_neworder() {
-    uint64_t q_w_id  = ig.random(w_id_start, w_id_end);
-    uint64_t q_d_id = ig.random(1, 10);
-    uint64_t q_c_id = ig.gen_customer_id();
-    uint64_t num_items = ig.random(5, 15);
-    uint64_t rbk = ig.random(1, 100);
-
-    uint64_t ol_i_ids[15];
-    uint64_t ol_supply_w_ids[15];
-    uint64_t ol_quantities[15];
-
-    uint32_t o_entry_d = ig.gen_date();
-
-    for (uint64_t i = 0; i < num_items; ++i) {
-        uint64_t ol_i_id = ig.gen_item_id();
-        if ((i == (num_items - 1)) && rbk == 1)
-            ol_i_ids[i] = 0;
-        else
-            ol_i_ids[i] = ol_i_id;
-
-        bool supply_from_remote = (ig.random(1, 100) == 1);
-        uint64_t ol_s_w_id = q_w_id;
-        if (supply_from_remote) {
-            do {
-                ol_s_w_id = ig.random(1, ig.num_warehouses());
-            } while (ol_s_w_id == q_w_id);
-        }
-        ol_supply_w_ids[i] = ol_s_w_id;
-
-        ol_quantities[i] = ig.random(1, 10);
-    }
-}
-
 };

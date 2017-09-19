@@ -71,9 +71,9 @@ private:
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
 
 public:
-    typedef std::tuple<bool, bool, const value_type*> sel_return_type;
-    typedef std::tuple<bool, bool>                    ins_return_type;
-    typedef std::tuple<bool, bool>                    del_return_type;
+    typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
+    typedef std::tuple<bool, bool>                               ins_return_type;
+    typedef std::tuple<bool, bool>                               del_return_type;
 
     unordered_index(size_t size = Init_size, Hash h = Hash(), Pred p = Pred()) :
             map_(), hasher_(h), pred_(p) {
@@ -107,9 +107,9 @@ public:
 
             if (index_read_my_write) {
                 if (has_delete(item))
-                    return sel_return_type(true, false, nullptr);
+                    return sel_return_type(true, false, 0, nullptr);
                 if (item.has_write())
-                    return sel_return_type(true, true, item.template write_value<internal_elem *>());
+                    return sel_return_type(true, true, e, &item.template write_value<internal_elem *>()->value);
             }
 
             if (for_update) {
@@ -120,17 +120,17 @@ public:
                     goto abort;
             }
 
-            return sel_return_type(true, true, e);
+            return sel_return_type(true, true, e, &e->value);
         } else {
             // if not found, observe bucket version
             bool ok = Sto::item(this, make_bucket_key(&buck)).observe(buck_vers);
             if (!ok)
                 goto abort;
-            return sel_return_type(true, false, nullptr);
+            return sel_return_type(true, false, 0, nullptr);
         }
 
     abort:
-        return sel_return_type(false, false, nullptr);
+        return sel_return_type(false, false, 0, nullptr);
     }
 
     // this method is only to be used after calling select_row() with for_update set to true
@@ -139,8 +139,8 @@ public:
     // should never be modified by the transaction user
     // the new_row pointer stays valid for the rest of the duration of the transaction and the associated
     // temporary row WILL NOT be deallocated until commit/abort time
-    void update_row(const internal_elem *table_row, value_type *new_row) {
-        auto item = Sto::item(this, const_cast<internal_elem *>(table_row));
+    void update_row(uintptr_t rid, value_type *new_row) {
+        auto item = Sto::item(this, reinterpret_cast<internal_elem *>(rid));
         assert(item.has_write() && !has_insert(item));
         item.add_write(new_row);
     }
