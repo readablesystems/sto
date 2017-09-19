@@ -11,6 +11,9 @@
 #include "masstree_scan.hh"
 #include "string.hh"
 #include "Transaction.hh"
+#include "SwissTArray.hh"
+#include "ContentionManager.hh"
+#include "WriteLock.hh"
 
 #include "StringWrapper.hh"
 #include "versioned_value.hh"
@@ -24,6 +27,9 @@
 #endif
 
 #include "Debug_rcu.hh"
+
+#define RETURN_FALSE_ON_ABORT(fc) \
+  if (!fc) return false
 
 typedef stuffed_str<uint64_t> versioned_str;
 
@@ -150,44 +156,45 @@ public:
   }
 
   template <typename ValType>
-  bool transGet(Str key, ValType& retval, threadinfo_type& ti = mythreadinfo) {
+  bool transGet(Str key, ValType& retval, bool& retfound, threadinfo_type& ti = mythreadinfo) {
     unlocked_cursor_type lp(table_, key);
     bool found = lp.find_unlocked(*ti.ti);
     if (found) {
       versioned_value *e = lp.value();
       //      __builtin_prefetch(&e->version);
       auto item = t_read_only_item(e);
-      if (!validityCheck(item, e)) {
-        Sto::abort();
-        return false;
-      }
+      RETURN_FALSE_ON_ABORT(validityCheck(item, e));
       //      __builtin_prefetch();
       //__builtin_prefetch(e->value.data() - sizeof(std::string::size_type)*3);
 #if READ_MY_WRITES
       if (has_delete(item)) {
-        return false;
+        retfound = false;
+        return true;
       }
       if (item.has_write()) {
         // read directly from the element if we're inserting it
         if (has_insert(item)) {
 	  assign_val(retval, e->read_value());
         } else {
-	    retval = item.template write_value<write_value_type>();
+	  retval = item.template write_value<write_value_type>();
         }
+        retfound = true;
         return true;
       }
 #endif
       Version elem_vers;
-      atomicRead(e, elem_vers, retval);
-      item.observe(tversion_type(elem_vers));
+      RETURN_FALSE_ON_ABORT(atomicRead(e, elem_vers, retval));
+      RETURN_FALSE_ON_ABORT(item.observe(tversion_type(elem_vers)));
     } else {
-      ensureNotFound(lp.node(), lp.full_version_value());
+      RETURN_FALSE_ON_ABORT(ensureNotFound(lp.node(), lp.full_version_value()));
     }
-    return found;
+
+    retfound = found;
+    return true;
   }
 
   template <typename K>
-  bool transDelete(const K& key, threadinfo_type& ti = mythreadinfo) {
+  bool transDelete(const K& key, bool& retfound, threadinfo_type& ti = mythreadinfo) {
     unlocked_cursor_type lp(table_, key);
     bool found = lp.find_unlocked(*ti.ti);
     if (found) {
@@ -200,59 +207,62 @@ public:
       if (!valid && has_insert(item)) {
         if (has_delete(item)) {
           // insert-then-delete then delete, so second delete should return false
-          return false;
+          retfound = false;
+          return true;
         }
         // otherwise this is an insert-then-delete
 	// has_insert() is used all over the place so we just keep that flag set
         item.add_flags(delete_bit);
         // key is already in write data since this used to be an insert
+        retfound = true;
         return true;
       } else 
 #endif
-     if (!valid) {
-        Sto::abort();
-        return false;
-      }
+      RETURN_FALSE_ON_ABORT(valid);
       assert(valid);
 #if READ_MY_WRITES
       // already deleted!
       if (has_delete(item)) {
-        return false;
+        retfound = false;
+        return true;
       }
 #endif
-      item.observe(tversion_type(v));
+      RETURN_FALSE_ON_ABORT(item.observe(tversion_type(v)));
       // same as inserts we need to Store (copy) key so we can lookup to remove later
       item.template add_write<key_write_value_type>(key).add_flags(delete_bit);
-      return found;
+      retfound = found;
+      return true;
     } else {
-      ensureNotFound(lp.node(), lp.full_version_value());
-      return found;
+      RETURN_FALSE_ON_ABORT(ensureNotFound(lp.node(), lp.full_version_value()));
+      retfound = found;
+      return true;
     }
   }
 
 private:
   template <bool INSERT, bool SET, typename StringType, typename ValueType>
-  bool trans_write(const StringType& key, const ValueType& value, threadinfo_type& ti = mythreadinfo) {
+  bool trans_write(const StringType& key, const ValueType& value, bool& retfound, threadinfo_type& ti = mythreadinfo) {
     // optimization to do an unlocked lookup first
     if (SET) {
       unlocked_cursor_type lp(table_, key);
       bool found = lp.find_unlocked(*ti.ti);
       if (found) {
-        return handlePutFound<INSERT, SET>(lp.value(), key, value);
+        return handlePutFound<INSERT, SET>(lp.value(), key, value, retfound);
       } else {
         if (!INSERT) {
-          ensureNotFound(lp.node(), lp.full_version_value());
-          return false;
+          RETURN_FALSE_ON_ABORT(ensureNotFound(lp.node(), lp.full_version_value()));
+          retfound = false;
+          return true;
         }
       }
     }
 
-    cursor_type lp(table_, key);
+    cursor_type lp(table_, key)!;
     bool found = lp.find_insert(*ti.ti);
     if (found) {
       versioned_value *e = lp.value();
       lp.finish(0, *ti.ti);
-      return handlePutFound<INSERT, SET>(e, key, value);
+      return handlePutFound<INSERT, SET>(e, key, value, retfound);
     } else {
       //      auto p = ti.ti->allocate(sizeof(versioned_value), memtag_value);
       versioned_value* val = (versioned_value*)versioned_value::make(value, invalid_bit);
@@ -283,30 +293,31 @@ private:
           if (Opacity)
             // note that this could abort, so it's important that we're safe to
             // abort when this runs (e.g., that we will revert inserts after abort).
-            nodeitem.add_read_opaque(pair.second);
+            RETURN_FALSE_ON_ABORT(nodeitem.add_read_opaque(pair.second));
           else
             nodeitem.add_read(pair.second);
         }
 #endif
       }
-      return found;
+      retfound = found;
+      return true;
     }
   }
 
 public:
   template <typename KT, typename VT>
-  bool transPut(const KT& k, const VT& v, threadinfo_type& ti = mythreadinfo) {
-    return trans_write</*insert*/true, /*set*/true>(k, v, ti);
+  bool transPut(const KT& k, const VT& v, bool& retfound, threadinfo_type& ti = mythreadinfo) {
+    return trans_write</*insert*/true, /*set*/true>(k, v, retfound, ti);
   }
 
   template <typename KT, typename VT>
-  bool transUpdate(const KT& k, const VT& v, threadinfo_type& ti = mythreadinfo) {
-    return trans_write</*insert*/false, /*set*/true>(k, v, ti);
+  bool transUpdate(const KT& k, const VT& v, bool& retfound, threadinfo_type& ti = mythreadinfo) {
+    return trans_write</*insert*/false, /*set*/true>(k, v, retfound, ti);
   }
 
   template <typename KT, typename VT>
-  bool transInsert(const KT& k, const VT& v, threadinfo_type& ti = mythreadinfo) {
-    return !trans_write</*insert*/true, /*set*/false>(k, v, ti);
+  bool transInsert(const KT& k, const VT& v, bool& retfound, threadinfo_type& ti = mythreadinfo) {
+    return !trans_write</*insert*/true, /*set*/false>(k, v, retfound, ti);
   }
 
 
@@ -338,24 +349,27 @@ public:
 
   // range queries
   template <typename Callback, typename ValAllocator = DefaultValAllocator>
-  void transQuery(Str begin, Str end, Callback callback, ValAllocator *va = NULL, threadinfo_type& ti = mythreadinfo) {
-    auto node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
-      this->ensureNotFound(node, version);
+  bool transQuery(Str begin, Str end, Callback callback, ValAllocator *va = NULL, threadinfo_type& ti = mythreadinfo) {
+    bool node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
+      return this->ensureNotFound(node, version);
     };
-    auto value_callback = [&] (Str key, versioned_value* e) {
+    bool value_callback = [&] (Str key, versioned_value* e, bool& ret) {
       // TODO: this needs to read my writes
       auto item = this->t_read_only_item(e);
 #if READ_MY_WRITES
       if (has_delete(item)) {
+        ret = true;
         return true;
       }
       if (item.has_write()) {
         // read directly from the element if we're inserting it
         if (has_insert(item)) {
-	      return range_query_has_insert(callback, key, e, va);
+	      ret = range_query_has_insert(callback, key, e, va);
+              return true;
 	  //return callback(key, val);
         } else {
-          return callback(key, item.template write_value<write_value_type>());
+             ret = callback(key, item.template write_value<write_value_type>());
+             return true;
         }
       }
 #endif
@@ -363,56 +377,67 @@ public:
       value_type stack_val;
       value_type& val = va ? *(*va)() : stack_val;
       Version v;
-      atomicRead(e, v, val);
-      item.observe(tversion_type(v));
+      RETURN_FALSE_ON_ABORT(atomicRead(e, v, val));
+      RETURN_FALSE_ON_ABORT(item.observe(tversion_type(v)));
 
       // skip nodes that are marked invalid
-      if (v & invalid_bit)
+      if (v & invalid_bit) {
+        ret = true;
         return true;
+      }
 
       // key and val are both only guaranteed until callback returns
-      return callback(key, val);//query_callback_overload(key, val, callback);
+      ret = callback(key, val);//query_callback_overload(key, val, callback);
+      return true;
     };
 
     range_scanner<decltype(node_callback), decltype(value_callback)> scanner(end, node_callback, value_callback);
     table_.scan(begin, true, scanner, *ti.ti);
+    return scanner.scan_succeeded_;
   }
 
   template <typename Callback, typename ValAllocator = DefaultValAllocator>
-  void transRQuery(Str begin, Str end, Callback callback, ValAllocator *va = NULL, threadinfo_type& ti = mythreadinfo) {
-    auto node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
-      this->ensureNotFound(node, version);
+  bool transRQuery(Str begin, Str end, Callback callback, ValAllocator *va = NULL, threadinfo_type& ti = mythreadinfo) {
+    bool node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
+      return this->ensureNotFound(node, version);
     };
-    auto value_callback = [&] (Str key, versioned_value* e) {
+    bool value_callback = [&] (Str key, versioned_value* e, bool& ret) {
       auto item = this->t_read_only_item(e);
       // not sure of a better way to do this
       value_type stack_val;
       value_type& val = va ? *(*va)() : stack_val;
 #if READ_MY_WRITES
       if (has_delete(item)) {
+        ret = true;
         return true;
       }
       if (item.has_write()) {
         // read directly from the element if we're inserting it
         if (has_insert(item)) {
-	        return range_query_has_insert(callback, key, e, va);
+	    ret =  range_query_has_insert(callback, key, e, va);
+            return true;
         } else {
-            return callback(key, item.template write_value<write_value_type>());
+            ret =  callback(key, item.template write_value<write_value_type>());
+            return true;
         }
       }
 #endif
       Version v;
-      atomicRead(e, v, val);
-      item.observe(tversion_type(v));
+      RETURN_FALSE_ON_ABORT(atomicRead(e, v, val));
+      RETURN_FALSE_ON_ABORT(item.observe(tversion_type(v)));
 
-      if (v & invalid_bit)
+      if (v & invalid_bit) {
+        ret = true;
         return true;
+      }
 
-      return callback(key, val);
+      ret = callback(key, val);
+      return true;
     };
 
     range_scanner<decltype(node_callback), decltype(value_callback), true> scanner(end, node_callback, value_callback);
     table_.rscan(begin, true, scanner, *ti.ti);
+    return scanner.scan_succeeded_;
   }
 
 #if READ_MY_WRITES
@@ -431,7 +456,7 @@ protected:
   template <typename Nodecallback, typename Valuecallback, bool Reverse = false>
   class range_scanner {
   public:
-    range_scanner(Str upper, Nodecallback nodecallback, Valuecallback valuecallback) : boundary_(upper), boundary_compar_(false),
+    range_scanner(Str upper, Nodecallback nodecallback, Valuecallback valuecallback) : boundary_(upper), boundary_compar_(false), scan_succeeded_(true);
                                                                                        nodecallback_(nodecallback), valuecallback_(valuecallback) {}
 
     template <typename ITER, typename KEY>
@@ -455,7 +480,9 @@ protected:
 
     template <typename ITER>
     void visit_leaf(const ITER& iter, const Masstree::key<uint64_t>& key, threadinfo& ) {
-      nodecallback_(iter.node(), iter.full_version_value());
+      if (!nodecallback_(iter.node(), iter.full_version_value())) {
+        scan_succeeded_ = false;
+      }
       if (this->boundary_) {
         check(iter, key);
       }
@@ -467,11 +494,21 @@ protected:
           return false;
       }
       
-      return valuecallback_(key.full_string(), value);
-    }
+      bool visited;
+      if (!valuecallback_(key.full_string(), value, visited)) {
+        scan_succeeded_ = false;
+        return false;
+      } else {
+        if (!visited) {
+          scan_succeeded_ = false;
+        }
+        return visited;
+      }
+    } 
 
     Str boundary_;
     bool boundary_compar_;
+    bool scan_succeeded_;
     Nodecallback nodecallback_;
     Valuecallback valuecallback_;
   };
@@ -500,6 +537,9 @@ public:
   }
   void unlock(versioned_value *e) {
     unlock(&e->version());
+    WriteLock& wl = e->get_write_lock();
+    if (wl.is_locked())
+      wl.unlock(); 
   }
 
     bool lock(TransItem& item, Transaction& txn) override {
@@ -582,7 +622,7 @@ public:
 protected:
   // called once we've checked our own writes for a found put()
   template <typename ValueType>
-  void reallyHandlePutFound(TransProxy& item, versioned_value *e, Str key, const ValueType& value) {
+  bool reallyHandlePutFound(TransProxy& item, versioned_value *e, Str key, const ValueType& value) {
     // resizing takes a lot of effort, so we first check if we'll need to
     // (values never shrink in size, so if we don't need to resize, we'll never need to)
     auto *new_location = e;
@@ -594,8 +634,7 @@ protected:
         // we had a weird race condition and now this element is gone. just abort at this point
         if (e->version() & invalid_bit) {
           unlock(e);
-          Sto::abort();
-          return;
+          return false;
         }
         e->version() |= invalid_bit;
         // should be ok to unlock now because any attempted writes will be forced to abort
@@ -628,19 +667,19 @@ protected:
     {
       if (new_location != e)
         item = Sto::new_item(this, new_location);
-      item.template add_write<write_value_type>(value);
+        RETURN_FALSE_ON_ABORT(item.template add_swiss_write<write_value_type>(value, new_location->get_write_lock()));
+        //item.template add_write<write_value_type>(value);
     }
+    
+    return true;
   }
 
   // returns true if already in tree, false otherwise
   // handles a transactional put when the given key is already in the tree
   template <bool INSERT, bool SET, typename ValueType>
-  bool handlePutFound(versioned_value *e, Str key, const ValueType& value) {
+  bool handlePutFound(versioned_value *e, Str key, const ValueType& value, bool& retfound) {
     auto item = t_item(e);
-    if (!validityCheck(item, e)) {
-      Sto::abort();
-      return false;
-    }
+    RETURN_FALSE_ON_ABORT(validityCheck(item, e));
 #if READ_MY_WRITES
     if (has_delete(item)) {
       // delete-then-insert == update (technically v# would get set to 0, but this doesn't matter
@@ -648,12 +687,13 @@ protected:
       if (INSERT) {
         item.clear_flags(delete_bit);
         assert(!has_delete(item));
-        reallyHandlePutFound(item, e, key, value);
+        RETURN_FALSE_ON_ABORT(reallyHandlePutFound(item, e, key, value));
       } else {
         // delete-then-update == not found
         // delete will check for other deletes so we don't need to re-log that check
       }
-      return false;
+      retfound = false;
+      return true;
     }
     // make sure this item doesn't get deleted (we don't care about other updates to it though)
     if (!item.has_read() && !has_insert(item))
@@ -663,22 +703,23 @@ protected:
       // version before we check if the node is valid
       Version v = e->version();
       fence();
-      item.observe(tversion_type(v));
+      RETURN_FALSE_ON_ABORT(item.observe(tversion_type(v)));
     }
     if (SET) {
-      reallyHandlePutFound(item, e, key, value);
+      RETURN_FALSE_ON_ABORT(reallyHandlePutFound(item, e, key, value));
     }
+    retfound = true;
     return true;
   }
 
   template <typename NODE, typename VERSION>
-  void ensureNotFound(NODE n, VERSION v) {
+  bool ensureNotFound(NODE n, VERSION v) {
     // TODO: could be more efficient to use fresh_item here, but that will also require more work for read-then-insert
     auto item = t_read_only_item(tag_inter(n));
     if (Opacity)
-      item.add_read_opaque(v);
+      return item.add_read_opaque(v);
     else
-      item.add_read(v);
+      return item.add_read(v);
   }
 
   template <typename NODE, typename VERSION>
@@ -775,12 +816,12 @@ protected:
 #endif
   }
 
-  static void atomicRead(versioned_value *e, Version& vers, value_type& val) {
+  static bool atomicRead(versioned_value *e, Version& vers, value_type& val) {
     Version v2;
     do {
       v2 = e->version();
       if (is_locked(v2))
-        Sto::abort();
+        return false;
 	
       fence();
       assign_val(val, e->read_value());
@@ -788,6 +829,8 @@ protected:
       vers = e->version();
       fence();
     } while (vers != v2);
+
+    return true;
   }
 
   template <typename ValType>
