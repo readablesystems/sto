@@ -321,8 +321,20 @@ public:
     }
 
     // non-transactional methods
-    value_type* nontrans_get(const key_type& k);
-    void nontrans_put(const key_type& k, const value_type& v);
+    value_type* nontrans_get(const key_type& k) {
+        bucket_entry& buck = map_[find_bucket_idx(k)];
+        return find_in_bucket(k);
+    }
+    void nontrans_put(const key_type& k, const value_type& v) {
+        bucket_entry& buck = map_[find_bucket_idx(k)];
+        internal_elem *el = find_in_bucket(k);
+        if (el == nullptr) {
+            internal_elem *new_head = new internal_elem(k, v, true);
+            internal_elem *curr_head = buck.head;
+        } else {
+            copy_row(el, &v);
+        }
+    }
 
 private:
     // remove a k-v node during transactions (with locks)
