@@ -98,6 +98,7 @@
 
 // TRANSACTION macros that can be used to wrap transactional code
 #define TRANSACTION                               \
+    bool __txn_committed = true;                  \
     do {                                          \
         __label__ abort_in_progress;              \
         __label__ try_commit;                     \
@@ -113,13 +114,15 @@ try_commit:                                       \
             if (__txn_guard.try_commit())         \
                 break;                            \
             if (!(retry))                         \
-                throw Transaction::Abort();       \
+                __txn_committed = false;          \
         }                                         \
     } while (0)
 
 #define TXN_DO(trans_op)     \
 if (!trans_op)               \
     goto abort_in_progress
+
+#define TXN_COMMITTED __txn_committed
 
 // transaction performance counters
 enum txp {
