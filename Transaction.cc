@@ -227,6 +227,11 @@ after_unlock:
     // XXX should reset trans_end_callback after calling it...
     state_ = s_aborted + committed;
 
+    // free all temporay buffers allocated by Sto::tx_alloc during this transaction
+    for (auto p : tx_allocs_)
+        rcu_free(p);
+    tx_allocs_.clear();
+
 #if STO_TSC_PROFILE
     auto endtime = read_tsc();
     if (!committed)

@@ -439,6 +439,7 @@ private:
         first_write_ = 0;
         start_tid_ = commit_tid_ = 0;
         buf_.clear();
+        tx_allocs_.clear();
 #if STO_DEBUG_ABORTS
         abort_item_ = nullptr;
         abort_reason_ = nullptr;
@@ -616,6 +617,21 @@ public:
 
     bool in_progress() {
         return state_ < s_aborted;
+    }
+
+    template <typename T>
+    T *tx_alloc(const T *src) {
+        T *buf = (T *)malloc(sizeof(T));
+        memcpy(buf, src, sizeof(T));
+        tx_allocs_.push_back(buf);
+        return buf;
+    }
+
+    template <typename T>
+    T* tx_alloc() {
+        T *buf = (T *)malloc(sizeof(T));
+        tx_allocs_.push_back(buf);
+        return buf;
     }
 
     // opacity checking
@@ -854,6 +870,8 @@ private:
 #endif
     TransItem tset0_[tset_initial_capacity];
 
+    std::vector<void *> tx_allocs_;
+
     bool hard_check_opacity(TransItem* item, TransactionTid::type t);
     void stop(bool committed, unsigned* writes, unsigned nwrites, unsigned first_lock);
 
@@ -972,6 +990,15 @@ public:
     static TransactionTid::type initialized_tid() {
         // XXX: we might want a nonopaque_bit in here too.
         return TransactionTid::increment_value;
+    }
+
+    template <typename T>
+    static inline T* tx_alloc(const T* blob) {
+        return TThread::txn->tx_alloc<T>(blob);
+    }
+    template <typename T>
+    static inline T* tx_alloc() {
+        return TThread::txn->tx_alloc<T>();
     }
 };
 
