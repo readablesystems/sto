@@ -190,7 +190,7 @@ public:
         } else {
             // insert the new row to the table and take note of bucket version changes
             bucket_version_type buck_vers_0 = buck.version.unlocked();
-            insert_in_bucket(buck, k, *vptr, false);
+            insert_in_bucket(buck, k, vptr, false);
             internal_elem *new_head = buck.head;
             bucket_version_type buck_vers_1 = buck.version.unlocked();
 
@@ -377,10 +377,10 @@ private:
         return true;
     }
     // insert a k-v node to a bucket
-    void insert_in_bucket(bucket_entry& buck, const key_type& k, const value_type& v, bool valid) {
+    void insert_in_bucket(bucket_entry& buck, const key_type& k, const value_type *v, bool valid) {
         assert(is_locked(buck.version));
 
-        internal_elem *new_head = new internal_elem(k, v, valid);
+        internal_elem *new_head = new internal_elem(k, v ? *v : value_type(), valid);
         internal_elem *curr_head = buck.head;
 
         new_head->next = curr_head;
@@ -452,6 +452,8 @@ private:
     }
 
     static void copy_row(internal_elem *table_row, const value_type *value) {
+        if (value == nullptr)
+            return;
         memcpy(&table_row->value, value, sizeof(value_type));
     }
 };

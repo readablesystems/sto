@@ -2,6 +2,8 @@
 
 #include <string>
 #include <cstring>
+#include <cassert>
+#include <byteswap.h>
 
 namespace tpcc {
 
@@ -33,6 +35,13 @@ public:
     var_string& operator=(const var_string& rhs) {
         initialize_from(rhs);
         return *this;
+    }
+    volatile var_string& operator=(const var_string& rhs) volatile {
+        initialize_from(rhs);
+        return *this;
+    }
+    explicit operator std::string() {
+        return std::string(s_);
     }
 
 private:
@@ -78,6 +87,13 @@ public:
         initialize_from(rhs);
         return *this;
     }
+    volatile fix_string& operator=(const fix_string& rhs) volatile {
+        initialize_from(rhs);
+        return *this;
+    }
+    explicit operator std::string() {
+        return std::string(s_, FL);
+    }
 
 private:
     void initialize_from(const char *c_str) {
@@ -96,10 +112,23 @@ private:
     char s_[FL];
 };
 
+// swap byte order so key can be used correctly in masstree
+template <typename IntType>
+static inline IntType bswap(IntType x) {
+    if (sizeof(IntType) == 4)
+        return __bswap_32(x);
+    else if (sizeof(IntType) == 8)
+        return __bswap_64(x);
+    else
+        assert(false);
+}
+
 // WAREHOUSE
 
 struct warehouse_key {
-    warehouse_key(uint64_t id) : w_id(id) {}
+    warehouse_key(uint64_t id) {
+        w_id = bswap(id);
+    }
     uint64_t w_id;
 };
 
@@ -117,7 +146,10 @@ struct warehouse_value {
 // DISTRICT
 
 struct district_key {
-    district_key(uint64_t wid, uint64_t did) : d_w_id(wid), d_id(did) {}
+    district_key(uint64_t wid, uint64_t did) {
+        d_w_id = bswap(wid);
+        d_id = bswap(did);
+    }
     uint64_t d_w_id;
     uint64_t d_id;
 };
@@ -137,7 +169,11 @@ struct district_value {
 // CUSTOMER
 
 struct customer_key {
-    customer_key(uint64_t wid, uint64_t did, uint64_t cid) : c_w_id(wid), c_d_id(did), c_id(cid) {}
+    customer_key(uint64_t wid, uint64_t did, uint64_t cid) {
+        c_w_id = bswap(wid);
+        c_d_id = bswap(did);
+        c_id = bswap(cid);
+    }
     uint64_t c_w_id;
     uint64_t c_d_id;
     uint64_t c_id;
@@ -167,6 +203,9 @@ struct customer_value {
 // HISTORY
 
 struct history_key {
+    history_key(uint64_t hid) {
+        h_id = bswap(hid);
+    }
     uint64_t h_id;
 };
 
@@ -181,18 +220,14 @@ struct history_value {
     var_string<24> h_data;
 };
 
-// NEW-ORDER (acts like a set)
-
-struct neworder_key {
-    uint64_t no_w_id;
-    uint64_t no_d_id;
-    uint64_t no_o_id;
-};
-
 // ORDER
 
 struct order_key {
-    order_key(uint64_t wid, uint64_t did, uint64_t oid) : o_w_id(wid), o_d_id(did), o_id(oid) {}
+    order_key(uint64_t wid, uint64_t did, uint64_t oid) {
+        o_w_id = bswap(wid);
+        o_d_id = bswap(did);
+        o_id = bswap(oid);
+    }
     uint64_t o_w_id;
     uint64_t o_d_id;
     uint64_t o_id;
@@ -209,6 +244,12 @@ struct order_value{
 // ORDER-LINE
 
 struct orderline_key {
+    orderline_key(uint64_t w, uint64_t d, uint64_t o, uint64_t n) {
+        ol_w_id = bswap(w);
+        ol_d_id = bswap(d);
+        ol_o_id = bswap(o);
+        ol_number = bswap(n);
+    }
     uint64_t ol_w_id;
     uint64_t ol_d_id;
     uint64_t ol_o_id;
@@ -227,7 +268,9 @@ struct orderline_value {
 // ITEM
 
 struct item_key {
-    item_key(uint64_t id) : i_id(id) {}
+    item_key(uint64_t id) {
+        i_id = bswap(id);
+    }
     uint64_t i_id;
 };
 
@@ -241,7 +284,10 @@ struct item_value {
 // STOCK
 
 struct stock_key {
-    stock_key(uint64_t w, uint64_t i) : s_w_id(w), s_i_id(i) {}
+    stock_key(uint64_t w, uint64_t i) {
+        s_w_id = bswap(w);
+        s_i_id = bswap(i);
+    }
     uint64_t s_w_id;
     uint64_t s_i_id;
 };

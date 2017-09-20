@@ -119,7 +119,7 @@ try_commit:                                       \
     } while (0)
 
 #define TXN_DO(trans_op)     \
-if (!trans_op)               \
+if (!(trans_op))             \
     goto abort_in_progress
 
 #define TXN_COMMITTED __txn_committed
