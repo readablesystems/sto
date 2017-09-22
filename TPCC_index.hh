@@ -4,7 +4,6 @@
 
 #include "Transaction.hh"
 #include "TWrapped.hh"
-#include "print_value.hh"
 
 #include <vector>
 

@@ -5,6 +5,8 @@
 #include <cassert>
 #include <byteswap.h>
 
+#include "third-party/xxHash/xxhash.h"
+
 namespace tpcc {
 
 template <size_t ML>
@@ -43,6 +45,8 @@ public:
     explicit operator std::string() {
         return std::string(s_);
     }
+
+    friend std::hash<var_string>;
 
 private:
     void initialize_from(const char *c_str) {
@@ -95,6 +99,8 @@ public:
         return std::string(s_, FL);
     }
 
+    friend std::hash<fix_string>;
+
 private:
     void initialize_from(const char *c_str) {
         memset(s_, ' ', FL);
@@ -129,6 +135,13 @@ struct warehouse_key {
     warehouse_key(uint64_t id) {
         w_id = bswap(id);
     }
+    bool operator==(const warehouse_key& other) const {
+        return w_id == other.w_id;
+    }
+    bool operator!=(const warehouse_key& other) const {
+        return !(*this == other);
+    }
+
     uint64_t w_id;
 };
 
@@ -150,6 +163,13 @@ struct district_key {
         d_w_id = bswap(wid);
         d_id = bswap(did);
     }
+    bool operator==(const district_key& other) const {
+        return (d_w_id == other.d_w_id) && (d_id == other.d_id);
+    }
+    bool operator!=(const district_key& other) const {
+        return !(*this == other);
+    }
+
     uint64_t d_w_id;
     uint64_t d_id;
 };
@@ -174,6 +194,13 @@ struct customer_key {
         c_d_id = bswap(did);
         c_id = bswap(cid);
     }
+    bool operator==(const customer_key& other) const {
+        return (c_w_id == other.c_w_id) && (c_d_id == other.c_d_id) && (c_id == other.c_id);
+    }
+    bool operator!=(const customer_key& other) const {
+        return !(*this == other);
+    }
+
     uint64_t c_w_id;
     uint64_t c_d_id;
     uint64_t c_id;
@@ -206,6 +233,13 @@ struct history_key {
     history_key(uint64_t hid) {
         h_id = bswap(hid);
     }
+    bool operator==(const history_key& other) const {
+        return h_id == other.h_id;
+    }
+    bool operator!=(const history_key& other) const {
+        return h_id != other.h_id;
+    }
+
     uint64_t h_id;
 };
 
@@ -228,6 +262,13 @@ struct order_key {
         o_d_id = bswap(did);
         o_id = bswap(oid);
     }
+    bool operator==(const order_key& other) const {
+        return (o_w_id == other.o_w_id) && (o_d_id == other.o_d_id) && (o_id == other.o_id);
+    }
+    bool operator!=(const order_key& other) const {
+        return !(*this == other);
+    }
+
     uint64_t o_w_id;
     uint64_t o_d_id;
     uint64_t o_id;
@@ -250,6 +291,14 @@ struct orderline_key {
         ol_o_id = bswap(o);
         ol_number = bswap(n);
     }
+    bool operator==(const orderline_key& other) const {
+        return (ol_w_id == other.ol_w_id) && (ol_d_id == other.ol_d_id) &&
+            (ol_o_id == other.ol_o_id) && (ol_number == other.ol_number);
+    }
+    bool operator!=(const orderline_key& other) const {
+        return !(*this == other);
+    }
+
     uint64_t ol_w_id;
     uint64_t ol_d_id;
     uint64_t ol_o_id;
@@ -271,6 +320,13 @@ struct item_key {
     item_key(uint64_t id) {
         i_id = bswap(id);
     }
+    bool operator==(const item_key& other) const {
+        return i_id == other.i_id;
+    }
+    bool operator!=(const item_key& other) const {
+        return i_id != other.i_id;
+    }
+
     uint64_t i_id;
 };
 
@@ -288,6 +344,13 @@ struct stock_key {
         s_w_id = bswap(w);
         s_i_id = bswap(i);
     }
+    bool operator==(const stock_key& other) const {
+        return (s_w_id == other.s_w_id) && (s_i_id == other.s_i_id);
+    }
+    bool operator!=(const stock_key& other) const {
+        return !(*this == other);
+    }
+
     uint64_t s_w_id;
     uint64_t s_i_id;
 };
@@ -302,3 +365,79 @@ struct stock_value {
 };
 
 }; // namespace tpcc
+
+namespace std {
+
+static constexpr size_t xxh_seed = 0xdeadbeefdeadbeef;
+
+template <size_t ML>
+struct hash<tpcc::var_string<ML>> {
+    size_t operator()(const tpcc::var_string<ML>& arg) const {
+        return XXH64(arg.s_, ML + 1, xxh_seed);
+    }
+};
+
+template <size_t FL>
+struct hash<tpcc::fix_string<FL>> {
+    size_t operator()(const tpcc::fix_string<FL>& arg) const {
+        return XXH64(arg.s_, FL, xxh_seed);
+    }
+};
+
+template <>
+struct hash<tpcc::warehouse_key> {
+    size_t operator()(const tpcc::warehouse_key& arg) const {
+        return arg.w_id;
+    }
+};
+
+template <>
+struct hash<tpcc::district_key> {
+    size_t operator()(const tpcc::district_key& arg) const {
+        return XXH64(&arg, sizeof(tpcc::district_key), xxh_seed);
+    }
+};
+
+template <>
+struct hash<tpcc::customer_key> {
+    size_t operator()(const tpcc::customer_key& arg) const {
+        return XXH64(&arg, sizeof(tpcc::customer_key), xxh_seed);
+    }
+};
+
+template <>
+struct hash<tpcc::history_key> {
+    size_t operator()(const tpcc::history_key& arg) const {
+        return arg.h_id;
+    }
+};
+
+template <>
+struct hash<tpcc::order_key> {
+    size_t operator()(const tpcc::order_key& arg) const {
+        return XXH64(&arg, sizeof(tpcc::order_key), xxh_seed);
+    }
+};
+
+template <>
+struct hash<tpcc::orderline_key> {
+    size_t operator()(const tpcc::orderline_key& arg) const {
+        return XXH64(&arg, sizeof(tpcc::orderline_key), xxh_seed);
+    }
+};
+
+template <>
+struct hash<tpcc::item_key> {
+    size_t operator()(const tpcc::item_key& arg) const {
+        return arg.i_id;
+    }
+};
+
+template <>
+struct hash<tpcc::stock_key> {
+    size_t operator()(const tpcc::stock_key& arg) const {
+        return XXH64(&arg, sizeof(tpcc::stock_key), xxh_seed);
+    }
+};
+
+}; // namespace std

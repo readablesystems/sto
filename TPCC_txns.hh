@@ -2,9 +2,7 @@
 
 #include <random>
 #include "TPCC_structs.hh"
-
-#include "MassTrans.hh"
-#include "Hashtable.hh"
+#include "TPCC_index.hh"
 
 #define NUM_DISTRICTS_PER_WAREHOUSE 10
 #define NUM_CUSTOMERS_PER_DISTRICT  3000
