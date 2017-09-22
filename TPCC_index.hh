@@ -326,6 +326,7 @@ public:
     }
     void nontrans_put(const key_type& k, const value_type& v) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
+        lock(buck.version);
         internal_elem *el = find_in_bucket(k);
         if (el == nullptr) {
             internal_elem *new_head = new internal_elem(k, v, true);
@@ -333,6 +334,7 @@ public:
         } else {
             copy_row(el, &v);
         }
+        unlock(buck.version);
     }
 
 private:

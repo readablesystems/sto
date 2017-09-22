@@ -46,6 +46,20 @@ public:
         return std::string(s_);
     }
 
+    bool contains(const char *substr) const {
+        return (strnstr(s_, substr, ML+1) != nullptr);
+    }
+    size_t length() const {
+        return strlen(s_);
+    }
+    bool place(const char *str, size_t pos) {
+        size_t in_len = strlen(str);
+        if (pos + in_len >= length())
+            return false;
+        memcpy(s_ + pos, str, in_len);
+        return true;
+    }
+
     friend std::hash<var_string>;
 
 private:

@@ -3,16 +3,7 @@
 
 namespace tpcc {
 
-unordered_index<warehouse_key, warehouse_value> tbl_warehouses;
-unordered_index<district_key, district_value>   tbl_districts;
-unordered_index<customer_key, customer_value>   tbl_customers;
-unordered_index<order_key, order_value>         tbl_orders;
-unordered_index<orderline_key, orderline_value> tbl_orderlines;
-unordered_index<order_key, int>                 tbl_neworders;
-unordered_index<item_key, item_value>           tbl_items;
-unordered_index<stock_key, stock_value>         tbl_stocks;
-
-bool tpcc_runner::run_txn_neworder() {
+void tpcc_runner::run_txn_neworder() {
     uint64_t q_w_id  = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
     uint64_t q_c_id = ig.gen_customer_id();
@@ -51,7 +42,7 @@ bool tpcc_runner::run_txn_neworder() {
     volatile var_string<16> out_cus_last;
     volatile fix_string<2> out_cus_credit;
     volatile var_string<24> out_item_names[15];
-    volatile double out_total_amount;
+    volatile double out_total_amount = 0.0;
     volatile char out_brand_generic[15];
 
     // begin txn
@@ -64,20 +55,20 @@ bool tpcc_runner::run_txn_neworder() {
     int64_t wh_tax_rate, dt_tax_rate;
     uint64_t dt_next_oid;
 
-    std::tie(abort, result, std::ignore, value) = tbl_warehouses.select_row(warehouse_key(q_w_id));
+    std::tie(abort, result, std::ignore, value) = db.tbl_warehouses().select_row(warehouse_key(q_w_id));
     TXN_DO(abort);
     assert(result);
     wh_tax_rate = reinterpret_cast<warehouse_value *>(value)->w_tax;
 
-    std::tie(abort, result, row, value) = tbl_districts.select_row(district_key(q_w_id, q_d_id), true);
+    std::tie(abort, result, row, value) = db.tbl_districts().select_row(district_key(q_w_id, q_d_id), true);
     TXN_DO(abort);
     assert(result);
     district_value *new_dv = Sto::tx_alloc(reinterpret_cast<district_value *>(value));
     dt_tax_rate = new_dv->d_tax;
     dt_next_oid = new_dv->d_next_o_id ++;
-    tbl_districts.update_row(row, new_dv);
+    db.tbl_districts().update_row(row, new_dv);
 
-    std::tie(abort, result, std::ignore, value) = tbl_customers.select_row(customer_key(q_w_id, q_d_id, q_c_id));
+    std::tie(abort, result, std::ignore, value) = db.tbl_customers().select_row(customer_key(q_w_id, q_d_id, q_c_id));
     TXN_DO(abort);
     assert(result);
 
@@ -93,10 +84,10 @@ bool tpcc_runner::run_txn_neworder() {
     ov->o_entry_d = o_entry_d;
     ov->o_ol_cnt = num_items;
 
-    std::tie(abort, result) = tbl_orders.insert_row(ok, ov, false);
+    std::tie(abort, result) = db.tbl_orders().insert_row(ok, ov, false);
     TXN_DO(abort);
     assert(!result);
-    std::tie(abort, result) = tbl_neworders.insert_row(ok, nullptr, false);
+    std::tie(abort, result) = db.tbl_neworders().insert_row(ok, nullptr, false);
     TXN_DO(abort);
     assert(!result);
 
@@ -105,7 +96,7 @@ bool tpcc_runner::run_txn_neworder() {
         uint64_t wid = ol_supply_w_ids[i];
         uint64_t qty = ol_quantities[i];
 
-        std::tie(abort, result, std::ignore, value) = tbl_items.select_row(item_key(iid));
+        std::tie(abort, result, std::ignore, value) = db.tbl_items().select_row(item_key(iid));
         TXN_DO(abort);
         assert(result);
         uint64_t oid = reinterpret_cast<item_value *>(value)->i_im_id;
@@ -114,7 +105,7 @@ bool tpcc_runner::run_txn_neworder() {
         out_item_names[i] = reinterpret_cast<item_value *>(value)->i_name;
         auto i_data = reinterpret_cast<item_value *>(value)->i_data;
 
-        std::tie(abort, result, row, value) = tbl_stocks.select_row(stock_key(wid, iid), true);
+        std::tie(abort, result, row, value) = db.tbl_stocks().select_row(stock_key(wid, iid), true);
         TXN_DO(abort);
         assert(result);
         stock_value *new_sv = Sto::tx_alloc(reinterpret_cast<stock_value *>(value));
@@ -122,7 +113,7 @@ bool tpcc_runner::run_txn_neworder() {
         auto s_dist = new_sv->s_dists[q_d_id - 1];
         auto s_data = new_sv->s_data;
 
-        if (i_data == "ORIGINAL" && s_data == "ORIGINAL")
+        if (i_data.contains("ORIGINAL") && s_data.contains("ORIGINAL"))
             out_brand_generic[i] = 'B';
         else
             out_brand_generic[i] = 'G';
@@ -135,7 +126,7 @@ bool tpcc_runner::run_txn_neworder() {
         new_sv->s_order_cnt += 1;
         if (wid != q_w_id)
             new_sv->s_remote_cnt += 1;
-        tbl_stocks.update_row(row, new_sv);
+        db.tbl_stocks().update_row(row, new_sv);
 
         double ol_amount = qty * i_price/100.0;
 
@@ -148,7 +139,7 @@ bool tpcc_runner::run_txn_neworder() {
         olv->ol_amount = ol_amount;
         olv->ol_dist_info = s_dist;
 
-        std::tie(abort, result) = tbl_orderlines.insert_row(olk, olv, false);
+        std::tie(abort, result) = db.tbl_orderlines().insert_row(olk, olv, false);
         TXN_DO(abort);
         assert(!result);
 
@@ -156,10 +147,8 @@ bool tpcc_runner::run_txn_neworder() {
     }
 
     // commit txn
-
-    } RETRY(false);
-
-    return TXN_COMMITTED;
+    // retry until commits
+    } RETRY(true);
 }
 
 }; // namespace tpcc
