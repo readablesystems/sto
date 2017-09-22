@@ -5,10 +5,6 @@
 #include "TPCC_structs.hh"
 #include "TPCC_index.hh"
 
-#define NUM_DISTRICTS_PER_WAREHOUSE 10
-#define NUM_CUSTOMERS_PER_DISTRICT  3000
-#define NUM_ITEMS                   100000
-
 #define A_GEN_CUSTOMER_ID           1023
 #define A_GEN_ITEM_ID               8191
 
@@ -63,6 +59,7 @@ public:
     typedef unordered_index<order_key, int>                 no_table_type;
     typedef unordered_index<item_key, item_value>           it_table_type;
     typedef unordered_index<stock_key, stock_value>         st_table_type;
+    typedef unordered_index<history_key, history_value>     ht_table_type;
 
     tpcc_db(int num_whs) : num_whs_(num_whs) {}
     tpcc_db(const std::string& db_file_name) {
@@ -78,6 +75,7 @@ public:
         delete tbl_nos_;
         delete tbl_its_;
         delete tbl_sts_;
+        delete tbl_hts_;
     }
 
     int num_warehouses() const {
@@ -107,6 +105,9 @@ public:
     st_table_type& tbl_stocks() {
         return *tbl_sts_;
     }
+    ht_table_type& tbl_histories() {
+        return *tbl_hts_;
+    }
 
 private:
     int num_whs_;
@@ -119,6 +120,7 @@ private:
     no_table_type *tbl_nos_;
     it_table_type *tbl_its_;
     st_table_type *tbl_sts_;
+    ht_table_type *tbl_hts_;
 };
 
 class tpcc_runner {
@@ -144,6 +146,8 @@ public:
     inline void fill_items(uint64_t iid_begin, uint64_t iid_xend);
     inline void fill_warehouses();
     inline void expand_warehouse(uint64_t wid);
+    inline void expand_districts(uint64_t wid);
+    inline void expand_customers(uint64_t wid);
 
 private:
     inline std::string random_a_string(int x, int y);

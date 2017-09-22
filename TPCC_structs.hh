@@ -7,6 +7,11 @@
 
 #include "third-party/xxHash/xxhash.h"
 
+#define NUM_DISTRICTS_PER_WAREHOUSE 10
+#define NUM_CUSTOMERS_PER_DISTRICT  3000
+#define NUM_ITEMS                   100000
+
+
 namespace tpcc {
 
 template <size_t ML>
@@ -374,7 +379,7 @@ struct stock_value {
     uint32_t       s_ytd;
     uint32_t       s_order_cnt;
     uint32_t       s_remote_cnt;
-    fix_string<24> s_dists[10];
+    fix_string<24> s_dists[NUM_DISTRICTS_PER_WAREHOUSE];
     var_string<50> s_data;
 };
 
