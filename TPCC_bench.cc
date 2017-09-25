@@ -7,6 +7,8 @@
 
 namespace tpcc {
 
+pthread_barrier_t tpcc_prepopulator::sync_barrier;
+
 tpcc_db::tpcc_db(int num_whs) : num_whs_(num_whs) {
     tbl_whs_ = new wh_table_type();
     tbl_dts_ = new dt_table_type();
@@ -198,6 +200,7 @@ void tpcc_prepopulator::expand_customers(uint64_t wid) {
 // @endsection: db prepopulation functions
 
 void tpcc_prepopulator::run() {
+    int r;
     uint64_t worker_wid = worker_id + 1;
     if (worker_id == 0) {
         fill_items(1, 100001);
@@ -205,14 +208,20 @@ void tpcc_prepopulator::run() {
     }
 
     // barrier
+    r = pthread_barrier_wait(&sync_barrier);
+    assert(r == PTHREAD_BARRIER_SERIAL_THREAD || r == 0);
 
     expand_warehouse(worker_wid);
 
     // barrier
+    r = pthread_barrier_wait(&sync_barrier);
+    assert(r == PTHREAD_BARRIER_SERIAL_THREAD || r == 0);
 
     expand_districts(worker_wid);
 
     // barrier
+    r = pthread_barrier_wait(&sync_barrier);
+    assert(r == PTHREAD_BARRIER_SERIAL_THREAD || r == 0);
 
     expand_customers(worker_wid);
 }
@@ -289,11 +298,18 @@ void prepopulation_worker(tpcc_db& db, int worker_id) {
 }
 
 void prepopulate_db(tpcc_db& db, int num_workers) {
+    int r;
+    r = pthread_barrier_init(&tpcc_prepopulator::sync_barrier, nullptr, num_workers);
+    assert(r == 0);
+
     std::vector<std::thread> prepop_thrs;
     for (int i = 0; i < num_workers; ++i)
         prepop_thrs.emplace_back(prepopulation_worker, std::ref(db), i);
     for (auto& t : prepop_thrs)
         t.join();
+
+    r = pthread_barrier_destroy(&tpcc_prepopulator::sync_barrier);
+    assert(r == 0);
 }
 
 void tpcc_runner_thread(tpcc_db& db, int runner_id, uint64_t w_start, uint64_t w_end, uint64_t num_txns) {

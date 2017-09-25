@@ -2,6 +2,9 @@
 
 #include <random>
 #include <string>
+
+#include <pthread.h> // pthread_barrier_t
+
 #include "TPCC_structs.hh"
 #include "TPCC_index.hh"
 
@@ -130,6 +133,11 @@ private:
 
 class tpcc_prepopulator {
 public:
+    static constexpr const char * last_names[] = {"BAR", "OUGHT", "ABLE", "PRI",
+        "PRES", "ESE", "ANTI", "CALLY", "ATION", "EING"};
+
+    static pthread_barrier_t sync_barrier;
+
     tpcc_prepopulator(int id, tpcc_db& database)
         : ig(id, database.num_warehouses()), db(database), worker_id(id) {}
 
@@ -148,9 +156,6 @@ private:
     inline std::string random_state_name();
     inline std::string random_zip_code();
     inline void random_shuffle(std::vector<uint64_t>& v);
-
-    static constexpr const char * last_names[] = {"BAR", "OUGHT", "ABLE", "PRI",
-        "PRES", "ESE", "ANTI", "CALLY", "ATION", "EING"};
 
     tpcc_input_generator ig;
     tpcc_db& db;
