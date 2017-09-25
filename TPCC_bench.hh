@@ -42,6 +42,9 @@ public:
     uint32_t gen_date() {
         return random(1505244122, 1599938522);
     }
+    std::mt19937& random_generator() {
+        return gen;
+    }
 
 private:
     std::random_device rd;
@@ -61,22 +64,9 @@ public:
     typedef unordered_index<stock_key, stock_value>         st_table_type;
     typedef unordered_index<history_key, history_value>     ht_table_type;
 
-    tpcc_db(int num_whs) : num_whs_(num_whs) {}
-    tpcc_db(const std::string& db_file_name) {
-        (void)db_file_name;
-        assert(false);
-    }
-    ~tpcc_db() {
-        delete tbl_whs_;
-        delete tbl_dts_;
-        delete tbl_cus_;
-        delete tbl_ods_;
-        delete tbl_ols_;
-        delete tbl_nos_;
-        delete tbl_its_;
-        delete tbl_sts_;
-        delete tbl_hts_;
-    }
+    inline tpcc_db(int num_whs);
+    inline tpcc_db(const std::string& db_file_name);
+    inline ~tpcc_db();
 
     int num_warehouses() const {
         return num_whs_;
@@ -155,6 +145,10 @@ private:
     inline std::string to_last_name(int gen_n);
     inline std::string random_state_name();
     inline std::string random_zip_code();
+    inline void random_shuffle(std::vector<uint64_t>& v);
+
+    static constexpr const char * last_names[] = {"BAR", "OUGHT", "ABLE", "PRI",
+        "PRES", "ESE", "ANTI", "CALLY", "ATION", "EING"};
 
     tpcc_input_generator ig;
     tpcc_db& db;

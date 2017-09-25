@@ -1,4 +1,4 @@
-#include "TPCC_txns.hh"
+#include "TPCC_bench.hh"
 #include "TPCC_index.hh"
 
 namespace tpcc {

@@ -1,7 +1,36 @@
-#include "TPCC_txns.hh"
+#include <sstream>
+#include <iomanip>
+#include <algorithm>
+
+#include "TPCC_bench.hh"
 
 namespace tpcc {
 
+tpcc_db::tpcc_db(int num_whs) : num_whs_(num_whs) {
+    tbl_whs_ = new wh_table_type();
+    tbl_dts_ = new dt_table_type();
+    tbl_cus_ = new cu_table_type();
+    tbl_ods_ = new od_table_type();
+    tbl_ols_ = new ol_table_type();
+    tbl_nos_ = new no_table_type();
+    tbl_its_ = new it_table_type();
+    tbl_sts_ = new st_table_type();
+    tbl_hts_ = new ht_table_type();
+}
+
+tpcc_db::~tpcc_db() {
+    delete tbl_whs_;
+    delete tbl_dts_;
+    delete tbl_cus_;
+    delete tbl_ods_;
+    delete tbl_ols_;
+    delete tbl_nos_;
+    delete tbl_its_;
+    delete tbl_sts_;
+    delete tbl_hts_;
+}
+
+// @section: db prepopulation functions
 void tpcc_prepopulator::fill_items(uint64_t iid_begin, uint64_t iid_xend) {
     for (auto iid = iid_begin; iid < iid_xend; ++iid) {
         item_key ik(iid);
@@ -114,7 +143,7 @@ void tpcc_prepopulator::expand_customers(uint64_t wid) {
             history_key hk(wid + did + cid);
             history_value hv;
 
-            hv.h_c_id = cid;
+             hv.h_c_id = cid;
             hv.h_c_d_id = did;
             hv.h_c_w_id = wid;
             hv.h_date = ig.gen_date();
@@ -124,6 +153,109 @@ void tpcc_prepopulator::expand_customers(uint64_t wid) {
             db.tbl_histories().nontrans_put(hk, hv);
         }
     }
+
+    for (uint64_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
+        std::vector<uint64_t> cid_perm;
+        for (uint64_t n = 1; n <= NUM_CUSTOMERS_PER_DISTRICT; ++n)
+            cid_perm.push_back(n);
+        random_shuffle(cid_perm);
+
+        for (uint64_t i = 1; i <= NUM_CUSTOMERS_PER_DISTRICT; ++i) {
+            uint64_t oid = i;
+            order_key ok(wid, did, oid);
+            order_value ov;
+
+            ov.o_c_id = cid_perm[i];
+            ov.o_carrier_id = (oid < 2101) ? ig.random(1, 10) : 0;
+            ov.o_entry_d = ig.gen_date();
+            ov.o_ol_cnt = ig.random(5, 15);
+            ov.o_all_local = 1;
+
+            db.tbl_orders().nontrans_put(ok, ov);
+
+            for (uint64_t on = 1; on <= ov.o_ol_cnt; ++on) {
+                orderline_key olk(wid, did, oid, on);
+                orderline_value olv;
+
+                olv.ol_i_id = ig.random(1, 100000);
+                olv.ol_supply_w_id = wid;
+                olv.ol_delivery_d = (oid < 2101) ? ov.o_entry_d : 0;
+                olv.ol_quantity = 5;
+                olv.ol_amount = (oid < 2101) ? 0 : ig.random(1, 999999);
+                olv.ol_dist_info = random_a_string(24, 24);
+
+                db.tbl_orderlines().nontrans_put(olk, olv);
+            }
+
+            if (oid >= 2101) {
+                order_key nok(wid, did, oid);
+                db.tbl_neworders().nontrans_put(nok, 0);
+            }
+        }
+    }
 }
+// @endsection: db prepopulation functions
+
+// @section: prepopulation string generators
+std::string tpcc_prepopulator::random_a_string(int x, int y) {
+    size_t len = ig.random(x, y);
+    std::string str;
+    str.reserve(len);
+
+    for (auto i = 0u; i < len; ++i) {
+        auto n = ig.random(0, 61);
+        char c = (n < 26) ? ('a' + n) :
+                ((n < 52) ? ('A' + (n - 26)) : ('0' + (n - 52)));
+        str.push_back(c);
+    }
+    return str;
+}
+
+std::string tpcc_prepopulator::random_n_string(int x, int y) {
+    size_t len = ig.random(x, y);
+    std::string str;
+    str.reserve(len);
+
+    for (auto i = 0u; i < len; ++i) {
+        auto n = ig.random(0, 9);
+        str.push_back('0' + n);
+    }
+    return str;
+}
+
+std::string tpcc_prepopulator::to_last_name(int gen_n) {
+    assert(gen_n <= 999 && gen_n >= 0);
+    std::string str;
+
+    int q = gen_n / 100;
+    int r = gen_n % 100;
+    assert(q < 10);
+    str += std::string(last_names[q]);
+
+    q = r / 10;
+    r = r % 10;
+    assert(r < 10 && q < 10);
+    str += std::string(last_names[q]) + std::string(last_names[r]);
+
+    return str;
+}
+
+std::string tpcc_prepopulator::random_state_name() {
+    std::string str = "AA";
+    for (auto& c : str)
+        c += ig.random(0, 25);
+    return str;
+}
+
+std::string tpcc_prepopulator::random_zip_code() {
+    std::stringstream ss;
+    ss << std::setfill('0') << std::setw(4) << ig.random(0, 9999);
+    return ss.str() + "11111";
+}
+
+void tpcc_prepopulator::random_shuffle(std::vector<uint64_t>& v) {
+    std::shuffle(v.begin(), v.end(), ig.random_generator());
+}
+// @endsection: prepopulation string generators
 
 }; // namespace tpcc
