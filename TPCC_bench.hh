@@ -139,6 +139,8 @@ public:
     inline void expand_districts(uint64_t wid);
     inline void expand_customers(uint64_t wid);
 
+    inline void run();
+
 private:
     inline std::string random_a_string(int x, int y);
     inline std::string random_n_string(int x, int y);

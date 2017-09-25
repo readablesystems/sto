@@ -1,6 +1,7 @@
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
+#include <thread>
 
 #include "TPCC_bench.hh"
 
@@ -196,6 +197,26 @@ void tpcc_prepopulator::expand_customers(uint64_t wid) {
 }
 // @endsection: db prepopulation functions
 
+void tpcc_prepopulator::run() {
+    uint64_t worker_wid = worker_id + 1;
+    if (worker_id == 0) {
+        fill_items(1, 100001);
+        fill_warehouses();
+    }
+
+    // barrier
+
+    expand_warehouse(worker_wid);
+
+    // barrier
+
+    expand_districts(worker_wid);
+
+    // barrier
+
+    expand_customers(worker_wid);
+}
+
 // @section: prepopulation string generators
 std::string tpcc_prepopulator::random_a_string(int x, int y) {
     size_t len = ig.random(x, y);
@@ -259,3 +280,64 @@ void tpcc_prepopulator::random_shuffle(std::vector<uint64_t>& v) {
 // @endsection: prepopulation string generators
 
 }; // namespace tpcc
+
+using namespace tpcc;
+
+void prepopulation_worker(tpcc_db& db, int worker_id) {
+    tpcc_prepopulator pop(worker_id, db);
+    pop.run();
+}
+
+void prepopulate_db(tpcc_db& db, int num_workers) {
+    std::vector<std::thread> prepop_thrs;
+    for (int i = 0; i < num_workers; ++i)
+        prepop_thrs.emplace_back(prepopulation_worker, std::ref(db), i);
+    for (auto& t : prepop_thrs)
+        t.join();
+}
+
+void tpcc_runner_thread(tpcc_db& db, int runner_id, uint64_t w_start, uint64_t w_end, uint64_t num_txns) {
+    tpcc_runner runner(runner_id, db, w_start, w_end);
+
+    for (uint64_t i = 0; i < num_txns; ++i) {
+        runner.run_txn_neworder();
+    }
+}
+
+void run_benchmark(tpcc_db& db, int num_runners, uint64_t num_txns) {
+    int q = db.num_warehouses() / num_runners;
+    int r = db.num_warehouses() / num_runners;
+    std::vector<std::thread> runner_thrs;
+    uint64_t ntxns_thr = num_txns / num_runners;
+
+    int last_xend = 1;
+
+    for (int i = 0; i < num_runners; ++i) {
+        int next_xend = last_xend + q;
+        if (r > 0) {
+            ++next_xend;
+            --r;
+        }
+        runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), i, last_xend, next_xend - 1, ntxns_thr);
+        last_xend = next_xend;
+    }
+
+    assert(last_xend == db.num_warehouses() + 1);
+
+    for (auto& t : runner_thrs)
+        t.join();
+}
+
+int main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+    int num_warehouses = 12;
+    int num_threads = 12;
+    uint64_t num_txns = 1000000ul;
+
+    tpcc_db db(num_warehouses);
+
+    prepopulate_db(db, num_warehouses);
+
+    run_benchmark(db, num_threads, num_txns);
+}
