@@ -239,18 +239,18 @@ class TransProxy {
     }
 
     template <typename T>
-    inline TransProxy& add_read(T rdata);
+    inline bool add_read(T rdata);
     template <typename T>
-    inline TransProxy& add_read_opaque(T rdata);
+    inline bool add_read_opaque(T rdata);
     inline bool observe(TVersion version, bool add_read);
-    inline TransProxy& observe(TNonopaqueVersion version, bool add_read);
-    inline TransProxy& observe(TCommutativeVersion version, bool add_read);
+    inline bool observe(TNonopaqueVersion version, bool add_read);
+    inline bool observe(TCommutativeVersion version, bool add_read);
     inline bool observe(TVersion version);
-    inline TransProxy& observe(TNonopaqueVersion version);
-    inline TransProxy& observe(TCommutativeVersion version);
+    inline bool observe(TNonopaqueVersion version);
+    inline bool observe(TCommutativeVersion version);
     inline bool observe_opacity(TVersion version);
-    inline TransProxy& observe_opacity(TNonopaqueVersion version);
-    inline TransProxy& observe_opacity(TCommutativeVersion version);
+    inline bool observe_opacity(TNonopaqueVersion version);
+    inline bool observe_opacity(TCommutativeVersion version);
     inline TransProxy& clear_read() {
         item().__rm_flags(TransItem::read_bit);
         return *this;

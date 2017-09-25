@@ -29,7 +29,7 @@
 #include "Debug_rcu.hh"
 
 #define RETURN_FALSE_ON_ABORT(fc) \
-  if (!fc) return false
+  if (!(fc)) return false
 
 typedef stuffed_str<uint64_t> versioned_str;
 
@@ -257,7 +257,7 @@ private:
       }
     }
 
-    cursor_type lp(table_, key)!;
+    cursor_type lp(table_, key);
     bool found = lp.find_insert(*ti.ti);
     if (found) {
       versioned_value *e = lp.value();
@@ -290,12 +290,13 @@ private:
 #if !ABORT_ON_WRITE_READ_CONFLICT
         for (auto&& pair : lp.new_nodes()) {
           auto nodeitem = Sto::new_item(this, tag_inter(pair.first));
-          if (Opacity)
+          if (Opacity) {
             // note that this could abort, so it's important that we're safe to
             // abort when this runs (e.g., that we will revert inserts after abort).
             RETURN_FALSE_ON_ABORT(nodeitem.add_read_opaque(pair.second));
-          else
-            nodeitem.add_read(pair.second);
+          } else {
+            RETURN_FALSE_ON_ABORT(nodeitem.add_read(pair.second));
+          }
         }
 #endif
       }
@@ -317,7 +318,7 @@ public:
 
   template <typename KT, typename VT>
   bool transInsert(const KT& k, const VT& v, bool& retfound, threadinfo_type& ti = mythreadinfo) {
-    return !trans_write</*insert*/true, /*set*/false>(k, v, retfound, ti);
+    return trans_write</*insert*/true, /*set*/false>(k, v, retfound, ti);
   }
 
 
@@ -350,10 +351,10 @@ public:
   // range queries
   template <typename Callback, typename ValAllocator = DefaultValAllocator>
   bool transQuery(Str begin, Str end, Callback callback, ValAllocator *va = NULL, threadinfo_type& ti = mythreadinfo) {
-    bool node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
+    auto node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
       return this->ensureNotFound(node, version);
     };
-    bool value_callback = [&] (Str key, versioned_value* e, bool& ret) {
+    auto value_callback = [&] (Str key, versioned_value* e, bool& ret) {
       // TODO: this needs to read my writes
       auto item = this->t_read_only_item(e);
 #if READ_MY_WRITES
@@ -398,10 +399,10 @@ public:
 
   template <typename Callback, typename ValAllocator = DefaultValAllocator>
   bool transRQuery(Str begin, Str end, Callback callback, ValAllocator *va = NULL, threadinfo_type& ti = mythreadinfo) {
-    bool node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
+    auto node_callback = [&] (leaf_type* node, typename unlocked_cursor_type::nodeversion_value_type version) {
       return this->ensureNotFound(node, version);
     };
-    bool value_callback = [&] (Str key, versioned_value* e, bool& ret) {
+    auto value_callback = [&] (Str key, versioned_value* e, bool& ret) {
       auto item = this->t_read_only_item(e);
       // not sure of a better way to do this
       value_type stack_val;
@@ -456,7 +457,7 @@ protected:
   template <typename Nodecallback, typename Valuecallback, bool Reverse = false>
   class range_scanner {
   public:
-    range_scanner(Str upper, Nodecallback nodecallback, Valuecallback valuecallback) : boundary_(upper), boundary_compar_(false), scan_succeeded_(true);
+    range_scanner(Str upper, Nodecallback nodecallback, Valuecallback valuecallback) : boundary_(upper), boundary_compar_(false), scan_succeeded_(true),
                                                                                        nodecallback_(nodecallback), valuecallback_(valuecallback) {}
 
     template <typename ITER, typename KEY>

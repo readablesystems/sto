@@ -14,7 +14,7 @@
 #include <fstream>
 #include <setjmp.h>
 #include <bitset>
-#include <coz.h>
+//#include <coz.h>
 
 #ifndef STO_PROFILE_COUNTERS
 #define STO_PROFILE_COUNTERS 0
@@ -478,8 +478,12 @@ private:
 
 #if TRANSACTION_HASHTABLE
     static int hash(const TObject* obj, void* key) {
-	(void) obj;
-	return (reinterpret_cast<uintptr_t>(key) >> 2) % hash_size;
+	/*(void) obj;
+	return (reinterpret_cast<uintptr_t>(key) >> 2) % hash_size;*/
+        auto n = reinterpret_cast<uintptr_t>(key) + 0x4000000;
+        n += -uintptr_t(n < 0x8000000) & (reinterpret_cast<uintptr_t>(obj) >> 4);
+        //2654435761
+        return (n + (n >> 16) * 9) % hash_size;
         //return reinterpret_cast<uintptr_t>(key) % hash_size;
     }
 #endif
@@ -695,7 +699,7 @@ private:
             hi = (hi + hash_step) % hash_size;
         }
 #endif
-	std::cout << "Hash not found!" << std::endl;
+	// std::cout << "Hash not found!" << std::endl;
 	return find_item_scan(obj, xkey); 
    }
 
@@ -1194,37 +1198,40 @@ class TransactionLoopGuard {
 
 
 template <typename T>
-inline TransProxy& TransProxy::add_read(T rdata) {
+inline bool TransProxy::add_read(T rdata) {
     assert(!has_stash());
     if (!has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
         t()->any_nonopaque_ = true;
     }
-    return *this;
+    return true;
 }
 
 // like add_read but checks opacity too.
 // should be used by data structures that have non-TransactionTid
 // versions and still need to respect opacity.
 template <typename T>
-inline TransProxy& TransProxy::add_read_opaque(T rdata) {
+inline bool TransProxy::add_read_opaque(T rdata) {
     assert(!has_stash());
-    t()->check_opacity();
+    if (!t()->check_opacity()) {
+        return false;
+    }
     if (!has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
     }
-    return *this;
+    return true;
 }
 
 inline bool TransProxy::observe(TVersion version, bool add_read) {
-    /*assert(!has_stash());
+    assert(false);
+    //assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_)) {
         TXP_INCREMENT(txp_observe_lock_aborts);
-        t()->mark_abort_because(&item(), "locked", version.value());
+        t()->abort_because(item(), "locked", version.value());
         return false;
-    }*/
+    }
     if (!t()->check_opacity(item(), version.value())) {
         return false;
     }
@@ -1235,43 +1242,48 @@ inline bool TransProxy::observe(TVersion version, bool add_read) {
     return true;
 }
 
-inline TransProxy& TransProxy::observe(TNonopaqueVersion version, bool add_read) {
+inline bool TransProxy::observe(TNonopaqueVersion version, bool add_read) {
     //assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_)) {
         TXP_INCREMENT(txp_observe_lock_aborts);
-        t()->abort_because(item(), "locked", version.value());
+        t()->mark_abort_because(&item(), "locked", version.value());
+        return false;
     }
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
         t()->any_nonopaque_ = true;
     }
-    return *this;
+    return true;
 }
 
-inline TransProxy& TransProxy::observe(TCommutativeVersion version, bool add_read) {
+inline bool TransProxy::observe(TCommutativeVersion version, bool add_read) {
+    assert(false);
     assert(!has_stash());
     if (version.is_locked()) {
         TXP_INCREMENT(txp_observe_lock_aborts);
-        t()->abort_because(item(), "locked", version.value());
+        t()->mark_abort_because(&item(), "locked", version.value());
+        return false;
     }
-    t()->check_opacity(item(), version.value());
+    if (!t()->check_opacity(item(), version.value())) {
+        return false;
+    }
     if (add_read && !has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<TCommutativeVersion>::pack(t()->buf_, std::move(version));
     }
-    return *this;
+    return true;
 }
 
 inline bool TransProxy::observe(TVersion version) {
     return observe(version, true);
 }
 
-inline TransProxy& TransProxy::observe(TNonopaqueVersion version) {
+inline bool TransProxy::observe(TNonopaqueVersion version) {
     return observe(version, true);
 }
 
-inline TransProxy& TransProxy::observe(TCommutativeVersion version) {
+inline bool TransProxy::observe(TCommutativeVersion version) {
     return observe(version, true);
 }
 
@@ -1279,11 +1291,11 @@ inline bool TransProxy::observe_opacity(TVersion version) {
     return observe(version, false);
 }
 
-inline TransProxy& TransProxy::observe_opacity(TNonopaqueVersion version) {
+inline bool TransProxy::observe_opacity(TNonopaqueVersion version) {
     return observe(version, false);
 }
 
-inline TransProxy& TransProxy::observe_opacity(TCommutativeVersion version) {
+inline bool TransProxy::observe_opacity(TCommutativeVersion version) {
     return observe(version, false);
 }
 
