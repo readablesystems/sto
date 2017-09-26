@@ -11,7 +11,6 @@
 #define NUM_CUSTOMERS_PER_DISTRICT  3000
 #define NUM_ITEMS                   100000
 
-
 namespace tpcc {
 
 template <size_t ML>
@@ -43,16 +42,16 @@ public:
         initialize_from(rhs);
         return *this;
     }
-    volatile var_string& operator=(const var_string& rhs) volatile {
+    var_string& operator=(const var_string& rhs) volatile {
         initialize_from(rhs);
-        return *this;
+        return *const_cast<var_string *>(this);
     }
     explicit operator std::string() {
         return std::string(s_);
     }
 
     bool contains(const char *substr) const {
-        return (strnstr(s_, substr, ML+1) != nullptr);
+        return (strstr(s_, substr) != nullptr);
     }
     size_t length() const {
         return strlen(s_);
@@ -77,6 +76,9 @@ private:
     }
     void initialize_from(const var_string& vstr) {
         memcpy(s_, vstr.s_, ML+1);
+    }
+    void initialize_from(const var_string& vstr) volatile {
+        memcpy(const_cast<char *>(s_), vstr.s_, ML+1);
     }
 
     char s_[ML + 1];
@@ -110,9 +112,9 @@ public:
         initialize_from(rhs);
         return *this;
     }
-    volatile fix_string& operator=(const fix_string& rhs) volatile {
+    fix_string& operator=(const fix_string& rhs) volatile {
         initialize_from(rhs);
-        return *this;
+        return *const_cast<fix_string *>(this);
     }
     explicit operator std::string() {
         return std::string(s_, FL);
@@ -132,6 +134,9 @@ private:
     }
     void initialize_from(const fix_string& fstr) {
         memcpy(s_, fstr.s_, FL);
+    }
+    void initialize_from(const fix_string& fstr) volatile {
+        memcpy(const_cast<char *>(s_), fstr.s_, FL);
     }
 
     char s_[FL];

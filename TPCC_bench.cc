@@ -4,21 +4,27 @@
 #include <thread>
 
 #include "TPCC_bench.hh"
+#include "TPCC_txns.hh"
 
 namespace tpcc {
 
 pthread_barrier_t tpcc_prepopulator::sync_barrier;
+const char *tpcc_prepopulator::last_names[] = {
+    "BAR", "OUGHT", "ABLE", "PRI", "PRES",
+    "ESE", "ANTI", "CALLY", "ATION", "EING"};
 
 tpcc_db::tpcc_db(int num_whs) : num_whs_(num_whs) {
-    tbl_whs_ = new wh_table_type();
-    tbl_dts_ = new dt_table_type();
-    tbl_cus_ = new cu_table_type();
-    tbl_ods_ = new od_table_type();
-    tbl_ols_ = new ol_table_type();
-    tbl_nos_ = new no_table_type();
-    tbl_its_ = new it_table_type();
-    tbl_sts_ = new st_table_type();
-    tbl_hts_ = new ht_table_type();
+    size_t num_districts = NUM_DISTRICTS_PER_WAREHOUSE * num_whs_;
+    size_t num_customers = NUM_CUSTOMERS_PER_DISTRICT * num_districts;
+    tbl_whs_ = new wh_table_type(num_whs_ * 2);
+    tbl_dts_ = new dt_table_type(num_districts * 2);
+    tbl_cus_ = new cu_table_type(num_customers * 2);
+    tbl_ods_ = new od_table_type(num_customers * 10 * 2);
+    tbl_ols_ = new ol_table_type(num_customers * 100 * 2);
+    tbl_nos_ = new no_table_type(num_customers * 10 * 2);
+    tbl_its_ = new it_table_type(NUM_ITEMS * 2);
+    tbl_sts_ = new st_table_type(NUM_ITEMS * num_whs_ * 2);
+    tbl_hts_ = new ht_table_type(num_customers * 2);
 }
 
 tpcc_db::~tpcc_db() {
@@ -146,7 +152,7 @@ void tpcc_prepopulator::expand_customers(uint64_t wid) {
             history_key hk(wid + did + cid);
             history_value hv;
 
-             hv.h_c_id = cid;
+            hv.h_c_id = cid;
             hv.h_c_d_id = did;
             hv.h_c_w_id = wid;
             hv.h_date = ig.gen_date();
@@ -323,8 +329,9 @@ void tpcc_runner_thread(tpcc_db& db, int runner_id, uint64_t w_start, uint64_t w
 void run_benchmark(tpcc_db& db, int num_runners, uint64_t num_txns) {
     int q = db.num_warehouses() / num_runners;
     int r = db.num_warehouses() / num_runners;
-    std::vector<std::thread> runner_thrs;
     uint64_t ntxns_thr = num_txns / num_runners;
+
+    std::vector<std::thread> runner_thrs;
 
     int last_xend = 1;
 
@@ -347,6 +354,7 @@ void run_benchmark(tpcc_db& db, int num_runners, uint64_t num_txns) {
 int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
+
     int num_warehouses = 12;
     int num_threads = 12;
     uint64_t num_txns = 1000000ul;

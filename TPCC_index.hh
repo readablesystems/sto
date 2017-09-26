@@ -11,16 +11,17 @@ namespace tpcc {
 
 // unordered index implemented as hashtable
 template <typename K, typename V,
-          bool Opacity = true, bool Adaptive = false, bool ReadMyWrite = false,
-          unsigned Init_size = 129,
-          typename W = V, typename Hash = std::hash<K>, typename Pred = std::equal_to<K>>
+          bool Opacity = true, bool Adaptive = false, bool ReadMyWrite = false>
 class unordered_index : public TObject {
 public:
     typedef K key_type;
-    typedef W value_type;
+    typedef V value_type;
 
     typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type bucket_version_type;
     typedef typename std::conditional<Adaptive, TLockVersion, bucket_version_type>::type version_type;
+
+    typedef std::hash<K> Hash;
+    typedef std::equal_to<K> Pred;
     
     static constexpr typename version_type::type invalid_bit = TransactionTid::user_bit;
 
@@ -37,7 +38,7 @@ private:
         bool deleted;
 
         internal_elem(const key_type& k, const value_type& val, bool mark_valid)
-            : key(k), next(nullptr),
+            : next(nullptr), key(k),
               version(Sto::initialized_tid() | (mark_valid ? 0 : invalid_bit)),
               value(val), deleted(false) {}
 
@@ -74,12 +75,12 @@ public:
     typedef std::tuple<bool, bool>                               ins_return_type;
     typedef std::tuple<bool, bool>                               del_return_type;
 
-    unordered_index(size_t size = Init_size, Hash h = Hash(), Pred p = Pred()) :
+    unordered_index(size_t size, Hash h = Hash(), Pred p = Pred()) :
             map_(), hasher_(h), pred_(p) {
         map_.resize(size);
     }
 
-    inline size_t hash(const key_type& k) {
+    inline size_t hash(const key_type& k) const {
         return hasher_(k);
     }
     inline size_t nbuckets() const {
@@ -108,7 +109,7 @@ public:
                 if (has_delete(item))
                     return sel_return_type(true, false, 0, nullptr);
                 if (item.has_write())
-                    return sel_return_type(true, true, e, &item.template write_value<internal_elem *>()->value);
+                    return sel_return_type(true, true, reinterpret_cast<uintptr_t>(e), &((item.template write_value<internal_elem *>())->value));
             }
 
             if (for_update) {
@@ -119,10 +120,10 @@ public:
                     goto abort;
             }
 
-            return sel_return_type(true, true, e, &e->value);
+            return sel_return_type(true, true, reinterpret_cast<uintptr_t>(e), &e->value);
         } else {
             // if not found, observe bucket version
-            bool ok = Sto::item(this, make_bucket_key(&buck)).observe(buck_vers);
+            bool ok = Sto::item(this, make_bucket_key(buck)).observe(buck_vers);
             if (!ok)
                 goto abort;
             return sel_return_type(true, false, 0, nullptr);
@@ -152,11 +153,11 @@ public:
     insert_row(const key_type& k, value_type *vptr, bool overwrite) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
 
-        simple_lock(buck.version);
+        lock(buck.version);
         internal_elem *e = find_in_bucket(buck, k);
 
         if (e) {
-            simple_unlock(buck.version);
+            unlock(buck.version);
             auto item = Sto::item(this, e);
             if (is_phantom(e, item))
                 goto abort;
@@ -193,10 +194,10 @@ public:
             internal_elem *new_head = buck.head;
             bucket_version_type buck_vers_1 = buck.version.unlocked();
 
-            simple_unlock(buck.version);
+            unlock(buck.version);
 
             // update bucket version in the read set (if any) since it's changed by ourselves
-            auto bucket_item = Sto::item(this, make_bucket_key(&buck));
+            auto bucket_item = Sto::item(this, make_bucket_key(buck));
             if (bucket_item.has_read())
                 bucket_item.update_read(buck_vers_0, buck_vers_1);
 
@@ -232,7 +233,7 @@ public:
                     // deleting something we inserted
                     _remove(e);
                     item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
-                    Sto::item(this, make_bucket_key(&buck)).observe(buck_vers);
+                    Sto::item(this, make_bucket_key(buck)).observe(buck_vers);
                     return del_return_type(true, true);
                 }
                 assert(valid);
@@ -252,7 +253,7 @@ public:
             return del_return_type(true, true);
         } else {
             // not found -- add observation of bucket version
-            bool ok = Sto::item(this, make_bucket_key(&buck)).observe(buck_vers);
+            bool ok = Sto::item(this, make_bucket_key(buck)).observe(buck_vers);
             if (!ok)
                 goto abort;
             return del_return_type(true, false);
@@ -284,7 +285,7 @@ public:
         assert(!is_bucket(item));
         internal_elem *el = item.key<internal_elem*>();
         if (has_delete(item)) {
-            el->version.set_version_locked(el->version.value() + version_type::increment_value);
+            el->version.set_version_locked(el->version.value() + TransactionTid::increment_value);
             el->deleted = true;
             fence();
             return;
@@ -327,10 +328,12 @@ public:
     void nontrans_put(const key_type& k, const value_type& v) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
         lock(buck.version);
-        internal_elem *el = find_in_bucket(k);
+        internal_elem *el = find_in_bucket(buck, k);
         if (el == nullptr) {
             internal_elem *new_head = new internal_elem(k, v, true);
             internal_elem *curr_head = buck.head;
+            new_head->next = curr_head;
+            buck.head = new_head;
         } else {
             copy_row(el, &v);
         }
@@ -379,7 +382,7 @@ private:
     }
     // insert a k-v node to a bucket
     void insert_in_bucket(bucket_entry& buck, const key_type& k, const value_type *v, bool valid) {
-        assert(is_locked(buck.version));
+        assert(buck.version.is_locked());
 
         internal_elem *new_head = new internal_elem(k, v ? *v : value_type(), valid);
         internal_elem *curr_head = buck.head;
@@ -414,7 +417,8 @@ private:
     static uintptr_t make_bucket_key(const bucket_entry& bucket) {
         return (reinterpret_cast<uintptr_t>(&bucket) | bucket_bit);
     }
-    static bucket_entry *bucket_address(uintptr_t bucket_key) {
+    static bucket_entry *bucket_address(const TransItem& item) {
+        uintptr_t bucket_key = item.key<uintptr_t>();
         return reinterpret_cast<bucket_entry*>(bucket_key & ~bucket_bit);
     }
 
@@ -456,6 +460,13 @@ private:
         if (value == nullptr)
             return;
         memcpy(&table_row->value, value, sizeof(value_type));
+    }
+
+    void lock(bucket_version_type& buck_vers) {
+        buck_vers.lock();
+    }
+    void unlock(bucket_version_type& buck_vers) {
+        buck_vers.unlock();
     }
 };
 

@@ -4,13 +4,16 @@
 AR = ar
 CC = @CC@
 CXX = @CXX@
-CPPFLAGS = -I$(MASSTREEDIR)
+CPPFLAGS = -I$(MASSTREEDIR) -I$(XXHASH_DIR)
 DEPSDIR := .deps
 DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
 LIBS = @LIBS@ $(MASSTREEDIR)/libjson.a -lpthread -lm
 LIBOBJS = @LIBOBJS@
 LDFLAGS = @LDFLAGS@
 MASSTREEDIR = @MASSTREEDIR@
+
+XXHASH_DIR = third-party/xxHash
+XXHASH_OBJ = xxhash.o
 
 # if CXXFLAGS changes, rebuild
 ifndef CXXFLAGS
@@ -78,7 +81,7 @@ ifeq ($(PROFILE),1)
 OPTFLAGS += -g -pg -fno-inline
 endif
 
-PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter $(UNIT_PROGRAMS)
+PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter $(UNIT_PROGRAMS) tpcc_bench
 UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric unit-rcu unit-tvector unit-tvector-nopred unit-mbta unit-sampling unit-opacity
 
 all: $(PROGRAMS)
@@ -93,6 +96,9 @@ check: unit
 
 %.o: %.cc config.h $(DEPSDIR)/stamp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+
+xxhash.o: third-party/xxHash/xxhash.c
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -c -o $@ $<
 
 %.S: %.o
 	objdump -S $< > $@
@@ -195,6 +201,9 @@ predicates: predicates.o $(STO_DEPS)
 
 hashtable_nostm: hashtable_nostm.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+tpcc_bench: TPCC_bench.o $(MSTO_DEPS) $(XXHASH_OBJ)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;
 

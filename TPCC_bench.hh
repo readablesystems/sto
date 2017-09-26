@@ -22,7 +22,7 @@ public:
     tpcc_input_generator(int num_whs) : rd(), gen(rd()), num_whs_(num_whs) {}
 
     uint64_t nurand(uint64_t a, uint64_t c, uint64_t x, uint64_t y) {
-        uint64_t r1 = random(0, a) | random(x, y) + c;
+        uint64_t r1 = (random(0, a) | random(x, y)) + c;
         return (r1 % (y - x + 1)) + x;
     }
     uint64_t random(uint64_t x, uint64_t y) {
@@ -133,8 +133,7 @@ private:
 
 class tpcc_prepopulator {
 public:
-    static constexpr const char * last_names[] = {"BAR", "OUGHT", "ABLE", "PRI",
-        "PRES", "ESE", "ANTI", "CALLY", "ATION", "EING"};
+    static const char * last_names[];
 
     static pthread_barrier_t sync_barrier;
 

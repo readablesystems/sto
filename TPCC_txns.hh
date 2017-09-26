@@ -1,5 +1,6 @@
+#pragma once
+
 #include "TPCC_bench.hh"
-#include "TPCC_index.hh"
 
 namespace tpcc {
 
@@ -44,13 +45,14 @@ void tpcc_runner::run_txn_neworder() {
     volatile var_string<24> out_item_names[15];
     volatile double out_total_amount = 0.0;
     volatile char out_brand_generic[15];
+    (void) out_brand_generic;
 
     // begin txn
     TRANSACTION {
 
     bool abort, result;
     uintptr_t row;
-    void *value;
+    const void *value;
 
     int64_t wh_tax_rate, dt_tax_rate;
     uint64_t dt_next_oid;
@@ -58,12 +60,12 @@ void tpcc_runner::run_txn_neworder() {
     std::tie(abort, result, std::ignore, value) = db.tbl_warehouses().select_row(warehouse_key(q_w_id));
     TXN_DO(abort);
     assert(result);
-    wh_tax_rate = reinterpret_cast<warehouse_value *>(value)->w_tax;
+    wh_tax_rate = reinterpret_cast<const warehouse_value *>(value)->w_tax;
 
     std::tie(abort, result, row, value) = db.tbl_districts().select_row(district_key(q_w_id, q_d_id), true);
     TXN_DO(abort);
     assert(result);
-    district_value *new_dv = Sto::tx_alloc(reinterpret_cast<district_value *>(value));
+    district_value *new_dv = Sto::tx_alloc(reinterpret_cast<const district_value *>(value));
     dt_tax_rate = new_dv->d_tax;
     dt_next_oid = new_dv->d_next_o_id ++;
     db.tbl_districts().update_row(row, new_dv);
@@ -72,9 +74,9 @@ void tpcc_runner::run_txn_neworder() {
     TXN_DO(abort);
     assert(result);
 
-    auto cus_discount = reinterpret_cast<customer_value *>(value)->c_discount;
-    out_cus_last = reinterpret_cast<customer_value *>(value)->c_last;
-    out_cus_credit = reinterpret_cast<customer_value *>(value)->c_credit;
+    auto cus_discount = reinterpret_cast<const customer_value *>(value)->c_discount;
+    out_cus_last = reinterpret_cast<const customer_value *>(value)->c_last;
+    out_cus_credit = reinterpret_cast<const customer_value *>(value)->c_credit;
 
     order_key ok(q_w_id, q_d_id, dt_next_oid);
     order_value* ov = Sto::tx_alloc<order_value>();
@@ -99,16 +101,16 @@ void tpcc_runner::run_txn_neworder() {
         std::tie(abort, result, std::ignore, value) = db.tbl_items().select_row(item_key(iid));
         TXN_DO(abort);
         assert(result);
-        uint64_t oid = reinterpret_cast<item_value *>(value)->i_im_id;
+        uint64_t oid = reinterpret_cast<const item_value *>(value)->i_im_id;
         TXN_DO(oid != 0);
-        uint32_t i_price = reinterpret_cast<item_value *>(value)->i_price;
-        out_item_names[i] = reinterpret_cast<item_value *>(value)->i_name;
-        auto i_data = reinterpret_cast<item_value *>(value)->i_data;
+        uint32_t i_price = reinterpret_cast<const item_value *>(value)->i_price;
+        out_item_names[i] = reinterpret_cast<const item_value *>(value)->i_name;
+        auto i_data = reinterpret_cast<const item_value *>(value)->i_data;
 
         std::tie(abort, result, row, value) = db.tbl_stocks().select_row(stock_key(wid, iid), true);
         TXN_DO(abort);
         assert(result);
-        stock_value *new_sv = Sto::tx_alloc(reinterpret_cast<stock_value *>(value));
+        stock_value *new_sv = Sto::tx_alloc(reinterpret_cast<const stock_value *>(value));
         int32_t s_quantity = new_sv->s_quantity;
         auto s_dist = new_sv->s_dists[q_d_id - 1];
         auto s_data = new_sv->s_data;
@@ -146,6 +148,7 @@ void tpcc_runner::run_txn_neworder() {
         out_total_amount += ol_amount * (1.0 - cus_discount/100.0) * (1.0 + (wh_tax_rate + dt_tax_rate)/100.0);
     }
 
+    (void)__txn_committed;
     // commit txn
     // retry until commits
     } RETRY(true);
