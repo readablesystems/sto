@@ -5,7 +5,9 @@
 #include <cassert>
 #include <byteswap.h>
 
-#include "third-party/xxHash/xxhash.h"
+#include "xxhash.h"
+
+#include "str.hh" // lcdf::Str
 
 #define NUM_DISTRICTS_PER_WAREHOUSE 10
 #define NUM_CUSTOMERS_PER_DISTRICT  3000
@@ -165,6 +167,9 @@ struct warehouse_key {
     bool operator!=(const warehouse_key& other) const {
         return !(*this == other);
     }
+    operator lcdf::Str() const {
+        return lcdf::Str((const char *)this, sizeof(*this));
+    }
 
     uint64_t w_id;
 };
@@ -192,6 +197,9 @@ struct district_key {
     }
     bool operator!=(const district_key& other) const {
         return !(*this == other);
+    }
+    operator lcdf::Str() const {
+        return lcdf::Str((const char *)this, sizeof(*this));
     }
 
     uint64_t d_w_id;
@@ -223,6 +231,9 @@ struct customer_key {
     }
     bool operator!=(const customer_key& other) const {
         return !(*this == other);
+    }
+    operator lcdf::Str() const {
+        return lcdf::Str((const char *)this, sizeof(*this));
     }
 
     uint64_t c_w_id;
@@ -263,6 +274,9 @@ struct history_key {
     bool operator!=(const history_key& other) const {
         return h_id != other.h_id;
     }
+    operator lcdf::Str() const {
+        return lcdf::Str((const char *)this, sizeof(*this));
+    }
 
     uint64_t h_id;
 };
@@ -291,6 +305,9 @@ struct order_key {
     }
     bool operator!=(const order_key& other) const {
         return !(*this == other);
+    }
+    operator lcdf::Str() const {
+        return lcdf::Str((const char *)this, sizeof(*this));
     }
 
     uint64_t o_w_id;
@@ -322,6 +339,9 @@ struct orderline_key {
     bool operator!=(const orderline_key& other) const {
         return !(*this == other);
     }
+    operator lcdf::Str() const {
+        return lcdf::Str((const char *)this, sizeof(*this));
+    }
 
     uint64_t ol_w_id;
     uint64_t ol_d_id;
@@ -350,6 +370,9 @@ struct item_key {
     bool operator!=(const item_key& other) const {
         return i_id != other.i_id;
     }
+    operator lcdf::Str() const {
+        return lcdf::Str((const char *)this, sizeof(*this));
+    }
 
     uint64_t i_id;
 };
@@ -373,6 +396,9 @@ struct stock_key {
     }
     bool operator!=(const stock_key& other) const {
         return !(*this == other);
+    }
+    operator lcdf::Str() const {
+        return lcdf::Str((const char *)this, sizeof(*this));
     }
 
     uint64_t s_w_id;
