@@ -18,6 +18,8 @@ namespace tpcc {
 
 class tpcc_input_generator {
 public:
+    static const char * last_names[];
+
     tpcc_input_generator(int id, int num_whs) : rd(), gen(id), num_whs_(num_whs) {}
     tpcc_input_generator(int num_whs) : rd(), gen(rd()), num_whs_(num_whs) {}
 
@@ -39,6 +41,32 @@ public:
     uint64_t gen_customer_id() {
         return nurand(A_GEN_CUSTOMER_ID, C_GEN_CUSTOMER_ID, 1, NUM_CUSTOMERS_PER_DISTRICT);
     }
+
+    int gen_customer_last_name_num() {
+        return nurand(255, 0, 999, 7911/* XXX 4.3.2.3 magic C number */);
+    }
+
+    std::string to_last_name(int gen_n) {
+        assert(gen_n <= 999 && gen_n >= 0);
+        std::string str;
+
+        int q = gen_n / 100;
+        int r = gen_n % 100;
+        assert(q < 10);
+        str += std::string(last_names[q]);
+
+        q = r / 10;
+        r = r % 10;
+        assert(r < 10 && q < 10);
+        str += std::string(last_names[q]) + std::string(last_names[r]);
+
+        return str;
+    }
+
+    std::string gen_customer_last_name() {
+        return to_last_name(gen_customer_last_name_num());
+    }
+
     uint64_t gen_item_id() {
         return nurand(A_GEN_ITEM_ID, C_GEN_ITEM_ID, 1, NUM_ITEMS);
     }
@@ -121,7 +149,9 @@ public:
     tpcc_runner(int id, tpcc_db& database, uint64_t w_start, uint64_t w_end)
         : ig(id, database.num_warehouses()), db(database),
           w_id_start(w_start), w_id_end(w_end) {}
+
     inline void run_txn_neworder();
+    inline void run_txn_payment();
 
 private:
     tpcc_input_generator ig;
@@ -133,8 +163,6 @@ private:
 
 class tpcc_prepopulator {
 public:
-    static const char * last_names[];
-
     static pthread_barrier_t sync_barrier;
 
     tpcc_prepopulator(int id, tpcc_db& database)
@@ -151,7 +179,6 @@ public:
 private:
     inline std::string random_a_string(int x, int y);
     inline std::string random_n_string(int x, int y);
-    inline std::string to_last_name(int gen_n);
     inline std::string random_state_name();
     inline std::string random_zip_code();
     inline void random_shuffle(std::vector<uint64_t>& v);

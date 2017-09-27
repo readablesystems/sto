@@ -5,6 +5,8 @@
 #include "Transaction.hh"
 #include "TWrapped.hh"
 
+//#include "MassTrans.hh"
+
 #include <vector>
 
 namespace tpcc {
@@ -469,5 +471,28 @@ private:
         buck_vers.unlock();
     }
 };
+
+/*
+template <typename K, typename V,
+          bool Opacity = false, bool Adaptive = false, bool ReadMyWrite = false>
+class ordered_index : public TObject {
+public:
+    typedef K key_type;
+    typedef V value_type;
+    typedef ::MassTrans<V, ::versioned_value_struct<V>, Opacity> mt_type;
+
+    typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
+    typedef std::tuple<bool, bool>                               ins_return_type;
+    typedef std::tuple<bool, bool>                               del_return_type;
+
+    sel_return_type select_row();
+    void update_row();
+    ins_return_type insert_row();
+    del_return_type delete_row();
+
+private:
+    mt_type mt_;
+};
+*/
 
 }; // namespace tpcc

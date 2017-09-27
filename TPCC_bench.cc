@@ -9,7 +9,7 @@
 namespace tpcc {
 
 pthread_barrier_t tpcc_prepopulator::sync_barrier;
-const char *tpcc_prepopulator::last_names[] = {
+const char *tpcc_input_generator::last_names[] = {
     "BAR", "OUGHT", "ABLE", "PRI", "PRES",
     "ESE", "ANTI", "CALLY", "ATION", "EING"};
 
@@ -122,8 +122,9 @@ void tpcc_prepopulator::expand_districts(uint64_t wid) {
             customer_key ck(wid, did, cid);
             customer_value cv;
 
-            int last_name_num = (cid <= 1000) ? ig.random(0, 999) : ig.nurand(255,0,999,7911/*XXX*/);
-            cv.c_last = to_last_name(last_name_num);
+            int last_name_num = (cid <= 1000) ? ig.random(0, 999)
+                : ig.gen_customer_last_name_num();
+            cv.c_last = ig.to_last_name(last_name_num);
             cv.c_middle = "OE";
             cv.c_first = random_a_string(8, 16);
             cv.c_street_1 = random_a_string(10, 20);
@@ -256,23 +257,6 @@ std::string tpcc_prepopulator::random_n_string(int x, int y) {
         auto n = ig.random(0, 9);
         str.push_back('0' + n);
     }
-    return str;
-}
-
-std::string tpcc_prepopulator::to_last_name(int gen_n) {
-    assert(gen_n <= 999 && gen_n >= 0);
-    std::string str;
-
-    int q = gen_n / 100;
-    int r = gen_n % 100;
-    assert(q < 10);
-    str += std::string(last_names[q]);
-
-    q = r / 10;
-    r = r % 10;
-    assert(r < 10 && q < 10);
-    str += std::string(last_names[q]) + std::string(last_names[r]);
-
     return str;
 }
 

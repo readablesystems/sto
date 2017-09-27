@@ -154,4 +154,127 @@ void tpcc_runner::run_txn_neworder() {
     } RETRY(true);
 }
 
+void tpcc_runner::run_txn_payment() {
+    uint64_t q_w_id = ig.random(w_id_start, w_id_end);
+    uint64_t q_d_id = ig.random(1, 10);
+
+    uint64_t q_c_w_id, q_c_d_id, q_c_id;
+    std::string last_name;
+    auto x = ig.random(1, 100);
+    auto y = ig.random(1, 100);
+
+    bool is_home = (x <= 85);
+    bool by_name = (y <= 60);
+
+    if (is_home) {
+        q_c_w_id = q_w_id;
+        q_c_d_id = q_d_id;
+    } else {
+        do {
+            q_c_w_id = ig.random(1, ig.num_warehouses());
+        } while (q_c_w_id == q_w_id);
+        q_c_d_id = ig.random(1, 10);
+    }
+
+    if (by_name) {
+        last_name = ig.gen_customer_last_name();
+        q_c_id = 0;
+    } else {
+        q_c_id = ig.gen_customer_id();
+    }
+
+    int64_t h_amount = ig.random(100, 500000);
+    uint32_t h_date = ig.gen_date();
+
+    // holding outputs of the transaction
+    volatile var_string<10> out_w_name, out_d_name;
+    volatile var_string<20> out_w_street_1, out_w_street_2, out_w_city;
+    volatile var_string<20> out_d_street_1, out_d_street_2, out_d_city;
+    volatile fix_string<2> out_w_state, out_d_state;
+    volatile fix_string<9> out_w_zip, out_d_zip;
+
+    // begin txn
+    TRANSACTION {
+
+    bool success, result;
+    uintptr_t row;
+    const void *value;
+
+    // select warehouse row FOR UPDATE and retrieve warehouse info
+    warehouse_key wk(q_w_id);
+    std::tie(success, result, row, value) = db.tbl_warehouses().select_row(wk, true);
+    TXN_DO(success);
+    assert(result);
+
+    const warehouse_value *wv = reinterpret_cast<const warehouse_value *>(value);
+    warehouse_value *new_wv = Sto::tx_alloc(wv);
+
+    out_w_name = new_wv->w_name;
+    out_w_street_1 = new_wv->w_street_1;
+    out_w_street_2 = new_wv->w_street_2;
+    out_w_city = new_wv->w_city;
+    out_w_state = new_wv->w_state;
+    out_w_zip = new_wv->w_zip;
+
+    // update warehouse ytd
+    new_wv->w_ytd += h_amount;
+    db.tbl_warehouses().update_row(row, new_wv);
+
+    // select district row FOR UPDATE and retrieve district info
+    district_key dk(q_w_id, q_d_id);
+    std::tie(success, result, row, value) = db.tbl_districts().select_row(dk, true);
+    TXN_DO(success);
+    assert(result);
+
+    const district_value *dv = reinterpret_cast<const district_value *>(value);
+    district_value *new_dv = Sto::tx_alloc(dv);
+
+    out_d_name = new_dv->d_name;
+    out_d_street_1 = new_dv->d_street_1;
+    out_d_street_2 = new_dv->d_street_2;
+    out_d_city = new_dv->d_city;
+    out_d_state = new_dv->d_state;
+    out_d_zip = new_dv->d_zip;
+
+    // update district ytd
+    new_dv->d_ytd += h_amount;
+    db.tbl_districts().update_row(row, new_dv);
+
+    // select and update customer
+    if (by_name) {
+        // XXX scan not implemented yet!!
+        assert(false);
+    } else {
+        assert(q_c_id != 0);
+        customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
+        std::tie(success, result, row, value) = db.tbl_customers().select_row(ck, true);
+        TXN_DO(success);
+        assert(result);
+
+        const customer_value *cv = reinterpret_cast<const customer_value *>(value);
+        customer_value *new_cv = Sto::tx_alloc(cv);
+
+        new_cv->c_balance -= h_amount;
+        new_cv->c_ytd_payment += h_amount;
+        new_cv->c_payment_cnt += 1;
+
+        db.tbl_customers().update_row(row, new_cv);
+    }
+
+    // insert to history table
+    history_value *hv = Sto::tx_alloc<history_value>();
+    hv->h_c_id = q_c_id;
+    hv->h_c_d_id = q_c_d_id;
+    hv->h_c_w_id = q_c_w_id;
+    hv->h_d_id = q_d_id;
+    hv->h_w_id = q_w_id;
+    hv->h_date = h_date;
+    hv->h_amount = h_amount;
+    //hv->h_data =
+
+    db.tbl_histories().insert_unique(hv);
+
+    } RETRY(true);
+}
+
 }; // namespace tpcc
