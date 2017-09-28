@@ -5,6 +5,15 @@
 #include "Transaction.hh"
 #include "TWrapped.hh"
 
+#include "masstree.hh"
+#include "kvthread.hh"
+#include "masstree_tcursor.hh"
+#include "masstree_insert.hh"
+#include "masstree_print.hh"
+#include "masstree_remove.hh"
+#include "masstree_scan.hh"
+#include "string.hh"
+
 //#include "MassTrans.hh"
 
 #include <vector>
@@ -152,7 +161,7 @@ public:
     // the pointer stays valid for the rest of the duration of the transaction and the associated temporary row
     // WILL NOT be deallocated until commit/abort time
     ins_return_type
-    insert_row(const key_type& k, value_type *vptr, bool overwrite) {
+    insert_row(const key_type& k, value_type *vptr, bool overwrite = false) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
 
         lock(buck.version);
@@ -243,13 +252,13 @@ public:
                     return del_return_type(true, false);
             }
             // select_for_update() will automatically add an observation for OCC version types
-            // at commit/check time we check for the special "deleted" field to see if the row
-            // is still available for deletion
+            // so that we can catch change in "deleted" status of a table row at commit time
             if (!select_for_update(item, e->version))
                 goto abort;
-            //fence();
-            //if (e->deleted)
-            //    goto abort;
+            fence();
+            // it vital that we check the "deleted" status after registering an observation
+            if (e->deleted)
+                goto abort;
             item.add_flags(delete_bit);
 
             return del_return_type(true, true);
@@ -287,9 +296,9 @@ public:
         assert(!is_bucket(item));
         internal_elem *el = item.key<internal_elem*>();
         if (has_delete(item)) {
-            el->version.set_version_locked(el->version.value() + TransactionTid::increment_value);
             el->deleted = true;
             fence();
+            el->version.set_version_locked(el->version.value() + TransactionTid::increment_value);
             return;
         }
         if (!has_insert(item)) {
@@ -444,15 +453,15 @@ private:
         item.add_write();
         return true;
     }
-    static bool select_for_overwrite(TransProxy& item, TLockVersion& vers, value_type *vptr) {
-        return item.acquire_write(vers, vptr);
+    static bool select_for_overwrite(TransProxy& item, TLockVersion& vers, const value_type *vptr) {
+        return item.acquire_write(vptr, vers);
     }
-    static bool select_for_overwrite(TransProxy& item, TVersion& vers, value_type* vptr) {
+    static bool select_for_overwrite(TransProxy& item, TVersion& vers, const value_type* vptr) {
         (void)vers;
         item.add_write(vptr);
         return true;
     }
-    static bool select_for_overwrite(TransProxy& item, TNonopaqueVersion& vers, value_type* vptr) {
+    static bool select_for_overwrite(TransProxy& item, TNonopaqueVersion& vers, const value_type* vptr) {
         (void)vers;
         item.add_write(vptr);
         return true;
@@ -461,7 +470,7 @@ private:
     static void copy_row(internal_elem *table_row, const value_type *value) {
         if (value == nullptr)
             return;
-        memcpy(&table_row->value, value, sizeof(value_type));
+        table_row->value = *value;
     }
 
     void lock(bucket_version_type& buck_vers) {
@@ -472,27 +481,259 @@ private:
     }
 };
 
-/*
 template <typename K, typename V,
           bool Opacity = false, bool Adaptive = false, bool ReadMyWrite = false>
 class ordered_index : public TObject {
 public:
     typedef K key_type;
     typedef V value_type;
-    typedef ::MassTrans<V, ::versioned_value_struct<V>, Opacity> mt_type;
+
+    typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type occ_version_type;
+    typedef typename std::conditional<Adaptive, TLockVersion, occ_version_type>::type version_type;
+
+    static constexpr typename version_type::type invalid_bit = TransactionTid::user_bit;
+    static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
+    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit << 1;
+    static constexpr uintptr_t internode_bit = 1;
+
+    static constexpr bool index_read_my_write = ReadMyWrite;
+
+    struct internal_elem {
+        version_type version;
+        key_type key;
+        value_type value;
+        bool deleted;
+
+        internal_elem(const key_type& k, const value_type& v, bool valid)
+            : version(valid ? Sto::initialized_tid() : Sto::initialized_tid() | invalid_bit),
+              key(k), value(v), deleted(false) {}
+
+        bool valid() const {
+            return !(version & invalid_bit);
+        }
+    };
+
+    struct table_params : public Masstree::nodeparams<15,15> {
+        typedef internal_elem* value_type;
+        typedef Masstree::value_print<value_type> value_print_type;
+        typedef threadinfo threadinfo_type;
+    };
+
+    typedef Masstree::Str Str;
+    typedef Masstree::basic_table<table_params> table_type;
+    typedef Masstree::unlocked_tcursor<table_params> unlocked_cursor_type;
+    typedef Masstree::tcursor<table_params> cursor_type;
+    typedef Masstree::leaf<table_params> leaf_type;
+
+    typedef typename table_type::node_type node_type;
+    typedef typename unlocked_cursor_type::nodeversion_value_type nodeversion_value_type;
 
     typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
     typedef std::tuple<bool, bool>                               ins_return_type;
     typedef std::tuple<bool, bool>                               del_return_type;
 
-    sel_return_type select_row();
-    void update_row();
-    ins_return_type insert_row();
-    del_return_type delete_row();
+    ordered_index() {
+        if (ti == nullptr)
+            ti = threadinfo::make(threadinfo::TI_MAIN, -1);
+        table_.initialize(*ti);
+    }
+
+    sel_return_type
+    select_row(const key_type& key, bool for_update = false) {
+        Str k = static_cast<Str>(key);
+        unlocked_cursor_type lp(table_, k);
+        bool found = lp.find_unlocked(*ti);
+        if (found) {
+            internal_elem *e = lp.value();
+            TransProxy item = Sto::item(this, e);
+
+            if (is_phantom(e, item))
+                goto abort;
+
+            if (index_read_my_write) {
+                if (has_delete(item)) {
+                    return sel_return_type(true, false, 0, nullptr);
+                }
+                if (item.has_write()) {
+                    value_type *vptr;
+                    if (has_insert(item))
+                        vptr = &e->value;
+                    else
+                        vptr = item.template write_value<value_type *>();
+                    return sel_return_type(true, true, reinterpret_cast<uintptr_t>(e), vptr);
+                }
+            }
+
+            if (for_update) {
+                if (!select_for_update(item, e->version))
+                    goto abort;
+            } else {
+                if (!item.observe(e->version))
+                    goto abort;
+            }
+
+            return sel_return_type(true, true, reinterpret_cast<uintptr_t>(e), &e->value);
+        } else {
+            if (!register_internode_version(lp.node(), lp.full_version_value()))
+                goto abort;
+            return sel_return_type(true, false, 0, nullptr);
+        }
+
+    abort:
+        return sel_return_type(false, false, 0, nullptr);
+    }
+
+    void update_row(uintptr_t rid, value_type *new_row) {
+        auto item = Sto::item(this, reinterpret_cast<internal_elem *>(rid));
+        assert(item.has_write() && !has_insert(item));
+        item.add_write(new_row);
+    }
+
+    // insert assumes common case where the row doesn't exist in the table
+    // if a row already exists, then use select (FOR UPDATE) instead
+    ins_return_type
+    insert_row(const key_type& key, const value_type *vptr, bool overwrite = false) {
+        cursor_type lp(table_, key);
+        bool found = lp.find_insert(*ti);
+        if (found) {
+            internal_elem *e = lp.value();
+            lp.finish(0, *ti);
+
+            TransProxy item = Sto::item(this, e);
+
+            if (is_phantom(e, item))
+                goto abort;
+
+            if (index_read_my_write) {
+                if (has_delete(item)) {
+                    item.clear_flags(delete_bit).clear_write().template add_write(vptr);
+                    return ins_return_type(true, false);
+                }
+            }
+
+            if (overwrite) {
+                if (!select_for_overwrite(item, e->version, vptr))
+                    goto abort;
+                if (index_read_my_write) {
+                    if (has_insert(item)) {
+                        copy_row(e, vptr);
+                    }
+                }
+            } else {
+                if (!item.observe(e->version))
+                    goto abort;
+            }
+
+        } else {
+            internal_elem *e = new internal_elem(key, vptr ? *vptr : value_type(),
+                                                 false /*valid*/);
+            lp.value() = e;
+
+            auto orig_node = lp.node();
+            auto orig_nv = lp.previous_full_version_value();
+            auto new_nv = lp.next_full_version_value(1);
+
+            lp.finish(1, *ti);
+            fence();
+
+            TransProxy item = Sto::item(this, e);
+            item.template add_write<value_type *>(vptr);
+            item.add_flags(insert_bit);
+
+            if (!update_nodeversion(orig_node, orig_nv, new_nv))
+                goto abort;
+        }
+
+        return ins_return_type(true, found);
+
+    abort:
+        return ins_return_type(false, false);
+    }
+
+    del_return_type
+    delete_row(const key_type& key);
+
+
+    static __thread typename table_params::threadinfo_type *ti;
 
 private:
-    mt_type mt_;
+    table_type table_;
+
+    static bool has_insert(const TransItem& item) {
+        return item.flags() & insert_bit;
+    }
+    static bool has_delete(const TransItem& item) {
+        return item.flags() & delete_bit;
+    }
+    static bool is_phantom(internal_elem *e, const TransItem& item) {
+        return (!e->valid() && !has_insert(item));
+    }
+
+    bool register_internode_version(node_type *node, nodeversion_value_type nodeversion) {
+        TransProxy item = Sto::item(this, get_internode_key(node));
+        if (Opacity)
+            return item.add_read_opaque(nodeversion);
+        else
+            return item.add_read(nodeversion);
+    }
+    bool update_internode_version(node_type *node,
+            nodeversion_value_type prev_nv, nodeversion_value_type new_nv) {
+        TransProxy item = Sto::item(this, get_internode_key(node));
+        if (item.has_read() &&
+                (prev_nv == item.template read_value<nodeversion_value_type>())) {
+            item.update_read(prev_nv, new_nv);
+            return true;
+        }
+        return false;
+    }
+
+    static uintptr_t get_internode_key(node_type* node) {
+        return reinterpret_cast<uintptr_t>(node) | internode_bit;
+    }
+
+    // new select_for_update methods (optionally) acquiring locks
+    static bool select_for_update(TransProxy& item, TLockVersion& vers) {
+        return item.acquire_write(vers);
+    }
+    static bool select_for_update(TransProxy& item, TVersion& vers) {
+        TVersion v = vers;
+        fence();
+        if (!item.observe(v))
+            return false;
+        item.add_write();
+        return true;
+    }
+    static bool select_for_update(TransProxy& item, TNonopaqueVersion& vers) {
+        TNonopaqueVersion v = vers;
+        fence();
+        if (!item.observe(v))
+            return false;
+        item.add_write();
+        return true;
+    }
+    static bool select_for_overwrite(TransProxy& item, TLockVersion& vers, const value_type *vptr) {
+        return item.acquire_write(vptr, vers);
+    }
+    static bool select_for_overwrite(TransProxy& item, TVersion& vers, const value_type* vptr) {
+        (void)vers;
+        item.add_write(vptr);
+        return true;
+    }
+    static bool select_for_overwrite(TransProxy& item, TNonopaqueVersion& vers, const value_type* vptr) {
+        (void)vers;
+        item.add_write(vptr);
+        return true;
+    }
+
+    static void copy_row(internal_elem *e, const value_type *new_row) {
+        if (new_row == nullptr)
+            return;
+        e->value = *new_row;
+    }
 };
-*/
+
+template <typename K, typename V, bool Opacity, bool Adaptive, bool ReadMyWrite>
+__thread typename ordered_index<K, V, Opacity, Adaptive, ReadMyWrite>::table_params::threadinfo_type
+*ordered_index<K, V, Opacity, Adaptive, ReadMyWrite>::ti;
 
 }; // namespace tpcc
