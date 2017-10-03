@@ -1071,28 +1071,29 @@ class TransactionLoopGuard {
 
 
 template <typename T>
-inline TransProxy& TransProxy::add_read(T rdata) {
+inline bool TransProxy::add_read(T rdata) {
     assert(!has_stash());
     if (!has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
         t()->any_nonopaque_ = true;
     }
-    return *this;
+    return true;
 }
 
 // like add_read but checks opacity too.
 // should be used by data structures that have non-TransactionTid
 // versions and still need to respect opacity.
 template <typename T>
-inline TransProxy& TransProxy::add_read_opaque(T rdata) {
+inline bool TransProxy::add_read_opaque(T rdata) {
     assert(!has_stash());
-    t()->check_opacity();
+    if (!t()->check_opacity())
+        return false;
     if (!has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
     }
-    return *this;
+    return true;
 }
 
 inline bool TransProxy::observe(TLockVersion& version, bool add_read) {

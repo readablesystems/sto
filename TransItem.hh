@@ -265,9 +265,9 @@ class TransProxy {
     }
 
     template <typename T>
-    inline TransProxy& add_read(T rdata);
+    inline bool add_read(T rdata);
     template <typename T>
-    inline TransProxy& add_read_opaque(T rdata);
+    inline bool add_read_opaque(T rdata);
 
     // new interface
     inline bool observe(TLockVersion& version, bool add_read) __attribute__ ((warn_unused_result));
