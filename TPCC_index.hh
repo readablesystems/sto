@@ -651,10 +651,149 @@ public:
     }
 
     del_return_type
-    delete_row(const key_type& key);
+    delete_row(const key_type& key) {
+        unlocked_cursor_type lp(table_, key);
+        bool found = lp.find_unlcoked(*ti);
+        if (found) {
+            internal_elem *e = lp.value();
+            TransProxy item = Sto::item(this, e);
 
+            if (is_phantom(e, item))
+                goto abort;
+
+            if (index_read_my_write) {
+                if (has_delete(item))
+                    return del_return_type(true, false);
+                if (!e->valid && has_insert(item)) {
+                    item.add_flags(delete_bit);
+                    return del_return_type(true, true);
+                }
+            }
+
+            // select_for_update will register an observation and set the write bit of
+            // the TItem
+            if (!select_for_update(item, e->version))
+                goto abort;
+            fence();
+            if (e->deleted)
+                goto abort;
+            item.add_flags(delete_bit);
+        } else {
+            if (!register_internode_version(lp.node(), lp.full_version_value()))
+                goto abort;
+        }
+
+        return del_return_type(true, found);
+
+    abort:
+        return del_return_type(false, false);
+    }
+
+    template <typename Callback, bool Reverse>
+    bool range_scan(const key_type& begin, const key_type& end, Callback callback) {
+        auto node_callback = [&] (leaf_type* node,
+            typename unlocked_cursor_type::nodeversion_value_type version) {
+            return register_internode_version(node, version);
+        };
+
+        auto value_callback = [&] (const key_type& key, internal_elem *e, bool& ret) {
+            TransProxy item = Sto::item(this, e);
+
+            if (index_read_my_write) {
+                if (has_delete(item)) {
+                    ret = true;
+                    return true;
+                }
+                if (item.has_write()) {
+                    if (has_insert(item))
+                        ret = callback(key, e->value);
+                    else
+                        ret = callback(key, *(item.template write_value<value_type *>()));
+                    return true;
+                }
+            }
+
+            if (!item.observe(e->version))
+                return false;
+
+            // skip invalid (inserted but yet committed) values, but no aborts
+            if (!e->valid()) {
+                ret = true;
+                return true;
+            }
+
+            ret = callback(key, e->value);
+            return true;
+        };
+
+        range_scanner<decltype(node_callback), decltype(value_callback), Reverse> scanner(end, node_callback, value_callback);
+        table_.scan(begin, true, scanner, *ti);
+        return scanner.scan_succeeded_;
+    }
 
     static __thread typename table_params::threadinfo_type *ti;
+
+protected:
+    template <typename NodeCallback, typename ValueCallback, bool Reverse>
+    class range_scanner {
+    public:
+        range_scanner(const Str upper, NodeCallback ncb, ValueCallback vcb) :
+            boundary_(upper), boundary_compar_(false), scan_succeeded_(true),
+            node_callback_(ncb), value_callback_(vcb) {}
+
+        template <typename ITER, typename KEY>
+        void check(const ITER& iter, const KEY& key) {
+            int min = std::min(boundary_.length(), key.prefix_length());
+            int cmp = memcmp(boundary_.data(), key.full_string().data(), min);
+            if (!Reverse) {
+                if (cmp < 0 || (cmp == 0 && boundary_.length() <= key.prefix_length()))
+                    boundary_compar_ = true;
+                else if (cmp == 0) {
+                    uint64_t last_ikey = iter.node()->ikey0_[iter.permutation()[iter.permutation().size() - 1]];
+                    uint64_t slice = string_slice<uint64_t>::make_comparable(boundary_.data() + key.prefix_length(),
+                        std::min(boundary_.length() - key.prefix_length(), 8));
+                    boundary_compar_ = (slice <= last_ikey);
+                }
+            } else {
+                if (cmp >= 0)
+                    boundary_compar_ = true;
+            }
+        }
+
+        template <typename ITER>
+        void visit_leaf(const ITER& iter, const Masstree::key<uint64_t>& key, threadinfo&) {
+            if (!node_callback_(iter.node(), iter.full_version_value())) {
+                scan_succeeded_ = false;
+            }
+            if (this->boundary_) {
+                check(iter, key);
+            }
+        }
+
+        bool visit_value(const Masstree::key<uint64_t>& key, internal_elem *e, threadinfo&) {
+            if (this->boundary_compar_) {
+                if ((Reverse && (boundary_ >= key.full_string())) ||
+                    (!Reverse && (boundary_ <= key.full_string())))
+                    return false;
+            }
+            bool visited;
+            if (!value_callback_(key.full_string(), e, visited)) {
+                scan_succeeded_ = false;
+                return false;
+            } else {
+                if (!visited)
+                    scan_succeeded_ = false;
+                return visited;
+            }
+        }
+
+        Str boundary_;
+        bool boundary_compar_;
+        bool scan_succeeded_;
+
+        NodeCallback node_callback_;
+        ValueCallback value_callback_;
+    };
 
 private:
     table_type table_;
