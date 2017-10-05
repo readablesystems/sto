@@ -762,6 +762,29 @@ public:
         return scanner.scan_succeeded_;
     }
 
+    value_type *nontrans_get(const key_type& k) {
+        unlocked_cursor_type lp(table_, k);
+        bool found = lp.find_unlocked(*ti);
+        if (found) {
+            internal_elem *e = lp.value();
+            return &e->value;
+        } else
+            return nullptr;
+    }
+
+    void nontrans_put(const key_type& k, const value_type& v) {
+        cursor_type lp(table_, k);
+        bool found = lp.find_insert(*ti);
+        if (found) {
+            internal_elem *e = lp.value();
+            copy_row(e, &v);
+        } else {
+            internal_elem *e = new internal_elem(k, v, true);
+            lp.value() = e;
+            lp.finish(1, *ti);
+        }
+    }
+
     static __thread typename table_params::threadinfo_type *ti;
 
 protected:
