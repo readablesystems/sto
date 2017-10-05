@@ -149,6 +149,32 @@ public:
     table_.print();
   }
 
+  template <typename ValueType>
+  bool nontransGet(Str key, ValueType& retval, threadinfo_type& ti = mythreadinfo) {
+    unlocked_cursor_type lp(table_, key);
+    bool found = lp.find_unlocked(*ti.ti);
+    if (found) {
+      versioned_value *e = lp.value();
+      retval = e->read_value();
+    }
+    return found;
+  }
+
+  template <typename ValueType>
+  bool nontransPut(const Str& key, const ValueType& value, threadinfo_type& ti = mythreadinfo) {
+    cursor_type lp(table_, key);
+    bool found = lp.find_insert(*ti.ti);
+    if (found) {
+      versioned_value *e = lp.value();
+      e->writeable_value() = value;
+    } else {
+      versioned_value *val = (versioned_value *)versioned_value::make(value, Sto::initialized_tid());
+      lp.value() = val;
+      lp.finish(1, *ti.ti);
+    }
+    return found;
+  }
+
   template <typename ValType>
   bool transGet(Str key, ValType& retval, threadinfo_type& ti = mythreadinfo) {
     unlocked_cursor_type lp(table_, key);
