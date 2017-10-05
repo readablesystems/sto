@@ -4,6 +4,34 @@
 
 namespace tpcc {
 
+struct c_data_info {
+    c_data_info (uint64_t c, uint64_t cd, uint64_t cw, uint64_t d, uint64_t w, int64_t hm)
+        : cid(c), cdid(cd), cwid(cw), did(d), wid(w), h_amount(hm) {}
+    const char *buf() const {
+        return reinterpret_cast<const char *>(&cid);
+    }
+
+    static constexpr size_t len = sizeof(uint64_t)*6;
+
+    uint64_t cid, cdid, cwid;
+    uint64_t did, wid;
+    int64_t h_amount;
+};
+
+struct cu_match_entry {
+    typedef tpcc_db::cu_table_type::internal_elem ie_type;
+
+    cu_match_entry(const var_string<16>& c_first, const ie_type *e)
+        : first_name(c_first.c_str()), value_elem(e) {}
+
+    bool operator<(const cu_match_entry& other) const {
+        return first_name < other.first_name;
+    }
+
+    std::string first_name;
+    const ie_type *value_elem;
+};
+
 void tpcc_runner::run_txn_neworder() {
     uint64_t q_w_id  = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
@@ -192,6 +220,17 @@ void tpcc_runner::run_txn_payment() {
     volatile var_string<20> out_d_street_1, out_d_street_2, out_d_city;
     volatile fix_string<2> out_w_state, out_d_state;
     volatile fix_string<9> out_w_zip, out_d_zip;
+    volatile var_string<16> out_c_first, out_c_last;
+    volatile fix_string<2> out_c_middle;
+    volatile var_string<20> out_c_street_1, out_c_street_2, out_c_city;
+    volatile fix_string<2> out_c_state;
+    volatile fix_string<9> out_c_zip;
+    volatile fix_string<16> out_c_phone;
+    volatile fix_string<2> out_c_credit;
+    volatile uint32_t out_c_since;
+    volatile int64_t out_c_credit_lim;
+    volatile int64_t out_c_discount;
+    volatile int64_t out_c_balance;
 
     // begin txn
     TRANSACTION {
@@ -242,24 +281,45 @@ void tpcc_runner::run_txn_payment() {
 
     // select and update customer
     if (by_name) {
-        // XXX scan not implemented yet!!
-        assert(false);
+        std::vector<cu_match_entry> match_set;
+        auto scan_callback = [&] (const lcdf::Str&, const tpcc_db::cu_table_type::internal_elem *e) {
+            match_set.emplace_back(e->value.c_first, e);
+            return true;
+        };
+
+        constexpr uint64_t max = std::numeric_limits<uint64_t>::max();
+        customer_key ck0(0, 0, 0);
+        customer_key ck1(max, max, max);
+
+        success = db.tbl_customers().range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback);
+        TXN_DO(success);
+
+        size_t n = match_set.size();
+        assert(n > 0);
+        std::sort(match_set.begin(), match_set.end());
+        row = reinterpret_cast<uintptr_t>(match_set[n/2].value_elem);
+        db.tbl_customers().select_row(row, true/*for update*/);
     } else {
         assert(q_c_id != 0);
         customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
-        std::tie(success, result, row, value) = db.tbl_customers().select_row(ck, true);
+        std::tie(success, result, row, value) = db.tbl_customers().select_row(ck, true/*for update*/);
         TXN_DO(success);
         assert(result);
-
-        const customer_value *cv = reinterpret_cast<const customer_value *>(value);
-        customer_value *new_cv = Sto::tx_alloc(cv);
-
-        new_cv->c_balance -= h_amount;
-        new_cv->c_ytd_payment += h_amount;
-        new_cv->c_payment_cnt += 1;
-
-        db.tbl_customers().update_row(row, new_cv);
     }
+
+    const customer_value *cv = reinterpret_cast<const customer_value *>(value);
+    customer_value *new_cv = Sto::tx_alloc(cv);
+
+    new_cv->c_balance -= h_amount;
+    new_cv->c_ytd_payment += h_amount;
+    new_cv->c_payment_cnt += 1;
+
+    if (new_cv->c_credit == "BC") {
+        auto info = c_data_info(q_c_id, q_c_d_id, q_c_w_id, q_d_id, q_w_id, h_amount);
+        new_cv->c_data.insert_left(info.buf(), info.len);
+    }
+
+    db.tbl_customers().update_row(row, new_cv);
 
     // insert to history table
     history_value *hv = Sto::tx_alloc<history_value>();
@@ -270,7 +330,7 @@ void tpcc_runner::run_txn_payment() {
     hv->h_w_id = q_w_id;
     hv->h_date = h_date;
     hv->h_amount = h_amount;
-    //hv->h_data =
+    hv->h_data = 
 
     db.tbl_histories().insert_unique(hv);
 
@@ -278,3 +338,13 @@ void tpcc_runner::run_txn_payment() {
 }
 
 }; // namespace tpcc
+
+namespace std {
+    template<>
+    struct less<tpcc::cu_match_entry> {
+        bool operator() (const tpcc::cu_match_entry& lhs,
+                         const tpcc::cu_match_entry& rhs) const {
+            return lhs < rhs;
+        }
+    };
+};

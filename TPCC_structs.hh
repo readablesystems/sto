@@ -65,6 +65,12 @@ public:
         memcpy(s_ + pos, str, in_len);
         return true;
     }
+    const char *c_str() const {
+        return s_;
+    }
+    char *c_str() {
+        return s_;
+    }
 
     friend std::hash<var_string>;
 
@@ -120,6 +126,11 @@ public:
     }
     explicit operator std::string() {
         return std::string(s_, FL);
+    }
+
+    void insert_left(const char *buf, size_t cnt) {
+        memmove(s_ + cnt, s_, FL - cnt);
+        memcpy(s_, buf, cnt);
     }
 
     friend std::hash<fix_string>;
@@ -259,7 +270,7 @@ struct customer_value {
     int64_t         c_ytd_payment;
     uint16_t        c_payment_cnt;
     uint16_t        c_delivery_cnt;
-    var_string<500> c_data;
+    fix_string<500> c_data;
 };
 
 // HISTORY

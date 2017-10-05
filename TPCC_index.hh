@@ -543,41 +543,50 @@ public:
         Str k = static_cast<Str>(key);
         unlocked_cursor_type lp(table_, k);
         bool found = lp.find_unlocked(*ti);
+        internal_elem *e = lp.value();
         if (found) {
-            internal_elem *e = lp.value();
-            TransProxy item = Sto::item(this, e);
-
-            if (is_phantom(e, item))
-                goto abort;
-
-            if (index_read_my_write) {
-                if (has_delete(item)) {
-                    return sel_return_type(true, false, 0, nullptr);
-                }
-                if (item.has_write()) {
-                    value_type *vptr;
-                    if (has_insert(item))
-                        vptr = &e->value;
-                    else
-                        vptr = item.template write_value<value_type *>();
-                    return sel_return_type(true, true, reinterpret_cast<uintptr_t>(e), vptr);
-                }
-            }
-
-            if (for_update) {
-                if (!select_for_update(item, e->version))
-                    goto abort;
-            } else {
-                if (!item.observe(e->version))
-                    goto abort;
-            }
-
-            return sel_return_type(true, true, reinterpret_cast<uintptr_t>(e), &e->value);
+            return select_row(e, for_update);
         } else {
             if (!register_internode_version(lp.node(), lp.full_version_value()))
                 goto abort;
             return sel_return_type(true, false, 0, nullptr);
         }
+
+    abort:
+        return sel_return_type(false, false, 0, nullptr);
+    }
+
+    sel_return_type
+    select_row(uintptr_t rid, bool for_update = false) {
+        internal_elem *e = reinterpret_cast<internal_elem *>(rid);
+        TransProxy item = Sto::item(this, e);
+
+        if (is_phantom(e, item))
+            goto abort;
+
+        if (index_read_my_write) {
+            if (has_delete(item)) {
+                return sel_return_type(true, false, 0, nullptr);
+            }
+            if (item.has_write()) {
+                value_type *vptr;
+                if (has_insert(item))
+                    vptr = &e->value;
+                else
+                    vptr = item.template write_value<value_type *>();
+                return sel_return_type(true, true, reinterpret_cast<uintptr_t>(e), vptr);
+            }
+        }
+
+        if (for_update) {
+            if (!select_for_update(item, e->version))
+                goto abort;
+        } else {
+            if (!item.observe(e->version))
+                goto abort;
+        }
+
+        return sel_return_type(true, true, reinterpret_cast<uintptr_t>(e), &e->value);
 
     abort:
         return sel_return_type(false, false, 0, nullptr);
@@ -713,10 +722,16 @@ public:
                 }
             }
 
-            if (!item.observe(e->version))
+            bool ok;
+            if (Adaptive) {
+                ok = item.observe(e->version, true/*force occ*/);
+            } else {
+                ok = item.observe(e->version);
+            }
+            if (!ok)
                 return false;
 
-            // skip invalid (inserted but yet committed) values, but no aborts
+            // skip invalid (inserted but yet committed) values, but do not abort
             if (!e->valid()) {
                 ret = true;
                 return true;

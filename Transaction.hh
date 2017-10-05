@@ -1096,13 +1096,23 @@ inline bool TransProxy::add_read_opaque(T rdata) {
     return true;
 }
 
-inline bool TransProxy::observe(TLockVersion& version, bool add_read) {
+inline bool TransProxy::observe(TLockVersion& version) {
+    return observe(version, true/*add read*/, false/*force occ*/);
+}
+
+inline bool TransProxy::observe(TLockVersion& version, bool force_occ) {
+    return observe(version, true, force_occ);
+}
+
+inline bool TransProxy::observe(TLockVersion& version, bool add_read, bool force_occ) {
     assert(!has_stash());
 
     TLockVersion occ_version;
-    bool optimistic = version.is_optimistic();
+    bool optimistic = force_occ || version.is_optimistic();
 
     optimistic = item().cc_mode_is_optimistic(optimistic);
+    if (force_occ)
+        assert(optimistic);
 
     if (optimistic) {
         acquire_fence();

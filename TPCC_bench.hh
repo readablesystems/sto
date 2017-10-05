@@ -87,7 +87,7 @@ class tpcc_db {
 public:
     typedef unordered_index<warehouse_key, warehouse_value> wh_table_type;
     typedef unordered_index<district_key, district_value>   dt_table_type;
-    typedef unordered_index<customer_key, customer_value>   cu_table_type;
+    typedef ordered_index<customer_key, customer_value>     cu_table_type;
     typedef unordered_index<order_key, order_value>         od_table_type;
     typedef unordered_index<orderline_key, orderline_value> ol_table_type;
     typedef unordered_index<order_key, int>                 no_table_type;
