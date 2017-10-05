@@ -150,7 +150,6 @@ void tpcc_prepopulator::expand_districts(uint64_t wid) {
 void tpcc_prepopulator::expand_customers(uint64_t wid) {
     for (uint64_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
         for (uint64_t cid = 1; cid <= NUM_CUSTOMERS_PER_DISTRICT; ++cid) {
-            history_key hk(wid + did + cid);
             history_value hv;
 
             hv.h_c_id = cid;
@@ -160,6 +159,7 @@ void tpcc_prepopulator::expand_customers(uint64_t wid) {
             hv.h_amount = 1000;
             hv.h_data = random_a_string(12, 24);
 
+            history_key hk(db.tbl_histories().gen_key());
             db.tbl_histories().nontrans_put(hk, hv);
         }
     }

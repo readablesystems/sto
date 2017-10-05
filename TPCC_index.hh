@@ -74,6 +74,8 @@ private:
     Hash hasher_;
     Pred pred_;
 
+    uint64_t key_gen_;
+
     // used to mark whether a key is a bucket (for bucket version checks)
     // or a pointer (which will always have the lower 3 bits as 0)
     static constexpr uintptr_t bucket_bit = 1U<<0;
@@ -87,7 +89,7 @@ public:
     typedef std::tuple<bool, bool>                               del_return_type;
 
     unordered_index(size_t size, Hash h = Hash(), Pred p = Pred()) :
-            map_(), hasher_(h), pred_(p) {
+            map_(), hasher_(h), pred_(p), key_gen_(0) {
         map_.resize(size);
     }
 
@@ -99,6 +101,10 @@ public:
     }
     inline size_t find_bucket_idx(const key_type& k) const {
         return hash(k) % nbuckets();
+    }
+
+    uint64_t gen_key() {
+        return fetch_and_add(&key_gen_);
     }
 
     // returns (success : bool, found : bool, row_ptr : const internal_elem *)
@@ -536,6 +542,11 @@ public:
         if (ti == nullptr)
             ti = threadinfo::make(threadinfo::TI_MAIN, -1);
         table_.initialize(*ti);
+        key_gen_ = 0;
+    }
+
+    uint64_t gen_key() {
+        return fetch_and_add(&key_gen_);
     }
 
     sel_return_type
@@ -812,6 +823,7 @@ protected:
 
 private:
     table_type table_;
+    uint64_t key_gen_;
 
     static bool has_insert(const TransItem& item) {
         return item.flags() & insert_bit;

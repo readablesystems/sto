@@ -330,9 +330,10 @@ void tpcc_runner::run_txn_payment() {
     hv->h_w_id = q_w_id;
     hv->h_date = h_date;
     hv->h_amount = h_amount;
-    hv->h_data = 
+    hv->h_data = "garbage";
 
-    db.tbl_histories().insert_unique(hv);
+    history_key hk(db.tbl_histories().gen_key());
+    db.tbl_histories().insert_row(hk, hv);
 
     } RETRY(true);
 }

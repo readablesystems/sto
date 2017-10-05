@@ -276,9 +276,7 @@ struct customer_value {
 // HISTORY
 
 struct history_key {
-    history_key(uint64_t hid) {
-        h_id = bswap(hid);
-    }
+    history_key(uint64_t id) : h_id(bswap(id)) {}
     bool operator==(const history_key& other) const {
         return h_id == other.h_id;
     }
