@@ -538,6 +538,11 @@ public:
     typedef std::tuple<bool, bool>                               ins_return_type;
     typedef std::tuple<bool, bool>                               del_return_type;
 
+    ordered_index(size_t init_size) {
+        ordered_index();
+        (void)init_size;
+    }
+
     ordered_index() {
         if (ti == nullptr)
             ti = threadinfo::make(threadinfo::TI_MAIN, -1);
@@ -748,7 +753,7 @@ public:
                 return true;
             }
 
-            ret = callback(key, e->value);
+            ret = callback(key, reinterpret_cast<uintptr_t>(e), e->value);
             return true;
         };
 

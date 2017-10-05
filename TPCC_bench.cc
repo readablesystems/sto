@@ -306,7 +306,19 @@ void tpcc_runner_thread(tpcc_db& db, int runner_id, uint64_t w_start, uint64_t w
     tpcc_runner runner(runner_id, db, w_start, w_end);
 
     for (uint64_t i = 0; i < num_txns; ++i) {
-        runner.run_txn_neworder();
+        tpcc_runner::txn_type t = runner.next_transaction();
+        switch(t) {
+        case tpcc_runner::txn_type::new_order:
+            runner.run_txn_neworder();
+            break;
+        case tpcc_runner::txn_type::payment:
+            runner.run_txn_payment();
+            break;
+        default:
+            fprintf(stderr, "r:%d unknown txn type\n", runner_id);
+            assert(false);
+            break;
+        };
     }
 }
 
@@ -339,13 +351,20 @@ int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
+    bool spawn_perf = false;
     int num_warehouses = 12;
     int num_threads = 12;
     uint64_t num_txns = 1000000ul;
+
+    tpcc_profiler prof(spawn_perf);
 
     tpcc_db db(num_warehouses);
 
     prepopulate_db(db, num_warehouses);
 
+    prof.start();
     run_benchmark(db, num_threads, num_txns);
+    prof.finish();
+
+    return 0;
 }

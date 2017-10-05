@@ -282,8 +282,9 @@ void tpcc_runner::run_txn_payment() {
     // select and update customer
     if (by_name) {
         std::vector<cu_match_entry> match_set;
-        auto scan_callback = [&] (const lcdf::Str&, const tpcc_db::cu_table_type::internal_elem *e) {
-            match_set.emplace_back(e->value.c_first, e);
+        auto scan_callback = [&] (const lcdf::Str&, const tpcc_db::cu_table_type::internal_elem *e, const customer_value& cv) {
+            if (cv.c_last == last_name)
+                match_set.emplace_back(cv.c_first, e);
             return true;
         };
 
@@ -314,6 +315,11 @@ void tpcc_runner::run_txn_payment() {
     new_cv->c_ytd_payment += h_amount;
     new_cv->c_payment_cnt += 1;
 
+    out_c_since = new_cv->c_since;
+    out_c_credit_lim = new_cv->c_credit_lim;
+    out_c_discount = new_cv->c_discount;
+    out_c_balance = new_cv->c_balance;
+
     if (new_cv->c_credit == "BC") {
         auto info = c_data_info(q_c_id, q_c_d_id, q_c_w_id, q_d_id, q_w_id, h_amount);
         new_cv->c_data.insert_left(info.buf(), info.len);
@@ -330,7 +336,7 @@ void tpcc_runner::run_txn_payment() {
     hv->h_w_id = q_w_id;
     hv->h_date = h_date;
     hv->h_amount = h_amount;
-    hv->h_data = "garbage";
+    hv->h_data = std::string(out_w_name.c_str()) + "    " + std::string(out_d_name.c_str());
 
     history_key hk(db.tbl_histories().gen_key());
     db.tbl_histories().insert_row(hk, hv);

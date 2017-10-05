@@ -18,6 +18,8 @@ namespace tpcc {
 template <size_t ML>
 class var_string {
 public:
+    static constexpr size_t max_length = ML;
+
     var_string() {
         bzero(s_, ML);
     }
@@ -69,6 +71,12 @@ public:
         return s_;
     }
     char *c_str() {
+        return s_;
+    }
+    const char *c_str() const volatile {
+        return s_;
+    }
+    char *c_str() volatile {
         return s_;
     }
 

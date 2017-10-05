@@ -5,6 +5,8 @@
 
 #include <pthread.h> // pthread_barrier_t
 
+#include "compiler.hh"
+#include "SystemProfiler.hh"
 #include "TPCC_structs.hh"
 #include "TPCC_index.hh"
 
@@ -15,6 +17,12 @@
 #define C_GEN_ITEM_ID               7911
 
 namespace tpcc {
+
+class constants {
+public:
+    static constexpr double million = 1000000.0;
+    static constexpr double processor_tsc_frequency = 2.2; // in GHz
+};
 
 class tpcc_input_generator {
 public:
@@ -146,9 +154,19 @@ private:
 
 class tpcc_runner {
 public:
+    enum class txn_type : int {new_order = 1, payment, order_status, delivery, stock_level};
+
     tpcc_runner(int id, tpcc_db& database, uint64_t w_start, uint64_t w_end)
         : ig(id, database.num_warehouses()), db(database),
           w_id_start(w_start), w_id_end(w_end) {}
+
+    inline txn_type next_transaction() {
+        uint64_t x = ig.random(1, 100);
+        if (x <= 50)
+            return txn_type::new_order;
+        else
+            return txn_type::payment;
+    }
 
     inline void run_txn_neworder();
     inline void run_txn_payment();
@@ -186,6 +204,41 @@ private:
     tpcc_input_generator ig;
     tpcc_db& db;
     int worker_id;
+};
+
+class tpcc_profiler {
+public:
+    tpcc_profiler(bool spawn_perf)
+        : spawn_perf_(spawn_perf), perf_pid_(),
+          start_tsc_(), end_tsc_() {}
+
+    void start() {
+        if (spawn_perf_)
+            perf_pid_ = Profiler::spawn("tpcc_perf");
+        start_tsc_ = read_tsc();
+    }
+
+    void finish() {
+        end_tsc_ = read_tsc();
+        if (spawn_perf_) {
+            bool ok = Profiler::stop(perf_pid_);
+            always_assert(ok);
+        }
+        // print elapsed time
+        uint64_t elapsed_tsc = end_tsc_ - start_tsc_;
+        std::cout << "Elapsed time: " << elapsed_tsc << " ticks" << std::endl;
+        std::cout << "Real time: " << (double)elapsed_tsc / constants::million / constants::processor_tsc_frequency
+            << " ms" << std::endl;
+
+        // print STO stats
+        Transaction::print_stats();
+    }
+
+private:
+    bool spawn_perf_;
+    pid_t perf_pid_;
+    uint64_t start_tsc_;
+    uint64_t end_tsc_;
 };
 
 };
