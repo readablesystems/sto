@@ -335,7 +335,10 @@ public:
     // non-transactional methods
     value_type* nontrans_get(const key_type& k) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
-        return find_in_bucket(k);
+        internal_elem *el = find_in_bucket(buck, k);
+        if (el == nullptr)
+            return nullptr;
+        return &el->value;
     }
     void nontrans_put(const key_type& k, const value_type& v) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
@@ -343,8 +346,7 @@ public:
         internal_elem *el = find_in_bucket(buck, k);
         if (el == nullptr) {
             internal_elem *new_head = new internal_elem(k, v, true);
-            internal_elem *curr_head = buck.head;
-            new_head->next = curr_head;
+            new_head->next = buck.head;
             buck.head = new_head;
         } else {
             copy_row(el, &v);
@@ -530,11 +532,14 @@ public:
     static __thread typename table_params::threadinfo_type *ti;
 
     ordered_index(size_t init_size) {
-        ordered_index();
+        this->table_init();
         (void)init_size;
     }
-
     ordered_index() {
+        this->table_init();
+    }
+
+    void table_init() {
         if (ti == nullptr)
             ti = threadinfo::make(threadinfo::TI_MAIN, -1);
         table_.initialize(*ti);
@@ -754,7 +759,7 @@ public:
                 return true;
             }
 
-            ret = callback(key, reinterpret_cast<uintptr_t>(e), e->value);
+            ret = callback(key_type(key), reinterpret_cast<uintptr_t>(e), e->value);
             return true;
         };
 

@@ -127,8 +127,8 @@ void tpcc_prepopulator<DBParams>::expand_districts(uint64_t wid) {
             customer_key ck(wid, did, cid);
             customer_value cv;
 
-            int last_name_num = (cid <= 1000) ? ig.random(0, 999)
-                : ig.gen_customer_last_name_num();
+            int last_name_num = (cid <= 1000) ? (cid - 1)
+                : ig.gen_customer_last_name_num(false/*run time*/);
             cv.c_last = ig.to_last_name(last_name_num);
             cv.c_middle = "OE";
             cv.c_first = random_a_string(8, 16);
@@ -215,8 +215,7 @@ void tpcc_prepopulator<DBParams>::expand_customers(uint64_t wid) {
 template <typename DBParams>
 void tpcc_prepopulator<DBParams>::run() {
     int r;
-    uint64_t worker_wid = worker_id + 1;
-    if (worker_id == 0) {
+    if (worker_id == 1) {
         fill_items(1, 100001);
         fill_warehouses();
     }
@@ -225,19 +224,19 @@ void tpcc_prepopulator<DBParams>::run() {
     r = pthread_barrier_wait(&sync_barrier);
     always_assert(r == PTHREAD_BARRIER_SERIAL_THREAD || r == 0);
 
-    expand_warehouse(worker_wid);
+    expand_warehouse(worker_id);
 
     // barrier
     r = pthread_barrier_wait(&sync_barrier);
     always_assert(r == PTHREAD_BARRIER_SERIAL_THREAD || r == 0);
 
-    expand_districts(worker_wid);
+    expand_districts(worker_id);
 
     // barrier
     r = pthread_barrier_wait(&sync_barrier);
     always_assert(r == PTHREAD_BARRIER_SERIAL_THREAD || r == 0);
 
-    expand_customers(worker_wid);
+    expand_customers(worker_id);
 }
 
 // @section: prepopulation string generators
@@ -305,13 +304,13 @@ void prepopulation_worker(tpcc_db<DBParams>& db, int worker_id) {
 }
 
 template <typename DBParams>
-void prepopulate_db(tpcc_db<DBParams>& db, int num_workers) {
+void prepopulate_db(tpcc_db<DBParams>& db) {
     int r;
-    r = pthread_barrier_init(&tpcc_prepopulator<DBParams>::sync_barrier, nullptr, num_workers);
+    r = pthread_barrier_init(&tpcc_prepopulator<DBParams>::sync_barrier, nullptr, db.num_warehouses());
     assert(r == 0);
 
     std::vector<std::thread> prepop_thrs;
-    for (int i = 0; i < num_workers; ++i)
+    for (int i = 1; i <= db.num_warehouses(); ++i)
         prepop_thrs.emplace_back(prepopulation_worker<DBParams>, std::ref(db), i);
     for (auto& t : prepop_thrs)
         t.join();
@@ -348,8 +347,10 @@ void tpcc_runner_thread(tpcc_db<DBParams>& db, int runner_id, uint64_t w_start, 
 template <typename DBParams>
 void run_benchmark(tpcc_db<DBParams>& db, int num_runners, uint64_t num_txns) {
     int q = db.num_warehouses() / num_runners;
-    int r = db.num_warehouses() / num_runners;
+    int r = db.num_warehouses() % num_runners;
     uint64_t ntxns_thr = num_txns / num_runners;
+
+    fprintf(stdout, "q=%d,r=%d\n", q, r);
 
     std::vector<std::thread> runner_thrs;
 
@@ -361,11 +362,12 @@ void run_benchmark(tpcc_db<DBParams>& db, int num_runners, uint64_t num_txns) {
             ++next_xend;
             --r;
         }
+        fprintf(stdout, "runner %d: [%d, %d]\n", i, last_xend, next_xend - 1);
         runner_thrs.emplace_back(tpcc_runner_thread<DBParams>, std::ref(db), i, last_xend, next_xend - 1, ntxns_thr);
         last_xend = next_xend;
     }
 
-    assert(last_xend == db.num_warehouses() + 1);
+    always_assert(last_xend == db.num_warehouses() + 1);
 
     for (auto& t : runner_thrs)
         t.join();
@@ -376,16 +378,16 @@ int execute(int argc, char **argv) {
     (void)argc;
     (void)argv;
     // XXX get the following options from getopt
-    bool spawn_perf = false;
-    int num_warehouses = 12;
-    int num_threads = 12;
+    bool spawn_perf = true;
+    int num_warehouses = 1;
+    int num_threads = 1;
     uint64_t num_txns = 1000000ul;
 
     tpcc_profiler prof(spawn_perf);
     tpcc_db<DBParams> db(num_warehouses);
 
     std::cout << "Prepopulating database..." << std::endl;
-    prepopulate_db(db, num_warehouses);
+    prepopulate_db(db);
     std::cout << "Prepopulation complete." << std::endl;
 
     prof.start();

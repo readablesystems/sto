@@ -19,24 +19,28 @@ struct c_data_info {
 };
 
 struct cu_match_entry {
-    cu_match_entry(const var_string<16>& c_first, uintptr_t rid)
-        : first_name(c_first.c_str()), row(rid) {}
+    cu_match_entry(const var_string<16>& c_first, uint64_t cid, uintptr_t rid, const customer_value *ptr)
+        : first_name(c_first.c_str()), c_id(cid), row(rid), value_ptr(ptr) {}
 
     bool operator<(const cu_match_entry& other) const {
         return first_name < other.first_name;
     }
 
     std::string first_name;
+    uint64_t c_id;
     uintptr_t row;
+    const customer_value *value_ptr;
 };
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_neworder() {
+    fprintf(stdout, "NEWORDER\n");
+
     uint64_t q_w_id  = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
     uint64_t q_c_id = ig.gen_customer_id();
     uint64_t num_items = ig.random(5, 15);
-    uint64_t rbk = ig.random(1, 100);
+    //uint64_t rbk = ig.random(1, 100); //XXX no rollbacks
 
     uint64_t ol_i_ids[15];
     uint64_t ol_supply_w_ids[15];
@@ -48,12 +52,13 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     for (uint64_t i = 0; i < num_items; ++i) {
         uint64_t ol_i_id = ig.gen_item_id();
-        if ((i == (num_items - 1)) && rbk == 1)
-            ol_i_ids[i] = 0;
-        else
-            ol_i_ids[i] = ol_i_id;
+        //XXX no rollbacks
+        //if ((i == (num_items - 1)) && rbk == 1)
+        //    ol_i_ids[i] = 0;
+        //else
+        ol_i_ids[i] = ol_i_id;
 
-        bool supply_from_remote = (ig.random(1, 100) == 1);
+        bool supply_from_remote = (ig.num_warehouses() > 1) && (ig.random(1, 100) == 1);
         uint64_t ol_s_w_id = q_w_id;
         if (supply_from_remote) {
             do {
@@ -183,6 +188,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_payment() {
+    fprintf(stdout, "PAYMENT\n");
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
 
@@ -191,7 +197,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     auto x = ig.random(1, 100);
     auto y = ig.random(1, 100);
 
-    bool is_home = (x <= 85);
+    bool is_home = (ig.num_warehouses() == 1) || (x <= 85);
     bool by_name = (y <= 60);
 
     if (is_home) {
@@ -205,7 +211,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     }
 
     if (by_name) {
-        last_name = ig.gen_customer_last_name();
+        last_name = ig.gen_customer_last_name_run();
         q_c_id = 0;
     } else {
         q_c_id = ig.gen_customer_id();
@@ -286,15 +292,15 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     // select and update customer
     if (by_name) {
         std::vector<cu_match_entry> match_set;
-        auto scan_callback = [&] (const lcdf::Str&, uintptr_t row, const customer_value& cv) {
+        auto scan_callback = [&] (const customer_key& key, uintptr_t row, const customer_value& cv) {
             if (cv.c_last == last_name)
-                match_set.emplace_back(cv.c_first, row);
+                match_set.emplace_back(cv.c_first, key.get_c_id(), row, &cv);
             return true;
         };
 
         constexpr uint64_t max = std::numeric_limits<uint64_t>::max();
-        customer_key ck0(0, 0, 0);
-        customer_key ck1(max, max, max);
+        customer_key ck0(q_c_w_id, q_c_d_id, 0);
+        customer_key ck1(q_c_w_id, q_c_d_id, max);
 
         success = db.tbl_customers().template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback);
         TXN_DO(success);
@@ -302,7 +308,10 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         size_t n = match_set.size();
         assert(n > 0);
         std::sort(match_set.begin(), match_set.end());
-        row = match_set[n/2].row;
+        auto& match = match_set[n/2];
+        row = match.row;
+        value = const_cast<customer_value *>(match.value_ptr);
+        q_c_id = match.c_id;
         db.tbl_customers().select_row(row, true/*for update*/);
     } else {
         assert(q_c_id != 0);

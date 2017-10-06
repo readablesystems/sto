@@ -12,11 +12,11 @@ class TransItem;
 class TransProxy;
 
 struct PercentGen {
-    std::random_device rd;
+    //std::random_device rd;
     std::mt19937 gen;
     std::uniform_int_distribution<int> dist;
 
-    PercentGen() : rd(), gen(rd()), dist(0,99) {}
+    PercentGen() : gen(0), dist(0,99) {}
     ~PercentGen() {}
 
     int sample() {

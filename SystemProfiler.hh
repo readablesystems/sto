@@ -22,7 +22,7 @@ pid_t spawn(const std::string& name) {
 
     pid_t pid = fork();
     if (pid == 0) {
-        int console = open("dev/null", O_RDWR);
+        int console = open("/dev/null", O_RDWR);
         always_assert(console > 0);
         always_assert(dup2(console, STDOUT_FILENO) != -1);
         always_assert(dup2(console, STDERR_FILENO) != -1);

@@ -36,6 +36,9 @@ public:
     bool operator==(const char *c_str) const {
         return !strncmp(s_, c_str, ML);
     }
+    bool operator==(const std::string& str) const {
+        return !strncmp(s_, str.c_str(), ML);
+    }
     bool operator==(const var_string& rhs) const {
         return !strncmp(s_, rhs.s_, ML);
     }
@@ -245,6 +248,11 @@ struct customer_key {
         c_d_id = bswap(did);
         c_id = bswap(cid);
     }
+    customer_key(const lcdf::Str& mt_key) {
+        assert(mt_key.length() == sizeof(*this));
+        memcpy(this, mt_key.data(), sizeof(*this));
+    }
+
     bool operator==(const customer_key& other) const {
         return (c_w_id == other.c_w_id) && (c_d_id == other.c_d_id) && (c_id == other.c_id);
     }
@@ -253,6 +261,10 @@ struct customer_key {
     }
     operator lcdf::Str() const {
         return lcdf::Str((const char *)this, sizeof(*this));
+    }
+
+    uint64_t get_c_id() const {
+        return bswap(c_id);
     }
 
     uint64_t c_w_id;

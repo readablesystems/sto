@@ -42,4 +42,5 @@
 /unit-tvector
 /unit-tvector-nopred
 /unit-mbta
+/tpcc_bench
 .ycm_*

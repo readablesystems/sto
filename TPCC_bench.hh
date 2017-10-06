@@ -90,8 +90,8 @@ class tpcc_input_generator {
 public:
     static const char * last_names[];
 
-    tpcc_input_generator(int id, int num_whs) : rd(), gen(id), num_whs_(num_whs) {}
-    tpcc_input_generator(int num_whs) : rd(), gen(rd()), num_whs_(num_whs) {}
+    tpcc_input_generator(int id, int num_whs) : gen(id), num_whs_(num_whs) {}
+    tpcc_input_generator(int num_whs) : gen(0), num_whs_(num_whs) {}
 
     uint64_t nurand(uint64_t a, uint64_t c, uint64_t x, uint64_t y) {
         uint64_t r1 = (random(0, a) | random(x, y)) + c;
@@ -112,8 +112,8 @@ public:
         return nurand(A_GEN_CUSTOMER_ID, C_GEN_CUSTOMER_ID, 1, NUM_CUSTOMERS_PER_DISTRICT);
     }
 
-    int gen_customer_last_name_num() {
-        return nurand(255, 0, 999, 7911/* XXX 4.3.2.3 magic C number */);
+    int gen_customer_last_name_num(bool run) {
+        return nurand(255, run ? 223 : 157/* XXX 4.3.2.3 magic C number */, 0, 999);
     }
 
     std::string to_last_name(int gen_n) {
@@ -133,8 +133,8 @@ public:
         return str;
     }
 
-    std::string gen_customer_last_name() {
-        return to_last_name(gen_customer_last_name_num());
+    std::string gen_customer_last_name_run() {
+        return to_last_name(gen_customer_last_name_num(true));
     }
 
     uint64_t gen_item_id() {
@@ -148,7 +148,6 @@ public:
     }
 
 private:
-    std::random_device rd;
     std::mt19937 gen;
     uint64_t num_whs_;
 };
