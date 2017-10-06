@@ -231,6 +231,10 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     volatile int64_t out_c_credit_lim;
     volatile int64_t out_c_discount;
     volatile int64_t out_c_balance;
+    (void)out_c_since;
+    (void)out_c_credit_lim;
+    (void)out_c_discount;
+    (void)out_c_balance;
 
     // begin txn
     TRANSACTION {
@@ -341,6 +345,9 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     history_key hk(db.tbl_histories().gen_key());
     db.tbl_histories().insert_row(hk, hv);
 
+    (void)__txn_committed;
+    // commit txn
+    // retry until commits
     } RETRY(true);
 }
 

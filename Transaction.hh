@@ -682,6 +682,10 @@ public:
 #endif
     }
 
+    bool try_lock(TransItem& item, TLockVersion& vers) {
+        return try_lock_write(item, vers);
+    }
+
     auto try_lock_write(TransItem& item, TLockVersion& vers) -> bool
     {
         (void)item;

@@ -320,7 +320,7 @@ public:
     void unlock(TransItem& item) override {
         assert(!is_bucket(item));
         internal_elem *el = item.key<internal_elem *>();
-        el->version.unlock();
+        Transaction::unlock(item, el->version);
     }
 
     void cleanup(TransItem& item, bool committed) override {
@@ -823,7 +823,7 @@ public:
     void unlock(TransItem& item) override {
         assert(!is_internode(item));
         internal_elem *el = item.key<internal_elem *>();
-        el->version.unlock();
+        Transaction::unlock(item, el->version);
     }
 
     void cleanup(TransItem& item, bool committed) override {
