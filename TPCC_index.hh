@@ -104,7 +104,7 @@ public:
     }
 
     uint64_t gen_key() {
-        return fetch_and_add(&key_gen_);
+        return fetch_and_add(&key_gen_, 1);
     }
 
     // returns (success : bool, found : bool, row_ptr : const internal_elem *)
@@ -290,11 +290,10 @@ public:
     bool check(TransItem& item, Transaction&) override {
         if (is_bucket(item)) {
             bucket_entry &buck = *bucket_address(item);
-            return buck.version.check_version(item.read_value<bucket_version_type>());
+            return item.check_version(buck.version);
         } else {
             internal_elem *el = item.key<internal_elem *>();
-            version_type rv = item.read_value<version_type>();
-            return el->version.check_version(rv);
+            return item.check_version(el->version);
         }
     }
 
@@ -304,28 +303,24 @@ public:
         if (has_delete(item)) {
             el->deleted = true;
             fence();
-            el->version.set_version_locked(el->version.value() + TransactionTid::increment_value);
+            txn.set_version(el->version);
             return;
         }
         if (!has_insert(item)) {
             // update
             copy_row(el, item.write_value<const value_type *>());
         }
-        el->version.set_version(txn.commit_tid());
 
-        if (Opacity && has_insert(item)) {
-            bucket_entry& buck = map_[find_bucket_idx(el->key)];
-            lock(buck.version);
-            if (buck.version.value() & TransactionTid::nonopaque_bit)
-                buck.version.set_version(txn.commit_tid());
-            unlock(buck.version);
-        }
+        // hacks for upgrading version numbers from nonopaque to commit_tid
+        // (if transaction running in opaque mode) no longer required
+        // it's being done by Transaction::set_version_unlock
+        txn.set_version_unlock(el->version);
     }
 
     void unlock(TransItem& item) override {
         assert(!is_bucket(item));
         internal_elem *el = item.key<internal_elem *>();
-        unlock(el->version);
+        el->version.unlock();
     }
 
     void cleanup(TransItem& item, bool committed) override {
@@ -344,7 +339,7 @@ public:
     }
     void nontrans_put(const key_type& k, const value_type& v) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
-        lock(buck.version);
+        buck.version.lock();
         internal_elem *el = find_in_bucket(buck, k);
         if (el == nullptr) {
             internal_elem *new_head = new internal_elem(k, v, true);
@@ -354,14 +349,14 @@ public:
         } else {
             copy_row(el, &v);
         }
-        unlock(buck.version);
+        buck.version.unlock();
     }
 
 private:
     // remove a k-v node during transactions (with locks)
     void _remove(internal_elem *el) {
         bucket_entry& buck = map_[find_bucket_idx(el->key)];
-        lock(buck.version);
+        buck.version.lock();
         internal_elem *prev = nullptr;
         internal_elem *curr = buck.head;
         while (curr != nullptr && curr != el) {
@@ -373,13 +368,13 @@ private:
             prev->next = curr->next;
         else
             buck.head = curr->next;
-        unlock(buck.version);
+        buck.version.unlock();
         Transaction::rcu_delete(curr);
     }
     // non-transactional remove by key
     bool remove(const key_type& k) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
-        lock(buck.version);
+        buck.version.lock();
         internal_elem *prev = nullptr;
         internal_elem *curr = buck.head;
         while (curr != nullptr && !pred(curr->key, k)) {
@@ -387,14 +382,15 @@ private:
             curr = curr->next;
         }
         if (curr == nullptr) {
-            unlock(buck.version);
+            buck.version.unlock();
             return false;
         }
         if (prev != nullptr)
             prev->next = curr->next;
         else
             buck.head = curr->next;
-        unlock(buck.version);
+        buck.version.unlock();
+        delete curr;
         return true;
     }
     // insert a k-v node to a bucket
@@ -478,13 +474,6 @@ private:
             return;
         table_row->value = *value;
     }
-
-    void lock(bucket_version_type& buck_vers) {
-        buck_vers.lock();
-    }
-    void unlock(bucket_version_type& buck_vers) {
-        buck_vers.unlock();
-    }
 };
 
 template <typename K, typename V,
@@ -538,6 +527,8 @@ public:
     typedef std::tuple<bool, bool>                               ins_return_type;
     typedef std::tuple<bool, bool>                               del_return_type;
 
+    static __thread typename table_params::threadinfo_type *ti;
+
     ordered_index(size_t init_size) {
         ordered_index();
         (void)init_size;
@@ -551,7 +542,7 @@ public:
     }
 
     uint64_t gen_key() {
-        return fetch_and_add(&key_gen_);
+        return fetch_and_add(&key_gen_, 1);
     }
 
     sel_return_type
@@ -785,7 +776,73 @@ public:
         }
     }
 
-    static __thread typename table_params::threadinfo_type *ti;
+    // TObject interface methods
+    bool lock(TransItem& item, Transaction &txn) override {
+        assert(!is_internode(item));
+        internal_elem *e = item.key<internal_elem *>();
+        return txn.try_lock(item, e->version);
+    }
+
+    bool check(TransItem& item, Transaction&) override {
+        if (is_internode(item)) {
+            node_type *n = get_internode_address(item);
+            auto curr_nv = n->full_version_value();
+            auto read_nv = item.template read_value<decltype(curr_nv)>();
+            return (curr_nv == read_nv);
+        }
+
+        internal_elem *el = item.key<internal_elem *>();
+        if (el->deleted)
+            return false;
+        auto rv = item.template read_value<version_type>();
+        if ((rv & invalid_bit)) {
+            if (el->valid())
+                return false;
+            else
+                return true;
+        }
+        return el->version.check_version(rv);
+    }
+
+    void install(TransItem& item, Transaction& txn) override {
+        assert(!is_internode(item));
+        internal_elem *el = item.key<internal_elem *>();
+        assert(el->version.is_locked());
+
+        if (has_delete(item)) {
+            if (!has_insert(item)) {
+                assert(el->valid() && !el->deleted);
+                txn.set_version(el->version);
+                el->deleted = true;
+                fence();
+            }
+            return;
+        }
+
+        if (!has_insert(item)) {
+            auto vptr = item.template write_value<value_type *>();
+            copy_row(el, vptr);
+        }
+
+        // like in the hashtable (unordered_index), no need for the hacks
+        // treating opacity as a special case
+        txn.set_version_unlock(el->version);
+    }
+
+    void unlock(TransItem& item) override {
+        assert(!is_internode(item));
+        internal_elem *el = item.key<internal_elem *>();
+        el->version.unlock();
+    }
+
+    void cleanup(TransItem& item, bool committed) override {
+        assert(!is_internode(item));
+        if (committed ? has_delete(item) : has_insert(item)) {
+            internal_elem *el = item.key<internal_elem *>();
+            bool ok = _remove(el->key);
+            assert(ok);
+        }
+    }
 
 protected:
     template <typename NodeCallback, typename ValueCallback, bool Reverse>
@@ -881,8 +938,29 @@ private:
         return false;
     }
 
+    bool _remove(const key_type& key) {
+        cursor_type lp(table_, key);
+        bool found = lp.find_locked(*ti);
+        if (found) {
+            internal_elem *el = lp.value();
+            lp.finish(-1, *ti);
+            Transaction::rcu_delete(el);
+        } else {
+            // XXX is this correct?
+            lp.finish(0, *ti);
+        }
+        return found;
+    }
+
     static uintptr_t get_internode_key(node_type* node) {
         return reinterpret_cast<uintptr_t>(node) | internode_bit;
+    }
+    static bool is_internode(TransItem& item) {
+        return item.key<uintptr_t>() & internode_bit;
+    }
+    static node_type *get_internode_address(TransItem& item) {
+        assert(is_internode(item));
+        return reinterpret_cast<node_type *>(item.key<uintptr_t>() & ~internode_bit);
     }
 
     // new select_for_update methods (optionally) acquiring locks

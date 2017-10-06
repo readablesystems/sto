@@ -793,8 +793,15 @@ public:
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
     }
+    void set_version(TLockVersion& vers, TLockVersion::type flags = 0) const {
+        assert(state_ == s_committing_locked || state_ == s_committing);
+        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_unflagged_version(vers.value());
+        vers.set_version(v | flags);
+    }
     void set_version_unlock(TLockVersion& vers, TransItem& item, TLockVersion::type flags = 0) const {
-        vers.set_version_unlock(commit_tid() | flags);
+        assert(state_ == s_committing_locked || state_ == s_committing);
+        tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_unflagged_version(vers.value());
+        vers.set_version_unlock(v | flags);
         item.clear_needs_unlock();
     }
     void set_version(TVersion& vers, TVersion::type flags = 0) const {
