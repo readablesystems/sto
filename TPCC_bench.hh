@@ -18,6 +18,68 @@
 
 namespace tpcc {
 
+class db_config_flags {
+public:
+    typedef uint32_t type;
+    static constexpr type adpt = 0x1 << 0;
+    static constexpr type opaq = 0x1 << 1;
+    static constexpr type rmyw = 0x1 << 2;
+    static constexpr type swis = 0x1 << 3;
+    static constexpr type tctc = 0x1 << 4;
+};
+
+enum class db_params_id : int { Default = 1, Opaque, Adaptive, Swiss, TicToc };
+
+class db_default_params {
+public:
+    static constexpr db_params_id Id = db_params_id::Default;
+    static constexpr bool RdMyWr = false;
+    static constexpr bool Adaptive = false;
+    static constexpr bool Opaque = false;
+    static constexpr bool Swiss = false;
+    static constexpr bool TicToc = false;
+};
+
+class db_opaque_params : public db_default_params {
+public:
+    static constexpr db_params_id Id = db_params_id::Opaque;
+    //static constexpr bool RdMyWr = false;
+    //static constexpr bool Adaptive = false;
+    static constexpr bool Opaque = true;
+    //static constexpr bool Swiss = false;
+    //static constexpr bool TicToc = false;
+};
+
+class db_adaptive_params {
+public:
+    static constexpr db_params_id Id = db_params_id::Adaptive;
+    static constexpr bool RdMyWr = false;
+    static constexpr bool Adaptive = true;
+    static constexpr bool Opaque = false;
+    static constexpr bool Swiss = false;
+    static constexpr bool TicToc = false;
+};
+
+class db_swiss_params {
+public:
+    static constexpr db_params_id Id = db_params_id::Swiss;
+    static constexpr bool RdMyWr = false;
+    static constexpr bool Adaptive = false;
+    static constexpr bool Opaque = false;
+    static constexpr bool Swiss = true;
+    static constexpr bool TicToc = false;
+};
+
+class db_tictoc_params {
+public:
+    static constexpr db_params_id Id = db_params_id::TicToc;
+    static constexpr bool RdMyWr = false;
+    static constexpr bool Adaptive = false;
+    static constexpr bool Opaque = false;
+    static constexpr bool Swiss = false;
+    static constexpr bool TicToc = true;
+};
+
 class constants {
 public:
     static constexpr double million = 1000000.0;
@@ -91,17 +153,28 @@ private:
     uint64_t num_whs_;
 };
 
+template <typename DBParams>
 class tpcc_db {
 public:
-    typedef unordered_index<warehouse_key, warehouse_value> wh_table_type;
-    typedef unordered_index<district_key, district_value>   dt_table_type;
-    typedef ordered_index<customer_key, customer_value>     cu_table_type;
-    typedef unordered_index<order_key, order_value>         od_table_type;
-    typedef unordered_index<orderline_key, orderline_value> ol_table_type;
-    typedef unordered_index<order_key, int>                 no_table_type;
-    typedef unordered_index<item_key, item_value>           it_table_type;
-    typedef unordered_index<stock_key, stock_value>         st_table_type;
-    typedef unordered_index<history_key, history_value>     ht_table_type;
+    static constexpr bool PR = DBParams::RdMyWr;
+    static constexpr bool PA = DBParams::Adaptive;
+    static constexpr bool PO = DBParams::Opaque;
+
+    template <typename K, typename V>
+    using UIndex = unordered_index<K, V, PO, PA, PR>;
+
+    template <typename K, typename V>
+    using OIndex = ordered_index<K, V, PO, PA, PR>;
+
+    typedef UIndex<warehouse_key, warehouse_value> wh_table_type;
+    typedef UIndex<district_key, district_value>   dt_table_type;
+    typedef OIndex<customer_key, customer_value>   cu_table_type;
+    typedef UIndex<order_key, order_value>         od_table_type;
+    typedef UIndex<orderline_key, orderline_value> ol_table_type;
+    typedef UIndex<order_key, int>                 no_table_type;
+    typedef UIndex<item_key, item_value>           it_table_type;
+    typedef UIndex<stock_key, stock_value>         st_table_type;
+    typedef UIndex<history_key, history_value>     ht_table_type;
 
     inline tpcc_db(int num_whs);
     inline tpcc_db(const std::string& db_file_name);
@@ -152,11 +225,12 @@ private:
     ht_table_type *tbl_hts_;
 };
 
+template <typename DBParams>
 class tpcc_runner {
 public:
     enum class txn_type : int {new_order = 1, payment, order_status, delivery, stock_level};
 
-    tpcc_runner(int id, tpcc_db& database, uint64_t w_start, uint64_t w_end)
+    tpcc_runner(int id, tpcc_db<DBParams>& database, uint64_t w_start, uint64_t w_end)
         : ig(id, database.num_warehouses()), db(database),
           w_id_start(w_start), w_id_end(w_end) {}
 
@@ -173,17 +247,18 @@ public:
 
 private:
     tpcc_input_generator ig;
-    tpcc_db& db;
+    tpcc_db<DBParams>& db;
     int runner_id;
     uint64_t w_id_start;
     uint64_t w_id_end;
 };
 
+template <typename DBParams>
 class tpcc_prepopulator {
 public:
     static pthread_barrier_t sync_barrier;
 
-    tpcc_prepopulator(int id, tpcc_db& database)
+    tpcc_prepopulator(int id, tpcc_db<DBParams>& database)
         : ig(id, database.num_warehouses()), db(database), worker_id(id) {}
 
     inline void fill_items(uint64_t iid_begin, uint64_t iid_xend);
@@ -202,9 +277,12 @@ private:
     inline void random_shuffle(std::vector<uint64_t>& v);
 
     tpcc_input_generator ig;
-    tpcc_db& db;
+    tpcc_db<DBParams>& db;
     int worker_id;
 };
+
+template <typename DBParams>
+pthread_barrier_t tpcc_prepopulator<DBParams>::sync_barrier;
 
 class tpcc_profiler {
 public:

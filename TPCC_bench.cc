@@ -8,12 +8,12 @@
 
 namespace tpcc {
 
-pthread_barrier_t tpcc_prepopulator::sync_barrier;
 const char *tpcc_input_generator::last_names[] = {
     "BAR", "OUGHT", "ABLE", "PRI", "PRES",
     "ESE", "ANTI", "CALLY", "ATION", "EING"};
 
-tpcc_db::tpcc_db(int num_whs) : num_whs_(num_whs) {
+template <typename DBParams>
+tpcc_db<DBParams>::tpcc_db(int num_whs) : num_whs_(num_whs) {
     size_t num_districts = NUM_DISTRICTS_PER_WAREHOUSE * num_whs_;
     size_t num_customers = NUM_CUSTOMERS_PER_DISTRICT * num_districts;
     tbl_whs_ = new wh_table_type(num_whs_ * 2);
@@ -27,7 +27,8 @@ tpcc_db::tpcc_db(int num_whs) : num_whs_(num_whs) {
     tbl_hts_ = new ht_table_type(num_customers * 2);
 }
 
-tpcc_db::~tpcc_db() {
+template <typename DBParams>
+tpcc_db<DBParams>::~tpcc_db() {
     delete tbl_whs_;
     delete tbl_dts_;
     delete tbl_cus_;
@@ -40,7 +41,8 @@ tpcc_db::~tpcc_db() {
 }
 
 // @section: db prepopulation functions
-void tpcc_prepopulator::fill_items(uint64_t iid_begin, uint64_t iid_xend) {
+template <typename DBParams>
+void tpcc_prepopulator<DBParams>::fill_items(uint64_t iid_begin, uint64_t iid_xend) {
     for (auto iid = iid_begin; iid < iid_xend; ++iid) {
         item_key ik(iid);
         item_value iv;
@@ -59,7 +61,8 @@ void tpcc_prepopulator::fill_items(uint64_t iid_begin, uint64_t iid_xend) {
     }
 }
 
-void tpcc_prepopulator::fill_warehouses() {
+template <typename DBParams>
+void tpcc_prepopulator<DBParams>::fill_warehouses() {
     for (uint64_t wid = 1; wid <= ig.num_warehouses(); ++wid) {
         warehouse_key wk(wid);
         warehouse_value wv;
@@ -77,7 +80,8 @@ void tpcc_prepopulator::fill_warehouses() {
     }
 }
 
-void tpcc_prepopulator::expand_warehouse(uint64_t wid) {
+template <typename DBParams>
+void tpcc_prepopulator<DBParams>::expand_warehouse(uint64_t wid) {
     for (uint64_t iid = 1; iid <= NUM_ITEMS; ++iid) {
         stock_key sk(wid, iid);
         stock_value sv;
@@ -116,7 +120,8 @@ void tpcc_prepopulator::expand_warehouse(uint64_t wid) {
     }
 }
 
-void tpcc_prepopulator::expand_districts(uint64_t wid) {
+template <typename DBParams>
+void tpcc_prepopulator<DBParams>::expand_districts(uint64_t wid) {
     for (uint64_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
         for (uint64_t cid = 1; cid <= NUM_CUSTOMERS_PER_DISTRICT; ++cid) {
             customer_key ck(wid, did, cid);
@@ -147,7 +152,8 @@ void tpcc_prepopulator::expand_districts(uint64_t wid) {
     }
 }
 
-void tpcc_prepopulator::expand_customers(uint64_t wid) {
+template <typename DBParams>
+void tpcc_prepopulator<DBParams>::expand_customers(uint64_t wid) {
     for (uint64_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
         for (uint64_t cid = 1; cid <= NUM_CUSTOMERS_PER_DISTRICT; ++cid) {
             history_value hv;
@@ -206,7 +212,8 @@ void tpcc_prepopulator::expand_customers(uint64_t wid) {
 }
 // @endsection: db prepopulation functions
 
-void tpcc_prepopulator::run() {
+template <typename DBParams>
+void tpcc_prepopulator<DBParams>::run() {
     int r;
     uint64_t worker_wid = worker_id + 1;
     if (worker_id == 0) {
@@ -234,7 +241,8 @@ void tpcc_prepopulator::run() {
 }
 
 // @section: prepopulation string generators
-std::string tpcc_prepopulator::random_a_string(int x, int y) {
+template <typename DBParams>
+std::string tpcc_prepopulator<DBParams>::random_a_string(int x, int y) {
     size_t len = ig.random(x, y);
     std::string str;
     str.reserve(len);
@@ -248,7 +256,8 @@ std::string tpcc_prepopulator::random_a_string(int x, int y) {
     return str;
 }
 
-std::string tpcc_prepopulator::random_n_string(int x, int y) {
+template <typename DBParams>
+std::string tpcc_prepopulator<DBParams>::random_n_string(int x, int y) {
     size_t len = ig.random(x, y);
     std::string str;
     str.reserve(len);
@@ -260,20 +269,23 @@ std::string tpcc_prepopulator::random_n_string(int x, int y) {
     return str;
 }
 
-std::string tpcc_prepopulator::random_state_name() {
+template <typename DBParams>
+std::string tpcc_prepopulator<DBParams>::random_state_name() {
     std::string str = "AA";
     for (auto& c : str)
         c += ig.random(0, 25);
     return str;
 }
 
-std::string tpcc_prepopulator::random_zip_code() {
+template <typename DBParams>
+std::string tpcc_prepopulator<DBParams>::random_zip_code() {
     std::stringstream ss;
     ss << std::setfill('0') << std::setw(4) << ig.random(0, 9999);
     return ss.str() + "11111";
 }
 
-void tpcc_prepopulator::random_shuffle(std::vector<uint64_t>& v) {
+template <typename DBParams>
+void tpcc_prepopulator<DBParams>::random_shuffle(std::vector<uint64_t>& v) {
     std::shuffle(v.begin(), v.end(), ig.random_generator());
 }
 // @endsection: prepopulation string generators
@@ -282,36 +294,40 @@ void tpcc_prepopulator::random_shuffle(std::vector<uint64_t>& v) {
 
 using namespace tpcc;
 
-void prepopulation_worker(tpcc_db& db, int worker_id) {
-    tpcc_prepopulator pop(worker_id, db);
+template <typename DBParams>
+void prepopulation_worker(tpcc_db<DBParams>& db, int worker_id) {
+    tpcc_prepopulator<DBParams> pop(worker_id, db);
     pop.run();
 }
 
-void prepopulate_db(tpcc_db& db, int num_workers) {
+template <typename DBParams>
+void prepopulate_db(tpcc_db<DBParams>& db, int num_workers) {
     int r;
-    r = pthread_barrier_init(&tpcc_prepopulator::sync_barrier, nullptr, num_workers);
+    r = pthread_barrier_init(&tpcc_prepopulator<DBParams>::sync_barrier, nullptr, num_workers);
     assert(r == 0);
 
     std::vector<std::thread> prepop_thrs;
     for (int i = 0; i < num_workers; ++i)
-        prepop_thrs.emplace_back(prepopulation_worker, std::ref(db), i);
+        prepop_thrs.emplace_back(prepopulation_worker<DBParams>, std::ref(db), i);
     for (auto& t : prepop_thrs)
         t.join();
 
-    r = pthread_barrier_destroy(&tpcc_prepopulator::sync_barrier);
+    r = pthread_barrier_destroy(&tpcc_prepopulator<DBParams>::sync_barrier);
     assert(r == 0);
 }
 
-void tpcc_runner_thread(tpcc_db& db, int runner_id, uint64_t w_start, uint64_t w_end, uint64_t num_txns) {
-    tpcc_runner runner(runner_id, db, w_start, w_end);
+template <typename DBParams>
+void tpcc_runner_thread(tpcc_db<DBParams>& db, int runner_id, uint64_t w_start, uint64_t w_end, uint64_t num_txns) {
+    tpcc_runner<DBParams> runner(runner_id, db, w_start, w_end);
+    typedef typename tpcc_runner<DBParams>::txn_type txn_type;
 
     for (uint64_t i = 0; i < num_txns; ++i) {
-        tpcc_runner::txn_type t = runner.next_transaction();
+        txn_type t = runner.next_transaction();
         switch(t) {
-        case tpcc_runner::txn_type::new_order:
+        case txn_type::new_order:
             runner.run_txn_neworder();
             break;
-        case tpcc_runner::txn_type::payment:
+        case txn_type::payment:
             runner.run_txn_payment();
             break;
         default:
@@ -322,7 +338,8 @@ void tpcc_runner_thread(tpcc_db& db, int runner_id, uint64_t w_start, uint64_t w
     }
 }
 
-void run_benchmark(tpcc_db& db, int num_runners, uint64_t num_txns) {
+template <typename DBParams>
+void run_benchmark(tpcc_db<DBParams>& db, int num_runners, uint64_t num_txns) {
     int q = db.num_warehouses() / num_runners;
     int r = db.num_warehouses() / num_runners;
     uint64_t ntxns_thr = num_txns / num_runners;
@@ -337,7 +354,7 @@ void run_benchmark(tpcc_db& db, int num_runners, uint64_t num_txns) {
             ++next_xend;
             --r;
         }
-        runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), i, last_xend, next_xend - 1, ntxns_thr);
+        runner_thrs.emplace_back(tpcc_runner_thread<DBParams>, std::ref(db), i, last_xend, next_xend - 1, ntxns_thr);
         last_xend = next_xend;
     }
 
@@ -347,10 +364,11 @@ void run_benchmark(tpcc_db& db, int num_runners, uint64_t num_txns) {
         t.join();
 }
 
-int main(int argc, char **argv) {
+template <typename DBParams>
+int execute(int argc, char **argv) {
     (void)argc;
     (void)argv;
-
+    // XXX get the following options from getopt
     bool spawn_perf = false;
     int num_warehouses = 12;
     int num_threads = 12;
@@ -358,13 +376,43 @@ int main(int argc, char **argv) {
 
     tpcc_profiler prof(spawn_perf);
 
-    tpcc_db db(num_warehouses);
-
+    tpcc_db<DBParams> db(num_warehouses);
     prepopulate_db(db, num_warehouses);
-
     prof.start();
     run_benchmark(db, num_threads, num_txns);
     prof.finish();
 
     return 0;
+}
+
+int main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+    // XXX get this from getopt
+    db_params_id dbid = db_params_id::Default;
+    int ret_code = 0;
+
+    switch (dbid) {
+    case db_params_id::Default:
+        ret_code = execute<db_default_params>(argc, argv);
+        break;
+    case db_params_id::Opaque:
+        ret_code = execute<db_opaque_params>(argc, argv);
+        break;
+    case db_params_id::Adaptive:
+        ret_code = execute<db_adaptive_params>(argc, argv);
+        break;
+    case db_params_id::Swiss:
+        ret_code = execute<db_swiss_params>(argc, argv);
+        break;
+    case db_params_id::TicToc:
+        ret_code = execute<db_tictoc_params>(argc, argv);
+        break;
+    default:
+        std::cerr << "unknown db config parameter id" << std::endl;
+        ret_code = 1;
+        break;
+    };
+
+    return ret_code;
 }

@@ -170,11 +170,11 @@ public:
     insert_row(const key_type& k, value_type *vptr, bool overwrite = false) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
 
-        lock(buck.version);
+        buck.version.lock();
         internal_elem *e = find_in_bucket(buck, k);
 
         if (e) {
-            unlock(buck.version);
+            buck.version.unlock();
             auto item = Sto::item(this, e);
             if (is_phantom(e, item))
                 goto abort;
@@ -211,7 +211,7 @@ public:
             internal_elem *new_head = buck.head;
             bucket_version_type buck_vers_1 = buck.version.unlocked();
 
-            unlock(buck.version);
+            buck.version.unlock();
 
             // update bucket version in the read set (if any) since it's changed by ourselves
             auto bucket_item = Sto::item(this, make_bucket_key(buck));
@@ -314,7 +314,7 @@ public:
         // hacks for upgrading version numbers from nonopaque to commit_tid
         // (if transaction running in opaque mode) no longer required
         // it's being done by Transaction::set_version_unlock
-        txn.set_version_unlock(el->version);
+        txn.set_version_unlock(el->version, item);
     }
 
     void unlock(TransItem& item) override {
@@ -504,7 +504,7 @@ public:
               key(k), value(v), deleted(false) {}
 
         bool valid() const {
-            return !(version & invalid_bit);
+            return !(version.value() & invalid_bit);
         }
     };
 
@@ -552,7 +552,7 @@ public:
         bool found = lp.find_unlocked(*ti);
         internal_elem *e = lp.value();
         if (found) {
-            return select_row(e, for_update);
+            return select_row(reinterpret_cast<uintptr_t>(e), for_update);
         } else {
             if (!register_internode_version(lp.node(), lp.full_version_value()))
                 goto abort;
@@ -712,7 +712,7 @@ public:
             return register_internode_version(node, version);
         };
 
-        auto value_callback = [&] (const key_type& key, internal_elem *e, bool& ret) {
+        auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret) {
             TransProxy item = Sto::item(this, e);
 
             if (index_read_my_write) {
@@ -722,9 +722,9 @@ public:
                 }
                 if (item.has_write()) {
                     if (has_insert(item))
-                        ret = callback(key, e->value);
+                        ret = callback(key, reinterpret_cast<uintptr_t>(e), e->value);
                     else
-                        ret = callback(key, *(item.template write_value<value_type *>()));
+                        ret = callback(key, reinterpret_cast<uintptr_t>(e), *(item.template write_value<value_type *>()));
                     return true;
                 }
             }
@@ -786,22 +786,13 @@ public:
     bool check(TransItem& item, Transaction&) override {
         if (is_internode(item)) {
             node_type *n = get_internode_address(item);
-            auto curr_nv = n->full_version_value();
+            auto curr_nv = static_cast<leaf_type *>(n)->full_version_value();
             auto read_nv = item.template read_value<decltype(curr_nv)>();
             return (curr_nv == read_nv);
+        } else {
+            internal_elem *el = item.key<internal_elem *>();
+            return item.check_version(el->version);
         }
-
-        internal_elem *el = item.key<internal_elem *>();
-        if (el->deleted)
-            return false;
-        auto rv = item.template read_value<version_type>();
-        if ((rv & invalid_bit)) {
-            if (el->valid())
-                return false;
-            else
-                return true;
-        }
-        return el->version.check_version(rv);
     }
 
     void install(TransItem& item, Transaction& txn) override {
@@ -826,7 +817,7 @@ public:
 
         // like in the hashtable (unordered_index), no need for the hacks
         // treating opacity as a special case
-        txn.set_version_unlock(el->version);
+        txn.set_version_unlock(el->version, item);
     }
 
     void unlock(TransItem& item) override {

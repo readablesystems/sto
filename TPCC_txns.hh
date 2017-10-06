@@ -19,20 +19,19 @@ struct c_data_info {
 };
 
 struct cu_match_entry {
-    typedef tpcc_db::cu_table_type::internal_elem ie_type;
-
-    cu_match_entry(const var_string<16>& c_first, const ie_type *e)
-        : first_name(c_first.c_str()), value_elem(e) {}
+    cu_match_entry(const var_string<16>& c_first, uintptr_t rid)
+        : first_name(c_first.c_str()), row(rid) {}
 
     bool operator<(const cu_match_entry& other) const {
         return first_name < other.first_name;
     }
 
     std::string first_name;
-    const ie_type *value_elem;
+    uintptr_t row;
 };
 
-void tpcc_runner::run_txn_neworder() {
+template <typename DBParams>
+void tpcc_runner<DBParams>::run_txn_neworder() {
     uint64_t q_w_id  = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
     uint64_t q_c_id = ig.gen_customer_id();
@@ -182,7 +181,8 @@ void tpcc_runner::run_txn_neworder() {
     } RETRY(true);
 }
 
-void tpcc_runner::run_txn_payment() {
+template <typename DBParams>
+void tpcc_runner<DBParams>::run_txn_payment() {
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
 
@@ -282,9 +282,9 @@ void tpcc_runner::run_txn_payment() {
     // select and update customer
     if (by_name) {
         std::vector<cu_match_entry> match_set;
-        auto scan_callback = [&] (const lcdf::Str&, const tpcc_db::cu_table_type::internal_elem *e, const customer_value& cv) {
+        auto scan_callback = [&] (const lcdf::Str&, uintptr_t row, const customer_value& cv) {
             if (cv.c_last == last_name)
-                match_set.emplace_back(cv.c_first, e);
+                match_set.emplace_back(cv.c_first, row);
             return true;
         };
 
@@ -292,13 +292,13 @@ void tpcc_runner::run_txn_payment() {
         customer_key ck0(0, 0, 0);
         customer_key ck1(max, max, max);
 
-        success = db.tbl_customers().range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback);
+        success = db.tbl_customers().template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback);
         TXN_DO(success);
 
         size_t n = match_set.size();
         assert(n > 0);
         std::sort(match_set.begin(), match_set.end());
-        row = reinterpret_cast<uintptr_t>(match_set[n/2].value_elem);
+        row = match_set[n/2].row;
         db.tbl_customers().select_row(row, true/*for update*/);
     } else {
         assert(q_c_id != 0);

@@ -77,7 +77,7 @@ public:
         return s_;
     }
     char *c_str() volatile {
-        return s_;
+        return const_cast<char *>(s_);
     }
 
     friend std::hash<var_string>;
@@ -116,7 +116,7 @@ public:
     }
 
     bool operator==(const char *c_str) const {
-        return strlen(c_str) == FL && !memncmp(s_, c_str, FL);
+        return strlen(c_str) == FL && !memcmp(s_, c_str, FL);
     }
     bool operator==(const fix_string& rhs) const {
         return !memcmp(s_, rhs.s_, FL);
