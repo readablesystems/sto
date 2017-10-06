@@ -21,7 +21,7 @@ public:
     static constexpr size_t max_length = ML;
 
     var_string() {
-        bzero(s_, ML);
+        bzero(s_, ML+1);
     }
     var_string(const char *c_str) {
         initialize_from(c_str);
@@ -62,7 +62,7 @@ public:
     }
     bool place(const char *str, size_t pos) {
         size_t in_len = strlen(str);
-        if (pos + in_len >= length())
+        if (pos + in_len > length())
             return false;
         memcpy(s_ + pos, str, in_len);
         return true;

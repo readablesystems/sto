@@ -541,14 +541,24 @@ public:
         key_gen_ = 0;
     }
 
+    static void thread_init() {
+        if (ti == nullptr)
+            ti = threadinfo::make(threadinfo::TI_PROCESS, TThread::id());
+        Transaction::tinfo[TThread::id()].trans_start_callback = []() {
+            ti->rcu_start();
+        };
+        Transaction::tinfo[TThread::id()].trans_end_callback = []() {
+            ti->rcu_stop();
+        };
+    }
+
     uint64_t gen_key() {
         return fetch_and_add(&key_gen_, 1);
     }
 
     sel_return_type
     select_row(const key_type& key, bool for_update = false) {
-        Str k = static_cast<Str>(key);
-        unlocked_cursor_type lp(table_, k);
+        unlocked_cursor_type lp(table_, key);
         bool found = lp.find_unlocked(*ti);
         internal_elem *e = lp.value();
         if (found) {
@@ -769,6 +779,7 @@ public:
         if (found) {
             internal_elem *e = lp.value();
             copy_row(e, &v);
+            lp.finish(0, *ti);
         } else {
             internal_elem *e = new internal_elem(k, v, true);
             lp.value() = e;

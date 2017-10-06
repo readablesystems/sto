@@ -223,19 +223,19 @@ void tpcc_prepopulator<DBParams>::run() {
 
     // barrier
     r = pthread_barrier_wait(&sync_barrier);
-    assert(r == PTHREAD_BARRIER_SERIAL_THREAD || r == 0);
+    always_assert(r == PTHREAD_BARRIER_SERIAL_THREAD || r == 0);
 
     expand_warehouse(worker_wid);
 
     // barrier
     r = pthread_barrier_wait(&sync_barrier);
-    assert(r == PTHREAD_BARRIER_SERIAL_THREAD || r == 0);
+    always_assert(r == PTHREAD_BARRIER_SERIAL_THREAD || r == 0);
 
     expand_districts(worker_wid);
 
     // barrier
     r = pthread_barrier_wait(&sync_barrier);
-    assert(r == PTHREAD_BARRIER_SERIAL_THREAD || r == 0);
+    always_assert(r == PTHREAD_BARRIER_SERIAL_THREAD || r == 0);
 
     expand_customers(worker_wid);
 }
@@ -297,6 +297,10 @@ using namespace tpcc;
 template <typename DBParams>
 void prepopulation_worker(tpcc_db<DBParams>& db, int worker_id) {
     tpcc_prepopulator<DBParams> pop(worker_id, db);
+
+    // XXX get rid of this thread init nonsense
+    db.tbl_customers().thread_init();
+
     pop.run();
 }
 
@@ -320,6 +324,9 @@ template <typename DBParams>
 void tpcc_runner_thread(tpcc_db<DBParams>& db, int runner_id, uint64_t w_start, uint64_t w_end, uint64_t num_txns) {
     tpcc_runner<DBParams> runner(runner_id, db, w_start, w_end);
     typedef typename tpcc_runner<DBParams>::txn_type txn_type;
+
+    // XXX get rid of this thread_init nonsense
+    db.tbl_customers().thread_init();
 
     for (uint64_t i = 0; i < num_txns; ++i) {
         txn_type t = runner.next_transaction();
@@ -375,9 +382,12 @@ int execute(int argc, char **argv) {
     uint64_t num_txns = 1000000ul;
 
     tpcc_profiler prof(spawn_perf);
-
     tpcc_db<DBParams> db(num_warehouses);
+
+    std::cout << "Prepopulating database..." << std::endl;
     prepopulate_db(db, num_warehouses);
+    std::cout << "Prepopulation complete." << std::endl;
+
     prof.start();
     run_benchmark(db, num_threads, num_txns);
     prof.finish();

@@ -167,6 +167,7 @@ public:
     if (found) {
       versioned_value *e = lp.value();
       e->writeable_value() = value;
+      lp.finish(0, *ti.ti);
     } else {
       versioned_value *val = (versioned_value *)versioned_value::make(value, Sto::initialized_tid());
       lp.value() = val;
