@@ -6,6 +6,8 @@
 #include "TPCC_bench.hh"
 #include "TPCC_txns.hh"
 
+volatile mrcu_epoch_type active_epoch = 1;
+
 namespace tpcc {
 
 const char *tpcc_input_generator::last_names[] = {
