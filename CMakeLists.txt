@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.8)
+project(sto)
+
+set(CMAKE_CXX_STANDARD 11)
+set(PLATFORM_LIBRARIES pthread m)
+
+include_directories(masstree-beta)
+include_directories(third-party)
+include_directories(third-party/xxHash)
+
+add_subdirectory(third-party/xxHash)
+add_subdirectory(masstree-beta)
+
+add_library(sto Packer.cc Transaction.cc TRcu.cc clp.c)
+
+add_executable(tpcc_bench TPCC_bench.cc)
+
+target_link_libraries(tpcc_bench sto masstree json xxhash ${PLATFORM_LIBRARIES})

@@ -16,6 +16,8 @@
 #ifndef MASSTREE_COMPILER_HH
 #define MASSTREE_COMPILER_HH 1
 
+#include "config.h"
+
 // HAX
 #define CACHE_LINE_SIZE 64
 
