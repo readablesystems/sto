@@ -109,8 +109,8 @@ MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 	$(MASSTREEDIR)/checkpoint.o \
 	$(MASSTREEDIR)/string_slice.o
 
-STO_OBJS = Packer.o Transaction.o TRcu.o MassTrans.o clp.o $(LIBOBJS)
-MSTO_OBJS = $(STO_OBJS) $(MASSTREE_OBJS)
+STO_OBJS = Packer.o Transaction.o TRcu.o clp.o $(LIBOBJS)
+MSTO_OBJS = $(STO_OBJS) $(MASSTREE_OBJS) MassTrans.o
 STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
 MSTO_DEPS = $(MSTO_OBJS) $(MASSTREEDIR)/libjson.a
 
@@ -202,8 +202,8 @@ predicates: predicates.o $(STO_DEPS)
 hashtable_nostm: hashtable_nostm.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-tpcc_bench: TPCC_bench.o $(MSTO_DEPS) $(XXHASH_OBJ)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+tpcc_bench: TPCC_bench.o $(STO_OBJS) $(MASSTREE_OBJS) $(XXHASH_OBJ)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(MASSTREE_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;
 
