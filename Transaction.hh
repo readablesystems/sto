@@ -116,7 +116,7 @@ try_commit:                                       \
             if (!(retry))                         \
                 __txn_committed = false;          \
         }                                         \
-    } while (0)
+    } while (false)
 
 #define TXN_DO(trans_op)     \
 if (!(trans_op))             \

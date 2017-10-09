@@ -292,9 +292,9 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     // select and update customer
     if (by_name) {
         std::vector<cu_match_entry> match_set;
-        auto scan_callback = [&] (const customer_key& key, uintptr_t row, const customer_value& cv) {
+        auto scan_callback = [&] (const customer_key& key, uintptr_t rid, const customer_value& cv) {
             if (cv.c_last == last_name)
-                match_set.emplace_back(cv.c_first, key.get_c_id(), row, &cv);
+                match_set.emplace_back(cv.c_first, key.get_c_id(), rid, &cv);
             return true;
         };
 

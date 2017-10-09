@@ -43,40 +43,24 @@ public:
 class db_opaque_params : public db_default_params {
 public:
     static constexpr db_params_id Id = db_params_id::Opaque;
-    //static constexpr bool RdMyWr = false;
-    //static constexpr bool Adaptive = false;
     static constexpr bool Opaque = true;
-    //static constexpr bool Swiss = false;
-    //static constexpr bool TicToc = false;
 };
 
-class db_adaptive_params {
+class db_adaptive_params : public db_default_params {
 public:
     static constexpr db_params_id Id = db_params_id::Adaptive;
-    static constexpr bool RdMyWr = false;
     static constexpr bool Adaptive = true;
-    static constexpr bool Opaque = false;
-    static constexpr bool Swiss = false;
-    static constexpr bool TicToc = false;
 };
 
-class db_swiss_params {
+class db_swiss_params : public db_default_params {
 public:
     static constexpr db_params_id Id = db_params_id::Swiss;
-    static constexpr bool RdMyWr = false;
-    static constexpr bool Adaptive = false;
-    static constexpr bool Opaque = false;
     static constexpr bool Swiss = true;
-    static constexpr bool TicToc = false;
 };
 
-class db_tictoc_params {
+class db_tictoc_params : public db_default_params {
 public:
     static constexpr db_params_id Id = db_params_id::TicToc;
-    static constexpr bool RdMyWr = false;
-    static constexpr bool Adaptive = false;
-    static constexpr bool Opaque = false;
-    static constexpr bool Swiss = false;
     static constexpr bool TicToc = true;
 };
 
@@ -90,8 +74,10 @@ class tpcc_input_generator {
 public:
     static const char * last_names[];
 
-    tpcc_input_generator(int id, int num_whs) : gen(id), num_whs_(num_whs) {}
-    tpcc_input_generator(int num_whs) : gen(0), num_whs_(num_whs) {}
+    tpcc_input_generator(int id, int num_whs)
+            : gen(id), num_whs_(uint64_t(num_whs)) {}
+    explicit tpcc_input_generator(int num_whs)
+            : gen(0), num_whs_(uint64_t(num_whs)) {}
 
     uint64_t nurand(uint64_t a, uint64_t c, uint64_t x, uint64_t y) {
         uint64_t r1 = (random(0, a) | random(x, y)) + c;
@@ -113,7 +99,9 @@ public:
     }
 
     int gen_customer_last_name_num(bool run) {
-        return nurand(255, run ? 223 : 157/* XXX 4.3.2.3 magic C number */, 0, 999);
+        return (int)nurand(255,
+                           run ? 223 : 157/* XXX 4.3.2.3 magic C number */,
+                           0, 999);
     }
 
     std::string to_last_name(int gen_n) {
@@ -141,7 +129,7 @@ public:
         return nurand(A_GEN_ITEM_ID, C_GEN_ITEM_ID, 1, NUM_ITEMS);
     }
     uint32_t gen_date() {
-        return random(1505244122, 1599938522);
+        return (uint32_t)random(1505244122, 1599938522);
     }
     std::mt19937& random_generator() {
         return gen;
@@ -175,8 +163,8 @@ public:
     typedef UIndex<stock_key, stock_value>         st_table_type;
     typedef UIndex<history_key, history_value>     ht_table_type;
 
-    inline tpcc_db(int num_whs);
-    inline tpcc_db(const std::string& db_file_name);
+    explicit inline tpcc_db(int num_whs);
+    explicit inline tpcc_db(const std::string& db_file_name) = delete;
     inline ~tpcc_db();
 
     int num_warehouses() const {
@@ -227,10 +215,16 @@ private:
 template <typename DBParams>
 class tpcc_runner {
 public:
-    enum class txn_type : int {new_order = 1, payment, order_status, delivery, stock_level};
+    enum class txn_type : int {
+        new_order = 1,
+        payment,
+        order_status,
+        delivery,
+        stock_level
+    };
 
     tpcc_runner(int id, tpcc_db<DBParams>& database, uint64_t w_start, uint64_t w_end)
-        : ig(id, database.num_warehouses()), db(database),
+        : ig(id, database.num_warehouses()), db(database), runner_id(id),
           w_id_start(w_start), w_id_end(w_end) {}
 
     inline txn_type next_transaction() {
@@ -285,7 +279,7 @@ pthread_barrier_t tpcc_prepopulator<DBParams>::sync_barrier;
 
 class tpcc_profiler {
 public:
-    tpcc_profiler(bool spawn_perf)
+    explicit tpcc_profiler(bool spawn_perf)
         : spawn_perf_(spawn_perf), perf_pid_(),
           start_tsc_(), end_tsc_() {}
 
