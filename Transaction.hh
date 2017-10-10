@@ -624,17 +624,17 @@ public:
 
     template <typename T>
     T *tx_alloc(const T *src) {
-        T *buf = (T *)malloc(sizeof(T));
-        memcpy(buf, src, sizeof(T));
-        tx_allocs_.push_back(buf);
-        return buf;
+        auto el = reinterpret_cast<T *>(new char[sizeof(T)]);
+        memcpy(el, src, sizeof(T));
+        tx_allocs_.push_back(el);
+        return el;
     }
 
     template <typename T>
-    T* tx_alloc() {
-        T *buf = (T *)malloc(sizeof(T));
-        tx_allocs_.push_back(buf);
-        return buf;
+    T *tx_alloc() {
+        auto el = reinterpret_cast<T *>(new char[sizeof(T)]);
+        tx_allocs_.push_back(el);
+        return el;
     }
 
     // opacity checking

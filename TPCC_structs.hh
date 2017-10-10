@@ -87,7 +87,7 @@ public:
 
 private:
     void initialize_from(const char *c_str) {
-        bzero(s_, ML);
+        bzero(s_, ML+1);
         strncpy(s_, c_str, ML);
     }
     void initialize_from(const std::string& str) {

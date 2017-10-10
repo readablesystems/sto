@@ -220,17 +220,17 @@ unlock_all:
     }
 
 after_unlock:
+    // free all temporay buffers allocated by Sto::tx_alloc during this transaction
+    for (auto p : tx_allocs_)
+        Transaction::rcu_delete_array(reinterpret_cast<char *>(p));
+    tx_allocs_.clear();
+
     // TODO: this will probably mess up with nested transactions
     threadinfo_t& thr = tinfo[TThread::id()];
     if (thr.trans_end_callback)
         thr.trans_end_callback();
     // XXX should reset trans_end_callback after calling it...
     state_ = s_aborted + committed;
-
-    // free all temporay buffers allocated by Sto::tx_alloc during this transaction
-    for (auto p : tx_allocs_)
-        rcu_free(p);
-    tx_allocs_.clear();
 
 #if STO_TSC_PROFILE
     auto endtime = read_tsc();

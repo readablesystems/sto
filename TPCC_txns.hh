@@ -34,7 +34,7 @@ struct cu_match_entry {
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_neworder() {
-    fprintf(stdout, "NEWORDER\n");
+    //fprintf(stdout, "NEWORDER\n");
 
     uint64_t q_w_id  = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
@@ -188,7 +188,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_payment() {
-    fprintf(stdout, "PAYMENT\n");
+    //fprintf(stdout, "PAYMENT\n");
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
 

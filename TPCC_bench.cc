@@ -345,6 +345,10 @@ void tpcc_runner_thread(tpcc_db<DBParams>& db, int runner_id, uint64_t w_start, 
             assert(false);
             break;
         };
+
+        if (i % 1000 == 0) {
+            fprintf(stdout, "r:%d, txn #%lu\n", runner_id, i);
+        }
     }
 }
 
