@@ -48,3 +48,8 @@
 /perf.data
 /perf.data.old
 .ycm_*
+.idea/modules.xml
+.idea/sto.iml
+.idea/workspace.xml
+cmake-build-debug/*
+cmake-build-release/*

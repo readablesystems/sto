@@ -12,7 +12,7 @@ add_subdirectory(third-party/xxHash)
 add_subdirectory(masstree-beta)
 
 add_library(clp clp.c)
-add_library(sto Packer.cc Transaction.cc TRcu.cc)
+add_library(sto Packer.cc Transaction.cc TRcu.cc ContentionManager.cc)
 
 add_executable(tpcc_bench TPCC_bench.cc)
 
