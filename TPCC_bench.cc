@@ -402,7 +402,7 @@ int execute(int argc, char **argv) {
             num_threads = clp->val.i;
             break;
         case opt_ntrans:
-            num_trans = clp->val.i;
+            num_txns = clp->val.ul;
             break;
         default:
             std::cout << "Print Usage" << std::endl;
