@@ -1,8 +1,8 @@
 #pragma once
 
 #include <type_traits>
-#include <string.h>
-#include <assert.h>
+#include <cstring>
+#include <cassert>
 #include "Interface.hh"
 #include "Packer.hh"
 #include "compiler.hh"
@@ -286,6 +286,9 @@ class TransProxy {
     inline bool observe(TNonopaqueVersion version) __attribute__ ((warn_unused_result));
     inline bool observe_opacity(TNonopaqueVersion version) __attribute__ ((warn_unused_result));
 
+    template <bool Opaque>
+    inline bool observe(TSwissVersion<Opaque> version, bool add_read) __attribute__((warn_unused_result));
+
     inline bool observe(TCommutativeVersion version, bool add_read) __attribute__ ((warn_unused_result));
     inline bool observe(TCommutativeVersion version) __attribute__ ((warn_unused_result));
     inline bool observe_opacity(TCommutativeVersion version) __attribute__ ((warn_unused_result));
@@ -327,12 +330,12 @@ class TransProxy {
     inline bool acquire_write(Args&&... args, TLockVersion& vers);
 
     // swisstm add write
-    template <typename T>
-    inline bool add_swiss_write(const T& wdata, WriteLock& wlock);
-    template <typename T>
-    inline bool add_swiss_write(T&& wdata, WriteLock& wlock);
-    template <typename T, typename... Args>
-    inline bool add_swiss_write(Args&&... wdata, WriteLock& lock);
+    template <typename T, bool Opaque>
+    inline bool add_swiss_write(const T& wdata, TSwissVersion<Opaque>& wlock);
+    template <typename T, bool Opaque>
+    inline bool add_swiss_write(T&& wdata, TSwissVersion<Opaque>& wlock);
+    template <typename T, bool Opaque, typename... Args>
+    inline bool add_swiss_write(Args&&... wdata, TSwissVersion<Opaque>& wlock);
 
     template <typename T>
     inline TransProxy& set_stash(T sdata);

@@ -1,15 +1,17 @@
 #pragma once
-#include "TWrapped.hh"
-#include "compiler.hh"
-#include "WriteLock.hh"
+
+#include "Interface.hh"
 #include "timing.hh"
-#include <limits.h>
+#include <climits>
 
 typedef __uint128_t uint128_t;
 
+class Transaction;
+
 class ContentionManager {
 public:
-    static bool should_abort(Transaction* tx, WriteLock wlock); 
+    template <bool Opaque>
+    static bool should_abort(Transaction* tx, TSwissVersion<Opaque> wlock);
 
     static void on_write(Transaction* tx);
 

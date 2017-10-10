@@ -2,18 +2,14 @@
 #include "TWrapped.hh"
 #include "TArrayProxy.hh"
 #include "Transaction.hh"
-#include "compiler.hh"
-#include "WriteLock.hh"
-#include "ContentionManager.hh"
-#include <limits.h>
+#include <climits>
 #include <pthread.h>
 #include <bitset>
 #include <fstream>
 #include <sstream>
-#include <stdlib.h>
+#include <cstdlib>
 
-
-template <typename T, unsigned N, template <typename> class W = TOpaqueWrapped>
+template <typename T, unsigned N, template <typename> class W = TSwissNonopaqueWrapped>
 class SwissTArray : public TObject {
 public:
     class iterator;
@@ -54,12 +50,12 @@ public:
             ret = item.template write_value<T>();
             return true;
         } else {
-            return data_[i].v.read(item, data_[i].vers, ret);
+            return data_[i].v.read(item, data_[i].version, ret);
         }
     }
     bool transPut(size_type i, T x) const {
         assert(i < N);
-        return Sto::item(this, i).add_swiss_write(x, data_[i].wlock);
+        return Sto::item(this, i).add_swiss_write(x, data_[i].version);
     }
 
     get_type nontrans_get(size_type i) const {
@@ -78,28 +74,24 @@ public:
     // transactional methods
     bool lock(TransItem& item, Transaction& txn) override {
         //return txn.try_lock(item, data_[item.key<size_type>()].vers);
-        return data_[item.key<size_type>()].vers.set_lock();
+        return data_[item.key<size_type>()].version.set_read_lock();
     }
     bool check(TransItem& item, Transaction&) override {
-        return item.check_version(data_[item.key<size_type>()].vers);
+        return item.check_version(data_[item.key<size_type>()].version);
     }
     void install(TransItem& item, Transaction& txn) override {
         size_type i = item.key<size_type>();
         data_[i].v.write(item.write_value<T>());
-        txn.set_version_unlock(data_[i].vers, item);
-        txn.set_version_unlock(data_[i].wlock, item);
+        txn.set_version_unlock(data_[i].version, item);
     }
     void unlock(TransItem& item) override {
-        if (data_[item.key<size_type>()].vers.is_locked())
-            data_[item.key<size_type>()].vers.unlock();
-        if (data_[item.key<size_type>()].wlock.is_locked())
-            data_[item.key<size_type>()].wlock.unlock();
+        if (data_[item.key<size_type>()].version.is_locked())
+            data_[item.key<size_type>()].version.unlock();
     }
 
 private:
     struct elem {
-        version_type vers;
-        mutable WriteLock wlock;
+        version_type version;
         W<T> v;
     };
     elem data_[N];
@@ -264,50 +256,3 @@ template <typename T, unsigned N, template <typename> class W>
 inline auto SwissTArray<T, N, W>::end() const -> const_iterator {
     return const_iterator(this, N);
 }
-
-template <typename T>
-inline bool TransProxy::add_swiss_write(const T& wdata, WriteLock& wlock) {
-    return add_swiss_write<T, const T&>(wdata, wlock);
-}
-
-template <typename T>
-inline bool TransProxy::add_swiss_write(T&& wdata, WriteLock& wlock) {
-    typedef typename std::decay<T>::type V;
-    return add_swiss_write<V, V&&>(std::move(wdata), wlock);
-}
-
-template <typename T, typename... Args>
-inline bool TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock) {
-    if (wlock.is_locked_here()) {
-        item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
-        //return *this;
-        return true;
-    }
-
-    while(true) {
-        if (wlock.is_locked()) {
-            if (ContentionManager::should_abort(t(), wlock)) {
-		TXP_INCREMENT(txp_wwc_aborts);
-	        //Sto::abort();
-                return false;
-            } else {
-		relax_fence();
-                continue;
-            }
-        }
-
-        if (wlock.try_lock()){
-            break;
-        }
-    }
-
-    item().__or_flags(TransItem::write_bit | TransItem::lock_bit);
-    item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
-    t()->any_writes_ = true;
-    ContentionManager::on_write(t());
-
-    //return *this;
-    return true;
-}
-
-

@@ -1,6 +1,6 @@
 #pragma once
-#include <stdint.h>
-#include <assert.h>
+#include <cstdint>
+#include <cassert>
 #include <iostream>
 #include <random>
 
@@ -113,9 +113,8 @@ public:
     }
 #endif
 
-#if ADAPTIVE_RWLOCK
+    // hacky state used by adaptive read/write lock
     static int unlock_opt_chance;
-#endif
 
     // read/write/optimistic combined lock
     static std::pair<LockResponse, type> try_lock_read(type& v) {
@@ -355,6 +354,8 @@ public:
     }
 };
 
+static constexpr TransactionTid::type initialized_tid = TransactionTid::increment_value;
+
 class TLockVersion {
 public:
     typedef TransactionTid::type type;
@@ -437,6 +438,135 @@ public:
 
     template <typename Exception>
     static inline void opaque_throw(const Exception& exception);
+private:
+    type v_;
+};
+
+template <bool Opacity>
+class TSwissVersion {
+public:
+    typedef TransactionTid::type type;
+    typedef TransactionTid::signed_type signed_type;
+    static constexpr type read_lock_bit = TransactionTid::user_bit;
+
+    TSwissVersion()
+            : v_(initialized_tid | (Opacity ? 0 : TransactionTid::nonopaque_bit)) {}
+    TSwissVersion(type v)
+            : v_(v) {}
+
+    type value() const {
+        return v_;
+    }
+    volatile type& value() {
+        return v_;
+    }
+    inline type snapshot(const TransItem& item, const Transaction& txn);
+    inline type snapshot(TransProxy& item);
+
+    bool is_locked() const {
+        return TransactionTid::is_locked(v_);
+    }
+    bool is_locked_here() const {
+        return TransactionTid::is_locked_here(v_);
+    }
+    bool is_locked_here(int here) const {
+        return TransactionTid::is_locked_here(v_, here);
+    }
+    inline bool is_locked_here(const Transaction& txn) const;
+    bool is_locked_elsewhere() const {
+        return TransactionTid::is_locked_elsewhere(v_);
+    }
+    bool is_locked_elsewhere(int here) const {
+        return TransactionTid::is_locked_elsewhere(v_, here);
+    }
+    inline bool is_locked_elsewhere(const Transaction& txn) const;
+
+    bool bool_cmpxchg(TSwissVersion expected, TSwissVersion desired) {
+        return ::bool_cmpxchg(&v_, expected.v_, desired.v_);
+    }
+    bool set_lock() {
+        return TransactionTid::set_lock(v_);
+    }
+    bool try_lock() {
+        return TransactionTid::try_lock(v_);
+    }
+    bool try_lock(int here) {
+        return TransactionTid::try_lock(v_, here);
+    }
+    void lock() {
+        TransactionTid::lock(v_);
+    }
+    void lock(int here) {
+        TransactionTid::lock(v_, here);
+    }
+    void unlock() {
+        TransactionTid::unlock(v_);
+    }
+    void unlock(int here) {
+        TransactionTid::unlock(v_, here);
+    }
+    type unlocked() const {
+        return TransactionTid::unlocked(v_);
+    }
+
+    void set_read_lock() {
+        v_ |= read_lock_bit;
+        fence();
+    }
+    bool is_read_locked_elsewhere() const {
+        return (v_ & read_lock_bit) != 0;
+    }
+
+    bool operator==(TSwissVersion x) const {
+        return v_ == x.v_;
+    }
+    bool operator!=(TSwissVersion x) const {
+        return v_ != x.v_;
+    }
+    TSwissVersion operator|(TSwissVersion x) const {
+        return TSwissVersion(v_ | x.v_);
+    }
+    type operator&(TransactionTid::type x) const {
+        return (v_ & x);
+    }
+
+    void set_version(TSwissVersion new_v) {
+        TransactionTid::set_version(v_, new_v.v_);
+    }
+    void set_version(TSwissVersion new_v, int here) {
+        TransactionTid::set_version(v_, new_v.v_, here);
+    }
+    void set_version_locked(TSwissVersion new_v) {
+        TransactionTid::set_version_locked(v_, new_v.v_);
+    }
+    void set_version_locked(TSwissVersion new_v, int here) {
+        TransactionTid::set_version_locked(v_, new_v.v_, here);
+    }
+    void set_version_unlock(TSwissVersion new_v) {
+        TransactionTid::set_version_unlock(v_, new_v.v_);
+    }
+    void set_version_unlock(TSwissVersion new_v, int here) {
+        TransactionTid::set_version_unlock(v_, new_v.v_, here);
+    }
+    void inc_nonopaque_version() {
+        TransactionTid::inc_nonopaque_version(v_);
+    }
+
+    bool check_version(TSwissVersion old_vers) const {
+        return TransactionTid::check_version(v_, old_vers.v_);
+    }
+    bool check_version(TSwissVersion old_vers, int here) const {
+        return TransactionTid::check_version(v_, old_vers.v_, here);
+    }
+
+    friend std::ostream& operator<<(std::ostream& w, TSwissVersion v) {
+        TransactionTid::print(v.value(), w);
+        return w;
+    }
+
+    template <typename Exception>
+    static inline void opaque_throw(const Exception&);
+
 private:
     type v_;
 };

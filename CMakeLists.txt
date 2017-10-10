@@ -12,8 +12,24 @@ add_subdirectory(third-party/xxHash)
 add_subdirectory(masstree-beta)
 
 add_library(clp clp.c)
-add_library(sto Packer.cc Transaction.cc TRcu.cc ContentionManager.cc)
+add_library(sto
+        Packer.cc
+        Transaction.cc
+        Transaction.hh
+        TransItem.hh
+        TransAlloc.hh
+        Interface.hh
+        TWrapped.hh
+        TRcu.cc
+        ContentionManager.cc)
 
-add_executable(tpcc_bench TPCC_bench.cc)
+add_executable(tpcc_bench
+        TPCC_bench.cc
+        TPCC_structs.hh
+        TPCC_index.hh
+        TPCC_txns.hh)
+
+add_executable(unit-swisstarray unit-swisstarray.cc SwissTArray.hh)
 
 target_link_libraries(tpcc_bench sto clp masstree json xxhash ${PLATFORM_LIBRARIES})
+target_link_libraries(unit-swisstarray sto)

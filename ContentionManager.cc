@@ -1,15 +1,13 @@
 #include "ContentionManager.hh"
 #include "Transaction.hh"
-#include <fstream>
-#include <sstream>
-#include <string>
 
 #define MAX_TS UINT_MAX
 #define TS_THRESHOLD 10
 #define SUCC_ABORTS_MAX 10
 #define WAIT_CYCLES_MULTIPLICATOR 8000
 
-bool ContentionManager::should_abort(Transaction* tx, WriteLock wlock) {	
+template <bool Opaque>
+bool ContentionManager::should_abort(Transaction* tx, TSwissVersion<Opaque> wlock) {
     TXP_INCREMENT(txp_cm_shouldabort);
     int threadid = tx->threadid();
     threadid *= 4;

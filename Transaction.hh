@@ -4,6 +4,7 @@
 #include "compiler.hh"
 #include "small_vector.hh"
 #include "TRcu.hh"
+#include "ContentionManager.hh"
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -12,8 +13,7 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
-#include <setjmp.h>
-#include <bitset>
+
 //#include <coz.h>
 
 #ifndef STO_PROFILE_COUNTERS
@@ -1323,6 +1323,23 @@ inline bool TransProxy::observe(TNonopaqueVersion version, bool add_read) {
     return true;
 }
 
+template <bool Opaque>
+inline bool TransProxy::observe(TSwissVersion<Opaque> version, bool add_read) {
+    assert(!has_stash());
+    if (version.is_read_locked_elsewhere(t()->threadid_)) {
+        t()->mark_abort_because(&item(), "swiss_read_locked", version.value());
+        return false;
+    }
+    if (Opaque && !t()->check_opacity(item(), version.value())) {
+        return false;
+    }
+    if (add_read && !has_read()) {
+        item().__or_flags(TransItem::read_bit);
+        item().rdata_ = Packer<TSwissVersion<Opaque>>::pack(t()->buf_, std::move(version));
+    }
+    return true;
+}
+
 inline bool TransProxy::observe(TCommutativeVersion version, bool add_read) {
     assert(!has_stash());
     if (version.is_locked()) {
@@ -1476,6 +1493,48 @@ inline bool TransProxy::acquire_write(Args&&... args, TLockVersion& vers) {
     } else {
         item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
     }
+    return true;
+}
+
+template <typename T, bool Opaque>
+inline bool TransProxy::add_swiss_write(const T& wdata, TSwissVersion<Opaque>& wlock) {
+    return add_swiss_write<T, Opaque, const T&>(wdata, wlock);
+}
+
+template <typename T, bool Opaque>
+inline bool TransProxy::add_swiss_write(T&& wdata, TSwissVersion<Opaque>& wlock) {
+    typedef typename std::decay<T>::type V;
+    return add_swiss_write<V, Opaque, V&&>(std::move(wdata), wlock);
+}
+
+template <typename T, bool Opaque, typename... Args>
+inline bool TransProxy::add_swiss_write(Args&&... args, TSwissVersion<Opaque>& wlock) {
+    if (wlock.is_locked_here()) {
+        item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
+        return true;
+    }
+
+    while(true) {
+        if (wlock.is_locked()) {
+            if (ContentionManager::should_abort(t(), wlock)) {
+                TXP_INCREMENT(txp_wwc_aborts);
+                return false;
+            } else {
+                relax_fence();
+                continue;
+            }
+        }
+
+        if (wlock.try_lock()){
+            break;
+        }
+    }
+
+    item().__or_flags(TransItem::write_bit | TransItem::lock_bit);
+    item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
+    t()->any_writes_ = true;
+    ContentionManager::on_write(t());
+
     return true;
 }
 
