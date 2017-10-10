@@ -20,14 +20,14 @@
 namespace tpcc {
 
 enum {
-    opt_dbid = 1, opt_nwarehouses, opt_nthreads, opt_ntrans,
+    opt_dbid = 1, opt_nwhs, opt_nthrs, opt_ntxns
 };
 
 static const Clp_Option options[] = {
-    { "dbid", 'i', opt_dbid, Clp_ValInt, Clp_Optional },
-    { "nwarehouses", 'w', opt_nwarehouses, Clp_ValInt, Clp_Optional },
-    { "nthreads", 't', opt_nthreads, Clp_ValInt, Clp_Optional },
-    { "ntrans", 'x', opt_ntrans, Clp_ValInt, Clp_Optional },
+    { "dbid",        'i', opt_dbid,  Clp_ValInt,          Clp_Optional },
+    { "nwarehouses", 'w', opt_nwhs,  Clp_ValInt,          Clp_Optional },
+    { "nthreads",    't', opt_nthrs, Clp_ValInt,          Clp_Optional },
+    { "ntrans",      'x', opt_ntxns, Clp_ValUnsignedLong, Clp_Optional }
 };
 
 class db_config_flags {

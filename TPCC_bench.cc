@@ -395,13 +395,13 @@ int execute(int argc, char **argv) {
         switch (opt) {
         case opt_dbid:
             break;
-        case opt_nwarehouses:
+        case opt_nwhs:
             num_warehouses = clp->val.i;
             break;
-        case opt_nthreads:
+        case opt_nthrs:
             num_threads = clp->val.i;
             break;
-        case opt_ntrans:
+        case opt_ntxns:
             num_txns = clp->val.ul;
             break;
         default:
@@ -438,9 +438,9 @@ int main(int argc, char **argv) {
         case opt_dbid:
             // set dbid
             break;
-        case opt_nwarehouses:
-        case opt_nthreads:
-        case opt_ntrans:
+        case opt_nwhs:
+        case opt_nthrs:
+        case opt_ntxns:
             break;
         default:
             std::cout << "Print Usage" << std::endl;

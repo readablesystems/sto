@@ -11,8 +11,9 @@ include_directories(third-party/xxHash)
 add_subdirectory(third-party/xxHash)
 add_subdirectory(masstree-beta)
 
-add_library(sto Packer.cc Transaction.cc TRcu.cc clp.c)
+add_library(clp clp.c)
+add_library(sto Packer.cc Transaction.cc TRcu.cc)
 
 add_executable(tpcc_bench TPCC_bench.cc)
 
-target_link_libraries(tpcc_bench sto masstree json xxhash ${PLATFORM_LIBRARIES})
+target_link_libraries(tpcc_bench sto clp masstree json xxhash ${PLATFORM_LIBRARIES})

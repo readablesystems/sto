@@ -301,7 +301,7 @@ class Transaction {
 public:
     static constexpr unsigned tset_initial_capacity = 512;
 
-    static constexpr unsigned hash_size = 1024;
+    static constexpr unsigned hash_size = 4096;
     static constexpr unsigned hash_step = 5;
     using epoch_type = TRcuSet::epoch_type;
     using signed_epoch_type = TRcuSet::signed_epoch_type;
@@ -442,7 +442,6 @@ private:
         first_write_ = 0;
         start_tid_ = commit_tid_ = 0;
         buf_.clear();
-        tx_allocs_.clear();
 #if STO_DEBUG_ABORTS
         abort_item_ = nullptr;
         abort_reason_ = nullptr;
@@ -626,14 +625,12 @@ public:
     T *tx_alloc(const T *src) {
         auto el = reinterpret_cast<T *>(new char[sizeof(T)]);
         memcpy(el, src, sizeof(T));
-        tx_allocs_.push_back(el);
         return el;
     }
 
     template <typename T>
     T *tx_alloc() {
         auto el = reinterpret_cast<T *>(new char[sizeof(T)]);
-        tx_allocs_.push_back(el);
         return el;
     }
 
@@ -883,8 +880,6 @@ private:
     uint16_t hashtable_[hash_size];
 #endif
     TransItem tset0_[tset_initial_capacity];
-
-    std::vector<void *> tx_allocs_;
 
     bool hard_check_opacity(TransItem* item, TransactionTid::type t);
     void stop(bool committed, unsigned* writes, unsigned nwrites, unsigned first_lock);
