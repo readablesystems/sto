@@ -6,6 +6,7 @@
 #include <pthread.h> // pthread_barrier_t
 
 #include "compiler.hh"
+#include "clp.h"
 #include "SystemProfiler.hh"
 #include "TPCC_structs.hh"
 #include "TPCC_index.hh"
@@ -17,6 +18,17 @@
 #define C_GEN_ITEM_ID               7911
 
 namespace tpcc {
+
+enum {
+    opt_dbid = 1, opt_nwarehouses, opt_nthreads, opt_ntrans,
+};
+
+static const Clp_Option options[] = {
+    { "dbid", 'i', opt_dbid, Clp_ValInt, Clp_Optional },
+    { "nwarehouses", 'w', opt_nwarehouses, Clp_ValInt, Clp_Optional },
+    { "nthreads", 't', opt_nthreads, Clp_ValInt, Clp_Optional },
+    { "ntrans", 'x', opt_ntrans, Clp_ValInt, Clp_Optional },
+};
 
 class db_config_flags {
 public:

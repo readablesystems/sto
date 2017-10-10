@@ -379,13 +379,34 @@ void run_benchmark(tpcc_db<DBParams>& db, int num_runners, uint64_t num_txns) {
 
 template <typename DBParams>
 int execute(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-    // XXX get the following options from getopt
     bool spawn_perf = true;
     int num_warehouses = 1;
     int num_threads = 1;
     uint64_t num_txns = 1000000ul;
+
+    Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
+
+    int opt;
+    while ((opt = Clp_Next(clp)) != Clp_Done) {
+        switch (opt) {
+        case opt_dbid:
+            break;
+        case opt_nwarehouses:
+            num_warehouses = clp->val.i;
+            break;
+        case opt_nthreads:
+            num_threads = clp->val.i;
+            break;
+        case opt_ntrans:
+            num_trans = clp->val.i;
+            break;
+        default:
+            std::cout << "Print Usage" << std::endl;
+            exit(1);
+        }
+    }
+
+    Clp_DeleteParser(clp);
 
     tpcc_profiler prof(spawn_perf);
     tpcc_db<DBParams> db(num_warehouses);
@@ -402,11 +423,28 @@ int execute(int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-    // XXX get this from getopt
     db_params_id dbid = db_params_id::Default;
     int ret_code = 0;
+   
+    Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
+
+    int opt;
+    while ((opt = Clp_Next(clp)) != Clp_Done) {
+        switch (opt) {
+        case opt_dbid:
+            // set dbid
+            break;
+        case opt_nwarehouses:
+        case opt_nthreads:
+        case opt_ntrans:
+            break;
+        default:
+            std::cout << "Print Usage" << std::endl;
+            exit(1);
+        }
+    }
+
+    Clp_DeleteParser(clp);
 
     switch (dbid) {
     case db_params_id::Default:
