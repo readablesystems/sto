@@ -29,6 +29,8 @@ struct PercentGen {
 
 class TThread {
     static __thread int the_id;
+    static __thread bool always_allocate_;
+    static __thread int hashsize_;
 public:
     static __thread Transaction* txn;
     static PercentGen gen[];
@@ -39,6 +41,18 @@ public:
     static void set_id(int id) {
         assert(id >= 0 && id < 32);
         the_id = id;
+    }
+    static bool always_allocate() {
+        return always_allocate_;
+    }
+    static void set_always_allocate(bool always_allocate) {
+        always_allocate_ = always_allocate;
+    }
+    static int hashsize() {
+        return hashsize_;
+    }
+    static void set_hashsize(int hashsize) {
+        hashsize_ = hashsize;
     }
 };
 
@@ -205,7 +219,10 @@ public:
         type t = v & threadid_mask;
         return m != 0 && t != (type)here;
     }
-
+    static bool set_lock(type& v) {
+        v = v | lock_bit | TThread::id();
+        return true;
+    }
     static bool try_lock(type& v) {
         type vv = v;
         return bool_cmpxchg(&v, vv & ~lock_bit, vv | lock_bit | TThread::id());
@@ -225,7 +242,7 @@ public:
         acquire_fence();
     }
     static void unlock(type& v) {
-        assert(is_locked_here(v));
+        //assert(is_locked_here(v));
         type new_v = v & ~(lock_bit | threadid_mask);
         release_fence();
         v = new_v;
@@ -467,7 +484,9 @@ public:
     bool bool_cmpxchg(TVersion expected, TVersion desired) {
         return ::bool_cmpxchg(&v_, expected.v_, desired.v_);
     }
-
+    bool set_lock() {
+        return TransactionTid::set_lock(v_);
+    }
     bool try_lock() {
         return TransactionTid::try_lock(v_);
     }
@@ -498,6 +517,9 @@ public:
     }
     TVersion operator|(TVersion x) const {
         return TVersion(v_ | x.v_);
+    }
+    type operator&(TransactionTid::type x) const {
+        return (v_ & x);
     }
 
     void set_version(TVersion new_v) {
@@ -589,7 +611,9 @@ public:
     bool bool_cmpxchg(TNonopaqueVersion expected, TNonopaqueVersion desired) {
         return ::bool_cmpxchg(&v_, expected.v_, desired.v_);
     }
-
+    bool set_lock() {
+        return TransactionTid::set_lock(v_);
+    }
     bool try_lock() {
         return TransactionTid::try_lock(v_);
     }
@@ -620,6 +644,9 @@ public:
     }
     TNonopaqueVersion operator|(TNonopaqueVersion x) const {
         return TNonopaqueVersion(v_ | x.v_);
+    }
+    type operator&(TransactionTid::type x) const {
+        return (v_ & x);
     }
 
     void set_version(TNonopaqueVersion new_v) {

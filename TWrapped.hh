@@ -12,12 +12,14 @@ template <typename T, bool Opaque = true,
           > class TLockWrapped;
 
 
-namespace TWrappedAccess {
+class TWrappedAccess {
+public:
+/*
 template <typename T, typename V>
-static T read_wait_atomic(const T*, TransProxy, const V&, bool);
+static inline T read_wait_atomic(const T*, TransProxy, const V&, bool);
 template <typename T, typename V>
-static T read_wait_nonatomic(const T*, TransProxy, const V&, bool);
-
+static inline T read_wait_nonatomic(const T*, TransProxy, const V&, bool);
+*/
 template <typename T, typename V>
 static std::pair<bool, T> read_atomic(const T* v, TransProxy item, const V& version, bool add_read) {
 #if STO_ABORT_ON_LOCKED
@@ -41,6 +43,28 @@ static std::pair<bool, T> read_atomic(const T* v, TransProxy item, const V& vers
     return read_wait_atomic(v, item, version, add_read);
 #endif
 }
+
+template <typename T, typename V>
+static bool read_atomic(const T* v, TransProxy item, const V& version, bool add_read, T& ret) {
+    while (1) {
+        V v0 = version;
+        fence();
+
+        if (v0.is_locked()) {
+            relax_fence();
+            continue;
+        }
+        ret = *v;
+        fence();
+        V v1 = version;
+
+        if (v0 == v1) {
+           return item.observe(v1, add_read);
+        }
+        relax_fence();
+    }
+}
+
 template <typename T, typename V>
 static std::pair<bool, T> read_nonatomic(const T* v, TransProxy item, const V& version, bool add_read) {
 #if STO_ABORT_ON_LOCKED
@@ -52,6 +76,40 @@ static std::pair<bool, T> read_nonatomic(const T* v, TransProxy item, const V& v
     return read_wait_nonatomic(v, item, version, add_read);
 #endif
 }
+
+template <typename T, typename V>
+static bool read_nonatomic(const T* v, TransProxy item, const V& version, bool add_read, T& ret) {
+    Transaction& t = item.transaction();
+    TransItem& it = item.item();
+
+    while (1) {
+        V v0 = version;
+        fence();
+
+        if (v0.is_locked()) {
+            relax_fence();
+            continue;
+        }
+
+        ret = *v;
+        fence();
+        V v1 = version;
+
+        if (v0 == v1) {
+            if (add_read && !it.has_read()) {
+                it.__or_flags(TransItem::read_bit);
+                it.rdata_ = Packer<TNonopaqueVersion>::pack(t.buf_, std::move(v1));
+                t.any_nonopaque_ = true;
+            }
+            return true;
+        }
+        relax_fence();
+    }
+    //item.observe(version, add_read);
+    //fence();
+    //return *v;
+}
+
 template <typename T, typename V>
 static T read_wait_atomic(const T* v, TransProxy item, const V& version, bool add_read) {
     unsigned n = 0;
@@ -112,7 +170,8 @@ static T read_wait_nonatomic(const T* v, TransProxy item, const V& version, bool
 #endif
     }
 }
-}
+
+}; // class TWrappedAccess
 
 template <typename T>
 class TLockWrapped<T, true /* opaque */, true /* trivial */, true /* small */> {
@@ -191,6 +250,12 @@ public:
     //static std::pair<bool, read_type> read(const T* v, TransProxy item, const version_type& version) {
     //    return TWrappedAccess::read_atomic(v, item, version, true);
     //}
+    bool read(TransProxy item, const version_type& version, read_type& ret) const {
+        return TWrappedAccess::read_atomic(&v_, item, version, true, ret);
+    }
+    static bool read(const T* v, TransProxy item, const version_type& version, read_type& ret) {
+        return TWrappedAccess::read_atomic(v, item, version, true, ret);
+    }
     void write(const T& v) {
         v_ = v;
     }
@@ -272,8 +337,11 @@ public:
     std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
         return TWrappedAccess::read_nonatomic(&v_, item, version, true);
     }
-    static read_type read(const T* vp, TransProxy item, const version_type& version) {
-        return TWrappedAccess::read_nonatomic(vp, item, version, true);
+    bool read(TransProxy item, const version_type& version, read_type& ret) const {
+        return TWrappedAccess::read_nonatomic(&v_, item, version, true, ret);
+    }
+    static bool read(const T* vp, TransProxy item, const version_type& version, read_type& ret) {
+        return TWrappedAccess::read_nonatomic(vp, item, version, true, ret);
     }
     void write(T v) {
         v_ = v;

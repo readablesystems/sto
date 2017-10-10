@@ -11,6 +11,10 @@
 #include <unistd.h>
 #include <iostream>
 #include <sstream>
+#include <fstream>
+#include <setjmp.h>
+#include <bitset>
+//#include <coz.h>
 
 #ifndef STO_PROFILE_COUNTERS
 #define STO_PROFILE_COUNTERS 0
@@ -40,7 +44,7 @@
 #define STO_DEBUG_ABORTS 0
 #endif
 #ifndef STO_DEBUG_ABORTS_FRACTION
-#define STO_DEBUG_ABORTS_FRACTION 0.0001
+#define STO_DEBUG_ABORTS_FRACTION 1
 #endif
 
 #ifndef STO_SORT_WRITESET
@@ -78,6 +82,7 @@
 #define CONSISTENCY_CHECK 0
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
+//#define TRANSACTION_FILTER 0
 
 #ifndef ADAPTIVE_RWLOCK
 #define ADAPTIVE_RWLOCK 1
@@ -124,6 +129,20 @@ if (!(trans_op))             \
 
 #define TXN_COMMITTED __txn_committed
 
+/*#define TRANSACTION                               \
+    do {                                          \
+        TransactionLoopGuard __txn_guard;         \
+        setjmp(*__txn_guard.get_jmp_buf());       \
+        while (1) {                               \
+            __txn_guard.start();                  
+#define RETRY(retry)                              \
+            if (__txn_guard.try_commit())         \
+                break;                            \
+            if (!(retry))                         \
+                throw Transaction::Abort();       \
+        }                                         \
+    } while (0)*/
+
 // transaction performance counters
 enum txp {
     // all logging levels
@@ -131,7 +150,17 @@ enum txp {
     txp_total_starts,
     txp_commit_time_nonopaque,
     txp_commit_time_aborts,
+    txp_observe_lock_aborts,
+    txp_wwc_aborts,
+    txp_aborted_by_others,
     txp_max_set,
+    txp_csws,
+    txp_cm_shouldabort,
+    txp_cm_onrollback,
+    txp_cm_onwrite,
+    txp_cm_start,
+    txp_allocate,
+    txp_bv_hit,
     txp_tco,
     txp_hco,
     txp_hco_lock,
@@ -301,7 +330,7 @@ class Transaction {
 public:
     static constexpr unsigned tset_initial_capacity = 512;
 
-    static constexpr unsigned hash_size = 4096;
+    static constexpr unsigned hash_size = 32768;
     static constexpr unsigned hash_step = 5;
     using epoch_type = TRcuSet::epoch_type;
     using signed_epoch_type = TRcuSet::signed_epoch_type;
@@ -416,6 +445,8 @@ private:
 
     ~Transaction();
 
+    void callCMstart();
+
     // reset data so we can be reused for another transaction
     void start() {
         threadinfo_t& thr = tinfo[TThread::id()];
@@ -435,6 +466,11 @@ private:
 #if TRANSACTION_HASHTABLE
         if (hash_base_ >= 32768) {
             memset(hashtable_, 0, sizeof(hashtable_));
+            /*if (TThread::always_allocate()) {
+                memset(hashtable_1024_, 0, sizeof(hashtable_1024_)); 
+            } else {
+                memset(hashtable_32768_, 0, sizeof(hashtable_32768_));
+            }*/
             hash_base_ = 0;
         }
 #endif
@@ -449,37 +485,49 @@ private:
 #endif
         TXP_INCREMENT(txp_total_starts);
         state_ = s_in_progress;
+        callCMstart();
     }
 
 #if TRANSACTION_HASHTABLE
     static int hash(const TObject* obj, void* key) {
+	/*(void) obj;
+	return (reinterpret_cast<uintptr_t>(key) >> 2) % hash_size;*/
         auto n = reinterpret_cast<uintptr_t>(key) + 0x4000000;
         n += -uintptr_t(n < 0x8000000) & (reinterpret_cast<uintptr_t>(obj) >> 4);
         //2654435761
         return (n + (n >> 16) * 9) % hash_size;
+        //return reinterpret_cast<uintptr_t>(key) % hash_size;
     }
 #endif
 
     void refresh_tset_chunk();
 
-    TransItem* allocate_item(const TObject* obj, void* xkey) {
-        if (tset_size_ && tset_size_ % tset_chunk == 0)
-            refresh_tset_chunk();
-        ++tset_size_;
-        new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey);
+    void allocate_item_update_hash(const TObject* obj, void* xkey) {
 #if TRANSACTION_HASHTABLE
         unsigned hi = hash(obj, xkey);
-# if TRANSACTION_HASHTABLE > 1
+        //bitvector_[hi % bv_size] = true;
+        # if TRANSACTION_HASHTABLE > 1
         if (hashtable_[hi] > hash_base_)
             hi = (hi + hash_step) % hash_size;
 # endif
         if (hashtable_[hi] <= hash_base_)
             hashtable_[hi] = hash_base_ + tset_size_;
 #endif
+    }
+
+    TransItem* allocate_item(const TObject* obj, void* xkey) {
+	    //TXP_INCREMENT(txp_allocate);
+        if (tset_size_ && tset_size_ % tset_chunk == 0)
+            refresh_tset_chunk();
+        ++tset_size_;
+        new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey);
+        //tset_next_->s_ = reinterpret_cast<TransItem::ownerstore_type>(const_cast<TObject*>(obj));
+        //tset_next_->key_ = xkey;
+        allocate_item_update_hash(obj, xkey);
         return tset_next_++;
     }
 
-public:
+   public:
     int threadid() const {
         return threadid_;
     }
@@ -489,7 +537,7 @@ public:
     TransProxy new_item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
         return TransProxy(*this, *allocate_item(obj, xkey));
-    }
+        }
 
     // adds item without checking its presence in the array
     template <typename T>
@@ -497,9 +545,8 @@ public:
         may_duplicate_items_ = tset_size_ > 0;
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
         return TransProxy(*this, *allocate_item(obj, xkey));
-    }
+       }
 
-    // tries to find an existing item with this key, otherwise adds it
     template <typename T>
     TransProxy item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
@@ -509,16 +556,66 @@ public:
         return TransProxy(*this, *ti);
     }
 
+
+    template <typename T>
+    TransProxy item_inlined(const TObject* obj, T key) {
+        bool found = false;
+        TransItem* ti;
+        void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
+#if TRANSACTION_HASHTABLE
+        TXP_INCREMENT(txp_hash_find);
+        unsigned hi = hash(obj, xkey);
+        if (hashtable_[hi] > hash_base_) {
+            unsigned tidx =  hashtable_[hi] - hash_base_ - 1;
+            if (likely(tidx < tset_initial_capacity))
+                ti = &tset0_[tidx];
+            else
+                ti = &tset_[tidx / tset_chunk][tidx % tset_chunk];
+            if (ti->owner() == obj && ti->key_ == xkey) {
+                found = true;
+            } else {
+#endif
+	        //std::cout << "Hash not found!" << std::endl;
+                for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
+                    ti = (tidx % tset_chunk ? ti + 1 : tset_[tidx / tset_chunk]);
+                    TXP_INCREMENT(txp_total_searched);
+                    if (ti->owner() == obj && ti->key_ == xkey) {
+                        found = true;
+                        break;
+                    }
+                }
+#if TRANSACTION_HASHTABLE
+            }
+        }
+#endif
+        
+        if (!found) {
+            if (tset_size_ && tset_size_ % tset_chunk == 0)
+                refresh_tset_chunk();
+            ++tset_size_;
+            new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey);
+ #if TRANSACTION_HASHTABLE
+            if (hashtable_[hi] <= hash_base_)
+                hashtable_[hi] = hash_base_ + tset_size_;
+#endif	
+            ti = tset_next_++;
+        }
+ 
+        return TransProxy(*this, *ti);
+    }
+
     // gets an item that is intended to be read only. this method essentially allows for duplicate items
     // in the set in some cases
     template <typename T>
     TransProxy read_item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
         TransItem* ti = nullptr;
-        if (any_writes_)
+        if (any_writes_) {
             ti = find_item(const_cast<TObject*>(obj), xkey);
-        else
+        }
+        else {
             may_duplicate_items_ = tset_size_ > 0;
+        }
         if (!ti)
             ti = allocate_item(obj, xkey);
         return TransProxy(*this, *ti);
@@ -527,11 +624,21 @@ public:
     template <typename T>
     OptionalTransProxy check_item(const TObject* obj, T key) const {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
+        TransItem* ti = find_item(const_cast<TObject*>(obj), xkey); 
         return OptionalTransProxy(const_cast<Transaction&>(*this), ti);
     }
 
 private:
+    TransItem* find_item_scan(TObject* obj, void* xkey) const {
+        const TransItem* it = nullptr;
+        for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
+            it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
+            TXP_INCREMENT(txp_total_searched);
+            if (it->owner() == obj && it->key_ == xkey)
+                return const_cast<TransItem*>(it);
+        }
+        return nullptr;
+    }
     // tries to find an existing item with this key, returns NULL if not found
     TransItem* find_item(TObject* obj, void* xkey) const {
 #if STO_TSC_PROFILE
@@ -566,15 +673,9 @@ private:
             hi = (hi + hash_step) % hash_size;
         }
 #endif
-        const TransItem* it = nullptr;
-        for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
-            it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
-            TXP_INCREMENT(txp_total_searched);
-            if (it->owner() == obj && it->key_ == xkey)
-                return const_cast<TransItem*>(it);
-        }
-        return nullptr;
-    }
+	// std::cout << "Hash not found!" << std::endl;
+	return find_item_scan(obj, xkey); 
+   }
 
     bool preceding_duplicate_read(TransItem *it) const;
 
@@ -590,6 +691,7 @@ private:
     }
 #endif
 
+public:
     void abort_because(TransItem& item, const char* reason, TVersion::type version = 0) {
         mark_abort_because(&item, reason, version);
         abort();
@@ -604,6 +706,7 @@ public:
     void abort() {
         silent_abort();
         throw Abort();
+        //longjmp(env, 1);
     }
 
     bool try_commit();
@@ -847,6 +950,14 @@ public:
         lrng_state_ = state;
     }
 
+    bool is_restarted() {
+        return restarted;
+    }
+  
+    void set_restarted(bool r) {
+        restarted = r;
+    }
+
 private:
     enum {
         s_in_progress = 0, s_opacity_check = 1, s_committing = 2,
@@ -858,14 +969,19 @@ private:
     uint16_t first_write_;
     uint8_t state_;
     bool any_writes_;
+public:
     bool any_nonopaque_;
+private:
     bool may_duplicate_items_;
     bool is_test_;
+    bool restarted;
     TransItem* tset_next_;
     unsigned tset_size_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
+public:
     mutable TransactionBuffer buf_;
+private:
     mutable uint32_t lrng_state_;
 #if STO_DEBUG_ABORTS
     mutable TransItem* abort_item_;
@@ -940,7 +1056,7 @@ public:
 
     template <typename T>
     static TransProxy item(const TObject* s, T key) {
-        always_assert(in_progress());
+        //always_assert(in_progress());
         return TThread::txn->item(s, key);
     }
 
@@ -984,7 +1100,9 @@ public:
     }
 
     static bool try_commit() {
-        assert(in_progress());
+        //always_assert(in_progress());
+        if (!in_progress())
+            return false;
         return TThread::txn->try_commit();
     }
 
@@ -1034,6 +1152,9 @@ public:
         use();
         return t_.try_commit();
     }
+    Transaction &get_tx() {
+        return t_;
+    }
 private:
     Transaction t_;
     Transaction* base_;
@@ -1059,7 +1180,14 @@ class TransactionGuard {
 class TransactionLoopGuard {
   public:
     TransactionLoopGuard() {
+        Transaction* t = Sto::transaction();
+        t->set_restarted(false);
+        //std::ostringstream buf;
+	//buf << "Thread [" << TThread::id() << "] starts a new transaction" << std::endl;
+        //std::cerr << buf.str();
+        //std::cout << TThread::id() << " starts!" << std::endl;
     }
+
     ~TransactionLoopGuard() {
         if (TThread::txn->in_progress())
             TThread::txn->silent_abort();
@@ -1093,8 +1221,9 @@ inline bool TransProxy::add_read(T rdata) {
 template <typename T>
 inline bool TransProxy::add_read_opaque(T rdata) {
     assert(!has_stash());
-    if (!t()->check_opacity())
+    if (!t()->check_opacity()) {
         return false;
+    }
     if (!has_read()) {
         item().__or_flags(TransItem::read_bit);
         item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));

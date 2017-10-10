@@ -9,6 +9,7 @@
 #include <climits>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <fstream>
 
 #include "TArray.hh"
 #include "TArrayAdaptive.hh"
@@ -21,6 +22,8 @@
 #include "IntStr.hh"
 #include "clp.h"
 #include "randgen.hh"
+#include "SwissTArray.hh"
+#include "SwissTGeneric.hh"
 #include "sampling.hh"
 #include "SystemProfiler.hh"
 
@@ -29,7 +32,7 @@
 // size of array (for hashtables or other non-array structures, this is the
 // size of the key space)
 #ifndef ARRAY_SZ
-#define ARRAY_SZ 10000000
+#define ARRAY_SZ 1000
 #endif
 
 #define USE_ARRAY 0
@@ -43,6 +46,8 @@
 #define USE_HASHTABLE_STR 9
 #define USE_ARRAY_NONOPAQUE 10
 #define USE_ARRAY_ADAPTIVE 11
+#define USE_SWISSARRAY 12
+#define USE_SWISSGENERICARRAY 13
 
 // set this to USE_DATASTRUCTUREYOUWANT
 #define DATA_STRUCTURE USE_HASHTABLE
@@ -155,7 +160,8 @@ unsigned initial_seeds[64];
 
 template <int DS> struct Container {};
 
-template <> struct Container<USE_ARRAY> {
+
+/*template <> struct Container<USE_ARRAY> {
     typedef TArray<value_type, ARRAY_SZ> type;
     typedef int index_type;
     static constexpr bool has_delete = false;
@@ -172,14 +178,43 @@ template <> struct Container<USE_ARRAY> {
         return v_.transPut(key, value);
     }
     static void init() {
+    } 
+    void init_ns() {
+    }
+    void finalize() {
     }
     static void thread_init(Container<USE_ARRAY>&) {
     }
 private:
     type v_;
+};*/
+
+template <> struct Container<USE_SWISSARRAY> {
+    typedef SwissTArray<value_type, ARRAY_SZ, TNonopaqueWrapped> type;
+    typedef int index_type;
+    static constexpr bool has_delete = false;
+    value_type nontrans_get(index_type key) {
+        return v_.nontrans_get(key);
+    }
+    bool transGet(index_type key, value_type& ret) {
+        return v_.transGet(key, ret);
+    }
+    bool transPut(index_type key, value_type value) {
+        return v_.transPut(key, value);
+    }
+    static void init() {
+    }
+    void init_ns() {
+    }
+    void finalize() {
+    } 
+    static void thread_init(Container<USE_SWISSARRAY>&) {
+    }
+private:
+    type v_;
 };
 
-template <> struct Container<USE_ARRAY_NONOPAQUE> {
+/*template <> struct Container<USE_ARRAY_NONOPAQUE> {
     typedef TArray<value_type, ARRAY_SZ, TNonopaqueWrapped> type;
     typedef int index_type;
     static constexpr bool has_delete = false;
@@ -196,6 +231,10 @@ template <> struct Container<USE_ARRAY_NONOPAQUE> {
         return v_.transPut(key, value);
     }
     static void init() {
+    }
+    void init_ns() {
+    }
+    void finalize() {
     }
     static void thread_init(Container<USE_ARRAY_NONOPAQUE>&) {
     }
@@ -225,7 +264,6 @@ private:
     type v_;
 };
 
-/*
 template <> struct Container<USE_VECTOR> {
     typedef Vector<value_type> type;
     typedef typename type::size_type index_type;
@@ -245,6 +283,10 @@ template <> struct Container<USE_VECTOR> {
         return v_.transUpdate(key, value);
     }
     static void init() {
+    }
+    void init_ns() {
+    }
+    void finalize() {
     }
     static void thread_init(Container<USE_VECTOR>&) {
     }
@@ -274,6 +316,10 @@ template <> struct Container<USE_TVECTOR> {
     }
     static void init() {
     }
+    void init_ns() {
+    }
+    void finalize() {
+    }
     static void thread_init(Container<USE_TVECTOR>&) {
     }
 private:
@@ -296,14 +342,49 @@ template <> struct Container<USE_TGENERICARRAY> {
     }
     static void init() {
     }
+    void init_ns() {
+    }
+    void finalize() {
+    }
     static void thread_init(Container<USE_TGENERICARRAY>&) {
     }
 private:
     TGeneric stm_;
     value_type a_[ARRAY_SZ];
+};*/
+
+template <> struct Container<USE_SWISSGENERICARRAY> {
+    typedef int index_type;
+    static constexpr bool has_delete = false;
+    value_type nontrans_get(index_type key) {
+        return a_[key];
+    }
+    bool transGet(index_type key, value_type& ret) {
+        return stm_.read(&a_[key], ret);
+    }
+    bool transPut(index_type key, value_type value) {
+        return stm_.write(&a_[key], value);
+    }
+    static void init() {
+    }
+    void init_ns() {
+        std::cout << "Container<USE_SWISSGENERIC>::init starts!" << std::endl;
+        //stm_.init_table_counts();
+    }
+    void finalize() {
+        std::cout << "Container<USE_SWISSGENERIC>::finalize starts!" << std::endl;
+        //stm_.print_table_counts();
+    }
+    static void thread_init(Container<USE_SWISSGENERICARRAY>&) {
+    }
+private:
+    //SwissTGeneric stm_;
+    SwissTNonopaqueGeneric stm_;
+    value_type a_[ARRAY_SZ] __attribute__ ((aligned (sizeof(value_type))));
 };
 
-template <> struct Container<USE_MASSTREE> {
+
+/*template <> struct Container<USE_MASSTREE> {
 #if STRING_VALUES && UNBOXED_STRINGS
     typedef MassTrans<value_type, versioned_str_struct> type;
 #else
@@ -339,6 +420,10 @@ template <> struct Container<USE_MASSTREE> {
             // just advance blindly because of the way Masstree uses epochs
             globalepoch++;
         };
+    }
+    void init_ns() {
+    }
+    void finalize() {
     }
     static void thread_init(Container<USE_MASSTREE>&) {
         type::thread_init();
@@ -386,6 +471,10 @@ template <> struct Container<USE_MASSTREE_STR> {
             globalepoch++;
         };
     }
+    void init_ns() {
+    }
+    void finalize() {
+    }
     static void thread_init(Container<USE_MASSTREE_STR>&) {
         type::thread_init();
     }
@@ -423,6 +512,10 @@ template <> struct Container<USE_HASHTABLE> {
     }
     static void init() {
     }
+    void init_ns() {
+    }
+    void finalize() {
+    }
     static void thread_init(Container<USE_HASHTABLE>&) {
     }
 private:
@@ -455,11 +548,15 @@ template <> struct Container<USE_HASHTABLE_STR> {
     }
     static void init() {
     }
+    void init_ns() {
+    } 
+    void finalize() {
+    }
     static void thread_init(Container<USE_HASHTABLE_STR>&) {
     }
 private:
-    type v_;
-};
+type v_;
+};*/
 
 #endif
 
@@ -482,7 +579,6 @@ bool blindRandomWrite = true;
 double zipf_skew = 1.0;
 bool profile = false;
 bool dump_trace = false;
-
 bool stop = false; // global stop signal
 
 
@@ -502,23 +598,23 @@ void prepopulate_func(T& a) {
 }
 
 void prepopulate_func(int *array) {
-  for (int i = 0; i < prepopulate; ++i) {
-    array[i] = i+1;
-  }
+for (int i = 0; i < prepopulate; ++i) {
+array[i] = i+1;
+}
 }
 
 #if DATA_STRUCTURE == USE_QUEUE
 // FUNCTIONS FOR QUEUE
 void prepopulate_func() {
-  for (int i = 0; i < prepopulate; ++i) {
-    q->push(val(i));
-  }
+for (int i = 0; i < prepopulate; ++i) {
+q->push(val(i));
+}
 }
 
 void empty_func() {
-    while (!q->empty()) {
-        q->pop();
-    }
+while (!q->empty()) {
+q->pop();
+}
 }
 #endif
 
@@ -553,56 +649,60 @@ else {
 
 template <typename T>
 static inline void nreads(T& a, int n, std::function<int(void)> slotgen) {
-  for (int i = 0; i < n; ++i) {
-    doRead(a, slotgen());
-  }
+for (int i = 0; i < n; ++i) {
+doRead(a, slotgen());
+}
 }
 
 template <typename T>
 static inline void nwrites(T& a, int n, std::function<int(void)> slotgen) {
-  for (int i = 0; i < n; ++i) {
-    doWrite(a, slotgen(), i);
-  }
+for (int i = 0; i < n; ++i) {
+doWrite(a, slotgen(), i);
+}
 }
 
 template <typename T, bool Support = T::has_delete> struct DoDeleteHelper;
 template <typename T> struct DoDeleteHelper<T, true> {
-    static void run(T& a, typename T::index_type slot) {
-        a.transDelete(slot);
-    }
+static void run(T& a, typename T::index_type slot) {
+a.transDelete(slot);
+}
 };
 template <typename T> struct DoDeleteHelper<T, false> {
-    static void run(T&, typename T::index_type) {
-    }
+static void run(T&, typename T::index_type) {
+}
 };
 template <typename T>
 static void doDelete(T& a, int slot) {
-    DoDeleteHelper<T>::run(a, slot);
+DoDeleteHelper<T>::run(a, slot);
 }
 
 
 
 struct Tester {
-    Tester() {}
-    virtual void initialize() = 0;
-    virtual void run(int me) {
-        (void) me;
-        assert(0 && "Test not supported");
-    }
-    virtual bool check() { return false; }
-    virtual void report() {
+Tester() {}
+virtual void initialize() = 0;
+virtual void finalize() = 0;
+virtual void run(int me) {
+(void) me;
+assert(0 && "Test not supported");
+}
+virtual bool check() { return false; }
+virtual void report() {
 #if DEBUG_SKEW
-        std::cout << "skew reporting not available for this test"
-            << std::endl;
+std::cout << "skew reporting not available for this test"
+    << std::endl;
 #endif
-    }
+}
 };
 
 template <int DS> struct DSTester : public Tester {
-    DSTester() : a() {}
-    void initialize();
-    virtual bool prepopulate() { return true; }
-    typedef Container<DS> container_type;
+DSTester() : a() {}
+void initialize();
+void finalize() {
+  a->finalize();
+}
+virtual bool prepopulate() { return true; }
+typedef Container<DS> container_type;
   protected:
     container_type* a;
 };
@@ -616,6 +716,7 @@ template <int DS> void DSTester<DS>::initialize() {
 #endif
     }
     container_type::init();
+    a->init_ns();
 }
 
 // New test: Random R/W with zipf distribution to simulate skewed contention
@@ -774,7 +875,7 @@ bool HotspotRW<DS>::prepopulate() {
     return true;
 }
 
-template <int DS>
+/*template <int DS>
 void HotspotRW<DS>::run(int me) {
     TThread::set_id(me);
     container_type* a = this->a;
@@ -834,7 +935,7 @@ void HotspotRW<DS>::run(int me) {
         }
     }
 #endif
-}
+}*/
 
 template <int DS>
 void HotspotRW<DS>::report() {
@@ -1027,7 +1128,6 @@ template <int DS> void ReadThenWrite<DS>::run(int me) {
   }
 }
 
-
 template <int DS> struct RandomRWs_parent : public DSTester<DS> {
     typedef typename DSTester<DS>::container_type container_type;
     RandomRWs_parent() {}
@@ -1037,6 +1137,7 @@ template <int DS> struct RandomRWs_parent : public DSTester<DS> {
 template <int DS> template <bool do_delete>
 void RandomRWs_parent<DS>::do_run(int me) {
   TThread::set_id(me);
+  //TThread::set_always_allocate(readMyWrites);
   Sto::update_threadid();
 #ifdef BOOSTING_STANDALONE
   boosting_threadid = me;
@@ -1044,10 +1145,13 @@ void RandomRWs_parent<DS>::do_run(int me) {
   container_type* a = this->a;
   container_type::thread_init(*a);
 
+  unsigned ids[100] = {10, 240, 45, 205, 80, 170, 105, 140, 11, 239, 46, 204, 81, 169, 106, 141, 12, 238, 47, 203, 82, 168, 107, 142, 13, 237, 48, 202, 83, 167, 108, 143, 14, 236, 49, 201, 84, 166, 109, 144, 15, 235, 50, 200, 85, 165, 110, 145, 16, 234, 51, 199, 86, 164, 111, 146, 17, 233, 52, 198, 87, 163, 112, 147, 18, 232, 53, 197, 88, 162, 113, 148, 19, 231, 54, 196, 89, 161, 114, 149, 20, 230, 55, 195, 90, 160, 115, 150, 21, 229, 56, 194, 91, 159, 116, 151, 22, 228, 57, 193}; 
+
 #if NON_CONFLICTING
   long range = ARRAY_SZ/nthreads;
-  std::uniform_int_distribution<long> slotdist(me*range, (me + 1) * range - 1);
+  std::uniform_int_distribution<long> slotdist(me*range + 10, (me + 1) * range - 1 - 10);
 #else
+  long range = ARRAY_SZ/nthreads;
   std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
 #endif
 
@@ -1069,6 +1173,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
 #endif
 
     TRANSACTION {
+      bool success = true;
 #if MAINTAIN_TRUE_ARRAY_STATE
       nslots_written = 0;
 #endif
@@ -1078,26 +1183,43 @@ void RandomRWs_parent<DS>::do_run(int me) {
 #endif
 
       for (int j = 0; j < OPS; ++j) {
-        int slot = slotdist(transgen);
+        int slot  = slotdist(transgen);
+        //slot = slot +  ids[j] * 4 - slot;
+        //int slot = me * range + j;
 #if ALL_UNIQUE_SLOTS
         while (used[slot]) slot = slotdist(transgen);
         used[slot]=true;
 #endif
+        //doRead(*a, slot);
         auto r = transgen();
-        if (do_delete && r > (write_thresh+write_thresh/2)) {
+        //if (do_delete && r > (write_thresh+write_thresh/2)) {
           // TODO: this doesn't make that much sense if write_percent != 50%
-          doDelete(*a, slot);
-        } else if (r > write_thresh) {
-          doRead(*a, slot);
+          //doDelete(*a, slot);
+        //} else 
+        if (r > write_thresh) {
+          //doRead(*a, slot);
+	  success = doWrite(*a, slot, j);
         } else {
-          doWrite(*a, slot, j);
+          //doWrite(*a, slot, j);
+          value_type r;
+	  success = doRead(*a, slot, r);
 
 #if MAINTAIN_TRUE_ARRAY_STATE
           slots_written[nslots_written++] = slot;
 #endif
         }
+
+        if (!success)
+	    break;
+      }
+
+      if (!success) {
+          __txn_guard.silent_abort();
       }
     } RETRY(true);
+
+
+
 #if MAINTAIN_TRUE_ARRAY_STATE
     if (maintain_true_array_state) {
         std::sort(slots_written, slots_written + nslots_written);
@@ -1191,6 +1313,7 @@ template <int DS, bool do_delete> bool RandomRWs<DS, do_delete>::check() {
     assert(old->nontrans_get(i) == ch->nontrans_get(i));
   }
   delete ch;
+  std::cout << "Checked" << std::endl;
   return true;
 }
 
@@ -1373,15 +1496,27 @@ template <int DS> void InterferingRWs<DS>::run(int me) {
   TThread::set_id(me);
   container_type* a = this->a;
   container_type::thread_init(*a);
+  int N = ntrans / nthreads;
 
+  for (int j = 0; j < N; j++) {
   TRANSACTION {
     for (int i = 0; i < ARRAY_SZ; ++i) {
       if ((i % nthreads) >= me) {
         auto cur = a->transGet(i);
-        a->transPut(i, val(unval(cur)+1));
+        //std::ofstream outfile;
+        //outfile.open(std::to_string(me), std::ios_base::app);
+        //outfile << "Transaction on thread [" << me << "] writes array  [" << i << "]" << std::endl;
+        //outfile.close(); 
+	a->transPut(i, val(unval(cur)+1));
       }
-    }
+   }  
+      //std::ofstream outfile;
+      //outfile.open(std::to_string(me), std::ios_base::app);
+      //outfile << "Transaction on thread [" << me << "] starts commit, number = [" << j << "]" << std::endl;
+      //outfile.close();
+ 
   } RETRY(true);
+  }
 }
 
 template <int DS> bool InterferingRWs<DS>::check() {
@@ -1508,6 +1643,7 @@ struct TesterPair {
 
 void* runfunc(void* x) {
     TesterPair* tp = (TesterPair*) x;
+    std::cout << "runfunc: id = " << tp->me << std::endl;
     tp->t->run(tp->me);
     return nullptr;
 }
@@ -1541,8 +1677,9 @@ void print_time(double time) {
 #define MAKE_TESTER(name, desc, type, ...)            \
     {name, desc, 0, new type<0, ## __VA_ARGS__>},     \
     {name, desc, 10, new type<10, ## __VA_ARGS__>},   \
-    {name, desc, 11, new type<11, ## __VA_ARGS__>}
-
+    {name, desc, 11, new type<11, ## __VA_ARGS__>},   \
+    {name, desc, 12, new type<12, ## __VA_ARGS__>},   \
+    {name, desc, 13, new type<12, ## __VA_ARGS__>}
 
 //    {name, desc, 1, new type<1, ## __VA_ARGS__>},     
 //    {name, desc, 2, new type<2, ## __VA_ARGS__>},     
@@ -1587,11 +1724,15 @@ struct {
     {"tgeneric", USE_TGENERICARRAY},
     {"queue", USE_QUEUE},
 //    {"vector", USE_VECTOR},
-    {"tvector", USE_TVECTOR}
+    {"tvector", USE_TVECTOR},
+    {"swissarray", USE_SWISSARRAY},
+    {"swissgeneric", USE_SWISSGENERICARRAY}
 };
 
 enum {
     opt_test = 1, opt_nrmyw, opt_check, opt_profile, opt_dump, opt_nthreads, opt_ntrans, opt_opspertrans, opt_opspertrans_ro, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew, opt_chance
+};
+
 };
 
 static const Clp_Option options[] = {
@@ -1737,8 +1878,12 @@ int main(int argc, char *argv[]) {
         srandom(seed);
     else
         srandomdev();
-    for (unsigned i = 0; i < arraysize(initial_seeds); ++i)
-        initial_seeds[i] = random();
+    for (unsigned i = 0; i < arraysize(initial_seeds); ++i) {
+        auto ra = random();
+        //std::cout << ra << std::endl;
+        initial_seeds[i] = ra;
+    }
+        //initial_seeds[i] = random();
 
 #if DATA_STRUCTURE == USE_QUEUE
     QueueType stack_q;
@@ -1802,6 +1947,9 @@ int main(int argc, char *argv[]) {
   } else {
     time_and_run(&real_time, &ru1, &ru2, nthreads, tester);
   }
+
+  tester->finalize();
+
 #if !DATA_COLLECT
   printf("real time: ");
 #endif
@@ -1839,7 +1987,7 @@ int main(int argc, char *argv[]) {
           sep = ", ";
       }
       if (txp_count > txp_total_aborts) {
-          printf("%stotal_aborts: %llu (%llu aborts at commit time)\n", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+          printf("%stotal_aborts: %llu (%llu aborts at commit time, %llu in observe, %llus due to w/w conflicts)\n CM::should_abort: %llu, CM::on_write: %llu, CM::on_rollback: %llu, CM::start: %llu\n Allocate new items: %llu, BV hit: %llu", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts), tc.p(txp_observe_lock_aborts), tc.p(txp_wwc_aborts), tc.p(txp_cm_shouldabort), tc.p(txp_cm_onwrite), tc.p(txp_cm_onrollback), tc.p(txp_cm_start), tc.p(txp_allocate), tc.p(txp_bv_hit));
           sep = ", ";
       }
       if (*sep)
@@ -1855,4 +2003,3 @@ int main(int argc, char *argv[]) {
   }
 #endif
 }
-

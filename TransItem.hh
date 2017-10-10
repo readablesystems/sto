@@ -4,8 +4,10 @@
 #include <string.h>
 #include <assert.h>
 #include "Interface.hh"
+#include "TWrapped.hh"
 #include "Packer.hh"
 #include "compiler.hh"
+#include "WriteLock.hh"
 
 class TransProxy;
 
@@ -221,8 +223,9 @@ private:
     }
     friend class Transaction;
     friend class TransProxy;
-};
 
+    friend class TWrappedAccess;
+};
 
 class TransProxy {
   public:
@@ -322,6 +325,14 @@ class TransProxy {
     template <typename T, typename... Args>
     inline bool acquire_write(Args&&... args, TLockVersion& vers);
 
+    // swisstm add write
+    template <typename T>
+    inline bool add_swiss_write(const T& wdata, WriteLock& wlock);
+    template <typename T>
+    inline bool add_swiss_write(T&& wdata, WriteLock& wlock);
+    template <typename T, typename... Args>
+    inline bool add_swiss_write(Args&&... wdata, WriteLock& lock);
+
     template <typename T>
     inline TransProxy& set_stash(T sdata);
     inline TransProxy& clear_stash() {
@@ -418,6 +429,7 @@ class TransProxy {
     inline TransItem& item() const {
         return *item_;
     }
+    
 
 private:
     Transaction* t_;

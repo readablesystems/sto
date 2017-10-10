@@ -1,5 +1,11 @@
 #include "Transaction.hh"
+#include "ContentionManager.hh"
 #include <typeinfo>
+#include <bitset>
+#include <fstream>
+
+#include <sys/resource.h>
+#include <sys/time.h>
 
 Transaction::testing_type Transaction::testing;
 threadinfo_t Transaction::tinfo[MAX_THREADS];
@@ -100,6 +106,7 @@ bool Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
         mark_abort_because(item, "recursive opacity check", t);
     abort:
         TXP_INCREMENT(txp_hco_abort);
+
         state_ = s_in_progress;
         return false;
     }
@@ -139,6 +146,10 @@ bool Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
     return true;
 }
 
+void Transaction::callCMstart() {
+    ContentionManager::start(this);
+}
+
 void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset, unsigned first_lock) {
 #if STO_TSC_PROFILE
     TimeKeeper<tc_cleanup> tk;
@@ -148,10 +159,11 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset, u
 #if STO_DEBUG_ABORTS
         if (local_random() <= uint32_t(0xFFFFFFFF * STO_DEBUG_ABORTS_FRACTION)) {
             std::ostringstream buf;
-            buf << "$" << (threadid_ < 10 ? "0" : "") << threadid_
-                << " abort " << state_name(state_);
+            buf << "$" << (threadid_ < 10 ? "0" : "") << threadid_;
+            //    << " abort " << state_name(state_);
             if (abort_reason_)
                 buf << " " << abort_reason_;
+            buf << " tset_size_ = [" << tset_size_ << "]";
             if (abort_item_)
                 buf << " " << *abort_item_;
             if (abort_version_)
@@ -195,9 +207,13 @@ void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset, u
         if (state_ == s_committing_locked) {
             it = &tset_[tset_size_ / tset_chunk][tset_size_ % tset_chunk];
             for (unsigned tidx = tset_size_; tidx != first_write_; --tidx) {
+                //outfile << "P6" << std::endl;
                 it = (tidx % tset_chunk ? it - 1 : &tset_[(tidx - 1) / tset_chunk][tset_chunk - 1]);
-                if (it->needs_unlock())
+                if (it->needs_unlock()) {
+                    //outfile << "P7" << std::endl;
+                    //outfile << "Unlocking item[" << it->key<unsigned>() << "]" << std::endl;
                     it->owner()->unlock(*it);
+                }
             }
         }
 */
@@ -226,12 +242,18 @@ after_unlock:
         thr.trans_end_callback();
     // XXX should reset trans_end_callback after calling it...
     state_ = s_aborted + committed;
+    restarted = true;
+    if (!committed) {
+        ContentionManager::on_rollback(this);
+    } 
 
 #if STO_TSC_PROFILE
     auto endtime = read_tsc();
     if (!committed)
         TSC_ACCOUNT(tc_abort, endtime - start_tsc_);
 #endif
+    
+    //COZ_PROGRESS;
 }
 
 bool Transaction::try_commit() {
@@ -250,8 +272,9 @@ bool Transaction::try_commit() {
     TXP_ACCOUNT(txp_total_n, tset_size_);
 
     assert(state_ == s_in_progress || state_ >= s_aborted);
-    if (state_ >= s_aborted)
+    if (state_ >= s_aborted) {
         return state_ > s_aborted;
+    }
 
     if (any_nonopaque_)
         TXP_INCREMENT(txp_commit_time_nonopaque);
@@ -330,7 +353,6 @@ bool Transaction::try_commit() {
     }
 #endif
 
-
 #if CONSISTENCY_CHECK
     fence();
     commit_tid();
@@ -377,9 +399,12 @@ bool Transaction::try_commit() {
 
     // fence();
     stop(true, writeset, nwriteset, first_lock);
+
+    //COZ_PROGRESS;
     return true;
 
 abort:
+    //outfile.close();
     // fence();
     TXP_INCREMENT(txp_commit_time_aborts);
     // scan the whole read set for locks if aborting
