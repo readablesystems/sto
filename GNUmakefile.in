@@ -55,7 +55,7 @@ CXXFLAGS += -DDEBUG_SKEW=$(DEBUG_SKEW)
 endif
 
 # OPTFLAGS can change without rebuild
-OPTFLAGS := -W -Wall
+OPTFLAGS := -W -Wall -Wextra
 
 ifndef OPT
 OPTFLAGS += -O3
