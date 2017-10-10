@@ -4,10 +4,11 @@
 #include <string.h>
 #include <assert.h>
 #include "Interface.hh"
-#include "TWrapped.hh"
 #include "Packer.hh"
 #include "compiler.hh"
 #include "WriteLock.hh"
+
+class TWrappedAccess;
 
 class TransProxy;
 
