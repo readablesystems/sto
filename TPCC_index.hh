@@ -310,7 +310,7 @@ public:
             // update
             auto vptr = item.write_value<value_type *>();
             copy_row(el, vptr);
-            //txn.rcu_delete_array(reinterpret_cast<char *>(vptr));
+            txn.rcu_delete_array(reinterpret_cast<char *>(vptr));
         }
 
         // hacks for upgrading version numbers from nonopaque to commit_tid
@@ -333,9 +333,9 @@ public:
             _remove(el);
         }
 
-        //if (!committed && !has_delete(item) && !has_insert(item)) {
-        //    Transaction::rcu_delete_array(item.write_value<char *>());
-        //}
+        if (!committed && !has_delete(item) && !has_insert(item)) {
+            Transaction::rcu_delete_array(item.write_value<char *>());
+        }
     }
 
     // non-transactional methods
@@ -835,7 +835,7 @@ public:
         if (!has_insert(item)) {
             auto vptr = item.write_value<value_type *>();
             copy_row(el, vptr);
-            //txn.rcu_delete_array(reinterpret_cast<char *>(vptr));
+            txn.rcu_delete_array(reinterpret_cast<char *>(vptr));
         }
 
         // like in the hashtable (unordered_index), no need for the hacks
@@ -857,9 +857,9 @@ public:
             assert(ok);
         }
 
-        //if (!committed && !has_delete(item) && !has_insert(item)) {
-        //    Transaction::rcu_delete_array(item.write_value<char *>());
-        //}
+        if (!committed && !has_delete(item) && !has_insert(item)) {
+            Transaction::rcu_delete_array(item.write_value<char *>());
+        }
     }
 
 protected:

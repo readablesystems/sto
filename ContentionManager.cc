@@ -59,12 +59,12 @@ void ContentionManager::start(Transaction *tx) {
         // Do not reset abort count
         timestamp[threadid] = MAX_TS;
         aborted[threadid] = 0;
-	write_set_size[threadid] = 0;
+        write_set_size[threadid] = 0;
     } else {
         timestamp[threadid] = MAX_TS;
         aborted[threadid] = 0;
         write_set_size[threadid] = 0;
-        abort_count[threadid] = 0; 
+        abort_count[threadid] = 0;
     }
 }
 

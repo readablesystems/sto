@@ -304,7 +304,9 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         row = match.row;
         value = const_cast<customer_value *>(match.value_ptr);
         q_c_id = match.c_id;
-        db.tbl_customers(q_c_w_id).select_row(row, true/*for update*/);
+        std::tie(success, result, std::ignore, value) = db.tbl_customers(q_c_w_id).select_row(row, true/*for update*/);
+        TXN_DO(success);
+        assert(result);
     } else {
         assert(q_c_id != 0);
         customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
