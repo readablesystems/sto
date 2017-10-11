@@ -373,7 +373,7 @@ namespace tpcc {
 
         static int execute(int argc, char **argv) {
             bool spawn_perf = true;
-            bool counter_mode = true;
+            bool counter_mode = false;
             int num_warehouses = 1;
             int num_threads = 1;
             uint64_t num_txns = 1000000ul;

@@ -729,7 +729,7 @@ public:
         };
 
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret) {
-            TransProxy item = Sto::item(this, e);
+            TransProxy item = Sto::fresh_item(this, e);
 
             if (index_read_my_write) {
                 if (has_delete(item)) {
