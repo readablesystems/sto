@@ -310,7 +310,6 @@ public:
             // update
             auto vptr = item.write_value<value_type *>();
             copy_row(el, vptr);
-            txn.rcu_delete_array(reinterpret_cast<char *>(vptr));
         }
 
         // hacks for upgrading version numbers from nonopaque to commit_tid
@@ -331,10 +330,6 @@ public:
             internal_elem *el = item.key<internal_elem *>();
             assert(!el->valid() || el->deleted);
             _remove(el);
-        }
-
-        if (!committed && !has_delete(item) && !has_insert(item)) {
-            Transaction::rcu_delete_array(item.write_value<char *>());
         }
     }
 
@@ -385,7 +380,7 @@ private:
         buck.version.lock();
         internal_elem *prev = nullptr;
         internal_elem *curr = buck.head;
-        while (curr != nullptr && !pred(curr->key, k)) {
+        while (curr != nullptr && !pred_(curr->key, k)) {
             prev = curr;
             curr = curr->next;
         }
@@ -835,7 +830,6 @@ public:
         if (!has_insert(item)) {
             auto vptr = item.write_value<value_type *>();
             copy_row(el, vptr);
-            txn.rcu_delete_array(reinterpret_cast<char *>(vptr));
         }
 
         // like in the hashtable (unordered_index), no need for the hacks
@@ -855,10 +849,6 @@ public:
             internal_elem *el = item.key<internal_elem *>();
             bool ok = _remove(el->key);
             assert(ok);
-        }
-
-        if (!committed && !has_delete(item) && !has_insert(item)) {
-            Transaction::rcu_delete_array(item.write_value<char *>());
         }
     }
 

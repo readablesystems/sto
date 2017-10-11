@@ -5,6 +5,7 @@
 #include "small_vector.hh"
 #include "TRcu.hh"
 #include "ContentionManager.hh"
+#include "TransScratch.hh"
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -726,15 +727,12 @@ public:
 
     template <typename T>
     T *tx_alloc(const T *src) {
-        auto el = reinterpret_cast<T *>(new char[sizeof(T)]);
-        memcpy(el, src, sizeof(T));
-        return el;
+        return &scratch_.clone<T>(*src);
     }
 
     template <typename T>
     T *tx_alloc() {
-        auto el = reinterpret_cast<T *>(new char[sizeof(T)]);
-        return el;
+        return &scratch_.allocate<T>();
     }
 
     // opacity checking
@@ -981,6 +979,7 @@ private:
     mutable tid_type commit_tid_;
 public:
     mutable TransactionBuffer buf_;
+    mutable TransScratch scratch_;
 private:
     mutable uint32_t lrng_state_;
 #if STO_DEBUG_ABORTS

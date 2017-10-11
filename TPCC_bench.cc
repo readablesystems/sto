@@ -319,12 +319,12 @@ namespace tpcc {
             tpcc_runner<DBParams> runner(runner_id, db, w_start, w_end);
             typedef typename tpcc_runner<DBParams>::txn_type txn_type;
 
+            ::TThread::set_id(runner_id);
+
             // XXX get rid of this thread_init nonsense
             for (auto &tbl : db.tbl_cus_) {
                 tbl.thread_init();
             }
-
-            ::TThread::set_id(runner_id);
 
             for (uint64_t i = 0; i < num_txns; ++i) {
                 txn_type t = runner.next_transaction();

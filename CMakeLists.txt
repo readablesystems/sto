@@ -14,6 +14,7 @@ add_subdirectory(masstree-beta)
 add_library(clp clp.c)
 add_library(sto
         Packer.cc
+        TransScratch.hh
         Transaction.cc
         Transaction.hh
         TransItem.hh

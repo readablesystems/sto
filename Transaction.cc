@@ -253,6 +253,9 @@ after_unlock:
     //    ContentionManager::on_rollback(this);
     //}
 
+    // clear/consolidate transactional scratch space
+    scratch_.clear();
+
 #if STO_TSC_PROFILE
     auto endtime = read_tsc();
     if (!committed)
