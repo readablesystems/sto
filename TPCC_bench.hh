@@ -300,9 +300,9 @@ public:
         : spawn_perf_(spawn_perf), perf_pid_(),
           num_txns_(), start_tsc_(), end_tsc_() {}
 
-    void start(size_t num_total_txns) {
+    void start(size_t num_total_txns, Profiler::perf_mode mode) {
         if (spawn_perf_)
-            perf_pid_ = Profiler::spawn("perf");
+            perf_pid_ = Profiler::spawn("perf", mode);
         start_tsc_ = read_tsc();
         num_txns_ = num_total_txns;
     }

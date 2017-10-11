@@ -47,6 +47,7 @@
 /unit-swisstgeneric
 /perf.data
 /perf.data.old
+/perf.txt
 .ycm_*
 .idea/modules.xml
 .idea/sto.iml

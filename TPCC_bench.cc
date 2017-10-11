@@ -373,9 +373,12 @@ namespace tpcc {
 
         static int execute(int argc, char **argv) {
             bool spawn_perf = true;
+            bool counter_mode = true;
             int num_warehouses = 1;
             int num_threads = 1;
             uint64_t num_txns = 1000000ul;
+
+            auto profiler_mode = counter_mode ? ::Profiler::perf_mode::counters : ::Profiler::perf_mode::record;
 
             Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
 
@@ -408,7 +411,7 @@ namespace tpcc {
             prepopulate_db(db);
             std::cout << "Prepopulation complete." << std::endl;
 
-            prof.start((num_txns / num_threads) * num_threads);
+            prof.start((num_txns / num_threads) * num_threads, profiler_mode);
             run_benchmark(db, num_threads, num_txns);
             prof.finish();
 
