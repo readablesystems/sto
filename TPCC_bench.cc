@@ -324,6 +324,8 @@ namespace tpcc {
                 tbl.thread_init();
             }
 
+            ::TThread::set_id(runner_id);
+
             for (uint64_t i = 0; i < num_txns; ++i) {
                 txn_type t = runner.next_transaction();
                 switch (t) {
