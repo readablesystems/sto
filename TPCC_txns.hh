@@ -18,20 +18,6 @@ struct c_data_info {
     int64_t h_amount;
 };
 
-struct cu_match_entry {
-    cu_match_entry(const var_string<16>& c_first, uint64_t cid, uintptr_t rid, const customer_value *ptr)
-        : first_name(c_first.c_str()), c_id(cid), row(rid), value_ptr(ptr) {}
-
-    bool operator<(const cu_match_entry& other) const {
-        return first_name < other.first_name;
-    }
-
-    std::string first_name;
-    uint64_t c_id;
-    uintptr_t row;
-    const customer_value *value_ptr;
-};
-
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_neworder() {
     //fprintf(stdout, "NEWORDER\n");
@@ -283,37 +269,36 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     // select and update customer
     if (by_name) {
-        std::vector<cu_match_entry> match_set;
-        auto scan_callback = [&] (const customer_key& key, uintptr_t rid, const customer_value& cv) {
-            if (cv.c_last == last_name)
-                match_set.emplace_back(cv.c_first, key.get_c_id(), rid, &cv);
+        std::vector<uint64_t> matches;
+        auto scan_callback = [&] (const customer_idx_key& key, const customer_idx_value& civ) -> bool {
+            (void)key;
+            matches.emplace_back(civ.c_id);
             return true;
         };
 
         constexpr uint64_t max = std::numeric_limits<uint64_t>::max();
-        customer_key ck0(q_c_w_id, q_c_d_id, 0);
-        customer_key ck1(q_c_w_id, q_c_d_id, max);
+        customer_idx_key ck0(q_c_w_id, q_c_d_id, last_name, 0x00 /*fill first name*/);
+        customer_idx_key ck1(q_c_w_id, q_c_d_id, last_name, 0xff);
 
-        success = db.tbl_customers(q_c_w_id).template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback);
+        success = db.tbl_customer_index(q_c_w_id)
+                .template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback);
         TXN_DO(success);
 
-        size_t n = match_set.size();
-        assert(n > 0);
-        std::sort(match_set.begin(), match_set.end());
-        auto& match = match_set[n/2];
-        row = match.row;
-        value = const_cast<customer_value *>(match.value_ptr);
-        q_c_id = match.c_id;
-        std::tie(success, result, std::ignore, value) = db.tbl_customers(q_c_w_id).select_row(row, true/*for update*/);
-        TXN_DO(success);
-        assert(result);
+        size_t n = matches.size();
+        always_assert(n > 0, "match size invalid");
+        size_t idx = n / 2;
+        if (n % 2 == 0)
+            idx -= 1;
+        q_c_id = matches[idx];
+
     } else {
-        assert(q_c_id != 0);
-        customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
-        std::tie(success, result, row, value) = db.tbl_customers(q_c_w_id).select_row(ck, true/*for update*/);
-        TXN_DO(success);
-        assert(result);
+        always_assert(q_c_id != 0, "q_c_id invalid in c_id selection mode");
     }
+
+    customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
+    std::tie(success, result, row, value) = db.tbl_customers(q_c_w_id).select_row(ck, true/*for update*/);
+    TXN_DO(success);
+    assert(result);
 
     const customer_value *cv = reinterpret_cast<const customer_value *>(value);
     customer_value *new_cv = Sto::tx_alloc(cv);
@@ -355,13 +340,3 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 }
 
 }; // namespace tpcc
-
-namespace std {
-    template<>
-    struct less<tpcc::cu_match_entry> {
-        bool operator() (const tpcc::cu_match_entry& lhs,
-                         const tpcc::cu_match_entry& rhs) const {
-            return lhs < rhs;
-        }
-    };
-};

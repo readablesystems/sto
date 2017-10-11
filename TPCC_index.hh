@@ -738,9 +738,9 @@ public:
                 }
                 if (item.has_write()) {
                     if (has_insert(item))
-                        ret = callback(key, reinterpret_cast<uintptr_t>(e), e->value);
+                        ret = callback(key_type(key), e->value);
                     else
-                        ret = callback(key, reinterpret_cast<uintptr_t>(e), *(item.template write_value<value_type *>()));
+                        ret = callback(key_type(key), *(item.template write_value<value_type *>()));
                     return true;
                 }
             }
@@ -760,7 +760,7 @@ public:
                 return true;
             }
 
-            ret = callback(key_type(key), reinterpret_cast<uintptr_t>(e), e->value);
+            ret = callback(key_type(key), e->value);
             return true;
         };
 

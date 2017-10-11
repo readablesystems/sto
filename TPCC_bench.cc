@@ -25,6 +25,7 @@ namespace tpcc {
         tbl_its_ = new it_table_type(NUM_ITEMS * 2);
         for (auto i = 0; i < num_whs; ++i) {
             tbl_dts_.emplace_back(num_districts * 2);
+            tbl_cni_.emplace_back(num_customers * 2);
             tbl_cus_.emplace_back(num_customers * 2);
             tbl_ods_.emplace_back(num_customers * 10 * 2);
             tbl_ols_.emplace_back(num_customers * 100 * 2);
@@ -144,6 +145,11 @@ namespace tpcc {
                 cv.c_data = random_a_string(300, 500);
 
                 db.tbl_customers(wid).nontrans_put(ck, cv);
+
+                customer_idx_key cik(wid, did, cv.c_last, cv.c_first);
+                customer_idx_value civ(cid);
+
+                db.tbl_customer_index(wid).nontrans_put(cik, civ);
             }
         }
     }
@@ -292,7 +298,7 @@ namespace tpcc {
             tpcc_prepopulator<DBParams> pop(worker_id, db);
 
             // XXX get rid of this thread init nonsense
-            for (auto &tbl : db.tbl_cus_) {
+            for (auto &tbl : db.tbl_cni_) {
                 tbl.thread_init();
             }
 
@@ -322,7 +328,7 @@ namespace tpcc {
             ::TThread::set_id(runner_id);
 
             // XXX get rid of this thread_init nonsense
-            for (auto &tbl : db.tbl_cus_) {
+            for (auto &tbl : db.tbl_cni_) {
                 tbl.thread_init();
             }
 
