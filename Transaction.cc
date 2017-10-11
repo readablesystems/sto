@@ -247,16 +247,18 @@ after_unlock:
     // XXX should reset trans_end_callback after calling it...
     state_ = s_aborted + committed;
     restarted = true;
-    if (!committed) {
-        ContentionManager::on_rollback(this);
-    } 
+
+    //XXX Contention manager stuff to be enabled
+    //if (!committed) {
+    //    ContentionManager::on_rollback(this);
+    //}
 
 #if STO_TSC_PROFILE
     auto endtime = read_tsc();
     if (!committed)
         TSC_ACCOUNT(tc_abort, endtime - start_tsc_);
 #endif
-    
+
     //COZ_PROGRESS;
 }
 

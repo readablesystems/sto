@@ -345,10 +345,6 @@ void tpcc_runner_thread(tpcc_db<DBParams>& db, int runner_id, uint64_t w_start, 
             assert(false);
             break;
         };
-
-        if (i % 1000 == 0) {
-            fprintf(stdout, "r:%d, txn #%lu\n", runner_id, i);
-        }
     }
 }
 
@@ -356,9 +352,8 @@ template <typename DBParams>
 void run_benchmark(tpcc_db<DBParams>& db, int num_runners, uint64_t num_txns) {
     int q = db.num_warehouses() / num_runners;
     int r = db.num_warehouses() % num_runners;
-    uint64_t ntxns_thr = num_txns / num_runners;
 
-    fprintf(stdout, "q=%d,r=%d\n", q, r);
+    uint64_t ntxns_thr = num_txns / num_runners;
 
     std::vector<std::thread> runner_thrs;
 
@@ -419,7 +414,7 @@ int execute(int argc, char **argv) {
     prepopulate_db(db);
     std::cout << "Prepopulation complete." << std::endl;
 
-    prof.start();
+    prof.start((num_txns / num_threads) * num_threads);
     run_benchmark(db, num_threads, num_txns);
     prof.finish();
 

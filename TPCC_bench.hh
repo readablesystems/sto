@@ -293,12 +293,13 @@ class tpcc_profiler {
 public:
     explicit tpcc_profiler(bool spawn_perf)
         : spawn_perf_(spawn_perf), perf_pid_(),
-          start_tsc_(), end_tsc_() {}
+          num_txns_(), start_tsc_(), end_tsc_() {}
 
-    void start() {
+    void start(size_t num_total_txns) {
         if (spawn_perf_)
-            perf_pid_ = Profiler::spawn("tpcc_perf");
+            perf_pid_ = Profiler::spawn("perf");
         start_tsc_ = read_tsc();
+        num_txns_ = num_total_txns;
     }
 
     void finish() {
@@ -309,9 +310,10 @@ public:
         }
         // print elapsed time
         uint64_t elapsed_tsc = end_tsc_ - start_tsc_;
+        double elapsed_time = (double)elapsed_tsc / constants::million / constants::processor_tsc_frequency;
         std::cout << "Elapsed time: " << elapsed_tsc << " ticks" << std::endl;
-        std::cout << "Real time: " << (double)elapsed_tsc / constants::million / constants::processor_tsc_frequency
-            << " ms" << std::endl;
+        std::cout << "Real time: " << elapsed_time << " ms" << std::endl;
+        std::cout << "Throughput: " << (double)num_txns_ / (elapsed_time / 1000.0) << " txns/sec" << std::endl;
 
         // print STO stats
         Transaction::print_stats();
@@ -320,6 +322,7 @@ public:
 private:
     bool spawn_perf_;
     pid_t perf_pid_;
+    size_t num_txns_;
     uint64_t start_tsc_;
     uint64_t end_tsc_;
 };
