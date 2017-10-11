@@ -2,8 +2,13 @@
   <dictionary name="yihehuang">
     <words>
       <w>nurand</w>
+      <w>prepopulator</w>
+      <w>std::string</w>
+      <w>substr</w>
+      <w>threadid</w>
       <w>tictoc</w>
       <w>tpcc</w>
+      <w>txns</w>
     </words>
   </dictionary>
 </component>

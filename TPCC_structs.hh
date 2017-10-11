@@ -85,7 +85,7 @@ public:
         return const_cast<char *>(s_);
     }
 
-    friend std::hash<var_string>;
+    friend ::std::hash<var_string>;
 
 private:
     void initialize_from(const char *c_str) {
@@ -135,7 +135,7 @@ public:
     }
     fix_string& operator=(const fix_string& rhs) volatile {
         initialize_from(rhs);
-        return *const_cast<fix_string *>(this);
+        return const_cast<fix_string&>(*this);
     }
     explicit operator std::string() {
         return std::string(s_, FL);
@@ -146,7 +146,7 @@ public:
         memcpy(s_, buf, cnt);
     }
 
-    friend std::hash<fix_string>;
+    friend ::std::hash<fix_string>;
 
 private:
     void initialize_from(const char *c_str) {
