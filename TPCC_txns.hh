@@ -89,20 +89,18 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     int64_t wh_tax_rate, dt_tax_rate;
     uint64_t dt_next_oid;
 
-    std::tie(abort, result, std::ignore, value) = db.tbl_warehouses().select_row(warehouse_key(q_w_id));
-    TXN_DO(abort);
-    assert(result);
-    wh_tax_rate = reinterpret_cast<const warehouse_value *>(value)->w_tax;
+    warehouse_value& wv = db.get_warehouse(q_w_id);
+    wh_tax_rate = wv.w_tax;
 
-    std::tie(abort, result, row, value) = db.tbl_districts().select_row(district_key(q_w_id, q_d_id), true);
+    std::tie(abort, result, row, value) = db.tbl_districts(q_w_id).select_row(district_key(q_w_id, q_d_id), true);
     TXN_DO(abort);
     assert(result);
     district_value *new_dv = Sto::tx_alloc(reinterpret_cast<const district_value *>(value));
     dt_tax_rate = new_dv->d_tax;
     dt_next_oid = new_dv->d_next_o_id ++;
-    db.tbl_districts().update_row(row, new_dv);
+    db.tbl_districts(q_w_id).update_row(row, new_dv);
 
-    std::tie(abort, result, std::ignore, value) = db.tbl_customers().select_row(customer_key(q_w_id, q_d_id, q_c_id));
+    std::tie(abort, result, std::ignore, value) = db.tbl_customers(q_w_id).select_row(customer_key(q_w_id, q_d_id, q_c_id));
     TXN_DO(abort);
     assert(result);
 
@@ -118,10 +116,10 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     ov->o_entry_d = o_entry_d;
     ov->o_ol_cnt = num_items;
 
-    std::tie(abort, result) = db.tbl_orders().insert_row(ok, ov, false);
+    std::tie(abort, result) = db.tbl_orders(q_w_id).insert_row(ok, ov, false);
     TXN_DO(abort);
     assert(!result);
-    std::tie(abort, result) = db.tbl_neworders().insert_row(ok, nullptr, false);
+    std::tie(abort, result) = db.tbl_neworders(q_w_id).insert_row(ok, nullptr, false);
     TXN_DO(abort);
     assert(!result);
 
@@ -139,7 +137,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         out_item_names[i] = reinterpret_cast<const item_value *>(value)->i_name;
         auto i_data = reinterpret_cast<const item_value *>(value)->i_data;
 
-        std::tie(abort, result, row, value) = db.tbl_stocks().select_row(stock_key(wid, iid), true);
+        std::tie(abort, result, row, value) = db.tbl_stocks(wid).select_row(stock_key(wid, iid), true);
         TXN_DO(abort);
         assert(result);
         stock_value *new_sv = Sto::tx_alloc(reinterpret_cast<const stock_value *>(value));
@@ -160,7 +158,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         new_sv->s_order_cnt += 1;
         if (wid != q_w_id)
             new_sv->s_remote_cnt += 1;
-        db.tbl_stocks().update_row(row, new_sv);
+        db.tbl_stocks(wid).update_row(row, new_sv);
 
         double ol_amount = qty * i_price/100.0;
 
@@ -173,7 +171,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         olv->ol_amount = ol_amount;
         olv->ol_dist_info = s_dist;
 
-        std::tie(abort, result) = db.tbl_orderlines().insert_row(olk, olv, false);
+        std::tie(abort, result) = db.tbl_orderlines(q_w_id).insert_row(olk, olv, false);
         TXN_DO(abort);
         assert(!result);
 
@@ -251,27 +249,21 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     // select warehouse row FOR UPDATE and retrieve warehouse info
     warehouse_key wk(q_w_id);
-    std::tie(success, result, row, value) = db.tbl_warehouses().select_row(wk, true);
-    TXN_DO(success);
-    assert(result);
+    auto& wv = db.get_warehouse(q_w_id);
 
-    const warehouse_value *wv = reinterpret_cast<const warehouse_value *>(value);
-    warehouse_value *new_wv = Sto::tx_alloc(wv);
-
-    out_w_name = new_wv->w_name;
-    out_w_street_1 = new_wv->w_street_1;
-    out_w_street_2 = new_wv->w_street_2;
-    out_w_city = new_wv->w_city;
-    out_w_state = new_wv->w_state;
-    out_w_zip = new_wv->w_zip;
+    out_w_name = wv.w_name;
+    out_w_street_1 = wv.w_street_1;
+    out_w_street_2 = wv.w_street_2;
+    out_w_city = wv.w_city;
+    out_w_state = wv.w_state;
+    out_w_zip = wv.w_zip;
 
     // update warehouse ytd
-    new_wv->w_ytd += h_amount;
-    db.tbl_warehouses().update_row(row, new_wv);
+    wv.w_ytd.trans_increment(h_amount);
 
     // select district row FOR UPDATE and retrieve district info
     district_key dk(q_w_id, q_d_id);
-    std::tie(success, result, row, value) = db.tbl_districts().select_row(dk, true);
+    std::tie(success, result, row, value) = db.tbl_districts(q_w_id).select_row(dk, true);
     TXN_DO(success);
     assert(result);
 
@@ -287,7 +279,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     // update district ytd
     new_dv->d_ytd += h_amount;
-    db.tbl_districts().update_row(row, new_dv);
+    db.tbl_districts(q_w_id).update_row(row, new_dv);
 
     // select and update customer
     if (by_name) {
@@ -302,7 +294,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         customer_key ck0(q_c_w_id, q_c_d_id, 0);
         customer_key ck1(q_c_w_id, q_c_d_id, max);
 
-        success = db.tbl_customers().template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback);
+        success = db.tbl_customers(q_c_w_id).template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback);
         TXN_DO(success);
 
         size_t n = match_set.size();
@@ -312,11 +304,11 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         row = match.row;
         value = const_cast<customer_value *>(match.value_ptr);
         q_c_id = match.c_id;
-        db.tbl_customers().select_row(row, true/*for update*/);
+        db.tbl_customers(q_c_w_id).select_row(row, true/*for update*/);
     } else {
         assert(q_c_id != 0);
         customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
-        std::tie(success, result, row, value) = db.tbl_customers().select_row(ck, true/*for update*/);
+        std::tie(success, result, row, value) = db.tbl_customers(q_c_w_id).select_row(ck, true/*for update*/);
         TXN_DO(success);
         assert(result);
     }
@@ -338,7 +330,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         new_cv->c_data.insert_left(info.buf(), info.len);
     }
 
-    db.tbl_customers().update_row(row, new_cv);
+    db.tbl_customers(q_c_w_id).update_row(row, new_cv);
 
     // insert to history table
     history_value *hv = Sto::tx_alloc<history_value>();
@@ -351,8 +343,8 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     hv->h_amount = h_amount;
     hv->h_data = std::string(out_w_name.c_str()) + "    " + std::string(out_d_name.c_str());
 
-    history_key hk(db.tbl_histories().gen_key());
-    db.tbl_histories().insert_row(hk, hv);
+    history_key hk(db.tbl_histories(q_c_w_id).gen_key());
+    db.tbl_histories(q_c_w_id).insert_row(hk, hv);
 
     (void)__txn_committed;
     // commit txn

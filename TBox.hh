@@ -19,8 +19,10 @@ public:
         auto item = Sto::item(this, 0);
         if (item.has_write())
             return item.template write_value<T>();
-        else
-            return v_.read(item, vers_);
+        else {
+            // XXX ignoring abort indication for now...
+            return v_.read(item, vers_).second;
+        }
     }
     void write(const T& x) {
         Sto::item(this, 0).add_write(x);

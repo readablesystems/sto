@@ -153,6 +153,9 @@ private:
 };
 
 template <typename DBParams>
+class tpcc_access;
+
+template <typename DBParams>
 class tpcc_db {
 public:
     static constexpr bool PR = DBParams::RdMyWr;
@@ -165,7 +168,8 @@ public:
     template <typename K, typename V>
     using OIndex = ordered_index<K, V, PO, PA, PR>;
 
-    typedef UIndex<warehouse_key, warehouse_value> wh_table_type;
+    // partitioned according to warehouse id
+    typedef std::vector<warehouse_value>           wh_table_type;
     typedef UIndex<district_key, district_value>   dt_table_type;
     typedef OIndex<customer_key, customer_value>   cu_table_type;
     typedef UIndex<order_key, order_value>         od_table_type;
@@ -180,48 +184,49 @@ public:
     inline ~tpcc_db();
 
     int num_warehouses() const {
-        return num_whs_;
+        return int(tbl_whs_.size());
     }
-    wh_table_type& tbl_warehouses() {
-        return *tbl_whs_;
+    warehouse_value& get_warehouse(uint64_t w_id) {
+        return tbl_whs_[w_id - 1];
     }
-    dt_table_type& tbl_districts() {
-        return *tbl_dts_;
+    dt_table_type& tbl_districts(uint64_t w_id) {
+        return tbl_dts_[w_id - 1];
     }
-    cu_table_type& tbl_customers() {
-        return *tbl_cus_;
+    cu_table_type& tbl_customers(uint64_t w_id) {
+        return tbl_cus_[w_id - 1];
     }
-    od_table_type& tbl_orders() {
-        return *tbl_ods_;
+    od_table_type& tbl_orders(uint64_t w_id) {
+        return tbl_ods_[w_id - 1];
     }
-    ol_table_type& tbl_orderlines() {
-        return *tbl_ols_;
+    ol_table_type& tbl_orderlines(uint64_t w_id) {
+        return tbl_ols_[w_id - 1];
     }
-    no_table_type& tbl_neworders() {
-        return *tbl_nos_;
+    no_table_type& tbl_neworders(uint64_t w_id) {
+        return tbl_nos_[w_id - 1];
     }
     it_table_type& tbl_items() {
         return *tbl_its_;
     }
-    st_table_type& tbl_stocks() {
-        return *tbl_sts_;
+    st_table_type& tbl_stocks(uint64_t w_id) {
+        return tbl_sts_[w_id - 1];
     }
-    ht_table_type& tbl_histories() {
-        return *tbl_hts_;
+    ht_table_type& tbl_histories(uint64_t w_id) {
+        return tbl_hts_[w_id - 1];
     }
 
 private:
-    int num_whs_;
+    wh_table_type tbl_whs_;
 
-    wh_table_type *tbl_whs_;
-    dt_table_type *tbl_dts_;
-    cu_table_type *tbl_cus_;
-    od_table_type *tbl_ods_;
-    ol_table_type *tbl_ols_;
-    no_table_type *tbl_nos_;
     it_table_type *tbl_its_;
-    st_table_type *tbl_sts_;
-    ht_table_type *tbl_hts_;
+    std::vector<dt_table_type> tbl_dts_;
+    std::vector<cu_table_type> tbl_cus_;
+    std::vector<od_table_type> tbl_ods_;
+    std::vector<ol_table_type> tbl_ols_;
+    std::vector<no_table_type> tbl_nos_;
+    std::vector<st_table_type> tbl_sts_;
+    std::vector<ht_table_type> tbl_hts_;
+
+    friend class tpcc_access<DBParams>;
 };
 
 template <typename DBParams>
@@ -306,7 +311,7 @@ public:
         end_tsc_ = read_tsc();
         if (spawn_perf_) {
             bool ok = Profiler::stop(perf_pid_);
-            always_assert(ok);
+            always_assert(ok, "killing profiler");
         }
         // print elapsed time
         uint64_t elapsed_tsc = end_tsc_ - start_tsc_;

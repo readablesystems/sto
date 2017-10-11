@@ -2,19 +2,25 @@
 #include "Transaction.hh"
 #include <utility>
 
+template <typename T>
+struct is_small {
+    static constexpr bool value =
+            (sizeof(T) <= sizeof(uintptr_t)) && (alignof(T) == sizeof(T));
+};
+
 template <typename T, bool Opaque = true,
-          bool Trivial = mass::is_trivially_copyable<T>::value,
-          bool Small = sizeof(T) <= sizeof(uintptr_t) && alignof(T) == sizeof(T)
+          bool Trivial = std::is_trivially_copyable<T>::value,
+          bool Small = is_small<T>::value
           > class TWrapped;
 
 template <typename T, bool Opaque = true,
           bool Trivial = std::is_trivially_copyable<T>::value,
-          bool Small = sizeof(T) <= sizeof(uintptr_t) && alignof(T) == sizeof(T)
+          bool Small = is_small<T>::value
           > class TLockWrapped;
 
 template <typename T, bool Opaque = true,
           bool Trivial = std::is_trivially_copyable<T>::value,
-          bool Small = sizeof(T) <= sizeof(uintptr_t) && alignof(T) == sizeof(T)
+          bool Small = is_small<T>::value
           > class TSwissWrapped;
 
 class TWrappedAccess {
@@ -424,15 +430,24 @@ public:
         static_assert(Small, "static read only available for small types");
         return TWrappedAccess::read_nonatomic(vp, item, version, true, ret);
     }
-    void write(T v) {
+
+    template <typename Q = T>
+    typename std::enable_if<is_small<Q>::value, void>::type
+    write(T v) {
         static_assert(Small, "write-by-value only available for small types");
         v_ = v;
     }
-    void write(const T& v) {
+
+    template <typename Q = T>
+    typename std::enable_if<!is_small<Q>::value, void>::type
+    write(const T& v) {
         static_assert(!Small, "write-by-lvalue-reference only available for non-small types");
         v_ = v;
     }
-    void write(T&& v) {
+
+    template <typename Q = T>
+    typename std::enable_if<!is_small<Q>::value, void>::type
+    write(T&& v) {
         static_assert(!Small, "write-with-move only available for non-small types");
         v_ = std::move(v);
     }

@@ -5,6 +5,8 @@
 #include <cassert>
 #include <byteswap.h>
 
+#include "TBox.hh"
+
 #include "xxhash.h"
 
 #include "str.hh" // lcdf::Str
@@ -177,6 +179,26 @@ static inline IntType bswap(IntType x) {
         assert(false);
 }
 
+class tpcc_ytd_box {
+public:
+    tpcc_ytd_box() = default;
+    explicit tpcc_ytd_box(int64_t i) : box_(i) {};
+
+    tpcc_ytd_box& operator=(int64_t i) {
+        box_.nontrans_write(i);
+        return *this;
+    }
+
+    int64_t trans_increment(int64_t i) {
+        int64_t r = box_.read();
+        box_.write(r + i);
+        return r;
+    }
+
+private:
+    ::TBox<int64_t, TNonopaqueWrapped<int64_t>> box_;
+};
+
 // WAREHOUSE
 
 struct warehouse_key {
@@ -203,8 +225,8 @@ struct warehouse_value {
     var_string<20> w_city;
     fix_string<2>  w_state;
     fix_string<9>  w_zip;
-    int64_t       w_tax; // in 1/10000
-    int64_t       w_ytd; // in 1/100
+    int64_t        w_tax; // in 1/10000
+    tpcc_ytd_box   w_ytd; // in 1/100
 };
 
 // DISTRICT
