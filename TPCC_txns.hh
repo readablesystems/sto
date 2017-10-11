@@ -276,7 +276,6 @@ void tpcc_runner<DBParams>::run_txn_payment() {
             return true;
         };
 
-        constexpr uint64_t max = std::numeric_limits<uint64_t>::max();
         customer_idx_key ck0(q_c_w_id, q_c_d_id, last_name, 0x00 /*fill first name*/);
         customer_idx_key ck1(q_c_w_id, q_c_d_id, last_name, 0xff);
 
