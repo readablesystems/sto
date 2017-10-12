@@ -76,7 +76,7 @@ public:
 class constants {
 public:
     static constexpr double million = 1000000.0;
-    static constexpr double processor_tsc_frequency = 2.2; // in GHz
+    static double processor_tsc_frequency; // in GHz
 };
 
 class tpcc_input_generator {

@@ -5,6 +5,7 @@
 
 #include "TPCC_bench.hh"
 #include "TPCC_txns.hh"
+#include "PlatformFeatures.hh"
 
 volatile mrcu_epoch_type active_epoch = 1;
 volatile uint64_t globalepoch = 1;
@@ -503,6 +504,27 @@ static inline db_params_id set_dbid(const char *id_string) {
     return db_params_id::None;
 }
 
+double tpcc::constants::processor_tsc_frequency;
+
+bool initialize_platform_info() {
+    if (!cpu_has_feature<TscQuery>()) {
+        std::cerr << "Fatal error: CPU lacks timestamp counter (tsc) capability." << std::endl;
+        return false;
+    }
+    if (!cpu_has_feature<IvTscQuery>()) {
+        std::cout << "Warning: CPU does not report support for invariant tsc. Please double check timing measurement."
+                  << std::endl;
+    }
+    auto freq = get_cpu_brand_frequency();
+    if (freq == 0.0) {
+        std::cout << "Warning: Can't determine processor tsc frequency from CPU brand string. Using the default value "
+                     "of 1 GHz." << std::endl;
+        freq = 1.0;
+    }
+    tpcc::constants::processor_tsc_frequency = freq;
+    return true;
+}
+
 int main(int argc, const char *const *argv) {
     db_params_id dbid = db_params_id::Default;
     int ret_code = 0;
@@ -538,6 +560,10 @@ int main(int argc, const char *const *argv) {
     Clp_DeleteParser(clp);
     if (ret_code != 0)
         return ret_code;
+
+    auto platform_check = initialize_platform_info();
+    if (!platform_check)
+        return 1;
 
     switch (dbid) {
     case db_params_id::Default:

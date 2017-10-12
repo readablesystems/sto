@@ -25,6 +25,7 @@ add_library(sto
         ContentionManager.cc)
 
 add_executable(tpcc_bench
+        PlatformFeatures.hh
         TPCC_bench.cc
         TPCC_structs.hh
         TPCC_index.hh
