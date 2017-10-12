@@ -19,17 +19,6 @@
 
 namespace tpcc {
 
-enum {
-    opt_dbid = 1, opt_nwhs, opt_nthrs, opt_ntxns
-};
-
-static const Clp_Option options[] = {
-    { "dbid",        'i', opt_dbid,  Clp_ValInt,          Clp_Optional },
-    { "nwarehouses", 'w', opt_nwhs,  Clp_ValInt,          Clp_Optional },
-    { "nthreads",    't', opt_nthrs, Clp_ValInt,          Clp_Optional },
-    { "ntrans",      'x', opt_ntxns, Clp_ValUnsignedLong, Clp_Optional }
-};
-
 class db_config_flags {
 public:
     typedef uint32_t type;
@@ -40,7 +29,7 @@ public:
     static constexpr type tctc = 0x1 << 4;
 };
 
-enum class db_params_id : int { Default = 1, Opaque, Adaptive, Swiss, TicToc };
+enum class db_params_id : int { None = 0, Default, Opaque, Adaptive, Swiss, TicToc };
 
 class db_default_params {
 public:

@@ -10,6 +10,8 @@ volatile mrcu_epoch_type active_epoch = 1;
 volatile uint64_t globalepoch = 1;
 volatile bool recovering = false;
 
+static inline void print_usage(const char *);
+
 namespace tpcc {
 
     const char *tpcc_input_generator::last_names[] = {
@@ -291,6 +293,20 @@ namespace tpcc {
     }
 // @endsection: prepopulation string generators
 
+// @section: clp parser definitions
+    enum {
+        opt_dbid = 1, opt_nwhs, opt_nthrs, opt_ntxns
+    };
+
+    static const Clp_Option options[] = {
+        { "dbid",        'i', opt_dbid,  Clp_ValString,       Clp_Optional },
+        { "nwarehouses", 'w', opt_nwhs,  Clp_ValInt,          Clp_Optional },
+        { "nthreads",    't', opt_nthrs, Clp_ValInt,          Clp_Optional },
+        { "ntrans",      'x', opt_ntxns, Clp_ValUnsignedLong, Clp_Optional }
+    };
+
+// @endsection: clp parser definitions
+
     template <typename DBParams>
     class tpcc_access {
     public:
@@ -403,7 +419,7 @@ namespace tpcc {
                         num_txns = clp->val.ul;
                         break;
                     default:
-                        std::cout << "Print Usage" << std::endl;
+                        ::print_usage(argv[0]);
                         exit(1);
                 }
             }
@@ -429,6 +445,32 @@ namespace tpcc {
 
 using namespace tpcc;
 
+static inline void print_usage(const char *argv_0) {
+    std::cout << "Usage of " << std::string(argv_0) << ":" << std::endl;
+    std::cout << "  --dbid=<STRING> (or -i<STRING>)" << std::endl;
+    std::cout << "    Specify the type of DB concurrency control used. Can be one of the followings:"
+                 "      default, opaque, adaptive, swiss, tictoc" << std::endl;
+    std::cout << "  --nwarehouses=<NUM> (or -w<NUM>)" << std::endl;
+    std::cout << "    Specify the number of warehouses (default 1)." << std::endl;
+    std::cout << "  --nthreads=<NUM> (or -t<NUM>)" << std::endl;
+    std::cout << "    Specify the number of threads (or TPCC workers/terminals, default 1)." << std::endl;
+    std::cout << "  --ntrans=<NUM> (or -x<NUM>)" << std::endl;
+    std::cout << "    Specify the total number of transactions being run (default 1 million)." << std::endl;
+}
+
+static inline db_params_id set_dbid(const char *id_string) {
+    static const char * id_names[] = {"default", "opaque", "adaptive", "swiss", "tictoc"};
+    if (id_string == nullptr)
+        return db_params_id::None;
+    for (size_t i = 0; i < sizeof(id_names); ++i) {
+        if (strcmp(id_string, id_names[i]) == 0) {
+            std::cout << "Selected \"" << id_names[i] << "\" as DB concurent control" << std::endl;
+            return db_params_id(i+1);
+        }
+    }
+    return db_params_id::None;
+}
+
 int main(int argc, char **argv) {
     db_params_id dbid = db_params_id::Default;
     int ret_code = 0;
@@ -439,14 +481,20 @@ int main(int argc, char **argv) {
     while ((opt = Clp_Next(clp)) != Clp_Done) {
         switch (opt) {
         case opt_dbid:
-            // set dbid
+            dbid = set_dbid(clp->val.s);
+            if (dbid == db_params_id::None) {
+                std::cout << "Unregonized database parameter id: "
+                    << std::string(clp->val.s) << std::endl;
+                print_usage(argv[0]);
+                exit(1);
+            }
             break;
         case opt_nwhs:
         case opt_nthrs:
         case opt_ntxns:
             break;
         default:
-            std::cout << "Print Usage" << std::endl;
+            print_usage(argv[0]);
             exit(1);
         }
     }
