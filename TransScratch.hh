@@ -6,7 +6,9 @@
 
 class TransScratch {
 public:
-    static constexpr size_t initial_zone_capacity = 4096;
+    static constexpr size_t initial_zone_capacity = 4096; // 4KB
+    static constexpr size_t max_scratch_restart_capacity = 2097152; // 2MB
+
     TransScratch()
             : tail_next_avail(0), tail_capacity(0),
               total_capacity(0), zone_head(nullptr), zone_tail(nullptr) {}
@@ -103,6 +105,10 @@ void TransScratch::clear() {
         curr = next_zone;
     }
     assert(capacity_check == total_capacity);
+
+    // limit the size of the consolidated initial zone
+    if (total_capacity > max_scratch_restart_capacity)
+        total_capacity = max_scratch_restart_capacity;
 
     auto z = new char [sizeof(zone_hdr) + total_capacity];
     auto single_zone = reinterpret_cast<zone_hdr *>(z);

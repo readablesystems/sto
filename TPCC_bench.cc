@@ -295,14 +295,16 @@ namespace tpcc {
 
 // @section: clp parser definitions
     enum {
-        opt_dbid = 1, opt_nwhs, opt_nthrs, opt_ntxns
+        opt_dbid = 1, opt_nwhs, opt_nthrs, opt_ntxns, opt_perf, opt_pfcnt
     };
 
     static const Clp_Option options[] = {
-        { "dbid",        'i', opt_dbid,  Clp_ValString,       Clp_Optional },
-        { "nwarehouses", 'w', opt_nwhs,  Clp_ValInt,          Clp_Optional },
-        { "nthreads",    't', opt_nthrs, Clp_ValInt,          Clp_Optional },
-        { "ntrans",      'x', opt_ntxns, Clp_ValUnsignedLong, Clp_Optional }
+        { "dbid",         'i', opt_dbid,  Clp_ValString,       Clp_Optional },
+        { "nwarehouses",  'w', opt_nwhs,  Clp_ValInt,          Clp_Optional },
+        { "nthreads",     't', opt_nthrs, Clp_ValInt,          Clp_Optional },
+        { "ntrans",       'x', opt_ntxns, Clp_ValUnsignedLong, Clp_Optional },
+        { "perf",         'p', opt_perf,  Clp_NoVal,           Clp_Optional },
+        { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,           Clp_Negate| Clp_Optional }
     };
 
 // @endsection: clp parser definitions
@@ -393,19 +395,20 @@ namespace tpcc {
                 t.join();
         }
 
-        static int execute(int argc, char **argv) {
-            bool spawn_perf = true;
+        static int execute(int argc, const char *const *argv) {
+            int ret = 0;
+
+            bool spawn_perf = false;
             bool counter_mode = false;
             int num_warehouses = 1;
             int num_threads = 1;
             uint64_t num_txns = 1000000ul;
 
-            auto profiler_mode = counter_mode ? ::Profiler::perf_mode::counters : ::Profiler::perf_mode::record;
-
             Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
 
             int opt;
-            while ((opt = Clp_Next(clp)) != Clp_Done) {
+            bool clp_stop = false;
+            while (!clp_stop && ((opt = Clp_Next(clp)) != Clp_Done)) {
                 switch (opt) {
                     case opt_dbid:
                         break;
@@ -418,13 +421,36 @@ namespace tpcc {
                     case opt_ntxns:
                         num_txns = clp->val.ul;
                         break;
+                    case opt_perf:
+                        spawn_perf = !clp->negated;
+                        break;
+                    case opt_pfcnt:
+                        counter_mode = !clp->negated;
+                        break;
                     default:
-                        ::print_usage(argv[0]);
-                        exit(1);
+                        print_usage(argv[0]);
+                        ret = 1;
+                        clp_stop = true;
+                        break;
                 }
             }
 
             Clp_DeleteParser(clp);
+            if (ret != 0)
+                return ret;
+
+            auto profiler_mode = counter_mode ?
+                                 Profiler::perf_mode::counters : Profiler::perf_mode::record;
+
+            if (counter_mode && !spawn_perf) {
+                // turns on profiling automatically if perf counters are requested
+                spawn_perf = true;
+            }
+
+            if (spawn_perf) {
+                std::cout << "Info: Spawning perf profiler in "
+                          << (counter_mode ? "counter" : "record") << " mode" << std::endl;
+            }
 
             tpcc_profiler prof(spawn_perf);
             tpcc_db<DBParams> db(num_warehouses);
@@ -446,47 +472,55 @@ namespace tpcc {
 using namespace tpcc;
 
 static inline void print_usage(const char *argv_0) {
-    std::cout << "Usage of " << std::string(argv_0) << ":" << std::endl;
-    std::cout << "  --dbid=<STRING> (or -i<STRING>)" << std::endl;
-    std::cout << "    Specify the type of DB concurrency control used. Can be one of the followings:"
-                 "      default, opaque, adaptive, swiss, tictoc" << std::endl;
-    std::cout << "  --nwarehouses=<NUM> (or -w<NUM>)" << std::endl;
-    std::cout << "    Specify the number of warehouses (default 1)." << std::endl;
-    std::cout << "  --nthreads=<NUM> (or -t<NUM>)" << std::endl;
-    std::cout << "    Specify the number of threads (or TPCC workers/terminals, default 1)." << std::endl;
-    std::cout << "  --ntrans=<NUM> (or -x<NUM>)" << std::endl;
-    std::cout << "    Specify the total number of transactions being run (default 1 million)." << std::endl;
+    std::stringstream ss;
+    ss << "Usage of " << std::string(argv_0) << ":" << std::endl
+       << "  --dbid=<STRING> (or -i<STRING>)" << std::endl
+       << "    Specify the type of DB concurrency control used. Can be one of the followings:" << std::endl
+       << "      default, opaque, adaptive, swiss, tictoc" << std::endl
+       << "  --nwarehouses=<NUM> (or -w<NUM>)" << std::endl
+       << "    Specify the number of warehouses (default 1)." << std::endl
+       << "  --nthreads=<NUM> (or -t<NUM>)" << std::endl
+       << "    Specify the number of threads (or TPCC workers/terminals, default 1)." << std::endl
+       << "  --ntrans=<NUM> (or -x<NUM>)" << std::endl
+       << "    Specify the total number of transactions being run (default 1 million)." << std::endl
+       << "  --perf (or -p)" << std::endl
+       << "    Spawns perf profiler in record mode for the duration of the benchmark run." << std::endl
+       << "  --perf-counter (or -c)" << std::endl
+       << "    Spawns perf profiler in counter mode for the duration of the benchmark run." << std::endl;
+    std::cout << ss.str() << std::flush;
 }
 
 static inline db_params_id set_dbid(const char *id_string) {
-    static const char * id_names[] = {"default", "opaque", "adaptive", "swiss", "tictoc"};
     if (id_string == nullptr)
         return db_params_id::None;
-    for (size_t i = 0; i < sizeof(id_names); ++i) {
-        if (strcmp(id_string, id_names[i]) == 0) {
-            std::cout << "Selected \"" << id_names[i] << "\" as DB concurent control" << std::endl;
-            return db_params_id(i+1);
+    for (size_t i = 0; i < sizeof(db_params_id_names); ++i) {
+        if (strcmp(id_string, db_params_id_names[i]) == 0) {
+            auto selected = static_cast<db_params_id>(i);
+            std::cout << "Selected \"" << selected << "\" as DB concurrency control." << std::endl;
+            return selected;
         }
     }
     return db_params_id::None;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, const char *const *argv) {
     db_params_id dbid = db_params_id::Default;
     int ret_code = 0;
    
     Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
 
     int opt;
-    while ((opt = Clp_Next(clp)) != Clp_Done) {
+    bool clp_stop = false;
+    while (!clp_stop && ((opt = Clp_Next(clp)) != Clp_Done)) {
         switch (opt) {
         case opt_dbid:
             dbid = set_dbid(clp->val.s);
             if (dbid == db_params_id::None) {
-                std::cout << "Unregonized database parameter id: "
+                std::cout << "Unsupported DB CC id: "
                     << std::string(clp->val.s) << std::endl;
                 print_usage(argv[0]);
-                exit(1);
+                ret_code = 1;
+                clp_stop = true;
             }
             break;
         case opt_nwhs:
@@ -495,11 +529,15 @@ int main(int argc, char **argv) {
             break;
         default:
             print_usage(argv[0]);
-            exit(1);
+            ret_code = 1;
+            clp_stop = true;
+            break;
         }
     }
 
     Clp_DeleteParser(clp);
+    if (ret_code != 0)
+        return ret_code;
 
     switch (dbid) {
     case db_params_id::Default:

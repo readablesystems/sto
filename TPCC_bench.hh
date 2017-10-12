@@ -1,5 +1,6 @@
 #pragma once
 
+#include <iostream>
 #include <random>
 #include <string>
 
@@ -29,7 +30,14 @@ public:
     static constexpr type tctc = 0x1 << 4;
 };
 
+constexpr const char *db_params_id_names[] = {"none", "default", "opaque", "adaptive", "swiss", "tictoc"};
+
 enum class db_params_id : int { None = 0, Default, Opaque, Adaptive, Swiss, TicToc };
+
+std::ostream& operator<<(std::ostream& os, const db_params_id& id) {
+    os << db_params_id_names[static_cast<int>(id)];
+    return os;
+}
 
 class db_default_params {
 public:
