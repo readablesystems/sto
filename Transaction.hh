@@ -1240,13 +1240,14 @@ inline bool TransProxy::observe(TLockVersion& version, bool force_occ) {
 
 inline bool TransProxy::observe(TLockVersion& version, bool add_read, bool force_occ) {
     assert(!has_stash());
+    (void)force_occ; // forget about this feature for now...
 
     TLockVersion occ_version;
-    bool optimistic = force_occ || version.is_optimistic();
+    bool optimistic = version.is_optimistic();
 
     optimistic = item().cc_mode_is_optimistic(optimistic);
-    if (force_occ)
-        assert(optimistic);
+    //if (force_occ)
+    //    assert(optimistic);
 
     if (optimistic) {
         acquire_fence();
