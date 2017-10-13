@@ -31,7 +31,11 @@ add_executable(tpcc_bench
         TPCC_index.hh
         TPCC_txns.hh)
 
-add_executable(unit-swisstarray unit-swisstarray.cc SwissTArray.hh)
+add_executable(unit-swisstarray
+        unit-swisstarray.cc
+        ContentionManager.cc
+        SwissTArray.hh
+        TArrayProxy.hh)
 
-target_link_libraries(tpcc_bench sto clp masstree json xxhash ${PLATFORM_LIBRARIES})
-target_link_libraries(unit-swisstarray sto)
+target_link_libraries(tpcc_bench sto clp masstree json dprint xxhash ${PLATFORM_LIBRARIES})
+target_link_libraries(unit-swisstarray sto dprint)

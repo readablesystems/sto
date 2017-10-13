@@ -101,6 +101,14 @@ class TransItem {
         return v.check_version(this->read_value<TNonopaqueVersion>());
     }
 
+    template <bool Opaque>
+    bool check_version(TSwissVersion<Opaque> v) const {
+        assert(has_read());
+        if (v.is_locked() && !has_write())
+            return false;
+        return v.check_version(this->read_value<TSwissVersion<Opaque>>());
+    }
+
     template <typename T>
     T& predicate_value() {
         assert(has_predicate() && !has_read());

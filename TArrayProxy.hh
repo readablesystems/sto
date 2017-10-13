@@ -12,7 +12,7 @@ public:
     }
 
     operator get_type() const {
-        return c_->transGet(idx_);
+        return c_->transGet_throws(idx_);
     }
 
     TConstArrayProxy<C>& operator=(const TConstArrayProxy<C>&) = delete;

@@ -324,9 +324,11 @@ public:
         static_assert(Small, "static read only available for small types");
         return TWrappedAccess::read_atomic(v, item, version, true);
     }
+    // XXX deprecated
     bool read(TransProxy item, const version_type& version, read_type& ret) const {
         return TWrappedAccess::read_atomic(&v_, item, version, true, ret);
     }
+    // XXX deprecated
     static bool read(const T* v, TransProxy item, const version_type& version, read_type& ret) {
         return TWrappedAccess::read_atomic(v, item, version, true, ret);
     }

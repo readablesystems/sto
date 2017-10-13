@@ -50,14 +50,28 @@ public:
             ret = item.template write_value<T>();
             return true;
         } else {
-            return data_[i].v.read(item, data_[i].version, ret);
+            bool ok;
+            std::tie(ok, ret) = data_[i].v.read(item, data_[i].version);
+            return ok;
         }
     }
-    bool transPut(size_type i, T x) const {
+    bool transPut(size_type i, T x) {
         assert(i < N);
         return Sto::item(this, i).add_swiss_write(x, data_[i].version);
     }
-
+    // the throw versions
+    get_type transGet_throws(size_type i) const {
+        get_type ret;
+        bool ok = transGet(i, ret);
+        if (!ok)
+            throw Transaction::Abort();
+        return ret;
+    }
+    void transPut_throws(size_type i, T x) {
+        bool ok = transPut(i, x);
+        if (!ok)
+            throw Transaction::Abort();
+    }
     get_type nontrans_get(size_type i) const {
         assert(i < N);
         return data_[i].v.access();
@@ -73,8 +87,9 @@ public:
 
     // transactional methods
     bool lock(TransItem& item, Transaction& txn) override {
-        //return txn.try_lock(item, data_[item.key<size_type>()].vers);
-        return data_[item.key<size_type>()].version.set_read_lock();
+        // read lock is always set successfully if we ever make it to commit
+        data_[item.key<size_type>()].version.set_read_lock();
+        return true;
     }
     bool check(TransItem& item, Transaction&) override {
         return item.check_version(data_[item.key<size_type>()].version);
@@ -91,7 +106,7 @@ public:
 
 private:
     struct elem {
-        version_type version;
+        mutable version_type version;
         W<T> v;
     };
     elem data_[N];

@@ -934,6 +934,33 @@ public:
         item.clear_needs_unlock();
     }
 
+    template <bool Opaque>
+    void set_version(TSwissVersion<Opaque>& vers, typename TSwissVersion<Opaque>::type flags = 0) const {
+        tid_type v;
+        if (Opaque) {
+            v = commit_tid() | flags;
+        } else {
+            assert(state_ == s_committing_locked || state_ == s_committing);
+            v = commit_tid_ ? commit_tid_ : TransactionTid::next_unflagged_nonopaque_version(vers.value());
+            v |= flags;
+        }
+        vers.set_version(v);
+    }
+    template <bool Opaque>
+    void set_version_unlock(TSwissVersion<Opaque>& vers, TransItem& item,
+                            typename TSwissVersion<Opaque>::type flags = 0) const {
+        tid_type v;
+        if (Opaque) {
+            v = commit_tid() | flags;
+        } else {
+            assert(state_ == s_committing_locked || state_ == s_committing);
+            v = commit_tid_ ? commit_tid_ : TransactionTid::next_unflagged_nonopaque_version(vers.value());
+            v |= flags;
+        }
+        vers.set_version_unlock(v);
+        item.clear_needs_unlock();
+    }
+
     static const char* state_name(int state);
     void print() const;
     void print(std::ostream& w) const;
@@ -1326,7 +1353,7 @@ inline bool TransProxy::observe(TNonopaqueVersion version, bool add_read) {
 template <bool Opaque>
 inline bool TransProxy::observe(TSwissVersion<Opaque> version, bool add_read) {
     assert(!has_stash());
-    if (version.is_read_locked_elsewhere(t()->threadid_)) {
+    if (version.is_read_locked_elsewhere()) {
         t()->mark_abort_because(&item(), "swiss_read_locked", version.value());
         return false;
     }
@@ -1590,6 +1617,37 @@ inline bool TVersion::is_locked_elsewhere(const Transaction& txn) const {
 
 inline bool TNonopaqueVersion::is_locked_elsewhere(const Transaction& txn) const {
     return is_locked_elsewhere(txn.threadid());
+}
+
+template <bool Opaque>
+bool ContentionManager::should_abort(Transaction* tx, TSwissVersion<Opaque> wlock) {
+    TXP_INCREMENT(txp_cm_shouldabort);
+    int threadid = tx->threadid();
+    threadid *= 4;
+    if (aborted[threadid] == 1){
+        return true;
+    }
+
+    // This transaction is still in the timid phase
+    if (timestamp[threadid] == MAX_TS) {
+        return true;
+    }
+
+    int owner_threadid = wlock & TransactionTid::threadid_mask;
+    owner_threadid *= 4;
+    //if (write_set_size[threadid] < write_set_size[owner_threadid]) {
+    if (timestamp[owner_threadid] < timestamp[threadid]) {
+        if (aborted[owner_threadid] == 0) {
+            return true;
+        } else {
+            return false;
+        }
+    } else {
+        //FIXME: this might abort a new transaction on that thread
+        aborted[owner_threadid] = 1;
+        return false;
+    }
+
 }
 
 std::ostream& operator<<(std::ostream& w, const Transaction& txn);
