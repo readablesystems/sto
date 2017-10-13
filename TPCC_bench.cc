@@ -1,5 +1,6 @@
 #include <sstream>
 #include <iomanip>
+#include <iostream>
 #include <algorithm>
 #include <thread>
 
@@ -507,20 +508,33 @@ static inline db_params_id set_dbid(const char *id_string) {
 double tpcc::constants::processor_tsc_frequency;
 
 bool initialize_platform_info() {
+    std::cout << "Checking for rdtscp support..." << std::flush;
     if (!cpu_has_feature<TscQuery>()) {
+        std::cout << std::endl;
         std::cerr << "Fatal error: CPU lacks timestamp counter (tsc) capability." << std::endl;
         return false;
+    } else {
+        std::cout << " Yes" << std::endl;
     }
+
+    std::cout << "Checking for invariant tsc support..." << std::flush;
     if (!cpu_has_feature<IvTscQuery>()) {
+        std::cout << std::endl;
         std::cout << "Warning: CPU does not report support for invariant tsc. Please double check timing measurement."
                   << std::endl;
+    } else {
+        std::cout << " Yes" << std::endl;
     }
+
+    std::cout << "Determining processor frequency..." << std::endl;
     auto freq = get_cpu_brand_frequency();
     if (freq == 0.0) {
         std::cout << "Warning: Can't determine processor tsc frequency from CPU brand string. Using the default value "
                      "of 1 GHz." << std::endl;
         freq = 1.0;
     }
+    std::cout << "Info: CPU tsc frequency set as "
+              << std::fixed << std::setprecision(2) << freq << " GHz." << std::endl;
     tpcc::constants::processor_tsc_frequency = freq;
     return true;
 }

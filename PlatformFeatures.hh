@@ -30,7 +30,7 @@ public:
 class IvTscQuery : public CpuidQuery {
 public:
     static constexpr uint32_t query_level = 0x80000007;
-    static constexpr uint32_t result_bit = (1 << 23);
+    static constexpr uint32_t result_bit = (1 << 8);
     static constexpr Reg result_reg = Reg::edx;
 };
 
@@ -66,10 +66,13 @@ inline std::string get_cpu_brand_string() {
                             &regs[static_cast<int>(Reg::ebx)],
                             &regs[static_cast<int>(Reg::ecx)],
                             &regs[static_cast<int>(Reg::edx)]);
+        (void)r;
         for (int j = 0; j < static_cast<int>(Reg::size); ++j) {
-            auto c = reinterpret_cast<char *>(&regs[j])[sizeof(uint32_t) - j - 1];
-            if (c != 0x00)
-                bs.push_back(c);
+            for (int k = 0; k < (int)sizeof(uint32_t); ++k) {
+                auto c = reinterpret_cast<char *>(&regs[j])[k];
+                if (c != 0x00)
+                    bs.push_back(c);
+            }
         }
     }
     return bs;
@@ -79,6 +82,7 @@ inline double get_cpu_brand_frequency() {
     static constexpr double multipliers[] = {0.001, 1.0, 1000.0};
 
     std::string bs = get_cpu_brand_string();
+    std::cout << "Info: CPU detected as " << bs << std::endl;
 
     int unit = 0;
     std::string::size_type freq_str_end = bs.rfind("MHz");
