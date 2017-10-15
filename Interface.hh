@@ -172,6 +172,7 @@ public:
     static void unlock_read(type& v) {
 #if ADAPTIVE_RWLOCK == 0
         type vv = __sync_fetch_and_add(&v, -1);
+        (void)vv;
         assert((vv & threadid_mask) >= 1);
 #else
         while (1) {

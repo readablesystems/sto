@@ -858,7 +858,7 @@ public:
         if (committed ? has_delete(item) : has_insert(item)) {
             internal_elem *el = item.key<internal_elem *>();
             bool ok = _remove(el->key);
-            assert(ok);
+            always_assert(ok, "insert-bit exclusive ownership violated");
         }
     }
 

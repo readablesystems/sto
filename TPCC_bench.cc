@@ -59,6 +59,7 @@ namespace tpcc {
                 auto pos = ig.random(0, iv.i_data.length() - 8);
                 auto placed = iv.i_data.place("ORIGINAL", pos);
                 assert(placed);
+                (void)placed;
             }
 
             db.tbl_items().nontrans_put(ik, iv);
@@ -98,6 +99,7 @@ namespace tpcc {
                 auto pos = ig.random(0, sv.s_data.length() - 8);
                 auto placed = sv.s_data.place("ORIGINAL", pos);
                 assert(placed);
+                (void)placed;
             }
 
             db.tbl_stocks(wid).nontrans_put(sk, sv);
@@ -328,7 +330,7 @@ namespace tpcc {
         static void prepopulate_db(tpcc_db<DBParams> &db) {
             int r;
             r = pthread_barrier_init(&tpcc_prepopulator<DBParams>::sync_barrier, nullptr, db.num_warehouses());
-            assert(r == 0);
+            always_assert(r == 0, "pthread_barrier_init failed");
 
             std::vector<std::thread> prepop_thrs;
             for (int i = 1; i <= db.num_warehouses(); ++i)
@@ -337,7 +339,7 @@ namespace tpcc {
                 t.join();
 
             r = pthread_barrier_destroy(&tpcc_prepopulator<DBParams>::sync_barrier);
-            assert(r == 0);
+            always_assert(r == 0, "pthread_barrier_destroy failed");
         }
 
         static void tpcc_runner_thread(tpcc_db<DBParams> &db, int runner_id,

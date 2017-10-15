@@ -842,6 +842,7 @@ public:
     }
 
     static void unlock(TransItem& item, TLockVersion& vers) {
+        (void)item;
         assert(item.needs_unlock());
         if (item.has_write()) {
             vers.unlock_write();
@@ -852,6 +853,7 @@ public:
     }
     template <bool Opaque>
     static void unlock(TransItem& item, TSwissVersion<Opaque>& vers) {
+        (void)item;
         assert(item.needs_unlock());
         if (vers.is_locked())
             vers.unlock();
@@ -864,6 +866,7 @@ public:
         unlock(item, const_cast<TransactionTid::type&>(vers.value()));
     }
     static void unlock(TransItem& item, TransactionTid::type& v) {
+        (void)item;
         assert(item.needs_unlock());
         TransactionTid::unlock(v);
     }
