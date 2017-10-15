@@ -96,6 +96,13 @@ T& TransScratch::clone(const T &other) {
 }
 
 void TransScratch::clear() {
+    if (zone_head == zone_tail) {
+        // there is only one segment, reuse that zone
+        assert(total_capacity == tail_capacity);
+        tail_next_avail = 0;
+        return;
+    }
+
     zone_hdr *curr = zone_head;
     size_t capacity_check = 0;
     while (curr != nullptr) {
@@ -118,3 +125,4 @@ void TransScratch::clear() {
     tail_capacity = total_capacity;
     zone_head = zone_tail = single_zone;
 }
+
