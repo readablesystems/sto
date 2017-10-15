@@ -155,15 +155,11 @@ class tpcc_access;
 template <typename DBParams>
 class tpcc_db {
 public:
-    static constexpr bool PR = DBParams::RdMyWr;
-    static constexpr bool PA = DBParams::Adaptive;
-    static constexpr bool PO = DBParams::Opaque;
+    template <typename K, typename V>
+    using UIndex = unordered_index<K, V, DBParams>;
 
     template <typename K, typename V>
-    using UIndex = unordered_index<K, V, PO, PA, PR>;
-
-    template <typename K, typename V>
-    using OIndex = ordered_index<K, V, PO, PA, PR>;
+    using OIndex = ordered_index<K, V, DBParams>;
 
     // partitioned according to warehouse id
     typedef std::vector<warehouse_value>           wh_table_type;

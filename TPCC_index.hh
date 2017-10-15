@@ -21,22 +21,23 @@
 namespace tpcc {
 
 // unordered index implemented as hashtable
-template <typename K, typename V,
-          bool Opacity = true, bool Adaptive = false, bool ReadMyWrite = false>
+template <typename K, typename V, typename DBParams>
 class unordered_index : public TObject {
 public:
     typedef K key_type;
     typedef V value_type;
 
-    typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type bucket_version_type;
-    typedef typename std::conditional<Adaptive, TLockVersion, bucket_version_type>::type version_type;
+    typedef typename std::conditional<DBParams::Opaque, TVersion, TNonopaqueVersion>::type bucket_version_type;
+    typedef typename std::conditional<DBParams::Adaptive, TLockVersion,
+            typename std::conditional<DBParams::Swiss, TSwissVersion<DBParams::Opaque>,
+                    bucket_version_type>::type>::type version_type;
 
     typedef std::hash<K> Hash;
     typedef std::equal_to<K> Pred;
     
     static constexpr typename version_type::type invalid_bit = TransactionTid::user_bit;
 
-    static constexpr bool index_read_my_write = ReadMyWrite;
+    static constexpr bool index_read_my_write = DBParams::RdMyWr;
 
 private:
     // our hashtable is an array of linked lists. 
@@ -458,6 +459,10 @@ private:
         item.add_write();
         return true;
     }
+    template <bool Opaque>
+    static bool select_for_update(TransProxy& item, TSwissVersion<Opaque>& vers) {
+        return item.add_swiss_write(vers);
+    }
     static bool select_for_overwrite(TransProxy& item, TLockVersion& vers, const value_type *vptr) {
         return item.acquire_write(vptr, vers);
     }
@@ -471,6 +476,10 @@ private:
         item.add_write(vptr);
         return true;
     }
+    template <bool Opaque>
+    static bool select_for_overwrite(TransProxy& item, TSwissVersion<Opaque>& vers, const value_type *vptr) {
+        return item.add_swiss_write(vptr, vers);
+    }
 
     static void copy_row(internal_elem *table_row, const value_type *value) {
         if (value == nullptr)
@@ -479,22 +488,23 @@ private:
     }
 };
 
-template <typename K, typename V,
-          bool Opacity = false, bool Adaptive = false, bool ReadMyWrite = false>
+template <typename K, typename V, typename DBParams>
 class ordered_index : public TObject {
 public:
     typedef K key_type;
     typedef V value_type;
 
-    typedef typename std::conditional<Opacity, TVersion, TNonopaqueVersion>::type occ_version_type;
-    typedef typename std::conditional<Adaptive, TLockVersion, occ_version_type>::type version_type;
+    typedef typename std::conditional<DBParams::Opaque, TVersion, TNonopaqueVersion>::type occ_version_type;
+    typedef typename std::conditional<DBParams::Adaptive, TLockVersion,
+            typename std::conditional<DBParams::Swiss, TSwissVersion<DBParams::Opaque>,
+                    occ_version_type>::type>::type version_type;
 
     static constexpr typename version_type::type invalid_bit = TransactionTid::user_bit;
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit << 1;
     static constexpr uintptr_t internode_bit = 1;
 
-    static constexpr bool index_read_my_write = ReadMyWrite;
+    static constexpr bool index_read_my_write = DBParams::RdMyWr;
 
     struct internal_elem {
         version_type version;
@@ -745,12 +755,12 @@ public:
                 }
             }
 
-            bool ok;
-            if (Adaptive) {
-                ok = item.observe(e->version, true/*force occ*/);
-            } else {
-                ok = item.observe(e->version);
-            }
+            bool ok = item.observe(e->version);
+            //if (Adaptive) {
+            //    ok = item.observe(e->version, true/*force occ*/);
+            //} else {
+            //    ok = item.observe(e->version);
+            //}
             if (!ok)
                 return false;
 
@@ -930,7 +940,7 @@ private:
 
     bool register_internode_version(node_type *node, nodeversion_value_type nodeversion) {
         TransProxy item = Sto::item(this, get_internode_key(node));
-        if (Opacity)
+        if (DBParams::Opaque)
             return item.add_read_opaque(nodeversion);
         else
             return item.add_read(nodeversion);
@@ -1012,8 +1022,8 @@ private:
     }
 };
 
-template <typename K, typename V, bool Opacity, bool Adaptive, bool ReadMyWrite>
-__thread typename ordered_index<K, V, Opacity, Adaptive, ReadMyWrite>::table_params::threadinfo_type
-*ordered_index<K, V, Opacity, Adaptive, ReadMyWrite>::ti;
+template <typename K, typename V, typename DBParams>
+__thread typename ordered_index<K, V, DBParams>::table_params::threadinfo_type
+*ordered_index<K, V, DBParams>::ti;
 
 }; // namespace tpcc

@@ -296,6 +296,8 @@ class TransProxy {
 
     template <bool Opaque>
     inline bool observe(TSwissVersion<Opaque> version, bool add_read) __attribute__((warn_unused_result));
+    template <bool Opaque>
+    inline bool observe(TSwissVersion<Opaque> version) __attribute__((warn_unused_result));
 
     inline bool observe(TCommutativeVersion version, bool add_read) __attribute__ ((warn_unused_result));
     inline bool observe(TCommutativeVersion version) __attribute__ ((warn_unused_result));
@@ -338,6 +340,8 @@ class TransProxy {
     inline bool acquire_write(Args&&... args, TLockVersion& vers);
 
     // swisstm add write
+    template <bool Opaque>
+    inline bool add_swiss_write(TSwissVersion<Opaque>& wlock);
     template <typename T, bool Opaque>
     inline bool add_swiss_write(const T& wdata, TSwissVersion<Opaque>& wlock);
     template <typename T, bool Opaque>

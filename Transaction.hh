@@ -780,6 +780,13 @@ public:
 #endif
     }
 
+    template <bool Opaque>
+    bool try_lock(TransItem& item, TSwissVersion<Opaque>& vers) {
+        assert(vers.is_locked_here());
+        vers.set_read_lock();
+        return true;
+    }
+
     bool try_lock(TransItem& item, TLockVersion& vers) {
         return try_lock_write(item, vers);
     }
@@ -841,6 +848,12 @@ public:
             assert(item.has_read());
             vers.unlock_read();
         }
+    }
+    template <bool Opaque>
+    static void unlock(TransItem& item, TSwissVersion<Opaque>& vers) {
+        assert(item.needs_unlock());
+        if (vers.is_locked())
+            vers.unlock();
     }
 
     static void unlock(TransItem& item, TVersion& vers) {
@@ -1367,6 +1380,11 @@ inline bool TransProxy::observe(TSwissVersion<Opaque> version, bool add_read) {
     return true;
 }
 
+template <bool Opaque>
+inline bool TransProxy::observe(TSwissVersion<Opaque> version) {
+    return observe(version, true);
+}
+
 inline bool TransProxy::observe(TCommutativeVersion version, bool add_read) {
     assert(!has_stash());
     if (version.is_locked()) {
@@ -1523,17 +1541,43 @@ inline bool TransProxy::acquire_write(Args&&... args, TLockVersion& vers) {
     return true;
 }
 
+template <bool Opaque>
+inline bool TransProxy::add_swiss_write(TSwissVersion<Opaque>& wlock) {
+    if (wlock.is_locked_here())
+        return true;
+
+    while(true) {
+        if (wlock.is_locked()) {
+            if (ContentionManager::should_abort(t(), wlock)) {
+                TXP_INCREMENT(txp_wwc_aborts);
+                return false;
+            } else {
+                relax_fence();
+                continue;
+            }
+        }
+
+        if (wlock.try_lock()){
+            break;
+        }
+    }
+
+    item().__or_flags(TransItem::write_bit | TransItem::lock_bit);
+    t()->any_writes_ = true;
+    ContentionManager::on_write(t());
+
+    return true;
+}
+
 template <typename T, bool Opaque>
 inline bool TransProxy::add_swiss_write(const T& wdata, TSwissVersion<Opaque>& wlock) {
     return add_swiss_write<T, Opaque, const T&>(wdata, wlock);
 }
-
 template <typename T, bool Opaque>
 inline bool TransProxy::add_swiss_write(T&& wdata, TSwissVersion<Opaque>& wlock) {
     typedef typename std::decay<T>::type V;
     return add_swiss_write<V, Opaque, V&&>(std::move(wdata), wlock);
 }
-
 template <typename T, bool Opaque, typename... Args>
 inline bool TransProxy::add_swiss_write(Args&&... args, TSwissVersion<Opaque>& wlock) {
     if (wlock.is_locked_here()) {
