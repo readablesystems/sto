@@ -782,6 +782,7 @@ public:
 
     template <bool Opaque>
     bool try_lock(TransItem& item, TSwissVersion<Opaque>& vers) {
+        (void)item;
         assert(vers.is_locked_here());
         vers.set_read_lock();
         return true;
