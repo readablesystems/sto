@@ -379,21 +379,29 @@ namespace tpcc {
 
             std::vector<std::thread> runner_thrs;
 
-            int last_xend = 1;
-
-            for (int i = 0; i < num_runners; ++i) {
-                int next_xend = last_xend + q;
-                if (r > 0) {
-                    ++next_xend;
-                    --r;
+            if (q == 0) {
+                for (int i = 0; i < num_runners; ++i) {
+                    int wid = (i % db.num_warehouses()) + 1;
+                    fprintf(stdout, "runner %d: [%d, %d]\n", i, wid, wid);
+                    runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), i, wid, wid, ntxns_thr);
                 }
-                fprintf(stdout, "runner %d: [%d, %d]\n", i, last_xend, next_xend - 1);
-                runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), i, last_xend, next_xend - 1,
-                                         ntxns_thr);
-                last_xend = next_xend;
-            }
+            } else {
+                int last_xend = 1;
 
-            always_assert(last_xend == db.num_warehouses() + 1, "warehouse distribution error");
+                for (int i = 0; i < num_runners; ++i) {
+                    int next_xend = last_xend + q;
+                    if (r > 0) {
+                        ++next_xend;
+                        --r;
+                    }
+                    fprintf(stdout, "runner %d: [%d, %d]\n", i, last_xend, next_xend - 1);
+                    runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), i, last_xend, next_xend - 1,
+                                             ntxns_thr);
+                    last_xend = next_xend;
+                }
+
+                always_assert(last_xend == db.num_warehouses() + 1, "warehouse distribution error");
+            }
 
             for (auto &t : runner_thrs)
                 t.join();

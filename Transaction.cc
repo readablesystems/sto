@@ -248,10 +248,9 @@ after_unlock:
     state_ = s_aborted + committed;
     restarted = true;
 
-    //XXX Contention manager stuff to be enabled
-    //if (!committed) {
-    //    ContentionManager::on_rollback(this);
-    //}
+    if (!committed) {
+        ContentionManager::on_rollback(this);
+    }
 
     // clear/consolidate transactional scratch space
     scratch_.clear();

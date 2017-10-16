@@ -40,7 +40,7 @@ void ContentionManager::on_rollback(Transaction *tx) {
         ++abort_count[threadid];
     uint64_t cycles_to_wait = rand_r((unsigned int*)&seed[threadid]) % (abort_count[threadid] * WAIT_CYCLES_MULTIPLICATOR);
     wait_cycles(cycles_to_wait);
- }
+}
 
 // Defines and initializes the static fields
 uint64_t ContentionManager::ts = 0;
