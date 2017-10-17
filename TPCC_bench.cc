@@ -22,20 +22,20 @@ namespace tpcc {
 
     template<typename DBParams>
     tpcc_db<DBParams>::tpcc_db(int num_whs) {
-        constexpr size_t num_districts = NUM_DISTRICTS_PER_WAREHOUSE;
-        constexpr size_t num_customers = NUM_CUSTOMERS_PER_DISTRICT * NUM_DISTRICTS_PER_WAREHOUSE;
+        //constexpr size_t num_districts = NUM_DISTRICTS_PER_WAREHOUSE;
+        //constexpr size_t num_customers = NUM_CUSTOMERS_PER_DISTRICT * NUM_DISTRICTS_PER_WAREHOUSE;
 
         tbl_whs_.resize(size_t(num_whs));
-        tbl_its_ = new it_table_type(NUM_ITEMS * 2);
+        tbl_its_ = new it_table_type(999983/*NUM_ITEMS * 2*/);
         for (auto i = 0; i < num_whs; ++i) {
-            tbl_dts_.emplace_back(num_districts * 2);
-            tbl_cni_.emplace_back(num_customers * 2);
-            tbl_cus_.emplace_back(num_customers * 2);
-            tbl_ods_.emplace_back(num_customers * 10 * 2);
-            tbl_ols_.emplace_back(num_customers * 100 * 2);
-            tbl_nos_.emplace_back(num_customers * 10 * 2);
-            tbl_sts_.emplace_back(NUM_ITEMS * 2);
-            tbl_hts_.emplace_back(num_customers * 2);
+            tbl_dts_.emplace_back(999983/*num_districts * 2*/);
+            tbl_cni_.emplace_back(999983/*num_customers * 2*/);
+            tbl_cus_.emplace_back(999983/*num_customers * 2*/);
+            tbl_ods_.emplace_back(999983/*num_customers * 10 * 2*/);
+            tbl_ols_.emplace_back(999983/*num_customers * 100 * 2*/);
+            tbl_nos_.emplace_back(999983/*num_customers * 10 * 2*/);
+            tbl_sts_.emplace_back(999983/*NUM_ITEMS * 2*/);
+            tbl_hts_.emplace_back(999983/*num_customers * 2*/);
         }
     }
 
