@@ -572,6 +572,8 @@ int main(int argc, const char *const *argv) {
         case opt_nwhs:
         case opt_nthrs:
         case opt_ntxns:
+        case opt_perf:
+        case opt_pfcnt:
             break;
         default:
             print_usage(argv[0]);

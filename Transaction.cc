@@ -248,9 +248,10 @@ after_unlock:
     state_ = s_aborted + committed;
     restarted = true;
 
-    if (!committed) {
-        ContentionManager::on_rollback(this);
-    }
+    // XXX no back off for now
+    //if (!committed) {
+    //    ContentionManager::on_rollback(this);
+    //}
 
     // clear/consolidate transactional scratch space
     scratch_.clear();
