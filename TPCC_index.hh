@@ -51,7 +51,7 @@ private:
 
         internal_elem(const key_type& k, const value_type& val, bool mark_valid)
             : next(nullptr), key(k),
-              version(Sto::initialized_tid() | (mark_valid ? 0 : invalid_bit)),
+              version(Sto::initialized_tid() | (mark_valid ? 0 : invalid_bit), !mark_valid),
               value(val), deleted(false) {}
 
         bool valid() const {
@@ -513,7 +513,7 @@ public:
         bool deleted;
 
         internal_elem(const key_type& k, const value_type& v, bool valid)
-            : version(valid ? Sto::initialized_tid() : Sto::initialized_tid() | invalid_bit),
+            : version(valid ? Sto::initialized_tid() : Sto::initialized_tid() | invalid_bit, !valid),
               key(k), value(v), deleted(false) {}
 
         bool valid() const {

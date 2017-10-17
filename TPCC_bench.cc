@@ -563,7 +563,7 @@ int main(int argc, const char *const *argv) {
             dbid = set_dbid(clp->val.s);
             if (dbid == db_params_id::None) {
                 std::cout << "Unsupported DB CC id: "
-                    << std::string(clp->val.s) << std::endl;
+                    << ((clp->val.s == nullptr) ? "" : std::string(clp->val.s)) << std::endl;
                 print_usage(argv[0]);
                 ret_code = 1;
                 clp_stop = true;

@@ -198,10 +198,10 @@ public:
     }
 
     static bool is_locked(type v) {
-        return v & lock_bit;
+        return (v & lock_bit) != 0;
     }
     static bool is_optimistic(type v) {
-        return v & opt_bit;
+        return (v & opt_bit) != 0;
     }
     static bool is_locked_here(type v) {
         return (v & (lock_bit | threadid_mask)) == (lock_bit | TThread::id());
@@ -368,6 +368,7 @@ public:
     TLockVersion(type v)
         : v_(v) {
     }
+    TLockVersion(type v, bool insert) : v_(v) {(void)insert;}
 
     type value() const {
         return v_;
@@ -448,12 +449,19 @@ class TSwissVersion {
 public:
     typedef TransactionTid::type type;
     typedef TransactionTid::signed_type signed_type;
+    static constexpr type lock_bit = TransactionTid::lock_bit;
     static constexpr type read_lock_bit = TransactionTid::user_bit;
 
-    TSwissVersion()
-            : v_(initialized_tid | (Opacity ? 0 : TransactionTid::nonopaque_bit)) {}
-    TSwissVersion(type v)
-            : v_(v) {}
+    TSwissVersion() = delete;
+
+    /*
+    explicit TSwissVersion(bool insert)
+            : v_(initialized_tid
+                 | (Opacity ? 0 : TransactionTid::nonopaque_bit)
+                 | (insert ? (lock_bit | TThread::id()) : 0)) {}
+                 */
+    explicit TSwissVersion(type v, bool insert = true)
+            : v_(v | (insert ? (lock_bit | TThread::id()) : 0)) {}
 
     type value() const {
         return v_;
@@ -584,6 +592,7 @@ public:
     TVersion(type v)
         : v_(v) {
     }
+    TVersion(type v, bool insert) : v_(v) {(void)insert;}
 
     type value() const {
         return v_;
@@ -711,6 +720,7 @@ public:
     TNonopaqueVersion(type v)
         : v_(v) {
     }
+    TNonopaqueVersion(type v, bool insert) : v_(v) {(void)insert;}
 
     type value() const {
         return v_;

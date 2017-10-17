@@ -86,7 +86,7 @@
 //#define TRANSACTION_FILTER 0
 
 #ifndef ADAPTIVE_RWLOCK
-#define ADAPTIVE_RWLOCK 1
+#define ADAPTIVE_RWLOCK 0
 #endif
 
 #if ASSERT_TX_SIZE
@@ -961,7 +961,7 @@ public:
             v = commit_tid_ ? commit_tid_ : TransactionTid::next_unflagged_nonopaque_version(vers.value());
             v |= flags;
         }
-        vers.set_version(v);
+        vers.set_version(TSwissVersion<Opaque>(v, false));
     }
     template <bool Opaque>
     void set_version_unlock(TSwissVersion<Opaque>& vers, TransItem& item,
@@ -974,7 +974,7 @@ public:
             v = commit_tid_ ? commit_tid_ : TransactionTid::next_unflagged_nonopaque_version(vers.value());
             v |= flags;
         }
-        vers.set_version_unlock(v);
+        vers.set_version_unlock(TSwissVersion<Opaque>(v, false));
         item.clear_needs_unlock();
     }
 
