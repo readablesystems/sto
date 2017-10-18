@@ -21,7 +21,7 @@ namespace tpcc {
             "ESE", "ANTI", "CALLY", "ATION", "EING"};
 
     template<typename DBParams>
-    tpcc_db<DBParams>::tpcc_db(int num_whs) {
+    tpcc_db<DBParams>::tpcc_db(int num_whs) : oid_gen_() {
         //constexpr size_t num_districts = NUM_DISTRICTS_PER_WAREHOUSE;
         //constexpr size_t num_customers = NUM_CUSTOMERS_PER_DISTRICT * NUM_DISTRICTS_PER_WAREHOUSE;
 
@@ -117,7 +117,7 @@ namespace tpcc {
             dv.d_zip = random_zip_code();
             dv.d_tax = ig.random(0, 2000);
             dv.d_ytd = 3000000;
-            dv.d_next_o_id = 3001;
+            //dv.d_next_o_id = 3001;
 
             db.tbl_districts(wid).nontrans_put(dk, dv);
         }

@@ -210,6 +210,9 @@ public:
     ht_table_type& tbl_histories(uint64_t w_id) {
         return tbl_hts_[w_id - 1];
     }
+    tpcc_oid_generator& oid_generator() {
+        return oid_gen_;
+    }
 
 private:
     wh_table_type tbl_whs_;
@@ -223,6 +226,8 @@ private:
     std::vector<no_table_type> tbl_nos_;
     std::vector<st_table_type> tbl_sts_;
     std::vector<ht_table_type> tbl_hts_;
+
+    tpcc_oid_generator oid_gen_;
 
     friend class tpcc_access<DBParams>;
 };

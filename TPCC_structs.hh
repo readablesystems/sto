@@ -199,6 +199,31 @@ private:
     ::TBox<int64_t, TNonopaqueWrapped<int64_t>> box_;
 };
 
+// singleton class used for fast oid generation
+// this is a replacement for the d_next_o_id field in district tables to
+// avoid excessive aborts when used with STO concurrency control
+
+class tpcc_oid_generator {
+public:
+    static constexpr size_t max_whs = 32;
+    static constexpr size_t max_dts = 16;
+
+    tpcc_oid_generator() {
+        for (auto &oid_gen : oid_gens) {
+            for (uint64_t &j : oid_gen) {
+                j = 3001;
+            }
+        }
+    }
+
+    uint64_t next(uint64_t wid, uint64_t did) {
+        return fetch_and_add(&(oid_gens[wid % max_whs][did % max_dts]), 1);
+    }
+
+private:
+    uint64_t oid_gens[max_whs][max_dts];
+};
+
 // WAREHOUSE
 
 struct warehouse_key {
@@ -259,7 +284,8 @@ struct district_value {
     fix_string<9>  d_zip;
     int64_t        d_tax;
     int64_t        d_ytd;
-    uint64_t       d_next_o_id;
+    // we use the separate oid generator for better semantics in transactions
+    //uint64_t       d_next_o_id;
 };
 
 // CUSTOMER

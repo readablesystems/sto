@@ -83,7 +83,8 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     assert(result);
     district_value *new_dv = Sto::tx_alloc(reinterpret_cast<const district_value *>(value));
     dt_tax_rate = new_dv->d_tax;
-    dt_next_oid = new_dv->d_next_o_id ++;
+    dt_next_oid = db.oid_generator().next(q_w_id, q_d_id);
+    //dt_next_oid = new_dv->d_next_o_id ++;
     db.tbl_districts(q_w_id).update_row(row, new_dv);
 
     std::tie(abort, result, std::ignore, value) = db.tbl_customers(q_w_id).select_row(customer_key(q_w_id, q_d_id, q_c_id));
