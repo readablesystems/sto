@@ -20,49 +20,8 @@
 
 namespace tpcc {
 
-template <typename DBParams>
-class integer_box : public TObject {
+class version_adapter {
 public:
-    typedef typename std::conditional<DBParams::Opaque, TVersion, TNonopaqueVersion>::type occ_version_type;
-    typedef typename std::conditional<DBParams::Adaptive, TLockVersion,
-            typename std::conditional<DBParams::Swiss, TSwissVersion<DBParams::Opaque>,
-                    occ_version_type>::type>::type version_type;
-
-    integer_box()
-        : vers(Sto::initialized_tid()
-            | (DBParams::Opaque ? 0 : TransactionTid::nonopaque_bit)),
-          value() {}
-
-    integer_box& operator=(int64_t i) {
-        value = i;
-        return *this;
-    }
-
-    bool trans_increment(int64_t i) {
-        auto item = Sto::item(this, 0);
-        if (select_for_update(item, vers)) {
-            uint64_t new_value = value + i;
-            item.add_write(new_value);
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    bool lock(TransItem& item, Transaction& txn) override {
-        return txn.try_lock(item, vers);
-    }
-    bool check(TransItem& item, Transaction&) override {
-        return item.check_version(vers);
-    }
-    void install(TransItem& item, Transaction&) override {
-        value = item.write_value<uint64_t>();
-    }
-    void unlock(TransItem& item) override {
-        Transaction::unlock(item, vers);
-    }
-
-private:
     static bool select_for_update(TransProxy& item, TLockVersion& vers) {
         return item.acquire_write(vers);
     }
@@ -86,6 +45,72 @@ private:
     static bool select_for_update(TransProxy& item, TSwissVersion<Opaque>& vers) {
         return item.add_swiss_write(vers);
     }
+
+    template <typename VT>
+    static bool select_for_overwrite(TransProxy& item, TLockVersion& vers, const VT *vptr) {
+        return item.acquire_write(vptr, vers);
+    }
+    template <typename VT>
+    static bool select_for_overwrite(TransProxy& item, TVersion& vers, const VT* vptr) {
+        (void)vers;
+        item.add_write(vptr);
+        return true;
+    }
+    template <typename VT>
+    static bool select_for_overwrite(TransProxy& item, TNonopaqueVersion& vers, const VT* vptr) {
+        (void)vers;
+        item.add_write(vptr);
+        return true;
+    }
+    template <bool Opaque, typename VT>
+    static bool select_for_overwrite(TransProxy& item, TSwissVersion<Opaque>& vers, const VT *vptr) {
+        return item.add_swiss_write(vptr, vers);
+    }
+};
+
+template <typename DBParams>
+class integer_box : public TObject {
+public:
+    typedef typename std::conditional<DBParams::Opaque, TVersion, TNonopaqueVersion>::type occ_version_type;
+    typedef typename std::conditional<DBParams::Adaptive, TLockVersion,
+            typename std::conditional<DBParams::Swiss, TSwissVersion<DBParams::Opaque>,
+                    occ_version_type>::type>::type version_type;
+
+    integer_box()
+        : vers(Sto::initialized_tid()
+            | (DBParams::Opaque ? 0 : TransactionTid::nonopaque_bit)),
+          value() {}
+
+    integer_box& operator=(int64_t i) {
+        value = i;
+        return *this;
+    }
+
+    bool trans_increment(int64_t i) {
+        auto item = Sto::item(this, 0);
+        if (version_adapter::select_for_update(item, vers)) {
+            uint64_t new_value = value + i;
+            item.add_write(new_value);
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    bool lock(TransItem& item, Transaction& txn) override {
+        return txn.try_lock(item, vers);
+    }
+    bool check(TransItem& item, Transaction&) override {
+        return item.check_version(vers);
+    }
+    void install(TransItem& item, Transaction&) override {
+        value = item.write_value<uint64_t>();
+    }
+    void unlock(TransItem& item) override {
+        Transaction::unlock(item, vers);
+    }
+
+private:
 
     version_type vers;
     uint64_t value;
@@ -202,7 +227,7 @@ public:
             }
 
             if (for_update) {
-                if (!select_for_update(item, e->version))
+                if (!version_adapter::select_for_update(item, e->version))
                     goto abort;
             } else {
                 if (!item.observe(e->version))
@@ -263,7 +288,7 @@ public:
             //    goto abort;
 
             if (overwrite) {
-                if (!select_for_overwrite(item, e->version, vptr))
+                if (!version_adapter::select_for_overwrite(item, e->version, vptr))
                     goto abort;
                 if (index_read_my_write) {
                     if (has_insert(item)) {
@@ -331,7 +356,7 @@ public:
             }
             // select_for_update() will automatically add an observation for OCC version types
             // so that we can catch change in "deleted" status of a table row at commit time
-            if (!select_for_update(item, e->version))
+            if (!version_adapter::select_for_update(item, e->version))
                 goto abort;
             fence();
             // it vital that we check the "deleted" status after registering an observation
@@ -510,48 +535,6 @@ private:
         return reinterpret_cast<bucket_entry*>(bucket_key & ~bucket_bit);
     }
 
-    // new select_for_update methods (optionally) acquiring locks
-    static bool select_for_update(TransProxy& item, TLockVersion& vers) {
-        return item.acquire_write(vers);
-    }
-    static bool select_for_update(TransProxy& item, TVersion& vers) {
-        TVersion v = vers;
-        fence();
-        if (!item.observe(v))
-            return false;
-        item.add_write();
-        return true;
-    }
-    static bool select_for_update(TransProxy& item, TNonopaqueVersion& vers) {
-        TNonopaqueVersion v = vers;
-        fence();
-        if (!item.observe(v))
-            return false;
-        item.add_write();
-        return true;
-    }
-    template <bool Opaque>
-    static bool select_for_update(TransProxy& item, TSwissVersion<Opaque>& vers) {
-        return item.add_swiss_write(vers);
-    }
-    static bool select_for_overwrite(TransProxy& item, TLockVersion& vers, const value_type *vptr) {
-        return item.acquire_write(vptr, vers);
-    }
-    static bool select_for_overwrite(TransProxy& item, TVersion& vers, const value_type* vptr) {
-        (void)vers;
-        item.add_write(vptr);
-        return true;
-    }
-    static bool select_for_overwrite(TransProxy& item, TNonopaqueVersion& vers, const value_type* vptr) {
-        (void)vers;
-        item.add_write(vptr);
-        return true;
-    }
-    template <bool Opaque>
-    static bool select_for_overwrite(TransProxy& item, TSwissVersion<Opaque>& vers, const value_type *vptr) {
-        return item.add_swiss_write(vptr, vers);
-    }
-
     static void copy_row(internal_elem *table_row, const value_type *value) {
         if (value == nullptr)
             return;
@@ -683,7 +666,7 @@ public:
         }
 
         if (for_update) {
-            if (!select_for_update(item, e->version))
+            if (!version_adapter::select_for_update(item, e->version))
                 goto abort;
         } else {
             if (!item.observe(e->version))
@@ -725,7 +708,7 @@ public:
             }
 
             if (overwrite) {
-                if (!select_for_overwrite(item, e->version, vptr))
+                if (!version_adapter::select_for_overwrite(item, e->version, vptr))
                     goto abort;
                 if (index_read_my_write) {
                     if (has_insert(item)) {
@@ -753,7 +736,7 @@ public:
             item.template add_write<value_type *>(vptr);
             item.add_flags(insert_bit);
 
-            if (!update_nodeversion(orig_node, orig_nv, new_nv))
+            if (!update_internode_version(orig_node, orig_nv, new_nv))
                 goto abort;
         }
 
@@ -766,7 +749,7 @@ public:
     del_return_type
     delete_row(const key_type& key) {
         unlocked_cursor_type lp(table_, key);
-        bool found = lp.find_unlcoked(*ti);
+        bool found = lp.find_unlocked(*ti);
         if (found) {
             internal_elem *e = lp.value();
             TransProxy item = Sto::item(this, e);
@@ -785,7 +768,7 @@ public:
 
             // select_for_update will register an observation and set the write bit of
             // the TItem
-            if (!select_for_update(item, e->version))
+            if (!version_adapter::select_for_update(item, e->version))
                 goto abort;
             fence();
             if (e->deleted)
@@ -1050,40 +1033,6 @@ private:
     static node_type *get_internode_address(TransItem& item) {
         assert(is_internode(item));
         return reinterpret_cast<node_type *>(item.key<uintptr_t>() & ~internode_bit);
-    }
-
-    // new select_for_update methods (optionally) acquiring locks
-    static bool select_for_update(TransProxy& item, TLockVersion& vers) {
-        return item.acquire_write(vers);
-    }
-    static bool select_for_update(TransProxy& item, TVersion& vers) {
-        TVersion v = vers;
-        fence();
-        if (!item.observe(v))
-            return false;
-        item.add_write();
-        return true;
-    }
-    static bool select_for_update(TransProxy& item, TNonopaqueVersion& vers) {
-        TNonopaqueVersion v = vers;
-        fence();
-        if (!item.observe(v))
-            return false;
-        item.add_write();
-        return true;
-    }
-    static bool select_for_overwrite(TransProxy& item, TLockVersion& vers, const value_type *vptr) {
-        return item.acquire_write(vptr, vers);
-    }
-    static bool select_for_overwrite(TransProxy& item, TVersion& vers, const value_type* vptr) {
-        (void)vers;
-        item.add_write(vptr);
-        return true;
-    }
-    static bool select_for_overwrite(TransProxy& item, TNonopaqueVersion& vers, const value_type* vptr) {
-        (void)vers;
-        item.add_write(vptr);
-        return true;
     }
 
     static void copy_row(internal_elem *e, const value_type *new_row) {
