@@ -680,6 +680,7 @@ private:
 
     bool preceding_duplicate_read(TransItem *it) const;
 
+public:
 #if STO_DEBUG_ABORTS
     void mark_abort_because(TransItem* item, const char* reason, TVersion::type version = 0) const {
         abort_item_ = item;
@@ -692,13 +693,11 @@ private:
     }
 #endif
 
-public:
     void abort_because(TransItem& item, const char* reason, TVersion::type version = 0) {
         mark_abort_because(&item, reason, version);
         abort();
     }
 
-public:
     void silent_abort() {
         if (in_progress())
             stop(false, nullptr, 0, 0);

@@ -20,6 +20,77 @@
 
 namespace tpcc {
 
+template <typename DBParams>
+class integer_box : public TObject {
+public:
+    typedef typename std::conditional<DBParams::Opaque, TVersion, TNonopaqueVersion>::type occ_version_type;
+    typedef typename std::conditional<DBParams::Adaptive, TLockVersion,
+            typename std::conditional<DBParams::Swiss, TSwissVersion<DBParams::Opaque>,
+                    occ_version_type>::type>::type version_type;
+
+    integer_box()
+        : vers(Sto::initialized_tid()
+            | (DBParams::Opaque ? 0 : TransactionTid::nonopaque_bit)),
+          value() {}
+
+    integer_box& operator=(int64_t i) {
+        value = i;
+        return *this;
+    }
+
+    bool trans_increment(int64_t i) {
+        auto item = Sto::item(this, 0);
+        if (select_for_update(item, vers)) {
+            uint64_t new_value = value + i;
+            item.add_write(new_value);
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    bool lock(TransItem& item, Transaction& txn) override {
+        return txn.try_lock(item, vers);
+    }
+    bool check(TransItem& item, Transaction&) override {
+        return item.check_version(vers);
+    }
+    void install(TransItem& item, Transaction&) override {
+        value = item.write_value<uint64_t>();
+    }
+    void unlock(TransItem& item) override {
+        Transaction::unlock(item, vers);
+    }
+
+private:
+    static bool select_for_update(TransProxy& item, TLockVersion& vers) {
+        return item.acquire_write(vers);
+    }
+    static bool select_for_update(TransProxy& item, TVersion& vers) {
+        TVersion v = vers;
+        fence();
+        if (!item.observe(v))
+            return false;
+        item.add_write();
+        return true;
+    }
+    static bool select_for_update(TransProxy& item, TNonopaqueVersion& vers) {
+        TNonopaqueVersion v = vers;
+        fence();
+        if (!item.observe(v))
+            return false;
+        item.add_write();
+        return true;
+    }
+    template <bool Opaque>
+    static bool select_for_update(TransProxy& item, TSwissVersion<Opaque>& vers) {
+        return item.add_swiss_write(vers);
+    }
+
+    version_type vers;
+    uint64_t value;
+};
+
 // unordered index implemented as hashtable
 template <typename K, typename V, typename DBParams>
 class unordered_index : public TObject {

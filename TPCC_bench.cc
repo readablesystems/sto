@@ -25,9 +25,9 @@ namespace tpcc {
         //constexpr size_t num_districts = NUM_DISTRICTS_PER_WAREHOUSE;
         //constexpr size_t num_customers = NUM_CUSTOMERS_PER_DISTRICT * NUM_DISTRICTS_PER_WAREHOUSE;
 
-        tbl_whs_.resize(size_t(num_whs));
         tbl_its_ = new it_table_type(999983/*NUM_ITEMS * 2*/);
         for (auto i = 0; i < num_whs; ++i) {
+            tbl_whs_.emplace_back();
             tbl_dts_.emplace_back(999983/*num_districts * 2*/);
             tbl_cni_.emplace_back(999983/*num_customers * 2*/);
             tbl_cus_.emplace_back(999983/*num_customers * 2*/);
@@ -69,16 +69,16 @@ namespace tpcc {
     template<typename DBParams>
     void tpcc_prepopulator<DBParams>::fill_warehouses() {
         for (uint64_t wid = 1; wid <= ig.num_warehouses(); ++wid) {
-            warehouse_value &wv = db.get_warehouse(wid);
+            auto &wv = db.get_warehouse(wid);
 
-            wv.w_name = random_a_string(6, 10);
-            wv.w_street_1 = random_a_string(10, 20);
-            wv.w_street_2 = random_a_string(10, 20);
-            wv.w_city = random_a_string(10, 20);
-            wv.w_state = random_state_name();
-            wv.w_zip = random_zip_code();
-            wv.w_tax = ig.random(0, 2000);
-            wv.w_ytd = int64_t(30000000);
+            wv.cv.w_name = random_a_string(6, 10);
+            wv.cv.w_street_1 = random_a_string(10, 20);
+            wv.cv.w_street_2 = random_a_string(10, 20);
+            wv.cv.w_city = random_a_string(10, 20);
+            wv.cv.w_state = random_state_name();
+            wv.cv.w_zip = random_zip_code();
+            wv.cv.w_tax = ig.random(0, 2000);
+            wv.ytd = 30000000;
         }
     }
 

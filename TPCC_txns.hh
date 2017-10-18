@@ -75,17 +75,17 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     int64_t wh_tax_rate, dt_tax_rate;
     uint64_t dt_next_oid;
 
-    warehouse_value& wv = db.get_warehouse(q_w_id);
-    wh_tax_rate = wv.w_tax;
+    auto& wv = db.get_warehouse(q_w_id);
+    wh_tax_rate = wv.cv.w_tax;
 
-    std::tie(abort, result, row, value) = db.tbl_districts(q_w_id).select_row(district_key(q_w_id, q_d_id), true);
+    std::tie(abort, result, row, value) = db.tbl_districts(q_w_id).select_row(district_key(q_w_id, q_d_id), false/*for update*/);
     TXN_DO(abort);
     assert(result);
-    district_value *new_dv = Sto::tx_alloc(reinterpret_cast<const district_value *>(value));
-    dt_tax_rate = new_dv->d_tax;
+    const district_value *dv = reinterpret_cast<const district_value *>(value);
+    dt_tax_rate = dv->d_tax;
     dt_next_oid = db.oid_generator().next(q_w_id, q_d_id);
     //dt_next_oid = new_dv->d_next_o_id ++;
-    db.tbl_districts(q_w_id).update_row(row, new_dv);
+    //db.tbl_districts(q_w_id).update_row(row, new_dv);
 
     std::tie(abort, result, std::ignore, value) = db.tbl_customers(q_w_id).select_row(customer_key(q_w_id, q_d_id, q_c_id));
     TXN_DO(abort);
@@ -238,15 +238,16 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     warehouse_key wk(q_w_id);
     auto& wv = db.get_warehouse(q_w_id);
 
-    out_w_name = wv.w_name;
-    out_w_street_1 = wv.w_street_1;
-    out_w_street_2 = wv.w_street_2;
-    out_w_city = wv.w_city;
-    out_w_state = wv.w_state;
-    out_w_zip = wv.w_zip;
+    out_w_name = wv.cv.w_name;
+    out_w_street_1 = wv.cv.w_street_1;
+    out_w_street_2 = wv.cv.w_street_2;
+    out_w_city = wv.cv.w_city;
+    out_w_state = wv.cv.w_state;
+    out_w_zip = wv.cv.w_zip;
 
     // update warehouse ytd
-    wv.w_ytd.trans_increment(h_amount);
+    success = wv.ytd.trans_increment(h_amount);
+    TXN_DO(success);
 
     // select district row FOR UPDATE and retrieve district info
     district_key dk(q_w_id, q_d_id);

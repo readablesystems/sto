@@ -5,8 +5,6 @@
 #include <cassert>
 #include <byteswap.h>
 
-#include "TBox.hh"
-
 #include "xxhash.h"
 
 #include "str.hh" // lcdf::Str
@@ -179,26 +177,6 @@ static inline IntType bswap(IntType x) {
         assert(false);
 }
 
-class tpcc_ytd_box {
-public:
-    tpcc_ytd_box() = default;
-    explicit tpcc_ytd_box(int64_t i) : box_(i) {};
-
-    tpcc_ytd_box& operator=(int64_t i) {
-        box_.nontrans_write(i);
-        return *this;
-    }
-
-    int64_t trans_increment(int64_t i) {
-        int64_t r = box_.read();
-        box_.write(r + i);
-        return r;
-    }
-
-private:
-    ::TBox<int64_t, TNonopaqueWrapped<int64_t>> box_;
-};
-
 // singleton class used for fast oid generation
 // this is a replacement for the d_next_o_id field in district tables to
 // avoid excessive aborts when used with STO concurrency control
@@ -243,7 +221,7 @@ struct warehouse_key {
     uint64_t w_id;
 };
 
-struct warehouse_value {
+struct warehouse_const_value {
     var_string<10> w_name;
     var_string<20> w_street_1;
     var_string<20> w_street_2;
@@ -251,7 +229,7 @@ struct warehouse_value {
     fix_string<2>  w_state;
     fix_string<9>  w_zip;
     int64_t        w_tax; // in 1/10000
-    tpcc_ytd_box   w_ytd; // in 1/100
+    //uint64_t       w_ytd; // in 1/100
 };
 
 // DISTRICT

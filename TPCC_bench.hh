@@ -155,6 +155,12 @@ class tpcc_access;
 template <typename DBParams>
 class tpcc_db {
 public:
+    struct warehouse_value {
+        warehouse_value() : cv(), ytd() {}
+        warehouse_const_value cv;
+        integer_box<DBParams> ytd;
+    };
+
     template <typename K, typename V>
     using UIndex = unordered_index<K, V, DBParams>;
 
