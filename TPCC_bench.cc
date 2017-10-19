@@ -299,16 +299,16 @@ namespace tpcc {
 
 // @section: clp parser definitions
     enum {
-        opt_dbid = 1, opt_nwhs, opt_nthrs, opt_ntxns, opt_perf, opt_pfcnt
+        opt_dbid = 1, opt_nwhs, opt_nthrs, opt_time, opt_perf, opt_pfcnt
     };
 
     static const Clp_Option options[] = {
-        { "dbid",         'i', opt_dbid,  Clp_ValString,       Clp_Optional },
-        { "nwarehouses",  'w', opt_nwhs,  Clp_ValInt,          Clp_Optional },
-        { "nthreads",     't', opt_nthrs, Clp_ValInt,          Clp_Optional },
-        { "ntrans",       'x', opt_ntxns, Clp_ValUnsignedLong, Clp_Optional },
-        { "perf",         'p', opt_perf,  Clp_NoVal,           Clp_Optional },
-        { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,           Clp_Negate| Clp_Optional }
+        { "dbid",         'i', opt_dbid,  Clp_ValString, Clp_Optional },
+        { "nwarehouses",  'w', opt_nwhs,  Clp_ValInt,    Clp_Optional },
+        { "nthreads",     't', opt_nthrs, Clp_ValInt,    Clp_Optional },
+        { "time",         'l', opt_time,  Clp_ValDouble, Clp_Optional },
+        { "perf",         'p', opt_perf,  Clp_NoVal,     Clp_Optional },
+        { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,     Clp_Negate| Clp_Optional }
     };
 
 // @endsection: clp parser definitions
@@ -342,10 +342,12 @@ namespace tpcc {
             always_assert(r == 0, "pthread_barrier_destroy failed");
         }
 
-        static void tpcc_runner_thread(tpcc_db<DBParams> &db, int runner_id,
-                                       uint64_t w_start, uint64_t w_end, uint64_t num_txns) {
+        static void tpcc_runner_thread(tpcc_db<DBParams>& db, tpcc_profiler& prof, int runner_id, uint64_t w_start,
+                                       uint64_t w_end, double time_limit, uint64_t& txn_cnt) {
             tpcc_runner<DBParams> runner(runner_id, db, w_start, w_end);
             typedef typename tpcc_runner<DBParams>::txn_type txn_type;
+
+            uint64_t local_cnt = 0;
 
             ::TThread::set_id(runner_id);
 
@@ -354,7 +356,14 @@ namespace tpcc {
                 tbl.thread_init();
             }
 
-            for (uint64_t i = 0; i < num_txns; ++i) {
+            uint64_t tsc_diff = (uint64_t)(time_limit * constants::processor_tsc_frequency * constants::billion);
+            auto start_t = prof.start_timestamp();
+
+            while (true) {
+                auto curr_t = read_tsc();
+                if ((curr_t - start_t) >= tsc_diff)
+                    break;
+
                 txn_type t = runner.next_transaction();
                 switch (t) {
                     case txn_type::new_order:
@@ -368,22 +377,26 @@ namespace tpcc {
                         assert(false);
                         break;
                 };
+
+                ++local_cnt;
             }
+
+            txn_cnt = local_cnt;
         }
 
-        static void run_benchmark(tpcc_db<DBParams> &db, int num_runners, uint64_t num_txns) {
+        static uint64_t run_benchmark(tpcc_db<DBParams>& db, tpcc_profiler& prof, int num_runners, double time_limit) {
             int q = db.num_warehouses() / num_runners;
             int r = db.num_warehouses() % num_runners;
 
-            uint64_t ntxns_thr = num_txns / num_runners;
-
             std::vector<std::thread> runner_thrs;
+            std::vector<uint64_t> txn_cnts(size_t(num_runners), 0);
 
             if (q == 0) {
                 for (int i = 0; i < num_runners; ++i) {
                     int wid = (i % db.num_warehouses()) + 1;
                     fprintf(stdout, "runner %d: [%d, %d]\n", i, wid, wid);
-                    runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), i, wid, wid, ntxns_thr);
+                    runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), std::ref(prof),
+                                             i, wid, wid, time_limit, std::ref(txn_cnts[i]));
                 }
             } else {
                 int last_xend = 1;
@@ -395,8 +408,8 @@ namespace tpcc {
                         --r;
                     }
                     fprintf(stdout, "runner %d: [%d, %d]\n", i, last_xend, next_xend - 1);
-                    runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), i, last_xend, next_xend - 1,
-                                             ntxns_thr);
+                    runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), std::ref(prof),
+                                             i, last_xend, next_xend - 1, time_limit, std::ref(txn_cnts[i]));
                     last_xend = next_xend;
                 }
 
@@ -405,6 +418,11 @@ namespace tpcc {
 
             for (auto &t : runner_thrs)
                 t.join();
+
+            uint64_t total_txn_cnt = 0;
+            for (auto& cnt : txn_cnts)
+                total_txn_cnt += cnt;
+            return total_txn_cnt;
         }
 
         static int execute(int argc, const char *const *argv) {
@@ -414,7 +432,7 @@ namespace tpcc {
             bool counter_mode = false;
             int num_warehouses = 1;
             int num_threads = 1;
-            uint64_t num_txns = 1000000ul;
+            double time_limit = 10.0;
 
             Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
 
@@ -430,8 +448,8 @@ namespace tpcc {
                     case opt_nthrs:
                         num_threads = clp->val.i;
                         break;
-                    case opt_ntxns:
-                        num_txns = clp->val.ul;
+                    case opt_time:
+                        time_limit = clp->val.d;
                         break;
                     case opt_perf:
                         spawn_perf = !clp->negated;
@@ -471,9 +489,9 @@ namespace tpcc {
             prepopulate_db(db);
             std::cout << "Prepopulation complete." << std::endl;
 
-            prof.start((num_txns / num_threads) * num_threads, profiler_mode);
-            run_benchmark(db, num_threads, num_txns);
-            prof.finish();
+            prof.start(profiler_mode);
+            auto num_trans = run_benchmark(db, prof, num_threads, time_limit);
+            prof.finish(num_trans);
 
             return 0;
         }
@@ -569,16 +587,7 @@ int main(int argc, const char *const *argv) {
                 clp_stop = true;
             }
             break;
-        case opt_nwhs:
-        case opt_nthrs:
-        case opt_ntxns:
-        case opt_perf:
-        case opt_pfcnt:
-            break;
         default:
-            print_usage(argv[0]);
-            ret_code = 1;
-            clp_stop = true;
             break;
         }
     }

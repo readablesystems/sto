@@ -246,8 +246,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     out_w_zip = wv.cv.w_zip;
 
     // update warehouse ytd
-    success = wv.ytd.trans_increment(h_amount);
-    TXN_DO(success);
+    wv.ytd.trans_increment(h_amount);
 
     // select district row FOR UPDATE and retrieve district info
     district_key dk(q_w_id, q_d_id);

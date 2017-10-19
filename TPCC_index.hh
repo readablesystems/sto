@@ -46,55 +46,55 @@ public:
         return item.add_swiss_write(vers);
     }
 
-    template <typename VT>
-    static bool select_for_overwrite(TransProxy& item, TLockVersion& vers, const VT *vptr) {
-        return item.acquire_write(vptr, vers);
+    template <typename T>
+    static bool select_for_overwrite(TransProxy& item, TLockVersion& vers, const T* val) {
+        return item.acquire_write(val, vers);
     }
-    template <typename VT>
-    static bool select_for_overwrite(TransProxy& item, TVersion& vers, const VT* vptr) {
+    template <typename T>
+    static bool select_for_overwrite(TransProxy& item, TVersion& vers, const T* val) {
         (void)vers;
-        item.add_write(vptr);
+        item.add_write(val);
         return true;
     }
-    template <typename VT>
-    static bool select_for_overwrite(TransProxy& item, TNonopaqueVersion& vers, const VT* vptr) {
+    template <typename T>
+    static bool select_for_overwrite(TransProxy& item, TNonopaqueVersion& vers, const T* val) {
         (void)vers;
-        item.add_write(vptr);
+        item.add_write(val);
         return true;
     }
-    template <bool Opaque, typename VT>
-    static bool select_for_overwrite(TransProxy& item, TSwissVersion<Opaque>& vers, const VT *vptr) {
-        return item.add_swiss_write(vptr, vers);
+    template <bool Opaque, typename T>
+    static bool select_for_overwrite(TransProxy& item, TSwissVersion<Opaque>& vers, const T* val) {
+        return item.add_swiss_write(val, vers);
     }
 };
 
 template <typename DBParams>
 class integer_box : public TObject {
 public:
-    typedef typename std::conditional<DBParams::Opaque, TVersion, TNonopaqueVersion>::type occ_version_type;
-    typedef typename std::conditional<DBParams::Adaptive, TLockVersion,
-            typename std::conditional<DBParams::Swiss, TSwissVersion<DBParams::Opaque>,
-                    occ_version_type>::type>::type version_type;
+    typedef uint64_t int_type;
+    typedef TNonopaqueVersion version_type;
 
     integer_box()
-        : vers(Sto::initialized_tid()
-            | (DBParams::Opaque ? 0 : TransactionTid::nonopaque_bit)),
+        : vers(Sto::initialized_tid() | TransactionTid::nonopaque_bit),
           value() {}
 
-    integer_box& operator=(int64_t i) {
-        value = i;
+    integer_box& operator=(int_type x) {
+        value = x;
         return *this;
     }
 
-    bool trans_increment(int64_t i) {
+    std::pair<bool, int_type> trans_read() {
         auto item = Sto::item(this, 0);
-        if (version_adapter::select_for_update(item, vers)) {
-            uint64_t new_value = value + i;
-            item.add_write(new_value);
-            return true;
-        } else {
-            return false;
-        }
+        bool ok = item.observe(vers);
+        if (ok)
+            return {true, value};
+        else
+            return {false, 0};
+    }
+
+    void trans_increment(int_type i) {
+        auto item = Sto::item(this, 0);
+        item.add_write(i);
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
@@ -103,8 +103,9 @@ public:
     bool check(TransItem& item, Transaction&) override {
         return item.check_version(vers);
     }
-    void install(TransItem& item, Transaction&) override {
-        value = item.write_value<uint64_t>();
+    void install(TransItem& item, Transaction& txn) override {
+        value += item.write_value<int_type>();
+        txn.set_version_unlock(vers, item);
     }
     void unlock(TransItem& item) override {
         Transaction::unlock(item, vers);
@@ -113,7 +114,7 @@ public:
 private:
 
     version_type vers;
-    uint64_t value;
+    int_type value;
 };
 
 // unordered index implemented as hashtable
