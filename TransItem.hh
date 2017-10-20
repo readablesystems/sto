@@ -283,8 +283,7 @@ class TransProxy {
 
     // new interface
     inline bool observe(TLockVersion& version) __attribute__ ((warn_unused_result));
-    inline bool observe(TLockVersion& version, bool force_occ) __attribute__ ((warn_unused_result));
-    inline bool observe(TLockVersion& version, bool add_read, bool force_occ) __attribute__ ((warn_unused_result));
+    inline bool observe(TLockVersion& version, bool add_read) __attribute__ ((warn_unused_result));
 
     inline bool observe(TVersion version, bool add_read) __attribute__ ((warn_unused_result));
     inline bool observe(TVersion version) __attribute__ ((warn_unused_result));

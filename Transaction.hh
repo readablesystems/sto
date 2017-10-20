@@ -108,19 +108,24 @@
     do {                                          \
         __label__ abort_in_progress;              \
         __label__ try_commit;                     \
+        __label__ after_commit;                   \
         TransactionLoopGuard __txn_guard;         \
         while (1) {                               \
             __txn_guard.start();
 
 #define RETRY(retry)                              \
-          goto try_commit;                        \
+            goto try_commit;                      \
 abort_in_progress:                                \
             __txn_guard.silent_abort();           \
+            goto after_commit;                    \
 try_commit:                                       \
             if (__txn_guard.try_commit())         \
                 break;                            \
-            if (!(retry))                         \
+after_commit:                                     \
+            if (!(retry)) {                       \
                 __txn_committed = false;          \
+                break;                            \
+            }                                     \
         }                                         \
     } while (false)
 
@@ -152,7 +157,7 @@ enum txp {
     txp_commit_time_nonopaque,
     txp_commit_time_aborts,
     txp_observe_lock_aborts,
-    txp_wwc_aborts,
+    txp_lock_aborts,
     txp_aborted_by_others,
     txp_max_set,
     txp_csws,
@@ -1225,7 +1230,7 @@ class TransactionLoopGuard {
         Transaction* t = Sto::transaction();
         t->set_restarted(false);
         //std::ostringstream buf;
-	//buf << "Thread [" << TThread::id() << "] starts a new transaction" << std::endl;
+        //buf << "Thread [" << TThread::id() << "] starts a new transaction" << std::endl;
         //std::cerr << buf.str();
         //std::cout << TThread::id() << " starts!" << std::endl;
     }
@@ -1274,23 +1279,16 @@ inline bool TransProxy::add_read_opaque(T rdata) {
 }
 
 inline bool TransProxy::observe(TLockVersion& version) {
-    return observe(version, true/*add read*/, false/*force occ*/);
+    return observe(version, true/*add read*/);
 }
 
-inline bool TransProxy::observe(TLockVersion& version, bool force_occ) {
-    return observe(version, true, force_occ);
-}
-
-inline bool TransProxy::observe(TLockVersion& version, bool add_read, bool force_occ) {
+inline bool TransProxy::observe(TLockVersion& version, bool add_read) {
     assert(!has_stash());
-    (void)force_occ; // forget about this feature for now...
 
     TLockVersion occ_version;
     bool optimistic = version.is_optimistic();
 
     optimistic = item().cc_mode_is_optimistic(optimistic);
-    //if (force_occ)
-    //    assert(optimistic);
 
     if (optimistic) {
         acquire_fence();
@@ -1312,6 +1310,7 @@ inline bool TransProxy::observe(TLockVersion& version, bool add_read, bool force
         } else {
             assert(response.first == LockResponse::failed);
             t()->mark_abort_because(&item(), "observe_rlock_failed", version.value());
+            TXP_INCREMENT(txp_lock_aborts);
             return false;
         }
     }
@@ -1323,10 +1322,11 @@ inline bool TransProxy::observe(TLockVersion& version, bool add_read, bool force
         // abort if not locked here
         if (occ_version.is_locked() && !item().has_write()) {
             t()->mark_abort_because(&item(), "locked", occ_version.value());
+            TXP_INCREMENT(txp_observe_lock_aborts);
             return false;
         }
-        if (!t()->check_opacity(item(), occ_version.value()))
-            return false;
+        //if (!t()->check_opacity(item(), occ_version.value()))
+        //    return false;
         if (add_read && !has_read()) {
             item().__or_flags(TransItem::read_bit);
             item().rdata_ = Packer<TLockVersion>::pack(t()->buf_, std::move(occ_version));
@@ -1338,8 +1338,9 @@ inline bool TransProxy::observe(TLockVersion& version, bool add_read, bool force
 
 inline bool TransProxy::observe(TVersion version, bool add_read) {
     assert(!has_stash());
-    if (version.is_locked_here(t()->threadid_)) {
+    if (version.is_locked_elsewhere(t()->threadid_)) {
         t()->mark_abort_because(&item(), "locked", version.value());
+        TXP_INCREMENT(txp_observe_lock_aborts);
         return false;
     }
     if (!t()->check_opacity(item(), version.value()))
@@ -1356,6 +1357,7 @@ inline bool TransProxy::observe(TNonopaqueVersion version, bool add_read) {
     assert(!has_stash());
     if (version.is_locked_elsewhere(t()->threadid_)) {
         t()->mark_abort_because(&item(), "locked", version.value());
+        TXP_INCREMENT(txp_observe_lock_aborts);
         return false;
     }
     if (add_read && !has_read()) {
@@ -1371,6 +1373,7 @@ inline bool TransProxy::observe(TSwissVersion<Opaque> version, bool add_read) {
     assert(!has_stash());
     if (version.is_read_locked_elsewhere()) {
         t()->mark_abort_because(&item(), "swiss_read_locked", version.value());
+        TXP_INCREMENT(txp_observe_lock_aborts);
         return false;
     }
     if (Opaque && !t()->check_opacity(item(), version.value())) {
@@ -1500,7 +1503,7 @@ inline bool TransProxy::lock_for_write(TransItem& item, TLockVersion& vers) {
         }
     } else {
         if (!t()->try_lock_write(item, vers)) {
-            t()->mark_abort_because(&item, "lock_for_write", vers.value());
+            t()->mark_abort_because(&item, "write_lock", vers.value());
             return false;
         }
         item.__or_flags(TransItem::lock_bit);
@@ -1512,7 +1515,10 @@ inline bool TransProxy::lock_for_write(TransItem& item, TLockVersion& vers) {
 
 inline bool TransProxy::acquire_write(TLockVersion& vers) {
     if (!has_write()) {
-        lock_for_write(item(), vers);
+        if (!lock_for_write(item(), vers)) {
+            TXP_INCREMENT(txp_lock_aborts);
+            return false;
+        }
         item().__or_flags(TransItem::write_bit);
         t()->any_writes_ = true;
     }
@@ -1533,8 +1539,10 @@ inline bool TransProxy::acquire_write(T&& wdata, TLockVersion& vers) {
 template <typename T, typename... Args>
 inline bool TransProxy::acquire_write(Args&&... args, TLockVersion& vers) {
     if (!has_write()) {
-        if (!lock_for_write(item(), vers))
+        if (!lock_for_write(item(), vers)) {
+            TXP_INCREMENT(txp_lock_aborts);
             return false;
+        }
         item().__or_flags(TransItem::write_bit);
         item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
         t()->any_writes_ = true;
@@ -1552,7 +1560,7 @@ inline bool TransProxy::add_swiss_write(TSwissVersion<Opaque>& wlock) {
     while(true) {
         if (wlock.is_locked()) {
             if (ContentionManager::should_abort(t(), wlock)) {
-                TXP_INCREMENT(txp_wwc_aborts);
+                TXP_INCREMENT(txp_lock_aborts);
                 return false;
             } else {
                 relax_fence();
@@ -1591,7 +1599,7 @@ inline bool TransProxy::add_swiss_write(Args&&... args, TSwissVersion<Opaque>& w
     while(true) {
         if (wlock.is_locked()) {
             if (ContentionManager::should_abort(t(), wlock)) {
-                TXP_INCREMENT(txp_wwc_aborts);
+                TXP_INCREMENT(txp_lock_aborts);
                 return false;
             } else {
                 relax_fence();

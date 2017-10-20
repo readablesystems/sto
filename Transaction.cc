@@ -439,10 +439,23 @@ void Transaction::print_stats() {
             fprintf(stderr, ", %llu (%.3f%%) aborts",
                     out.p(txp_total_aborts),
                     100.0 * (double) out.p(txp_total_aborts) / out.p(txp_total_starts));
-            if (out.p(txp_commit_time_aborts))
+            if (out.p(txp_commit_time_aborts)) {
                 fprintf(stderr, "\n$ %llu (%.3f%%) of aborts at commit time",
                         out.p(txp_commit_time_aborts),
                         100.0 * (double) out.p(txp_commit_time_aborts) / out.p(txp_total_aborts));
+            }
+
+            if (out.p(txp_lock_aborts)) {
+                fprintf(stderr, "\n$ %llu (%.3f%%) of aborts due to lock time-outs",
+                        out.p(txp_lock_aborts),
+                        100.0 * (double) out.p(txp_lock_aborts) / out.p(txp_total_aborts));
+            }
+
+            if (out.p(txp_observe_lock_aborts)) {
+                fprintf(stderr, "\n$ %llu (%.3f%%) of aborts due to observing write-locked versions",
+                        out.p(txp_observe_lock_aborts),
+                        100.0 * (double) out.p(txp_observe_lock_aborts) / out.p(txp_total_aborts));
+            }
         }
         unsigned long long txc_commit_attempts = txc_total_starts - (txc_total_aborts - txc_commit_aborts);
         fprintf(stderr, "\n$ %llu commit attempts, %llu (%.3f%%) nonopaque\n",
