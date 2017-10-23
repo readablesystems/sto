@@ -10,15 +10,10 @@ class TVersion : public BasicVersion<TVersion> {
     TVersion(type v, bool insert)
             : BasicVersion(v) {(void)insert;}
 
-    inline bool acquire_write_impl(TransItem& item);
-    template <typename T>
-    inline bool acquire_write_impl(TransItem& item, const T& wdata);
-    template <typename T>
-    inline bool acquire_write_impl(TransItem& item, T&& wdata);
-    template <typename... Args>
-    inline bool acquire_write_impl(TransItem& item, Args... args);
-
     inline bool observe_read_impl(TransItem& item, bool add_read);
+
+    static inline type& cp_access_tid_impl(Transaction& txn);
+    inline type cp_commit_tid_impl(Transaction& txn);
 };
 
 // STO/Silo OCC version without opacity
@@ -36,15 +31,10 @@ public:
         return check_version(item.read_value<decltype(*this)>());
     }
 
-    inline bool acquire_write_impl(TransItem& item);
-    template <typename T>
-    inline bool acquire_write_impl(TransItem& item, const T& wdata);
-    template <typename T>
-    inline bool acquire_write_impl(TransItem& item, T&& wdata);
-    template <typename... Args>
-    inline bool acquire_write_impl(TransItem& item, Args... args);
-
     inline bool observe_read_impl(TransItem& item, bool add_read);
+
+    static inline type& cp_access_tid_impl(Transaction& txn);
+    inline type cp_commit_tid_impl(Transaction& txn);
 };
 
 // XXX not sure if it's really used anywhere
@@ -84,16 +74,10 @@ public:
         inc_nonopaque_version();
     }
 
-
-    inline bool acquire_write_impl(TransItem& item);
-    template <typename T>
-    inline bool acquire_write_impl(TransItem& item, const T& wdata);
-    template <typename T>
-    inline bool acquire_write_impl(TransItem& item, T&& wdata);
-    template <typename... Args>
-    inline bool acquire_write_impl(TransItem& item, Args... args);
-
     inline bool observe_read_impl(TransItem& item, bool add_read);
+
+    static inline type& cp_access_tid_impl(Transaction& txn);
+    inline type cp_commit_tid_impl(Transaction& txn);
 
 private:
     bool is_locked() const {

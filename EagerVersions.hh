@@ -46,10 +46,13 @@ public:
     inline bool acquire_write_impl(TransItem& item, const T& wdata);
     template <typename T>
     inline bool acquire_write_impl(TransItem& item, T&& wdata);
-    template <typename... Args>
-    inline bool acquire_write_impl(TransItem& item, Args... args);
+    template <typename T, typename... Args>
+    inline bool acquire_write_impl(TransItem& item, Args&&... args);
 
     inline bool observe_read_impl(TransItem& item, bool add_read);
+
+    static inline type& cp_access_tid_impl(Transaction& txn);
+    inline type cp_commit_tid_impl(Transaction& txn);
 
 private:
     // read/writer/optimistic combined lock
@@ -97,7 +100,7 @@ private:
         // XXX not used
         type vv = v_;
         type rlock_cnt = vv & mask;
-        assert(!is_locked(vv));
+        assert(!TransactionTid::is_locked(vv));
         assert(rlock_cnt >= 1);
         if ((rlock_cnt == 1) && ::bool_cmpxchg(&v_, vv, (vv - 1) | lock_bit))
             return LockResponse::locked;
@@ -109,7 +112,7 @@ private:
 #if ADAPTIVE_RWLOCK == 0
         type vv = __sync_fetch_and_add(&v_, -1);
         (void)vv;
-        assert((vv & threadid_mask) >= 1);
+        assert((vv & mask) >= 1);
 #else
         while (1) {
             type vv = v_;
@@ -124,7 +127,7 @@ private:
     }
 
     void unlock_write() {
-        assert(is_locked(v_));
+        assert(is_locked());
 #if ADAPTIVE_RWLOCK == 0
         type new_v = v_ & ~lock_bit;
 #else
@@ -139,6 +142,9 @@ private:
         return (v_ & opt_bit) != 0;
     }
 
+    inline bool try_upgrade_with_spin();
+    inline bool try_lock_write_with_spin();
+    inline std::pair<LockResponse, type> try_lock_read_with_spin();
     inline bool lock_for_write(TransItem& item);
 
 #if ADAPTIVE_RWLOCK != 0
@@ -151,6 +157,7 @@ template <bool Opacity>
 class TSwissVersion : public BasicVersion<TSwissVersion> {
 public:
     typedef TransactionTid::type type;
+    static constexpr bool is_opaque = Opacity;
     static constexpr type lock_bit = TransactionTid::lock_bit;
     static constexpr type threadid_mask = TransactionTid::threadid_mask;
     static constexpr type read_lock_bit = TransactionTid::dirty_bit;
@@ -182,12 +189,19 @@ public:
     inline bool acquire_write_impl(TransItem& item, const T& wdata);
     template <typename T>
     inline bool acquire_write_impl(TransItem& item, T&& wdata);
-    template <typename... Args>
-    inline bool acquire_write_impl(TransItem& item, Args... args);
+    template <typename T, typename... Args>
+    inline bool acquire_write_impl(TransItem& item, Args&&... args);
 
     inline bool observe_read_impl(TransItem& item, bool add_read);
 
+    static inline type& cp_access_tid_impl(Transaction& txn);
+    inline type cp_commit_tid_impl(Transaction& txn);
+
 private:
+    bool try_lock() {
+        TransactionTid::try_lock(v_, TThread::id());
+    }
+
     bool is_read_locked() const {
         return (v_ & read_lock_bit) != 0;
     }

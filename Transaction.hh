@@ -776,36 +776,6 @@ public:
 #endif
     }
 
-    auto try_lock_read(TransItem& item, TLockVersion& vers) -> std::pair<LockResponse, TransactionTid::type>
-    {
-        (void)item;
-        unsigned n = 0;
-        while (1) {
-            auto response = vers.try_lock_read();
-            if (response.first != LockResponse::spin)
-                return response;
-            ++n;
-            if (n == 1 << STO_SPIN_BOUND_WRITE)
-                return std::make_pair(LockResponse::failed, TransactionTid::type());
-            relax_fence();
-        }
-    }
-
-    auto upgrade_lock(TransItem& item, TLockVersion& vers) -> bool
-    {
-        (void)item;
-        unsigned n = 0;
-        while (1) {
-            auto response = vers.try_upgrade();
-            if (response == LockResponse::locked)
-                return true;
-            ++n;
-            if (n == 1 << STO_SPIN_BOUND_WRITE)
-                return false;
-            relax_fence();
-        }
-    }
-
     template <typename VersImpl>
     static void unlock(TransItem& item, VersionBase<VersImpl>& vers) {
         vers.cp_unlock(item);
@@ -852,6 +822,30 @@ public:
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
     }
+
+    template <typename VersImpl>
+    void set_version(VersionBase<VersImpl>& version, VersionBase<VersImpl>::type flags = 0) const {
+        assert(state_ == s_committing_locked || state_ == s_committing);
+        tid_type v = version.cp_commit_tid(*const_cast<>(this));
+        version.cp_set_version(VersImpl(v | flags));
+    }
+
+    template <typename VersImpl>
+    void set_version_unlock(VersionBase<VersImpl>& version, TransItem& item, VersionBase<VersImpl>::type flags = 0) const {
+        assert(state_ == s_committing_locked || state_ == s_committing);
+        tid_type v = version.cp_commit_tid(*const_cast<>(this));
+        version.cp_set_version_unlock(VersImpl(v | flags));
+        item.clear_needs_unlock();
+    }
+
+    template <typename VersImpl>
+    void assign_version_unlock(VersionBase<VersImpl>& version, TransItem& item, VersionBase<VersImpl>::type flags = 0) const {
+        tid_type v = version.cp_commit_tid(*const_cast<>(this));
+        version.value() = v | flags;
+        item.clear_needs_unlock();
+    }
+
+    /*
     void set_version(TLockVersion& vers, TLockVersion::type flags = 0) const {
         assert(state_ == s_committing_locked || state_ == s_committing);
         tid_type v = commit_tid_ ? commit_tid_ : TransactionTid::next_unflagged_version(vers.value());
@@ -917,6 +911,7 @@ public:
         vers.set_version_unlock(TSwissVersion<Opaque>(v, false));
         item.clear_needs_unlock();
     }
+    */
 
     static const char* state_name(int state);
     void print() const;
@@ -987,6 +982,8 @@ private:
     friend class TransItem;
     friend class Sto;
     friend class TestTransaction;
+
+    friend class VersionDelegate;
 };
 
 template <int T, bool tmp_stats>
@@ -1213,158 +1210,6 @@ inline bool TransProxy::add_read_opaque(T rdata) {
     return true;
 }
 
-inline bool TransProxy::observe(TLockVersion& version) {
-    return observe(version, true/*add read*/);
-}
-
-inline bool TransProxy::observe(TLockVersion& version, bool add_read) {
-    assert(!has_stash());
-
-    TLockVersion occ_version;
-    bool optimistic = version.is_optimistic();
-
-    optimistic = item().cc_mode_is_optimistic(optimistic);
-
-    if (optimistic) {
-        acquire_fence();
-        occ_version = version;
-    }
-
-    if (!optimistic && !item().needs_unlock() && add_read && !has_read()) {
-        auto response = t()->try_lock_read(item(), version);
-        if (response.first == LockResponse::optmistic) {
-            // fall back to optimistic mode if no more read
-            // locks can be acquired
-            optimistic = true;
-            occ_version = response.second;
-        } else if (response.first == LockResponse::locked) {
-            item().__or_flags(TransItem::lock_bit);
-            item().__or_flags(TransItem::read_bit);
-            // XXX hack to prevent the commit protocol from skipping unlocks
-            t()->any_nonopaque_ = true;
-        } else {
-            assert(response.first == LockResponse::failed);
-            t()->mark_abort_because(&item(), "observe_rlock_failed", version.value());
-            TXP_INCREMENT(txp_lock_aborts);
-            return false;
-        }
-    }
-
-    // Invariant: at this point, if optimistic, then occ_version is set to the
-    // approperiate version observed at the time the concurrency control policy
-    // has been finally deteremined
-    if (optimistic) {
-        // abort if not locked here
-        if (occ_version.is_locked() && !item().has_write()) {
-            t()->mark_abort_because(&item(), "locked", occ_version.value());
-            TXP_INCREMENT(txp_observe_lock_aborts);
-            return false;
-        }
-        //if (!t()->check_opacity(item(), occ_version.value()))
-        //    return false;
-        if (add_read && !has_read()) {
-            item().__or_flags(TransItem::read_bit);
-            item().rdata_ = Packer<TLockVersion>::pack(t()->buf_, std::move(occ_version));
-        }
-    }
-
-    return true;
-}
-
-inline bool TransProxy::observe(TVersion version, bool add_read) {
-    assert(!has_stash());
-    if (version.is_locked_elsewhere(t()->threadid_)) {
-        t()->mark_abort_because(&item(), "locked", version.value());
-        TXP_INCREMENT(txp_observe_lock_aborts);
-        return false;
-    }
-    if (!t()->check_opacity(item(), version.value()))
-        return false;
-    if (add_read && !has_read()) {
-        item().__or_flags(TransItem::read_bit);
-        item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
-    }
-
-    return true;
-}
-
-inline bool TransProxy::observe(TNonopaqueVersion version, bool add_read) {
-    assert(!has_stash());
-    if (version.is_locked_elsewhere(t()->threadid_)) {
-        t()->mark_abort_because(&item(), "locked", version.value());
-        TXP_INCREMENT(txp_observe_lock_aborts);
-        return false;
-    }
-    if (add_read && !has_read()) {
-        item().__or_flags(TransItem::read_bit);
-        item().rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
-        t()->any_nonopaque_ = true;
-    }
-    return true;
-}
-
-template <bool Opaque>
-inline bool TransProxy::observe(TSwissVersion<Opaque> version, bool add_read) {
-    assert(!has_stash());
-    if (version.is_read_locked_elsewhere()) {
-        t()->mark_abort_because(&item(), "swiss_read_locked", version.value());
-        TXP_INCREMENT(txp_observe_lock_aborts);
-        return false;
-    }
-    if (Opaque && !t()->check_opacity(item(), version.value())) {
-        return false;
-    }
-    if (add_read && !has_read()) {
-        item().__or_flags(TransItem::read_bit);
-        item().rdata_ = Packer<TSwissVersion<Opaque>>::pack(t()->buf_, std::move(version));
-    }
-    return true;
-}
-
-template <bool Opaque>
-inline bool TransProxy::observe(TSwissVersion<Opaque> version) {
-    return observe(version, true);
-}
-
-inline bool TransProxy::observe(TCommutativeVersion version, bool add_read) {
-    assert(!has_stash());
-    if (version.is_locked()) {
-        t()->mark_abort_because(&item(), "locked", version.value());
-        return false;
-    }
-    if (!t()->check_opacity(item(), version.value()))
-        return false;
-    if (add_read && !has_read()) {
-        item().__or_flags(TransItem::read_bit);
-        item().rdata_ = Packer<TCommutativeVersion>::pack(t()->buf_, std::move(version));
-    }
-    return true;
-}
-
-inline bool TransProxy::observe(TVersion version) {
-    return observe(version, true);
-}
-
-inline bool TransProxy::observe(TNonopaqueVersion version) {
-    return observe(version, true);
-}
-
-inline bool TransProxy::observe(TCommutativeVersion version) {
-    return observe(version, true);
-}
-
-inline bool TransProxy::observe_opacity(TVersion version) {
-    return observe(version, false);
-}
-
-inline bool TransProxy::observe_opacity(TNonopaqueVersion version) {
-    return observe(version, false);
-}
-
-inline bool TransProxy::observe_opacity(TCommutativeVersion version) {
-    return observe(version, false);
-}
-
 template <typename T>
 inline TransProxy& TransProxy::update_read(T old_rdata, T new_rdata) {
     if (has_read() && this->read_value<T>() == old_rdata)
@@ -1395,166 +1240,6 @@ inline T& TransProxy::predicate_value(T default_pdata) {
     return this->template predicate_value<T>();
 }
 
-inline TransProxy& TransProxy::add_write() {
-    if (!has_write()) {
-        item().__or_flags(TransItem::write_bit);
-        t()->any_writes_ = true;
-    }
-    return *this;
-}
-
-template <typename T>
-inline TransProxy& TransProxy::add_write(const T& wdata) {
-    return add_write<T, const T&>(wdata);
-}
-
-template <typename T>
-inline TransProxy& TransProxy::add_write(T&& wdata) {
-    typedef typename std::decay<T>::type V;
-    return add_write<V, V&&>(std::move(wdata));
-}
-
-template <typename T, typename... Args>
-inline TransProxy& TransProxy::add_write(Args&&... args) {
-    if (!has_write()) {
-        item().__or_flags(TransItem::write_bit);
-        item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
-        t()->any_writes_ = true;
-    } else
-        // TODO: this assumes that a given writer data always has the same type.
-        // this is certainly true now but we probably shouldn't assume this in general
-        // (hopefully we'll have a system that can automatically call destructors and such
-        // which will make our lives much easier)
-        item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
-    return *this;
-}
-
-inline bool TransProxy::lock_for_write(TransItem& item, TLockVersion& vers) {
-    if (has_read() && item.needs_unlock()) {
-        // already holding read lock; upgrade to write lock
-        if (!t()->upgrade_lock(item, vers)) {
-            t()->mark_abort_because(&item, "upgrade_lock", vers.value());
-            return false;
-        }
-    } else {
-        if (!t()->try_lock_write(item, vers)) {
-            t()->mark_abort_because(&item, "write_lock", vers.value());
-            return false;
-        }
-        item.__or_flags(TransItem::lock_bit);
-    }
-    return true;
-    // Invariant: after this function returns, item::lock_bit is set and the
-    // write lock is held on the corresponding TVersion
-}
-
-inline bool TransProxy::acquire_write(TLockVersion& vers) {
-    if (!has_write()) {
-        if (!lock_for_write(item(), vers)) {
-            TXP_INCREMENT(txp_lock_aborts);
-            return false;
-        }
-        item().__or_flags(TransItem::write_bit);
-        t()->any_writes_ = true;
-    }
-    return true;
-}
-
-template <typename T>
-inline bool TransProxy::acquire_wirte(const T& wdata, TLockVersion& vers) {
-    return acquire_write<T, const T&>(wdata, vers);
-}
-
-template <typename T>
-inline bool TransProxy::acquire_write(T&& wdata, TLockVersion& vers) {
-    typedef typename std::decay<T>::type V;
-    return acquire_write<V, V&&>(std::move(wdata), vers);
-}
-
-template <typename T, typename... Args>
-inline bool TransProxy::acquire_write(Args&&... args, TLockVersion& vers) {
-    if (!has_write()) {
-        if (!lock_for_write(item(), vers)) {
-            TXP_INCREMENT(txp_lock_aborts);
-            return false;
-        }
-        item().__or_flags(TransItem::write_bit);
-        item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
-        t()->any_writes_ = true;
-    } else {
-        item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
-    }
-    return true;
-}
-
-template <bool Opaque>
-inline bool TransProxy::add_swiss_write(TSwissVersion<Opaque>& wlock) {
-    if (wlock.is_locked_here())
-        return true;
-
-    while(true) {
-        if (wlock.is_locked()) {
-            if (ContentionManager::should_abort(t(), wlock)) {
-                TXP_INCREMENT(txp_lock_aborts);
-                return false;
-            } else {
-                relax_fence();
-                continue;
-            }
-        }
-
-        if (wlock.try_lock()){
-            break;
-        }
-    }
-
-    item().__or_flags(TransItem::write_bit | TransItem::lock_bit);
-    t()->any_writes_ = true;
-    ContentionManager::on_write(t());
-
-    return true;
-}
-
-template <typename T, bool Opaque>
-inline bool TransProxy::add_swiss_write(const T& wdata, TSwissVersion<Opaque>& wlock) {
-    return add_swiss_write<T, Opaque, const T&>(wdata, wlock);
-}
-template <typename T, bool Opaque>
-inline bool TransProxy::add_swiss_write(T&& wdata, TSwissVersion<Opaque>& wlock) {
-    typedef typename std::decay<T>::type V;
-    return add_swiss_write<V, Opaque, V&&>(std::move(wdata), wlock);
-}
-template <typename T, bool Opaque, typename... Args>
-inline bool TransProxy::add_swiss_write(Args&&... args, TSwissVersion<Opaque>& wlock) {
-    if (wlock.is_locked_here()) {
-        item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
-        return true;
-    }
-
-    while(true) {
-        if (wlock.is_locked()) {
-            if (ContentionManager::should_abort(t(), wlock)) {
-                TXP_INCREMENT(txp_lock_aborts);
-                return false;
-            } else {
-                relax_fence();
-                continue;
-            }
-        }
-
-        if (wlock.try_lock()){
-            break;
-        }
-    }
-
-    item().__or_flags(TransItem::write_bit | TransItem::lock_bit);
-    item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
-    t()->any_writes_ = true;
-    ContentionManager::on_write(t());
-
-    return true;
-}
-
 template <typename T>
 inline TransProxy& TransProxy::set_stash(T sdata) {
     assert(!has_read());
@@ -1564,80 +1249,6 @@ inline TransProxy& TransProxy::set_stash(T sdata) {
     } else
         item().rdata_ = Packer<T>::repack(t()->buf_, item().rdata_, std::move(sdata));
     return *this;
-}
-
-template <typename Exception>
-inline void TNonopaqueVersion::opaque_throw(const Exception&) {
-    Sto::abort();
-}
-
-inline auto TVersion::snapshot(TransProxy& item) -> type {
-    type v = value();
-    item.observe_opacity(TVersion(v));
-    return v;
-}
-
-inline auto TVersion::snapshot(const TransItem& item, const Transaction& txn) -> type {
-    type v = value();
-    const_cast<Transaction&>(txn).check_opacity(const_cast<TransItem&>(item), v);
-    return v;
-}
-
-inline auto TNonopaqueVersion::snapshot(TransProxy& item) -> type {
-    item.transaction().any_nonopaque_ = true;
-    return value();
-}
-
-inline auto TNonopaqueVersion::snapshot(const TransItem&, const Transaction& txn) -> type {
-    const_cast<Transaction&>(txn).any_nonopaque_ = true;
-    return value();
-}
-
-inline bool TVersion::is_locked_here(const Transaction& txn) const {
-    return is_locked_here(txn.threadid());
-}
-
-inline bool TNonopaqueVersion::is_locked_here(const Transaction& txn) const {
-    return is_locked_here(txn.threadid());
-}
-
-inline bool TVersion::is_locked_elsewhere(const Transaction& txn) const {
-    return is_locked_elsewhere(txn.threadid());
-}
-
-inline bool TNonopaqueVersion::is_locked_elsewhere(const Transaction& txn) const {
-    return is_locked_elsewhere(txn.threadid());
-}
-
-template <bool Opaque>
-bool ContentionManager::should_abort(Transaction* tx, TSwissVersion<Opaque> wlock) {
-    TXP_INCREMENT(txp_cm_shouldabort);
-    int threadid = tx->threadid();
-    threadid *= 4;
-    if (aborted[threadid] == 1){
-        return true;
-    }
-
-    // This transaction is still in the timid phase
-    if (timestamp[threadid] == MAX_TS) {
-        return true;
-    }
-
-    int owner_threadid = wlock & TransactionTid::threadid_mask;
-    owner_threadid *= 4;
-    //if (write_set_size[threadid] < write_set_size[owner_threadid]) {
-    if (timestamp[owner_threadid] < timestamp[threadid]) {
-        if (aborted[owner_threadid] == 0) {
-            return true;
-        } else {
-            return false;
-        }
-    } else {
-        //FIXME: this might abort a new transaction on that thread
-        aborted[owner_threadid] = 1;
-        return false;
-    }
-
 }
 
 std::ostream& operator<<(std::ostream& w, const Transaction& txn);

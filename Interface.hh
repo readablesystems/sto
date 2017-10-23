@@ -12,7 +12,7 @@ class TransItem;
 
 class TObject {
 public:
-    virtual ~TObject() {}
+    virtual ~TObject() = default;
 
     virtual bool lock(TransItem& item, Transaction& txn) = 0;
     virtual bool check_predicate(TransItem& item, Transaction& txn, bool committing) {

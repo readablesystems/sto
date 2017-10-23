@@ -225,6 +225,14 @@ public:
         impl().cp_unlock_impl(item);
     }
 
+    // access/compute commit tid (used by GV/TicToc)
+    static type& cp_access_tid(Transaction& txn) {
+        return VersImpl::cp_access_tid_impl();
+    }
+    type cp_commit_tid(Transaction& txn) {
+        return impl().cp_commit_tid_impl();
+    }
+
     // Logical updates to transaction version number/timestamps
     void cp_set_version_unlock(VersImpl new_v) {
         impl().cp_set_version_unlock_impl(new_v);
@@ -302,8 +310,8 @@ public:
         return ::bool_cmpxchg(&v_, expected.v_, desired.v_);
     }
 
-    inline type snapshot(const TransItem& item, const Transaction& txn);
-    inline type snapshot(TransProxy& item);
+    //inline type snapshot(const TransItem& item, const Transaction& txn);
+    //inline type snapshot(TransProxy& item);
 
     bool cp_try_lock_impl(int threadid) {
         return TransactionTid::try_lock(v_, threadid);
@@ -318,6 +326,7 @@ public:
             return false;
         return check_version(item.read_value<BasicVersion>());
     }
+
     void cp_set_version_unlock_impl(VersImpl new_v) {
         TransactionTid::set_version_unlock(v_, new_v.v_);
     }
@@ -327,6 +336,14 @@ public:
     void inc_nonopaque_impl() {
         TransactionTid::inc_nonopaque_version(v_);
     }
+
+    inline bool acquire_write_impl(TransItem& item);
+    template <typename T>
+    inline bool acquire_write_impl(TransItem& item, const T& wdata);
+    template <typename T>
+    inline bool acquire_write_impl(TransItem& item, T&& wdata);
+    template <typename T, typename... Args>
+    inline bool acquire_write_impl(TransItem& item, Args&&... args);
 
     friend std::ostream& operator<<(std::ostream& w, BasicVersion v) {
         TransactionTid::print(v.value(), w);

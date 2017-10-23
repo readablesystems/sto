@@ -207,10 +207,11 @@ private:
     void __or_flags(flags_type flags) {
         s_ = s_ | flags;
     }
+
     friend class Transaction;
     friend class TransProxy;
-
     friend class TWrappedAccess;
+    friend class VersionDelegate;
 };
 
 class TransProxy {
@@ -258,32 +259,6 @@ class TransProxy {
     template <typename T>
     inline bool add_read_opaque(T rdata);
 
-    template <typename VersImpl>
-    inline bool observe(VersionBase<VersImpl>& version) __attribute__ ((warn_unused_result));
-
-    /*
-    // new interface
-    inline bool observe(TLockVersion& version) __attribute__ ((warn_unused_result));
-    inline bool observe(TLockVersion& version, bool add_read) __attribute__ ((warn_unused_result));
-
-    inline bool observe(TVersion version, bool add_read) __attribute__ ((warn_unused_result));
-    inline bool observe(TVersion version) __attribute__ ((warn_unused_result));
-    inline bool observe_opacity(TVersion version) __attribute__ ((warn_unused_result));
-
-    inline bool observe(TNonopaqueVersion version, bool add_read) __attribute__ ((warn_unused_result));
-    inline bool observe(TNonopaqueVersion version) __attribute__ ((warn_unused_result));
-    inline bool observe_opacity(TNonopaqueVersion version) __attribute__ ((warn_unused_result));
-
-    template <bool Opaque>
-    inline bool observe(TSwissVersion<Opaque> version, bool add_read) __attribute__((warn_unused_result));
-    template <bool Opaque>
-    inline bool observe(TSwissVersion<Opaque> version) __attribute__((warn_unused_result));
-
-    inline bool observe(TCommutativeVersion version, bool add_read) __attribute__ ((warn_unused_result));
-    inline bool observe(TCommutativeVersion version) __attribute__ ((warn_unused_result));
-    inline bool observe_opacity(TCommutativeVersion version) __attribute__ ((warn_unused_result));
-    */
-
     inline TransProxy& clear_read() {
         item().__rm_flags(TransItem::read_bit);
         return *this;
@@ -311,15 +286,33 @@ class TransProxy {
         return *this;
     }
 
+    // New interface
+    template <typename VersImpl>
+    bool observe(VersionBase<VersImpl>& version) __attribute__ ((warn_unused_result)) {
+        return version.observe_read(item(), true);
+    }
+    template <typename VersImpl>
+    bool observe_opacity(VersionBase<VersImpl>& version) __attribute__ ((warn_unused_result)) {
+        return version.observe_read(item(), false);
+    }
+
     // like "add_writes"s but also takes a version as argument
     template <typename VersImpl>
-    inline bool acquire_write(VersionBase<VersImpl>& vers);
-    template <typename T, typename VersImpl>
-    inline bool acquire_wirte(const T& wdata, VersionBase<VersImpl>& vers);
-    template <typename T, typename VersImpl>
-    inline bool acquire_write(T&& wdata, VersionBase<VersImpl>& vers);
-    template <typename T, typename... Args, typename VersImpl>
-    inline bool acquire_write(Args&&... args, VersionBase<VersImpl>& vers);
+    bool acquire_write(VersionBase<VersImpl>& vers) {
+        return vers.acquire_write(item());
+    }
+    template <typename VersImpl, typename T>
+    bool acquire_wirte(VersionBase<VersImpl>& vers, const T& wdata) {
+        return vers.acquire_write(item(), wdata);
+    };
+    template <typename VersImpl, typename T>
+    bool acquire_write(VersionBase<VersImpl>& vers, T&& wdata) {
+        return vers.acquire_write(item(), wdata);
+    };
+    template <typename VersImpl, typename T, typename... Args>
+    bool acquire_write(VersionBase<VersImpl>& vers, Args&&... args) {
+        return vers.acquire_write<T, Args...>(item(), std::forward<Args>(args)...);
+    };
 
     template <typename T>
     inline TransProxy& set_stash(T sdata);

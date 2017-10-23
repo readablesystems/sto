@@ -13,6 +13,9 @@ typedef __uint128_t uint128_t;
 
 class Transaction;
 
+template <bool Opaque>
+class TSwissVersion;
+
 class ContentionManager {
 public:
     template <bool Opaque>

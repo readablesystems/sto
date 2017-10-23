@@ -22,7 +22,7 @@ add_library(sto
         Interface.hh
         TWrapped.hh
         TRcu.cc
-        ContentionManager.cc VersionBase.hh OCCVersions.hh EagerVersions.hh.hh TThread.hh)
+        ContentionManager.cc VersionBase.hh OCCVersions.hh EagerVersions.hh TThread.hh ConcurrencyControl.hh)
 
 add_executable(tpcc_bench
         PlatformFeatures.hh
