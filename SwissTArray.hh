@@ -92,6 +92,7 @@ public:
         return true;
     }
     bool check(TransItem& item, Transaction&) override {
+        return data_[item.key<size_type>()].version.cp_check_version(item);
         return item.check_version(data_[item.key<size_type>()].version);
     }
     void install(TransItem& item, Transaction& txn) override {

@@ -6,6 +6,7 @@
 #include "TRcu.hh"
 #include "ContentionManager.hh"
 #include "TransScratch.hh"
+#include "VersionBase.hh"
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -84,10 +85,6 @@
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
 //#define TRANSACTION_FILTER 0
-
-#ifndef ADAPTIVE_RWLOCK
-#define ADAPTIVE_RWLOCK 0
-#endif
 
 #if ASSERT_TX_SIZE
 #if STO_PROFILE_COUNTERS > 1
@@ -687,18 +684,18 @@ private:
 
 public:
 #if STO_DEBUG_ABORTS
-    void mark_abort_because(TransItem* item, const char* reason, TVersion::type version = 0) const {
+    void mark_abort_because(TransItem* item, const char* reason, TransactionTid::type version = 0) const {
         abort_item_ = item;
         abort_reason_ = reason;
         if (version)
             abort_version_ = version;
     }
 #else
-    void mark_abort_because(TransItem*, const char*, TVersion::type = 0) const {
+    void mark_abort_because(TransItem*, const char*, TransactionTid::type = 0) const {
     }
 #endif
 
-    void abort_because(TransItem& item, const char* reason, TVersion::type version = 0) {
+    void abort_because(TransItem& item, const char* reason, TransactionTid::type version = 0) {
         mark_abort_because(&item, reason, version);
         abort();
     }
@@ -742,13 +739,8 @@ public:
     // opacity checking
     // These function will eventually help us track the commit TID when we
     // have no opacity, or for GV7 opacity.
-    bool try_lock(TransItem& item, TVersion& vers) {
-        return try_lock(item, const_cast<TransactionTid::type&>(vers.value()));
-    }
-    bool try_lock(TransItem& item, TNonopaqueVersion& vers) {
-        return try_lock(item, const_cast<TransactionTid::type&>(vers.value()));
-    }
-    bool try_lock(TransItem& item, TransactionTid::type& vers) {
+    template <typename VersImpl>
+    bool try_lock(TransItem& item, VersionBase<VersImpl>& vers) {
 #if STO_SORT_WRITESET
         (void) item;
         TransactionTid::lock(vers, threadid_);
@@ -758,13 +750,13 @@ public:
         // have no opacity, or for GV7 opacity.
         unsigned n = 0;
         while (1) {
-            if (TransactionTid::try_lock(vers, threadid_))
+            if (vers.cp_try_lock(threadid_))
                 return true;
             ++n;
 # if STO_SPIN_EXPBACKOFF
             if (item.has_read() || n == STO_SPIN_BOUND_WRITE) {
 #  if STO_DEBUG_ABORTS
-                abort_version_ = vers;
+                abort_version_ = vers.value();
 #  endif
                 return false;
             }
@@ -774,7 +766,7 @@ public:
 # else
             if (item.has_read() || n == (1 << STO_SPIN_BOUND_WRITE)) {
 #  if STO_DEBUG_ABORTS
-                abort_version_ = vers;
+                abort_version_ = vers.value();
 #  endif
                 return false;
             }
@@ -782,37 +774,6 @@ public:
             relax_fence();
         }
 #endif
-    }
-
-    template <bool Opaque>
-    bool try_lock(TransItem& item, TSwissVersion<Opaque>& vers) {
-        (void)item;
-        assert(vers.is_locked_here());
-        vers.set_read_lock();
-        return true;
-    }
-
-    bool try_lock(TransItem& item, TLockVersion& vers) {
-        return try_lock_write(item, vers);
-    }
-
-    auto try_lock_write(TransItem& item, TLockVersion& vers) -> bool
-    {
-        (void)item;
-        unsigned n = 0;
-        while (1) {
-            auto response = vers.try_lock_write();
-            if (response == LockResponse::locked)
-                return true;
-            else if (response == LockResponse::spin) {
-                ++n;
-                if (n == (1 << STO_SPIN_BOUND_WRITE))
-                    return false;
-            } else {
-                return false;
-            }
-            relax_fence();
-        }
     }
 
     auto try_lock_read(TransItem& item, TLockVersion& vers) -> std::pair<LockResponse, TransactionTid::type>
@@ -845,34 +806,9 @@ public:
         }
     }
 
-    static void unlock(TransItem& item, TLockVersion& vers) {
-        (void)item;
-        assert(item.needs_unlock());
-        if (item.has_write()) {
-            vers.unlock_write();
-        } else {
-            assert(item.has_read());
-            vers.unlock_read();
-        }
-    }
-    template <bool Opaque>
-    static void unlock(TransItem& item, TSwissVersion<Opaque>& vers) {
-        (void)item;
-        assert(item.needs_unlock());
-        if (vers.is_locked())
-            vers.unlock();
-    }
-
-    static void unlock(TransItem& item, TVersion& vers) {
-        unlock(item, const_cast<TransactionTid::type&>(vers.value()));
-    }
-    static void unlock(TransItem& item, TNonopaqueVersion& vers) {
-        unlock(item, const_cast<TransactionTid::type&>(vers.value()));
-    }
-    static void unlock(TransItem& item, TransactionTid::type& v) {
-        (void)item;
-        assert(item.needs_unlock());
-        TransactionTid::unlock(v);
+    template <typename VersImpl>
+    static void unlock(TransItem& item, VersionBase<VersImpl>& vers) {
+        vers.cp_unlock(item);
     }
 
     bool check_opacity(TransItem& item, TransactionTid::type v) __attribute__ ((warn_unused_result)) {
@@ -1051,7 +987,6 @@ private:
     friend class TransItem;
     friend class Sto;
     friend class TestTransaction;
-    friend class TNonopaqueVersion;
 };
 
 template <int T, bool tmp_stats>

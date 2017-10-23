@@ -3,14 +3,16 @@
 #include <type_traits>
 #include <cstring>
 #include <cassert>
-#include "Interface.hh"
-#include "Packer.hh"
 #include "compiler.hh"
-#include "WriteLock.hh"
+#include "Packer.hh"
+#include "TThread.hh"
 
 class TWrappedAccess;
 
 class TransProxy;
+
+template <typename VersImpl>
+class VersionBase;
 
 enum class CCMode : int {none = 0, opt, lock};
 
@@ -82,31 +84,6 @@ class TransItem {
     const T& read_value() const {
         assert(has_read());
         return Packer<T>::unpack(rdata_);
-    }
-    bool check_version(TLockVersion v) const {
-        assert(has_read());
-        if (v.is_locked() && !has_write())
-            return false;
-        return v.check_version(this->read_value<TLockVersion>());
-    }
-    bool check_version(TVersion v) const {
-        assert(has_read());
-        // abort if not locked by us
-        if (v.is_locked() && !has_write())
-            return false;
-        return v.check_version(this->read_value<TVersion>());
-    }
-    bool check_version(TNonopaqueVersion v) const {
-        assert(has_read());
-        return v.check_version(this->read_value<TNonopaqueVersion>());
-    }
-
-    template <bool Opaque>
-    bool check_version(TSwissVersion<Opaque> v) const {
-        assert(has_read());
-        if (v.is_locked() && !has_write())
-            return false;
-        return v.check_version(this->read_value<TSwissVersion<Opaque>>());
     }
 
     template <typename T>
@@ -281,6 +258,10 @@ class TransProxy {
     template <typename T>
     inline bool add_read_opaque(T rdata);
 
+    template <typename VersImpl>
+    inline bool observe(VersionBase<VersImpl>& version) __attribute__ ((warn_unused_result));
+
+    /*
     // new interface
     inline bool observe(TLockVersion& version) __attribute__ ((warn_unused_result));
     inline bool observe(TLockVersion& version, bool add_read) __attribute__ ((warn_unused_result));
@@ -301,6 +282,7 @@ class TransProxy {
     inline bool observe(TCommutativeVersion version, bool add_read) __attribute__ ((warn_unused_result));
     inline bool observe(TCommutativeVersion version) __attribute__ ((warn_unused_result));
     inline bool observe_opacity(TCommutativeVersion version) __attribute__ ((warn_unused_result));
+    */
 
     inline TransProxy& clear_read() {
         item().__rm_flags(TransItem::read_bit);
@@ -329,24 +311,15 @@ class TransProxy {
         return *this;
     }
 
-    // like "add_writes"s but used for pessimistic items
-    inline bool acquire_write(TLockVersion& vers);
-    template <typename T>
-    inline bool acquire_wirte(const T& wdata, TLockVersion& vers);
-    template <typename T>
-    inline bool acquire_write(T&& wdata, TLockVersion& vers);
-    template <typename T, typename... Args>
-    inline bool acquire_write(Args&&... args, TLockVersion& vers);
-
-    // swisstm add write
-    template <bool Opaque>
-    inline bool add_swiss_write(TSwissVersion<Opaque>& wlock);
-    template <typename T, bool Opaque>
-    inline bool add_swiss_write(const T& wdata, TSwissVersion<Opaque>& wlock);
-    template <typename T, bool Opaque>
-    inline bool add_swiss_write(T&& wdata, TSwissVersion<Opaque>& wlock);
-    template <typename T, bool Opaque, typename... Args>
-    inline bool add_swiss_write(Args&&... wdata, TSwissVersion<Opaque>& wlock);
+    // like "add_writes"s but also takes a version as argument
+    template <typename VersImpl>
+    inline bool acquire_write(VersionBase<VersImpl>& vers);
+    template <typename T, typename VersImpl>
+    inline bool acquire_wirte(const T& wdata, VersionBase<VersImpl>& vers);
+    template <typename T, typename VersImpl>
+    inline bool acquire_write(T&& wdata, VersionBase<VersImpl>& vers);
+    template <typename T, typename... Args, typename VersImpl>
+    inline bool acquire_write(Args&&... args, VersionBase<VersImpl>& vers);
 
     template <typename T>
     inline TransProxy& set_stash(T sdata);
@@ -452,7 +425,10 @@ private:
     inline Transaction* t() const {
         return t_;
     }
-    inline bool lock_for_write(TransItem& item, TLockVersion& vers);
+
+    template <typename VersImpl>
+    friend class VersionBase;
+
     friend class Transaction;
     friend class OptionalTransProxy;
 };
