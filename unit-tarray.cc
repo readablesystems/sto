@@ -3,7 +3,7 @@
 #include <iostream>
 #include <assert.h>
 #include <vector>
-#include "Transaction.hh"
+#include "Sto.hh"
 #include "TArray.hh"
 #include "TArrayAdaptive.hh"
 #include "TBox.hh"

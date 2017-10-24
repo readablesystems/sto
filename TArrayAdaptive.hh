@@ -51,10 +51,22 @@ public:
             return result.first;
         }
     }
-    bool transPut(size_type i, T x) const {
+    value_type transGet_throws(size_type i) const {
+        value_type ret;
+        bool ok = transGet(i, ret);
+        if (!ok)
+            throw Transaction::Abort();
+        return ret;
+    }
+    bool transPut(size_type i, T x) {
         assert(i < N);
         //printf("write [%lu] = %lu\n", i, x);
-        return Sto::item(this, i).acquire_write(x, data_[i].vers);
+        return Sto::item(this, i).acquire_write(data_[i].vers, x);
+    }
+    void transPut_throws(size_type i, T x) {
+        bool ok = transPut(i, x);
+        if (!ok)
+            throw Transaction::Abort();
     }
 
     get_type nontrans_get(size_type i) const {
@@ -72,10 +84,10 @@ public:
 
     // transactional methods
     bool lock(TransItem& item, Transaction& txn) override {
-        return txn.try_lock_write(item, data_[item.key<size_type>()].vers);
+        return txn.try_lock(item, data_[item.key<size_type>()].vers);
     }
     bool check(TransItem& item, Transaction&) override {
-        return item.check_version(data_[item.key<size_type>()].vers);
+        return data_[item.key<size_type>()].vers.cp_check_version(item);
     }
     void install(TransItem& item, Transaction& txn) override {
         size_type i = item.key<size_type>();
@@ -83,7 +95,7 @@ public:
         txn.set_version_unlock(data_[i].vers, item);
     }
     void unlock(TransItem& item) override {
-        Transaction::unlock(item, data_[item.key<size_type>()].vers);
+        data_[item.key<size_type>()].vers.cp_unlock(item);
     }
 
 private:

@@ -794,12 +794,15 @@ public:
             return hard_check_opacity(&item, v);
         return true;
     }
+
+    /*
     bool check_opacity(TransItem& item, TVersion v) {
         return check_opacity(item, v.value());
     }
     bool check_opacity(TransItem&, TNonopaqueVersion) {
         return true;
     }
+    */
 
     bool check_opacity(TransactionTid::type v) {
         assert(state_ <= s_committing_locked);
@@ -824,23 +827,23 @@ public:
     }
 
     template <typename VersImpl>
-    void set_version(VersionBase<VersImpl>& version, VersionBase<VersImpl>::type flags = 0) const {
+    void set_version(VersionBase<VersImpl>& version, typename VersionBase<VersImpl>::type flags = 0) const {
         assert(state_ == s_committing_locked || state_ == s_committing);
-        tid_type v = version.cp_commit_tid(*const_cast<>(this));
+        tid_type v = version.cp_commit_tid(*const_cast<Transaction *>(this));
         version.cp_set_version(VersImpl(v | flags));
     }
 
     template <typename VersImpl>
-    void set_version_unlock(VersionBase<VersImpl>& version, TransItem& item, VersionBase<VersImpl>::type flags = 0) const {
+    void set_version_unlock(VersionBase<VersImpl>& version, TransItem& item, typename VersionBase<VersImpl>::type flags = 0) const {
         assert(state_ == s_committing_locked || state_ == s_committing);
-        tid_type v = version.cp_commit_tid(*const_cast<>(this));
+        tid_type v = version.cp_commit_tid(*const_cast<Transaction *>(this));
         version.cp_set_version_unlock(VersImpl(v | flags));
         item.clear_needs_unlock();
     }
 
     template <typename VersImpl>
-    void assign_version_unlock(VersionBase<VersImpl>& version, TransItem& item, VersionBase<VersImpl>::type flags = 0) const {
-        tid_type v = version.cp_commit_tid(*const_cast<>(this));
+    void assign_version_unlock(VersionBase<VersImpl>& version, TransItem& item, typename VersionBase<VersImpl>::type flags = 0) const {
+        tid_type v = version.cp_commit_tid(*const_cast<Transaction *>(this));
         version.value() = v | flags;
         item.clear_needs_unlock();
     }

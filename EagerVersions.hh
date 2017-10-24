@@ -23,8 +23,9 @@ public:
 
     TLockVersion() = default;
     explicit TLockVersion(type v)
-            : v_(v) {}
-    TLockVersion(type v, bool insert) : v_(v) {(void)insert;}
+            : BasicVersion<TLockVersion>(v) {}
+    TLockVersion(type v, bool insert)
+            : BasicVersion<TLockVersion>(v) {(void)insert;}
 
     bool cp_try_lock_impl(int threadid) {
         (void)threadid;
@@ -54,11 +55,15 @@ public:
     static inline type& cp_access_tid_impl(Transaction& txn);
     inline type cp_commit_tid_impl(Transaction& txn);
 
+    bool hint_optimistic() const {
+        return (this->v_ & opt_bit) != 0;
+    }
+
 private:
     // read/writer/optimistic combined lock
     std::pair<LockResponse, type> try_lock_read() {
         while (true) {
-            type vv = v_;
+            type vv = this->v_;
             bool write_locked = ((vv & lock_bit) != 0);
             type rlock_cnt = vv & mask;
             bool rlock_avail = rlock_cnt < rlock_cnt_max;
@@ -138,10 +143,6 @@ private:
         release_fence();
     }
 
-    bool is_optimistic() const {
-        return (v_ & opt_bit) != 0;
-    }
-
     inline bool try_upgrade_with_spin();
     inline bool try_lock_write_with_spin();
     inline std::pair<LockResponse, type> try_lock_read_with_spin();
@@ -154,7 +155,7 @@ private:
 };
 
 template <bool Opacity>
-class TSwissVersion : public BasicVersion<TSwissVersion> {
+class TSwissVersion : public BasicVersion<TSwissVersion<Opacity>> {
 public:
     typedef TransactionTid::type type;
     static constexpr bool is_opaque = Opacity;
@@ -162,10 +163,13 @@ public:
     static constexpr type threadid_mask = TransactionTid::threadid_mask;
     static constexpr type read_lock_bit = TransactionTid::dirty_bit;
 
+    using BV = BasicVersion<TSwissVersion<Opacity>>;
+    using BV::v_;
+
     TSwissVersion()
-            : BasicVersion(Opacity ? TransactionTid::nonopaque_bit : 0) {}
+            : BV(Opacity ? TransactionTid::nonopaque_bit : 0) {}
     explicit TSwissVersion(type v, bool insert = true)
-            : BasicVersion(v | (insert ? (lock_bit | TThread::id()) : 0)) {
+            : BV(v | (insert ? (lock_bit | TThread::id()) : 0)) {
         if (Opacity)
             v_ |= TransactionTid::nonopaque_bit;
     }
@@ -173,14 +177,14 @@ public:
     // commit-time lock for TSwissVersion is just setting the read-lock (dirty) bit
     bool cp_try_lock_impl(int threadid) {
         (void)threadid;
-        assert(is_locked_here(threadid));
+        assert(BV::is_locked_here(threadid));
         v_ |= read_lock_bit;
         release_fence();
     }
     bool cp_unlock_impl(TransItem& item) {
         (void)item;
         assert(item.needs_unlock());
-        if (is_locked())
+        if (BV::is_locked())
             TransactionTid::unlock(v_);
     }
 

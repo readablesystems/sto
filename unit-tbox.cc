@@ -1,9 +1,9 @@
 #undef NDEBUG
 #include <string>
 #include <iostream>
-#include <assert.h>
+#include <cassert>
 #include <vector>
-#include "Transaction.hh"
+#include "Sto.hh"
 #include "TBox.hh"
 #include "StringWrapper.hh"
 

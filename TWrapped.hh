@@ -1,6 +1,7 @@
 #pragma once
-#include "Transaction.hh"
 #include <utility>
+
+#include "Sto.hh"
 
 template <typename T>
 struct is_small {
@@ -30,6 +31,22 @@ public:
     //static inline T read_wait_atomic(const T*, TransProxy, const V&, bool);
     //template <typename T, typename V>
     //static inline T read_wait_nonatomic(const T*, TransProxy, const V&, bool);
+
+    // The names are extremely confusing right now and should be changed.
+
+    // "read_atomic" is referring to the fact that if the version is an optimistic one, then
+    // the read operation will not return until the observed version forms a consistent
+    // snapshot together with the value being returned. It spins until a consistent snapshot
+    // of the version-value pair is observed.
+
+    // "read_nonatomic" doesn't do the spinning. In the case of optimistic concurrency control,
+    // this may lead to the version and the value not forming a consistent snapshot. Version
+    // is, however, guaranteed to be observed before the version, thus ensuring the correctness
+    // of optimistic version validation.
+
+    // When dealing with non-optimistic versions, such as TLockVersion, read_nonatomic must be used
+    // instead of read_atomic to avoid deadlocks, since the observe method now acquires locks under
+    // the hood.
 
     template <typename T, typename V>
     static std::pair<bool, T> read_atomic(const T* v, TransProxy item, const V& version, bool add_read) {
@@ -183,7 +200,7 @@ public:
 
     // helper function converting a pointer-read to a by-reference-read for non-trivially-copyable types
     template <typename T>
-    static std::pair<bool, const T&> nontrivial_read_to_reference(std::pair<bool, const T*> read_result) {
+    static std::pair<bool, const T&> nontrivial_read_to_reference(std::pair<bool, T*> read_result) {
         static_assert(!std::is_trivially_copyable<T>::value, "Type is trivially-copyable");
         return std::make_pair(read_result.first, *read_result.second);
     }
@@ -212,7 +229,7 @@ public:
         return TWrappedAccess::read_wait_atomic(&v_, item, version, add_read);
     }
     std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
-        if (item.cc_mode_is_optimistic(version.is_optimistic()))
+        if (item.cc_mode_is_optimistic(version.hint_optimistic()))
             return TWrappedAccess::read_atomic(&v_, item, version, true);
         else
             return TWrappedAccess::read_nonatomic(&v_, item, version, true);
@@ -226,6 +243,52 @@ public:
 
 protected:
     T v_;
+};
+
+template <typename T>
+class TLockWrapped<T, true /* opaque */, false /* trivial */, false /* small */> {
+public:
+    typedef T& read_type;
+    typedef TLockVersion version_type;
+
+    TLockWrapped()
+            : vp_(new T) {}
+    explicit TLockWrapped(const T& v)
+            : vp_(new T(v)) {}
+    explicit TLockWrapped(T&& v)
+            : vp_(std::move(v)) {}
+    template <typename... Args>
+    explicit TLockWrapped(Args&&... args)
+            : vp_(new T(std::forward<Args>(args)...)) {}
+    ~TLockWrapped() {
+        Transaction::rcu_delete(vp_);
+    }
+
+    const T& access() const {
+        return *vp_;
+    }
+    T& access() {
+        return *vp_;
+    }
+    std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
+        auto result = TWrappedAccess::read_nonatomic(&vp_, item, version, true);
+        return {result.first, *result.second};
+    }
+
+    void write(const T& v) {
+        save(new T(v));
+    }
+    void write(T&& v) {
+        save(new T(std::move(v)));
+    }
+
+private:
+    T *vp_;
+
+    void save(T* new_vp) {
+        Transaction::rcu_delete(vp_);
+        vp_ = new_vp;
+    }
 };
 
 template <typename T, bool Opaque, bool Trivial, bool Small>

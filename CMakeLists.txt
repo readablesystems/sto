@@ -22,7 +22,12 @@ add_library(sto
         Interface.hh
         TWrapped.hh
         TRcu.cc
-        ContentionManager.cc VersionBase.hh OCCVersions.hh EagerVersions.hh TThread.hh ConcurrencyControl.hh)
+        ContentionManager.cc
+        VersionBase.hh
+        OCCVersions.hh
+        EagerVersions.hh
+        TThread.hh
+        ConcurrencyControl.hh Sto.hh)
 
 add_executable(tpcc_bench
         PlatformFeatures.hh
@@ -33,9 +38,20 @@ add_executable(tpcc_bench
 
 add_executable(unit-swisstarray
         unit-swisstarray.cc
-        ContentionManager.cc
         SwissTArray.hh
         TArrayProxy.hh)
 
+add_executable(unit-tarray
+        unit-tarray.cc
+        TArray.hh
+        TArrayAdaptive.hh
+        TArrayProxy.hh)
+
+add_executable(unit-tbox
+        unit-tbox.cc
+        TBox.hh)
+
 target_link_libraries(tpcc_bench sto clp masstree json dprint xxhash ${PLATFORM_LIBRARIES})
 target_link_libraries(unit-swisstarray sto dprint)
+target_link_libraries(unit-tbox sto dprint)
+target_link_libraries(unit-tarray sto dprint)

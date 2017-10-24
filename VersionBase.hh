@@ -207,7 +207,10 @@ static constexpr TransactionTid::type initialized_tid = TransactionTid::incremen
 template <typename VersImpl>
 class VersionBase {
 public:
-    typedef VersImpl::type type;
+    typedef TransactionTid::type type;
+
+    VersionBase() = default;
+    explicit VersionBase(type v) : v_(v) {}
 
     type value() const {
         return v_;
@@ -227,10 +230,10 @@ public:
 
     // access/compute commit tid (used by GV/TicToc)
     static type& cp_access_tid(Transaction& txn) {
-        return VersImpl::cp_access_tid_impl();
+        return VersImpl::cp_access_tid_impl(txn);
     }
     type cp_commit_tid(Transaction& txn) {
-        return impl().cp_commit_tid_impl();
+        return impl().cp_commit_tid_impl(txn);
     }
 
     // Logical updates to transaction version number/timestamps
@@ -259,7 +262,7 @@ public:
     }
     template <typename T, typename... Args>
     bool acquire_write(TransItem& item, Args&&... args) {
-        impl().acquire_write_impl(item, args);
+        impl().acquire_write_impl(item, args...);
     }
 
     bool observe_read(TransItem& item) {
@@ -289,9 +292,11 @@ class BasicVersion : public VersionBase<VersImpl> {
 public:
     typedef TransactionTid::type type;
 
+    using VersionBase<VersImpl>::v_;
+
     BasicVersion() = default;
     explicit BasicVersion(type v)
-            : v_(v) {}
+            : VersionBase<VersImpl>(v) {}
 
     bool operator==(BasicVersion x) const {
         return v_ == x.v_;
@@ -355,7 +360,6 @@ public:
         throw exception;
     }
 
-protected:
     bool is_locked() const {
         return TransactionTid::is_locked(v_);
     }

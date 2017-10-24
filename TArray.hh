@@ -73,7 +73,7 @@ public:
         return txn.try_lock(item, data_[item.key<size_type>()].vers);
     }
     bool check(TransItem& item, Transaction&) override {
-        return item.check_version(data_[item.key<size_type>()].vers);
+        return data_[item.key<size_type>()].vers.cp_check_version(item);
     }
     void install(TransItem& item, Transaction& txn) override {
         size_type i = item.key<size_type>();
@@ -81,7 +81,7 @@ public:
         txn.set_version_unlock(data_[i].vers, item);
     }
     void unlock(TransItem& item) override {
-        data_[item.key<size_type>()].vers.unlock();
+        data_[item.key<size_type>()].vers.cp_unlock(item);
     }
 
 private:

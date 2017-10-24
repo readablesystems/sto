@@ -57,7 +57,7 @@ public:
     }
     bool transPut(size_type i, T x) {
         assert(i < N);
-        return Sto::item(this, i).add_swiss_write(x, data_[i].version);
+        return Sto::item(this, i).acquire_write(data_[i].version, x);
     }
     // the throw versions
     get_type transGet_throws(size_type i) const {
@@ -88,12 +88,13 @@ public:
     // transactional methods
     bool lock(TransItem& item, Transaction& txn) override {
         // read lock is always set successfully if we ever make it to commit
-        data_[item.key<size_type>()].version.set_read_lock();
+        auto ok = txn.try_lock(item, data_[item.key<size_type>()].version);
+        assert(ok);
         return true;
     }
     bool check(TransItem& item, Transaction&) override {
         return data_[item.key<size_type>()].version.cp_check_version(item);
-        return item.check_version(data_[item.key<size_type>()].version);
+        //return item.check_version(data_[item.key<size_type>()].version);
     }
     void install(TransItem& item, Transaction& txn) override {
         size_type i = item.key<size_type>();
@@ -101,8 +102,7 @@ public:
         txn.set_version_unlock(data_[i].version, item);
     }
     void unlock(TransItem& item) override {
-        if (data_[item.key<size_type>()].version.is_locked())
-            data_[item.key<size_type>()].version.unlock();
+        data_[item.key<size_type>()].version.cp_unlock(item);
     }
 
 private:

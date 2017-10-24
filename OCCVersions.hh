@@ -4,6 +4,7 @@
 
 // Default STO/Silo OCC version (with opacity)
 class TVersion : public BasicVersion<TVersion> {
+public:
     TVersion() = default;
     explicit TVersion(type v)
             : BasicVersion(v) {}
@@ -20,15 +21,15 @@ class TVersion : public BasicVersion<TVersion> {
 class TNonopaqueVersion : public BasicVersion<TNonopaqueVersion> {
 public:
     TNonopaqueVersion()
-            : BasicVersion(TransactionTid::nonopaque_bit) {}
+            : BasicVersion<TNonopaqueVersion>(TransactionTid::nonopaque_bit) {}
     explicit TNonopaqueVersion(type v)
-            : BasicVersion(v | TransactionTid::nonopaque_bit) {}
+            : BasicVersion<TNonopaqueVersion>(v | TransactionTid::nonopaque_bit) {}
     TNonopaqueVersion(type v, bool insert)
-            : BasicVersion(v | TransactionTid::nonopaque_bit) {(void)insert};
+            : BasicVersion<TNonopaqueVersion>(v | TransactionTid::nonopaque_bit) {(void)insert;};
 
     bool cp_check_version_impl(TransItem& item) {
         assert(item.has_read());
-        return check_version(item.read_value<decltype(*this)>());
+        return check_version(item.read_value<TNonopaqueVersion>());
     }
 
     inline bool observe_read_impl(TransItem& item, bool add_read);
@@ -45,10 +46,11 @@ public:
     // how many threads own the lock (aka a read lock)
     static constexpr type lock_mask = TransactionTid::threadid_mask;
 
+    using BasicVersion<TCommutativeVersion>::v_;
+
     TCommutativeVersion() = default;
     explicit TCommutativeVersion(type v)
-            : v_(v) {
-    }
+            : BasicVersion<TCommutativeVersion>(v) {}
 
     bool cp_try_lock_impl(int threadid) {
         (void)threadid;

@@ -103,17 +103,17 @@ inline bool BasicVersion<VersImpl>::acquire_write_impl(TransItem& item) {
     TransProxy(t(), item).add_write();
     return true;
 }
-template <typename VersImpl, typename T>
+template <typename VersImpl> template <typename T>
 inline bool BasicVersion<VersImpl>::acquire_write_impl(TransItem& item, const T& wdata) {
     TransProxy(t(), item).add_write(wdata);
     return true;
 }
-template <typename VersImpl, typename T>
+template <typename VersImpl> template <typename T>
 inline bool BasicVersion<VersImpl>::acquire_write_impl(TransItem& item, T&& wdata) {
     TransProxy(t(), item).add_write(wdata);
     return true;
 }
-template <typename VersImpl, typename T, typename... Args>
+template <typename VersImpl> template <typename T, typename... Args>
 inline bool BasicVersion<VersImpl>::acquire_write_impl(TransItem& item, Args&&... args) {
     TransProxy(t(), item).add_write<T, Args...>(std::forward<Args>(args)...);
     return true;
@@ -260,10 +260,10 @@ inline bool TLockVersion::acquire_write_impl(TransItem& item, Args&&... args) {
             return false;
         }
         VersionDelegate::item_or_flags(item, TransItem::write_bit);
-        VersionDelegate::item_pack_to_wdata<T, Args...>(t(), item, args);
+        VersionDelegate::item_pack_to_wdata<T, Args...>(t(), item, std::forward<Args>(args)...);
         VersionDelegate::txn_set_any_writes(t(), true);
     } else {
-        VersionDelegate::item_repack_to_wdata<T, Args...>(t(), item, args);
+        VersionDelegate::item_repack_to_wdata<T, Args...>(t(), item, std::forward<Args>(args)...);
     }
     return true;
 }
@@ -272,7 +272,7 @@ inline bool TLockVersion::observe_read_impl(TransItem& item, bool add_read) {
     assert(!item.has_stash());
 
     TLockVersion occ_version;
-    bool optimistic = is_optimistic();
+    bool optimistic = hint_optimistic();
 
     optimistic = item.cc_mode_is_optimistic(optimistic);
 
@@ -327,11 +327,11 @@ inline bool TLockVersion::observe_read_impl(TransItem& item, bool add_read) {
 
 template <bool Opaque>
 inline bool TSwissVersion<Opaque>::acquire_write_impl(TransItem& item) {
-    if (is_locked_here())
+    if (BV::is_locked_here())
         return true;
 
     while(true) {
-        if (is_locked()) {
+        if (BV::is_locked()) {
             if (ContentionManager::should_abort(&t(), *this)) {
                 TXP_INCREMENT(txp_lock_aborts);
                 return false;
@@ -355,25 +355,25 @@ inline bool TSwissVersion<Opaque>::acquire_write_impl(TransItem& item) {
     return true;
 }
 
-template <bool Opaque, typename T>
+template <bool Opaque> template <typename T>
 inline bool TSwissVersion<Opaque>::acquire_write_impl(TransItem& item, const T &wdata) {
     return acquire_write_impl<T, const T&>(item, wdata);
 }
-template <bool Opaque, typename T>
+template <bool Opaque> template <typename T>
 inline bool TSwissVersion<Opaque>::acquire_write_impl(TransItem& item, T&& wdata) {
     typedef typename std::decay<T>::type V;
     return acquire_write_impl<V, V&&>(item, std::move(wdata));
 }
-template <bool Opaque, typename T, typename... Args>
+template <bool Opaque> template <typename T, typename... Args>
 inline bool TSwissVersion<Opaque>::acquire_write_impl(TransItem& item, Args&&... args) {
-    if (is_locked_here()) {
-        VersionDelegate::item_repack_to_wdata<T, Args...>(t(), item, args);
+    if (BV::is_locked_here()) {
+        VersionDelegate::item_repack_to_wdata<T, Args...>(t(), item, std::forward<Args>(args)...);
         //item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
         return true;
     }
 
     while(true) {
-        if (is_locked()) {
+        if (BV::is_locked()) {
             if (ContentionManager::should_abort(&t(), *this)) {
                 TXP_INCREMENT(txp_lock_aborts);
                 return false;
@@ -389,7 +389,7 @@ inline bool TSwissVersion<Opaque>::acquire_write_impl(TransItem& item, Args&&...
     }
 
     VersionDelegate::item_or_flags(item, TransItem::write_bit | TransItem::lock_bit);
-    VersionDelegate::item_pack_to_wdata<T, Args...>(t(), item, args);
+    VersionDelegate::item_pack_to_wdata<T, Args...>(t(), item, std::forward<Args>(args)...);
     VersionDelegate::txn_set_any_writes(t(), true);
     //item().__or_flags(TransItem::write_bit | TransItem::lock_bit);
     //item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
@@ -484,11 +484,13 @@ TLockVersion::type TLockVersion::cp_commit_tid_impl(Transaction &txn) {
 }
 
 template <bool Opaque>
-TSwissVersion<Opaque>::type& TSwissVersion<Opaque>::cp_access_tid_impl(Transaction &txn) {
+typename TSwissVersion<Opaque>::type&
+TSwissVersion<Opaque>::cp_access_tid_impl(Transaction &txn) {
     return VersionDelegate::standard_tid(txn);
 }
 template <bool Opaque>
-TSwissVersion<Opaque>::type TSwissVersion<Opaque>::cp_commit_tid_impl(Transaction &txn) {
+typename TSwissVersion<Opaque>::type
+TSwissVersion<Opaque>::cp_commit_tid_impl(Transaction &txn) {
     if (Opaque) {
         return txn.commit_tid();
     } else {
@@ -496,7 +498,7 @@ TSwissVersion<Opaque>::type TSwissVersion<Opaque>::cp_commit_tid_impl(Transactio
         if (tid != 0)
             return tid;
         else
-            return TransactionTid::next_unflagged_nonopaque_version(value());
+            return TransactionTid::next_unflagged_nonopaque_version(v_);
     }
 }
 

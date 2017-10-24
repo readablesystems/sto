@@ -288,11 +288,15 @@ class TransProxy {
 
     // New interface
     template <typename VersImpl>
-    bool observe(VersionBase<VersImpl>& version) __attribute__ ((warn_unused_result)) {
+    bool observe(VersionBase<VersImpl>& version) {
         return version.observe_read(item(), true);
     }
     template <typename VersImpl>
-    bool observe_opacity(VersionBase<VersImpl>& version) __attribute__ ((warn_unused_result)) {
+    bool observe(VersionBase<VersImpl>& version, bool add_read) {
+        return version.observe_read(item(), add_read);
+    }
+    template <typename VersImpl>
+    bool observe_opacity(VersionBase<VersImpl>& version) {
         return version.observe_read(item(), false);
     }
 
@@ -309,7 +313,7 @@ class TransProxy {
     bool acquire_write(VersionBase<VersImpl>& vers, T&& wdata) {
         return vers.acquire_write(item(), wdata);
     };
-    template <typename VersImpl, typename T, typename... Args>
+    template <typename T, typename VersImpl, typename... Args>
     bool acquire_write(VersionBase<VersImpl>& vers, Args&&... args) {
         return vers.acquire_write<T, Args...>(item(), std::forward<Args>(args)...);
     };
