@@ -46,23 +46,23 @@ public:
     }
 
     template <typename T>
-    static bool select_for_overwrite(TransProxy& item, TLockVersion& vers, const T* val) {
+    static bool select_for_overwrite(TransProxy& item, TLockVersion& vers, const T& val) {
         return item.acquire_write(vers, val);
     }
     template <typename T>
-    static bool select_for_overwrite(TransProxy& item, TVersion& vers, const T* val) {
+    static bool select_for_overwrite(TransProxy& item, TVersion& vers, const T& val) {
         (void)vers;
         item.add_write(val);
         return true;
     }
     template <typename T>
-    static bool select_for_overwrite(TransProxy& item, TNonopaqueVersion& vers, const T* val) {
+    static bool select_for_overwrite(TransProxy& item, TNonopaqueVersion& vers, const T& val) {
         (void)vers;
         item.add_write(val);
         return true;
     }
     template <bool Opaque, typename T>
-    static bool select_for_overwrite(TransProxy& item, TSwissVersion<Opaque>& vers, const T* val) {
+    static bool select_for_overwrite(TransProxy& item, TSwissVersion<Opaque>& vers, const T& val) {
         return item.acquire_write(vers, val);
     }
 };
