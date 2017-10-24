@@ -2,8 +2,7 @@
 #include "config.h"
 #include "compiler.hh"
 
-#include "Transaction.hh"
-#include "TWrapped.hh"
+#include "Sto.hh"
 
 #include "masstree.hh"
 #include "kvthread.hh"

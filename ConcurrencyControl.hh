@@ -469,6 +469,7 @@ TCommutativeVersion::type& TCommutativeVersion::cp_access_tid_impl(Transaction &
     return VersionDelegate::standard_tid(txn);
 }
 TCommutativeVersion::type TCommutativeVersion::cp_commit_tid_impl(Transaction &txn) {
+    (void)txn;
     always_assert(false, "not implemented");
 }
 

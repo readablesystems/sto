@@ -222,7 +222,7 @@ public:
     // Interface exposed to STO the commit protocol (cp)
     // Logical try-lock/unlock at commit time
     bool cp_try_lock(int thread_id) {
-        impl().cp_try_lock_impl(thread_id);
+        return impl().cp_try_lock_impl(thread_id);
     }
     void cp_unlock(TransItem& item) {
         impl().cp_unlock_impl(item);
@@ -245,31 +245,31 @@ public:
     }
 
     bool cp_check_version(TransItem& item) {
-        impl().cp_check_version_impl(item);
+        return impl().cp_check_version_impl(item);
     }
 
     // Interface exposed to STO runtime tracking set management (TItem)
     bool acquire_write(TransItem& item) {
-        impl().acquire_write_impl(item);
+        return impl().acquire_write_impl(item);
     }
     template <typename T>
     bool acquire_write(TransItem& item, const T& wdata) {
-        impl().acquire_write_impl(item, wdata);
+        return impl().acquire_write_impl(item, wdata);
     }
     template <typename T>
     bool acquire_write(TransItem& item, T&& wdata) {
-        impl().acquire_write_impl(item, wdata);
+        return impl().acquire_write_impl(item, wdata);
     }
     template <typename T, typename... Args>
     bool acquire_write(TransItem& item, Args&&... args) {
-        impl().acquire_write_impl(item, args...);
+        return impl().acquire_write_impl(item, args...);
     }
 
     bool observe_read(TransItem& item) {
-        observe_read(item, true);
+        return observe_read(item, true);
     }
     bool observe_read(TransItem& item, bool add_read) {
-        impl().observe_read_impl(item, add_read);
+        return impl().observe_read_impl(item, add_read);
     }
 
     // Optional interface exposed to data types so that things like bucket/node

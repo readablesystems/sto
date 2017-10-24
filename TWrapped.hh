@@ -1,7 +1,7 @@
 #pragma once
 #include <utility>
 
-#include "Sto.hh"
+#include "ConcurrencyControl.hh"
 
 template <typename T>
 struct is_small {

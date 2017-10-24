@@ -183,8 +183,9 @@ public:
         assert(BV::is_locked_here(threadid));
         v_ |= read_lock_bit;
         release_fence();
+        return true;
     }
-    bool cp_unlock_impl(TransItem& item) {
+    void cp_unlock_impl(TransItem& item) {
         (void)item;
         assert(item.needs_unlock());
         if (BV::is_locked())
@@ -206,7 +207,7 @@ public:
 
 private:
     bool try_lock() {
-        TransactionTid::try_lock(v_, TThread::id());
+        return TransactionTid::try_lock(v_, TThread::id());
     }
 
     bool is_read_locked() const {
