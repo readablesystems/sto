@@ -277,13 +277,25 @@ public:
     void inc_nonopaque() {
         impl().inc_nonopaque_impl();
     }
+    void lock_exclusive() {
+        impl().lock_exclusive_impl();
+    }
+    void unlock_exclusive() {
+        impl().unlock_exclusive_impl();
+    }
+    type unlocked_value() const {
+        return impl().unlocked_value_impl();
+    }
 
 protected:
     type v_;
 
 private:
     VersImpl& impl() {
-        return *static_cast<VersImpl *>(this);
+        return static_cast<VersImpl&>(*this);
+    }
+    const VersImpl& impl() const {
+        return static_cast<const VersImpl&>(*this);
     }
 };
 
@@ -338,8 +350,18 @@ public:
     void cp_set_version_impl(VersImpl new_v) {
         TransactionTid::set_version(v_, new_v.v_);
     }
+
     void inc_nonopaque_impl() {
         TransactionTid::inc_nonopaque_version(v_);
+    }
+    void lock_exclusive_impl() {
+        TransactionTid::lock(v_);
+    }
+    void unlock_exclusive_impl() {
+        TransactionTid::unlock(v_);
+    }
+    type unlocked_value_impl() const {
+        return TransactionTid::unlocked(v_);
     }
 
     inline bool acquire_write_impl(TransItem& item);

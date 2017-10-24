@@ -43,12 +43,12 @@ public:
     }
     template <bool Opaque>
     static bool select_for_update(TransProxy& item, TSwissVersion<Opaque>& vers) {
-        return item.add_swiss_write(vers);
+        return item.acquire_write(vers);
     }
 
     template <typename T>
     static bool select_for_overwrite(TransProxy& item, TLockVersion& vers, const T* val) {
-        return item.acquire_write(val, vers);
+        return item.acquire_write(vers, val);
     }
     template <typename T>
     static bool select_for_overwrite(TransProxy& item, TVersion& vers, const T* val) {
@@ -64,7 +64,7 @@ public:
     }
     template <bool Opaque, typename T>
     static bool select_for_overwrite(TransProxy& item, TSwissVersion<Opaque>& vers, const T* val) {
-        return item.add_swiss_write(val, vers);
+        return item.acquire_write(vers, val);
     }
 };
 
@@ -101,14 +101,14 @@ public:
         return txn.try_lock(item, vers);
     }
     bool check(TransItem& item, Transaction&) override {
-        return item.check_version(vers);
+        return vers.cp_check_version(item);
     }
     void install(TransItem& item, Transaction& txn) override {
         value += item.write_value<int_type>();
         txn.set_version_unlock(vers, item);
     }
     void unlock(TransItem& item) override {
-        Transaction::unlock(item, vers);
+        vers.cp_unlock(item);
     }
 
 private:
@@ -268,11 +268,11 @@ public:
     insert_row(const key_type& k, value_type *vptr, bool overwrite = false) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
 
-        buck.version.lock();
+        buck.version.lock_exclusive();
         internal_elem *e = find_in_bucket(buck, k);
 
         if (e) {
-            buck.version.unlock();
+            buck.version.unlock_exclusive();
             auto item = Sto::item(this, e);
             if (is_phantom(e, item))
                 goto abort;
@@ -304,12 +304,12 @@ public:
             return ins_return_type(true, true);
         } else {
             // insert the new row to the table and take note of bucket version changes
-            bucket_version_type buck_vers_0 = buck.version.unlocked();
+            auto buck_vers_0 = bucket_version_type(buck.version.unlocked_value());
             insert_in_bucket(buck, k, vptr, false);
             internal_elem *new_head = buck.head;
-            bucket_version_type buck_vers_1 = buck.version.unlocked();
+            auto buck_vers_1 = bucket_version_type(buck.version.unlocked_value());
 
-            buck.version.unlock();
+            buck.version.unlock_exclusive();
 
             // update bucket version in the read set (if any) since it's changed by ourselves
             auto bucket_item = Sto::item(this, make_bucket_key(buck));
@@ -388,10 +388,10 @@ public:
     bool check(TransItem& item, Transaction&) override {
         if (is_bucket(item)) {
             bucket_entry &buck = *bucket_address(item);
-            return item.check_version(buck.version);
+            return buck.version.cp_check_version(item);
         } else {
             internal_elem *el = item.key<internal_elem *>();
-            return item.check_version(el->version);
+            return el->version.cp_check_version(item);
         }
     }
 
@@ -419,7 +419,7 @@ public:
     void unlock(TransItem& item) override {
         assert(!is_bucket(item));
         internal_elem *el = item.key<internal_elem *>();
-        Transaction::unlock(item, el->version);
+        el->version.cp_unlock(item);
     }
 
     void cleanup(TransItem& item, bool committed) override {
@@ -441,7 +441,7 @@ public:
     }
     void nontrans_put(const key_type& k, const value_type& v) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
-        buck.version.lock();
+        buck.version.lock_exclusive();
         internal_elem *el = find_in_bucket(buck, k);
         if (el == nullptr) {
             internal_elem *new_head = new internal_elem(k, v, true);
@@ -450,14 +450,14 @@ public:
         } else {
             copy_row(el, &v);
         }
-        buck.version.unlock();
+        buck.version.unlock_exclusive();
     }
 
 private:
     // remove a k-v node during transactions (with locks)
     void _remove(internal_elem *el) {
         bucket_entry& buck = map_[find_bucket_idx(el->key)];
-        buck.version.lock();
+        buck.version.lock_exclusive();
         internal_elem *prev = nullptr;
         internal_elem *curr = buck.head;
         while (curr != nullptr && curr != el) {
@@ -469,13 +469,13 @@ private:
             prev->next = curr->next;
         else
             buck.head = curr->next;
-        buck.version.unlock();
+        buck.version.unlock_exclusive();
         Transaction::rcu_delete(curr);
     }
     // non-transactional remove by key
     bool remove(const key_type& k) {
         bucket_entry& buck = map_[find_bucket_idx(k)];
-        buck.version.lock();
+        buck.version.lock_exclusive();
         internal_elem *prev = nullptr;
         internal_elem *curr = buck.head;
         while (curr != nullptr && !pred_(curr->key, k)) {
@@ -483,14 +483,14 @@ private:
             curr = curr->next;
         }
         if (curr == nullptr) {
-            buck.version.unlock();
+            buck.version.unlock_exclusive();
             return false;
         }
         if (prev != nullptr)
             prev->next = curr->next;
         else
             buck.head = curr->next;
-        buck.version.unlock();
+        buck.version.unlock_exclusive();
         delete curr;
         return true;
     }
@@ -504,7 +504,7 @@ private:
         new_head->next = curr_head;
         buck.head = new_head;
 
-        buck.version.inc_nonopaque_version();
+        buck.version.inc_nonopaque();
     }
     // find a key's k-v node (internal_elem) within a bucket
     internal_elem *find_in_bucket(const bucket_entry& buck, const key_type& k) {
@@ -873,7 +873,7 @@ public:
             return (curr_nv == read_nv);
         } else {
             internal_elem *el = item.key<internal_elem *>();
-            return item.check_version(el->version);
+            return el->version.cp_check_version(item);
         }
     }
 

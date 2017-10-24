@@ -743,7 +743,7 @@ public:
     bool try_lock(TransItem& item, VersionBase<VersImpl>& vers) {
 #if STO_SORT_WRITESET
         (void) item;
-        TransactionTid::lock(vers, threadid_);
+        vers_.cp_try_lock(threadid_);
         return true;
 #else
         // This function will eventually help us track the commit TID when we
@@ -829,21 +829,21 @@ public:
     template <typename VersImpl>
     void set_version(VersionBase<VersImpl>& version, typename VersionBase<VersImpl>::type flags = 0) const {
         assert(state_ == s_committing_locked || state_ == s_committing);
-        tid_type v = version.cp_commit_tid(*const_cast<Transaction *>(this));
+        tid_type v = version.cp_commit_tid(const_cast<Transaction &>(*this));
         version.cp_set_version(VersImpl(v | flags));
     }
 
     template <typename VersImpl>
     void set_version_unlock(VersionBase<VersImpl>& version, TransItem& item, typename VersionBase<VersImpl>::type flags = 0) const {
         assert(state_ == s_committing_locked || state_ == s_committing);
-        tid_type v = version.cp_commit_tid(*const_cast<Transaction *>(this));
+        tid_type v = version.cp_commit_tid(const_cast<Transaction &>(*this));
         version.cp_set_version_unlock(VersImpl(v | flags));
         item.clear_needs_unlock();
     }
 
     template <typename VersImpl>
     void assign_version_unlock(VersionBase<VersImpl>& version, TransItem& item, typename VersionBase<VersImpl>::type flags = 0) const {
-        tid_type v = version.cp_commit_tid(*const_cast<Transaction *>(this));
+        tid_type v = version.cp_commit_tid(const_cast<Transaction &>(*this));
         version.value() = v | flags;
         item.clear_needs_unlock();
     }

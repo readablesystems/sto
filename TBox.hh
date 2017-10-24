@@ -3,7 +3,7 @@
 #include "Sto.hh"
 #include "TWrapped.hh"
 
-template <typename T, typename W = TLockWrapped<T> >
+template <typename T, typename W = TOpaqueLockWrapped<T> >
 class TBox : public TObject {
 public:
     typedef typename W::read_type read_type;

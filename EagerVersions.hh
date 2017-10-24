@@ -21,6 +21,9 @@ public:
     static constexpr type lock_bit = TransactionTid::lock_bit;
     static constexpr type opt_bit = TransactionTid::opt_bit;
 
+    using BV = BasicVersion<TLockVersion>;
+    using BV::v_;
+
     TLockVersion() = default;
     explicit TLockVersion(type v)
             : BasicVersion<TLockVersion>(v) {}
@@ -56,14 +59,14 @@ public:
     inline type cp_commit_tid_impl(Transaction& txn);
 
     bool hint_optimistic() const {
-        return (this->v_ & opt_bit) != 0;
+        return (v_ & opt_bit) != 0;
     }
 
 private:
     // read/writer/optimistic combined lock
     std::pair<LockResponse, type> try_lock_read() {
         while (true) {
-            type vv = this->v_;
+            type vv = v_;
             bool write_locked = ((vv & lock_bit) != 0);
             type rlock_cnt = vv & mask;
             bool rlock_avail = rlock_cnt < rlock_cnt_max;
