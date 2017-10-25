@@ -315,7 +315,7 @@ class TransProxy {
     };
     template <typename T, typename VersImpl, typename... Args>
     bool acquire_write(VersionBase<VersImpl>& vers, Args&&... args) {
-        return vers.acquire_write<T, Args...>(item(), std::forward<Args>(args)...);
+        return vers.template acquire_write<T>(item(), std::forward<Args>(args)...);
     };
 
     template <typename T>
