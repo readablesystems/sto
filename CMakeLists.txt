@@ -27,7 +27,9 @@ add_library(sto
         OCCVersions.hh
         EagerVersions.hh
         TThread.hh
-        ConcurrencyControl.hh Sto.hh)
+        ConcurrencyControl.hh
+        Sto.hh
+        TicTocVersions.hh)
 
 add_executable(tpcc_bench
         PlatformFeatures.hh

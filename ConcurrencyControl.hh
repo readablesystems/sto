@@ -5,6 +5,7 @@
 #include "VersionBase.hh"
 #include "EagerVersions.hh"
 #include "OCCVersions.hh"
+#include "TicTocVersions.hh"
 
 class VersionDelegate {
     friend class TVersion;
