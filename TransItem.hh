@@ -14,7 +14,31 @@ class TransProxy;
 template <typename VersImpl>
 class VersionBase;
 
-enum class CCMode : int {none = 0, opt, lock};
+template <typename VersImpl>
+class TicTocBase;
+
+enum class CCMode : int {none = 0, opt, lock, tictoc};
+
+// used to store TicToc version number
+struct WideTid {
+    typedef uint64_t single_type;
+    typedef int64_t signed_single_type;
+
+    WideTid() = default;
+    WideTid(const WideTid&) = delete;
+    WideTid& operator=(const WideTid&) = delete;
+    WideTid& operator=(WideTid&&) = delete;
+
+    single_type v0;
+    single_type v1;
+};
+
+// Union struct should result in only one extra 8-byte word than before
+// for each TItem
+union rdata_t {
+    void *  v;
+    WideTid w;
+};
 
 class TransItem {
   public:
@@ -78,23 +102,29 @@ class TransItem {
     template <typename T>
     T& read_value() {
         assert(has_read());
-        return Packer<T>::unpack(rdata_);
+        return Packer<T>::unpack(rdata_.v);
     }
     template <typename T>
     const T& read_value() const {
         assert(has_read());
-        return Packer<T>::unpack(rdata_);
+        return Packer<T>::unpack(rdata_.v);
+    }
+
+    // Reserved for accessing TicToc versions in the read set
+    const WideTid& wide_read_value() const {
+        assert(has_read());
+        return rdata_.w;
     }
 
     template <typename T>
     T& predicate_value() {
         assert(has_predicate() && !has_read());
-        return Packer<T>::unpack(rdata_);
+        return Packer<T>::unpack(rdata_.v);
     }
     template <typename T>
     const T& predicate_value() const {
         assert(has_predicate() && !has_read());
-        return Packer<T>::unpack(rdata_);
+        return Packer<T>::unpack(rdata_.v);
     }
 
     template <typename T>
@@ -126,18 +156,18 @@ class TransItem {
     template <typename T>
     T& stash_value() {
         assert(has_stash());
-        return Packer<T>::unpack(rdata_);
+        return Packer<T>::unpack(rdata_.v);
     }
     template <typename T>
     const T& stash_value() const {
         assert(has_stash());
-        return Packer<T>::unpack(rdata_);
+        return Packer<T>::unpack(rdata_.v);
     }
     template <typename T>
     T stash_value(T default_value) const {
         assert(!has_read());
         if (has_stash())
-            return Packer<T>::unpack(rdata_);
+            return Packer<T>::unpack(rdata_.v);
         else
             return std::move(default_value);
     }
@@ -181,6 +211,10 @@ class TransItem {
         return *this;
     }
 
+    CCMode cc_mode() const {
+        return mode_;
+    }
+
     CCMode cc_mode(CCMode observe_mode) {
         if (mode_ == CCMode::none) {
             mode_ = observe_mode;
@@ -192,12 +226,30 @@ class TransItem {
         return cc_mode(version_optimistic ? CCMode::opt : CCMode::lock) == CCMode::opt;
     }
 
+    template <typename VersImpl>
+    TicTocBase<VersImpl>& tictoc_fetch_ts_origin() {
+        return *static_cast<TicTocBase<VersImpl> *>(ts_origin_);
+    }
+
+    template <typename VersImpl>
+    const TicTocBase<VersImpl>& tictoc_extract_read_ts() const {
+        return static_cast<TicTocBase<VersImpl>&>(wide_read_value());
+    }
+
+    bool is_tictoc_compressed() {
+        assert(cc_mode() == CCMode::tictoc);
+        return reinterpret_cast<uintptr_t>(ts_origin_) & tictoc_compressed_type_bit;
+    }
+
 private:
+    static constexpr uintptr_t tictoc_compressed_type_bit = 0x1;
+
     ownerstore_type s_;
     // this word must be unique (to a particular item) and consistently ordered across transactions
     void* key_;
-    void* rdata_;
+    rdata_t rdata_;
     void* wdata_;
+    void* ts_origin_; // only used by TicToc
 
     CCMode mode_;
 

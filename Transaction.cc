@@ -1,5 +1,4 @@
-#include "Transaction.hh"
-#include "ContentionManager.hh"
+#include "Sto.hh"
 #include <typeinfo>
 #include <bitset>
 #include <fstream>
@@ -13,7 +12,7 @@ __thread int TThread::the_id;
 PercentGen TThread::gen[MAX_THREADS];
 
 #if ADAPTIVE_RWLOCK
-int TransactionTid::unlock_opt_chance = 50;
+int TLockVersion::unlock_opt_chance = 50;
 #endif
 
 Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epochs = {
@@ -321,9 +320,16 @@ bool Transaction::try_commit() {
             it->__or_flags(TransItem::lock_bit);
 #endif
         }
-        if (it->has_read())
+        if (it->has_read()) {
             TXP_INCREMENT(txp_total_r);
-        else if (it->has_predicate()) {
+            // tracking TicToc commit ts (for reads) here
+            if (it->cc_mode() == CCMode::tictoc) {
+                if (it->is_tictoc_compressed())
+                    compute_tictoc_commit_ts_step(it->tictoc_extract_read_ts<TicTocCompressedVersion>(), false /* !write */);
+                else
+                    compute_tictoc_commit_ts_step(it->tictoc_extract_read_ts<TicTocVersion>(), false /* ! write */);
+            }
+        } else if (it->has_predicate()) {
             TXP_INCREMENT(txp_total_check_predicate);
             if (!it->owner()->check_predicate(*it, *this, true)) {
                 mark_abort_because(it, "commit check_predicate");

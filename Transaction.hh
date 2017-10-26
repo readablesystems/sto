@@ -329,6 +329,9 @@ private:
         Transaction::tinfo[TThread::id()].tcs_.tcs_, \
         ticks)
 
+template <typename VersImpl>
+class TicTocBase;
+
 class Transaction {
 public:
     static constexpr unsigned tset_initial_capacity = 512;
@@ -740,41 +743,7 @@ public:
     // These function will eventually help us track the commit TID when we
     // have no opacity, or for GV7 opacity.
     template <typename VersImpl>
-    bool try_lock(TransItem& item, VersionBase<VersImpl>& vers) {
-#if STO_SORT_WRITESET
-        (void) item;
-        vers_.cp_try_lock(threadid_);
-        return true;
-#else
-        // This function will eventually help us track the commit TID when we
-        // have no opacity, or for GV7 opacity.
-        unsigned n = 0;
-        while (1) {
-            if (vers.cp_try_lock(threadid_))
-                return true;
-            ++n;
-# if STO_SPIN_EXPBACKOFF
-            if (item.has_read() || n == STO_SPIN_BOUND_WRITE) {
-#  if STO_DEBUG_ABORTS
-                abort_version_ = vers.value();
-#  endif
-                return false;
-            }
-            if (n > 3)
-                for (unsigned x = 1 << std::min(15U, n - 2); x; --x)
-                    relax_fence();
-# else
-            if (item.has_read() || n == (1 << STO_SPIN_BOUND_WRITE)) {
-#  if STO_DEBUG_ABORTS
-                abort_version_ = vers.value();
-#  endif
-                return false;
-            }
-# endif
-            relax_fence();
-        }
-#endif
-    }
+    inline bool try_lock(TransItem& item, VersionBase<VersImpl>& vers);
 
     template <typename VersImpl>
     static void unlock(TransItem& item, VersionBase<VersImpl>& vers) {
@@ -825,6 +794,11 @@ public:
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         return commit_tid_;
     }
+
+    inline tid_type compute_tictoc_commit_ts() const;
+
+    template <typename VersImpl>
+    inline void compute_tictoc_commit_ts_step(const TicTocBase<VersImpl>& vers, bool is_write) const;
 
     template <typename VersImpl>
     void set_version(VersionBase<VersImpl>& version, typename VersionBase<VersImpl>::type flags = 0) const {
@@ -959,6 +933,7 @@ private:
     unsigned tset_size_;
     mutable tid_type start_tid_;
     mutable tid_type commit_tid_;
+    mutable tid_type tictoc_tid_; // commit tid reserved for TicToc
 public:
     mutable TransactionBuffer buf_;
     mutable TransScratch scratch_;
@@ -1191,7 +1166,7 @@ inline bool TransProxy::add_read(T rdata) {
     assert(!has_stash());
     if (!has_read()) {
         item().__or_flags(TransItem::read_bit);
-        item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
+        item().rdata_.v = Packer<T>::pack(t()->buf_, std::move(rdata));
         t()->any_nonopaque_ = true;
     }
     return true;
@@ -1208,7 +1183,7 @@ inline bool TransProxy::add_read_opaque(T rdata) {
     }
     if (!has_read()) {
         item().__or_flags(TransItem::read_bit);
-        item().rdata_ = Packer<T>::pack(t()->buf_, std::move(rdata));
+        item().rdata_.v = Packer<T>::pack(t()->buf_, std::move(rdata));
     }
     return true;
 }
@@ -1216,7 +1191,7 @@ inline bool TransProxy::add_read_opaque(T rdata) {
 template <typename T>
 inline TransProxy& TransProxy::update_read(T old_rdata, T new_rdata) {
     if (has_read() && this->read_value<T>() == old_rdata)
-        item().rdata_ = Packer<T>::repack(t()->buf_, item().rdata_, new_rdata);
+        item().rdata_.v = Packer<T>::repack(t()->buf_, item().rdata_.v, new_rdata);
     return *this;
 }
 
@@ -1231,7 +1206,7 @@ template <typename T>
 inline TransProxy& TransProxy::set_predicate(T pdata) {
     assert(!has_read());
     item().__or_flags(TransItem::predicate_bit);
-    item().rdata_ = Packer<T>::pack(t()->buf_, std::move(pdata));
+    item().rdata_.v = Packer<T>::pack(t()->buf_, std::move(pdata));
     return *this;
 }
 
@@ -1248,9 +1223,9 @@ inline TransProxy& TransProxy::set_stash(T sdata) {
     assert(!has_read());
     if (!has_stash()) {
         item().__or_flags(TransItem::stash_bit);
-        item().rdata_ = Packer<T>::pack(t()->buf_, std::move(sdata));
+        item().rdata_.v = Packer<T>::pack(t()->buf_, std::move(sdata));
     } else
-        item().rdata_ = Packer<T>::repack(t()->buf_, item().rdata_, std::move(sdata));
+        item().rdata_.v = Packer<T>::repack(t()->buf_, item().rdata_.v, std::move(sdata));
     return *this;
 }
 

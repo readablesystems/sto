@@ -2,13 +2,6 @@
 
 #include "VersionBase.hh"
 
-struct WideTid {
-    typedef TransactionTid::type type;
-
-    type v0;
-    type v1;
-};
-
 class TicTocTid : public TransactionTid {
 public:
     using TransactionTid::is_locked_elsewhere;
@@ -74,6 +67,22 @@ public:
                      || ((timestamp(t_rts) < commit_ts) && is_locked_elsewhere(t_rts)));
         }
     }
+
+    static void pack_wide(WideTid& ts, const type& rts, const type& wts) {
+        ts.v0 = rts;
+        release_fence();
+        ts.v1 = wts;
+        release_fence();
+    }
+
+    static std::pair<type, type> unpack_wide(const WideTid& ts) {
+        type r, w;
+        r = ts.v0;
+        acquire_fence();
+        w = ts.v1;
+        acquire_fence();
+        return {r, w};
+    };
 };
 
 class TicTocCompressedTid : public TransactionTid {
@@ -146,10 +155,32 @@ public:
     }
 };
 
-template <bool Opaque, bool Extend>
-class TicTocVersion : public VersionBase<TicTocVersion<Opaque, Extend>> {
+template <typename VersImpl>
+class TicTocBase : public VersionBase<VersImpl> {
 public:
-    using BV = VersionBase<TicTocVersion<Opaque, Extend>>;
+    using BV = VersionBase<VersImpl>;
+    using BV::v_;
+    using BV::impl;
+
+    type read_timestamp() const {
+        return impl().read_timestamp_impl();
+    }
+    type write_timestamp() const {
+        return impl().write_timestamp_impl();
+    }
+};
+
+template <bool Opaque, bool Extend>
+class TicTocVersion : public TicTocBase<TicTocVersion<Opaque, Extend>> {
+public:
+    using BV = TicTocBase<TicTocVersion<Opaque, Extend>>;
+
+    type read_timestamp_impl() const {
+        return TicTocTid::timestamp(BV::v_);
+    }
+    type write_timestamp_impl() const {
+        return TicTocTid::timestamp(wts_);
+    }
 
     bool cp_try_lock_impl(int threadid) {
         return TransactionTid::try_lock(BV::v_, threadid);
@@ -172,8 +203,8 @@ public:
     }
 
     bool cp_check_version_impl(Transaction& txn, TransItem& item) {
-        type read_rts = item.read_value<WideTid>().v0;
-        type read_wts = item.read_value<WideTid>().v1;
+        type read_rts, read_wts;
+        std::tie(read_rts, read_wts) = TicTocTid::unpack_wide(item.wide_read_value());
         type current_cts = cp_commit_tid_impl(txn);
 
         if (Extend)
@@ -229,4 +260,14 @@ public:
         else
             return TicTocCompressedTid::validate_timestamps_noext(v_, read_tss, current_cts);
     }
+
+    inline bool acquire_write_impl(TransItem& item);
+    template <typename T>
+    inline bool acquire_write_impl(TransItem& item, const T& wdata);
+    template <typename T>
+    inline bool acquire_write_impl(TransItem& item, T&& wdata);
+    template <typename T, typename... Args>
+    inline bool acquire_write_impl(TransItem& item, Args&&... args);
+
+    inline bool observe_read_impl(TransItem& item, bool add_read);
 };

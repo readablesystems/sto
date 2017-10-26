@@ -10,8 +10,8 @@
 
 class TransactionTid {
 public:
-    typedef uint64_t type;
-    typedef int64_t signed_type;
+    typedef WideTid::single_type type;
+    typedef WideTid::signed_single_type signed_type;
 
     // Common layout definition
 

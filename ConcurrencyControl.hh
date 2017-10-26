@@ -18,28 +18,12 @@ class VersionDelegate {
     static void item_or_flags(TransItem& item, TransItem::flags_type flags) {
         item.__or_flags(flags);
     }
-    template <typename T, typename... Args>
-    static void item_pack_to_wdata(Transaction& txn, TransItem& item, Args&&... args) {
-        item.wdata_ = Packer<T>::pack(txn.buf_, std::forward<Args>(args)...);
-    };
-    template <typename T, typename... Args>
-    static void item_repack_to_wdata(Transaction& txn, TransItem& item, Args&&... args) {
-        item.wdata_ = Packer<T>::repack(txn.buf_, item.wdata_, std::forward<Args>(args)...);
-    };
-
-    template <typename T>
-    static void item_pack_to_rdata(Transaction& txn, TransItem& item, const T& val) {
-        item_pack_to_rdata<T, const T&>(txn, item, val);
+    static void *& item_access_wdata(TransItem& item) {
+        return item.wdata_;
     }
-    template <typename T>
-    static void item_pack_to_rdata(Transaction& txn, TransItem& item, T&& val) {
-        typedef typename std::decay<T>::type V;
-        item_pack_to_rdata<V, V&&>(txn, item, std::move(val));
+    static rdata_t& item_access_rdata(TransItem& item) {
+        return item.rdata_;
     }
-    template <typename T, typename... Args>
-    static void item_pack_to_rdata(Transaction& txn, TransItem& item, Args&&... args) {
-        item.rdata_ = Packer<T>::pack(txn.buf_, std::forward<Args>(args)...);
-    };
 
     static void txn_set_any_writes(Transaction& txn, bool val) {
         txn.any_writes_ = val;
@@ -136,7 +120,7 @@ inline bool TVersion::observe_read_impl(TransItem &item, bool add_read){
         return false;
     if (add_read && !item.has_read()) {
         VersionDelegate::item_or_flags(item, TransItem::read_bit);
-        VersionDelegate::item_pack_to_rdata(t(), item, std::move(version));
+        VersionDelegate::item_access_rdata(item).v = Packer<TVersion>::pack(t().buf_, std::move(version));
         //item().__or_flags(TransItem::read_bit);
         //item().rdata_ = Packer<TVersion>::pack(t()->buf_, std::move(version));
     }
@@ -157,7 +141,7 @@ inline bool TNonopaqueVersion::observe_read_impl(TransItem& item, bool add_read)
     }
     if (add_read && !item.has_read()) {
         VersionDelegate::item_or_flags(item, TransItem::read_bit);
-        VersionDelegate::item_pack_to_rdata(t(), item, std::move(version));
+        VersionDelegate::item_access_rdata(item).v = Packer<TNonopaqueVersion>::pack(t().buf_, std::move(version));
         VersionDelegate::txn_set_any_nonopaque(t(), true);
         //item().__or_flags(TransItem::read_bit);
         //item().rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
@@ -261,10 +245,11 @@ inline bool TLockVersion::acquire_write_impl(TransItem& item, Args&&... args) {
             return false;
         }
         VersionDelegate::item_or_flags(item, TransItem::write_bit);
-        VersionDelegate::item_pack_to_wdata<T, Args...>(t(), item, std::forward<Args>(args)...);
+        VersionDelegate::item_access_wdata(item) = Packer<T>::pack(t().buf_, std::forward<Args>(args)...);
         VersionDelegate::txn_set_any_writes(t(), true);
     } else {
-        VersionDelegate::item_repack_to_wdata<T, Args...>(t(), item, std::forward<Args>(args)...);
+        auto old_wdata = VersionDelegate::item_access_wdata(item);
+        VersionDelegate::item_access_wdata(item) = Packer<T>::repack(t().buf_, old_wdata, std::forward<Args>(args)...);
     }
     return true;
 }
@@ -316,7 +301,7 @@ inline bool TLockVersion::observe_read_impl(TransItem& item, bool add_read) {
         //    return false;
         if (add_read && !item.has_read()) {
             VersionDelegate::item_or_flags(item, TransItem::read_bit);
-            VersionDelegate::item_pack_to_rdata(t(), item, std::move(occ_version));
+            VersionDelegate::item_access_rdata(item).v = Packer<TLockVersion>::pack(t().buf_, std::move(occ_version));
             //item().rdata_ = Packer<TLockVersion>::pack(t()->buf_, std::move(occ_version));
         }
     }
@@ -368,7 +353,8 @@ inline bool TSwissVersion<Opaque>::acquire_write_impl(TransItem& item, T&& wdata
 template <bool Opaque> template <typename T, typename... Args>
 inline bool TSwissVersion<Opaque>::acquire_write_impl(TransItem& item, Args&&... args) {
     if (BV::is_locked_here()) {
-        VersionDelegate::item_repack_to_wdata<T, Args...>(t(), item, std::forward<Args>(args)...);
+        auto old_wdata = VersionDelegate::item_access_wdata(item);
+        VersionDelegate::item_access_wdata(item) = Packer<T>::repack(t().buf_, old_wdata, std::forward<Args>(args)...);
         //item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
         return true;
     }
@@ -390,7 +376,7 @@ inline bool TSwissVersion<Opaque>::acquire_write_impl(TransItem& item, Args&&...
     }
 
     VersionDelegate::item_or_flags(item, TransItem::write_bit | TransItem::lock_bit);
-    VersionDelegate::item_pack_to_wdata<T, Args...>(t(), item, std::forward<Args>(args)...);
+    VersionDelegate::item_access_wdata(item) = Packer<T>::pack(t().buf_, std::forward<Args>(args)...);
     VersionDelegate::txn_set_any_writes(t(), true);
     //item().__or_flags(TransItem::write_bit | TransItem::lock_bit);
     //item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
@@ -415,7 +401,7 @@ inline bool TSwissVersion<Opaque>::observe_read_impl(TransItem& item, bool add_r
     }
     if (add_read && !item.has_read()) {
         VersionDelegate::item_or_flags(item, TransItem::read_bit);
-        VersionDelegate::item_pack_to_rdata(t(), item, std::move(version));
+        VersionDelegate::item_access_rdata(item).v = Packer<TSwissVersion<Opaque>>::pack(t().buf_, std::move(version));
         //item().__or_flags(TransItem::read_bit);
         //item().rdata_ = Packer<TSwissVersion<Opaque>>::pack(t()->buf_, std::move(version));
     }
@@ -533,4 +519,86 @@ bool ContentionManager::should_abort(Transaction* tx, TSwissVersion<Opaque> wloc
         return false;
     }
 
+}
+
+template <typename VersImpl>
+inline bool Transaction::try_lock(TransItem& item, VersionBase<VersImpl>& vers) {
+    bool locked = false;
+#if STO_SORT_WRITESET
+    (void) item;
+        vers_.cp_try_lock(threadid_);
+        locked = true;
+#else
+    // This function will eventually help us track the commit TID when we
+    // have no opacity, or for GV7 opacity.
+    unsigned n = 0;
+    while (true) {
+        if (vers.cp_try_lock(threadid_)) {
+            locked = true;
+            break;
+        }
+        ++n;
+# if STO_SPIN_EXPBACKOFF
+        if (item.has_read() || n == STO_SPIN_BOUND_WRITE) {
+#  if STO_DEBUG_ABORTS
+                abort_version_ = vers.value();
+#  endif
+                locked = false;
+                break;
+            }
+            if (n > 3)
+                for (unsigned x = 1 << std::min(15U, n - 2); x; --x)
+                    relax_fence();
+# else
+        if (item.has_read() || n == (1 << STO_SPIN_BOUND_WRITE)) {
+#  if STO_DEBUG_ABORTS
+            abort_version_ = vers.value();
+#  endif
+            locked = false;
+            break;
+        }
+# endif
+        relax_fence();
+    }
+#endif
+    // start computing tictoc commit ts immediately for writes
+    if (locked) {
+        if (std::is_base_of<TicTocBase<VersImpl>, VersImpl>::value) {
+            assert(item.cc_mode() == CCMode::tictoc);
+            compute_tictoc_commit_ts_step(static_cast<TicTocBase<VersImpl>&>(vers), true /* write */);
+        }
+    }
+    return locked;
+}
+
+inline Transaction::tid_type Transaction::compute_tictoc_commit_ts() const {
+    //assert(state_ == s_committing_locked || state_ == s_committing);
+    tid_type commit_ts = 0;
+    TransItem* it = nullptr;
+    for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
+        it = (tidx % tset_chunk ? it + 1 : tset_[tidx/tset_chunk]);
+        if (it->cc_mode() == CCMode::tictoc) {
+            bool compressed = it->is_tictoc_compressed();
+            tid_type t;
+            if (it->has_write()) {
+                t = (compressed ? it->tictoc_fetch_ts_origin<TicTocCompressedVersion>().read_timestamp()
+                                : it->tictoc_fetch_ts_origin<TicTocVersion>().read_timestamp())
+                    + 1;
+            } else {
+                t = compressed ? it->tictoc_extract_read_ts<TicTocCompressedVersion>().write_timestamp()
+                               : it->tictoc_extract_read_ts<TicTocVersion>().write_timestamp();
+            }
+            commit_ts = std::max(commit_ts, t);
+        }
+    }
+    return commit_ts;
+}
+
+template <typename VersImpl>
+inline void Transaction::compute_tictoc_commit_ts_step(const TicTocBase<VersImpl>& vers, bool is_write) const {
+    assert(state_ == s_committing_locked || state_ == s_committing);
+    if (is_write)
+        tictoc_tid_ = std::max(tictoc_tid_, vers.read_timestamp() + 1);
+    else
+        tictoc_tid_ = std::max(tictoc_tid_, vers.write_timestamp());
 }

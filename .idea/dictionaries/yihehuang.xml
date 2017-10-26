@@ -7,12 +7,14 @@
       <w>prepopulating</w>
       <w>prepopulation</w>
       <w>prepopulator</w>
+      <w>rdata</w>
       <w>std::string</w>
       <w>substr</w>
       <w>threadid</w>
       <w>tictoc</w>
       <w>tpcc</w>
       <w>txns</w>
+      <w>wdata</w>
     </words>
   </dictionary>
 </component>
