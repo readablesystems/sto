@@ -2,6 +2,13 @@
 
 #include "VersionBase.hh"
 
+struct WideTid {
+    typedef TransactionTid::type type;
+
+    type v0;
+    type v1;
+};
+
 class TicTocTid : public TransactionTid {
 public:
     using TransactionTid::is_locked_elsewhere;
@@ -19,14 +26,14 @@ public:
         release_fence();
     }
 
-    void set_timestamp_unlock(type& ts, type new_ts, type flags) {
+    static void set_timestamp_unlock(type& ts, type new_ts, type flags) {
         assert(is_locked_here(ts));
         new_ts <<= ts_shift;
         ts = new_ts | flags;
         release_fence();
     }
 
-    void set_timestamp(type& ts, type new_ts, type flags) {
+    static void set_timestamp(type& ts, type new_ts, type flags) {
         new_ts <<= ts_shift;
         release_fence();
         ts = new_ts | flags;
@@ -139,22 +146,87 @@ public:
     }
 };
 
-template <bool Opaque>
-class TicTocVersion : public VersionBase<TicTocVersion<Opaque>> {
+template <bool Opaque, bool Extend>
+class TicTocVersion : public VersionBase<TicTocVersion<Opaque, Extend>> {
 public:
-    using BV = VersionBase<TicTocVersion<Opaque>>;
+    using BV = VersionBase<TicTocVersion<Opaque, Extend>>;
+
+    bool cp_try_lock_impl(int threadid) {
+        return TransactionTid::try_lock(BV::v_, threadid);
+    }
+    void cp_unlock_impl(TransItem& item) {
+        (void)item;
+        TransactionTid::unlock(BV::v_);
+    }
+
+    static inline type& cp_access_tid_impl(Transaction& txn);
+    inline type cp_commit_tid_impl(Transaction& txn);
+
+    void cp_set_version_unlock_impl(type new_ts) {
+        TicTocTid::set_timestamp(wts_, new_ts, 0);
+        TicTocTid::set_timestamp_unlock(BV::v_, new_ts, 0);
+    }
+    void cp_set_version_impl(type new_ts) {
+        TicTocTid::set_timestamp_locked(BV::v_, new_ts, 0);
+        TicTocTid::set_timestamp(wts_, new_ts, 0);
+    }
+
+    bool cp_check_version_impl(Transaction& txn, TransItem& item) {
+        type read_rts = item.read_value<WideTid>().v0;
+        type read_wts = item.read_value<WideTid>().v1;
+        type current_cts = cp_commit_tid_impl(txn);
+
+        if (Extend)
+            return TicTocTid::validate_timestamps(wts_, BV::v_, read_wts, read_rts, current_cts);
+        else
+            return TicTocTid::validate_timestamps_noext(wts_, BV::v_, read_wts, read_rts, current_cts);
+    }
+
+    inline bool acquire_write_impl(TransItem& item);
+    template <typename T>
+    inline bool acquire_write_impl(TransItem& item, const T& wdata);
+    template <typename T>
+    inline bool acquire_write_impl(TransItem& item, T&& wdata);
+    template <typename T, typename... Args>
+    inline bool acquire_write_impl(TransItem& item, Args&&... args);
+
+    inline bool observe_read_impl(TransItem& item, bool add_read);
 
 private:
     // BV::v_ is used as rts
     type wts_;
 };
 
-template <bool Opaque>
-class TicTocCompressedVersion : public VersionBase<TicTocCompressedVersion<Opaque>> {
+template <bool Opaque, bool Extend>
+class TicTocCompressedVersion : public VersionBase<TicTocCompressedVersion<Opaque, Extend>> {
 public:
-    using BV = VersionBase<TicTocCompressedVersion<Opaque>>;
+    using BV = VersionBase<TicTocCompressedVersion<Opaque, Extend>>;
     using BV::v_;
 
-private:
+    bool cp_try_lock_impl(int threadid) {
+        return TicTocCompressedTid::try_lock(v_, threadid);
+    }
+    void cp_unlock_impl(TransItem& item) {
+        TicTocCompressedTid::unlock(v_);
+    }
 
+    static inline type& cp_access_tid_impl(Transaction& txn);
+    inline type cp_commit_tid_impl(Transaction& txn);
+
+    void cp_set_version_unlock(type new_ts) {
+        TicTocCompressedTid::set_timestamps_unlock(v_, new_ts, 0);
+    }
+    void cp_set_version(type new_ts) {
+        TicTocCompressedTid::set_timestamps(v_, new_ts, 0);
+    }
+
+    bool cp_check_version_impl(Transaction& txn, TransItem& item) {
+        type read_tss = item.read_value<type>();
+        type current_cts = cp_commit_tid_impl(txn);
+
+        if (Extend)
+            return TicTocCompressedTid::validate_timestamps(v_, read_tss, current_cts);
+        else
+            return TicTocCompressedTid::validate_timestamps_noext(v_, read_tss, current_cts);
+    }
 };

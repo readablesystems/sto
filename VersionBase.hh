@@ -262,7 +262,7 @@ public:
     }
     template <typename T, typename... Args>
     bool acquire_write(TransItem& item, Args&&... args) {
-        return impl().acquire_write_impl(item, args...);
+        return impl().acquire_write_impl<T>(item, args...);
     }
 
     bool observe_read(TransItem& item) {
