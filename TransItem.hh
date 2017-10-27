@@ -116,6 +116,10 @@ class TransItem {
         return rdata_.w;
     }
 
+    WideTid& wide_read_value() {
+        return rdata_.w;
+    }
+
     template <typename T>
     T& predicate_value() {
         assert(has_predicate() && !has_read());
@@ -224,6 +228,10 @@ class TransItem {
 
     bool cc_mode_is_optimistic(bool version_optimistic) {
         return cc_mode(version_optimistic ? CCMode::opt : CCMode::lock) == CCMode::opt;
+    }
+
+    void *& tictoc_ts_origin() {
+        return ts_origin_;
     }
 
     template <typename VersImpl>

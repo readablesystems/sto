@@ -14,6 +14,10 @@ class VersionDelegate {
     friend class TLockVersion;
     template <bool Opaque>
     friend class TSwissVersion;
+    template <bool Opaque, bool Extend>
+    friend class TicTocVersion;
+    template <bool Opaque, bool Extend>
+    friend class TicTocCompressedVersion;
 
     static void item_or_flags(TransItem& item, TransItem::flags_type flags) {
         item.__or_flags(flags);
@@ -404,6 +408,146 @@ inline bool TSwissVersion<Opaque>::observe_read_impl(TransItem& item, bool add_r
         VersionDelegate::item_access_rdata(item).v = Packer<TSwissVersion<Opaque>>::pack(t().buf_, std::move(version));
         //item().__or_flags(TransItem::read_bit);
         //item().rdata_ = Packer<TSwissVersion<Opaque>>::pack(t()->buf_, std::move(version));
+    }
+    return true;
+}
+
+// TicToc concurrency control, double-word
+
+template <bool Opaque, bool Extend>
+inline bool TicTocVersion<Opaque, Extend>::acquire_write_impl(TransItem& item) {
+    if (!item.has_write()) {
+        VersionDelegate::item_or_flags(item, TransItem::write_bit);
+        item.tictoc_ts_origin() = this;
+        if (!item.has_read()) {
+            TicTocTid::pack_wide(item.wide_read_value(), BV::v_, wts_);
+        }
+        VersionDelegate::txn_set_any_writes(t(), true);
+    }
+    return true;
+}
+
+template <bool Opaque, bool Extend> template <typename T>
+inline bool TicTocVersion<Opaque, Extend>::acquire_write_impl(TransItem& item, const T& wdata) {
+    return acquire_write_impl<T, const T&>(item, wdata);
+}
+
+template <bool Opaque, bool Extend> template <typename T>
+inline bool TicTocVersion<Opaque, Extend>::acquire_write_impl(TransItem& item, T&& wdata) {
+    typedef std::decay<T>::type V;
+    return acquire_write_impl<V, V&&>(item, std::move(wdata));
+}
+
+template <bool Opaque, bool Extend> template <typename T, typename... Args>
+inline bool TicTocVersion<Opaque, Extend>::acquire_write_impl(TransItem& item, Args&& args) {
+    if (!item.has_write()) {
+        VersionDelegate::item_or_flags(item, TransItem::write_bit);
+        item.tictoc_ts_origin() = this;
+        if (!item.has_read()) {
+            TicTocTid::pack_wide(item.wide_read_value(), BV::v_, wts_);
+        }
+        VersionDelegate::txn_set_any_writes(t(), true);
+        VersionDelegate::item_access_wdata(item) = Packer<T>::pack(t().buf_, std::forward<Args>(args)...);
+    } else {
+        auto old_wdata = VersionDelegate::item_access_wdata(item);
+        VersionDelegate::item_access_wdata(item) = Packer<T>::repack(t().buf_, old_wdata, std::forward<Args>(args)...);
+    }
+    return true;
+}
+
+template <bool Opaque, bool Extend>
+inline bool TicTocVersion<Opaque, Extend>::observe_read_impl(TransItem& item, bool add_read) {
+    assert(!has_stash());
+    if (BV::is_locked_elsewhere(TThread::id())) {
+        t().mark_abort_because(&item, "locked", value());
+        return false;
+    }
+    //printf("[%d] OBS: R%luW%lu\n", t()->threadid_, version.read_timestamp(), version.write_timestamp());
+    if (Opaque) {
+        always_assert(false, "opacity not implemented");
+        //t()->check_opacity(item(), version);
+    }
+    if (add_read && !item.has_read()) {
+        if (Opaque) {
+            always_assert(false, "opacity not implemented 2");
+            //t()->min_rts_ = std::min(t()->min_rts_, version.read_timestamp());
+        }
+        VersionDelegate::item_or_flags(item, TransItem::read_bit);
+        TicTocTid::pack_wide(item.wide_read_value(), BV::v_, wts_);
+        //item().__or_flags(TransItem::observe_bit);
+        //item().rdata_ = Packer<TicTocVersion>::pack(t()->buf_, std::move(version));
+    }
+    return true;
+}
+
+// TicToc concurrency control, compressed
+
+template <bool Opaque, bool Extend>
+inline bool TicTocCompressedVersion<Opaque, Extend>::acquire_write_impl(TransItem& item) {
+    if (!item.has_write()) {
+        VersionDelegate::item_or_flags(item, TransItem::write_bit);
+        item.tictoc_ts_origin() = this;
+        if (!item.has_read()) {
+            item.wide_read_value().v0 = v_;
+            acquire_fence();
+        }
+        VersionDelegate::txn_set_any_writes(t(), true);
+    }
+    return true;
+}
+
+template <bool Opaque, bool Extend> template <typename T>
+inline bool TicTocCompressedVersion<Opaque, Extend>::acquire_write_impl(TransItem& item, const T& wdata) {
+    return acquire_write_impl<T, const T&>(item, wdata);
+}
+
+template <bool Opaque, bool Extend> template <typename T>
+inline bool TicTocCompressedVersion<Opaque, Extend>::acquire_write_impl(TransItem& item, T&& wdata) {
+    typedef std::decay<T>::type V;
+    return acquire_write_impl<V, V&&>(item, wdata);
+}
+
+template <bool Opaque, bool Extend> template <typename T, typename... Args>
+inline bool TicTocCompressedVersion<Opaque, Extend>::acquire_write_impl(TransItem& item, Args&&... args) {
+    if (!item.has_write()) {
+        VersionDelegate::item_or_flags(item, TransItem::write_bit);
+        item.tictoc_ts_origin() = this;
+        if (!item.has_read()) {
+            item.wide_read_value().v0 = v_;
+            acquire_fence();
+        }
+        VersionDelegate::item_access_wdata(item) = Packer<T>::pack(t().buf_, std::forward<Args>(args)...);
+        VersionDelegate::txn_set_any_writes(t(), true);
+    } else {
+        auto old_wdata = VersionDelegate::item_access_wdata(item);
+        VersionDelegate::item_access_wdata(item) = Packer<T>::repack(t().buf_, old_wdata, std::forward<Args>(args)...);
+    }
+    return true;
+};
+
+
+template <bool Opaque, bool Extend>
+inline bool TicTocCompressedVersion<Opaque, Extend>::observe_read_impl(TransItem& item, bool add_read) {
+    assert(!has_stash());
+    if (BV::is_locked_elsewhere(TThread::id())) {
+        t().mark_abort_because(&item, "locked", value());
+        return false;
+    }
+    //printf("[%d] OBS: R%luW%lu\n", t()->threadid_, version.read_timestamp(), version.write_timestamp());
+    if (Opaque) {
+        always_assert(false, "opacity not implemented");
+        //t()->check_opacity(item(), version);
+    }
+    if (add_read && !item.has_read()) {
+        if (Opaque) {
+            always_assert(false, "opacity not implemented 2");
+            //t()->min_rts_ = std::min(t()->min_rts_, version.read_timestamp());
+        }
+        VersionDelegate::item_or_flags(item, TransItem::read_bit);
+        item.wide_read_value().v0 = v_;
+        acquire_fence();
+        //item().__or_flags(TransItem::observe_bit);
+        //item().rdata_ = Packer<TicTocVersion>::pack(t()->buf_, std::move(version));
     }
     return true;
 }

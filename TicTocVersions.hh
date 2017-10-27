@@ -162,6 +162,10 @@ public:
     using BV::v_;
     using BV::impl;
 
+    bool is_locked_elsewhere(int threadid) {
+        return TicTocTid::is_locked_elsewhere(type(threadid));
+    }
+
     type read_timestamp() const {
         return impl().read_timestamp_impl();
     }
@@ -170,7 +174,7 @@ public:
     }
 };
 
-template <bool Opaque, bool Extend>
+template <bool Opaque = false, bool Extend = true>
 class TicTocVersion : public TicTocBase<TicTocVersion<Opaque, Extend>> {
 public:
     using BV = TicTocBase<TicTocVersion<Opaque, Extend>>;
@@ -228,11 +232,18 @@ private:
     type wts_;
 };
 
-template <bool Opaque, bool Extend>
-class TicTocCompressedVersion : public VersionBase<TicTocCompressedVersion<Opaque, Extend>> {
+template <bool Opaque = false, bool Extend = true>
+class TicTocCompressedVersion : public TicTocBase<TicTocCompressedVersion<Opaque, Extend>> {
 public:
-    using BV = VersionBase<TicTocCompressedVersion<Opaque, Extend>>;
+    using BV = TicTocBase<TicTocCompressedVersion<Opaque, Extend>>;
     using BV::v_;
+
+    type read_timestamp_impl() {
+        return TicTocCompressedTid::rts_value(v_);
+    }
+    type write_timestamp_impl() {
+        return TicTocCompressedTid::wts_value(v_);
+    }
 
     bool cp_try_lock_impl(int threadid) {
         return TicTocCompressedTid::try_lock(v_, threadid);
