@@ -263,6 +263,23 @@ void testNoOpacity1() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void benchArray64() {
+    TArray<int, 64> a;
+    for (int i = 0; i < 64; ++i)
+        a.nontrans_put(i, 0);
+
+    double before = gettime_d();
+    for (unsigned long iter = 0; iter < 100000000; ++iter) {
+        TRANSACTION {
+            for (int i = 0; i < 64; ++i)
+                a[i] = a[i] + i;
+        } RETRY(true);
+    }
+    double after = gettime_d();
+
+    printf("BENCH PER 1000 ITER: %.06f\n", (after - before) / 100000);
+}
+
 int main() {
     testSimpleInt();
     testSimpleString();
@@ -275,5 +292,6 @@ int main() {
     testConflictingModifyIter3();
     testOpacity1();
     testNoOpacity1();
+    benchArray64();
     return 0;
 }
