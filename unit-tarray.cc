@@ -11,7 +11,7 @@
 inline double gettime_d() {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    return ts.tv_sec + ts.tv_nsec / 1000000000.0;
+    return ts.tv_sec + ts.tv_nsec / 1.0e9;
 }
 
 void testSimpleInt() {
@@ -275,16 +275,19 @@ void benchArray64() {
     for (int i = 0; i < 64; ++i)
         a.nontrans_put(i, 0);
 
+    const unsigned long niters = 1000;
     double before = gettime_d();
-    for (unsigned long iter = 0; iter < 100000000; ++iter) {
-        TRANSACTION {
-            for (int i = 0; i < 64; ++i)
-                a[i] = a[i] + i;
-        } RETRY(true);
+    for (unsigned long iter = 0; iter < niters; ++iter) {
+        for (int j = 0; j < 1000; ++j) {
+            TRANSACTION {
+                for (int i = 0; i < 64; ++i)
+                    a[i] = a[i] + i;
+            } RETRY(true);
+        }
     }
     double after = gettime_d();
 
-    printf("BENCH PER 1000 ITER: %.06f\n", (after - before) / 100000);
+    printf("NS PER ITER (iter = 1000tx): %g\n", (after - before) * 1.0e9 / niters);
 }
 
 int main() {
