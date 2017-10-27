@@ -6,6 +6,13 @@
 #include "Transaction.hh"
 #include "TArray.hh"
 #include "TBox.hh"
+#include <time.h>
+
+inline double gettime_d() {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return ts.tv_sec + ts.tv_nsec / 1000000000.0;
+}
 
 void testSimpleInt() {
 	TArray<int, 100> f;
@@ -263,6 +270,23 @@ void testNoOpacity1() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void benchArray64() {
+    TArray<int, 64> a;
+    for (int i = 0; i < 64; ++i)
+        a.nontrans_put(i, 0);
+
+    double before = gettime_d();
+    for (unsigned long iter = 0; iter < 100000000; ++iter) {
+        TRANSACTION {
+            for (int i = 0; i < 64; ++i)
+                a[i] = a[i] + i;
+        } RETRY(true);
+    }
+    double after = gettime_d();
+
+    printf("BENCH PER 1000 ITER: %.06f\n", (after - before) / 100000);
+}
+
 int main() {
     testSimpleInt();
     testSimpleString();
@@ -275,5 +299,6 @@ int main() {
     testConflictingModifyIter3();
     testOpacity1();
     testNoOpacity1();
+    benchArray64();
     return 0;
 }
