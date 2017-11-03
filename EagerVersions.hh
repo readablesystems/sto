@@ -188,8 +188,10 @@ public:
     void cp_unlock_impl(TransItem& item) {
         (void)item;
         assert(item.needs_unlock());
-        if (BV::is_locked())
+        if (BV::is_locked()) {
+            v_ &= ~read_lock_bit;
             TransactionTid::unlock(v_);
+        }
     }
 
     inline bool acquire_write_impl(TransItem& item);
