@@ -27,7 +27,8 @@ public:
     TNonopaqueVersion(type v, bool insert)
             : BasicVersion<TNonopaqueVersion>(v | TransactionTid::nonopaque_bit) {(void)insert;};
 
-    bool cp_check_version_impl(TransItem& item) {
+    bool cp_check_version_impl(Transaction& txn, TransItem& item) {
+        (void)txn;
         assert(item.has_read());
         return check_version(item.read_value<TNonopaqueVersion>());
     }

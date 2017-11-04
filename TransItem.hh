@@ -241,7 +241,7 @@ class TransItem {
 
     template <typename VersImpl>
     const TicTocBase<VersImpl>& tictoc_extract_read_ts() const {
-        return static_cast<TicTocBase<VersImpl>&>(wide_read_value());
+        return *reinterpret_cast<const TicTocBase<VersImpl> *>(&rdata_.w);
     }
 
     bool is_tictoc_compressed() {

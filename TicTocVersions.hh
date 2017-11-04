@@ -162,6 +162,8 @@ public:
     using BV::v_;
     using BV::impl;
 
+    typedef typename BV::type type;
+
     bool is_locked_elsewhere(int threadid) {
         return TicTocTid::is_locked_elsewhere(type(threadid));
     }
@@ -178,6 +180,16 @@ template <bool Opaque = false, bool Extend = true>
 class TicTocVersion : public TicTocBase<TicTocVersion<Opaque, Extend>> {
 public:
     using BV = TicTocBase<TicTocVersion<Opaque, Extend>>;
+
+    typedef typename BV::type type;
+
+    bool operator==(const TicTocVersion<Opaque, Extend>& other) const {
+        return BV::v_ == other.v_ && wts_ == other.wts_;
+    }
+
+    bool is_locked() const {
+        return TicTocTid::is_locked(BV::v_);
+    }
 
     type read_timestamp_impl() const {
         return TicTocTid::timestamp(BV::v_);
@@ -238,10 +250,20 @@ public:
     using BV = TicTocBase<TicTocCompressedVersion<Opaque, Extend>>;
     using BV::v_;
 
-    type read_timestamp_impl() {
+    typedef typename BV::type type;
+
+    bool is_locked() const {
+        return TicTocCompressedTid::is_locked(v_);
+    }
+
+    bool operator==(const TicTocCompressedVersion<Opaque, Extend>& other) const {
+        return v_ == other.v_;
+    }
+
+    type read_timestamp_impl() const {
         return TicTocCompressedTid::rts_value(v_);
     }
-    type write_timestamp_impl() {
+    type write_timestamp_impl() const {
         return TicTocCompressedTid::wts_value(v_);
     }
 

@@ -237,15 +237,15 @@ public:
     }
 
     // Logical updates to transaction version number/timestamps
-    void cp_set_version_unlock(VersImpl new_v) {
+    void cp_set_version_unlock(type new_v) {
         impl().cp_set_version_unlock_impl(new_v);
     }
-    void cp_set_version(VersImpl new_v) {
+    void cp_set_version(type new_v) {
         impl().cp_set_version_impl(new_v);
     }
 
-    bool cp_check_version(TransItem& item) {
-        return impl().cp_check_version_impl(item);
+    bool cp_check_version(Transaction& txn, TransItem& item) {
+        return impl().cp_check_version_impl(txn, item);
     }
 
     // Interface exposed to STO runtime tracking set management (TItem)
@@ -262,7 +262,7 @@ public:
     }
     template <typename T, typename... Args>
     bool acquire_write(TransItem& item, Args&&... args) {
-        return impl().acquire_write_impl<T>(item, args...);
+        return impl().acquire_write_impl(item, std::forward<Args>(args)...);
     }
 
     bool observe_read(TransItem& item) {
@@ -290,7 +290,6 @@ public:
 protected:
     type v_;
 
-private:
     VersImpl& impl() {
         return static_cast<VersImpl&>(*this);
     }
@@ -337,18 +336,19 @@ public:
         (void)item;
         TransactionTid::unlock(v_);
     }
-    bool cp_check_version_impl(TransItem& item) {
+    bool cp_check_version_impl(Transaction& txn, TransItem& item) {
+        (void)txn;
         assert(item.has_read());
         if (TransactionTid::is_locked(v_) && !item.has_write())
             return false;
         return check_version(item.read_value<BasicVersion>());
     }
 
-    void cp_set_version_unlock_impl(VersImpl new_v) {
-        TransactionTid::set_version_unlock(v_, new_v.v_);
+    void cp_set_version_unlock_impl(type new_v) {
+        TransactionTid::set_version_unlock(v_, new_v);
     }
-    void cp_set_version_impl(VersImpl new_v) {
-        TransactionTid::set_version(v_, new_v.v_);
+    void cp_set_version_impl(type new_v) {
+        TransactionTid::set_version(v_, new_v);
     }
 
     void inc_nonopaque_impl() {

@@ -800,18 +800,21 @@ public:
     template <typename VersImpl>
     inline void compute_tictoc_commit_ts_step(const TicTocBase<VersImpl>& vers, bool is_write) const;
 
+    template <typename NonTicTocImpl>
+    inline void compute_tictoc_commit_ts_step(NonTicTocImpl& vers, bool is_write) const;
+
     template <typename VersImpl>
     void set_version(VersionBase<VersImpl>& version, typename VersionBase<VersImpl>::type flags = 0) const {
         assert(state_ == s_committing_locked || state_ == s_committing);
         tid_type v = version.cp_commit_tid(const_cast<Transaction &>(*this));
-        version.cp_set_version(VersImpl(v | flags));
+        version.cp_set_version(v | flags);
     }
 
     template <typename VersImpl>
     void set_version_unlock(VersionBase<VersImpl>& version, TransItem& item, typename VersionBase<VersImpl>::type flags = 0) const {
         assert(state_ == s_committing_locked || state_ == s_committing);
         tid_type v = version.cp_commit_tid(const_cast<Transaction &>(*this));
-        version.cp_set_version_unlock(VersImpl(v | flags));
+        version.cp_set_version_unlock(v | flags);
         item.clear_needs_unlock();
     }
 

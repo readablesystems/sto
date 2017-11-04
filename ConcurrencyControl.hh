@@ -40,9 +40,9 @@ class VersionDelegate {
         return txn.commit_tid_;
     }
     // reserved for TicToc
-    //static WideTransactionTid::type& wide_tid(Transaction& txn) {
-    //    return txn.w_commit_tid_;
-    //}
+    static TransactionTid::type& tictoc_tid(Transaction& txn) {
+        return txn.tictoc_tid_;
+    }
 };
 
 // Registering writes without passing the version (handled internally by TItem)
@@ -434,12 +434,12 @@ inline bool TicTocVersion<Opaque, Extend>::acquire_write_impl(TransItem& item, c
 
 template <bool Opaque, bool Extend> template <typename T>
 inline bool TicTocVersion<Opaque, Extend>::acquire_write_impl(TransItem& item, T&& wdata) {
-    typedef std::decay<T>::type V;
+    typedef typename std::decay<T>::type V;
     return acquire_write_impl<V, V&&>(item, std::move(wdata));
 }
 
 template <bool Opaque, bool Extend> template <typename T, typename... Args>
-inline bool TicTocVersion<Opaque, Extend>::acquire_write_impl(TransItem& item, Args&& args) {
+inline bool TicTocVersion<Opaque, Extend>::acquire_write_impl(TransItem& item, Args&&... args) {
     if (!item.has_write()) {
         VersionDelegate::item_or_flags(item, TransItem::write_bit);
         item.tictoc_ts_origin() = this;
@@ -457,9 +457,9 @@ inline bool TicTocVersion<Opaque, Extend>::acquire_write_impl(TransItem& item, A
 
 template <bool Opaque, bool Extend>
 inline bool TicTocVersion<Opaque, Extend>::observe_read_impl(TransItem& item, bool add_read) {
-    assert(!has_stash());
+    assert(!item.has_stash());
     if (BV::is_locked_elsewhere(TThread::id())) {
-        t().mark_abort_because(&item, "locked", value());
+        t().mark_abort_because(&item, "locked", BV::value());
         return false;
     }
     //printf("[%d] OBS: R%luW%lu\n", t()->threadid_, version.read_timestamp(), version.write_timestamp());
@@ -503,7 +503,7 @@ inline bool TicTocCompressedVersion<Opaque, Extend>::acquire_write_impl(TransIte
 
 template <bool Opaque, bool Extend> template <typename T>
 inline bool TicTocCompressedVersion<Opaque, Extend>::acquire_write_impl(TransItem& item, T&& wdata) {
-    typedef std::decay<T>::type V;
+    typedef typename std::decay<T>::type V;
     return acquire_write_impl<V, V&&>(item, wdata);
 }
 
@@ -528,9 +528,9 @@ inline bool TicTocCompressedVersion<Opaque, Extend>::acquire_write_impl(TransIte
 
 template <bool Opaque, bool Extend>
 inline bool TicTocCompressedVersion<Opaque, Extend>::observe_read_impl(TransItem& item, bool add_read) {
-    assert(!has_stash());
+    assert(!item.has_stash());
     if (BV::is_locked_elsewhere(TThread::id())) {
-        t().mark_abort_because(&item, "locked", value());
+        t().mark_abort_because(&item, "locked", BV::value());
         return false;
     }
     //printf("[%d] OBS: R%luW%lu\n", t()->threadid_, version.read_timestamp(), version.write_timestamp());
@@ -634,6 +634,40 @@ TSwissVersion<Opaque>::cp_commit_tid_impl(Transaction &txn) {
     }
 }
 
+template <bool Opaque, bool Extend>
+typename TicTocVersion<Opaque, Extend>::type&
+TicTocVersion<Opaque, Extend>::cp_access_tid_impl(Transaction& txn) {
+    return VersionDelegate::tictoc_tid(txn);
+}
+
+template <bool Opaque, bool Extend>
+typename TicTocVersion<Opaque, Extend>::type
+TicTocVersion<Opaque, Extend>::cp_commit_tid_impl(Transaction& txn) {
+    auto tid = cp_access_tid_impl(txn);
+    if (tid != 0)
+        return tid;
+    else
+        return txn.compute_tictoc_commit_ts();
+}
+
+template <bool Opaque, bool Extend>
+typename TicTocCompressedVersion<Opaque, Extend>::type&
+TicTocCompressedVersion<Opaque, Extend>::cp_access_tid_impl(Transaction& txn) {
+    return VersionDelegate::tictoc_tid(txn);
+}
+
+template <bool Opaque, bool Extend>
+typename TicTocCompressedVersion<Opaque, Extend>::type
+TicTocCompressedVersion<Opaque, Extend>::cp_commit_tid_impl(Transaction& txn) {
+    auto tid = cp_access_tid_impl(txn);
+    if (tid != 0)
+        return tid;
+    else
+        return txn.compute_tictoc_commit_ts();
+}
+
+// Contention Manager implementation
+
 template <bool Opaque>
 bool ContentionManager::should_abort(Transaction* tx, TSwissVersion<Opaque> wlock) {
     TXP_INCREMENT(txp_cm_shouldabort);
@@ -648,15 +682,11 @@ bool ContentionManager::should_abort(Transaction* tx, TSwissVersion<Opaque> wloc
         return true;
     }
 
-    int owner_threadid = wlock & TransactionTid::threadid_mask;
+    int owner_threadid = int(wlock & TransactionTid::threadid_mask);
     owner_threadid *= 4;
     //if (write_set_size[threadid] < write_set_size[owner_threadid]) {
     if (timestamp[owner_threadid] < timestamp[threadid]) {
-        if (aborted[owner_threadid] == 0) {
-            return true;
-        } else {
-            return false;
-        }
+        return aborted[owner_threadid] == 0;
     } else {
         //FIXME: this might abort a new transaction on that thread
         aborted[owner_threadid] = 1;
@@ -725,12 +755,12 @@ inline Transaction::tid_type Transaction::compute_tictoc_commit_ts() const {
             bool compressed = it->is_tictoc_compressed();
             tid_type t;
             if (it->has_write()) {
-                t = (compressed ? it->tictoc_fetch_ts_origin<TicTocCompressedVersion>().read_timestamp()
-                                : it->tictoc_fetch_ts_origin<TicTocVersion>().read_timestamp())
+                t = (compressed ? it->tictoc_fetch_ts_origin<TicTocCompressedVersion<>>().read_timestamp()
+                                : it->tictoc_fetch_ts_origin<TicTocVersion<>>().read_timestamp())
                     + 1;
             } else {
-                t = compressed ? it->tictoc_extract_read_ts<TicTocCompressedVersion>().write_timestamp()
-                               : it->tictoc_extract_read_ts<TicTocVersion>().write_timestamp();
+                t = compressed ? it->tictoc_extract_read_ts<TicTocCompressedVersion<>>().write_timestamp()
+                               : it->tictoc_extract_read_ts<TicTocVersion<>>().write_timestamp();
             }
             commit_ts = std::max(commit_ts, t);
         }
@@ -740,9 +770,13 @@ inline Transaction::tid_type Transaction::compute_tictoc_commit_ts() const {
 
 template <typename VersImpl>
 inline void Transaction::compute_tictoc_commit_ts_step(const TicTocBase<VersImpl>& vers, bool is_write) const {
+    static_assert(std::is_base_of<TicTocBase<VersImpl>, VersImpl>::value, "Version does not implement TicToc");
     assert(state_ == s_committing_locked || state_ == s_committing);
     if (is_write)
         tictoc_tid_ = std::max(tictoc_tid_, vers.read_timestamp() + 1);
     else
         tictoc_tid_ = std::max(tictoc_tid_, vers.write_timestamp());
 }
+
+template <typename NonTicTocImpl>
+inline void Transaction::compute_tictoc_commit_ts_step(NonTicTocImpl &vers, bool is_write) const {}

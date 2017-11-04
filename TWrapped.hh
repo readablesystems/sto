@@ -24,6 +24,11 @@ template <typename T, bool Opaque = true,
           bool Small = is_small<T>::value
           > class TSwissWrapped;
 
+template <typename T, bool Opaque = true,
+          bool Trivial = std::is_trivially_copyable<T>::value,
+          bool Small = is_small<T>::value
+          > class TicTocWrapped;
+
 class TWrappedAccess {
 public:
     // forward declearations no longer needed now that TWrappedAccess is a class
@@ -124,7 +129,7 @@ public:
             if (v0 == v1) {
                 if (add_read && !it.has_read()) {
                     it.__or_flags(TransItem::read_bit);
-                    it.rdata_ = Packer<TNonopaqueVersion>::pack(t.buf_, std::move(v1));
+                    it.rdata_.v = Packer<TNonopaqueVersion>::pack(t.buf_, std::move(v1));
                     t.any_nonopaque_ = true;
                 }
                 return true;
@@ -348,6 +353,7 @@ protected:
 template <typename T, bool Opaque, bool Trivial, bool Small>
 class TSwissWrapped {
 public:
+    TSwissWrapped() = delete;
     template <typename... Args>
     explicit TSwissWrapped(Args&&... args)
             : v_(std::forward<Args>(args)...) {
@@ -384,7 +390,7 @@ public:
         return TWrappedAccess::read_atomic(&v_, item, version, true);
     }
     static std::pair<bool, read_type> read(const T* v, TransProxy item, const version_type& version) {
-        static_assert(Small, "static read only available for small types");
+        always_assert(Small, "static read only available for small types");
         return TWrappedAccess::read_atomic(v, item, version, true);
     }
     // XXX deprecated
@@ -689,8 +695,95 @@ private:
 };
 #endif
 
+template <typename T, bool Small>
+class TicTocWrapped<T, false /* !opaque */, true /* trivial */, Small /* small */> {
+public:
+    typedef T read_type;
+    typedef TicTocVersion<false /* !opaque */, true /* extend */> version_type;
+
+    TicTocWrapped()
+            : v_() {}
+    explicit TicTocWrapped(const T& v)
+            : v_(v) {}
+    explicit TicTocWrapped(T&& v)
+            : v_(std::move(v)) {}
+    template <typename... Args>
+    explicit TicTocWrapped(Args&&... args)
+            : v_(std::forward<Args>(args)...) {}
+
+    const T& access() const {
+        return v_;
+    }
+    T& access() {
+        return v_;
+    }
+    read_type snapshot(TransProxy, const version_type&) const {
+        return v_;
+    }
+    read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
+        if (Small)
+            return TWrappedAccess::read_wait_nonatomic(&v_, item, version, add_read);
+        else
+            return TWrappedAccess::read_wait_atomic(&v_, item, version, add_read);
+    }
+    std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
+        if (Small)
+            return TWrappedAccess::read_nonatomic(&v_, item, version, true);
+        else
+            return TWrappedAccess::read_atomic(&v_, item, version, true);
+    }
+    bool read(TransProxy item, const version_type& version, read_type& ret) const {
+        if (Small)
+            return TWrappedAccess::read_nonatomic(&v_, item, version, true, ret);
+        else
+            return TWrappedAccess::read_atomic(&v_, item, version, true, ret);
+    }
+
+    template <typename Q = T> static typename std::enable_if<is_small<Q>::value, bool>::type
+    read(const T* vp, TransProxy item, const version_type& version, read_type& ret) {
+        static_assert(Small, "static read only available for small types");
+        return TWrappedAccess::read_nonatomic(vp, item, version, true, ret);
+    }
+
+    template <typename Q = T>
+    typename std::enable_if<is_small<Q>::value, void>::type
+    write(T v) {
+        static_assert(Small, "write-by-value only available for small types");
+        v_ = v;
+    }
+
+    template <typename Q = T>
+    typename std::enable_if<!is_small<Q>::value, void>::type
+    write(const T& v) {
+        static_assert(!Small, "write-by-lvalue-reference only available for non-small types");
+        v_ = v;
+    }
+
+    template <typename Q = T>
+    typename std::enable_if<!is_small<Q>::value, void>::type
+    write(T&& v) {
+        static_assert(!Small, "write-with-move only available for non-small types");
+        v_ = std::move(v);
+    }
+
+private:
+    T v_;
+};
+
+template <typename T, bool Opaque, bool Trivial, bool Small>
+class TicTocWrapped {
+public:
+    TicTocWrapped() = delete;
+    TicTocWrapped(const TicTocWrapped&) = delete;
+    TicTocWrapped(TicTocWrapped&&) = delete;
+    template<typename... Args>
+    TicTocWrapped(Args&&...) = delete;
+};
+
 template <typename T> using TOpaqueWrapped = TWrapped<T>;
 template <typename T> using TNonopaqueWrapped = TWrapped<T, false>;
 
 template <typename T> using TOpaqueLockWrapped = TLockWrapped<T>;
 template <typename T> using TSwissNonopaqueWrapped = TSwissWrapped<T, false>;
+
+template <typename T> using TicTocNonopaqueWrapped = TicTocWrapped<T, false>;

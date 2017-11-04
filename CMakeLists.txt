@@ -38,6 +38,10 @@ add_executable(tpcc_bench
         TPCC_index.hh
         TPCC_txns.hh)
 
+add_executable(unit-tflexarray
+        unit-tflexarray.cc
+        TFlexArray.hh)
+
 add_executable(unit-swisstarray
         unit-swisstarray.cc
         SwissTArray.hh
@@ -55,5 +59,6 @@ add_executable(unit-tbox
 
 target_link_libraries(tpcc_bench sto clp masstree json dprint xxhash ${PLATFORM_LIBRARIES})
 target_link_libraries(unit-swisstarray sto dprint)
+target_link_libraries(unit-tflexarray sto dprint)
 target_link_libraries(unit-tbox sto dprint)
 target_link_libraries(unit-tarray sto dprint)
