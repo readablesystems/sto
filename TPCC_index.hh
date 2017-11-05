@@ -44,6 +44,14 @@ public:
     static bool select_for_update(TransProxy& item, TSwissVersion<Opaque>& vers) {
         return item.acquire_write(vers);
     }
+    // XXX is it correct?
+    template <bool Opaque, bool Extend>
+    static bool select_for_update(TransProxy& item, TicTocVersion<Opaque, Extend>& vers) {
+        if (!item.observe(vers))
+            return false;
+        item.acquire_write(vers);
+        return true;
+    }
 
     template <typename T>
     static bool select_for_overwrite(TransProxy& item, TLockVersion& vers, const T& val) {
@@ -63,6 +71,10 @@ public:
     }
     template <bool Opaque, typename T>
     static bool select_for_overwrite(TransProxy& item, TSwissVersion<Opaque>& vers, const T& val) {
+        return item.acquire_write(vers, val);
+    }
+    template <bool Opaque, bool Extend, typename T>
+    static bool select_for_overwrite(TransProxy& item, TicTocVersion<Opaque, Extend>& vers, const T& val) {
         return item.acquire_write(vers, val);
     }
 };

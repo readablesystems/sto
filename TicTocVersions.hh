@@ -164,6 +164,9 @@ public:
 
     typedef typename BV::type type;
 
+    TicTocBase() : BV() {}
+    explicit TicTocBase(type v) : BV(v) {}
+
     bool is_locked_elsewhere(int threadid) {
         return TicTocTid::is_locked_elsewhere(type(threadid));
     }
@@ -182,6 +185,9 @@ public:
     using BV = TicTocBase<TicTocVersion<Opaque, Extend>>;
 
     typedef typename BV::type type;
+
+    TicTocVersion() = delete;
+    explicit TicTocVersion(type v) : BV(v), wts_(v) {}
 
     bool operator==(const TicTocVersion<Opaque, Extend>& other) const {
         return BV::v_ == other.v_ && wts_ == other.wts_;
@@ -251,6 +257,11 @@ public:
     using BV::v_;
 
     typedef typename BV::type type;
+
+    TicTocCompressedVersion() = delete;
+    explicit TicTocCompressedVersion(type v) {
+        v_ = (v / TransactionTid::increment_value) << TicTocCompressedTid::wts_shift;
+    }
 
     bool is_locked() const {
         return TicTocCompressedTid::is_locked(v_);
