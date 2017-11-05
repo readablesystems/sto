@@ -68,6 +68,19 @@ public:
 };
 
 template <typename DBParams>
+struct get_occ_version {
+    typedef typename std::conditional<DBParams::Opaque, TVersion, TNonopaqueVersion>::type type;
+};
+
+template <typename DBParams>
+struct get_version {
+    typedef typename std::conditional<DBParams::TicToc, TicTocVersion<false, true>,
+                     std::conditional<DBParams::Adaptive, TLockVersion,
+                     std::conditional<DBParams::Swiss, TSwissVersion<DBParams::Opaque>,
+                     get_occ_version<DBParams>::type>::type>::type>::type type;
+};
+
+template <typename DBParams>
 class integer_box : public TObject {
 public:
     typedef uint64_t int_type;
@@ -99,8 +112,8 @@ public:
     bool lock(TransItem& item, Transaction& txn) override {
         return txn.try_lock(item, vers);
     }
-    bool check(TransItem& item, Transaction&) override {
-        return vers.cp_check_version(item);
+    bool check(TransItem& item, Transaction& txn) override {
+        return vers.cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
         value += item.write_value<int_type>();
@@ -123,10 +136,8 @@ public:
     typedef K key_type;
     typedef V value_type;
 
-    typedef typename std::conditional<DBParams::Opaque, TVersion, TNonopaqueVersion>::type bucket_version_type;
-    typedef typename std::conditional<DBParams::Adaptive, TLockVersion,
-            typename std::conditional<DBParams::Swiss, TSwissVersion<DBParams::Opaque>,
-                    bucket_version_type>::type>::type version_type;
+    typedef typename get_occ_version<DBParams>::type bucket_version_type;
+    typedef typename get_version<DBParams>::type version_type;
 
     typedef std::hash<K> Hash;
     typedef std::equal_to<K> Pred;
@@ -384,13 +395,13 @@ public:
         return txn.try_lock(item, el->version);
     }
 
-    bool check(TransItem& item, Transaction&) override {
+    bool check(TransItem& item, Transaction& txn) override {
         if (is_bucket(item)) {
             bucket_entry &buck = *bucket_address(item);
-            return buck.version.cp_check_version(item);
+            return buck.version.cp_check_version(txn, item);
         } else {
             internal_elem *el = item.key<internal_elem *>();
-            return el->version.cp_check_version(item);
+            return el->version.cp_check_version(txn, item);
         }
     }
 
@@ -548,10 +559,8 @@ public:
     typedef K key_type;
     typedef V value_type;
 
-    typedef typename std::conditional<DBParams::Opaque, TVersion, TNonopaqueVersion>::type occ_version_type;
-    typedef typename std::conditional<DBParams::Adaptive, TLockVersion,
-            typename std::conditional<DBParams::Swiss, TSwissVersion<DBParams::Opaque>,
-                    occ_version_type>::type>::type version_type;
+    //typedef typename get_occ_version<DBParams>::type occ_version_type;
+    typedef typename get_version<DBParams>::type version_type;
 
     static constexpr typename version_type::type invalid_bit = TransactionTid::user_bit;
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
@@ -864,7 +873,7 @@ public:
         return txn.try_lock(item, e->version);
     }
 
-    bool check(TransItem& item, Transaction&) override {
+    bool check(TransItem& item, Transaction& txn) override {
         if (is_internode(item)) {
             node_type *n = get_internode_address(item);
             auto curr_nv = static_cast<leaf_type *>(n)->full_version_value();
@@ -872,7 +881,7 @@ public:
             return (curr_nv == read_nv);
         } else {
             internal_elem *el = item.key<internal_elem *>();
-            return el->version.cp_check_version(item);
+            return el->version.cp_check_version(txn, item);
         }
     }
 

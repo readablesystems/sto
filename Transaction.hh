@@ -483,6 +483,7 @@ private:
         any_writes_ = any_nonopaque_ = may_duplicate_items_ = false;
         first_write_ = 0;
         start_tid_ = commit_tid_ = 0;
+        tictoc_tid_ = 0;
         buf_.clear();
 #if STO_DEBUG_ABORTS
         abort_item_ = nullptr;
