@@ -416,6 +416,7 @@ inline bool TSwissVersion<Opaque>::observe_read_impl(TransItem& item, bool add_r
 
 template <bool Opaque, bool Extend>
 inline bool TicTocVersion<Opaque, Extend>::acquire_write_impl(TransItem& item) {
+    item.cc_mode(CCMode::tictoc);
     if (!item.has_write()) {
         VersionDelegate::item_or_flags(item, TransItem::write_bit);
         item.tictoc_ts_origin() = this;
@@ -440,6 +441,7 @@ inline bool TicTocVersion<Opaque, Extend>::acquire_write_impl(TransItem& item, T
 
 template <bool Opaque, bool Extend> template <typename T, typename... Args>
 inline bool TicTocVersion<Opaque, Extend>::acquire_write_impl(TransItem& item, Args&&... args) {
+    item.cc_mode(CCMode::tictoc);
     if (!item.has_write()) {
         VersionDelegate::item_or_flags(item, TransItem::write_bit);
         item.tictoc_ts_origin() = this;
@@ -457,6 +459,7 @@ inline bool TicTocVersion<Opaque, Extend>::acquire_write_impl(TransItem& item, A
 
 template <bool Opaque, bool Extend>
 inline bool TicTocVersion<Opaque, Extend>::observe_read_impl(TransItem& item, bool add_read) {
+    item.cc_mode(CCMode::tictoc);
     assert(!item.has_stash());
     if (BV::is_locked_elsewhere(TThread::id())) {
         t().mark_abort_because(&item, "locked", BV::value());
@@ -484,6 +487,7 @@ inline bool TicTocVersion<Opaque, Extend>::observe_read_impl(TransItem& item, bo
 
 template <bool Opaque, bool Extend>
 inline bool TicTocCompressedVersion<Opaque, Extend>::acquire_write_impl(TransItem& item) {
+    item.cc_mode(CCMode::tictoc);
     if (!item.has_write()) {
         VersionDelegate::item_or_flags(item, TransItem::write_bit);
         item.tictoc_ts_origin() = this;
@@ -509,6 +513,7 @@ inline bool TicTocCompressedVersion<Opaque, Extend>::acquire_write_impl(TransIte
 
 template <bool Opaque, bool Extend> template <typename T, typename... Args>
 inline bool TicTocCompressedVersion<Opaque, Extend>::acquire_write_impl(TransItem& item, Args&&... args) {
+    item.cc_mode(CCMode::tictoc);
     if (!item.has_write()) {
         VersionDelegate::item_or_flags(item, TransItem::write_bit);
         item.tictoc_ts_origin() = this;
@@ -528,6 +533,7 @@ inline bool TicTocCompressedVersion<Opaque, Extend>::acquire_write_impl(TransIte
 
 template <bool Opaque, bool Extend>
 inline bool TicTocCompressedVersion<Opaque, Extend>::observe_read_impl(TransItem& item, bool add_read) {
+    item.cc_mode(CCMode::tictoc);
     assert(!item.has_stash());
     if (BV::is_locked_elsewhere(TThread::id())) {
         t().mark_abort_because(&item, "locked", BV::value());
