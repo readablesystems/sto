@@ -366,7 +366,7 @@ class TransProxy {
         return vers.acquire_write(item());
     }
     template <typename VersImpl, typename T>
-    bool acquire_wirte(VersionBase<VersImpl>& vers, const T& wdata) {
+    bool acquire_write(VersionBase<VersImpl>& vers, const T& wdata) {
         return vers.acquire_write(item(), wdata);
     };
     template <typename VersImpl, typename T>
