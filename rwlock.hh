@@ -10,7 +10,7 @@ public:
   inline void read_lock() {
     uint32_t v = value;
     while ( (v & write_bit) || !bool_cmpxchg(&value, v, v+1)) {
-      __asm volatile("pause" : :);
+      relax_fence();
       v = value;
     }
     fence();
@@ -24,7 +24,7 @@ public:
   inline void write_lock() {
     uint32_t v = value;
     while ( v || !bool_cmpxchg(&value, v, write_bit)) {
-      __asm volatile("pause" : :);
+      relax_fence();
       v = value;
     }
     fence();
