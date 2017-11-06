@@ -46,7 +46,7 @@ public:
 
     // "read_nonatomic" doesn't do the spinning. In the case of optimistic concurrency control,
     // this may lead to the version and the value not forming a consistent snapshot. Version
-    // is, however, guaranteed to be observed before the version, thus ensuring the correctness
+    // is, however, guaranteed to be observed before the value, thus ensuring the correctness
     // of optimistic version validation.
 
     // When dealing with non-optimistic versions, such as TLockVersion, read_nonatomic must be used
