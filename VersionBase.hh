@@ -231,8 +231,8 @@ public:
 
     // Interface exposed to STO the commit protocol (cp)
     // Logical try-lock/unlock at commit time
-    bool cp_try_lock(int thread_id) {
-        return impl().cp_try_lock_impl(thread_id);
+    bool cp_try_lock(TransItem& item, int thread_id) {
+        return impl().cp_try_lock_impl(item, thread_id);
     }
     void cp_unlock(TransItem& item) {
         impl().cp_unlock_impl(item);
@@ -339,7 +339,8 @@ public:
     //inline type snapshot(const TransItem& item, const Transaction& txn);
     //inline type snapshot(TransProxy& item);
 
-    bool cp_try_lock_impl(int threadid) {
+    bool cp_try_lock_impl(TransItem& item, int threadid) {
+        (void)item;
         return TransactionTid::try_lock(v_, threadid);
     }
     void cp_unlock_impl(TransItem& item) {

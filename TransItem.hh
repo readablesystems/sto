@@ -226,17 +226,27 @@ class TransItem {
         return mode_;
     }
 
+    void cc_mode_check_tictoc(void *ts_origin, bool compressed) {
+        if (mode_ == CCMode::none) {
+            mode_ = CCMode::tictoc;
+            if (compressed) {
+                ts_origin_ =
+                        reinterpret_cast<uintptr_t>(ts_origin) | tictoc_compressed_type_bit;
+            } else {
+                ts_origin_ = reinterpret_cast<uintptr_t>(ts_origin);
+            }
+        }
+        assert(mode_ == CCMode::tictoc);
+        assert(ts_origin_ != 0);
+    }
+
     bool cc_mode_is_optimistic(bool version_optimistic) {
         return cc_mode(version_optimistic ? CCMode::opt : CCMode::lock) == CCMode::opt;
     }
 
-    void *& tictoc_ts_origin() {
-        return ts_origin_;
-    }
-
     template <typename VersImpl>
     VersImpl& tictoc_fetch_ts_origin() {
-        return *static_cast<VersImpl *>(ts_origin_);
+        return *reinterpret_cast<VersImpl *>(ts_origin_ & ~tictoc_compressed_type_bit);
     }
 
     template <typename VersImpl>
@@ -246,7 +256,7 @@ class TransItem {
 
     bool is_tictoc_compressed() {
         assert(cc_mode() == CCMode::tictoc);
-        return reinterpret_cast<uintptr_t>(ts_origin_) & tictoc_compressed_type_bit;
+        return (ts_origin_ & tictoc_compressed_type_bit) != 0;
     }
 
 private:
@@ -257,7 +267,7 @@ private:
     void* key_;
     rdata_t rdata_;
     void* wdata_;
-    void* ts_origin_; // only used by TicToc
+    uintptr_t ts_origin_; // only used by TicToc
 
     CCMode mode_;
 

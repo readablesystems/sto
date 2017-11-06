@@ -53,7 +53,8 @@ public:
     explicit TCommutativeVersion(type v)
             : BasicVersion<TCommutativeVersion>(v) {}
 
-    bool cp_try_lock_impl(int threadid) {
+    bool cp_try_lock_impl(TransItem& item, int threadid) {
+        (void)item;
         (void)threadid;
         return try_lock();
     }

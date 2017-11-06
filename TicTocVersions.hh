@@ -205,7 +205,8 @@ public:
         return TicTocTid::timestamp(wts_);
     }
 
-    bool cp_try_lock_impl(int threadid) {
+    bool cp_try_lock_impl(TransItem& item, int threadid) {
+        item.cc_mode_check_tictoc(this, false /* !compressed */);
         return TransactionTid::try_lock(BV::v_, threadid);
     }
     void cp_unlock_impl(TransItem& item) {
@@ -283,7 +284,8 @@ public:
         return TicTocCompressedTid::wts_value(v_);
     }
 
-    bool cp_try_lock_impl(int threadid) {
+    bool cp_try_lock_impl(TransItem& item, int threadid) {
+        item.cc_mode_check_tictoc(this, true /* compressed */);
         return TicTocCompressedTid::try_lock(v_, threadid);
     }
     void cp_unlock_impl(TransItem& item) {

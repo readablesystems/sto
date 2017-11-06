@@ -31,7 +31,8 @@ public:
     TLockVersion(type v, bool insert)
             : BasicVersion<TLockVersion>(v) {(void)insert;}
 
-    bool cp_try_lock_impl(int threadid) {
+    bool cp_try_lock_impl(TransItem& item, int threadid) {
+        (void)item;
         (void)threadid;
         v_ |= dirty_bit;
         release_fence();
@@ -188,7 +189,8 @@ public:
     }
 
     // commit-time lock for TSwissVersion is just setting the read-lock (dirty) bit
-    bool cp_try_lock_impl(int threadid) {
+    bool cp_try_lock_impl(TransItem& item, int threadid) {
+        (void)item;
         (void)threadid;
         assert(BV::is_locked_here(threadid));
         v_ |= read_lock_bit;

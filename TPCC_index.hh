@@ -86,7 +86,7 @@ struct get_occ_version {
 
 template <typename DBParams>
 struct get_version {
-    typedef typename std::conditional<DBParams::TicToc, TicTocVersion<false, true>,
+    typedef typename std::conditional<DBParams::TicToc, TicTocVersion<>,
             typename std::conditional<DBParams::Adaptive, TLockVersion,
             typename std::conditional<DBParams::Swiss, TSwissVersion<DBParams::Opaque>,
             typename get_occ_version<DBParams>::type>::type>::type>::type type;
