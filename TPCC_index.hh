@@ -87,9 +87,9 @@ struct get_occ_version {
 template <typename DBParams>
 struct get_version {
     typedef typename std::conditional<DBParams::TicToc, TicTocVersion<false, true>,
-                     std::conditional<DBParams::Adaptive, TLockVersion,
-                     std::conditional<DBParams::Swiss, TSwissVersion<DBParams::Opaque>,
-                     get_occ_version<DBParams>::type>::type>::type>::type type;
+            typename std::conditional<DBParams::Adaptive, TLockVersion,
+            typename std::conditional<DBParams::Swiss, TSwissVersion<DBParams::Opaque>,
+            typename get_occ_version<DBParams>::type>::type>::type>::type type;
 };
 
 template <typename DBParams>
@@ -925,7 +925,7 @@ public:
     void unlock(TransItem& item) override {
         assert(!is_internode(item));
         internal_elem *el = item.key<internal_elem *>();
-        Transaction::unlock(item, el->version);
+        el->version.cp_unlock(item);
     }
 
     void cleanup(TransItem& item, bool committed) override {

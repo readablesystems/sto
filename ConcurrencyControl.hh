@@ -296,8 +296,8 @@ inline bool TLockVersion::observe_read_impl(TransItem& item, bool add_read) {
     // has been finally deteremined
     if (optimistic) {
         // abort if not locked here
-        if (occ_version.is_locked() && !item.has_write()) {
-            t().mark_abort_because(&item, "locked", occ_version.value());
+        if (occ_version.is_dirty()) {
+            t().mark_abort_because(&item, "lock-dirty", occ_version.value());
             TXP_INCREMENT(txp_observe_lock_aborts);
             return false;
         }
@@ -785,4 +785,4 @@ inline void Transaction::compute_tictoc_commit_ts_step(const TicTocBase<VersImpl
 }
 
 template <typename NonTicTocImpl>
-inline void Transaction::compute_tictoc_commit_ts_step(NonTicTocImpl &vers, bool is_write) const {}
+inline void Transaction::compute_tictoc_commit_ts_step(NonTicTocImpl &vers, bool is_write) const {(void)vers; (void)is_write;}

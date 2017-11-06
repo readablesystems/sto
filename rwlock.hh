@@ -12,6 +12,7 @@ public:
     while ( (v & write_bit) || !bool_cmpxchg(&value, v, v+1)) {
       __asm volatile("pause" : :);
       v = value;
+      fence();
     }
     fence();
   }
@@ -26,6 +27,7 @@ public:
     while ( v || !bool_cmpxchg(&value, v, write_bit)) {
       __asm volatile("pause" : :);
       v = value;
+      fence();
     }
     fence();
   }

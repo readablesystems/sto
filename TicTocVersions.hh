@@ -15,7 +15,7 @@ public:
     static void set_timestamp_locked(type& ts, type new_ts, type flags) {
         assert(is_locked_here(ts));
         new_ts = (new_ts << ts_shift) | lock_bit | TThread::id();
-        ts = new_ts;
+        ts = new_ts | flags;
         release_fence();
     }
 
@@ -188,6 +188,7 @@ public:
 
     TicTocVersion() = delete;
     explicit TicTocVersion(type v) : BV(v), wts_(v) {}
+    explicit TicTocVersion(type v, bool insert) : BV(v), wts_(v) {(void)insert;}
 
     bool operator==(const TicTocVersion<Opaque, Extend>& other) const {
         return BV::v_ == other.v_ && wts_ == other.wts_;
@@ -262,6 +263,10 @@ public:
     explicit TicTocCompressedVersion(type v) {
         v_ = (v / TransactionTid::increment_value) << TicTocCompressedTid::wts_shift;
     }
+    explicit TicTocCompressedVersion(type v, bool insert) {
+        (void)insert;
+        v_ = (v / TransactionTid::increment_value) << TicTocCompressedTid::wts_shift;
+    }
 
     bool is_locked() const {
         return TicTocCompressedTid::is_locked(v_);
@@ -282,6 +287,7 @@ public:
         return TicTocCompressedTid::try_lock(v_, threadid);
     }
     void cp_unlock_impl(TransItem& item) {
+        (void)item;
         TicTocCompressedTid::unlock(v_);
     }
 

@@ -20,6 +20,7 @@ public:
     static constexpr type rlock_cnt_max = type(0x10); // max number of readers
     static constexpr type lock_bit = TransactionTid::lock_bit;
     static constexpr type opt_bit = TransactionTid::opt_bit;
+    static constexpr type dirty_bit = TransactionTid::dirty_bit;
 
     using BV = BasicVersion<TLockVersion>;
     using BV::v_;
@@ -32,17 +33,23 @@ public:
 
     bool cp_try_lock_impl(int threadid) {
         (void)threadid;
-        return (try_lock_write() == LockResponse::locked);
+        v_ |= dirty_bit;
+        release_fence();
+        return true;
     }
 
     void cp_unlock_impl(TransItem& item) {
         assert(item.needs_unlock());
-        if (item.has_write())
+        if (item.has_write()) {
             unlock_write();
-        else {
+            release_fence();
+        } else {
             assert(item.has_read());
             unlock_read();
         }
+    }
+    void cp_set_version_unlock_impl(type new_v) {
+        TransactionTid::set_version_unlock_dirty(v_, new_v);
     }
 
     inline bool acquire_write_impl(TransItem& item);
@@ -58,6 +65,9 @@ public:
     static inline type& cp_access_tid_impl(Transaction& txn);
     inline type cp_commit_tid_impl(Transaction& txn);
 
+    bool is_dirty() const {
+        return (v_ & dirty_bit) != 0;
+    }
     bool hint_optimistic() const {
         return (v_ & opt_bit) != 0;
     }
@@ -137,10 +147,10 @@ private:
     void unlock_write() {
         assert(is_locked());
 #if ADAPTIVE_RWLOCK == 0
-        type new_v = v_ & ~lock_bit;
+        type new_v = v_ & ~(lock_bit | dirty_bit);
 #else
         type new_v = TThread::gen[TThread::id()].chance(unlock_opt_chance) ?
-                ((v_ & ~lock_bit) | opt_bit) : (v_ & ~lock_bit);
+                ((v_ & ~(lock_bit | dirty_bit)) | opt_bit) : (v_ & ~(lock_bit | dirty_bit));
 #endif
         v_ = new_v;
         release_fence();
@@ -189,9 +199,11 @@ public:
         (void)item;
         assert(item.needs_unlock());
         if (BV::is_locked()) {
-            v_ &= ~read_lock_bit;
-            TransactionTid::unlock(v_);
+            TransactionTid::unlock_dirty(v_);
         }
+    }
+    void cp_set_version_unlock_impl(type new_v) {
+        TransactionTid::set_version_unlock_dirty(v_, new_v);
     }
 
     inline bool acquire_write_impl(TransItem& item);
