@@ -706,7 +706,7 @@ public:
 
     void silent_abort() {
         if (in_progress())
-            stop(false, nullptr, 0, 0);
+            stop(false, nullptr, 0);
     }
 
     void abort() {
@@ -958,7 +958,7 @@ private:
     TransItem tset0_[tset_initial_capacity];
 
     bool hard_check_opacity(TransItem* item, TransactionTid::type t);
-    void stop(bool committed, unsigned* writes, unsigned nwrites, unsigned first_lock);
+    void stop(bool committed, unsigned* writes, unsigned nwrites);
 
     friend class TransProxy;
     friend class TransItem;
