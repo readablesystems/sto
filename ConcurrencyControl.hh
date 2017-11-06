@@ -459,7 +459,7 @@ template <bool Opaque, bool Extend>
 inline bool TicTocVersion<Opaque, Extend>::observe_read_impl(TransItem& item, bool add_read) {
     item.cc_mode_check_tictoc(this, false /* !compressed */);
     assert(!item.has_stash());
-    if (BV::is_locked_elsewhere(TThread::id())) {
+    if (BV::is_locked_elsewhere()) {
         t().mark_abort_because(&item, "locked", BV::value());
         return false;
     }
@@ -531,7 +531,7 @@ template <bool Opaque, bool Extend>
 inline bool TicTocCompressedVersion<Opaque, Extend>::observe_read_impl(TransItem& item, bool add_read) {
     item.cc_mode_check_tictoc(this, true /* compressed */);
     assert(!item.has_stash());
-    if (BV::is_locked_elsewhere(TThread::id())) {
+    if (BV::is_locked_elsewhere()) {
         t().mark_abort_because(&item, "locked", BV::value());
         return false;
     }

@@ -946,7 +946,7 @@ private:
 #if STO_DEBUG_ABORTS
     mutable TransItem* abort_item_;
     mutable const char* abort_reason_;
-    mutable TVersion::type abort_version_;
+    mutable tid_type abort_version_;
 #endif
 #if STO_TSC_PROFILE
     mutable tc_counter_type start_tsc_;
