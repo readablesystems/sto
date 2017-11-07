@@ -657,13 +657,17 @@ static bool doRead(T& a, int slot, value_type& ret) {
 
 template <typename T>
 static bool doWrite(T& a, int slot, int& ctr) {
-    return a.transPut(slot, val(ctr));
-#if 0
-else {
+    //return a.transPut(slot, val(ctr));
+//#if 0
+//else {
     // increment current value (this lets us verify transaction correctness)
-    if (readMyWrites) {
-      auto v0 = a.transGet(slot);
-      a.transPut(slot, val(unval(v0)+1));
+   // if (readMyWrites) {
+      ++ctr;
+      value_type ret;
+      if (!a.transGet(slot, ret))
+          return false;
+      return a.transPut(slot, val(unval(ret)+1));
+#if 0
 #if TRY_READ_MY_WRITES
           // read my own writes
           assert(a.transGet(slot) == v0+1);
@@ -1176,13 +1180,12 @@ void RandomRWs_parent<DS>::do_run(int me) {
   container_type* a = this->a;
   container_type::thread_init(*a);
 
-  unsigned ids[100] = {10, 240, 45, 205, 80, 170, 105, 140, 11, 239, 46, 204, 81, 169, 106, 141, 12, 238, 47, 203, 82, 168, 107, 142, 13, 237, 48, 202, 83, 167, 108, 143, 14, 236, 49, 201, 84, 166, 109, 144, 15, 235, 50, 200, 85, 165, 110, 145, 16, 234, 51, 199, 86, 164, 111, 146, 17, 233, 52, 198, 87, 163, 112, 147, 18, 232, 53, 197, 88, 162, 113, 148, 19, 231, 54, 196, 89, 161, 114, 149, 20, 230, 55, 195, 90, 160, 115, 150, 21, 229, 56, 194, 91, 159, 116, 151, 22, 228, 57, 193}; 
+  //unsigned ids[100] = {10, 240, 45, 205, 80, 170, 105, 140, 11, 239, 46, 204, 81, 169, 106, 141, 12, 238, 47, 203, 82, 168, 107, 142, 13, 237, 48, 202, 83, 167, 108, 143, 14, 236, 49, 201, 84, 166, 109, 144, 15, 235, 50, 200, 85, 165, 110, 145, 16, 234, 51, 199, 86, 164, 111, 146, 17, 233, 52, 198, 87, 163, 112, 147, 18, 232, 53, 197, 88, 162, 113, 148, 19, 231, 54, 196, 89, 161, 114, 149, 20, 230, 55, 195, 90, 160, 115, 150, 21, 229, 56, 194, 91, 159, 116, 151, 22, 228, 57, 193}; 
 
 #if NON_CONFLICTING
   long range = ARRAY_SZ/nthreads;
   std::uniform_int_distribution<long> slotdist(me*range + 10, (me + 1) * range - 1 - 10);
 #else
-  long range = ARRAY_SZ/nthreads;
   std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
 #endif
 
@@ -1239,14 +1242,9 @@ void RandomRWs_parent<DS>::do_run(int me) {
           slots_written[nslots_written++] = slot;
 #endif
         }
-
-        if (!success)
-	    break;
+        TXN_DO(success);
       }
-
-      if (!success) {
-          __txn_guard.silent_abort();
-      }
+      (void)__txn_committed;
     } RETRY(true);
 
 
@@ -1730,7 +1728,7 @@ struct Test {
 //    MAKE_TESTER("isolatedwrites", 0, IsolatedWrites),
 //    MAKE_TESTER("blindwrites", 0, BlindWrites),
 //    MAKE_TESTER("interferingwrites", 0, InterferingRWs),
-//    MAKE_TESTER("randomrw", "typically best choice", RandomRWs, false),
+    MAKE_TESTER("randomrw", "typically best choice", RandomRWs, false),
 //    MAKE_TESTER("readthenwrite", 0, ReadThenWrite),
 //    MAKE_TESTER("kingofthedelete", 0, KingDelete),
 //    MAKE_TESTER("xordelete", 0, XorDelete),

@@ -245,9 +245,9 @@ unlock_all:
     restarted = true;
 
     // XXX no back off for now
-    //if (!committed) {
-    //    ContentionManager::on_rollback(this);
-    //}
+    if (!committed) {
+       ContentionManager::on_rollback(this);
+    }
 
     // clear/consolidate transactional scratch space
     scratch_.clear();

@@ -497,13 +497,14 @@ private:
 
 #if TRANSACTION_HASHTABLE
     static int hash(const TObject* obj, void* key) {
-	/*(void) obj;
-	return (reinterpret_cast<uintptr_t>(key) >> 2) % hash_size;*/
-        auto n = reinterpret_cast<uintptr_t>(key) + 0x4000000;
+	(void) obj;
+	return (reinterpret_cast<uintptr_t>(key)) % hash_size;
+        /*auto n = reinterpret_cast<uintptr_t>(key) + 0x4000000;
         n += -uintptr_t(n < 0x8000000) & (reinterpret_cast<uintptr_t>(obj) >> 4);
         //2654435761
         return (n + (n >> 16) * 9) % hash_size;
         //return reinterpret_cast<uintptr_t>(key) % hash_size;
+       */
     }
 #endif
 

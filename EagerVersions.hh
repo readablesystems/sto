@@ -135,7 +135,7 @@ private:
 #else
         while (1) {
             type vv = v_;
-            assert((vv & threadid_mask) >= 1);
+            assert((vv & mask) >= 1);
             type new_v = TThread::gen[TThread::id()].chance(unlock_opt_chance) ?
                     ((vv - 1) | opt_bit) : (vv - 1);
             if (::bool_cmpxchg(&v_, vv, new_v))
