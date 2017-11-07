@@ -11,7 +11,7 @@
 #include <sys/resource.h>
 #include <fstream>
 
-//#include "TArray.hh"
+#include "TArray.hh"
 //#include "TGeneric.hh"
 //#include "Hashtable.hh"
 //#include "Queue.hh"
@@ -209,18 +209,18 @@ private:
     type v_;
 };
 
-/*template <> struct Container<USE_ARRAY_NONOPAQUE> {
+template <> struct Container<USE_ARRAY_NONOPAQUE> {
     typedef TArray<value_type, ARRAY_SZ, TNonopaqueWrapped> type;
     typedef int index_type;
     static constexpr bool has_delete = false;
     value_type nontrans_get(index_type key) {
         return v_.nontrans_get(key);
     }
-    value_type transGet(index_type key) {
-        return v_.transGet(key);
+    bool transGet(index_type key, value_type& ret) {
+        return v_.transGet(key, ret);
     }
-    void transPut(index_type key, value_type value) {
-        v_.transPut(key, value);
+    bool transPut(index_type key, value_type value) {
+        return v_.transPut(key, value);
     }
     static void init() {
     }
@@ -234,7 +234,7 @@ private:
     type v_;
 };
 
-template <> struct Container<USE_VECTOR> {
+/*template <> struct Container<USE_VECTOR> {
     typedef Vector<value_type> type;
     typedef typename type::size_type index_type;
     static constexpr bool has_delete = false;
@@ -1051,7 +1051,7 @@ void RandomRWs_parent<DS>::do_run(int me) {
   long range = ARRAY_SZ/nthreads;
   std::uniform_int_distribution<long> slotdist(me*range + 10, (me + 1) * range - 1 - 10);
 #else
-  long range = ARRAY_SZ/nthreads;
+  //long range = ARRAY_SZ/nthreads;
   std::uniform_int_distribution<long> slotdist(0, ARRAY_SZ-1);
 #endif
 
@@ -1589,6 +1589,7 @@ void print_time(double time) {
 */
 
 #define MAKE_TESTER(name, desc, type, ...)            \
+    {name, desc, 10, new type<10, ## __VA_ARGS__>},   \
     {name, desc, 11, new type<11, ## __VA_ARGS__>},   \
     {name, desc, 12, new type<12, ## __VA_ARGS__>}
 

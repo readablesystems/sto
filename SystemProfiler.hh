@@ -22,7 +22,7 @@ void profile(const std::string& name, std::function<void(void)> profilee) {
 
     pid_t pid = fork();
     if (pid == 0) {
-        //int console = open("/dev/null", O_RDWR);
+        int console = open("/dev/null", O_RDWR);
         assert(console > 0);
         assert(dup2(console, STDOUT_FILENO) != -1);
         assert(dup2(console, STDERR_FILENO) != -1);

@@ -36,17 +36,21 @@ public:
     inline const_iterator end() const;
 
     // transGet and friends
-    get_type transGet(size_type i) const {
+    get_type transGet(size_type i, T& ret) const {
         assert(i < N);
         auto item = Sto::item(this, i);
-        if (item.has_write())
-            return item.template write_value<T>();
-        else
-            return data_[i].v.read(item, data_[i].vers);
+        if (item.has_write()) {
+            ret = item.template write_value<T>();
+            return true;
+        }
+        else {
+            return data_[i].v.read(item, data_[i].vers, ret);
+       }
     }
-    void transPut(size_type i, T x) const {
+    bool transPut(size_type i, T x) const {
         assert(i < N);
         Sto::item(this, i).add_write(x);
+        return true;
     }
 
     get_type nontrans_get(size_type i) const {

@@ -249,9 +249,9 @@ after_unlock:
     // XXX should reset trans_end_callback after calling it...
     state_ = s_aborted + committed;
     restarted = true;
-    if (!committed) {
-        ContentionManager::on_rollback(this);
-    } 
+    //if (!committed) {
+    //    ContentionManager::on_rollback(this);
+   // } 
     //outfile << "Stop finished!" << std::endl; 
     //outfile.close();
 
@@ -415,7 +415,7 @@ bool Transaction::try_commit() {
     // fence();
     stop(true, writeset, nwriteset);
 
-    COZ_PROGRESS;
+    //COZ_PROGRESS;
 
     /*clock_gettime(CLOCK_REALTIME, &ts2);
     if (ts2.tv_nsec < ts1.tv_nsec) {

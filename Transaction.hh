@@ -17,7 +17,7 @@
 //#include <coz.h>
 
 #ifndef STO_PROFILE_COUNTERS
-#define STO_PROFILE_COUNTERS 0
+#define STO_PROFILE_COUNTERS 1
 #endif
 #ifndef STO_TSC_PROFILE
 #define STO_TSC_PROFILE 0
