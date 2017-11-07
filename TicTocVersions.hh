@@ -167,8 +167,8 @@ public:
     TicTocBase() : BV() {}
     explicit TicTocBase(type v) : BV(v) {}
 
-    bool is_locked_elsewhere(int threadid) {
-        return TicTocTid::is_locked_elsewhere(type(threadid));
+    bool is_locked_elsewhere() {
+        return TicTocTid::is_locked_elsewhere(v_);
     }
 
     type read_timestamp() const {
@@ -186,7 +186,7 @@ public:
 
     typedef typename BV::type type;
 
-    TicTocVersion() = delete;
+    TicTocVersion() : BV(), wts_() {};
     explicit TicTocVersion(type v) : BV(v), wts_(v) {}
     explicit TicTocVersion(type v, bool insert) : BV(v), wts_(v) {(void)insert;}
 
@@ -260,7 +260,7 @@ public:
 
     typedef typename BV::type type;
 
-    TicTocCompressedVersion() = delete;
+    TicTocCompressedVersion() {v_ = 0;}
     explicit TicTocCompressedVersion(type v) {
         v_ = (v / TransactionTid::increment_value) << TicTocCompressedTid::wts_shift;
     }

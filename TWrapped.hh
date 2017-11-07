@@ -321,6 +321,9 @@ public:
     const T& access() const {
         return v_;
     }
+    T& access() {
+        return v_;
+    }
     read_type snapshot(TransProxy item, const version_type& version) const {
         if (Opaque || Trivial)
             return TWrappedAccess::read_atomic(&v_, item, version, false);

@@ -115,7 +115,7 @@ inline bool TVersion::observe_read_impl(TransItem &item, bool add_read){
     TVersion version = *this;
     fence();
 
-    if (version.is_locked_elsewhere(TThread::id())) {
+    if (version.is_locked_elsewhere()) {
         t().mark_abort_because(&item, "locked", version.value());
         TXP_INCREMENT(txp_observe_lock_aborts);
         return false;
@@ -138,7 +138,7 @@ inline bool TNonopaqueVersion::observe_read_impl(TransItem& item, bool add_read)
     assert(!item.has_stash());
     TNonopaqueVersion version = *this;
     fence();
-    if (version.is_locked_elsewhere(TThread::id())) {
+    if (version.is_locked_elsewhere()) {
         t().mark_abort_because(&item, "locked", version.value());
         TXP_INCREMENT(txp_observe_lock_aborts);
         return false;

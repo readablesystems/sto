@@ -38,6 +38,10 @@ add_executable(tpcc_bench
         TPCC_index.hh
         TPCC_txns.hh)
 
+add_executable(concurrent
+        srandomdev.c
+        concurrent.cc)
+
 add_executable(unit-tflexarray
         unit-tflexarray.cc
         TFlexArray.hh)
@@ -62,3 +66,4 @@ target_link_libraries(unit-swisstarray sto dprint)
 target_link_libraries(unit-tflexarray sto dprint)
 target_link_libraries(unit-tbox sto dprint)
 target_link_libraries(unit-tarray sto dprint)
+target_link_libraries(concurrent sto clp dprint ${PLATFORM_LIBRARIES})

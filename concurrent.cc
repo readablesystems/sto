@@ -3,31 +3,30 @@
 #include <sstream>
 #include <fstream>
 #include <set>
-#include <assert.h>
 #include <random>
 #include <thread>
 #include <climits>
+#include <cassert>
+#include <cstdlib>
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <fstream>
 
-#include "TArray.hh"
-#include "TArrayAdaptive.hh"
-#include "TGeneric.hh"
-#include "Hashtable.hh"
-#include "Queue.hh"
-#include "Vector.hh"
-#include "TVector.hh"
-#include "Transaction.hh"
+#include "TFlexArray.hh"
+//#include "TGeneric.hh"
+//#include "Hashtable.hh"
+//#include "Queue.hh"
+//#include "Vector.hh"
+//#include "TVector.hh"
+//#include "Transaction.hh"
 #include "IntStr.hh"
 #include "clp.h"
 #include "randgen.hh"
-#include "SwissTArray.hh"
-#include "SwissTGeneric.hh"
+//#include "SwissTGeneric.hh"
 #include "sampling.hh"
 #include "SystemProfiler.hh"
 
-#include "MassTrans.hh"
+//#include "MassTrans.hh"
 
 // size of array (for hashtables or other non-array structures, this is the
 // size of the key space)
@@ -47,7 +46,8 @@
 #define USE_ARRAY_NONOPAQUE 10
 #define USE_ARRAY_ADAPTIVE 11
 #define USE_SWISSARRAY 12
-#define USE_SWISSGENERICARRAY 13
+//#define USE_SWISSGENERICARRAY 13
+#define USE_ARRAY_TICTOC 14
 
 // set this to USE_DATASTRUCTUREYOUWANT
 #define DATA_STRUCTURE USE_HASHTABLE
@@ -153,7 +153,7 @@ inline value_type strtoval(const std::string& s) {
 #endif
 }
 
-volatile mrcu_epoch_type active_epoch = 1;
+//volatile mrcu_epoch_type active_epoch = 1;
 
 unsigned initial_seeds[64];
 
@@ -161,8 +161,8 @@ unsigned initial_seeds[64];
 template <int DS> struct Container {};
 
 
-/*template <> struct Container<USE_ARRAY> {
-    typedef TArray<value_type, ARRAY_SZ> type;
+template <> struct Container<USE_ARRAY> {
+    typedef TFlexArray<value_type, ARRAY_SZ, TOpaqueWrapped> type;
     typedef int index_type;
     static constexpr bool has_delete = false;
     value_type nontrans_get(index_type key) {
@@ -187,14 +187,17 @@ template <int DS> struct Container {};
     }
 private:
     type v_;
-};*/
+};
 
 template <> struct Container<USE_SWISSARRAY> {
-    typedef SwissTArray<value_type, ARRAY_SZ, TNonopaqueWrapped> type;
+    typedef TSwissArray<value_type, ARRAY_SZ> type;
     typedef int index_type;
     static constexpr bool has_delete = false;
     value_type nontrans_get(index_type key) {
         return v_.nontrans_get(key);
+    }
+    void nontrans_put(index_type key, const value_type& val) {
+        v_.nontrans_put(key, val);
     }
     bool transGet(index_type key, value_type& ret) {
         return v_.transGet(key, ret);
@@ -214,8 +217,8 @@ private:
     type v_;
 };
 
-/*template <> struct Container<USE_ARRAY_NONOPAQUE> {
-    typedef TArray<value_type, ARRAY_SZ, TNonopaqueWrapped> type;
+template <> struct Container<USE_ARRAY_NONOPAQUE> {
+    typedef TOCCArray<value_type, ARRAY_SZ> type;
     typedef int index_type;
     static constexpr bool has_delete = false;
     value_type nontrans_get(index_type key) {
@@ -243,7 +246,7 @@ private:
 };
 
 template <> struct Container<USE_ARRAY_ADAPTIVE> {
-    typedef TArrayAdaptive<value_type, ARRAY_SZ> type;
+    typedef TLockArray<value_type, ARRAY_SZ> type;
     typedef int index_type;
     static constexpr bool has_delete = false;
     value_type nontrans_get(index_type key) {
@@ -259,11 +262,38 @@ template <> struct Container<USE_ARRAY_ADAPTIVE> {
         return v_.transPut(key, value);
     }
     static void init() {}
+    void init_ns() {}
+    void finalize() {}
     static void thread_init(Container<USE_ARRAY_ADAPTIVE>&) {}
 private:
     type v_;
 };
 
+template <> struct Container<USE_ARRAY_TICTOC> {
+    typedef TicTocArray<value_type, ARRAY_SZ> type;
+    typedef int index_type;
+    static constexpr bool has_delete = false;
+    value_type nontrans_get(index_type key) {
+        return v_.nontrans_get(key);
+    }
+    void nontrans_put(index_type key, const value_type& val) {
+        v_.nontrans_put(key, val);
+    }
+    bool transGet(index_type key, value_type& ret) {
+        return v_.transGet(key, ret);
+    }
+    bool transPut(index_type key, value_type value) {
+        return v_.transPut(key, value);
+    }
+    static void init() {}
+    void init_ns() {}
+    void finalize() {}
+    static void thread_init(Container<USE_ARRAY_TICTOC>&) {}
+private:
+    type v_;
+};
+
+/*
 template <> struct Container<USE_VECTOR> {
     typedef Vector<value_type> type;
     typedef typename type::size_type index_type;
@@ -875,7 +905,7 @@ bool HotspotRW<DS>::prepopulate() {
     return true;
 }
 
-/*template <int DS>
+template <int DS>
 void HotspotRW<DS>::run(int me) {
     TThread::set_id(me);
     container_type* a = this->a;
@@ -921,6 +951,7 @@ void HotspotRW<DS>::run(int me) {
                     break;
                 }
             }
+        (void)__txn_committed;
         } RETRY(true);
     }
 
@@ -935,7 +966,7 @@ void HotspotRW<DS>::run(int me) {
         }
     }
 #endif
-}*/
+}
 
 template <int DS>
 void HotspotRW<DS>::report() {
@@ -1679,7 +1710,7 @@ void print_time(double time) {
     {name, desc, 10, new type<10, ## __VA_ARGS__>},   \
     {name, desc, 11, new type<11, ## __VA_ARGS__>},   \
     {name, desc, 12, new type<12, ## __VA_ARGS__>},   \
-    {name, desc, 13, new type<12, ## __VA_ARGS__>}
+    {name, desc, 14, new type<14, ## __VA_ARGS__>}
 
 //    {name, desc, 1, new type<1, ## __VA_ARGS__>},     
 //    {name, desc, 2, new type<2, ## __VA_ARGS__>},     
@@ -1688,6 +1719,8 @@ void print_time(double time) {
 //    {name, desc, 8, new type<8, ## __VA_ARGS__>},     
 //    {name, desc, 9, new type<9, ## __VA_ARGS__>},     
 //    {name, desc, 6, new type<6, ## __VA_ARGS__>},
+//    {name, desc, 13, new type<13, ## __VA_ARGS__>},
+
 struct Test {
     const char* name;
     const char* desc;
@@ -1715,6 +1748,7 @@ struct {
     {"array", USE_ARRAY},
     {"array-nonopaque", USE_ARRAY_NONOPAQUE},
     {"array-adaptive", USE_ARRAY_ADAPTIVE},
+    {"array-tictoc", USE_ARRAY_TICTOC},
     {"hashtable", USE_HASHTABLE},
     {"hash", USE_HASHTABLE},
     {"hash-str", USE_HASHTABLE_STR},
@@ -1725,14 +1759,12 @@ struct {
     {"queue", USE_QUEUE},
 //    {"vector", USE_VECTOR},
     {"tvector", USE_TVECTOR},
-    {"swissarray", USE_SWISSARRAY},
-    {"swissgeneric", USE_SWISSGENERICARRAY}
+    {"swissarray", USE_SWISSARRAY}
+//    {"swissgeneric", USE_SWISSGENERICARRAY}
 };
 
 enum {
     opt_test = 1, opt_nrmyw, opt_check, opt_profile, opt_dump, opt_nthreads, opt_ntrans, opt_opspertrans, opt_opspertrans_ro, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew, opt_chance
-};
-
 };
 
 static const Clp_Option options[] = {
@@ -1769,9 +1801,12 @@ Options:\n\
  --blindrandwrites, do blind random writes for random tests. makes checking impossible\n\
  --prepopulate=PREPOPULATE, prepopulate table with given number of items (default %d)\n\
  --seed=SEED\n\
- --skew=SKEW, skew parameter for zipfrw test type (default %f)\n\
- --chance=PROB, chance of reverting to optimistic mode in adaptive RW lock (default %d)\n",
-         name, nthreads, ntrans, opspertrans, write_percent, readonly_percent, prepopulate, zipf_skew, TransactionTid::unlock_opt_chance);
+ --skew=SKEW, skew parameter for zipfrw test type (default %f)\n",
+         name, nthreads, ntrans, opspertrans, write_percent, readonly_percent, prepopulate, zipf_skew);
+#if ADAPTIVE_RWLOCK
+  printf(" --chance=PROB, chance of reverting to optimistic mode in adaptive RW lock (default %d)\n",
+         TLockVersion::opt_unlock_chance);
+#endif
   printf("\nTests:\n");
   size_t testidx = 0;
   for (size_t ti = 0; ti != sizeof(tests)/sizeof(tests[0]); ++ti)
@@ -1862,7 +1897,9 @@ int main(int argc, char *argv[]) {
         zipf_skew = clp->val.d;
         break;
     case opt_chance:
-        TransactionTid::unlock_opt_chance = clp->val.d;
+#if ADAPTIVE_RWLOCK
+        TLockVersion::unlock_opt_chance = clp->val.d;
+#endif
         break;
     default:
       help(argv[0]);

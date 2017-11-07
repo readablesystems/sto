@@ -29,7 +29,7 @@ public:
 
     bool transPut(size_type i, T x) const {
         assert(i < N);
-        return Sto::item(this, i).acquire_wirte(data_[i].vers, x);
+        return Sto::item(this, i).acquire_write(data_[i].vers, x);
     }
 
     get_type nontrans_get(size_type i) const {
