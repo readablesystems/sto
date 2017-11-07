@@ -40,6 +40,12 @@ public:
     static bool is_locked(type v) {
         return (v & lock_bit) != 0;
     }
+    static bool is_dirty(type v) {
+        return (v & dirty_bit) != 0;
+    }
+    static bool is_read_locked(type v) {
+        return is_dirty(v);
+    }
     static bool is_optimistic(type v) {
         return (v & opt_bit) != 0;
     }
@@ -407,6 +413,12 @@ public:
     }
     bool is_locked_elsewhere(int here) const {
         return TransactionTid::is_locked_elsewhere(v_, here);
+    }
+    bool is_dirty() const {
+        return TransactionTid::is_dirty(v_);
+    }
+    bool is_read_locked() const {
+        return TransactionTid::is_read_locked(v_);
     }
 
     void set_nonopaque() {

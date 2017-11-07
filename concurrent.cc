@@ -1805,7 +1805,7 @@ Options:\n\
          name, nthreads, ntrans, opspertrans, write_percent, readonly_percent, prepopulate, zipf_skew);
 #if ADAPTIVE_RWLOCK
   printf(" --chance=PROB, chance of reverting to optimistic mode in adaptive RW lock (default %d)\n",
-         TLockVersion::opt_unlock_chance);
+         TLockVersion::unlock_opt_chance);
 #endif
   printf("\nTests:\n");
   size_t testidx = 0;
@@ -2024,7 +2024,7 @@ int main(int argc, char *argv[]) {
           sep = ", ";
       }
       if (txp_count > txp_total_aborts) {
-          printf("%stotal_aborts: %llu (%llu aborts at commit time, %llu in observe, %llus due to w/w conflicts)\n CM::should_abort: %llu, CM::on_write: %llu, CM::on_rollback: %llu, CM::start: %llu\n Allocate new items: %llu, BV hit: %llu", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts), tc.p(txp_observe_lock_aborts), tc.p(txp_wwc_aborts), tc.p(txp_cm_shouldabort), tc.p(txp_cm_onwrite), tc.p(txp_cm_onrollback), tc.p(txp_cm_start), tc.p(txp_allocate), tc.p(txp_bv_hit));
+          printf("%stotal_aborts: %llu (%llu aborts at commit time, %llu in observe, %llus due to write lock time-outs)\n CM::should_abort: %llu, CM::on_write: %llu, CM::on_rollback: %llu, CM::start: %llu\n Allocate new items: %llu, BV hit: %llu", sep, tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts), tc.p(txp_observe_lock_aborts), tc.p(txp_lock_aborts), tc.p(txp_cm_shouldabort), tc.p(txp_cm_onwrite), tc.p(txp_cm_onrollback), tc.p(txp_cm_start), tc.p(txp_allocate), tc.p(txp_bv_hit));
           sep = ", ";
       }
       if (*sep)

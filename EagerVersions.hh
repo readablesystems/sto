@@ -66,9 +66,9 @@ public:
     static inline type& cp_access_tid_impl(Transaction& txn);
     inline type cp_commit_tid_impl(Transaction& txn);
 
-    bool is_dirty() const {
+    /*bool is_dirty() const {
         return (v_ & dirty_bit) != 0;
-    }
+    }*/
     bool hint_optimistic() const {
         return (v_ & opt_bit) != 0;
     }
@@ -162,6 +162,7 @@ private:
     inline std::pair<LockResponse, type> try_lock_read_with_spin();
     inline bool lock_for_write(TransItem& item);
 
+public:
 #if ADAPTIVE_RWLOCK != 0
     // hacky state used by adaptive read/write lock
     static int unlock_opt_chance;
@@ -226,7 +227,7 @@ private:
         return TransactionTid::try_lock(v_, TThread::id());
     }
 
-    bool is_read_locked() const {
+    /*bool is_read_locked() const {
         return (v_ & read_lock_bit) != 0;
-    }
+    }*/
 };

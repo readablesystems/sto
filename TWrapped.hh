@@ -81,7 +81,7 @@ public:
             V v0 = version;
             fence();
 
-            if (v0.is_read_locked()) {
+            if (v0.is_dirty()) {
                 relax_fence();
                 continue;
             }
