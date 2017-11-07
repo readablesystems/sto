@@ -76,21 +76,21 @@ public:
 }
 
     template <typename T, typename V>
-    static bool read_atomic(const T* v, TransProxy item, const V& version, bool add_read, T& ret) {
+    static std::pair<bool, T> read_clean_atomic(const T* v, TransProxy item, const V& version, bool add_read) {
         while (1) {
             V v0 = version;
             fence();
 
-            if (v0.is_locked()) {
+            if (v0.is_read_locked()) {
                 relax_fence();
                 continue;
             }
-            ret = *v;
+            T result = *v;
             fence();
             V v1 = version;
 
             if (v0 == v1) {
-               return item.observe(v1, add_read);
+               return std::make_pair(item.observe(v1, add_read), result);
             }
             relax_fence();
         }
@@ -136,9 +136,6 @@ public:
             }
             relax_fence();
         }
-        //item.observe(version, add_read);
-        //fence();
-        //return *v;
     }
 
     template <typename T, typename V>
@@ -235,7 +232,7 @@ public:
     }
     std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
         if (item.cc_mode_is_optimistic(version.hint_optimistic()))
-            return TWrappedAccess::read_atomic(&v_, item, version, true);
+            return TWrappedAccess::read_clean_atomic(&v_, item, version, true);
         else
             return TWrappedAccess::read_nonatomic(&v_, item, version, true);
     }
@@ -338,7 +335,7 @@ public:
     }
     std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
         if (Opaque || Trivial)
-            return TWrappedAccess::read_atomic(&v_, item, version, true);
+            return TWrappedAccess::read_clean_atomic(&v_, item, version, true);
         else
             return TWrappedAccess::read_nonatomic(&v_, item, version, true);
     }
