@@ -10,6 +10,11 @@ public:
     typedef typename W<T>::version_type version_type;
     typedef unsigned size_type;
 
+    TFlexArray() {
+        for (unsigned i = 0; i < N; ++i)
+            new (data_ + i) elem();
+    }
+
     size_type size() const {
         return N;
     }
@@ -68,6 +73,7 @@ public:
 
 private:
     struct elem {
+        elem() = default;
         mutable version_type vers;
         W<T> v;
     };

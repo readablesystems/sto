@@ -225,7 +225,7 @@ class VersionBase {
 public:
     typedef TransactionTid::type type;
 
-    VersionBase() = default;
+    VersionBase() : v_(initialized_tid) {}
     explicit VersionBase(type v) : v_(v) {}
 
     type value() const {
@@ -319,11 +319,12 @@ class BasicVersion : public VersionBase<VersImpl> {
 public:
     typedef TransactionTid::type type;
 
-    using VersionBase<VersImpl>::v_;
+    using Base = VersionBase<VersImpl>;
+    using Base::v_;
 
     BasicVersion() = default;
     explicit BasicVersion(type v)
-            : VersionBase<VersImpl>(v) {}
+            : Base(v) {}
 
     bool operator==(BasicVersion x) const {
         return v_ == x.v_;

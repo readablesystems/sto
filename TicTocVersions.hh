@@ -186,7 +186,7 @@ public:
 
     typedef typename BV::type type;
 
-    TicTocVersion() : BV(), wts_() {};
+    TicTocVersion() : BV(), wts_(initialized_tid) {};
     explicit TicTocVersion(type v) : BV(v), wts_(v) {}
     explicit TicTocVersion(type v, bool insert) : BV(v), wts_(v) {(void)insert;}
 
@@ -260,7 +260,7 @@ public:
 
     typedef typename BV::type type;
 
-    TicTocCompressedVersion() {v_ = 0;}
+    TicTocCompressedVersion() : BV(1 << TicTocCompressedTid::wts_shift) {}
     explicit TicTocCompressedVersion(type v) {
         v_ = (v / TransactionTid::increment_value) << TicTocCompressedTid::wts_shift;
     }
