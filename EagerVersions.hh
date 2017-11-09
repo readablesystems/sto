@@ -49,6 +49,14 @@ public:
             unlock_read();
         }
     }
+    bool cp_check_version_impl(Transaction& txn, TransItem& item) {
+        (void)txn;
+        type vv = v_;
+        fence();
+        if (TransactionTid::is_dirty(vv) && !TransactionTid::is_locked_here(vv))
+            return false;
+        return TransactionTid::check_version(vv, item.read_value<type>());
+    }
     void cp_set_version_unlock_impl(type new_v) {
         TransactionTid::set_version_unlock_dirty(v_, new_v);
     }
@@ -66,9 +74,6 @@ public:
     static inline type& cp_access_tid_impl(Transaction& txn);
     inline type cp_commit_tid_impl(Transaction& txn);
 
-    /*bool is_dirty() const {
-        return (v_ & dirty_bit) != 0;
-    }*/
     bool hint_optimistic() const {
         return (v_ & opt_bit) != 0;
     }
