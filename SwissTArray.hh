@@ -304,7 +304,8 @@ inline bool TransProxy::add_swiss_write(Args&&... args, WriteLock& wlock) {
     item().__or_flags(TransItem::write_bit | TransItem::lock_bit);
     item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
     t()->any_writes_ = true;
-    ContentionManager::on_write(t());
+    if (!ContentionManager::on_write(t()))
+      return false;
 
     //return *this;
     return true;

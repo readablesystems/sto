@@ -11,7 +11,7 @@ class ContentionManager {
 public:
     static bool should_abort(Transaction* tx, WriteLock wlock); 
 
-    static void on_write(Transaction* tx);
+    static bool on_write(Transaction* tx);
 
     static void start(Transaction *tx); 
 

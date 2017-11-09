@@ -248,7 +248,7 @@ after_unlock:
         thr.trans_end_callback();
     // XXX should reset trans_end_callback after calling it...
     state_ = s_aborted + committed;
-    restarted = true;
+    restarted = !committed;
     if (!committed) {
         ContentionManager::on_rollback(this);
     } 

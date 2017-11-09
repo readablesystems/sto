@@ -39,18 +39,18 @@ bool ContentionManager::should_abort(Transaction* tx, WriteLock wlock) {
 
 }
 
-void ContentionManager::on_write(Transaction* tx) {
+bool ContentionManager::on_write(Transaction* tx) {
     TXP_INCREMENT(txp_cm_onwrite);
     int threadid = tx->threadid();
     threadid *= 4;
-    //if (aborted[threadid] == 1) {
-    //  Sto::abort();
-    //}
+    if (aborted[threadid] == 1) {
+      return false;
+    }
     write_set_size[threadid] += 1;
     if (timestamp[threadid] == MAX_TS && write_set_size[threadid] == TS_THRESHOLD) {
         timestamp[threadid] = fetch_and_add(&ts, uint64_t(1));
-        //timestamp[threadid] = 1;
     }
+    return true;
 }
 
 void ContentionManager::start(Transaction *tx) {	
