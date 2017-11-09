@@ -29,7 +29,7 @@ public:
     explicit TLockVersion(type v)
             : BasicVersion<TLockVersion>(v) {}
     TLockVersion(type v, bool insert)
-            : BasicVersion<TLockVersion>(v) {(void)insert;}
+            : BasicVersion<TLockVersion>(v | (insert ? lock_bit : 0)) {}
 
     bool cp_try_lock_impl(TransItem& item, int threadid) {
         (void)item;
@@ -53,7 +53,7 @@ public:
         (void)txn;
         type vv = v_;
         fence();
-        if (TransactionTid::is_dirty(vv) && !TransactionTid::is_locked_here(vv))
+        if (TransactionTid::is_dirty(vv) && !item.has_write())
             return false;
         return TransactionTid::check_version(vv, item.read_value<type>());
     }

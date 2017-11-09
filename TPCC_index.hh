@@ -450,6 +450,7 @@ public:
             internal_elem *el = item.key<internal_elem *>();
             assert(!el->valid() || el->deleted);
             _remove(el);
+            item.clear_needs_unlock();
         }
     }
 
@@ -934,6 +935,7 @@ public:
             internal_elem *el = item.key<internal_elem *>();
             bool ok = _remove(el->key);
             always_assert(ok, "insert-bit exclusive ownership violated");
+            item.clear_needs_unlock();
         }
     }
 
