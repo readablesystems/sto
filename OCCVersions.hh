@@ -11,6 +11,14 @@ public:
     TVersion(type v, bool insert)
             : BasicVersion(v) {(void)insert;}
 
+    bool cp_check_version_impl(Transaction& txn, TransItem& item) {
+        (void)txn;
+        assert(item.has_read());
+        if (TransactionTid::is_locked(v_) && !item.has_write())
+            return false;
+        return check_version(item.read_value<TVersion>());
+    }
+
     inline bool observe_read_impl(TransItem& item, bool add_read);
 
     static inline type& cp_access_tid_impl(Transaction& txn);

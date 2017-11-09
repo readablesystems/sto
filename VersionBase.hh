@@ -361,14 +361,6 @@ public:
         (void)item;
         TransactionTid::unlock(v_);
     }
-    bool cp_check_version_impl(Transaction& txn, TransItem& item) {
-        (void)txn;
-        assert(item.has_read());
-        if (TransactionTid::is_locked(v_) && !item.has_write())
-            return false;
-        return check_version(item.read_value<BasicVersion>());
-    }
-
     void cp_set_version_unlock_impl(type new_v) {
         TransactionTid::set_version_unlock(v_, new_v);
     }
