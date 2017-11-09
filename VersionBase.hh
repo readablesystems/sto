@@ -43,9 +43,6 @@ public:
     static bool is_dirty(type v) {
         return (v & dirty_bit) != 0;
     }
-    static bool is_read_locked(type v) {
-        return is_dirty(v);
-    }
     static bool is_optimistic(type v) {
         return (v & opt_bit) != 0;
     }
@@ -72,6 +69,16 @@ public:
     static bool try_lock(type& v) {
         type vv = v;
         return bool_cmpxchg(&v, vv & ~lock_bit, vv | lock_bit | TThread::id());
+    }
+    static type try_lock_val(type& v) {
+        type vv = v;
+        type expected = vv & ~lock_bit;
+        type desired = vv | lock_bit | TThread::id();
+        type old = cmpxchg(&v, expected, desired);
+        if (old == expected)
+            return desired;
+        else
+            return old;
     }
     static bool try_lock(type& v, int here) {
         type vv = v;
@@ -418,10 +425,6 @@ public:
     bool is_dirty() const {
         return TransactionTid::is_dirty(v_);
     }
-    bool is_read_locked() const {
-        return TransactionTid::is_read_locked(v_);
-    }
-
     void set_nonopaque() {
         TransactionTid::set_nonopaque(v_);
     }

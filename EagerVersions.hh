@@ -176,7 +176,7 @@ public:
     static constexpr bool is_opaque = Opacity;
     static constexpr type lock_bit = TransactionTid::lock_bit;
     static constexpr type threadid_mask = TransactionTid::threadid_mask;
-    static constexpr type read_lock_bit = TransactionTid::dirty_bit;
+    static constexpr type dirty_bit = TransactionTid::dirty_bit;
 
     using BV = BasicVersion<TSwissVersion<Opacity>>;
     using BV::v_;
@@ -194,7 +194,7 @@ public:
         (void)item;
         (void)threadid;
         assert(BV::is_locked_here(threadid));
-        v_ |= read_lock_bit;
+        v_ |= dirty_bit;
         release_fence();
         return true;
     }
@@ -204,6 +204,14 @@ public:
         if (BV::is_locked()) {
             TransactionTid::unlock_dirty(v_);
         }
+    }
+    bool cp_check_version_impl(Transaction& txn, TransItem& item) {
+        (void)txn;
+        type vv = v_;
+        fence();
+        if (TransactionTid::is_dirty(vv) && !TransactionTid::is_locked_here(vv))
+            return false;
+        return TransactionTid::check_version(vv, item.read_value<type>());
     }
     void cp_set_version_unlock_impl(type new_v) {
         TransactionTid::set_version_unlock_dirty(v_, new_v);
@@ -223,11 +231,7 @@ public:
     inline type cp_commit_tid_impl(Transaction& txn);
 
 private:
-    bool try_lock() {
-        return TransactionTid::try_lock(v_, TThread::id());
+    type try_lock_val() {
+        return TransactionTid::try_lock_val(v_);
     }
-
-    /*bool is_read_locked() const {
-        return (v_ & read_lock_bit) != 0;
-    }*/
 };

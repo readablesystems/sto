@@ -85,13 +85,9 @@ private:
 template <typename IntType>
 class StoUniformIntSampler {
 public:
-    StoUniformIntSampler(int thid) : rd(), gen(rd()), dis() {
-        gen.seed(thid);
-    }
+    StoUniformIntSampler(int thid) : gen(thid), dis() {}
     StoUniformIntSampler(int thid, IntType range)
-        : rd(), gen(rd()), dis(0, range) {
-        gen.seed(thid);
-    }
+        : gen(thid), dis(0, range) {}
 
     IntType sample() {
         return dis(gen);
@@ -106,7 +102,6 @@ public:
     }
 
 private:
-    std::random_device rd;
     std::mt19937 gen;
     std::uniform_int_distribution<IntType> dis;
 };
@@ -121,8 +116,7 @@ public:
         : begin(a), end(b), index_transform(false), uis(thid), dist() {
         assert(a < b);
         if (shuffle) {
-            std::random_device rd;
-            std::mt19937 gen(rd());
+            std::mt19937 gen(thid);
             index_transform = true;
 
             for (auto i = begin; i <= end; ++i)

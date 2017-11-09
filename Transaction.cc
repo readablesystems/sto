@@ -246,7 +246,7 @@ unlock_all:
 
     // XXX no back off for now
     if (!committed) {
-       ContentionManager::on_rollback(this);
+       ContentionManager::on_rollback(TThread::id());
     }
 
     // clear/consolidate transactional scratch space

@@ -321,26 +321,29 @@ inline bool TSwissVersion<Opaque>::acquire_write_impl(TransItem& item) {
         return true;
 
     while(true) {
-        if (BV::is_locked()) {
-            if (ContentionManager::should_abort(&t(), *this)) {
-                TXP_INCREMENT(txp_lock_aborts);
-                return false;
-            } else {
-                relax_fence();
-                continue;
-            }
-        }
-
-        if (try_lock()){
+        auto vv = try_lock_val();
+        if (TransactionTid::is_locked_here(vv)) {
             break;
         }
+
+        if (TransactionTid::is_locked_elsewhere(vv)) {
+            int owner_id = vv & TransactionTid::threadid_mask;
+            if (ContentionManager::should_abort(TThread::id(), owner_id)) {
+                TXP_INCREMENT(txp_lock_aborts);
+                return false;
+            }
+        } else {
+            TXP_INCREMENT(txp_observe_lock_aborts);
+        }
+
+        relax_fence();
     }
 
     VersionDelegate::item_or_flags(item, TransItem::write_bit | TransItem::lock_bit);
     VersionDelegate::txn_set_any_writes(t(), true);
     //item().__or_flags(TransItem::write_bit | TransItem::lock_bit);
     //t()->any_writes_ = true;
-    ContentionManager::on_write(&t());
+    ContentionManager::on_write(TThread::id());
 
     return true;
 }
@@ -364,19 +367,22 @@ inline bool TSwissVersion<Opaque>::acquire_write_impl(TransItem& item, Args&&...
     }
 
     while(true) {
-        if (BV::is_locked()) {
-            if (ContentionManager::should_abort(&t(), *this)) {
-                TXP_INCREMENT(txp_lock_aborts);
-                return false;
-            } else {
-                relax_fence();
-                continue;
-            }
-        }
-
-        if (try_lock()){
+        auto vv = try_lock_val();
+        if (TransactionTid::is_locked_here(vv)) {
             break;
         }
+
+        if (TransactionTid::is_locked_elsewhere(vv)) {
+            int owner_id = vv & TransactionTid::threadid_mask;
+            if (ContentionManager::should_abort(TThread::id(), owner_id)) {
+                TXP_INCREMENT(txp_lock_aborts);
+                return false;
+            }
+        } else {
+            TXP_INCREMENT(txp_observe_lock_aborts);
+        }
+
+        relax_fence();
     }
 
     VersionDelegate::item_or_flags(item, TransItem::write_bit | TransItem::lock_bit);
@@ -385,7 +391,7 @@ inline bool TSwissVersion<Opaque>::acquire_write_impl(TransItem& item, Args&&...
     //item().__or_flags(TransItem::write_bit | TransItem::lock_bit);
     //item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
     //t()->any_writes_ = true;
-    ContentionManager::on_write(&t());
+    ContentionManager::on_write(TThread::id());
 
     return true;
 }
@@ -395,8 +401,8 @@ inline bool TSwissVersion<Opaque>::observe_read_impl(TransItem& item, bool add_r
     assert(!item.has_stash());
     auto version = *this;
     fence();
-    if (version.is_read_locked()) {
-        t().mark_abort_because(&item, "swiss_read_locked", version.value());
+    if (version.is_dirty()) {
+        t().mark_abort_because(&item, "swiss_read_dirty", version.value());
         TXP_INCREMENT(txp_observe_lock_aborts);
         return false;
     }
@@ -461,6 +467,7 @@ inline bool TicTocVersion<Opaque, Extend>::observe_read_impl(TransItem& item, bo
     assert(!item.has_stash());
     if (BV::is_locked_elsewhere()) {
         t().mark_abort_because(&item, "locked", BV::value());
+        TXP_INCREMENT(txp_observe_lock_aborts);
         return false;
     }
     //printf("[%d] OBS: R%luW%lu\n", t()->threadid_, version.read_timestamp(), version.write_timestamp());
@@ -533,6 +540,7 @@ inline bool TicTocCompressedVersion<Opaque, Extend>::observe_read_impl(TransItem
     assert(!item.has_stash());
     if (BV::is_locked_elsewhere()) {
         t().mark_abort_because(&item, "locked", BV::value());
+        TXP_INCREMENT(txp_observe_lock_aborts);
         return false;
     }
     //printf("[%d] OBS: R%luW%lu\n", t()->threadid_, version.read_timestamp(), version.write_timestamp());
@@ -546,8 +554,8 @@ inline bool TicTocCompressedVersion<Opaque, Extend>::observe_read_impl(TransItem
             //t()->min_rts_ = std::min(t()->min_rts_, version.read_timestamp());
         }
         VersionDelegate::item_or_flags(item, TransItem::read_bit);
-        item.wide_read_value().v0 = v_;
         acquire_fence();
+        item.wide_read_value().v0 = v_;
         //item().__or_flags(TransItem::observe_bit);
         //item().rdata_ = Packer<TicTocVersion>::pack(t()->buf_, std::move(version));
     }
@@ -668,34 +676,7 @@ TicTocCompressedVersion<Opaque, Extend>::cp_commit_tid_impl(Transaction& txn) {
         return txn.compute_tictoc_commit_ts();
 }
 
-// Contention Manager implementation
-
-template <bool Opaque>
-bool ContentionManager::should_abort(Transaction* tx, TSwissVersion<Opaque> wlock) {
-    TXP_INCREMENT(txp_cm_shouldabort);
-    int threadid = tx->threadid();
-    threadid *= 4;
-    if (aborted[threadid] == 1){
-        return true;
-    }
-
-    // This transaction is still in the timid phase
-    if (timestamp[threadid] == MAX_TS) {
-        return true;
-    }
-
-    int owner_threadid = int(wlock & TransactionTid::threadid_mask);
-    owner_threadid *= 4;
-    //if (write_set_size[threadid] < write_set_size[owner_threadid]) {
-    if (timestamp[owner_threadid] < timestamp[threadid]) {
-        return aborted[owner_threadid] == 0;
-    } else {
-        //FIXME: this might abort a new transaction on that thread
-        aborted[owner_threadid] = 1;
-        return false;
-    }
-
-}
+// Try lock method now also optionally keeps track of commit timestamp
 
 template <typename VersImpl>
 inline bool Transaction::try_lock(TransItem& item, VersionBase<VersImpl>& vers) {

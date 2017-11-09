@@ -1,9 +1,38 @@
 #include "ContentionManager.hh"
 #include "Transaction.hh"
 
-void ContentionManager::on_write(Transaction* tx) {
+// Contention Manager implementation
+
+bool ContentionManager::should_abort(int this_id, int owner_id) {
+    TXP_INCREMENT(txp_cm_shouldabort);
+    this_id *= 4;
+    acquire_fence();
+    if (aborted[this_id] == 1){
+        return true;
+    }
+
+    // This transaction is still in the timid phase
+    acquire_fence();
+    if (timestamp[this_id] == MAX_TS) {
+        return true;
+    }
+
+    owner_id *= 4;
+    //if (write_set_size[threadid] < write_set_size[owner_threadid]) {
+    if (timestamp[owner_id] < timestamp[this_id]) {
+        acquire_fence();
+        return (aborted[owner_id] == 0);
+    } else {
+        //FIXME: this might abort a new transaction on that thread
+        aborted[owner_id] = 1;
+        release_fence();
+        return false;
+    }
+
+}
+
+void ContentionManager::on_write(int threadid) {
     TXP_INCREMENT(txp_cm_onwrite);
-    int threadid = tx->threadid();
     threadid *= 4;
     //if (aborted[threadid] == 1) {
     //  Sto::abort();
@@ -15,7 +44,7 @@ void ContentionManager::on_write(Transaction* tx) {
     }
 }
 
-void ContentionManager::start(Transaction *tx) {	
+void ContentionManager::start(Transaction *tx) {
     TXP_INCREMENT(txp_cm_start);
     int threadid = tx->threadid();
     threadid *= 4;
@@ -32,9 +61,8 @@ void ContentionManager::start(Transaction *tx) {
     }
 }
 
-void ContentionManager::on_rollback(Transaction *tx) {
+void ContentionManager::on_rollback(int threadid) {
     TXP_INCREMENT(txp_cm_onrollback);
-    int threadid = tx->threadid();
     threadid *= 4;
     if (abort_count[threadid] < SUCC_ABORTS_MAX)
         ++abort_count[threadid];

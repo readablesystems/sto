@@ -18,14 +18,13 @@ class TSwissVersion;
 
 class ContentionManager {
 public:
-    template <bool Opaque>
-    static inline bool should_abort(Transaction* tx, TSwissVersion<Opaque> wlock);
+    static bool should_abort(int this_id, int owner_id);
 
-    static void on_write(Transaction* tx);
+    static void on_write(int threadid);
 
     static void start(Transaction *tx); 
 
-    static void on_rollback(Transaction *tx); 
+    static void on_rollback(int threadid);
 
 public:
     // Global timestamp
