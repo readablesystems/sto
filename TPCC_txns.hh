@@ -81,7 +81,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     std::tie(abort, result, row, value) = db.tbl_districts(q_w_id).select_row(district_key(q_w_id, q_d_id), false/*for update*/);
     TXN_DO(abort);
     assert(result);
-    const district_value *dv = reinterpret_cast<const district_value *>(value);
+    auto dv = reinterpret_cast<const district_const_value *>(value);
     dt_tax_rate = dv->d_tax;
     dt_next_oid = db.oid_generator().next(q_w_id, q_d_id);
     //dt_next_oid = new_dv->d_next_o_id ++;
@@ -250,23 +250,23 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     // select district row FOR UPDATE and retrieve district info
     district_key dk(q_w_id, q_d_id);
-    std::tie(success, result, row, value) = db.tbl_districts(q_w_id).select_row(dk, true);
+    std::tie(success, result, row, value) = db.tbl_districts(q_w_id).select_row(dk, false /* !update */);
     TXN_DO(success);
     assert(result);
 
-    const district_value *dv = reinterpret_cast<const district_value *>(value);
-    district_value *new_dv = Sto::tx_alloc(dv);
+    auto dv = reinterpret_cast<const district_const_value *>(value);
 
-    out_d_name = new_dv->d_name;
-    out_d_street_1 = new_dv->d_street_1;
-    out_d_street_2 = new_dv->d_street_2;
-    out_d_city = new_dv->d_city;
-    out_d_state = new_dv->d_state;
-    out_d_zip = new_dv->d_zip;
+    out_d_name = dv->d_name;
+    out_d_street_1 = dv->d_street_1;
+    out_d_street_2 = dv->d_street_2;
+    out_d_city = dv->d_city;
+    out_d_state = dv->d_state;
+    out_d_zip = dv->d_zip;
 
     // update district ytd
-    new_dv->d_ytd += h_amount;
-    db.tbl_districts(q_w_id).update_row(row, new_dv);
+    db.get_district_ytd(q_w_id, q_d_id).trans_increment(h_amount);
+    //dv->d_ytd += h_amount;
+    //db.tbl_districts(q_w_id).update_row(row, new_dv);
 
     // select and update customer
     if (by_name) {

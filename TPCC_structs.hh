@@ -253,7 +253,7 @@ struct district_key {
     uint64_t d_id;
 };
 
-struct district_value {
+struct district_const_value {
     var_string<10> d_name;
     var_string<20> d_street_1;
     var_string<20> d_street_2;
@@ -261,7 +261,7 @@ struct district_value {
     fix_string<2>  d_state;
     fix_string<9>  d_zip;
     int64_t        d_tax;
-    int64_t        d_ytd;
+    //int64_t        d_ytd;
     // we use the separate oid generator for better semantics in transactions
     //uint64_t       d_next_o_id;
 };

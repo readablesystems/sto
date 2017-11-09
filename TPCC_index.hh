@@ -95,7 +95,7 @@ struct get_version {
 template <typename DBParams>
 class integer_box : public TObject {
 public:
-    typedef uint64_t int_type;
+    typedef int64_t int_type;
     typedef TNonopaqueVersion version_type;
 
     integer_box()

@@ -169,8 +169,9 @@ public:
     using OIndex = ordered_index<K, V, DBParams>;
 
     // partitioned according to warehouse id
+    typedef integer_box<DBParams>                  dt_ytd_type;
     typedef std::vector<warehouse_value>           wh_table_type;
-    typedef UIndex<district_key, district_value>   dt_table_type;
+    typedef UIndex<district_key, district_const_value>   dt_table_type;
     typedef OIndex<customer_idx_key, customer_idx_value> ci_table_type;
     typedef UIndex<customer_key, customer_value>   cu_table_type;
     typedef UIndex<order_key, order_value>         od_table_type;
@@ -189,6 +190,9 @@ public:
     }
     warehouse_value& get_warehouse(uint64_t w_id) {
         return tbl_whs_[w_id - 1];
+    }
+    dt_ytd_type& get_district_ytd(uint64_t w_id, uint64_t d_id) {
+        return tbl_dty_[w_id - 1][d_id - 1];
     }
     dt_table_type& tbl_districts(uint64_t w_id) {
         return tbl_dts_[w_id - 1];
@@ -223,8 +227,8 @@ public:
 
 private:
     wh_table_type tbl_whs_;
-
     it_table_type *tbl_its_;
+    std::vector<std::vector<dt_ytd_type>> tbl_dty_;
     std::vector<dt_table_type> tbl_dts_;
     std::vector<ci_table_type> tbl_cni_;
     std::vector<cu_table_type> tbl_cus_;
