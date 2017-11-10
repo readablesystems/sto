@@ -31,7 +31,7 @@
 // size of array (for hashtables or other non-array structures, this is the
 // size of the key space)
 #ifndef ARRAY_SZ
-#define ARRAY_SZ 1000
+#define ARRAY_SZ 10000000
 #endif
 
 #define USE_ARRAY 0
@@ -657,16 +657,16 @@ static bool doRead(T& a, int slot, value_type& ret) {
 
 template <typename T>
 static bool doWrite(T& a, int slot, int& ctr) {
-    //return a.transPut(slot, val(ctr));
+    return a.transPut(slot, val(ctr));
 //#if 0
 //else {
     // increment current value (this lets us verify transaction correctness)
-   // if (readMyWrites) {
-      ++ctr;
-      value_type ret;
-      if (!a.transGet(slot, ret))
-          return false;
-      return a.transPut(slot, val(unval(ret)+1));
+    // if (readMyWrites) {
+    //  ++ctr;
+    //  value_type ret;
+    //  if (!a.transGet(slot, ret))
+    //      return false;
+    //  return a.transPut(slot, val(unval(ret)+1));
 #if 0
 #if TRY_READ_MY_WRITES
           // read my own writes
