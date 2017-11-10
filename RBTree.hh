@@ -840,7 +840,7 @@ inline size_t RBTree<K, T, GlobalSize>::erase(const K& key) {
         auto item = Sto::item(this, x);
         
         // item marked as inserted and not yet installed
-        if (is_inserted(x->version())) {
+        if (is_inserted(ver)) {
             // mark to delete at install time
             if (has_insert(item)) {
                 item.add_write(0).clear_flags(insert_tag).add_flags(delete_tag);
