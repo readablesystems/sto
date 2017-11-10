@@ -12,6 +12,8 @@
 #include <sys/resource.h>
 #include <fstream>
 
+#include "PlatformFeatures.hh"
+
 #include "TFlexArray.hh"
 //#include "TGeneric.hh"
 //#include "Hashtable.hh"
@@ -1672,7 +1674,7 @@ struct TesterPair {
 
 void* runfunc(void* x) {
     TesterPair* tp = (TesterPair*) x;
-    std::cout << "runfunc: id = " << tp->me << std::endl;
+    set_affinity(tp->me + 1);
     tp->t->run(tp->me);
     return nullptr;
 }

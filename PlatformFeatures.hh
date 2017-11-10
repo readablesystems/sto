@@ -9,6 +9,8 @@
 #include <iostream>
 #include <sstream>
 
+#include <pthread.h>
+
 static constexpr uint32_t level_bstr  = 0x80000004;
 
 enum class Reg : int {eax = 0, ebx, ecx, edx, size};
@@ -111,4 +113,15 @@ inline double get_cpu_brand_frequency() {
     ss >> freq;
 
     return freq * multipliers[unit];
+}
+
+inline void set_affinity(int cpu_id) {
+	cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(cpu_id, &cpuset);
+    int rc = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+    if (rc != 0) {
+        std::cerr << "Error calling pthread_setaffinity_np: " << rc << "\n";
+        abort();
+    }
 }
