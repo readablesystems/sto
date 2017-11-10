@@ -129,7 +129,7 @@ private:
         (void)vv;
         assert((vv & mask) >= 1);
 #else
-        bool reset_opt_bit = TThread::gen[TThread::id()].chance(unlock_opt_chance);
+        bool reset_opt_bit = TThread::gen[TThread::id()].chance(50);
         if (!reset_opt_bit) {
             fetch_and_add(&v_, -1);
         } else {
@@ -147,15 +147,7 @@ private:
 
     void unlock_write() {
         assert(is_locked());
-        type new_v = v_ & ~(lock_bit | dirty_bit);
-#if ADAPTIVE_RWLOCK == 1
-        if (new_v & opt_bit) {
-            new_v &= ~opt_bit;
-        } else {
-            if (TThread::gen[TThread::id()].chance(10))
-                new_v |= opt_bit;
-        }
-#endif
+        type new_v = v_ & ~(lock_bit | dirty_bit | opt_bit);
         v_ = new_v;
         release_fence();
     }
