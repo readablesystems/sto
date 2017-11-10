@@ -21,11 +21,13 @@ typedef RBTree<int, int, true> tree_type;
 TransactionTid::type lock;
 // initialize the tree: contains (1,1), (2,2), (3,3)
 void reset_tree(tree_type& tree) {
-    TransactionGuard init;
+    TestTransaction t(1);
+    t.use();
     // initialize the tree: contains (1,1), (2,2), (3,3)
     tree[1] = 1;
     tree[2] = 2;
     tree[3] = 3;
+    assert(t.try_commit());
 }
 /**** update <-> update conflict; update <-> erase; update <-> count counflicts ******/
 void update_conflict_tests() {
@@ -65,6 +67,7 @@ void erase_conflict_tests() {
         assert(tree.count(1) == 1);
         assert(tree.erase(1) == 1);
         t2.use();
+        tree[50] = 50; // prevent read-only txn
         assert(tree.count(1) == 1);
         assert(t1.try_commit());
         assert(!t2.try_commit());
@@ -213,6 +216,8 @@ void mem_tests() {
         TestTransaction t1(1), t2(2), after(3);
 
         t1.use();
+        // prevent read-only txn
+        tree[50] = 50;
         // absent get of key 4
         assert(tree.count(4) == 0);
         t2.use();
@@ -241,6 +246,8 @@ void mem_tests() {
 }
 
 int main() {
+    TThread::txn = nullptr;
+    TThread::set_id(0);
     // test single-threaded operations
     {
         tree_type tree;

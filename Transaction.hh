@@ -891,14 +891,14 @@ public:
 class TestTransaction {
 public:
     TestTransaction(int threadid)
-        : t_(threadid, Transaction::testing), base_(TThread::txn) {
+        : t_(threadid, Transaction::testing) {
         use();
     }
     ~TestTransaction() {
-        if (base_ && !base_->is_test_) {
-            TThread::txn = base_;
-            TThread::set_id(base_->threadid_);
-        }
+        //if (base_ && !base_->is_test_) {
+        //    TThread::txn = base_;
+        //    TThread::set_id(base_->threadid_);
+        //}
     }
     void use() {
         TThread::txn = &t_;
@@ -913,7 +913,7 @@ public:
     }
 private:
     Transaction t_;
-    Transaction* base_;
+    //Transaction* base_;
 };
 
 class TransactionGuard {
