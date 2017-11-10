@@ -104,17 +104,8 @@ private:
             bool read_locked = ((vv & mask) != 0);
             if (write_locked || read_locked)
                 return LockResponse::spin;
-            //if (read_locked)
-            //    return LockResponse::spin;
-            if (::bool_cmpxchg(&v_, vv,
-#if ADAPTIVE_RWLOCK == 0
-                             (vv | lock_bit)
-#else
-                    (vv | lock_bit) & ~opt_bit
-#endif
-            )) {
+            if (::bool_cmpxchg(&v_, vv, (vv | lock_bit)))
                 return LockResponse::locked;
-            }
             else
                 relax_fence();
         }
@@ -138,25 +129,32 @@ private:
         (void)vv;
         assert((vv & mask) >= 1);
 #else
-        while (1) {
-            type vv = v_;
-            assert((vv & mask) >= 1);
-            type new_v = TThread::gen[TThread::id()].chance(unlock_opt_chance) ?
-                    ((vv - 1) | opt_bit) : (vv - 1);
-            if (::bool_cmpxchg(&v_, vv, new_v))
-                break;
-            relax_fence();
+        bool reset_opt_bit = TThread::gen[TThread::id()].chance(unlock_opt_chance);
+        if (!reset_opt_bit) {
+            fetch_and_add(&v_, -1);
+        } else {
+            while (1) {
+                type vv = v_;
+                assert((vv & mask) >= 1);
+                type new_v = (vv - 1) | opt_bit;
+                if (::bool_cmpxchg(&v_, vv, new_v))
+                    break;
+                relax_fence();
+            }
         }
 #endif
     }
 
     void unlock_write() {
         assert(is_locked());
-#if ADAPTIVE_RWLOCK == 0
         type new_v = v_ & ~(lock_bit | dirty_bit);
-#else
-        type new_v = TThread::gen[TThread::id()].chance(unlock_opt_chance) ?
-                ((v_ & ~(lock_bit | dirty_bit)) | opt_bit) : (v_ & ~(lock_bit | dirty_bit));
+#if ADAPTIVE_RWLOCK == 1
+        if (new_v & opt_bit) {
+            new_v &= ~opt_bit;
+        } else {
+            if (TThread::gen[TThread::id()].chance(10))
+                new_v |= opt_bit;
+        }
 #endif
         v_ = new_v;
         release_fence();
