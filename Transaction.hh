@@ -57,6 +57,10 @@
 #define DEBUG_SKEW 0
 #endif
 
+#ifndef CHECK_PROGRESS
+#define CHECK_PROGRESS 1
+#endif
+
 #ifndef STO_SPIN_EXPBACKOFF
 #define STO_SPIN_EXPBACKOFF 0
 #endif
@@ -413,13 +417,18 @@ public:
     template <unsigned P> static void txp_account(txp_counter_type n) {
         txp_helper<P, txp_count>::account_array(tinfo[TThread::id()].p_.p_, n);
     }
+    template <unsigned P> static txp_counter_type txp_inspect() {
+        return tinfo[TThread::id()].p_.p(P);
+    }
 #else
     template <unsigned P> static void txp_account(txp_counter_type) {
     }
+    template <unsigned P> static txp_counter_type txp_inspect() {return 0;}
 #endif
 
 #define TXP_INCREMENT(p) Transaction::txp_account<(p)>(1)
 #define TXP_ACCOUNT(p, n) Transaction::txp_account<(p)>((n))
+#define TXP_INSPECT(p) Transaction::txp_inspect<(p)>()
 
 
 private:

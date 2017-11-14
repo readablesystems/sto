@@ -718,8 +718,8 @@ struct Tester {
 Tester() {}
 virtual void initialize() = 0;
 virtual void finalize() = 0;
-virtual void run(int me) {
-(void) me;
+virtual void run(int me, uint64_t start_tsc) {
+(void) me; (void)start_tsc;
 assert(0 && "Test not supported");
 }
 virtual bool check() { return false; }
@@ -807,12 +807,16 @@ struct HotspotRW : public DSTester<DS> {
     typedef typename DSTester<DS>::container_type container_type;
     typedef std::vector<RWOperation> query_type;
     typedef std::vector<query_type> workload_type;
-    HotspotRW() {}
-    void run(int me) override;
+    HotspotRW() {
+        for (int i = 0; i < MAX_THREADS; ++i)
+            progress[i].reserve(10000);
+    }
+    void run(int me, uint64_t start_tsc) override;
     bool prepopulate() override;
     void report() override;
 
     std::vector<workload_type> workloads;
+    std::vector<uint64_t> progress[MAX_THREADS];
     virtual void per_thread_workload_init(int thread_id);
 
 #if DEBUG_SKEW
@@ -912,7 +916,7 @@ bool HotspotRW<DS>::prepopulate() {
 }
 
 template <int DS>
-void HotspotRW<DS>::run(int me) {
+void HotspotRW<DS>::run(int me, uint64_t start_tsc) {
     TThread::set_id(me);
     container_type* a = this->a;
     container_type::thread_init(*a);
@@ -924,6 +928,13 @@ void HotspotRW<DS>::run(int me) {
     bool seen_stop = false;
     unsigned long start_tsc = read_tsc();
 #endif
+
+#if CHECK_PROGRESS
+    static constexpr uint64_t delta_t = 1 * 2200000; // 1 ms checking interval
+    uint64_t total_delta = delta_t;
+#endif
+
+    auto it_prev = tw.begin();
 
     for (auto txn_it = tw.begin(); txn_it != tw.end(); ++txn_it) {
 #if DEBUG_SKEW
@@ -959,6 +970,16 @@ void HotspotRW<DS>::run(int me) {
             }
         (void)__txn_committed;
         } RETRY(true);
+
+#if CHECK_PROGRESS
+        uint64_t now = read_tsc();
+        if (now - start_tsc >= total_delta) {
+            total_delta += delta_t;
+            auto ntxns = txn_it - it_prev;
+            it_prev = txn_it;
+            progress[me].push_back(ntxns);
+        }
+#endif
     }
 
 #if DEBUG_SKEW
@@ -989,6 +1010,25 @@ void HotspotRW<DS>::report() {
         ss << std::endl;
     }
     ss << "Minimum time to quota: " << *std::min_element(times_to_quota.begin(), times_to_quota.end()) << std::endl;
+    std::cout << ss.str() << std::flush;
+#endif
+#if CHECK_PROGRESS
+    std::stringstream ss;
+    ss << "Instantaneous throughput (ntxns/100 ms):" << std::endl;
+    size_t effective_length = progress[0].size();
+    for (int i = 0; i < nthreads; ++i) {
+        effective_length = std::min(effective_length, progress[i].size());
+    }
+
+    for (size_t idx = 0; idx < effective_length; ++idx) {
+        uint64_t agg = 0;
+        for (int t = 0; t < nthreads; ++t) {
+            agg += progress[t][idx];
+        }
+
+        ss << agg << std::endl;
+    }
+
     std::cout << ss.str() << std::flush;
 #endif
 }
@@ -1670,21 +1710,23 @@ void qstartAndWait(int n, void*(*runfunc)(void*)) {
 struct TesterPair {
     Tester* t;
     int me;
+    uint64_t start_tsc;
 };
 
 void* runfunc(void* x) {
     TesterPair* tp = (TesterPair*) x;
     set_affinity(tp->me + 1);
-    tp->t->run(tp->me);
+    tp->t->run(tp->me, tp->start_tsc);
     return nullptr;
 }
 
-void startAndWait(int n, Tester* tester) {
+void startAndWait(int n, Tester* tester, uint64_t start_tsc) {
   pthread_t tids[n];
   TesterPair testers[n];
   for (int i = 0; i < n; ++i) {
       testers[i].t = tester;
       testers[i].me = i;
+      testers[i].start_tsc = start_tsc;
       pthread_create(&tids[i], NULL, runfunc, &testers[i]);
   }
   pthread_t advancer;
@@ -1829,7 +1871,7 @@ void time_and_run(double *real_time,
                   int nthreads, Tester* tester) {
     unsigned long t1 = read_tsc();
     getrusage(RUSAGE_SELF, ru1);
-    startAndWait(nthreads, tester);
+    startAndWait(nthreads, tester, t1);
     unsigned long t2 = read_tsc();
     getrusage(RUSAGE_SELF, ru2);
     *real_time = ((double)(t2-t1)) / BILLION / PROC_TSC_FREQ;
