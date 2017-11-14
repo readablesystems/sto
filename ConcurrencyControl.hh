@@ -138,7 +138,7 @@ inline bool TNonopaqueVersion::observe_read_impl(TransItem& item, bool add_read)
     assert(!item.has_stash());
     TNonopaqueVersion version = *this;
     fence();
-    if (version.is_locked_elsewhere()) {
+    if (version.is_locked()) {
         t().mark_abort_because(&item, "locked", version.value());
         TXP_INCREMENT(txp_observe_lock_aborts);
         return false;
@@ -306,6 +306,7 @@ inline bool TLockVersion::observe_read_impl(TransItem& item, bool add_read) {
         if (add_read && !item.has_read()) {
             VersionDelegate::item_or_flags(item, TransItem::read_bit);
             VersionDelegate::item_access_rdata(item).v = Packer<TLockVersion>::pack(t().buf_, std::move(occ_version));
+            VersionDelegate::txn_set_any_nonopaque(t(), true);
             //item().rdata_ = Packer<TLockVersion>::pack(t()->buf_, std::move(occ_version));
         }
     }
@@ -412,6 +413,8 @@ inline bool TSwissVersion<Opaque>::observe_read_impl(TransItem& item, bool add_r
     if (add_read && !item.has_read()) {
         VersionDelegate::item_or_flags(item, TransItem::read_bit);
         VersionDelegate::item_access_rdata(item).v = Packer<TSwissVersion<Opaque>>::pack(t().buf_, std::move(version));
+        if (!is_opaque)
+            VersionDelegate::txn_set_any_nonopaque(t(), true);
         //item().__or_flags(TransItem::read_bit);
         //item().rdata_ = Packer<TSwissVersion<Opaque>>::pack(t()->buf_, std::move(version));
     }

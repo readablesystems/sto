@@ -65,7 +65,7 @@ class TransItem {
 
     TransItem() = default;
     TransItem(TObject* owner, void* k)
-        : s_(reinterpret_cast<ownerstore_type>(owner)), key_(k) {
+        : s_(reinterpret_cast<ownerstore_type>(owner)), key_(k), mode_(CCMode::none) {
     }
 
     TObject* owner() const {
