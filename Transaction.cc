@@ -316,6 +316,9 @@ bool Transaction::try_commit() {
         }
         if (it->has_read()) {
             TXP_INCREMENT(txp_total_r);
+            if (it->cc_mode() == CCMode::opt) {
+                TXP_INCREMENT(txp_total_adaptive_opt);
+            }
             // tracking TicToc commit ts (for reads) here
             if (it->cc_mode() == CCMode::tictoc) {
                 if (it->is_tictoc_compressed())
