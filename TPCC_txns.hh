@@ -81,7 +81,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     std::tie(abort, result, row, value) = db.tbl_districts(q_w_id).select_row(district_key(q_w_id, q_d_id), false/*for update*/);
     TXN_DO(abort);
     assert(result);
-    auto dv = reinterpret_cast<const district_const_value *>(value);
+    auto dv = reinterpret_cast<const district_value *>(value);
     dt_tax_rate = dv->d_tax;
     dt_next_oid = db.oid_generator().next(q_w_id, q_d_id);
     //dt_next_oid = new_dv->d_next_o_id ++;
@@ -248,25 +248,35 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     // update warehouse ytd
     wv.ytd.trans_increment(h_amount);
 
-    // select district row FOR UPDATE and retrieve district info
+    // select district row and retrieve district info
     district_key dk(q_w_id, q_d_id);
-    std::tie(success, result, row, value) = db.tbl_districts(q_w_id).select_row(dk, false /* !update */);
+    std::tie(success, result, row, value) = db.tbl_districts(q_w_id).select_row(dk,
+#if USE_INPLACE_DYTD
+        true
+#else
+        false
+#endif
+    /* select for update only if using in-place d_ytd value */);
     TXN_DO(success);
     assert(result);
 
-    auto dv = reinterpret_cast<const district_const_value *>(value);
+    auto dv = reinterpret_cast<const district_value *>(value);
+    auto new_dv = Sto::tx_alloc<district_value>(dv);
 
-    out_d_name = dv->d_name;
-    out_d_street_1 = dv->d_street_1;
-    out_d_street_2 = dv->d_street_2;
-    out_d_city = dv->d_city;
-    out_d_state = dv->d_state;
-    out_d_zip = dv->d_zip;
+    out_d_name = new_dv->d_name;
+    out_d_street_1 = new_dv->d_street_1;
+    out_d_street_2 = new_dv->d_street_2;
+    out_d_city = new_dv->d_city;
+    out_d_state = new_dv->d_state;
+    out_d_zip = new_dv->d_zip;
 
     // update district ytd
+#if USE_INPLACE_DYTD
+    new_dv->d_ytd += h_amount;
+    db.tbl_districts(q_w_id).update_row(row, new_dv);
+#else
     db.get_district_ytd(q_w_id, q_d_id).trans_increment(h_amount);
-    //dv->d_ytd += h_amount;
-    //db.tbl_districts(q_w_id).update_row(row, new_dv);
+#endif
 
     // select and update customer
     if (by_name) {

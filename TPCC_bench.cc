@@ -27,7 +27,9 @@ namespace tpcc {
 
         tbl_its_ = new it_table_type(999983/*NUM_ITEMS * 2*/);
         for (auto i = 0; i < num_whs; ++i) {
+#if !USE_INPLACE_DYTD
             tbl_dty_.emplace_back(NUM_DISTRICTS_PER_WAREHOUSE);
+#endif
             tbl_whs_.emplace_back();
             tbl_dts_.emplace_back(999983/*num_districts * 2*/);
             tbl_cni_.emplace_back(999983/*num_customers * 2*/);
@@ -108,7 +110,7 @@ namespace tpcc {
 
         for (uint64_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
             district_key dk(wid, did);
-            district_const_value dv;
+            district_value dv;
 
             dv.d_name = random_a_string(6, 10);
             dv.d_street_1 = random_a_string(10, 20);
@@ -117,12 +119,15 @@ namespace tpcc {
             dv.d_state = random_state_name();
             dv.d_zip = random_zip_code();
             dv.d_tax = ig.random(0, 2000);
-            //dv.d_ytd = 3000000;
+#if USE_INPLACE_DYTD
+            dv.d_ytd = 3000000;
+#else
+            db.get_district_ytd(wid, did) = 3000000;
+#endif
             //dv.d_next_o_id = 3001;
 
             db.tbl_districts(wid).nontrans_put(dk, dv);
 
-            db.get_district_ytd(wid, did) = 3000000;
         }
     }
 
