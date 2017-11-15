@@ -241,7 +241,9 @@ class TransItem {
     }
 
     bool cc_mode_is_optimistic(bool version_optimistic) {
-        return cc_mode(version_optimistic ? CCMode::opt : CCMode::lock) == CCMode::opt;
+        if (mode_ == CCMode::none)
+            mode_ = version_optimistic ? CCMode::opt : CCMode::lock;
+        return (mode_ == CCMode::opt);
     }
 
     template <typename VersImpl>

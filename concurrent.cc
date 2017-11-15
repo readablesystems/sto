@@ -808,8 +808,10 @@ struct HotspotRW : public DSTester<DS> {
     typedef std::vector<RWOperation> query_type;
     typedef std::vector<query_type> workload_type;
     HotspotRW() {
-        for (int i = 0; i < MAX_THREADS; ++i)
-            progress[i].reserve(10000);
+        for (int i = 0; i < MAX_THREADS; ++i) {
+            progress[i].reserve(100000);
+            optimistic_rate[i].reserve(100000);
+        }
     }
     void run(int me, uint64_t start_tsc) override;
     bool prepopulate() override;
@@ -817,6 +819,7 @@ struct HotspotRW : public DSTester<DS> {
 
     std::vector<workload_type> workloads;
     std::vector<uint64_t> progress[MAX_THREADS];
+    std::vector<double> optimistic_rate[MAX_THREADS];
     virtual void per_thread_workload_init(int thread_id);
 
 #if DEBUG_SKEW
@@ -930,11 +933,12 @@ void HotspotRW<DS>::run(int me, uint64_t start_tsc) {
 #endif
 
 #if CHECK_PROGRESS
-    static constexpr uint64_t delta_t = 1 * 2200000; // 1 ms checking interval
+    static constexpr uint64_t delta_t = 10 * 2200000; // 10 ms checking interval
     uint64_t total_delta = delta_t;
-#endif
-
     auto it_prev = tw.begin();
+    uint64_t prev_total_reads = 0;
+    uint64_t prev_total_opt_reads = 0;
+#endif
 
     for (auto txn_it = tw.begin(); txn_it != tw.end(); ++txn_it) {
 #if DEBUG_SKEW
@@ -977,7 +981,17 @@ void HotspotRW<DS>::run(int me, uint64_t start_tsc) {
             total_delta += delta_t;
             auto ntxns = txn_it - it_prev;
             it_prev = txn_it;
+
+            auto total_reads = TXP_INSPECT(txp_total_r);
+            auto total_opt_reads = TXP_INSPECT(txp_total_adaptive_opt);
+
+            double opt_rate = (double)(total_opt_reads - prev_total_opt_reads) / double(total_reads - prev_total_reads);
+
+            prev_total_reads = total_reads;
+            prev_total_opt_reads = total_opt_reads;
+
             progress[me].push_back(ntxns);
+            optimistic_rate[me].push_back(opt_rate);
         }
 #endif
     }
@@ -1014,7 +1028,7 @@ void HotspotRW<DS>::report() {
 #endif
 #if CHECK_PROGRESS
     std::stringstream ss;
-    ss << "Instantaneous throughput (ntxns/100 ms):" << std::endl;
+    ss << "Instantaneous throughput (ntxns), opt read rate (in %, every 10 ms):" << std::endl;
     size_t effective_length = progress[0].size();
     for (int i = 0; i < nthreads; ++i) {
         effective_length = std::min(effective_length, progress[i].size());
@@ -1022,11 +1036,13 @@ void HotspotRW<DS>::report() {
 
     for (size_t idx = 0; idx < effective_length; ++idx) {
         uint64_t agg = 0;
+        double avg_rate = 0;
         for (int t = 0; t < nthreads; ++t) {
             agg += progress[t][idx];
+            avg_rate += optimistic_rate[t][idx];
         }
 
-        ss << agg << std::endl;
+        ss << agg << ", " << avg_rate * 100 / nthreads << std::endl;
     }
 
     std::cout << ss.str() << std::flush;
@@ -1151,9 +1167,9 @@ void ZipfRW<DS>::per_thread_workload_init(int thread_id) {
         bool read_only = ud.sample() < ro_threshold;
         int nops = read_only ? opspertrans_ro : opspertrans;
 
-        std::set<StoSampling::index_t> idx_set;
+        std::vector<StoSampling::index_t> idx_set;
         while (idx_set.size() != (size_t)nops) {
-            idx_set.insert(dd->sample());
+            idx_set.push_back(dd->sample());
         }
 
         for (auto idx : idx_set) {

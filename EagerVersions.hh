@@ -8,7 +8,7 @@
 #include "TThread.hh"
 
 #ifndef ADAPTIVE_RWLOCK
-#define ADAPTIVE_RWLOCK 0
+#define ADAPTIVE_RWLOCK 1
 #endif
 
 enum class LockResponse : int {locked, failed, optimistic, spin};
@@ -75,6 +75,7 @@ public:
     inline type cp_commit_tid_impl(Transaction& txn);
 
     bool hint_optimistic() const {
+        acquire_fence();
         return (v_ & opt_bit) != 0;
     }
 
@@ -88,8 +89,9 @@ private:
             bool rlock_avail = rlock_cnt < rlock_cnt_max;
             if (write_locked)
                 return std::make_pair(LockResponse::spin, type());
-            if (!rlock_avail)
+            if (!rlock_avail) {
                 return std::make_pair(LockResponse::optimistic, vv);
+            }
             if (::bool_cmpxchg(&v_, vv, (vv & ~mask) | (rlock_cnt+1)))
                 return std::make_pair(LockResponse::locked, type());
             else
@@ -147,7 +149,14 @@ private:
 
     void unlock_write() {
         assert(is_locked());
+#if ADAPTIVE_RWLOCK == 0
         type new_v = v_ & ~(lock_bit | dirty_bit | opt_bit);
+#else
+        type new_v = v_ & ~(lock_bit | dirty_bit);
+        if (((new_v & opt_bit) != 0) && TThread::gen[TThread::id()].chance(50)) {
+            new_v &= ~opt_bit;
+        }
+#endif
         v_ = new_v;
         release_fence();
     }

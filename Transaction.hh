@@ -176,6 +176,7 @@ enum txp {
     // STO_PROFILE_COUNTERS > 1 only
     txp_total_n,
     txp_total_r,
+    txp_total_adaptive_opt,
     txp_total_w,
     txp_max_transbuffer,
     txp_total_transbuffer,
