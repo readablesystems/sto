@@ -396,8 +396,14 @@ namespace tpcc {
             std::vector<uint64_t> txn_cnts(size_t(num_runners), 0);
 
             if (q == 0) {
+                q = num_runners / db.num_warehouses();
+                int qq = q;
+                int wid = 1;
                 for (int i = 0; i < num_runners; ++i) {
-                    int wid = (i % db.num_warehouses()) + 1;
+                    if ((qq--) == 0) {
+                        ++wid;
+                        qq = q;
+                    }
                     fprintf(stdout, "runner %d: [%d, %d]\n", i, wid, wid);
                     runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), std::ref(prof),
                                              i, wid, wid, time_limit, std::ref(txn_cnts[i]));
