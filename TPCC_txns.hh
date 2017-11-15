@@ -261,20 +261,26 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     assert(result);
 
     auto dv = reinterpret_cast<const district_value *>(value);
-    auto new_dv = Sto::tx_alloc<district_value>(dv);
 
+#if USE_INPLACE_DYTD
+    auto new_dv = Sto::tx_alloc<district_value>(dv);
     out_d_name = new_dv->d_name;
     out_d_street_1 = new_dv->d_street_1;
     out_d_street_2 = new_dv->d_street_2;
     out_d_city = new_dv->d_city;
     out_d_state = new_dv->d_state;
     out_d_zip = new_dv->d_zip;
-
-    // update district ytd
-#if USE_INPLACE_DYTD
+    // update district ytd in-place
     new_dv->d_ytd += h_amount;
     db.tbl_districts(q_w_id).update_row(row, new_dv);
 #else
+    out_d_name = dv->d_name;
+    out_d_street_1 = dv->d_street_1;
+    out_d_street_2 = dv->d_street_2;
+    out_d_city = dv->d_city;
+    out_d_state = dv->d_state;
+    out_d_zip = dv->d_zip;
+    // update district ytd object
     db.get_district_ytd(q_w_id, q_d_id).trans_increment(h_amount);
 #endif
 
