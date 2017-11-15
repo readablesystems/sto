@@ -353,6 +353,7 @@ namespace tpcc {
             uint64_t local_cnt = 0;
 
             ::TThread::set_id(runner_id);
+            set_affinity(runner_id);
 
             // XXX get rid of this thread_init nonsense
             for (auto &tbl : db.tbl_cni_) {
@@ -514,8 +515,8 @@ static inline void print_usage(const char *argv_0) {
        << "    Specify the number of warehouses (default 1)." << std::endl
        << "  --nthreads=<NUM> (or -t<NUM>)" << std::endl
        << "    Specify the number of threads (or TPCC workers/terminals, default 1)." << std::endl
-       << "  --ntrans=<NUM> (or -x<NUM>)" << std::endl
-       << "    Specify the total number of transactions being run (default 1 million)." << std::endl
+       << "  --time=<NUM> (or -l<NUM>)" << std::endl
+       << "    Specify the time (duration) for which the benchmark is run (default 10 seconds)." << std::endl
        << "  --perf (or -p)" << std::endl
        << "    Spawns perf profiler in record mode for the duration of the benchmark run." << std::endl
        << "  --perf-counter (or -c)" << std::endl
