@@ -710,7 +710,7 @@ public:
     // insert assumes common case where the row doesn't exist in the table
     // if a row already exists, then use select (FOR UPDATE) instead
     ins_return_type
-    insert_row(const key_type& key, const value_type *vptr, bool overwrite = false) {
+    insert_row(const key_type& key, value_type *vptr, bool overwrite = false) {
         cursor_type lp(table_, key);
         bool found = lp.find_insert(*ti);
         if (found) {
@@ -758,8 +758,7 @@ public:
             item.template add_write<value_type *>(vptr);
             item.add_flags(insert_bit);
 
-            if (!update_internode_version(orig_node, orig_nv, new_nv))
-                goto abort;
+            update_internode_version(orig_node, orig_nv, new_nv);
         }
 
         return ins_return_type(true, found);

@@ -176,12 +176,12 @@ public:
     typedef UIndex<district_key, district_value>   dt_table_type;
     typedef OIndex<customer_idx_key, customer_idx_value> ci_table_type;
     typedef UIndex<customer_key, customer_value>   cu_table_type;
-    typedef UIndex<order_key, order_value>         od_table_type;
-    typedef UIndex<orderline_key, orderline_value> ol_table_type;
-    typedef UIndex<order_key, int>                 no_table_type;
+    typedef OIndex<order_key, order_value>         od_table_type;
+    typedef OIndex<orderline_key, orderline_value> ol_table_type;
+    typedef OIndex<order_key, int>                 no_table_type;
     typedef UIndex<item_key, item_value>           it_table_type;
     typedef UIndex<stock_key, stock_value>         st_table_type;
-    typedef UIndex<history_key, history_value>     ht_table_type;
+    typedef OIndex<history_key, history_value>     ht_table_type;
 
     explicit inline tpcc_db(int num_whs);
     explicit inline tpcc_db(const std::string& db_file_name) = delete;

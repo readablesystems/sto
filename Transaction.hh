@@ -524,7 +524,7 @@ private:
     }
 
     static int hash(const TObject* obj, void* key) {
-        return hash_int_array_index(obj, key);
+        return hash_regular(obj, key);
     }
 #endif
 

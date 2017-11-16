@@ -328,9 +328,16 @@ namespace tpcc {
             tpcc_prepopulator<DBParams> pop(worker_id, db);
 
             // XXX get rid of this thread init nonsense
-            for (auto &tbl : db.tbl_cni_) {
+            for (auto &tbl : db.tbl_cni_)
                 tbl.thread_init();
-            }
+            for (auto &tbl : db.tbl_ods_)
+                tbl.thread_init();
+            for (auto &tbl : db.tbl_ols_)
+                tbl.thread_init();
+            for (auto &tbl : db.tbl_nos_)
+                tbl.thread_init();
+            for (auto &tbl : db.tbl_hts_)
+                tbl.thread_init();
 
             pop.run();
         }
@@ -361,9 +368,16 @@ namespace tpcc {
             set_affinity(runner_id);
 
             // XXX get rid of this thread_init nonsense
-            for (auto &tbl : db.tbl_cni_) {
+            for (auto &tbl : db.tbl_cni_)
                 tbl.thread_init();
-            }
+            for (auto &tbl : db.tbl_ods_)
+                tbl.thread_init();
+            for (auto &tbl : db.tbl_ols_)
+                tbl.thread_init();
+            for (auto &tbl : db.tbl_nos_)
+                tbl.thread_init();
+            for (auto &tbl : db.tbl_hts_)
+                tbl.thread_init();
 
             uint64_t tsc_diff = (uint64_t)(time_limit * constants::processor_tsc_frequency * constants::billion);
             auto start_t = prof.start_timestamp();

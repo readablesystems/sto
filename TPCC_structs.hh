@@ -14,7 +14,7 @@
 #define NUM_ITEMS                   100000
 
 #ifndef USE_INPLACE_DYTD
-#define USE_INPLACE_DYTD 0
+#define USE_INPLACE_DYTD 1
 #endif
 
 namespace tpcc {
