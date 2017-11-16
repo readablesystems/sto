@@ -21,7 +21,8 @@ namespace tpcc {
 
 class version_adapter {
 public:
-    static bool select_for_update(TransProxy& item, TLockVersion& vers) {
+    template <bool Adaptive>
+    static bool select_for_update(TransProxy& item, TLockVersion<Adaptive>& vers) {
         return item.acquire_write(vers);
     }
     static bool select_for_update(TransProxy& item, TVersion& vers) {
@@ -53,8 +54,8 @@ public:
         return true;
     }
 
-    template <typename T>
-    static bool select_for_overwrite(TransProxy& item, TLockVersion& vers, const T& val) {
+    template <bool Adaptive, typename T>
+    static bool select_for_overwrite(TransProxy& item, TLockVersion<Adaptive>& vers, const T& val) {
         return item.acquire_write(vers, val);
     }
     template <typename T>
@@ -87,9 +88,10 @@ struct get_occ_version {
 template <typename DBParams>
 struct get_version {
     typedef typename std::conditional<DBParams::TicToc, TicTocVersion<>,
-            typename std::conditional<DBParams::Adaptive, TLockVersion,
+            typename std::conditional<DBParams::Adaptive, TLockVersion<true /* adaptive */>,
+            typename std::conditional<DBParams::TwoPhaseLock, TLockVersion<false>,
             typename std::conditional<DBParams::Swiss, TSwissVersion<DBParams::Opaque>,
-            typename get_occ_version<DBParams>::type>::type>::type>::type type;
+            typename get_occ_version<DBParams>::type>::type>::type>::type>::type type;
 };
 
 template <typename DBParams>

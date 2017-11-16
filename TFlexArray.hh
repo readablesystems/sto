@@ -84,7 +84,7 @@ template <typename T, unsigned N>
 using TOCCArray = TFlexArray<T, N, TNonopaqueWrapped>;
 
 template <typename T, unsigned N>
-using TLockArray = TFlexArray<T, N, TOpaqueLockWrapped>;
+using TAdaptiveArray = TFlexArray<T, N, TAdaptiveNonopaqueWrapped>;
 
 template <typename T, unsigned N>
 using TSwissArray = TFlexArray<T, N, TSwissNonopaqueWrapped>;

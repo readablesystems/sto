@@ -11,6 +11,7 @@ class VersionDelegate {
     friend class TVersion;
     friend class TNonopaqueVersion;
     friend class TCommutativeVersion;
+    template <bool Adaptive>
     friend class TLockVersion;
     template <bool Opaque>
     friend class TSwissVersion;
@@ -157,7 +158,8 @@ inline bool TNonopaqueVersion::observe_read_impl(TransItem& item, bool add_read)
 
 // Adaptive Reader/Writer lock concurrency control
 
-inline bool TLockVersion::try_upgrade_with_spin() {
+template <bool Adaptive>
+inline bool TLockVersion<Adaptive>::try_upgrade_with_spin() {
     uint64_t n = 0;
     while (true) {
         if (try_upgrade() == LockResponse::locked)
@@ -169,7 +171,8 @@ inline bool TLockVersion::try_upgrade_with_spin() {
     }
 }
 
-inline bool TLockVersion::try_lock_write_with_spin() {
+template <bool Adaptive>
+inline bool TLockVersion<Adaptive>::try_lock_write_with_spin() {
     uint64_t n = 0;
     while (true) {
         auto r = try_lock_write();
@@ -185,8 +188,9 @@ inline bool TLockVersion::try_lock_write_with_spin() {
     }
 }
 
-inline std::pair<LockResponse, TLockVersion::type>
-TLockVersion::try_lock_read_with_spin() {
+template <bool Adaptive>
+inline std::pair<LockResponse, typename TLockVersion<Adaptive>::type>
+TLockVersion<Adaptive>::try_lock_read_with_spin() {
     uint64_t n = 0;
     while (true) {
         auto r = try_lock_read();
@@ -199,16 +203,17 @@ TLockVersion::try_lock_read_with_spin() {
     }
 }
 
-inline bool TLockVersion::lock_for_write(TransItem& item) {
+template <bool Adaptive>
+inline bool TLockVersion<Adaptive>::lock_for_write(TransItem& item) {
     if (item.has_read() && item.needs_unlock()) {
         // already holding read lock; upgrade to write lock
         if (!try_upgrade_with_spin()) {
-            t().mark_abort_because(&item, "upgrade_lock", value());
+            t().mark_abort_because(&item, "upgrade_lock", BV::value());
             return false;
         }
     } else {
         if (!try_lock_write_with_spin()) {
-            t().mark_abort_because(&item, "write_lock", value());
+            t().mark_abort_because(&item, "write_lock", BV::value());
             return false;
         }
         VersionDelegate::item_or_flags(item, TransItem::lock_bit);
@@ -218,7 +223,8 @@ inline bool TLockVersion::lock_for_write(TransItem& item) {
     // write lock is held on the corresponding TVersion
 }
 
-inline bool TLockVersion::acquire_write_impl(TransItem& item) {
+template <bool Adaptive>
+inline bool TLockVersion<Adaptive>::acquire_write_impl(TransItem& item) {
     if (!item.has_write()) {
         if (!lock_for_write(item)) {
             TXP_INCREMENT(txp_lock_aborts);
@@ -230,19 +236,19 @@ inline bool TLockVersion::acquire_write_impl(TransItem& item) {
     return true;
 }
 
-template <typename T>
-inline bool TLockVersion::acquire_write_impl(TransItem& item, const T& wdata) {
+template <bool Adaptive> template <typename T>
+inline bool TLockVersion<Adaptive>::acquire_write_impl(TransItem& item, const T& wdata) {
     return acquire_write_impl<T, const T&>(item, wdata);
 }
 
-template <typename T>
-inline bool TLockVersion::acquire_write_impl(TransItem& item, T&& wdata) {
+template <bool Adaptive> template <typename T>
+inline bool TLockVersion<Adaptive>::acquire_write_impl(TransItem& item, T&& wdata) {
     typedef typename std::decay<T>::type V;
     return acquire_write_impl<V, V&&>(item, std::move(wdata));
 }
 
-template <typename T, typename... Args>
-inline bool TLockVersion::acquire_write_impl(TransItem& item, Args&&... args) {
+template <bool Adaptive> template <typename T, typename... Args>
+inline bool TLockVersion<Adaptive>::acquire_write_impl(TransItem& item, Args&&... args) {
     if (!item.has_write()) {
         if (!lock_for_write(item)) {
             TXP_INCREMENT(txp_lock_aborts);
@@ -258,7 +264,8 @@ inline bool TLockVersion::acquire_write_impl(TransItem& item, Args&&... args) {
     return true;
 }
 
-inline bool TLockVersion::observe_read_impl(TransItem& item, bool add_read) {
+template <bool Adaptive>
+inline bool TLockVersion<Adaptive>::observe_read_impl(TransItem& item, bool add_read) {
     assert(!item.has_stash());
 
     TLockVersion occ_version;
@@ -285,7 +292,7 @@ inline bool TLockVersion::observe_read_impl(TransItem& item, bool add_read) {
             VersionDelegate::txn_set_any_nonopaque(t(), true);
         } else {
             assert(response.first == LockResponse::failed);
-            t().mark_abort_because(&item, "observe_rlock_failed", value());
+            t().mark_abort_because(&item, "observe_rlock_failed", BV::value());
             TXP_INCREMENT(txp_lock_aborts);
             return false;
         }
@@ -617,15 +624,18 @@ TCommutativeVersion::type TCommutativeVersion::cp_commit_tid_impl(Transaction &t
     always_assert(false, "not implemented");
 }
 
-TLockVersion::type& TLockVersion::cp_access_tid_impl(Transaction &txn) {
+template <bool Adaptive>
+typename TLockVersion<Adaptive>::type& TLockVersion<Adaptive>::cp_access_tid_impl(Transaction &txn) {
     return VersionDelegate::standard_tid(txn);
 }
-TLockVersion::type TLockVersion::cp_commit_tid_impl(Transaction &txn) {
+
+template <bool Adaptive>
+typename TLockVersion<Adaptive>::type TLockVersion<Adaptive>::cp_commit_tid_impl(Transaction &txn) {
     auto tid = cp_access_tid_impl(txn);
     if (tid != 0)
         return tid;
     else
-       return TransactionTid::next_unflagged_version(value());
+       return TransactionTid::next_unflagged_version(BV::value());
 }
 
 template <bool Opaque>

@@ -248,7 +248,7 @@ private:
 };
 
 template <> struct Container<USE_ARRAY_ADAPTIVE> {
-    typedef TLockArray<value_type, ARRAY_SZ> type;
+    typedef TAdaptiveArray<value_type, ARRAY_SZ> type;
     typedef int index_type;
     static constexpr bool has_delete = false;
     value_type nontrans_get(index_type key) {
@@ -1822,7 +1822,7 @@ struct {
 };
 
 enum {
-    opt_test = 1, opt_nrmyw, opt_check, opt_profile, opt_dump, opt_nthreads, opt_ntrans, opt_opspertrans, opt_opspertrans_ro, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew, opt_chance
+    opt_test = 1, opt_nrmyw, opt_check, opt_profile, opt_dump, opt_nthreads, opt_ntrans, opt_opspertrans, opt_opspertrans_ro, opt_writepercent, opt_readonlypercent, opt_blindrandwrites, opt_prepopulate, opt_seed, opt_skew
 };
 
 static const Clp_Option options[] = {
@@ -1839,8 +1839,7 @@ static const Clp_Option options[] = {
   { "blindrandwrites", 0, opt_blindrandwrites, 0, Clp_Negate },
   { "prepopulate", 0, opt_prepopulate, Clp_ValInt, Clp_Optional },
   { "seed", 's', opt_seed, Clp_ValUnsigned, 0 },
-  { "skew", 0, opt_skew, Clp_ValDouble, Clp_Optional},
-  { "chance", 0, opt_chance, Clp_ValInt, Clp_Optional}
+  { "skew", 0, opt_skew, Clp_ValDouble, Clp_Optional}
 };
 
 static void help(const char *name) {
@@ -1861,10 +1860,6 @@ Options:\n\
  --seed=SEED\n\
  --skew=SKEW, skew parameter for zipfrw test type (default %f)\n",
          name, nthreads, ntrans, opspertrans, write_percent, readonly_percent, prepopulate, zipf_skew);
-#if ADAPTIVE_RWLOCK
-  printf(" --chance=PROB, chance of reverting to optimistic mode in adaptive RW lock (default %d)\n",
-         TLockVersion::unlock_opt_chance);
-#endif
   printf("\nTests:\n");
   size_t testidx = 0;
   for (size_t ti = 0; ti != sizeof(tests)/sizeof(tests[0]); ++ti)
@@ -1953,11 +1948,6 @@ int main(int argc, char *argv[]) {
         break;
     case opt_skew:
         zipf_skew = clp->val.d;
-        break;
-    case opt_chance:
-#if ADAPTIVE_RWLOCK
-        TLockVersion::unlock_opt_chance = clp->val.d;
-#endif
         break;
     default:
       help(argv[0]);

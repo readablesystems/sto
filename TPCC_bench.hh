@@ -20,19 +20,9 @@
 
 namespace tpcc {
 
-class db_config_flags {
-public:
-    typedef uint32_t type;
-    static constexpr type adpt = 0x1 << 0;
-    static constexpr type opaq = 0x1 << 1;
-    static constexpr type rmyw = 0x1 << 2;
-    static constexpr type swis = 0x1 << 3;
-    static constexpr type tctc = 0x1 << 4;
-};
+constexpr const char *db_params_id_names[] = {"none", "default", "opaque", "2pl", "adaptive", "swiss", "tictoc"};
 
-constexpr const char *db_params_id_names[] = {"none", "default", "opaque", "adaptive", "swiss", "tictoc"};
-
-enum class db_params_id : int { None = 0, Default, Opaque, Adaptive, Swiss, TicToc };
+enum class db_params_id : int { None = 0, Default, Opaque, TwoPL, Adaptive, Swiss, TicToc };
 
 std::ostream& operator<<(std::ostream& os, const db_params_id& id) {
     os << db_params_id_names[static_cast<int>(id)];
@@ -43,6 +33,7 @@ class db_default_params {
 public:
     static constexpr db_params_id Id = db_params_id::Default;
     static constexpr bool RdMyWr = false;
+    static constexpr bool TwoPhaseLock = false;
     static constexpr bool Adaptive = false;
     static constexpr bool Opaque = false;
     static constexpr bool Swiss = false;
@@ -53,6 +44,12 @@ class db_opaque_params : public db_default_params {
 public:
     static constexpr db_params_id Id = db_params_id::Opaque;
     static constexpr bool Opaque = true;
+};
+
+class db_2pl_params : public db_default_params {
+public:
+    static constexpr db_params_id Id = db_params_id::TwoPL;
+    static constexpr bool TwoPhaseLock = true;
 };
 
 class db_adaptive_params : public db_default_params {

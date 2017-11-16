@@ -7,13 +7,10 @@
 #include "VersionBase.hh"
 #include "TThread.hh"
 
-#ifndef ADAPTIVE_RWLOCK
-#define ADAPTIVE_RWLOCK 1
-#endif
-
 enum class LockResponse : int {locked, failed, optimistic, spin};
 
-class TLockVersion : public BasicVersion<TLockVersion> {
+template <bool Adaptive>
+class TLockVersion : public BasicVersion<TLockVersion<Adaptive>> {
 public:
     typedef TransactionTid::type type;
     static constexpr type mask = TransactionTid::threadid_mask;
@@ -22,14 +19,14 @@ public:
     static constexpr type opt_bit = TransactionTid::opt_bit;
     static constexpr type dirty_bit = TransactionTid::dirty_bit;
 
-    using BV = BasicVersion<TLockVersion>;
+    using BV = BasicVersion<TLockVersion<Adaptive>>;
     using BV::v_;
 
     TLockVersion() = default;
     explicit TLockVersion(type v)
-            : BasicVersion<TLockVersion>(v) {}
+            : BV(v) {}
     TLockVersion(type v, bool insert)
-            : BasicVersion<TLockVersion>(v | (insert ? lock_bit : 0)) {}
+            : BV(v | (insert ? lock_bit : 0)) {}
 
     bool cp_try_lock_impl(TransItem& item, int threadid) {
         (void)item;
@@ -126,37 +123,38 @@ private:
     }
 
     void unlock_read() {
-#if ADAPTIVE_RWLOCK == 0
-        type vv = __sync_fetch_and_add(&v_, -1);
-        (void)vv;
-        assert((vv & mask) >= 1);
-#else
-        bool reset_opt_bit = TThread::gen[TThread::id()].chance(50);
-        if (!reset_opt_bit) {
-            fetch_and_add(&v_, -1);
+        if (!Adaptive) {
+            type vv = __sync_fetch_and_add(&v_, -1);
+            (void)vv;
+            assert((vv & mask) >= 1);
         } else {
-            while (1) {
-                type vv = v_;
-                assert((vv & mask) >= 1);
-                type new_v = (vv - 1) | opt_bit;
-                if (::bool_cmpxchg(&v_, vv, new_v))
-                    break;
-                relax_fence();
+            bool reset_opt_bit = TThread::gen[TThread::id()].chance(50);
+            if (!reset_opt_bit) {
+                fetch_and_add(&v_, -1);
+            } else {
+                while (1) {
+                    type vv = v_;
+                    assert((vv & mask) >= 1);
+                    type new_v = (vv - 1) | opt_bit;
+                    if (::bool_cmpxchg(&v_, vv, new_v))
+                        break;
+                    relax_fence();
+                }
             }
         }
-#endif
     }
 
     void unlock_write() {
-        assert(is_locked());
-#if ADAPTIVE_RWLOCK == 0
-        type new_v = v_ & ~(lock_bit | dirty_bit | opt_bit);
-#else
-        type new_v = v_ & ~(lock_bit | dirty_bit);
-        if (((new_v & opt_bit) != 0) && TThread::gen[TThread::id()].chance(50)) {
-            new_v &= ~opt_bit;
+        assert(BV::is_locked());
+        type new_v;
+        if (!Adaptive) {
+            new_v = v_ & ~(lock_bit | dirty_bit | opt_bit);
+        } else {
+            new_v = v_ & ~(lock_bit | dirty_bit);
+            if (((new_v & opt_bit) != 0) && TThread::gen[TThread::id()].chance(50)) {
+                new_v &= ~opt_bit;
+            }
         }
-#endif
         v_ = new_v;
         release_fence();
     }
@@ -165,12 +163,6 @@ private:
     inline bool try_lock_write_with_spin();
     inline std::pair<LockResponse, type> try_lock_read_with_spin();
     inline bool lock_for_write(TransItem& item);
-
-public:
-#if ADAPTIVE_RWLOCK != 0
-    // hacky state used by adaptive read/write lock
-    static int unlock_opt_chance;
-#endif
 };
 
 template <bool Opacity>

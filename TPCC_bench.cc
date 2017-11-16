@@ -535,7 +535,7 @@ static inline void print_usage(const char *argv_0) {
     ss << "Usage of " << std::string(argv_0) << ":" << std::endl
        << "  --dbid=<STRING> (or -i<STRING>)" << std::endl
        << "    Specify the type of DB concurrency control used. Can be one of the followings:" << std::endl
-       << "      default, opaque, adaptive, swiss, tictoc" << std::endl
+       << "      default, opaque, 2pl, adaptive, swiss, tictoc" << std::endl
        << "  --nwarehouses=<NUM> (or -w<NUM>)" << std::endl
        << "    Specify the number of warehouses (default 1)." << std::endl
        << "  --nthreads=<NUM> (or -t<NUM>)" << std::endl
@@ -635,6 +635,9 @@ int main(int argc, const char *const *argv) {
         break;
     case db_params_id::Opaque:
         ret_code = tpcc_access<db_opaque_params>::execute(argc, argv);
+        break;
+    case db_params_id::TwoPL:
+        ret_code = tpcc_access<db_2pl_params>::execute(argc, argv);
         break;
     case db_params_id::Adaptive:
         ret_code = tpcc_access<db_adaptive_params>::execute(argc, argv);

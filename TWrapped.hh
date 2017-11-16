@@ -17,7 +17,7 @@ template <typename T, bool Opaque = true,
 template <typename T, bool Opaque = true,
           bool Trivial = std::is_trivially_copyable<T>::value,
           bool Small = is_small<T>::value
-          > class TLockWrapped;
+          > class TAdaptiveWrapped;
 
 template <typename T, bool Opaque = true,
           bool Trivial = std::is_trivially_copyable<T>::value,
@@ -210,12 +210,12 @@ public:
 }; // class TWrappedAccess
 
 template <typename T>
-class TLockWrapped<T, true /* opaque */, true /* trivial */, true /* small */> {
+class TAdaptiveWrapped<T, true /* opaque */, true /* trivial */, true /* small */> {
 public:
     typedef T read_type;
-    typedef TLockVersion version_type;
+    typedef TLockVersion<true> version_type;
 
-    template <typename... Args> TLockWrapped(Args&&... args)
+    template <typename... Args> TAdaptiveWrapped(Args&&... args)
         : v_(std::forward<Args>(args)...) {}
 
     const T& access() const {
@@ -248,21 +248,21 @@ protected:
 };
 
 template <typename T>
-class TLockWrapped<T, true /* opaque */, false /* trivial */, false /* small */> {
+class TAdaptiveWrapped<T, true /* opaque */, false /* trivial */, false /* small */> {
 public:
     typedef T& read_type;
-    typedef TLockVersion version_type;
+    typedef TLockVersion<true> version_type;
 
-    TLockWrapped()
+    TAdaptiveWrapped()
             : vp_(new T) {}
-    explicit TLockWrapped(const T& v)
+    explicit TAdaptiveWrapped(const T& v)
             : vp_(new T(v)) {}
-    explicit TLockWrapped(T&& v)
+    explicit TAdaptiveWrapped(T&& v)
             : vp_(std::move(v)) {}
     template <typename... Args>
-    explicit TLockWrapped(Args&&... args)
+    explicit TAdaptiveWrapped(Args&&... args)
             : vp_(new T(std::forward<Args>(args)...)) {}
-    ~TLockWrapped() {
+    ~TAdaptiveWrapped() {
         Transaction::rcu_delete(vp_);
     }
 
@@ -783,7 +783,7 @@ public:
 template <typename T> using TOpaqueWrapped = TWrapped<T>;
 template <typename T> using TNonopaqueWrapped = TWrapped<T, false>;
 
-template <typename T> using TOpaqueLockWrapped = TLockWrapped<T>;
+template <typename T> using TAdaptiveNonopaqueWrapped = TAdaptiveWrapped<T>;
 template <typename T> using TSwissNonopaqueWrapped = TSwissWrapped<T, false>;
 
 template <typename T> using TicTocNonopaqueWrapped = TicTocWrapped<T, false>;

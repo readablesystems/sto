@@ -4,7 +4,7 @@
 void test_compile() {
     constexpr unsigned sz = 1000;
     TOCCArray<uint64_t , sz> occ_array;
-    TLockArray<uint64_t , sz> lock_array;
+    TAdaptiveArray<uint64_t , sz> lock_array;
     TSwissArray<uint64_t , sz> swiss_array;
     TicTocArray<uint64_t, sz> tictoc_array;
 
