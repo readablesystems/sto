@@ -20,7 +20,7 @@ class ContentionManager {
 public:
     static bool should_abort(int this_id, int owner_id);
 
-    static void on_write(int threadid);
+    static bool on_write(int threadid);
 
     static void start(Transaction *tx); 
 

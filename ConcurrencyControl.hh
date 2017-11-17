@@ -351,9 +351,7 @@ inline bool TSwissVersion<Opaque>::acquire_write_impl(TransItem& item) {
     VersionDelegate::txn_set_any_writes(t(), true);
     //item().__or_flags(TransItem::write_bit | TransItem::lock_bit);
     //t()->any_writes_ = true;
-    ContentionManager::on_write(TThread::id());
-
-    return true;
+    return ContentionManager::on_write(TThread::id());
 }
 
 template <bool Opaque> template <typename T>
@@ -399,9 +397,7 @@ inline bool TSwissVersion<Opaque>::acquire_write_impl(TransItem& item, Args&&...
     //item().__or_flags(TransItem::write_bit | TransItem::lock_bit);
     //item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
     //t()->any_writes_ = true;
-    ContentionManager::on_write(TThread::id());
-
-    return true;
+    return ContentionManager::on_write(TThread::id());
 }
 
 template <bool Opaque>
