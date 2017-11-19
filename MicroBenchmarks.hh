@@ -4,8 +4,10 @@
 #include <vector>
 #include <string>
 #include <set>
+#include <thread>
 
 #include "Sto.hh"
+#include "TPCC_bench.hh"
 #include "TPCC_index.hh"
 
 #include "sampling.hh"
@@ -14,23 +16,28 @@
 
 namespace ubench {
 
+
+enum class DsType : int {none, masstree};
+
 struct UBenchParams {
+    tpcc::db_params_id dbid;
+    DsType datatype;
+    uint32_t ntrans;
+    uint32_t nthreads;
+    uint32_t opspertrans;
+    uint32_t opspertrans_ro;
+    uint64_t key_sz;
     double time_limit;
     double zipf_skew;
-    uint64_t key_sz;
     double readonly_percent;
     double write_percent;
-    uint32_t opspertrans_ro;
-    uint32_t opspertrans;
-    uint64_t ntrans;
-    uint64_t nthreads;
     uint64_t proc_frequency_hz;
     bool dump_trace;
+    bool profiler;
+    bool ins_measure;
 };
 
 extern UBenchParams params;
-
-enum class DsType : int {none, masstree};
 
 enum class OpType : int {read, write, inc};
 
@@ -46,13 +53,21 @@ struct RWOperation {
     value_type value;
 };
 
+struct wl_measurement_params {
+    static constexpr bool instantaneous_measurements = true;
+};
+
+struct wl_default_params {
+    static constexpr bool instantaneous_measurements = false;
+};
+
 template <typename WLImpl>
 class WorkloadGenerator {
 public:
     typedef std::vector<RWOperation> query_type;
     typedef std::vector<query_type> workload_type;
 
-    WorkloadGenerator(size_t num_threads) {
+    explicit WorkloadGenerator(size_t num_threads) {
         workloads.resize(num_threads);
     }
 
@@ -76,12 +91,15 @@ public:
     // experimental flags
     static constexpr bool ins_measure = WLImpl::RTParams::instantaneous_measurements;
 
-    Tester(size_t num_threads) : wl_gen(num_threads) {
+    explicit Tester(size_t num_threads) : wl_gen(num_threads) {
         measurements.resize(num_threads);
         for (auto& m : measurements) {
             m.reserve(10000);
         }
     }
+
+    inline void execute();
+    inline uint64_t run_benchmark(uint64_t start_tsc);
 
     void workload_init(int thread_id) {
         wl_gen.workload_init(thread_id);
@@ -92,7 +110,7 @@ public:
     void ds_thread_init() {
         ds_impl().thread_init_impl();
     }
-    inline void run(int thread_id, uint64_t start_tsc);
+    inline void run_thread(int thread_id, uint64_t start_tsc, uint64_t& txn_cnt);
 
     bool do_op(const RWOperation& op) {
         return ds_impl().do_op_impl(op);
@@ -111,12 +129,53 @@ protected:
 };
 
 template <typename DSImpl, typename WLImpl>
-void Tester<DSImpl, WLImpl>::run(int thread_id, uint64_t start_tsc) {
+void Tester<DSImpl, WLImpl>::execute() {
+    tpcc::tpcc_profiler profiler(params.profiler);
+    std::vector<std::thread> thread_pool;
+
+    std::cout << "Generating workload..." << std::endl;
+    for (auto i = 0u; i < params.nthreads; ++i)
+        thread_pool.emplace_back(this->workload_init, this, (int)i);
+    for (auto& t : thread_pool)
+        t.join();
+    thread_pool.clear();
+    std::cout << "Prepopulating..." << std::endl;
+    prepopulate();
+    std::cout << "Running" << std::endl;
+
+    profiler.start(Profiler::perf_mode::record);
+    auto num_commits = run_benchmark(profiler.start_timestamp());
+    profiler.finish(num_commits);
+}
+
+template <typename DSImpl, typename WLImpl>
+uint64_t Tester<DSImpl, WLImpl>::run_benchmark(uint64_t start_tsc) {
+    std::vector<std::thread> thread_pool;
+    uint64_t total_txns = 0;
+
+    uint64_t *txn_cnts = new uint64_t[params.nthreads];
+    for (auto i = 0u; i < params.nthreads; ++i) {
+        txn_cnts[i] = 0;
+        thread_pool.emplace_back(this->run_thread, this, (int)i, start_tsc, txn_cnts[i]);
+    }
+    for (auto it = thread_pool.begin(); it != thread_pool.end(); ++it) {
+        it->join();
+        total_txns += txn_cnts[it - thread_pool.begin()];
+    }
+    delete[] txn_cnts;
+    return total_txns;
+}
+
+template <typename DSImpl, typename WLImpl>
+void Tester<DSImpl, WLImpl>::run_thread(int thread_id, uint64_t start_tsc, uint64_t& txn_cnt) {
     TThread::set_id(thread_id);
+    set_affinity(thread_id);
     ds_thread_init();
 
     // thread workload
     auto& twl = wl_gen.workloads[thread_id];
+
+    uint64_t local_txn_cnt = 0;
 
     uint64_t interval;
     uint64_t total_delta;
@@ -124,7 +183,7 @@ void Tester<DSImpl, WLImpl>::run(int thread_id, uint64_t start_tsc) {
     uint64_t prev_total_reads;
     uint64_t prev_total_opt_reads;
 
-    uint64_t ticks_to_wait = (uint64_t)(params.time_limit * (double)params.proc_frequency_hz);
+    uint64_t ticks_to_wait = (uint64_t)(params.time_limit * (double)(params.proc_frequency_hz));
 
     if (ins_measure) {
         interval = 10 * params.proc_frequency_hz / 1000;
@@ -151,6 +210,7 @@ void Tester<DSImpl, WLImpl>::run(int thread_id, uint64_t start_tsc) {
                 (void) __txn_committed;
             } RETRY(true);
 
+            ++local_txn_cnt;
             uint64_t now = read_tsc();
 
             // instantaneous metrics measurements
@@ -179,6 +239,8 @@ void Tester<DSImpl, WLImpl>::run(int thread_id, uint64_t start_tsc) {
             }
         }
     }
+
+    txn_cnt = local_txn_cnt;
 }
 
 template <typename Params>
@@ -187,7 +249,7 @@ public:
     typedef WorkloadGenerator<WLZipfRW> WG;
     typedef Params RTParams;
 
-    WLZipfRW(size_t num_threads) : WG(num_threads) {}
+    explicit WLZipfRW(size_t num_threads) : WG(num_threads) {}
 
     void workload_init_impl(int thread_id) {
         StoSampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
@@ -198,13 +260,13 @@ public:
         else
             dd = new StoSampling::StoZipfDistribution(thread_id, 0, params.key_sz - 1, params.zipf_skew);
 
-        uint32_t ro_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * params.readonly_percent);
-        uint32_t write_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * params.write_percent);
+        auto ro_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * params.readonly_percent);
+        auto write_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * params.write_percent);
 
         auto& thread_workload = this->workloads[thread_id];
-        int trans_per_thread = params.ntrans / params.nthreads;
+        uint64_t trans_per_thread = params.ntrans / params.nthreads;
 
-        for (int i = 0; i < trans_per_thread; ++i) {
+        for (uint64_t i = 0; i < trans_per_thread; ++i) {
             typename WG::query_type query;
             bool read_only = ud.sample() < ro_threshold;
             int nops = read_only ? params.opspertrans_ro : params.opspertrans;
@@ -226,10 +288,10 @@ public:
             }
             thread_workload.emplace_back(std::move(query));
         }
-
+#if 0
         if (params.dump_trace)
             dump_thread_trace(thread_id, thread_workload);
-
+#endif
         delete dd;
     }
 };
@@ -237,6 +299,10 @@ public:
 template <typename WLImpl, typename DBParams>
 class MasstreeTester : public Tester<MasstreeTester<WLImpl, DBParams>, WLImpl> {
 public:
+    typedef typename Tester<MasstreeTester<WLImpl, DBParams>, WLImpl> Base;
+
+    explicit MasstreeTester(size_t num_threads) : Base(num_threads), mt_() {}
+
     void prepopulate_impl() {
         for (unsigned int i = 0; i < 100000; ++i)
             mt_.nontrans_put(i, i);
@@ -254,7 +320,7 @@ public:
                         = mt_.select_row(op.key, false);
                 break;
             case OpType::write:
-                std::tie(success, std::ignore) = mt_.insert_row(op.key, op.value);
+                std::tie(success, std::ignore) = mt_.insert_row(op.key, &op.value);
                 break;
             case OpType::inc: {
                 uintptr_t rid;
@@ -263,11 +329,10 @@ public:
                         = mt_.select_row(op.key, true);
                 if (!success)
                     break;
-                std::tie(success, std::ignore) = mt_.update_row(rid, (*value) + 1);
+                value_type new_v = (*value) + 1;
+                mt_.update_row(rid, &new_v);
                 break;
             }
-            default:
-                break;
         }
         return success;
     }
@@ -283,6 +348,12 @@ template <typename WLImpl, typename DBParams>
 struct TesterSelector<DsType::masstree, WLImpl, DBParams> {
     typedef MasstreeTester<WLImpl, DBParams> type;
 };
+
+template <typename DBParams>
+using MtZipfTesterDefault = TesterSelector<DsType::masstree, WLZipfRW<wl_default_params>, DBParams>;
+
+template <typename DBParams>
+using MtZipfTesterMeasure = TesterSelector<DsType::masstree, WLZipfRW<wl_measurement_params>, DBParams>;
 
 };
 

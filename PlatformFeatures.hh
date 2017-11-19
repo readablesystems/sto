@@ -7,6 +7,7 @@
 
 #include <string>
 #include <iostream>
+#include <iomanip>
 #include <sstream>
 
 #include <pthread.h>
@@ -113,6 +114,38 @@ inline double get_cpu_brand_frequency() {
     ss >> freq;
 
     return freq * multipliers[unit];
+}
+
+double determine_cpu_freq() {
+    double freq = 0.0;
+    std::cout << "Checking for rdtscp support..." << std::flush;
+    if (!cpu_has_feature<TscQuery>()) {
+        std::cout << std::endl;
+        std::cerr << "Fatal error: CPU lacks timestamp counter (tsc) capability." << std::endl;
+        return freq;
+    } else {
+        std::cout << " Yes" << std::endl;
+    }
+
+    std::cout << "Checking for invariant tsc support..." << std::flush;
+    if (!cpu_has_feature<IvTscQuery>()) {
+        std::cout << std::endl;
+        std::cout << "Warning: CPU does not report support for invariant tsc. Please double check timing measurement."
+                  << std::endl;
+    } else {
+        std::cout << " Yes" << std::endl;
+    }
+
+    std::cout << "Determining processor frequency..." << std::endl;
+    freq = get_cpu_brand_frequency();
+    if (freq == 0.0) {
+        std::cout << "Warning: Can't determine processor tsc frequency from CPU brand string. Using the default value "
+                "of 1 GHz." << std::endl;
+        freq = 1.0;
+    }
+    std::cout << "Info: CPU tsc frequency determined as "
+              << std::fixed << std::setprecision(2) << freq << " GHz." << std::endl;
+    return freq;
 }
 
 inline void set_affinity(int cpu_id) {

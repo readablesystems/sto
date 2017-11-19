@@ -549,52 +549,7 @@ static inline void print_usage(const char *argv_0) {
     std::cout << ss.str() << std::flush;
 }
 
-static inline db_params_id set_dbid(const char *id_string) {
-    if (id_string == nullptr)
-        return db_params_id::None;
-    for (size_t i = 0; i < sizeof(db_params_id_names); ++i) {
-        if (strcmp(id_string, db_params_id_names[i]) == 0) {
-            auto selected = static_cast<db_params_id>(i);
-            std::cout << "Selected \"" << selected << "\" as DB concurrency control." << std::endl;
-            return selected;
-        }
-    }
-    return db_params_id::None;
-}
-
 double tpcc::constants::processor_tsc_frequency;
-
-bool initialize_platform_info() {
-    std::cout << "Checking for rdtscp support..." << std::flush;
-    if (!cpu_has_feature<TscQuery>()) {
-        std::cout << std::endl;
-        std::cerr << "Fatal error: CPU lacks timestamp counter (tsc) capability." << std::endl;
-        return false;
-    } else {
-        std::cout << " Yes" << std::endl;
-    }
-
-    std::cout << "Checking for invariant tsc support..." << std::flush;
-    if (!cpu_has_feature<IvTscQuery>()) {
-        std::cout << std::endl;
-        std::cout << "Warning: CPU does not report support for invariant tsc. Please double check timing measurement."
-                  << std::endl;
-    } else {
-        std::cout << " Yes" << std::endl;
-    }
-
-    std::cout << "Determining processor frequency..." << std::endl;
-    auto freq = get_cpu_brand_frequency();
-    if (freq == 0.0) {
-        std::cout << "Warning: Can't determine processor tsc frequency from CPU brand string. Using the default value "
-                     "of 1 GHz." << std::endl;
-        freq = 1.0;
-    }
-    std::cout << "Info: CPU tsc frequency set as "
-              << std::fixed << std::setprecision(2) << freq << " GHz." << std::endl;
-    tpcc::constants::processor_tsc_frequency = freq;
-    return true;
-}
 
 int main(int argc, const char *const *argv) {
     db_params_id dbid = db_params_id::Default;
@@ -607,7 +562,7 @@ int main(int argc, const char *const *argv) {
     while (!clp_stop && ((opt = Clp_Next(clp)) != Clp_Done)) {
         switch (opt) {
         case opt_dbid:
-            dbid = set_dbid(clp->val.s);
+            dbid = parse_dbid(clp->val.s);
             if (dbid == db_params_id::None) {
                 std::cout << "Unsupported DB CC id: "
                     << ((clp->val.s == nullptr) ? "" : std::string(clp->val.s)) << std::endl;
@@ -625,9 +580,11 @@ int main(int argc, const char *const *argv) {
     if (ret_code != 0)
         return ret_code;
 
-    auto platform_check = initialize_platform_info();
-    if (!platform_check)
+    auto cpu_freq = determine_cpu_freq();
+    if (cpu_freq == 0.0)
         return 1;
+    else
+        tpcc::constants::processor_tsc_frequency = cpu_freq;
 
     switch (dbid) {
     case db_params_id::Default:

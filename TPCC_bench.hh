@@ -29,6 +29,19 @@ std::ostream& operator<<(std::ostream& os, const db_params_id& id) {
     return os;
 }
 
+inline db_params_id parse_dbid(const char *id_string) {
+    if (id_string == nullptr)
+        return db_params_id::None;
+    for (size_t i = 0; i < sizeof(db_params_id_names); ++i) {
+        if (strcmp(id_string, db_params_id_names[i]) == 0) {
+            auto selected = static_cast<db_params_id>(i);
+            std::cout << "Selected \"" << selected << "\" as DB concurrency control." << std::endl;
+            return selected;
+        }
+    }
+    return db_params_id::None;
+}
+
 class db_default_params {
 public:
     static constexpr db_params_id Id = db_params_id::Default;

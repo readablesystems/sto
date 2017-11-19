@@ -38,6 +38,13 @@ add_executable(tpcc_bench
         TPCC_index.hh
         TPCC_txns.hh)
 
+add_executable(micro_bench
+        PlatformFeatures.hh
+        MicroBenchmarks.cc
+        MicroBenchmarks.hh
+        TPCC_index.hh
+        TPCC_bench.hh)
+
 add_executable(concurrent
         srandomdev.c
         concurrent.cc)
