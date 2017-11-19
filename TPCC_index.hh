@@ -582,6 +582,8 @@ public:
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit << 1;
     static constexpr uintptr_t internode_bit = 1;
 
+    static constexpr bool value_is_small = is_small<V>::value;
+
     static constexpr bool index_read_my_write = DBParams::RdMyWr;
 
     struct internal_elem {
@@ -706,7 +708,11 @@ public:
     void update_row(uintptr_t rid, value_type *new_row) {
         auto item = Sto::item(this, reinterpret_cast<internal_elem *>(rid));
         assert(item.has_write() && !has_insert(item));
-        item.add_write(new_row);
+        if (value_is_small) {
+            item.add_write(*new_row);
+        } else {
+            item.add_write(new_row);
+        }
     }
 
     // insert assumes common case where the row doesn't exist in the table
@@ -726,13 +732,19 @@ public:
 
             if (index_read_my_write) {
                 if (has_delete(item)) {
-                    item.clear_flags(delete_bit).clear_write().template add_write(vptr);
+                    auto proxy = item.clear_flags(delete_bit).clear_write();
+
+                    if (value_is_small)
+                        proxy.add_write(*vptr);
+                    else
+                        proxy.add_write(vptr);
+
                     return ins_return_type(true, false);
                 }
             }
 
             if (overwrite) {
-                if (!version_adapter::select_for_overwrite(item, e->version, vptr))
+                if (!version_adapter::select_for_overwrite(item, e->version, value_is_small ? *vptr : vptr))
                     goto abort;
                 if (index_read_my_write) {
                     if (has_insert(item)) {
@@ -757,7 +769,10 @@ public:
             fence();
 
             TransProxy item = Sto::item(this, e);
-            item.template add_write<value_type *>(vptr);
+            if (value_is_small)
+                item.add_write<value_type>(*vptr);
+            else
+                item.add_write<value_type *>(vptr);
             item.add_flags(insert_bit);
 
             update_internode_version(orig_node, orig_nv, new_nv);
@@ -871,7 +886,10 @@ public:
         bool found = lp.find_insert(*ti);
         if (found) {
             internal_elem *e = lp.value();
-            copy_row(e, &v);
+            if (value_is_small)
+                e->value = v;
+            else
+               copy_row(e, &v);
             lp.finish(0, *ti);
         } else {
             internal_elem *e = new internal_elem(k, v, true);
@@ -915,8 +933,12 @@ public:
         }
 
         if (!has_insert(item)) {
-            auto vptr = item.write_value<value_type *>();
-            copy_row(el, vptr);
+            if (value_is_small) {
+                el->value = item.write_value<value_type>();
+            } else {
+                auto vptr = item.write_value<value_type *>();
+                copy_row(el, vptr);
+            }
         }
 
         // like in the hashtable (unordered_index), no need for the hacks
