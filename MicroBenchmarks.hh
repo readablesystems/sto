@@ -3,8 +3,10 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <set>
 
 #include "Sto.hh"
+#include "TPCC_index.hh"
 
 #include "sampling.hh"
 #include "PlatformFeatures.hh"
@@ -15,7 +17,15 @@ namespace ubench {
 struct UBenchParams {
     double time_limit;
     double zipf_skew;
+    uint64_t key_sz;
+    double readonly_percent;
+    double write_percent;
+    uint32_t opspertrans_ro;
+    uint32_t opspertrans;
+    uint64_t ntrans;
+    uint64_t nthreads;
     uint64_t proc_frequency_hz;
+    bool dump_trace;
 };
 
 extern UBenchParams params;
@@ -67,9 +77,9 @@ public:
     static constexpr bool ins_measure = WLImpl::RTParams::instantaneous_measurements;
 
     Tester(size_t num_threads) : wl_gen(num_threads) {
-        progresses.resize(num_threads);
-        for (auto& p : progresses) {
-            p.reserve(10000);
+        measurements.resize(num_threads);
+        for (auto& m : measurements) {
+            m.reserve(10000);
         }
     }
 
@@ -110,7 +120,7 @@ void Tester<DSImpl, WLImpl>::run(int thread_id, uint64_t start_tsc) {
 
     uint64_t interval;
     uint64_t total_delta;
-    WLImpl::workload_type::const_iterator it_prev;
+    typename WLImpl::workload_type::const_iterator it_prev;
     uint64_t prev_total_reads;
     uint64_t prev_total_opt_reads;
 
@@ -134,8 +144,10 @@ void Tester<DSImpl, WLImpl>::run(int thread_id, uint64_t start_tsc) {
     while (!stop) {
         for (auto txn_it = twl.begin(); txn_it != twl.end(); ++txn_it) {
             TRANSACTION {
-                for (auto &req : *txn_it)
-                    do_op(req);
+                for (auto &req : *txn_it) {
+                    bool ok = do_op(req);
+                    TXN_DO(ok);
+                }
                 (void) __txn_committed;
             } RETRY(true);
 
@@ -170,9 +182,9 @@ void Tester<DSImpl, WLImpl>::run(int thread_id, uint64_t start_tsc) {
 }
 
 template <typename Params>
-class WLZipfRW : public WorkloadGenerator<WLZipfRW> {
+class WLZipfRW : public WorkloadGenerator<WLZipfRW<Params>> {
 public:
-    typedef WorkloadGenerator<WLRandomRW> WG;
+    typedef WorkloadGenerator<WLZipfRW> WG;
     typedef Params RTParams;
 
     WLZipfRW(size_t num_threads) : WG(num_threads) {}
@@ -190,16 +202,16 @@ public:
         uint32_t write_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * params.write_percent);
 
         auto& thread_workload = this->workloads[thread_id];
-        int trans_per_thread = ntrans / nthreads;
+        int trans_per_thread = params.ntrans / params.nthreads;
 
         for (int i = 0; i < trans_per_thread; ++i) {
-            query_type query;
+            typename WG::query_type query;
             bool read_only = ud.sample() < ro_threshold;
             int nops = read_only ? params.opspertrans_ro : params.opspertrans;
 
             std::set<StoSampling::index_t> idx_set;
             while (idx_set.size() != (size_t)nops) {
-                idx_set.push_back(dd->sample());
+                idx_set.insert(dd->sample());
             }
 
             for (auto idx : idx_set) {
@@ -223,7 +235,7 @@ public:
 };
 
 template <typename WLImpl, typename DBParams>
-class MasstreeTester : public Tester<MasstreeTester, WLImpl> {
+class MasstreeTester : public Tester<MasstreeTester<WLImpl, DBParams>, WLImpl> {
 public:
     void prepopulate_impl() {
         for (unsigned int i = 0; i < 100000; ++i)
@@ -244,13 +256,16 @@ public:
             case OpType::write:
                 std::tie(success, std::ignore) = mt_.insert_row(op.key, op.value);
                 break;
-            case OpType::inc:
-                std::tie(success, std::ignore, std::ignore, std::ignore)
+            case OpType::inc: {
+                uintptr_t rid;
+                const value_type* value;
+                std::tie(success, std::ignore, rid, value)
                         = mt_.select_row(op.key, true);
                 if (!success)
                     break;
-                std::tie(success, std::ignore) = mt_.update_row(rid, op.value);
+                std::tie(success, std::ignore) = mt_.update_row(rid, (*value) + 1);
                 break;
+            }
             default:
                 break;
         }
@@ -270,3 +285,4 @@ struct TesterSelector<DsType::masstree, WLImpl, DBParams> {
 };
 
 };
+
