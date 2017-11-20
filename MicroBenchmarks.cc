@@ -1,5 +1,6 @@
 #include "TPCC_bench.hh"
 #include "MicroBenchmarks.hh"
+#include "clp.h"
 
 // global flags
 ubench::UBenchParams ubench::params;
@@ -7,13 +8,20 @@ ubench::UBenchParams ubench::params;
 // global cpu frequency in GHz
 double tpcc::constants::processor_tsc_frequency;
 
+// masstree global variables
+volatile mrcu_epoch_type active_epoch = 1;
+volatile uint64_t globalepoch = 1;
+volatile bool recovering = false;
+
 enum {
     opt_ccid = 1,
     opt_type,
+    opt_keysz,
     opt_ntrans,
     opt_nthrs,
     opt_opsptx,
     opt_opspro,
+    opt_skew,
     opt_ropct,
     opt_wrpct,
     opt_time,
@@ -25,10 +33,12 @@ enum {
 static const Clp_Option options[] = {
     { "ccid",        'i', opt_ccid,   Clp_ValString,   Clp_Optional },
     { "datatype",    't', opt_type,   Clp_ValString,   Clp_Optional },
+    { "keysize",     'k', opt_keysz,  Clp_ValUnsignedLong, Clp_Optional },
     { "ntrans",      'x', opt_ntrans, Clp_ValUnsigned, Clp_Optional },
     { "nthreads",    'j', opt_nthrs,  Clp_ValUnsigned, Clp_Optional },
     { "opspertrans", 0,   opt_opsptx, Clp_ValUnsigned, Clp_Optional },
     { "opsperro",    0,   opt_opspro, Clp_ValUnsigned, Clp_Optional },
+    { "skew",        's', opt_skew,   Clp_ValDouble,   Clp_Optional },
     { "readonly",    0,   opt_ropct,  Clp_ValDouble,   Clp_Optional },
     { "writeratio",  0,   opt_wrpct,  Clp_ValDouble,   Clp_Optional },
     { "time",        'l', opt_time,   Clp_ValDouble,   Clp_Optional },
@@ -37,44 +47,69 @@ static const Clp_Option options[] = {
     { "measure",     'm', opt_insm,   Clp_NoVal,       Clp_Negate | Clp_Optional }
 };
 
+inline void print_usage(const char *prog) {
+    std::stringstream ss;
+    ss << "Usage: ./" << std::string(prog) << " [parameters...]" << std::endl
+       << "List of accepted parameters:" << std::endl
+       << "  --ccid=STRING (-i), concurrency control policy. Accepted options are:" << std::endl
+       << "      default, opaque, 2pl, adaptive, swiss, tictoc" << std::endl
+       << "  --datatype=STRING (-t), data structure used to run benchmark. (Now only supports masstree.)" << std::endl
+       << "  --keysize=NUMBER (-k), size of key space used in the benchmark (like ARRAY_SZ), default 10 million" << std::endl
+       << "  --ntrans=NUMBER (-x), number of pre-generated transactions (loops over once runs out), default 2 million" << std::endl
+       << "  --nthreads=NUMBER (-j), number of concurrent threads, default 4" << std::endl
+       << "  --opspertrans=NUMBER, number of operations per transaction, default 20" << std::endl
+       << "  --opsperro=NUMBER, number of operations in read-only transactions, defaults to opspertrans value" << std::endl
+       << "  --skew=FLOAT, Zipf skew (theta) parameter used to generate workload, default 0.8" << std::endl
+       << "  --readonly=FRACTION, fraction of transactions that are read-only, default 0.8" << std::endl
+       << "  --writeratio=FRACTION, fraction of operations in non-read-only transactions that are writes, default 0.2" << std::endl
+       << "  --time=FLOAT (-l), duration (in seconds) for which the benchmark is run, default 5.0" << std::endl
+       << "  --perf (-p), spawn perf profiler after the benchmark starts executing, default off" << std::endl
+       << "  --dump (-d), dump the trace of all generated transactions (not functional for now)" << std::endl
+       << "  --measure (-m), enable instantaneous measurements of throughput and optimistic read rates, default off" << std::endl;
+
+    std::cout << ss.str() << std::flush;
+}
+
+template <typename P, bool InsMeasure>
+using tester = typename std::conditional<InsMeasure,
+        ubench::MtZipfTesterMeasure<P>,
+        ubench::MtZipfTesterDefault<P>>::type;
+
 template <bool InsMeasure>
-void instantiate_and_execute_testers() {
+inline void instantiate_and_execute_testers() {
     using ubench::MtZipfTesterDefault;
     using ubench::MtZipfTesterMeasure;
     using ubench::params;
     using tpcc::db_params_id;
 
-    template <typename P>
-    using tester = std::conditional<InsMeasure, MtZipfTesterMeasure<P>, MtZipfTesterDefault<P>>::type;
-
     switch (params.dbid) {
         case db_params_id::Default: {
-            tester<tpcc::db_default_params>::type t(params.nthreads);
+            typename tester<tpcc::db_default_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
         case db_params_id::Opaque: {
-            tester<tpcc::db_opaque_params>::type t(params.nthreads);
+            typename tester<tpcc::db_opaque_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
         case db_params_id::TwoPL: {
-            tester<tpcc::db_2pl_params>::type t(params.nthreads);
+            typename tester<tpcc::db_2pl_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
         case db_params_id::Adaptive: {
-            tester<tpcc::db_adaptive_params>::type t(params.nthreads);
+            typename tester<tpcc::db_adaptive_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
         case db_params_id::Swiss: {
-            tester<tpcc::db_swiss_params>::type t(params.nthreads);
+            typename tester<tpcc::db_swiss_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
         case db_params_id::TicToc: {
-            tester<tpcc::db_tictoc_params>::type t(params.nthreads);
+            typename tester<tpcc::db_tictoc_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
@@ -99,6 +134,7 @@ int main(int argc, const char *argv[]) {
     params.opspertrans = 20;
     params.opspertrans_ro = params.opspertrans;
     params.ntrans = 2000000;
+    params.nthreads = 4;
     params.proc_frequency_hz = 0;
     params.dump_trace = false;
     params.profiler = false;
@@ -118,6 +154,9 @@ int main(int argc, const char *argv[]) {
             case opt_type:
                 params.datatype = ubench::parse_datatype(clp->val.s);
                 break;
+            case opt_keysz:
+                params.key_sz = clp->val.ul;
+                break;
             case opt_ntrans:
                 params.ntrans = clp->val.u;
                 break;
@@ -130,6 +169,9 @@ int main(int argc, const char *argv[]) {
             case opt_opspro:
                 params.opspertrans_ro = clp->val.u;
                 ro_specified = true;
+                break;
+            case opt_skew:
+                params.zipf_skew = clp->val.d;
                 break;
             case opt_ropct: {
                 auto d = clp->val.d;
@@ -182,4 +224,9 @@ int main(int argc, const char *argv[]) {
         instantiate_and_execute_testers<true>();
     else
         instantiate_and_execute_testers<false>();
+
+    std::cout << params << std::endl;
+    Transaction::print_stats();
+
+    return 0;
 }

@@ -69,6 +69,7 @@ add_executable(unit-tbox
         TBox.hh)
 
 target_link_libraries(tpcc_bench sto clp masstree json dprint xxhash ${PLATFORM_LIBRARIES})
+target_link_libraries(micro_bench sto clp masstree json dprint ${PLATFORM_LIBRARIES})
 target_link_libraries(unit-swisstarray sto dprint)
 target_link_libraries(unit-tflexarray sto dprint)
 target_link_libraries(unit-tbox sto dprint)

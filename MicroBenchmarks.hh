@@ -8,6 +8,7 @@
 
 #include "Sto.hh"
 #include "TPCC_bench.hh"
+#include "TPCC_structs.hh" // bswap...
 #include "TPCC_index.hh"
 
 #include "sampling.hh"
@@ -18,6 +19,19 @@ namespace ubench {
 
 
 enum class DsType : int {none, masstree};
+
+const char *datatype_names[] = {"none", "masstree"};
+
+inline DsType parse_datatype(const char *s) {
+    if (s == nullptr)
+        return DsType::none;
+
+    for (size_t i = 0; i < sizeof(datatype_names); ++i) {
+        if (std::string(datatype_names[i]) == std::string(s))
+            return static_cast<DsType>(i);
+    }
+    return DsType::none;
+}
 
 struct UBenchParams {
     tpcc::db_params_id dbid;
@@ -36,6 +50,17 @@ struct UBenchParams {
     bool profiler;
     bool ins_measure;
 };
+
+std::ostream& operator<<(std::ostream& os, const UBenchParams& p) {
+    os << "Benchmark finished using CC=" << tpcc::db_params_id_names[static_cast<int>(p.dbid)] << ", ";
+    os << "datatype=" << datatype_names[static_cast<int>(p.datatype)] << " with "
+       << p.nthreads << " threads" << std::endl;
+    os << p.ntrans << "transactions, " << p.opspertrans << "ops per transaction (" << p.opspertrans_ro
+       << " in read-only txns)" << std::endl;
+    os << "Read-only fraction = " << p.readonly_percent << ", write ratio = " << p.write_percent << std::endl;
+    os << "zipf skew = " << p.zipf_skew << ", " << "key space size = " << p.key_sz << std::endl;
+    return os;
+}
 
 extern UBenchParams params;
 
@@ -135,7 +160,8 @@ void Tester<DSImpl, WLImpl>::execute() {
 
     std::cout << "Generating workload..." << std::endl;
     for (auto i = 0u; i < params.nthreads; ++i)
-        thread_pool.emplace_back(this->workload_init, this, (int)i);
+        thread_pool.emplace_back(&Tester<DSImpl, WLImpl>::workload_init,
+                                 this, (int)i);
     for (auto& t : thread_pool)
         t.join();
     thread_pool.clear();
@@ -156,7 +182,8 @@ uint64_t Tester<DSImpl, WLImpl>::run_benchmark(uint64_t start_tsc) {
     uint64_t *txn_cnts = new uint64_t[params.nthreads];
     for (auto i = 0u; i < params.nthreads; ++i) {
         txn_cnts[i] = 0;
-        thread_pool.emplace_back(this->run_thread, this, (int)i, start_tsc, txn_cnts[i]);
+        thread_pool.emplace_back(&Tester<DSImpl, WLImpl>::run_thread,
+                                 this, (int)i, start_tsc, std::ref(txn_cnts[i]));
     }
     for (auto it = thread_pool.begin(); it != thread_pool.end(); ++it) {
         it->join();
@@ -296,16 +323,28 @@ public:
     }
 };
 
+template <typename IntType>
+struct MasstreeIntKey {
+    explicit MasstreeIntKey(IntType k) : k_(tpcc::bswap(k)) {}
+
+    operator lcdf::Str() const {
+        return lcdf::Str((const char *)this, sizeof(*this));
+    }
+
+    IntType k_;
+};
+
 template <typename WLImpl, typename DBParams>
 class MasstreeTester : public Tester<MasstreeTester<WLImpl, DBParams>, WLImpl> {
 public:
-    typedef typename Tester<MasstreeTester<WLImpl, DBParams>, WLImpl> Base;
+    typedef Tester<MasstreeTester<WLImpl, DBParams>, WLImpl> Base;
+    typedef MasstreeIntKey<StoSampling::index_t> key_type;
 
     explicit MasstreeTester(size_t num_threads) : Base(num_threads), mt_() {}
 
     void prepopulate_impl() {
         for (unsigned int i = 0; i < 100000; ++i)
-            mt_.nontrans_put(i, i);
+            mt_.nontrans_put(key_type(i), i);
     }
 
     void thread_init_impl() {
@@ -317,16 +356,16 @@ public:
         switch(op.type) {
             case OpType::read:
                 std::tie(success, std::ignore, std::ignore, std::ignore)
-                        = mt_.select_row(op.key, false);
+                        = mt_.select_row(key_type(op.key), false);
                 break;
             case OpType::write:
-                std::tie(success, std::ignore) = mt_.insert_row(op.key, &op.value);
+                std::tie(success, std::ignore) = mt_.insert_row(key_type(op.key), const_cast<value_type *>(&op.value));
                 break;
             case OpType::inc: {
                 uintptr_t rid;
                 const value_type* value;
                 std::tie(success, std::ignore, rid, value)
-                        = mt_.select_row(op.key, true);
+                        = mt_.select_row(key_type(op.key), true);
                 if (!success)
                     break;
                 value_type new_v = (*value) + 1;
@@ -338,7 +377,7 @@ public:
     }
 
 private:
-    tpcc::ordered_index<StoSampling::index_t, value_type, DBParams> mt_;
+    tpcc::ordered_index<key_type, value_type, DBParams> mt_;
 };
 
 template <DsType DS, typename WLImpl, typename DBParams>
