@@ -744,7 +744,12 @@ public:
             }
 
             if (overwrite) {
-                if (!version_adapter::select_for_overwrite(item, e->version, value_is_small ? *vptr : vptr))
+                bool ok;
+                if (value_is_small)
+                    ok = version_adapter::select_for_overwrite(item, e->version, *vptr);
+                else
+                    ok = version_adapter::select_for_overwrite(item, e->version, vptr);
+                if (!ok)
                     goto abort;
                 if (index_read_my_write) {
                     if (has_insert(item)) {
