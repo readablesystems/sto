@@ -269,9 +269,14 @@ inline bool TLockVersion<Adaptive>::observe_read_impl(TransItem& item, bool add_
     assert(!item.has_stash());
 
     TLockVersion occ_version;
-    bool optimistic = hint_optimistic();
 
-    optimistic = item.cc_mode_is_optimistic(optimistic);
+    bool optimistic;
+    auto init_mode = item.cc_mode();
+    if (init_mode != CCMode::none) {
+        optimistic = (init_mode == CCMode::opt);
+    } else {
+        optimistic = item.cc_mode_is_optimistic(hint_optimistic());
+    }
 
     if (optimistic) {
         acquire_fence();

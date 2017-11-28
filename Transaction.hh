@@ -58,7 +58,7 @@
 #endif
 
 #ifndef CHECK_PROGRESS
-#define CHECK_PROGRESS 1
+#define CHECK_PROGRESS 0
 #endif
 
 #ifndef STO_SPIN_EXPBACKOFF
