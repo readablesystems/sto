@@ -26,17 +26,13 @@ public:
         return item.acquire_write(vers);
     }
     static bool select_for_update(TransProxy& item, TVersion& vers) {
-        TVersion v = vers;
-        fence();
-        if (!item.observe(v))
+        if (!item.observe(vers))
             return false;
         item.add_write();
         return true;
     }
     static bool select_for_update(TransProxy& item, TNonopaqueVersion& vers) {
-        TNonopaqueVersion v = vers;
-        fence();
-        if (!item.observe(v))
+        if (!item.observe(vers))
             return false;
         item.add_write();
         return true;

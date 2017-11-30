@@ -13,9 +13,6 @@ typedef __uint128_t uint128_t;
 
 class Transaction;
 
-template <bool Opaque>
-class TSwissVersion;
-
 class ContentionManager {
 public:
     static bool should_abort(int this_id, int owner_id);
@@ -37,3 +34,4 @@ public:
     static uint128_t version[128];
     static uint128_t seed[128];
 };
+
