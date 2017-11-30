@@ -51,11 +51,11 @@ struct UBenchParams {
     bool ins_measure;
 };
 
-std::ostream& operator<<(std::ostream& os, const UBenchParams& p) {
+inline std::ostream& operator<<(std::ostream& os, const UBenchParams& p) {
     os << "Benchmark finished using CC=" << tpcc::db_params_id_names[static_cast<int>(p.dbid)] << ", ";
     os << "datatype=" << datatype_names[static_cast<int>(p.datatype)] << " with "
        << p.nthreads << " threads" << std::endl;
-    os << p.ntrans << "transactions, " << p.opspertrans << "ops per transaction (" << p.opspertrans_ro
+    os << p.ntrans << " txns, " << p.opspertrans << " ops/txn (" << p.opspertrans_ro
        << " in read-only txns)" << std::endl;
     os << "Read-only fraction = " << p.readonly_percent << ", write ratio = " << p.write_percent << std::endl;
     os << "zipf skew = " << p.zipf_skew << ", " << "key space size = " << p.key_sz << std::endl;
@@ -77,6 +77,20 @@ struct RWOperation {
     StoSampling::index_t key;
     value_type value;
 };
+
+inline std::ostream& operator<<(std::ostream& os, const RWOperation& op) {
+    os << "[";
+    if (op.type == OpType::read) {
+        os << "r,k=" << op.key;
+    } else if (op.type == OpType::write) {
+        os << "w,k=" << op.key << ",v=" << op.value;
+    } else {
+        assert(op.type == OpType::inc);
+        os << "inc,k=" << op.key;
+    }
+    os << "]";
+    return os;
+}
 
 struct wl_measurement_params {
     static constexpr bool instantaneous_measurements = true;
@@ -343,7 +357,7 @@ public:
     explicit MasstreeTester(size_t num_threads) : Base(num_threads), mt_() {}
 
     void prepopulate_impl() {
-        for (unsigned int i = 0; i < 100000; ++i)
+        for (unsigned int i = 0; i < params.key_sz; ++i)
             mt_.nontrans_put(key_type(i), i);
     }
 
@@ -352,6 +366,7 @@ public:
     }
 
     bool do_op_impl(const RWOperation& op) {
+        //std::cout << op << std::endl;
         bool success;
         switch(op.type) {
             case OpType::read:
@@ -359,7 +374,7 @@ public:
                         = mt_.select_row(key_type(op.key), false);
                 break;
             case OpType::write:
-                std::tie(success, std::ignore) = mt_.insert_row(key_type(op.key), const_cast<value_type *>(&op.value));
+                std::tie(success, std::ignore) = mt_.insert_row(key_type(op.key), const_cast<value_type *>(&op.value), true);
                 break;
             case OpType::inc: {
                 uintptr_t rid;

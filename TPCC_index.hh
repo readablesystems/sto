@@ -774,6 +774,7 @@ public:
             //    item.add_write<value_type>(*vptr);
             //else
             //    item.add_write<value_type *>(vptr);
+            item.add_write();
             item.add_flags(insert_bit);
 
             update_internode_version(orig_node, orig_nv, new_nv);
