@@ -43,6 +43,7 @@
 /unit-tvector-nopred
 /unit-mbta
 /tpcc_bench
+/micro_bench
 /unit-swisstarray
 /unit-swisstgeneric
 /perf.data

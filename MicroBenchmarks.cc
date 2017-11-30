@@ -49,7 +49,7 @@ static const Clp_Option options[] = {
 
 inline void print_usage(const char *prog) {
     std::stringstream ss;
-    ss << "Usage: ./" << std::string(prog) << " [parameters...]" << std::endl
+    ss << "Usage: " << std::string(prog) << " [parameters...]" << std::endl
        << "List of accepted parameters:" << std::endl
        << "  --ccid=STRING (-i), concurrency control policy. Accepted options are:" << std::endl
        << "      default, opaque, 2pl, adaptive, swiss, tictoc" << std::endl
