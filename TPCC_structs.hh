@@ -398,6 +398,36 @@ struct history_value {
 
 // ORDER
 
+struct order_cidx_key {
+    order_cidx_key(uint64_t wid, uint64_t did, uint64_t cid, uint64_t oid) {
+        o_w_id = bswap(wid);
+        o_d_id = bswap(did);
+        o_c_id = bswap(cid);
+        o_id = bswap(oid);
+    }
+
+    order_cidx_key(const lcdf::Str& mt_key) {
+        assert(mt_key.length() == sizeof(*this));
+        memcpy(this, mt_key.data(), sizeof(*this));
+    }
+
+    bool operator==(const order_cidx_key& other) const {
+        return !memcmp(this, &other, sizeof(*this));
+    }
+    bool operator!=(const order_cidx_key& other) const {
+        return !((*this) == other);
+    }
+
+    operator lcdf::Str() const {
+        return lcdf::Str((const char *)this, sizeof(*this));
+    }
+
+    uint64_t o_w_id;
+    uint64_t o_d_id;
+    uint64_t o_c_id;
+    uint64_t o_id;
+};
+
 struct order_key {
     order_key(uint64_t wid, uint64_t did, uint64_t oid) {
         o_w_id = bswap(wid);

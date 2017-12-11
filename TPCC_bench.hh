@@ -186,6 +186,7 @@ public:
     typedef UIndex<district_key, district_value>   dt_table_type;
     typedef OIndex<customer_idx_key, customer_idx_value> ci_table_type;
     typedef UIndex<customer_key, customer_value>   cu_table_type;
+    typedef OIndex<order_cidx_key, int>            oi_table_type;
     typedef OIndex<order_key, order_value>         od_table_type;
     typedef OIndex<orderline_key, orderline_value> ol_table_type;
     typedef OIndex<order_key, int>                 no_table_type;
@@ -216,6 +217,9 @@ public:
     }
     cu_table_type& tbl_customers(uint64_t w_id) {
         return tbl_cus_[w_id - 1];
+    }
+    oi_table_type& tbl_order_customer_index(uint64_t w_id) {
+        return tbl_oci_[w_id - 1];
     }
     od_table_type& tbl_orders(uint64_t w_id) {
         return tbl_ods_[w_id - 1];
@@ -248,6 +252,7 @@ private:
     std::vector<dt_table_type> tbl_dts_;
     std::vector<ci_table_type> tbl_cni_;
     std::vector<cu_table_type> tbl_cus_;
+    std::vector<oi_table_type> tbl_oci_;
     std::vector<od_table_type> tbl_ods_;
     std::vector<ol_table_type> tbl_ols_;
     std::vector<no_table_type> tbl_nos_;
@@ -284,6 +289,7 @@ public:
 
     inline void run_txn_neworder();
     inline void run_txn_payment();
+    inline void run_txn_orderstatus();
 
 private:
     tpcc_input_generator ig;

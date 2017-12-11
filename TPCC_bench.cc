@@ -203,7 +203,10 @@ namespace tpcc {
                 ov.o_ol_cnt = (uint32_t) ig.random(5, 15);
                 ov.o_all_local = 1;
 
+                order_cidx_key ock(wid, did, ov.o_c_id, oid);
+
                 db.tbl_orders(wid).nontrans_put(ok, ov);
+                db.tbl_order_customer_index(wid).nontrans_put(ock, 0);
 
                 for (uint64_t on = 1; on <= ov.o_ol_cnt; ++on) {
                     orderline_key olk(wid, did, oid, on);
@@ -330,6 +333,8 @@ namespace tpcc {
             // XXX get rid of this thread init nonsense
             for (auto &tbl : db.tbl_cni_)
                 tbl.thread_init();
+            for (auto &tbl : db.tbl_oci_)
+                tbl.thread_init();
             for (auto &tbl : db.tbl_ods_)
                 tbl.thread_init();
             for (auto &tbl : db.tbl_ols_)
@@ -369,6 +374,8 @@ namespace tpcc {
 
             // XXX get rid of this thread_init nonsense
             for (auto &tbl : db.tbl_cni_)
+                tbl.thread_init();
+            for (auto &tbl : db.tbl_oci_)
                 tbl.thread_init();
             for (auto &tbl : db.tbl_ods_)
                 tbl.thread_init();

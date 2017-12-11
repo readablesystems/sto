@@ -103,10 +103,15 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     ov->o_entry_d = o_entry_d;
     ov->o_ol_cnt = num_items;
 
+    order_cidx_key ock(q_w_id, q_d_id, q_c_id, dt_next_oid);
+
     std::tie(abort, result) = db.tbl_orders(q_w_id).insert_row(ok, ov, false);
     TXN_DO(abort);
     assert(!result);
     std::tie(abort, result) = db.tbl_neworders(q_w_id).insert_row(ok, nullptr, false);
+    TXN_DO(abort);
+    assert(!result);
+    std::tie(abort, result) = db.tbl_order_customer_index(q_w_id).insert_row(ock, nullptr, false);
     TXN_DO(abort);
     assert(!result);
 
@@ -308,7 +313,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         q_c_id = matches[idx];
 
     } else {
-        always_assert(q_c_id != 0, "q_c_id invalid in c_id selection mode");
+        always_assert(q_c_id != 0, "q_c_id invalid when selecting customer by c_id");
     }
 
     customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
@@ -350,6 +355,134 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     std::tie(success, result) = db.tbl_histories(q_c_w_id).insert_row(hk, hv);
     assert(success);
     assert(!result);
+
+    (void)__txn_committed;
+    // commit txn
+    // retry until commits
+    } RETRY(true);
+}
+
+template <typename DBParams>
+void tpcc_runner<DBParams>::run_txn_orderstatus() {
+    uint64_t q_w_id = ig.random(w_id_start, w_id_end);
+    uint64_t q_d_id = ig.random(1, 10);
+
+    std::string last_name;
+    uint64_t q_c_id;
+
+    auto x = ig.random(1, 100);
+    bool by_name = (x <= 60);
+    if (by_name) {
+        last_name = ig.gen_customer_last_name_run();
+        q_c_id = 0;
+    } else {
+        q_c_id = ig.gen_customer_id();
+    }
+
+    // holding outputs of the transaction
+    volatile var_string<16> out_c_first, out_c_last;
+    volatile fix_string<2> out_c_middle;
+    volatile int64_t out_c_balance;
+    volatile uint64_t out_o_carrier_id;
+    volatile uint32_t out_o_entry_date;
+    volatile uint64_t out_ol_i_id;
+    volatile uint64_t out_ol_supply_w_id;
+    volatile uint32_t out_ol_quantity;
+    volatile uint32_t out_ol_delivery_d;
+    volatile int32_t out_ol_amount;
+    (void)out_c_balance;
+    (void)out_o_carrier_id;
+    (void)out_o_entry_date;
+
+    TRANSACTION {
+
+    bool success, result;
+    uintptr_t row;
+    const void *value;
+
+    if (by_name) {
+        std::vector<uint64_t> matches;
+        auto scan_callback = [&] (const customer_idx_key& key, const customer_idx_value& civ) -> bool {
+            (void)key;
+            matches.emplace_back(civ.c_id);
+            return true;
+        };
+
+        customer_idx_key ck0(q_w_id, q_d_id, last_name, 0x00);
+        customer_idx_key ck1(q_w_id, q_d_id, last_name, 0xff);
+
+        success = db.tbl_customer_index(q_w_id)
+                .template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback);
+        TXN_DO(success);
+
+        size_t n = matches.size();
+        always_assert(n > 0, "match size invalid");
+        size_t idx = n / 2;
+        if (n % 2 == 0)
+            idx -= 1;
+        q_c_id = matches[idx];
+    } else {
+        always_assert(q_c_id != 0, "q_c_id invalid when selecting customer by c_id");
+    }
+
+    customer_key ck(q_w_id, q_d_id, q_c_id);
+    std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_row(ck, false/*for update*/);
+    TXN_DO(success);
+    assert(result);
+
+    auto cv = reinterpret_cast<const customer_value *>(value);
+
+    // simulate retrieving customer info
+    out_c_balance = cv->c_balance;
+    out_c_first = cv->c_first;
+    out_c_last = cv->c_last;
+    out_c_middle = cv->c_middle;
+
+    // find the highest order placed by customer q_c_id
+    uint64_t cus_o_id = 0;
+    auto scan_callback = [&] (const order_cidx_key& key, const int& dummy) -> bool {
+        (void)dummy;
+        cus_o_id = key.o_id;
+        // (reverse) scan for only one item
+        return false;
+    };
+
+    order_cidx_key k0(q_w_id, q_d_id, q_c_id, 0);
+    order_cidx_key k1(q_w_id, q_d_id, q_c_id, std::numeric_limits<uint64_t>::max());
+
+    success = db.tbl_order_customer_index(q_w_id)
+            .template range_scan<decltype(scan_callback), true/*reverse*/>(k0, k1, scan_callback);
+    TXN_DO(success);
+
+    if (cus_o_id > 0) {
+        order_key ok(q_w_id, q_d_id, cus_o_id);
+        std::tie(success, result, row, value) = db.tbl_orders(q_w_id).select_row(ok, false/*for update*/);
+        TXN_DO(success);
+        assert(result);
+
+        auto ov = reinterpret_cast<const order_value *>(value);
+        out_o_entry_date = ov->o_entry_d;
+        out_o_carrier_id = ov->o_carrier_id;
+
+        auto ol_scan_callback = [&] (const orderline_key& olk, const orderline_value& olv) -> bool {
+            (void)olk;
+            out_ol_i_id = olv.ol_i_id;
+            out_ol_supply_w_id = olv.ol_supply_w_id;
+            out_ol_quantity = olv.ol_quantity;
+            out_ol_amount = olv.ol_amount;
+            out_ol_delivery_d = olv.ol_delivery_d;
+            return true;
+        };
+
+        orderline_key olk0(q_w_id, q_d_id, cus_o_id, 0);
+        orderline_key olk1(q_w_id, q_d_id, cus_o_id, std::numeric_limits<uint64_t>::max());
+
+        success = db.tbl_orderlines(q_w_id)
+                .template range_scan<decltype(ol_scan_callback), true/*reverse*/>(olk0, olk1, ol_scan_callback);
+        TXN_DO(success);
+    } else {
+        // order doesn't exist, simply commit the transaction
+    }
 
     (void)__txn_committed;
     // commit txn
