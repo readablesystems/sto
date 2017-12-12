@@ -283,8 +283,10 @@ public:
         uint64_t x = ig.random(1, 100);
         if (x <= 50)
             return txn_type::new_order;
-        else
+        else if (x <= 95)
             return txn_type::payment;
+        else
+            return txn_type::order_status;
     }
 
     inline void run_txn_neworder();

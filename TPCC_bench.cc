@@ -402,6 +402,9 @@ namespace tpcc {
                     case txn_type::payment:
                         runner.run_txn_payment();
                         break;
+                    case txn_type::order_status:
+                        runner.run_txn_orderstatus();
+                        break;
                     default:
                         fprintf(stderr, "r:%d unknown txn type\n", runner_id);
                         assert(false);
