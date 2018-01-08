@@ -14,6 +14,8 @@
 
 typedef MassTrans<std::string> mbta_type;
 
+volatile mrcu_epoch_type active_epoch = 1;
+
 void scanner(mbta_type* mbta) {
     TThread::set_id(0);
     mbta->thread_init();
