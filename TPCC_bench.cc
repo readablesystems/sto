@@ -34,6 +34,7 @@ namespace tpcc {
             tbl_dts_.emplace_back(999983/*num_districts * 2*/);
             tbl_cni_.emplace_back(999983/*num_customers * 2*/);
             tbl_cus_.emplace_back(999983/*num_customers * 2*/);
+            tbl_oci_.emplace_back(999983/*num_customers * 2*/);
             tbl_ods_.emplace_back(999983/*num_customers * 10 * 2*/);
             tbl_ols_.emplace_back(999983/*num_customers * 100 * 2*/);
             tbl_nos_.emplace_back(999983/*num_customers * 10 * 2*/);
