@@ -434,6 +434,11 @@ struct order_key {
         o_d_id = bswap(did);
         o_id = bswap(oid);
     }
+
+    order_key(const lcdf::Str& mt_key) {
+        assert(mt_key.length() == sizeof(*this));
+        memcpy(this, mt_key.data(), sizeof(*this));
+    }
     bool operator==(const order_key& other) const {
         return (o_w_id == other.o_w_id) && (o_d_id == other.o_d_id) && (o_id == other.o_id);
     }
@@ -465,6 +470,11 @@ struct orderline_key {
         ol_d_id = bswap(d);
         ol_o_id = bswap(o);
         ol_number = bswap(n);
+    }
+
+    orderline_key(const lcdf::Str& mt_key) {
+        assert(mt_key.length() == sizeof(*this));
+        memcpy(this, mt_key.data(), sizeof(*this));
     }
     bool operator==(const orderline_key& other) const {
         return (ol_w_id == other.ol_w_id) && (ol_d_id == other.ol_d_id) &&
@@ -498,6 +508,11 @@ struct item_key {
     item_key(uint64_t id) {
         i_id = bswap(id);
     }
+
+    item_key(const lcdf::Str& mt_key) {
+        assert(mt_key.length() == sizeof(*this));
+        memcpy(this, mt_key.data(), sizeof(*this));
+    }
     bool operator==(const item_key& other) const {
         return i_id == other.i_id;
     }
@@ -524,6 +539,11 @@ struct stock_key {
     stock_key(uint64_t w, uint64_t i) {
         s_w_id = bswap(w);
         s_i_id = bswap(i);
+    }
+
+    stock_key(const lcdf::Str& mt_key) {
+        assert(mt_key.length() == sizeof(*this));
+        memcpy(this, mt_key.data(), sizeof(*this));
     }
     bool operator==(const stock_key& other) const {
         return (s_w_id == other.s_w_id) && (s_i_id == other.s_i_id);
