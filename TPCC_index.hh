@@ -826,7 +826,8 @@ public:
     }
 
     template <typename Callback, bool Reverse>
-    bool range_scan(const key_type& begin, const key_type& end, Callback callback) {
+    bool range_scan(const key_type& begin, const key_type& end, Callback callback, int limit = -1) {
+        assert((limit == -1) || (limit > 0));
         auto node_callback = [&] (leaf_type* node,
             typename unlocked_cursor_type::nodeversion_value_type version) {
             return register_internode_version(node, version);
@@ -868,8 +869,12 @@ public:
             return true;
         };
 
-        range_scanner<decltype(node_callback), decltype(value_callback), Reverse> scanner(end, node_callback, value_callback);
-        table_.scan(begin, true, scanner, *ti);
+        range_scanner<decltype(node_callback), decltype(value_callback), Reverse>
+            scanner(Reverse ? begin : end, node_callback, value_callback);
+        if (Reverse)
+            table_.rscan(end, true, scanner, limit, *ti);
+        else
+            table_.scan(begin, true, scanner, limit, *ti);
         return scanner.scan_succeeded_;
     }
 
