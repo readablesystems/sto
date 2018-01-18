@@ -432,7 +432,7 @@ namespace tpcc {
                 for (int i = 0; i < num_runners; ++i) {
                     if ((qq--) == 0) {
                         ++wid;
-                        qq = q;
+                        qq += q;
                     }
                     fprintf(stdout, "runner %d: [%d, %d]\n", i, wid, wid);
                     runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), std::ref(prof),
