@@ -198,7 +198,7 @@ namespace tpcc {
                 order_key ok(wid, did, oid);
                 order_value ov;
 
-                ov.o_c_id = cid_perm[i];
+                ov.o_c_id = cid_perm[i - 1];
                 ov.o_carrier_id = (oid < 2101) ? ig.random(1, 10) : 0;
                 ov.o_entry_d = ig.gen_date();
                 ov.o_ol_cnt = (uint32_t) ig.random(5, 15);

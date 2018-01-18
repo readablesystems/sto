@@ -870,9 +870,9 @@ public:
         };
 
         range_scanner<decltype(node_callback), decltype(value_callback), Reverse>
-            scanner(Reverse ? begin : end, node_callback, value_callback);
+            scanner(end, node_callback, value_callback);
         if (Reverse)
-            table_.rscan(end, true, scanner, limit, *ti);
+            table_.rscan(begin, true, scanner, limit, *ti);
         else
             table_.scan(begin, true, scanner, limit, *ti);
         return scanner.scan_succeeded_;
