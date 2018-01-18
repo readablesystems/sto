@@ -73,9 +73,9 @@ void ContentionManager::on_rollback(int threadid) {
 
 // Defines and initializes the static fields
 uint64_t ContentionManager::ts = 0;
-uint128_t ContentionManager::aborted[128] = { 0 };
-uint128_t ContentionManager::timestamp[128] = { 0 };
-uint128_t ContentionManager::write_set_size[128] = { 0 };
-uint128_t ContentionManager::abort_count[128] = { 0 };
-uint128_t ContentionManager::version[128] = { 0 };
-uint128_t ContentionManager::seed[128];
+uint128_t ContentionManager::aborted[4*MAX_THREADS] = { 0 };
+uint128_t ContentionManager::timestamp[4*MAX_THREADS] = { 0 };
+uint128_t ContentionManager::write_set_size[4*MAX_THREADS] = { 0 };
+uint128_t ContentionManager::abort_count[4*MAX_THREADS] = { 0 };
+uint128_t ContentionManager::version[4*MAX_THREADS] = { 0 };
+uint128_t ContentionManager::seed[4*MAX_THREADS];

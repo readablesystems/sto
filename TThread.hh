@@ -33,7 +33,7 @@ public:
         return the_id;
     }
     static void set_id(int id) {
-        assert(id >= 0 && id < 32);
+        assert(id >= 0 && id < 128);
         the_id = id;
     }
     static bool always_allocate() {

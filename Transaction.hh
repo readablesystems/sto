@@ -101,7 +101,7 @@
 
 #include "config.h"
 
-#define MAX_THREADS 32
+#define MAX_THREADS 128
 
 // TRANSACTION macros that can be used to wrap transactional code
 #define TRANSACTION                               \
