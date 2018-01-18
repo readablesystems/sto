@@ -16,26 +16,28 @@ public:
     // Common layout definition
 
     // |-----VALUE-----|O|D|U|N|L|--MASK--|
-    //       54 bits    1 1 1 1 1  5 bits
+    //       52 bits    1 1 1 1 1  7 bits
+
+    static constexpr signed_type mask_width = 7;
 
     // bits holding thread id of the thread holding the exclusive lock
-    static constexpr type threadid_mask = type(0x1F);
+    static constexpr type threadid_mask = type(0x7F);
     // the exclusive lock bit, used for write locks
-    static constexpr type lock_bit = type(0x20);
+    static constexpr type lock_bit = type(0x1 << mask_width);
     // Used for data structures that don't use opacity. When they increment
     // a version they set the nonopaque_bit, forcing any opacity check to be
     // hard (checking the full read set)
-    static constexpr type nonopaque_bit = type(0x40);
+    static constexpr type nonopaque_bit = type(0x1 << (mask_width + 1));
     // Reserved user bit, usually used for eager write-write conflict detection
     // in various data types (the so-called "invalid bit")
-    static constexpr type user_bit = type(0x80);
+    static constexpr type user_bit = type(0x1 << (mask_width + 2));
     // Dirty bit, set while the version is being modified
-    static constexpr type dirty_bit = type(0x100);
+    static constexpr type dirty_bit = type(0x1 << (mask_width + 3));
     // Bit signaling optimistic concurrency control for readers
     // used in adaptive reader/write lock version
-    static constexpr type opt_bit = type(0x200);
+    static constexpr type opt_bit = type(0x1 << (mask_width + 4));
     // start of te actual version (Tid) value
-    static constexpr type increment_value = type(0x400);
+    static constexpr type increment_value = type(0x1 << (mask_width + 5));
 
     static bool is_locked(type v) {
         return (v & lock_bit) != 0;

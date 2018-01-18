@@ -6,7 +6,7 @@ class TicTocTid : public TransactionTid {
 public:
     using TransactionTid::is_locked_elsewhere;
 
-    static constexpr type ts_shift = type(10);
+    static constexpr type ts_shift = mask_width + 5;
 
     static type timestamp(type ts) {
         return ts >> ts_shift;
