@@ -148,9 +148,11 @@ double determine_cpu_freq() {
     return freq;
 }
 
-inline void set_affinity(int cpu_id) {
+inline void set_affinity(int runner_id) {
 	cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
+    // FIXME: This is only valid for the GATECH machine
+    int cpuid = 24 * (runner_id % 6) + (runner_id / 6);
     CPU_SET(cpu_id, &cpuset);
     int rc = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
     if (rc != 0) {
