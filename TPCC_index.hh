@@ -766,8 +766,9 @@ public:
             auto orig_nv = lp.previous_full_version_value();
             auto new_nv = lp.next_full_version_value(1);
 
-            lp.finish(1, *ti);
             fence();
+            lp.finish(1, *ti);
+            //fence();
 
             TransProxy item = Sto::item(this, e);
             //if (value_is_small)

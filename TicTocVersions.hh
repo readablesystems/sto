@@ -6,7 +6,7 @@ class TicTocTid : public TransactionTid {
 public:
     using TransactionTid::is_locked_elsewhere;
 
-    static constexpr type ts_shift = mask_width + 5;
+    static constexpr type ts_shift = TransactionTid::mask_width + 5;
 
     static type timestamp(type ts) {
         return ts >> ts_shift;
@@ -92,10 +92,10 @@ public:
     // TTid bits: compatibility bits as defined in TransactionTid
 
     // |-----WTS value-----|-delta-|--TTid bits--|
-    //        46 bits       8 bits    10 bits
+    //        44 bits       8 bits    12 bits
 
-    static constexpr type delta_shift = type(10);
-    static constexpr type wts_shift = type(18);
+    static constexpr type delta_shift = type(12);
+    static constexpr type wts_shift = type(20);
     static constexpr type delta_mask = type(0xff) << delta_shift;
 
     static type wts_value(type t) {
