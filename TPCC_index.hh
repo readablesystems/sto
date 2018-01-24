@@ -965,7 +965,10 @@ public:
         if (committed ? has_delete(item) : has_insert(item)) {
             internal_elem *el = item.key<internal_elem *>();
             bool ok = _remove(el->key);
-            always_assert(ok, "insert-bit exclusive ownership violated");
+            if (!ok) {
+                std::cout << committed << "," << has_delete(item) << "," << has_insert(item) << std::endl;
+                always_assert(false, "insert-bit exclusive ownership violated");
+            }
             item.clear_needs_unlock();
         }
     }
