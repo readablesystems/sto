@@ -595,12 +595,24 @@ struct hash<tpcc::warehouse_key> {
     }
 };
 
+ostream& operator<<(ostream& os, const tpcc::warehouse_key& wk) {
+    os << "warehouse_key:" << tpcc::bswap(wk.w_id);
+    return os;
+}
+
 template <>
 struct hash<tpcc::district_key> {
     size_t operator()(const tpcc::district_key& arg) const {
         return XXH64(&arg, sizeof(tpcc::district_key), xxh_seed);
     }
 };
+
+ostream& operator<<(ostream& os, const tpcc::district_key& dk) {
+    os << "district_key:w="
+       << tpcc::bswap(dk.d_w_id) << ",d="
+       << tpcc::bswap(dk.d_id);
+    return os;
+}
 
 template <>
 struct hash<tpcc::customer_key> {
@@ -609,12 +621,25 @@ struct hash<tpcc::customer_key> {
     }
 };
 
+ostream& operator<<(ostream& os, const tpcc::customer_key& ck) {
+    os << "customer_key:w="
+       << tpcc::bswap(ck.c_w_id) << ",d="
+       << tpcc::bswap(ck.c_d_id) << ",c="
+       << tpcc::bswap(ck.c_id);
+    return os;
+}
+
 template <>
 struct hash<tpcc::history_key> {
     size_t operator()(const tpcc::history_key& arg) const {
         return arg.h_id;
     }
 };
+
+ostream& operator<<(ostream& os, const tpcc::history_key& hk) {
+    os << "history_key:" << tpcc::bswap(hk.h_id);
+    return os;
+}
 
 template <>
 struct hash<tpcc::order_key> {
@@ -623,12 +648,24 @@ struct hash<tpcc::order_key> {
     }
 };
 
+ostream& operator<<(ostream& os, const tpcc::order_key& ok) {
+    os << "order_key";
+    (void)ok;
+    return os;
+}
+
 template <>
 struct hash<tpcc::orderline_key> {
     size_t operator()(const tpcc::orderline_key& arg) const {
         return XXH64(&arg, sizeof(tpcc::orderline_key), xxh_seed);
     }
 };
+
+ostream& operator<<(ostream& os, const tpcc::orderline_key& olk) {
+    os << "orderline_key";
+    (void)olk;
+    return os;
+}
 
 template <>
 struct hash<tpcc::item_key> {
@@ -643,5 +680,17 @@ struct hash<tpcc::stock_key> {
         return XXH64(&arg, sizeof(tpcc::stock_key), xxh_seed);
     }
 };
+
+ostream& operator<<(ostream& os, const tpcc::customer_idx_key& cik) {
+    os << "customer_idx_key";
+    (void)cik;
+    return os;
+}
+
+ostream& operator<<(ostream& os, const tpcc::order_cidx_key& oik) {
+    os << "order_cidx_key";
+    (void)oik;
+    return os;
+}
 
 }; // namespace std
