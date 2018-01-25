@@ -42,6 +42,7 @@
 /unit-tvector
 /unit-tvector-nopred
 /unit-mbta
+/unit-masstree
 /tpcc_bench
 /micro_bench
 /unit-swisstarray

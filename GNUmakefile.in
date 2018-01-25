@@ -175,8 +175,8 @@ unit-swisstarray: unit-swisstarray.o $(STO_DEPS)
 unit-swisstgeneric: unit-swisstgeneric.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-unit-masstree: unit-masstree.o
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(LDFLAGS) $(LIBS)
+unit-masstree: unit-masstree.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_DEPS) $(LDFLAGS) $(LIBS)
 
 list1: list1.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)

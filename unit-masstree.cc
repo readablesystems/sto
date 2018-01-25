@@ -18,7 +18,7 @@
 #include "masstree_scan.hh"
 #include "string.hh"
 
-#define NUM_THREADS 64;
+#define NUM_THREADS 64
 
 class MasstreeWrapper {
 public:
@@ -123,13 +123,17 @@ private:
     uint64_t key_gen_;
 
     static inline Str make_key(uint64_t int_key) {
-        auto k = __bswap_64(int_key);
-        return Str(&k, sizeof(k));
+        uint64_t k = __bswap_64(int_key);
+        return Str((const char *)&k, sizeof(k));
     }
 };
 
 pthread_barrier_t barrier;
-__thread typename MasstreeWrapper::table_params::threadinfo_type MasstreeWrapper::ti = nullptr;
+__thread typename MasstreeWrapper::table_params::threadinfo_type* MasstreeWrapper::ti = nullptr;
+
+volatile mrcu_epoch_type active_epoch = 1;
+volatile uint64_t globalepoch = 1;
+volatile bool recovering = false;
 
 void test_thread(MasstreeWrapper* mt, int thread_id) {
     mt->thread_init(thread_id);
