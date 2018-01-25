@@ -22,7 +22,7 @@
 
 class MasstreeWrapper {
 public:
-    static constexpr uint64_t insert_bound = 0xffffffff;
+    static constexpr uint64_t insert_bound = 0xffffff;
     struct table_params : public Masstree::nodeparams<15,15> {
         typedef uint64_t value_type;
         typedef Masstree::value_print<value_type> value_print_type;
@@ -63,13 +63,14 @@ public:
     void insert_test() {
         while (1) {
             auto int_key = fetch_and_add(&key_gen_, 1);
+            uint64_t key_buf;
             if (int_key > insert_bound)
                 break;
-            Str key = make_key(int_key);
+            Str key = make_key(int_key, key_buf);
 
             cursor_type lp(table_, key);
             bool found = lp.find_insert(*ti);
-            always_assert(found, "keys should all be unique");
+            always_assert(!found, "keys should all be unique");
 
             lp.value() = int_key;
 
@@ -81,9 +82,10 @@ public:
     void remove_test() {
         while (1) {
             auto int_key = fetch_and_add(&key_gen_, 1);
+            uint64_t key_buf;
             if (int_key > insert_bound)
                 break;
-            Str key = make_key(int_key);
+            Str key = make_key(int_key, key_buf);
 
             cursor_type lp(table_, key);
             bool found = lp.find_locked(*ti);
@@ -97,13 +99,14 @@ public:
         std::uniform_int_distribution<int> dist(1, 6);
         while (1) {
             auto int_key = fetch_and_add(&key_gen_, 1);
+            uint64_t key_buf;
             if (int_key > insert_bound)
                 break;
-            Str key = make_key(int_key);
+            Str key = make_key(int_key, key_buf);
 
             cursor_type lp(table_, key);
             bool found = lp.find_insert(*ti);
-            always_assert(found, "keys should all be unique 1");
+            always_assert(!found, "keys should all be unique 1");
 
             lp.value() = int_key;
             fence();
@@ -113,7 +116,7 @@ public:
                 cursor_type lp1(table_, key);
                 bool found1 = lp1.find_insert(*ti);
                 always_assert(found1, "this is my key!");
-                lp.finish(-1, *ti);
+                lp1.finish(-1, *ti);
             }
         }
     }
@@ -122,9 +125,9 @@ private:
     table_type table_;
     uint64_t key_gen_;
 
-    static inline Str make_key(uint64_t int_key) {
-        uint64_t k = __bswap_64(int_key);
-        return Str((const char *)&k, sizeof(k));
+    static inline Str make_key(uint64_t int_key, uint64_t& key_buf) {
+        key_buf = __bswap_64(int_key);
+        return Str((const char *)&key_buf, sizeof(key_buf));
     }
 };
 
