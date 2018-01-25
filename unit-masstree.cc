@@ -115,7 +115,10 @@ public:
             if (dist(gen) <= 2) {
                 cursor_type lp1(table_, key);
                 bool found1 = lp1.find_insert(*ti);
-                always_assert(found1, "this is my key!");
+                if (!found1) {
+                    std::cerr << "failed at key: " << int_key << std::endl;
+                    always_assert(found1, "this is my key!");
+                }
                 lp1.finish(-1, *ti);
             }
         }
