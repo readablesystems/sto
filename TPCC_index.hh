@@ -588,12 +588,18 @@ public:
         value_type value;
         bool deleted;
 
+        std::vector<std::string> debug_info;
+
         internal_elem(const key_type& k, const value_type& v, bool valid)
             : version(valid ? Sto::initialized_tid() : Sto::initialized_tid() | invalid_bit, !valid),
               key(k), value(v), deleted(false) {}
 
         bool valid() const {
             return !(version.value() & invalid_bit);
+        }
+
+        void add_debug_text(const std::string& s) {
+            debug_info.push_back(s);
         }
     };
 
@@ -760,6 +766,7 @@ public:
         } else {
             internal_elem *e = new internal_elem(key, vptr ? *vptr : value_type(),
                                                  false /*valid*/);
+            e->add_debug_text("inserted here");
             lp.value() = e;
 
             auto orig_node = lp.node();
@@ -966,6 +973,8 @@ public:
             internal_elem *el = item.key<internal_elem *>();
             bool ok = _remove(el->key);
             if (!ok) {
+                for (auto& s : el->debug_info)
+                    std::cout << s << std::endl;
                 std::cout << committed << "," << has_delete(item) << "," << has_insert(item) << std::endl;
                 always_assert(false, "insert-bit exclusive ownership violated");
             }
@@ -1072,6 +1081,7 @@ private:
         bool found = lp.find_locked(*ti);
         if (found) {
             internal_elem *el = lp.value();
+            el->add_debug_text("removed");
             lp.finish(-1, *ti);
             Transaction::rcu_delete(el);
         } else {
