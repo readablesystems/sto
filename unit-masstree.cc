@@ -143,41 +143,14 @@ volatile bool recovering = false;
 
 void test_thread(MasstreeWrapper* mt, int thread_id) {
     mt->thread_init(thread_id);
-    if (thread_id == 0) {
-        std::cout << "insert_test..." << std::endl;
-        mt->keygen_reset();
-    }
-
-    pthread_barrier_wait(&barrier);
-
-    mt->insert_test();
-
-    pthread_barrier_wait(&barrier);
-
-    if (thread_id == 0) {
-        std::cout << "remove_test..." << std::endl;
-        mt->keygen_reset();
-    }
-
-    pthread_barrier_wait(&barrier);
-
-    mt->remove_test();
-
-    pthread_barrier_wait(&barrier);
-
-    if (thread_id == 0) {
-        std::cout << "insert_remove_test..." << std::endl;
-        mt->keygen_reset();
-    }
-
-    pthread_barrier_wait(&barrier);
-
     mt->insert_remove_test(thread_id);
 }
 
 int main() {
     pthread_barrier_init(&barrier, nullptr, NUM_THREADS);
     auto mt = new MasstreeWrapper();
+    mt->keygen_reset();
+    std::cout << "insert_remove_test..." << std::endl;
 
     std::vector<std::thread> ths;
 
@@ -186,7 +159,7 @@ int main() {
     for (auto& t : ths)
         t.join();
 
-    std::cout << "tests pass." << std::endl;
+    std::cout << "test pass." << std::endl;
 
     pthread_barrier_destroy(&barrier);
     return 0;
