@@ -292,9 +292,9 @@ public:
 
     inline txn_type next_transaction() {
         uint64_t x = ig.random(1, 100);
-        if (x <= 50)
+        if (x <= 49)
             return txn_type::new_order;
-        else if (x <= 95)
+        else if (x <= 96)
             return txn_type::payment;
         else
             return txn_type::order_status;
