@@ -256,7 +256,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     // select district row and retrieve district info
     district_key dk(q_w_id, q_d_id);
     std::tie(success, result, row, value) = db.tbl_districts(q_w_id).select_row(dk,
-#if USE_INPLACE_DYTD
+#if TABLE_FINE_GRAINED == 0
         true
 #else
         false
@@ -267,7 +267,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     auto dv = reinterpret_cast<const district_value *>(value);
 
-#if USE_INPLACE_DYTD
+#if TABLE_FINE_GRAINED == 0
     auto new_dv = Sto::tx_alloc<district_value>(dv);
     out_d_name = new_dv->d_name;
     out_d_street_1 = new_dv->d_street_1;
@@ -317,12 +317,18 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     }
 
     customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
+#if TABLE_FINE_GRAINED == 1
+    typedef customer_value_variable specific_value_type;
+    std::tie(success, result, row, value) = db.tbl_customer_variables(q_c_w_id).select_row(ck, true/*for update*/);
+#else
+    typedef customer_value specific_value_type;
     std::tie(success, result, row, value) = db.tbl_customers(q_c_w_id).select_row(ck, true/*for update*/);
+#endif
     TXN_DO(success);
     assert(result);
 
-    const customer_value *cv = reinterpret_cast<const customer_value *>(value);
-    customer_value *new_cv = Sto::tx_alloc(cv);
+    auto cv = reinterpret_cast<const specific_value_type *>(value);
+    specific_value_type *new_cv = Sto::tx_alloc(cv);
 
     new_cv->c_balance -= h_amount;
     new_cv->c_ytd_payment += h_amount;
@@ -338,7 +344,11 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         new_cv->c_data.insert_left(info.buf(), info.len);
     }
 
+#if TABLE_FINE_GRAINED == 1
+    db.tbl_customer_variables(q_c_w_id).update_row(row, new_cv);
+#else
     db.tbl_customers(q_c_w_id).update_row(row, new_cv);
+#endif
 
     // insert to history table
     history_value *hv = Sto::tx_alloc<history_value>();
@@ -433,10 +443,20 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     auto cv = reinterpret_cast<const customer_value *>(value);
 
     // simulate retrieving customer info
+#if TABLE_FINE_GRAINED == 0
     out_c_balance = cv->c_balance;
+#endif
     out_c_first = cv->c_first;
     out_c_last = cv->c_last;
     out_c_middle = cv->c_middle;
+
+#if TABLE_FINE_GRAINED == 1
+    std::tie(success, result, row, value) = db.tbl_customer_variables(q_w_id).select_row(ck, false);
+    TXN_DO(success);
+    assert(result);
+    auto cvv = reinterpret_cast<const customer_value_variable *>(value);
+    out_c_balance = cvv->c_balance;
+#endif
 
     // find the highest order placed by customer q_c_id
     uint64_t cus_o_id = 0;

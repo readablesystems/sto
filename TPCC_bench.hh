@@ -179,8 +179,9 @@ public:
     using OIndex = ordered_index<K, V, DBParams>;
 
     // partitioned according to warehouse id
-#if !USE_INPLACE_DYTD
+#if TABLE_FINE_GRAINED == 1
     typedef integer_box<DBParams>                  dt_ytd_type;
+    typedef UIndex<customer_key, customer_value_variable> cv_table_type;
 #endif
     typedef std::vector<warehouse_value>           wh_table_type;
     typedef UIndex<district_key, district_value>   dt_table_type;
@@ -204,9 +205,12 @@ public:
     warehouse_value& get_warehouse(uint64_t w_id) {
         return tbl_whs_[w_id - 1];
     }
-#if !USE_INPLACE_DYTD
+#if TABLE_FINE_GRAINED == 1
     dt_ytd_type& get_district_ytd(uint64_t w_id, uint64_t d_id) {
         return tbl_dty_[w_id - 1][d_id - 1];
+    }
+    cv_table_type& tbl_customer_variables(uint64_t w_id) {
+        return tbl_cvs_[w_id - 1];
     }
 #endif
     dt_table_type& tbl_districts(uint64_t w_id) {
@@ -246,12 +250,19 @@ public:
 private:
     wh_table_type tbl_whs_;
     it_table_type *tbl_its_;
-#if !USE_INPLACE_DYTD
+
+#if TABLE_FINE_GRAINED == 1
     std::vector<std::vector<dt_ytd_type>> tbl_dty_;
 #endif
+
     std::vector<dt_table_type> tbl_dts_;
     std::vector<ci_table_type> tbl_cni_;
     std::vector<cu_table_type> tbl_cus_;
+
+#if TABLE_FINE_GRAINED == 1
+    std::vector<cv_table_type> tbl_cvs_;
+#endif
+
     std::vector<oi_table_type> tbl_oci_;
     std::vector<od_table_type> tbl_ods_;
     std::vector<ol_table_type> tbl_ols_;

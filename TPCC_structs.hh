@@ -13,8 +13,8 @@
 #define NUM_CUSTOMERS_PER_DISTRICT  3000
 #define NUM_ITEMS                   100000
 
-#ifndef USE_INPLACE_DYTD
-#define USE_INPLACE_DYTD 1
+#ifndef TABLE_FINE_GRAINED
+#define TABLE_FINE_GRAINED 0
 #endif
 
 namespace tpcc {
@@ -265,7 +265,7 @@ struct district_value {
     fix_string<2>  d_state;
     fix_string<9>  d_zip;
     int64_t        d_tax;
-#if USE_INPLACE_DYTD
+#if TABLE_FINE_GRAINED == 0
     int64_t        d_ytd;
 #endif
     // we use the separate oid generator for better semantics in transactions
@@ -361,12 +361,30 @@ struct customer_value {
     fix_string<2>   c_credit;
     int64_t         c_credit_lim;
     int64_t         c_discount;
+#if TABLE_FINE_GRAINED == 0
     int64_t         c_balance;
     int64_t         c_ytd_payment;
     uint16_t        c_payment_cnt;
     uint16_t        c_delivery_cnt;
     fix_string<500> c_data;
+#endif
 };
+
+#if TABLE_FINE_GRAINED == 1
+struct customer_value_variable {
+    // begin: duplicate data
+    uint32_t      c_since;
+    fix_string<2> c_credit;
+    int64_t       c_credit_lim;
+    int64_t       c_discount;
+    // end: duplicate data
+    int64_t       c_balance;
+    int64_t       c_ytd_payment;
+    uint16_t      c_payment_cnt;
+    uint16_t      c_delivery_cnt;
+    fix_string<500> c_data;
+};
+#endif
 
 // HISTORY
 
