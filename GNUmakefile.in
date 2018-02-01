@@ -85,7 +85,7 @@ ifeq ($(PROFILE),1)
 OPTFLAGS += -g -pg -fno-inline
 endif
 
-PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter $(UNIT_PROGRAMS) tpcc_bench micro_bench
+PROGRAMS = concurrent singleelems list1 vector pqueue rbtree trans_test ht_mt pqVsIt iterators single predicates ex-counter $(UNIT_PROGRAMS) tpcc_bench micro_bench ycsb_bench
 UNIT_PROGRAMS = unit-tarray unit-tintpredicate unit-tcounter unit-tbox unit-tgeneric unit-rcu unit-tvector unit-tvector-nopred unit-mbta unit-sampling unit-opacity unit-swisstarray unit-swisstgeneric unit-masstree
 
 all: $(PROGRAMS)
@@ -216,6 +216,9 @@ hashtable_nostm: hashtable_nostm.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 tpcc_bench: TPCC_bench.o $(STO_OBJS) $(MASSTREE_OBJS) $(XXHASH_OBJ)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(MASSTREE_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+
+ycsb_bench: TPCC_bench.o $(STO_OBJS) $(MASSTREE_OBJS) $(XXHASH_OBJ)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(MASSTREE_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 micro_bench: MicroBenchmarks.o $(STO_OBJS) $(MASSTREE_OBJS)
