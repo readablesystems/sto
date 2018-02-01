@@ -75,10 +75,10 @@ struct ycsb_key {
     	// so byte swap is not required.
         w_id = id;
     }
-    bool operator==(const ycsb& other) const {
+    bool operator==(const ycsb_key& other) const {
         return w_id == other.w_id;
     }
-    bool operator!=(const ycsb& other) const {
+    bool operator!=(const ycsb_key& other) const {
         return !(*this == other);
     }
     operator lcdf::Str() const {
@@ -88,7 +88,8 @@ struct ycsb_key {
     uint64_t w_id;
 };
 
-struct ydsb_value {
+struct ycsb_value {
+    fix_string<100>  col0;
     fix_string<100>  col1;
     fix_string<100>  col2;
     fix_string<100>  col3;
@@ -98,7 +99,6 @@ struct ydsb_value {
     fix_string<100>  col7;
     fix_string<100>  col8;
     fix_string<100>  col9;
-    fix_string<100>  col10;
 };
 
 
