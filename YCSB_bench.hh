@@ -10,7 +10,8 @@
 #include "TPCC_index.hh"
 
 
-namespace ycsb {
+namespace ycsb { 
+    constexpr const char *db_params_id_names[] = {"none", "default", "opaque", "2pl", "adaptive", "swiss", "tictoc"};
 
     class constants {
     public:
@@ -49,7 +50,7 @@ namespace ycsb {
             if (mode_id == ReadOnly) {
                 dd = new StoSampling::StoUniformDistribution(thread_id, 0, TABLE_SIZE - 1);
                 write_threshold = 0;
-            } else (mode_id == MediumContention) {
+            } else if (mode_id == MediumContention) {
                 dd = new StoSampling::StoZipfDistribution(thread_id, 0, TABLE_SIZE - 1, 0.8);
                 write_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * 0.1);
             } else (mode_id == HighContention) {

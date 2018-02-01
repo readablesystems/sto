@@ -35,14 +35,15 @@ struct ycsb_value {
     static ycsb_value random_ycsb_value() {
         ycsb_value ret;
         for (int i = 0; i < 10; i++) {
-            cols[i] = fix_string<100>(random_a_string);
-        } 
+            ret.cols[i] = tpcc::fix_string<100>(random_a_string);
+        }
+        return ret;
     }
 
 private:
     static std::string random_a_string() {
         std::string str(100, ' ');
-        for (auto i = 0u; i < len; ++i) {
+        for (auto i = 0u; i < 100; ++i) {
             auto n = dis(gen);
             char c = (n < 26) ? char('a' + n) :
                      ((n < 52) ? char('A' + (n - 26)) : char('0' + (n - 52)));
