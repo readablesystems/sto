@@ -250,6 +250,11 @@ namespace tpcc {
     template<typename DBParams>
     void tpcc_prepopulator<DBParams>::run() {
         int r;
+
+        always_assert(worker_id >= 1, "prepopulator worker id range error");
+        // set affinity so that the warehouse is filled at the corresponding numa node
+        set_affinity(worker_id - 1);
+
         if (worker_id == 1) {
             fill_items(1, 100001);
             fill_warehouses();

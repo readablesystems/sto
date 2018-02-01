@@ -101,7 +101,4 @@ struct ycsb_value {
     fix_string<100>  col9;
 };
 
-
-
-
 }; // namespace ycsb
