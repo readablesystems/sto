@@ -33,12 +33,32 @@ namespace ycsb {
     }
 
     template <typename DBParams>
-    void ycsb_db<DBParams>::prepopulate() {
-        ycsb_input_generator ig(0);
-        ycsb_table_type& table = ycsb_table();
-        for (uint64_t i = 0; i < ycsb_table_size; ++i) {
-            table.nontrans_put(ycsb_key(i), ig.random_ycsb_value());
+    void ycsb_prepopulation_thread(int thread_id, ycsb_db<DBParams>& db, uint64_t key_begin, uint64_t key_end) {
+        ycsb_input_generator ig(thread_id);
+        db.ycsb_table().thread_init();
+        for (uint64_t i = key_begin; i < key_end; ++i) {
+            db.ycsb_table().nontrans_put(ycsb_key(i), ig.random_ycsb_value());
         }
+    }
+
+    template <typename DBParams>
+    void ycsb_db<DBParams>::prepopulate() {
+        static constexpr uint64_t nthreads = 8;
+        uint64_t key_begin, key_end;
+        uint64_t segment_size = ycsb_table_size / nthreads;
+        key_begin = 0;
+        key_end = segment_size;
+
+        std::vector<std::thread> prepopulators;
+
+        for (uint64_t tid = 0; tid < nthreads; ++tid) {
+            prepopulators.emplace_back(ycsb_prepopulation_thread<DBParams>, (int)tid, std::ref(*this), key_begin, key_end);
+            key_begin += segment_size;
+            key_end += segment_size;
+        }
+
+        for (auto& t : prepopulators)
+            t.join();
     }
 
     template <typename DBParams>
@@ -48,6 +68,7 @@ namespace ycsb {
             ycsb_runner<DBParams> runner(runner_id, db, mid);
 
             uint64_t local_cnt = 0;
+            db.ycsb_table().thread_init();
 
             ::TThread::set_id(runner_id);
             set_affinity(runner_id);
