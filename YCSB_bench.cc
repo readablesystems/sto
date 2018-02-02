@@ -34,6 +34,7 @@ namespace ycsb {
 
     template <typename DBParams>
     void ycsb_prepopulation_thread(int thread_id, ycsb_db<DBParams>& db, uint64_t key_begin, uint64_t key_end) {
+        set_affinity(thread_id);
         ycsb_input_generator ig(thread_id);
         db.ycsb_table().thread_init();
         for (uint64_t i = key_begin; i < key_end; ++i) {
