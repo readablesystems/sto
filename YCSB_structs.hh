@@ -31,17 +31,23 @@ struct ycsb_key {
 
 struct ycsb_value {
     tpcc::fix_string<100>  cols[10];
+};
 
-    static ycsb_value random_ycsb_value() {
+class ycsb_input_generator {
+public:
+    ycsb_input_generator(int thread_id)
+            : gen(thread_id), dis(0, 61) {}
+
+    ycsb_value random_ycsb_value() {
         ycsb_value ret;
         for (int i = 0; i < 10; i++) {
-            ret.cols[i] = tpcc::fix_string<100>(random_a_string);
+            ret.cols[i] = random_a_string();
         }
         return ret;
     }
 
 private:
-    static std::string random_a_string() {
+    std::string random_a_string() {
         std::string str(100, ' ');
         for (auto i = 0u; i < 100; ++i) {
             auto n = dis(gen);
@@ -52,8 +58,8 @@ private:
         return str;
     }
 
-    static std::mt19937 gen;
-    static std::uniform_int_distribution<> dis(0, 61);
+    std::mt19937 gen;
+    std::uniform_int_distribution<int> dis;
 };
 
 }; // namespace ycsb

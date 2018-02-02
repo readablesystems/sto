@@ -4,46 +4,55 @@
 
 #include "YCSB_bench.hh"
 #include "YCSB_txns.hh"
+#include "TPCC_bench.hh"
 #include "PlatformFeatures.hh"
+
+volatile mrcu_epoch_type active_epoch = 1;
+volatile uint64_t globalepoch = 1;
+volatile bool recovering = false;
 
 namespace ycsb {
 
 
     enum {
-        opt_dbid = 1, opt_nthrs, opt_time, opt_perf, opt_pfcnt
+        opt_dbid = 1, opt_nthrs, opt_mode, opt_time, opt_perf, opt_pfcnt
     };
 
     static const Clp_Option options[] = {
         { "dbid",         'i', opt_dbid,  Clp_ValString, Clp_Optional },
         { "nthreads",     't', opt_nthrs, Clp_ValInt,    Clp_Optional },
+        { "mode",         'm', opt_mode,  Clp_ValInt,    Clp_Optional },
         { "time",         'l', opt_time,  Clp_ValDouble, Clp_Optional },
         { "perf",         'p', opt_perf,  Clp_NoVal,     Clp_Optional },
         { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,     Clp_Negate| Clp_Optional }
     };
 
+    void print_usage(const char *prog_name) {
+        (void)prog_name;
+        std::cout << ":)" << std::endl;
+    }
+
     template <typename DBParams>
     void ycsb_db<DBParams>::prepopulate() {
-        ycsb_table_type& table = db.ycsb_table();
-        bool success, result;
-        for (uint64_t i = 0; i < TABLE_SIZE; ++i) {
-            std::tie(success, result) = table.insert_row(ycsb_key(i), ycsb_value::random_ycsb_value());
-            assert(assert);
-            assert(result);
+        ycsb_input_generator ig(0);
+        ycsb_table_type& table = ycsb_table();
+        for (uint64_t i = 0; i < ycsb_table_size; ++i) {
+            table.nontrans_put(ycsb_key(i), ig.random_ycsb_value());
         }
     }
 
     template <typename DBParams>
     class ycsb_access {
-
-        static void ycsb_runner_thread(ycsb_db<DBParams>& db, tpcc::tpcc_profiler& prof, int runner_id, int mode_id, double time_limit, uint64_t& txn_cnt) {
-            ycsb_runner<DBParams> runner(runner_id, db, mode_id);
+    public:
+        static void ycsb_runner_thread(ycsb_db<DBParams>& db, tpcc::tpcc_profiler& prof, int runner_id, mode_id mid, double time_limit, uint64_t& txn_cnt) {
+            ycsb_runner<DBParams> runner(runner_id, db, mid);
 
             uint64_t local_cnt = 0;
 
             ::TThread::set_id(runner_id);
             set_affinity(runner_id);
 
-            uint64_t tsc_diff = (uint64_t)(time_limit * constants::processor_tsc_frequency * constants::billion);
+            uint64_t tsc_diff = (uint64_t)(time_limit * tpcc::constants::processor_tsc_frequency * tpcc::constants::billion);
             auto start_t = prof.start_timestamp();
 
             while (true) {
@@ -51,14 +60,14 @@ namespace ycsb {
                 if ((curr_t - start_t) >= tsc_diff)
                     break;
 
-                switch (mode_id) {
-                    case ReadOnly:
+                switch (mid) {
+                    case mode_id::ReadOnly:
                         runner.run_txn_read_only();
                         break;
-                    case MediumContention:
+                    case mode_id::MediumContention:
                         runner.run_txn_medium_contention();
                         break;
-                    case HighContention:
+                    case mode_id::HighContention:
                         runner.run_txn_high_contention();
                         break;
                     default:
@@ -73,14 +82,14 @@ namespace ycsb {
             txn_cnt = local_cnt;
         }
 
-        static uint64_t run_benchmark(ycsb_db<DBParams>& db, tpcc::tpcc_profiler& prof, int num_runners, int mode_id, double time_limit) {
+        static uint64_t run_benchmark(ycsb_db<DBParams>& db, tpcc::tpcc_profiler& prof, int num_runners, int mid, double time_limit) {
             std::vector<std::thread> runner_thrs;
             std::vector<uint64_t> txn_cnts(size_t(num_runners), 0);
 
             for (int i = 0; i < num_runners; ++i) {
                 fprintf(stdout, "runner %d created\n", i);
                 runner_thrs.emplace_back(ycsb_runner_thread, std::ref(db), std::ref(prof),
-                                         i, mode_id, time_limit, std::ref(txn_cnts[i]));
+                                         i, static_cast<mode_id>(mid), time_limit, std::ref(txn_cnts[i]));
             }
 
             for (auto &t : runner_thrs)
@@ -93,12 +102,13 @@ namespace ycsb {
         }
 
 
-        static execute(int argc, const char *const *argv) {
+        static int execute(int argc, const char *const *argv) {
             int ret = 0;
 
             bool spawn_perf = false;
             bool counter_mode = false;
             int num_threads = 1;
+            int mode = static_cast<int>(mode_id::ReadOnly);
             double time_limit = 10.0;
 
             Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
@@ -111,6 +121,9 @@ namespace ycsb {
                         break;
                     case opt_nthrs:
                         num_threads = clp->val.i;
+                        break;
+                    case opt_mode:
+                        mode = clp->val.i;
                         break;
                     case opt_time:
                         time_limit = clp->val.d;
@@ -154,7 +167,7 @@ namespace ycsb {
             std::cout << "Prepopulation complete." << std::endl;
 
             prof.start(profiler_mode);
-            auto num_trans = run_benchmark(db, prof, num_threads, time_limit);
+            auto num_trans = run_benchmark(db, prof, num_threads, mode, time_limit);
             prof.finish(num_trans);
 
             return 0;
@@ -167,7 +180,7 @@ namespace ycsb {
 
 using namespace ycsb;
 
-double ycsb::constants::processor_tsc_frequency;
+double tpcc::constants::processor_tsc_frequency;
 
 int main(int argc, const char *const *argv) {
     db_params_id dbid = db_params_id::Default;
@@ -202,7 +215,7 @@ int main(int argc, const char *const *argv) {
     if (cpu_freq == 0.0)
         return 1;
     else
-        ycsb::constants::processor_tsc_frequency = cpu_freq;
+        tpcc::constants::processor_tsc_frequency = cpu_freq;
 
     switch (dbid) {
     case db_params_id::Default:

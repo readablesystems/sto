@@ -38,6 +38,13 @@ add_executable(tpcc_bench
         TPCC_index.hh
         TPCC_txns.hh)
 
+add_executable(ycsb_bench
+        PlatformFeatures.hh
+        YCSB_bench.cc
+        YCSB_structs.hh
+        TPCC_index.hh
+        YCSB_txns.hh)
+
 add_executable(micro_bench
         PlatformFeatures.hh
         MicroBenchmarks.cc
@@ -69,6 +76,7 @@ add_executable(unit-tbox
         TBox.hh)
 
 target_link_libraries(tpcc_bench sto clp masstree json dprint xxhash ${PLATFORM_LIBRARIES})
+target_link_libraries(ycsb_bench sto clp masstree json dprint xxhash ${PLATFORM_LIBRARIES})
 target_link_libraries(micro_bench sto clp masstree json dprint ${PLATFORM_LIBRARIES})
 target_link_libraries(unit-swisstarray sto dprint)
 target_link_libraries(unit-tflexarray sto dprint)

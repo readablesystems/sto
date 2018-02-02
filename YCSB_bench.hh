@@ -5,14 +5,13 @@
 
 #include "compiler.hh"
 #include "clp.h"
+#include "sampling.hh"
 #include "SystemProfiler.hh"
 #include "YCSB_structs.hh"
 #include "TPCC_index.hh"
 
 
 namespace ycsb { 
-    constexpr const char *db_params_id_names[] = {"none", "default", "opaque", "2pl", "adaptive", "swiss", "tictoc"};
-
     constexpr const char *db_params_id_names[] = {"none", "default", "opaque", "2pl", "adaptive", "swiss", "tictoc"};
 
     enum class db_params_id : int { None = 0, Default, Opaque, TwoPL, Adaptive, Swiss, TicToc };
@@ -76,14 +75,7 @@ namespace ycsb {
         static constexpr bool TicToc = true;
     };
 
-    class constants {
-    public:
-        static constexpr double million = 1000000.0;
-        static constexpr double billion = 1000.0 * million;
-        static double processor_tsc_frequency; // in GHz
-    };
-
-    #define TABLE_SIZE 10000000;
+    static constexpr uint64_t ycsb_table_size = 10000000;
 
     template <typename DBParams>
     class ycsb_db {
@@ -94,31 +86,37 @@ namespace ycsb {
         typedef OIndex<ycsb_key, ycsb_value> ycsb_table_type;
 
         ycsb_table_type& ycsb_table() {
-            return ycsb_table;
+            return ycsb_table_;
         }
 
-        void prepopulate(ycsb_db<DBParams> db);
+        void prepopulate();
 
     private:
-        ycsb_table_type ycsb_table;
+        ycsb_table_type ycsb_table_;
     };
 
 
     template <typename DBParams>
     class ycsb_runner {
-
-        ycsb_runner(int id, ycsb_db<DBParams>& database, int mode_id)
-            : db(database), runner_id(id) {
-            ud = new StoSampling::StoUniformDistribution(thread_id, 0, std::numeric_limits<uint32_t>::max());
-            if (mode_id == ReadOnly) {
-                dd = new StoSampling::StoUniformDistribution(thread_id, 0, TABLE_SIZE - 1);
-                write_threshold = 0;
-            } else if (mode_id == MediumContention) {
-                dd = new StoSampling::StoZipfDistribution(thread_id, 0, TABLE_SIZE - 1, 0.8);
-                write_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * 0.1);
-            } else (mode_id == HighContention) {
-                dd = new StoSampling::StoZipfDistribution(thread_id, 0, TABLE_SIZE - 1, 0.9);
-                write_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * 0.5);
+    public:
+        ycsb_runner(int tid, ycsb_db<DBParams>& database, mode_id mid)
+            : db(database), ig(tid), runner_id(tid) {
+            ud = new StoSampling::StoUniformDistribution(tid, 0, std::numeric_limits<uint32_t>::max());
+            switch(mid) {
+                case mode_id::ReadOnly:
+                    dd = new StoSampling::StoUniformDistribution(tid, 0, ycsb_table_size - 1);
+                    write_threshold = 0;
+                    break;
+                case mode_id::MediumContention:
+                    dd = new StoSampling::StoZipfDistribution(tid, 0, ycsb_table_size - 1, 0.8);
+                    write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max() * 0.1);
+                    break;
+                case mode_id::HighContention:
+                    dd = new StoSampling::StoZipfDistribution(tid, 0, ycsb_table_size - 1, 0.9);
+                    write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max() * 0.5);
+                    break;
+                default:
+                    break;
             }
         }
 
@@ -128,9 +126,10 @@ namespace ycsb {
 
     private:
         ycsb_db<DBParams>& db;
+        ycsb_input_generator ig;
         int runner_id;
 
-        StoSampling::StoUniformDistribution *ud = (thread_id, 0, std::numeric_limits<uint32_t>::max());
+        StoSampling::StoUniformDistribution *ud;
         StoSampling::StoRandomDistribution *dd;
         uint32_t write_threshold;
     };

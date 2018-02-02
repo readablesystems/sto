@@ -42,7 +42,8 @@ void ycsb_runner<DBParams>::run_txn_medium_contention() {
                 std::tie(abort, result, row, value) = db.ycsb_table().select_row(key, true);
                 TXN_DO(abort);
                 assert(result);
-                db.ycsb_table().update_row(key, ycsb_value::random_ycsb_value());
+                auto new_val = ig.random_ycsb_value();
+                db.ycsb_table().update_row(row, &new_val);
             } else {
                 std::tie(abort, result, row, value) = db.ycsb_table().select_row(ycsb_key(dd->sample()), false);
                 TXN_DO(abort);
@@ -50,6 +51,7 @@ void ycsb_runner<DBParams>::run_txn_medium_contention() {
             }
         }
 
+        (void)__txn_committed;
     } RETRY(true);
 }
 
@@ -67,7 +69,8 @@ void ycsb_runner<DBParams>::run_txn_high_contention() {
                 std::tie(abort, result, row, value) = db.ycsb_table().select_row(key, true);
                 TXN_DO(abort);
                 assert(result);
-                db.ycsb_table().update_row(key, ycsb_value::random_ycsb_value());
+                auto new_val = ig.random_ycsb_value();
+                db.ycsb_table().update_row(row, &new_val);
             } else {
                 std::tie(abort, result, row, value) = db.ycsb_table().select_row(ycsb_key(dd->sample()), false);
                 TXN_DO(abort);
@@ -75,6 +78,7 @@ void ycsb_runner<DBParams>::run_txn_high_contention() {
             }
         }
 
+        (void)__txn_committed;
     } RETRY(true);
 }
 

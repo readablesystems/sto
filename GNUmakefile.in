@@ -218,7 +218,7 @@ hashtable_nostm: hashtable_nostm.o $(STO_DEPS)
 tpcc_bench: TPCC_bench.o $(STO_OBJS) $(MASSTREE_OBJS) $(XXHASH_OBJ)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(MASSTREE_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
-ycsb_bench: TPCC_bench.o $(STO_OBJS) $(MASSTREE_OBJS) $(XXHASH_OBJ)
+ycsb_bench: YCSB_bench.o $(STO_OBJS) $(MASSTREE_OBJS) $(XXHASH_OBJ)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(MASSTREE_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 micro_bench: MicroBenchmarks.o $(STO_OBJS) $(MASSTREE_OBJS)
