@@ -43,7 +43,7 @@ namespace ycsb {
 
     template <typename DBParams>
     void ycsb_db<DBParams>::prepopulate() {
-        static constexpr uint64_t nthreads = 8;
+        static constexpr uint64_t nthreads = 32;
         uint64_t key_begin, key_end;
         uint64_t segment_size = ycsb_table_size / nthreads;
         key_begin = 0;
