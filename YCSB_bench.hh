@@ -109,11 +109,11 @@ namespace ycsb {
                     break;
                 case mode_id::MediumContention:
                     dd = new StoSampling::StoZipfDistribution(tid, 0, ycsb_table_size - 1, 0.8);
-                    write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max() * 0.1);
+                    write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max()/10);
                     break;
                 case mode_id::HighContention:
                     dd = new StoSampling::StoZipfDistribution(tid, 0, ycsb_table_size - 1, 0.9);
-                    write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max() * 0.5);
+                    write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max()/2);
                     break;
                 default:
                     break;
