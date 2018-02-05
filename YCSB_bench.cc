@@ -65,6 +65,7 @@ namespace ycsb {
     template <typename DBParams>
     class ycsb_access {
     public:
+        static pthread_barrier_t ycsb_sync_barrier;
         static void ycsb_runner_thread(ycsb_db<DBParams>& db, tpcc::tpcc_profiler& prof, int runner_id, mode_id mid, double time_limit, uint64_t& txn_cnt) {
             ycsb_runner<DBParams> runner(runner_id, db, mid);
 
@@ -75,6 +76,7 @@ namespace ycsb {
             set_affinity(runner_id);
 
             runner.gen_workload(mid == mode_id::ReadOnly ? 2 : 16);
+            pthread_barrier_wait(&ycsb_sync_barrier);
 
             uint64_t tsc_diff = (uint64_t)(time_limit * tpcc::constants::processor_tsc_frequency * tpcc::constants::billion);
             auto start_t = prof.start_timestamp();
@@ -101,6 +103,8 @@ namespace ycsb {
             std::vector<std::thread> runner_thrs;
             std::vector<uint64_t> txn_cnts(size_t(num_runners), 0);
 
+            pthread_barrier_init(&ycsb_sync_barrier, nullptr, num_runners);
+
             for (int i = 0; i < num_runners; ++i) {
                 fprintf(stdout, "runner %d created\n", i);
                 runner_thrs.emplace_back(ycsb_runner_thread, std::ref(db), std::ref(prof),
@@ -109,6 +113,8 @@ namespace ycsb {
 
             for (auto &t : runner_thrs)
                 t.join();
+
+            pthread_barrier_destroy(&ycsb_sync_barrier);
 
             uint64_t total_txn_cnt = 0;
             for (auto& cnt : txn_cnts)
@@ -190,6 +196,9 @@ namespace ycsb {
 
 
     };
+
+    template <typename DBParams>
+    pthread_barrier_t ycsb_access<DBParams>::ycsb_sync_barrier;
 
 }; // namespace ycsb
 
