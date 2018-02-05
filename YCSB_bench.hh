@@ -82,8 +82,12 @@ namespace ycsb {
     public:
         template <typename K, typename V>
         using OIndex = tpcc::ordered_index<K, V, DBParams>;
+        template <typename K, typename V>
+        using UIndex = tpcc::unordered_index<K, V, DBParams>;
 
-        typedef OIndex<ycsb_key, ycsb_value> ycsb_table_type;
+        typedef UIndex<ycsb_key, ycsb_value> ycsb_table_type;
+
+        explicit ycsb_db() : ycsb_table_(ycsb_table_size) {}
 
         ycsb_table_type& ycsb_table() {
             return ycsb_table_;

@@ -68,3 +68,14 @@ private:
 };
 
 }; // namespace ycsb
+
+namespace std {
+
+template <>
+struct hash<ycsb::ycsb_key> {
+    size_t operator() (const ycsb::ycsb_key& arg) const {
+        return arg.w_id;
+    }
+};
+
+};
