@@ -22,7 +22,7 @@ void ycsb_runner<DBParams>::gen_workload(int txn_size) {
             bool is_write = ud->sample() < write_threshold;
             txn.emplace_back(is_write, key, ud->sample() % 10 /*column number*/);
         }
-        workload.emplace_back(std::move(txn));
+        workload.push_back(std::move(txn));
     }
 }
 
