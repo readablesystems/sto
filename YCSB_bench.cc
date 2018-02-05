@@ -74,29 +74,22 @@ namespace ycsb {
             ::TThread::set_id(runner_id);
             set_affinity(runner_id);
 
+            runner.gen_workload(mid == mode_id::ReadOnly ? 2 : 16);
+
             uint64_t tsc_diff = (uint64_t)(time_limit * tpcc::constants::processor_tsc_frequency * tpcc::constants::billion);
             auto start_t = prof.start_timestamp();
+
+            auto it = runner.workload.begin();
 
             while (true) {
                 auto curr_t = read_tsc();
                 if ((curr_t - start_t) >= tsc_diff)
                     break;
 
-                switch (mid) {
-                    case mode_id::ReadOnly:
-                        runner.run_txn_read_only();
-                        break;
-                    case mode_id::MediumContention:
-                        runner.run_txn_medium_contention();
-                        break;
-                    case mode_id::HighContention:
-                        runner.run_txn_high_contention();
-                        break;
-                    default:
-                        fprintf(stderr, "r:%d unknown txn type\n", runner_id);
-                        assert(false);
-                        break;
-                };
+                runner.run_txn(*it);
+                ++it;
+                if (it == runner.workload.end())
+                    it = runner.workload.begin();
 
                 ++local_cnt;
             }

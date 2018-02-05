@@ -95,10 +95,11 @@ namespace ycsb {
         ycsb_table_type ycsb_table_;
     };
 
-
     template <typename DBParams>
     class ycsb_runner {
     public:
+        typedef std::vector<std::pair<bool, uint32_t>> ycsb_txn_t;
+
         ycsb_runner(int tid, ycsb_db<DBParams>& database, mode_id mid)
             : db(database), ig(tid), runner_id(tid) {
             ud = new StoSampling::StoUniformDistribution(tid, 0, std::numeric_limits<uint32_t>::max());
@@ -120,9 +121,11 @@ namespace ycsb {
             }
         }
 
-        inline void run_txn_read_only();
-        inline void run_txn_medium_contention();
-        inline void run_txn_high_contention();
+        inline void gen_workload(int txn_size);
+
+        inline void run_txn(const ycsb_txn_t& txn);
+
+        std::vector<ycsb_txn_t> workload;
 
     private:
         ycsb_db<DBParams>& db;
