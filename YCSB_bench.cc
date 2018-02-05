@@ -65,18 +65,12 @@ namespace ycsb {
     template <typename DBParams>
     class ycsb_access {
     public:
-        static pthread_barrier_t ycsb_sync_barrier;
-        static void ycsb_runner_thread(ycsb_db<DBParams>& db, tpcc::tpcc_profiler& prof, int runner_id, mode_id mid, double time_limit, uint64_t& txn_cnt) {
-            ycsb_runner<DBParams> runner(runner_id, db, mid);
-
+        static void ycsb_runner_thread(ycsb_db<DBParams>& db, tpcc::tpcc_profiler& prof, ycsb_runner<DBParams>& runner, double time_limit, uint64_t& txn_cnt) {
             uint64_t local_cnt = 0;
             db.ycsb_table().thread_init();
 
-            ::TThread::set_id(runner_id);
-            set_affinity(runner_id);
-
-            runner.gen_workload(mid == mode_id::ReadOnly ? 2 : 16);
-            pthread_barrier_wait(&ycsb_sync_barrier);
+            ::TThread::set_id(runner.id());
+            set_affinity(runner.id());
 
             uint64_t tsc_diff = (uint64_t)(time_limit * tpcc::constants::processor_tsc_frequency * tpcc::constants::billion);
             auto start_t = prof.start_timestamp();
@@ -99,22 +93,29 @@ namespace ycsb {
             txn_cnt = local_cnt;
         }
 
-        static uint64_t run_benchmark(ycsb_db<DBParams>& db, tpcc::tpcc_profiler& prof, int num_runners, int mid, double time_limit) {
+        static void workload_generation(std::vector<ycsb_runner<DBParams>>& runners, int mode) {
+            std::vector<std::thread> thrs;
+            int tsize = (mode == static_cast<int>(mode_id::ReadOnly)) ? 2 : 16;
+            for (auto& r : runners) {
+                thrs.emplace_back(&ycsb_runner<DBParams>::gen_workload, &r, tsize);
+            }
+            for (auto& t : thrs)
+                t.join();
+        }
+
+        static uint64_t run_benchmark(ycsb_db<DBParams>& db, tpcc::tpcc_profiler& prof, std::vector<ycsb_runner<DBParams>>& runners, double time_limit) {
+            int num_runners = runners.size();
             std::vector<std::thread> runner_thrs;
             std::vector<uint64_t> txn_cnts(size_t(num_runners), 0);
-
-            pthread_barrier_init(&ycsb_sync_barrier, nullptr, num_runners);
 
             for (int i = 0; i < num_runners; ++i) {
                 fprintf(stdout, "runner %d created\n", i);
                 runner_thrs.emplace_back(ycsb_runner_thread, std::ref(db), std::ref(prof),
-                                         i, static_cast<mode_id>(mid), time_limit, std::ref(txn_cnts[i]));
+                                         std::ref(runners[i]), time_limit, std::ref(txn_cnts[i]));
             }
 
             for (auto &t : runner_thrs)
                 t.join();
-
-            pthread_barrier_destroy(&ycsb_sync_barrier);
 
             uint64_t total_txn_cnt = 0;
             for (auto& cnt : txn_cnts)
@@ -187,8 +188,17 @@ namespace ycsb {
             db.prepopulate();
             std::cout << "Prepopulation complete." << std::endl;
 
+            std::vector<ycsb_runner<DBParams>> runners;
+            for (int i = 0; i < num_threads; ++i) {
+                runners.emplace_back(i, db, static_cast<mode_id>(mode));
+            }
+
+            std::cout << "Generating workload..." << std::endl;
+            workload_generation(runners, mode);
+            std::cout << "Done." << std::endl;
+
             prof.start(profiler_mode);
-            auto num_trans = run_benchmark(db, prof, num_threads, mode, time_limit);
+            auto num_trans = run_benchmark(db, prof, runners, time_limit);
             prof.finish(num_trans);
 
             return 0;
@@ -196,9 +206,6 @@ namespace ycsb {
 
 
     };
-
-    template <typename DBParams>
-    pthread_barrier_t ycsb_access<DBParams>::ycsb_sync_barrier;
 
 }; // namespace ycsb
 

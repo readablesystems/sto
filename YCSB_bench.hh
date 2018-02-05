@@ -101,19 +101,22 @@ namespace ycsb {
         typedef std::vector<std::pair<bool, uint32_t>> ycsb_txn_t;
 
         ycsb_runner(int tid, ycsb_db<DBParams>& database, mode_id mid)
-            : db(database), ig(tid), runner_id(tid) {
-            ud = new StoSampling::StoUniformDistribution(tid, 0, std::numeric_limits<uint32_t>::max());
-            switch(mid) {
+            : db(database), ig(tid), runner_id(tid), mode(mid),
+              ud(), dd(), write_threshold() {}
+
+        inline void dist_init() {
+            ud = new StoSampling::StoUniformDistribution(runner_id, 0, std::numeric_limits<uint32_t>::max());
+            switch(mode) {
                 case mode_id::ReadOnly:
-                    dd = new StoSampling::StoUniformDistribution(tid, 0, ycsb_table_size - 1);
+                    dd = new StoSampling::StoUniformDistribution(runner_id, 0, ycsb_table_size - 1);
                     write_threshold = 0;
                     break;
                 case mode_id::MediumContention:
-                    dd = new StoSampling::StoZipfDistribution(tid, 0, ycsb_table_size - 1, 0.8);
+                    dd = new StoSampling::StoZipfDistribution(runner_id, 0, ycsb_table_size - 1, 0.8);
                     write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max()/10);
                     break;
                 case mode_id::HighContention:
-                    dd = new StoSampling::StoZipfDistribution(tid, 0, ycsb_table_size - 1, 0.9);
+                    dd = new StoSampling::StoZipfDistribution(runner_id, 0, ycsb_table_size - 1, 0.9);
                     write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max()/2);
                     break;
                 default:
@@ -123,6 +126,10 @@ namespace ycsb {
 
         inline void gen_workload(int txn_size);
 
+        int id() const {
+            return runner_id;
+        }
+
         inline void run_txn(const ycsb_txn_t& txn);
 
         std::vector<ycsb_txn_t> workload;
@@ -131,6 +138,7 @@ namespace ycsb {
         ycsb_db<DBParams>& db;
         ycsb_input_generator ig;
         int runner_id;
+        mode_id mode;
 
         StoSampling::StoUniformDistribution *ud;
         StoSampling::StoRandomDistribution *dd;

@@ -9,6 +9,7 @@ static constexpr uint64_t max_txns = 1000000;
 
 template <typename DBParams>
 void ycsb_runner<DBParams>::gen_workload(int txn_size) {
+    dist_init();
     for (uint64_t i = 0; i < max_txns; ++i) {
         ycsb_txn_t txn(txn_size);
         for (int j = 0; j < txn_size; ++j) {
