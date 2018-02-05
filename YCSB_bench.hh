@@ -85,12 +85,16 @@ namespace ycsb {
         template <typename K, typename V>
         using UIndex = tpcc::unordered_index<K, V, DBParams>;
 
-        typedef UIndex<ycsb_key, ycsb_value> ycsb_table_type;
+        typedef UIndex<ycsb_key, ycsb_value<DBParams>> ycsb_table_type;
 
         explicit ycsb_db() : ycsb_table_(ycsb_table_size) {}
 
         ycsb_table_type& ycsb_table() {
             return ycsb_table_;
+        }
+
+        void table_thread_init() {
+            //ycsb_table_.thread_init();
         }
 
         void prepopulate();
@@ -99,10 +103,19 @@ namespace ycsb {
         ycsb_table_type ycsb_table_;
     };
 
+    struct ycsb_op_t {
+        ycsb_op_t() : is_write(), key(), col_n() {}
+        ycsb_op_t(bool w, uint32_t k, int32_t c)
+                : is_write(w), key(k), col_n(c) {}
+        bool is_write;
+        uint32_t key;
+        int32_t col_n;
+    };
+
     template <typename DBParams>
     class ycsb_runner {
     public:
-        typedef std::vector<std::pair<bool, uint32_t>> ycsb_txn_t;
+        typedef std::vector<ycsb_op_t> ycsb_txn_t;
 
         ycsb_runner(int tid, ycsb_db<DBParams>& database, mode_id mid)
             : db(database), ig(tid), runner_id(tid), mode(mid),
@@ -140,7 +153,7 @@ namespace ycsb {
 
     private:
         ycsb_db<DBParams>& db;
-        ycsb_input_generator ig;
+        ycsb_input_generator<DBParams> ig;
         int runner_id;
         mode_id mode;
 

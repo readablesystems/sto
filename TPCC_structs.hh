@@ -128,6 +128,9 @@ public:
     bool operator==(const fix_string& rhs) const {
         return !memcmp(s_, rhs.s_, FL);
     }
+    char& operator[](size_t idx) {
+        return s_[idx];
+    }
     char operator[](size_t idx) const {
         return s_[idx];
     }

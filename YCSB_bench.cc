@@ -35,8 +35,8 @@ namespace ycsb {
     template <typename DBParams>
     void ycsb_prepopulation_thread(int thread_id, ycsb_db<DBParams>& db, uint64_t key_begin, uint64_t key_end) {
         set_affinity(thread_id);
-        ycsb_input_generator ig(thread_id);
-        //db.ycsb_table().thread_init();
+        ycsb_input_generator<DBParams> ig(thread_id);
+        db.table_thread_init();
         for (uint64_t i = key_begin; i < key_end; ++i) {
             db.ycsb_table().nontrans_put(ycsb_key(i), ig.random_ycsb_value());
         }
@@ -67,7 +67,7 @@ namespace ycsb {
     public:
         static void ycsb_runner_thread(ycsb_db<DBParams>& db, tpcc::tpcc_profiler& prof, ycsb_runner<DBParams>& runner, double time_limit, uint64_t& txn_cnt) {
             uint64_t local_cnt = 0;
-            //db.ycsb_table().thread_init();
+            db.table_thread_init();
 
             ::TThread::set_id(runner.id());
             set_affinity(runner.id());
