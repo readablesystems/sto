@@ -12,7 +12,8 @@ template <typename DBParams>
 void ycsb_runner<DBParams>::gen_workload(int txn_size) {
     dist_init();
     for (uint64_t i = 0; i < max_txns; ++i) {
-        ycsb_txn_t txn(txn_size);
+        ycsb_txn_t txn;
+        txn.reserve(txn_size);
         std::set<uint32_t> key_set;
         for (int j = 0; j < txn_size; ++j) {
             uint32_t key = dd->sample();
@@ -31,7 +32,7 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
     TRANSACTION {
         bool success;
         for (auto& op : txn) {
-            if (op.is_write/*is_write*/) {
+            if (op.is_write) {
                 ycsb_key key(op.key);
                 auto value = db.ycsb_table().nontrans_get(key);
                 assert(value);

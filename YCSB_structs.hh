@@ -61,7 +61,7 @@ public:
 
     // return: success
     bool trans_col_update(int col_n, const col_type& new_col) {
-        always_assert(col_n < num_cols, "column index out of bound");
+        always_assert((size_t)col_n < num_cols, "column index out of bound");
 #if TABLE_FINE_GRAINED
         auto item = Sto::item(this, col_n);
         auto& v = (col_n % 2 == 0) ? v0 : v1;
@@ -77,7 +77,7 @@ public:
 
     // return: success, column
     std::pair<bool, const col_type *> trans_col_read(int col_n) {
-        always_assert(col_n < num_cols, "column index out of bound");
+        always_assert((size_t)col_n < num_cols, "column index out of bound");
 #if TABLE_FINE_GRAINED
         auto item = Sto::item(this, col_n);
         if (!item.observe((col_n % 2 == 0) ? v0 : v1))
@@ -146,7 +146,7 @@ public:
 
     value_type random_ycsb_value() {
         value_type ret;
-        for (int i = 0; i < value_type::num_cols; i++) {
+        for (size_t i = 0; i < value_type::num_cols; i++) {
             ret.col_access(i) = random_a_string(value_type::col_width);
         }
         return ret;
