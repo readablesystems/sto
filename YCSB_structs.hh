@@ -10,6 +10,8 @@ namespace ycsb {
 
 enum class mode_id : int { ReadOnly = 0, MediumContention, HighContention };
 
+static constexpr size_t ycsb_col_size = 8;
+
 struct ycsb_key {
     ycsb_key(uint64_t id) {
         // no scan operations for ycsb,
@@ -30,7 +32,8 @@ struct ycsb_key {
 };
 
 struct ycsb_value {
-    tpcc::fix_string<100>  cols[10];
+//    tpcc::fix_string<100>  cols[10];
+    tpcc::fix_string<ycsb_col_size> col;
 };
 
 class ycsb_input_generator {
@@ -40,20 +43,22 @@ public:
 
     ycsb_value random_ycsb_value() {
         ycsb_value ret;
-        for (int i = 0; i < 10; i++) {
-            ret.cols[i] = random_a_string();
-        }
+//        for (int i = 0; i < 10; i++) {
+//            ret.cols[i] = random_a_string();
+//        }
+        ret.col = random_a_string(ycsb_col_size);
         return ret;
     }
 
 private:
-    std::string random_a_string() {
-        std::string str(100, ' ');
-        for (auto i = 0u; i < 100; ++i) {
+    std::string random_a_string(size_t len) {
+        std::string str;
+        str.reserve(len);
+        for (auto i = 0u; i < len; ++i) {
             auto n = dis(gen);
             char c = (n < 26) ? char('a' + n) :
                      ((n < 52) ? char('A' + (n - 26)) : char('0' + (n - 52)));
-            str[i] = c;
+            str.push_back(c);
         }
         return str;
     }

@@ -5,7 +5,7 @@
 
 namespace ycsb {
 
-static constexpr uint64_t max_txns = 10000000;
+static constexpr uint64_t max_txns = 1000000;
 
 template <typename DBParams>
 void ycsb_runner<DBParams>::gen_workload(int txn_size) {
