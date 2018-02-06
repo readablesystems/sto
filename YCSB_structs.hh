@@ -46,9 +46,9 @@ public:
     typedef tpcc::fix_string<col_width> col_type;
     typedef typename tpcc::get_version<DBParams>::type version_type;
 
-    ycsb_value() : cols(), v0(Sto::initialized_tid())
+    ycsb_value() : cols(), v0(Sto::initialized_tid(), false)
 #if TABLE_FINE_GRAINED
-                   , v1(Sto::initialized_tid())
+                   , v1(Sto::initialized_tid(), false)
 #endif
     {}
 
