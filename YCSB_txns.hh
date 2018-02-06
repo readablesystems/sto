@@ -16,12 +16,15 @@ void ycsb_runner<DBParams>::gen_workload(int txn_size) {
         txn.reserve(txn_size);
         std::set<uint32_t> key_set;
         for (int j = 0; j < txn_size; ++j) {
-            uint32_t key = dd->sample();
-            if (key_set.find(key) != key_set.end())
-                continue;
+            uint32_t key;
+            do {
+                key = dd->sample();
+            } while (key_set.find(key) != key_set.end());
             key_set.insert(key);
+        }
+        for (auto it = key_set.begin(); it != key_set.end(); ++it) {
             bool is_write = ud->sample() < write_threshold;
-            txn.emplace_back(is_write, key, ud->sample() % 10 /*column number*/);
+            txn.emplace_back(is_write, *it, ud->sample() % 10 /*column number*/);
         }
         workload.push_back(std::move(txn));
     }

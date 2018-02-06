@@ -152,8 +152,8 @@ inline void set_affinity(int runner_id) {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     // FIXME: This is only valid for the GATECH machine
-    int cpu_id = 24 * (runner_id % 8) + (runner_id / 8);
-    //int cpu_id = runner_id;
+    //int cpu_id = 24 * (runner_id % 8) + (runner_id / 8);
+    int cpu_id = runner_id;
     CPU_SET(cpu_id, &cpuset);
     int rc = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
     if (rc != 0) {
