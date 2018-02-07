@@ -1,6 +1,6 @@
 [submodule "masstree-beta"]
 	path = masstree-beta
-	url = git@github.com:readablesystems/masstree-beta.git
+	url = https://github.com/readablesystems/masstree-beta.git
 [submodule "third-party/xxHash"]
 	path = third-party/xxHash
-	url = git@github.com:readablesystems/xxHash.git
+	url = https://github.com/readablesystems/xxHash.git
