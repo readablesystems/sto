@@ -1,0 +1,40 @@
+# Build core
+
+script: make unit
+
+# Build & environment preferences
+
+compiler: gcc
+
+dist: trusty
+
+language: cpp
+
+sudo: required
+
+# Install path
+
+before_install:
+  - eval "${MATRIX_EVAL}"
+  - sudo apt-get update -qq
+  - sudo apt-get install libjemalloc-dev -qq
+
+git:  # Some hacks to replace SSH URLs with HTTPS ones
+  submodules: false
+
+install:
+  - ./bootstrap.sh
+  - ./configure
+
+matrix:
+  include:
+    # works on Precise and Trusty
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-7
+      env:
+        - MATRIX_EVAL="CC=gcc-7 && CXX=g++-7"

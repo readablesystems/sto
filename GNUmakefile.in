@@ -4,7 +4,7 @@
 AR = ar
 CC = @CC@
 CXX = @CXX@
-CPPFLAGS = -I$(MASSTREEDIR)
+CPPFLAGS = -std=c++11 -I$(MASSTREEDIR)
 DEPSDIR := .deps
 DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
 LIBS = @LIBS@ $(MASSTREEDIR)/libjson.a -lpthread -lm
