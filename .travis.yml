@@ -1,6 +1,6 @@
 # Build core
 
-script: make unit
+script: make
 
 # Build & environment preferences
 
