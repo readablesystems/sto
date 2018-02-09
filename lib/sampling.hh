@@ -10,7 +10,7 @@
 #include <random>
 #include <algorithm>
 
-namespace StoSampling {
+namespace bench {
 
 typedef size_t index_t;
 typedef std::vector<double> weight_type;

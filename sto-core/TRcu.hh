@@ -1,4 +1,6 @@
 #pragma once
+
+#include <new>
 #include "compiler.hh"
 #include <assert.h>
 

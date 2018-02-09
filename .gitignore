@@ -44,6 +44,7 @@
 /unit-mbta
 /unit-masstree
 /tpcc_bench
+/ycsb_bench
 /micro_bench
 /unit-swisstarray
 /unit-swisstgeneric
