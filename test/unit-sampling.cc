@@ -1,7 +1,7 @@
-#include "sampling.hh"
 #include <iostream>
+#include "sampling.hh"
 
-using namespace StoSampling;
+using namespace sampling;
 
 int main() {
     // testing a zipf distribution, generating numbers between 1 and 1000 with theta=0.8

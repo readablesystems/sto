@@ -70,11 +70,11 @@ typedef int64_t value_type;
 
 struct RWOperation {
     RWOperation() : type(OpType::read), key(), value() {}
-    RWOperation(OpType t, StoSampling::index_t k, value_type v = value_type())
+    RWOperation(OpType t, sampling::index_t k, value_type v = value_type())
             : type(t), key(k), value(v) {}
 
     OpType type;
-    StoSampling::index_t key;
+    sampling::index_t key;
     value_type value;
 };
 
@@ -293,13 +293,13 @@ public:
     explicit WLZipfRW(size_t num_threads) : WG(num_threads) {}
 
     void workload_init_impl(int thread_id) {
-        StoSampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
-        StoSampling::StoRandomDistribution *dd = nullptr;
+        sampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
+        sampling::StoRandomDistribution *dd = nullptr;
 
         if (params.zipf_skew == 0.0)
-            dd = new StoSampling::StoUniformDistribution(thread_id, 0, params.key_sz - 1);
+            dd = new sampling::StoUniformDistribution(thread_id, 0, params.key_sz - 1);
         else
-            dd = new StoSampling::StoZipfDistribution(thread_id, 0, params.key_sz - 1, params.zipf_skew);
+            dd = new sampling::StoZipfDistribution(thread_id, 0, params.key_sz - 1, params.zipf_skew);
 
         auto ro_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * params.readonly_percent);
         auto write_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * params.write_percent);
@@ -312,7 +312,7 @@ public:
             bool read_only = ud.sample() < ro_threshold;
             int nops = read_only ? params.opspertrans_ro : params.opspertrans;
 
-            std::set<StoSampling::index_t> idx_set;
+            std::set<sampling::index_t> idx_set;
             while (idx_set.size() != (size_t)nops) {
                 idx_set.insert(dd->sample());
             }
@@ -352,7 +352,7 @@ template <typename WLImpl, typename DBParams>
 class MasstreeTester : public Tester<MasstreeTester<WLImpl, DBParams>, WLImpl> {
 public:
     typedef Tester<MasstreeTester<WLImpl, DBParams>, WLImpl> Base;
-    typedef MasstreeIntKey<StoSampling::index_t> key_type;
+    typedef MasstreeIntKey<sampling::index_t> key_type;
 
     explicit MasstreeTester(size_t num_threads) : Base(num_threads), mt_() {}
 

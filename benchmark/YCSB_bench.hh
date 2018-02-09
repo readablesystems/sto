@@ -122,18 +122,18 @@ namespace ycsb {
               ud(), dd(), write_threshold() {}
 
         inline void dist_init() {
-            ud = new StoSampling::StoUniformDistribution(runner_id, 0, std::numeric_limits<uint32_t>::max());
+            ud = new sampling::StoUniformDistribution(runner_id, 0, std::numeric_limits<uint32_t>::max());
             switch(mode) {
                 case mode_id::ReadOnly:
-                    dd = new StoSampling::StoUniformDistribution(runner_id, 0, ycsb_table_size - 1);
+                    dd = new sampling::StoUniformDistribution(runner_id, 0, ycsb_table_size - 1);
                     write_threshold = 0;
                     break;
                 case mode_id::MediumContention:
-                    dd = new StoSampling::StoZipfDistribution(runner_id, 0, ycsb_table_size - 1, 0.8);
+                    dd = new sampling::StoZipfDistribution(runner_id, 0, ycsb_table_size - 1, 0.8);
                     write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max()/10);
                     break;
                 case mode_id::HighContention:
-                    dd = new StoSampling::StoZipfDistribution(runner_id, 0, ycsb_table_size - 1, 0.9);
+                    dd = new sampling::StoZipfDistribution(runner_id, 0, ycsb_table_size - 1, 0.9);
                     write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max()/2);
                     break;
                 default:
@@ -157,8 +157,8 @@ namespace ycsb {
         int runner_id;
         mode_id mode;
 
-        StoSampling::StoUniformDistribution *ud;
-        StoSampling::StoRandomDistribution *dd;
+        sampling::StoUniformDistribution *ud;
+        sampling::StoRandomDistribution *dd;
         uint32_t write_threshold;
     };
 

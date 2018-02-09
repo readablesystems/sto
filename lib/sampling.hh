@@ -10,7 +10,7 @@
 #include <random>
 #include <algorithm>
 
-namespace bench {
+namespace sampling {
 
 typedef size_t index_t;
 typedef std::vector<double> weight_type;
@@ -229,4 +229,4 @@ private:
     double sum_;
 };
 
-}; // namespace StoSampling
+}; // namespace sampling

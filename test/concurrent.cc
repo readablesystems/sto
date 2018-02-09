@@ -760,11 +760,11 @@ enum class OpType : int {read, write, inc};
 
 struct RWOperation {
     RWOperation() : type(OpType::read), key(), value() {}
-    RWOperation(OpType t, StoSampling::index_t k, value_type v = value_type())
+    RWOperation(OpType t, sampling::index_t k, value_type v = value_type())
         : type(t), key(k), value(v) {}
 
     OpType type;
-    StoSampling::index_t key;
+    sampling::index_t key;
     value_type value;
 };
 
@@ -844,7 +844,7 @@ inline void dump_thread_trace(int thread_id, const std::vector<std::vector<RWOpe
 
 template <int DS>
 void HotspotRW<DS>::per_thread_workload_init(int thread_id) {
-    StoSampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
+    sampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
 
     auto& thread_workload = workloads[thread_id];
 
@@ -858,7 +858,7 @@ void HotspotRW<DS>::per_thread_workload_init(int thread_id) {
         auto r = ud.sample();
         bool ro_txn = r < readonly_ceil;
 
-        std::set<StoSampling::index_t> req_keys;
+        std::set<sampling::index_t> req_keys;
 
         while (1) {
             auto k = ud.sample() % ARRAY_SZ;
@@ -1057,7 +1057,7 @@ struct Hotspot2RW : public HotspotRW<DS> {
 
 template <int DS>
 void Hotspot2RW<DS>::per_thread_workload_init(int thread_id) {
-    StoSampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
+    sampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
 
     auto& thread_workload = this->workloads[thread_id];
 
@@ -1071,7 +1071,7 @@ void Hotspot2RW<DS>::per_thread_workload_init(int thread_id) {
         auto r = ud.sample();
         bool ro_txn = r < readonly_ceil;
 
-        std::set<StoSampling::index_t> req_keys;
+        std::set<sampling::index_t> req_keys;
 
         while (1) {
             auto k = ud.sample() % ARRAY_SZ;
@@ -1123,7 +1123,7 @@ struct SingleRW : public HotspotRW<DS> {
 
 template <int DS>
 void SingleRW<DS>::per_thread_workload_init(int thread_id) {
-    StoSampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
+    sampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
 
     auto& thread_workload = this->workloads[thread_id];
 
@@ -1148,13 +1148,13 @@ struct ZipfRW : public HotspotRW<DS> {
 
 template <int DS>
 void ZipfRW<DS>::per_thread_workload_init(int thread_id) {
-    StoSampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
-    StoSampling::StoRandomDistribution *dd = nullptr;
+    sampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
+    sampling::StoRandomDistribution *dd = nullptr;
 
     if (zipf_skew == 0.0)
-        dd = new StoSampling::StoUniformDistribution(thread_id, 0, ARRAY_SZ-1);
+        dd = new sampling::StoUniformDistribution(thread_id, 0, ARRAY_SZ-1);
     else
-        dd = new StoSampling::StoZipfDistribution(thread_id, 0, ARRAY_SZ-1, zipf_skew);
+        dd = new sampling::StoZipfDistribution(thread_id, 0, ARRAY_SZ-1, zipf_skew);
 
     uint32_t ro_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * readonly_percent);
     uint32_t write_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * write_percent);
@@ -1167,7 +1167,7 @@ void ZipfRW<DS>::per_thread_workload_init(int thread_id) {
         bool read_only = ud.sample() < ro_threshold;
         int nops = read_only ? opspertrans_ro : opspertrans;
 
-        std::vector<StoSampling::index_t> idx_set;
+        std::vector<sampling::index_t> idx_set;
         while (idx_set.size() != (size_t)nops) {
             idx_set.push_back(dd->sample());
         }
