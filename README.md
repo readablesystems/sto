@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/readablesystems/sto.svg?branch=hybridcc)](https://travis-ci.org/readablesystems/sto)
+
 Install
 -------
 ```
