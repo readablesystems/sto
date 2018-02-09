@@ -9,7 +9,7 @@
 #include "TBox.hh"
 
 template <typename T, unsigned N, template <typename> class W = TOpaqueWrapped>
-using TestArray = TArrayAdaptive<T, N, W>;
+using TestArray = TArray<T, N, W>;
 
 void testSimpleInt() {
 	TestArray<int, 100> f;
@@ -322,6 +322,5 @@ int main() {
     testConflictingModifyIter3();
     testOpacity1();
     testNoOpacity1();
-    testRWLock1();
     return 0;
 }

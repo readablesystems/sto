@@ -1,9 +1,8 @@
 #pragma once
 
 #include "Sto.hh"
-#include "TWrapped.hh"
 
-template <typename T, typename W = TOpaqueLockWrapped<T> >
+template <typename T, typename W = TOpaqueWrapped<T> >
 class TBox : public TObject {
 public:
     typedef typename W::read_type read_type;
@@ -81,8 +80,8 @@ public:
     bool lock(TransItem& item, Transaction& txn) override {
         return txn.try_lock(item, vers_);
     }
-    bool check(TransItem& item, Transaction&) override {
-        return vers_.cp_check_version(item);
+    bool check(TransItem& item, Transaction& txn) override {
+        return vers_.cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
         v_.write(std::move(item.template write_value<T>()));

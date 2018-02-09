@@ -18,7 +18,7 @@ XXHASH_DIR = third-party/xxHash
 XXHASH_OBJ = $(OBJ)/xxhash.o
 
 CPPFLAGS += -I$(MASSTREEDIR) -I$(XXHASH_DIR)
-CPPFLAGS += -Ilib -Isto-core -Ilegacy
+CPPFLAGS += -Ilib -Isto-core -Ilegacy -Idatatype
 
 # if CXXFLAGS changes, rebuild
 ifndef CXXFLAGS

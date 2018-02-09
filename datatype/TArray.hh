@@ -1,5 +1,6 @@
 #pragma once
-#include "TWrapped.hh"
+
+#include "Sto.hh"
 #include "TArrayProxy.hh"
 
 template <typename T, unsigned N, template <typename> class W = TOpaqueWrapped>
@@ -49,6 +50,19 @@ public:
             return result.first;
         }
     }
+    value_type transGet_throws(size_type i) const {
+        assert(i < N);
+        auto item = Sto::item(this, i);
+        if (item.has_write()) {
+            return item.template write_value<T>();
+        }
+        else {
+            auto result = data_[i].v.read(item, data_[i].vers);
+            if (!result.first)
+                throw Transaction::Abort();
+            return result.second;
+        }
+    }
     bool transPut(size_type i, T x) const {
         assert(i < N);
         Sto::item(this, i).add_write(x);
@@ -72,8 +86,8 @@ public:
     bool lock(TransItem& item, Transaction& txn) override {
         return txn.try_lock(item, data_[item.key<size_type>()].vers);
     }
-    bool check(TransItem& item, Transaction&) override {
-        return data_[item.key<size_type>()].vers.cp_check_version(item);
+    bool check(TransItem& item, Transaction& txn) override {
+        return data_[item.key<size_type>()].vers.cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
         size_type i = item.key<size_type>();

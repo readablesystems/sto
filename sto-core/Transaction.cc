@@ -308,6 +308,7 @@ bool Transaction::try_commit() {
                 goto abort;
             }
             it->__or_flags(TransItem::lock_bit);
+            it->__or_flags(TransItem::cl_bit);
 #endif
         }
         if (it->has_read()) {
@@ -365,7 +366,7 @@ bool Transaction::try_commit() {
     //phase2
     for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
         it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
-        if (it->has_read() && !it->needs_unlock()) {
+        if (it->has_read() && (it->locked_at_commit() || !it->needs_unlock())) {
             TXP_INCREMENT(txp_total_check_read);
             if (!it->owner()->check(*it, *this)
                 && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {

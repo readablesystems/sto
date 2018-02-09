@@ -11,7 +11,7 @@ public:
         : c_(c), idx_(idx) {
     }
 
-    operator get_type() const {
+    operator value_type() const {
         return c_->transGet_throws(idx_);
     }
 

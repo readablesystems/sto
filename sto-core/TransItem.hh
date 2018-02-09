@@ -55,12 +55,13 @@ class TransItem {
     static constexpr flags_type lock_bit = flags_type(1) << 61;
     static constexpr flags_type predicate_bit = flags_type(1) << 60;
     static constexpr flags_type stash_bit = flags_type(1) << 59;
+    static constexpr flags_type cl_bit = flags_type(1) << 58;
     static constexpr flags_type pointer_mask = (flags_type(1) << 48) - 1;
     static constexpr flags_type owner_mask = pointer_mask;
     static constexpr flags_type user0_bit = flags_type(1) << 48;
     static constexpr int userf_shift = 48;
     static constexpr flags_type shifted_userf_mask = 0x7FF;
-    static constexpr flags_type special_mask = owner_mask | read_bit | write_bit | lock_bit | predicate_bit | stash_bit;
+    static constexpr flags_type special_mask = owner_mask | cl_bit | read_bit | write_bit | lock_bit | predicate_bit | stash_bit;
 
 
     TransItem() = default;
@@ -86,6 +87,9 @@ class TransItem {
     }
     bool needs_unlock() const {
         return flags() & lock_bit;
+    }
+    bool locked_at_commit() const {
+        return flags() & cl_bit;
     }
     bool same_item(const TransItem& x) const {
         return !((s_ ^ x.s_) & owner_mask) && key_ == x.key_;

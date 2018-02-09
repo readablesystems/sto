@@ -1,9 +1,9 @@
 #pragma once
-#include "Interface.hh"
-#include "TWrapped.hh"
+
+#include "Sto.hh"
 #include "TArrayProxy.hh"
 
-template <typename T, unsigned N, template <typename> class W = TOpaqueLockWrapped>
+template <typename T, unsigned N, template <typename> class W = TAdaptiveNonopaqueWrapped>
 class TArrayAdaptive : public TObject {
 public:
     class iterator;
@@ -86,8 +86,8 @@ public:
     bool lock(TransItem& item, Transaction& txn) override {
         return txn.try_lock(item, data_[item.key<size_type>()].vers);
     }
-    bool check(TransItem& item, Transaction&) override {
-        return data_[item.key<size_type>()].vers.cp_check_version(item);
+    bool check(TransItem& item, Transaction& txn) override {
+        return data_[item.key<size_type>()].vers.cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
         size_type i = item.key<size_type>();
