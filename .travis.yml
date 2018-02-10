@@ -25,7 +25,7 @@ git:  # Some hacks to replace SSH URLs with HTTPS ones
 
 install:
   - ./bootstrap.sh
-  - ./configure
+  - ./configure CC=gcc-7 CXX=g++-7
 
 matrix:
   include:
