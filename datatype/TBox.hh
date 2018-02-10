@@ -53,11 +53,11 @@ public:
         write(std::move(x));
         return *this;
     }
-    template <typename V>
-    TBox<T, W>& operator=(V&& x) {
-        write(std::forward<V>(x));
-        return *this;
-    }
+    //template <typename V>
+    //TBox<T, W>& operator=(V&& x) {
+    //    write(std::forward<V>(x));
+    //    return *this;
+    //}
     TBox<T, W>& operator=(const TBox<T, W>& x) {
         write(x.read());
         return *this;
