@@ -105,6 +105,10 @@ UNIT_PROGRAMS = unit-tarray \
 				unit-swisstgeneric \
 				unit-masstree
 
+ACT_UNIT_PROGRAMS = unit-tarray \
+                    unit-tbox \
+				    unit-masstree
+
 PROGRAMS = concurrent \
            singleelems \
 		   list1 \
@@ -127,8 +131,10 @@ all: $(PROGRAMS)
 
 unit: $(UNIT_PROGRAMS)
 
-check: unit
-	@for i in $(UNIT_PROGRAMS); do echo ./$$i; ./$$i || exit 1; done
+act-unit: $(ACT_UNIT_PROGRAMS)
+
+check: act-unit
+	@for i in $(ACT_UNIT_PROGRAMS); do echo ./$$i; ./$$i || exit 1; done
 
 %.o: %.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<

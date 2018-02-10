@@ -18,7 +18,7 @@
 #include "masstree_scan.hh"
 #include "string.hh"
 
-#define NUM_THREADS 64
+#define NUM_THREADS 4
 
 class MasstreeWrapper {
 public:
