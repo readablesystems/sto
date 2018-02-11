@@ -107,6 +107,8 @@ UNIT_PROGRAMS = unit-tarray \
 
 ACT_UNIT_PROGRAMS = unit-tarray \
                     unit-tbox \
+					unit-opacity \
+					unit-sampling \
 				    unit-masstree
 
 PROGRAMS = concurrent \

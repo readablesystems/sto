@@ -136,19 +136,24 @@ if (!(trans_op))             \
 
 #define TXN_COMMITTED __txn_committed
 
-/*#define TRANSACTION                               \
+// Transaction wrapper implemented using exception handling
+#define TRANSACTION_E                             \
     do {                                          \
         TransactionLoopGuard __txn_guard;         \
-        setjmp(*__txn_guard.get_jmp_buf());       \
         while (1) {                               \
-            __txn_guard.start();                  
-#define RETRY(retry)                              \
-            if (__txn_guard.try_commit())         \
-                break;                            \
+            __txn_guard.start();                  \
+            try {
+
+#define RETRY_E(retry)                            \
+                if (__txn_guard.try_commit())     \
+                    break;                        \
+            } catch (Transaction::Abort e) {      \
+                __txn_guard.silent_abort();       \
+            }                                     \
             if (!(retry))                         \
                 throw Transaction::Abort();       \
         }                                         \
-    } while (0)*/
+    } while (false)
 
 // transaction performance counters
 enum txp {

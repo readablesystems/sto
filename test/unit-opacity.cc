@@ -13,7 +13,7 @@ void writer(array_type& arr) {
     TThread::set_id(0);
     std::cout << "writer advances with steps of 2." << std::endl;
     for (int n = 0; n < 10000; ++n) {
-        TRANSACTION {
+        TRANSACTION_E {
             int k = 0;
             int idx = 2*k+1;
             while (idx < array_size) {
@@ -21,7 +21,7 @@ void writer(array_type& arr) {
                 ++k;
                 idx = 2*k+1;
             }
-        } RETRY(true);
+        } RETRY_E(true);
     }
     std::cout << "writer finished." << std::endl;
     return;
@@ -31,7 +31,7 @@ void reader(array_type& arr) {
     TThread::set_id(1);
     std::cout << "reader advances with steps of 4." << std::endl;
     for (int n = 0; n < 10000; ++n) {
-        TRANSACTION {
+        TRANSACTION_E {
             int k = 0;
             int idx = 4*k+1;
             int val = -1;
@@ -51,7 +51,7 @@ void reader(array_type& arr) {
                 ++k;
                 idx = 4*k+1;
             }
-        } RETRY(true);
+        } RETRY_E(true);
     }
     std::cout << "reader finished." << std::endl;
 }
