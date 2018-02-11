@@ -20,7 +20,7 @@ STO was created by Nathaniel Herman as a Harvard undergrad.
 
 - Latest C++ compiler with C++11 support
   - If you use GNU C Compiler (`g++`), version 5.4 is minimum required,
-  and version 7.2+ is preferred
+  and version 7.2+ is preferred.
 - GNU `autotools` (`autoconf` and `automake`) and GNU `make`
 - `cmake` 2.8+ (Optional)
 - jemalloc
@@ -32,6 +32,13 @@ can install all dependencies by using:
 ```bash
 $ sudo apt update
 $ sudo apt install build-essential cmake libjemalloc-dev
+```
+If you wish to install `g++` version 7 on Ubuntu 16.04 or older systems, you can
+use the following PPA package:
+```bash
+$ sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+$ sudo apt update
+$ sudo apt install g++-7
 ```
 
 ### Build
@@ -52,8 +59,11 @@ $ git submodule update --init --recursive
 $ ./bootstrap.sh
 $ ./configure
 ```
-(NOTE: if you are using OS X you should probably run
-`./configure CXX='clang++ -stdlib=libc++ -std=c++11'`)
+The `configure` script let you specify the compiler to use when building STO.
+For example, if `g++-7` is not the default compiler in your system, you can
+enable it for STO by running `./configure CC=gcc-7 CXX=g++-7`.
+
+(Note: if you use macOS you should probably run `./configure CXX='clang++ -stdlib=libc++'`)
 
 4. Build
 ```bash
