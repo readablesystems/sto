@@ -1,53 +1,85 @@
 [![Build Status](https://travis-ci.org/readablesystems/sto.svg?branch=hybridcc)](https://travis-ci.org/readablesystems/sto)
 
-Install
--------
+# STO: Software Transactional Objects
+
+STO (/stō/, pronounced the same as "stow") is a software transactional
+memory (STM) library and experimental
+platform written in C++. STO distinguishes itself from other STM
+libraries in that it uses data type information derived from the
+programming language, thus drastically reducing footprint of
+transactions and false conflicts when compared to an untyped STM system.
+Please check out our [EuroSys '16
+paper](http://www.read.seas.harvard.edu/~kohler/pubs/herman16type-aware.pdf)
+for more information.
+
+STO was created by Nathaniel Herman as a Harvard undergrad.
+
+## Installation
+
+### Dependencies
+
+- Latest C++ compiler with C++11 support
+  - If you use GNU C Compiler (`g++`), version 5.4 is minimum required,
+  and version 7.2+ is preferred
+- GNU `autotools` (`autoconf` and `automake`) and GNU `make`
+- `cmake` 2.8+ (Optional)
+- jemalloc
+- masstree and third-party libraries (as git submodules)
+
+Please refer to your own system documentation on how to install these
+dependencies prior to building STO. On Ubuntu 16.04 LTS or later, you
+can install all dependencies by using:
+```bash
+$ sudo apt update
+$ sudo apt install build-essential cmake libjemalloc-dev
 ```
-    $ ./bootstrap.sh
-    $ ./configure
-    $ make
+
+### Build
+
+1. Clone the git repository
+```bash
+$ git clone https://github.com/readablesystems/sto.git
+$ cd sto
 ```
-(NOTE: if you are using OS X you should probably run `./configure CXX='clang++ -stdlib=libc++ -std=c++11'`)
 
-Tests
------
-Run single-threaded tests:
+2. Initialize submodules
+```bash
+$ git submodule update --init --recursive
+```
 
-`./single`
+3. Execute configuration scripts
+```bash
+$ ./bootstrap.sh
+$ ./configure
+```
+(NOTE: if you are using OS X you should probably run
+`./configure CXX='clang++ -stdlib=libc++ -std=c++11'`)
 
-Multi-threaded test: (`-c` performs a check of the multithreaded correctness)
+4. Build
+```bash
+$ make -jN # N is number of parallel builds desired
+```
+This builds all targets, which include all tests and benchmarks. If you
+don't want all of those, you can build selected targets as well.
 
-`./concurrent randomrw DATASTRUCTURE -c`
+Here are some targets you may find useful:
 
-^ runs with 4 threads, 1 million total transactions of size 10 each, half of 
-which are read-writes
+- `make check`: Build and run all unit tests. This is the target used
+by continuous integration.
+- `make tpcc_bench`: Build the TPC-C benchmark.
+- `make ycsb_bench`: Build the YCSB-like benchmark.
+- `make micro_bench`: Build the array-based microbenchmark.
+- `make clean`: You know what it does.
 
-If this is too fast:
+## Develop New Data Types
 
-`./concurrent randomrw DATASTRUCTURE --ntrans=10000000 -c`
+You can implement your own data type in STO to extend the transactional
+data type library. Please see the Wiki page on how to implement a STO
+data type.
 
-Check delete multithreaded correctness (not applicable for arrays):
+You can also take a look at `datatype/TBox.hh` for a simple example.
 
-`./concurrent xordelete DATASTRUCTURE -c`
+## Bug Reporting
 
-You can get a list of both available tests and data structures by
-running `./concurrent` without arguments.
-
-Benchmark singlethreaded:
-
-`./concurrent randomrw DATASTRUCTURE --nthreads=1`
-
-or
-
-`./concurrent randomrw DATASTRUCTURE --nthreads=1 --ntrans=10000000`
-
-Or if you want to test transaction system overhead, read-my-writes overhead, 
-etc. (larger transactions):
-
-`./concurrent randomrw DATASTRUCTURE --nthreads=1 --opspertrans=100`
-
-(and benchmarking multithreaded just involves changing the --nthreads argument)
-
-Paper benchmarks
-----------------
-See `BENCHMARKS.md` for some help on reproducing data/graphs from the paper.
+You can report bugs by opening issues or contacting [Yihe
+Huang](https://github.com/huangyihe).
