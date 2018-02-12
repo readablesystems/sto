@@ -52,7 +52,6 @@
 /perf.data.old
 /perf.txt
 .ycm_*
-.idea/modules.xml
-.idea/sto.iml
-.idea/workspace.xml
-cmake-build-*
+**/.idea/workspace.xml
+**/.idea/tasks.xml
+**/cmake-build-*
