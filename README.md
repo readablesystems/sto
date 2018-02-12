@@ -81,7 +81,7 @@ by continuous integration.
 - `make micro_bench`: Build the array-based microbenchmark.
 - `make clean`: You know what it does.
 
-See Wiki page for advanced buid options.
+See [Wiki](https://github.com/readablesystems/sto/wiki) for advanced buid options.
 
 ## IDE Support & cmake
 
@@ -94,7 +94,7 @@ Full support for `cmake` will come soon.
 ## Develop New Data Types
 
 You can implement your own data type in STO to extend the transactional
-data type library. Please see the Wiki page on how to implement a STO
+data type library. Please see the [Wiki](https://github.com/readablesystems/sto/wiki) on how to implement a STO
 data type.
 
 You can also take a look at `datatype/TBox.hh` for a simple example.
