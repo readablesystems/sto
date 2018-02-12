@@ -91,6 +91,7 @@ OPTFLAGS += -g -pg -fno-inline
 endif
 
 UNIT_PROGRAMS = unit-tarray \
+                unit-tflexarray \
                 unit-tintpredicate \
 				unit-tcounter \
 				unit-tbox \
@@ -106,6 +107,7 @@ UNIT_PROGRAMS = unit-tarray \
 				unit-masstree
 
 ACT_UNIT_PROGRAMS = unit-tarray \
+                    unit-tflexarray \
                     unit-tbox \
 					unit-opacity \
 					unit-sampling \
@@ -185,6 +187,9 @@ unit-rcu: $(OBJ)/unit-rcu.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tarray: $(OBJ)/unit-tarray.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-tflexarray: $(OBJ)/unit-tflexarray.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tintpredicate: $(OBJ)/unit-tintpredicate.o $(STO_DEPS)
