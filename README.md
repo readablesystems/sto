@@ -59,7 +59,7 @@ $ git submodule update --init --recursive
 $ ./bootstrap.sh
 $ ./configure
 ```
-The `configure` script let you specify the compiler to use when building STO.
+The `configure` script lets you specify the compiler to use when building STO.
 For example, if `g++-7` is not the default compiler in your system, you can
 enable it for STO by running `./configure CC=gcc-7 CXX=g++-7`.
 
