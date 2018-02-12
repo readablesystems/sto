@@ -61,9 +61,9 @@ void testIter() {
         f.nontrans_put(i, x);
     }
     int max;
-    TRANSACTION {
+    TRANSACTION_E {
         max = *(std::max_element(f.begin(), f.end()));
-    } RETRY(false);
+    } RETRY_E(false);
 
     assert(max == *(std::max_element(arr.begin(), arr.end())));
     printf("Max is %i\n", max);
@@ -283,10 +283,10 @@ void benchArray64() {
     double before = gettime_d();
     for (unsigned long iter = 0; iter < niters; ++iter) {
         for (int j = 0; j < 1000; ++j) {
-            TRANSACTION {
+            TRANSACTION_E {
                 for (int i = 0; i < 64; ++i)
                     a[i] = a[i] + i;
-            } RETRY(true);
+            } RETRY_E(true);
         }
     }
     double after = gettime_d();
@@ -335,6 +335,7 @@ void testRWLock1() {
 
         assert(t0.try_commit());
     }
+    printf("PASS: %s\n", __FUNCTION__);
 }
 
 int main() {
@@ -350,5 +351,6 @@ int main() {
     testOpacity1();
     testNoOpacity1();
     benchArray64();
+    testRWLock1();
     return 0;
 }

@@ -68,6 +68,9 @@ public:
         Sto::item(this, i).add_write(x);
         return true;
     }
+    void transPut_throws(size_type i, T x) const {
+        transPut(i, x);
+    }
 
     get_type nontrans_get(size_type i) const {
         assert(i < N);
