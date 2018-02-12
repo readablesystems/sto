@@ -1,6 +1,7 @@
 # Build core
 
-script: make
+script:
+  - make micro_bench tpcc_bench ycsb_bench check
 
 # Build & environment preferences
 
@@ -16,27 +17,26 @@ sudo: required
 
 before_install:
   - eval "${MATRIX_EVAL}"
-  - sudo apt-add-repository -y "ppa:ubuntu-toolchain-r/test"
   - sudo apt-get update -qq
-  - sudo apt-get install g++-7 libjemalloc-dev -qq
+  - sudo apt-get install libjemalloc-dev -qq
 
 git:  # Some hacks to replace SSH URLs with HTTPS ones
   submodules: false
 
 install:
   - ./bootstrap.sh
-  - ./configure
+  - ./configure CC=gcc-7 CXX=g++-7
 
 matrix:
   include:
     # works on Precise and Trusty
     - os: linux
-#      addons:
-#        apt:
-#          sources:
-#            - ubuntu-toolchain-r-test
-#          packages:
-#            - g++-7
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-7
       env:
         - MATRIX_EVAL="CC=gcc-7 && CXX=g++-7"
 

@@ -1,0 +1,11 @@
+add_executable(concurrent concurrent.cc)
+add_executable(unit-tflexarray unit-tflexarray.cc)
+add_executable(unit-swisstarray unit-swisstarray.cc)
+add_executable(unit-tarray unit-tarray.cc)
+add_executable(unit-tbox unit-tbox.cc)
+
+target_link_libraries(unit-swisstarray sto dprint)
+target_link_libraries(unit-tflexarray sto dprint)
+target_link_libraries(unit-tbox sto dprint)
+target_link_libraries(unit-tarray sto dprint)
+target_link_libraries(concurrent sto rd clp dprint ${PLATFORM_LIBRARIES})

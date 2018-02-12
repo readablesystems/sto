@@ -402,7 +402,7 @@ AH_BOTTOM([#if !FORCE_ENABLE_ASSERTIONS && !ENABLE_ASSERTIONS
 
 /** @brief Assert macro that always runs. */
 extern void fail_always_assert(const char* file, int line, const char* assertion, const char* message = 0) __attribute__((noreturn));
-#define always_assert(x, ...) do { if (!(x)) fail_always_assert(__FILE__, __LINE__, #x, ## __VA_ARGS__); } while (0)
+#define always_assert(x, ...) do { if (!(x)) fail_always_assert(__FILE__, __LINE__, #x, ## __VA_ARGS__); } while (false)
 #define mandatory_assert always_assert
 
 /** @brief Assert macro for invariants.
@@ -411,9 +411,9 @@ extern void fail_always_assert(const char* file, int line, const char* assertion
     --enable-assertions. */
 extern void fail_masstree_invariant(const char* file, int line, const char* assertion, const char* message = 0) __attribute__((noreturn));
 #if FORCE_ENABLE_ASSERTIONS || (!defined(ENABLE_INVARIANTS) && ENABLE_ASSERTIONS) || ENABLE_INVARIANTS
-#define masstree_invariant(x, ...) do { if (!(x)) fail_masstree_invariant(__FILE__, __LINE__, #x, ## __VA_ARGS__); } while (0)
+#define masstree_invariant(x, ...) do { if (!(x)) fail_masstree_invariant(__FILE__, __LINE__, #x, ## __VA_ARGS__); } while (false)
 #else
-#define masstree_invariant(x, ...) do { } while (0)
+#define masstree_invariant(x, ...) do { } while (false)
 #endif
 
 /** @brief Assert macro for preconditions.
@@ -422,9 +422,9 @@ extern void fail_masstree_invariant(const char* file, int line, const char* asse
     --enable-assertions. */
 extern void fail_masstree_precondition(const char* file, int line, const char* assertion, const char* message = 0) __attribute__((noreturn));
 #if FORCE_ENABLE_ASSERTIONS || (!defined(ENABLE_PRECONDITIONS) && ENABLE_ASSERTIONS) || ENABLE_PRECONDITIONS
-#define masstree_precondition(x, ...) do { if (!(x)) fail_masstree_precondition(__FILE__, __LINE__, #x, ## __VA_ARGS__); } while (0)
+#define masstree_precondition(x, ...) do { if (!(x)) fail_masstree_precondition(__FILE__, __LINE__, #x, ## __VA_ARGS__); } while (false)
 #else
-#define masstree_precondition(x, ...) do { } while (0)
+#define masstree_precondition(x, ...) do { } while (false)
 #endif
 
 #ifndef invariant

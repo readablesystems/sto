@@ -1,53 +1,106 @@
 [![Build Status](https://travis-ci.org/readablesystems/sto.svg?branch=master)](https://travis-ci.org/readablesystems/sto)
 
-Install
--------
+# STO: Software Transactional Objects
+
+STO (/stō/, pronounced the same as "stow") is a software transactional
+memory (STM) library and experimental
+platform written in C++. STO distinguishes itself from other STM
+libraries in that it uses data type information derived from the
+programming language, thus drastically reducing footprint of
+transactions and false conflicts when compared to an untyped STM system.
+Please check out our [EuroSys '16
+paper](http://www.read.seas.harvard.edu/~kohler/pubs/herman16type-aware.pdf)
+for more information.
+
+STO was created by Nathaniel Herman as a Harvard undergrad.
+
+## Installation
+
+### Dependencies
+
+- Latest C++ compiler with C++11 support
+  - If you use GNU C Compiler (`g++`), version 5.4 is minimum required,
+  and version 7.2+ is preferred.
+- GNU `autotools` (`autoconf` and `automake`) and GNU `make`
+- `cmake` 3.8+ (Optional)
+- jemalloc
+- masstree and third-party libraries (as git submodules)
+
+Please refer to your own system documentation on how to install these
+dependencies prior to building STO. On Ubuntu 16.04 LTS or later, you
+can install all dependencies by using:
+```bash
+$ sudo apt update
+$ sudo apt install build-essential cmake libjemalloc-dev
+>>>>>>> hybridcc
 ```
-    $ ./bootstrap.sh
-    $ ./configure
-    $ make
+If you wish to install `g++` version 7 on Ubuntu 16.04 or older systems, you can
+use the following PPA package:
+```bash
+$ sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+$ sudo apt update
+$ sudo apt install g++-7
 ```
-(NOTE: if you are using OS X you should probably run `./configure CXX='clang++ -stdlib=libc++ -std=c++11'`)
 
-Tests
------
-Run single-threaded tests:
+### Build
 
-`./single`
+1. Clone the git repository
+```bash
+$ git clone https://github.com/readablesystems/sto.git
+$ cd sto
+```
 
-Multi-threaded test: (`-c` performs a check of the multithreaded correctness)
+2. Initialize submodules
+```bash
+$ git submodule update --init --recursive
+```
 
-`./concurrent randomrw DATASTRUCTURE -c`
+3. Execute configuration scripts
+```bash
+$ ./bootstrap.sh
+$ ./configure
+```
+The `configure` script lets you specify the compiler to use when building STO.
+For example, if `g++-7` is not the default compiler in your system, you can
+enable it for STO by running `./configure CC=gcc-7 CXX=g++-7`.
 
-^ runs with 4 threads, 1 million total transactions of size 10 each, half of 
-which are read-writes
+(Note: if you use macOS you should probably run `./configure CXX='clang++ -stdlib=libc++'`)
 
-If this is too fast:
+4. Build
+```bash
+$ make -jN # launch N parallel build jobs
+```
+This builds all targets, which include all tests and benchmarks. If you
+don't want all of those, you can build selected targets as well.
 
-`./concurrent randomrw DATASTRUCTURE --ntrans=10000000 -c`
+Here are some targets you may find useful:
 
-Check delete multithreaded correctness (not applicable for arrays):
+- `make check`: Build and run all unit tests. This is the target used
+by continuous integration.
+- `make tpcc_bench`: Build the TPC-C benchmark.
+- `make ycsb_bench`: Build the YCSB-like benchmark.
+- `make micro_bench`: Build the array-based microbenchmark.
+- `make clean`: You know what it does.
 
-`./concurrent xordelete DATASTRUCTURE -c`
+See Wiki page for advanced buid options.
 
-You can get a list of both available tests and data structures by
-running `./concurrent` without arguments.
+## IDE Support & cmake
 
-Benchmark singlethreaded:
+STO contains `cmake` configuration files that can be used by IDEs like
+[JetBrains CLion](https://www.jetbrains.com/clion/). You can potentially
+also use `cmake` to configure and build STO, but it is not recommended.
 
-`./concurrent randomrw DATASTRUCTURE --nthreads=1`
+Full support for `cmake` will come soon.
 
-or
+## Develop New Data Types
 
-`./concurrent randomrw DATASTRUCTURE --nthreads=1 --ntrans=10000000`
+You can implement your own data type in STO to extend the transactional
+data type library. Please see the Wiki page on how to implement a STO
+data type.
 
-Or if you want to test transaction system overhead, read-my-writes overhead, 
-etc. (larger transactions):
+You can also take a look at `datatype/TBox.hh` for a simple example.
 
-`./concurrent randomrw DATASTRUCTURE --nthreads=1 --opspertrans=100`
+## Bug Reporting
 
-(and benchmarking multithreaded just involves changing the --nthreads argument)
-
-Paper benchmarks
-----------------
-See `BENCHMARKS.md` for some help on reproducing data/graphs from the paper.
+You can report bugs by opening issues or contacting [Yihe
+Huang](https://github.com/huangyihe).
