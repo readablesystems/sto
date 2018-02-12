@@ -32,7 +32,6 @@ can install all dependencies by using:
 ```bash
 $ sudo apt update
 $ sudo apt install build-essential cmake libjemalloc-dev
->>>>>>> hybridcc
 ```
 If you wish to install `g++` version 7 on Ubuntu 16.04 or older systems, you can
 use the following PPA package:
