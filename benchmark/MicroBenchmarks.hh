@@ -248,7 +248,6 @@ void Tester<DSImpl, WLImpl>::run_thread(int thread_id, uint64_t start_tsc, uint6
                     bool ok = do_op(req);
                     TXN_DO(ok);
                 }
-                (void) __txn_committed;
             } RETRY(true);
 
             ++local_txn_cnt;

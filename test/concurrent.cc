@@ -972,7 +972,6 @@ void HotspotRW<DS>::run(int me, uint64_t start_tsc) {
                     break;
                 }
             }
-        (void)__txn_committed;
         } RETRY(true);
 
 #if CHECK_PROGRESS
@@ -1302,7 +1301,6 @@ void RandomRWs_parent<DS>::do_run(int me) {
         }
         TXN_DO(success);
       }
-      (void)__txn_committed;
     } RETRY(true);
 
 

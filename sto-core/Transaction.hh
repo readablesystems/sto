@@ -105,7 +105,6 @@
 
 // TRANSACTION macros that can be used to wrap transactional code
 #define TRANSACTION                               \
-    bool __txn_committed = true;                  \
     do {                                          \
         __label__ abort_in_progress;              \
         __label__ try_commit;                     \
@@ -124,7 +123,6 @@ try_commit:                                       \
                 break;                            \
 after_commit:                                     \
             if (!(retry)) {                       \
-                __txn_committed = false;          \
                 break;                            \
             }                                     \
         }                                         \
@@ -133,8 +131,6 @@ after_commit:                                     \
 #define TXN_DO(trans_op)     \
 if (!(trans_op))             \
     goto abort_in_progress
-
-#define TXN_COMMITTED __txn_committed
 
 // Transaction wrapper implemented using exception handling
 #define TRANSACTION_E                             \

@@ -52,7 +52,6 @@ void ycsb_runner<DBParams>::run_txn(const ycsb_txn_t& txn) {
                 TXN_DO(success);
             }
         }
-        (void)__txn_committed;
     } RETRY(true);
 }
 

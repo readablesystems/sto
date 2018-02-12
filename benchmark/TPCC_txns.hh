@@ -170,7 +170,6 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         out_total_amount += ol_amount * (1.0 - cus_discount/100.0) * (1.0 + (wh_tax_rate + dt_tax_rate)/100.0);
     }
 
-    (void)__txn_committed;
     // commit txn
     // retry until commits
     } RETRY(true);
@@ -366,7 +365,6 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     assert(success);
     assert(!result);
 
-    (void)__txn_committed;
     // commit txn
     // retry until commits
     } RETRY(true);
@@ -503,7 +501,6 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         // order doesn't exist, simply commit the transaction
     }
 
-    (void)__txn_committed;
     // commit txn
     // retry until commits
     } RETRY(true);
