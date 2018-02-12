@@ -22,7 +22,7 @@ STO was created by Nathaniel Herman as a Harvard undergrad.
   - If you use GNU C Compiler (`g++`), version 5.4 is minimum required,
   and version 7.2+ is preferred.
 - GNU `autotools` (`autoconf` and `automake`) and GNU `make`
-- `cmake` 2.8+ (Optional)
+- `cmake` 3.8+ (Optional)
 - jemalloc
 - masstree and third-party libraries (as git submodules)
 
@@ -67,7 +67,7 @@ enable it for STO by running `./configure CC=gcc-7 CXX=g++-7`.
 
 4. Build
 ```bash
-$ make -jN # N is number of parallel builds desired
+$ make -jN # launch N parallel build jobs
 ```
 This builds all targets, which include all tests and benchmarks. If you
 don't want all of those, you can build selected targets as well.
@@ -80,6 +80,16 @@ by continuous integration.
 - `make ycsb_bench`: Build the YCSB-like benchmark.
 - `make micro_bench`: Build the array-based microbenchmark.
 - `make clean`: You know what it does.
+
+See Wiki page for advanced buid options.
+
+## IDE Support & cmake
+
+STO contains `cmake` configuration files that can be used by IDEs like
+[JetBrains CLion](https://www.jetbrains.com/clion/). You can potentially
+also use `cmake` to configure and build STO, but it is not recommended.
+
+Full support for `cmake` will come soon.
 
 ## Develop New Data Types
 
