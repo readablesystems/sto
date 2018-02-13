@@ -9,7 +9,7 @@
 #include "SystemProfiler.hh"
 #include "YCSB_structs.hh"
 #include "DB_index.hh"
-#include "DBParams.hh"
+#include "DB_params.hh"
 
 namespace ycsb {
 

@@ -12,7 +12,7 @@
 #include "DB_structs.hh"
 #include "TPCC_structs.hh"
 #include "DB_index.hh"
-#include "DBParams.hh"
+#include "DB_params.hh"
 
 #define A_GEN_CUSTOMER_ID           1023
 #define A_GEN_ITEM_ID               8191

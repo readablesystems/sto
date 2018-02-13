@@ -10,7 +10,7 @@
 #include "DB_profiler.hh"
 #include "DB_structs.hh"
 #include "DB_index.hh"
-#include "DBParams.hh"
+#include "DB_params.hh"
 
 #include "sampling.hh"
 #include "PlatformFeatures.hh"
