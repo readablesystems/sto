@@ -1,6 +1,7 @@
 #pragma once
 
 #include "VersionBase.hh"
+#include "TicTocStructs.hh"
 
 class TicTocTid : public TransactionTid {
 public:
@@ -177,6 +178,9 @@ public:
     type write_timestamp() const {
         return impl().write_timestamp_impl();
     }
+    static VersImpl rdata_extract(const rdata_t& rd) {
+        return VersImpl::rdata_extract_impl(rd);
+    }
 };
 
 template <bool Opaque = false, bool Extend = true>
@@ -203,6 +207,10 @@ public:
     }
     type write_timestamp_impl() const {
         return TicTocTid::timestamp(wts_);
+    }
+
+    static TicTocVersion rdata_extract_impl(const rdata_t& rd) {
+        return TicTocVersion(rd);
     }
 
     bool cp_try_lock_impl(TransItem& item, int threadid) {
@@ -250,6 +258,7 @@ public:
 private:
     // BV::v_ is used as rts
     type wts_;
+    explicit TicTocVersion(const rdata_t& rd) : BV(rd.w.v0), wts_(rd.w.v1) {}
 };
 
 template <bool Opaque = false, bool Extend = true>
@@ -282,6 +291,10 @@ public:
     }
     type write_timestamp_impl() const {
         return TicTocCompressedTid::wts_value(v_);
+    }
+
+    static TicTocCompressedVersion rdata_extract_impl(const rdata_t& rd) {
+        return TicTocCompressedVersion(rd);
     }
 
     bool cp_try_lock_impl(TransItem& item, int threadid) {
@@ -322,4 +335,6 @@ public:
     inline bool acquire_write_impl(TransItem& item, Args&&... args);
 
     inline bool observe_read_impl(TransItem& item, bool add_read);
+private:
+    explicit TicTocCompressedVersion(const rdata_t& rd) : BV(reinterpret_cast<type>(rd.v)) {}
 };

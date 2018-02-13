@@ -43,6 +43,9 @@
 /unit-tvector-nopred
 /unit-mbta
 /unit-masstree
+/unit-opacity
+/unit-sampling
+/unit-tflexarray
 /tpcc_bench
 /ycsb_bench
 /micro_bench
