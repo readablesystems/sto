@@ -13,11 +13,9 @@
 #include "masstree_scan.hh"
 #include "string.hh"
 
-//#include "MassTrans.hh"
-
 #include <vector>
 
-namespace tpcc {
+namespace bench {
 
 class version_adapter {
 public:
@@ -1113,4 +1111,4 @@ template <typename K, typename V, typename DBParams>
 __thread typename ordered_index<K, V, DBParams>::table_params::threadinfo_type
 *ordered_index<K, V, DBParams>::ti;
 
-}; // namespace tpcc
+}; // namespace bench

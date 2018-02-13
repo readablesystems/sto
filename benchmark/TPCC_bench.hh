@@ -9,8 +9,10 @@
 #include "compiler.hh"
 #include "clp.h"
 #include "SystemProfiler.hh"
+#include "DB_structs.hh"
 #include "TPCC_structs.hh"
-#include "TPCC_index.hh"
+#include "DB_index.hh"
+#include "DBParams.hh"
 
 #define A_GEN_CUSTOMER_ID           1023
 #define A_GEN_ITEM_ID               8191
@@ -20,75 +22,7 @@
 
 namespace tpcc {
 
-constexpr const char *db_params_id_names[] = {"none", "default", "opaque", "2pl", "adaptive", "swiss", "tictoc"};
-
-enum class db_params_id : int { None = 0, Default, Opaque, TwoPL, Adaptive, Swiss, TicToc };
-
-std::ostream& operator<<(std::ostream& os, const db_params_id& id) {
-    os << db_params_id_names[static_cast<int>(id)];
-    return os;
-}
-
-inline db_params_id parse_dbid(const char *id_string) {
-    if (id_string == nullptr)
-        return db_params_id::None;
-    for (size_t i = 0; i < sizeof(db_params_id_names); ++i) {
-        if (strcmp(id_string, db_params_id_names[i]) == 0) {
-            auto selected = static_cast<db_params_id>(i);
-            std::cout << "Selected \"" << selected << "\" as DB concurrency control." << std::endl;
-            return selected;
-        }
-    }
-    return db_params_id::None;
-}
-
-class db_default_params {
-public:
-    static constexpr db_params_id Id = db_params_id::Default;
-    static constexpr bool RdMyWr = false;
-    static constexpr bool TwoPhaseLock = false;
-    static constexpr bool Adaptive = false;
-    static constexpr bool Opaque = false;
-    static constexpr bool Swiss = false;
-    static constexpr bool TicToc = false;
-};
-
-class db_opaque_params : public db_default_params {
-public:
-    static constexpr db_params_id Id = db_params_id::Opaque;
-    static constexpr bool Opaque = true;
-};
-
-class db_2pl_params : public db_default_params {
-public:
-    static constexpr db_params_id Id = db_params_id::TwoPL;
-    static constexpr bool TwoPhaseLock = true;
-};
-
-class db_adaptive_params : public db_default_params {
-public:
-    static constexpr db_params_id Id = db_params_id::Adaptive;
-    static constexpr bool Adaptive = true;
-};
-
-class db_swiss_params : public db_default_params {
-public:
-    static constexpr db_params_id Id = db_params_id::Swiss;
-    static constexpr bool Swiss = true;
-};
-
-class db_tictoc_params : public db_default_params {
-public:
-    static constexpr db_params_id Id = db_params_id::TicToc;
-    static constexpr bool TicToc = true;
-};
-
-class constants {
-public:
-    static constexpr double million = 1000000.0;
-    static constexpr double billion = 1000.0 * million;
-    static double processor_tsc_frequency; // in GHz
-};
+using namespace db_params;
 
 class tpcc_input_generator {
 public:
@@ -342,45 +276,5 @@ private:
 
 template <typename DBParams>
 pthread_barrier_t tpcc_prepopulator<DBParams>::sync_barrier;
-
-class tpcc_profiler {
-public:
-    explicit tpcc_profiler(bool spawn_perf)
-        : spawn_perf_(spawn_perf), perf_pid_(),
-          start_tsc_(), end_tsc_() {}
-
-    void start(Profiler::perf_mode mode) {
-        if (spawn_perf_)
-            perf_pid_ = Profiler::spawn("perf", mode);
-        start_tsc_ = read_tsc();
-    }
-
-    uint64_t start_timestamp() const {
-        return start_tsc_;
-    }
-
-    void finish(size_t num_txns) {
-        end_tsc_ = read_tsc();
-        if (spawn_perf_) {
-            bool ok = Profiler::stop(perf_pid_);
-            always_assert(ok, "killing profiler");
-        }
-        // print elapsed time
-        uint64_t elapsed_tsc = end_tsc_ - start_tsc_;
-        double elapsed_time = (double)elapsed_tsc / constants::million / constants::processor_tsc_frequency;
-        std::cout << "Elapsed time: " << elapsed_tsc << " ticks" << std::endl;
-        std::cout << "Real time: " << elapsed_time << " ms" << std::endl;
-        std::cout << "Throughput: " << (double)num_txns / (elapsed_time / 1000.0) << " txns/sec" << std::endl;
-
-        // print STO stats
-        Transaction::print_stats();
-    }
-
-private:
-    bool spawn_perf_;
-    pid_t perf_pid_;
-    uint64_t start_tsc_;
-    uint64_t end_tsc_;
-};
 
 };

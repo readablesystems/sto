@@ -3,12 +3,16 @@
 #include <string>
 #include <random>
 
-#include "TPCC_structs.hh" // tpcc::fix_string
+#include "DB_structs.hh" // bench::fix_string
 #include "str.hh" // lcdf::Str
 #include "Interface.hh"
-#include "TPCC_index.hh"
+#include "DB_index.hh" // bench::get_version; bench::ordered_index; bench::version_adapter
 
 namespace ycsb {
+
+using bench::fix_string;
+using bench::get_version;
+using bench::version_adapter;
 
 enum class mode_id : int { ReadOnly = 0, MediumContention, HighContention };
 
@@ -43,8 +47,8 @@ class ycsb_value : TObject {
 public:
     static constexpr size_t col_width = 10;
     static constexpr size_t num_cols = 10;
-    typedef tpcc::fix_string<col_width> col_type;
-    typedef typename tpcc::get_version<DBParams>::type version_type;
+    typedef fix_string<col_width> col_type;
+    typedef typename get_version<DBParams>::type version_type;
 
     ycsb_value() : cols(), v0(Sto::initialized_tid(), false)
 #if TABLE_FINE_GRAINED
@@ -65,11 +69,11 @@ public:
 #if TABLE_FINE_GRAINED
         auto item = Sto::item(this, col_n);
         auto& v = (col_n % 2 == 0) ? v0 : v1;
-        if (!tpcc::version_adapter::select_for_overwrite(item, v, &new_col))
+        if (!version_adapter::select_for_overwrite(item, v, &new_col))
             return false;
 #else
         auto item = Sto::item(this, col_n);
-        if (!tpcc::version_adapter::select_for_overwrite(item, v0, &new_col))
+        if (!version_adapter::select_for_overwrite(item, v0, &new_col))
             return false;
 #endif
         return true;

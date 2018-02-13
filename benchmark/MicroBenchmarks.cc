@@ -8,11 +8,6 @@ ubench::UBenchParams ubench::params;
 // global cpu frequency in GHz
 double tpcc::constants::processor_tsc_frequency;
 
-// masstree global variables
-volatile mrcu_epoch_type active_epoch = 1;
-volatile uint64_t globalepoch = 1;
-volatile bool recovering = false;
-
 enum {
     opt_ccid = 1,
     opt_type,
