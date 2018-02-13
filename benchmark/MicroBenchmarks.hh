@@ -7,16 +7,18 @@
 #include <thread>
 
 #include "Sto.hh"
-#include "TPCC_bench.hh"
-#include "TPCC_structs.hh" // bswap...
-#include "TPCC_index.hh"
+#include "DB_profiler.hh"
+#include "DB_structs.hh"
+#include "DB_index.hh"
+#include "DBParams.hh"
 
 #include "sampling.hh"
 #include "PlatformFeatures.hh"
-#include "SystemProfiler.hh"
 
 namespace ubench {
 
+using namespace db_params;
+using bench::db_profiler;
 
 enum class DsType : int {none, masstree};
 
@@ -34,7 +36,7 @@ inline DsType parse_datatype(const char *s) {
 }
 
 struct UBenchParams {
-    tpcc::db_params_id dbid;
+    db_params_id dbid;
     DsType datatype;
     uint32_t ntrans;
     uint32_t nthreads;
@@ -169,7 +171,7 @@ protected:
 
 template <typename DSImpl, typename WLImpl>
 void Tester<DSImpl, WLImpl>::execute() {
-    tpcc::tpcc_profiler profiler(params.profiler);
+    db_profiler profiler(params.profiler);
     std::vector<std::thread> thread_pool;
 
     std::cout << "Generating workload..." << std::endl;
