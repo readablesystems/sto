@@ -16,12 +16,20 @@ STO was created by Nathaniel Herman as a Harvard undergrad.
 
 ## Installation
 
+We tested our build on Linux (Ubuntu 16.04 LTS) only. Building on other platforms
+should technically be possible, because we use standard C++/POSIX calls and avoid
+hacks as much as we can.
+There is a
+[known issue](https://stackoverflow.com/questions/16596876/object-file-has-too-many-sections)
+with Win32 object file format, so building under Windows (Cygwin or Windows 10's
+new Linux subsystem) is not recommended.
+
 ### Dependencies
 
 - Latest C++ compiler with C++11 support
   - If you use GNU C Compiler (`g++`), version 5.4 is minimum required,
   and version 7.2+ is preferred.
-- GNU `autotools` (`autoconf` and `automake`) and GNU `make`
+- GNU build system (`autoreconf` and `make` in particular)
 - `cmake` 3.8+ (Optional)
 - jemalloc
 - masstree and third-party libraries (as git submodules)
