@@ -27,10 +27,10 @@ void* tracker_run(void* argument) {
     while (!stop) {
         double this_delay = delay + (drand48() - 0.5) * delay / 3;
         usleep(useconds_t(this_delay * 0.7e6));
-        TRANSACTION {
+        TRANSACTION_E {
             Transaction::rcu_delete(new Tracker);
             usleep(useconds_t(this_delay * 0.3e6));
-        } RETRY(false);
+        } RETRY_E(false);
     }
     return nullptr;
 }
@@ -89,5 +89,9 @@ int main(int argc, char* argv[]) {
     for (unsigned i = 0; i < nthreads; ++i)
         Transaction::tinfo[i].rcu_set.~TRcuSet();
 
+    always_assert(nallocated == nfreed, "rcu check");
+    always_assert(nfreed_before > 0, "rcu check");
     printf("created %" PRIu64 ", deleted %" PRIu64 ", finally deleted %" PRIu64 "\n", nallocated, nfreed_before, nfreed);
+    printf("Test pass.\n");
+    return 0;
 }

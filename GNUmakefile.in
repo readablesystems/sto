@@ -109,6 +109,7 @@ UNIT_PROGRAMS = unit-tarray \
 ACT_UNIT_PROGRAMS = unit-tarray \
                     unit-tflexarray \
                     unit-tbox \
+					unit-rcu \
 					unit-opacity \
 					unit-sampling \
 				    unit-masstree
