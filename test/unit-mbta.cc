@@ -1,11 +1,12 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
-#include "MassTrans.hh"
 #include <cassert>
 
 #include <chrono>
 #include <thread>
+
+#include "DB_index.hh"
 
 // unit testing with key range 0000000-9999999
 // scanner thread constantly asserts that the number of keys is multiple of 5

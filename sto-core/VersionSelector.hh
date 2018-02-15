@@ -1,10 +1,14 @@
 #pragma once
 
+#include "VersionBase.hh"
+
 namespace ver_sel {
 
 ///////////////////////////////
 // @begin Common definitions //
 ///////////////////////////////
+
+typedef TransactionTid::type type;
 
 // Version selector interface
 template <typename T>
@@ -16,6 +20,9 @@ public:
 
     T::version_type& select(int col_n) {
         return impl().select_impl();
+    }
+    T::version_type& version_at(int cell) {
+        return impl().version_at_impl(cell);
     }
 
 private:
@@ -34,12 +41,21 @@ class VerSel : public VerSelBase<VerSel<RowType, VersImpl>> {
 public:
     typedef typename VersImpl version_type;
 
+    explicit VerSel(type v) : vers_(v) {}
+    VerSel(type v, bool insert) : vers_(v, insert) {}
+
     int map_impl(int col_n) {
         (void)col_n;
         return 0;
     }
 
     version_type& select_impl(int col_n) {
+        (void)col_n;
+        return vers_;
+    }
+
+    version_type& version_at_impl(int cell) {
+        (void)cell;
         return vers_;
     }
 
@@ -51,9 +67,15 @@ private:
 
 // This is the actual "value type" to be put into the index
 template <typename RowType, typename VersImpl>
-class IndexValueContainer : ver_sel::VerSel<example_row, VersImpl> {
+class IndexValueContainer : ver_sel::VerSel<RowType, VersImpl> {
 public:
-    RowType row_data;
+    typedef TransactionTid::type type;
+    using Base = ver_sel::VerSel<RowType, VersImpl>;
+
+    IndexValueContainer(type v, const RowType& r) : Base(v), row(r) {}
+    IndexValueContainer(type v, bool insert, const RowType& r) : Base(v), row(r) {}
+
+    RowType row;
 };
 
 /////////////////////////////
@@ -97,8 +119,12 @@ public:
             return 1;
     }
 
-    version_type& select(int col_n) {
+    version_type& select_impl(int col_n) {
         return vers_[map_impl(col_n)];
+    }
+
+    version_type& version_at_impl(int cell) {
+        return vers_[cell];
     }
 
 private:

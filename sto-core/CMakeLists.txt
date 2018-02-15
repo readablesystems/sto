@@ -14,4 +14,5 @@ add_library(sto
         TThread.hh
         ConcurrencyControl.hh
         Sto.hh
-        TicTocVersions.hh)
+        TicTocVersions.hh
+        VersionSelector.hh)

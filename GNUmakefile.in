@@ -168,16 +168,15 @@ MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 	$(MASSTREEDIR)/string_slice.o
 
 STO_OBJS = $(OBJ)/Packer.o $(OBJ)/Transaction.o $(OBJ)/TRcu.o $(OBJ)/clp.o $(OBJ)/ContentionManager.o $(LIBOBJS)
-BENCH_OBJS = $(STO_OBJS) $(MASSTREE_OBJS) $(OBJ)/DB_index.o
-MSTO_OBJS = $(STO_OBJS) $(MASSTREE_OBJS) MassTrans.o
+INDEX_OBJS = $(STO_OBJS) $(MASSTREE_OBJS) $(OBJ)/DB_index.o
 STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
-MSTO_DEPS = $(MSTO_OBJS) $(MASSTREEDIR)/libjson.a
+INDEX_DEPS = $(INDEX_OBJS) $(MASSTREEDIR)/libjson.a
 
 concurrent: $(OBJ)/concurrent.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-single: $(OBJ)/single.o $(MSTO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
+single: $(OBJ)/single.o $(INDEX_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
 
 singleelems: $(OBJ)/singleelems.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
@@ -248,8 +247,8 @@ genericTest: $(OBJ)/genericTest.o $(STO_DEPS)
 trans_test: $(OBJ)/trans_test.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-ht_mt: $(OBJ)/ht_mt.o $(MSTO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(MSTO_OBJS) $(LDFLAGS) $(LIBS)
+ht_mt: $(OBJ)/ht_mt.o $(INDEX_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
 
 pqVsIt: $(OBJ)/pqVsIt.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
@@ -263,14 +262,14 @@ predicates: $(OBJ)/predicates.o $(STO_DEPS)
 hashtable_nostm: $(OBJ)/hashtable_nostm.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-tpcc_bench: $(OBJ)/TPCC_bench.o $(BENCH_OBJS) $(XXHASH_OBJ)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(BENCH_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+tpcc_bench: $(OBJ)/TPCC_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
-ycsb_bench: $(OBJ)/YCSB_bench.o $(BENCH_OBJS) $(XXHASH_OBJ)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(BENCH_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+ycsb_bench: $(OBJ)/YCSB_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
-micro_bench: $(OBJ)/MicroBenchmarks.o $(BENCH_OBJS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(BENCH_OBJS) $(LDFLAGS) $(LIBS)
+micro_bench: $(OBJ)/MicroBenchmarks.o $(INDEX_OBJS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;
 
