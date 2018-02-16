@@ -1,4 +1,5 @@
-%token FIELDS GROUPS LBRACE RVRACE COLON
+%token FIELDS GROUPS LBRACE RVRACE COLON 
+%token <std::string> IDENTIFIER
 
 %start spec
 
@@ -9,8 +10,8 @@
 %% /* Spec Grammr */
 
 spec
-	: field_spec group_spec EOF
-		{ return make_pair($1, $2); }
+	: AT AT AT field_spec group_spec AT AT AT EOF
+		{ return make_pair($4, $5); }
 	;
 
 field_spec
