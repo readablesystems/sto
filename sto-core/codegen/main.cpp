@@ -7,12 +7,32 @@
 
 #include "driver.hpp"
 
+void print(std::pair<std::vector<Field>,std::vector<std::vector<std::string>>> &result) {
+   using namespace std;
 
-bool type_check(std::pair<std::vector<std::string>,std::vector<std::vector<std::string>>> &result) {
+   cout << "Printing result..." << endl;
+   vector<Field> fields = result.first;
+   cout << "Number of fields: " << fields.size() << endl;
+   for (int i = 0; i < fields.size(); ++i) {
+      cout << fields[i].name << " " << fields[i].t.tname << " " << fields[i].t.len << endl;
+   }
+
+   vector<vector<string>> groups = result.second;
+   cout << "Number of groups: " << groups.size() << endl;
+   for (int i = 0; i < groups.size(); ++i) {
+      for (int j = 0; j < groups[i].size(); j++) {
+         cout << groups[i][j] << " ";
+      }
+      cout << endl;
+   }
+}
+
+
+bool type_check(std::pair<std::vector<Field>,std::vector<std::vector<std::string>>> &result) {
    return false;
 }
 
-void generate_code(std::pair<std::vector<std::string>,std::vector<std::vector<std::string>>> &result) {
+void generate_code(std::pair<std::vector<Field>,std::vector<std::vector<std::string>>> &result) {
    
 }
 
@@ -22,7 +42,7 @@ int
 main( const int argc, const char **argv )
 {
    /** check for the right # of arguments **/
-   std::pair<std::vector<std::string>,std::vector<std::vector<std::string>>> result;
+   std::pair<std::vector<Field>,std::vector<std::vector<std::string>>> result;
    if( argc == 2 )
    {
       MC::MC_Driver driver;
@@ -51,6 +71,10 @@ main( const int argc, const char **argv )
       /** exit with failure condition **/
       return ( EXIT_FAILURE );
    }
+
+
+   print(result);
+
 
    if (!type_check(result)) {
       std::cout << "Type  checker error" << std::endl;

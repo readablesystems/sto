@@ -20,11 +20,24 @@
 #  endif
 # endif
 
+  #include <string>
+
+  enum FieldTypeName { BigInt = 0, SmallInt, VarChar, Char };
+
+  struct FieldType {
+    FieldTypeName tname;
+    int len;
+  };
+
+  struct Field {
+    FieldType t;
+    std::string name;
+  }; 
 }
 
 %parse-param { MC_Scanner  &scanner  }
 %parse-param { MC_Driver  &driver  }
-%parse-param { std::pair<std::vector<std::string>,std::vector<std::vector<std::string>>> &result }
+%parse-param { std::pair<std::vector<Field>,std::vector<std::vector<std::string>>> &result }
 
 %code{
    #include <iostream>
@@ -42,16 +55,21 @@
 %define parse.assert
 
 %token FIELDS GROUPS LBRACE RBRACE COLON COMMA AT
+%token BIGINT SMALLINT VARCHAR CHAR LPAREN RPAREN
 %token END 0 "end of file"
 %token <std::string> IDENTIFIER
+%token <int> NUMBER
 
-%type <std::string> field
-%type <std::vector<std::string>> field_list
-%type <std::vector<std::string>> field_spec
+%type <Field> field
+%type <FieldType> field_type
+%type <std::string> field_name
+%type <std::vector<Field>> field_list
+%type <std::vector<std::string>> field_name_list
+%type <std::vector<Field>> field_spec
 %type <std::vector<std::string>> group
 %type <std::vector<std::vector<std::string>>> group_list
 %type <std::vector<std::vector<std::string>>> group_spec
-%type <std::pair<std::vector<std::string>,std::vector<std::vector<std::string>>>> spec
+%type <std::pair<std::vector<Field>,std::vector<std::vector<std::string>>>> spec
 
 
 %locations
@@ -76,7 +94,7 @@ group_spec
 
 field_list
   : field
-    { $$ = std::vector<std::string>(1, $1); }
+    { $$ = std::vector<Field>(1, $1); }
   | field_list COMMA field
     { $1.push_back($3);
       $$ = $1; 
@@ -93,13 +111,38 @@ group_list
   ;
 
 group
-  : LBRACE field_list RBRACE
+  : LBRACE field_name_list RBRACE
     { $$ = $2; }
   ;
 
 field
+  : field_name LPAREN field_type RPAREN
+    { $$ = { $3, $1 }; }
+  ;
+
+field_name_list
+  : field_name
+    { $$ = std::vector<std::string>(1, $1); }
+  | field_name_list COMMA field_name
+    { $1.push_back($3);
+      $$ = $1; 
+    }
+  ;
+
+field_name
   : IDENTIFIER
     { $$ = $1; }
+  ;
+
+field_type
+  : BIGINT
+    { $$ = { BigInt, 0 }; }
+  | SMALLINT
+    { $$ = { SmallInt, 0 }; }
+  | VARCHAR LPAREN NUMBER RPAREN
+    { $$ = { VarChar, $3 }; }
+  | CHAR LPAREN NUMBER RPAREN
+    { $$ = { Char, $3 }; }
   ;
 
 %% /* Spec Grammr */

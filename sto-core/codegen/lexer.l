@@ -36,12 +36,20 @@ using token = MC::MC_Parser::token;
                 return( token::AT );
             }
 
-fields      {
+@fields      {
                 return( token::FIELDS );
             }
 
-groups      {
+@groups      {
                 return( token::GROUPS );
+            }
+
+\(          {
+                return ( token::LPAREN );
+            }
+
+\)          {
+                return ( token::RPAREN );
             }
 
 \{          {
@@ -60,7 +68,26 @@ groups      {
                 return ( token::COMMA );
             }
 
-.           {
+
+BIGINT      {
+                return ( token::BIGINT );
+            }
+
+SMALLINT    {
+                return ( token::SMALLINT );
+            }
+
+VARCHAR     {
+                return ( token::VARCHAR );
+            }
+
+CHAR        {
+                return ( token::CHAR );
+            }
+
+[0-9]+      {
+                yylval->build<int>(atoi(yytext));
+                return ( token::NUMBER );
             }
   
 [a-zA-Z_][a-zA-Z0-9_]+ {
@@ -80,8 +107,9 @@ groups      {
                loc->lines();
             }
 
-[ \t\f\r\t\v] {
+.           {
             }
+
 %%
 
 

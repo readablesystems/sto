@@ -13,7 +13,7 @@ MC::MC_Driver::~MC_Driver()
 }
 
 void 
-MC::MC_Driver::parse( const char * const filename, std::pair<std::vector<std::string>,std::vector<std::vector<std::string>>> &result )
+MC::MC_Driver::parse( const char * const filename, std::pair<std::vector<Field>,std::vector<std::vector<std::string>>> &result )
 {
    assert( filename != nullptr );
    std::ifstream in_file( filename );
@@ -26,7 +26,7 @@ MC::MC_Driver::parse( const char * const filename, std::pair<std::vector<std::st
 }
 
 void
-MC::MC_Driver::parse( std::istream &stream, std::pair<std::vector<std::string>,std::vector<std::vector<std::string>>> &result )
+MC::MC_Driver::parse( std::istream &stream, std::pair<std::vector<Field>,std::vector<std::vector<std::string>>> &result )
 {
    if( ! stream.good()  && stream.eof() )
    {
@@ -39,7 +39,7 @@ MC::MC_Driver::parse( std::istream &stream, std::pair<std::vector<std::string>,s
 
 
 void
-MC::MC_Driver::parse_helper( std::istream &stream, std::pair<std::vector<std::string>,std::vector<std::vector<std::string>>> &result )
+MC::MC_Driver::parse_helper( std::istream &stream, std::pair<std::vector<Field>,std::vector<std::vector<std::string>>> &result )
 {
    
    delete(scanner);
