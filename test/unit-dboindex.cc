@@ -42,11 +42,27 @@ void test_coarse_basic() {
     uintptr_t row;
     const coarse_grained_row *value;
 
-    TestTransaction t1(0);
-    std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::aa, false}});
-    assert(success && found);
-    assert(value->aa == 1);
-    assert(t1.try_commit());
+    {
+        TestTransaction t(0);
+        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::aa, false}});
+        assert(success && found);
+        assert(value->aa == 1);
+        assert(t.try_commit());
+    }
+
+    {
+        TestTransaction t(0);
+        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::aa, true}});
+        auto new_row = Sto::tx_alloc(value);
+        new_row->aa = 2;
+        ci.update_row(row, new_row);
+        assert(t.try_commit());
+
+        TestTransaction t1(1);
+        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::aa, false}});
+        assert(value->aa == 2);
+        assert(t1.try_commit());
+    }
 
     printf("pass %s\n", __FUNCTION__);
 }

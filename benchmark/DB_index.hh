@@ -766,7 +766,7 @@ public:
                 if (has_insert(row_item))
                     vptr = &e->row_container.row;
                 else
-                    vptr = row_item.template write_value<value_type *>();
+                    vptr = row_item.template raw_write_value<value_type *>();
                 return sel_return_type(true, true, rid, vptr);
             }
         }
@@ -946,7 +946,7 @@ public:
                     if (has_insert(row_item))
                         ret = callback(key_type(key), e->row_container.row);
                     else
-                        ret = callback(key_type(key), *(row_item.template write_value<value_type *>()));
+                        ret = callback(key_type(key), *(row_item.template raw_write_value<value_type *>()));
                     return true;
                 }
             }
@@ -1071,9 +1071,9 @@ public:
 
             value_type *vptr;
             if (value_is_small)
-                vptr = &(row_item.template write_value<value_type>());
+                vptr = &(row_item.template raw_write_value<value_type>());
             else
-                vptr = row_item.template write_value<value_type *>();
+                vptr = row_item.template raw_write_value<value_type *>();
 
             e->row_container.install_cell(key.cell_num(), vptr);
             txn.set_version_unlock(e->row_container.version_at(key.cell_num()), item);
@@ -1091,9 +1091,9 @@ public:
     }
 
     void cleanup(TransItem& item, bool committed) override {
-        auto key = item.key<item_key_t>();
-        assert(key.is_row_item());
         if (committed ? has_delete(item) : has_insert(item)) {
+            auto key = item.key<item_key_t>();
+            assert(key.is_row_item());
             internal_elem *e = key.internal_elem_ptr();
             bool ok = _remove(e->key);
             if (!ok) {
