@@ -1,4 +1,5 @@
 @@@
+@name: my_row_type
 @fields: {f1(BIGINT), f2(SMALLINT), f3(VARCHAR(5)), f4(CHAR(2))}
 @groups: {{f1, f2}, {f3, f4}}
 @@@

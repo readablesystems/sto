@@ -21,6 +21,7 @@
 # endif
 
   #include <string>
+  #include <vector>
 
   enum FieldTypeName { BigInt = 0, SmallInt, VarChar, Char };
 
@@ -38,7 +39,7 @@
 	std::string struct_name;
 	std::vector<Field> fields;
 	std::vector<std::vector<std::string>> groups;
-  }
+  };
 }
 
 %parse-param { MC_Scanner  &scanner  }
@@ -91,7 +92,7 @@ spec
 
 name_spec
   : NAME COLON IDENTIFIER
-	{ $$ = $3 }
+	{ $$ = $3; }
   ;
 
 field_spec

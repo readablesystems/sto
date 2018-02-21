@@ -112,7 +112,7 @@ std::string cpp_col_cell_map_init_list(ParsingResult& result) {
 
 void generate_code(ParsingResult &result) {
     std::stringstream ss;
-    std::string struct_name = result.struct_name; // XXX need to parse this also
+    std::string struct_name = result.struct_name;
 
     const std::string idt = "    ";
 
@@ -212,7 +212,8 @@ main( const int argc, const char **argv )
 
 
    if (!type_check(result)) {
-      std::cout << "Type  checker error" << std::endl;
+      std::cout << "Type checker error" << std::endl;
+      return ( EXIT_FAILURE );
    }
    generate_code(result);
 
