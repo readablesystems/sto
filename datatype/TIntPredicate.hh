@@ -76,15 +76,15 @@ public:
         T value = v_.wait_snapshot(p, vers_, committing);
         return pred.verify(value);
     }
-    bool check(TransItem& item, Transaction&) override {
-        return item.check_version(vers_);
+    bool check(TransItem& item, Transaction& txn) override {
+        return vers_.cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
         v_.write(item.template write_value<T>());
         txn.set_version_unlock(vers_, item);
     }
-    void unlock(TransItem&) override {
-        vers_.unlock();
+    void unlock(TransItem& item) override {
+        vers_.cp_unlock(item);
     }
     void print(std::ostream& w, const TransItem& item) const override {
         w << "{IntProxy " << (void*) this << "=" << v_.access() << ".v" << vers_.value();

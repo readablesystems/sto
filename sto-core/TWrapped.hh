@@ -147,7 +147,7 @@ public:
             T result = *v;
             fence();
             V v1 = version;
-            if (v0 == v1 && !v1.is_locked_elsewhere(item.transaction())) {
+            if (v0 == v1 && !v1.is_locked_elsewhere()) {
                 item.observe(v1, add_read);
                 return result;
             }
@@ -177,7 +177,7 @@ public:
         while (true) {
             V v0 = version;
             fence();
-            if (!v0.is_locked_elsewhere(item.transaction())) {
+            if (!v0.is_locked_elsewhere()) {
                 item.observe(v0, add_read);
                 return *v;
             }
@@ -381,7 +381,7 @@ public:
         return v_;
     }
     read_type snapshot(TransProxy item, const version_type& version) const {
-        return TWrappedAccess::read_atomic(&v_, item, version, false);
+        return TWrappedAccess::read_atomic(&v_, item, version, false).second;
     }
     read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
         return TWrappedAccess::read_wait_atomic(&v_, item, version, add_read);
@@ -490,6 +490,10 @@ public:
             return TWrappedAccess::read_nonatomic(&v_, item, version, true);
         else
             return TWrappedAccess::read_atomic(&v_, item, version, true);
+    }
+    static std::pair<bool, read_type> read(const T* vp, TransProxy item, const version_type& version) {
+        static_assert(Small, "static read only available for small types");
+        return TWrappedAccess::read_nonatomic(vp, item, version, true);
     }
     bool read(TransProxy item, const version_type& version, read_type& ret) const {
         if (Small)

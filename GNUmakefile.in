@@ -93,26 +93,27 @@ endif
 UNIT_PROGRAMS = unit-tarray \
                 unit-tflexarray \
                 unit-tintpredicate \
-				unit-tcounter \
-				unit-tbox \
-				unit-tgeneric \
-				unit-rcu \
-				unit-tvector \
-				unit-tvector-nopred \
-				unit-mbta \
-				unit-sampling \
-				unit-opacity \
-				unit-swisstarray \
-				unit-swisstgeneric \
-				unit-masstree
+                unit-tcounter \
+                unit-tbox \
+                unit-tgeneric \
+                unit-rcu \
+                unit-tvector \
+                unit-tvector-nopred \
+                unit-mbta \
+                unit-sampling \
+                unit-opacity \
+                unit-swisstarray \
+                unit-swisstgeneric \
+                unit-masstree
 
 ACT_UNIT_PROGRAMS = unit-tarray \
                     unit-tflexarray \
+                    unit-tintpredicate \
                     unit-tbox \
-					unit-rcu \
-					unit-opacity \
-					unit-sampling \
-				    unit-masstree
+                    unit-rcu \
+                    unit-opacity \
+                    unit-sampling \
+                    unit-masstree
 
 PROGRAMS = concurrent \
            singleelems \
