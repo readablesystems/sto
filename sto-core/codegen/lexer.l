@@ -81,6 +81,10 @@ SMALLINT    {
                 return ( token::SMALLINT );
             }
 
+FLOAT       {
+                return ( token::FLOAT );
+            }
+
 VARCHAR     {
                 return ( token::VARCHAR );
             }

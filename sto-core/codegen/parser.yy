@@ -23,7 +23,7 @@
   #include <string>
   #include <vector>
 
-  enum FieldTypeName { BigInt = 0, SmallInt, VarChar, Char };
+  enum FieldTypeName { BigInt = 0, SmallInt, Float, VarChar, Char };
 
   struct FieldType {
 	FieldTypeName tname;
@@ -35,7 +35,7 @@
 	std::string name;
   }; 
 
-  struct ParsingResult {
+  struct StructSpec {
 	std::string struct_name;
 	std::vector<Field> fields;
 	std::vector<std::vector<std::string>> groups;
@@ -44,7 +44,7 @@
 
 %parse-param { MC_Scanner  &scanner  }
 %parse-param { MC_Driver  &driver  }
-%parse-param { ParsingResult &result }
+%parse-param { std::vector<StructSpec> &result }
 
 %code{
    #include <iostream>
@@ -62,7 +62,7 @@
 %define parse.assert
 
 %token NAME FIELDS GROUPS LBRACE RBRACE COLON COMMA AT
-%token BIGINT SMALLINT VARCHAR CHAR LPAREN RPAREN
+%token BIGINT SMALLINT FLOAT VARCHAR CHAR LPAREN RPAREN
 %token END 0 "end of file"
 %token <std::string> IDENTIFIER
 %token <int> NUMBER
@@ -77,7 +77,8 @@
 %type <std::vector<std::vector<std::string>>> group_list
 %type <std::vector<std::vector<std::string>>> group_spec
 %type <std::string> name_spec
-%type <ParsingResult> spec
+%type <StructSpec> spec
+%type <std::vector<StructSpec>> spec_list
 
 
 %locations
@@ -85,9 +86,23 @@
 
 %% /* Spec Grammr */
 
+entire_spec
+  : spec_list END
+    { result = $1; }
+  ;
+
+spec_list
+  : spec
+  { $$ = { $1 }; }
+  | spec_list spec
+  { $1.push_back($2);
+    $$ = $1;
+  }
+  ;
+
 spec
-  : AT AT AT name_spec field_spec group_spec AT AT AT END
-	{ result = { $4, $5, $6 }; }
+  : AT AT AT name_spec field_spec group_spec AT AT AT 
+	{ $$ = { $4, $5, $6 }; }
   ;
 
 name_spec
@@ -152,6 +167,8 @@ field_type
 	{ $$ = { BigInt, 0 }; }
   | SMALLINT
 	{ $$ = { SmallInt, 0 }; }
+  | FLOAT
+  { $$ = { Float, 0 }; }
   | VARCHAR LPAREN NUMBER RPAREN
 	{ $$ = { VarChar, $3 }; }
   | CHAR LPAREN NUMBER RPAREN
