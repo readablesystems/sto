@@ -21,6 +21,9 @@ public:
 
     inline bool observe_read_impl(TransItem& item, bool add_read);
 
+    inline type snapshot(const TransItem& item, const Transaction& txn);
+    inline type snapshot(TransProxy& item);
+
     static inline type& cp_access_tid_impl(Transaction& txn);
     inline type cp_commit_tid_impl(Transaction& txn);
 };
@@ -44,6 +47,9 @@ public:
     }
 
     inline bool observe_read_impl(TransItem& item, bool add_read);
+
+    inline type snapshot(const TransItem& item, const Transaction& txn);
+    inline type snapshot(TransProxy& item);
 
     static inline type& cp_access_tid_impl(Transaction& txn);
     inline type cp_commit_tid_impl(Transaction& txn);

@@ -573,16 +573,19 @@ inline bool TicTocCompressedVersion<Opaque, Extend>::observe_read_impl(TransItem
     return true;
 }
 
-#if 0
 inline auto TVersion::snapshot(TransProxy& item) -> type {
     type v = value();
-    item.observe_opacity(TVersion(v));
+    if (!item.observe_opacity(*this)) {
+				Transaction::Abort();
+		}
     return v;
 }
 
 inline auto TVersion::snapshot(const TransItem& item, const Transaction& txn) -> type {
     type v = value();
-    const_cast<Transaction&>(txn).check_opacity(const_cast<TransItem&>(item), v);
+    if (!const_cast<Transaction&>(txn).check_opacity(const_cast<TransItem&>(item), v)) {
+				Transaction::Abort();
+		}
     return v;
 }
 
@@ -595,7 +598,6 @@ inline auto TNonopaqueVersion::snapshot(const TransItem&, const Transaction& txn
     const_cast<Transaction&>(txn).any_nonopaque_ = true;
     return value();
 }
-#endif
 
 // Commit TID definitions
 

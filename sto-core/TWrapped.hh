@@ -381,7 +381,11 @@ public:
         return v_;
     }
     read_type snapshot(TransProxy item, const version_type& version) const {
-        return TWrappedAccess::read_atomic(&v_, item, version, false).second;
+        auto result = TWrappedAccess::read_atomic(&v_, item, version, false);
+        if (!result.first) {
+            Sto::abort();
+        }
+        return result.second;
     }
     read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
         return TWrappedAccess::read_wait_atomic(&v_, item, version, add_read);

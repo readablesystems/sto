@@ -19,7 +19,7 @@ public:
             assert(it.shifted_user_flags() == sizeof(T));
             return it.template write_value<T>();
         }
-        return W<T>::read(word, it, version(word));
+        return W<T>::read(word, it, version(word)).second;
     }
     template <typename T, typename U>
     void write(T* word, U value) {
@@ -33,8 +33,8 @@ public:
         version_type& vers = version(item.template key<void*>());
         return vers.is_locked_here() || txn.try_lock(item, vers);
     }
-    bool check(TransItem& item, Transaction&) override {
-        return item.check_version(version(item.template key<void*>()));
+    bool check(TransItem& item, Transaction& txn) override {
+        return version(item.template key<void*>()).cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
         void* word = item.template key<void*>();
@@ -45,7 +45,7 @@ public:
     void unlock(TransItem& item) override {
         version_type& vers = version(item.template key<void*>());
         if (vers.is_locked_here())
-            vers.unlock();
+            vers.cp_unlock(item);
     }
     void print(std::ostream& w, const TransItem& item) const override {
         w << "{TGeneric @" << item.key<void*>();
