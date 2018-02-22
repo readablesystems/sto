@@ -1244,8 +1244,8 @@ int main() {
     testIterNPushBack();
     testIterNPushBack1();
     testIterNPushBack2();
-    //testErase();  // TODO: Currently broken
-    //testInsert();  // TODO: Currently broken
+    testErase();
+    testInsert();
     testPushNPop();
     testPopAndUpdate();
     testMulPushPops();

@@ -351,6 +351,12 @@ private:
         else
             return data_[i].v.read(item, data_[i].vers);
     }
+    get_type transGet_throws(size_type i, TransProxy item) const {
+        auto result = transGet(i, item);
+        if (!result.first)
+            Sto::abort();
+        return result.second;
+    }
     bool put_in_range(TransProxy& item, size_type i) const {
         if (i >= capacity_)
             return false;
@@ -593,7 +599,7 @@ auto TVector<T, W>::erase(iterator pos) -> iterator {
     TransProxy item = Sto::item(this, pos.i_).add_flags(indexed_bit);
     for (size_type i = pos.i_; i != wval.second; ++i) {
         TransProxy next_item = Sto::item(this, i + 1).add_flags(indexed_bit);
-        item.add_write(transGet(i + 1, next_item));
+        item.add_write(transGet_throws(i + 1, next_item));
         item = next_item;
     }
     item.add_write().add_flags(pop_bit);
@@ -611,7 +617,7 @@ auto TVector<T, W>::insert(iterator pos, T value) -> iterator {
     TransProxy item = Sto::item(this, wval.second - 1).clear_write().clear_flags(pop_bit).add_flags(indexed_bit);
     for (size_type i = wval.second - 1; i != pos.i_; --i) {
         TransProxy next_item = Sto::item(this, i - 1).add_flags(indexed_bit);
-        item.add_write(transGet(i - 1, next_item));
+        item.add_write(transGet_throws(i - 1, next_item));
         item = next_item;
     }
     item.add_write(std::move(value));
