@@ -97,8 +97,9 @@ public:
 // EXAMPLE:
 //
 // This is an example of a row layout
-class example_row {
-public:
+struct example_row {
+    enum class NamedColumn : int { ytd = 0, payment_cnt, date, tax, next_oid };
+
     uint32_t d_ytd;
     uint32_t d_payment_cnt;
     uint32_t d_date;
