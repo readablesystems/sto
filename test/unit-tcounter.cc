@@ -168,6 +168,7 @@ void testSimpleRangesFail() {
         assert(false && "should not get here b/c opacity");
         assert(!t1.try_commit());
     } catch (Transaction::Abort e) {
+				TestTransaction::hard_reset();
     }
 
     c.nontrans_write(0);
@@ -192,6 +193,7 @@ void testSimpleRangesFail() {
         assert(t3.try_commit());
         assert(t1.try_commit());
     } catch (Transaction::Abort e) {
+				TestTransaction::hard_reset();
     }
 
     c.nontrans_write(4);
@@ -211,6 +213,7 @@ void testSimpleRangesFail() {
         assert(false && "should not get here");
         assert(!t1.try_commit());
     } catch (Transaction::Abort e) {
+				TestTransaction::hard_reset();
     }
 
     printf("PASS: %s\n", __FUNCTION__);
@@ -249,6 +252,7 @@ void testSimpleRangesFailNoOpacity() {
         match = c > 1;
         assert(!t1.try_commit());
     } catch (Transaction::Abort e) {
+				TestTransaction::hard_reset();
     }
 
     c.nontrans_write(0);
@@ -272,6 +276,7 @@ void testSimpleRangesFailNoOpacity() {
         assert(t3.try_commit());
         assert(t1.try_commit());
     } catch (Transaction::Abort e) {
+				TestTransaction::hard_reset();
     }
 
     c.nontrans_write(4);
@@ -290,6 +295,7 @@ void testSimpleRangesFailNoOpacity() {
         match = c < 1;
         assert(!t1.try_commit());
     } catch (Transaction::Abort e) {
+				TestTransaction::hard_reset();
     }
 
     printf("PASS: %s\n", __FUNCTION__);
@@ -352,6 +358,7 @@ void testOpacity() {
         assert(match);
         assert(!t1.try_commit());
     } catch (Transaction::Abort e) {
+				TestTransaction::hard_reset();
     }
 
     {
@@ -383,6 +390,7 @@ void testNoOpacity() {
         assert(match);
         assert(!t1.try_commit());
     } catch (Transaction::Abort e) {
+				TestTransaction::hard_reset();
     }
 
     {

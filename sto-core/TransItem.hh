@@ -44,7 +44,7 @@ class TransItem {
     static constexpr flags_type special_mask = owner_mask | cl_bit | read_bit | write_bit | lock_bit | predicate_bit | stash_bit;
 
 
-    TransItem() = default;
+    TransItem() : s_(), key_(), mode_(CCMode::none) {};
     TransItem(TObject* owner, void* k)
         : s_(reinterpret_cast<ownerstore_type>(owner)), key_(k), mode_(CCMode::none) {
     }

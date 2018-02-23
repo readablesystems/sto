@@ -182,18 +182,18 @@ void testSimpleString() {
 void testIter() {
     std::vector<int> arr;
     TVector_nopred<int> f;
-    TRANSACTION {
+    TRANSACTION_E {
     for (int i = 0; i < 10; i++) {
         int x = rand();
         f.push_back(x);
         arr.push_back(x);
     }
-    } RETRY(false);
+    } RETRY_E(false);
 
     int max;
-    TRANSACTION {
+    TRANSACTION_E {
         max = *(std::max_element(f.begin(), f.end()));
-    } RETRY(false);
+    } RETRY_E(false);
 
     assert(max == *(std::max_element(arr.begin(), arr.end())));
     printf("Max is %i\n", max);
@@ -204,11 +204,11 @@ void testIter() {
 void testConflictingIter() {
     TVector_nopred<int> f;
     TBox<int> box;
-    TRANSACTION {
+    TRANSACTION_E {
     for (int i = 0; i < 10; i++) {
         f.push_back(i);
     }
-    } RETRY(false);
+    } RETRY_E(false);
 
     TestTransaction t(1);
     std::max_element(f.begin(), f.end());
@@ -247,11 +247,11 @@ void testModifyingIter() {
 
 void testConflictingModifyIter1() {
     TVector_nopred<int> f;
-    TRANSACTION {
+    TRANSACTION_E {
     for (int i = 0; i < 10; i++) {
         f.push_back(i);
     }
-    } RETRY(false);
+    } RETRY_E(false);
 
     TestTransaction t(1);
     std::replace(f.begin(), f.end(), 4, 6);
@@ -272,11 +272,11 @@ void testConflictingModifyIter1() {
 
 void testConflictingModifyIter2() {
     TVector_nopred<int> f;
-    TRANSACTION {
+    TRANSACTION_E {
     for (int i = 0; i < 10; i++) {
         f.push_back(i);
     }
-    } RETRY(false);
+    } RETRY_E(false);
 
     {
         TransactionGuard t;
@@ -300,11 +300,11 @@ void testConflictingModifyIter2() {
 void testConflictingModifyIter3() {
     TVector_nopred<int> f;
     TBox<int> box;
-    TRANSACTION {
+    TRANSACTION_E {
     for (int i = 0; i < 10; i++) {
         f.push_back(i);
     }
-    } RETRY(false);
+    } RETRY_E(false);
 
     TestTransaction t1(1);
     (int) f[4];
@@ -326,17 +326,17 @@ void testConflictingModifyIter3() {
 
 void testIterNPushBack() {
     TVector_nopred<int> f;
-    TRANSACTION {
+    TRANSACTION_E {
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false);
+    } RETRY_E(false);
 
     int max;
-    TRANSACTION {
+    TRANSACTION_E {
         f.push_back(20);
         max = *(std::max_element(f.begin(), f.end()));
-    } RETRY(false);
+    } RETRY_E(false);
 
     assert(max == 20);
     printf("PASS: %s\n", __FUNCTION__);
@@ -392,22 +392,22 @@ void testIterNPushBack2() {
 void testErase() {
     TVector_nopred<int> f;
 
-    TRANSACTION {
+    TRANSACTION_E {
         for (int i = 0; i < 10; i++)
             f.push_back(i);
-    } RETRY(false);
+    } RETRY_E(false);
 
     {
         TransactionGuard t1;
         f.erase(f.begin() + 5);
     }
 
-    TRANSACTION {
+    TRANSACTION_E {
         assert(f.size() == 9);
         int x[9] = {0, 1, 2, 3, 4, 6, 7, 8, 9};
         for (int i = 0; i < 9; ++i)
             assert(f[i] == x[i]);
-    } RETRY(false);
+    } RETRY_E(false);
 
     printf("PASS: %s\n", __FUNCTION__);
 }
@@ -415,33 +415,33 @@ void testErase() {
 void testInsert() {
     TVector_nopred<int> f;
 
-    TRANSACTION {
+    TRANSACTION_E {
         for (int i = 0; i < 10; i++)
             f.push_back(i);
-    } RETRY(false);
+    } RETRY_E(false);
 
     {
         TransactionGuard t1;
         f.insert(f.begin() + 5, 25);
     }
 
-    TRANSACTION {
+    TRANSACTION_E {
         assert(f.size() == 11);
         int x[] = {0, 1, 2, 3, 4, 25, 5, 6, 7, 8, 9};
         for (int i = 0; i < 11; ++i)
             assert(f[i] == x[i]);
-    } RETRY(false);
+    } RETRY_E(false);
 
     GUARDED {
         f.insert(f.end(), 30);
     }
 
-    TRANSACTION {
+    TRANSACTION_E {
         assert(f.size() == 12);
         int x[] = {0, 1, 2, 3, 4, 25, 5, 6, 7, 8, 9, 30};
         for (int i = 0; i < 12; ++i)
             assert(f[i] == x[i]);
-    } RETRY(false);
+    } RETRY_E(false);
 
     printf("PASS: %s\n", __FUNCTION__);
 }
@@ -450,11 +450,11 @@ void testPushNPop() {
     TVector_nopred<int> f;
     TBox<int> box;
 
-    TRANSACTION {
+    TRANSACTION_E {
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false);
+    } RETRY_E(false);
 
     {
         TransactionGuard t;
@@ -477,10 +477,10 @@ void testPushNPop() {
         assert(t2.try_commit());
         assert(!t1.try_commit());
 
-        TRANSACTION {
+        TRANSACTION_E {
             assert(f.size() == 11);
             assert(f[10] == 20);
-        } RETRY(false);
+        } RETRY_E(false);
     }
 
     {
@@ -494,12 +494,12 @@ void testPushNPop() {
         //t1.print(std::cerr);
         assert(!t1.try_commit());
 
-        TRANSACTION {
+        TRANSACTION_E {
             assert(f.size() == 12);
             assert(f[10] == 20);
             assert(f[11] == 21);
             f.pop_back();
-        } RETRY(false);
+        } RETRY_E(false);
     }
 
     printf("PASS: testPushNPop\n");
@@ -513,9 +513,9 @@ void testPushNPop() {
     assert(t4.try_commit());
     assert(!t3.try_commit());
 
-    TRANSACTION {
+    TRANSACTION_E {
         assert(f.size() == 10);
-    } RETRY(false);
+    } RETRY_E(false);
 
     printf("PASS: testPushNPop1\n");
 
@@ -535,10 +535,10 @@ void testPushNPop() {
     assert(t5.try_commit());
     assert(!t7.try_commit());
 
-    TRANSACTION {
+    TRANSACTION_E {
         assert(f.size() == 9);
         assert(f[8] == 15);
-    } RETRY(false);
+    } RETRY_E(false);
 
     printf("PASS: testPushNPop2\n");
 }
@@ -546,11 +546,11 @@ void testPushNPop() {
 void testPopAndUdpate() {
     TVector_nopred<int> f;
 
-    TRANSACTION {
+    TRANSACTION_E {
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false);
+    } RETRY_E(false);
 
     TestTransaction t1(1);
     f[9] = 20;
@@ -565,11 +565,11 @@ void testPopAndUdpate() {
 void testMulPushPops() {
     TVector_nopred<int> f;
 
-    TRANSACTION {
+    TRANSACTION_E {
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false);
+    } RETRY_E(false);
 
     {
         TransactionGuard t1;
@@ -584,11 +584,11 @@ void testMulPushPops() {
 void testMulPushPops1() {
     TVector_nopred<int> f;
 
-    TRANSACTION {
+    TRANSACTION_E {
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false);
+    } RETRY_E(false);
 
     {
         TransactionGuard t1;
@@ -603,11 +603,11 @@ void testMulPushPops1() {
 void testUpdatePop() {
     TVector_nopred<int> f;
 
-    TRANSACTION {
+    TRANSACTION_E {
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false);
+    } RETRY_E(false);
 
     {
         TransactionGuard t1;
@@ -620,11 +620,11 @@ void testIteratorBetterSemantics() {
     TVector_nopred<int> f;
     TBox<int> box;
 
-    TRANSACTION {
+    TRANSACTION_E {
         for (int i = 0; i < 10; i++) {
             f.push_back(i);
         }
-    } RETRY(false);
+    } RETRY_E(false);
 
     TestTransaction t1(1);
     // XXX std::find uses a special case for random-access iterators
@@ -650,10 +650,10 @@ void testSizePredicates() {
     TVector_nopred<int> f;
     TBox<int> box;
 
-    TRANSACTION {
+    TRANSACTION_E {
         for (int i = 0; i < 10; i++)
             f.push_back(i);
-    } RETRY(false);
+    } RETRY_E(false);
 
     {
         TestTransaction t1(1);
@@ -737,10 +737,10 @@ void testIterPredicates() {
     TVector_nopred<int> f;
     TBox<int> box;
 
-    TRANSACTION {
+    TRANSACTION_E {
         for (int i = 0; i < 10; i++)
             f.push_back(i);
-    } RETRY(false);
+    } RETRY_E(false);
 
     {
         TestTransaction t1(1);
@@ -846,10 +846,10 @@ void testResize() {
     TVector_nopred<int> f;
     TBox<int> box;
 
-    TRANSACTION {
+    TRANSACTION_E {
         for (int i = 0; i < 10; i++)
             f.push_back(i);
-    } RETRY(false);
+    } RETRY_E(false);
 
     {
         TestTransaction t1(1);
@@ -923,10 +923,10 @@ void testOpacity() {
     TVector_nopred<int> f;
     TBox<int> box;
 
-    TRANSACTION {
+    TRANSACTION_E {
         for (int i = 0; i < 10; i++)
             f.push_back(i);
-    } RETRY(false);
+    } RETRY_E(false);
 
     {
         TestTransaction t1(1);
@@ -962,10 +962,10 @@ void testOpacity() {
         assert(f.nontrans_size() == 3);
     }
 
-    TRANSACTION {
+    TRANSACTION_E {
         while (f.size() < 10)
             f.push_back(f.size());
-    } RETRY(false);
+    } RETRY_E(false);
 
     try {
         TestTransaction t1(1);
@@ -985,10 +985,10 @@ void testOpacity() {
     } catch (Transaction::Abort e) {
     }
 
-    TRANSACTION {
+    TRANSACTION_E {
         while (f.size() < 10)
             f.push_back(f.size());
-    } RETRY(false);
+    } RETRY_E(false);
 
     try {
         TestTransaction t1(1);
@@ -1008,10 +1008,10 @@ void testOpacity() {
     } catch (Transaction::Abort e) {
     }
 
-    TRANSACTION {
+    TRANSACTION_E {
         while (f.size() < 10)
             f.push_back(f.size());
-    } RETRY(false);
+    } RETRY_E(false);
 
     try {
         TestTransaction t1(1);
@@ -1030,10 +1030,10 @@ void testOpacity() {
     } catch (Transaction::Abort e) {
     }
 
-    TRANSACTION {
+    TRANSACTION_E {
         while (f.size() < 10)
             f.push_back(f.size());
-    } RETRY(false);
+    } RETRY_E(false);
 
     {
         TestTransaction t1(1);
@@ -1059,10 +1059,10 @@ void testNoOpacity() {
     TVector_nopred<int, TNonopaqueWrapped> f;
     TBox<int, TNonopaqueWrapped<int> > box;
 
-    TRANSACTION {
+    TRANSACTION_E {
         for (int i = 0; i < 10; i++)
             f.push_back(i);
-    } RETRY(false);
+    } RETRY_E(false);
 
     {
         TestTransaction t1(1);
@@ -1098,10 +1098,10 @@ void testNoOpacity() {
         assert(f.nontrans_size() == 3);
     }
 
-    TRANSACTION {
+    TRANSACTION_E {
         while (f.size() < 10)
             f.push_back(f.size());
-    } RETRY(false);
+    } RETRY_E(false);
 
     {
         TestTransaction t1(1);
@@ -1120,10 +1120,10 @@ void testNoOpacity() {
         assert(!t1.try_commit());
     }
 
-    TRANSACTION {
+    TRANSACTION_E {
         while (f.size() < 10)
             f.push_back(f.size());
-    } RETRY(false);
+    } RETRY_E(false);
 
     {
         TestTransaction t1(1);
@@ -1142,10 +1142,10 @@ void testNoOpacity() {
         assert(!t1.try_commit());
     }
 
-    TRANSACTION {
+    TRANSACTION_E {
         while (f.size() < 10)
             f.push_back(f.size());
-    } RETRY(false);
+    } RETRY_E(false);
 
     {
         TestTransaction t1(1);

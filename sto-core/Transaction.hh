@@ -1020,6 +1020,11 @@ public:
         t->start();
     }
 
+		static void delete_transaction() {
+				delete TThread::txn;
+				TThread::txn = nullptr;
+		}
+
     static void update_threadid() {
         if (TThread::txn)
             TThread::txn->threadid_ = TThread::id();
@@ -1135,8 +1140,13 @@ public:
     }
     bool try_commit() {
         use();
-        return t_.try_commit();
+				auto r = t_.try_commit();
+				TestTransaction::hard_reset();
+        return r;
     }
+		static void hard_reset() {
+				TThread::txn = nullptr;
+		}
     Transaction &get_tx() {
         return t_;
     }
@@ -1152,6 +1162,7 @@ class TransactionGuard {
     }
     ~TransactionGuard() {
         Sto::commit();
+				Sto::delete_transaction();
     }
     typedef void (TransactionGuard::* unspecified_bool_type)(std::ostream&) const;
     operator unspecified_bool_type() const {

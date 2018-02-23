@@ -29,7 +29,7 @@ private:
 
     static constexpr TransItem::flags_type pop_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type onlyexists_bit = pop_bit << 1;
-    static constexpr typename version_type::type dead_bit = version_type::user_bit;
+    static constexpr typename version_type::type dead_bit = TransactionTid::user_bit;
 public:
     class iterator;
     class const_iterator;
@@ -44,7 +44,7 @@ public:
         : size_(0), max_size_(0), capacity_(default_capacity) {
         data_ = reinterpret_cast<elem*>(new char[sizeof(elem) * capacity_]);
         for (size_type i = 0; i != capacity_; ++i)
-            data_[i].vers = dead_bit;
+            data_[i].vers = version_type(dead_bit);
     }
     ~TVector_nopred() {
         using WT = W<T>;
@@ -126,27 +126,43 @@ public:
     }
 
     // transGet and friends
-    get_type transGet(size_type i) const {
+    std::pair<bool, get_type> transGet(size_type i) const {
         TransProxy item = Sto::item(this, i);
         if (item.has_write()) {
             if (item.has_flag(pop_bit)) {
             out_of_range:
                 version_type::opaque_throw(std::out_of_range("TVector_nopred::transGet"));
             }
-            return item.write_value<T>();
+            return {true, item.write_value<T>()};
         } else {
-            get_type result = data_[i].v.read(item, data_[i].vers);
+            auto result = data_[i].v.read(item, data_[i].vers);
+            if (!result.first) {
+                return result;
+            }
             if (item.read_value<version_type>().value() & dead_bit)
                 goto out_of_range;
             return result;
         }
     }
-    void transPut(size_type i, T x) {
+		get_type transGet_throws(size_type i) const {
+        auto result = transGet(i);
+        if (!result.first) {
+            Sto::abort();
+        }
+        return result.second;
+    }
+    bool transPut(size_type i, T x) {
         auto item = Sto::item(this, i);
         if (item.has_flag(pop_bit)
             || (!item.has_read() && !item.has_write() && !put_in_range(item, i)))
-            version_type::opaque_throw(std::out_of_range("TVector_nopred::transPut"));
+            return false;
         item.add_write(std::move(x));
+        return true;
+    }
+    void transPut_throws(size_type i, T x) {
+        if (!transPut(i, x)) {
+            version_type::opaque_throw(std::out_of_range("TVector_nopred::transPut"));
+        }
     }
 
     size_type nontrans_size() const {
@@ -176,11 +192,11 @@ public:
     bool check(TransItem& item, Transaction& txn) override {
         auto key = item.template key<key_type>();
         if (key == size_key)
-            return item.check_version(size_vers_);
+            return size_vers_.cp_check_version(txn, item);
         else if (item.has_flag(onlyexists_bit))
             return !(data_[key].vers.snapshot(item, txn) & dead_bit);
         else
-            return item.check_version(data_[key].vers);
+            return data_[key].vers.cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
         auto key = item.template key<key_type>();
@@ -202,9 +218,9 @@ public:
     void unlock(TransItem& item) override {
         auto key = item.template key<key_type>();
         if (key == size_key)
-            size_vers_.unlock();
+            size_vers_.cp_unlock(item);
         else
-            data_[key].vers.unlock();
+            data_[key].vers.cp_unlock(item);
     }
     void print(std::ostream& w, const TransItem& item) const override {
         w << "{TVector_nopred<" << typeid(T).name() << "> " << (void*) this;
@@ -252,7 +268,11 @@ private:
     TransProxy size_item() const {
         auto item = Sto::item(this, size_key);
         if (!item.has_read()) {
-            size_type sz = size_.read(item, size_vers_);
+            auto result = size_.read(item, size_vers_);
+						if (!result.first) {
+								Sto::abort();
+						}
+						auto sz = result.second;
             item.template xwrite_value<pred_type>() = pred_type{sz, sz};
         }
         return item;
@@ -270,16 +290,28 @@ private:
         return size_info(size_item());
     }
 
-    get_type transGet(size_type i, TransProxy item) const {
+    std::pair<bool, get_type> transGet(size_type i, TransProxy item) const {
         if (item.has_write())
-            return item.template write_value<T>();
-        else
+            return {true, item.template write_value<T>()};
+        else {
             return data_[i].v.read(item, data_[i].vers);
+        }
     }
+    get_type transGet_throws(size_type i, TransProxy item) const {
+        auto result = transGet(i, item);
+        if (!result.first) {
+            Sto::abort();
+        }
+        return result.second;
+    }
+
     bool put_in_range(TransProxy& item, size_type i) const {
         if (i >= capacity_)
             return false;
-        item.observe(data_[i].vers).add_flags(onlyexists_bit);
+        if (!item.observe(data_[i].vers)) {
+            Sto::abort();
+        }
+        item.add_flags(onlyexists_bit);
         return !(item.read_value<version_type>().value() & dead_bit);
     }
 
@@ -481,7 +513,7 @@ auto TVector_nopred<T, W>::erase(iterator pos) -> iterator {
     TransProxy item = Sto::item(this, pos.i_);
     for (size_type i = pos.i_; i != wval.second; ++i) {
         TransProxy next_item = Sto::item(this, i + 1);
-        item.add_write(transGet(i + 1, next_item));
+        item.add_write(transGet_throws(i + 1, next_item));
         item = next_item;
     }
     item.add_write().add_flags(pop_bit);
@@ -498,7 +530,7 @@ auto TVector_nopred<T, W>::insert(iterator pos, T value) -> iterator {
     TransProxy item = Sto::item(this, wval.second - 1).clear_write().clear_flags(pop_bit);
     for (size_type i = wval.second - 1; i != pos.i_; --i) {
         TransProxy next_item = Sto::item(this, i - 1);
-        item.add_write(transGet(i - 1, next_item));
+        item.add_write(transGet_throws(i - 1, next_item));
         item = next_item;
     }
     item.add_write(std::move(value));

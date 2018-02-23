@@ -233,6 +233,7 @@ void testOpacity1() {
         assert(x == 6);
         assert(!t1.try_commit());
     } catch (Transaction::Abort e) {
+				TestTransaction::hard_reset();
     }
 
     {
