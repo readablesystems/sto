@@ -171,9 +171,9 @@ void testSimpleString() {
     }
 
     {
-	TransactionGuard t2;
-	std::string f_read = f[0];
-	assert(f_read.compare("100") == 0);
+        TransactionGuard t2;
+        std::string f_read = f[0];
+        assert(f_read.compare("100") == 0);
     }
 
     printf("PASS: %s\n", __FUNCTION__);

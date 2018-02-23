@@ -449,13 +449,13 @@ private:
     static testing_type testing;
 
     Transaction(int threadid, const testing_type&)
-        : threadid_(threadid), is_test_(true) {
+        : threadid_(threadid), is_test_(true), restarted(false) {
         initialize();
         start();
     }
 
     Transaction(bool)
-        : threadid_(TThread::id()), is_test_(false) {
+        : threadid_(TThread::id()), is_test_(false), restarted(false) {
         initialize();
         state_ = s_aborted;
     }
@@ -1140,13 +1140,13 @@ public:
     }
     bool try_commit() {
         use();
-				auto r = t_.try_commit();
-				TestTransaction::hard_reset();
+        auto r = t_.try_commit();
+        TestTransaction::hard_reset();
         return r;
     }
-		static void hard_reset() {
-				TThread::txn = nullptr;
-		}
+    static void hard_reset() {
+        TThread::txn = nullptr;
+    }
     Transaction &get_tx() {
         return t_;
     }
@@ -1162,7 +1162,7 @@ class TransactionGuard {
     }
     ~TransactionGuard() {
         Sto::commit();
-				Sto::delete_transaction();
+        Sto::delete_transaction();
     }
     typedef void (TransactionGuard::* unspecified_bool_type)(std::ostream&) const;
     operator unspecified_bool_type() const {
