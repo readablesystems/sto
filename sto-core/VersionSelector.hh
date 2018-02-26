@@ -125,6 +125,9 @@ public:
     typedef VersImpl version_type;
     static constexpr size_t num_versions = 2;
 
+    explicit VerSel(type v) : vers_() {}
+    VerSel(type v, bool insert) : vers_() {}
+
     static int map_impl(int col_n) {
         if (col_n == 0)
             return 0;
