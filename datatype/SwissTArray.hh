@@ -64,13 +64,13 @@ public:
         get_type ret;
         bool ok = transGet(i, ret);
         if (!ok)
-            throw Transaction::Abort();
+						Sto::abort();
         return ret;
     }
     void transPut_throws(size_type i, T x) {
         bool ok = transPut(i, x);
         if (!ok)
-            throw Transaction::Abort();
+						Sto::abort();
     }
     get_type nontrans_get(size_type i) const {
         assert(i < N);
@@ -92,8 +92,8 @@ public:
         assert(ok);
         return true;
     }
-    bool check(TransItem& item, Transaction&) override {
-        return data_[item.key<size_type>()].version.cp_check_version(item);
+    bool check(TransItem& item, Transaction& txn) override {
+        return data_[item.key<size_type>()].version.cp_check_version(txn, item);
         //return item.check_version(data_[item.key<size_type>()].version);
     }
     void install(TransItem& item, Transaction& txn) override {

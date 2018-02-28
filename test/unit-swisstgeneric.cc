@@ -7,18 +7,19 @@
 #include "SwissTGeneric.hh"
 
 void testSimpleInt() {
-    SwissTNonopaqueGeneric f;
+    SwissTNonopaqueGeneric& f = *new SwissTNonopaqueGeneric;
     int f1 = 0;
 
     {
         TransactionGuard t;
-        f.write(&f1, 100, 0);
+        f.write_throws(&f1, 100);
     }
 
 	{
         TransactionGuard t2;
-        int f_read = f.read(&f1, 0);
-        assert(f_read == 100);
+        int f_read_throws;
+        f.read_throws(&f1, f_read_throws);
+        assert(f_read_throws == 100);
     }
 
     assert(f1 == 100);
@@ -27,19 +28,20 @@ void testSimpleInt() {
 }
 
 void testSimpleInt2() {
-    SwissTNonopaqueGeneric g;
+    SwissTNonopaqueGeneric& g = *new SwissTNonopaqueGeneric;
     int f[100];
 
     {
         TransactionGuard t;
-	g.write(&f[1], 100, 1);
-	g.write(&f[1], 200, 1);
+	g.write_throws(&f[1], 100);
+	g.write_throws(&f[1], 200);
     }
 
     {
         TransactionGuard t2;
-        int f_read = g.read(&f[1], 1);
-        assert(f_read == 200);
+        int f_read_throws;
+        g.read_throws(&f[1], f_read_throws);
+        assert(f_read_throws == 200);
     }
 
         printf("PASS: %s\n", __FUNCTION__);
@@ -53,16 +55,18 @@ void testSimpleInt2() {
 
     try {
         TestTransaction t1(1);
-        int x = g.read(&f[3]);
+        int x;
+        g.read_throws(&f[3], x);
         assert(x == 3);
 
         TestTransaction t(2);
-        g.write(&f[3], 2);
-        g.write(&f[4], 6);
+        g.write_throws(&f[3], 2);
+        g.write_throws(&f[4], 6);
         assert(t.try_commit());
 
         t1.use();
-        x = g.read(&f[4]);
+        x;
+        g.read_throws(&f[4], x);
         assert(false && "shouldn't get here");
         assert(x == 6);
         assert(!t1.try_commit());
@@ -71,7 +75,8 @@ void testSimpleInt2() {
 
     {
         TransactionGuard t2;
-        int v = g.read(&f[4]);
+        int v;
+        g.read_throws(&f[4], v);
         assert(v == 6);
         assert(f[4] == 6);
     }
@@ -87,23 +92,26 @@ void testNoOpacity1() {
 
     {
         TestTransaction t1(1);
-        int x = g.read(&f[3]);
+        int x;
+        g.read_throws(&f[3], x);
         assert(x == 3);
 
         TestTransaction t(2);
-        g.write(&f[3], 2);
-        g.write(&f[4], 6);
+        g.write_throws(&f[3], 2);
+        g.write_throws(&f[4], 6);
         assert(t.try_commit());
 
         t1.use();
-        x = g.read(&f[4]);
+        x;
+        g.read_throws(&f[4], x);
         assert(x == 6);
         assert(!t1.try_commit());
     }
 
     {
         TransactionGuard t2;
-        int v = g.read(&f[4]);
+        int v;
+        g.read_throws(&f[4], v);
         assert(v == 6);
         assert(f[4] == 6);
     }
@@ -122,23 +130,29 @@ void testVariableSizes() {
 
     {
         TestTransaction t1(1);
-        int x = g.read(&foo.a);
+        int x;
+        g.read_throws(&foo.a, x);
         assert(x == 100);
-        x = g.read(&foo.b);
+        x;
+        g.read_throws(&foo.b, x);
         assert(x == 1);
-        g.write(&foo.b, 10);
-        g.write(&foo.a, 10000);
-        g.write(&foo.d, 99);
+        g.write_throws(&foo.b, 10);
+        g.write_throws(&foo.a, 10000);
+        g.write_throws(&foo.d, 99);
         assert(foo.a == 100);
         assert(foo.b == 1);
         assert(foo.d == 3);
-        x = g.read(&foo.a);
+        x;
+        g.read_throws(&foo.a, x);
         assert(x == 10000);
-        x = g.read(&foo.b);
+        x;
+        g.read_throws(&foo.b, x);
         assert(x == 10);
-        x = g.read(&foo.c);
+        x;
+        g.read_throws(&foo.c, x);
         assert(x == 2);
-        x = g.read(&foo.d);
+        x;
+        g.read_throws(&foo.d, x);
         assert(x == 99);
         assert(t1.try_commit());
 
@@ -152,7 +166,7 @@ void testVariableSizes() {
 }*/
 
 void testWriteWriteConflict() {
-        SwissTNonopaqueGeneric g;
+        SwissTNonopaqueGeneric& g = *new SwissTNonopaqueGeneric;
 	int f[100];
 
         {
@@ -162,10 +176,10 @@ void testWriteWriteConflict() {
 
                 try {
                         t1.use();
-                        g.write(&f[1], 100, 1);
+                        g.write_throws(&f[1], 100);
 
                         t2.use();
-                        g.write(&f[1], 100, 1);
+                        g.write_throws(&f[1], 100);
                 } catch (Transaction::Abort e) {
                 }
 
@@ -176,11 +190,12 @@ void testWriteWriteConflict() {
 
                 t2.use();
                 Sto::start_transaction();
-                int a = g.read(&f[1], 1);
+                int a;
+        g.read_throws(&f[1], a);
                 assert(a == 100);
 
-                g.write(&f[1], 200, 1);
-                a = g.read(&f[1], 1);
+                g.write_throws(&f[1], 200);
+        g.read_throws(&f[1], a);
                 assert(a == 200);
 
         }
@@ -190,7 +205,7 @@ void testWriteWriteConflict() {
 
 
 void testAbortReleaseLock() {
-	SwissTNonopaqueGeneric g;
+	SwissTNonopaqueGeneric& g = *new SwissTNonopaqueGeneric;
 	int f[100];
 
         {
@@ -200,11 +215,11 @@ void testAbortReleaseLock() {
 
                 try {
                         t1.use();
-			g.write(&f[1], 100, 1);
+			g.write_throws(&f[1], 100);
 	
                         t2.use();
-                        g.write(&f[2], 200, 2);
-                        g.write(&f[1], 300, 1);
+                        g.write_throws(&f[2], 200);
+                        g.write_throws(&f[1], 300);
                 } catch(Transaction::Abort e) {
 
                 }
@@ -212,8 +227,8 @@ void testAbortReleaseLock() {
                 assert(t2.get_tx().is_restarted());
 
                 t1.use();
-                g.write(&f[2], 400, 2);
-                g.write(&f[1], 500, 1);
+                g.write_throws(&f[2], 400);
+                g.write_throws(&f[1], 500);
                 assert(t1.try_commit());
 
         }

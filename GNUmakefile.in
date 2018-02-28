@@ -109,13 +109,14 @@ UNIT_PROGRAMS = unit-tarray \
 ACT_UNIT_PROGRAMS = unit-tarray \
                     unit-tflexarray \
                     unit-tintpredicate \
-										unit-tcounter \
+                    unit-tcounter \
                     unit-tbox \
                     unit-rcu \
-										unit-tvector \
-										unit-tvector-nopred \
+                    unit-tvector \
+                    unit-tvector-nopred \
                     unit-opacity \
                     unit-sampling \
+                    unit-swisstarray \
                     unit-masstree
 
 PROGRAMS = concurrent \

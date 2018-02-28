@@ -9,9 +9,9 @@
 #include <sys/resource.h>
 #include <assert.h>
 
-typedef TNonopaqueVersion WriteLock;
+typedef TSwissVersion<false> WriteLock;
 
-template <template <typename> class W = TOpaqueWrapped>
+template <template <typename> class W = TSwissWrapped>
 class SwissTBasicGeneric : public TObject {
 public:
     typedef typename W<int>::version_type version_type;
@@ -32,23 +32,38 @@ public:
             return W<T>::read(word, item, version(word), ret);
        }
     }
+    template <typename T>
+    void read_throws(T* word, T& ret) {
+        if (!read(word, ret)) {
+            Sto::abort();
+        }
+    }
 
     template <typename T, typename U>
     bool write(T* word, U value) {
         static_assert(sizeof(T) <= sizeof(void*), "T larger than void*");
         static_assert(mass::is_trivially_copyable<T>::value, "T nontrivial");
         auto item = Sto::item(this, word);
-        return item.add_swiss_write(T(value), wlock(word)); //.assign_flags(sizeof(T) << TransItem::userf_shift
+        std::cout << wlock(word) << std::endl;
+        auto val = item.acquire_write(wlock(word), T(value)); //.assign_flags(sizeof(T) << TransItem::userf_shift
+        std::cout << wlock(word) << std::endl;
+        return val;
+    }
+    template <typename T, typename U>
+    void write_throws(T* word, U value) {
+        if (!write(word, value)) {
+            Sto::abort();
+        }
     }
 
 
     bool lock(TransItem& item, Transaction& txn) override {
         (void) txn;
         version_type& vers = version(item.template key<void*>());
-        return vers.is_locked_here() || vers.set_lock();
+        return vers.is_locked_here() || vers.cp_try_lock(item, -1);  // ID not used
     }
-    bool check(TransItem& item, Transaction&) override {
-        return item.check_version(version(item.template key<void*>()));
+    bool check(TransItem& item, Transaction& txn) override {
+        return version(item.template key<void*>()).cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
         void* word = item.template key<void*>();
@@ -60,10 +75,10 @@ public:
     inline void unlock(TransItem& item) override {
         version_type& vers = version(item.template key<void*>());
         WriteLock& wl = wlock(item.template key<void*>());
-	if (vers.is_locked_here())
-            vers.unlock();
-	if (wl.is_locked())
-	    wl.unlock();
+        if (vers.is_locked_here())
+            vers.cp_unlock(item);
+        if (wl.is_locked())
+            wl.cp_unlock(item);
     }
 
     void print(std::ostream& w, const TransItem& item) const override {
