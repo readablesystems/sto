@@ -767,9 +767,20 @@ public:
             e->add_debug_text("inserted here");
             lp.value() = e;
 
-            auto orig_node = lp.node();
-            auto orig_nv = lp.previous_full_version_value();
-            auto new_nv = lp.next_full_version_value(1);
+            node_type *node;
+            nodeversion_value_type orig_nv;
+            nodeversion_value_type new_nv;
+
+            bool split_right = (lp.node() != lp.original_node());
+            if (split_right) {
+                node = lp.original_node();
+                orig_nv = lp.original_version_value();
+                new_nv = lp.updated_version_value();
+            } else {
+                node = lp.node();
+                orig_nv = lp.previous_full_version_value();
+                new_nv = lp.next_full_version_value(1);
+            }
 
             fence();
             lp.finish(1, *ti);
@@ -783,7 +794,15 @@ public:
             item.add_write();
             item.add_flags(insert_bit);
 
-            update_internode_version(orig_node, orig_nv, new_nv);
+            // add all newly created nodes to the read set
+            for (auto& np : lp.new_nodes()) {
+                if (!register_internode_version(np.first, np.second))
+                    goto abort;
+            }
+
+            // update the node version already in the read set and modified by split
+            if (!update_internode_version(node, orig_nv, new_nv))
+                goto abort;
         }
 
         return ins_return_type(true, found);
@@ -1066,8 +1085,11 @@ private:
     bool update_internode_version(node_type *node,
             nodeversion_value_type prev_nv, nodeversion_value_type new_nv) {
         TransProxy item = Sto::item(this, get_internode_key(node));
-        if (item.has_read() &&
-                (prev_nv == item.template read_value<nodeversion_value_type>())) {
+        if (!item.has_read()) {
+            item.add_read(new_nv);
+            return true;
+        }
+        if (prev_nv == item.template read_value<nodeversion_value_type>()) {
             item.update_read(prev_nv, new_nv);
             return true;
         }
