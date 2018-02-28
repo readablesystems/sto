@@ -1,13 +1,15 @@
 #pragma once
 #include "Transaction.hh"
 #include "TWrapped.hh"
-#include "WriteLock.hh"
+#include "ConcurrencyControl.hh"
 #include "ContentionManager.hh"
 #include "Transaction.hh"
 #include "SwissTArray.hh"
 
 #include <sys/resource.h>
 #include <assert.h>
+
+typedef TNonopaqueVersion WriteLock;
 
 template <template <typename> class W = TOpaqueWrapped>
 class SwissTBasicGeneric : public TObject {
