@@ -1240,8 +1240,11 @@ private:
     bool update_internode_version(node_type *node,
             nodeversion_value_type prev_nv, nodeversion_value_type new_nv) {
         TransProxy item = Sto::item(this, get_internode_key(node));
-        if (item.has_read() &&
-                (prev_nv == item.template read_value<nodeversion_value_type>())) {
+        if (!item.has_read()) {
+            item.add_read(new_nv);
+            return true;
+        }
+        if (prev_nv == item.template read_value<nodeversion_value_type>()) {
             item.update_read(prev_nv, new_nv);
             return true;
         }
