@@ -81,6 +81,29 @@ void test_coarse_basic() {
     printf("pass %s\n", __FUNCTION__);
 }
 
+void test_coarse_read_my_split() {
+    typedef CoarseIndex::NamedColumn nc;
+    CoarseIndex ci;
+    ci.thread_init();
+
+    init_cindex(ci);
+    bool success, found;
+    uintptr_t row;
+    const coarse_grained_row *value;
+
+    {
+        TestTransaction t(0);
+        std::tie(success, found, row, value) = ci.select_row(key_type(20), {{nc::aa, false}});
+        assert(success && !found);
+        for (int i = 0; i < 10; ++i) {
+            auto r = Sto::tx_alloc<coarse_grained_row>();
+            new (r) coarse_grained_row(i, i, i);
+            ci.insert_row(key_type(10 + i), r);
+        }
+        assert(t.try_commit());
+    }
+}
+
 void test_coarse_conflict0() {
     typedef CoarseIndex::NamedColumn nc;
     CoarseIndex ci;
@@ -169,6 +192,7 @@ void test_fine_conflict0() {
 
 int main() {
     test_coarse_basic();
+    test_coarse_read_my_split();
     test_coarse_conflict0();
     test_coarse_conflict1();
 
