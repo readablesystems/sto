@@ -102,6 +102,8 @@ void test_coarse_read_my_split() {
         }
         assert(t.try_commit());
     }
+
+    printf("pass %s\n", __FUNCTION__);
 }
 
 void test_coarse_conflict0() {
