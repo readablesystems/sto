@@ -190,6 +190,64 @@ void test_fine_conflict0() {
     fi.thread_init();
 
     init_findex(fi);
+    bool success, found;
+    uintptr_t row;
+    const example_row *value;
+
+    {
+        TestTransaction t1(0);
+        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::ytd, false}});
+        assert(success && found);
+        assert(value->d_ytd == 3000);
+
+        TestTransaction t2(1);
+        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::ytd, true}});
+        assert(success && found);
+        auto new_row = Sto::tx_alloc(value);
+        new_row->d_ytd += 10;
+        fi.update_row(row, new_row);
+        assert(t2.try_commit());
+
+        t1.use();
+        assert(value->d_ytd == 3010);
+        assert(!t1.try_commit());
+    }
+
+    printf("pass %s\n", __FUNCTION__);
+}
+
+void test_fine_conflict1() {
+    typedef FineIndex::NamedColumn nc;
+    FineIndex fi;
+    fi.thread_init();
+
+    init_findex(fi);
+    bool success, found;
+    uintptr_t row;
+    const example_row *value;
+
+    {
+        TestTransaction t1(0);
+        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::ytd, false}});
+        assert(success && found);
+        assert(value->d_ytd == 3000);
+
+        TestTransaction t2(0);
+        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::payment_cnt, true}});
+        assert(success && found);
+        auto new_row = Sto::tx_alloc(value);
+        new_row->d_ytd += 10;
+        new_row->d_payment_cnt += 1;
+        fi.update_row(row, new_row);
+        assert(t2.try_commit());
+
+        t1.use();
+        assert(value->d_ytd == 3000); // unspecified modifications are ignored
+        assert(value->d_payment_cnt == 51);
+        assert(t1.try_commit());
+    }
+
+    printf("pass %s\n", __FUNCTION__);
 }
 
 int main() {
@@ -197,6 +255,7 @@ int main() {
     test_coarse_read_my_split();
     test_coarse_conflict0();
     test_coarse_conflict1();
-
+    test_fine_conflict0();
+    test_fine_conflict1();
     return 0;
 }
