@@ -18,7 +18,7 @@ XXHASH_DIR = third-party/xxHash
 XXHASH_OBJ = $(OBJ)/xxhash.o
 
 CPPFLAGS += -I$(MASSTREEDIR) -I$(XXHASH_DIR)
-CPPFLAGS += -Ilib -Isto-core -Ilegacy -Idatatype
+CPPFLAGS += -Ilib -Isto-core -Ilegacy -Idatatype -Ibenchmark
 
 # if CXXFLAGS changes, rebuild
 ifndef CXXFLAGS
@@ -104,7 +104,8 @@ UNIT_PROGRAMS = unit-tarray \
 				unit-opacity \
 				unit-swisstarray \
 				unit-swisstgeneric \
-				unit-masstree
+				unit-masstree \
+                unit-dboindex
 
 ACT_UNIT_PROGRAMS = unit-tarray \
                     unit-tflexarray \
@@ -112,7 +113,8 @@ ACT_UNIT_PROGRAMS = unit-tarray \
 					unit-rcu \
 					unit-opacity \
 					unit-sampling \
-				    unit-masstree
+				    unit-masstree \
+                    unit-dboindex
 
 PROGRAMS = concurrent \
            singleelems \
@@ -228,6 +230,9 @@ unit-swisstgeneric: $(OBJ)/unit-swisstgeneric.o $(STO_DEPS)
 
 unit-masstree: $(OBJ)/unit-masstree.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_DEPS) $(LDFLAGS) $(LIBS)
+
+unit-dboindex: $(OBJ)/unit-dboindex.o $(INDEX_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(LDFLAGS) $(LIBS)
 
 list1: $(OBJ)/list1.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
