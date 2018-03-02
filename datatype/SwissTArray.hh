@@ -64,13 +64,13 @@ public:
         get_type ret;
         bool ok = transGet(i, ret);
         if (!ok)
-						Sto::abort();
+            Sto::abort();
         return ret;
     }
     void transPut_throws(size_type i, T x) {
         bool ok = transPut(i, x);
         if (!ok)
-						Sto::abort();
+            Sto::abort();
     }
     get_type nontrans_get(size_type i) const {
         assert(i < N);

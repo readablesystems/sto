@@ -339,6 +339,12 @@ public:
         else
             return TWrappedAccess::read_nonatomic(&v_, item, version, true);
     }
+    static std::pair<bool, read_type> read(T* word, TransProxy item, const version_type& version) {
+        if (Opaque || Trivial)
+            return TWrappedAccess::read_clean_atomic(word, item, version, true);
+        else
+            return TWrappedAccess::read_nonatomic(word, item, version, true);
+    }
     void write(const T& v) {
         v_ = v;
     }
@@ -792,6 +798,7 @@ template <typename T> using TOpaqueWrapped = TWrapped<T>;
 template <typename T> using TNonopaqueWrapped = TWrapped<T, false>;
 
 template <typename T> using TAdaptiveNonopaqueWrapped = TAdaptiveWrapped<T>;
+template <typename T> using TSwissOpaqueWrapped = TSwissWrapped<T, true>;
 template <typename T> using TSwissNonopaqueWrapped = TSwissWrapped<T, false>;
 
 template <typename T> using TicTocNonopaqueWrapped = TicTocWrapped<T, false>;

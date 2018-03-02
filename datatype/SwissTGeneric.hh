@@ -9,7 +9,7 @@
 #include <sys/resource.h>
 #include <assert.h>
 
-typedef TSwissVersion<false> WriteLock;
+//typedef TSwissVersion<false> WriteLock;
 
 template <template <typename> class W = TSwissWrapped>
 class SwissTBasicGeneric : public TObject {
@@ -29,7 +29,9 @@ public:
             ret = item.template write_value<T>();
             return true;
         } else {
-            return W<T>::read(word, item, version(word), ret);
+            bool success;
+            std::tie(success, ret) = W<T>::read(word, item, version(word));
+            return success;
        }
     }
     template <typename T>
@@ -44,7 +46,7 @@ public:
         static_assert(sizeof(T) <= sizeof(void*), "T larger than void*");
         static_assert(mass::is_trivially_copyable<T>::value, "T nontrivial");
         auto item = Sto::item(this, word);
-        auto val = item.acquire_write(wlock(word), T(value)); //.assign_flags(sizeof(T) << TransItem::userf_shift
+        auto val = item.acquire_write(version(word), T(value)); //.assign_flags(sizeof(T) << TransItem::userf_shift
         return val;
     }
     template <typename T, typename U>
@@ -72,11 +74,11 @@ public:
     }
     inline void unlock(TransItem& item) override {
         version_type& vers = version(item.template key<void*>());
-        WriteLock& wl = wlock(item.template key<void*>());
+        //WriteLock& wl = wlock(item.template key<void*>());
         if (vers.is_locked_here())
             vers.cp_unlock(item);
-        if (wl.is_locked())
-            wl.cp_unlock(item);
+        //if (wl.is_locked())
+        //    wl.cp_unlock(item);
     }
 
     void print(std::ostream& w, const TransItem& item) const override {
@@ -90,7 +92,7 @@ public:
 
 private:
     version_type table_[table_size];
-    WriteLock wlock_table_[table_size];
+    //WriteLock wlock_table_[table_size];
     //int table_count_[table_size];
     //int wlock_table_count_[table_size];
 
@@ -106,6 +108,7 @@ private:
 #endif
     }
 
+#if 0
      inline WriteLock& wlock(void* k, int index) {
         assert(false);
 #ifdef __x86_64__
@@ -126,11 +129,12 @@ private:
 	return wlock_table_[index];
 #endif
     }
+#endif
 
   
 };
 
-typedef SwissTBasicGeneric<TOpaqueWrapped> SwissTGeneric;
-typedef SwissTBasicGeneric<TNonopaqueWrapped> SwissTNonopaqueGeneric;
+typedef SwissTBasicGeneric<TSwissOpaqueWrapped> SwissTGeneric;
+typedef SwissTBasicGeneric<TSwissNonopaqueWrapped> SwissTNonopaqueGeneric;
 
 
