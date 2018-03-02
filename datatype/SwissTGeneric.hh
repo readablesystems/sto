@@ -44,9 +44,7 @@ public:
         static_assert(sizeof(T) <= sizeof(void*), "T larger than void*");
         static_assert(mass::is_trivially_copyable<T>::value, "T nontrivial");
         auto item = Sto::item(this, word);
-        std::cout << wlock(word) << std::endl;
         auto val = item.acquire_write(wlock(word), T(value)); //.assign_flags(sizeof(T) << TransItem::userf_shift
-        std::cout << wlock(word) << std::endl;
         return val;
     }
     template <typename T, typename U>
