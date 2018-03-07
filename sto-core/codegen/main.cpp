@@ -12,7 +12,7 @@
 
 #include "driver.hpp"
 
-const std::string TName_str[] = {"int32_t", "int64_t", "float", "var_string", "fix_string"};
+const std::string TName_str[] = {"int64_t", "int32_t", "float", "var_string", "fix_string"};
 
 std::string cxx_type_name(const FieldType& t) {
     std::stringstream ss;
@@ -135,7 +135,20 @@ void generate_code_single_struct(StructSpec &result) {
     ss << "// Definitions for row type: " << struct_name << std::endl;
 
     // Generate struct declaration
-    ss << "struct " << struct_name << " {" << std::endl;
+    ss << "struct " << struct_name << " {" << std::endl << std::endl;
+
+    ss << idt << "enum class NamedColumn : int { ";
+    size_t i = 0;
+    for (auto& f : fields) {
+        ss << f.name;
+        if (i == 0)
+            ss << " = 0";
+        if (i != (fields.size() - 1))
+            ss << ", ";
+        ++i;
+    }
+    ss << " };" << std::endl << std::endl;
+
     for (auto& f : fields)
         ss << idt << cxx_type_name(f.t) << ' ' << f.name << ';' << std::endl;
     ss << "};" << std::endl;
@@ -157,18 +170,6 @@ void generate_code_single_versel(StructSpec &result) {
     ss << "public:" << std::endl;
     ss << idt << "typedef VersImpl version_type;" << std::endl;
     ss << idt << "static constexpr size_t num_versions = " << groups.size() << ';' << std::endl << std::endl;
-
-    ss << idt << "enum class NamedColumn : int { ";
-    size_t i = 0;
-    for (auto& f : result.fields) {
-        ss << f.name;
-        if (i == 0)
-            ss << " = 0";
-        if (i != (result.fields.size() - 1))
-            ss << ", ";
-        ++i;
-    }
-    ss << " };" << std::endl << std::endl;
 
     ss << idt << "static int map_impl(int col_n) {" << std::endl;
     ss << idt << idt << "return col_cell_map[col_n];" << std::endl;

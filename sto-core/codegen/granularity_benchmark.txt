@@ -1,0 +1,23 @@
+@@@
+@name: one_version_row
+@fields: {f1(BIGINT), f2(BIGINT), f3(BIGINT), f4(BIGINT), f5(BIGINT), f6(BIGINT), f7(BIGINT), f8(BIGINT)}
+@groups: {{f1, f2, f3, f4, f5, f6, f7, f8}}
+@@@
+
+@@@
+@name: two_version_row
+@fields: {f1(BIGINT), f2(BIGINT), f3(BIGINT), f4(BIGINT), f5(BIGINT), f6(BIGINT), f7(BIGINT), f8(BIGINT)}
+@groups: {{f1, f2, f3, f4}, {f5, f6, f7, f8}}
+@@@
+
+@@@
+@name: four_version_row
+@fields: {f1(BIGINT), f2(BIGINT), f3(BIGINT), f4(BIGINT), f5(BIGINT), f6(BIGINT), f7(BIGINT), f8(BIGINT)}
+@groups: {{f1, f2}, {f3, f4}, {f5, f6}, {f7, f8}}
+@@@
+
+@@@
+@name: eight_version_row
+@fields: {f1(BIGINT), f2(BIGINT), f3(BIGINT), f4(BIGINT), f5(BIGINT), f6(BIGINT), f7(BIGINT), f8(BIGINT)}
+@groups: {{f1}, {f2}, {f3}, {f4}, {f5}, {f6}, {f7}, {f8}}
+@@@
