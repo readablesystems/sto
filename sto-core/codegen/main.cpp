@@ -171,6 +171,9 @@ void generate_code_single_versel(StructSpec &result) {
     ss << idt << "typedef VersImpl version_type;" << std::endl;
     ss << idt << "static constexpr size_t num_versions = " << groups.size() << ';' << std::endl << std::endl;
 
+    ss << idt << "explicit VerSel(type v) : vers_() { (void)v; }" << std::endl;
+    ss << idt << "VerSel(type v, bool insert) : vers_() { (void)v; (void)insert; }" << std::endl << std::endl;
+
     ss << idt << "static int map_impl(int col_n) {" << std::endl;
     ss << idt << idt << "return col_cell_map[col_n];" << std::endl;
     ss << idt << '}' << std::endl << std::endl;
