@@ -14,6 +14,12 @@
 
 const std::string TName_str[] = {"int64_t", "int32_t", "float", "var_string", "fix_string"};
 
+unsigned int integer_log2(uint64_t input) {
+    unsigned int log = 0;
+    while (input >>= 1) {++log;}
+    return log;
+}
+
 std::string cxx_type_name(const FieldType& t) {
     std::stringstream ss;
     ss << TName_str[t.tname];
@@ -24,31 +30,37 @@ std::string cxx_type_name(const FieldType& t) {
     return ss.str();
 }
 
-std::string cpp_col_cell_map_init_list(StructSpec& result) {
-    std::stringstream ss;
+uint64_t cpp_col_cell_map_uint64(StructSpec& result) {
+    std::vector<int> ints;
     auto& fields = result.fields;
     auto& groups = result.groups;
 
-    ss << '{';
+    int gidx_width = integer_log2(groups.size());
+    if ((gidx_width * fields.size()) > 64) {
+        std::cerr << "CodeGen Error: mapping information does not fit uint64_t" << std::endl;
+        abort();
+    }
 
-    size_t fidx = 0;
     for (auto& f : fields) {
         size_t gidx = 0;
         for (auto& g : groups) {
             if (std::find(g.begin(), g.end(), f.name) != g.end()) {
                 // found in group/cell no. gidx
-                ss << gidx;
-                if ((fidx + 1) < fields.size())
-                    ss << ',';
+                ints.push_back(gidx);
                 break;
             }
             ++gidx;
         }
-        ++fidx;
     }
 
-    ss << '}';
-    return ss.str();
+    uint64_t map_val = 0;
+    int shift = 0;
+    for (auto i : ints) {
+        map_val += i << shift;
+        shift += gidx_width;
+    }
+
+    return map_val;
 }
 
 void print_single(StructSpec &result) {
@@ -163,6 +175,7 @@ void generate_code_single_versel(StructSpec &result) {
     const std::string idt = "    ";
     auto& struct_name = result.struct_name;
     auto& groups = result.groups;
+    auto gidx_width = integer_log2(groups.size());
 
     // Generate VerSel
     ss << "template <typename VersImpl>" << std::endl;
@@ -175,7 +188,9 @@ void generate_code_single_versel(StructSpec &result) {
     ss << idt << "VerSel(type v, bool insert) : vers_() { (void)v; (void)insert; }" << std::endl << std::endl;
 
     ss << idt << "static int map_impl(int col_n) {" << std::endl;
-    ss << idt << idt << "return col_cell_map[col_n];" << std::endl;
+    ss << idt << idt << "uint64_t mask = ~(~0ul << vidx_width) ;" << std::endl;
+    ss << idt << idt << "int shift = col_n * vidx_width;" << std::endl;
+    ss << idt << idt << "return ((col_cell_map & (mask << shift)) >> shift);" << std::endl;
     ss << idt << '}' << std::endl << std::endl;
 
     ss << idt << "version_type& version_at_impl(int cell) {" << std::endl;
@@ -202,7 +217,8 @@ void generate_code_single_versel(StructSpec &result) {
 
     ss << "private:" << std::endl;
     ss << idt << "version_type vers_[num_versions];" << std::endl;
-    ss << idt << "static constexpr int col_cell_map[] = " << cpp_col_cell_map_init_list(result) << ';' << std::endl;
+    ss << idt << "static constexpr unsigned int vidx_width = " << gidx_width << "u;" << std::endl;
+    ss << idt << "static constexpr uint64_t col_cell_map = " << cpp_col_cell_map_uint64(result) << 'ul;' << std::endl;
 
     ss << "};" << std::endl << std::endl;
     std::cout << ss.str() << std::endl;
