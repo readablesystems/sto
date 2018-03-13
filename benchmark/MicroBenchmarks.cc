@@ -238,8 +238,14 @@ int main(int argc, const char *argv[]) {
         case 2:
             instantiate_and_exec_outer<2>(params.ins_measure);
             break;
+        case 4:
+            instantiate_and_exec_outer<4>(params.ins_measure);
+            break;
+        case 8:
+            instantiate_and_exec_outer<8>(params.ins_measure);
+            break;
         default:
-            std::cerr << "granularity=" << params.granules << "not supported yet" << std::endl;
+            std::cerr << "Error: granularity=" << params.granules << " not supported." << std::endl;
             abort();
     }
 
