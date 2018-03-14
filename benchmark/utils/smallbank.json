@@ -1,0 +1,5 @@
+[
+    "\nCREATE TABLE accounts (\n    custid number(12,0) NOT NULL,\n    name varchar2(64) NOT NULL,\n    CONSTRAINT pk_accounts PRIMARY KEY (custid)\n);\n",
+    "\nCREATE TABLE savings (\n    custid number(12,0) NOT NULL,\n    bal number(10,2) NOT NULL,\n    CONSTRAINT pk_savings PRIMARY KEY (custid)\n);\n",
+    "\nCREATE TABLE checking (\n    custid number(12,0) NOT NULL,\n    bal number(10,2) NOT NULL,\n    CONSTRAINT pk_checking PRIMARY KEY (custid)\n);\n"
+]
