@@ -2,6 +2,19 @@
 
 #include "Wikipedia_bench.hh"
 
+#define INTERACTIVE_TXN_START Sto::start_transaction()
+
+#define INTERACTIVE_TXN_COMMIT \
+    if (!Sto::transaction()->in_progress() || !Sto::transaction()->try_commit()) { \
+        return false; \
+    }
+
+#define TXN_CHECK(op) \
+    if (!(op)) { \
+        Sto::transaction()->silent_abort(); \
+        return false; \
+    }
+
 namespace wikipedia {
 
 template <typename DBParams>
@@ -173,17 +186,17 @@ void wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
 }
 
 template <typename DBParams>
-bool wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
-                                                    int page_id,
-                                                    const std::string& page_title,
-                                                    const std::string& page_text,
-                                                    int page_name_space,
-                                                    int user_id,
-                                                    const std::string& user_ip,
-                                                    const std::string& user_text,
-                                                    int rev_id,
-                                                    const std::string& rev_comment,
-                                                    int rev_minor_edit) {
+bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
+                                                      int page_id,
+                                                      const std::string& page_title,
+                                                      const std::string& page_text,
+                                                      int page_name_space,
+                                                      int user_id,
+                                                      const std::string& user_ip,
+                                                      const std::string& user_text,
+                                                      int rev_id,
+                                                      const std::string& rev_comment,
+                                                      int rev_minor_edit) {
     typedef page_row::NamedColumn page_nc;
     typedef useracct_row::NamedColumn user_nc;
 
@@ -205,7 +218,7 @@ bool wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
     memcpy(text_v->old_text, page_text.c_str(), page_text.length() + 1);
 
     std::tie(abort, result) = db.tbl_text().insert_row(text_key, text_v);
-    INTERACTIVE_TXN_CHECK(abort);
+    TXN_CHECK(abort);
     assert(!result);
 
     // INSERT NEW REVISION
@@ -224,7 +237,7 @@ bool wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
     rev_v->rev_parent_id = rev_id;
 
     std::tie(abort, result) = db.tbl_revision().insert_row(new_rev_k, rev_v);
-    INTERACTIVE_TXN_CHECK(abort);
+    TXN_CHECK(abort);
     assert(!result);
     
     // UPDATE PAGE TABLE
@@ -235,7 +248,7 @@ bool wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
                                     {page_nc::page_is_new, true},
                                     {page_nc::page_is_redirect, true},
                                     {page_nc::page_len}});
-    TXN_DO(abort);
+    TXN_CHECK(abort);
     assert(result);
 
     auto new_pv = Sto::tx_alloc(reinterpret_cast<const page_row *>(value));
@@ -272,7 +285,7 @@ bool wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
     rc_v->rc_new_len = page_text.length();
 
     std::tie(abort, result) = db.tbl_recentchanges().insert_row(rc_k, rc_v);
-    INTERACTIVE_TXN_CHECK(abort);
+    TXN_CHECK(abort);
     assert(!result);
 
     // SELECT WATCHING USERS
@@ -285,7 +298,7 @@ bool wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
     }
 
     abort = db.idx_watchlist().range_scan<decltype(scan_cb), false>(k0, k1, scan_cb, existence);
-    INTERACTIVE_TXN_CHECK(abort);
+    TXN_CHECK(abort);
 
     if (!watching_users.empty()) {
         // update watchlist for each user watching
@@ -294,7 +307,7 @@ bool wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
         INTERACTIVE_TXN_START;
         for (auto& u : watching_users) {
             std::tie(abort, result, row, value) = db.tbl_watchlist().select_row(watchlist_key(u, page_name_space, page_title), true);
-            INTERACTIVE_TXN_CHECK(abort);
+            TXN_CHECK(abort);
             assert(result);
             auto new_wlv = Sto::tx_alloc(reinterpret_cast<const watchlist_row *>(value));
             new_wlv->wl_notificationtimestamp = timestamp_str;
@@ -306,12 +319,59 @@ bool wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
     }
 
     // INSERT LOG
-    //
+    logging_key lg_k(db.tbl_logging().gen_key());
+
+    auto lg_v = Sto::tx_alloc<logging_row>();
+    lg_v->log_type = std::string("patrol");
+    lg_v->log_action = std::string("patrol");
+    lg_v->log_timestamp = timestamp_str;
+    lg_v->log_user = user_id;
+    lg_v->log_namespace = page_name_space;
+    lg_v->log_title = page_title;
+    lg_v->log_comment = rev_comment;
+    lg_v->log_params = std::string();
+    lg_v->log_deleted = 0;
+    lg_v->log_user_text = user_text;
+    lg_v->log_page = page_id;
+
+    std::tie(abort, result) = db.tbl_logging().insert_row(lg_k, lg_v);
+    TXN_CHECK(abort);
+    assert(!result);
+
     // UPDATE USER
-    //
-    // UPDATE...
+    std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
+                                                                           {{user_nc::user_editcount, true},
+                                                                            {user_nc::user_touched, true}});
+    auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
+    new_uv->user_editcount += 1;
+    new_uv->user_touched = timestamp_str;
+    db.tbl_useracct().update_row(row, new_uv);
 
     INTERACTIVE_TXN_COMMIT;
+
+    return true;
+}
+
+template <typename DBParams>
+void wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
+                                                    int page_id,
+                                                    const std::string& page_title,
+                                                    const std::string& page_text,
+                                                    int page_name_space,
+                                                    int user_id,
+                                                    const std::string& user_ip,
+                                                    const std::string& user_text,
+                                                    int rev_id,
+                                                    const std::string& rev_comment,
+                                                    int rev_minor_edit) {
+    while (true) {
+        bool success =
+            txn_updatePage_inner(text_id, page_id, page_title, page_text, page_name_space, user_id,
+                                 user_ip, user_text, rev_id, rev_comment, rev_minor_edit);
+        if (success)
+            break;
+    }
+
 }
 
 }; // namespace wikipedia
