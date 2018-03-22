@@ -67,23 +67,48 @@ void wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_select,
     bool abort, result;
     const void *value;
 
-    std::tie(abort, result, std::ignore, value) = db.idx_pageid().select_row(pageid_idx_key(name_space, page_title), false);
+    std::tie(abort, result, std::ignore, value) = db.idx_page().select_row(page_idx_key(name_space, page_title), false);
     TXN_DO(abort);
     assert(result);
-    auto page_id = reinterpret_cast<const pageid_idx_value *>(value)->page_id;
+    auto page_id = reinterpret_cast<const page_idx_row *>(value)->page_id;
 
     std::tie(abort, result, std::ignore, value) = db.tbl_page().select_row(page_key(page_id), {{page_nc::page_latest, false}});
     TXN_DO(abort);
     assert(result);
     auto page_v = reinterpret_cast<const page_row *>(value);
 
-    std::tie(abort, result, std::ignore, std::ignore) = db.tbl_page_restrictions().select_row(page_restrictions_key(page_id), {{pr_nc::pr_type, false}});
-    TXN_DO(abort);
-    assert(result);
+    std::vector<int32_t> pr_ids;
+    auto pr_scan_cb = [&](const page_restrictions_idx_key&, const page_restrictions_idx_row& row) {
+        pr_ids.push_back(row.pr_id);
+    }
 
-    std::tie(abort, result, std::ignore, std::ignore) = db.tbl_ipblock().select_row(ipblock_key(user_ip), {{ipb_nc::ipb_expiry, false}});
+    page_restrictions_idx_key pr_k0(page_id, std::string());
+    page_restrictions_idx_key pr_k1(page_id, std::string(60, (char)0xff));
+    abort = db.idx_page_restrictions().range_scan<decltype(pr_scan_cb), false>(pr_k0, pr_k1, pr_scan_cb, ObserveRow::Value);
     TXN_DO(abort);
-    assert(result);
+
+    for (auto pr_id : pr_ids) {
+        std::tie(abort, result, std::ignore, std::ignore) = db.tbl_page_restrictions().select_row(page_restrictions_key(pr_id), {{pr_nc::pr_type, false}});
+        TXN_DO(abort);
+        assert(result);
+    }
+
+    std::vector<int32_t> ipb_ids;
+    auto ipb_scan_cb = [&](const ipblocks_addr_idx_key& key, const ipblocks_addr_idx_row&) {
+        ipb_ids.push_back(bswap(key.ipb_id));
+    }
+
+    constexpr int32_t m = std::numeric_limits<int32_t>::max();
+    ipblocks_addr_idx_key ipb_k0(user_ip, 0, 0, 0, 0);
+    ipblocks_addr_idx_key ipb_k1(user_ip, m, m, m, m);
+    abort = db.idx_ipblocks_addr().range_scan<decltype(scan_cb), false>(ipb_k0, ipb_k1, ipb_scan_cb, ObserveRow::Existence);
+    TXN_DO(abort);
+
+    for (auto ipb_id : ipb_ids) {
+        std::tie(abort, result, std::ignore, std::ignore) = db.tbl_ipblock().select_row(ipblock_key(ipb_id), {{ipb_nc::ipb_expiry, false}});
+        TXN_DO(abort);
+        assert(result);
+    }
 
     auto rev_id = page_v->page_latest;
     std::tie(abort, result, std::ignore, value) = db.tbl_revision().select_row(revision_key(rev_id), {{rev_nc::rev_text_id, false}});
@@ -138,13 +163,38 @@ void wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_select,
     assert(result);
     auto page_v = reinterpret_cast<const page_row *>(value);
 
-    std::tie(abort, result, std::ignore, std::ignore) = db.tbl_page_restrictions().select_row(page_restrictions_key(page_id), {{pr_nc::pr_type, false}});
-    TXN_DO(abort);
-    assert(result);
+    std::vector<int32_t> pr_ids;
+    auto pr_scan_cb = [&](const page_restrictions_idx_key&, const page_restrictions_idx_row& row) {
+        pr_ids.push_back(row.pr_id);
+    }
 
-    std::tie(abort, result, std::ignore, std::ignore) = db.tbl_ipblock().select_row(ipblock_key(user_ip), {{ipb_nc::ipb_expiry, false}});
+    page_restrictions_idx_key pr_k0(page_id, std::string());
+    page_restrictions_idx_key pr_k1(page_id, std::string(60, (char)0xff));
+    abort = db.idx_page_restrictions().range_scan<decltype(pr_scan_cb), false>(pr_k0, pr_k1, pr_scan_cb, ObserveRow::Value);
     TXN_DO(abort);
-    assert(result);
+
+    for (auto pr_id : pr_ids) {
+        std::tie(abort, result, std::ignore, std::ignore) = db.tbl_page_restrictions().select_row(page_restrictions_key(pr_id), {{pr_nc::pr_type, false}});
+        TXN_DO(abort);
+        assert(result);
+    }
+
+    std::vector<int32_t> ipb_ids;
+    auto ipb_scan_cb = [&](const ipblocks_user_idx_key& key, const ipblocks_user_idx_row&) {
+        ipb_ids.push_back(bswap(key.ipb_id));
+    }
+
+    constexpr int32_t m = std::numeric_limits<int32_t>::max();
+    ipblocks_user_idx_key ipb_k0(user_id, std::string(), 0, 0, 0);
+    ipblocks_user_idx_key ipb_k1(user_id, std::string(255, (char)0xff), m, m, m);
+    abort = db.idx_ipblocks_addr().range_scan<decltype(ipb_scan_cb), false>(ipb_k0, ipb_k1, ipb_scan_cb, ObserveRow::Existence);
+    TXN_DO(abort);
+
+    for (auto ipb_id : ipb_ids) {
+        std::tie(abort, result, std::ignore, std::ignore) = db.tbl_ipblock().select_row(ipblock_key(ipb_id), {{ipb_nc::ipb_expiry, false}});
+        TXN_DO(abort);
+        assert(result);
+    }
 
     auto rev_id = page_v->page_latest;
     std::tie(abort, result, std::ignore, value) = db.tbl_revision().select_row(revision_key(rev_id), {{rev_nc::rev_text_id, false}});
@@ -289,12 +339,12 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     assert(!result);
 
     // SELECT WATCHING USERS
-    watchlist_idx_key k0(page_title, page_name_space, 0);
-    watchlist_idx_key k1(page_title, page_name_space, std::numeric_limits<int32_t>::max());
+    watchlist_idx_key k0(page_name_space, page_title, 0);
+    watchlist_idx_key k1(page_name_space, page_title, std::numeric_limits<int32_t>::max());
 
     std::vector<int32_t> watching_users;
     auto scan_cb = [&](const watchlist_idx_key& key, const watchlist_idx_row&) {
-        watching_users.push_back(key.wl_user);
+        watching_users.push_back(bswap(key.wl_user));
     }
 
     abort = db.idx_watchlist().range_scan<decltype(scan_cb), false>(k0, k1, scan_cb, existence);
@@ -366,8 +416,9 @@ void wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
                                                     int rev_minor_edit) {
     while (true) {
         bool success =
-            txn_updatePage_inner(text_id, page_id, page_title, page_text, page_name_space, user_id,
-                                 user_ip, user_text, rev_id, rev_comment, rev_minor_edit);
+            txn_updatePage_inner(text_id, page_id, page_title, page_text,
+                                 page_name_space, user_id, user_ip, user_text,
+                                 rev_id, rev_comment, rev_minor_edit);
         if (success)
             break;
     }
