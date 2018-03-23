@@ -82,12 +82,17 @@ struct __attribute__((packed)) ipblocks_addr_idx_key_bare {
     explicit ipblocks_addr_idx_key_bare(const std::string& p_ipb_address,
                                         int32_t p_ipb_user,
                                         int32_t p_ipb_auto,
-                                        int32_t p_ipb_anon_only)
+                                        int32_t p_ipb_anon_only,
+                                        int32_t p_ipb_id)
         : ipb_address(p_ipb_address), ipb_user(bswap(p_ipb_user)),
-          ipb_auto(bswap(p_ipb_auto)), ipb_anon_only(bswap(p_ipb_anon_only)) {}
+          ipb_auto(bswap(p_ipb_auto)), ipb_anon_only(bswap(p_ipb_anon_only)), ipb_id(p_ipb_id) {}
 };
 
 typedef masstree_key_adapter<ipblocks_addr_idx_key_bare> ipblocks_addr_idx_key;
+
+struct ipblocks_addr_idx_row {
+    uintptr_t dummy;
+};
 
 struct __attribute__((packed)) ipblocks_user_idx_key_bare {
     int32_t ipb_user;
@@ -99,12 +104,17 @@ struct __attribute__((packed)) ipblocks_user_idx_key_bare {
     explicit ipblocks_user_idx_key_bare(int32_t p_ipb_user,
                                         const std::string& p_ipb_address,
                                         int32_t p_ipb_auto,
-                                        int32_t p_ipb_anon_only)
+                                        int32_t p_ipb_anon_only,
+                                        int32_t p_ipb_id)
         : ipb_user(bswap(p_ipb_user)), ipb_address(p_ipb_address),
-          ipb_auto(bswap(p_ipb_auto)), ipb_anon_only(bswap(p_ipb_anon_only)) {}
+          ipb_auto(bswap(p_ipb_auto)), ipb_anon_only(bswap(p_ipb_anon_only)), ipb_id(p_ipb_id) {}
 };
 
 typedef masstree_key_adapter<ipblocks_user_idx_key_bare> ipblocks_user_idx_key;
+
+struct ipblocks_user_idx_row {
+    uintptr_t dummy;
+};
 
 // New table: logging
 

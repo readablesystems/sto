@@ -563,6 +563,8 @@ private:
     }
 };
 
+enum class RowAccess : int { None = 0, ObserveExists, ObserveValue, UpdateValue };
+
 template <typename K, typename V, typename DBParams>
 class ordered_index : public TObject {
 public:

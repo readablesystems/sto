@@ -31,19 +31,19 @@ void wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
 
     auto wv = Sto::tx_alloc<watchlist_row>();
     bzero(wv, sizeof(watchlist_row));
-    std::tie(abort, result) = db.tbl_watchlist().insert(watchlist_key(user_id, name_space, page_title), wv);
+    std::tie(abort, result) = db.tbl_watchlist().insert_row(watchlist_key(user_id, name_space, page_title), wv);
     TXN_DO(abort);
 
     if (name_space == 0) {
-        std::tie(abort, std::ignore) = db.tbl_watchlist().insert(watchlist_key(user_id, 1, page_title), wv);
+        std::tie(abort, std::ignore) = db.tbl_watchlist().insert_row(watchlist_key(user_id, 1, page_title), wv);
         TXN_DO(abort);
     }
 
-    std::tie(success, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id), {{nc::user_touched, true}});
+    std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id), {{nc::user_touched, true}});
     TXN_DO(abort);
     assert(result);
     auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
-    new_uv->user_touched = ig.curr_timestamp();
+    new_uv->user_touched = ig.curr_timestamp_string();
     db.tbl_useracct().update_row(row, new_uv);
 
     } RETRY(true);
@@ -56,7 +56,7 @@ void wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_select,
                                                           const std::string& page_title) {
     typedef page_row::NamedColumn page_nc;
     typedef page_restrictions_row::NamedColumn pr_nc;
-    typedef ipblock_row::NamedColumn ipb_nc;
+    typedef ipblocks_row::NamedColumn ipb_nc;
     typedef revision_row::NamedColumn rev_nc;
     typedef text_row::NamedColumn text_nc;
 
@@ -67,7 +67,7 @@ void wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_select,
     bool abort, result;
     const void *value;
 
-    std::tie(abort, result, std::ignore, value) = db.idx_page().select_row(page_idx_key(name_space, page_title), false);
+    std::tie(abort, result, std::ignore, value) = db.idx_page().select_row(page_idx_key(name_space, page_title), RowAccess::ObserveValue);
     TXN_DO(abort);
     assert(result);
     auto page_id = reinterpret_cast<const page_idx_row *>(value)->page_id;
@@ -80,11 +80,12 @@ void wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_select,
     std::vector<int32_t> pr_ids;
     auto pr_scan_cb = [&](const page_restrictions_idx_key&, const page_restrictions_idx_row& row) {
         pr_ids.push_back(row.pr_id);
-    }
+        return true;
+    };
 
     page_restrictions_idx_key pr_k0(page_id, std::string());
     page_restrictions_idx_key pr_k1(page_id, std::string(60, (char)0xff));
-    abort = db.idx_page_restrictions().range_scan<decltype(pr_scan_cb), false>(pr_k0, pr_k1, pr_scan_cb, ObserveRow::Value);
+    abort = db.idx_page_restrictions().range_scan<decltype(pr_scan_cb), false>(pr_k0, pr_k1, pr_scan_cb, RowAccess::ObserveValue);
     TXN_DO(abort);
 
     for (auto pr_id : pr_ids) {
@@ -96,16 +97,17 @@ void wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_select,
     std::vector<int32_t> ipb_ids;
     auto ipb_scan_cb = [&](const ipblocks_addr_idx_key& key, const ipblocks_addr_idx_row&) {
         ipb_ids.push_back(bswap(key.ipb_id));
-    }
+        return true;
+    };
 
     constexpr int32_t m = std::numeric_limits<int32_t>::max();
     ipblocks_addr_idx_key ipb_k0(user_ip, 0, 0, 0, 0);
     ipblocks_addr_idx_key ipb_k1(user_ip, m, m, m, m);
-    abort = db.idx_ipblocks_addr().range_scan<decltype(scan_cb), false>(ipb_k0, ipb_k1, ipb_scan_cb, ObserveRow::Existence);
+    abort = db.idx_ipblocks_addr().range_scan<decltype(ipb_scan_cb), false>(ipb_k0, ipb_k1, ipb_scan_cb, RowAccess::ObserveValue);
     TXN_DO(abort);
 
     for (auto ipb_id : ipb_ids) {
-        std::tie(abort, result, std::ignore, std::ignore) = db.tbl_ipblock().select_row(ipblock_key(ipb_id), {{ipb_nc::ipb_expiry, false}});
+        std::tie(abort, result, std::ignore, std::ignore) = db.tbl_ipblocks().select_row(ipblocks_key(ipb_id), {{ipb_nc::ipb_expiry, false}});
         TXN_DO(abort);
         assert(result);
     }
@@ -132,7 +134,7 @@ void wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_select,
     typedef useracct_row::NamedColumn user_nc;
     typedef page_row::NamedColumn page_nc;
     typedef page_restrictions_row::NamedColumn pr_nc;
-    typedef ipblock_row::NamedColumn ipb_nc;
+    typedef ipblocks_row::NamedColumn ipb_nc;
     typedef revision_row::NamedColumn rev_nc;
     typedef text_row::NamedColumn text_nc;
 
@@ -147,16 +149,16 @@ void wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_select,
     TXN_DO(abort);
     assert(result);
 
-    std::tie(abort, result, std::ignore, std::ignore) = db.tbl_user_groups().select_row(user_groups_key(user_id), false);
+    std::tie(abort, result, std::ignore, std::ignore) = db.tbl_user_groups().select_row(user_groups_key(user_id), RowAccess::ObserveValue);
     TXN_DO(abort);
     assert(result);
 
     // From this point is pretty much the same as getPageAnonymous 
 
-    std::tie(abort, result, std::ignore, value) = db.idx_pageid().select_row(pageid_idx_key(name_space, page_title), false);
+    std::tie(abort, result, std::ignore, value) = db.idx_page().select_row(page_idx_key(name_space, page_title), RowAccess::ObserveValue);
     TXN_DO(abort);
     assert(result);
-    auto page_id = reinterpret_cast<const pageid_idx_value *>(value)->page_id;
+    auto page_id = reinterpret_cast<const page_idx_row *>(value)->page_id;
 
     std::tie(abort, result, std::ignore, value) = db.tbl_page().select_row(page_key(page_id), {{page_nc::page_latest, false}});
     TXN_DO(abort);
@@ -166,11 +168,12 @@ void wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_select,
     std::vector<int32_t> pr_ids;
     auto pr_scan_cb = [&](const page_restrictions_idx_key&, const page_restrictions_idx_row& row) {
         pr_ids.push_back(row.pr_id);
-    }
+        return true;
+    };
 
     page_restrictions_idx_key pr_k0(page_id, std::string());
     page_restrictions_idx_key pr_k1(page_id, std::string(60, (char)0xff));
-    abort = db.idx_page_restrictions().range_scan<decltype(pr_scan_cb), false>(pr_k0, pr_k1, pr_scan_cb, ObserveRow::Value);
+    abort = db.idx_page_restrictions().range_scan<decltype(pr_scan_cb), false>(pr_k0, pr_k1, pr_scan_cb, RowAccess::ObserveValue);
     TXN_DO(abort);
 
     for (auto pr_id : pr_ids) {
@@ -182,16 +185,17 @@ void wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_select,
     std::vector<int32_t> ipb_ids;
     auto ipb_scan_cb = [&](const ipblocks_user_idx_key& key, const ipblocks_user_idx_row&) {
         ipb_ids.push_back(bswap(key.ipb_id));
-    }
+        return true;
+    };
 
     constexpr int32_t m = std::numeric_limits<int32_t>::max();
     ipblocks_user_idx_key ipb_k0(user_id, std::string(), 0, 0, 0);
     ipblocks_user_idx_key ipb_k1(user_id, std::string(255, (char)0xff), m, m, m);
-    abort = db.idx_ipblocks_addr().range_scan<decltype(ipb_scan_cb), false>(ipb_k0, ipb_k1, ipb_scan_cb, ObserveRow::Existence);
+    abort = db.idx_ipblocks_addr().range_scan<decltype(ipb_scan_cb), false>(ipb_k0, ipb_k1, ipb_scan_cb, RowAccess::ObserveExists);
     TXN_DO(abort);
 
     for (auto ipb_id : ipb_ids) {
-        std::tie(abort, result, std::ignore, std::ignore) = db.tbl_ipblock().select_row(ipblock_key(ipb_id), {{ipb_nc::ipb_expiry, false}});
+        std::tie(abort, result, std::ignore, std::ignore) = db.tbl_ipblocks().select_row(ipblocks_key(ipb_id), {{ipb_nc::ipb_expiry, false}});
         TXN_DO(abort);
         assert(result);
     }
@@ -229,7 +233,7 @@ void wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
     TXN_DO(abort);
     assert(result);
     auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
-    new_uv->user_touched = ig.curr_timestamp();
+    new_uv->user_touched = ig.curr_timestamp_string();
     db.tbl_useracct().update_row(row, new_uv);
 
     } RETRY(true);
@@ -267,7 +271,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     text_v->old_text = new char[page_text.length() + 1];
     memcpy(text_v->old_text, page_text.c_str(), page_text.length() + 1);
 
-    std::tie(abort, result) = db.tbl_text().insert_row(text_key, text_v);
+    std::tie(abort,result) = db.tbl_text().insert_row(new_text_k, text_v);
     TXN_CHECK(abort);
     assert(!result);
 
@@ -276,14 +280,14 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
 
     auto rev_v = Sto::tx_alloc<revision_row>();
     rev_v->rev_page = page_id;
-    rev_v->rev_text_id = bswap(new_text_k.text_id);
+    rev_v->rev_text_id = bswap(new_text_k.old_id);
     rev_v->rev_comment = rev_comment;
     rev_v->rev_minor_edit = rev_minor_edit;
     rev_v->rev_user = user_id;
     rev_v->rev_user_text = user_text;
     rev_v->rev_timestamp = timestamp_str;
     rev_v->rev_deleted = 0;
-    rev_v->rev_len = page_text.length();
+    rev_v->rev_len = (int32_t)page_text.length();
     rev_v->rev_parent_id = rev_id;
 
     std::tie(abort, result) = db.tbl_revision().insert_row(new_rev_k, rev_v);
@@ -294,10 +298,10 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     std::tie(abort, result, row, value) =
         db.tbl_page().select_row(page_key(page_id),
                                     {{page_nc::page_latest, true},
-                                    {page_nc::page_touched, true},
-                                    {page_nc::page_is_new, true},
-                                    {page_nc::page_is_redirect, true},
-                                    {page_nc::page_len}});
+                                     {page_nc::page_touched, true},
+                                     {page_nc::page_is_new, true},
+                                     {page_nc::page_is_redirect, true},
+                                     {page_nc::page_len, true}});
     TXN_CHECK(abort);
     assert(result);
 
@@ -306,9 +310,9 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     new_pv->page_touched = timestamp_str;
     new_pv->page_is_new = 0;
     new_pv->page_is_redirect = 0;
-    new_pv->page_len = page_text.length();
+    new_pv->page_len = (int32_t)page_text.length();
 
-    db.tbl_revision().update_row(row, new_pv);
+    db.tbl_page().update_row(row, new_pv);
 
     // INSERT RECENT CHANGES
     recentchanges_key rc_k((int32_t)(db.tbl_recentchanges().gen_key()));
@@ -325,14 +329,14 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     rc_v->rc_user = user_id;
     rc_v->rc_user_text = user_text;
     rc_v->rc_comment = rev_comment;
-    rc_v->rc_this_oldid = bsawp(new_text_k.text_id);
+    rc_v->rc_this_oldid = bswap(new_text_k.old_id);
     rc_v->rc_last_oldid = text_id;
     rc_v->rc_bot = 0;
     rc_v->rc_moved_to_ns = 0;
     rc_v->rc_moved_to_title = std::string();
     rc_v->rc_ip = user_ip;
-    rc_v->rc_old_len = page_text.length();
-    rc_v->rc_new_len = page_text.length();
+    rc_v->rc_old_len = (int32_t)page_text.length();
+    rc_v->rc_new_len = (int32_t)page_text.length();
 
     std::tie(abort, result) = db.tbl_recentchanges().insert_row(rc_k, rc_v);
     TXN_CHECK(abort);
@@ -345,9 +349,10 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     std::vector<int32_t> watching_users;
     auto scan_cb = [&](const watchlist_idx_key& key, const watchlist_idx_row&) {
         watching_users.push_back(bswap(key.wl_user));
-    }
+        return true;
+    };
 
-    abort = db.idx_watchlist().range_scan<decltype(scan_cb), false>(k0, k1, scan_cb, existence);
+    abort = db.idx_watchlist().range_scan<decltype(scan_cb), false>(k0, k1, scan_cb, RowAccess::ObserveExists);
     TXN_CHECK(abort);
 
     if (!watching_users.empty()) {
@@ -356,11 +361,12 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
 
         INTERACTIVE_TXN_START;
         for (auto& u : watching_users) {
-            std::tie(abort, result, row, value) = db.tbl_watchlist().select_row(watchlist_key(u, page_name_space, page_title), true);
+            std::tie(abort, result, row, value) = db.tbl_watchlist().select_row(watchlist_key(u, page_name_space, page_title), RowAccess::UpdateValue);
             TXN_CHECK(abort);
             assert(result);
             auto new_wlv = Sto::tx_alloc(reinterpret_cast<const watchlist_row *>(value));
             new_wlv->wl_notificationtimestamp = timestamp_str;
+            db.tbl_watchlist().update_row(row, new_wlv);
         }
 
         INTERACTIVE_TXN_COMMIT;
