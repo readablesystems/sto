@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <ctime>
 #include <sstream>
+#include <sampling.hh>
 
 #include "compiler.hh"
 #include "clp.h"
@@ -105,15 +106,32 @@ private:
     wl_idx_type       idx_wl_;
 };
 
+// Pre-processed input distribution from wikibench trace (from OLTPBench)
+using sampling::hist_type;
+
+extern hist_type page_title_len_hist;
+extern hist_type revisions_per_page_hist;
+extern hist_type page_namespace_hist;
+extern hist_type rev_comment_len_hist;
+extern hist_type rev_minor_edit_hist;
+extern hist_type text_len_hist;
+extern hist_type user_name_len_hist;
+extern hist_type user_real_name_len_hist;
+extern hist_type user_rev_count_hist;
+
+struct wikipedia_runtime_dists {
+
+};
+
 class wikipedia_input_generator {
 public:
-    std::string curr_timestamp_string() {
-        auto t = std::time(nullptr);
-        auto tm = *std::localtime(&t);
-        std::stringstream ss;
-        ss << std::put_time(&tm, "%d%m%Y%H-%M");
-        return ss.str();
-    }
+std::string curr_timestamp_string() {
+    auto t = std::time(nullptr);
+    auto tm = *std::localtime(&t);
+    std::stringstream ss;
+    ss << std::put_time(&tm, "%d%m%Y%H-%M");
+    return ss.str();
+}
 };
 
 template <typename DBParams>
@@ -138,7 +156,6 @@ private:
     wikipedia_db<DBParams> db;
     wikipedia_input_generator ig;
 };
-
 
 template <typename DBParams>
 class wikipedia_loader {

@@ -147,14 +147,10 @@ public:
     }
 
 protected:
-    void generate() {
-        weight_type pmf = generate_weights();
+    void generate(weight_type&& pmf) {
         std::discrete_distribution<index_t> d_(pmf.begin(), pmf.end());
         dist.param(d_.param());
     }
-
-    // this is the method specific to each prob. distribution
-    virtual weight_type generate_weights() = 0;
 
     index_t begin;
     index_t end;
@@ -170,9 +166,9 @@ protected:
 class StoUniformDistribution : public StoRandomDistribution {
 public:
     StoUniformDistribution(int thid, index_t a, index_t b, bool shuffle = false) :
-        StoRandomDistribution(thid, a, b, shuffle) {generate();}
+        StoRandomDistribution(thid, a, b, shuffle) {generate(generate_weights());}
     StoUniformDistribution(int thid, index_t a, index_t b, std::vector<index_t> index_table) :
-        StoRandomDistribution(thid, a, b, index_table) {generate();}
+        StoRandomDistribution(thid, a, b, index_table) {generate(generate_weights());}
 
     index_t sample() const override {
         auto s_index = uis.sample();
@@ -182,8 +178,8 @@ public:
             return s_index;
     }
 
-protected:
-    weight_type generate_weights() override {
+private:
+    weight_type generate_weights() {
         std::uniform_int_distribution<index_t> d(begin, end);
         uis.set_params(d.param());
         return weight_type();
@@ -198,16 +194,16 @@ public:
     StoZipfDistribution(int thid, index_t a, index_t b, double skew = default_skew, bool shuffle = false) :
         StoRandomDistribution(thid, a, b, shuffle), skewness(skew) {
         calculate_sum();
-        generate();
+        generate(generate_weights());
     }
     StoZipfDistribution(int thid, index_t a, index_t b, double skew, std::vector<index_t> index_table) :
         StoRandomDistribution(thid, a, b, index_table), skewness(skew) {
         calculate_sum();
-        generate();
+        generate(generate_weights());
     }
 
-protected:
-    weight_type generate_weights() override {
+private:
+    weight_type generate_weights() {
         weight_type pmf;
         for (auto i = begin; i <= end; ++i) {
             double p = 1.0/(std::pow((double)(i-begin+1), skewness)*sum_);
@@ -217,7 +213,6 @@ protected:
         return pmf;
     }
 
-private:
     void calculate_sum() {
         double s = 0.0;
         for (auto i = begin; i <= end; ++i)
@@ -227,6 +222,40 @@ private:
 
     double skewness;
     double sum_;
+};
+
+// specialization 3: random distribution defined by a histogram
+struct hist_point {
+    size_t identifier;
+    size_t count;
+};
+
+typedef std::vector<hist_point> hist_type;
+
+class StoCustomDistribution : public StoRandomDistribution {
+public:
+    StoCustomDistribution(int thid, const hist_type& histogram) :
+        StoRandomDistribution(thid, 0, histogram.size() - 1, true) {
+        reset_translation_table(histogram);
+        generate(generate_weight(histogram));
+    }
+
+private:
+    void reset_translation_table(const hist_type& histogram) {
+        assert(index_translation_table.size() == histogram.size());
+        size_t idx = 0;
+        for (auto& pair : histogram) {
+            index_translation_table[idx] = pair.identifier;
+            ++idx;
+        }
+    }
+
+    weight_type generate_weight(const hist_type& histogram) {
+        weight_type pmf;
+        for (auto& pair : histogram)
+            pmf.push_back((double)pair.count);
+        return pmf;
+    }
 };
 
 }; // namespace sampling
