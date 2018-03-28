@@ -117,6 +117,7 @@ ACT_UNIT_PROGRAMS = unit-tarray \
                     unit-opacity \
                     unit-sampling \
                     unit-swisstarray \
+                    unit-swisstgeneric \
                     unit-masstree
 
 PROGRAMS = concurrent \
