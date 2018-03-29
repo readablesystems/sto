@@ -1,7 +1,7 @@
 # Build core
 
 script:
-  - make micro_bench tpcc_bench ycsb_bench check
+  - make micro_bench tpcc_bench ycsb_bench pred_bench check
 
 # Build & environment preferences
 
