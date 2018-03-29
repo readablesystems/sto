@@ -19,10 +19,10 @@ int main() {
     db_type db;
     initialize_db(db, 256);
 
-    bench::db_profiler prof(false /*don't spawn perf*/);
+    bench::db_profiler prof(false/*don't spawn perf*/);
     runner_type r(1/*nthreads*/, 10.0/*time limit*/, db);
 
-    prof.start(Profiler::perf_mode::counters);
+    prof.start(Profiler::perf_mode::record);
     size_t ncommits = r.run();
     prof.finish(ncommits);
 
