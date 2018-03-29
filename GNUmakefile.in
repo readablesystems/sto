@@ -136,6 +136,7 @@ PROGRAMS = concurrent \
 		   tpcc_bench \
 		   micro_bench \
 		   ycsb_bench \
+		   pred_bench \
 		   $(UNIT_PROGRAMS)
 
 all: $(PROGRAMS)
@@ -275,6 +276,9 @@ ycsb_bench: $(OBJ)/YCSB_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 micro_bench: $(OBJ)/MicroBenchmarks.o $(INDEX_OBJS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
+
+pred_bench: $(OBJ)/Predicate_bench.o $(INDEX_OBJS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;

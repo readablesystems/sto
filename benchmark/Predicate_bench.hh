@@ -1,5 +1,8 @@
+#include <thread>
+
 #include "DB_index.hh"
 #include "TCounter.hh"
+#include "DB_params.hh"
 
 namespace predicate_bench {
 
@@ -18,7 +21,7 @@ struct predicate_key {
         assert(mt_key.length() == sizeof(*this));
         memcpy(this, mt_key.data(), mt_key.length());
     }
-    operator lcdf::Str() {
+    operator lcdf::Str() const {
         return lcdf::Str((char *)this, sizeof(*this));
     }
 };
@@ -45,10 +48,10 @@ private:
 };
 
 template <typename DBParams>
-void initialize_db(predicate_db& db, size_t db_size) {
+void initialize_db(predicate_db<DBParams>& db, size_t db_size) {
     db.table().thread_init();
     for (size_t i = 0; i < db_size; ++i)
-        db.table().nontrans_insert(predicate_key(i), predicate_row(1000));
+        db.table().nontrans_put(predicate_key(i), predicate_row(1000));
     db.size() = db_size;
 }
 
@@ -56,43 +59,62 @@ template <typename DBParams>
 class predicate_runner {
 public:
     void run_txn(size_t key) {
-        TRANSACTION {
+        TRANSACTION_E {
             bool abort, result;
             const void *value;
             std::tie(abort, result, std::ignore, value) = db.table().select_row(predicate_key(key), false);
-            auto r = const_cast<predicate_row *>(value);
+            auto r = reinterpret_cast<predicate_row *>(const_cast<void *>(value));
             if (r->balance > 10) {
                 r->balance -= 1;
             } else {
                 r->balance += 1000;
             }
-        } RETRY(true);
+        } RETRY_E(true);
     }
 
-    void run() {
+    // returns the total number of transactions committed
+    size_t run() {
         std::vector<std::thread> thrs;
-        for (int i = 0; i < num_runners; ++i) {
-            thrs.emplace_back(&predicate_runner::runner_thread, this, i);
-        }
+        std::vector<size_t> txn_cnts((size_t)num_runners, 0);
+        for (int i = 0; i < num_runners; ++i)
+            thrs.emplace_back(&predicate_runner::runner_thread, this, i, std::ref(txn_cnts[i]));
         for (auto& t : thrs)
-            thrs.join();
+            t.join();
+        size_t combined_txn_count = 0;
+        for (auto c : txn_cnts)
+            combined_txn_count += c;
+        return combined_txn_count;
     }
 
-    predicate_runner(int nthreads, size_t ntrans_thread, predicate_db<DBParams>& d)
-        : num_runners(nthreads), db(d) {}
+    predicate_runner(int nthreads, double time_limit, predicate_db<DBParams>& database)
+        : num_runners(nthreads), tsc_elapse_limit(), db(database) {
+        using db_params::constants;
+        tsc_elapse_limit = (uint64_t)(time_limit * constants::processor_tsc_frequency * constants::billion);
+    }
 
 private:
-    void runner_thread(int runner_id) {
+    void runner_thread(int runner_id, size_t& committed_txns) {
+        ::TThread::set_id(runner_id);
         db.table().thread_init();
         std::mt19937 gen(runner_id);
         std::uniform_int_distribution<uint64_t> dist(0, db.size() - 1);
-        for (size_t i = 0; i < ntrans_thread; ++i) {
+
+        size_t thread_txn_count = 0;
+        auto tsc_begin = read_tsc();
+        while (true) {
             run_txn(dist(gen));
+            ++thread_txn_count;
+            if ((thread_txn_count & 0xfful) == 0) {
+                if (read_tsc() - tsc_begin >= tsc_elapse_limit)
+                    break;
+            }
         }
+
+        committed_txns = thread_txn_count;
     }
 
     int num_runners;
-    size_t ntrans_thread;
+    uint64_t tsc_elapse_limit;
     predicate_db<DBParams> db;
 };
 
