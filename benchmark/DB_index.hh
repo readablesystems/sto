@@ -1064,6 +1064,68 @@ public:
         return scanner.scan_succeeded_;
     }
 
+    template <typename Callback, bool Reverse>
+    bool range_scan(const key_type& begin, const key_type& end, Callback callback,
+                    RowAccess access, bool phantom_protection = true, int limit = -1) {
+        assert((limit == -1) || (limit > 0));
+        auto node_callback = [&] (leaf_type* node,
+                                  typename unlocked_cursor_type::nodeversion_value_type version) {
+            return ((!phantom_protection) || register_internode_version(node, version));
+        };
+
+        auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret) {
+            TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
+                                                      : Sto::fresh_item(this, item_key_t::row_item_key(e));
+
+            if (index_read_my_write) {
+                if (has_delete(row_item)) {
+                    ret = true;
+                    return true;
+                }
+                if (has_row_update(row_item)) {
+                    if (has_insert(row_item))
+                        ret = callback(key_type(key), e->row_container.row);
+                    else
+                        ret = callback(key_type(key), *(row_item.template raw_write_value<value_type *>()));
+                    return true;
+                }
+            }
+
+            bool ok = true;
+            switch (access) {
+                case RowAccess::ObserveValue:
+                case RowAccess::ObserveExists:
+                    ok = row_item.observe(e->version);
+                    break;
+                case RowAccess::None:
+                    break;
+                default:
+                    always_assert(false, "unsupported access type in range_scan");
+                    break;
+            }
+
+            if (!ok)
+                return false;
+
+            // skip invalid (inserted but yet committed) values, but do not abort
+            if (!e->valid()) {
+                ret = true;
+                return true;
+            }
+
+            ret = callback(key_type(key), e->row_container.row);
+            return true;
+        };
+
+        range_scanner<decltype(node_callback), decltype(value_callback), Reverse>
+                scanner(end, node_callback, value_callback);
+        if (Reverse)
+            table_.rscan(begin, true, scanner, limit, *ti);
+        else
+            table_.scan(begin, true, scanner, limit, *ti);
+        return scanner.scan_succeeded_;
+    }
+
     value_type *nontrans_get(const key_type& k) {
         unlocked_cursor_type lp(table_, k);
         bool found = lp.find_unlocked(*ti);
