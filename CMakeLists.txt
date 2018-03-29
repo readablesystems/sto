@@ -21,4 +21,3 @@ add_subdirectory(benchmark)
 add_subdirectory(test)
 
 add_library(rd srandomdev.c)
-
