@@ -191,7 +191,7 @@ void wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_select,
     constexpr int32_t m = std::numeric_limits<int32_t>::max();
     ipblocks_user_idx_key ipb_k0(user_id, std::string(), 0, 0, 0);
     ipblocks_user_idx_key ipb_k1(user_id, std::string(255, (char)0xff), m, m, m);
-    abort = db.idx_ipblocks_addr().range_scan<decltype(ipb_scan_cb), false>(ipb_k0, ipb_k1, ipb_scan_cb, RowAccess::ObserveExists);
+    abort = db.idx_ipblocks_user().range_scan<decltype(ipb_scan_cb), false>(ipb_k0, ipb_k1, ipb_scan_cb, RowAccess::ObserveExists);
     TXN_DO(abort);
 
     for (auto ipb_id : ipb_ids) {

@@ -577,6 +577,7 @@ public:
     static constexpr typename version_type::type invalid_bit = TransactionTid::user_bit;
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit << 1;
+    static constexpr TransItem::flags_type row_update_bit = TransItem::user0_bit << 2;
     static constexpr uintptr_t internode_bit = 1;
 
     typedef typename value_type::NamedColumn NamedColumn;
@@ -726,6 +727,23 @@ public:
     }
 
     sel_return_type
+    select_row(const key_type& key, RowAccess acc) {
+        unlocked_cursor_type lp(table_, key);
+        bool found = lp.find_unlocked(*ti);
+        internal_elem *e = lp.value();
+        if (found) {
+            return select_row(reinterpret_cast<uintptr_t>(e), acc);
+        } else {
+            if (!register_internode_version(lp.node(), lp.full_version_value()))
+                goto abort;
+            return sel_return_type(true, false, 0, nullptr);
+        }
+
+    abort:
+        return sel_return_type(false, false, 0, nullptr);
+    }
+
+    sel_return_type
     select_row(const key_type& key, std::initializer_list<column_access_t> accesses) {
         unlocked_cursor_type lp(table_, key);
         bool found = lp.find_unlocked(*ti);
@@ -737,6 +755,51 @@ public:
                 goto abort;
             return sel_return_type(true, false, 0, nullptr);
         }
+
+    abort:
+        return sel_return_type(false, false, 0, nullptr);
+    }
+
+    sel_return_type
+    select_row(uintptr_t rid, RowAccess access) {
+        auto e = reinterpret_cast<internal_elem *>(rid);
+        TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+
+        if (is_phantom(e, row_item))
+            goto abort;
+
+        if (index_read_my_write) {
+            if (has_delete(row_item)) {
+                return sel_return_type(true, false, 0, nullptr);
+            }
+            if (has_row_update(row_item)) {
+                value_type *vptr;
+                if (has_insert(row_item))
+                    vptr = &e->row_container.row;
+                else
+                    vptr = row_item.template raw_write_value<value_type *>();
+                return sel_return_type(true, true, rid, vptr);
+            }
+        }
+
+        bool ok = true;
+        switch (access) {
+            case RowAccess::UpdateValue:
+                ok = version_adapter::select_for_update(row_item, e->version);
+                row_item.add_flags(row_update_bit);
+                break;
+            case RowAccess::ObserveExists:
+            case RowAccess::ObserveValue:
+                ok = row_item.observe(e->version);
+                break;
+            default:
+                break;
+        }
+
+        if (!ok)
+            goto abort;
+
+        return sel_return_type(true, true, rid, &(e->row_container.row));
 
     abort:
         return sel_return_type(false, false, 0, nullptr);
@@ -763,7 +826,7 @@ public:
             if (has_delete(row_item)) {
                 return sel_return_type(true, false, 0, nullptr);
             }
-            if (any_has_write) {
+            if (any_has_write || has_row_update(row_item)) {
                 value_type *vptr;
                 if (has_insert(row_item))
                     vptr = &e->row_container.row;
@@ -1072,7 +1135,7 @@ public:
                 return;
             }
 
-            if (!has_insert(item)) {
+            if (has_row_update(item) && !has_insert(item)) {
                 if (value_is_small) {
                     e->row_container.row = item.write_value<value_type>();
                 } else {
@@ -1087,7 +1150,7 @@ public:
         } else {
             // skip installation if row-level update is present
             auto row_item = Sto::item(this, item_key_t::row_item_key(e));
-            if (row_item.has_write())
+            if (has_row_update(row_item))
                 return;
 
             value_type *vptr;
@@ -1227,6 +1290,9 @@ private:
     }
     static bool has_delete(const TransItem& item) {
         return (item.flags() & delete_bit) != 0;
+    }
+    static bool has_row_update(const TransItem& item) {
+        return (item.flags() & row_update_bit) != 0;
     }
     static bool is_phantom(internal_elem *e, const TransItem& item) {
         return (!e->valid() && !has_insert(item));
