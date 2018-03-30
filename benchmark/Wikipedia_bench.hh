@@ -14,6 +14,21 @@
 
 namespace wikipedia {
 
+struct constants {
+    static constexpr int anonymous_page_update_prob = 26;
+    static constexpr int anonymous_user_id = 0;
+    static constexpr int token_length = 32;
+    static constexpr int pages = 1000;
+    static constexpr int users = 2000;
+    static constexpr int max_watches_per_user = 1000;
+    static constexpr int batch_size = 1000;
+
+    static constexpr double num_watches_per_user_sigma = 1.75;
+    static constexpr double user_id_sigma = 1.0001;
+    static constexpr double watchlist_page_sigma = 1.0001;
+    static constexpr double revision_user_sigma = 1.0001;
+};
+
 template <typename DBParams>
 class wikipedia_db {
 public:
@@ -87,7 +102,6 @@ public:
     }
 
 private:
-
     ipb_tbl_type      tbl_ipb_;
     ipb_addr_idx_type idx_ipb_addr_;
     ipb_user_idx_type idx_ipb_user_;
@@ -106,37 +120,108 @@ private:
     wl_idx_type       idx_wl_;
 };
 
+enum class TxnType : int { AddWatchList = 0, GetPageAnon, GetPageAuth, RemoveWatchList, UpdatePage };
+
+typedef sampling::StoCustomDistribution<TxnType>::weightgram_type workload_mix_type;
+
+struct run_params {
+    uint64_t num_users;
+    uint64_t num_pages;
+    double time_limit;
+    workload_mix_type workload_mix;
+};
+
 // Pre-processed input distribution from wikibench trace (from OLTPBench)
-using sampling::hist_type;
+// Defined in Wikipedia_data.cc
+template <typename IntType>
+using hdist_type = sampling::StoCustomDistribution<IntType>;
 
-extern hist_type page_title_len_hist;
-extern hist_type revisions_per_page_hist;
-extern hist_type page_namespace_hist;
-extern hist_type rev_comment_len_hist;
-extern hist_type rev_minor_edit_hist;
-extern hist_type text_len_hist;
-extern hist_type user_name_len_hist;
-extern hist_type user_real_name_len_hist;
-extern hist_type user_rev_count_hist;
+using ui_hdist_type = hdist_type<uint64_t>;
+using si_hdist_type = hdist_type<int64_t>;
+using txn_dist_type = hdist_type<TxnType>;
 
-struct wikipedia_runtime_dists {
+using unif_dist_type = sampling::StoUniformDistribution;
+using zipf_dist_type = sampling::StoZipfDistribution;
+
+using ui_hist_type = ui_hdist_type::histogram_type;
+using si_hist_type = si_hdist_type::histogram_type;
+
+extern const ui_hist_type page_title_len_hist;
+extern const ui_hist_type revisions_per_page_hist;
+extern const ui_hist_type page_namespace_hist;
+extern const ui_hist_type rev_comment_len_hist;
+extern const std::vector<size_t> rev_delta_sizes;
+extern const std::vector<si_hist_type> rev_deltas;
+extern const ui_hist_type rev_minor_edit_hist;
+extern const ui_hist_type text_len_hist;
+extern const ui_hist_type user_name_len_hist;
+extern const ui_hist_type user_real_name_len_hist;
+extern const ui_hist_type user_rev_count_hist;
+
+struct runtime_dists {
+    ui_hdist_type page_title_len_dist;
+    ui_hdist_type page_namespace_dist;
+    unif_dist_type user_id_dist;
+    unif_dist_type ipv4_dist;
+    zipf_dist_type page_id_dist;
+    txn_dist_type txn_dist;
+
+    runtime_dists(int id, uint64_t num_users, uint64_t num_pages, const workload_mix_type& workload_mix)
+        : page_title_len_dist(id, page_title_len_hist),
+          page_namespace_dist(id, page_namespace_hist),
+          user_id_dist(id, 1, num_users, false /*supress shuffle*/),
+          ipv4_dist(id, 0, 255, false),
+          page_id_dist(id, 1, num_pages, constants::user_id_sigma, false /*supress shuffle*/),
+          txn_dist(id, workload_mix) {}
+};
+
+struct load_dists {
 
 };
 
-class wikipedia_input_generator {
+class runtime_input_generator {
 public:
-std::string curr_timestamp_string() {
-    auto t = std::time(nullptr);
-    auto tm = *std::localtime(&t);
-    std::stringstream ss;
-    ss << std::put_time(&tm, "%d%m%Y%H-%M");
-    return ss.str();
-}
+    runtime_input_generator(int runner_id, size_t num_users, size_t num_pages, const workload_mix_type& workload_mix)
+        : distributions(runner_id, num_users, num_pages, workload_mix) {}
+
+    std::string curr_timestamp_string() {
+        auto t = std::time(nullptr);
+        auto tm = *std::localtime(&t);
+        std::stringstream ss;
+        ss << std::put_time(&tm, "%d%m%Y%H-%M");
+        return ss.str();
+    }
+
+    std::string generate_ip_address() {
+        std::stringstream ss;
+        for (int i = 0; i < 4; ++i) {
+            ss << distributions.ipv4_dist.sample();
+            if (i != 3)
+                ss << '.';
+        }
+        return ss.str();
+    }
+
+    TxnType next_transaction() {
+        return distributions.txn_dist.sample();
+    }
+
+private:
+    runtime_dists distributions;
 };
 
 template <typename DBParams>
 class wikipedia_runner {
 public:
+    typedef wikipedia_db<DBParams> db_type;
+
+    wikipedia_runner(int runner_id, db_type& database, const run_params& params)
+        : id(runner_id), db(database), ig(runner_id, params.num_users, params.num_pages, params.workload_mix),
+          tsc_elapse_limit() {
+        tsc_elapse_limit =
+                (uint64_t)(params.time_limit * db_params::constants::processor_tsc_frequency * db_params::constants::billion);
+    }
+
     void run_txn_addWatchList(int user_id, int name_space, const std::string& page_title);
     void run_txn_getPageAnonymous(bool for_select, const std::string& user_ip,
                                   int name_space, const std::string& page_title);
@@ -148,13 +233,18 @@ public:
                             const std::string& user_ip, const std::string& user_text,
                             int rev_id, const std::string& rev_comment, int rev_minor_edit);
 
+    // returns number of transactions committed
+    size_t run();
+
 private:
     bool txn_updatePage_inner(int text_id, int page_id, const std::string& page_title,
                               const std::string& page_text, int page_name_space, int user_id,
                               const std::string& user_ip, const std::string& user_text,
                               int rev_id, const std::string& rev_comment, int rev_minor_edit);
-    wikipedia_db<DBParams> db;
-    wikipedia_input_generator ig;
+    int id;
+    db_type& db;
+    runtime_input_generator ig;
+    uint64_t tsc_elapse_limit;
 };
 
 template <typename DBParams>
@@ -170,5 +260,30 @@ private:
 
     wikipedia_db<DBParams>& db;
 };
+
+template <typename DBParams>
+size_t wikipedia_runner<DBParams>::run() {
+    ::TThread::set_id(id);
+    auto tsc_begin = read_tsc();
+    size_t cnt = 0;
+    while (true) {
+        auto t_type = ig.next_transaction();
+        switch (t_type) {
+            case TxnType::AddWatchList:
+            case TxnType::RemoveWatchList:
+            case TxnType::GetPageAnon:
+            case TxnType::GetPageAuth:
+            case TxnType::UpdatePage:
+            default:
+                always_assert(false, "unknown transaction type");
+                break;
+        }
+        ++cnt;
+        if ((read_tsc() - tsc_begin) >= tsc_elapse_limit)
+            break;
+    }
+
+    return cnt;
+}
 
 }; // namespace wikipedia

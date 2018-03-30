@@ -228,7 +228,6 @@ private:
 };
 
 // specialization 3: random distribution defined by a histogram
-
 template <typename IntType>
 class StoCustomDistribution : public StoRandomDistribution<IntType> {
 public:
@@ -237,7 +236,13 @@ public:
         size_t count;
     } histogram_pt_type;
 
+    typedef struct {
+        IntType identifier;
+        double weight;
+    } weighted_pt_type;
+
     typedef std::vector<histogram_pt_type> histogram_type;
+    typedef std::vector<weighted_pt_type> weightgram_type;
 
     StoCustomDistribution(int thid, const histogram_type& histogram) :
         StoRandomDistribution(thid, 0, histogram.size() - 1, true) {
@@ -245,12 +250,19 @@ public:
         generate(generate_weight(histogram));
     }
 
+    StoCustomDistribution(int thid, const weightgram_type& weightgram)
+        : StoRandomDistribution(thid, 0, weightgram.size() - 1, true) {
+        reset_translation_table(weightgram);
+        generate(extract_weight(weightgram));
+    }
+
 private:
-    void reset_translation_table(const histogram_type& histogram) {
-        assert(index_translation_table.size() == histogram.size());
+    template <typename PointType>
+    void reset_translation_table(const std::vector<PointType>& id_list) {
+        assert(index_translation_table.size() == id_list.size());
         size_t idx = 0;
-        for (auto& pair : histogram) {
-            index_translation_table[idx] = pair.identifier;
+        for (auto& point : id_list) {
+            index_translation_table[idx] = point.identifier;
             ++idx;
         }
     }
@@ -259,6 +271,13 @@ private:
         weight_type pmf;
         for (auto& pair : histogram)
             pmf.push_back((double)pair.count);
+        return pmf;
+    }
+
+    weight_type extract_weight(const weightgram_type& weightgram) {
+        weight_type pmf;
+        for (auto& point : weightgram)
+            pmf.push_back(point.weight);
         return pmf;
     }
 };

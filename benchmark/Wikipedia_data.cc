@@ -1,14 +1,16 @@
 #include "sampling.hh"
+#include "Wikipedia_bench.hh"
 
 namespace wikipedia {
 
-template <typename IntType>
-using hist_type = sampling::StoCustomDistribution<IntType>::histogram_type;
+const txn_dist_type::weightgram_type workload_weightgram = {
+    {TxnType::AddWatchList, 0.07},
+    {TxnType::RemoveWatchList, 0.07},
+    {TxnType::UpdatePage,7.6725},
+    {TxnType::GetPageAnon, 91.2656},
+    {TxnType::GetPageAuth, 0.9219}};
 
-using ui_hist_type = hist_type<uint64_t>;
-using si_hist_type = hist_type<int64_t>;
-
-ui_hist_type page_title_len_hist = {
+const ui_hist_type page_title_len_hist = {
     {1,   5},
     {2,   44},
     {3,   364},
@@ -120,7 +122,7 @@ ui_hist_type page_title_len_hist = {
     {141, 1}
 };
 
-ui_hist_type revisions_per_page_hist = {
+const ui_hist_type revisions_per_page_hist = {
     {1,    39401},
     {2,    16869},
     {3,    8127},
@@ -312,7 +314,7 @@ ui_hist_type revisions_per_page_hist = {
     {1000, 1}
 };
 
-ui_hist_type page_namespace_hist = {
+const ui_hist_type page_namespace_hist = {
     {0,   40847},
     {1,   15304},
     {2,   4718},
@@ -333,7 +335,7 @@ ui_hist_type page_namespace_hist = {
     {101, 29}
 };
 
-ui_hist_type rev_comment_len_hist = {
+const ui_hist_type rev_comment_len_hist = {
     {0,   369676},
     {1,   2349},
     {2,   6499},
@@ -594,7 +596,7 @@ ui_hist_type rev_comment_len_hist = {
 
 const std::vector<size_t> rev_delta_sizes = { 1000, 10000, 100000 };
 
-std::vector<si_hist_type> rev_deltas = {
+const std::vector<si_hist_type> rev_deltas = {
     {
         {-1000,237},
         {-900,237},
@@ -1616,12 +1618,12 @@ std::vector<si_hist_type> rev_deltas = {
     }
 };
 
-ui_hist_type rev_minor_edit_hist = {
+const ui_hist_type rev_minor_edit_hist = {
     {0, 1142822},
     {1, 362171}
 };
 
-ui_hist_type text_len_hist = {
+const ui_hist_type text_len_hist = {
     {100,    52106},
     {200,    32370},
     {300,    20377},
@@ -2624,7 +2626,7 @@ ui_hist_type text_len_hist = {
     {100000, 372}
 };
 
-ui_hist_type user_name_len_hist = {
+const ui_hist_type user_name_len_hist = {
     {1,  29},
     {2,  151},
     {3,  1278},
@@ -2680,7 +2682,7 @@ ui_hist_type user_name_len_hist = {
     {63, 1}
 };
 
-ui_hist_type user_real_name_len_hist = {
+const ui_hist_type user_real_name_len_hist = {
     {1,  29},
     {2,  151},
     {3,  1278},
@@ -2736,7 +2738,7 @@ ui_hist_type user_real_name_len_hist = {
     {63, 1}
 };
 
-ui_hist_type user_rev_count_hist = {
+const ui_hist_type user_rev_count_hist = {
     {1,    41764},
     {2,    16092},
     {3,    8401},
