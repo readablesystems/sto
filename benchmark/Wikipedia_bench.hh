@@ -52,6 +52,24 @@ public:
     typedef OIndex<watchlist_key, watchlist_row>                         wl_tbl_type;
     typedef OIndex<watchlist_idx_key, watchlist_idx_row>                 wl_idx_type;
 
+    explicit wikipedia_db() :
+        tbl_ipb_(),
+        idx_ipb_addr_(),
+        idx_ipb_user_(),
+        tbl_log_(),
+        tbl_page_(),
+        idx_page_(),
+        tbl_pr_(),
+        idx_pr_(),
+        tbl_rc_(),
+        tbl_rev_(),
+        tbl_text_(),
+        tbl_user_(),
+        idx_user_(),
+        tbl_ug_(),
+        tbl_wl_(),
+        idx_wl_() {}
+
     ipb_tbl_type& tbl_ipblocks() {
         return tbl_ipb_;
     }
@@ -101,6 +119,25 @@ public:
         return idx_wl_;
     }
 
+    void thread_init_all() {
+        tbl_ipb_.thread_init();
+        idx_ipb_addr_.thread_init();
+        idx_ipb_user_.thread_init();
+        tbl_log_.thread_init();
+        tbl_page_.thread_init();
+        idx_page_.thread_init();
+        tbl_pr_.thread_init();
+        idx_pr_.thread_init();
+        tbl_rc_.thread_init();
+        tbl_rev_.thread_init();
+        tbl_text_.thread_init();
+        tbl_user_.thread_init();
+        idx_user_.thread_init();
+        tbl_ug_.thread_init();
+        tbl_wl_.thread_init();
+        idx_wl_.thread_init();
+    }
+
 private:
     ipb_tbl_type      tbl_ipb_;
     ipb_addr_idx_type idx_ipb_addr_;
@@ -129,6 +166,9 @@ struct run_params {
     uint64_t num_pages;
     double time_limit;
     workload_mix_type workload_mix;
+
+    run_params(size_t nu, size_t np, double t, const workload_mix_type& wl) :
+        num_users(nu), num_pages(np), time_limit(t), workload_mix(wl) {}
 };
 
 // Pre-processed input distribution from wikibench trace (from OLTPBench)
@@ -145,6 +185,8 @@ using zipf_dist_type = sampling::StoZipfDistribution;
 
 using ui_hist_type = ui_hdist_type::histogram_type;
 using si_hist_type = si_hdist_type::histogram_type;
+
+extern const workload_mix_type workload_weightgram;
 
 extern const ui_hist_type page_title_len_hist;
 extern const ui_hist_type revisions_per_page_hist;
@@ -163,14 +205,16 @@ struct runtime_dists {
     ui_hdist_type page_namespace_dist;
     unif_dist_type user_id_dist;
     unif_dist_type ipv4_dist;
+    unif_dist_type rand_char_dist;
     zipf_dist_type page_id_dist;
     txn_dist_type txn_dist;
 
     runtime_dists(int id, uint64_t num_users, uint64_t num_pages, const workload_mix_type& workload_mix)
         : page_title_len_dist(id, page_title_len_hist),
           page_namespace_dist(id, page_namespace_hist),
-          user_id_dist(id, 1, num_users, false /*supress shuffle*/),
-          ipv4_dist(id, 0, 255, false),
+          user_id_dist(id+1000, 1, num_users, false /*supress shuffle*/),
+          ipv4_dist(id+1001, 0, 255, false),
+          rand_char_dist(id+1002, 32, 126, false),
           page_id_dist(id, 1, num_pages, constants::user_id_sigma, false /*supress shuffle*/),
           txn_dist(id, workload_mix) {}
 };
@@ -202,12 +246,34 @@ public:
         return ss.str();
     }
 
+    int32_t generate_user_id() {
+        return distributions.user_id_dist.sample();
+    }
+    int32_t generate_page_id() {
+        return distributions.page_id_dist.sample();
+    }
+    int32_t generate_page_namespace() {
+        return (int32_t)distributions.page_namespace_dist.sample();
+    }
+    std::string generate_page_title() {
+        return generate_random_string(distributions.page_title_len_dist.sample());
+    }
+
     TxnType next_transaction() {
         return distributions.txn_dist.sample();
     }
 
 private:
     runtime_dists distributions;
+
+    std::string generate_random_string(size_t len) {
+        std::string rs;
+        rs.resize(len);
+        for (size_t i = 0; i < len; ++i)
+            rs[i] = (char)distributions.rand_char_dist.sample();
+        return rs;
+    }
+
 };
 
 template <typename DBParams>
@@ -264,6 +330,8 @@ private:
 template <typename DBParams>
 size_t wikipedia_runner<DBParams>::run() {
     ::TThread::set_id(id);
+    db.thread_init_all();
+
     auto tsc_begin = read_tsc();
     size_t cnt = 0;
     while (true) {
