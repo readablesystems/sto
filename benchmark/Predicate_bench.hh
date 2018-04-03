@@ -1,13 +1,14 @@
 #include <thread>
 
 #include "DB_index.hh"
+#include "TBox.hh"
 #include "TCounter.hh"
 #include "DB_params.hh"
 
 namespace predicate_bench {
 
-struct predicate_row {
-    TCounter<int, TNonopaqueWrapped<int>> balance;
+template <typename DBRow> struct predicate_row {
+    DBRow balance;
 
     predicate_row() {}
     explicit predicate_row(int v) : balance(v) {}
@@ -26,12 +27,12 @@ struct predicate_key {
     }
 };
 
-template <typename DBParams>
+template <typename DBParams, typename DBRow>
 class predicate_db {
 public:
     template <typename K, typename V>
     using OIndex = bench::ordered_index<K, V, DBParams>;
-    typedef OIndex<predicate_key, predicate_row> table_type;
+    typedef OIndex<predicate_key, predicate_row<DBRow>> table_type;
 
     table_type& table() {
         return tbl_;
@@ -47,15 +48,15 @@ private:
     table_type tbl_;
 };
 
-template <typename DBParams>
-void initialize_db(predicate_db<DBParams>& db, size_t db_size) {
+template <typename DBParams, typename DBRow>
+void initialize_db(predicate_db<DBParams, DBRow>& db, size_t db_size) {
     db.table().thread_init();
     for (size_t i = 0; i < db_size; ++i)
-        db.table().nontrans_put(predicate_key(i), predicate_row(1000));
+        db.table().nontrans_put(predicate_key(i), predicate_row<DBRow>(1000));
     db.size() = db_size;
 }
 
-template <typename DBParams>
+template <typename DBParams, typename DBRow>
 class predicate_runner {
 public:
     void run_txn(size_t key) {
@@ -63,21 +64,34 @@ public:
             bool abort, result;
             const void *value;
             std::tie(abort, result, std::ignore, value) = db.table().select_row(predicate_key(key), false);
-            auto r = reinterpret_cast<predicate_row *>(const_cast<void *>(value));
+            auto r = reinterpret_cast<predicate_row<DBRow> *>(const_cast<void *>(value));
             if (r->balance > 10) {
-                r->balance -= 1;
+                r->balance = r->balance - 1;
             } else {
-                r->balance += 1000;
+                r->balance = r->balance + 1000;
             }
         } RETRY_E(true);
     }
 
+    void run_ro_txn(size_t key) {
+        TRANSACTION_E {
+            bool abort, result;
+            const void *value;
+            std::tie(abort, result, std::ignore, value) = db.table().select_row(predicate_key(key), false);
+            auto r = reinterpret_cast<predicate_row<DBRow> *>(const_cast<void *>(value));
+            volatile auto s = r->balance + 1000;
+            (void)s;  // Prevent s from being optimized away
+        } RETRY_E(true);
+    }
+
     // returns the total number of transactions committed
-    size_t run() {
+    size_t run(const bool readonly) {
         std::vector<std::thread> thrs;
         std::vector<size_t> txn_cnts((size_t)num_runners, 0);
         for (int i = 0; i < num_runners; ++i)
-            thrs.emplace_back(&predicate_runner::runner_thread, this, i, std::ref(txn_cnts[i]));
+            thrs.emplace_back(
+                &predicate_runner::runner_thread, this, i, std::ref(txn_cnts[i]),
+                readonly);
         for (auto& t : thrs)
             t.join();
         size_t combined_txn_count = 0;
@@ -86,14 +100,14 @@ public:
         return combined_txn_count;
     }
 
-    predicate_runner(int nthreads, double time_limit, predicate_db<DBParams>& database)
+    predicate_runner(int nthreads, double time_limit, predicate_db<DBParams, DBRow>& database)
         : num_runners(nthreads), tsc_elapse_limit(), db(database) {
         using db_params::constants;
         tsc_elapse_limit = (uint64_t)(time_limit * constants::processor_tsc_frequency * constants::billion);
     }
 
 private:
-    void runner_thread(int runner_id, size_t& committed_txns) {
+    void runner_thread(int runner_id, size_t& committed_txns, bool readonly) {
         ::TThread::set_id(runner_id);
         db.table().thread_init();
         std::mt19937 gen(runner_id);
@@ -102,7 +116,11 @@ private:
         size_t thread_txn_count = 0;
         auto tsc_begin = read_tsc();
         while (true) {
-            run_txn(dist(gen));
+            if (readonly) {
+              run_ro_txn(dist(gen));
+            } else {
+              run_txn(dist(gen));
+            }
             ++thread_txn_count;
             if ((thread_txn_count & 0xfful) == 0) {
                 if (read_tsc() - tsc_begin >= tsc_elapse_limit)
@@ -115,7 +133,7 @@ private:
 
     int num_runners;
     uint64_t tsc_elapse_limit;
-    predicate_db<DBParams> db;
+    predicate_db<DBParams, DBRow> db;
 };
 
 };
