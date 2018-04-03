@@ -26,7 +26,7 @@ static const Clp_Option options[] = {
         { "dbid",         'i', opt_dbid,  Clp_ValString, Clp_Optional },
         { "nthreads",     't', opt_nthrs, Clp_ValInt,    Clp_Optional },
         { "scaleusers",   'u', opt_users, Clp_ValInt,    Clp_Optional },
-        { "scalepages",   'p', opt_pages, Clp_ValInt,    Clp_Optional },
+        { "scalepages",   'g', opt_pages, Clp_ValInt,    Clp_Optional },
         { "time",         'l', opt_time,  Clp_ValDouble, Clp_Optional },
         { "perf",         'p', opt_perf,  Clp_NoVal,     Clp_Optional },
         { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,     Clp_Negate| Clp_Optional }
