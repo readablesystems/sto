@@ -50,7 +50,7 @@ void wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
 }
 
 template <typename DBParams>
-void wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_select,
+article_type wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_select,
                                                           const std::string& user_ip,
                                                           int name_space,
                                                           const std::string& page_title) {
@@ -61,6 +61,7 @@ void wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_select,
     typedef text_row::NamedColumn text_nc;
 
     (void)for_select;
+    article_type art;
 
     TRANSACTION {
 
@@ -118,15 +119,23 @@ void wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_select,
     assert(result);
     auto rev_text_id = reinterpret_cast<const revision_row *>(value)->rev_text_id;
 
-    std::tie(abort, result, std::ignore, std::ignore) = db.tbl_text().select_row(text_key(rev_text_id), {{text_nc::old_text, false}, {text_nc::old_flags, false}});
+    std::tie(abort, result, std::ignore, value) = db.tbl_text().select_row(text_key(rev_text_id), {{text_nc::old_text, false}, {text_nc::old_flags, false}});
     TXN_DO(abort);
     assert(result);
 
+    art.text_id = rev_text_id;
+    art.page_id = page_id;
+    art.rev_id = rev_id;
+    art.old_text = std::string(reinterpret_cast<const text_row *>(value)->old_text);
+    art.user_text = user_ip;
+
     } RETRY(true);
+
+    return art;
 }
 
 template <typename DBParams>
-void wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_select,
+article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_select,
                                                               const std::string& user_ip,
                                                               int user_id,
                                                               int name_space,
@@ -139,6 +148,7 @@ void wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_select,
     typedef text_row::NamedColumn text_nc;
 
     (void)for_select;
+    article_type art;
 
     TRANSACTION {
 
@@ -206,11 +216,19 @@ void wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_select,
     assert(result);
     auto rev_text_id = reinterpret_cast<const revision_row *>(value)->rev_text_id;
 
-    std::tie(abort, result, std::ignore, std::ignore) = db.tbl_text().select_row(text_key(rev_text_id), {{text_nc::old_text, false}, {text_nc::old_flags, false}});
+    std::tie(abort, result, std::ignore, value) = db.tbl_text().select_row(text_key(rev_text_id), {{text_nc::old_text, false}, {text_nc::old_flags, false}});
     TXN_DO(abort);
     assert(result);
 
+    art.text_id = rev_text_id;
+    art.page_id = page_id;
+    art.rev_id = rev_id;
+    art.old_text = std::string(reinterpret_cast<const text_row *>(value)->old_text);
+    art.user_text = user_ip;
+
     } RETRY(true);
+
+    return art;
 }
 
 template <typename DBParams>

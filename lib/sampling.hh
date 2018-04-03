@@ -85,9 +85,11 @@ private:
 template <typename IntType>
 class StoUniformIntSampler {
 public:
-    StoUniformIntSampler(int thid) : gen(thid), dis() {}
-    StoUniformIntSampler(int thid, IntType range)
-        : gen(thid), dis(0, range) {}
+    typedef std::mt19937 rng_type;
+
+    StoUniformIntSampler(rng_type& rng) : gen(rng), dis() {}
+    StoUniformIntSampler(rng_type& rng, IntType range)
+        : gen(rng), dis(0, range) {}
 
     IntType sample() {
         return dis(gen);
@@ -102,7 +104,7 @@ public:
     }
 
 private:
-    std::mt19937 gen;
+    std::mt19937& gen;
     std::uniform_int_distribution<IntType> dis;
 };
 
@@ -113,31 +115,43 @@ private:
 template <typename IntType = index_t>
 class StoRandomDistribution {
 public:
-    StoRandomDistribution(int thid, IntType a, IntType b, bool shuffle = false)
-        : begin(a), end(b), index_transform(false), uis(thid), dist() {
+    typedef StoUniformIntSampler::rng_type rng_type;
+
+    StoRandomDistribution(rng_type& rng, IntType a, IntType b, bool shuffle = false)
+        : begin(a), end(b), index_transform(false), uis(rng), dist() {
         assert(a < b);
         if (shuffle) {
-            std::mt19937 gen(thid);
             index_transform = true;
-
             for (auto i = begin; i <= end; ++i)
                 index_translation_table.push_back(i);
-            std::shuffle(index_translation_table.begin(), index_translation_table.end(), gen);
+            std::shuffle(index_translation_table.begin(), index_translation_table.end(), generator());
         }
     }
-    StoRandomDistribution(int thid, IntType a, IntType b, std::vector<IntType> index_table)
+    StoRandomDistribution(rng_type& rng, IntType a, IntType b, const std::vector<IntType>& index_table)
         : begin(a), end(b), index_transform(true), index_translation_table(index_table),
-        uis(thid), dist() {assert(a < b);}
+        uis(rng), dist() {assert(a < b);}
 
     virtual ~StoRandomDistribution() {}
 
-    virtual IntType sample() const {
-        auto s_index = dist(uis.generator());
+    IntType sample() const {
+        auto s_index = sample_idx();
         if (index_transform) {
             return index_translation_table[s_index];
         } else {
             return s_index + begin;
         }
+    }
+
+    virtual uint64_t sample_idx() const {
+        return dist(uis.generator());
+    }
+
+    IntType idx_translate(uint64_t idx) const {
+        return index_translation_table[idx];
+    }
+
+    std::mt19937& generator() const {
+        return uis.generator();
     }
 
     trace_type sample_trace(size_t num_samples) const {
@@ -158,26 +172,22 @@ protected:
     bool index_transform;
     std::vector<IntType> index_translation_table;
 
-    mutable StoUniformIntSampler<IntType> uis;
+    mutable StoUniformIntSampler<uint64_t> uis;
     // the core distribution
-    mutable std::discrete_distribution<IntType> dist;
+    mutable std::discrete_distribution<uint64_t> dist;
 };
 
 // specialization 1: uniform random distribution
 template <typename IntType = index_t>
 class StoUniformDistribution : public StoRandomDistribution<IntType> {
 public:
-    StoUniformDistribution(int thid, IntType a, IntType b, bool shuffle = false) :
-        StoRandomDistribution(thid, a, b, shuffle) {generate(generate_weights());}
-    StoUniformDistribution(int thid, IntType a, IntType b, std::vector<index_t> index_table) :
-        StoRandomDistribution(thid, a, b, index_table) {generate(generate_weights());}
+    StoUniformDistribution(rng_type& rng, IntType a, IntType b, bool shuffle = false) :
+        StoRandomDistribution(rng, a, b, shuffle) {generate(generate_weights());}
+    StoUniformDistribution(rng_type& rng, IntType a, IntType b, const std::vector<index_t>& index_table) :
+        StoRandomDistribution(rng, a, b, index_table) {generate(generate_weights());}
 
-    IntType sample() const override {
-        auto s_index = uis.sample();
-        if (index_transform)
-            return index_translation_table[s_index];
-        else
-            return s_index;
+    uint64_t sample_idx() const override {
+        return uis.sample();
     }
 
 private:
@@ -194,13 +204,13 @@ class StoZipfDistribution : public StoRandomDistribution<IntType> {
 public:
     static constexpr double default_skew = 1.0;
 
-    StoZipfDistribution(int thid, IntType a, IntType b, double skew = default_skew, bool shuffle = false) :
-        StoRandomDistribution(thid, a, b, shuffle), skewness(skew) {
+    StoZipfDistribution(rng_type& rng, IntType a, IntType b, double skew = default_skew, bool shuffle = false) :
+        StoRandomDistribution(rng, a, b, shuffle), skewness(skew), sum_() {
         calculate_sum();
         generate(generate_weights());
     }
-    StoZipfDistribution(int thid, IntType a, IntType b, double skew, std::vector<IntType> index_table) :
-        StoRandomDistribution(thid, a, b, index_table), skewness(skew) {
+    StoZipfDistribution(rng_type& rng, IntType a, IntType b, double skew, const std::vector<IntType>& index_table) :
+        StoRandomDistribution(rng, a, b, index_table), skewness(skew), sum_() {
         calculate_sum();
         generate(generate_weights());
     }
@@ -244,14 +254,14 @@ public:
     typedef std::vector<histogram_pt_type> histogram_type;
     typedef std::vector<weighted_pt_type> weightgram_type;
 
-    StoCustomDistribution(int thid, const histogram_type& histogram) :
-        StoRandomDistribution(thid, 0, histogram.size() - 1, true) {
+    StoCustomDistribution(rng_type& rng, const histogram_type& histogram) :
+        StoRandomDistribution(rng, 0, histogram.size() - 1, true) {
         reset_translation_table(histogram);
         generate(generate_weight(histogram));
     }
 
-    StoCustomDistribution(int thid, const weightgram_type& weightgram)
-        : StoRandomDistribution(thid, 0, weightgram.size() - 1, true) {
+    StoCustomDistribution(rng_type& rng, const weightgram_type& weightgram)
+        : StoRandomDistribution(rng, 0, weightgram.size() - 1, true) {
         reset_translation_table(weightgram);
         generate(extract_weight(weightgram));
     }

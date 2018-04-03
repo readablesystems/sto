@@ -464,4 +464,14 @@ struct watchlist_idx_row {
     uintptr_t dummy;
 };
 
+// Article type returned by getPageAnonymous transactions
+
+struct article_type {
+    int32_t text_id;
+    int32_t page_id;
+    int32_t rev_id;
+    std::string old_text;
+    std::string user_text;
+};
+
 }; // namespace wikipedia

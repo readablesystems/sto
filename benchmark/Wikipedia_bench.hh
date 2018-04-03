@@ -201,22 +201,25 @@ extern const ui_hist_type user_real_name_len_hist;
 extern const ui_hist_type user_rev_count_hist;
 
 struct runtime_dists {
+    std::mt19937 thread_rng;
+
     ui_hdist_type page_title_len_dist;
     ui_hdist_type page_namespace_dist;
     unif_dist_type user_id_dist;
     unif_dist_type ipv4_dist;
-    unif_dist_type rand_char_dist;
     zipf_dist_type page_id_dist;
     txn_dist_type txn_dist;
 
+    std::uniform_int_distribution<int> std_char_dist;
+
     runtime_dists(int id, uint64_t num_users, uint64_t num_pages, const workload_mix_type& workload_mix)
-        : page_title_len_dist(id, page_title_len_hist),
-          page_namespace_dist(id, page_namespace_hist),
-          user_id_dist(id+1000, 1, num_users, false /*supress shuffle*/),
-          ipv4_dist(id+1001, 0, 255, false),
-          rand_char_dist(id+1002, 32, 126, false),
-          page_id_dist(id, 1, num_pages, constants::user_id_sigma, false /*supress shuffle*/),
-          txn_dist(id, workload_mix) {}
+        : thread_rng(id),
+          page_title_len_dist(thread_rng, page_title_len_hist),
+          page_namespace_dist(thread_rng, page_namespace_hist),
+          user_id_dist(thread_rng, 1, num_users, false /*supress shuffle*/),
+          ipv4_dist(thread_rng, 0, 255, false),
+          page_id_dist(thread_rng, 1, num_pages, constants::user_id_sigma, false /*supress shuffle*/),
+          txn_dist(thread_rng, workload_mix), std_char_dist(32, 126) {}
 };
 
 struct load_dists {
@@ -256,7 +259,17 @@ public:
         return (int32_t)distributions.page_namespace_dist.sample();
     }
     std::string generate_page_title() {
-        return generate_random_string(distributions.page_title_len_dist.sample());
+        auto pl_idx = distributions.page_title_len_dist.sample_idx();
+        auto len = distributions.page_title_len_dist.idx_translate(pl_idx);
+        auto id_limit = page_title_len_hist[pl_idx].count;
+
+        std::uniform_int_distribution<int> dist(1, (int)id_limit);
+        auto seed = dist(distributions.thread_rng);
+
+        std::stringstream ss;
+        ss << '[' << len << ',' << seed << ']';
+
+        return seeded_random_string(seed, len) + ss.str();
     }
 
     TxnType next_transaction() {
@@ -266,11 +279,12 @@ public:
 private:
     runtime_dists distributions;
 
-    std::string generate_random_string(size_t len) {
+    std::string seeded_random_string(int seed, size_t len) {
         std::string rs;
         rs.resize(len);
+        std::mt19937 gen(seed);
         for (size_t i = 0; i < len; ++i)
-            rs[i] = (char)distributions.rand_char_dist.sample();
+            rs[i] = (char)distributions.std_char_dist(gen);
         return rs;
     }
 
@@ -289,10 +303,10 @@ public:
     }
 
     void run_txn_addWatchList(int user_id, int name_space, const std::string& page_title);
-    void run_txn_getPageAnonymous(bool for_select, const std::string& user_ip,
-                                  int name_space, const std::string& page_title);
-    void run_txn_getPageAuthenticated(bool for_select, const std::string& user_ip,
-                                      int user_id, int name_space, const std::string& page_title);
+    article_type run_txn_getPageAnonymous(bool for_select, const std::string& user_ip,
+                                     int name_space, const std::string& page_title);
+    article_type run_txn_getPageAuthenticated(bool for_select, const std::string& user_ip,
+                                         int user_id, int name_space, const std::string& page_title);
     void run_txn_removeWatchList(int user_id, int name_space, const std::string& page_title);
     void run_txn_updatePage(int text_id, int page_id, const std::string& page_title,
                             const std::string& page_text, int page_name_space, int user_id,
@@ -336,12 +350,32 @@ size_t wikipedia_runner<DBParams>::run() {
     size_t cnt = 0;
     while (true) {
         auto t_type = ig.next_transaction();
+        auto user_id = ig.generate_user_id();
+        auto page_ns = ig.generate_page_namespace();
+        auto page_title = ig.generate_page_title();
         switch (t_type) {
             case TxnType::AddWatchList:
+                run_txn_addWatchList(user_id, page_ns, page_title);
+                break;
             case TxnType::RemoveWatchList:
+                run_txn_removeWatchList(user_id, page_ns, page_title);
+                break;
             case TxnType::GetPageAnon:
+                run_txn_getPageAnonymous(false, ig.generate_ip_address(), page_ns, page_title);
+                break;
             case TxnType::GetPageAuth:
-            case TxnType::UpdatePage:
+                run_txn_getPageAuthenticated(false, ig.generate_ip_address(), user_id, page_ns, page_title);
+                break;
+            case TxnType::UpdatePage: {
+                auto ipaddr = ig.generate_ip_address();
+                auto article = run_txn_getPageAnonymous(false, ipaddr, page_ns, page_title);
+                if (article.text_id == 0 || article.page_id == 0)
+                    break;
+                run_txn_updatePage(article.text_id, article.page_id, page_title, ig.generate_rev_text(article.old_text),
+                                   page_ns, user_id, ipaddr, article.user_text, article.rev_id,
+                                   ig.generate_rev_comment(), ig.generate_rev_minor_edit());
+                break;
+            }
             default:
                 always_assert(false, "unknown transaction type");
                 break;
