@@ -171,8 +171,15 @@ struct run_params {
         num_users(nu), num_pages(np), time_limit(t), workload_mix(wl) {}
 };
 
+struct load_params {
+    uint64_t num_users;
+    uint64_t num_pages;
+};
+
 // Pre-processed input distribution from wikibench trace (from OLTPBench)
 // Defined in Wikipedia_data.cc
+using rng_type = sampling::StoRandomDistribution::rng_type;
+
 template <typename IntType>
 using hdist_type = sampling::StoCustomDistribution<IntType>;
 
@@ -191,6 +198,8 @@ extern const workload_mix_type workload_weightgram;
 extern const ui_hist_type page_title_len_hist;
 extern const ui_hist_type revisions_per_page_hist;
 extern const ui_hist_type page_namespace_hist;
+extern const ui_hist_type page_restrictions_hist;
+extern const std::vector<std::string> page_restrictions_strs;
 extern const ui_hist_type rev_comment_len_hist;
 extern const std::vector<size_t> rev_delta_sizes;
 extern const std::vector<si_hist_type> rev_deltas;
@@ -200,36 +209,67 @@ extern const ui_hist_type user_name_len_hist;
 extern const ui_hist_type user_real_name_len_hist;
 extern const ui_hist_type user_rev_count_hist;
 
-struct runtime_dists {
-    std::mt19937 thread_rng;
+struct basic_dists {
+    rng_type thread_rng;
 
     ui_hdist_type page_title_len_dist;
     ui_hdist_type page_namespace_dist;
-    unif_dist_type user_id_dist;
-    unif_dist_type ipv4_dist;
+    ui_hdist_type rev_minor_edit_dist;
+    std::vector<si_hdist_type> rev_deltas_dists;
     zipf_dist_type page_id_dist;
-    txn_dist_type txn_dist;
-
+    std::uniform_int_distribution<int> std_user_id_dist;
+    std::uniform_int_distribution<int> std_ipv4_dist;
     std::uniform_int_distribution<int> std_char_dist;
 
-    runtime_dists(int id, uint64_t num_users, uint64_t num_pages, const workload_mix_type& workload_mix)
-        : thread_rng(id),
-          page_title_len_dist(thread_rng, page_title_len_hist),
-          page_namespace_dist(thread_rng, page_namespace_hist),
-          user_id_dist(thread_rng, 1, num_users, false /*supress shuffle*/),
-          ipv4_dist(thread_rng, 0, 255, false),
-          page_id_dist(thread_rng, 1, num_pages, constants::user_id_sigma, false /*supress shuffle*/),
-          txn_dist(thread_rng, workload_mix), std_char_dist(32, 126) {}
+    basic_dists(int id, uint64_t num_users, uint64_t num_pages)
+            : thread_rng(id),
+              page_title_len_dist(thread_rng, page_title_len_hist),
+              page_namespace_dist(thread_rng, page_namespace_hist),
+              rev_minor_edit_dist(thread_rng, rev_minor_edit_hist),
+              rev_deltas_dists(),
+              page_id_dist(thread_rng, 1, num_pages, constants::user_id_sigma),
+              std_user_id_dist(1, (int)num_users),
+              std_ipv4_dist(0, 255),
+              std_char_dist(32, 126) {
+        for (auto& h : rev_deltas) {
+            rev_deltas_dists.emplace_back(thread_rng, h);
+        }
+    }
 };
 
-struct load_dists {
+struct runtime_dists {
+    txn_dist_type txn_dist;
 
+    runtime_dists(rng_type  thread_rng, const workload_mix_type& workload_mix)
+        : txn_dist(thread_rng, workload_mix) {}
 };
 
-class runtime_input_generator {
+struct loadtime_dists {
+    ui_hdist_type page_restrictions_dist;
+    ui_hdist_type user_name_len_dist;
+    ui_hdist_type user_real_name_len_dist;
+    ui_hdist_type user_revcount_dist;
+    ui_hdist_type revisions_per_page_dist;
+    ui_hdist_type text_len_dist;
+    zipf_dist_type user_watch_dist;
+    std::uniform_real_distribution<float> std_pg_rnd_dist;
+
+    loadtime_dists(rng_type& thread_rng, size_t num_pages)
+        : page_restrictions_dist(thread_rng, page_restrictions_hist),
+          user_name_len_dist(thread_rng, user_name_len_hist),
+          user_real_name_len_dist(thread_rng, user_real_name_len_hist),
+          user_revcount_dist(thread_rng, user_rev_count_hist),
+          revisions_per_page_dist(thread_rng, revisions_per_page_hist),
+          text_len_dist(thread_rng, text_len_hist),
+          user_watch_dist(thread_rng,
+                          0, std::min((int)num_pages, constants::max_watches_per_user),
+                          constants::num_watches_per_user_sigma),
+          std_pg_rnd_dist(0.0, 100.0) {}
+};
+
+class input_generator {
 public:
-    runtime_input_generator(int runner_id, size_t num_users, size_t num_pages, const workload_mix_type& workload_mix)
-        : distributions(runner_id, num_users, num_pages, workload_mix) {}
+    typedef sampling::StoRandomDistribution::rng_type rng_type;
 
     std::string curr_timestamp_string() {
         auto t = std::time(nullptr);
@@ -242,7 +282,7 @@ public:
     std::string generate_ip_address() {
         std::stringstream ss;
         for (int i = 0; i < 4; ++i) {
-            ss << distributions.ipv4_dist.sample();
+            ss << dists.std_ipv4_dist(dists.thread_rng);
             if (i != 3)
                 ss << '.';
         }
@@ -250,44 +290,154 @@ public:
     }
 
     int32_t generate_user_id() {
-        return distributions.user_id_dist.sample();
+        return dists.std_user_id_dist(dists.thread_rng);
     }
     int32_t generate_page_id() {
-        return distributions.page_id_dist.sample();
+        return dists.page_id_dist.sample();
     }
-    int32_t generate_page_namespace() {
-        return (int32_t)distributions.page_namespace_dist.sample();
+    int32_t generate_page_namespace(int page_id) {
+        rng_type g(page_id);
+        return (int32_t)dists.page_namespace_dist.sample(g);
     }
-    std::string generate_page_title() {
-        auto pl_idx = distributions.page_title_len_dist.sample_idx();
-        auto len = distributions.page_title_len_dist.idx_translate(pl_idx);
-        auto id_limit = page_title_len_hist[pl_idx].count;
+    int32_t generate_rev_minor_edit() {
+        return (int32_t)dists.rev_minor_edit_dist.sample();
+    }
+    std::string generate_rev_comment() {
+        // returning a constant string for now
+        return "this is a comment";
+    }
+    std::string generate_rev_text(const std::string& old_text) {
+        std::string str;
+        size_t rev_delta_id = 0;
+        for (auto sz : rev_delta_sizes) {
+            if (old_text.length() <= sz)
+                break;
+            ++rev_delta_id;
+        }
+        if (rev_delta_id == rev_delta_sizes.size())
+            --rev_delta_id;
+        assert((rev_delta_id >= 0) && (rev_delta_id < rev_delta_sizes.size()));
 
-        std::uniform_int_distribution<int> dist(1, (int)id_limit);
-        auto seed = dist(distributions.thread_rng);
+        auto& d = dists.rev_deltas_dists[rev_delta_id];
+        int64_t delta = d.sample();
+        if ((int64_t)old_text.length() + delta <= 0) {
+            delta = -1l * std::lround((double)old_text.length() / 1.5);
+            if ((std::abs(delta) == (int64_t)old_text.length()) && delta < 0) {
+                delta /= 2;
+            }
+        }
+
+        if (delta != 0) {
+            str = resize_text(old_text, delta);
+        } else {
+            str = old_text;
+        }
+
+        return permute_text(std::move(str));
+    }
+    std::string generate_page_title(int page_id) {
+        rng_type g(page_id);
+        auto title_len = dists.page_title_len_dist.sample(g);
 
         std::stringstream ss;
-        ss << '[' << len << ',' << seed << ']';
+        ss << random_string(g, title_len);
+        ss << '[' << page_id << ']';
 
-        return seeded_random_string(seed, len) + ss.str();
+        return ss.str();
     }
 
-    TxnType next_transaction() {
-        return distributions.txn_dist.sample();
-    }
+protected:
+    input_generator(int runner_id, size_t num_users, size_t num_pages)
+            : dists(runner_id, num_users, num_pages) {}
 
-private:
-    runtime_dists distributions;
-
-    std::string seeded_random_string(int seed, size_t len) {
+    std::string random_string(rng_type& rng, size_t len) {
         std::string rs;
         rs.resize(len);
-        std::mt19937 gen(seed);
         for (size_t i = 0; i < len; ++i)
-            rs[i] = (char)distributions.std_char_dist(gen);
+            rs[i] = (char)dists.std_char_dist(rng);
+        return rs;
+    }
+    std::string random_string(size_t len) {
+        std::string rs;
+        rs.resize(len);
+        for (size_t i = 0; i < len; ++i)
+            rs[i] = (char)dists.std_char_dist(dists.thread_rng);
         return rs;
     }
 
+    std::string resize_text(const std::string& old_text, int64_t delta) {
+        int64_t new_len = (int64_t)old_text.length() + delta;
+        assert(new_len > 0);
+
+        std::string rs;
+        rs.resize((size_t)new_len);
+
+        for (size_t i = 0; i < (size_t)new_len; ++i) {
+            rs[i] = (i < old_text.length()) ? old_text[i]
+                                            :(char)dists.std_char_dist(dists.thread_rng);
+        }
+        return rs;
+    }
+    std::string permute_text(std::string&& orig_text) {
+        // XXX simply return the original text for now
+        return orig_text;
+    }
+
+    basic_dists dists;
+};
+
+class runtime_input_generator : public input_generator {
+public:
+    runtime_input_generator(int runner_id, size_t num_users, size_t num_pages, const workload_mix_type& workload_mix)
+        : input_generator(runner_id+1040, num_users, num_pages),
+          r_dists(dists.thread_rng, workload_mix) {}
+
+    TxnType next_transaction() {
+        return r_dists.txn_dist.sample();
+    }
+
+private:
+    runtime_dists r_dists;
+};
+
+class loadtime_input_generator : public input_generator {
+public:
+    loadtime_input_generator(int runner_id, size_t num_users, size_t num_pages)
+        : input_generator(runner_id, num_users, num_pages),
+          l_dists(dists.thread_rng, num_pages) {}
+
+    float generate_page_random() {
+        return l_dists.std_pg_rnd_dist(dists.thread_rng);
+    }
+    std::string generate_page_restrictions() {
+        return page_restrictions_strs[l_dists.page_restrictions_dist.sample_idx()];
+    }
+    std::string generate_user_name() {
+        return random_string(l_dists.user_name_len_dist.sample());
+    }
+    std::string generate_user_real_name() {
+        return random_string(l_dists.user_real_name_len_dist.sample());
+    }
+    std::string generate_user_token() {
+        return random_string(constants::token_length);
+    }
+    std::string generate_random_old_text() {
+        auto old_text_len = l_dists.text_len_dist.sample();
+        return random_string(old_text_len);
+    }
+    int generate_user_editcount() {
+        return (int)l_dists.user_revcount_dist.sample();
+    }
+    int generate_num_revisions() {
+        return (int)l_dists.revisions_per_page_dist.sample();
+    }
+    int generate_num_watches() {
+        return (int)l_dists.user_watch_dist.sample();
+    }
+
+private:
+
+    loadtime_dists l_dists;
 };
 
 template <typename DBParams>
@@ -296,7 +446,8 @@ public:
     typedef wikipedia_db<DBParams> db_type;
 
     wikipedia_runner(int runner_id, db_type& database, const run_params& params)
-        : id(runner_id), db(database), ig(runner_id, params.num_users, params.num_pages, params.workload_mix),
+        : id(runner_id), db(database),
+          ig(runner_id, params.num_users, params.num_pages, params.workload_mix),
           tsc_elapse_limit() {
         tsc_elapse_limit =
                 (uint64_t)(params.time_limit * db_params::constants::processor_tsc_frequency * db_params::constants::billion);
@@ -330,14 +481,49 @@ private:
 template <typename DBParams>
 class wikipedia_loader {
 public:
-    explicit wikipedia_loader(wikipedia_db<DBParams>& wdb) : db(wdb) {}
+    static int *user_revision_cnts;
+    static int *page_last_rev_ids;
+    static int *page_last_rev_lens;
+
+    explicit wikipedia_loader(wikipedia_db<DBParams>& wdb, const load_params& params)
+            : num_users((int)params.num_users), num_pages((int)params.num_pages),
+              db(wdb), ig(0, params.num_users, params.num_pages) {}
+
     void load();
+
+    static void initialize_scratch_space(size_t num_users, size_t num_pages) {
+        assert(user_revision_cnts == nullptr);
+        user_revision_cnts = new int[num_users];
+        page_last_rev_ids = new int[num_pages];
+        page_last_rev_lens = new int[num_pages];
+
+        for (size_t i = 0; i < num_users; ++i)
+            user_revision_cnts[i] = 0;
+        for (size_t i = 0; i < num_pages; ++i) {
+            page_last_rev_ids[i] = 0;
+            page_last_rev_lens[i] = 0;
+        }
+    }
+
+    static void free_scratch_space() {
+        delete[] user_revision_cnts;
+        delete[] page_last_rev_ids;
+        delete[] page_last_rev_lens;
+
+        user_revision_cnts = nullptr;
+        page_last_rev_ids = nullptr;
+        page_last_rev_lens = nullptr;
+    }
+
 private:
     void load_useracct();
     void load_page();
     void load_watchlist();
     void load_revision();
 
+    int num_users;
+    int num_pages;
+    loadtime_input_generator ig;
     wikipedia_db<DBParams>& db;
 };
 
@@ -351,8 +537,9 @@ size_t wikipedia_runner<DBParams>::run() {
     while (true) {
         auto t_type = ig.next_transaction();
         auto user_id = ig.generate_user_id();
-        auto page_ns = ig.generate_page_namespace();
-        auto page_title = ig.generate_page_title();
+        auto page_id = ig.generate_page_id();
+        auto page_ns = ig.generate_page_namespace(page_id);
+        auto page_title = ig.generate_page_title(page_id);
         switch (t_type) {
             case TxnType::AddWatchList:
                 run_txn_addWatchList(user_id, page_ns, page_title);

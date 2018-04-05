@@ -83,30 +83,33 @@ public:
     }
 
     static int execute(cmd_params p) {
+        size_t num_users = wikipedia::constants::users * (size_t)p.scale_user;
+        size_t num_pages = wikipedia::constants::pages * (size_t)p.scale_page;
+        wikipedia::load_params lp = {num_users, num_pages};
+        wikipedia::run_params rp(num_users, num_pages, p.time, wikipedia::workload_weightgram);
+
         // Create DB
         auto& db = *(new wikipedia_db<DBParams>());
 
         // Load DB
-        wikipedia_loader loader(db);
+        wikipedia_loader loader(db, lp);
         loader.load();
 
         // Execute benchmark
-        size_t num_users = wikipedia::constants::users * (size_t)p.scale_user;
-        size_t num_pages = wikipedia::constants::pages * (size_t)p.scale_page;
-
-        wikipedia::run_params rp(num_users, num_pages, p.time, wikipedia::workload_weightgram);
         std::vector<wikipedia_runner> runners;
         std::vector<std::thread> runner_threads;
         std::vector<size_t> committed_txn_cnts((size_t)p.num_threads, 0);
 
         for (int id = 0; id < p.num_threads; ++id)
-            runners.emplace_back(id, db, rp);
+            runners.push_back(wikipedia_runner(id, db, rp));
 
         db_profiler profiler(p.spwan_perf);
         profiler.start(p.perf_counter_mode ? Profiler::perf_mode::counters : Profiler::perf_mode::record);
 
         for (int t = 0; t < p.num_threads; ++t)
-            runner_threads.emplace_back(runner_thread, std::ref(runners[t]), std::ref(committed_txn_cnts[t]));
+            runner_threads.push_back(
+                std::thread(runner_thread, std::ref(runners[t]), std::ref(committed_txn_cnts[t]))
+            );
         for (auto& t : runner_threads)
             t.join();
 

@@ -95,6 +95,10 @@ public:
         return dis(gen);
     }
 
+    IntType sample(rng_type& rng) {
+        return dis(rng);
+    }
+
     void set_params(typename std::uniform_int_distribution<IntType>::param_type p) {
         dis.param(p);
     }
@@ -142,8 +146,21 @@ public:
         }
     }
 
+    IntType sample(rng_type& rng) const {
+        auto s_index = sample_idx(rng);
+        if (index_transform) {
+            return index_translation_table[s_index];
+        } else {
+            return s_index + begin;
+        }
+    }
+
     virtual uint64_t sample_idx() const {
         return dist(uis.generator());
+    }
+
+    virtual uint64_t sample_idx(rng_type& rng) const {
+        return dist(rng);
     }
 
     IntType idx_translate(uint64_t idx) const {
@@ -188,6 +205,10 @@ public:
 
     uint64_t sample_idx() const override {
         return uis.sample();
+    }
+
+    uint64_t sample_idx(rng_type& rng) const override {
+        return uis.sample(rng);
     }
 
 private:
