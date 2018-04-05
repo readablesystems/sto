@@ -487,7 +487,7 @@ public:
 
     explicit wikipedia_loader(wikipedia_db<DBParams>& wdb, const load_params& params)
             : num_users((int)params.num_users), num_pages((int)params.num_pages),
-              db(wdb), ig(0, params.num_users, params.num_pages) {}
+              db(wdb), ig(6332, params.num_users, params.num_pages) {}
 
     void load();
 
