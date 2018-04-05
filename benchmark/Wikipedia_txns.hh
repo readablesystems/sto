@@ -86,7 +86,7 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_selec
 
     page_restrictions_idx_key pr_k0(page_id, std::string());
     page_restrictions_idx_key pr_k1(page_id, std::string(60, (char)0xff));
-    abort = db.idx_page_restrictions().range_scan<decltype(pr_scan_cb), false>(pr_k0, pr_k1, pr_scan_cb, RowAccess::ObserveValue);
+    abort = db.idx_page_restrictions().template range_scan<decltype(pr_scan_cb), false>(pr_k0, pr_k1, pr_scan_cb, RowAccess::ObserveValue);
     TXN_DO(abort);
 
     for (auto pr_id : pr_ids) {
@@ -104,7 +104,7 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_selec
     constexpr int32_t m = std::numeric_limits<int32_t>::max();
     ipblocks_addr_idx_key ipb_k0(user_ip, 0, 0, 0, 0);
     ipblocks_addr_idx_key ipb_k1(user_ip, m, m, m, m);
-    abort = db.idx_ipblocks_addr().range_scan<decltype(ipb_scan_cb), false>(ipb_k0, ipb_k1, ipb_scan_cb, RowAccess::ObserveValue);
+    abort = db.idx_ipblocks_addr().template range_scan<decltype(ipb_scan_cb), false>(ipb_k0, ipb_k1, ipb_scan_cb, RowAccess::ObserveValue);
     TXN_DO(abort);
 
     for (auto ipb_id : ipb_ids) {
@@ -183,7 +183,7 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_s
 
     page_restrictions_idx_key pr_k0(page_id, std::string());
     page_restrictions_idx_key pr_k1(page_id, std::string(60, (char)0xff));
-    abort = db.idx_page_restrictions().range_scan<decltype(pr_scan_cb), false>(pr_k0, pr_k1, pr_scan_cb, RowAccess::ObserveValue);
+    abort = db.idx_page_restrictions().template range_scan<decltype(pr_scan_cb), false>(pr_k0, pr_k1, pr_scan_cb, RowAccess::ObserveValue);
     TXN_DO(abort);
 
     for (auto pr_id : pr_ids) {
@@ -201,7 +201,7 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_s
     constexpr int32_t m = std::numeric_limits<int32_t>::max();
     ipblocks_user_idx_key ipb_k0(user_id, std::string(), 0, 0, 0);
     ipblocks_user_idx_key ipb_k1(user_id, std::string(255, (char)0xff), m, m, m);
-    abort = db.idx_ipblocks_user().range_scan<decltype(ipb_scan_cb), false>(ipb_k0, ipb_k1, ipb_scan_cb, RowAccess::ObserveExists);
+    abort = db.idx_ipblocks_user().template range_scan<decltype(ipb_scan_cb), false>(ipb_k0, ipb_k1, ipb_scan_cb, RowAccess::ObserveExists);
     TXN_DO(abort);
 
     for (auto ipb_id : ipb_ids) {
@@ -370,7 +370,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
         return true;
     };
 
-    abort = db.idx_watchlist().range_scan<decltype(scan_cb), false>(k0, k1, scan_cb, RowAccess::ObserveExists);
+    abort = db.idx_watchlist().template range_scan<decltype(scan_cb), false>(k0, k1, scan_cb, RowAccess::ObserveExists);
     TXN_CHECK(abort);
 
     if (!watching_users.empty()) {

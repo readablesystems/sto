@@ -8,7 +8,7 @@ namespace bench {
 
 class db_profiler {
 public:
-    using db_params::constants;
+    using constants = db_params::constants;
     explicit db_profiler(bool spawn_perf)
             : spawn_perf_(spawn_perf), perf_pid_(),
               start_tsc_(), end_tsc_() {}

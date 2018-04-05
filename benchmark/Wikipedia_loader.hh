@@ -5,7 +5,7 @@
 
 namespace wikipedia {
 template <typename DBParams>
-void wikipedia_loader::load() {
+void wikipedia_loader<DBParams>::load() {
     wikipedia_loader::initialize_scratch_space((size_t)num_users, (size_t)num_pages);
     load_revision();
     load_useracct();
@@ -15,7 +15,7 @@ void wikipedia_loader::load() {
 }
 
 template <typename DBParams>
-void wikipedia_loader::load_useracct() {
+void wikipedia_loader<DBParams>::load_useracct() {
     for (int uid = 1; uid <= num_users; ++uid) {
         useracct_row u_r;
         u_r.user_name = ig.generate_user_name();
@@ -38,7 +38,7 @@ void wikipedia_loader::load_useracct() {
 }
 
 template <typename DBParams>
-void wikipedia_loader::load_page() {
+void wikipedia_loader<DBParams>::load_page() {
     for (int pid = 1; pid <= num_pages; ++pid) {
         page_row pg_r;
         pg_r.page_namespace = ig.generate_page_namespace(pid);
@@ -57,7 +57,7 @@ void wikipedia_loader::load_page() {
 }
 
 template <typename DBParams>
-void wikipedia_loader::load_watchlist() {
+void wikipedia_loader<DBParams>::load_watchlist() {
     std::set<int> user_pages;
     for (int uid = 1; uid <= num_users; ++uid) {
         user_pages.clear();
@@ -91,7 +91,7 @@ void wikipedia_loader::load_watchlist() {
 }
 
 template <typename DBParams>
-void wikipedia_loader::load_revision() {
+void wikipedia_loader<DBParams>::load_revision() {
     int tr_id = 1; // text/rev id
 
     for (int pid = 1; pid <= num_pages; ++pid) {

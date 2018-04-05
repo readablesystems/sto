@@ -763,6 +763,7 @@ public:
     sel_return_type
     select_row(uintptr_t rid, RowAccess access) {
         auto e = reinterpret_cast<internal_elem *>(rid);
+        bool ok = true;
         TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
         if (is_phantom(e, row_item))
@@ -782,7 +783,6 @@ public:
             }
         }
 
-        bool ok = true;
         switch (access) {
             case RowAccess::UpdateValue:
                 ok = version_adapter::select_for_update(row_item, e->version);

@@ -178,7 +178,7 @@ struct load_params {
 
 // Pre-processed input distribution from wikibench trace (from OLTPBench)
 // Defined in Wikipedia_data.cc
-using rng_type = sampling::StoRandomDistribution::rng_type;
+using rng_type = sampling::StoRandomDistribution<>::rng_type;
 
 template <typename IntType>
 using hdist_type = sampling::StoCustomDistribution<IntType>;
@@ -187,8 +187,8 @@ using ui_hdist_type = hdist_type<uint64_t>;
 using si_hdist_type = hdist_type<int64_t>;
 using txn_dist_type = hdist_type<TxnType>;
 
-using unif_dist_type = sampling::StoUniformDistribution;
-using zipf_dist_type = sampling::StoZipfDistribution;
+using unif_dist_type = sampling::StoUniformDistribution<>;
+using zipf_dist_type = sampling::StoZipfDistribution<>;
 
 using ui_hist_type = ui_hdist_type::histogram_type;
 using si_hist_type = si_hdist_type::histogram_type;
@@ -269,7 +269,7 @@ struct loadtime_dists {
 
 class input_generator {
 public:
-    typedef sampling::StoRandomDistribution::rng_type rng_type;
+    typedef typename sampling::StoRandomDistribution<>::rng_type rng_type;
 
     std::string curr_timestamp_string() {
         auto t = std::time(nullptr);
