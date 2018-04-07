@@ -309,15 +309,15 @@ public:
     }
     std::string generate_rev_text(const std::string& old_text) {
         std::string str;
-        size_t rev_delta_id = 0;
+        int rev_delta_id = 0;
         for (auto sz : rev_delta_sizes) {
             if (old_text.length() <= sz)
                 break;
             ++rev_delta_id;
         }
-        if (rev_delta_id == rev_delta_sizes.size())
+        if (rev_delta_id == (int)rev_delta_sizes.size())
             --rev_delta_id;
-        assert((rev_delta_id >= 0) && (rev_delta_id < rev_delta_sizes.size()));
+        assert((rev_delta_id >= 0) && (rev_delta_id < (int)rev_delta_sizes.size()));
 
         auto& d = dists.rev_deltas_dists[rev_delta_id];
         int64_t delta = d.sample();
@@ -524,8 +524,8 @@ private:
 
     int num_users;
     int num_pages;
-    loadtime_input_generator ig;
     wikipedia_db<DBParams>& db;
+    loadtime_input_generator ig;
 };
 
 template <typename DBParams>
