@@ -977,7 +977,7 @@ public:
             if (index_read_my_write) {
                 if (has_delete(row_item))
                     return del_return_type(true, false);
-                if (!e->valid && has_insert(row_item)) {
+                if (!e->valid() && has_insert(row_item)) {
                     row_item.add_flags(delete_bit);
                     return del_return_type(true, true);
                 }

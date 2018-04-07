@@ -17,6 +17,13 @@ using db_params::db_swiss_params;
 using db_params::db_opaque_params;
 using db_params::parse_dbid;
 
+template <typename DBParams>
+int* wikipedia::wikipedia_loader<DBParams>::user_revision_cnts = nullptr;
+template <typename DBParams>
+int* wikipedia::wikipedia_loader<DBParams>::page_last_rev_ids = nullptr;
+template <typename DBParams>
+int* wikipedia::wikipedia_loader<DBParams>::page_last_rev_lens = nullptr;
+
 // @section: clp parser definitions
 enum {
     opt_dbid = 1, opt_nthrs, opt_users, opt_pages, opt_time, opt_perf, opt_pfcnt

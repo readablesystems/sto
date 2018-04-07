@@ -11,19 +11,24 @@ using namespace bench;
 
 template <typename K>
 struct masstree_key_adapter : public K {
-    template <typename... Args>
-    explicit masstree_key_adapter(Args&&... args)
-        : K(std::forward<Args>(args)...) {}
-
     // Conversions from and to masstree key type
     explicit masstree_key_adapter(const lcdf::Str& mt_key) {
         assert(mt_key.length() == sizeof(*this));
         memcpy(this, mt_key.data(), sizeof(*this));
     }
 
+    template <typename... Args>
+    explicit masstree_key_adapter(Args&&... args)
+        : K(std::forward<Args>(args)...) {}
+
     operator lcdf::Str() const {
         return lcdf::Str((const char *)this, sizeof(*this));
     }
+};
+
+struct dummy_row {
+    enum class NamedColumn : int { dummy = 0 };
+    uintptr_t dummy;
 };
 
 // New table: ipblocks
@@ -32,6 +37,10 @@ struct __attribute__((packed)) ipblocks_key_bare {
     int32_t ipb_id;
     explicit ipblocks_key_bare(int32_t p_ipb_id)
         : ipb_id(bswap(p_ipb_id)) {}
+
+    friend masstree_key_adapter<ipblocks_key_bare>;
+private:
+    ipblocks_key_bare() = default;
 };
 
 typedef masstree_key_adapter<ipblocks_key_bare> ipblocks_key;
@@ -86,13 +95,15 @@ struct __attribute__((packed)) ipblocks_addr_idx_key_bare {
                                         int32_t p_ipb_id)
         : ipb_address(p_ipb_address), ipb_user(bswap(p_ipb_user)),
           ipb_auto(bswap(p_ipb_auto)), ipb_anon_only(bswap(p_ipb_anon_only)), ipb_id(p_ipb_id) {}
+
+    friend masstree_key_adapter<ipblocks_addr_idx_key_bare>;
+private:
+    ipblocks_addr_idx_key_bare() = default;
 };
 
 typedef masstree_key_adapter<ipblocks_addr_idx_key_bare> ipblocks_addr_idx_key;
 
-struct ipblocks_addr_idx_row {
-    uintptr_t dummy;
-};
+using ipblocks_addr_idx_row = dummy_row;
 
 struct __attribute__((packed)) ipblocks_user_idx_key_bare {
     int32_t ipb_user;
@@ -108,13 +119,15 @@ struct __attribute__((packed)) ipblocks_user_idx_key_bare {
                                         int32_t p_ipb_id)
         : ipb_user(bswap(p_ipb_user)), ipb_address(p_ipb_address),
           ipb_auto(bswap(p_ipb_auto)), ipb_anon_only(bswap(p_ipb_anon_only)), ipb_id(p_ipb_id) {}
+
+    friend masstree_key_adapter<ipblocks_user_idx_key_bare>;
+private:
+    ipblocks_user_idx_key_bare() = default;
 };
 
 typedef masstree_key_adapter<ipblocks_user_idx_key_bare> ipblocks_user_idx_key;
 
-struct ipblocks_user_idx_row {
-    uintptr_t dummy;
-};
+using ipblocks_user_idx_row  = dummy_row;
 
 // New table: logging
 
@@ -198,6 +211,7 @@ struct page_idx_key_bare {
 typedef masstree_key_adapter<page_idx_key_bare> page_idx_key;
 
 struct page_idx_row {
+    enum class NamedColumn : int { page_id = 0 };
     int32_t page_id;
 };
 
@@ -232,11 +246,16 @@ struct __attribute__((packed)) page_restrictions_idx_key_bare {
     explicit page_restrictions_idx_key_bare(int32_t p_pr_page,
                                             const std::string& p_pr_type)
         : pr_page(bswap(p_pr_page)), pr_type(p_pr_type) {}
+
+    friend masstree_key_adapter<page_restrictions_idx_key_bare>;
+private:
+    page_restrictions_idx_key_bare() = default;
 };
 
 typedef masstree_key_adapter<page_restrictions_idx_key_bare> page_restrictions_idx_key;
 
 struct page_restrictions_idx_row {
+    enum class NamedColumn : int { pr_id = 0 };
     int32_t pr_id;
 };
 
@@ -409,6 +428,7 @@ struct __attribute__((packed)) useracct_idx_key_bare {
 typedef masstree_key_adapter<useracct_idx_key_bare> useracct_idx_key;
 
 struct useracct_idx_row {
+    enum class NamedColumn : int { user_id = 0 };
     int32_t user_id;
 };
 
@@ -423,6 +443,7 @@ struct __attribute__((packed)) user_groups_key_bare {
 typedef masstree_key_adapter<user_groups_key_bare> user_groups_key;
 
 struct user_groups_row {
+    enum class NamedColumn : int { ug_group = 0 };
     var_string<16> ug_group;
 };
 
@@ -456,13 +477,15 @@ struct __attribute__((packed)) watchlist_idx_key_bare {
                                     int32_t p_wl_user)
         : wl_namespace(bswap(p_wl_namespace)), wl_title(p_wl_title),
           wl_user(bswap(p_wl_user)) {}
+
+    friend masstree_key_adapter<watchlist_idx_key_bare>;
+private:
+    watchlist_idx_key_bare() = default;
 };
 
 typedef masstree_key_adapter<watchlist_idx_key_bare> watchlist_idx_key;
 
-struct watchlist_idx_row {
-    uintptr_t dummy;
-};
+using watchlist_idx_row = dummy_row;
 
 // Article type returned by getPageAnonymous transactions
 
