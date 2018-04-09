@@ -199,13 +199,17 @@ struct page_row {
     int32_t page_len;
 };
 
-struct page_idx_key_bare {
+struct __attribute__((packed)) page_idx_key_bare {
     int32_t page_namespace;
     var_string<255> page_title;
 
     explicit page_idx_key_bare(int32_t p_page_namespace,
                                const std::string& p_page_title)
         : page_namespace(bswap(p_page_namespace)), page_title(p_page_title) {}
+
+    friend masstree_key_adapter<page_idx_key_bare>;
+private:
+    page_idx_key_bare() = default;
 };
 
 typedef masstree_key_adapter<page_idx_key_bare> page_idx_key;
