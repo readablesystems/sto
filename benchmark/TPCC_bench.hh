@@ -115,18 +115,18 @@ public:
     // partitioned according to warehouse id
 #if TABLE_FINE_GRAINED == 1
     typedef integer_box<DBParams>                  dt_ytd_type;
-    typedef UIndex<customer_key, customer_value_variable> cv_table_type;
+    typedef OIndex<customer_key, customer_value_variable> cv_table_type;
 #endif
     typedef std::vector<warehouse_value>           wh_table_type;
-    typedef UIndex<district_key, district_value>   dt_table_type;
+    typedef OIndex<district_key, district_value>   dt_table_type;
     typedef OIndex<customer_idx_key, customer_idx_value> ci_table_type;
-    typedef UIndex<customer_key, customer_value>   cu_table_type;
+    typedef OIndex<customer_key, customer_value>   cu_table_type;
     typedef OIndex<order_cidx_key, int>            oi_table_type;
     typedef OIndex<order_key, order_value>         od_table_type;
     typedef OIndex<orderline_key, orderline_value> ol_table_type;
     typedef OIndex<order_key, int>                 no_table_type;
-    typedef UIndex<item_key, item_value>           it_table_type;
-    typedef UIndex<stock_key, stock_value>         st_table_type;
+    typedef OIndex<item_key, item_value>           it_table_type;
+    typedef OIndex<stock_key, stock_value>         st_table_type;
     typedef OIndex<history_key, history_value>     ht_table_type;
 
     explicit inline tpcc_db(int num_whs);

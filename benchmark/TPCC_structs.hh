@@ -64,6 +64,14 @@ struct warehouse_key {
 };
 
 struct warehouse_const_value {
+    enum class NamedColumn : int { w_name = 0,
+                                   w_street_1,
+                                   w_street_2,
+                                   w_city,
+                                   w_state,
+                                   w_zip,
+                                   w_tax };
+
     var_string<10> w_name;
     var_string<20> w_street_1;
     var_string<20> w_street_2;
@@ -96,6 +104,15 @@ struct district_key {
 };
 
 struct district_value {
+    enum class NamedColumn : int { d_name = 0,
+                                   d_street_1,
+                                   d_street_2,
+                                   d_city,
+                                   d_state,
+                                   d_zip,
+                                   d_tax,
+                                   d_ytd };    
+
     var_string<10> d_name;
     var_string<20> d_street_1;
     var_string<20> d_street_2;
@@ -151,6 +168,8 @@ struct customer_idx_key {
 };
 
 struct customer_idx_value {
+    enum class NamedColumn : int { c_id = 0 };    
+
     customer_idx_value(uint64_t cid) : c_id(cid) {};
     uint64_t c_id;
 };
@@ -186,6 +205,25 @@ struct customer_key {
 };
 
 struct customer_value {
+    enum class NamedColumn : int { c_first = 0,
+                                 c_middle,
+                                 c_last,
+                                 c_street_1,
+                                 c_street_2,
+                                 c_city,
+                                 c_state,
+                                 c_zip,
+                                 c_phone,
+                                 c_since,
+                                 c_credict,
+                                 c_credit_lim,
+                                 c_discount,
+                                 c_balance,
+                                 c_ytd_payment,
+                                 c_payment_cnt,
+                                 c_delivery_cnt,
+                                 c_data };
+
     var_string<16>  c_first;
     fix_string<2>   c_middle;
     var_string<16>  c_last;
@@ -210,6 +248,16 @@ struct customer_value {
 
 #if TABLE_FINE_GRAINED == 1
 struct customer_value_variable {
+    enum class NamedColumn : int { c_since = 0,
+                                   c_credit,
+                                   c_credit_lim,
+                                   c_discount,
+                                   c_balance,
+                                   c_ytd_payment,
+                                   c_payment_cnt,
+                                   c_delivery_cnt,
+                                   c_data };
+
     // begin: duplicate data
     uint32_t      c_since;
     fix_string<2> c_credit;
@@ -242,6 +290,15 @@ struct history_key {
 };
 
 struct history_value {
+    enum class NamedColumn : int { h_c_id = 0,
+                                   h_c_d_id,
+                                   h_c_w_id,
+                                   h_d_id,
+                                   h_w_id,
+                                   h_date,
+                                   h_amount,
+                                   h_data };
+
     uint64_t       h_c_id;
     uint64_t       h_c_d_id;
     uint64_t       h_c_w_id;
@@ -311,6 +368,12 @@ struct order_key {
 };
 
 struct order_value{
+    enum class NamedColumn : int { o_c_id = 0,
+                                   o_carrier_id,
+                                   o_entry_d,
+                                   o_ol_cnt,
+                                   o_all_local };
+
     uint64_t o_c_id;
     uint64_t o_carrier_id;
     uint32_t o_entry_d;
@@ -350,6 +413,13 @@ struct orderline_key {
 };
 
 struct orderline_value {
+    enum class NamedColumn : int { ol_i_id = 0;
+                                   ol_supply_w_id,
+                                   ol_delivery_d,
+                                   ol_quantity,
+                                   ol_amount,
+                                   ol_dist_info };
+
     uint64_t       ol_i_id;
     uint64_t       ol_supply_w_id;
     uint32_t       ol_delivery_d;
@@ -383,6 +453,11 @@ struct item_key {
 };
 
 struct item_value {
+    enum class NamedColumn : int { i_im_id = 0,
+                                   i_price,
+                                   i_name,
+                                   i_data };
+
     uint64_t       i_im_id;
     uint32_t       i_price;
     var_string<24> i_name;
@@ -416,6 +491,13 @@ struct stock_key {
 };
 
 struct stock_value {
+    enum class NamedColumn : int { s_quantity,
+                                   s_ytd,
+                                   s_order_cnt,
+                                   s_remote_cnt,
+                                   s_dists,
+                                   s_data };
+
     int32_t        s_quantity;
     uint32_t       s_ytd;
     uint32_t       s_order_cnt;
