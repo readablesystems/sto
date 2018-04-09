@@ -104,7 +104,6 @@ void wikipedia_loader<DBParams>::load_watchlist() {
 
 template <typename DBParams>
 void wikipedia_loader<DBParams>::load_revision() {
-    int tr_id = 1; // text/rev id
 
     for (int pid = 1; pid <= num_pages; ++pid) {
         auto num_revs = ig.generate_num_revisions();
@@ -112,6 +111,10 @@ void wikipedia_loader<DBParams>::load_revision() {
         auto old_text_len = old_text.length();
 
         for (int i = 0; i < num_revs; ++i) {
+            auto tr_id = (int)db.tbl_revision().gen_key(); // text/rev id
+            auto tx_id = (int)db.tbl_text().gen_key();
+            always_assert(tx_id == tr_id, "text_id and rev_id should be the same at load time");
+
             auto uid = ig.generate_user_id();
             user_revision_cnts[uid - 1] ++;
             if (i > 0) {
@@ -140,10 +143,10 @@ void wikipedia_loader<DBParams>::load_revision() {
             r_r.rev_len = (int)old_text_len;
             r_r.rev_parent_id = 0;
 
+            db.tbl_revision().nontrans_put(r_k, r_r);
+
             page_last_rev_ids[pid - 1] = tr_id;
             page_last_rev_lens[pid - 1] = tr_id;
-
-            ++tr_id;
         }
     }
 }

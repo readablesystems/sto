@@ -78,6 +78,7 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_selec
     assert(result);
     auto page_v = reinterpret_cast<const page_row *>(value);
 
+    /*
     std::vector<int32_t> pr_ids;
     auto pr_scan_cb = [&](const page_restrictions_idx_key&, const page_restrictions_idx_row& row) {
         pr_ids.push_back(row.pr_id);
@@ -112,6 +113,7 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_selec
         TXN_DO(abort);
         assert(result);
     }
+    */
 
     auto rev_id = page_v->page_latest;
     std::tie(abort, result, std::ignore, value) = db.tbl_revision().select_row(revision_key(rev_id), {{rev_nc::rev_text_id, false}});
@@ -159,9 +161,9 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_s
     TXN_DO(abort);
     assert(result);
 
-    std::tie(abort, result, std::ignore, std::ignore) = db.tbl_user_groups().select_row(user_groups_key(user_id), RowAccess::ObserveValue);
-    TXN_DO(abort);
-    assert(result);
+    //std::tie(abort, result, std::ignore, std::ignore) = db.tbl_user_groups().select_row(user_groups_key(user_id), RowAccess::ObserveValue);
+    //TXN_DO(abort);
+    //assert(result);
 
     // From this point is pretty much the same as getPageAnonymous 
 
@@ -175,6 +177,7 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_s
     assert(result);
     auto page_v = reinterpret_cast<const page_row *>(value);
 
+    /*
     std::vector<int32_t> pr_ids;
     auto pr_scan_cb = [&](const page_restrictions_idx_key&, const page_restrictions_idx_row& row) {
         pr_ids.push_back(row.pr_id);
@@ -209,6 +212,7 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_s
         TXN_DO(abort);
         assert(result);
     }
+    */
 
     auto rev_id = page_v->page_latest;
     std::tie(abort, result, std::ignore, value) = db.tbl_revision().select_row(revision_key(rev_id), {{rev_nc::rev_text_id, false}});
@@ -245,7 +249,7 @@ void wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
 
     std::tie(abort, result) = db.tbl_watchlist().delete_row(watchlist_key(user_id, name_space, page_title));
     TXN_DO(abort);
-    assert(result);
+    //assert(result);
 
     std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id), {{nc::user_touched, true}});
     TXN_DO(abort);
