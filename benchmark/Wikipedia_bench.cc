@@ -17,6 +17,13 @@ using db_params::db_swiss_params;
 using db_params::db_opaque_params;
 using db_params::parse_dbid;
 
+template <typename DBParams>
+int* wikipedia::wikipedia_loader<DBParams>::user_revision_cnts = nullptr;
+template <typename DBParams>
+int* wikipedia::wikipedia_loader<DBParams>::page_last_rev_ids = nullptr;
+template <typename DBParams>
+int* wikipedia::wikipedia_loader<DBParams>::page_last_rev_lens = nullptr;
+
 // @section: clp parser definitions
 enum {
     opt_dbid = 1, opt_nthrs, opt_users, opt_pages, opt_time, opt_perf, opt_pfcnt
@@ -73,12 +80,12 @@ struct cmd_params {
 template <typename DBParams>
 class bench_access {
 public:
-    using wikipedia::wikipedia_db;
-    using wikipedia::wikipedia_loader;
-    using wikipedia::wikipedia_runner;
-    using bench::db_profiler;
+    using db_type = wikipedia::wikipedia_db<DBParams>;
+    using loader_type = wikipedia::wikipedia_loader<DBParams>;
+    using runner_type = wikipedia::wikipedia_runner<DBParams>;
+    using profiler_type = bench::db_profiler;
 
-    static void runner_thread(wikipedia_runner& r, size_t& txn_cnt) {
+    static void runner_thread(runner_type& r, size_t& txn_cnt) {
         txn_cnt = r.run();
     }
 
@@ -89,21 +96,21 @@ public:
         wikipedia::run_params rp(num_users, num_pages, p.time, wikipedia::workload_weightgram);
 
         // Create DB
-        auto& db = *(new wikipedia_db<DBParams>());
+        auto& db = *(new db_type());
 
         // Load DB
-        wikipedia_loader loader(db, lp);
+        loader_type loader(db, lp);
         loader.load();
 
         // Execute benchmark
-        std::vector<wikipedia_runner> runners;
+        std::vector<runner_type> runners;
         std::vector<std::thread> runner_threads;
         std::vector<size_t> committed_txn_cnts((size_t)p.num_threads, 0);
 
         for (int id = 0; id < p.num_threads; ++id)
-            runners.push_back(wikipedia_runner(id, db, rp));
+            runners.push_back(runner_type(id, db, rp));
 
-        db_profiler profiler(p.spwan_perf);
+        profiler_type profiler(p.spwan_perf);
         profiler.start(p.perf_counter_mode ? Profiler::perf_mode::counters : Profiler::perf_mode::record);
 
         for (int t = 0; t < p.num_threads; ++t)

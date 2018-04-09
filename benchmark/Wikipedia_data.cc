@@ -3305,26 +3305,15 @@ const ui_hist_type user_rev_count_hist = {
     {9742, 1}
 };
 
-const std::vector<std::string> page_restrictions_strs = {
-    "none",
-    "edit=autoconfirmed:move=autoconfirmed",
-    "edit=autoconfirmed:move=sysop",
-    "edit=sysop:move=sysop",
-    "move=:edit=",
-    "move=sysop",
-    "move=sysop:edit=sysop",
-    "sysop"
-};
-
-const ui_hist_type page_restrictions_hist = {
-    {0, 99917},
-    {1, 20},
-    {2, 8},
-    {3, 23},
-    {4, 24},
-    {5, 1},
-    {6, 5},
-    {7, 2}
+const str_hist_type page_restrictions_hist = {
+    {"none", 99917},
+    {"edit=autoconfirmed:move=autoconfirmed", 20},
+    {"edit=autoconfirmed:move=sysop", 8},
+    {"edit=sysop:move=sysop", 23},
+    {"move=:edit=", 24},
+    {"move=sysop", 1},
+    {"move=sysop:edit=sysop", 5},
+    {"sysop", 2}
 };
 
 }; // namespace wikipedia

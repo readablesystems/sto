@@ -4,18 +4,23 @@
 #include "Wikipedia_bench.hh"
 
 namespace wikipedia {
+
 template <typename DBParams>
-void wikipedia_loader::load() {
+void wikipedia_loader<DBParams>::load() {
+    std::cout << "Loading database..." << std::endl;
+
     wikipedia_loader::initialize_scratch_space((size_t)num_users, (size_t)num_pages);
     load_revision();
     load_useracct();
     load_page();
     load_watchlist();
     wikipedia_loader::free_scratch_space();
+
+    std::cout << "Loaded." << std::endl;
 }
 
 template <typename DBParams>
-void wikipedia_loader::load_useracct() {
+void wikipedia_loader<DBParams>::load_useracct() {
     for (int uid = 1; uid <= num_users; ++uid) {
         useracct_row u_r;
         u_r.user_name = ig.generate_user_name();
@@ -38,12 +43,15 @@ void wikipedia_loader::load_useracct() {
 }
 
 template <typename DBParams>
-void wikipedia_loader::load_page() {
+void wikipedia_loader<DBParams>::load_page() {
     for (int pid = 1; pid <= num_pages; ++pid) {
+        int page_ns = ig.generate_page_namespace(pid);
+        auto page_title = ig.generate_page_title(pid);
+        auto page_restrictions = ig.generate_page_restrictions();
         page_row pg_r;
-        pg_r.page_namespace = ig.generate_page_namespace(pid);
-        pg_r.page_title = ig.generate_page_title(pid);
-        pg_r.page_restrictions = ig.generate_page_restrictions();
+        pg_r.page_namespace = page_ns;
+        pg_r.page_title = page_title;
+        pg_r.page_restrictions = page_restrictions;
         pg_r.page_counter = 0;
         pg_r.page_is_redirect = 0;
         pg_r.page_is_new = 0;
@@ -53,11 +61,15 @@ void wikipedia_loader::load_page() {
         pg_r.page_len = page_last_rev_lens[pid - 1];
 
         db.tbl_page().nontrans_put(page_key(pid), pg_r);
+
+        page_idx_row pi_r{};
+        pi_r.page_id = pid;
+        db.idx_page().nontrans_put(page_idx_key(page_ns, page_title), pi_r);
     }
 }
 
 template <typename DBParams>
-void wikipedia_loader::load_watchlist() {
+void wikipedia_loader<DBParams>::load_watchlist() {
     std::set<int> user_pages;
     for (int uid = 1; uid <= num_users; ++uid) {
         user_pages.clear();
@@ -91,7 +103,7 @@ void wikipedia_loader::load_watchlist() {
 }
 
 template <typename DBParams>
-void wikipedia_loader::load_revision() {
+void wikipedia_loader<DBParams>::load_revision() {
     int tr_id = 1; // text/rev id
 
     for (int pid = 1; pid <= num_pages; ++pid) {

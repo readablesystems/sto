@@ -178,28 +178,29 @@ struct load_params {
 
 // Pre-processed input distribution from wikibench trace (from OLTPBench)
 // Defined in Wikipedia_data.cc
-using rng_type = sampling::StoRandomDistribution::rng_type;
+using rng_type = sampling::StoRandomDistribution<>::rng_type;
 
-template <typename IntType>
-using hdist_type = sampling::StoCustomDistribution<IntType>;
+template <typename Type>
+using hdist_type = sampling::StoCustomDistribution<Type>;
 
 using ui_hdist_type = hdist_type<uint64_t>;
 using si_hdist_type = hdist_type<int64_t>;
 using txn_dist_type = hdist_type<TxnType>;
+using str_hdist_type = hdist_type<std::string>;
 
-using unif_dist_type = sampling::StoUniformDistribution;
-using zipf_dist_type = sampling::StoZipfDistribution;
+using unif_dist_type = sampling::StoUniformDistribution<>;
+using zipf_dist_type = sampling::StoZipfDistribution<>;
 
 using ui_hist_type = ui_hdist_type::histogram_type;
 using si_hist_type = si_hdist_type::histogram_type;
+using str_hist_type = str_hdist_type::histogram_type;
 
 extern const workload_mix_type workload_weightgram;
 
 extern const ui_hist_type page_title_len_hist;
 extern const ui_hist_type revisions_per_page_hist;
 extern const ui_hist_type page_namespace_hist;
-extern const ui_hist_type page_restrictions_hist;
-extern const std::vector<std::string> page_restrictions_strs;
+extern const str_hist_type page_restrictions_hist;
 extern const ui_hist_type rev_comment_len_hist;
 extern const std::vector<size_t> rev_delta_sizes;
 extern const std::vector<si_hist_type> rev_deltas;
@@ -245,7 +246,7 @@ struct runtime_dists {
 };
 
 struct loadtime_dists {
-    ui_hdist_type page_restrictions_dist;
+    str_hdist_type page_restrictions_dist;
     ui_hdist_type user_name_len_dist;
     ui_hdist_type user_real_name_len_dist;
     ui_hdist_type user_revcount_dist;
@@ -262,14 +263,14 @@ struct loadtime_dists {
           revisions_per_page_dist(thread_rng, revisions_per_page_hist),
           text_len_dist(thread_rng, text_len_hist),
           user_watch_dist(thread_rng,
-                          0, std::min((int)num_pages, constants::max_watches_per_user),
+                          0, std::min((int)num_pages, (int)constants::max_watches_per_user),
                           constants::num_watches_per_user_sigma),
           std_pg_rnd_dist(0.0, 100.0) {}
 };
 
 class input_generator {
 public:
-    typedef sampling::StoRandomDistribution::rng_type rng_type;
+    typedef typename sampling::StoRandomDistribution<>::rng_type rng_type;
 
     std::string curr_timestamp_string() {
         auto t = std::time(nullptr);
@@ -308,15 +309,15 @@ public:
     }
     std::string generate_rev_text(const std::string& old_text) {
         std::string str;
-        size_t rev_delta_id = 0;
+        int rev_delta_id = 0;
         for (auto sz : rev_delta_sizes) {
             if (old_text.length() <= sz)
                 break;
             ++rev_delta_id;
         }
-        if (rev_delta_id == rev_delta_sizes.size())
+        if (rev_delta_id == (int)rev_delta_sizes.size())
             --rev_delta_id;
-        assert((rev_delta_id >= 0) && (rev_delta_id < rev_delta_sizes.size()));
+        assert((rev_delta_id >= 0) && (rev_delta_id < (int)rev_delta_sizes.size()));
 
         auto& d = dists.rev_deltas_dists[rev_delta_id];
         int64_t delta = d.sample();
@@ -410,7 +411,7 @@ public:
         return l_dists.std_pg_rnd_dist(dists.thread_rng);
     }
     std::string generate_page_restrictions() {
-        return page_restrictions_strs[l_dists.page_restrictions_dist.sample_idx()];
+        return l_dists.page_restrictions_dist.sample();
     }
     std::string generate_user_name() {
         return random_string(l_dists.user_name_len_dist.sample());
@@ -523,8 +524,8 @@ private:
 
     int num_users;
     int num_pages;
-    loadtime_input_generator ig;
     wikipedia_db<DBParams>& db;
+    loadtime_input_generator ig;
 };
 
 template <typename DBParams>

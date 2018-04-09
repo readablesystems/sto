@@ -8,7 +8,7 @@
 namespace bench {
 
 template<size_t ML>
-class var_string {
+class __attribute__((packed)) var_string {
 public:
     static constexpr size_t max_length = ML;
 
@@ -114,7 +114,7 @@ private:
 };
 
 template<size_t FL>
-class fix_string {
+class __attribute__((packed)) fix_string {
 public:
     fix_string() {
         memset(s_, ' ', FL);

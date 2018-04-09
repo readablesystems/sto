@@ -9,7 +9,7 @@ enum class db_params_id : int {
     None = 0, Default, Opaque, TwoPL, Adaptive, Swiss, TicToc
 };
 
-std::ostream &operator<<(std::ostream &os, const db_params_id &id) {
+inline std::ostream &operator<<(std::ostream &os, const db_params_id &id) {
     os << db_params_id_names[static_cast<int>(id)];
     return os;
 }
