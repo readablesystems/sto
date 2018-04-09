@@ -241,7 +241,7 @@ struct basic_dists {
 struct runtime_dists {
     txn_dist_type txn_dist;
 
-    runtime_dists(rng_type  thread_rng, const workload_mix_type& workload_mix)
+    runtime_dists(rng_type& thread_rng, const workload_mix_type& workload_mix)
         : txn_dist(thread_rng, workload_mix) {}
 };
 
