@@ -55,8 +55,8 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_selec
                                                           int name_space,
                                                           const std::string& page_title) {
     typedef page_row::NamedColumn page_nc;
-    typedef page_restrictions_row::NamedColumn pr_nc;
-    typedef ipblocks_row::NamedColumn ipb_nc;
+    //typedef page_restrictions_row::NamedColumn pr_nc;
+    //typedef ipblocks_row::NamedColumn ipb_nc;
     typedef revision_row::NamedColumn rev_nc;
     typedef text_row::NamedColumn text_nc;
 
@@ -144,8 +144,8 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_s
                                                               const std::string& page_title) {
     typedef useracct_row::NamedColumn user_nc;
     typedef page_row::NamedColumn page_nc;
-    typedef page_restrictions_row::NamedColumn pr_nc;
-    typedef ipblocks_row::NamedColumn ipb_nc;
+    //typedef page_restrictions_row::NamedColumn pr_nc;
+    //typedef ipblocks_row::NamedColumn ipb_nc;
     typedef revision_row::NamedColumn rev_nc;
     typedef text_row::NamedColumn text_nc;
 
