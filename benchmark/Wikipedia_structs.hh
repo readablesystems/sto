@@ -26,11 +26,6 @@ struct masstree_key_adapter : public K {
     }
 };
 
-struct dummy_row {
-    enum class NamedColumn : int { dummy = 0 };
-    uintptr_t dummy;
-};
-
 // New table: ipblocks
 
 struct __attribute__((packed)) ipblocks_key_bare {

@@ -23,6 +23,8 @@ void wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
                                                       const std::string& page_title) {
     typedef useracct_row::NamedColumn nc;
 
+    fprintf(stdout, "[%d] AddWatchList\n", TThread::id());
+
     TRANSACTION {
 
     bool abort, result;
@@ -55,6 +57,8 @@ void wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
     db.tbl_useracct().update_row(row, new_uv);
 
     } RETRY(true);
+
+    fprintf(stdout, "[%d] Committed AddWatchList\n", TThread::id());
 }
 
 template <typename DBParams>
@@ -72,6 +76,8 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_selec
     article_type art;
 
     TRANSACTION {
+
+    fprintf(stdout, "[%d] GetPageAnonymous\n", TThread::id());
 
     bool abort, result;
     const void *value;
@@ -144,6 +150,8 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_selec
 
     } RETRY(true);
 
+    fprintf(stdout, "[%d] Committed GetPageAnonymous\n", TThread::id());
+
     return art;
 }
 
@@ -164,6 +172,8 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_s
     article_type art;
 
     TRANSACTION {
+
+    fprintf(stdout, "[%d] GetPageAuth\n", TThread::id());
 
     bool abort, result;
     const void *value;
@@ -243,6 +253,8 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_s
 
     } RETRY(true);
 
+    fprintf(stdout, "[%d] Committed GetPageAuth\n", TThread::id());
+
     return art;
 }
 
@@ -253,6 +265,8 @@ void wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
     typedef useracct_row::NamedColumn nc;
 
     TRANSACTION {
+
+    fprintf(stdout, "[%d] RemoveWatchList\n", TThread::id());
 
     bool abort, result;
     uintptr_t row;
@@ -274,6 +288,8 @@ void wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
     db.tbl_useracct().update_row(row, new_uv);
 
     } RETRY(true);
+
+    fprintf(stdout, "[%d] Committed RemoveWatchList", TThread::id());
 }
 
 template <typename DBParams>
@@ -389,7 +405,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
         return true;
     };
 
-    abort = db.idx_watchlist().template range_scan<decltype(scan_cb), false>(k0, k1, scan_cb, RowAccess::ObserveExists);
+    abort = db.idx_watchlist().template range_scan<decltype(scan_cb), false>(k0, k1, scan_cb, RowAccess::ObserveExists, false/*! phantom protection*/);
     TXN_CHECK(abort);
 
     if (!watching_users.empty()) {
@@ -458,6 +474,7 @@ void wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
                                                     const std::string& rev_comment,
                                                     int rev_minor_edit) {
     while (true) {
+        fprintf(stdout, "[%d] UpdatePage\n", TThread::id());
         bool success =
             txn_updatePage_inner(text_id, page_id, page_title, page_text,
                                  page_name_space, user_id, user_ip, user_text,
@@ -466,6 +483,7 @@ void wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
             break;
     }
 
+    fprintf(stdout, "[%d] Committed UpdatePage\n", TThread::id());
 }
 
 }; // namespace wikipedia

@@ -201,4 +201,9 @@ static inline IntType bswap(IntType x) {
         always_assert(false);
 }
 
+struct dummy_row {
+    enum class NamedColumn : int { dummy = 0 };
+    uintptr_t dummy;
+};
+
 }; // namespace bench
