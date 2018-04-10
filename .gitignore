@@ -49,6 +49,7 @@
 /tpcc_bench
 /ycsb_bench
 /micro_bench
+/wiki_bench
 /unit-swisstarray
 /unit-swisstgeneric
 /perf.data

@@ -81,7 +81,10 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_selec
     assert(result);
     auto page_id = reinterpret_cast<const page_idx_row *>(value)->page_id;
 
-    std::tie(abort, result, std::ignore, value) = db.tbl_page().select_row(page_key(page_id), {{page_nc::page_latest, false}});
+    std::tie(abort, result, std::ignore, value) = db.tbl_page().select_row(page_key(page_id),
+                                                                           {{page_nc::page_title, false},
+                                                                            {page_nc::page_namespace, false},
+                                                                            {page_nc::page_latest, false}});
     TXN_DO(abort);
     assert(result);
     auto page_v = reinterpret_cast<const page_row *>(value);
