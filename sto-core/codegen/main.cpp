@@ -15,8 +15,11 @@
 const std::string TName_str[] = {"int64_t", "int32_t", "float", "var_string", "fix_string"};
 
 unsigned int integer_log2(uint64_t input) {
+    if (input == 0 && input == 1)
+        return 0;
+    input -= 1;
     unsigned int log = 0;
-    while (input >>= 1) {++log;}
+    while (input) { ++log; input >>= 1; }
     return log;
 }
 
