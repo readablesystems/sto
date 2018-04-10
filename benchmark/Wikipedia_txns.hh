@@ -30,12 +30,20 @@ void wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
     const void *value;
 
     auto wv = Sto::tx_alloc<watchlist_row>();
+    auto wiv = Sto::tx_alloc<watchlist_idx_row>();
     bzero(wv, sizeof(watchlist_row));
+    bzero(wiv, sizeof(watchlist_idx_row));
     std::tie(abort, result) = db.tbl_watchlist().insert_row(watchlist_key(user_id, name_space, page_title), wv);
+    TXN_DO(abort);
+
+    std::tie(abort, result) = db.idx_watchlist().insert_row(watchlist_idx_key(name_space, page_title, user_id), wiv);
     TXN_DO(abort);
 
     if (name_space == 0) {
         std::tie(abort, std::ignore) = db.tbl_watchlist().insert_row(watchlist_key(user_id, 1, page_title), wv);
+        TXN_DO(abort);
+
+        std::tie(abort, std::ignore) = db.idx_watchlist().insert_row(watchlist_idx_key(name_space, page_title, user_id), wiv);
         TXN_DO(abort);
     }
 
@@ -248,6 +256,10 @@ void wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
     const void *value;
 
     std::tie(abort, result) = db.tbl_watchlist().delete_row(watchlist_key(user_id, name_space, page_title));
+    TXN_DO(abort);
+    //assert(result);
+
+    std::tie(abort, result) = db.idx_watchlist().delete_row(watchlist_idx_key(name_space, page_title, user_id));
     TXN_DO(abort);
     //assert(result);
 
