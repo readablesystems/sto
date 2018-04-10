@@ -49,7 +49,7 @@ static inline void print_usage(const char *argv_0) {
        << "    Specify the number of parallel worker threads (default 1)." << std::endl
        << "  --scaleusers=<NUM> (or -u<NUM>)" << std::endl
        << "    Specify the scale factor of the number of users (default 10)." << std::endl
-       << "  --scalepages=<NUM> (or -p<NUM>)" << std::endl
+       << "  --scalepages=<NUM> (or -g<NUM>)" << std::endl
        << "    Specify the scale factor of the number of pages (default 10)." << std::endl
        << "  --time=<NUM> (or -l<NUM>)" << std::endl
        << "    Specify the time (duration) for which the benchmark is run (default 10 seconds)." << std::endl

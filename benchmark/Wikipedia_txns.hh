@@ -405,7 +405,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
         return true;
     };
 
-    abort = db.idx_watchlist().template range_scan<decltype(scan_cb), false>(k0, k1, scan_cb, RowAccess::ObserveExists, false/*! phantom protection*/);
+    abort = db.idx_watchlist().template range_scan<decltype(scan_cb), false>(k0, k1, scan_cb, RowAccess::None, false/*! phantom protection*/);
     TXN_CHECK(abort);
 
     if (!watching_users.empty()) {
