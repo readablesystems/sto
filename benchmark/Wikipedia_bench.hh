@@ -9,6 +9,7 @@
 #include "compiler.hh"
 #include "clp.h"
 #include "Wikipedia_structs.hh"
+#include "Wikipedia_selectors.hh"
 #include "DB_index.hh"
 #include "DB_params.hh"
 
