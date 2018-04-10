@@ -9,7 +9,11 @@
 #include "compiler.hh"
 #include "clp.h"
 #include "Wikipedia_structs.hh"
+
+#if TABLE_FINE_GRAINED
 #include "Wikipedia_selectors.hh"
+#endif
+
 #include "DB_index.hh"
 #include "DB_params.hh"
 
