@@ -5,7 +5,8 @@
 #define INTERACTIVE_TXN_START Sto::start_transaction()
 
 #define INTERACTIVE_TXN_COMMIT \
-    if (!Sto::transaction()->in_progress() || !Sto::transaction()->try_commit()) { \
+    always_assert(Sto::transaction()->in_progress(), "transaction not in progress"); \
+    if (!Sto::transaction()->try_commit()) { \
         return false; \
     }
 
@@ -22,8 +23,6 @@ void wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
                                                       int name_space,
                                                       const std::string& page_title) {
     typedef useracct_row::NamedColumn nc;
-
-    fprintf(stdout, "[%d] AddWatchList\n", TThread::id());
 
     TRANSACTION {
 
@@ -57,8 +56,36 @@ void wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
     db.tbl_useracct().update_row(row, new_uv);
 
     } RETRY(true);
+}
 
-    fprintf(stdout, "[%d] Committed AddWatchList\n", TThread::id());
+template <typename DBParams>
+void wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
+                                                         int name_space,
+                                                         const std::string& page_title) {
+    typedef useracct_row::NamedColumn nc;
+
+    TRANSACTION {
+
+    bool abort, result;
+    uintptr_t row;
+    const void *value;
+
+    std::tie(abort, result) = db.tbl_watchlist().delete_row(watchlist_key(user_id, name_space, page_title));
+    TXN_DO(abort);
+    //assert(result);
+
+    std::tie(abort, result) = db.idx_watchlist().delete_row(watchlist_idx_key(name_space, page_title, user_id));
+    TXN_DO(abort);
+    //assert(result);
+
+    std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id), {{nc::user_touched, true}});
+    TXN_DO(abort);
+    assert(result);
+    auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
+    new_uv->user_touched = ig.curr_timestamp_string();
+    db.tbl_useracct().update_row(row, new_uv);
+
+    } RETRY(true);
 }
 
 template <typename DBParams>
@@ -76,8 +103,6 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_selec
     article_type art;
 
     TRANSACTION {
-
-    fprintf(stdout, "[%d] GetPageAnonymous\n", TThread::id());
 
     bool abort, result;
     const void *value;
@@ -150,8 +175,6 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_selec
 
     } RETRY(true);
 
-    fprintf(stdout, "[%d] Committed GetPageAnonymous\n", TThread::id());
-
     return art;
 }
 
@@ -172,8 +195,6 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_s
     article_type art;
 
     TRANSACTION {
-
-    fprintf(stdout, "[%d] GetPageAuth\n", TThread::id());
 
     bool abort, result;
     const void *value;
@@ -253,43 +274,7 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_s
 
     } RETRY(true);
 
-    fprintf(stdout, "[%d] Committed GetPageAuth\n", TThread::id());
-
     return art;
-}
-
-template <typename DBParams>
-void wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
-                                                         int name_space,
-                                                         const std::string& page_title) {
-    typedef useracct_row::NamedColumn nc;
-
-    TRANSACTION {
-
-    fprintf(stdout, "[%d] RemoveWatchList\n", TThread::id());
-
-    bool abort, result;
-    uintptr_t row;
-    const void *value;
-
-    std::tie(abort, result) = db.tbl_watchlist().delete_row(watchlist_key(user_id, name_space, page_title));
-    TXN_DO(abort);
-    //assert(result);
-
-    std::tie(abort, result) = db.idx_watchlist().delete_row(watchlist_idx_key(name_space, page_title, user_id));
-    TXN_DO(abort);
-    //assert(result);
-
-    std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id), {{nc::user_touched, true}});
-    TXN_DO(abort);
-    assert(result);
-    auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
-    new_uv->user_touched = ig.curr_timestamp_string();
-    db.tbl_useracct().update_row(row, new_uv);
-
-    } RETRY(true);
-
-    fprintf(stdout, "[%d] Committed RemoveWatchList", TThread::id());
 }
 
 template <typename DBParams>
@@ -416,10 +401,12 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
         for (auto& u : watching_users) {
             std::tie(abort, result, row, value) = db.tbl_watchlist().select_row(watchlist_key(u, page_name_space, page_title), RowAccess::UpdateValue);
             TXN_CHECK(abort);
-            assert(result);
-            auto new_wlv = Sto::tx_alloc(reinterpret_cast<const watchlist_row *>(value));
-            new_wlv->wl_notificationtimestamp = timestamp_str;
-            db.tbl_watchlist().update_row(row, new_wlv);
+            //assert(result);
+            if (result) {
+                auto new_wlv = Sto::tx_alloc(reinterpret_cast<const watchlist_row *>(value));
+                new_wlv->wl_notificationtimestamp = timestamp_str;
+                db.tbl_watchlist().update_row(row, new_wlv);
+            }
         }
 
         INTERACTIVE_TXN_COMMIT;
@@ -474,7 +461,6 @@ void wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
                                                     const std::string& rev_comment,
                                                     int rev_minor_edit) {
     while (true) {
-        fprintf(stdout, "[%d] UpdatePage\n", TThread::id());
         bool success =
             txn_updatePage_inner(text_id, page_id, page_title, page_text,
                                  page_name_space, user_id, user_ip, user_text,
@@ -482,8 +468,6 @@ void wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
         if (success)
             break;
     }
-
-    fprintf(stdout, "[%d] Committed UpdatePage\n", TThread::id());
 }
 
 }; // namespace wikipedia
