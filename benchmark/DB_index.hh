@@ -588,18 +588,22 @@ public:
     static constexpr bool index_read_my_write = DBParams::RdMyWr;
 
     struct internal_elem {
-        version_type version;
         key_type key;
-
         value_container_type row_container;
         bool deleted;
 
         internal_elem(const key_type& k, const value_type& v, bool valid)
-            : version(valid ? Sto::initialized_tid() : Sto::initialized_tid() | invalid_bit, !valid),
-              key(k), row_container(Sto::initialized_tid(), v), deleted(false) {}
+            : key(k),
+              row_container((valid ? Sto::initialized_tid() : (Sto::initialized_tid() | invalid_bit)),
+                            !valid, v),
+              deleted(false) {}
 
-        bool valid() const {
-            return !(version.value() & invalid_bit);
+        version_type& version() {
+            return row_container.row_version();
+        }
+
+        bool valid() {
+            return !(version().value() & invalid_bit);
         }
     };
 
@@ -624,8 +628,8 @@ public:
     //           48 bits                15 bits   1
 
     // I: internode bit
-    // cell id: valid range 0-32766 (0x7ffe)
-    // cell id 32767 (0x7fff) is reserved to identify the row item
+    // cell id: valid range 0-32767 (0x7fff)
+    // cell id 0 identifies the row item
 
     class item_key_t {
         typedef uintptr_t type;
@@ -639,7 +643,7 @@ public:
                                                           | ((static_cast<type>(cell_num) << 1u) & cell_mask)) {};
 
         static item_key_t row_item_key(internal_elem *e) {
-            return item_key_t(e, -1);
+            return item_key_t(e, 0);
         }
 
         internal_elem *internal_elem_ptr() const {
@@ -651,7 +655,7 @@ public:
         }
 
         bool is_row_item() const {
-            return ((key_ & cell_mask) == cell_mask);
+            return (cell_num() == 0);
         }
     };
 
@@ -785,12 +789,12 @@ public:
 
         switch (access) {
             case RowAccess::UpdateValue:
-                ok = version_adapter::select_for_update(row_item, e->version);
+                ok = version_adapter::select_for_update(row_item, e->version());
                 row_item.add_flags(row_update_bit);
                 break;
             case RowAccess::ObserveExists:
             case RowAccess::ObserveValue:
-                ok = row_item.observe(e->version);
+                ok = row_item.observe(e->version());
                 break;
             default:
                 break;
@@ -898,9 +902,9 @@ public:
             if (overwrite) {
                 bool ok;
                 if (value_is_small)
-                    ok = version_adapter::select_for_overwrite(row_item, e->version, *vptr);
+                    ok = version_adapter::select_for_overwrite(row_item, e->version(), *vptr);
                 else
-                    ok = version_adapter::select_for_overwrite(row_item, e->version, vptr);
+                    ok = version_adapter::select_for_overwrite(row_item, e->version(), vptr);
                 if (!ok)
                     goto abort;
                 if (index_read_my_write) {
@@ -910,7 +914,7 @@ public:
                 }
             } else {
                 // observes that the row exists, but nothing more
-                if (!row_item.observe(e->version))
+                if (!row_item.observe(e->version()))
                     goto abort;
             }
 
@@ -985,7 +989,7 @@ public:
 
             // select_for_update will register an observation and set the write bit of
             // the TItem
-            if (!version_adapter::select_for_update(row_item, e->version))
+            if (!version_adapter::select_for_update(row_item, e->version()))
                 goto abort;
             fence();
             if (e->deleted)
@@ -1095,7 +1099,7 @@ public:
             switch (access) {
                 case RowAccess::ObserveValue:
                 case RowAccess::ObserveExists:
-                    ok = row_item.observe(e->version);
+                    ok = row_item.observe(e->version());
                     break;
                 case RowAccess::None:
                     break;
@@ -1159,7 +1163,7 @@ public:
         auto key = item.key<item_key_t>();
         auto e = key.internal_elem_ptr();
         if (key.is_row_item())
-            return txn.try_lock(item, e->version);
+            return txn.try_lock(item, e->version());
         else
             return txn.try_lock(item, e->row_container.version_at(key.cell_num()));
     }
@@ -1174,7 +1178,7 @@ public:
             auto key = item.key<item_key_t>();
             auto e = key.internal_elem_ptr();
             if (key.is_row_item())
-                return e->version.cp_check_version(txn, item);
+                return e->version().cp_check_version(txn, item);
             else
                 return e->row_container.version_at(key.cell_num()).cp_check_version(txn, item);
         }
@@ -1190,38 +1194,51 @@ public:
             if (has_delete(item)) {
                 if (!has_insert(item)) {
                     assert(e->valid() && !e->deleted);
-                    txn.set_version(e->version);
+                    txn.set_version(e->version());
                     e->deleted = true;
                     fence();
                 }
                 return;
             }
 
-            if (has_row_update(item) && !has_insert(item)) {
-                if (value_is_small) {
-                    e->row_container.row = item.write_value<value_type>();
+            value_type *vptr;
+            if (value_is_small) {
+                vptr = &(item.write_value<value_type>());
+            } else {
+                vptr = item.write_value<value_type *>();
+            }
+
+            if (!has_insert(item)) {
+                if (has_row_update(item)) {
+                    if (value_is_small) {
+                        e->row_container.row = *vptr;
+                    } else {
+                        copy_row(e, vptr);
+                    }
                 } else {
-                    auto vptr = item.write_value<value_type *>();
-                    copy_row(e, vptr);
+                    // install only the difference part
+                    // not sure if works when there are more than 1 minor version fields
+                    // should still work
+                    e->row_container.install_cell(0, vptr);
                 }
             }
 
             // like in the hashtable (unordered_index), no need for the hacks
             // treating opacity as a special case
-            txn.set_version_unlock(e->version, item);
+            txn.set_version_unlock(e->version(), item);
         } else {
             // skip installation if row-level update is present
             auto row_item = Sto::item(this, item_key_t::row_item_key(e));
-            if (has_row_update(row_item))
-                return;
+            if (!has_row_update(row_item)) {
+                value_type *vptr;
+                if (value_is_small)
+                    vptr = &(row_item.template raw_write_value<value_type>());
+                else
+                    vptr = row_item.template raw_write_value<value_type *>();
 
-            value_type *vptr;
-            if (value_is_small)
-                vptr = &(row_item.template raw_write_value<value_type>());
-            else
-                vptr = row_item.template raw_write_value<value_type *>();
+                e->row_container.install_cell(key.cell_num(), vptr);
+            }
 
-            e->row_container.install_cell(key.cell_num(), vptr);
             txn.set_version_unlock(e->row_container.version_at(key.cell_num()), item);
         }
     }
@@ -1231,7 +1248,7 @@ public:
         auto key = item.key<item_key_t>();
         auto e = key.internal_elem_ptr();
         if (key.is_row_item())
-            e->version.cp_unlock(item);
+            e->version().cp_unlock(item);
         else
             e->row_container.version_at(key.cell_num()).cp_unlock(item);
     }
@@ -1322,8 +1339,7 @@ private:
         std::vector<TransProxy> cell_items;
         cell_items.reserve(cell_accesses.size());
         for (auto& ca : cell_accesses) {
-            auto item = index_read_my_write ? Sto::item(this, item_key_t(e, ca.cell_id))
-                                            : Sto::fresh_item(this, item_key_t(e, ca.cell_id));
+            auto item = Sto::item(this, item_key_t(e, ca.cell_id));
             if (index_read_my_write && !any_has_write && item.has_write())
                 any_has_write = true;
             cell_items.push_back(std::move(item));

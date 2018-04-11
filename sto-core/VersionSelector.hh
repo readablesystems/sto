@@ -76,6 +76,7 @@ class IndexValueContainer : ver_sel::VerSel<RowType, VersImpl> {
 public:
     typedef TransactionTid::type type;
     using Selector = ver_sel::VerSel<RowType, VersImpl>;
+    typedef typename Selector::version_type version_type;
     using Selector::map;
     using Selector::version_at;
     using Selector::num_versions;
@@ -87,6 +88,11 @@ public:
 
     void install_cell(int cell, const RowType *new_row) {
         Selector::install_by_cell(&row, new_row, cell);
+    }
+
+    // version_at(0) is always the row-wise version
+    version_type& row_version() {
+        return version_at(0);
     }
 };
 
