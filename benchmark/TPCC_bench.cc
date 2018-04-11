@@ -221,7 +221,7 @@ void tpcc_prepopulator<DBParams>::expand_customers(uint64_t wid) {
             order_cidx_key ock(wid, did, ov.o_c_id, oid);
 
             db.tbl_orders(wid).nontrans_put(ok, ov);
-            db.tbl_order_customer_index(wid).nontrans_put(ock, 0);
+            db.tbl_order_customer_index(wid).nontrans_put(ock, {});
 
             for (uint64_t on = 1; on <= ov.o_ol_cnt; ++on) {
                 orderline_key olk(wid, did, oid, on);
@@ -239,7 +239,7 @@ void tpcc_prepopulator<DBParams>::expand_customers(uint64_t wid) {
 
             if (oid >= 2101) {
                 order_key nok(wid, did, oid);
-                db.tbl_neworders(wid).nontrans_put(nok, 0);
+                db.tbl_neworders(wid).nontrans_put(nok, {});
             }
         }
     }

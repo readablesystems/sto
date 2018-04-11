@@ -206,23 +206,23 @@ struct customer_key {
 
 struct customer_value {
     enum class NamedColumn : int { c_first = 0,
-                                 c_middle,
-                                 c_last,
-                                 c_street_1,
-                                 c_street_2,
-                                 c_city,
-                                 c_state,
-                                 c_zip,
-                                 c_phone,
-                                 c_since,
-                                 c_credict,
-                                 c_credit_lim,
-                                 c_discount,
-                                 c_balance,
-                                 c_ytd_payment,
-                                 c_payment_cnt,
-                                 c_delivery_cnt,
-                                 c_data };
+                                   c_middle,
+                                   c_last,
+                                   c_street_1,
+                                   c_street_2,
+                                   c_city,
+                                   c_state,
+                                   c_zip,
+                                   c_phone,
+                                   c_since,
+                                   c_credit,
+                                   c_credit_lim,
+                                   c_discount,
+                                   c_balance,
+                                   c_ytd_payment,
+                                   c_payment_cnt,
+                                   c_delivery_cnt,
+                                   c_data };
 
     var_string<16>  c_first;
     fix_string<2>   c_middle;
@@ -413,7 +413,7 @@ struct orderline_key {
 };
 
 struct orderline_value {
-    enum class NamedColumn : int { ol_i_id = 0;
+    enum class NamedColumn : int { ol_i_id = 0,
                                    ol_supply_w_id,
                                    ol_delivery_d,
                                    ol_quantity,

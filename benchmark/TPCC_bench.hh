@@ -117,17 +117,17 @@ public:
     typedef integer_box<DBParams>                  dt_ytd_type;
     typedef OIndex<customer_key, customer_value_variable> cv_table_type;
 #endif
-    typedef std::vector<warehouse_value>           wh_table_type;
-    typedef OIndex<district_key, district_value>   dt_table_type;
+    typedef std::vector<warehouse_value>                 wh_table_type;
+    typedef OIndex<district_key, district_value>         dt_table_type;
     typedef OIndex<customer_idx_key, customer_idx_value> ci_table_type;
-    typedef OIndex<customer_key, customer_value>   cu_table_type;
-    typedef OIndex<order_cidx_key, int>            oi_table_type;
-    typedef OIndex<order_key, order_value>         od_table_type;
-    typedef OIndex<orderline_key, orderline_value> ol_table_type;
-    typedef OIndex<order_key, int>                 no_table_type;
-    typedef OIndex<item_key, item_value>           it_table_type;
-    typedef OIndex<stock_key, stock_value>         st_table_type;
-    typedef OIndex<history_key, history_value>     ht_table_type;
+    typedef OIndex<customer_key, customer_value>         cu_table_type;
+    typedef OIndex<order_cidx_key, bench::dummy_row>     oi_table_type;
+    typedef OIndex<order_key, order_value>               od_table_type;
+    typedef OIndex<orderline_key, orderline_value>       ol_table_type;
+    typedef OIndex<order_key, bench::dummy_row>          no_table_type;
+    typedef OIndex<item_key, item_value>                 it_table_type;
+    typedef OIndex<stock_key, stock_value>               st_table_type;
+    typedef OIndex<history_key, history_value>           ht_table_type;
 
     explicit inline tpcc_db(int num_whs);
     explicit inline tpcc_db(const std::string& db_file_name) = delete;

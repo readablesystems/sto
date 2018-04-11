@@ -184,7 +184,9 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     typedef district_value::NamedColumn dt_nc;
     typedef customer_value::NamedColumn cu_nc;
+#if TALBE_FINE_GRAINED == 1
     typedef customer_value_variable::NamedColumn cv_nc;
+#endif
 
     //fprintf(stdout, "PAYMENT\n");
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
@@ -263,7 +265,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     // select district row and retrieve district info
     district_key dk(q_w_id, q_d_id);
-    std::tie(success, result, row, value) = db.tbl_districts(q_w_id).select_row(dk, {
+    std::tie(success, result, row, value) = db.tbl_districts(q_w_id).select_row(dk,
 #if TABLE_FINE_GRAINED == 0
         {{dt_nc::d_name, false}, {dt_nc::d_street_1, false}, {dt_nc::d_street_2, false}, {dt_nc::d_city, false}, {dt_nc::d_state, false}, {dt_nc::d_zip, false}, {dt_nc::d_ytd, true}}
 #else
@@ -310,7 +312,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         customer_idx_key ck1(q_c_w_id, q_c_d_id, last_name, 0xff);
 
         success = db.tbl_customer_index(q_c_w_id)
-                .template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback);
+                .template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback, RowAccess::ObserveValue);
         TXN_DO(success);
 
         size_t n = matches.size();
@@ -327,10 +329,10 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
 #if TABLE_FINE_GRAINED == 1
     typedef customer_value_variable specific_value_type;
-    std::tie(success, result, row, value) = db.tbl_customer_variables(q_c_w_id).select_row(ck, {{cu_nc::c_balance, true}, {cu_nc::c_ytd_payment, true}, {cu_nc::c_payment_cnt, true}, {cu_nc::c_since, false}, {cu_nc::c_credit_lim, false}, {cu_nc::c_discount, false}, {cu_nc::c_data, true}});
+    std::tie(success, result, row, value) = db.tbl_customer_variables(q_c_w_id).select_row(ck, {{cv_nc::c_balance, true}, {cv_nc::c_ytd_payment, true}, {cv_nc::c_payment_cnt, true}, {cv_nc::c_since, false}, {cv_nc::c_credit_lim, false}, {cv_nc::c_discount, false}, {cv_nc::c_data, true}});
 #else
     typedef customer_value specific_value_type;
-    std::tie(success, result, row, value) = db.tbl_customers(q_c_w_id).select_row(ck, {{cv_nc::c_balance, true}, {cv_nc::c_ytd_payment, true}, {cv_nc::c_payment_cnt, true}, {cv_nc::c_since, false}, {cv_nc::c_credict_lim, false}, {cv_nc::c_discount, false}, {cv_nc::c_data, true}});
+    std::tie(success, result, row, value) = db.tbl_customers(q_c_w_id).select_row(ck, {{cu_nc::c_balance, true}, {cu_nc::c_ytd_payment, true}, {cu_nc::c_payment_cnt, true}, {cu_nc::c_since, false}, {cu_nc::c_credit_lim, false}, {cu_nc::c_discount, false}, {cu_nc::c_data, true}});
 #endif
     TXN_DO(success);
     assert(result);
@@ -383,7 +385,9 @@ template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
     typedef customer_value::NamedColumn cu_nc;
+#if TABLE_FINE_GRAINED == 1
     typedef customer_value_variable::NamedColumn cv_nc;
+#endif
     typedef order_value::NamedColumn od_nc;
 
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
@@ -434,7 +438,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         customer_idx_key ck1(q_w_id, q_d_id, last_name, 0xff);
 
         success = db.tbl_customer_index(q_w_id)
-                .template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback);
+                .template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback, RowAccess::ObserveValue);
         TXN_DO(success);
 
         size_t n = matches.size();
@@ -452,7 +456,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 #if TABLE_FIND_GRAINED == 0
     {cu_nc::c_balance, false},
 #endif
-    {cu_nc::c_first, false}, {cu_nc::c_last, false}, {cu_nc::c_Middle, false}});
+    {cu_nc::c_first, false}, {cu_nc::c_last, false}, {cu_nc::c_middle, false}});
     TXN_DO(success);
     assert(result);
 
@@ -476,7 +480,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
     // find the highest order placed by customer q_c_id
     uint64_t cus_o_id = 0;
-    auto scan_callback = [&] (const order_cidx_key& key, const int& dummy) -> bool {
+    auto scan_callback = [&] (const order_cidx_key& key, const bench::dummy_row& dummy) -> bool {
         (void)dummy;
         cus_o_id = key.o_id;
         return true;
@@ -486,7 +490,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     order_cidx_key k1(q_w_id, q_d_id, q_c_id, std::numeric_limits<uint64_t>::max());
 
     success = db.tbl_order_customer_index(q_w_id)
-            .template range_scan<decltype(scan_callback), true/*reverse*/>(k0, k1, scan_callback, 1/*reverse scan for only 1 item*/);
+            .template range_scan<decltype(scan_callback), true/*reverse*/>(k0, k1, scan_callback, RowAccess::ObserveExists, false, 1/*reverse scan for only 1 item*/);
     TXN_DO(success);
 
     if (cus_o_id > 0) {
@@ -513,7 +517,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         orderline_key olk1(q_w_id, q_d_id, cus_o_id, std::numeric_limits<uint64_t>::max());
 
         success = db.tbl_orderlines(q_w_id)
-                .template range_scan<decltype(ol_scan_callback), true/*reverse*/>(olk0, olk1, ol_scan_callback);
+                .template range_scan<decltype(ol_scan_callback), true/*reverse*/>(olk0, olk1, ol_scan_callback, RowAccess::ObserveValue);
         TXN_DO(success);
     } else {
         // order doesn't exist, simply commit the transaction
