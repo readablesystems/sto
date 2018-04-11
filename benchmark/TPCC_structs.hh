@@ -120,9 +120,7 @@ struct district_value {
     fix_string<2>  d_state;
     fix_string<9>  d_zip;
     int64_t        d_tax;
-#if TABLE_FINE_GRAINED == 0
     int64_t        d_ytd;
-#endif
     // we use the separate oid generator for better semantics in transactions
     //uint64_t       d_next_o_id;
 };
@@ -237,40 +235,12 @@ struct customer_value {
     fix_string<2>   c_credit;
     int64_t         c_credit_lim;
     int64_t         c_discount;
-#if TABLE_FINE_GRAINED == 0
     int64_t         c_balance;
     int64_t         c_ytd_payment;
     uint16_t        c_payment_cnt;
     uint16_t        c_delivery_cnt;
     fix_string<500> c_data;
-#endif
 };
-
-#if TABLE_FINE_GRAINED == 1
-struct customer_value_variable {
-    enum class NamedColumn : int { c_since = 0,
-                                   c_credit,
-                                   c_credit_lim,
-                                   c_discount,
-                                   c_balance,
-                                   c_ytd_payment,
-                                   c_payment_cnt,
-                                   c_delivery_cnt,
-                                   c_data };
-
-    // begin: duplicate data
-    uint32_t      c_since;
-    fix_string<2> c_credit;
-    int64_t       c_credit_lim;
-    int64_t       c_discount;
-    // end: duplicate data
-    int64_t       c_balance;
-    int64_t       c_ytd_payment;
-    uint16_t      c_payment_cnt;
-    uint16_t      c_delivery_cnt;
-    fix_string<500> c_data;
-};
-#endif
 
 // HISTORY
 

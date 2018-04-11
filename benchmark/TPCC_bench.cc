@@ -26,10 +26,6 @@ tpcc_db<DBParams>::tpcc_db(int num_whs) : oid_gen_() {
 
     tbl_its_ = new it_table_type(999983/*NUM_ITEMS * 2*/);
     for (auto i = 0; i < num_whs; ++i) {
-#if TABLE_FINE_GRAINED == 1
-        tbl_dty_.emplace_back(NUM_DISTRICTS_PER_WAREHOUSE);
-        tbl_cvs_.emplace_back(999983);
-#endif
         tbl_whs_.emplace_back();
         tbl_dts_.emplace_back(999983/*num_districts * 2*/);
         tbl_cni_.emplace_back(999983/*num_customers * 2*/);
@@ -120,11 +116,7 @@ void tpcc_prepopulator<DBParams>::expand_warehouse(uint64_t wid) {
         dv.d_state = random_state_name();
         dv.d_zip = random_zip_code();
         dv.d_tax = ig.random(0, 2000);
-#if TABLE_FINE_GRAINED == 0
         dv.d_ytd = 3000000;
-#else
-        db.get_district_ytd(wid, did) = 3000000;
-#endif
         //dv.d_next_o_id = 3001;
 
         db.tbl_districts(wid).nontrans_put(dk, dv);
@@ -153,25 +145,11 @@ void tpcc_prepopulator<DBParams>::expand_districts(uint64_t wid) {
             cv.c_credit = (ig.random(1, 100) <= 10) ? "BC" : "GC";
             cv.c_credit_lim = 5000000;
             cv.c_discount = ig.random(0, 5000);
-#if TABLE_FINE_GRAINED == 0
             cv.c_balance = -1000;
             cv.c_ytd_payment = 1000;
             cv.c_payment_cnt = 1;
             cv.c_delivery_cnt = 0;
             cv.c_data = random_a_string(300, 500);
-#else
-            customer_value_variable cvv;
-            cvv.c_since = cv.c_since;
-            cvv.c_credit = cv.c_credit;
-            cvv.c_credit_lim = cv.c_credit_lim;
-            cvv.c_discount = cv.c_discount;
-            cvv.c_balance = -1000;
-            cvv.c_ytd_payment = 1000;
-            cvv.c_payment_cnt = 1;
-            cvv.c_delivery_cnt = 0;
-            cvv.c_data = random_a_string(300, 500);
-            db.tbl_customer_variables(wid).nontrans_put(ck, cvv);
-#endif
 
             db.tbl_customers(wid).nontrans_put(ck, cv);
 
