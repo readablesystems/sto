@@ -5,7 +5,6 @@
 #include "Wikipedia_txns.hh"
 
 #include "DB_profiler.hh"
-#include "PlatformFeatures.hh"
 #include "clp.h"
 
 using db_params::constants;
