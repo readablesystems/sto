@@ -629,14 +629,14 @@ public:
 
     class item_key_t {
         typedef uintptr_t type;
-        static constexpr int shift = 16;
+        static constexpr unsigned shift = 16u;
         static constexpr type cell_mask = type(0xfffe);
         type key_;
 
     public:
         item_key_t() : key_() {};
         item_key_t(internal_elem *e, int cell_num) : key_((reinterpret_cast<type>(e) << shift)
-                                                          | ((static_cast<type>(cell_num) << 1) & cell_mask)) {};
+                                                          | ((static_cast<type>(cell_num) << 1u) & cell_mask)) {};
 
         static item_key_t row_item_key(internal_elem *e) {
             return item_key_t(e, -1);
@@ -947,10 +947,10 @@ public:
             row_item.add_flags(insert_bit);
 
             // add all newly created nodes to the read set
-            for (auto& np : lp.new_nodes()) {
-                if (!register_internode_version(np.first, np.second))
-                    goto abort;
-            }
+            //for (auto& np : lp.new_nodes()) {
+            //    if (!register_internode_version(np.first, np.second))
+            //        goto abort;
+            //}
 
             // update the node version already in the read set and modified by split
             if (!update_internode_version(node, orig_nv, new_nv))
@@ -1371,7 +1371,7 @@ private:
             nodeversion_value_type prev_nv, nodeversion_value_type new_nv) {
         TransProxy item = Sto::item(this, get_internode_key(node));
         if (!item.has_read()) {
-            item.add_read(new_nv);
+            //item.add_read(new_nv);
             return true;
         }
         if (prev_nv == item.template read_value<nodeversion_value_type>()) {

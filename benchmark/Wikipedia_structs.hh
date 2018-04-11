@@ -9,23 +9,6 @@ namespace wikipedia {
 
 using namespace bench;
 
-template <typename K>
-struct masstree_key_adapter : public K {
-    // Conversions from and to masstree key type
-    explicit masstree_key_adapter(const lcdf::Str& mt_key) {
-        assert(mt_key.length() == sizeof(*this));
-        memcpy(this, mt_key.data(), sizeof(*this));
-    }
-
-    template <typename... Args>
-    explicit masstree_key_adapter(Args&&... args)
-        : K(std::forward<Args>(args)...) {}
-
-    operator lcdf::Str() const {
-        return lcdf::Str((const char *)this, sizeof(*this));
-    }
-};
-
 // New table: ipblocks
 
 struct __attribute__((packed)) ipblocks_key_bare {

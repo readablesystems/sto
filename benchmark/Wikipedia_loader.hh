@@ -111,18 +111,18 @@ void wikipedia_loader<DBParams>::load_revision() {
         auto old_text_len = old_text.length();
 
         for (int i = 0; i < num_revs; ++i) {
-            auto tr_id = (int)db.tbl_revision().gen_key(); // text/rev id
-            auto tx_id = (int)db.tbl_text().gen_key();
+            auto tr_id = (int)db.tbl_revision().gen_key(); // rev id
+            auto tx_id = (int)db.tbl_text().gen_key(); // text id
             always_assert(tx_id == tr_id, "text_id and rev_id should be the same at load time");
 
             auto uid = ig.generate_user_id();
-            user_revision_cnts[uid - 1] ++;
+            ++user_revision_cnts[uid - 1];
             if (i > 0) {
                 old_text = ig.generate_rev_text(old_text);
                 old_text_len = old_text.length();
             }
 
-            text_key t_k(tr_id);
+            text_key t_k(tx_id);
             text_row t_r;
             t_r.old_text = new char[old_text_len + 1];
             memcpy(t_r.old_text, old_text.c_str(), old_text_len + 1);

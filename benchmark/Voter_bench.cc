@@ -1,11 +1,11 @@
 #include <thread>
 
-#include "Wikipedia_bench.hh"
-#include "Wikipedia_loader.hh"
-#include "Wikipedia_txns.hh"
+#include "Voter_bench.hh"
+#include "Voter_loader.hh"
+#include "Voter_txns.hh"
 
 #include "DB_profiler.hh"
-#include "clp.h"
+#include "PlatformFeatures.hh"
 
 using db_params::constants;
 using db_params::db_params_id;
@@ -16,13 +16,6 @@ using db_params::db_2pl_params;
 using db_params::db_swiss_params;
 using db_params::db_opaque_params;
 using db_params::parse_dbid;
-
-template <typename DBParams>
-int* wikipedia::wikipedia_loader<DBParams>::user_revision_cnts = nullptr;
-template <typename DBParams>
-int* wikipedia::wikipedia_loader<DBParams>::page_last_rev_ids = nullptr;
-template <typename DBParams>
-int* wikipedia::wikipedia_loader<DBParams>::page_last_rev_lens = nullptr;
 
 // @section: clp parser definitions
 enum {
@@ -70,9 +63,9 @@ struct cmd_params {
     bool perf_counter_mode;
 
     explicit cmd_params()
-        : db_id(db_params::db_params_id::Default),
-          num_threads(1), scale_user(10), scale_page(10),
-          time(10.0), spwan_perf(false), perf_counter_mode(false) {}
+            : db_id(db_params::db_params_id::Default),
+              num_threads(1), scale_user(10), scale_page(10),
+              time(10.0), spwan_perf(false), perf_counter_mode(false) {}
 };
 
 // @endsection: clp parser definitions
@@ -115,7 +108,7 @@ public:
 
         for (int t = 0; t < p.num_threads; ++t)
             runner_threads.push_back(
-                std::thread(runner_thread, std::ref(runners[t]), std::ref(committed_txn_cnts[t]))
+                    std::thread(runner_thread, std::ref(runners[t]), std::ref(committed_txn_cnts[t]))
             );
         for (auto& t : runner_threads)
             t.join();
@@ -143,39 +136,39 @@ int main(int argc, const char * const *argv) {
     bool clp_stop = false;
     while (!clp_stop && ((opt = Clp_Next(clp)) != Clp_Done)) {
         switch (opt) {
-        case opt_dbid:
-            params.db_id = parse_dbid(clp->val.s);
-            if (params.db_id == db_params::db_params_id::None) {
-                std::cout << "Unsupported DB CC id: "
-                          << ((clp->val.s == nullptr) ? "" : std::string(clp->val.s)) << std::endl;
+            case opt_dbid:
+                params.db_id = parse_dbid(clp->val.s);
+                if (params.db_id == db_params::db_params_id::None) {
+                    std::cout << "Unsupported DB CC id: "
+                              << ((clp->val.s == nullptr) ? "" : std::string(clp->val.s)) << std::endl;
+                    print_usage(argv[0]);
+                    ret_code = 1;
+                    clp_stop = true;
+                }
+                break;
+            case opt_nthrs:
+                params.num_threads = clp->val.i;
+                break;
+            case opt_users:
+                params.scale_user = clp->val.i;
+                break;
+            case opt_pages:
+                params.scale_page = clp->val.i;
+                break;
+            case opt_time:
+                params.time = clp->val.d;
+                break;
+            case opt_perf:
+                params.spwan_perf = !clp->negated;
+                break;
+            case opt_pfcnt:
+                params.perf_counter_mode = !clp->negated;
+                break;
+            default:
                 print_usage(argv[0]);
                 ret_code = 1;
                 clp_stop = true;
-            }
-            break;
-        case opt_nthrs:
-            params.num_threads = clp->val.i;
-            break;
-        case opt_users:
-            params.scale_user = clp->val.i;
-            break;
-        case opt_pages:
-            params.scale_page = clp->val.i;
-            break;
-        case opt_time:
-            params.time = clp->val.d;
-            break;
-        case opt_perf:
-            params.spwan_perf = !clp->negated;
-            break;
-        case opt_pfcnt:
-            params.perf_counter_mode = !clp->negated;
-            break;
-        default:
-            print_usage(argv[0]);
-            ret_code = 1;
-            clp_stop = true;
-            break;
+                break;
         }
     }
 

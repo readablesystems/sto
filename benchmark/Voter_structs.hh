@@ -1,53 +1,125 @@
 #pragma once
 
-#include <byteswap.h>
+#include <string>
+#include "DB_structs.hh"
+#include "str.hh"
 
 namespace voter {
 
-struct contestant_key {
-    contestant_key(uint16_t id) {
-        c_id = bswap(id);
-    }
+using namespace bench;
 
-    uint16_t c_id;
-};
+// Helper struct: phone number representation as fix_string
 
-struct contestant_value {
-    var_string<16> c_name;
+struct phone_number_str {
+    std::string area_code;
+    std::string number;
 };
 
 struct phone_number {
-    phone_number(const std::string& a, const std::string& n)
-            : area_code(a), number(n) {}
     fix_string<3> area_code;
     fix_string<7> number;
+
+    phone_number() = default;
+    explicit phone_number(const phone_number_str& phs)
+            : area_code(phs.area_code), number(phs.number) {}
 };
 
-struct area_code_key {
+
+// Tables
+
+// Table: Contestant
+
+struct contestant_key_bare {
+    int32_t number;
+
+    explicit contestant_key_bare(int32_t id) : number(bswap(id)) {}
+};
+
+typedef masstree_key_adapter<contestant_key_bare> contestant_key;
+
+struct contestant_row {
+    enum class NamedColumn : int {name = 0};
+    var_string<50> name;
+};
+
+// Table: Area code to state
+
+struct area_code_state_key_bare {
     fix_string<3> area_code;
+
+    explicit area_code_state_key_bare(const std::string& a)
+            : area_code(a) {}
 };
 
-struct area_code_value {
+typedef masstree_key_adapter<area_code_state_key_bare> area_code_state_key;
+
+struct area_code_state_row {
+    enum class NamedColumn : int {state = 0};
+
     fix_string<2> state;
 };
 
-struct votes_phone_key {
-    votes_phone_key(const std::string& area_code, const std::string& number)
-            : tel(area_code, number) {}
+// Table: Votes
 
+struct votes_key_bare {
+    int32_t vote_id;
+
+    explicit votes_key_bare(int32_t id) : vote_id(bswap(id)) {}
+};
+
+typedef masstree_key_adapter<votes_key_bare> votes_key;
+
+struct votes_row {
+    enum class NamedColumn : int { tel = 0,
+                                   state,
+                                   contestant_number,
+                                   created };
+    phone_number   tel;
+    fix_string<2>  state;
+    int32_t        contestant_number;
+    var_string<14> created;
+};
+
+// Views
+
+// View: Votes by phone number
+
+struct v_votes_phone_key_bare {
     phone_number tel;
+
+    explicit v_votes_phone_key_bare(const phone_number_str& ph)
+            : tel(ph) {}
+
+    friend masstree_key_adapter<v_votes_phone_key_bare>;
+private:
+    v_votes_phone_key_bare() = default;
 };
 
-struct votes_phone_value {
-    uint64_t count;
+typedef masstree_key_adapter<v_votes_phone_key_bare> v_votes_phone_key;
+
+struct v_votes_phone_row {
+    enum class NamedColumn : int {count = 0};
+    int64_t count;
 };
 
-struct votes_cn_state_key {
-    votes_cn_state_key(uint16_t id, const std::string& st)
-            : c_id(bswap(id)), state(st) {}
+// View: Votes by contestant number and state
 
-    uint16_t c_id;
+struct __attribute__((packed)) v_votes_id_state_key_bare {
+    int32_t number;
     fix_string<2> state;
+
+    explicit v_votes_id_state_key_bare(int32_t id, const fix_string<2>& st)
+            : number(bswap(id)), state(st) {}
+    friend masstree_key_adapter<v_votes_id_state_key_bare>;
+private:
+    v_votes_id_state_key_bare() = default;
+};
+
+typedef masstree_key_adapter<v_votes_id_state_key_bare> v_votes_id_state_key;
+
+struct v_votes_id_state_row {
+    enum class NamedColumn : int {count = 0};
+    int64_t count;
 };
 
 };

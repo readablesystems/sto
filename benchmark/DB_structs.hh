@@ -2,8 +2,11 @@
 
 #include "config.h"
 
+#include <string>
 #include <cstring>
 #include <byteswap.h>
+
+#include "str.hh"
 
 namespace bench {
 
@@ -204,6 +207,23 @@ static inline IntType bswap(IntType x) {
 struct dummy_row {
     enum class NamedColumn : int { dummy = 0 };
     uintptr_t dummy;
+};
+
+template <typename K>
+struct masstree_key_adapter : public K {
+    // Conversions from and to masstree key type
+    explicit masstree_key_adapter(const lcdf::Str& mt_key) {
+        assert(mt_key.length() == sizeof(*this));
+        memcpy(this, mt_key.data(), sizeof(*this));
+    }
+
+    template <typename... Args>
+    explicit masstree_key_adapter(Args&&... args)
+            : K(std::forward<Args>(args)...) {}
+
+    operator lcdf::Str() const {
+        return lcdf::Str((const char *)this, sizeof(*this));
+    }
 };
 
 }; // namespace bench

@@ -5,9 +5,9 @@
 #include <ctime>
 #include <sstream>
 #include <sampling.hh>
+#include <PlatformFeatures.hh>
 
 #include "compiler.hh"
-#include "clp.h"
 #include "Wikipedia_structs.hh"
 
 #if TABLE_FINE_GRAINED
@@ -536,6 +536,7 @@ private:
 template <typename DBParams>
 size_t wikipedia_runner<DBParams>::run() {
     ::TThread::set_id(id);
+    set_affinity(id);
     db.thread_init_all();
 
     auto tsc_begin = read_tsc();
