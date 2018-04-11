@@ -7,7 +7,6 @@
 #include <sampling.hh>
 
 #include "compiler.hh"
-#include "clp.h"
 #include "Wikipedia_structs.hh"
 
 #if TABLE_FINE_GRAINED
