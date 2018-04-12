@@ -492,6 +492,8 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
                                                                            {{user_nc::user_editcount, true},
                                                                             {user_nc::user_touched, true}});
+    TXN_CHECK(abort);
+    assert(result);
     auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
     new_uv->user_editcount += 1;
     new_uv->user_touched = timestamp_str;
