@@ -295,7 +295,7 @@ void wikipedia_runner<DBParams>::run_txn_listPageNameSpace(int name_space) {
 
     page_idx_key pk0(name_space, std::string());
     page_idx_key pk1(name_space, std::string(255, (unsigned char)0xff));
-    abort = db.idx_page().template range_scan<decltype(scan_callback), false>(pk0, pk1, scan_callback, RowAccess::ObserveValue, false, 100/*display 50 items*/);
+    abort = db.idx_page().template range_scan<decltype(scan_callback), false>(pk0, pk1, scan_callback, RowAccess::ObserveValue, false, 50/*display 50 items*/);
     TXN_DO(abort);
 
     for (auto pair : pages) {
