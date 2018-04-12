@@ -12,3 +12,4 @@ target_link_libraries(tpcc_bench db_index sto clp masstree json dprint xxhash ${
 target_link_libraries(ycsb_bench db_index sto clp masstree json dprint xxhash ${PLATFORM_LIBRARIES})
 target_link_libraries(micro_bench db_index sto clp masstree json dprint ${PLATFORM_LIBRARIES})
 target_link_libraries(wiki_bench db_index sto clp masstree json dprint ${PLATFORM_LIBRARIES})
+target_link_libraries(voter_bench db_index sto clp masstree json dprint ${PLATFORM_LIBRARIES})

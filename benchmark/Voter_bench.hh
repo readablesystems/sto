@@ -65,7 +65,11 @@ private:
     v_votesidst_idx_type   idx_votesidst_;
 };
 
-extern const std::vector<std::string> area_codes;
+extern std::vector<std::string> area_codes;
+extern std::vector<std::string> area_code_state_map;
+extern std::vector<std::string> contestant_names;
+
+extern void initialize_data();
 
 typedef typename sampling::StoRandomDistribution<>::rng_type rng_type;
 
@@ -133,9 +137,9 @@ public:
     explicit voter_runner(int rid, db_type& database, double time_limit)
         : id(rid), db(database), ig(rid+1040), tsc_elapse_limit(),
           stat_committed_txns() {
-        using db_params::constants::billion;
-        using db_params::constants::processor_tsc_frequency;
-        tsc_elapse_limit = static_cast<uint64_t>(time_limit * processor_tsc_frequency * billion);
+        tsc_elapse_limit = static_cast<uint64_t>(time_limit
+                                                 * db_params::constants::processor_tsc_frequency
+                                                 * db_params::constants::billion);
     }
 
     void run();
@@ -154,6 +158,37 @@ private:
     uint64_t tsc_elapse_limit;
 
     size_t stat_committed_txns;
+};
+
+template <typename DBParams>
+class voter_loader {
+public:
+    typedef voter_db<DBParams> db_type;
+    explicit voter_loader(db_type& database) : db(database) {}
+
+    void load() {
+        std::cout << "Loading..." << std::endl;
+        always_assert(!area_codes.empty());
+        always_assert(area_codes.size() == area_code_state_map.size());
+
+        for (int i = 0; i < constants::num_contestants; ++i) {
+            contestant_key ck(i);
+            contestant_row cr;
+            cr.name = contestant_names[i];
+            db.tbl_contestant().nontrans_put(ck, cr);
+        }
+
+        for (size_t i = 0; i < area_codes.size(); ++i) {
+            area_code_state_key acs_k(area_codes[i]);
+            area_code_state_row acs_r;
+            acs_r.state = area_code_state_map[i];
+            db.tbl_areacode_state().nontrans_put(acs_k, acs_r);
+        }
+        std::cout << "Loaded." << std::endl;
+    }
+
+private:
+    db_type& db;
 };
 
 template <typename DBParams>

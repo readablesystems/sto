@@ -1,12 +1,10 @@
 #include <thread>
 
 #include "Voter_bench.hh"
-#include "Voter_loader.hh"
 #include "Voter_txns.hh"
 
 #include "clp.h"
 #include "DB_profiler.hh"
-#include "PlatformFeatures.hh"
 
 using db_params::constants;
 using db_params::db_params_id;
@@ -20,14 +18,12 @@ using db_params::parse_dbid;
 
 // @section: clp parser definitions
 enum {
-    opt_dbid = 1, opt_nthrs, opt_users, opt_pages, opt_time, opt_perf, opt_pfcnt
+    opt_dbid = 1, opt_nthrs, opt_time, opt_perf, opt_pfcnt
 };
 
 static const Clp_Option options[] = {
         { "dbid",         'i', opt_dbid,  Clp_ValString, Clp_Optional },
         { "nthreads",     't', opt_nthrs, Clp_ValInt,    Clp_Optional },
-        { "scaleusers",   'u', opt_users, Clp_ValInt,    Clp_Optional },
-        { "scalepages",   'g', opt_pages, Clp_ValInt,    Clp_Optional },
         { "time",         'l', opt_time,  Clp_ValDouble, Clp_Optional },
         { "perf",         'p', opt_perf,  Clp_NoVal,     Clp_Optional },
         { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,     Clp_Negate| Clp_Optional }
@@ -41,10 +37,6 @@ static inline void print_usage(const char *argv_0) {
        << "      default, opaque, 2pl, adaptive, swiss, tictoc" << std::endl
        << "  --nthreads=<NUM> (or -t<NUM>)" << std::endl
        << "    Specify the number of parallel worker threads (default 1)." << std::endl
-       << "  --scaleusers=<NUM> (or -u<NUM>)" << std::endl
-       << "    Specify the scale factor of the number of users (default 10)." << std::endl
-       << "  --scalepages=<NUM> (or -g<NUM>)" << std::endl
-       << "    Specify the scale factor of the number of pages (default 10)." << std::endl
        << "  --time=<NUM> (or -l<NUM>)" << std::endl
        << "    Specify the time (duration) for which the benchmark is run (default 10 seconds)." << std::endl
        << "  --perf (or -p)" << std::endl
@@ -57,16 +49,14 @@ static inline void print_usage(const char *argv_0) {
 struct cmd_params {
     db_params::db_params_id db_id;
     int num_threads;
-    int scale_user;
-    int scale_page;
     double time;
     bool spwan_perf;
     bool perf_counter_mode;
 
     explicit cmd_params()
             : db_id(db_params::db_params_id::Default),
-              num_threads(1), scale_user(10), scale_page(10),
-              time(10.0), spwan_perf(false), perf_counter_mode(false) {}
+              num_threads(1), time(10.0),
+              spwan_perf(false), perf_counter_mode(false) {}
 };
 
 // @endsection: clp parser definitions
@@ -74,26 +64,22 @@ struct cmd_params {
 template <typename DBParams>
 class bench_access {
 public:
-    using db_type = wikipedia::wikipedia_db<DBParams>;
-    using loader_type = wikipedia::wikipedia_loader<DBParams>;
-    using runner_type = wikipedia::wikipedia_runner<DBParams>;
+    using db_type = voter::voter_db<DBParams>;
+    using loader_type = voter::voter_loader<DBParams>;
+    using runner_type = voter::voter_runner<DBParams>;
     using profiler_type = bench::db_profiler;
 
     static void runner_thread(runner_type& r, size_t& txn_cnt) {
-        txn_cnt = r.run();
+        r.run();
+        txn_cnt = r.committed_txns();
     }
 
     static int execute(cmd_params p) {
-        size_t num_users = wikipedia::constants::users * (size_t)p.scale_user;
-        size_t num_pages = wikipedia::constants::pages * (size_t)p.scale_page;
-        wikipedia::load_params lp = {num_users, num_pages};
-        wikipedia::run_params rp(num_users, num_pages, p.time, wikipedia::workload_weightgram);
-
         // Create DB
         auto& db = *(new db_type());
 
         // Load DB
-        loader_type loader(db, lp);
+        loader_type loader(db);
         loader.load();
 
         // Execute benchmark
@@ -102,7 +88,7 @@ public:
         std::vector<size_t> committed_txn_cnts((size_t)p.num_threads, 0);
 
         for (int id = 0; id < p.num_threads; ++id)
-            runners.push_back(runner_type(id, db, rp));
+            runners.push_back(runner_type(id, db, p.time));
 
         profiler_type profiler(p.spwan_perf);
         profiler.start(p.perf_counter_mode ? Profiler::perf_mode::counters : Profiler::perf_mode::record);
@@ -130,6 +116,9 @@ double constants::processor_tsc_frequency;
 int main(int argc, const char * const *argv) {
     cmd_params params;
 
+    std::cout << "Initializing constants." << std::endl;
+    voter::initialize_data();
+
     Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
 
     int ret_code = 0;
@@ -149,12 +138,6 @@ int main(int argc, const char * const *argv) {
                 break;
             case opt_nthrs:
                 params.num_threads = clp->val.i;
-                break;
-            case opt_users:
-                params.scale_user = clp->val.i;
-                break;
-            case opt_pages:
-                params.scale_page = clp->val.i;
                 break;
             case opt_time:
                 params.time = clp->val.d;
