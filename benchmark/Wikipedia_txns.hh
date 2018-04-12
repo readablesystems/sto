@@ -128,7 +128,7 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_selec
     };
 
     page_restrictions_idx_key pr_k0(page_id, std::string());
-    page_restrictions_idx_key pr_k1(page_id, std::string(60, (char)0xff));
+    page_restrictions_idx_key pr_k1(page_id, std::string(60, (unsigned char)0xff));
     abort = db.idx_page_restrictions().template range_scan<decltype(pr_scan_cb), false>(pr_k0, pr_k1, pr_scan_cb, RowAccess::ObserveValue);
     TXN_DO(abort);
 
@@ -227,7 +227,7 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_s
     };
 
     page_restrictions_idx_key pr_k0(page_id, std::string());
-    page_restrictions_idx_key pr_k1(page_id, std::string(60, (char)0xff));
+    page_restrictions_idx_key pr_k1(page_id, std::string(60, (unsigned char)0xff));
     abort = db.idx_page_restrictions().template range_scan<decltype(pr_scan_cb), false>(pr_k0, pr_k1, pr_scan_cb, RowAccess::ObserveValue);
     TXN_DO(abort);
 
@@ -245,7 +245,7 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_s
 
     constexpr int32_t m = std::numeric_limits<int32_t>::max();
     ipblocks_user_idx_key ipb_k0(user_id, std::string(), 0, 0, 0);
-    ipblocks_user_idx_key ipb_k1(user_id, std::string(255, (char)0xff), m, m, m);
+    ipblocks_user_idx_key ipb_k1(user_id, std::string(255, (unsigned char)0xff), m, m, m);
     abort = db.idx_ipblocks_user().template range_scan<decltype(ipb_scan_cb), false>(ipb_k0, ipb_k1, ipb_scan_cb, RowAccess::ObserveExists);
     TXN_DO(abort);
 
@@ -275,6 +275,37 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_s
     } RETRY(true);
 
     return art;
+}
+
+template <typename DBParams>
+void wikipedia_runner<DBParams>::run_txn_listPageNameSpace(int name_space) {
+    typedef page_row::NamedColumn page_nc;
+
+    TRANSACTION {
+
+    bool abort, result;
+    const void *value;
+
+    std::vector<int> page_ids;
+
+    auto scan_callback = [&](const page_idx_key&, const page_idx_row& row) {
+        page_ids.push_back(row.page_id);
+        return true;
+    };
+
+    page_idx_key pk0(name_space, std::string());
+    page_idx_key pk1(name_space, std::string(255, (unsigned char)0xff));
+    abort = db.idx_page().template range_scan<decltype(scan_callback), false>(pk0, pk1, scan_callback, RowAccess::ObserveValue, false, 50/*display 50 items*/);
+    TXN_DO(abort);
+
+    for (auto pid : page_ids) {
+        std::tie(abort, result, std::ignore, value)
+                = db.tbl_page().select_row(page_key(pid), {{page_nc::page_title, false}});
+        TXN_DO(abort);
+        assert(result);
+    }
+
+    } RETRY(true);
 }
 
 template <typename DBParams>

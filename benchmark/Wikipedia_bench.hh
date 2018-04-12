@@ -162,7 +162,7 @@ private:
     wl_idx_type       idx_wl_;
 };
 
-enum class TxnType : int { AddWatchList = 0, GetPageAnon, GetPageAuth, RemoveWatchList, UpdatePage };
+enum class TxnType : int { AddWatchList = 0, GetPageAnon, GetPageAuth, RemoveWatchList, ListPageNameSpace, UpdatePage };
 
 typedef sampling::StoCustomDistribution<TxnType>::weightgram_type workload_mix_type;
 
@@ -465,6 +465,7 @@ public:
     article_type run_txn_getPageAuthenticated(bool for_select, const std::string& user_ip,
                                          int user_id, int name_space, const std::string& page_title);
     void run_txn_removeWatchList(int user_id, int name_space, const std::string& page_title);
+    void run_txn_listPageNameSpace(int name_space);
     void run_txn_updatePage(int text_id, int page_id, const std::string& page_title,
                             const std::string& page_text, int page_name_space, int user_id,
                             const std::string& user_ip, const std::string& user_text,
@@ -559,6 +560,9 @@ size_t wikipedia_runner<DBParams>::run() {
                 break;
             case TxnType::GetPageAuth:
                 run_txn_getPageAuthenticated(false, ig.generate_ip_address(), user_id, page_ns, page_title);
+                break;
+            case TxnType::ListPageNameSpace:
+                run_txn_listPageNameSpace(page_ns);
                 break;
             case TxnType::UpdatePage: {
                 auto ipaddr = ig.generate_ip_address();

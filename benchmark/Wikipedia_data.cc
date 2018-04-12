@@ -7,7 +7,8 @@ const txn_dist_type::weightgram_type workload_weightgram = {
     {TxnType::AddWatchList, 0.07},
     {TxnType::RemoveWatchList, 0.07},
     {TxnType::UpdatePage,7.6725},
-    {TxnType::GetPageAnon, 91.2656},
+    {TxnType::ListPageNameSpace, 30.4218},
+    {TxnType::GetPageAnon, 60.8438},
     {TxnType::GetPageAuth, 0.9219}};
 
 const ui_hist_type page_title_len_hist = {
