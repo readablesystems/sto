@@ -286,23 +286,25 @@ void wikipedia_runner<DBParams>::run_txn_listPageNameSpace(int name_space) {
     bool abort, result;
     const void *value;
 
-    std::vector<int> page_ids;
+    std::vector<std::pair<int, std::string>> pages;
 
-    auto scan_callback = [&](const page_idx_key&, const page_idx_row& row) {
-        page_ids.push_back(row.page_id);
+    auto scan_callback = [&](const page_idx_key& key, const page_idx_row& row) {
+        pages.push_back({row.page_id, std::string(key.page_title.c_str())});
         return true;
     };
 
     page_idx_key pk0(name_space, std::string());
     page_idx_key pk1(name_space, std::string(255, (unsigned char)0xff));
-    abort = db.idx_page().template range_scan<decltype(scan_callback), false>(pk0, pk1, scan_callback, RowAccess::ObserveValue, false, 50/*display 50 items*/);
+    abort = db.idx_page().template range_scan<decltype(scan_callback), false>(pk0, pk1, scan_callback, RowAccess::ObserveValue, false, 100/*display 50 items*/);
     TXN_DO(abort);
 
-    for (auto pid : page_ids) {
+    for (auto pair : pages) {
         std::tie(abort, result, std::ignore, value)
-                = db.tbl_page().select_row(page_key(pid), {{page_nc::page_title, false}});
+                = db.tbl_page().select_row(page_key(pair.first), {{page_nc::page_title, false}});
         TXN_DO(abort);
         assert(result);
+        auto pr = reinterpret_cast<const page_row *>(value);
+        always_assert(pair.second == std::string(pr->page_title.c_str()));
     }
 
     } RETRY(true);
