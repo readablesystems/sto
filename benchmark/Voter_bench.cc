@@ -4,6 +4,7 @@
 #include "Voter_loader.hh"
 #include "Voter_txns.hh"
 
+#include "clp.h"
 #include "DB_profiler.hh"
 #include "PlatformFeatures.hh"
 
