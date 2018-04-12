@@ -29,7 +29,6 @@ struct constants {
     static constexpr int batch_size = 1000;
 
     static constexpr double num_watches_per_user_sigma = 1.75;
-    static constexpr double user_id_sigma = 1.2;
     static constexpr double page_id_sigma = 1.0001;
     static constexpr double watchlist_page_sigma = 1.0001;
     static constexpr double revision_user_sigma = 1.0001;
@@ -237,7 +236,7 @@ struct basic_dists {
     ui_hdist_type rev_minor_edit_dist;
     std::vector<si_hdist_type> rev_deltas_dists;
     zipf_dist_type page_id_dist;
-    zipf_dist_type user_id_dist;
+    std::uniform_int_distribution<int> std_user_id_dist;
     std::uniform_int_distribution<int> std_ipv4_dist;
     std::uniform_int_distribution<int> std_char_dist;
 
@@ -248,7 +247,7 @@ struct basic_dists {
               rev_minor_edit_dist(thread_rng, rev_minor_edit_hist),
               rev_deltas_dists(),
               page_id_dist(thread_rng, 1, num_pages, constants::page_id_sigma),
-              user_id_dist(thread_rng, 1, num_users, constants::user_id_sigma),
+              std_user_id_dist(1, static_cast<int>(num_users)),
               std_ipv4_dist(0, 255),
               std_char_dist(32, 126) {
         for (auto& h : rev_deltas) {
@@ -310,7 +309,7 @@ public:
     }
 
     int32_t generate_user_id() {
-        return (int32_t)dists.user_id_dist.sample();
+        return dists.std_user_id_dist(dists.thread_rng);
     }
     int32_t generate_page_id() {
         return (int32_t)dists.page_id_dist.sample();
