@@ -576,8 +576,9 @@ public:
 
     static constexpr typename version_type::type invalid_bit = TransactionTid::user_bit;
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
-    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit << 1;
-    static constexpr TransItem::flags_type row_update_bit = TransItem::user0_bit << 2;
+    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit << 1u;
+    static constexpr TransItem::flags_type row_update_bit = TransItem::user0_bit << 2u;
+    static constexpr TransItem::flags_type row_cell_bit = TransItem::user0_bit << 3u;
     static constexpr uintptr_t internode_bit = 1;
 
     typedef typename value_type::NamedColumn NamedColumn;
@@ -859,7 +860,7 @@ public:
         }
         // Just update the pointer, don't set the actual write flag
         // we don't want to confuse installs at commit time
-        row_item.clear_write();
+        //row_item.clear_write();
     }
 
     // insert assumes common case where the row doesn't exist in the table
@@ -1215,7 +1216,7 @@ public:
                     } else {
                         copy_row(e, vptr);
                     }
-                } else {
+                } else if (has_row_cell(item)) {
                     // install only the difference part
                     // not sure if works when there are more than 1 minor version fields
                     // should still work
@@ -1355,6 +1356,9 @@ private:
             if (access.update) {
                 if (!version_adapter::select_for_update(*it, e->row_container.version_at(access.cell_id)))
                     return false;
+                if (it->item().key<item_key_t>().is_row_item()) {
+                    it->item().add_flags(row_cell_bit);
+                }
             } else {
                 if (!it->observe(e->row_container.version_at(access.cell_id)))
                     return false;
@@ -1371,6 +1375,9 @@ private:
     }
     static bool has_row_update(const TransItem& item) {
         return (item.flags() & row_update_bit) != 0;
+    }
+    static bool has_row_cell(const TransItem& item) {
+        return (item.flags() & row_cell_bit) != 0;
     }
     static bool is_phantom(internal_elem *e, const TransItem& item) {
         return (!e->valid() && !has_insert(item));
