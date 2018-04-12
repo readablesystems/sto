@@ -50,6 +50,7 @@
 /ycsb_bench
 /micro_bench
 /wiki_bench
+/voter_bench
 /unit-swisstarray
 /unit-swisstgeneric
 /perf.data
