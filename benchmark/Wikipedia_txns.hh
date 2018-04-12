@@ -19,16 +19,19 @@
 namespace wikipedia {
 
 template <typename DBParams>
-void wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
+size_t wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
                                                       int name_space,
                                                       const std::string& page_title) {
     typedef useracct_row::NamedColumn nc;
+    size_t nexecs = 0;
 
     TRANSACTION {
 
     bool abort, result;
     uintptr_t row;
     const void *value;
+
+    ++nexecs;
 
     auto wv = Sto::tx_alloc<watchlist_row>();
     auto wiv = Sto::tx_alloc<watchlist_idx_row>();
@@ -56,19 +59,24 @@ void wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
     db.tbl_useracct().update_row(row, new_uv);
 
     } RETRY(true);
+
+    return (nexecs - 1);
 }
 
 template <typename DBParams>
-void wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
+size_t wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
                                                          int name_space,
                                                          const std::string& page_title) {
     typedef useracct_row::NamedColumn nc;
+    size_t nexecs = 0;
 
     TRANSACTION {
 
     bool abort, result;
     uintptr_t row;
     const void *value;
+
+    ++nexecs;
 
     std::tie(abort, result) = db.tbl_watchlist().delete_row(watchlist_key(user_id, name_space, page_title));
     TXN_DO(abort);
@@ -86,10 +94,12 @@ void wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
     db.tbl_useracct().update_row(row, new_uv);
 
     } RETRY(true);
+
+    return (nexecs - 1);
 }
 
 template <typename DBParams>
-article_type wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_select,
+std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_select,
                                                           const std::string& user_ip,
                                                           int name_space,
                                                           const std::string& page_title) {
@@ -100,12 +110,15 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_selec
     typedef text_row::NamedColumn text_nc;
 
     (void)for_select;
+    size_t nexecs = 0;
     article_type art;
 
     TRANSACTION {
 
     bool abort, result;
     const void *value;
+
+    ++nexecs;
 
     std::tie(abort, result, std::ignore, value) = db.idx_page().select_row(page_idx_key(name_space, page_title), RowAccess::ObserveValue);
     TXN_DO(abort);
@@ -175,11 +188,11 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAnonymous(bool for_selec
 
     } RETRY(true);
 
-    return art;
+    return {nexecs - 1, art};
 }
 
 template <typename DBParams>
-article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_select,
+std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_select,
                                                               const std::string& user_ip,
                                                               int user_id,
                                                               int name_space,
@@ -192,12 +205,15 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_s
     typedef text_row::NamedColumn text_nc;
 
     (void)for_select;
+    size_t nexecs = 0;
     article_type art;
 
     TRANSACTION {
 
     bool abort, result;
     const void *value;
+
+    ++nexecs;
 
     std::tie(abort, result, std::ignore, std::ignore) = db.tbl_useracct().select_row(useracct_key(user_id), {{user_nc::user_name, false}});
     TXN_DO(abort);
@@ -274,17 +290,20 @@ article_type wikipedia_runner<DBParams>::run_txn_getPageAuthenticated(bool for_s
 
     } RETRY(true);
 
-    return art;
+    return {nexecs - 1, art};
 }
 
 template <typename DBParams>
-void wikipedia_runner<DBParams>::run_txn_listPageNameSpace(int name_space) {
+size_t wikipedia_runner<DBParams>::run_txn_listPageNameSpace(int name_space) {
     typedef page_row::NamedColumn page_nc;
+    size_t nexecs = 0;
 
     TRANSACTION {
 
     bool abort, result;
     const void *value;
+
+    ++nexecs;
 
     std::vector<std::pair<int, std::string>> pages;
 
@@ -308,6 +327,8 @@ void wikipedia_runner<DBParams>::run_txn_listPageNameSpace(int name_space) {
     }
 
     } RETRY(true);
+
+    return (nexecs - 1);
 }
 
 template <typename DBParams>
@@ -482,7 +503,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
 }
 
 template <typename DBParams>
-void wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
+size_t wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
                                                     int page_id,
                                                     const std::string& page_title,
                                                     const std::string& page_text,
@@ -493,7 +514,9 @@ void wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
                                                     int rev_id,
                                                     const std::string& rev_comment,
                                                     int rev_minor_edit) {
+    size_t nexecs = 0;
     while (true) {
+        ++nexecs;
         bool success =
             txn_updatePage_inner(text_id, page_id, page_title, page_text,
                                  page_name_space, user_id, user_ip, user_text,
@@ -501,6 +524,7 @@ void wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
         if (success)
             break;
     }
+    return (nexecs - 1);
 }
 
 }; // namespace wikipedia

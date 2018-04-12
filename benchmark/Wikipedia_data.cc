@@ -3,6 +3,8 @@
 
 namespace wikipedia {
 
+const char *txn_names[6] = {"AddWatchList", "GetPageAnon", "GetPageAuth", "RemoveWatchList", "ListPageNameSpace", "UpdatePage"};
+
 const txn_dist_type::weightgram_type workload_weightgram = {
     {TxnType::AddWatchList, 0.07},
     {TxnType::RemoveWatchList, 0.07},

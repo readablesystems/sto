@@ -86,7 +86,8 @@ public:
     using profiler_type = bench::db_profiler;
 
     static void runner_thread(runner_type& r, size_t& txn_cnt) {
-        txn_cnt = r.run();
+        r.run();
+        txn_cnt = r.total_commits();
     }
 
     static int execute(cmd_params p) {
@@ -126,8 +127,36 @@ public:
 
         profiler.finish(total_commit_txns);
 
+        print_abort_histogram(runners);
+
         delete (&db);
         return 0;
+    }
+
+    static void print_abort_histogram(std::vector<runner_type>& runners) {
+        std::stringstream ss;
+        std::vector<size_t> overall_histogram(wikipedia::workload_weightgram.size(), 0ul);
+        int idx;
+        for (runner_type& r : runners) {
+            idx = 0;
+            for (size_t n : r.aborts_by_txn()) {
+                overall_histogram[idx] += n;
+                ++idx;
+            }
+        }
+
+        idx = 0;
+        ss << "Abort analysis:" << std::endl;
+        ss << '{';
+        for (size_t n : overall_histogram) {
+            ss << static_cast<wikipedia::TxnType>(idx) << ":" << n;
+            if ((size_t)idx != (overall_histogram.size() - 1))
+                ss << ", ";
+            ++idx;
+        }
+        ss << '}';
+
+        std::cout << ss.str() << std::endl;
     }
 };
 

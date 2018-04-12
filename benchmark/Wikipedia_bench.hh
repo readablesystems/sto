@@ -169,7 +169,14 @@ private:
     wl_idx_type       idx_wl_;
 };
 
+extern const char *txn_names[6];
+
 enum class TxnType : int { AddWatchList = 0, GetPageAnon, GetPageAuth, RemoveWatchList, ListPageNameSpace, UpdatePage };
+
+inline std::ostream& operator<<(std::ostream& os, const TxnType& t) {
+    os << txn_names[static_cast<int>(t)];
+    return os;
+}
 
 typedef sampling::StoCustomDistribution<TxnType>::weightgram_type workload_mix_type;
 
@@ -461,25 +468,33 @@ public:
     wikipedia_runner(int runner_id, db_type& database, const run_params& params)
         : id(runner_id), db(database),
           ig(runner_id, params.num_users, params.num_pages, params.workload_mix),
-          tsc_elapse_limit() {
+          tsc_elapse_limit(), stats_aborts_by_txn(workload_weightgram.size(), 0ul) {
         tsc_elapse_limit =
                 (uint64_t)(params.time_limit * db_params::constants::processor_tsc_frequency * db_params::constants::billion);
     }
 
-    void run_txn_addWatchList(int user_id, int name_space, const std::string& page_title);
-    article_type run_txn_getPageAnonymous(bool for_select, const std::string& user_ip,
-                                     int name_space, const std::string& page_title);
-    article_type run_txn_getPageAuthenticated(bool for_select, const std::string& user_ip,
-                                         int user_id, int name_space, const std::string& page_title);
-    void run_txn_removeWatchList(int user_id, int name_space, const std::string& page_title);
-    void run_txn_listPageNameSpace(int name_space);
-    void run_txn_updatePage(int text_id, int page_id, const std::string& page_title,
+    size_t run_txn_addWatchList(int user_id, int name_space, const std::string& page_title);
+    std::pair<size_t, article_type> run_txn_getPageAnonymous(bool for_select, const std::string& user_ip,
+                                                             int name_space, const std::string& page_title);
+    std::pair<size_t, article_type> run_txn_getPageAuthenticated(bool for_select, const std::string& user_ip,
+                                                                 int user_id, int name_space, const std::string& page_title);
+    size_t run_txn_removeWatchList(int user_id, int name_space, const std::string& page_title);
+    size_t run_txn_listPageNameSpace(int name_space);
+    size_t run_txn_updatePage(int text_id, int page_id, const std::string& page_title,
                             const std::string& page_text, int page_name_space, int user_id,
                             const std::string& user_ip, const std::string& user_text,
                             int rev_id, const std::string& rev_comment, int rev_minor_edit);
 
     // returns number of transactions committed
-    size_t run();
+    void run();
+
+    size_t total_commits() const {
+        return stats_total_commits;
+    }
+
+    const std::vector<size_t>& aborts_by_txn() const {
+        return stats_aborts_by_txn;
+    }
 
 private:
     bool txn_updatePage_inner(int text_id, int page_id, const std::string& page_title,
@@ -490,6 +505,8 @@ private:
     db_type& db;
     runtime_input_generator ig;
     uint64_t tsc_elapse_limit;
+    size_t stats_total_commits;
+    std::vector<size_t> stats_aborts_by_txn;
 };
 
 template <typename DBParams>
@@ -542,7 +559,7 @@ private:
 };
 
 template <typename DBParams>
-size_t wikipedia_runner<DBParams>::run() {
+void wikipedia_runner<DBParams>::run() {
     ::TThread::set_id(id);
     set_affinity(id);
     db.thread_init_all();
@@ -555,42 +572,48 @@ size_t wikipedia_runner<DBParams>::run() {
         auto page_id = ig.generate_page_id();
         auto page_ns = ig.generate_page_namespace(page_id);
         auto page_title = ig.generate_page_title(page_id);
+        size_t retries = 0;
         switch (t_type) {
             case TxnType::AddWatchList:
-                run_txn_addWatchList(user_id, page_ns, page_title);
+                retries = run_txn_addWatchList(user_id, page_ns, page_title);
                 break;
             case TxnType::RemoveWatchList:
-                run_txn_removeWatchList(user_id, page_ns, page_title);
+                retries = run_txn_removeWatchList(user_id, page_ns, page_title);
                 break;
             case TxnType::GetPageAnon:
-                run_txn_getPageAnonymous(false, ig.generate_ip_address(), page_ns, page_title);
+                std::tie(retries, std::ignore) = run_txn_getPageAnonymous(false, ig.generate_ip_address(), page_ns, page_title);
                 break;
             case TxnType::GetPageAuth:
-                run_txn_getPageAuthenticated(false, ig.generate_ip_address(), user_id, page_ns, page_title);
+                std::tie(retries, std::ignore) = run_txn_getPageAuthenticated(false, ig.generate_ip_address(), user_id, page_ns, page_title);
                 break;
             case TxnType::ListPageNameSpace:
-                run_txn_listPageNameSpace(page_ns);
+                retries = run_txn_listPageNameSpace(page_ns);
                 break;
             case TxnType::UpdatePage: {
                 auto ipaddr = ig.generate_ip_address();
-                auto article = run_txn_getPageAnonymous(false, ipaddr, page_ns, page_title);
+                size_t rt1;
+                article_type article;
+                std::tie(rt1, article) = run_txn_getPageAnonymous(false, ipaddr, page_ns, page_title);
                 if (article.text_id == 0 || article.page_id == 0)
                     break;
-                run_txn_updatePage(article.text_id, article.page_id, page_title, ig.generate_rev_text(article.old_text),
-                                   page_ns, user_id, ipaddr, article.user_text, article.rev_id,
-                                   ig.generate_rev_comment(), ig.generate_rev_minor_edit());
+                retries = run_txn_updatePage(article.text_id, article.page_id, page_title, ig.generate_rev_text(article.old_text),
+                                             page_ns, user_id, ipaddr, article.user_text, article.rev_id,
+                                             ig.generate_rev_comment(), ig.generate_rev_minor_edit());
+                retries += rt1;
                 break;
             }
             default:
                 always_assert(false, "unknown transaction type");
                 break;
         }
+
+        stats_aborts_by_txn.at(static_cast<size_t>(t_type)) += retries;
+
         ++cnt;
         if ((read_tsc() - tsc_begin) >= tsc_elapse_limit)
             break;
     }
-
-    return cnt;
+    stats_total_commits = cnt;
 }
 
 }; // namespace wikipedia
