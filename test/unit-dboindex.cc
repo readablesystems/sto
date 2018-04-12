@@ -232,7 +232,7 @@ void test_fine_conflict1() {
         assert(success && found);
         assert(value->d_ytd == 3000);
 
-        TestTransaction t2(0);
+        TestTransaction t2(1);
         std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::payment_cnt, true}});
         assert(success && found);
         auto new_row = Sto::tx_alloc(value);
@@ -242,9 +242,43 @@ void test_fine_conflict1() {
         assert(t2.try_commit());
 
         t1.use();
-        assert(value->d_ytd == 3000); // unspecified modifications are ignored
+        assert(value->d_ytd == 3000); // unspecified modifications are not installed
         assert(value->d_payment_cnt == 51);
-        assert(t1.try_commit());
+        assert(!t1.try_commit()); // not able to commit due to hierarchical versions
+    }
+
+    printf("pass %s\n", __FUNCTION__);
+}
+
+void test_fine_conflict2() {
+    typedef FineIndex::NamedColumn nc;
+    FineIndex fi;
+    fi.thread_init();
+
+    init_findex(fi);
+    bool success, found;
+    uintptr_t row;
+    const example_row *value;
+
+    {
+        TestTransaction t1(0);
+        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::tax, false}});
+        assert(success && found);
+        assert(value->d_tax == 10);
+
+        TestTransaction t2(1);
+        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::ytd, true}});
+        assert(success && found);
+        auto new_row = Sto::tx_alloc(value);
+        new_row->d_ytd += 10;
+        new_row->d_payment_cnt += 1;
+        fi.update_row(row, new_row);
+        assert(t2.try_commit());
+
+        t1.use();
+        assert(value->d_ytd == 3010);
+        assert(value->d_payment_cnt == 50); // unspecified modifications are not installed
+        assert(t1.try_commit()); // can commit because of fine-grained versions
     }
 
     printf("pass %s\n", __FUNCTION__);
@@ -257,5 +291,6 @@ int main() {
     test_coarse_conflict1();
     test_fine_conflict0();
     test_fine_conflict1();
+    test_fine_conflict2();
     return 0;
 }
