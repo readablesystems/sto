@@ -292,5 +292,6 @@ int main() {
     test_fine_conflict0();
     test_fine_conflict1();
     test_fine_conflict2();
+    printf("All tests pass!\n");
     return 0;
 }
