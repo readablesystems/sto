@@ -8,9 +8,9 @@ const char *txn_names[6] = {"AddWatchList", "GetPageAnon", "GetPageAuth", "Remov
 const txn_dist_type::weightgram_type workload_weightgram = {
     {TxnType::AddWatchList, 0.07},
     {TxnType::RemoveWatchList, 0.07},
-    {TxnType::UpdatePage,4.6725},
-    {TxnType::ListPageNameSpace, 39.4218},
-    {TxnType::GetPageAnon, 54.8438},
+    {TxnType::UpdatePage, 4.6725},
+    {TxnType::ListPageNameSpace, 47.4218},
+    {TxnType::GetPageAnon, 46.8438},
     {TxnType::GetPageAuth, 0.9219}};
 
 const ui_hist_type page_title_len_hist = {
