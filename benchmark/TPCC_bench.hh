@@ -131,6 +131,7 @@ public:
     explicit inline tpcc_db(int num_whs);
     explicit inline tpcc_db(const std::string& db_file_name) = delete;
     inline ~tpcc_db();
+    void thread_init_all();
 
     int num_warehouses() const {
         return int(tbl_whs_.size());

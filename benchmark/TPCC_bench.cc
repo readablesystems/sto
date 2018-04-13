@@ -19,7 +19,7 @@ const char *tpcc_input_generator::last_names[] = {
         "BAR", "OUGHT", "ABLE", "PRI", "PRES",
         "ESE", "ANTI", "CALLY", "ATION", "EING"};
 
-template<typename DBParams>
+template <typename DBParams>
 tpcc_db<DBParams>::tpcc_db(int num_whs) : oid_gen_() {
     //constexpr size_t num_districts = NUM_DISTRICTS_PER_WAREHOUSE;
     //constexpr size_t num_customers = NUM_CUSTOMERS_PER_DISTRICT * NUM_DISTRICTS_PER_WAREHOUSE;
@@ -39,9 +39,32 @@ tpcc_db<DBParams>::tpcc_db(int num_whs) : oid_gen_() {
     }
 }
 
-template<typename DBParams>
+template <typename DBParams>
 tpcc_db<DBParams>::~tpcc_db() {
     delete tbl_its_;
+}
+
+template <typename DBParams>
+void tpcc_db<DBParams>::thread_init_all() {
+    tbl_its_->thread_init();
+    for (auto& t : tbl_dts_)
+        t.thread_init();
+    for (auto& t : tbl_cni_)
+        t.thread_init();
+    for (auto& t : tbl_cus_)
+        t.thread_init();
+    for (auto& t : tbl_oci_)
+        t.thread_init();
+    for (auto& t : tbl_ods_)
+        t.thread_init();
+    for (auto& t : tbl_ols_)
+        t.thread_init();
+    for (auto& t : tbl_nos_)
+        t.thread_init();
+    for (auto& t : tbl_sts_)
+        t.thread_init();
+    for (auto& t : tbl_hts_)
+        t.thread_init();
 }
 
 // @section: db prepopulation functions
@@ -327,21 +350,7 @@ class tpcc_access {
 public:
     static void prepopulation_worker(tpcc_db<DBParams> &db, int worker_id) {
         tpcc_prepopulator<DBParams> pop(worker_id, db);
-
-        // XXX get rid of this thread init nonsense
-        for (auto &tbl : db.tbl_cni_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_oci_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_ods_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_ols_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_nos_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_hts_)
-            tbl.thread_init();
-
+        db.thread_init_all();
         pop.run();
     }
 
@@ -369,20 +378,7 @@ public:
 
         ::TThread::set_id(runner_id);
         set_affinity(runner_id);
-
-        // XXX get rid of this thread_init nonsense
-        for (auto &tbl : db.tbl_cni_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_oci_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_ods_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_ols_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_nos_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_hts_)
-            tbl.thread_init();
+        db.thread_init_all();
 
         uint64_t tsc_diff = (uint64_t)(time_limit * constants::processor_tsc_frequency * constants::billion);
         auto start_t = prof.start_timestamp();
