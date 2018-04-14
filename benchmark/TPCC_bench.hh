@@ -11,9 +11,11 @@
 #include "SystemProfiler.hh"
 #include "DB_structs.hh"
 #include "TPCC_structs.hh"
-#if TALBE_FINE_GRAINED == 1
+
+#if TABLE_FINE_GRAINED
 #include "TPCC_selectors.hh"
 #endif
+
 #include "DB_index.hh"
 #include "DB_params.hh"
 

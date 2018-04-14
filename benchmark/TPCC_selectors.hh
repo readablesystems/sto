@@ -12,13 +12,20 @@ public:
     typedef VersImpl version_type;
     static constexpr size_t num_versions = 2;
 
-    explicit VerSel(type v) : vers_() { (void)v; }
-    VerSel(type v, bool insert) : vers_() { (void)v; (void)insert; }
+    explicit VerSel(type v) : vers_() {
+        new (&vers_[0]) version_type(v);
+    }
+    VerSel(type v, bool insert) : vers_() {
+        new (&vers_[0]) version_type(v, insert);
+    }
 
     static int map_impl(int col_n) {
-        uint64_t mask = ~(~0ul << vidx_width) ;
-        int shift = col_n * vidx_width;
-        return ((col_cell_map & (mask << shift)) >> shift);
+        typedef tpcc::district_value::NamedColumn nc;
+        auto col_name = static_cast<nc>(col_n);
+        if (col_name == nc::d_ytd)
+            return 0;
+        else
+            return 1;
     }
 
     version_type& version_at_impl(int cell) {
@@ -47,8 +54,6 @@ public:
 
 private:
     version_type vers_[num_versions];
-    static constexpr unsigned int vidx_width = 1u;
-    static constexpr uint64_t col_cell_map = 127ul;
 };
 
 template <typename VersImpl>
@@ -57,8 +62,12 @@ public:
     typedef VersImpl version_type;
     static constexpr size_t num_versions = 2;
 
-    explicit VerSel(type v) : vers_() { (void)v; }
-    VerSel(type v, bool insert) : vers_() { (void)v; (void)insert; }
+    explicit VerSel(type v) : vers_() {
+        new (&vers_[0]) version_type(v);
+    }
+    VerSel(type v, bool insert) : vers_() {
+        new (&vers_[0]) version_type(v, insert);
+    }
 
     static int map_impl(int col_n) {
         uint64_t mask = ~(~0ul << vidx_width) ;
