@@ -499,7 +499,8 @@ private:
     bool txn_updatePage_inner(int text_id, int page_id, const std::string& page_title,
                               const std::string& page_text, int page_name_space, int user_id,
                               const std::string& user_ip, const std::string& user_text,
-                              int rev_id, const std::string& rev_comment, int rev_minor_edit);
+                              int rev_id, const std::string& rev_comment, int rev_minor_edit,
+                              size_t& nstarts);
     int id;
     db_type& db;
     runtime_input_generator ig;

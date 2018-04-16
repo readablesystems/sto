@@ -342,7 +342,8 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
                                                       const std::string& user_text,
                                                       int rev_id,
                                                       const std::string& rev_comment,
-                                                      int rev_minor_edit) {
+                                                      int rev_minor_edit,
+                                                      size_t& nstarts) {
     typedef page_row::NamedColumn page_nc;
     typedef useracct_row::NamedColumn user_nc;
 
@@ -351,6 +352,8 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     bool abort, result;
     uintptr_t row;
     const void *value;
+
+    ++nstarts;
 
     auto timestamp_str = ig.curr_timestamp_string();
 
@@ -453,6 +456,8 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
 
         TRANSACTION {
 
+        ++nstarts;
+
         for (auto& u : watching_users) {
             std::tie(abort, result, row, value) = db.tbl_watchlist().select_row(watchlist_key(u, page_name_space, page_title), RowAccess::UpdateValue);
             TXN_DO(abort);
@@ -467,6 +472,8 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
         } RETRY(true);
 
         TRANSACTION {
+
+        ++nstarts;
 
         // INSERT LOG
         logging_key lg_k(db.tbl_logging().gen_key());
@@ -554,11 +561,10 @@ size_t wikipedia_runner<DBParams>::run_txn_updatePage(int text_id,
                                                     int rev_minor_edit) {
     size_t nexecs = 0;
     while (true) {
-        ++nexecs;
         bool success =
             txn_updatePage_inner(text_id, page_id, page_title, page_text,
                                  page_name_space, user_id, user_ip, user_text,
-                                 rev_id, rev_comment, rev_minor_edit);
+                                 rev_id, rev_comment, rev_minor_edit, nexecs);
         if (success)
             break;
     }
