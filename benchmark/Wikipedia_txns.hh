@@ -451,10 +451,11 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
         // update watchlist for each user watching
         INTERACTIVE_TXN_COMMIT;
 
-        INTERACTIVE_TXN_START;
+        TRANSACTION {
+
         for (auto& u : watching_users) {
             std::tie(abort, result, row, value) = db.tbl_watchlist().select_row(watchlist_key(u, page_name_space, page_title), RowAccess::UpdateValue);
-            TXN_CHECK(abort);
+            TXN_DO(abort);
             //assert(result);
             if (result) {
                 auto new_wlv = Sto::tx_alloc(reinterpret_cast<const watchlist_row *>(value));
@@ -463,9 +464,44 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
             }
         }
 
-        INTERACTIVE_TXN_COMMIT;
+        } RETRY(true);
 
-        INTERACTIVE_TXN_START;
+        TRANSACTION {
+
+        // INSERT LOG
+        logging_key lg_k(db.tbl_logging().gen_key());
+
+        auto lg_v = Sto::tx_alloc<logging_row>();
+        lg_v->log_type = std::string("patrol");
+        lg_v->log_action = std::string("patrol");
+        lg_v->log_timestamp = timestamp_str;
+        lg_v->log_user = user_id;
+        lg_v->log_namespace = page_name_space;
+        lg_v->log_title = page_title;
+        lg_v->log_comment = rev_comment;
+        lg_v->log_params = std::string();
+        lg_v->log_deleted = 0;
+        lg_v->log_user_text = user_text;
+        lg_v->log_page = page_id;
+
+        std::tie(abort, result) = db.tbl_logging().insert_row(lg_k, lg_v);
+        TXN_DO(abort);
+        assert(!result);
+
+        // UPDATE USER
+        std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
+                                                                           {{user_nc::user_editcount, true},
+                                                                            {user_nc::user_touched,   true}});
+        TXN_DO(abort);
+        assert(result);
+        auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
+        new_uv->user_editcount += 1;
+        new_uv->user_touched = timestamp_str;
+        db.tbl_useracct().update_row(row, new_uv);
+
+        } RETRY(true);
+
+        return true;
     }
 
     // INSERT LOG
