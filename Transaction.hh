@@ -2,7 +2,7 @@
 
 #include "config.h"
 #include "compiler.hh"
-#include "small_vector.hh"
+//#include "small_vector.hh"
 #include "TRcu.hh"
 #include <algorithm>
 #include <functional>
@@ -75,7 +75,7 @@
 #endif
 #endif
 
-#define CONSISTENCY_CHECK 0
+#define CONSISTENCY_CHECK 1
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
 
@@ -911,6 +911,13 @@ public:
         use();
         return t_.try_commit();
     }
+
+  
+  //Matias: adding some code to check that Sto aborted
+  bool aborted() {
+    use();
+    return t_.aborted();
+  }
 private:
     Transaction t_;
     //Transaction* base_;
@@ -923,6 +930,7 @@ class TransactionGuard {
     }
     ~TransactionGuard() {
         Sto::commit();
+        TThread::txn = NULL;
     }
     typedef void (TransactionGuard::* unspecified_bool_type)(std::ostream&) const;
     operator unspecified_bool_type() const {

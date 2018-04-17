@@ -1,0 +1,1514 @@
+[0] Removing key 6
+[0] Inserted key 9 with value 8
+[0] committed 22528
+[0] Updated key 4 to value 8
+[0] Lookup for key 8. Found value 8
+[0] committed 23552
+[0] Inserted key 4 with value 10
+[0] Lookup for key 10. Found value -1
+[0] committed 24576
+[0] Updated key 2 to value 10
+[0] Inserted key 10 with value 0
+[0] committed 25600
+[0] Inserted key 2 with value 8
+[0] Inserted key 8 with value 7
+[0] committed 26624
+[0] Lookup for key 10. Found value 0
+[0] Inserted key 8 with value 6
+[0] committed 27648
+[0] Updated key 7 to value 10
+[0] Removing key 10
+[0] committed 28672
+[0] Lookup for key 8. Found value 6
+[0] Lookup for key 9. Found value 8
+[0] committed 29696
+[0] Lookup for key 5. Found value 5
+[0] Updated key 0 to value 8
+[0] committed 30720
+[0] Inserted key 6 with value 10
+[0] Inserted key 10 with value 5
+[0] committed 31744
+[0] Removing key 2
+[0] Inserted key 9 with value 3
+[0] committed 32768
+[0] Updated key 3 to value 8
+[0] Removing key 8
+[0] committed 33792
+[0] Inserted key 0 with value 10
+[0] Lookup for key 10. Found value 5
+[0] committed 34816
+[0] Updated key 9 to value 10
+[0] Updated key 10 to value 6
+[0] committed 35840
+[0] Updated key 9 to value 0
+[0] Updated key 0 to value 2
+[0] committed 36864
+[0] Lookup for key 6. Found value 10
+[0] Inserted key 0 with value 1
+[0] committed 37888
+[0] Updated key 6 to value 9
+[0] Inserted key 9 with value 8
+[0] committed 38912
+[0] Lookup for key 4. Found value 10
+[0] Lookup for key 9. Found value 8
+[0] committed 39936
+[0] Lookup for key 4. Found value 10
+[0] Lookup for key 0. Found value 1
+[0] committed 40960
+[0] Removing key 2
+[0] Inserted key 10 with value 10
+[0] committed 41984
+[0] Lookup for key 1. Found value 1
+[0] Updated key 1 to value 9
+[0] committed 43008
+[0] Updated key 10 to value 0
+[0] Inserted key 0 with value 6
+[0] committed 44032
+[0] Inserted key 10 with value 10
+[0] Inserted key 10 with value 4
+[0] committed 45056
+[0] Updated key 8 to value 9
+[0] Lookup for key 9. Found value 8
+[0] committed 46080
+[1] Inserted key 0 with value 4
+[0] Updated key 8 to value 0
+[1] Lookup for key 4. Found value 10
+[0] Lookup for key 0. Found value 6
+[1] committed 47104
+[0] aborted 
+[1] Lookup for key 9. Found value 8
+[0] Updated key 8 to value 0
+[1] Updated key 4 to value 1
+[0] Lookup for key 0. Found value 4
+[1] committed 49152
+[0] committed 50176
+[1] Updated key 9 to value 2
+[0] Lookup for key 5. Found value 5
+[1] Updated key 2 to value 8
+[0] Updated key 0 to value 7
+[1] committed 51200
+[0] committed 52224
+[1] Lookup for key 7. Found value 10
+[0] Updated key 5 to value 1
+[1] Removing key 5
+[0] Updated key 1 to value 3
+[1] committed 53248
+[0] committed 54272
+[1] Lookup for key 7. Found value 10
+[0] Lookup for key 3. Found value 8
+[1] Removing key 4
+[0] Removing key 1
+[1] committed 55296
+[0] committed 56320
+[1] Lookup for key 4. Found value -1
+[0] Lookup for key 0. Found value 7
+[1] Lookup for key 3. Found value 8
+[0] Lookup for key 0. Found value 7
+[1] committed 57344
+[0] committed 58368
+[1] Lookup for key 4. Found value -1
+[0] Removing key 1
+[1] Lookup for key 5. Found value -1
+[0] Updated key 2 to value 5
+[1] committed 59392
+[0] committed 60416
+[1] Inserted key 2 with value 4
+[0] Lookup for key 8. Found value 0
+[1] Inserted key 4 with value 5
+[0] Lookup for key 1. Found value -1
+[1] committed 61440
+[0] committed 62464
+[1] Removing key 2
+[0] Updated key 9 to value 0
+[1] Inserted key 3 with value 1
+[0] Updated key 0 to value 1
+[1] committed 63488
+[0] committed 64512
+[1] Inserted key 0 with value 5
+[0] Removing key 6
+[1] Lookup for key 5. Found value -1
+[0] Inserted key 2 with value 10
+[1] committed 65536
+[0] committed 66560
+[1] Inserted key 10 with value 4
+[0] Updated key 7 to value 1
+[1] Inserted key 4 with value 7
+[0] Removing key 1
+[1] committed 67584
+[0] committed 68608
+[1] Lookup for key 8. Found value 0
+[0] Updated key 4 to value 0
+[1] Lookup for key 4. Found value 7
+[0] Lookup for key 0. Found value 5
+[1] committed 69632
+[0] committed 70656
+[1] Inserted key 5 with value 5
+[0] Lookup for key 4. Found value 0
+[1] Updated key 5 to value 3
+[0] Lookup for key 3. Found value 1
+[1] committed 71680
+[0] committed 72704
+[1] Lookup for key 6. Found value -1
+[0] Updated key 1 to value 1
+[1] Inserted key 5 with value 10
+[0] Updated key 1 to value 9
+[1] committed 73728
+[0] committed 74752
+[1] Lookup for key 3. Found value 1
+[0] Lookup for key 10. Found value 4
+[1] Removing key 3
+[0] Inserted key 1 with value 5
+[1] committed 75776
+[0] committed 76800
+[1] Removing key 3
+[0] Removing key 10
+[1] Removing key 6
+[0] Inserted key 2 with value 4
+[1] committed 77824
+[0] committed 78848
+[1] Lookup for key 0. Found value 5
+[0] Removing key 8
+[1] Lookup for key 5. Found value 10
+[0] Lookup for key 2. Found value 4
+[1] committed 79872
+[0] committed 80896
+[1] Inserted key 1 with value 4
+[0] Lookup for key 8. Found value -1
+[1] Updated key 4 to value 0
+[0] Lookup for key 1. Found value 5
+[1] committed 81920
+[0] aborted 
+[1] Removing key 9
+[0] Lookup for key 8. Found value -1
+[1] Updated key 6 to value 7
+[0] Lookup for key 1. Found value 4
+[1] committed 83968
+[0] committed 84992
+[1] Inserted key 10 with value 5
+[0] Inserted key 5 with value 3
+[1] Inserted key 5 with value 7
+[0] Updated key 3 to value 7
+[1] committed 86016
+[0] committed 87040
+[1] Inserted key 6 with value 4
+[0] Removing key 5
+[1] Inserted key 4 with value 2
+[0] Updated key 2 to value 5
+[1] committed 88064
+[0] committed 89088
+[1] Updated key 4 to value 6
+[0] Updated key 3 to value 1
+[1] Lookup for key 6. Found value 4
+[0] Removing key 1
+[1] committed 90112
+[0] committed 91136
+[0] Updated key 3 to value 3
+[1] Inserted key 4 with value 5
+[0] Removing key 3
+[1] Lookup for key 5. Found value -1
+[0] committed 92160
+[1] committed 93184
+[0] Lookup for key 1. Found value -1
+[1] Lookup for key 2. Found value 5
+[0] Updated key 2 to value 8
+[1] Inserted key 5 with value 5
+[0] committed 94208
+[1] aborted 
+[0] Updated key 0 to value 1
+[1] Lookup for key 2. Found value 8
+[0] Lookup for key 1. Found value -1
+[1] Inserted key 5 with value 5
+[0] committed 96256
+[1] committed 97280
+[0] Removing key 9
+[1] Lookup for key 2. Found value 8
+[0] Updated key 4 to value 0
+[1] Inserted key 6 with value 4
+[0] committed 98304
+[1] committed 99328
+[0] Lookup for key 9. Found value -1
+[1] Removing key 10
+[0] Updated key 2 to value 10
+[1] Inserted key 6 with value 0
+[0] committed 100352
+[1] committed 101376
+[0] Removing key 7
+[1] Lookup for key 10. Found value -1
+[0] Removing key 2
+[1] Inserted key 8 with value 10
+[0] committed 102400
+[1] committed 103424
+[0] Lookup for key 7. Found value -1
+[1] Inserted key 8 with value 7
+[0] Removing key 4
+[1] Lookup for key 7. Found value -1
+[0] committed 104448
+[1] committed 105472
+[0] Inserted key 4 with value 3
+[1] Removing key 8
+[0] Lookup for key 3. Found value -1
+[1] Lookup for key 6. Found value 0
+[0] committed 106496
+[1] committed 107520
+[0] Removing key 1
+[1] Inserted key 6 with value 5
+[0] Updated key 2 to value 8
+[1] Inserted key 5 with value 1
+[0] committed 108544
+[1] committed 109568
+[0] Updated key 2 to value 4
+[1] Inserted key 6 with value 7
+[0] Inserted key 4 with value 8
+[1] Inserted key 7 with value 8
+[0] committed 110592
+[1] committed 111616
+[0] Inserted key 10 with value 3
+[1] Updated key 3 to value 6
+Found a newly record newly inserted from another transaction. Aborting. Record key is [1] Removing key 6
+[1] committed 112640
+[1] Inserted key 3 with value 8
+[1] Removing key 8
+[1] committed 113664
+[1] Lookup for key 1. Found value -1
+[1] Updated key 8 to value 0
+[1] committed 114688
+[1] Updated key 1 to value 6
+[1] Updated key 6 to value 10
+[1] committed 115712
+[1] Removing key 310
+
+[1] Inserted key 6 with value 6
+[1] committed 116736
+[1] Lookup for key 6. Found value 6
+[1] Inserted key 7 with value 2
+[1] committed 117760
+[1] Inserted key 7 with value 7
+[1] Removing key 7
+[1] committed 118784
+[1] Removing key 4
+[1] Lookup for key 9. Found value -1
+[1] committed 119808
+[1] Updated key 5 to value 8
+[1] Updated key 8 to value 7
+[1] committed 120832
+[0] aborted 
+[1] Inserted key 2 with value 7
+[1] Inserted key 7 with value 3
+[0] Inserted key 10 with value 3
+[1] committed 121856
+[0] Inserted key 3 with value 3
+[1] Updated key 2 to value 6
+[0] committed 122880
+[1] Inserted key 6 with value 0
+[0] Lookup for key 0. Found value 1
+[1] committed 123904
+[0] Lookup for key 2. Found value 6
+[1] Inserted key 10 with value 8
+[0] committed 124928
+[1] Inserted key 8 with value 9
+[0] Updated key 7 to value 4
+[1] committed 125952
+[0] Removing key 4
+[1] Lookup for key 8. Found value 9
+[0] committed 126976
+[1] Lookup for key 7. Found value 4
+[0] Removing key 8
+[1] committed 128000
+[0] Lookup for key 4. Found value -1
+[1] Updated key 8 to value 9
+[0] committed 129024
+[1] Lookup for key 9. Found value -1
+[0] Lookup for key 5. Found value 8
+[1] committed 130048
+[0] Updated key 2 to value 5
+[1] Removing key 6
+[0] committed 131072
+[1] Inserted key 9 with value 1
+[0] Removing key 6
+[1] committed 132096
+[0] Inserted key 5 with value 1
+[1] Lookup for key 5. Found value 8
+[0] committed 133120
+[1] Updated key 7 to value 8
+[0] Removing key 3
+[1] aborted 
+[1] Lookup for key 5. Found value 1
+[1] Updated key 7 to value 8Delete bit already set. Should I do something here?
+
+[0] Removing key 3
+[1] committed 135168
+[0] committed 136192
+[1] Inserted key 3 with value 7
+[0] Inserted key 0 with value 3
+[1] Removing key 7
+[1] committed 137216
+Found a newly record newly inserted from another transaction. Aborting. Record key is 3
+[1] Removing key 3
+[1] Removing key 9
+[1] committed 138240
+[1] Updated key 1 to value 8
+[0] aborted 
+[1] Updated key 8 to value 10
+[0] Inserted key 0 with value 3
+[1] committed 139264
+[0] Lookup for key 3. Found value -1
+[1] Inserted key 1 with value 10
+[0] committed 140288
+[1] Updated key 10 to value 9
+[0] Removing key 0
+[1] committed 141312
+[0] Lookup for key 5. Found value 1
+[1] Updated key 9 to value 9
+[0] committed 142336
+[1] Updated key 9 to value 5
+[1] committed 143360
+[1] Updated key 9 to value 8
+[1] Updated key 8 to value Found a newly record newly inserted from another transaction. Aborting. Record key is 49
+
+[1] committed 144384
+[1] Lookup for key 7. Found value -1
+[0] aborted 
+[1] Removing key 7
+[0] Updated key 9 to value 4
+[1] committed 145408
+[0] Updated key 4 to value 3
+[1] Updated key 7 to value 9
+[0] committed 146432
+[1] Removing key 9
+[0] Inserted key 9 with value 3
+[1] committed 147456
+[0] Updated key 3 to value 9
+[1] Lookup for key 5. Found value 1
+[0] committed 148480
+[1] Updated key 9 to value 7
+[0] Lookup for key 7. Found value 9
+[1] committed 149504
+[0] Removing key 5
+[1] Lookup for key 4. Found value 3
+[0] committed 150528
+[1] Lookup for key 10. Found value 9
+[0] Updated key 7 to value 4
+[1] committed 151552
+[0] Removing key 4
+[1] Inserted key 2 with value 10
+[0] committed 152576
+[1] Inserted key 10 with value 2
+[0] Removing key 4
+[1] committed 153600
+[0] Lookup for key 3. Found value 9
+[1] Removing key 10
+[0] committed 154624
+[1] Inserted key 8 with value 9
+[0] Lookup for key 4. Found value -1
+[1] committed 155648
+[0] Lookup for key 5. Found value -1
+[1] Updated key 0 to value 8
+[0] committed 156672
+[1] Lookup for key 8. Found value 9
+[0] Inserted key 2 with value 5
+[1] Lookup for key 5. Found value -1
+[0] Inserted key 5 with value 7
+[1] committed 157696
+[0] committed 158720
+[1] Inserted key 8 with value 10
+[0] Removing key 2
+[1] Lookup for key 10. Found value -1
+[0] Inserted key 3 with value 6
+[1] Inserted key 4 with value 4
+[0] committed 159744
+[1] committed 160768
+[0] Inserted key 10 with value 6
+[1] Updated key 8 to value 9
+[0] Inserted key 6 with value 2
+[1] Lookup for key 9. Found value 7
+[0] committed 161792
+[1] Updated key 0 to value 7
+[0] Inserted key 10 with value 5
+[1] committed 162816
+[0] Inserted key 5 with value 9
+[1] Updated key 5 to value 0
+[0] committed 163840
+[1] Updated key 0 to value 10
+[0] Updated key 8 to value 4
+[1] Lookup for key 10. Found value 5
+[0] Lookup for key 4. Found value 4
+[1] committed 164864
+[0] committed 165888
+[1] Lookup for key 6. Found value 2
+[0] Inserted key 8 with value 6
+[1] Inserted key 10 with value 7
+[0] Lookup for key 6. Found value 2
+[1] Inserted key 7 with value 6
+[0] committed 166912
+[1] committed 167936
+[0] Updated key 6 to value 5
+[1] Updated key 3 to value 9
+[0] Inserted key 5 with value 1
+[1] Removing key 9
+[0] committed 168960
+[1] Updated key 5 to value 2
+[0] Updated key 3 to value 4
+[1] committed 169984
+[0] Removing key 4
+[1] Lookup for key 4. Found value 4
+[0] committed 171008
+[1] Lookup for key 0. Found value 10
+[0] Removing key 3
+[1] Lookup for key 2. Found value -1
+[0] Removing key 6
+[1] aborted 
+[0] committed 173056
+[1] Lookup for key 4. Found value -1
+[0] Lookup for key 0. Found value 10
+[1] Lookup for key 0. Found value 10
+[0] Lookup for key 5. Found value 2
+[1] Lookup for key 2. Found value -1
+[0] committed 174080
+[1] committed 175104
+[0] Inserted key 1 with value 4
+[1] Lookup for key 1. Found value 10
+[0] Updated key 4 to value 2
+[1] Updated key 10 to value 8
+[0] committed 176128
+[1] Inserted key 8 with value 1
+[0] Removing key 9
+[1] aborted 
+[0] Updated key 6 to value 1
+[1] Lookup for key 1. Found value 4
+[0] committed 178176
+[1] Updated key 10 to value 8
+[0] Inserted key 10 with value 6
+[1] Inserted key 8 with value 1
+[0] Inserted key 6 with value 8
+[1] committed 179200
+[0] committed 180224
+[1] Removing key 9
+[0] Inserted key 6 with value 4
+[1] Updated key 10 to value 8
+[0] Inserted key 4 with value 4
+[1] Inserted key 8 with value 3
+[0] committed 181248
+[1] committed 182272
+[0] Updated key 4 to value 7
+[1] Lookup for key 9. Found value -1
+[0] Lookup for key 7. Found value 6
+[1] Updated key 0 to value 4
+[0] committed 183296
+[1] Lookup for key 4. Found value 7
+[0] Inserted key 4 with value 6
+[1] committed 184320
+[0] Lookup for key 6. Found value 4
+[1] Updated key 7 to value 0
+[0] committed 185344
+[1] Removing key 0
+[0] Updated key 2 to value 5
+[1] Lookup for key 0. Found value -1
+[0] Inserted key 5 with value 7
+[1] committed 186368
+[0] committed 187392
+[1] Inserted key 7 with value 10
+[0] Updated key 2 to value 7
+[1] Removing key 10
+[0] Inserted key 7 with value 5
+[1] Inserted key 10 with value 9
+[0] committed 188416
+[1] committed 189440
+[0] Lookup for key 10. Found value 9
+[1] Updated key 5 to value 1
+[0] Inserted key 6 with value 2
+[1] Updated key 1 to value 6
+[0] committed 190464
+[1] Updated key 6 to value 1
+[0] Updated key 10 to value 5
+[1] committed 191488
+[0] Inserted key 5 with value 0
+[1] Updated key 4 to value 0
+[0] committed 192512
+[1] Lookup for key 0. Found value -1
+[0] Inserted key 8 with value 7
+[1] Lookup for key 5. Found value 0
+[0] Lookup for key 7. Found value 10
+[1] committed 193536
+[0] committed 194560
+[1] Lookup for key 2. Found value 7
+[0] Removing key 8
+[1] Inserted key 10 with value 1
+[0] Lookup for key 6. Found value 1
+[1] Inserted key 1 with value 0
+[0] committed 195584
+[1] committed 196608
+[0] Inserted key 6 with value 6
+[1] Updated key 2 to value 1
+[0] Inserted key 6 with value 3
+[1] Inserted key 1 with value 0
+[0] committed 197632
+[1] Updated key 0 to value 4
+[0] Inserted key 5 with value 7
+[1] committed 198656
+[0] Updated key 7 to value 10
+[1] Lookup for key 0. Found value 4
+[0] committed 199680
+[1] Lookup for key 0. Found value 4
+[0] Updated key 3 to value 7
+[1] Lookup for key 8. Found value -1
+[0] Removing key 7
+[1] committed 200704
+[0] committed 201728
+[1] Lookup for key 0. Found value 4
+[0] Inserted key 3 with value 6
+[1] Lookup for key 10. Found value 1
+[0] Removing key 6
+[1] Inserted key 3 with value 3
+[0] committed 202752
+[1] committed 203776
+[0] Updated key 1 to value 8
+[1] Removing key 8
+[0] Updated key 8 to value 1
+[1] Lookup for key 2. Found value 1
+[0] committed 204800
+[1] Inserted key 3 with value 9
+[0] Updated key 1 to value 7
+[1] committed 205824
+[0] Updated key 7 to value 0
+[1] Lookup for key 8. Found value 1
+[0] committed 206848
+[1] Lookup for key 0. Found value 4
+[0] Lookup for key 9. Found value -1
+[1] Lookup for key 10. Found value 1
+[0] Updated key 6 to value 8
+[1] committed 207872
+[0] committed 208896
+[1] Updated key 6 to value 0
+[0] Updated key 6 to value 8
+[1] Inserted key 0 with value 6
+[0] Inserted key 8 with value 6
+[1] Lookup for key 6. Found value 0
+[0] committed 209920
+[1] committed 210944
+[0] Inserted key 7 with value 7
+[1] Removing key 6
+[0] Removing key 7
+[1] Inserted key 1 with value 5
+[0] committed 211968
+[1] Updated key 5 to value 1
+[0] Lookup for key 4. Found value 0
+[1] committed 212992
+[0] Lookup for key 6. Found value -1
+[1] Updated key 4 to value 1
+[0] committed 214016
+[1] Lookup for key 1. Found value 5
+[0] Inserted key 5 with value 8
+[1] Updated key 1 to value 7
+[0] Updated key 8 to value 9
+[1] committed 215040
+[0] committed 216064
+[1] Updated key 0 to value 0
+[0] Inserted key 2 with value 7
+[1] Lookup for key 0. Found value 0
+[0] Inserted key 7 with value 5
+[1] Lookup for key 0. Found value 0
+[0] committed 217088
+[1] committed 218112
+[0] Updated key 2 to value 7
+[1] Lookup for key 1. Found value 7
+[0] Inserted key 7 with value 1
+[1] Updated key 2 to value 7
+[0] committed 219136
+[1] Inserted key 7 with value 5
+[0] Inserted key 10 with value 8
+[1] committed 220160
+[0] Inserted key 8 with value 0
+[1] Updated key 9 to value 1
+[0] committed 221184
+[1] Updated key 1 to value 3
+[0] Updated key 0 to value 8
+[1] Updated key 3 to value 9
+[0] Lookup for key 8. Found value 0
+[1] committed 222208
+[0] committed 223232
+[1] Lookup for key 10. Found value 8
+[0] Lookup for key 8. Found value 0
+[1] Inserted key 0 with value 3
+[0] Lookup for key 10. Found value 8
+[1] Lookup for key 3. Found value 9
+[0] committed 224256
+[1] committed 225280
+[0] Lookup for key 5. Found value 8
+[1] Lookup for key 7. Found value 5
+[0] Updated key 9 to value 3
+[1] Removing key 2
+[0] committed 226304
+[1] Inserted key 9 with value 8
+[0] Updated key 5 to value 8
+[1] committed 227328
+[0] Updated key 8 to value 1
+[1] Removing key 7
+[0] committed 228352
+[1] Removing key 1
+[0] Removing key 3
+[1] Updated key 9 to value 3
+[0] Removing key 7
+[1] committed 229376
+[0] committed 230400
+[1] Lookup for key 4. Found value 1
+[0] Lookup for key 3. Found value -1
+[1] Lookup for key 0. Found value 3
+[0] Removing key 9
+[1] Lookup for key 4. Found value 1
+[0] committed 231424
+[1] committed 232448
+[0] Inserted key 1 with value 8
+[1] Inserted key 2 with value 3
+[0] Updated key 8 to value 4
+[1] Inserted key 3 with value 1
+[0] committed 233472
+[1] Removing key 1
+[0] Inserted key 1 with value 10
+[1] committed 234496
+[0] Updated key 10 to value 0
+[1] Removing key 2
+[0] committed 235520
+[1] Inserted key 1 with value 0
+[0] Updated key 9 to value 10
+[1] Updated key 0 to value 6
+[0] Updated key 10 to value 7
+[1] committed 236544
+[0] committed 237568
+[1] Updated key 0 to value 1
+[0] Inserted key 9 with value 8
+[1] Lookup for key 1. Found value 0
+[0] Updated key 8 to value 6
+[1] Updated key 7 to value 1
+[0] committed 238592
+[1] committed 239616
+[0] Lookup for key 7. Found value 1
+[1] Updated key 10 to value 3
+[0] Removing key 8
+[1] Inserted key 3 with value 6
+[0] committed 240640
+[1] Removing key 6
+[0] Updated key 7 to value 10
+[1] committed 241664
+[0] Removing key 10
+[1] Lookup for key 8. Found value -1
+[0] committed 242688
+[1] Lookup for key 2. Found value -1
+[0] Lookup for key 5. Found value 8
+[1] Inserted key 2 with value 0
+[0] Updated key 9 to value 8
+[1] committed 243712
+[0] committed 244736
+[1] Updated key 8 to value 1
+[0] Lookup for key 4. Found value 1
+[1] Lookup for key 1. Found value 0
+[0] Lookup for key 0. Found value 1
+[1] Updated key 9 to value 4
+[0] committed 245760
+[1] committed 246784
+[0] Removing key 2
+[1] Removing key 6
+[0] Inserted key 10 with value 4
+[1] Inserted key 3 with value 9
+[0] committed 247808
+[1] Removing key 9
+[0] Lookup for key 2. Found value -1
+[1] committed 248832
+[0] Inserted key 9 with value 10
+[1] Lookup for key 6. Found value -1
+[0] committed 249856
+[1] Inserted key 2 with value 4
+[0] Inserted key 0 with value 8
+[1] Inserted key 4 with value 3
+[0] Lookup for key 8. Found value 1
+[1] committed 250880
+[0] committed 251904
+[1] Removing key 3
+[0] Removing key 8
+[1] Removing key 1
+[0] Lookup for key 10. Found value 4
+[1] Updated key 1 to value 9
+[0] committed 252928
+[1] committed 253952
+[0] Updated key 8 to value 9
+[1] Inserted key 3 with value 3
+[0] Lookup for key 9. Found value 10
+[1] Removing key 3
+[0] committed 254976
+[1] Removing key 10
+[0] Inserted key 5 with value 0
+[1] committed 256000
+[0] Updated key 0 to value 1
+[1] Inserted key 1 with value 3
+[0] committed 257024
+[1] Updated key 3 to value 7
+[0] Lookup for key 6. Found value -1
+[1] Removing key 7
+[0] Inserted key 0 with value 8
+[1] committed 258048
+[0] committed 259072
+[0] Updated key 3 to value 9
+[1] Removing key 1
+[0] Removing key 9
+[1] Updated key 1 to value 6
+[0] committed 260096
+[1] Updated key 6 to value 0
+[0] Lookup for key 4. Found value 3
+[1] committed 261120
+[0] Lookup for key 9. Found value -1
+[1] Updated key 10 to value 4
+[0] committed 262144
+[1] Inserted key 4 with value 2
+[0] Lookup for key 0. Found value 8
+[1] Lookup for key 2. Found value 4
+[0] Lookup for key 0. Found value 8
+[1] committed 263168
+[0] committed 264192
+[1] Inserted key 10 with value 2
+[0] Removing key 1
+[1] Inserted key 2 with value 1
+[0] Updated key 10 to value 10
+[1] Inserted key 1 with value 10
+[0] committed 265216
+[1] committed 266240
+[0] Lookup for key 9. Found value -1
+[1] Lookup for key 7. Found value -1
+[0] Updated key 1 to value 5
+[1] Removing key 2
+[0] committed 267264
+[1] Inserted key 8 with value 5
+[0] Inserted key 7 with value 0
+[1] committed 268288
+[0] Removing key 0
+[0] committed 269312
+Found a newly record newly inserted from another transaction. Aborting. Record key is 7
+[0] Removing key 7
+[0] Removing key 10
+[0] committed 270336
+[0] Updated key 4 to value 9
+[0] Lookup for key 9. Found value -1
+[1] aborted 
+[0] committed 271360
+[1] Updated key 7 to value 4
+[0] Inserted key 4 with value 0
+[1] Removing key 4
+[0] Lookup for key 0. Found value -1
+[1] Lookup for key 4. Found value -1
+[0] committed 272384
+[1] committed 273408
+[0] Lookup for key 2. Found value -1
+[1] Removing key 5
+[0] Inserted key 0 with value 3
+[1] Updated key 3 to value 3
+[0] committed 274432
+[1] Removing key 3
+[0] Updated key 2 to value 1
+[1] committed 275456
+[0] Inserted key 1 with value 2
+[0] committed 276480
+[0] Lookup for key 0. Found value 3
+[0] Lookup for key 1. Found value 2
+Found a newly record newly inserted from another transaction. Aborting. Record key is 2
+[0] committed 277504
+[0] Lookup for key 0. Found value 3
+[0] Lookup for key 10. Found value -1
+[0] committed 278528
+[0] Inserted key 8 with value 10
+[1] aborted 
+[0] Lookup for key 10. Found value -1
+[1] Lookup for key 2. Found value 1
+[0] committed 279552
+[1] Inserted key 2 with value 10
+[0] Lookup for key 8. Found value 10
+[1] Inserted key 10 with value 8
+[0] Lookup for key 1. Found value 2
+[1] committed 280576
+[0] committed 281600
+[1] Inserted key 3 with value 4
+[0] Inserted key 6 with value 0
+[1] Removing key 4
+[0] Inserted key 0 with value 8
+[1] Lookup for key 7. Found value 4
+[0] committed 282624
+[1] committed 283648
+[0] Removing key 6
+[1] Removing key 10
+[0] Inserted key 2 with value 6
+[1] Inserted key 3 with value 5
+[0] committed 284672
+[0] Inserted key 4 with value 1
+[0] Lookup for key 1. Found value 2
+[1] Removing key 5
+[0] committed 285696
+[1] committed 286720
+[0] Inserted key 3 with value 0
+[1] Inserted key 0 with value 2
+[0] Removing key 0
+[1] Lookup for key 2. Found value 6
+[0] committed 287744
+[1] Inserted key 2 with value 2
+[0] Lookup for key 1. Found value 2
+[1] committed 288768
+[0] Updated key 2 to value 9
+[1] Removing key 8
+[0] committed 289792
+[1] Lookup for key 4. Found value 1
+[0] Updated key 9 to value 1
+[1] Lookup for key 0. Found value -1
+[0] Updated key 1 to value 8
+[1] committed 290816
+[0] committed 291840
+[1] Updated key 9 to value 4
+[0] Lookup for key 10. Found value -1
+[1] Updated key 4 to value 8
+[0] Inserted key 1 with value 4
+[1] Lookup for key 8. Found value -1
+[0] committed 292864
+[1] committed 293888
+[0] Lookup for key 7. Found value 4
+[1] Inserted key 6 with value 2
+[0] Removing key 2
+[1] Inserted key 2 with value 7
+[0] committed 294912
+[1] Inserted key 7 with value 5
+[0] Removing key 7
+[1] committed 295936
+[0] Removing key 2
+[1] Updated key 3 to value 5
+[1] Removing key 5
+[1] Updated key 3 to value 0
+[0] committed 296960
+[1] committed 297984
+[0] Lookup for key 4. Found value 8
+[1] Updated key 3 to value 4
+[0] Lookup for key 1. Found value 4
+[1] Removing key 4
+[0] committed 299008
+[1] Lookup for key 10. Found value -1
+[0] Inserted key 5 with value 3
+[1] committed 300032
+[0] Updated key 3 to value 3
+[1] Removing key 1
+[0] committed 301056
+[1] Updated key 3 to value 9
+[0] Inserted key 2 with value 2
+[1] Removing key 9
+[0] Inserted key 2 with value 1
+[1] committed 302080
+[0] committed 303104
+[1] Lookup for key 1. Found value -1
+[0] Inserted key 0 with value 1
+[1] Updated key 5 to value 5
+[0] Lookup for key 1. Found value -1
+[1] Updated key 5 to value 3
+[0] committed 304128
+[1] committed 305152
+[0] Inserted key 10 with value 3
+Found a newly record newly inserted from another transaction. Aborting. Record key is 10[0
+] Inserted key 3 with value 7
+[0] committed 306176
+[0] Updated key 8 to value 2
+[0] Lookup for key 2. Found value 1
+[0] committed 307200
+[0] Inserted key 8 with value 1
+[0] Lookup for key 1. Found value -1
+[0] committed 308224
+[0] Lookup for key 6. Found value 2
+[0] Inserted key 4 with value 10
+[0] committed 309248
+[0] Lookup for key 6. Found value 2
+[1] aborted 
+[0] Inserted key 2 with value 6
+[1] Inserted key 10 with value 4
+[0] committed 310272
+[1] Inserted key 4 with value 2
+[0] Removing key 3
+[1] Lookup for key 2. Found value 6
+[0] Removing key 2
+[0] committed 311296
+[0] Lookup for key 3. Found value -1
+[1] aborted 
+[0] Removing key 3
+[1] Inserted key 10 with value 4
+[0] committed 313344
+[1] Inserted key 4 with value 2
+[0] Inserted key 1 with value 3
+[1] Lookup for key 2. Found value -1
+[0] Updated key 3 to value 8
+[1] committed 314368
+[0] committed 315392
+[1] Removing key 9
+[0] Removing key 1
+[1] Updated key 3 to value 0
+[0] Updated key 2 to value 7
+[1] Removing key 0
+[0] committed 316416
+[1] committed 317440
+[0] Inserted key 10 with value 4
+[1] Updated key 7 to value 5
+[0] Inserted key 4 with value 4
+[1] Removing key 5
+[0] committed 318464
+[1] Updated key 8 to value 7
+[0] Updated key 9 to value 3
+[1] committed 319488
+[0] Updated key 3 to value 2
+[1] Inserted key 7 with value 4
+[0] committed 320512
+[1] Removing key 4
+[0] Updated key 7 to value 2
+[1] Lookup for key 6. Found value 2
+[0] Removing key 2
+[1] committed 321536
+[0] committed 322560
+[1] Updated key 5 to value 3
+[0] Inserted key 7 with value 4
+[1] Updated key 3 to value 3
+[0] Removing key 4
+[1] Removing key 3
+[0] committed 323584
+[1] committed 324608
+[0] Lookup for key 5. Found value 3
+[1] Inserted key 5 with value 5
+[0] Updated key 3 to value 5
+[1] Updated key 5 to value 10
+[0] committed 325632
+[1] Updated key 10 to value 10
+[0] Updated key 2 to value 2
+[1] committed 326656
+[0] Inserted key 2 with value 1
+Found a newly record newly inserted from another transaction. Aborting. Record key is [0] committed 327680
+[0] Removing key 2
+[0] Inserted key 5 with value 20
+
+[0] committed 328704
+[0] Lookup for key 10. Found value 10
+[0] Inserted key 3 with value 7
+[0] committed 329728
+[0] Inserted key 0 with value 3
+[0] Lookup for key 3. Found value 7
+[0] committed 330752
+[0] Removing key 8
+[1] aborted 
+[1] Updated key 2 to value 5
+[0] Lookup for key 5. Found value 0
+[1] Inserted key 5 with value 9
+[0] committed 331776
+[1] Updated key 9 to value 5
+[0] Updated key 9 to value 4
+[1] committed 332800
+[0] Updated key 4 to value 10
+[1] Updated key 2 to value 3
+[0] committed 333824
+[1] Inserted key 3 with value 5
+[0] Inserted key 6 with value 3
+[1] Removing key 5
+[0] Inserted key 3 with value 8
+[1] committed 334848
+[0] committed 335872
+[1] Removing key 0
+[0] Updated key 6 to value 5
+[1] Lookup for key 6. Found value 3
+[0] Inserted key 5 with value 5
+[1] Inserted key 4 with value 4
+[0] committed 336896
+[1] aborted 
+[0] Inserted key 3 with value 4
+[1] Removing key 0
+[0] Removing key 4
+[0] committed 338944
+[1] Lookup for key 6. Found value 5
+[0] Lookup for key 1. Found value -1
+[1] Inserted key 4 with value 4
+[0] Updated key 3 to value 0
+[1] committed 339968
+[0] committed 340992
+[1] Lookup for key 0. Found value -1
+[0] Updated key 1 to value 5
+[1] Lookup for key 5. Found value 5
+[0] Updated key 5 to value 7
+[1] Updated key 0 to value 8
+[0] committed 342016
+[1] aborted 
+[0] Removing key 10
+[1] Lookup for key 0. Found value -1
+[0] Inserted key 5 with value 3
+[1] Lookup for key 5. Found value 7
+[0] committed 344064
+[1] Updated key 0 to value 8
+[0] Lookup for key 9. Found value 4
+[1] aborted 
+[0] Updated key 3 to value 2
+[1] Lookup for key 0. Found value -1
+[0] committed 346112
+[1] Lookup for key 5. Found value 3
+[0] Inserted key 7 with value 6
+[1] Updated key 0 to value 8
+[0] Removing key 6
+[1] committed 347136
+[0] committed 348160
+[1] Inserted key 9 with value 4
+[0] Removing key 7
+[1] Updated key 4 to value 7
+[0] Removing key 4
+[1] Lookup for key 7. Found value 6
+[0] committed 349184
+[1] aborted 
+[0] Updated key 5 to value 4
+[1] Inserted key 9 with value 4
+[0] Updated key 4 to value 5
+[0] committed 351232
+Found a newly record newly inserted from another transaction. Aborting. Record key is 4
+[0] Inserted key 5 with value 6
+[0] Updated key 6 to value 3
+[0] committed 352256
+[0] Updated key 2 to value 5
+[1] aborted 
+[0] Inserted key 5 with value 0
+[1] Inserted key 9 with value 4
+[0] committed 353280
+[1] Updated key 4 to value 7
+[0] Updated key 2 to value 4
+[1] Lookup for key 7. Found value -1
+[0] Inserted key 4 with value 6
+[1] committed 354304
+[0] committed 355328
+[1] Removing key 5
+[0] Lookup for key 0. Found value 8
+[1] Updated key 6 to value 6
+[0] Lookup for key 6. Found value 3
+[1] Inserted key 6 with value 7
+[0] committed 356352
+[1] committed 357376
+[0] Updated key 0 to value 5
+[1] Inserted key 6 with value 5
+[0] Lookup for key 5. Found value -1
+[1] Inserted key 5 with value 3
+[0] committed 358400
+[1] Updated key 3 to value 2
+[0] Lookup for key 9. Found value 4
+[1] committed 359424
+[0] Updated key 4 to value 9
+[1] Inserted key 3 with value 4
+[0] committed 360448
+[1] Removing key 4
+[0] Lookup for key 8. Found value -1
+[1] Lookup for key 1. Found value 5
+[0] Lookup for key 6. Found value 5
+[1] committed 361472
+[0] committed 362496
+[1] Updated key 4 to value 6
+[0] Inserted key 6 with value 6
+[1] Lookup for key 6. Found value 5
+[0] Inserted key 6 with value 4
+[0] committed 363520
+[1] Inserted key 9 with value 1
+[0] Removing key 3
+[1] aborted 
+[0] Removing key 4
+[1] Updated key 4 to value 6
+[0] committed 365568
+[1] Lookup for key 6. Found value 4
+Found a newly record newly inserted from another transaction. Aborting. Record key is 4[1] Inserted key 9 with value 
+1
+[1] committed 366592
+[1] Updated key 1 to value 5
+[0] aborted 
+[1] Updated key 5 to value 4
+[0] Updated key 4 to value 7
+[1] Updated key 4 to value 5
+[0] Lookup for key 7. Found value -1
+[1] committed 367616
+[0] committed 368640
+[1] Updated key 1 to value 5
+[0] Inserted key 1 with value 6
+[1] Updated key 5 to value 4
+[0] Updated key 6 to value 9
+[1] Updated key 4 to value 0
+[0] committed 369664
+[1] committed 370688
+[0] Updated key 1 to value 5
+[1] Updated key 9 to value 6
+[0] Updated key 5 to value 6
+[1] Updated key 6 to value 0
+[0] committed 371712
+[1] Inserted key 0 with value 3
+[0] Updated key 9 to value 7
+[1] committed 372736
+[1] Lookup for key 10. Found value -1
+[0] Updated key 7 to value 1
+[1] Inserted key 6 with value 7
+[0] committed 373760
+[1] Inserted key 7 with value 9
+[0] Lookup for key 10. Found value -1
+[1] committed 374784
+[0] Inserted key 6 with value 1
+[1] Updated key 7 to value 5
+[0] committed 375808
+[1] Removing key 5
+[0] Lookup for key 7. Found value 9
+[1] Updated key 6 to value 2
+[0] Removing key 5
+[1] committed 376832
+[0] aborted 
+[1] Inserted key 5 with value 7
+[0] Lookup for key 7. Found value 5
+[1] Updated key 7 to value 2
+[0] Removing key 5
+[1] Removing key 2
+[0] committed 378880
+[1] committed 379904
+[0] Lookup for key 5. Found value -1
+[1] Removing key 5
+[0] Updated key 7 to value 4
+[1] Updated key 6 to value 1
+[0] committed 380928
+[1] Inserted key 1 with value 1
+[1] committed 381952
+[1] Inserted key 2 with value 5
+[1] Inserted key 5 with value 9
+[1] Updated key 9 to value 7
+[1] committed 382976
+[1] Inserted key 2 with value 7
+[1] Inserted key 7 with value 7
+[1] Removing key 7
+[1] committed 384000
+[1] Updated key 0 to value 6
+[1] Lookup for key 6. Found value 1
+[1] Inserted key 4 with value 6
+[1] committed 385024
+[1] Inserted key 0 with value 8
+[1] Lookup for key 8. Found value -1
+[1] Lookup for key 10. Found value -1
+[1] committed 386048
+[1] Updated key 9 to value 7
+[1] Updated key 7 to value 10
+[1] Removing key 10
+[1] committed 387072
+[1] Lookup for key 8. Found value -1
+[1] Lookup for key 6. Found value 1
+[1] Inserted key 6 with value 9
+[1] committed 388096
+[1] Lookup for key 6. Found value 9
+[1] Inserted key 6 with value 2
+[1] Inserted key 2 with value 4
+[1] committed 389120
+[1] Updated key 6 to value 7
+[1] Inserted key 7 with value 1
+[1] Removing key 1
+[1] committed 390144
+[1] Removing key 4
+[1] Lookup for key 7. Found value 1
+[1] Removing key 8
+[1] committed 391168
+[1] Lookup for key 4. Found value -1
+[1] Lookup for key 9. Found value 7
+[1] Updated key 7 to value 7
+[1] committed 392192
+[1] Inserted key 1 with value 8
+[1] Updated key 8 to value 3
+[1] Lookup for key 3. Found value -1
+[1] committed 393216
+[1] Inserted key 1 with value 7
+[1] Updated key 7 to value 2
+[1] Removing key 2
+[1] committed 394240
+[1] Updated key 10 to value 6
+[1] Inserted key 6 with value 10
+[1] Inserted key 10 with value 0
+[1] committed 395264
+[1] Inserted key 7 with value 8
+[1] Removing key 8
+[1] Lookup for key 5. Found value 9
+[1] committed 396288
+[1] Lookup for key 8. Found value -1
+[1] Lookup for key 7. Found value 8
+[1] Removing key 5
+[1] committed 397312
+[1] Updated key 4 to value 9
+[1] Lookup for key 9. Found value 7
+[1] Updated key 1 to value 3
+[1] committed 398336
+[1] Lookup for key 5. Found value -1
+[1] Updated key 9 to value 8
+[1] Updated key 8 to value 9
+[1] committed 399360
+[1] Updated key 2 to value 7
+[1] Inserted key 7 with value 7
+[1] Removing key 7
+[1] committed 400384
+[1] Removing key 3
+[1] Removing key 7
+[1] Removing key 3
+[1] committed 401408
+[1] Lookup for key 0. Found value 8
+[1] Lookup for key 9. Found value 8
+[1] Updated key 2 to value 1
+[1] committed 402432
+[1] Inserted key 8 with value 8
+[1] Lookup for key 8. Found value 8
+[1] Lookup for key 9. Found value 8
+[1] committed 403456
+[1] Removing key 8
+[1] Lookup for key 10. Found value 0
+[1] Inserted key 5 with value 0
+[1] committed 404480
+[1] Updated key 6 to value 9
+[1] Inserted key 9 with value 5
+[1] Updated key 5 to value 6
+[1] committed 405504
+[1] Inserted key 6 with value 8
+[1] Inserted key 8 with value 0
+[1] Lookup for key 0. Found value 8
+[1] committed 406528
+[1] Lookup for key 4. Found value 9
+[1] Lookup for key 7. Found value -1
+[1] Removing key 0
+[1] committed 407552
+[1] Updated key 3 to value 9
+[1] Removing key 9
+[1] Updated key 6 to value 9
+[1] committed 408576
+[1] Removing key 1
+[1] Updated key 8 to value 3
+[1] Lookup for key 3. Found value 9
+[1] committed 409600
+[1] Lookup for key 1. Found value -1
+[1] Updated key 10 to value 2
+[1] Inserted key 2 with value 8
+[1] committed 410624
+[1] Removing key 10
+[1] Inserted key 10 with value 9
+[1] Inserted key 9 with value 3
+[1] committed 411648
+[1] Lookup for key 10. Found value 9
+[1] Inserted key 8 with value 8
+[1] Lookup for key 8. Found value 8
+[1] committed 412672
+[1] Inserted key 7 with value 8
+[1] Removing key 8
+[1] Lookup for key 4. Found value 9
+[1] committed 413696
+[1] Removing key 7
+[1] Removing key 10
+[1] Inserted key 0 with value 5
+[1] committed 414720
+[1] Updated key 5 to value 9
+[1] Updated key 9 to value 10
+[1] Updated key 10 to value 8
+[1] committed 415744
+[1] Inserted key 5 with value 0
+[1] Updated key 0 to value 6
+[1] Lookup for key 6. Found value 9
+[1] committed 416768
+[1] Lookup for key 3. Found value 9
+[1] Removing key 10
+[1] Inserted key 3 with value 7
+[1] committed 417792
+[1] Updated key 0 to value 9
+[1] Lookup for key 9. Found value 10
+[1] Updated key 1 to value 3
+[1] committed 418816
+[1] Lookup for key 0. Found value 9
+[1] Lookup for key 8. Found value -1
+[1] Lookup for key 9. Found value 10
+[1] committed 419840
+[1] Lookup for key 8. Found value -1
+[1] Lookup for key 10. Found value -1
+[1] Inserted key 8 with value 2
+[1] committed 420864
+[1] Removing key 9
+[1] Updated key 10 to value 4
+[1] Inserted key 4 with value 5
+[1] committed 421888
+[1] Removing key 6
+[1] Inserted key 0 with value 3
+[1] Lookup for key 3. Found value 7
+[1] committed 422912
+[1] Inserted key 7 with value 0
+[1] Removing key 0
+[1] Lookup for key 10. Found value 4
+[1] committed 423936
+[1] Removing key 3
+[1] Removing key 9
+[1] Updated key 6 to value 0
+[1] committed 424960
+[1] Inserted key 4 with value 9
+[1] Lookup for key 9. Found value -1
+[1] Updated key 5 to value 3
+[1] committed 425984
+[1] Inserted key 1 with value 0
+[1] Updated key 0 to value 1
+[1] Lookup for key 1. Found value 0
+[1] committed 427008
+[1] Lookup for key 10. Found value 4
+[1] Inserted key 10 with value 9
+[1] Inserted key 9 with value 2
+[1] committed 428032
+[1] Updated key 10 to value 1
+[1] Inserted key 1 with value 7
+[1] Updated key 7 to value 9
+[1] committed 429056
+[1] Lookup for key 7. Found value 9
+[1] Removing key 0
+[1] Lookup for key 4. Found value 9
+[1] committed 430080
+[1] Lookup for key 7. Found value 9
+[1] Removing key 10
+[1] Inserted key 2 with value 7
+[1] committed 431104
+[1] Inserted key 5 with value 1
+[1] Updated key 1 to value 10
+[1] Updated key 10 to value 10
+[1] committed 432128
+[1] Lookup for key 5. Found value 1
+[1] Updated key 0 to value 9
+[1] Lookup for key 9. Found value 2
+[1] committed 433152
+[1] Inserted key 3 with value 0
+[1] Removing key 0
+[1] Lookup for key 5. Found value 1
+[1] committed 434176
+[1] Inserted key 2 with value 1
+[1] Inserted key 1 with value 1
+[1] Updated key 1 to value 5
+[1] committed 435200
+[1] Inserted key 0 with value 1
+[1] Lookup for key 1. Found value 5
+[1] Updated key 0 to value 8
+[1] committed 436224
+[1] Inserted key 0 with value 0
+[1] Lookup for key 0. Found value 0
+[1] Lookup for key 7. Found value 9
+[1] committed 437248
+[1] Lookup for key 9. Found value 2
+[1] Updated key 2 to value 3
+[1] Inserted key 3 with value 7
+[1] committed 438272
+[1] Inserted key 9 with value 1
+[1] Updated key 1 to value 2
+[1] Updated key 2 to value 3
+[1] committed 439296
+[1] Lookup for key 6. Found value 0
+[1] Inserted key 0 with value 10
+[1] Lookup for key 10. Found value 10
+[1] committed 440320
+[1] Lookup for key 6. Found value 0
+[1] Inserted key 2 with value 8
+[1] Inserted key 8 with value 2
+[1] committed 441344
+[1] Removing key 4
+[1] Lookup for key 1. Found value 2
+[1] Updated key 5 to value 5
+[1] committed 442368
+[1] Lookup for key 1. Found value 2
+[1] Updated key 0 to value 1
+[1] Lookup for key 1. Found value 2
+[1] committed 443392
+[1] Updated key 2 to value 3
+[1] Inserted key 3 with value 0
+[1] Removing key 0
+[1] committed 444416
+Parallel time: 0.052024
+Single thread replay
+BEGIN txn 22528
+COMMITTED TRANSACTION 22528
+BEGIN txn 23552
+Doing lookup for key 8. Serial returned: 8. Parallel returned: 8
+COMMITTED TRANSACTION 23552
+BEGIN txn 24576
+Lookup for key 10 failed
+Doing lookup for key 10. Serial returned: -1. Parallel returned: -1
+COMMITTED TRANSACTION 24576
+BEGIN txn 25600
+COMMITTED TRANSACTION 25600
+BEGIN txn 26624
+COMMITTED TRANSACTION 26624
+BEGIN txn 27648
+Doing lookup for key 10. Serial returned: 0. Parallel returned: 0
+COMMITTED TRANSACTION 27648
+BEGIN txn 28672
+COMMITTED TRANSACTION 28672
+BEGIN txn 29696
+Doing lookup for key 8. Serial returned: 6. Parallel returned: 6
+Doing lookup for key 9. Serial returned: 8. Parallel returned: 8
+COMMITTED TRANSACTION 29696
+BEGIN txn 30720
+Doing lookup for key 5. Serial returned: 5. Parallel returned: 5
+COMMITTED TRANSACTION 30720
+BEGIN txn 31744
+COMMITTED TRANSACTION 31744
+BEGIN txn 32768
+COMMITTED TRANSACTION 32768
+BEGIN txn 33792
+COMMITTED TRANSACTION 33792
+BEGIN txn 34816
+Doing lookup for key 10. Serial returned: 5. Parallel returned: 5
+COMMITTED TRANSACTION 34816
+BEGIN txn 35840
+COMMITTED TRANSACTION 35840
+BEGIN txn 36864
+COMMITTED TRANSACTION 36864
+BEGIN txn 37888
+Doing lookup for key 6. Serial returned: 10. Parallel returned: 10
+COMMITTED TRANSACTION 37888
+BEGIN txn 38912
+COMMITTED TRANSACTION 38912
+BEGIN txn 39936
+Doing lookup for key 4. Serial returned: 10. Parallel returned: 10
+Doing lookup for key 9. Serial returned: 8. Parallel returned: 8
+COMMITTED TRANSACTION 39936
+BEGIN txn 40960
+Doing lookup for key 4. Serial returned: 10. Parallel returned: 10
+Doing lookup for key 0. Serial returned: 1. Parallel returned: 1
+COMMITTED TRANSACTION 40960
+BEGIN txn 41984
+COMMITTED TRANSACTION 41984
+BEGIN txn 43008
+Doing lookup for key 1. Serial returned: 1. Parallel returned: 1
+COMMITTED TRANSACTION 43008
+BEGIN txn 44032
+COMMITTED TRANSACTION 44032
+BEGIN txn 45056
+COMMITTED TRANSACTION 45056
+BEGIN txn 46080
+Doing lookup for key 9. Serial returned: 8. Parallel returned: 8
+COMMITTED TRANSACTION 46080
+BEGIN txn 47104
+Doing lookup for key 4. Serial returned: 10. Parallel returned: 10
+COMMITTED TRANSACTION 47104
+BEGIN txn 49152
+Doing lookup for key 9. Serial returned: 8. Parallel returned: 8
+COMMITTED TRANSACTION 49152
+BEGIN txn 50176
+Doing lookup for key 0. Serial returned: 4. Parallel returned: 4
+COMMITTED TRANSACTION 50176
+BEGIN txn 51200
+COMMITTED TRANSACTION 51200
+BEGIN txn 52224
+Doing lookup for key 5. Serial returned: 5. Parallel returned: 5
+COMMITTED TRANSACTION 52224
+BEGIN txn 53248
+Doing lookup for key 7. Serial returned: 10. Parallel returned: 10
+COMMITTED TRANSACTION 53248
+BEGIN txn 54272
+COMMITTED TRANSACTION 54272
+BEGIN txn 55296
+Doing lookup for key 7. Serial returned: 10. Parallel returned: 10
+COMMITTED TRANSACTION 55296
+BEGIN txn 56320
+Doing lookup for key 3. Serial returned: 8. Parallel returned: 8
+COMMITTED TRANSACTION 56320
+BEGIN txn 57344
+Lookup for key 4 failed
+Doing lookup for key 4. Serial returned: -1. Parallel returned: -1
+Doing lookup for key 3. Serial returned: 8. Parallel returned: 8
+COMMITTED TRANSACTION 57344
+BEGIN txn 58368
+Doing lookup for key 0. Serial returned: 7. Parallel returned: 7
+Doing lookup for key 0. Serial returned: 7. Parallel returned: 7
+COMMITTED TRANSACTION 58368
+BEGIN txn 59392
+Lookup for key 4 failed
+Doing lookup for key 4. Serial returned: -1. Parallel returned: -1
+Doing lookup for key 5. Serial returned: 1. Parallel returned: -1
+trans_test: Testers.hh:181: void ARTTester<T>::redoOp(T*, op_record*) [with T = ARTTree<int>]: Assertion `retval == val' failed.

@@ -9,14 +9,15 @@
 
 #define GLOBAL_SEED 10
 #define NTRANS 200 // Number of transactions each thread should run.
-#define N_THREADS 3 // Number of concurrent threads
+#define N_THREADS 2 // Number of concurrent threads
 #define MAX_OPS 3 // Maximum number of operations in a transaction.
 
 #define PRIORITY_QUEUE 0
 #define HASHTABLE 1
 #define RBTREE 2
 #define VECTOR 3
-#define DS RBTREE 
+#define ART 4
+#define DS ART 
 
 #if DS == PRIORITY_QUEUE
 PqueueTester<PriorityQueue<int>> tester = PqueueTester<PriorityQueue<int>>();
@@ -26,6 +27,8 @@ HashtableTester<Hashtable<int, int, false, 1000000>> tester = HashtableTester<Ha
 RBTreeTester<RBTree<int, int, true>, std::map<int, int>> tester = RBTreeTester<RBTree<int, int, true>, std::map<int, int>>();
 #elif DS == VECTOR
 VectorTester<Vector<int>> tester = VectorTester<Vector<int>>();
+#elif DS == ART
+ARTTester<ARTTree<int>, std::map<int, int>> tester = ARTTester<ARTTree<int>, std::map<int, int>>();
 #endif
 
 template <typename T>
@@ -127,6 +130,9 @@ int main() {
 #elif DS == VECTOR
     Vector<int> q;
     Vector<int> q1;
+#elif DS == ART
+    ARTTree<int> q;
+    std::map<int, int> q1;
 #endif  
 
     tester.init(&q);
@@ -174,7 +180,7 @@ int main() {
         }
         assert(Sto::try_commit());
 #if PRINT_DEBUG
-        std::cout << "COMMITTED" << std::endl;
+        std::cout << "COMMITTED TRANSACTION " << it->first << std::endl;
 #endif
     }
     

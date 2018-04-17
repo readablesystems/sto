@@ -25,6 +25,8 @@
 
 #include "MassTrans.hh"
 
+#include "ARTTree.hh"
+
 // size of array (for hashtables or other non-array structures, this is the
 // size of the key space)
 #ifndef ARRAY_SZ
@@ -41,9 +43,10 @@
 #define USE_MASSTREE_STR 8
 #define USE_HASHTABLE_STR 9
 #define USE_ARRAY_NONOPAQUE 10
+#define USE_ART 11
 
 // set this to USE_DATASTRUCTUREYOUWANT
-#define DATA_STRUCTURE USE_HASHTABLE
+#define DATA_STRUCTURE USE_ART //USE_HASHTABLE
 
 // if true, then all threads perform non-conflicting operations
 #define NON_CONFLICTING 0
@@ -426,6 +429,48 @@ template <> struct Container<USE_HASHTABLE_STR> {
     }
 private:
     type v_;
+};
+
+template <> struct Container<USE_ART> {
+  typedef int index_type;
+  typedef int value_type; // TODO: Is this correct?
+  typedef ARTTree<value_type> type;
+
+  static constexpr bool has_delete = true;
+  value_type nontrans_get(index_type key) {
+    return 0;
+  }
+
+  value_type transGet(index_type key) {
+    value_type retval;
+    if (v_.lookup(std::to_string(key), retval))
+      return retval;
+    
+    // TODO: Currently I'm returning 0 here is the lookup fails.
+    // Should I change this to something else?
+    return 0;
+  }
+  void transPut(index_type key, value_type value) {
+    v_.update(std::to_string(key), value);
+  }
+  bool transDelete(index_type key) {
+    v_.remove(std::to_string(key));
+    return true;
+  }
+  bool transInsert(index_type key, value_type value) {
+    v_.insert(std::to_string(key), value);
+    return true;
+  }
+  bool transUpdate(index_type key, value_type value) {
+    v_.update(std::to_string(key), value);
+    return true;
+  }
+  static void init() {
+  }
+  static void thread_init(Container<USE_ART>&) {
+  }
+private:
+  type v_;
 };
 
 #if DATA_STRUCTURE == USE_QUEUE
@@ -1507,7 +1552,8 @@ void print_time(double time) {
     {name, desc, 7, new type<7, ## __VA_ARGS__>},     \
     {name, desc, 8, new type<8, ## __VA_ARGS__>},     \
     {name, desc, 9, new type<9, ## __VA_ARGS__>},     \
-    {name, desc, 10, new type<10, ## __VA_ARGS__>}
+    {name, desc, 10, new type<10, ## __VA_ARGS__>},   \
+    {name, desc, 11, new type<11, ## __VA_ARGS__>}
 
 struct Test {
     const char* name;
@@ -1544,7 +1590,8 @@ struct {
     {"tgeneric", USE_TGENERICARRAY},
     {"queue", USE_QUEUE},
     {"vector", USE_VECTOR},
-    {"tvector", USE_TVECTOR}
+    {"tvector", USE_TVECTOR},
+    {"art", USE_ART}
 };
 
 enum {

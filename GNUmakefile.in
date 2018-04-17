@@ -130,6 +130,12 @@ singleelems: singleelems.o $(STO_DEPS)
 ex-counter: ex-counter.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
+ARTTest: ARTTest.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-art: unit-art.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) -g -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
 unit-rcu: unit-rcu.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 

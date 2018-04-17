@@ -1,6 +1,7 @@
 #pragma once
 #include "compiler.hh"
 #include <algorithm>
+#include <cstring>
 
 class TransactionBuffer;
 
