@@ -490,6 +490,8 @@ inline bool TicTocVersion<Opaque, Extend>::observe_read_impl(TransItem& item, bo
         if (Opaque) {
             always_assert(false, "opacity not implemented 2");
             //t()->min_rts_ = std::min(t()->min_rts_, version.read_timestamp());
+        } else {
+            VersionDelegate::txn_set_any_nonopaque(t(), true);
         }
         VersionDelegate::item_or_flags(item, TransItem::read_bit);
         TicTocTid::pack_wide(item.wide_read_value(), BV::v_, wts_);
@@ -563,6 +565,8 @@ inline bool TicTocCompressedVersion<Opaque, Extend>::observe_read_impl(TransItem
         if (Opaque) {
             always_assert(false, "opacity not implemented 2");
             //t()->min_rts_ = std::min(t()->min_rts_, version.read_timestamp());
+        } else {
+            VersionDelegate::txn_set_any_nonopaque(t(), true);
         }
         VersionDelegate::item_or_flags(item, TransItem::read_bit);
         acquire_fence();
