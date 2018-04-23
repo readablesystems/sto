@@ -739,8 +739,9 @@ inline bool Transaction::try_lock(TransItem& item, VersionBase<VersImpl>& vers) 
     // start computing tictoc commit ts immediately for writes
     if (locked) {
         if (std::is_base_of<TicTocBase<VersImpl>, VersImpl>::value) {
-            assert(item.cc_mode() == CCMode::tictoc);
-            compute_tictoc_commit_ts_step(static_cast<TicTocBase<VersImpl>&>(vers), true /* write */);
+            vers.compute_commit_ts_step(this->tictoc_tid_, true/* write */);
+        } else {
+            vers.compute_commit_ts_step(this->commit_tid_, true/* write */);
         }
     }
     return locked;
@@ -768,16 +769,3 @@ inline Transaction::tid_type Transaction::compute_tictoc_commit_ts() const {
     }
     return commit_ts;
 }
-
-template <typename VersImpl>
-inline void Transaction::compute_tictoc_commit_ts_step(const TicTocBase<VersImpl>& vers, bool is_write) const {
-    static_assert(std::is_base_of<TicTocBase<VersImpl>, VersImpl>::value, "Version does not implement TicToc");
-    assert(state_ == s_committing_locked || state_ == s_committing);
-    if (is_write)
-        tictoc_tid_ = std::max(tictoc_tid_, vers.read_timestamp() + 1);
-    else
-        tictoc_tid_ = std::max(tictoc_tid_, vers.write_timestamp());
-}
-
-template <typename NonTicTocImpl>
-inline void Transaction::compute_tictoc_commit_ts_step(NonTicTocImpl &vers, bool is_write) const {(void)vers; (void)is_write;}
