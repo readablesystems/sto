@@ -81,9 +81,37 @@ void test_tictoc1() {
     std::cout << "PASS: " << std::string(__FUNCTION__) << std::endl;
 }
 
+void test_tictoc2() {
+    TicTocArray<int, 10> array;
+    for (int i = 0; i < 10; ++i)
+        array.nontrans_put(i, i);
+    {
+        TestTransaction t1(1);
+        int a;
+        bool ok = array.transGet(4, a);
+        assert(ok && a == 4);
+
+        TestTransaction t2(2);
+        int b;
+        ok = array.transGet(4, b);
+        assert(ok && b == 4);
+
+        t1.use();
+        array.transPut(4, a+1);
+        assert(ok && t1.try_commit());
+
+        t2.use();
+        ok = array.transPut(4, b+1);
+        assert(ok && !t2.try_commit());
+    }
+    std::cout << "PASS: " << std::string(__FUNCTION__) << std::endl;
+}
+
 int main() {
     test_compile();
     test_tictoc0();
     test_tictoc1();
+    test_tictoc2();
+    std::cout << "ALL TESTS PASS!" << std::endl;
     return 0;
 }
