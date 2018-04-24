@@ -11,18 +11,22 @@ namespace ver_sel {
 typedef TransactionTid::type type;
 
 // Version selector interface
-template <typename T>
+template <typename T, typename VersImpl>
 class VerSelBase {
 public:
-    int map(int col_n) {
-        return impl().map_impl();
+    typedef VersImpl version_type;
+
+    static int map(int col_n) {
+        return T::map_impl(col_n);
     }
 
-    T::version_type& select(int col_n) {
-        return impl().select_impl();
-    }
-    T::version_type& version_at(int cell) {
+    version_type& version_at(int cell) {
         return impl().version_at_impl(cell);
+    }
+
+    template <typename RowType>
+    void install_by_cell(RowType *dst, const RowType *src, int cell) {
+        return impl().install_by_cell_impl(dst, src, cell);
     }
 
 private:
@@ -37,26 +41,27 @@ private:
 // Default version selector has only one version for the whole row
 // and always returns that version
 template <typename RowType, typename VersImpl>
-class VerSel : public VerSelBase<VerSel<RowType, VersImpl>> {
+class VerSel : public VerSelBase<VerSel<RowType, VersImpl>, VersImpl> {
 public:
-    typedef typename VersImpl version_type;
+    typedef VersImpl version_type;
+    static constexpr size_t num_versions = 1;
 
     explicit VerSel(type v) : vers_(v) {}
     VerSel(type v, bool insert) : vers_(v, insert) {}
 
-    int map_impl(int col_n) {
+    static int map_impl(int col_n) {
         (void)col_n;
         return 0;
-    }
-
-    version_type& select_impl(int col_n) {
-        (void)col_n;
-        return vers_;
     }
 
     version_type& version_at_impl(int cell) {
         (void)cell;
         return vers_;
+    }
+
+    void install_by_cell_impl(RowType *dst, const RowType *src, int cell) {
+        (void)cell;
+        *dst = *src;
     }
 
 private:
@@ -70,12 +75,25 @@ template <typename RowType, typename VersImpl>
 class IndexValueContainer : ver_sel::VerSel<RowType, VersImpl> {
 public:
     typedef TransactionTid::type type;
-    using Base = ver_sel::VerSel<RowType, VersImpl>;
+    using Selector = ver_sel::VerSel<RowType, VersImpl>;
+    typedef typename Selector::version_type version_type;
+    using Selector::map;
+    using Selector::version_at;
+    using Selector::num_versions;
 
-    IndexValueContainer(type v, const RowType& r) : Base(v), row(r) {}
-    IndexValueContainer(type v, bool insert, const RowType& r) : Base(v), row(r) {}
+    IndexValueContainer(type v, const RowType& r) : Selector(v), row(r) {}
+    IndexValueContainer(type v, bool insert, const RowType& r) : Selector(v, insert), row(r) {}
 
     RowType row;
+
+    void install_cell(int cell, const RowType *new_row) {
+        Selector::install_by_cell(&row, new_row, cell);
+    }
+
+    // version_at(0) is always the row-wise version
+    version_type& row_version() {
+        return version_at(0);
+    }
 };
 
 /////////////////////////////
@@ -85,8 +103,9 @@ public:
 // EXAMPLE:
 //
 // This is an example of a row layout
-class example_row {
-public:
+struct example_row {
+    enum class NamedColumn : int { ytd = 0, payment_cnt, date, tax, next_oid };
+
     uint32_t d_ytd;
     uint32_t d_payment_cnt;
     uint32_t d_date;
@@ -107,24 +126,38 @@ namespace ver_sel {
 
 // This is the version selector class that should be auto-generated
 template <typename VersImpl>
-class VerSel<example_row, VersImpl> : public VerSelBase<VerSel<example_row, VersImpl>> {
+class VerSel<example_row, VersImpl> : public VerSelBase<VerSel<example_row, VersImpl>, VersImpl> {
 public:
-    typedef typename VersImpl version_type;
+    typedef VersImpl version_type;
     static constexpr size_t num_versions = 2;
 
-    int map_impl(int col_n) {
+    explicit VerSel(type v) : vers_() {
+        new (&vers_[0]) version_type(v);
+    }
+    VerSel(type v, bool insert) : vers_() {
+        new (&vers_[0]) version_type(v, insert);
+    }
+
+    static int map_impl(int col_n) {
         if (col_n == 0)
             return 0;
         else
             return 1;
     }
 
-    version_type& select_impl(int col_n) {
-        return vers_[map_impl(col_n)];
-    }
-
     version_type& version_at_impl(int cell) {
         return vers_[cell];
+    }
+
+    void install_by_cell_impl(example_row *dst, const example_row *src, int cell) {
+        if (cell == 0) {
+            dst->d_ytd = src->d_ytd;
+        } else {
+            dst->d_payment_cnt = src->d_payment_cnt;
+            dst->d_date = src->d_date;
+            dst->d_tax = src->d_tax;
+            dst->d_next_oid = src->d_next_oid;
+        }
     }
 
 private:

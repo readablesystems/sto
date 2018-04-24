@@ -14,6 +14,7 @@
 #include "string.hh"
 
 #include <vector>
+#include "VersionSelector.hh"
 
 namespace bench {
 
@@ -562,6 +563,8 @@ private:
     }
 };
 
+enum class RowAccess : int { None = 0, ObserveExists, ObserveValue, UpdateValue };
+
 template <typename K, typename V, typename DBParams>
 class ordered_index : public TObject {
 public:
@@ -573,33 +576,109 @@ public:
 
     static constexpr typename version_type::type invalid_bit = TransactionTid::user_bit;
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
-    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit << 1;
+    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit << 1u;
+    static constexpr TransItem::flags_type row_update_bit = TransItem::user0_bit << 2u;
+    static constexpr TransItem::flags_type row_cell_bit = TransItem::user0_bit << 3u;
     static constexpr uintptr_t internode_bit = 1;
+
+    typedef typename value_type::NamedColumn NamedColumn;
+    typedef IndexValueContainer<V, version_type> value_container_type;
 
     static constexpr bool value_is_small = is_small<V>::value;
 
     static constexpr bool index_read_my_write = DBParams::RdMyWr;
 
     struct internal_elem {
-        version_type version;
         key_type key;
-        value_type value;
+        value_container_type row_container;
         bool deleted;
 
-        std::vector<std::string> debug_info;
-
         internal_elem(const key_type& k, const value_type& v, bool valid)
-            : version(valid ? Sto::initialized_tid() : Sto::initialized_tid() | invalid_bit, !valid),
-              key(k), value(v), deleted(false) {}
+            : key(k),
+              row_container((valid ? Sto::initialized_tid() : (Sto::initialized_tid() | invalid_bit)),
+                            !valid, v),
+              deleted(false) {}
 
-        bool valid() const {
-            return !(version.value() & invalid_bit);
+        version_type& version() {
+            return row_container.row_version();
         }
 
-        void add_debug_text(const std::string& s) {
-            debug_info.push_back(s);
+        bool valid() {
+            return !(version().value() & invalid_bit);
         }
     };
+
+    struct column_access_t {
+        int col_id;
+        bool update;
+
+        column_access_t(NamedColumn column, bool for_update)
+                : col_id(static_cast<int>(column)), update(for_update) {}
+    };
+
+    struct cell_access_t {
+        int cell_id;
+        bool update;
+
+        cell_access_t(int cid, bool for_update)
+                : cell_id(cid), update(for_update) {}
+    };
+
+    // TransItem key format:
+    // |----internal_elem pointer----|--cell id--|I|
+    //           48 bits                15 bits   1
+
+    // I: internode bit
+    // cell id: valid range 0-32767 (0x7fff)
+    // cell id 0 identifies the row item
+
+    class item_key_t {
+        typedef uintptr_t type;
+        static constexpr unsigned shift = 16u;
+        static constexpr type cell_mask = type(0xfffe);
+        type key_;
+
+    public:
+        item_key_t() : key_() {};
+        item_key_t(internal_elem *e, int cell_num) : key_((reinterpret_cast<type>(e) << shift)
+                                                          | ((static_cast<type>(cell_num) << 1u) & cell_mask)) {};
+
+        static item_key_t row_item_key(internal_elem *e) {
+            return item_key_t(e, 0);
+        }
+
+        internal_elem *internal_elem_ptr() const {
+            return reinterpret_cast<internal_elem *>(key_ >> shift);
+        }
+
+        int cell_num() const {
+            return static_cast<int>((key_ & cell_mask) >> 1);
+        }
+
+        bool is_row_item() const {
+            return (cell_num() == 0);
+        }
+    };
+
+    static std::vector<cell_access_t>
+    column_to_cell_accesses(std::function<int(int)> c_c_map, std::initializer_list<column_access_t> accesses) {
+        // pair: {accessed, for update}
+        std::vector<std::pair<bool, bool>> all_cells(value_container_type::num_versions, {false, false});
+        // the returned list
+        std::vector<cell_access_t> cell_accesses;
+
+        for (auto ca : accesses) {
+            int cell_id = c_c_map(ca.col_id);
+            all_cells[cell_id].first = true;
+            all_cells[cell_id].second |= ca.update;
+        }
+
+        for (auto it = all_cells.begin(); it != all_cells.end(); ++it) {
+            if (it->first)
+                cell_accesses.emplace_back(static_cast<int>(it-all_cells.begin()), it->second);
+        }
+        return cell_accesses;
+    }
 
     struct table_params : public Masstree::nodeparams<15,15> {
         typedef internal_elem* value_type;
@@ -653,12 +732,12 @@ public:
     }
 
     sel_return_type
-    select_row(const key_type& key, bool for_update = false) {
+    select_row(const key_type& key, RowAccess acc) {
         unlocked_cursor_type lp(table_, key);
         bool found = lp.find_unlocked(*ti);
         internal_elem *e = lp.value();
         if (found) {
-            return select_row(reinterpret_cast<uintptr_t>(e), for_update);
+            return select_row(reinterpret_cast<uintptr_t>(e), acc);
         } else {
             if (!register_internode_version(lp.node(), lp.full_version_value()))
                 goto abort;
@@ -670,49 +749,118 @@ public:
     }
 
     sel_return_type
-    select_row(uintptr_t rid, bool for_update = false) {
-        internal_elem *e = reinterpret_cast<internal_elem *>(rid);
-        TransProxy item = Sto::item(this, e);
+    select_row(const key_type& key, std::initializer_list<column_access_t> accesses) {
+        unlocked_cursor_type lp(table_, key);
+        bool found = lp.find_unlocked(*ti);
+        internal_elem *e = lp.value();
+        if (found) {
+            return select_row(reinterpret_cast<uintptr_t>(e), accesses);
+        } else {
+            if (!register_internode_version(lp.node(), lp.full_version_value()))
+                goto abort;
+            return sel_return_type(true, false, 0, nullptr);
+        }
 
-        if (is_phantom(e, item))
+    abort:
+        return sel_return_type(false, false, 0, nullptr);
+    }
+
+    sel_return_type
+    select_row(uintptr_t rid, RowAccess access) {
+        auto e = reinterpret_cast<internal_elem *>(rid);
+        bool ok = true;
+        TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+
+        if (is_phantom(e, row_item))
             goto abort;
 
         if (index_read_my_write) {
-            if (has_delete(item)) {
+            if (has_delete(row_item)) {
                 return sel_return_type(true, false, 0, nullptr);
             }
-            if (item.has_write()) {
+            if (has_row_update(row_item)) {
                 value_type *vptr;
-                if (has_insert(item))
-                    vptr = &e->value;
+                if (has_insert(row_item))
+                    vptr = &e->row_container.row;
                 else
-                    vptr = item.template write_value<value_type *>();
-                return sel_return_type(true, true, reinterpret_cast<uintptr_t>(e), vptr);
+                    vptr = row_item.template raw_write_value<value_type *>();
+                return sel_return_type(true, true, rid, vptr);
             }
         }
 
-        if (for_update) {
-            if (!version_adapter::select_for_update(item, e->version))
-                goto abort;
-        } else {
-            if (!item.observe(e->version))
-                goto abort;
+        switch (access) {
+            case RowAccess::UpdateValue:
+                ok = version_adapter::select_for_update(row_item, e->version());
+                row_item.add_flags(row_update_bit);
+                break;
+            case RowAccess::ObserveExists:
+            case RowAccess::ObserveValue:
+                ok = row_item.observe(e->version());
+                break;
+            default:
+                break;
         }
 
-        return sel_return_type(true, true, reinterpret_cast<uintptr_t>(e), &e->value);
+        if (!ok)
+            goto abort;
+
+        return sel_return_type(true, true, rid, &(e->row_container.row));
+
+    abort:
+        return sel_return_type(false, false, 0, nullptr);
+    }
+
+    sel_return_type
+    select_row(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
+        auto e = reinterpret_cast<internal_elem *>(rid);
+        TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+
+        // Translate from column accesses to cell accesses
+        // all buffered writes are only stored in the wdata_ of the row item (to avoid redundant copies)
+        auto cell_accesses = column_to_cell_accesses(value_container_type::map, accesses);
+
+        std::vector<TransProxy> cell_items;
+        bool any_has_write;
+        bool ok;
+        std::tie(any_has_write, cell_items) = extract_item_list(cell_accesses, e);
+
+        if (is_phantom(e, row_item))
+            goto abort;
+
+        if (index_read_my_write) {
+            if (has_delete(row_item)) {
+                return sel_return_type(true, false, 0, nullptr);
+            }
+            if (any_has_write || has_row_update(row_item)) {
+                value_type *vptr;
+                if (has_insert(row_item))
+                    vptr = &e->row_container.row;
+                else
+                    vptr = row_item.template raw_write_value<value_type *>();
+                return sel_return_type(true, true, rid, vptr);
+            }
+        }
+
+        ok = access_all(cell_accesses, cell_items, e);
+        if (!ok)
+            goto abort;
+
+        return sel_return_type(true, true, rid, &(e->row_container.row));
 
     abort:
         return sel_return_type(false, false, 0, nullptr);
     }
 
     void update_row(uintptr_t rid, value_type *new_row) {
-        auto item = Sto::item(this, reinterpret_cast<internal_elem *>(rid));
-        assert(item.has_write() && !has_insert(item));
+        auto row_item = Sto::item(this, item_key_t::row_item_key(reinterpret_cast<internal_elem *>(rid)));
         if (value_is_small) {
-            item.add_write(*new_row);
+            row_item.add_write(*new_row);
         } else {
-            item.add_write(new_row);
+            row_item.add_write(new_row);
         }
+        // Just update the pointer, don't set the actual write flag
+        // we don't want to confuse installs at commit time
+        //row_item.clear_write();
     }
 
     // insert assumes common case where the row doesn't exist in the table
@@ -722,17 +870,26 @@ public:
         cursor_type lp(table_, key);
         bool found = lp.find_insert(*ti);
         if (found) {
+            // NB: the insert method only manipulates the row_item. It is possible
+            // this insert is overwriting some previous updates on selected columns
+            // The expected behavior is that this row-level operation should overwrite
+            // all changes made by previous updates (in the same transaction) on this
+            // row. We achieve this by granting this row_item a higher priority.
+            // During the install phase, if we notice that the row item has already
+            // been locked then we simply ignore installing any changes made by cell items.
+            // It should be trivial for a cell item to find the corresponding row item
+            // and figure out if the row-level version is locked.
             internal_elem *e = lp.value();
             lp.finish(0, *ti);
 
-            TransProxy item = Sto::item(this, e);
+            TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
-            if (is_phantom(e, item))
+            if (is_phantom(e, row_item))
                 goto abort;
 
             if (index_read_my_write) {
-                if (has_delete(item)) {
-                    auto proxy = item.clear_flags(delete_bit).clear_write();
+                if (has_delete(row_item)) {
+                    auto proxy = row_item.clear_flags(delete_bit).clear_write();
 
                     if (value_is_small)
                         proxy.add_write(*vptr);
@@ -746,25 +903,25 @@ public:
             if (overwrite) {
                 bool ok;
                 if (value_is_small)
-                    ok = version_adapter::select_for_overwrite(item, e->version, *vptr);
+                    ok = version_adapter::select_for_overwrite(row_item, e->version(), *vptr);
                 else
-                    ok = version_adapter::select_for_overwrite(item, e->version, vptr);
+                    ok = version_adapter::select_for_overwrite(row_item, e->version(), vptr);
                 if (!ok)
                     goto abort;
                 if (index_read_my_write) {
-                    if (has_insert(item)) {
+                    if (has_insert(row_item)) {
                         copy_row(e, vptr);
                     }
                 }
             } else {
-                if (!item.observe(e->version))
+                // observes that the row exists, but nothing more
+                if (!row_item.observe(e->version()))
                     goto abort;
             }
 
         } else {
-            internal_elem *e = new internal_elem(key, vptr ? *vptr : value_type(),
-                                                 false /*valid*/);
-            e->add_debug_text("inserted here");
+            auto e = new internal_elem(key, vptr ? *vptr : value_type(),
+                                       false /*!valid*/);
             lp.value() = e;
 
             node_type *node;
@@ -786,19 +943,13 @@ public:
             lp.finish(1, *ti);
             //fence();
 
-            TransProxy item = Sto::item(this, e);
+            TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
             //if (value_is_small)
             //    item.add_write<value_type>(*vptr);
             //else
             //    item.add_write<value_type *>(vptr);
-            item.add_write();
-            item.add_flags(insert_bit);
-
-            // add all newly created nodes to the read set
-            for (auto& np : lp.new_nodes()) {
-                if (!register_internode_version(np.first, np.second))
-                    goto abort;
-            }
+            row_item.add_write();
+            row_item.add_flags(insert_bit);
 
             // update the node version already in the read set and modified by split
             if (!update_internode_version(node, orig_nv, new_nv))
@@ -817,28 +968,28 @@ public:
         bool found = lp.find_unlocked(*ti);
         if (found) {
             internal_elem *e = lp.value();
-            TransProxy item = Sto::item(this, e);
+            TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
-            if (is_phantom(e, item))
+            if (is_phantom(e, row_item))
                 goto abort;
 
             if (index_read_my_write) {
-                if (has_delete(item))
+                if (has_delete(row_item))
                     return del_return_type(true, false);
-                if (!e->valid && has_insert(item)) {
-                    item.add_flags(delete_bit);
+                if (!e->valid() && has_insert(row_item)) {
+                    row_item.add_flags(delete_bit);
                     return del_return_type(true, true);
                 }
             }
 
             // select_for_update will register an observation and set the write bit of
             // the TItem
-            if (!version_adapter::select_for_update(item, e->version))
+            if (!version_adapter::select_for_update(row_item, e->version()))
                 goto abort;
             fence();
             if (e->deleted)
                 goto abort;
-            item.add_flags(delete_bit);
+            row_item.add_flags(delete_bit);
         } else {
             if (!register_internode_version(lp.node(), lp.full_version_value()))
                 goto abort;
@@ -851,38 +1002,47 @@ public:
     }
 
     template <typename Callback, bool Reverse>
-    bool range_scan(const key_type& begin, const key_type& end, Callback callback, int limit = -1) {
+    bool range_scan(const key_type& begin, const key_type& end, Callback callback,
+                    std::initializer_list<column_access_t> accesses, bool phantom_protection = true, int limit = -1) {
         assert((limit == -1) || (limit > 0));
         auto node_callback = [&] (leaf_type* node,
             typename unlocked_cursor_type::nodeversion_value_type version) {
-            return register_internode_version(node, version);
+            return ((!phantom_protection) || register_internode_version(node, version));
         };
 
+        auto cell_accesses = column_to_cell_accesses(value_container_type::map, accesses);
+
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret) {
-            TransProxy item = Sto::fresh_item(this, e);
+            TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
+                                                      : Sto::fresh_item(this, item_key_t::row_item_key(e));
+
+            bool any_has_write;
+            std::vector<TransProxy> cell_items;
+            std::tie(any_has_write, cell_items) = extract_item_list(cell_accesses, e);
 
             if (index_read_my_write) {
-                if (has_delete(item)) {
+                if (has_delete(row_item)) {
                     ret = true;
                     return true;
                 }
-                if (item.has_write()) {
-                    if (has_insert(item))
-                        ret = callback(key_type(key), e->value);
+                if (any_has_write) {
+                    if (has_insert(row_item))
+                        ret = callback(key_type(key), e->row_container.row);
                     else
-                        ret = callback(key_type(key), *(item.template write_value<value_type *>()));
+                        ret = callback(key_type(key), *(row_item.template raw_write_value<value_type *>()));
                     return true;
                 }
             }
 
-            bool ok = item.observe(e->version);
+            bool ok = access_all(cell_accesses, cell_items, e);
+            if (!ok)
+                return false;
+            //bool ok = item.observe(e->version);
             //if (Adaptive) {
             //    ok = item.observe(e->version, true/*force occ*/);
             //} else {
             //    ok = item.observe(e->version);
             //}
-            if (!ok)
-                return false;
 
             // skip invalid (inserted but yet committed) values, but do not abort
             if (!e->valid()) {
@@ -890,7 +1050,7 @@ public:
                 return true;
             }
 
-            ret = callback(key_type(key), e->value);
+            ret = callback(key_type(key), e->row_container.row);
             return true;
         };
 
@@ -903,12 +1063,74 @@ public:
         return scanner.scan_succeeded_;
     }
 
+    template <typename Callback, bool Reverse>
+    bool range_scan(const key_type& begin, const key_type& end, Callback callback,
+                    RowAccess access, bool phantom_protection = true, int limit = -1) {
+        assert((limit == -1) || (limit > 0));
+        auto node_callback = [&] (leaf_type* node,
+                                  typename unlocked_cursor_type::nodeversion_value_type version) {
+            return ((!phantom_protection) || register_internode_version(node, version));
+        };
+
+        auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret) {
+            TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
+                                                      : Sto::fresh_item(this, item_key_t::row_item_key(e));
+
+            if (index_read_my_write) {
+                if (has_delete(row_item)) {
+                    ret = true;
+                    return true;
+                }
+                if (has_row_update(row_item)) {
+                    if (has_insert(row_item))
+                        ret = callback(key_type(key), e->row_container.row);
+                    else
+                        ret = callback(key_type(key), *(row_item.template raw_write_value<value_type *>()));
+                    return true;
+                }
+            }
+
+            bool ok = true;
+            switch (access) {
+                case RowAccess::ObserveValue:
+                case RowAccess::ObserveExists:
+                    ok = row_item.observe(e->version());
+                    break;
+                case RowAccess::None:
+                    break;
+                default:
+                    always_assert(false, "unsupported access type in range_scan");
+                    break;
+            }
+
+            if (!ok)
+                return false;
+
+            // skip invalid (inserted but yet committed) values, but do not abort
+            if (!e->valid()) {
+                ret = true;
+                return true;
+            }
+
+            ret = callback(key_type(key), e->row_container.row);
+            return true;
+        };
+
+        range_scanner<decltype(node_callback), decltype(value_callback), Reverse>
+                scanner(end, node_callback, value_callback);
+        if (Reverse)
+            table_.rscan(begin, true, scanner, limit, *ti);
+        else
+            table_.scan(begin, true, scanner, limit, *ti);
+        return scanner.scan_succeeded_;
+    }
+
     value_type *nontrans_get(const key_type& k) {
         unlocked_cursor_type lp(table_, k);
         bool found = lp.find_unlocked(*ti);
         if (found) {
             internal_elem *e = lp.value();
-            return &e->value;
+            return &(e->row_container.row);
         } else
             return nullptr;
     }
@@ -919,7 +1141,7 @@ public:
         if (found) {
             internal_elem *e = lp.value();
             if (value_is_small)
-                e->value = v;
+                e->row_container.row = v;
             else
                copy_row(e, &v);
             lp.finish(0, *ti);
@@ -933,8 +1155,12 @@ public:
     // TObject interface methods
     bool lock(TransItem& item, Transaction &txn) override {
         assert(!is_internode(item));
-        internal_elem *e = item.key<internal_elem *>();
-        return txn.try_lock(item, e->version);
+        auto key = item.key<item_key_t>();
+        auto e = key.internal_elem_ptr();
+        if (key.is_row_item())
+            return txn.try_lock(item, e->version());
+        else
+            return txn.try_lock(item, e->row_container.version_at(key.cell_num()));
     }
 
     bool check(TransItem& item, Transaction& txn) override {
@@ -944,54 +1170,91 @@ public:
             auto read_nv = item.template read_value<decltype(curr_nv)>();
             return (curr_nv == read_nv);
         } else {
-            internal_elem *el = item.key<internal_elem *>();
-            return el->version.cp_check_version(txn, item);
+            auto key = item.key<item_key_t>();
+            auto e = key.internal_elem_ptr();
+            if (key.is_row_item())
+                return e->version().cp_check_version(txn, item);
+            else
+                return e->row_container.version_at(key.cell_num()).cp_check_version(txn, item);
         }
     }
 
     void install(TransItem& item, Transaction& txn) override {
         assert(!is_internode(item));
-        internal_elem *el = item.key<internal_elem *>();
-        assert(el->version.is_locked());
+        auto key = item.key<item_key_t>();
+        auto e = key.internal_elem_ptr();
 
-        if (has_delete(item)) {
-            if (!has_insert(item)) {
-                assert(el->valid() && !el->deleted);
-                txn.set_version(el->version);
-                el->deleted = true;
-                fence();
+        if (key.is_row_item()) {
+            //assert(e->version.is_locked());
+            if (has_delete(item)) {
+                if (!has_insert(item)) {
+                    assert(e->valid() && !e->deleted);
+                    txn.set_version(e->version());
+                    e->deleted = true;
+                    fence();
+                }
+                return;
             }
-            return;
-        }
 
-        if (!has_insert(item)) {
+            value_type *vptr;
             if (value_is_small) {
-                el->value = item.write_value<value_type>();
+                vptr = &(item.write_value<value_type>());
             } else {
-                auto vptr = item.write_value<value_type *>();
-                copy_row(el, vptr);
+                vptr = item.write_value<value_type *>();
             }
-        }
 
-        // like in the hashtable (unordered_index), no need for the hacks
-        // treating opacity as a special case
-        txn.set_version_unlock(el->version, item);
+            if (!has_insert(item)) {
+                if (has_row_update(item)) {
+                    if (value_is_small) {
+                        e->row_container.row = *vptr;
+                    } else {
+                        copy_row(e, vptr);
+                    }
+                } else if (has_row_cell(item)) {
+                    // install only the difference part
+                    // not sure if works when there are more than 1 minor version fields
+                    // should still work
+                    e->row_container.install_cell(0, vptr);
+                }
+            }
+
+            // like in the hashtable (unordered_index), no need for the hacks
+            // treating opacity as a special case
+            txn.set_version_unlock(e->version(), item);
+        } else {
+            // skip installation if row-level update is present
+            auto row_item = Sto::item(this, item_key_t::row_item_key(e));
+            if (!has_row_update(row_item)) {
+                value_type *vptr;
+                if (value_is_small)
+                    vptr = &(row_item.template raw_write_value<value_type>());
+                else
+                    vptr = row_item.template raw_write_value<value_type *>();
+
+                e->row_container.install_cell(key.cell_num(), vptr);
+            }
+
+            txn.set_version_unlock(e->row_container.version_at(key.cell_num()), item);
+        }
     }
 
     void unlock(TransItem& item) override {
         assert(!is_internode(item));
-        internal_elem *el = item.key<internal_elem *>();
-        el->version.cp_unlock(item);
+        auto key = item.key<item_key_t>();
+        auto e = key.internal_elem_ptr();
+        if (key.is_row_item())
+            e->version().cp_unlock(item);
+        else
+            e->row_container.version_at(key.cell_num()).cp_unlock(item);
     }
 
     void cleanup(TransItem& item, bool committed) override {
-        assert(!is_internode(item));
         if (committed ? has_delete(item) : has_insert(item)) {
-            internal_elem *el = item.key<internal_elem *>();
-            bool ok = _remove(el->key);
+            auto key = item.key<item_key_t>();
+            assert(key.is_row_item());
+            internal_elem *e = key.internal_elem_ptr();
+            bool ok = _remove(e->key);
             if (!ok) {
-                for (auto& s : el->debug_info)
-                    std::cout << s << std::endl;
                 std::cout << committed << "," << has_delete(item) << "," << has_insert(item) << std::endl;
                 always_assert(false, "insert-bit exclusive ownership violated");
             }
@@ -1042,7 +1305,7 @@ protected:
                     (!Reverse && (boundary_ <= key.full_string())))
                     return false;
             }
-            bool visited;
+            bool visited = false;
             if (!value_callback_(key.full_string(), e, visited)) {
                 scan_succeeded_ = false;
                 return false;
@@ -1065,11 +1328,50 @@ private:
     table_type table_;
     uint64_t key_gen_;
 
+    std::pair<bool, std::vector<TransProxy>>
+    extract_item_list(const std::vector<cell_access_t>& cell_accesses, internal_elem *e) {
+        bool any_has_write = false;
+        std::vector<TransProxy> cell_items;
+        cell_items.reserve(cell_accesses.size());
+        for (auto& ca : cell_accesses) {
+            auto item = Sto::item(this, item_key_t(e, ca.cell_id));
+            if (index_read_my_write && !any_has_write && item.has_write())
+                any_has_write = true;
+            cell_items.push_back(std::move(item));
+        }
+        return {any_has_write, cell_items};
+    }
+
+    static bool
+    access_all(std::vector<cell_access_t>& cell_accesses, std::vector<TransProxy>& cell_items, internal_elem *e) {
+        for (auto it = cell_items.begin(); it != cell_items.end(); ++it) {
+            auto idx = it - cell_items.begin();
+            auto& access = cell_accesses[idx];
+            if (access.update) {
+                if (!version_adapter::select_for_update(*it, e->row_container.version_at(access.cell_id)))
+                    return false;
+                if (it->item().key<item_key_t>().is_row_item()) {
+                    it->item().add_flags(row_cell_bit);
+                }
+            } else {
+                if (!it->observe(e->row_container.version_at(access.cell_id)))
+                    return false;
+            }
+        }
+        return true;
+    }
+
     static bool has_insert(const TransItem& item) {
-        return item.flags() & insert_bit;
+        return (item.flags() & insert_bit) != 0;
     }
     static bool has_delete(const TransItem& item) {
-        return item.flags() & delete_bit;
+        return (item.flags() & delete_bit) != 0;
+    }
+    static bool has_row_update(const TransItem& item) {
+        return (item.flags() & row_update_bit) != 0;
+    }
+    static bool has_row_cell(const TransItem& item) {
+        return (item.flags() & row_cell_bit) != 0;
     }
     static bool is_phantom(internal_elem *e, const TransItem& item) {
         return (!e->valid() && !has_insert(item));
@@ -1086,7 +1388,6 @@ private:
             nodeversion_value_type prev_nv, nodeversion_value_type new_nv) {
         TransProxy item = Sto::item(this, get_internode_key(node));
         if (!item.has_read()) {
-            item.add_read(new_nv);
             return true;
         }
         if (prev_nv == item.template read_value<nodeversion_value_type>()) {
@@ -1101,7 +1402,6 @@ private:
         bool found = lp.find_locked(*ti);
         if (found) {
             internal_elem *el = lp.value();
-            el->add_debug_text("removed");
             lp.finish(-1, *ti);
             Transaction::rcu_delete(el);
         } else {
@@ -1115,7 +1415,7 @@ private:
         return reinterpret_cast<uintptr_t>(node) | internode_bit;
     }
     static bool is_internode(TransItem& item) {
-        return item.key<uintptr_t>() & internode_bit;
+        return (item.key<uintptr_t>() & internode_bit) != 0;
     }
     static node_type *get_internode_address(TransItem& item) {
         assert(is_internode(item));
@@ -1125,7 +1425,7 @@ private:
     static void copy_row(internal_elem *e, const value_type *new_row) {
         if (new_row == nullptr)
             return;
-        e->value = *new_row;
+        e->row_container.row = *new_row;
     }
 };
 

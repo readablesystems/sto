@@ -116,7 +116,7 @@ inline double get_cpu_brand_frequency() {
     return freq * multipliers[unit];
 }
 
-double determine_cpu_freq() {
+inline double determine_cpu_freq() {
     double freq = 0.0;
     std::cout << "Checking for rdtscp support..." << std::flush;
     if (!cpu_has_feature<TscQuery>()) {

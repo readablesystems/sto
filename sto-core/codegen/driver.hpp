@@ -21,16 +21,16 @@ public:
     * parse - parse from a file
     * @param filename - valid string with input file
     */
-   void parse( const char * const filename, std::pair<std::vector<Field>, std::vector<std::vector<std::string>>> &result );
+   void parse( const char * const filename, std::vector<StructSpec> &result );
    /** 
     * parse - parse from a c++ input stream
     * @param is - std::istream&, valid input stream
     */
-   void parse( std::istream &iss, std::pair<std::vector<Field>, std::vector<std::vector<std::string>>> &result );
+   void parse( std::istream &iss, std::vector<StructSpec> &result );
 
 private:
 
-   void parse_helper( std::istream &stream, std::pair<std::vector<Field>,std::vector<std::vector<std::string>>> &result );
+   void parse_helper( std::istream &stream, std::vector<StructSpec> &result );
 
    MC::MC_Parser  *parser  = nullptr;
    MC::MC_Scanner *scanner = nullptr;

@@ -22,6 +22,10 @@ template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_neworder() {
     //fprintf(stdout, "NEWORDER\n");
 
+    typedef district_value::NamedColumn dt_nc;
+    typedef customer_value::NamedColumn cu_nc;
+    typedef stock_value::NamedColumn st_nc;
+
     uint64_t q_w_id  = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
     uint64_t q_c_id = ig.gen_customer_id();
@@ -78,7 +82,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     auto& wv = db.get_warehouse(q_w_id);
     wh_tax_rate = wv.cv.w_tax;
 
-    std::tie(abort, result, row, value) = db.tbl_districts(q_w_id).select_row(district_key(q_w_id, q_d_id), false/*for update*/);
+    std::tie(abort, result, row, value) = db.tbl_districts(q_w_id).select_row(district_key(q_w_id, q_d_id), {{dt_nc::d_tax, false}});
     TXN_DO(abort);
     assert(result);
     auto dv = reinterpret_cast<const district_value *>(value);
@@ -87,7 +91,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     //dt_next_oid = new_dv->d_next_o_id ++;
     //db.tbl_districts(q_w_id).update_row(row, new_dv);
 
-    std::tie(abort, result, std::ignore, value) = db.tbl_customers(q_w_id).select_row(customer_key(q_w_id, q_d_id, q_c_id));
+    std::tie(abort, result, std::ignore, value) = db.tbl_customers(q_w_id).select_row(customer_key(q_w_id, q_d_id, q_c_id), {{cu_nc::c_discount, false}, {cu_nc::c_last, false}, {cu_nc::c_credit, false}});
     TXN_DO(abort);
     assert(result);
 
@@ -120,7 +124,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         uint64_t wid = ol_supply_w_ids[i];
         uint64_t qty = ol_quantities[i];
 
-        std::tie(abort, result, std::ignore, value) = db.tbl_items().select_row(item_key(iid));
+        std::tie(abort, result, std::ignore, value) = db.tbl_items().select_row(item_key(iid), RowAccess::ObserveValue);
         TXN_DO(abort);
         assert(result);
         uint64_t oid = reinterpret_cast<const item_value *>(value)->i_im_id;
@@ -129,7 +133,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         out_item_names[i] = reinterpret_cast<const item_value *>(value)->i_name;
         auto i_data = reinterpret_cast<const item_value *>(value)->i_data;
 
-        std::tie(abort, result, row, value) = db.tbl_stocks(wid).select_row(stock_key(wid, iid), true);
+        std::tie(abort, result, row, value) = db.tbl_stocks(wid).select_row(stock_key(wid, iid), {{st_nc::s_quantity, true}, {st_nc::s_dists, false}, {st_nc::s_data, false}, {st_nc::s_ytd, true}, {st_nc::s_order_cnt, true}, {st_nc::s_remote_cnt, true}});
         TXN_DO(abort);
         assert(result);
         stock_value *new_sv = Sto::tx_alloc(reinterpret_cast<const stock_value *>(value));
@@ -177,6 +181,10 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_payment() {
+
+    typedef district_value::NamedColumn dt_nc;
+    typedef customer_value::NamedColumn cu_nc;
+
     //fprintf(stdout, "PAYMENT\n");
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
@@ -254,19 +262,13 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     // select district row and retrieve district info
     district_key dk(q_w_id, q_d_id);
-    std::tie(success, result, row, value) = db.tbl_districts(q_w_id).select_row(dk,
-#if TABLE_FINE_GRAINED == 0
-        true
-#else
-        false
-#endif
+    std::tie(success, result, row, value) = db.tbl_districts(q_w_id).select_row(dk, {{dt_nc::d_name, false}, {dt_nc::d_street_1, false}, {dt_nc::d_street_2, false}, {dt_nc::d_city, false}, {dt_nc::d_state, false}, {dt_nc::d_zip, false}, {dt_nc::d_ytd, true}}
     /* select for update only if using in-place d_ytd value */);
     TXN_DO(success);
     assert(result);
 
     auto dv = reinterpret_cast<const district_value *>(value);
 
-#if TABLE_FINE_GRAINED == 0
     auto new_dv = Sto::tx_alloc<district_value>(dv);
     out_d_name = new_dv->d_name;
     out_d_street_1 = new_dv->d_street_1;
@@ -277,17 +279,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     // update district ytd in-place
     new_dv->d_ytd += h_amount;
     db.tbl_districts(q_w_id).update_row(row, new_dv);
-#else
-    out_d_name = dv->d_name;
-    out_d_street_1 = dv->d_street_1;
-    out_d_street_2 = dv->d_street_2;
-    out_d_city = dv->d_city;
-    out_d_state = dv->d_state;
-    out_d_zip = dv->d_zip;
-    // update district ytd object
-    db.get_district_ytd(q_w_id, q_d_id).trans_increment(h_amount);
-#endif
-
+    
     // select and update customer
     if (by_name) {
         std::vector<uint64_t> matches;
@@ -301,7 +293,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         customer_idx_key ck1(q_c_w_id, q_c_d_id, last_name, 0xff);
 
         success = db.tbl_customer_index(q_c_w_id)
-                .template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback);
+                .template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback, RowAccess::ObserveValue);
         TXN_DO(success);
 
         size_t n = matches.size();
@@ -316,18 +308,12 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     }
 
     customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
-#if TABLE_FINE_GRAINED == 1
-    typedef customer_value_variable specific_value_type;
-    std::tie(success, result, row, value) = db.tbl_customer_variables(q_c_w_id).select_row(ck, true/*for update*/);
-#else
-    typedef customer_value specific_value_type;
-    std::tie(success, result, row, value) = db.tbl_customers(q_c_w_id).select_row(ck, true/*for update*/);
-#endif
+    std::tie(success, result, row, value) = db.tbl_customers(q_c_w_id).select_row(ck, {{cu_nc::c_balance, true}, {cu_nc::c_ytd_payment, true}, {cu_nc::c_payment_cnt, true}, {cu_nc::c_since, false}, {cu_nc::c_credit_lim, false}, {cu_nc::c_discount, false}, {cu_nc::c_data, true}});
     TXN_DO(success);
     assert(result);
 
-    auto cv = reinterpret_cast<const specific_value_type *>(value);
-    specific_value_type *new_cv = Sto::tx_alloc(cv);
+    auto cv = reinterpret_cast<const customer_value *>(value);
+    customer_value *new_cv = Sto::tx_alloc(cv);
 
     new_cv->c_balance -= h_amount;
     new_cv->c_ytd_payment += h_amount;
@@ -343,11 +329,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         new_cv->c_data.insert_left(info.buf(), info.len);
     }
 
-#if TABLE_FINE_GRAINED == 1
-    db.tbl_customer_variables(q_c_w_id).update_row(row, new_cv);
-#else
     db.tbl_customers(q_c_w_id).update_row(row, new_cv);
-#endif
 
     // insert to history table
     history_value *hv = Sto::tx_alloc<history_value>();
@@ -372,6 +354,10 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_orderstatus() {
+
+    typedef customer_value::NamedColumn cu_nc;
+    typedef order_value::NamedColumn od_nc;
+
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
 
@@ -420,7 +406,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         customer_idx_key ck1(q_w_id, q_d_id, last_name, 0xff);
 
         success = db.tbl_customer_index(q_w_id)
-                .template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback);
+                .template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback, RowAccess::ObserveValue);
         TXN_DO(success);
 
         size_t n = matches.size();
@@ -434,31 +420,21 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     }
 
     customer_key ck(q_w_id, q_d_id, q_c_id);
-    std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_row(ck, false/*for update*/);
+    std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_row(ck, {{cu_nc::c_balance, false}, {cu_nc::c_first, false}, {cu_nc::c_last, false}, {cu_nc::c_middle, false}});
     TXN_DO(success);
     assert(result);
 
     auto cv = reinterpret_cast<const customer_value *>(value);
 
     // simulate retrieving customer info
-#if TABLE_FINE_GRAINED == 0
     out_c_balance = cv->c_balance;
-#endif
     out_c_first = cv->c_first;
     out_c_last = cv->c_last;
     out_c_middle = cv->c_middle;
 
-#if TABLE_FINE_GRAINED == 1
-    std::tie(success, result, row, value) = db.tbl_customer_variables(q_w_id).select_row(ck, false);
-    TXN_DO(success);
-    assert(result);
-    auto cvv = reinterpret_cast<const customer_value_variable *>(value);
-    out_c_balance = cvv->c_balance;
-#endif
-
     // find the highest order placed by customer q_c_id
     uint64_t cus_o_id = 0;
-    auto scan_callback = [&] (const order_cidx_key& key, const int& dummy) -> bool {
+    auto scan_callback = [&] (const order_cidx_key& key, const bench::dummy_row& dummy) -> bool {
         (void)dummy;
         cus_o_id = key.o_id;
         return true;
@@ -468,12 +444,12 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     order_cidx_key k1(q_w_id, q_d_id, q_c_id, std::numeric_limits<uint64_t>::max());
 
     success = db.tbl_order_customer_index(q_w_id)
-            .template range_scan<decltype(scan_callback), true/*reverse*/>(k0, k1, scan_callback, 1/*reverse scan for only 1 item*/);
+            .template range_scan<decltype(scan_callback), true/*reverse*/>(k0, k1, scan_callback, RowAccess::ObserveExists, false, 1/*reverse scan for only 1 item*/);
     TXN_DO(success);
 
     if (cus_o_id > 0) {
         order_key ok(q_w_id, q_d_id, cus_o_id);
-        std::tie(success, result, row, value) = db.tbl_orders(q_w_id).select_row(ok, false/*for update*/);
+        std::tie(success, result, row, value) = db.tbl_orders(q_w_id).select_row(ok, {{od_nc::o_entry_d, false}, {od_nc::o_carrier_id, false}});
         TXN_DO(success);
         assert(result);
 
@@ -495,7 +471,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         orderline_key olk1(q_w_id, q_d_id, cus_o_id, std::numeric_limits<uint64_t>::max());
 
         success = db.tbl_orderlines(q_w_id)
-                .template range_scan<decltype(ol_scan_callback), true/*reverse*/>(olk0, olk1, ol_scan_callback);
+                .template range_scan<decltype(ol_scan_callback), true/*reverse*/>(olk0, olk1, ol_scan_callback, RowAccess::ObserveValue);
         TXN_DO(success);
     } else {
         // order doesn't exist, simply commit the transaction

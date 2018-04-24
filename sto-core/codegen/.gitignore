@@ -1,0 +1,8 @@
+lexer.yy.cc
+location.hh
+parser.output
+parser.tab.cc
+parser.tab.hh
+position.hh
+stack.hh
+my_wc

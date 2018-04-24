@@ -19,17 +19,13 @@ const char *tpcc_input_generator::last_names[] = {
         "BAR", "OUGHT", "ABLE", "PRI", "PRES",
         "ESE", "ANTI", "CALLY", "ATION", "EING"};
 
-template<typename DBParams>
+template <typename DBParams>
 tpcc_db<DBParams>::tpcc_db(int num_whs) : oid_gen_() {
     //constexpr size_t num_districts = NUM_DISTRICTS_PER_WAREHOUSE;
     //constexpr size_t num_customers = NUM_CUSTOMERS_PER_DISTRICT * NUM_DISTRICTS_PER_WAREHOUSE;
 
     tbl_its_ = new it_table_type(999983/*NUM_ITEMS * 2*/);
     for (auto i = 0; i < num_whs; ++i) {
-#if TABLE_FINE_GRAINED == 1
-        tbl_dty_.emplace_back(NUM_DISTRICTS_PER_WAREHOUSE);
-        tbl_cvs_.emplace_back(999983);
-#endif
         tbl_whs_.emplace_back();
         tbl_dts_.emplace_back(999983/*num_districts * 2*/);
         tbl_cni_.emplace_back(999983/*num_customers * 2*/);
@@ -43,9 +39,32 @@ tpcc_db<DBParams>::tpcc_db(int num_whs) : oid_gen_() {
     }
 }
 
-template<typename DBParams>
+template <typename DBParams>
 tpcc_db<DBParams>::~tpcc_db() {
     delete tbl_its_;
+}
+
+template <typename DBParams>
+void tpcc_db<DBParams>::thread_init_all() {
+    tbl_its_->thread_init();
+    for (auto& t : tbl_dts_)
+        t.thread_init();
+    for (auto& t : tbl_cni_)
+        t.thread_init();
+    for (auto& t : tbl_cus_)
+        t.thread_init();
+    for (auto& t : tbl_oci_)
+        t.thread_init();
+    for (auto& t : tbl_ods_)
+        t.thread_init();
+    for (auto& t : tbl_ols_)
+        t.thread_init();
+    for (auto& t : tbl_nos_)
+        t.thread_init();
+    for (auto& t : tbl_sts_)
+        t.thread_init();
+    for (auto& t : tbl_hts_)
+        t.thread_init();
 }
 
 // @section: db prepopulation functions
@@ -120,11 +139,7 @@ void tpcc_prepopulator<DBParams>::expand_warehouse(uint64_t wid) {
         dv.d_state = random_state_name();
         dv.d_zip = random_zip_code();
         dv.d_tax = ig.random(0, 2000);
-#if TABLE_FINE_GRAINED == 0
         dv.d_ytd = 3000000;
-#else
-        db.get_district_ytd(wid, did) = 3000000;
-#endif
         //dv.d_next_o_id = 3001;
 
         db.tbl_districts(wid).nontrans_put(dk, dv);
@@ -153,25 +168,11 @@ void tpcc_prepopulator<DBParams>::expand_districts(uint64_t wid) {
             cv.c_credit = (ig.random(1, 100) <= 10) ? "BC" : "GC";
             cv.c_credit_lim = 5000000;
             cv.c_discount = ig.random(0, 5000);
-#if TABLE_FINE_GRAINED == 0
             cv.c_balance = -1000;
             cv.c_ytd_payment = 1000;
             cv.c_payment_cnt = 1;
             cv.c_delivery_cnt = 0;
             cv.c_data = random_a_string(300, 500);
-#else
-            customer_value_variable cvv;
-            cvv.c_since = cv.c_since;
-            cvv.c_credit = cv.c_credit;
-            cvv.c_credit_lim = cv.c_credit_lim;
-            cvv.c_discount = cv.c_discount;
-            cvv.c_balance = -1000;
-            cvv.c_ytd_payment = 1000;
-            cvv.c_payment_cnt = 1;
-            cvv.c_delivery_cnt = 0;
-            cvv.c_data = random_a_string(300, 500);
-            db.tbl_customer_variables(wid).nontrans_put(ck, cvv);
-#endif
 
             db.tbl_customers(wid).nontrans_put(ck, cv);
 
@@ -221,7 +222,7 @@ void tpcc_prepopulator<DBParams>::expand_customers(uint64_t wid) {
             order_cidx_key ock(wid, did, ov.o_c_id, oid);
 
             db.tbl_orders(wid).nontrans_put(ok, ov);
-            db.tbl_order_customer_index(wid).nontrans_put(ock, 0);
+            db.tbl_order_customer_index(wid).nontrans_put(ock, {});
 
             for (uint64_t on = 1; on <= ov.o_ol_cnt; ++on) {
                 orderline_key olk(wid, did, oid, on);
@@ -239,7 +240,7 @@ void tpcc_prepopulator<DBParams>::expand_customers(uint64_t wid) {
 
             if (oid >= 2101) {
                 order_key nok(wid, did, oid);
-                db.tbl_neworders(wid).nontrans_put(nok, 0);
+                db.tbl_neworders(wid).nontrans_put(nok, {});
             }
         }
     }
@@ -349,21 +350,7 @@ class tpcc_access {
 public:
     static void prepopulation_worker(tpcc_db<DBParams> &db, int worker_id) {
         tpcc_prepopulator<DBParams> pop(worker_id, db);
-
-        // XXX get rid of this thread init nonsense
-        for (auto &tbl : db.tbl_cni_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_oci_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_ods_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_ols_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_nos_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_hts_)
-            tbl.thread_init();
-
+        db.thread_init_all();
         pop.run();
     }
 
@@ -391,20 +378,7 @@ public:
 
         ::TThread::set_id(runner_id);
         set_affinity(runner_id);
-
-        // XXX get rid of this thread_init nonsense
-        for (auto &tbl : db.tbl_cni_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_oci_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_ods_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_ols_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_nos_)
-            tbl.thread_init();
-        for (auto &tbl : db.tbl_hts_)
-            tbl.thread_init();
+        db.thread_init_all();
 
         uint64_t tsc_diff = (uint64_t)(time_limit * constants::processor_tsc_frequency * constants::billion);
         auto start_t = prof.start_timestamp();

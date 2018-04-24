@@ -156,6 +156,10 @@ public:
         return ret;
     }
 
+    std::mt19937& generator() {
+        return gen;
+    }
+
     void random_ycsb_col_value_inplace(typename value_type::col_type *dst) {
         for (size_t i = 0; i < value_type::col_width; ++i)
             (*dst)[i] = random_char();

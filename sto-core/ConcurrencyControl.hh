@@ -490,6 +490,8 @@ inline bool TicTocVersion<Opaque, Extend>::observe_read_impl(TransItem& item, bo
         if (Opaque) {
             always_assert(false, "opacity not implemented 2");
             //t()->min_rts_ = std::min(t()->min_rts_, version.read_timestamp());
+        } else {
+            VersionDelegate::txn_set_any_nonopaque(t(), true);
         }
         VersionDelegate::item_or_flags(item, TransItem::read_bit);
         TicTocTid::pack_wide(item.wide_read_value(), BV::v_, wts_);
@@ -563,6 +565,8 @@ inline bool TicTocCompressedVersion<Opaque, Extend>::observe_read_impl(TransItem
         if (Opaque) {
             always_assert(false, "opacity not implemented 2");
             //t()->min_rts_ = std::min(t()->min_rts_, version.read_timestamp());
+        } else {
+            VersionDelegate::txn_set_any_nonopaque(t(), true);
         }
         VersionDelegate::item_or_flags(item, TransItem::read_bit);
         acquire_fence();
@@ -737,8 +741,9 @@ inline bool Transaction::try_lock(TransItem& item, VersionBase<VersImpl>& vers) 
     // start computing tictoc commit ts immediately for writes
     if (locked) {
         if (std::is_base_of<TicTocBase<VersImpl>, VersImpl>::value) {
-            assert(item.cc_mode() == CCMode::tictoc);
-            compute_tictoc_commit_ts_step(static_cast<TicTocBase<VersImpl>&>(vers), true /* write */);
+            vers.compute_commit_ts_step(this->tictoc_tid_, true/* write */);
+        } else {
+            vers.compute_commit_ts_step(this->commit_tid_, true/* write */);
         }
     }
     return locked;
@@ -766,16 +771,3 @@ inline Transaction::tid_type Transaction::compute_tictoc_commit_ts() const {
     }
     return commit_ts;
 }
-
-template <typename VersImpl>
-inline void Transaction::compute_tictoc_commit_ts_step(const TicTocBase<VersImpl>& vers, bool is_write) const {
-    static_assert(std::is_base_of<TicTocBase<VersImpl>, VersImpl>::value, "Version does not implement TicToc");
-    assert(state_ == s_committing_locked || state_ == s_committing);
-    if (is_write)
-        tictoc_tid_ = std::max(tictoc_tid_, vers.read_timestamp() + 1);
-    else
-        tictoc_tid_ = std::max(tictoc_tid_, vers.write_timestamp());
-}
-
-template <typename NonTicTocImpl>
-inline void Transaction::compute_tictoc_commit_ts_step(NonTicTocImpl &vers, bool is_write) const {(void)vers; (void)is_write;}

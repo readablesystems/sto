@@ -312,6 +312,10 @@ public:
         return impl().unlocked_value_impl();
     }
 
+    void compute_commit_ts_step(type& commit_ts, bool is_write) {
+        impl().compute_commit_ts_step_impl(commit_ts, is_write);
+    }
+
 protected:
     type v_;
 
@@ -368,6 +372,10 @@ public:
     }
     void cp_set_version_impl(type new_v) {
         TransactionTid::set_version(v_, new_v);
+    }
+
+    void compute_commit_ts_step_impl(type& ts, bool is_write) {
+        (void)ts; (void)is_write;
     }
 
     void inc_nonopaque_impl() {

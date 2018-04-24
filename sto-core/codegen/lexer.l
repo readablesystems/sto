@@ -36,12 +36,16 @@ using token = MC::MC_Parser::token;
                 return( token::AT );
             }
 
-@fields      {
+@fields     {
                 return( token::FIELDS );
             }
 
-@groups      {
+@groups     {
                 return( token::GROUPS );
+            }
+
+@name       {
+                return ( token::NAME );
             }
 
 \(          {
@@ -75,6 +79,10 @@ BIGINT      {
 
 SMALLINT    {
                 return ( token::SMALLINT );
+            }
+
+FLOAT       {
+                return ( token::FLOAT );
             }
 
 VARCHAR     {

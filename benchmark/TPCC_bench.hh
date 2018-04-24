@@ -11,6 +11,11 @@
 #include "SystemProfiler.hh"
 #include "DB_structs.hh"
 #include "TPCC_structs.hh"
+
+#if TABLE_FINE_GRAINED
+#include "TPCC_selectors.hh"
+#endif
+
 #include "DB_index.hh"
 #include "DB_params.hh"
 
@@ -113,25 +118,22 @@ public:
     using OIndex = ordered_index<K, V, DBParams>;
 
     // partitioned according to warehouse id
-#if TABLE_FINE_GRAINED == 1
-    typedef integer_box<DBParams>                  dt_ytd_type;
-    typedef UIndex<customer_key, customer_value_variable> cv_table_type;
-#endif
-    typedef std::vector<warehouse_value>           wh_table_type;
-    typedef UIndex<district_key, district_value>   dt_table_type;
+    typedef std::vector<warehouse_value>                 wh_table_type;
+    typedef OIndex<district_key, district_value>         dt_table_type;
     typedef OIndex<customer_idx_key, customer_idx_value> ci_table_type;
-    typedef UIndex<customer_key, customer_value>   cu_table_type;
-    typedef OIndex<order_cidx_key, int>            oi_table_type;
-    typedef OIndex<order_key, order_value>         od_table_type;
-    typedef OIndex<orderline_key, orderline_value> ol_table_type;
-    typedef OIndex<order_key, int>                 no_table_type;
-    typedef UIndex<item_key, item_value>           it_table_type;
-    typedef UIndex<stock_key, stock_value>         st_table_type;
-    typedef OIndex<history_key, history_value>     ht_table_type;
+    typedef OIndex<customer_key, customer_value>         cu_table_type;
+    typedef OIndex<order_cidx_key, bench::dummy_row>     oi_table_type;
+    typedef OIndex<order_key, order_value>               od_table_type;
+    typedef OIndex<orderline_key, orderline_value>       ol_table_type;
+    typedef OIndex<order_key, bench::dummy_row>          no_table_type;
+    typedef OIndex<item_key, item_value>                 it_table_type;
+    typedef OIndex<stock_key, stock_value>               st_table_type;
+    typedef OIndex<history_key, history_value>           ht_table_type;
 
     explicit inline tpcc_db(int num_whs);
     explicit inline tpcc_db(const std::string& db_file_name) = delete;
     inline ~tpcc_db();
+    void thread_init_all();
 
     int num_warehouses() const {
         return int(tbl_whs_.size());
@@ -139,14 +141,6 @@ public:
     warehouse_value& get_warehouse(uint64_t w_id) {
         return tbl_whs_[w_id - 1];
     }
-#if TABLE_FINE_GRAINED == 1
-    dt_ytd_type& get_district_ytd(uint64_t w_id, uint64_t d_id) {
-        return tbl_dty_[w_id - 1][d_id - 1];
-    }
-    cv_table_type& tbl_customer_variables(uint64_t w_id) {
-        return tbl_cvs_[w_id - 1];
-    }
-#endif
     dt_table_type& tbl_districts(uint64_t w_id) {
         return tbl_dts_[w_id - 1];
     }
@@ -185,17 +179,9 @@ private:
     wh_table_type tbl_whs_;
     it_table_type *tbl_its_;
 
-#if TABLE_FINE_GRAINED == 1
-    std::vector<std::vector<dt_ytd_type>> tbl_dty_;
-#endif
-
     std::vector<dt_table_type> tbl_dts_;
     std::vector<ci_table_type> tbl_cni_;
     std::vector<cu_table_type> tbl_cus_;
-
-#if TABLE_FINE_GRAINED == 1
-    std::vector<cv_table_type> tbl_cvs_;
-#endif
 
     std::vector<oi_table_type> tbl_oci_;
     std::vector<od_table_type> tbl_ods_;

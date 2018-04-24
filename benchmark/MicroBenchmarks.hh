@@ -12,6 +12,8 @@
 #include "DB_index.hh"
 #include "DB_params.hh"
 
+#include "Micro_structs.hh"
+
 #include "sampling.hh"
 #include "PlatformFeatures.hh"
 
@@ -50,6 +52,7 @@ struct UBenchParams {
     uint64_t proc_frequency_hz;
     bool dump_trace;
     bool profiler;
+    uint32_t granules;
     bool ins_measure;
 };
 
@@ -68,9 +71,8 @@ extern UBenchParams params;
 
 enum class OpType : int {read, write, inc};
 
-typedef int64_t value_type;
-
 struct RWOperation {
+    typedef int64_t value_type;
     RWOperation() : type(OpType::read), key(), value() {}
     RWOperation(OpType t, sampling::index_t k, value_type v = value_type())
             : type(t), key(k), value(v) {}
@@ -94,12 +96,39 @@ inline std::ostream& operator<<(std::ostream& os, const RWOperation& op) {
     return os;
 }
 
-struct wl_measurement_params {
+template <int Granules>
+struct wl_default_params {
+    static constexpr bool instantaneous_measurements = false;
+    static constexpr int granules = Granules;
+};
+
+template <int Granules>
+struct wl_measurement_params : public wl_default_params<Granules> {
     static constexpr bool instantaneous_measurements = true;
 };
 
-struct wl_default_params {
-    static constexpr bool instantaneous_measurements = false;
+template <int>
+struct compute_value_type {
+};
+
+template <>
+struct compute_value_type<1> {
+    typedef one_version_row type;
+};
+
+template <>
+struct compute_value_type<2> {
+    typedef two_version_row type;
+};
+
+template <>
+struct compute_value_type<4> {
+    typedef four_version_row type;
+};
+
+template <>
+struct compute_value_type<8> {
+    typedef eight_version_row type;
 };
 
 template <typename WLImpl>
@@ -294,13 +323,16 @@ public:
     explicit WLZipfRW(size_t num_threads) : WG(num_threads) {}
 
     void workload_init_impl(int thread_id) {
-        sampling::StoUniformDistribution ud(thread_id, 0, std::numeric_limits<uint32_t>::max());
-        sampling::StoRandomDistribution *dd = nullptr;
+        typedef sampling::StoRandomDistribution<>::rng_type rng_type;
+        rng_type rng(thread_id);
+
+        sampling::StoUniformDistribution<> ud(rng, 0, std::numeric_limits<uint32_t>::max());
+        sampling::StoRandomDistribution<> *dd = nullptr;
 
         if (params.zipf_skew == 0.0)
-            dd = new sampling::StoUniformDistribution(thread_id, 0, params.key_sz - 1);
+            dd = new sampling::StoUniformDistribution<>(rng, 0, params.key_sz - 1);
         else
-            dd = new sampling::StoZipfDistribution(thread_id, 0, params.key_sz - 1, params.zipf_skew);
+            dd = new sampling::StoZipfDistribution<>(rng, 0, params.key_sz - 1, params.zipf_skew);
 
         auto ro_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * params.readonly_percent);
         auto write_threshold = (uint32_t)(std::numeric_limits<uint32_t>::max() * params.write_percent);
@@ -354,12 +386,16 @@ class MasstreeTester : public Tester<MasstreeTester<WLImpl, DBParams>, WLImpl> {
 public:
     typedef Tester<MasstreeTester<WLImpl, DBParams>, WLImpl> Base;
     typedef MasstreeIntKey<sampling::index_t> key_type;
+    typedef typename compute_value_type<WLImpl::RTParams::granules>::type value_type;
+    typedef typename value_type::NamedColumn nc;
+    typedef typename tpcc::ordered_index<key_type, value_type, DBParams> index_type;
+    typedef typename index_type::column_access_t column_access_t;
 
     explicit MasstreeTester(size_t num_threads) : Base(num_threads), mt_() {}
 
     void prepopulate_impl() {
         for (unsigned int i = 0; i < params.key_sz; ++i)
-            mt_.nontrans_put(key_type(i), i);
+            mt_.nontrans_put(key_type(i), {i, i, i, i, i, i, i, i});
     }
 
     void thread_init_impl() {
@@ -372,20 +408,29 @@ public:
         switch(op.type) {
             case OpType::read:
                 std::tie(success, std::ignore, std::ignore, std::ignore)
-                        = mt_.select_row(key_type(op.key), false);
+                        = mt_.select_row(key_type(op.key),
+                                         {{nc::f1, false}, {nc::f3, false}, {nc::f5, false}, {nc::f7, false}});
                 break;
-            case OpType::write:
-                std::tie(success, std::ignore) = mt_.insert_row(key_type(op.key), const_cast<value_type *>(&op.value), true);
+            case OpType::write: {
+                auto v = Sto::tx_alloc<value_type>();
+                *v = {op.value, op.value, op.value, op.value, op.value, op.value, op.value, op.value};
+                std::tie(success, std::ignore) = mt_.insert_row(key_type(op.key), v, true);
                 break;
+            }
             case OpType::inc: {
                 uintptr_t rid;
                 const value_type* value;
                 std::tie(success, std::ignore, rid, value)
-                        = mt_.select_row(key_type(op.key), true);
+                        = mt_.select_row(key_type(op.key),
+                                         {{nc::f1, true}, {nc::f3, true}, {nc::f5, true}, {nc::f7, true}});
                 if (!success)
                     break;
-                value_type new_v = (*value) + 1;
-                mt_.update_row(rid, &new_v);
+                value_type *new_v = Sto::tx_alloc(value);
+                new_v->f1 += 1;
+                new_v->f3 += 1;
+                new_v->f5 += 1;
+                new_v->f7 += 1;
+                mt_.update_row(rid, new_v);
                 break;
             }
         }
@@ -393,7 +438,7 @@ public:
     }
 
 private:
-    tpcc::ordered_index<key_type, value_type, DBParams> mt_;
+    index_type mt_;
 };
 
 template <DsType DS, typename WLImpl, typename DBParams>
@@ -404,11 +449,11 @@ struct TesterSelector<DsType::masstree, WLImpl, DBParams> {
     typedef MasstreeTester<WLImpl, DBParams> type;
 };
 
-template <typename DBParams>
-using MtZipfTesterDefault = TesterSelector<DsType::masstree, WLZipfRW<wl_default_params>, DBParams>;
+template <int G, typename DBParams>
+using MtZipfTesterDefault = TesterSelector<DsType::masstree, WLZipfRW<wl_default_params<G>>, DBParams>;
 
-template <typename DBParams>
-using MtZipfTesterMeasure = TesterSelector<DsType::masstree, WLZipfRW<wl_measurement_params>, DBParams>;
+template <int G, typename DBParams>
+using MtZipfTesterMeasure = TesterSelector<DsType::masstree, WLZipfRW<wl_measurement_params<G>>, DBParams>;
 
 };
 

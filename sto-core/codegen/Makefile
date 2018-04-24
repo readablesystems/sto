@@ -1,5 +1,5 @@
-CC    ?= clang
-CXX   ?= clang++
+CC    ?= gcc
+CXX   ?= g++
 
 EXE = my_wc
 
@@ -8,10 +8,10 @@ CDEBUG = -g -Wall
 CXXDEBUG = -g -Wall
 
 CSTD = -std=c99
-CXXSTD = -std=c++14
+CXXSTD = -std=c++11
 
-CFLAGS = -Wno-deprecated-register -O0  $(CDEBUG) $(CSTD) 
-CXXFLAGS = -Wno-deprecated-register -O0  $(CXXDEBUG) $(CXXSTD)
+CFLAGS = -O0  $(CDEBUG) $(CSTD)
+CXXFLAGS = -O0  $(CXXDEBUG) $(CXXSTD)
 
 
 CPPOBJ = main driver

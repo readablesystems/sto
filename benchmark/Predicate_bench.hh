@@ -8,6 +8,7 @@
 namespace predicate_bench {
 
 template <typename DBRow> struct predicate_row {
+    enum class NamedColumn : int { balance = 0 };
     DBRow balance;
 
     predicate_row() {}
@@ -59,11 +60,12 @@ void initialize_db(predicate_db<DBParams, DBRow>& db, size_t db_size) {
 template <typename DBParams, typename DBRow>
 class predicate_runner {
 public:
+    using RowAccess = bench::RowAccess;
     void run_txn(size_t key) {
         TRANSACTION_E {
             bool abort, result;
             const void *value;
-            std::tie(abort, result, std::ignore, value) = db.table().select_row(predicate_key(key), false);
+            std::tie(abort, result, std::ignore, value) = db.table().select_row(predicate_key(key), RowAccess::ObserveValue);
             auto r = reinterpret_cast<predicate_row<DBRow> *>(const_cast<void *>(value));
             if (r->balance > 10) {
                 r->balance = r->balance - 1;
@@ -77,7 +79,7 @@ public:
         TRANSACTION_E {
             bool abort, result;
             const void *value;
-            std::tie(abort, result, std::ignore, value) = db.table().select_row(predicate_key(key), false);
+            std::tie(abort, result, std::ignore, value) = db.table().select_row(predicate_key(key), RowAccess::ObserveValue);
             auto r = reinterpret_cast<predicate_row<DBRow> *>(const_cast<void *>(value));
             volatile auto s = r->balance + 1000;
             (void)s;  // Prevent s from being optimized away

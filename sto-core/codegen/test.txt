@@ -1,5 +1,13 @@
 @@@
+@name: my_row_type
 @fields: {f1(BIGINT), f2(SMALLINT), f3(VARCHAR(5)), f4(CHAR(2))}
 @groups: {{f1, f2}, {f3, f4}}
+@@@
+
+
+@@@
+@name: my_second_row_type
+@fields: {f1(BIGINT), f2(FLOAT), f3(VARCHAR(2)), f4(CHAR(3))}
+@groups: {{f1}, {f2, f3, f4}}
 @@@
 

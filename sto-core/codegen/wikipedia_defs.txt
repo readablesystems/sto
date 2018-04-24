@@ -1,0 +1,27 @@
+@@@
+@name: page_row
+@fields: {page_namespace(SMALLINT), page_title(VARCHAR(255)),
+          page_restrictions(VARCHAR(255)), page_counter(BIGINT),
+          page_is_redirect(SMALLINT), page_is_new(SMALLINT),
+          page_random(FLOAT), page_touched(VARCHAR(14)),
+          page_latest(SMALLINT), page_len(SMALLINT)}
+@groups: {{page_namespace, page_title, page_restrictions, page_random},
+          {page_counter},
+          {page_is_redirect, page_is_new, page_touched, page_latest, page_len}}
+@@@
+
+@@@
+@name: useracct_row
+@fields: {user_name(VARCHAR(255)), user_real_name(VARCHAR(255)),
+          user_password(VARCHAR(32)), user_newpassword(VARCHAR(32)),
+          user_newpass_time(VARCHAR(14)), user_email(VARCHAR(40)),
+          user_options(VARCHAR(255)), user_touched(VARCHAR(14)),
+          user_token(VARCHAR(32)), user_email_authenticated(VARCHAR(32)),
+          user_email_token(VARCHAR(32)), user_email_token_expires(VARCHAR(14)),
+          user_registration(VARCHAR(14)), user_editcount(SMALLINT)}
+@groups: {{user_name, user_real_name, user_password, user_newpassword,
+           user_newpass_time, user_email, user_options, user_token,
+           user_email_authenticated, user_email_token, user_email_token_expires,
+           user_registration},
+          {user_touched}, {user_editcount}}
+@@@

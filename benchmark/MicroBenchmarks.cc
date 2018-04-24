@@ -1,3 +1,4 @@
+#include <clp.h>
 #include "TPCC_bench.hh"
 #include "MicroBenchmarks.hh"
 #include "clp.h"
@@ -22,6 +23,7 @@ enum {
     opt_time,
     opt_perf,
     opt_dump,
+    opt_gran,
     opt_insm
 };
 
@@ -39,6 +41,7 @@ static const Clp_Option options[] = {
     { "time",        'l', opt_time,   Clp_ValDouble,   Clp_Optional },
     { "perf",        'p', opt_perf,   Clp_NoVal,       Clp_Negate | Clp_Optional },
     { "dump",        'd', opt_dump,   Clp_NoVal,       Clp_Negate | Clp_Optional },
+    { "granule",     'g', opt_gran,   Clp_ValUnsigned, Clp_Optional },
     { "measure",     'm', opt_insm,   Clp_NoVal,       Clp_Negate | Clp_Optional }
 };
 
@@ -60,17 +63,18 @@ inline void print_usage(const char *prog) {
        << "  --time=FLOAT (-l), duration (in seconds) for which the benchmark is run, default 5.0" << std::endl
        << "  --perf (-p), spawn perf profiler after the benchmark starts executing, default off" << std::endl
        << "  --dump (-d), dump the trace of all generated transactions (not functional for now)" << std::endl
+       << "  --granule (-g) select the granularity of concurrency control" << std::endl
        << "  --measure (-m), enable instantaneous measurements of throughput and optimistic read rates, default off" << std::endl;
 
     std::cout << ss.str() << std::flush;
 }
 
-template <typename P, bool InsMeasure>
+template <int G, typename P, bool InsMeasure>
 using tester = typename std::conditional<InsMeasure,
-        ubench::MtZipfTesterMeasure<P>,
-        ubench::MtZipfTesterDefault<P>>::type;
+        ubench::MtZipfTesterMeasure<G, P>,
+        ubench::MtZipfTesterDefault<G, P>>::type;
 
-template <bool InsMeasure>
+template <int G, bool InsMeasure>
 inline void instantiate_and_execute_testers() {
     using ubench::MtZipfTesterDefault;
     using ubench::MtZipfTesterMeasure;
@@ -79,32 +83,32 @@ inline void instantiate_and_execute_testers() {
 
     switch (params.dbid) {
         case db_params_id::Default: {
-            typename tester<tpcc::db_default_params, InsMeasure>::type t(params.nthreads);
+            typename tester<G, tpcc::db_default_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
         case db_params_id::Opaque: {
-            typename tester<tpcc::db_opaque_params, InsMeasure>::type t(params.nthreads);
+            typename tester<G, tpcc::db_opaque_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
         case db_params_id::TwoPL: {
-            typename tester<tpcc::db_2pl_params, InsMeasure>::type t(params.nthreads);
+            typename tester<G, tpcc::db_2pl_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
         case db_params_id::Adaptive: {
-            typename tester<tpcc::db_adaptive_params, InsMeasure>::type t(params.nthreads);
+            typename tester<G, tpcc::db_adaptive_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
         case db_params_id::Swiss: {
-            typename tester<tpcc::db_swiss_params, InsMeasure>::type t(params.nthreads);
+            typename tester<G, tpcc::db_swiss_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
         case db_params_id::TicToc: {
-            typename tester<tpcc::db_tictoc_params, InsMeasure>::type t(params.nthreads);
+            typename tester<G, tpcc::db_tictoc_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
@@ -112,6 +116,14 @@ inline void instantiate_and_execute_testers() {
             std::cerr << "invalid ccid" << std::endl;
             abort();
     }
+}
+
+template <int G>
+inline void instantiate_and_exec_outer(bool ins_measure) {
+    if (ins_measure)
+        instantiate_and_execute_testers<G, true>();
+    else
+        instantiate_and_execute_testers<G, false>();
 }
 
 int main(int argc, const char *argv[]) {
@@ -133,6 +145,7 @@ int main(int argc, const char *argv[]) {
     params.proc_frequency_hz = 0;
     params.dump_trace = false;
     params.profiler = false;
+    params.granules = 1;
     params.ins_measure = false;
 
     Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
@@ -189,6 +202,9 @@ int main(int argc, const char *argv[]) {
             case opt_dump:
                 params.dump_trace = !clp->negated;
                 break;
+            case opt_gran:
+                params.granules = clp->val.u;
+                break;
             case opt_insm:
                 params.ins_measure = !clp->negated;
                 break;
@@ -215,10 +231,23 @@ int main(int argc, const char *argv[]) {
 
     always_assert(params.datatype == ubench::DsType::masstree, "Only Masstree is currently supported");
 
-    if (params.ins_measure)
-        instantiate_and_execute_testers<true>();
-    else
-        instantiate_and_execute_testers<false>();
+    switch (params.granules) {
+        case 1:
+            instantiate_and_exec_outer<1>(params.ins_measure);
+            break;
+        case 2:
+            instantiate_and_exec_outer<2>(params.ins_measure);
+            break;
+        case 4:
+            instantiate_and_exec_outer<4>(params.ins_measure);
+            break;
+        case 8:
+            instantiate_and_exec_outer<8>(params.ins_measure);
+            break;
+        default:
+            std::cerr << "Error: granularity=" << params.granules << " not supported." << std::endl;
+            abort();
+    }
 
     std::cout << params << std::endl;
     Transaction::print_stats();

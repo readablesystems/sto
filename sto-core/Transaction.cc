@@ -319,9 +319,9 @@ bool Transaction::try_commit() {
             // tracking TicToc commit ts (for reads) here
             if (it->cc_mode() == CCMode::tictoc) {
                 if (it->is_tictoc_compressed())
-                    compute_tictoc_commit_ts_step(it->tictoc_extract_read_ts<TicTocCompressedVersion<>>(), false /* !write */);
+                    it->tictoc_extract_read_ts<TicTocCompressedVersion<>>().compute_commit_ts_step(this->tictoc_tid_, false/* !write */);
                 else
-                    compute_tictoc_commit_ts_step(it->tictoc_extract_read_ts<TicTocVersion<>>(), false /* ! write */);
+                    it->tictoc_extract_read_ts<TicTocVersion<>>().compute_commit_ts_step(this->tictoc_tid_, false /* ! write */);
             }
         } else if (it->has_predicate()) {
             TXP_INCREMENT(txp_total_check_predicate);

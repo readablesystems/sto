@@ -178,6 +178,14 @@ public:
     type write_timestamp() const {
         return impl().write_timestamp_impl();
     }
+
+    void tictoc_compute_commit_ts_step(type& tictoc_ts, bool is_write) {
+        if (is_write)
+            tictoc_ts = std::max(tictoc_ts, read_timestamp() + 1);
+        else
+            tictoc_ts = std::max(tictoc_ts, write_timestamp());
+    }
+
     static VersImpl rdata_extract(const rdata_t& rd) {
         return VersImpl::rdata_extract_impl(rd);
     }
@@ -254,6 +262,10 @@ public:
     inline bool acquire_write_impl(TransItem& item, Args&&... args);
 
     inline bool observe_read_impl(TransItem& item, bool add_read);
+
+    void compute_commit_ts_step_impl(type& tictoc_ts, bool is_write) {
+        this->tictoc_compute_commit_ts_step(tictoc_ts, is_write);
+    }
 
 private:
     // BV::v_ is used as rts
@@ -335,6 +347,11 @@ public:
     inline bool acquire_write_impl(TransItem& item, Args&&... args);
 
     inline bool observe_read_impl(TransItem& item, bool add_read);
+
+    void compute_commit_ts_step_impl(type& tictoc_ts, bool is_write) {
+        this->tictoc_compute_commit_ts_step(tictoc_ts, is_write);
+    }
+
 private:
     explicit TicTocCompressedVersion(const rdata_t& rd) : BV(reinterpret_cast<type>(rd.v)) {}
 };

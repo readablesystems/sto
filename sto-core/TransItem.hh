@@ -116,6 +116,16 @@ class TransItem {
     }
 
     template <typename T>
+    T& raw_write_value() {
+        return Packer<T>::unpack(wdata_);
+    }
+
+    template <typename T>
+    const T& raw_write_value() const {
+        return Packer<T>::unpack(wdata_);
+    }
+
+    template <typename T>
     T& write_value() {
         assert(has_write());
         return Packer<T>::unpack(wdata_);
@@ -399,6 +409,16 @@ class TransProxy {
     template <typename T>
     const T& predicate_value() const {
         return item().predicate_value<T>();
+    }
+
+    template <typename T>
+    T& raw_write_value() {
+        return item().raw_write_value<T>();
+    }
+
+    template <typename T>
+    const T& raw_write_value() const {
+        return item().raw_write_value<T>();
     }
 
     template <typename T>

@@ -8,7 +8,7 @@ include_directories(masstree-beta)
 include_directories(third-party)
 include_directories(third-party/xxHash)
 
-include_directories(lib sto-core legacy datatype)
+include_directories(lib sto-core legacy datatype benchmark)
 
 add_subdirectory(third-party/xxHash)
 add_subdirectory(masstree-beta)
@@ -21,4 +21,3 @@ add_subdirectory(benchmark)
 add_subdirectory(test)
 
 add_library(rd srandomdev.c)
-

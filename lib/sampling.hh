@@ -85,24 +85,30 @@ private:
 template <typename IntType>
 class StoUniformIntSampler {
 public:
-    StoUniformIntSampler(int thid) : gen(thid), dis() {}
-    StoUniformIntSampler(int thid, IntType range)
-        : gen(thid), dis(0, range) {}
+    typedef std::mt19937 rng_type;
+
+    explicit StoUniformIntSampler(rng_type& rng) : gen(rng), dis() {}
+    StoUniformIntSampler(rng_type& rng, IntType range)
+        : gen(rng), dis(0, range) {}
 
     IntType sample() {
         return dis(gen);
+    }
+
+    IntType sample(rng_type& rng) {
+        return dis(rng);
     }
 
     void set_params(typename std::uniform_int_distribution<IntType>::param_type p) {
         dis.param(p);
     }
 
-    std::mt19937& generator() {
+    rng_type& generator() {
         return gen;
     }
 
 private:
-    std::mt19937 gen;
+    rng_type& gen;
     std::uniform_int_distribution<IntType> dis;
 };
 
@@ -110,33 +116,38 @@ private:
 // n: size of the universe
 // shuffle: generate a random mapping from sampled indices to actual indices used in experiments
 // index_table: set a custom index translation table
+template <typename IntType = index_t>
 class StoRandomDistribution {
 public:
-    StoRandomDistribution(int thid, index_t a, index_t b, bool shuffle = false)
-        : begin(a), end(b), index_transform(false), uis(thid), dist() {
+    typedef typename StoUniformIntSampler<IntType>::rng_type rng_type;
+
+    StoRandomDistribution(rng_type& rng, IntType a, IntType b)
+        : begin(a), end(b), uis(rng), dist() {
         assert(a < b);
-        if (shuffle) {
-            std::mt19937 gen(thid);
-            index_transform = true;
-
-            for (auto i = begin; i <= end; ++i)
-                index_translation_table.push_back(i);
-            std::shuffle(index_translation_table.begin(), index_translation_table.end(), gen);
-        }
     }
-    StoRandomDistribution(int thid, index_t a, index_t b, std::vector<index_t> index_table)
-        : begin(a), end(b), index_transform(true), index_translation_table(index_table),
-        uis(thid), dist() {assert(a < b);}
 
-    virtual ~StoRandomDistribution() {}
+    virtual ~StoRandomDistribution() = default;
 
-    virtual index_t sample() const {
-        auto s_index = dist(uis.generator());
-        if (index_transform) {
-            return index_translation_table[s_index];
-        } else {
-            return s_index + begin;
-        }
+    IntType sample() const {
+        auto s_index = sample_idx();
+        return s_index + begin;
+    }
+
+    IntType sample(rng_type& rng) const {
+        auto s_index = sample_idx(rng);
+        return s_index + begin;
+    }
+
+    virtual uint64_t sample_idx() const {
+        return dist(uis.generator());
+    }
+
+    virtual uint64_t sample_idx(rng_type& rng) const {
+        return dist(rng);
+    }
+
+    rng_type& generator() const {
+        return uis.generator();
     }
 
     trace_type sample_trace(size_t num_samples) const {
@@ -147,86 +158,141 @@ public:
     }
 
 protected:
-    void generate() {
-        weight_type pmf = generate_weights();
-        std::discrete_distribution<index_t> d_(pmf.begin(), pmf.end());
+    void generate(weight_type&& pmf) {
+        std::discrete_distribution<IntType> d_(pmf.begin(), pmf.end());
         dist.param(d_.param());
     }
 
-    // this is the method specific to each prob. distribution
-    virtual weight_type generate_weights() = 0;
+    IntType begin;
+    IntType end;
 
-    index_t begin;
-    index_t end;
-    bool index_transform;
-    std::vector<index_t> index_translation_table;
-
-    mutable StoUniformIntSampler<index_t> uis;
+    mutable StoUniformIntSampler<uint64_t> uis;
     // the core distribution
-    mutable std::discrete_distribution<index_t> dist;
+    mutable std::discrete_distribution<uint64_t> dist;
 };
 
 // specialization 1: uniform random distribution
-class StoUniformDistribution : public StoRandomDistribution {
+template <typename IntType = index_t>
+class StoUniformDistribution : public StoRandomDistribution<IntType> {
 public:
-    StoUniformDistribution(int thid, index_t a, index_t b, bool shuffle = false) :
-        StoRandomDistribution(thid, a, b, shuffle) {generate();}
-    StoUniformDistribution(int thid, index_t a, index_t b, std::vector<index_t> index_table) :
-        StoRandomDistribution(thid, a, b, index_table) {generate();}
+    using typename StoRandomDistribution<IntType>::rng_type;
+    StoUniformDistribution(rng_type& rng, IntType a, IntType b) :
+        StoRandomDistribution<IntType>(rng, a, b) { this->generate(generate_weights()); }
 
-    index_t sample() const override {
-        auto s_index = uis.sample();
-        if (index_transform)
-            return index_translation_table[s_index];
-        else
-            return s_index;
+    uint64_t sample_idx() const override {
+        return this->uis.sample();
     }
 
-protected:
-    weight_type generate_weights() override {
-        std::uniform_int_distribution<index_t> d(begin, end);
-        uis.set_params(d.param());
+    uint64_t sample_idx(rng_type& rng) const override {
+        return this->uis.sample(rng);
+    }
+
+private:
+    weight_type generate_weights() {
+        std::uniform_int_distribution<IntType> d(this->begin, this->end);
+        this->uis.set_params(d.param());
         return weight_type();
     }
 };
 
 // specialization 2: zipf distribution
-class StoZipfDistribution : public StoRandomDistribution {
+template <typename IntType = index_t>
+class StoZipfDistribution : public StoRandomDistribution<IntType> {
 public:
     static constexpr double default_skew = 1.0;
+    using typename StoRandomDistribution<IntType>::rng_type;
 
-    StoZipfDistribution(int thid, index_t a, index_t b, double skew = default_skew, bool shuffle = false) :
-        StoRandomDistribution(thid, a, b, shuffle), skewness(skew) {
+    StoZipfDistribution(rng_type& rng, IntType a, IntType b, double skew = default_skew) :
+        StoRandomDistribution<IntType>(rng, a, b), skewness(skew), sum_() {
         calculate_sum();
-        generate();
-    }
-    StoZipfDistribution(int thid, index_t a, index_t b, double skew, std::vector<index_t> index_table) :
-        StoRandomDistribution(thid, a, b, index_table), skewness(skew) {
-        calculate_sum();
-        generate();
+        this->generate(generate_weights());
     }
 
-protected:
-    weight_type generate_weights() override {
+private:
+    weight_type generate_weights() {
         weight_type pmf;
-        for (auto i = begin; i <= end; ++i) {
-            double p = 1.0/(std::pow((double)(i-begin+1), skewness)*sum_);
+        for (auto i = this->begin; i <= this->end; ++i) {
+            double p = 1.0/(std::pow((double)(i - this->begin + 1), skewness)*sum_);
             //std::cout << p << std::endl;
             pmf.push_back(p);
         }
         return pmf;
     }
 
-private:
     void calculate_sum() {
         double s = 0.0;
-        for (auto i = begin; i <= end; ++i)
-            s += std::pow(1.0/(double)(i-begin+1), skewness);
+        for (auto i = this->begin; i <= this->end; ++i)
+            s += std::pow(1.0/(double)(i- this->begin +1), skewness);
         sum_ = s;
     }
 
     double skewness;
     double sum_;
+};
+
+// specialization 3: random distribution defined by a histogram
+template <typename Type>
+class StoCustomDistribution : public StoRandomDistribution<uint64_t> {
+public:
+    using typename StoRandomDistribution<uint64_t>::rng_type;
+
+    typedef struct {
+        Type identifier;
+        size_t count;
+    } histogram_pt_type;
+
+    typedef struct {
+        Type identifier;
+        double weight;
+    } weighted_pt_type;
+
+    typedef std::vector<histogram_pt_type> histogram_type;
+    typedef std::vector<weighted_pt_type> weightgram_type;
+
+    StoCustomDistribution(rng_type& rng, const histogram_type& histogram) :
+        StoRandomDistribution<uint64_t>(rng, 0, histogram.size() - 1),
+        index_translation_table() {
+        reset_translation_table(histogram);
+        this->generate(generate_weight(histogram));
+    }
+
+    StoCustomDistribution(rng_type& rng, const weightgram_type& weightgram) :
+        StoRandomDistribution<uint64_t>(rng, 0, weightgram.size() - 1),
+        index_translation_table() {
+        reset_translation_table(weightgram);
+        this->generate(extract_weight(weightgram));
+    }
+
+    const Type& sample() const {
+        return index_translation_table[this->sample_idx()];
+    }
+    const Type& sample(rng_type& rng) const {
+        return index_translation_table[this->sample_idx(rng)];
+    }
+
+private:
+    template <typename PointType>
+    void reset_translation_table(const std::vector<PointType>& id_list) {
+        index_translation_table.reserve(id_list.size());
+        for (auto& point : id_list)
+            index_translation_table.push_back(point.identifier);
+    }
+
+    weight_type generate_weight(const histogram_type& histogram) {
+        weight_type pmf;
+        for (auto& pair : histogram)
+            pmf.push_back((double)pair.count);
+        return pmf;
+    }
+
+    weight_type extract_weight(const weightgram_type& weightgram) {
+        weight_type pmf;
+        for (auto& point : weightgram)
+            pmf.push_back(point.weight);
+        return pmf;
+    }
+
+    std::vector<Type> index_translation_table;
 };
 
 }; // namespace sampling
