@@ -93,8 +93,10 @@ public:
         break;
     }
 
-    header_type saved_header = parent_node->get_header();
+    header_type saved_header = parent_node->get_header_no_lock() & (~1ul);
     ARTRecord<V>* record = parent_node->find_record();
+
+    // Case where record wasn't found.
     if (record == NULL) {
       Sto::item(tree_, (ARTNode<V>*)((uintptr_t)parent_node + (uint64_t)1)).
         add_read(/*current_version_number*/ saved_header);
@@ -103,6 +105,19 @@ public:
       return;
     }
 
+    // Check that the bit set for newly inserted nodes in a separate transaction
+    // isn't set. If it is, we must abort since we're trying to delete a node
+    // that shouldn't be observed by this transaction.
+    if ((record->vers_.value() & TransactionTid::user_bit) &&
+        !(Sto::item(tree_, record).flags() & TransItem::user0_bit)) {
+      std::cout << "Found a newly record newly inserted from another " <<
+        "transaction. Aborting" << std::endl;
+      // Making sure to unlock the nodes so other transactions can access it.
+      parent_node->unlock();
+      Sto::abort();
+    }
+
+    
     // Tell Sto to remove the record instead of actually removing the
     // node.
 
@@ -158,7 +173,8 @@ public:
     return header_ >> NUM_STATUS_BITS;
   }
 
-  // Returns the whole header.
+  // Returns the whole header, waiting until the current_header doesn't have its
+  // lock bit set to return.
   inline uint64_t get_header() {
     // std::cout << "Header: " << std::hex << header_ << std::endl;
     // printf("[%d] Header: %lx\n", TThread::id(), header_);
@@ -170,6 +186,13 @@ public:
       return current_header;
     }
 
+  }
+
+  // Returns the whole header of a node. Doesn't wait for unlock. This is used
+  // in cases where the node is already locked and we wish to extract the header
+  // of that node.
+  inline uint64_t get_header_no_lock() {
+    return header_;
   }
 
   // virtual public methods
