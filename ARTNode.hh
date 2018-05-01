@@ -110,17 +110,15 @@ public:
     // that shouldn't be observed by this transaction.
     if ((record->vers_.value() & TransactionTid::user_bit) &&
         !(Sto::item(tree_, record).flags() & TransItem::user0_bit)) {
-      std::cout << "Found a newly record newly inserted from another " <<
+      std::cout << "[" << TThread::id() << "]" << "On remove, found a newly record newly inserted from another " <<
         "transaction. Aborting" << std::endl;
       // Making sure to unlock the nodes so other transactions can access it.
       parent_node->unlock();
       Sto::abort();
     }
 
-    
     // Tell Sto to remove the record instead of actually removing the
     // node.
-
     if (sto) {
       record->set_deleted();
     } else {
@@ -366,7 +364,7 @@ private:
     // 'child' MUST be NULL here when I call find_or_create_child
     ARTNode<V>* child;
     ARTNode<V>* found_node;
-    
+
     do {
       
       if (!find_or_create_child(child, next_byte)) {
@@ -374,7 +372,7 @@ private:
         // node that must replace the current node.
         return child;
       }
-      
+
       found_node = child->find_parent_node_insert(key, value, record,
                                                   new_record_created, depth + 1);
 
@@ -447,7 +445,14 @@ private:
 
       // Handles case where another thread inserted a record before the
       // lock on the record was acquired.
+
+      // We're checking this variable a second time because there might have
+      // been another thread that at this point inserted the record. Note that
+      // this check only happens when the record doesn't exist, which shouldn't
+      // happen too often.
+      record = find_record();
       if (record != NULL) {
+        unlock(this);
         return this;
       }
         
@@ -560,10 +565,9 @@ private:
       }
       
       child = new ARTNode4<V>(tree_);
-      assert(!this->is_full() && "A");
+      assert(!this->is_full());
       this->add_child(child, next_byte);
       this->update_version_number();
-      // std::cout << "updated version number" << std::endl;
       unlock(this);
     }
     return true;

@@ -16,7 +16,8 @@ template <typename V, typename W = TNonopaqueWrapped<V>>
     
     typedef TNonopaqueVersion Version_type;
     
-    ARTRecord(V val, ARTTree<V>* tree, std::string key) :  val_(val), tree_(tree), key_(key), vers_(Sto::initialized_tid() | TransactionTid::user_bit), status_bits(), creation_version_number(vers_) { // val_(val) {
+    ARTRecord(V val, ARTTree<V>* tree, std::string key) :
+      val_(val), tree_(tree), key_(key), vers_(Sto::initialized_tid() | TransactionTid::user_bit), status_bits(), creation_version_number(vers_) { // val_(val) {
 
       // Setting the inserted bit in Sto
       Sto::item(tree_, this).add_flags(TransItem::user0_bit);
@@ -26,7 +27,8 @@ template <typename V, typename W = TNonopaqueWrapped<V>>
     V read() {
       if ((vers_.value() & TransactionTid::user_bit) &&
           !(Sto::item(tree_, this).flags() & TransItem::user0_bit)) {
-        std::cout << "Found a newly record newly inserted from another transaction. Aborting. Record key is " << key_ << std::endl;
+        std::cout << "[" << TThread::id() << "]" <<
+          "On read, found a newly record newly inserted from another transaction. Aborting. Record key is " << key_ << std::endl;
         Sto::abort();
       }
       
@@ -45,7 +47,9 @@ template <typename V, typename W = TNonopaqueWrapped<V>>
     void update(const V& value) {
       if ((vers_.value() & TransactionTid::user_bit) &&
           !(Sto::item(tree_, this).flags() & TransItem::user0_bit)) {
-        std::cout << "Found a newly record newly inserted from another transaction. Aborting. Record key is " << key_ << std::endl;
+        std::cout << "[" << TThread::id() << "]" <<
+          "On update, found a newly record newly inserted from another transaction. " <<
+          "Aborting. Record key is " << key_ << std::endl;
         Sto::abort();
       }
 
@@ -98,6 +102,8 @@ template <typename V, typename W = TNonopaqueWrapped<V>>
         status_bits |= 1;
       } else {
         //assert(is_deleted() && "Delete bit not set");
+        // TODO: here we're setting the inserted bit to false as well. Is this
+        // fine?
         status_bits &= 0;
       }
     }

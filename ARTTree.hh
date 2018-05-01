@@ -42,7 +42,11 @@ class ARTTree : public TObject {
 
     // Case in which the item in the read set is a record.
     if ((item.key<uintptr_t>() & (uint64_t)(1)) == (uint64_t)0) {
-      return item.check_version(item.key<ARTRecord<V>*>()->vers_);
+      ARTRecord<V>* record = item.key<ARTRecord<V>*>();
+      bool ok = item.check_version(record->vers_);
+      bool isDeleted = !(record->is_deleted());
+      printf("Calling Check: ok is: %d, isDeleted is: %d\n", ok, isDeleted);
+      return (ok && isDeleted);
     }
     // Case where item is the leaf node following the path of a record that was
     // searched for but not found.

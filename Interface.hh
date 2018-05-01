@@ -102,7 +102,7 @@ public:
         return bool_cmpxchg(&v, vv & ~lock_bit, vv | lock_bit | here);
     }
     static void lock(type& v) {
-        while (!try_lock(v))
+         while (!try_lock(v))
             relax_fence();
         acquire_fence();
     }
