@@ -440,6 +440,37 @@ void testTwoInsertsToSameKeyMultipleTransactions() {
   std::cout << "PASS: " << __FUNCTION__ << std::endl;
 }
 
+void testAbortPreservesOriginalKeyValue() {
+  ARTTree<int>* tree = new ARTTree<int>();
+  std::string s1 = "string1";
+  std::string s2 = "somestring2";
+  int val1 = 200;
+  int val2 = 15;
+  int val3 = 7;
+  
+  int retval;
+
+  {
+    TransactionGuard t1;
+    tree->insert(s1, val1);
+  }
+  
+  {
+    TestTransaction t1(1);
+    tree->update(s1, val2);
+    tree->insert(s2, val3);
+    TestTransaction t2(2);
+    try {
+      tree->lookup(s2, retval);
+    } catch(Transaction::Abort e) {}
+    TestTransaction t3(1);
+    assert(tree->lookup(s1, retval) && retval == val1);
+  }
+
+  std::cout << "PASS: " << __FUNCTION__ << std::endl;
+
+}
+
 int main() {
   // Tests that are working
   // testSimpleString();
@@ -460,6 +491,7 @@ int main() {
   // testInsertThenDeleteInAnotherTransaction();
 
   // This one works
-  testTwoInsertsToSameKeyMultipleTransactions();
+  // testTwoInsertsToSameKeyMultipleTransactions();
+  testAbortPreservesOriginalKeyValue();
   return 0;
 }

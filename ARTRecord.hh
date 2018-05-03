@@ -104,7 +104,8 @@ template <typename V, typename W = TNonopaqueWrapped<V>>
         //assert(is_deleted() && "Delete bit not set");
         // TODO: here we're setting the inserted bit to false as well. Is this
         // fine?
-        status_bits &= 0;
+        // status_bits &= 0;
+        status_bits &= ~(1ul);
       }
     }
 

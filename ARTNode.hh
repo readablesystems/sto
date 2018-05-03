@@ -98,28 +98,36 @@ public:
 
     // Case where record wasn't found.
     if (record == NULL) {
-      Sto::item(tree_, (ARTNode<V>*)((uintptr_t)parent_node + (uint64_t)1)).
-        add_read(/*current_version_number*/ saved_header);
-
+      
+      if (sto) {
+        Sto::item(tree_, (ARTNode<V>*)((uintptr_t)parent_node + (uint64_t)1)).
+          add_read(/*current_version_number*/ saved_header);
+      }
+      
       parent_node->unlock();
       return;
     }
 
-    // Check that the bit set for newly inserted nodes in a separate transaction
-    // isn't set. If it is, we must abort since we're trying to delete a node
-    // that shouldn't be observed by this transaction.
-    if ((record->vers_.value() & TransactionTid::user_bit) &&
-        !(Sto::item(tree_, record).flags() & TransItem::user0_bit)) {
-      std::cout << "[" << TThread::id() << "]" << "On remove, found a newly record newly inserted from another " <<
-        "transaction. Aborting" << std::endl;
-      // Making sure to unlock the nodes so other transactions can access it.
-      parent_node->unlock();
-      Sto::abort();
-    }
+    printf("Calling remove on record with address %p\n", record);
+    
 
     // Tell Sto to remove the record instead of actually removing the
     // node.
     if (sto) {
+      
+      // Check that the bit set for newly inserted nodes in a separate transaction
+      // isn't set. If it is, we must abort since we're trying to delete a node
+      // that shouldn't be observed by this transaction.
+      if ((record->vers_.value() & TransactionTid::user_bit) &&
+          !(Sto::item(tree_, record).flags() & TransItem::user0_bit)) {
+        std::cout << "[" << TThread::id() << "]" << "On remove, found a newly record newly inserted from another " <<
+          "transaction. Aborting" << std::endl;
+        // Making sure to unlock the nodes so other transactions can access it.
+        parent_node->unlock();
+        record->set_deleted_bit(false);
+        Sto::abort();
+      }
+
       record->set_deleted();
     } else {
       parent_node->remove_record();
@@ -338,6 +346,8 @@ private:
       return false;
     }
 
+    printf("Calling remove on record with address %p\n", record);
+
     if (record->is_deleted() || (Sto::item(tree_, record).flags() & ART_RECORD_TRANS_ITEM_DELETE_BIT)) {
       return false;
     }
@@ -429,6 +439,7 @@ private:
       // If so, we'll tell Sto to not remove the record anymore, and the record's value is updated.
       if ((Sto::item(tree_, record).flags() & ART_RECORD_TRANS_ITEM_DELETE_BIT)
           && !record->is_deleted()) {
+        printf("DELETE THEN INSERT IN SAME TRANSACTION\n");
         record->set_undeleted();
         record->update(value);
       }
