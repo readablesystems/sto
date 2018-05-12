@@ -45,20 +45,7 @@ public:
   // Returns true if the record was found. retval takes on the value found in the record.
   bool lookup(std::string key, V& retval) {
     bool success;
-    // find_parent_node(key, retval, success, this->get_version_number());
     find_parent_node(key, retval, success, this->get_header());
-    
-    if (!success) {
-      // TODO: add header of the leaf node to the read set.
-      // Consider giving the pointer to the leaf node to the TItem, then to mark
-      // it as a leaf node by changing the least significant bit to 1, then check
-      // in the check to determine which type of node it is, then check
-      // the leaf node's version number appropriately.
-      // In the check method, access the value of header at execution by calling
-      // item.read_value<header_type>()
-      // Resolves phantom problem.
-    }
-    
     return success;
   }
 
@@ -80,8 +67,8 @@ public:
   }
 
 
-  // Removes the record associated with a key, if it exists.
-  void remove(std::string key, bool sto) {
+  // Clears the entry of the node containing the record to 'key'
+  void cleanup(std::string key) {
     ARTNode<V>* parent_node = find_parent_node(key, this->get_header());
     if (parent_node == NULL) {
       return;
@@ -93,60 +80,63 @@ public:
         break;
     }
 
+    ARTRecord<V>* record = parent_node->find_record();
+    if (record == NULL) {
+      parent_node->unlock();
+      return;
+    }
+
+    parent_node->remove_record();
+
+    if(parent_node->must_shrink()) {
+      // TODO: handle the shrinking of the node.
+    }
+    
+    // TODO: Should I keep this here? How can I better
+    // keep track of whether a node is a leaf or not?
+    if(parent_node->is_empty()) { 
+      parent_node->is_leaf_ = true;
+    }
+    
+    parent_node->update_version_number();
+    parent_node->unlock();
+  }
+  
+  // Operation that when committed in a transaction, clears the entry
+  // of the record for 'key'. Note that this method simply sets a bit
+  // in the TransItem of the record so that during commit time we know
+  // we want to clear the entry. The cleanup method takes care of the
+  // actual clearing of the entry.
+  void remove(std::string key) {
+    ARTNode<V>* parent_node = find_parent_node(key, this->get_header());
+    if (parent_node == NULL) {
+      return;
+    }
+
     header_type saved_header = parent_node->get_header_no_lock() & (~1ul);
     ARTRecord<V>* record = parent_node->find_record();
 
     // Case where record wasn't found.
     if (record == NULL) {
-      
-      if (sto) {
-        Sto::item(tree_, (ARTNode<V>*)((uintptr_t)parent_node + (uint64_t)1)).
-          add_read(/*current_version_number*/ saved_header);
-      }
-      
-      parent_node->unlock();
+      Sto::item(tree_, (ARTNode<V>*)((uintptr_t)parent_node + (uint64_t)1)).
+        add_read(saved_header);
       return;
     }
 
-    printf("Calling remove on record with address %p\n", record);
-    
+    // Check that the bit set for newly inserted nodes in a separate transaction
+    // isn't set. If it is, we must abort since we're trying to delete a node
+    // that shouldn't be observed by this transaction.
+    if ((record->vers_.value() & TransactionTid::user_bit) &&
+        !(Sto::item(tree_, record).flags() & TransItem::user0_bit)) {
+      Sto::abort();
+    }
 
-    // Tell Sto to remove the record instead of actually removing the
-    // node.
-    if (sto) {
-      
-      // Check that the bit set for newly inserted nodes in a separate transaction
-      // isn't set. If it is, we must abort since we're trying to delete a node
-      // that shouldn't be observed by this transaction.
-      if ((record->vers_.value() & TransactionTid::user_bit) &&
-          !(Sto::item(tree_, record).flags() & TransItem::user0_bit)) {
-        std::cout << "[" << TThread::id() << "]" << "On remove, found a newly record newly inserted from another " <<
-          "transaction. Aborting" << std::endl;
-        // Making sure to unlock the nodes so other transactions can access it.
-        parent_node->unlock();
-        record->set_deleted_bit(false);
-        Sto::abort();
-      }
-
-      record->set_deleted();
-    } else {
-      parent_node->remove_record();
-    }
-    
-    if(parent_node->must_shrink()) {
-      // TODO: handle the shrinking of the node.
-    }
-    
-    // Should I keep this here? How can I better
-    // keep track of whether a node is a leaf or not?
-    if(parent_node->is_empty()) { 
-      parent_node->is_leaf_ = true;
-    }
+    // Set a bit in the TransItem for the record so we'll know during commit time that we want to remove the item.
+    record->set_deleted();
     parent_node->update_version_number();
-    // std::cout << "updated version number" << std::endl;
-    parent_node->unlock();
   }
 
+  /// Debug method
   void print_info_recursive() {
     this->print_info();
     std::vector<void *>* children = get_children();
@@ -161,7 +151,7 @@ public:
 
   // range() {}
 
-  // static methods
+  // Static methods
 
   static inline void lock(ARTNode<V>* node) {
     while (true) {
@@ -182,8 +172,6 @@ public:
   // Returns the whole header, waiting until the current_header doesn't have its
   // lock bit set to return.
   inline uint64_t get_header() {
-    // std::cout << "Header: " << std::hex << header_ << std::endl;
-    // printf("[%d] Header: %lx\n", TThread::id(), header_);
     while (true) {
       header_type current_header = header_;
       if (current_header & 1) {
@@ -223,7 +211,6 @@ private:
   // take care of lazy expansion (though not yet!).
   // Also takes care of reading value from record found, retrying if needed.
   ARTNode<V>* find_parent_node(std::string key, V& retval, bool& success,
-                               /*uint64_t current_version_number,*/
                                uint64_t current_header,
                                uint64_t depth = 0) {
     if (this->is_invalid()) {
@@ -259,17 +246,14 @@ private:
         // the least significant bit different from that of records in the read
         // set, since all pointers have their least significant bit set to 0.
         Sto::item(tree_, (ARTNode<V>*)((uintptr_t)this + (uint64_t)1)).
-          add_read(/*current_version_number*/ current_header);
+          add_read(current_header);
         return NULL;
       }
-      // Observe the version number of the parent
-      // current_version_number = next->get_version_number();
+      // Observe the header of the parent
       current_header = next->get_header();
 
-      // while(next->is_locked());
-      
       parent = next->find_parent_node(key, retval, success,
-                                      /*current_version_number*/ current_header,
+                                      current_header,
                                       depth + 1);
     } while(next->is_invalid());
     return parent;
@@ -285,6 +269,8 @@ private:
       // Invalid check will return NULL, making parent be NULL.
       // However, the loop will retry because (at least as of now)
       // next is invalid and will never be revalidated.
+      // Note if the current node is the root, this case will never
+      // be reached because we're making the root have maximum size.
       return NULL;
     }
     
@@ -311,14 +297,12 @@ private:
         // the least significant bit different from that of records in the read
         // set, since all pointers have their least significant bit set to 0.
         Sto::item(tree_, (ARTNode<V>*)((uintptr_t)this + (uint64_t)1)).
-          add_read(/*current_version_number*/ current_header);
+          add_read(current_header);
         return NULL;
       }
-      // Observe the version number of the parent
+      // Observe the header of the parent
       current_header = next->get_header();
 
-      // while(next->is_locked());
-      
       parent = next->find_parent_node(key, current_header, depth + 1);
     } while(next->is_invalid());
     return parent;
@@ -342,13 +326,17 @@ private:
       // the least significant bit different from that of records in the read
       // set, since all pointers have their least significant bit set to 0.
       Sto::item(tree_, (ARTNode<V>*)((uintptr_t)this + (uint64_t)1)).
-        add_read(/*current_version_number*/ current_header);
+        add_read(current_header);
       return false;
     }
 
-    printf("Calling remove on record with address %p\n", record);
-
     if (record->is_deleted() || (Sto::item(tree_, record).flags() & ART_RECORD_TRANS_ITEM_DELETE_BIT)) {
+      // // Observe the version number of the lowest node in the path in STO to
+      // // add to the read set. We manually add one to the pointer value make
+      // // the least significant bit different from that of records in the read
+      // // set, since all pointers have their least significant bit set to 0.
+      // Sto::item(tree_, (ARTNode<V>*)((uintptr_t)this + (uint64_t)1)).
+      //   add_read(current_header);
       return false;
     }
 
@@ -393,8 +381,9 @@ private:
 
       // Invalid check
       if (this->is_invalid()) {
-        if (child->must_grow())
+        if (child->must_grow()) {
           unlock(child);
+        }
         return NULL;
       }
     
@@ -411,7 +400,7 @@ private:
         this->replace_child(found_node, next_byte);
         // Since we held on the the old child's lock to grow the node,
         // we must now release it.
-        
+
         unlock(child);
         unlock(this);
         continue;
@@ -439,7 +428,6 @@ private:
       // If so, we'll tell Sto to not remove the record anymore, and the record's value is updated.
       if ((Sto::item(tree_, record).flags() & ART_RECORD_TRANS_ITEM_DELETE_BIT)
           && !record->is_deleted()) {
-        printf("DELETE THEN INSERT IN SAME TRANSACTION\n");
         record->set_undeleted();
         record->update(value);
       }
@@ -474,7 +462,6 @@ private:
         // isn't allowed to use it.
         record = new ARTRecord<V>(value, tree_, key);
 
-        // printf("[%d] Header: %lx\n", TThread::id(), header_);
         this->insert_record(record);
         new_record_created = true;
 
@@ -491,16 +478,12 @@ private:
         if (item.has_read()) {
           item.update_read(saved_header, header_ & (~1ul));
         }
-        
+
         unlock(this);
       } else {
         ARTNode<V>* new_node = this->grow();
         this->set_must_grow();
-        // TODO: remove this method
-        // Done so that if the node was in the read set, growing this node will
-        // be noticed by Sto.
-        // this->update_version_number();
-
+        
         header_type saved_header = header_ & (~1ul);
         this->invalidate();
 
@@ -535,7 +518,7 @@ private:
     child = find_child(next_byte);      
     if (child == NULL) {
       lock(this);
-      
+              
       // Invalid check
       if (this->is_invalid()) {
         unlock(this);
@@ -545,8 +528,6 @@ private:
         // invalid and its parent must retry.
         child = NULL; 
         return false;
-
-        // return NULL;
       }
 
       // Handles when another thread added a child just before the
@@ -562,7 +543,7 @@ private:
         ARTNode<V>* new_node = this->grow();
         this->set_must_grow();
         // this->update_version_number();
-        this->invalidate(); // TODO: figure out if should also invalidate the node when you need to grow it.
+        this->invalidate();
         
         // Note that unlock(this) was not called upon return.
         // Since we must grow the node, we still hold on to this lock.
@@ -571,8 +552,6 @@ private:
         // which will trigger the parent node to replace the old full child with the grown node.
         child = new_node;
         return false;
-
-        // return new_node;
       }
       
       child = new ARTNode4<V>(tree_);
@@ -585,7 +564,6 @@ private:
   }
 
   // Returns whether the current node is locked at the moment.
-  // TODO: test this method when needed.
   inline bool is_locked() {
     return header_ & 1;
   }
@@ -614,7 +592,7 @@ private:
   // 'unlock(ARTNode<V>*)' for convenience and consistency with the locking mechanisms of this class.
   inline void unlock() {
     assert(is_locked() && "Attempt to unlock a node that is already unlocked");
-    header_--; // TODO: Is there a better way to do this?
+    header_ &= ~(1ul);
   }
 
   // Sets the 'must grow' status bit to true.

@@ -17,7 +17,7 @@ template <typename V, typename W = TNonopaqueWrapped<V>>
     typedef TNonopaqueVersion Version_type;
     
     ARTRecord(V val, ARTTree<V>* tree, std::string key) :
-      val_(val), tree_(tree), key_(key), vers_(Sto::initialized_tid() | TransactionTid::user_bit), status_bits(), creation_version_number(vers_) { // val_(val) {
+      val_(val), tree_(tree), key_(key), vers_(Sto::initialized_tid() | TransactionTid::user_bit), status_bits(), creation_version_number(vers_) {
 
       // Setting the inserted bit in Sto
       Sto::item(tree_, this).add_flags(TransItem::user0_bit);
@@ -27,8 +27,6 @@ template <typename V, typename W = TNonopaqueWrapped<V>>
     V read() {
       if ((vers_.value() & TransactionTid::user_bit) &&
           !(Sto::item(tree_, this).flags() & TransItem::user0_bit)) {
-        std::cout << "[" << TThread::id() << "]" <<
-          "On read, found a newly record newly inserted from another transaction. Aborting. Record key is " << key_ << std::endl;
         Sto::abort();
       }
       
@@ -40,23 +38,15 @@ template <typename V, typename W = TNonopaqueWrapped<V>>
       } else {
         return val_.read(item, vers_);
       }
-    
-      // return val_;
     }
     
     void update(const V& value) {
       if ((vers_.value() & TransactionTid::user_bit) &&
           !(Sto::item(tree_, this).flags() & TransItem::user0_bit)) {
-        std::cout << "[" << TThread::id() << "]" <<
-          "On update, found a newly record newly inserted from another transaction. " <<
-          "Aborting. Record key is " << key_ << std::endl;
         Sto::abort();
       }
 
       if (this->is_deleted()) {
-        std::cout << "We found a case where the value was set for deletion but "
-                  << "wasn\'t deleted yet, and we're updating this value!" <<
-          std::endl;
         Sto::abort();
       }
       
@@ -64,18 +54,22 @@ template <typename V, typename W = TNonopaqueWrapped<V>>
       auto item = Sto::item(tree_, this);
       item.add_write(value);
       item.observe(vers_);
-      
-      // val_ = value;
     }
 
     // Lets Sto know that the record will be deleted upon commit.
     void set_deleted() {
-      if (Sto::item(tree_, this).flags() & ART_RECORD_TRANS_ITEM_DELETE_BIT) {
-        std::cout << "Delete bit already set. Should I do something here?" <<
-          std::endl;
+      auto item = Sto::item(tree_, this);
+      
+      if (item.flags() & ART_RECORD_TRANS_ITEM_DELETE_BIT) {
+        // std::cout << "Delete bit already set. Should I do something here?" <<
+        // std::endl;
       }
-      Sto::item(tree_, this).add_flags(ART_RECORD_TRANS_ITEM_DELETE_BIT);
-      Sto::item(tree_,this).add_write(val_.access());
+      item.add_flags(ART_RECORD_TRANS_ITEM_DELETE_BIT);
+
+      // Non-blind write so we can have the check method be called for removes.
+      // The same is done with insert.
+      item.add_write(val_.access());
+      item.observe(vers_);
     }
 
     // Only for inserts called on records that were marked by Sto as deleted but still
@@ -102,9 +96,6 @@ template <typename V, typename W = TNonopaqueWrapped<V>>
         status_bits |= 1;
       } else {
         //assert(is_deleted() && "Delete bit not set");
-        // TODO: here we're setting the inserted bit to false as well. Is this
-        // fine?
-        // status_bits &= 0;
         status_bits &= ~(1ul);
       }
     }
@@ -116,6 +107,18 @@ template <typename V, typename W = TNonopaqueWrapped<V>>
     // TODO: I think I should delete this bit of code
     bool is_normal() {
       return !(is_deleted());
+    }
+
+    /// Once the record has been deleted, we will set the invalid bit
+    /// so that another remove that might remove the key will know
+    /// that it has already been removed.
+    void invalidate() {
+      status_bits |= 4;
+    }
+
+    /// Returns the state of the invalid bit.
+    bool is_invalid() {
+      return (status_bits & 4);
     }
 
 
@@ -131,10 +134,10 @@ template <typename V, typename W = TNonopaqueWrapped<V>>
     Version_type vers_;
 
     // A byte representing the status bits of the record.
-    // For now, only 2 bits are defined as follows:
-    // 8                           2          1        0
+    // For now, only 4 bits are defined as follows:
+    // 8               3           2          1        0
     // -------------------------------------------------
-    // |         undefined         | inserted | deleted |
+    // |    undefined  |  invalid | inserted | deleted |
     // -------------------------------------------------
     char status_bits;
     Version_type creation_version_number;

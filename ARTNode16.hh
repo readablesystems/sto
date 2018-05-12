@@ -62,7 +62,6 @@ private:
   }
 
   void remove_record() override {
-    // TODO should I call 'delete record' here?
     unsigned char last_byte = RECORD_BYTE;
     char index = search_index(last_byte);
     byte_keys_[(int)index] = EMPTY;

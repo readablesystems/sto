@@ -468,7 +468,28 @@ void testAbortPreservesOriginalKeyValue() {
   }
 
   std::cout << "PASS: " << __FUNCTION__ << std::endl;
+}
 
+void testAfterRemoveCommit() {
+  ARTTree<int>* tree = new ARTTree<int>();
+  std::string s1 = "string1";
+  int val1 = 200;
+
+  {
+    TransactionGuard t1;
+    tree->insert(s1, val1);
+  }
+  
+  {
+    TestTransaction t1(1);
+    tree->remove(s1);
+    TestTransaction t2(2);
+    tree->remove(s1);
+    assert(t1.try_commit());
+    assert(!t2.try_commit());
+  }
+
+  std::cout << "PASS: " << __FUNCTION__ << std::endl;
 }
 
 int main() {
@@ -492,6 +513,7 @@ int main() {
 
   // This one works
   // testTwoInsertsToSameKeyMultipleTransactions();
-  testAbortPreservesOriginalKeyValue();
+  // testAbortPreservesOriginalKeyValue();
+  testAfterRemoveCommit();
   return 0;
 }
