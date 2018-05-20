@@ -69,16 +69,12 @@ public:
 
   // Clears the entry of the node containing the record to 'key'
   void cleanup(std::string key) {
-    ARTNode<V>* parent_node = find_parent_node(key, this->get_header());
+    ARTNode<V>* parent_node = find_parent_node_cleanup(key);
     if (parent_node == NULL) {
       return;
     }
 
-    // Spinlock
-    while(true) {
-      if (parent_node->try_lock())
-        break;
-    }
+    lock(parent_node);
 
     ARTRecord<V>* record = parent_node->find_record();
     if (record == NULL) {
@@ -99,7 +95,7 @@ public:
     }
     
     parent_node->update_version_number();
-    parent_node->unlock();
+    unlock(parent_node);
   }
   
   // Operation that when committed in a transaction, clears the entry
@@ -113,11 +109,12 @@ public:
       return;
     }
 
-    header_type saved_header = parent_node->get_header_no_lock() & (~1ul);
+    header_type saved_header = parent_node->get_header();
     ARTRecord<V>* record = parent_node->find_record();
 
     // Case where record wasn't found.
     if (record == NULL) {
+      // printf("In delete, record wasn't found. Saving header of node, which is %x\n", saved_header);
       Sto::item(tree_, (ARTNode<V>*)((uintptr_t)parent_node + (uint64_t)1)).
         add_read(saved_header);
       return;
@@ -128,12 +125,12 @@ public:
     // that shouldn't be observed by this transaction.
     if ((record->vers_.value() & TransactionTid::user_bit) &&
         !(Sto::item(tree_, record).flags() & TransItem::user0_bit)) {
+      // printf("In delete, record was found to have insert bit set. Aborting\n");
       Sto::abort();
     }
 
     // Set a bit in the TransItem for the record so we'll know during commit time that we want to remove the item.
     record->set_deleted();
-    parent_node->update_version_number();
   }
 
   /// Debug method
@@ -210,6 +207,7 @@ private:
   // not found, returns null. Note that this method should
   // take care of lazy expansion (though not yet!).
   // Also takes care of reading value from record found, retrying if needed.
+  // Lookup uses this version of the traversal.
   ARTNode<V>* find_parent_node(std::string key, V& retval, bool& success,
                                uint64_t current_header,
                                uint64_t depth = 0) {
@@ -239,6 +237,7 @@ private:
       }
       
       if (next == NULL) {
+        // printf("In lookup, failed to find record. Saving header in node to be %x\n", current_header);
         success = false;
 
         // Observe the version number of the lowest node in the path in STO to
@@ -263,6 +262,7 @@ private:
   // If path finds nonexisting nodes, or if parent node is
   // not found, returns null. Note that this method should
   // take care of lazy expansion (though not yet!).
+  // Remove method uses this version of the traversal.
   ARTNode<V>* find_parent_node(std::string key, uint64_t current_header,
                                uint64_t depth = 0) {
     if (this->is_invalid()) {
@@ -292,6 +292,7 @@ private:
       }
 
       if (next == NULL) {
+        // printf("Couldn\'t find record on remove. Saving the current header, which is %x\n", current_header);
         // Observe the version number of the lowest node in the path in STO to
         // add to the read set. We manually add one to the pointer value make
         // the least significant bit different from that of records in the read
@@ -304,6 +305,34 @@ private:
       current_header = next->get_header();
 
       parent = next->find_parent_node(key, current_header, depth + 1);
+    } while(next->is_invalid());
+    return parent;
+  }
+
+  // Traverses the ART to find the node that matches the key.
+  // If path finds nonexisting nodes, or if parent node is
+  // not found, returns null. Note that this method should
+  // take care of lazy expansion (though not yet!).
+  // Cleanup method uses this version of the traversal.
+  ARTNode<V>* find_parent_node_cleanup(std::string key, uint64_t depth = 0) {
+    if (this->is_invalid()) {
+      return NULL;
+    }
+    
+    unsigned char next_byte = key[depth];
+    if (depth == key.length()) {
+      return this;
+    }
+    ARTNode<V>* parent = NULL;
+    ARTNode<V>* next;
+    do {
+      next = find_child(next_byte);
+
+      if (next == NULL) {
+        return NULL;
+      }
+      
+      parent = next->find_parent_node_cleanup(key, depth + 1);
     } while(next->is_invalid());
     return parent;
   }
@@ -321,6 +350,7 @@ private:
     } while(this->is_locked());
     
     if (record == NULL) {
+      // printf("Couldn\'t find record on lookup. Saving the current header, which is %x\n", current_header);
       // Observe the version number of the lowest node in the path in STO to
       // add to the read set. We manually add one to the pointer value make
       // the least significant bit different from that of records in the read
@@ -347,6 +377,7 @@ private:
   // If the path finds nonexisting nodes, of if parent node is
   // not found, will create new nodes until the path is complete.
   // Note that this method implements lazy expansion (though not yet!).
+  // Insert/Update method uses this version of the traversal.
   ARTNode<V>* find_parent_node_insert(std::string key, V value, ARTRecord<V>*& record, bool& new_record_created, uint64_t depth = 0) {
     // Initial Invalid check
     if (this->is_invalid())
@@ -421,6 +452,7 @@ private:
       // another transaction. If so, then the transaction aborts.
       if(record->is_deleted() &&
          !(Sto::item(tree_, record).flags() & ART_RECORD_TRANS_ITEM_DELETE_BIT)) {
+        // printf("In insert, found delete bit set from remove outside of this transaction. Aborting\n");
         Sto::abort();
       }
 
@@ -428,6 +460,7 @@ private:
       // If so, we'll tell Sto to not remove the record anymore, and the record's value is updated.
       if ((Sto::item(tree_, record).flags() & ART_RECORD_TRANS_ITEM_DELETE_BIT)
           && !record->is_deleted()) {
+        // printf("In insert, found trans item set to be deleted. Remove this set bit and update the value.\n");
         record->set_undeleted();
         record->update(value);
       }
@@ -476,6 +509,8 @@ private:
         // bit) are the same. If the headers are the same, update the version
         // number.
         if (item.has_read()) {
+          // printf("In insert operation, Item has read! Trying to update item with supposed header %x to have new header %x\n",
+          //       saved_header, header_ & (~1ul));
           item.update_read(saved_header, header_ & (~1ul));
         }
 
@@ -557,7 +592,28 @@ private:
       child = new ARTNode4<V>(tree_);
       assert(!this->is_full());
       this->add_child(child, next_byte);
+
+      // TODO: add the check to see if the node is in the read set. If it is, check if the
+      // version number is being raised by 1. If so, change the version in the read set to
+      // be the new version number.
+
+      
+      // Update the version number only if you haven't
+      TransProxy item = Sto::item(tree_, (ARTNode<V>*)((uintptr_t)this +
+                                                       (uint64_t)1));
+
+      header_type saved_header = header_ & (~1ul);
       this->update_version_number();
+      // Check if the item is already in the read set of the current
+      // transaction. If so, then check that the headers (excluding the lock
+      // bit) are the same. If the headers are the same, update the version
+      // number.
+      if (item.has_read()) {
+        // printf("In insert operation for creating new node, Item has read! Updating item to have new header %x\n",
+        //       header_ & (~1ul));
+        item.update_read(saved_header, header_ & (~1ul));
+      }
+
       unlock(this);
     }
     return true;

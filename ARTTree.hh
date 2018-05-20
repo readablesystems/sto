@@ -45,6 +45,8 @@ class ARTTree : public TObject {
       ARTRecord<V>* record = item.key<ARTRecord<V>*>();
       bool ok = item.check_version(record->vers_);
       bool isDeleted = !(record->is_deleted());
+
+      // printf("In check! ok is %d, and isDeleted is %d. We want both to be true\n", ok, isDeleted);
       
       return (ok && isDeleted);
     }
@@ -52,6 +54,8 @@ class ARTTree : public TObject {
     // Case where item is the leaf node following the path of a record that was
     // searched for but not found.
     else {
+      // printf("In check for nodes! Saved header is %x, current header is %x\n", item.read_value<uint64_t>(),
+      //       ((ARTNode<V>*)(item.key<uintptr_t>() - (uint64_t)1))->get_header());
       return item.read_value<uint64_t>() ==
               ((ARTNode<V>*)(item.key<uintptr_t>() - (uint64_t)1))->get_header();
     }

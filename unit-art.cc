@@ -171,21 +171,25 @@ void testCleanupCalledAfterDelete() {
   int retval;
 
   {
-    TransactionGuard t1;
+    TestTransaction t1(1);
     tree->insert(s1, val1);
+    assert(t1.try_commit());
   }
 
   {
     TestTransaction t2(1);
     tree->remove(s1);
     
-    TestTransaction t3(1);
+    TestTransaction t3(2);
     tree->lookup(s1, retval);
     assert(retval == val1);
     assert(t2.try_commit());
-    assert(!tree->lookup(s1, retval));
     assert(!t3.try_commit());
-    
+
+    TestTransaction t4(1);
+    assert(!tree->lookup(s1, retval));
+    assert(t4.try_commit());
+
   }
 
   std::cout << "PASS: " << __FUNCTION__ << std::endl;
@@ -206,41 +210,19 @@ void testAbortedInsert() {
     TestTransaction t1(1);
     tree->insert(s1, val1);
 
-    TestTransaction t2(1);
+    TestTransaction t2(2);
     tree->insert(s2, val2);
     try {
       tree->lookup(s1, retval);
       assert(false);
     } catch(Transaction::Abort e) {
-      std::cout << "You've made it this far!" << std::endl;
-      assert(!tree->lookup(s2, retval));
-      assert(t1.try_commit());
     }
-  }
 
-  std::cout << "PASS: " << __FUNCTION__ << std::endl;
-}
-
-void testFindDeleteBitInRecordInAnotherTransaction() {
-  ARTTree<int>* tree = new ARTTree<int>();
-  std::string s1 = "testingstringone";
-  
-  int val1 = 190;
-
-  int retval;
-
-  {
-    TransactionGuard t1;
-    tree->insert(s1, val1);
-  }
-  
-  {
-    TestTransaction t1(1);
-    tree->remove(s1);
-
-    TestTransaction t2(2);
     assert(t1.try_commit());
-    assert(!tree->lookup(s1, retval));
+
+    TestTransaction t3(1);
+    assert(!tree->lookup(s2, retval));
+    assert(t3.try_commit());
   }
 
   std::cout << "PASS: " << __FUNCTION__ << std::endl;
@@ -385,6 +367,21 @@ void testRemoveThenInsertMultipleTransactions() {
   std::cout << "PASS: " << __FUNCTION__ << std::endl;
 }
 
+void testInsertThenDeleteInSameTransaction() {
+  ARTTree<int>* tree = new ARTTree<int>();
+  std::string s1 = "3";
+  int val1 = 190;
+  
+  {
+    TestTransaction t1(1);
+    tree->insert(s1, val1);
+    tree->remove(s1);
+    assert(t1.try_commit());
+  }
+
+  std::cout << "PASS: " << __FUNCTION__ << std::endl;
+}
+
 void testInsertThenDeleteInAnotherTransaction() {
   ARTTree<int>* tree = new ARTTree<int>();
   std::string s1 = "string2testing";
@@ -394,8 +391,9 @@ void testInsertThenDeleteInAnotherTransaction() {
   int retval;
 
   {
-    TransactionGuard t1;
+    TestTransaction t1(1);
     tree->insert(s1, val1);
+    assert(t1.try_commit());
   }
   
   {
@@ -404,9 +402,9 @@ void testInsertThenDeleteInAnotherTransaction() {
     TestTransaction t2(2);
     tree->insert(s1, val2);
     assert(t2.try_commit());
-    assert(t1.try_commit());
+    assert(!t1.try_commit());
     TestTransaction t3(3);
-    assert(!tree->lookup(s1, retval));
+    assert(tree->lookup(s1, retval));
   }
 
   std::cout << "PASS: " << __FUNCTION__ << std::endl;
@@ -451,8 +449,9 @@ void testAbortPreservesOriginalKeyValue() {
   int retval;
 
   {
-    TransactionGuard t1;
+    TestTransaction t1(1);
     tree->insert(s1, val1);
+    assert(t1.try_commit());
   }
   
   {
@@ -476,8 +475,9 @@ void testAfterRemoveCommit() {
   int val1 = 200;
 
   {
-    TransactionGuard t1;
+    TestTransaction t1(1);
     tree->insert(s1, val1);
+    assert(t1.try_commit());
   }
   
   {
@@ -492,28 +492,154 @@ void testAfterRemoveCommit() {
   std::cout << "PASS: " << __FUNCTION__ << std::endl;
 }
 
+void testEmptyLookupThenInsertSameTransaction() {
+  ARTTree<int>* tree = new ARTTree<int>();
+  std::string s1 = "string1";
+  int val1 = 200;
+  int retval;
+
+  {
+    TestTransaction t1(1);
+    tree->lookup(s1, retval); // empty lookup
+    tree->insert(s1, val1);   // new insert
+    assert(t1.try_commit());
+  }
+
+  std::cout << "PASS: " << __FUNCTION__ << std::endl;
+}
+
+void testEmptyDeleteThenInsertSameTransaction() {
+  ARTTree<int>* tree = new ARTTree<int>();
+  std::string s1 = "string1";
+  int val1 = 200;
+
+  {
+    TestTransaction t1(1);
+    tree->remove(s1); // empty remove
+    tree->insert(s1, val1);   // new insert
+    assert(t1.try_commit());
+  }
+
+  std::cout << "PASS: " << __FUNCTION__ << std::endl;
+}
+
+void testEmptyDeleteThenLookupSameTransaction() {
+  ARTTree<int>* tree = new ARTTree<int>();
+  std::string s1 = "string1";
+  int retval;
+
+  {
+    TestTransaction t1(1);
+    tree->remove(s1); // empty remove
+    tree->lookup(s1, retval);   // empty lookup
+    assert(t1.try_commit());
+  }
+
+  std::cout << "PASS: " << __FUNCTION__ << std::endl;
+}
+
+void testEmptyLookupThenEmptyLookupSameTransaction() {
+  ARTTree<int>* tree = new ARTTree<int>();
+  std::string s1 = "string1";
+  int retval;
+
+  {
+    TestTransaction t1(1);
+    tree->lookup(s1, retval); // empty lookup
+    tree->lookup(s1, retval);   // empty lookup
+    assert(t1.try_commit());
+  }
+
+  std::cout << "PASS: " << __FUNCTION__ << std::endl;
+}
+
+void testEmptyLookupThenInsertThenRemoveInSameTransaction() {
+  ARTTree<int>* tree = new ARTTree<int>();
+  std::string s1 = "string1";
+  std::string s2 = "anotherstring";
+  std::string s3 = "string3";
+  std::string s4 = "fourthstring";
+
+  int val1 = 40;
+  int val2 = 1;
+  int retval;
+
+  {
+    TestTransaction t1(1);
+    tree->lookup(s1, retval); // empty lookup
+    tree->remove(s2);
+    tree->update(s3, val2);
+    tree->update(s1, val1);
+    tree->remove(s1);   // empty lookup
+    tree->remove(s4);
+    assert(t1.try_commit());
+  }
+
+  std::cout << "PASS: " << __FUNCTION__ << std::endl;
+}
+
+void testFailingTestCase() {
+  ARTTree<int>* tree = new ARTTree<int>();
+  std::string key6 = "6";
+  std::string key7 = "7";
+  std::string key5 = "5";
+  std::string key9 = "9";
+
+  int val4 = 4;
+  int val5 = 5;
+  int val7 = 7;
+  int retval;
+
+  {
+    TestTransaction t1(1);
+    tree->insert(key6, val4);
+    tree->insert(key5, val4);
+    t1.try_commit();
+  }
+  
+  {
+    TestTransaction t1(1);
+    tree->lookup(key6, retval);
+    tree->insert(key7, val5);
+    tree->remove(key5);
+    tree->update(key9, val5);
+    tree->update(key5, val7);
+    tree->update(key7, val5);
+    tree->remove(key5);
+    assert(t1.try_commit());
+  }
+
+  std::cout << "PASS: " << __FUNCTION__ << std::endl;
+}
+
+
 int main() {
-  // Tests that are working
-  // testSimpleString();
-  // testConcurrentInsertLookup();
-  // testPopulateTreeAndLookup();
-  // testTwoRecordsReadingAndWritingEachOther();
-  // testNewRecordFoundInAnotherTransaction();
-
-  // TODO: I think the methods below are failing....
-  // testCleanupCalledAfterDelete();
-  // testAbortedInsert();
-  // testFindDeleteBitInRecordInAnotherTransaction();
-  // testDeleteThenInsertSameTransaction();
-  // testDeleteThenLookup();
-  // testLookupThenDeleteDifferentTransactions();
-  // testVarietyOperationsSameTransaction();
-  // testRemoveThenInsertMultipleTransactions();
-  // testInsertThenDeleteInAnotherTransaction();
-
-  // This one works
-  // testTwoInsertsToSameKeyMultipleTransactions();
-  // testAbortPreservesOriginalKeyValue();
+  testSimpleString();
+  testConcurrentInsertLookup();
+  testPopulateTreeAndLookup();
+  testTwoRecordsReadingAndWritingEachOther();
+  testNewRecordFoundInAnotherTransaction();
+  testDeleteThenInsertSameTransaction();
+  testDeleteThenLookup();
+  testLookupThenDeleteDifferentTransactions();
+  testVarietyOperationsSameTransaction();
+  testRemoveThenInsertMultipleTransactions();
+  testTwoInsertsToSameKeyMultipleTransactions();
+  testEmptyDeleteThenLookupSameTransaction();
+  testEmptyLookupThenEmptyLookupSameTransaction();
+  testEmptyLookupThenInsertSameTransaction();
+  testEmptyDeleteThenInsertSameTransaction();
+  testCleanupCalledAfterDelete();
+  testAbortedInsert();
+  testInsertThenDeleteInAnotherTransaction();
+  testAbortPreservesOriginalKeyValue();
   testAfterRemoveCommit();
+
+  testEmptyLookupThenInsertThenRemoveInSameTransaction();
+
+  testInsertThenDeleteInSameTransaction();
+
+  testFailingTestCase();
+
   return 0;
 }

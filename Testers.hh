@@ -117,7 +117,11 @@ public:
     switch(op) {
     case 0: {
       int val;
-            
+
+      TransactionTid::lock(lock);
+      std::cout << "[" << me << "] About to call lookup for key " << key << std::endl;
+      TransactionTid::unlock(lock);
+      
       if(!q->lookup(std::to_string(key), val))
         val = -1;
 
@@ -134,6 +138,10 @@ public:
     case 1: {
       int val = slotdist(transgen);
 
+      TransactionTid::lock(lock);
+      std::cout << "[" << me << "] About to call update for key " << key << " to value " << val << std::endl;
+      TransactionTid::unlock(lock);
+
       q->update(std::to_string(key), val);
 
       TransactionTid::lock(lock);
@@ -149,6 +157,10 @@ public:
     case 2: {
       int val = slotdist(transgen);
 
+      TransactionTid::lock(lock);
+      std::cout << "[" << me << "] About to call insert for key " << key << " with value " << val << std::endl;
+      TransactionTid::unlock(lock);
+
       q->insert(std::to_string(key), val);
 
       TransactionTid::lock(lock);
@@ -162,6 +174,11 @@ public:
       return rec;
     }
     case 3: {
+
+      TransactionTid::lock(lock);
+      std::cout << "[" << me << "] About to call remove for key " << key << std::endl;
+      TransactionTid::unlock(lock);
+
       q->remove(std::to_string(key));
 
       TransactionTid::lock(lock);
@@ -171,7 +188,6 @@ public:
       op_record* rec = new op_record;
       rec->op = op;
       rec->args.push_back(key);
-      //rec->args.push_back(val);
       return rec;
     }
     }
