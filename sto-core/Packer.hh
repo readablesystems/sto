@@ -27,6 +27,9 @@ template <typename T> struct ObjectDestroyer {
     static void destroy_and_free_array(void* object) {
         delete[] reinterpret_cast<T*>(object);
     }
+    static void free(void* object) {
+        ::free(object);
+    }
 };
 
 template <typename T> struct UniqueKey {

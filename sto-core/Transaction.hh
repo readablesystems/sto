@@ -189,6 +189,13 @@ enum txp {
     txp_hash_collision,
     txp_hash_collision2,
     txp_total_searched,
+    txp_rcu_del_req,
+    txp_rcu_del_impl,
+    txp_rcu_delarr_req,
+    txp_rcu_delarr_impl,
+    txp_rcu_free_req,
+    txp_rcu_free_impl,
+    txp_dealloc_performed,
 #if !STO_PROFILE_COUNTERS
     txp_count = 0
 #elif STO_PROFILE_COUNTERS == 1
@@ -392,20 +399,40 @@ public:
         }
     }
 
+    template <typename T>
+    static void rcu_delete_cb(void* x) {
+        txp_account<txp_rcu_del_impl>(1);
+        ObjectDestroyer<T>::destroy_and_free(x);
+    }
+
+    template <typename T>
+    static void rcu_delete_array_cb(void* x) {
+        txp_account<txp_rcu_delarr_impl>(1);
+        ObjectDestroyer<T>::destroy_and_free_array(x);
+    }
+
+    static void rcu_free_cb(void* x) {
+        txp_account<txp_rcu_free_impl>(1);
+        ::free(x);
+    }
+
     static void* epoch_advancer(void*);
     template <typename T>
     static void rcu_delete(T* x) {
         auto& thr = tinfo[TThread::id()];
-        thr.rcu_set.add(thr.epoch, ObjectDestroyer<T>::destroy_and_free, x);
+        txp_account<txp_rcu_del_req>(1);
+        thr.rcu_set.add(thr.epoch, rcu_delete_cb<T>, x);
     }
     template <typename T>
     static void rcu_delete_array(T* x) {
         auto& thr = tinfo[TThread::id()];
-        thr.rcu_set.add(thr.epoch, ObjectDestroyer<T>::destroy_and_free_array, x);
+        txp_account<txp_rcu_delarr_req>(1);
+        thr.rcu_set.add(thr.epoch, rcu_delete_array_cb<T>, x);
     }
     static void rcu_free(void* ptr) {
         auto& thr = tinfo[TThread::id()];
-        thr.rcu_set.add(thr.epoch, ::free, ptr);
+        txp_account<txp_rcu_free_req>(1);
+        thr.rcu_set.add(thr.epoch, rcu_free_cb, ptr);
     }
     static void rcu_call(void (*function)(void*), void* argument) {
         auto& thr = tinfo[TThread::id()];

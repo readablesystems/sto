@@ -138,6 +138,7 @@ PROGRAMS = concurrent \
 		   tpcc_bench \
 		   micro_bench \
 		   ycsb_bench \
+		   gc_bench \
 		   pred_bench \
 		   wiki_bench \
 		   voter_bench \
@@ -283,6 +284,9 @@ ycsb_bench: $(OBJ)/YCSB_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
 
 micro_bench: $(OBJ)/MicroBenchmarks.o $(INDEX_OBJS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
+
+gc_bench: $(OBJ)/Garbage_bench.o $(INDEX_OBJS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
 
 pred_bench: $(OBJ)/Predicate_bench.o $(INDEX_OBJS)
