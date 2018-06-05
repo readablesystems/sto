@@ -34,6 +34,8 @@
 /pqVsIt
 /ex-counter
 /unit-rcu
+/unit-dboindex
+/unit-tint
 /unit-tarray
 /unit-tbox
 /unit-tgeneric
