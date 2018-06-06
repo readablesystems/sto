@@ -7,8 +7,7 @@ class TInt : public TObject {
 public:
     typedef typename TOpaqueWrapped<int>::read_type read_type;
     typedef typename TOpaqueWrapped<int>::version_type version_type;
-    static constexpr TransItem::flags_type delta_bit = TransItem::user0_bit;
-    static constexpr TransItem::flags_type assigned_bit = TransItem::user0_bit << 1;
+    static constexpr TransItem::flags_type assigned_bit = TransItem::user0_bit;
 
     TInt() {
     }
@@ -20,16 +19,20 @@ public:
     std::pair<bool, read_type> read_nothrow() const {
         auto item = Sto::item(this, 0);
 
-        std::pair<bool, read_type> ret;
-        if (item.has_write())
-            ret = {true, item.template write_value<int>()};
-        else
-            ret = v_.read(item, vers_);
-
-        if (item.has_flag(delta_bit)) {
-            return {ret.first, ret.second + 1};
+        if (!item.has_flag(assigned_bit)) {
+            auto x = v_.read(item, vers_);
+            if (item.has_write()) {
+                auto delta = item.template write_value<int>();
+                x = {x.first, x.second + delta};
+                // write(x.second);
+            }
+            return x;
+        } else {
+            if (item.has_write())
+                return {true, item.template write_value<int>()};
+            else
+                return v_.read(item, vers_);
         }
-        return ret;
     }
 
     read_type read() const {
@@ -43,18 +46,18 @@ public:
     void write(const int& x) {
         auto item = Sto::item(this, 0);
         item.acquire_write(vers_, x);
-        item.clear_flags(delta_bit);
+        item.add_flags(assigned_bit);
     }
     void write(int&& x) {
         auto item = Sto::item(this, 0);
         item.acquire_write(vers_, std::move(x));
-        item.clear_flags(delta_bit);
+        item.add_flags(assigned_bit);
     }
     template <typename... Args>
     void write(Args&&... args) {
         auto item = Sto::item(this, 0);
         item.template acquire_write<int>(vers_, std::forward<Args>(args)...);
-        item.clear_flags(delta_bit);
+        item.add_flags(assigned_bit);
     }
 
     operator read_type() const {
@@ -78,13 +81,18 @@ public:
         return *this;
     }
 
-    void inc() {
+    void inc(int n) {
         // write(this->read() + x);
         auto item = Sto::item(this, 0);
-        if (item.has_flag(delta_bit)) {
-            write(this->read() + 1);
+        if (item.has_read()) {
+            write(this->read() + n);
         } else {
-            item.add_flags(delta_bit);
+            // write(item.template write_value<int>() + n);
+            if (item.has_write()) {
+                item.acquire_write(vers_, item.template write_value<int>() + n);
+            } else {
+                item.acquire_write(vers_, n);
+            }
         }
     }
 
@@ -109,10 +117,8 @@ public:
         return vers_.cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
-        if (item.has_flag(delta_bit)) {
-            v_.write(std::move(item.template write_value<int>()) + 1);
-        } else {
-            v_.write(std::move(item.template write_value<int>()));
+        if (item.has_write()) {
+            v_.write(this->read());
         }
         txn.set_version_unlock(vers_, item);
     }
