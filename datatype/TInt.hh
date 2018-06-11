@@ -117,9 +117,7 @@ public:
         return vers_.cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
-        if (item.has_write()) {
-            v_.write(this->read());
-        }
+        v_.write(std::move(item.template write_value<int>()));
         txn.set_version_unlock(vers_, item);
     }
     void unlock(TransItem& item) override {
