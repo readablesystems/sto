@@ -36,6 +36,7 @@
 /unit-rcu
 /unit-dboindex
 /unit-tint
+/unit-tart
 /unit-tarray
 /unit-tbox
 /unit-tgeneric
