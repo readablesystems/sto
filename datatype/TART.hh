@@ -15,7 +15,6 @@ public:
     typedef uint8_t key_type[4];
     typedef uintptr_t Value;
     typedef uintptr_t Value_type;
-    typedef std::pair<Key, Value> item_value;
 
     typedef typename std::conditional<true, TVersion, TNonopaqueVersion>::type Version_type;
     typedef typename std::conditional<true, TWrapped<Value>, TNonopaqueWrapped<Value>>::type wrapped_type;
@@ -27,8 +26,8 @@ public:
     std::pair<bool, Value> transGet(Key k) {
         auto item = Sto::item(this, k);
         if (item.has_write()) {
-            auto val = item.template write_value<item_value>();
-            return {true, val.second};
+            auto val = item.template write_value<Value>();
+            return {true, val};
         } else {
             std::pair<bool, Value> ret;
             vers_.lock_exclusive();
@@ -36,18 +35,27 @@ public:
             Node* n = lookup(search.second, k, 4, 4);
             Value val = getLeafValue(n);
             ret = {search.first, val};
+            printf("get key: [%d, %d, %d, %d] val: %lu\n", k[0], k[1], k[2], k[3], val);
             vers_.unlock_exclusive();
             return ret;
         }
     }
 
     void transPut(Key k, Value v) {
-        std::pair<uintptr_t, uintptr_t> wv = {(uintptr_t) k, v};
-        Sto::item(this, k).acquire_write(vers_, wv);
+        printf("put key: [%d, %d, %d, %d] val: %lu\n", k[0], k[1], k[2], k[3], v);
+        // uint8_t* newKey = (uint8_t*) malloc(sizeof(uint8_t)*4);
+        // memcpy(newKey, k, sizeof(uint8_t)*4);
+        Sto::item(this, k).acquire_write(vers_, v);
+        TransItem& item = Sto::item(this, k);
+        const uint8_t* key = item.template key<Key>();
+        printf("put key: [%d, %d, %d, %d] val: %lu\n", key[0], key[1], key[2], key[3], v);
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
         // call is locked here
+        if (vers_.is_locked_here()) {
+            return true;
+        }
         return txn.try_lock(item, vers_);
     }
     bool check(TransItem& item, Transaction& txn) override {
@@ -56,8 +64,10 @@ public:
     void install(TransItem& item, Transaction& txn) override {
         // root_.write(std::move(item.template write_value<Value>()));
         // only valid on last install
-        item_value val = item.template write_value<item_value>();
-        insert(root_.access(), &root_.access(), val.first, val.second, 4, 4);
+        Value val = item.template write_value<Value>();
+        const uint8_t* key = item.template key<Key>();
+        insert(root_.access(), &root_.access(), key, val, 4, 4);
+        printf("install key: [%d, %d, %d, %d] val: %lu\n", key[0], key[1], key[2], key[3], val);
         txn.set_version_unlock(vers_, item);
     }
     void unlock(TransItem& item) override {

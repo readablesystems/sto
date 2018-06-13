@@ -235,7 +235,7 @@ void insertNode256(Node256* node, Node** nodeRef, uint8_t keyByte, Node* child);
 
 void insert(Node* node,
             Node** nodeRef,
-            uint8_t key[],
+            const uint8_t key[],
             uintptr_t value,
             unsigned maxKeyLength,
             unsigned depth = 0) {

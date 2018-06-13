@@ -12,17 +12,20 @@
 void testSimple() {
     TART a;
 
+    uint8_t key1[4] = {0, 0, 0, 0};
+    uint8_t key2[4] = {0, 0, 0, 1};
     {
         TransactionGuard t;
-        uint8_t key[4] = {0, 0, 0, 0};
-        a.transPut(key, 123);
+        a.transPut(key1, 123);
+        a.transPut(key2, 321);
     }
 
     {
         TransactionGuard t2;
-        uint8_t key[4] = {0, 0, 0, 0};
-        auto x = a.transGet(key);
+        auto x = a.transGet(key1);
+        auto y = a.transGet(key2);
         assert(x.second == 123);
+        assert(y.second == 321);
     }
 
     printf("PASS: %s\n", __FUNCTION__);
