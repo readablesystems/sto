@@ -19,12 +19,18 @@ public:
     typedef typename std::conditional<true, TVersion, TNonopaqueVersion>::type Version_type;
     typedef typename std::conditional<true, TWrapped<Value>, TNonopaqueWrapped<Value>>::type wrapped_type;
 
+    static constexpr TransItem::flags_type deleted_bit = TransItem::user0_bit;
+
     TART() {
         art_tree_init(&root_.access());
     }
 
     std::pair<bool, Value> transGet(Key k) {
         auto item = Sto::item(this, k);
+        if (item.has_flag(deleted_bit)) {
+            return {true, NULL};
+        }
+
         if (item.has_write()) {
             auto val = item.template write_value<Value>();
             return {true, val};
@@ -32,25 +38,29 @@ public:
             std::pair<bool, Value> ret;
             vers_.lock_exclusive();
             auto search = root_.read(item, vers_);
-            // Node* n = lookup(search.second, k, 4, 4);
-            // Value val = getLeafValue(n);
             uintptr_t val = (uintptr_t) art_search(&search.second, (const unsigned char*) k.c_str(), k.length());
             ret = {search.first, val};
-            printf("get key: [%d, %d, %d, %d] val: %lu\n", k[0], k[1], k[2], k[3], val);
+            printf("get key: %s, val: %lu\n", k.c_str(), val);
             vers_.unlock_exclusive();
             return ret;
         }
     }
 
     void transPut(Key k, Value v) {
-        printf("put key: [%d, %d, %d, %d] val: %lu\n", k[0], k[1], k[2], k[3], v);
-        // uint8_t* newKey = (uint8_t*) malloc(sizeof(uint8_t)*4);
-        // memcpy(newKey, k, sizeof(uint8_t)*4);
-        Sto::item(this, k).acquire_write(vers_, v);
+        printf("put key: %s, val: %lu\n", k.c_str(), v);
+        auto item = Sto::item(this, k);
+        item.acquire_write(vers_, v);
+        item.clear_flags(deleted_bit);
+    }
+
+    void erase(Key k) {
+        printf("erase key: %s\n", k.c_str());
+        auto item = Sto::item(this, k);
+        item.add_flags(deleted_bit);
+        item.acquire_write(vers_, 0);
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
-        // call is locked here
         if (vers_.is_locked_here()) {
             return true;
         }
@@ -60,13 +70,16 @@ public:
         return vers_.cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
-        // root_.write(std::move(item.template write_value<Value>()));
-        // only valid on last install
         Value val = item.template write_value<Value>();
         Key key = item.template key<Key>();
-        art_insert(&root_.access(), (const unsigned char*) key.c_str(), key.length(), (void*) val);
-        // insert(root_.access(), &root_.access(), key, val, 4, 4);
-        // printf("install key: [%d, %d, %d, %d] val: %lu\n", key[0], key[1], key[2], key[3], val);
+
+        if (item.has_flag(deleted_bit)) {
+            art_delete(&root_.access(), (const unsigned char*) key.c_str(), key.length());
+        } else {
+            art_insert(&root_.access(), (const unsigned char*) key.c_str(), key.length(), (void*) val);
+        }
+
+        printf("install key: %s, val: %lu\n", key.c_str(), val);
         txn.set_version_unlock(vers_, item);
     }
     void unlock(TransItem& item) override {

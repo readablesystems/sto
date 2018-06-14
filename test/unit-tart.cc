@@ -12,7 +12,7 @@
 void testSimple() {
     TART a;
 
-    std::string key1 = "asdf";
+    std::string key1 = "hello world";
     std::string key2 = "1234";
     {
         TransactionGuard t;
@@ -21,11 +21,31 @@ void testSimple() {
     }
 
     {
-        TransactionGuard t2;
+        TransactionGuard t;
         auto x = a.transGet(key1);
         auto y = a.transGet(key2);
         assert(x.second == 123);
         assert(y.second == 321);
+    }
+
+    {
+        TransactionGuard t;
+        a.erase(key1);
+        auto x = a.transGet(key1);
+        assert(x.second == 0);
+    }
+
+    {
+        TransactionGuard t;
+        auto x = a.transGet(key1);
+        assert(x.second == 0);
+        a.transPut(key1, 567);
+    }
+
+    {
+        TransactionGuard t;
+        auto x = a.transGet(key1);
+        assert(x.second == 567);
     }
 
     printf("PASS: %s\n", __FUNCTION__);
