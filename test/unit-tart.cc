@@ -12,8 +12,8 @@
 void testSimple() {
     TART a;
 
-    uint8_t key1[4] = {0, 0, 0, 0};
-    uint8_t key2[4] = {0, 0, 0, 1};
+    std::string key1 = "asdf";
+    std::string key2 = "1234";
     {
         TransactionGuard t;
         a.transPut(key1, 123);
