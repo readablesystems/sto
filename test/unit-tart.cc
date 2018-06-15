@@ -189,11 +189,13 @@ int main() {
     testSimple();
     testErase();
     multiWrite();
-    CleanATART();
-    ThreadWrites1();
-    CleanATART();
+    // CleanATART();
+    // ThreadWrites1();
+    // CleanATART();
     ABA();
     CleanATART();
+
+    printf("TART tests pass\n");
 
     return 0;
 }

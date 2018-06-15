@@ -58,15 +58,12 @@ void WriteK1K2() {
 }
 
 void ABA1() {
-    try {
-        TransactionGuard t;
-        auto x = aTART.lookup(absentkey2);
-        aTART.insert(absentkey1, 123);
-        usleep(20000);
-        printf("ABA1 TO COMMIT\n");
-    } catch (Transaction::Abort e) {
-        printf("aba1 aborted\n");
-    }
+    TestTransaction t(1);
+    auto x = aTART.lookup(absentkey2);
+    aTART.insert(absentkey1, 123);
+    usleep(20000);
+    printf("ABA1 TO COMMIT\n");
+    assert(!t.try_commit());
 }
 
 void ABA2() {
