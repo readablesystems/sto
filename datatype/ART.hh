@@ -31,10 +31,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef ART_H
 #define ART_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #define NODE4   1
 #define NODE16  2
 #define NODE48  3
@@ -226,9 +222,6 @@ int art_iter(art_tree *t, art_callback cb, void *data);
  */
 int art_iter_prefix(art_tree *t, const unsigned char *prefix, int prefix_len, art_callback cb, void *data);
 
-#ifdef __cplusplus
-}
-#endif
 
 #endif
 

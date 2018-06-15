@@ -36,13 +36,22 @@ public:
             return {true, val};
         } else {
             std::pair<bool, Value> ret;
-            vers_.lock_exclusive();
             auto search = root_.read(item, vers_);
+            vers_.lock_exclusive();
             uintptr_t val = (uintptr_t) art_search(&search.second, (const unsigned char*) k.c_str(), k.length());
+            vers_.unlock_exclusive();
             ret = {search.first, val};
             printf("get key: %s, val: %lu\n", k.c_str(), val);
-            vers_.unlock_exclusive();
             return ret;
+        }
+    }
+
+    Value lookup(Key k) {
+        auto result = transGet(k);
+        if (!result.first) {
+            throw Transaction::Abort();
+        } else {
+            return result.second;
         }
     }
 
@@ -51,6 +60,10 @@ public:
         auto item = Sto::item(this, k);
         item.acquire_write(vers_, v);
         item.clear_flags(deleted_bit);
+    }
+
+    void insert(Key k, Value v) {
+        transPut(k, v);
     }
 
     void erase(Key k) {
@@ -80,10 +93,16 @@ public:
         }
 
         printf("install key: %s, val: %lu\n", key.c_str(), val);
-        txn.set_version_unlock(vers_, item);
     }
     void unlock(TransItem& item) override {
-        vers_.cp_unlock(item);
+        if (vers_.is_locked_here()) {
+            auto txn = Sto::transaction();
+            if (txn->aborted()) {
+                vers_.cp_unlock(item);
+            } else {
+                txn->set_version_unlock(vers_, item);
+            }
+        }
     }
     void print(std::ostream& w, const TransItem& item) const override {
         w << "{TART<" << typeid(int).name() << "> " << (void*) this;

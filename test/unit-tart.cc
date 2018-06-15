@@ -16,36 +16,36 @@ void testSimple() {
     std::string key2 = "1234";
     {
         TransactionGuard t;
-        a.transPut(key1, 123);
-        a.transPut(key2, 321);
+        a.insert(key1, 123);
+        a.insert(key2, 321);
     }
 
     {
         TransactionGuard t;
-        auto x = a.transGet(key1);
-        auto y = a.transGet(key2);
-        assert(x.second == 123);
-        assert(y.second == 321);
+        auto x = a.lookup(key1);
+        auto y = a.lookup(key2);
+        assert(x == 123);
+        assert(y == 321);
     }
 
     {
         TransactionGuard t;
         a.erase(key1);
-        auto x = a.transGet(key1);
-        assert(x.second == 0);
+        auto x = a.lookup(key1);
+        assert(x == 0);
     }
 
     {
         TransactionGuard t;
-        auto x = a.transGet(key1);
-        assert(x.second == 0);
-        a.transPut(key1, 567);
+        auto x = a.lookup(key1);
+        assert(x == 0);
+        a.insert(key1, 567);
     }
 
     {
         TransactionGuard t;
-        auto x = a.transGet(key1);
-        assert(x.second == 567);
+        auto x = a.lookup(key1);
+        assert(x == 567);
     }
 
     printf("PASS: %s\n", __FUNCTION__);
