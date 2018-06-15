@@ -26,7 +26,9 @@ public:
     }
 
     std::pair<bool, Value> transGet(Key k) {
+        printf("getting item on key %s, this is %p\n", k.c_str(), this);
         auto item = Sto::item(this, k);
+        printf("item is %p\n", item);
         if (item.has_flag(deleted_bit)) {
             return {true, NULL};
         }
