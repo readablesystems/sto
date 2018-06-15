@@ -96,6 +96,7 @@ UNIT_PROGRAMS = unit-tarray \
 				unit-tcounter \
 				unit-tbox \
 				unit-tint \
+				unit-tart \
 				unit-tgeneric \
 				unit-rcu \
 				unit-tvector \
@@ -114,6 +115,7 @@ ACT_UNIT_PROGRAMS = unit-tarray \
                     unit-tcounter \
                     unit-tbox \
                     unit-tint \
+                    unit-tart \
                     unit-rcu \
                     unit-tvector \
                     unit-tvector-nopred \
@@ -216,6 +218,9 @@ unit-tbox: $(OBJ)/unit-tbox.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tint: $(OBJ)/unit-tint.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-tart: $(OBJ)/unit-tart.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tgeneric: $(OBJ)/unit-tgeneric.o $(STO_DEPS)
