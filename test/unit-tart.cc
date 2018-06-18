@@ -107,10 +107,11 @@ void ThreadWrites1() {
     thr2.join();
     printf("to join thr1\n");
     thr1.join();
-        printf("joined\n");
+    printf("joined\n");
 
 
     {
+        TransactionGuard t;
         printf("to lookup\n");
         auto x = aTART.lookup(absentkey2);
         printf("looked\n");
@@ -189,9 +190,9 @@ int main() {
     testSimple();
     testErase();
     multiWrite();
-    // CleanATART();
-    // ThreadWrites1();
-    // CleanATART();
+    CleanATART();
+    ThreadWrites1();
+    CleanATART();
     ABA();
     CleanATART();
 

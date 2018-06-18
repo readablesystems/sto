@@ -26,9 +26,7 @@ public:
     }
 
     std::pair<bool, Value> transGet(Key k) {
-        printf("getting item on key %s, this is %p\n", k.c_str(), this);
         auto item = Sto::item(this, k);
-        printf("item is %p\n", item);
         if (item.has_flag(deleted_bit)) {
             return {true, NULL};
         }
@@ -40,7 +38,11 @@ public:
             std::pair<bool, Value> ret;
             auto search = root_.read(item, vers_);
             vers_.lock_exclusive();
-            uintptr_t val = (uintptr_t) art_search(&search.second, (const unsigned char*) k.c_str(), k.length());
+            art_leaf* leaf = art_search(&search.second, (const unsigned char*) k.c_str(), k.length());
+            Value val = 0;
+            if (leaf != NULL) {
+                val = (Value) leaf->value;
+            }
             vers_.unlock_exclusive();
             ret = {search.first, val};
             printf("get key: %s, val: %lu\n", k.c_str(), val);
