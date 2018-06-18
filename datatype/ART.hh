@@ -164,7 +164,7 @@ inline uint64_t art_size(art_tree *t) {
  * @return NULL if the item was newly inserted, otherwise
  * the old value pointer is returned.
  */
-void* art_insert(art_tree *t, const unsigned char *key, int key_len, void *value);
+art_leaf* art_insert(art_tree *t, const unsigned char *key, int key_len, void *value, bool* new_insert);
 
 /**
  * Deletes a value from the ART tree
@@ -774,11 +774,12 @@ static int prefix_mismatch(const art_node *n, const unsigned char *key, int key_
     return idx;
 }
 
-static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *key, int key_len, void *value, int depth, int *old) {
+static art_leaf* recursive_insert(art_node *n, art_node **ref, const unsigned char *key, int key_len, void *value, int depth, int *old) {
     // If we are at a NULL node, inject a leaf
     if (!n) {
-        *ref = (art_node*)SET_LEAF(make_leaf(key, key_len, value));
-        return NULL;
+        art_leaf* l = make_leaf(key, key_len, value);
+        *ref = (art_node*) SET_LEAF(l);
+        return l;
     }
 
     // If we are at a leaf, we need to replace it with a node
@@ -788,9 +789,8 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
         // Check if we are updating an existing value
         if (!leaf_matches(l, key, key_len, depth)) {
             *old = 1;
-            void *old_val = l->value;
             l->value = value;
-            return old_val;
+            return l;
         }
 
         // New value, we must split the leaf into a node4
@@ -807,7 +807,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
         *ref = (art_node*)new_node;
         add_child4(new_node, ref, l->key[depth+longest_prefix], SET_LEAF(l));
         add_child4(new_node, ref, l2->key[depth+longest_prefix], SET_LEAF(l2));
-        return NULL;
+        return l;
     }
 
     // Check if given node has a prefix
@@ -842,7 +842,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
         // Insert the new leaf
         art_leaf *l = make_leaf(key, key_len, value);
         add_child4(new_node, ref, key[depth+prefix_diff], SET_LEAF(l));
-        return NULL;
+        return l;
     }
 
 RECURSE_SEARCH:;
@@ -856,7 +856,7 @@ RECURSE_SEARCH:;
     // No child, node goes within us
     art_leaf *l = make_leaf(key, key_len, value);
     add_child(n, ref, key[depth], SET_LEAF(l));
-    return NULL;
+    return l;
 }
 
 /**
@@ -868,11 +868,14 @@ RECURSE_SEARCH:;
  * @return NULL if the item was newly inserted, otherwise
  * the old value pointer is returned.
  */
-void* art_insert(art_tree *t, const unsigned char *key, int key_len, void *value) {
+art_leaf* art_insert(art_tree *t, const unsigned char *key, int key_len, void *value, bool* new_insert) {
     int old_val = 0;
-    void *old = recursive_insert(t->root, &t->root, key, key_len, value, 0, &old_val);
-    if (!old_val) t->size++;
-    return old;
+    art_leaf* new_leaf = recursive_insert(t->root, &t->root, key, key_len, value, 0, &old_val);
+    if (!old_val) {
+        t->size++;
+        *new_insert = true;
+    }
+    return new_leaf;
 }
 
 static void remove_child256(art_node256 *n, art_node **ref, unsigned char c) {

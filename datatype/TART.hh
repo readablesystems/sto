@@ -9,6 +9,10 @@
 #include "print_value.hh"
 #include "ART.hh"
 
+static const unsigned char* c_str(std::string s) {
+    return (const unsigned char*) s.c_str();
+}
+
 class TART : public TObject {
 public:
     typedef std::string Key;
@@ -27,17 +31,13 @@ public:
 
     std::pair<bool, Value> transGet(Key k) {
         auto item = Sto::item(this, k);
-        // if (item.has_flag(deleted_bit)) {
-        //     return {true, NULL};
-        // }
-
         if (item.has_write()) {
             auto val = item.template write_value<Value>();
             return {true, val};
         } else {
             std::pair<bool, Value> ret;
             vers_.lock_exclusive();
-            art_leaf* leaf = art_search(&root_.access(), (const unsigned char*) k.c_str(), k.length());
+            art_leaf* leaf = art_search(&root_.access(), c_str(k), k.length());
             Value val = 0;
             if (leaf != NULL) {
                 val = (Value) leaf->value;
@@ -80,46 +80,37 @@ public:
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
-        if (vers_.is_locked_here()) {
-            return true;
-        }
-        printf("LOCK\n");
-        printf("%p\n", vers_);
-        return txn.try_lock(item, vers_);
+        return vers_.is_locked_here() || txn.try_lock(item, vers_);
     }
     bool check(TransItem& item, Transaction& txn) override {
-        printf("CHECK\n");
         Key key = item.template key<Key>();
-        art_leaf* s = art_search(&root_.access(), (const unsigned char*) key.c_str(), key.length());
+        art_leaf* s = art_search(&root_.access(), c_str(key), key.length());
         if (s == NULL) {
             return vers_.cp_check_version(txn, item);
         }
         return s->vers.cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
-        printf("INSTALL\n");
         Value val = item.template write_value<Value>();
         Key key = item.template key<Key>();
 
         if (item.has_flag(deleted_bit)) {
-            art_delete(&root_.access(), (const unsigned char*) key.c_str(), key.length());
+            art_delete(&root_.access(), c_str(key), key.length());
             txn.set_version(vers_);
         } else {
-            auto new_insert = art_insert(&root_.access(), (const unsigned char*) key.c_str(), key.length(), (void*) val);
-            if (new_insert == NULL) {
+            bool new_insert;
+            art_leaf* s = art_insert(&root_.access(), c_str(key), key.length(), (void*) val, &new_insert);
+            if (new_insert) {
                 txn.set_version(vers_);
             }
-            art_leaf* s = art_search(&root_.access(), (const unsigned char*) key.c_str(), key.length());
             s->vers.lock_exclusive();
             txn.set_version(s->vers);
             s->vers.unlock_exclusive();
         }
-        printf("d\n");
 
         printf("install key: %s, val: %lu\n", key.c_str(), val);
     }
     void unlock(TransItem& item) override {
-        printf("UNLOCK\n");
         if (vers_.is_locked_here()) {
             vers_.cp_unlock(item);
         }
