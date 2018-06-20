@@ -874,6 +874,8 @@ art_leaf* art_insert(art_tree *t, const unsigned char *key, int key_len, void *v
     if (!old_val) {
         t->size++;
         *new_insert = true;
+    } else {
+        *new_insert = false;
     }
     return new_leaf;
 }
