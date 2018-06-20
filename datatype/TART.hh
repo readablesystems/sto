@@ -47,7 +47,6 @@ public:
             }
             vers_.unlock_exclusive();
             ret = {true, val};
-            printf("get key: %s, val: %lu\n", k.c_str(), val);
             return ret;
         }
     }
@@ -62,7 +61,6 @@ public:
     }
 
     void transPut(Key k, Value v) {
-        printf("put key: %s, val: %lu\n", k.c_str(), v);
         auto item = Sto::item(this, k);
         item.add_write(v);
         item.clear_flags(deleted_bit);
@@ -73,7 +71,6 @@ public:
     }
 
     void erase(Key k) {
-        printf("erase key: %s\n", k.c_str());
         auto item = Sto::item(this, k);
         item.add_flags(deleted_bit);
         item.add_write(0);
@@ -107,8 +104,6 @@ public:
             txn.set_version(s->vers);
             s->vers.unlock_exclusive();
         }
-
-        printf("install key: %s, val: %lu\n", key.c_str(), val);
     }
     void unlock(TransItem& item) override {
         if (vers_.is_locked_here()) {

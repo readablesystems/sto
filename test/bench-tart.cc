@@ -41,10 +41,6 @@ void doBenchInsert(int i) {
         TRANSACTION_E {
             art.insert(keys[keyI], vals[valI]);
         } RETRY_E(true);
-
-        TRANSACTION_E {
-            assert(art.lookup(keys[keyI]) == vals[valI]);
-        } RETRY_E(true);
     }
 }
 
