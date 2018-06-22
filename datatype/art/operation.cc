@@ -12,9 +12,11 @@ int Node::checkPrefix(std::vector<uint8_t> key, int depth) {
     int idx;
     for (idx = 0; idx < l; idx++) {
         if (prefix[idx] != key[depth+idx]) {
+            printf("depth: %d\n", depth);
             return idx;
         }
     }
+    printf("Returned %d\n", idx);
     return idx;
 }
 
@@ -67,16 +69,20 @@ RECUR:
     version = l.first;
     ok = l.second;
     if (!ok) {
+        printf("1\n");
         return {nullptr, false, false};
     }
     if (!parent->rUnlock(parentVersion)) {
+        printf("2\n");
         return {nullptr, false, false};
     }
 
     if (n->checkPrefix(key, depth) != std::min(n->prefixLen, maxPrefixLen)) {
         if (!n->rUnlock(version)) {
+            printf("3\n");
             return {nullptr, false, false};
         }
+        printf("4\n");
         return {nullptr, false, false};
     }
 
@@ -91,25 +97,31 @@ RECUR:
             ex = true;
         }
         if (!n->rUnlock(version)) {
+            printf("5\n");
             return {nullptr, false, false};
         }
+        printf("6\n");
         return {value, ex, true};
     }
 
     if (depth > key.size()) {
+        printf("7\n");
         return {nullptr, false, n->rUnlock(version)};
     }
 
     auto ret = n->findChild(key[depth]);
     auto nextNode = std::get<0>(ret);
     if (!n->lockCheck(version)) {
+        printf("8\n");
         return {nullptr, false, false};
     }
 
     if (!nextNode) {
         if (!n->rUnlock(version)) {
+            printf("9\n");
             return {nullptr, false, false};
         }
+        printf("10\n");
         return {nullptr, false, true};
     }
 
@@ -122,8 +134,10 @@ RECUR:
             ex = true;
         }
         if (!n->rUnlock(version)) {
+            printf("11\n");
             return {nullptr, false, false};
         }
+        printf("12\n");
         return {value, ex, true};
     }
 

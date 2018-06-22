@@ -22,6 +22,7 @@ public:
     void put(std::vector<uint8_t> key, void* value) {
         while (true) {
             auto n = (Node*) root.load();
+            printf("try\n");
             if (n->insertOpt(key, value, 0, nullptr, 0, root)) {
                 return;
             }

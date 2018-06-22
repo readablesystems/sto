@@ -12,7 +12,6 @@
 #define node48MinSize  13
 #define node256MinSize 38
 
-
 #define NSPIN 30
 
 enum NodeType {
@@ -118,14 +117,23 @@ public:
     }
 
     bool lockCheck(uint64_t version) {
+        if (!this) {
+            return true;
+        }
         return rUnlock(version);
     }
 
     bool rUnlock(uint64_t version) {
+        if (!this) {
+            return true;
+        }
         return version == v.load();
     }
 
     bool rUnlockWithNode(uint64_t version, Node* lockedNode) {
+        if (!this) {
+            return true;
+        }
         if (version != v.load()) {
             lockedNode->unlock();
             return false;
@@ -134,10 +142,16 @@ public:
     }
 
     bool upgradeToLock(uint64_t version) {
+        if (!this) {
+            return true;
+        }
         return v.compare_exchange_weak(version, version+2);
     }
 
     bool upgradeToLockWithNode(uint64_t version, Node* lockedNode) {
+        if (!this) {
+            return true;
+        }
         if (!v.compare_exchange_weak(version, version+2)) {
             lockedNode->unlock();
             return false;
@@ -160,10 +174,16 @@ public:
     }
 
     void unlock() {
+        if (!this) {
+            return;
+        }
         v.fetch_add(2);
     }
 
     void unlockObsolete() {
+        if (!this) {
+            return;
+        }
         v.fetch_add(3);
     }
 
@@ -182,8 +202,8 @@ public:
         return vers;
     }
 
-    virtual void insertChild(char key, void* child);
-    virtual void expandInsert(char key, void* child, std::atomic<void*>& nodeLoc);
+    virtual void insertChild(char key, void* child) = 0;
+    virtual void expandInsert(char key, void* child, std::atomic<void*>& nodeLoc) = 0;
 };
 
 class Node4 : public Node {
