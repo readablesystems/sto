@@ -45,7 +45,7 @@ void Node256::expandInsert(char key, void* child, std::atomic<void*>& nodeLoc) {
     insertChild(key, child);
 }
 
-void Leaf::updateOrExpand(std::vector<uint8_t> key, void* value, int depth, std::atomic<void*>& nodeLoc) {
+void Leaf::updateOrExpand(std::vector<uint8_t> key, Value value, int depth, std::atomic<void*>& nodeLoc) {
     if (match(key)) {
         this->value = value;
         return;
@@ -75,7 +75,7 @@ void Leaf::updateOrExpand(std::vector<uint8_t> key, void* value, int depth, std:
     nodeLoc.store(newNode);
 }
 
-void Node::updatePrefixLeaf(std::vector<uint8_t> key, void* value) {
+void Node::updatePrefixLeaf(std::vector<uint8_t> key, Value value) {
     Leaf* l = this->prefixLeaf;
     if (!l) {
         this->prefixLeaf.store(new Leaf(key, value));

@@ -3,7 +3,9 @@
 #include "node.hh"
 
 int Node::checkPrefix(std::vector<uint8_t> key, int depth) {
+    printf("prefixLEN:: %d\n", prefixLen);
     if (prefixLen == 0) {
+        printf("returning 0\n");
         return 0;
     }
 
@@ -58,7 +60,8 @@ std::tuple<Node*, void*, int> Node::findChild(char key) {
     return {0, 0, 0};
 }
 
-std::tuple<void*, bool, bool> Node::searchOpt(std::vector<uint8_t> key, int depth, Node* parent, uint64_t parentVersion) {
+std::tuple<Value, bool, bool> Node::searchOpt(std::vector<uint8_t> key, int depth, Node* parent, uint64_t parentVersion) {
+    printf("searchOpt\n");
     uint64_t version;
     bool ok;
 
@@ -77,6 +80,7 @@ RECUR:
         return {nullptr, false, false};
     }
 
+    printf("hi\n");
     if (n->checkPrefix(key, depth) != std::min(n->prefixLen, maxPrefixLen)) {
         if (!n->rUnlock(version)) {
             printf("3\n");
@@ -90,7 +94,7 @@ RECUR:
 
     if (depth == key.size()) {
         Leaf* l = n->prefixLeaf.load();
-        void* value;
+        Value value;
         bool ex;
         if (l && l->match(key)) {
             value = l->value;
@@ -111,6 +115,8 @@ RECUR:
 
     auto ret = n->findChild(key[depth]);
     auto nextNode = std::get<0>(ret);
+    // printf("NEXT NODE %p\n", nextNode);
+    // printf("NEXT NODE TYPE %d\n", le->type);
     if (!n->lockCheck(version)) {
         printf("8\n");
         return {nullptr, false, false};
@@ -125,9 +131,10 @@ RECUR:
         return {nullptr, false, true};
     }
 
-    if (nextNode->type == tNodeLeaf) {
+    Leaf* le = (Leaf*) nextNode;
+    if (le->type == tNodeLeaf || nextNode->type == tNodeLeaf) {
         Leaf* l = (Leaf*) nextNode;
-        void* value;
+        Value value;
         bool ex;
         if (l->match(key)) {
             value = l->value;
@@ -145,10 +152,11 @@ RECUR:
     parent = n;
     parentVersion = version;
     n = nextNode;
+    printf("recur\n");
     goto RECUR;
 }
 
-void Node::insertSplitPrefix(std::vector<uint8_t> key, std::vector<uint8_t> fullKey, void* value, int depth, int prefixLen, std::atomic<void*>& nodeLoc) {
+void Node::insertSplitPrefix(std::vector<uint8_t> key, std::vector<uint8_t> fullKey, Value value, int depth, int prefixLen, std::atomic<void*>& nodeLoc) {
     Node4* newNode = new Node4();
     depth += prefixLen;
     if (key.size() == depth) {
@@ -235,7 +243,7 @@ std::tuple<int, std::vector<uint8_t>, bool> Node::prefixMismatch(std::vector<uin
     return {i - depth, fKey, true};
 }
 
-bool Node::insertOpt(std::vector<uint8_t> key, void* value, int depth, Node* parent, uint64_t parentVersion, std::atomic<void*>& nodeLoc) {
+bool Node::insertOpt(std::vector<uint8_t> key, Value value, int depth, Node* parent, uint64_t parentVersion, std::atomic<void*>& nodeLoc) {
     uint64_t version;
     Node* nextNode;
     std::atomic<void*> nextLoc;

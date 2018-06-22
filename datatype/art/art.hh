@@ -19,7 +19,7 @@ public:
         }
     }
 
-    void put(std::vector<uint8_t> key, void* value) {
+    void put(std::vector<uint8_t> key, Value value) {
         while (true) {
             auto n = (Node*) root.load();
             printf("try\n");

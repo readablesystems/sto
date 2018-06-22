@@ -14,6 +14,8 @@
 
 #define NSPIN 30
 
+typedef void* Value;
+
 enum NodeType {
     tNode4,
     tNode16,
@@ -40,19 +42,27 @@ static inline std::vector<uint8_t> slice(const std::vector<uint8_t>& v, int star
     return nv;
 }
 
-class Leaf {
+class Element {
 public:
     NodeType type;
-    void* value; // maybe should be a T
+
+    bool isLeaf() {
+        return type == tNodeLeaf;
+    }
+};
+
+class Leaf : public Element {
+public:
+    Value value; // maybe should be a T
     std::vector<uint8_t> key;
 
-    Leaf(std::vector<uint8_t> k, void* v) {
+    Leaf(std::vector<uint8_t> k, Value v) {
         type = tNodeLeaf;
         key = k;
         value = v;
     }
 
-    void updateOrExpand(std::vector<uint8_t> key, void* value, int depth, std::atomic<void*>& nodeLoc);
+    void updateOrExpand(std::vector<uint8_t> key, Value value, int depth, std::atomic<void*>& nodeLoc);
 
     bool match(std::vector<uint8_t> k) {
         if (key.size() != k.size()) {
@@ -69,7 +79,7 @@ public:
     }
 };
 
-class Node {
+class Node : public Element {
 public:
     NodeType type;
     uint8_t numChildren;
@@ -82,15 +92,15 @@ public:
     char prefix[maxPrefixLen];
 
     std::tuple<int, std::vector<uint8_t>, bool> prefixMismatch(std::vector<uint8_t> key, int depth, Node* parent, uint64_t version, uint64_t parentVersion);
-    bool insertOpt(std::vector<uint8_t> key, void* value, int depth, Node* parent, uint64_t parentVersion, std::atomic<void*>& nodeLoc);
+    bool insertOpt(std::vector<uint8_t> key, Value value, int depth, Node* parent, uint64_t parentVersion, std::atomic<void*>& nodeLoc);
     std::pair<std::vector<uint8_t>, bool> fullKey(uint64_t version);
-    void insertSplitPrefix(std::vector<uint8_t> key, std::vector<uint8_t> fullKey, void* value, int depth, int prefixLen, std::atomic<void*>& nodeLoc);
-    std::tuple<void*, bool, bool> searchOpt(std::vector<uint8_t> key, int depth, Node* parent, uint64_t parentVersion);
+    void insertSplitPrefix(std::vector<uint8_t> key, std::vector<uint8_t> fullKey, Value value, int depth, int prefixLen, std::atomic<void*>& nodeLoc);
+    std::tuple<Value, bool, bool> searchOpt(std::vector<uint8_t> key, int depth, Node* parent, uint64_t parentVersion);
     std::tuple<Node*, void*, int> findChild(char key);
     int checkPrefix(std::vector<uint8_t> key, int depth);
     bool shouldCompress(Node* parent);
     bool shouldShrink(Node* parent);
-    void updatePrefixLeaf(std::vector<uint8_t> key, void* value);
+    void updatePrefixLeaf(std::vector<uint8_t> key, Value value);
     Node* firstChild();
 
     bool isFull() {
