@@ -6,7 +6,12 @@
 #include <cstring>
 #include <algorithm>
 
-#define maxPrefixLen 30
+#define maxPrefixLen 8
+
+#define node16MinSize  4
+#define node48MinSize  13
+#define node256MinSize 38
+
 
 #define NSPIN 30
 
@@ -17,6 +22,24 @@ enum NodeType {
     tNode256,
     tNodeLeaf,
 };
+
+static inline std::vector<uint8_t> slice(const std::vector<uint8_t>& v, int start=0, int end=-1) {
+    int oldlen = v.size();
+    int newlen;
+
+    if (end == -1 or end >= oldlen){
+        newlen = oldlen-start;
+    } else {
+        newlen = end-start;
+    }
+
+    std::vector<uint8_t> nv(newlen);
+
+    for (int i=0; i<newlen; i++) {
+        nv[i] = v[start+i];
+    }
+    return nv;
+}
 
 class Leaf {
 public:
@@ -30,7 +53,7 @@ public:
         value = v;
     }
 
-    void updateOrExpand(std::vector<uint8_t> key, void* value, int depth, std::atomic<void*> nodeLoc);
+    void updateOrExpand(std::vector<uint8_t> key, void* value, int depth, std::atomic<void*>& nodeLoc);
 
     bool match(std::vector<uint8_t> k) {
         if (key.size() != k.size()) {
@@ -54,12 +77,23 @@ public:
 
     std::atomic<uint64_t> v;
 
-    Leaf* prefixLeaf;
+    std::atomic<Leaf*> prefixLeaf;
 
     int32_t prefixLen;
     char prefix[maxPrefixLen];
 
+    std::tuple<int, std::vector<uint8_t>, bool> prefixMismatch(std::vector<uint8_t> key, int depth, Node* parent, uint64_t version, uint64_t parentVersion);
+    bool insertOpt(std::vector<uint8_t> key, void* value, int depth, Node* parent, uint64_t parentVersion, std::atomic<void*>& nodeLoc);
+    std::pair<std::vector<uint8_t>, bool> fullKey(uint64_t version);
+    void insertSplitPrefix(std::vector<uint8_t> key, std::vector<uint8_t> fullKey, void* value, int depth, int prefixLen, std::atomic<void*>& nodeLoc);
+    std::tuple<void*, bool, bool> searchOpt(std::vector<uint8_t> key, int depth, Node* parent, uint64_t parentVersion);
+    std::tuple<Node*, void*, int> findChild(char key);
+    int checkPrefix(std::vector<uint8_t> key, int depth);
+    bool shouldCompress(Node* parent);
+    bool shouldShrink(Node* parent);
     void updatePrefixLeaf(std::vector<uint8_t> key, void* value);
+    Node* firstChild();
+
     bool isFull() {
         switch (type) {
             case tNode4:
@@ -147,15 +181,9 @@ public:
 
         return vers;
     }
-    //
-    // void insertChild(char key, void* child) {
-    //     switch (type) {
-    //     case tNode4:
-    //     case tNode16:
-    //     case tNode48:
-    //     case tNode256:
-    //     }
-    // }
+
+    virtual void insertChild(char key, void* child);
+    virtual void expandInsert(char key, void* child, std::atomic<void*>& nodeLoc);
 };
 
 class Node4 : public Node {
@@ -167,8 +195,10 @@ public:
         type = tNode4;
     }
 
-    void growAndInsert(char key, void* child, std::atomic<void*> nodeLoc);
-    void insertChild(char key, void* child) {
+    bool removeChildAndShrink(char key, std::atomic<void*>& nodeLoc);
+    bool compressChild(int idx, std::atomic<void*>& nodeLoc);
+    void expandInsert(char key, void* child, std::atomic<void*>& nodeLoc) override;
+    void insertChild(char key, void* child) override {
         int i;
         for (i = 0; i < numChildren; i++) {
             if (key < keys[i]) {
@@ -193,9 +223,10 @@ public:
         type = tNode16;
     }
 
-    void growAndInsert(char key, void* child, std::atomic<void*> nodeLoc);
+    bool removeChildAndShrink(char key, std::atomic<void*>& nodeLoc);
+    void expandInsert(char key, void* child, std::atomic<void*>& nodeLoc) override;
 
-    void insertChild(char key, void* child) {
+    void insertChild(char key, void* child) override {
         int i;
         for (i = 0; i < numChildren; i++) {
             if (key < keys[i]) {
@@ -213,14 +244,14 @@ public:
 #define node48EmptySlots 0xffff000000000000
 #define node48GrowSlots  0xffffffff00000000
 
-int bits_n(int64_t x) {
+static inline int bits_n(int64_t x) {
     return (x != 0) ? std::ceil(std::log(x) / std::log(2)) : 1;
 }
 
 class Node48 : public Node {
 public:
     int8_t index[256];
-    void* children[48];
+    std::atomic<void*> children[48];
     uint64_t slots;
 
     Node48() {
@@ -228,7 +259,8 @@ public:
         slots = node48EmptySlots;
     }
 
-    void growAndInsert(char key, void* child, std::atomic<void*> nodeLoc);
+    bool removeChildAndShrink(char key, std::atomic<void*>& nodeLoc);
+    void expandInsert(char key, void* child, std::atomic<void*>& nodeLoc) override;
 
     int allocSlot() {
         uint64_t idx = 48 - bits_n(~slots);
@@ -240,7 +272,7 @@ public:
         slots &= ~(1 << (48 - idx - 1));
     }
 
-    void insertChild(char key, void* child) {
+    void insertChild(char key, void* child) override {
         auto pos = allocSlot();
         children[pos] = child;
         index[(uint8_t) key] = pos + 1;
@@ -250,15 +282,16 @@ public:
 
 class Node256 : public Node {
 public:
-    void* children[256];
+    std::atomic<void*> children[256];
 
     Node256() {
         type = tNode256;
     }
 
-    void growAndInsert(char key, void* child, std::atomic<void*> nodeLoc);
+    bool removeChildAndShrink(char key, std::atomic<void*>& nodeLoc);
+    void expandInsert(char key, void* child, std::atomic<void*>& nodeLoc) override;
 
-    void insertChild(char key, void* child) {
+    void insertChild(char key, void* child) override {
         children[(uint8_t) key] = child;
         numChildren++;
     }
