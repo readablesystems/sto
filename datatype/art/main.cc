@@ -3,14 +3,17 @@
 int main() {
     ART a;
     std::vector<uint8_t> key1 {1, 2, 3, 4};
-    std::vector<uint8_t> key2 {2, 2, 3, 5, 7};
+    std::vector<uint8_t> key2 {1, 2, 3, 5, 7};
 
     uintptr_t val1 = 123;
     uintptr_t val2 = 321;
 
     a.put(key1, (void*) val1);
     a.put(key2, (void*) val2);
-    // auto n = (Node*) a.root.load();
+    auto n = (Node4*) a.root.load();
+    auto secondChild = (Leaf*) n->children[1].load();
+    printf("secondchild: %p\n", secondChild);
+    printf("secondchild: %d\n", secondChild->value);
     // printf("%d\n", n->prefixLen);
     // auto firstChild = (Leaf*) n->firstChild();
     // printf("%lu\n", firstChild->value);

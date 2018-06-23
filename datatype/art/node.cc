@@ -7,7 +7,7 @@ void copyNode(Node* newNode, Node* n) {
     newNode->prefixLeaf.store(n->prefixLeaf);
 }
 
-void Node4::expandInsert(char key, void* child, std::atomic<void*>& nodeLoc) {
+void Node4::expandInsert(char key, Element* child, std::atomic<Element*>& nodeLoc) {
     Node16* newNode = new Node16();
     memcpy(newNode->keys, keys, 4*sizeof(keys[0]));
     memcpy(newNode->children, children, 5*sizeof(children[0]));
@@ -16,7 +16,7 @@ void Node4::expandInsert(char key, void* child, std::atomic<void*>& nodeLoc) {
     nodeLoc.store(newNode);
 }
 
-void Node16::expandInsert(char key, void* child, std::atomic<void*>& nodeLoc) {
+void Node16::expandInsert(char key, Element* child, std::atomic<Element*>& nodeLoc) {
     Node48* newNode = new Node48();
     memcpy(newNode->children, children, 16*sizeof(children[0]));
     newNode->slots = node48GrowSlots;
@@ -28,7 +28,7 @@ void Node16::expandInsert(char key, void* child, std::atomic<void*>& nodeLoc) {
     nodeLoc.store(newNode);
 }
 
-void Node48::expandInsert(char key, void* child, std::atomic<void*>& nodeLoc) {
+void Node48::expandInsert(char key, Element* child, std::atomic<Element*>& nodeLoc) {
     Node256* newNode = new Node256();
     for (int i = 0; i < 48; i++) {
         auto idx = index[i];
@@ -41,11 +41,11 @@ void Node48::expandInsert(char key, void* child, std::atomic<void*>& nodeLoc) {
     nodeLoc.store(newNode);
 }
 
-void Node256::expandInsert(char key, void* child, std::atomic<void*>& nodeLoc) {
+void Node256::expandInsert(char key, Element* child, std::atomic<Element*>& nodeLoc) {
     insertChild(key, child);
 }
 
-void Leaf::updateOrExpand(std::vector<uint8_t> key, Value value, int depth, std::atomic<void*>& nodeLoc) {
+void Leaf::updateOrExpand(std::vector<uint8_t> key, Value value, int depth, std::atomic<Element*>& nodeLoc) {
     if (match(key)) {
         this->value = value;
         return;
@@ -107,7 +107,7 @@ bool Node::shouldShrink(Node* parent) {
     }
 }
 
-bool Node4::removeChildAndShrink(char key, std::atomic<void*>& nodeLoc) {
+bool Node4::removeChildAndShrink(char key, std::atomic<Element*>& nodeLoc) {
     if (prefixLeaf != nullptr) {
         nodeLoc.store(prefixLeaf);
         return true;
@@ -122,7 +122,7 @@ bool Node4::removeChildAndShrink(char key, std::atomic<void*>& nodeLoc) {
     return false; // unreachable
 }
 
-bool Node4::compressChild(int idx, std::atomic<void*>& nodeLoc) {
+bool Node4::compressChild(int idx, std::atomic<Element*>& nodeLoc) {
     Node* child = (Node*) children[idx].load();
     if (child->type != tNodeLeaf) {
         if (!child->lock()) {
@@ -147,7 +147,7 @@ bool Node4::compressChild(int idx, std::atomic<void*>& nodeLoc) {
     return true;
 }
 
-bool Node16::removeChildAndShrink(char key, std::atomic<void*>& nodeLoc) {
+bool Node16::removeChildAndShrink(char key, std::atomic<Element*>& nodeLoc) {
     Node4* newNode = new Node4();
     int idx = 0;
     for (int i = 0; i < numChildren; i++) {
@@ -163,7 +163,7 @@ bool Node16::removeChildAndShrink(char key, std::atomic<void*>& nodeLoc) {
     return true;
 }
 
-bool Node48::removeChildAndShrink(char key, std::atomic<void*>& nodeLoc) {
+bool Node48::removeChildAndShrink(char key, std::atomic<Element*>& nodeLoc) {
     Node16* newNode = new Node16();
     int idx = 0;
     for (int i = 0; i < 256; i++) {
@@ -179,7 +179,7 @@ bool Node48::removeChildAndShrink(char key, std::atomic<void*>& nodeLoc) {
     return true;
 }
 
-bool Node256::removeChildAndShrink(char key, std::atomic<void*>& nodeLoc) {
+bool Node256::removeChildAndShrink(char key, std::atomic<Element*>& nodeLoc) {
     Node48* newNode = new Node48();
     for (int i = 0; i < 256; i++) {
         if (i != key && children[i] != nullptr) {

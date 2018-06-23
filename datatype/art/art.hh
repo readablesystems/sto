@@ -2,7 +2,7 @@
 
 class ART {
 public:
-    std::atomic<void*> root;
+    std::atomic<Element*> root;
 
     ART() {
         root.store(new Node4());

@@ -22,13 +22,13 @@ int Node::checkPrefix(std::vector<uint8_t> key, int depth) {
     return idx;
 }
 
-std::tuple<Node*, void*, int> Node::findChild(char key) {
+std::tuple<Element*, void*, int> Node::findChild(char key) {
     switch (type) {
         case tNode4: {
             Node4* n4 = (Node4*) this;
             for (int i = 0; i < n4->numChildren; i++) {
                 if (n4->keys[i] == key) {
-                    return {(Node*) n4->children[i].load(), &n4->children[i], i};
+                    return {n4->children[i].load(), &n4->children[i], i};
                 }
             }
             break;
@@ -131,8 +131,8 @@ RECUR:
         return {nullptr, false, true};
     }
 
-    Leaf* le = (Leaf*) nextNode;
-    if (le->type == tNodeLeaf || nextNode->type == tNodeLeaf) {
+    // Leaf* le = (Leaf*) nextNode;
+    if (nextNode->type == tNodeLeaf) {
         Leaf* l = (Leaf*) nextNode;
         Value value;
         bool ex;
@@ -151,12 +151,12 @@ RECUR:
     depth += 1;
     parent = n;
     parentVersion = version;
-    n = nextNode;
+    n = (Node*) nextNode;
     printf("recur\n");
     goto RECUR;
 }
 
-void Node::insertSplitPrefix(std::vector<uint8_t> key, std::vector<uint8_t> fullKey, Value value, int depth, int prefixLen, std::atomic<void*>& nodeLoc) {
+void Node::insertSplitPrefix(std::vector<uint8_t> key, std::vector<uint8_t> fullKey, Value value, int depth, int prefixLen, std::atomic<Element*>& nodeLoc) {
     Node4* newNode = new Node4();
     depth += prefixLen;
     if (key.size() == depth) {
@@ -243,10 +243,10 @@ std::tuple<int, std::vector<uint8_t>, bool> Node::prefixMismatch(std::vector<uin
     return {i - depth, fKey, true};
 }
 
-bool Node::insertOpt(std::vector<uint8_t> key, Value value, int depth, Node* parent, uint64_t parentVersion, std::atomic<void*>& nodeLoc) {
+bool Node::insertOpt(std::vector<uint8_t> key, Value value, int depth, Node* parent, uint64_t parentVersion, std::atomic<Element*>& nodeLoc) {
     uint64_t version;
-    Node* nextNode;
-    std::atomic<void*> nextLoc;
+    Element* nextNode;
+    std::atomic<Element*> nextLoc;
     Node* n = this;
 
 RECUR:
@@ -296,7 +296,7 @@ RECUR:
     }
 
     nextNode = std::get<0>(child);
-    nextLoc = std::get<1>(child);
+    nextLoc = (Element*) std::get<1>(child);
 
     if (!nextNode) {
         if (n->isFull()) {
@@ -340,6 +340,6 @@ RECUR:
     parent = n;
     parentVersion = version;
     nodeLoc.store(nextLoc);
-    n = nextNode;
+    n = (Node*) nextNode;
     goto RECUR;
 }
