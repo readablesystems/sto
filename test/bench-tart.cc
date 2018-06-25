@@ -9,82 +9,84 @@
 #include "Transaction.hh"
 #include <unistd.h>
 
-#define NTHREAD 100
-#define NVALS 1000
+#define NTHREAD 10
+#define NVALS 1000000
 #define KEYSIZE 5
 
 TART art;
 std::string keys[NVALS];
 unsigned vals[NVALS];
 
-std::string rand_string() {
-    auto randchar = []() -> char
-    {
-        const char charset[] = "abcdefghijklmnopqrstuvwxyz";
-        const size_t max_index = (sizeof(charset) - 1);
-        return charset[ rand() % max_index ];
-    };
-    std::string str(KEYSIZE, 0);
-    std::generate_n(str.begin(), KEYSIZE, randchar);
-    return str;
+std::vector<unsigned char> intToBytes(int paramInt)
+{
+    std::vector<unsigned char> arrayOfByte(4);
+     for (int i = 0; i < 4; i++)
+         arrayOfByte[3 - i] = (paramInt >> (i * 8));
+     return arrayOfByte;
 }
 
-int rand_int() {
-    return std::rand();
-}
+void insertKey(uint64_t k, int thread_id) {
+    TThread::set_id(thread_id);
 
-void doBenchInsert(int i) {
-    TThread::set_id(i);
-    for (int i = 0; i < NVALS/10; i++) {
-        auto keyI = rand_int() % NVALS;
-        auto valI = rand_int() % NVALS;
+    for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
+        auto v = intToBytes(k);
+        std::string str(v.begin(),v.end());
         TRANSACTION_E {
-            art.insert(keys[keyI], vals[valI]);
+            art.insert(str, k);
         } RETRY_E(true);
     }
 }
 
-void doBenchErase(int i) {
-    TThread::set_id(i);
-    for (int i = 0; i < NVALS/10; i++) {
-        auto eraseI = rand_int() % NVALS;
+void lookupKey(uint64_t k, int thread_id) {
+    TThread::set_id(thread_id);
+
+    for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
+        auto v = intToBytes(k);
+        std::string str(v.begin(),v.end());
         TRANSACTION_E {
-            art.erase(keys[eraseI]);
-        } RETRY_E(true);
-        TRANSACTION_E {
-            assert(art.lookup(keys[eraseI]) == 0);
+            auto val = art.lookup(str);
+            assert(val == k);
         } RETRY_E(true);
     }
 }
 
 int main() {
-    srand(time(NULL));
+    uint64_t* keys = new uint64_t[NVALS];
+    for (uint64_t i = 0; i < NVALS; i++)
+        // dense, sorted
+        keys[i] = i + 1;
+
     art = TART();
 
-    for (int i = 0; i < NVALS; i++) {
-        keys[i] = rand_string();
-        vals[i] = rand_int();
-        printf("%d: key: %s, val: %d\n", i, keys[i].c_str(), vals[i]);
+    // Build tree
+    {
+        auto starttime = std::chrono::system_clock::now();
+        std::thread threads[NTHREAD];
+        for (int i = 0; i < NTHREAD; i++) {
+            threads[i] = std::thread(insertKey, keys[i], i);
+        }
+
+        for (int i = 0; i < NTHREAD; i++) {
+            threads[i].join();
+        }
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::system_clock::now() - starttime);
+        printf("insert,%ld,%f\n", NVALS, (NVALS * 1.0) / duration.count());
     }
 
-    std::thread threads[NTHREAD];
+    {
+        auto starttime = std::chrono::system_clock::now();
+        std::thread threads[NTHREAD];
+        for (int i = 0; i < NTHREAD; i++) {
+            threads[i] = std::thread(lookupKey, keys[i], i);
+        }
 
-    std::clock_t start;
-    start = std::clock();
-    for (int i = 0; i < NTHREAD; i++) {
-        threads[i] = std::thread(doBenchInsert, i);
+        for (int i = 0; i < NTHREAD; i++) {
+            threads[i].join();
+        }
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::system_clock::now() - starttime);
+        printf("lookup,%ld,%f\n", NVALS, (NVALS * 1.0) / duration.count());
     }
 
-    for (int i = 0; i < NTHREAD; i++) {
-        threads[i].join();
-    }
-
-    for (int i = 0; i < NTHREAD; i++) {
-        threads[i] = std::thread(doBenchErase, i);
-    }
-
-    for (int i = 0; i < NTHREAD; i++) {
-        threads[i].join();
-    }
-    std::cout << "Time: " << (std::clock() - start) / (double)(CLOCKS_PER_SEC / 1000) << " ms" << std::endl;
 }
