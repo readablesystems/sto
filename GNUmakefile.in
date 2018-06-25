@@ -184,7 +184,9 @@ MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 	$(MASSTREEDIR)/checkpoint.o \
 	$(MASSTREEDIR)/string_slice.o
 
-STO_OBJS = $(OBJ)/Packer.o $(OBJ)/Transaction.o $(OBJ)/TRcu.o $(OBJ)/clp.o $(OBJ)/ContentionManager.o $(LIBOBJS)
+ART_OBJS = ART/Tree.o
+
+STO_OBJS = $(OBJ)/Packer.o $(OBJ)/Transaction.o $(OBJ)/TRcu.o $(OBJ)/clp.o $(OBJ)/ContentionManager.o $(LIBOBJS) $(ART_OBJS)
 INDEX_OBJS = $(STO_OBJS) $(MASSTREE_OBJS) $(OBJ)/DB_index.o
 STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
 INDEX_DEPS = $(INDEX_OBJS) $(MASSTREEDIR)/libjson.a
