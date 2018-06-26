@@ -54,7 +54,6 @@ public:
     }
 
     std::pair<bool, Value> transGet(TKey k) {
-        printf("get\n");
         auto item = Sto::item(this, k);
         if (item.has_write()) {
             auto val = item.template write_value<Value>();
@@ -85,7 +84,6 @@ public:
     }
 
     void transPut(TKey k, Value v) {
-        printf("put\n");
         auto item = Sto::item(this, k);
         item.add_write(v);
         item.clear_flags(deleted_bit);
@@ -102,16 +100,7 @@ public:
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
-        // return vers_.is_locked_here() || txn.try_lock(item, vers_);
-        TKey key = item.template key<TKey>();
-        Key art_key;
-        art_key.set(key.c_str(), key.size());
-        Element* e = (Element*) root_.access().lookup(art_key);
-        if (e == 0) {
-            return vers_.is_locked_here() || txn.try_lock(item, vers_);
-        } else {
-            return e->vers.is_locked_here() || txn.try_lock(item, e->vers);
-        }
+        return vers_.is_locked_here() || txn.try_lock(item, vers_);
     }
     bool check(TransItem& item, Transaction& txn) override {
         TKey key = item.template key<TKey>();
@@ -127,7 +116,6 @@ public:
     void install(TransItem& item, Transaction& txn) override {
         Value val = item.template write_value<Value>();
         TKey key = item.template key<TKey>();
-        printf("Install\n");
 
         // if (item.has_flag(deleted_bit)) {
         //     art_delete(&root_.access(), c_str(key), key.length());
@@ -149,21 +137,13 @@ public:
         } else {
             ret->val = val;
             ret->vers.lock_exclusive();
-            txn.set_version_unlock(ret->vers, item);
+            txn.set_version(ret->vers);
             ret->vers.unlock_exclusive();
         }
     }
     void unlock(TransItem& item) override {
-        TKey key = item.template key<TKey>();
-        Key art_key;
-        art_key.set(key.c_str(), key.size());
-        Element* e = (Element*) root_.access().lookup(art_key);
-        if (e == 0) {
-            if (vers_.is_locked_here()) {
-                vers_.cp_unlock(item);
-            }
-        } else {
-            e->vers.unlock_exclusive();
+        if (vers_.is_locked_here()) {
+            vers_.cp_unlock(item);
         }
     }
     void print(std::ostream& w, const TransItem& item) const override {
