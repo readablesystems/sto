@@ -102,13 +102,22 @@ public:
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
-        return vers_.is_locked_here() || txn.try_lock(item, vers_);
+        // return vers_.is_locked_here() || txn.try_lock(item, vers_);
+        TKey key = item.template key<TKey>();
+        Key art_key;
+        art_key.set(key.c_str(), key.size());
+        Element* e = (Element*) root_.access().lookup(art_key);
+        if (e == 0) {
+            return vers_.is_locked_here() || txn.try_lock(item, vers_);
+        } else {
+            return e->vers.is_locked_here() || txn.try_lock(item, e->vers);
+        }
     }
     bool check(TransItem& item, Transaction& txn) override {
         TKey key = item.template key<TKey>();
-        Key kStr;
-        kStr.set(key.c_str(), key.size());
-        TID t = root_.access().lookup(kStr);
+        Key art_key;
+        art_key.set(key.c_str(), key.size());
+        TID t = root_.access().lookup(art_key);
         // art_leaf* s = art_search(&root_.access(), c_str(key), key.length());
         if (t == 0) {
             return vers_.cp_check_version(txn, item);
@@ -124,32 +133,37 @@ public:
         //     art_delete(&root_.access(), c_str(key), key.length());
         //     txn.set_version(vers_);
         // } else {
-        Element* e = new Element();
-        e->key = key;
-        e->val = val;
-        Key kStr;
-        kStr.set(key.c_str(), key.size());
-        auto ret = root_.access().lookup(kStr);
+        Key art_key;
+        art_key.set(key.c_str(), key.size());
+        Element* ret = (Element*) root_.access().lookup(art_key);
         bool new_insert;
-        printf("a\n");
-        printf("%s\n", key.c_str());
-        root_.access().insert(kStr, (TID) e, &new_insert);
-        printf("b\n");
         // art_leaf* s = art_insert(&root_.access(), c_str(key), key.length(), (void*) val, &new_insert);
-        if (new_insert) {
+        if (ret == 0) {
+            Element* e = new Element();
+            e->key = key;
+            e->val = val;
+            root_.access().insert(art_key, (TID) e, &new_insert);
             // vers_.lock_exclusive();
             txn.set_version(vers_);
             // vers_.unlock_exclusive();
+        } else {
+            ret->val = val;
+            ret->vers.lock_exclusive();
+            txn.set_version_unlock(ret->vers, item);
+            ret->vers.unlock_exclusive();
         }
-        // inserted_node->vers.lock_exclusive();
-        // printf("2 %p\n", inserted_node->vers);
-        // txn.set_version(inserted_node->vers);
-        // inserted_node->vers.unlock_exclusive();
-        // }
     }
     void unlock(TransItem& item) override {
-        if (vers_.is_locked_here()) {
-            vers_.cp_unlock(item);
+        TKey key = item.template key<TKey>();
+        Key art_key;
+        art_key.set(key.c_str(), key.size());
+        Element* e = (Element*) root_.access().lookup(art_key);
+        if (e == 0) {
+            if (vers_.is_locked_here()) {
+                vers_.cp_unlock(item);
+            }
+        } else {
+            e->vers.unlock_exclusive();
         }
     }
     void print(std::ostream& w, const TransItem& item) const override {

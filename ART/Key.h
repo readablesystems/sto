@@ -49,7 +49,6 @@ public:
 
 
 inline uint8_t &Key::operator[](std::size_t i) {
-    printf("%lu %u\n", i, len);
     assert(i < len);
     return data[i];
 }
