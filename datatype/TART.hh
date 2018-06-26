@@ -47,25 +47,31 @@ public:
     }
 
     TVal transGet(TKey k) {
-        printf("get\n");
+        // printf("get\n");
+        auto headItem = Sto::item(this, -1);
+        Element* next = nullptr;
+        if (headItem.has_write()) {
+            next = headItem.template write_value<Element*>();
+        }
+        bool found;
+        while (next) {
+            if (next->key.compare(k) == 0) {
+                return next->val;
+            }
+            next = next->next;
+        }
         Key key;
         key.set(k.c_str(), k.size());
         Element* e = (Element*) root_.access().lookup(key);
         auto item = Sto::item(this, e);
-        if (item.has_write()) {
-            TVal v = item.template write_value<TVal>();
-            return v;
+        if (e) {
+            e->vers.observe_read(item);
+            // printf("got %d\n", e->val);
+            return e->val;
         } else {
-            if (e) {
-                e->vers.observe_read(item);
-                printf("got %d\n", e->val);
-                return e->val;
-            } else {
-                absent_vers_.observe_read(item);
-                item.add_flags(absent_bit);
-                printf("e is null");
-                return 0;
-            }
+            absent_vers_.observe_read(item);
+            item.add_flags(absent_bit);
+            return 0;
         }
     }
 
@@ -74,8 +80,12 @@ public:
     }
 
     void transPut(TKey k, TVal v) {
-        printf("put\n");
-        Element* next = head;
+        // printf("put\n");
+        auto headItem = Sto::item(this, -1);
+        Element* next = nullptr;
+        if (headItem.has_write()) {
+            next = headItem.template write_value<Element*>();
+        }
         bool found;
         while (next) {
             if (next->key.compare(k) == 0) {
@@ -92,8 +102,12 @@ public:
         e->val = v;
         auto item = Sto::item(this, e);
 
-        e->next = head;
-        head = e;
+        if (headItem.has_write()) {
+            e->next = headItem.template write_value<Element*>();
+        } else {
+            e->next = nullptr;
+        }
+        headItem.add_write(e);
         item.add_write(v);
         item.clear_flags(deleted_bit);
     }
@@ -103,8 +117,12 @@ public:
     }
 
     void erase(TKey k) {
-        printf("erase\n");
-        Element* next = head;
+        // printf("erase\n");
+        auto headItem = Sto::item(this, -1);
+        Element* next = nullptr;
+        if (headItem.has_write()) {
+            next = headItem.template write_value<Element*>();
+        }
         bool found;
         while (next) {
             if (next->key.compare(k) == 0) {
@@ -116,11 +134,25 @@ public:
             }
             next = next->next;
         }
+        Element* e = new Element();
+        e->key = k;
+        e->val = 0;
+        auto item = Sto::item(this, e);
+
+        if (headItem.has_write()) {
+            e->next = headItem.template write_value<Element*>();
+        } else {
+            e->next = nullptr;
+        }
+        headItem.add_write(e);
+        item.add_write(0);
+        item.add_flags(deleted_bit);
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
-        printf("lock\n");
+        // printf("lock\n");
         Element* e = item.template key<Element*>();
+        if ((long) e == 0xffffffff) { return true; }
         if (e == nullptr) {
             return absent_vers_.is_locked_here() || txn.try_lock(item, absent_vers_);
         } else {
@@ -128,8 +160,9 @@ public:
         }
     }
     bool check(TransItem& item, Transaction& txn) override {
-        printf("check\n");
+        // printf("check\n");
         Element* e = item.template key<Element*>();
+        if ((long) e == 0xffffffff) { return true; }
         if (e == nullptr) {
             if (item.has_read()) {
                 return false;
@@ -142,13 +175,14 @@ public:
         return e->vers.cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
-        printf("install\n");
+        // printf("install\n");
         Element* e = item.template key<Element*>();
 
         // if (item.has_flag(deleted_bit)) {
         //     art_delete(&root_.access(), c_str(key), key.length());
         //     txn.set_version(vers_);
         // } else {
+        if ((long) e == 0xffffffff) { return; }
         if (e) {
             Key art_key;
             art_key.set(e->key.c_str(), e->key.size());
@@ -165,8 +199,9 @@ public:
         }
     }
     void unlock(TransItem& item) override {
-        printf("unlock\n");
+        // printf("unlock\n");
         Element* e = item.template key<Element*>();
+        if ((long) e == 0xffffffff) { return; }
         if (e == 0) {
             if (absent_vers_.is_locked_here()) {
                 Sto::transaction()->set_version(absent_vers_);
@@ -187,5 +222,4 @@ public:
 protected:
     Version_type absent_vers_;
     TOpaqueWrapped<ART_OLC::Tree> root_;
-    Element* head;
 };
