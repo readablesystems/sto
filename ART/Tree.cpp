@@ -389,7 +389,7 @@ namespace ART_OLC {
                                     node->getPrefixLength() - ((nextLevel - level) + 1));
 
                     node->writeUnlock();
-                    *new_insert = true;
+                    if (new_insert) *new_insert = true;
                     return;
                 }
                 case CheckPrefixPessimisticResult::Match:
@@ -404,7 +404,7 @@ namespace ART_OLC {
             if (nextNode == nullptr) {
                 N::insertAndUnlock(node, v, parentNode, parentVersion, parentKey, nodeKey, N::setLeaf(tid), needRestart);
                 if (needRestart) goto restart;
-                *new_insert = true;
+                if (new_insert) *new_insert = true;
                 return;
             }
 
@@ -431,7 +431,7 @@ namespace ART_OLC {
                 n4->insert(key[level + prefixLength], nextNode);
                 N::change(node, k[level - 1], n4);
                 node->writeUnlock();
-                *new_insert = false;
+                if (new_insert) *new_insert = false;
                 return;
             }
             level++;

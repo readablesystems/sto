@@ -9,31 +9,24 @@
 #include "print_value.hh"
 #include "../ART/Tree.h"
 
-static const unsigned char* c_str(std::string s) {
-    return (const unsigned char*) s.c_str();
-}
-
 class TART : public TObject {
 public:
     typedef std::string TKey;
-    typedef std::string key_type;
-    typedef uintptr_t Value;
-    typedef uintptr_t Value_type;
+    typedef uintptr_t TVal;
 
     struct Element {
         TKey key;
-        Value val;
+        TVal val;
         TVersion vers;
+        Element* next;
     };
 
     static void loadKey(TID tid, Key &key) {
-        // Store the key of the tuple into the key vector
-        // Implementation is database specific
         Element* e = (Element*) tid;
         key.set(e->key.c_str(), e->key.size());
     }
 
-    static Value loadValue(TID tid) {
+    static TVal loadValue(TID tid) {
         Element* e = (Element*) tid;
         return e->val;
     }
@@ -43,107 +36,144 @@ public:
         return e->vers;
     }
 
-
     typedef typename std::conditional<true, TVersion, TNonopaqueVersion>::type Version_type;
-    typedef typename std::conditional<true, TWrapped<Value>, TNonopaqueWrapped<Value>>::type wrapped_type;
+    typedef typename std::conditional<true, TWrapped<TVal>, TNonopaqueWrapped<TVal>>::type wrapped_type;
 
     static constexpr TransItem::flags_type deleted_bit = TransItem::user0_bit;
+    static constexpr TransItem::flags_type absent_bit = TransItem::user0_bit<<1;
 
     TART() {
         root_.access().setLoadKey(TART::loadKey);
     }
 
-    std::pair<bool, Value> transGet(TKey k) {
-        auto item = Sto::item(this, k);
+    TVal transGet(TKey k) {
+        printf("get\n");
+        Key key;
+        key.set(k.c_str(), k.size());
+        Element* e = (Element*) root_.access().lookup(key);
+        auto item = Sto::item(this, e);
         if (item.has_write()) {
-            auto val = item.template write_value<Value>();
-            return {true, val};
+            TVal v = item.template write_value<TVal>();
+            return v;
         } else {
-            std::pair<bool, Value> ret;
-            Key key;
-            key.set(k.c_str(), k.size());
-            TID t = root_.access().lookup(key);
-            auto val = loadValue(t);
-            if (t != 0) {
-                loadVers(t).observe_read(item);
+            if (e) {
+                e->vers.observe_read(item);
+                printf("got %d\n", e->val);
+                return e->val;
             } else {
-                vers_.observe_read(item);
+                absent_vers_.observe_read(item);
+                item.add_flags(absent_bit);
+                printf("e is null");
+                return 0;
             }
-            ret = {true, val};
-            return ret;
         }
     }
 
-    Value lookup(TKey k) {
-        auto result = transGet(k);
-        if (!result.first) {
-            throw Transaction::Abort();
-        } else {
-            return result.second;
-        }
+    TVal lookup(TKey k) {
+        return transGet(k);
     }
 
-    void transPut(TKey k, Value v) {
-        auto item = Sto::item(this, k);
+    void transPut(TKey k, TVal v) {
+        printf("put\n");
+        Element* next = head;
+        bool found;
+        while (next) {
+            if (next->key.compare(k) == 0) {
+                auto item = Sto::item(this, next);
+                item.add_write(v);
+                item.clear_flags(deleted_bit);
+                next->val = v;
+                return;
+            }
+            next = next->next;
+        }
+        Element* e = new Element();
+        e->key = k;
+        e->val = v;
+        auto item = Sto::item(this, e);
+
+        e->next = head;
+        head = e;
         item.add_write(v);
         item.clear_flags(deleted_bit);
     }
 
-    void insert(TKey k, Value v) {
+    void insert(TKey k, TVal v) {
         transPut(k, v);
     }
 
     void erase(TKey k) {
-        auto item = Sto::item(this, k);
-        item.add_flags(deleted_bit);
-        item.add_write(0);
+        printf("erase\n");
+        Element* next = head;
+        bool found;
+        while (next) {
+            if (next->key.compare(k) == 0) {
+                auto item = Sto::item(this, next);
+                item.add_write(0);
+                item.add_flags(deleted_bit);
+                next->val = 0;
+                return;
+            }
+            next = next->next;
+        }
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
-        return vers_.is_locked_here() || txn.try_lock(item, vers_);
+        printf("lock\n");
+        Element* e = item.template key<Element*>();
+        if (e == nullptr) {
+            return absent_vers_.is_locked_here() || txn.try_lock(item, absent_vers_);
+        } else {
+            return txn.try_lock(item, e->vers);
+        }
     }
     bool check(TransItem& item, Transaction& txn) override {
-        TKey key = item.template key<TKey>();
-        Key art_key;
-        art_key.set(key.c_str(), key.size());
-        TID t = root_.access().lookup(art_key);
-        // art_leaf* s = art_search(&root_.access(), c_str(key), key.length());
-        if (t == 0) {
-            return vers_.cp_check_version(txn, item);
+        printf("check\n");
+        Element* e = item.template key<Element*>();
+        if (e == nullptr) {
+            if (item.has_read()) {
+                return false;
+            }
+            return absent_vers_.cp_check_version(txn, item);
         }
-        return loadVers(t).cp_check_version(txn, item);
+        if (item.has_flag(absent_bit)) {
+            return false;
+        }
+        return e->vers.cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
-        Value val = item.template write_value<Value>();
-        TKey key = item.template key<TKey>();
+        printf("install\n");
+        Element* e = item.template key<Element*>();
 
         // if (item.has_flag(deleted_bit)) {
         //     art_delete(&root_.access(), c_str(key), key.length());
         //     txn.set_version(vers_);
         // } else {
-        Key art_key;
-        art_key.set(key.c_str(), key.size());
-        Element* ret = (Element*) root_.access().lookup(art_key);
-        bool new_insert;
-        // art_leaf* s = art_insert(&root_.access(), c_str(key), key.length(), (void*) val, &new_insert);
-        if (ret == 0) {
-            Element* e = new Element();
-            e->key = key;
-            e->val = val;
-            root_.access().insert(art_key, (TID) e, &new_insert);
-            // vers_.lock_exclusive();
-            txn.set_version(vers_);
-            // vers_.unlock_exclusive();
-        } else {
-            ret->val = val;
-            ret->vers.lock_exclusive();
-            txn.set_version(ret->vers);
-            ret->vers.unlock_exclusive();
+        if (e) {
+            Key art_key;
+            art_key.set(e->key.c_str(), e->key.size());
+            Element* ret = (Element*) root_.access().lookup(art_key);
+            if (ret == 0) {
+                root_.access().insert(art_key, (TID) e, nullptr);
+                // vers_.lock_exclusive();
+                // vers_.unlock_exclusive();
+            } else {
+                // update
+                ret->val = e->val;
+                txn.set_version_unlock(ret->vers, item);
+            }
         }
     }
     void unlock(TransItem& item) override {
-        if (vers_.is_locked_here()) {
-            vers_.cp_unlock(item);
+        printf("unlock\n");
+        Element* e = item.template key<Element*>();
+        if (e == 0) {
+            if (absent_vers_.is_locked_here()) {
+                Sto::transaction()->set_version(absent_vers_);
+                absent_vers_.cp_unlock(item);
+            }
+        } else {
+            e->vers.cp_unlock(item);
         }
     }
     void print(std::ostream& w, const TransItem& item) const override {
@@ -155,6 +185,7 @@ public:
         w << "}";
     }
 protected:
-    Version_type vers_;
+    Version_type absent_vers_;
     TOpaqueWrapped<ART_OLC::Tree> root_;
+    Element* head;
 };
