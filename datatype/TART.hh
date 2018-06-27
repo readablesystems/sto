@@ -172,10 +172,8 @@ public:
 
         }
         printf("found val\n");
-        if (item.has_flag(absent_bit)) {
-            return false;
-        }
-        return e->vers.cp_check_version(txn, item);
+        // if an item w/ absent bit and is found, abort
+        return !item.has_flag(absent_bit) && e->vers.cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
         // printf("install\n");
