@@ -47,7 +47,6 @@ public:
     }
 
     TVal transGet(TKey k) {
-        printf("get\n");
         auto headItem = Sto::item(this, -1);
         Element* next = nullptr;
         if (headItem.has_write()) {
@@ -66,7 +65,6 @@ public:
         auto item = Sto::item(this, e);
         if (e) {
             e->vers.observe_read(item);
-            // printf("got %d\n", e->val);
             return e->val;
         } else {
             absent_vers_.observe_read(item);
@@ -80,7 +78,6 @@ public:
     }
 
     void transPut(TKey k, TVal v) {
-        printf("put\n");
         auto headItem = Sto::item(this, -1);
         Element* next = nullptr;
         if (headItem.has_write()) {
@@ -117,7 +114,6 @@ public:
     }
 
     void erase(TKey k) {
-        // printf("erase\n");
         auto headItem = Sto::item(this, -1);
         Element* next = nullptr;
         if (headItem.has_write()) {
@@ -150,7 +146,6 @@ public:
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
-        // printf("lock\n");
         Element* e = item.template key<Element*>();
         if ((long) e == 0xffffffff) { return true; }
         if (e == nullptr) {
@@ -161,22 +156,17 @@ public:
     }
     bool check(TransItem& item, Transaction& txn) override {
         Element* e = item.template key<Element*>();
-        if(e) printf("check %s\n", e->key.c_str());
         if ((long) e == 0xffffffff) { return true; }
-        if(item.has_flag(absent_bit)) printf("absent check\n");
         if (e == nullptr) {
             // written items are not checked
-            printf("no val\n");
             // if an item was read w.o absent bit and is no longer found, abort
             return item.has_flag(absent_bit) && absent_vers_.cp_check_version(txn, item);
 
         }
-        printf("found val\n");
         // if an item w/ absent bit and is found, abort
         return !item.has_flag(absent_bit) && e->vers.cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
-        // printf("install\n");
         Element* e = item.template key<Element*>();
 
         // if (item.has_flag(deleted_bit)) {
@@ -199,14 +189,12 @@ public:
         }
     }
     void unlock(TransItem& item) override {
-        printf("unlock\n");
         Element* e = item.template key<Element*>();
         if ((long) e == 0xffffffff) { return; }
         if (e != 0) {
             e->vers.cp_unlock(item);
         }
         if (absent_vers_.is_locked_here()) {
-            printf("UPDATED ABSENT\n");
             Sto::transaction()->set_version(absent_vers_);
             absent_vers_.cp_unlock(item);
         }
