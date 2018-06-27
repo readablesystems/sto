@@ -179,7 +179,12 @@ public:
             art_key.set(e->key.c_str(), e->key.size());
             Element* ret = (Element*) root_.access().lookup(art_key);
             if (ret == 0) {
-                if (!absent_vers_.is_locked_here()) absent_vers_.lock_exclusive();
+                if (!Sto::item(this, -1).has_flag(deleted_bit)) {
+                    if (!absent_vers_.is_locked_here()) absent_vers_.lock_exclusive();
+                    txn.set_version(absent_vers_);
+                    Sto::item(this, -1).add_flags(deleted_bit);
+                    absent_vers_.unlock_exclusive();
+                }
                 root_.access().insert(art_key, (TID) e, nullptr);
             } else {
                 // update
@@ -194,10 +199,7 @@ public:
         if (e != 0) {
             e->vers.cp_unlock(item);
         }
-        if (absent_vers_.is_locked_here()) {
-            Sto::transaction()->set_version(absent_vers_);
-            absent_vers_.cp_unlock(item);
-        }
+        Sto::item(this, -1).clear_flags(deleted_bit);
     }
     void print(std::ostream& w, const TransItem& item) const override {
         w << "{TART<" << typeid(int).name() << "> " << (void*) this;
