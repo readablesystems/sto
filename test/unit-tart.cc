@@ -17,12 +17,17 @@
 
 std::string absentkey1 = "hello";
 std::string absentkey2 = "1234";
+std::string checkkey = "check";
 
 void NoChecks() {
     TART aTART;
     {
         TransactionGuard t;
         aTART.insert(absentkey1, 10);
+    }
+    {
+        TransactionGuard t;
+        aTART.lookup(absentkey1);
     }
 
     {
@@ -49,6 +54,7 @@ void Checks() {
     {
         TransactionGuard t;
         volatile auto x = aTART.lookup(absentkey1);
+        aTART.insert(checkkey, 100);
         if(x == 0) {
             printf("wtf\n");
         }
@@ -69,6 +75,8 @@ void Checks() {
     {
         TransactionGuard t;
         volatile auto x = aTART.lookup(absentkey1);
+        aTART.insert(checkkey, 100);
+
         if (x == 0) {
             printf("wtf\n");
         }
@@ -142,6 +150,7 @@ void testSimpleErase() {
         TransactionGuard t;
         volatile auto x = a.lookup(key1);
         volatile auto y = a.lookup(key2);
+        a.insert(checkkey, 100);
         assert(x == 123);
         assert(y == 321);
     }
@@ -150,6 +159,7 @@ void testSimpleErase() {
         TransactionGuard t;
         a.erase(key1);
         volatile auto x = a.lookup(key1);
+        a.insert(checkkey, 100);
         assert(x == 0);
     }
 
@@ -163,6 +173,7 @@ void testSimpleErase() {
     {
         TransactionGuard t;
         volatile auto x = a.lookup(key1);
+        a.insert(checkkey, 100);
         assert(x == 567);
     }
 
@@ -179,6 +190,7 @@ void testEmptyErase() {
         TransactionGuard t;
         a.erase(key1);
         volatile auto x = a.lookup(key1);
+        a.insert(checkkey, 100);
         assert(x == 0);
     }
 
@@ -504,9 +516,11 @@ void testMultiRead() {
 
     TestTransaction t1(0);
     volatile auto x = art.lookup("hello");
+    art.insert(checkkey, 100);
 
     TestTransaction t2(1);
     volatile auto y = art.lookup("hello");
+    art.insert(checkkey, 100);
     assert(t2.try_commit());
 
     t1.use();
