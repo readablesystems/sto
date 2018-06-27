@@ -389,7 +389,7 @@ void testAbsent1_2() {
     {
         TransactionGuard t;
         volatile auto x = aTART.lookup(absentkey1);
-        assert(x == 0);
+        assert(x == 456);
     }
 
     printf("PASS: %s\n", __FUNCTION__);
@@ -600,7 +600,7 @@ int main() {
     NoChecks();
     // FAILS???
     Checks();
-    return 0;
+    // return 0;
 
     testSimple();
     testSimple2();
@@ -614,7 +614,7 @@ int main() {
     testReadDeleteInsert();
     // testAbsent1_0();
     testAbsent1_1();
-    // testAbsent1_2();
+    testAbsent1_2();
     testAbsent1_3();
     testAbsent2();
     // testAbsent3();

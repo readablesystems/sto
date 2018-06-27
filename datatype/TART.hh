@@ -47,7 +47,7 @@ public:
     }
 
     TVal transGet(TKey k) {
-        // printf("get\n");
+        printf("get\n");
         auto headItem = Sto::item(this, -1);
         Element* next = nullptr;
         if (headItem.has_write()) {
@@ -80,7 +80,7 @@ public:
     }
 
     void transPut(TKey k, TVal v) {
-        // printf("put\n");
+        printf("put\n");
         auto headItem = Sto::item(this, -1);
         Element* next = nullptr;
         if (headItem.has_write()) {
@@ -160,15 +160,18 @@ public:
         }
     }
     bool check(TransItem& item, Transaction& txn) override {
-        printf("check\n");
         Element* e = item.template key<Element*>();
+        if(e) printf("check %s\n", e->key.c_str());
         if ((long) e == 0xffffffff) { return true; }
+        if(item.has_flag(absent_bit)) printf("absent check\n");
         if (e == nullptr) {
-            if (item.has_read()) {
-                return false;
-            }
-            return absent_vers_.cp_check_version(txn, item);
+            // written items are not checked
+            printf("no val\n");
+            // if an item was read w.o absent bit and is no longer found, abort
+            return item.has_flag(absent_bit) && absent_vers_.cp_check_version(txn, item);
+
         }
+        printf("found val\n");
         if (item.has_flag(absent_bit)) {
             return false;
         }
@@ -188,9 +191,8 @@ public:
             art_key.set(e->key.c_str(), e->key.size());
             Element* ret = (Element*) root_.access().lookup(art_key);
             if (ret == 0) {
+                if (!absent_vers_.is_locked_here()) absent_vers_.lock_exclusive();
                 root_.access().insert(art_key, (TID) e, nullptr);
-                // vers_.lock_exclusive();
-                // vers_.unlock_exclusive();
             } else {
                 // update
                 ret->val = e->val;
@@ -199,17 +201,16 @@ public:
         }
     }
     void unlock(TransItem& item) override {
-        // printf("unlock\n");
+        printf("unlock\n");
         Element* e = item.template key<Element*>();
         if ((long) e == 0xffffffff) { return; }
-        if (e == 0) {
-            if (absent_vers_.is_locked_here()) {
-                printf("UPDATED ABSENT\n");
-                Sto::transaction()->set_version(absent_vers_);
-                absent_vers_.cp_unlock(item);
-            }
-        } else {
+        if (e != 0) {
             e->vers.cp_unlock(item);
+        }
+        if (absent_vers_.is_locked_here()) {
+            printf("UPDATED ABSENT\n");
+            Sto::transaction()->set_version(absent_vers_);
+            absent_vers_.cp_unlock(item);
         }
     }
     void print(std::ostream& w, const TransItem& item) const override {
