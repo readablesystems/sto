@@ -25,37 +25,32 @@ std::vector<unsigned char> intToBytes(int paramInt)
      return arrayOfByte;
 }
 
-void insertKey(uint64_t k, int thread_id) {
+void insertKey(int thread_id) {
     TThread::set_id(thread_id);
 
     for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
-        auto v = intToBytes(k);
+        auto v = intToBytes(i);
         std::string str(v.begin(),v.end());
         TRANSACTION_E {
-            art.insert(str, k);
+            art.insert(str, i);
         } RETRY_E(true);
     }
 }
 
-void lookupKey(uint64_t k, int thread_id) {
+void lookupKey(int thread_id) {
     TThread::set_id(thread_id);
 
     for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
-        auto v = intToBytes(k);
+        auto v = intToBytes(i);
         std::string str(v.begin(),v.end());
         TRANSACTION_E {
             auto val = art.lookup(str);
-            assert(val == k);
+            assert(val == i);
         } RETRY_E(true);
     }
 }
 
 int main() {
-    uint64_t* keys = new uint64_t[NVALS];
-    for (uint64_t i = 0; i < NVALS; i++)
-        // dense, sorted
-        keys[i] = i + 1;
-
     art = TART();
 
     // Build tree
@@ -63,7 +58,7 @@ int main() {
         auto starttime = std::chrono::system_clock::now();
         std::thread threads[NTHREAD];
         for (int i = 0; i < NTHREAD; i++) {
-            threads[i] = std::thread(insertKey, keys[i], i);
+            threads[i] = std::thread(insertKey, i);
         }
 
         for (int i = 0; i < NTHREAD; i++) {
@@ -78,7 +73,7 @@ int main() {
         auto starttime = std::chrono::system_clock::now();
         std::thread threads[NTHREAD];
         for (int i = 0; i < NTHREAD; i++) {
-            threads[i] = std::thread(lookupKey, keys[i], i);
+            threads[i] = std::thread(lookupKey, i);
         }
 
         for (int i = 0; i < NTHREAD; i++) {
