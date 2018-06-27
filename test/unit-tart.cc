@@ -609,7 +609,7 @@ int main() {
     multiWrite();
     multiThreadWrites();
     // FAIL
-    // testReadDelete();
+    testReadDelete();
     testReadWriteDelete();
     testReadDeleteInsert();
     // testAbsent1_0();
