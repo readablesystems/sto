@@ -160,7 +160,7 @@ public:
         }
     }
     bool check(TransItem& item, Transaction& txn) override {
-        // printf("check\n");
+        printf("check\n");
         Element* e = item.template key<Element*>();
         if ((long) e == 0xffffffff) { return true; }
         if (e == nullptr) {
@@ -204,6 +204,7 @@ public:
         if ((long) e == 0xffffffff) { return; }
         if (e == 0) {
             if (absent_vers_.is_locked_here()) {
+                printf("UPDATED ABSENT\n");
                 Sto::transaction()->set_version(absent_vers_);
                 absent_vers_.cp_unlock(item);
             }
