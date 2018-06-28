@@ -45,7 +45,7 @@ void lookupKey(int thread_id) {
         std::string str(v.begin(),v.end());
         TRANSACTION_E {
             auto val = art.lookup(str);
-            assert(val == i);
+            assert((int) val == i);
         } RETRY_E(true);
     }
 }
@@ -66,7 +66,7 @@ int main() {
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - starttime);
-        printf("insert,%ld,%f\n", NVALS, (NVALS * 1.0) / duration.count());
+        printf("insert,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
     }
 
     {
@@ -81,7 +81,6 @@ int main() {
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - starttime);
-        printf("lookup,%ld,%f\n", NVALS, (NVALS * 1.0) / duration.count());
+        printf("lookup,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
     }
-
 }

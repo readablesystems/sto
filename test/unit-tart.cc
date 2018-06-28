@@ -53,7 +53,7 @@ void Checks() {
     printf("1. ");
     {
         TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
+        auto x = aTART.lookup(absentkey1);
         aTART.insert(checkkey, 100);
         if(x == 0) {
             printf("wtf\n");
@@ -118,7 +118,7 @@ void testSimple2() {
     }
 
     TestTransaction t1(0);
-    volatile auto x = aTART.lookup(absentkey1);
+    aTART.lookup(absentkey1);
     aTART.insert(absentkey2, 123);
 
     TestTransaction t2(0);
@@ -261,7 +261,7 @@ void testReadDelete() {
     assert(t0.try_commit());
 
     TestTransaction t1(0);
-    volatile auto x = aTART.lookup(absentkey1);
+    aTART.lookup(absentkey1);
     aTART.insert(absentkey2, 10);
 
     TestTransaction t2(0);
@@ -289,7 +289,7 @@ void testReadWriteDelete() {
     assert(t0.try_commit());
 
     TestTransaction t1(0);
-    volatile auto x = aTART.lookup(absentkey1);
+    aTART.lookup(absentkey1);
     aTART.insert(absentkey2, 123);
 
     TestTransaction t2(0);
@@ -317,7 +317,7 @@ void testReadDeleteInsert() {
     assert(t0.try_commit());
 
     TestTransaction t1(0);
-    volatile auto x = aTART.lookup(absentkey1);
+    aTART.lookup(absentkey1);
     aTART.insert(absentkey2, 123);
 
     TestTransaction t2(0);
@@ -343,7 +343,7 @@ void testAbsent1_1() {
     TART aTART;
 
     TestTransaction t1(0);
-    volatile auto x = aTART.lookup(absentkey1);
+    aTART.lookup(absentkey1);
     // a new insert
     TestTransaction t2(0);
     aTART.insert(absentkey1, 456);
@@ -369,7 +369,7 @@ void testAbsent1_2() {
     TART aTART;
 
     TestTransaction t1(0);
-    volatile auto x = aTART.lookup(absentkey1);
+    aTART.lookup(absentkey1);
     aTART.insert(absentkey1, 123);
 
     // a new insert
@@ -394,7 +394,7 @@ void testAbsent1_3() {
     TART aTART;
 
     TestTransaction t1(0);
-    volatile auto x = aTART.lookup(absentkey1);
+    aTART.lookup(absentkey1);
     aTART.insert(absentkey2, 123);
 
     // a new insert
@@ -422,7 +422,7 @@ void testAbsent2() {
     TART aTART;
 
     TestTransaction t1(0);
-    volatile auto x = aTART.lookup(absentkey1);
+    aTART.lookup(absentkey1);
     aTART.insert(absentkey2, 123);
 
     // a new insert
@@ -453,7 +453,7 @@ void testAbsent3() {
     usleep(1000);
 
     TestTransaction t1(0);
-    volatile auto x = aTART.lookup(absentkey1);
+    aTART.lookup(absentkey1);
     aTART.insert(absentkey2, 123);
 
     // an update
@@ -483,7 +483,7 @@ void testABA1() {
     }
 
     TestTransaction t1(0);
-    volatile auto x = aTART.lookup(absentkey2);
+    aTART.lookup(absentkey2);
     aTART.insert(absentkey1, 123);
 
     TestTransaction t2(0);
@@ -541,7 +541,7 @@ void testReadWrite() {
     }
 
     TestTransaction t1(0);
-    volatile auto x = art.lookup("hello");
+    art.lookup("hello");
     art.insert("world", 1);
 
     TestTransaction t2(1);
@@ -572,7 +572,7 @@ void testPerNodeV() {
     }
 
     TestTransaction t1(0);
-    volatile auto x = art.lookup("x");
+    art.lookup("x");
     art.insert("z", 13);
 
     TestTransaction t2(1);
