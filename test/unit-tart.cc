@@ -352,16 +352,18 @@ void testAbsent1_1() {
     t1.use();
     try {
         aTART.lookup(absentkey2);
-    } catch (Transaction::Abort e) { }
-    
-    assert(t2.try_commit());
-    {
-        TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
-        assert(x == 456);
+    } catch (Transaction::Abort e) { 
+        assert(t2.try_commit());
+        {
+            TransactionGuard t;
+            volatile auto x = aTART.lookup(absentkey1);
+            assert(x == 456);
+        }
+        printf("PASS: %s\n", __FUNCTION__);
+        return;
     }
+    assert(false);
 
-    printf("PASS: %s\n", __FUNCTION__);
 
 }
 
@@ -399,7 +401,7 @@ void testAbsent1_3() {
 
     // a new insert
     TestTransaction t2(0);
-    aTART.insert(absentkey2, 456);
+    aTART.insert(absentkey1, 456);
 
     assert(t2.try_commit());
     
@@ -604,17 +606,17 @@ int main() {
     testSimpleErase();
     testEmptyErase();
     multiWrite();
-    // multiThreadWrites();
+    multiThreadWrites();
     testReadDelete(); // problem w/ lacking implementation of erase
     testReadWriteDelete();
     testReadDeleteInsert();
     testAbsent1_1();
     testAbsent1_2();
-    // testAbsent1_3();
+    // testAbsent1_3(); // ABA read insert delete detection no longer exists
     // testAbsent2();
-    // testAbsent3();
-    // testABA1();
-    // testMultiRead();
+    testAbsent3();
+    // testABA1(); // ABA doesn't work
+    testMultiRead();
     testReadWrite();
     testPerNodeV();
     testReadWrite();

@@ -61,15 +61,32 @@ public:
         return transGet(k);
     }
 
+    // void transPut(TKey k, TVal v) {
+    //     Key art_key;
+    //     art_key.set(k.c_str(), k.size());
+    //     Element* e = (Element*) root_.access().lookup(art_key);
+    //     if (e) {
+    //         if (e->poisoned) {
+    //             throw Transaction::Abort();
+    //         }
+
+    //         Sto::item(this, e).add_write(v);
+    //         return;
+    //     }
+
+    //     e = new Element();
+    //     e->key = k;
+    //     e->val = v;
+    //     e->poisoned = true;
+    //     root_.access().insert(art_key, (TID) e, nullptr);
+    //     Sto::item(this, e).add_write(v);
+    // }
+
     void transPut(TKey k, TVal v) {
         Key art_key;
         art_key.set(k.c_str(), k.size());
         Element* e = (Element*) root_.access().lookup(art_key);
         if (e) {
-            if (e->poisoned) {
-                throw Transaction::Abort();
-            }
-
             Sto::item(this, e).add_write(v);
             return;
         }

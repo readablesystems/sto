@@ -81,6 +81,6 @@ int main() {
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - starttime);
-        printf("lookup,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
+        printf("lookup,%d,%f\n\n", NVALS, (NVALS * 1.0) / duration.count());
     }
 }
