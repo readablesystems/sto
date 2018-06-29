@@ -434,6 +434,11 @@ namespace ART_OLC {
                 uint32_t prefixLength = 0;
                 while (key[level + prefixLength] == k[level + prefixLength]) {
                     prefixLength++;
+                    if (level + prefixLength >= k.getKeyLen()) {
+                        node->writeUnlock();
+                        if (success) *success = false;
+                        return;
+                    }
                 }
 
                 auto n4 = new N4(&k[level], prefixLength);
