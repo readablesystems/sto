@@ -32,11 +32,19 @@ private:
     table_type tbl_;
 };
 
+std::string intToString(size_t paramInt)
+{
+    std::vector<unsigned char> arrayOfByte(8);
+    for (int i = 0; i < 8; i++)
+        arrayOfByte[7 - i] = (paramInt >> (i * 8));
+    return std::string(arrayOfByte.begin(),arrayOfByte.end());
+}
+
 template <typename DBParams>
 void initialize_db(tart_db<DBParams>& db, size_t db_size) {
     //db.table().thread_init();
     for (size_t i = 0; i < db_size; i++)
-        db.table().nontrans_put(std::to_string(i), (tart_row)rand());
+        db.table().nontrans_put(intToString(i), (tart_row)rand());
     db.size() = db_size;
 }
 
@@ -48,12 +56,12 @@ public:
         TRANSACTION_E {
             bool success, found;
             uintptr_t value;
-            std::tie(success, found, std::ignore, value) = db.table().select_row(std::to_string(key));
+            std::tie(success, found, std::ignore, value) = db.table().select_row(intToString(key));
             if (success) {
                 if (found) {
-                  std::tie(success, found) = db.table().delete_row(std::to_string(key));
+                  std::tie(success, found) = db.table().delete_row(intToString(key));
                 } else {
-                  std::tie(success, found) = db.table().insert_row(std::to_string(key), *Sto::tx_alloc<tart_row>());
+                  std::tie(success, found) = db.table().insert_row(intToString(key), *Sto::tx_alloc<tart_row>());
                 }
             }
         } RETRY_E(true);

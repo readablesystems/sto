@@ -90,7 +90,6 @@ public:
 
     void nonTransPut(TKey k, TVal v) {
         Key art_key;
-        const char* s = k.c_str();
         art_key.set(k.c_str(), k.size());
         Element* e = (Element*) root_.access().lookup(art_key);
         if (e) {
