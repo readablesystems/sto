@@ -57,30 +57,19 @@ public:
         }
     }
 
+    TVal nonTransGet(TKey k) {
+        Key key;
+        key.set(k.c_str(), k.size());
+        Element* e = (Element*) root_.access().lookup(key);
+        if (e) {
+            return e->val;
+        }
+        return 0;
+    }
+
     TVal lookup(TKey k) {
         return transGet(k);
     }
-
-    // void transPut(TKey k, TVal v) {
-    //     Key art_key;
-    //     art_key.set(k.c_str(), k.size());
-    //     Element* e = (Element*) root_.access().lookup(art_key);
-    //     if (e) {
-    //         if (e->poisoned) {
-    //             throw Transaction::Abort();
-    //         }
-
-    //         Sto::item(this, e).add_write(v);
-    //         return;
-    //     }
-
-    //     e = new Element();
-    //     e->key = k;
-    //     e->val = v;
-    //     e->poisoned = true;
-    //     root_.access().insert(art_key, (TID) e, nullptr);
-    //     Sto::item(this, e).add_write(v);
-    // }
 
     void transPut(TKey k, TVal v) {
         Key art_key;
@@ -97,6 +86,22 @@ public:
         e->poisoned = true;
         root_.access().insert(art_key, (TID) e, nullptr);
         Sto::item(this, e).add_write(v);
+    }
+
+    void nonTransPut(TKey k, TVal v) {
+        Key art_key;
+        const char* s = k.c_str();
+        art_key.set(k.c_str(), k.size());
+        Element* e = (Element*) root_.access().lookup(art_key);
+        if (e) {
+            e->val = v;
+            return;
+        }
+
+        e = new Element();
+        e->key = k;
+        e->val = v;
+        root_.access().insert(art_key, (TID) e, nullptr);
     }
 
     void insert(TKey k, TVal v) {

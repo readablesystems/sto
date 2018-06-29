@@ -311,6 +311,9 @@ wiki_bench: $(OBJ)/Wikipedia_bench.o $(OBJ)/Wikipedia_data.o $(INDEX_OBJS)
 voter_bench: $(OBJ)/Voter_bench.o $(OBJ)/Voter_data.o $(INDEX_OBJS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
+tart_bench: $(OBJ)/TART_bench.o $(INDEX_OBJS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
 $(MASSTREE_OBJS): masstree ;
 
 .PHONY: masstree
