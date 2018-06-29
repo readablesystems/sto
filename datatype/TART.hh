@@ -88,7 +88,12 @@ public:
         e->key = k;
         e->val = v;
         e->poisoned = true;
-        root_.access().insert(art_key, (TID) e, nullptr);
+        bool success;
+        root_.access().insert(art_key, (TID) e, &success);
+        if (!success) {
+            free(e);
+            throw Transaction::Abort();
+        }
         auto item = Sto::item(this, e);
         item.add_write(v);
 

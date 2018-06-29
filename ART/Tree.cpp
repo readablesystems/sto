@@ -337,7 +337,7 @@ namespace ART_OLC {
         return 0;
     }
 
-    void Tree::insert(const Key &k, TID tid, bool* new_insert) {
+    void Tree::insert(const Key &k, TID tid, bool* success) {
         // EpocheGuard epocheGuard(epocheInfo);
         restart:
         bool needRestart = false;
@@ -389,11 +389,21 @@ namespace ART_OLC {
                                     node->getPrefixLength() - ((nextLevel - level) + 1));
 
                     node->writeUnlock();
-                    if (new_insert) *new_insert = true;
+                    if (success) *success = true;
                     return;
                 }
                 case CheckPrefixPessimisticResult::Match:
                     break;
+            }
+            if (nextLevel >= k.getKeyLen()) {
+                node->readUnlockOrRestart(v, needRestart);
+                if (needRestart) goto restart;
+                if (parentNode != nullptr) {
+                    parentNode->readUnlockOrRestart(parentVersion, needRestart);
+                    if (needRestart) goto restart;
+                }
+                if (success) *success = false;
+                return;
             }
             level = nextLevel;
             nodeKey = k[level];
@@ -404,7 +414,7 @@ namespace ART_OLC {
             if (nextNode == nullptr) {
                 N::insertAndUnlock(node, v, parentNode, parentVersion, parentKey, nodeKey, N::setLeaf(tid), needRestart);
                 if (needRestart) goto restart;
-                if (new_insert) *new_insert = true;
+                if (success) *success = true;
                 return;
             }
 
@@ -431,7 +441,7 @@ namespace ART_OLC {
                 n4->insert(key[level + prefixLength], nextNode);
                 N::change(node, k[level - 1], n4);
                 node->writeUnlock();
-                if (new_insert) *new_insert = false;
+                if (success) *success = true;
                 return;
             }
             level++;
