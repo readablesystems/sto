@@ -7,6 +7,7 @@
 #include "ContentionManager.hh"
 #include "TransScratch.hh"
 #include "VersionBase.hh"
+#include "MVCCStructs.hh"
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -196,6 +197,7 @@ enum txp {
     txp_rcu_free_req,
     txp_rcu_free_impl,
     txp_dealloc_performed,
+    txp_rtid_atomic,
 #if !STO_PROFILE_COUNTERS
     txp_count = 0
 #elif STO_PROFILE_COUNTERS == 1
@@ -300,7 +302,9 @@ void reportPerf();
 
 struct __attribute__((aligned(128))) threadinfo_t {
     using epoch_type = TRcuSet::epoch_type;
+    using tid_type = TransactionTid::type;
     epoch_type epoch;
+    tid_type wtid;
     TRcuSet rcu_set;
     // XXX(NH): these should be vectors so multiple data structures can register
     // callbacks for these
@@ -309,7 +313,7 @@ struct __attribute__((aligned(128))) threadinfo_t {
     txp_counters p_;
     tc_counters tcs_;
     threadinfo_t()
-        : epoch(0) {
+        : epoch(0), wtid(0) {
     }
 };
 
@@ -347,6 +351,8 @@ class TicTocBase;
 
 class Transaction {
 public:
+    typedef TransactionTid::type tid_type;
+
     static constexpr unsigned tset_initial_capacity = 512;
 
     static constexpr unsigned hash_size = 32768;
@@ -358,12 +364,12 @@ public:
     static struct epoch_state {
         epoch_type global_epoch; // != 0
         epoch_type active_epoch; // no thread is before this epoch
-        TransactionTid::type recent_tid;
+        tid_type recent_tid;
         bool run;
     } global_epochs;
-    typedef TransactionTid::type tid_type;
 private:
-    static TransactionTid::type _TID;
+    static tid_type _TID;
+    static tid_type _RTID;
 public:
 
     static std::function<void(threadinfo_t::epoch_type)> epoch_advance_callback;
@@ -417,6 +423,7 @@ public:
     }
 
     static void* epoch_advancer(void*);
+    static void epoch_advance_once();
     template <typename T>
     static void rcu_delete(T* x) {
         auto& thr = tinfo[TThread::id()];
@@ -502,6 +509,7 @@ private:
 #endif
         thr.epoch = global_epochs.global_epoch;
         thr.rcu_set.clean_until(global_epochs.active_epoch);
+        thr.wtid = 0;
         if (thr.trans_start_callback)
             thr.trans_start_callback();
         hash_base_ += tset_size_ + 1;
@@ -520,7 +528,7 @@ private:
 #endif
         any_writes_ = any_nonopaque_ = may_duplicate_items_ = false;
         first_write_ = 0;
-        start_tid_ = commit_tid_ = 0;
+        start_tid_ = read_tid_ = commit_tid_ = 0;
         tictoc_tid_ = 0;
         buf_.clear();
 #if STO_DEBUG_ABORTS
@@ -837,14 +845,30 @@ public:
         return check_opacity(_TID);
     }
 
+    // transaction start
+    tid_type read_tid() const {
+        if (!read_tid_) {
+            TXP_INCREMENT(txp_rtid_atomic);
+            read_tid_ = _RTID;
+        }
+        return read_tid_;
+    }
+
+    // transaction is now a read-write transaction
+    tid_type write_tid() const {
+        if (!commit_tid_) {
+            threadinfo_t& thr = tinfo[TThread::id()];
+            thr.wtid = commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
+        }
+        return commit_tid_;
+    }
+
     // committing
     tid_type commit_tid() const {
 #if !CONSISTENCY_CHECK
         assert(state_ == s_committing_locked || state_ == s_committing);
 #endif
-        if (!commit_tid_)
-            commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
-        return commit_tid_;
+        return write_tid();
     }
 
     inline tid_type compute_tictoc_commit_ts() const;
@@ -981,6 +1005,7 @@ private:
     TransItem* tset_next_;
     unsigned tset_size_;
     mutable tid_type start_tid_;
+    mutable tid_type read_tid_;
     mutable tid_type commit_tid_;
     mutable tid_type tictoc_tid_; // commit tid reserved for TicToc
 public:
@@ -1115,6 +1140,14 @@ public:
         if (!in_progress())
             return false;
         return TThread::txn->try_commit();
+    }
+
+    static TransactionTid::type read_tid() {
+        return TThread::txn->read_tid();
+    }
+
+    static TransactionTid::type write_tid() {
+        return TThread::txn->write_tid();
     }
 
     static TransactionTid::type commit_tid() {

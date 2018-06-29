@@ -10,6 +10,8 @@
 
 class TWrappedAccess;
 
+class TMvAccess;
+
 class TransProxy;
 
 template <typename VersImpl>
@@ -277,6 +279,7 @@ private:
     friend class Transaction;
     friend class TransProxy;
     friend class TWrappedAccess;
+    friend class TMvAccess;
     friend class VersionDelegate;
 };
 

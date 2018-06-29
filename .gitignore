@@ -26,6 +26,7 @@
 /rbtree
 /singleelems
 /tags
+/cscope.out
 /trans_test
 /vector
 /hashtable_nostm
@@ -46,11 +47,14 @@
 /unit-opacity
 /unit-sampling
 /unit-tflexarray
+/unit-tmv*
 /tpcc_bench
 /ycsb_bench
 /micro_bench
 /wiki_bench
 /voter_bench
+/gc_bench
+/unit-dboindex
 /unit-swisstarray
 /unit-swisstgeneric
 /perf.data
