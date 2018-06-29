@@ -903,11 +903,11 @@ public:
 
 private:
     struct history {
-        history(TransactionTid::type ntid, read_type nv, history *nprev = nullptr)
+        history(TransactionTid::type ntid, T nv, history *nprev = nullptr)
             : tid(ntid), v(nv), prev(nprev) {}
 
         TransactionTid::type tid;
-        read_type v;
+        T v;
         history *prev;
     };
 
@@ -921,7 +921,7 @@ public:
     typedef typename std::conditional<Opaque, TVersion, TNonopaqueVersion>::type version_type;
 
     TMvWrapped() {
-        h_ = new history(0, new T());
+        h_ = new history(0, new T);
     }
     explicit TMvWrapped(const T& v) {
         h_ = new history(0, new T(v));
@@ -982,7 +982,7 @@ public:
             return *TWrappedAccess::read_wait_nonatomic(&h.vp, item, version, add_read);
         }
     }
-    std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
+   std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
         const TransactionTid::type read_tid = Sto::read_tid();
         history& h = *h_;
         // TODO: use something smarter than a linear scan :)
@@ -1011,11 +1011,11 @@ public:
 
 private:
     struct history {
-        history(TransactionTid::type ntid, read_type nvp, history *nprev = nullptr)
+        history(TransactionTid::type ntid, T *nvp, history *nprev = nullptr)
             : tid(ntid), vp(nvp), prev(nprev) {}
 
         TransactionTid::type tid;
-        read_type vp;
+        T *vp;
         history *prev;
     };
 

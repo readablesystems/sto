@@ -104,7 +104,8 @@ UNIT_PROGRAMS = unit-tarray \
           			unit-opacity \
           			unit-swisstarray \
           			unit-swisstgeneric \
-          			unit-mvcc \
+          			unit-mvtbox \
+          			unit-mvtcounter \
           			unit-masstree \
                 unit-dboindex
 
@@ -120,6 +121,8 @@ ACT_UNIT_PROGRAMS = unit-tarray \
                     unit-sampling \
                     unit-swisstarray \
                     unit-swisstgeneric \
+										unit-mvtbox \
+										unit-mvtcounter \
                     unit-masstree \
           					unit-dboindex
 
@@ -239,7 +242,10 @@ unit-swisstarray: $(OBJ)/unit-swisstarray.o $(STO_DEPS)
 unit-swisstgeneric: $(OBJ)/unit-swisstgeneric.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-unit-mvcc: $(OBJ)/unit-mvwrapped.o $(STO_DEPS)
+unit-mvtbox: $(OBJ)/unit-mvtbox.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-mvtcounter: $(OBJ)/unit-mvtcounter.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-masstree: $(OBJ)/unit-masstree.o $(STO_DEPS)
