@@ -11,11 +11,8 @@
 
 #define NTHREAD 10
 #define NVALS 1000000
-#define KEYSIZE 5
 
 TART art;
-std::string keys[NVALS];
-unsigned vals[NVALS];
 
 std::vector<unsigned char> intToBytes(int paramInt)
 {
@@ -81,6 +78,6 @@ int main() {
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - starttime);
-        printf("lookup,%d,%f\n\n", NVALS, (NVALS * 1.0) / duration.count());
+        printf("lookup,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
     }
 }
