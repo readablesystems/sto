@@ -105,6 +105,12 @@ void testSimple() {
         assert(y == 321);
     }
 
+    {
+        TransactionGuard t;
+        a.insert("foo", 1);
+        a.insert("foo", 2);
+    }
+
     printf("PASS: %s\n", __FUNCTION__);
 }
 

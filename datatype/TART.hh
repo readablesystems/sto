@@ -76,7 +76,11 @@ public:
         art_key.set(k.c_str(), k.size());
         Element* e = (Element*) root_.access().lookup(art_key);
         if (e) {
-            Sto::item(this, e).add_write(v);
+            auto item = Sto::item(this, e);
+            if (!item.has_write() && e->poisoned) {
+                throw Transaction::Abort();
+            }
+            item.add_write(v);
             return;
         }
 
@@ -85,7 +89,12 @@ public:
         e->val = v;
         e->poisoned = true;
         root_.access().insert(art_key, (TID) e, nullptr);
-        Sto::item(this, e).add_write(v);
+        auto item = Sto::item(this, e);
+        item.add_write(v);
+
+        // absent_vers_.lock_exclusive();
+        // Sto::transaction.set_version(absent_vers_);
+        // absent_vers_.unlock_exclusive();
     }
 
     void nonTransPut(TKey k, TVal v) {
@@ -147,6 +156,17 @@ public:
         } else if (absent_vers_.is_locked_here()) {
             Sto::transaction()->set_version(absent_vers_);
             absent_vers_.cp_unlock(item);
+        }
+    }
+    void cleanup(TransItem& item, bool committed) override {
+        if (committed) {
+            return;
+        }
+        Element* e = item.template key<Element*>();
+        if (e->poisoned) {
+            Key art_key;
+            art_key.set(e->key.c_str(), e->key.size());
+            root_.access().remove(art_key, (TID) e);
         }
     }
     void print(std::ostream& w, const TransItem& item) const override {
