@@ -520,7 +520,7 @@ private:
 #endif
         any_writes_ = any_nonopaque_ = may_duplicate_items_ = false;
         first_write_ = 0;
-        start_tid_ = commit_tid_ = 0;
+        start_tid_ = read_tid_ = commit_tid_ = 0;
         tictoc_tid_ = 0;
         buf_.clear();
 #if STO_DEBUG_ABORTS
@@ -837,6 +837,15 @@ public:
         return check_opacity(_TID);
     }
 
+    // transaction start
+    tid_type read_tid() const {
+        if (!read_tid_) {
+            fence();
+            read_tid_ = _TID;
+        }
+        return read_tid_;
+    }
+
     // committing
     tid_type commit_tid() const {
 #if !CONSISTENCY_CHECK
@@ -981,6 +990,7 @@ private:
     TransItem* tset_next_;
     unsigned tset_size_;
     mutable tid_type start_tid_;
+    mutable tid_type read_tid_;
     mutable tid_type commit_tid_;
     mutable tid_type tictoc_tid_; // commit tid reserved for TicToc
 public:
@@ -1115,6 +1125,10 @@ public:
         if (!in_progress())
             return false;
         return TThread::txn->try_commit();
+    }
+
+    static TransactionTid::type read_tid() {
+        return TThread::txn->read_tid();
     }
 
     static TransactionTid::type commit_tid() {

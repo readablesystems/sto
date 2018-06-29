@@ -1,5 +1,6 @@
 #pragma once
 #include <utility>
+#include <vector>
 
 #include "ConcurrencyControl.hh"
 
@@ -28,6 +29,11 @@ template <typename T, bool Opaque = true,
           bool Trivial = std::is_trivially_copyable<T>::value,
           bool Small = is_small<T>::value
           > class TicTocWrapped;
+
+template <typename T, bool Opaque = true,
+          bool Trivial = std::is_trivially_copyable<T>::value,
+          bool Small = is_small<T>::value
+          > class TMvWrapped;
 
 class TWrappedAccess {
 public:
@@ -794,6 +800,228 @@ public:
     TicTocWrapped(Args&&...) = delete;
 };
 
+template <typename T, bool Opaque, bool Small>
+class TMvWrapped<T, Opaque, true /* trivial */, Small /* small */> {
+public:
+    typedef T read_type;
+    typedef typename std::conditional<Opaque, TVersion, TNonopaqueVersion>::type version_type;
+
+    TMvWrapped() {
+        h_ = new history(0, T());
+    }
+    explicit TMvWrapped(const T& v) {
+        h_ = new history(0, v);
+    }
+    explicit TMvWrapped(T&& v) {
+        h_ = new history(0, std::move(v));
+    }
+    template <typename... Args>
+    explicit TMvWrapped(Args&&... args) {
+        h_ = new history(0, std::forward<Args>(args)...);
+    }
+
+    // These are dangerous because they actually change the latest version's
+    // value
+    const T& access() const {
+        return h_->v;
+    }
+    T& access() {
+        return h_->v;
+    }
+    read_type snapshot(TransProxy item, const version_type& version) const {
+        const TransactionTid::type read_tid = Sto::read_tid();
+        history& h = *h_;
+        // TODO: use something smarter than a linear scan :)
+        for (; h.prev; h = *h.prev) {
+            if (h.tid <= read_tid) {
+                break;
+            }
+        }
+
+        if (Opaque) {
+            auto result = TWrappedAccess::read_atomic(&h.v, item, version, false);
+            if (!result.first) {
+                Sto::abort();
+            }
+            return result.second;
+        } else {
+            return h.v;
+        }
+    }
+    read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
+        const TransactionTid::type read_tid = Sto::read_tid();
+        history& h = *h_;
+        // TODO: use something smarter than a linear scan :)
+        for (; h.prev; h = *h.prev) {
+            if (h.tid <= read_tid) {
+                break;
+            }
+        }
+
+        if (!Opaque && Small) {
+            return TWrappedAccess::read_wait_nonatomic(&h.v, item, version, add_read);
+        } else {
+            return TWrappedAccess::read_wait_atomic(&h.v, item, version, add_read);
+        }
+    }
+    std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
+        const TransactionTid::type read_tid = Sto::read_tid();
+        history& h = *h_;
+        // TODO: use something smarter than a linear scan :)
+        for (; h.prev; h = *h.prev) {
+            if (h.tid <= read_tid) {
+                break;
+            }
+        }
+
+        if (!Opaque && Small) {
+            return TWrappedAccess::read_nonatomic(&h.v, item, version, true);
+        } else {
+            return TWrappedAccess::read_atomic(&h.v, item, version, true);
+        }
+    }
+
+    // Assume mutually-exclusive writes of monotonically-increasing commit tids
+    template <typename Q = T>
+    typename std::enable_if<!Opaque && is_small<Q>::value, void>::type
+    write(T v) {
+        static_assert(!Opaque && Small, "write-by-value only available for non-opaque small types");
+        h_ = new history(Sto::commit_tid(), v, h_);
+    }
+    template <typename Q = T>
+    typename std::enable_if<Opaque || !is_small<Q>::value, void>::type
+    write(const T& v) {
+        static_assert(Opaque || !Small, "write-by-lvalue-reference only available for opaque or non-small types");
+        h_ = new history(Sto::commit_tid(), v, h_);
+    }
+    template <typename Q = T>
+    typename std::enable_if<Opaque || !is_small<Q>::value, void>::type
+    write(T&& v) {
+        static_assert(Opaque || !Small, "write-with-move only available for opaque or non-small types");
+        h_ = new history(Sto::commit_tid(), v, h_);
+    }
+
+private:
+    struct history {
+        history(TransactionTid::type ntid, read_type nv, history *nprev = nullptr)
+            : tid(ntid), v(nv), prev(nprev) {}
+
+        TransactionTid::type tid;
+        read_type v;
+        history *prev;
+    };
+
+    history *h_;
+};
+
+template <typename T, bool Opaque, bool Small>
+class TMvWrapped<T, Opaque, false /* !trivial */, Small> {
+public:
+    typedef const T& read_type;
+    typedef typename std::conditional<Opaque, TVersion, TNonopaqueVersion>::type version_type;
+
+    TMvWrapped() {
+        h_ = new history(0, new T());
+    }
+    explicit TMvWrapped(const T& v) {
+        h_ = new history(0, new T(v));
+    }
+    explicit TMvWrapped(T&& v) {
+        h_ = new history(0, new T(std::move(v)));
+    }
+    template <typename... Args>
+    explicit TMvWrapped(Args&&... args) {
+        h_ = new history(0, new T(std::forward<Args>(args)...));
+    }
+    ~TMvWrapped() {
+        while (h_) {
+            history *prev = h_->prev;
+            delete h_;
+            h_ = prev;
+        }
+    }
+
+    // These are dangerous because they actually change the latest version's
+    // value
+    const T& access() const {
+        return *h_->v;
+    }
+    T& access() {
+        return *h_->v;
+    }
+
+    read_type snapshot(TransProxy item, const version_type& version) const {
+        const TransactionTid::type read_tid = Sto::read_tid();
+        history& h = *h_;
+        // TODO: use something smarter than a linear scan :)
+        for (; h.prev; h = *h.prev) {
+            if (h.tid <= read_tid) {
+                break;
+            }
+        }
+
+        if (Opaque) {
+            return *TWrappedAccess::read_wait_atomic(&h.vp, item, version, false);
+        } else {
+            return *h.vp;
+        }
+    }
+    read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
+        const TransactionTid::type read_tid = Sto::read_tid();
+        history& h = *h_;
+        // TODO: use something smarter than a linear scan :)
+        for (; h.prev; h = *h.prev) {
+            if (h.tid <= read_tid) {
+                break;
+            }
+        }
+
+        if (Opaque) {
+            return *TWrappedAccess::read_wait_atomic(&h.vp, item, version, add_read);
+        } else {
+            return *TWrappedAccess::read_wait_nonatomic(&h.vp, item, version, add_read);
+        }
+    }
+    std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
+        const TransactionTid::type read_tid = Sto::read_tid();
+        history& h = *h_;
+        // TODO: use something smarter than a linear scan :)
+        for (; h.prev; h = *h.prev) {
+            if (h.tid <= read_tid) {
+                break;
+            }
+        }
+
+        if (Opaque) {
+            return TWrappedAccess::nontrivial_read_to_reference(
+                TWrappedAccess::read_atomic(&h.vp, item, version, true));
+        } else {
+            return TWrappedAccess::nontrivial_read_to_reference(
+                TWrappedAccess::read_nonatomic(&h.vp, item, version, true));
+        }
+    }
+
+    // Assume mutually-exclusive writes of monotonically-increasing commit tids
+    void write(const T& v) {
+        h_ = new history(Sto::commit_tid(), new T(v), h_);
+    }
+    void write(T&& v) {
+        h_ = new history(Sto::commit_tid(), new T(std::move(v)), h_);
+    }
+
+private:
+    struct history {
+        history(TransactionTid::type ntid, read_type nvp, history *nprev = nullptr)
+            : tid(ntid), vp(nvp), prev(nprev) {}
+
+        TransactionTid::type tid;
+        read_type vp;
+        history *prev;
+    };
+
+    history *h_;
+};
+
 template <typename T> using TOpaqueWrapped = TWrapped<T>;
 template <typename T> using TNonopaqueWrapped = TWrapped<T, false>;
 
@@ -802,3 +1030,7 @@ template <typename T> using TSwissOpaqueWrapped = TSwissWrapped<T, true>;
 template <typename T> using TSwissNonopaqueWrapped = TSwissWrapped<T, false>;
 
 template <typename T> using TicTocNonopaqueWrapped = TicTocWrapped<T, false>;
+
+// MVCC wrappers
+template <typename T> using TMvOpaqueWrapped = TMvWrapped<T>;
+template <typename T> using TMvNonopaqueWrapped = TMvWrapped<T, false>;

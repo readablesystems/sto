@@ -93,18 +93,19 @@ endif
 UNIT_PROGRAMS = unit-tarray \
                 unit-tflexarray \
                 unit-tintpredicate \
-				unit-tcounter \
-				unit-tbox \
-				unit-tgeneric \
-				unit-rcu \
-				unit-tvector \
-				unit-tvector-nopred \
-				unit-mbta \
-				unit-sampling \
-				unit-opacity \
-				unit-swisstarray \
-				unit-swisstgeneric \
-				unit-masstree \
+          			unit-tcounter \
+          			unit-tbox \
+          			unit-tgeneric \
+          			unit-rcu \
+          			unit-tvector \
+          			unit-tvector-nopred \
+          			unit-mbta \
+          			unit-sampling \
+          			unit-opacity \
+          			unit-swisstarray \
+          			unit-swisstgeneric \
+          			unit-mvcc \
+          			unit-masstree \
                 unit-dboindex
 
 ACT_UNIT_PROGRAMS = unit-tarray \
@@ -120,7 +121,7 @@ ACT_UNIT_PROGRAMS = unit-tarray \
                     unit-swisstarray \
                     unit-swisstgeneric \
                     unit-masstree \
-					unit-dboindex
+          					unit-dboindex
 
 PROGRAMS = concurrent \
            singleelems \
@@ -236,6 +237,9 @@ unit-swisstarray: $(OBJ)/unit-swisstarray.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-swisstgeneric: $(OBJ)/unit-swisstgeneric.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-mvcc: $(OBJ)/unit-mvwrapped.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-masstree: $(OBJ)/unit-masstree.o $(STO_DEPS)
