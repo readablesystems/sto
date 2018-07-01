@@ -8,11 +8,14 @@
 #include "simple_str.hh"
 #include "print_value.hh"
 #include "../ART/Tree.h"
+#include "../ART/N.h"
 
 class TART : public TObject {
 public:
     typedef std::string TKey;
     typedef uintptr_t TVal;
+
+    typedef std::pair<TID, N*> item_key;
 
     struct Element {
         TKey key;
@@ -39,8 +42,9 @@ public:
     TVal transGet(TKey k) {
         Key key;
         key.set(k.c_str(), k.size());
-        Element* e = (Element*) root_.access().lookup(key);
-        auto item = Sto::item(this, e);
+        auto r = root_.access().lookup(key);
+        Element* e = (Element*) r.first;
+        auto item = Sto::item(this, r);
         if (e != nullptr && item.has_write()) {
             return item.template write_value<TVal>();
         }
@@ -51,7 +55,9 @@ public:
             e->vers.observe_read(item);
             return e->val;
         } else {
-            absent_vers_.observe_read(item);
+            assert(r.second);
+            r.second->vers.observe_read(item);
+            // absent_vers_.observe_read(item);
             item.add_flags(absent_bit);
             return 0;
         }
@@ -60,7 +66,8 @@ public:
     TVal nonTransGet(TKey k) {
         Key key;
         key.set(k.c_str(), k.size());
-        Element* e = (Element*) root_.access().lookup(key);
+        auto r = root_.access().lookup(key);
+        Element* e = (Element*) r.first;
         if (e) {
             return e->val;
         }
@@ -74,9 +81,10 @@ public:
     void transPut(TKey k, TVal v) {
         Key art_key;
         art_key.set(k.c_str(), k.size());
-        Element* e = (Element*) root_.access().lookup(art_key);
+        auto r = root_.access().lookup(art_key);
+        Element* e = (Element*) r.first;
         if (e) {
-            auto item = Sto::item(this, e);
+            auto item = Sto::item(this, r);
             if (!item.has_write() && e->poisoned) {
                 throw Transaction::Abort();
             }
@@ -94,7 +102,7 @@ public:
             free(e);
             throw Transaction::Abort();
         }
-        auto item = Sto::item(this, e);
+        auto item = Sto::item(this, {e, r.second});
         item.add_write(v);
 
         // absent_vers_.lock_exclusive();
@@ -126,26 +134,29 @@ public:
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
-        Element* e = item.template key<Element*>();
-        if (e == nullptr) {
-            return absent_vers_.is_locked_here() || txn.try_lock(item, absent_vers_);
+        item_key k = item.template key<item_key>();
+        if (k.first == 0) {
+            return txn.try_lock(item, k.second->vers);
         } else {
+            Element* e = (Element*) k.first;
             return txn.try_lock(item, e->vers);
         }
     }
     bool check(TransItem& item, Transaction& txn) override {
-        Element* e = item.template key<Element*>();
+        item_key k = item.template key<item_key>();
         if (item.has_flag(absent_bit)) {
-            // written items are not checked
-            // if an item was read w.o absent bit and is no longer found, abort
-            return absent_vers_.cp_check_version(txn, item);
+            return k.second->vers.cp_check_version(txn, item);
 
         }
         // if an item w/ absent bit and is found, abort
+        Element* e = (Element*) k.first;
         return e->vers.cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
-        Element* e = item.template key<Element*>();
+        item_key k = item.template key<item_key>();
+        Element* e = (Element* ) k.first;
+
+        // XXX: Also need to change parent version number if it exists
 
         assert(e);
         Key art_key;
@@ -155,8 +166,9 @@ public:
         txn.set_version_unlock(e->vers, item);
     }
     void unlock(TransItem& item) override {
-        Element* e = item.template key<Element*>();
-        if (e != nullptr) {
+        item_key k = item.template key<item_key>();
+        if (k.first != 0) {
+            Element* e = (Element*) k.first;
             e->vers.cp_unlock(item);
         } else if (absent_vers_.is_locked_here()) {
             Sto::transaction()->set_version(absent_vers_);

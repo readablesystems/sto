@@ -26,7 +26,7 @@ namespace ART_OLC {
     //     return ThreadInfo(this->epoche);
     // }
 
-    TID Tree::lookup(const Key &k) const {
+    std::pair<TID, N*> Tree::lookup(const Key &k) const {
         // EpocheGuardReadonly epocheGuard(threadEpocheInfo);
         restart:
         bool needRestart = false;
@@ -45,13 +45,13 @@ namespace ART_OLC {
                 case CheckPrefixResult::NoMatch:
                     node->readUnlockOrRestart(v, needRestart);
                     if (needRestart) goto restart;
-                    return 0;
+                    return {0, node};
                 case CheckPrefixResult::OptimisticMatch:
                     optimisticPrefixMatch = true;
                     // fallthrough
                 case CheckPrefixResult::Match:
                     if (k.getKeyLen() <= level) {
-                        return 0;
+                        return {0, node};
                     }
                     parentNode = node;
                     node = N::getChild(k[level], parentNode);
@@ -59,7 +59,7 @@ namespace ART_OLC {
                     if (needRestart) goto restart;
 
                     if (node == nullptr) {
-                        return 0;
+                        return {0, parentNode};
                     }
                     if (N::isLeaf(node)) {
                         parentNode->readUnlockOrRestart(v, needRestart);
@@ -67,9 +67,9 @@ namespace ART_OLC {
 
                         TID tid = N::getLeaf(node);
                         if (level < k.getKeyLen() - 1 || optimisticPrefixMatch) {
-                            return checkKey(tid, k);
+                            return {checkKey(tid, k), nullptr};
                         }
-                        return tid;
+                        return {tid, nullptr};
                     }
                     level++;
             }
