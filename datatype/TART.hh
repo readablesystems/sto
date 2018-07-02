@@ -15,7 +15,7 @@ public:
     typedef std::string TKey;
     typedef uintptr_t TVal;
 
-    typedef std::pair<TID, N*> item_key;
+    typedef std::pair<TID, ART_OLC::N*> item_key;
 
     struct Element {
         TKey key;
@@ -33,7 +33,7 @@ public:
     typedef typename std::conditional<true, TWrapped<TVal>, TNonopaqueWrapped<TVal>>::type wrapped_type;
 
     static constexpr TransItem::flags_type deleted_bit = TransItem::user0_bit;
-    static constexpr TransItem::flags_type absent_bit = TransItem::user0_bit<<1;
+    static constexpr TransItem::flags_type new_insert_bit = TransItem::user0_bit<<1;
 
     TART() {
         root_.access().setLoadKey(TART::loadKey);
@@ -58,7 +58,6 @@ public:
             assert(r.second);
             r.second->vers.observe_read(item);
             // absent_vers_.observe_read(item);
-            item.add_flags(absent_bit);
             return 0;
         }
     }
@@ -102,8 +101,10 @@ public:
             free(e);
             throw Transaction::Abort();
         }
-        auto item = Sto::item(this, {e, r.second});
+        item_key itemk = {(TID) e, r.second};
+        auto item = Sto::item(this, itemk);
         item.add_write(v);
+        item.add_flags(new_insert_bit);
 
         // absent_vers_.lock_exclusive();
         // Sto::transaction.set_version(absent_vers_);
@@ -113,7 +114,8 @@ public:
     void nonTransPut(TKey k, TVal v) {
         Key art_key;
         art_key.set(k.c_str(), k.size());
-        Element* e = (Element*) root_.access().lookup(art_key);
+        auto r = root_.access().lookup(art_key);
+        Element* e = (Element*) r.first;
         if (e) {
             e->val = v;
             return;
@@ -135,8 +137,8 @@ public:
 
     bool lock(TransItem& item, Transaction& txn) override {
         item_key k = item.template key<item_key>();
-        if (k.first == 0) {
-            return txn.try_lock(item, k.second->vers);
+        if (item.has_flag(new_insert_bit) || k.first == 0) {
+            return k.second->vers.is_locked_here() || txn.try_lock(item, k.second->vers);
         } else {
             Element* e = (Element*) k.first;
             return txn.try_lock(item, e->vers);
@@ -144,9 +146,8 @@ public:
     }
     bool check(TransItem& item, Transaction& txn) override {
         item_key k = item.template key<item_key>();
-        if (item.has_flag(absent_bit)) {
+        if (item.has_flag(new_insert_bit) || k.first == 0) {
             return k.second->vers.cp_check_version(txn, item);
-
         }
         // if an item w/ absent bit and is found, abort
         Element* e = (Element*) k.first;
@@ -155,24 +156,24 @@ public:
     void install(TransItem& item, Transaction& txn) override {
         item_key k = item.template key<item_key>();
         Element* e = (Element* ) k.first;
-
-        // XXX: Also need to change parent version number if it exists
-
         assert(e);
-        Key art_key;
-        art_key.set(e->key.c_str(), e->key.size());
         e->poisoned = false;
-        e->val = item.template write_value<TVal>();
-        txn.set_version_unlock(e->vers, item);
+
+        if (item.has_flag(new_insert_bit)) {
+            txn.set_version_unlock(k.second->vers, item);
+        } else {
+            e->val = item.template write_value<TVal>();
+            txn.set_version_unlock(e->vers, item);
+        }
     }
     void unlock(TransItem& item) override {
         item_key k = item.template key<item_key>();
-        if (k.first != 0) {
+        if (item.has_flag(new_insert_bit) || k.first == 0) {
+            if (k.second->vers.is_locked_here()) k.second->vers.cp_unlock(item);
+        } else {
             Element* e = (Element*) k.first;
+            assert(e);
             e->vers.cp_unlock(item);
-        } else if (absent_vers_.is_locked_here()) {
-            Sto::transaction()->set_version(absent_vers_);
-            absent_vers_.cp_unlock(item);
         }
     }
     void cleanup(TransItem& item, bool committed) override {

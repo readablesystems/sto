@@ -67,9 +67,9 @@ namespace ART_OLC {
 
                         TID tid = N::getLeaf(node);
                         if (level < k.getKeyLen() - 1 || optimisticPrefixMatch) {
-                            return {checkKey(tid, k), nullptr};
+                            return {checkKey(tid, k), parentNode};
                         }
-                        return {tid, nullptr};
+                        return {tid, parentNode};
                     }
                     level++;
             }
