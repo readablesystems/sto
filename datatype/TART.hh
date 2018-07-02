@@ -180,7 +180,8 @@ public:
         if (committed) {
             return;
         }
-        Element* e = item.template key<Element*>();
+        item_key r = item.template key<item_key>();
+        Element* e = (Element*) r.first;
         if (e->poisoned) {
             Key art_key;
             art_key.set(e->key.c_str(), e->key.size());
@@ -196,6 +197,5 @@ public:
         w << "}";
     }
 protected:
-    Version_type absent_vers_;
     TOpaqueWrapped<ART_OLC::Tree> root_;
 };
