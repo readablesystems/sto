@@ -19,6 +19,9 @@ std::string absentkey1 = "hello";
 std::string absentkey2 = "1234";
 std::string absentkey2_1 = "1245";
 std::string absentkey2_2 = "1256";
+std::string absentkey2_3 = "1267";
+std::string absentkey2_4 = "1278";
+
 std::string checkkey = "check1";
 std::string checkkey2 = "check2";
 std::string checkkey3 = "check3";
@@ -489,10 +492,8 @@ void testAbsent3() {
         TransactionGuard t;
         volatile auto x = aTART.lookup(absentkey1);
         volatile auto y = aTART.lookup(absentkey2);
-        volatile auto z = aTART.lookup(checkkey);
         assert(y == 123);
         assert(x == 0);
-        assert(z == 456);
     }
 
     printf("PASS: %s\n", __FUNCTION__);
