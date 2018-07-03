@@ -523,10 +523,8 @@ void testAbsent3_2() {
         TransactionGuard t;
         volatile auto x = aTART.lookup(absentkey1);
         volatile auto y = aTART.lookup(absentkey2);
-        volatile auto z = aTART.lookup(checkkey);
-        // assert(y == 123);
-        // assert(x == 0);
-        // assert(z == 456);
+        assert(y == 123);
+        assert(x == 0);
     }
 
     printf("PASS: %s\n", __FUNCTION__);
