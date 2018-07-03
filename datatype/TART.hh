@@ -102,6 +102,7 @@ public:
         }
         auto item_el = Sto::item(this, e);
         auto item_parent = Sto::item(this, r.second);
+        item_parent.add_write(v);
         item_el.add_write(v);
         item_parent.add_flags(parent_bit);
     }
@@ -174,7 +175,6 @@ public:
         }
         Element* e = item.template key<Element*>();
         if (e->poisoned) {
-            printf("cleaned poison\n");
             Key art_key;
             art_key.set(e->key.c_str(), e->key.size());
             root_.access().remove(art_key, (TID) e);
