@@ -18,6 +18,7 @@
 std::string absentkey1 = "hello";
 std::string absentkey2 = "1234";
 std::string absentkey2_1 = "1245";
+std::string absentkey2_2 = "1256";
 std::string checkkey = "check1";
 std::string checkkey2 = "check2";
 std::string checkkey3 = "check3";
@@ -469,6 +470,39 @@ void testAbsent3() {
 
     TestTransaction t0(0);
     aTART.insert(absentkey2, 123);
+    aTART.insert(absentkey2_1, 456);
+
+    assert(t0.try_commit());
+
+    TestTransaction t1(0);
+    aTART.lookup(absentkey1);
+    aTART.insert(absentkey2, 123);
+
+    // an update
+    TestTransaction t2(0);
+    aTART.insert(absentkey2_2, 456);
+
+    assert(t2.try_commit());
+    assert(t1.try_commit());
+
+    {
+        TransactionGuard t;
+        volatile auto x = aTART.lookup(absentkey1);
+        volatile auto y = aTART.lookup(absentkey2);
+        volatile auto z = aTART.lookup(checkkey);
+        assert(y == 123);
+        assert(x == 0);
+        assert(z == 456);
+    }
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
+void testAbsent3_2() {
+    TART aTART;
+
+    TestTransaction t0(0);
+    aTART.insert(absentkey2, 123);
     assert(t0.try_commit());
 
     TestTransaction t1(0);
@@ -631,6 +665,7 @@ int main() {
     testAbsent1_3(); // ABA read insert delete detection no longer exists
     testAbsent2_2();
     testAbsent3();
+    testAbsent3_2();
     testABA1(); // ABA doesn't work
     testMultiRead();
     testReadWrite();
