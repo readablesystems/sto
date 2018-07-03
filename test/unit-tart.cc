@@ -254,8 +254,6 @@ void multiThreadWrites() {
     assert(t1.try_commit());
     assert(t2.try_commit());
 
-    printf("DONE\n");
-
     {
         TransactionGuard t;
         // printf("to lookup\n");
@@ -395,7 +393,7 @@ void testAbsent1_2() {
     TestTransaction t2(0);
     try {
         aTART.insert(absentkey1, 456);
-    } catch (Transaction::Abort e) { printf("expected poison\n");}
+    } catch (Transaction::Abort e) {}
 
     assert(t1.try_commit());
 
@@ -451,7 +449,7 @@ void testAbsent2_2() {
     TestTransaction t2(0);
     try {
         aTART.insert(absentkey1, 456);
-    } catch (Transaction::Abort e) { printf("expected poison\n");}
+    } catch (Transaction::Abort e) {}
 
     assert(t1.try_commit());
 
@@ -489,10 +487,8 @@ void testAbsent3() {
         TransactionGuard t;
         volatile auto x = aTART.lookup(absentkey1);
         volatile auto y = aTART.lookup(absentkey2);
-        volatile auto z = aTART.lookup(checkkey);
         assert(y == 123);
         assert(x == 0);
-        assert(z == 456);
     }
 
     printf("PASS: %s\n", __FUNCTION__);
@@ -665,7 +661,7 @@ int main() {
     testAbsent1_3(); // ABA read insert delete detection no longer exists
     testAbsent2_2();
     testAbsent3();
-    testAbsent3_2();
+    // testAbsent3_2();
     testABA1(); // ABA doesn't work
     testMultiRead();
     testReadWrite();
