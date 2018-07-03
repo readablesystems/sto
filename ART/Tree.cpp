@@ -337,6 +337,42 @@ namespace ART_OLC {
         return 0;
     }
 
+    // not thread safe
+    #include <iostream>
+    #include <vector>
+    void Tree::print() {
+        std::vector<N*> *parents = {root};
+        std::vector<void*> *kids;
+
+        uint8_t parentKey, nodeKey = 0;
+        uint64_t parentVersion = 0;
+        uint32_t level = 0;
+
+        while (parents.size()) {
+            // get all kids
+            for (N* par : parents) {
+
+            }
+
+            // print all child prefixes
+            std::vector<N*> teens;
+            for (void* child : kids) {
+                if(child) {
+                    N* kid = (N*) child;
+                    if(kid.hasPrefix())
+                        std::cout << *kid.getPrefix() << "  ";
+                    teens.push_back((N*) child);
+                } else {
+                    std::cout << "  NEXT  "
+                }
+            }
+
+            // make kids into parents
+            parents = &teens;
+            kids.clear();
+        }
+    }
+
     void Tree::insert(const Key &k, TID tid, bool* success) {
         // EpocheGuard epocheGuard(epocheInfo);
         restart:
