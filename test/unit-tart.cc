@@ -381,10 +381,10 @@ void testAbsent1_2() {
     aTART.insert(absentkey1, 123);
 
     // a new insert
-    TestTransaction t2(0);
-    try {
-        aTART.insert(absentkey1, 456);
-    } catch (Transaction::Abort e) { }
+    // TestTransaction t2(0);
+    // try {
+    //     aTART.insert(absentkey1, 456);
+    // } catch (Transaction::Abort e) { }
 
     assert(t1.try_commit());
 
@@ -612,13 +612,13 @@ int main() {
     // multiWrite();
     // multiThreadWrites();
     // testReadDelete(); // problem w/ lacking implementation of erase
-    // testReadWriteDelete();
-    // testReadDeleteInsert();
-    // testAbsent1_1();
-    // testAbsent1_2();
+    testReadWriteDelete();
+    testReadDeleteInsert();
+    testAbsent1_1();
+    testAbsent1_2();
     // testAbsent1_3(); // ABA read insert delete detection no longer exists
-    // testAbsent2();
-    // testAbsent3();
+    testAbsent2();
+    testAbsent3();
     // testABA1(); // ABA doesn't work
     testMultiRead();
     testReadWrite();
