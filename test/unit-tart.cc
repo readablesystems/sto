@@ -352,6 +352,7 @@ void testReadDeleteInsert() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+// test that reading poisoned val aborts
 void testAbsent1_1() {
     TART aTART;
 
@@ -380,22 +381,19 @@ void testAbsent1_1() {
 
 }
 
+// test you can write to a key after absent reading it
 void testAbsent1_2() {
     TART aTART;
-    {
-        TransactionGuard t;
-        aTART.insert(absentkey1,1);
-    }
 
     TestTransaction t1(0);
     aTART.lookup(absentkey1);
     aTART.insert(absentkey1, 123);
 
     // a new insert
-    // TestTransaction t2(0);
-    // try {
-    //     aTART.insert(absentkey1, 456);
-    // } catch (Transaction::Abort e) { printf("expected poison\n");}
+    TestTransaction t2(0);
+    try {
+        aTART.insert(absentkey1, 456);
+    } catch (Transaction::Abort e) { printf("expected poison\n");}
 
     assert(t1.try_commit());
 
@@ -406,9 +404,9 @@ void testAbsent1_2() {
     }
 
     printf("PASS: %s\n", __FUNCTION__);
-
 }
 
+// test that absent read detects changes made by other threads
 void testAbsent1_3() {
     TART aTART;
 
@@ -437,26 +435,28 @@ void testAbsent1_3() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
-void testAbsent2() {
+// 
+void testAbsent2_2() {
     TART aTART;
 
     TestTransaction t1(0);
     aTART.lookup(absentkey1);
+    aTART.insert(absentkey1, 123);
+    aTART.lookup(absentkey2);
     aTART.insert(absentkey2, 123);
 
     // a new insert
     TestTransaction t2(0);
-    aTART.insert(absentkey2, 456);
+    try {
+        aTART.insert(absentkey1, 456);
+    } catch (Transaction::Abort e) { printf("expected poison\n");}
 
-    assert(t2.try_commit());
-    assert(!t1.try_commit());
+    assert(t1.try_commit());
 
     {
         TransactionGuard t;
         volatile auto x = aTART.lookup(absentkey1);
-        volatile auto y = aTART.lookup(absentkey2);
-        assert(y == 456);
-        assert(x == 0);
+        assert(x == 123);
     }
 
     printf("PASS: %s\n", __FUNCTION__);
@@ -469,15 +469,13 @@ void testAbsent3() {
     aTART.insert(absentkey2, 10);
     assert(t0.try_commit());
 
-    usleep(1000);
-
     TestTransaction t1(0);
     aTART.lookup(absentkey1);
     aTART.insert(absentkey2, 123);
 
     // an update
     TestTransaction t2(0);
-    aTART.insert(absentkey2, 456);
+    aTART.insert(checkkey, 456);
 
     assert(t2.try_commit());
     assert(t1.try_commit());
@@ -486,12 +484,13 @@ void testAbsent3() {
         TransactionGuard t;
         volatile auto x = aTART.lookup(absentkey1);
         volatile auto y = aTART.lookup(absentkey2);
+        volatile auto z = aTART.lookup(checkkey);
         assert(y == 123);
         assert(x == 0);
+        assert(z == 456);
     }
 
     printf("PASS: %s\n", __FUNCTION__);
-
 }
 
 void testABA1() {
@@ -628,7 +627,7 @@ int main() {
     testAbsent1_1();
     testAbsent1_2();
     testAbsent1_3(); // ABA read insert delete detection no longer exists
-    testAbsent2();
+    testAbsent2_2();
     testAbsent3();
     testABA1(); // ABA doesn't work
     testMultiRead();
