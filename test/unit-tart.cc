@@ -467,6 +467,10 @@ void testAbsent2_2() {
 void testAbsent3() {
     TART aTART;
 
+    TestTransaction t0(0);
+    aTART.insert(absentkey2, 123);
+    assert(t0.try_commit());
+
     TestTransaction t1(0);
     aTART.lookup(absentkey1);
     aTART.insert(absentkey2, 123);
