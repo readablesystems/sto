@@ -17,6 +17,7 @@
 
 std::string absentkey1 = "hello";
 std::string absentkey2 = "1234";
+std::string absentkey2_1 = "1245";
 std::string checkkey = "check1";
 std::string checkkey2 = "check2";
 std::string checkkey3 = "check3";
@@ -465,9 +466,6 @@ void testAbsent2_2() {
 
 void testAbsent3() {
     TART aTART;
-    TestTransaction t0(0);
-    aTART.insert(absentkey2, 10);
-    assert(t0.try_commit());
 
     TestTransaction t1(0);
     aTART.lookup(absentkey1);
@@ -475,7 +473,7 @@ void testAbsent3() {
 
     // an update
     TestTransaction t2(0);
-    aTART.insert(checkkey, 456);
+    aTART.insert(absentkey2_1, 456);
 
     assert(t2.try_commit());
     assert(t1.try_commit());
@@ -615,17 +613,17 @@ int main() {
     // Checks();
     // return 0;
 
-    // testSimple();
-    // testSimple2();
-    // testSimpleErase();
-    // testEmptyErase();
-    // multiWrite();
-    // multiThreadWrites();
-    // testReadDelete(); // problem w/ lacking implementation of erase
-    // testReadWriteDelete();
-    // testReadDeleteInsert();
-    // testAbsent1_1();
-    // testAbsent1_2();
+    testSimple();
+    testSimple2();
+    testSimpleErase();
+    testEmptyErase();
+    multiWrite();
+    multiThreadWrites();
+    testReadDelete(); // problem w/ lacking implementation of erase
+    testReadWriteDelete();
+    testReadDeleteInsert();
+    testAbsent1_1();
+    testAbsent1_2();
     testAbsent1_3(); // ABA read insert delete detection no longer exists
     testAbsent2_2();
     testAbsent3();
