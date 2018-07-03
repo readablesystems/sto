@@ -338,10 +338,10 @@ void testReadDeleteInsert() {
 
     TestTransaction t2(0);
     aTART.erase(absentkey1);
+    assert(t2.try_commit());
 
     TestTransaction t3(0);
     aTART.insert(absentkey1, 10);
-    assert(t2.try_commit());
     assert(t3.try_commit());
     assert(!t1.try_commit());
 
@@ -543,11 +543,11 @@ void testABA1() {
 
     TestTransaction t2(0);
     aTART.erase(absentkey2);
+    assert(t2.try_commit());
 
     TestTransaction t3(0);
     aTART.insert(absentkey2, 456);
 
-    assert(t2.try_commit());
     assert(t3.try_commit());
     assert(!t1.try_commit());
 

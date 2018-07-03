@@ -32,7 +32,7 @@ public:
     typedef typename std::conditional<true, TWrapped<TVal>, TNonopaqueWrapped<TVal>>::type wrapped_type;
 
     static constexpr TransItem::flags_type parent_bit = TransItem::user0_bit;
-    static constexpr TransItem::flags_type new_insert_bit = TransItem::user0_bit<<1;
+    static constexpr TransItem::flags_type deleted_bit = TransItem::user0_bit<<1;
 
     TART() {
         root_.access().setLoadKey(TART::loadKey);
@@ -87,6 +87,7 @@ public:
                 throw Transaction::Abort();
             }
             item.add_write(v);
+            item.clear_flags(deleted_bit);
             return;
         }
 
@@ -128,7 +129,23 @@ public:
     }
 
     void erase(TKey k) {
-        transPut(k, 0);
+        Key art_key;
+        art_key.set(k.c_str(), k.size());
+        auto r = root_.access().lookup(art_key);
+        Element* e = (Element*) r.first;
+        if (e) {
+            auto item = Sto::item(this, e);
+            if (!item.has_write() && e->poisoned) {
+                throw Transaction::Abort();
+            }
+            e->poisoned = true;
+            item.add_write(0);
+            item.add_flags(deleted_bit);
+
+            auto item_parent = Sto::item(this, r.second);
+            item_parent.add_write(0);
+            return;
+        }
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
@@ -155,6 +172,11 @@ public:
             txn.set_version_unlock(parent->vers, item);
         } else {
             Element* e = item.template key<Element*>();
+            if (item.has_flag(deleted_bit)) {
+                Key art_key;
+                art_key.set(e->key.c_str(), e->key.size());
+                root_.access().remove(art_key, (TID) e);
+            }
             e->poisoned = false;
             e->val = item.template write_value<TVal>();
             txn.set_version_unlock(e->vers, item);
