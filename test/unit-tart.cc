@@ -615,17 +615,17 @@ int main() {
     // Checks();
     // return 0;
 
-    testSimple();
-    testSimple2();
-    testSimpleErase();
-    testEmptyErase();
-    multiWrite();
-    multiThreadWrites();
-    testReadDelete(); // problem w/ lacking implementation of erase
-    testReadWriteDelete();
-    testReadDeleteInsert();
-    testAbsent1_1();
-    testAbsent1_2();
+    // testSimple();
+    // testSimple2();
+    // testSimpleErase();
+    // testEmptyErase();
+    // multiWrite();
+    // multiThreadWrites();
+    // testReadDelete(); // problem w/ lacking implementation of erase
+    // testReadWriteDelete();
+    // testReadDeleteInsert();
+    // testAbsent1_1();
+    // testAbsent1_2();
     testAbsent1_3(); // ABA read insert delete detection no longer exists
     testAbsent2_2();
     testAbsent3();
