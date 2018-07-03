@@ -145,8 +145,10 @@ public:
         }
     }
     bool check(TransItem& item, Transaction& txn) override {
+        printf("check\n");
         item_key k = item.template key<item_key>();
         if (item.has_flag(new_insert_bit) || k.first == 0) {
+            printf("new bit\n");
             return k.second->vers.cp_check_version(txn, item);
         }
         // if an item w/ absent bit and is found, abort
@@ -154,12 +156,14 @@ public:
         return e->vers.cp_check_version(txn, item);
     }
     void install(TransItem& item, Transaction& txn) override {
+        printf("install\n");
         item_key k = item.template key<item_key>();
         Element* e = (Element* ) k.first;
         assert(e);
         e->poisoned = false;
 
         if (item.has_flag(new_insert_bit)) {
+            printf("installed new thing, unpoisoned\n");
             txn.set_version_unlock(k.second->vers, item);
         } else {
             e->val = item.template write_value<TVal>();
@@ -183,6 +187,7 @@ public:
         item_key r = item.template key<item_key>();
         Element* e = (Element*) r.first;
         if (e->poisoned) {
+            printf("cleaned poison\n");
             Key art_key;
             art_key.set(e->key.c_str(), e->key.size());
             root_.access().remove(art_key, (TID) e);

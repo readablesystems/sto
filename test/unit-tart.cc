@@ -17,7 +17,9 @@
 
 std::string absentkey1 = "hello";
 std::string absentkey2 = "1234";
-std::string checkkey = "check";
+std::string checkkey = "check1";
+std::string checkkey2 = "check2";
+std::string checkkey3 = "check3";
 
 void NoChecks() {
     TART aTART;
@@ -236,6 +238,10 @@ void multiWrite() {
 
 void multiThreadWrites() {
     TART aTART;
+    {
+        TransactionGuard t;
+        aTART.insert(absentkey2, 456);
+    }
 
     TestTransaction t1(0);
     aTART.insert(absentkey2, 123);
@@ -332,13 +338,14 @@ void testReadDeleteInsert() {
     TestTransaction t3(0);
     aTART.insert(absentkey1, 10);
     assert(t2.try_commit());
+    assert(t3.try_commit());
     assert(!t1.try_commit());
 
     {
         TransactionGuard t;
         volatile auto x = aTART.lookup(absentkey1);
         volatile auto y = aTART.lookup(absentkey2);
-        assert(x == 0);
+        assert(x == 10);
         assert(y == 10);
     }
 
@@ -375,16 +382,20 @@ void testAbsent1_1() {
 
 void testAbsent1_2() {
     TART aTART;
+    {
+        TransactionGuard t;
+        aTART.insert(absentkey1,1);
+    }
 
     TestTransaction t1(0);
     aTART.lookup(absentkey1);
     aTART.insert(absentkey1, 123);
 
     // a new insert
-    TestTransaction t2(0);
-    try {
-        aTART.insert(absentkey1, 456);
-    } catch (Transaction::Abort e) { }
+    // TestTransaction t2(0);
+    // try {
+    //     aTART.insert(absentkey1, 456);
+    // } catch (Transaction::Abort e) { printf("expected poison\n");}
 
     assert(t1.try_commit());
 
@@ -609,17 +620,17 @@ int main() {
     testSimple2();
     testSimpleErase();
     testEmptyErase();
-    // multiWrite();
-    // multiThreadWrites();
-    // testReadDelete(); // problem w/ lacking implementation of erase
-    // testReadWriteDelete();
-    // testReadDeleteInsert();
-    // testAbsent1_1();
-    // testAbsent1_2();
-    // testAbsent1_3(); // ABA read insert delete detection no longer exists
-    // testAbsent2();
-    // testAbsent3();
-    // testABA1(); // ABA doesn't work
+    multiWrite();
+    multiThreadWrites();
+    testReadDelete(); // problem w/ lacking implementation of erase
+    testReadWriteDelete();
+    testReadDeleteInsert();
+    testAbsent1_1();
+    testAbsent1_2();
+    testAbsent1_3(); // ABA read insert delete detection no longer exists
+    testAbsent2();
+    testAbsent3();
+    testABA1(); // ABA doesn't work
     testMultiRead();
     testReadWrite();
     testPerNodeV();
