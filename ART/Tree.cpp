@@ -375,7 +375,7 @@ namespace ART_OLC {
                         if (N::isLeaf(child)) {
                             Key k;
                             loadKey(N::getLeaf(child), k);
-                            printf("\"%s\" ", k.data);
+                            printf("%s ", k.data);
                         } else {
                             printf("\"");
                             printPrefix(children[i]);
