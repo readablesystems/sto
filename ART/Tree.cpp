@@ -338,38 +338,58 @@ namespace ART_OLC {
     }
 
     // not thread safe
-    #include <iostream>
     #include <vector>
-    void Tree::print() {
-        std::vector<N*> *parents = {root};
-        std::vector<void*> *kids;
+    static void printPrefix(N* n) {
+        const char* prefix = (const char*) n->getPrefix();
+        int prefixLen = n->getPrefixLength();
+        for (int i = 0; i < prefixLen; i++) {
+            printf("%c", prefix[i]);
+        }
+    }
+    void Tree::print() const {
+        std::vector<N*> parents = {root};
+        std::vector<N*> childrenVec;
 
-        uint8_t parentKey, nodeKey = 0;
-        uint64_t parentVersion = 0;
         uint32_t level = 0;
 
         while (parents.size()) {
             // get all kids
             for (N* par : parents) {
-
-            }
-
-            // print all child prefixes
-            std::vector<N*> teens;
-            for (void* child : kids) {
-                if(child) {
-                    N* kid = (N*) child;
-                    if(kid.hasPrefix())
-                        std::cout << *kid.getPrefix() << "  ";
-                    teens.push_back((N*) child);
-                } else {
-                    std::cout << "  NEXT  "
+                printf("%d: ", level);
+                if (par->hasPrefix()) {
+                    printPrefix(par);
                 }
+                printf("\n");
+                std::tuple<uint8_t, N*> children[256];
+                uint32_t childrenCount = 0;
+                N::getChildren(par, 0u, 255u, children, childrenCount);
+                for (int i = 0; i < level; ++i) {
+                    printf("\t");
+                }
+                for (uint32_t i = 0; i < childrenCount; ++i) {
+                    N* child = std::get<1>(children[i]);
+                    if (child) {
+                        if (N::isLeaf(child)) {
+                            Key k;
+                            loadKey(N::getLeaf(child), k);
+                            printf("\"%s\" ", k.data);
+                        } else {
+                            if (child->hasPrefix()) {
+                                printf("\"");
+                                printPrefix(child);
+                                printf("\" ");
+                            }
+                            childrenVec.push_back(child);
+                        }
+                    }
+                }
+                printf("\n");
             }
 
             // make kids into parents
-            parents = &teens;
-            kids.clear();
+            parents = childrenVec;
+            childrenVec.clear();
+            ++level;
         }
     }
 

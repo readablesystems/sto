@@ -13,10 +13,10 @@ class Key {
     static constexpr uint32_t stackLen = 128;
     uint32_t len = 0;
 
-    uint8_t *data;
 
     uint8_t stackKey[stackLen];
 public:
+    uint8_t *data;
 
     Key() {}
 

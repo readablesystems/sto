@@ -25,7 +25,7 @@ public:
 
     static void loadKey(TID tid, Key &key) {
         Element* e = (Element*) tid;
-        key.set(e->key.c_str(), e->key.size());
+        key.set(e->key.c_str(), e->key.size() + 1);
     }
 
     typedef typename std::conditional<true, TVersion, TNonopaqueVersion>::type Version_type;
@@ -40,7 +40,7 @@ public:
 
     TVal transGet(TKey k) {
         Key key;
-        key.set(k.c_str(), k.size());
+        key.set(k.c_str(), k.size()+1);
         auto r = root_.access().lookup(key);
         Element* e = (Element*) r.first;
         if (e) {
@@ -63,7 +63,7 @@ public:
 
     TVal nonTransGet(TKey k) {
         Key key;
-        key.set(k.c_str(), k.size());
+        key.set(k.c_str(), k.size()+1);
         auto r = root_.access().lookup(key);
         Element* e = (Element*) r.first;
         if (e) {
@@ -78,7 +78,7 @@ public:
 
     void transPut(TKey k, TVal v) {
         Key art_key;
-        art_key.set(k.c_str(), k.size());
+        art_key.set(k.c_str(), k.size()+1);
         auto r = root_.access().lookup(art_key);
         Element* e = (Element*) r.first;
         if (e) {
@@ -110,7 +110,7 @@ public:
 
     void nonTransPut(TKey k, TVal v) {
         Key art_key;
-        art_key.set(k.c_str(), k.size());
+        art_key.set(k.c_str(), k.size()+1);
         auto r = root_.access().lookup(art_key);
         Element* e = (Element*) r.first;
         if (e) {
@@ -130,7 +130,7 @@ public:
 
     void erase(TKey k) {
         Key art_key;
-        art_key.set(k.c_str(), k.size());
+        art_key.set(k.c_str(), k.size()+1);
         auto r = root_.access().lookup(art_key);
         Element* e = (Element*) r.first;
         if (e) {
@@ -175,7 +175,7 @@ public:
             Element* e = item.template key<Element*>();
             if (item.has_flag(deleted_bit)) {
                 Key art_key;
-                art_key.set(e->key.c_str(), e->key.size());
+                art_key.set(e->key.c_str(), e->key.size()+1);
                 root_.access().remove(art_key, (TID) e);
             }
             e->poisoned = false;
@@ -199,17 +199,16 @@ public:
         Element* e = item.template key<Element*>();
         if (e->poisoned) {
             Key art_key;
-            art_key.set(e->key.c_str(), e->key.size());
+            art_key.set(e->key.c_str(), e->key.size()+1);
             root_.access().remove(art_key, (TID) e);
         }
     }
     void print(std::ostream& w, const TransItem& item) const override {
-        w << "{TART<" << typeid(int).name() << "> " << (void*) this;
-        if (item.has_read())
-            w << " R" << item.read_value<Version_type>();
-        if (item.has_write())
-            w << " =" << item.write_value<int>();
-        w << "}";
+        root_.access().print();
+    }
+    
+    void print() const {
+        root_.access().print();
     }
 protected:
     TOpaqueWrapped<ART_OLC::Tree> root_;

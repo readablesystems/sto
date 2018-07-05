@@ -116,8 +116,14 @@ void testSimple() {
     {
         TransactionGuard t;
         a.insert("foo", 1);
-        a.insert("foo", 2);
+        a.insert("foobar", 2);
     }
+
+    {
+        TransactionGuard t;
+        assert(a.lookup("foobar") == 2);
+    }
+
 
     printf("PASS: %s\n", __FUNCTION__);
 }
@@ -651,6 +657,21 @@ int main() {
     // FAILS???
     // Checks();
     // return 0;
+    //
+    // TART a;
+    //
+    // {
+    //     TransactionGuard t;
+    //     a.insert("romane", 1);
+    //     a.insert("romanus", 2);
+    //     a.insert("romulus", 3);
+    //     a.insert("rubens", 4);
+    //     a.insert("ruber", 5);
+    //     a.insert("rubicon", 6);
+    //     a.insert("rubicundus", 7);
+    // }
+    //
+    // a.print();
 
     testSimple();
     testSimple2();

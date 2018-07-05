@@ -1,4 +1,5 @@
 #undef NDEBUG
+#include <fstream>
 #include <string>
 #include <thread>
 #include <iostream>
@@ -47,6 +48,43 @@ void lookupKey(int thread_id) {
     }
 }
 
+void eraseKey(int thread_id) {
+    TThread::set_id(thread_id);
+
+    for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
+        auto v = intToBytes(i);
+        std::string str(v.begin(),v.end());
+        TRANSACTION_E {
+            art.erase(str);
+        } RETRY_E(true);
+    }
+}
+
+void words() {
+    TART a;
+    std::ifstream input("/usr/share/dict/words");
+    int i = 0;
+    for (std::string line; getline(input, line);) {
+        printf("%s\n", line.c_str());
+        TRANSACTION_E {
+            a.insert(line, i);
+        } RETRY_E(true);
+        i++;
+    }
+    input.close();
+    std::ifstream input2("/usr/share/dict/words");
+    printf("lookup\n");
+    i = 0;
+    for (std::string line; getline(input2, line);) {
+        TRANSACTION_E {
+            assert(a.lookup(line) == i);
+        } RETRY_E(true);
+        i++;
+    }
+    printf("done\n");
+    input2.close();
+}
+
 int main() {
     art = TART();
 
@@ -80,4 +118,21 @@ int main() {
                 std::chrono::system_clock::now() - starttime);
         printf("lookup,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
     }
+
+    {
+        auto starttime = std::chrono::system_clock::now();
+        std::thread threads[NTHREAD];
+        for (int i = 0; i < NTHREAD; i++) {
+            threads[i] = std::thread(eraseKey, i);
+        }
+
+        for (int i = 0; i < NTHREAD; i++) {
+            threads[i].join();
+        }
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::system_clock::now() - starttime);
+        printf("erase,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
+    }
+
+    // words();
 }

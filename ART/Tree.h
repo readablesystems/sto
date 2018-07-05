@@ -78,6 +78,7 @@ namespace ART_OLC {
         void insert(const Key &k, TID tid, bool* new_insert);
 
         void remove(const Key &k, TID tid);
+        void print() const;
     };
 }
 #endif //ART_OPTIMISTICLOCK_COUPLING_N_H
