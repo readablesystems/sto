@@ -658,20 +658,20 @@ int main() {
     // Checks();
     // return 0;
     //
-    // TART a;
-    //
-    // {
-    //     TransactionGuard t;
-    //     a.insert("romane", 1);
-    //     a.insert("romanus", 2);
-    //     a.insert("romulus", 3);
-    //     a.insert("rubens", 4);
-    //     a.insert("ruber", 5);
-    //     a.insert("rubicon", 6);
-    //     a.insert("rubicundus", 7);
-    // }
-    //
-    // a.print();
+    TART a;
+    
+    {
+        TransactionGuard t;
+        a.insert("romane", 1);
+        a.insert("romanus", 2);
+        a.insert("romulus", 3);
+        a.insert("rubens", 4);
+        a.insert("ruber", 5);
+        a.insert("rubicon", 6);
+        a.insert("rubicundus", 7);
+    }
+    
+    a.print();
 
     testSimple();
     testSimple2();

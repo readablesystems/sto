@@ -339,26 +339,29 @@ namespace ART_OLC {
 
     // not thread safe
     #include <vector>
-    static void printPrefix(N* n) {
-        const char* prefix = (const char*) n->getPrefix();
-        int prefixLen = n->getPrefixLength();
-        for (int i = 0; i < prefixLen; i++) {
-            printf("%c", prefix[i]);
+    static void printPrefix(std::tuple<uint8_t, N*> node) {
+        printf("%c", std::get<0>(node));
+        auto n = std::get<1>(node);
+        if (n->hasPrefix()) {
+            const char* prefix = (const char*) n->getPrefix();
+            int prefixLen = n->getPrefixLength();
+            for (int i = 0; i < prefixLen; i++) {
+                printf("%c", prefix[i]);
+            }
         }
     }
     void Tree::print() const {
-        std::vector<N*> parents = {root};
-        std::vector<N*> childrenVec;
+        std::vector<std::tuple<uint8_t, N*>> parents = {std::make_tuple(0, root)};
+        std::vector<std::tuple<uint8_t, N*>> childrenVec;
 
         uint32_t level = 0;
 
         while (parents.size()) {
             // get all kids
-            for (N* par : parents) {
+            for (std::tuple<uint8_t, N*> parent : parents) {
+                N* par = std::get<1>(parent);
                 printf("%d: ", level);
-                if (par->hasPrefix()) {
-                    printPrefix(par);
-                }
+                printPrefix(parent);
                 printf("\n");
                 std::tuple<uint8_t, N*> children[256];
                 uint32_t childrenCount = 0;
@@ -374,12 +377,10 @@ namespace ART_OLC {
                             loadKey(N::getLeaf(child), k);
                             printf("\"%s\" ", k.data);
                         } else {
-                            if (child->hasPrefix()) {
-                                printf("\"");
-                                printPrefix(child);
-                                printf("\" ");
-                            }
-                            childrenVec.push_back(child);
+                            printf("\"");
+                            printPrefix(children[i]);
+                            printf("\" ");
+                            childrenVec.push_back(children[i]);
                         }
                     }
                 }
