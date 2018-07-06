@@ -3,7 +3,8 @@
 #include "Tree.h"
 #include "N.cpp"
 #include "Key.h"
-
+#include "Sto.hh"
+#include "Transaction.hh"
 
 namespace ART_OLC {
 
@@ -573,6 +574,7 @@ namespace ART_OLC {
 
                                 parentNode->writeUnlock();
                                 node->writeUnlockObsolete();
+                                Transaction::rcu_delete(node);
                                 // this->epoche.markNodeForDeletion(node, threadInfo);
                             } else {
                                 secondNodeN->writeLockOrRestart(needRestart);
@@ -590,6 +592,7 @@ namespace ART_OLC {
                                 secondNodeN->writeUnlock();
 
                                 node->writeUnlockObsolete();
+                                Transaction::rcu_delete(node);
                                 // this->epoche.markNodeForDeletion(node, threadInfo);
                             }
                         } else {

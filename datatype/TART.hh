@@ -177,6 +177,7 @@ public:
                 Key art_key;
                 art_key.set(e->key.c_str(), e->key.size()+1);
                 root_.access().remove(art_key, (TID) e);
+                Transaction::rcu_delete(e);
             }
             e->poisoned = false;
             e->val = item.template write_value<TVal>();
@@ -201,6 +202,7 @@ public:
             Key art_key;
             art_key.set(e->key.c_str(), e->key.size()+1);
             root_.access().remove(art_key, (TID) e);
+            Transaction::rcu_delete(e);
         }
     }
     void print(std::ostream& w, const TransItem& item) const override {

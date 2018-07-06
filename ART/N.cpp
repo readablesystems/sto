@@ -6,6 +6,7 @@
 #include "N16.cpp"
 #include "N48.cpp"
 #include "N256.cpp"
+#include "Transaction.hh"
 
 namespace ART_OLC {
 
@@ -119,6 +120,7 @@ namespace ART_OLC {
         N::change(parentNode, keyParent, nBig);
 
         n->writeUnlockObsolete();
+        Transaction::rcu_delete(n);
         // threadInfo.getEpoche().markNodeForDeletion(n, threadInfo);
         parentNode->writeUnlock();
     }
@@ -231,6 +233,7 @@ namespace ART_OLC {
         N::change(parentNode, keyParent, nSmall);
 
         n->writeUnlockObsolete();
+        Transaction::rcu_delete(n);
         // threadInfo.getEpoche().markNodeForDeletion(n, threadInfo);
         parentNode->writeUnlock();
     }

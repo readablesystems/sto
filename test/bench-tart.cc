@@ -15,6 +15,17 @@
 
 TART art;
 
+void printMem() {
+    int tSize = 0, resident = 0, share = 0;
+    std::ifstream buffer("/proc/self/statm");
+    buffer >> tSize >> resident >> share;
+    buffer.close();
+
+    long page_size_kb = sysconf(_SC_PAGE_SIZE) / 1024; // in case x86-64 is configured to use 2MB pages
+    double rss = resident * page_size_kb;
+    std::cout << "Memory - " << rss << " kB\n";
+}
+
 std::vector<unsigned char> intToBytes(int paramInt)
 {
     std::vector<unsigned char> arrayOfByte(4);
@@ -87,6 +98,7 @@ void words() {
 
 int main() {
     art = TART();
+    printMem();
 
     // Build tree
     {
@@ -101,8 +113,9 @@ int main() {
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - starttime);
-        printf("insert,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
+        printf("insert,%d,%f\n\n", NVALS, (NVALS * 1.0) / duration.count());
     }
+    printMem();
 
     {
         auto starttime = std::chrono::system_clock::now();
@@ -116,8 +129,9 @@ int main() {
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - starttime);
-        printf("lookup,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
+        printf("lookup,%d,%f\n\n", NVALS, (NVALS * 1.0) / duration.count());
     }
+    printMem();
 
     {
         auto starttime = std::chrono::system_clock::now();
@@ -131,8 +145,9 @@ int main() {
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - starttime);
-        printf("erase,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
+        printf("erase,%d,%f\n\n", NVALS, (NVALS * 1.0) / duration.count());
     }
+    printMem();
 
     // words();
 }
