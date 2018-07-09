@@ -9,22 +9,14 @@
 #include "TART.hh"
 #include "Transaction.hh"
 #include <unistd.h>
+#include <random>
 
 #define NTHREAD 10
 #define NVALS 1000000
 
+uint64_t keys[NVALS];
+
 TART art;
-
-void printMem() {
-    int tSize = 0, resident = 0, share = 0;
-    std::ifstream buffer("/proc/self/statm");
-    buffer >> tSize >> resident >> share;
-    buffer.close();
-
-    long page_size_kb = sysconf(_SC_PAGE_SIZE) / 1024; // in case x86-64 is configured to use 2MB pages
-    double rss = resident * page_size_kb;
-    std::cout << "Memory - " << rss << " kB\n";
-}
 
 std::vector<unsigned char> intToBytes(int paramInt)
 {
@@ -38,10 +30,10 @@ void insertKey(int thread_id) {
     TThread::set_id(thread_id);
 
     for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
-        auto v = intToBytes(i);
+        auto v = intToBytes(keys[i]);
         std::string str(v.begin(),v.end());
         TRANSACTION_E {
-            art.insert(str, i);
+            art.insert(str, keys[i]);
         } RETRY_E(true);
     }
 }
@@ -50,11 +42,11 @@ void lookupKey(int thread_id) {
     TThread::set_id(thread_id);
 
     for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
-        auto v = intToBytes(i);
+        auto v = intToBytes(keys[i]);
         std::string str(v.begin(),v.end());
         TRANSACTION_E {
             auto val = art.lookup(str);
-            assert((int) val == i);
+            assert(val == keys[i]);
         } RETRY_E(true);
     }
 }
@@ -63,7 +55,7 @@ void eraseKey(int thread_id) {
     TThread::set_id(thread_id);
 
     for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
-        auto v = intToBytes(i);
+        auto v = intToBytes(keys[i]);
         std::string str(v.begin(),v.end());
         TRANSACTION_E {
             art.erase(str);
@@ -98,7 +90,14 @@ void words() {
 
 int main() {
     art = TART();
-    printMem();
+
+    std::mt19937 rng;
+    rng.seed(std::random_device()());
+    std::uniform_int_distribution<std::mt19937::result_type> dist(0,(unsigned) -1);
+
+    for (uint64_t i = 0; i < NVALS; i++) {
+        keys[i] = dist(rng);
+    }
 
     // Build tree
     {
@@ -113,9 +112,8 @@ int main() {
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - starttime);
-        printf("insert,%d,%f\n\n", NVALS, (NVALS * 1.0) / duration.count());
+        printf("insert,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
     }
-    printMem();
 
     {
         auto starttime = std::chrono::system_clock::now();
@@ -129,9 +127,8 @@ int main() {
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - starttime);
-        printf("lookup,%d,%f\n\n", NVALS, (NVALS * 1.0) / duration.count());
+        printf("lookup,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
     }
-    printMem();
 
     {
         auto starttime = std::chrono::system_clock::now();
@@ -145,9 +142,8 @@ int main() {
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - starttime);
-        printf("erase,%d,%f\n\n", NVALS, (NVALS * 1.0) / duration.count());
+        printf("erase,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
     }
-    printMem();
 
     // words();
 }
