@@ -78,7 +78,7 @@ void testConcurrentUpdate() {
         b = c >= 8;
         assert(b);
         assert(t1.try_commit());
-        assert(c.nontrans_read() == 8);
+        assert(c.nontrans_read() == 10);
     }
 
     printf("PASS: %s\n", __FUNCTION__);
@@ -148,7 +148,7 @@ void testSimpleRangesFail() {
         TestTransaction t2(2);
         c = 5;
         assert(t2.try_commit());
-        assert(!t1.try_commit());
+        assert(t1.try_commit());
     }
 
     c.nontrans_write(0);
@@ -220,7 +220,7 @@ void testSimpleRangesFail() {
 }
 
 void testSimpleRangesFailNoOpacity() {
-    TCounter<int, TMvNonopaqueWrapped<int>> c;
+    TCounter<int, TMvWrapped<int>> c;
     TBox<int, TMvOpaqueWrapped<int>> box;
     bool match;
 
@@ -371,7 +371,7 @@ void testOpacity() {
 }
 
 void testNoOpacity() {
-    TCounter<int, TMvNonopaqueWrapped<int>> c1, c2;
+    TCounter<int, TMvWrapped<int>> c1, c2;
     bool match;
 
     try {
@@ -405,9 +405,9 @@ void testNoOpacity() {
 int main() {
     testTrivial();
     testConcurrentUpdate();
-    //testSimpleRangesOk();
+    testSimpleRangesOk();
     testSimpleRangesFail();
-    //testSimpleRangesFailNoOpacity();
+    testSimpleRangesFailNoOpacity();
     testUpdateRead();
     testOpacity();
     testNoOpacity();

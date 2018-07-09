@@ -6,6 +6,7 @@
 #include "EagerVersions.hh"
 #include "OCCVersions.hh"
 #include "TicTocVersions.hh"
+#include "MVCCVersions.hh"
 
 class VersionDelegate {
     friend class TVersion;
@@ -19,6 +20,7 @@ class VersionDelegate {
     friend class TicTocVersion;
     template <bool Opaque, bool Extend>
     friend class TicTocCompressedVersion;
+    friend class TMvVersion;
 
     static void item_or_flags(TransItem& item, TransItem::flags_type flags) {
         item.__or_flags(flags);
@@ -577,6 +579,27 @@ inline bool TicTocCompressedVersion<Opaque, Extend>::observe_read_impl(TransItem
     return true;
 }
 
+// MVCC
+inline bool TMvVersion::observe_read_impl(TransItem &item, bool add_read){
+    assert(!item.has_stash());
+    TMvVersion version = *this;
+    fence();
+
+    if (version.is_locked_elsewhere()) {
+        t().mark_abort_because(&item, "locked", version.value());
+        TXP_INCREMENT(txp_observe_lock_aborts);
+        return false;
+    }
+    if (!t().check_opacity(item, version.value()))
+        return false;
+    if (add_read && !item.has_read()) {
+        VersionDelegate::item_or_flags(item, TransItem::read_bit);
+        VersionDelegate::item_access_rdata(item).v = Packer<TMvVersion>::pack(t().buf_, std::move(version));
+    }
+
+    return true;
+}
+
 inline auto TVersion::snapshot(TransProxy& item) -> type {
     type v = value();
     if (!item.observe_opacity(*this)) {
@@ -601,6 +624,22 @@ inline auto TNonopaqueVersion::snapshot(TransProxy& item) -> type {
 inline auto TNonopaqueVersion::snapshot(const TransItem&, const Transaction& txn) -> type {
     const_cast<Transaction&>(txn).any_nonopaque_ = true;
     return value();
+}
+
+inline auto TMvVersion::snapshot(TransProxy& item) -> type {
+    type v = value();
+    if (!item.observe_opacity(*this)) {
+				Transaction::Abort();
+		}
+    return v;
+}
+
+inline auto TMvVersion::snapshot(const TransItem& item, const Transaction& txn) -> type {
+    type v = value();
+    if (!const_cast<Transaction&>(txn).check_opacity(const_cast<TransItem&>(item), v)) {
+				Transaction::Abort();
+		}
+    return v;
 }
 
 // Commit TID definitions
@@ -694,6 +733,13 @@ TicTocCompressedVersion<Opaque, Extend>::cp_commit_tid_impl(Transaction& txn) {
         return tid;
     else
         return txn.compute_tictoc_commit_ts();
+}
+
+TMvVersion::type& TMvVersion::cp_access_tid_impl(Transaction &txn) {
+    return VersionDelegate::standard_tid(txn);
+}
+TMvVersion::type TMvVersion::cp_commit_tid_impl(Transaction &txn) {
+    return txn.commit_tid();
 }
 
 // Try lock method now also optionally keeps track of commit timestamp

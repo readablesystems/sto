@@ -131,8 +131,8 @@ void testOpacity1() {
 }
 
 void testNoOpacity1() {
-    TBox<int, TMvNonopaqueWrapped<int>> f, g;
-    TBox<int, TMvNonopaqueWrapped<int>> box;
+    TBox<int, TMvWrapped<int>> f, g;
+    TBox<int, TMvWrapped<int>> box;
     f.nontrans_write(3);
 
     {
@@ -148,7 +148,7 @@ void testNoOpacity1() {
 
         t1.use();
         x = g;
-        assert(x == 4);
+        assert(x == 0);
         assert(!t1.try_commit());
     }
 
