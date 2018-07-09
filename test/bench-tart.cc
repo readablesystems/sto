@@ -13,8 +13,9 @@
 
 #define NTHREAD 10
 #define NVALS 1000000
+#define RAND 1
 
-uint64_t keys[NVALS];
+uint64_t* keys;
 
 TART art;
 
@@ -91,12 +92,18 @@ void words() {
 int main() {
     art = TART();
 
+    keys = new uint64_t[NVALS];
+
     std::mt19937 rng;
     rng.seed(std::random_device()());
     std::uniform_int_distribution<std::mt19937::result_type> dist(0,(unsigned) -1);
 
     for (uint64_t i = 0; i < NVALS; i++) {
+#ifdef RAND
         keys[i] = dist(rng);
+#else
+        keys[i] = i;
+#endif
     }
 
     // Build tree
