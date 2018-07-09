@@ -229,6 +229,22 @@ void testEmptyErase() {
 
 }
 
+void testAbsentErase() {
+    TART a;
+
+    TestTransaction t1(0);
+    a.erase("foo");
+    a.insert("bar", 1);
+
+    TestTransaction t2(1);
+    a.insert("foo", 123);
+    assert(t2.try_commit());
+
+    t1.use();
+    assert(!t1.try_commit());
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
 void multiWrite() {
     TART aTART;
     {
@@ -658,25 +674,26 @@ int main() {
     // Checks();
     // return 0;
     //
-    TART a;
+    // TART a;
+    //
+    // {
+    //     TransactionGuard t;
+    //     a.insert("romane", 1);
+    //     a.insert("romanus", 2);
+    //     a.insert("romulus", 3);
+    //     a.insert("rubens", 4);
+    //     a.insert("ruber", 5);
+    //     a.insert("rubicon", 6);
+    //     a.insert("rubicundus", 7);
+    // }
     
-    {
-        TransactionGuard t;
-        a.insert("romane", 1);
-        a.insert("romanus", 2);
-        a.insert("romulus", 3);
-        a.insert("rubens", 4);
-        a.insert("ruber", 5);
-        a.insert("rubicon", 6);
-        a.insert("rubicundus", 7);
-    }
-    
-    a.print();
+    // a.print();
 
     testSimple();
     testSimple2();
     testSimpleErase();
     testEmptyErase();
+    testAbsentErase();
     multiWrite();
     multiThreadWrites();
     testReadDelete(); // problem w/ lacking implementation of erase

@@ -147,6 +147,10 @@ public:
             item_parent.add_flags(parent_bit);
             return;
         }
+
+        auto item_parent = Sto::item(this, r.second);
+        item_parent.add_flags(parent_bit);
+        r.second->vers.observe_read(item_parent);
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
