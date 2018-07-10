@@ -20,12 +20,12 @@
 
 #define NUM_THREADS 4
 #define NTHREAD 20
+#define NVALS 10000000
 
 uint64_t* keys;
 
 class MasstreeWrapper {
 public:
-    static constexpr uint64_t insert_bound = 0xffffff;
     struct table_params : public Masstree::nodeparams<15,15> {
         typedef uint64_t value_type;
         typedef Masstree::value_print<value_type> value_print_type;
@@ -65,8 +65,6 @@ public:
 
     void insert(int int_key) {
         uint64_t key_buf;
-        if (int_key > insert_bound)
-            return;
         Str key = make_key(int_key, key_buf);
 
         cursor_type lp(table_, key);
@@ -79,10 +77,18 @@ public:
         lp.finish(1, *ti);
     }
 
+    int lookup(int int_key) {
+        uint64_t key_buf;
+        Str key = make_key(int_key, key_buf);
+
+        unlocked_cursor_type lp(table_, key);
+        bool found = lp.find_unlocked(*ti);
+        always_assert(found, "keys must all exist");
+        return lp.value();
+    }
+
     void remove(int int_key) {
         uint64_t key_buf;
-        if (int_key > insert_bound)
-            return;
         Str key = make_key(int_key, key_buf);
 
         cursor_type lp(table_, key);
@@ -108,13 +114,21 @@ volatile mrcu_epoch_type active_epoch = 1;
 volatile uint64_t globalepoch = 1;
 volatile bool recovering = false;
 
-#define NVALS 1000000
 
 void insertKey(MasstreeWrapper* mt, int thread_id) {
     mt->thread_init(thread_id);
 
     for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
         mt->insert(keys[i]);
+    }
+}
+
+void lookupKey(MasstreeWrapper* mt, int thread_id) {
+    mt->thread_init(thread_id);
+
+    for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
+        int v = mt->lookup(keys[i]);
+        assert(v == keys[i]);
     }
 }
 
@@ -140,6 +154,20 @@ int main() {
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - starttime);
         printf("insert,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
+    }
+    {
+        auto starttime = std::chrono::system_clock::now();
+        std::thread threads[NTHREAD];
+        for (int i = 0; i < NTHREAD; i++) {
+            threads[i] = std::thread(lookupKey, mt, i);
+        }
+
+        for (int i = 0; i < NTHREAD; i++) {
+            threads[i].join();
+        }
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::system_clock::now() - starttime);
+        printf("lookup,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
     }
 
     pthread_barrier_destroy(&barrier);
