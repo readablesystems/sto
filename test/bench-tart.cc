@@ -11,9 +11,10 @@
 #include <unistd.h>
 #include <random>
 
-#define NTHREAD 10
+int nthread = 1;
+int rand_keys = 0;
+
 #define NVALS 1000000
-#define RAND 1
 
 uint64_t* keys;
 
@@ -30,7 +31,7 @@ std::vector<unsigned char> intToBytes(int paramInt)
 void insertKey(int thread_id) {
     TThread::set_id(thread_id);
 
-    for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
+    for (int i = thread_id*(NVALS/nthread); i < (thread_id+1)*NVALS/nthread; i++) {
         auto v = intToBytes(keys[i]);
         std::string str(v.begin(),v.end());
         TRANSACTION_E {
@@ -42,7 +43,7 @@ void insertKey(int thread_id) {
 void lookupKey(int thread_id) {
     TThread::set_id(thread_id);
 
-    for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
+    for (int i = thread_id*(NVALS/nthread); i < (thread_id+1)*NVALS/nthread; i++) {
         auto v = intToBytes(keys[i]);
         std::string str(v.begin(),v.end());
         TRANSACTION_E {
@@ -55,7 +56,7 @@ void lookupKey(int thread_id) {
 void eraseKey(int thread_id) {
     TThread::set_id(thread_id);
 
-    for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
+    for (int i = thread_id*(NVALS/nthread); i < (thread_id+1)*NVALS/nthread; i++) {
         auto v = intToBytes(keys[i]);
         std::string str(v.begin(),v.end());
         TRANSACTION_E {
@@ -89,7 +90,14 @@ void words() {
     input2.close();
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    if (argc > 1) {
+        nthread = atoi(argv[1]);
+    }
+    if (argc > 2) {
+        rand_keys = atoi(argv[2]);
+    }
+
     art = TART();
 
     keys = new uint64_t[NVALS];
@@ -99,22 +107,22 @@ int main() {
     std::uniform_int_distribution<std::mt19937::result_type> dist(0,(unsigned) -1);
 
     for (uint64_t i = 0; i < NVALS; i++) {
-#ifdef RAND
-        keys[i] = dist(rng);
-#else
-        keys[i] = i;
-#endif
+        if (rand_keys) {
+            keys[i] = dist(rng);
+        } else {
+            keys[i] = i;
+        }
     }
 
     // Build tree
     {
         auto starttime = std::chrono::system_clock::now();
-        std::thread threads[NTHREAD];
-        for (int i = 0; i < NTHREAD; i++) {
+        std::thread threads[nthread];
+        for (int i = 0; i < nthread; i++) {
             threads[i] = std::thread(insertKey, i);
         }
 
-        for (int i = 0; i < NTHREAD; i++) {
+        for (int i = 0; i < nthread; i++) {
             threads[i].join();
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -124,12 +132,12 @@ int main() {
 
     {
         auto starttime = std::chrono::system_clock::now();
-        std::thread threads[NTHREAD];
-        for (int i = 0; i < NTHREAD; i++) {
+        std::thread threads[nthread];
+        for (int i = 0; i < nthread; i++) {
             threads[i] = std::thread(lookupKey, i);
         }
 
-        for (int i = 0; i < NTHREAD; i++) {
+        for (int i = 0; i < nthread; i++) {
             threads[i].join();
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -139,12 +147,12 @@ int main() {
 
     {
         auto starttime = std::chrono::system_clock::now();
-        std::thread threads[NTHREAD];
-        for (int i = 0; i < NTHREAD; i++) {
+        std::thread threads[nthread];
+        for (int i = 0; i < nthread; i++) {
             threads[i] = std::thread(eraseKey, i);
         }
 
-        for (int i = 0; i < NTHREAD; i++) {
+        for (int i = 0; i < nthread; i++) {
             threads[i].join();
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
