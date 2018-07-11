@@ -14,7 +14,7 @@
 int nthread = 1;
 int rand_keys = 0;
 
-#define NVALS 1000000
+#define NVALS 10000000
 
 uint64_t* keys;
 
