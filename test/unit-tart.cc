@@ -378,6 +378,35 @@ void testReadDeleteInsert() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+
+void testInsertDelete() {
+    TART aTART;
+    TestTransaction t0(0);
+    aTART.insert(absentkey1, 10);
+    aTART.insert(absentkey2, 10);
+    assert(t0.try_commit());
+
+    TestTransaction t1(0);
+    aTART.insert(absentkey1, 123);
+    aTART.insert(absentkey2, 456);
+
+    TestTransaction t2(0);
+    aTART.erase(absentkey1);
+    assert(t2.try_commit());
+
+    assert(t1.try_commit());
+
+    {
+        TransactionGuard t;
+        volatile auto x = aTART.lookup(absentkey1);
+        volatile auto y = aTART.lookup(absentkey2);
+        assert(x == 123);
+        assert(y == 456);
+    }
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
 // test that reading poisoned val aborts
 void testAbsent1_1() {
     TART aTART;
@@ -700,6 +729,7 @@ int main() {
     testReadWriteDelete();
     testReadDeleteInsert();
     testAbsent1_1();
+    testInsertDelete();
     testAbsent1_2();
     testAbsent1_3(); // ABA read insert delete detection no longer exists
     testAbsent2_2();
