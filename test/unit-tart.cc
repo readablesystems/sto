@@ -394,14 +394,14 @@ void testInsertDelete() {
     aTART.erase(absentkey1);
     assert(t2.try_commit());
 
-    assert(t1.try_commit());
+    assert(!t1.try_commit());
 
     {
         TransactionGuard t;
         volatile auto x = aTART.lookup(absentkey1);
         volatile auto y = aTART.lookup(absentkey2);
-        assert(x == 123);
-        assert(y == 456);
+        assert(x == 0);
+        assert(y == 10);
     }
 
     printf("PASS: %s\n", __FUNCTION__);

@@ -33,6 +33,7 @@ public:
 
     static constexpr TransItem::flags_type parent_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type deleted_bit = TransItem::user0_bit<<1;
+    static constexpr TransItem::flags_type new_insert_bit = TransItem::user0_bit<<2;
 
     TART() {
         root_.access().setLoadKey(TART::loadKey);
@@ -106,6 +107,7 @@ public:
         auto item_parent = Sto::item(this, r.second);
         item_parent.add_write(v);
         item_el.add_write(v);
+        item_el.add_flags(new_insert_bit);
         item_parent.add_flags(parent_bit);
     }
 
@@ -160,7 +162,15 @@ public:
             return parent->vers.is_locked_here() || txn.try_lock(item, parent->vers);
         } else {
             Element* e = item.template key<Element*>();
-            return txn.try_lock(item, e->vers);
+            bool locked = txn.try_lock(item, e->vers);
+            if (!locked) {
+                return false;
+            }
+            if (e->poisoned && !(item.has_flag(new_insert_bit) || item.has_flag(deleted_bit))) {
+                e->vers.cp_unlock(item);
+                return false;
+            }
+            return true;
         }
     }
     bool check(TransItem& item, Transaction& txn) override {
