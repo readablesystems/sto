@@ -18,8 +18,9 @@
 #include "masstree_scan.hh"
 #include "string.hh"
 
-#define NUM_THREADS 4
-#define NTHREAD 20
+int nthread = 1;
+int rand_keys = 0;
+
 #define NVALS 10000000
 
 uint64_t* keys;
@@ -93,7 +94,7 @@ public:
 
         cursor_type lp(table_, key);
         bool found = lp.find_locked(*ti);
-        always_assert(found, "keys must all exist");
+        // always_assert(found, "keys must all exist");
         lp.finish(-1, *ti);
     }
 
@@ -118,7 +119,7 @@ volatile bool recovering = false;
 void insertKey(MasstreeWrapper* mt, int thread_id) {
     mt->thread_init(thread_id);
 
-    for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
+    for (int i = thread_id*(NVALS/nthread); i < (thread_id+1)*NVALS/nthread; i++) {
         mt->insert(keys[i]);
     }
 }
@@ -126,7 +127,7 @@ void insertKey(MasstreeWrapper* mt, int thread_id) {
 void lookupKey(MasstreeWrapper* mt, int thread_id) {
     mt->thread_init(thread_id);
 
-    for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
+    for (int i = thread_id*(NVALS/nthread); i < (thread_id+1)*NVALS/nthread; i++) {
         int v = mt->lookup(keys[i]);
         assert(v == keys[i]);
     }
@@ -135,28 +136,43 @@ void lookupKey(MasstreeWrapper* mt, int thread_id) {
 void removeKey(MasstreeWrapper* mt, int thread_id) {
     mt->thread_init(thread_id);
 
-    for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
+    for (int i = thread_id*(NVALS/nthread); i < (thread_id+1)*NVALS/nthread; i++) {
         mt->remove(keys[i]);
     }
 }
 
-int main() {
-    pthread_barrier_init(&barrier, nullptr, NUM_THREADS);
+int main(int argc, char *argv[]) {
+    if (argc > 1) {
+        nthread = atoi(argv[1]);
+    }
+    if (argc > 2) {
+        rand_keys = atoi(argv[2]);
+    }
+
+    pthread_barrier_init(&barrier, nullptr, nthread);
     auto mt = new MasstreeWrapper();
 
     keys = new uint64_t[NVALS];
+    std::mt19937 rng;
+    rng.seed(std::random_device()());
+    std::uniform_int_distribution<std::mt19937::result_type> dist(0,(unsigned) -1);
+
     for (uint64_t i = 0; i < NVALS; i++) {
-        keys[i] = i;
+        if (rand_keys) {
+            keys[i] = dist(rng);
+        } else {
+            keys[i] = i;
+        }
     }
 
     {
         auto starttime = std::chrono::system_clock::now();
-        std::thread threads[NTHREAD];
-        for (int i = 0; i < NTHREAD; i++) {
+        std::thread threads[nthread];
+        for (int i = 0; i < nthread; i++) {
             threads[i] = std::thread(insertKey, mt, i);
         }
 
-        for (int i = 0; i < NTHREAD; i++) {
+        for (int i = 0; i < nthread; i++) {
             threads[i].join();
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -165,12 +181,12 @@ int main() {
     }
     {
         auto starttime = std::chrono::system_clock::now();
-        std::thread threads[NTHREAD];
-        for (int i = 0; i < NTHREAD; i++) {
+        std::thread threads[nthread];
+        for (int i = 0; i < nthread; i++) {
             threads[i] = std::thread(lookupKey, mt, i);
         }
 
-        for (int i = 0; i < NTHREAD; i++) {
+        for (int i = 0; i < nthread; i++) {
             threads[i].join();
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -179,12 +195,12 @@ int main() {
     }
     {
         auto starttime = std::chrono::system_clock::now();
-        std::thread threads[NTHREAD];
-        for (int i = 0; i < NTHREAD; i++) {
+        std::thread threads[nthread];
+        for (int i = 0; i < nthread; i++) {
             threads[i] = std::thread(removeKey, mt, i);
         }
 
-        for (int i = 0; i < NTHREAD; i++) {
+        for (int i = 0; i < nthread; i++) {
             threads[i].join();
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(

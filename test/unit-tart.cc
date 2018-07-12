@@ -12,20 +12,20 @@
 #define GUARDED if (TransactionGuard tguard{})
 
 // TODO these cause simple 2 to fail
-// std::string absentkey1 = "he";
-// std::string absentkey2 = "hello";
+// const char* absentkey1 = "he";
+// const char* absentkey2 = "hello";
 
-std::string absentkey1 = "hello";
-std::string absentkey2 = "1234";
-std::string absentkey2_1 = "1245";
-std::string absentkey2_2 = "1256";
-std::string absentkey2_3 = "1267";
-std::string absentkey2_4 = "1278";
-std::string absentkey2_5 = "1289";
+const char* absentkey1 = "hello";
+const char* absentkey2 = "1234";
+const char* absentkey2_1 = "1245";
+const char* absentkey2_2 = "1256";
+const char* absentkey2_3 = "1267";
+const char* absentkey2_4 = "1278";
+const char* absentkey2_5 = "1289";
 
-std::string checkkey = "check1";
-std::string checkkey2 = "check2";
-std::string checkkey3 = "check3";
+const char* checkkey = "check1";
+const char* checkkey2 = "check2";
+const char* checkkey3 = "check3";
 
 void NoChecks() {
     TART aTART;
@@ -97,8 +97,8 @@ void Checks() {
 void testSimple() {
     TART a;
 
-    std::string key1 = "hello world";
-    std::string key2 = "1234";
+    const char* key1 = "hello world";
+    const char* key2 = "1234";
     {
         TransactionGuard t;
         a.insert(key1, 123);
@@ -115,7 +115,7 @@ void testSimple() {
 
     {
         TransactionGuard t;
-        a.insert("foo", 1);
+        // a.insert("foo", 1);
         a.insert("foobar", 2);
     }
 
@@ -158,8 +158,8 @@ void testSimple2() {
 void testSimpleErase() {
     TART a;
 
-    std::string key1 = "hello world";
-    std::string key2 = "1234";
+    const char* key1 = "hello world";
+    const char* key2 = "1234";
     {
         TransactionGuard t;
         a.insert(key1, 123);
@@ -203,7 +203,7 @@ void testSimpleErase() {
 void testEmptyErase() {
     TART a;
 
-    std::string key1 = "hello world";
+    const char* key1 = "hello world";
 
     // deleting non-existent node
     {
@@ -703,20 +703,20 @@ int main() {
     // Checks();
     // return 0;
     //
-    // TART a;
-    //
-    // {
-    //     TransactionGuard t;
-    //     a.insert("romane", 1);
-    //     a.insert("romanus", 2);
-    //     a.insert("romulus", 3);
-    //     a.insert("rubens", 4);
-    //     a.insert("ruber", 5);
-    //     a.insert("rubicon", 6);
-    //     a.insert("rubicundus", 7);
-    // }
-    
-    // a.print();
+    TART a;
+
+    {
+        TransactionGuard t;
+        a.insert("romane", 1);
+        a.insert("romanus", 2);
+        a.insert("romulus", 3);
+        a.insert("rubens", 4);
+        a.insert("ruber", 5);
+        a.insert("rubicon", 6);
+        a.insert("rubicundus", 7);
+    }
+
+    a.print();
 
     testSimple();
     testSimple2();

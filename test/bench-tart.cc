@@ -32,10 +32,10 @@ void insertKey(int thread_id) {
     TThread::set_id(thread_id);
 
     for (int i = thread_id*(NVALS/nthread); i < (thread_id+1)*NVALS/nthread; i++) {
-        auto v = intToBytes(keys[i]);
-        std::string str(v.begin(),v.end());
+        // auto v = intToBytes(keys[i]);
+        // std::string str(v.begin(),v.end());
         TRANSACTION_E {
-            art.insert(str, keys[i]);
+            art.insert(keys[i], keys[i]);
         } RETRY_E(true);
     }
 }
@@ -44,10 +44,10 @@ void lookupKey(int thread_id) {
     TThread::set_id(thread_id);
 
     for (int i = thread_id*(NVALS/nthread); i < (thread_id+1)*NVALS/nthread; i++) {
-        auto v = intToBytes(keys[i]);
-        std::string str(v.begin(),v.end());
+        // auto v = intToBytes(keys[i]);
+        // std::string str(v.begin(),v.end());
         TRANSACTION_E {
-            auto val = art.lookup(str);
+            auto val = art.lookup(keys[i]);
             assert(val == keys[i]);
         } RETRY_E(true);
     }
@@ -57,38 +57,38 @@ void eraseKey(int thread_id) {
     TThread::set_id(thread_id);
 
     for (int i = thread_id*(NVALS/nthread); i < (thread_id+1)*NVALS/nthread; i++) {
-        auto v = intToBytes(keys[i]);
-        std::string str(v.begin(),v.end());
+        // auto v = intToBytes(keys[i]);
+        // std::string str(v.begin(),v.end());
         TRANSACTION_E {
-            art.erase(str);
+            art.erase(keys[i]);
         } RETRY_E(true);
     }
 }
 
-void words() {
-    TART a;
-    std::ifstream input("/usr/share/dict/words");
-    int i = 0;
-    for (std::string line; getline(input, line);) {
-        printf("%s\n", line.c_str());
-        TRANSACTION_E {
-            a.insert(line, i);
-        } RETRY_E(true);
-        i++;
-    }
-    input.close();
-    std::ifstream input2("/usr/share/dict/words");
-    printf("lookup\n");
-    i = 0;
-    for (std::string line; getline(input2, line);) {
-        TRANSACTION_E {
-            assert(a.lookup(line) == i);
-        } RETRY_E(true);
-        i++;
-    }
-    printf("done\n");
-    input2.close();
-}
+// void words() {
+//     TART a;
+//     std::ifstream input("/usr/share/dict/words");
+//     int i = 0;
+//     for (std::string line; getline(input, line);) {
+//         printf("%s\n", line.c_str());
+//         TRANSACTION_E {
+//             a.insert(line, i);
+//         } RETRY_E(true);
+//         i++;
+//     }
+//     input.close();
+//     std::ifstream input2("/usr/share/dict/words");
+//     printf("lookup\n");
+//     i = 0;
+//     for (std::string line; getline(input2, line);) {
+//         TRANSACTION_E {
+//             assert(a.lookup(line) == i);
+//         } RETRY_E(true);
+//         i++;
+//     }
+//     printf("done\n");
+//     input2.close();
+// }
 
 int main(int argc, char *argv[]) {
     if (argc > 1) {
