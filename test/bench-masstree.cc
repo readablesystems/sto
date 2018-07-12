@@ -132,6 +132,14 @@ void lookupKey(MasstreeWrapper* mt, int thread_id) {
     }
 }
 
+void removeKey(MasstreeWrapper* mt, int thread_id) {
+    mt->thread_init(thread_id);
+
+    for (int i = thread_id*(NVALS/NTHREAD); i < (thread_id+1)*NVALS/NTHREAD; i++) {
+        mt->remove(keys[i]);
+    }
+}
+
 int main() {
     pthread_barrier_init(&barrier, nullptr, NUM_THREADS);
     auto mt = new MasstreeWrapper();
@@ -168,6 +176,20 @@ int main() {
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - starttime);
         printf("lookup,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
+    }
+    {
+        auto starttime = std::chrono::system_clock::now();
+        std::thread threads[NTHREAD];
+        for (int i = 0; i < NTHREAD; i++) {
+            threads[i] = std::thread(removeKey, mt, i);
+        }
+
+        for (int i = 0; i < NTHREAD; i++) {
+            threads[i].join();
+        }
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::system_clock::now() - starttime);
+        printf("erase,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
     }
 
     pthread_barrier_destroy(&barrier);
