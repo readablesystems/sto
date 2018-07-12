@@ -108,6 +108,7 @@ UNIT_PROGRAMS = unit-tarray \
 				unit-swisstarray \
 				unit-swisstgeneric \
 				unit-masstree \
+				bench-masstree \
                 unit-dboindex
 
 ACT_UNIT_PROGRAMS = unit-tarray \
@@ -126,6 +127,7 @@ ACT_UNIT_PROGRAMS = unit-tarray \
                     unit-swisstarray \
                     unit-swisstgeneric \
                     unit-masstree \
+					bench-masstree \
 					unit-dboindex
 
 PROGRAMS = concurrent \
@@ -258,6 +260,9 @@ unit-swisstgeneric: $(OBJ)/unit-swisstgeneric.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-masstree: $(OBJ)/unit-masstree.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_DEPS) $(LDFLAGS) $(LIBS)
+
+bench-masstree: $(OBJ)/bench-masstree.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_DEPS) $(LDFLAGS) $(LIBS)
 
 unit-dboindex: $(OBJ)/unit-dboindex.o $(INDEX_DEPS)
