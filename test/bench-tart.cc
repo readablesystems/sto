@@ -48,7 +48,7 @@ void lookupKey(int thread_id) {
         // std::string str(v.begin(),v.end());
         TRANSACTION_E {
             auto val = art.lookup(keys[i]);
-            // assert(val == keys[i]);
+            assert(val == keys[i]);
         } RETRY_E(true);
     }
 }

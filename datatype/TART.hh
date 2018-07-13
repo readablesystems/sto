@@ -291,6 +291,10 @@ public:
             return;
         }
         Element* e = item.template key<Element*>();
+        if (item.has_flag(deleted_bit)) {
+            e->poisoned = false;
+            return;
+        }
         if (e->poisoned) {
             Key art_key;
             // art_key.set(e->key.c_str(), e->key.size()+1);

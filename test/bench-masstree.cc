@@ -70,12 +70,12 @@ public:
 
         cursor_type lp(table_, key);
         bool found = lp.find_insert(*ti);
-        always_assert(!found, "keys should all be unique");
+        // always_assert(!found, "keys should all be unique");
 
         lp.value() = int_key;
 
         fence();
-        lp.finish(1, *ti);
+        lp.finish(!found, *ti);
     }
 
     int lookup(int int_key) {
@@ -129,7 +129,7 @@ void lookupKey(MasstreeWrapper* mt, int thread_id) {
 
     for (int i = thread_id*(NVALS/nthread); i < (thread_id+1)*NVALS/nthread; i++) {
         int v = mt->lookup(keys[i]);
-        assert(v == keys[i]);
+        assert(v == (int) keys[i]);
     }
 }
 
