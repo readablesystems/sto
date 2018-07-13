@@ -115,7 +115,7 @@ void testSimple() {
 
     {
         TransactionGuard t;
-        // a.insert("foo", 1);
+        a.insert("foo", 1);
         a.insert("foobar", 2);
     }
 

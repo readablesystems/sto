@@ -73,9 +73,12 @@ public:
             if (item.has_write()) {
                 return item.template write_value<TVal>();
             }
+            e->vers.lock_exclusive();
             if (e->poisoned) {
+                e->vers.unlock_exclusive();
                 throw Transaction::Abort();
             }
+            e->vers.unlock_exclusive();
             e->vers.observe_read(item);
             return e->val;
         }
@@ -105,7 +108,7 @@ public:
         return transGet((TKey) &k, sizeof(uint64_t));
     }
     TVal lookup(const char* k) {
-        return transGet(k, strlen(k));
+        return transGet(k, strlen(k)+1);
     }
 
     void transPut(TKey k, TVal v, int len) {
@@ -116,9 +119,12 @@ public:
         Element* e = (Element*) r.first;
         if (e) {
             auto item = Sto::item(this, e);
+            e->vers.lock_exclusive();
             if (!item.has_write() && e->poisoned) {
+                e->vers.unlock_exclusive();
                 throw Transaction::Abort();
             }
+            e->vers.unlock_exclusive();
             item.add_write(v);
             item.clear_flags(deleted_bit);
             return;
@@ -126,7 +132,9 @@ public:
 
         e = new Element();
         if (len > 8) {
-            e->key = k;
+            char* p = (char*) malloc(len);
+            memcpy(p, k, len);
+            e->key = p;
         } else {
             memcpy(&e->key, k, len);
         }
@@ -160,7 +168,9 @@ public:
 
         e = new Element();
         if (len > 8) {
-            e->key = k;
+            char* p = (char*) malloc(len);
+            memcpy(p, k, len);
+            e->key = p;
         } else {
             memcpy(&e->key, k, len);
         }
@@ -176,7 +186,7 @@ public:
         transPut((TKey) &k, v, sizeof(uint64_t));
     }
     void insert(const char* k, TVal v) {
-        transPut(k, v, strlen(k));
+        transPut(k, v, strlen(k)+1);
     }
 
     void transRemove(TKey k, int len) {
@@ -187,10 +197,13 @@ public:
         Element* e = (Element*) r.first;
         if (e) {
             auto item = Sto::item(this, e);
+            e->vers.lock_exclusive();
             if (!item.has_write() && e->poisoned) {
+                e->vers.unlock_exclusive();
                 throw Transaction::Abort();
             }
             e->poisoned = true;
+            e->vers.unlock_exclusive();
             item.add_write(0);
             item.add_flags(deleted_bit);
 
@@ -212,7 +225,7 @@ public:
         transRemove((TKey) &k, sizeof(uint64_t));
     }
     void erase(const char* k) {
-        transRemove(k, strlen(k));
+        transRemove(k, strlen(k)+1);
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
