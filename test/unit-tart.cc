@@ -9,6 +9,14 @@
 #include "Transaction.hh"
 #include <unistd.h>
 
+struct Element {
+    const char* key;
+    int len;
+    uintptr_t val;
+    TVersion vers;
+    bool poisoned;
+};
+
 #define GUARDED if (TransactionGuard tguard{})
 
 // TODO these cause simple 2 to fail
@@ -716,30 +724,52 @@ int main() {
         a.insert("rubicundus", 7);
     }
 
+    Key start;
+    start.set("a", 2);
+
+    Key end;
+    end.set("z", 2);
+
+    Key continueKey;
+    continueKey.set("rubicundus", 11);
+
+    TID* result = new TID[10];
+    size_t resultsFound;
     a.print();
 
-    testSimple();
-    testSimple2();
-    testSimpleErase();
-    testEmptyErase();
-    testAbsentErase();
-    multiWrite();
-    multiThreadWrites();
-    testReadDelete(); // problem w/ lacking implementation of erase
-    testReadWriteDelete();
-    testReadDeleteInsert();
-    testAbsent1_1();
-    testInsertDelete();
-    testAbsent1_2();
-    testAbsent1_3(); // ABA read insert delete detection no longer exists
-    testAbsent2_2();
-    testAbsent3();
-    testAbsent3_2();
-    testABA1(); // ABA doesn't work
-    testMultiRead();
-    testReadWrite();
-    testPerNodeV();
-    testReadWrite();
+    bool success = a.lookupRange(start, end, continueKey, result, 10, resultsFound);
+    printf("success: %d\n", success);
+
+    for (int i = 0; i < resultsFound; i++) {
+        Element* e = (Element*) result[i];
+        printf("%d: %d\n", resultsFound, e->val);
+    }
+
+    printf("%s\n", continueKey.stackKey);
+
+    //
+    // testSimple();
+    // testSimple2();
+    // testSimpleErase();
+    // testEmptyErase();
+    // testAbsentErase();
+    // multiWrite();
+    // multiThreadWrites();
+    // testReadDelete(); // problem w/ lacking implementation of erase
+    // testReadWriteDelete();
+    // testReadDeleteInsert();
+    // testAbsent1_1();
+    // testInsertDelete();
+    // testAbsent1_2();
+    // testAbsent1_3(); // ABA read insert delete detection no longer exists
+    // testAbsent2_2();
+    // testAbsent3();
+    // testAbsent3_2();
+    // testABA1(); // ABA doesn't work
+    // testMultiRead();
+    // testReadWrite();
+    // testPerNodeV();
+    // testReadWrite();
 
     printf("TART tests pass\n");
 
