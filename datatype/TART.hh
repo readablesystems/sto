@@ -228,6 +228,11 @@ public:
         transRemove(k, strlen(k)+1);
     }
 
+    bool lookupRange(const Key &start, const Key &end, Key &continueKey, TID result[],
+                                std::size_t resultSize, std::size_t &resultsFound) const {
+        return root_.access().lookupRange(start, end, continueKey, result, resultSize, resultsFound);
+    }
+
     bool lock(TransItem& item, Transaction& txn) override {
         if (item.has_flag(parent_bit)) {
             Node* parent = item.template key<Node*>();
