@@ -18,7 +18,7 @@ int rand_keys = 0;
 
 uint64_t* keys;
 
-TART art;
+TART* art;
 
 std::vector<unsigned char> intToBytes(int paramInt)
 {
@@ -35,7 +35,7 @@ void insertKey(int thread_id) {
         // auto v = intToBytes(keys[i]);
         // std::string str(v.begin(),v.end());
         TRANSACTION_E {
-            art.insert(keys[i], keys[i]);
+            art->insert(keys[i], keys[i]);
         } RETRY_E(true);
     }
 }
@@ -47,7 +47,7 @@ void lookupKey(int thread_id) {
         // auto v = intToBytes(keys[i]);
         // std::string str(v.begin(),v.end());
         TRANSACTION_E {
-            auto val = art.lookup(keys[i]);
+            auto val = art->lookup(keys[i]);
             assert(val == keys[i]);
         } RETRY_E(true);
     }
@@ -60,7 +60,7 @@ void eraseKey(int thread_id) {
         // auto v = intToBytes(keys[i]);
         // std::string str(v.begin(),v.end());
         TRANSACTION_E {
-            art.erase(keys[i]);
+            art->erase(keys[i]);
         } RETRY_E(true);
     }
 }
@@ -98,7 +98,11 @@ int main(int argc, char *argv[]) {
         rand_keys = atoi(argv[2]);
     }
 
-    art = TART();
+    pthread_t advancer;
+    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
+    pthread_detach(advancer); 
+
+    art = new TART();
 
     keys = new uint64_t[NVALS];
 
@@ -159,6 +163,7 @@ int main(int argc, char *argv[]) {
                 std::chrono::system_clock::now() - starttime);
         printf("erase,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
     }
+    delete art;
 
     // words();
 }
