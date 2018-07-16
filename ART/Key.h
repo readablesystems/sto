@@ -14,8 +14,8 @@ class Key {
     uint32_t len = 0;
 
 
-    uint8_t stackKey[stackLen];
 public:
+    uint8_t stackKey[stackLen];
     uint8_t *data;
 
     Key() {}
