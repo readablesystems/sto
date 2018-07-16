@@ -227,9 +227,42 @@ public:
         transRemove({k, strlen(k)+1});
     }
 
-    bool lookupRange(const Key &start, const Key &end, Key &continueKey, TID result[],
+    bool lookupRange(TKey start, TKey end, TKey continueKey, TVal result[],
                                 std::size_t resultSize, std::size_t &resultsFound) const {
-        return root_.access().lookupRange(start, end, continueKey, result, resultSize, resultsFound);
+        Key art_start;
+        Key art_end;
+        Key art_continue;
+
+        art_start.set(start.first, start.second);
+        art_end.set(end.first, end.second);
+        // art_continue.set(continueKey.first, continueKey.second);
+
+        TID* art_result = new TID[resultSize];
+
+        bool success = root_.access().lookupRange(art_start, art_end, art_continue, art_result, resultSize, resultsFound);
+        int validResults = resultsFound;
+
+        int j = 0;
+        for (int i = 0; i < resultsFound; i++) {
+            Element* e = (Element*) art_result[i];
+            printf("%p: %p\n", e, e->key.first);
+            auto item = Sto::item(this, e);
+            if (item.has_flag(deleted_bit)) {
+                validResults--;
+            } else if (item.has_write()) {
+                result[j] = item.template write_value<TVal>();
+                j++;
+            } else if (e->poisoned) {
+                throw Transaction::Abort();
+            } else {
+                e->vers.observe_read(item);
+                result[j] = e->val;
+                j++;
+            }
+        }
+        resultsFound = validResults;
+
+        return success;
     }
 
     bool lock(TransItem& item, Transaction& txn) override {

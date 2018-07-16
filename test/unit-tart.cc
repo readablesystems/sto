@@ -713,6 +713,8 @@ int main() {
     //
     TART a;
 
+    uintptr_t* result = new uintptr_t[10];
+    size_t resultsFound;
     {
         TransactionGuard t;
         a.insert("romane", 1);
@@ -722,30 +724,22 @@ int main() {
         a.insert("ruber", 5);
         a.insert("rubicon", 6);
         a.insert("rubicundus", 7);
+
+        a.erase("romanus");
+
+        bool success = a.lookupRange({"romane", 7}, {"ruber", 6}, {"", 0}, result, 10, resultsFound);
+        printf("success: %d\n", success);
+        for (int i = 0; i < resultsFound; i++) {
+            printf("%d: %d\n", resultsFound, result[i]);
+        }
     }
 
-    Key start;
-    start.set("a", 2);
+    // a.print();
 
-    Key end;
-    end.set("z", 2);
-
-    Key continueKey;
-    continueKey.set("rubicundus", 11);
-
-    TID* result = new TID[10];
-    size_t resultsFound;
-    a.print();
-
-    bool success = a.lookupRange(start, end, continueKey, result, 10, resultsFound);
-    printf("success: %d\n", success);
-
-    for (int i = 0; i < resultsFound; i++) {
-        Element* e = (Element*) result[i];
-        printf("%d: %d\n", resultsFound, e->val);
+    {
+        TransactionGuard t;
     }
 
-    printf("%s\n", continueKey.stackKey);
 
     //
     // testSimple();
