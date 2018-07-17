@@ -8,6 +8,7 @@
 #include "TThread.hh"
 #include "TicTocStructs.hh"
 
+template <bool MVCC = false>
 class TWrappedAccess;
 
 class TransProxy;
@@ -276,6 +277,7 @@ private:
 
     friend class Transaction;
     friend class TransProxy;
+    template <bool MVCC>
     friend class TWrappedAccess;
     friend class VersionDelegate;
 };
@@ -360,6 +362,10 @@ class TransProxy {
     template <typename VersImpl>
     bool observe(VersionBase<VersImpl>& version, bool add_read) {
         return version.observe_read(item(), add_read);
+    }
+    template <typename VersImpl, typename... Args>
+    bool observe(VersionBase<VersImpl>& version, Args&&... args) {
+        return version.observe_read(item(), std::forward<Args>(args)...);
     }
     template <typename VersImpl>
     bool observe_opacity(VersionBase<VersImpl>& version) {

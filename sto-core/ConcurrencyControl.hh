@@ -20,6 +20,7 @@ class VersionDelegate {
     friend class TicTocVersion;
     template <bool Opaque, bool Extend>
     friend class TicTocCompressedVersion;
+    template <typename T, bool Trivial>
     friend class TMvVersion;
 
     static void item_or_flags(TransItem& item, TransItem::flags_type flags) {
@@ -580,7 +581,8 @@ inline bool TicTocCompressedVersion<Opaque, Extend>::observe_read_impl(TransItem
 }
 
 // MVCC
-inline bool TMvVersion::observe_read_impl(TransItem &item, bool add_read){
+template <typename T, bool Trivial>
+inline bool TMvVersion::observe_read_impl(TransItem &item, bool add_read, MvHistory<T, Trivial>& h) {
     assert(!item.has_stash());
     TMvVersion version = *this;
     fence();
@@ -594,7 +596,8 @@ inline bool TMvVersion::observe_read_impl(TransItem &item, bool add_read){
         return false;
     if (add_read && !item.has_read()) {
         VersionDelegate::item_or_flags(item, TransItem::read_bit);
-        VersionDelegate::item_access_rdata(item).v = Packer<TMvVersion>::pack(t().buf_, std::move(version));
+        //VersionDelegate::item_access_rdata(item).v = Packer<TMvVersion>::pack(t().buf_, std::move(version));
+        VersionDelegate::item_access_rdata(item).v = Packer<MvHistory<T, Trivial>>::pack(t().buf_, &h);
     }
 
     return true;
