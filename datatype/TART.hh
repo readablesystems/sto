@@ -25,31 +25,22 @@ public:
 
     static void loadKey(TID tid, Key &key) {
         Element* e = (Element*) tid;
+        key.setKeyLen(e->key.second);
         if (e->key.second > 8) {
-            key.setKeyLen(e->key.second);
             key.set(e->key.first, e->key.second);
         } else {
-            key.setKeyLen(e->key.second);
             memcpy(&key[0], &e->key.first, e->key.second);
-            // reinterpret_cast<uint64_t*>(&key[0])[0] = __builtin_bswap64((uint64_t) e->key.first);
         }
     }
 
     static void make_key(const char* tkey, Key &key, int len) {
+        key.setKeyLen(len);
         if (len > 8) {
-            key.setKeyLen(len);
             key.set(tkey, len);
         } else {
-            key.setKeyLen(len);
             memcpy(&key[0], tkey, len);
-            // reinterpret_cast<uint64_t*>(&key[0])[0] = __builtin_bswap64((uint64_t) tkey);
         }
     }
-
-    // static void loadKey(TID tid, Key &key) {
-    //     Element* e = (Element*) tid;
-    //     key.set(e->key.first.c_str(), e->key.first.size() + 1);
-    // }
 
     typedef typename std::conditional<true, TVersion, TNonopaqueVersion>::type Version_type;
     typedef typename std::conditional<true, TWrapped<TVal>, TNonopaqueWrapped<TVal>>::type wrapped_type;
@@ -90,7 +81,6 @@ public:
 
     TVal nonTransGet(TKey k) {
         Key key;
-        // key.set(k.c_str(), k.size()+1);
         make_key(k.first, key, k.second);
         auto r = root_.access().lookup(key);
         Element* e = (Element*) r.first;
@@ -113,7 +103,6 @@ public:
     void transPut(TKey k, TVal v) {
         Key art_key;
         make_key(k.first, art_key, k.second);
-        // art_key.set(k.c_str(), k.size()+1);
         auto r = root_.access().lookup(art_key);
         Element* e = (Element*) r.first;
         if (e) {
@@ -156,7 +145,6 @@ public:
 
     void nonTransPut(TKey k, TVal v) {
         Key art_key;
-        // art_key.set(k.c_str(), k.size()+1);
         make_key(k.first, art_key, k.second);
         auto r = root_.access().lookup(art_key);
         Element* e = (Element*) r.first;
@@ -190,7 +178,6 @@ public:
 
     void transRemove(TKey k) {
         Key art_key;
-        // art_key.set(k.c_str(), k.size()+1);
         make_key(k.first, art_key, k.second);
         auto r = root_.access().lookup(art_key);
         Element* e = (Element*) r.first;
@@ -205,10 +192,6 @@ public:
             e->vers.unlock_exclusive();
             item.add_write(0);
             item.add_flags(deleted_bit);
-
-            // auto item_parent = Sto::item(this, r.second);
-            // item_parent.add_write(0);
-            // item_parent.add_flags(parent_bit);
             return;
         }
 
@@ -334,7 +317,6 @@ public:
         }
         if (e->poisoned) {
             Key art_key;
-            // art_key.set(e->key.first.c_str(), e->key.first.size()+1);
             if (e->key.second > 8) {
                 make_key(e->key.first, art_key, e->key.second);
             } else {

@@ -32,8 +32,6 @@ void insertKey(int thread_id) {
     TThread::set_id(thread_id);
 
     for (int i = thread_id*(NVALS/nthread); i < (thread_id+1)*NVALS/nthread; i++) {
-        // auto v = intToBytes(keys[i]);
-        // std::string str(v.begin(),v.end());
         TRANSACTION_E {
             art->insert(keys[i], keys[i]);
         } RETRY_E(true);

@@ -736,34 +736,28 @@ int main() {
 
     // a.print();
 
-    {
-        TransactionGuard t;
-    }
-
-
-    //
-    // testSimple();
-    // testSimple2();
-    // testSimpleErase();
-    // testEmptyErase();
-    // testAbsentErase();
-    // multiWrite();
-    // multiThreadWrites();
-    // testReadDelete(); // problem w/ lacking implementation of erase
-    // testReadWriteDelete();
-    // testReadDeleteInsert();
-    // testAbsent1_1();
-    // testInsertDelete();
-    // testAbsent1_2();
-    // testAbsent1_3(); // ABA read insert delete detection no longer exists
-    // testAbsent2_2();
-    // testAbsent3();
-    // testAbsent3_2();
-    // testABA1(); // ABA doesn't work
-    // testMultiRead();
-    // testReadWrite();
-    // testPerNodeV();
-    // testReadWrite();
+    testSimple();
+    testSimple2();
+    testSimpleErase();
+    testEmptyErase();
+    testAbsentErase();
+    multiWrite();
+    multiThreadWrites();
+    testReadDelete(); // problem w/ lacking implementation of erase
+    testReadWriteDelete();
+    testReadDeleteInsert();
+    testAbsent1_1();
+    testInsertDelete();
+    testAbsent1_2();
+    testAbsent1_3(); // ABA read insert delete detection no longer exists
+    testAbsent2_2();
+    testAbsent3();
+    testAbsent3_2();
+    testABA1(); // ABA doesn't work
+    testMultiRead();
+    testReadWrite();
+    testPerNodeV();
+    testReadWrite();
 
     printf("TART tests pass\n");
 
