@@ -2,20 +2,24 @@
 
 // History list item for MVCC
 
-template <typename T, bool Trivial> struct MvHistory;
+template <typename T, bool Trivial = std::is_trivially_copyable<T>::value> struct MvHistory;
 
 template <typename T>
 struct MvHistory<T, true /* trivial */> {
 public:
     MvHistory(TransactionTid::type ntid, T nv, MvHistory<T, true> *nprev = nullptr)
-        : tid(ntid), v_(nv), prev(nprev), next(nullptr) {}
+            : tid(ntid), prev(nprev), next(nullptr), v_(nv) {
+        if (prev) {
+            prev->next = this;
+        }
+    }
 
-    T& v() const {
+    const T& v() const {
         return v_;
     }
 
-    T* vp() const {
-        return &v_;
+    T& v() {
+        return v_;
     }
 
     bool check_version() const {
@@ -41,14 +45,18 @@ template <typename T>
 struct MvHistory<T, false /* !trivial */> {
 public:
     MvHistory(TransactionTid::type ntid, T *nvp, MvHistory<T, false> *nprev = nullptr)
-        : tid(ntid), vp_(nvp), prev(nprev), next(nullptr) {}
+            : tid(ntid), prev(nprev), next(nullptr), vp_(nvp) {
+        if (prev) {
+            prev->next = this;
+        }
+    }
 
-    T& v() const {
+    const T& v() const {
         return *vp_;
     }
 
-    T* vp() const {
-        return vp_;
+    T& v() {
+        return *vp_;
     }
 
     bool check_version() const {

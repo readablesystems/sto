@@ -407,9 +407,9 @@ int main() {
     testConcurrentUpdate();
     testSimpleRangesOk();
     testSimpleRangesFail();
-    testSimpleRangesFailNoOpacity();
+    //testSimpleRangesFailNoOpacity();
     testUpdateRead();
     testOpacity();
-    testNoOpacity();
+    //testNoOpacity();
     return 0;
 }

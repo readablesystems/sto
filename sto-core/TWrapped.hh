@@ -220,8 +220,8 @@ public:
 template <>
 class TWrappedAccess<true /* MVCC */> {
 public:
-    template <typename T, typename V, bool Trivial>
-    static std::pair<bool, T> read_atomic(const MvHistory<T, Trivial>& h, TransProxy item, const V& version, bool add_read) {
+    template <typename T, typename V>
+    static std::pair<bool, T> read_atomic(const MvHistory<T>& h, TransProxy item, const V& version, bool add_read) {
 #if STO_ABORT_ON_LOCKED
         // This version returns immediately if v1 is locked. We assume as a result
         // that we will quickly converge to either `v0 == v1` or `v1.is_locked()`,
@@ -242,8 +242,8 @@ public:
 #endif
     }
 
-    template <typename T, typename V, bool Trivial>
-    static std::pair<bool, T> read_nonatomic(const MvHistory<T, Trivial>& h, TransProxy item, const V& version, bool add_read) {
+    template <typename T, typename V>
+    static std::pair<bool, T> read_nonatomic(const MvHistory<T>& h, TransProxy item, const V& version, bool add_read) {
 #if STO_ABORT_ON_LOCKED
         if (!item.observe(const_cast<V&>(version), add_read))
             return std::make_pair(false, h.v());
@@ -254,8 +254,8 @@ public:
 #endif
     }
 
-    template <typename T, typename V, bool Trivial>
-    static bool read_nonatomic(const MvHistory<T, Trivial>& h, TransProxy item, const V& version, bool add_read, T& ret) {
+    template <typename T, typename V>
+    static bool read_nonatomic(const MvHistory<T>& h, TransProxy item, const V& version, bool add_read, T& ret) {
         Transaction& t = item.transaction();
         TransItem& it = item.item();
 
@@ -284,8 +284,8 @@ public:
         }
     }
 
-    template <typename T, typename V, bool Trivial>
-    static T read_wait_atomic(const MvHistory<T, Trivial>& h, TransProxy item, const V& version, bool add_read) {
+    template <typename T, typename V>
+    static T read_wait_atomic(const MvHistory<T>& h, TransProxy item, const V& version, bool add_read) {
         unsigned n = 0;
         while (true) {
             V v0 = version;
@@ -317,8 +317,8 @@ public:
         }
     }
 
-    template <typename T, typename V, bool Trivial>
-    static T read_wait_nonatomic(const MvHistory<T, Trivial>& h, TransProxy item, const V& version, bool add_read) {
+    template <typename T, typename V>
+    static T read_wait_nonatomic(const MvHistory<T>& h, TransProxy item, const V& version, bool add_read) {
         unsigned n = 0;
         while (true) {
             V v0 = version;
@@ -946,9 +946,9 @@ public:
 template <typename T, bool Opaque, bool Small>
 class TMvWrapped<T, Opaque, true /* trivial */, Small /* small */> {
 public:
-    static const bool Trivial true;
+    static const bool Trivial = true;
     typedef T read_type;
-    typedef TMvVersion<T, Trivial> version_type;
+    typedef TMvVersion version_type;
 
     TMvWrapped() {
         h_ = new history_type(0, T());
@@ -995,9 +995,9 @@ public:
         }
 
         if (Small) {
-            return TWrappedAccess<true>::read_wait_nonatomic(h, item, version, add_read);
+            return TWrappedAccess<>::read_wait_nonatomic(&h.v(), item, version, add_read);
         } else {
-            return TWrappedAccess<true>::read_wait_atomic(h, item, version, add_read);
+            return TWrappedAccess<>::read_wait_atomic(&h.v(), item, version, add_read);
         }
     }
     std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
@@ -1011,9 +1011,9 @@ public:
         }
 
         if (Small) {
-            return TWrappedAccess<true>::read_nonatomic(h, item, version, true);
+            return TWrappedAccess<>::read_nonatomic(&h.v(), item, version, true);
         } else {
-            return TWrappedAccess<true>::read_atomic(h, item, version, true);
+            return TWrappedAccess<>::read_atomic(&h.v(), item, version, true);
         }
     }
 
@@ -1022,19 +1022,19 @@ public:
     typename std::enable_if<is_small<Q>::value, void>::type
     write(T v) {
         static_assert(Small, "write-by-value only available for small types");
-        h_ = h_->next = new history_type(Sto::commit_tid(), v, h_);
+        h_ = new history_type(Sto::commit_tid(), v, h_);
     }
     template <typename Q = T>
     typename std::enable_if<!is_small<Q>::value, void>::type
     write(const T& v) {
         static_assert(!Small, "write-by-lvalue-reference only available for non-small types");
-        h_ = h_->next = new history_type(Sto::commit_tid(), v, h_);
+        h_ = new history_type(Sto::commit_tid(), v, h_);
     }
     template <typename Q = T>
     typename std::enable_if<!is_small<Q>::value, void>::type
     write(T&& v) {
         static_assert(!Small, "write-with-move only available for non-small types");
-        h_ = h_->next = new history_type(Sto::commit_tid(), v, h_);
+        h_ = new history_type(Sto::commit_tid(), v, h_);
     }
 
 private:
@@ -1047,7 +1047,7 @@ class TMvWrapped<T, Opaque, false /* !trivial */, Small> {
 public:
     static const bool Trivial = false;
     typedef const T& read_type;
-    typedef TMvVersion<T, Trivial> version_type;
+    typedef TMvVersion version_type;
 
     TMvWrapped() {
         h_ = new history_type(0, new T);
@@ -1101,7 +1101,8 @@ public:
             }
         }
 
-        return *TWrappedAccess<true>::read_wait_nonatomic(h, item, version, add_read);
+        auto *vp = &h.v();
+        return *TWrappedAccess<>::read_wait_nonatomic(&vp, item, version, add_read);
     }
     std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
         const TransactionTid::type read_tid = Sto::read_tid();
@@ -1113,20 +1114,20 @@ public:
             }
         }
 
-        return TWrappedAccess<true>::nontrivial_read_to_reference(
-            TWrappedAccess<true>::read_nonatomic(h, item, version, true));
+        auto *vp = &h.v();
+        return TWrappedAccess<>::nontrivial_read_to_reference(
+            TWrappedAccess<>::read_nonatomic(&vp, item, version, true));
     }
 
     // Assume mutually-exclusive writes of monotonically-increasing commit tids
     void write(const T& v) {
-        h_ = h_->next = new history_type(Sto::commit_tid(), new T(v), h_);
+        h_ = new history_type(Sto::commit_tid(), new T(v), h_);
     }
     void write(T&& v) {
-        h_ = h_->next = new history_type(Sto::commit_tid(), new T(std::move(v)), h_);
+        h_ = new history_type(Sto::commit_tid(), new T(std::move(v)), h_);
     }
 
 private:
-    template <T, Trivial>
     typedef MvHistory<T, Trivial> history_type;
     history_type *h_;
 };

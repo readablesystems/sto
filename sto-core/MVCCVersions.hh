@@ -4,8 +4,7 @@
 #include "MVCCHistory.hh"
 
 // Default MVCC version (opaque-only)
-template <typename T, bool Trivial>
-class TMvVersion : public BasicVersion<TMvVersion<T, Trivial>> {
+class TMvVersion : public BasicVersion<TMvVersion> {
 public:
     TMvVersion() = default;
     explicit TMvVersion(type v)
@@ -18,14 +17,10 @@ public:
         assert(item.has_read());
         if (TransactionTid::is_locked(v_) && !item.has_write())
             return false;
-        return item.read_value<MvHistory<T, Trivial>>().check_version();
-    }
-
-    inline bool observe_read_impl(TransItem&, bool) {
         return false;
     }
 
-    inline bool observe_read_impl(TransItem &item, bool add_read, MvHistory<T, Trivial>& h);
+    inline bool observe_read_impl(TransItem &item, bool add_read);
 
     inline type snapshot(const TransItem& item, const Transaction& txn);
     inline type snapshot(TransProxy& item);

@@ -46,6 +46,8 @@
 /unit-opacity
 /unit-sampling
 /unit-tflexarray
+/unit-dboindex
+/unit-mv*
 /tpcc_bench
 /ycsb_bench
 /micro_bench

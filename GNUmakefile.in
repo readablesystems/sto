@@ -122,7 +122,6 @@ ACT_UNIT_PROGRAMS = unit-tarray \
                     unit-swisstarray \
                     unit-swisstgeneric \
 										unit-mvtbox \
-										unit-mvtcounter \
                     unit-masstree \
           					unit-dboindex
 
