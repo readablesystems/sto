@@ -103,9 +103,24 @@ public:
     void transPut(TKey k, TVal v) {
         Key art_key;
         make_key(k.first, art_key, k.second);
-        auto r = root_.access().lookup(art_key);
+
+        auto r = root_.access().insert(art_key, [k, v]{
+            Element* e = new Element();
+            if (k.second > 8) {
+                char* p = (char*) malloc(k.second);
+                memcpy(p, k.first, k.second);
+                e->key.first = p;
+            } else {
+                memcpy(&e->key.first, k.first, k.second);
+            }
+            e->val = v;
+            e->poisoned = true;
+            e->key.second = k.second;
+            return (TID) e;
+        });
+
         Element* e = (Element*) r.first;
-        if (e) {
+        if (!r.second) {
             auto item = Sto::item(this, e);
             e->vers.lock_exclusive();
             if (!item.has_write() && e->poisoned) {
@@ -118,23 +133,6 @@ public:
             return;
         }
 
-        e = new Element();
-        if (k.second > 8) {
-            char* p = (char*) malloc(k.second);
-            memcpy(p, k.first, k.second);
-            e->key.first = p;
-        } else {
-            memcpy(&e->key.first, k.first, k.second);
-        }
-        e->val = v;
-        e->poisoned = true;
-        e->key.second = k.second;
-        bool success;
-        root_.access().insert(art_key, (TID) e, &success);
-        if (!success) {
-            free(e);
-            throw Transaction::Abort();
-        }
         auto item_el = Sto::item(this, e);
         auto item_parent = Sto::item(this, r.second);
         item_parent.add_write(v);
@@ -146,24 +144,24 @@ public:
     void nonTransPut(TKey k, TVal v) {
         Key art_key;
         make_key(k.first, art_key, k.second);
-        auto r = root_.access().lookup(art_key);
+        auto r = root_.access().insert(art_key, [k, v]{
+            Element* e = new Element();
+            if (k.second > 8) {
+                char* p = (char*) malloc(k.second);
+                memcpy(p, k.first, k.second);
+                e->key.first = p;
+            } else {
+                memcpy(&e->key.first, k.first, k.second);
+            }
+            e->val = v;
+            e->key.second = k.second;
+            return (TID) e;
+        });
         Element* e = (Element*) r.first;
-        if (e) {
+        if (!r.second) {
             e->val = v;
             return;
         }
-
-        e = new Element();
-        if (k.second > 8) {
-            char* p = (char*) malloc(k.second);
-            memcpy(p, k.first, k.second);
-            e->key.first = p;
-        } else {
-            memcpy(&e->key.first, k.first, k.second);
-        }
-        e->val = v;
-        e->key.second = k.second;
-        root_.access().insert(art_key, (TID) e, nullptr);
     }
 
     void insert(TKey k, TVal v) {

@@ -11,104 +11,127 @@
 #include <unistd.h>
 #include <random>
 
-int nthread = 1;
-int rand_keys = 0;
+class ordered_index {
+public:
+    virtual void insert(uint64_t int_key, uintptr_t val) = 0;
+    virtual uintptr_t lookup(uint64_t int_key) = 0;
+    virtual void erase(uint64_t int_key) = 0;
+};
 
-#define NVALS 10000000
+class tart_wrapper : public ordered_index {
+public:
+    TART* t;
 
-uint64_t* keys;
+    tart_wrapper() {
+        t = new TART();
+    }
 
-TART* art;
-
-std::vector<unsigned char> intToBytes(int paramInt)
-{
-    std::vector<unsigned char> arrayOfByte(4);
-     for (int i = 0; i < 4; i++)
-         arrayOfByte[3 - i] = (paramInt >> (i * 8));
-     return arrayOfByte;
-}
-
-void insertKey(int thread_id) {
-    TThread::set_id(thread_id);
-
-    for (int i = thread_id*(NVALS/nthread); i < (thread_id+1)*NVALS/nthread; i++) {
+    void insert(uint64_t int_key, uintptr_t val) override {
         TRANSACTION_E {
-            art->insert(keys[i], keys[i]);
+            t->insert(int_key, val);
         } RETRY_E(true);
     }
-}
 
-void lookupKey(int thread_id) {
-    TThread::set_id(thread_id);
-
-    for (int i = thread_id*(NVALS/nthread); i < (thread_id+1)*NVALS/nthread; i++) {
-        // auto v = intToBytes(keys[i]);
-        // std::string str(v.begin(),v.end());
+    uintptr_t lookup(uint64_t int_key) override {
+        int ret;
         TRANSACTION_E {
-            auto val = art->lookup(keys[i]);
-            assert(val == keys[i]);
+            ret = t->lookup(int_key);
+        } RETRY_E(true);
+        return ret;
+    }
+
+    void erase(uint64_t int_key) override {
+        TRANSACTION_E {
+            t->erase(int_key);
         } RETRY_E(true);
     }
-}
+};
 
-void eraseKey(int thread_id) {
-    TThread::set_id(thread_id);
+class art_wrapper : public ordered_index {
+public:
+    ART_OLC::Tree t;
 
-    for (int i = thread_id*(NVALS/nthread); i < (thread_id+1)*NVALS/nthread; i++) {
-        // auto v = intToBytes(keys[i]);
-        // std::string str(v.begin(),v.end());
-        TRANSACTION_E {
-            art->erase(keys[i]);
-        } RETRY_E(true);
-    }
-}
+    struct Element {
+        const char* key;
+        int len;
+        uintptr_t val;
+    };
 
-// void words() {
-//     TART a;
-//     std::ifstream input("/usr/share/dict/words");
-//     int i = 0;
-//     for (std::string line; getline(input, line);) {
-//         printf("%s\n", line.c_str());
-//         TRANSACTION_E {
-//             a.insert(line, i);
-//         } RETRY_E(true);
-//         i++;
-//     }
-//     input.close();
-//     std::ifstream input2("/usr/share/dict/words");
-//     printf("lookup\n");
-//     i = 0;
-//     for (std::string line; getline(input2, line);) {
-//         TRANSACTION_E {
-//             assert(a.lookup(line) == i);
-//         } RETRY_E(true);
-//         i++;
-//     }
-//     printf("done\n");
-//     input2.close();
-// }
-
-int main(int argc, char *argv[]) {
-    if (argc > 1) {
-        nthread = atoi(argv[1]);
-    }
-    if (argc > 2) {
-        rand_keys = atoi(argv[2]);
+    static void loadKey(TID tid, Key &key) {
+        Element* e = (Element*) tid;
+        key.setKeyLen(e->len);
+        if (e->len > 8) {
+            key.set(e->key, e->len);
+        } else {
+            memcpy(&key[0], &e->key, e->len);
+        }
     }
 
-    pthread_t advancer;
-    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
-    pthread_detach(advancer); 
+    static void make_key(const char* tkey, Key &key, int len) {
+        key.setKeyLen(len);
+        if (len > 8) {
+            key.set(tkey, len);
+        } else {
+            memcpy(&key[0], tkey, len);
+        }
+    }
 
-    art = new TART();
+    art_wrapper() {
+        t.setLoadKey(art_wrapper::loadKey);
+    }
 
-    keys = new uint64_t[NVALS];
+    void insert(uint64_t int_key, uintptr_t val) override {
+        Key art_key;
+        make_key((const char*) &int_key, art_key, 8);
+
+        t.insert(art_key, [int_key, val] {
+            Element* e = new Element();
+            e->key = (const char*) int_key;
+            e->len = 8;
+            e->val = val;
+            return (TID) e;
+        });
+    }
+
+    uintptr_t lookup(uint64_t int_key) override {
+        Key art_key;
+        make_key((const char*) &int_key, art_key, 8);
+        auto r = t.lookup(art_key);
+        Element* e = (Element*) r.first;
+        if (e) {
+            return e->val;
+        }
+        return 0;
+    }
+
+    void erase(uint64_t int_key) override {
+        Key art_key;
+        make_key((const char*) &int_key, art_key, 8);
+        auto r = t.lookup(art_key);
+        if (!r.first) {
+            return;
+        }
+        t.remove(art_key, (TID) r.first);
+    }
+};
+
+class masstree_wrapper : public ordered_index {
+public:
+};
+
+void bench1(int nthread, int rand_keys, int nvals) {
+    // pthread_t advancer;
+    // pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
+    // pthread_detach(advancer); 
+
+    ordered_index* art = new art_wrapper();
+    uint64_t* keys = new uint64_t[nvals];
 
     std::mt19937 rng;
     rng.seed(std::random_device()());
-    std::uniform_int_distribution<std::mt19937::result_type> dist(0,(unsigned) -1);
+    std::uniform_int_distribution<std::mt19937::result_type> dist(0, (size_t) -1);
 
-    for (uint64_t i = 0; i < NVALS; i++) {
+    for (uint64_t i = 0; i < nvals; i++) {
         if (rand_keys) {
             keys[i] = dist(rng);
         } else {
@@ -121,7 +144,13 @@ int main(int argc, char *argv[]) {
         auto starttime = std::chrono::system_clock::now();
         std::thread threads[nthread];
         for (int i = 0; i < nthread; i++) {
-            threads[i] = std::thread(insertKey, i);
+            threads[i] = std::thread([&](int thread_id) {
+                TThread::set_id(thread_id);
+
+                for (int i = thread_id*(nvals/nthread); i < (thread_id+1)*nvals/nthread; i++) {
+                    art->insert(keys[i], keys[i]);
+                }
+            }, i);
         }
 
         for (int i = 0; i < nthread; i++) {
@@ -129,14 +158,21 @@ int main(int argc, char *argv[]) {
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - starttime);
-        printf("insert,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
+        printf("insert,%d,%f\n", nvals, (nvals * 1.0) / duration.count());
     }
 
     {
         auto starttime = std::chrono::system_clock::now();
         std::thread threads[nthread];
         for (int i = 0; i < nthread; i++) {
-            threads[i] = std::thread(lookupKey, i);
+            threads[i] = std::thread([&](int thread_id) {
+                TThread::set_id(thread_id);
+
+                for (int i = thread_id*(nvals/nthread); i < (thread_id+1)*nvals/nthread; i++) {
+                    auto val = art->lookup(keys[i]);
+                    assert(val == keys[i]);
+                }
+            }, i);
         }
 
         for (int i = 0; i < nthread; i++) {
@@ -144,14 +180,20 @@ int main(int argc, char *argv[]) {
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - starttime);
-        printf("lookup,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
+        printf("lookup,%d,%f\n", nvals, (nvals * 1.0) / duration.count());
     }
 
     {
         auto starttime = std::chrono::system_clock::now();
         std::thread threads[nthread];
         for (int i = 0; i < nthread; i++) {
-            threads[i] = std::thread(eraseKey, i);
+            threads[i] = std::thread([&](int thread_id) {
+                TThread::set_id(thread_id);
+
+                for (int i = thread_id*(nvals/nthread); i < (thread_id+1)*nvals/nthread; i++) {
+                    art->erase(keys[i]);
+                }
+            }, i);
         }
 
         for (int i = 0; i < nthread; i++) {
@@ -159,9 +201,71 @@ int main(int argc, char *argv[]) {
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - starttime);
-        printf("erase,%d,%f\n", NVALS, (NVALS * 1.0) / duration.count());
+        printf("erase,%d,%f\n", nvals, (nvals * 1.0) / duration.count());
     }
-    delete art;
+}
 
-    // words();
+void bench2(int nthread, int nvals, double zipf_alpha) {
+    // pthread_t advancer;
+    // pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
+    // pthread_detach(advancer); 
+
+    ordered_index* art = new art_wrapper();
+    uint64_t* keys = new uint64_t[nvals];
+
+    std::mt19937 rng;
+    rng.seed(std::random_device()());
+    // std::uniform_int_distribution<std::mt19937::result_type> dist(0, (size_t) -1);
+    std::normal_distribution<double> dist(nvals/2,nvals/4);
+
+    for (uint64_t i = 0; i < nvals; i++) {
+        keys[i] = dist(rng);
+        art->insert(i, keys[i]);
+    }
+    printf("Prepopulation complete\n");
+
+    {
+        auto starttime = std::chrono::system_clock::now();
+        std::thread threads[nthread];
+        for (int i = 0; i < nthread; i++) {
+            threads[i] = std::thread([&](int thread_id) {
+                TThread::set_id(thread_id);
+
+                for (int i = thread_id*(nvals/nthread); i < (thread_id+1)*nvals/nthread; i++) {
+                    // int k = zipf(zipf_alpha, nvals);
+                    uint64_t k = dist(rng);
+                    auto val = art->lookup(k);
+                    if (k >= nvals) {
+                        assert(val == 0);
+                    } else {
+                        assert(val == keys[k]);
+                    }
+                }
+            }, i);
+        }
+
+        for (int i = 0; i < nthread; i++) {
+            threads[i].join();
+        }
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::system_clock::now() - starttime);
+        printf("lookup,%d,%f\n", nvals, (nvals * 1.0) / duration.count());
+    }
+}
+
+int main(int argc, char *argv[]) {
+    int nthread = 1;
+    int rand_keys = 0;
+    int nvals = 10000;
+    if (argc > 1) {
+        nthread = atoi(argv[1]);
+    }
+    if (argc > 2) {
+        nvals = atoi(argv[2]);
+    }
+    if (argc > 3) {
+        rand_keys = atoi(argv[3]);
+    }
+    bench1(nthread, rand_keys, nvals);
+    // bench2(nthread, nvals, 1);
 }

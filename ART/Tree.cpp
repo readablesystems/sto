@@ -395,7 +395,7 @@ namespace ART_OLC {
         }
     }
 
-    void Tree::insert(const Key &k, TID tid, bool* success) {
+    std::pair<TID, N*> Tree::insert(const Key &k, std::function<TID()> make_tid) {
         // EpocheGuard epocheGuard(epocheInfo);
         restart:
         bool needRestart = false;
@@ -406,6 +406,7 @@ namespace ART_OLC {
         uint8_t parentKey, nodeKey = 0;
         uint64_t parentVersion = 0;
         uint32_t level = 0;
+        TID tid = 0;
 
         while (true) {
             parentNode = node;
@@ -435,6 +436,7 @@ namespace ART_OLC {
                     auto newNode = new N4(node->getPrefix(), nextLevel - level);
 
                     // 2)  add node and (tid, *k) as children
+                    tid = make_tid();
                     newNode->insert(k[nextLevel], N::setLeaf(tid));
                     newNode->insert(nonMatchingKey, node);
 
@@ -447,22 +449,20 @@ namespace ART_OLC {
                                     node->getPrefixLength() - ((nextLevel - level) + 1));
 
                     node->writeUnlock();
-                    if (success) *success = true;
-                    return;
+                    return {tid, parentNode};
                 }
                 case CheckPrefixPessimisticResult::Match:
                     break;
             }
-            if (nextLevel >= k.getKeyLen()) {
-                node->readUnlockOrRestart(v, needRestart);
-                if (needRestart) goto restart;
-                if (parentNode != nullptr) {
-                    parentNode->readUnlockOrRestart(parentVersion, needRestart);
-                    if (needRestart) goto restart;
-                }
-                if (success) *success = false;
-                return;
-            }
+            // if (nextLevel >= k.getKeyLen()) {
+            //     node->readUnlockOrRestart(v, needRestart);
+            //     if (needRestart) goto restart;
+            //     if (parentNode != nullptr) {
+            //         parentNode->readUnlockOrRestart(parentVersion, needRestart);
+            //         if (needRestart) goto restart;
+            //     }
+            //     return {0, ;
+            // }
             level = nextLevel;
             nodeKey = k[level];
             nextNode = N::getChild(nodeKey, node);
@@ -470,10 +470,10 @@ namespace ART_OLC {
             if (needRestart) goto restart;
 
             if (nextNode == nullptr) {
+                if (!tid) tid = make_tid();
                 N::insertAndUnlock(node, v, parentNode, parentVersion, parentKey, nodeKey, N::setLeaf(tid), needRestart);
                 if (needRestart) goto restart;
-                if (success) *success = true;
-                return;
+                return {tid, node};
             }
 
             if (parentNode != nullptr) {
@@ -492,20 +492,19 @@ namespace ART_OLC {
                 uint32_t prefixLength = 0;
                 while (key[level + prefixLength] == k[level + prefixLength]) {
                     prefixLength++;
-                    if (level + prefixLength >= k.getKeyLen()) {
+                    if (level + prefixLength >= k.getKeyLen() || level + prefixLength >= key.getKeyLen()) {
                         node->writeUnlock();
-                        if (success) *success = false;
-                        return;
+                        return {N::getLeaf(nextNode), nullptr};
                     }
                 }
 
                 auto n4 = new N4(&k[level], prefixLength);
+                tid = make_tid();
                 n4->insert(k[level + prefixLength], N::setLeaf(tid));
                 n4->insert(key[level + prefixLength], nextNode);
                 N::change(node, k[level - 1], n4);
                 node->writeUnlock();
-                if (success) *success = true;
-                return;
+                return {tid, node};
             }
             level++;
             parentVersion = v;
