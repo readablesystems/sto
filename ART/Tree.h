@@ -73,7 +73,7 @@ namespace ART_OLC {
         std::pair<TID, N*> lookup(const Key &k) const;
 
         bool lookupRange(const Key &start, const Key &end, Key &continueKey, TID result[], std::size_t resultLen,
-                         std::size_t &resultCount) const;
+                         std::size_t &resultCount, std::function<void(N*)> observe_node) const;
 
         std::pair<TID, N*> insert(const Key &k, std::function<TID()> make_tid);
 

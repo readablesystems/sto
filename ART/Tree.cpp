@@ -84,7 +84,7 @@ namespace ART_OLC {
     }
 
     bool Tree::lookupRange(const Key &start, const Key &end, Key &continueKey, TID result[],
-                                std::size_t resultSize, std::size_t &resultsFound) const {
+                                std::size_t resultSize, std::size_t &resultsFound, std::function<void(N*)> observe_node) const {
         for (uint32_t i = 0; i < std::min(start.getKeyLen(), end.getKeyLen()); ++i) {
             if (start[i] > end[i]) {
                 resultsFound = 0;
@@ -276,6 +276,7 @@ namespace ART_OLC {
                 parentNode->readUnlockOrRestart(vp, needRestart);
                 if (needRestart) goto restart;
             }
+            observe_node(node);
             node->readUnlockOrRestart(v, needRestart);
             if (needRestart) goto restart;
 

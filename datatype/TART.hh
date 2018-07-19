@@ -220,13 +220,15 @@ public:
 
         TID* art_result = new TID[resultSize];
 
-        bool success = root_.access().lookupRange(art_start, art_end, art_continue, art_result, resultSize, resultsFound);
+        bool success = root_.access().lookupRange(art_start, art_end, art_continue, art_result, resultSize, resultsFound, [this](Node* node){
+            auto item = Sto::item(this, node);
+            node->vers.observe_read(item);
+        });
         int validResults = resultsFound;
 
         int j = 0;
         for (uint64_t i = 0; i < resultsFound; i++) {
             Element* e = (Element*) art_result[i];
-            printf("%p: %p\n", e, e->key.first);
             auto item = Sto::item(this, e);
             if (item.has_flag(deleted_bit)) {
                 validResults--;

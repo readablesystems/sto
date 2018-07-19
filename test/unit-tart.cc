@@ -725,59 +725,46 @@ void testPerNodeV() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
-int main() {
-    pthread_t advancer;
-    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
-    pthread_detach(advancer); 
+void testLookupRange() {
+    TART art;
+    
+    TestTransaction t1(0);
+    uintptr_t* result = new uintptr_t[10];
+    size_t resultsFound;
+    art.lookupRange({"a", 2}, {"z", 2}, {"", 0}, result, 10, resultsFound);
+    art.insert("foo", 1);
 
-    TART* a = new TART();
+    TestTransaction t2(1);
+    art.insert("b", 1);
+    assert(t2.try_commit());
 
-    // uintptr_t* result = new uintptr_t[10];
-    // size_t resultsFound;
-    // {
-    //     TransactionGuard t;
-    //     a->insert("romane", 1);
-    //     a->insert("romanus", 2);
-    //     a->insert("romulus", 3);
-    //     a->insert("rubens", 4);
-    //     a->insert("ruber", 5);
-    //     a->insert("rubicon", 6);
-    //     a->insert("rubicundus", 7);
-    //
-    //     a->erase("romanus");
-    //
-    //     bool success = a->lookupRange({"romane", 7}, {"ruber", 6}, {"", 0}, result, 10, resultsFound);
-    //     printf("success: %d\n", success);
-    //     for (int i = 0; i < resultsFound; i++) {
-    //         printf("%d: %d\n", resultsFound, result[i]);
-    //     }
-    // }
+    assert(!t1.try_commit());
+    printf("PASS: %s\n", __FUNCTION__);
+}
 
-    // a->print();
+void testLookupRangeSplit() {
+    TART art;
 
-    testSimple();
-    testSimple2();
-    testSimpleErase();
-    testEmptyErase();
-    testAbsentErase();
-    multiWrite();
-    multiThreadWrites();
-    testReadDelete(); // problem w/ lacking implementation of erase
-    testReadWriteDelete();
-    testReadDeleteInsert();
-    testAbsent1_1();
-    testInsertDelete();
-    testAbsent1_2();
-    testAbsent1_3(); // ABA read insert delete detection no longer exists
-    testAbsent2_2();
-    testAbsent3();
-    testAbsent3_2();
-    testABA1(); // ABA doesn't work
-    testMultiRead();
-    testReadWrite();
-    testPerNodeV();
-    testReadWrite();
+    {
+        TransactionGuard t;
+        art.insert("rail", 1);
+    }
+    
+    TestTransaction t1(0);
+    uintptr_t* result = new uintptr_t[10];
+    size_t resultsFound;
+    art.lookupRange({"a", 2}, {"z", 2}, {"", 0}, result, 10, resultsFound);
+    art.insert("foo", 1);
 
+    TestTransaction t2(1);
+    art.insert("rain", 1);
+    assert(t2.try_commit());
+
+    assert(!t1.try_commit());
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
+void testRCU(TART* a) {
     double vm_usage; double resident_set;
     process_mem_usage(vm_usage, resident_set);
     printf("Before insert\n");
@@ -812,6 +799,62 @@ int main() {
     process_mem_usage(vm_usage, resident_set);
     printf("After re-insert\n");
     printf("RSS: %f, VM: %f\n", resident_set, vm_usage);
+}
+
+int main() {
+    pthread_t advancer;
+    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
+    pthread_detach(advancer); 
+
+    TART* a = new TART();
+
+    uintptr_t* result = new uintptr_t[10];
+    size_t resultsFound;
+    {
+        TransactionGuard t;
+        a->insert("romane", 1);
+        a->insert("romanus", 2);
+        a->insert("romulus", 3);
+        a->insert("rubens", 4);
+        a->insert("ruber", 5);
+        a->insert("rubicon", 6);
+        a->insert("rubicundus", 7);
+
+        a->erase("romanus");
+
+        bool success = a->lookupRange({"romane", 7}, {"ruber", 6}, {"", 0}, result, 10, resultsFound);
+        printf("success: %d\n", success);
+        for (int i = 0; i < resultsFound; i++) {
+            printf("%d: %d\n", resultsFound, result[i]);
+        }
+    }
+
+    // a->print();
+
+    testSimple();
+    testSimple2();
+    testSimpleErase();
+    testEmptyErase();
+    testAbsentErase();
+    multiWrite();
+    multiThreadWrites();
+    testReadDelete(); // problem w/ lacking implementation of erase
+    testReadWriteDelete();
+    testReadDeleteInsert();
+    testAbsent1_1();
+    testInsertDelete();
+    testAbsent1_2();
+    testAbsent1_3(); // ABA read insert delete detection no longer exists
+    testAbsent2_2();
+    testAbsent3();
+    testAbsent3_2();
+    testABA1(); // ABA doesn't work
+    testMultiRead();
+    testReadWrite();
+    testPerNodeV();
+    testReadWrite();
+    testLookupRange();
+    testLookupRangeSplit();
 
     printf("TART tests pass\n");
 
