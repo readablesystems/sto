@@ -120,18 +120,14 @@ public:
 };
 
 void bench1(int nthread, int rand_keys, int nvals) {
-    // pthread_t advancer;
-    // pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
-    // pthread_detach(advancer); 
-
-    ordered_index* art = new art_wrapper();
+    ordered_index* art = new tart_wrapper();
     uint64_t* keys = new uint64_t[nvals];
 
     std::mt19937 rng;
     rng.seed(std::random_device()());
     std::uniform_int_distribution<std::mt19937::result_type> dist(0, (size_t) -1);
 
-    for (uint64_t i = 0; i < nvals; i++) {
+    for (int i = 0; i < nvals; i++) {
         if (rand_keys) {
             keys[i] = dist(rng);
         } else {
@@ -205,10 +201,7 @@ void bench1(int nthread, int rand_keys, int nvals) {
     }
 }
 
-void bench2(int nthread, int nvals, double zipf_alpha) {
-    // pthread_t advancer;
-    // pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
-    // pthread_detach(advancer); 
+void bench2(int nthread, int nvals) {
 
     ordered_index* art = new art_wrapper();
     uint64_t* keys = new uint64_t[nvals];
@@ -218,7 +211,7 @@ void bench2(int nthread, int nvals, double zipf_alpha) {
     // std::uniform_int_distribution<std::mt19937::result_type> dist(0, (size_t) -1);
     std::normal_distribution<double> dist(nvals/2,nvals/4);
 
-    for (uint64_t i = 0; i < nvals; i++) {
+    for (int i = 0; i < nvals; i++) {
         keys[i] = dist(rng);
         art->insert(i, keys[i]);
     }
@@ -232,10 +225,9 @@ void bench2(int nthread, int nvals, double zipf_alpha) {
                 TThread::set_id(thread_id);
 
                 for (int i = thread_id*(nvals/nthread); i < (thread_id+1)*nvals/nthread; i++) {
-                    // int k = zipf(zipf_alpha, nvals);
                     uint64_t k = dist(rng);
                     auto val = art->lookup(k);
-                    if (k >= nvals) {
+                    if (k >= (uint64_t) nvals) {
                         assert(val == 0);
                     } else {
                         assert(val == keys[k]);

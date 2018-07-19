@@ -224,7 +224,7 @@ public:
         int validResults = resultsFound;
 
         int j = 0;
-        for (int i = 0; i < resultsFound; i++) {
+        for (uint64_t i = 0; i < resultsFound; i++) {
             Element* e = (Element*) art_result[i];
             printf("%p: %p\n", e, e->key.first);
             auto item = Sto::item(this, e);
@@ -287,6 +287,9 @@ public:
                     make_key((const char*) &e->key.first, art_key, e->key.second);
                 }
                 root_.access().remove(art_key, (TID) e);
+                if (e->key.second > 8) {
+                    Transaction::rcu_delete((char*) e->key.first);
+                }
                 Transaction::rcu_delete(e);
                 return;
             }
@@ -321,6 +324,9 @@ public:
                 make_key((const char*) &e->key.first, art_key, e->key.second);
             }
             root_.access().remove(art_key, (TID) e);
+            if (e->key.second > 8) {
+                Transaction::rcu_delete((char*) e->key.first);
+            }
             Transaction::rcu_delete(e);
         }
     }

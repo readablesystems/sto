@@ -35,6 +35,26 @@ const char* checkkey = "check1";
 const char* checkkey2 = "check2";
 const char* checkkey3 = "check3";
 
+void process_mem_usage(double& vm_usage, double& resident_set) {
+    vm_usage     = 0.0;
+    resident_set = 0.0;
+
+    // the two fields we want
+    unsigned long vsize;
+    long rss;
+    {
+        std::string ignore;
+        std::ifstream ifs("/proc/self/stat", std::ios_base::in);
+        ifs >> ignore >> ignore >> ignore >> ignore >> ignore >> ignore >> ignore >> ignore >> ignore >> ignore
+                >> ignore >> ignore >> ignore >> ignore >> ignore >> ignore >> ignore >> ignore >> ignore >> ignore
+                >> ignore >> ignore >> vsize >> rss;
+    }
+
+    long page_size_kb = sysconf(_SC_PAGE_SIZE) / 1024; // in case x86-64 is configured to use 2MB pages
+    vm_usage = vsize / 1024.0;
+    resident_set = rss * page_size_kb;
+}
+
 void NoChecks() {
     TART aTART;
     {
@@ -706,35 +726,34 @@ void testPerNodeV() {
 }
 
 int main() {
-    // NoChecks();
-    // FAILS???
-    // Checks();
-    // return 0;
+    pthread_t advancer;
+    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
+    pthread_detach(advancer); 
+
+    TART* a = new TART();
+
+    // uintptr_t* result = new uintptr_t[10];
+    // size_t resultsFound;
+    // {
+    //     TransactionGuard t;
+    //     a->insert("romane", 1);
+    //     a->insert("romanus", 2);
+    //     a->insert("romulus", 3);
+    //     a->insert("rubens", 4);
+    //     a->insert("ruber", 5);
+    //     a->insert("rubicon", 6);
+    //     a->insert("rubicundus", 7);
     //
-    TART a;
+    //     a->erase("romanus");
+    //
+    //     bool success = a->lookupRange({"romane", 7}, {"ruber", 6}, {"", 0}, result, 10, resultsFound);
+    //     printf("success: %d\n", success);
+    //     for (int i = 0; i < resultsFound; i++) {
+    //         printf("%d: %d\n", resultsFound, result[i]);
+    //     }
+    // }
 
-    uintptr_t* result = new uintptr_t[10];
-    size_t resultsFound;
-    {
-        TransactionGuard t;
-        a.insert("romane", 1);
-        a.insert("romanus", 2);
-        a.insert("romulus", 3);
-        a.insert("rubens", 4);
-        a.insert("ruber", 5);
-        a.insert("rubicon", 6);
-        a.insert("rubicundus", 7);
-
-        a.erase("romanus");
-
-        bool success = a.lookupRange({"romane", 7}, {"ruber", 6}, {"", 0}, result, 10, resultsFound);
-        printf("success: %d\n", success);
-        for (int i = 0; i < resultsFound; i++) {
-            printf("%d: %d\n", resultsFound, result[i]);
-        }
-    }
-
-    // a.print();
+    // a->print();
 
     testSimple();
     testSimple2();
@@ -758,6 +777,41 @@ int main() {
     testReadWrite();
     testPerNodeV();
     testReadWrite();
+
+    double vm_usage; double resident_set;
+    process_mem_usage(vm_usage, resident_set);
+    printf("Before insert\n");
+    printf("RSS: %f, VM: %f\n", resident_set, vm_usage);
+
+    for (int i = 0; i < 1000000; i++) {
+        TRANSACTION_E {
+            a->insert(i, i);
+        } RETRY_E(true);
+    }
+
+    process_mem_usage(vm_usage, resident_set);
+    printf("After insert\n");
+    printf("RSS: %f, VM: %f\n", resident_set, vm_usage);
+
+    for (int i = 0; i < 1000000; i++) {
+        TRANSACTION_E {
+            a->erase(i);
+        } RETRY_E(true);
+    }
+
+    process_mem_usage(vm_usage, resident_set);
+    printf("After erase\n");
+    printf("RSS: %f, VM: %f\n", resident_set, vm_usage);
+
+    for (int i = 0; i < 1000000; i++) {
+        TRANSACTION_E {
+            a->insert(i, i);
+        } RETRY_E(true);
+    }
+
+    process_mem_usage(vm_usage, resident_set);
+    printf("After re-insert\n");
+    printf("RSS: %f, VM: %f\n", resident_set, vm_usage);
 
     printf("TART tests pass\n");
 
