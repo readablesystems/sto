@@ -764,6 +764,28 @@ void testLookupRangeSplit() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testLookupRangeUpdate() {
+    TART art;
+
+    {
+        TransactionGuard t;
+        art.insert("rail", 1);
+    }
+    
+    TestTransaction t1(0);
+    uintptr_t* result = new uintptr_t[10];
+    size_t resultsFound;
+    art.lookupRange({"a", 2}, {"z", 2}, {"", 0}, result, 10, resultsFound);
+    art.insert("foo", 1);
+
+    TestTransaction t2(1);
+    art.insert("rail", 2);
+    assert(t2.try_commit());
+
+    assert(!t1.try_commit());
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
 void testRCU(TART* a) {
     double vm_usage; double resident_set;
     process_mem_usage(vm_usage, resident_set);
@@ -855,6 +877,7 @@ int main() {
     testReadWrite();
     testLookupRange();
     testLookupRangeSplit();
+    testLookupRangeUpdate();
 
     printf("TART tests pass\n");
 
