@@ -10,15 +10,69 @@
 #include "Transaction.hh"
 #include <unistd.h>
 #include <random>
+#include "DB_index.hh"
+#include "DB_params.hh"
 
-class ordered_index {
+class keyval_db {
 public:
     virtual void insert(uint64_t int_key, uintptr_t val) = 0;
     virtual uintptr_t lookup(uint64_t int_key) = 0;
     virtual void erase(uint64_t int_key) = 0;
 };
 
-class tart_wrapper : public ordered_index {
+class oindex_wrapper : public keyval_db {
+public:
+    struct oi_value {
+        enum class NamedColumn : int { val = 0 };
+        uintptr_t val;
+    };
+
+    struct oi_key {
+        uint64_t key;
+        oi_key(uint64_t k) {
+            key = k;
+        }
+        bool operator==(const oi_key& other) const {
+            return (key == other.key);
+        }
+        bool operator!=(const oi_key& other) const {
+            return !(*this == other);
+        }
+        operator lcdf::Str() const {
+            return lcdf::Str((const char *)this, sizeof(*this));
+        }
+    };
+
+    typedef bench::ordered_index<oi_key, oi_value, db_params::db_default_params> index_type;
+    index_type oi;
+
+    oindex_wrapper() {
+    }
+
+    void insert(uint64_t key, uintptr_t val) override {
+        TRANSACTION_E{
+            oi.insert_row(oi_key(key), new oi_value{val});
+        } RETRY_E(true);
+    }
+
+    uintptr_t lookup(uint64_t key) override {
+        uintptr_t ret;
+        TRANSACTION_E{
+            const oi_value* val;
+            std::tie(std::ignore, std::ignore, std::ignore, val) = oi.select_row(oi_key(key), bench::RowAccess::None);
+            ret = val->val;
+        } RETRY_E(true);
+        return ret;
+    }
+
+    void erase(uint64_t key) override {
+        TRANSACTION_E{
+            oi.delete_row(oi_key(key));
+        } RETRY_E(true);
+    }
+};
+
+class tart_wrapper : public keyval_db {
 public:
     TART* t;
 
@@ -47,7 +101,7 @@ public:
     }
 };
 
-class art_wrapper : public ordered_index {
+class art_wrapper : public keyval_db {
 public:
     ART_OLC::Tree t;
 
@@ -115,12 +169,12 @@ public:
     }
 };
 
-class masstree_wrapper : public ordered_index {
+class masstree_wrapper : public keyval_db {
 public:
 };
 
 void bench1(int nthread, int rand_keys, int nvals) {
-    ordered_index* art = new tart_wrapper();
+    keyval_db* art = new tart_wrapper();
     uint64_t* keys = new uint64_t[nvals];
 
     std::mt19937 rng;
@@ -142,6 +196,7 @@ void bench1(int nthread, int rand_keys, int nvals) {
         for (int i = 0; i < nthread; i++) {
             threads[i] = std::thread([&](int thread_id) {
                 TThread::set_id(thread_id);
+                oindex_wrapper::index_type::thread_init();
 
                 for (int i = thread_id*(nvals/nthread); i < (thread_id+1)*nvals/nthread; i++) {
                     art->insert(keys[i], keys[i]);
@@ -163,6 +218,7 @@ void bench1(int nthread, int rand_keys, int nvals) {
         for (int i = 0; i < nthread; i++) {
             threads[i] = std::thread([&](int thread_id) {
                 TThread::set_id(thread_id);
+                oindex_wrapper::index_type::thread_init();
 
                 for (int i = thread_id*(nvals/nthread); i < (thread_id+1)*nvals/nthread; i++) {
                     auto val = art->lookup(keys[i]);
@@ -185,6 +241,7 @@ void bench1(int nthread, int rand_keys, int nvals) {
         for (int i = 0; i < nthread; i++) {
             threads[i] = std::thread([&](int thread_id) {
                 TThread::set_id(thread_id);
+                oindex_wrapper::index_type::thread_init();
 
                 for (int i = thread_id*(nvals/nthread); i < (thread_id+1)*nvals/nthread; i++) {
                     art->erase(keys[i]);
@@ -203,7 +260,7 @@ void bench1(int nthread, int rand_keys, int nvals) {
 
 void bench2(int nthread, int nvals) {
 
-    ordered_index* art = new art_wrapper();
+    keyval_db* art = new art_wrapper();
     uint64_t* keys = new uint64_t[nvals];
 
     std::mt19937 rng;

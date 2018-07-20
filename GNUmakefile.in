@@ -232,8 +232,8 @@ unit-tint: $(OBJ)/unit-tint.o $(STO_DEPS)
 unit-tart: $(OBJ)/unit-tart.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-bench-tart: $(OBJ)/bench-tart.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+bench-tart: $(OBJ)/bench-tart.o $(INDEX_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tgeneric: $(OBJ)/unit-tgeneric.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
