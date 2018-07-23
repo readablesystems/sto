@@ -9,6 +9,7 @@
 #include "print_value.hh"
 #include "../ART/Tree.h"
 #include "../ART/N.h"
+#include "str.hh"
 
 class TART : public TObject {
 public:
@@ -53,9 +54,9 @@ public:
         root_.access().setLoadKey(TART::loadKey);
     }
 
-    TVal transGet(TKey k) {
+    TVal transGet(lcdf::Str k) {
         Key key;
-        make_key(k.first, key, k.second);
+        make_key(k.data(), key, k.length());
         auto r = root_.access().lookup(key);
         Element* e = (Element*) r.first;
         if (e) {
@@ -78,10 +79,16 @@ public:
         r.second->vers.observe_read(item);
         return 0;
     }
+    TVal transGet(uint64_t k) {
+        return transGet({(const char*) &k, sizeof(uint64_t)});
+    }
+    TVal transGet(const char* k) {
+        return transGet({k, strlen(k)+1});
+    }
 
-    TVal nonTransGet(TKey k) {
+    TVal nonTransGet(lcdf::Str k) {
         Key key;
-        make_key(k.first, key, k.second);
+        make_key(k.data(), key, k.length());
         auto r = root_.access().lookup(key);
         Element* e = (Element*) r.first;
         if (e) {
@@ -90,32 +97,22 @@ public:
         return 0;
     }
 
-    TVal lookup(TKey k) {
-        return transGet(k);
-    }
-    TVal lookup(uint64_t k) {
-        return transGet({(const char*) &k, sizeof(uint64_t)});
-    }
-    TVal lookup(const char* k) {
-        return transGet({k, strlen(k)+1});
-    }
-
-    void transPut(TKey k, TVal v) {
+    void transPut(lcdf::Str k, TVal v) {
         Key art_key;
-        make_key(k.first, art_key, k.second);
+        make_key(k.data(), art_key, k.length());
 
         auto r = root_.access().insert(art_key, [k, v]{
             Element* e = new Element();
-            if (k.second > 8) {
-                char* p = (char*) malloc(k.second);
-                memcpy(p, k.first, k.second);
+            if (k.length() > 8) {
+                char* p = (char*) malloc(k.length());
+                memcpy(p, k.data(), k.length());
                 e->key.first = p;
             } else {
-                memcpy(&e->key.first, k.first, k.second);
+                memcpy(&e->key.first, k.data(), k.length());
             }
             e->val = v;
             e->poisoned = true;
-            e->key.second = k.second;
+            e->key.second = k.length();
             return (TID) e;
         });
 
@@ -140,21 +137,27 @@ public:
         item_el.add_flags(new_insert_bit);
         item_parent.add_flags(parent_bit);
     }
+    void transPut(uint64_t k, TVal v) {
+        transPut({(const char*) &k, sizeof(uint64_t)}, v);
+    }
+    void transPut(const char* k, TVal v) {
+        transPut({k, strlen(k)+1}, v);
+    }
 
-    void nonTransPut(TKey k, TVal v) {
+    void nonTransPut(lcdf::Str k, TVal v) {
         Key art_key;
-        make_key(k.first, art_key, k.second);
+        make_key(k.data(), art_key, k.length());
         auto r = root_.access().insert(art_key, [k, v]{
             Element* e = new Element();
-            if (k.second > 8) {
-                char* p = (char*) malloc(k.second);
-                memcpy(p, k.first, k.second);
+            if (k.length() > 8) {
+                char* p = (char*) malloc(k.length());
+                memcpy(p, k.data(), k.length());
                 e->key.first = p;
             } else {
-                memcpy(&e->key.first, k.first, k.second);
+                memcpy(&e->key.first, k.data(), k.length());
             }
             e->val = v;
-            e->key.second = k.second;
+            e->key.second = k.length();
             return (TID) e;
         });
         Element* e = (Element*) r.first;
@@ -164,19 +167,9 @@ public:
         }
     }
 
-    void insert(TKey k, TVal v) {
-        transPut(k, v);
-    }
-    void insert(uint64_t k, TVal v) {
-        transPut({(const char*) &k, sizeof(uint64_t)}, v);
-    }
-    void insert(const char* k, TVal v) {
-        transPut({k, strlen(k)+1}, v);
-    }
-
-    void transRemove(TKey k) {
+    void transRemove(lcdf::Str k) {
         Key art_key;
-        make_key(k.first, art_key, k.second);
+        make_key(k.data(), art_key, k.length());
         auto r = root_.access().lookup(art_key);
         Element* e = (Element*) r.first;
         if (e) {
@@ -197,14 +190,10 @@ public:
         item_parent.add_flags(parent_bit);
         r.second->vers.observe_read(item_parent);
     }
-
-    void erase(TKey k) {
-        transRemove(k);
-    }
-    void erase(uint64_t k) {
+    void transRemove(uint64_t k) {
         transRemove({(const char*) &k, sizeof(uint64_t)});
     }
-    void erase(const char* k) {
+    void transRemove(const char* k) {
         transRemove({k, strlen(k)+1});
     }
 

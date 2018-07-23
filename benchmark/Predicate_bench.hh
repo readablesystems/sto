@@ -4,6 +4,7 @@
 #include "TBox.hh"
 #include "TCounter.hh"
 #include "DB_params.hh"
+#include "TART_index.hh"
 
 namespace predicate_bench {
 
@@ -32,7 +33,7 @@ template <typename DBParams, typename DBRow>
 class predicate_db {
 public:
     template <typename K, typename V>
-    using OIndex = bench::ordered_index<K, V, DBParams>;
+    using OIndex = bench::tart_index<K, V, DBParams>;
     typedef OIndex<predicate_key, predicate_row<DBRow>> table_type;
 
     table_type& table() {

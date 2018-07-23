@@ -8,15 +8,40 @@
 
 namespace tart_bench {
 
-typedef std::string tart_key;
+typedef std::pair<const char*, size_t> tart_key;
 typedef uintptr_t tart_row;
+
+struct oi_value {
+    enum class NamedColumn : int { val = 0 };
+    uintptr_t val;
+
+    oi_value(uintptr_t v) {
+        val = v;
+    }
+};
+
+struct oi_key {
+    uint64_t key;
+    oi_key(uint64_t k) {
+        key = k;
+    }
+    bool operator==(const oi_key& other) const {
+        return (key == other.key);
+    }
+    bool operator!=(const oi_key& other) const {
+        return !(*this == other);
+    }
+    operator lcdf::Str() const {
+        return lcdf::Str((const char *)this, sizeof(*this));
+    }
+};
 
 template <typename DBParams>
 class tart_db {
 public:
     template <typename K, typename V>
-    using TIndex = bench::tart_index<K, V, DBParams>;
-    typedef TIndex<tart_key, tart_row> table_type;
+    using TIndex = bench::ordered_index<K, V, DBParams>;
+    typedef TIndex<oi_key, oi_value> table_type;
 
     table_type& table() {
         return tbl_;
@@ -32,19 +57,11 @@ private:
     table_type tbl_;
 };
 
-std::string intToString(size_t paramInt)
-{
-    std::vector<unsigned char> arrayOfByte(8);
-    for (int i = 0; i < 8; i++)
-        arrayOfByte[7 - i] = (paramInt >> (i * 8));
-    return std::string(arrayOfByte.begin(),arrayOfByte.end());
-}
-
 template <typename DBParams>
 void initialize_db(tart_db<DBParams>& db, size_t db_size) {
     //db.table().thread_init();
     for (size_t i = 0; i < db_size; i++)
-        db.table().nontrans_put(intToString(i), (tart_row)rand());
+        db.table().nontrans_put(oi_key(i), new oi_value{rand()});
     db.size() = db_size;
 }
 
@@ -55,13 +72,13 @@ public:
     void run_txn(size_t key) {
         TRANSACTION_E {
             bool success, found;
-            uintptr_t value;
-            std::tie(success, found, std::ignore, value) = db.table().select_row(intToString(key));
+            oi_value* value;
+            std::tie(success, found, std::ignore, value) = db.table().select_row(oi_key(key), RowAccess::None);
             if (success) {
                 if (found) {
-                  std::tie(success, found) = db.table().delete_row(intToString(key));
+                  std::tie(success, found) = db.table().delete_row(oi_key(key));
                 } else {
-                  std::tie(success, found) = db.table().insert_row(intToString(key), *Sto::tx_alloc<tart_row>());
+                  std::tie(success, found) = db.table().insert_row(oi_key(key), *Sto::tx_alloc<tart_row>());
                 }
             }
         } RETRY_E(true);

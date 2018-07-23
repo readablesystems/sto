@@ -60,7 +60,11 @@ public:
         TRANSACTION_E{
             const oi_value* val;
             std::tie(std::ignore, std::ignore, std::ignore, val) = oi.select_row(oi_key(key), bench::RowAccess::None);
-            ret = val->val;
+            if (!val) {
+                ret = 0;
+            } else {
+                ret = val->val;
+            }
         } RETRY_E(true);
         return ret;
     }
@@ -82,21 +86,21 @@ public:
 
     void insert(uint64_t int_key, uintptr_t val) override {
         TRANSACTION_E {
-            t->insert(int_key, val);
+            t->transPut(int_key, val);
         } RETRY_E(true);
     }
 
     uintptr_t lookup(uint64_t int_key) override {
         int ret;
         TRANSACTION_E {
-            ret = t->lookup(int_key);
+            ret = t->transGet(int_key);
         } RETRY_E(true);
         return ret;
     }
 
     void erase(uint64_t int_key) override {
         TRANSACTION_E {
-            t->erase(int_key);
+            t->transRemove(int_key);
         } RETRY_E(true);
     }
 };
@@ -260,7 +264,7 @@ void bench1(int nthread, int rand_keys, int nvals) {
 
 void bench2(int nthread, int nvals) {
 
-    keyval_db* art = new art_wrapper();
+    keyval_db* art = new oindex_wrapper();
     uint64_t* keys = new uint64_t[nvals];
 
     std::mt19937 rng;
@@ -315,6 +319,6 @@ int main(int argc, char *argv[]) {
     if (argc > 3) {
         rand_keys = atoi(argv[3]);
     }
-    bench1(nthread, rand_keys, nvals);
-    // bench2(nthread, nvals, 1);
+    // bench1(nthread, rand_keys, nvals);
+    bench2(nthread, nvals);
 }

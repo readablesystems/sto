@@ -59,23 +59,23 @@ void NoChecks() {
     TART aTART;
     {
         TransactionGuard t;
-        aTART.insert(absentkey1, 10);
+        aTART.transPut(absentkey1, 10);
     }
     {
         TransactionGuard t;
-        aTART.lookup(absentkey1);
-    }
-
-    {
-        TransactionGuard t;
-        aTART.erase(absentkey1);
+        aTART.transGet(absentkey1);
     }
 
     {
         TransactionGuard t;
-        aTART.insert(absentkey1, 10);
-        aTART.lookup(absentkey1);
-        aTART.erase(absentkey1);
+        aTART.transRemove(absentkey1);
+    }
+
+    {
+        TransactionGuard t;
+        aTART.transPut(absentkey1, 10);
+        aTART.transGet(absentkey1);
+        aTART.transRemove(absentkey1);
     }
         // Insert check print statement, no check should occur
 }
@@ -84,13 +84,13 @@ void Checks() {
     TART aTART;
     {
         TransactionGuard t;
-        aTART.insert(absentkey1, 10);
+        aTART.transPut(absentkey1, 10);
     }
     printf("1. ");
     {
         TransactionGuard t;
-        auto x = aTART.lookup(absentkey1);
-        aTART.insert(checkkey, 100);
+        auto x = aTART.transGet(absentkey1);
+        aTART.transPut(checkkey, 100);
         if(x == 0) {
             printf("wtf\n");
         }
@@ -98,20 +98,20 @@ void Checks() {
     printf("\n2.");
     {
         TransactionGuard t;
-        aTART.lookup(absentkey1);
-        aTART.insert(absentkey2, 12);
+        aTART.transGet(absentkey1);
+        aTART.transPut(absentkey2, 12);
     }
     printf("\n3.");
     {
         TransactionGuard t;
-        aTART.lookup(absentkey1);
-        aTART.erase(absentkey2);
+        aTART.transGet(absentkey1);
+        aTART.transRemove(absentkey2);
     }
     printf("\n4.");
     {
         TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
-        aTART.insert(checkkey, 100);
+        volatile auto x = aTART.transGet(absentkey1);
+        aTART.transPut(checkkey, 100);
 
         if (x == 0) {
             printf("wtf\n");
@@ -129,27 +129,27 @@ void testSimple() {
     const char* key2 = "1234";
     {
         TransactionGuard t;
-        a.insert(key1, 123);
-        a.insert(key2, 321);
+        a.transPut(key1, 123);
+        a.transPut(key2, 321);
     }
 
     {
         TransactionGuard t;
-        volatile auto x = a.lookup(key1);
-        volatile auto y = a.lookup(key2);
+        volatile auto x = a.transGet(key1);
+        volatile auto y = a.transGet(key2);
         assert(x == 123);
         assert(y == 321);
     }
 
     {
         TransactionGuard t;
-        a.insert("foo", 1);
-        a.insert("foobar", 2);
+        a.transPut("foo", 1);
+        a.transPut("foobar", 2);
     }
 
     {
         TransactionGuard t;
-        assert(a.lookup("foobar") == 2);
+        assert(a.transGet("foobar") == 2);
     }
 
 
@@ -161,23 +161,23 @@ void testSimple2() {
 
     {
         TransactionGuard t;
-        aTART.insert(absentkey1, 10);
-        aTART.insert(absentkey2, 10);
+        aTART.transPut(absentkey1, 10);
+        aTART.transPut(absentkey2, 10);
     }
 
     TestTransaction t1(0);
-    aTART.lookup(absentkey1);
-    aTART.insert(absentkey2, 123);
+    aTART.transGet(absentkey1);
+    aTART.transPut(absentkey2, 123);
 
     TestTransaction t2(0);
-    aTART.insert(absentkey2, 456);
+    aTART.transPut(absentkey2, 456);
 
     assert(t2.try_commit());
     assert(t1.try_commit());
 
     {
         TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey2);
+        volatile auto x = aTART.transGet(absentkey2);
         assert(x == 123);
     }
     printf("PASS: %s\n", __FUNCTION__);
@@ -190,38 +190,38 @@ void testSimpleErase() {
     const char* key2 = "1234";
     {
         TransactionGuard t;
-        a.insert(key1, 123);
-        a.insert(key2, 321);
+        a.transPut(key1, 123);
+        a.transPut(key2, 321);
     }
 
     {
         TransactionGuard t;
-        volatile auto x = a.lookup(key1);
-        volatile auto y = a.lookup(key2);
-        a.insert(checkkey, 100);
+        volatile auto x = a.transGet(key1);
+        volatile auto y = a.transGet(key2);
+        a.transPut(checkkey, 100);
         assert(x == 123);
         assert(y == 321);
     }
 
     {
         TransactionGuard t;
-        a.erase(key1);
-        volatile auto x = a.lookup(key1);
-        a.insert(checkkey, 100);
+        a.transRemove(key1);
+        volatile auto x = a.transGet(key1);
+        a.transPut(checkkey, 100);
         assert(x == 0);
     }
 
     {
         TransactionGuard t;
-        volatile auto x = a.lookup(key1);
+        volatile auto x = a.transGet(key1);
         assert(x == 0);
-        a.insert(key1, 567);
+        a.transPut(key1, 567);
     }
 
     {
         TransactionGuard t;
-        volatile auto x = a.lookup(key1);
-        a.insert(checkkey, 100);
+        volatile auto x = a.transGet(key1);
+        a.transPut(checkkey, 100);
         assert(x == 567);
     }
 
@@ -236,20 +236,20 @@ void testEmptyErase() {
     // deleting non-existent node
     {
         TransactionGuard t;
-        a.erase(key1);
-        volatile auto x = a.lookup(key1);
-        a.insert(checkkey, 100);
+        a.transRemove(key1);
+        volatile auto x = a.transGet(key1);
+        a.transPut(checkkey, 100);
         assert(x == 0);
     }
 
     {
         TransactionGuard t;
-        a.erase(key1);
-        volatile auto x = a.lookup(key1);
+        a.transRemove(key1);
+        volatile auto x = a.transGet(key1);
         assert(x == 0);
-        a.insert(key1, 123);
-        a.erase(key1);
-        x = a.lookup(key1);
+        a.transPut(key1, 123);
+        a.transRemove(key1);
+        x = a.transGet(key1);
         assert(x == 0);    
     }
 
@@ -261,11 +261,11 @@ void testAbsentErase() {
     TART a;
 
     TestTransaction t1(0);
-    a.erase("foo");
-    a.insert("bar", 1);
+    a.transRemove("foo");
+    a.transPut("bar", 1);
 
     TestTransaction t2(1);
-    a.insert("foo", 123);
+    a.transPut("foo", 123);
     assert(t2.try_commit());
 
     t1.use();
@@ -277,16 +277,16 @@ void multiWrite() {
     TART aTART;
     {
         TransactionGuard t;
-        aTART.insert(absentkey2, 456);
+        aTART.transPut(absentkey2, 456);
     }
 
     {
         TransactionGuard t;
-        aTART.insert(absentkey2, 123);
+        aTART.transPut(absentkey2, 123);
     }
     {
         TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey2);
+        volatile auto x = aTART.transGet(absentkey2);
         assert(x == 123);    
     }
     printf("PASS: %s\n", __FUNCTION__);
@@ -296,22 +296,22 @@ void multiThreadWrites() {
     TART aTART;
     {
         TransactionGuard t;
-        aTART.insert(absentkey2, 456);
+        aTART.transPut(absentkey2, 456);
     }
 
     TestTransaction t1(0);
-    aTART.insert(absentkey2, 123);
+    aTART.transPut(absentkey2, 123);
 
     TestTransaction t2(0);
-    aTART.insert(absentkey2, 456);
+    aTART.transPut(absentkey2, 456);
 
     assert(t1.try_commit());
     assert(t2.try_commit());
 
     {
         TransactionGuard t;
-        // printf("to lookup\n");
-        volatile auto x = aTART.lookup(absentkey2);
+        // printf("to transGet\n");
+        volatile auto x = aTART.transGet(absentkey2);
         // printf("looked\n");
         assert(x == 456);
     }
@@ -322,24 +322,24 @@ void multiThreadWrites() {
 void testReadDelete() {
     TART aTART;
     TestTransaction t0(0);
-    aTART.insert(absentkey1, 10);
-    aTART.insert(absentkey2, 10);
+    aTART.transPut(absentkey1, 10);
+    aTART.transPut(absentkey2, 10);
     assert(t0.try_commit());
 
     TestTransaction t1(0);
-    aTART.lookup(absentkey1);
-    aTART.insert(absentkey2, 10);
+    aTART.transGet(absentkey1);
+    aTART.transPut(absentkey2, 10);
 
     TestTransaction t2(0);
-    aTART.erase(absentkey1);
+    aTART.transRemove(absentkey1);
 
     assert(t2.try_commit());
     assert(!t1.try_commit());
 
     {
         TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
-        volatile auto y = aTART.lookup(absentkey2);
+        volatile auto x = aTART.transGet(absentkey1);
+        volatile auto y = aTART.transGet(absentkey2);
         assert(x == 0);
         assert(y == 10);
     }
@@ -350,24 +350,24 @@ void testReadDelete() {
 void testReadWriteDelete() {
     TART aTART;
     TestTransaction t0(0);
-    aTART.insert(absentkey1, 10);
-    aTART.insert(absentkey2, 10);
+    aTART.transPut(absentkey1, 10);
+    aTART.transPut(absentkey2, 10);
     assert(t0.try_commit());
 
     TestTransaction t1(0);
-    aTART.lookup(absentkey1);
-    aTART.insert(absentkey2, 123);
+    aTART.transGet(absentkey1);
+    aTART.transPut(absentkey2, 123);
 
     TestTransaction t2(0);
-    aTART.erase(absentkey1);
+    aTART.transRemove(absentkey1);
 
     assert(t2.try_commit());
     assert(!t1.try_commit());
 
     {
         TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
-        volatile auto y = aTART.lookup(absentkey2);
+        volatile auto x = aTART.transGet(absentkey1);
+        volatile auto y = aTART.transGet(absentkey2);
         assert(x == 0);
         assert(y == 10);
     }
@@ -378,27 +378,27 @@ void testReadWriteDelete() {
 void testReadDeleteInsert() {
     TART aTART;
     TestTransaction t0(0);
-    aTART.insert(absentkey1, 10);
-    aTART.insert(absentkey2, 10);
+    aTART.transPut(absentkey1, 10);
+    aTART.transPut(absentkey2, 10);
     assert(t0.try_commit());
 
     TestTransaction t1(0);
-    aTART.lookup(absentkey1);
-    aTART.insert(absentkey2, 123);
+    aTART.transGet(absentkey1);
+    aTART.transPut(absentkey2, 123);
 
     TestTransaction t2(0);
-    aTART.erase(absentkey1);
+    aTART.transRemove(absentkey1);
     assert(t2.try_commit());
 
     TestTransaction t3(0);
-    aTART.insert(absentkey1, 10);
+    aTART.transPut(absentkey1, 10);
     assert(t3.try_commit());
     assert(!t1.try_commit());
 
     {
         TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
-        volatile auto y = aTART.lookup(absentkey2);
+        volatile auto x = aTART.transGet(absentkey1);
+        volatile auto y = aTART.transGet(absentkey2);
         assert(x == 10);
         assert(y == 10);
     }
@@ -410,24 +410,24 @@ void testReadDeleteInsert() {
 void testInsertDelete() {
     TART aTART;
     TestTransaction t0(0);
-    aTART.insert(absentkey1, 10);
-    aTART.insert(absentkey2, 10);
+    aTART.transPut(absentkey1, 10);
+    aTART.transPut(absentkey2, 10);
     assert(t0.try_commit());
 
     TestTransaction t1(0);
-    aTART.insert(absentkey1, 123);
-    aTART.insert(absentkey2, 456);
+    aTART.transPut(absentkey1, 123);
+    aTART.transPut(absentkey2, 456);
 
     TestTransaction t2(0);
-    aTART.erase(absentkey1);
+    aTART.transRemove(absentkey1);
     assert(t2.try_commit());
 
     assert(!t1.try_commit());
 
     {
         TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
-        volatile auto y = aTART.lookup(absentkey2);
+        volatile auto x = aTART.transGet(absentkey1);
+        volatile auto y = aTART.transGet(absentkey2);
         assert(x == 0);
         assert(y == 10);
     }
@@ -440,20 +440,20 @@ void testAbsent1_1() {
     TART aTART;
 
     TestTransaction t1(0);
-    aTART.lookup(absentkey1);
-    // a new insert
+    aTART.transGet(absentkey1);
+    // a new transPut
     TestTransaction t2(0);
-    aTART.insert(absentkey1, 456);
-    aTART.insert(absentkey2, 123);
+    aTART.transPut(absentkey1, 456);
+    aTART.transPut(absentkey2, 123);
 
     t1.use();
     try {
-        aTART.lookup(absentkey2);
+        aTART.transGet(absentkey2);
     } catch (Transaction::Abort e) { 
         assert(t2.try_commit());
         {
             TransactionGuard t;
-            volatile auto x = aTART.lookup(absentkey1);
+            volatile auto x = aTART.transGet(absentkey1);
             assert(x == 456);
         }
         printf("PASS: %s\n", __FUNCTION__);
@@ -469,20 +469,20 @@ void testAbsent1_2() {
     TART aTART;
 
     TestTransaction t1(0);
-    aTART.lookup(absentkey1);
-    aTART.insert(absentkey1, 123);
+    aTART.transGet(absentkey1);
+    aTART.transPut(absentkey1, 123);
 
-    // a new insert
+    // a new transPut
     TestTransaction t2(0);
     try {
-        aTART.insert(absentkey1, 456);
+        aTART.transPut(absentkey1, 456);
     } catch (Transaction::Abort e) {}
 
     assert(t1.try_commit());
 
     {
         TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
+        volatile auto x = aTART.transGet(absentkey1);
         assert(x == 123);
     }
 
@@ -494,24 +494,24 @@ void testAbsent1_3() {
     TART aTART;
 
     TestTransaction t1(0);
-    aTART.lookup(absentkey1);
-    aTART.insert(absentkey2, 123);
+    aTART.transGet(absentkey1);
+    aTART.transPut(absentkey2, 123);
 
-    // a new insert
+    // a new transPut
     TestTransaction t2(0);
-    aTART.insert(absentkey1, 456);
+    aTART.transPut(absentkey1, 456);
 
     assert(t2.try_commit());
     
     TestTransaction t3(0);
-    aTART.erase(absentkey1);
+    aTART.transRemove(absentkey1);
 
     assert(t3.try_commit());
     assert(!t1.try_commit());
 
     {
         TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
+        volatile auto x = aTART.transGet(absentkey1);
         assert(x == 0);
     }
 
@@ -523,22 +523,22 @@ void testAbsent2_2() {
     TART aTART;
 
     TestTransaction t1(0);
-    aTART.lookup(absentkey1);
-    aTART.insert(absentkey1, 123);
-    aTART.lookup(absentkey2);
-    aTART.insert(absentkey2, 123);
+    aTART.transGet(absentkey1);
+    aTART.transPut(absentkey1, 123);
+    aTART.transGet(absentkey2);
+    aTART.transPut(absentkey2, 123);
 
-    // a new insert
+    // a new transPut
     TestTransaction t2(0);
     try {
-        aTART.insert(absentkey1, 456);
+        aTART.transPut(absentkey1, 456);
     } catch (Transaction::Abort e) {}
 
     assert(t1.try_commit());
 
     {
         TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
+        volatile auto x = aTART.transGet(absentkey1);
         assert(x == 123);
     }
 
@@ -550,26 +550,26 @@ void testAbsent3() {
     TART aTART;
 
     TestTransaction t0(0);
-    aTART.insert(absentkey2, 123);
-    aTART.insert(absentkey2_1, 456);
+    aTART.transPut(absentkey2, 123);
+    aTART.transPut(absentkey2_1, 456);
 
     assert(t0.try_commit());
 
     TestTransaction t1(0);
-    aTART.lookup(absentkey1);
-    aTART.insert(absentkey2, 123);
+    aTART.transGet(absentkey1);
+    aTART.transPut(absentkey2, 123);
 
     // an update
     TestTransaction t2(0);
-    aTART.insert(absentkey2_2, 456);
+    aTART.transPut(absentkey2_2, 456);
 
     assert(t2.try_commit());
     assert(t1.try_commit());
 
     {
         TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
-        volatile auto y = aTART.lookup(absentkey2);
+        volatile auto x = aTART.transGet(absentkey1);
+        volatile auto y = aTART.transGet(absentkey2);
         assert(y == 123);
         assert(x == 0);
     }
@@ -581,27 +581,27 @@ void testAbsent3_2() {
     TART aTART;
 
     TestTransaction t0(0);
-    aTART.insert(absentkey2, 123);
-    aTART.insert(absentkey2_1, 123);
-    aTART.insert(absentkey2_2, 123);
-    aTART.insert(absentkey2_3, 123);
+    aTART.transPut(absentkey2, 123);
+    aTART.transPut(absentkey2_1, 123);
+    aTART.transPut(absentkey2_2, 123);
+    aTART.transPut(absentkey2_3, 123);
     assert(t0.try_commit());
 
     TestTransaction t1(0);
-    aTART.lookup(absentkey2_4);
-    aTART.insert(absentkey2, 123);
+    aTART.transGet(absentkey2_4);
+    aTART.transPut(absentkey2, 123);
 
     // an update
     TestTransaction t2(0);
-    aTART.insert(absentkey2_5, 456);
+    aTART.transPut(absentkey2_5, 456);
 
     assert(t2.try_commit());
     assert(!t1.try_commit());
 
     {
         TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
-        volatile auto y = aTART.lookup(absentkey2);
+        volatile auto x = aTART.transGet(absentkey1);
+        volatile auto y = aTART.transGet(absentkey2);
         assert(y == 123);
         assert(x == 0);
     }
@@ -613,19 +613,19 @@ void testABA1() {
     TART aTART;
     {
         TransactionGuard t;
-        aTART.insert(absentkey2, 456);
+        aTART.transPut(absentkey2, 456);
     }
 
     TestTransaction t1(0);
-    aTART.lookup(absentkey2);
-    aTART.insert(absentkey1, 123);
+    aTART.transGet(absentkey2);
+    aTART.transPut(absentkey1, 123);
 
     TestTransaction t2(0);
-    aTART.erase(absentkey2);
+    aTART.transRemove(absentkey2);
     assert(t2.try_commit());
 
     TestTransaction t3(0);
-    aTART.insert(absentkey2, 456);
+    aTART.transPut(absentkey2, 456);
 
     assert(t3.try_commit());
     assert(!t1.try_commit());
@@ -633,8 +633,8 @@ void testABA1() {
 
     {
         TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
-        volatile auto y = aTART.lookup(absentkey2);
+        volatile auto x = aTART.transGet(absentkey1);
+        volatile auto y = aTART.transGet(absentkey2);
         assert(y == 456);
         assert(x == 0);
     }
@@ -648,14 +648,14 @@ void testMultiRead() {
     TART art;
     {
         TransactionGuard t;
-        art.insert("hello", 4);
+        art.transPut("hello", 4);
     }
 
     TestTransaction t1(0);
-    volatile auto x = art.lookup("hello");
+    volatile auto x = art.transGet("hello");
 
     TestTransaction t2(1);
-    volatile auto y = art.lookup("hello");
+    volatile auto y = art.transGet("hello");
     assert(t2.try_commit());
 
     t1.use();
@@ -669,15 +669,15 @@ void testReadWrite() {
     TART art;
     {
         TransactionGuard t;
-        art.insert("hello", 4);
+        art.transPut("hello", 4);
     }
 
     TestTransaction t1(0);
-    art.lookup("hello");
-    art.insert("world", 1);
+    art.transGet("hello");
+    art.transPut("world", 1);
 
     TestTransaction t2(1);
-    art.insert("hello", 6);
+    art.transPut("hello", 6);
     assert(t2.try_commit());
     assert(!t1.try_commit());
 
@@ -688,36 +688,36 @@ void testPerNodeV() {
     TART art;
     {
         TransactionGuard t;
-        art.insert("x", 1);
-        art.insert("y", 2);
-        art.insert("z", 3);
+        art.transPut("x", 1);
+        art.transPut("y", 2);
+        art.transPut("z", 3);
     }
 
     {
         TransactionGuard t;
-        volatile auto x = art.lookup("x");
-        volatile auto y = art.lookup("y");
-        volatile auto z = art.lookup("z");
+        volatile auto x = art.transGet("x");
+        volatile auto y = art.transGet("y");
+        volatile auto z = art.transGet("z");
         assert(x == 1);
         assert(y == 2);
         assert(z == 3);
     }
 
     TestTransaction t1(0);
-    art.lookup("x");
-    art.insert("z", 13);
+    art.transGet("x");
+    art.transPut("z", 13);
 
     TestTransaction t2(1);
-    art.insert("y", 12);
+    art.transPut("y", 12);
 
     assert(t2.try_commit());
     assert(t1.try_commit());
 
     {
         TransactionGuard t;
-        volatile auto x = art.lookup("x");
-        volatile auto y = art.lookup("y");
-        volatile auto z = art.lookup("z");
+        volatile auto x = art.transGet("x");
+        volatile auto y = art.transGet("y");
+        volatile auto z = art.transGet("z");
         assert(x == 1);
         assert(y == 12);
         assert(z == 13);
@@ -732,10 +732,10 @@ void testLookupRange() {
     uintptr_t* result = new uintptr_t[10];
     size_t resultsFound;
     art.lookupRange({"a", 2}, {"z", 2}, {"", 0}, result, 10, resultsFound);
-    art.insert("foo", 1);
+    art.transPut("foo", 1);
 
     TestTransaction t2(1);
-    art.insert("b", 1);
+    art.transPut("b", 1);
     assert(t2.try_commit());
 
     assert(!t1.try_commit());
@@ -747,17 +747,17 @@ void testLookupRangeSplit() {
 
     {
         TransactionGuard t;
-        art.insert("rail", 1);
+        art.transPut("rail", 1);
     }
     
     TestTransaction t1(0);
     uintptr_t* result = new uintptr_t[10];
     size_t resultsFound;
     art.lookupRange({"a", 2}, {"z", 2}, {"", 0}, result, 10, resultsFound);
-    art.insert("foo", 1);
+    art.transPut("foo", 1);
 
     TestTransaction t2(1);
-    art.insert("rain", 1);
+    art.transPut("rain", 1);
     assert(t2.try_commit());
 
     assert(!t1.try_commit());
@@ -769,17 +769,17 @@ void testLookupRangeUpdate() {
 
     {
         TransactionGuard t;
-        art.insert("rail", 1);
+        art.transPut("rail", 1);
     }
     
     TestTransaction t1(0);
     uintptr_t* result = new uintptr_t[10];
     size_t resultsFound;
     art.lookupRange({"a", 2}, {"z", 2}, {"", 0}, result, 10, resultsFound);
-    art.insert("foo", 1);
+    art.transPut("foo", 1);
 
     TestTransaction t2(1);
-    art.insert("rail", 2);
+    art.transPut("rail", 2);
     assert(t2.try_commit());
 
     assert(!t1.try_commit());
@@ -789,37 +789,37 @@ void testLookupRangeUpdate() {
 void testRCU(TART* a) {
     double vm_usage; double resident_set;
     process_mem_usage(vm_usage, resident_set);
-    printf("Before insert\n");
+    printf("Before transPut\n");
     printf("RSS: %f, VM: %f\n", resident_set, vm_usage);
 
     for (int i = 0; i < 1000000; i++) {
         TRANSACTION_E {
-            a->insert(i, i);
+            a->transPut(i, i);
         } RETRY_E(true);
     }
 
     process_mem_usage(vm_usage, resident_set);
-    printf("After insert\n");
+    printf("After transPut\n");
     printf("RSS: %f, VM: %f\n", resident_set, vm_usage);
 
     for (int i = 0; i < 1000000; i++) {
         TRANSACTION_E {
-            a->erase(i);
+            a->transRemove(i);
         } RETRY_E(true);
     }
 
     process_mem_usage(vm_usage, resident_set);
-    printf("After erase\n");
+    printf("After transRemove\n");
     printf("RSS: %f, VM: %f\n", resident_set, vm_usage);
 
     for (int i = 0; i < 1000000; i++) {
         TRANSACTION_E {
-            a->insert(i, i);
+            a->transPut(i, i);
         } RETRY_E(true);
     }
 
     process_mem_usage(vm_usage, resident_set);
-    printf("After re-insert\n");
+    printf("After re-transPut\n");
     printf("RSS: %f, VM: %f\n", resident_set, vm_usage);
 }
 
@@ -834,15 +834,15 @@ int main() {
     size_t resultsFound;
     {
         TransactionGuard t;
-        a->insert("romane", 1);
-        a->insert("romanus", 2);
-        a->insert("romulus", 3);
-        a->insert("rubens", 4);
-        a->insert("ruber", 5);
-        a->insert("rubicon", 6);
-        a->insert("rubicundus", 7);
+        a->transPut("romane", 1);
+        a->transPut("romanus", 2);
+        a->transPut("romulus", 3);
+        a->transPut("rubens", 4);
+        a->transPut("ruber", 5);
+        a->transPut("rubicon", 6);
+        a->transPut("rubicundus", 7);
 
-        a->erase("romanus");
+        a->transRemove("romanus");
 
         bool success = a->lookupRange({"romane", 7}, {"ruber", 6}, {"", 0}, result, 10, resultsFound);
         printf("success: %d\n", success);
@@ -860,13 +860,13 @@ int main() {
     testAbsentErase();
     multiWrite();
     multiThreadWrites();
-    testReadDelete(); // problem w/ lacking implementation of erase
+    testReadDelete(); // problem w/ lacking implementation of transRemove
     testReadWriteDelete();
     testReadDeleteInsert();
     testAbsent1_1();
     testInsertDelete();
     testAbsent1_2();
-    testAbsent1_3(); // ABA read insert delete detection no longer exists
+    testAbsent1_3(); // ABA read transPut delete detection no longer exists
     testAbsent2_2();
     testAbsent3();
     testAbsent3_2();

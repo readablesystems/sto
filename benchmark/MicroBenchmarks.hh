@@ -11,6 +11,7 @@
 #include "DB_structs.hh"
 #include "DB_index.hh"
 #include "DB_params.hh"
+#include "TART_index.hh"
 
 #include "Micro_structs.hh"
 
@@ -389,6 +390,7 @@ public:
     typedef typename compute_value_type<WLImpl::RTParams::granules>::type value_type;
     typedef typename value_type::NamedColumn nc;
     typedef typename tpcc::ordered_index<key_type, value_type, DBParams> index_type;
+    // typedef typename bench::tart_index<key_type, value_type, DBParams> index_type;
     typedef typename index_type::column_access_t column_access_t;
 
     explicit MasstreeTester(size_t num_threads) : Base(num_threads), mt_() {}
