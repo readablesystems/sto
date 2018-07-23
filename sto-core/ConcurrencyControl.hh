@@ -6,6 +6,7 @@
 #include "EagerVersions.hh"
 #include "OCCVersions.hh"
 #include "TicTocVersions.hh"
+#include "MVCCVersions.hh"
 
 class VersionDelegate {
     friend class TVersion;

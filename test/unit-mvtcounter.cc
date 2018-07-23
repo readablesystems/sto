@@ -9,7 +9,7 @@
 #include "TBox.hh"
 
 void testTrivial() {
-	TCounter<int, TMvOpaqueWrapped<int>> c;
+	TCounter<int, TMvWrapped<int>> c;
 
     {
         TransactionGuard t;
@@ -26,7 +26,7 @@ void testTrivial() {
 }
 
 void testConcurrentUpdate() {
-    TCounter<int, TMvOpaqueWrapped<int>> c;
+    TCounter<int, TMvWrapped<int>> c;
     bool b;
 
     std::vector<int> permutation{1, 2, 3, 4};
@@ -85,8 +85,8 @@ void testConcurrentUpdate() {
 }
 
 void testSimpleRangesOk() {
-    TCounter<int, TMvOpaqueWrapped<int>> c;
-    TBox<int, TMvOpaqueWrapped<int>> box;
+    TCounter<int, TMvWrapped<int>> c;
+    TBox<int, TMvWrapped<int>> box;
     bool match;
 
     {
@@ -135,8 +135,8 @@ void testSimpleRangesOk() {
 }
 
 void testSimpleRangesFail() {
-    TCounter<int, TMvOpaqueWrapped<int>> c;
-    TBox<int, TMvOpaqueWrapped<int>> box;
+    TCounter<int, TMvWrapped<int>> c;
+    TBox<int, TMvWrapped<int>> box;
     bool match;
 
     {
@@ -219,9 +219,10 @@ void testSimpleRangesFail() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+#if 0
 void testSimpleRangesFailNoOpacity() {
     TCounter<int, TMvNonopaqueWrapped<int>> c;
-    TBox<int, TMvOpaqueWrapped<int>> box;
+    TBox<int, TMvWrapped<int>> box;
     bool match;
 
     {
@@ -300,10 +301,11 @@ void testSimpleRangesFailNoOpacity() {
 
     printf("PASS: %s\n", __FUNCTION__);
 }
+#endif
 
 void testUpdateRead() {
-    TCounter<int, TMvOpaqueWrapped<int>> c;
-    TBox<int, TMvOpaqueWrapped<int>> box;
+    TCounter<int, TMvWrapped<int>> c;
+    TBox<int, TMvWrapped<int>> box;
     bool match;
 
     {
@@ -338,7 +340,7 @@ void testUpdateRead() {
 }
 
 void testOpacity() {
-    TCounter<int, TMvOpaqueWrapped<int>> c1, c2;
+    TCounter<int, TMvWrapped<int>> c1, c2;
     bool match;
 
     try {
@@ -370,6 +372,7 @@ void testOpacity() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+#if 0
 void testNoOpacity() {
     TCounter<int, TMvNonopaqueWrapped<int>> c1, c2;
     bool match;
@@ -401,15 +404,16 @@ void testNoOpacity() {
 
     printf("PASS: %s\n", __FUNCTION__);
 }
+#endif
 
 int main() {
     testTrivial();
     testConcurrentUpdate();
-    //testSimpleRangesOk();
+    testSimpleRangesOk();
     testSimpleRangesFail();
     //testSimpleRangesFailNoOpacity();
     testUpdateRead();
     testOpacity();
-    testNoOpacity();
+    //testNoOpacity();
     return 0;
 }

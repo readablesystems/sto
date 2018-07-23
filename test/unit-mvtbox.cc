@@ -130,6 +130,7 @@ void testOpacity1() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+#if 0
 void testNoOpacity1() {
     TBox<int, TMvNonopaqueWrapped<int>> f, g;
     TBox<int, TMvNonopaqueWrapped<int>> box;
@@ -160,6 +161,7 @@ void testNoOpacity1() {
 
     printf("PASS: %s\n", __FUNCTION__);
 }
+#endif
 
 #if 0
 void testStringWrapper() {
@@ -254,7 +256,7 @@ int main() {
     testSimpleString();
     testConcurrentInt();
     testOpacity1();
-    testNoOpacity1();
+    //testNoOpacity1();
     //testStringWrapper();
     return 0;
 }
