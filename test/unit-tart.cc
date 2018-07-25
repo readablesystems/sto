@@ -828,28 +828,28 @@ int main() {
     pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
     pthread_detach(advancer); 
 
-    TART* a = new TART();
-
-    uintptr_t* result = new uintptr_t[10];
-    size_t resultsFound;
-    {
-        TransactionGuard t;
-        a->transPut("romane", 1);
-        a->transPut("romanus", 2);
-        a->transPut("romulus", 3);
-        a->transPut("rubens", 4);
-        a->transPut("ruber", 5);
-        a->transPut("rubicon", 6);
-        a->transPut("rubicundus", 7);
-
-        a->transRemove("romanus");
-
-        bool success = a->lookupRange({"romane", 7}, {"ruber", 6}, {"", 0}, result, 10, resultsFound);
-        printf("success: %d\n", success);
-        for (int i = 0; i < resultsFound; i++) {
-            printf("%d: %d\n", resultsFound, result[i]);
-        }
-    }
+    // TART* a = new TART();
+    //
+    // uintptr_t* result = new uintptr_t[10];
+    // size_t resultsFound;
+    // {
+    //     TransactionGuard t;
+    //     a->transPut("romane", 1);
+    //     a->transPut("romanus", 2);
+    //     a->transPut("romulus", 3);
+    //     a->transPut("rubens", 4);
+    //     a->transPut("ruber", 5);
+    //     a->transPut("rubicon", 6);
+    //     a->transPut("rubicundus", 7);
+    //
+    //     a->transRemove("romanus");
+    //
+    //     bool success = a->lookupRange({"romane", 7}, {"ruber", 6}, {"", 0}, result, 10, resultsFound);
+    //     printf("success: %d\n", success);
+    //     for (int i = 0; i < resultsFound; i++) {
+    //         printf("%d: %d\n", resultsFound, result[i]);
+    //     }
+    // }
 
     // a->print();
 

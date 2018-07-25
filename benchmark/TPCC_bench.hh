@@ -18,6 +18,7 @@
 
 #include "DB_index.hh"
 #include "DB_params.hh"
+#include "TART_index.hh"
 
 #define A_GEN_CUSTOMER_ID           1023
 #define A_GEN_ITEM_ID               8191
@@ -115,7 +116,8 @@ public:
     using UIndex = unordered_index<K, V, DBParams>;
 
     template <typename K, typename V>
-    using OIndex = ordered_index<K, V, DBParams>;
+    // using OIndex = ordered_index<K, V, DBParams>;
+    using OIndex = bench::tart_index<K, V, DBParams>;
 
     // partitioned according to warehouse id
     typedef std::vector<warehouse_value>                 wh_table_type;

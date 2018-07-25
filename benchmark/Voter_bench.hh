@@ -19,8 +19,8 @@ template<typename DBParams>
 class voter_db {
 public:
     template<typename K, typename V>
-    // using OIndex = ordered_index<K, V, DBParams>;
-    using OIndex = bench::tart_index<K, V, DBParams>;
+    using OIndex = ordered_index<K, V, DBParams>;
+    // using OIndex = bench::tart_index<K, V, DBParams>;
 
     typedef OIndex<contestant_key, contestant_row> contestant_tbl_type;
     typedef OIndex<area_code_state_key, area_code_state_row> areacodestate_tbl_type;

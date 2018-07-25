@@ -49,6 +49,12 @@ public:
         key_gen_ = 0;
         // static_assert(std::is_base_of<std::string, K>::value, "key must be std::string");
     }
+
+    tart_index(size_t init_size) {
+        (void)init_size;
+        tart_index();
+    }
+
     ~tart_index() {}
 
     void thread_init() {}

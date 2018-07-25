@@ -15,7 +15,7 @@ namespace ART_OLC {
         loadKey = f;
     }
 
-    Tree::Tree(LoadKeyFunction loadKey) : root(new N256( nullptr, 0)), loadKey(loadKey) {
+    Tree::Tree(LoadKeyFunction loadKey) : root(new N256(nullptr, 0)), loadKey(loadKey) {
     }
 
     Tree::~Tree() {

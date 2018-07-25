@@ -225,8 +225,8 @@ void bench1(int nthread, int rand_keys, int nvals) {
                 oindex_wrapper::index_type::thread_init();
 
                 for (int i = thread_id*(nvals/nthread); i < (thread_id+1)*nvals/nthread; i++) {
-                    auto val = art->lookup(keys[i]);
-                    assert(val == keys[i]);
+                    int val = art->lookup(keys[i]);
+                    assert((int) val == (int) keys[i]);
                 }
             }, i);
         }
@@ -319,6 +319,6 @@ int main(int argc, char *argv[]) {
     if (argc > 3) {
         rand_keys = atoi(argv[3]);
     }
-    // bench1(nthread, rand_keys, nvals);
-    bench2(nthread, nvals);
+    bench1(nthread, rand_keys, nvals);
+    // bench2(nthread, nvals);
 }

@@ -63,8 +63,9 @@ namespace ART_OLC {
         static uint64_t convertTypeToVersion(NTypes type);
 
     public:
-
         NTypes getType() const;
+
+        // static void freeLeaf(TID tid);
 
         TVersion vers;
 

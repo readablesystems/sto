@@ -10,7 +10,6 @@
 using namespace ART;
 
 namespace ART_OLC {
-
     class Tree {
     public:
         using LoadKeyFunction = void (*)(TID tid, Key &key);

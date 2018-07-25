@@ -358,6 +358,9 @@ namespace ART_OLC {
 
     void N::deleteNode(N *node) {
         if (N::isLeaf(node)) {
+            // if (N::freeLeaf) {
+            //     N::freeLeaf(N::getLeaf(node));
+            // }
             return;
         }
         switch (node->getType()) {

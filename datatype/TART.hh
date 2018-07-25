@@ -8,7 +8,6 @@
 #include "simple_str.hh"
 #include "print_value.hh"
 #include "../ART/Tree.h"
-#include "../ART/N.h"
 #include "str.hh"
 
 class TART : public TObject {
@@ -43,8 +42,20 @@ public:
         }
     }
 
+    // static void freeLeaf(TID t) {
+    //     Element* e = (Element*) t;
+    //     if (e->key.second > 8) {
+    //         Transaction::rcu_free((char*) e->key.first);
+    //     }
+    //     Transaction::rcu_delete(e);
+    // }
+
     typedef typename std::conditional<true, TVersion, TNonopaqueVersion>::type Version_type;
     typedef typename std::conditional<true, TWrapped<TVal>, TNonopaqueWrapped<TVal>>::type wrapped_type;
+
+    typedef std::tuple<bool, bool, uintptr_t> lookup_return_type; // (success, found, ret)
+    typedef std::tuple<bool, bool> ins_return_type; // (success, found)
+    typedef std::tuple<bool, bool> del_return_type; // (success, found)
 
     static constexpr TransItem::flags_type parent_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type deleted_bit = TransItem::user0_bit<<1;
@@ -54,7 +65,7 @@ public:
         root_.access().setLoadKey(TART::loadKey);
     }
 
-    TVal transGet(lcdf::Str k) {
+    lookup_return_type lookup(lcdf::Str k) {
         Key key;
         make_key(k.data(), key, k.length());
         auto r = root_.access().lookup(key);
@@ -62,22 +73,30 @@ public:
         if (e) {
             auto item = Sto::item(this, e);
             if (item.has_write()) {
-                return item.template write_value<TVal>();
+                return lookup_return_type(true, true, item.template write_value<TVal>());
             }
             e->vers.lock_exclusive();
             if (e->poisoned) {
                 e->vers.unlock_exclusive();
-                throw Transaction::Abort();
+                return lookup_return_type(false, false, 0);
             }
             e->vers.unlock_exclusive();
             e->vers.observe_read(item);
-            return e->val;
+            return lookup_return_type(true, true, e->val);
         }
         assert(r.second);
         auto item = Sto::item(this, r.second);
         item.add_flags(parent_bit);
         r.second->vers.observe_read(item);
-        return 0;
+        return lookup_return_type(true, false, 0);
+    }
+
+    TVal transGet(lcdf::Str k) {
+        auto r = lookup(k);
+        if (!std::get<0>(r)) {
+            throw Transaction::Abort();
+        }
+        return std::get<2>(r);
     }
     TVal transGet(uint64_t k) {
         return transGet({(const char*) &k, sizeof(uint64_t)});
@@ -95,6 +114,55 @@ public:
             return e->val;
         }
         return 0;
+    }
+
+    ins_return_type insert(lcdf::Str k, TVal v, bool overwrite) {
+        Key art_key;
+        make_key(k.data(), art_key, k.length());
+
+        auto r = root_.access().insert(art_key, [k, v]{
+            Element* e = new Element();
+            if (k.length() > 8) {
+                char* p = (char*) malloc(k.length());
+                memcpy(p, k.data(), k.length());
+                e->key.first = p;
+            } else {
+                memcpy(&e->key.first, k.data(), k.length());
+            }
+            e->val = v;
+            e->poisoned = true;
+            e->key.second = k.length();
+            return (TID) e;
+        });
+
+        Element* e = (Element*) r.first;
+        if (!r.second) {
+            auto item = Sto::item(this, e);
+            e->vers.lock_exclusive();
+            if (!item.has_write() && e->poisoned) {
+                e->vers.unlock_exclusive();
+                return ins_return_type(false, false);
+            }
+            e->vers.unlock_exclusive();
+            e->vers.observe_read(item);
+            if (item.has_flag(deleted_bit)) {
+                item.add_write(v);
+                item.clear_flags(deleted_bit);
+                return ins_return_type(true, false);
+            }
+            if (overwrite) {
+                item.add_write(v);
+            }
+            return ins_return_type(true, true);
+        }
+
+        auto item_el = Sto::item(this, e);
+        auto item_parent = Sto::item(this, r.second);
+        item_parent.add_write(v);
+        item_el.add_write(v);
+        item_el.add_flags(new_insert_bit);
+        item_parent.add_flags(parent_bit);
+        return ins_return_type(true, false);
     }
 
     void transPut(lcdf::Str k, TVal v) {
@@ -165,6 +233,32 @@ public:
             e->val = v;
             return;
         }
+    }
+
+    del_return_type remove(lcdf::Str k) {
+        Key art_key;
+        make_key(k.data(), art_key, k.length());
+        auto r = root_.access().lookup(art_key);
+        Element* e = (Element*) r.first;
+        if (e) {
+            auto item = Sto::item(this, e);
+            e->vers.lock_exclusive();
+            if (!item.has_write() && e->poisoned) {
+                e->vers.unlock_exclusive();
+                return del_return_type(false, false);
+            }
+            e->poisoned = true;
+            e->vers.unlock_exclusive();
+            item.add_write(0);
+            item.add_flags(deleted_bit);
+            e->vers.observe_read(item);
+            return del_return_type(true, true);
+        }
+
+        auto item_parent = Sto::item(this, r.second);
+        item_parent.add_flags(parent_bit);
+        r.second->vers.observe_read(item_parent);
+        return del_return_type(true, false);
     }
 
     void transRemove(lcdf::Str k) {
@@ -260,7 +354,7 @@ public:
             return parent->vers.cp_check_version(txn, item);
         } else {
             Element* e = item.template key<Element*>();
-            return !e->poisoned && e->vers.cp_check_version(txn, item);
+            return (!e->poisoned || item.has_flag(new_insert_bit) || item.has_flag(deleted_bit)) && e->vers.cp_check_version(txn, item);
         }
     }
     void install(TransItem& item, Transaction& txn) override {
@@ -279,7 +373,7 @@ public:
                 }
                 root_.access().remove(art_key, (TID) e);
                 if (e->key.second > 8) {
-                    Transaction::rcu_delete((char*) e->key.first);
+                    Transaction::rcu_free((char*) e->key.first);
                 }
                 Transaction::rcu_delete(e);
                 return;
@@ -299,7 +393,7 @@ public:
         }
     }
     void cleanup(TransItem& item, bool committed) override {
-        if (committed || item.has_flag(parent_bit)) {
+        if (committed || item.has_flag(parent_bit) || !item.has_write()) {
             return;
         }
         Element* e = item.template key<Element*>();
@@ -307,7 +401,7 @@ public:
             e->poisoned = false;
             return;
         }
-        if (e->poisoned) {
+        if (e->poisoned && item.has_flag(new_insert_bit)) {
             Key art_key;
             if (e->key.second > 8) {
                 make_key(e->key.first, art_key, e->key.second);
@@ -316,7 +410,7 @@ public:
             }
             root_.access().remove(art_key, (TID) e);
             if (e->key.second > 8) {
-                Transaction::rcu_delete((char*) e->key.first);
+                Transaction::rcu_free((char*) e->key.first);
             }
             Transaction::rcu_delete(e);
         }
