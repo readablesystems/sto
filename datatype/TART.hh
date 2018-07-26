@@ -170,8 +170,8 @@ public:
         item_parent.add_flags(parent_bit);
         return ins_return_type(true, false);
     }
-    lookup_return_type insert(const char* k, TVal v) {
-        return insert({k, strlen(k)+1}, v);
+    ins_return_type insert(const char* k, TVal v, bool overwrite) {
+        return insert({k, strlen(k)+1}, v, overwrite);
     }
 
     void transPut(lcdf::Str k, TVal v) {
@@ -243,7 +243,7 @@ public:
             return;
         }
     }
-    lookup_return_type nonTransPut(const char* k, TVal v) {
+    void nonTransPut(const char* k, TVal v) {
         return nonTransPut({k, strlen(k)+1}, v);
     }
 
@@ -272,7 +272,7 @@ public:
         r.second->vers.observe_read(item_parent);
         return del_return_type(true, false);
     }
-    lookup_return_type remove(const char* k) {
+    del_return_type remove(const char* k) {
         return remove({k, strlen(k)+1});
     }
 
