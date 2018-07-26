@@ -90,6 +90,9 @@ public:
         r.second->vers.observe_read(item);
         return lookup_return_type(true, false, 0);
     }
+    lookup_return_type lookup(const char* k) {
+        return lookup({k, strlen(k)+1});
+    }
 
     TVal transGet(lcdf::Str k) {
         auto r = lookup(k);
@@ -114,6 +117,9 @@ public:
             return e->val;
         }
         return 0;
+    }
+    TVal nonTransGet(const char* k) {
+        return nonTransGet({k, strlen(k)+1});
     }
 
     ins_return_type insert(lcdf::Str k, TVal v, bool overwrite) {
@@ -163,6 +169,9 @@ public:
         item_el.add_flags(new_insert_bit);
         item_parent.add_flags(parent_bit);
         return ins_return_type(true, false);
+    }
+    lookup_return_type insert(const char* k, TVal v) {
+        return insert({k, strlen(k)+1}, v);
     }
 
     void transPut(lcdf::Str k, TVal v) {
@@ -234,6 +243,9 @@ public:
             return;
         }
     }
+    lookup_return_type nonTransPut(const char* k, TVal v) {
+        return nonTransPut({k, strlen(k)+1}, v);
+    }
 
     del_return_type remove(lcdf::Str k) {
         Key art_key;
@@ -259,6 +271,9 @@ public:
         item_parent.add_flags(parent_bit);
         r.second->vers.observe_read(item_parent);
         return del_return_type(true, false);
+    }
+    lookup_return_type remove(const char* k) {
+        return remove({k, strlen(k)+1});
     }
 
     void transRemove(lcdf::Str k) {
