@@ -396,7 +396,7 @@ namespace ART_OLC {
         }
     }
 
-    std::pair<TID, N*> Tree::insert(const Key &k, std::function<TID()> make_tid) {
+    Tree::ins_return_type Tree::insert(const Key &k, std::function<TID()> make_tid) {
         // EpocheGuard epocheGuard(epocheInfo);
         restart:
         bool needRestart = false;
@@ -450,7 +450,7 @@ namespace ART_OLC {
                                     node->getPrefixLength() - ((nextLevel - level) + 1));
 
                     node->writeUnlock();
-                    return {tid, parentNode};
+                    return ins_return_type(tid, parentNode, nullptr);
                 }
                 case CheckPrefixPessimisticResult::Match:
                     break;
@@ -472,9 +472,9 @@ namespace ART_OLC {
 
             if (nextNode == nullptr) {
                 if (!tid) tid = make_tid();
-                N::insertAndUnlock(node, v, parentNode, parentVersion, parentKey, nodeKey, N::setLeaf(tid), needRestart);
+                N* oldNode = N::insertAndUnlock(node, v, parentNode, parentVersion, parentKey, nodeKey, N::setLeaf(tid), needRestart);
                 if (needRestart) goto restart;
-                return {tid, node};
+                return ins_return_type(tid, node, oldNode);
             }
 
             if (parentNode != nullptr) {
@@ -495,7 +495,7 @@ namespace ART_OLC {
                     prefixLength++;
                     if (level + prefixLength >= k.getKeyLen() || level + prefixLength >= key.getKeyLen()) {
                         node->writeUnlock();
-                        return {N::getLeaf(nextNode), nullptr};
+                        return ins_return_type(N::getLeaf(nextNode), nullptr, nullptr);
                     }
                 }
 
@@ -505,7 +505,7 @@ namespace ART_OLC {
                 n4->insert(key[level + prefixLength], nextNode);
                 N::change(node, k[level - 1], n4);
                 node->writeUnlock();
-                return {tid, node};
+                return ins_return_type(tid, node, nullptr);
             }
             level++;
             parentVersion = v;

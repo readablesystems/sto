@@ -141,8 +141,8 @@ public:
             return (TID) e;
         });
 
-        Element* e = (Element*) r.first;
-        if (!r.second) {
+        Element* e = (Element*) std::get<0>(r);
+        if (!std::get<1>(r)) {
             auto item = Sto::item(this, e);
             e->vers.lock_exclusive();
             if (!item.has_write() && e->poisoned) {
@@ -163,11 +163,18 @@ public:
         }
 
         auto item_el = Sto::item(this, e);
-        auto item_parent = Sto::item(this, r.second);
+        auto item_parent = Sto::item(this, std::get<1>(r));
         item_parent.add_write(v);
         item_el.add_write(v);
         item_el.add_flags(new_insert_bit);
         item_parent.add_flags(parent_bit);
+
+        Node* old = std::get<2>(r);
+        if (old) {
+            old->vers.lock_exclusive();
+            old->valid = false;
+            old->vers.unlock_exclusive();
+        }
         return ins_return_type(true, false);
     }
     ins_return_type insert(const char* k, TVal v, bool overwrite) {
@@ -193,8 +200,8 @@ public:
             return (TID) e;
         });
 
-        Element* e = (Element*) r.first;
-        if (!r.second) {
+        Element* e = (Element*) std::get<0>(r);
+        if (!std::get<1>(r)) {
             auto item = Sto::item(this, e);
             e->vers.lock_exclusive();
             if (!item.has_write() && e->poisoned) {
@@ -208,11 +215,18 @@ public:
         }
 
         auto item_el = Sto::item(this, e);
-        auto item_parent = Sto::item(this, r.second);
+        auto item_parent = Sto::item(this, std::get<1>(r));
         item_parent.add_write(v);
         item_el.add_write(v);
         item_el.add_flags(new_insert_bit);
         item_parent.add_flags(parent_bit);
+
+        Node* old = std::get<2>(r);
+        if (old) {
+            old->vers.lock_exclusive();
+            old->valid = false;
+            old->vers.unlock_exclusive();
+        }
     }
     void transPut(uint64_t k, TVal v) {
         transPut({(const char*) &k, sizeof(uint64_t)}, v);
@@ -237,8 +251,8 @@ public:
             e->key.second = k.length();
             return (TID) e;
         });
-        Element* e = (Element*) r.first;
-        if (!r.second) {
+        Element* e = (Element*) std::get<0>(r);
+        if (!std::get<1>(r)) {
             e->val = v;
             return;
         }
@@ -366,7 +380,7 @@ public:
     bool check(TransItem& item, Transaction& txn) override {
         if (item.has_flag(parent_bit)) {
             Node* parent = item.template key<Node*>();
-            return parent->vers.cp_check_version(txn, item);
+            return parent->valid && parent->vers.cp_check_version(txn, item);
         } else {
             Element* e = item.template key<Element*>();
             return (!e->poisoned || item.has_flag(new_insert_bit) || item.has_flag(deleted_bit)) && e->vers.cp_check_version(txn, item);

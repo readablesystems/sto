@@ -91,26 +91,26 @@ namespace ART_OLC {
     }
 
     template<typename curN, typename biggerN>
-    void N::insertGrow(curN *n, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, N *val, bool &needRestart) {
+    N* N::insertGrow(curN *n, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, N *val, bool &needRestart) {
         if (!n->isFull()) {
             if (parentNode != nullptr) {
                 parentNode->readUnlockOrRestart(parentVersion, needRestart);
-                if (needRestart) return;
+                if (needRestart) return nullptr;
             }
             n->upgradeToWriteLockOrRestart(v, needRestart);
-            if (needRestart) return;
+            if (needRestart) return nullptr;
             n->insert(key, val);
             n->writeUnlock();
-            return;
+            return nullptr;
         }
 
         parentNode->upgradeToWriteLockOrRestart(parentVersion, needRestart);
-        if (needRestart) return;
+        if (needRestart) return nullptr;
 
         n->upgradeToWriteLockOrRestart(v, needRestart);
         if (needRestart) {
             parentNode->writeUnlock();
-            return;
+            return nullptr;
         }
 
         auto nBig = new biggerN(n->getPrefix(), n->getPrefixLength());
@@ -120,34 +120,31 @@ namespace ART_OLC {
         N::change(parentNode, keyParent, nBig);
 
         n->writeUnlockObsolete();
-        Transaction::rcu_delete(n);
         // threadInfo.getEpoche().markNodeForDeletion(n, threadInfo);
         parentNode->writeUnlock();
+        return n;
     }
 
-    void N::insertAndUnlock(N *node, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, N *val, bool &needRestart) {
+    N* N::insertAndUnlock(N *node, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, N *val, bool &needRestart) {
         switch (node->getType()) {
             case NTypes::N4: {
                 auto n = static_cast<N4 *>(node);
-                insertGrow<N4, N16>(n, v, parentNode, parentVersion, keyParent, key, val, needRestart);
-                break;
+                return insertGrow<N4, N16>(n, v, parentNode, parentVersion, keyParent, key, val, needRestart);
             }
             case NTypes::N16: {
                 auto n = static_cast<N16 *>(node);
-                insertGrow<N16, N48>(n, v, parentNode, parentVersion, keyParent, key, val, needRestart);
-                break;
+                return insertGrow<N16, N48>(n, v, parentNode, parentVersion, keyParent, key, val, needRestart);
             }
             case NTypes::N48: {
                 auto n = static_cast<N48 *>(node);
-                insertGrow<N48, N256>(n, v, parentNode, parentVersion, keyParent, key, val, needRestart);
-                break;
+                return insertGrow<N48, N256>(n, v, parentNode, parentVersion, keyParent, key, val, needRestart);
             }
             case NTypes::N256: {
                 auto n = static_cast<N256 *>(node);
-                insertGrow<N256, N256>(n, v, parentNode, parentVersion, keyParent, key, val, needRestart);
-                break;
+                return insertGrow<N256, N256>(n, v, parentNode, parentVersion, keyParent, key, val, needRestart);
             }
         }
+        return nullptr;
     }
 
     inline N *N::getChild(const uint8_t k, const N *node) {
@@ -204,26 +201,26 @@ namespace ART_OLC {
     }
 
     template<typename curN, typename smallerN>
-    void N::removeAndShrink(curN *n, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, bool &needRestart) {
+    N* N::removeAndShrink(curN *n, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, bool &needRestart) {
         if (!n->isUnderfull() || parentNode == nullptr) {
             if (parentNode != nullptr) {
                 parentNode->readUnlockOrRestart(parentVersion, needRestart);
-                if (needRestart) return;
+                if (needRestart) return nullptr;
             }
             n->upgradeToWriteLockOrRestart(v, needRestart);
-            if (needRestart) return;
+            if (needRestart) return nullptr;
 
             n->remove(key);
             n->writeUnlock();
-            return;
+            return nullptr;
         }
         parentNode->upgradeToWriteLockOrRestart(parentVersion, needRestart);
-        if (needRestart) return;
+        if (needRestart) return nullptr;
 
         n->upgradeToWriteLockOrRestart(v, needRestart);
         if (needRestart) {
             parentNode->writeUnlock();
-            return;
+            return nullptr;
         }
 
         auto nSmall = new smallerN(n->getPrefix(), n->getPrefixLength());
@@ -233,34 +230,33 @@ namespace ART_OLC {
         N::change(parentNode, keyParent, nSmall);
 
         n->writeUnlockObsolete();
-        Transaction::rcu_delete(n);
+        printf("shrink node\n");
+        // Transaction::rcu_delete(n);
         // threadInfo.getEpoche().markNodeForDeletion(n, threadInfo);
         parentNode->writeUnlock();
+        return n;
     }
 
-    void N::removeAndUnlock(N *node, uint64_t v, uint8_t key, N *parentNode, uint64_t parentVersion, uint8_t keyParent, bool &needRestart) {
+    N* N::removeAndUnlock(N *node, uint64_t v, uint8_t key, N *parentNode, uint64_t parentVersion, uint8_t keyParent, bool &needRestart) {
         switch (node->getType()) {
             case NTypes::N4: {
                 auto n = static_cast<N4 *>(node);
-                removeAndShrink<N4, N4>(n, v, parentNode, parentVersion, keyParent, key, needRestart);
-                break;
+                return removeAndShrink<N4, N4>(n, v, parentNode, parentVersion, keyParent, key, needRestart);
             }
             case NTypes::N16: {
                 auto n = static_cast<N16 *>(node);
-                removeAndShrink<N16, N4>(n, v, parentNode, parentVersion, keyParent, key, needRestart);
-                break;
+                return removeAndShrink<N16, N4>(n, v, parentNode, parentVersion, keyParent, key, needRestart);
             }
             case NTypes::N48: {
                 auto n = static_cast<N48 *>(node);
-                removeAndShrink<N48, N16>(n, v, parentNode, parentVersion, keyParent, key, needRestart);
-                break;
+                return removeAndShrink<N48, N16>(n, v, parentNode, parentVersion, keyParent, key, needRestart);
             }
             case NTypes::N256: {
                 auto n = static_cast<N256 *>(node);
-                removeAndShrink<N256, N48>(n, v, parentNode, parentVersion, keyParent, key, needRestart);
-                break;
+                return removeAndShrink<N256, N48>(n, v, parentNode, parentVersion, keyParent, key, needRestart);
             }
         }
+        return nullptr;
     }
 
     bool N::isLocked(uint64_t version) const {

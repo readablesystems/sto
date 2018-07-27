@@ -67,6 +67,7 @@ namespace ART_OLC {
 
         // static void freeLeaf(TID tid);
 
+        bool valid = true;
         TVersion vers;
 
         uint32_t getCount() const;
@@ -98,11 +99,11 @@ namespace ART_OLC {
 
         static N *getChild(const uint8_t k, const N *node);
 
-        static void insertAndUnlock(N *node, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, N *val, bool &needRestart);
+        static N* insertAndUnlock(N *node, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, N *val, bool &needRestart);
 
         static bool change(N *node, uint8_t key, N *val);
 
-        static void removeAndUnlock(N *node, uint64_t v, uint8_t key, N *parentNode, uint64_t parentVersion, uint8_t keyParent, bool &needRestart);
+        static N* removeAndUnlock(N *node, uint64_t v, uint8_t key, N *parentNode, uint64_t parentVersion, uint8_t keyParent, bool &needRestart);
 
         bool hasPrefix() const;
 
@@ -131,10 +132,10 @@ namespace ART_OLC {
         static std::tuple<N *, uint8_t> getSecondChild(N *node, const uint8_t k);
 
         template<typename curN, typename biggerN>
-        static void insertGrow(curN *n, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, N *val, bool &needRestart);
+        static N* insertGrow(curN *n, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, N *val, bool &needRestart);
 
         template<typename curN, typename smallerN>
-        static void removeAndShrink(curN *n, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, bool &needRestart);
+        static N* removeAndShrink(curN *n, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, bool &needRestart);
 
         static uint64_t getChildren(const N *node, uint8_t start, uint8_t end, std::tuple<uint8_t, N *> children[],
                                 uint32_t &childrenCount);

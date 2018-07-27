@@ -13,6 +13,7 @@ namespace ART_OLC {
     class Tree {
     public:
         using LoadKeyFunction = void (*)(TID tid, Key &key);
+        typedef std::tuple<TID, N*, N*> ins_return_type; // (success, found)
 
     private:
         N *const root;
@@ -74,7 +75,7 @@ namespace ART_OLC {
         bool lookupRange(const Key &start, const Key &end, Key &continueKey, TID result[], std::size_t resultLen,
                          std::size_t &resultCount, std::function<void(N*)> observe_node) const;
 
-        std::pair<TID, N*> insert(const Key &k, std::function<TID()> make_tid);
+        ins_return_type insert(const Key &k, std::function<TID()> make_tid);
 
         void remove(const Key &k, TID tid);
         void print() const;
