@@ -844,6 +844,7 @@ void testEmptySplit() {
 
     TestTransaction t0(0);
     a.transGet("aac");
+    a.transPut("1", 0);
 
     TestTransaction t1(1);
     a.transRemove("aaa");
@@ -1023,37 +1024,37 @@ int main() {
 
     // a->print();
 
-    // testSimple();
-    // testSimple2();
-    // testSimpleErase();
-    // testEmptyErase();
-    // testAbsentErase();
-    // multiWrite();
-    // multiThreadWrites();
-    // testReadDelete(); // problem w/ lacking implementation of transRemove
-    // testReadWriteDelete();
-    // testReadDeleteInsert();
-    // testAbsent1_1();
-    // testInsertDelete();
-    // testAbsent1_2();
-    // testAbsent1_3(); // ABA read transPut delete detection no longer exists
-    // testAbsent2_2();
-    // testAbsent3();
-    // testAbsent3_2();
-    // testABA1(); // ABA doesn't work
-    // testMultiRead();
-    // testReadWrite();
-    // testPerNodeV();
-    // testReadWrite();
-    // testLookupRange();
-    // testLookupRangeSplit();
-    // testLookupRangeUpdate();
-    // testSplitNode();
-    // testSplitNode2();
+    testSimple();
+    testSimple2();
+    testSimpleErase();
+    testEmptyErase();
+    testAbsentErase();
+    multiWrite();
+    multiThreadWrites();
+    testReadDelete(); // problem w/ lacking implementation of transRemove
+    testReadWriteDelete();
+    testReadDeleteInsert();
+    testAbsent1_1();
+    testInsertDelete();
+    testAbsent1_2();
+    testAbsent1_3(); // ABA read transPut delete detection no longer exists
+    testAbsent2_2();
+    testAbsent3();
+    testAbsent3_2();
+    testABA1(); // ABA doesn't work
+    testMultiRead();
+    testReadWrite();
+    testPerNodeV();
+    testReadWrite();
+    testLookupRange();
+    testLookupRangeSplit();
+    testLookupRangeUpdate();
+    testSplitNode();
+    testSplitNode2();
     testEmptySplit();
-    // testUpgradeNode();
-    // testUpgradeNode2();
-    // testDowngradeNode();
+    testUpgradeNode();
+    testUpgradeNode2();
+    testDowngradeNode();
 
     printf("TART tests pass\n");
 

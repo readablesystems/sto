@@ -569,7 +569,7 @@ namespace ART_OLC {
                             uint8_t secondNodeK;
                             std::tie(secondNodeN, secondNodeK) = N::getSecondChild(node, nodeKey);
                             if (N::isLeaf(secondNodeN)) {
-                                printf("hello\n");
+                                printf("remove %p\n", node);
                                 //N::remove(node, k[level]); not necessary
                                 N::change(parentNode, parentKey, secondNodeN);
 

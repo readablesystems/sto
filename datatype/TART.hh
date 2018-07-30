@@ -403,7 +403,6 @@ public:
                     make_key((const char*) &e->key.first, art_key, e->key.second);
                 }
                 Node* old = root_.access().remove(art_key, (TID) e);
-                this->print();
                 if (old) {
                     old->valid = false;
                     Transaction::rcu_delete(old);

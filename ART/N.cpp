@@ -331,7 +331,6 @@ namespace ART_OLC {
     }
 
     N *N::setLeaf(TID tid) {
-        printf("SETLEAF\n");
         return reinterpret_cast<N *>(tid | (static_cast<uint64_t>(1) << 63));
     }
 
