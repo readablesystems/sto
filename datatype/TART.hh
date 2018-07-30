@@ -60,6 +60,7 @@ public:
     static constexpr TransItem::flags_type parent_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type deleted_bit = TransItem::user0_bit<<1;
     static constexpr TransItem::flags_type new_insert_bit = TransItem::user0_bit<<2;
+    static constexpr TransItem::flags_type self_upgrade_bit = TransItem::user0_bit<<3;
 
     TART() {
         root_.access().setLoadKey(TART::loadKey);
@@ -226,8 +227,8 @@ public:
             old->vers.lock_exclusive();
             old->valid = false;
             old->vers.unlock_exclusive();
-            Sto::item(this, old).remove_read();
-            Sto::item(this, old).remove_write();
+            Sto::item(this, old).add_flags(self_upgrade_bit);
+            std::get<1>(r)->vers.observe_read(item_parent);
         }
     }
     void transPut(uint64_t k, TVal v) {
@@ -382,7 +383,7 @@ public:
     bool check(TransItem& item, Transaction& txn) override {
         if (item.has_flag(parent_bit)) {
             Node* parent = item.template key<Node*>();
-            return parent->valid && parent->vers.cp_check_version(txn, item);
+            return (item.has_flag(self_upgrade_bit) || parent->valid) && parent->vers.cp_check_version(txn, item);
         } else {
             Element* e = item.template key<Element*>();
             return (!e->poisoned || item.has_flag(new_insert_bit) || item.has_flag(deleted_bit)) && e->vers.cp_check_version(txn, item);

@@ -122,7 +122,7 @@ namespace ART_OLC {
         n->writeUnlockObsolete();
         // threadInfo.getEpoche().markNodeForDeletion(n, threadInfo);
         parentNode->writeUnlock();
-        return n;
+        return nBig;
     }
 
     N* N::insertAndUnlock(N *node, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, N *val, bool &needRestart) {

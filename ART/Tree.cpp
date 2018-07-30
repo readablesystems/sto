@@ -472,9 +472,13 @@ namespace ART_OLC {
 
             if (nextNode == nullptr) {
                 if (!tid) tid = make_tid();
-                N* oldNode = N::insertAndUnlock(node, v, parentNode, parentVersion, parentKey, nodeKey, N::setLeaf(tid), needRestart);
+                N* newNode = N::insertAndUnlock(node, v, parentNode, parentVersion, parentKey, nodeKey, N::setLeaf(tid), needRestart);
                 if (needRestart) goto restart;
-                return ins_return_type(tid, node, oldNode);
+                if (newNode) {
+                    return ins_return_type(tid, newNode, node);
+                }
+                return ins_return_type(tid, node, nullptr);
+                // return ins_return_type(tid, newNode == nullptr ? node : newNode, newNode == nullptr ? nullptr : node);
             }
 
             if (parentNode != nullptr) {
@@ -569,7 +573,6 @@ namespace ART_OLC {
                             uint8_t secondNodeK;
                             std::tie(secondNodeN, secondNodeK) = N::getSecondChild(node, nodeKey);
                             if (N::isLeaf(secondNodeN)) {
-                                printf("remove %p\n", node);
                                 //N::remove(node, k[level]); not necessary
                                 N::change(parentNode, parentKey, secondNodeN);
 
