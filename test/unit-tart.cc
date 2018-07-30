@@ -932,6 +932,42 @@ void testUpgradeNode3() {
     printf("PASS: %s\n", __FUNCTION__); 
 }
 
+void testUpgradeNode4() {
+    TART a;
+    {
+        TransactionGuard t;
+        a.transPut("10", 1);
+        a.transPut("11", 1);
+        a.transPut("12", 1);
+    }
+
+    TestTransaction t0(0);
+    a.transGet("14");
+
+    TestTransaction t1(1);
+    a.transPut("13", 1);
+    a.transRemove("10");
+    a.transRemove("11");
+    a.transRemove("11");
+    a.transRemove("13");
+    a.transPut("14", 1);
+    a.transPut("15", 1);
+    a.transPut("16", 1);
+    a.transPut("17", 1);
+
+    assert(t1.try_commit());
+
+    t0.use();
+    a.transRemove("14");
+    a.transRemove("15");
+    a.transRemove("16");
+    a.transRemove("17");
+
+    assert(!t0.try_commit());
+
+    printf("PASS: %s\n", __FUNCTION__); 
+}
+
 void testDowngradeNode() {
     TART a;
 
@@ -1068,6 +1104,7 @@ int main() {
     testUpgradeNode();
     testUpgradeNode2();
     testUpgradeNode3();
+    testUpgradeNode4();
     testDowngradeNode();
 
     printf("TART tests pass\n");
