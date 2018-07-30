@@ -450,7 +450,7 @@ namespace ART_OLC {
                                     node->getPrefixLength() - ((nextLevel - level) + 1));
 
                     node->writeUnlock();
-                    return ins_return_type(tid, parentNode, nullptr);
+                    return ins_return_type(tid, parentNode, node);
                 }
                 case CheckPrefixPessimisticResult::Match:
                     break;
@@ -512,7 +512,7 @@ namespace ART_OLC {
         }
     }
 
-    void Tree::remove(const Key &k, TID tid) {
+    N* Tree::remove(const Key &k, TID tid) {
         // EpocheGuard epocheGuard(threadInfo);
         restart:
         bool needRestart = false;
@@ -535,7 +535,7 @@ namespace ART_OLC {
                 case CheckPrefixResult::NoMatch:
                     node->readUnlockOrRestart(v, needRestart);
                     if (needRestart) goto restart;
-                    return;
+                    return nullptr;
                 case CheckPrefixResult::OptimisticMatch:
                     // fallthrough
                 case CheckPrefixResult::Match: {
@@ -548,11 +548,11 @@ namespace ART_OLC {
                     if (nextNode == nullptr) {
                         node->readUnlockOrRestart(v, needRestart);
                         if (needRestart) goto restart;
-                        return;
+                        return nullptr;
                     }
                     if (N::isLeaf(nextNode)) {
                         if (N::getLeaf(nextNode) != tid) {
-                            return;
+                            return nullptr;
                         }
                         assert(parentNode == nullptr || node->getCount() != 1);
                         if (node->getCount() == 2 && parentNode != nullptr) {
@@ -569,12 +569,14 @@ namespace ART_OLC {
                             uint8_t secondNodeK;
                             std::tie(secondNodeN, secondNodeK) = N::getSecondChild(node, nodeKey);
                             if (N::isLeaf(secondNodeN)) {
+                                printf("hello\n");
                                 //N::remove(node, k[level]); not necessary
                                 N::change(parentNode, parentKey, secondNodeN);
 
                                 parentNode->writeUnlock();
                                 node->writeUnlockObsolete();
-                                Transaction::rcu_delete(node);
+                                return node;
+                                // Transaction::rcu_delete(node);
                                 // this->epoche.markNodeForDeletion(node, threadInfo);
                             } else {
                                 secondNodeN->writeLockOrRestart(needRestart);
@@ -592,14 +594,16 @@ namespace ART_OLC {
                                 secondNodeN->writeUnlock();
 
                                 node->writeUnlockObsolete();
-                                Transaction::rcu_delete(node);
+                                return node;
+                                // Transaction::rcu_delete(node);
                                 // this->epoche.markNodeForDeletion(node, threadInfo);
                             }
                         } else {
-                            N::removeAndUnlock(node, v, k[level], parentNode, parentVersion, parentKey, needRestart);
+                            auto old = N::removeAndUnlock(node, v, k[level], parentNode, parentVersion, parentKey, needRestart);
                             if (needRestart) goto restart;
+                            return old;
                         }
-                        return;
+                        return nullptr;
                     }
                     level++;
                     parentVersion = v;

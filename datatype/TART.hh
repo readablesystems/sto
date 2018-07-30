@@ -226,6 +226,8 @@ public:
             old->vers.lock_exclusive();
             old->valid = false;
             old->vers.unlock_exclusive();
+            Sto::item(this, old).remove_read();
+            Sto::item(this, old).remove_write();
         }
     }
     void transPut(uint64_t k, TVal v) {
@@ -400,7 +402,12 @@ public:
                 } else {
                     make_key((const char*) &e->key.first, art_key, e->key.second);
                 }
-                root_.access().remove(art_key, (TID) e);
+                Node* old = root_.access().remove(art_key, (TID) e);
+                this->print();
+                if (old) {
+                    old->valid = false;
+                    Transaction::rcu_delete(old);
+                }
                 if (e->key.second > 8) {
                     Transaction::rcu_free((char*) e->key.first);
                 }
@@ -437,7 +444,11 @@ public:
             } else {
                 make_key((const char*) &e->key.first, art_key, e->key.second);
             }
-            root_.access().remove(art_key, (TID) e);
+            Node* old = root_.access().remove(art_key, (TID) e);
+            if (old) {
+                old->valid = false;
+                Transaction::rcu_delete(old);
+            }
             if (e->key.second > 8) {
                 Transaction::rcu_free((char*) e->key.first);
             }

@@ -230,7 +230,6 @@ namespace ART_OLC {
         N::change(parentNode, keyParent, nSmall);
 
         n->writeUnlockObsolete();
-        printf("shrink node\n");
         // Transaction::rcu_delete(n);
         // threadInfo.getEpoche().markNodeForDeletion(n, threadInfo);
         parentNode->writeUnlock();
@@ -332,6 +331,7 @@ namespace ART_OLC {
     }
 
     N *N::setLeaf(TID tid) {
+        printf("SETLEAF\n");
         return reinterpret_cast<N *>(tid | (static_cast<uint64_t>(1) << 63));
     }
 

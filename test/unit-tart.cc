@@ -788,58 +788,101 @@ void testLookupRangeUpdate() {
 
 void testSplitNode() {
     TART a;
-
     {
         TransactionGuard t;
         a.transPut("ab", 0);
-        a.transPut("delta", 0);
         a.transPut("1", 0);
     }
+
     TestTransaction t0(0);
-    a.transGet("aed");
+    a.transGet("ad");
     a.transPut("12", 1);
 
     TestTransaction t1(1);
-    a.transGet("abacus");
+    a.transGet("abc");
     a.transPut("13", 1);
 
-    TestTransaction t20(20);
-    a.transGet("random");
-    a.transPut("14", 1);
+    TestTransaction t2(2);
+    a.transPut("ad", 1);
+    a.transPut("abc", 1);
 
-    TestTransaction t21(21);
-    a.transGet("deltaAir");
-    a.transPut("15", 1);
-
-    TestTransaction t3(3);
-    a.transPut("ada", 1);
-    assert(t3.try_commit());
-    assert(t21.try_commit());
-    assert(t20.try_commit());
+    assert(t2.try_commit());
     assert(!t0.try_commit());
     assert(!t1.try_commit());
 
-    printf("PASS: %s\n", __FUNCTION__);
+    printf("PASS: %s\n", __FUNCTION__); 
+}
+
+void testSplitNode2() {
+    TART a;
+    {
+        TransactionGuard t;
+        a.transPut("aaa", 0);
+        a.transPut("aab", 0);
+    }
+
+    TestTransaction t0(0);
+    a.transGet("ab");
+    a.transPut("1", 0);
+
+    TestTransaction t1(1);
+    a.transPut("ab", 0);
+
+    assert(t1.try_commit());
+    assert(!t0.try_commit());
+
+    printf("PASS: %s\n", __FUNCTION__); 
 }
 
 void testEmptySplit() {
     TART a;
     {
         TransactionGuard t;
-        a.transPut("abacus", 1);
-        a.transPut("abyss", 1);
+        a.transPut("aaa", 1);
+        a.transPut("aab", 1);
     }
 
     TestTransaction t0(0);
-    a.transGet("abalone");
+    a.transGet("aac");
 
     TestTransaction t1(1);
-    a.transRemove("abacus");
-    a.transRemove("abyss");
-    a.transPut("random", 1);
+    a.transRemove("aaa");
+    a.transRemove("aab");
+    assert(t1.try_commit());
+
+    TestTransaction t2(2);
+    a.transPut("aac", 0);
+    assert(t2.try_commit());
+
+    assert(!t0.try_commit());
+
+    printf("PASS: %s\n", __FUNCTION__); 
+}
+
+void testUpgradeNode2() {
+    TART a;
+    {
+        TransactionGuard t;
+        a.transPut("1", 1);
+        a.transPut("10", 1);
+        // a.transPut("11", 1);
+    }
+
+    TestTransaction t0(0);
+    a.transGet("13");
+    a.transPut("14", 1);
+    a.transPut("15",1);
+    a.transPut("16", 1);
+    assert(t0.try_commit());
+
+    TestTransaction t1(1);
+    a.transGet("13");
+    a.transPut("14", 1);
+    a.transPut("15",1);
+    a.transPut("16", 1);
 
     assert(t1.try_commit());
-    assert(!t0.try_commit());
+    printf("PASS: %s\n", __FUNCTION__); 
 }
 
 void testUpgradeNode() {
@@ -980,35 +1023,37 @@ int main() {
 
     // a->print();
 
-    testSimple();
-    testSimple2();
-    testSimpleErase();
-    testEmptyErase();
-    testAbsentErase();
-    multiWrite();
-    multiThreadWrites();
-    testReadDelete(); // problem w/ lacking implementation of transRemove
-    testReadWriteDelete();
-    testReadDeleteInsert();
-    testAbsent1_1();
-    testInsertDelete();
-    testAbsent1_2();
-    testAbsent1_3(); // ABA read transPut delete detection no longer exists
-    testAbsent2_2();
-    testAbsent3();
-    testAbsent3_2();
-    testABA1(); // ABA doesn't work
-    testMultiRead();
-    testReadWrite();
-    testPerNodeV();
-    testReadWrite();
-    testLookupRange();
-    testLookupRangeSplit();
-    testLookupRangeUpdate();
+    // testSimple();
+    // testSimple2();
+    // testSimpleErase();
+    // testEmptyErase();
+    // testAbsentErase();
+    // multiWrite();
+    // multiThreadWrites();
+    // testReadDelete(); // problem w/ lacking implementation of transRemove
+    // testReadWriteDelete();
+    // testReadDeleteInsert();
+    // testAbsent1_1();
+    // testInsertDelete();
+    // testAbsent1_2();
+    // testAbsent1_3(); // ABA read transPut delete detection no longer exists
+    // testAbsent2_2();
+    // testAbsent3();
+    // testAbsent3_2();
+    // testABA1(); // ABA doesn't work
+    // testMultiRead();
+    // testReadWrite();
+    // testPerNodeV();
+    // testReadWrite();
+    // testLookupRange();
+    // testLookupRangeSplit();
+    // testLookupRangeUpdate();
     // testSplitNode();
+    // testSplitNode2();
     testEmptySplit();
-    testUpgradeNode();
-    testDowngradeNode();
+    // testUpgradeNode();
+    // testUpgradeNode2();
+    // testDowngradeNode();
 
     printf("TART tests pass\n");
 

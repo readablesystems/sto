@@ -77,7 +77,7 @@ namespace ART_OLC {
 
         ins_return_type insert(const Key &k, std::function<TID()> make_tid);
 
-        void remove(const Key &k, TID tid);
+        N* remove(const Key &k, TID tid);
         void print() const;
     };
 }
