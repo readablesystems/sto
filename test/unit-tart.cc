@@ -792,25 +792,54 @@ void testSplitNode() {
     {
         TransactionGuard t;
         a.transPut("ab", 0);
+        a.transPut("delta", 0);
         a.transPut("1", 0);
     }
-
     TestTransaction t0(0);
-    a.transGet("ad");
+    a.transGet("aed");
     a.transPut("12", 1);
 
     TestTransaction t1(1);
-    a.transGet("abc");
+    a.transGet("abacus");
     a.transPut("13", 1);
 
-    TestTransaction t2(2);
-    a.transPut("ad", 1);
-    a.transPut("abc", 1);
-    assert(t2.try_commit());
+    TestTransaction t20(20);
+    a.transGet("random");
+    a.transPut("14", 1);
 
+    TestTransaction t21(21);
+    a.transGet("deltaAir");
+    a.transPut("15", 1);
+
+    TestTransaction t3(3);
+    a.transPut("ada", 1);
+    assert(t3.try_commit());
+    assert(t21.try_commit());
+    assert(t20.try_commit());
     assert(!t0.try_commit());
     assert(!t1.try_commit());
+
     printf("PASS: %s\n", __FUNCTION__);
+}
+
+void testEmptySplit() {
+    TART a;
+    {
+        TransactionGuard t;
+        a.transPut("abacus", 1);
+        a.transPut("abyss", 1);
+    }
+
+    TestTransaction t0(0);
+    a.transGet("abalone");
+
+    TestTransaction t1(1);
+    a.transRemove("abacus");
+    a.transRemove("abyss");
+    a.transPut("random", 1);
+
+    assert(t1.try_commit());
+    assert(!t0.try_commit());
 }
 
 void testUpgradeNode() {
@@ -825,14 +854,62 @@ void testUpgradeNode() {
     }
 
     TestTransaction t0(0);
-    a.transGet("13");
-    a.transPut("14", 1);
+    a.transGet("14");
+    a.transPut("random", 1);
 
     TestTransaction t1(1);
-    a.transPut("13", 1);
+    a.transGet("10");
+    a.transPut("hummus", 1);
+
+    TestTransaction t2(2);
+    a.transRemove("14");
+    a.transPut("linux", 1);
+
+    TestTransaction t3(3);
+    a.transPut("15", 1);
     assert(t1.try_commit());
 
     assert(!t0.try_commit());
+    assert(t1.try_commit());
+    assert(!t2.try_commit());
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
+void testDowngradeNode() {
+    TART a;
+
+    {
+        TransactionGuard t;
+        a.transPut("1", 1);
+        a.transPut("10", 1);
+        a.transPut("11", 1);
+        a.transPut("12", 1);
+        a.transPut("13", 1);
+        a.transPut("14", 1);
+    }
+
+    TestTransaction t0(0);
+    a.transGet("15");
+    a.transPut("random", 1);
+
+    TestTransaction t1(1);
+    a.transGet("10");
+    a.transPut("hummus", 1);
+
+    TestTransaction t2(2);
+    a.transRemove("15");
+    a.transPut("linux", 1);
+
+    TestTransaction t3(1);
+    a.transRemove("14");
+    a.transRemove("13");
+    a.transRemove("12");
+    a.transRemove("11");
+    assert(t3.try_commit());
+
+    assert(!t0.try_commit());
+    assert(t1.try_commit());
+    assert(!t2.try_commit());
     printf("PASS: %s\n", __FUNCTION__);
 }
 
@@ -928,8 +1005,10 @@ int main() {
     testLookupRange();
     testLookupRangeSplit();
     testLookupRangeUpdate();
-    testSplitNode();
+    // testSplitNode();
+    testEmptySplit();
     testUpgradeNode();
+    testDowngradeNode();
 
     printf("TART tests pass\n");
 
