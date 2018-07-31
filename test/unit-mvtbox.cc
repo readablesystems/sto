@@ -166,6 +166,29 @@ void testMvReads() {
         assert(t2.try_commit());
     }
 
+    f.nontrans_write(1);
+    g.nontrans_write(2);
+
+    // Later reads of earlier transactions do not invalidate earlier writes of
+    // later transactions
+    {
+        TestTransaction t1(1);
+        int x = f + g;
+
+        TestTransaction t2(2);
+        f = f + 2 * g;
+
+        t1.use();
+        x = f + g;
+        assert(x == 3);
+
+        t2.use();
+        assert(t2.try_commit());
+
+        t1.use();
+        assert(t1.try_commit());
+    }
+
     printf("PASS: %s\n", __FUNCTION__);
 }
 

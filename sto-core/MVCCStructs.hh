@@ -18,7 +18,7 @@ protected:
 
         if (prev_) {
             always_assert(
-                prev_->rtid < wtid,
+                prev_->rtid <= wtid,
                 "Cannot write MVCC history with wtid earlier than prev rtid.");
         }
 
