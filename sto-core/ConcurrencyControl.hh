@@ -20,6 +20,8 @@ class VersionDelegate {
     friend class TicTocVersion;
     template <bool Opaque, bool Extend>
     friend class TicTocCompressedVersion;
+    template <typename T>
+    friend class TMvVersion;
 
     static void item_or_flags(TransItem& item, TransItem::flags_type flags) {
         item.__or_flags(flags);
@@ -152,6 +154,18 @@ inline bool TNonopaqueVersion::observe_read_impl(TransItem& item, bool add_read)
         //item().__or_flags(TransItem::read_bit);
         //item().rdata_ = Packer<TNonopaqueVersion>::pack(t()->buf_, std::move(version));
         //t()->any_nonopaque_ = true;
+    }
+    return true;
+}
+
+template <typename T>
+inline bool TMvVersion<T>::observe_read_impl(TransItem& item, bool add_read) {
+    assert(!item.has_stash());
+    fence();
+
+    if (add_read) {
+        read_tid = Sto::read_tid();  // Set the read tid if it hasn't already
+        VersionDelegate::item_or_flags(item, TransItem::read_bit);
     }
     return true;
 }
@@ -622,6 +636,17 @@ TNonopaqueVersion::type TNonopaqueVersion::cp_commit_tid_impl(Transaction &txn) 
         return tid;
     else
         return TransactionTid::next_unflagged_nonopaque_version(value());
+}
+
+template <typename T>
+typename TMvVersion<T>::type&
+TMvVersion<T>::cp_access_tid_impl(Transaction &txn) {
+    return VersionDelegate::standard_tid(txn);
+}
+template <typename T>
+typename TMvVersion<T>::type
+TMvVersion<T>::cp_commit_tid_impl(Transaction &txn) {
+    return txn.commit_tid();
 }
 
 TCommutativeVersion::type& TCommutativeVersion::cp_access_tid_impl(Transaction &txn) {

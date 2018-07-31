@@ -4,20 +4,25 @@
 #include "MVCCStructs.hh"
 
 // MVCC version, with opacity by default
-class TMvVersion : public BasicVersion<TMvVersion> {
+template <typename T>
+class TMvVersion : public BasicVersion<TMvVersion<T>> {
 public:
+    typedef TransactionTid::type type;
+
     TMvVersion() = default;
     explicit TMvVersion(type v)
-            : BasicVersion(v) {}
+            : BV(v), read_tid(0) {}
     TMvVersion(type v, bool insert)
-            : BasicVersion(v) {(void)insert;}
+            : BV(v), read_tid(0) {(void)insert;}
 
     bool cp_check_version_impl(Transaction& txn, TransItem& item) {
         (void)txn;
         assert(item.has_read());
         if (TransactionTid::is_locked(v_) && !item.has_write())
             return false;
-        return check_version(item.read_value<TMvVersion>());
+        auto& h = *item.read_value<MvHistory<T>*>();
+        return Sto::commit_tid() >= h.rtid && (
+            !h.next() || Sto::commit_tid() < h.next()->wtid);
     }
 
     inline bool observe_read_impl(TransItem& item, bool add_read);
@@ -27,5 +32,10 @@ public:
 
     static inline type& cp_access_tid_impl(Transaction& txn);
     inline type cp_commit_tid_impl(Transaction& txn);
+private:
+    type read_tid;
+    using BV = BasicVersion<TMvVersion<T>>;
+    using BV::v_;
+    using BV::check_version;
 };
 

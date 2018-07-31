@@ -839,11 +839,10 @@ public:
 
     // transaction start
     tid_type read_tid() const {
-        if (!read_tid_) {
-            fence();
-            read_tid_ = _TID;
+        if (!commit_tid_) {
+            commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         }
-        return read_tid_;
+        return commit_tid_;
     }
 
     // committing

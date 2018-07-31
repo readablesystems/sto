@@ -58,7 +58,7 @@ void testConcurrentInt() {
         TestTransaction t2(2);
         ib = 1;
         assert(t2.try_commit());
-        assert(!t1.try_commit());
+        assert(t1.try_commit());
     }
 
     {
@@ -88,54 +88,17 @@ void testConcurrentInt() {
         TestTransaction t3(3);
         ib = 2;
         assert(t3.try_commit());
-        assert(!t1.try_commit());
+        assert(t1.try_commit());
     }
 
     printf("PASS: %s\n", __FUNCTION__);
 }
-
-
 
 void testOpacity1() {
     TBox<int, TMvWrapped<int>> f, g;
     TBox<int, TMvWrapped<int>> box;
     f.nontrans_write(3);
 
-    try {
-        TestTransaction t1(1);
-        int x = f;
-        assert(x == 3);
-        box = 9; /* avoid read-only txn */
-
-        TestTransaction t(2);
-        f = 2;
-        g = 4;
-        assert(t.try_commit());
-
-        t1.use();
-        x = g;
-        assert(false && "shouldn't get here");
-        assert(x == 4);
-        assert(!t1.try_commit());
-    } catch (Transaction::Abort e) {
-				TestTransaction::hard_reset();
-    }
-
-    {
-        TransactionGuard t2;
-        int v = f;
-        assert(v == 2);
-    }
-
-    printf("PASS: %s\n", __FUNCTION__);
-}
-
-#if 0
-void testNoOpacity1() {
-    TBox<int, TMvNonopaqueWrapped<int>> f, g;
-    TBox<int, TMvNonopaqueWrapped<int>> box;
-    f.nontrans_write(3);
-
     {
         TestTransaction t1(1);
         int x = f;
@@ -149,8 +112,8 @@ void testNoOpacity1() {
 
         t1.use();
         x = g;
-        assert(x == 4);
-        assert(!t1.try_commit());
+        assert(x == 0);
+        assert(t1.try_commit());
     }
 
     {
@@ -161,102 +124,57 @@ void testNoOpacity1() {
 
     printf("PASS: %s\n", __FUNCTION__);
 }
-#endif
 
-#if 0
-void testStringWrapper() {
-    TBox<std::string, TMvWrapped<std::string>> f;
+void testMvReads() {
+    TBox<int, TMvWrapped<int>> f, g;
+    f.nontrans_write(1);
+    g.nontrans_write(-1);
 
-    GUARDED {
-        f = "100";
-    }
-
-    assert(f.nontrans_read() == "100");
-
-    GUARDED {
-        std::string x("200");
-        // normal assignment makes a copy
-        f = x;
-        assert(f.read() == "200");
-        assert(f.nontrans_read() == "100");
-        assert(x == "200");
-    }
-
-    assert(f.nontrans_read() == "200");
-
-    GUARDED {
-        std::string x("300");
-        // move assignment does a move
-        f = std::move(x);
-        assert(f.read() == "300");
-        assert(f.nontrans_read() == "200");
-        if (x != "")
-            std::cerr << "move assignment to string box did not appear to move\n"
-                << "(although this might be compiler sensitive)\n";
-        assert(x == "");
-    }
-
-    assert(f.nontrans_read() == "300");
-
-    GUARDED {
-        f = "400";
-        assert(f.read().compare("400") == 0);
-    }
-
-    assert(f.nontrans_read() == "400");
-
-    GUARDED {
-        std::string x("500");
-        f = x;
-        assert(f.read().compare("500") == 0);
-        assert(Sto::item(&f, 0).has_write());
-        // stored write value has different address from assigned value
-        assert(&Sto::item(&f, 0).write_value<std::string>() != &x);
-        // in fact we can assign to x...
-        x = "501";
-        // and not change the write value
-        assert(f.read().compare("500") == 0);
-    }
-
-    assert(f.nontrans_read() == "500");
-
-    // NB: The usual `GUARDED` semantics are not good enough here.
-    // We must commit `t` BEFORE `x` is destroyed, and in C++, destructors
-    // are called in reverse declaration order.
+    // Read-only transactions should always be able to commit
     {
-        TestTransaction t(1);
-        std::string x("600");
-        f = StringWrapper(x);
-        assert(f.read().compare("600") == 0);
-        assert(Sto::item(&f, 0).has_write());
-        // thanks to StringWrapper, stored write value has same address
-        // as local string
-        assert(&Sto::item(&f, 0).write_value<std::string>() == &x);
-        // in fact we can assign to x...
-        x = "601";
-        // and change the write value
-        assert(f.read().compare("601") == 0);
-        assert(t.try_commit());
-        // in fact, thanks to std::move in TBox::install, successful commit
-        // clears `x`
-        if (x != "")
-            std::cerr << "commit of StringWrapper did not appear to move\n"
-                << "(although this might be compiler sensitive)\n";
-        assert(x == "");
+        TestTransaction t1(1);
+        int x = f + g;
+        assert(x == 0);
+
+        TestTransaction t2(2);
+        f = 2;
+        g = 4;
+        assert(t2.try_commit());
+
+        t1.use();
+        x = f + g;
+        assert(x == 0);
+        assert(t1.try_commit());
     }
 
-    assert(f.nontrans_read() == "601");
+    f.nontrans_write(1);
+    g.nontrans_write(0);
+
+    // Later reads invalidate earlier writes
+    {
+        TestTransaction t1(1);
+        g = g + f;
+
+        TestTransaction t2(2);
+        int x = f + g;
+        assert(x == 1);
+
+        t1.use();
+        assert(!t1.try_commit());
+
+        t2.use();
+        assert(t2.try_commit());
+    }
 
     printf("PASS: %s\n", __FUNCTION__);
 }
-#endif
+
 
 int main() {
     testSimpleInt();
     testSimpleString();
     testConcurrentInt();
     testOpacity1();
-    //testNoOpacity1();
-    //testStringWrapper();
+    testMvReads();
     return 0;
 }

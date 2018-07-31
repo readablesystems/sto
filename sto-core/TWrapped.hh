@@ -213,6 +213,16 @@ public:
         return std::make_pair(read_result.first, *read_result.second);
     }
 
+    // Helper function for replacing the packed version with a packed history element
+    template <typename T>
+    static void mvcc_read(TransProxy item, MvHistory<T>& history) {
+        if (item.has_read()) {
+            Transaction& t = item.transaction();
+            TransItem& it = item.item();
+            it.rdata_.v = Packer<MvHistory<T>*>::pack(t.buf_, &history);
+        }
+    }
+
 }; // class TWrappedAccess
 
 template <typename T>
@@ -800,11 +810,29 @@ public:
     TicTocWrapped(Args&&...) = delete;
 };
 
+#define mvwrapped_read(h) { \
+    const TransactionTid::type read_tid = Sto::read_tid(); \
+    h = h_; \
+    /* TODO: use something smarter than a linear scan :) */ \
+    for (; h->prev(); h = h->prev()) { \
+        if (h->wtid < read_tid) { \
+            break; \
+        } \
+    } \
+    \
+    { \
+        TransactionTid::type hrtid; \
+        while (read_tid > (hrtid = h->rtid)) { \
+            ::cmpxchg(&h->rtid, hrtid, read_tid); \
+        } \
+    } \
+}
+
 template <typename T, bool Opaque, bool Small>
 class TMvWrapped<T, Opaque, true /* trivial */, Small /* small */> {
 public:
     typedef T read_type;
-    typedef typename std::conditional<Opaque, TVersion, TNonopaqueVersion>::type version_type;
+    typedef TMvVersion<T> version_type;
     typedef MvHistory<T> history_type;
 
     TMvWrapped() {
@@ -822,7 +850,7 @@ public:
     }
     ~TMvWrapped() {
         while (h_) {
-            history_type *prev = h_->prev;
+            history_type *prev = h_->prev();
             delete h_;
             h_ = prev;
         }
@@ -837,76 +865,44 @@ public:
         return h_->v();
     }
     read_type snapshot(TransProxy item, const version_type& version) const {
-        const TransactionTid::type read_tid = Sto::read_tid();
-        auto& h = *h_;
-        // TODO: use something smarter than a linear scan :)
-        for (; h.prev; h = *h.prev) {
-            if (h.tid <= read_tid) {
-                break;
-            }
-        }
+        history_type *h;
+        mvwrapped_read(h);
 
-        if (Opaque) {
-            auto result = TWrappedAccess::read_atomic(h.vp(), item, version, false);
-            if (!result.first) {
-                Sto::abort();
-            }
-            return result.second;
-        } else {
-            return h.v();
+        auto result = TWrappedAccess::read_atomic(h->vp(), item, version, false);
+        if (!result.first) {
+            Sto::abort();
         }
+        TWrappedAccess::mvcc_read(item, *h);
+        return result.second;
     }
     read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
-        const TransactionTid::type read_tid = Sto::read_tid();
-        auto& h = *h_;
-        // TODO: use something smarter than a linear scan :)
-        for (; h.prev; h = *h.prev) {
-            if (h.tid <= read_tid) {
-                break;
-            }
-        }
+        history_type *h;
+        mvwrapped_read(h);
 
-        if (!Opaque && Small) {
-            return TWrappedAccess::read_wait_nonatomic(h.vp(), item, version, add_read);
-        } else {
-            return TWrappedAccess::read_wait_atomic(h.vp(), item, version, add_read);
-        }
+        auto result = TWrappedAccess::read_wait_atomic(h->vp(), item, version, add_read);
+        TWrappedAccess::mvcc_read(item, *h);
+        return result;
     }
     std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
-        const TransactionTid::type read_tid = Sto::read_tid();
-        auto& h = *h_;
-        // TODO: use something smarter than a linear scan :)
-        for (; h.prev; h = *h.prev) {
-            if (h.tid <= read_tid) {
-                break;
-            }
-        }
+        history_type *h;
+        mvwrapped_read(h);
 
-        if (!Opaque && Small) {
-            return TWrappedAccess::read_nonatomic(h.vp(), item, version, true);
-        } else {
-            return TWrappedAccess::read_atomic(h.vp(), item, version, true);
+        auto result = TWrappedAccess::read_atomic(h->vp(), item, version, true);
+        if (result.first) {
+          TWrappedAccess::mvcc_read(item, *h);
         }
+        return result;
     }
 
-    // Assume mutually-exclusive writes of monotonically-increasing commit tids
-    template <typename Q = T>
-    typename std::enable_if<!Opaque && is_small<Q>::value, void>::type
-    write(T v) {
-        static_assert(!Opaque && Small, "write-by-value only available for non-opaque small types");
+    void write(const T& v) {
+        fence();
         h_ = new history_type(Sto::commit_tid(), v, h_);
+        fence();
     }
-    template <typename Q = T>
-    typename std::enable_if<Opaque || !is_small<Q>::value, void>::type
-    write(const T& v) {
-        static_assert(Opaque || !Small, "write-by-lvalue-reference only available for opaque or non-small types");
+    void write(T&& v) {
+        fence();
         h_ = new history_type(Sto::commit_tid(), v, h_);
-    }
-    template <typename Q = T>
-    typename std::enable_if<Opaque || !is_small<Q>::value, void>::type
-    write(T&& v) {
-        static_assert(Opaque || !Small, "write-with-move only available for opaque or non-small types");
-        h_ = new history_type(Sto::commit_tid(), v, h_);
+        fence();
     }
 
 private:
@@ -917,7 +913,7 @@ template <typename T, bool Opaque, bool Small>
 class TMvWrapped<T, Opaque, false /* !trivial */, Small> {
 public:
     typedef const T& read_type;
-    typedef typename std::conditional<Opaque, TVersion, TNonopaqueVersion>::type version_type;
+    typedef TMvVersion<T> version_type;
     typedef MvHistory<T> history_type;
 
     TMvWrapped() {
@@ -935,7 +931,7 @@ public:
     }
     ~TMvWrapped() {
         while (h_) {
-            history_type *prev = h_->prev;
+            history_type *prev = h_->prev();
             delete h_;
             h_ = prev;
         }
@@ -951,62 +947,40 @@ public:
     }
 
     read_type snapshot(TransProxy item, const version_type& version) const {
-        const TransactionTid::type read_tid = Sto::read_tid();
-        auto& h = *h_;
-        // TODO: use something smarter than a linear scan :)
-        for (; h.prev; h = *h.prev) {
-            if (h.tid <= read_tid) {
-                break;
-            }
-        }
+        history_type *h;
+        mvwrapped_read(h);
 
-        if (Opaque) {
-            return *TWrappedAccess::read_wait_atomic(h.vpp(), item, version, false);
-        } else {
-            return h.v();
-        }
+        auto result = *TWrappedAccess::read_wait_atomic(h->vpp(), item, version, false);
+        TWrappedAccess::mvcc_read(item, *h);
+        return result;
     }
     read_type wait_snapshot(TransProxy item, const version_type& version, bool add_read) const {
-        const TransactionTid::type read_tid = Sto::read_tid();
-        auto& h = *h_;
-        // TODO: use something smarter than a linear scan :)
-        for (; h.prev; h = *h.prev) {
-            if (h.tid <= read_tid) {
-                break;
-            }
-        }
+        history_type *h;
+        mvwrapped_read(h);
 
-        if (Opaque) {
-            return *TWrappedAccess::read_wait_atomic(h.vpp(), item, version, add_read);
-        } else {
-            return *TWrappedAccess::read_wait_nonatomic(h.vpp(), item, version, add_read);
-        }
+        auto result = *TWrappedAccess::read_wait_atomic(h->vpp(), item, version, add_read);
+        TWrappedAccess::mvcc_read(item, *h);
+        return result;
     }
    std::pair<bool, read_type> read(TransProxy item, const version_type& version) const {
-        const TransactionTid::type read_tid = Sto::read_tid();
-        auto& h = *h_;
-        // TODO: use something smarter than a linear scan :)
-        for (; h.prev; h = *h.prev) {
-            if (h.tid <= read_tid) {
-                break;
-            }
-        }
+        history_type *h;
+        mvwrapped_read(h);
 
-        if (Opaque) {
-            return TWrappedAccess::nontrivial_read_to_reference(
-                TWrappedAccess::read_atomic(h.vpp(), item, version, true));
-        } else {
-            return TWrappedAccess::nontrivial_read_to_reference(
-                TWrappedAccess::read_nonatomic(h.vpp(), item, version, true));
-        }
+        auto result = TWrappedAccess::read_atomic(h->vpp(), item, version, true);
+        TWrappedAccess::mvcc_read(item, *h);
+        return TWrappedAccess::nontrivial_read_to_reference(result);
     }
 
     // Assume mutually-exclusive writes of monotonically-increasing commit tids
     void write(const T& v) {
+        fence();
         h_ = new history_type(Sto::commit_tid(), new T(v), h_);
+        fence();
     }
     void write(T&& v) {
+        fence();
         h_ = new history_type(Sto::commit_tid(), new T(std::move(v)), h_);
+        fence();
     }
 
 private:
