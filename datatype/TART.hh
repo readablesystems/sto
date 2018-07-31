@@ -25,11 +25,13 @@ public:
 
     static void loadKey(TID tid, Key &key) {
         Element* e = (Element*) tid;
-        key.setKeyLen(e->key.second);
-        if (e->key.second > 8) {
-            key.set(e->key.first, e->key.second);
+        auto ek = e->key;
+        auto len = ek.second;
+        key.setKeyLen(len);
+        if (len > 8) {
+            key.set(ek.first, len);
         } else {
-            memcpy(&key[0], &e->key.first, e->key.second);
+            memcpy(&key[0], &ek.first, len);
         }
     }
 

@@ -98,6 +98,7 @@ UNIT_PROGRAMS = unit-tarray \
 				unit-tint \
 				unit-tart \
 				bench-tart \
+				tart-bank \
 				unit-tgeneric \
 				unit-rcu \
 				unit-tvector \
@@ -119,6 +120,7 @@ ACT_UNIT_PROGRAMS = unit-tarray \
                     unit-tint \
                     unit-tart \
                     bench-tart \
+					tart-bank \
                     unit-rcu \
                     unit-tvector \
                     unit-tvector-nopred \
@@ -233,6 +235,9 @@ unit-tart: $(OBJ)/unit-tart.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 bench-tart: $(OBJ)/bench-tart.o $(INDEX_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
+
+tart-bank: $(OBJ)/tart-bank.o $(INDEX_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-tgeneric: $(OBJ)/unit-tgeneric.o $(STO_DEPS)

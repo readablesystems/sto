@@ -450,7 +450,7 @@ namespace ART_OLC {
                                     node->getPrefixLength() - ((nextLevel - level) + 1));
 
                     node->writeUnlock();
-                    return ins_return_type(tid, parentNode, node);
+                    return ins_return_type(tid, node, nullptr);
                 }
                 case CheckPrefixPessimisticResult::Match:
                     break;
