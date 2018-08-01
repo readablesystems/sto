@@ -14,7 +14,7 @@
 #include "DB_index.hh"
 #include "DB_params.hh"
 
-enum Txns {Deposit = 1, View = 0, PayAll = 3, Transfer = 2};
+enum Txns {Deposit = 1, View = 0, PayMulti = 3, Transfer = 2};
 std::atomic<uint64_t> total_txns;
 
 class RandomSequenceOfUnique
@@ -137,11 +137,16 @@ public:
     }
 };
 
-void bank_bench(int nthread, int npeople) {
-    keyval_db* db = new tart_wrapper();
+void bank_bench(int nthread, int npeople, int art, unsigned int seed) {
+    keyval_db* db;
+    if (art) {
+        db = new tart_wrapper();
+    } else {
+        db = new oindex_wrapper();
+    }
     uint64_t* people = new uint64_t[npeople];
 
-    unsigned int seed = (unsigned int) time(NULL);
+    printf("Setup seed: %d\n", seed);
     RandomSequenceOfUnique rsu(seed, seed + 1);
 
     for (int i = 0; i < npeople; i++) {
@@ -154,25 +159,25 @@ void bank_bench(int nthread, int npeople) {
     printf("Setup complete\n");
 
     std::thread threads[nthread];
+    auto starttime = std::chrono::system_clock::now();
     for (int i = 0; i < nthread; i++) {
         threads[i] = std::thread([people, npeople, db](int thread_id) {
             oindex_wrapper::index_type::thread_init();
             std::mt19937 rng;
-            rng.seed(std::random_device()());
+            rng.seed(thread_id);
             std::uniform_int_distribution<std::mt19937::result_type> dist(0, 2);
 
             std::mt19937 acnt_rng;
-            acnt_rng.seed(std::random_device()());
+            acnt_rng.seed(thread_id+100);
             std::uniform_int_distribution<std::mt19937::result_type> acnt_dist(0, npeople-1);
 
             size_t txns = 0;
             TThread::set_id(thread_id);
-            time_t endwait;
-            time_t start = time(NULL);
-            time_t seconds = 20; // end loop after this time has elapsed
+            time_t seconds = 20*1000000; // end loop after this time has elapsed
+            auto starttime = std::chrono::system_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>( std::chrono::system_clock::now() - starttime);
 
-            endwait = start + seconds;
-            while (start < endwait) {
+            while (duration.count() < seconds) {
                 int account = people[acnt_dist(acnt_rng)];
                 Txns op = static_cast<Txns>(dist(rng));
                 // Txns op = static_cast<Txns>(0);
@@ -198,9 +203,9 @@ void bank_bench(int nthread, int npeople) {
                         db->insert(account, balance1);
                         db->insert(account2, balance2);
                     } RETRY_E(true);
-                } else if (op == PayAll) {
+                } else if (op == PayMulti) {
                     TRANSACTION_E {
-                        for (int i = 0; i < npeople; i++) {
+                        for (int i = 0; i < 100; i++) {
                             uintptr_t balance = db->lookup(account);
                             balance += 1;
                             db->insert(people[i], balance);
@@ -211,7 +216,7 @@ void bank_bench(int nthread, int npeople) {
                     continue;
                 }
                 txns++;
-                start = time(NULL);
+                duration = std::chrono::duration_cast<std::chrono::microseconds>( std::chrono::system_clock::now() - starttime);
             }
             total_txns += txns;
         }, i);
@@ -220,18 +225,33 @@ void bank_bench(int nthread, int npeople) {
     for (int i = 0; i < nthread; i++) {
         threads[i].join();
     }
-    size_t txns = total_txns.load();
-    printf("Transactions: %d\n", txns);
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::system_clock::now() - starttime);
+    uint64_t txns = total_txns.load();
+    printf("Total time: %f\n", duration.count() / 1000000.0);
+    printf("Transactions completed: %d\n", txns);
+    printf("Throughput (txns/sec): %f\n", (double) txns / (duration.count() / 1000000.0));
+
+    txp_counters tc = Transaction::txp_counters_combined();
+    printf("Aborts: total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
 }
 
 int main(int argc, char *argv[]) {
     int nthread = 1;
     int npeople = 10000000;
+    int art = 1;
+    unsigned int seed = (unsigned int) time(NULL);
     if (argc > 1) {
         nthread = atoi(argv[1]);
     }
     if (argc > 2) {
         npeople = atoi(argv[2]);
     }
-    bank_bench(nthread, npeople);
+    if (argc > 3) {
+        art = atoi(argv[3]);
+    }
+    if (argc > 4) {
+        seed = atoi(argv[4]);
+    }
+    bank_bench(nthread, npeople, art, seed);
 }

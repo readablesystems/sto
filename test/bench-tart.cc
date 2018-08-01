@@ -213,6 +213,7 @@ void bench1(int nthread, int rand_keys, int nvals) {
         }
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - starttime);
+        printf("insert time %f\n", duration.count() / 1000000.0);
         printf("insert,%d,%f\n", nvals, (nvals * 1.0) / duration.count());
     }
 
