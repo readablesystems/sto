@@ -52,9 +52,6 @@ public:
     //     Transaction::rcu_delete(e);
     // }
 
-    typedef typename std::conditional<true, TVersion, TNonopaqueVersion>::type Version_type;
-    typedef typename std::conditional<true, TWrapped<TVal>, TNonopaqueWrapped<TVal>>::type wrapped_type;
-
     typedef std::tuple<bool, bool, uintptr_t> lookup_return_type; // (success, found, ret)
     typedef std::tuple<bool, bool> ins_return_type; // (success, found)
     typedef std::tuple<bool, bool> del_return_type; // (success, found)
@@ -83,18 +80,25 @@ public:
                 e->vers.unlock_exclusive();
                 return lookup_return_type(false, false, 0);
             }
+            uintptr_t ret = e->val;
             e->vers.unlock_exclusive();
-            e->vers.observe_read(item);
-            return lookup_return_type(true, true, e->val);
+            if (!item.observe(e->vers)) {
+                return lookup_return_type(false, false, 0);
+            }
+            // e->vers.observe_read(item);
+            return lookup_return_type(true, true, ret);
         }
         assert(r.second);
         auto item = Sto::item(this, r.second);
         item.add_flags(parent_bit);
-        r.second->vers.observe_read(item);
+        if (!item.observe(r.second->vers)) {
+            return lookup_return_type(false, false, 0);
+        }
+        // r.second->vers.observe_read(item);
         return lookup_return_type(true, false, 0);
     }
     lookup_return_type lookup(const char* k) {
-        return lookup({k, strlen(k)+1});
+        return lookup({k, (int) strlen(k)+1});
     }
 
     TVal transGet(lcdf::Str k) {
@@ -108,7 +112,7 @@ public:
         return transGet({(const char*) &k, sizeof(uint64_t)});
     }
     TVal transGet(const char* k) {
-        return transGet({k, strlen(k)+1});
+        return transGet({k, (int) strlen(k)+1});
     }
 
     TVal nonTransGet(lcdf::Str k) {
@@ -122,7 +126,7 @@ public:
         return 0;
     }
     TVal nonTransGet(const char* k) {
-        return nonTransGet({k, strlen(k)+1});
+        return nonTransGet({k, (int) strlen(k)+1});
     }
 
     ins_return_type insert(lcdf::Str k, TVal v, bool overwrite) {
@@ -153,7 +157,8 @@ public:
                 return ins_return_type(false, false);
             }
             e->vers.unlock_exclusive();
-            e->vers.observe_read(item);
+            item.observe(e->vers);
+            // e->vers.observe_read(item);
             if (item.has_flag(deleted_bit)) {
                 item.add_write(v);
                 item.clear_flags(deleted_bit);
@@ -181,7 +186,7 @@ public:
         return ins_return_type(true, false);
     }
     ins_return_type insert(const char* k, TVal v, bool overwrite) {
-        return insert({k, strlen(k)+1}, v, overwrite);
+        return insert({k, (int) strlen(k)+1}, v, overwrite);
     }
 
     void transPut(lcdf::Str k, TVal v) {
@@ -230,14 +235,15 @@ public:
             old->valid = false;
             old->vers.unlock_exclusive();
             Sto::item(this, old).add_flags(self_upgrade_bit);
-            std::get<1>(r)->vers.observe_read(item_parent);
+            item_parent.observe(std::get<1>(r)->vers);
+            // std::get<1>(r)->vers.observe_read(item_parent);
         }
     }
     void transPut(uint64_t k, TVal v) {
         transPut({(const char*) &k, sizeof(uint64_t)}, v);
     }
     void transPut(const char* k, TVal v) {
-        transPut({k, strlen(k)+1}, v);
+        transPut({k, (int) strlen(k)+1}, v);
     }
 
     void nonTransPut(lcdf::Str k, TVal v) {
@@ -263,7 +269,7 @@ public:
         }
     }
     void nonTransPut(const char* k, TVal v) {
-        return nonTransPut({k, strlen(k)+1}, v);
+        return nonTransPut({k, (int) strlen(k)+1}, v);
     }
 
     del_return_type remove(lcdf::Str k) {
@@ -282,17 +288,19 @@ public:
             e->vers.unlock_exclusive();
             item.add_write(0);
             item.add_flags(deleted_bit);
-            e->vers.observe_read(item);
+            // e->vers.observe_read(item);
+            item.observe(e->vers);
             return del_return_type(true, true);
         }
 
         auto item_parent = Sto::item(this, r.second);
         item_parent.add_flags(parent_bit);
-        r.second->vers.observe_read(item_parent);
+        // r.second->vers.observe_read(item_parent);
+        item_parent.observe(r.second->vers);
         return del_return_type(true, false);
     }
     del_return_type remove(const char* k) {
-        return remove({k, strlen(k)+1});
+        return remove({k, (int) strlen(k)+1});
     }
 
     void transRemove(lcdf::Str k) {
@@ -316,13 +324,14 @@ public:
 
         auto item_parent = Sto::item(this, r.second);
         item_parent.add_flags(parent_bit);
-        r.second->vers.observe_read(item_parent);
+        // r.second->vers.observe_read(item_parent);
+        item_parent.observe(r.second->vers);
     }
     void transRemove(uint64_t k) {
         transRemove({(const char*) &k, sizeof(uint64_t)});
     }
     void transRemove(const char* k) {
-        transRemove({k, strlen(k)+1});
+        transRemove({k, (int) strlen(k)+1});
     }
 
     bool lookupRange(TKey start, TKey end, TKey continueKey, TVal result[],
@@ -339,7 +348,8 @@ public:
 
         bool success = root_.access().lookupRange(art_start, art_end, art_continue, art_result, resultSize, resultsFound, [this](Node* node){
             auto item = Sto::item(this, node);
-            node->vers.observe_read(item);
+            // node->vers.observe_read(item);
+            item.observe(node->vers);
         });
         int validResults = resultsFound;
 
@@ -355,7 +365,8 @@ public:
             } else if (e->poisoned) {
                 throw Transaction::Abort();
             } else {
-                e->vers.observe_read(item);
+                item.observe(e->vers);
+                // e->vers.observe_read(item);
                 result[j] = e->val;
                 j++;
             }

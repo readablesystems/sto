@@ -17,6 +17,11 @@
 enum Txns {Deposit = 1, View = 0, PayMulti = 3, Transfer = 2};
 std::atomic<uint64_t> total_txns;
 
+std::atomic<uint64_t> total_views;
+std::atomic<uint64_t> total_deposits;
+std::atomic<uint64_t> total_multis;
+std::atomic<uint64_t> total_transfers;
+
 class RandomSequenceOfUnique
 {
 private:
@@ -100,9 +105,12 @@ public:
     }
 
     void update(uint64_t key, uintptr_t val) override {
-        const oi_value* found;
-        std::tie(std::ignore, std::ignore, std::ignore, found) = oi.select_row(oi_key(key), bench::RowAccess::UpdateValue);
-        oi.update_row(reinterpret_cast<uintptr_t>(found), new oi_value{val});
+        uintptr_t row;
+        const oi_value* value;
+        std::tie(std::ignore, std::ignore, row, value) = oi.select_row(oi_key(key), bench::RowAccess::UpdateValue);
+        auto new_oiv = Sto::tx_alloc<oi_value>(value);
+        new_oiv->val = val;
+        oi.update_row(row, new_oiv);
     }
 
     void erase(uint64_t key) override {
@@ -149,11 +157,35 @@ void bank_bench(int nthread, int npeople, int art, unsigned int seed) {
     printf("Setup seed: %d\n", seed);
     RandomSequenceOfUnique rsu(seed, seed + 1);
 
+    {
+        TransactionGuard t;
+        db->insert(1, 100);
+    }
+
+    TestTransaction t0(0);
+    auto r = db->lookup(1);
+    db->insert(1, r+1);
+
+    TestTransaction t1(1);
+    auto s = db->lookup(1);
+    db->insert(1, s+1);
+
+    bool commit1 = t0.try_commit();
+    bool commit2 = t1.try_commit();
+
+    if (commit1 && commit2) {
+        {
+            TransactionGuard t;
+            assert(db->lookup(1) == 102);
+        }
+    }
+    return;
+
     for (int i = 0; i < npeople; i++) {
         people[i] = rsu.next();
-        TRANSACTION_E{
+        TRANSACTION_E {
             db->insert(people[i], 100000);
-        } RETRY_E(true);
+        } RETRY_E(false);
     }
 
     printf("Setup complete\n");
@@ -171,28 +203,35 @@ void bank_bench(int nthread, int npeople, int art, unsigned int seed) {
             acnt_rng.seed(thread_id+100);
             std::uniform_int_distribution<std::mt19937::result_type> acnt_dist(0, npeople-1);
 
-            size_t txns = 0;
+            uint64_t txns = 0;
+
+            uint64_t views = 0;
+            uint64_t deposits = 0;
+            uint64_t transfers = 0;
+            uint64_t multis = 0;
             TThread::set_id(thread_id);
             time_t seconds = 20*1000000; // end loop after this time has elapsed
             auto starttime = std::chrono::system_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::microseconds>( std::chrono::system_clock::now() - starttime);
 
             while (duration.count() < seconds) {
-                int account = people[acnt_dist(acnt_rng)];
-                Txns op = static_cast<Txns>(dist(rng));
-                // Txns op = static_cast<Txns>(0);
+                uint64_t account = people[acnt_dist(acnt_rng)];
+                // Txns op = static_cast<Txns>(dist(rng));
+                Txns op = static_cast<Txns>(1);
                 if (op == View) {
                     TRANSACTION_E {
-                        uintptr_t balance = db->lookup(account);
+                        db->lookup(account);
                     } RETRY_E(true);
+                    views++;
                 } else if (op == Deposit) {
                     TRANSACTION_E {
                         uintptr_t balance = db->lookup(account);
                         balance += 1;
                         db->insert(account, balance);
                     } RETRY_E(true);
+                    deposits++;
                 } else if (op == Transfer) {
-                    int account2 = people[acnt_dist(acnt_rng)];
+                    uint64_t account2 = people[acnt_dist(acnt_rng)];
                     TRANSACTION_E {
                         uintptr_t balance1 = db->lookup(account);
                         uintptr_t balance2 = db->lookup(account2);
@@ -203,6 +242,7 @@ void bank_bench(int nthread, int npeople, int art, unsigned int seed) {
                         db->insert(account, balance1);
                         db->insert(account2, balance2);
                     } RETRY_E(true);
+                    transfers++;
                 } else if (op == PayMulti) {
                     TRANSACTION_E {
                         for (int i = 0; i < 100; i++) {
@@ -211,6 +251,7 @@ void bank_bench(int nthread, int npeople, int art, unsigned int seed) {
                             db->insert(people[i], balance);
                         }
                     } RETRY_E(true);
+                    multis++;
                 } else {
                     printf("invalid op\n");
                     continue;
@@ -219,6 +260,11 @@ void bank_bench(int nthread, int npeople, int art, unsigned int seed) {
                 duration = std::chrono::duration_cast<std::chrono::microseconds>( std::chrono::system_clock::now() - starttime);
             }
             total_txns += txns;
+
+            total_views += views;
+            total_deposits += deposits;
+            total_transfers += transfers;
+            total_multis += multis;
         }, i);
     }
 
@@ -229,11 +275,12 @@ void bank_bench(int nthread, int npeople, int art, unsigned int seed) {
             std::chrono::system_clock::now() - starttime);
     uint64_t txns = total_txns.load();
     printf("Total time: %f\n", duration.count() / 1000000.0);
-    printf("Transactions completed: %d\n", txns);
+    printf("Transactions completed: %lu\n", txns);
     printf("Throughput (txns/sec): %f\n", (double) txns / (duration.count() / 1000000.0));
 
     txp_counters tc = Transaction::txp_counters_combined();
-    printf("Aborts: total_aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+    printf("Aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+    printf("Views: %f, Deposits: %f, Transfers: %f, Multis: %f\n", total_views.load() / (double) txns, total_deposits.load() / (double) txns, total_transfers.load() / (double) txns, total_multis.load() / (double) txns);
 }
 
 int main(int argc, char *argv[]) {

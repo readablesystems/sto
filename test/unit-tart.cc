@@ -1006,6 +1006,31 @@ void testDowngradeNode() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testDoubleRead() {
+    TART a;
+
+    TestTransaction t0(0);
+    auto r = a.transGet(1);
+
+    TestTransaction t1(1);
+    a.transPut(1, 50);
+    assert(t1.try_commit());
+
+    TestTransaction t2(2);
+    a.transPut(1, 100);
+    a.transPut(2, 50);
+    assert(t2.try_commit());
+
+    t0.use();
+    try {
+        auto s = a.transGet(2);
+        assert(false);
+    } catch (Transaction::Abort e) {
+    }
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
 void testRCU(TART* a) {
     double vm_usage; double resident_set;
     process_mem_usage(vm_usage, resident_set);
@@ -1106,6 +1131,7 @@ int main() {
     testUpgradeNode3();
     testUpgradeNode4();
     testDowngradeNode();
+    testDoubleRead();
 
     printf("TART tests pass\n");
 
