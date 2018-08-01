@@ -89,13 +89,17 @@ public:
     }
 
     void insert(uint64_t key, uintptr_t val) override {
-        oi.insert_row(oi_key(key), new oi_value{val});
+        bool success;
+        std::tie(success, std::ignore) = oi.insert_row(oi_key(key), new oi_value{val});
+        if (!success) throw Transaction::Abort();
     }
 
     uintptr_t lookup(uint64_t key) override {
         uintptr_t ret;
+        bool success;
         const oi_value* val;
-        std::tie(std::ignore, std::ignore, std::ignore, val) = oi.select_row(oi_key(key), bench::RowAccess::None);
+        std::tie(success, std::ignore, std::ignore, val) = oi.select_row(oi_key(key), bench::RowAccess::None);
+        if (!success) throw Transaction::Abort();
         if (!val) {
             ret = 0;
         } else {
@@ -105,9 +109,11 @@ public:
     }
 
     void update(uint64_t key, uintptr_t val) override {
+        bool success;
         uintptr_t row;
         const oi_value* value;
-        std::tie(std::ignore, std::ignore, row, value) = oi.select_row(oi_key(key), bench::RowAccess::UpdateValue);
+        std::tie(success, std::ignore, row, value) = oi.select_row(oi_key(key), bench::RowAccess::UpdateValue);
+        if (!success) throw Transaction::Abort();
         auto new_oiv = Sto::tx_alloc<oi_value>(value);
         new_oiv->val = val;
         oi.update_row(row, new_oiv);
@@ -157,30 +163,6 @@ void bank_bench(int nthread, int npeople, int art, unsigned int seed) {
     printf("Setup seed: %d\n", seed);
     RandomSequenceOfUnique rsu(seed, seed + 1);
 
-    {
-        TransactionGuard t;
-        db->insert(1, 100);
-    }
-
-    TestTransaction t0(0);
-    auto r = db->lookup(1);
-    db->insert(1, r+1);
-
-    TestTransaction t1(1);
-    auto s = db->lookup(1);
-    db->insert(1, s+1);
-
-    bool commit1 = t0.try_commit();
-    bool commit2 = t1.try_commit();
-
-    if (commit1 && commit2) {
-        {
-            TransactionGuard t;
-            assert(db->lookup(1) == 102);
-        }
-    }
-    return;
-
     for (int i = 0; i < npeople; i++) {
         people[i] = rsu.next();
         TRANSACTION_E {
@@ -216,8 +198,8 @@ void bank_bench(int nthread, int npeople, int art, unsigned int seed) {
 
             while (duration.count() < seconds) {
                 uint64_t account = people[acnt_dist(acnt_rng)];
-                // Txns op = static_cast<Txns>(dist(rng));
-                Txns op = static_cast<Txns>(1);
+                Txns op = static_cast<Txns>(dist(rng));
+                // Txns op = static_cast<Txns>(1);
                 if (op == View) {
                     TRANSACTION_E {
                         db->lookup(account);
@@ -227,7 +209,7 @@ void bank_bench(int nthread, int npeople, int art, unsigned int seed) {
                     TRANSACTION_E {
                         uintptr_t balance = db->lookup(account);
                         balance += 1;
-                        db->insert(account, balance);
+                        db->update(account, balance);
                     } RETRY_E(true);
                     deposits++;
                 } else if (op == Transfer) {
@@ -239,8 +221,8 @@ void bank_bench(int nthread, int npeople, int art, unsigned int seed) {
                         balance2 += 1;
                         balance1 -= 1;
 
-                        db->insert(account, balance1);
-                        db->insert(account2, balance2);
+                        db->update(account, balance1);
+                        db->update(account2, balance2);
                     } RETRY_E(true);
                     transfers++;
                 } else if (op == PayMulti) {
