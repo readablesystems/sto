@@ -67,3 +67,5 @@
 **/.idea/tasks.xml
 **/cmake-build-*
 /tart-bank
+/art_micro_bench
+/unit-artindex
