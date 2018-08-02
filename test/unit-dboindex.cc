@@ -26,8 +26,8 @@ struct key_type {
 
 // using example_row from VersionSelector.hh
 
-using CoarseIndex = bench::ordered_index<key_type, coarse_grained_row, db_params::db_default_params>;
-using FineIndex = bench::ordered_index<key_type, example_row, db_params::db_default_params>;
+using CoarseIndex = bench::art_index<key_type, coarse_grained_row, db_params::db_default_params>;
+using FineIndex = bench::art_index<key_type, example_row, db_params::db_default_params>;
 
 void init_cindex(CoarseIndex& ci) {
     for (uint64_t i = 1; i <= 10; ++i)

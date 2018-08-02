@@ -384,9 +384,11 @@ public:
             Element* e = item.template key<Element*>();
             bool locked = txn.try_lock(item, e->vers);
             if (!locked) {
+                // printf("abort lock\n");
                 return false;
             }
             if (e->poisoned && !(item.has_flag(new_insert_bit) || item.has_flag(deleted_bit))) {
+                // printf("abort lock 2\n");
                 e->vers.cp_unlock(item);
                 return false;
             }
@@ -396,10 +398,14 @@ public:
     bool check(TransItem& item, Transaction& txn) override {
         if (item.has_flag(parent_bit)) {
             Node* parent = item.template key<Node*>();
-            return (item.has_flag(self_upgrade_bit) || parent->valid) && parent->vers.cp_check_version(txn, item);
+            auto r = (item.has_flag(self_upgrade_bit) || parent->valid) && parent->vers.cp_check_version(txn, item);
+            // if (!r) printf("abort check\n");
+            return r;
         } else {
             Element* e = item.template key<Element*>();
-            return (!e->poisoned || item.has_flag(new_insert_bit) || item.has_flag(deleted_bit)) && e->vers.cp_check_version(txn, item);
+            auto r = (!e->poisoned || item.has_flag(new_insert_bit) || item.has_flag(deleted_bit)) && e->vers.cp_check_version(txn, item);
+            // if (!r) printf("abort check 2\n");
+            return r;
         }
     }
     void install(TransItem& item, Transaction& txn) override {

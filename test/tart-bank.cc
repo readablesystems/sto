@@ -261,7 +261,7 @@ void bank_bench(int nthread, int npeople, int art, unsigned int seed) {
     printf("Throughput (txns/sec): %f\n", (double) txns / (duration.count() / 1000000.0));
 
     txp_counters tc = Transaction::txp_counters_combined();
-    printf("Aborts: %llu (%llu aborts at commit time)\n", tc.p(txp_total_aborts), tc.p(txp_commit_time_aborts));
+    printf("Aborts: %llu, Abort percentage: %.10f\n", tc.p(txp_total_aborts), tc.p(txp_total_aborts) / (double) (txns + tc.p(txp_total_aborts)));
     printf("Views: %f, Deposits: %f, Transfers: %f, Multis: %f\n", total_views.load() / (double) txns, total_deposits.load() / (double) txns, total_transfers.load() / (double) txns, total_multis.load() / (double) txns);
 }
 

@@ -494,7 +494,14 @@ namespace ART_OLC {
                 loadKey(N::getLeaf(nextNode), key);
 
                 level++;
+
+                if (level >= k.getKeyLen() || level >= key.getKeyLen()) {
+                    node->writeUnlock();
+                    return ins_return_type(N::getLeaf(nextNode), nullptr, nullptr);
+                }
+
                 uint32_t prefixLength = 0;
+
                 while (key[level + prefixLength] == k[level + prefixLength]) {
                     prefixLength++;
                     if (level + prefixLength >= k.getKeyLen() || level + prefixLength >= key.getKeyLen()) {
