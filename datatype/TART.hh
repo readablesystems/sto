@@ -62,13 +62,13 @@ public:
     static constexpr TransItem::flags_type self_upgrade_bit = TransItem::user0_bit<<3;
 
     TART() {
-        root_.access().setLoadKey(TART::loadKey);
+        root_.setLoadKey(TART::loadKey);
     }
 
     lookup_return_type lookup(lcdf::Str k) {
         Key key;
         make_key(k.data(), key, k.length());
-        auto r = root_.access().lookup(key);
+        auto r = root_.lookup(key);
         Element* e = (Element*) r.first;
         if (e) {
             auto item = Sto::item(this, e);
@@ -118,7 +118,7 @@ public:
     TVal nonTransGet(lcdf::Str k) {
         Key key;
         make_key(k.data(), key, k.length());
-        auto r = root_.access().lookup(key);
+        auto r = root_.lookup(key);
         Element* e = (Element*) r.first;
         if (e) {
             return e->val;
@@ -133,7 +133,7 @@ public:
         Key art_key;
         make_key(k.data(), art_key, k.length());
 
-        auto r = root_.access().insert(art_key, [k, v]{
+        auto r = root_.insert(art_key, [k, v]{
             Element* e = new Element();
             if (k.length() > 8) {
                 char* p = (char*) malloc(k.length());
@@ -193,7 +193,7 @@ public:
         Key art_key;
         make_key(k.data(), art_key, k.length());
 
-        auto r = root_.access().insert(art_key, [k, v]{
+        auto r = root_.insert(art_key, [k, v]{
             Element* e = new Element();
             if (k.length() > 8) {
                 char* p = (char*) malloc(k.length());
@@ -249,7 +249,7 @@ public:
     void nonTransPut(lcdf::Str k, TVal v) {
         Key art_key;
         make_key(k.data(), art_key, k.length());
-        auto r = root_.access().insert(art_key, [k, v]{
+        auto r = root_.insert(art_key, [k, v]{
             Element* e = new Element();
             if (k.length() > 8) {
                 char* p = (char*) malloc(k.length());
@@ -275,7 +275,7 @@ public:
     del_return_type remove(lcdf::Str k) {
         Key art_key;
         make_key(k.data(), art_key, k.length());
-        auto r = root_.access().lookup(art_key);
+        auto r = root_.lookup(art_key);
         Element* e = (Element*) r.first;
         if (e) {
             auto item = Sto::item(this, e);
@@ -306,7 +306,7 @@ public:
     void transRemove(lcdf::Str k) {
         Key art_key;
         make_key(k.data(), art_key, k.length());
-        auto r = root_.access().lookup(art_key);
+        auto r = root_.lookup(art_key);
         Element* e = (Element*) r.first;
         if (e) {
             auto item = Sto::item(this, e);
@@ -346,7 +346,7 @@ public:
 
         TID* art_result = new TID[resultSize];
 
-        bool success = root_.access().lookupRange(art_start, art_end, art_continue, art_result, resultSize, resultsFound, [this](Node* node){
+        bool success = root_.lookupRange(art_start, art_end, art_continue, art_result, resultSize, resultsFound, [this](Node* node){
             auto item = Sto::item(this, node);
             // node->vers.observe_read(item);
             item.observe(node->vers);
@@ -422,7 +422,7 @@ public:
                 } else {
                     make_key((const char*) &e->key.first, art_key, e->key.second);
                 }
-                Node* old = root_.access().remove(art_key, (TID) e);
+                Node* old = root_.remove(art_key, (TID) e);
                 if (old) {
                     old->valid = false;
                     Transaction::rcu_delete(old);
@@ -463,7 +463,7 @@ public:
             } else {
                 make_key((const char*) &e->key.first, art_key, e->key.second);
             }
-            Node* old = root_.access().remove(art_key, (TID) e);
+            Node* old = root_.remove(art_key, (TID) e);
             if (old) {
                 old->valid = false;
                 Transaction::rcu_delete(old);
@@ -475,12 +475,12 @@ public:
         }
     }
     void print(std::ostream& w, const TransItem& item) const override {
-        root_.access().print();
+        root_.print();
     }
     
     void print() const {
-        root_.access().print();
+        root_.print();
     }
 protected:
-    TOpaqueWrapped<ART_OLC::Tree> root_;
+    ART_OLC::Tree root_;
 };

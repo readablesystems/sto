@@ -717,7 +717,7 @@ public:
         //     ti = threadinfo::make(threadinfo::TI_MAIN, -1);
         // table_.initialize(*ti);
         // table_ = new ART_OLC::Tree();
-        table_.access().setLoadKey(art_index::load_key);
+        table_.setLoadKey(art_index::load_key);
         // TODO: set load key
         key_gen_ = 0;
     }
@@ -741,7 +741,7 @@ public:
     select_row(const key_type& key, RowAccess acc) {
         Key art_key;
         make_key(key, art_key);
-        auto r = table_.access().lookup(art_key);
+        auto r = table_.lookup(art_key);
         internal_elem* e = (internal_elem*) r.first;
         if (e) {
             return select_row(reinterpret_cast<uintptr_t>(e), acc);
@@ -759,7 +759,7 @@ public:
     select_row(const key_type& key, std::initializer_list<column_access_t> accesses) {
         Key art_key;
         make_key(key, art_key);
-        auto r = table_.access().lookup(art_key);
+        auto r = table_.lookup(art_key);
         internal_elem* e = (internal_elem*) r.first;
         if (e) {
             return select_row(reinterpret_cast<uintptr_t>(e), accesses);
@@ -884,7 +884,7 @@ public:
         TID t;
         node_type* parent;
         node_type* old;
-        std::tie(t, parent, old) = table_.access().insert(art_key, [key, vptr] {
+        std::tie(t, parent, old) = table_.insert(art_key, [key, vptr] {
             auto e = new internal_elem(key, vptr ? *vptr : value_type(),
                                        false /*!valid*/);
             return (TID) e;
@@ -964,7 +964,7 @@ public:
         // bool found = lp.find_unlocked(*ti);
         Key art_key;
         make_key(key, art_key);
-        auto r = table_.access().lookup(art_key);
+        auto r = table_.lookup(art_key);
         internal_elem* e = (internal_elem*) r.first;
         bool found = e;
         if (found) {
@@ -1130,7 +1130,7 @@ public:
         // bool found = lp.find_unlocked(*ti);
         Key art_key;
         make_key(k, art_key);
-        auto r = table_.access().lookup(art_key);
+        auto r = table_.lookup(art_key);
         internal_elem* e = (internal_elem*) r.first;
         if (e) {
             return &(e->row_container.row);
@@ -1148,7 +1148,7 @@ public:
         TID t;
         node_type* parent;
         node_type* old;
-        std::tie(t, parent, old) = table_.access().insert(art_key, [k, v] {
+        std::tie(t, parent, old) = table_.insert(art_key, [k, v] {
             internal_elem *e = new internal_elem(k, v, true);
             return (TID) e;
         });
@@ -1337,7 +1337,7 @@ protected:
     // };
 
 private:
-    TOpaqueWrapped<table_type> table_;
+    table_type table_;
     uint64_t key_gen_;
 
     std::pair<bool, std::vector<TransProxy>>
@@ -1424,11 +1424,11 @@ private:
         // bool found = lp.find_locked(*ti);
         Key art_key;
         make_key(key, art_key);
-        auto r = table_.access().lookup(art_key);
+        auto r = table_.lookup(art_key);
         internal_elem* e = (internal_elem*) r.first;
 
         if (e) {
-            table_.access().remove(art_key, (TID) e);
+            table_.remove(art_key, (TID) e);
             // lp.finish(-1, *ti);
             Transaction::rcu_delete(e);
             return true;
