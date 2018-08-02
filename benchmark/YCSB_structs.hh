@@ -45,6 +45,7 @@ struct ycsb_value {
 template <typename DBParams>
 class ycsb_value : TObject {
 public:
+    enum class NamedColumn : int { cols = 0 };
     static constexpr size_t col_width = 10;
     static constexpr size_t num_cols = 10;
     typedef fix_string<col_width> col_type;

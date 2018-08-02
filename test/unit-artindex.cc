@@ -45,7 +45,7 @@ public:
         }
     };
 
-    typedef bench::ordered_index<lcdf::Str, oi_value, db_params::db_default_params> index_type;
+    typedef bench::ordered_index<oi_key, oi_value, db_params::db_default_params> index_type;
     index_type oi;
 
     masstree_wrapper() {
@@ -110,7 +110,7 @@ public:
         }
     };
 
-    typedef bench::art_index<lcdf::Str, oi_value, db_params::db_default_params> index_type;
+    typedef bench::art_index<oi_key, oi_value, db_params::db_default_params> index_type;
     index_type oi;
 
     tart_wrapper() {
@@ -125,6 +125,7 @@ public:
     uintptr_t lookup(uint64_t key) override {
         uintptr_t ret;
         bool success;
+        bool found;
         const oi_value* val;
         std::tie(success, std::ignore, std::ignore, val) = oi.select_row(oi_key(key), bench::RowAccess::None);
         if (!success) throw Transaction::Abort();
@@ -161,8 +162,76 @@ int main(int argc, char *argv[]) {
     }
 
     if (use_art) {
+        printf("ART\n");
         db = new tart_wrapper();
     } else {
+        printf("Masstree\n");
         db = new masstree_wrapper();
     }
+
+    uint64_t key1 = 1;
+    uint64_t key2 = 2;
+    // {
+    //     TransactionGuard t;
+    //     db->insert(key1, 123);
+    //     db->insert(key2, 321);
+    // }
+    //
+    // {
+    //     TransactionGuard t;
+    //     volatile auto x = db->lookup(key1);
+    //     volatile auto y = db->lookup(key2);
+    //     assert(x == 123);
+    //     assert(y == 321);
+    // }
+
+    // if (use_art) {
+    //     printf("ART\n");
+    //     db = new tart_wrapper();
+    // } else {
+    //     printf("Masstree\n");
+    //     db = new masstree_wrapper();
+    // }
+
+    uint64_t checkkey = 256;
+
+    {
+        TransactionGuard t;
+        db->insert(key1, 123);
+        db->insert(key2, 321);
+    }
+
+    {
+        TransactionGuard t;
+        volatile auto x = db->lookup(key1);
+        volatile auto y = db->lookup(key2);
+        db->insert(checkkey, 100);
+        assert(x == 123);
+        assert(y == 321);
+    }
+
+    {
+        TransactionGuard t;
+        db->erase(key1);
+        volatile auto x = db->lookup(key1);
+        db->insert(checkkey, 100);
+        printf("%d\n", x);
+        assert(x == 0);
+    }
+
+    {
+        TransactionGuard t;
+        volatile auto x = db->lookup(key1);
+        assert(x == 0);
+        db->insert(key1, 567);
+    }
+
+    {
+        TransactionGuard t;
+        volatile auto x = db->lookup(key1);
+        db->insert(checkkey, 100);
+        assert(x == 567);
+    }
+
+    printf("Tests pass\n");
 }
