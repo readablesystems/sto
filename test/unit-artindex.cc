@@ -96,10 +96,18 @@ public:
     tart_wrapper() {
     }
 
+    void insert(const char* key, uintptr_t val) {
+        insert({key, sizeof(key)}, val);
+    }
+
     void insert(lcdf::Str key, uintptr_t val) override {
         bool success;
         std::tie(success, std::ignore) = oi.insert_row(key, new oi_value{val});
         if (!success) throw Transaction::Abort();
+    }
+
+    uintptr_t lookup(const char* key) {
+        return lookup({key, sizeof(key)});
     }
 
     uintptr_t lookup(lcdf::Str key) override {
@@ -117,6 +125,10 @@ public:
         return ret;
     }
 
+    void update(const char* key, uintptr_t val) {
+        update({key, sizeof(key)}, val);
+    }
+
     void update(lcdf::Str key, uintptr_t val) override {
         bool success;
         uintptr_t row;
@@ -126,6 +138,10 @@ public:
         auto new_oiv = Sto::tx_alloc<oi_value>(value);
         new_oiv->val = val;
         oi.update_row(row, new_oiv);
+    }
+
+    void erase(const char* key) {
+        erase({key, sizeof(key)});
     }
 
     void erase(lcdf::Str key) override {
@@ -248,149 +264,6 @@ void multiWrite() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
-void multiThreadWrites() {
-    wrapper_type aTART;
-    {
-        TransactionGuard t;
-        aTART.insert(absentkey2, 456);
-    }
-
-    TestTransaction t1(0);
-    aTART.insert(absentkey2, 123);
-
-    TestTransaction t2(0);
-    aTART.insert(absentkey2, 456);
-
-    assert(t1.try_commit());
-    assert(t2.try_commit());
-
-    {
-        TransactionGuard t;
-        // printf("to lookup\n");
-        volatile auto x = aTART.lookup(absentkey2);
-        // printf("looked\n");
-        assert(x == 456);
-    }
-    printf("PASS: %s\n", __FUNCTION__);
-
-}
-
-void testReadDelete() {
-    wrapper_type aTART;
-    TestTransaction t0(0);
-    aTART.insert(absentkey1, 10);
-    aTART.insert(absentkey2, 10);
-    assert(t0.try_commit());
-
-    TestTransaction t1(0);
-    aTART.lookup(absentkey1);
-    aTART.insert(absentkey2, 10);
-
-    TestTransaction t2(0);
-    aTART.erase(absentkey1);
-
-    assert(t2.try_commit());
-    assert(!t1.try_commit());
-
-    {
-        TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
-        volatile auto y = aTART.lookup(absentkey2);
-        assert(x == 0);
-        assert(y == 10);
-    }
-
-    printf("PASS: %s\n", __FUNCTION__);
-}
-
-void testReadWriteDelete() {
-    wrapper_type aTART;
-    TestTransaction t0(0);
-    aTART.insert(absentkey1, 10);
-    aTART.insert(absentkey2, 10);
-    assert(t0.try_commit());
-
-    TestTransaction t1(0);
-    aTART.lookup(absentkey1);
-    aTART.insert(absentkey2, 123);
-
-    TestTransaction t2(0);
-    aTART.erase(absentkey1);
-
-    assert(t2.try_commit());
-    assert(!t1.try_commit());
-
-    {
-        TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
-        volatile auto y = aTART.lookup(absentkey2);
-        assert(x == 0);
-        assert(y == 10);
-    }
-
-    printf("PASS: %s\n", __FUNCTION__);
-}
-
-void testReadDeleteInsert() {
-    wrapper_type aTART;
-    TestTransaction t0(0);
-    aTART.insert(absentkey1, 10);
-    aTART.insert(absentkey2, 10);
-    assert(t0.try_commit());
-
-    TestTransaction t1(0);
-    aTART.lookup(absentkey1);
-    aTART.insert(absentkey2, 123);
-
-    TestTransaction t2(0);
-    aTART.erase(absentkey1);
-    assert(t2.try_commit());
-
-    TestTransaction t3(0);
-    aTART.insert(absentkey1, 10);
-    assert(t3.try_commit());
-    assert(!t1.try_commit());
-
-    {
-        TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
-        volatile auto y = aTART.lookup(absentkey2);
-        assert(x == 10);
-        assert(y == 10);
-    }
-
-    printf("PASS: %s\n", __FUNCTION__);
-}
-
-
-void testInsertDelete() {
-    wrapper_type aTART;
-    TestTransaction t0(0);
-    aTART.insert(absentkey1, 10);
-    aTART.insert(absentkey2, 10);
-    assert(t0.try_commit());
-
-    TestTransaction t1(0);
-    aTART.insert(absentkey1, 123);
-    aTART.insert(absentkey2, 456);
-
-    TestTransaction t2(0);
-    aTART.erase(absentkey1);
-    assert(t2.try_commit());
-
-    assert(!t1.try_commit());
-
-    {
-        TransactionGuard t;
-        volatile auto x = aTART.lookup(absentkey1);
-        volatile auto y = aTART.lookup(absentkey2);
-        assert(x == 0);
-        assert(y == 10);
-    }
-
-    printf("PASS: %s\n", __FUNCTION__);
-}
-
 void testEmptyErase() {
     wrapper_type a;
 
@@ -417,14 +290,244 @@ void testEmptyErase() {
     }
 
     printf("PASS: %s\n", __FUNCTION__);
+}
 
+void testUpgradeNode() {
+    wrapper_type a;
+    {
+        TransactionGuard t;
+        a.insert("1", 1);
+        a.insert("10", 1);
+        a.insert("11", 1);
+        a.insert("12", 1);
+        a.insert("15", 1);
+    }
+
+    TestTransaction t0(0);
+    a.lookup("13");
+    a.insert("14", 1);
+
+    TestTransaction t1(1);
+    a.insert("13", 1);
+
+    assert(t1.try_commit());
+    assert(!t0.try_commit());
+
+    printf("PASS: %s\n", __FUNCTION__); 
+}
+
+void testUpgradeNode2() {
+    TART a;
+    {
+        TransactionGuard t;
+        a.transPut("1", 1);
+        a.transPut("10", 1);
+        // a.transPut("11", 1);
+    }
+
+    TestTransaction t0(0);
+    a.transGet("13");
+    a.transPut("14", 1);
+    a.transPut("15",1);
+    a.transPut("16", 1);
+    assert(t0.try_commit());
+
+    TestTransaction t1(1);
+    a.transGet("13");
+    a.transPut("14", 1);
+    a.transPut("15",1);
+    a.transPut("16", 1);
+
+    assert(t1.try_commit());
+    printf("PASS: %s\n", __FUNCTION__); 
+}
+
+
+void testUpgradeNode3() {
+    wrapper_type a;
+    {
+        TransactionGuard t;
+        a.insert("10", 1);
+        a.insert("11", 1);
+    }
+
+    TestTransaction t0(0);
+    a.lookup("13");
+
+    TestTransaction t1(1);
+    a.insert("13", 1);
+
+    t0.use();
+    a.insert("14", 1);
+
+    assert(t1.try_commit());
+    assert(!t0.try_commit());
+
+    printf("PASS: %s\n", __FUNCTION__); 
+}
+
+void testUpgradeNode4() {
+    wrapper_type a;
+    {
+        TransactionGuard t;
+        a.insert("10", 1);
+        a.insert("11", 1);
+        a.insert("12", 1);
+    }
+
+    TestTransaction t0(0);
+    a.lookup("14");
+
+    TestTransaction t1(1);
+    a.insert("13", 1);
+    a.erase("10");
+    a.erase("11");
+    a.erase("11");
+    a.erase("13");
+    a.insert("14", 1);
+    a.insert("15", 1);
+    a.insert("16", 1);
+    a.insert("17", 1);
+
+    assert(t1.try_commit());
+
+    t0.use();
+    a.erase("14");
+    a.erase("15");
+    a.erase("16");
+    a.erase("17");
+
+    assert(!t0.try_commit());
+
+    printf("PASS: %s\n", __FUNCTION__); 
+}
+
+void testDowngradeNode() {
+    wrapper_type a;
+
+    {
+        TransactionGuard t;
+        a.insert("1", 1);
+        a.insert("10", 1);
+        a.insert("11", 1);
+        a.insert("12", 1);
+        a.insert("13", 1);
+        a.insert("14", 1);
+    }
+
+    TestTransaction t0(0);
+    a.lookup("15");
+    a.insert("random", 1);
+
+    TestTransaction t1(1);
+    a.lookup("10");
+    a.insert("hummus", 1);
+
+    TestTransaction t2(2);
+    a.erase("15");
+    a.insert("linux", 1);
+
+    TestTransaction t3(1);
+    a.erase("14");
+    a.erase("13");
+    a.erase("12");
+    a.erase("11");
+    assert(t3.try_commit());
+
+    assert(!t0.try_commit());
+    assert(t1.try_commit());
+    assert(!t2.try_commit());
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
+void testSplitNode() {
+    TART a;
+    {
+        TransactionGuard t;
+        a.transPut("ab", 0);
+        a.transPut("1", 0);
+    }
+
+    TestTransaction t0(0);
+    a.transGet("ad");
+    a.transPut("12", 1);
+
+    TestTransaction t1(1);
+    a.transGet("abc");
+    a.transPut("13", 1);
+
+    TestTransaction t2(2);
+    a.transPut("ad", 1);
+    a.transPut("abc", 1);
+
+    assert(t2.try_commit());
+    assert(!t0.try_commit());
+    assert(!t1.try_commit());
+
+    printf("PASS: %s\n", __FUNCTION__); 
+}
+
+void testSplitNode2() {
+    TART a;
+    {
+        TransactionGuard t;
+        a.transPut("aaa", 0);
+        a.transPut("aab", 0);
+    }
+
+    TestTransaction t0(0);
+    a.transGet("ab");
+    a.transPut("1", 0);
+
+    TestTransaction t1(1);
+    a.transPut("ab", 0);
+
+    assert(t1.try_commit());
+    assert(!t0.try_commit());
+
+    printf("PASS: %s\n", __FUNCTION__); 
+}
+
+void testEmptySplit() {
+    TART a;
+    {
+        TransactionGuard t;
+        a.transPut("aaa", 1);
+        a.transPut("aab", 1);
+    }
+
+    TestTransaction t0(0);
+    a.transGet("aac");
+    a.transPut("1", 0);
+
+    TestTransaction t1(1);
+    a.transRemove("aaa");
+    a.transRemove("aab");
+    assert(t1.try_commit());
+
+    TestTransaction t2(2);
+    a.transPut("aac", 0);
+    assert(t2.try_commit());
+
+    assert(!t0.try_commit());
+
+    printf("PASS: %s\n", __FUNCTION__); 
 }
 
 int main(int argc, char *argv[]) {
     testSimple();
     testSimpleErase();
     testAbsentErase();
+    testEmptyErase();
     multiWrite();
+    testUpgradeNode();
+    testUpgradeNode2();
+    testUpgradeNode3();
+    testUpgradeNode4();
+    testDowngradeNode();
+    testSplitNode();
+    testSplitNode2();
+    testEmptySplit();
 
     // keyval_db* db;
 

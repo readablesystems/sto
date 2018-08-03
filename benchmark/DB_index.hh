@@ -581,6 +581,7 @@ public:
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit << 1u;
     static constexpr TransItem::flags_type row_update_bit = TransItem::user0_bit << 2u;
     static constexpr TransItem::flags_type row_cell_bit = TransItem::user0_bit << 3u;
+    static constexpr TransItem::flags_type self_upgrade_bit = TransItem::user0_bit << 4u;
     static constexpr uintptr_t internode_bit = 1;
 
     typedef typename value_type::NamedColumn NamedColumn;
@@ -950,6 +951,14 @@ public:
             TransProxy internode_item = Sto::item(this, get_internode_key(parent));
             internode_item.add_write();
 
+            if (old) {
+                old->valid = false;
+                TransProxy old_item = Sto::item(this, get_internode_key(old));
+                if (!old_item.has_read()) {
+                    old_item.add_flags(self_upgrade_bit);
+                }
+            }
+
             // update the node version already in the read set and modified by split
             // if (!update_internode_version(node, orig_nv, new_nv))
             //     goto abort;
@@ -1163,6 +1172,9 @@ public:
                copy_row(e, &v);
             // lp.finish(0, *ti);
         }
+        if (old) {
+            Transaction::rcu_delete(old);
+        }
     }
 
     // TObject interface methods
@@ -1187,7 +1199,7 @@ public:
             // auto curr_nv = n->vers;
             // auto read_nv = item.template read_value<decltype(curr_nv)>();
             // return (curr_nv == read_nv);
-            return n->vers.cp_check_version(txn, item);
+            return (item.has_flag(self_upgrade_bit) || n->valid) && n->vers.cp_check_version(txn, item);
         } else {
             auto key = item.key<item_key_t>();
             auto e = key.internal_elem_ptr();
@@ -1446,7 +1458,11 @@ private:
         internal_elem* e = (internal_elem*) r.first;
 
         if (e) {
-            table_.remove(art_key, (TID) e);
+            node_type* old = table_.remove(art_key, (TID) e);
+            if (old) {
+                old->valid = false;
+                Transaction::rcu_delete(old);
+            }
             // lp.finish(-1, *ti);
             Transaction::rcu_delete(e);
             return true;
