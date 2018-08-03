@@ -195,6 +195,10 @@ public:
         workload_generation(runners, mode);
         std::cout << "Done." << std::endl;
 
+        pthread_t advancer;
+        pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
+        pthread_detach(advancer); 
+
         prof.start(profiler_mode);
         auto num_trans = run_benchmark(db, prof, runners, time_limit);
         prof.finish(num_trans);

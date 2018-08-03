@@ -954,8 +954,10 @@ public:
             if (old) {
                 old->valid = false;
                 TransProxy old_item = Sto::item(this, get_internode_key(old));
-                if (!old_item.has_read()) {
-                    old_item.add_flags(self_upgrade_bit);
+                old_item.add_flags(self_upgrade_bit);
+                if (old_item.has_read()) {
+                    if (!register_internode_version(parent, parent->vers))
+                        goto abort;
                 }
             }
 
@@ -1173,7 +1175,9 @@ public:
             // lp.finish(0, *ti);
         }
         if (old) {
-            Transaction::rcu_delete(old);
+            // printf("hi\n");
+            // Transaction::rcu_delete(old);
+            delete old;
         }
     }
 
