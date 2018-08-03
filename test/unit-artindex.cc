@@ -421,10 +421,10 @@ void testEmptyErase() {
 }
 
 int main(int argc, char *argv[]) {
-    // testSimple();
-    // testSimpleErase();
+    testSimple();
+    testSimpleErase();
     testAbsentErase();
-    // multiWrite();
+    multiWrite();
 
     // keyval_db* db;
 

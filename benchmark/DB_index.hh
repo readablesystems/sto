@@ -947,6 +947,9 @@ public:
             row_item.add_write();
             row_item.add_flags(insert_bit);
 
+            TransProxy internode_item = Sto::item(this, get_internode_key(parent));
+            internode_item.add_write();
+
             // update the node version already in the read set and modified by split
             // if (!update_internode_version(node, orig_nv, new_nv))
             //     goto abort;
@@ -1164,7 +1167,11 @@ public:
 
     // TObject interface methods
     bool lock(TransItem& item, Transaction &txn) override {
-        assert(!is_internode(item));
+        // assert(!is_internode(item));
+        if (is_internode(item)) {
+            node_type* n = get_internode_address(item);
+            return txn.try_lock(item, n->vers);
+        }
         auto key = item.key<item_key_t>();
         auto e = key.internal_elem_ptr();
         if (key.is_row_item())
@@ -1192,6 +1199,12 @@ public:
     }
 
     void install(TransItem& item, Transaction& txn) override {
+        if (is_internode(item)) {
+            node_type* n = get_internode_address(item);
+            txn.set_version_unlock(n->vers, item);
+            return;
+        }
+
         // assert(!is_internode(item));
         auto key = item.key<item_key_t>();
         auto e = key.internal_elem_ptr();
@@ -1251,7 +1264,12 @@ public:
     }
 
     void unlock(TransItem& item) override {
-        assert(!is_internode(item));
+        // assert(!is_internode(item));
+        if (is_internode(item)) {
+            node_type* n = get_internode_address(item);
+            n->vers.cp_unlock(item);
+            return;
+        }
         auto key = item.key<item_key_t>();
         auto e = key.internal_elem_ptr();
         if (key.is_row_item())
