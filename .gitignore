@@ -53,7 +53,7 @@
 /unit-sampling
 /unit-tflexarray
 /tpcc_bench
-/ycsb_bench
+/*ycsb_bench
 /micro_bench
 /wiki_bench
 /voter_bench

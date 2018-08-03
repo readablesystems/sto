@@ -22,11 +22,13 @@ template <typename DBParams>
 class ycsb_db {
 public:
     template <typename K, typename V>
-    using OIndex = bench::art_index<K, V, DBParams>;
+    using OIndex = bench::ordered_index<K, V, DBParams>;
+    template <typename K, typename V>
+    using AIndex = bench::art_index<K, V, DBParams>;
     template <typename K, typename V>
     using UIndex = unordered_index<K, V, DBParams>;
 
-    typedef OIndex<ycsb_key, ycsb_value<DBParams>> ycsb_table_type;
+    typedef UIndex<ycsb_key, ycsb_value<DBParams>> ycsb_table_type;
 
     explicit ycsb_db() : ycsb_table_(ycsb_table_size) {}
 
@@ -35,7 +37,7 @@ public:
     }
 
     void table_thread_init() {
-        ycsb_table_.thread_init();
+        // ycsb_table_.thread_init();
     }
 
     void prepopulate();
