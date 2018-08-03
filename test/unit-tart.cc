@@ -268,7 +268,6 @@ void testAbsentErase() {
     a.transPut("foo", 123);
     assert(t2.try_commit());
 
-    t1.use();
     assert(!t1.try_commit());
     printf("PASS: %s\n", __FUNCTION__);
 }

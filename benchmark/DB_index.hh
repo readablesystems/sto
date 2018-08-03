@@ -1192,7 +1192,7 @@ public:
     }
 
     void install(TransItem& item, Transaction& txn) override {
-        assert(!is_internode(item));
+        // assert(!is_internode(item));
         auto key = item.key<item_key_t>();
         auto e = key.internal_elem_ptr();
 
