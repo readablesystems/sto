@@ -189,6 +189,22 @@ void testMvReads() {
         assert(t1.try_commit());
     }
 
+    f.nontrans_write(0);
+    g.nontrans_write(1);
+
+    // Read-my-writes support
+    {
+        TestTransaction t(1);
+        f = f + 2 * g;
+        g = f;
+        f = f + g;
+        int x = f;
+        assert(x == 4);
+        x = g;
+        assert(x == 2);
+        assert(t.try_commit());
+    }
+
     printf("PASS: %s\n", __FUNCTION__);
 }
 

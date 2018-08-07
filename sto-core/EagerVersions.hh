@@ -66,6 +66,9 @@ public:
     template <typename T, typename... Args>
     inline bool acquire_write_impl(TransItem& item, Args&&... args);
 
+    inline bool observe_read_impl(TransItem& item) {
+        return observe_read_impl(item, true);
+    }
     inline bool observe_read_impl(TransItem& item, bool add_read);
 
     static inline type& cp_access_tid_impl(Transaction& txn);
@@ -221,6 +224,9 @@ public:
     template <typename T, typename... Args>
     inline bool acquire_write_impl(TransItem& item, Args&&... args);
 
+    inline bool observe_read_impl(TransItem& item) {
+        return observe_read_impl(item, true);
+    }
     inline bool observe_read_impl(TransItem& item, bool add_read);
 
     static inline type& cp_access_tid_impl(Transaction& txn);

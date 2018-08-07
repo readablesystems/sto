@@ -261,6 +261,9 @@ public:
     template <typename T, typename... Args>
     inline bool acquire_write_impl(TransItem& item, Args&&... args);
 
+    inline bool observe_read_impl(TransItem& item) {
+        return observe_read_impl(item, true);
+    }
     inline bool observe_read_impl(TransItem& item, bool add_read);
 
     void compute_commit_ts_step_impl(type& tictoc_ts, bool is_write) {
@@ -346,6 +349,9 @@ public:
     template <typename T, typename... Args>
     inline bool acquire_write_impl(TransItem& item, Args&&... args);
 
+    inline bool observe_read_impl(TransItem& item) {
+        return observe_read_impl(item, true);
+    }
     inline bool observe_read_impl(TransItem& item, bool add_read);
 
     void compute_commit_ts_step_impl(type& tictoc_ts, bool is_write) {

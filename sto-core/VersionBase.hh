@@ -290,11 +290,9 @@ public:
         return impl().acquire_write_impl(item, std::forward<Args>(args)...);
     }
 
-    bool observe_read(TransItem& item) {
-        return observe_read(item, true);
-    }
-    bool observe_read(TransItem& item, bool add_read) {
-        return impl().observe_read_impl(item, add_read);
+    template <typename... Args>
+    bool observe_read(TransItem& item, Args&&... args) {
+        return impl().observe_read_impl(item, std::forward<Args>(args)...);
     }
 
     // Optional interface exposed to data types so that things like bucket/node

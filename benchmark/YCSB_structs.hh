@@ -42,13 +42,16 @@ struct ycsb_value {
 };
 #endif
 
+template <typename DBParams, bool MVCC = DBParams::MVCC> class ycsb_value;
+
+// YCSB value without MVCC
 template <typename DBParams>
-class ycsb_value : TObject {
+class ycsb_value<DBParams, false /* MVCC */> : TObject {
 public:
     static constexpr size_t col_width = 10;
     static constexpr size_t num_cols = 10;
     typedef fix_string<col_width> col_type;
-    typedef typename get_version<DBParams>::type version_type;
+    typedef typename get_version<DBParams, col_type>::type version_type;
 
     ycsb_value() : cols(), v0(Sto::initialized_tid(), false)
 #if TABLE_FINE_GRAINED
@@ -84,11 +87,11 @@ public:
         always_assert((size_t)col_n < num_cols, "column index out of bound");
 #if TABLE_FINE_GRAINED
         auto item = Sto::item(this, col_n);
-        if (!item.observe((col_n % 2 == 0) ? v0 : v1))
+        if (!item.observe((col_n % 2 == 0) ? v0 : v1, true))
             return {false, nullptr};
 #else
         auto item = Sto::item(this, col_n);
-        if (!item.observe(v0))
+        if (!item.observe(v0, true))
             return {false, nullptr};
 #endif
         return {true, &cols[col_n]};
@@ -135,6 +138,111 @@ public:
 
 private:
     col_type cols[num_cols];
+    version_type v0;
+#if TABLE_FINE_GRAINED
+    version_type v1;
+#endif
+};
+
+// MVCC YCSB value
+template <typename DBParams>
+class ycsb_value<DBParams, true /* MVCC */> : TObject {
+public:
+    static constexpr size_t col_width = 10;
+    static constexpr size_t num_cols = 10;
+    typedef fix_string<col_width> col_type;
+    typedef MvHistory<col_type*> history_type;
+    typedef typename get_version<DBParams, col_type*>::type version_type;
+
+    ycsb_value() : cols(), v0(Sto::initialized_tid(), false)
+#if TABLE_FINE_GRAINED
+                   , v1(Sto::initialized_tid(), false)
+#endif
+    {
+        for (size_t i = 0; i < num_cols; i++) {
+            cols[i] = new history_type(0, new col_type());
+        }
+    }
+
+    col_type& col_access(int col_n) {
+        return *cols[col_n]->v();
+    }
+    const col_type& col_access(int col_n) const {
+        return *cols[col_n]->v();
+    }
+
+    // return: success
+    bool trans_col_update(int col_n, const col_type& new_col) {
+        always_assert((size_t)col_n < num_cols, "column index out of bound");
+#if TABLE_FINE_GRAINED
+        auto item = Sto::item(this, col_n);
+        auto& v = (col_n % 2 == 0) ? v0 : v1;
+        if (!version_adapter::select_for_overwrite(item, v, &new_col, cols[col_n]))
+            return false;
+#else
+        auto item = Sto::item(this, col_n);
+        if (!version_adapter::select_for_overwrite(item, v0, &new_col, cols[col_n]))
+            return false;
+#endif
+        return true;
+    }
+
+    // return: success, column
+    std::pair<bool, const col_type *> trans_col_read(int col_n) {
+        always_assert((size_t)col_n < num_cols, "column index out of bound");
+#if TABLE_FINE_GRAINED
+        auto item = Sto::item(this, col_n);
+        if (!item.observe((col_n % 2 == 0) ? v0 : v1, cols[col_n]))
+            return {false, nullptr};
+#else
+        auto item = Sto::item(this, col_n);
+        if (!item.observe(v0, cols[col_n]))
+            return {false, nullptr};
+#endif
+        return {true, item.template read_value<history_type*>()->v()};
+    }
+
+    // TObject interface methods
+    bool lock(TransItem& item, Transaction& txn) override {
+#if TABLE_FINE_GRAINED
+        version_type& v = (item.key<int>()%2 == 0) ? v0 : v1;
+#else
+        version_type& v = v0;
+#endif
+        return txn.try_lock(item, v);
+    }
+
+    bool check(TransItem& item, Transaction& txn) override {
+#if TABLE_FINE_GRAINED
+        version_type& v = (item.key<int>()%2 == 0) ? v0 : v1;
+#else
+        version_type& v = v0;
+#endif
+        return v.cp_check_version(txn, item);
+    }
+
+    void install(TransItem& item, Transaction& txn) override {
+#if TABLE_FINE_GRAINED
+        version_type& v = (item.key<int>()%2 == 0) ? v0 : v1;
+#else
+        version_type& v = v0;
+#endif
+        auto new_col = item.write_value<col_type*>();
+        cols[item.key<int>()] = new history_type(Sto::commit_tid(), new_col, cols[item.key<int>()]);
+        txn.set_version_unlock(v, item);
+    }
+
+    void unlock(TransItem& item) override {
+#if TABLE_FINE_GRAINED
+        version_type& v = (item.key<int>()%2 == 0) ? v0 : v1;
+#else
+        version_type& v = v0;
+#endif
+        v.cp_unlock(item);
+    }
+
+private:
+    history_type *cols[num_cols];
     version_type v0;
 #if TABLE_FINE_GRAINED
     version_type v1;

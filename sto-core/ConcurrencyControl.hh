@@ -159,14 +159,26 @@ inline bool TNonopaqueVersion::observe_read_impl(TransItem& item, bool add_read)
 }
 
 template <typename T>
-inline bool TMvVersion<T>::observe_read_impl(TransItem& item, bool add_read) {
+inline bool TMvVersion<T>::observe_read_impl(TransItem& item, MvHistory<T> *history) {
     assert(!item.has_stash());
+    TMvVersion<T> version = *this;
     fence();
 
-    if (add_read) {
-        read_tid = Sto::read_tid();  // Set the read tid if it hasn't already
-        VersionDelegate::item_or_flags(item, TransItem::read_bit);
+    if (version.is_locked_elsewhere()) {
+        t().mark_abort_because(&item, "locked", version.value());
+        TXP_INCREMENT(txp_observe_lock_aborts);
+        return false;
     }
+
+    if (!item.has_read()) {
+        VersionDelegate::item_or_flags(item, TransItem::read_bit);
+        history = history->read_at(Sto::read_tid());
+        //printf("READ Thread %d: read_tid(%lu) history(%p) rtid(%lu)\n",
+        //    Sto::transaction()->threadid(), Sto::read_tid(), history, history->rtid);
+        VersionDelegate::item_access_rdata(item).v = Packer<MvHistory<T>*>::pack(
+            Sto::transaction()->buf_, history);
+    }
+
     return true;
 }
 
@@ -594,7 +606,7 @@ inline bool TicTocCompressedVersion<Opaque, Extend>::observe_read_impl(TransItem
 
 inline auto TVersion::snapshot(TransProxy& item) -> type {
     type v = value();
-    if (!item.observe_opacity(*this)) {
+    if (!item.observe(*this, false)) {
 				Transaction::Abort();
 		}
     return v;

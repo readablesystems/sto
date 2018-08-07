@@ -196,6 +196,7 @@ enum txp {
     txp_rcu_free_req,
     txp_rcu_free_impl,
     txp_dealloc_performed,
+    txp_rtid_atomic,
 #if !STO_PROFILE_COUNTERS
     txp_count = 0
 #elif STO_PROFILE_COUNTERS == 1
@@ -840,6 +841,7 @@ public:
     // transaction start
     tid_type read_tid() const {
         if (!commit_tid_) {
+            TXP_INCREMENT(txp_rtid_atomic);
             commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         }
         return commit_tid_;

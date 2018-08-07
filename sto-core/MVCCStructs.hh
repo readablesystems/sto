@@ -5,8 +5,11 @@
 template <typename T, bool Trivial = std::is_trivially_copyable<T>::value> struct MvHistory;
 
 struct MvHistoryBase {
+public:
+    typedef TransactionTid::type type;
+
 protected:
-    MvHistoryBase(TransactionTid::type ntid, MvHistoryBase *nprev = nullptr)
+    MvHistoryBase(type ntid, MvHistoryBase *nprev = nullptr)
             : rtid(ntid), wtid(ntid), prev_(nprev), next_(nullptr) {
 #if 0
         // TODO: work on retroactive writes
@@ -17,9 +20,14 @@ protected:
 #endif
 
         if (prev_) {
-            always_assert(
-                prev_->rtid <= wtid,
-                "Cannot write MVCC history with wtid earlier than prev rtid.");
+            char buf[1000];
+            snprintf(buf, 1000,
+                "Thread %d: Cannot write MVCC history with wtid (%lu) earlier than prev (%p) rtid (%lu) and wtid(%lu)",
+                Sto::transaction()->threadid(), wtid, prev_, prev_->rtid, prev_->wtid);
+            always_assert(prev_->rtid <= wtid, buf);
+//            always_assert(
+//                prev_->rtid <= wtid,
+//                "Cannot write MVCC history with wtid earlier than prev rtid.");
         }
 
 #if 0
@@ -41,20 +49,33 @@ protected:
 #endif
     }
 
-public:
-    bool check_version() const {
-        if (!next_) {
-            return true;
+    static MvHistoryBase* read_at(const MvHistoryBase *history, type tid) {
+        MvHistoryBase *h = (MvHistoryBase*)history;
+        /* TODO: use something smarter than a linear scan */
+        for (;h->prev_; h = h->prev_) {
+            if (h->wtid < tid) {
+                break;
+            }
         }
 
-        const TransactionTid::type commit = Sto::commit_tid();
+        type rtid_e;  // Expected rtid
+        while (tid > (rtid_e = h->rtid)) {
+            ::cmpxchg(&h->rtid, rtid_e, tid);
+        }
 
-        // Check succeeds only if the commit time is earlier than the next write
-        return commit < next_->wtid;
+        return h;
     }
 
-    TransactionTid::type rtid;  // Read TID
-    TransactionTid::type wtid;  // Write TID
+public:
+    bool check_version() const {
+        const type commit = Sto::commit_tid();
+
+        // Check succeeds only if the commit time is earlier than the next write
+        return (!prev_ || commit >= prev_->rtid) && (!next_ || commit < next_->wtid);
+    }
+
+    type rtid;  // Read TID
+    type wtid;  // Write TID
 
 protected:
     MvHistoryBase *prev_;
@@ -64,9 +85,11 @@ protected:
 template <typename T>
 struct MvHistory<T, true /* trivial */> : MvHistoryBase {
 public:
-    MvHistory(TransactionTid::type ntid, T nv, MvHistory<T, true> *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), v_(nv) {
-    }
+    MvHistory() : MvHistory(0, T()) {}
+    MvHistory(type ntid, T nv, MvHistory<T, true> *nprev = nullptr)
+            : MvHistoryBase(ntid, nprev), v_(nv) {}
+    MvHistory(type ntid, T *nvp, MvHistory<T, true> *nprev = nullptr)
+            : MvHistoryBase(ntid, nprev), v_(*nvp) {}
 
     const T& v() const {
         return v_;
@@ -88,6 +111,10 @@ public:
         return reinterpret_cast<MvHistory<T, true>*>(prev_);
     }
 
+    MvHistory<T, true>* read_at(type tid) const {
+        return reinterpret_cast<MvHistory<T, true>*>(MvHistoryBase::read_at(this, tid));
+    }
+
 private:
     T v_;
 };
@@ -95,9 +122,11 @@ private:
 template <typename T>
 struct MvHistory<T, false /* !trivial */> : MvHistoryBase {
 public:
-    MvHistory(TransactionTid::type ntid, T *nvp, MvHistory<T, false> *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), vp_(nvp) {
-    }
+    MvHistory() : MvHistory(0, nullptr) {}
+    MvHistory(type ntid, T& nv, MvHistory<T, false> *nprev = nullptr)
+            : MvHistoryBase(ntid, nprev), vp_(&nv) {}
+    MvHistory(type ntid, T *nvp, MvHistory<T, false> *nprev = nullptr)
+            : MvHistoryBase(ntid, nprev), vp_(nvp) {}
 
     const T& v() const {
         return *vp_;
@@ -121,6 +150,10 @@ public:
 
     MvHistory<T, false>* prev() const {
         return reinterpret_cast<MvHistory<T, false>*>(prev_);
+    }
+
+    MvHistory<T, false>* read_at(type tid) const {
+        return reinterpret_cast<MvHistory<T, false>*>(MvHistoryBase::read_at(this, tid));
     }
 
 private:
