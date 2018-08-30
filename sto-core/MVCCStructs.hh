@@ -1,95 +1,247 @@
 #pragma once
 
 // History list item for MVCC
+template <typename T, bool Trivial = std::is_trivially_copyable<T>::value> class MvHistory;
 
-template <typename T, bool Trivial = std::is_trivially_copyable<T>::value> struct MvHistory;
+// Status types of MvHistory elements
+enum MvStatus {
+    ABORTED = 0x000,
+    DELETED = 0x001,  // Not a valid state on its own, but defined as a flag
+    PENDING = 0x010,
+    COMMITTED = 0x100,
+    PENDING_DELETED = 0x011,
+    COMMITTED_DELETED = 0x101,
+};
 
-struct MvHistoryBase {
+// Generic contained for MVCC abstractions applied to a given object
+template <typename T>
+class MvObject {
 public:
+    typedef MvHistory<T> history_type;
+    typedef const T& read_type;
     typedef TransactionTid::type type;
 
-protected:
-    MvHistoryBase(type ntid, MvHistoryBase *nprev = nullptr)
-            : rtid(ntid), wtid(ntid), prev_(nprev), next_(nullptr) {
-#if 0
-        // TODO: work on retroactive writes
-        while (prev_ && (wtid < prev_->wtid)) {
-            next_ = prev_;
-            prev_ = prev_->prev_;
-        }
-#endif
+    MvObject() :
+        h_(new history_type(0, T())) {}
+    explicit MvObject(const T& value) :
+        h_(new history_type(0, new T(value))) {}
+    explicit MvObject(T&& value) :
+        h_(new history_type(0, new T(std::move(value)))) {}
+    template <typename... Args>
+    explicit MvObject(Args&&... args) :
+        h_(new history_type(0, new T(std::forward<Args>(args)...))) {}
 
-        if (prev_) {
-            char buf[1000];
-            snprintf(buf, 1000,
-                "Thread %d: Cannot write MVCC history with wtid (%lu) earlier than prev (%p) rtid (%lu) and wtid(%lu)",
-                Sto::transaction()->threadid(), wtid, prev_, prev_->rtid, prev_->wtid);
-            always_assert(prev_->rtid <= wtid, buf);
-//            always_assert(
-//                prev_->rtid <= wtid,
-//                "Cannot write MVCC history with wtid earlier than prev rtid.");
+    ~MvObject() {
+        while (h_) {
+            history_type *prev = h_->prev();
+            delete h_;
+            h_ = prev;
         }
-
-#if 0
-        // TODO: work on retroactive writes
-        if (next_) {
-            always_assert(
-                rtid < next_->wtid,
-                "Cannot write MVCC history with rtid later than next wtid.");
-        }
-
-        // TODO: deal with this nonatomic update of prev and next
-        if (prev_) {
-            while (::cmpxchg(&prev_->next_, next_, this) != next_);
-        }
-
-        if (next_) {
-            while (::cmpxchg(&next_->prev_, prev_, this) != prev_);
-        }
-#endif
     }
 
-    static MvHistoryBase* read_at(const MvHistoryBase *history, type tid) {
-        MvHistoryBase *h = (MvHistoryBase*)history;
-        /* TODO: use something smarter than a linear scan */
-        for (;h->prev_; h = h->prev_) {
-            if (h->wtid < tid) {
-                break;
-            }
+    // Aborts currently-pending head version; returns true if the head version
+    // is pending and false otherwise.
+    bool abort() {
+        if (!h_->status_is(MvStatus::PENDING)) {
+            return false;
         }
 
-        type rtid_e;  // Expected rtid
-        while (tid > (rtid_e = h->rtid)) {
-            ::cmpxchg(&h->rtid, rtid_e, tid);
+        h_->status_abort();
+        return true;
+    }
+
+    const T& access(const type tid) const {
+        return find(tid)->v();
+    }
+    T& access(const type tid) {
+        return find(tid)->v();
+    }
+
+    // "Check" step: read timestamp updates and version consistency check;
+    //               returns true if successful, false is aborted
+    bool cp_check(const type tid, history_type *h /* read item */) {
+        // rtid update
+        type prev_rtid;
+        while ((prev_rtid = h->rtid()) < tid) {
+            h->rtid(prev_rtid, tid);  // CAS-based rtid update
+        }
+
+        // Version consistency check
+        if (find(tid) != h) {
+            return false;
+        }
+
+        return true;
+    }
+
+    // "Install" step: set status to committed if head element is pending; fails
+    //                 otherwise
+    bool cp_install() {
+        if (!h_->status_is(MvStatus::PENDING)) {
+            return false;
+        }
+
+        h_->status_commit();
+        return true;
+    }
+
+    // "Lock" step: pending version installation & version consistency check;
+    //              returns true if successful, false if aborted
+    bool cp_lock(const type tid, history_type *h) {
+        // Can only install pending versions
+        if (!h->status_is(MvStatus::PENDING)) {
+            return false;
+        }
+
+        // Can only install onto the latest-visible version
+        if (h->prev() != h_) {
+            return false;
+        }
+
+        // Attempt to CAS onto the head of the version list
+        if (!::bool_cmpxchg(&h_, h->prev(), h)) {
+            return false;
+        }
+
+        // Version consistency verification
+        if (h->prev()->rtid() > tid) {
+            return false;
+        }
+
+        return true;
+    }
+
+private:
+    // Finds the current visible version, based on tid
+    history_type* find(const type tid) const {
+        history_type *h = h_;
+        /* TODO: use something smarter than a linear scan */
+        while (h) {
+            while (h->status_is(MvStatus::PENDING)) {
+                wait();
+            }
+            if (h->wtid() <= tid && h->status_is(MvStatus::COMMITTED)) {
+                break;
+            }
+            h = h->prev();
         }
 
         return h;
     }
 
-public:
-    bool check_version() const {
-        const type commit = Sto::commit_tid();
-
-        // Check succeeds only if the commit time is earlier than the next write
-        return (!prev_ || commit >= prev_->rtid) && (!next_ || commit < next_->wtid);
+    // Spin-wait on interested item
+    void wait() const {
+        // TODO: implement wait
     }
 
-    type rtid;  // Read TID
-    type wtid;  // Write TID
+    history_type *h_;
+};
+
+class MvHistoryBase {
+public:
+    typedef TransactionTid::type type;
+
+    // Attempt to set the pointer to prev; returns true on success
+    bool prev(MvHistoryBase *prev) {
+        if (is_valid_prev(prev)) {
+            prev_ = prev;
+            return true;
+        }
+        return false;
+    }
+
+    // Returns the current rtid
+    type rtid() const {
+        return rtid_;
+    }
+
+    // Non-CAS assignment on the rtid
+    type rtid(const type new_rtid) {
+        return rtid_ = new_rtid;
+    }
+
+    // Proxy for a CAS assigment on the rtid
+    type rtid(const type prev_rtid, const type new_rtid) {
+        return ::cmpxchg(&rtid_, prev_rtid, new_rtid);
+    }
+
+    // Returns the status
+    MvStatus status() const {
+        return status_;
+    }
+
+    // Removes all flags, signaling an aborted status
+    MvStatus status_abort() {
+        return status_ = MvStatus::ABORTED;
+    }
+
+    // Sets the committed flag and unsets the pending flag; does nothing if the
+    // current status is ABORTED
+    MvStatus status_commit() {
+        if (status_ == MvStatus::ABORTED) {
+            return status_;
+        }
+        return status_ = static_cast<MvStatus>(MvStatus::COMMITTED | (status_ & ~MvStatus::PENDING));
+    }
+
+    // Sets the deleted flag; does nothing if the current status is ABORTED
+    MvStatus status_delete() {
+        if (status_ == MvStatus::ABORTED) {
+            return status_;
+        }
+        return status_ = static_cast<MvStatus>(status_ | MvStatus::DELETED);
+    }
+
+    // Returns true if all the given flag(s) are set
+    bool status_is(const MvStatus status) const {
+        return (status_ & status) == status;
+    }
+
+    // Returns the current wtid
+    type wtid() const {
+        return wtid_;
+    }
 
 protected:
+    MvHistoryBase(type ntid, MvHistoryBase *nprev = nullptr)
+            : prev_(nprev), rtid_(ntid), status_(MvStatus::PENDING), wtid_(ntid) {
+
+        if (prev_) {
+//            char buf[1000];
+//            snprintf(buf, 1000,
+//                "Thread %d: Cannot write MVCC history with wtid (%lu) earlier than prev (%p) rtid (%lu)",
+//                Sto::transaction()->threadid(), rtid, prev_, prev_->rtid);
+//            always_assert(prev_->rtid <= wtid, buf);
+            always_assert(
+                is_valid_prev(prev_),
+                "Cannot write MVCC history with wtid earlier than prev rtid.");
+//            prev_->rtid = rtid;
+        }
+    }
+
     MvHistoryBase *prev_;
-    MvHistoryBase *next_;
+
+private:
+    // Returns true if the given prev pointer would be a valid prev element
+    bool is_valid_prev(const MvHistoryBase *prev) const {
+        return prev->rtid_ <= wtid_;
+    }
+
+    type rtid_;  // Read TID
+    MvStatus status_;  // Status of this element
+    type wtid_;  // Write TID
 };
 
 template <typename T>
-struct MvHistory<T, true /* trivial */> : MvHistoryBase {
+class MvHistory<T, true /* trivial */> : public MvHistoryBase {
 public:
+    typedef MvHistory<T, true> history_type;
+
     MvHistory() : MvHistory(0, T()) {}
-    MvHistory(type ntid, T nv, MvHistory<T, true> *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), v_(nv) {}
-    MvHistory(type ntid, T *nvp, MvHistory<T, true> *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), v_(*nvp) {}
+    explicit MvHistory(type ntid, T nv, history_type *nprev = nullptr)
+            : MvHistoryBase(ntid, nprev), v_(nv), vp_(&v_) {}
+    explicit MvHistory(type ntid, T *nvp, history_type *nprev = nullptr)
+            : MvHistoryBase(ntid, nprev), v_(*nvp), vp_(&v_) {}
 
     const T& v() const {
         return v_;
@@ -100,32 +252,31 @@ public:
     }
 
     T* vp() {
-        return &v_;
+        return vp_;
     }
 
-    MvHistory<T, true>* next() const {
-        return reinterpret_cast<MvHistory<T, true>*>(next_);
+    T** vpp() {
+        return &vp_;
     }
 
-    MvHistory<T, true>* prev() const {
-        return reinterpret_cast<MvHistory<T, true>*>(prev_);
-    }
-
-    MvHistory<T, true>* read_at(type tid) const {
-        return reinterpret_cast<MvHistory<T, true>*>(MvHistoryBase::read_at(this, tid));
+    history_type* prev() const {
+        return reinterpret_cast<history_type*>(prev_);
     }
 
 private:
     T v_;
+    T *vp_;
 };
 
 template <typename T>
-struct MvHistory<T, false /* !trivial */> : MvHistoryBase {
+class MvHistory<T, false /* !trivial */> : public MvHistoryBase {
 public:
+    typedef MvHistory<T, false> history_type;
+
     MvHistory() : MvHistory(0, nullptr) {}
-    MvHistory(type ntid, T& nv, MvHistory<T, false> *nprev = nullptr)
+    explicit MvHistory(type ntid, T& nv, history_type *nprev = nullptr)
             : MvHistoryBase(ntid, nprev), vp_(&nv) {}
-    MvHistory(type ntid, T *nvp, MvHistory<T, false> *nprev = nullptr)
+    explicit MvHistory(type ntid, T *nvp, history_type *nprev = nullptr)
             : MvHistoryBase(ntid, nprev), vp_(nvp) {}
 
     const T& v() const {
@@ -144,16 +295,8 @@ public:
         return &vp_;
     }
 
-    MvHistory<T, false>* next() const {
-        return reinterpret_cast<MvHistory<T, false>*>(next_);
-    }
-
-    MvHistory<T, false>* prev() const {
-        return reinterpret_cast<MvHistory<T, false>*>(prev_);
-    }
-
-    MvHistory<T, false>* read_at(type tid) const {
-        return reinterpret_cast<MvHistory<T, false>*>(MvHistoryBase::read_at(this, tid));
+    history_type* prev() const {
+        return reinterpret_cast<history_type*>(prev_);
     }
 
 private:
