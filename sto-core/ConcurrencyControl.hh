@@ -112,6 +112,31 @@ inline bool BasicVersion<VersImpl>::acquire_write_impl(TransItem& item, Args&&..
     return true;
 }
 
+template <typename T>
+inline bool TMvVersion<T>::acquire_write_impl(TransItem& item) {
+    Sto::write_tid();  // Ensure write tid is updated
+    TransProxy(t(), item).add_write();
+    return true;
+}
+template <typename T>
+inline bool TMvVersion<T>::acquire_write_impl(TransItem& item, const T& wdata) {
+    Sto::write_tid();  // Ensure write tid is updated
+    TransProxy(t(), item).add_write(wdata);
+    return true;
+}
+template <typename T>
+inline bool TMvVersion<T>::acquire_write_impl(TransItem& item, T&& wdata) {
+    Sto::write_tid();  // Ensure write tid is updated
+    TransProxy(t(), item).add_write(wdata);
+    return true;
+}
+template <typename T> template<typename... Args>
+inline bool TMvVersion<T>::acquire_write_impl(TransItem& item, Args&&... args) {
+    Sto::write_tid();  // Ensure write tid is updated
+    TransProxy(t(), item).add_write<T, Args...>(std::forward<Args>(args)...);
+    return true;
+}
+
 // STO opaque optimistic concurrency control
 
 inline bool TVersion::observe_read_impl(TransItem &item, bool add_read){
@@ -159,7 +184,7 @@ inline bool TNonopaqueVersion::observe_read_impl(TransItem& item, bool add_read)
 }
 
 template <typename T>
-inline bool TMvVersion<T>::observe_read_impl(TransItem& item, MvHistory<T> *history) {
+inline bool TMvVersion<T>::observe_read_impl(TransItem& item, const history_type *h) {
     assert(!item.has_stash());
     TMvVersion<T> version = *this;
     fence();
@@ -172,11 +197,10 @@ inline bool TMvVersion<T>::observe_read_impl(TransItem& item, MvHistory<T> *hist
 
     if (!item.has_read()) {
         VersionDelegate::item_or_flags(item, TransItem::read_bit);
-        history = history->read_at(Sto::read_tid());
         //printf("READ Thread %d: read_tid(%lu) history(%p) rtid(%lu)\n",
         //    Sto::transaction()->threadid(), Sto::read_tid(), history, history->rtid);
-        VersionDelegate::item_access_rdata(item).v = Packer<MvHistory<T>*>::pack(
-            Sto::transaction()->buf_, history);
+        VersionDelegate::item_access_rdata(item).v = Packer<const history_type*>::pack(
+            Sto::transaction()->buf_, h);
     }
 
     return true;
@@ -607,16 +631,16 @@ inline bool TicTocCompressedVersion<Opaque, Extend>::observe_read_impl(TransItem
 inline auto TVersion::snapshot(TransProxy& item) -> type {
     type v = value();
     if (!item.observe(*this, false)) {
-				Transaction::Abort();
-		}
+        Transaction::Abort();
+    }
     return v;
 }
 
 inline auto TVersion::snapshot(const TransItem& item, const Transaction& txn) -> type {
     type v = value();
     if (!const_cast<Transaction&>(txn).check_opacity(const_cast<TransItem&>(item), v)) {
-				Transaction::Abort();
-		}
+        Transaction::Abort();
+    }
     return v;
 }
 

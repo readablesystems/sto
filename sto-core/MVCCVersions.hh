@@ -7,6 +7,8 @@
 template <typename T>
 class TMvVersion : public BasicVersion<TMvVersion<T>> {
 public:
+    typedef MvHistory<T> history_type;
+    typedef MvObject<T> object_type;
     typedef TransactionTid::type type;
 
     TMvVersion() = default;
@@ -21,16 +23,18 @@ public:
         if (TransactionTid::is_locked(v_) && !item.has_write())
             return false;
         fence();
-        const auto& h = *item.read_value<MvHistory<T>*>();
-//        if (Sto::commit_tid() > 100000000 && Sto::commit_tid() < 200000000)
-//            printf("CHCK Thread %d: commit_tid(%lu) history(%p) rtid(%lu) hnext(%p)\n",
-//                Sto::transaction()->threadid(), Sto::commit_tid(), &h, h.rtid, h.next());
-        return Sto::commit_tid() >= h.rtid && !h.next();
-        //return Sto::commit_tid() >= h.rtid && (
-        //    !h.next() || Sto::commit_tid() < h.next()->wtid);
+        history_type *h = item.read_value<history_type*>();
+        object_type *obj = h->object();
+        return obj->cp_check(Sto::commit_tid(), h);
     }
 
-    inline bool observe_read_impl(TransItem& item, MvHistory<T> *history);
+    inline bool acquire_write_impl(TransItem& item);
+    inline bool acquire_write_impl(TransItem& item, const T& wdata);
+    inline bool acquire_write_impl(TransItem& item, T&& wdata);
+    template <typename... Args>
+    inline bool acquire_write_impl(TransItem& item, Args&&... args);
+
+    inline bool observe_read_impl(TransItem& item, const history_type *h);
 
     inline type snapshot(const TransItem& item, const Transaction& txn);
     inline type snapshot(TransProxy& item);
@@ -41,5 +45,8 @@ private:
     using BV = BasicVersion<TMvVersion<T>>;
     using BV::v_;
     using BV::check_version;
+
+    typedef std::pair<object_type*, history_type*> rv_type;
+    typedef std::pair<const object_type*, const history_type*> const_rv_type;
 };
 

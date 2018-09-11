@@ -227,8 +227,7 @@ public:
 #else
         version_type& v = v0;
 #endif
-        auto new_col = item.write_value<col_type*>();
-        cols[item.key<int>()] = new history_type(Sto::commit_tid(), new_col, cols[item.key<int>()]);
+        cols[item.key<int>()] = item.write_value<history_type*>();
         txn.set_version_unlock(v, item);
     }
 

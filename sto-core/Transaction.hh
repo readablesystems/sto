@@ -301,7 +301,9 @@ void reportPerf();
 
 struct __attribute__((aligned(128))) threadinfo_t {
     using epoch_type = TRcuSet::epoch_type;
+    using tid_type = TransactionTid::type;
     epoch_type epoch;
+    tid_type wtid;
     TRcuSet rcu_set;
     // XXX(NH): these should be vectors so multiple data structures can register
     // callbacks for these
@@ -310,7 +312,7 @@ struct __attribute__((aligned(128))) threadinfo_t {
     txp_counters p_;
     tc_counters tcs_;
     threadinfo_t()
-        : epoch(0) {
+        : epoch(0), wtid(0) {
     }
 };
 
@@ -348,6 +350,8 @@ class TicTocBase;
 
 class Transaction {
 public:
+    typedef TransactionTid::type tid_type;
+
     static constexpr unsigned tset_initial_capacity = 512;
 
     static constexpr unsigned hash_size = 32768;
@@ -359,12 +363,12 @@ public:
     static struct epoch_state {
         epoch_type global_epoch; // != 0
         epoch_type active_epoch; // no thread is before this epoch
-        TransactionTid::type recent_tid;
+        tid_type recent_tid;
         bool run;
     } global_epochs;
-    typedef TransactionTid::type tid_type;
 private:
-    static TransactionTid::type _TID;
+    static tid_type _TID;
+    static tid_type _RTID;
 public:
 
     static std::function<void(threadinfo_t::epoch_type)> epoch_advance_callback;
@@ -418,6 +422,7 @@ public:
     }
 
     static void* epoch_advancer(void*);
+    static void epoch_advance_once();
     template <typename T>
     static void rcu_delete(T* x) {
         auto& thr = tinfo[TThread::id()];
@@ -503,6 +508,7 @@ private:
 #endif
         thr.epoch = global_epochs.global_epoch;
         thr.rcu_set.clean_until(global_epochs.active_epoch);
+        thr.wtid = 0;
         if (thr.trans_start_callback)
             thr.trans_start_callback();
         hash_base_ += tset_size_ + 1;
@@ -840,9 +846,18 @@ public:
 
     // transaction start
     tid_type read_tid() const {
-        if (!commit_tid_) {
+        if (!read_tid_) {
             TXP_INCREMENT(txp_rtid_atomic);
-            commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
+            read_tid_ = _RTID;
+        }
+        return read_tid_;
+    }
+
+    // transaction is now a read-write transaction
+    tid_type write_tid() const {
+        if (!commit_tid_) {
+            threadinfo_t& thr = tinfo[TThread::id()];
+            thr.wtid = commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
         }
         return commit_tid_;
     }
@@ -852,9 +867,7 @@ public:
 #if !CONSISTENCY_CHECK
         assert(state_ == s_committing_locked || state_ == s_committing);
 #endif
-        if (!commit_tid_)
-            commit_tid_ = fetch_and_add(&_TID, TransactionTid::increment_value);
-        return commit_tid_;
+        return write_tid();
     }
 
     inline tid_type compute_tictoc_commit_ts() const;
@@ -1130,6 +1143,10 @@ public:
 
     static TransactionTid::type read_tid() {
         return TThread::txn->read_tid();
+    }
+
+    static TransactionTid::type write_tid() {
+        return TThread::txn->write_tid();
     }
 
     static TransactionTid::type commit_tid() {

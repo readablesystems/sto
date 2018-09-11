@@ -16,7 +16,8 @@ Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epoch
 };
 __thread Transaction *TThread::txn = nullptr;
 std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callback;
-TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = 2 * TransactionTid::increment_value;
+TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = 3 * TransactionTid::increment_value;
+TransactionTid::type __attribute__((aligned(128))) Transaction::_RTID = Transaction::_TID - TransactionTid::increment_value;
    // reserve TransactionTid::increment_value for prepopulated
 
 static void __attribute__((used)) check_static_assertions() {
@@ -59,15 +60,7 @@ void* Transaction::epoch_advancer(void*) {
     // don't bother epoch'ing til things have picked up
     usleep(100000);
     while (global_epochs.run) {
-        epoch_type g = global_epochs.global_epoch;
-        epoch_type e = g;
-        for (auto& t : tinfo) {
-            if (t.epoch != 0 && signed_epoch_type(t.epoch - e) < 0)
-                e = t.epoch;
-        }
-        global_epochs.global_epoch = std::max(g + 1, epoch_type(1));
-        global_epochs.active_epoch = e;
-        global_epochs.recent_tid = Transaction::_TID;
+        epoch_advance_once();
 
         if (epoch_advance_callback)
             epoch_advance_callback(global_epochs.global_epoch);
@@ -76,6 +69,22 @@ void* Transaction::epoch_advancer(void*) {
     }
     fetch_and_add(&num_epoch_advancers, -1);
     return NULL;
+}
+
+void Transaction::epoch_advance_once() {
+    epoch_type g = global_epochs.global_epoch;
+    epoch_type e = g;
+    tid_type min_wtid = _TID;
+    for (auto& t : tinfo) {
+        if (t.epoch != 0 && signed_epoch_type(t.epoch - e) < 0)
+            e = t.epoch;
+        if (t.wtid != 0 && t.wtid < min_wtid)
+            min_wtid = t.wtid;
+    }
+    global_epochs.global_epoch = std::max(g + 1, epoch_type(1));
+    global_epochs.active_epoch = e;
+    global_epochs.recent_tid = _TID;
+    _RTID = min_wtid > 0 ? min_wtid - 1 : 0;
 }
 
 bool Transaction::preceding_duplicate_read(TransItem* needle) const {
@@ -236,6 +245,7 @@ unlock_all:
     threadinfo_t& thr = tinfo[TThread::id()];
     if (thr.trans_end_callback)
         thr.trans_end_callback();
+    thr.wtid = 0;
     // XXX should reset trans_end_callback after calling it...
     state_ = s_aborted + committed;
     restarted = true;

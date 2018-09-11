@@ -21,15 +21,23 @@ public:
     typedef const T& read_type;
     typedef TransactionTid::type type;
 
-    MvObject() :
-        h_(new history_type(0, T())) {}
-    explicit MvObject(const T& value) :
-        h_(new history_type(0, new T(value))) {}
-    explicit MvObject(T&& value) :
-        h_(new history_type(0, new T(std::move(value)))) {}
+    MvObject()
+            : h_(new history_type(this)) {
+        h_->status_commit();
+    }
+    explicit MvObject(const T& value)
+            : h_(new history_type(0, this, new T(value))) {
+        h_->status_commit();
+    }
+    explicit MvObject(T&& value)
+            : h_(new history_type(0, this, new T(std::move(value)))) {
+        h_->status_commit();
+    }
     template <typename... Args>
-    explicit MvObject(Args&&... args) :
-        h_(new history_type(0, new T(std::forward<Args>(args)...))) {}
+    explicit MvObject(Args&&... args)
+            : h_(new history_type(0, this, new T(std::forward<Args>(args)...))) {
+        h_->status_commit();
+    }
 
     ~MvObject() {
         while (h_) {
@@ -67,7 +75,8 @@ public:
         }
 
         // Version consistency check
-        if (find(tid) != h) {
+        if (find(tid, false) != h) {
+            h->status_abort();
             return false;
         }
 
@@ -105,23 +114,30 @@ public:
 
         // Version consistency verification
         if (h->prev()->rtid() > tid) {
+            h->status_abort();
             return false;
         }
 
         return true;
     }
 
-private:
-    // Finds the current visible version, based on tid
-    history_type* find(const type tid) const {
+protected:
+    // Finds the current visible version, based on tid; by default, waits on
+    // pending versions, but if toggled off, will simply return first version,
+    // regardless of status
+    history_type* find(const type tid, const bool wait=true) const {
         history_type *h = h_;
         /* TODO: use something smarter than a linear scan */
         while (h) {
-            while (h->status_is(MvStatus::PENDING)) {
-                wait();
-            }
-            if (h->wtid() <= tid && h->status_is(MvStatus::COMMITTED)) {
-                break;
+            if (wait) {
+                wait_if_pending(h);
+                if (h->wtid() <= tid && h->status_is(MvStatus::COMMITTED)) {
+                    break;
+                }
+            } else {
+                if (h->wtid() <= tid) {
+                    break;
+                }
             }
             h = h->prev();
         }
@@ -130,8 +146,10 @@ private:
     }
 
     // Spin-wait on interested item
-    void wait() const {
-        // TODO: implement wait
+    void wait_if_pending(const history_type *h) const {
+        while (h->status_is(MvStatus::PENDING)) {
+            // TODO: implement a backoff or something
+        }
     }
 
     history_type *h_;
@@ -236,12 +254,21 @@ template <typename T>
 class MvHistory<T, true /* trivial */> : public MvHistoryBase {
 public:
     typedef MvHistory<T, true> history_type;
+    typedef MvObject<T> object_type;
 
-    MvHistory() : MvHistory(0, T()) {}
-    explicit MvHistory(type ntid, T nv, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), v_(nv), vp_(&v_) {}
-    explicit MvHistory(type ntid, T *nvp, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), v_(*nvp), vp_(&v_) {}
+    MvHistory() = delete;
+    explicit MvHistory(object_type *obj) : MvHistory(0, obj, T()) {}
+    explicit MvHistory(
+            type ntid, object_type *obj, T nv,history_type *nprev = nullptr)
+            : MvHistoryBase(ntid, nprev), obj_(obj), v_(nv), vp_(&v_) {}
+    explicit MvHistory(
+            type ntid, object_type *obj, T *nvp, history_type *nprev = nullptr)
+            : MvHistoryBase(ntid, nprev), obj_(obj), v_(*nvp), vp_(&v_) {}
+
+    // Retrieve the object for which this history element is intended
+    object_type* object() const {
+        return obj_;
+    }
 
     const T& v() const {
         return v_;
@@ -264,6 +291,7 @@ public:
     }
 
 private:
+    object_type *obj_;  // Parent object
     T v_;
     T *vp_;
 };
@@ -272,12 +300,21 @@ template <typename T>
 class MvHistory<T, false /* !trivial */> : public MvHistoryBase {
 public:
     typedef MvHistory<T, false> history_type;
+    typedef MvObject<T> object_type;
 
-    MvHistory() : MvHistory(0, nullptr) {}
-    explicit MvHistory(type ntid, T& nv, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), vp_(&nv) {}
-    explicit MvHistory(type ntid, T *nvp, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), vp_(nvp) {}
+    MvHistory() = delete;
+    explicit MvHistory(object_type *obj) : MvHistory(0, obj, nullptr) {}
+    explicit MvHistory(
+            type ntid, object_type *obj, T& nv, history_type *nprev = nullptr)
+            : MvHistoryBase(ntid, nprev), obj_(obj), vp_(&nv) {}
+    explicit MvHistory(
+            type ntid, object_type *obj, T *nvp, history_type *nprev = nullptr)
+            : MvHistoryBase(ntid, nprev), obj_(obj), vp_(nvp) {}
+
+    // Retrieve the object for which this history element is intended
+    object_type* object() const {
+        return obj_;
+    }
 
     const T& v() const {
         return *vp_;
@@ -300,5 +337,6 @@ public:
     }
 
 private:
+    object_type *obj_;  // Parent object
     T *vp_;
 };

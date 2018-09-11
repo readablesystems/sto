@@ -18,6 +18,8 @@ void testSimpleInt() {
         f = 100;
     }
 
+    Transaction::epoch_advance_once();
+
 	{
         TransactionGuard t2;
         int f_read = f;
@@ -34,6 +36,8 @@ void testSimpleString() {
         TransactionGuard t;
         f = "100";
     }
+
+    Transaction::epoch_advance_once();
 
 	{
         TransactionGuard t2;
@@ -61,6 +65,8 @@ void testConcurrentInt() {
         assert(t1.try_commit());
     }
 
+    Transaction::epoch_advance_once();
+
     {
         TestTransaction t1(1);
         ib = 1;
@@ -73,6 +79,7 @@ void testConcurrentInt() {
         assert(ib.nontrans_read() == 1);
     }
 
+    Transaction::epoch_advance_once();
     ib.nontrans_write(2);
 
     {
