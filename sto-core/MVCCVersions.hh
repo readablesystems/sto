@@ -23,9 +23,9 @@ public:
         if (TransactionTid::is_locked(v_) && !item.has_write())
             return false;
         fence();
-        history_type *h = item.read_value<history_type*>();
-        object_type *obj = h->object();
-        return obj->cp_check(Sto::commit_tid(), h);
+        history_type *hprev = item.read_value<history_type*>();
+        object_type *obj = item.mvcc_object<object_type>();
+        return obj->cp_check(Sto::commit_tid(), hprev);
     }
 
     inline bool acquire_write_impl(TransItem& item);
@@ -34,19 +34,35 @@ public:
     template <typename... Args>
     inline bool acquire_write_impl(TransItem& item, Args&&... args);
 
+    static inline type& cp_access_tid_impl(Transaction& txn);
+    inline type cp_commit_tid_impl(Transaction& txn);
+    bool cp_try_lock_impl(TransItem& item, int threadid) {
+        object_type *obj = item.mvcc_object<object_type>();
+        history_type *hprev = nullptr;
+        if (item.has_read()) {
+            hprev = item.read_value<history_type*>();
+        } else {
+            hprev = MvObjectProxy<T>::current_record(obj);
+        }
+        if (Sto::commit_tid() < hprev->rtid()) {
+            return false;
+        }
+        history_type *h = new history_type(
+            Sto::commit_tid(), obj, item.write_value<T>(), hprev);
+        return obj->cp_lock(Sto::commit_tid(), h);
+    }
+
     inline bool observe_read_impl(TransItem& item, const history_type *h);
 
     inline type snapshot(const TransItem& item, const Transaction& txn);
     inline type snapshot(TransProxy& item);
 
-    static inline type& cp_access_tid_impl(Transaction& txn);
-    inline type cp_commit_tid_impl(Transaction& txn);
 private:
     using BV = BasicVersion<TMvVersion<T>>;
     using BV::v_;
     using BV::check_version;
 
-    typedef std::pair<object_type*, history_type*> rv_type;
-    typedef std::pair<const object_type*, const history_type*> const_rv_type;
+//    typedef std::pair<object_type*, history_type*> rv_type;
+//    typedef std::pair<const object_type*, const history_type*> const_rv_type;
 };
 

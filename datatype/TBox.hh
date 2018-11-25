@@ -16,7 +16,7 @@ public:
     }
 
     std::pair<bool, read_type> read_nothrow() const {
-        auto item = Sto::item(this, 0);
+        auto item = Sto::item(this, 0, (void*)&v_);
         if (item.has_write())
             return {true, item.template write_value<T>()};
         else
@@ -32,14 +32,14 @@ public:
     }
 
     void write(const T& x) {
-        Sto::item(this, 0).acquire_write(vers_, x);
+        Sto::item(this, 0, &v_).acquire_write(vers_, x);
     }
     void write(T&& x) {
-        Sto::item(this, 0).acquire_write(vers_, std::move(x));
+        Sto::item(this, 0, &v_).acquire_write(vers_, std::move(x));
     }
     template <typename... Args>
     void write(Args&&... args) {
-        Sto::item(this, 0).template acquire_write<T>(vers_, std::forward<Args>(args)...);
+        Sto::item(this, 0, &v_).template acquire_write<T>(vers_, std::forward<Args>(args)...);
     }
 
     operator read_type() const {

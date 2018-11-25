@@ -74,9 +74,9 @@ void testConcurrentInt() {
         TestTransaction t2(2);
         ib = 2;
         assert(t2.try_commit());
-        assert(t1.try_commit());
+        assert(!t1.try_commit());
 
-        assert(ib.nontrans_read() == 1);
+        assert(ib.nontrans_read() == 2);
     }
 
     Transaction::epoch_advance_once();
@@ -123,6 +123,8 @@ void testOpacity1() {
         assert(t1.try_commit());
     }
 
+    Transaction::epoch_advance_once();
+
     {
         TransactionGuard t2;
         int v = f;
@@ -154,10 +156,11 @@ void testMvReads() {
         assert(t1.try_commit());
     }
 
+    Transaction::epoch_advance_once();
     f.nontrans_write(1);
     g.nontrans_write(0);
 
-    // Later reads invalidate earlier writes
+    // Later reads also don't validate earlier writes
     {
         TestTransaction t1(1);
         g = g + f;
@@ -167,12 +170,13 @@ void testMvReads() {
         assert(x == 1);
 
         t1.use();
-        assert(!t1.try_commit());
+        assert(t1.try_commit());
 
         t2.use();
         assert(t2.try_commit());
     }
 
+    Transaction::epoch_advance_once();
     f.nontrans_write(1);
     g.nontrans_write(2);
 
@@ -196,6 +200,7 @@ void testMvReads() {
         assert(t1.try_commit());
     }
 
+    Transaction::epoch_advance_once();
     f.nontrans_write(0);
     g.nontrans_write(1);
 

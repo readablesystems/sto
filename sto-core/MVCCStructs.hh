@@ -1,5 +1,11 @@
 #pragma once
 
+template <typename T>
+class TMvVersion;
+
+template <typename T>
+class MvObjectProxy;
+
 // History list item for MVCC
 template <typename T, bool Trivial = std::is_trivially_copyable<T>::value> class MvHistory;
 
@@ -104,11 +110,13 @@ public:
 
         // Can only install onto the latest-visible version
         if (h->prev() != h_) {
+            h->status_abort();
             return false;
         }
 
         // Attempt to CAS onto the head of the version list
         if (!::bool_cmpxchg(&h_, h->prev(), h)) {
+            h->status_abort();
             return false;
         }
 
@@ -135,7 +143,7 @@ protected:
                     break;
                 }
             } else {
-                if (h->wtid() <= tid) {
+                if (h->wtid() <= tid && h->status_is(MvStatus::COMMITTED)) {
                     break;
                 }
             }
@@ -153,6 +161,26 @@ protected:
     }
 
     history_type *h_;
+
+    friend class MvObjectProxy<T>;
+};
+
+// Proxy class for accessing certain nonpublic functionalities of MvObject
+template <typename T>
+class MvObjectProxy {
+private:
+    typedef MvObject<T> object_type;
+    typedef typename object_type::history_type history_type;
+
+    static history_type* current_record(object_type *obj) {
+        history_type *h = obj->h_;
+        while (!h->status_is(MvStatus::COMMITTED)) {
+            h = h->prev();
+        }
+        return h;
+    }
+
+    friend class TMvVersion<T>;
 };
 
 class MvHistoryBase {

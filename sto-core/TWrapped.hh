@@ -840,16 +840,10 @@ public:
         return result;
     }
 
-    void write(const T& v) {
-        history_type *h = new history_type(Sto::commit_tid(), this, v, h_);
-        cp_lock(Sto::commit_tid(), h);
-        cp_check(Sto::commit_tid(), h);
+    void write(const T&) {
         cp_install();
     }
-    void write(T&& v) {
-        history_type *h = new history_type(Sto::commit_tid(), this, v, h_);
-        cp_lock(Sto::commit_tid(), h);
-        cp_check(Sto::commit_tid(), h);
+    void write(T&&) {
         cp_install();
     }
 
@@ -875,7 +869,7 @@ public:
     explicit TMvWrapped(Args&&... args) : MvObject<T>(std::forward<Args>(args)...) {}
 
     // These are dangerous because they actually change the latest version's
-    // value
+    // value in a non-transactional way
     const T& access() const {
         return *h_->vp();
     }
@@ -900,16 +894,10 @@ public:
     }
 
     // Assume mutually-exclusive writes of monotonically-increasing commit tids
-    void write(const T& v) {
-        history_type *h = new history_type(Sto::commit_tid(), this, v, h_);
-        cp_lock(Sto::commit_tid(), h);
-        cp_check(Sto::commit_tid(), h);
+    void write(const T&) {
         cp_install();
     }
-    void write(T&& v) {
-        history_type *h = new history_type(Sto::commit_tid(), this, v, h_);
-        cp_lock(Sto::commit_tid(), h);
-        cp_check(Sto::commit_tid(), h);
+    void write(T&&) {
         cp_install();
     }
 
