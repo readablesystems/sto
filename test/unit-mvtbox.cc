@@ -220,12 +220,74 @@ void testMvReads() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testMvWrites() {
+    TBox<int, TMvWrapped<int>> f, g;
+    f.nontrans_write(1);
+    g.nontrans_write(-1);
 
+    // Writes to different variables should not affect each other
+    {
+        TestTransaction t1(1);
+        f = 0;
+
+        TestTransaction t2(2);
+        g = 0;
+
+        t1.use();
+        assert(t1.try_commit());
+
+        t2.use();
+        assert(t2.try_commit());
+    }
+
+    Transaction::epoch_advance_once();
+    f.nontrans_write(1);
+    g.nontrans_write(0);
+
+    // Later reads in RW-transactions should invalidate concurrent writes
+    {
+        TestTransaction t1(1);
+        f = 0;
+
+        TestTransaction t2(2);
+        g = f;
+
+        t2.use();
+        assert(t2.try_commit());
+
+        t1.use();
+        assert(!t1.try_commit());
+    }
+
+    Transaction::epoch_advance_once();
+    f.nontrans_write(1);
+    g.nontrans_write(0);
+
+    // Earlier reads in RW-transactions should not invalidate concurrent writes
+    {
+        TestTransaction t1(1);
+        f = g;
+
+        TestTransaction t2(2);
+        g = 1;
+
+        t1.use();
+        assert(t1.try_commit());
+
+        t2.use();
+        assert(t2.try_commit());
+    }
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
+ 
 int main() {
     testSimpleInt();
     testSimpleString();
     testConcurrentInt();
     testOpacity1();
     testMvReads();
+    testMvWrites();
     return 0;
 }
