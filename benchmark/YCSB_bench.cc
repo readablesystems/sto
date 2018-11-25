@@ -32,7 +32,7 @@ void print_usage(const char *prog_name) {
 
 template <typename DBParams>
 void ycsb_prepopulation_thread(int thread_id, ycsb_db<DBParams>& db, uint64_t key_begin, uint64_t key_end) {
-    //set_affinity(thread_id);
+    set_affinity(thread_id);
     ycsb_input_generator<DBParams> ig(thread_id);
     db.table_thread_init();
     for (uint64_t i = key_begin; i < key_end; ++i) {
@@ -68,7 +68,7 @@ public:
         db.table_thread_init();
 
         ::TThread::set_id(runner.id());
-        //set_affinity(runner.id());
+        set_affinity(runner.id());
 
         uint64_t tsc_diff = (uint64_t)(time_limit * constants::processor_tsc_frequency * constants::billion);
         auto start_t = prof.start_timestamp();
@@ -198,7 +198,6 @@ public:
         prof.start(profiler_mode);
         auto num_trans = run_benchmark(db, prof, runners, time_limit);
         prof.finish(num_trans);
-        std::cout << "rtid increments: " << TXP_INSPECT(txp_rtid_atomic) << std::endl;
 
         return 0;
     }
@@ -266,9 +265,11 @@ int main(int argc, const char *const *argv) {
     case db_params_id::TicToc:
         ret_code = ycsb_access<db_tictoc_params>::execute(argc, argv);
         break;
+#if !MVCC_DISABLED
     case db_params_id::MVCC:
         ret_code = ycsb_access<db_mvcc_params>::execute(argc, argv);
         break;
+#endif
     default:
         std::cerr << "unknown db config parameter id" << std::endl;
         ret_code = 1;

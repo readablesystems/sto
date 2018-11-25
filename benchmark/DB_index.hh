@@ -66,9 +66,9 @@ public:
         return item.acquire_write(vers, val);
     }
     template <typename TT, typename T>
-    static bool select_for_overwrite(TransProxy& item, TMvVersion<TT>& vers, const T& val, MvHistory<TT> *history) {
-        if (!item.observe(vers, history))
-            return false;
+    static bool select_for_overwrite(TransProxy& item, TMvVersion<TT>& vers, const T& val, MvObject<TT> *obj) {
+        //if (!item.observe(vers, history))
+        //    return false;
         item.add_write(val);
         return true;
     }

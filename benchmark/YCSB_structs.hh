@@ -151,8 +151,9 @@ public:
     static constexpr size_t col_width = 10;
     static constexpr size_t num_cols = 10;
     typedef fix_string<col_width> col_type;
-    typedef MvHistory<col_type*> history_type;
-    typedef typename get_version<DBParams, col_type*>::type version_type;
+    typedef MvObject<col_type> object_type;
+    typedef typename object_type::history_type history_type;
+    typedef typename get_version<DBParams, col_type>::type version_type;
 
     ycsb_value() : cols(), v0(Sto::initialized_tid(), false)
 #if TABLE_FINE_GRAINED
@@ -160,15 +161,17 @@ public:
 #endif
     {
         for (size_t i = 0; i < num_cols; i++) {
-            cols[i] = new history_type(0, new col_type());
+            cols[i] = new object_type(col_type());
         }
     }
 
     col_type& col_access(int col_n) {
-        return *cols[col_n]->v();
+        // TODO: this should not be 0
+        return cols[col_n]->access(0);
     }
     const col_type& col_access(int col_n) const {
-        return *cols[col_n]->v();
+        // TODO: this should not be 0
+        return cols[col_n]->access(0);
     }
 
     // return: success
@@ -190,16 +193,17 @@ public:
     // return: success, column
     std::pair<bool, const col_type *> trans_col_read(int col_n) {
         always_assert((size_t)col_n < num_cols, "column index out of bound");
+        // TODO: fix observe()
 #if TABLE_FINE_GRAINED
         auto item = Sto::item(this, col_n);
-        if (!item.observe((col_n % 2 == 0) ? v0 : v1, cols[col_n]))
-            return {false, nullptr};
+        //if (!item.observe((col_n % 2 == 0) ? v0 : v1, cols[col_n]))
+        //    return {false, nullptr};
 #else
         auto item = Sto::item(this, col_n);
-        if (!item.observe(v0, cols[col_n]))
-            return {false, nullptr};
+        //if (!item.observe(v0, cols[col_n]))
+        //    return {false, nullptr};
 #endif
-        return {true, item.template read_value<history_type*>()->v()};
+        return {true, item.template read_value<history_type*>()->vp()};
     }
 
     // TObject interface methods
@@ -227,7 +231,7 @@ public:
 #else
         version_type& v = v0;
 #endif
-        cols[item.key<int>()] = item.write_value<history_type*>();
+        cols[item.key<int>()]->cp_install();
         txn.set_version_unlock(v, item);
     }
 
@@ -241,7 +245,7 @@ public:
     }
 
 private:
-    history_type *cols[num_cols];
+    object_type *cols[num_cols];
     version_type v0;
 #if TABLE_FINE_GRAINED
     version_type v1;
