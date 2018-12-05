@@ -95,6 +95,11 @@ UNIT_PROGRAMS = unit-tarray \
                 unit-tintpredicate \
 				unit-tcounter \
 				unit-tbox \
+				unit-tint \
+				unit-tart \
+				unit-artindex \
+				bench-tart \
+				tart-bank \
 				unit-tgeneric \
 				unit-rcu \
 				unit-tvector \
@@ -105,6 +110,7 @@ UNIT_PROGRAMS = unit-tarray \
 				unit-swisstarray \
 				unit-swisstgeneric \
 				unit-masstree \
+				bench-masstree \
                 unit-dboindex
 
 ACT_UNIT_PROGRAMS = unit-tarray \
@@ -112,6 +118,11 @@ ACT_UNIT_PROGRAMS = unit-tarray \
                     unit-tintpredicate \
                     unit-tcounter \
                     unit-tbox \
+                    unit-tint \
+                    unit-tart \
+					unit-artindex \
+                    bench-tart \
+					tart-bank \
                     unit-rcu \
                     unit-tvector \
                     unit-tvector-nopred \
@@ -120,6 +131,7 @@ ACT_UNIT_PROGRAMS = unit-tarray \
                     unit-swisstarray \
                     unit-swisstgeneric \
                     unit-masstree \
+					bench-masstree \
 					unit-dboindex
 
 PROGRAMS = concurrent \
@@ -155,6 +167,9 @@ check: act-unit
 %.o: %.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
 
+$(OBJ)/%.o: ART/%.cpp config.h $(DEPSDIR)/stamp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+
 $(OBJ)/%.o: lib/%.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
 
@@ -178,7 +193,9 @@ MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 	$(MASSTREEDIR)/checkpoint.o \
 	$(MASSTREEDIR)/string_slice.o
 
-STO_OBJS = $(OBJ)/Packer.o $(OBJ)/Transaction.o $(OBJ)/TRcu.o $(OBJ)/clp.o $(OBJ)/ContentionManager.o $(LIBOBJS)
+ART_OBJS = $(OBJ)/Tree.o
+
+STO_OBJS = $(OBJ)/Packer.o $(OBJ)/Transaction.o $(OBJ)/TRcu.o $(OBJ)/clp.o $(OBJ)/ContentionManager.o $(LIBOBJS) $(ART_OBJS)
 INDEX_OBJS = $(STO_OBJS) $(MASSTREE_OBJS) $(OBJ)/DB_index.o
 STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
 INDEX_DEPS = $(INDEX_OBJS) $(MASSTREEDIR)/libjson.a
@@ -213,6 +230,21 @@ unit-tcounter: $(OBJ)/unit-tcounter.o $(STO_DEPS)
 unit-tbox: $(OBJ)/unit-tbox.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
+unit-tint: $(OBJ)/unit-tint.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-tart: $(OBJ)/unit-tart.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-artindex: $(OBJ)/unit-artindex.o $(INDEX_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
+
+bench-tart: $(OBJ)/bench-tart.o $(INDEX_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
+
+tart-bank: $(OBJ)/tart-bank.o $(INDEX_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(LDFLAGS) $(LIBS)
+
 unit-tgeneric: $(OBJ)/unit-tgeneric.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
@@ -238,6 +270,9 @@ unit-swisstgeneric: $(OBJ)/unit-swisstgeneric.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-masstree: $(OBJ)/unit-masstree.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_DEPS) $(LDFLAGS) $(LIBS)
+
+bench-masstree: $(OBJ)/bench-masstree.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_DEPS) $(LDFLAGS) $(LIBS)
 
 unit-dboindex: $(OBJ)/unit-dboindex.o $(INDEX_DEPS)
@@ -292,6 +327,9 @@ wiki_bench: $(OBJ)/Wikipedia_bench.o $(OBJ)/Wikipedia_data.o $(INDEX_OBJS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 voter_bench: $(OBJ)/Voter_bench.o $(OBJ)/Voter_data.o $(INDEX_OBJS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
+tart_bench: $(OBJ)/TART_bench.o $(INDEX_OBJS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;

@@ -30,7 +30,7 @@ inline db_params_id parse_dbid(const char *id_string) {
 class db_default_params {
 public:
     static constexpr db_params_id Id = db_params_id::Default;
-    static constexpr bool RdMyWr = false;
+    static constexpr bool RdMyWr = true;
     static constexpr bool TwoPhaseLock = false;
     static constexpr bool Adaptive = false;
     static constexpr bool Opaque = false;

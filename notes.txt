@@ -1,0 +1,8 @@
+things to do:
+
+version number on each node
+install must change per node version number
+only change big version in unlock if new node was created
+
+change lookup to return node as well as value
+read must observe version in node

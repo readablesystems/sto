@@ -34,6 +34,12 @@
 /pqVsIt
 /ex-counter
 /unit-rcu
+/unit-dboindex
+/unit-tint
+/unit-tart
+/bench-tart
+/bench-masstree
+/tart_bench
 /unit-tarray
 /unit-tbox
 /unit-tgeneric
@@ -47,7 +53,7 @@
 /unit-sampling
 /unit-tflexarray
 /tpcc_bench
-/ycsb_bench
+/*ycsb_bench
 /micro_bench
 /wiki_bench
 /voter_bench
@@ -60,3 +66,6 @@
 **/.idea/workspace.xml
 **/.idea/tasks.xml
 **/cmake-build-*
+/tart-bank
+/art_micro_bench
+/unit-artindex
