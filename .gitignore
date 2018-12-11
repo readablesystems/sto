@@ -57,6 +57,8 @@
 /perf.data
 /perf.data.old
 /perf.txt
+/ctags
+/cscope.out
 .ycm_*
 **/.idea/workspace.xml
 **/.idea/tasks.xml

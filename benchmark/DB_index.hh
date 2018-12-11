@@ -15,26 +15,14 @@
 
 #include <vector>
 #include "VersionSelector.hh"
-#include "MVCCVersions.hh"
 
 namespace bench {
-
-//template <typename K, typename V, typename DBParams, bool MVCC = DBParams::MVCC
-template <typename K, typename V, typename DBParams, bool MVCC = false
-          > class unordered_index;
 
 class version_adapter {
 public:
     template <bool Adaptive>
     static bool select_for_update(TransProxy& item, TLockVersion<Adaptive>& vers) {
         return item.acquire_write(vers);
-    }
-    template <typename T>
-    static bool select_for_update(TransProxy& item, TMvVersion<T>& vers) {
-        if (!item.observe(vers))
-            return false;
-        item.add_write();
-        return true;
     }
     static bool select_for_update(TransProxy& item, TVersion& vers) {
         if (!item.observe(vers))
@@ -65,13 +53,6 @@ public:
     static bool select_for_overwrite(TransProxy& item, TLockVersion<Adaptive>& vers, const T& val) {
         return item.acquire_write(vers, val);
     }
-    template <typename TT, typename T>
-    static bool select_for_overwrite(TransProxy& item, TMvVersion<TT>& vers, const T& val, MvObject<TT> *obj) {
-        //if (!item.observe(vers, history))
-        //    return false;
-        item.add_write(val);
-        return true;
-    }
     template <typename T>
     static bool select_for_overwrite(TransProxy& item, TVersion& vers, const T& val) {
         (void)vers;
@@ -94,21 +75,18 @@ public:
     }
 };
 
-template <typename DBParams, typename T>
+template <typename DBParams>
 struct get_occ_version {
-    typedef typename std::conditional<DBParams::MVCC, TMvVersion<T>,
-            typename std::conditional<DBParams::Opaque, TVersion, TNonopaqueVersion>::type
-            >::type
-            type;
+    typedef typename std::conditional<DBParams::Opaque, TVersion, TNonopaqueVersion>::type type;
 };
 
-template <typename DBParams, typename T>
+template <typename DBParams>
 struct get_version {
     typedef typename std::conditional<DBParams::TicToc, TicTocVersion<>,
             typename std::conditional<DBParams::Adaptive, TLockVersion<true /* adaptive */>,
             typename std::conditional<DBParams::TwoPhaseLock, TLockVersion<false>,
             typename std::conditional<DBParams::Swiss, TSwissVersion<DBParams::Opaque>,
-            typename get_occ_version<DBParams, T>::type>::type>::type>::type>::type type;
+            typename get_occ_version<DBParams>::type>::type>::type>::type>::type type;
 };
 
 template <typename DBParams>
@@ -162,13 +140,13 @@ private:
 
 // unordered index implemented as hashtable
 template <typename K, typename V, typename DBParams>
-class unordered_index<K, V, DBParams, false /* MVCC */> : public TObject {
+class unordered_index : public TObject {
 public:
     typedef K key_type;
     typedef V value_type;
 
-    typedef typename get_occ_version<DBParams, V>::type bucket_version_type;
-    typedef typename get_version<DBParams, V>::type version_type;
+    typedef typename get_occ_version<DBParams>::type bucket_version_type;
+    typedef typename get_version<DBParams>::type version_type;
 
     typedef std::hash<K> Hash;
     typedef std::equal_to<K> Pred;
@@ -585,454 +563,6 @@ private:
     }
 };
 
-#if 0
-// MVCC unordered index implemented as MVCC hashtable
-template <typename K, typename V, typename DBParams>
-class unordered_index<K, V, DBParams, true /* MVCC */> : public TObject {
-public:
-    typedef K key_type;
-    typedef V value_type;
-
-    typedef typename get_occ_version<DBParams, V>::type bucket_version_type;
-    typedef typename get_version<DBParams, V>::type version_type;
-
-    typedef std::hash<K> Hash;
-    typedef std::equal_to<K> Pred;
-    
-    static constexpr typename version_type::type invalid_bit = TransactionTid::user_bit;
-
-    static constexpr bool index_read_my_write = DBParams::RdMyWr;
-
-private:
-    struct history_elem {
-        history_elem() {
-            exists = false;
-        }
-
-        history_elem(const value_type& val) {
-            value = val;
-            exists = true;
-        }
-
-        value_type value;
-        bool exists;  // false iff key is deleted or just doesn't exist
-    };
-
-    typedef MvHistory<history_elem> history_type;
-
-    // our hashtable is an array of linked lists. 
-    // an internal_elem is the node type for these linked lists
-    struct internal_elem {
-        internal_elem *next;
-        key_type key;
-        version_type version;
-        history_type *history;
-
-        internal_elem(const key_type& k, const value_type& val, bool mark_valid)
-            : next(nullptr), key(k),
-              version(Sto::initialized_tid() | (mark_valid ? 0 : invalid_bit), !mark_valid),
-              history(new history_type(
-                    Sto::initialized_tid(), mark_valid ? new history_elem(val) : new history_elem())) {}
-
-        bool valid() const {
-            return !(version.value() & invalid_bit);
-        }
-
-        history_type* read_at(typename history_type::type tid) const {
-            return history->read_at(tid);
-        }
-    };
-
-    struct bucket_entry {
-        internal_elem *head;
-        // this is the bucket version number, which is incremented on insert
-        // we use it to make sure that an unsuccessful key lookup will still be
-        // unsuccessful at commit time (because this will always be true if no
-        // new inserts have occurred in this bucket)
-        bucket_version_type version;
-        bucket_entry() : head(nullptr), version(0) {}
-    };
-
-    typedef std::vector<bucket_entry> MapType;
-    // this is the hashtable itself, an array of bucket_entry's
-    MapType map_;
-    Hash hasher_;
-    Pred pred_;
-
-    uint64_t key_gen_;
-
-    // used to mark whether a key is a bucket (for bucket version checks)
-    // or a pointer (which will always have the lower 3 bits as 0)
-    static constexpr uintptr_t bucket_bit = 1U<<0;
-
-    static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
-    static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit<<1;
-
-public:
-    typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
-    typedef std::tuple<bool, bool>                               ins_return_type;
-    typedef std::tuple<bool, bool>                               del_return_type;
-
-    unordered_index(size_t size, Hash h = Hash(), Pred p = Pred()) :
-            map_(), hasher_(h), pred_(p), key_gen_(0) {
-        map_.resize(size);
-    }
-
-    inline size_t hash(const key_type& k) const {
-        return hasher_(k);
-    }
-    inline size_t nbuckets() const {
-        return map_.size();
-    }
-    inline size_t find_bucket_idx(const key_type& k) const {
-        return hash(k) % nbuckets();
-    }
-
-    uint64_t gen_key() {
-        return fetch_and_add(&key_gen_, 1);
-    }
-
-    // returns (success : bool, found : bool, row_ptr : const internal_elem *)
-    // will need to row back transaction if success == false
-    sel_return_type
-    select_row(const key_type& k, bool for_update = false) {
-        bucket_entry& buck = map_[find_bucket_idx(k)];
-        bucket_version_type buck_vers = buck.version;
-        fence();
-        internal_elem *e = find_in_bucket(buck, k);
-
-        if (e) {
-            // if found, return pointer to the row
-            auto item = Sto::item(this, e);
-            if (is_phantom(e, item))
-                goto abort;
-
-            if (index_read_my_write) {
-                if (has_delete(item))
-                    return sel_return_type(true, false, 0, nullptr);
-                if (item.has_write())
-                    return sel_return_type(true, true, reinterpret_cast<uintptr_t>(e), item.template write_value<value_type*>());
-            }
-
-            if (for_update) {
-                if (!version_adapter::select_for_update(item, e->version))
-                    goto abort;
-            } else {
-                if (!item.observe(e->version))
-                    goto abort;
-            }
-
-            auto h = e->history->read_at(Sto::read_tid());
-            return sel_return_type(true, true, reinterpret_cast<uintptr_t>(e), &h->v().value);
-        } else {
-            // if not found, observe bucket version
-            bool ok = Sto::item(this, make_bucket_key(buck)).observe(buck_vers);
-            if (!ok)
-                goto abort;
-            return sel_return_type(true, false, 0, nullptr);
-        }
-
-    abort:
-        return sel_return_type(false, false, 0, nullptr);
-    }
-
-    // this method is only to be used after calling select_row() with for_update set to true
-    // otherwise behavior is undefined
-    // update_row() takes ownership of the row pointer (new_row) passed in, and the row to be updated (table_row)
-    // should never be modified by the transaction user
-    // the new_row pointer stays valid for the rest of the duration of the transaction and the associated
-    // temporary row WILL NOT be deallocated until commit/abort time
-    void update_row(uintptr_t rid, value_type *new_row) {
-        auto item = Sto::item(this, reinterpret_cast<internal_elem *>(rid));
-        assert(item.has_write() && !has_insert(item));
-        item.add_write(new_row);
-    }
-
-    // returns (success : bool, found : bool)
-    // insert_row() takes ownership of the row pointer (vptr) passed in
-    // the pointer stays valid for the rest of the duration of the transaction and the associated temporary row
-    // WILL NOT be deallocated until commit/abort time
-    ins_return_type
-    insert_row(const key_type& k, value_type *vptr, bool overwrite = false) {
-        bucket_entry& buck = map_[find_bucket_idx(k)];
-
-        buck.version.lock_exclusive();
-        internal_elem *e = find_in_bucket(buck, k);
-
-        if (e) {
-            buck.version.unlock_exclusive();
-            auto item = Sto::item(this, e);
-            if (is_phantom(e, item))
-                goto abort;
-
-            if (index_read_my_write) {
-                if (has_delete(item)) {
-                    item.clear_flags(delete_bit).clear_write().template add_write<value_type *>(vptr);
-                    return ins_return_type(true, false);
-                }
-            }
-
-            // cope with concurrent deletion
-            //if (!item.observe(e->version))
-            //    goto abort;
-
-            if (overwrite) {
-                if (!version_adapter::select_for_overwrite(item, e->version, vptr))
-                    goto abort;
-                if (index_read_my_write) {
-                    if (has_insert(item)) {
-                        copy_row(e, vptr);
-                    }
-                }
-            } else {
-                if (!item.observe(e->version))
-                    goto abort;
-            }
-
-            return ins_return_type(true, true);
-        } else {
-            // insert the new row to the table and take note of bucket version changes
-            auto buck_vers_0 = bucket_version_type(buck.version.unlocked_value());
-            insert_in_bucket(buck, k, vptr, false);
-            internal_elem *new_head = buck.head;
-            auto buck_vers_1 = bucket_version_type(buck.version.unlocked_value());
-
-            buck.version.unlock_exclusive();
-
-            // update bucket version in the read set (if any) since it's changed by ourselves
-            auto bucket_item = Sto::item(this, make_bucket_key(buck));
-            if (bucket_item.has_read())
-                bucket_item.update_read(buck_vers_0, buck_vers_1);
-
-            auto item = Sto::item(this, new_head);
-            // XXX adding write is probably unnecessary, am I right?
-            item.template add_write<value_type *>(vptr);
-            item.add_flags(insert_bit);
-
-            return ins_return_type(true, false);
-        }
-
-    abort:
-        return ins_return_type(false, false);
-    }
-
-    // returns (success : bool, found : bool)
-    // for rows that are not inserted by this transaction, the actual delete doesn't take place
-    // until commit time
-    del_return_type
-    delete_row(const key_type& k) {
-        bucket_entry& buck = map_[find_bucket_idx(k)];
-        bucket_version_type buck_vers = buck.version;
-        fence();
-
-        internal_elem *e = find_in_bucket(buck, k);
-        if (e) {
-            auto item = Sto::item(this, e);
-            bool valid = e->valid();
-            if (is_phantom(e, item))
-                goto abort;
-            if (index_read_my_write) {
-                if (!valid && has_insert(item)) {
-                    // deleting something we inserted
-                    _remove(e);
-                    item.remove_read().remove_write().clear_flags(insert_bit | delete_bit);
-                    Sto::item(this, make_bucket_key(buck)).observe(buck_vers);
-                    return del_return_type(true, true);
-                }
-                assert(valid);
-                if (has_delete(item))
-                    return del_return_type(true, false);
-            }
-            // select_for_update() will automatically add an observation for OCC version types
-            // so that we can catch change in "deleted" status of a table row at commit time
-            if (!version_adapter::select_for_update(item, e->version))
-                goto abort;
-            fence();
-            // it vital that we check the "deleted" status after registering an observation
-            if (e->deleted)
-                goto abort;
-            item.add_flags(delete_bit);
-
-            return del_return_type(true, true);
-        } else {
-            // not found -- add observation of bucket version
-            bool ok = Sto::item(this, make_bucket_key(buck)).observe(buck_vers);
-            if (!ok)
-                goto abort;
-            return del_return_type(true, false);
-        }
-
-    abort:
-        return del_return_type(false, false);
-    }
-
-    // TObject interface methods
-    bool lock(TransItem& item, Transaction& txn) override {
-        assert(!is_bucket(item));
-        internal_elem *el = item.key<internal_elem *>();
-        return txn.try_lock(item, el->version);
-    }
-
-    bool check(TransItem& item, Transaction& txn) override {
-        if (is_bucket(item)) {
-            bucket_entry &buck = *bucket_address(item);
-            return buck.version.cp_check_version(txn, item);
-        } else {
-            internal_elem *el = item.key<internal_elem *>();
-            return el->version.cp_check_version(txn, item);
-        }
-    }
-
-    void install(TransItem& item, Transaction& txn) override {
-        assert(!is_bucket(item));
-        internal_elem *el = item.key<internal_elem*>();
-        if (has_delete(item)) {
-            el->history = new history_type(Sto::commit_tid(), new history_elem);
-            fence();
-            txn.set_version(el->version);
-            return;
-        }
-        if (!has_insert(item)) {
-            // update
-            auto vptr = item.write_value<value_type *>();
-            copy_row(el, vptr);
-        }
-
-        // hacks for upgrading version numbers from nonopaque to commit_tid
-        // (if transaction running in opaque mode) no longer required
-        // it's being done by Transaction::set_version_unlock
-        txn.set_version_unlock(el->version, item);
-    }
-
-    void unlock(TransItem& item) override {
-        assert(!is_bucket(item));
-        internal_elem *el = item.key<internal_elem *>();
-        el->version.cp_unlock(item);
-    }
-
-    void cleanup(TransItem& item, bool committed) override {
-        if (committed ? has_delete(item) : has_insert(item)) {
-            assert(!is_bucket(item));
-            // internal_elem *el = item.key<internal_elem *>();
-            // assert(!el->valid() || el->deleted);
-            // _remove(el);
-            item.clear_needs_unlock();
-        }
-    }
-
-    // non-transactional methods
-    value_type* nontrans_get(const key_type& k) {
-        bucket_entry& buck = map_[find_bucket_idx(k)];
-        internal_elem *el = find_in_bucket(buck, k);
-        if (el == nullptr)
-            return nullptr;
-        return &el->history->v().value;
-    }
-    void nontrans_put(const key_type& k, const value_type& v) {
-        bucket_entry& buck = map_[find_bucket_idx(k)];
-        buck.version.lock_exclusive();
-        internal_elem *el = find_in_bucket(buck, k);
-        if (el == nullptr) {
-            internal_elem *new_head = new internal_elem(k, v, true);
-            new_head->next = buck.head;
-            buck.head = new_head;
-        } else {
-            copy_row(el, &v);
-        }
-        buck.version.unlock_exclusive();
-    }
-
-private:
-    // remove a k-v node during transactions (with locks)
-    void _remove(internal_elem *el) {
-        bucket_entry& buck = map_[find_bucket_idx(el->key)];
-        buck.version.lock_exclusive();
-        internal_elem *prev = nullptr;
-        internal_elem *curr = buck.head;
-        while (curr != nullptr && curr != el) {
-            prev = curr;
-            curr = curr->next;
-        }
-        assert(curr);
-        if (prev != nullptr)
-            prev->next = curr->next;
-        else
-            buck.head = curr->next;
-        buck.version.unlock_exclusive();
-        Transaction::rcu_delete(curr);
-    }
-    // non-transactional remove by key
-    bool remove(const key_type& k) {
-        bucket_entry& buck = map_[find_bucket_idx(k)];
-        buck.version.lock_exclusive();
-        internal_elem *prev = nullptr;
-        internal_elem *curr = buck.head;
-        while (curr != nullptr && !pred_(curr->key, k)) {
-            prev = curr;
-            curr = curr->next;
-        }
-        if (curr == nullptr) {
-            buck.version.unlock_exclusive();
-            return false;
-        }
-        if (prev != nullptr)
-            prev->next = curr->next;
-        else
-            buck.head = curr->next;
-        buck.version.unlock_exclusive();
-        delete curr;
-        return true;
-    }
-    // insert a k-v node to a bucket
-    void insert_in_bucket(bucket_entry& buck, const key_type& k, const value_type *v, bool valid) {
-        assert(buck.version.is_locked());
-
-        internal_elem *new_head = new internal_elem(k, v ? *v : value_type(), valid);
-        internal_elem *curr_head = buck.head;
-
-        new_head->next = curr_head;
-        buck.head = new_head;
-
-        buck.version.inc_nonopaque();
-    }
-    // find a key's k-v node (internal_elem) within a bucket
-    internal_elem *find_in_bucket(const bucket_entry& buck, const key_type& k) {
-        internal_elem *curr = buck.head;
-        while (curr && !pred_(curr->key, k))
-            curr = curr->next;
-        return curr;
-    }
-
-    static bool has_delete(const TransItem& item) {
-        return item.flags() & delete_bit;
-    }
-    static bool has_insert(const TransItem& item) {
-        return item.flags() & insert_bit;
-    }
-    static bool is_phantom(internal_elem *e, const TransItem& item) {
-        return (!e->valid() && !has_insert(item));
-    }
-
-    // TransItem keys
-    static bool is_bucket(const TransItem& item) {
-        return item.key<uintptr_t>() & bucket_bit;
-    }
-    static uintptr_t make_bucket_key(const bucket_entry& bucket) {
-        return (reinterpret_cast<uintptr_t>(&bucket) | bucket_bit);
-    }
-    static bucket_entry *bucket_address(const TransItem& item) {
-        uintptr_t bucket_key = item.key<uintptr_t>();
-        return reinterpret_cast<bucket_entry*>(bucket_key & ~bucket_bit);
-    }
-
-    static void copy_row(internal_elem *table_row, const value_type *value) {
-        if (value == nullptr)
-            return;
-        table_row->history->v().value = *value;
-    }
-};
-#endif
-
 enum class RowAccess : int { None = 0, ObserveExists, ObserveValue, UpdateValue };
 
 template <typename K, typename V, typename DBParams>
@@ -1041,8 +571,8 @@ public:
     typedef K key_type;
     typedef V value_type;
 
-    //typedef typename get_occ_version<DBParams, V>::type occ_version_type;
-    typedef typename get_version<DBParams, V>::type version_type;
+    //typedef typename get_occ_version<DBParams>::type occ_version_type;
+    typedef typename get_version<DBParams>::type version_type;
 
     static constexpr typename version_type::type invalid_bit = TransactionTid::user_bit;
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
