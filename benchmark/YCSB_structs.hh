@@ -166,12 +166,10 @@ public:
     }
 
     col_type& col_access(int col_n) {
-        // TODO: this should not be 0
-        return cols[col_n]->access(0);
+        return cols[col_n]->access(Sto::read_tid());
     }
     const col_type& col_access(int col_n) const {
-        // TODO: this should not be 0
-        return cols[col_n]->access(0);
+        return cols[col_n]->access(Sto::read_tid());
     }
 
     // return: success

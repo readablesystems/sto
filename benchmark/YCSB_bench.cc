@@ -13,7 +13,7 @@ using namespace db_params;
 using bench::db_profiler;
 
 enum {
-    opt_dbid = 1, opt_nthrs, opt_mode, opt_time, opt_perf, opt_pfcnt
+    opt_dbid = 1, opt_nthrs, opt_mode, opt_time, opt_perf, opt_pfcnt, opt_mvcc
 };
 
 static const Clp_Option options[] = {
@@ -22,7 +22,8 @@ static const Clp_Option options[] = {
     { "mode",         'm', opt_mode,  Clp_ValInt,    Clp_Optional },
     { "time",         'l', opt_time,  Clp_ValDouble, Clp_Optional },
     { "perf",         'p', opt_perf,  Clp_NoVal,     Clp_Optional },
-    { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,     Clp_Negate| Clp_Optional }
+    { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,     Clp_Negate| Clp_Optional },
+    { "mvcc",         'v', opt_mvcc,  Clp_NoVal,     Clp_Optional }
 };
 
 void print_usage(const char *prog_name) {
@@ -32,7 +33,7 @@ void print_usage(const char *prog_name) {
 
 template <typename DBParams>
 void ycsb_prepopulation_thread(int thread_id, ycsb_db<DBParams>& db, uint64_t key_begin, uint64_t key_end) {
-    set_affinity(thread_id);
+    //set_affinity(thread_id);
     ycsb_input_generator<DBParams> ig(thread_id);
     db.table_thread_init();
     for (uint64_t i = key_begin; i < key_end; ++i) {
@@ -68,7 +69,7 @@ public:
         db.table_thread_init();
 
         ::TThread::set_id(runner.id());
-        set_affinity(runner.id());
+        //set_affinity(runner.id());
 
         uint64_t tsc_diff = (uint64_t)(time_limit * constants::processor_tsc_frequency * constants::billion);
         auto start_t = prof.start_timestamp();
@@ -130,6 +131,7 @@ public:
         int num_threads = 1;
         int mode = static_cast<int>(mode_id::ReadOnly);
         double time_limit = 10.0;
+        bool mvcc = false;
 
         Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
 
@@ -153,6 +155,9 @@ public:
                     break;
                 case opt_pfcnt:
                     counter_mode = !clp->negated;
+                    break;
+                case opt_mvcc:
+                    mvcc = true;
                     break;
                 default:
                     print_usage(argv[0]);
@@ -265,11 +270,9 @@ int main(int argc, const char *const *argv) {
     case db_params_id::TicToc:
         ret_code = ycsb_access<db_tictoc_params>::execute(argc, argv);
         break;
-#if !MVCC_DISABLED
     case db_params_id::MVCC:
         ret_code = ycsb_access<db_mvcc_params>::execute(argc, argv);
         break;
-#endif
     default:
         std::cerr << "unknown db config parameter id" << std::endl;
         ret_code = 1;
