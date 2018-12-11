@@ -26,6 +26,7 @@
 /rbtree
 /singleelems
 /tags
+/cscope.out
 /trans_test
 /vector
 /hashtable_nostm
@@ -57,8 +58,6 @@
 /perf.data
 /perf.data.old
 /perf.txt
-/ctags
-/cscope.out
 .ycm_*
 **/.idea/workspace.xml
 **/.idea/tasks.xml
