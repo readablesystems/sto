@@ -53,6 +53,8 @@
 /micro_bench
 /wiki_bench
 /voter_bench
+/gc_bench
+/unit-dboindex
 /unit-swisstarray
 /unit-swisstgeneric
 /perf.data

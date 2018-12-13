@@ -39,7 +39,7 @@ public:
     // transGet and friends
     bool transGet(size_type i, value_type& ret) const {
         assert(i < N);
-        auto item = Sto::item(this, i);
+        auto item = Sto::item(this, i, (void*)&data_[i].v);
         if (item.has_write()) {
             ret = item.template write_value<T>();
             return true;
@@ -52,7 +52,7 @@ public:
     }
     value_type transGet_throws(size_type i) const {
         assert(i < N);
-        auto item = Sto::item(this, i);
+        auto item = Sto::item(this, i, (void*)&data_[i].v);
         if (item.has_write()) {
             return item.template write_value<T>();
         }
@@ -65,7 +65,7 @@ public:
     }
     bool transPut(size_type i, T x) const {
         assert(i < N);
-        Sto::item(this, i).add_write(x);
+        Sto::item(this, i, (void*)&data_[i].v).add_write(x);
         return true;
     }
     void transPut_throws(size_type i, T x) const {

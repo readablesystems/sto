@@ -36,7 +36,7 @@ public:
 
     static inline type& cp_access_tid_impl(Transaction& txn);
     inline type cp_commit_tid_impl(Transaction& txn);
-    bool cp_try_lock_impl(TransItem& item, int threadid) {
+    bool cp_try_lock_impl(TransItem& item, int) {
         object_type *obj = item.mvcc_object<object_type>();
         history_type *hprev = nullptr;
         if (item.has_read()) {

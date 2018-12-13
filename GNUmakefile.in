@@ -90,61 +90,66 @@ ifeq ($(PROFILE),1)
 OPTFLAGS += -g -pg -fno-inline
 endif
 
-UNIT_PROGRAMS = unit-tarray \
-                unit-tflexarray \
-                unit-tintpredicate \
-          			unit-tcounter \
-          			unit-tbox \
-          			unit-tgeneric \
-          			unit-rcu \
-          			unit-tvector \
-          			unit-tvector-nopred \
-          			unit-mbta \
-          			unit-sampling \
-          			unit-opacity \
-          			unit-swisstarray \
-          			unit-swisstgeneric \
-          			unit-mvtbox \
-          			unit-masstree \
-                unit-dboindex
+UNIT_PROGRAMS = \
+	unit-tarray \
+	unit-tflexarray \
+	unit-tintpredicate \
+	unit-tcounter \
+	unit-tbox \
+	unit-tgeneric \
+	unit-rcu \
+	unit-tvector \
+	unit-tvector-nopred \
+	unit-mbta \
+	unit-sampling \
+	unit-opacity \
+	unit-swisstarray \
+	unit-swisstgeneric \
+	unit-mvtarray \
+	unit-mvtbox \
+	unit-masstree \
+	unit-dboindex
 
-ACT_UNIT_PROGRAMS = unit-tarray \
-                    unit-tflexarray \
-                    unit-tintpredicate \
-                    unit-tcounter \
-                    unit-tbox \
-                    unit-rcu \
-                    unit-tvector \
-                    unit-tvector-nopred \
-                    unit-opacity \
-                    unit-sampling \
-                    unit-swisstarray \
-                    unit-swisstgeneric \
-										unit-mvtbox \
-                    unit-masstree \
-          					unit-dboindex
+ACT_UNIT_PROGRAMS = \
+	unit-tarray \
+	unit-tflexarray \
+	unit-tintpredicate \
+	unit-tcounter \
+	unit-tbox \
+	unit-rcu \
+	unit-tvector \
+	unit-tvector-nopred \
+	unit-opacity \
+	unit-sampling \
+	unit-swisstarray \
+	unit-swisstgeneric \
+	unit-mvtarray \
+	unit-mvtbox \
+	unit-masstree \
+	unit-dboindex
 
-PROGRAMS = concurrent \
-           singleelems \
-		   list1 \
-		   vector \
-		   pqueue \
-		   rbtree \
-		   trans_test \
-		   ht_mt \
-		   pqVsIt \
-		   iterators \
-		   single \
-		   predicates \
-		   ex-counter \
-		   tpcc_bench \
-		   micro_bench \
-		   ycsb_bench \
-		   gc_bench \
-		   pred_bench \
-		   wiki_bench \
-		   voter_bench \
-		   $(UNIT_PROGRAMS)
+PROGRAMS = \
+	concurrent \
+	singleelems \
+	list1 \
+	vector \
+	pqueue \
+	rbtree \
+	trans_test \
+	ht_mt \
+	pqVsIt \
+	iterators \
+	single \
+	predicates \
+	ex-counter \
+	tpcc_bench \
+	micro_bench \
+	ycsb_bench \
+	gc_bench \
+	pred_bench \
+	wiki_bench \
+	voter_bench \
+	$(UNIT_PROGRAMS)
 
 all: $(PROGRAMS)
 
@@ -238,6 +243,9 @@ unit-swisstarray: $(OBJ)/unit-swisstarray.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-swisstgeneric: $(OBJ)/unit-swisstgeneric.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-mvtarray: $(OBJ)/unit-mvtarray.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-mvtbox: $(OBJ)/unit-mvtbox.o $(STO_DEPS)
