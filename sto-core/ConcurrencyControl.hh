@@ -758,6 +758,21 @@ TicTocCompressedVersion<Opaque, Extend>::cp_commit_tid_impl(Transaction& txn) {
         return txn.compute_tictoc_commit_ts();
 }
 
+template <typename VersImpl, typename T>
+inline bool try_lock(TransItem& item, VersionBase<VersImpl>& vers, MvObject<T> *obj) {
+    typedef MvHistory<T> history_type;
+    history_type *hprev = nullptr;
+    if (item.has_read()) {
+        hprev = item.read_value<history_type*>();
+    }
+    if (Sto::commit_tid() < hprev->rtid()) {
+        return false;
+    }
+    history_type *h = new history_type(
+        Sto::commit_tid(), obj, item.write_value<T>(), hprev);
+    return obj->cp_lock(Sto::commit_tid(), h);
+}
+
 // Try lock method now also optionally keeps track of commit timestamp
 
 template <typename VersImpl>

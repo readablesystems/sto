@@ -10,6 +10,8 @@
 
 class TWrappedAccess;
 
+class TMvAccess;
+
 class TransProxy;
 
 template <typename VersImpl>
@@ -44,10 +46,9 @@ class TransItem {
     static constexpr flags_type special_mask = owner_mask | cl_bit | read_bit | write_bit | lock_bit | predicate_bit | stash_bit;
 
 
-    TransItem() : s_(), key_(), mode_(CCMode::none), mv_object_(nullptr) {};
-    TransItem(TObject* owner, void* k, void* mvobject)
-        : s_(reinterpret_cast<ownerstore_type>(owner)), key_(k),
-          mode_(CCMode::none), mv_object_(mvobject) {
+    TransItem() : s_(), key_(), mode_(CCMode::none) {};
+    TransItem(TObject* owner, void* k)
+        : s_(reinterpret_cast<ownerstore_type>(owner)), key_(k), mode_(CCMode::none) {
     }
 
     TObject* owner() const {
@@ -171,11 +172,6 @@ class TransItem {
             return std::move(default_value);
     }
 
-    template <typename T>
-    T* mvcc_object() const {
-        return reinterpret_cast<T*>(mv_object_);
-    }
-
     inline bool operator==(const TransItem& x) const {
         return same_item(x);
     }
@@ -272,7 +268,6 @@ private:
     uintptr_t ts_origin_; // only used by TicToc
 
     CCMode mode_;
-    void* mv_object_; // MVCC object
 
     void __rm_flags(flags_type flags) {
         s_ = s_ & ~flags;
@@ -284,6 +279,7 @@ private:
     friend class Transaction;
     friend class TransProxy;
     friend class TWrappedAccess;
+    friend class TMvAccess;
     friend class VersionDelegate;
 };
 

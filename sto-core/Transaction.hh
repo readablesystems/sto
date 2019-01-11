@@ -7,6 +7,7 @@
 #include "ContentionManager.hh"
 #include "TransScratch.hh"
 #include "VersionBase.hh"
+#include "MVCCStructs.hh"
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -578,12 +579,12 @@ private:
 #endif
     }
 
-    TransItem* allocate_item(const TObject* obj, void* xkey, void* mvobject=nullptr) {
+    TransItem* allocate_item(const TObject* obj, void* xkey) {
 	    //TXP_INCREMENT(txp_allocate);
         if (tset_size_ && tset_size_ % tset_chunk == 0)
             refresh_tset_chunk();
         ++tset_size_;
-        new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey, mvobject);
+        new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey);
         //tset_next_->s_ = reinterpret_cast<TransItem::ownerstore_type>(const_cast<TObject*>(obj));
         //tset_next_->key_ = xkey;
         allocate_item_update_hash(obj, xkey);
@@ -597,31 +598,31 @@ private:
 
     // adds item for a key that is known to be new (must NOT exist in the set)
     template <typename T>
-    TransProxy new_item(const TObject* obj, T key, void* mvobject=nullptr) {
+    TransProxy new_item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        return TransProxy(*this, *allocate_item(obj, xkey, mvobject));
+        return TransProxy(*this, *allocate_item(obj, xkey));
         }
 
     // adds item without checking its presence in the array
     template <typename T>
-    TransProxy fresh_item(const TObject* obj, T key, void* mvobject=nullptr) {
+    TransProxy fresh_item(const TObject* obj, T key) {
         may_duplicate_items_ = tset_size_ > 0;
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-        return TransProxy(*this, *allocate_item(obj, xkey, mvobject));
+        return TransProxy(*this, *allocate_item(obj, xkey));
        }
 
     template <typename T>
-    TransProxy item(const TObject* obj, T key, void* mvobject=nullptr) {
+    TransProxy item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
         TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
         if (!ti)
-            ti = allocate_item(obj, xkey, mvobject);
+            ti = allocate_item(obj, xkey);
         return TransProxy(*this, *ti);
     }
 
 
     template <typename T>
-    TransProxy item_inlined(const TObject* obj, T key, void* mvobject=nullptr) {
+    TransProxy item_inlined(const TObject* obj, T key) {
         bool found = false;
         TransItem* ti;
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
@@ -656,7 +657,7 @@ private:
             if (tset_size_ && tset_size_ % tset_chunk == 0)
                 refresh_tset_chunk();
             ++tset_size_;
-            new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey, mvobject);
+            new(reinterpret_cast<void*>(tset_next_)) TransItem(const_cast<TObject*>(obj), xkey);
  #if TRANSACTION_HASHTABLE
             if (hashtable_[hi] <= hash_base_)
                 hashtable_[hi] = hash_base_ + tset_size_;
@@ -1090,9 +1091,9 @@ public:
     }
 
     template <typename T>
-    static TransProxy item(const TObject* s, T key, void* mvobject=nullptr) {
+    static TransProxy item(const TObject* s, T key) {
         //always_assert(in_progress());
-        return TThread::txn->item(s, key, mvobject);
+        return TThread::txn->item(s, key);
     }
 
     static void check_opacity(TransactionTid::type t) {

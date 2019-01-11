@@ -17,7 +17,9 @@ public:
     TMvVersion(type v, bool insert)
             : BV(v) {(void)insert;}
 
-    bool cp_check_version_impl(Transaction& txn, TransItem& item) {
+    bool cp_check_version_impl(Transaction&, TransItem&) {
+        return false;
+        /*
         (void)txn;
         assert(item.has_read());
         if (TransactionTid::is_locked(v_) && !item.has_write())
@@ -26,6 +28,7 @@ public:
         history_type *hprev = item.read_value<history_type*>();
         object_type *obj = item.mvcc_object<object_type>();
         return obj->cp_check(Sto::commit_tid(), hprev);
+        */
     }
 
     inline bool acquire_write_impl(TransItem& item);
@@ -36,6 +39,7 @@ public:
 
     static inline type& cp_access_tid_impl(Transaction& txn);
     inline type cp_commit_tid_impl(Transaction& txn);
+    /*
     bool cp_try_lock_impl(TransItem& item, int) {
         object_type *obj = item.mvcc_object<object_type>();
         history_type *hprev = nullptr;
@@ -51,6 +55,7 @@ public:
             Sto::commit_tid(), obj, item.write_value<T>(), hprev);
         return obj->cp_lock(Sto::commit_tid(), h);
     }
+    */
 
     inline bool observe_read_impl(TransItem& item, const history_type *h);
 

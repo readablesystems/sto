@@ -2,19 +2,20 @@
 
 #include "Sto.hh"
 #include "TArrayProxy.hh"
+#include "MVCCAccess.hh"
+#include "MVCCStructs.hh"
 
-template <typename T, unsigned N, template <typename> class W = TOpaqueWrapped>
-class TArray : public TObject {
+template <typename T, unsigned N>
+class TMvArray : public TObject {
 public:
     class iterator;
     class const_iterator;
     typedef T value_type;
-    typedef typename W<T>::read_type get_type;
-    typedef typename W<T>::version_type version_type;
+    typedef T get_type;
     typedef unsigned size_type;
     typedef int difference_type;
-    typedef TConstArrayProxy<TArray<T, N, W> > const_proxy_type;
-    typedef TArrayProxy<TArray<T, N, W> > proxy_type;
+    typedef TConstArrayProxy<TMvArray<T, N> > const_proxy_type;
+    typedef TArrayProxy<TMvArray<T, N> > proxy_type;
 
     size_type size() const {
         return N;
@@ -45,9 +46,10 @@ public:
             return true;
         }
         else {
-            auto result = data_[i].v.read(item, data_[i].vers);
-            ret = result.second;
-            return result.first;
+            history_type *h = data_[i].v.find(Sto::read_tid());
+            TMvAccess::template read<T>(item, h);
+            ret = h->v();
+            return true;
         }
     }
     value_type transGet_throws(size_type i) const {
@@ -57,10 +59,12 @@ public:
             return item.template write_value<T>();
         }
         else {
-            auto result = data_[i].v.read(item, data_[i].vers);
-            if (!result.first)
+            history_type *h = data_[i].v.find(Sto::read_tid());
+            if (!h) {
                 throw Transaction::Abort();
-            return result.second;
+            }
+            TMvAccess::template read<T>(item, h);
+            return h->v();
         }
     }
     bool transPut(size_type i, T x) const {
@@ -74,37 +78,52 @@ public:
 
     get_type nontrans_get(size_type i) const {
         assert(i < N);
-        return data_[i].v.access();
+        return data_[i].v.nontrans_access();
     }
     void nontrans_put(size_type i, const T& x) {
         assert(i < N);
-        data_[i].v.access() = x;
+        data_[i].v.nontrans_access() = x;
     }
     void nontrans_put(size_type i, T&& x) {
         assert(i < N);
-        data_[i].v.access() = std::move(x);
+        data_[i].v.nontrans_access() = std::move(x);
     }
 
     // transactional methods
     bool lock(TransItem& item, Transaction& txn) override {
-        return txn.try_lock(item, data_[item.key<size_type>()].vers);
+        object_type &v = data_[item.key<size_type>()].v;
+        history_type *hprev = nullptr;
+        if (item.has_read()) {
+            hprev = item.read_value<history_type*>();
+        } else {
+            hprev = v.find(Sto::read_tid(), false);
+        }
+        if (Sto::commit_tid() < hprev->rtid()) {
+            return false;
+        }
+        history_type *h = new history_type(
+            Sto::commit_tid(), &v, item.write_value<T>(), hprev);
+        return v.cp_lock(Sto::commit_tid(), h);
     }
     bool check(TransItem& item, Transaction& txn) override {
-        return data_[item.key<size_type>()].vers.cp_check_version(txn, item);
+        assert(item.has_read());
+        fence();
+        history_type *hprev = item.read_value<history_type*>();
+        return data_[item.key<size_type>()].v.cp_check(Sto::commit_tid(), hprev);
     }
     void install(TransItem& item, Transaction& txn) override {
-        size_type i = item.key<size_type>();
-        data_[i].v.write(item.write_value<T>());
-        txn.set_version_unlock(data_[i].vers, item);
+        data_[item.key<size_type>()].v.cp_install();
     }
     void unlock(TransItem& item) override {
-        data_[item.key<size_type>()].vers.cp_unlock(item);
+        // no-op
     }
 
 private:
+    typedef MvObject<T> object_type;
+    typedef typename object_type::history_type history_type;
+
     struct elem {
-        version_type vers;
-        W<T> v;
+        object_type v;
     };
     elem data_[N];
 
@@ -113,14 +132,14 @@ private:
 };
 
 
-template <typename T, unsigned N, template <typename> class W>
-class TArray<T, N, W>::const_iterator : public std::iterator<std::random_access_iterator_tag, T> {
+template <typename T, unsigned N>
+class TMvArray<T, N>::const_iterator : public std::iterator<std::random_access_iterator_tag, T> {
 public:
-    typedef TArray<T, N, W> array_type;
+    typedef TMvArray<T, N> array_type;
     typedef typename array_type::size_type size_type;
     typedef typename array_type::difference_type difference_type;
 
-    const_iterator(const TArray<T, N, W>* a, size_type i)
+    const_iterator(const TMvArray<T, N>* a, size_type i)
         : a_(const_cast<array_type*>(a)), i_(i) {
     }
 
@@ -192,14 +211,14 @@ protected:
     size_type i_;
 };
 
-template <typename T, unsigned N, template <typename> class W>
-class TArray<T, N, W>::iterator : public const_iterator {
+template <typename T, unsigned N>
+class TMvArray<T, N>::iterator : public const_iterator {
 public:
-    typedef TArray<T, N, W> array_type;
+    typedef TMvArray<T, N> array_type;
     typedef typename array_type::size_type size_type;
     typedef typename array_type::difference_type difference_type;
 
-    iterator(const TArray<T, N, W>* a, size_type i)
+    iterator(const TMvArray<T, N>* a, size_type i)
         : const_iterator(a, i) {
     }
 
@@ -239,32 +258,32 @@ public:
     }
 };
 
-template <typename T, unsigned N, template <typename> class W>
-inline auto TArray<T, N, W>::begin() -> iterator {
+template <typename T, unsigned N>
+inline auto TMvArray<T, N>::begin() -> iterator {
     return iterator(this, 0);
 }
 
-template <typename T, unsigned N, template <typename> class W>
-inline auto TArray<T, N, W>::end() -> iterator {
+template <typename T, unsigned N>
+inline auto TMvArray<T, N>::end() -> iterator {
     return iterator(this, N);
 }
 
-template <typename T, unsigned N, template <typename> class W>
-inline auto TArray<T, N, W>::cbegin() const -> const_iterator {
+template <typename T, unsigned N>
+inline auto TMvArray<T, N>::cbegin() const -> const_iterator {
     return const_iterator(this, 0);
 }
 
-template <typename T, unsigned N, template <typename> class W>
-inline auto TArray<T, N, W>::cend() const -> const_iterator {
+template <typename T, unsigned N>
+inline auto TMvArray<T, N>::cend() const -> const_iterator {
     return const_iterator(this, N);
 }
 
-template <typename T, unsigned N, template <typename> class W>
-inline auto TArray<T, N, W>::begin() const -> const_iterator {
+template <typename T, unsigned N>
+inline auto TMvArray<T, N>::begin() const -> const_iterator {
     return const_iterator(this, 0);
 }
 
-template <typename T, unsigned N, template <typename> class W>
-inline auto TArray<T, N, W>::end() const -> const_iterator {
+template <typename T, unsigned N>
+inline auto TMvArray<T, N>::end() const -> const_iterator {
     return const_iterator(this, N);
 }

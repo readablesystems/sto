@@ -1,13 +1,21 @@
 #pragma once
 
-template <typename T>
-class TMvVersion;
+class TMvAccess;
+
+template <typename T, unsigned N>
+class TMvArray;
+
+template <typename T, unsigned N>
+class TMvArrayAdaptive;
 
 template <typename T>
-class MvObjectProxy;
+class TMvBox;
 
 // History list item for MVCC
 template <typename T, bool Trivial = std::is_trivially_copyable<T>::value> class MvHistory;
+
+// Generic contained for MVCC abstractions applied to a given object
+template <typename T> class MvObject;
 
 // Status types of MvHistory elements
 enum MvStatus {
@@ -19,7 +27,6 @@ enum MvStatus {
     COMMITTED_DELETED = 0x101,
 };
 
-// Generic contained for MVCC abstractions applied to a given object
 template <typename T>
 class MvObject {
 public:
@@ -52,6 +59,8 @@ public:
             h_ = prev;
         }
     }
+
+    class InvalidState {};
 
     // Aborts currently-pending head version; returns true if the head version
     // is pending and false otherwise.
@@ -129,6 +138,34 @@ public:
         return true;
     }
 
+    // Returns the latest committed version
+    const T& nontrans_access() const {
+        history_type *h = h_;
+        /* TODO: head version caching */
+        while (h) {
+            if (h->status_is(COMMITTED)) {
+                /* TODO: handle COMMITTED_DELETED correctly? */
+                return h->v();
+            }
+            h = h->prev();
+        }
+        // Should never get here!
+        throw InvalidState();
+    }
+    T& nontrans_access() {
+        history_type *h = h_;
+        /* TODO: head version caching */
+        while (h) {
+            if (h->status_is(COMMITTED)) {
+                /* TODO: handle COMMITTED_DELETED correctly? */
+                return h->v();
+            }
+            h = h->prev();
+        }
+        // Should never get here!
+        throw InvalidState();
+    }
+
 protected:
     // Finds the current visible version, based on tid; by default, waits on
     // pending versions, but if toggled off, will simply return first version,
@@ -162,25 +199,12 @@ protected:
 
     history_type *h_;
 
-    friend class MvObjectProxy<T>;
-};
-
-// Proxy class for accessing certain nonpublic functionalities of MvObject
-template <typename T>
-class MvObjectProxy {
-private:
-    typedef MvObject<T> object_type;
-    typedef typename object_type::history_type history_type;
-
-    static history_type* current_record(object_type *obj) {
-        history_type *h = obj->h_;
-        while (!h->status_is(MvStatus::COMMITTED)) {
-            h = h->prev();
-        }
-        return h;
-    }
-
-    friend class TMvVersion<T>;
+    friend class TMvAccess;
+    template <typename TT, unsigned N>
+    friend class TMvArray;
+    template <typename TT, unsigned N>
+    friend class TMvArrayAdaptive;
+    friend class TMvBox<T>;
 };
 
 class MvHistoryBase {

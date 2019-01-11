@@ -105,9 +105,9 @@ UNIT_PROGRAMS = \
 	unit-opacity \
 	unit-swisstarray \
 	unit-swisstgeneric \
-	unit-mvtarray \
-	unit-mvtbox \
 	unit-masstree \
+	unit-tmvarray \
+	unit-tmvbox \
 	unit-dboindex
 
 ACT_UNIT_PROGRAMS = \
@@ -123,9 +123,9 @@ ACT_UNIT_PROGRAMS = \
 	unit-sampling \
 	unit-swisstarray \
 	unit-swisstgeneric \
-	unit-mvtarray \
-	unit-mvtbox \
 	unit-masstree \
+	unit-tmvarray \
+	unit-tmvbox \
 	unit-dboindex
 
 PROGRAMS = \
@@ -245,14 +245,14 @@ unit-swisstarray: $(OBJ)/unit-swisstarray.o $(STO_DEPS)
 unit-swisstgeneric: $(OBJ)/unit-swisstgeneric.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-unit-mvtarray: $(OBJ)/unit-mvtarray.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
-
-unit-mvtbox: $(OBJ)/unit-mvtbox.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
-
 unit-masstree: $(OBJ)/unit-masstree.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_DEPS) $(LDFLAGS) $(LIBS)
+
+unit-tmvarray: $(OBJ)/unit-tmvarray.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+
+unit-tmvbox: $(OBJ)/unit-tmvbox.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-dboindex: $(OBJ)/unit-dboindex.o $(INDEX_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(LDFLAGS) $(LIBS)
