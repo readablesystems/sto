@@ -1,13 +1,5 @@
 #pragma once
 
-class TMvAccess;
-
-template <typename T, unsigned N>
-class TMvArray;
-
-template <typename T>
-class TMvBox;
-
 // History list item for MVCC
 template <typename T, bool Trivial = std::is_trivially_copyable<T>::value> class MvHistory;
 
@@ -135,6 +127,29 @@ public:
         return true;
     }
 
+    // Finds the current visible version, based on tid; by default, waits on
+    // pending versions, but if toggled off, will simply return first version,
+    // regardless of status
+    history_type* find(const type tid, const bool wait=true) const {
+        history_type *h = h_;
+        /* TODO: use something smarter than a linear scan */
+        while (h) {
+            if (wait) {
+                wait_if_pending(h);
+                if (h->wtid() <= tid && h->status_is(MvStatus::COMMITTED)) {
+                    break;
+                }
+            } else {
+                if (h->wtid() <= tid && h->status_is(MvStatus::COMMITTED)) {
+                    break;
+                }
+            }
+            h = h->prev();
+        }
+
+        return h;
+    }
+
     // Returns the latest committed version
     const T& nontrans_access() const {
         history_type *h = h_;
@@ -164,29 +179,6 @@ public:
     }
 
 protected:
-    // Finds the current visible version, based on tid; by default, waits on
-    // pending versions, but if toggled off, will simply return first version,
-    // regardless of status
-    history_type* find(const type tid, const bool wait=true) const {
-        history_type *h = h_;
-        /* TODO: use something smarter than a linear scan */
-        while (h) {
-            if (wait) {
-                wait_if_pending(h);
-                if (h->wtid() <= tid && h->status_is(MvStatus::COMMITTED)) {
-                    break;
-                }
-            } else {
-                if (h->wtid() <= tid && h->status_is(MvStatus::COMMITTED)) {
-                    break;
-                }
-            }
-            h = h->prev();
-        }
-
-        return h;
-    }
-
     // Spin-wait on interested item
     void wait_if_pending(const history_type *h) const {
         while (h->status_is(MvStatus::PENDING)) {
@@ -195,11 +187,6 @@ protected:
     }
 
     history_type *h_;
-
-    friend class TMvAccess;
-    template <typename TT, unsigned N>
-    friend class TMvArray;
-    friend class TMvBox<T>;
 };
 
 class MvHistoryBase {
