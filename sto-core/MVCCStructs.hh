@@ -337,13 +337,16 @@ public:
     typedef MvObject<T> object_type;
 
     MvHistory() = delete;
-    explicit MvHistory(object_type *obj) : MvHistory(0, obj, nullptr) {}
+    explicit MvHistory(object_type *obj) : MvHistory(0, obj, T()) {}
     explicit MvHistory(
-            type ntid, object_type *obj, T& nv, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), vp_(&nv) {}
+            type ntid, object_type *obj, const T& nv, history_type *nprev = nullptr)
+            : MvHistoryBase(ntid, nprev), obj_(obj), v_(nv), vp_(&v_) {}
+    explicit MvHistory(
+            type ntid, object_type *obj, T&& nv, history_type *nprev = nullptr)
+            : MvHistoryBase(ntid, nprev), obj_(obj), v_(std::move(nv)), vp_(&v_) {}
     explicit MvHistory(
             type ntid, object_type *obj, T *nvp, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), vp_(nvp) {}
+            : MvHistoryBase(ntid, nprev), obj_(obj), v_(*nvp), vp_(nvp) {}
 
     // Retrieve the object for which this history element is intended
     object_type* object() const {
@@ -351,11 +354,11 @@ public:
     }
 
     const T& v() const {
-        return *vp_;
+        return v_;
     }
 
     T& v() {
-        return *vp_;
+        return v_;
     }
 
     T* vp() const {
@@ -372,5 +375,6 @@ public:
 
 private:
     object_type *obj_;  // Parent object
+    T v_;
     T *vp_;
 };

@@ -110,6 +110,11 @@ public:
     void unlock(TransItem&) override {
         // no-op
     }
+    void cleanup(TransItem&, bool committed) override {
+        if (!committed) {
+           v_.abort();
+        }
+    }
     void print(std::ostream& w, const TransItem& item) const override {
         w << "{TMvBox<" << typeid(T).name() << "> " << (void*) this;
         //if (item.has_read())

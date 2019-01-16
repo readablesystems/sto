@@ -117,6 +117,11 @@ public:
     void unlock(TransItem&) override {
         // no-op
     }
+    void cleanup(TransItem& item, bool committed) override {
+        if (!committed) {
+           data_[item.key<size_type>()].v.abort();
+        }
+    }
 
 private:
     typedef MvObject<T> object_type;

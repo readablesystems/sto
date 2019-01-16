@@ -1452,8 +1452,6 @@ public:
     typedef typename value_type::NamedColumn NamedColumn;
     typedef object_type value_container_type;
 
-    static constexpr bool value_is_small = is_small<V>::value;
-
     static constexpr bool index_read_my_write = DBParams::RdMyWr;
 
     struct internal_elem {
@@ -1698,11 +1696,8 @@ public:
 
     void update_row(uintptr_t rid, value_type *new_row) {
         auto row_item = Sto::item(this, item_key_t::row_item_key(reinterpret_cast<internal_elem *>(rid)));
-        if (value_is_small) {
-            row_item.add_write(*new_row);
-        } else {
-            row_item.add_write(new_row);
-        }
+        // TODO: address this extra copying issue
+        row_item.add_write(*new_row);
         // Just update the pointer, don't set the actual write flag
         // we don't want to confuse installs at commit time
         //row_item.clear_write();
@@ -1735,21 +1730,13 @@ public:
             if (index_read_my_write) {
                 if (has_delete(row_item)) {
                     auto proxy = row_item.clear_flags(delete_bit).clear_write();
-
-                    if (value_is_small)
-                        proxy.add_write(*vptr);
-                    else
-                        proxy.add_write(vptr);
-
+                    proxy.add_write(*vptr);
                     return ins_return_type(true, false);
                 }
             }
 
             if (overwrite) {
-                if (value_is_small)
-                    row_item.add_write(*vptr);
-                else
-                    row_item.add_write(vptr);
+                row_item.add_write(*vptr);
             } else {
                 // TODO: This now acts like a full read of the value
                 // at rtid. Once we add predicates we can change it to
@@ -1783,10 +1770,6 @@ public:
             //fence();
 
             TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
-            //if (value_is_small)
-            //    item.add_write<value_type>(*vptr);
-            //else
-            //    item.add_write<value_type *>(vptr);
             row_item.add_write();
             row_item.add_flags(insert_bit);
 
@@ -1866,17 +1849,12 @@ public:
                     return true;
                 }
                 if (any_has_write) {
-                    if (has_insert(row_item))
-                        ret = callback(key_type(key), e->row_container.row);
-                    else
-                        ret = callback(key_type(key), *(row_item.template raw_write_value<value_type *>()));
+                    ret = callback(key_type(key), *(row_item.template raw_write_value<value_type *>()));
                     return true;
                 }
             }
 
-            bool ok = access_all(cell_accesses, cell_items, e);
-            if (!ok)
-                return false;
+            access_all(cell_accesses, cell_items, e);
             //bool ok = item.observe(e->version);
             //if (Adaptive) {
             //    ok = item.observe(e->version, true/*force occ*/);
@@ -1885,12 +1863,13 @@ public:
             //}
 
             // skip invalid (inserted but yet committed) values, but do not abort
-            if (!e->valid()) {
+            if (!e->valid) {
                 ret = true;
                 return true;
             }
 
-            ret = callback(key_type(key), e->row_container.row);
+            auto h = cell_items[0].template read_value<history_type *>();
+            ret = callback(key_type(key), h->vp());
             return true;
         };
 
@@ -1922,37 +1901,21 @@ public:
                     return true;
                 }
                 if (has_row_update(row_item)) {
-                    if (has_insert(row_item))
-                        ret = callback(key_type(key), e->row_container.row);
-                    else
-                        ret = callback(key_type(key), *(row_item.template raw_write_value<value_type *>()));
+                    ret = callback(key_type(key), *(row_item.template raw_write_value<value_type *>()));
                     return true;
                 }
             }
 
-            bool ok = true;
-            switch (access) {
-                case RowAccess::ObserveValue:
-                case RowAccess::ObserveExists:
-                    ok = row_item.observe(e->version());
-                    break;
-                case RowAccess::None:
-                    break;
-                default:
-                    always_assert(false, "unsupported access type in range_scan");
-                    break;
-            }
-
-            if (!ok)
-                return false;
+            auto h = e->row_container.find(Sto::read_tid());
+            TMvAccess::template read<value_type>(row_item, h);
 
             // skip invalid (inserted but yet committed) values, but do not abort
-            if (!e->valid()) {
+            if (!e->valid) {
                 ret = true;
                 return true;
             }
 
-            ret = callback(key_type(key), e->row_container.row);
+            ret = callback(key_type(key), h->vp());
             return true;
         };
 
@@ -1970,7 +1933,7 @@ public:
         bool found = lp.find_unlocked(*ti);
         if (found) {
             internal_elem *e = lp.value();
-            return &(e->row_container.row);
+            return &(e->row_container.nontrans_access());
         } else
             return nullptr;
     }
@@ -1980,10 +1943,7 @@ public:
         bool found = lp.find_insert(*ti);
         if (found) {
             internal_elem *e = lp.value();
-            if (value_is_small)
-                e->row_container.row = v;
-            else
-               copy_row(e, &v);
+            e->row_container.nontrans_access() = v;
             lp.finish(0, *ti);
         } else {
             internal_elem *e = new internal_elem(k, v, true);
@@ -1999,14 +1959,20 @@ public:
         auto e = key.internal_elem_ptr();
         
         history_type *hprev = nullptr;
-        // TODO: pending version installation and shit
-        /*
-        if (key.is_row_item())
-            return txn.try_lock(item, e->version());
-        else
-            return txn.try_lock(item, e->row_container.version_at(key.cell_num()));
-        */
-        return true;
+        if (item.has_read()) {
+            hprev = item.read_value<history_type*>();
+        } else {
+            hprev = e->row_container.find(Sto::read_tid(), false);
+        }
+        if (Sto::commit_tid() < hprev->rtid()) {
+            return false;
+        }
+        history_type *h = new history_type(
+            Sto::commit_tid(), &e->row_container, item.template write_value<value_type>(), hprev);
+        if (has_delete(item)) {
+            h->status_delete();
+        }
+        return e->row_container.cp_lock(Sto::commit_tid(), h);
     }
 
     bool check(TransItem& item, Transaction& txn) override {
@@ -2018,10 +1984,8 @@ public:
         } else {
             auto key = item.key<item_key_t>();
             auto e = key.internal_elem_ptr();
-            if (key.is_row_item())
-                return e->version().cp_check_version(txn, item);
-            else
-                return e->row_container.version_at(key.cell_num()).cp_check_version(txn, item);
+            auto h = item.template read_value<history_type*>();
+            return e->row_container.cp_check(Sto::read_tid(), h);
         }
     }
 
@@ -2034,77 +1998,23 @@ public:
             //assert(e->version.is_locked());
             if (has_delete(item)) {
                 if (!has_insert(item)) {
-                    assert(e->valid() && !e->deleted);
-                    txn.set_version(e->version());
                     e->deleted = true;
                     fence();
                 }
-                return;
             }
-
-            value_type *vptr;
-            if (value_is_small) {
-                vptr = &(item.write_value<value_type>());
-            } else {
-                vptr = item.write_value<value_type *>();
-            }
-
-            if (!has_insert(item)) {
-                if (has_row_update(item)) {
-                    if (value_is_small) {
-                        e->row_container.row = *vptr;
-                    } else {
-                        copy_row(e, vptr);
-                    }
-                } else if (has_row_cell(item)) {
-                    // install only the difference part
-                    // not sure if works when there are more than 1 minor version fields
-                    // should still work
-                    e->row_container.install_cell(0, vptr);
-                }
-            }
-
-            // like in the hashtable (unordered_index), no need for the hacks
-            // treating opacity as a special case
-            txn.set_version_unlock(e->version(), item);
-        } else {
-            // skip installation if row-level update is present
-            auto row_item = Sto::item(this, item_key_t::row_item_key(e));
-            if (!has_row_update(row_item)) {
-                value_type *vptr;
-                if (value_is_small)
-                    vptr = &(row_item.template raw_write_value<value_type>());
-                else
-                    vptr = row_item.template raw_write_value<value_type *>();
-
-                e->row_container.install_cell(key.cell_num(), vptr);
-            }
-
-            txn.set_version_unlock(e->row_container.version_at(key.cell_num()), item);
         }
+        e->row_container.cp_install();
     }
 
     void unlock(TransItem& item) override {
         assert(!is_internode(item));
-        auto key = item.key<item_key_t>();
-        auto e = key.internal_elem_ptr();
-        if (key.is_row_item())
-            e->version().cp_unlock(item);
-        else
-            e->row_container.version_at(key.cell_num()).cp_unlock(item);
     }
 
     void cleanup(TransItem& item, bool committed) override {
-        if (committed ? has_delete(item) : has_insert(item)) {
+        if (!committed) {
             auto key = item.key<item_key_t>();
-            assert(key.is_row_item());
-            internal_elem *e = key.internal_elem_ptr();
-            bool ok = _remove(e->key);
-            if (!ok) {
-                std::cout << committed << "," << has_delete(item) << "," << has_insert(item) << std::endl;
-                always_assert(false, "insert-bit exclusive ownership violated");
-            }
-            item.clear_needs_unlock();
+            auto e = key.internal_elem_ptr();
+            e->row_container.abort();
         }
     }
 
@@ -2211,7 +2121,7 @@ private:
         return (item.flags() & row_cell_bit) != 0;
     }
     static bool is_phantom(internal_elem *e, const TransItem& item) {
-        return (!e->valid() && !has_insert(item));
+        return (!e->valid && !has_insert(item));
     }
 
     bool register_internode_version(node_type *node, nodeversion_value_type nodeversion) {
@@ -2257,12 +2167,6 @@ private:
     static node_type *get_internode_address(TransItem& item) {
         assert(is_internode(item));
         return reinterpret_cast<node_type *>(item.key<uintptr_t>() & ~internode_bit);
-    }
-
-    static void copy_row(TransProxy row_item, const value_type *new_row) {
-        if (new_row == nullptr)
-            return;
-        row_item.add_write(new_row);
     }
 };
 
