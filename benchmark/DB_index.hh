@@ -15,6 +15,7 @@
 
 #include <vector>
 #include "VersionSelector.hh"
+#include "MVCCAccess.hh"
 #include "MVCCStructs.hh"
 
 namespace bench {
@@ -1434,7 +1435,6 @@ template <typename K, typename V, typename DBParams>
 __thread typename ordered_index<K, V, DBParams>::table_params::threadinfo_type
 *ordered_index<K, V, DBParams>::ti;
 
-#if 0
 template <typename K, typename V, typename DBParams>
 class mvcc_ordered_index : public TObject {
 public:
@@ -1450,7 +1450,7 @@ public:
     static constexpr uintptr_t internode_bit = 1;
 
     typedef typename value_type::NamedColumn NamedColumn;
-    typedef typename object_type value_container_type;
+    typedef object_type value_container_type;
 
     static constexpr bool value_is_small = is_small<V>::value;
 
@@ -1459,10 +1459,11 @@ public:
     struct internal_elem {
         key_type key;
         value_container_type row_container;
+        bool valid;
         bool deleted;
 
         internal_elem(const key_type& k, const value_type& v)
-            : key(k), row_container(v), deleted(false) {}
+            : key(k), row_container(v), valid(false), deleted(false) {}
     };
 
     struct column_access_t {
@@ -1567,6 +1568,7 @@ public:
     }
 
     void table_init() {
+        static_assert(DBParams::Opaque);
         if (ti == nullptr)
             ti = threadinfo::make(threadinfo::TI_MAIN, -1);
         table_.initialize(*ti);
@@ -1625,8 +1627,9 @@ public:
     sel_return_type
     select_row(uintptr_t rid, RowAccess access) {
         auto e = reinterpret_cast<internal_elem *>(rid);
-        bool ok = true;
         TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+
+        history_type *h = e->row_container.find(Sto::read_tid());
 
         if (is_phantom(e, row_item))
             goto abort;
@@ -1638,30 +1641,16 @@ public:
             if (has_row_update(row_item)) {
                 value_type *vptr;
                 if (has_insert(row_item))
-                    vptr = &e->row_container.row;
+                    vptr = h->vp();
                 else
                     vptr = row_item.template raw_write_value<value_type *>();
                 return sel_return_type(true, true, rid, vptr);
             }
         }
 
-        switch (access) {
-            case RowAccess::UpdateValue:
-                ok = version_adapter::select_for_update(row_item, e->version());
-                row_item.add_flags(row_update_bit);
-                break;
-            case RowAccess::ObserveExists:
-            case RowAccess::ObserveValue:
-                ok = row_item.observe(e->version());
-                break;
-            default:
-                break;
-        }
+        TMvAccess::template read<value_type>(row_item, h);
 
-        if (!ok)
-            goto abort;
-
-        return sel_return_type(true, true, rid, &(e->row_container.row));
+        return sel_return_type(true, true, rid, h->vp());
 
     abort:
         return sel_return_type(false, false, 0, nullptr);
@@ -1678,8 +1667,9 @@ public:
 
         std::vector<TransProxy> cell_items;
         bool any_has_write;
-        bool ok;
         std::tie(any_has_write, cell_items) = extract_item_list(cell_accesses, e);
+
+        auto h = e->row_container.find(Sto::read_tid());
 
         if (is_phantom(e, row_item))
             goto abort;
@@ -1691,18 +1681,16 @@ public:
             if (any_has_write || has_row_update(row_item)) {
                 value_type *vptr;
                 if (has_insert(row_item))
-                    vptr = &e->row_container.row;
+                    vptr = h->vp();
                 else
                     vptr = row_item.template raw_write_value<value_type *>();
                 return sel_return_type(true, true, rid, vptr);
             }
         }
 
-        ok = access_all(cell_accesses, cell_items, e);
-        if (!ok)
-            goto abort;
+        access_all(cell_accesses, cell_items, e);
 
-        return sel_return_type(true, true, rid, &(e->row_container.row));
+        return sel_return_type(true, true, rid, h->vp());
 
     abort:
         return sel_return_type(false, false, 0, nullptr);
@@ -1758,22 +1746,16 @@ public:
             }
 
             if (overwrite) {
-                bool ok;
                 if (value_is_small)
-                    ok = version_adapter::select_for_overwrite(row_item, e->version(), *vptr);
+                    row_item.add_write(*vptr);
                 else
-                    ok = version_adapter::select_for_overwrite(row_item, e->version(), vptr);
-                if (!ok)
-                    goto abort;
-                if (index_read_my_write) {
-                    if (has_insert(row_item)) {
-                        copy_row(e, vptr);
-                    }
-                }
+                    row_item.add_write(vptr);
             } else {
-                // observes that the row exists, but nothing more
-                if (!row_item.observe(e->version()))
-                    goto abort;
+                // TODO: This now acts like a full read of the value
+                // at rtid. Once we add predicates we can change it to
+                // something else.
+                auto h = e->row_container.find(Sto::read_tid());
+                TMvAccess::template read<value_type>(row_item, h);
             }
 
         } else {
@@ -1833,7 +1815,7 @@ public:
             if (index_read_my_write) {
                 if (has_delete(row_item))
                     return del_return_type(true, false);
-                if (!e->valid() && has_insert(row_item)) {
+                if (!e->valid && has_insert(row_item)) {
                     row_item.add_flags(delete_bit);
                     return del_return_type(true, true);
                 }
@@ -1841,8 +1823,9 @@ public:
 
             // select_for_update will register an observation and set the write bit of
             // the TItem
-            if (!version_adapter::select_for_update(row_item, e->version()))
-                goto abort;
+            auto h = e->row_container.find(Sto::read_tid());
+            TMvAccess::template read<value_type>(row_item, h);
+            row_item.add_write();
             fence();
             if (e->deleted)
                 goto abort;
@@ -2016,10 +1999,14 @@ public:
         auto e = key.internal_elem_ptr();
         
         history_type *hprev = nullptr;
+        // TODO: pending version installation and shit
+        /*
         if (key.is_row_item())
             return txn.try_lock(item, e->version());
         else
             return txn.try_lock(item, e->row_container.version_at(key.cell_num()));
+        */
+        return true;
     }
 
     bool check(TransItem& item, Transaction& txn) override {
@@ -2201,23 +2188,14 @@ private:
         return {any_has_write, cell_items};
     }
 
-    static bool
+    static void
     access_all(std::vector<cell_access_t>& cell_accesses, std::vector<TransProxy>& cell_items, internal_elem *e) {
         for (auto it = cell_items.begin(); it != cell_items.end(); ++it) {
             auto idx = it - cell_items.begin();
             auto& access = cell_accesses[idx];
-            if (access.update) {
-                if (!version_adapter::select_for_update(*it, e->row_container.version_at(access.cell_id)))
-                    return false;
-                if (it->item().key<item_key_t>().is_row_item()) {
-                    it->item().add_flags(row_cell_bit);
-                }
-            } else {
-                if (!it->observe(e->row_container.version_at(access.cell_id)))
-                    return false;
-            }
+            auto h = e->row_container.find(Sto::read_tid());
+            TMvAccess::template read<value_type>(*it, h);
         }
-        return true;
     }
 
     static bool has_insert(const TransItem& item) {
@@ -2281,16 +2259,15 @@ private:
         return reinterpret_cast<node_type *>(item.key<uintptr_t>() & ~internode_bit);
     }
 
-    static void copy_row(internal_elem *e, const value_type *new_row) {
+    static void copy_row(TransProxy row_item, const value_type *new_row) {
         if (new_row == nullptr)
             return;
-        e->row_container.row = *new_row;
+        row_item.add_write(new_row);
     }
 };
 
 template <typename K, typename V, typename DBParams>
 __thread typename mvcc_ordered_index<K, V, DBParams>::table_params::threadinfo_type
 *mvcc_ordered_index<K, V, DBParams>::ti;
-#endif
 
 }; // namespace bench
