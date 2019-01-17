@@ -3,10 +3,10 @@
 namespace db_params {
 
 // Benchmark parameters
-constexpr const char *db_params_id_names[] = {"none", "default", "opaque", "2pl", "adaptive", "swiss", "tictoc"};
+constexpr const char *db_params_id_names[] = {"none", "default", "opaque", "2pl", "adaptive", "swiss", "tictoc", "mvcc"};
 
 enum class db_params_id : int {
-    None = 0, Default, Opaque, TwoPL, Adaptive, Swiss, TicToc
+    None = 0, Default, Opaque, TwoPL, Adaptive, Swiss, TicToc, MVCC
 };
 
 inline std::ostream &operator<<(std::ostream &os, const db_params_id &id) {
@@ -36,6 +36,7 @@ public:
     static constexpr bool Opaque = false;
     static constexpr bool Swiss = false;
     static constexpr bool TicToc = false;
+    static constexpr bool MVCC = false;
 };
 
 class db_opaque_params : public db_default_params {
@@ -66,6 +67,13 @@ class db_tictoc_params : public db_default_params {
 public:
     static constexpr db_params_id Id = db_params_id::TicToc;
     static constexpr bool TicToc = true;
+};
+
+class db_mvcc_params : public db_default_params {
+public:
+    static constexpr db_params_id Id = db_params_id::TicToc;
+    static constexpr bool Opaque = true;
+    static constexpr bool MVCC = true;
 };
 
 class constants {

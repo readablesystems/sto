@@ -207,6 +207,7 @@ static inline IntType bswap(IntType x) {
 struct dummy_row {
     enum class NamedColumn : int { dummy = 0 };
     uintptr_t dummy;
+    static dummy_row row;
 };
 
 template <typename K>

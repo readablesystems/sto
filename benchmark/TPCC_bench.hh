@@ -115,7 +115,9 @@ public:
     using UIndex = unordered_index<K, V, DBParams>;
 
     template <typename K, typename V>
-    using OIndex = ordered_index<K, V, DBParams>;
+    using OIndex = typename std::conditional<DBParams::MVCC,
+          mvcc_ordered_index<K, V, DBParams>,
+          ordered_index<K, V, DBParams>>::type;
 
     // partitioned according to warehouse id
     typedef std::vector<warehouse_value>                 wh_table_type;

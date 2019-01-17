@@ -540,7 +540,7 @@ static inline void print_usage(const char *argv_0) {
     ss << "Usage of " << std::string(argv_0) << ":" << std::endl
        << "  --dbid=<STRING> (or -i<STRING>)" << std::endl
        << "    Specify the type of DB concurrency control used. Can be one of the followings:" << std::endl
-       << "      default, opaque, 2pl, adaptive, swiss, tictoc" << std::endl
+       << "      default, opaque, 2pl, adaptive, swiss, tictoc, mvcc" << std::endl
        << "  --nwarehouses=<NUM> (or -w<NUM>)" << std::endl
        << "    Specify the number of warehouses (default 1)." << std::endl
        << "  --nthreads=<NUM> (or -t<NUM>)" << std::endl
@@ -555,6 +555,7 @@ static inline void print_usage(const char *argv_0) {
 }
 
 double constants::processor_tsc_frequency;
+bench::dummy_row bench::dummy_row::row;
 
 int main(int argc, const char *const *argv) {
     db_params_id dbid = db_params_id::Default;
@@ -609,6 +610,9 @@ int main(int argc, const char *const *argv) {
         break;
     case db_params_id::TicToc:
         ret_code = tpcc_access<db_tictoc_params>::execute(argc, argv);
+        break;
+    case db_params_id::MVCC:
+        ret_code = tpcc_access<db_mvcc_params>::execute(argc, argv);
         break;
     default:
         std::cerr << "unknown db config parameter id" << std::endl;

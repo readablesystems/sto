@@ -168,6 +168,10 @@ struct customer_idx_key {
 struct customer_idx_value {
     enum class NamedColumn : int { c_id = 0 };    
 
+    // Default constructor is never directly called; it's included to make the
+    // compiles happy with MVCC history element construction
+    customer_idx_value() = default;
+
     customer_idx_value(uint64_t cid) : c_id(cid) {};
     uint64_t c_id;
 };

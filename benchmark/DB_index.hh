@@ -1450,18 +1450,22 @@ public:
     static constexpr uintptr_t internode_bit = 1;
 
     typedef typename value_type::NamedColumn NamedColumn;
-    typedef object_type value_container_type;
 
     static constexpr bool index_read_my_write = DBParams::RdMyWr;
 
     struct internal_elem {
         key_type key;
-        value_container_type row_container;
+        object_type row;
         bool valid;
         bool deleted;
 
-        internal_elem(const key_type& k, const value_type& v)
-            : key(k), row_container(v), valid(false), deleted(false) {}
+        internal_elem(const key_type& k, const value_type& v, const bool valid = false)
+            : key(k), row(v), valid(valid), deleted(false) {}
+
+        static int map(int col_n) {
+            (void)col_n;  // TODO(column-splitting)
+            return 0;
+        }
     };
 
     struct column_access_t {
@@ -1519,7 +1523,7 @@ public:
     static std::vector<cell_access_t>
     column_to_cell_accesses(std::function<int(int)> c_c_map, std::initializer_list<column_access_t> accesses) {
         // pair: {accessed, for update}
-        std::vector<std::pair<bool, bool>> all_cells(value_container_type::num_versions, {false, false});
+        std::vector<std::pair<bool, bool>> all_cells(/* num_versions = */ 1, {false, false});
         // the returned list
         std::vector<cell_access_t> cell_accesses;
 
@@ -1624,10 +1628,11 @@ public:
 
     sel_return_type
     select_row(uintptr_t rid, RowAccess access) {
+        (void)access;  // TODO(column-splitting)
         auto e = reinterpret_cast<internal_elem *>(rid);
         TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
-        history_type *h = e->row_container.find(Sto::read_tid());
+        history_type *h = e->row.find(Sto::read_tid());
 
         if (is_phantom(e, row_item))
             goto abort;
@@ -1661,13 +1666,13 @@ public:
 
         // Translate from column accesses to cell accesses
         // all buffered writes are only stored in the wdata_ of the row item (to avoid redundant copies)
-        auto cell_accesses = column_to_cell_accesses(value_container_type::map, accesses);
+        auto cell_accesses = column_to_cell_accesses(internal_elem::map, accesses);
 
         std::vector<TransProxy> cell_items;
         bool any_has_write;
         std::tie(any_has_write, cell_items) = extract_item_list(cell_accesses, e);
 
-        auto h = e->row_container.find(Sto::read_tid());
+        auto h = e->row.find(Sto::read_tid());
 
         if (is_phantom(e, row_item))
             goto abort;
@@ -1741,7 +1746,7 @@ public:
                 // TODO: This now acts like a full read of the value
                 // at rtid. Once we add predicates we can change it to
                 // something else.
-                auto h = e->row_container.find(Sto::read_tid());
+                auto h = e->row.find(Sto::read_tid());
                 TMvAccess::template read<value_type>(row_item, h);
             }
 
@@ -1806,7 +1811,7 @@ public:
 
             // select_for_update will register an observation and set the write bit of
             // the TItem
-            auto h = e->row_container.find(Sto::read_tid());
+            auto h = e->row.find(Sto::read_tid());
             TMvAccess::template read<value_type>(row_item, h);
             row_item.add_write();
             fence();
@@ -1833,7 +1838,7 @@ public:
             return ((!phantom_protection) || register_internode_version(node, version));
         };
 
-        auto cell_accesses = column_to_cell_accesses(value_container_type::map, accesses);
+        auto cell_accesses = column_to_cell_accesses(internal_elem::map, accesses);
 
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret) {
             TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
@@ -1885,6 +1890,7 @@ public:
     template <typename Callback, bool Reverse>
     bool range_scan(const key_type& begin, const key_type& end, Callback callback,
                     RowAccess access, bool phantom_protection = true, int limit = -1) {
+        (void)access;  // TODO(column-splitting)
         assert((limit == -1) || (limit > 0));
         auto node_callback = [&] (leaf_type* node,
                                   typename unlocked_cursor_type::nodeversion_value_type version) {
@@ -1906,7 +1912,7 @@ public:
                 }
             }
 
-            auto h = e->row_container.find(Sto::read_tid());
+            auto h = e->row.find(Sto::read_tid());
             TMvAccess::template read<value_type>(row_item, h);
 
             // skip invalid (inserted but yet committed) values, but do not abort
@@ -1915,7 +1921,7 @@ public:
                 return true;
             }
 
-            ret = callback(key_type(key), h->vp());
+            ret = callback(key_type(key), h->v());
             return true;
         };
 
@@ -1933,7 +1939,7 @@ public:
         bool found = lp.find_unlocked(*ti);
         if (found) {
             internal_elem *e = lp.value();
-            return &(e->row_container.nontrans_access());
+            return &(e->row.nontrans_access());
         } else
             return nullptr;
     }
@@ -1943,7 +1949,7 @@ public:
         bool found = lp.find_insert(*ti);
         if (found) {
             internal_elem *e = lp.value();
-            e->row_container.nontrans_access() = v;
+            e->row.nontrans_access() = v;
             lp.finish(0, *ti);
         } else {
             internal_elem *e = new internal_elem(k, v, true);
@@ -1962,20 +1968,21 @@ public:
         if (item.has_read()) {
             hprev = item.read_value<history_type*>();
         } else {
-            hprev = e->row_container.find(Sto::read_tid(), false);
+            hprev = e->row.find(Sto::read_tid(), false);
         }
         if (Sto::commit_tid() < hprev->rtid()) {
             return false;
         }
+        auto wval = item.template raw_write_value<value_type*>();
         history_type *h = new history_type(
-            Sto::commit_tid(), &e->row_container, item.template write_value<value_type>(), hprev);
+            Sto::commit_tid(), &e->row, wval, hprev);
         if (has_delete(item)) {
             h->status_delete();
         }
-        return e->row_container.cp_lock(Sto::commit_tid(), h);
+        return e->row.cp_lock(Sto::commit_tid(), h);
     }
 
-    bool check(TransItem& item, Transaction& txn) override {
+    bool check(TransItem& item, Transaction&) override {
         if (is_internode(item)) {
             node_type *n = get_internode_address(item);
             auto curr_nv = static_cast<leaf_type *>(n)->full_version_value();
@@ -1985,11 +1992,11 @@ public:
             auto key = item.key<item_key_t>();
             auto e = key.internal_elem_ptr();
             auto h = item.template read_value<history_type*>();
-            return e->row_container.cp_check(Sto::read_tid(), h);
+            return e->row.cp_check(Sto::read_tid(), h);
         }
     }
 
-    void install(TransItem& item, Transaction& txn) override {
+    void install(TransItem& item, Transaction&) override {
         assert(!is_internode(item));
         auto key = item.key<item_key_t>();
         auto e = key.internal_elem_ptr();
@@ -2003,7 +2010,7 @@ public:
                 }
             }
         }
-        e->row_container.cp_install();
+        e->row.cp_install();
     }
 
     void unlock(TransItem& item) override {
@@ -2014,7 +2021,7 @@ public:
         if (!committed) {
             auto key = item.key<item_key_t>();
             auto e = key.internal_elem_ptr();
-            e->row_container.abort();
+            e->row.abort();
         }
     }
 
@@ -2100,10 +2107,9 @@ private:
 
     static void
     access_all(std::vector<cell_access_t>& cell_accesses, std::vector<TransProxy>& cell_items, internal_elem *e) {
+        (void)cell_accesses;  // TODO(column-splitting)
         for (auto it = cell_items.begin(); it != cell_items.end(); ++it) {
-            auto idx = it - cell_items.begin();
-            auto& access = cell_accesses[idx];
-            auto h = e->row_container.find(Sto::read_tid());
+            auto h = e->row.find(Sto::read_tid());
             TMvAccess::template read<value_type>(*it, h);
         }
     }

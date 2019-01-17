@@ -112,10 +112,10 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     std::tie(abort, result) = db.tbl_orders(q_w_id).insert_row(ok, ov, false);
     TXN_DO(abort);
     assert(!result);
-    std::tie(abort, result) = db.tbl_neworders(q_w_id).insert_row(ok, nullptr, false);
+    std::tie(abort, result) = db.tbl_neworders(q_w_id).insert_row(ok, &bench::dummy_row::row, false);
     TXN_DO(abort);
     assert(!result);
-    std::tie(abort, result) = db.tbl_order_customer_index(q_w_id).insert_row(ock, nullptr, false);
+    std::tie(abort, result) = db.tbl_order_customer_index(q_w_id).insert_row(ock, &bench::dummy_row::row, false);
     TXN_DO(abort);
     assert(!result);
 

@@ -281,7 +281,7 @@ private:
 
     type rtid_;  // Read TID
     MvStatus status_;  // Status of this element
-    type wtid_;  // Write TID
+    const type wtid_;  // Write TID
 };
 
 template <typename T>
@@ -297,7 +297,11 @@ public:
             : MvHistoryBase(ntid, nprev), obj_(obj), v_(nv), vp_(&v_) {}
     explicit MvHistory(
             type ntid, object_type *obj, T *nvp, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), v_(*nvp), vp_(&v_) {}
+            : MvHistoryBase(ntid, nprev), obj_(obj), vp_(&v_) {
+        if (nvp) {
+            v_ = *nvp;
+        }
+    }
 
     // Retrieve the object for which this history element is intended
     object_type* object() const {
@@ -346,7 +350,11 @@ public:
             : MvHistoryBase(ntid, nprev), obj_(obj), v_(std::move(nv)), vp_(&v_) {}
     explicit MvHistory(
             type ntid, object_type *obj, T *nvp, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), v_(*nvp), vp_(nvp) {}
+            : MvHistoryBase(ntid, nprev), obj_(obj), vp_(&v_) {
+        if (nvp) {
+            v_ = *nvp;
+        }
+    }
 
     // Retrieve the object for which this history element is intended
     object_type* object() const {
