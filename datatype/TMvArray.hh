@@ -103,7 +103,11 @@ public:
         }
         history_type *h = new history_type(
             Sto::commit_tid(), &v, item.write_value<T>(), hprev);
-        return v.cp_lock(Sto::commit_tid(), h);
+        bool result = v.cp_lock(Sto::commit_tid(), h);
+        if (!result) {
+            delete h;
+        }
+        return result;
     }
     bool check(TransItem& item, Transaction&) override {
         assert(item.has_read());

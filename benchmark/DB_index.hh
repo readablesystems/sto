@@ -1979,7 +1979,11 @@ public:
         if (has_delete(item)) {
             h->status_delete();
         }
-        return e->row.cp_lock(Sto::commit_tid(), h);
+        bool result = e->row.cp_lock(Sto::commit_tid(), h);
+        if (!result) {
+            delete h;
+        }
+        return result;
     }
 
     bool check(TransItem& item, Transaction&) override {

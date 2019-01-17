@@ -849,6 +849,7 @@ public:
     tid_type read_tid() const {
         if (!read_tid_) {
             TXP_INCREMENT(txp_rtid_atomic);
+            epoch_advance_once();
             read_tid_ = _RTID;
         }
         return read_tid_;

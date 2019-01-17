@@ -106,14 +106,20 @@ public:
             return false;
         }
 
+        history_type *head = h_;
+        history_type *visible = head;
+        while (!visible->status_is(MvStatus::COMMITTED)) {
+            visible = visible->prev();
+        }
+
         // Can only install onto the latest-visible version
-        if (h->prev() != h_) {
+        if (h->prev() != visible) {
             h->status_abort();
             return false;
         }
 
         // Attempt to CAS onto the head of the version list
-        if (!::bool_cmpxchg(&h_, h->prev(), h)) {
+        if (!::bool_cmpxchg(&h_, head, h)) {
             h->status_abort();
             return false;
         }
