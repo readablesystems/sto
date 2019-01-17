@@ -90,7 +90,7 @@ public:
     }
 
     // transactional methods
-    bool lock(TransItem& item, Transaction&) override {
+    bool lock(TransItem& item, Transaction& txn) override {
         object_type &v = data_[item.key<size_type>()].v;
         history_type *hprev = nullptr;
         if (item.has_read()) {
@@ -104,8 +104,10 @@ public:
         history_type *h = new history_type(
             Sto::commit_tid(), &v, item.write_value<T>(), hprev);
         bool result = v.cp_lock(Sto::commit_tid(), h);
-        if (!result) {
+        if (!result && !h->status_is(MvStatus::ABORTED)) {
             delete h;
+        } else {
+            TransProxy(txn, item).add_write(h);
         }
         return result;
     }
@@ -116,14 +118,16 @@ public:
         return data_[item.key<size_type>()].v.cp_check(Sto::commit_tid(), hprev);
     }
     void install(TransItem& item, Transaction&) override {
-        data_[item.key<size_type>()].v.cp_install();
+        auto h = item.template write_value<history_type*>();
+        data_[item.key<size_type>()].v.cp_install(h);
     }
     void unlock(TransItem&) override {
         // no-op
     }
     void cleanup(TransItem& item, bool committed) override {
         if (!committed) {
-           data_[item.key<size_type>()].v.abort();
+            auto h = item.template write_value<history_type*>();
+            data_[item.key<size_type>()].v.abort(h);
         }
     }
 

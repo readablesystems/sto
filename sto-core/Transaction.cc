@@ -17,7 +17,7 @@ Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epoch
 __thread Transaction *TThread::txn = nullptr;
 std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callback;
 TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = 3 * TransactionTid::increment_value;
-TransactionTid::type __attribute__((aligned(128))) Transaction::_RTID = Transaction::_TID - TransactionTid::increment_value;
+std::atomic<TransactionTid::type> __attribute__((aligned(128))) Transaction::_RTID(Transaction::_TID - TransactionTid::increment_value);
    // reserve TransactionTid::increment_value for prepopulated
 
 static void __attribute__((used)) check_static_assertions() {
@@ -60,31 +60,44 @@ void* Transaction::epoch_advancer(void*) {
     // don't bother epoch'ing til things have picked up
     usleep(100000);
     while (global_epochs.run) {
-        epoch_advance_once();
+        epoch_type g = global_epochs.global_epoch;
+        epoch_type e = g;
+        for (auto& t : tinfo) {
+            if (t.epoch != 0 && signed_epoch_type(t.epoch - e) < 0)
+                e = t.epoch;
+        }
+        global_epochs.global_epoch = std::max(g + 1, epoch_type(1));
+        global_epochs.active_epoch = e;
+        global_epochs.recent_tid = _TID;
 
         if (epoch_advance_callback)
             epoch_advance_callback(global_epochs.global_epoch);
 
         usleep(100000);
     }
+
     fetch_and_add(&num_epoch_advancers, -1);
     return NULL;
 }
 
 void Transaction::epoch_advance_once() {
-    epoch_type g = global_epochs.global_epoch;
-    epoch_type e = g;
     tid_type min_wtid = _TID;
     for (auto& t : tinfo) {
-        if (t.epoch != 0 && signed_epoch_type(t.epoch - e) < 0)
-            e = t.epoch;
-        if (t.wtid != 0 && t.wtid < min_wtid)
-            min_wtid = t.wtid;
+        fence();
+        tid_type wtid = t.wtid;
+        if (wtid != 0 && wtid < min_wtid)
+            min_wtid = wtid;
     }
-    global_epochs.global_epoch = std::max(g + 1, epoch_type(1));
-    global_epochs.active_epoch = e;
-    global_epochs.recent_tid = _TID;
-    _RTID = min_wtid > 0 ? min_wtid - 1 : 0;
+    fence();
+    tid_type rtid = _RTID.load();
+    if (min_wtid > 0) {
+        tid_type next = min_wtid - 1;
+        while (!_RTID.compare_exchange_weak(rtid, next)) {
+            if ((rtid = _RTID.load()) > next) {
+                break;
+            }
+        }
+    }
 }
 
 bool Transaction::preceding_duplicate_read(TransItem* needle) const {

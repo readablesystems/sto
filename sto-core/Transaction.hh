@@ -16,6 +16,7 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
+#include <atomic>
 
 //#include <coz.h>
 
@@ -369,7 +370,7 @@ public:
     } global_epochs;
 private:
     static tid_type _TID;
-    static tid_type _RTID;
+    static std::atomic<tid_type> _RTID;
 public:
 
     static std::function<void(threadinfo_t::epoch_type)> epoch_advance_callback;
@@ -849,8 +850,9 @@ public:
     tid_type read_tid() const {
         if (!read_tid_) {
             TXP_INCREMENT(txp_rtid_atomic);
+            fence();
             epoch_advance_once();
-            read_tid_ = _RTID;
+            read_tid_ = _RTID.load();
         }
         return read_tid_;
     }

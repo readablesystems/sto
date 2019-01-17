@@ -1959,7 +1959,7 @@ public:
     }
 
     // TObject interface methods
-    bool lock(TransItem& item, Transaction&) override {
+    bool lock(TransItem& item, Transaction& txn) override {
         assert(!is_internode(item));
         auto key = item.key<item_key_t>();
         auto e = key.internal_elem_ptr();
@@ -1980,8 +1980,10 @@ public:
             h->status_delete();
         }
         bool result = e->row.cp_lock(Sto::commit_tid(), h);
-        if (!result) {
+        if (!result && !h->status_is(MvStatus::ABORTED)) {
             delete h;
+        } else {
+            TransProxy(txn, item).add_write(h);
         }
         return result;
     }
@@ -2014,7 +2016,8 @@ public:
                 }
             }
         }
-        e->row.cp_install();
+        auto h = item.template write_value<history_type*>();
+        e->row.cp_install(h);
     }
 
     void unlock(TransItem& item) override {
@@ -2025,7 +2028,8 @@ public:
         if (!committed) {
             auto key = item.key<item_key_t>();
             auto e = key.internal_elem_ptr();
-            e->row.abort();
+            auto h = item.template write_value<history_type*>();
+            e->row.abort(h);
         }
     }
 

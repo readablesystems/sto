@@ -18,9 +18,9 @@ void testSimpleInt() {
         f = 100;
     }
 
-    Transaction::epoch_advance_once();
+    
 
-	{
+	  {
         TransactionGuard t2;
         int f_read = f;
         assert(f_read == 100);
@@ -37,7 +37,7 @@ void testSimpleString() {
         f = "100";
     }
 
-    Transaction::epoch_advance_once();
+    
 
 	{
         TransactionGuard t2;
@@ -64,7 +64,7 @@ void testConcurrentInt() {
         assert(t1.try_commit());
     }
 
-    Transaction::epoch_advance_once();
+    
 
     {
         TestTransaction t1(1);
@@ -73,12 +73,12 @@ void testConcurrentInt() {
         TestTransaction t2(2);
         ib = 2;
         assert(t2.try_commit());
-        assert(!t1.try_commit());
+        assert(t1.try_commit());
 
-        assert(ib.nontrans_read() == 2);
+        assert(ib.nontrans_read() == 1);
     }
 
-    Transaction::epoch_advance_once();
+    
     ib.nontrans_write(2);
 
     {
@@ -90,7 +90,7 @@ void testConcurrentInt() {
         ib = 0;
         assert(t2.try_commit());
 
-        Transaction::epoch_advance_once();
+        
 
         TestTransaction t3(3);
         ib = 2;
@@ -122,7 +122,7 @@ void testOpacity1() {
         assert(t1.try_commit());
     }
 
-    Transaction::epoch_advance_once();
+    
 
     {
         TransactionGuard t2;
@@ -155,7 +155,7 @@ void testMvReads() {
         assert(t1.try_commit());
     }
 
-    Transaction::epoch_advance_once();
+    
     f.nontrans_write(1);
     g.nontrans_write(0);
 
@@ -175,7 +175,7 @@ void testMvReads() {
         assert(t2.try_commit());
     }
 
-    Transaction::epoch_advance_once();
+    
     f.nontrans_write(1);
     g.nontrans_write(2);
 
@@ -199,7 +199,7 @@ void testMvReads() {
         assert(t1.try_commit());
     }
 
-    Transaction::epoch_advance_once();
+    
     f.nontrans_write(0);
     g.nontrans_write(1);
 
@@ -239,7 +239,7 @@ void testMvWrites() {
         assert(t2.try_commit());
     }
 
-    Transaction::epoch_advance_once();
+    
     f.nontrans_write(1);
     g.nontrans_write(0);
 
@@ -258,7 +258,7 @@ void testMvWrites() {
         assert(t1.try_commit());
     }
 
-    Transaction::epoch_advance_once();
+    
     f.nontrans_write(1);
     g.nontrans_write(0);
 

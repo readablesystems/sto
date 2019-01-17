@@ -84,7 +84,7 @@ public:
     }
 
     // transactional methods
-    bool lock(TransItem& item, Transaction&) override {
+    bool lock(TransItem& item, Transaction& txn) override {
         history_type *hprev = nullptr;
         if (item.has_read()) {
             hprev = item.read_value<history_type*>();
@@ -96,7 +96,13 @@ public:
         }
         history_type *h = new history_type(
             Sto::commit_tid(), &v_, item.write_value<T>(), hprev);
-        return v_.cp_lock(Sto::commit_tid(), h);
+        bool result = v_.cp_lock(Sto::commit_tid(), h);
+        if (!result && !h->status_is(MvStatus::ABORTED)) {
+            delete h;
+        } else {
+            TransProxy(txn, item).add_write(h);
+        }
+        return result;
     }
     bool check(TransItem& item, Transaction&) override {
         assert(item.has_read());
@@ -104,15 +110,17 @@ public:
         history_type *hprev = item.read_value<history_type*>();
         return v_.cp_check(Sto::commit_tid(), hprev);
     }
-    void install(TransItem&, Transaction&) override {
-        v_.cp_install();
+    void install(TransItem& item, Transaction&) override {
+        auto h = item.template write_value<history_type*>();
+        v_.cp_install(h);
     }
     void unlock(TransItem&) override {
         // no-op
     }
-    void cleanup(TransItem&, bool committed) override {
+    void cleanup(TransItem& item, bool committed) override {
         if (!committed) {
-           v_.abort();
+            auto h = item.template write_value<history_type*>();
+            v_.abort(h);
         }
     }
     void print(std::ostream& w, const TransItem& item) const override {

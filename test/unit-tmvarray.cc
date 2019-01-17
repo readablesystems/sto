@@ -25,7 +25,7 @@ void testSimpleInt() {
         f[1] = 100;
     }
 
-    Transaction::epoch_advance_once();
+    
 
     {
         TransactionGuard t2;
@@ -44,7 +44,7 @@ void testSimpleString() {
         f[1] = "100";
     }
 
-    Transaction::epoch_advance_once();
+    
 
     {
         TransactionGuard t2;
@@ -63,7 +63,7 @@ void testIter() {
         arr.push_back(x);
         f.nontrans_put(i, x);
     }
-    Transaction::epoch_advance_once();
+    
 
     int max;
     TRANSACTION_E {
@@ -82,7 +82,7 @@ void testConflictingIter() {
         f.nontrans_put(i, i);
     }
 
-    Transaction::epoch_advance_once();
+    
 
     {
         TestTransaction t(1);
@@ -102,14 +102,14 @@ void testModifyingIter() {
     for (int i = 0; i < 10; i++)
         f.nontrans_put(i, i);
 
-    Transaction::epoch_advance_once();
+    
 
     {
         TransactionGuard t;
         std::replace(f.begin(), f.end(), 4, 6);
     }
 
-    Transaction::epoch_advance_once();
+    
 
     {
         TransactionGuard t1;
@@ -125,7 +125,7 @@ void testConflictingModifyIter1() {
     for (int i = 0; i < 10; i++)
         f.nontrans_put(i, i);
 
-    Transaction::epoch_advance_once();
+    
 
     {
         TestTransaction t(1);
@@ -138,7 +138,7 @@ void testConflictingModifyIter1() {
         assert(!t.try_commit());
     }
 
-    Transaction::epoch_advance_once();
+    
 
     {
         TransactionGuard t2;
@@ -154,21 +154,21 @@ void testConflictingModifyIter2() {
     for (int i = 0; i < 10; i++)
         f.nontrans_put(i, i);
 
-    Transaction::epoch_advance_once();
+    
 
     {
         TransactionGuard t;
         std::replace(f.begin(), f.end(), 4, 6);
     }
 
-    Transaction::epoch_advance_once();
+    
 
     {
         TransactionGuard t0;
         f[4] = 10;
     }
 
-    Transaction::epoch_advance_once();
+    
 
     {
         TransactionGuard t2;
@@ -185,7 +185,7 @@ void testConflictingModifyIter3() {
     for (int i = 0; i < 10; i++)
         f.nontrans_put(i, i);
 
-    Transaction::epoch_advance_once();
+    
 
     {
         TestTransaction t1(1);
@@ -199,7 +199,7 @@ void testConflictingModifyIter3() {
         assert(t1.try_commit());
     }
 
-    Transaction::epoch_advance_once();
+    
 
     {
         TransactionGuard t2;
@@ -215,7 +215,7 @@ void testOpacity1() {
     for (int i = 0; i < 10; i++)
         f.nontrans_put(i, i);
 
-    Transaction::epoch_advance_once();
+    
 
     try {
         TestTransaction t1(1);
@@ -235,7 +235,7 @@ void testOpacity1() {
         TestTransaction::hard_reset();
     }
 
-    Transaction::epoch_advance_once();
+    
 
     {
         TransactionGuard t2;
@@ -255,7 +255,7 @@ void benchArray64() {
     double before = gettime_d();
     for (unsigned long iter = 0; iter < niters; ++iter) {
         for (int j = 0; j < 1000; ++j) {
-            Transaction::epoch_advance_once();
+            
 
             TRANSACTION_E {
                 for (int i = 0; i < 64; ++i)

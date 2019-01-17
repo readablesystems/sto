@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 // History list item for MVCC
 template <typename T, bool Trivial = std::is_trivially_copyable<T>::value> class MvHistory;
 
@@ -25,27 +27,27 @@ public:
 
     MvObject()
             : h_(new history_type(this)) {
-        h_->status_commit();
+        h_.load()->status_commit();
     }
     explicit MvObject(const T& value)
             : h_(new history_type(0, this, new T(value))) {
-        h_->status_commit();
+        h_.load()->status_commit();
     }
     explicit MvObject(T&& value)
             : h_(new history_type(0, this, new T(std::move(value)))) {
-        h_->status_commit();
+        h_.load()->status_commit();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
             : h_(new history_type(0, this, new T(std::forward<Args>(args)...))) {
-        h_->status_commit();
+        h_.load()->status_commit();
     }
 
     ~MvObject() {
         while (h_) {
-            history_type *prev = h_->prev();
-            delete h_;
-            h_ = prev;
+            history_type *prev = h_.load()->prev();
+            delete h_.load();
+            h_.store(prev);
         }
     }
 
@@ -53,12 +55,14 @@ public:
 
     // Aborts currently-pending head version; returns true if the head version
     // is pending and false otherwise.
-    bool abort() {
-        if (!h_->status_is(MvStatus::PENDING)) {
-            return false;
-        }
+    bool abort(history_type *h) {
+        if (h) {
+            if (!h->status_is(MvStatus::PENDING)) {
+                return false;
+            }
 
-        h_->status_abort();
+            h->status_abort();
+        }
         return true;
     }
 
@@ -89,12 +93,12 @@ public:
 
     // "Install" step: set status to committed if head element is pending; fails
     //                 otherwise
-    bool cp_install() {
-        if (!h_->status_is(MvStatus::PENDING)) {
+    bool cp_install(history_type *h) {
+        if (!h->status_is(MvStatus::PENDING)) {
             return false;
         }
 
-        h_->status_commit();
+        h->status_commit();
         return true;
     }
 
@@ -106,7 +110,7 @@ public:
             return false;
         }
 
-        history_type *head = h_;
+        history_type *head = h_.load();
         history_type *visible = head;
         while (!visible->status_is(MvStatus::COMMITTED)) {
             visible = visible->prev();
@@ -114,13 +118,11 @@ public:
 
         // Can only install onto the latest-visible version
         if (h->prev() != visible) {
-            h->status_abort();
             return false;
         }
 
         // Attempt to CAS onto the head of the version list
-        if (!::bool_cmpxchg(&h_, head, h)) {
-            h->status_abort();
+        if (!h_.compare_exchange_strong(head, h)) {
             return false;
         }
 
@@ -137,7 +139,8 @@ public:
     // pending versions, but if toggled off, will simply return first version,
     // regardless of status
     history_type* find(const type tid, const bool wait=true) const {
-        history_type *h = h_;
+        fence();
+        history_type *h = h_.load();
         /* TODO: use something smarter than a linear scan */
         while (h) {
             if (wait) {
@@ -153,12 +156,14 @@ public:
             h = h->prev();
         }
 
+        assert(h);
+
         return h;
     }
 
     // Returns the latest committed version
     const T& nontrans_access() const {
-        history_type *h = h_;
+        history_type *h = h_.load();
         /* TODO: head version caching */
         while (h) {
             if (h->status_is(COMMITTED)) {
@@ -171,7 +176,7 @@ public:
         throw InvalidState();
     }
     T& nontrans_access() {
-        history_type *h = h_;
+        history_type *h = h_.load();
         /* TODO: head version caching */
         while (h) {
             if (h->status_is(COMMITTED)) {
@@ -189,10 +194,11 @@ protected:
     void wait_if_pending(const history_type *h) const {
         while (h->status_is(MvStatus::PENDING)) {
             // TODO: implement a backoff or something
+            fence();
         }
     }
 
-    history_type *h_;
+    std::atomic<history_type*> h_;
 };
 
 class MvHistoryBase {
@@ -210,17 +216,19 @@ public:
 
     // Returns the current rtid
     type rtid() const {
-        return rtid_;
+        return rtid_.load();
     }
 
     // Non-CAS assignment on the rtid
     type rtid(const type new_rtid) {
-        return rtid_ = new_rtid;
+        rtid_.store(new_rtid);
+        return new_rtid;
     }
 
     // Proxy for a CAS assigment on the rtid
-    type rtid(const type prev_rtid, const type new_rtid) {
-        return ::cmpxchg(&rtid_, prev_rtid, new_rtid);
+    type rtid(type prev_rtid, const type new_rtid) {
+        assert(prev_rtid <= new_rtid);
+        return rtid_.compare_exchange_strong(prev_rtid, new_rtid);
     }
 
     // Returns the status
@@ -264,6 +272,9 @@ protected:
     MvHistoryBase(type ntid, MvHistoryBase *nprev = nullptr)
             : prev_(nprev), rtid_(ntid), status_(MvStatus::PENDING), wtid_(ntid) {
 
+        /*
+        // Can't actually assume this assertion because it may have changed
+        // between when the history item was made and when this check is done
         if (prev_) {
 //            char buf[1000];
 //            snprintf(buf, 1000,
@@ -275,6 +286,7 @@ protected:
                 "Cannot write MVCC history with wtid earlier than prev rtid.");
 //            prev_->rtid = rtid;
         }
+        */
     }
 
     MvHistoryBase *prev_;
@@ -282,10 +294,10 @@ protected:
 private:
     // Returns true if the given prev pointer would be a valid prev element
     bool is_valid_prev(const MvHistoryBase *prev) const {
-        return prev->rtid_ <= wtid_;
+        return prev->rtid_.load() <= wtid_;
     }
 
-    type rtid_;  // Read TID
+    std::atomic<type> rtid_;  // Read TID
     MvStatus status_;  // Status of this element
     const type wtid_;  // Write TID
 };
