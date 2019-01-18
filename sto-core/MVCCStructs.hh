@@ -28,6 +28,7 @@ public:
     MvObject()
             : h_(new history_type(this)) {
         h_.load()->status_commit();
+        h_.load()->status_delete();
     }
     explicit MvObject(const T& value)
             : h_(new history_type(0, this, new T(value))) {
@@ -161,13 +162,12 @@ public:
         return h;
     }
 
-    // Returns the latest committed version
+    // Read-only
     const T& nontrans_access() const {
         history_type *h = h_.load();
         /* TODO: head version caching */
         while (h) {
             if (h->status_is(COMMITTED)) {
-                /* TODO: handle COMMITTED_DELETED correctly? */
                 return h->v();
             }
             h = h->prev();
@@ -175,12 +175,13 @@ public:
         // Should never get here!
         throw InvalidState();
     }
+    // Writable version
     T& nontrans_access() {
         history_type *h = h_.load();
         /* TODO: head version caching */
         while (h) {
             if (h->status_is(COMMITTED)) {
-                /* TODO: handle COMMITTED_DELETED correctly? */
+                h->status(MvStatus::COMMITTED);
                 return h->v();
             }
             h = h->prev();
@@ -234,6 +235,11 @@ public:
     // Returns the status
     MvStatus status() const {
         return status_;
+    }
+
+    // Sets and returns the status
+    MvStatus status(MvStatus status) {
+        return status_ = status;
     }
 
     // Removes all flags, signaling an aborted status
@@ -359,7 +365,7 @@ public:
     typedef MvObject<T> object_type;
 
     MvHistory() = delete;
-    explicit MvHistory(object_type *obj) : MvHistory(0, obj, T()) {}
+    explicit MvHistory(object_type *obj) : MvHistory(0, obj, nullptr) {}
     explicit MvHistory(
             type ntid, object_type *obj, const T& nv, history_type *nprev = nullptr)
             : MvHistoryBase(ntid, nprev), obj_(obj), v_(nv), vp_(&v_) {}

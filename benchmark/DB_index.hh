@@ -1456,11 +1456,9 @@ public:
     struct internal_elem {
         key_type key;
         object_type row;
-        bool valid;
-        bool deleted;
 
-        internal_elem(const key_type& k, const value_type& v, const bool valid = false)
-            : key(k), row(v), valid(valid), deleted(false) {}
+        internal_elem(const key_type& k)
+            : key(k), row() {}
 
         static int map(int col_n) {
             (void)col_n;  // TODO(column-splitting)
@@ -1634,8 +1632,8 @@ public:
 
         history_type *h = e->row.find(Sto::read_tid());
 
-        if (is_phantom(e, row_item))
-            goto abort;
+        if (is_phantom(h, row_item))
+            return sel_return_type(true, false, 0, nullptr);
 
         if (index_read_my_write) {
             if (has_delete(row_item)) {
@@ -1654,9 +1652,6 @@ public:
         TMvAccess::template read<value_type>(row_item, h);
 
         return sel_return_type(true, true, rid, h->vp());
-
-    abort:
-        return sel_return_type(false, false, 0, nullptr);
     }
 
     sel_return_type
@@ -1674,8 +1669,8 @@ public:
 
         auto h = e->row.find(Sto::read_tid());
 
-        if (is_phantom(e, row_item))
-            goto abort;
+        if (is_phantom(h, row_item))
+            return sel_return_type(true, false, 0, nullptr);
 
         if (index_read_my_write) {
             if (has_delete(row_item)) {
@@ -1694,9 +1689,6 @@ public:
         access_all(cell_accesses, cell_items, e);
 
         return sel_return_type(true, true, rid, h->vp());
-
-    abort:
-        return sel_return_type(false, false, 0, nullptr);
     }
 
     void update_row(uintptr_t rid, value_type *new_row) {
@@ -1729,8 +1721,9 @@ public:
 
             TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
-            if (is_phantom(e, row_item))
-                goto abort;
+            auto h = e->row.find(Sto::read_tid());
+            if (is_phantom(h, row_item))
+                return ins_return_type(true, false);
 
             if (index_read_my_write) {
                 if (has_delete(row_item)) {
@@ -1746,13 +1739,11 @@ public:
                 // TODO: This now acts like a full read of the value
                 // at rtid. Once we add predicates we can change it to
                 // something else.
-                auto h = e->row.find(Sto::read_tid());
                 TMvAccess::template read<value_type>(row_item, h);
             }
 
         } else {
-            auto e = new internal_elem(key, vptr ? *vptr : value_type(),
-                                       false /*!valid*/);
+            auto e = new internal_elem(key);
             lp.value() = e;
 
             node_type *node;
@@ -1775,7 +1766,7 @@ public:
             //fence();
 
             TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
-            row_item.add_write();
+            row_item.add_write(vptr);
             row_item.add_flags(insert_bit);
 
             // update the node version already in the read set and modified by split
@@ -1797,26 +1788,27 @@ public:
             internal_elem *e = lp.value();
             TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
-            if (is_phantom(e, row_item))
-                goto abort;
+            auto h = e->row.find(Sto::read_tid());
+
+            if (is_phantom(h, row_item))
+                return del_return_type(true, false);
 
             if (index_read_my_write) {
                 if (has_delete(row_item))
                     return del_return_type(true, false);
-                if (!e->valid && has_insert(row_item)) {
+                if (has_insert(row_item)) {
                     row_item.add_flags(delete_bit);
-                    return del_return_type(true, true);
+                    return del_return_type(true, false);
                 }
             }
 
             // select_for_update will register an observation and set the write bit of
             // the TItem
-            auto h = e->row.find(Sto::read_tid());
             TMvAccess::template read<value_type>(row_item, h);
+            if (h->status_is(DELETED))
+                return del_return_type(true, false);
             row_item.add_write();
             fence();
-            if (e->deleted)
-                goto abort;
             row_item.add_flags(delete_bit);
         } else {
             if (!register_internode_version(lp.node(), lp.full_version_value()))
@@ -1868,12 +1860,12 @@ public:
             //}
 
             // skip invalid (inserted but yet committed) values, but do not abort
-            if (!e->valid) {
+            auto h = cell_items[0].template read_value<history_type *>();
+            if (h->status_is(DELETED)) {
                 ret = true;
                 return true;
             }
 
-            auto h = cell_items[0].template read_value<history_type *>();
             ret = callback(key_type(key), h->vp());
             return true;
         };
@@ -1916,7 +1908,7 @@ public:
             TMvAccess::template read<value_type>(row_item, h);
 
             // skip invalid (inserted but yet committed) values, but do not abort
-            if (!e->valid) {
+            if (h->status_is(DELETED)) {
                 ret = true;
                 return true;
             }
@@ -1952,7 +1944,8 @@ public:
             e->row.nontrans_access() = v;
             lp.finish(0, *ti);
         } else {
-            internal_elem *e = new internal_elem(k, v, true);
+            internal_elem *e = new internal_elem(k);
+            e->row.nontrans_access() = v;
             lp.value() = e;
             lp.finish(1, *ti);
         }
@@ -2006,17 +1999,8 @@ public:
         assert(!is_internode(item));
         auto key = item.key<item_key_t>();
         auto e = key.internal_elem_ptr();
-
-        if (key.is_row_item()) {
-            //assert(e->version.is_locked());
-            if (has_delete(item)) {
-                if (!has_insert(item)) {
-                    e->deleted = true;
-                    fence();
-                }
-            }
-        }
         auto h = item.template write_value<history_type*>();
+
         e->row.cp_install(h);
     }
 
@@ -2134,8 +2118,8 @@ private:
     static bool has_row_cell(const TransItem& item) {
         return (item.flags() & row_cell_bit) != 0;
     }
-    static bool is_phantom(internal_elem *e, const TransItem& item) {
-        return (!e->valid && !has_insert(item));
+    static bool is_phantom(const history_type *h, const TransItem& item) {
+        return (h->status_is(DELETED) && !has_insert(item));
     }
 
     bool register_internode_version(node_type *node, nodeversion_value_type nodeversion) {
