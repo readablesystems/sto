@@ -106,6 +106,7 @@ public:
         bool result = v.cp_lock(Sto::commit_tid(), h);
         if (!result && !h->status_is(MvStatus::ABORTED)) {
             delete h;
+            TransProxy(txn, item).clear_write();
         } else {
             TransProxy(txn, item).add_write(h);
         }
@@ -126,8 +127,10 @@ public:
     }
     void cleanup(TransItem& item, bool committed) override {
         if (!committed) {
-            auto h = item.template write_value<history_type*>();
-            data_[item.key<size_type>()].v.abort(h);
+            if (item.has_write()) {
+                auto h = item.template write_value<history_type*>();
+                data_[item.key<size_type>()].v.abort(h);
+            }
         }
     }
 

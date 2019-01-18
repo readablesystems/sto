@@ -10,12 +10,13 @@ template <typename T> class MvObject;
 
 // Status types of MvHistory elements
 enum MvStatus {
-    ABORTED = 0x000,
-    DELETED = 0x001,  // Not a valid state on its own, but defined as a flag
-    PENDING = 0x010,
-    COMMITTED = 0x100,
-    PENDING_DELETED = 0x011,
-    COMMITTED_DELETED = 0x101,
+    UNUSED              = 0b0000,
+    ABORTED             = 0b1000,
+    DELETED             = 0b0001,  // Not a valid state on its own, but defined as a flag
+    PENDING             = 0b0010,
+    COMMITTED           = 0b0100,
+    PENDING_DELETED     = 0b0011,
+    COMMITTED_DELETED   = 0b0101,
 };
 
 template <typename T>
@@ -262,6 +263,11 @@ public:
             return status_;
         }
         return status_ = static_cast<MvStatus>(status_ | MvStatus::DELETED);
+    }
+
+    // Sets the history into UNUSED state
+    MvStatus status_unused() {
+        return status_ = MvStatus::UNUSED;
     }
 
     // Returns true if all the given flag(s) are set
