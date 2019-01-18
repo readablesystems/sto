@@ -1796,9 +1796,9 @@ public:
             if (index_read_my_write) {
                 if (has_delete(row_item))
                     return del_return_type(true, false);
-                if (has_insert(row_item)) {
+                if (h->status_is(DELETED) && has_insert(row_item)) {
                     row_item.add_flags(delete_bit);
-                    return del_return_type(true, false);
+                    return del_return_type(true, true);
                 }
             }
 
