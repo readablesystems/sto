@@ -10,7 +10,7 @@
 
 class TWrappedAccess;
 
-class TMvAccess;
+class MvAccess;
 
 class TransProxy;
 
@@ -279,7 +279,7 @@ private:
     friend class Transaction;
     friend class TransProxy;
     friend class TWrappedAccess;
-    friend class TMvAccess;
+    friend class MvAccess;
     friend class VersionDelegate;
 };
 

@@ -1649,7 +1649,7 @@ public:
             }
         }
 
-        TMvAccess::template read<value_type>(row_item, h);
+        MvAccess::template read<value_type>(row_item, h);
 
         return sel_return_type(true, true, rid, h->vp());
     }
@@ -1739,7 +1739,7 @@ public:
                 // TODO: This now acts like a full read of the value
                 // at rtid. Once we add predicates we can change it to
                 // something else.
-                TMvAccess::template read<value_type>(row_item, h);
+                MvAccess::template read<value_type>(row_item, h);
             }
 
         } else {
@@ -1804,7 +1804,7 @@ public:
 
             // select_for_update will register an observation and set the write bit of
             // the TItem
-            TMvAccess::template read<value_type>(row_item, h);
+            MvAccess::template read<value_type>(row_item, h);
             if (h->status_is(DELETED))
                 return del_return_type(true, false);
             row_item.add_write();
@@ -1905,7 +1905,7 @@ public:
             }
 
             auto h = e->row.find(Sto::read_tid());
-            TMvAccess::template read<value_type>(row_item, h);
+            MvAccess::template read<value_type>(row_item, h);
 
             // skip invalid (inserted but yet committed) values, but do not abort
             if (h->status_is(DELETED)) {
@@ -2102,7 +2102,7 @@ private:
         (void)cell_accesses;  // TODO(column-splitting)
         for (auto it = cell_items.begin(); it != cell_items.end(); ++it) {
             auto h = e->row.find(Sto::read_tid());
-            TMvAccess::template read<value_type>(*it, h);
+            MvAccess::template read<value_type>(*it, h);
         }
     }
 

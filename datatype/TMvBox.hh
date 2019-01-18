@@ -22,7 +22,7 @@ public:
             return {true, item.template write_value<T>()};
         else {
             history_type *h = v_.find(Sto::read_tid());
-            TMvAccess::template read<T>(item, h);
+            MvAccess::template read<T>(item, h);
             return {true, h->v()};
         }
     }

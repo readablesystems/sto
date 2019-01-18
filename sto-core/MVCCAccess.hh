@@ -3,7 +3,7 @@
 #include "Transaction.hh"
 
 // Proxy for TransItem access
-class TMvAccess {
+class MvAccess {
 public:
     template <typename T>
     static void read(TransProxy item, MvHistory<T> *h) {

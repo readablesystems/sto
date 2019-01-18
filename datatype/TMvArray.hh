@@ -47,7 +47,7 @@ public:
         }
         else {
             history_type *h = data_[i].v.find(Sto::read_tid());
-            TMvAccess::template read<T>(item, h);
+            MvAccess::template read<T>(item, h);
             ret = h->v();
             return true;
         }
@@ -63,7 +63,7 @@ public:
             if (!h) {
                 throw Transaction::Abort();
             }
-            TMvAccess::template read<T>(item, h);
+            MvAccess::template read<T>(item, h);
             return h->v();
         }
     }
