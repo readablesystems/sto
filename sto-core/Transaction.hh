@@ -7,7 +7,6 @@
 #include "ContentionManager.hh"
 #include "TransScratch.hh"
 #include "VersionBase.hh"
-#include "MVCCStructs.hh"
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -102,8 +101,6 @@
 #endif
 
 #include "config.h"
-
-#define MAX_THREADS 128
 
 // TRANSACTION macros that can be used to wrap transactional code
 #define TRANSACTION                               \
@@ -305,6 +302,7 @@ struct __attribute__((aligned(128))) threadinfo_t {
     using epoch_type = TRcuSet::epoch_type;
     using tid_type = TransactionTid::type;
     epoch_type epoch;
+    tid_type rtid;
     tid_type wtid;
     TRcuSet rcu_set;
     // XXX(NH): these should be vectors so multiple data structures can register
@@ -510,7 +508,7 @@ private:
 #endif
         thr.epoch = global_epochs.global_epoch;
         thr.rcu_set.clean_until(global_epochs.active_epoch);
-        thr.wtid = 0;
+        thr.rtid = thr.wtid = 0;
         if (thr.trans_start_callback)
             thr.trans_start_callback();
         hash_base_ += tset_size_ + 1;
@@ -852,7 +850,8 @@ public:
             TXP_INCREMENT(txp_rtid_atomic);
             fence();
             epoch_advance_once();
-            read_tid_ = _RTID.load();
+            threadinfo_t& thr = tinfo[TThread::id()];
+            thr.rtid = read_tid_ = _RTID.load();
         }
         return read_tid_;
     }

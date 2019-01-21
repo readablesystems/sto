@@ -16,8 +16,7 @@
 #include <vector>
 #include "DB_structs.hh"
 #include "VersionSelector.hh"
-#include "MVCCAccess.hh"
-#include "MVCCStructs.hh"
+#include "MVCC.hh"
 
 #include "TBox.hh"
 #include "TMvBox.hh"

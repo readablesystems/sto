@@ -1,8 +1,7 @@
 #pragma once
 
 #include "Sto.hh"
-#include "MVCCAccess.hh"
-#include "MVCCStructs.hh"
+#include "MVCC.hh"
 
 template <typename T>
 class TMvBox : public TObject {

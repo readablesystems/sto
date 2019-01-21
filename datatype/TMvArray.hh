@@ -2,8 +2,7 @@
 
 #include "Sto.hh"
 #include "TArrayProxy.hh"
-#include "MVCCAccess.hh"
-#include "MVCCStructs.hh"
+#include "MVCC.hh"
 
 template <typename T, unsigned N>
 class TMvArray : public TObject {

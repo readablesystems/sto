@@ -6,6 +6,8 @@
 #include <sys/resource.h>
 #include <sys/time.h>
 
+#include "MVCC.hh"
+
 Transaction::testing_type Transaction::testing;
 threadinfo_t Transaction::tinfo[MAX_THREADS];
 __thread int TThread::the_id;
@@ -69,6 +71,8 @@ void* Transaction::epoch_advancer(void*) {
         global_epochs.global_epoch = std::max(g + 1, epoch_type(1));
         global_epochs.active_epoch = e;
         global_epochs.recent_tid = _TID;
+
+        MvRegistry::collect_garbage();
 
         if (epoch_advance_callback)
             epoch_advance_callback(global_epochs.global_epoch);

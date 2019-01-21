@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MVCCTypes.hh"
 #include "Transaction.hh"
 
 // Proxy for TransItem access

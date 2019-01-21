@@ -331,7 +331,7 @@ void tpcc_prepopulator<DBParams>::random_shuffle(std::vector<uint64_t> &v) {
 
 // @section: clp parser definitions
 enum {
-    opt_dbid = 1, opt_nwhs, opt_nthrs, opt_time, opt_perf, opt_pfcnt
+    opt_dbid = 1, opt_nwhs, opt_nthrs, opt_time, opt_perf, opt_pfcnt, opt_gc
 };
 
 static const Clp_Option options[] = {
@@ -340,7 +340,8 @@ static const Clp_Option options[] = {
     { "nthreads",     't', opt_nthrs, Clp_ValInt,    Clp_Optional },
     { "time",         'l', opt_time,  Clp_ValDouble, Clp_Optional },
     { "perf",         'p', opt_perf,  Clp_NoVal,     Clp_Optional },
-    { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,     Clp_Negate| Clp_Optional }
+    { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,     Clp_Negate| Clp_Optional },
+    { "gc",           'g', opt_gc,    Clp_NoVal,     Clp_Negate| Clp_Optional },
 };
 
 // @endsection: clp parser definitions
@@ -466,6 +467,7 @@ public:
         int num_warehouses = 1;
         int num_threads = 1;
         double time_limit = 10.0;
+        bool enable_gc = false;
 
         Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
 
@@ -489,6 +491,9 @@ public:
                     break;
                 case opt_pfcnt:
                     counter_mode = !clp->negated;
+                    break;
+                case opt_gc:
+                    enable_gc = !clp->negated;
                     break;
                 default:
                     print_usage(argv[0]);
@@ -522,6 +527,13 @@ public:
         prepopulate_db(db);
         std::cout << "Prepopulation complete." << std::endl;
 
+        std::thread advancer;
+        std::cout << "Garbage collection: " << (enable_gc ? "enabled" : "disabled") << std::endl;
+        if (enable_gc) {
+            advancer = std::thread(&Transaction::epoch_advancer, nullptr);
+            advancer.detach();
+        }
+
         prof.start(profiler_mode);
         auto num_trans = run_benchmark(db, prof, num_threads, time_limit);
         prof.finish(num_trans);
@@ -550,7 +562,9 @@ static inline void print_usage(const char *argv_0) {
        << "  --perf (or -p)" << std::endl
        << "    Spawns perf profiler in record mode for the duration of the benchmark run." << std::endl
        << "  --perf-counter (or -c)" << std::endl
-       << "    Spawns perf profiler in counter mode for the duration of the benchmark run." << std::endl;
+       << "    Spawns perf profiler in counter mode for the duration of the benchmark run." << std::endl
+       << "  --gc (or -g)" << std::endl
+       << "    Enable garbage collection (default false)." << std::endl;
     std::cout << ss.str() << std::flush;
 }
 

@@ -76,7 +76,7 @@ public:
 
 class db_mvcc_params : public db_default_params {
 public:
-    static constexpr db_params_id Id = db_params_id::TicToc;
+    static constexpr db_params_id Id = db_params_id::MVCC;
     static constexpr bool Opaque = true;
     static constexpr bool MVCC = true;
 };

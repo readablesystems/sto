@@ -3,6 +3,8 @@
 #include <cassert>
 #include <random>
 
+#define MAX_THREADS 128
+
 class Transaction;
 
 struct PercentGen {
