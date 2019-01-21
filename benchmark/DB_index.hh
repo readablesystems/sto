@@ -691,7 +691,7 @@ public:
         typedef Masstree::value_print<value_type> value_print_type;
         typedef threadinfo threadinfo_type;
 
-        static constexpr bool simulated_node_tracking = true;
+        static constexpr bool simulated_node_tracking = DBParams::NodeTrack;
         typedef TBox<fix_string<64>> tmvbox_type;
         template <typename MvBoxType>
         static inline void mvtbox_callback(MvBoxType* box) {
@@ -1559,7 +1559,7 @@ public:
         typedef Masstree::value_print<value_type> value_print_type;
         typedef threadinfo threadinfo_type;
 
-        static constexpr bool simulated_node_tracking = true;
+        static constexpr bool simulated_node_tracking = DBParams::NodeTrack;
         typedef TMvBox<fix_string<64>> tmvbox_type;
         template <typename MvBoxType>
         static inline void mvtbox_callback(MvBoxType* box) {

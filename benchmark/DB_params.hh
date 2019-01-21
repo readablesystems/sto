@@ -1,12 +1,16 @@
 #pragma once
 
+#include <iostream>
+#include <cstring>
+
 namespace db_params {
 
 // Benchmark parameters
-constexpr const char *db_params_id_names[] = {"none", "default", "opaque", "2pl", "adaptive", "swiss", "tictoc", "mvcc"};
+constexpr const char *db_params_id_names[] = {
+    "none", "default", "opaque", "2pl", "adaptive", "swiss", "tictoc", "mvcc", "defaultnode", "mvccnode"};
 
 enum class db_params_id : int {
-    None = 0, Default, Opaque, TwoPL, Adaptive, Swiss, TicToc, MVCC
+    None = 0, Default, Opaque, TwoPL, Adaptive, Swiss, TicToc, MVCC, DefaultNode, MVCCNode
 };
 
 inline std::ostream &operator<<(std::ostream &os, const db_params_id &id) {
@@ -15,7 +19,7 @@ inline std::ostream &operator<<(std::ostream &os, const db_params_id &id) {
 }
 
 inline db_params_id parse_dbid(const char *id_string) {
-    if (id_string == nullptr)
+    if (id_string == nullptr || (*id_string) == '\0')
         return db_params_id::None;
     for (size_t i = 0; i < sizeof(db_params_id_names); ++i) {
         if (strcmp(id_string, db_params_id_names[i]) == 0) {
@@ -37,6 +41,7 @@ public:
     static constexpr bool Swiss = false;
     static constexpr bool TicToc = false;
     static constexpr bool MVCC = false;
+    static constexpr bool NodeTrack = false;
 };
 
 class db_opaque_params : public db_default_params {
@@ -75,6 +80,17 @@ public:
     static constexpr bool Opaque = true;
     static constexpr bool MVCC = true;
 };
+
+class db_default_node_params : public db_default_params {
+public:
+    static constexpr bool NodeTrack = true;
+};
+
+class db_mvcc_node_params : public db_mvcc_params {
+public:
+    static constexpr bool NodeTrack = true;
+};
+
 
 class constants {
 public:

@@ -596,6 +596,7 @@ int main(int argc, const char *const *argv) {
     case db_params_id::Default:
         ret_code = tpcc_access<db_default_params>::execute(argc, argv);
         break;
+    /*
     case db_params_id::Opaque:
         ret_code = tpcc_access<db_opaque_params>::execute(argc, argv);
         break;
@@ -611,11 +612,18 @@ int main(int argc, const char *const *argv) {
     case db_params_id::TicToc:
         ret_code = tpcc_access<db_tictoc_params>::execute(argc, argv);
         break;
+    */
     case db_params_id::MVCC:
         ret_code = tpcc_access<db_mvcc_params>::execute(argc, argv);
         break;
+    case db_params_id::DefaultNode:
+        ret_code = tpcc_access<db_default_node_params>::execute(argc, argv);
+        break;
+    case db_params_id::MVCCNode:
+        ret_code = tpcc_access<db_mvcc_node_params>::execute(argc, argv);
+        break;
     default:
-        std::cerr << "unknown db config parameter id" << std::endl;
+        std::cerr << "unsupported db config parameter id" << std::endl;
         ret_code = 1;
         break;
     };
