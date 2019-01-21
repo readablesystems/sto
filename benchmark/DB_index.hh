@@ -14,10 +14,12 @@
 #include "string.hh"
 
 #include <vector>
+#include "DB_structs.hh"
 #include "VersionSelector.hh"
 #include "MVCCAccess.hh"
 #include "MVCCStructs.hh"
 
+#include "TBox.hh"
 #include "TMvBox.hh"
 
 namespace bench {
@@ -689,8 +691,17 @@ public:
         typedef Masstree::value_print<value_type> value_print_type;
         typedef threadinfo threadinfo_type;
 
-        template <typename NodeType>
-        using tmvbox_type = TMvBox<NodeType>;
+        static constexpr bool simulated_node_tracking = true;
+        typedef TBox<fix_string<64>> tmvbox_type;
+        template <typename MvBoxType>
+        static inline void mvtbox_callback(MvBoxType* box) {
+            if (TThread::txn) {
+                // hack... but should be fine as long as we don't
+                // support arbitrary non-transactions accesses
+                fix_string<64> r = box->read();
+                box->write(r);
+            }
+        }
     };
 
     typedef Masstree::Str Str;
@@ -1547,8 +1558,18 @@ public:
         typedef internal_elem* value_type;
         typedef Masstree::value_print<value_type> value_print_type;
         typedef threadinfo threadinfo_type;
-        template <typename NodeType>
-        using tmvbox_type = TMvBox<NodeType>;
+
+        static constexpr bool simulated_node_tracking = true;
+        typedef TMvBox<fix_string<64>> tmvbox_type;
+        template <typename MvBoxType>
+        static inline void mvtbox_callback(MvBoxType* box) {
+            if (TThread::txn) {
+                // hack... but should be fine as long as we don't
+                // support arbitrary non-transactions accesses
+                fix_string<64> r = box->read();
+                box->write(r);
+            }
+        }
     };
 
     typedef Masstree::Str Str;
@@ -1575,7 +1596,7 @@ public:
     }
 
     void table_init() {
-        static_assert(DBParams::Opaque);
+        static_assert(DBParams::Opaque, "MVCC must operate in opaque mode.");
         if (ti == nullptr)
             ti = threadinfo::make(threadinfo::TI_MAIN, -1);
         table_.initialize(*ti);

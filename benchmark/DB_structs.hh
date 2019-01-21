@@ -3,6 +3,7 @@
 #include "config.h"
 
 #include <string>
+#include <iostream>
 #include <cstring>
 #include <byteswap.h>
 
@@ -228,3 +229,11 @@ struct masstree_key_adapter : public K {
 };
 
 }; // namespace bench
+
+template <size_t FL>
+std::ostream& operator<<(std::ostream& w, const bench::fix_string<FL>& str) {
+    (void)str;
+    w << "fix_string<" << FL << ">" << std::endl;
+    return w;
+}
+
