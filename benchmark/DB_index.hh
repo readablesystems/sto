@@ -693,12 +693,20 @@ public:
         static constexpr bool simulated_node_tracking = DBParams::NodeTrack;
         typedef TBox<fix_string<64>> tmvbox_type;
         template <typename MvBoxType>
-        static inline void mvtbox_callback(MvBoxType* box) {
+        static inline void tmvbox_callback(MvBoxType* box) {
             if (TThread::txn) {
                 // hack... but should be fine as long as we don't
                 // support arbitrary non-transactions accesses
-                fix_string<64> r = box->read();
+                fix_string<64> r;
+                std::tie(std::ignore, r) = box->read_nothrow();
                 box->write(r);
+            }
+        }
+        template <typename MvBoxType>
+        static inline void tmvbox_init_callback(MvBoxType* &box) {
+            box = new MvBoxType();
+            if (TThread::txn) {
+                box->write(fix_string<64>());
             }
         }
     };
@@ -1561,12 +1569,19 @@ public:
         static constexpr bool simulated_node_tracking = DBParams::NodeTrack;
         typedef TMvBox<fix_string<64>> tmvbox_type;
         template <typename MvBoxType>
-        static inline void mvtbox_callback(MvBoxType* box) {
+        static inline void tmvbox_callback(MvBoxType* box) {
             if (TThread::txn) {
                 // hack... but should be fine as long as we don't
                 // support arbitrary non-transactions accesses
                 fix_string<64> r = box->read();
                 box->write(r);
+            }
+        }
+        template <typename MvBoxType>
+        static inline void tmvbox_init_callback(MvBoxType* &box) {
+            box = new MvBoxType();
+            if (TThread::txn) {
+                box->write(fix_string<64>());
             }
         }
     };
