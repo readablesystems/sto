@@ -18,6 +18,8 @@
 #include "MVCCAccess.hh"
 #include "MVCCStructs.hh"
 
+#include "TMvBox.hh"
+
 namespace bench {
 
 class version_adapter {
@@ -686,6 +688,9 @@ public:
         typedef internal_elem* value_type;
         typedef Masstree::value_print<value_type> value_print_type;
         typedef threadinfo threadinfo_type;
+
+        template <typename NodeType>
+        using tmvbox_type = TMvBox<NodeType>;
     };
 
     typedef Masstree::Str Str;
@@ -1542,6 +1547,8 @@ public:
         typedef internal_elem* value_type;
         typedef Masstree::value_print<value_type> value_print_type;
         typedef threadinfo threadinfo_type;
+        template <typename NodeType>
+        using tmvbox_type = TMvBox<NodeType>;
     };
 
     typedef Masstree::Str Str;
