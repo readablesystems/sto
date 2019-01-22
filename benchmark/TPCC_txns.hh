@@ -398,7 +398,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     if (by_name) {
         std::vector<uint64_t> matches;
         auto scan_callback = [&] (const customer_idx_key&, const customer_idx_value& civ) -> bool {
-            matches.emplace_back(bswap(civ.c_id));
+            matches.emplace_back(civ.c_id);
             return true;
         };
 
