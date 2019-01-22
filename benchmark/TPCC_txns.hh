@@ -517,17 +517,16 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
         order_key k0(q_w_id, q_d_id, 0);
         order_key k1(q_w_id, q_d_id, std::numeric_limits<uint64_t>::max());
         success = db.tbl_neworders(q_w_id)
-                .template range_scan<decltype(no_scan_callback), false/*reverse*/>(k0, k1, no_scan_callback, RowAccess::ObserveValue);
+                .template range_scan<decltype(no_scan_callback), false/*reverse*/>(k0, k1, no_scan_callback, RowAccess::ObserveValue, false, 1);
         TXN_DO(success);
 
         if (order_id == 0)
             continue;
 
         order_key ok(q_w_id, q_d_id, order_id);
-
-        std::tie(success, result) = db.tbl_neworders(q_w_id).delete_row(ok);
-        TXN_DO(success);
-        assert(result);
+        //std::tie(success, result) = db.tbl_neworders(q_w_id).delete_row(ok);
+        //TXN_DO(success);
+        //assert(result);
 
         std::tie(success, result, row, value) = db.tbl_orders(q_w_id).select_row(ok, {{od_nc::o_c_id, false}, {od_nc::o_carrier_id, true}});
         TXN_DO(success);
@@ -579,7 +578,8 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     uint64_t q_d_id = ig.random(1, 10);
     auto threshold = (int32_t)ig.random(10, 20);
 
-    std::vector<uint64_t> od_nums;
+    uint64_t num_orders = 0;
+    uint64_t last_oid = 0;
     std::set<uint64_t> ol_iids;
 
     volatile int out_count = 0;
@@ -588,35 +588,28 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     bool success, result;
     const void *value;
 
-    auto od_scan_callback = [&od_nums] (const order_key& key, const order_value&) -> bool {
-        od_nums.push_back(bswap(key.o_id));
-        return true;
-    };
-
-    auto ol_scan_callback = [&ol_iids] (const orderline_key&, const orderline_value& value) -> bool {
-        ol_iids.insert(value.ol_i_id);
+    auto ol_scan_callback = [&num_orders, &last_oid, &ol_iids] (const orderline_key&key, const orderline_value& value) -> bool {
+        if (num_orders <= 20) {
+            if (key.ol_o_id != last_oid) {
+                last_oid = key.ol_o_id;
+                ++num_orders;
+            }
+            ol_iids.insert(value.ol_i_id);
+        }
         return true;
     };
 
     TRANSACTION {
 
-    od_nums.clear();
-
-    order_key ok0(q_w_id, q_d_id, 0);
-    order_key ok1(q_w_id, q_d_id, std::numeric_limits<uint64_t>::max());
-
-    success = db.tbl_orders(q_w_id)
-            .template range_scan<decltype(od_scan_callback), true/*reverse*/>(ok0, ok1, od_scan_callback, RowAccess::ObserveExists, true/*phantom protection*/, 20);
-    TXN_DO(success);
-
+    num_orders = 0;
+    last_oid = 0;
     ol_iids.clear();
-    for (auto on : od_nums) {
-        orderline_key olk0(q_w_id, q_d_id, on, 0);
-        orderline_key olk1(q_w_id, q_d_id, on, std::numeric_limits<uint64_t>::max());
-        success = db.tbl_orderlines(q_w_id)
-                .template range_scan<decltype(ol_scan_callback), false>(olk0, olk1, ol_scan_callback, RowAccess::ObserveValue);
-        TXN_DO(success);
-    }
+    orderline_key olk0(q_w_id, q_d_id, 0, 0);
+    orderline_key olk1(q_w_id, q_d_id, std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint64_t>::max());
+
+    success = db.tbl_orderlines(q_w_id)
+            .template range_scan<decltype(ol_scan_callback), true/*reverse*/>(olk0, olk1, ol_scan_callback, RowAccess::ObserveExists, true/*phantom protection*/, 300);
+    TXN_DO(success);
 
     for (auto iid : ol_iids) {
         stock_key sk(q_w_id, iid);
@@ -624,8 +617,9 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
         TXN_DO(success);
         assert(result);
         auto sv = reinterpret_cast<const stock_value *>(value);
-        if(sv->s_quantity < threshold)
+        if(sv->s_quantity < threshold) {
             out_count += 1;
+        }
     }
 
     } RETRY(true);
