@@ -503,12 +503,6 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
         return true;
     };
 
-    auto ol_scan_callback = [&ol_nums, &ol_amount_sum] (const orderline_key& olk, const orderline_value& olv) -> bool {
-        ol_nums.push_back(bswap(olk.ol_number));
-        ol_amount_sum += olv.ol_amount;
-        return true;
-    };
-
     TRANSACTION {
 
     for (uint64_t q_d_id = 1; q_d_id <= 10; ++q_d_id) {
