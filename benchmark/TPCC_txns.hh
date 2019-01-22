@@ -397,9 +397,8 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
     if (by_name) {
         std::vector<uint64_t> matches;
-        auto scan_callback = [&] (const customer_idx_key& key, const customer_idx_value& civ) -> bool {
-            (void)key;
-            matches.emplace_back(civ.c_id);
+        auto scan_callback = [&] (const customer_idx_key&, const customer_idx_value& civ) -> bool {
+            matches.emplace_back(bswap(civ.c_id));
             return true;
         };
 
@@ -435,9 +434,8 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
     // find the highest order placed by customer q_c_id
     uint64_t cus_o_id = 0;
-    auto scan_callback = [&] (const order_cidx_key& key, const bench::dummy_row& dummy) -> bool {
-        (void)dummy;
-        cus_o_id = key.o_id;
+    auto scan_callback = [&] (const order_cidx_key& key, const bench::dummy_row&) -> bool {
+        cus_o_id = bswap(key.o_id);
         return true;
     };
 
@@ -486,7 +484,6 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_delivery() {
     typedef order_value::NamedColumn od_nc;
-    typedef orderline_value::NamedColumn ol_nc;
     typedef customer_value::NamedColumn cu_nc;
 
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
@@ -502,12 +499,12 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
     int32_t ol_amount_sum;
 
     auto no_scan_callback = [&order_id] (const order_key& ok, const bench::dummy_row&) -> bool {
-        order_id = ok.o_id;
+        order_id = bswap(ok.o_id);
         return true;
     };
 
     auto ol_scan_callback = [&ol_nums, &ol_amount_sum] (const orderline_key& olk, const orderline_value& olv) -> bool {
-        ol_nums.push_back(olk.ol_number);
+        ol_nums.push_back(bswap(olk.ol_number));
         ol_amount_sum += olv.ol_amount;
         return true;
     };
@@ -592,7 +589,7 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     const void *value;
 
     auto od_scan_callback = [&od_nums] (const order_key& key, const order_value&) -> bool {
-        od_nums.push_back(key.o_id);
+        od_nums.push_back(bswap(key.o_id));
         return true;
     };
 
