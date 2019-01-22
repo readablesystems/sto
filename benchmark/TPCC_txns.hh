@@ -528,31 +528,27 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
         //TXN_DO(success);
         //assert(result);
 
-        std::tie(success, result, row, value) = db.tbl_orders(q_w_id).select_row(ok, {{od_nc::o_c_id, false}, {od_nc::o_carrier_id, true}});
+        std::tie(success, result, row, value) = db.tbl_orders(q_w_id).select_row(ok, {{od_nc::o_ol_cnt, false}, {od_nc::o_c_id, false}, {od_nc::o_carrier_id, true}});
         TXN_DO(success);
         assert(result);
 
         auto ov = reinterpret_cast<const order_value *>(value);
         uint64_t q_c_id = ov->o_c_id;
+        auto ol_cnt = ov->o_ol_cnt;
 
         order_value *new_ov = Sto::tx_alloc(ov);
         new_ov->o_carrier_id = carrier_id;
         db.tbl_orders(q_w_id).update_row(row, new_ov);
 
-        ol_nums.clear();
         ol_amount_sum = 0;
 
-        orderline_key olk0(q_w_id, q_d_id, order_id, 0);
-        orderline_key olk1(q_w_id, q_d_id, order_id, std::numeric_limits<uint64_t>::max());
-        success = db.tbl_orderlines(q_w_id).template range_scan<decltype(ol_scan_callback), false>(olk0, olk1, ol_scan_callback, RowAccess::ObserveValue);
-        TXN_DO(success);
-
-        for (auto n : ol_nums) {
-            std::tie(success, result, row, value) = db.tbl_orderlines(q_w_id).select_row(orderline_key(q_w_id, q_d_id, order_id, n), RowAccess::UpdateValue);
+        for (uint32_t ol_num = 1; ol_num <= ol_cnt; ++ol_num) {
+            std::tie(success, result, row, value) = db.tbl_orderlines(q_w_id).select_row(orderline_key(q_w_id, q_d_id, order_id, ol_num), RowAccess::UpdateValue);
             TXN_DO(success);
 
             assert(result);
             auto olv = reinterpret_cast<const orderline_value *>(value);
+            ol_amount_sum += olv->ol_amount;
             orderline_value *new_olv = Sto::tx_alloc(olv);
             new_olv->ol_delivery_d = delivery_date;
             db.tbl_orderlines(q_w_id).update_row(row, new_olv);
