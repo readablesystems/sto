@@ -400,6 +400,12 @@ public:
                 case txn_type::order_status:
                     runner.run_txn_orderstatus();
                     break;
+                case txn_type::delivery:
+                    runner.run_txn_delivery();
+                    break;
+                case txn_type::stock_level:
+                    runner.run_txn_stocklevel();
+                    break;
                 default:
                     fprintf(stderr, "r:%d unknown txn type\n", runner_id);
                     assert(false);

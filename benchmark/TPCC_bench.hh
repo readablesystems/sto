@@ -214,17 +214,23 @@ public:
 
     inline txn_type next_transaction() {
         uint64_t x = ig.random(1, 100);
-        if (x <= 49)
+        if (x <= 45)
             return txn_type::new_order;
-        else if (x <= 96)
+        else if (x <= 88)
             return txn_type::payment;
-        else
+        else if (x <= 92)
             return txn_type::order_status;
+        else if (x <= 96)
+            return txn_type::delivery;
+        else
+            return txn_type::stock_level;
     }
 
     inline void run_txn_neworder();
     inline void run_txn_payment();
     inline void run_txn_orderstatus();
+    inline void run_txn_delivery();
+    inline void run_txn_stocklevel();
 
 private:
     tpcc_input_generator ig;

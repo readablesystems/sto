@@ -8,6 +8,8 @@ add_library(sto
         TWrapped.hh
         TRcu.cc
         ContentionManager.cc
+        MVCC.hh
+        MVCCRegistry.cc
         VersionBase.hh
         OCCVersions.hh
         EagerVersions.hh
