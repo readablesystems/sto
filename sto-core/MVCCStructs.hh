@@ -306,7 +306,6 @@ public:
 
         // Version consistency check
         if (find(tid) != h) {
-            h->status_abort();
             return false;
         }
 
