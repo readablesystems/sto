@@ -40,6 +40,10 @@ public:
         return fetch_and_add(&(oid_gens[wid % max_whs][did % max_dts]), 1);
     }
 
+    uint64_t get(uint64_t wid, uint64_t did) const {
+        return oid_gens[wid % max_whs][did % max_dts];
+    }
+
 private:
     uint64_t oid_gens[max_whs][max_dts];
 };

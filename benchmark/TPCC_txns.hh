@@ -470,7 +470,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         orderline_key olk1(q_w_id, q_d_id, cus_o_id, std::numeric_limits<uint64_t>::max());
 
         success = db.tbl_orderlines(q_w_id)
-                .template range_scan<decltype(ol_scan_callback), true/*reverse*/>(olk0, olk1, ol_scan_callback, RowAccess::ObserveValue);
+                .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk0, olk1, ol_scan_callback, RowAccess::ObserveValue);
         TXN_DO(success);
     } else {
         // order doesn't exist, simply commit the transaction
@@ -550,6 +550,8 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
 
         customer_key ck(q_w_id, q_d_id, q_c_id);
         std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_row(ck, {{cu_nc::c_balance, true}, {cu_nc::c_delivery_cnt, true}});
+        TXN_DO(success);
+        assert(result);
         auto cv = reinterpret_cast<const customer_value*>(value);
         customer_value* new_cv = Sto::tx_alloc(cv);
         new_cv->c_balance += (int64_t)ol_amount_sum;
@@ -568,8 +570,6 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     uint64_t q_d_id = ig.random(1, 10);
     auto threshold = (int32_t)ig.random(10, 20);
 
-    uint64_t num_orders = 0;
-    uint64_t last_oid = 0;
     std::set<uint64_t> ol_iids;
 
     volatile int out_count = 0;
@@ -578,27 +578,22 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     bool success, result;
     const void *value;
 
-    auto ol_scan_callback = [&num_orders, &last_oid, &ol_iids] (const orderline_key&key, const orderline_value& value) -> bool {
-        if (num_orders <= 20) {
-            if (key.ol_o_id != last_oid) {
-                last_oid = key.ol_o_id;
-                ++num_orders;
-            }
-            ol_iids.insert(value.ol_i_id);
-        }
+    auto ol_scan_callback = [ &ol_iids] (const orderline_key&, const orderline_value& value) -> bool {
+        ol_iids.insert(value.ol_i_id);
         return true;
     };
 
     TRANSACTION {
 
-    num_orders = 0;
-    last_oid = 0;
     ol_iids.clear();
-    orderline_key olk0(q_w_id, q_d_id, 0, 0);
-    orderline_key olk1(q_w_id, q_d_id, std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint64_t>::max());
+    auto d_next_oid = db.oid_generator().get(q_w_id, q_d_id);
+
+    uint64_t oid_lower = (d_next_oid > 20) ? d_next_oid - 20 : 0;
+    orderline_key olk0(q_w_id, q_d_id, oid_lower, 0);
+    orderline_key olk1(q_w_id, q_d_id, d_next_oid, 0);
 
     success = db.tbl_orderlines(q_w_id)
-            .template range_scan<decltype(ol_scan_callback), true/*reverse*/>(olk0, olk1, ol_scan_callback, RowAccess::ObserveExists, true/*phantom protection*/, 300);
+            .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk1, olk0, ol_scan_callback, RowAccess::ObserveValue);
     TXN_DO(success);
 
     for (auto iid : ol_iids) {
