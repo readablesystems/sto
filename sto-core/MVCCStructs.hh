@@ -24,7 +24,7 @@ public:
     // Attempt to set the pointer to prev; returns true on success
     bool prev(MvHistoryBase *prev) {
         if (is_valid_prev(prev)) {
-            prev_ = prev;
+            prev_.store(prev);
             return true;
         }
         return false;
@@ -115,7 +115,7 @@ protected:
         */
     }
 
-    MvHistoryBase *prev_;
+    std::atomic<MvHistoryBase*> prev_;
 
 private:
     // Returns true if the given prev pointer would be a valid prev element
@@ -127,6 +127,8 @@ private:
     MvStatus status_;  // Status of this element
     const type wtid_;  // Write TID
 
+    template <typename T>
+    friend class MvObject;
     friend class MvRegistry;
 };
 
@@ -171,7 +173,7 @@ public:
     }
 
     history_type* prev() const {
-        return reinterpret_cast<history_type*>(prev_);
+        return reinterpret_cast<history_type*>(prev_.load());
     }
 
 private:
@@ -224,7 +226,7 @@ public:
     }
 
     history_type* prev() const {
-        return reinterpret_cast<history_type*>(prev_);
+        return reinterpret_cast<history_type*>(prev_.load());
     }
 
 private:
@@ -303,7 +305,7 @@ public:
         }
 
         // Version consistency check
-        if (find(tid, false) != h) {
+        if (find(tid) != h) {
             h->status_abort();
             return false;
         }
@@ -330,21 +332,30 @@ public:
             return false;
         }
 
-        base_type *head = h_.load();
-        history_type *visible = static_cast<history_type*>(head);
-        while (!visible->status_is(MvStatus::COMMITTED)) {
-            visible = visible->prev();
-        }
+        // The previously-visible version for h
+        history_type *hvis = h->prev();
 
-        // Can only install onto the latest-visible version
-        if (h->prev() != visible) {
-            return false;
-        }
+        do {
+            // Can only install onto the latest-visible version
+            if (hvis != find(tid)) {
+                return false;
+            }
 
-        // Attempt to CAS onto the head of the version list
-        if (!h_.compare_exchange_strong(head, h)) {
-            return false;
-        }
+            // Discover target atomic on which to do CAS
+            std::atomic<base_type*> *target = &h_;
+            while (target->load()->wtid() > tid) {
+                target = &target->load()->prev_;
+            }
+
+            // Properly link h's prev_
+            auto target_expected = target->load();
+            h->prev_.store(target_expected);
+
+            // Attempt to CAS onto the target
+            if (target->compare_exchange_strong(target_expected, h)) {
+                break;
+            }
+        } while (true);
 
         // Version consistency verification
         if (h->prev()->rtid() > tid) {
@@ -364,7 +375,9 @@ public:
         /* TODO: use something smarter than a linear scan */
         while (h) {
             if (wait) {
-                wait_if_pending(h);
+                if (h->wtid() < tid) {
+                    wait_if_pending(h);
+                }
                 if (h->wtid() <= tid && h->status_is(MvStatus::COMMITTED)) {
                     break;
                 }

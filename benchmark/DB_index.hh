@@ -2004,7 +2004,7 @@ public:
         if (item.has_read()) {
             hprev = item.read_value<history_type*>();
         } else {
-            hprev = e->row.find(Sto::read_tid(), false);
+            hprev = e->row.find(Sto::commit_tid(), false);
         }
         if (Sto::commit_tid() < hprev->rtid()) {
             return false;
