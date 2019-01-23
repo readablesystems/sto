@@ -426,7 +426,7 @@ public:
         std::vector<uint64_t> txn_cnts(size_t(num_runners), 0);
 
         if (q == 0) {
-            q = num_runners / db.num_warehouses();
+            q = (num_runners + db.num_warehouses() - 1) / db.num_warehouses();
             int qq = q;
             int wid = 1;
             for (int i = 0; i < num_runners; ++i) {
