@@ -443,7 +443,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     order_cidx_key k1(q_w_id, q_d_id, q_c_id, std::numeric_limits<uint64_t>::max());
 
     success = db.tbl_order_customer_index(q_w_id)
-            .template range_scan<decltype(scan_callback), true/*reverse*/>(k0, k1, scan_callback, RowAccess::ObserveExists, false, 1/*reverse scan for only 1 item*/);
+            .template range_scan<decltype(scan_callback), true/*reverse*/>(k1, k0, scan_callback, RowAccess::ObserveExists, false, 1/*reverse scan for only 1 item*/);
     TXN_DO(success);
 
     if (cus_o_id > 0) {
