@@ -2020,6 +2020,7 @@ public:
             hprev = e->row.find(Sto::commit_tid(), false);
         }
         if (Sto::commit_tid() < hprev->rtid()) {
+            TransProxy(txn, item).add_write(nullptr);
             return false;
         }
         history_type *h;
@@ -2038,6 +2039,7 @@ public:
         bool result = e->row.cp_lock(Sto::commit_tid(), h);
         if (!result && !h->status_is(MvStatus::ABORTED)) {
             delete h;
+            TransProxy(txn, item).add_write(nullptr);
         } else {
             TransProxy(txn, item).add_write(h);
         }
@@ -2076,7 +2078,9 @@ public:
             auto key = item.key<item_key_t>();
             auto e = key.internal_elem_ptr();
             auto h = item.template write_value<history_type*>();
-            e->row.abort(h);
+            if (h && !item.has_commute()) {
+                e->row.abort(h);
+            }
         }
     }
 
