@@ -5,20 +5,6 @@
 
 namespace tpcc {
 
-struct c_data_info {
-    c_data_info (uint64_t c, uint64_t cd, uint64_t cw, uint64_t d, uint64_t w, int64_t hm)
-        : cid(c), cdid(cd), cwid(cw), did(d), wid(w), h_amount(hm) {}
-    const char *buf() const {
-        return reinterpret_cast<const char *>(&cid);
-    }
-
-    static constexpr size_t len = sizeof(uint64_t)*6;
-
-    uint64_t cid, cdid, cwid;
-    uint64_t did, wid;
-    int64_t h_amount;
-};
-
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_neworder() {
     //fprintf(stdout, "NEWORDER\n");
