@@ -9,11 +9,18 @@
 #include "TransItem.hh"
 #include "VersionBase.hh"
 
+namespace commutators {
+
+// For handling commutative updates
+template <typename T> class MvCommutator;
+
+}
+
 // Base class for MvHistory
 class MvHistoryBase;
 
 // History list item for MVCC
-template <typename T, bool Trivial = std::is_trivially_copyable<T>::value> class MvHistory;
+template <typename T> class MvHistory;
 
 // Generic contained for MVCC abstractions applied to a given object
 template <typename T> class MvObject;

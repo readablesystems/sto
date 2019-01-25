@@ -2,18 +2,26 @@
 
 #pragma once
 
+#include <variant>
+
+#include "MVCCCommutators.hh"
 #include "MVCCRegistry.hh"
 #include "MVCCTypes.hh"
 
 // Status types of MvHistory elements
 enum MvStatus {
-    UNUSED              = 0b0000,
-    ABORTED             = 0b1000,
-    DELETED             = 0b0001,  // Not a valid state on its own, but defined as a flag
-    PENDING             = 0b0010,
-    COMMITTED           = 0b0100,
-    PENDING_DELETED     = 0b0011,
-    COMMITTED_DELETED   = 0b0101,
+    UNUSED              = 0b000000,
+    ABORTED             = 0b100000,
+    DELTA               = 0b001000,  // Commutative update delta
+    DELETED             = 0b000001,  // Not a valid state on its own, but defined as a flag
+    PENDING             = 0b000010,
+    COMMITTED           = 0b000100,
+    PENDING_DELTA       = 0b001010,
+    COMMITTED_DELTA     = 0b001100,
+    PENDING_DELETED     = 0b000011,
+    COMMITTED_DELETED   = 0b000101,
+    LOCKED              = 0b010000,
+    LOCKED_DELTA        = 0b011000,  // Converting from delta to flattened
 };
 
 
@@ -49,44 +57,67 @@ public:
 
     // Returns the status
     MvStatus status() const {
-        return status_;
+        return status_.load();
     }
 
     // Sets and returns the status
-    MvStatus status(MvStatus status) {
-        return status_ = status;
+    // NOT THREADSAFE
+    MvStatus status(MvStatus s) {
+        status_.store(s);
+        return status_.load();
+    }
+    MvStatus status(unsigned long long s) {
+        return status((MvStatus)s);
     }
 
     // Removes all flags, signaling an aborted status
+    // NOT THREADSAFE
     MvStatus status_abort() {
-        return status_ = MvStatus::ABORTED;
+        status(MvStatus::ABORTED);
+        return status();
     }
 
     // Sets the committed flag and unsets the pending flag; does nothing if the
     // current status is ABORTED
+    // NOT THREADSAFE
     MvStatus status_commit() {
-        if (status_ == MvStatus::ABORTED) {
-            return status_;
+        if (status() == MvStatus::ABORTED) {
+            return status();
         }
-        return status_ = static_cast<MvStatus>(MvStatus::COMMITTED | (status_ & ~MvStatus::PENDING));
+        status(MvStatus::COMMITTED | (status() & ~MvStatus::PENDING));
+        return status();
     }
 
     // Sets the deleted flag; does nothing if the current status is ABORTED
+    // NOT THREADSAFE
     MvStatus status_delete() {
-        if (status_ == MvStatus::ABORTED) {
-            return status_;
+        if (status() == MvStatus::ABORTED) {
+            return status();
         }
-        return status_ = static_cast<MvStatus>(status_ | MvStatus::DELETED);
+        status(status() | MvStatus::DELETED);
+        return status();
+    }
+
+    // Sets the delta flag; does nothing if the current status is ABORTED
+    // NOT THREADSAFE
+    MvStatus status_delta() {
+        if (status() == MvStatus::ABORTED) {
+            return status();
+        }
+        status(status() | MvStatus::DELTA);
+        return status();
     }
 
     // Sets the history into UNUSED state
+    // NOT THREADSAFE
     MvStatus status_unused() {
-        return status_ = MvStatus::UNUSED;
+        status(MvStatus::UNUSED);
+        return status();
     }
 
     // Returns true if all the given flag(s) are set
     bool status_is(const MvStatus status) const {
-        return (status_ & status) == status;
+        return (status_.load() & status) == status;
     }
 
     // Returns the current wtid
@@ -96,7 +127,7 @@ public:
 
 protected:
     MvHistoryBase(type ntid, MvHistoryBase *nprev = nullptr)
-            : prev_(nprev), rtid_(ntid), status_(MvStatus::PENDING), wtid_(ntid) {
+            : prev_(nprev), status_(MvStatus::PENDING), rtid_(ntid), wtid_(ntid) {
 
         /*
         // Can't actually assume this assertion because it may have changed
@@ -116,6 +147,7 @@ protected:
     }
 
     std::atomic<MvHistoryBase*> prev_;
+    std::atomic<MvStatus> status_;  // Status of this element
 
 private:
     // Returns true if the given prev pointer would be a valid prev element
@@ -124,7 +156,6 @@ private:
     }
 
     std::atomic<type> rtid_;  // Read TID
-    MvStatus status_;  // Status of this element
     const type wtid_;  // Write TID
 
     template <typename T>
@@ -133,75 +164,31 @@ private:
 };
 
 template <typename T>
-class MvHistory<T, true /* trivial */> : public MvHistoryBase {
+class MvHistory : public MvHistoryBase {
 public:
-    typedef MvHistory<T, true> history_type;
+    typedef MvHistory<T> history_type;
     typedef MvObject<T> object_type;
-
-    MvHistory() = delete;
-    explicit MvHistory(object_type *obj) : MvHistory(0, obj, T()) {}
-    explicit MvHistory(
-            type ntid, object_type *obj, T nv,history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), v_(nv), vp_(&v_) {}
-    explicit MvHistory(
-            type ntid, object_type *obj, T *nvp, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), vp_(&v_) {
-        if (nvp) {
-            v_ = *nvp;
-        }
-    }
-
-    // Retrieve the object for which this history element is intended
-    object_type* object() const {
-        return obj_;
-    }
-
-    const T& v() const {
-        return v_;
-    }
-
-    T& v() {
-        return v_;
-    }
-
-    T* vp() const {
-        return vp_;
-    }
-
-    T** vpp() const {
-        return &vp_;
-    }
-
-    history_type* prev() const {
-        return reinterpret_cast<history_type*>(prev_.load());
-    }
-
-private:
-    object_type *obj_;  // Parent object
-    T v_;
-    T *vp_;
-};
-
-template <typename T>
-class MvHistory<T, false /* !trivial */> : public MvHistoryBase {
-public:
-    typedef MvHistory<T, false> history_type;
-    typedef MvObject<T> object_type;
+    typedef commutators::MvCommutator<T> comm_type;
 
     MvHistory() = delete;
     explicit MvHistory(object_type *obj) : MvHistory(0, obj, nullptr) {}
     explicit MvHistory(
             type ntid, object_type *obj, const T& nv, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), v_(nv), vp_(&v_) {}
+            : MvHistoryBase(ntid, nprev), obj_(obj), v_(nv), vp_(&std::get<T>(v_)) {}
     explicit MvHistory(
             type ntid, object_type *obj, T&& nv, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), v_(std::move(nv)), vp_(&v_) {}
+            : MvHistoryBase(ntid, nprev), obj_(obj), v_(std::move(nv)), vp_(&std::get<T>(v_)) {}
     explicit MvHistory(
             type ntid, object_type *obj, T *nvp, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), vp_(&v_) {
+            : MvHistoryBase(ntid, nprev), obj_(obj), vp_(&std::get<T>(v_)) {
         if (nvp) {
             v_ = *nvp;
         }
+    }
+    explicit MvHistory(
+            type ntid, object_type *obj, comm_type &&c, history_type *nprev = nullptr)
+            : MvHistoryBase(ntid, nprev), obj_(obj), v_(std::move(c)), vp_(nullptr) {
+        status_delta();
     }
 
     // Retrieve the object for which this history element is intended
@@ -210,18 +197,30 @@ public:
     }
 
     const T& v() const {
-        return v_;
+        if (status_is(DELTA)) {
+            enflatten();
+        }
+        return std::get<T>(v_);
     }
 
     T& v() {
-        return v_;
+        if (status_is(DELTA)) {
+            enflatten();
+        }
+        return std::get<T>(v_);
     }
 
-    T* vp() const {
+    T* vp() {
+        if (status_is(DELTA)) {
+            enflatten();
+        }
         return vp_;
     }
 
-    T** vpp() const {
+    T** vpp() {
+        if (status_is(DELTA)) {
+            enflatten();
+        }
         return &vp_;
     }
 
@@ -231,8 +230,33 @@ public:
 
 private:
     object_type *obj_;  // Parent object
-    T v_;
+    std::variant<T, comm_type> v_;
     T *vp_;
+
+    // Initializes the flattening process
+    void enflatten() {
+        MvStatus expected = MvStatus::COMMITTED_DELTA;
+        if (status_.compare_exchange_strong(expected, MvStatus::LOCKED_DELTA)) {
+            flatten(v_);
+            vp_ = &std::get<T>(v_);
+            status(MvStatus::COMMITTED);
+        } else {
+            // TODO: exponential backoff?
+            while (status_is(MvStatus::LOCKED_DELTA));
+        }
+    }
+
+    // Returns the flattened view of the current type
+    void flatten(std::variant<T, comm_type> &v) {
+        if (status() == COMMITTED) {
+            v = std::get<T>(v_);
+            return;
+        }
+        prev()->flatten(v);
+        if (status_is(COMMITTED_DELTA)) {
+            v = std::get<comm_type>(v_).operate(std::get<T>(v));
+        }
+    }
 };
 
 template <typename T>

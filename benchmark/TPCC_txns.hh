@@ -270,16 +270,29 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     auto dv = reinterpret_cast<const district_value *>(value);
 
-    auto new_dv = Sto::tx_alloc<district_value>(dv);
-    out_d_name = new_dv->d_name;
-    out_d_street_1 = new_dv->d_street_1;
-    out_d_street_2 = new_dv->d_street_2;
-    out_d_city = new_dv->d_city;
-    out_d_state = new_dv->d_state;
-    out_d_zip = new_dv->d_zip;
-    // update district ytd in-place
-    new_dv->d_ytd += h_amount;
-    db.tbl_districts(q_w_id).update_row(row, new_dv);
+    if (DBParams::MVCC) {
+        out_d_name = dv->d_name;
+        out_d_street_1 = dv->d_street_1;
+        out_d_street_2 = dv->d_street_2;
+        out_d_city = dv->d_city;
+        out_d_state = dv->d_state;
+        out_d_zip = dv->d_zip;
+
+        // update district ytd in-place
+        commutators::MvCommutator<district_value> d_ytd_delta(h_amount);
+        db.tbl_districts(q_w_id).update_row(row, d_ytd_delta);
+    } else {
+        auto new_dv = Sto::tx_alloc<district_value>(dv);
+        out_d_name = new_dv->d_name;
+        out_d_street_1 = new_dv->d_street_1;
+        out_d_street_2 = new_dv->d_street_2;
+        out_d_city = new_dv->d_city;
+        out_d_state = new_dv->d_state;
+        out_d_zip = new_dv->d_zip;
+        // update district ytd in-place
+        new_dv->d_ytd += h_amount;
+        db.tbl_districts(q_w_id).update_row(row, new_dv);
+    }
     
     // select and update customer
     if (by_name) {

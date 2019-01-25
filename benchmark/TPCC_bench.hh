@@ -11,6 +11,7 @@
 #include "SystemProfiler.hh"
 #include "DB_structs.hh"
 #include "TPCC_structs.hh"
+#include "TPCC_commutators.hh"
 
 #if TABLE_FINE_GRAINED
 #include "TPCC_selectors.hh"

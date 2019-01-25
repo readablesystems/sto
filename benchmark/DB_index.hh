@@ -576,6 +576,7 @@ class ordered_index : public TObject {
 public:
     typedef K key_type;
     typedef V value_type;
+    typedef commutators::MvCommutator<value_type> comm_type;
 
     //typedef typename get_occ_version<DBParams>::type occ_version_type;
     typedef typename get_version<DBParams>::type version_type;
@@ -887,6 +888,10 @@ public:
         // Just update the pointer, don't set the actual write flag
         // we don't want to confuse installs at commit time
         //row_item.clear_write();
+    }
+
+    void update_row(uintptr_t, const comm_type&) {
+        always_assert(false, "No MvCommutator for non-MVCC index.");
     }
 
     // insert assumes common case where the row doesn't exist in the table
@@ -1466,6 +1471,7 @@ public:
     typedef V value_type;
     typedef MvObject<value_type> object_type;
     typedef typename object_type::history_type history_type;
+    typedef commutators::MvCommutator<value_type> comm_type;
 
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit << 1u;
@@ -1743,6 +1749,13 @@ public:
         //row_item.clear_write();
     }
 
+    void update_row(uintptr_t rid, const comm_type &comm) {
+        auto row_item = Sto::item(this, item_key_t::row_item_key(reinterpret_cast<internal_elem *>(rid)));
+        // TODO: address this extra copying issue
+        row_item.add_write(comm);
+        row_item.set_commute();
+    }
+
     // insert assumes common case where the row doesn't exist in the table
     // if a row already exists, then use select (FOR UPDATE) instead
     ins_return_type
@@ -2009,9 +2022,16 @@ public:
         if (Sto::commit_tid() < hprev->rtid()) {
             return false;
         }
-        auto wval = item.template raw_write_value<value_type*>();
-        history_type *h = new history_type(
-            Sto::commit_tid(), &e->row, wval, hprev);
+        history_type *h;
+        if (item.has_commute()) {
+            auto wval = item.template write_value<comm_type>();
+            h = new history_type(
+                Sto::commit_tid(), &e->row, std::move(wval), hprev);
+        } else {
+            auto wval = item.template raw_write_value<value_type*>();
+            h = new history_type(
+                Sto::commit_tid(), &e->row, wval, hprev);
+        }
         if (has_delete(item)) {
             h->status_delete();
         }

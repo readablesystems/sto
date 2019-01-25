@@ -38,12 +38,13 @@ class TransItem {
     static constexpr flags_type predicate_bit = flags_type(1) << 60;
     static constexpr flags_type stash_bit = flags_type(1) << 59;
     static constexpr flags_type cl_bit = flags_type(1) << 58;
+    static constexpr flags_type commute_bit = flags_type(1) << 57;
     static constexpr flags_type pointer_mask = (flags_type(1) << 48) - 1;
     static constexpr flags_type owner_mask = pointer_mask;
     static constexpr flags_type user0_bit = flags_type(1) << 48;
     static constexpr int userf_shift = 48;
     static constexpr flags_type shifted_userf_mask = 0x7FF;
-    static constexpr flags_type special_mask = owner_mask | cl_bit | read_bit | write_bit | lock_bit | predicate_bit | stash_bit;
+    static constexpr flags_type special_mask = owner_mask | cl_bit | read_bit | write_bit | lock_bit | predicate_bit | stash_bit | commute_bit;
 
 
     TransItem() : s_(), key_(), mode_(CCMode::none) {};
@@ -66,6 +67,9 @@ class TransItem {
     }
     bool has_stash() const {
         return flags() & stash_bit;
+    }
+    bool has_commute() const {
+        return flags() & commute_bit;
     }
     bool needs_unlock() const {
         return flags() & lock_bit;
@@ -340,6 +344,12 @@ class TransProxy {
     inline TransProxy& set_predicate(T pdata);
     inline TransProxy& clear_predicate() {
         item().__rm_flags(TransItem::predicate_bit);
+        return *this;
+    }
+
+    inline TransProxy& set_commute();
+    inline TransProxy& clear_commute() {
+        item().__rm_flags(TransItem::commute_bit);
         return *this;
     }
 
