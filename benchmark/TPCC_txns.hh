@@ -56,8 +56,11 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     volatile char out_brand_generic[15];
     (void) out_brand_generic;
 
+    size_t starts = 0;
+
     // begin txn
     TRANSACTION {
+    ++starts;
 
     bool abort, result;
     uintptr_t row;
@@ -164,6 +167,9 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     // commit txn
     // retry until commits
     } RETRY(true);
+
+    TXP_INCREMENT(txp_tpcc_no_commits);
+    TXP_ACCOUNT(txp_tpcc_no_aborts, starts - 1);
 }
 
 template <typename DBParams>
@@ -226,8 +232,11 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     (void)out_c_discount;
     (void)out_c_balance;
 
+    size_t starts = 0;
+
     // begin txn
     TRANSACTION {
+    ++starts;
 
     bool success, result;
     uintptr_t row;
@@ -255,7 +264,6 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     assert(result);
 
     auto dv = reinterpret_cast<const district_value *>(value);
-
     if (DBParams::MVCC) {
         out_d_name = dv->d_name;
         out_d_street_1 = dv->d_street_1;
@@ -264,7 +272,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         out_d_state = dv->d_state;
         out_d_zip = dv->d_zip;
 
-        // update district ytd in-place
+        // update district ytd commutatively
         commutators::MvCommutator<district_value> d_ytd_delta(h_amount);
         db.tbl_districts(q_w_id).update_row(row, d_ytd_delta);
     } else {
@@ -350,6 +358,9 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     // commit txn
     // retry until commits
     } RETRY(true);
+
+    TXP_INCREMENT(txp_tpcc_pm_commits);
+    TXP_ACCOUNT(txp_tpcc_pm_aborts, starts - 1);
 }
 
 template <typename DBParams>
@@ -388,7 +399,10 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     (void)out_o_carrier_id;
     (void)out_o_entry_date;
 
+    size_t starts = 0;
+
     TRANSACTION {
+    ++starts;
 
     bool success, result;
     uintptr_t row;
@@ -478,6 +492,9 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     // commit txn
     // retry until commits
     } RETRY(true);
+
+    TXP_INCREMENT(txp_tpcc_os_commits);
+    TXP_ACCOUNT(txp_tpcc_os_aborts, starts - 1);
 }
 
 template <typename DBParams>
@@ -502,7 +519,10 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
         return true;
     };
 
+    size_t starts = 0;
+
     TRANSACTION {
+    ++starts;
 
     for (uint64_t q_d_id = 1; q_d_id <= 10; ++q_d_id) {
         order_id = 0;
@@ -559,6 +579,9 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
     }
 
     } RETRY(true);
+
+    TXP_INCREMENT(txp_tpcc_dl_commits);
+    TXP_ACCOUNT(txp_tpcc_dl_aborts, starts - 1);
 }
 
 template <typename DBParams>
@@ -582,7 +605,10 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
         return true;
     };
 
+    size_t starts = 0;
+
     TRANSACTION {
+    ++starts;
 
     ol_iids.clear();
     auto d_next_oid = db.oid_generator().get(q_w_id, q_d_id);
@@ -607,6 +633,9 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     }
 
     } RETRY(true);
+
+    TXP_INCREMENT(txp_tpcc_st_commits);
+    TXP_ACCOUNT(txp_tpcc_st_aborts, starts - 1);
 }
 
 }; // namespace tpcc
