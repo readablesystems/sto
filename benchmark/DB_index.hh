@@ -2042,6 +2042,7 @@ public:
             TransProxy(txn, item).add_write(nullptr);
         } else {
             TransProxy(txn, item).add_write(h);
+            TransProxy(txn, item).clear_commute();
         }
         return result;
     }
