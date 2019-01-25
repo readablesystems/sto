@@ -98,6 +98,7 @@ public:
             hprev = v.find(Sto::read_tid(), false);
         }
         if (Sto::commit_tid() < hprev->rtid()) {
+            TransProxy(txn, item).add_write(nullptr);
             return false;
         }
         history_type *h = new history_type(
@@ -105,9 +106,10 @@ public:
         bool result = v.cp_lock(Sto::commit_tid(), h);
         if (!result && !h->status_is(MvStatus::ABORTED)) {
             delete h;
-            TransProxy(txn, item).clear_write();
+            TransProxy(txn, item).add_write(nullptr);
         } else {
             TransProxy(txn, item).add_write(h);
+            TransProxy(txn, item).clear_commute();
         }
         return result;
     }
@@ -128,7 +130,9 @@ public:
         if (!committed) {
             if (item.has_write()) {
                 auto h = item.template write_value<history_type*>();
-                data_[item.key<size_type>()].v.abort(h);
+                if (h && !item.has_commute()) {
+                    data_[item.key<size_type>()].v.abort(h);
+                }
             }
         }
     }
