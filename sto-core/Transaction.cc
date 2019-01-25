@@ -496,12 +496,17 @@ void Transaction::print_stats() {
         fprintf(stderr, "$ %llu max buffer per txn, %llu total buffer\n",
                 out.p(txp_max_transbuffer), out.p(txp_total_transbuffer));
     if (txp_count >= txp_tpcc_st_aborts) {
-        fprintf(stderr, "$ TPCC txn profiles: commits(aborts)\n");
-        fprintf(stderr, "$     New-Order: %llu(%llu)\n", out.p(txp_tpcc_no_commits), out.p(txp_tpcc_no_aborts));
-        fprintf(stderr, "$       Payment: %llu(%llu)\n", out.p(txp_tpcc_pm_commits), out.p(txp_tpcc_pm_aborts));
-        fprintf(stderr, "$  Order-Status: %llu(%llu)\n", out.p(txp_tpcc_os_commits), out.p(txp_tpcc_os_aborts));
-        fprintf(stderr, "$      Delivery: %llu(%llu)\n", out.p(txp_tpcc_dl_commits), out.p(txp_tpcc_dl_aborts));
-        fprintf(stderr, "$   Stock-Level: %llu(%llu)\n", out.p(txp_tpcc_st_commits), out.p(txp_tpcc_st_aborts));
+        fprintf(stderr, "$ TPCC txn profiles: commits(aborts), abort rate\n");
+        fprintf(stderr, "$     New-Order: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_no_commits), out.p(txp_tpcc_no_aborts),
+                100.0 * (double) out.p(txp_tpcc_no_aborts) / (out.p(txp_tpcc_no_commits) + out.p(txp_tpcc_no_aborts)));
+        fprintf(stderr, "$       Payment: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_pm_commits), out.p(txp_tpcc_pm_aborts),
+                100.0 * (double) out.p(txp_tpcc_pm_aborts) / (out.p(txp_tpcc_pm_commits) + out.p(txp_tpcc_pm_aborts)));
+        fprintf(stderr, "$  Order-Status: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_os_commits), out.p(txp_tpcc_os_aborts),
+                100.0 * (double) out.p(txp_tpcc_os_aborts) / (out.p(txp_tpcc_os_commits) + out.p(txp_tpcc_os_aborts)));
+        fprintf(stderr, "$      Delivery: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_dl_commits), out.p(txp_tpcc_dl_aborts),
+                100.0 * (double) out.p(txp_tpcc_dl_aborts) / (out.p(txp_tpcc_dl_commits) + out.p(txp_tpcc_dl_aborts)));
+        fprintf(stderr, "$   Stock-Level: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_st_commits), out.p(txp_tpcc_st_aborts),
+                100.0 * (double) out.p(txp_tpcc_st_aborts) / (out.p(txp_tpcc_st_commits) + out.p(txp_tpcc_st_aborts)));
     }
     fprintf(stderr, "$ %llu next commit-tid\n", (unsigned long long) _TID);
 

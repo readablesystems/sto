@@ -54,6 +54,7 @@ public:
     explicit MvCommutator(uint32_t write_delivery_d) : write_delivery_d(write_delivery_d) {}
     orderline_value& operate(orderline_value& ol) {
         ol.ol_delivery_d = write_delivery_d;
+        return ol;
     }
 private:
     uint32_t write_delivery_d;
