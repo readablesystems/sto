@@ -24,8 +24,10 @@ void MvRegistry::collect_garbage_() {
             entry = entry->next;
 
             // Find currently-visible version at gc_tid
-            while (gc_tid < h->wtid_) {
+            bool found_committed = h->status_is(MvStatus::COMMITTED) && !h->status_is(MvStatus::DELTA);
+            while (gc_tid < h->wtid_ || !found_committed) {
                 h = h->prev_;
+                found_committed = h->status_is(MvStatus::COMMITTED) && !h->status_is(MvStatus::DELTA);
             }
 
             base_type *garbo = h->prev_;  // First element to collect
