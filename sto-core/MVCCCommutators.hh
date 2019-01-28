@@ -18,4 +18,20 @@ public:
     }
 };
 
+// MvCommutator type for integral +/- operations
+
+template <>
+class MvCommutator<int64_t> {
+public:
+    explicit MvCommutator(int64_t delta) : delta(delta) {}
+
+    int64_t& operate(int64_t& v) {
+        v += delta;
+        return v;
+    }
+
+private:
+    int64_t delta;
+};
+
 }

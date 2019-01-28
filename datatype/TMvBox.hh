@@ -7,6 +7,7 @@ template <typename T>
 class TMvBox : public TObject {
 public:
     typedef T read_type;
+    typedef typename commutators::MvCommutator<T> comm_type;
 
     TMvBox() {
     }
@@ -35,17 +36,14 @@ public:
     }
 
     void write(const T& x) {
-        auto item = Sto::item(this, 0);
-        TransProxy(*Sto::transaction(), item).add_write(x);
+        Sto::item(this, 0).add_write(x);
     }
     void write(T&& x) {
-        auto item = Sto::item(this, 0);
-        TransProxy(*Sto::transaction(), item).add_write(std::move(x));
+        Sto::item(this, 0).add_write(std::move(x));
     }
     template <typename... Args>
     void write(Args&&... args) {
-        auto item = Sto::item(this, 0);
-        TransProxy(*Sto::transaction(), item).add_write<T, Args...>(std::forward<Args>(args)...);
+        Sto::item(this, 0).template add_write<T, Args...>(std::forward<Args>(args)...);
     }
 
     operator read_type() const {
@@ -94,8 +92,13 @@ public:
             TransProxy(txn, item).add_write(nullptr);
             return false;
         }
-        history_type *h = new history_type(
-            Sto::commit_tid(), &v_, item.write_value<T>(), hprev);
+        history_type *h;
+        if (item.has_commute()) {
+            auto wval = item.template write_value<comm_type>();
+            h = new history_type(Sto::commit_tid(), &v_, std::move(wval), hprev);
+        } else {
+            h = new history_type(Sto::commit_tid(), &v_, item.write_value<T>(), hprev);
+        }
         bool result = v_.cp_lock(Sto::commit_tid(), h);
         if (!result && !h->status_is(MvStatus::ABORTED)) {
             delete h;
@@ -143,4 +146,12 @@ protected:
     typedef typename object_type::history_type history_type;
 
     object_type v_;
+};
+
+class TMvCommuteIntegerBox : public TMvBox<int64_t> {
+public:
+    void increment(int64_t delta) {
+        typedef TMvBox<int64_t>::comm_type comm_type;
+        Sto::item(this, 0).add_write(comm_type(delta));
+    }
 };

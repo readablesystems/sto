@@ -4,6 +4,7 @@
 #include <cassert>
 #include <vector>
 #include "Sto.hh"
+#include "MVCCCommutators.hh"
 #include "TMvBox.hh"
 //XXX disabled string wrapper due to unknown compiler issue
 //#include "StringWrapper.hh"
@@ -280,6 +281,30 @@ void testMvWrites() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testMvCommute1() {
+    TMvCommuteIntegerBox box;
+    box.nontrans_write(0);
+
+    {
+        TestTransaction t1(1);
+        box.increment(1);
+
+        TestTransaction t2(2);
+        t2.use();
+        box.increment(2);
+        assert(t2.try_commit());
+
+        t1.use();
+        assert(t1.try_commit());
+
+        TestTransaction t3(3);
+        t3.use();
+        auto v = static_cast<int64_t>(box);
+        printf("%ld\n", v); 
+        assert(v == 3);
+        assert(t3.try_commit());
+    }
+}
 
 int main() {
     testSimpleInt();
@@ -288,5 +313,6 @@ int main() {
     testOpacity1();
     testMvReads();
     testMvWrites();
+    testMvCommute1();
     return 0;
 }
