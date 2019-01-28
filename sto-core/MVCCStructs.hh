@@ -2,8 +2,6 @@
 
 #pragma once
 
-#include <variant>
-
 #include "MVCCCommutators.hh"
 #include "MVCCRegistry.hh"
 #include "MVCCTypes.hh"
@@ -46,14 +44,14 @@ public:
     // Non-CAS assignment on the rtid
     type rtid(const type new_rtid) {
         rtid_.store(new_rtid);
-        return new_rtid;
+        return rtid();
     }
 
     // Proxy for a CAS assigment on the rtid
     type rtid(type prev_rtid, const type new_rtid) {
         assert(prev_rtid <= new_rtid);
         rtid_.compare_exchange_strong(prev_rtid, new_rtid);
-        return rtid_;
+        return rtid();
     }
 
     // Returns the status
@@ -175,20 +173,20 @@ public:
     explicit MvHistory(object_type *obj) : MvHistory(0, obj, nullptr) {}
     explicit MvHistory(
             type ntid, object_type *obj, const T& nv, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), v_(nv), vp_(&std::get<T>(v_)) {}
+            : MvHistoryBase(ntid, nprev), obj_(obj), v_(nv), vp_(&v_) {}
     explicit MvHistory(
             type ntid, object_type *obj, T&& nv, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), v_(std::move(nv)), vp_(&std::get<T>(v_)) {}
+            : MvHistoryBase(ntid, nprev), obj_(obj), v_(std::move(nv)), vp_(&v_) {}
     explicit MvHistory(
             type ntid, object_type *obj, T *nvp, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), vp_(&std::get<T>(v_)) {
+            : MvHistoryBase(ntid, nprev), obj_(obj), vp_(&v_) {
         if (nvp) {
             v_ = *nvp;
         }
     }
     explicit MvHistory(
             type ntid, object_type *obj, comm_type &&c, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), v_(std::move(c)), vp_(nullptr) {
+            : MvHistoryBase(ntid, nprev), obj_(obj), c_(c), v_(), vp_(&v_) {
         status_delta();
     }
 
@@ -201,14 +199,14 @@ public:
         if (status_is(DELTA)) {
             enflatten();
         }
-        return std::get<T>(v_);
+        return v_;
     }
 
     T& v() {
         if (status_is(DELTA)) {
             enflatten();
         }
-        return std::get<T>(v_);
+        return v_;
     }
 
     T* vp() {
@@ -231,17 +229,18 @@ public:
 
 private:
     object_type *obj_;  // Parent object
-    std::variant<T, comm_type> v_;
+    comm_type c_;
+    T v_;
     T *vp_;
 
     // Initializes the flattening process
     void enflatten() {
+        T v;
+        prev()->flatten(v);
+        v = c_.operate(v);
         MvStatus expected = MvStatus::COMMITTED_DELTA;
         if (status_.compare_exchange_strong(expected, MvStatus::LOCKED_DELTA)) {
-            comm_type c = std::get<comm_type>(v_);
-            flatten(v_);
-            v_ = c.operate(std::get<T>(v_));
-            vp_ = &std::get<T>(v_);
+            v_ = v;
             status(MvStatus::COMMITTED);
         } else {
             // TODO: exponential backoff?
@@ -250,16 +249,21 @@ private:
     }
 
     // Returns the flattened view of the current type
-    void flatten(std::variant<T, comm_type> &v) {
-        if (status() == COMMITTED) {
-            v = std::get<T>(v_);
+    void flatten(T &v) {
+        MvStatus s = status();
+        if (s == COMMITTED) {
+            v = v_;
             return;
         }
         prev()->flatten(v);
-        if (status_is(COMMITTED_DELTA)) {
-            v = std::get<comm_type>(v_).operate(std::get<T>(v));
+        if ((s = status()) == COMMITTED) {
+            v = v_;
+        } else if ((s & DELTA) == DELTA) {
+            v = c_.operate(v);
         }
     }
+
+    friend class MvObject<T>;
 };
 
 template <typename T>
@@ -272,7 +276,11 @@ public:
     MvObject()
             : h_(new history_type(this)) {
         h_.load()->status_commit();
-        h_.load()->status_delete();
+        if (std::is_trivial<T>::value) {
+            static_cast<history_type*>(h_.load())->v_ = T();
+        } else {
+            h_.load()->status_delete();
+        }
         MvRegistry::reg(this);
     }
     explicit MvObject(const T& value)

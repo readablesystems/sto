@@ -14,6 +14,7 @@ using tpcc::orderline_value;
 template <>
 class MvCommutator<district_value> {
 public:
+    MvCommutator() {}
     explicit MvCommutator(int64_t delta_ytd) : delta_ytd(delta_ytd) {}
 
     district_value& operate(district_value &d) {
@@ -34,7 +35,8 @@ private:
 template <>
 class MvCommutator<customer_value> {
 public:
-    MvCommutator(int64_t delta_balance, uint16_t delta_delivery_cnt)
+    MvCommutator() {}
+    explicit MvCommutator(int64_t delta_balance, uint16_t delta_delivery_cnt)
         : delta_balance(delta_balance), delta_delivery_cnt(delta_delivery_cnt) {}
 
     customer_value& operate(customer_value &c) {
@@ -51,6 +53,7 @@ private:
 template <>
 class MvCommutator<orderline_value> {
 public:
+    MvCommutator() {}
     explicit MvCommutator(uint32_t write_delivery_d) : write_delivery_d(write_delivery_d) {}
     orderline_value& operate(orderline_value& ol) {
         ol.ol_delivery_d = write_delivery_d;

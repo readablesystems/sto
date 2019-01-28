@@ -9,7 +9,7 @@ public:
     typedef T read_type;
     typedef typename commutators::MvCommutator<T> comm_type;
 
-    TMvBox() {
+    explicit TMvBox() : v_() {
     }
     template <typename... Args>
     explicit TMvBox(Args&&... args)
