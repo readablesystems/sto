@@ -300,7 +300,6 @@ void testMvCommute1() {
         TestTransaction t3(3);
         t3.use();
         auto v = static_cast<int64_t>(box);
-        printf("%ld\n", v); 
         assert(v == 3);
         assert(t3.try_commit());
     }
