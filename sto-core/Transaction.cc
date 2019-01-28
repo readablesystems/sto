@@ -93,14 +93,12 @@ void Transaction::epoch_advance_once() {
             min_wtid = wtid;
     }
     fence();
-    tid_type rtid = _RTID.load();
     if (min_wtid > 0) {
         tid_type next = min_wtid - 1;
-        while (!_RTID.compare_exchange_weak(rtid, next)) {
-            if ((rtid = _RTID.load()) > next) {
-                break;
-            }
-        }
+        tid_type rtid;
+        do {
+            rtid = _RTID.load();
+        } while (rtid < next && !_RTID.compare_exchange_weak(rtid, next));
     }
 }
 
