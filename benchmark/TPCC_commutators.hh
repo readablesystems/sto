@@ -14,15 +14,15 @@ using tpcc::orderline_value;
 template <>
 class MvCommutator<district_value> {
 public:
-    explicit MvCommutator(int64_t new_ytd) : new_ytd(new_ytd) {}
+    explicit MvCommutator(int64_t delta_ytd) : delta_ytd(delta_ytd) {}
 
     district_value& operate(district_value &d) {
-        d.d_ytd += new_ytd;
+        d.d_ytd += delta_ytd;
         return d;
     }
 
 private:
-    int64_t new_ytd;
+    int64_t delta_ytd;
 };
 
 
