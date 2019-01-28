@@ -52,7 +52,8 @@ public:
     // Proxy for a CAS assigment on the rtid
     type rtid(type prev_rtid, const type new_rtid) {
         assert(prev_rtid <= new_rtid);
-        return rtid_.compare_exchange_strong(prev_rtid, new_rtid);
+        rtid_.compare_exchange_strong(prev_rtid, new_rtid);
+        return rtid_;
     }
 
     // Returns the status
