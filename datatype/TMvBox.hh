@@ -152,6 +152,8 @@ class TMvCommuteIntegerBox : public TMvBox<int64_t> {
 public:
     void increment(int64_t delta) {
         typedef TMvBox<int64_t>::comm_type comm_type;
-        Sto::item(this, 0).add_write(comm_type(delta));
+        auto item = Sto::item(this, 0);
+        item.add_write(comm_type(delta));
+        item.set_commute();
     }
 };
