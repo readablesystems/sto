@@ -94,7 +94,7 @@ void Transaction::epoch_advance_once() {
     }
     fence();
     if (min_wtid > 0) {
-        tid_type next = min_wtid - 1;
+        tid_type next = min_wtid - TransactionTid::increment_value;
         tid_type rtid;
         do {
             rtid = _RTID.load();

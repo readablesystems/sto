@@ -237,7 +237,9 @@ private:
     void enflatten() {
         MvStatus expected = MvStatus::COMMITTED_DELTA;
         if (status_.compare_exchange_strong(expected, MvStatus::LOCKED_DELTA)) {
+            comm_type c = std::get<comm_type>(v_);
             flatten(v_);
+            v_ = c.operate(std::get<T>(v_));
             vp_ = &std::get<T>(v_);
             status(MvStatus::COMMITTED);
         } else {
