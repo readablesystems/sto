@@ -46,7 +46,7 @@ public:
         Sto::item(this, 0).template add_write<T, Args...>(std::forward<Args>(args)...);
     }
 
-    operator read_type() const {
+    explicit operator read_type() const {
         return read();
     }
     TMvBox<T>& operator=(const T& x) {

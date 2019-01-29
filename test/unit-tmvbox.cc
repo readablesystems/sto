@@ -23,7 +23,7 @@ void testSimpleInt() {
 
 	  {
         TransactionGuard t2;
-        int f_read = f;
+        int f_read = static_cast<int>(f);
         assert(f_read == 100);
     }
 
@@ -42,7 +42,7 @@ void testSimpleString() {
 
 	{
         TransactionGuard t2;
-        std::string f_read = f;
+        std::string f_read = static_cast<std::string>(f);
         assert(f_read.compare("100") == 0);
     }
 
@@ -56,7 +56,7 @@ void testConcurrentInt() {
 
     {
         TestTransaction t1(1);
-        match = ib < 3;
+        match = static_cast<int>(ib) < 3;
         assert(match);
 
         TestTransaction t2(2);
@@ -84,7 +84,7 @@ void testConcurrentInt() {
 
     {
         TestTransaction t1(1);
-        match = ib == 2;
+        match = static_cast<int>(ib) == 2;
         assert(match);
 
         TestTransaction t2(2);
@@ -109,7 +109,7 @@ void testOpacity1() {
 
     {
         TestTransaction t1(1);
-        int x = f;
+        int x = static_cast<int>(f);
         assert(x == 3);
 
         TestTransaction t(2);
@@ -118,7 +118,7 @@ void testOpacity1() {
         assert(t.try_commit());
 
         t1.use();
-        x = g;
+        x = static_cast<int>(g);
         assert(x == 0);
         assert(t1.try_commit());
     }
@@ -127,7 +127,7 @@ void testOpacity1() {
 
     {
         TransactionGuard t2;
-        int v = f;
+        int v = static_cast<int>(f);
         assert(v == 2);
     }
 
@@ -142,7 +142,7 @@ void testMvReads() {
     // Read-only transactions should always be able to commit
     {
         TestTransaction t1(1);
-        int x = f + g;
+        int x = static_cast<int>(f) + static_cast<int>(g);
         assert(x == 0);
 
         TestTransaction t2(2);
@@ -151,7 +151,7 @@ void testMvReads() {
         assert(t2.try_commit());
 
         t1.use();
-        x = f + g;
+        x = static_cast<int>(f) + static_cast<int>(g);
         assert(x == 0);
         assert(t1.try_commit());
     }
@@ -163,10 +163,10 @@ void testMvReads() {
     // Later reads also don't validate earlier writes
     {
         TestTransaction t1(1);
-        g = g + f;
+        g = static_cast<int>(g) + static_cast<int>(f);
 
         TestTransaction t2(2);
-        int x = f + g;
+        int x = static_cast<int>(f) + static_cast<int>(g);
         assert(x == 1);
 
         t1.use();
@@ -184,13 +184,13 @@ void testMvReads() {
     // later transactions
     {
         TestTransaction t1(1);
-        int x = f + g;
+        int x = static_cast<int>(f) + static_cast<int>(g);
 
         TestTransaction t2(2);
-        f = f + 2 * g;
+        f = static_cast<int>(f) + 2 * static_cast<int>(g);
 
         t1.use();
-        x = f + g;
+        x = static_cast<int>(f) + static_cast<int>(g);
         assert(x == 3);
 
         t2.use();
@@ -207,12 +207,12 @@ void testMvReads() {
     // Read-my-writes support
     {
         TestTransaction t(1);
-        f = f + 2 * g;
-        g = f;
-        f = f + g;
-        int x = f;
+        f = static_cast<int>(f) + 2 * static_cast<int>(g);
+        g = static_cast<int>(f);
+        f = static_cast<int>(f) + static_cast<int>(g);
+        int x = static_cast<int>(f);
         assert(x == 4);
-        x = g;
+        x = static_cast<int>(g);
         assert(x == 2);
         assert(t.try_commit());
     }
@@ -250,7 +250,7 @@ void testMvWrites() {
         f = 0;
 
         TestTransaction t2(2);
-        g = f;
+        g = static_cast<int>(f);
 
         t2.use();
         assert(t2.try_commit());
@@ -266,7 +266,7 @@ void testMvWrites() {
     // Earlier reads in RW-transactions should not invalidate concurrent writes
     {
         TestTransaction t1(1);
-        f = g;
+        f = static_cast<int>(g);
 
         TestTransaction t2(2);
         g = 1;
@@ -303,6 +303,34 @@ void testMvCommute1() {
         assert(v == 3);
         assert(t3.try_commit());
     }
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
+void testMvCommute2() {
+    TMvCommuteIntegerBox box;
+    box.nontrans_write(0);
+
+    {
+        TestTransaction t1(1);
+        box.increment(1);
+        assert(t1.try_commit());
+
+        TestTransaction t2(2);
+        box.increment(2);
+
+        TestTransaction t3(3);
+        auto v = static_cast<int64_t>(box);
+        assert(v == 1);
+        assert(t3.try_commit());
+
+        TestTransaction t4(4);
+        box.increment(4);
+        assert(t4.try_commit());
+
+        t2.use();
+        assert(t2.try_commit());
+    }
+    printf("PASS: %s\n", __FUNCTION__);
 }
 
 int main() {
@@ -313,5 +341,6 @@ int main() {
     testMvReads();
     testMvWrites();
     testMvCommute1();
+    testMvCommute2();
     return 0;
 }
