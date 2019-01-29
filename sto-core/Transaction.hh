@@ -1046,6 +1046,7 @@ private:
     friend class TransItem;
     friend class Sto;
     friend class TestTransaction;
+    friend class MvRegistry;
 
     friend class VersionDelegate;
 };

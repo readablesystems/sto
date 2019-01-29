@@ -126,7 +126,8 @@ public:
 
 protected:
     MvHistoryBase(type ntid, MvHistoryBase *nprev = nullptr)
-            : prev_(nprev), status_(MvStatus::PENDING), rtid_(ntid), wtid_(ntid) {
+            : prev_(nprev), status_(MvStatus::PENDING), rtid_(ntid),
+              wtid_(ntid), inlined_(false) {
 
         /*
         // Can't actually assume this assertion because it may have changed
@@ -155,7 +156,8 @@ private:
     }
 
     std::atomic<type> rtid_;  // Read TID
-    const type wtid_;  // Write TID
+    type wtid_;  // Write TID
+    bool inlined_;  // Inlined history?
 
     template <typename T>
     friend class MvObject;
@@ -274,37 +276,49 @@ public:
     typedef TransactionTid::type type;
 
     MvObject()
-            : h_(new history_type(this)) {
-        h_.load()->status_commit();
+            : h_(&ih_), ih_(this), rentry_(MvRegistry::reg(this)) {
+        ih_.inlined_ = true;
+        ih_.status_commit();
         if (std::is_trivial<T>::value) {
-            static_cast<history_type*>(h_.load())->v_ = T();
+            ih_.v_ = T();
         } else {
-            h_.load()->status_delete();
+            ih_.status_delete();
         }
-        MvRegistry::reg(this);
     }
     explicit MvObject(const T& value)
-            : h_(new history_type(0, this, new T(value))) {
-        h_.load()->status_commit();
-        MvRegistry::reg(this);
+            : h_(&ih_), ih_(0, this, new T(value),
+              rentry_(MvRegistry::reg(this))) {
+        ih_.inlined_ = true;
+        ih_.status_commit();
+        rentry_ = MvRegistry::reg(this);
     }
     explicit MvObject(T&& value)
-            : h_(new history_type(0, this, new T(std::move(value)))) {
-        h_.load()->status_commit();
-        MvRegistry::reg(this);
+            : h_(&ih_), ih_(0, this, new T(std::move(value))),
+              rentry_(MvRegistry::reg(this)) {
+        ih_.inlined_ = true;
+        ih_.status_commit();
+        rentry_ = MvRegistry::reg(this);
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(new history_type(0, this, new T(std::forward<Args>(args)...))) {
-        h_.load()->status_commit();
-        MvRegistry::reg(this);
+            : h_(&ih_), ih_(0, this, new T(std::forward<Args>(args)...)),
+              rentry_(MvRegistry::reg(this)) {
+        ih_.inlined_ = true;
+        ih_.status_commit();
+        rentry_ = MvRegistry::reg(this);
     }
 
     ~MvObject() {
-        while (h_) {
-            history_type *prev = static_cast<history_type*>(h_.load())->prev();
-            delete h_.load();
-            h_.store(prev);
+        rentry_->valid.store(false);
+        base_type *h = h_.load();
+        h_.store(nullptr);
+        while (h) {
+            if (&ih_ == h->prev_.load()) {
+                h->prev_.store(ih_.prev_.load());
+                ih_.status_unused();
+            }
+            h->rtid_.store(h->wtid_ = 0);  // Make it GC-able
+            h = h->prev_.load();
         }
     }
 
@@ -428,6 +442,25 @@ public:
         return h;
     }
 
+    // Returns a pointer to a history element, initialized with the given
+    // parameters. This allows the MvObject to properly allocate the inlined
+    // version as needed.
+    template <typename... Args>
+    history_type* new_history(Args&&... args) {
+        auto status = ih_.status();
+        if (status == UNUSED && ih_.status_.compare_exchange_strong(status, PENDING)) {
+            // Use inlined history element
+            history_type h(std::forward<Args>(args)...);
+            ih_.prev_.store(h.prev_.load());
+            ih_.rtid_.store(h.rtid_.load());
+            ih_.wtid_ = h.wtid_;
+            ih_.v_ = h.v_;
+            ih_.c_ = h.c_;
+            return &ih_;
+        }
+        return new history_type(std::forward<Args>(args)...);
+    }
+
     // Read-only
     const T& nontrans_access() const {
         history_type *h = static_cast<history_type*>(h_.load());
@@ -468,6 +501,8 @@ protected:
     }
 
     std::atomic<base_type*> h_;
+    history_type ih_;  // Inlined version
+    MvRegistry::MvRegistryEntry *rentry_;  // The corresponding registry entry
 
     friend class MvRegistry;
 };

@@ -246,6 +246,42 @@ void testOpacity1() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testMvInline() {
+    TMvArray<int, 10> f;
+    for (int i = 0; i < 10; i++) {
+        f.nontrans_put(i, i);
+    }
+
+    const int *v0 = &f.nontrans_access(4);
+    assert(*v0 == 4);
+
+    {
+        TestTransaction t1(1);
+        f[4] = 14;
+        assert(t1.try_commit());
+    }
+
+    const int *v1 = &f.nontrans_access(4);
+    assert(*v1 == 14);
+    assert(v0 != v1);
+
+    Transaction::epoch_advance_once();
+    MvRegistry::collect_garbage();
+
+    {
+        TestTransaction t2(2);
+        f[4] = 24;
+        assert(t2.try_commit());
+    }
+
+    const int *v2 = &f.nontrans_access(4);
+    assert(*v2 == 24);
+    assert(v1 != v2);
+    assert(v0 == v2);
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
 void benchArray64() {
     TMvArray<int, 64> a;
     for (int i = 0; i < 64; ++i)

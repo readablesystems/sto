@@ -2026,11 +2026,11 @@ public:
         history_type *h;
         if (item.has_commute()) {
             auto wval = item.template write_value<comm_type>();
-            h = new history_type(
+            h = e->row.new_history(
                 Sto::commit_tid(), &e->row, std::move(wval), hprev);
         } else {
             auto wval = item.template raw_write_value<value_type*>();
-            h = new history_type(
+            h = e->row.new_history(
                 Sto::commit_tid(), &e->row, wval, hprev);
         }
         if (has_delete(item)) {

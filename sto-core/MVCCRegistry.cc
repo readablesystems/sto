@@ -5,13 +5,13 @@
 MvRegistry MvRegistry::registrar;
 
 void MvRegistry::collect_garbage_() {
-    type gc_tid = 0;
+    type gc_tid = Transaction::_RTID.load();
 
     // Find the gc tid
     for (auto &ti : Transaction::tinfo) {
         if (!gc_tid) {
             gc_tid = ti.rtid;
-        } else {
+        } else if (ti.rtid) {
             gc_tid = std::min(gc_tid, ti.rtid);
         }
     }
@@ -21,7 +21,12 @@ void MvRegistry::collect_garbage_() {
         MvRegistryEntry *entry = registry.load();
         while (entry) {
             base_type *h = entry->atomic_base->load();
+            bool valid = entry->valid.load();
             entry = entry->next;
+
+            if (!h || !valid) {
+                continue;
+            }
 
             // Find currently-visible version at gc_tid
             bool found_committed = h->status_is(MvStatus::COMMITTED) && !h->status_is(MvStatus::DELTA);
@@ -36,7 +41,11 @@ void MvRegistry::collect_garbage_() {
             while (garbo) {
                 base_type *delet = garbo;
                 garbo = garbo->prev_;
-                Transaction::rcu_delete(delet);
+                if (delet->inlined_) {
+                    delet->status_unused();
+                } else {
+                    Transaction::rcu_delete(delet);
+                }
             }
         }
     }

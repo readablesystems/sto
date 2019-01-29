@@ -333,6 +333,41 @@ void testMvCommute2() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testMvInline() {
+    TMvBox<int> box;
+    box.nontrans_write(0);
+
+    const int *v0 = &box.nontrans_access();
+    assert(*v0 == 0);
+
+    {
+        TestTransaction t1(1);
+        box = 1;
+        assert(t1.try_commit());
+    }
+
+    const int *v1 = &box.nontrans_access();
+    assert(*v1 == 1);
+    assert(v0 != v1);
+
+    Transaction::epoch_advance_once();
+    MvRegistry::collect_garbage();
+
+    {
+        TestTransaction t2(2);
+        box = 2;
+        assert(t2.try_commit());
+    }
+
+    const int *v2 = &box.nontrans_access();
+    assert(*v2 == 2);
+    assert(v1 != v2);
+    assert(v0 == v2);
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
+
 int main() {
     testSimpleInt();
     testSimpleString();
@@ -342,5 +377,6 @@ int main() {
     testMvWrites();
     testMvCommute1();
     testMvCommute2();
+    testMvInline();
     return 0;
 }

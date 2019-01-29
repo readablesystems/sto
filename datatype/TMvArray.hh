@@ -15,6 +15,7 @@ public:
     typedef int difference_type;
     typedef TConstArrayProxy<TMvArray<T, N> > const_proxy_type;
     typedef TArrayProxy<TMvArray<T, N> > proxy_type;
+    typedef typename commutators::MvCommutator<T> comm_type;
 
     size_type size() const {
         return N;
@@ -75,6 +76,10 @@ public:
         transPut(i, x);
     }
 
+    get_type& nontrans_access(size_type i) {
+        assert(i < N);
+        return data_[i].v.nontrans_access();
+    }
     get_type nontrans_get(size_type i) const {
         assert(i < N);
         return data_[i].v.nontrans_access();
@@ -101,8 +106,14 @@ public:
             TransProxy(txn, item).add_write(nullptr);
             return false;
         }
-        history_type *h = new history_type(
-            Sto::commit_tid(), &v, item.write_value<T>(), hprev);
+        history_type *h;
+        if (item.has_commute()) {
+            auto wval = item.template write_value<comm_type>();
+            h = v.new_history(Sto::commit_tid(), &v, std::move(wval), hprev);
+        } else {
+            h = v.new_history(
+                Sto::commit_tid(), &v, item.write_value<T>(), hprev);
+        }
         bool result = v.cp_lock(Sto::commit_tid(), h);
         if (!result && !h->status_is(MvStatus::ABORTED)) {
             delete h;

@@ -11,7 +11,18 @@
 
 class MvRegistry {
 public:
+    typedef MvHistoryBase base_type;
     typedef TransactionTid::type type;
+
+    struct MvRegistryEntry {
+        typedef std::atomic<base_type*> atomic_base_type;
+        atomic_base_type *atomic_base;
+        MvRegistryEntry *next;
+        std::atomic<bool> valid;
+
+        MvRegistryEntry(atomic_base_type *atomic_base) :
+            atomic_base(atomic_base), next(nullptr), valid(true) {}
+    };
 
     MvRegistry() {
         always_assert(
@@ -41,20 +52,11 @@ public:
     }
 
     template <typename T>
-    static void reg(MvObject<T> *obj) {
-        registrar.reg_(obj);
+    static MvRegistryEntry* reg(MvObject<T> *obj) {
+        return registrar.reg_(obj);
     }
 
 private:
-    typedef MvHistoryBase base_type;
-    struct MvRegistryEntry {
-        typedef std::atomic<base_type*> atomic_base_type;
-        atomic_base_type *atomic_base;
-        MvRegistryEntry *next;
-
-        MvRegistryEntry(atomic_base_type *atomic_base) :
-            atomic_base(atomic_base), next(nullptr) {}
-    };
     typedef std::atomic<MvRegistryEntry*> registry_type;
 
     static MvRegistry registrar;
@@ -63,7 +65,7 @@ private:
     void collect_garbage_();
 
     template <typename T>
-    void reg_(MvObject<T> *obj);
+    MvRegistryEntry* reg_(MvObject<T> *obj);
 
     inline registry_type& registry() {
         return registries[TThread::id()];
@@ -71,10 +73,11 @@ private:
 };
 
 template <typename T>
-void MvRegistry::reg_(MvObject<T> *obj) {
+MvRegistry::MvRegistryEntry* MvRegistry::reg_(MvObject<T> *obj) {
     MvRegistryEntry *entry = new MvRegistryEntry(&obj->h_);
     assert(entry->atomic_base);
     do {
         entry->next = registry().load();
     } while (!registry().compare_exchange_weak(entry->next, entry));
+    return entry;
 }
