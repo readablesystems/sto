@@ -299,7 +299,7 @@ void testMvCommute1() {
 
         TestTransaction t3(3);
         t3.use();
-        auto v = box;
+        auto v = static_cast<int>(box);
         assert(v == 3);
         assert(t3.try_commit());
     }
@@ -319,7 +319,7 @@ void testMvCommute2() {
         box.increment(2);
 
         TestTransaction t3(3);
-        auto v = box;
+        auto v = static_cast<int>(box);
         assert(v == 1);
         assert(t3.try_commit());
 
