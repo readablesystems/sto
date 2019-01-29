@@ -9,8 +9,6 @@ template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_neworder() {
     //fprintf(stdout, "NEWORDER\n");
 
-    typedef district_value::NamedColumn dt_nc;
-    typedef customer_value::NamedColumn cu_nc;
     typedef stock_value::NamedColumn st_nc;
 
     uint64_t q_w_id  = ig.random(w_id_start, w_id_end);
@@ -72,22 +70,26 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     auto& wv = db.get_warehouse(q_w_id);
     wh_tax_rate = wv.cv.w_tax;
 
-    std::tie(abort, result, row, value) = db.tbl_districts(q_w_id).select_row(district_key(q_w_id, q_d_id), {{dt_nc::d_tax, false}});
+    district_key dk(q_w_id, q_d_id);
+    std::tie(abort, result, row, value) = db.tbl_districts_const(q_w_id).select_row(dk, RowAccess::None);
     TXN_DO(abort);
     assert(result);
-    auto dv = reinterpret_cast<const district_value *>(value);
+    auto dv = reinterpret_cast<const district_const_value*>(value);
     dt_tax_rate = dv->d_tax;
     dt_next_oid = db.oid_generator().next(q_w_id, q_d_id);
     //dt_next_oid = new_dv->d_next_o_id ++;
     //db.tbl_districts(q_w_id).update_row(row, new_dv);
 
-    std::tie(abort, result, std::ignore, value) = db.tbl_customers(q_w_id).select_row(customer_key(q_w_id, q_d_id, q_c_id), {{cu_nc::c_discount, false}, {cu_nc::c_last, false}, {cu_nc::c_credit, false}});
+    customer_key ck(q_w_id, q_d_id, q_c_id);
+    std::tie(abort, result, std::ignore, value) = db.tbl_customers_const(q_w_id).select_row(ck, RowAccess::None);
     TXN_DO(abort);
     assert(result);
 
-    auto cus_discount = reinterpret_cast<const customer_value *>(value)->c_discount;
-    out_cus_last = reinterpret_cast<const customer_value *>(value)->c_last;
-    out_cus_credit = reinterpret_cast<const customer_value *>(value)->c_credit;
+    auto ccv = reinterpret_cast<const customer_const_value*>(value);
+
+    auto cus_discount = ccv->c_discount;
+    out_cus_last = ccv->c_last;
+    out_cus_credit = ccv->c_credit;
 
     order_key ok(q_w_id, q_d_id, dt_next_oid);
     order_value* ov = Sto::tx_alloc<order_value>();
@@ -175,9 +177,6 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_payment() {
 
-    typedef district_value::NamedColumn dt_nc;
-    typedef customer_value::NamedColumn cu_nc;
-
     //fprintf(stdout, "PAYMENT\n");
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
@@ -258,36 +257,32 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     // select district row and retrieve district info
     district_key dk(q_w_id, q_d_id);
-    std::tie(success, result, row, value) = db.tbl_districts(q_w_id).select_row(dk, {{dt_nc::d_name, false}, {dt_nc::d_street_1, false}, {dt_nc::d_street_2, false}, {dt_nc::d_city, false}, {dt_nc::d_state, false}, {dt_nc::d_zip, false}, {dt_nc::d_ytd, true}}
-    /* select for update only if using in-place d_ytd value */);
+    std::tie(success, result, row, value) = db.tbl_districts_const(q_w_id).select_row(dk, RowAccess::None);
     TXN_DO(success);
     assert(result);
+    auto dv = reinterpret_cast<const district_const_value *>(value);
+    out_d_name = dv->d_name;
+    out_d_street_1 = dv->d_street_1;
+    out_d_street_2 = dv->d_street_2;
+    out_d_city = dv->d_city;
+    out_d_state = dv->d_state;
+    out_d_zip = dv->d_zip;
 
-    auto dv = reinterpret_cast<const district_value *>(value);
+    std::tie(success, result, row, value) = db.tbl_districts_comm(q_w_id).select_row(dk,
+            DBParams::MVCC ? RowAccess::None : RowAccess::UpdateValue);
+
     if (DBParams::MVCC) {
-        out_d_name = dv->d_name;
-        out_d_street_1 = dv->d_street_1;
-        out_d_street_2 = dv->d_street_2;
-        out_d_city = dv->d_city;
-        out_d_state = dv->d_state;
-        out_d_zip = dv->d_zip;
-
         // update district ytd commutatively
-        commutators::MvCommutator<district_value> d_ytd_delta(h_amount);
-        db.tbl_districts(q_w_id).update_row(row, d_ytd_delta);
+        commutators::MvCommutator<district_comm_value> commutator(h_amount);
+        db.tbl_districts_comm(q_w_id).update_row(row, commutator);
     } else {
-        auto new_dv = Sto::tx_alloc<district_value>(dv);
-        out_d_name = new_dv->d_name;
-        out_d_street_1 = new_dv->d_street_1;
-        out_d_street_2 = new_dv->d_street_2;
-        out_d_city = new_dv->d_city;
-        out_d_state = new_dv->d_state;
-        out_d_zip = new_dv->d_zip;
+        auto dmv = reinterpret_cast<const district_comm_value*>(value);
+        auto new_dmv = Sto::tx_alloc(dmv);
         // update district ytd in-place
-        new_dv->d_ytd += h_amount;
-        db.tbl_districts(q_w_id).update_row(row, new_dv);
+        new_dmv->d_ytd += h_amount;
+        db.tbl_districts_comm(q_w_id).update_row(row, new_dmv);
     }
-    
+
     // select and update customer
     if (by_name) {
         std::vector<uint64_t> matches;
@@ -316,28 +311,45 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     }
 
     customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
-    std::tie(success, result, row, value) = db.tbl_customers(q_c_w_id).select_row(ck, {{cu_nc::c_balance, true}, {cu_nc::c_ytd_payment, true}, {cu_nc::c_payment_cnt, true}, {cu_nc::c_since, false}, {cu_nc::c_credit_lim, false}, {cu_nc::c_discount, false}, {cu_nc::c_data, true}});
+    std::tie(success, result, row, value) = db.tbl_customers_const(q_c_w_id).select_row(ck, RowAccess::None);
     TXN_DO(success);
     assert(result);
 
-    auto cv = reinterpret_cast<const customer_value *>(value);
-    customer_value *new_cv = Sto::tx_alloc(cv);
+    auto ccv = reinterpret_cast<const customer_const_value*>(value);
+    out_c_since = ccv->c_since;
+    out_c_credit_lim = ccv->c_credit_lim;
+    out_c_discount = ccv->c_discount;
 
-    new_cv->c_balance -= h_amount;
-    new_cv->c_ytd_payment += h_amount;
-    new_cv->c_payment_cnt += 1;
+#if TPCC_OBSERVE_C_BALANCE
+    std::tie(success, result, row, value) = db.tbl_customers_comm(q_c_w_id).select_row(ck, RowAccess::UpdateValue);
+    auto cmv = reinterpret_cast<const customer_comm_value*>(value);
+    out_c_balance = cmv->c_balance;
+#else
+    std::tie(success, result, row, value) = db.tbl_customers_comm(q_c_w_id).select_row(ck,
+            DBParams::MVCC ? RowAccess::None : RowAccess::UpdateValue);
+#endif
 
-    out_c_since = new_cv->c_since;
-    out_c_credit_lim = new_cv->c_credit_lim;
-    out_c_discount = new_cv->c_discount;
-    out_c_balance = new_cv->c_balance;
-
-    if (new_cv->c_credit == "BC") {
-        auto info = c_data_info(q_c_id, q_c_d_id, q_c_w_id, q_d_id, q_w_id, h_amount);
-        new_cv->c_data.insert_left(info.buf(), info.len);
+    if (DBParams::MVCC) {
+        if (ccv->c_credit == "BC") {
+            commutators::MvCommutator<customer_comm_value> commutator(-h_amount, h_amount, q_c_id, q_c_d_id, q_c_w_id,
+                                                                      q_d_id, q_w_id, h_amount);
+            db.tbl_customers_comm(q_c_w_id).update_row(row, commutator);
+        } else {
+            commutators::MvCommutator<customer_comm_value> commutator(-h_amount, h_amount);
+            db.tbl_customers_comm(q_c_w_id).update_row(row, commutator);
+        }
+    } else {
+        auto cmmv = reinterpret_cast<const customer_comm_value*>(value);
+        auto new_cmmv = Sto::tx_alloc(cmmv);
+        new_cmmv->c_balance -= h_amount;
+        new_cmmv->c_payment_cnt += 1;
+        new_cmmv->c_ytd_payment += h_amount;
+        if (ccv->c_credit == "BC") {
+            c_data_info info(q_c_id, q_c_d_id, q_c_w_id, q_d_id, q_w_id, h_amount);
+            new_cmmv->c_data.insert_left(info.buf(), c_data_info::len);
+        }
+        db.tbl_customers_comm(q_c_w_id).update_row(row, new_cmmv);
     }
-
-    db.tbl_customers(q_c_w_id).update_row(row, new_cv);
 
     // insert to history table
     history_value *hv = Sto::tx_alloc<history_value>();
@@ -365,8 +377,6 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_orderstatus() {
-
-    typedef customer_value::NamedColumn cu_nc;
     typedef order_value::NamedColumn od_nc;
 
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
@@ -433,17 +443,22 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     }
 
     customer_key ck(q_w_id, q_d_id, q_c_id);
-    std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_row(ck, {{cu_nc::c_balance, false}, {cu_nc::c_first, false}, {cu_nc::c_last, false}, {cu_nc::c_middle, false}});
+    std::tie(success, result, row, value) = db.tbl_customers_const(q_w_id).select_row(ck, RowAccess::None);
     TXN_DO(success);
     assert(result);
 
-    auto cv = reinterpret_cast<const customer_value *>(value);
+    auto ccv = reinterpret_cast<const customer_const_value*>(value);
 
     // simulate retrieving customer info
-    out_c_balance = cv->c_balance;
-    out_c_first = cv->c_first;
-    out_c_last = cv->c_last;
-    out_c_middle = cv->c_middle;
+    out_c_first = ccv->c_first;
+    out_c_last = ccv->c_last;
+    out_c_middle = ccv->c_middle;
+
+#if TPCC_OBSERVE_C_BALANCE
+    std::tie(success, result, row, value) = db.tbl_customers_comm(q_w_id).select_row(ck, RowAccess::ObserveValue);
+    auto cmv = reinterpret_cast<const customer_comm_value*>(value);
+    out_c_balance = cmv->c_balance;
+#endif
 
     // find the highest order placed by customer q_c_id
     uint64_t cus_o_id = 0;
@@ -500,7 +515,6 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_delivery() {
     typedef order_value::NamedColumn od_nc;
-    typedef customer_value::NamedColumn cu_nc;
 
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
     uint64_t carrier_id = ig.random(1, 10);
@@ -568,14 +582,21 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
         }
 
         customer_key ck(q_w_id, q_d_id, q_c_id);
-        std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_row(ck, {{cu_nc::c_balance, true}, {cu_nc::c_delivery_cnt, true}});
+        std::tie(success, result, row, value) = db.tbl_customers_comm(q_w_id).select_row(ck,
+                DBParams::MVCC ? RowAccess::None : RowAccess::UpdateValue);
         TXN_DO(success);
         assert(result);
-        auto cv = reinterpret_cast<const customer_value*>(value);
-        customer_value* new_cv = Sto::tx_alloc(cv);
-        new_cv->c_balance += (int64_t)ol_amount_sum;
-        new_cv->c_delivery_cnt += 1;
-        db.tbl_customers(q_w_id).update_row(row, new_cv);
+
+        if (DBParams::MVCC) {
+            commutators::MvCommutator<customer_comm_value> commutator((int64_t)ol_amount_sum);
+            db.tbl_customers_comm(q_w_id).update_row(row, commutator);
+        } else {
+            auto cmv = reinterpret_cast<const customer_comm_value*>(value);
+            auto new_cmv = Sto::tx_alloc(cmv);
+            new_cmv->c_balance += (int64_t)ol_amount_sum;
+            new_cmv->c_delivery_cnt += 1;
+            db.tbl_customers_comm(q_w_id).update_row(row, new_cmv);
+        }
     }
 
     } RETRY(true);

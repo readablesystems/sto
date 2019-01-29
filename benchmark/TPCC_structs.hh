@@ -107,6 +107,7 @@ struct district_key {
     uint64_t d_id;
 };
 
+#if 0
 struct district_value {
     enum class NamedColumn : int { d_name = 0,
                                    d_street_1,
@@ -125,6 +126,33 @@ struct district_value {
     fix_string<9>  d_zip;
     int64_t        d_tax;
     int64_t        d_ytd;
+    // we use the separate oid generator for better semantics in transactions
+    //uint64_t       d_next_o_id;
+};
+#endif
+
+struct district_const_value {
+    enum class NamedColumn : int { d_name = 0,
+                                   d_street_1,
+                                   d_street_2,
+                                   d_city,
+                                   d_state,
+                                   d_zip,
+                                   d_tax };
+
+    var_string<10> d_name;
+    var_string<20> d_street_1;
+    var_string<20> d_street_2;
+    var_string<20> d_city;
+    fix_string<2>  d_state;
+    fix_string<9>  d_zip;
+    int64_t        d_tax;
+};
+
+struct district_comm_value {
+    enum class NamedColumn : int { d_ytd = 0 };
+
+    int64_t d_ytd;
     // we use the separate oid generator for better semantics in transactions
     //uint64_t       d_next_o_id;
 };
@@ -210,6 +238,8 @@ struct customer_key {
     uint64_t c_id;
 };
 
+// Unsplit customer table
+#if 0
 struct customer_value {
     enum class NamedColumn : int { c_first = 0,
                                    c_middle,
@@ -250,7 +280,55 @@ struct customer_value {
     fix_string<500> c_data;
 };
 
+#endif
+
+// Split customer table
+struct customer_const_value {
+    enum class NamedColumn : int { c_first = 0,
+                                   c_middle,
+                                   c_last,
+                                   c_street_1,
+                                   c_street_2,
+                                   c_city,
+                                   c_state,
+                                   c_zip,
+                                   c_phone,
+                                   c_since,
+                                   c_credit,
+                                   c_credit_lim,
+                                   c_discount };
+
+    var_string<16>  c_first;
+    fix_string<2>   c_middle;
+    var_string<16>  c_last;
+    var_string<20>  c_street_1;
+    var_string<20>  c_street_2;
+    var_string<20>  c_city;
+    fix_string<2>   c_state;
+    fix_string<9>   c_zip;
+    fix_string<16>  c_phone;
+    uint32_t        c_since;
+    fix_string<2>   c_credit;
+    int64_t         c_credit_lim;
+    int64_t         c_discount;
+};
+
+struct customer_comm_value {
+    enum class NamedColumn : int { c_balance = 0,
+                                   c_ytd_payment,
+                                   c_payment_cnt,
+                                   c_delivery_cnt,
+                                   c_data };
+
+    int64_t         c_balance;
+    int64_t         c_ytd_payment;
+    uint16_t        c_payment_cnt;
+    uint16_t        c_delivery_cnt;
+    fix_string<500> c_data;
+};
+
 struct c_data_info {
+    c_data_info() = default;
     c_data_info (uint64_t c, uint64_t cd, uint64_t cw, uint64_t d, uint64_t w, int64_t hm)
             : cid(c), cdid(cd), cwid(cw), did(d), wid(w), h_amount(hm) {}
     const char *buf() const {

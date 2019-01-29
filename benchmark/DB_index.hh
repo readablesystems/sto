@@ -1680,7 +1680,6 @@ public:
 
     sel_return_type
     select_row(uintptr_t rid, RowAccess access) {
-        (void)access;  // TODO(column-splitting)
         auto e = reinterpret_cast<internal_elem *>(rid);
         TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
@@ -1703,9 +1702,12 @@ public:
             }
         }
 
-        MvAccess::template read<value_type>(row_item, h);
-
-        return sel_return_type(true, true, rid, h->vp());
+        if (access != RowAccess::None) {
+            MvAccess::template read<value_type>(row_item, h);
+            return sel_return_type(true, true, rid, h->vp());
+        } else {
+            return sel_return_type(true, true, rid, &(e->row.nontrans_access()));
+        }
     }
 
     sel_return_type
