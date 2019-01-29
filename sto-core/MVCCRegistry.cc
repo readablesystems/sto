@@ -36,8 +36,8 @@ void MvRegistry::collect_garbage_() {
             }
 
             base_type *garbo = h->prev_;  // First element to collect
-            h->prev_ = nullptr;     // Ensures that future collection cycles know
-                                    // about the progress of previous cycles
+            h->prev_.store(nullptr);     // Ensures that future collection cycles know
+                                         // about the progress of previous cycles
             while (garbo) {
                 base_type *delet = garbo;
                 garbo = garbo->prev_;
