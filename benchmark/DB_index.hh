@@ -95,22 +95,21 @@ struct get_version {
             typename get_occ_version<DBParams>::type>::type>::type>::type>::type>::type type;
 };
 
-template <typename DBParams>
-class integer_box : public TObject {
+class TCommuteIntegerBox : public TObject {
 public:
     typedef int64_t int_type;
     typedef TNonopaqueVersion version_type;
 
-    integer_box()
+    TCommuteIntegerBox()
         : vers(Sto::initialized_tid() | TransactionTid::nonopaque_bit),
           value() {}
 
-    integer_box& operator=(int_type x) {
+    TCommuteIntegerBox& operator=(int_type x) {
         value = x;
         return *this;
     }
 
-    std::pair<bool, int_type> trans_read() {
+    std::pair<bool, int_type> read() {
         auto item = Sto::item(this, 0);
         bool ok = item.observe(vers);
         if (ok)
@@ -119,7 +118,7 @@ public:
             return {false, 0};
     }
 
-    void trans_increment(int_type i) {
+    void increment(int_type i) {
         auto item = Sto::item(this, 0);
         item.add_write(i);
     }
@@ -142,6 +141,12 @@ private:
 
     version_type vers;
     int_type value;
+};
+
+template <typename DBParams>
+struct integer_box {
+    typedef typename std::conditional<DBParams::MVCC,
+        TMvCommuteIntegerBox, TCommuteIntegerBox>::type type;
 };
 
 // unordered index implemented as hashtable

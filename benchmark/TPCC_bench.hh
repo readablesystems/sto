@@ -109,7 +109,7 @@ public:
     struct warehouse_value {
         warehouse_value() : cv(), ytd() {}
         warehouse_const_value cv;
-        integer_box<DBParams> ytd;
+        typename integer_box<DBParams>::type ytd;
     };
 
     template <typename K, typename V>

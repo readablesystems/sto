@@ -150,6 +150,8 @@ protected:
 
 class TMvCommuteIntegerBox : public TMvBox<int64_t> {
 public:
+    using TMvBox<int64_t>::operator=;
+
     void increment(int64_t delta) {
         typedef TMvBox<int64_t>::comm_type comm_type;
         auto item = Sto::item(this, 0);
