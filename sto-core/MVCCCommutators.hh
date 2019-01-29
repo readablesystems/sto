@@ -10,7 +10,7 @@ template <typename T>
 class MvCommutator {
 public:
     // Each type must define its own MvCommutator variant
-    MvCommutator() {}
+    MvCommutator() = default;
 
     T& operate(T& v) {
         always_assert(false, "Should never operate on the default commutator.");
@@ -27,7 +27,7 @@ public:
 template <>
 class MvCommutator<int64_t> {
 public:
-    MvCommutator() {}
+    MvCommutator() = default;
     explicit MvCommutator(int64_t delta) : delta(delta) {}
 
     int64_t& operate(int64_t& v) {
