@@ -12,7 +12,7 @@
 #define GUARDED if (TransactionGuard tguard{})
 
 void testSimpleInt() {
-	TMvBox<int> f;
+    TMvBox<int> f;
 
     {
         TransactionGuard t;
@@ -21,26 +21,26 @@ void testSimpleInt() {
 
     
 
-	  {
+    {
         TransactionGuard t2;
         int f_read = f;
         assert(f_read == 100);
     }
 
-	printf("PASS: %s\n", __FUNCTION__);
+    printf("PASS: %s\n", __FUNCTION__);
 }
 
 void testSimpleString() {
-	TMvBox<std::string> f;
+    TMvBox<std::string> f;
 
-	{
+    {
         TransactionGuard t;
         f = "100";
     }
 
     
 
-	{
+    {
         TransactionGuard t2;
         std::string f_read = f;
         assert(f_read.compare("100") == 0);
