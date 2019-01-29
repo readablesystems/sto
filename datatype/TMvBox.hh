@@ -150,7 +150,10 @@ protected:
 
 class TMvCommuteIntegerBox : public TMvBox<int64_t> {
 public:
-    using TMvBox<int64_t>::operator=;
+    TMvCommuteIntegerBox& operator=(const int64_t& x) {
+        this->nontrans_write(x);
+        return *this;
+    }
 
     void increment(int64_t delta) {
         typedef TMvBox<int64_t>::comm_type comm_type;
