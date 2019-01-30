@@ -377,6 +377,8 @@ int main() {
     testMvWrites();
     testMvCommute1();
     testMvCommute2();
+#if MVCC_INLINING
     testMvInline();
+#endif
     return 0;
 }

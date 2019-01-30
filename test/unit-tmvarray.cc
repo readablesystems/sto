@@ -315,6 +315,9 @@ int main() {
     testConflictingModifyIter2();
     testConflictingModifyIter3();
     testOpacity1();
+#if MVCC_INLINING
+    testMvInline();
+#endif
     benchArray64();
     return 0;
 }

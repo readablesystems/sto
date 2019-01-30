@@ -280,14 +280,12 @@ public:
               rentry_(MvRegistry::reg(this))) {
         ih_.inlined_ = true;
         ih_.status_commit();
-        rentry_ = MvRegistry::reg(this);
     }
     explicit MvObject(T&& value)
             : h_(&ih_), ih_(0, this, new T(std::move(value))),
               rentry_(MvRegistry::reg(this)) {
         ih_.inlined_ = true;
         ih_.status_commit();
-        rentry_ = MvRegistry::reg(this);
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
@@ -295,10 +293,10 @@ public:
               rentry_(MvRegistry::reg(this)) {
         ih_.inlined_ = true;
         ih_.status_commit();
-        rentry_ = MvRegistry::reg(this);
     }
 #else
     MvObject() : h_(new history_type(this)), rentry_(MvRegistry::reg(this)) {
+        h_.load()->status_commit();
         if (std::is_trivial<T>::value) {
             static_cast<history_type*>(h_.load())->v_ = T();
         } else {
@@ -309,20 +307,17 @@ public:
             : h_(new history_type(0, this, new T(value))),
               rentry_(MvRegistry::reg(this)) {
         h_.load()->status_commit();
-        rentry_ = MvRegistry::reg(this);
     }
     explicit MvObject(T&& value)
             : h_(new history_type(0, this, new T(std::move(value)))),
               rentry_(MvRegistry::reg(this)) {
         h_.load()->status_commit();
-        rentry_ = MvRegistry::reg(this);
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
             : h_(new history_type(0, this, new T(std::forward<Args>(args)...))),
               rentry_(MvRegistry::reg(this)) {
         h_.load()->status_commit();
-        rentry_ = MvRegistry::reg(this);
     }
 #endif
 
