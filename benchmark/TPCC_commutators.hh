@@ -7,19 +7,24 @@
 
 namespace commutators {
 
-using tpcc::district_comm_value;
-using tpcc::customer_comm_value;
+#if TPCC_SPLIT_TABLE
+using district_value = tpcc::district_comm_value;
+using customer_value = tpcc::customer_comm_value;
+#else
+using district_value = tpcc::district_value;
+using customer_value = tpcc::customer_value;
+#endif
 using tpcc::c_data_info;
 using tpcc::orderline_value;
 
 template <>
-class MvCommutator<district_comm_value> {
+class MvCommutator<district_value> {
 public:
     MvCommutator() = default;
 
     explicit MvCommutator(int64_t delta_ytd) : delta_ytd(delta_ytd) {}
 
-    district_comm_value& operate(district_comm_value &d) {
+    district_value& operate(district_value &d) {
         d.d_ytd += delta_ytd;
         return d;
     }
@@ -35,7 +40,7 @@ private:
  * MvCommutator<customer_value> now supports only the delivery transaction.
  */
 template <>
-class MvCommutator<customer_comm_value> {
+class MvCommutator<customer_value> {
 public:
     enum class OpType : int16_t { Payment, Delivery };
     MvCommutator() = default;
@@ -53,7 +58,7 @@ public:
         : delta_balance(delta_balance), delta_ytd_payment(),
           op(OpType::Delivery), bad_credit(), delta_data() {}
 
-    customer_comm_value& operate(customer_comm_value &c) {
+    customer_value& operate(customer_value &c) {
         if (op == OpType::Payment) {
             c.c_balance += delta_balance;
             c.c_payment_cnt += 1;

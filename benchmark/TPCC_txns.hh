@@ -70,6 +70,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     auto& wv = db.get_warehouse(q_w_id);
     wh_tax_rate = wv.cv.w_tax;
 
+#if TPCC_SPLIT_TABLE
     district_key dk(q_w_id, q_d_id);
     std::tie(abort, result, row, value) = db.tbl_districts_const(q_w_id).select_row(dk, RowAccess::None);
     TXN_DO(abort);
@@ -90,6 +91,28 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     auto cus_discount = ccv->c_discount;
     out_cus_last = ccv->c_last;
     out_cus_credit = ccv->c_credit;
+#else
+    district_key dk(q_w_id, q_d_id);
+    std::tie(abort, result, row, value) = db.tbl_districts(q_w_id).select_row(dk, RowAccess::ObserveValue);
+    TXN_DO(abort);
+    assert(result);
+    auto dv = reinterpret_cast<const district_value*>(value);
+    dt_tax_rate = dv->d_tax;
+    dt_next_oid = db.oid_generator().next(q_w_id, q_d_id);
+    //dt_next_oid = new_dv->d_next_o_id ++;
+    //db.tbl_districts(q_w_id).update_row(row, new_dv);
+
+    customer_key ck(q_w_id, q_d_id, q_c_id);
+    std::tie(abort, result, std::ignore, value) = db.tbl_customers(q_w_id).select_row(ck, RowAccess::ObserveValue);
+    TXN_DO(abort);
+    assert(result);
+
+    auto cv = reinterpret_cast<const customer_value*>(value);
+
+    auto cus_discount = cv->c_discount;
+    out_cus_last = cv->c_last;
+    out_cus_credit = cv->c_credit;
+#endif
 
     order_key ok(q_w_id, q_d_id, dt_next_oid);
     order_value* ov = Sto::tx_alloc<order_value>();
@@ -258,6 +281,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     // select district row and retrieve district info
     district_key dk(q_w_id, q_d_id);
+#if TPCC_SPLIT_TABLE
     std::tie(success, result, row, value) = db.tbl_districts_const(q_w_id).select_row(dk, RowAccess::None);
     TXN_DO(success);
     assert(result);
@@ -287,6 +311,31 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         new_dmv->d_ytd += h_amount;
         db.tbl_districts_comm(q_w_id).update_row(row, new_dmv);
     }
+#else
+    std::tie(success, result, row, value) = db.tbl_districts(q_w_id).select_row(dk, RowAccess::ObserveValue);
+    TXN_DO(success);
+    assert(result);
+    auto dv = reinterpret_cast<const district_value *>(value);
+    out_d_name = dv->d_name;
+    out_d_street_1 = dv->d_street_1;
+    out_d_street_2 = dv->d_street_2;
+    out_d_city = dv->d_city;
+    out_d_state = dv->d_state;
+    out_d_zip = dv->d_zip;
+
+    TXP_INCREMENT(txp_tpcc_pm_stage1);
+
+    if (DBParams::MVCC && DBParams::Commute) {
+        // update district ytd commutatively
+        commutators::MvCommutator<district_value> commutator(h_amount);
+        db.tbl_districts(q_w_id).update_row(row, commutator);
+    } else {
+        auto new_dv = Sto::tx_alloc(dv);
+        // update district ytd in-place
+        new_dv->d_ytd += h_amount;
+        db.tbl_districts(q_w_id).update_row(row, new_dv);
+    }
+#endif
 
     TXP_INCREMENT(txp_tpcc_pm_stage2);
 
@@ -319,6 +368,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     TXP_INCREMENT(txp_tpcc_pm_stage3);
 
+#if TPCC_SPLIT_TABLE
     customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
     std::tie(success, result, row, value) = db.tbl_customers_const(q_c_w_id).select_row(ck, RowAccess::None);
     TXN_DO(success);
@@ -365,6 +415,41 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         }
         db.tbl_customers_comm(q_c_w_id).update_row(row, new_cmmv);
     }
+#else
+    customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
+    std::tie(success, result, row, value) = db.tbl_customers(q_c_w_id).select_row(ck, RowAccess::ObserveValue);
+    TXN_DO(success);
+    assert(result);
+
+    TXP_INCREMENT(txp_tpcc_pm_stage4);
+
+    auto cv = reinterpret_cast<const customer_value*>(value);
+    out_c_since = cv->c_since;
+    out_c_credit_lim = cv->c_credit_lim;
+    out_c_discount = cv->c_discount;
+    out_c_balance = cv->c_balance;
+
+    if (DBParams::MVCC && DBParams::Commute) {
+        if (cv->c_credit == "BC") {
+            commutators::MvCommutator<customer_value> commutator(-h_amount, h_amount, q_c_id, q_c_d_id, q_c_w_id,
+                                                                      q_d_id, q_w_id, h_amount);
+            db.tbl_customers(q_c_w_id).update_row(row, commutator);
+        } else {
+            commutators::MvCommutator<customer_value> commutator(-h_amount, h_amount);
+            db.tbl_customers(q_c_w_id).update_row(row, commutator);
+        }
+    } else {
+        auto new_cv = Sto::tx_alloc(cv);
+        new_cv->c_balance -= h_amount;
+        new_cv->c_payment_cnt += 1;
+        new_cv->c_ytd_payment += h_amount;
+        if (cv->c_credit == "BC") {
+            c_data_info info(q_c_id, q_c_d_id, q_c_w_id, q_d_id, q_w_id, h_amount);
+            new_cv->c_data.insert_left(info.buf(), c_data_info::len);
+        }
+        db.tbl_customers(q_c_w_id).update_row(row, new_cv);
+    }
+#endif
 
     TXP_INCREMENT(txp_tpcc_pm_stage5);
 
@@ -461,6 +546,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         always_assert(q_c_id != 0, "q_c_id invalid when selecting customer by c_id");
     }
 
+#if TPCC_SPLIT_TABLE
     customer_key ck(q_w_id, q_d_id, q_c_id);
     std::tie(success, result, row, value) = db.tbl_customers_const(q_w_id).select_row(ck, RowAccess::None);
     TXN_DO(success);
@@ -477,6 +563,20 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     std::tie(success, result, row, value) = db.tbl_customers_comm(q_w_id).select_row(ck, RowAccess::ObserveValue);
     auto cmv = reinterpret_cast<const customer_comm_value*>(value);
     out_c_balance = cmv->c_balance;
+#endif
+#else
+    customer_key ck(q_w_id, q_d_id, q_c_id);
+    std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_row(ck, RowAccess::ObserveValue);
+    TXN_DO(success);
+    assert(result);
+
+    auto cv = reinterpret_cast<const customer_value*>(value);
+
+    // simulate retrieving customer info
+    out_c_first = cv->c_first;
+    out_c_last = cv->c_last;
+    out_c_middle = cv->c_middle;
+    out_c_balance = cv->c_balance;
 #endif
 
     // find the highest order placed by customer q_c_id
@@ -600,6 +700,7 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
             db.tbl_orderlines(q_w_id).update_row(row, new_olv);
         }
 
+#if TPCC_SPLIT_TABLE
         customer_key ck(q_w_id, q_d_id, q_c_id);
         std::tie(success, result, row, value) = db.tbl_customers_comm(q_w_id).select_row(ck,
                 DBParams::MVCC ? RowAccess::None : RowAccess::UpdateValue);
@@ -616,6 +717,23 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
             new_cmv->c_delivery_cnt += 1;
             db.tbl_customers_comm(q_w_id).update_row(row, new_cmv);
         }
+#else
+        customer_key ck(q_w_id, q_d_id, q_c_id);
+        std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_row(ck, RowAccess::ObserveValue);
+        TXN_DO(success);
+        assert(result);
+
+        if (DBParams::MVCC && DBParams::Commute) {
+            commutators::MvCommutator<customer_value> commutator((int64_t)ol_amount_sum);
+            db.tbl_customers(q_w_id).update_row(row, commutator);
+        } else {
+            auto cv = reinterpret_cast<const customer_value*>(value);
+            auto new_cv = Sto::tx_alloc(cv);
+            new_cv->c_balance += (int64_t)ol_amount_sum;
+            new_cv->c_delivery_cnt += 1;
+            db.tbl_customers(q_w_id).update_row(row, new_cv);
+        }
+#endif
     }
 
     } RETRY(true);

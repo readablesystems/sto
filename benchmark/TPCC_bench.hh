@@ -122,13 +122,16 @@ public:
 
     // partitioned according to warehouse id
     typedef std::vector<warehouse_value>                 wh_table_type;
+#if TPCC_SPLIT_TABLE
     typedef OIndex<district_key, district_const_value>   dc_table_type;
-    typedef OIndex<district_key, district_comm_value>   dm_table_type;
-    //typedef OIndex<district_key, district_value>         dt_table_type;
-    typedef OIndex<customer_idx_key, customer_idx_value> ci_table_type;
+    typedef OIndex<district_key, district_comm_value>    dm_table_type;
     typedef OIndex<customer_key, customer_const_value>   cc_table_type;
     typedef OIndex<customer_key, customer_comm_value>    cm_table_type;
-    //typedef OIndex<customer_key, customer_value>         cu_table_type;
+#else
+    typedef OIndex<district_key, district_value>         dt_table_type;
+    typedef OIndex<customer_key, customer_value>         cu_table_type;
+#endif
+    typedef OIndex<customer_idx_key, customer_idx_value> ci_table_type;
     typedef OIndex<order_cidx_key, bench::dummy_row>     oi_table_type;
     typedef OIndex<order_key, order_value>               od_table_type;
     typedef OIndex<orderline_key, orderline_value>       ol_table_type;
@@ -148,20 +151,29 @@ public:
     warehouse_value& get_warehouse(uint64_t w_id) {
         return tbl_whs_[w_id - 1];
     }
+#if TPCC_SPLIT_TABLE
     dc_table_type& tbl_districts_const(uint64_t w_id) {
         return tbl_dts_const_[w_id - 1];
     }
     dm_table_type& tbl_districts_comm(uint64_t w_id) {
         return tbl_dts_comm_[w_id - 1];
     }
-    ci_table_type& tbl_customer_index(uint64_t w_id) {
-        return tbl_cni_[w_id - 1];
-    }
     cc_table_type& tbl_customers_const(uint64_t w_id) {
         return tbl_cus_const_[w_id - 1];
     }
     cm_table_type& tbl_customers_comm(uint64_t w_id) {
         return tbl_cus_comm_[w_id - 1];
+    }
+#else
+    dt_table_type& tbl_districts(uint64_t w_id) {
+        return tbl_dts_[w_id - 1];
+    }
+    cu_table_type& tbl_customers(uint64_t w_id) {
+        return tbl_cus_[w_id - 1];
+    }
+#endif
+    ci_table_type& tbl_customer_index(uint64_t w_id) {
+        return tbl_cni_[w_id - 1];
     }
     oi_table_type& tbl_order_customer_index(uint64_t w_id) {
         return tbl_oci_[w_id - 1];
@@ -192,12 +204,17 @@ private:
     wh_table_type tbl_whs_;
     it_table_type *tbl_its_;
 
+#if TPCC_SPLIT_TABLE
     std::vector<dc_table_type> tbl_dts_const_;
     std::vector<dm_table_type> tbl_dts_comm_;
-    std::vector<ci_table_type> tbl_cni_;
     std::vector<cc_table_type> tbl_cus_const_;
     std::vector<cm_table_type> tbl_cus_comm_;
+#else
+    std::vector<dt_table_type> tbl_dts_;
+    std::vector<cu_table_type> tbl_cus_;
+#endif
 
+    std::vector<ci_table_type> tbl_cni_;
     std::vector<oi_table_type> tbl_oci_;
     std::vector<od_table_type> tbl_ods_;
     std::vector<ol_table_type> tbl_ols_;

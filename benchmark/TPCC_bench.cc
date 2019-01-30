@@ -26,11 +26,16 @@ tpcc_db<DBParams>::tpcc_db(int num_whs) : tbl_whs_((size_t)num_whs), oid_gen_() 
 
     tbl_its_ = new it_table_type(999983/*NUM_ITEMS * 2*/);
     for (auto i = 0; i < num_whs; ++i) {
+#if TPCC_SPLIT_TABLE
         tbl_dts_const_.emplace_back(999983/*num_districts * 2*/);
         tbl_dts_comm_.emplace_back(999983);
-        tbl_cni_.emplace_back(999983/*num_customers * 2*/);
         tbl_cus_const_.emplace_back(999983/*num_customers * 2*/);
         tbl_cus_comm_.emplace_back(999983);
+#else
+        tbl_dts_.emplace_back(999983/*num_districts * 2*/);
+        tbl_cus_.emplace_back(999983/*num_customers * 2*/);
+#endif
+        tbl_cni_.emplace_back(999983/*num_customers * 2*/);
         tbl_oci_.emplace_back(999983/*num_customers * 2*/);
         tbl_ods_.emplace_back(999983/*num_customers * 10 * 2*/);
         tbl_ols_.emplace_back(999983/*num_customers * 100 * 2*/);
@@ -48,15 +53,22 @@ tpcc_db<DBParams>::~tpcc_db() {
 template <typename DBParams>
 void tpcc_db<DBParams>::thread_init_all() {
     tbl_its_->thread_init();
+#if TPCC_SPLIT_TABLE
     for (auto& t : tbl_dts_const_)
         t.thread_init();
     for (auto& t : tbl_dts_comm_)
         t.thread_init();
-    for (auto& t : tbl_cni_)
-        t.thread_init();
     for (auto& t : tbl_cus_const_)
         t.thread_init();
     for (auto& t : tbl_cus_comm_)
+        t.thread_init();
+#else
+    for (auto& t : tbl_dts_)
+        t.thread_init();
+    for (auto& t : tbl_cus_)
+        t.thread_init();
+#endif
+    for (auto& t : tbl_cni_)
         t.thread_init();
     for (auto& t : tbl_oci_)
         t.thread_init();
@@ -135,6 +147,7 @@ void tpcc_prepopulator<DBParams>::expand_warehouse(uint64_t wid) {
 
     for (uint64_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
         district_key dk(wid, did);
+#if TPCC_SPLIT_TABLE
         district_const_value dcv;
         district_comm_value dmv;
 
@@ -150,6 +163,21 @@ void tpcc_prepopulator<DBParams>::expand_warehouse(uint64_t wid) {
 
         db.tbl_districts_const(wid).nontrans_put(dk, dcv);
         db.tbl_districts_comm(wid).nontrans_put(dk, dmv);
+#else
+        district_value dv;
+
+        dv.d_name = random_a_string(6, 10);
+        dv.d_street_1 = random_a_string(10, 20);
+        dv.d_street_2 = random_a_string(10, 20);
+        dv.d_city = random_a_string(10, 20);
+        dv.d_state = random_state_name();
+        dv.d_zip = random_zip_code();
+        dv.d_tax = ig.random(0, 2000);
+        dv.d_ytd = 3000000;
+        //dv.d_next_o_id = 3001;
+
+        db.tbl_districts(wid).nontrans_put(dk, dv);
+#endif
 
     }
 }
@@ -158,12 +186,13 @@ template<typename DBParams>
 void tpcc_prepopulator<DBParams>::expand_districts(uint64_t wid) {
     for (uint64_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
         for (uint64_t cid = 1; cid <= NUM_CUSTOMERS_PER_DISTRICT; ++cid) {
+            int last_name_num = (cid <= 1000) ? int(cid - 1)
+                                              : ig.gen_customer_last_name_num(false/*run time*/);
             customer_key ck(wid, did, cid);
+#if TPCC_SPLIT_TABLE
             customer_const_value ccv;
             customer_comm_value cmv;
 
-            int last_name_num = (cid <= 1000) ? int(cid - 1)
-                                              : ig.gen_customer_last_name_num(false/*run time*/);
             ccv.c_last = ig.to_last_name(last_name_num);
             ccv.c_middle = "OE";
             ccv.c_first = random_a_string(8, 16);
@@ -186,8 +215,33 @@ void tpcc_prepopulator<DBParams>::expand_districts(uint64_t wid) {
             db.tbl_customers_comm(wid).nontrans_put(ck, cmv);
 
             customer_idx_key cik(wid, did, ccv.c_last, ccv.c_first);
-            customer_idx_value civ(cid);
+#else
+            customer_value cv;
 
+            cv.c_last = ig.to_last_name(last_name_num);
+            cv.c_middle = "OE";
+            cv.c_first = random_a_string(8, 16);
+            cv.c_street_1 = random_a_string(10, 20);
+            cv.c_street_2 = random_a_string(10, 20);
+            cv.c_city = random_a_string(10, 20);
+            cv.c_zip = random_zip_code();
+            cv.c_phone = random_n_string(16, 16);
+            cv.c_since = ig.gen_date();
+            cv.c_credit = (ig.random(1, 100) <= 10) ? "BC" : "GC";
+            cv.c_credit_lim = 5000000;
+            cv.c_discount = ig.random(0, 5000);
+            cv.c_balance = -1000;
+            cv.c_ytd_payment = 1000;
+            cv.c_payment_cnt = 1;
+            cv.c_delivery_cnt = 0;
+            cv.c_data = random_a_string(300, 500);
+
+            db.tbl_customers(wid).nontrans_put(ck, cv);
+
+            customer_idx_key cik(wid, did, cv.c_last, cv.c_first);
+#endif
+
+            customer_idx_value civ(cid);
             db.tbl_customer_index(wid).nontrans_put(cik, civ);
         }
     }
