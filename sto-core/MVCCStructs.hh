@@ -27,6 +27,8 @@ class MvHistoryBase {
 public:
     typedef TransactionTid::type type;
 
+    virtual ~MvHistoryBase() {}
+
     // Attempt to set the pointer to prev; returns true on success
     bool prev(MvHistoryBase *prev) {
         if (is_valid_prev(prev)) {
@@ -191,6 +193,8 @@ public:
             : MvHistoryBase(ntid, nprev), obj_(obj), c_(c), v_() {
         status_delta();
     }
+
+    ~MvHistory() override {}
 
     // Retrieve the object for which this history element is intended
     object_type* object() const {
@@ -370,7 +374,7 @@ public:
 
         do {
             // Can only install onto the latest-visible version
-            if (hvis != find(tid)) {
+            if (hvis && hvis != find(tid)) {
                 return false;
             }
 
@@ -397,6 +401,16 @@ public:
         }
 
         return true;
+    }
+
+    // Deletes the history element if it was new'ed, or set it as UNUSED if it
+    // is the inlined version
+    void delete_history(history_type *h) {
+        if (&ih_ == h) {
+            ih_.status_unused();
+        } else {
+            delete h;
+        }
     }
 
     // Finds the current visible version, based on tid; by default, waits on

@@ -235,6 +235,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     // begin txn
     TRANSACTION {
+    Sto::transaction()->special_txp = true;
     ++starts;
 
     bool success, result;
@@ -273,6 +274,8 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     TXN_DO(success);
     assert(result);
 
+    TXP_INCREMENT(txp_tpcc_pm_stage1);
+
     if (DBParams::MVCC) {
         // update district ytd commutatively
         commutators::MvCommutator<district_comm_value> commutator(h_amount);
@@ -284,6 +287,8 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         new_dmv->d_ytd += h_amount;
         db.tbl_districts_comm(q_w_id).update_row(row, new_dmv);
     }
+
+    TXP_INCREMENT(txp_tpcc_pm_stage2);
 
     // select and update customer
     if (by_name) {
@@ -312,10 +317,14 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         always_assert(q_c_id != 0, "q_c_id invalid when selecting customer by c_id");
     }
 
+    TXP_INCREMENT(txp_tpcc_pm_stage3);
+
     customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
     std::tie(success, result, row, value) = db.tbl_customers_const(q_c_w_id).select_row(ck, RowAccess::None);
     TXN_DO(success);
     assert(result);
+
+    TXP_INCREMENT(txp_tpcc_pm_stage4);
 
     auto ccv = reinterpret_cast<const customer_const_value*>(value);
     out_c_since = ccv->c_since;
@@ -357,6 +366,8 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         db.tbl_customers_comm(q_c_w_id).update_row(row, new_cmmv);
     }
 
+    TXP_INCREMENT(txp_tpcc_pm_stage5);
+
     // insert to history table
     history_value *hv = Sto::tx_alloc<history_value>();
     hv->h_c_id = q_c_id;
@@ -372,6 +383,8 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     std::tie(success, result) = db.tbl_histories(q_c_w_id).insert_row(hk, hv);
     assert(success);
     assert(!result);
+
+    TXP_INCREMENT(txp_tpcc_pm_stage6);
 
     // commit txn
     // retry until commits

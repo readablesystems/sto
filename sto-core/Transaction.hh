@@ -178,12 +178,23 @@ enum txp {
     txp_tpcc_no_commits,
     txp_tpcc_pm_aborts,
     txp_tpcc_pm_commits,
+    txp_tpcc_pm_stage1,
+    txp_tpcc_pm_stage2,
+    txp_tpcc_pm_stage3,
+    txp_tpcc_pm_stage4,
+    txp_tpcc_pm_stage5,
+    txp_tpcc_pm_stage6,
     txp_tpcc_os_aborts,
     txp_tpcc_os_commits,
     txp_tpcc_dl_aborts,
     txp_tpcc_dl_commits,
     txp_tpcc_st_aborts,
     txp_tpcc_st_commits,
+    txp_tpcc_lock_abort1,
+    txp_tpcc_lock_abort2,
+    txp_tpcc_lock_abort3,
+    txp_tpcc_check_abort1,
+    txp_tpcc_check_abort2,
     txp_total_n,
     txp_total_r,
     txp_total_adaptive_opt,
@@ -362,6 +373,8 @@ class Transaction {
 public:
     typedef TransactionTid::type tid_type;
 
+    bool special_txp;
+
     static constexpr unsigned tset_initial_capacity = 512;
 
     static constexpr unsigned hash_size = 32768;
@@ -516,6 +529,7 @@ private:
 #if STO_TSC_PROFILE
         start_tsc_ = read_tsc();
 #endif
+        special_txp = false;
         thr.epoch = global_epochs.global_epoch;
         thr.rcu_set.clean_until(global_epochs.active_epoch);
         thr.rtid = thr.wtid = 0;

@@ -5,6 +5,9 @@
 MvRegistry MvRegistry::registrar;
 
 void MvRegistry::collect_garbage_() {
+    if (stopped.load()) {
+        return;
+    }
     type gc_tid = Transaction::_RTID.load();
 
     // Find the gc tid
@@ -20,11 +23,17 @@ void MvRegistry::collect_garbage_() {
     for (registry_type &registry : registries) {
         MvRegistryEntry *entry = registry.load();
         while (entry) {
-            base_type *h = entry->atomic_base->load();
-            bool valid = entry->valid.load();
+            auto curr = entry;
             entry = entry->next;
+            bool valid = curr->valid.load();
 
-            if (!h || !valid) {
+            if (!valid) {
+                continue;
+            }
+
+            base_type *h = curr->atomic_base->load();
+
+            if (!h) {
                 continue;
             }
 

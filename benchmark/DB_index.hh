@@ -2025,12 +2025,11 @@ public:
         history_type *hprev = nullptr;
         if (item.has_read()) {
             hprev = item.read_value<history_type*>();
-        } else {
-            hprev = e->row.find(Sto::commit_tid(), false);
-        }
-        if (Sto::commit_tid() < hprev->rtid()) {
-            TransProxy(txn, item).add_write(nullptr);
-            return false;
+            if (Sto::commit_tid() < hprev->rtid()) {
+                TransProxy(txn, item).add_write(nullptr);
+                TXP_ACCOUNT(txp_tpcc_lock_abort1, txn.special_txp);
+                return false;
+            }
         }
         history_type *h;
         if (item.has_commute()) {
@@ -2047,26 +2046,32 @@ public:
         }
         bool result = e->row.cp_lock(Sto::commit_tid(), h);
         if (!result && !h->status_is(MvStatus::ABORTED)) {
-            delete h;
+            e->row.delete_history(h);
             TransProxy(txn, item).add_write(nullptr);
+            TXP_ACCOUNT(txp_tpcc_lock_abort2, txn.special_txp);
         } else {
             TransProxy(txn, item).add_write(h);
             TransProxy(txn, item).clear_commute();
+            TXP_ACCOUNT(txp_tpcc_lock_abort3, txn.special_txp && !result);
         }
         return result;
     }
 
-    bool check(TransItem& item, Transaction&) override {
+    bool check(TransItem& item, Transaction& txn) override {
         if (is_internode(item)) {
             node_type *n = get_internode_address(item);
             auto curr_nv = static_cast<leaf_type *>(n)->full_version_value();
             auto read_nv = item.template read_value<decltype(curr_nv)>();
-            return (curr_nv == read_nv);
+            auto result = (curr_nv == read_nv);
+            TXP_ACCOUNT(txp_tpcc_check_abort1, txn.special_txp && !result);
+            return result;
         } else {
             auto key = item.key<item_key_t>();
             auto e = key.internal_elem_ptr();
             auto h = item.template read_value<history_type*>();
-            return e->row.cp_check(Sto::read_tid(), h);
+            auto result = e->row.cp_check(Sto::read_tid(), h);
+            TXP_ACCOUNT(txp_tpcc_check_abort2, txn.special_txp && !result);
+            return result;
         }
     }
 

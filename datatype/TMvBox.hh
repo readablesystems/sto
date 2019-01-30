@@ -101,7 +101,7 @@ public:
         }
         bool result = v_.cp_lock(Sto::commit_tid(), h);
         if (!result && !h->status_is(MvStatus::ABORTED)) {
-            delete h;
+            v_.delete_history(h);
             TransProxy(txn, item).add_write(nullptr);
         } else {
             TransProxy(txn, item).add_write(h);

@@ -24,7 +24,7 @@ public:
             atomic_base(atomic_base), next(nullptr), valid(true) {}
     };
 
-    MvRegistry() {
+    MvRegistry() : stopped(false) {
         always_assert(
             this == &MvRegistry::registrar,
             "Only one MvRegistry can be created, which is the "
@@ -36,6 +36,7 @@ public:
     }
 
     ~MvRegistry() {
+        stopped.store(true);
         for (size_t i = 0; i < (sizeof registries) / (sizeof *registries); i++) {
             MvRegistryEntry *entry = registries[i].load();
             while (entry) {
@@ -60,6 +61,7 @@ private:
     typedef std::atomic<MvRegistryEntry*> registry_type;
 
     static MvRegistry registrar;
+    std::atomic<bool> stopped;
     registry_type registries[MAX_THREADS];
 
     void collect_garbage_();
