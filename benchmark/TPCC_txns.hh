@@ -276,7 +276,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     TXP_INCREMENT(txp_tpcc_pm_stage1);
 
-    if (DBParams::MVCC) {
+    if (DBParams::MVCC && DBParams::Commute) {
         // update district ytd commutatively
         commutators::MvCommutator<district_comm_value> commutator(h_amount);
         db.tbl_districts_comm(q_w_id).update_row(row, commutator);
@@ -344,7 +344,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     assert(result);
 #endif
 
-    if (DBParams::MVCC) {
+    if (DBParams::MVCC && DBParams::Commute) {
         if (ccv->c_credit == "BC") {
             commutators::MvCommutator<customer_comm_value> commutator(-h_amount, h_amount, q_c_id, q_c_d_id, q_c_w_id,
                                                                       q_d_id, q_w_id, h_amount);
@@ -606,7 +606,7 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
         TXN_DO(success);
         assert(result);
 
-        if (DBParams::MVCC) {
+        if (DBParams::MVCC && DBParams::Commute) {
             commutators::MvCommutator<customer_comm_value> commutator((int64_t)ol_amount_sum);
             db.tbl_customers_comm(q_w_id).update_row(row, commutator);
         } else {

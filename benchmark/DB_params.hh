@@ -7,10 +7,10 @@ namespace db_params {
 
 // Benchmark parameters
 constexpr const char *db_params_id_names[] = {
-    "none", "default", "opaque", "2pl", "adaptive", "swiss", "tictoc", "mvcc", "defaultnode", "mvccnode"};
+    "none", "default", "opaque", "2pl", "adaptive", "swiss", "tictoc", "mvcc"};
 
 enum class db_params_id : int {
-    None = 0, Default, Opaque, TwoPL, Adaptive, Swiss, TicToc, MVCC, DefaultNode, MVCCNode
+    None = 0, Default, Opaque, TwoPL, Adaptive, Swiss, TicToc, MVCC
 };
 
 inline std::ostream &operator<<(std::ostream &os, const db_params_id &id) {
@@ -42,6 +42,7 @@ public:
     static constexpr bool TicToc = false;
     static constexpr bool MVCC = false;
     static constexpr bool NodeTrack = false;
+    static constexpr bool Commute = false;
 };
 
 class db_opaque_params : public db_default_params {
@@ -81,12 +82,22 @@ public:
     static constexpr bool MVCC = true;
 };
 
+class db_mvcc_commute_params : public db_mvcc_params {
+public:
+    static constexpr bool Commute = true;
+};
+
 class db_default_node_params : public db_default_params {
 public:
     static constexpr bool NodeTrack = true;
 };
 
 class db_mvcc_node_params : public db_mvcc_params {
+public:
+    static constexpr bool NodeTrack = true;
+};
+
+class db_mvcc_commute_node_params : public db_mvcc_commute_params {
 public:
     static constexpr bool NodeTrack = true;
 };

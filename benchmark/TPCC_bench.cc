@@ -340,7 +340,8 @@ void tpcc_prepopulator<DBParams>::random_shuffle(std::vector<uint64_t> &v) {
 
 // @section: clp parser definitions
 enum {
-    opt_dbid = 1, opt_nwhs, opt_nthrs, opt_time, opt_perf, opt_pfcnt, opt_gc
+    opt_dbid = 1, opt_nwhs, opt_nthrs, opt_time, opt_perf, opt_pfcnt, opt_gc,
+    opt_node, opt_comm
 };
 
 static const Clp_Option options[] = {
@@ -351,6 +352,8 @@ static const Clp_Option options[] = {
     { "perf",         'p', opt_perf,  Clp_NoVal,     Clp_Optional },
     { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,     Clp_Negate| Clp_Optional },
     { "gc",           'g', opt_gc,    Clp_NoVal,     Clp_Negate| Clp_Optional },
+    { "node",         'n', opt_node,  Clp_NoVal,     Clp_Negate| Clp_Optional },
+    { "commute",      'x', opt_comm,  Clp_NoVal,     Clp_Negate| Clp_Optional },
 };
 
 // @endsection: clp parser definitions
@@ -510,6 +513,10 @@ public:
                 case opt_gc:
                     enable_gc = !clp->negated;
                     break;
+                case opt_node:
+                    break;
+                case opt_comm:
+                    break;
                 default:
                     print_usage(argv[0]);
                     ret = 1;
@@ -567,7 +574,7 @@ static inline void print_usage(const char *argv_0) {
     ss << "Usage of " << std::string(argv_0) << ":" << std::endl
        << "  --dbid=<STRING> (or -i<STRING>)" << std::endl
        << "    Specify the type of DB concurrency control used. Can be one of the followings:" << std::endl
-       << "      default, opaque, 2pl, adaptive, swiss, tictoc, mvcc" << std::endl
+       << "      default, opaque, 2pl, adaptive, swiss, tictoc, defaultnode, mvcc, mvccnode" << std::endl
        << "  --nwarehouses=<NUM> (or -w<NUM>)" << std::endl
        << "    Specify the number of warehouses (default 1)." << std::endl
        << "  --nthreads=<NUM> (or -t<NUM>)" << std::endl
@@ -579,7 +586,11 @@ static inline void print_usage(const char *argv_0) {
        << "  --perf-counter (or -c)" << std::endl
        << "    Spawns perf profiler in counter mode for the duration of the benchmark run." << std::endl
        << "  --gc (or -g)" << std::endl
-       << "    Enable garbage collection (default false)." << std::endl;
+       << "    Enable garbage collection (default false)." << std::endl
+       << "  --node (or -n)" << std::endl
+       << "    Enable node tracking (default false)." << std::endl
+       << "  --commute (or -x)" << std::endl
+       << "    Enable commutative updates in MVCC (default false)." << std::endl;
     std::cout << ss.str() << std::flush;
 }
 
@@ -594,6 +605,8 @@ int main(int argc, const char *const *argv) {
 
     int opt;
     bool clp_stop = false;
+    bool node_tracking = false;
+    bool enable_commute = false;
     while (!clp_stop && ((opt = Clp_Next(clp)) != Clp_Done)) {
         switch (opt) {
         case opt_dbid:
@@ -605,6 +618,12 @@ int main(int argc, const char *const *argv) {
                 ret_code = 1;
                 clp_stop = true;
             }
+            break;
+        case opt_node:
+            node_tracking = !clp->negated;
+            break;
+        case opt_comm:
+            enable_commute = !clp->negated;
             break;
         default:
             break;
@@ -623,7 +642,11 @@ int main(int argc, const char *const *argv) {
 
     switch (dbid) {
     case db_params_id::Default:
-        ret_code = tpcc_access<db_default_params>::execute(argc, argv);
+        if (node_tracking) {
+            ret_code = tpcc_access<db_default_node_params>::execute(argc, argv);
+        } else {
+            ret_code = tpcc_access<db_default_params>::execute(argc, argv);
+        }
         break;
     /*
     case db_params_id::Opaque:
@@ -643,13 +666,15 @@ int main(int argc, const char *const *argv) {
         break;
     */
     case db_params_id::MVCC:
-        ret_code = tpcc_access<db_mvcc_params>::execute(argc, argv);
-        break;
-    case db_params_id::DefaultNode:
-        ret_code = tpcc_access<db_default_node_params>::execute(argc, argv);
-        break;
-    case db_params_id::MVCCNode:
-        ret_code = tpcc_access<db_mvcc_node_params>::execute(argc, argv);
+        if (node_tracking && enable_commute) {
+            ret_code = tpcc_access<db_mvcc_commute_node_params>::execute(argc, argv);
+        } else if (node_tracking) {
+            ret_code = tpcc_access<db_mvcc_node_params>::execute(argc, argv);
+        } else if (enable_commute) {
+            ret_code = tpcc_access<db_mvcc_commute_params>::execute(argc, argv);
+        } else {
+            ret_code = tpcc_access<db_mvcc_params>::execute(argc, argv);
+        }
         break;
     default:
         std::cerr << "unsupported db config parameter id" << std::endl;
