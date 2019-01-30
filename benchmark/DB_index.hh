@@ -1752,7 +1752,7 @@ public:
     void update_row(uintptr_t rid, value_type *new_row) {
         auto row_item = Sto::item(this, item_key_t::row_item_key(reinterpret_cast<internal_elem *>(rid)));
         // TODO: address this extra copying issue
-        row_item.add_write(*new_row);
+        row_item.add_write(new_row);
         // Just update the pointer, don't set the actual write flag
         // we don't want to confuse installs at commit time
         //row_item.clear_write();

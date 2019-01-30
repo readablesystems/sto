@@ -161,7 +161,7 @@ private:
     type wtid_;  // Write TID
     bool inlined_;  // Inlined history?
 
-    template <typename T>
+    template <typename>
     friend class MvObject;
     friend class MvRegistry;
 };
@@ -264,6 +264,7 @@ public:
     typedef const T& read_type;
     typedef TransactionTid::type type;
 
+#if MVCC_INLINING
     MvObject()
             : h_(&ih_), ih_(this), rentry_(MvRegistry::reg(this)) {
         ih_.inlined_ = true;
@@ -296,16 +297,46 @@ public:
         ih_.status_commit();
         rentry_ = MvRegistry::reg(this);
     }
+#else
+    MvObject() : h_(new history_type(this)), rentry_(MvRegistry::reg(this)) {
+        if (std::is_trivial<T>::value) {
+            static_cast<history_type*>(h_.load())->v_ = T();
+        } else {
+            h_.load()->status_delete();
+        }
+    }
+    explicit MvObject(const T& value)
+            : h_(new history_type(0, this, new T(value))),
+              rentry_(MvRegistry::reg(this)) {
+        h_.load()->status_commit();
+        rentry_ = MvRegistry::reg(this);
+    }
+    explicit MvObject(T&& value)
+            : h_(new history_type(0, this, new T(std::move(value)))),
+              rentry_(MvRegistry::reg(this)) {
+        h_.load()->status_commit();
+        rentry_ = MvRegistry::reg(this);
+    }
+    template <typename... Args>
+    explicit MvObject(Args&&... args)
+            : h_(new history_type(0, this, new T(std::forward<Args>(args)...))),
+              rentry_(MvRegistry::reg(this)) {
+        h_.load()->status_commit();
+        rentry_ = MvRegistry::reg(this);
+    }
+#endif
 
     ~MvObject() {
         rentry_->valid.store(false);
         base_type *h = h_.load();
         h_.store(nullptr);
         while (h) {
+#if MVCC_INLINING
             if (&ih_ == h->prev_.load()) {
                 h->prev_.store(ih_.prev_.load());
                 ih_.status_unused();
             }
+#endif
             h->rtid_.store(h->wtid_ = 0);  // Make it GC-able
             h = h->prev_.load();
         }
@@ -406,11 +437,13 @@ public:
     // Deletes the history element if it was new'ed, or set it as UNUSED if it
     // is the inlined version
     void delete_history(history_type *h) {
+#if MVCC_INLINING
         if (&ih_ == h) {
             ih_.status_unused();
-        } else {
-            delete h;
+            return;
         }
+#endif
+        delete h;
     }
 
     // Finds the current visible version, based on tid; by default, waits on
@@ -446,8 +479,10 @@ public:
     // version as needed.
     template <typename... Args>
     history_type* new_history(Args&&... args) {
+#if MVCC_INLINING
         auto status = ih_.status();
-        if (status == UNUSED && ih_.status_.compare_exchange_strong(status, PENDING)) {
+        if (status == UNUSED &&
+                ih_.status_.compare_exchange_strong(status, PENDING)) {
             // Use inlined history element
             history_type h(std::forward<Args>(args)...);
             ih_.prev_.store(h.prev_.load());
@@ -457,6 +492,7 @@ public:
             ih_.c_ = h.c_;
             return &ih_;
         }
+#endif
         return new history_type(std::forward<Args>(args)...);
     }
 
@@ -500,7 +536,9 @@ protected:
     }
 
     std::atomic<base_type*> h_;
+#if MVCC_INLINING
     history_type ih_;  // Inlined version
+#endif
     MvRegistry::MvRegistryEntry *rentry_;  // The corresponding registry entry
 
     friend class MvRegistry;
