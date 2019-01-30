@@ -1744,7 +1744,9 @@ public:
 
         access_all(cell_accesses, cell_items, e);
 
-        return sel_return_type(true, true, rid, h->vp());
+        auto vp = h->vp();
+        assert(vp);
+        return sel_return_type(true, true, rid, vp);
     }
 
     void update_row(uintptr_t rid, value_type *new_row) {

@@ -175,33 +175,26 @@ public:
     explicit MvHistory(object_type *obj) : MvHistory(0, obj, nullptr) {}
     explicit MvHistory(
             type ntid, object_type *obj, const T& nv, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), v_(nv), vp_(&v_) {}
+            : MvHistoryBase(ntid, nprev), obj_(obj), v_(nv) {}
     explicit MvHistory(
             type ntid, object_type *obj, T&& nv, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), v_(std::move(nv)), vp_(&v_) {}
+            : MvHistoryBase(ntid, nprev), obj_(obj), v_(std::move(nv)) {}
     explicit MvHistory(
             type ntid, object_type *obj, T *nvp, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), vp_(&v_) {
+            : MvHistoryBase(ntid, nprev), obj_(obj) {
         if (nvp) {
             v_ = *nvp;
         }
     }
     explicit MvHistory(
             type ntid, object_type *obj, comm_type &&c, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), c_(c), v_(), vp_(&v_) {
+            : MvHistoryBase(ntid, nprev), obj_(obj), c_(c), v_() {
         status_delta();
     }
 
     // Retrieve the object for which this history element is intended
     object_type* object() const {
         return obj_;
-    }
-
-    const T& v() const {
-        if (status_is(DELTA)) {
-            enflatten();
-        }
-        return v_;
     }
 
     T& v() {
@@ -215,14 +208,7 @@ public:
         if (status_is(DELTA)) {
             enflatten();
         }
-        return vp_;
-    }
-
-    T** vpp() {
-        if (status_is(DELTA)) {
-            enflatten();
-        }
-        return &vp_;
+        return &v_;
     }
 
     history_type* prev() const {
@@ -233,7 +219,6 @@ private:
     object_type *obj_;  // Parent object
     comm_type c_;
     T v_;
-    T *vp_;
 
     // Initializes the flattening process
     void enflatten() {
