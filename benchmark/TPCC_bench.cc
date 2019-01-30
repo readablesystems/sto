@@ -20,13 +20,12 @@ const char *tpcc_input_generator::last_names[] = {
         "ESE", "ANTI", "CALLY", "ATION", "EING"};
 
 template <typename DBParams>
-tpcc_db<DBParams>::tpcc_db(int num_whs) : oid_gen_() {
+tpcc_db<DBParams>::tpcc_db(int num_whs) : tbl_whs_((size_t)num_whs), oid_gen_() {
     //constexpr size_t num_districts = NUM_DISTRICTS_PER_WAREHOUSE;
     //constexpr size_t num_customers = NUM_CUSTOMERS_PER_DISTRICT * NUM_DISTRICTS_PER_WAREHOUSE;
 
     tbl_its_ = new it_table_type(999983/*NUM_ITEMS * 2*/);
     for (auto i = 0; i < num_whs; ++i) {
-        tbl_whs_.emplace_back();
         tbl_dts_const_.emplace_back(999983/*num_districts * 2*/);
         tbl_dts_comm_.emplace_back(999983);
         tbl_cni_.emplace_back(999983/*num_customers * 2*/);
