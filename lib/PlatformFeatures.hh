@@ -149,6 +149,9 @@ inline double determine_cpu_freq() {
 }
 
 inline void set_affinity(int runner_id) {
+#if defined(__APPLE__)
+    always_assert(false, "macOS not supported to run -- compile only.");
+#else
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     // FIXME: This is only valid for the GATECH machine
@@ -160,4 +163,5 @@ inline void set_affinity(int runner_id) {
         std::cerr << "Error calling pthread_setaffinity_np: " << rc << "\n";
         abort();
     }
+#endif
 }

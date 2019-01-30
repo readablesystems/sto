@@ -4,7 +4,7 @@
 #include <random>
 #include <string>
 
-#include <pthread.h> // pthread_barrier_t
+#include "barrier.hh" // pthread_barrier_t
 
 #include "compiler.hh"
 #include "clp.h"

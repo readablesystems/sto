@@ -5,7 +5,13 @@
 #include <string>
 #include <iostream>
 #include <cstring>
+#if defined(__APPLE__)
+#  include <libkern/OSByteOrder.h>
+#  define __bswap_32 OSSwapInt32
+#  define __bswap_64 OSSwapInt64
+#else
 #include <byteswap.h>
+#endif
 
 #include "str.hh"
 
