@@ -270,6 +270,8 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     std::tie(success, result, row, value) = db.tbl_districts_comm(q_w_id).select_row(dk,
             DBParams::MVCC ? RowAccess::None : RowAccess::UpdateValue);
+    TXN_DO(success);
+    assert(result);
 
     if (DBParams::MVCC) {
         // update district ytd commutatively
@@ -322,11 +324,15 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
 #if TPCC_OBSERVE_C_BALANCE
     std::tie(success, result, row, value) = db.tbl_customers_comm(q_c_w_id).select_row(ck, RowAccess::UpdateValue);
+    TXN_DO(success);
+    assert(result);
     auto cmv = reinterpret_cast<const customer_comm_value*>(value);
     out_c_balance = cmv->c_balance;
 #else
     std::tie(success, result, row, value) = db.tbl_customers_comm(q_c_w_id).select_row(ck,
             DBParams::MVCC ? RowAccess::None : RowAccess::UpdateValue);
+    TXN_DO(success);
+    assert(result);
 #endif
 
     if (DBParams::MVCC) {
