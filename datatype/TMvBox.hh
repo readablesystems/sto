@@ -85,12 +85,10 @@ public:
         history_type *hprev = nullptr;
         if (item.has_read()) {
             hprev = item.read_value<history_type*>();
-        } else {
-            hprev = v_.find(Sto::read_tid(), false);
-        }
-        if (Sto::commit_tid() < hprev->rtid()) {
-            TransProxy(txn, item).add_write(nullptr);
-            return false;
+            if (Sto::commit_tid() < hprev->rtid()) {
+                TransProxy(txn, item).add_write(nullptr);
+                return false;
+            }
         }
         history_type *h;
         if (item.has_commute()) {
