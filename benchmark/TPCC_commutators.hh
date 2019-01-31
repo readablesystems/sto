@@ -10,9 +10,11 @@ namespace commutators {
 #if TPCC_SPLIT_TABLE
 using district_value = tpcc::district_comm_value;
 using customer_value = tpcc::customer_comm_value;
+using order_value = tpcc::order_comm_value;
 #else
 using district_value = tpcc::district_value;
 using customer_value = tpcc::customer_value;
+using order_value = tpcc::order_value;
 #endif
 using tpcc::c_data_info;
 using tpcc::orderline_value;
@@ -79,6 +81,20 @@ private:
     OpType      op;
     bool        bad_credit;
     c_data_info delta_data;
+};
+
+template <>
+class MvCommutator<order_value> {
+public:
+    MvCommutator() = default;
+
+    explicit MvCommutator(uint64_t write_carrier_id) : write_carrier_id(write_carrier_id) {}
+    order_value& operate(order_value& ov) {
+        ov.o_carrier_id = write_carrier_id;
+        return ov;
+    }
+private:
+    uint64_t write_carrier_id;
 };
 
 template <>

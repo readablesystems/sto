@@ -31,13 +31,15 @@ tpcc_db<DBParams>::tpcc_db(int num_whs) : tbl_whs_((size_t)num_whs), oid_gen_() 
         tbl_dts_comm_.emplace_back(999983);
         tbl_cus_const_.emplace_back(999983/*num_customers * 2*/);
         tbl_cus_comm_.emplace_back(999983);
+        tbl_ods_const_.emplace_back(999983/*num_customers * 10 * 2*/);
+        tbl_ods_comm_.emplace_back(999983);
 #else
         tbl_dts_.emplace_back(999983/*num_districts * 2*/);
         tbl_cus_.emplace_back(999983/*num_customers * 2*/);
+        tbl_ods_.emplace_back(999983/*num_customers * 10 * 2*/);
 #endif
         tbl_cni_.emplace_back(999983/*num_customers * 2*/);
         tbl_oci_.emplace_back(999983/*num_customers * 2*/);
-        tbl_ods_.emplace_back(999983/*num_customers * 10 * 2*/);
         tbl_ols_.emplace_back(999983/*num_customers * 100 * 2*/);
         tbl_nos_.emplace_back(999983/*num_customers * 10 * 2*/);
         tbl_sts_.emplace_back(999983/*NUM_ITEMS * 2*/);
@@ -62,17 +64,21 @@ void tpcc_db<DBParams>::thread_init_all() {
         t.thread_init();
     for (auto& t : tbl_cus_comm_)
         t.thread_init();
+    for (auto& t : tbl_ods_const_)
+        t.thread_init();
+    for (auto& t : tbl_ods_comm_)
+        t.thread_init();
 #else
     for (auto& t : tbl_dts_)
         t.thread_init();
     for (auto& t : tbl_cus_)
         t.thread_init();
+    for (auto& t : tbl_ods_)
+        t.thread_init();
 #endif
     for (auto& t : tbl_cni_)
         t.thread_init();
     for (auto& t : tbl_oci_)
-        t.thread_init();
-    for (auto& t : tbl_ods_)
         t.thread_init();
     for (auto& t : tbl_ols_)
         t.thread_init();
@@ -274,26 +280,45 @@ void tpcc_prepopulator<DBParams>::expand_customers(uint64_t wid) {
         for (uint64_t i = 1; i <= NUM_CUSTOMERS_PER_DISTRICT; ++i) {
             uint64_t oid = i;
             order_key ok(wid, did, oid);
+            auto ol_count = (uint32_t) ig.random(5, 15);
+            auto entry_date = ig.gen_date();
+#if TPCC_SPLIT_TABLE
+            order_const_value ocv;
+            order_comm_value omv;
+
+
+            ocv.o_c_id = cid_perm[i - 1];
+            omv.o_carrier_id = (oid < 2101) ? ig.random(1, 10) : 0;
+            ocv.o_entry_d = entry_date;
+            ocv.o_ol_cnt = ol_count;
+            ocv.o_all_local = 1;
+
+            order_cidx_key ock(wid, did, ocv.o_c_id, oid);
+
+            db.tbl_orders_const(wid).nontrans_put(ok, ocv);
+            db.tbl_orders_comm(wid).nontrans_put(ok, omv);
+#else
             order_value ov;
 
             ov.o_c_id = cid_perm[i - 1];
             ov.o_carrier_id = (oid < 2101) ? ig.random(1, 10) : 0;
-            ov.o_entry_d = ig.gen_date();
-            ov.o_ol_cnt = (uint32_t) ig.random(5, 15);
+            ov.o_entry_d = entry_date;
+            ov.o_ol_cnt = ol_count;
             ov.o_all_local = 1;
 
             order_cidx_key ock(wid, did, ov.o_c_id, oid);
 
             db.tbl_orders(wid).nontrans_put(ok, ov);
+#endif
             db.tbl_order_customer_index(wid).nontrans_put(ock, {});
 
-            for (uint64_t on = 1; on <= ov.o_ol_cnt; ++on) {
+            for (uint64_t on = 1; on <= ol_count; ++on) {
                 orderline_key olk(wid, did, oid, on);
                 orderline_value olv;
 
                 olv.ol_i_id = ig.random(1, 100000);
                 olv.ol_supply_w_id = wid;
-                olv.ol_delivery_d = (oid < 2101) ? ov.o_entry_d : 0;
+                olv.ol_delivery_d = (oid < 2101) ? entry_date : 0;
                 olv.ol_quantity = 5;
                 olv.ol_amount = (oid < 2101) ? 0 : (int) ig.random(1, 999999);
                 olv.ol_dist_info = random_a_string(24, 24);

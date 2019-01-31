@@ -438,6 +438,25 @@ struct order_key {
     uint64_t o_id;
 };
 
+#if TPCC_SPLIT_TABLE
+struct order_const_value{
+    enum class NamedColumn : int { o_c_id = 0,
+                                   o_entry_d,
+                                   o_ol_cnt,
+                                   o_all_local };
+
+    uint64_t o_c_id;
+    uint32_t o_entry_d;
+    uint32_t o_ol_cnt;
+    uint32_t o_all_local;
+};
+
+struct order_comm_value {
+    enum class NamedColumn : int { o_carrier_id = 0 };
+
+    uint64_t o_carrier_id;
+};
+#else
 struct order_value{
     enum class NamedColumn : int { o_c_id = 0,
                                    o_carrier_id,
@@ -451,6 +470,7 @@ struct order_value{
     uint32_t o_ol_cnt;
     uint32_t o_all_local;
 };
+#endif
 
 // ORDER-LINE
 

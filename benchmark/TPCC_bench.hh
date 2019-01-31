@@ -127,13 +127,15 @@ public:
     typedef OIndex<district_key, district_comm_value>    dm_table_type;
     typedef OIndex<customer_key, customer_const_value>   cc_table_type;
     typedef OIndex<customer_key, customer_comm_value>    cm_table_type;
+    typedef OIndex<order_key, order_const_value>         oc_table_type;
+    typedef OIndex<order_key, order_comm_value>          om_table_type;
 #else
     typedef OIndex<district_key, district_value>         dt_table_type;
     typedef OIndex<customer_key, customer_value>         cu_table_type;
+    typedef OIndex<order_key, order_value>               od_table_type;
 #endif
     typedef OIndex<customer_idx_key, customer_idx_value> ci_table_type;
     typedef OIndex<order_cidx_key, bench::dummy_row>     oi_table_type;
-    typedef OIndex<order_key, order_value>               od_table_type;
     typedef OIndex<orderline_key, orderline_value>       ol_table_type;
     typedef OIndex<order_key, bench::dummy_row>          no_table_type;
     typedef OIndex<item_key, item_value>                 it_table_type;
@@ -164,6 +166,12 @@ public:
     cm_table_type& tbl_customers_comm(uint64_t w_id) {
         return tbl_cus_comm_[w_id - 1];
     }
+    oc_table_type& tbl_orders_const(uint64_t w_id) {
+        return tbl_ods_const_[w_id - 1];
+    }
+    om_table_type& tbl_orders_comm(uint64_t w_id) {
+        return tbl_ods_comm_[w_id - 1];
+    }
 #else
     dt_table_type& tbl_districts(uint64_t w_id) {
         return tbl_dts_[w_id - 1];
@@ -171,15 +179,15 @@ public:
     cu_table_type& tbl_customers(uint64_t w_id) {
         return tbl_cus_[w_id - 1];
     }
+    od_table_type& tbl_orders(uint64_t w_id) {
+        return tbl_ods_[w_id - 1];
+    }
 #endif
     ci_table_type& tbl_customer_index(uint64_t w_id) {
         return tbl_cni_[w_id - 1];
     }
     oi_table_type& tbl_order_customer_index(uint64_t w_id) {
         return tbl_oci_[w_id - 1];
-    }
-    od_table_type& tbl_orders(uint64_t w_id) {
-        return tbl_ods_[w_id - 1];
     }
     ol_table_type& tbl_orderlines(uint64_t w_id) {
         return tbl_ols_[w_id - 1];
@@ -209,14 +217,16 @@ private:
     std::vector<dm_table_type> tbl_dts_comm_;
     std::vector<cc_table_type> tbl_cus_const_;
     std::vector<cm_table_type> tbl_cus_comm_;
+    std::vector<oc_table_type> tbl_ods_const_;
+    std::vector<om_table_type> tbl_ods_comm_;
 #else
     std::vector<dt_table_type> tbl_dts_;
     std::vector<cu_table_type> tbl_cus_;
+    std::vector<od_table_type> tbl_ods_;
 #endif
 
     std::vector<ci_table_type> tbl_cni_;
     std::vector<oi_table_type> tbl_oci_;
-    std::vector<od_table_type> tbl_ods_;
     std::vector<ol_table_type> tbl_ols_;
     std::vector<no_table_type> tbl_nos_;
     std::vector<st_table_type> tbl_sts_;
@@ -230,6 +240,7 @@ private:
 template <typename DBParams>
 class tpcc_runner {
 public:
+    static constexpr bool MvCommute = DBParams::MVCC && DBParams::Commute;
     enum class txn_type : int {
         new_order = 1,
         payment,
