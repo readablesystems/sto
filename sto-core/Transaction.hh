@@ -176,6 +176,11 @@ enum txp {
     // STO_PROFILE_COUNTERS > 1 only
     txp_tpcc_no_aborts,
     txp_tpcc_no_commits,
+    txp_tpcc_no_stage1,
+    txp_tpcc_no_stage2,
+    txp_tpcc_no_stage3,
+    txp_tpcc_no_stage4,
+    txp_tpcc_no_stage5,
     txp_tpcc_pm_aborts,
     txp_tpcc_pm_commits,
     txp_tpcc_pm_stage1,

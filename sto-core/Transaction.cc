@@ -505,17 +505,16 @@ void Transaction::print_stats() {
                 100.0 * (double) out.p(txp_tpcc_dl_aborts) / (out.p(txp_tpcc_dl_commits) + out.p(txp_tpcc_dl_aborts)));
         fprintf(stderr, "$   Stock-Level: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_st_commits), out.p(txp_tpcc_st_aborts),
                 100.0 * (double) out.p(txp_tpcc_st_aborts) / (out.p(txp_tpcc_st_commits) + out.p(txp_tpcc_st_aborts)));
-        fprintf(stderr, "$ Payment (stage 1): %llu\n", out.p(txp_tpcc_pm_stage1));
-        fprintf(stderr, "$ Payment (stage 2): %llu\n", out.p(txp_tpcc_pm_stage2));
-        fprintf(stderr, "$ Payment (stage 3): %llu\n", out.p(txp_tpcc_pm_stage3));
-        fprintf(stderr, "$ Payment (stage 4): %llu\n", out.p(txp_tpcc_pm_stage4));
-        fprintf(stderr, "$ Payment (stage 5): %llu\n", out.p(txp_tpcc_pm_stage5));
-        fprintf(stderr, "$ Payment (stage 6): %llu\n", out.p(txp_tpcc_pm_stage6));
-        fprintf(stderr, "$      Lock Abort 1: %llu\n", out.p(txp_tpcc_lock_abort1));
-        fprintf(stderr, "$      Lock Abort 2: %llu\n", out.p(txp_tpcc_lock_abort2));
-        fprintf(stderr, "$      Lock Abort 3: %llu\n", out.p(txp_tpcc_lock_abort3));
-        fprintf(stderr, "$     Check Abort 1: %llu\n", out.p(txp_tpcc_check_abort1));
-        fprintf(stderr, "$     Check Abort 2: %llu\n", out.p(txp_tpcc_check_abort2));
+        fprintf(stderr, "$ NewOrder (stage 1): %llu\n", out.p(txp_tpcc_no_stage1));
+        fprintf(stderr, "$ NewOrder (stage 2): %llu\n", out.p(txp_tpcc_no_stage2));
+        fprintf(stderr, "$ NewOrder (stage 3): %llu\n", out.p(txp_tpcc_no_stage3));
+        fprintf(stderr, "$ NewOrder (stage 4): %llu\n", out.p(txp_tpcc_no_stage4));
+        fprintf(stderr, "$ NewOrder (stage 5): %llu\n", out.p(txp_tpcc_no_stage5));
+        fprintf(stderr, "$       Lock Abort 1: %llu\n", out.p(txp_tpcc_lock_abort1));
+        fprintf(stderr, "$       Lock Abort 2: %llu\n", out.p(txp_tpcc_lock_abort2));
+        fprintf(stderr, "$       Lock Abort 3: %llu\n", out.p(txp_tpcc_lock_abort3));
+        fprintf(stderr, "$      Check Abort 1: %llu\n", out.p(txp_tpcc_check_abort1));
+        fprintf(stderr, "$      Check Abort 2: %llu\n", out.p(txp_tpcc_check_abort2));
     }
     fprintf(stderr, "$ %llu next commit-tid\n", (unsigned long long) _TID);
 

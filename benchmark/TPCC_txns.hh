@@ -58,6 +58,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     // begin txn
     TRANSACTION {
+    Sto::transaction()->special_txp = true;
     ++starts;
 
     bool abort, result;
@@ -75,6 +76,9 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     std::tie(abort, result, row, value) = db.tbl_districts_const(q_w_id).select_row(dk, RowAccess::None);
     TXN_DO(abort);
     assert(result);
+
+    TXP_INCREMENT(txp_tpcc_no_stage1);
+
     auto dv = reinterpret_cast<const district_const_value*>(value);
     dt_tax_rate = dv->d_tax;
     dt_next_oid = db.oid_generator().next(q_w_id, q_d_id);
@@ -86,6 +90,8 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     TXN_DO(abort);
     assert(result);
 
+    TXP_INCREMENT(txp_tpcc_no_stage2);
+
     auto ccv = reinterpret_cast<const customer_const_value*>(value);
 
     auto cus_discount = ccv->c_discount;
@@ -96,6 +102,9 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     std::tie(abort, result, row, value) = db.tbl_districts(q_w_id).select_row(dk, RowAccess::ObserveValue);
     TXN_DO(abort);
     assert(result);
+
+    TXP_INCREMENT(txp_tpcc_no_stage1);
+
     auto dv = reinterpret_cast<const district_value*>(value);
     dt_tax_rate = dv->d_tax;
     dt_next_oid = db.oid_generator().next(q_w_id, q_d_id);
@@ -106,6 +115,8 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     std::tie(abort, result, std::ignore, value) = db.tbl_customers(q_w_id).select_row(ck, RowAccess::ObserveValue);
     TXN_DO(abort);
     assert(result);
+
+    TXP_INCREMENT(txp_tpcc_no_stage2);
 
     auto cv = reinterpret_cast<const customer_value*>(value);
 
@@ -151,6 +162,10 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     std::tie(abort, result) = db.tbl_order_customer_index(q_w_id).insert_row(ock, &bench::dummy_row::row, false);
     TXN_DO(abort);
     assert(!result);
+
+    TXP_INCREMENT(txp_tpcc_no_stage3);
+
+    TXP_ACCOUNT(txp_tpcc_no_stage4, num_items);
 
     for (uint64_t i = 0; i < num_items; ++i) {
         uint64_t iid = ol_i_ids[i];
@@ -224,6 +239,8 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 #endif
 
         out_total_amount += ol_amount * (1.0 - cus_discount/100.0) * (1.0 + (wh_tax_rate + dt_tax_rate)/100.0);
+
+        TXP_INCREMENT(txp_tpcc_no_stage5);
     }
 
     // commit txn
@@ -295,7 +312,6 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     // begin txn
     TRANSACTION {
-    Sto::transaction()->special_txp = true;
     ++starts;
 
     bool success, result;
