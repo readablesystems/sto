@@ -33,14 +33,16 @@ tpcc_db<DBParams>::tpcc_db(int num_whs) : tbl_whs_((size_t)num_whs), oid_gen_() 
         tbl_cus_comm_.emplace_back(999983);
         tbl_ods_const_.emplace_back(999983/*num_customers * 10 * 2*/);
         tbl_ods_comm_.emplace_back(999983);
+        tbl_ols_const_.emplace_back(999983/*num_customers * 100 * 2*/);
+        tbl_ols_comm_.emplace_back(999983);
 #else
         tbl_dts_.emplace_back(999983/*num_districts * 2*/);
         tbl_cus_.emplace_back(999983/*num_customers * 2*/);
         tbl_ods_.emplace_back(999983/*num_customers * 10 * 2*/);
+        tbl_ols_.emplace_back(999983/*num_customers * 100 * 2*/);
 #endif
         tbl_cni_.emplace_back(999983/*num_customers * 2*/);
         tbl_oci_.emplace_back(999983/*num_customers * 2*/);
-        tbl_ols_.emplace_back(999983/*num_customers * 100 * 2*/);
         tbl_nos_.emplace_back(999983/*num_customers * 10 * 2*/);
         tbl_sts_.emplace_back(999983/*NUM_ITEMS * 2*/);
         tbl_hts_.emplace_back(999983/*num_customers * 2*/);
@@ -68,6 +70,10 @@ void tpcc_db<DBParams>::thread_init_all() {
         t.thread_init();
     for (auto& t : tbl_ods_comm_)
         t.thread_init();
+    for (auto& t : tbl_ols_const_)
+        t.thread_init();
+    for (auto& t : tbl_ols_comm_)
+        t.thread_init();
 #else
     for (auto& t : tbl_dts_)
         t.thread_init();
@@ -75,12 +81,12 @@ void tpcc_db<DBParams>::thread_init_all() {
         t.thread_init();
     for (auto& t : tbl_ods_)
         t.thread_init();
+    for (auto& t : tbl_ols_)
+        t.thread_init();
 #endif
     for (auto& t : tbl_cni_)
         t.thread_init();
     for (auto& t : tbl_oci_)
-        t.thread_init();
-    for (auto& t : tbl_ols_)
         t.thread_init();
     for (auto& t : tbl_nos_)
         t.thread_init();
@@ -314,6 +320,20 @@ void tpcc_prepopulator<DBParams>::expand_customers(uint64_t wid) {
 
             for (uint64_t on = 1; on <= ol_count; ++on) {
                 orderline_key olk(wid, did, oid, on);
+#if TPCC_SPLIT_TABLE
+                orderline_const_value lcv;
+                orderline_comm_value lmv;
+
+                lcv.ol_i_id = ig.random(1, 100000);
+                lcv.ol_supply_w_id = wid;
+                lmv.ol_delivery_d = (oid < 2101) ? entry_date : 0;
+                lcv.ol_quantity = 5;
+                lcv.ol_amount = (oid < 2101) ? 0 : (int) ig.random(1, 999999);
+                lcv.ol_dist_info = random_a_string(24, 24);
+
+                db.tbl_orderlines_const(wid).nontrans_put(olk, lcv);
+                db.tbl_orderlines_comm(wid).nontrans_put(olk, lmv);
+#else
                 orderline_value olv;
 
                 olv.ol_i_id = ig.random(1, 100000);
@@ -324,6 +344,7 @@ void tpcc_prepopulator<DBParams>::expand_customers(uint64_t wid) {
                 olv.ol_dist_info = random_a_string(24, 24);
 
                 db.tbl_orderlines(wid).nontrans_put(olk, olv);
+#endif
             }
 
             if (oid >= 2101) {

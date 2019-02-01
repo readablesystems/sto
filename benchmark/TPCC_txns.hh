@@ -192,6 +192,24 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         double ol_amount = qty * i_price/100.0;
 
         orderline_key olk(q_w_id, q_d_id, dt_next_oid, i);
+#if TPCC_SPLIT_TABLE
+        orderline_const_value *lcv = Sto::tx_alloc<orderline_const_value>();
+        orderline_comm_value *lmv = Sto::tx_alloc<orderline_comm_value>();
+        lcv->ol_i_id = iid;
+        lcv->ol_supply_w_id = wid;
+        lmv->ol_delivery_d = 0;
+        lcv->ol_quantity = qty;
+        lcv->ol_amount = ol_amount;
+        lcv->ol_dist_info = s_dist;
+
+        std::tie(abort, result) = db.tbl_orderlines_const(q_w_id).insert_row(olk, lcv, false);
+        TXN_DO(abort);
+        assert(!result);
+
+        std::tie(abort, result) = db.tbl_orderlines_comm(q_w_id).insert_row(olk, lmv, false);
+        TXN_DO(abort);
+        assert(!result);
+#else
         orderline_value *olv = Sto::tx_alloc<orderline_value>();
         olv->ol_i_id = iid;
         olv->ol_supply_w_id = wid;
@@ -203,6 +221,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         std::tie(abort, result) = db.tbl_orderlines(q_w_id).insert_row(olk, olv, false);
         TXN_DO(abort);
         assert(!result);
+#endif
 
         out_total_amount += ol_amount * (1.0 - cus_discount/100.0) * (1.0 + (wh_tax_rate + dt_tax_rate)/100.0);
     }
@@ -622,6 +641,28 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         assert(result);
         auto omv = reinterpret_cast<const order_comm_value*>(value);
         out_o_carrier_id = omv->o_carrier_id;
+
+        auto lc_scan_callback = [&] (const orderline_key&, const orderline_const_value& lcv) -> bool {
+            out_ol_i_id = lcv.ol_i_id;
+            out_ol_supply_w_id = lcv.ol_supply_w_id;
+            out_ol_quantity = lcv.ol_quantity;
+            out_ol_amount = lcv.ol_amount;
+            return true;
+        };
+        auto lm_scan_callback = [&] (const orderline_key&, const orderline_comm_value& lmv) -> bool {
+            out_ol_delivery_d = lmv.ol_delivery_d;
+            return true;
+        };
+
+        orderline_key olk0(q_w_id, q_d_id, cus_o_id, 0);
+        orderline_key olk1(q_w_id, q_d_id, cus_o_id, std::numeric_limits<uint64_t>::max());
+
+        success = db.tbl_orderlines_const(q_w_id)
+                .template range_scan<decltype(lc_scan_callback), false/*reverse*/>(olk0, olk1, lc_scan_callback, RowAccess::ObserveValue);
+        TXN_DO(success);
+        success = db.tbl_orderlines_comm(q_w_id)
+                .template range_scan<decltype(lm_scan_callback), false/*reverse*/>(olk0, olk1, lm_scan_callback, RowAccess::ObserveValue);
+        TXN_DO(success);
 #else
         std::tie(success, result, row, value) = db.tbl_orders(q_w_id).select_row(ok, RowAccess::ObserveValue);
         TXN_DO(success);
@@ -630,7 +671,6 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         auto ov = reinterpret_cast<const order_value *>(value);
         out_o_entry_date = ov->o_entry_d;
         out_o_carrier_id = ov->o_carrier_id;
-#endif
 
         auto ol_scan_callback = [&] (const orderline_key& olk, const orderline_value& olv) -> bool {
             (void)olk;
@@ -648,6 +688,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         success = db.tbl_orderlines(q_w_id)
                 .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk0, olk1, ol_scan_callback, RowAccess::ObserveValue);
         TXN_DO(success);
+#endif
     } else {
         // order doesn't exist, simply commit the transaction
     }
@@ -747,7 +788,31 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
         ol_amount_sum = 0;
 
         for (uint32_t ol_num = 1; ol_num <= ol_cnt; ++ol_num) {
-            std::tie(success, result, row, value) = db.tbl_orderlines(q_w_id).select_row(orderline_key(q_w_id, q_d_id, order_id, ol_num), RowAccess::UpdateValue);
+            orderline_key olk(q_w_id, q_d_id, order_id, ol_num);
+#if TPCC_SPLIT_TABLE
+            std::tie(success, result, row, value) = db.tbl_orderlines_const(q_w_id).select_row(olk, RowAccess::ObserveValue);
+            TXN_DO(success);
+            assert(result);
+
+            auto lcv = reinterpret_cast<const orderline_const_value *>(value);
+            ol_amount_sum += lcv->ol_amount;
+
+            std::tie(success, result, row, value) = db.tbl_orderlines_comm(q_w_id).select_row(olk,
+                    MvCommute ? RowAccess::None : RowAccess::UpdateValue);
+            TXN_DO(success);
+            assert(result);
+
+            if (MvCommute) {
+                commutators::MvCommutator<orderline_comm_value> commutator(delivery_date);
+                db.tbl_orderlines_comm(q_w_id).update_row(row, commutator);
+            } else {
+                auto lmv = reinterpret_cast<const orderline_comm_value*>(value);
+                orderline_comm_value *new_lmv = Sto::tx_alloc(lmv);
+                new_lmv->ol_delivery_d = delivery_date;
+                db.tbl_orderlines_comm(q_w_id).update_row(row, new_lmv);
+            }
+#else
+            std::tie(success, result, row, value) = db.tbl_orderlines(q_w_id).select_row(olk, RowAccess::UpdateValue);
             TXN_DO(success);
 
             assert(result);
@@ -756,6 +821,7 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
             orderline_value *new_olv = Sto::tx_alloc(olv);
             new_olv->ol_delivery_d = delivery_date;
             db.tbl_orderlines(q_w_id).update_row(row, new_olv);
+#endif
         }
 
 #if TPCC_SPLIT_TABLE
@@ -816,10 +882,17 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     bool success, result;
     const void *value;
 
+#if TPCC_SPLIT_TABLE
+    auto lc_scan_callback = [ &ol_iids] (const orderline_key&, const orderline_const_value& value) -> bool {
+        ol_iids.insert(value.ol_i_id);
+        return true;
+    };
+#else
     auto ol_scan_callback = [ &ol_iids] (const orderline_key&, const orderline_value& value) -> bool {
         ol_iids.insert(value.ol_i_id);
         return true;
     };
+#endif
 
     size_t starts = 0;
 
@@ -833,9 +906,15 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     orderline_key olk0(q_w_id, q_d_id, oid_lower, 0);
     orderline_key olk1(q_w_id, q_d_id, d_next_oid, 0);
 
+#if TPCC_SPLIT_TABLE
+    success = db.tbl_orderlines_const(q_w_id)
+            .template range_scan<decltype(lc_scan_callback), false/*reverse*/>(olk1, olk0, lc_scan_callback, RowAccess::ObserveValue);
+    TXN_DO(success);
+#else
     success = db.tbl_orderlines(q_w_id)
             .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk1, olk0, ol_scan_callback, RowAccess::ObserveValue);
     TXN_DO(success);
+#endif
 
     for (auto iid : ol_iids) {
         stock_key sk(q_w_id, iid);

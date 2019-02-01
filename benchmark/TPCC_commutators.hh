@@ -11,13 +11,15 @@ namespace commutators {
 using district_value = tpcc::district_comm_value;
 using customer_value = tpcc::customer_comm_value;
 using order_value = tpcc::order_comm_value;
+using orderline_value = tpcc::orderline_comm_value;
 #else
 using district_value = tpcc::district_value;
 using customer_value = tpcc::customer_value;
 using order_value = tpcc::order_value;
+using orderline_value = tpcc::orderline_value;
 #endif
+
 using tpcc::c_data_info;
-using tpcc::orderline_value;
 
 template <>
 class MvCommutator<district_value> {

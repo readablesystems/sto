@@ -503,6 +503,27 @@ struct orderline_key {
     uint64_t ol_number;
 };
 
+#if TPCC_SPLIT_TABLE
+struct orderline_const_value {
+    enum class NamedColumn : int { ol_i_id = 0,
+                                   ol_supply_w_id,
+                                   ol_quantity,
+                                   ol_amount,
+                                   ol_dist_info };
+
+    uint64_t       ol_i_id;
+    uint64_t       ol_supply_w_id;
+    uint32_t       ol_quantity;
+    int32_t        ol_amount;
+    fix_string<24> ol_dist_info;
+};
+
+struct orderline_comm_value {
+    enum class NamedColumn : int { ol_delivery_d = 0 };
+
+    uint32_t ol_delivery_d;
+};
+#else
 struct orderline_value {
     enum class NamedColumn : int { ol_i_id = 0,
                                    ol_supply_w_id,
@@ -518,6 +539,7 @@ struct orderline_value {
     int32_t        ol_amount;
     fix_string<24> ol_dist_info;
 };
+#endif
 
 // ITEM
 
