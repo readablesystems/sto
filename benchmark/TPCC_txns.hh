@@ -611,6 +611,8 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
 #if TPCC_OBSERVE_C_BALANCE
     std::tie(success, result, row, value) = db.tbl_customers_comm(q_w_id).select_row(ck, RowAccess::ObserveValue);
+    TXN_DO(success);
+    assert(result);
     auto cmv = reinterpret_cast<const customer_comm_value*>(value);
     out_c_balance = cmv->c_balance;
 #endif
