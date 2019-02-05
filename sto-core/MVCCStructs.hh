@@ -419,7 +419,6 @@ public:
 
             // Attempt to CAS onto the target
             if (target->compare_exchange_strong(target_expected, h)) {
-                (void)*target->load();
                 break;
             }
         } while (true);
@@ -485,6 +484,7 @@ public:
                 ih_.status_.compare_exchange_strong(status, PENDING)) {
             // Use inlined history element
             new (&ih_) history_type(std::forward<Args>(args)...);
+            ih_.inlined_ = true;
             return &ih_;
         }
 #endif
