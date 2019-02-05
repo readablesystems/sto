@@ -1685,6 +1685,10 @@ public:
 
         history_type *h = e->row.find(Sto::read_tid());
 
+        if (h->status_is(UNUSED)) {
+            return sel_return_type(true, false, 0, nullptr);
+        }
+
         if (is_phantom(h, row_item))
             return sel_return_type(true, false, 0, nullptr);
 
@@ -1698,15 +1702,20 @@ public:
                     vptr = h->vp();
                 else
                     vptr = row_item.template raw_write_value<value_type *>();
+                assert(vptr);
                 return sel_return_type(true, true, rid, vptr);
             }
         }
 
         if (access != RowAccess::None) {
             MvAccess::template read<value_type>(row_item, h);
-            return sel_return_type(true, true, rid, h->vp());
+            auto vp = h->vp();
+            assert(vp);
+            return sel_return_type(true, true, rid, vp);
         } else {
-            return sel_return_type(true, true, rid, &(e->row.nontrans_access()));
+            auto vp = &(e->row.nontrans_access());
+            assert(vp);
+            return sel_return_type(true, true, rid, vp);
         }
     }
 
@@ -1725,6 +1734,10 @@ public:
 
         auto h = e->row.find(Sto::read_tid());
 
+        if (h->status_is(UNUSED)) {
+            return sel_return_type(true, false, 0, nullptr);
+        }
+
         if (is_phantom(h, row_item))
             return sel_return_type(true, false, 0, nullptr);
 
@@ -1738,6 +1751,7 @@ public:
                     vptr = h->vp();
                 else
                     vptr = row_item.template raw_write_value<value_type *>();
+                assert(vptr);
                 return sel_return_type(true, true, rid, vptr);
             }
         }

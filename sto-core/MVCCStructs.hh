@@ -118,6 +118,9 @@ public:
 
     // Returns true if all the given flag(s) are set
     bool status_is(const MvStatus status) const {
+        if (status == 0) {  // Special case
+            return status_.load() == 0;
+        }
         return (status_.load() & status) == status;
     }
 
@@ -416,6 +419,7 @@ public:
 
             // Attempt to CAS onto the target
             if (target->compare_exchange_strong(target_expected, h)) {
+                (void)*target->load();
                 break;
             }
         } while (true);
@@ -449,6 +453,7 @@ public:
         history_type *h = static_cast<history_type*>(h_.load());
         /* TODO: use something smarter than a linear scan */
         while (h) {
+            assert(!h->status_is(UNUSED));
             if (wait) {
                 if (h->wtid() < tid) {
                     wait_if_pending(h);
@@ -479,12 +484,7 @@ public:
         if (status == UNUSED &&
                 ih_.status_.compare_exchange_strong(status, PENDING)) {
             // Use inlined history element
-            history_type h(std::forward<Args>(args)...);
-            ih_.prev_.store(h.prev_.load());
-            ih_.rtid_.store(h.rtid_.load());
-            ih_.wtid_ = h.wtid_;
-            ih_.v_ = h.v_;
-            ih_.c_ = h.c_;
+            new (&ih_) history_type(std::forward<Args>(args)...);
             return &ih_;
         }
 #endif
