@@ -19,9 +19,11 @@ public:
         atomic_base_type *atomic_base;
         MvRegistryEntry *next;
         std::atomic<bool> valid;
+        const base_type *inlined;  // Inlined version
 
-        MvRegistryEntry(atomic_base_type *atomic_base) :
-            atomic_base(atomic_base), next(nullptr), valid(true) {}
+        MvRegistryEntry(atomic_base_type *atomic_base, base_type *inlined) :
+            atomic_base(atomic_base), next(nullptr), valid(true),
+            inlined(inlined) {}
     };
 
     MvRegistry() : stopped(false) {
@@ -76,7 +78,13 @@ private:
 
 template <typename T>
 MvRegistry::MvRegistryEntry* MvRegistry::reg_(MvObject<T> *obj) {
-    MvRegistryEntry *entry = new MvRegistryEntry(&obj->h_);
+    MvRegistryEntry *entry = new MvRegistryEntry(&obj->h_,
+#if MVCC_INLINING
+        &obj->ih_
+#else
+        nullptr
+#endif
+        );
     assert(entry->atomic_base);
     do {
         entry->next = registry().load();

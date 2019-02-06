@@ -50,7 +50,7 @@ void MvRegistry::collect_garbage_() {
             while (garbo) {
                 base_type *delet = garbo;
                 garbo = garbo->prev_;
-                if (delet->inlined_) {
+                if (curr->inlined && (curr->inlined == delet)) {
                     delet->status_unused();
                 } else {
                     Transaction::rcu_delete(delet);

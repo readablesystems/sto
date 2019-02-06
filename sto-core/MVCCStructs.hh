@@ -132,7 +132,7 @@ public:
 protected:
     MvHistoryBase(type ntid, MvHistoryBase *nprev = nullptr)
             : prev_(nprev), status_(MvStatus::PENDING), rtid_(ntid),
-              wtid_(ntid), inlined_(false) {
+              wtid_(ntid) {
 
         /*
         // Can't actually assume this assertion because it may have changed
@@ -162,7 +162,6 @@ private:
 
     std::atomic<type> rtid_;  // Read TID
     type wtid_;  // Write TID
-    bool inlined_;  // Inlined history?
 
     template <typename>
     friend class MvObject;
@@ -270,7 +269,6 @@ public:
 #if MVCC_INLINING
     MvObject()
             : h_(&ih_), ih_(this), rentry_(MvRegistry::reg(this)) {
-        ih_.inlined_ = true;
         ih_.status_commit();
         if (std::is_trivial<T>::value) {
             ih_.v_ = T();
@@ -281,20 +279,17 @@ public:
     explicit MvObject(const T& value)
             : h_(&ih_), ih_(0, this, new T(value),
               rentry_(MvRegistry::reg(this))) {
-        ih_.inlined_ = true;
         ih_.status_commit();
     }
     explicit MvObject(T&& value)
             : h_(&ih_), ih_(0, this, new T(std::move(value))),
               rentry_(MvRegistry::reg(this)) {
-        ih_.inlined_ = true;
         ih_.status_commit();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
             : h_(&ih_), ih_(0, this, new T(std::forward<Args>(args)...)),
               rentry_(MvRegistry::reg(this)) {
-        ih_.inlined_ = true;
         ih_.status_commit();
     }
 #else
@@ -484,7 +479,6 @@ public:
                 ih_.status_.compare_exchange_strong(status, PENDING)) {
             // Use inlined history element
             new (&ih_) history_type(std::forward<Args>(args)...);
-            ih_.inlined_ = true;
             return &ih_;
         }
 #endif
