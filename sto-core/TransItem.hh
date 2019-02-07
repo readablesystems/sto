@@ -347,7 +347,8 @@ class TransProxy {
         return *this;
     }
 
-    inline TransProxy& set_commute();
+    template <typename... Args>
+    inline TransProxy& add_commute(Args&&... args);
     inline TransProxy& clear_commute() {
         item().__rm_flags(TransItem::commute_bit);
         return *this;

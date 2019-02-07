@@ -47,10 +47,10 @@ class VersionDelegate {
 };
 
 // Registering commutes without passing the version (handled internally by TItem)
-inline TransProxy& TransProxy::set_commute() {
-    if (has_write()) {  // Only allow commuting on writes
-        item().__or_flags(TransItem::commute_bit);
-    }
+template <typename... Args>
+inline TransProxy& TransProxy::add_commute(Args&&... args) {
+    add_write(std::forward<Args>(args)...);
+    item().__or_flags(TransItem::commute_bit);
     return *this;
 }
 

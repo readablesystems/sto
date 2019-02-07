@@ -742,8 +742,12 @@ int main(int argc, const char *const *argv) {
 
     switch (dbid) {
     case db_params_id::Default:
-        if (node_tracking) {
+        if (node_tracking && enable_commute) {
+            ret_code = tpcc_access<db_default_commute_node_params>::execute(argc, argv);
+        } else if (node_tracking) {
             ret_code = tpcc_access<db_default_node_params>::execute(argc, argv);
+        } else if (enable_commute) {
+            ret_code = tpcc_access<db_default_commute_params>::execute(argc, argv);
         } else {
             ret_code = tpcc_access<db_default_params>::execute(argc, argv);
         }

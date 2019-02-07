@@ -8,13 +8,7 @@
 #include "Interface.hh"
 #include "TransItem.hh"
 #include "VersionBase.hh"
-
-namespace commutators {
-
-// For handling commutative updates
-template <typename T> class MvCommutator;
-
-}
+#include "Commutators.hh"
 
 // Base class for MvHistory
 class MvHistoryBase;

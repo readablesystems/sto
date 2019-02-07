@@ -581,7 +581,7 @@ class ordered_index : public TObject {
 public:
     typedef K key_type;
     typedef V value_type;
-    typedef commutators::MvCommutator<value_type> comm_type;
+    typedef commutators::Commutator<value_type> comm_type;
 
     //typedef typename get_occ_version<DBParams>::type occ_version_type;
     typedef typename get_version<DBParams>::type version_type;
@@ -895,8 +895,9 @@ public:
         //row_item.clear_write();
     }
 
-    void update_row(uintptr_t, const comm_type&) {
-        always_assert(false, "No MvCommutator for non-MVCC index.");
+    void update_row(uintptr_t rid, const comm_type &comm) {
+        auto row_item = Sto::item(this, item_key_t::row_item_key(reinterpret_cast<internal_elem *>(rid)));
+        row_item.add_commute(comm);
     }
 
     // insert assumes common case where the row doesn't exist in the table
@@ -1232,25 +1233,34 @@ public:
                 return;
             }
 
-            value_type *vptr;
-            if (value_is_small) {
-                vptr = &(item.write_value<value_type>());
-            } else {
-                vptr = item.write_value<value_type *>();
-            }
-
             if (!has_insert(item)) {
-                if (has_row_update(item)) {
-                    if (value_is_small) {
-                        e->row_container.row = *vptr;
-                    } else {
-                        copy_row(e, vptr);
+                if (item.has_commute()) {
+                    comm_type &comm = item.write_value<comm_type>();
+                    if (has_row_update(item)) {
+                        copy_row(e, comm);
+                    } else if (has_row_cell(item)) {
+                        e->row_container.install_cell(comm);
                     }
-                } else if (has_row_cell(item)) {
-                    // install only the difference part
-                    // not sure if works when there are more than 1 minor version fields
-                    // should still work
-                    e->row_container.install_cell(0, vptr);
+                } else {
+                    value_type *vptr;
+                    if (value_is_small) {
+                        vptr = &(item.write_value<value_type>());
+                    } else {
+                        vptr = item.write_value<value_type *>();
+                    }
+
+                    if (has_row_update(item)) {
+                        if (value_is_small) {
+                            e->row_container.row = *vptr;
+                        } else {
+                            copy_row(e, vptr);
+                        }
+                    } else if (has_row_cell(item)) {
+                        // install only the difference part
+                        // not sure if works when there are more than 1 minor version fields
+                        // should still work
+                        e->row_container.install_cell(0, vptr);
+                    }
                 }
             }
 
@@ -1261,13 +1271,18 @@ public:
             // skip installation if row-level update is present
             auto row_item = Sto::item(this, item_key_t::row_item_key(e));
             if (!has_row_update(row_item)) {
-                value_type *vptr;
-                if (value_is_small)
-                    vptr = &(row_item.template raw_write_value<value_type>());
-                else
-                    vptr = row_item.template raw_write_value<value_type *>();
+                if (item.has_commute()) {
+                    comm_type &comm = item.write_value<comm_type>();
+                    e->row_container.install_cell(comm);
+                } else {
+                    value_type *vptr;
+                    if (value_is_small)
+                        vptr = &(row_item.template raw_write_value<value_type>());
+                    else
+                        vptr = row_item.template raw_write_value<value_type *>();
 
-                e->row_container.install_cell(key.cell_num(), vptr);
+                    e->row_container.install_cell(key.cell_num(), vptr);
+                }
             }
 
             txn.set_version_unlock(e->row_container.version_at(key.cell_num()), item);
@@ -1458,6 +1473,10 @@ private:
         return reinterpret_cast<node_type *>(item.key<uintptr_t>() & ~internode_bit);
     }
 
+    static void copy_row(internal_elem *e, comm_type &comm) {
+        e->row_container.row = comm.operate(e->row_container.row);
+    }
+
     static void copy_row(internal_elem *e, const value_type *new_row) {
         if (new_row == nullptr)
             return;
@@ -1476,7 +1495,7 @@ public:
     typedef V value_type;
     typedef MvObject<value_type> object_type;
     typedef typename object_type::history_type history_type;
-    typedef commutators::MvCommutator<value_type> comm_type;
+    typedef commutators::Commutator<value_type> comm_type;
 
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit << 1u;
@@ -1775,8 +1794,7 @@ public:
     void update_row(uintptr_t rid, const comm_type &comm) {
         auto row_item = Sto::item(this, item_key_t::row_item_key(reinterpret_cast<internal_elem *>(rid)));
         // TODO: address this extra copying issue
-        row_item.add_write(comm);
-        row_item.set_commute();
+        row_item.add_commute(comm);
     }
 
     // insert assumes common case where the row doesn't exist in the table

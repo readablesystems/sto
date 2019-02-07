@@ -250,7 +250,7 @@ private:
 template <typename DBParams>
 class tpcc_runner {
 public:
-    static constexpr bool MvCommute = DBParams::MVCC && DBParams::Commute;
+    static constexpr bool Commute = DBParams::Commute;
     enum class txn_type : int {
         new_order = 1,
         payment,

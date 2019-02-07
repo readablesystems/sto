@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MVCC.hh"
 #include "VersionBase.hh"
 
 namespace ver_sel {
@@ -80,11 +81,16 @@ public:
     using Selector::map;
     using Selector::version_at;
     using Selector::num_versions;
+    typedef commutators::Commutator<RowType> comm_type;
 
     IndexValueContainer(type v, const RowType& r) : Selector(v), row(r) {}
     IndexValueContainer(type v, bool insert, const RowType& r) : Selector(v, insert), row(r) {}
 
     RowType row;
+
+    void install_cell(const comm_type &comm) {
+        row = comm.operate(row);
+    }
 
     void install_cell(int cell, const RowType *new_row) {
         Selector::install_by_cell(&row, new_row, cell);

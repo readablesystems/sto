@@ -2,7 +2,6 @@
 
 #pragma once
 
-#include "MVCCCommutators.hh"
 #include "MVCCRegistry.hh"
 #include "MVCCTypes.hh"
 
@@ -173,7 +172,7 @@ class MvHistory : public MvHistoryBase {
 public:
     typedef MvHistory<T> history_type;
     typedef MvObject<T> object_type;
-    typedef commutators::MvCommutator<T> comm_type;
+    typedef commutators::Commutator<T> comm_type;
 
     MvHistory() = delete;
     explicit MvHistory(object_type *obj) : MvHistory(0, obj, nullptr) {}

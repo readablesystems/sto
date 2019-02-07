@@ -346,15 +346,15 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     out_d_zip = dv->d_zip;
 
     std::tie(success, result, row, value) = db.tbl_districts_comm(q_w_id).select_row(dk,
-            MvCommute ? RowAccess::None : RowAccess::UpdateValue);
+            Commute ? RowAccess::None : RowAccess::UpdateValue);
     TXN_DO(success);
     assert(result);
 
     TXP_INCREMENT(txp_tpcc_pm_stage1);
 
-    if (MvCommute) {
+    if (Commute) {
         // update district ytd commutatively
-        commutators::MvCommutator<district_comm_value> commutator(h_amount);
+        commutators::Commutator<district_comm_value> commutator(h_amount);
         db.tbl_districts_comm(q_w_id).update_row(row, commutator);
     } else {
         auto dmv = reinterpret_cast<const district_comm_value*>(value);
@@ -377,9 +377,9 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     TXP_INCREMENT(txp_tpcc_pm_stage1);
 
-    if (DBParams::MVCC && DBParams::Commute) {
+    if (Commute) {
         // update district ytd commutatively
-        commutators::MvCommutator<district_value> commutator(h_amount);
+        commutators::Commutator<district_value> commutator(h_amount);
         db.tbl_districts(q_w_id).update_row(row, commutator);
     } else {
         auto new_dv = Sto::tx_alloc(dv);
@@ -441,18 +441,18 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     out_c_balance = cmv->c_balance;
 #else
     std::tie(success, result, row, value) = db.tbl_customers_comm(q_c_w_id).select_row(ck,
-            MvCommute ? RowAccess::None : RowAccess::UpdateValue);
+            Commute ? RowAccess::None : RowAccess::UpdateValue);
     TXN_DO(success);
     assert(result);
 #endif
 
-    if (MvCommute) {
+    if (Commute) {
         if (ccv->c_credit == "BC") {
-            commutators::MvCommutator<customer_comm_value> commutator(-h_amount, h_amount, q_c_id, q_c_d_id, q_c_w_id,
+            commutators::Commutator<customer_comm_value> commutator(-h_amount, h_amount, q_c_id, q_c_d_id, q_c_w_id,
                                                                       q_d_id, q_w_id, h_amount);
             db.tbl_customers_comm(q_c_w_id).update_row(row, commutator);
         } else {
-            commutators::MvCommutator<customer_comm_value> commutator(-h_amount, h_amount);
+            commutators::Commutator<customer_comm_value> commutator(-h_amount, h_amount);
             db.tbl_customers_comm(q_c_w_id).update_row(row, commutator);
         }
     } else {
@@ -481,13 +481,13 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     out_c_discount = cv->c_discount;
     out_c_balance = cv->c_balance;
 
-    if (MvCommute) {
+    if (Commute) {
         if (cv->c_credit == "BC") {
-            commutators::MvCommutator<customer_value> commutator(-h_amount, h_amount, q_c_id, q_c_d_id, q_c_w_id,
+            commutators::Commutator<customer_value> commutator(-h_amount, h_amount, q_c_id, q_c_d_id, q_c_w_id,
                                                                       q_d_id, q_w_id, h_amount);
             db.tbl_customers(q_c_w_id).update_row(row, commutator);
         } else {
-            commutators::MvCommutator<customer_value> commutator(-h_amount, h_amount);
+            commutators::Commutator<customer_value> commutator(-h_amount, h_amount);
             db.tbl_customers(q_c_w_id).update_row(row, commutator);
         }
     } else {
@@ -770,12 +770,12 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
         auto ol_cnt = ocv->o_ol_cnt;
 
         std::tie(success, result, row, value) = db.tbl_orders_comm(q_w_id).select_row(ok,
-                MvCommute ? RowAccess::None : RowAccess::UpdateValue);
+                Commute ? RowAccess::None : RowAccess::UpdateValue);
         TXN_DO(success);
         assert(result);
 
-        if (MvCommute) {
-            commutators::MvCommutator<order_comm_value> commutator(carrier_id);
+        if (Commute) {
+            commutators::Commutator<order_comm_value> commutator(carrier_id);
             db.tbl_orders_comm(q_w_id).update_row(row, commutator);
         } else {
             auto omv = reinterpret_cast<const order_comm_value*>(value);
@@ -792,8 +792,8 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
         uint64_t q_c_id = ov->o_c_id;
         auto ol_cnt = ov->o_ol_cnt;
 
-        if (MvCommute) {
-            commutators::MvCommutator<order_value> commutator(carrier_id);
+        if (Commute) {
+            commutators::Commutator<order_value> commutator(carrier_id);
             db.tbl_orders(q_w_id).update_row(row, commutator);
         } else {
             auto ov = reinterpret_cast<const order_value*>(value);
@@ -816,12 +816,12 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
             ol_amount_sum += lcv->ol_amount;
 
             std::tie(success, result, row, value) = db.tbl_orderlines_comm(q_w_id).select_row(olk,
-                    MvCommute ? RowAccess::None : RowAccess::UpdateValue);
+                    Commute ? RowAccess::None : RowAccess::UpdateValue);
             TXN_DO(success);
             assert(result);
 
-            if (MvCommute) {
-                commutators::MvCommutator<orderline_comm_value> commutator(delivery_date);
+            if (Commute) {
+                commutators::Commutator<orderline_comm_value> commutator(delivery_date);
                 db.tbl_orderlines_comm(q_w_id).update_row(row, commutator);
             } else {
                 auto lmv = reinterpret_cast<const orderline_comm_value*>(value);
@@ -845,12 +845,12 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
 #if TPCC_SPLIT_TABLE
         customer_key ck(q_w_id, q_d_id, q_c_id);
         std::tie(success, result, row, value) = db.tbl_customers_comm(q_w_id).select_row(ck,
-                MvCommute ? RowAccess::None : RowAccess::UpdateValue);
+                Commute ? RowAccess::None : RowAccess::UpdateValue);
         TXN_DO(success);
         assert(result);
 
-        if (MvCommute) {
-            commutators::MvCommutator<customer_comm_value> commutator((int64_t)ol_amount_sum);
+        if (Commute) {
+            commutators::Commutator<customer_comm_value> commutator((int64_t)ol_amount_sum);
             db.tbl_customers_comm(q_w_id).update_row(row, commutator);
         } else {
             auto cmv = reinterpret_cast<const customer_comm_value*>(value);
@@ -865,8 +865,8 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
         TXN_DO(success);
         assert(result);
 
-        if (MvCommute) {
-            commutators::MvCommutator<customer_value> commutator((int64_t)ol_amount_sum);
+        if (Commute) {
+            commutators::Commutator<customer_value> commutator((int64_t)ol_amount_sum);
             db.tbl_customers(q_w_id).update_row(row, commutator);
         } else {
             auto cv = reinterpret_cast<const customer_value*>(value);

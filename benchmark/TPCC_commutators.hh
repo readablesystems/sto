@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "MVCCCommutators.hh"
+#include "Commutators.hh"
 #include "TPCC_structs.hh"
 
 namespace commutators {
@@ -22,13 +22,13 @@ using orderline_value = tpcc::orderline_value;
 using tpcc::c_data_info;
 
 template <>
-class MvCommutator<district_value> {
+class Commutator<district_value> {
 public:
-    MvCommutator() = default;
+    Commutator() = default;
 
-    explicit MvCommutator(int64_t delta_ytd) : delta_ytd(delta_ytd) {}
+    explicit Commutator(int64_t delta_ytd) : delta_ytd(delta_ytd) {}
 
-    district_value& operate(district_value &d) {
+    district_value& operate(district_value &d) const {
         d.d_ytd += delta_ytd;
         return d;
     }
@@ -41,28 +41,28 @@ private:
 /*
  * Yihe's comment: as it turns out payment transactions don't actually commute
  * because it observes c_balance after updating it (bad transaction).
- * MvCommutator<customer_value> now supports only the delivery transaction.
+ * Commutator<customer_value> now supports only the delivery transaction.
  */
 template <>
-class MvCommutator<customer_value> {
+class Commutator<customer_value> {
 public:
     enum class OpType : int16_t { Payment, Delivery };
-    MvCommutator() = default;
+    Commutator() = default;
 
-    explicit MvCommutator(int64_t delta_balance, int64_t delta_ytd_payment)
+    explicit Commutator(int64_t delta_balance, int64_t delta_ytd_payment)
             : delta_balance(delta_balance), delta_ytd_payment(delta_ytd_payment),
               op(OpType::Payment), bad_credit(false), delta_data() {}
 
-    explicit MvCommutator(int64_t delta_balance, int64_t delta_ytd_payment,
+    explicit Commutator(int64_t delta_balance, int64_t delta_ytd_payment,
             uint64_t c, uint64_t cd, uint64_t cw, uint64_t d, uint64_t w, int64_t hm)
         : delta_balance(delta_balance), delta_ytd_payment(delta_ytd_payment),
           op(OpType::Payment), bad_credit(true), delta_data(c, cd, cw, d, w, hm) {}
 
-    explicit MvCommutator(int64_t delta_balance)
+    explicit Commutator(int64_t delta_balance)
         : delta_balance(delta_balance), delta_ytd_payment(),
           op(OpType::Delivery), bad_credit(), delta_data() {}
 
-    customer_value& operate(customer_value &c) {
+    customer_value& operate(customer_value &c) const {
         if (op == OpType::Payment) {
             c.c_balance += delta_balance;
             c.c_payment_cnt += 1;
@@ -86,12 +86,12 @@ private:
 };
 
 template <>
-class MvCommutator<order_value> {
+class Commutator<order_value> {
 public:
-    MvCommutator() = default;
+    Commutator() = default;
 
-    explicit MvCommutator(uint64_t write_carrier_id) : write_carrier_id(write_carrier_id) {}
-    order_value& operate(order_value& ov) {
+    explicit Commutator(uint64_t write_carrier_id) : write_carrier_id(write_carrier_id) {}
+    order_value& operate(order_value& ov) const {
         ov.o_carrier_id = write_carrier_id;
         return ov;
     }
@@ -100,12 +100,12 @@ private:
 };
 
 template <>
-class MvCommutator<orderline_value> {
+class Commutator<orderline_value> {
 public:
-    MvCommutator() = default;
+    Commutator() = default;
 
-    explicit MvCommutator(uint32_t write_delivery_d) : write_delivery_d(write_delivery_d) {}
-    orderline_value& operate(orderline_value& ol) {
+    explicit Commutator(uint32_t write_delivery_d) : write_delivery_d(write_delivery_d) {}
+    orderline_value& operate(orderline_value& ol) const {
         ol.ol_delivery_d = write_delivery_d;
         return ol;
     }

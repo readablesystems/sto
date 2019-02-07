@@ -45,6 +45,11 @@ public:
     static constexpr bool Commute = false;
 };
 
+class db_default_commute_params : public db_default_params {
+public:
+    static constexpr bool Commute = true;
+};
+
 class db_opaque_params : public db_default_params {
 public:
     static constexpr db_params_id Id = db_params_id::Opaque;
@@ -88,6 +93,11 @@ public:
 };
 
 class db_default_node_params : public db_default_params {
+public:
+    static constexpr bool NodeTrack = true;
+};
+
+class db_default_commute_node_params : public db_default_commute_params {
 public:
     static constexpr bool NodeTrack = true;
 };

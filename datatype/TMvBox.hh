@@ -7,7 +7,7 @@ template <typename T>
 class TMvBox : public TObject {
 public:
     typedef T read_type;
-    typedef typename commutators::MvCommutator<T> comm_type;
+    typedef typename commutators::Commutator<T> comm_type;
 
     explicit TMvBox() : v_() {
     }
@@ -156,7 +156,6 @@ public:
     void increment(int64_t delta) {
         typedef TMvBox<int64_t>::comm_type comm_type;
         auto item = Sto::item(this, 0);
-        item.add_write(comm_type(delta));
-        item.set_commute();
+        item.add_commute(comm_type(delta));
     }
 };
