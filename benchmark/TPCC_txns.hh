@@ -122,7 +122,9 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     customer_key ck(q_w_id, q_d_id, q_c_id);
     std::tie(abort, result, std::ignore, value) = db.tbl_customers(q_w_id).select_row(ck,
 #if TABLE_FINE_GRAINED
-        {{cu_nc::c_discount, false}, {cu_nc::c_last, false}, {cu_nc::c_credit, false}}
+        {{cu_nc::c_discount, false},
+         {cu_nc::c_last, false},
+         {cu_nc::c_credit, false}}
 #else
         RowAccess::ObserveValue
 #endif
@@ -388,7 +390,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
          {dt_nc::d_city, false},
          {dt_nc::d_state, false},
          {dt_nc::d_zip, false},
-         {dt_nc::d_ytd, true}}
+         {dt_nc::d_ytd, !Commute}}
 #else
         RowAccess::ObserveValue
 #endif
@@ -502,10 +504,10 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         {{cu_nc::c_since,    false},
          {cu_nc::c_credit,   false},
          {cu_nc::c_discount, false},
-         {cu_nc::c_balance, true},
-         {cu_nc::c_payment_cnt, true},
-         {cu_nc::c_ytd_payment, true},
-         {cu_nc::c_credit, true}}
+         {cu_nc::c_balance, !Commute},
+         {cu_nc::c_payment_cnt, !Commute},
+         {cu_nc::c_ytd_payment, !Commute},
+         {cu_nc::c_credit, !Commute}}
 #else
         RowAccess::ObserveValue
 #endif
@@ -909,7 +911,7 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
             std::tie(success, result, row, value) = db.tbl_orderlines(q_w_id).select_row(olk,
 #if TABLE_FINE_GRAINED
                 {{ol_nc::ol_amount, false},
-                 {ol_nc::ol_delivery_d, true}}
+                 {ol_nc::ol_delivery_d, !Commute}}
 #else
                 RowAccess::UpdateValue
 #endif
@@ -920,8 +922,8 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
             auto olv = reinterpret_cast<const orderline_value *>(value);
             ol_amount_sum += olv->ol_amount;
 
-            if (MvCommute) {
-                commutators::MvCommutator<orderline_value> commutator(delivery_date);
+            if (Commute) {
+                commutators::Commutator<orderline_value> commutator(delivery_date);
                 db.tbl_orderlines(q_w_id).update_row(row, commutator);
             } else {
                 auto olv = reinterpret_cast<const orderline_value*>(value);
@@ -953,8 +955,8 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
         customer_key ck(q_w_id, q_d_id, q_c_id);
         std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_row(ck,
 #if TABLE_FINE_GRAINED
-            {{cu_nc::c_balance, true},
-             {cu_nc::c_delivery_cnt, true}}
+            {{cu_nc::c_balance, !Commute},
+             {cu_nc::c_delivery_cnt, !Commute}}
 #else
             RowAccess::ObserveValue
 #endif
