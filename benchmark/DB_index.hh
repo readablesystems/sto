@@ -1963,7 +1963,7 @@ public:
                 return true;
             }
 
-            ret = callback(key_type(key), h->vp());
+            ret = callback(key_type(key), h->v());
             return true;
         };
 
