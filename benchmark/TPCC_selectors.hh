@@ -85,6 +85,7 @@ public:
             dst->c_balance = src->c_balance;
             dst->c_ytd_payment = src->c_ytd_payment;
             dst->c_payment_cnt = src->c_payment_cnt;
+            dst->c_delivery_cnt = src->c_delivery_cnt;
             dst->c_data = src->c_data;
             break;
         case 1:
@@ -101,7 +102,6 @@ public:
             dst->c_credit = src->c_credit;
             dst->c_credit_lim = src->c_credit_lim;
             dst->c_discount = src->c_discount;
-            dst->c_delivery_cnt = src->c_delivery_cnt;
             break;
         default:
             always_assert(false, "cell id out of bound\n");
@@ -112,7 +112,7 @@ public:
 private:
     version_type vers_[num_versions];
     static constexpr unsigned int vidx_width = 1u;
-    static constexpr uint64_t col_cell_map = 73727ul;
+    static constexpr uint64_t col_cell_map = 8191ul;
 };
 
 

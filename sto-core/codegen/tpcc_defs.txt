@@ -15,7 +15,7 @@
           c_since(SMALLINT), c_credit(CHAR(2)), c_credict_lim(BIGINT), c_discount(BIGINT),
           c_balance(BIGINT), c_ytd_payment(BIGINT),
           c_payment_cnt(SMALLINT), c_delivery_cnt(SMALLINT), c_data(CHAR(500))}
-@groups: {{c_balance, c_ytd_payment, c_payment_cnt, c_data},
+@groups: {{c_balance, c_ytd_payment, c_payment_cnt, c_delivery_cnt, c_data},
           {c_first, c_middle, c_last, c_street_1, c_street_2, c_city, c_state,
-           c_zip, c_phone, c_since, c_credit, c_credict_lim, c_discount, c_delivery_cnt}}
+           c_zip, c_phone, c_since, c_credit, c_credict_lim, c_discount}}
 @@@

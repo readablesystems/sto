@@ -576,6 +576,104 @@ private:
 
 enum class RowAccess : int { None = 0, ObserveExists, ObserveValue, UpdateValue };
 
+enum class access_t : int { none = 0, read = 1, write = 2, update = 3 };
+
+template <typename OIndexType>
+class split_version_helpers {
+public:
+    typedef typename OIndexType::NamedColumn NamedColumn;
+    typedef typename OIndexType::internal_elem internal_elem;
+
+    struct column_access_t {
+        int col_id;
+        access_t access;
+
+        column_access_t(NamedColumn column, access_t access)
+                : col_id(static_cast<int>(column)), access(access) {}
+    };
+
+    struct cell_access_t {
+        int cell_id;
+        access_t access;
+
+        cell_access_t(int cid, access_t access)
+                : cell_id(cid), access(access) {}
+    };
+
+    // TransItem key format:
+    // |----internal_elem pointer----|--cell id--|I|
+    //           48 bits                15 bits   1
+
+    // I: internode bit
+    // cell id: valid range 0-32767 (0x7fff)
+    // cell id 0 identifies the row item
+
+    class item_key_t {
+        typedef uintptr_t type;
+        static constexpr unsigned shift = 16u;
+        static constexpr type cell_mask = type(0xfffe);
+        type key_;
+
+    public:
+        item_key_t() : key_() {};
+
+        item_key_t(internal_elem *e, int cell_num) : key_((reinterpret_cast<type>(e) << shift)
+                                                          | ((static_cast<type>(cell_num) << 1u) & cell_mask)) {};
+
+        static item_key_t row_item_key(internal_elem *e) {
+            return item_key_t(e, 0);
+        }
+
+        internal_elem *internal_elem_ptr() const {
+            return reinterpret_cast<internal_elem *>(key_ >> shift);
+        }
+
+        int cell_num() const {
+            return static_cast<int>((key_ & cell_mask) >> 1);
+        }
+
+        bool is_row_item() const {
+            return (cell_num() == 0);
+        }
+    };
+
+    static std::vector<cell_access_t>
+    column_to_cell_accesses(const std::function<int(int)> &c_c_map,
+                            std::initializer_list<column_access_t> accesses,
+                            size_t num_versions) {
+        std::vector<access_t> all_cells(num_versions, access_t::none);
+        // the returned list
+        std::vector<cell_access_t> cell_accesses;
+
+        for (auto ca : accesses) {
+            int cell_id = c_c_map(ca.col_id);
+            all_cells[cell_id]  = static_cast<access_t>(
+                    static_cast<int>(all_cells[cell_id]) | static_cast<int>(ca.access));
+        }
+
+        for (auto it = all_cells.begin(); it != all_cells.end(); ++it) {
+            if (*it != access_t::none)
+                cell_accesses.emplace_back(static_cast<int>(it - all_cells.begin()), *it);
+        }
+        return cell_accesses;
+    }
+
+    static std::pair<bool, std::vector<TransProxy>>
+    extract_item_list(const std::vector<cell_access_t>& cell_accesses, TObject *tobj, internal_elem *e) {
+        bool any_has_write = false;
+        std::vector<TransProxy> cell_items;
+        cell_items.reserve(cell_accesses.size());
+        for (auto& ca : cell_accesses) {
+            auto item = Sto::item(tobj, item_key_t(e, ca.cell_id));
+            if (OIndexType::index_read_my_write && !any_has_write && item.has_write())
+                any_has_write = true;
+            cell_items.push_back(std::move(item));
+        }
+        return {any_has_write, cell_items};
+    }
+
+};
+
 template <typename K, typename V, typename DBParams>
 class ordered_index : public TObject {
 public:
@@ -620,78 +718,6 @@ public:
         }
     };
 
-    struct column_access_t {
-        int col_id;
-        bool update;
-
-        column_access_t(NamedColumn column, bool for_update)
-                : col_id(static_cast<int>(column)), update(for_update) {}
-    };
-
-    struct cell_access_t {
-        int cell_id;
-        bool update;
-
-        cell_access_t(int cid, bool for_update)
-                : cell_id(cid), update(for_update) {}
-    };
-
-    // TransItem key format:
-    // |----internal_elem pointer----|--cell id--|I|
-    //           48 bits                15 bits   1
-
-    // I: internode bit
-    // cell id: valid range 0-32767 (0x7fff)
-    // cell id 0 identifies the row item
-
-    class item_key_t {
-        typedef uintptr_t type;
-        static constexpr unsigned shift = 16u;
-        static constexpr type cell_mask = type(0xfffe);
-        type key_;
-
-    public:
-        item_key_t() : key_() {};
-        item_key_t(internal_elem *e, int cell_num) : key_((reinterpret_cast<type>(e) << shift)
-                                                          | ((static_cast<type>(cell_num) << 1u) & cell_mask)) {};
-
-        static item_key_t row_item_key(internal_elem *e) {
-            return item_key_t(e, 0);
-        }
-
-        internal_elem *internal_elem_ptr() const {
-            return reinterpret_cast<internal_elem *>(key_ >> shift);
-        }
-
-        int cell_num() const {
-            return static_cast<int>((key_ & cell_mask) >> 1);
-        }
-
-        bool is_row_item() const {
-            return (cell_num() == 0);
-        }
-    };
-
-    static std::vector<cell_access_t>
-    column_to_cell_accesses(std::function<int(int)> c_c_map, std::initializer_list<column_access_t> accesses) {
-        // pair: {accessed, for update}
-        std::vector<std::pair<bool, bool>> all_cells(value_container_type::num_versions, {false, false});
-        // the returned list
-        std::vector<cell_access_t> cell_accesses;
-
-        for (auto ca : accesses) {
-            int cell_id = c_c_map(ca.col_id);
-            all_cells[cell_id].first = true;
-            all_cells[cell_id].second |= ca.update;
-        }
-
-        for (auto it = all_cells.begin(); it != all_cells.end(); ++it) {
-            if (it->first)
-                cell_accesses.emplace_back(static_cast<int>(it-all_cells.begin()), it->second);
-        }
-        return cell_accesses;
-    }
-
     struct table_params : public Masstree::nodeparams<15,15> {
         typedef internal_elem* value_type;
         typedef Masstree::value_print<value_type> value_print_type;
@@ -726,6 +752,12 @@ public:
 
     typedef typename table_type::node_type node_type;
     typedef typename unlocked_cursor_type::nodeversion_value_type nodeversion_value_type;
+
+    using column_access_t = typename split_version_helpers<ordered_index<K, V, DBParams>>::column_access_t;
+    using cell_access_t = typename split_version_helpers<ordered_index<K, V, DBParams>>::cell_access_t;
+    using item_key_t = typename split_version_helpers<ordered_index<K, V, DBParams>>::item_key_t;
+    static constexpr auto column_to_cell_accesses = split_version_helpers<ordered_index<K, V, DBParams>>::column_to_cell_accesses;
+    static constexpr auto extract_item_list = split_version_helpers<ordered_index<K, V, DBParams>>::extract_item_list;
 
     typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
     typedef std::tuple<bool, bool>                               ins_return_type;
@@ -849,12 +881,12 @@ public:
 
         // Translate from column accesses to cell accesses
         // all buffered writes are only stored in the wdata_ of the row item (to avoid redundant copies)
-        auto cell_accesses = column_to_cell_accesses(value_container_type::map, accesses);
+        auto cell_accesses = column_to_cell_accesses(value_container_type::map, accesses, value_container_type::num_versions);
 
         std::vector<TransProxy> cell_items;
         bool any_has_write;
         bool ok;
-        std::tie(any_has_write, cell_items) = extract_item_list(cell_accesses, e);
+        std::tie(any_has_write, cell_items) = extract_item_list(cell_accesses, this, e);
 
         if (is_phantom(e, row_item))
             goto abort;
@@ -873,7 +905,7 @@ public:
             }
         }
 
-        ok = access_all(cell_accesses, cell_items, e);
+        ok = access_all(cell_accesses, cell_items, e->row_container);
         if (!ok)
             goto abort;
 
@@ -1047,7 +1079,7 @@ public:
             return ((!phantom_protection) || register_internode_version(node, version));
         };
 
-        auto cell_accesses = column_to_cell_accesses(value_container_type::map, accesses);
+        auto cell_accesses = column_to_cell_accesses(value_container_type::map, accesses, value_container_type::num_versions);
 
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret) {
             TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
@@ -1055,7 +1087,7 @@ public:
 
             bool any_has_write;
             std::vector<TransProxy> cell_items;
-            std::tie(any_has_write, cell_items) = extract_item_list(cell_accesses, e);
+            std::tie(any_has_write, cell_items) = extract_item_list(cell_accesses, this, e);
 
             if (index_read_my_write) {
                 if (has_delete(row_item)) {
@@ -1071,7 +1103,7 @@ public:
                 }
             }
 
-            bool ok = access_all(cell_accesses, cell_items, e);
+            bool ok = access_all(cell_accesses, cell_items, e->row_container);
             if (!ok)
                 return false;
             //bool ok = item.observe(e->version);
@@ -1379,34 +1411,21 @@ private:
     table_type table_;
     uint64_t key_gen_;
 
-    std::pair<bool, std::vector<TransProxy>>
-    extract_item_list(const std::vector<cell_access_t>& cell_accesses, internal_elem *e) {
-        bool any_has_write = false;
-        std::vector<TransProxy> cell_items;
-        cell_items.reserve(cell_accesses.size());
-        for (auto& ca : cell_accesses) {
-            auto item = Sto::item(this, item_key_t(e, ca.cell_id));
-            if (index_read_my_write && !any_has_write && item.has_write())
-                any_has_write = true;
-            cell_items.push_back(std::move(item));
-        }
-        return {any_has_write, cell_items};
-    }
-
     static bool
-    access_all(std::vector<cell_access_t>& cell_accesses, std::vector<TransProxy>& cell_items, internal_elem *e) {
+    access_all(std::vector<cell_access_t>& cell_accesses, std::vector<TransProxy>& cell_items, value_container_type& row_container) {
         for (auto it = cell_items.begin(); it != cell_items.end(); ++it) {
             auto idx = it - cell_items.begin();
             auto& access = cell_accesses[idx];
-            if (access.update) {
-                if (!version_adapter::select_for_update(*it, e->row_container.version_at(access.cell_id)))
+            if (static_cast<int>(access.access) & static_cast<int>(access_t::read)) {
+                if (!it->observe(row_container.version_at(access.cell_id)))
+                    return false;
+            }
+            if (static_cast<int>(access.access) & static_cast<int>(access_t::write)) {
+                if (!it->acquire_write(row_container.version_at(access.cell_id)))
                     return false;
                 if (it->item().key<item_key_t>().is_row_item()) {
                     it->item().add_flags(row_cell_bit);
                 }
-            } else {
-                if (!it->observe(e->row_container.version_at(access.cell_id)))
-                    return false;
             }
         }
         return true;
@@ -1520,78 +1539,6 @@ public:
         }
     };
 
-    struct column_access_t {
-        int col_id;
-        bool update;
-
-        column_access_t(NamedColumn column, bool for_update)
-                : col_id(static_cast<int>(column)), update(for_update) {}
-    };
-
-    struct cell_access_t {
-        int cell_id;
-        bool update;
-
-        cell_access_t(int cid, bool for_update)
-                : cell_id(cid), update(for_update) {}
-    };
-
-    // TransItem key format:
-    // |----internal_elem pointer----|--cell id--|I|
-    //           48 bits                15 bits   1
-
-    // I: internode bit
-    // cell id: valid range 0-32767 (0x7fff)
-    // cell id 0 identifies the row item
-
-    class item_key_t {
-        typedef uintptr_t type;
-        static constexpr unsigned shift = 16u;
-        static constexpr type cell_mask = type(0xfffe);
-        type key_;
-
-    public:
-        item_key_t() : key_() {};
-        item_key_t(internal_elem *e, int cell_num) : key_((reinterpret_cast<type>(e) << shift)
-                                                          | ((static_cast<type>(cell_num) << 1u) & cell_mask)) {};
-
-        static item_key_t row_item_key(internal_elem *e) {
-            return item_key_t(e, 0);
-        }
-
-        internal_elem *internal_elem_ptr() const {
-            return reinterpret_cast<internal_elem *>(key_ >> shift);
-        }
-
-        int cell_num() const {
-            return static_cast<int>((key_ & cell_mask) >> 1);
-        }
-
-        bool is_row_item() const {
-            return (cell_num() == 0);
-        }
-    };
-
-    static std::vector<cell_access_t>
-    column_to_cell_accesses(std::function<int(int)> c_c_map, std::initializer_list<column_access_t> accesses) {
-        // pair: {accessed, for update}
-        std::vector<std::pair<bool, bool>> all_cells(/* num_versions = */ 1, {false, false});
-        // the returned list
-        std::vector<cell_access_t> cell_accesses;
-
-        for (auto ca : accesses) {
-            int cell_id = c_c_map(ca.col_id);
-            all_cells[cell_id].first = true;
-            all_cells[cell_id].second |= ca.update;
-        }
-
-        for (auto it = all_cells.begin(); it != all_cells.end(); ++it) {
-            if (it->first)
-                cell_accesses.emplace_back(static_cast<int>(it-all_cells.begin()), it->second);
-        }
-        return cell_accesses;
-    }
-
     struct table_params : public Masstree::nodeparams<15,15> {
         typedef internal_elem* value_type;
         typedef Masstree::value_print<value_type> value_print_type;
@@ -1629,6 +1576,12 @@ public:
     typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
     typedef std::tuple<bool, bool>                               ins_return_type;
     typedef std::tuple<bool, bool>                               del_return_type;
+
+    using column_access_t = typename split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::column_access_t;
+    using cell_access_t = typename split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::cell_access_t;
+    using item_key_t = typename split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::item_key_t;
+    static constexpr auto column_to_cell_accesses = split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::column_to_cell_accesses;
+    static constexpr auto extract_item_list = split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::extract_item_list;
 
     static __thread typename table_params::threadinfo_type *ti;
 
@@ -1745,11 +1698,11 @@ public:
 
         // Translate from column accesses to cell accesses
         // all buffered writes are only stored in the wdata_ of the row item (to avoid redundant copies)
-        auto cell_accesses = column_to_cell_accesses(internal_elem::map, accesses);
+        auto cell_accesses = column_to_cell_accesses(internal_elem::map, accesses, 1);
 
         std::vector<TransProxy> cell_items;
         bool any_has_write;
-        std::tie(any_has_write, cell_items) = extract_item_list(cell_accesses, e);
+        std::tie(any_has_write, cell_items) = extract_item_list(cell_accesses, this, e);
 
         auto h = e->row.find(Sto::read_tid());
 
@@ -1927,7 +1880,7 @@ public:
             return ((!phantom_protection) || register_internode_version(node, version));
         };
 
-        auto cell_accesses = column_to_cell_accesses(internal_elem::map, accesses);
+        auto cell_accesses = column_to_cell_accesses(internal_elem::map, accesses, 1);
 
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret) {
             TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
@@ -1935,7 +1888,7 @@ public:
 
             bool any_has_write;
             std::vector<TransProxy> cell_items;
-            std::tie(any_has_write, cell_items) = extract_item_list(cell_accesses, e);
+            std::tie(any_has_write, cell_items) = extract_item_list(cell_accesses, this, e);
 
             if (index_read_my_write) {
                 if (has_delete(row_item)) {
@@ -2197,27 +2150,10 @@ private:
     table_type table_;
     uint64_t key_gen_;
 
-    std::pair<bool, std::vector<TransProxy>>
-    extract_item_list(const std::vector<cell_access_t>& cell_accesses, internal_elem *e) {
-        bool any_has_write = false;
-        std::vector<TransProxy> cell_items;
-        cell_items.reserve(cell_accesses.size());
-        for (auto& ca : cell_accesses) {
-            auto item = Sto::item(this, item_key_t(e, ca.cell_id));
-            if (index_read_my_write && !any_has_write && item.has_write())
-                any_has_write = true;
-            cell_items.push_back(std::move(item));
-        }
-        return {any_has_write, cell_items};
-    }
-
-    static void
-    access_all(std::vector<cell_access_t>& cell_accesses, std::vector<TransProxy>& cell_items, internal_elem *e) {
-        (void)cell_accesses;  // TODO(column-splitting)
-        for (auto it = cell_items.begin(); it != cell_items.end(); ++it) {
-            auto h = e->row.find(Sto::read_tid());
-            MvAccess::template read<value_type>(*it, h);
-        }
+    static bool
+    access_all(std::vector<cell_access_t>&, std::vector<TransProxy>&, internal_elem*) {
+        always_assert(false, "Not implemented.");
+        return true;
     }
 
     static bool has_insert(const TransItem& item) {

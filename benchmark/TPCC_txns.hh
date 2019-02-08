@@ -7,7 +7,6 @@ namespace tpcc {
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_neworder() {
-    typedef stock_value::NamedColumn st_nc;
 #if TABLE_FINE_GRAINED
     typedef district_value::NamedColumn dt_nc;
     typedef customer_value::NamedColumn cu_nc;
@@ -103,7 +102,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     district_key dk(q_w_id, q_d_id);
     std::tie(abort, result, row, value) = db.tbl_districts(q_w_id).select_row(dk,
 #if TABLE_FINE_GRAINED
-        {{dt_nc::d_tax, false}}
+        {{dt_nc::d_tax, access_t::read}}
 #else
         RowAccess::ObserveValue
 #endif
@@ -122,9 +121,9 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     customer_key ck(q_w_id, q_d_id, q_c_id);
     std::tie(abort, result, std::ignore, value) = db.tbl_customers(q_w_id).select_row(ck,
 #if TABLE_FINE_GRAINED
-        {{cu_nc::c_discount, false},
-         {cu_nc::c_last, false},
-         {cu_nc::c_credit, false}}
+        {{cu_nc::c_discount, access_t::read},
+         {cu_nc::c_last, access_t::read},
+         {cu_nc::c_credit, access_t::read}}
 #else
         RowAccess::ObserveValue
 #endif
@@ -197,7 +196,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         out_item_names[i] = reinterpret_cast<const item_value *>(value)->i_name;
         auto i_data = reinterpret_cast<const item_value *>(value)->i_data;
 
-        std::tie(abort, result, row, value) = db.tbl_stocks(wid).select_row(stock_key(wid, iid), {{st_nc::s_quantity, true}, {st_nc::s_dists, false}, {st_nc::s_data, false}, {st_nc::s_ytd, true}, {st_nc::s_order_cnt, true}, {st_nc::s_remote_cnt, true}});
+        std::tie(abort, result, row, value) = db.tbl_stocks(wid).select_row(stock_key(wid, iid), RowAccess::ObserveValue);
         TXN_DO(abort);
         assert(result);
         stock_value *new_sv = Sto::tx_alloc(reinterpret_cast<const stock_value *>(value));
@@ -269,8 +268,10 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_payment() {
+#if TABLE_FINE_GRAINED
     typedef district_value::NamedColumn dt_nc;
     typedef customer_value::NamedColumn cu_nc;
+#endif
 
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
     uint64_t q_d_id = ig.random(1, 10);
@@ -381,27 +382,15 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         db.tbl_districts_comm(q_w_id).update_row(row, new_dmv);
     }
 #else
-    std::initializer_list<typename tpcc_db<DBParams>::dt_table_type::column_access_t> ll;
-    (void) ll;
-    if (Commute) {
-        ll = {{dt_nc::d_name, false},
-              {dt_nc::d_street_1, false},
-              {dt_nc::d_street_2, false},
-              {dt_nc::d_city, false},
-              {dt_nc::d_state, false},
-              {dt_nc::d_zip, false}};
-    } else {
-        ll = {{dt_nc::d_name, false},
-              {dt_nc::d_street_1, false},
-              {dt_nc::d_street_2, false},
-              {dt_nc::d_city, false},
-              {dt_nc::d_state, false},
-              {dt_nc::d_zip, false},
-              {dt_nc::d_ytd, true}};
-    }
     std::tie(success, result, row, value) = db.tbl_districts(q_w_id).select_row(dk,
 #if TABLE_FINE_GRAINED
-        ll
+        {{dt_nc::d_name, access_t::read},
+         {dt_nc::d_street_1, access_t::read},
+         {dt_nc::d_street_2, access_t::read},
+         {dt_nc::d_city, access_t::read},
+         {dt_nc::d_state, access_t::read},
+         {dt_nc::d_zip, access_t::read},
+         {dt_nc::d_ytd, Commute ? access_t::write : access_t::update}}
 #else
         RowAccess::ObserveValue
 #endif
@@ -509,25 +498,16 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         db.tbl_customers_comm(q_c_w_id).update_row(row, new_cmmv);
     }
 #else
-    std::initializer_list<typename tpcc_db<DBParams>::cu_table_type::column_access_t> l;
-    (void) l;
-    if (Commute) {
-        l = {{cu_nc::c_since,    false},
-             {cu_nc::c_credit,   false},
-             {cu_nc::c_discount, false}};
-    } else {
-        l = {{cu_nc::c_since,    false},
-             {cu_nc::c_credit,   false},
-             {cu_nc::c_discount, false},
-             {cu_nc::c_balance, true},
-             {cu_nc::c_payment_cnt, true},
-             {cu_nc::c_ytd_payment, true},
-             {cu_nc::c_credit, true}};
-    }
     customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
     std::tie(success, result, row, value) = db.tbl_customers(q_c_w_id).select_row(ck,
 #if TABLE_FINE_GRAINED
-        l
+        {{cu_nc::c_since,    access_t::read},
+         {cu_nc::c_credit,   access_t::read},
+         {cu_nc::c_discount, access_t::read},
+         {cu_nc::c_balance, Commute ? access_t::write : access_t::update},
+         {cu_nc::c_payment_cnt, Commute ? access_t::write : access_t::update},
+         {cu_nc::c_ytd_payment, Commute ? access_t::write : access_t::update},
+         {cu_nc::c_credit, Commute ? access_t::write : access_t::update}}
 #else
         RowAccess::ObserveValue
 #endif
@@ -686,10 +666,10 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     customer_key ck(q_w_id, q_d_id, q_c_id);
     std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_row(ck,
 #if TABLE_FINE_GRAINED
-        {{cu_nc::c_first, false},
-         {cu_nc::c_last, false},
-         {cu_nc::c_middle, false},
-         {cu_nc::c_balance, false}}
+        {{cu_nc::c_first, access_t::read},
+         {cu_nc::c_last, access_t::read},
+         {cu_nc::c_middle, access_t::read},
+         {cu_nc::c_balance, access_t::read}}
 #else
         RowAccess::ObserveValue
 #endif
@@ -781,11 +761,11 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         success = db.tbl_orderlines(q_w_id)
                 .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk0, olk1, ol_scan_callback,
 #if TABLE_FINE_GRAINED
-                        {{ol_nc::ol_i_id, false},
-                         {ol_nc::ol_supply_w_id, false},
-                         {ol_nc::ol_quantity, false},
-                         {ol_nc::ol_amount, false},
-                         {ol_nc::ol_delivery_d, false}}
+                        {{ol_nc::ol_i_id, access_t::read},
+                         {ol_nc::ol_supply_w_id, access_t::read},
+                         {ol_nc::ol_quantity, access_t::read},
+                         {ol_nc::ol_amount, access_t::read},
+                         {ol_nc::ol_delivery_d, access_t::read}}
 #else
                         RowAccess::ObserveValue
 #endif
@@ -806,9 +786,11 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_delivery() {
+#if TABLE_FINE_GRAINED
     typedef order_value::NamedColumn od_nc;
     typedef orderline_value::NamedColumn ol_nc;
     typedef customer_value::NamedColumn cu_nc;
+#endif
 
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
     uint64_t carrier_id = ig.random(1, 10);
@@ -873,19 +855,11 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
             db.tbl_orders_comm(q_w_id).update_row(row, new_omv);
         }
 #else
-        std::initializer_list<typename tpcc_db<DBParams>::od_table_type::column_access_t> l;
-        (void) l;
-        if (Commute) {
-            l = {{od_nc::o_c_id, false},
-                 {od_nc::o_ol_cnt, false}};
-        } else {
-            l = {{od_nc::o_c_id, false},
-                 {od_nc::o_ol_cnt, false},
-                 {od_nc::o_carrier_id, true}};
-        }
         std::tie(success, result, row, value) = db.tbl_orders(q_w_id).select_row(ok,
 #if TABLE_FINE_GRAINED
-            l
+            {{od_nc::o_c_id, access_t::read},
+             {od_nc::o_ol_cnt, access_t::read},
+             {od_nc::o_carrier_id, Commute ? access_t::write : access_t::update}}
 #else
             RowAccess::ObserveValue
 #endif
@@ -935,17 +909,10 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
                 db.tbl_orderlines_comm(q_w_id).update_row(row, new_lmv);
             }
 #else
-            std::initializer_list<typename tpcc_db<DBParams>::ol_table_type::column_access_t> l;
-            (void) l;
-            if (Commute) {
-                l = {{ol_nc::ol_amount, false}};
-            } else {
-                l = {{ol_nc::ol_amount, false},
-                     {ol_nc::ol_delivery_d, true}};
-            }
             std::tie(success, result, row, value) = db.tbl_orderlines(q_w_id).select_row(olk,
 #if TABLE_FINE_GRAINED
-                l
+                {{ol_nc::ol_amount, access_t::read},
+                 {ol_nc::ol_delivery_d, Commute ? access_t::write : access_t::update}}
 #else
                 RowAccess::UpdateValue
 #endif
@@ -986,18 +953,11 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
             db.tbl_customers_comm(q_w_id).update_row(row, new_cmv);
         }
 #else
-        std::initializer_list<typename tpcc_db<DBParams>::cu_table_type::column_access_t> ll;
-        (void) ll;
-        if (Commute) {
-            ll = {};
-        } else {
-            ll = {{cu_nc::c_balance, true},
-                  {cu_nc::c_delivery_cnt, true}};
-        }
         customer_key ck(q_w_id, q_d_id, q_c_id);
         std::tie(success, result, row, value) = db.tbl_customers(q_w_id).select_row(ck,
 #if TABLE_FINE_GRAINED
-            ll
+            {{cu_nc::c_balance, Commute ? access_t::write : access_t::update},
+             {cu_nc::c_delivery_cnt, Commute ? access_t::write : access_t::update}}
 #else
             RowAccess::ObserveValue
 #endif
@@ -1026,7 +986,6 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
 
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_stocklevel(){
-    typedef stock_value::NamedColumn st_nc;
 #if TABLE_FINE_GRAINED
     typedef orderline_value::NamedColumn ol_nc;
 #endif
@@ -1075,7 +1034,7 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     success = db.tbl_orderlines(q_w_id)
             .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk1, olk0, ol_scan_callback,
 #if TABLE_FINE_GRAINED
-                    {{ol_nc::ol_i_id, false}}
+                    {{ol_nc::ol_i_id, access_t::read}}
 #else
                     RowAccess::ObserveValue
 #endif
@@ -1085,7 +1044,7 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
 
     for (auto iid : ol_iids) {
         stock_key sk(q_w_id, iid);
-        std::tie(success, result, std::ignore, value) = db.tbl_stocks(q_w_id).select_row(sk, {{st_nc::s_quantity, false}});
+        std::tie(success, result, std::ignore, value) = db.tbl_stocks(q_w_id).select_row(sk, RowAccess::ObserveValue);
         TXN_DO(success);
         assert(result);
         auto sv = reinterpret_cast<const stock_value *>(value);
