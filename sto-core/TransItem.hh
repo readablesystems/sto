@@ -317,6 +317,9 @@ class TransProxy {
     bool has_stash() const {
         return item().has_stash();
     }
+    bool has_commute() const {
+        return item().has_commute();
+    }
     bool has_flag(TransItem::flags_type f) const {
         return item().flags() & f;
     }
@@ -347,8 +350,8 @@ class TransProxy {
         return *this;
     }
 
-    template <typename... Args>
-    inline TransProxy& add_commute(Args&&... args);
+    template <typename T>
+    inline TransProxy& add_commute(const T&);
     inline TransProxy& clear_commute() {
         item().__rm_flags(TransItem::commute_bit);
         return *this;
