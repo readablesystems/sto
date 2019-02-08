@@ -15,7 +15,7 @@ public:
     typedef int difference_type;
     typedef TConstArrayProxy<TMvArray<T, N> > const_proxy_type;
     typedef TArrayProxy<TMvArray<T, N> > proxy_type;
-    typedef typename commutators::MvCommutator<T> comm_type;
+    typedef typename commutators::Commutator<T> comm_type;
 
     size_type size() const {
         return N;
