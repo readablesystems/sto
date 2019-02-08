@@ -4,7 +4,7 @@
 #include <cassert>
 #include <vector>
 #include "Sto.hh"
-#include "MVCCCommutators.hh"
+#include "Commutators.hh"
 #include "TMvBox.hh"
 //XXX disabled string wrapper due to unknown compiler issue
 //#include "StringWrapper.hh"
