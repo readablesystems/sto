@@ -193,7 +193,7 @@ void generate_code_single_versel(StructSpec &result) {
     ss << idt << "static int map_impl(int col_n) {" << std::endl;
     ss << idt << idt << "uint64_t mask = ~(~0ul << vidx_width) ;" << std::endl;
     ss << idt << idt << "int shift = col_n * vidx_width;" << std::endl;
-    ss << idt << idt << "return ((col_cell_map & (mask << shift)) >> shift);" << std::endl;
+    ss << idt << idt << "return static_cast<int>((col_cell_map & (mask << shift)) >> shift);" << std::endl;
     ss << idt << '}' << std::endl << std::endl;
 
     ss << idt << "version_type& version_at_impl(int cell) {" << std::endl;

@@ -19,3 +19,17 @@
           {c_first, c_middle, c_last, c_street_1, c_street_2, c_city, c_state,
            c_zip, c_phone, c_since, c_credit, c_credict_lim, c_discount}}
 @@@
+
+@@@
+@name: order_value
+@fields: {o_c_id(BIGINT), o_carrier_id(BIGINT), o_entry_d(SMALLINT),
+          o_ol_cnt(SMALLINT), o_all_local(SMALLINT)}
+@groups: {{o_c_id, o_entry_d, o_ol_cnt, o_all_local}, {o_carrier_id}}
+@@@
+
+@@@
+@name: orderline_value
+@fields: {ol_i_id(BIGINT), ol_supply_w_id(BIGINT), ol_delivery_d(SMALLINT),
+          ol_quantity(SMALLINT), ol_amount(SMALLINT), ol_dist_info(VARCHAR(24))}
+@groups: {{ol_i_id, ol_supply_w_id, ol_quantity, ol_amount, ol_dist_info}, {ol_delivery_d}}
+@@@
