@@ -51,7 +51,7 @@ size_t wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
         TXN_DO(abort);
     }
 
-    std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id), {{nc::user_touched, true}});
+    std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id), {{nc::user_touched, access_t::update}});
     TXN_DO(abort);
     assert(result);
     auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
@@ -86,7 +86,7 @@ size_t wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
     TXN_DO(abort);
     //assert(result);
 
-    std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id), {{nc::user_touched, true}});
+    std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id), {{nc::user_touched, access_t::update}});
     TXN_DO(abort);
     assert(result);
     auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
@@ -126,9 +126,9 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAnony
     auto page_id = reinterpret_cast<const page_idx_row *>(value)->page_id;
 
     std::tie(abort, result, std::ignore, value) = db.tbl_page().select_row(page_key(page_id),
-                                                                           {{page_nc::page_title, false},
-                                                                            {page_nc::page_namespace, false},
-                                                                            {page_nc::page_latest, false}});
+                                                                           {{page_nc::page_title, access_t::read},
+                                                                            {page_nc::page_namespace, access_t::read},
+                                                                            {page_nc::page_latest, access_t::read}});
     TXN_DO(abort);
     assert(result);
     auto page_v = reinterpret_cast<const page_row *>(value);
@@ -171,12 +171,12 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAnony
     */
 
     auto rev_id = page_v->page_latest;
-    std::tie(abort, result, std::ignore, value) = db.tbl_revision().select_row(revision_key(rev_id), {{rev_nc::rev_text_id, false}});
+    std::tie(abort, result, std::ignore, value) = db.tbl_revision().select_row(revision_key(rev_id), {{rev_nc::rev_text_id, access_t::read}});
     TXN_DO(abort);
     assert(result);
     auto rev_text_id = reinterpret_cast<const revision_row *>(value)->rev_text_id;
 
-    std::tie(abort, result, std::ignore, value) = db.tbl_text().select_row(text_key(rev_text_id), {{text_nc::old_text, false}, {text_nc::old_flags, false}});
+    std::tie(abort, result, std::ignore, value) = db.tbl_text().select_row(text_key(rev_text_id), {{text_nc::old_text, access_t::read}, {text_nc::old_flags, access_t::read}});
     TXN_DO(abort);
     assert(result);
 
@@ -215,7 +215,7 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAuthe
 
     ++nexecs;
 
-    std::tie(abort, result, std::ignore, std::ignore) = db.tbl_useracct().select_row(useracct_key(user_id), {{user_nc::user_name, false}});
+    std::tie(abort, result, std::ignore, std::ignore) = db.tbl_useracct().select_row(useracct_key(user_id), {{user_nc::user_name, access_t::read}});
     TXN_DO(abort);
     assert(result);
 
@@ -230,7 +230,7 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAuthe
     assert(result);
     auto page_id = reinterpret_cast<const page_idx_row *>(value)->page_id;
 
-    std::tie(abort, result, std::ignore, value) = db.tbl_page().select_row(page_key(page_id), {{page_nc::page_latest, false}});
+    std::tie(abort, result, std::ignore, value) = db.tbl_page().select_row(page_key(page_id), {{page_nc::page_latest, access_t::read}});
     TXN_DO(abort);
     assert(result);
     auto page_v = reinterpret_cast<const page_row *>(value);
@@ -273,12 +273,12 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAuthe
     */
 
     auto rev_id = page_v->page_latest;
-    std::tie(abort, result, std::ignore, value) = db.tbl_revision().select_row(revision_key(rev_id), {{rev_nc::rev_text_id, false}});
+    std::tie(abort, result, std::ignore, value) = db.tbl_revision().select_row(revision_key(rev_id), {{rev_nc::rev_text_id, access_t::read}});
     TXN_DO(abort);
     assert(result);
     auto rev_text_id = reinterpret_cast<const revision_row *>(value)->rev_text_id;
 
-    std::tie(abort, result, std::ignore, value) = db.tbl_text().select_row(text_key(rev_text_id), {{text_nc::old_text, false}, {text_nc::old_flags, false}});
+    std::tie(abort, result, std::ignore, value) = db.tbl_text().select_row(text_key(rev_text_id), {{text_nc::old_text, access_t::read}, {text_nc::old_flags, access_t::read}});
     TXN_DO(abort);
     assert(result);
 
@@ -319,7 +319,7 @@ size_t wikipedia_runner<DBParams>::run_txn_listPageNameSpace(int name_space) {
 
     for (auto pair : pages) {
         std::tie(abort, result, std::ignore, value)
-                = db.tbl_page().select_row(page_key(pair.first), {{page_nc::page_title, false}});
+                = db.tbl_page().select_row(page_key(pair.first), {{page_nc::page_title, access_t::read}});
         TXN_DO(abort);
         assert(result);
         auto pr = reinterpret_cast<const page_row *>(value);
@@ -392,11 +392,11 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     // UPDATE PAGE TABLE
     std::tie(abort, result, row, value) =
         db.tbl_page().select_row(page_key(page_id),
-                                    {{page_nc::page_latest, true},
-                                     {page_nc::page_touched, true},
-                                     {page_nc::page_is_new, true},
-                                     {page_nc::page_is_redirect, true},
-                                     {page_nc::page_len, true}});
+                                    {{page_nc::page_latest, access_t::update},
+                                     {page_nc::page_touched, access_t::update},
+                                     {page_nc::page_is_new, access_t::update},
+                                     {page_nc::page_is_redirect, access_t::update},
+                                     {page_nc::page_len, access_t::update}});
     TXN_CHECK(abort);
     assert(result);
 
@@ -497,8 +497,8 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
 
         // UPDATE USER
         std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
-                                                                           {{user_nc::user_editcount, true},
-                                                                            {user_nc::user_touched,   true}});
+                                                                           {{user_nc::user_editcount, access_t::update},
+                                                                            {user_nc::user_touched,   access_t::update}});
         TXN_DO(abort);
         assert(result);
         auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
@@ -533,8 +533,8 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
 
     // UPDATE USER
     std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
-                                                                           {{user_nc::user_editcount, true},
-                                                                            {user_nc::user_touched, true}});
+                                                                           {{user_nc::user_editcount, access_t::update},
+                                                                            {user_nc::user_touched, access_t::update}});
     TXN_CHECK(abort);
     assert(result);
     auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
