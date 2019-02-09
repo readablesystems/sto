@@ -389,7 +389,7 @@ public:
     typedef typename compute_value_type<WLImpl::RTParams::granules>::type value_type;
     typedef typename value_type::NamedColumn nc;
     typedef typename tpcc::ordered_index<key_type, value_type, DBParams> index_type;
-    typedef typename index_type::column_access_t column_access_t;
+    typedef typename bench::access_t access_t;
 
     explicit MasstreeTester(size_t num_threads) : Base(num_threads), mt_() {}
 
@@ -409,7 +409,7 @@ public:
             case OpType::read:
                 std::tie(success, std::ignore, std::ignore, std::ignore)
                         = mt_.select_row(key_type(op.key),
-                                         {{nc::f1, false}, {nc::f3, false}, {nc::f5, false}, {nc::f7, false}});
+                                         {{nc::f1, access_t::read}, {nc::f3, access_t::read}, {nc::f5, access_t::read}, {nc::f7, access_t::read}});
                 break;
             case OpType::write: {
                 auto v = Sto::tx_alloc<value_type>();
@@ -422,7 +422,7 @@ public:
                 const value_type* value;
                 std::tie(success, std::ignore, rid, value)
                         = mt_.select_row(key_type(op.key),
-                                         {{nc::f1, true}, {nc::f3, true}, {nc::f5, true}, {nc::f7, true}});
+                                         {{nc::f1, access_t::update}, {nc::f3, access_t::update}, {nc::f5, access_t::update}, {nc::f7, access_t::update}});
                 if (!success)
                     break;
                 value_type *new_v = Sto::tx_alloc(value);
