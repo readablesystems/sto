@@ -28,6 +28,7 @@ struct key_type {
 
 using CoarseIndex = bench::ordered_index<key_type, coarse_grained_row, db_params::db_default_params>;
 using FineIndex = bench::ordered_index<key_type, example_row, db_params::db_default_params>;
+using access_t = bench::access_t;
 
 void init_cindex(CoarseIndex& ci) {
     for (uint64_t i = 1; i <= 10; ++i)
@@ -58,7 +59,7 @@ void test_coarse_basic() {
 
     {
         TestTransaction t(0);
-        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::aa, false}});
+        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::aa, access_t::read}});
         assert(success && found);
         assert(value->aa == 1);
         assert(t.try_commit());
@@ -66,14 +67,14 @@ void test_coarse_basic() {
 
     {
         TestTransaction t(0);
-        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::aa, true}});
+        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::aa, access_t::update}});
         auto new_row = Sto::tx_alloc(value);
         new_row->aa = 2;
         ci.update_row(row, new_row);
         assert(t.try_commit());
 
         TestTransaction t1(1);
-        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::aa, false}});
+        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::aa, access_t::read}});
         assert(value->aa == 2);
         assert(t1.try_commit());
     }
@@ -93,7 +94,7 @@ void test_coarse_read_my_split() {
 
     {
         TestTransaction t(0);
-        std::tie(success, found, row, value) = ci.select_row(key_type(20), {{nc::aa, false}});
+        std::tie(success, found, row, value) = ci.select_row(key_type(20), {{nc::aa, access_t::read}});
         assert(success && !found);
         for (int i = 0; i < 10; ++i) {
             auto r = Sto::tx_alloc<coarse_grained_row>();
@@ -118,12 +119,12 @@ void test_coarse_conflict0() {
 
     {
         TestTransaction t1(0);
-        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::aa, false}});
+        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::aa, access_t::read}});
         assert(success && found);
         assert(value->aa == 1);
 
         TestTransaction t2(1);
-        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::aa, true}});
+        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::aa, access_t::update}});
         assert(success && found);
         auto new_row = Sto::tx_alloc(value);
         new_row->aa = 2;
@@ -141,7 +142,7 @@ void test_coarse_conflict0() {
         assert(success && !found);
 
         TestTransaction t2(0);
-        std::tie(success, found, row, value) = ci.select_row(key_type(100), {{nc::aa, false}});
+        std::tie(success, found, row, value) = ci.select_row(key_type(100), {{nc::aa, access_t::read}});
         assert(!success || !found);
 
         t1.use();
@@ -163,12 +164,12 @@ void test_coarse_conflict1() {
 
     {
         TestTransaction t1(0);
-        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::aa, false}});
+        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::aa, access_t::read}});
         assert(success && found);
         assert(value->aa == 1);
 
         TestTransaction t2(1);
-        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::bb, true}});
+        std::tie(success, found, row, value) = ci.select_row(key_type(1), {{nc::bb, access_t::update}});
         assert(success && found);
         auto new_row = Sto::tx_alloc(value);
         new_row->aa = 2; // Will get installed
@@ -196,12 +197,12 @@ void test_fine_conflict0() {
 
     {
         TestTransaction t1(0);
-        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::ytd, false}});
+        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::ytd, access_t::read}});
         assert(success && found);
         assert(value->d_ytd == 3000);
 
         TestTransaction t2(1);
-        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::ytd, true}});
+        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::ytd, access_t::update}});
         assert(success && found);
         auto new_row = Sto::tx_alloc(value);
         new_row->d_ytd += 10;
@@ -228,12 +229,12 @@ void test_fine_conflict1() {
 
     {
         TestTransaction t1(0);
-        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::ytd, false}});
+        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::ytd, access_t::read}});
         assert(success && found);
         assert(value->d_ytd == 3000);
 
         TestTransaction t2(1);
-        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::payment_cnt, true}});
+        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::payment_cnt, access_t::update}});
         assert(success && found);
         auto new_row = Sto::tx_alloc(value);
         new_row->d_ytd += 10;
@@ -262,12 +263,12 @@ void test_fine_conflict2() {
 
     {
         TestTransaction t1(0);
-        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::tax, false}});
+        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::tax, access_t::read}});
         assert(success && found);
         assert(value->d_tax == 10);
 
         TestTransaction t2(1);
-        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::ytd, true}});
+        std::tie(success, found, row, value) = fi.select_row(key_type(1), {{nc::ytd, access_t::update}});
         assert(success && found);
         auto new_row = Sto::tx_alloc(value);
         new_row->d_ytd += 10;

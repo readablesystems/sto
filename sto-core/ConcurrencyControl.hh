@@ -88,7 +88,6 @@ inline TransProxy& TransProxy::add_write(Args&&... args) {
     if (!has_write()) {
         item().__or_flags(TransItem::write_bit);
         item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
-        assert(item().wdata_);
         t()->any_writes_ = true;
     } else {
         // TODO: this assumes that a given writer data always has the same type.
@@ -96,7 +95,6 @@ inline TransProxy& TransProxy::add_write(Args&&... args) {
         // (hopefully we'll have a system that can automatically call destructors and such
         // which will make our lives much easier)
         item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
-        assert(item().wdata_);
     }
     return *this;
 }
