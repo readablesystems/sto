@@ -928,6 +928,7 @@ public:
     }
 
     void update_row(uintptr_t rid, const comm_type &comm) {
+        assert(&comm);
         auto row_item = Sto::item(this, item_key_t::row_item_key(reinterpret_cast<internal_elem *>(rid)));
         row_item.add_commute(comm);
     }
@@ -1303,8 +1304,9 @@ public:
             // skip installation if row-level update is present
             auto row_item = Sto::item(this, item_key_t::row_item_key(e));
             if (!has_row_update(row_item)) {
-                if (item.has_commute()) {
-                    comm_type &comm = item.write_value<comm_type>();
+                if (row_item.has_commute()) {
+                    comm_type &comm = row_item.template write_value<comm_type>();
+                    assert(&comm);
                     e->row_container.install_cell(comm);
                 } else {
                     value_type *vptr;

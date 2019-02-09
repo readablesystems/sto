@@ -59,6 +59,9 @@ inline TransProxy& TransProxy::add_commute(const T& comm) {
 
 // Registering writes without passing the version (handled internally by TItem)
 inline TransProxy& TransProxy::add_write() {
+    if (has_commute()) {
+        clear_commute();
+    }
     if (!has_write()) {
         item().__or_flags(TransItem::write_bit);
         t()->any_writes_ = true;
@@ -79,16 +82,22 @@ inline TransProxy& TransProxy::add_write(T&& wdata) {
 
 template <typename T, typename... Args>
 inline TransProxy& TransProxy::add_write(Args&&... args) {
+    if (has_commute()) {
+        clear_commute();
+    }
     if (!has_write()) {
         item().__or_flags(TransItem::write_bit);
         item().wdata_ = Packer<T>::pack(t()->buf_, std::forward<Args>(args)...);
+        assert(item().wdata_);
         t()->any_writes_ = true;
-    } else
+    } else {
         // TODO: this assumes that a given writer data always has the same type.
         // this is certainly true now but we probably shouldn't assume this in general
         // (hopefully we'll have a system that can automatically call destructors and such
         // which will make our lives much easier)
         item().wdata_ = Packer<T>::repack(t()->buf_, item().wdata_, std::forward<Args>(args)...);
+        assert(item().wdata_);
+    }
     return *this;
 }
 
