@@ -29,8 +29,12 @@ struct key_type {
 using CoarseIndex = bench::ordered_index<key_type, coarse_grained_row, db_params::db_default_params>;
 using FineIndex = bench::ordered_index<key_type, example_row, db_params::db_default_params>;
 using access_t = bench::access_t;
+using RowAccess = bench::RowAccess;
 
-void init_cindex(CoarseIndex& ci) {
+using MVIndex = bench::mvcc_ordered_index<key_type, coarse_grained_row, db_params::db_mvcc_params>;
+
+template <typename IndexType>
+void init_cindex(IndexType& ci) {
     for (uint64_t i = 1; i <= 10; ++i)
         ci.nontrans_put(key_type(i), coarse_grained_row(i, i, i));
 }
@@ -285,6 +289,51 @@ void test_fine_conflict2() {
     printf("pass %s\n", __FUNCTION__);
 }
 
+void test_mvcc_snapshot() {
+    typedef CoarseIndex::NamedColumn nc;
+    MVIndex mi;
+    mi.thread_init();
+
+    init_cindex(mi);
+    bool success, found;
+    uintptr_t row;
+    const coarse_grained_row *value;
+
+    {
+        TestTransaction t1(0);
+        std::tie(success, found, row, value) = mi.select_row(key_type(1), RowAccess::ObserveValue);
+        assert(success && found);
+        assert(value->aa == 1);
+
+        TestTransaction t2(1);
+        std::tie(success, found, row, value) = mi.select_row(key_type(1), RowAccess::ObserveValue);
+        assert(success && found);
+        auto new_row = Sto::tx_alloc(value);
+        new_row->aa = 2;
+        mi.update_row(row, new_row);
+        assert(t2.try_commit());
+
+        t1.use();
+        assert(t1.try_commit());
+    }
+
+    {
+        TestTransaction t1(0);
+        coarse_grained_row row_value(100, 100, 100);
+        std::tie(success, found) = mi.insert_row(key_type(100), &row_value);
+        assert(success && !found);
+
+        TestTransaction t2(0);
+        std::tie(success, found, row, value) = mi.select_row(key_type(100), RowAccess::ObserveValue);
+        assert(!success || !found);
+
+        t1.use();
+        assert(t1.try_commit());
+    }
+
+    printf("pass %s\n", __FUNCTION__);
+}
+
 int main() {
     test_coarse_basic();
     test_coarse_read_my_split();
@@ -293,6 +342,7 @@ int main() {
     test_fine_conflict0();
     test_fine_conflict1();
     test_fine_conflict2();
+    test_mvcc_snapshot();
     printf("All tests pass!\n");
     return 0;
 }
