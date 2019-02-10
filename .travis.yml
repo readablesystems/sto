@@ -7,7 +7,7 @@ script:
 
 compiler: gcc
 
-dist: trusty
+dist: xenial
 
 language: cpp
 
