@@ -612,6 +612,7 @@ public:
         typedef uintptr_t type;
         static constexpr unsigned shift = 16u;
         static constexpr type cell_mask = type(0xfffe);
+        static constexpr int row_item_cell_num = 0x0;
         type key_;
 
     public:
@@ -621,7 +622,7 @@ public:
                                                           | ((static_cast<type>(cell_num) << 1u) & cell_mask)) {};
 
         static item_key_t row_item_key(internal_elem *e) {
-            return item_key_t(e, 0);
+            return item_key_t(e, row_item_cell_num);
         }
 
         internal_elem *internal_elem_ptr() const {
@@ -633,7 +634,7 @@ public:
         }
 
         bool is_row_item() const {
-            return (cell_num() == 0);
+            return (cell_num() == row_item_cell_num);
         }
     };
 

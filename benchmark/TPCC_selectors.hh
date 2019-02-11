@@ -137,13 +137,13 @@ public:
     void install_by_cell_impl(tpcc::order_value *dst, const tpcc::order_value *src, int cell) {
         switch (cell) {
             case 0:
+                dst->o_carrier_id = src->o_carrier_id;
+                break;
+            case 1:
                 dst->o_c_id = src->o_c_id;
                 dst->o_entry_d = src->o_entry_d;
                 dst->o_ol_cnt = src->o_ol_cnt;
                 dst->o_all_local = src->o_all_local;
-                break;
-            case 1:
-                dst->o_carrier_id = src->o_carrier_id;
                 break;
             default:
                 always_assert(false, "cell id out of bound\n");
@@ -154,7 +154,7 @@ public:
 private:
     version_type vers_[num_versions];
     static constexpr unsigned int vidx_width = 1u;
-    static constexpr uint64_t col_cell_map = 2ul;
+    static constexpr uint64_t col_cell_map = 29ul;
 };
 
 template <typename VersImpl>
@@ -179,14 +179,14 @@ public:
     void install_by_cell_impl(tpcc::orderline_value *dst, const tpcc::orderline_value *src, int cell) {
         switch (cell) {
             case 0:
+                dst->ol_delivery_d = src->ol_delivery_d;
+                break;
+            case 1:
                 dst->ol_i_id = src->ol_i_id;
                 dst->ol_supply_w_id = src->ol_supply_w_id;
                 dst->ol_quantity = src->ol_quantity;
                 dst->ol_amount = src->ol_amount;
                 dst->ol_dist_info = src->ol_dist_info;
-                break;
-            case 1:
-                dst->ol_delivery_d = src->ol_delivery_d;
                 break;
             default:
                 always_assert(false, "cell id out of bound\n");
@@ -197,7 +197,7 @@ public:
 private:
     version_type vers_[num_versions];
     static constexpr unsigned int vidx_width = 1u;
-    static constexpr uint64_t col_cell_map = 4ul;
+    static constexpr uint64_t col_cell_map = 59ul;
 };
 
 }; // namespace ver_sel

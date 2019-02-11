@@ -24,12 +24,12 @@
 @name: order_value
 @fields: {o_c_id(BIGINT), o_carrier_id(BIGINT), o_entry_d(SMALLINT),
           o_ol_cnt(SMALLINT), o_all_local(SMALLINT)}
-@groups: {{o_c_id, o_entry_d, o_ol_cnt, o_all_local}, {o_carrier_id}}
+@groups: {{o_carrier_id}, {o_c_id, o_entry_d, o_ol_cnt, o_all_local}}
 @@@
 
 @@@
 @name: orderline_value
 @fields: {ol_i_id(BIGINT), ol_supply_w_id(BIGINT), ol_delivery_d(SMALLINT),
           ol_quantity(SMALLINT), ol_amount(SMALLINT), ol_dist_info(VARCHAR(24))}
-@groups: {{ol_i_id, ol_supply_w_id, ol_quantity, ol_amount, ol_dist_info}, {ol_delivery_d}}
+@groups: {{ol_delivery_d}, {ol_i_id, ol_supply_w_id, ol_quantity, ol_amount, ol_dist_info}}
 @@@
