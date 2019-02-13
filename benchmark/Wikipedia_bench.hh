@@ -39,7 +39,10 @@ template <typename DBParams>
 class wikipedia_db {
 public:
     template <typename K, typename V>
-    using OIndex = ordered_index<K, V, DBParams>;
+    using OIndex = typename std::conditional<
+            DBParams::MVCC,
+            mvcc_ordered_index<K, V, DBParams>,
+            ordered_index<K, V, DBParams>>::type;
 
     //typedef OIndex<ipblocks_key, ipblocks_row>                           ipb_tbl_type;
     //typedef OIndex<ipblocks_addr_idx_key, ipblocks_addr_idx_row>         ipb_addr_idx_type;

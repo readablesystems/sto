@@ -10,11 +10,9 @@
 using db_params::constants;
 using db_params::db_params_id;
 using db_params::db_default_params;
-using db_params::db_adaptive_params;
-using db_params::db_tictoc_params;
-using db_params::db_2pl_params;
-using db_params::db_swiss_params;
-using db_params::db_opaque_params;
+using db_params::db_default_commute_params;
+using db_params::db_mvcc_params;
+using db_params::db_mvcc_commute_params;
 using db_params::parse_dbid;
 
 template <typename DBParams>
@@ -26,7 +24,7 @@ int* wikipedia::wikipedia_loader<DBParams>::page_last_rev_lens = nullptr;
 
 // @section: clp parser definitions
 enum {
-    opt_dbid = 1, opt_nthrs, opt_users, opt_pages, opt_time, opt_perf, opt_pfcnt
+    opt_dbid = 1, opt_nthrs, opt_users, opt_pages, opt_time, opt_gc, opt_comm, opt_perf, opt_pfcnt
 };
 
 static const Clp_Option options[] = {
@@ -35,8 +33,10 @@ static const Clp_Option options[] = {
         { "scaleusers",   'u', opt_users, Clp_ValInt,    Clp_Optional },
         { "scalepages",   'g', opt_pages, Clp_ValInt,    Clp_Optional },
         { "time",         'l', opt_time,  Clp_ValDouble, Clp_Optional },
+        { "garbage-collect", 'b', opt_gc, Clp_NoVal,     Clp_Negate | Clp_Optional },
+        { "commute",      'x', opt_comm,  Clp_NoVal,     Clp_Negate | Clp_Optional },
         { "perf",         'p', opt_perf,  Clp_NoVal,     Clp_Optional },
-        { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,     Clp_Negate| Clp_Optional }
+        { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,     Clp_Negate | Clp_Optional }
 };
 
 static inline void print_usage(const char *argv_0) {
@@ -53,6 +53,10 @@ static inline void print_usage(const char *argv_0) {
        << "    Specify the scale factor of the number of pages (default 10)." << std::endl
        << "  --time=<NUM> (or -l<NUM>)" << std::endl
        << "    Specify the time (duration) for which the benchmark is run (default 10 seconds)." << std::endl
+       << "  --garbage-collect (or -b)" << std::endl
+       << "    Enable garbage collection/epoch advancer thread." << std::endl
+       << "  --commute (or -x)" << std::endl
+       << "    Enable commutative update support." << std::endl
        << "  --perf (or -p)" << std::endl
        << "    Spawns perf profiler in record mode for the duration of the benchmark run." << std::endl
        << "  --perf-counter (or -c)" << std::endl
@@ -66,13 +70,16 @@ struct cmd_params {
     int scale_user;
     int scale_page;
     double time;
-    bool spwan_perf;
+    bool enable_gc;
+    bool enable_comm;
+    bool spawn_perf;
     bool perf_counter_mode;
 
     explicit cmd_params()
         : db_id(db_params::db_params_id::Default),
           num_threads(1), scale_user(10), scale_page(10),
-          time(10.0), spwan_perf(false), perf_counter_mode(false) {}
+          time(10.0), enable_gc(false), enable_comm(false),
+          spawn_perf(false), perf_counter_mode(false) {}
 };
 
 // @endsection: clp parser definitions
@@ -103,6 +110,14 @@ public:
         loader_type loader(db, lp);
         loader.load();
 
+        // Start the GC thread if necessary
+        std::thread advancer;
+        std::cout << "Garbage collection: " << (p.enable_gc ? "enabled" : "disabled") << std::endl;
+        if (p.enable_gc) {
+            advancer = std::thread(&Transaction::epoch_advancer, nullptr);
+            advancer.detach();
+        }
+
         // Execute benchmark
         std::vector<runner_type> runners;
         std::vector<std::thread> runner_threads;
@@ -111,15 +126,17 @@ public:
         for (int id = 0; id < p.num_threads; ++id)
             runners.push_back(runner_type(id, db, rp));
 
-        profiler_type profiler(p.spwan_perf);
+        profiler_type profiler(p.spawn_perf);
         profiler.start(p.perf_counter_mode ? Profiler::perf_mode::counters : Profiler::perf_mode::record);
 
-        for (int t = 0; t < p.num_threads; ++t)
+        for (int t = 0; t < p.num_threads; ++t) {
             runner_threads.push_back(
                 std::thread(runner_thread, std::ref(runners[t]), std::ref(committed_txn_cnts[t]))
             );
-        for (auto& t : runner_threads)
+        }
+        for (auto& t : runner_threads) {
             t.join();
+        }
 
         size_t total_commit_txns = 0;
         for (auto c : committed_txn_cnts)
@@ -194,8 +211,14 @@ int main(int argc, const char * const *argv) {
         case opt_time:
             params.time = clp->val.d;
             break;
+        case opt_gc:
+            params.enable_gc = !clp->negated;
+            break;
+        case opt_comm:
+            params.enable_comm = !clp->negated;
+            break;
         case opt_perf:
-            params.spwan_perf = !clp->negated;
+            params.spawn_perf = !clp->negated;
             break;
         case opt_pfcnt:
             params.perf_counter_mode = !clp->negated;
@@ -220,8 +243,11 @@ int main(int argc, const char * const *argv) {
 
     switch (params.db_id) {
         case db_params_id::Default:
-            ret_code = bench_access<db_default_params>::execute(params);
+            ret_code = params.enable_comm ?
+                    bench_access<db_default_commute_params>::execute(params) :
+                    bench_access<db_default_params>::execute(params);
             break;
+#if 0
         case db_params_id::Opaque:
             ret_code = bench_access<db_opaque_params>::execute(params);
             break;
@@ -236,6 +262,12 @@ int main(int argc, const char * const *argv) {
             break;
         case db_params_id::TicToc:
             ret_code = bench_access<db_tictoc_params>::execute(params);
+            break;
+#endif
+        case db_params_id::MVCC:
+            ret_code = params.enable_comm ?
+                    bench_access<db_mvcc_commute_params>::execute(params) :
+                    bench_access<db_mvcc_params>::execute(params);
             break;
         default:
             std::cerr << "unknown db config parameter id" << std::endl;

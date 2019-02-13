@@ -86,6 +86,12 @@
 #endif
 #endif
 
+#if TPCC_SPLIT_TABLE
+#if TABLE_FINE_GRAINED
+#error "Split table and fine-grained table can't be enabled at the same time!"
+#endif
+#endif
+
 #define CONSISTENCY_CHECK 0
 #define ASSERT_TX_SIZE 0
 #define TRANSACTION_HASHTABLE 1
