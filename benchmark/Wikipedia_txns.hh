@@ -22,7 +22,9 @@ template <typename DBParams>
 size_t wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
                                                       int name_space,
                                                       const std::string& page_title) {
+#if TABLE_FINE_GRAINED
     typedef useracct_row::NamedColumn nc;
+#endif
     size_t nexecs = 0;
 
     TRANSACTION {
@@ -51,12 +53,38 @@ size_t wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
         TXN_DO(abort);
     }
 
-    std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id), {{nc::user_touched, access_t::update}});
+#if TPCC_SPLIT_TABLE
+    std::tie(abort, result, row, value) = db.tbl_useracct_comm().select_row(useracct_key(user_id),
+        Commute ? RowAccess::None : RowAccess::ObserveValue);
     TXN_DO(abort);
     assert(result);
-    auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
-    new_uv->user_touched = ig.curr_timestamp_string();
-    db.tbl_useracct().update_row(row, new_uv);
+    if (Commute) {
+        commutators::Commutator<useracct_comm_row> comm(false, ig.curr_timestamp_string());
+        db.tbl_useracct_comm().update_row(row, comm);
+    } else {
+        auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_comm_row *>(value));
+        new_uv->user_touched = ig.curr_timestamp_string();
+        db.tbl_useracct_comm().update_row(row, new_uv);
+    }
+#else
+    std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
+#if TABLE_FINE_GRAINED
+        {{nc::user_touched, access_t::update}}
+#else
+        Commute ? RowAccess::None : RowAccess::ObserveValue
+#endif
+    );
+    TXN_DO(abort);
+    assert(result);
+    if (Commute) {
+        commutators::Commutator<useracct_row> comm(false, ig.curr_timestamp_string());
+        db.tbl_useracct().update_row(row, comm);
+    } else {
+        auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
+        new_uv->user_touched = ig.curr_timestamp_string();
+        db.tbl_useracct().update_row(row, new_uv);
+    }
+#endif
 
     } RETRY(true);
 
@@ -65,9 +93,11 @@ size_t wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
 
 template <typename DBParams>
 size_t wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
-                                                         int name_space,
-                                                         const std::string& page_title) {
+                                                           int name_space,
+                                                           const std::string& page_title) {
+#if TABLE_FINE_GRAINED
     typedef useracct_row::NamedColumn nc;
+#endif
     size_t nexecs = 0;
 
     TRANSACTION {
@@ -85,13 +115,38 @@ size_t wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
     std::tie(abort, result) = db.idx_watchlist().delete_row(watchlist_idx_key(name_space, page_title, user_id));
     TXN_DO(abort);
     //assert(result);
-
-    std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id), {{nc::user_touched, access_t::update}});
+#if TPCC_SPLIT_TABLE
+    std::tie(abort, result, row, value) = db.tbl_useracct_comm().select_row(useracct_key(user_id),
+        Commute ? RowAccess::None : RowAccess::ObserveValue);
     TXN_DO(abort);
     assert(result);
-    auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
-    new_uv->user_touched = ig.curr_timestamp_string();
-    db.tbl_useracct().update_row(row, new_uv);
+    if (Commute) {
+        commutators::Commutator<useracct_comm_row> comm(false, ig.curr_timestamp_string());
+        db.tbl_useracct_comm().update_row(row, comm);
+    } else {
+        auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_comm_row *>(value));
+        new_uv->user_touched = ig.curr_timestamp_string();
+        db.tbl_useracct_comm().update_row(row, new_uv);
+    }
+#else
+    std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
+#if TABLE_FINE_GRAINED
+        {{nc::user_touched, access_t::update}}
+#else
+        Commute ? RowAccess::None : RowAccess::ObserveValue
+#endif
+    );
+    TXN_DO(abort);
+    assert(result);
+    if (Commute) {
+        commutators::Commutator<useracct_row> comm(false, ig.curr_timestamp_string());
+        db.tbl_useracct().update_row(row, comm);
+    } else {
+        auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
+        new_uv->user_touched = ig.curr_timestamp_string();
+        db.tbl_useracct().update_row(row, new_uv);
+    }
+#endif
 
     } RETRY(true);
 
@@ -103,7 +158,9 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAnony
                                                           const std::string& user_ip,
                                                           int name_space,
                                                           const std::string& page_title) {
+#if TABLE_FINE_GRAINED
     typedef page_row::NamedColumn page_nc;
+#endif
     //typedef page_restrictions_row::NamedColumn pr_nc;
     //typedef ipblocks_row::NamedColumn ipb_nc;
     typedef revision_row::NamedColumn rev_nc;
@@ -125,13 +182,23 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAnony
     assert(result);
     auto page_id = reinterpret_cast<const page_idx_row *>(value)->page_id;
 
+#if TPCC_SPLIT_TABLE
+    std::tie(abort, result, std::ignore, value) = db.tbl_page_comm().select_row(page_key(page_id), RowAccess::ObserveValue);
+    TXN_DO(abort);
+    assert(result);
+    auto page_v = reinterpret_cast<const page_comm_row *>(value);
+#else
     std::tie(abort, result, std::ignore, value) = db.tbl_page().select_row(page_key(page_id),
-                                                                           {{page_nc::page_title, access_t::read},
-                                                                            {page_nc::page_namespace, access_t::read},
-                                                                            {page_nc::page_latest, access_t::read}});
+#if TABLE_FINE_GRAINED
+        {{page_nc::page_latest, access_t::read}}
+#else
+        RowAccess::ObserveValue
+#endif
+    );
     TXN_DO(abort);
     assert(result);
     auto page_v = reinterpret_cast<const page_row *>(value);
+#endif
 
     /*
     std::vector<int32_t> pr_ids;
@@ -197,12 +264,12 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAuthe
                                                               int user_id,
                                                               int name_space,
                                                               const std::string& page_title) {
+#if TABLE_FINE_GRAINED
     typedef useracct_row::NamedColumn user_nc;
     typedef page_row::NamedColumn page_nc;
+#endif
     //typedef page_restrictions_row::NamedColumn pr_nc;
     //typedef ipblocks_row::NamedColumn ipb_nc;
-    typedef revision_row::NamedColumn rev_nc;
-    typedef text_row::NamedColumn text_nc;
 
     (void)for_select;
     size_t nexecs = 0;
@@ -215,9 +282,22 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAuthe
 
     ++nexecs;
 
-    std::tie(abort, result, std::ignore, std::ignore) = db.tbl_useracct().select_row(useracct_key(user_id), {{user_nc::user_name, access_t::read}});
+#if TPCC_SPLIT_TABLE
+    std::tie(abort, result, std::ignore, std::ignore) = db.tbl_useracct_const().select_row(useracct_key(user_id),
+        RowAccess::ObserveValue);
     TXN_DO(abort);
     assert(result);
+#else
+    std::tie(abort, result, std::ignore, std::ignore) = db.tbl_useracct().select_row(useracct_key(user_id),
+#if TABLE_FINE_GRAINED
+        {{user_nc::user_name, access_t::read}}
+#else
+        RowAccess::ObserveValue
+#endif
+    );
+    TXN_DO(abort);
+    assert(result);
+#endif
 
     //std::tie(abort, result, std::ignore, std::ignore) = db.tbl_user_groups().select_row(user_groups_key(user_id), RowAccess::ObserveValue);
     //TXN_DO(abort);
@@ -230,10 +310,23 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAuthe
     assert(result);
     auto page_id = reinterpret_cast<const page_idx_row *>(value)->page_id;
 
-    std::tie(abort, result, std::ignore, value) = db.tbl_page().select_row(page_key(page_id), {{page_nc::page_latest, access_t::read}});
+#if TPCC_SPLIT_TABLE
+    std::tie(abort, result, std::ignore, value) = db.tbl_page_comm().select_row(page_key(page_id), RowAccess::ObserveValue);
+    TXN_DO(abort);
+    assert(result);
+    auto page_v = reinterpret_cast<const page_comm_row *>(value);
+#else
+    std::tie(abort, result, std::ignore, value) = db.tbl_page().select_row(page_key(page_id),
+#if TABLE_FINE_GRAINED
+        {{page_nc::page_latest, access_t::read}}
+#else
+        RowAccess::ObserveValue
+#endif
+    );
     TXN_DO(abort);
     assert(result);
     auto page_v = reinterpret_cast<const page_row *>(value);
+#endif
 
     /*
     std::vector<int32_t> pr_ids;
@@ -273,12 +366,12 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAuthe
     */
 
     auto rev_id = page_v->page_latest;
-    std::tie(abort, result, std::ignore, value) = db.tbl_revision().select_row(revision_key(rev_id), {{rev_nc::rev_text_id, access_t::read}});
+    std::tie(abort, result, std::ignore, value) = db.tbl_revision().select_row(revision_key(rev_id), RowAccess::ObserveValue);
     TXN_DO(abort);
     assert(result);
     auto rev_text_id = reinterpret_cast<const revision_row *>(value)->rev_text_id;
 
-    std::tie(abort, result, std::ignore, value) = db.tbl_text().select_row(text_key(rev_text_id), {{text_nc::old_text, access_t::read}, {text_nc::old_flags, access_t::read}});
+    std::tie(abort, result, std::ignore, value) = db.tbl_text().select_row(text_key(rev_text_id), RowAccess::ObserveValue);
     TXN_DO(abort);
     assert(result);
 
@@ -295,7 +388,9 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAuthe
 
 template <typename DBParams>
 size_t wikipedia_runner<DBParams>::run_txn_listPageNameSpace(int name_space) {
+#if TABLE_FINE_GRAINED
     typedef page_row::NamedColumn page_nc;
+#endif
     size_t nexecs = 0;
 
     TRANSACTION {
@@ -318,12 +413,27 @@ size_t wikipedia_runner<DBParams>::run_txn_listPageNameSpace(int name_space) {
     TXN_DO(abort);
 
     for (auto pair : pages) {
+#if TPCC_SPLIT_TABLE
         std::tie(abort, result, std::ignore, value)
-                = db.tbl_page().select_row(page_key(pair.first), {{page_nc::page_title, access_t::read}});
+                = db.tbl_page_const().select_row(page_key(pair.first), RowAccess::ObserveValue);
+        TXN_DO(abort);
+        assert(result);
+        auto pr = reinterpret_cast<const page_const_row *>(value);
+        always_assert(pair.second == std::string(pr->page_title.c_str()));
+#else
+        std::tie(abort, result, std::ignore, value)
+                = db.tbl_page().select_row(page_key(pair.first),
+#if TABLE_FINE_GRAINED
+                    {{page_nc::page_title, access_t::read}}
+#else
+                    RowAccess::ObserveValue
+#endif
+                );
         TXN_DO(abort);
         assert(result);
         auto pr = reinterpret_cast<const page_row *>(value);
         always_assert(pair.second == std::string(pr->page_title.c_str()));
+#endif
     }
 
     } RETRY(true);
@@ -344,8 +454,10 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
                                                       const std::string& rev_comment,
                                                       int rev_minor_edit,
                                                       size_t& nstarts) {
+#if TABLE_FINE_GRAINED
     typedef page_row::NamedColumn page_nc;
     typedef useracct_row::NamedColumn user_nc;
+#endif
 
     INTERACTIVE_TXN_START;
 
@@ -388,15 +500,41 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     std::tie(abort, result) = db.tbl_revision().insert_row(new_rev_k, rev_v);
     TXN_CHECK(abort);
     assert(!result);
-    
+
     // UPDATE PAGE TABLE
+#if TPCC_SPLIT_TABLE
+    std::tie(abort, result, row, value) =
+        db.tbl_page_comm().select_row(page_key(page_id), Commute ? RowAccess::None : RowAccess::ObserveValue);
+    TXN_CHECK(abort);
+    assert(result);
+
+    if (Commute) {
+        commutators::Commutator<page_comm_row> comm(0, 0, timestamp_str,
+            bswap(new_rev_k.rev_id), (int32_t)page_text.length());
+        db.tbl_page_comm().update_row(row, comm);
+    } else {
+        auto new_pv = Sto::tx_alloc(reinterpret_cast<const page_comm_row *>(value));
+        new_pv->page_latest = bswap(new_rev_k.rev_id);
+        new_pv->page_touched = timestamp_str;
+        new_pv->page_is_new = 0;
+        new_pv->page_is_redirect = 0;
+        new_pv->page_len = (int32_t)page_text.length();
+
+        db.tbl_page_comm().update_row(row, new_pv);
+    }
+#else
     std::tie(abort, result, row, value) =
         db.tbl_page().select_row(page_key(page_id),
-                                    {{page_nc::page_latest, access_t::update},
-                                     {page_nc::page_touched, access_t::update},
-                                     {page_nc::page_is_new, access_t::update},
-                                     {page_nc::page_is_redirect, access_t::update},
-                                     {page_nc::page_len, access_t::update}});
+#if TABLE_FINE_GRAINED
+            {{page_nc::page_latest, access_t::update},
+             {page_nc::page_touched, access_t::update},
+             {page_nc::page_is_new, access_t::update},
+             {page_nc::page_is_redirect, access_t::update},
+             {page_nc::page_len, access_t::update}}
+#else
+            RowAccess::ObserveValue
+#endif
+        );
     TXN_CHECK(abort);
     assert(result);
 
@@ -408,6 +546,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     new_pv->page_len = (int32_t)page_text.length();
 
     db.tbl_page().update_row(row, new_pv);
+#endif
 
     // INSERT RECENT CHANGES
     recentchanges_key rc_k((int32_t)(db.tbl_recentchanges().gen_key()));
@@ -459,13 +598,19 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
         ++nstarts;
 
         for (auto& u : watching_users) {
-            std::tie(abort, result, row, value) = db.tbl_watchlist().select_row(watchlist_key(u, page_name_space, page_title), RowAccess::UpdateValue);
+            std::tie(abort, result, row, value) = db.tbl_watchlist().select_row(watchlist_key(u, page_name_space, page_title),
+                Commute ? RowAccess::None : RowAccess::ObserveValue);
             TXN_DO(abort);
             //assert(result);
             if (result) {
-                auto new_wlv = Sto::tx_alloc(reinterpret_cast<const watchlist_row *>(value));
-                new_wlv->wl_notificationtimestamp = timestamp_str;
-                db.tbl_watchlist().update_row(row, new_wlv);
+                if (Commute) {
+                    commutators::Commutator<watchlist_row> comm(timestamp_str);
+                    db.tbl_watchlist().update_row(row, comm);
+                } else {
+                    auto new_wlv = Sto::tx_alloc(reinterpret_cast<const watchlist_row *>(value));
+                    new_wlv->wl_notificationtimestamp = timestamp_str;
+                    db.tbl_watchlist().update_row(row, new_wlv);
+                }
             }
         }
 
@@ -496,15 +641,41 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
         assert(!result);
 
         // UPDATE USER
-        std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
-                                                                           {{user_nc::user_editcount, access_t::update},
-                                                                            {user_nc::user_touched,   access_t::update}});
+#if TPCC_SPLIT_TABLE
+        std::tie(abort, result, row, value) = db.tbl_useracct_comm().select_row(useracct_key(user_id),
+            Commute ? RowAccess::None : RowAccess::ObserveValue);
         TXN_DO(abort);
         assert(result);
-        auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
-        new_uv->user_editcount += 1;
-        new_uv->user_touched = timestamp_str;
-        db.tbl_useracct().update_row(row, new_uv);
+        if (Commute) {
+            commutators::Commutator<useracct_comm_row> comm(true, timestamp_str);
+            db.tbl_useracct_comm().update_row(row, comm);
+        } else {
+            auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_comm_row *>(value));
+            new_uv->user_editcount += 1;
+            new_uv->user_touched = timestamp_str;
+            db.tbl_useracct_comm().update_row(row, new_uv);
+        }
+#else
+        std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
+#if TABLE_FINE_GRAINED
+            {{user_nc::user_editcount, access_t::update},
+             {user_nc::user_touched,   access_t::update}}
+#else
+            RowAccess::ObserveValue
+#endif
+        );
+        TXN_DO(abort);
+        assert(result);
+        if (Commute) {
+            commutators::Commutator<useracct_row> comm(true, timestamp_str);
+            db.tbl_useracct().update_row(row, comm);
+        } else {
+            auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
+            new_uv->user_editcount += 1;
+            new_uv->user_touched = timestamp_str;
+            db.tbl_useracct().update_row(row, new_uv);
+        }
+#endif
 
         } RETRY(true);
 
@@ -532,15 +703,41 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     assert(!result);
 
     // UPDATE USER
-    std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
-                                                                           {{user_nc::user_editcount, access_t::update},
-                                                                            {user_nc::user_touched, access_t::update}});
+#if TPCC_SPLIT_TABLE
+    std::tie(abort, result, row, value) = db.tbl_useracct_comm().select_row(useracct_key(user_id),
+        Commute ? RowAccess::None : RowAccess::ObserveValue);
     TXN_CHECK(abort);
     assert(result);
-    auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
-    new_uv->user_editcount += 1;
-    new_uv->user_touched = timestamp_str;
-    db.tbl_useracct().update_row(row, new_uv);
+    if (Commute) {
+        commutators::Commutator<useracct_comm_row> comm(true, timestamp_str);
+        db.tbl_useracct_comm().update_row(row, comm);
+    } else {
+        auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_comm_row *>(value));
+        new_uv->user_editcount += 1;
+        new_uv->user_touched = timestamp_str;
+        db.tbl_useracct_comm().update_row(row, new_uv);
+    }
+#else
+    std::tie(abort, result, row, value) = db.tbl_useracct().select_row(useracct_key(user_id),
+#if TABLE_FINE_GRAINED
+        {{user_nc::user_editcount, access_t::update},
+         {user_nc::user_touched,   access_t::update}}
+#else
+        RowAccess::ObserveValue
+#endif
+    );
+    TXN_CHECK(abort);
+    assert(result);
+    if (Commute) {
+        commutators::Commutator<useracct_row> comm(true, timestamp_str);
+        db.tbl_useracct().update_row(row, comm);
+    } else {
+        auto new_uv = Sto::tx_alloc(reinterpret_cast<const useracct_row *>(value));
+        new_uv->user_editcount += 1;
+        new_uv->user_touched = timestamp_str;
+        db.tbl_useracct().update_row(row, new_uv);
+    }
+#endif
 
     INTERACTIVE_TXN_COMMIT;
 

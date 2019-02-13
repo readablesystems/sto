@@ -152,7 +152,35 @@ struct __attribute__((packed)) page_key_bare {
 };
 
 typedef masstree_key_adapter<page_key_bare> page_key;
+#if TPCC_SPLIT_TABLE
+struct page_const_row {
+    enum class NamedColumn : int { page_namespace = 0,
+                                   page_title,
+                                   page_restrictions,
+                                   page_counter,
+                                   page_random };
 
+    int32_t page_namespace;
+    var_string<255> page_title;
+    var_string<255> page_restrictions;
+    int64_t page_counter;
+    float page_random;
+};
+
+struct page_comm_row {
+    enum class NamedColumn : int { page_is_redirect = 0,
+                                   page_is_new,
+                                   page_touched,
+                                   page_latest,
+                                   page_len };
+
+    int32_t page_is_redirect;
+    int32_t page_is_new;
+    var_string<14> page_touched;
+    int32_t page_latest;
+    int32_t page_len;
+};
+#else
 struct page_row {
     enum class NamedColumn : int { page_namespace = 0,
                                    page_title,
@@ -176,6 +204,7 @@ struct page_row {
     int32_t page_latest;
     int32_t page_len;
 };
+#endif
 
 struct __attribute__((packed)) page_idx_key_bare {
     int32_t page_namespace;
@@ -369,6 +398,43 @@ struct __attribute__((packed)) useracct_key_bare {
 
 typedef masstree_key_adapter<useracct_key_bare> useracct_key;
 
+#if TPCC_SPLIT_TABLE
+struct useracct_const_row {
+    enum class NamedColumn : int { user_name = 0,
+                                   user_real_name,
+                                   user_password,
+                                   user_newpassword,
+                                   user_newpass_time,
+                                   user_email,
+                                   user_options,
+                                   user_token,
+                                   user_email_authenticated,
+                                   user_email_token,
+                                   user_email_token_expires,
+                                   user_registration };
+
+    var_string<255> user_name;
+    var_string<255> user_real_name;
+    var_string<32> user_password;
+    var_string<32> user_newpassword;
+    var_string<14> user_newpass_time;
+    var_string<40> user_email;
+    var_string<255> user_options;
+    var_string<32> user_token;
+    var_string<32> user_email_authenticated;
+    var_string<32> user_email_token;
+    var_string<14> user_email_token_expires;
+    var_string<14> user_registration;
+};
+
+struct useracct_comm_row {
+    enum class NamedColumn : int { user_touched = 0,
+                                   user_editcount };
+
+    var_string<14> user_touched;
+    int32_t user_editcount;
+};
+#else
 struct useracct_row {
     enum class NamedColumn : int { user_name = 0,
                                    user_real_name,
@@ -400,6 +466,7 @@ struct useracct_row {
     var_string<14> user_registration;
     int32_t user_editcount;
 };
+#endif
 
 struct __attribute__((packed)) useracct_idx_key_bare {
     var_string<255> user_name;

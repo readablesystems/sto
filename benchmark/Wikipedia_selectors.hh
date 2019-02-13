@@ -23,7 +23,8 @@ public:
         typedef wikipedia::page_row::NamedColumn nc;
         auto col_name = static_cast<nc>(col_n);
         if (col_name == nc::page_namespace || col_name == nc::page_title
-            || col_name == nc::page_restrictions || col_name == nc::page_random) {
+            || col_name == nc::page_restrictions || col_name == nc::page_counter
+            || col_name == nc::page_random) {
             return 1;
         } else
             return 0;
@@ -36,7 +37,6 @@ public:
     void install_by_cell_impl(wikipedia::page_row *dst, const wikipedia::page_row *src, int cell) {
         switch (cell) {
             case 0:
-                dst->page_counter = src->page_counter;
                 dst->page_is_redirect = src->page_is_redirect;
                 dst->page_is_new = src->page_is_new;
                 dst->page_touched = src->page_touched;
@@ -47,6 +47,7 @@ public:
                 dst->page_namespace = src->page_namespace;
                 dst->page_title = src->page_title;
                 dst->page_restrictions = src->page_restrictions;
+                dst->page_counter = src->page_counter;
                 dst->page_random = src->page_random;
                 break;
             default:

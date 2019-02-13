@@ -22,6 +22,27 @@ void wikipedia_loader<DBParams>::load() {
 template <typename DBParams>
 void wikipedia_loader<DBParams>::load_useracct() {
     for (int uid = 1; uid <= num_users; ++uid) {
+#if TPCC_SPLIT_TABLE
+        useracct_const_row uc_r;
+        useracct_comm_row um_r;
+        uc_r.user_name = ig.generate_user_name();
+        uc_r.user_real_name = ig.generate_user_real_name();
+        uc_r.user_password = "password";
+        uc_r.user_newpassword = "newpassword";
+        uc_r.user_newpass_time = ig.curr_timestamp_string();
+        uc_r.user_email = "user@example.com";
+        uc_r.user_options = "fake_longoptionslist";
+        um_r.user_touched = ig.curr_timestamp_string();
+        uc_r.user_token = ig.generate_user_token();
+        uc_r.user_email_authenticated = "null";
+        uc_r.user_email_token = "null";
+        uc_r.user_email_token_expires = "null";
+        uc_r.user_registration = "null";
+        um_r.user_editcount = user_revision_cnts[uid - 1];
+
+        db.tbl_useracct_const().nontrans_put(useracct_key(uid), uc_r);
+        db.tbl_useracct_comm().nontrans_put(useracct_key(uid), um_r);
+#else
         useracct_row u_r;
         u_r.user_name = ig.generate_user_name();
         u_r.user_real_name = ig.generate_user_real_name();
@@ -39,6 +60,7 @@ void wikipedia_loader<DBParams>::load_useracct() {
         u_r.user_editcount = user_revision_cnts[uid - 1];
 
         db.tbl_useracct().nontrans_put(useracct_key(uid), u_r);
+#endif
     }
 }
 
@@ -48,6 +70,23 @@ void wikipedia_loader<DBParams>::load_page() {
         int page_ns = ig.generate_page_namespace(pid);
         auto page_title = ig.generate_page_title(pid);
         auto page_restrictions = ig.generate_page_restrictions();
+#if TPCC_SPLIT_TABLE
+        page_const_row pc_r;
+        page_comm_row pm_r;
+        pc_r.page_namespace = page_ns;
+        pc_r.page_title = page_title;
+        pc_r.page_restrictions = page_restrictions;
+        pc_r.page_counter = 0;
+        pm_r.page_is_redirect = 0;
+        pm_r.page_is_new = 0;
+        pc_r.page_random = ig.generate_page_random();
+        pm_r.page_touched = ig.curr_timestamp_string();
+        pm_r.page_latest = page_last_rev_ids[pid - 1];
+        pm_r.page_len = page_last_rev_lens[pid - 1];
+
+        db.tbl_page_const().nontrans_put(page_key(pid), pc_r);
+        db.tbl_page_comm().nontrans_put(page_key(pid), pm_r);
+#else
         page_row pg_r;
         pg_r.page_namespace = page_ns;
         pg_r.page_title = page_title;
@@ -61,6 +100,7 @@ void wikipedia_loader<DBParams>::load_page() {
         pg_r.page_len = page_last_rev_lens[pid - 1];
 
         db.tbl_page().nontrans_put(page_key(pid), pg_r);
+#endif
 
         page_idx_row pi_r{};
         pi_r.page_id = pid;

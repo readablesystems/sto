@@ -9,6 +9,7 @@
 
 #include "compiler.hh"
 #include "Wikipedia_structs.hh"
+#include "Wikipedia_commutators.hh"
 
 #if TABLE_FINE_GRAINED
 #include "Wikipedia_selectors.hh"
@@ -44,14 +45,21 @@ public:
     //typedef OIndex<ipblocks_addr_idx_key, ipblocks_addr_idx_row>         ipb_addr_idx_type;
     //typedef OIndex<ipblocks_user_idx_key, ipblocks_user_idx_row>         ipb_user_idx_type;
     typedef OIndex<logging_key, logging_row>                             log_tbl_type;
+#if TPCC_SPLIT_TABLE
+    typedef OIndex<page_key, page_const_row>                             page_const_tbl_type;
+    typedef OIndex<page_key, page_comm_row>                              page_comm_tbl_type;
+    typedef OIndex<useracct_key, useracct_const_row>                     user_const_tbl_type;
+    typedef OIndex<useracct_key, useracct_comm_row>                      user_comm_tbl_type;
+#else
     typedef OIndex<page_key, page_row>                                   page_tbl_type;
+    typedef OIndex<useracct_key, useracct_row>                           user_tbl_type;
+#endif
     typedef OIndex<page_idx_key, page_idx_row>                           page_idx_type;
     //typedef OIndex<page_restrictions_key, page_restrictions_row>         pr_tbl_type;
     //typedef OIndex<page_restrictions_idx_key, page_restrictions_idx_row> pr_idx_type;
     typedef OIndex<recentchanges_key, recentchanges_row>                 rc_tbl_type;
     typedef OIndex<revision_key, revision_row>                           rev_tbl_type;
     typedef OIndex<text_key, text_row>                                   text_tbl_type;
-    typedef OIndex<useracct_key, useracct_row>                           user_tbl_type;
     typedef OIndex<useracct_idx_key, useracct_idx_row>                   user_idx_type;
     //typedef OIndex<user_groups_key, user_groups_row>                     ug_tbl_type;
     typedef OIndex<watchlist_key, watchlist_row>                         wl_tbl_type;
@@ -62,14 +70,24 @@ public:
         //idx_ipb_addr_(),
         //idx_ipb_user_(),
         tbl_log_(),
+#if TPCC_SPLIT_TABLE
+        tbl_page_const_(),
+        tbl_page_comm_(),
+#else
         tbl_page_(),
+#endif
         idx_page_(),
         //tbl_pr_(),
         //idx_pr_(),
         tbl_rc_(),
         tbl_rev_(),
         tbl_text_(),
+#if TPCC_SPLIT_TABLE
+        tbl_user_const_(),
+        tbl_user_comm_(),
+#else
         tbl_user_(),
+#endif
         idx_user_(),
         //tbl_ug_(),
         tbl_wl_(),
@@ -89,9 +107,28 @@ public:
     log_tbl_type& tbl_logging() {
         return tbl_log_;
     }
+
+#if TPCC_SPLIT_TABLE
+    page_const_tbl_type& tbl_page_const() {
+        return tbl_page_const_;
+    }
+    page_comm_tbl_type& tbl_page_comm() {
+        return tbl_page_comm_;
+    }
+    user_const_tbl_type& tbl_useracct_const() {
+        return tbl_user_const_;
+    }
+    user_comm_tbl_type& tbl_useracct_comm() {
+        return tbl_user_comm_;
+    }
+#else
     page_tbl_type& tbl_page() {
         return tbl_page_;
     }
+    user_tbl_type& tbl_useracct() {
+        return tbl_user_;
+    }
+#endif
     page_idx_type& idx_page() {
         return idx_page_;
     }
@@ -111,9 +148,6 @@ public:
     }
     text_tbl_type& tbl_text() {
         return tbl_text_;
-    }
-    user_tbl_type& tbl_useracct() {
-        return tbl_user_;
     }
     user_idx_type& idx_useracct() {
         return idx_user_;
@@ -135,14 +169,24 @@ public:
         //idx_ipb_addr_.thread_init();
         //idx_ipb_user_.thread_init();
         tbl_log_.thread_init();
+#if TPCC_SPLIT_TABLE
+        tbl_page_const_.thread_init();
+        tbl_page_comm_.thread_init();
+#else
         tbl_page_.thread_init();
+#endif
         idx_page_.thread_init();
         //tbl_pr_.thread_init();
         //idx_pr_.thread_init();
         tbl_rc_.thread_init();
         tbl_rev_.thread_init();
         tbl_text_.thread_init();
+#if TPCC_SPLIT_TABLE
+        tbl_user_const_.thread_init();
+        tbl_user_comm_.thread_init();
+#else
         tbl_user_.thread_init();
+#endif
         idx_user_.thread_init();
         //tbl_ug_.thread_init();
         tbl_wl_.thread_init();
@@ -154,14 +198,24 @@ private:
     //ipb_addr_idx_type idx_ipb_addr_;
     //ipb_user_idx_type idx_ipb_user_;
     log_tbl_type      tbl_log_;
+#if TPCC_SPLIT_TABLE
+    page_const_tbl_type tbl_page_const_;
+    page_comm_tbl_type tbl_page_comm_;
+#else
     page_tbl_type     tbl_page_;
+#endif
     page_idx_type     idx_page_;
     //pr_tbl_type       tbl_pr_;
     //pr_idx_type       idx_pr_;
     rc_tbl_type       tbl_rc_;
     rev_tbl_type      tbl_rev_;
     text_tbl_type     tbl_text_;
+#if TPCC_SPLIT_TABLE
+    user_const_tbl_type tbl_user_const_;
+    user_comm_tbl_type tbl_user_comm_;
+#else
     user_tbl_type     tbl_user_;
+#endif
     user_idx_type     idx_user_;
     //ug_tbl_type       tbl_ug_;
     wl_tbl_type       tbl_wl_;
@@ -281,7 +335,7 @@ struct loadtime_dists {
           revisions_per_page_dist(thread_rng, revisions_per_page_hist),
           text_len_dist(thread_rng, text_len_hist),
           user_watch_dist(thread_rng,
-                          0, std::min(num_pages, static_cast<uint64_t>(constants::max_watches_per_user)),
+                          0, std::min(num_pages, static_cast<size_t>(constants::max_watches_per_user)),
                           constants::num_watches_per_user_sigma),
           std_pg_rnd_dist(0.0, 100.0) {}
 };
@@ -463,6 +517,8 @@ template <typename DBParams>
 class wikipedia_runner {
 public:
     typedef wikipedia_db<DBParams> db_type;
+
+    static constexpr bool Commute = DBParams::Commute;
 
     wikipedia_runner(int runner_id, db_type& database, const run_params& params)
         : id(runner_id), db(database),
