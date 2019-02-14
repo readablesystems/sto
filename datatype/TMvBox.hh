@@ -3,6 +3,8 @@
 #include "Sto.hh"
 #include "MVCC.hh"
 
+class TMvBoxAccess;
+
 template <typename T>
 class TMvBox : public TObject {
 public:
@@ -144,6 +146,8 @@ protected:
     typedef typename object_type::history_type history_type;
 
     object_type v_;
+
+    friend class TMvBoxAccess;
 };
 
 class TMvCommuteIntegerBox : public TMvBox<int64_t> {
@@ -157,5 +161,15 @@ public:
         typedef TMvBox<int64_t>::comm_type comm_type;
         auto item = Sto::item(this, 0);
         item.add_commute(comm_type(delta));
+    }
+};
+
+// For unit tests to be able to access the underlying MVCC object...
+class TMvBoxAccess {
+public:
+    template <typename T>
+    static MvHistory<T>* head(const TMvBox<T> &box) {
+        auto rtid = Sto::read_tid();
+        return box.v_.find(rtid);
     }
 };

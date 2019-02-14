@@ -18,6 +18,9 @@ void MvRegistry::collect_garbage_() {
             gc_tid = std::min(gc_tid, ti.rtid);
         }
     }
+    if (gc_tid) {
+        gc_tid--;  // One less than the oldest rtid, unless that's 0...
+    }
 
     // Do the actual cleanup
     for (registry_type &registry : registries) {
@@ -38,10 +41,11 @@ void MvRegistry::collect_garbage_() {
             }
 
             // Find currently-visible version at gc_tid
-            bool found_committed = h->status_is(MvStatus::COMMITTED) && !h->status_is(MvStatus::DELTA);
-            while (gc_tid < h->wtid_ || !found_committed) {
+            while (gc_tid < h->wtid_) {
                 h = h->prev_;
-                found_committed = h->status_is(MvStatus::COMMITTED) && !h->status_is(MvStatus::DELTA);
+            }
+            if (h->status_is(MvStatus::DELTA)) {
+                h->enflatten();
             }
 
             base_type *garbo = h->prev_;  // First element to collect

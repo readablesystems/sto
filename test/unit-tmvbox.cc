@@ -367,6 +367,66 @@ void testMvInline() {
     printf("PASS: %s\n", __FUNCTION__);
 }
 
+void testCommuteGC() {
+    TMvCommuteIntegerBox box;
+    box.nontrans_write(0);
+
+    {
+        TestTransaction t1(1);
+        box.increment(1);
+        assert(t1.try_commit());
+
+        TestTransaction t2(2);
+        box.increment(2);
+        assert(t2.try_commit());
+
+        TestTransaction t3(3);
+        box.increment(3);
+        assert(t3.try_commit());
+
+        TestTransaction t4(4);
+        box.increment(4);
+        assert(t4.try_commit());
+    }
+
+    Transaction::epoch_advance_once();
+
+    MvHistory<int64_t> *h = nullptr;
+    {
+        TestTransaction t(5);
+        h = TMvBoxAccess::head(box);  // Needs to be called in a transaction
+        assert(t.try_commit());
+        assert(h);
+        assert(h->status_is(COMMITTED_DELTA));
+        auto hh = h;
+        for (auto i = 0; i < 4; i++) {
+            assert(hh);
+            assert(hh->status_is(COMMITTED_DELTA));
+            hh = hh->prev();
+        }
+        assert(hh);
+        assert(hh->status() == COMMITTED);
+        assert(!hh->prev());
+    }
+
+    MvRegistry::collect_garbage();
+
+    {
+        TestTransaction t(6);
+        auto hh = TMvBoxAccess::head(box);
+        assert(t.try_commit());
+        assert(h == hh);
+        assert(h->status_is(COMMITTED_DELTA));
+        assert(h->prev());
+        assert(h->prev()->status_is(COMMITTED));
+        assert(!h->prev()->prev());
+    }
+
+    assert(10 == box.nontrans_read());
+
+    printf("PASS: %s\n", __FUNCTION__);
+}
+
 
 int main() {
     testSimpleInt();
@@ -377,6 +437,7 @@ int main() {
     testMvWrites();
     testMvCommute1();
     testMvCommute2();
+    testCommuteGC();
 #if MVCC_INLINING
     testMvInline();
 #endif

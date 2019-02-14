@@ -153,6 +153,8 @@ protected:
     std::atomic<MvHistoryBase*> prev_;
     std::atomic<MvStatus> status_;  // Status of this element
 
+    virtual void enflatten() {}
+
 private:
     // Returns true if the given prev pointer would be a valid prev element
     bool is_valid_prev(const MvHistoryBase *prev) const {
@@ -226,7 +228,7 @@ private:
     T v_;
 
     // Initializes the flattening process
-    void enflatten() {
+    void enflatten() override {
         T v;
         prev()->flatten(v);
         v = c_.operate(v);
