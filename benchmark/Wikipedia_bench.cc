@@ -144,7 +144,7 @@ public:
 
         profiler.finish(total_commit_txns);
 
-        print_abort_histogram(runners);
+        //print_abort_histogram(runners);
 
         delete (&db);
         return 0;
