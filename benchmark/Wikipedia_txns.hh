@@ -163,8 +163,8 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAnony
 #endif
     //typedef page_restrictions_row::NamedColumn pr_nc;
     //typedef ipblocks_row::NamedColumn ipb_nc;
-    typedef revision_row::NamedColumn rev_nc;
-    typedef text_row::NamedColumn text_nc;
+    //typedef revision_row::NamedColumn rev_nc;
+    //typedef text_row::NamedColumn text_nc;
 
     (void)for_select;
     size_t nexecs = 0;
@@ -238,12 +238,12 @@ std::pair<size_t, article_type> wikipedia_runner<DBParams>::run_txn_getPageAnony
     */
 
     auto rev_id = page_v->page_latest;
-    std::tie(abort, result, std::ignore, value) = db.tbl_revision().select_row(revision_key(rev_id), {{rev_nc::rev_text_id, access_t::read}});
+    std::tie(abort, result, std::ignore, value) = db.tbl_revision().select_row(revision_key(rev_id), RowAccess::ObserveValue);
     TXN_DO(abort);
     assert(result);
     auto rev_text_id = reinterpret_cast<const revision_row *>(value)->rev_text_id;
 
-    std::tie(abort, result, std::ignore, value) = db.tbl_text().select_row(text_key(rev_text_id), {{text_nc::old_text, access_t::read}, {text_nc::old_flags, access_t::read}});
+    std::tie(abort, result, std::ignore, value) = db.tbl_text().select_row(text_key(rev_text_id), RowAccess::ObserveValue);
     TXN_DO(abort);
     assert(result);
 
