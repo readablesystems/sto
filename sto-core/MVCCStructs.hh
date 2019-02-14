@@ -271,6 +271,7 @@ public:
     MvObject()
             : h_(&ih_), ih_(this), rentry_(MvRegistry::reg(this)) {
         ih_.status_commit();
+        itid_ = ih_.rtid();
         if (std::is_trivial<T>::value) {
             ih_.v_ = T();
         } else {
@@ -281,17 +282,20 @@ public:
             : h_(&ih_), ih_(0, this, new T(value),
               rentry_(MvRegistry::reg(this))) {
         ih_.status_commit();
+        itid_ = ih_.rtid();
     }
     explicit MvObject(T&& value)
             : h_(&ih_), ih_(0, this, new T(std::move(value))),
               rentry_(MvRegistry::reg(this)) {
         ih_.status_commit();
+        itid_ = ih_.rtid();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
             : h_(&ih_), ih_(0, this, new T(std::forward<Args>(args)...)),
               rentry_(MvRegistry::reg(this)) {
         ih_.status_commit();
+        itid_ = ih_.rtid();
     }
 #else
     MvObject() : h_(new history_type(this)), rentry_(MvRegistry::reg(this)) {
@@ -383,6 +387,11 @@ public:
         }
 
         h->status_commit();
+#if MVCC_INLINING
+        if (h->prev() == &ih_) {
+            itid_ = h->wtid();
+        }
+#endif
         return true;
     }
 
@@ -434,6 +443,7 @@ public:
 #if MVCC_INLINING
         if (&ih_ == h) {
             ih_.status_unused();
+            itid_ = 0;
             return;
         }
 #endif
@@ -445,7 +455,16 @@ public:
     // regardless of status
     history_type* find(const type tid, const bool wait=true) const {
         fence();
-        history_type *h = static_cast<history_type*>(h_.load());
+        history_type *h;
+#if MVCC_INLINING
+        if (ih_.status_is(COMMITTED) && tid < itid_) {
+            h = (history_type*)&ih_;
+        } else {
+            h = static_cast<history_type*>(h_.load());
+        }
+#else
+        h = static_cast<history_type*>(h_.load());
+#endif
         /* TODO: use something smarter than a linear scan */
         while (h) {
             assert(!h->status_is(UNUSED));
@@ -480,6 +499,7 @@ public:
                 ih_.status_.compare_exchange_strong(status, PENDING)) {
             // Use inlined history element
             new (&ih_) history_type(std::forward<Args>(args)...);
+            itid_ = ih_.rtid();
             return &ih_;
         }
 #endif
@@ -528,6 +548,7 @@ protected:
     std::atomic<base_type*> h_;
 #if MVCC_INLINING
     history_type ih_;  // Inlined version
+    type itid_;  // TID representing until when the inlined version is correct
 #endif
     MvRegistry::MvRegistryEntry *rentry_;  // The corresponding registry entry
 
