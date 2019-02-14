@@ -409,7 +409,7 @@ size_t wikipedia_runner<DBParams>::run_txn_listPageNameSpace(int name_space) {
 
     page_idx_key pk0(name_space, std::string());
     page_idx_key pk1(name_space, std::string(255, (unsigned char)0xff));
-    abort = db.idx_page().template range_scan<decltype(scan_callback), false>(pk0, pk1, scan_callback, RowAccess::ObserveValue, false, 500/*retrieve 500 items*/);
+    abort = db.idx_page().template range_scan<decltype(scan_callback), false>(pk0, pk1, scan_callback, RowAccess::ObserveValue, false, 20/*retrieve 20 items*/);
     TXN_DO(abort);
 
     for (auto pair : pages) {
@@ -595,8 +595,6 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
 
         TRANSACTION {
 
-        ++nstarts;
-
         for (auto& u : watching_users) {
             std::tie(abort, result, row, value) = db.tbl_watchlist().select_row(watchlist_key(u, page_name_space, page_title),
                 Commute ? RowAccess::None : RowAccess::ObserveValue);
@@ -617,8 +615,6 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
         } RETRY(true);
 
         TRANSACTION {
-
-        ++nstarts;
 
         // INSERT LOG
         logging_key lg_k(db.tbl_logging().gen_key());
