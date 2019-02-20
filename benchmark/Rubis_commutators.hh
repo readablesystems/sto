@@ -5,7 +5,11 @@
 
 namespace commutators {
 
+#if TPCC_SPLIT_TABLE
+using item_row = rubis::item_comm_row;
+#else
 using item_row = rubis::item_row;
+#endif
 
 template <>
 class Commutator<item_row> {
