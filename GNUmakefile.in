@@ -161,6 +161,7 @@ PROGRAMS = \
 	pred_bench \
 	wiki_bench \
 	voter_bench \
+	rubis_bench \
 	$(UNIT_PROGRAMS)
 
 all: $(PROGRAMS)
@@ -322,6 +323,9 @@ wiki_bench: $(OBJ)/Wikipedia_bench.o $(OBJ)/Wikipedia_data.o $(INDEX_OBJS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 voter_bench: $(OBJ)/Voter_bench.o $(OBJ)/Voter_data.o $(INDEX_OBJS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
+rubis_bench: $(OBJ)/Rubis_bench.o $(INDEX_OBJS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 $(MASSTREE_OBJS): masstree ;
