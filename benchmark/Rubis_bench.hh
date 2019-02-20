@@ -20,7 +20,7 @@ struct constants {
     static constexpr size_t num_items = 500000;
     static constexpr size_t num_users = 100000;
     static constexpr double user_sigma = 0.2;
-    static constexpr double item_sigma = 0.5;
+    static constexpr double item_sigma = 0.8;
     static constexpr size_t num_bids_per_item = 10;
     static constexpr size_t buynow_prepop = 500000;
 };

@@ -23,7 +23,7 @@ rubis::workload_mix_type rubis::workload_weightgram = {
 
 // @section: clp parser definitions
 enum {
-    opt_dbid = 1, opt_nthrs, opt_users, opt_items, opt_time, opt_gc, opt_comm, opt_perf, opt_pfcnt
+    opt_dbid = 1, opt_nthrs, opt_users, opt_items, opt_sigma, opt_time, opt_gc, opt_comm, opt_perf, opt_pfcnt
 };
 
 static const Clp_Option options[] = {
@@ -31,6 +31,7 @@ static const Clp_Option options[] = {
         { "nthreads",     't', opt_nthrs, Clp_ValInt,    Clp_Optional },
         { "numusers",     'u', opt_users, Clp_ValUnsignedLong, Clp_Optional },
         { "numitems",     'e', opt_items, Clp_ValUnsignedLong, Clp_Optional },
+        { "itemsigma",    's', opt_sigma, Clp_ValDouble,       Clp_Optional },
         { "time",         'l', opt_time,  Clp_ValDouble, Clp_Optional },
         { "garbage-collect", 'g', opt_gc, Clp_NoVal,     Clp_Negate | Clp_Optional },
         { "commute",      'x', opt_comm,  Clp_NoVal,     Clp_Negate | Clp_Optional },
@@ -50,6 +51,8 @@ static inline void print_usage(const char *argv_0) {
        << "    Specify the number of active users (default " << rubis::constants::num_users << ")." << std::endl
        << "  --numitems=<NUM> (or -e<NUM>)" << std::endl
        << "    Specify the number of items (default " << rubis::constants::num_items << ")." << std::endl
+       << "  --itemsigma=<NUM> (or -s<NUM>)" << std::endl
+       << "    Specify the zipf contention level for items (default " << rubis::constants::item_sigma << ")." << std::endl
        << "  --time=<NUM> (or -l<NUM>)" << std::endl
        << "    Specify the time (duration) for which the benchmark is run (default 10 seconds)." << std::endl
        << "  --garbage-collect (or -g)" << std::endl
@@ -68,6 +71,7 @@ struct cmd_params {
     int num_threads;
     unsigned long num_users;
     unsigned long num_items;
+    double item_sigma;
     double time;
     bool enable_gc;
     bool enable_comm;
@@ -79,6 +83,7 @@ struct cmd_params {
               num_threads(1),
               num_users(rubis::constants::num_users),
               num_items(rubis::constants::num_items),
+              item_sigma(rubis::constants::item_sigma),
               time(10.0), enable_gc(false), enable_comm(false),
               spawn_perf(false), perf_counter_mode(false) {}
 };
@@ -99,14 +104,11 @@ public:
     }
 
     static int execute(cmd_params p) {
-        size_t num_users = p.num_users;
-        size_t num_items = p.num_items;
-
         rubis::run_params rp{};
         rp.time_limit = (size_t)(p.time * constants::processor_tsc_frequency * constants::billion);
-        rp.num_items = num_items;
-        rp.num_users = num_users;
-        rp.item_sigma = rubis::constants::item_sigma;
+        rp.num_items = p.num_items;
+        rp.num_users = p.num_users;
+        rp.item_sigma = p.item_sigma;
         rp.user_sigma = rubis::constants::user_sigma;
 
         // Create DB
@@ -185,6 +187,9 @@ int main(int argc, const char * const *argv) {
                 break;
             case opt_items:
                 params.num_items = clp->val.ul;
+                break;
+            case opt_sigma:
+                params.item_sigma = clp->val.d;
                 break;
             case opt_time:
                 params.time = clp->val.d;
