@@ -47,6 +47,10 @@ class ycsb_value : TObject {
 public:
     static constexpr size_t col_width = 10;
     static constexpr size_t num_cols = 10;
+    enum class NamedColumn : int {
+        col0 = 0,
+        col1, col2, col3, col4, col5, col6, col7, col8, col9
+    };
     typedef fix_string<col_width> col_type;
     typedef typename get_version<DBParams>::type version_type;
 
@@ -66,16 +70,22 @@ public:
     // return: success
     bool trans_col_update(int col_n, const col_type& new_col) {
         always_assert((size_t)col_n < num_cols, "column index out of bound");
+        auto item = Sto::item(this, col_n);
 #if TABLE_FINE_GRAINED
-        auto item = Sto::item(this, col_n);
         auto& v = (col_n % 2 == 0) ? v0 : v1;
-        if (!version_adapter::select_for_overwrite(item, v, &new_col))
-            return false;
 #else
-        auto item = Sto::item(this, col_n);
-        if (!version_adapter::select_for_overwrite(item, v0, &new_col))
-            return false;
+        auto& v = v0;
 #endif
+        if (DBParams::Commute) {
+            if (!version_adapter::select_for_overwrite(item, v, &new_col)) {
+                return false;
+            }
+        } else {
+            item.add_write(new_col);
+            if (!version_adapter::select_for_update(item, v)) {
+                return false;
+            }
+        }
         return true;
     }
 

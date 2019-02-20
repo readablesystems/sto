@@ -13,22 +13,47 @@ using namespace db_params;
 using bench::db_profiler;
 
 enum {
-    opt_dbid = 1, opt_nthrs, opt_mode, opt_time, opt_perf, opt_pfcnt
+    opt_dbid = 1, opt_nthrs, opt_mode, opt_time, opt_perf, opt_pfcnt, opt_gc,
+    opt_node, opt_comm
 };
 
 static const Clp_Option options[] = {
     { "dbid",         'i', opt_dbid,  Clp_ValString, Clp_Optional },
     { "nthreads",     't', opt_nthrs, Clp_ValInt,    Clp_Optional },
-    { "mode",         'm', opt_mode,  Clp_ValInt,    Clp_Optional },
+    { "mode",         'm', opt_mode,  Clp_ValString, Clp_Optional },
     { "time",         'l', opt_time,  Clp_ValDouble, Clp_Optional },
     { "perf",         'p', opt_perf,  Clp_NoVal,     Clp_Optional },
-    { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,     Clp_Negate| Clp_Optional }
+    { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,     Clp_Negate| Clp_Optional },
+    { "gc",           'g', opt_gc,    Clp_NoVal,     Clp_Negate| Clp_Optional },
+    { "node",         'n', opt_node,  Clp_NoVal,     Clp_Negate| Clp_Optional },
+    { "commute",      'x', opt_comm,  Clp_NoVal,     Clp_Negate| Clp_Optional },
 };
 
-void print_usage(const char *prog_name) {
-    (void)prog_name;
-    std::cout << ":)" << std::endl;
+static inline void print_usage(const char *argv_0) {
+    std::stringstream ss;
+    ss << "Usage of " << std::string(argv_0) << ":" << std::endl
+       << "  --dbid=<STRING> (or -i<STRING>)" << std::endl
+       << "    Specify the type of DB concurrency control used. Can be one of the followings:" << std::endl
+       << "      default, opaque, 2pl, adaptive, swiss, tictoc, defaultnode, mvcc, mvccnode" << std::endl
+       << "  --nthreads=<NUM> (or -t<NUM>)" << std::endl
+       << "    Specify the number of threads (or TPCC workers/terminals, default 1)." << std::endl
+       << "  --mode=<CHAR> (or -m<CHAR>)" << std::endl
+       << "    Specify which YCSB variant to run (A/B/C, default C)." << std::endl
+       << "  --time=<NUM> (or -l<NUM>)" << std::endl
+       << "    Specify the time (duration) for which the benchmark is run (default 10 seconds)." << std::endl
+       << "  --perf (or -p)" << std::endl
+       << "    Spawns perf profiler in record mode for the duration of the benchmark run." << std::endl
+       << "  --perf-counter (or -c)" << std::endl
+       << "    Spawns perf profiler in counter mode for the duration of the benchmark run." << std::endl
+       << "  --gc (or -g)" << std::endl
+       << "    Enable garbage collection (default false)." << std::endl
+       << "  --node (or -n)" << std::endl
+       << "    Enable node tracking (default false)." << std::endl
+       << "  --commute (or -x)" << std::endl
+       << "    Enable commutative updates in MVCC (default false)." << std::endl;
+    std::cout << ss.str() << std::flush;
 }
+
 
 template <typename DBParams>
 void ycsb_prepopulation_thread(int thread_id, ycsb_db<DBParams>& db, uint64_t key_begin, uint64_t key_end) {
@@ -91,9 +116,9 @@ public:
         txn_cnt = local_cnt;
     }
 
-    static void workload_generation(std::vector<ycsb_runner<DBParams>>& runners, int mode) {
+    static void workload_generation(std::vector<ycsb_runner<DBParams>>& runners, mode_id mode) {
         std::vector<std::thread> thrs;
-        int tsize = (mode == static_cast<int>(mode_id::ReadOnly)) ? 2 : 16;
+        int tsize = (mode == mode_id::ReadOnly) ? 2 : 16;
         for (auto& r : runners) {
             thrs.emplace_back(&ycsb_runner<DBParams>::gen_workload, &r, tsize);
         }
@@ -128,8 +153,9 @@ public:
         bool spawn_perf = false;
         bool counter_mode = false;
         int num_threads = 1;
-        int mode = static_cast<int>(mode_id::ReadOnly);
+        mode_id mode = mode_id::ReadOnly;
         double time_limit = 10.0;
+        bool enable_gc = false;
 
         Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
 
@@ -137,28 +163,51 @@ public:
         bool clp_stop = false;
         while (!clp_stop && ((opt = Clp_Next(clp)) != Clp_Done)) {
             switch (opt) {
-                case opt_dbid:
+            case opt_dbid:
+                break;
+            case opt_nthrs:
+                num_threads = clp->val.i;
+                break;
+            case opt_mode: {
+                switch (*clp->val.s) {
+                case 'A':
+                    mode = mode_id::HighContention;
                     break;
-                case opt_nthrs:
-                    num_threads = clp->val.i;
+                case 'B':
+                    mode = mode_id::MediumContention;
                     break;
-                case opt_mode:
-                    mode = clp->val.i;
-                    break;
-                case opt_time:
-                    time_limit = clp->val.d;
-                    break;
-                case opt_perf:
-                    spawn_perf = !clp->negated;
-                    break;
-                case opt_pfcnt:
-                    counter_mode = !clp->negated;
+                case 'C':
+                    mode = mode_id::ReadOnly;
                     break;
                 default:
                     print_usage(argv[0]);
                     ret = 1;
                     clp_stop = true;
                     break;
+                }
+                break;
+            }
+            case opt_time:
+                time_limit = clp->val.d;
+                break;
+            case opt_perf:
+                spawn_perf = !clp->negated;
+                break;
+            case opt_pfcnt:
+                counter_mode = !clp->negated;
+                break;
+            case opt_gc:
+                enable_gc = !clp->negated;
+                break;
+            case opt_node:
+                break;
+            case opt_comm:
+                break;
+            default:
+                print_usage(argv[0]);
+                ret = 1;
+                clp_stop = true;
+                break;
             }
         }
 
@@ -188,12 +237,17 @@ public:
 
         std::vector<ycsb_runner<DBParams>> runners;
         for (int i = 0; i < num_threads; ++i) {
-            runners.emplace_back(i, db, static_cast<mode_id>(mode));
+            runners.emplace_back(i, db, mode);
         }
 
+        std::thread advancer;
         std::cout << "Generating workload..." << std::endl;
         workload_generation(runners, mode);
         std::cout << "Done." << std::endl;
+        if (enable_gc) {
+            advancer = std::thread(&Transaction::epoch_advancer, nullptr);
+            advancer.detach();
+        }
 
         prof.start(profiler_mode);
         auto num_trans = run_benchmark(db, prof, runners, time_limit);
@@ -219,6 +273,8 @@ int main(int argc, const char *const *argv) {
 
     int opt;
     bool clp_stop = false;
+    bool node_tracking = false;
+    bool enable_commute = false;
     while (!clp_stop && ((opt = Clp_Next(clp)) != Clp_Done)) {
         switch (opt) {
         case opt_dbid:
@@ -230,6 +286,12 @@ int main(int argc, const char *const *argv) {
                 ret_code = 1;
                 clp_stop = true;
             }
+            break;
+        case opt_node:
+            node_tracking = !clp->negated;
+            break;
+        case opt_comm:
+            enable_commute = !clp->negated;
             break;
         default:
             break;
@@ -248,8 +310,17 @@ int main(int argc, const char *const *argv) {
 
     switch (dbid) {
     case db_params_id::Default:
-        ret_code = ycsb_access<db_default_params>::execute(argc, argv);
+        if (node_tracking && enable_commute) {
+            ret_code = ycsb_access<db_default_commute_node_params>::execute(argc, argv);
+        } else if (node_tracking) {
+            ret_code = ycsb_access<db_default_node_params>::execute(argc, argv);
+        } else if (enable_commute) {
+            ret_code = ycsb_access<db_default_commute_params>::execute(argc, argv);
+        } else {
+            ret_code = ycsb_access<db_default_params>::execute(argc, argv);
+        }
         break;
+    /*
     case db_params_id::Opaque:
         ret_code = ycsb_access<db_opaque_params>::execute(argc, argv);
         break;
@@ -264,6 +335,18 @@ int main(int argc, const char *const *argv) {
         break;
     case db_params_id::TicToc:
         ret_code = ycsb_access<db_tictoc_params>::execute(argc, argv);
+        break;
+    */
+    case db_params_id::MVCC:
+        if (node_tracking && enable_commute) {
+            ret_code = ycsb_access<db_mvcc_commute_node_params>::execute(argc, argv);
+        } else if (node_tracking) {
+            ret_code = ycsb_access<db_mvcc_node_params>::execute(argc, argv);
+        } else if (enable_commute) {
+            ret_code = ycsb_access<db_mvcc_commute_params>::execute(argc, argv);
+        } else {
+            ret_code = ycsb_access<db_mvcc_params>::execute(argc, argv);
+        }
         break;
     default:
         std::cerr << "unknown db config parameter id" << std::endl;

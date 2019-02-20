@@ -13,6 +13,7 @@
 
 namespace ycsb {
 
+using bench::mvcc_ordered_index;
 using bench::ordered_index;
 using bench::unordered_index;
 
@@ -22,11 +23,13 @@ template <typename DBParams>
 class ycsb_db {
 public:
     template <typename K, typename V>
-    using OIndex = ordered_index<K, V, DBParams>;
+    using OIndex = typename std::conditional<DBParams::MVCC,
+          mvcc_ordered_index<K, V, DBParams>,
+          ordered_index<K, V, DBParams>>::type;
     template <typename K, typename V>
     using UIndex = unordered_index<K, V, DBParams>;
 
-    typedef UIndex<ycsb_key, ycsb_value<DBParams>> ycsb_table_type;
+    typedef OIndex<ycsb_key, ycsb_value<DBParams>> ycsb_table_type;
 
     explicit ycsb_db() : ycsb_table_(ycsb_table_size) {}
 
@@ -35,7 +38,7 @@ public:
     }
 
     void table_thread_init() {
-        //ycsb_table_.thread_init();
+        ycsb_table_.thread_init();
     }
 
     void prepopulate();
