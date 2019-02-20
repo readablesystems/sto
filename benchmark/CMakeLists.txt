@@ -8,6 +8,7 @@ add_executable(micro_bench MicroBenchmarks.cc Micro_structs.hh ${COMMON_HEADERS}
 add_executable(pred_bench Predicate_bench.cc Predicate_bench.hh ${COMMON_HEADERS})
 add_executable(wiki_bench Wikipedia_bench.cc Wikipedia_data.cc Wikipedia_bench.hh Wikipedia_txns.hh Wikipedia_structs.hh Wikipedia_loader.hh ${COMMON_HEADERS} Wikipedia_selectors.hh)
 add_executable(voter_bench Voter_txns.hh Voter_structs.hh Voter_bench.hh Voter_bench.cc Voter_data.cc ${COMMON_HEADERS})
+add_executable(rubis_bench Rubis_bench.cc Rubis_bench.hh Rubis_structs.hh Rubis_txns.hh Rubis_commutators.hh ${COMMON_HEADERS})
 
 target_link_libraries(tpcc_bench db_index sto clp masstree json dprint xxhash ${PLATFORM_LIBRARIES})
 target_link_libraries(ycsb_bench db_index sto clp masstree json dprint xxhash ${PLATFORM_LIBRARIES})
@@ -15,3 +16,4 @@ target_link_libraries(micro_bench db_index sto clp masstree json dprint ${PLATFO
 target_link_libraries(pred_bench db_index sto clp masstree json dprint ${PLATFORM_LIBRARIES})
 target_link_libraries(wiki_bench db_index sto clp masstree json dprint ${PLATFORM_LIBRARIES})
 target_link_libraries(voter_bench db_index sto clp masstree json dprint ${PLATFORM_LIBRARIES})
+target_link_libraries(rubis_bench db_index sto clp masstree json dprint ${PLATFORM_LIBRARIES})
