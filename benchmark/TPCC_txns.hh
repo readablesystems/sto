@@ -221,7 +221,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
         double ol_amount = qty * i_price/100.0;
 
-        orderline_key olk(q_w_id, q_d_id, dt_next_oid, i);
+        orderline_key olk(q_w_id, q_d_id, dt_next_oid, i + 1);
 #if TPCC_SPLIT_TABLE
         orderline_const_value *lcv = Sto::tx_alloc<orderline_const_value>();
         orderline_comm_value *lmv = Sto::tx_alloc<orderline_comm_value>();
