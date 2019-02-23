@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <stack>
+
 #include "MVCCRegistry.hh"
 #include "MVCCTypes.hh"
 
@@ -243,17 +245,43 @@ private:
     }
 
     // Returns the flattened view of the current type
+    //void flatten(T &v) {
+    //    MvStatus s = status();
+    //    if (s == COMMITTED) {
+    //        v = v_;
+    //        return;
+    //    }
+    //    prev()->flatten(v);
+    //    if ((s = status()) == COMMITTED) {
+    //        v = v_;
+    //    } else if ((s & DELTA) == DELTA) {
+    //        v = c_.operate(v);
+    //    }
+    //}
+
     void flatten(T &v) {
+        std::stack<history_type*> trace;
+        history_type* curr = this;
         MvStatus s = status();
-        if (s == COMMITTED) {
-            v = v_;
-            return;
+        trace.push(curr);
+        while (true) {
+            if (s == COMMITTED) {
+                break;
+            }
+            curr = curr->prev();
+            s = curr->status();
+            trace.push(curr);
         }
-        prev()->flatten(v);
-        if ((s = status()) == COMMITTED) {
-            v = v_;
-        } else if ((s & DELTA) == DELTA) {
-            v = c_.operate(v);
+        while (!trace.empty()) {
+            auto h = trace.top();
+            trace.pop();
+
+            s = h->status();
+            if (s == COMMITTED) {
+                v = h->v_;
+            } else if ((s & DELTA) == DELTA) {
+                v = h->c_.operate(v);
+            }
         }
     }
 
@@ -414,16 +442,21 @@ public:
 
             // Discover target atomic on which to do CAS
             std::atomic<base_type*> *target = &h_;
-            while (target->load()->wtid() > tid) {
-                target = &target->load()->prev_;
+            base_type* t = target->load();
+            while (true) {
+                if (t->wtid() > tid) {
+                    target = &t->prev_;
+                    t = target->load();
+                } else {
+                    break;
+                }
             }
 
             // Properly link h's prev_
-            auto target_expected = target->load();
-            h->prev_.store(target_expected);
+            h->prev_.store(t);
 
             // Attempt to CAS onto the target
-            if (target->compare_exchange_strong(target_expected, h)) {
+            if (target->compare_exchange_strong(t, h)) {
                 break;
             }
         } while (true);

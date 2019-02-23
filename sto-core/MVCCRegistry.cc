@@ -44,6 +44,9 @@ void MvRegistry::collect_garbage_() {
             while (gc_tid < h->wtid_) {
                 h = h->prev_;
             }
+            while (h->status_is(MvStatus::ABORTED)) {
+                h = h->prev_;
+            }
             if (h->status_is(MvStatus::DELTA)) {
                 h->enflatten();
             }
