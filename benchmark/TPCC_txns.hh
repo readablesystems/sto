@@ -827,9 +827,9 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
             continue;
 
         order_key ok(q_w_id, q_d_id, order_id);
-        std::tie(success, result) = db.tbl_neworders(q_w_id).delete_row(ok);
-        TXN_DO(success);
-        assert(result);
+        //std::tie(success, result) = db.tbl_neworders(q_w_id).delete_row(ok);
+        //TXN_DO(success);
+        //assert(result);
 
 #if TPCC_SPLIT_TABLE
         std::tie(success, result, std::ignore, value) = db.tbl_orders_const(q_w_id).select_row(ok, RowAccess::ObserveValue);
