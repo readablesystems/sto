@@ -44,9 +44,6 @@ void MvRegistry::collect_garbage_() {
             while (gc_tid < h->wtid_) {
                 h = h->prev_;
             }
-            base_type *garbo = h->prev_;  // First element to collect
-            h->prev_ = nullptr;  // Ensures that future collection cycles know
-                                 // about the progress of previous cycles
 
             while (h->status_is(MvStatus::ABORTED)) {
                 h = h->prev_;
@@ -54,6 +51,9 @@ void MvRegistry::collect_garbage_() {
             if (h->status_is(MvStatus::DELTA)) {
                 h->enflatten();
             }
+            base_type *garbo = h->prev_;  // First element to collect
+            h->prev_ = nullptr;  // Ensures that future collection cycles know
+                                 // about the progress of previous cycles
 
             while (garbo) {
                 base_type *delet = garbo;

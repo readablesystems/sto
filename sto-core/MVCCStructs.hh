@@ -541,7 +541,7 @@ public:
 
     // Read-only
     const T& nontrans_access() const {
-        history_type *h = static_cast<history_type*>(h_);
+        history_type *h = static_cast<history_type*>(h_.load());
         /* TODO: head version caching */
         while (h) {
             if (h->status_is(COMMITTED)) {
