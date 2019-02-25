@@ -308,7 +308,7 @@ public:
     }
     explicit MvObject(const T& value)
             : h_(&ih_), ih_(0, this, value),
-              rentry_(MvRegistry::reg(this))) {
+              rentry_(MvRegistry::reg(this)) {
         ih_.status_commit();
         itid_ = ih_.rtid();
     }
@@ -359,7 +359,7 @@ public:
         while (h) {
 #if MVCC_INLINING
             if (&ih_ == h->prev_) {
-                h->prev_ = ih_.prev_;
+                h->prev_ = ih_.prev_.load();
                 ih_.status_unused();
             }
 #endif

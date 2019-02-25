@@ -2073,6 +2073,7 @@ public:
     }
 
     void unlock(TransItem& item) override {
+        (void)item;
         assert(!is_internode(item));
     }
 
