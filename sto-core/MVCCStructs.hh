@@ -307,20 +307,20 @@ public:
         }
     }
     explicit MvObject(const T& value)
-            : h_(&ih_), ih_(0, this, new T(value),
+            : h_(&ih_), ih_(0, this, value),
               rentry_(MvRegistry::reg(this))) {
         ih_.status_commit();
         itid_ = ih_.rtid();
     }
     explicit MvObject(T&& value)
-            : h_(&ih_), ih_(0, this, new T(std::move(value))),
+            : h_(&ih_), ih_(0, this, value),
               rentry_(MvRegistry::reg(this)) {
         ih_.status_commit();
         itid_ = ih_.rtid();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(&ih_), ih_(0, this, new T(std::forward<Args>(args)...)),
+            : h_(&ih_), ih_(0, this, T(std::forward<Args>(args)...)),
               rentry_(MvRegistry::reg(this)) {
         ih_.status_commit();
         itid_ = ih_.rtid();
@@ -335,18 +335,18 @@ public:
         }
     }
     explicit MvObject(const T& value)
-            : h_(new history_type(0, this, new T(value))),
+            : h_(new history_type(0, this, value)),
               rentry_(MvRegistry::reg(this)) {
         h_.load()->status_commit();
     }
     explicit MvObject(T&& value)
-            : h_(new history_type(0, this, new T(std::move(value)))),
+            : h_(new history_type(0, this, value)),
               rentry_(MvRegistry::reg(this)) {
         h_.load()->status_commit();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(new history_type(0, this, new T(std::forward<Args>(args)...))),
+            : h_(new history_type(0, this, T(std::forward<Args>(args)...))),
               rentry_(MvRegistry::reg(this)) {
         h_.load()->status_commit();
     }
