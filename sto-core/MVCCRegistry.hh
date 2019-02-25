@@ -38,9 +38,9 @@ public:
     }
 
     ~MvRegistry() {
-        stopped.store(true);
+        stopped = true;
         for (size_t i = 0; i < (sizeof registries) / (sizeof *registries); i++) {
-            MvRegistryEntry *entry = registries[i].load();
+            MvRegistryEntry *entry = registries[i];
             while (entry) {
                 MvRegistryEntry *next = entry->next;
                 delete entry;
@@ -87,7 +87,7 @@ MvRegistry::MvRegistryEntry* MvRegistry::reg_(MvObject<T> *obj) {
         );
     assert(entry->atomic_base);
     do {
-        entry->next = registry().load();
+        entry->next = registry();
     } while (!registry().compare_exchange_weak(entry->next, entry));
     return entry;
 }

@@ -5,10 +5,10 @@
 MvRegistry MvRegistry::registrar;
 
 void MvRegistry::collect_garbage_() {
-    if (stopped.load()) {
+    if (stopped) {
         return;
     }
-    type gc_tid = Transaction::_RTID.load();
+    type gc_tid = Transaction::_RTID;
 
     // Find the gc tid
     for (auto &ti : Transaction::tinfo) {
@@ -24,17 +24,17 @@ void MvRegistry::collect_garbage_() {
 
     // Do the actual cleanup
     for (registry_type &registry : registries) {
-        MvRegistryEntry *entry = registry.load();
+        MvRegistryEntry *entry = registry;
         while (entry) {
             auto curr = entry;
             entry = entry->next;
-            bool valid = curr->valid.load();
+            bool valid = curr->valid;
 
             if (!valid) {
                 continue;
             }
 
-            base_type *h = curr->atomic_base->load();
+            base_type *h = *curr->atomic_base;
 
             if (!h) {
                 continue;
@@ -44,6 +44,10 @@ void MvRegistry::collect_garbage_() {
             while (gc_tid < h->wtid_) {
                 h = h->prev_;
             }
+            base_type *garbo = h->prev_;  // First element to collect
+            h->prev_ = nullptr;  // Ensures that future collection cycles know
+                                 // about the progress of previous cycles
+
             while (h->status_is(MvStatus::ABORTED)) {
                 h = h->prev_;
             }
@@ -51,9 +55,6 @@ void MvRegistry::collect_garbage_() {
                 h->enflatten();
             }
 
-            base_type *garbo = h->prev_;  // First element to collect
-            h->prev_.store(nullptr);     // Ensures that future collection cycles know
-                                         // about the progress of previous cycles
             while (garbo) {
                 base_type *delet = garbo;
                 garbo = garbo->prev_;

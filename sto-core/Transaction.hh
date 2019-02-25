@@ -886,7 +886,7 @@ public:
             fence();
             epoch_advance_once();
             threadinfo_t& thr = tinfo[TThread::id()];
-            thr.rtid = read_tid_ = _RTID.load();
+            thr.rtid = read_tid_ = _RTID;
         }
         return read_tid_;
     }

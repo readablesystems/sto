@@ -33,7 +33,7 @@ public:
     // Attempt to set the pointer to prev; returns true on success
     bool prev(MvHistoryBase *prev) {
         if (is_valid_prev(prev)) {
-            prev_.store(prev);
+            prev_ = prev;
             return true;
         }
         return false;
@@ -41,12 +41,12 @@ public:
 
     // Returns the current rtid
     type rtid() const {
-        return rtid_.load();
+        return rtid_;
     }
 
     // Non-CAS assignment on the rtid
     type rtid(const type new_rtid) {
-        rtid_.store(new_rtid);
+        rtid_ = new_rtid;
         return rtid();
     }
 
@@ -59,14 +59,14 @@ public:
 
     // Returns the status
     MvStatus status() const {
-        return status_.load();
+        return status_;
     }
 
     // Sets and returns the status
     // NOT THREADSAFE
     MvStatus status(MvStatus s) {
-        status_.store(s);
-        return status_.load();
+        status_ = s;
+        return status_;
     }
     MvStatus status(unsigned long long s) {
         return status((MvStatus)s);
@@ -120,9 +120,9 @@ public:
     // Returns true if all the given flag(s) are set
     bool status_is(const MvStatus status) const {
         if (status == 0) {  // Special case
-            return status_.load() == 0;
+            return status_ == 0;
         }
-        return (status_.load() & status) == status;
+        return (status_ & status) == status;
     }
 
     // Returns the current wtid
@@ -160,7 +160,7 @@ protected:
 private:
     // Returns true if the given prev pointer would be a valid prev element
     bool is_valid_prev(const MvHistoryBase *prev) const {
-        return prev->rtid_.load() <= wtid_;
+        return prev->rtid_ <= wtid_;
     }
 
     std::atomic<type> rtid_;  // Read TID
@@ -353,18 +353,18 @@ public:
 #endif
 
     ~MvObject() {
-        rentry_->valid.store(false);
-        base_type *h = h_.load();
-        h_.store(nullptr);
+        rentry_->valid = false;
+        base_type *h = h_;
+        h_ = nullptr;
         while (h) {
 #if MVCC_INLINING
-            if (&ih_ == h->prev_.load()) {
-                h->prev_.store(ih_.prev_.load());
+            if (&ih_ == h->prev_) {
+                h->prev_ = ih_.prev_;
                 ih_.status_unused();
             }
 #endif
-            h->rtid_.store(h->wtid_ = 0);  // Make it GC-able
-            h = h->prev_.load();
+            h->rtid_ = h->wtid_ = 0;  // Make it GC-able
+            h = h->prev_;
         }
     }
 
@@ -442,18 +442,18 @@ public:
 
             // Discover target atomic on which to do CAS
             std::atomic<base_type*> *target = &h_;
-            base_type* t = target->load();
+            base_type* t = *target;
             while (true) {
                 if (t->wtid() > tid) {
                     target = &t->prev_;
-                    t = target->load();
+                    t = *target;
                 } else {
                     break;
                 }
             }
 
             // Properly link h's prev_
-            h->prev_.store(t);
+            h->prev_ = t;
 
             // Attempt to CAS onto the target
             if (target->compare_exchange_strong(t, h)) {
@@ -541,7 +541,7 @@ public:
 
     // Read-only
     const T& nontrans_access() const {
-        history_type *h = static_cast<history_type*>(h_.load());
+        history_type *h = static_cast<history_type*>(h_);
         /* TODO: head version caching */
         while (h) {
             if (h->status_is(COMMITTED)) {

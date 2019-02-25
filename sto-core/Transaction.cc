@@ -97,7 +97,7 @@ void Transaction::epoch_advance_once() {
         tid_type next = min_wtid - TransactionTid::increment_value;
         tid_type rtid;
         do {
-            rtid = _RTID.load();
+            rtid = _RTID;
         } while (rtid < next && !_RTID.compare_exchange_weak(rtid, next));
     }
 }
