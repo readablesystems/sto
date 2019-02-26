@@ -35,7 +35,8 @@ pid_t spawn(const std::string& name, perf_mode mode) {
         } else if (mode == perf_mode::counters) {
             exit(execl("/usr/bin/perf", "perf", "stat", "-e",
                 "cycles,cache-misses,cache-references,L1-dcache-loads,L1-dcache-load-misses,"
-                "context-switches,cpu-migrations,page-faults,branch-instructions,branch-misses",
+                "context-switches,cpu-migrations,page-faults,branch-instructions,branch-misses,"
+                "dTLB-load-misses,dTLB-loads",
                 "-o", profile_name.c_str(),
                 "-p", ss.str().c_str(), nullptr));
         }
