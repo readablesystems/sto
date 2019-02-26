@@ -5,7 +5,8 @@
 MvRegistry MvRegistry::registrar;
 
 void MvRegistry::collect_garbage_() {
-    if (stopped) {
+    if (is_stopping) {
+        is_done = true;
         return;
     }
     type gc_tid = Transaction::_RTID;
@@ -24,8 +25,16 @@ void MvRegistry::collect_garbage_() {
 
     // Do the actual cleanup
     for (registry_type &registry : registries) {
+        if (is_stopping) {
+            is_done = true;
+            return;
+        }
         MvRegistryEntry *entry = registry;
         while (entry) {
+            if (is_stopping) {
+                is_done = true;
+                return;
+            }
             auto curr = entry;
             entry = entry->next;
             bool valid = curr->valid;

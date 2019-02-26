@@ -297,7 +297,8 @@ public:
 
 #if MVCC_INLINING
     MvObject()
-            : h_(&ih_), ih_(this), rentry_(MvRegistry::reg(this)) {
+            : h_(&ih_), ih_(this) {
+        MvRegistry::reg(this);
         ih_.status_commit();
         itid_ = ih_.rtid();
         if (std::is_trivial<T>::value) {
@@ -307,26 +308,27 @@ public:
         }
     }
     explicit MvObject(const T& value)
-            : h_(&ih_), ih_(0, this, value),
-              rentry_(MvRegistry::reg(this)) {
+            : h_(&ih_), ih_(0, this, value) {
+        MvRegistry::reg(this);
         ih_.status_commit();
         itid_ = ih_.rtid();
     }
     explicit MvObject(T&& value)
-            : h_(&ih_), ih_(0, this, value),
-              rentry_(MvRegistry::reg(this)) {
+            : h_(&ih_), ih_(0, this, value) {
+        MvRegistry::reg(this);
         ih_.status_commit();
         itid_ = ih_.rtid();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(&ih_), ih_(0, this, T(std::forward<Args>(args)...)),
-              rentry_(MvRegistry::reg(this)) {
+            : h_(&ih_), ih_(0, this, T(std::forward<Args>(args)...)) {
+        MvRegistry::reg(this);
         ih_.status_commit();
         itid_ = ih_.rtid();
     }
 #else
-    MvObject() : h_(new history_type(this)), rentry_(MvRegistry::reg(this)) {
+    MvObject() : h_(new history_type(this)) {
+        MvRegistry::reg(this);
         h_.load()->status_commit();
         if (std::is_trivial<T>::value) {
             static_cast<history_type*>(h_.load())->v_ = T();
@@ -335,25 +337,25 @@ public:
         }
     }
     explicit MvObject(const T& value)
-            : h_(new history_type(0, this, value)),
-              rentry_(MvRegistry::reg(this)) {
+            : h_(new history_type(0, this, value)) {
+        MvRegistry::reg(this);
         h_.load()->status_commit();
     }
     explicit MvObject(T&& value)
-            : h_(new history_type(0, this, value)),
-              rentry_(MvRegistry::reg(this)) {
+            : h_(new history_type(0, this, value)) {
+        MvRegistry::reg(this);
         h_.load()->status_commit();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(new history_type(0, this, T(std::forward<Args>(args)...))),
-              rentry_(MvRegistry::reg(this)) {
+            : h_(new history_type(0, this, T(std::forward<Args>(args)...))) {
+        MvRegistry::reg(this);
         h_.load()->status_commit();
     }
 #endif
 
     ~MvObject() {
-        rentry_->valid = false;
+        rentry_.valid = false;
         base_type *h = h_;
         h_ = nullptr;
         while (h) {
@@ -583,7 +585,7 @@ protected:
     history_type ih_;  // Inlined version
     type itid_;  // TID representing until when the inlined version is correct
 #endif
-    MvRegistry::MvRegistryEntry *rentry_;  // The corresponding registry entry
+    MvRegistry::MvRegistryEntry rentry_;  // The corresponding registry entry
 
     friend class MvRegistry;
 };

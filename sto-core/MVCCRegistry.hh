@@ -20,13 +20,9 @@ public:
         MvRegistryEntry *next;
         std::atomic<bool> valid;
         const base_type *inlined;  // Inlined version
-
-        MvRegistryEntry(atomic_base_type *atomic_base, base_type *inlined) :
-            atomic_base(atomic_base), next(nullptr), valid(true),
-            inlined(inlined) {}
     };
 
-    MvRegistry() : stopped(false) {
+    MvRegistry() : is_done(false), is_stopping(false) {
         always_assert(
             this == &MvRegistry::registrar,
             "Only one MvRegistry can be created, which is the "
@@ -38,14 +34,9 @@ public:
     }
 
     ~MvRegistry() {
-        stopped = true;
+        is_stopping = true;
+        is_done = true;
         for (size_t i = 0; i < (sizeof registries) / (sizeof *registries); i++) {
-            MvRegistryEntry *entry = registries[i];
-            while (entry) {
-                MvRegistryEntry *next = entry->next;
-                delete entry;
-                entry = next;
-            }
             registries[i] = nullptr;
         }
     }
@@ -54,40 +45,57 @@ public:
         registrar.collect_garbage_();
     }
 
+    static bool done() {
+        return registrar.done_();
+    }
+
     template <typename T>
-    static MvRegistryEntry* reg(MvObject<T> *obj) {
-        return registrar.reg_(obj);
+    static void reg(MvObject<T> *obj) {
+        registrar.reg_(obj);
+    }
+
+    static void stop() {
+        registrar.stop_();
     }
 
 private:
     typedef std::atomic<MvRegistryEntry*> registry_type;
 
+    std::atomic<bool> is_done;
+    std::atomic<bool> is_stopping;
     static MvRegistry registrar;
-    std::atomic<bool> stopped;
     registry_type registries[MAX_THREADS];
 
     void collect_garbage_();
 
+    bool done_() {
+        return is_done;
+    }
+
     template <typename T>
-    MvRegistryEntry* reg_(MvObject<T> *obj);
+    void reg_(MvObject<T> *obj);
 
     inline registry_type& registry() {
         return registries[TThread::id()];
     }
+
+    void stop_() {
+        is_stopping = true;
+    }
 };
 
 template <typename T>
-MvRegistry::MvRegistryEntry* MvRegistry::reg_(MvObject<T> *obj) {
-    MvRegistryEntry *entry = new MvRegistryEntry(&obj->h_,
+void MvRegistry::reg_(MvObject<T> *obj) {
+    MvRegistryEntry *entry = &obj->rentry_;
+    entry->atomic_base = &obj->h_;
+    entry->valid = true;
 #if MVCC_INLINING
-        &obj->ih_
+    entry->inlined = &obj->ih_;
 #else
-        nullptr
+    entry->inlined = nullptr;
 #endif
-        );
     assert(entry->atomic_base);
     do {
         entry->next = registry();
     } while (!registry().compare_exchange_weak(entry->next, entry));
-    return entry;
 }
