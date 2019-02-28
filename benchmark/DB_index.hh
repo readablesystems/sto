@@ -639,10 +639,12 @@ public:
     };
 
     static std::vector<cell_access_t>
-    column_to_cell_accesses(const std::function<int(int)> &c_c_map,
-                            std::initializer_list<column_access_t> accesses,
+    column_to_cell_accesses(const std::function<int(int)>& c_c_map,
+                            const std::initializer_list<column_access_t>& accesses,
                             size_t num_versions) {
-        std::vector<access_t> all_cells(num_versions, access_t::none);
+        access_t all_cells[num_versions];
+        memset(all_cells, 0, sizeof(all_cells));
+        //std::vector<access_t> all_cells(num_versions, access_t::none);
         // the returned list
         std::vector<cell_access_t> cell_accesses;
 
@@ -652,9 +654,9 @@ public:
                     static_cast<int>(all_cells[cell_id]) | static_cast<int>(ca.access));
         }
 
-        for (auto it = all_cells.begin(); it != all_cells.end(); ++it) {
-            if (*it != access_t::none)
-                cell_accesses.emplace_back(static_cast<int>(it - all_cells.begin()), *it);
+        for (size_t i = 0; i < num_versions; ++i) {
+            if (all_cells[i] != access_t::none)
+                cell_accesses.emplace_back(static_cast<int>(i), all_cells[i]);
         }
         return cell_accesses;
     }
@@ -663,7 +665,6 @@ public:
     extract_item_list(const std::vector<cell_access_t>& cell_accesses, TObject *tobj, internal_elem *e) {
         bool any_has_write = false;
         std::vector<TransProxy> cell_items;
-        cell_items.reserve(cell_accesses.size());
         for (auto& ca : cell_accesses) {
             auto item = Sto::item(tobj, item_key_t(e, ca.cell_id));
             if (OIndexType::index_read_my_write && !any_has_write && item.has_write())
