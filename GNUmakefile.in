@@ -98,9 +98,9 @@ CXXFLAGS += -DBOOSTING -DSTO
 endif
 
 # debugging on by default
-#ifneq ($(NDEBUG),1)
+ifneq ($(NDEBUG),1)
 OPTFLAGS += -g
-#endif
+endif
 
 ifeq ($(PROFILE),1)
 OPTFLAGS += -g -pg -fno-inline

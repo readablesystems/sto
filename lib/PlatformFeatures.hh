@@ -11,6 +11,7 @@
 #include <sstream>
 
 #include <pthread.h>
+#include <jemalloc/jemalloc.h>
 
 static constexpr uint32_t level_bstr  = 0x80000004;
 
@@ -117,6 +118,18 @@ inline double get_cpu_brand_frequency() {
 }
 
 inline double determine_cpu_freq() {
+    char const* val = nullptr;
+    size_t len = sizeof(val);
+    int r;
+    r = mallctl("opt.metadata_thp", &val, &len, NULL, 0);
+    if (r == 0)
+        std::cout << "jemalloc metadata THP: " << std::string(val) << std::endl;
+
+    len = sizeof(val);
+    r = mallctl("opt.thp", &val, &len, NULL, 0);
+    if (r == 0)
+        std::cout << "jemalloc THP: " << std::string(val) << std::endl;
+
     double freq = 0.0;
     std::cout << "Checking for rdtscp support..." << std::flush;
     if (!cpu_has_feature<TscQuery>()) {
