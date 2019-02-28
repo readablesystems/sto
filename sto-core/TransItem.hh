@@ -14,6 +14,8 @@ class MvAccess;
 
 class TransProxy;
 
+class CicadaHashtable;
+
 template <typename VersImpl>
 class VersionBase;
 
@@ -285,6 +287,7 @@ private:
     friend class TWrappedAccess;
     friend class MvAccess;
     friend class VersionDelegate;
+    friend class CicadaHashtable;
 };
 
 class TransProxy {

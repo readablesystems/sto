@@ -380,6 +380,37 @@ private:
 template <typename VersImpl>
 class TicTocBase;
 
+class CicadaHashtable {
+public:
+    static constexpr uint16_t AccessBucketSize = 6;
+    static constexpr uint16_t AccessBucketRootCount = 257;
+    static constexpr uint16_t EmptyBucketID = static_cast<uint16_t>(-1);
+
+    explicit CicadaHashtable(Transaction& t)
+        : txn_(t), access_bucket_count_(0), access_buckets_(AccessBucketRootCount) {}
+
+    inline TransItem* find(TObject* owner, void* key) const;
+    inline void put(TObject* owner, void* key, uint32_t idx);
+    void clear() { access_bucket_count_ = 0; }
+
+private:
+    struct AccessBucket {
+        uint16_t count;
+        uint16_t next;
+        uint32_t idx[AccessBucketSize];
+    } __attribute__((aligned(64)));
+
+    static inline uint16_t hash_(TObject* owner, void* key) {
+        return static_cast<uint16_t>(
+            (reinterpret_cast<uintptr_t>(owner) / 64 + reinterpret_cast<uintptr_t>(key)) % AccessBucketRootCount
+        );
+    }
+
+    Transaction& txn_;
+    mutable uint16_t access_bucket_count_;
+    mutable std::vector<AccessBucket> access_buckets_;
+};
+
 class Transaction {
 public:
     typedef TransactionTid::type tid_type;
@@ -388,7 +419,7 @@ public:
 
     static constexpr unsigned tset_initial_capacity = 512;
 
-    static constexpr unsigned hash_size = 32768;
+    static constexpr unsigned hash_size = 32779;
     static constexpr unsigned hash_step = 5;
     using epoch_type = TRcuSet::epoch_type;
     using signed_epoch_type = TRcuSet::signed_epoch_type;
@@ -507,7 +538,7 @@ private:
     void initialize();
 
     Transaction()
-        : threadid_(TThread::id()), is_test_(false) {
+        : threadid_(TThread::id()), is_test_(false), cht_(*this) {
         initialize();
         start();
     }
@@ -516,13 +547,13 @@ private:
     static testing_type testing;
 
     Transaction(int threadid, const testing_type&)
-        : threadid_(threadid), is_test_(true), restarted(false) {
+        : threadid_(threadid), is_test_(true), restarted(false), cht_(*this) {
         initialize();
         start();
     }
 
     Transaction(bool)
-        : threadid_(TThread::id()), is_test_(false), restarted(false) {
+        : threadid_(TThread::id()), is_test_(false), restarted(false), cht_(*this) {
         initialize();
         state_ = s_aborted;
     }
@@ -549,8 +580,9 @@ private:
         hash_base_ += tset_size_ + 1;
         tset_size_ = 0;
         tset_next_ = tset0_;
-#if TRANSACTION_HASHTABLE
-        if (hash_base_ >= 32768) {
+        cht_.clear();
+#if CICADA_HASHTABLE == 0 && TRANSACTION_HASHTABLE
+        if (hash_base_ >= hash_size) {
             memset(hashtable_, 0, sizeof(hashtable_));
             /*if (TThread::always_allocate()) {
                 memset(hashtable_1024_, 0, sizeof(hashtable_1024_)); 
@@ -601,15 +633,19 @@ private:
     void refresh_tset_chunk();
 
     void allocate_item_update_hash(const TObject* obj, void* xkey) {
+#if CICADA_HASHTABLE
+        cht_.put(const_cast<TObject *>(obj), xkey, tset_size_ - 1);
+#else
 #if TRANSACTION_HASHTABLE
         unsigned hi = hash(obj, xkey);
         //bitvector_[hi % bv_size] = true;
-        # if TRANSACTION_HASHTABLE > 1
+# if TRANSACTION_HASHTABLE > 1
         if (hashtable_[hi] > hash_base_)
             hi = (hi + hash_step) % hash_size;
 # endif
         if (hashtable_[hi] <= hash_base_)
             hashtable_[hi] = hash_base_ + tset_size_;
+#endif
 #endif
     }
 
@@ -657,10 +693,13 @@ private:
 
     template <typename T>
     TransProxy item_inlined(const TObject* obj, T key) {
+#if CICADA_HASHTABLE
+        return item(obj, key);
+#else
+#if TRANSACTION_HASHTABLE
         bool found = false;
         TransItem* ti;
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
-#if TRANSACTION_HASHTABLE
         TXP_INCREMENT(txp_hash_find);
         unsigned hi = hash(obj, xkey);
         if (hashtable_[hi] > hash_base_) {
@@ -700,6 +739,7 @@ private:
         }
  
         return TransProxy(*this, *ti);
+#endif
     }
 
     // gets an item that is intended to be read only. this method essentially allows for duplicate items
@@ -742,6 +782,9 @@ private:
 #if STO_TSC_PROFILE
         TimeKeeper<tc_find_item> tk;
 #endif
+#if CICADA_HASHTABLE
+        return cht_.find(obj, xkey);
+#else
 #if TRANSACTION_HASHTABLE
         TXP_INCREMENT(txp_hash_find);
         unsigned hi = hash(obj, xkey);
@@ -772,7 +815,8 @@ private:
         }
 #endif
 	// std::cout << "Hash not found!" << std::endl;
-	return find_item_scan(obj, xkey); 
+	return find_item_scan(obj, xkey);
+#endif
    }
 
     bool preceding_duplicate_read(TransItem *it) const;
@@ -1059,8 +1103,11 @@ private:
     mutable tc_counter_type start_tsc_;
 #endif
     TransItem* tset_[tset_max_capacity / tset_chunk];
+    CicadaHashtable cht_;
+#if CICADA_HASHTABLE == 0
 #if TRANSACTION_HASHTABLE
     uint16_t hashtable_[hash_size];
+#endif
 #endif
     TransItem tset0_[tset_initial_capacity];
 
@@ -1072,9 +1119,81 @@ private:
     friend class Sto;
     friend class TestTransaction;
     friend class MvRegistry;
+    friend class CicadaHashtable;
 
     friend class VersionDelegate;
 };
+
+TransItem* CicadaHashtable::find(TObject* owner, void* xkey) const {
+    AccessBucket* bkt;
+    uint16_t bkt_id;
+    if (access_bucket_count_ == 0) {
+        for (uint16_t i = 0; i < AccessBucketRootCount; i++) {
+            access_buckets_[i].count = 0;
+            access_buckets_[i].next = EmptyBucketID;
+        }
+        access_bucket_count_ = AccessBucketRootCount;
+    }
+
+    bkt_id = hash_(owner, xkey);
+    bkt = &access_buckets_[bkt_id];
+    while (true) {
+        for (auto i = 0; i < bkt->count; i++) {
+            auto idx = bkt->idx[i];
+            TransItem* ti;
+            if (likely(idx < txn_.tset_initial_capacity))
+                ti = &txn_.tset0_[idx];
+            else
+                ti = &txn_.tset_[idx / txn_.tset_chunk][idx % txn_.tset_chunk];
+            if (ti->owner() == owner && ti->key_ == xkey) {
+                return ti;
+            }
+        }
+        if (bkt->next == EmptyBucketID) break;
+        bkt_id = bkt->next;
+        bkt = &access_buckets_[bkt_id];
+    }
+    return nullptr;
+}
+
+void CicadaHashtable::put(TObject* owner, void* xkey, uint32_t idx) {
+    AccessBucket* bkt;
+    uint16_t bkt_id;
+    // TODO: Factor this out because it is used later again.
+    if (access_bucket_count_ == 0) {
+        for (uint16_t i = 0; i < AccessBucketRootCount; i++) {
+            access_buckets_[i].count = 0;
+            access_buckets_[i].next = EmptyBucketID;
+        }
+        access_bucket_count_ = AccessBucketRootCount;
+    }
+
+    bkt_id = hash_(owner, xkey);
+    bkt = &access_buckets_[bkt_id];
+    while (true) {
+        if (bkt->next == EmptyBucketID) break;
+        bkt_id = bkt->next;
+        bkt = &access_buckets_[bkt_id];
+    }
+
+    if (bkt->count == AccessBucketSize) {
+        // Allocate a new acccess bucket if needed.
+        auto new_bkt_id = access_bucket_count_++;
+        if (access_buckets_.size() < access_bucket_count_)
+            access_buckets_.resize(access_bucket_count_);
+        auto new_bkt = &access_buckets_[new_bkt_id];
+        new_bkt->count = 0;
+        new_bkt->next = EmptyBucketID;
+
+        // We must refresh bkt pointer because std::vector's resize() can move
+        // the buffer.
+        bkt = &access_buckets_[bkt_id];
+        bkt->next = new_bkt_id;
+        bkt = new_bkt;
+    }
+    bkt->idx[bkt->count++] = idx;
+}
+
 
 template <int T, bool tmp_stats>
 inline void TimeKeeper<T, tmp_stats>::sync_thread_counter() {
