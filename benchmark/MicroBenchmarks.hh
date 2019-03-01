@@ -57,7 +57,7 @@ struct UBenchParams {
 };
 
 inline std::ostream& operator<<(std::ostream& os, const UBenchParams& p) {
-    os << "Benchmark finished using CC=" << tpcc::db_params_id_names[static_cast<int>(p.dbid)] << ", ";
+    os << "Benchmark finished using CC=" << db_params::db_params_id_names[static_cast<int>(p.dbid)] << ", ";
     os << "datatype=" << datatype_names[static_cast<int>(p.datatype)] << " with "
        << p.nthreads << " threads" << std::endl;
     os << p.ntrans << " txns, " << p.opspertrans << " ops/txn (" << p.opspertrans_ro
@@ -372,7 +372,7 @@ public:
 
 template <typename IntType>
 struct MasstreeIntKey {
-    explicit MasstreeIntKey(IntType k) : k_(tpcc::bswap(k)) {}
+    explicit MasstreeIntKey(IntType k) : k_(bench::bswap(k)) {}
 
     operator lcdf::Str() const {
         return lcdf::Str((const char *)this, sizeof(*this));
@@ -388,7 +388,7 @@ public:
     typedef MasstreeIntKey<sampling::index_t> key_type;
     typedef typename compute_value_type<WLImpl::RTParams::granules>::type value_type;
     typedef typename value_type::NamedColumn nc;
-    typedef typename tpcc::ordered_index<key_type, value_type, DBParams> index_type;
+    typedef typename bench::ordered_index<key_type, value_type, DBParams> index_type;
     typedef typename bench::access_t access_t;
 
     explicit MasstreeTester(size_t num_threads) : Base(num_threads), mt_() {}

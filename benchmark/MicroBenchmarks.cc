@@ -1,13 +1,11 @@
-#include <clp.h>
-#include "TPCC_bench.hh"
-#include "MicroBenchmarks.hh"
 #include "clp.h"
+#include "MicroBenchmarks.hh"
 
 // global flags
 ubench::UBenchParams ubench::params;
 
 // global cpu frequency in GHz
-double tpcc::constants::processor_tsc_frequency;
+double db_params::constants::processor_tsc_frequency;
 
 enum {
     opt_ccid = 1,
@@ -79,36 +77,36 @@ inline void instantiate_and_execute_testers() {
     using ubench::MtZipfTesterDefault;
     using ubench::MtZipfTesterMeasure;
     using ubench::params;
-    using tpcc::db_params_id;
+    using db_params::db_params_id;
 
     switch (params.dbid) {
         case db_params_id::Default: {
-            typename tester<G, tpcc::db_default_params, InsMeasure>::type t(params.nthreads);
+            typename tester<G, db_params::db_default_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
         case db_params_id::Opaque: {
-            typename tester<G, tpcc::db_opaque_params, InsMeasure>::type t(params.nthreads);
+            typename tester<G, db_params::db_opaque_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
         case db_params_id::TwoPL: {
-            typename tester<G, tpcc::db_2pl_params, InsMeasure>::type t(params.nthreads);
+            typename tester<G, db_params::db_2pl_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
         case db_params_id::Adaptive: {
-            typename tester<G, tpcc::db_adaptive_params, InsMeasure>::type t(params.nthreads);
+            typename tester<G, db_params::db_adaptive_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
         case db_params_id::Swiss: {
-            typename tester<G, tpcc::db_swiss_params, InsMeasure>::type t(params.nthreads);
+            typename tester<G, db_params::db_swiss_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
         case db_params_id::TicToc: {
-            typename tester<G, tpcc::db_tictoc_params, InsMeasure>::type t(params.nthreads);
+            typename tester<G, db_params::db_tictoc_params, InsMeasure>::type t(params.nthreads);
             t.execute();
             break;
         }
@@ -128,7 +126,7 @@ inline void instantiate_and_exec_outer(bool ins_measure) {
 
 int main(int argc, const char *argv[]) {
     using ubench::params;
-    using tpcc::db_params_id;
+    using db_params::db_params_id;
 
     // Default parameter values
     params.dbid = db_params_id::Default;
@@ -157,7 +155,7 @@ int main(int argc, const char *argv[]) {
     while (!clp_stop && ((opt = Clp_Next(clp)) != Clp_Done)) {
         switch (opt) {
             case opt_ccid:
-                params.dbid = tpcc::parse_dbid(clp->val.s);
+                params.dbid = db_params::parse_dbid(clp->val.s);
                 break;
             case opt_type:
                 params.datatype = ubench::parse_datatype(clp->val.s);
@@ -226,8 +224,8 @@ int main(int argc, const char *argv[]) {
     auto freq = determine_cpu_freq();
     if (freq == 0.0)
         return 1;
-    tpcc::constants::processor_tsc_frequency = freq;
-    params.proc_frequency_hz = (uint64_t)(freq * tpcc::constants::billion);
+    db_params::constants::processor_tsc_frequency = freq;
+    params.proc_frequency_hz = (uint64_t)(freq * db_params::constants::billion);
 
     always_assert(params.datatype == ubench::DsType::masstree, "Only Masstree is currently supported");
 
