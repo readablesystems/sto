@@ -576,7 +576,7 @@ private:
 
 enum class RowAccess : int { None = 0, ObserveExists, ObserveValue, UpdateValue };
 
-enum class access_t : int { none = 0, read = 1, write = 2, update = 3 };
+enum class access_t : int8_t { none = 0, read = 1, write = 2, update = 3 };
 
 template <typename OIndexType>
 class split_version_helpers {
@@ -590,16 +590,6 @@ public:
 
         column_access_t(NamedColumn column, access_t access)
                 : col_id(static_cast<int>(column)), access(access) {}
-    };
-
-    struct cell_access_t {
-        int cell_id;
-        access_t access;
-
-        cell_access_t() = default;
-
-        cell_access_t(int cid, access_t access)
-                : cell_id(cid), access(access) {}
     };
 
     // TransItem key format:
@@ -641,34 +631,27 @@ public:
     };
 
     template <typename T>
-    static std::array<cell_access_t, T::num_versions>
+    constexpr static std::array<access_t, T::num_versions>
     column_to_cell_accesses(const std::initializer_list<column_access_t>& accesses) {
         constexpr size_t num_versions = T::num_versions;
-        std::array<access_t, num_versions> all_cells {};
-        std::array<cell_access_t, num_versions> cell_accesses {};
+        std::array<access_t, num_versions> cell_accesses { access_t::none };
 
-        for (auto ca : accesses) {
-            int cell_id = T::map(ca.col_id);
-            all_cells[cell_id]  = static_cast<access_t>(
-                    static_cast<int>(all_cells[cell_id]) | static_cast<int>(ca.access));
-        }
-
-        for (size_t i = 0; i < num_versions; ++i) {
-            cell_accesses[i] = { static_cast<int>(i), all_cells[i] };
+        for (constexpr auto ca : accesses) {
+            constexpr int cell_id = T::map(ca.col_id);
+            cell_accesses[cell_id]  = static_cast<access_t>(
+                    static_cast<int>(cell_accesses[cell_id]) | static_cast<int>(ca.access));
         }
         return cell_accesses;
     }
 
     template <typename T>
     static std::pair<bool, std::array<TransItem*, T::num_versions>>
-    extract_item_list(const std::array<cell_access_t, T::num_versions>& cell_accesses, TObject *tobj, internal_elem *e) {
+    extract_item_list(const std::array<access_t, T::num_versions>& cell_accesses, TObject *tobj, internal_elem *e) {
         bool any_has_write = false;
-        std::array<TransItem*, T::num_versions> cell_items {};
+        std::array<TransItem*, T::num_versions> cell_items { nullptr };
         for (size_t i = 0; i < T::num_versions; ++i) {
             auto ca = cell_accesses[i];
-            if (ca.access == access_t::none) {
-                cell_items[i] = nullptr;
-            } else {
+            if (ca.access != access_t::none) {
                 auto item = Sto::item(tobj, item_key_t(e, ca.cell_id));
                 if (OIndexType::index_read_my_write && !any_has_write && item.has_write())
                     any_has_write = true;
@@ -760,7 +743,6 @@ public:
     typedef typename unlocked_cursor_type::nodeversion_value_type nodeversion_value_type;
 
     using column_access_t = typename split_version_helpers<ordered_index<K, V, DBParams>>::column_access_t;
-    using cell_access_t = typename split_version_helpers<ordered_index<K, V, DBParams>>::cell_access_t;
     using item_key_t = typename split_version_helpers<ordered_index<K, V, DBParams>>::item_key_t;
     template <typename T>
     static constexpr auto column_to_cell_accesses
@@ -1424,16 +1406,15 @@ private:
     uint64_t key_gen_;
 
     static bool
-    access_all(std::array<cell_access_t, value_container_type::num_versions>& cell_accesses, std::array<TransItem*, value_container_type::num_versions>& cell_items, value_container_type& row_container) {
-        for (auto it = cell_items.begin(); it != cell_items.end(); ++it) {
-            auto idx = it - cell_items.begin();
+    access_all(std::array<access_t, value_container_type::num_versions>& cell_accesses, std::array<TransItem*, value_container_type::num_versions>& cell_items, value_container_type& row_container) {
+        for (size_t idx = 0; idx < cell_accesses.size(); ++idx) {
             auto& access = cell_accesses[idx];
-            auto proxy = TransProxy(*Sto::transaction(), **it);
-            if (static_cast<int>(access.access) & static_cast<int>(access_t::read)) {
+            auto proxy = TransProxy(*Sto::transaction(), *cell_items[idx]);
+            if (static_cast<uint8_t>(access) & static_cast<uint8_t>(access_t::read)) {
                 if (!proxy.observe(row_container.version_at(access.cell_id)))
                     return false;
             }
-            if (static_cast<int>(access.access) & static_cast<int>(access_t::write)) {
+            if (static_cast<uint8_t>(access) & static_cast<uint8_t>(access_t::write)) {
                 if (!proxy.acquire_write(row_container.version_at(access.cell_id)))
                     return false;
                 if (proxy.item().key<item_key_t>().is_row_item()) {
@@ -1592,7 +1573,6 @@ public:
     typedef std::tuple<bool, bool>                               del_return_type;
 
     using column_access_t = typename split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::column_access_t;
-    using cell_access_t = typename split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::cell_access_t;
     using item_key_t = typename split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::item_key_t;
     template <typename T>
     static constexpr auto column_to_cell_accesses
@@ -2169,7 +2149,7 @@ private:
     uint64_t key_gen_;
 
     static bool
-    access_all(std::array<cell_access_t, internal_elem::num_versions>&, std::array<TransItem*, internal_elem::num_versions>&, internal_elem*) {
+    access_all(std::array<access_t, internal_elem::num_versions>&, std::array<TransItem*, internal_elem::num_versions>&, internal_elem*) {
         always_assert(false, "Not implemented.");
         return true;
     }
