@@ -134,13 +134,13 @@ int main(int argc, const char *const *argv) {
     */
     case db_params_id::MVCC:
         if (node_tracking && enable_commute) {
-            ret_code = tpcc_access<db_mvcc_commute_node_params>::execute(argc, argv);
+            ret_code = tpcc_mcn(argc, argv);
         } else if (node_tracking) {
-            ret_code = tpcc_access<db_mvcc_node_params>::execute(argc, argv);
+            ret_code = tpcc_mn(argc, argv);
         } else if (enable_commute) {
-            ret_code = tpcc_access<db_mvcc_commute_params>::execute(argc, argv);
+            ret_code = tpcc_mc(argc, argv);
         } else {
-            ret_code = tpcc_access<db_mvcc_params>::execute(argc, argv);
+            ret_code = tpcc_m(argc, argv);
         }
         break;
     default:
