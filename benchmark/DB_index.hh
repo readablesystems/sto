@@ -1011,7 +1011,7 @@ public:
             //    item.add_write<value_type>(*vptr);
             //else
             //    item.add_write<value_type *>(vptr);
-            row_item.add_write();
+            row_item.acquire_write(e->version());
             row_item.add_flags(insert_bit);
 
             // update the node version already in the read set and modified by split
