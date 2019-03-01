@@ -1,10 +1,9 @@
 #pragma once
 
-#include <pthread.h>
-
 #if defined(__APPLE__)
 
 #include <errno.h>
+#include <pthread.h>
 
 #define PTHREAD_BARRIER_SERIAL_THREAD 1
 
