@@ -596,6 +596,8 @@ public:
         int cell_id;
         access_t access;
 
+        cell_access_t() = default;
+
         cell_access_t(int cid, access_t access)
                 : cell_id(cid), access(access) {}
     };
@@ -639,12 +641,11 @@ public:
     };
 
     template <typename T>
-    static std::vector<cell_access_t>
+    static std::array<cell_access_t, T::num_versions>
     column_to_cell_accesses(const std::initializer_list<column_access_t>& accesses) {
         constexpr size_t num_versions = T::num_versions;
-        access_t all_cells[num_versions];
-        memset(all_cells, 0, sizeof(all_cells));
-        std::vector<cell_access_t> cell_accesses;
+        std::array<access_t, num_versions> all_cells {};
+        std::array<cell_access_t, num_versions> cell_accesses {};
 
         for (auto ca : accesses) {
             int cell_id = T::map(ca.col_id);
@@ -653,23 +654,28 @@ public:
         }
 
         for (size_t i = 0; i < num_versions; ++i) {
-            if (all_cells[i] != access_t::none)
-                cell_accesses.emplace_back(static_cast<int>(i), all_cells[i]);
+            cell_accesses[i] = { static_cast<int>(i), all_cells[i] };
         }
         return cell_accesses;
     }
 
-    static std::pair<bool, std::vector<TransProxy>>
-    extract_item_list(const std::vector<cell_access_t>& cell_accesses, TObject *tobj, internal_elem *e) {
+    template <typename T>
+    static std::pair<bool, std::array<TransItem*, T::num_versions>>
+    extract_item_list(const std::array<cell_access_t, T::num_versions>& cell_accesses, TObject *tobj, internal_elem *e) {
         bool any_has_write = false;
-        std::vector<TransProxy> cell_items;
-        for (auto& ca : cell_accesses) {
-            auto item = Sto::item(tobj, item_key_t(e, ca.cell_id));
-            if (OIndexType::index_read_my_write && !any_has_write && item.has_write())
-                any_has_write = true;
-            cell_items.push_back(std::move(item));
+        std::array<TransItem*, T::num_versions> cell_items {};
+        for (size_t i = 0; i < T::num_versions; ++i) {
+            auto ca = cell_accesses[i];
+            if (ca.access == access_t::none) {
+                cell_items[i] = nullptr;
+            } else {
+                auto item = Sto::item(tobj, item_key_t(e, ca.cell_id));
+                if (OIndexType::index_read_my_write && !any_has_write && item.has_write())
+                    any_has_write = true;
+                cell_items[i] = &item.item();
+            }
         }
-        return {any_has_write, cell_items};
+        return { any_has_write, cell_items };
     }
 
 };
@@ -757,8 +763,11 @@ public:
     using cell_access_t = typename split_version_helpers<ordered_index<K, V, DBParams>>::cell_access_t;
     using item_key_t = typename split_version_helpers<ordered_index<K, V, DBParams>>::item_key_t;
     template <typename T>
-    static constexpr auto column_to_cell_accesses = split_version_helpers<ordered_index<K, V, DBParams>>::template column_to_cell_accesses<T>;
-    static constexpr auto extract_item_list = split_version_helpers<ordered_index<K, V, DBParams>>::extract_item_list;
+    static constexpr auto column_to_cell_accesses
+        = split_version_helpers<ordered_index<K, V, DBParams>>::template column_to_cell_accesses<T>;
+    template <typename T>
+    static constexpr auto extract_item_list
+        = split_version_helpers<ordered_index<K, V, DBParams>>::template extract_item_list<T>;
 
     typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
     typedef std::tuple<bool, bool>                               ins_return_type;
@@ -884,10 +893,10 @@ public:
         // all buffered writes are only stored in the wdata_ of the row item (to avoid redundant copies)
         auto cell_accesses = column_to_cell_accesses<value_container_type>(accesses);
 
-        std::vector<TransProxy> cell_items;
+        std::array<TransItem*, value_container_type::num_versions> cell_items {};
         bool any_has_write;
         bool ok;
-        std::tie(any_has_write, cell_items) = extract_item_list(cell_accesses, this, e);
+        std::tie(any_has_write, cell_items) = extract_item_list<value_container_type>(cell_accesses, this, e);
 
         if (is_phantom(e, row_item))
             goto abort;
@@ -1088,8 +1097,8 @@ public:
                                                       : Sto::fresh_item(this, item_key_t::row_item_key(e));
 
             bool any_has_write;
-            std::vector<TransProxy> cell_items;
-            std::tie(any_has_write, cell_items) = extract_item_list(cell_accesses, this, e);
+            std::array<TransItem*, value_container_type::num_versions> cell_items {};
+            std::tie(any_has_write, cell_items) = extract_item_list<value_container_type>(cell_accesses, this, e);
 
             if (index_read_my_write) {
                 if (has_delete(row_item)) {
@@ -1415,19 +1424,20 @@ private:
     uint64_t key_gen_;
 
     static bool
-    access_all(std::vector<cell_access_t>& cell_accesses, std::vector<TransProxy>& cell_items, value_container_type& row_container) {
+    access_all(std::array<cell_access_t, value_container_type::num_versions>& cell_accesses, std::array<TransItem*, value_container_type::num_versions>& cell_items, value_container_type& row_container) {
         for (auto it = cell_items.begin(); it != cell_items.end(); ++it) {
             auto idx = it - cell_items.begin();
             auto& access = cell_accesses[idx];
+            auto proxy = TransProxy(*Sto::transaction(), **it);
             if (static_cast<int>(access.access) & static_cast<int>(access_t::read)) {
-                if (!it->observe(row_container.version_at(access.cell_id)))
+                if (!proxy.observe(row_container.version_at(access.cell_id)))
                     return false;
             }
             if (static_cast<int>(access.access) & static_cast<int>(access_t::write)) {
-                if (!it->acquire_write(row_container.version_at(access.cell_id)))
+                if (!proxy.acquire_write(row_container.version_at(access.cell_id)))
                     return false;
-                if (it->item().key<item_key_t>().is_row_item()) {
-                    it->item().add_flags(row_cell_bit);
+                if (proxy.item().key<item_key_t>().is_row_item()) {
+                    proxy.item().add_flags(row_cell_bit);
                 }
             }
         }
@@ -1585,8 +1595,10 @@ public:
     using cell_access_t = typename split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::cell_access_t;
     using item_key_t = typename split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::item_key_t;
     template <typename T>
-    static constexpr auto column_to_cell_accesses = split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::template column_to_cell_accesses<T>;
-    static constexpr auto extract_item_list = split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::extract_item_list;
+    static constexpr auto column_to_cell_accesses
+        = split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::template column_to_cell_accesses<T>;
+    template <typename T>
+    static constexpr auto extract_item_list = split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::template extract_item_list<T>;
 
     static __thread typename table_params::threadinfo_type *ti;
 
@@ -1705,9 +1717,9 @@ public:
         // all buffered writes are only stored in the wdata_ of the row item (to avoid redundant copies)
         auto cell_accesses = column_to_cell_accesses<internal_elem>(accesses);
 
-        std::vector<TransProxy> cell_items;
+        std::array<TransItem*, internal_elem::num_versions> cell_items {};
         bool any_has_write;
-        std::tie(any_has_write, cell_items) = extract_item_list(cell_accesses, this, e);
+        std::tie(any_has_write, cell_items) = extract_item_list<internal_elem>(cell_accesses, this, e);
 
         auto h = e->row.find(Sto::read_tid());
 
@@ -1892,8 +1904,8 @@ public:
                                                       : Sto::fresh_item(this, item_key_t::row_item_key(e));
 
             bool any_has_write;
-            std::vector<TransProxy> cell_items;
-            std::tie(any_has_write, cell_items) = extract_item_list(cell_accesses, this, e);
+            std::array<TransItem*, internal_elem::num_versions> cell_items {};
+            std::tie(any_has_write, cell_items) = extract_item_list<internal_elem>(cell_accesses, this, e);
 
             if (index_read_my_write) {
                 if (has_delete(row_item)) {
@@ -1915,7 +1927,7 @@ public:
             //}
 
             // skip invalid (inserted but yet committed) values, but do not abort
-            auto h = cell_items[0].template read_value<history_type *>();
+            auto h = cell_items[0]->template read_value<history_type *>();
             if (h->status_is(DELETED)) {
                 ret = true;
                 return true;
@@ -2157,7 +2169,7 @@ private:
     uint64_t key_gen_;
 
     static bool
-    access_all(std::vector<cell_access_t>&, std::vector<TransProxy>&, internal_elem*) {
+    access_all(std::array<cell_access_t, internal_elem::num_versions>&, std::array<TransItem*, internal_elem::num_versions>&, internal_elem*) {
         always_assert(false, "Not implemented.");
         return true;
     }
