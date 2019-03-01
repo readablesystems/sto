@@ -632,14 +632,14 @@ public:
 
     template <typename T>
     constexpr static std::array<access_t, T::num_versions>
-    column_to_cell_accesses(const std::initializer_list<column_access_t>& accesses) {
+    column_to_cell_accesses(std::initializer_list<column_access_t> accesses) {
         constexpr size_t num_versions = T::num_versions;
         std::array<access_t, num_versions> cell_accesses { access_t::none };
 
-        for (constexpr auto ca : accesses) {
-            constexpr int cell_id = T::map(ca.col_id);
+        for (auto it = accesses.begin(); it != accesses.end(); ++it) {
+            int cell_id = T::map(it->col_id);
             cell_accesses[cell_id]  = static_cast<access_t>(
-                    static_cast<int>(cell_accesses[cell_id]) | static_cast<int>(ca.access));
+                    static_cast<uint8_t>(cell_accesses[cell_id]) | static_cast<uint8_t>(it->access));
         }
         return cell_accesses;
     }
@@ -650,9 +650,8 @@ public:
         bool any_has_write = false;
         std::array<TransItem*, T::num_versions> cell_items { nullptr };
         for (size_t i = 0; i < T::num_versions; ++i) {
-            auto ca = cell_accesses[i];
-            if (ca.access != access_t::none) {
-                auto item = Sto::item(tobj, item_key_t(e, ca.cell_id));
+            if (cell_accesses[i] != access_t::none) {
+                auto item = Sto::item(tobj, item_key_t(e, i));
                 if (OIndexType::index_read_my_write && !any_has_write && item.has_write())
                     any_has_write = true;
                 cell_items[i] = &item.item();
@@ -1411,11 +1410,11 @@ private:
             auto& access = cell_accesses[idx];
             auto proxy = TransProxy(*Sto::transaction(), *cell_items[idx]);
             if (static_cast<uint8_t>(access) & static_cast<uint8_t>(access_t::read)) {
-                if (!proxy.observe(row_container.version_at(access.cell_id)))
+                if (!proxy.observe(row_container.version_at(idx)))
                     return false;
             }
             if (static_cast<uint8_t>(access) & static_cast<uint8_t>(access_t::write)) {
-                if (!proxy.acquire_write(row_container.version_at(access.cell_id)))
+                if (!proxy.acquire_write(row_container.version_at(idx)))
                     return false;
                 if (proxy.item().key<item_key_t>().is_row_item()) {
                     proxy.item().add_flags(row_cell_bit);
