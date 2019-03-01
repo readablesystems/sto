@@ -19,7 +19,7 @@ public:
         new (&vers_[0]) version_type(v, insert);
     }
 
-    static int map_impl(int col_n) {
+    constexpr static int map_impl(int col_n) {
         typedef tpcc::district_value::NamedColumn nc;
         auto col_name = static_cast<nc>(col_n);
         if (col_name == nc::d_ytd)
@@ -69,7 +69,7 @@ public:
         new (&vers_[0]) version_type(v, insert);
     }
 
-    static int map_impl(int col_n) {
+    constexpr static int map_impl(int col_n) {
         uint64_t mask = ~(~0ul << vidx_width) ;
         int shift = col_n * vidx_width;
         return static_cast<int>((col_cell_map & (mask << shift)) >> shift);
@@ -124,7 +124,7 @@ public:
     explicit VerSel(type v) : vers_() { (void)v; }
     VerSel(type v, bool insert) : vers_() { (void)v; (void)insert; }
 
-    static int map_impl(int col_n) {
+    constexpr static int map_impl(int col_n) {
         uint64_t mask = ~(~0ul << vidx_width) ;
         int shift = col_n * vidx_width;
         return static_cast<int>((col_cell_map & (mask << shift)) >> shift);
@@ -166,7 +166,7 @@ public:
     explicit VerSel(type v) : vers_() { (void)v; }
     VerSel(type v, bool insert) : vers_() { (void)v; (void)insert; }
 
-    static int map_impl(int col_n) {
+    constexpr static int map_impl(int col_n) {
         uint64_t mask = ~(~0ul << vidx_width) ;
         int shift = col_n * vidx_width;
         return static_cast<int>((col_cell_map & (mask << shift)) >> shift);

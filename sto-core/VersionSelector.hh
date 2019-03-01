@@ -17,7 +17,7 @@ class VerSelBase {
 public:
     typedef VersImpl version_type;
 
-    static int map(int col_n) {
+    constexpr static int map(int col_n) {
         return T::map_impl(col_n);
     }
 
@@ -50,7 +50,7 @@ public:
     explicit VerSel(type v) : vers_(v) {}
     VerSel(type v, bool insert) : vers_(v, insert) {}
 
-    static int map_impl(int col_n) {
+    constexpr static int map_impl(int col_n) {
         (void)col_n;
         return 0;
     }
@@ -144,7 +144,7 @@ public:
         new (&vers_[0]) version_type(v, insert);
     }
 
-    static int map_impl(int col_n) {
+    constexpr static int map_impl(int col_n) {
         if (col_n == 0)
             return 0;
         else

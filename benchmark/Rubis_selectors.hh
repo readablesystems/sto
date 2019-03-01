@@ -20,7 +20,7 @@ public:
         new(&vers_[0]) version_type(v, insert);
     }
 
-    static int map_impl(int col_n) {
+    constexpr static int map_impl(int col_n) {
         typedef rubis::item_row::NamedColumn nc;
         auto col_name = static_cast<nc>(col_n);
         if (col_name == nc::quantity || col_name == nc::max_bid

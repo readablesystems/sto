@@ -19,7 +19,7 @@ public:
         new (&vers_[0]) version_type(v, insert);
     }
 
-    static int map_impl(int col_n) {
+    constexpr static int map_impl(int col_n) {
         typedef wikipedia::page_row::NamedColumn nc;
         auto col_name = static_cast<nc>(col_n);
         if (col_name == nc::page_namespace || col_name == nc::page_title
@@ -74,7 +74,7 @@ public:
         new (&vers_[0]) version_type(v, insert);
     }
 
-    static int map_impl(int col_n) {
+    constexpr static int map_impl(int col_n) {
         typedef wikipedia::useracct_row::NamedColumn nc;
         auto col_name = static_cast<nc>(col_n);
         if (col_name == nc::user_touched || col_name == nc::user_editcount)

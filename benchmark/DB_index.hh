@@ -638,18 +638,16 @@ public:
         }
     };
 
+    template <typename T>
     static std::vector<cell_access_t>
-    column_to_cell_accesses(const std::function<int(int)>& c_c_map,
-                            const std::initializer_list<column_access_t>& accesses,
-                            size_t num_versions) {
+    column_to_cell_accesses(const std::initializer_list<column_access_t>& accesses) {
+        constexpr size_t num_versions = T::num_versions;
         access_t all_cells[num_versions];
         memset(all_cells, 0, sizeof(all_cells));
-        //std::vector<access_t> all_cells(num_versions, access_t::none);
-        // the returned list
         std::vector<cell_access_t> cell_accesses;
 
         for (auto ca : accesses) {
-            int cell_id = c_c_map(ca.col_id);
+            int cell_id = T::map(ca.col_id);
             all_cells[cell_id]  = static_cast<access_t>(
                     static_cast<int>(all_cells[cell_id]) | static_cast<int>(ca.access));
         }
@@ -758,7 +756,8 @@ public:
     using column_access_t = typename split_version_helpers<ordered_index<K, V, DBParams>>::column_access_t;
     using cell_access_t = typename split_version_helpers<ordered_index<K, V, DBParams>>::cell_access_t;
     using item_key_t = typename split_version_helpers<ordered_index<K, V, DBParams>>::item_key_t;
-    static constexpr auto column_to_cell_accesses = split_version_helpers<ordered_index<K, V, DBParams>>::column_to_cell_accesses;
+    template <typename T>
+    static constexpr auto column_to_cell_accesses = split_version_helpers<ordered_index<K, V, DBParams>>::template column_to_cell_accesses<T>;
     static constexpr auto extract_item_list = split_version_helpers<ordered_index<K, V, DBParams>>::extract_item_list;
 
     typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
@@ -883,7 +882,7 @@ public:
 
         // Translate from column accesses to cell accesses
         // all buffered writes are only stored in the wdata_ of the row item (to avoid redundant copies)
-        auto cell_accesses = column_to_cell_accesses(value_container_type::map, accesses, value_container_type::num_versions);
+        auto cell_accesses = column_to_cell_accesses<value_container_type>(accesses);
 
         std::vector<TransProxy> cell_items;
         bool any_has_write;
@@ -1082,7 +1081,7 @@ public:
             return ((!phantom_protection) || register_internode_version(node, version));
         };
 
-        auto cell_accesses = column_to_cell_accesses(value_container_type::map, accesses, value_container_type::num_versions);
+        auto cell_accesses = column_to_cell_accesses<value_container_type>(accesses);
 
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret) {
             TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
@@ -1531,13 +1530,14 @@ public:
     static constexpr bool index_read_my_write = DBParams::RdMyWr;
 
     struct internal_elem {
+        static constexpr size_t num_versions = 1;
         key_type key;
         object_type row;
 
         internal_elem(const key_type& k)
             : key(k), row() {}
 
-        static int map(int col_n) {
+        constexpr static int map(int col_n) {
             (void)col_n;  // TODO(column-splitting)
             return 0;
         }
@@ -1584,7 +1584,8 @@ public:
     using column_access_t = typename split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::column_access_t;
     using cell_access_t = typename split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::cell_access_t;
     using item_key_t = typename split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::item_key_t;
-    static constexpr auto column_to_cell_accesses = split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::column_to_cell_accesses;
+    template <typename T>
+    static constexpr auto column_to_cell_accesses = split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::template column_to_cell_accesses<T>;
     static constexpr auto extract_item_list = split_version_helpers<mvcc_ordered_index<K, V, DBParams>>::extract_item_list;
 
     static __thread typename table_params::threadinfo_type *ti;
@@ -1702,7 +1703,7 @@ public:
 
         // Translate from column accesses to cell accesses
         // all buffered writes are only stored in the wdata_ of the row item (to avoid redundant copies)
-        auto cell_accesses = column_to_cell_accesses(internal_elem::map, accesses, 1);
+        auto cell_accesses = column_to_cell_accesses<internal_elem>(accesses);
 
         std::vector<TransProxy> cell_items;
         bool any_has_write;
@@ -1884,7 +1885,7 @@ public:
             return ((!phantom_protection) || register_internode_version(node, version));
         };
 
-        auto cell_accesses = column_to_cell_accesses(internal_elem::map, accesses, 1);
+        auto cell_accesses = column_to_cell_accesses<internal_elem>(accesses);
 
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret) {
             TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
