@@ -2,8 +2,6 @@
 
 #pragma once
 
-#include "MVCCTypes.hh"
-
 namespace commutators { 
 
 template <typename T>

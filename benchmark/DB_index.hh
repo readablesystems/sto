@@ -15,6 +15,7 @@
 
 #include <vector>
 #include "DB_structs.hh"
+#include "CellSelectors.hh"
 #include "VersionSelector.hh"
 #include "MVCC.hh"
 
@@ -1506,8 +1507,8 @@ public:
     typedef K key_type;
     typedef V value_type;
     typedef MvObject<value_type> object_type;
-    typedef typename object_type::history_type history_type;
     typedef commutators::Commutator<value_type> comm_type;
+    typedef cell_sel::CellSelector<object_type> selector_type;
 
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit << 1u;
@@ -1522,14 +1523,13 @@ public:
     struct internal_elem {
         static constexpr size_t num_versions = 1;
         key_type key;
-        object_type row;
+        selector_type container;
 
         internal_elem(const key_type& k)
-            : key(k), row() {}
+            : key(k), container() {}
 
         constexpr static int map(int col_n) {
-            (void)col_n;  // TODO(column-splitting)
-            return 0;
+            return selector_type::map(col_n);
         }
     };
 
@@ -1651,16 +1651,9 @@ public:
         auto e = reinterpret_cast<internal_elem *>(rid);
         TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
-        history_type *h = e->row.find(Sto::read_tid());
-
-        if (h->status_is(UNUSED)) {
-            return sel_return_type(true, false, 0, nullptr);
-        }
-
-        if (is_phantom(h, row_item))
-            return sel_return_type(true, false, 0, nullptr);
-
         if (index_read_my_write) {
+            static_assert(!index_read_my_write, "Read-My-Writes not supported for MVCC");
+/*
             if (has_delete(row_item)) {
                 return sel_return_type(true, false, 0, nullptr);
             }
@@ -1673,18 +1666,14 @@ public:
                 assert(vptr);
                 return sel_return_type(true, true, rid, vptr);
             }
+*/
         }
 
-        if (access != RowAccess::None) {
-            MvAccess::template read<value_type>(row_item, h);
-            auto vp = h->vp();
-            assert(vp);
-            return sel_return_type(true, true, rid, vp);
-        } else {
-            auto vp = &(e->row.nontrans_access());
-            assert(vp);
-            return sel_return_type(true, true, rid, vp);
+        auto vp = e->container.read(access, row_item, has_insert(row_item));
+        if (!vp) {
+            return sel_return_type(true, false, 0, nullptr);
         }
+        return sel_return_type(true, true, rid, vp);
     }
 
     sel_return_type
@@ -1710,6 +1699,8 @@ public:
             return sel_return_type(true, false, 0, nullptr);
 
         if (index_read_my_write) {
+            static_assert(!index_read_my_write, "Read-My-Writes not supported for MVCC");
+/*
             if (has_delete(row_item)) {
                 return sel_return_type(true, false, 0, nullptr);
             }
@@ -1722,6 +1713,7 @@ public:
                 assert(vptr);
                 return sel_return_type(true, true, rid, vptr);
             }
+*/
         }
 
         access_all(cell_accesses, cell_items, e);
@@ -2149,7 +2141,20 @@ private:
 
     static bool
     access_all(std::array<access_t, internal_elem::num_versions>&, std::array<TransItem*, internal_elem::num_versions>&, internal_elem*) {
-        always_assert(false, "Not implemented.");
+        for (size_t idx = 0; idx < cell_accesses.size(); ++idx) {
+            auto& access = cell_accesses[idx];
+            auto proxy = TransProxy(*Sto::transaction(), *cell_items[idx]);
+            if (static_cast<uint8_t>(access) & static_cast<uint8_t>(access_t::read)) {
+                MvAccess::template read<value_type>(row_container, h);
+            }
+            if (static_cast<uint8_t>(access) & static_cast<uint8_t>(access_t::write)) {
+                if (!proxy.acquire_write(row_container.version_at(idx)))
+                    return false;
+                if (proxy.item().key<item_key_t>().is_row_item()) {
+                    proxy.item().add_flags(row_cell_bit);
+                }
+            }
+        }
         return true;
     }
 
@@ -2164,9 +2169,6 @@ private:
     }
     static bool has_row_cell(const TransItem& item) {
         return (item.flags() & row_cell_bit) != 0;
-    }
-    static bool is_phantom(const history_type *h, const TransItem& item) {
-        return (h->status_is(DELETED) && !has_insert(item));
     }
 
     bool register_internode_version(node_type *node, nodeversion_value_type nodeversion) {

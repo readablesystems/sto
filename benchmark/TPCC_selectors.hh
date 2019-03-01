@@ -1,7 +1,9 @@
 #pragma once
 
 #include "Sto.hh"
+#include "CellSelectors.hh"
 #include "VersionSelector.hh"
+#include "MVCC_structs.hh"
 #include "TPCC_structs.hh"
 
 namespace ver_sel {
@@ -202,3 +204,128 @@ private:
 
 }; // namespace ver_sel
 
+namespace cell_sel {
+
+template <>
+class CellSelector<MvObject<tpcc::district_value>> {
+public:
+    using nc = tpcc::district_value::NamedColumn;
+    constexpr static int map(int col_n) {
+        if (col_n == static_cast<int>(nc::d_ytd)) {
+            return 1;
+        }
+        return 0;
+    }
+
+    struct cell0 {
+        var_string<10> d_name;
+        var_string<20> d_street_1;
+        var_string<20> d_street_2;
+        var_string<20> d_city;
+        fix_string<2>  d_state;
+        fix_string<9>  d_zip;
+        int64_t        d_tax;
+    };
+
+    struct cell1 {
+        int64_t d_ytd;
+    };
+
+    std::tuple<MvObject<cell0>, MvObject<cell1>> cells();
+};
+
+template <>
+class CellSelector<MvObject<tpcc::customer_value>> {
+public:
+    using nc = tpcc::customer_value::NamedColumn;
+    constexpr static int map(int col_n) {
+        if (col_n == static_cast<int>(nc::c_balance)
+                || col_n == static_cast<int>(nc::c_ytd_payment)
+                || col_n == static_cast<int>(nc::c_payment_cnt)
+                || col_n == static_cast<int>(nc::c_delivery_cnt)
+                || col_n == static_cast<int>(nc::c_data)
+                ) {
+            return 1;
+        }
+        return 0;
+    }
+
+    struct cell0 {
+        var_string<16>  c_first;
+        fix_string<2>   c_middle;
+        var_string<16>  c_last;
+        var_string<20>  c_street_1;
+        var_string<20>  c_street_2;
+        var_string<20>  c_city;
+        fix_string<2>   c_state;
+        fix_string<9>   c_zip;
+        fix_string<16>  c_phone;
+        uint32_t        c_since;
+        fix_string<2>   c_credit;
+        int64_t         c_credit_lim;
+        int64_t         c_discount;
+    };
+
+    struct cell1 {
+        int64_t         c_balance;
+        int64_t         c_ytd_payment;
+        uint16_t        c_payment_cnt;
+        uint16_t        c_delivery_cnt;
+        fix_string<500> c_data;
+    };
+
+    std::tuple<MvObject<cell0>, MvObject<cell1>> cells();
+};
+
+template <>
+class CellSelector<MvObject<tpcc::order_value>> {
+public:
+    using nc = tpcc::order_value::NamedColumn;
+    constexpr static int map(int col_n) {
+        if (col_n == static_cast<int>(nc::o_carrier_id)) {
+            return 1;
+        }
+        return 0;
+    }
+
+    struct cell0 {
+        uint64_t o_c_id;
+        uint32_t o_entry_d;
+        uint32_t o_ol_cnt;
+        uint32_t o_all_local;
+    };
+
+    struct cell1 {
+        uint64_t o_carrier_id;
+    };
+
+    std::tuple<MvObject<cell0>, MvObject<cell1>> cells();
+};
+
+template <>
+class CellSelector<MvObject<tpcc::orderline_value>> {
+public:
+    using nc = tpcc::orderline_value::NamedColumn;
+    constexpr static int map(int col_n) {
+        if (col_n == static_cast<int>(nc::ol_delivery_d)) {
+            return 1;
+        }
+        return 0;
+    }
+
+    struct cell0 {
+        uint64_t       ol_i_id;
+        uint64_t       ol_supply_w_id;
+        uint32_t       ol_quantity;
+        int32_t        ol_amount;
+        fix_string<24> ol_dist_info;
+    };
+
+    struct cell1 {
+        uint32_t ol_delivery_d;
+    };
+
+    std::tuple<MvObject<cell0>, MvObject<cell1>> cells();
+};
+
+}; // namespace cell_sel
