@@ -11,7 +11,10 @@
 #include <sstream>
 
 #include <pthread.h>
+#if defined(__APPLE__)
+#else
 #include <jemalloc/jemalloc.h>
+#endif
 
 static constexpr uint32_t level_bstr  = 0x80000004;
 
@@ -118,6 +121,8 @@ inline double get_cpu_brand_frequency() {
 }
 
 inline double determine_cpu_freq() {
+#if defined(__APPLE__)
+#else
     char const* val = nullptr;
     size_t len = sizeof(val);
     int r;
@@ -129,6 +134,7 @@ inline double determine_cpu_freq() {
     r = mallctl("opt.thp", &val, &len, NULL, 0);
     if (r == 0)
         std::cout << "jemalloc THP: " << std::string(val) << std::endl;
+#endif
 
     double freq = 0.0;
     std::cout << "Checking for rdtscp support..." << std::flush;

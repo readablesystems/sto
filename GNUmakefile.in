@@ -183,6 +183,9 @@ check: act-unit
 $(OBJ)/%.o: lib/%.c config.h $(DEPSDIR)/stamp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
 
+$(OBJ)/%.o: lib/%.cc config.h $(DEPSDIR)/stamp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
+
 $(OBJ)/%.o: sto-core/%.cc config.h $(DEPSDIR)/stamp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) $(DEPCFLAGS) -include config.h -c -o $@ $<
 
@@ -204,7 +207,8 @@ MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 	$(MASSTREEDIR)/string_slice.o
 
 MVCC_OBJS = $(OBJ)/MVCCRegistry.o
-STO_OBJS = $(OBJ)/Packer.o $(OBJ)/Transaction.o $(OBJ)/TRcu.o $(OBJ)/clp.o $(OBJ)/ContentionManager.o $(LIBOBJS) $(MVCC_OBJS)
+STO_OBJS = $(OBJ)/Packer.o $(OBJ)/Transaction.o $(OBJ)/TRcu.o $(OBJ)/clp.o $(OBJ)/barrier.o $(OBJ)/SystemProfiler.o \
+    $(OBJ)/ContentionManager.o $(LIBOBJS) $(MVCC_OBJS)
 INDEX_OBJS = $(STO_OBJS) $(MASSTREE_OBJS) $(OBJ)/DB_index.o
 STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
 INDEX_DEPS = $(INDEX_OBJS) $(MASSTREEDIR)/libjson.a
@@ -308,8 +312,8 @@ predicates: $(OBJ)/predicates.o $(STO_DEPS)
 hashtable_nostm: $(OBJ)/hashtable_nostm.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
-tpcc_bench: $(OBJ)/TPCC_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
+tpcc_bench: $(OBJ)/TPCC_bench.o $(OBJ)/tpcc_d.o $(OBJ)/tpcc_dc.o $(OBJ)/tpcc_dn.o $(OBJ)/tpcc_dcn.o $(INDEX_OBJS) $(XXHASH_OBJ)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 ycsb_bench: $(OBJ)/YCSB_bench.o $(INDEX_OBJS) $(XXHASH_OBJ)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_OBJS) $(XXHASH_OBJ) $(LDFLAGS) $(LIBS)
