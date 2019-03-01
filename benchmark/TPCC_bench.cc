@@ -125,13 +125,13 @@ int main(int argc, const char *const *argv) {
     case db_params_id::Adaptive:
         ret_code = tpcc_access<db_adaptive_params>::execute(argc, argv);
         break;
+    */
     case db_params_id::Swiss:
         ret_code = tpcc_access<db_swiss_params>::execute(argc, argv);
         break;
     case db_params_id::TicToc:
         ret_code = tpcc_access<db_tictoc_params>::execute(argc, argv);
         break;
-    */
     case db_params_id::MVCC:
         if (node_tracking && enable_commute) {
             ret_code = tpcc_mcn(argc, argv);

@@ -2,7 +2,7 @@ add_library(db_index DB_index.cc DB_index.hh)
 
 set(COMMON_HEADERS ../lib/sampling.hh)
 
-add_executable(tpcc_bench TPCC_bench.cc TPCC_structs.hh DB_structs.hh DB_params.hh DB_profiler.hh tpcc_d.cc tpcc_dc.cc tpcc_dn.cc tpcc_dcn.cc ${COMMON_HEADERS})
+add_executable(tpcc_bench TPCC_bench.cc TPCC_structs.hh DB_structs.hh DB_params.hh DB_profiler.hh tpcc_d.cc tpcc_dc.cc tpcc_dn.cc tpcc_dcn.cc tpcc_m.cc tpcc_mc.cc tpcc_mn.cc tpcc_mcn.cc ${COMMON_HEADERS})
 add_executable(ycsb_bench YCSB_bench.cc YCSB_structs.hh DB_structs.hh DB_params.hh DB_profiler.hh ${COMMON_HEADERS})
 add_executable(micro_bench MicroBenchmarks.cc Micro_structs.hh ${COMMON_HEADERS})
 add_executable(pred_bench Predicate_bench.cc Predicate_bench.hh ${COMMON_HEADERS})

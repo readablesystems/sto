@@ -95,10 +95,11 @@ struct get_version {
             typename get_occ_version<DBParams>::type>::type>::type>::type>::type>::type type;
 };
 
+template <typename DBParams>
 class TCommuteIntegerBox : public TObject {
 public:
     typedef int64_t int_type;
-    typedef TNonopaqueVersion version_type;
+    typedef typename get_version<DBParams>::type version_type;
 
     TCommuteIntegerBox()
         : vers(Sto::initialized_tid() | TransactionTid::nonopaque_bit),
@@ -120,7 +121,7 @@ public:
 
     void increment(int_type i) {
         auto item = Sto::item(this, 0);
-        item.add_write(i);
+        item.acquire_write(vers, i);
     }
 
     bool lock(TransItem& item, Transaction& txn) override {
@@ -146,7 +147,7 @@ private:
 template <typename DBParams>
 struct integer_box {
     typedef typename std::conditional<DBParams::MVCC,
-        TMvCommuteIntegerBox, TCommuteIntegerBox>::type type;
+        TMvCommuteIntegerBox, TCommuteIntegerBox<DBParams>>::type type;
 };
 
 // unordered index implemented as hashtable
@@ -907,11 +908,12 @@ public:
     }
 
     void update_row(uintptr_t rid, value_type *new_row) {
-        auto row_item = Sto::item(this, item_key_t::row_item_key(reinterpret_cast<internal_elem *>(rid)));
+        auto e = reinterpret_cast<internal_elem*>(rid);
+        auto row_item = Sto::item(this, item_key_t::row_item_key(e));
         if (value_is_small) {
-            row_item.add_write(*new_row);
+            row_item.acquire_write(e->version(), *new_row);
         } else {
-            row_item.add_write(new_row);
+            row_item.acquire_write(e->version(), new_row);
         }
         // Just update the pointer, don't set the actual write flag
         // we don't want to confuse installs at commit time
