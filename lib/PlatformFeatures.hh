@@ -1,9 +1,14 @@
 #pragma once
 
+#ifndef MALLOC
+#define MALLOC 2
+#endif
+
 #include <cpuid.h>
 #include <cstddef>
 #include <cstdint>
 #include <cctype>
+#include <cstring>
 
 #include <string>
 #include <iostream>
@@ -11,9 +16,11 @@
 #include <sstream>
 
 #include <pthread.h>
-#if defined(__APPLE__)
-#else
+#if defined(__APPLE__) || MALLOC == 0
+#elif MALLOC == 1
 #include <jemalloc/jemalloc.h>
+#elif MALLOC == 2
+#include "rpmalloc/rpmalloc.h"
 #endif
 
 static constexpr uint32_t level_bstr  = 0x80000004;
@@ -121,8 +128,8 @@ inline double get_cpu_brand_frequency() {
 }
 
 inline double determine_cpu_freq() {
-#if defined(__APPLE__)
-#else
+#if defined(__APPLE__) || MALLOC == 0
+#elif MALLOC == 1
     char const* val = nullptr;
     size_t len = sizeof(val);
     int r;
@@ -134,6 +141,12 @@ inline double determine_cpu_freq() {
     r = mallctl("opt.thp", &val, &len, NULL, 0);
     if (r == 0)
         std::cout << "jemalloc THP: " << std::string(val) << std::endl;
+#elif MALLOC == 2
+    rpmalloc_config_t config;
+    memset(&config, 0, sizeof(config));
+    config.page_size = 2048 * 1024;
+    config.enable_huge_pages = 1;
+    rpmalloc_initialize_config(&config);
 #endif
 
     double freq = 0.0;

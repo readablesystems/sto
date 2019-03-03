@@ -1,28 +1,46 @@
 # @configure_input@
 -include config.mk
 
+LIBRPMALLOC := third-party/rpmalloc/lib/linux/release/x86-64/librpmallocwrap.a
+
+ifeq ($(USE_JEMALLOC),1)
+LIBMALLOC := -ljemalloc
+else
+LIBMALLOC := -ldl
+endif
+
 AR = ar
 CC = @CC@
 CXX = @CXX@
 CPPFLAGS := -std=c++14
 DEPSDIR := .deps
 DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
-LIBS = @LIBS@ $(MASSTREEDIR)/libjson.a -lpthread -lm -ljemalloc
+LIBS = @LIBS@ $(MASSTREEDIR)/libjson.a $(LIBMALLOC) -lpthread -lm
 LIBOBJS = @LIBOBJS@
 LDFLAGS = @LDFLAGS@
 MASSTREEDIR = @MASSTREEDIR@
+
+ifneq ($(USE_JEMALLOC),1)
+LIBOBJS += $(LIBRPMALLOC)
+endif
 
 OBJ = obj
 
 XXHASH_DIR = third-party/xxHash
 XXHASH_OBJ = $(OBJ)/xxhash.o
 
-CPPFLAGS += -I$(MASSTREEDIR) -I$(XXHASH_DIR)
+CPPFLAGS += -I$(MASSTREEDIR) -I$(XXHASH_DIR) -Ithird-party/rpmalloc
 CPPFLAGS += -Ilib -Isto-core -Ilegacy -Idatatype -Ibenchmark
 
 # if CXXFLAGS changes, rebuild
 ifndef CXXFLAGS
 CXXFLAGS :=
+endif
+
+ifeq ($(USE_JEMALLOC),1)
+CXXFLAGS += -DMALLOC=1
+else
+CXXFLAGS += -DMALLOC=2
 endif
 
 ifeq ($(NDEBUG),1)
@@ -198,6 +216,9 @@ $(OBJ)/%.o: benchmark/%.cc config.h $(DEPSDIR)/stamp
 $(OBJ)/xxhash.o: third-party/xxHash/xxhash.c
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -c -o $@ $<
 
+$(LIBRPMALLOC): third-party/rpmalloc/rpmalloc/rpmalloc.c
+	cd third-party/rpmalloc ; ./configure.py ; ninja ; cd ../..
+
 %.S: %.o
 	objdump -S $< > $@
 
@@ -214,8 +235,10 @@ INDEX_OBJS = $(STO_OBJS) $(MASSTREE_OBJS) $(OBJ)/DB_index.o
 STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
 INDEX_DEPS = $(INDEX_OBJS) $(MASSTREEDIR)/libjson.a
 
+
 TPCC_TMPLS = $(OBJ)/tpcc_d.o $(OBJ)/tpcc_dc.o $(OBJ)/tpcc_dn.o $(OBJ)/tpcc_dcn.o \
-	$(OBJ)/tpcc_m.o $(OBJ)/tpcc_mc.o $(OBJ)/tpcc_mn.o $(OBJ)/tpcc_mcn.o
+	$(OBJ)/tpcc_m.o $(OBJ)/tpcc_mc.o $(OBJ)/tpcc_mn.o $(OBJ)/tpcc_mcn.o \
+	$(OBJ)/tpcc_s.o $(OBJ)/tpcc_t.o
 
 concurrent: $(OBJ)/concurrent.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
@@ -374,6 +397,8 @@ clean:
 	rm -f $(LIBOBJS)
 	rm -rf .deps *.dSYM
 	$(MAKE) -C $(MASSTREEDIR) clean
+	rm -rf third-party/rpmalloc/bin/*
+	rm -rf third-party/rpmalloc/lib/*
 
 DEPFILES := $(wildcard $(DEPSDIR)/*.d)
 ifneq ($(DEPFILES),)

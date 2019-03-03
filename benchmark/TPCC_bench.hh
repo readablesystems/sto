@@ -50,6 +50,9 @@ extern int tpcc_mc(int, char const* const*);
 extern int tpcc_mn(int, char const* const*);
 extern int tpcc_mcn(int, char const* const*);
 
+extern int tpcc_s(int, char const* const*);
+extern int tpcc_t(int, char const* const*);
+
 namespace tpcc {
 
 using namespace db_params;

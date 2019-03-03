@@ -61,6 +61,12 @@ double constants::processor_tsc_frequency;
 bench::dummy_row bench::dummy_row::row;
 
 int main(int argc, const char *const *argv) {
+    auto cpu_freq = determine_cpu_freq();
+    if (cpu_freq == 0.0)
+        return 1;
+    else
+        constants::processor_tsc_frequency = cpu_freq;
+
     db_params_id dbid = db_params_id::Default;
     int ret_code = 0;
    
@@ -97,12 +103,6 @@ int main(int argc, const char *const *argv) {
     if (ret_code != 0)
         return ret_code;
 
-    auto cpu_freq = determine_cpu_freq();
-    if (cpu_freq == 0.0)
-        return 1;
-    else
-        constants::processor_tsc_frequency = cpu_freq;
-
     switch (dbid) {
     case db_params_id::Default:
         if (node_tracking && enable_commute) {
@@ -127,10 +127,10 @@ int main(int argc, const char *const *argv) {
         break;
     */
     case db_params_id::Swiss:
-        ret_code = tpcc_access<db_swiss_params>::execute(argc, argv);
+        ret_code = tpcc_s(argc, argv);
         break;
     case db_params_id::TicToc:
-        ret_code = tpcc_access<db_tictoc_params>::execute(argc, argv);
+        ret_code = tpcc_t(argc, argv);
         break;
     case db_params_id::MVCC:
         if (node_tracking && enable_commute) {
