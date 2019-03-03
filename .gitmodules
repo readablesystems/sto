@@ -4,3 +4,6 @@
 [submodule "third-party/xxHash"]
 	path = third-party/xxHash
 	url = https://github.com/readablesystems/xxHash.git
+[submodule "third-party/rpmalloc"]
+	path = third-party/rpmalloc
+	url = https://github.com/readablesystems/rpmalloc.git
