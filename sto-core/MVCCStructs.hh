@@ -231,7 +231,7 @@ private:
 
     // Initializes the flattening process
     void enflatten() override {
-        T v;
+        T v{};
         prev()->flatten(v);
         v = c_.operate(v);
         MvStatus expected = MvStatus::COMMITTED_DELTA;
