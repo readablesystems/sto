@@ -217,7 +217,7 @@ $(OBJ)/xxhash.o: third-party/xxHash/xxhash.c
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -c -o $@ $<
 
 $(LIBRPMALLOC): third-party/rpmalloc/rpmalloc/rpmalloc.c
-	cd third-party/rpmalloc ; ./configure.py ; ninja ; cd ../..
+	cd third-party/rpmalloc ; ./configure.py --host linux --toolchain gcc -a x86-64 ; ninja ; cd ../..
 
 %.S: %.o
 	objdump -S $< > $@
