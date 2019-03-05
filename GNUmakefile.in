@@ -186,11 +186,18 @@ PROGRAMS = \
 	rubis_bench \
 	$(UNIT_PROGRAMS)
 
-all: $(PROGRAMS)
+all: check
 
-unit: $(UNIT_PROGRAMS)
+.PHONY: deps
+deps:
+	@ninja --version > /dev/null; status=$$?; if [ $$status -ne 0 ]; then echo \
+		"Please install Ninja (sudo apt-get install ninja-build)"; \
+		exit $$status; \
+		fi
 
-act-unit: $(ACT_UNIT_PROGRAMS)
+unit: deps $(UNIT_PROGRAMS)
+
+act-unit: deps $(ACT_UNIT_PROGRAMS)
 
 check: act-unit
 	@for i in $(ACT_UNIT_PROGRAMS); do echo ./$$i; ./$$i || exit 1; done
