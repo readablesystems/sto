@@ -90,6 +90,11 @@ ifeq ($(PROFILE),1)
 OPTFLAGS += -g -pg -fno-inline
 endif
 
+# Flag for enabling two phase transaction behavior
+ifeq ($(2PT),1)
+CXXFLAGS += -DTWO_PHASE_TRANSACTION
+endif
+
 UNIT_PROGRAMS = unit-tarray \
                 unit-tflexarray \
                 unit-tintpredicate \
@@ -242,6 +247,9 @@ unit-masstree: $(OBJ)/unit-masstree.o $(STO_DEPS)
 
 unit-dboindex: $(OBJ)/unit-dboindex.o $(INDEX_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(LDFLAGS) $(LIBS)
+
+two_phase_transaction: $(OBJ)/two_phase_transaction.o $(STO_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 list1: $(OBJ)/list1.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)

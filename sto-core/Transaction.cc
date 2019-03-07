@@ -15,6 +15,10 @@ Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epoch
     1, 0, TransactionTid::increment_value, true
 };
 __thread Transaction *TThread::txn = nullptr;
+// #ifdef TWO_PHASE_TRANSACTION
+// __thread bool TThread::two_phase_transaction_ = false;
+// __thread bool TThread::second_phase_ = false;
+// #endif
 std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callback;
 TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = 2 * TransactionTid::increment_value;
    // reserve TransactionTid::increment_value for prepopulated
@@ -50,6 +54,114 @@ void Transaction::refresh_tset_chunk() {
         tset_[tset_size_ / tset_chunk] = new TransItem[tset_chunk];
     tset_next_ = tset_[tset_size_ / tset_chunk];
 }
+
+#ifdef TWO_PHASE_TRANSACTION
+void Transaction::abort_subaction(int i) {
+  always_assert(i < subaction_capacity);
+  always_assert(i >= 0);
+  always_assert(!subactions_[i].aborted &&
+                "Cannot abort subaction that has already been aborted");
+  
+  subactions_[i].aborted = true;
+
+  // Case in which we abort the current subaction, we must update the item count
+  // first. We don't update the item count upon every access because that would
+  // be expensive.
+  if (i == curr_subaction->id) {
+    curr_subaction->item_count = curr_subaction_item_count;
+
+    // We're aborting the current subaction, meaning it must be reset. Be
+    // careful to not use 'curr_subaction' in the rest of this method.
+    // TODO: is this right?
+    curr_subaction = NULL;
+    curr_subaction_item_count = 0;
+  }
+
+#ifndef TWO_PHASE_UNOPT
+  // Optimization: reuse the last space in 'subactions_' if the last created
+  // subaction was aborted. Item count must be less than size of
+  // 'subaction_hash_index_locations_', otherwise we can't reset all the hash
+  // locations.
+  if ((i == subaction_next_ - 1) &&
+      subactions_[i].item_count <= subaction_hash_capacity) {
+    subaction_next_--;
+
+    // Reuse the space in the tset as well.
+    tset_next_ -= subactions_[i].item_count;
+    tset_size_ -= subactions_[i].item_count;
+
+  
+    // Reset the locations in the hash table where the items were deleted.
+    for (int index = 0; index < subactions_[i].item_count; index++) {
+      hashtable_[subaction_hash_index_locations_[index]] = 0;
+    }
+
+    // No need to continue and invalidate the items because they'll either be
+    // overwritten, or the 'tset_size_' that was modified earlier in the method
+    // will prevent the transaction from ever finding these items.
+    return;
+  }
+#endif
+
+  // The invalidation of items is commented out because the 'blue-red'
+  // experiment we run only considers the case before, where we remove only the
+  // most recently created subaction.
+  
+  // Mark all the items under this subaction as invalid
+  // TransItem* item = subactions_[i].first_item;
+  // TransItem* end_item = item + subactions_[i].item_count;
+  // for(; item != end_item; item++) {
+  //   item->add_flags(TransItem::two_pt_invalid_bit);
+  // }  
+}
+
+// Method that runs correctness check on the list of subactions and the items
+// read in the first phase of the two phase transaction.
+void Transaction::phase_two_validate() {
+
+  // Loop through all items in each subaction to check that valid bit is
+  // correctly set. Mark each item visited and ensure no item is visited twice.
+  subaction* s = subactions_;
+  subaction* end = subactions_ + subaction_next_;
+  for(; s != end; s++) {
+    TransItem* item = s->first_item;
+    TransItem* end_item = item + s->item_count;
+    for (; item != end_item; item++) {
+      if (s->aborted) {
+        always_assert((item->flags() & TransItem::two_pt_invalid_bit) &&
+                      "Invalid bit isn't set for item in aborted subaction");
+      } else {
+        always_assert(!(item->flags() & TransItem::two_pt_invalid_bit) &&
+                      "Invalid bit is set for item in a valid subaction");
+      }
+
+      always_assert((item->flags() & TransItem::item_in_subaction_bit) &&
+                    "Item that's supposed to be part of subaction isn't");
+      
+      always_assert(!(item->flags() & TransItem::item_visited_bit) && 
+                    "Item accessed in different subaction was accessed again");
+      // Set user bit to show that item has been accessed. Assumes
+      // 'item_visited_bit' isn't already being used.
+      item->add_flags(TransItem::item_visited_bit);
+    }      
+  }
+
+  // Loop through unaccessed items. Check that they are valid and not supposed
+  // to be part of subaction..
+  TransItem* it = nullptr;
+  for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
+    it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
+    if (!(it->flags() & TransItem::item_visited_bit)) {
+      always_assert(!(it->flags() & TransItem::item_in_subaction_bit) &&
+                    "Item not part of a subaction can't be part of subaction");
+      always_assert(!(it->flags() & TransItem::two_pt_invalid_bit) &&
+                    "Item not part of any subaction can't be invalid");
+    } else {
+      // TODO: Reset the item_visited_bit for housekeeping
+    }
+  }
+}
+#endif
 
 void* Transaction::epoch_advancer(void*) {
     static int num_epoch_advancers = 0;
@@ -366,7 +478,12 @@ bool Transaction::try_commit() {
     //phase2
     for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
         it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
+#ifdef TWO_PHASE_TRANSACTION        
+        if (it->has_flag(TransItem::two_pt_invalid_bit) && 
+            it->has_read() && (it->locked_at_commit() || !it->needs_unlock())) {
+#else
         if (it->has_read() && (it->locked_at_commit() || !it->needs_unlock())) {
+#endif          
             TXP_INCREMENT(txp_total_check_read);
             if (!it->owner()->check(*it, *this)
                 && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
@@ -468,7 +585,8 @@ void Transaction::print_stats() {
     if (txp_count >= txp_total_transbuffer)
         fprintf(stderr, "$ %llu max buffer per txn, %llu total buffer\n",
                 out.p(txp_max_transbuffer), out.p(txp_total_transbuffer));
-    fprintf(stderr, "$ %llu next commit-tid\n", (unsigned long long) _TID);
+    // Commenting out for now
+    // fprintf(stderr, "$ %llu next commit-tid\n", (unsigned long long) _TID);1
 
 #if STO_TSC_PROFILE
     tc_counters out_tcs = tc_counters_combined();

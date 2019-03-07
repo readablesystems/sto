@@ -202,6 +202,9 @@ private:
 
 public:
     typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
+#ifdef TWO_PHASE_TRANSACTION
+    typedef std::tuple<bool, bool, uintptr_t, const value_type*, int> sel_return_type_subaction;
+#endif  
     typedef std::tuple<bool, bool>                               ins_return_type;
     typedef std::tuple<bool, bool>                               del_return_type;
 
@@ -266,6 +269,41 @@ public:
     abort:
         return sel_return_type(false, false, 0, nullptr);
     }
+
+#ifdef TWO_PHASE_TRANSACTION
+  // returns (success : bool, found : bool, row_ptr : const internal_elem *, subaction_id : int)
+  // will need to row back transaction if success == false
+  sel_return_type_subaction
+  select_row_subaction(const key_type& k) {
+    bucket_entry& buck = map_[find_bucket_idx(k)];
+    // bucket_version_type buck_vers = buck.version;
+    fence();
+    internal_elem *e = find_in_bucket(buck, k);
+
+    if (e) {
+      // if found, return pointer to the row
+
+      // Instead of calling the 'item' here, we're instead going to call it
+      // inside of 'start_subaction'.
+      // auto item = Sto::item(this, e);
+      // Commenting because right now we're not considering absent records.
+      // if (is_phantom(e, item))
+      //   goto abort;
+
+      auto tup = Sto::start_subaction(this, e);
+      int i = std::get<0>(tup);
+      // TransProxy ti = std::get<1>(tup);
+      return sel_return_type_subaction(true, true, reinterpret_cast<uintptr_t>(e), &e->value, i);
+    } else {
+      // Commented because we're not dealing with absent records.
+      // if not found, observe bucket version
+      // bool ok = Sto::item(this, make_bucket_key(buck)).observe(buck_vers);
+      // if (!ok)
+      //   goto abort;
+      return sel_return_type_subaction(true, false, 0, nullptr, -1);
+    }
+  }
+#endif
 
     // this method is only to be used after calling select_row() with for_update set to true
     // otherwise behavior is undefined
@@ -696,6 +734,9 @@ public:
     typedef typename unlocked_cursor_type::nodeversion_value_type nodeversion_value_type;
 
     typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
+#ifdef TWO_PHASE_TRANSACTION
+    typedef std::tuple<bool, bool, uintptr_t, const value_type*, int> sel_return_type_subaction;
+#endif  
     typedef std::tuple<bool, bool>                               ins_return_type;
     typedef std::tuple<bool, bool>                               del_return_type;
 
@@ -747,6 +788,24 @@ public:
     abort:
         return sel_return_type(false, false, 0, nullptr);
     }
+
+#ifdef TWO_PHASE_TRANSACTION
+  sel_return_type_subaction
+  select_row_subaction(const key_type& key, RowAccess acc) {
+    unlocked_cursor_type lp(table_, key);
+    bool found = lp.find_unlocked(*ti);
+    internal_elem *e = lp.value();
+    if (found) {
+      return select_row_subaction(reinterpret_cast<uintptr_t>(e), acc);
+    } else {
+      // Commented because we are not dealing with absent keys in the database
+      // as of now.
+      // if (!register_internode_version(lp.node(), lp.full_version_value()))
+      //   goto abort;
+      return sel_return_type_subaction(true, false, 0, nullptr, -1);
+    }
+  }
+#endif
 
     sel_return_type
     select_row(const key_type& key, std::initializer_list<column_access_t> accesses) {
@@ -810,6 +869,44 @@ public:
         return sel_return_type(false, false, 0, nullptr);
     }
 
+#ifdef TWO_PHASE_TRANSACTION
+  sel_return_type_subaction
+  select_row_subaction(uintptr_t rid, RowAccess access) {
+    auto e = reinterpret_cast<internal_elem *>(rid);
+    bool ok = true;
+    // TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+    auto tup = Sto::start_subaction(this, item_key_t::row_item_key(e));
+    int i = std::get<0>(tup);
+    TransProxy row_item = std::get<1>(tup);
+
+    // Commented because we are not dealing with absent keys in the database
+    // as of now.
+    // TODO: figure out if you need this piece of code or not.
+    // if (is_phantom(e, row_item))
+    //   goto abort;
+
+    switch (access) {
+    case RowAccess::UpdateValue:
+      ok = version_adapter::select_for_update(row_item, e->version());
+      row_item.add_flags(row_update_bit);
+      break;
+    case RowAccess::ObserveExists:
+    case RowAccess::ObserveValue:
+      ok = row_item.observe(e->version());
+      break;
+    default:
+      break;
+    }
+
+    if (!ok)
+      goto abort;
+
+    return sel_return_type_subaction(true, true, rid, &(e->row_container.row), i);
+
+ abort:
+    return sel_return_type_subaction(false, false, 0, nullptr, -1);
+  }
+#endif
     sel_return_type
     select_row(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
         auto e = reinterpret_cast<internal_elem *>(rid);
@@ -1125,6 +1222,70 @@ public:
         return scanner.scan_succeeded_;
     }
 
+#ifdef TWO_PHASE_TRANSACTION
+      template <typename Callback, bool Reverse>
+    bool range_scan_subaction(const key_type& begin, const key_type& end, Callback callback,
+                    RowAccess access, bool phantom_protection = true, int limit = -1) {
+        assert((limit == -1) || (limit > 0));
+        auto node_callback = [&] (leaf_type* node,
+                                  typename unlocked_cursor_type::nodeversion_value_type version) {
+            (void)node;
+            (void)version;
+            (void)phantom_protection;
+            // TODO: is it possible to comment this? Don't we need this to make
+            // sure concurrency between creation of nodes is fine?
+            // return ((!phantom_protection) || register_internode_version(node, version));
+            return true;
+        };
+
+        auto value_callback = 
+          [&] (const lcdf::Str& key, internal_elem *e, bool& ret) {
+                                
+            // Start the subaction for the specific value
+            std::tuple<int, TransProxy> ret_val = Sto::start_subaction(this, item_key_t::row_item_key(e));
+            int i = std::get<0>(ret_val);
+
+            // TODO: figure out if you need to use this value aka if you need to
+            // modify 'ok' depending on the RowAccess value.
+            // TransProxy row_item = std::get<1>(ret_val);
+
+
+            bool ok = true;
+            switch (access) {
+                case RowAccess::ObserveValue:
+                case RowAccess::ObserveExists:
+                    // ok = row_item.observe(e->version());
+                    break;
+                case RowAccess::None:
+                    break;
+                default:
+                    always_assert(false, "unsupported access type in range_scan");
+                    break;
+            }
+
+            if (!ok)
+                return false;
+
+            // skip invalid (inserted but yet committed) values, but do not abort
+            if (!e->valid()) {
+                ret = true;
+                return true;
+            }
+
+            ret = callback(key_type(key), e->row_container.row, i);
+            return true;
+        };
+
+        range_scanner<decltype(node_callback), decltype(value_callback), Reverse>
+                scanner(end, node_callback, value_callback);
+        if (Reverse)
+            table_.rscan(begin, true, scanner, limit, *ti);
+        else
+            table_.scan(begin, true, scanner, limit, *ti);
+        return scanner.scan_succeeded_;
+    }
+#endif
+  
     value_type *nontrans_get(const key_type& k) {
         unlocked_cursor_type lp(table_, k);
         bool found = lp.find_unlocked(*ti);

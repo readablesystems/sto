@@ -36,6 +36,11 @@ class TransItem {
     static constexpr flags_type predicate_bit = flags_type(1) << 60;
     static constexpr flags_type stash_bit = flags_type(1) << 59;
     static constexpr flags_type cl_bit = flags_type(1) << 58;
+#ifdef TWO_PHASE_TRANSACTION
+    static constexpr flags_type two_pt_invalid_bit = flags_type(1) << 57;
+    static constexpr flags_type item_in_subaction_bit = flags_type(1) << 56;
+    static constexpr flags_type item_visited_bit = flags_type(1) << 55;
+#endif
     static constexpr flags_type pointer_mask = (flags_type(1) << 48) - 1;
     static constexpr flags_type owner_mask = pointer_mask;
     static constexpr flags_type user0_bit = flags_type(1) << 48;

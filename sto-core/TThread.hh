@@ -27,6 +27,13 @@ class TThread {
     static __thread int hashsize_;
 public:
     static __thread Transaction* txn;
+
+// #ifdef TWO_PHASE_TRANSACTION
+//     // Used to check the status of a Two-Phase Transaction, if one is in
+//     // progress.
+//     static __thread bool two_phase_transaction_;
+//     static __thread bool second_phase_;
+// #endif
     static PercentGen gen[];
 
     static int id() {

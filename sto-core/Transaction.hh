@@ -343,6 +343,17 @@ public:
     static constexpr unsigned tset_initial_capacity = 512;
 
     static constexpr unsigned hash_size = 32768;
+#ifdef TWO_PHASE_TRANSACTION
+  static constexpr int subaction_capacity = 32768;
+  struct subaction {
+    int id;
+    TransItem* first_item;
+    int item_count;
+    bool aborted;
+  };
+
+  static constexpr int subaction_hash_capacity = 64;
+#endif
     static constexpr unsigned hash_step = 5;
     using epoch_type = TRcuSet::epoch_type;
     using signed_epoch_type = TRcuSet::signed_epoch_type;
@@ -478,6 +489,17 @@ private:
         if (thr.trans_start_callback)
             thr.trans_start_callback();
         hash_base_ += tset_size_ + 1;
+#ifdef TWO_PHASE_TRANSACTION
+        two_phase_transaction_ = false;
+        second_phase_ = false;
+        subaction_next_ = 0;
+        curr_subaction = NULL;
+        curr_subaction_item_count = 0;
+        first_subaction_started = false;
+#ifndef TWO_PHASE_UNOPT        
+        hash_location_next_ = 0;
+#endif
+#endif        
         tset_size_ = 0;
         tset_next_ = tset0_;
 #if TRANSACTION_HASHTABLE
@@ -535,12 +557,26 @@ private:
 #if TRANSACTION_HASHTABLE
         unsigned hi = hash(obj, xkey);
         //bitvector_[hi % bv_size] = true;
-        # if TRANSACTION_HASHTABLE > 1
+#if TRANSACTION_HASHTABLE > 1
         if (hashtable_[hi] > hash_base_)
             hi = (hi + hash_step) % hash_size;
-# endif
+#endif
         if (hashtable_[hi] <= hash_base_)
             hashtable_[hi] = hash_base_ + tset_size_;
+
+#ifdef TWO_PHASE_TRANSACTION
+#ifndef TWO_PHASE_UNOPT        
+        // TODO: this is slightly inefficient because this method gets called in
+        // Sto::_item, yet we have the same check done here. Try to remove the
+        // check
+        if (two_phase_transaction_ && !second_phase_ &&
+            (curr_subaction != NULL || first_subaction_started) &&
+            hash_location_next_ < subaction_hash_capacity) {
+          subaction_hash_index_locations_[hash_location_next_++] = hi;
+        }
+#endif        
+#endif
+        
 #endif
     }
 
@@ -577,13 +613,66 @@ private:
        }
 
     template <typename T>
-    TransProxy item(const TObject* obj, T key) {
+    TransProxy _item(const TObject* obj, T key) {
         void* xkey = Packer<T>::pack_unique(buf_, std::move(key));
         TransItem* ti = find_item(const_cast<TObject*>(obj), xkey);
         if (!ti)
             ti = allocate_item(obj, xkey);
         return TransProxy(*this, *ti);
     }
+
+#ifdef TWO_PHASE_TRANSACTION
+  template <typename T>
+  TransProxy item(const TObject* obj, T key) {
+
+    // We will assume that when the TWO_PHASE_TRANSACTION flag is set, we will
+    // only run two phase transactions.
+    // if (two_phase_transaction_) {
+      if (second_phase_) {
+        TransProxy ti = _item(obj, key);
+
+        // For the purposes of the 'red-blue' experiment, we do not invalidate
+        // items when a subaction aborts, because we know the experiment never
+        // references items in aborted subactions.
+        
+        // Assert that item requested was not invalidated in the first phase.
+        // always_assert(!(ti.flags() & TransItem::two_pt_invalid_bit) &&
+        //              "Accessing item that was invalidated in the first phase");
+        
+        return ti;
+      } else if (curr_subaction != NULL || first_subaction_started) {
+
+        // The following code is commented out because our 'blue-red' experiment
+        // doesn't have items that overlap between more than one subaction.
+        
+        // We're in the first phase of a subaction and we need to check if the
+        // item already existed, because it shouldn't if it's part of a
+        // subaction.
+        // always_assert(!check_item(obj,key));
+        
+        TransProxy ti = _item(obj, key);
+#ifdef PHASE_TWO_VALIDATE
+        // Set a bit in the TransItem to mark that it's added as part of a
+        // subaction. This will be used in the 'phase_two_validate' method to
+        // check that each item created in a subaction is actually part of a
+        // subaction.
+        ti->add_flags(TransItem::item_in_subaction_bit);
+#endif
+        // Update the number of items under the current subaction.
+        curr_subaction_item_count++;
+        return ti;
+      }
+      // TODO: you left off here. Before you proceed, you need to know how
+      // default transaction will be supported.
+    // } // endif (two_phase_transaction)
+    return _item(obj, key);
+  }
+#else
+  template <typename T>
+  TransProxy item(const TObject* obj, T key) {
+    return _item(obj, key);
+  }
+#endif
 
 
     template <typename T>
@@ -707,6 +796,55 @@ private:
    }
 
     bool preceding_duplicate_read(TransItem *it) const;
+
+#ifdef TWO_PHASE_TRANSACTION
+  template <typename T>
+  std::tuple<int, TransProxy> start_subaction(const TObject* obj, T key) {
+
+  // Update the item count of the last subaction.
+  update_current_subaction_item_count();
+
+  // Set a bool to start the check that for every access to a record in a
+  // subaction, it must not have been accessed already.
+  if (curr_subaction == NULL) {
+    first_subaction_started = true;
+  }
+
+#ifndef TWO_PHASE_UNOPT  
+  // Reset the next location to place the hash of the subaction items since
+  // we're starting a new subaction.
+  hash_location_next_ = 0;
+#endif
+  
+  // Try to find the item by calling Sto::item.
+  TransProxy item_proxy = item(obj, key);
+  
+  always_assert(subaction_next_ < subaction_capacity);
+
+#ifdef PHASE_TWO_VALIDATE
+  // Retroactively set this item to be part of the new subaction, setting the
+  // bit showing that it must be part of a subaction in general.
+  item_proxy->add_flags(TransItem::item_in_subaction_bit);
+#endif
+  subactions_[subaction_next_] = { subaction_next_, &(item_proxy.item()), 1, false };
+  curr_subaction = subactions_ + subaction_next_;
+  curr_subaction_item_count = 1;
+  return std::make_tuple(subaction_next_++, item_proxy);
+}
+
+  void update_current_subaction_item_count() {
+    if (curr_subaction != NULL) {
+      curr_subaction->item_count = curr_subaction_item_count;
+    }
+  }
+
+  unsigned get_tset_size() {
+    return tset_size_;
+  }
+
+  void abort_subaction(int i);
+  void phase_two_validate();
+#endif
 
 public:
 #if STO_DEBUG_ABORTS
@@ -934,6 +1072,16 @@ public:
         restarted = r;
     }
 
+#ifdef TWO_PHASE_TRANSACTION
+  void set_two_phase_transaction(bool val) {
+    two_phase_transaction_ = val;
+  }
+
+  void set_second_phase(bool val) {
+    second_phase_ = val;
+  }
+#endif  
+
 private:
     enum {
         s_in_progress = 0, s_opacity_check = 1, s_committing = 2,
@@ -974,6 +1122,30 @@ private:
     uint16_t hashtable_[hash_size];
 #endif
     TransItem tset0_[tset_initial_capacity];
+
+#ifdef TWO_PHASE_TRANSACTION
+  subaction subactions_[subaction_capacity];
+  int subaction_next_;
+
+  // Pointer to the current subaction. Gets updated whenever 'start_subaction' is
+  // called.
+  subaction* curr_subaction;
+  int curr_subaction_item_count;
+  bool first_subaction_started;
+
+#ifndef TWO_PHASE_UNOPT  
+  // Records the indices that items in the current subaction were hashed to in
+  // 'hashtable_'. Used to optimize handling subaction aborts.
+  unsigned subaction_hash_index_locations_[subaction_hash_capacity];
+  unsigned hash_location_next_;
+#endif
+  
+  // Whether the transaction is a two phase transaction or not.
+  bool two_phase_transaction_;
+
+  // Whether the transaction is in the second phase of a two phase transaction.
+  bool second_phase_;
+#endif
 
     bool hard_check_opacity(TransItem* item, TransactionTid::type t);
     void stop(bool committed, unsigned* writes, unsigned nwrites);
@@ -1018,6 +1190,74 @@ public:
 				delete TThread::txn;
 				TThread::txn = nullptr;
 		}
+
+#ifdef TWO_PHASE_TRANSACTION
+  // Starts a two phase transaction.  Call must be done inside a live
+  // transaction and should be the first statement of a two phase transaction.
+  // throws: error if the caller isn't in a transaction, or is already in a two
+  // phase transaction, or if the transaction has a nonempty write set.
+  static void start_two_phase_transaction() {
+      always_assert(in_progress());
+      always_assert(!TThread::txn->two_phase_transaction_);
+      always_assert(!TThread::txn->any_writes_);
+
+      TThread::txn->set_two_phase_transaction(true);
+      TThread::txn->set_second_phase(false);
+  }
+
+  // Let's STO know that the second phase of a two phase transaction has begun,
+  // marking only the objects that are of interest.
+  // throws: error if the caller isn't in phase 1 of a two phase transaction at
+  // the time this method is called.
+  static void phase_two() {
+      always_assert(in_progress());
+      always_assert(TThread::txn->two_phase_transaction_ && !TThread::txn->second_phase_);
+      always_assert(!TThread::txn->any_writes_);
+
+      // Fill in the item count for the last subaction that was started.
+      TThread::txn->update_current_subaction_item_count();
+
+      // validate all items that are of interest.
+#ifdef PHASE_TWO_VALIDATE
+      TThread::txn->phase_two_validate();
+#endif
+      // TThread::second_phase_ = true;
+      TThread::txn->set_second_phase(true);
+  }
+
+  // Begins a new subaction. Can only be called in the / first phase of a two
+  // phase transaction.
+  //'record': the record that will mark the first element of a subaction.
+  // returns: an unique integer that identifies the subaction, or -1 if the
+  // record already has a corresponding TItem associated with it.
+  template <typename T>
+  static std::tuple<int, TransProxy> start_subaction(const TObject* obj, T key) {
+      always_assert(in_progress());
+      always_assert(TThread::txn->two_phase_transaction_ && !TThread::txn->second_phase_);
+
+      return TThread::txn->start_subaction(obj, key);
+  }
+ 
+  // Lets Sto know that the items encapsulated by the subaction are not to be
+  // recorded during commit time. Can only be called in the first phase of a two
+  // phase transaction.
+  // 'i': unique identifier of a subaction to be told to abort.
+  // throws: error if the index is past the total number of subactions created
+  // already.
+  static void abort_subaction(int i) {
+    always_assert(in_progress());
+    always_assert(TThread::txn->two_phase_transaction_ && !TThread::txn->second_phase_);
+
+    // TODO: Transaction has Sto as a friend class, meaning Sto can access its
+    // private variables. We could do the functionality in this method.
+    TThread::txn->abort_subaction(i);
+  }
+
+  // TODO: are you doing this right?
+  static unsigned get_tset_size() {
+    return TThread::txn->get_tset_size();
+  }
+#endif
 
     static void update_threadid() {
         if (TThread::txn)
