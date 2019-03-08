@@ -158,8 +158,8 @@ ACT_UNIT_PROGRAMS = \
 	unit-swisstarray \
 	unit-swisstgeneric \
 	unit-masstree \
-	unit-tmvarray \
 	unit-tmvbox \
+	unit-tmvarray \
 	unit-dboindex
 
 PROGRAMS = \

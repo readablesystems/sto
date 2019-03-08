@@ -23,8 +23,10 @@ const Clp_Option options[] = {
         { "perf",         'p', opt_perf,  Clp_NoVal,     Clp_Optional },
         { "perf-counter", 'c', opt_pfcnt, Clp_NoVal,     Clp_Negate | Clp_Optional },
         { "gc",           'g', opt_gc,    Clp_NoVal,     Clp_Negate | Clp_Optional },
+        { "gc-rate",      'r', opt_gr,    Clp_ValInt,    Clp_Optional },
         { "node",         'n', opt_node,  Clp_NoVal,     Clp_Negate | Clp_Optional },
         { "commute",      'x', opt_comm,  Clp_NoVal,     Clp_Negate | Clp_Optional },
+        { "verbose",      'v', opt_verb,  Clp_NoVal,     Clp_Negate | Clp_Optional },
 };
 
 const size_t noptions = arraysize(options);
@@ -50,10 +52,15 @@ void print_usage(const char *argv_0) {
        << "    Spawns perf profiler in counter mode for the duration of the benchmark run." << std::endl
        << "  --gc (or -g)" << std::endl
        << "    Enable garbage collection (default false)." << std::endl
+       << "  --gc-rate=<NUM> (or -r<NUM>)" << std::endl
+       << "    For MVCC: if 0, indicates use of dedicated-thread GC. Otherwise, indicates" << std::endl
+       << "    #transactions per per-thread GC. Defaults to 0. Only effective with -g." << std::endl
        << "  --node (or -n)" << std::endl
        << "    Enable node tracking (default false)." << std::endl
        << "  --commute (or -x)" << std::endl
-       << "    Enable commutative updates in MVCC (default false)." << std::endl;
+       << "    Enable commutative updates in MVCC (default false)." << std::endl
+       << "  --verbose (or -v)" << std::endl
+       << "    Enable verbose output (default false)." << std::endl;
     std::cout << ss.str() << std::flush;
 }
 

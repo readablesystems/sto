@@ -4,11 +4,7 @@
 
 MvRegistry MvRegistry::registrar;
 
-void MvRegistry::collect_garbage_() {
-    if (is_stopping) {
-        is_done = true;
-        return;
-    }
+MvRegistry::type MvRegistry::compute_gc_tid() {
     type gc_tid = Transaction::_RTID;
 
     // Find the gc tid
@@ -23,55 +19,54 @@ void MvRegistry::collect_garbage_() {
         gc_tid--;  // One less than the oldest rtid, unless that's 0...
     }
 
-    // Do the actual cleanup
-    for (registry_type &registry : registries) {
+    return gc_tid;
+}
+
+void MvRegistry::collect_(registry_type &registry, const type gc_tid) {
+    if (is_stopping) {
+        return;
+    }
+    MvRegistryEntry *entry = registry;
+    while (entry) {
         if (is_stopping) {
-            is_done = true;
             return;
         }
-        MvRegistryEntry *entry = registry;
-        while (entry) {
-            if (is_stopping) {
-                is_done = true;
-                return;
-            }
-            auto curr = entry;
-            entry = entry->next;
-            bool valid = curr->valid;
+        auto curr = entry;
+        entry = entry->next;
+        bool valid = curr->valid;
 
-            if (!valid) {
-                continue;
-            }
+        if (!valid) {
+            continue;
+        }
 
-            base_type *h = *curr->atomic_base;
+        base_type *h = *curr->atomic_base;
 
-            if (!h) {
-                continue;
-            }
+        if (!h) {
+            continue;
+        }
 
-            // Find currently-visible version at gc_tid
-            while (gc_tid < h->wtid_) {
-                h = h->prev_;
-            }
+        // Find currently-visible version at gc_tid
+        while (gc_tid < h->wtid_) {
+            h = h->prev_;
+        }
 
-            while (h->status_is(MvStatus::ABORTED)) {
-                h = h->prev_;
-            }
-            if (h->status_is(MvStatus::DELTA)) {
-                h->enflatten();
-            }
-            base_type *garbo = h->prev_;  // First element to collect
-            h->prev_ = nullptr;  // Ensures that future collection cycles know
-                                 // about the progress of previous cycles
+        while (h->status_is(MvStatus::ABORTED)) {
+            h = h->prev_;
+        }
+        if (h->status_is(MvStatus::DELTA)) {
+            h->enflatten();
+        }
+        base_type *garbo = h->prev_;  // First element to collect
+        h->prev_ = nullptr;  // Ensures that future collection cycles know
+                             // about the progress of previous cycles
 
-            while (garbo) {
-                base_type *delet = garbo;
-                garbo = garbo->prev_;
-                if (curr->inlined && (curr->inlined == delet)) {
-                    delet->status_unused();
-                } else {
-                    Transaction::rcu_delete(delet);
-                }
+        while (garbo) {
+            base_type *delet = garbo;
+            garbo = garbo->prev_;
+            if (curr->inlined && (curr->inlined == delet)) {
+                delet->status_unused();
+            } else {
+                Transaction::rcu_delete(delet);
             }
         }
     }

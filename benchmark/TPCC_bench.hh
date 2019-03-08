@@ -32,7 +32,7 @@
 // @section: clp parser definitions
 enum {
     opt_dbid = 1, opt_nwhs, opt_nthrs, opt_time, opt_perf, opt_pfcnt, opt_gc,
-    opt_node, opt_comm
+    opt_gr, opt_node, opt_comm, opt_verb
 };
 
 extern const Clp_Option options[];
@@ -795,7 +795,8 @@ public:
     }
 
     static void tpcc_runner_thread(tpcc_db<DBParams>& db, db_profiler& prof, int runner_id, uint64_t w_start,
-                                   uint64_t w_end, double time_limit, uint64_t& txn_cnt) {
+                                   uint64_t w_end, double time_limit, uint64_t& txn_cnt,
+                                   const size_t gc_rate) {
         tpcc_runner<DBParams> runner(runner_id, db, w_start, w_end);
         typedef typename tpcc_runner<DBParams>::txn_type txn_type;
 
@@ -836,13 +837,18 @@ public:
                     break;
             };
 
+            if (gc_rate && !(local_cnt % gc_rate)) {
+                MvRegistry::collect_garbage(runner_id);
+            }
+
             ++local_cnt;
         }
 
         txn_cnt = local_cnt;
     }
 
-    static uint64_t run_benchmark(tpcc_db<DBParams>& db, db_profiler& prof, int num_runners, double time_limit) {
+    static uint64_t run_benchmark(tpcc_db<DBParams>& db, db_profiler& prof, int num_runners,
+                                  double time_limit, const size_t gc_rate, const bool verbose) {
         int q = db.num_warehouses() / num_runners;
         int r = db.num_warehouses() % num_runners;
 
@@ -858,9 +864,12 @@ public:
                     ++wid;
                     qq += q;
                 }
-                fprintf(stdout, "runner %d: [%d, %d]\n", i, wid, wid);
+                if (verbose) {
+                    fprintf(stdout, "runner %d: [%d, %d]\n", i, wid, wid);
+                }
                 runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), std::ref(prof),
-                                         i, wid, wid, time_limit, std::ref(txn_cnts[i]));
+                                         i, wid, wid, time_limit, std::ref(txn_cnts[i]),
+                                         gc_rate);
             }
         } else {
             int last_xend = 1;
@@ -871,9 +880,12 @@ public:
                     ++next_xend;
                     --r;
                 }
-                fprintf(stdout, "runner %d: [%d, %d]\n", i, last_xend, next_xend - 1);
+                if (verbose) {
+                    fprintf(stdout, "runner %d: [%d, %d]\n", i, last_xend, next_xend - 1);
+                }
                 runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), std::ref(prof),
-                                         i, last_xend, next_xend - 1, time_limit, std::ref(txn_cnts[i]));
+                                         i, last_xend, next_xend - 1, time_limit,
+                                         std::ref(txn_cnts[i]), gc_rate);
                 last_xend = next_xend;
             }
 
@@ -898,6 +910,8 @@ public:
         int num_threads = 1;
         double time_limit = 10.0;
         bool enable_gc = false;
+        size_t gc_rate = 0;
+        bool verbose = false;
 
         Clp_Parser *clp = Clp_NewParser(argc, argv, noptions, options);
 
@@ -925,9 +939,15 @@ public:
                 case opt_gc:
                     enable_gc = !clp->negated;
                     break;
+                case opt_gr:
+                    gc_rate = clp->val.i;
+                    break;
                 case opt_node:
                     break;
                 case opt_comm:
+                    break;
+                case opt_verb:
+                    verbose = !clp->negated;
                     break;
                 default:
                     ::print_usage(argv[0]);
@@ -962,14 +982,25 @@ public:
         std::cout << "Prepopulation complete." << std::endl;
 
         std::thread advancer;
-        std::cout << "Garbage collection: " << (enable_gc ? "enabled" : "disabled") << std::endl;
-        if (enable_gc) {
+        std::cout << "Garbage collection: ";
+        if (enable_gc && !gc_rate) {
+            std::cout << "dedicated thread (OCC & MVCC)";
+            MvRegistry::toggle_GC(false);  // Disable per-thread GC
             advancer = std::thread(&Transaction::epoch_advancer, nullptr);
             advancer.detach();
+        } else if (enable_gc && gc_rate) {
+            std::cout << "per-thread (MVCC) & dedicated thread (OCC)";
+            MvRegistry::toggle_gc(false);  // Disable dedicated-thread GC
+            advancer = std::thread(&Transaction::epoch_advancer, nullptr);
+            advancer.detach();
+        } else {
+            std::cout << "disabled";
         }
+        std::cout << std::endl;
 
         prof.start(profiler_mode);
-        auto num_trans = run_benchmark(db, prof, num_threads, time_limit);
+        auto num_trans = run_benchmark(
+            db, prof, num_threads, time_limit, gc_rate, verbose);
         prof.finish(num_trans);
 
         if (enable_gc) {
