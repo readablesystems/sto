@@ -223,8 +223,10 @@ $(OBJ)/%.o: benchmark/%.cc config.h $(DEPSDIR)/stamp
 $(OBJ)/xxhash.o: third-party/xxHash/xxhash.c
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPTFLAGS) -c -o $@ $<
 
-$(LIBRPMALLOC): third-party/rpmalloc/rpmalloc/rpmalloc.c
-	cd third-party/rpmalloc ; ./configure.py --host linux --toolchain gcc -a x86-64 ; ninja ; cd ../..
+rpmalloc: $(LIBRPMALLOC)
+
+$(LIBRPMALLOC): third-party/rpmalloc/configure.py third-party/rpmalloc/Makefile
+	$(MAKE) -C third-party/rpmalloc
 
 %.S: %.o
 	objdump -S $< > $@
@@ -404,8 +406,7 @@ clean:
 	rm -f $(LIBOBJS)
 	rm -rf .deps *.dSYM
 	$(MAKE) -C $(MASSTREEDIR) clean
-	rm -rf third-party/rpmalloc/bin/*
-	rm -rf third-party/rpmalloc/lib/*
+	$(MAKE) -C third-party/rpmalloc clean
 
 DEPFILES := $(wildcard $(DEPSDIR)/*.d)
 ifneq ($(DEPFILES),)
