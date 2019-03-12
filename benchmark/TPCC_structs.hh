@@ -603,8 +603,29 @@ struct stock_key {
     uint64_t s_i_id;
 };
 
+#if TPCC_SPLIT_TABLE
+struct stock_const_value {
+    enum class NamedColumn : int { s_dists = 0,
+                                   s_data };
+
+    fix_string<24> s_dists[NUM_DISTRICTS_PER_WAREHOUSE];
+    var_string<50> s_data;
+};
+
+struct stock_comm_value {
+    enum class NamedColumn : int { s_quantity = 0,
+                                   s_ytd,
+                                   s_order_cnt,
+                                   s_remote_cnt };
+
+    int32_t        s_quantity;
+    uint32_t       s_ytd;
+    uint32_t       s_order_cnt;
+    uint32_t       s_remote_cnt;
+};
+#else
 struct stock_value {
-    enum class NamedColumn : int { s_quantity,
+    enum class NamedColumn : int { s_quantity = 0,
                                    s_ytd,
                                    s_order_cnt,
                                    s_remote_cnt,
@@ -618,6 +639,7 @@ struct stock_value {
     fix_string<24> s_dists[NUM_DISTRICTS_PER_WAREHOUSE];
     var_string<50> s_data;
 };
+#endif
 
 }; // namespace tpcc
 

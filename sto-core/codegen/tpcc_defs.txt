@@ -33,3 +33,10 @@
           ol_quantity(SMALLINT), ol_amount(SMALLINT), ol_dist_info(VARCHAR(24))}
 @groups: {{ol_delivery_d}, {ol_i_id, ol_supply_w_id, ol_quantity, ol_amount, ol_dist_info}}
 @@@
+
+@@@
+@name: stock_value
+@fields: {s_quantity(SMALLINT), s_ytd(SMALLINT), s_order_cnt(SMALLINT),
+          s_remote_cnt(SMALLINT), s_dists(VARCHAR(24)), s_data(VARCHAR(50))}
+@groups: {{s_quantity, s_ytd, s_order_cnt, s_remote_cnt}, {s_dists, s_data}}
+@@@

@@ -12,11 +12,13 @@ using district_value = tpcc::district_comm_value;
 using customer_value = tpcc::customer_comm_value;
 using order_value = tpcc::order_comm_value;
 using orderline_value = tpcc::orderline_comm_value;
+using stock_value = tpcc::stock_comm_value;
 #else
 using district_value = tpcc::district_value;
 using customer_value = tpcc::customer_value;
 using order_value = tpcc::order_value;
 using orderline_value = tpcc::orderline_value;
+using stock_value = tpcc::stock_value;
 #endif
 
 using tpcc::c_data_info;
@@ -111,6 +113,29 @@ public:
     }
 private:
     uint32_t write_delivery_d;
+};
+
+template <>
+class Commutator<stock_value> {
+public:
+    Commutator() = default;
+
+    explicit Commutator(int32_t qty, bool remote) : update_qty(qty), is_remote(remote) {}
+    stock_value& operate(stock_value& sv) const {
+        if ((sv.s_quantity - 10) >= update_qty)
+            sv.s_quantity -= update_qty;
+        else
+            sv.s_quantity += (91 - update_qty);
+        sv.s_ytd += update_qty;
+        sv.s_order_cnt += 1;
+        if (is_remote)
+            sv.s_remote_cnt += 1;
+        return sv;
+    }
+
+private:
+    int32_t update_qty;
+    bool is_remote;
 };
 
 }

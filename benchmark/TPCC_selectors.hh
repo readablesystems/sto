@@ -200,5 +200,49 @@ private:
     static constexpr uint64_t col_cell_map = 59ul;
 };
 
+template <typename VersImpl>
+class VerSel<tpcc::stock_value, VersImpl> : public VerSelBase<VerSel<tpcc::stock_value, VersImpl>, VersImpl> {
+public:
+    typedef VersImpl version_type;
+    static constexpr size_t num_versions = 2;
+
+    explicit VerSel(type v) : vers_() { (void)v; }
+    VerSel(type v, bool insert) : vers_() { (void)v; (void)insert; }
+
+    static int map_impl(int col_n) {
+        typedef tpcc::stock_value::NamedColumn nc;
+        if (col_n <= static_cast<int>(nc::s_remote_cnt))
+            return 0;
+        else
+            return 1;
+    }
+
+    version_type& version_at_impl(int cell) {
+        return vers_[cell];
+    }
+
+    void install_by_cell_impl(tpcc::stock_value *dst, const tpcc::stock_value *src, int cell) {
+        switch (cell) {
+            case 0:
+                dst->s_quantity = src->s_quantity;
+                dst->s_ytd = src->s_ytd;
+                dst->s_order_cnt = src->s_order_cnt;
+                dst->s_remote_cnt = src->s_remote_cnt;
+                break;
+            case 1:
+                for (int i = 0; i < NUM_DISTRICTS_PER_WAREHOUSE; ++i)
+                    dst->s_dists[i] = src->s_dists[i];
+                dst->s_data = src->s_data;
+                break;
+            default:
+                always_assert(false, "cell id out of bound\n");
+                break;
+        }
+    }
+
+private:
+    version_type vers_[num_versions];
+};
+
 }; // namespace ver_sel
 

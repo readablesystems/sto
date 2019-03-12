@@ -159,17 +159,19 @@ public:
     typedef OIndex<order_key, order_comm_value>          om_table_type;
     typedef OIndex<orderline_key, orderline_const_value> lc_table_type;
     typedef OIndex<orderline_key, orderline_comm_value>  lm_table_type;
+    typedef OIndex<stock_key, stock_const_value>         sc_table_type;
+    typedef OIndex<stock_key, stock_comm_value>          sm_table_type;
 #else
     typedef OIndex<district_key, district_value>         dt_table_type;
     typedef OIndex<customer_key, customer_value>         cu_table_type;
     typedef OIndex<order_key, order_value>               od_table_type;
     typedef OIndex<orderline_key, orderline_value>       ol_table_type;
+    typedef OIndex<stock_key, stock_value>               st_table_type;
 #endif
     typedef OIndex<customer_idx_key, customer_idx_value> ci_table_type;
     typedef OIndex<order_cidx_key, bench::dummy_row>     oi_table_type;
     typedef OIndex<order_key, bench::dummy_row>          no_table_type;
     typedef OIndex<item_key, item_value>                 it_table_type;
-    typedef OIndex<stock_key, stock_value>               st_table_type;
     typedef OIndex<history_key, history_value>           ht_table_type;
 
     explicit inline tpcc_db(int num_whs);
@@ -208,6 +210,12 @@ public:
     lm_table_type& tbl_orderlines_comm(uint64_t w_id) {
         return tbl_ols_comm_[w_id - 1];
     }
+    sc_table_type& tbl_stocks_const(uint64_t w_id) {
+        return tbl_sts_const_[w_id - 1];
+    }
+    sm_table_type& tbl_stocks_comm(uint64_t w_id) {
+        return tbl_sts_comm_[w_id - 1];
+    }
 #else
     dt_table_type& tbl_districts(uint64_t w_id) {
         return tbl_dts_[w_id - 1];
@@ -221,6 +229,9 @@ public:
     ol_table_type& tbl_orderlines(uint64_t w_id) {
         return tbl_ols_[w_id - 1];
     }
+    st_table_type& tbl_stocks(uint64_t w_id) {
+        return tbl_sts_[w_id - 1];
+    }
 #endif
     ci_table_type& tbl_customer_index(uint64_t w_id) {
         return tbl_cni_[w_id - 1];
@@ -233,9 +244,6 @@ public:
     }
     it_table_type& tbl_items() {
         return *tbl_its_;
-    }
-    st_table_type& tbl_stocks(uint64_t w_id) {
-        return tbl_sts_[w_id - 1];
     }
     ht_table_type& tbl_histories(uint64_t w_id) {
         return tbl_hts_[w_id - 1];
@@ -257,17 +265,19 @@ private:
     std::vector<om_table_type> tbl_ods_comm_;
     std::vector<lc_table_type> tbl_ols_const_;
     std::vector<lm_table_type> tbl_ols_comm_;
+    std::vector<sc_table_type> tbl_sts_const_;
+    std::vector<sm_table_type> tbl_sts_comm_;
 #else
     std::vector<dt_table_type> tbl_dts_;
     std::vector<cu_table_type> tbl_cus_;
     std::vector<od_table_type> tbl_ods_;
     std::vector<ol_table_type> tbl_ols_;
+    std::vector<st_table_type> tbl_sts_;
 #endif
 
     std::vector<ci_table_type> tbl_cni_;
     std::vector<oi_table_type> tbl_oci_;
     std::vector<no_table_type> tbl_nos_;
-    std::vector<st_table_type> tbl_sts_;
     std::vector<ht_table_type> tbl_hts_;
 
     tpcc_oid_generator oid_gen_;
@@ -367,16 +377,18 @@ tpcc_db<DBParams>::tpcc_db(int num_whs) : tbl_whs_((size_t)num_whs), oid_gen_() 
         tbl_ods_comm_.emplace_back(999983);
         tbl_ols_const_.emplace_back(999983/*num_customers * 100 * 2*/);
         tbl_ols_comm_.emplace_back(999983);
+        tbl_sts_const_.emplace_back(999983/*NUM_ITEMS * 2*/);
+        tbl_sts_comm_.emplace_back(999983/*NUM_ITEMS * 2*/);
 #else
         tbl_dts_.emplace_back(999983/*num_districts * 2*/);
         tbl_cus_.emplace_back(999983/*num_customers * 2*/);
         tbl_ods_.emplace_back(999983/*num_customers * 10 * 2*/);
         tbl_ols_.emplace_back(999983/*num_customers * 100 * 2*/);
+        tbl_sts_.emplace_back(999983/*NUM_ITEMS * 2*/);
 #endif
         tbl_cni_.emplace_back(999983/*num_customers * 2*/);
         tbl_oci_.emplace_back(999983/*num_customers * 2*/);
         tbl_nos_.emplace_back(999983/*num_customers * 10 * 2*/);
-        tbl_sts_.emplace_back(999983/*NUM_ITEMS * 2*/);
         tbl_hts_.emplace_back(999983/*num_customers * 2*/);
     }
 }
@@ -406,6 +418,10 @@ void tpcc_db<DBParams>::thread_init_all() {
         t.thread_init();
     for (auto& t : tbl_ols_comm_)
         t.thread_init();
+    for (auto& t : tbl_sts_const_)
+        t.thread_init();
+    for (auto& t : tbl_sts_comm_)
+        t.thread_init();
 #else
     for (auto& t : tbl_dts_)
         t.thread_init();
@@ -415,14 +431,14 @@ void tpcc_db<DBParams>::thread_init_all() {
         t.thread_init();
     for (auto& t : tbl_ols_)
         t.thread_init();
+    for (auto& t : tbl_sts_)
+        t.thread_init();
 #endif
     for (auto& t : tbl_cni_)
         t.thread_init();
     for (auto& t : tbl_oci_)
         t.thread_init();
     for (auto& t : tbl_nos_)
-        t.thread_init();
-    for (auto& t : tbl_sts_)
         t.thread_init();
     for (auto& t : tbl_hts_)
         t.thread_init();
@@ -470,6 +486,27 @@ template<typename DBParams>
 void tpcc_prepopulator<DBParams>::expand_warehouse(uint64_t wid) {
     for (uint64_t iid = 1; iid <= NUM_ITEMS; ++iid) {
         stock_key sk(wid, iid);
+#if TPCC_SPLIT_TABLE
+        stock_const_value scv {};
+        stock_comm_value smv {};
+
+        smv.s_quantity = ig.random(10, 100);
+        for (auto i = 0; i < NUM_DISTRICTS_PER_WAREHOUSE; ++i)
+            scv.s_dists[i] = random_a_string(24, 24);
+        smv.s_ytd = 0;
+        smv.s_order_cnt = 0;
+        smv.s_remote_cnt = 0;
+        scv.s_data = random_a_string(26, 50);
+        if (ig.random(1, 100) <= 10) {
+            auto pos = ig.random(0, scv.s_data.length() - 8);
+            auto placed = scv.s_data.place("ORIGINAL", pos);
+            assert(placed);
+            (void)placed;
+        }
+
+        db.tbl_stocks_const(wid).nontrans_put(sk, scv);
+        db.tbl_stocks_comm(wid).nontrans_put(sk, smv);
+#else
         stock_value sv;
 
         sv.s_quantity = ig.random(10, 100);
@@ -487,6 +524,7 @@ void tpcc_prepopulator<DBParams>::expand_warehouse(uint64_t wid) {
         }
 
         db.tbl_stocks(wid).nontrans_put(sk, sv);
+#endif
     }
 
     for (uint64_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {

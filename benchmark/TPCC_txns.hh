@@ -10,6 +10,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 #if TABLE_FINE_GRAINED
     typedef district_value::NamedColumn dt_nc;
     typedef customer_value::NamedColumn cu_nc;
+    typedef stock_value::NamedColumn st_nc;
 #endif
 
     uint64_t q_w_id  = ig.random(w_id_start, w_id_end);
@@ -196,7 +197,49 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         out_item_names[i] = reinterpret_cast<const item_value *>(value)->i_name;
         auto i_data = reinterpret_cast<const item_value *>(value)->i_data;
 
-        std::tie(abort, result, row, value) = db.tbl_stocks(wid).select_row(stock_key(wid, iid), RowAccess::ObserveValue);
+#if TPCC_SPLIT_TABLE
+        std::tie(abort, result, row, value) = db.tbl_stocks_const(wid).select_row(stock_key(wid, iid), RowAccess::ObserveValue);
+        TXN_DO(abort);
+        assert(result);
+        auto scv = reinterpret_cast<const stock_const_value*>(value);
+        auto s_dist = scv->s_dists[q_d_id - 1];
+        auto s_data = scv->s_data;
+
+        if (i_data.contains("ORIGINAL") && s_data.contains("ORIGINAL"))
+            out_brand_generic[i] = 'B';
+        else
+            out_brand_generic[i] = 'G';
+
+        std::tie(abort, result, row, value) = db.tbl_stocks_comm(wid).select_row(stock_key(wid, iid),
+            Commute ? RowAccess::None : RowAccess::ObserveValue);
+        TXN_DO(abort);
+        assert(result);
+        if (Commute) {
+            commutators::Commutator<stock_comm_value> comm(qty, wid != q_w_id);
+            db.tbl_stocks_comm(wid).update_row(row, comm);
+        } else {
+            auto new_smv = Sto::tx_alloc(reinterpret_cast<const stock_comm_value*>(value));
+            if ((new_smv->s_quantity - 10) >= (int32_t)qty)
+                new_smv->s_quantity -= qty;
+            else
+                new_smv->s_quantity += (91 - (int32_t)qty);
+            new_smv->s_ytd += qty;
+            new_smv->s_order_cnt += 1;
+            if (wid != q_w_id)
+                new_smv->s_remote_cnt += 1;
+            db.tbl_stocks_comm(wid).update_row(row, new_smv);
+        }
+#else
+        std::tie(abort, result, row, value) = db.tbl_stocks(wid).select_row(stock_key(wid, iid),
+#if TABLE_FINE_GRAINED
+            {{st_nc::s_quantity, Commute ? access_t::write : access_t::update},
+             {st_nc::s_ytd, Commute ? access_t::write : access_t::update},
+             {st_nc::s_order_cnt, Commute ? access_t::write : access_t::update},
+             {st_nc::s_remote_cnt, Commute ? access_t::write : access_t::update}}
+#else
+            Commute ? RowAccess::None : RowAccess::ObserveValue
+#endif
+        );
         TXN_DO(abort);
         assert(result);
         stock_value *new_sv = Sto::tx_alloc(reinterpret_cast<const stock_value *>(value));
@@ -209,15 +252,21 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         else
             out_brand_generic[i] = 'G';
 
-        if ((s_quantity - 10) >= (int32_t)qty)
-            new_sv->s_quantity -= qty;
-        else
-            new_sv->s_quantity += (91 - (int32_t)qty);
-        new_sv->s_ytd += qty;
-        new_sv->s_order_cnt += 1;
-        if (wid != q_w_id)
-            new_sv->s_remote_cnt += 1;
-        db.tbl_stocks(wid).update_row(row, new_sv);
+        if (Commute) {
+            commutators::Commutator<stock_value> comm(qty, wid != q_w_id);
+            db.tbl_stocks(wid).update_row(row, comm);
+        } else {
+            if ((s_quantity - 10) >= (int32_t) qty)
+                new_sv->s_quantity -= qty;
+            else
+                new_sv->s_quantity += (91 - (int32_t) qty);
+            new_sv->s_ytd += qty;
+            new_sv->s_order_cnt += 1;
+            if (wid != q_w_id)
+                new_sv->s_remote_cnt += 1;
+            db.tbl_stocks(wid).update_row(row, new_sv);
+        }
+#endif
 
         double ol_amount = qty * i_price/100.0;
 
@@ -988,6 +1037,7 @@ template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_stocklevel(){
 #if TABLE_FINE_GRAINED
     typedef orderline_value::NamedColumn ol_nc;
+    typedef stock_value::NamedColumn st_nc;
 #endif
 
     uint64_t q_w_id = ig.random(w_id_start, w_id_end);
@@ -1044,10 +1094,23 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
 
     for (auto iid : ol_iids) {
         stock_key sk(q_w_id, iid);
-        std::tie(success, result, std::ignore, value) = db.tbl_stocks(q_w_id).select_row(sk, RowAccess::ObserveValue);
+#if TPCC_SPLIT_TABLE
+        std::tie(success, result, std::ignore, value) = db.tbl_stocks_comm(q_w_id).select_row(sk, RowAccess::ObserveValue);
         TXN_DO(success);
         assert(result);
-        auto sv = reinterpret_cast<const stock_value *>(value);
+        auto sv = reinterpret_cast<const stock_comm_value*>(value);
+#else
+        std::tie(success, result, std::ignore, value) = db.tbl_stocks(q_w_id).select_row(sk,
+#if TABLE_FINE_GRAINED
+            {{st_nc::s_quantity, access_t::read}}
+#else
+            RowAccess::ObserveValue
+#endif
+        );
+        TXN_DO(success);
+        assert(result);
+        auto sv = reinterpret_cast<const stock_value*>(value);
+#endif
         if(sv->s_quantity < threshold) {
             out_count += 1;
         }
