@@ -1,3 +1,5 @@
+// Implementation of the MVCC Registry, which is responsible for MVCC GC
+
 #include "MVCCRegistry.hh"
 #include "MVCCStructs.hh"
 #include "Transaction.hh"
@@ -26,32 +28,38 @@ void MvRegistry::collect_(registry_type &registry, const type gc_tid) {
     if (is_stopping) {
         return;
     }
-    MvRegistryEntry *entry = registry;
-    while (entry) {
+
+    while (!registry.empty()) {
         if (is_stopping) {
             return;
         }
-        auto curr = entry;
-        entry = entry->next;
-        bool valid = curr->valid;
 
-        if (!valid) {
-            continue;
+        auto entry = registry.front();
+
+        if (entry.tid > gc_tid) {
+            break;
         }
 
-        base_type *h = *curr->atomic_base;
+        registry.pop_front();
+
+        base_type *h = *entry.head;
 
         if (!h) {
             continue;
         }
 
         // Find currently-visible version at gc_tid
-        while (gc_tid < h->wtid_) {
-            h = h->prev_;
-        }
-
         while (h->status_is(MvStatus::ABORTED)) {
             h = h->prev_;
+        }
+        base_type *hhead = h;
+        base_type *hnext = hhead;
+        while (gc_tid < h->wtid()) {
+            hnext = h;
+            h = h->prev_;
+            while (h->status_is(MvStatus::ABORTED)) {
+                h = h->prev_;
+            }
         }
         if (h->status_is(MvStatus::DELTA)) {
             h->enflatten();
@@ -63,11 +71,19 @@ void MvRegistry::collect_(registry_type &registry, const type gc_tid) {
         while (garbo) {
             base_type *delet = garbo;
             garbo = garbo->prev_;
-            if (curr->inlined && (curr->inlined == delet)) {
+            if (entry.inlined && (entry.inlined == delet)) {
                 delet->status_unused();
             } else {
                 Transaction::rcu_delete(delet);
             }
+        }
+
+        // There is more gc to potentially do!
+        if (hnext != hhead) {
+            registry.push_back(entry_type(
+                entry.head, entry.inlined, hnext->wtid(), entry.flag));
+        } else {
+            *entry.flag = false;
         }
     }
 }

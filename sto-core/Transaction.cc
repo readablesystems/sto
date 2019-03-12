@@ -7,6 +7,7 @@
 #include <sys/time.h>
 
 #include "MVCC.hh"
+#include "MVCCRegistry.hh"
 
 Transaction::testing_type Transaction::testing;
 threadinfo_t Transaction::tinfo[MAX_THREADS];
@@ -71,8 +72,6 @@ void* Transaction::epoch_advancer(void*) {
         global_epochs.global_epoch = std::max(g + 1, epoch_type(1));
         global_epochs.active_epoch = e;
         global_epochs.recent_tid = _TID;
-
-        MvRegistry::collect_garbage();
 
         if (epoch_advance_callback)
             epoch_advance_callback(global_epochs.global_epoch);
@@ -269,6 +268,9 @@ unlock_all:
     if (!committed) {
        ContentionManager::on_rollback(TThread::id());
     }
+
+    // XXX Initiate MVCC GC run, but do we want to do it here?
+    MvRegistry::collect_garbage(TThread::id());
 
     // clear/consolidate transactional scratch space
     scratch_.clear();

@@ -9,18 +9,19 @@
 
 // Status types of MvHistory elements
 enum MvStatus {
-    UNUSED              = 0b000000,
-    ABORTED             = 0b100000,
-    DELTA               = 0b001000,  // Commutative update delta
-    DELETED             = 0b000001,  // Not a valid state on its own, but defined as a flag
-    PENDING             = 0b000010,
-    COMMITTED           = 0b000100,
-    PENDING_DELTA       = 0b001010,
-    COMMITTED_DELTA     = 0b001100,
-    PENDING_DELETED     = 0b000011,
-    COMMITTED_DELETED   = 0b000101,
-    LOCKED              = 0b010000,
-    LOCKED_DELTA        = 0b011000,  // Converting from delta to flattened
+    UNUSED              = 0b0000000,
+    ABORTED             = 0b0100000,
+    GARBAGE             = 0b1000000,
+    DELTA               = 0b0001000,  // Commutative update delta
+    DELETED             = 0b0000001,  // Not a valid state on its own, but defined as a flag
+    PENDING             = 0b0000010,
+    COMMITTED           = 0b0000100,
+    PENDING_DELTA       = 0b0001010,
+    COMMITTED_DELTA     = 0b0001100,
+    PENDING_DELETED     = 0b0000011,
+    COMMITTED_DELETED   = 0b0000101,
+    LOCKED              = 0b0010000,
+    LOCKED_DELTA        = 0b0011000,  // Converting from delta to flattened
 };
 
 
@@ -297,8 +298,7 @@ public:
 
 #if MVCC_INLINING
     MvObject()
-            : h_(&ih_), ih_(this) {
-        MvRegistry::reg(this);
+            : h_(&ih_), ih_(this), enqueued_(false) {
         ih_.status_commit();
         itid_ = ih_.rtid();
         if (std::is_trivial<T>::value) {
@@ -308,27 +308,23 @@ public:
         }
     }
     explicit MvObject(const T& value)
-            : h_(&ih_), ih_(0, this, value) {
-        MvRegistry::reg(this);
+            : h_(&ih_), ih_(0, this, value), enqueued_(false) {
         ih_.status_commit();
         itid_ = ih_.rtid();
     }
     explicit MvObject(T&& value)
-            : h_(&ih_), ih_(0, this, value) {
-        MvRegistry::reg(this);
+            : h_(&ih_), ih_(0, this, value), enqueued_(false) {
         ih_.status_commit();
         itid_ = ih_.rtid();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(&ih_), ih_(0, this, T(std::forward<Args>(args)...)) {
-        MvRegistry::reg(this);
+            : h_(&ih_), ih_(0, this, T(std::forward<Args>(args)...)), enqueued_(false) {
         ih_.status_commit();
         itid_ = ih_.rtid();
     }
 #else
-    MvObject() : h_(new history_type(this)) {
-        MvRegistry::reg(this);
+    MvObject() : h_(new history_type(this)), enqueued_(false) {
         h_.load()->status_commit();
         if (std::is_trivial<T>::value) {
             static_cast<history_type*>(h_.load())->v_ = T();
@@ -337,25 +333,22 @@ public:
         }
     }
     explicit MvObject(const T& value)
-            : h_(new history_type(0, this, value)) {
-        MvRegistry::reg(this);
+            : h_(new history_type(0, this, value)), enqueued_(false) {
         h_.load()->status_commit();
     }
     explicit MvObject(T&& value)
-            : h_(new history_type(0, this, value)) {
-        MvRegistry::reg(this);
+            : h_(new history_type(0, this, value)), enqueued_(false) {
         h_.load()->status_commit();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(new history_type(0, this, T(std::forward<Args>(args)...))) {
-        MvRegistry::reg(this);
+            : h_(new history_type(0, this, T(std::forward<Args>(args)...))), enqueued_(false) {
         h_.load()->status_commit();
     }
 #endif
 
     ~MvObject() {
-        rentry_.valid = false;
+        /*
         base_type *h = h_;
         h_ = nullptr;
         while (h) {
@@ -368,6 +361,7 @@ public:
             h->rtid_ = h->wtid_ = 0;  // Make it GC-able
             h = h->prev_;
         }
+        */
     }
 
     class InvalidState {};
@@ -459,6 +453,10 @@ public:
 
             // Attempt to CAS onto the target
             if (target->compare_exchange_strong(t, h)) {
+                bool false_ = false;
+                if (enqueued_.compare_exchange_strong(false_, true)) {
+                    MvRegistry::reg(this, tid, &enqueued_);
+                }
                 break;
             }
         } while (true);
@@ -585,7 +583,7 @@ protected:
     history_type ih_;  // Inlined version
     type itid_;  // TID representing until when the inlined version is correct
 #endif
-    MvRegistry::MvRegistryEntry rentry_;  // The corresponding registry entry
+    std::atomic<bool> enqueued_;  // Whether this has been enqueued for GC
 
     friend class MvRegistry;
 };

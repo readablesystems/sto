@@ -419,7 +419,6 @@ void testCommuteGC() {
         assert(h->status_is(COMMITTED_DELTA));
         assert(h->prev());
         assert(h->prev()->status_is(COMMITTED));
-        assert(!h->prev()->prev());
     }
 
     assert(10 == box.nontrans_read());

@@ -833,8 +833,7 @@ public:
     }
 
     static void tpcc_runner_thread(tpcc_db<DBParams>& db, db_profiler& prof, int runner_id, uint64_t w_start,
-                                   uint64_t w_end, double time_limit, uint64_t& txn_cnt,
-                                   const size_t gc_rate) {
+                                   uint64_t w_end, double time_limit, uint64_t& txn_cnt) {
         tpcc_runner<DBParams> runner(runner_id, db, w_start, w_end);
         typedef typename tpcc_runner<DBParams>::txn_type txn_type;
 
@@ -875,10 +874,6 @@ public:
                     break;
             };
 
-            if (gc_rate && !(local_cnt % gc_rate)) {
-                MvRegistry::collect_garbage(runner_id);
-            }
-
             ++local_cnt;
         }
 
@@ -886,7 +881,7 @@ public:
     }
 
     static uint64_t run_benchmark(tpcc_db<DBParams>& db, db_profiler& prof, int num_runners,
-                                  double time_limit, const size_t gc_rate, const bool verbose) {
+                                  double time_limit, const bool verbose) {
         int q = db.num_warehouses() / num_runners;
         int r = db.num_warehouses() % num_runners;
 
@@ -906,8 +901,7 @@ public:
                     fprintf(stdout, "runner %d: [%d, %d]\n", i, wid, wid);
                 }
                 runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), std::ref(prof),
-                                         i, wid, wid, time_limit, std::ref(txn_cnts[i]),
-                                         gc_rate);
+                                         i, wid, wid, time_limit, std::ref(txn_cnts[i]));
             }
         } else {
             int last_xend = 1;
@@ -923,7 +917,7 @@ public:
                 }
                 runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), std::ref(prof),
                                          i, last_xend, next_xend - 1, time_limit,
-                                         std::ref(txn_cnts[i]), gc_rate);
+                                         std::ref(txn_cnts[i]));
                 last_xend = next_xend;
             }
 
@@ -948,7 +942,6 @@ public:
         int num_threads = 1;
         double time_limit = 10.0;
         bool enable_gc = false;
-        size_t gc_rate = 0;
         bool verbose = false;
 
         Clp_Parser *clp = Clp_NewParser(argc, argv, noptions, options);
@@ -976,9 +969,6 @@ public:
                     break;
                 case opt_gc:
                     enable_gc = !clp->negated;
-                    break;
-                case opt_gr:
-                    gc_rate = clp->val.i;
                     break;
                 case opt_node:
                     break;
@@ -1021,29 +1011,26 @@ public:
 
         std::thread advancer;
         std::cout << "Garbage collection: ";
-        if (enable_gc && !gc_rate) {
-            std::cout << "dedicated thread (OCC & MVCC)";
-            MvRegistry::toggle_GC(false);  // Disable per-thread GC
+        if (enable_gc) {
+            std::cout << "enabled";
+            MvRegistry::toggle_gc(true);  // Enable MVCC garbage collection
             advancer = std::thread(&Transaction::epoch_advancer, nullptr);
-            advancer.detach();
-        } else if (enable_gc && gc_rate) {
-            std::cout << "per-thread (MVCC) & dedicated thread (OCC)";
-            MvRegistry::toggle_gc(false);  // Disable dedicated-thread GC
-            advancer = std::thread(&Transaction::epoch_advancer, nullptr);
-            advancer.detach();
         } else {
             std::cout << "disabled";
         }
         std::cout << std::endl;
 
         prof.start(profiler_mode);
-        auto num_trans = run_benchmark(
-            db, prof, num_threads, time_limit, gc_rate, verbose);
+        auto num_trans = run_benchmark(db, prof, num_threads, time_limit, verbose);
         prof.finish(num_trans);
 
         if (enable_gc) {
             MvRegistry::stop();
+            Transaction::global_epochs.run = false;
+
             while (!MvRegistry::done());
+            MvRegistry::cleanup();
+            advancer.join();
         }
 
         return 0;

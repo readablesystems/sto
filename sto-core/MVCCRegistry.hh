@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <deque>
+
 #include "MVCCTypes.hh"
 #include "TThread.hh"
 
@@ -14,41 +16,37 @@ public:
     typedef MvHistoryBase base_type;
     typedef TransactionTid::type type;
 
-    struct MvRegistryEntry {
-        typedef std::atomic<base_type*> atomic_base_type;
-        atomic_base_type *atomic_base;
-        MvRegistryEntry *next;
-        std::atomic<bool> valid;
-        const base_type *inlined;  // Inlined version
-    };
-
-    MvRegistry() : enable_gc(true), enable_GC(true), is_running(0), is_stopping(false) {
+    MvRegistry() : enable_gc(false) {
         always_assert(
             this == &MvRegistry::registrar,
             "Only one MvRegistry can be created, which is the "
             "MvRegistry::registrar.");
-
         for (size_t i = 0; i < (sizeof registries) / (sizeof *registries); i++) {
-            registries[i] = nullptr;
+            registries[i] = new registry_type();
         }
     }
 
     ~MvRegistry() {
         is_stopping = true;
-        is_running = 0;
-        for (size_t i = 0; i < (sizeof registries) / (sizeof *registries); i++) {
-            registries[i] = nullptr;
-        }
+        while (is_running > 0);
     }
 
+    static void cleanup() {
+        registrar.cleanup_();
+    }
+
+    // XXX: VERY NOT THREAD-SAFE!
     static void collect_garbage() {
         if (registrar.enable_gc) {
-            registrar.collect_garbage_();
+            for (size_t i = 0; i < (sizeof registries) / (sizeof *registries); i++) {
+                registrar.collect_garbage_(i);
+            }
         }
     }
 
+    // XXX: NOT THREAD-SAFE FOR TWO CALLS WITH THE SAME INDEX
     static void collect_garbage(const size_t index) {
-        if (registrar.enable_GC) {
+        if (registrar.enable_gc) {
             registrar.collect_garbage_(index);
         }
     }
@@ -58,8 +56,8 @@ public:
     }
 
     template <typename T>
-    static void reg(MvObject<T> *obj) {
-        registrar.reg_(obj);
+    static void reg(MvObject<T>* const obj, const type tid, std::atomic<bool>* const flag) {
+        registrar.reg_(obj, tid, flag);
     }
 
     static void stop() {
@@ -70,40 +68,38 @@ public:
         registrar.enable_gc = enabled;
     }
 
-    static void toggle_GC(const bool enabled) {
-        registrar.enable_GC = enabled;
-    }
-
 private:
-    typedef std::atomic<MvRegistryEntry*> registry_type;
+    // Represents the head element of an MvObject
+    struct MvRegistryEntry;
+    typedef MvRegistryEntry entry_type;
 
-    std::atomic<bool> enable_gc;  // For enabling collect_garbage()
-    std::atomic<bool> enable_GC;  // For enabling collect_garbage(const size_t)
+    struct MvRegistryEntry {
+        typedef std::atomic<base_type*> head_type;
+        MvRegistryEntry(
+            head_type* const head, base_type* const ih, const type tid,
+            std::atomic<bool>* const flag) :
+            head(head), inlined(ih), tid(tid), flag(flag) {}
+
+        head_type* const head;
+        base_type* const inlined;
+        const type tid;
+        std::atomic<bool>* const flag;
+    };
+
+    std::atomic<bool> enable_gc;
     std::atomic<size_t> is_running;
     std::atomic<bool> is_stopping;
     static MvRegistry registrar;
-    registry_type registries[MAX_THREADS];
+    typedef std::deque<entry_type> registry_type;
+    registry_type *registries[MAX_THREADS];
 
-    void collect_(registry_type&, const type);
-
-    void collect_garbage_() {
-        if (is_stopping) {
-            return;
-        }
-        const type gc_tid = compute_gc_tid();
-        for (registry_type &registry : registries) {
-            if (is_stopping) {
-                return;
-            }
-            is_running++;
-            if (is_stopping) {
-                is_running--;
-                return;
-            }
-            collect_(registry, gc_tid);
-            is_running--;
+    void cleanup_() {
+        for (size_t i = 0; i < (sizeof registries) / (sizeof *registries); i++) {
+            delete registries[i];
         }
     }
+
+    void collect_(registry_type&, const type);
 
     void collect_garbage_(const size_t index) {
         if (is_stopping) {
@@ -115,7 +111,7 @@ private:
             is_running--;
             return;
         }
-        collect_(registries[index], gc_tid);
+        collect_(registry(index), gc_tid);
         is_running--;
     }
 
@@ -126,10 +122,11 @@ private:
     }
 
     template <typename T>
-    void reg_(MvObject<T> *obj);
+    void reg_(MvObject<T>* const, const type, std::atomic<bool>* const);
 
-    inline registry_type& registry() {
-        return registries[TThread::id()];
+    inline registry_type& registry(
+            const size_t threadid=TThread::id()) {
+        return *registries[threadid];
     }
 
     void stop_() {
@@ -138,17 +135,12 @@ private:
 };
 
 template <typename T>
-void MvRegistry::reg_(MvObject<T> *obj) {
-    MvRegistryEntry *entry = &obj->rentry_;
-    entry->atomic_base = &obj->h_;
-    entry->valid = true;
+void MvRegistry::reg_(MvObject<T>* const obj, const type tid, std::atomic<bool>* const flag) {
+    registry().push_back(entry_type(&obj->h_,
 #if MVCC_INLINING
-    entry->inlined = &obj->ih_;
+        &obj->ih_
 #else
-    entry->inlined = nullptr;
+        nullptr
 #endif
-    assert(entry->atomic_base);
-    do {
-        entry->next = registry();
-    } while (!registry().compare_exchange_weak(entry->next, entry));
+        , tid, flag));
 }
