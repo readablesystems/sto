@@ -3,6 +3,7 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/masstree-beta" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/third-party/rpmalloc" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/third-party/xxHash" vcs="Git" />
   </component>
 </project>

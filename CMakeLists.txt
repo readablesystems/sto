@@ -11,6 +11,7 @@ endif()
 include_directories(masstree-beta)
 include_directories(third-party)
 include_directories(third-party/xxHash)
+include_directories(third-party/rpmalloc)
 
 include_directories(lib sto-core legacy datatype benchmark)
 
