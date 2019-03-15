@@ -188,6 +188,8 @@ inline void set_affinity(int runner_id) {
     CPU_ZERO(&cpuset);
     // FIXME: This is only valid for the GATECH machine
     //int cpu_id = 24 * (runner_id % 8) + (runner_id / 8);
+    // This is for AWS m4.16xlarge instances (64 threads, 32 cores, 2 sockets)
+    //int cpu_id = runner_id / 2 + 16 * (runner_id % 2) + (runner_id / 32) * 16;
     int cpu_id = runner_id;
     CPU_SET(cpu_id, &cpuset);
     int rc = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
