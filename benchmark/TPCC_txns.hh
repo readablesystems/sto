@@ -75,7 +75,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
 #if TPCC_SPLIT_TABLE
     district_key dk(q_w_id, q_d_id);
-    std::tie(abort, result, row, value) = db.tbl_districts_const(q_w_id).select_row(dk, RowAccess::None);
+    std::tie(abort, result, row, value) = db.tbl_districts_const(q_w_id).select_row(dk, RowAccess::ObserveValue);
     TXN_DO(abort);
     assert(result);
 
@@ -88,7 +88,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     //db.tbl_districts(q_w_id).update_row(row, new_dv);
 
     customer_key ck(q_w_id, q_d_id, q_c_id);
-    std::tie(abort, result, std::ignore, value) = db.tbl_customers_const(q_w_id).select_row(ck, RowAccess::None);
+    std::tie(abort, result, std::ignore, value) = db.tbl_customers_const(q_w_id).select_row(ck, RowAccess::ObserveValue);
     TXN_DO(abort);
     assert(result);
 
@@ -235,9 +235,11 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
             {{st_nc::s_quantity, Commute ? access_t::write : access_t::update},
              {st_nc::s_ytd, Commute ? access_t::write : access_t::update},
              {st_nc::s_order_cnt, Commute ? access_t::write : access_t::update},
-             {st_nc::s_remote_cnt, Commute ? access_t::write : access_t::update}}
+             {st_nc::s_remote_cnt, Commute ? access_t::write : access_t::update},
+             {st_nc::s_dists, access_t::read },
+             {st_nc::s_data, access_t::read }}
 #else
-            Commute ? RowAccess::None : RowAccess::ObserveValue
+            RowAccess::ObserveValue
 #endif
         );
         TXN_DO(abort);
@@ -401,7 +403,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     // select district row and retrieve district info
     district_key dk(q_w_id, q_d_id);
 #if TPCC_SPLIT_TABLE
-    std::tie(success, result, row, value) = db.tbl_districts_const(q_w_id).select_row(dk, RowAccess::None);
+    std::tie(success, result, row, value) = db.tbl_districts_const(q_w_id).select_row(dk, RowAccess::ObserveValue);
     TXN_DO(success);
     assert(result);
     auto dv = reinterpret_cast<const district_const_value *>(value);
@@ -501,7 +503,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
 #if TPCC_SPLIT_TABLE
     customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
-    std::tie(success, result, row, value) = db.tbl_customers_const(q_c_w_id).select_row(ck, RowAccess::None);
+    std::tie(success, result, row, value) = db.tbl_customers_const(q_c_w_id).select_row(ck, RowAccess::ObserveValue);
     TXN_DO(success);
     assert(result);
 
@@ -693,7 +695,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
 #if TPCC_SPLIT_TABLE
     customer_key ck(q_w_id, q_d_id, q_c_id);
-    std::tie(success, result, row, value) = db.tbl_customers_const(q_w_id).select_row(ck, RowAccess::None);
+    std::tie(success, result, row, value) = db.tbl_customers_const(q_w_id).select_row(ck, RowAccess::ObserveValue);
     TXN_DO(success);
     assert(result);
 
