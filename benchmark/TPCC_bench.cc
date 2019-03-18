@@ -9,7 +9,7 @@
 
 namespace tpcc {
 
-const char *tpcc_input_generator::last_names[] = {
+const char* tpcc_input_generator::last_names[] = {
         "BAR", "OUGHT", "ABLE", "PRI", "PRES",
         "ESE", "ANTI", "CALLY", "ATION", "EING"};
 
@@ -27,7 +27,10 @@ const Clp_Option options[] = {
         { "node",         'n', opt_node,  Clp_NoVal,     Clp_Negate | Clp_Optional },
         { "commute",      'x', opt_comm,  Clp_NoVal,     Clp_Negate | Clp_Optional },
         { "verbose",      'v', opt_verb,  Clp_NoVal,     Clp_Negate | Clp_Optional },
+        { "mix",          'm', opt_mix,   Clp_ValInt,    Clp_Optional },
 };
+
+const char* workload_mix_names[] = { "Full", "NO-only", "NO+P-only" };
 
 const size_t noptions = arraysize(options);
 
@@ -60,7 +63,13 @@ void print_usage(const char *argv_0) {
        << "  --commute (or -x)" << std::endl
        << "    Enable commutative updates in MVCC (default false)." << std::endl
        << "  --verbose (or -v)" << std::endl
-       << "    Enable verbose output (default false)." << std::endl;
+       << "    Enable verbose output (default false)." << std::endl
+       << "  --mix=<NUM> or -m<NUM>" << std::endl
+       << "    Specify workload mix:" << std::endl
+       << "    0. Full mix (default)" << std::endl
+       << "    1. New-order only" << std::endl
+       << "    2. New-order plus Payment only" << std::endl;
+
     std::cout << ss.str() << std::flush;
 }
 

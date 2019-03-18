@@ -32,9 +32,10 @@
 // @section: clp parser definitions
 enum {
     opt_dbid = 1, opt_nwhs, opt_nthrs, opt_time, opt_perf, opt_pfcnt, opt_gc,
-    opt_gr, opt_node, opt_comm, opt_verb
+    opt_gr, opt_node, opt_comm, opt_verb, opt_mix
 };
 
+extern const char* workload_mix_names[];
 extern const Clp_Option options[];
 extern const size_t noptions;
 extern void print_usage(const char *);
@@ -297,22 +298,31 @@ public:
         stock_level
     };
 
-    tpcc_runner(int id, tpcc_db<DBParams>& database, uint64_t w_start, uint64_t w_end)
-        : ig(id, database.num_warehouses()), db(database), runner_id(id),
+    tpcc_runner(int id, tpcc_db<DBParams>& database, uint64_t w_start, uint64_t w_end, int mix)
+        : ig(id, database.num_warehouses()), db(database), mix(mix), runner_id(id),
           w_id_start(w_start), w_id_end(w_end) {}
 
     inline txn_type next_transaction() {
         uint64_t x = ig.random(1, 100);
-        if (x <= 45)
+        if (mix == 0) {
+            if (x <= 45)
+                return txn_type::new_order;
+            else if (x <= 88)
+                return txn_type::payment;
+            else if (x <= 92)
+                return txn_type::order_status;
+            else if (x <= 96)
+                return txn_type::delivery;
+            else
+                return txn_type::stock_level;
+        } else if (mix == 1) {
             return txn_type::new_order;
-        else if (x <= 88)
-            return txn_type::payment;
-        else if (x <= 92)
-            return txn_type::order_status;
-        else if (x <= 96)
-            return txn_type::delivery;
+        }
+        assert(mix == 2);
+        if (x <= 51)
+            return txn_type::new_order;
         else
-            return txn_type::stock_level;
+            return txn_type::payment;
     }
 
     inline void run_txn_neworder();
@@ -324,6 +334,7 @@ public:
 private:
     tpcc_input_generator ig;
     tpcc_db<DBParams>& db;
+    int mix;
     int runner_id;
     uint64_t w_id_start;
     uint64_t w_id_end;
@@ -833,8 +844,8 @@ public:
     }
 
     static void tpcc_runner_thread(tpcc_db<DBParams>& db, db_profiler& prof, int runner_id, uint64_t w_start,
-                                   uint64_t w_end, double time_limit, uint64_t& txn_cnt) {
-        tpcc_runner<DBParams> runner(runner_id, db, w_start, w_end);
+                                   uint64_t w_end, double time_limit, int mix, uint64_t& txn_cnt) {
+        tpcc_runner<DBParams> runner(runner_id, db, w_start, w_end, mix);
         typedef typename tpcc_runner<DBParams>::txn_type txn_type;
 
         uint64_t local_cnt = 0;
@@ -881,7 +892,7 @@ public:
     }
 
     static uint64_t run_benchmark(tpcc_db<DBParams>& db, db_profiler& prof, int num_runners,
-                                  double time_limit, const bool verbose) {
+                                  double time_limit, int mix, const bool verbose) {
         int q = db.num_warehouses() / num_runners;
         int r = db.num_warehouses() % num_runners;
 
@@ -901,7 +912,7 @@ public:
                     fprintf(stdout, "runner %d: [%d, %d]\n", i, wid, wid);
                 }
                 runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), std::ref(prof),
-                                         i, wid, wid, time_limit, std::ref(txn_cnts[i]));
+                                         i, wid, wid, time_limit, mix, std::ref(txn_cnts[i]));
             }
         } else {
             int last_xend = 1;
@@ -916,7 +927,7 @@ public:
                     fprintf(stdout, "runner %d: [%d, %d]\n", i, last_xend, next_xend - 1);
                 }
                 runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), std::ref(prof),
-                                         i, last_xend, next_xend - 1, time_limit,
+                                         i, last_xend, next_xend - 1, time_limit, mix,
                                          std::ref(txn_cnts[i]));
                 last_xend = next_xend;
             }
@@ -940,6 +951,7 @@ public:
         bool counter_mode = false;
         int num_warehouses = 1;
         int num_threads = 1;
+        int mix = 1;
         double time_limit = 10.0;
         bool enable_gc = false;
         bool verbose = false;
@@ -977,6 +989,12 @@ public:
                 case opt_verb:
                     verbose = !clp->negated;
                     break;
+                case opt_mix:
+                    mix = clp->val.i;
+                    if (mix > 2 || mix < 0) {
+                        mix = 0;
+                    }
+                    break;
                 default:
                     ::print_usage(argv[0]);
                     ret = 1;
@@ -988,6 +1006,8 @@ public:
         Clp_DeleteParser(clp);
         if (ret != 0)
             return ret;
+
+        std::cout << "Selected workload mix: " << std::string(workload_mix_names[mix]) << std::endl;
 
         auto profiler_mode = counter_mode ?
                              Profiler::perf_mode::counters : Profiler::perf_mode::record;
@@ -1018,10 +1038,10 @@ public:
         } else {
             std::cout << "disabled";
         }
-        std::cout << std::endl;
+        std::cout << std::endl << std::flush;
 
         prof.start(profiler_mode);
-        auto num_trans = run_benchmark(db, prof, num_threads, time_limit, verbose);
+        auto num_trans = run_benchmark(db, prof, num_threads, time_limit, mix, verbose);
         prof.finish(num_trans);
 
         if (enable_gc) {
