@@ -4,27 +4,25 @@
 #include "MVCCStructs.hh"
 #include "Transaction.hh"
 
-MvRegistry MvRegistry::registrar;
+__thread size_t MvRegistry::cycles = 0;
+MvRegistry MvRegistry::registrar_;
 
-MvRegistry::type MvRegistry::compute_gc_tid() {
-    type gc_tid = Transaction::_RTID;
+MvRegistry::type MvRegistry::compute_rtid_inf() {
+    type rtid_inf = Transaction::_RTID;
 
-    // Find the gc tid
+    // Find an infimum for the rtid
     for (auto &ti : Transaction::tinfo) {
-        if (!gc_tid) {
-            gc_tid = ti.rtid;
+        if (!rtid_inf) {
+            rtid_inf = ti.rtid.load();
         } else if (ti.rtid) {
-            gc_tid = std::min(gc_tid, ti.rtid);
+            rtid_inf = std::min(rtid_inf, ti.rtid.load());
         }
     }
-    if (gc_tid) {
-        gc_tid--;  // One less than the oldest rtid, unless that's 0...
-    }
 
-    return gc_tid;
+    return rtid_inf;
 }
 
-void MvRegistry::collect_(registry_type &registry, const type gc_tid) {
+void MvRegistry::collect_(registry_type& registry, const type rtid_inf) {
     if (is_stopping) {
         return;
     }
@@ -36,7 +34,7 @@ void MvRegistry::collect_(registry_type &registry, const type gc_tid) {
 
         auto entry = registry.front();
 
-        if (entry.tid > gc_tid) {
+        if (rtid_inf <= entry.tid) {
             break;
         }
 
@@ -48,29 +46,29 @@ void MvRegistry::collect_(registry_type &registry, const type gc_tid) {
             continue;
         }
 
-        // Find currently-visible version at gc_tid
-        while (h->status_is(MvStatus::ABORTED)) {
-            h = h->prev_;
-        }
-        base_type *hhead = h;
-        base_type *hnext = hhead;
-        while (gc_tid < h->wtid()) {
+        // Find currently-visible version at rtid_inf
+        h = h->with(COMMITTED_DELTA, COMMITTED);
+        base_type * const hhead = h;  // First valid version
+        base_type *hnext = nullptr;
+        while (rtid_inf <= h->btid()) {
             hnext = h;
             h = h->prev_;
-            while (h->status_is(MvStatus::ABORTED)) {
-                h = h->prev_;
-            }
+            h = h->with(COMMITTED_DELTA, COMMITTED);
         }
-        if (h->status_is(MvStatus::DELTA)) {
-            h->enflatten();
-        }
+        assert(!h->status_is(ABORTED));
+        assert(h->status() == COMMITTED || h->status() == COMMITTED_DELETED);
+        assert(rtid_inf > h->btid());
         base_type *garbo = h->prev_;  // First element to collect
         h->prev_ = nullptr;  // Ensures that future collection cycles know
                              // about the progress of previous cycles
 
+        type next_tid = h->btid();
         while (garbo) {
             base_type *delet = garbo;
             garbo = garbo->prev_;
+            assert(rtid_inf > delet->wtid());
+            assert(rtid_inf > next_tid);
+            next_tid = std::min(next_tid, delet->btid());
             if (entry.inlined && (entry.inlined == delet)) {
                 delet->status_unused();
             } else {
@@ -79,11 +77,56 @@ void MvRegistry::collect_(registry_type &registry, const type gc_tid) {
         }
 
         // There is more gc to potentially do!
-        if (hnext != hhead) {
+        if (hnext) {
             registry.push_back(entry_type(
-                entry.head, entry.inlined, hnext->wtid(), entry.flag));
+                entry.head, entry.inlined, hnext->btid(), entry.flag));
         } else {
             *entry.flag = false;
         }
+    }
+}
+
+void MvRegistry::flatten_(registry_type& registry, const type rtid_inf) {
+    if (is_stopping) {
+        return;
+    }
+
+    std::stack<entry_type> stk;
+    while (!registry.empty()) {
+        if (is_stopping) {
+            return;
+        }
+
+        auto entry = registry.front();
+
+        if (rtid_inf <= entry.tid) {
+            break;
+        }
+
+        stk.push(entry);
+        registry.pop_front();
+
+        base_type *h = *entry.head;
+
+        if (!h) {
+            continue;
+        }
+
+        // Traverse to the gc boundary
+        while (rtid_inf <= h->btid()) {
+            h = h->prev_;
+        }
+
+        // Find the first COMMITTED or COMMITTED_DELTA version
+        h = h->with(COMMITTED, COMMITTED);
+
+        if (h->status_is(DELTA)) {
+            h->enflatten();
+        }
+    }
+
+    while (!stk.empty()) {
+        registry.push_front(stk.top());
+        stk.pop();
     }
 }

@@ -15,12 +15,14 @@ class MvRegistry {
 public:
     typedef MvHistoryBase base_type;
     typedef TransactionTid::type type;
+    const static size_t CYCLE_LENGTH = 2;
+    const static size_t GC_PER_FLATTEN = 1000;
 
     MvRegistry() : enable_gc(false) {
         always_assert(
-            this == &MvRegistry::registrar,
+            this == &MvRegistry::registrar_,
             "Only one MvRegistry can be created, which is the "
-            "MvRegistry::registrar.");
+            "MvRegistry::registrar()");
         for (size_t i = 0; i < (sizeof registries) / (sizeof *registries); i++) {
             registries[i] = new registry_type();
         }
@@ -32,40 +34,48 @@ public:
     }
 
     static void cleanup() {
-        registrar.cleanup_();
+        registrar().cleanup_();
     }
 
     // XXX: VERY NOT THREAD-SAFE!
     static void collect_garbage() {
-        if (registrar.enable_gc) {
+        if (registrar().enable_gc && !((++cycles) % CYCLE_LENGTH)) {
             for (size_t i = 0; i < (sizeof registries) / (sizeof *registries); i++) {
-                registrar.collect_garbage_(i);
+                registrar().collect_garbage_(i);
             }
         }
     }
 
     // XXX: NOT THREAD-SAFE FOR TWO CALLS WITH THE SAME INDEX
     static void collect_garbage(const size_t index) {
-        if (registrar.enable_gc) {
-            registrar.collect_garbage_(index);
+        if (registrar().enable_gc && !((++cycles) % CYCLE_LENGTH)) {
+            registrar().collect_garbage_(index);
         }
     }
 
     static bool done() {
-        return registrar.done_();
+        return registrar().done_();
     }
 
     template <typename T>
-    static void reg(MvObject<T>* const obj, const type tid, std::atomic<bool>* const flag) {
-        registrar.reg_(obj, tid, flag);
+    static void reg(MvObject<T> * const obj, const type tid, std::atomic<bool> * const flag) {
+        registrar().reg_(obj, tid, flag);
+    }
+
+    inline static MvRegistry& registrar() {
+        return registrar_;
+    }
+
+    inline static type rtid_inf() {
+        return registrar().compute_rtid_inf();
     }
 
     static void stop() {
-        registrar.stop_();
+        registrar().stop_();
     }
 
     static void toggle_gc(const bool enabled) {
-        registrar.enable_gc = enabled;
+        registrar().enable_gc = enabled;
     }
 
 private:
@@ -76,20 +86,22 @@ private:
     struct MvRegistryEntry {
         typedef std::atomic<base_type*> head_type;
         MvRegistryEntry(
-            head_type* const head, base_type* const ih, const type tid,
-            std::atomic<bool>* const flag) :
+            head_type * const head, base_type * const ih, const type tid,
+            std::atomic<bool> * const flag) :
             head(head), inlined(ih), tid(tid), flag(flag) {}
 
-        head_type* const head;
-        base_type* const inlined;
+        head_type * const head;
+        base_type * const inlined;
         const type tid;
-        std::atomic<bool>* const flag;
+        std::atomic<bool> * const flag;
     };
+
+    static __thread size_t cycles;
+    static MvRegistry registrar_;
 
     std::atomic<bool> enable_gc;
     std::atomic<size_t> is_running;
     std::atomic<bool> is_stopping;
-    static MvRegistry registrar;
     typedef std::deque<entry_type> registry_type;
     registry_type *registries[MAX_THREADS];
 
@@ -105,24 +117,29 @@ private:
         if (is_stopping) {
             return;
         }
-        const type gc_tid = registrar.compute_gc_tid();
-        registrar.is_running++;
+        const type rtid_inf = registrar().compute_rtid_inf();
+        registrar().is_running++;
         if (is_stopping) {
             is_running--;
             return;
         }
-        collect_(registry(index), gc_tid);
+        if (!(cycles % (CYCLE_LENGTH * GC_PER_FLATTEN))) {
+            flatten_(registry(index), rtid_inf);
+        }
+        collect_(registry(index), rtid_inf);
         is_running--;
     }
 
-    type compute_gc_tid();
+    type compute_rtid_inf();
    
     bool done_() {
         return is_running == 0;
     }
 
+    void flatten_(registry_type&, const type);
+
     template <typename T>
-    void reg_(MvObject<T>* const, const type, std::atomic<bool>* const);
+    void reg_(MvObject<T> * const, const type, std::atomic<bool> * const);
 
     inline registry_type& registry(
             const size_t threadid=TThread::id()) {
@@ -135,7 +152,7 @@ private:
 };
 
 template <typename T>
-void MvRegistry::reg_(MvObject<T>* const obj, const type tid, std::atomic<bool>* const flag) {
+void MvRegistry::reg_(MvObject<T> * const obj, const type tid, std::atomic<bool> * const flag) {
     registry().push_back(entry_type(&obj->h_,
 #if MVCC_INLINING
         &obj->ih_

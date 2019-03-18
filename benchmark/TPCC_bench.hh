@@ -951,7 +951,7 @@ public:
         bool counter_mode = false;
         int num_warehouses = 1;
         int num_threads = 1;
-        int mix = 1;
+        int mix = 0;
         double time_limit = 10.0;
         bool enable_gc = false;
         bool verbose = false;

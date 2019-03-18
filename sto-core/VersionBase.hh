@@ -38,6 +38,8 @@ public:
     static constexpr type opt_bit = type(0x1 << (mask_width + 4));
     // start of te actual version (Tid) value
     static constexpr type increment_value = type(0x1 << (mask_width + 5));
+    // Max Tid value, absent any other bits
+    static constexpr type max_value = type((~0x0ULL) << (mask_width + 5));
 
     static bool is_locked(type v) {
         return (v & lock_bit) != 0;

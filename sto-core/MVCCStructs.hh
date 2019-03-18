@@ -9,19 +9,20 @@
 
 // Status types of MvHistory elements
 enum MvStatus {
-    UNUSED              = 0b0000000,
-    ABORTED             = 0b0100000,
-    GARBAGE             = 0b1000000,
-    DELTA               = 0b0001000,  // Commutative update delta
-    DELETED             = 0b0000001,  // Not a valid state on its own, but defined as a flag
-    PENDING             = 0b0000010,
-    COMMITTED           = 0b0000100,
-    PENDING_DELTA       = 0b0001010,
-    COMMITTED_DELTA     = 0b0001100,
-    PENDING_DELETED     = 0b0000011,
-    COMMITTED_DELETED   = 0b0000101,
-    LOCKED              = 0b0010000,
-    LOCKED_DELTA        = 0b0011000,  // Converting from delta to flattened
+    UNUSED                  = 0b0000000,
+    ABORTED                 = 0b0100000,
+    GARBAGE                 = 0b1000000,
+    DELTA                   = 0b0001000,  // Commutative update delta
+    DELETED                 = 0b0000001,  // Not a valid state on its own, but defined as a flag
+    PENDING                 = 0b0000010,
+    COMMITTED               = 0b0000100,
+    PENDING_DELTA           = 0b0001010,
+    COMMITTED_DELTA         = 0b0001100,
+    PENDING_DELETED         = 0b0000011,
+    COMMITTED_DELETED       = 0b0000101,
+    LOCKED                  = 0b0010000,
+    LOCKED_COMMITTED        = 0b0010100,
+    LOCKED_COMMITTED_DELTA  = 0b0011100,  // Converting from delta to flattened
 };
 
 
@@ -38,6 +39,17 @@ public:
             return true;
         }
         return false;
+    }
+
+    // Returns the current btid
+    type btid() const {
+        return btid_;
+    }
+
+    // Non-CAS assignment on the btid
+    type btid(const type new_btid) {
+        btid_ = new_btid;
+        return btid();
     }
 
     // Returns the current rtid
@@ -76,7 +88,7 @@ public:
     // Removes all flags, signaling an aborted status
     // NOT THREADSAFE
     MvStatus status_abort() {
-        status(MvStatus::ABORTED);
+        status(ABORTED);
         return status();
     }
 
@@ -84,37 +96,37 @@ public:
     // current status is ABORTED
     // NOT THREADSAFE
     MvStatus status_commit() {
-        if (status() == MvStatus::ABORTED) {
+        if (status() == ABORTED) {
             return status();
         }
-        status(MvStatus::COMMITTED | (status() & ~MvStatus::PENDING));
+        status(COMMITTED | (status() & ~PENDING));
         return status();
     }
 
     // Sets the deleted flag; does nothing if the current status is ABORTED
     // NOT THREADSAFE
     MvStatus status_delete() {
-        if (status() == MvStatus::ABORTED) {
+        if (status() == ABORTED) {
             return status();
         }
-        status(status() | MvStatus::DELETED);
+        status(status() | DELETED);
         return status();
     }
 
     // Sets the delta flag; does nothing if the current status is ABORTED
     // NOT THREADSAFE
     MvStatus status_delta() {
-        if (status() == MvStatus::ABORTED) {
+        if (status() == ABORTED) {
             return status();
         }
-        status(status() | MvStatus::DELTA);
+        status(status() | DELTA);
         return status();
     }
 
     // Sets the history into UNUSED state
     // NOT THREADSAFE
     MvStatus status_unused() {
-        status(MvStatus::UNUSED);
+        status(UNUSED);
         return status();
     }
 
@@ -133,10 +145,8 @@ public:
 
 protected:
     MvHistoryBase(type ntid, MvHistoryBase *nprev = nullptr)
-            : prev_(nprev), status_(MvStatus::PENDING), rtid_(ntid),
-              wtid_(ntid) {
+            : prev_(nprev), status_(PENDING), rtid_(ntid), wtid_(ntid), btid_(ntid) {
 
-        /*
         // Can't actually assume this assertion because it may have changed
         // between when the history item was made and when this check is done
         if (prev_) {
@@ -150,8 +160,10 @@ protected:
                 "Cannot write MVCC history with wtid earlier than prev rtid.");
 //            prev_->rtid = rtid;
         }
-        */
     }
+
+    // Updates btid to Transaction::_RTID
+    void update_btid();
 
     std::atomic<MvHistoryBase*> prev_;
     std::atomic<MvStatus> status_;  // Status of this element
@@ -161,11 +173,22 @@ protected:
 private:
     // Returns true if the given prev pointer would be a valid prev element
     bool is_valid_prev(const MvHistoryBase *prev) const {
-        return prev->rtid_ <= wtid_;
+        return prev->wtid_ <= wtid_;
+    }
+
+    // Returns the newest element that satisfies the expectation with the given
+    // mask
+    MvHistoryBase* with(const MvStatus mask, const MvStatus expect) const {
+        MvHistoryBase *ele = (MvHistoryBase*)this;
+        while (ele && ((ele->status() & mask) != expect)) {
+            ele = ele->prev_;
+        }
+        return ele;
     }
 
     std::atomic<type> rtid_;  // Read TID
     type wtid_;  // Write TID
+    std::atomic<type> btid_;  // Base-version TID
 
     template <typename>
     friend class MvObject;
@@ -233,15 +256,17 @@ private:
     // Initializes the flattening process
     void enflatten() override {
         T v{};
+        assert(prev());
         prev()->flatten(v);
         v = c_.operate(v);
-        MvStatus expected = MvStatus::COMMITTED_DELTA;
-        if (status_.compare_exchange_strong(expected, MvStatus::LOCKED_DELTA)) {
+        MvStatus expected = COMMITTED_DELTA;
+        if (status_.compare_exchange_strong(expected, LOCKED_COMMITTED_DELTA)) {
             v_ = v;
-            status(MvStatus::COMMITTED);
+            update_btid();
+            status(COMMITTED);
         } else {
             // TODO: exponential backoff?
-            while (status_is(MvStatus::LOCKED_DELTA));
+            while (status_is(LOCKED_COMMITTED_DELTA));
         }
     }
 
@@ -263,26 +288,23 @@ private:
     void flatten(T &v) {
         std::stack<history_type*> trace;
         history_type* curr = this;
-        MvStatus s = status();
         trace.push(curr);
-        while (true) {
-            if (s == COMMITTED) {
-                break;
-            }
+        while (curr->status() != COMMITTED) {
             curr = curr->prev();
-            s = curr->status();
             trace.push(curr);
         }
         while (!trace.empty()) {
             auto h = trace.top();
             trace.pop();
 
-            s = h->status();
-            if (s == COMMITTED) {
-                v = h->v_;
-            } else if ((s & DELTA) == DELTA) {
-                v = h->c_.operate(v);
+            if (h->status_is(COMMITTED)) {
+                if (h->status_is(DELTA)) {
+                    v = h->c_.operate(v);
+                } else {
+                    v = h->v_;
+                }
             }
+
         }
     }
 
@@ -439,13 +461,9 @@ public:
             // Discover target atomic on which to do CAS
             std::atomic<base_type*> *target = &h_;
             base_type* t = *target;
-            while (true) {
-                if (t->wtid() > tid) {
-                    target = &t->prev_;
-                    t = *target;
-                } else {
-                    break;
-                }
+            while (t->wtid() > tid) {
+                target = &t->prev_;
+                t = *target;
             }
 
             // Properly link h's prev_
@@ -455,7 +473,7 @@ public:
             if (target->compare_exchange_strong(t, h)) {
                 bool false_ = false;
                 if (enqueued_.compare_exchange_strong(false_, true)) {
-                    MvRegistry::reg(this, tid, &enqueued_);
+                    MvRegistry::reg(this, h->wtid(), &enqueued_);
                 }
                 break;
             }
@@ -475,8 +493,8 @@ public:
     void delete_history(history_type *h) {
 #if MVCC_INLINING
         if (&ih_ == h) {
-            ih_.status_unused();
             itid_ = 0;
+            ih_.status_unused();
             return;
         }
 #endif
@@ -487,10 +505,11 @@ public:
     // pending versions, but if toggled off, will simply return first version,
     // regardless of status
     history_type* find(const type tid, const bool wait=true) const {
-        fence();
         history_type *h;
 #if MVCC_INLINING
-        if (ih_.status_is(COMMITTED) && tid < itid_) {
+        if ((((ih_.status() & LOCKED_COMMITTED) == COMMITTED) ||
+                    ih_.status_is(ABORTED)) &&
+                tid < itid_) {
             h = (history_type*)&ih_;
         } else {
             h = static_cast<history_type*>(h_.load());
@@ -498,21 +517,25 @@ public:
 #else
         h = static_cast<history_type*>(h_.load());
 #endif
+        auto const rtid_inf = MvRegistry::rtid_inf();
+        history_type *next = nullptr;
         /* TODO: use something smarter than a linear scan */
         while (h) {
-            assert(!h->status_is(UNUSED));
+            auto s = h->status();
+            assert(s & (PENDING | ABORTED | COMMITTED));
             if (wait) {
                 if (h->wtid() < tid) {
                     wait_if_pending(h);
                 }
-                if (h->wtid() <= tid && h->status_is(MvStatus::COMMITTED)) {
+                if (h->wtid() <= tid && h->status_is(COMMITTED)) {
                     break;
                 }
             } else {
-                if (h->wtid() <= tid && h->status_is(MvStatus::COMMITTED)) {
+                if (h->wtid() <= tid && h->status_is(COMMITTED)) {
                     break;
                 }
             }
+            next = h;
             h = h->prev();
         }
 
@@ -542,12 +565,17 @@ public:
     // Read-only
     const T& nontrans_access() const {
         history_type *h = static_cast<history_type*>(h_.load());
+        history_type *next = nullptr;
         /* TODO: head version caching */
         while (h) {
             if (h->status_is(COMMITTED)) {
+                if (h->status_is(DELTA)) {
+                    h->enflatten();
+                }
                 return h->v();
             }
-            h = h->prev();
+            next = h;
+            h = next->prev();
         }
         // Should never get here!
         throw InvalidState();
@@ -555,13 +583,18 @@ public:
     // Writable version
     T& nontrans_access() {
         history_type *h = static_cast<history_type*>(h_.load());
+        history_type *next = nullptr;
         /* TODO: head version caching */
         while (h) {
             if (h->status_is(COMMITTED)) {
-                h->status(MvStatus::COMMITTED);
+                if (h->status_is(DELTA)) {
+                    h->enflatten();
+                }
+                h->status(COMMITTED);
                 return h->v();
             }
-            h = h->prev();
+            next = h;
+            h = next->prev();
         }
         // Should never get here!
         throw InvalidState();
@@ -581,7 +614,7 @@ protected:
     std::atomic<base_type*> h_;
 #if MVCC_INLINING
     history_type ih_;  // Inlined version
-    type itid_;  // TID representing until when the inlined version is correct
+    std::atomic<type> itid_;  // TID representing until when the inlined version is correct
 #endif
     std::atomic<bool> enqueued_;  // Whether this has been enqueued for GC
 

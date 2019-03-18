@@ -334,7 +334,7 @@ struct __attribute__((aligned(128))) threadinfo_t {
     using epoch_type = TRcuSet::epoch_type;
     using tid_type = TransactionTid::type;
     epoch_type epoch;
-    tid_type rtid;
+    std::atomic<tid_type> rtid;
     tid_type wtid;
     TRcuSet rcu_set;
     // XXX(NH): these should be vectors so multiple data structures can register
@@ -1118,6 +1118,7 @@ private:
     friend class TransItem;
     friend class Sto;
     friend class TestTransaction;
+    friend class MvHistoryBase;
     friend class MvRegistry;
     friend class CicadaHashtable;
 
