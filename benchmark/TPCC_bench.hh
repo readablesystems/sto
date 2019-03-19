@@ -1053,6 +1053,8 @@ public:
             advancer.join();
         }
 
+        MvRegistry::print_counters();
+
         return 0;
     }
 }; // class tpcc_access

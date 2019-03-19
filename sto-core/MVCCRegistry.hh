@@ -26,6 +26,9 @@ public:
         for (size_t i = 0; i < (sizeof registries) / (sizeof *registries); i++) {
             registries[i] = new registry_type();
         }
+        memset(collect_call_cnts, 0, sizeof collect_call_cnts);
+        memset(collect_visit_cnts, 0, sizeof collect_call_cnts);
+        memset(collect_free_cnts, 0, sizeof collect_call_cnts);
     }
 
     ~MvRegistry() {
@@ -78,6 +81,8 @@ public:
         registrar().enable_gc = enabled;
     }
 
+    static void print_counters();
+
 private:
     // Represents the head element of an MvObject
     struct MvRegistryEntry;
@@ -105,13 +110,17 @@ private:
     typedef std::deque<entry_type> registry_type;
     registry_type *registries[MAX_THREADS];
 
+    size_t collect_call_cnts[MAX_THREADS];
+    size_t collect_visit_cnts[MAX_THREADS];
+    size_t collect_free_cnts[MAX_THREADS];
+
     void cleanup_() {
         for (size_t i = 0; i < (sizeof registries) / (sizeof *registries); i++) {
             delete registries[i];
         }
     }
 
-    void collect_(registry_type&, const type);
+    void collect_(size_t index, const type);
 
     void collect_garbage_(const size_t index) {
         if (is_stopping) {
@@ -124,9 +133,9 @@ private:
             return;
         }
         if (!(cycles % (CYCLE_LENGTH * GC_PER_FLATTEN))) {
-            flatten_(registry(index), rtid_inf);
+            flatten_(index, rtid_inf);
         }
-        collect_(registry(index), rtid_inf);
+        collect_(index, rtid_inf);
         is_running--;
     }
 
@@ -136,7 +145,7 @@ private:
         return is_running == 0;
     }
 
-    void flatten_(registry_type&, const type);
+    void flatten_(size_t index, const type);
 
     template <typename T>
     void reg_(MvObject<T> * const, const type, std::atomic<bool> * const);

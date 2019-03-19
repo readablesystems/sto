@@ -22,11 +22,14 @@ MvRegistry::type MvRegistry::compute_rtid_inf() {
     return rtid_inf;
 }
 
-void MvRegistry::collect_(registry_type& registry, const type rtid_inf) {
+void MvRegistry::collect_(size_t index, const type rtid_inf) {
+    auto& registry = this->registry(index);
     if (is_stopping) {
         return;
     }
-
+#if STO_PROFILE_COUNTERS > 1
+    collect_call_cnts[index]++;
+#endif
     while (!registry.empty()) {
         if (is_stopping) {
             return;
@@ -45,11 +48,16 @@ void MvRegistry::collect_(registry_type& registry, const type rtid_inf) {
         if (!h) {
             continue;
         }
-
+#if STO_PROFILE_COUNTERS > 1
+        collect_visit_cnts[index]++;
+#endif
         // Find currently-visible version at rtid_inf
         h = h->with(COMMITTED_DELTA, COMMITTED);
         base_type *hnext = nullptr;
         while (rtid_inf <= h->btid()) {
+#if STO_PROFILE_COUNTERS > 1
+            collect_visit_cnts[index]++;
+#endif
             hnext = h;
             h = h->prev_;
             h = h->with(COMMITTED_DELTA, COMMITTED);
@@ -68,6 +76,10 @@ void MvRegistry::collect_(registry_type& registry, const type rtid_inf) {
             assert(rtid_inf > delet->wtid());
             assert(rtid_inf > next_tid);
             next_tid = std::min(next_tid, delet->btid());
+#if STO_PROFILE_COUNTERS > 1
+            collect_free_cnts[index]++;
+#endif
+
             if (entry.inlined && (entry.inlined == delet)) {
                 delet->status_unused();
             } else {
@@ -85,7 +97,8 @@ void MvRegistry::collect_(registry_type& registry, const type rtid_inf) {
     }
 }
 
-void MvRegistry::flatten_(registry_type& registry, const type rtid_inf) {
+void MvRegistry::flatten_(size_t index, const type rtid_inf) {
+    auto& registry = this->registry(index);
     if (is_stopping) {
         return;
     }
@@ -128,4 +141,19 @@ void MvRegistry::flatten_(registry_type& registry, const type rtid_inf) {
         registry.push_front(stk.top());
         stk.pop();
     }
+}
+
+void MvRegistry::print_counters() {
+#if STO_PROFILE_COUNTERS > 1
+    for (size_t i = 0; i < MAX_THREADS; ++i) {
+        auto c = registrar().collect_call_cnts[i];
+        auto v = registrar().collect_visit_cnts[i];
+        auto f = registrar().collect_free_cnts[i];
+        if (v == 0)
+            continue;
+
+        printf("t-%02lu: c:%lu, v:%lu, f:%lu\n", i, c, v, f);
+        printf("  η:%04.2f%%\n", (double)f / (double)v * 100.0);
+    }
+#endif
 }
