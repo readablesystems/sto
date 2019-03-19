@@ -16,7 +16,7 @@ public:
     typedef MvHistoryBase base_type;
     typedef TransactionTid::type type;
     const static size_t CYCLE_LENGTH = 10;
-    const static size_t GC_PER_FLATTEN = 10;
+    const static size_t GC_PER_FLATTEN = 1;
 
     MvRegistry() : enable_gc(false) {
         always_assert(
@@ -27,8 +27,13 @@ public:
             registries[i] = new registry_type();
         }
         memset(collect_call_cnts, 0, sizeof collect_call_cnts);
-        memset(collect_visit_cnts, 0, sizeof collect_call_cnts);
-        memset(collect_free_cnts, 0, sizeof collect_call_cnts);
+        memset(collect_down_call_cnts, 0, sizeof collect_down_call_cnts);
+        memset(collect_up_call_cnts, 0, sizeof collect_up_call_cnts);
+        memset(collect_down_visit_cnts, 0, sizeof collect_down_visit_cnts);
+        memset(collect_up_visit_cnts, 0, sizeof collect_up_visit_cnts);
+        memset(collect_free_cnts, 0, sizeof collect_free_cnts);
+        memset(convert_down_up_cnts, 0, sizeof convert_down_up_cnts);
+        memset(convert_up_down_cnts, 0, sizeof convert_up_down_cnts);
     }
 
     ~MvRegistry() {
@@ -91,12 +96,13 @@ private:
     struct MvRegistryEntry {
         typedef std::atomic<base_type*> head_type;
         MvRegistryEntry(
-            head_type * const head, base_type * const ih, const type tid,
-            std::atomic<bool> * const flag) :
-            head(head), inlined(ih), tid(tid), flag(flag) {}
+            head_type * const head, base_type * const ih, base_type * const bv,
+            const type tid, std::atomic<bool> * const flag) :
+            head(head), inlined(ih), base_version(bv), tid(tid), flag(flag) {}
 
         head_type * const head;
         base_type * const inlined;
+        base_type *base_version;  // A cached pointer to the base version
         const type tid;
         std::atomic<bool> * const flag;
     };
@@ -111,8 +117,13 @@ private:
     registry_type *registries[MAX_THREADS];
 
     size_t collect_call_cnts[MAX_THREADS];
-    size_t collect_visit_cnts[MAX_THREADS];
+    size_t collect_down_call_cnts[MAX_THREADS];
+    size_t collect_up_call_cnts[MAX_THREADS];
+    size_t collect_down_visit_cnts[MAX_THREADS];
+    size_t collect_up_visit_cnts[MAX_THREADS];
     size_t collect_free_cnts[MAX_THREADS];
+    size_t convert_down_up_cnts[MAX_THREADS];
+    size_t convert_up_down_cnts[MAX_THREADS];
 
     void cleanup_() {
         for (size_t i = 0; i < (sizeof registries) / (sizeof *registries); i++) {
@@ -120,7 +131,7 @@ private:
         }
     }
 
-    void collect_(size_t index, const type);
+    void collect_(const size_t, const type);
 
     void collect_garbage_(const size_t index) {
         if (is_stopping) {
@@ -168,5 +179,5 @@ void MvRegistry::reg_(MvObject<T> * const obj, const type tid, std::atomic<bool>
 #else
         nullptr
 #endif
-        , tid, flag));
+        , nullptr, tid, flag));
 }

@@ -32,6 +32,11 @@ public:
 
     virtual ~MvHistoryBase() {}
 
+    // Sets the pointer to next
+    void next(MvHistoryBase *next) {
+        next_ = next;
+    }
+
     // Attempt to set the pointer to prev; returns true on success
     bool prev(MvHistoryBase *prev) {
         if (is_valid_prev(prev)) {
@@ -145,7 +150,8 @@ public:
 
 protected:
     MvHistoryBase(type ntid, MvHistoryBase *nprev = nullptr)
-            : prev_(nprev), status_(PENDING), rtid_(ntid), wtid_(ntid), btid_(ntid) {
+            : next_(nullptr), prev_(nprev), status_(PENDING), rtid_(ntid),
+              wtid_(ntid), btid_(ntid) {
 
         // Can't actually assume this assertion because it may have changed
         // between when the history item was made and when this check is done
@@ -165,7 +171,9 @@ protected:
     // Updates btid to Transaction::_RTID
     void update_btid();
 
-    std::atomic<MvHistoryBase*> prev_;
+    std::atomic<MvHistoryBase*> next_;  // Some next element, with a newer tid;
+                                        // used for GC optimizations
+    std::atomic<MvHistoryBase*> prev_;  // Used to build the history chain
     std::atomic<MvStatus> status_;  // Status of this element
 
     virtual void enflatten() {}
@@ -177,11 +185,15 @@ private:
     }
 
     // Returns the newest element that satisfies the expectation with the given
-    // mask
-    MvHistoryBase* with(const MvStatus mask, const MvStatus expect) const {
+    // mask. Optionally increments a counter.
+    MvHistoryBase* with(const MvStatus mask, const MvStatus expect,
+                        size_t * const visited=nullptr) const {
         MvHistoryBase *ele = (MvHistoryBase*)this;
         while (ele && ((ele->status() & mask) != expect)) {
             ele = ele->prev_;
+            if (visited) {
+                (*visited)++;
+            }
         }
         return ele;
     }
@@ -517,6 +529,8 @@ public:
 #else
         h = static_cast<history_type*>(h_.load());
 #endif
+        base_type * const head = h;
+        base_type *next = nullptr;
         /* TODO: use something smarter than a linear scan */
         while (h) {
             auto s = h->status();
@@ -533,6 +547,7 @@ public:
                     break;
                 }
             }
+            next = h;
             h = h->prev();
         }
 
