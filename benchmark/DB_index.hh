@@ -1683,9 +1683,7 @@ public:
             assert(vp);
             return sel_return_type(true, true, rid, vp);
         } else {
-            auto vp = &(e->row.nontrans_access());
-            assert(vp);
-            return sel_return_type(true, true, rid, vp);
+            return sel_return_type(true, true, rid, nullptr);
         }
     }
 

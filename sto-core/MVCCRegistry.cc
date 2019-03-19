@@ -48,7 +48,6 @@ void MvRegistry::collect_(registry_type& registry, const type rtid_inf) {
 
         // Find currently-visible version at rtid_inf
         h = h->with(COMMITTED_DELTA, COMMITTED);
-        base_type * const hhead = h;  // First valid version
         base_type *hnext = nullptr;
         while (rtid_inf <= h->btid()) {
             hnext = h;

@@ -517,8 +517,6 @@ public:
 #else
         h = static_cast<history_type*>(h_.load());
 #endif
-        auto const rtid_inf = MvRegistry::rtid_inf();
-        history_type *next = nullptr;
         /* TODO: use something smarter than a linear scan */
         while (h) {
             auto s = h->status();
@@ -535,7 +533,6 @@ public:
                     break;
                 }
             }
-            next = h;
             h = h->prev();
         }
 

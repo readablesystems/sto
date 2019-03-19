@@ -15,8 +15,8 @@ class MvRegistry {
 public:
     typedef MvHistoryBase base_type;
     typedef TransactionTid::type type;
-    const static size_t CYCLE_LENGTH = 2;
-    const static size_t GC_PER_FLATTEN = 1000;
+    const static size_t CYCLE_LENGTH = 10;
+    const static size_t GC_PER_FLATTEN = 10;
 
     MvRegistry() : enable_gc(false) {
         always_assert(
