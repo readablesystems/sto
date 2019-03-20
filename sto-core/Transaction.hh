@@ -333,8 +333,8 @@ void reportPerf();
 struct __attribute__((aligned(128))) threadinfo_t {
     using epoch_type = TRcuSet::epoch_type;
     using tid_type = TransactionTid::type;
-    epoch_type write_snapshot_epoch;
-    epoch_type epoch;
+    std::atomic<epoch_type> write_snapshot_epoch;
+    std::atomic<epoch_type> epoch;
     std::atomic<tid_type> rtid;
     tid_type wtid;
     TRcuSet rcu_set;
@@ -427,8 +427,8 @@ public:
 
     static threadinfo_t tinfo[MAX_THREADS];
     static struct epoch_state {
-        epoch_type global_epoch; // != 0
-        epoch_type active_epoch; // no thread is before this epoch
+        std::atomic<epoch_type> global_epoch; // != 0
+        std::atomic<epoch_type> active_epoch; // no thread is before this epoch
         tid_type recent_tid;
         bool run;
     } global_epochs;
@@ -564,10 +564,10 @@ private:
     void callCMstart();
 
     static epoch_type compute_min_epoch() {
-        epoch_type e = global_epochs.global_epoch;
+        epoch_type e = global_epochs.global_epoch.load();
         for (int i = 0; i < MAX_THREADS; ++i) {
             auto& thr = tinfo[i];
-            const auto& wse = thr.write_snapshot_epoch;
+            auto wse = thr.write_snapshot_epoch.load();
             if (wse != 0 && signed_epoch_type(wse - e) < 0) {
                 e = wse;
             }
@@ -586,9 +586,9 @@ private:
 #endif
         special_txp = false;
         //thr.epoch = global_epochs.global_epoch;
-        thr.write_snapshot_epoch = global_epochs.global_epoch;
+        thr.write_snapshot_epoch = global_epochs.global_epoch.load();
         thr.epoch = compute_min_epoch();
-        thr.rcu_set.clean_until(global_epochs.active_epoch);
+        thr.rcu_set.clean_until(global_epochs.active_epoch.load());
         thr.rtid = thr.wtid = 0;
         if (thr.trans_start_callback)
             thr.trans_start_callback();

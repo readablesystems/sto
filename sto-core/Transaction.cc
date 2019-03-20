@@ -15,7 +15,7 @@ __thread int TThread::the_id;
 PercentGen TThread::gen[MAX_THREADS];
 
 Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epochs = {
-    1, 0, TransactionTid::increment_value, true
+    {1}, {0}, TransactionTid::increment_value, true
 };
 __thread Transaction *TThread::txn = nullptr;
 std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callback;
@@ -63,11 +63,12 @@ void* Transaction::epoch_advancer(void*) {
     // don't bother epoch'ing til things have picked up
     usleep(100000);
     while (global_epochs.run) {
-        epoch_type g = global_epochs.global_epoch;
+        epoch_type g = global_epochs.global_epoch.load();
         epoch_type e = g;
         for (auto& t : tinfo) {
-            if (t.epoch != 0 && signed_epoch_type(t.epoch - e) < 0)
-                e = t.epoch;
+            auto tepoch = t.epoch.load();
+            if (tepoch != 0 && signed_epoch_type(tepoch - e) < 0)
+                e = tepoch;
         }
         global_epochs.global_epoch = std::max(g + 1, epoch_type(1));
         global_epochs.active_epoch = e;
