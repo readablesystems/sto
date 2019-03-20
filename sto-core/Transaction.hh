@@ -333,6 +333,7 @@ void reportPerf();
 struct __attribute__((aligned(128))) threadinfo_t {
     using epoch_type = TRcuSet::epoch_type;
     using tid_type = TransactionTid::type;
+    epoch_type write_snapshot_epoch;
     epoch_type epoch;
     std::atomic<tid_type> rtid;
     tid_type wtid;
@@ -344,7 +345,7 @@ struct __attribute__((aligned(128))) threadinfo_t {
     txp_counters p_;
     tc_counters tcs_;
     threadinfo_t()
-        : epoch(0), wtid(0) {
+        : write_snapshot_epoch(0), epoch(0), wtid(0) {
     }
 };
 
@@ -562,6 +563,18 @@ private:
 
     void callCMstart();
 
+    static epoch_type compute_min_epoch() {
+        epoch_type e = global_epochs.global_epoch;
+        for (int i = 0; i < MAX_THREADS; ++i) {
+            auto& thr = tinfo[i];
+            const auto& wse = thr.write_snapshot_epoch;
+            if (wse != 0 && signed_epoch_type(wse - e) < 0) {
+                e = wse;
+            }
+        }
+        return e;
+    }
+
     // reset data so we can be reused for another transaction
     void start() {
         threadinfo_t& thr = tinfo[TThread::id()];
@@ -572,7 +585,9 @@ private:
         start_tsc_ = read_tsc();
 #endif
         special_txp = false;
-        thr.epoch = global_epochs.global_epoch;
+        //thr.epoch = global_epochs.global_epoch;
+        thr.write_snapshot_epoch = global_epochs.global_epoch;
+        thr.epoch = compute_min_epoch();
         thr.rcu_set.clean_until(global_epochs.active_epoch);
         thr.rtid = thr.wtid = 0;
         if (thr.trans_start_callback)
