@@ -23,4 +23,4 @@ template <typename T> class MvObject;
 #endif
 
 // Registry for keeping track of MVCC objects
-class MvRegistry;
+//class MvRegistry;

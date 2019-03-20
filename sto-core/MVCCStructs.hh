@@ -4,8 +4,8 @@
 
 #include <stack>
 
-#include "MVCCRegistry.hh"
 #include "MVCCTypes.hh"
+#include "TRcu.hh"
 
 // Status types of MvHistory elements
 enum MvStatus {
@@ -29,16 +29,13 @@ enum MvStatus {
 class MvHistoryBase {
 public:
     typedef TransactionTid::type type;
+    typedef MvHistoryBase base_type;
+    typedef TRcuSet::epoch_type epoch_type;
 
     virtual ~MvHistoryBase() {}
 
-    // Sets the pointer to next
-    void next(MvHistoryBase *next) {
-        next_ = next;
-    }
-
     // Attempt to set the pointer to prev; returns true on success
-    bool prev(MvHistoryBase *prev) {
+    bool prev(base_type *prev) {
         if (is_valid_prev(prev)) {
             prev_ = prev;
             return true;
@@ -46,16 +43,19 @@ public:
         return false;
     }
 
-    // Returns the current btid
-    type btid() const {
-        return btid_;
+    // Returns the current GC epoch
+    epoch_type gc_epoch() const {
+        return gc_epoch_;
     }
 
-    // Non-CAS assignment on the btid
-    type btid(const type new_btid) {
-        btid_ = new_btid;
-        return btid();
+    // Attempts to set the GC epoch using CAS; returns success
+    bool gc_epoch(epoch_type expected, const epoch_type value) {
+        return gc_epoch_.compare_exchange_strong(expected, value);
     }
+
+    // Pushes the current element onto the GC list if it isn't already, along
+    // with a boolean for whether it is the inlined version
+    void gc_push(const bool inlined);
 
     // Returns the current rtid
     type rtid() const {
@@ -137,10 +137,15 @@ public:
 
     // Returns true if all the given flag(s) are set
     bool status_is(const MvStatus status) const {
-        if (status == 0) {  // Special case
+        return status_is(status, status);
+    }
+
+    // Returns true if the status with the given mask equals the expected
+    bool status_is(const MvStatus mask, const MvStatus expected) const {
+        if (mask == 0 && expected == 0) {  // Special case
             return status_ == 0;
         }
-        return (status_ & status) == status;
+        return (status_ & mask) == expected;
     }
 
     // Returns the current wtid
@@ -149,9 +154,9 @@ public:
     }
 
 protected:
-    MvHistoryBase(type ntid, MvHistoryBase *nprev = nullptr)
-            : next_(nullptr), prev_(nprev), status_(PENDING), rtid_(ntid),
-              wtid_(ntid), btid_(ntid) {
+    MvHistoryBase(type ntid, base_type *nprev = nullptr)
+            : prev_(nprev), status_(PENDING), rtid_(ntid), wtid_(ntid),
+              gc_epoch_(0), gc_enqueued_(false) {
 
         // Can't actually assume this assertion because it may have changed
         // between when the history item was made and when this check is done
@@ -163,33 +168,35 @@ protected:
 //            always_assert(prev_->rtid <= wtid, buf);
             always_assert(
                 is_valid_prev(prev_),
-                "Cannot write MVCC history with wtid earlier than prev rtid.");
+                "Cannot write MVCC history with wtid earlier than prev wtid.");
 //            prev_->rtid = rtid;
         }
     }
 
-    // Updates btid to Transaction::_RTID
-    void update_btid();
-
-    std::atomic<MvHistoryBase*> next_;  // Some next element, with a newer tid;
-                                        // used for GC optimizations
-    std::atomic<MvHistoryBase*> prev_;  // Used to build the history chain
+    std::atomic<base_type*> prev_;
     std::atomic<MvStatus> status_;  // Status of this element
 
     virtual void enflatten() {}
+    virtual void gc_inlined_cb_() {}
 
 private:
+    // GC callback for inlined versions
+    static void gc_inlined_cb(void *ptr) {
+        base_type *h = static_cast<base_type*>(ptr);
+        h->gc_inlined_cb_();
+    }
+
     // Returns true if the given prev pointer would be a valid prev element
-    bool is_valid_prev(const MvHistoryBase *prev) const {
+    bool is_valid_prev(const base_type *prev) const {
         return prev->wtid_ <= wtid_;
     }
 
     // Returns the newest element that satisfies the expectation with the given
     // mask. Optionally increments a counter.
-    MvHistoryBase* with(const MvStatus mask, const MvStatus expect,
+    base_type* with(const MvStatus mask, const MvStatus expect,
                         size_t * const visited=nullptr) const {
-        MvHistoryBase *ele = (MvHistoryBase*)this;
-        while (ele && ((ele->status() & mask) != expect)) {
+        base_type *ele = (base_type*)this;
+        while (ele && !ele->status_is(mask, expect)) {
             ele = ele->prev_;
             if (visited) {
                 (*visited)++;
@@ -200,11 +207,11 @@ private:
 
     std::atomic<type> rtid_;  // Read TID
     type wtid_;  // Write TID
-    std::atomic<type> btid_;  // Base-version TID
+    std::atomic<epoch_type> gc_epoch_;  // GC epoch
+    std::atomic<bool> gc_enqueued_;  // Whether this element is on the GC queue
 
     template <typename>
     friend class MvObject;
-    friend class MvRegistry;
 };
 
 template <typename T>
@@ -218,20 +225,20 @@ public:
     explicit MvHistory(object_type *obj) : MvHistory(0, obj, nullptr) {}
     explicit MvHistory(
             type ntid, object_type *obj, const T& nv, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), v_(nv) {}
+            : base_type(ntid, nprev), obj_(obj), v_(nv) {}
     explicit MvHistory(
             type ntid, object_type *obj, T&& nv, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), v_(std::move(nv)) {}
+            : base_type(ntid, nprev), obj_(obj), v_(std::move(nv)) {}
     explicit MvHistory(
             type ntid, object_type *obj, T *nvp, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj) {
+            : base_type(ntid, nprev), obj_(obj) {
         if (nvp) {
             v_ = *nvp;
         }
     }
     explicit MvHistory(
             type ntid, object_type *obj, comm_type &&c, history_type *nprev = nullptr)
-            : MvHistoryBase(ntid, nprev), obj_(obj), c_(c), v_() {
+            : base_type(ntid, nprev), obj_(obj), c_(c), v_() {
         status_delta();
     }
 
@@ -240,6 +247,10 @@ public:
     // Retrieve the object for which this history element is intended
     object_type* object() const {
         return obj_;
+    }
+
+    history_type* prev() const {
+        return reinterpret_cast<history_type*>(prev_.load());
     }
 
     T& v() {
@@ -256,10 +267,6 @@ public:
         return &v_;
     }
 
-    history_type* prev() const {
-        return reinterpret_cast<history_type*>(prev_.load());
-    }
-
 private:
     object_type *obj_;  // Parent object
     comm_type c_;
@@ -274,7 +281,6 @@ private:
         MvStatus expected = COMMITTED_DELTA;
         if (status_.compare_exchange_strong(expected, LOCKED_COMMITTED_DELTA)) {
             v_ = v;
-            update_btid();
             status(COMMITTED);
         } else {
             // TODO: exponential backoff?
@@ -299,7 +305,7 @@ private:
 
     void flatten(T &v) {
         std::stack<history_type*> trace;
-        history_type* curr = this;
+        history_type *curr = this;
         trace.push(curr);
         while (curr->status() != COMMITTED) {
             curr = curr->prev();
@@ -320,6 +326,10 @@ private:
         }
     }
 
+    void gc_inlined_cb_() override {
+        object()->delete_history((history_type*)this);
+    }
+
     friend class MvObject<T>;
 };
 
@@ -331,8 +341,7 @@ public:
     typedef TransactionTid::type type;
 
 #if MVCC_INLINING
-    MvObject()
-            : h_(&ih_), ih_(this), enqueued_(false) {
+    MvObject() : h_(&ih_), ih_(this), gc_tail_(nullptr) {
         ih_.status_commit();
         itid_ = ih_.rtid();
         if (std::is_trivial<T>::value) {
@@ -342,23 +351,24 @@ public:
         }
     }
     explicit MvObject(const T& value)
-            : h_(&ih_), ih_(0, this, value), enqueued_(false) {
+            : h_(&ih_), ih_(0, this, value), gc_tail_(nullptr) {
         ih_.status_commit();
         itid_ = ih_.rtid();
     }
     explicit MvObject(T&& value)
-            : h_(&ih_), ih_(0, this, value), enqueued_(false) {
+            : h_(&ih_), ih_(0, this, value), gc_tail_(nullptr) {
         ih_.status_commit();
         itid_ = ih_.rtid();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(&ih_), ih_(0, this, T(std::forward<Args>(args)...)), enqueued_(false) {
+            : h_(&ih_), ih_(0, this, T(std::forward<Args>(args)...)),
+              gc_tail_(nullptr) {
         ih_.status_commit();
         itid_ = ih_.rtid();
     }
 #else
-    MvObject() : h_(new history_type(this)), enqueued_(false) {
+    MvObject() : h_(new history_type(this)), gc_tail_(nullptr) {
         h_.load()->status_commit();
         if (std::is_trivial<T>::value) {
             static_cast<history_type*>(h_.load())->v_ = T();
@@ -367,16 +377,17 @@ public:
         }
     }
     explicit MvObject(const T& value)
-            : h_(new history_type(0, this, value)), enqueued_(false) {
+            : h_(new history_type(0, this, value)), gc_tail_(nullptr) {
         h_.load()->status_commit();
     }
     explicit MvObject(T&& value)
-            : h_(new history_type(0, this, value)), enqueued_(false) {
+            : h_(new history_type(0, this, value)), gc_tail_(nullptr) {
         h_.load()->status_commit();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(new history_type(0, this, T(std::forward<Args>(args)...))), enqueued_(false) {
+            : h_(new history_type(0, this, T(std::forward<Args>(args)...))),
+              gc_tail_(nullptr) {
         h_.load()->status_commit();
     }
 #endif
@@ -450,6 +461,29 @@ public:
             itid_ = h->wtid();
         }
 #endif
+
+        if (h->status_is(COMMITTED_DELTA, COMMITTED)) {
+            history_type *tail = gc_tail_;
+            // Put predecessors in the RCU list, but only if they aren't already
+            if (!h->gc_epoch() && gc_tail_.compare_exchange_strong(tail, h)) {
+                history_type *prev = h->prev();
+                while (prev && !prev->gc_epoch()) {
+                    history_type *ele = prev;
+                    prev = prev->prev();
+                    ele->gc_push(
+#if MVCC_INLINING
+                        &ih_ == ele
+#else
+                        false
+#endif
+                    );
+                    if (ele == tail) {
+                        break;
+                    }
+                }
+            }
+        }
+
         return true;
     }
 
@@ -480,12 +514,18 @@ public:
 
             // Properly link h's prev_
             h->prev_ = t;
+            h->gc_epoch(h->gc_epoch(), target->load()->gc_epoch());
 
             // Attempt to CAS onto the target
             if (target->compare_exchange_strong(t, h)) {
-                bool false_ = false;
-                if (enqueued_.compare_exchange_strong(false_, true)) {
-                    MvRegistry::reg(this, h->wtid(), &enqueued_);
+                if (false && h->gc_epoch()) {
+                    h->gc_push(
+#if MVCC_INLINING
+                        &ih_ == h
+#else
+                        false
+#endif
+                    );
                 }
                 break;
             }
@@ -506,6 +546,11 @@ public:
 #if MVCC_INLINING
         if (&ih_ == h) {
             itid_ = 0;
+            ih_.gc_enqueued_ = false;
+            ih_.gc_epoch_ = 0;
+            ih_.rtid_ = 0;
+            ih_.wtid_ = 0;
+            ih_.prev_ = 0;
             ih_.status_unused();
             return;
         }
@@ -529,8 +574,6 @@ public:
 #else
         h = static_cast<history_type*>(h_.load());
 #endif
-        base_type * const head = h;
-        base_type *next = nullptr;
         /* TODO: use something smarter than a linear scan */
         while (h) {
             auto s = h->status();
@@ -547,7 +590,6 @@ public:
                     break;
                 }
             }
-            next = h;
             h = h->prev();
         }
 
@@ -628,7 +670,5 @@ protected:
     history_type ih_;  // Inlined version
     std::atomic<type> itid_;  // TID representing until when the inlined version is correct
 #endif
-    std::atomic<bool> enqueued_;  // Whether this has been enqueued for GC
-
-    friend class MvRegistry;
+    std::atomic<history_type*> gc_tail_;  // Oldest non-GC'ed element
 };

@@ -266,7 +266,7 @@ void testMvInline() {
     assert(v0 != v1);
 
     Transaction::epoch_advance_once();
-    MvRegistry::collect_garbage();
+    //MvRegistry::collect_garbage();
 
     {
         TestTransaction t2(2);

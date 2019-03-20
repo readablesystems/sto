@@ -1033,7 +1033,7 @@ public:
         std::cout << "Garbage collection: ";
         if (enable_gc) {
             std::cout << "enabled";
-            MvRegistry::toggle_gc(true);  // Enable MVCC garbage collection
+            //MvRegistry::toggle_gc(true);  // Enable MVCC garbage collection
             advancer = std::thread(&Transaction::epoch_advancer, nullptr);
         } else {
             std::cout << "disabled";
@@ -1045,15 +1045,15 @@ public:
         prof.finish(num_trans);
 
         if (enable_gc) {
-            MvRegistry::stop();
+            //MvRegistry::stop();
             Transaction::global_epochs.run = false;
 
-            while (!MvRegistry::done());
-            MvRegistry::cleanup();
+            //while (!MvRegistry::done());
+            //MvRegistry::cleanup();
             advancer.join();
         }
 
-        MvRegistry::print_counters();
+        //MvRegistry::print_counters();
 
         return 0;
     }
