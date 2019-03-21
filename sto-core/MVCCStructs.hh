@@ -43,24 +43,20 @@ public:
         return false;
     }
 
-    // Returns the current GC epoch (epoch at which it's safe to collect)
-    epoch_type gc_epoch() const {
-        return gc_epoch_;
+    // Return true if this history element is currently enqueued for GC
+    bool is_gc_enqueued() const {
+        return gc_enqueued_.load();
     }
 
-    // Attempts to set the GC epoch using CAS; returns success
-    bool gc_epoch(epoch_type expected, const epoch_type value) {
-        return gc_epoch_.compare_exchange_strong(expected, value);
-    }
-
-    // Set the GC epoch without CAS (to be used when *this is not yet hooked in)
-    void gc_epoch(const epoch_type value) {
-        gc_epoch_ = value;
+    // Set whether current history element is enqueued for GC
+    void set_gc_enqueued(const bool value) {
+        gc_enqueued_ = value;
     }
 
     // Pushes the current element onto the GC list if it isn't already, along
     // with a boolean for whether it is the inlined version
     void gc_push(const bool inlined);
+    void hard_gc_push(const bool inlined);
 
     // Returns the current rtid
     type rtid() const {
@@ -161,7 +157,7 @@ public:
 protected:
     MvHistoryBase(type ntid, base_type *nprev = nullptr)
             : prev_(nprev), status_(PENDING), rtid_(ntid), wtid_(ntid),
-              gc_epoch_(0), gc_enqueued_(false) {
+              gc_enqueued_(false) {
 
         // Can't actually assume this assertion because it may have changed
         // between when the history item was made and when this check is done
@@ -212,7 +208,6 @@ private:
 
     std::atomic<type> rtid_;  // Read TID
     type wtid_;  // Write TID
-    std::atomic<epoch_type> gc_epoch_;  // GC epoch
     std::atomic<bool> gc_enqueued_;  // Whether this element is on the GC queue
 
     template <typename>
@@ -468,25 +463,23 @@ public:
 #endif
 
         if (h->status_is(COMMITTED_DELTA, COMMITTED)) {
-            history_type *tail = gc_tail_;
             // Put predecessors in the RCU list, but only if they aren't already
-            if (!h->gc_epoch() && gc_tail_.compare_exchange_strong(tail, h)) {
-                history_type *prev = h->prev();
-                while (prev && !prev->gc_epoch()) {
-                    history_type *ele = prev;
-                    prev = prev->prev();
-                    ele->gc_push(
+            history_type *prev = h->prev();
+            bool stop = false;
+            do {
+                if (prev->status_is(MvStatus::PENDING))
+                    continue;
+                stop = prev->status_is(COMMITTED_DELTA, COMMITTED);
+                history_type* ele = prev;
+                prev = prev->prev();
+                ele->gc_push(
 #if MVCC_INLINING
-                        &ih_ == ele
+                   &ih_ == ele
 #else
-                        false
+                   false
 #endif
-                    );
-                    if (ele == tail) {
-                        break;
-                    }
-                }
-            }
+                );
+            } while(!stop);
         }
 
         return true;
@@ -516,17 +509,32 @@ public:
                 target = &t->prev_;
                 t = *target;
             }
+            const bool target_enqueued = t->is_gc_enqueued();
 
             // Properly link h's prev_
             h->prev_ = t;
-            h->gc_epoch(target->load()->gc_epoch());
+
+            // Depending on h's immediate neighbors in the chain,
+            // set h's enqueue status
+            if (target_enqueued) {
+                // target_enqueued == true means h is to be installed
+                // under a flat version, and the flat version already
+                // started putting its predecessors to the GC queue, and
+                // it have already missed h.
+                // h must immediately put itself to GC queue otherwise
+                // it will be leaked.
+                h->set_gc_enqueued(true);
+                // In this situation, I believe h actually does not need
+                // to attempt to enqueue any of its predecessors during
+                // cp_install(). Need proof, but feels correct to me.
+                // We currently don't carry this information over but we
+                // could optimize it later.
+            }
 
             // Attempt to CAS onto the target
             if (target->compare_exchange_strong(t, h)) {
-                // If inserted after a already freed history, free
-                // h itself immediately
-                if (h->gc_epoch()) {
-                    h->gc_push(
+                if (target_enqueued) {
+                    h->hard_gc_push(
 #if MVCC_INLINING
                         &ih_ == h
 #else
@@ -536,6 +544,9 @@ public:
                 }
                 break;
             }
+            // Revert GC enqueue status before retrying
+            if (target_enqueued)
+                h->set_gc_enqueued(false);
         } while (true);
 
         // Version consistency verification
@@ -554,7 +565,6 @@ public:
         if (&ih_ == h) {
             itid_ = 0;
             ih_.gc_enqueued_ = false;
-            ih_.gc_epoch_ = 0;
             ih_.rtid_ = 0;
             ih_.wtid_ = 0;
             ih_.prev_ = 0;
