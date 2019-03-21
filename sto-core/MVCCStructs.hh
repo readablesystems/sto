@@ -43,7 +43,7 @@ public:
         return false;
     }
 
-    // Returns the current GC epoch
+    // Returns the current GC epoch (epoch at which it's safe to collect)
     epoch_type gc_epoch() const {
         return gc_epoch_;
     }
@@ -51,6 +51,11 @@ public:
     // Attempts to set the GC epoch using CAS; returns success
     bool gc_epoch(epoch_type expected, const epoch_type value) {
         return gc_epoch_.compare_exchange_strong(expected, value);
+    }
+
+    // Set the GC epoch without CAS (to be used when *this is not yet hooked in)
+    void gc_epoch(const epoch_type value) {
+        gc_epoch_ = value;
     }
 
     // Pushes the current element onto the GC list if it isn't already, along
@@ -514,11 +519,13 @@ public:
 
             // Properly link h's prev_
             h->prev_ = t;
-            h->gc_epoch(h->gc_epoch(), target->load()->gc_epoch());
+            h->gc_epoch(target->load()->gc_epoch());
 
             // Attempt to CAS onto the target
             if (target->compare_exchange_strong(t, h)) {
-                if (false && h->gc_epoch()) {
+                // If inserted after a already freed history, free
+                // h itself immediately
+                if (h->gc_epoch()) {
                     h->gc_push(
 #if MVCC_INLINING
                         &ih_ == h
