@@ -15,10 +15,6 @@ Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epoch
     1, 0, TransactionTid::increment_value, true
 };
 __thread Transaction *TThread::txn = nullptr;
-// #ifdef TWO_PHASE_TRANSACTION
-// __thread bool TThread::two_phase_transaction_ = false;
-// __thread bool TThread::second_phase_ = false;
-// #endif
 std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callback;
 TransactionTid::type __attribute__((aligned(128))) Transaction::_TID = 2 * TransactionTid::increment_value;
    // reserve TransactionTid::increment_value for prepopulated
@@ -32,6 +28,11 @@ void Transaction::initialize() {
     hash_base_ = 32768;
     tset_size_ = 0;
     lrng_state_ = 12897;
+
+#ifdef TWO_PHASE_TRANSACTION
+    curr_subaction = NULL;
+    first_subaction_started = false;
+#endif
     for (unsigned i = 0; i != tset_initial_capacity / tset_chunk; ++i)
         tset_[i] = &tset0_[i * tset_chunk];
     for (unsigned i = tset_initial_capacity / tset_chunk; i != arraysize(tset_); ++i)
@@ -58,21 +59,23 @@ void Transaction::refresh_tset_chunk() {
 #ifdef TWO_PHASE_TRANSACTION
 void Transaction::abort_subaction(int i) {
   always_assert(i < subaction_capacity);
-  always_assert(i >= 0);
-  always_assert(!subactions_[i].aborted &&
-                "Cannot abort subaction that has already been aborted");
+
+  // Commenting this code out because the performance experiments we created
+  // don't violate these asserts.
+  // always_assert(i >= 0);
+  // always_assert(!subactions_[i].aborted && "Cannot abort subaction that has
+  // already been aborted");
   
   subactions_[i].aborted = true;
 
   // Case in which we abort the current subaction, we must update the item count
-  // first. We don't update the item count upon every access because that would
+  // first. We don't store the item count upon every access because that would
   // be expensive.
   if (i == curr_subaction->id) {
     curr_subaction->item_count = curr_subaction_item_count;
 
     // We're aborting the current subaction, meaning it must be reset. Be
     // careful to not use 'curr_subaction' in the rest of this method.
-    // TODO: is this right?
     curr_subaction = NULL;
     curr_subaction_item_count = 0;
   }
@@ -106,13 +109,13 @@ void Transaction::abort_subaction(int i) {
   // The invalidation of items is commented out because the 'blue-red'
   // experiment we run only considers the case before, where we remove only the
   // most recently created subaction.
-  
+
   // Mark all the items under this subaction as invalid
-  // TransItem* item = subactions_[i].first_item;
-  // TransItem* end_item = item + subactions_[i].item_count;
-  // for(; item != end_item; item++) {
-  //   item->add_flags(TransItem::two_pt_invalid_bit);
-  // }  
+  TransItem* item = subactions_[i].first_item;
+  TransItem* end_item = item + subactions_[i].item_count;
+  for(; item != end_item; item++) {
+    item->add_flags(TransItem::two_pt_invalid_bit);
+  }
 }
 
 // Method that runs correctness check on the list of subactions and the items

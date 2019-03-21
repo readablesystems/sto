@@ -90,9 +90,19 @@ ifeq ($(PROFILE),1)
 OPTFLAGS += -g -pg -fno-inline
 endif
 
-# Flag for enabling two phase transaction behavior
 ifeq ($(2PT),1)
+# Flag for enabling two phase transaction behavior
 CXXFLAGS += -DTWO_PHASE_TRANSACTION
+
+ifeq ($(TWO_PHASE_UNOPT), 1)
+# Remove optimization for aborting most recently created subaction
+CXXFLAGS += -DTWO_PHASE_UNOPT
+endif
+
+ifeq ($(PERF_DEBUG), 1)
+CXXFLAGS += -DPERF_DEBUG
+endif
+
 endif
 
 UNIT_PROGRAMS = unit-tarray \
@@ -248,8 +258,14 @@ unit-masstree: $(OBJ)/unit-masstree.o $(STO_DEPS)
 unit-dboindex: $(OBJ)/unit-dboindex.o $(INDEX_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(LDFLAGS) $(LIBS)
 
-two_phase_transaction: $(OBJ)/two_phase_transaction.o $(STO_DEPS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
+correctness_two_phase_transaction: $(OBJ)/correctness_two_phase_transaction.o $(STO_DEPS) $(INDEX_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(LDFLAGS) $(LIBS)
+
+performance_two_phase_transaction: $(OBJ)/performance_two_phase_transaction.o $(STO_DEPS) $(INDEX_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(LDFLAGS) $(LIBS)
+
+concurrent_two_phase_experiment: $(OBJ)/concurrent_two_phase_experiment.o $(STO_DEPS) $(INDEX_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(LDFLAGS) $(LIBS)
 
 list1: $(OBJ)/list1.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)

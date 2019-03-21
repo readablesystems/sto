@@ -13,6 +13,10 @@
 #define MIN_KEY_LENGTH 10
 #define MAX_KEY_LENGTH 20
 
+// Change this value to change the number of iterations run on the same
+// transaction.
+#define NUM_ITERATIONS 100
+
 // The lowest and highest value strings. We know the highest value string is all
 // z's because 'z' is the highest value returned by 'random_a_string'.
 static const std::string LOWEST_STRING = "";
@@ -47,7 +51,7 @@ static const Clp_Option options[] = {
 static inline void print_usage(const char *argv_0);
 
 // Psuedo-random number generator
-#ifndef NDEBUG
+#ifdef PERF_DEBUG
 static std::mt19937 gen(0);
 #else
 static std::mt19937 gen(time(NULL));
@@ -87,7 +91,7 @@ public:
   static void prepopulate_db(blue_red_db_type& db, uint64_t num_items,
                              int percent_blue) {
     // Set the seed of rand
-#ifndef NDEBUG    
+#ifdef PERF_DEBUG
     srand(1);
 #else    
     srand(time(NULL));
@@ -96,7 +100,7 @@ public:
     uint64_t nblue_items = (num_items * (percent_blue / 100.0));
     uint64_t nred_items = num_items - nblue_items;
     
-#ifndef NDEBUG   
+#ifdef PERF_DEBUG
     printf("nblue_items is %lu\n", nblue_items);
     printf("nred_items is %lu\n", nred_items);
 #endif
@@ -127,7 +131,7 @@ public:
       }
     }
 
-#ifndef NDEBUG
+#ifdef PERF_DEBUG
     printf("Finished inserting items.\n");
     printf("nblue_items is %lu\n", nblue_items);
     printf("nred_items is %lu\n", nred_items);
@@ -141,14 +145,14 @@ public:
       TransactionGuard t;
       
       // Initialize set that will store keys of items with the red property.
-      std::unordered_set<std::string> red_keys;
+      std::unordered_set<std::string> blue_keys;
 
       // Create a closure that will allow us to reference and modify
-      // 'red_keys'. This function will only record items with the red property.
+      // 'blue_keys'. This function will only record items with the blue property.
       auto filter_function =
         [&] (const item_key& key, const color_row& val) {
-          if(val.value == RED) {
-            red_keys.insert(key);
+          if(val.value == BLUE) {
+            blue_keys.insert(key);
           }
           return true;
         };
@@ -162,16 +166,18 @@ public:
       assert(success);
       
       bench::RowAccess update_access = bench::RowAccess::UpdateValue;
+      // The experiment is to turn all blue keys red. However, we insert a new
+      // blue key because we want to be able to run the experiment many times.
       color_row new_row(BLUE);
 
-      // Update all keys leading to items to have the blue property instead.
-      for (auto red_key : red_keys) {
+      // Update all keys leading to items to have the 'red' property instead.
+      for (auto blue_key : blue_keys) {
         bool success, result;
         uintptr_t row;
         const void* value;
 
         std::tie(success, result, row, value) =
-          db.select_row(red_key, update_access);
+          db.select_row(blue_key, update_access);
         db.update_row(row, &new_row);
       }
 
@@ -181,19 +187,20 @@ public:
   
   static void run_two_phase_benchmark(blue_red_db_type& db, uint64_t num_items,
                                       bench::db_profiler& prof) {
+    (void)num_items;
     {
       TransactionGuard t;
       Sto::start_two_phase_transaction();
       
-      // Initialize set that will store keys of items with the red property.
-      std::unordered_set<std::string> red_keys;
+      // Initialize set that will store keys of items with the blue property.
+      std::unordered_set<std::string> blue_keys;
 
       // Create a closure that will allow us to reference and modify
-      // 'red_keys'. This function will only record items with the red property.
+      // 'blue_keys'. This function will only record items with the blue property.
       auto filter_function =
         [&] (const item_key& key, const color_row& val, const int subaction_id) {
-          if(val.value == RED) {
-            red_keys.insert(key);
+          if(val.value == BLUE) {
+            blue_keys.insert(key);
           } else {
             Sto::abort_subaction(subaction_id);
           }
@@ -211,50 +218,23 @@ public:
       Sto::phase_two();
 
       bench::RowAccess update_access = bench::RowAccess::UpdateValue;
+      // The experiment is to turn all blue keys red. However, we insert a new
+      // blue key because we want to be able to run the experiment many times.
       color_row new_row(BLUE);
 
       // Update all keys leading to items to have the blue property instead.
-      for (auto red_key : red_keys) {
+      for (auto blue_key : blue_keys) {
         bool success, result;
         uintptr_t row;
         const void* value;
 
         std::tie(success, result, row, value) =
-          db.select_row(red_key, update_access);
+          db.select_row(blue_key, update_access);
         db.update_row(row, &new_row);
       }
 
       // fprintf(stderr, "$ Current size of tset: %u\n", Sto::get_tset_size());
     }
-
-#ifndef NDEBUG
-    // Ensure that all items in the database are blue. Invariants: number of items doesn't change, and all items are now blue.
-    {
-      TransactionGuard t;
-
-      uint64_t counter = 0;
-      // Define function to assert all items are blue.
-      auto assert_function =
-        [&] (const item_key& key, const color_row& val) {
-          (void)key;
-          counter++;
-          assert(val.value == BLUE);
-          return true;
-        };
-
-      bench::RowAccess default_access = bench::RowAccess::None;
-      
-      bool success = db.template range_scan
-        <decltype(assert_function), false>
-        (LOWEST_STRING, GREATEST_STRING, assert_function, default_access);
-
-      assert(success);
-      assert(counter == num_items);
-    }
-#else
-    // Don't need to use 'num_items.'
-    (void)num_items;
-#endif    
   }
     
   static void run_benchmark(blue_red_db_type& db, uint64_t num_items,
@@ -312,7 +292,7 @@ public:
   }
   
   static int execute(int argc, const char* const* argv) {
-    // TODO: figure out what this value means.  I think this value telss the
+    // TODO: figure out what this value means.  I think this value tells the
     // profiler to spawn perf on perf record. This might be useful in the future
     // to check where the performance bottlenecks are. 
     bool spawn_perf = false;
@@ -326,7 +306,7 @@ public:
       return ret;
     }
 
-#ifndef NDEBUG
+#ifdef PERF_DEBUG
     printf("num_items is %lu\n", num_items);
     printf("percent_blue is %d\n", percent_blue);
 #endif
@@ -354,10 +334,12 @@ public:
     std::cout << "Prepopulating database..." << std::endl;
     prepopulate_db(db, num_items, percent_blue);
     std::cout << "Prepopulation complete." << std::endl;
-    std::cout << "Running Benchmark" << std::endl;
+    std::cout << "Running Benchmark 100 times" << std::endl;
     prof.start(/*TODO: figure out what this does profiler_mode*/ Profiler::perf_mode::record);
-    run_benchmark(db, num_items, t_trans, prof);
-    prof.finish(1); // We're only running one transaction in this experiment.
+    for (int i = 0; i < NUM_ITERATIONS; i++) {
+      run_benchmark(db, num_items, t_trans, prof);
+    }
+    prof.finish(100); // We're only running 100 transactions in this experiment.
     std::cout << "Benchmark Complete" << std::endl;
 
     return 0;
