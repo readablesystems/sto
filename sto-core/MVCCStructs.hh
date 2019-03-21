@@ -341,7 +341,7 @@ public:
     typedef TransactionTid::type type;
 
 #if MVCC_INLINING
-    MvObject() : h_(&ih_), ih_(this), gc_tail_(nullptr) {
+    MvObject() : h_(&ih_), ih_(this) {
         ih_.status_commit();
         itid_ = ih_.rtid();
         if (std::is_trivial<T>::value) {
@@ -351,24 +351,23 @@ public:
         }
     }
     explicit MvObject(const T& value)
-            : h_(&ih_), ih_(0, this, value), gc_tail_(nullptr) {
+            : h_(&ih_), ih_(0, this, value) {
         ih_.status_commit();
         itid_ = ih_.rtid();
     }
     explicit MvObject(T&& value)
-            : h_(&ih_), ih_(0, this, value), gc_tail_(nullptr) {
+            : h_(&ih_), ih_(0, this, value) {
         ih_.status_commit();
         itid_ = ih_.rtid();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(&ih_), ih_(0, this, T(std::forward<Args>(args)...)),
-              gc_tail_(nullptr) {
+            : h_(&ih_), ih_(0, this, T(std::forward<Args>(args)...)) {
         ih_.status_commit();
         itid_ = ih_.rtid();
     }
 #else
-    MvObject() : h_(new history_type(this)), gc_tail_(nullptr) {
+    MvObject() : h_(new history_type(this)) {
         h_.load()->status_commit();
         if (std::is_trivial<T>::value) {
             static_cast<history_type*>(h_.load())->v_ = T();
@@ -377,17 +376,16 @@ public:
         }
     }
     explicit MvObject(const T& value)
-            : h_(new history_type(0, this, value)), gc_tail_(nullptr) {
+            : h_(new history_type(0, this, value)) {
         h_.load()->status_commit();
     }
     explicit MvObject(T&& value)
-            : h_(new history_type(0, this, value)), gc_tail_(nullptr) {
+            : h_(new history_type(0, this, value)) {
         h_.load()->status_commit();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(new history_type(0, this, T(std::forward<Args>(args)...))),
-              gc_tail_(nullptr) {
+            : h_(new history_type(0, this, T(std::forward<Args>(args)...))) {
         h_.load()->status_commit();
     }
 #endif
@@ -687,5 +685,4 @@ protected:
     history_type ih_;  // Inlined version
     std::atomic<type> itid_;  // TID representing until when the inlined version is correct
 #endif
-    std::atomic<history_type*> gc_tail_;  // Oldest non-GC'ed element
 };
