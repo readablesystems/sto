@@ -310,7 +310,8 @@ private:
         while (curr->status() != COMMITTED) {
             curr = curr->prev();
             trace.push(curr);
-        }
+            curr->gc_push(object()->is_inlined(curr));
+       }
         while (!trace.empty()) {
             auto h = trace.top();
             trace.pop();
@@ -468,13 +469,7 @@ public:
                 stop = prev->status_is(COMMITTED_DELTA, COMMITTED);
                 history_type* ele = prev;
                 prev = prev->prev();
-                ele->gc_push(
-#if MVCC_INLINING
-                   &ih_ == ele
-#else
-                   false
-#endif
-                );
+                ele->gc_push(is_inlined(ele));
             } while(!stop);
         }
 
@@ -530,13 +525,7 @@ public:
             // Attempt to CAS onto the target
             if (target->compare_exchange_strong(t, h)) {
                 if (target_enqueued) {
-                    h->hard_gc_push(
-#if MVCC_INLINING
-                        &ih_ == h
-#else
-                        false
-#endif
-                    );
+                    h->hard_gc_push(is_inlined(h));
                 }
                 break;
             }
@@ -608,6 +597,15 @@ public:
         assert(h);
 
         return h;
+    }
+
+    // Returns whether the given history element is the inlined version
+    inline bool is_inlined(history_type * const h) const {
+#if MVCC_INLINING
+        return h == &ih_;
+#else
+        return false;
+#endif
     }
 
     // Returns a pointer to a history element, initialized with the given
