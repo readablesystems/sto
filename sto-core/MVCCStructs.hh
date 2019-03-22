@@ -159,18 +159,10 @@ protected:
             : prev_(nprev), status_(PENDING), rtid_(ntid), wtid_(ntid),
               gc_enqueued_(false) {
 
-        // Can't actually assume this assertion because it may have changed
-        // between when the history item was made and when this check is done
         if (prev_) {
-//            char buf[1000];
-//            snprintf(buf, 1000,
-//                "Thread %d: Cannot write MVCC history with wtid (%lu) earlier than prev (%p) rtid (%lu)",
-//                Sto::transaction()->threadid(), rtid, prev_, prev_->rtid);
-//            always_assert(prev_->rtid <= wtid, buf);
             always_assert(
                 is_valid_prev(prev_),
                 "Cannot write MVCC history with wtid earlier than prev wtid.");
-//            prev_->rtid = rtid;
         }
     }
 
@@ -287,21 +279,6 @@ private:
             while (status_is(LOCKED_COMMITTED_DELTA));
         }
     }
-
-    // Returns the flattened view of the current type
-    //void flatten(T &v) {
-    //    MvStatus s = status();
-    //    if (s == COMMITTED) {
-    //        v = v_;
-    //        return;
-    //    }
-    //    prev()->flatten(v);
-    //    if ((s = status()) == COMMITTED) {
-    //        v = v_;
-    //    } else if ((s & DELTA) == DELTA) {
-    //        v = c_.operate(v);
-    //    }
-    //}
 
     void flatten(T &v) {
         std::stack<history_type*> trace;
