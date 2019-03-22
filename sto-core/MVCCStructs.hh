@@ -604,6 +604,7 @@ public:
 #if MVCC_INLINING
         return h == &ih_;
 #else
+        (void)h;
         return false;
 #endif
     }
