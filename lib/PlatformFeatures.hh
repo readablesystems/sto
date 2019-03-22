@@ -186,11 +186,18 @@ inline void set_affinity(int runner_id) {
 #else
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    // FIXME: This is only valid for the GATECH machine
+    // This is for the SEAS machine
+    int cpu_id = runner_id;
+
+    // This is for the Georgia Tech machine
     //int cpu_id = 24 * (runner_id % 8) + (runner_id / 8);
+
     // This is for AWS m4.16xlarge instances (64 threads, 32 cores, 2 sockets)
     //int cpu_id = runner_id / 2 + 16 * (runner_id % 2) + (runner_id / 32) * 16;
-    int cpu_id = runner_id;
+
+    // This is for AWS m5.24xlarge instances (96 threads, 48 cores, 2 sockets)
+    //int cpu_id = runner_id / 2 + 24 * (runner_id % 2) + (runner_id / 48) * 24;
+
     CPU_SET(cpu_id, &cpuset);
     int rc = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
     if (rc != 0) {
