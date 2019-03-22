@@ -253,11 +253,6 @@ public:
         auto num_trans = run_benchmark(db, prof, runners, time_limit);
         prof.finish(num_trans);
 
-        if (enable_gc) {
-            MvRegistry::stop();
-            while (!MvRegistry::done());
-        }
-
         return 0;
     }
 
