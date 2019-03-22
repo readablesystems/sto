@@ -465,8 +465,6 @@ public:
             history_type *prev = h->prev();
             bool stop = false;
             do {
-                if (prev->status_is(MvStatus::PENDING))
-                    continue;
                 stop = prev->status_is(COMMITTED_DELTA, COMMITTED);
                 history_type* ele = prev;
                 prev = prev->prev();
