@@ -589,8 +589,7 @@ public:
 #endif
         /* TODO: use something smarter than a linear scan */
         while (h) {
-            auto s = h->status();
-            assert(s & (PENDING | ABORTED | COMMITTED));
+            assert(h->status() & (PENDING | ABORTED | COMMITTED));
             if (wait) {
                 if (h->wtid() < tid) {
                     wait_if_pending(h);

@@ -7,8 +7,10 @@
 
 # Common examples:
 
+# 32Gib = 16384 pages
 # 64GiB = 32768 pages
 # 96GiB = 49152 pages <- use this one for TPC-C
+# 128GiB = 65536 pages
 
 if [ $# -ge 1 ]; then
   echo $1 | sudo tee /proc/sys/vm/nr_hugepages
