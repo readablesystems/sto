@@ -15,6 +15,7 @@ namespace ycsb {
 
 using bench::mvcc_ordered_index;
 using bench::ordered_index;
+using bench::mvcc_unordered_index;
 using bench::unordered_index;
 
 static constexpr uint64_t ycsb_table_size = 10000000;
@@ -27,9 +28,11 @@ public:
           mvcc_ordered_index<K, V, DBParams>,
           ordered_index<K, V, DBParams>>::type;
     template <typename K, typename V>
-    using UIndex = unordered_index<K, V, DBParams>;
+    using UIndex = typename std::conditional<DBParams::MVCC,
+        mvcc_unordered_index<K, V, DBParams>,
+        unordered_index<K, V, DBParams>>::type;
 
-    typedef OIndex<ycsb_key, ycsb_value<DBParams>> ycsb_table_type;
+    typedef UIndex<ycsb_key, ycsb_value<DBParams>> ycsb_table_type;
 
     explicit ycsb_db() : ycsb_table_(ycsb_table_size) {}
 
@@ -74,7 +77,7 @@ public:
                 break;
             case mode_id::MediumContention:
                 dd = new sampling::StoZipfDistribution<>(ig.generator(), 0, ycsb_table_size - 1, 0.8);
-                write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max()/10);
+                write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max()/20);
                 break;
             case mode_id::HighContention:
                 dd = new sampling::StoZipfDistribution<>(ig.generator(), 0, ycsb_table_size - 1, 0.9);
