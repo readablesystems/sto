@@ -67,6 +67,7 @@ struct warehouse_key {
     uint64_t w_id;
 };
 
+#if TPCC_SPLIT_TABLE
 struct warehouse_const_value {
     enum class NamedColumn : int { w_name = 0,
                                    w_street_1,
@@ -83,8 +84,34 @@ struct warehouse_const_value {
     fix_string<2>  w_state;
     fix_string<9>  w_zip;
     int64_t        w_tax; // in 1/10000
-    //uint64_t       w_ytd; // in 1/100
 };
+
+struct warehouse_comm_value {
+    enum class NamedColumn : int { w_ytd = 0 };
+
+    uint64_t       w_ytd;
+};
+#else
+struct warehouse_value {
+    enum class NamedColumn : int { w_name = 0,
+                                   w_street_1,
+                                   w_street_2,
+                                   w_city,
+                                   w_state,
+                                   w_zip,
+                                   w_tax,
+                                   w_ytd };
+
+    var_string<10> w_name;
+    var_string<20> w_street_1;
+    var_string<20> w_street_2;
+    var_string<20> w_city;
+    fix_string<2>  w_state;
+    fix_string<9>  w_zip;
+    int64_t        w_tax; // in 1/10000
+    uint64_t       w_ytd; // in 1/100
+};
+#endif
 
 // DISTRICT
 

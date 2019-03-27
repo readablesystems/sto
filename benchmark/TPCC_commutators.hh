@@ -8,12 +8,14 @@
 namespace commutators {
 
 #if TPCC_SPLIT_TABLE
+using warehouse_value = tpcc::warehouse_comm_value;
 using district_value = tpcc::district_comm_value;
 using customer_value = tpcc::customer_comm_value;
 using order_value = tpcc::order_comm_value;
 using orderline_value = tpcc::orderline_comm_value;
 using stock_value = tpcc::stock_comm_value;
 #else
+using warehouse_value = tpcc::warehouse_value;
 using district_value = tpcc::district_value;
 using customer_value = tpcc::customer_value;
 using order_value = tpcc::order_value;
@@ -22,6 +24,22 @@ using stock_value = tpcc::stock_value;
 #endif
 
 using tpcc::c_data_info;
+
+template <>
+class Commutator<warehouse_value> {
+public:
+    Commutator() = default;
+
+    explicit Commutator(int64_t delta_ytd) : delta_ytd(delta_ytd) {}
+
+    warehouse_value& operate(warehouse_value &w) const {
+        w.w_ytd += (uint64_t)delta_ytd;
+        return w;
+    }
+
+private:
+    int64_t delta_ytd;
+};
 
 template <>
 class Commutator<district_value> {
@@ -38,7 +56,6 @@ public:
 private:
     int64_t delta_ytd;
 };
-
 
 /*
  * Yihe's comment: as it turns out payment transactions don't actually commute

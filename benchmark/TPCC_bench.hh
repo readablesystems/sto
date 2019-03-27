@@ -135,14 +135,10 @@ class tpcc_access;
 template <typename DBParams>
 class tpcc_db {
 public:
-    struct warehouse_value {
-        warehouse_value() : cv(), ytd() {}
-        warehouse_const_value cv;
-        typename integer_box<DBParams>::type ytd;
-    };
-
     template <typename K, typename V>
-    using UIndex = unordered_index<K, V, DBParams>;
+    using UIndex = typename std::conditional<DBParams::MVCC,
+          mvcc_unordered_index<K, V, DBParams>,
+          unordered_index<K, V, DBParams>>::type;
 
     template <typename K, typename V>
     using OIndex = typename std::conditional<DBParams::MVCC,
@@ -150,8 +146,9 @@ public:
           ordered_index<K, V, DBParams>>::type;
 
     // partitioned according to warehouse id
-    typedef std::vector<warehouse_value>                 wh_table_type;
 #if TPCC_SPLIT_TABLE
+    typedef UIndex<warehouse_key, warehouse_const_value> wc_table_type;
+    typedef UIndex<warehouse_key, warehouse_comm_value>  wm_table_type;
     typedef OIndex<district_key, district_const_value>   dc_table_type;
     typedef OIndex<district_key, district_comm_value>    dm_table_type;
     typedef OIndex<customer_key, customer_const_value>   cc_table_type;
@@ -163,6 +160,7 @@ public:
     typedef OIndex<stock_key, stock_const_value>         sc_table_type;
     typedef OIndex<stock_key, stock_comm_value>          sm_table_type;
 #else
+    typedef UIndex<warehouse_key, warehouse_value>       wh_table_type;
     typedef OIndex<district_key, district_value>         dt_table_type;
     typedef OIndex<customer_key, customer_value>         cu_table_type;
     typedef OIndex<order_key, order_value>               od_table_type;
@@ -181,12 +179,15 @@ public:
     void thread_init_all();
 
     int num_warehouses() const {
-        return int(tbl_whs_.size());
-    }
-    warehouse_value& get_warehouse(uint64_t w_id) {
-        return tbl_whs_[w_id - 1];
+        return static_cast<int>(num_whs_);
     }
 #if TPCC_SPLIT_TABLE
+    wc_table_type& tbl_warehouses_const() {
+        return tbl_whs_const_;
+    }
+    wm_table_type& tbl_warehouses_comm() {
+        return tbl_whs_comm_;
+    }
     dc_table_type& tbl_districts_const(uint64_t w_id) {
         return tbl_dts_const_[w_id - 1];
     }
@@ -218,6 +219,9 @@ public:
         return tbl_sts_comm_[w_id - 1];
     }
 #else
+    wh_table_type& tbl_warehouses() {
+        return tbl_whs_;
+    }
     dt_table_type& tbl_districts(uint64_t w_id) {
         return tbl_dts_[w_id - 1];
     }
@@ -254,10 +258,12 @@ public:
     }
 
 private:
-    wh_table_type tbl_whs_;
+    size_t num_whs_;
     it_table_type *tbl_its_;
 
 #if TPCC_SPLIT_TABLE
+    wc_table_type tbl_whs_const_;
+    wm_table_type tbl_whs_comm_;
     std::vector<dc_table_type> tbl_dts_const_;
     std::vector<dm_table_type> tbl_dts_comm_;
     std::vector<cc_table_type> tbl_cus_const_;
@@ -269,6 +275,7 @@ private:
     std::vector<sc_table_type> tbl_sts_const_;
     std::vector<sm_table_type> tbl_sts_comm_;
 #else
+    wh_table_type tbl_whs_;
     std::vector<dt_table_type> tbl_dts_;
     std::vector<cu_table_type> tbl_cus_;
     std::vector<od_table_type> tbl_ods_;
@@ -373,7 +380,15 @@ pthread_barrier_t tpcc_prepopulator<DBParams>::sync_barrier;
 
 
 template <typename DBParams>
-tpcc_db<DBParams>::tpcc_db(int num_whs) : tbl_whs_((size_t)num_whs), oid_gen_() {
+tpcc_db<DBParams>::tpcc_db(int num_whs)
+    : num_whs_(num_whs),
+#if TPCC_SPLIT_TABLE
+      tbl_whs_const_(256),
+      tbl_whs_comm_(256),
+#else
+      tbl_whs_(256),
+#endif
+      oid_gen_() {
     //constexpr size_t num_districts = NUM_DISTRICTS_PER_WAREHOUSE;
     //constexpr size_t num_customers = NUM_CUSTOMERS_PER_DISTRICT * NUM_DISTRICTS_PER_WAREHOUSE;
 
@@ -480,16 +495,34 @@ void tpcc_prepopulator<DBParams>::fill_items(uint64_t iid_begin, uint64_t iid_xe
 template<typename DBParams>
 void tpcc_prepopulator<DBParams>::fill_warehouses() {
     for (uint64_t wid = 1; wid <= ig.num_warehouses(); ++wid) {
-        auto &wv = db.get_warehouse(wid);
+        warehouse_key wk(wid);
+#if TPCC_SPLIT_TABLE
+        warehouse_const_value wcv {};
+        warehouse_comm_value wmv {};
+        wcv.w_name = random_a_string(6, 10);
+        wcv.w_street_1 = random_a_string(10, 20);
+        wcv.w_street_2 = random_a_string(10, 20);
+        wcv.w_city = random_a_string(10, 20);
+        wcv.w_state = random_state_name();
+        wcv.w_zip = random_zip_code();
+        wcv.w_tax = ig.random(0, 2000);
+        wmv.w_ytd = 30000000;
 
-        wv.cv.w_name = random_a_string(6, 10);
-        wv.cv.w_street_1 = random_a_string(10, 20);
-        wv.cv.w_street_2 = random_a_string(10, 20);
-        wv.cv.w_city = random_a_string(10, 20);
-        wv.cv.w_state = random_state_name();
-        wv.cv.w_zip = random_zip_code();
-        wv.cv.w_tax = ig.random(0, 2000);
-        wv.ytd = 30000000;
+        db.tbl_warehouses_const().nontrans_put(wk, wcv);
+        db.tbl_warehouses_comm().nontrans_put(wk, wmv);
+#else
+        warehouse_value wv {};
+        wv.w_name = random_a_string(6, 10);
+        wv.w_street_1 = random_a_string(10, 20);
+        wv.w_street_2 = random_a_string(10, 20);
+        wv.w_city = random_a_string(10, 20);
+        wv.w_state = random_state_name();
+        wv.w_zip = random_zip_code();
+        wv.w_tax = ig.random(0, 2000);
+        wv.w_ytd = 30000000;
+
+        db.tbl_warehouses().nontrans_put(wk, wv);
+#endif
     }
 }
 

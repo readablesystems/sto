@@ -466,6 +466,26 @@ public:
     }
 
 private:
+    static bool
+    access_all(std::array<access_t, value_container_type::num_versions>& cell_accesses, std::array<TransItem*, value_container_type::num_versions>& cell_items, value_container_type& row_container) {
+        for (size_t idx = 0; idx < cell_accesses.size(); ++idx) {
+            auto& access = cell_accesses[idx];
+            auto proxy = TransProxy(*Sto::transaction(), *cell_items[idx]);
+            if (static_cast<uint8_t>(access) & static_cast<uint8_t>(access_t::read)) {
+                if (!proxy.observe(row_container.version_at(idx)))
+                    return false;
+            }
+            if (static_cast<uint8_t>(access) & static_cast<uint8_t>(access_t::write)) {
+                if (!proxy.acquire_write(row_container.version_at(idx)))
+                    return false;
+                if (proxy.item().key<item_key_t>().is_row_item()) {
+                    proxy.item().add_flags(row_cell_bit);
+                }
+            }
+        }
+        return true;
+    }
+
     // remove a k-v node during transactions (with locks)
     void _remove(internal_elem *el) {
         bucket_entry& buck = map_[find_bucket_idx(el->key)];
@@ -734,7 +754,7 @@ public:
     void update_row(uintptr_t rid, value_type *new_row) {
         auto e = reinterpret_cast<internal_elem*>(rid);
         auto row_item = Sto::item(this, item_key_t::row_item_key(e));
-        row_item.acquire_write(e->version(), new_row);
+        row_item.add_write(new_row);
     }
     
     void update_row(uintptr_t rid, const comm_type &comm) {

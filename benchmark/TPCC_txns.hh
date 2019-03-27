@@ -8,6 +8,7 @@ namespace tpcc {
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_neworder() {
 #if TABLE_FINE_GRAINED
+    typedef warehouse_value::NamedColumn wh_nc;
     typedef district_value::NamedColumn dt_nc;
     typedef customer_value::NamedColumn cu_nc;
     typedef stock_value::NamedColumn st_nc;
@@ -70,8 +71,24 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     int64_t wh_tax_rate, dt_tax_rate;
     uint64_t dt_next_oid;
 
-    auto& wv = db.get_warehouse(q_w_id);
-    wh_tax_rate = wv.cv.w_tax;
+    warehouse_key wk(q_w_id);
+#if TPCC_SPLIT_TABLE
+    std::tie(abort, result, row, value) = db.tbl_warehouses_const().select_row(wk, RowAccess::ObserveValue);
+    TXN_DO(abort);
+    assert(result);
+    wh_tax_rate = reinterpret_cast<const warehouse_const_value*>(value)->w_tax;
+#else
+    std::tie(abort, result, row, value) = db.tbl_warehouses().select_row(wk,
+#if TABLE_FINE_GRAINED
+        {{wh_nc::w_tax, access_t::read}}
+#else
+        RowAccess::ObserveValue
+#endif
+    );
+    TXN_DO(abort);
+    assert(result);
+    wh_tax_rate = reinterpret_cast<const warehouse_value*>(value)->w_tax;
+#endif
 
 #if TPCC_SPLIT_TABLE
     district_key dk(q_w_id, q_d_id);
@@ -320,6 +337,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 template <typename DBParams>
 void tpcc_runner<DBParams>::run_txn_payment() {
 #if TABLE_FINE_GRAINED
+    typedef warehouse_value::NamedColumn wh_nc;
     typedef district_value::NamedColumn dt_nc;
     typedef customer_value::NamedColumn cu_nc;
 #endif
@@ -387,18 +405,70 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     uintptr_t row;
     const void *value;
 
-    // select warehouse row FOR UPDATE and retrieve warehouse info
-    auto& wv = db.get_warehouse(q_w_id);
+    // select warehouse row for update and retrieve warehouse info
+#if TPCC_SPLIT_TABLE
+    warehouse_key wk(q_w_id);
+    std::tie(success, result, row, value) = db.tbl_warehouses_const().select_row(wk, RowAccess::ObserveValue);
+    TXN_DO(success);
+    assert(result);
+    auto wv = reinterpret_cast<const warehouse_const_value*>(value);
 
-    out_w_name = wv.cv.w_name;
-    out_w_street_1 = wv.cv.w_street_1;
-    out_w_street_2 = wv.cv.w_street_2;
-    out_w_city = wv.cv.w_city;
-    out_w_state = wv.cv.w_state;
-    out_w_zip = wv.cv.w_zip;
+    out_w_name = wv->w_name;
+    out_w_street_1 = wv->w_street_1;
+    out_w_street_2 = wv->w_street_2;
+    out_w_city = wv->w_city;
+    out_w_state = wv->w_state;
+    out_w_zip = wv->w_zip;
+
+    std::tie(success, result, row, value) = db.tbl_warehouses_comm().select_row(wk,
+            Commute ? RowAccess::None : RowAccess::UpdateValue);
+    TXN_DO(success);
+    assert(result);
+
+    if (Commute) {
+        commutators::Commutator<warehouse_comm_value> commutator(h_amount);
+        db.tbl_warehouses_comm().update_row(row, commutator);
+    } else {
+        auto wmv = reinterpret_cast<const warehouse_comm_value*>(value);
+        auto new_wmv = Sto::tx_alloc(wmv);
+        new_wmv->w_ytd += h_amount;
+        db.tbl_warehouses_comm().update_row(row, new_wmv);
+    }
+#else
+    warehouse_key wk(q_w_id);
+    std::tie(success, result, row, value) = db.tbl_warehouses().select_row(wk,
+#if TABLE_FINE_GRAINED
+        {{wh_nc::w_name, access_t::read},
+         {wh_nc::w_street_1, access_t::read},
+         {wh_nc::w_street_2, access_t::read},
+         {wh_nc::w_city, access_t::read},
+         {wh_nc::w_state, access_t::read},
+         {wh_nc::w_zip, access_t::read},
+         {wh_nc::w_ytd, Commute ? access_t::write : access_t::update}}
+#else
+        RowAccess::ObserveValue
+#endif
+    );
+    TXN_DO(success);
+    assert(result);
+    auto wv = reinterpret_cast<const warehouse_value*>(value);
+    out_w_name = wv->w_name;
+    out_w_street_1 = wv->w_street_1;
+    out_w_street_2 = wv->w_street_2;
+    out_w_city = wv->w_city;
+    out_w_state = wv->w_state;
+    out_w_zip = wv->w_zip;
 
     // update warehouse ytd
-    wv.ytd.increment(h_amount);
+    if (Commute) {
+        commutators::Commutator<warehouse_value> commutator(h_amount);
+        db.tbl_warehouses().update_row(row, commutator);
+    } else {
+        auto new_wv = Sto::tx_alloc(wv);
+        new_wv->w_ytd += h_amount;
+        db.tbl_warehouses().update_row(row, new_wv);
+    }
+#endif
 
     // select district row and retrieve district info
     district_key dk(q_w_id, q_d_id);
