@@ -62,6 +62,7 @@ public:
     };
 
     static void thread_init() {}
+    ~unordered_index() override {}
 
 private:
     struct bucket_entry {
@@ -624,6 +625,7 @@ public:
     };
 
     static void thread_init() {}
+    ~mvcc_unordered_index() override {}
 
 private:
     struct bucket_entry {

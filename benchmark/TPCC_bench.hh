@@ -167,7 +167,7 @@ public:
     typedef OIndex<orderline_key, orderline_value>       ol_table_type;
     typedef OIndex<stock_key, stock_value>               st_table_type;
 #endif
-    typedef OIndex<customer_idx_key, customer_idx_value> ci_table_type;
+    typedef UIndex<customer_idx_key, customer_idx_value> ci_table_type;
     typedef OIndex<order_cidx_key, bench::dummy_row>     oi_table_type;
     typedef OIndex<order_key, bench::dummy_row>          no_table_type;
     typedef OIndex<item_key, item_value>                 it_table_type;
@@ -412,7 +412,7 @@ tpcc_db<DBParams>::tpcc_db(int num_whs)
         tbl_ols_.emplace_back(999983/*num_customers * 100 * 2*/);
         tbl_sts_.emplace_back(999983/*NUM_ITEMS * 2*/);
 #endif
-        tbl_cni_.emplace_back(999983/*num_customers * 2*/);
+        tbl_cni_.emplace_back(30000/*num_customers * 2*/);
         tbl_oci_.emplace_back(999983/*num_customers * 2*/);
         tbl_nos_.emplace_back(999983/*num_customers * 10 * 2*/);
         tbl_hts_.emplace_back(999983/*num_customers * 2*/);
@@ -640,7 +640,7 @@ void tpcc_prepopulator<DBParams>::expand_districts(uint64_t wid) {
             db.tbl_customers_const(wid).nontrans_put(ck, ccv);
             db.tbl_customers_comm(wid).nontrans_put(ck, cmv);
 
-            customer_idx_key cik(wid, did, ccv.c_last, ccv.c_first);
+            customer_idx_key cik(wid, did, ccv.c_last);
 #else
             customer_value cv;
 
@@ -664,11 +664,15 @@ void tpcc_prepopulator<DBParams>::expand_districts(uint64_t wid) {
 
             db.tbl_customers(wid).nontrans_put(ck, cv);
 
-            customer_idx_key cik(wid, did, cv.c_last, cv.c_first);
+            customer_idx_key cik(wid, did, cv.c_last);
 #endif
-
-            customer_idx_value civ(cid);
-            db.tbl_customer_index(wid).nontrans_put(cik, civ);
+            auto civ = db.tbl_customer_index(wid).nontrans_get(cik);
+            if (civ == nullptr) {
+                db.tbl_customer_index(wid).nontrans_put(cik, customer_idx_value());
+                civ = db.tbl_customer_index(wid).nontrans_get(cik);
+                assert(civ);
+            }
+            civ->c_ids.push_front(cid);
         }
     }
 }

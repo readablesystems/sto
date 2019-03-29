@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <list>
 #include <cassert>
 
 #include "DB_structs.hh"
@@ -189,19 +190,17 @@ struct district_value {
 
 // customer name index hack <-- the true source of performance
 struct customer_idx_key {
-    customer_idx_key(uint64_t wid, uint64_t did, const var_string<16>& last, const var_string<16>& first) {
+    customer_idx_key(uint64_t wid, uint64_t did, const var_string<16>& last) {
         c_w_id = bswap(wid);
         c_d_id = bswap(did);
         memcpy(c_last, last.c_str(), sizeof(c_last));
-        memcpy(c_first, first.c_str(), sizeof(c_first));
     }
 
-    customer_idx_key(uint64_t wid, uint64_t did, const std::string& last, unsigned char first_fill) {
+    customer_idx_key(uint64_t wid, uint64_t did, const std::string& last) {
         c_w_id = bswap(wid);
         c_d_id = bswap(did);
         memset(c_last, 0x00, sizeof(c_last));
         memcpy(c_last, last.c_str(), last.length());
-        memset(c_first, first_fill, sizeof(c_first));
     }
 
     customer_idx_key(const lcdf::Str& mt_key) {
@@ -222,18 +221,16 @@ struct customer_idx_key {
     uint64_t c_w_id;
     uint64_t c_d_id;
     char c_last[16];
-    char c_first[16];
 };
 
 struct customer_idx_value {
-    enum class NamedColumn : int { c_id = 0 };    
+    enum class NamedColumn : int { c_ids = 0 };
 
     // Default constructor is never directly called; it's included to make the
     // compiles happy with MVCC history element construction
     customer_idx_value() = default;
 
-    customer_idx_value(uint64_t cid) : c_id(cid) {};
-    uint64_t c_id;
+    std::list<uint64_t> c_ids;
 };
 
 struct customer_key {
@@ -782,6 +779,13 @@ template <>
 struct hash<tpcc::stock_key> {
     size_t operator()(const tpcc::stock_key& arg) const {
         return XXH64(&arg, sizeof(tpcc::stock_key), xxh_seed);
+    }
+};
+
+template <>
+struct hash<tpcc::customer_idx_key> {
+    size_t operator()(const tpcc::customer_idx_key& arg) const {
+        return XXH64(arg.c_last, 16, xxh_seed);
     }
 };
 

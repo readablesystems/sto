@@ -544,27 +544,17 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     // select and update customer
     if (by_name) {
-        std::vector<uint64_t> matches;
-        auto scan_callback = [&] (const customer_idx_key& key, const customer_idx_value& civ) -> bool {
-            (void)key;
-            matches.emplace_back(civ.c_id);
-            return true;
-        };
-
-        customer_idx_key ck0(q_c_w_id, q_c_d_id, last_name, 0x00 /*fill first name*/);
-        customer_idx_key ck1(q_c_w_id, q_c_d_id, last_name, 0xff);
-
-        success = db.tbl_customer_index(q_c_w_id)
-                .template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback, RowAccess::ObserveValue);
+        customer_idx_key ck(q_c_w_id, q_c_d_id, last_name);
+        std::tie(success, result, row, value) = db.tbl_customer_index(q_c_w_id).select_row(ck, RowAccess::ObserveValue);
         TXN_DO(success);
-
-        size_t n = matches.size();
-        always_assert(n > 0, "match size invalid");
-        size_t idx = n / 2;
-        if (n % 2 == 0)
-            idx -= 1;
-        q_c_id = matches[idx];
-
+        assert(result);
+        auto& c_id_list = reinterpret_cast<const customer_idx_value*>(value)->c_ids;
+        uint64_t rows[100];
+        int cnt = 0;
+        for (auto it = c_id_list.begin(); cnt < 100 && it != c_id_list.end(); ++it, ++cnt) {
+            rows[cnt] = *it;
+        }
+        q_c_id = rows[cnt / 2];
     } else {
         always_assert(q_c_id != 0, "q_c_id invalid when selecting customer by c_id");
     }
@@ -740,25 +730,17 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     const void *value;
 
     if (by_name) {
-        std::vector<uint64_t> matches;
-        auto scan_callback = [&] (const customer_idx_key&, const customer_idx_value& civ) -> bool {
-            matches.emplace_back(civ.c_id);
-            return true;
-        };
-
-        customer_idx_key ck0(q_w_id, q_d_id, last_name, 0x00);
-        customer_idx_key ck1(q_w_id, q_d_id, last_name, 0xff);
-
-        success = db.tbl_customer_index(q_w_id)
-                .template range_scan<decltype(scan_callback), false/*reverse*/>(ck0, ck1, scan_callback, RowAccess::ObserveValue);
+        customer_idx_key ck(q_w_id, q_d_id, last_name);
+        std::tie(success, result, row, value) = db.tbl_customer_index(q_w_id).select_row(ck, RowAccess::ObserveValue);
         TXN_DO(success);
-
-        size_t n = matches.size();
-        always_assert(n > 0, "match size invalid");
-        size_t idx = n / 2;
-        if (n % 2 == 0)
-            idx -= 1;
-        q_c_id = matches[idx];
+        assert(result);
+        auto& c_id_list = reinterpret_cast<const customer_idx_value*>(value)->c_ids;
+        uint64_t rows[100];
+        int cnt = 0;
+        for (auto it = c_id_list.begin(); cnt < 100 && it != c_id_list.end(); ++it, ++cnt) {
+            rows[cnt] = *it;
+        }
+        q_c_id = rows[cnt / 2];
     } else {
         always_assert(q_c_id != 0, "q_c_id invalid when selecting customer by c_id");
     }
