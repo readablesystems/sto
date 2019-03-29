@@ -610,6 +610,8 @@ private:
 #endif
         any_writes_ = any_nonopaque_ = may_duplicate_items_ = false;
         first_write_ = 0;
+        if (commit_tid_ > 0)
+            prev_commit_tid_ = commit_tid_;
         start_tid_ = read_tid_ = commit_tid_ = 0;
         tictoc_tid_ = 0;
         buf_.clear();
@@ -946,7 +948,7 @@ public:
             fence();
             epoch_advance_once();
             threadinfo_t& thr = tinfo[TThread::id()];
-            thr.rtid = read_tid_ = _RTID;
+            thr.rtid = read_tid_ = std::max(_RTID.load(), prev_commit_tid_);
         }
         return read_tid_;
     }
@@ -1104,6 +1106,7 @@ private:
     mutable tid_type start_tid_;
     mutable tid_type read_tid_;
     mutable tid_type commit_tid_;
+    mutable tid_type prev_commit_tid_;
     mutable tid_type tictoc_tid_; // commit tid reserved for TicToc
 public:
     mutable TransactionBuffer buf_;

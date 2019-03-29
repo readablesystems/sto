@@ -692,7 +692,7 @@ struct hash<fix_string<FL>> {
 template <>
 struct hash<tpcc::warehouse_key> {
     size_t operator()(const tpcc::warehouse_key& arg) const {
-        return arg.w_id;
+        return bswap(arg.w_id);
     }
 };
 
