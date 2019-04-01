@@ -284,9 +284,6 @@ unlock_all:
        ContentionManager::on_rollback(TThread::id());
     }
 
-    // XXX Initiate MVCC GC run, but do we want to do it here?
-    //MvRegistry::collect_garbage(TThread::id());
-
     // clear/consolidate transactional scratch space
     scratch_.clear();
 

@@ -118,6 +118,16 @@
         while (1) {                               \
             __txn_guard.start();
 
+#define RWTRANSACTION                             \
+    do {                                          \
+        __label__ abort_in_progress;              \
+        __label__ try_commit;                     \
+        __label__ after_commit;                   \
+        TransactionLoopGuard __txn_guard;         \
+        while (1) {                               \
+            __txn_guard.start();                  \
+            Sto::mvcc_rw_upgrade();
+
 #define RETRY(retry)                              \
             goto try_commit;                      \
 abort_in_progress:                                \
@@ -143,6 +153,14 @@ if (!(trans_op))             \
         TransactionLoopGuard __txn_guard;         \
         while (1) {                               \
             __txn_guard.start();                  \
+            try {
+
+#define RWTRANSACTION_E                           \
+    do {                                          \
+        TransactionLoopGuard __txn_guard;         \
+        while (1) {                               \
+            __txn_guard.start();                  \
+            Sto::mvcc_rw_upgrade();               \
             try {
 
 #define RETRY_E(retry)                            \
@@ -610,6 +628,7 @@ private:
 #endif
         any_writes_ = any_nonopaque_ = may_duplicate_items_ = false;
         first_write_ = 0;
+        mvcc_rw = false;
         if (commit_tid_ > 0)
             prev_commit_tid_ = commit_tid_;
         start_tid_ = read_tid_ = commit_tid_ = 0;
@@ -941,6 +960,11 @@ public:
         return check_opacity(_TID);
     }
 
+    // flips the manual rw flag for mvcc
+    void mvcc_rw_upgrade() const {
+        mvcc_rw = true;
+    }
+
     // transaction start
     tid_type read_tid() const {
         if (!read_tid_) {
@@ -948,7 +972,11 @@ public:
             fence();
             epoch_advance_once();
             threadinfo_t& thr = tinfo[TThread::id()];
-            thr.rtid = read_tid_ = std::max(_RTID.load(), prev_commit_tid_);
+            if (mvcc_rw) {
+                thr.rtid = read_tid_ = std::max(_RTID.load(), prev_commit_tid_);
+            } else {
+                thr.rtid = read_tid_ = _RTID;
+            }
         }
         return read_tid_;
     }
@@ -1103,6 +1131,7 @@ private:
     bool restarted;
     TransItem* tset_next_;
     unsigned tset_size_;
+    mutable bool mvcc_rw;  // manual MVCC read-write flag
     mutable tid_type start_tid_;
     mutable tid_type read_tid_;
     mutable tid_type commit_tid_;
@@ -1317,6 +1346,11 @@ public:
         if (!in_progress())
             return false;
         return TThread::txn->try_commit();
+    }
+
+    static void mvcc_rw_upgrade() {
+        always_assert(in_progress());
+        TThread::txn->mvcc_rw_upgrade();
     }
 
     static TransactionTid::type read_tid() {
