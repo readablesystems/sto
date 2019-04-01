@@ -4,6 +4,8 @@
 
 #define INTERACTIVE_TXN_START Sto::start_transaction()
 
+#define INTERACTIVE_RWTXN_START {Sto::start_transaction(); Sto::mvcc_rw_upgrade();}
+
 #define INTERACTIVE_TXN_COMMIT \
     always_assert(Sto::transaction()->in_progress(), "transaction not in progress"); \
     if (!Sto::transaction()->try_commit()) { \
@@ -27,7 +29,7 @@ size_t wikipedia_runner<DBParams>::run_txn_addWatchList(int user_id,
 #endif
     size_t nexecs = 0;
 
-    TRANSACTION {
+    RWTRANSACTION {
 
     bool abort, result;
     uintptr_t row;
@@ -100,7 +102,7 @@ size_t wikipedia_runner<DBParams>::run_txn_removeWatchList(int user_id,
 #endif
     size_t nexecs = 0;
 
-    TRANSACTION {
+    RWTRANSACTION {
 
     bool abort, result;
     uintptr_t row;
@@ -459,7 +461,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
     typedef useracct_row::NamedColumn user_nc;
 #endif
 
-    INTERACTIVE_TXN_START;
+    INTERACTIVE_RWTXN_START;
 
     bool abort, result;
     uintptr_t row;
@@ -593,7 +595,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
         // update watchlist for each user watching
         INTERACTIVE_TXN_COMMIT;
 
-        TRANSACTION {
+        RWTRANSACTION {
 
         for (auto& u : watching_users) {
             std::tie(abort, result, row, value) = db.tbl_watchlist().select_row(watchlist_key(u, page_name_space, page_title),
@@ -614,7 +616,7 @@ bool wikipedia_runner<DBParams>::txn_updatePage_inner(int text_id,
 
         } RETRY(true);
 
-        TRANSACTION {
+        RWTRANSACTION {
 
         // INSERT LOG
         logging_key lg_k(db.tbl_logging().gen_key());

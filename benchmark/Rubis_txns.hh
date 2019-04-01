@@ -12,7 +12,7 @@ size_t rubis_runner<DBParams>::run_txn_placebid(uint64_t item_id, uint64_t user_
 #endif
     size_t execs = 0;
 
-    TRANSACTION {
+    RWTRANSACTION {
 
     bool abort, result;
     uintptr_t row;
@@ -89,7 +89,7 @@ size_t rubis_runner<DBParams>::run_txn_buynow(uint64_t item_id, uint64_t user_id
 #endif
     size_t execs = 0;
 
-    TRANSACTION {
+    RWTRANSACTION {
 
     bool abort, result;
     uintptr_t row;
