@@ -149,28 +149,28 @@ public:
 #if TPCC_SPLIT_TABLE
     typedef UIndex<warehouse_key, warehouse_const_value> wc_table_type;
     typedef UIndex<warehouse_key, warehouse_comm_value>  wm_table_type;
-    typedef OIndex<district_key, district_const_value>   dc_table_type;
-    typedef OIndex<district_key, district_comm_value>    dm_table_type;
-    typedef OIndex<customer_key, customer_const_value>   cc_table_type;
-    typedef OIndex<customer_key, customer_comm_value>    cm_table_type;
+    typedef UIndex<district_key, district_const_value>   dc_table_type;
+    typedef UIndex<district_key, district_comm_value>    dm_table_type;
+    typedef UIndex<customer_key, customer_const_value>   cc_table_type;
+    typedef UIndex<customer_key, customer_comm_value>    cm_table_type;
     typedef OIndex<order_key, order_const_value>         oc_table_type;
     typedef OIndex<order_key, order_comm_value>          om_table_type;
     typedef OIndex<orderline_key, orderline_const_value> lc_table_type;
     typedef OIndex<orderline_key, orderline_comm_value>  lm_table_type;
-    typedef OIndex<stock_key, stock_const_value>         sc_table_type;
-    typedef OIndex<stock_key, stock_comm_value>          sm_table_type;
+    typedef UIndex<stock_key, stock_const_value>         sc_table_type;
+    typedef UIndex<stock_key, stock_comm_value>          sm_table_type;
 #else
     typedef UIndex<warehouse_key, warehouse_value>       wh_table_type;
-    typedef OIndex<district_key, district_value>         dt_table_type;
-    typedef OIndex<customer_key, customer_value>         cu_table_type;
+    typedef UIndex<district_key, district_value>         dt_table_type;
+    typedef UIndex<customer_key, customer_value>         cu_table_type;
     typedef OIndex<order_key, order_value>               od_table_type;
     typedef OIndex<orderline_key, orderline_value>       ol_table_type;
-    typedef OIndex<stock_key, stock_value>               st_table_type;
+    typedef UIndex<stock_key, stock_value>               st_table_type;
 #endif
     typedef UIndex<customer_idx_key, customer_idx_value> ci_table_type;
     typedef OIndex<order_cidx_key, bench::dummy_row>     oi_table_type;
     typedef OIndex<order_key, bench::dummy_row>          no_table_type;
-    typedef OIndex<item_key, item_value>                 it_table_type;
+    typedef UIndex<item_key, item_value>                 it_table_type;
     typedef OIndex<history_key, history_value>           ht_table_type;
 
     explicit inline tpcc_db(int num_whs);
@@ -395,8 +395,8 @@ tpcc_db<DBParams>::tpcc_db(int num_whs)
     tbl_its_ = new it_table_type(999983/*NUM_ITEMS * 2*/);
     for (auto i = 0; i < num_whs; ++i) {
 #if TPCC_SPLIT_TABLE
-        tbl_dts_const_.emplace_back(999983/*num_districts * 2*/);
-        tbl_dts_comm_.emplace_back(999983);
+        tbl_dts_const_.emplace_back(32/*num_districts * 2*/);
+        tbl_dts_comm_.emplace_back(32);
         tbl_cus_const_.emplace_back(999983/*num_customers * 2*/);
         tbl_cus_comm_.emplace_back(999983);
         tbl_ods_const_.emplace_back(999983/*num_customers * 10 * 2*/);
@@ -406,13 +406,13 @@ tpcc_db<DBParams>::tpcc_db(int num_whs)
         tbl_sts_const_.emplace_back(999983/*NUM_ITEMS * 2*/);
         tbl_sts_comm_.emplace_back(999983/*NUM_ITEMS * 2*/);
 #else
-        tbl_dts_.emplace_back(999983/*num_districts * 2*/);
+        tbl_dts_.emplace_back(32/*num_districts * 2*/);
         tbl_cus_.emplace_back(999983/*num_customers * 2*/);
         tbl_ods_.emplace_back(999983/*num_customers * 10 * 2*/);
         tbl_ols_.emplace_back(999983/*num_customers * 100 * 2*/);
         tbl_sts_.emplace_back(999983/*NUM_ITEMS * 2*/);
 #endif
-        tbl_cni_.emplace_back(30000/*num_customers * 2*/);
+        tbl_cni_.emplace_back(999983/*num_customers * 2*/);
         tbl_oci_.emplace_back(999983/*num_customers * 2*/);
         tbl_nos_.emplace_back(999983/*num_customers * 10 * 2*/);
         tbl_hts_.emplace_back(999983/*num_customers * 2*/);
