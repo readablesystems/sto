@@ -532,10 +532,6 @@ public:
 #if MVCC_INLINING
         if (&ih_ == h) {
             itid_ = 0;
-            ih_.gc_enqueued_ = false;
-            ih_.rtid_ = 0;
-            ih_.wtid_ = 0;
-            ih_.prev_ = 0;
             ih_.status_unused();
             return;
         }
