@@ -14,9 +14,11 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <vector>
 
 extern void allocator_init();
 extern void set_affinity(int runner_id);
+extern void discover_topology();
 
 static constexpr uint32_t level_bstr  = 0x80000004;
 
@@ -124,6 +126,7 @@ inline double get_cpu_brand_frequency() {
 
 inline double determine_cpu_freq() {
     allocator_init();
+    discover_topology();
     double freq = 0.0;
     std::cout << "Checking for rdtscp support..." << std::flush;
     if (!cpu_has_feature<TscQuery>()) {
@@ -155,3 +158,9 @@ inline double determine_cpu_freq() {
     return freq;
 }
 
+struct TopologyInfo {
+    int num_nodes;
+    std::vector<std::vector<int>> cpu_id_list;
+};
+
+extern TopologyInfo topo_info;

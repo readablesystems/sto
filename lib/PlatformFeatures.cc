@@ -7,7 +7,59 @@
 #include "rpmalloc/rpmalloc.h"
 #endif
 
+#include <numa.h>
 #include <pthread.h>
+
+TopologyInfo topo_info;
+
+void discover_topology() {
+    TopologyInfo info {};
+
+    int r = numa_available();
+    if (r < 0) {
+        std::cerr << "Error: libnuma not available, aborting." << std::endl;
+        abort();
+    }
+
+    r = numa_num_configured_nodes();
+    if (r < 0) {
+        std::cerr << "Error: Cannot determine number of NUMA nodes in the system." << std::endl;
+        abort();
+    }
+    std::cout << "[discover_topology] Detected number of NUMA nodes: " << r << std::endl;
+    info.num_nodes = r;
+
+    int max_cpus = numa_num_possible_cpus();
+    auto cpu_mask = numa_allocate_cpumask();
+
+    for (int i = 0; i < info.num_nodes; ++i) {
+        std::vector<int> node_cpu_list;
+        r = numa_node_to_cpus(i, cpu_mask);
+        if (r < 0) {
+            std::cerr << "Error: Cannot get CPU mask for NUMA node [" << i << "]." << std::endl;
+            abort();
+        }
+        std::cout << "[discover_topology] CPUs on node [" << i << "]:" << std::endl;
+        std::cout << "    ";
+        bool first = true;
+        for (int c = 0; c < max_cpus; ++c) {
+            if (numa_bitmask_isbitset(cpu_mask, c) != 0) {
+                if (!first) {
+                    std::cout << ",";
+                }
+                std::cout << c;
+                first = false;
+                node_cpu_list.push_back(c);
+            }
+        }
+        std::cout << std::endl << std::flush;
+        numa_bitmask_clearall(cpu_mask);
+        info.cpu_id_list.push_back(node_cpu_list);
+    }
+
+    numa_free_cpumask(cpu_mask);
+    topo_info = info;
+}
 
 void allocator_init() {
 #if defined(__APPLE__) || MALLOC == 0
@@ -42,8 +94,15 @@ void set_affinity(int runner_id) {
 #else
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
+    int q = runner_id / topo_info.num_nodes;
+    int r = runner_id % topo_info.num_nodes;
+
+    int cpu_id = topo_info.cpu_id_list[r][q];
+
+    //printf("Affinity %d -> %d\n", runner_id, cpu_id);
+
     // This is for the SEAS machine
-    int cpu_id = runner_id;
+    //int cpu_id = runner_id;
 
     // This is for the Georgia Tech machine
     //int cpu_id = 24 * (runner_id % 8) + (runner_id / 8);
