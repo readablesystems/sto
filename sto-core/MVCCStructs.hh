@@ -447,9 +447,10 @@ public:
         if (h->status_is(COMMITTED_DELTA, COMMITTED)) {
             // Put predecessors in the RCU list, but only if they aren't already
             history_type *prev = h->prev();
-            bool stop = false;
+            bool stop = prev->is_gc_enqueued();
             do {
-                stop = prev->status_is(COMMITTED_DELTA, COMMITTED);
+                stop = prev->status_is(COMMITTED_DELTA, COMMITTED) ||
+                       prev->is_gc_enqueued();
                 history_type* ele = prev;
                 prev = prev->prev();
                 ele->gc_push(is_inlined(ele));
@@ -483,38 +484,17 @@ public:
                 target = &t->prev_;
                 t = *target;
             }
-            const bool target_enqueued = t->is_gc_enqueued();
 
             // Properly link h's prev_
             h->prev_ = t;
 
-            // Depending on h's immediate neighbors in the chain,
-            // set h's enqueue status
-            if (target_enqueued) {
-                // target_enqueued == true means h is to be installed
-                // under a flat version, and the flat version already
-                // started putting its predecessors to the GC queue, and
-                // it have already missed h.
-                // h must immediately put itself to GC queue otherwise
-                // it will be leaked.
-                h->set_gc_enqueued(true);
-                // In this situation, I believe h actually does not need
-                // to attempt to enqueue any of its predecessors during
-                // cp_install(). Need proof, but feels correct to me.
-                // We currently don't carry this information over but we
-                // could optimize it later.
-            }
-
             // Attempt to CAS onto the target
             if (target->compare_exchange_strong(t, h)) {
-                if (target_enqueued) {
-                    h->hard_gc_push(is_inlined(h));
+                if (t->is_gc_enqueued()) {
+                    h->gc_push(is_inlined(h));
                 }
                 break;
             }
-            // Revert GC enqueue status before retrying
-            if (target_enqueued)
-                h->set_gc_enqueued(false);
         } while (true);
 
         // Version consistency verification
