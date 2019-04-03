@@ -136,14 +136,19 @@ template <typename DBParams>
 class tpcc_db {
 public:
     template <typename K, typename V>
-    using UIndex = typename std::conditional<DBParams::MVCC,
-          mvcc_unordered_index<K, V, DBParams>,
-          unordered_index<K, V, DBParams>>::type;
-
-    template <typename K, typename V>
     using OIndex = typename std::conditional<DBParams::MVCC,
           mvcc_ordered_index<K, V, DBParams>,
           ordered_index<K, V, DBParams>>::type;
+
+#if TPCC_HASH_INDEX
+    template <typename K, typename V>
+    using UIndex = typename std::conditional<DBParams::MVCC,
+          mvcc_unordered_index<K, V, DBParams>,
+          unordered_index<K, V, DBParams>>::type;
+#else
+    template <typename K, typename V>
+    using UIndex = OIndex<K, V>;
+#endif
 
     // partitioned according to warehouse id
 #if TPCC_SPLIT_TABLE
