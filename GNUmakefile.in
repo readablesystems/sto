@@ -243,6 +243,7 @@ MASSTREE_OBJS = $(MASSTREEDIR)/kvio.o \
 MVCC_OBJS = 
 STO_OBJS = $(OBJ)/Packer.o $(OBJ)/Transaction.o $(OBJ)/TRcu.o $(OBJ)/clp.o \
 	$(OBJ)/barrier.o $(OBJ)/SystemProfiler.o $(OBJ)/ContentionManager.o \
+	$(OBJ)/PlatformFeatures.o \
 	$(LIBOBJS) $(MVCC_OBJS)
 INDEX_OBJS = $(STO_OBJS) $(MASSTREE_OBJS) $(OBJ)/DB_index.o
 STO_DEPS = $(STO_OBJS) $(MASSTREEDIR)/libjson.a
