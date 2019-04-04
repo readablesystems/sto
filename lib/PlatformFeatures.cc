@@ -95,6 +95,7 @@ void set_affinity(int runner_id) {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     int q = runner_id / topo_info.num_nodes;
+    q = q % topo_info.cpu_id_list[0].size();
     int r = runner_id % topo_info.num_nodes;
 
     int cpu_id = topo_info.cpu_id_list[r][q];
