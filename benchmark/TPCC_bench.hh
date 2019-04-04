@@ -433,6 +433,8 @@ template <typename DBParams>
 void tpcc_db<DBParams>::thread_init_all() {
     tbl_its_->thread_init();
 #if TPCC_SPLIT_TABLE
+    tbl_whs_const_.thread_init();
+    tbl_whs_comm_.thread_init();
     for (auto& t : tbl_dts_const_)
         t.thread_init();
     for (auto& t : tbl_dts_comm_)
@@ -454,6 +456,7 @@ void tpcc_db<DBParams>::thread_init_all() {
     for (auto& t : tbl_sts_comm_)
         t.thread_init();
 #else
+    tbl_whs_.thread_init();
     for (auto& t : tbl_dts_)
         t.thread_init();
     for (auto& t : tbl_cus_)
