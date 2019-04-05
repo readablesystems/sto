@@ -37,10 +37,14 @@ ifndef CXXFLAGS
 CXXFLAGS :=
 endif
 
+ifeq ($(USE_LIBCMALLOC),1)
+CXXFLAGS += -DMALLOC=0
+else
 ifeq ($(USE_JEMALLOC),1)
 CXXFLAGS += -DMALLOC=1
 else
 CXXFLAGS += -DMALLOC=2
+endif
 endif
 
 ifeq ($(NDEBUG),1)
