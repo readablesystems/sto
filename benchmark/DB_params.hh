@@ -56,6 +56,11 @@ public:
     static constexpr bool Opaque = true;
 };
 
+class db_opaque_commute_params : public db_opaque_params {
+public:
+    static constexpr bool Commute = true;
+};
+
 class db_2pl_params : public db_default_params {
 public:
     static constexpr db_params_id Id = db_params_id::TwoPL;

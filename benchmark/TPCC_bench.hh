@@ -46,6 +46,9 @@ extern int tpcc_dc(int, char const* const*);
 extern int tpcc_dn(int, char const* const*);
 extern int tpcc_dcn(int, char const* const*);
 
+extern int tpcc_o(int, char const* const*);
+extern int tpcc_oc(int, char const* const*);
+
 extern int tpcc_m(int, char const* const*);
 extern int tpcc_mc(int, char const* const*);
 extern int tpcc_mn(int, char const* const*);

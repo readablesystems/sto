@@ -131,10 +131,10 @@ int main(int argc, const char *const *argv) {
             ret_code = tpcc_d(argc, argv);
         }
         break;
-    /*
     case db_params_id::Opaque:
         ret_code = tpcc_access<db_opaque_params>::execute(argc, argv);
         break;
+    /*
     case db_params_id::TwoPL:
         ret_code = tpcc_access<db_2pl_params>::execute(argc, argv);
         break;
