@@ -86,6 +86,10 @@
 #endif
 #endif
 
+#ifndef CONTENTION_REGULATION
+#define CONTENTION_REGULATION 1
+#endif
+
 #if TPCC_SPLIT_TABLE
 #if TABLE_FINE_GRAINED
 #error "Split table and fine-grained table can't be enabled at the same time!"

@@ -184,7 +184,9 @@ bool Transaction::hard_check_opacity(TransItem* item, TransactionTid::type t) {
 }
 
 void Transaction::callCMstart() {
+#if CONTENTION_REGULATION
     ContentionManager::start(this);
+#endif
 }
 
 void Transaction::stop(bool committed, unsigned* writeset, unsigned nwriteset) {
@@ -279,10 +281,11 @@ unlock_all:
     state_ = s_aborted + committed;
     restarted = true;
 
-    // XXX no back off for now
+#if CONTENTION_REGULATION
     if (!committed) {
        ContentionManager::on_rollback(TThread::id());
     }
+#endif
 
     // clear/consolidate transactional scratch space
     scratch_.clear();
