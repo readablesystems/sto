@@ -715,7 +715,7 @@ public:
         auto e = reinterpret_cast<internal_elem*>(rid);
         TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
-        history_type* h = e->row.find(Sto::read_tid());
+        history_type* h = e->row.find(txn_read_tid());
 
         if (h->status_is(UNUSED))
             return { true, false, 0, nullptr };
@@ -775,7 +775,7 @@ public:
         if (e) {
             buck.version.unlock_exclusive();
             auto row_item = Sto::item(this, item_key_t::row_item_key(e));
-            auto h = e->row.find(Sto::read_tid());
+            auto h = e->row.find(txn_read_tid());
             if (is_phantom(h, row_item))
                 return ins_abort;
 
@@ -829,7 +829,7 @@ public:
         if (e) {
             auto row_item = Sto::item(this, item_key_t::row_item_key(e));
 
-            auto h = e->row.find(Sto::read_tid());
+            auto h = e->row.find(txn_read_tid());
 
             if (is_phantom(h, row_item))
                 return { true, false };
@@ -929,7 +929,7 @@ public:
             auto key = item.key<item_key_t>();
             auto e = key.internal_elem_ptr();
             auto h = item.template read_value<history_type*>();
-            auto result = e->row.cp_check(Sto::read_tid(), h);
+            auto result = e->row.cp_check(txn_read_tid(), h);
             return result;
         }
     }
@@ -1034,6 +1034,10 @@ private:
     static bucket_entry *bucket_address(const TransItem& item) {
         uintptr_t bucket_key = item.key<uintptr_t>();
         return reinterpret_cast<bucket_entry*>(bucket_key & ~bucket_bit);
+    }
+
+    static TransactionTid::type txn_read_tid() {
+        return Sto::read_tid<DBParams::Commute>();
     }
 };
 

@@ -23,7 +23,7 @@ public:
         if (item.has_write())
             return {true, item.template write_value<T>()};
         else {
-            history_type *h = v_.find(Sto::read_tid());
+            history_type *h = v_.find(Sto::read_tid<false/*!commute*/>());
             MvAccess::template read<T>(item, h);
             return {true, h->v()};
         }
@@ -169,7 +169,7 @@ class TMvBoxAccess {
 public:
     template <typename T>
     static MvHistory<T>* head(const TMvBox<T> &box) {
-        auto rtid = Sto::read_tid();
+        auto rtid = Sto::read_tid<false/*!commute*/>();
         return box.v_.find(rtid);
     }
 };

@@ -46,7 +46,7 @@ public:
             return true;
         }
         else {
-            history_type *h = data_[i].v.find(Sto::read_tid());
+            history_type *h = data_[i].v.find(Sto::read_tid<false/*!commute*/>());
             MvAccess::template read<T>(item, h);
             ret = h->v();
             return true;
@@ -59,7 +59,7 @@ public:
             return item.template write_value<T>();
         }
         else {
-            history_type *h = data_[i].v.find(Sto::read_tid());
+            history_type *h = data_[i].v.find(Sto::read_tid<false/*!commute*/>());
             if (!h) {
                 throw Transaction::Abort();
             }

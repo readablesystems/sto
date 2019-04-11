@@ -970,15 +970,23 @@ public:
     }
 
     // transaction start
+    template <bool Commute>
     tid_type read_tid() const {
         if (!read_tid_) {
             TXP_INCREMENT(txp_rtid_atomic);
             fence();
             epoch_advance_once();
             threadinfo_t& thr = tinfo[TThread::id()];
-            if (mvcc_rw) {
-                thr.rtid = read_tid_ = std::max(_RTID.load(), prev_commit_tid_);
+            if (!Commute) {
+                if (mvcc_rw) {
+                    thr.rtid = read_tid_ = std::max(_RTID.load(), prev_commit_tid_);
+                } else {
+                    thr.rtid = read_tid_ = _RTID;
+                }
             } else {
+                // When we use CU we can't do the timestamp hack above because
+                // flattening delta versions require the invariant that all
+                // reads never observe information based on pending versions
                 thr.rtid = read_tid_ = _RTID;
             }
         }
@@ -1357,8 +1365,9 @@ public:
         TThread::txn->mvcc_rw_upgrade();
     }
 
+    template <bool Commute>
     static TransactionTid::type read_tid() {
-        return TThread::txn->read_tid();
+        return TThread::txn->read_tid<Commute>();
     }
 
     static TransactionTid::type write_tid() {

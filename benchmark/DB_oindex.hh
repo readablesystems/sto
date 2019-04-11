@@ -980,7 +980,7 @@ public:
         auto e = reinterpret_cast<internal_elem *>(rid);
         TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
-        history_type *h = e->row.find(Sto::read_tid());
+        history_type *h = e->row.find(txn_read_tid());
 
         if (h->status_is(UNUSED)) {
             return sel_return_type(true, false, 0, nullptr);
@@ -1056,7 +1056,7 @@ public:
 
             TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
-            auto h = e->row.find(Sto::read_tid());
+            auto h = e->row.find(txn_read_tid());
             if (is_phantom(h, row_item))
                 return ins_return_type(true, false);
 
@@ -1123,7 +1123,7 @@ public:
             internal_elem *e = lp.value();
             TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
-            auto h = e->row.find(Sto::read_tid());
+            auto h = e->row.find(txn_read_tid());
 
             if (is_phantom(h, row_item))
                 return del_return_type(true, false);
@@ -1185,7 +1185,7 @@ public:
                 }
             }
 
-            auto h = e->row.find(Sto::read_tid());
+            auto h = e->row.find(txn_read_tid());
             MvAccess::template read<value_type>(row_item, h);
 
             // skip invalid (inserted but yet committed) values, but do not abort
@@ -1285,7 +1285,7 @@ public:
             auto key = item.key<item_key_t>();
             auto e = key.internal_elem_ptr();
             auto h = item.template read_value<history_type*>();
-            auto result = e->row.cp_check(Sto::read_tid(), h);
+            auto result = e->row.cp_check(txn_read_tid(), h);
             TXP_ACCOUNT(txp_tpcc_check_abort2, txn.special_txp && !result);
             return result;
         }
@@ -1386,6 +1386,10 @@ private:
     access_all(std::array<access_t, internal_elem::num_versions>&, std::array<TransItem*, internal_elem::num_versions>&, internal_elem*) {
         always_assert(false, "Not implemented.");
         return true;
+    }
+
+    static TransactionTid::type txn_read_tid() {
+        return Sto::read_tid<DBParams::Commute>();
     }
 
     static bool has_insert(const TransItem& item) {
