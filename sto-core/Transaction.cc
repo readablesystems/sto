@@ -62,9 +62,8 @@ void Transaction::abort_subaction(int i) {
 
   // Commenting this code out because the performance experiments we created
   // don't violate these asserts.
-  // always_assert(i >= 0);
-  // always_assert(!subactions_[i].aborted && "Cannot abort subaction that has
-  // already been aborted");
+  always_assert(i >= 0);
+  always_assert(!subactions_[i].aborted && "Cannot abort subaction that has already been aborted");
   
   subactions_[i].aborted = true;
 
@@ -373,6 +372,7 @@ unlock_all:
 }
 
 bool Transaction::try_commit() {
+  int num_titems_checked = 0;
 #if STO_TSC_PROFILE
     TimeKeeper<tc_commit> tk;
 #endif
@@ -482,12 +482,13 @@ bool Transaction::try_commit() {
     for (unsigned tidx = 0; tidx != tset_size_; ++tidx) {
         it = (tidx % tset_chunk ? it + 1 : tset_[tidx / tset_chunk]);
 #ifdef TWO_PHASE_TRANSACTION        
-        if (it->has_flag(TransItem::two_pt_invalid_bit) && 
+        if (!it->has_flag(TransItem::two_pt_invalid_bit) &&
             it->has_read() && (it->locked_at_commit() || !it->needs_unlock())) {
 #else
         if (it->has_read() && (it->locked_at_commit() || !it->needs_unlock())) {
 #endif          
             TXP_INCREMENT(txp_total_check_read);
+            num_titems_checked++;
             if (!it->owner()->check(*it, *this)
                 && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
                 mark_abort_because(it, "commit check");
@@ -496,6 +497,8 @@ bool Transaction::try_commit() {
         }
     }
 
+        // Matias: debugging - remove when done
+    // fprintf(stderr, "num items check in transaction is %d\n", num_titems_checked);
     // fence();
 
     //phase3

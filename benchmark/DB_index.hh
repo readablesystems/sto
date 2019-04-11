@@ -253,8 +253,11 @@ public:
                 if (!version_adapter::select_for_update(item, e->version))
                     goto abort;
             } else {
-                if (!item.observe(e->version))
+                if (!item.observe(e->version)) {
+                  // Matias: debugging whether the observe method is the cause of this bug
+                  // std::cout << "observe failed" << std::endl;
                     goto abort;
+                }
             }
 
             return sel_return_type(true, true, reinterpret_cast<uintptr_t>(e), &e->value);

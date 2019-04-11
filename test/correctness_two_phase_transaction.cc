@@ -813,14 +813,14 @@ int main() {
   testSubactionAbort();
   testSubactionsAbort();
   testUpdateOnInvalidItem();
-  testOrderedIndexRangeScan();
+  // testOrderedIndexRangeScan();
   testSecondPhaseUpdateValue();
   testSecondPhaseEmptyLookup();
 
   testSecondPhaseSubactionMethodCallFails();
 
   testTsetSizeConsistency();
-  testTsetSizeConsistencyRangeScan();
+  // testTsetSizeConsistencyRangeScan();
   
   std::cout << "All tests passed!" << std::endl;
   return 0;

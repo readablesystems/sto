@@ -566,7 +566,6 @@ private:
 #endif
 
 #ifdef TWO_PHASE_TRANSACTION
-#ifndef TWO_PHASE_UNOPT        
         if (two_phase_transaction_ &&
             !second_phase_ &&
             (curr_subaction != NULL || first_subaction_started)) {
@@ -584,13 +583,14 @@ private:
           ti->add_flags(TransItem::item_in_subaction_bit);
 #endif
 
+#ifndef TWO_PHASE_UNOPT
           // Optimization keeps track of finite hash locations in case we don't
           // need to insert them.
           if (hash_location_next_ < subaction_hash_capacity) {
             subaction_hash_index_locations_[hash_location_next_++] = hi;
           }
+#endif
         }
-#endif        
 #endif
 
   }
@@ -801,6 +801,16 @@ private:
 
   unsigned get_tset_size() {
     return tset_size_;
+  }
+
+  unsigned num_active_subactions() {
+    int active_subactions = 0;
+    for (int i = 0; i < subaction_next_; i++) {
+      if (!subactions_[i].aborted) {
+        active_subactions++;
+      }
+    }
+    return active_subactions;
   }
 
   void abort_subaction(int i);
@@ -1159,9 +1169,9 @@ public:
     // Commenting this code out because the tests we run certainly don't write
     // in the first phase of a 2PT, nor does this method get called from a 2PT
     // that already started.
-    // always_assert(in_progress());
-    // always_assert(!TThread::txn->two_phase_transaction_);
-    // always_assert(!TThread::txn->any_writes_);
+    always_assert(in_progress());
+    always_assert(!TThread::txn->two_phase_transaction_);
+    always_assert(!TThread::txn->any_writes_);
 
     TThread::txn->set_two_phase_transaction(true);
     TThread::txn->set_second_phase(false);
@@ -1171,9 +1181,9 @@ public:
   // marking only the objects that are of interest.
   static void phase_two() {
     // Comenting this code out because the 'blue-red' experiment doesn't invalidate these checks
-      // always_assert(in_progress());
-      // always_assert(TThread::txn->two_phase_transaction_ && !TThread::txn->second_phase_);
-      // always_assert(!TThread::txn->any_writes_);
+      always_assert(in_progress());
+      always_assert(TThread::txn->two_phase_transaction_ && !TThread::txn->second_phase_);
+      always_assert(!TThread::txn->any_writes_);
 
       // Fill in the item count for the last subaction that was started.
       TThread::txn->update_current_subaction_item_count();
@@ -1193,8 +1203,8 @@ public:
   template <typename T>
   static std::tuple<int, TransProxy> start_subaction(const TObject* obj, T key) {
     // Commenting this code out because the 'blue-red' experiment doesn't violate the asserts.
-      // always_assert(in_progress());
-      // always_assert(TThread::txn->two_phase_transaction_ && !TThread::txn->second_phase_);
+      always_assert(in_progress());
+      always_assert(TThread::txn->two_phase_transaction_ && !TThread::txn->second_phase_);
 
       return TThread::txn->start_subaction(obj, key);
   }
@@ -1207,13 +1217,17 @@ public:
   // already.
   static void abort_subaction(int i) {
     // Commenting this code out because the 'blue-red' experiment doesn't violate the asserts.
-    // always_assert(in_progress());
-    // always_assert(TThread::txn->two_phase_transaction_ && !TThread::txn->second_phase_);
+    always_assert(in_progress());
+    always_assert(TThread::txn->two_phase_transaction_ && !TThread::txn->second_phase_);
     TThread::txn->abort_subaction(i);
   }
 
   static unsigned get_tset_size() {
     return TThread::txn->get_tset_size();
+  }
+
+  static unsigned num_active_subactions() {
+    return TThread::txn->num_active_subactions();
   }
 #endif
 
