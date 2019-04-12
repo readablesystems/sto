@@ -100,7 +100,7 @@ public:
         if (item.has_read()) {
             hprev = item.read_value<history_type*>();
         } else {
-            hprev = v.find(Sto::read_tid(), false);
+            hprev = v.find(Sto::read_tid<false/*!commute*/>(), false);
         }
         if (Sto::commit_tid() < hprev->rtid()) {
             TransProxy(txn, item).add_write(nullptr);
