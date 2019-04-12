@@ -914,6 +914,8 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
 
     size_t starts = 0;
 
+    TXP_INCREMENT(txp_tpcc_dl_stage1);
+
     RWTRANSACTION {
     ++starts;
 
@@ -925,6 +927,8 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
         success = db.tbl_neworders(q_w_id)
                 .template range_scan<decltype(no_scan_callback), false/*reverse*/>(k0, k1, no_scan_callback, RowAccess::ObserveValue, false, 1);
         TXN_DO(success);
+
+        TXP_INCREMENT(txp_tpcc_dl_stage2);
 
         if (order_id == 0)
             continue;
@@ -948,6 +952,8 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
         TXN_DO(success);
         assert(result);
 
+        TXP_INCREMENT(txp_tpcc_dl_stage4);
+
         if (Commute) {
             commutators::Commutator<order_comm_value> commutator(carrier_id);
             db.tbl_orders_comm(q_w_id).update_row(row, commutator);
@@ -969,6 +975,8 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
         );
         TXN_DO(success);
         assert(result);
+
+        TXP_INCREMENT(txp_tpcc_dl_stage4);
 
         auto ov = reinterpret_cast<const order_value *>(value);
         uint64_t q_c_id = ov->o_c_id;
@@ -1002,6 +1010,8 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
             TXN_DO(success);
             assert(result);
 
+            TXP_INCREMENT(txp_tpcc_dl_stage3);
+
             if (Commute) {
                 commutators::Commutator<orderline_comm_value> commutator(delivery_date);
                 db.tbl_orderlines_comm(q_w_id).update_row(row, commutator);
@@ -1023,6 +1033,9 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
             TXN_DO(success);
 
             assert(result);
+
+            TXP_INCREMENT(txp_tpcc_dl_stage3);
+
             auto olv = reinterpret_cast<const orderline_value *>(value);
             ol_amount_sum += olv->ol_amount;
 
@@ -1044,6 +1057,8 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
                 Commute ? RowAccess::None : RowAccess::UpdateValue);
         TXN_DO(success);
         assert(result);
+
+        TXP_INCREMENT(txp_tpcc_dl_stage5);
 
         if (Commute) {
             commutators::Commutator<customer_comm_value> commutator((int64_t)ol_amount_sum);
@@ -1067,6 +1082,8 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
         );
         TXN_DO(success);
         assert(result);
+
+        TXP_INCREMENT(txp_tpcc_dl_stage5);
 
         if (Commute) {
             commutators::Commutator<customer_value> commutator((int64_t)ol_amount_sum);

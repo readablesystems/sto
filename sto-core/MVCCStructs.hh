@@ -244,13 +244,16 @@ private:
     inline void enflatten() {
         T v{};
         assert(prev());
+        TXP_INCREMENT(txp_mvcc_flat_runs);
         prev()->flatten(v);
         v = c_.operate(v);
         MvStatus expected = COMMITTED_DELTA;
         if (status_.compare_exchange_strong(expected, LOCKED_COMMITTED_DELTA)) {
+            TXP_INCREMENT(txp_mvcc_flat_commits);
             v_ = v;
             status(COMMITTED);
         } else {
+            TXP_INCREMENT(txp_mvcc_flat_spins);
             // TODO: exponential backoff?
             while (status_is(LOCKED_COMMITTED_DELTA));
         }
@@ -260,11 +263,13 @@ private:
         std::stack<history_type*> trace;
         history_type *curr = this;
         trace.push(curr);
+        TXP_INCREMENT(txp_mvcc_flat_versions);
         while (curr->status() != COMMITTED) {
             curr = curr->prev();
             trace.push(curr);
+            TXP_INCREMENT(txp_mvcc_flat_versions);
             curr->gc_push(object()->is_inlined(curr));
-       }
+        }
         while (!trace.empty()) {
             auto h = trace.top();
             trace.pop();
@@ -375,20 +380,12 @@ public:
 #endif
 
     ~MvObject() {
-        /*
         history_type *h = h_;
-        h_ = nullptr;
-        while (h) {
-#if MVCC_INLINING
-            if (&ih_ == h->prev_) {
-                h->prev_ = ih_.prev_.load();
-                ih_.status_unused();
-            }
-#endif
-            h->rtid_ = h->wtid_ = 0;  // Make it GC-able
-            h = h->prev_;
+        while (h && !h->is_gc_enqueued()) {
+            history_type *prev = h->prev();
+            h->gc_push(is_inlined(h));
+            h = prev;
         }
-        */
     }
 
     class InvalidState {};

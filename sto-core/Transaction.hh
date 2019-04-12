@@ -202,6 +202,10 @@ enum txp {
     txp_hco_invalid,
     txp_hco_abort,
     // STO_PROFILE_COUNTERS > 1 only
+    txp_mvcc_flat_runs,
+    txp_mvcc_flat_versions,
+    txp_mvcc_flat_commits,
+    txp_mvcc_flat_spins,
     txp_tpcc_no_aborts,
     txp_tpcc_no_commits,
     txp_tpcc_no_stage1,
@@ -219,6 +223,11 @@ enum txp {
     txp_tpcc_pm_stage6,
     txp_tpcc_os_aborts,
     txp_tpcc_os_commits,
+    txp_tpcc_dl_stage1,
+    txp_tpcc_dl_stage2,
+    txp_tpcc_dl_stage3,
+    txp_tpcc_dl_stage4,
+    txp_tpcc_dl_stage5,
     txp_tpcc_dl_aborts,
     txp_tpcc_dl_commits,
     txp_tpcc_st_aborts,
@@ -1179,7 +1188,6 @@ private:
     friend class Sto;
     friend class TestTransaction;
     friend class MvHistoryBase;
-    friend class MvRegistry;
     friend class CicadaHashtable;
 
     friend class VersionDelegate;

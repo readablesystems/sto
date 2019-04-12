@@ -351,7 +351,6 @@ void testMvInline() {
     assert(v0 != v1);
 
     Transaction::epoch_advance_once();
-    //MvRegistry::collect_garbage();
 
     {
         TestTransaction t2(2);
@@ -408,8 +407,6 @@ void testCommuteGC() {
         assert(hh->status() == COMMITTED);
         assert(!hh->prev());
     }
-
-    //MvRegistry::collect_garbage();
 
     {
         TestTransaction t(6);

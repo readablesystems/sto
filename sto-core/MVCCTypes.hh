@@ -21,6 +21,3 @@ template <typename T> class MvObject;
 #ifndef MVCC_INLINING
 #define MVCC_INLINING 0
 #endif
-
-// Registry for keeping track of MVCC objects
-//class MvRegistry;
