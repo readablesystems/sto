@@ -132,7 +132,14 @@ int main(int argc, const char *const *argv) {
         }
         break;
     case db_params_id::Opaque:
-        ret_code = tpcc_access<db_opaque_params>::execute(argc, argv);
+        if (enable_commute) {
+            ret_code = tpcc_oc(argc, argv);
+        } else {
+            ret_code = tpcc_o(argc, argv);
+        }
+        if (node_tracking) {
+            std::cerr << "Warning: No node tracking option for opaque versions." << std::endl;
+        }
         break;
     /*
     case db_params_id::TwoPL:
