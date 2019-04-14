@@ -235,6 +235,15 @@ public:
         return &v_;
     }
 
+    inline T* vp_safe_flatten(type wtid_inf) {
+        if (status_is(DELTA)) {
+            if (wtid_ > wtid_inf)
+                return nullptr;
+            enflatten();
+        }
+        return &v_;
+    }
+
     // Returns the current wtid
     inline type wtid() const {
         return wtid_;

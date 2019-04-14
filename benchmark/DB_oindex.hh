@@ -995,10 +995,17 @@ public:
             }
             if (has_row_update(row_item)) {
                 value_type *vptr;
-                if (has_insert(row_item))
+                if (has_insert(row_item)) {
+#if SAFE_FLATTEN
+                    vptr = h->vp_safe_flatten(Sto::write_tid_inf());
+                    if (vptr == nullptr)
+                        return { false, false, 0, nullptr };
+#else
                     vptr = h->vp();
-                else
+#endif
+                } else {
                     vptr = row_item.template raw_write_value<value_type *>();
+                }
                 assert(vptr);
                 return sel_return_type(true, true, rid, vptr);
             }
@@ -1006,8 +1013,14 @@ public:
 
         if (access != RowAccess::None) {
             MvAccess::template read<value_type>(row_item, h);
+#if SAFE_FLATTEN
+            auto vp = h->vp_safe_flatten(Sto::write_tid_inf());
+            if (vp == nullptr)
+                return { false, false, 0, nullptr };
+#else
             auto vp = h->vp();
             assert(vp);
+#endif
             return sel_return_type(true, true, rid, vp);
         } else {
             return sel_return_type(true, true, rid, nullptr);
