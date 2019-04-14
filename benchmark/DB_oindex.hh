@@ -997,7 +997,7 @@ public:
                 value_type *vptr;
                 if (has_insert(row_item)) {
 #if SAFE_FLATTEN
-                    vptr = h->vp_safe_flatten(Sto::write_tid_inf());
+                    vptr = h->vp_safe_flatten();
                     if (vptr == nullptr)
                         return { false, false, 0, nullptr };
 #else
@@ -1014,7 +1014,7 @@ public:
         if (access != RowAccess::None) {
             MvAccess::template read<value_type>(row_item, h);
 #if SAFE_FLATTEN
-            auto vp = h->vp_safe_flatten(Sto::write_tid_inf());
+            auto vp = h->vp_safe_flatten();
             if (vp == nullptr)
                 return { false, false, 0, nullptr };
 #else
@@ -1207,7 +1207,7 @@ public:
                 return true;
             }
 #if SAFE_FLATTEN
-            auto vptr = h->vp_safe_flatten(Sto::write_tid_inf());
+            auto vptr = h->vp_safe_flatten();
             if (vptr == nullptr) {
                 ret = false;
                 return false;
