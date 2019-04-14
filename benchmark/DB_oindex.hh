@@ -1206,8 +1206,16 @@ public:
                 ret = true;
                 return true;
             }
-
-            ret = callback(key_type(key), h->v());
+#if SAFE_FLATTEN
+            auto vptr = h->vp_safe_flatten(Sto::write_tid_inf());
+            if (vptr == nullptr) {
+                ret = false;
+                return false;
+            }
+#else
+            auto vptr = h->vp();
+#endif
+            ret = callback(key_type(key), *vptr);
             return true;
         };
 
