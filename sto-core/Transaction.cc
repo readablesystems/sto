@@ -31,6 +31,11 @@ void Transaction::initialize() {
     hash_base_ = 32768;
     tset_size_ = 0;
     lrng_state_ = 12897;
+#if SAFE_FLATTEN
+    write_tid_inf_ = 0;
+#endif
+    commit_tid_ = 0;
+    prev_commit_tid_ = 0;
     for (unsigned i = 0; i != tset_initial_capacity / tset_chunk; ++i)
         tset_[i] = &tset0_[i * tset_chunk];
     for (unsigned i = tset_initial_capacity / tset_chunk; i != arraysize(tset_); ++i)
