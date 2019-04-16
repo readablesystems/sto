@@ -1,7 +1,18 @@
+#include <random>
+
 #include "ContentionManager.hh"
 #include "Transaction.hh"
 
 // Contention Manager implementation
+
+void ContentionManager::init() {
+    std::mt19937 gen(0);
+    std::uniform_int_distribution<int> dis(1);
+    for (int i = 0; i < MAX_THREADS; ++i) {
+        auto idx = i * 4;
+        seed[idx] = dis(gen);
+    }
+}
 
 bool ContentionManager::should_abort(int this_id, int owner_id) {
     TXP_INCREMENT(txp_cm_shouldabort);

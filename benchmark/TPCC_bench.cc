@@ -77,6 +77,7 @@ double constants::processor_tsc_frequency;
 bench::dummy_row bench::dummy_row::row;
 
 int main(int argc, const char *const *argv) {
+    Sto::global_init();
     auto cpu_freq = determine_cpu_freq();
     if (cpu_freq == 0.0)
         return 1;

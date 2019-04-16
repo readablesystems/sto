@@ -162,6 +162,7 @@ double constants::processor_tsc_frequency;
 int main(int argc, const char * const *argv) {
     cmd_params params;
 
+    Sto::global_init();
     Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
 
     int ret_code = 0;

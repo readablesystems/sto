@@ -6,8 +6,8 @@
 
 #define MAX_TS UINT_MAX
 #define TS_THRESHOLD 10
-#define SUCC_ABORTS_MAX 10
-#define WAIT_CYCLES_MULTIPLICATOR 8000
+#define SUCC_ABORTS_MAX 20
+#define WAIT_CYCLES_MULTIPLICATOR 10000
 
 #define MAX_THREADS 128
 
@@ -17,6 +17,7 @@ class Transaction;
 
 class ContentionManager {
 public:
+    static void init();
     static bool should_abort(int this_id, int owner_id);
 
     static bool on_write(int threadid);

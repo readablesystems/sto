@@ -269,6 +269,7 @@ int main(int argc, const char *const *argv) {
     db_params_id dbid = db_params_id::Default;
     int ret_code = 0;
 
+    Sto::global_init();
     Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
 
     int opt;

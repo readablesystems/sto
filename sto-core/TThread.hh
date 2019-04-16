@@ -2,8 +2,11 @@
 
 #include <cassert>
 #include <random>
+#include <ContentionManager.hh>
 
+#ifndef MAX_THREADS
 #define MAX_THREADS 128
+#endif
 
 class Transaction;
 
@@ -12,7 +15,8 @@ struct PercentGen {
     std::mt19937 gen;
     std::uniform_int_distribution<int> dist;
 
-    PercentGen() : gen(0), dist(0,99) {}
+    PercentGen() = default;
+    PercentGen(int seed) : gen(seed), dist(0,99) {}
     ~PercentGen() {}
 
     int sample() {

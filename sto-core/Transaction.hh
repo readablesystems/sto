@@ -1306,6 +1306,13 @@ inline void TimeKeeper<T, tmp_stats>::sync_thread_counter_tmp() {
 
 class Sto {
 public:
+    static void global_init() {
+        ContentionManager::init();
+        for (int i = 0; i < MAX_THREADS; ++i) {
+            new (&TThread::gen[i]) PercentGen(i+1099);
+        }
+    }
+
     static Transaction* transaction() {
         if (!TThread::txn)
             TThread::txn = new Transaction(false);

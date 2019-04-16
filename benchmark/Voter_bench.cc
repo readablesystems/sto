@@ -119,6 +119,7 @@ int main(int argc, const char * const *argv) {
     std::cout << "Initializing constants." << std::endl;
     voter::initialize_data();
 
+    Sto::global_init();
     Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
 
     int ret_code = 0;

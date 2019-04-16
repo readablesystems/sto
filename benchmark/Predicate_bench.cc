@@ -35,6 +35,7 @@ int main(int argc, const char * const *argv) {
 
     cmd_params p;
 
+    Sto::global_init();
     Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
     int ret_code = 0;
     int opt;
