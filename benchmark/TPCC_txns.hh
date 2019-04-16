@@ -3,6 +3,10 @@
 #include "TPCC_bench.hh"
 #include <set>
 
+#ifndef TPCC_OBSERVE_C_BALANCE
+#define TPCC_OBSERVE_C_BALANCE 1
+#endif
+
 namespace tpcc {
 
 template <typename DBParams>
