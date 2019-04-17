@@ -207,6 +207,8 @@ static inline IntType bswap(IntType x) {
         return __bswap_32(x);
     else if (sizeof(IntType) == 8)
         return __bswap_64(x);
+    else if (sizeof(IntType) == 2)
+        return __bswap_16(x);
     else
         always_assert(false);
 }
