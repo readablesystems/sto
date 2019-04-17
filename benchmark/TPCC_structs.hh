@@ -437,7 +437,7 @@ struct order_cidx_key {
 };
 
 struct order_key {
-    order_key(uint64_t wid, uint64_t did, uint64_t oid) {
+    order_key(uint16_t wid, uint16_t did, uint32_t oid) {
         o_w_id = bswap(wid);
         o_d_id = bswap(did);
         o_id = bswap(oid);
@@ -457,9 +457,9 @@ struct order_key {
         return lcdf::Str((const char *)this, sizeof(*this));
     }
 
-    uint64_t o_w_id;
-    uint64_t o_d_id;
-    uint64_t o_id;
+    uint16_t o_w_id;
+    uint16_t o_d_id;
+    uint32_t o_id;
 };
 
 #if TPCC_SPLIT_TABLE
