@@ -466,6 +466,7 @@ public:
 private:
     static tid_type _TID;
     static std::atomic<tid_type> _RTID;
+    static unsigned us_per_epoch;  // Defaults to 100ms
 public:
 
     static std::function<void(threadinfo_t::epoch_type)> epoch_advance_callback;
@@ -562,6 +563,16 @@ public:
 #define TXP_INCREMENT(p) Transaction::txp_account<(p)>(1)
 #define TXP_ACCOUNT(p, n) Transaction::txp_account<(p)>((n))
 #define TXP_INSPECT(p) Transaction::txp_inspect<(p)>()
+
+    static unsigned get_epoch_cycle() {
+        return us_per_epoch;
+    }
+
+    static void set_epoch_cycle(const unsigned us) {
+        fence();
+        us_per_epoch = us;
+        fence();
+    }
 
 
 private:

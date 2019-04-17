@@ -1002,6 +1002,7 @@ public:
         int mix = 0;
         double time_limit = 10.0;
         bool enable_gc = false;
+        unsigned gc_rate = Transaction::get_epoch_cycle();
         bool verbose = false;
 
         Clp_Parser *clp = Clp_NewParser(argc, argv, noptions, options);
@@ -1029,6 +1030,9 @@ public:
                     break;
                 case opt_gc:
                     enable_gc = !clp->negated;
+                    break;
+                case opt_gr:
+                    gc_rate = clp->val.i;
                     break;
                 case opt_node:
                     break;
@@ -1080,7 +1084,8 @@ public:
         std::thread advancer;
         std::cout << "Garbage collection: ";
         if (enable_gc) {
-            std::cout << "enabled";
+            std::cout << "enabled, running every " << gc_rate << " ms";
+            Transaction::set_epoch_cycle(gc_rate);
             advancer = std::thread(&Transaction::epoch_advancer, nullptr);
         } else {
             std::cout << "disabled";

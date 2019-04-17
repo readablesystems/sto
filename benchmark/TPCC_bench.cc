@@ -56,8 +56,7 @@ void print_usage(const char *argv_0) {
        << "  --gc (or -g)" << std::endl
        << "    Enable garbage collection (default false)." << std::endl
        << "  --gc-rate=<NUM> (or -r<NUM>)" << std::endl
-       << "    For MVCC: if 0, indicates use of dedicated-thread GC. Otherwise, indicates" << std::endl
-       << "    #transactions per per-thread GC. Defaults to 0. Only effective with -g." << std::endl
+       << "    Number of microseconds between GC epochs. Defaults to 100000." << std::endl
        << "  --node (or -n)" << std::endl
        << "    Enable node tracking (default false)." << std::endl
        << "  --commute (or -x)" << std::endl
