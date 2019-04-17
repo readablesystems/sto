@@ -6,14 +6,26 @@
 
 #define MAX_TS UINT_MAX
 #define TS_THRESHOLD 10
-#define SUCC_ABORTS_MAX 20
+#define SUCC_ABORTS_MAX 10
 #define WAIT_CYCLES_MULTIPLICATOR 10000
+#define INIT_BACKOFF_CYCLES 1024
 
 #define MAX_THREADS 128
 
-typedef __uint128_t uint128_t;
-
 class Transaction;
+
+struct CMInfo {
+    uint32_t aborted;
+    uint32_t seed;
+    uint64_t timestamp;
+    uint64_t write_set_size;
+    uint64_t abort_count;
+    uint64_t abort_backoff;
+    uint64_t version;
+    uint64_t padding[2];
+
+    CMInfo() = default;
+};
 
 class ContentionManager {
 public:
@@ -29,12 +41,6 @@ public:
 public:
     // Global timestamp
     static uint64_t ts;
-
-    static uint128_t aborted[4*MAX_THREADS];
-    static uint128_t timestamp[4*MAX_THREADS];
-    static uint128_t write_set_size[4*MAX_THREADS];
-    static uint128_t abort_count[4*MAX_THREADS];
-    static uint128_t version[4*MAX_THREADS];
-    static uint128_t seed[4*MAX_THREADS];
+    static CMInfo cm_info[MAX_THREADS];
 };
 
