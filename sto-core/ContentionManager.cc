@@ -6,7 +6,7 @@
 // Contention Manager implementation
 
 void ContentionManager::init() {
-    static_assert(sizeof(CMInfo) == 64);
+    static_assert(sizeof(CMInfo) == 64, "CMInfo not cacheline aligned.");
     std::mt19937 gen(0);
     std::uniform_int_distribution<uint32_t> dis(1);
     for (int i = 0; i < MAX_THREADS; ++i) {
