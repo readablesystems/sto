@@ -804,7 +804,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     order_cidx_key k1(q_w_id, q_d_id, q_c_id, std::numeric_limits<uint64_t>::max());
 
     success = db.tbl_order_customer_index(q_w_id)
-            .template range_scan<decltype(scan_callback), true/*reverse*/>(k1, k0, scan_callback, RowAccess::ObserveExists, false, 1/*reverse scan for only 1 item*/);
+            .template range_scan<decltype(scan_callback), true/*reverse*/>(k1, k0, scan_callback, RowAccess::ObserveExists, true, 1/*reverse scan for only 1 item*/);
     TXN_DO(success);
 
     if (cus_o_id > 0) {
@@ -929,7 +929,7 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
         order_key k0(q_w_id, q_d_id, 0);
         order_key k1(q_w_id, q_d_id, std::numeric_limits<uint64_t>::max());
         success = db.tbl_neworders(q_w_id)
-                .template range_scan<decltype(no_scan_callback), false/*reverse*/>(k0, k1, no_scan_callback, RowAccess::ObserveValue, false, 1);
+                .template range_scan<decltype(no_scan_callback), false/*reverse*/>(k0, k1, no_scan_callback, RowAccess::ObserveValue, true, 1);
         TXN_DO(success);
 
         TXP_INCREMENT(txp_tpcc_dl_stage2);
@@ -938,9 +938,9 @@ void tpcc_runner<DBParams>::run_txn_delivery() {
             continue;
 
         order_key ok(q_w_id, q_d_id, order_id);
-        //std::tie(success, result) = db.tbl_neworders(q_w_id).delete_row(ok);
-        //TXN_DO(success);
-        //assert(result);
+        std::tie(success, result) = db.tbl_neworders(q_w_id).delete_row(ok);
+        TXN_DO(success);
+        assert(result);
 
 #if TPCC_SPLIT_TABLE
         std::tie(success, result, std::ignore, value) = db.tbl_orders_const(q_w_id).select_row(ok, RowAccess::ObserveValue);

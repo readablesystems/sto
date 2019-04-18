@@ -367,8 +367,9 @@ public:
             internal_elem *e = lp.value();
             TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
-            if (is_phantom(e, row_item))
+            if (is_phantom(e, row_item)) {
                 goto abort;
+            }
 
             if (index_read_my_write) {
                 if (has_delete(row_item))
@@ -381,15 +382,18 @@ public:
 
             // select_for_update will register an observation and set the write bit of
             // the TItem
-            if (!version_adapter::select_for_update(row_item, e->version()))
+            if (!version_adapter::select_for_update(row_item, e->version())) {
                 goto abort;
+            }
             fence();
-            if (e->deleted)
+            if (e->deleted) {
                 goto abort;
+            }
             row_item.add_flags(delete_bit);
         } else {
-            if (!register_internode_version(lp.node(), lp.full_version_value()))
+            if (!register_internode_version(lp.node(), lp.full_version_value())) {
                 goto abort;
+            }
         }
 
         return del_return_type(true, found);
@@ -585,9 +589,8 @@ public:
             //assert(e->version.is_locked());
             if (has_delete(item)) {
                 assert(e->valid() && !e->deleted);
-                txn.set_version(e->version());
                 e->deleted = true;
-                fence();
+                txn.set_version(e->version());
                 return;
             }
 
