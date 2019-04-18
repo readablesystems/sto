@@ -49,6 +49,31 @@ private:
     uint64_t oid_gens[max_whs][max_dts];
 };
 
+class tpcc_delivery_queue {
+public:
+    static constexpr size_t max_whs = 32;
+
+    tpcc_delivery_queue() {
+        bzero(num_enqueued, sizeof(num_enqueued));
+    }
+
+    void enqueue(uint64_t wid) {
+        fetch_and_add(&num_enqueued[wid - 1], 1);
+    }
+
+    uint64_t read(uint64_t wid) const {
+        acquire_fence();
+        return num_enqueued[wid - 1];
+    }
+
+    void dequeue(uint64_t wid, uint64_t n) {
+        fetch_and_add(&num_enqueued[wid - 1], -n);
+    }
+
+private:
+    uint64_t num_enqueued[max_whs];
+};
+
 // WAREHOUSE
 
 struct warehouse_key {

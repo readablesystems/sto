@@ -264,6 +264,9 @@ public:
     tpcc_oid_generator& oid_generator() {
         return oid_gen_;
     }
+    tpcc_delivery_queue& delivery_queue() {
+        return dlvy_queue_;
+    }
 
 private:
     size_t num_whs_;
@@ -297,6 +300,7 @@ private:
     std::vector<ht_table_type> tbl_hts_;
 
     tpcc_oid_generator oid_gen_;
+    tpcc_delivery_queue dlvy_queue_;
 
     friend class tpcc_access<DBParams>;
 };
@@ -313,9 +317,9 @@ public:
         stock_level
     };
 
-    tpcc_runner(int id, tpcc_db<DBParams>& database, uint64_t w_start, uint64_t w_end, int mix)
+    tpcc_runner(int id, tpcc_db<DBParams>& database, uint64_t w_start, uint64_t w_end, uint64_t w_own, int mix)
         : ig(id, database.num_warehouses()), db(database), mix(mix), runner_id(id),
-          w_id_start(w_start), w_id_end(w_end) {}
+          w_id_start(w_start), w_id_end(w_end), w_id_owned(w_own) {}
 
     inline txn_type next_transaction() {
         uint64_t x = ig.random(1, 100);
@@ -343,8 +347,12 @@ public:
     inline void run_txn_neworder();
     inline void run_txn_payment();
     inline void run_txn_orderstatus();
-    inline void run_txn_delivery();
+    inline void run_txn_delivery(uint64_t wid);
     inline void run_txn_stocklevel();
+
+    inline uint64_t owned_warehouse() const {
+        return w_id_owned;
+    }
 
 private:
     tpcc_input_generator ig;
@@ -353,6 +361,9 @@ private:
     int runner_id;
     uint64_t w_id_start;
     uint64_t w_id_end;
+    uint64_t w_id_owned;
+
+    friend class tpcc_access<DBParams>;
 };
 
 template <typename DBParams>
@@ -892,8 +903,8 @@ public:
     }
 
     static void tpcc_runner_thread(tpcc_db<DBParams>& db, db_profiler& prof, int runner_id, uint64_t w_start,
-                                   uint64_t w_end, double time_limit, int mix, uint64_t& txn_cnt) {
-        tpcc_runner<DBParams> runner(runner_id, db, w_start, w_end, mix);
+                                   uint64_t w_end, uint64_t w_own, double time_limit, int mix, uint64_t& txn_cnt) {
+        tpcc_runner<DBParams> runner(runner_id, db, w_start, w_end, w_own, mix);
         typedef typename tpcc_runner<DBParams>::txn_type txn_type;
 
         uint64_t local_cnt = 0;
@@ -906,6 +917,30 @@ public:
         auto start_t = prof.start_timestamp();
 
         while (true) {
+            // Executed enqueued delivery transactions, if any
+            auto own_w_id = runner.owned_warehouse();
+            if (own_w_id != 0) {
+                auto num_to_run = db.delivery_queue().read(own_w_id);
+                uint64_t num_run = 0;
+                bool stop = false;
+
+                if (num_to_run > 0) {
+                    for (num_run = 0; num_run < num_to_run; ++num_run) {
+                        runner.run_txn_delivery(own_w_id);
+                        if ((read_tsc() - start_t) >= tsc_diff) {
+                            stop = true;
+                            ++num_run;
+                            break;
+                        }
+                    }
+                    local_cnt += num_run;
+                    db.delivery_queue().dequeue(own_w_id, num_to_run);
+                    if (stop)
+                        break;
+                    continue;
+                }
+            }
+
             auto curr_t = read_tsc();
             if ((curr_t - start_t) >= tsc_diff)
                 break;
@@ -921,9 +956,16 @@ public:
                 case txn_type::order_status:
                     runner.run_txn_orderstatus();
                     break;
-                case txn_type::delivery:
-                    runner.run_txn_delivery();
+                case txn_type::delivery: {
+                    uint64_t q_w_id = runner.ig.random(w_start, w_end);
+                    // All warehouse delivery transactions are delegated to
+                    // its "owner" thread. This is in line with the actual
+                    // TPC-C spec with regard to deferred execution.
+                    // Do not count enqueued transactions as executed.
+                    db.delivery_queue().enqueue(q_w_id);
+                    --local_cnt;
                     break;
+                }
                 case txn_type::stock_level:
                     runner.run_txn_stocklevel();
                     break;
@@ -947,6 +989,11 @@ public:
         std::vector<std::thread> runner_thrs;
         std::vector<uint64_t> txn_cnts(size_t(num_runners), 0);
 
+        int nwh = db.num_warehouses();
+        auto calc_own_w_id = [nwh](int rid) {
+            return (rid >= nwh) ? 0 : (rid + 1);
+        };
+
         if (q == 0) {
             q = (num_runners + db.num_warehouses() - 1) / db.num_warehouses();
             int qq = q;
@@ -957,10 +1004,10 @@ public:
                     qq += q;
                 }
                 if (verbose) {
-                    fprintf(stdout, "runner %d: [%d, %d]\n", i, wid, wid);
+                    fprintf(stdout, "runner %d: [%d, %d], own: %d\n", i, wid, wid, calc_own_w_id(i));
                 }
                 runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), std::ref(prof),
-                                         i, wid, wid, time_limit, mix, std::ref(txn_cnts[i]));
+                                         i, wid, wid, calc_own_w_id(i), time_limit, mix, std::ref(txn_cnts[i]));
             }
         } else {
             int last_xend = 1;
@@ -972,10 +1019,10 @@ public:
                     --r;
                 }
                 if (verbose) {
-                    fprintf(stdout, "runner %d: [%d, %d]\n", i, last_xend, next_xend - 1);
+                    fprintf(stdout, "runner %d: [%d, %d], own: %d\n", i, last_xend, next_xend - 1, calc_own_w_id(i));
                 }
                 runner_thrs.emplace_back(tpcc_runner_thread, std::ref(db), std::ref(prof),
-                                         i, last_xend, next_xend - 1, time_limit, mix,
+                                         i, last_xend, next_xend - 1, calc_own_w_id(i), time_limit, mix,
                                          std::ref(txn_cnts[i]));
                 last_xend = next_xend;
             }

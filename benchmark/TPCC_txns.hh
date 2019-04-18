@@ -892,14 +892,13 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 }
 
 template <typename DBParams>
-void tpcc_runner<DBParams>::run_txn_delivery() {
+void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
 #if TABLE_FINE_GRAINED
     typedef order_value::NamedColumn od_nc;
     typedef orderline_value::NamedColumn ol_nc;
     typedef customer_value::NamedColumn cu_nc;
 #endif
 
-    uint64_t q_w_id = ig.random(w_id_start, w_id_end);
     uint64_t carrier_id = ig.random(1, 10);
     uint32_t delivery_date = ig.gen_date();
 
