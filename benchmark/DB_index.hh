@@ -253,11 +253,8 @@ public:
                 if (!version_adapter::select_for_update(item, e->version))
                     goto abort;
             } else {
-                if (!item.observe(e->version)) {
-                  // Matias: debugging whether the observe method is the cause of this bug
-                  // std::cout << "observe failed" << std::endl;
+                if (!item.observe(e->version))
                     goto abort;
-                }
             }
 
             return sel_return_type(true, true, reinterpret_cast<uintptr_t>(e), &e->value);
@@ -884,7 +881,6 @@ public:
 
     // Commented because we are not dealing with absent keys in the database
     // as of now.
-    // TODO: figure out if you need this piece of code or not.
     // if (is_phantom(e, row_item))
     //   goto abort;
 
@@ -1235,8 +1231,6 @@ public:
             (void)node;
             (void)version;
             (void)phantom_protection;
-            // TODO: is it possible to comment this? Don't we need this to make
-            // sure concurrency between creation of nodes is fine?
             // return ((!phantom_protection) || register_internode_version(node, version));
             return true;
         };
@@ -1248,16 +1242,10 @@ public:
             std::tuple<int, TransProxy> ret_val = Sto::start_subaction(this, item_key_t::row_item_key(e));
             int i = std::get<0>(ret_val);
 
-            // TODO: figure out if you need to use this value aka if you need to
-            // modify 'ok' depending on the RowAccess value.
-            // TransProxy row_item = std::get<1>(ret_val);
-
-
             bool ok = true;
             switch (access) {
                 case RowAccess::ObserveValue:
                 case RowAccess::ObserveExists:
-                    // ok = row_item.observe(e->version());
                     break;
                 case RowAccess::None:
                     break;

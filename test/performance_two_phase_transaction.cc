@@ -292,9 +292,6 @@ public:
   }
   
   static int execute(int argc, const char* const* argv) {
-    // TODO: figure out what this value means.  I think this value tells the
-    // profiler to spawn perf on perf record. This might be useful in the future
-    // to check where the performance bottlenecks are. 
     bool spawn_perf = false;
 
     uint64_t num_items = 1000;
@@ -335,7 +332,7 @@ public:
     prepopulate_db(db, num_items, percent_blue);
     std::cout << "Prepopulation complete." << std::endl;
     std::cout << "Running Benchmark 100 times" << std::endl;
-    prof.start(/*TODO: figure out what this does profiler_mode*/ Profiler::perf_mode::record);
+    prof.start(Profiler::perf_mode::record);
     for (int i = 0; i < NUM_ITERATIONS; i++) {
       run_benchmark(db, num_items, t_trans, prof);
     }

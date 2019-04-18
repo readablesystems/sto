@@ -105,14 +105,29 @@ void Transaction::abort_subaction(int i) {
   }
 #endif
 
-  // The invalidation of items is commented out because the 'blue-red'
-  // experiment we run only considers the case before, where we remove only the
-  // most recently created subaction.
+  unsigned chunk_size = tset_chunk * sizeof(TransItem);
 
   // Mark all the items under this subaction as invalid
   TransItem* item = subactions_[i].first_item;
-  TransItem* end_item = item + subactions_[i].item_count;
-  for(; item != end_item; item++) {
+
+  // Find the current chunk the item is in. Use this to find the corresponding
+  // tidx value, which allow us to iterate through items similar to commit time.
+  int cur_chunk = 0;
+  uintptr_t cur_chunk_start = (uintptr_t)tset_[cur_chunk];
+  uintptr_t cur_chunk_end = (uintptr_t)(cur_chunk_start + chunk_size);
+
+  while(!((uintptr_t)item >= cur_chunk_start && (uintptr_t)item < cur_chunk_end)) {
+    cur_chunk++;
+    cur_chunk_start = (uintptr_t)tset_[cur_chunk];
+    cur_chunk_end = (uintptr_t)(cur_chunk_start + chunk_size);
+  }
+
+  unsigned tidx = ((uintptr_t)item - (uintptr_t)cur_chunk_start) /
+    sizeof(TransItem) + cur_chunk * tset_chunk;
+  unsigned end_tidx = tidx + (unsigned)subactions_[i].item_count;
+
+  for (; tidx != end_tidx; tidx++) {
+    item = tset_[tidx / tset_chunk] + (tidx % tset_chunk);
     item->add_flags(TransItem::two_pt_invalid_bit);
   }
 }
@@ -372,7 +387,6 @@ unlock_all:
 }
 
 bool Transaction::try_commit() {
-  int num_titems_checked = 0;
 #if STO_TSC_PROFILE
     TimeKeeper<tc_commit> tk;
 #endif
@@ -488,7 +502,6 @@ bool Transaction::try_commit() {
         if (it->has_read() && (it->locked_at_commit() || !it->needs_unlock())) {
 #endif          
             TXP_INCREMENT(txp_total_check_read);
-            num_titems_checked++;
             if (!it->owner()->check(*it, *this)
                 && (!may_duplicate_items_ || !preceding_duplicate_read(it))) {
                 mark_abort_because(it, "commit check");
@@ -497,8 +510,6 @@ bool Transaction::try_commit() {
         }
     }
 
-        // Matias: debugging - remove when done
-    // fprintf(stderr, "num items check in transaction is %d\n", num_titems_checked);
     // fence();
 
     //phase3
