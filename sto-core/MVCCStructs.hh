@@ -40,7 +40,7 @@ public:
     explicit MvHistory(
             type ntid, object_type *obj, const T& nv, history_type *nprev = nullptr)
             : obj_(obj), v_(nv), gc_enqueued_(false), prev_(nprev),
-              status_(PENDING), rtid_(ntid), wtid_(ntid) {
+              status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
         if (prev_) {
             always_assert(
                 is_valid_prev(prev_),
@@ -50,7 +50,7 @@ public:
     explicit MvHistory(
             type ntid, object_type *obj, T&& nv, history_type *nprev = nullptr)
             : obj_(obj), v_(std::move(nv)), gc_enqueued_(false), prev_(nprev),
-              status_(PENDING), rtid_(ntid), wtid_(ntid) {
+              status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
         if (prev_) {
             always_assert(
                 is_valid_prev(prev_),
@@ -60,7 +60,7 @@ public:
     explicit MvHistory(
             type ntid, object_type *obj, T *nvp, history_type *nprev = nullptr)
             : obj_(obj), gc_enqueued_(false), prev_(nprev), status_(PENDING),
-              rtid_(ntid), wtid_(ntid) {
+              rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
         if (prev_) {
             always_assert(
                 is_valid_prev(prev_),
@@ -74,7 +74,7 @@ public:
     explicit MvHistory(
             type ntid, object_type *obj, comm_type &&c, history_type *nprev = nullptr)
             : obj_(obj), c_(c), v_(), gc_enqueued_(false), prev_(nprev),
-              status_(PENDING), rtid_(ntid), wtid_(ntid) {
+              status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
         if (prev_) {
             always_assert(
                 is_valid_prev(prev_),
@@ -82,6 +82,14 @@ public:
         }
 
         status_delta();
+    }
+
+    // Enqueues the deleted version for future cleanup
+    inline void enqueue_for_delete() {
+        if (!status_is(COMMITTED_DELETED)) {
+            return;
+        }
+        Transaction::rcu_call(delete_prep_cb, this);
     }
 
     // Pushes the current element onto the GC list if it isn't already, along
@@ -146,6 +154,14 @@ public:
     // Set whether current history element is enqueued for GC
     inline void set_gc_enqueued(const bool value) {
         gc_enqueued_ = value;
+    }
+
+    // Sets the delete callback function
+    inline void set_delete_cb(void *index_p,
+            void (*f) (void*, void (*) (void*), void*, void*), void *param) {
+        index_ptr = index_p;
+        delete_cb = f;
+        delete_param = param;
     }
 
     // Returns the status
@@ -244,6 +260,23 @@ public:
         return wtid_;
     }
 private:
+    static void delete_prep_cb(void *ptr) {
+        history_type *hd = static_cast<history_type*>(ptr);  // DELETED version
+        history_type *h = hd->object()->h_;
+        while (h) {
+            if (h == hd) {
+                hd->delete_cb(
+                    hd->index_ptr, hd->enqueue_physical_delete, hd->delete_param, ptr);
+                break;
+            }
+
+            // A committed version means we can skip physical deletion
+            if (h->status_is(COMMITTED)) {
+                break;
+            }
+        }
+    }
+
     // Initializes the flattening process
     inline void enflatten() {
         T v{};
@@ -261,6 +294,11 @@ private:
             // TODO: exponential backoff?
             while (status_is(LOCKED_COMMITTED_DELTA));
         }
+    }
+
+    static void enqueue_physical_delete(void *ptr) {
+        history_type *hd = static_cast<history_type*>(ptr);  // DELETED version
+        Transaction::rcu_delete(hd->object());
     }
 
     void flatten(T &v) {
@@ -313,7 +351,7 @@ private:
         return ele;
     }
 
-    object_type *obj_;  // Parent object
+    object_type * const obj_;  // Parent object
     comm_type c_;
     T v_;
 
@@ -322,6 +360,9 @@ private:
     std::atomic<MvStatus> status_;  // Status of this element
     std::atomic<type> rtid_;  // Read TID
     type wtid_;  // Write TID
+    void *index_ptr;
+    void (*delete_cb) (void*, void (*) (void*), void*, void*);
+    void *delete_param;
 
     friend class MvObject<T>;
 };
@@ -383,6 +424,7 @@ public:
     }
 #endif
 
+    /*
     ~MvObject() {
         history_type *h = h_;
         while (h && !h->is_gc_enqueued()) {
@@ -391,6 +433,7 @@ public:
             h = prev;
         }
     }
+    */
 
     class InvalidState {};
 
@@ -456,6 +499,11 @@ public:
                 prev = prev->prev();
                 ele->gc_push(is_inlined(ele));
             } while(!stop);
+
+            // And for DELETED versions, enqueue the callback
+            if (h->status_is(COMMITTED_DELETED)) {
+                h->enqueue_for_delete();
+            }
         }
 
         return true;
@@ -639,6 +687,8 @@ protected:
     history_type ih_;  // Inlined version
     std::atomic<type> itid_;  // TID representing until when the inlined version is correct
 #endif
+
+    friend class MvHistory<T>;
 };
 
 #if SAFE_FLATTEN

@@ -1156,7 +1156,7 @@ public:
             MvAccess::template read<value_type>(row_item, h);
             if (h->status_is(DELETED))
                 return del_return_type(true, false);
-            row_item.add_write();
+            row_item.add_write(0);
             row_item.add_flags(delete_bit);
         } else {
             if (!register_internode_version(lp.node(), lp.full_version_value()))
@@ -1271,19 +1271,24 @@ public:
                 return false;
             }
         }
-        history_type *h;
+        history_type *h = nullptr;
         if (item.has_commute()) {
             auto wval = item.template write_value<comm_type>();
             h = e->row.new_history(
                 Sto::commit_tid(), &e->row, std::move(wval), hprev);
         } else {
             auto wval = item.template raw_write_value<value_type*>();
-            h = e->row.new_history(
-                Sto::commit_tid(), &e->row, wval, hprev);
+            if (has_delete(item)) {
+                h = e->row.new_history(
+                    Sto::commit_tid(), &e->row, nullptr, hprev);
+                h->status_delete();
+                h->set_delete_cb(this, _delete_cb, &e->key);
+            } else {
+                h = e->row.new_history(
+                    Sto::commit_tid(), &e->row, wval, hprev);
+            }
         }
-        if (has_delete(item)) {
-            h->status_delete();
-        }
+        assert(h);
         bool result = e->row.cp_lock(Sto::commit_tid(), h);
         if (!result && !h->status_is(MvStatus::ABORTED)) {
             e->row.delete_history(h);
@@ -1461,6 +1466,20 @@ private:
             lp.finish(0, *ti);
         }
         return found;
+    }
+
+    static void _delete_cb(
+            void *index_ptr, void (*f) (void*), void *key_ptr, void *history_ptr) {
+        auto ip = static_cast<mvcc_ordered_index<K, V, DBParams>*>(index_ptr);
+        auto kp = static_cast<key_type*>(key_ptr);
+        cursor_type lp(ip->table_, *kp);
+        bool found = lp.find_locked(*ip->ti);
+        if (found) {
+            f(history_ptr);
+            lp.finish(-1, *ip->ti);
+        } else {
+            lp.finish(0, *ip->ti);
+        }
     }
 
     static uintptr_t get_internode_key(node_type* node) {
