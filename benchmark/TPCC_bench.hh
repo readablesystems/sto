@@ -1084,7 +1084,7 @@ public:
         std::thread advancer;
         std::cout << "Garbage collection: ";
         if (enable_gc) {
-            std::cout << "enabled, running every " << gc_rate << " ms";
+            std::cout << "enabled, running every " << gc_rate / 1000.0 << " ms";
             Transaction::set_epoch_cycle(gc_rate);
             advancer = std::thread(&Transaction::epoch_advancer, nullptr);
         } else {
