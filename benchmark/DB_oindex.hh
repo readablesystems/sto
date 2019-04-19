@@ -1204,7 +1204,7 @@ public:
             auto h = e->row.find(txn_read_tid());
             MvAccess::template read<value_type>(row_item, h);
 
-            // skip invalid (inserted but yet committed) values, but do not abort
+            // skip invalid (inserted but yet committed) and/or deleted values, but do not abort
             if (h->status_is(DELETED)) {
                 ret = true;
                 return true;
