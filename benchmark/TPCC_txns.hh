@@ -939,6 +939,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
         order_key ok(q_w_id, q_d_id, order_id);
         std::tie(success, result) = db.tbl_neworders(q_w_id).delete_row(ok);
         TXN_DO(success);
+        TXN_DO(result);
         assert(result);
 
 #if TPCC_SPLIT_TABLE
