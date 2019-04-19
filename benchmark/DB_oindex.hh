@@ -1292,11 +1292,10 @@ public:
         bool result = e->row.cp_lock(Sto::commit_tid(), h);
         if (!result && !h->status_is(MvStatus::ABORTED)) {
             e->row.delete_history(h);
-            TransProxy(txn, item).add_write(nullptr);
+            TransProxy(txn, item).add_mvhistory(nullptr);
             TXP_ACCOUNT(txp_tpcc_lock_abort2, txn.special_txp);
         } else {
-            TransProxy(txn, item).add_write(h);
-            TransProxy(txn, item).clear_commute();
+            TransProxy(txn, item).add_mvhistory(h);
             TXP_ACCOUNT(txp_tpcc_lock_abort3, txn.special_txp && !result);
         }
         return result;
@@ -1338,9 +1337,11 @@ public:
         if (!committed) {
             auto key = item.key<item_key_t>();
             auto e = key.internal_elem_ptr();
-            auto h = item.template write_value<history_type*>();
-            if (h && !item.has_commute()) {
-                e->row.abort(h);
+            if (item.has_mvhistory()) {
+                auto h = item.template write_value<history_type*>();
+                if (h) {
+                    e->row.abort(h);
+                }
             }
         }
     }

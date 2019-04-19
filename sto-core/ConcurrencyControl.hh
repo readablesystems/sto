@@ -57,6 +57,17 @@ inline TransProxy& TransProxy::add_commute(const T& comm) {
     return *this;
 }
 
+// Registering MvHistory elements without passing the version (handled internally by TItem)
+template <typename T>
+inline TransProxy& TransProxy::add_mvhistory(const T& h) {
+    if (has_commute()) {
+        clear_commute();
+    }
+    add_write(h);
+    item().__or_flags(TransItem::mvhistory_bit);
+    return *this;
+}
+
 // Registering writes without passing the version (handled internally by TItem)
 inline TransProxy& TransProxy::add_write() {
     if (has_commute()) {

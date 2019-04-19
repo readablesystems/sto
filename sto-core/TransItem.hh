@@ -41,12 +41,13 @@ class TransItem {
     static constexpr flags_type stash_bit = flags_type(1) << 59;
     static constexpr flags_type cl_bit = flags_type(1) << 58;
     static constexpr flags_type commute_bit = flags_type(1) << 57;
+    static constexpr flags_type mvhistory_bit = flags_type(1) << 56;
     static constexpr flags_type pointer_mask = (flags_type(1) << 48) - 1;
     static constexpr flags_type owner_mask = pointer_mask;
     static constexpr flags_type user0_bit = flags_type(1) << 48;
     static constexpr int userf_shift = 48;
     static constexpr flags_type shifted_userf_mask = 0x7FF;
-    static constexpr flags_type special_mask = owner_mask | cl_bit | read_bit | write_bit | lock_bit | predicate_bit | stash_bit | commute_bit;
+    static constexpr flags_type special_mask = owner_mask | cl_bit | read_bit | write_bit | lock_bit | predicate_bit | stash_bit | commute_bit | mvhistory_bit;
 
 
     TransItem() : s_(), key_(), rdata_(), wdata_(), mode_(CCMode::none) {};
@@ -72,6 +73,9 @@ class TransItem {
     }
     bool has_commute() const {
         return flags() & commute_bit;
+    }
+    bool has_mvhistory() const {
+        return flags() & mvhistory_bit;
     }
     bool needs_unlock() const {
         return flags() & lock_bit;
@@ -323,6 +327,9 @@ class TransProxy {
     bool has_commute() const {
         return item().has_commute();
     }
+    bool has_mvhistory() const {
+        return item().has_mvhistory();
+    }
     bool has_flag(TransItem::flags_type f) const {
         return item().flags() & f;
     }
@@ -357,6 +364,13 @@ class TransProxy {
     inline TransProxy& add_commute(const T&);
     inline TransProxy& clear_commute() {
         item().__rm_flags(TransItem::commute_bit);
+        return *this;
+    }
+
+    template <typename T>
+    inline TransProxy& add_mvhistory(const T&);
+    inline TransProxy& clear_mvhistory() {
+        item().__rm_flags(TransItem::mvhistory_bit);
         return *this;
     }
 
