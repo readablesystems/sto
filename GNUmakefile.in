@@ -21,7 +21,9 @@ LDFLAGS = @LDFLAGS@
 MASSTREEDIR = @MASSTREEDIR@
 
 ifneq ($(USE_JEMALLOC),1)
+ifneq ($(USE_LIBCMALLOC), 1)
 LIBOBJS += $(LIBRPMALLOC)
+endif
 endif
 
 OBJ = obj

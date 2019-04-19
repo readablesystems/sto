@@ -35,6 +35,9 @@ void Transaction::initialize() {
 #if SAFE_FLATTEN
     write_tid_inf_ = 0;
 #endif
+#if CICADA_HASHTABLE == 0 && defined(TRANSACTION_HASHTABLE)
+    bzero(hashtable_, sizeof(hashtable_));
+#endif
     commit_tid_ = 0;
     prev_commit_tid_ = 0;
     for (unsigned i = 0; i != tset_initial_capacity / tset_chunk; ++i)
