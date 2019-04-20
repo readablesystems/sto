@@ -371,13 +371,14 @@ public:
 
 #if MVCC_INLINING
     MvObject() : h_(&ih_), ih_(this) {
-        ih_.status_commit();
         itid_ = ih_.rtid();
         if (std::is_trivial<T>::value) {
             ih_.v_ = T();
+            ih_.status_delete();
         } else {
             ih_.status_delete();
         }
+        ih_.status_commit();
     }
     explicit MvObject(const T& value)
             : h_(&ih_), ih_(0, this, value) {
@@ -397,12 +398,13 @@ public:
     }
 #else
     MvObject() : h_(new history_type(this)) {
-        h_.load()->status_commit();
         if (std::is_trivial<T>::value) {
             h_.load()->v_ = T();
+            h_.load()->status_delete();
         } else {
             h_.load()->status_delete();
         }
+        h_.load()->status_commit();
     }
     explicit MvObject(const T& value)
             : h_(new history_type(0, this, value)) {
@@ -497,7 +499,7 @@ public:
                 history_type* ele = prev;
                 prev = prev->prev();
                 ele->gc_push(is_inlined(ele));
-            } while(!stop);
+            } while(prev != nullptr && !stop);
 
             // And for DELETED versions, enqueue the callback
             if (h->status_is(COMMITTED_DELETED)) {

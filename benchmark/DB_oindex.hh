@@ -871,6 +871,8 @@ public:
 
         internal_elem(const key_type& k)
             : key(k), row() {}
+        internal_elem(const key_type& k, const value_type& val)
+            : key(k), row(val) {}
 
         constexpr static int map(int col_n) {
             (void)col_n;  // TODO(column-splitting)
@@ -1263,7 +1265,7 @@ public:
             e->row.nontrans_access() = v;
             lp.finish(0, *ti);
         } else {
-            internal_elem *e = new internal_elem(k);
+            internal_elem *e = new internal_elem(k, v);
             e->row.nontrans_access() = v;
             lp.value() = e;
             lp.finish(1, *ti);
