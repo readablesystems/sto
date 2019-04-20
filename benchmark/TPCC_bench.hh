@@ -934,7 +934,7 @@ public:
                         }
                     }
                     local_cnt += num_run;
-                    db.delivery_queue().dequeue(own_w_id, num_to_run);
+                    db.delivery_queue().dequeue(own_w_id, num_run);
                     if (stop)
                         break;
                     continue;
