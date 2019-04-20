@@ -1143,6 +1143,12 @@ public:
         auto num_trans = run_benchmark(db, prof, num_threads, time_limit, mix, verbose);
         prof.finish(num_trans);
 
+        size_t remaining_deliveries = 0;
+        for (size_t wh = 0; wh < db.delivery_queue().max_whs; wh++) {
+            remaining_deliveries += db.delivery_queue().read(wh);
+        }
+        std::cout << "Remaining unresolved deliveries: " << remaining_deliveries << std::endl;
+
         if (enable_gc) {
             Transaction::global_epochs.run = false;
             advancer.join();
