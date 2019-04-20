@@ -984,6 +984,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
 
         auto ov = reinterpret_cast<const order_value *>(value);
         uint64_t q_c_id = ov->o_c_id;
+        assert(q_c_id != 0);
         auto ol_cnt = ov->o_ol_cnt;
 
         if (Commute) {

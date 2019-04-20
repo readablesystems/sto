@@ -1296,7 +1296,7 @@ public:
                 h = e->row.new_history(
                     Sto::commit_tid(), &e->row, nullptr, hprev);
                 h->status_delete();
-                h->set_delete_cb(this, _delete_cb, &e->key);
+                h->set_delete_cb(this, _delete_cb, e);
             } else {
                 h = e->row.new_history(
                     Sto::commit_tid(), &e->row, wval, hprev);
@@ -1492,14 +1492,18 @@ private:
     }
 
     static void _delete_cb(
-            void *index_ptr, void (*f) (void*), void *key_ptr, void *history_ptr) {
-        auto ip = static_cast<mvcc_ordered_index<K, V, DBParams>*>(index_ptr);
-        auto kp = static_cast<key_type*>(key_ptr);
-        cursor_type lp(ip->table_, *kp);
+            void *index_ptr, void *ele_ptr, void *history_ptr) {
+        auto ip = reinterpret_cast<mvcc_ordered_index<K, V, DBParams>*>(index_ptr);
+        auto el = reinterpret_cast<internal_elem*>(ele_ptr);
+        auto hp = reinterpret_cast<history_type*>(history_ptr);
+        cursor_type lp(ip->table_, el->key);
         bool found = lp.find_locked(*ip->ti);
         if (found) {
-            f(history_ptr);
-            lp.finish(-1, *ip->ti);
+            assert(lp.value() == el);
+            if (el->row.object_head() == hp) {
+                lp.finish(-1, *ip->ti);
+                Transaction::rcu_delete(el);
+            }
         } else {
             lp.finish(0, *ip->ti);
         }

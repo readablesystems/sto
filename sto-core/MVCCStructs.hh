@@ -158,7 +158,7 @@ public:
 
     // Sets the delete callback function
     inline void set_delete_cb(void *index_p,
-            void (*f) (void*, void (*) (void*), void*, void*), void *param) {
+            void (*f) (void*, void*, void*), void *param) {
         index_ptr = index_p;
         delete_cb = f;
         delete_param = param;
@@ -259,14 +259,14 @@ public:
     inline type wtid() const {
         return wtid_;
     }
+
 private:
     static void delete_prep_cb(void *ptr) {
         history_type *hd = static_cast<history_type*>(ptr);  // DELETED version
         history_type *h = hd->object()->h_;
         while (h) {
             if (h == hd) {
-                hd->delete_cb(
-                    hd->index_ptr, hd->enqueue_physical_delete, hd->delete_param, ptr);
+                hd->delete_cb(hd->index_ptr, hd->delete_param, ptr);
                 break;
             }
 
@@ -294,11 +294,6 @@ private:
             // TODO: exponential backoff?
             while (status_is(LOCKED_COMMITTED_DELTA));
         }
-    }
-
-    static void enqueue_physical_delete(void *ptr) {
-        history_type *hd = static_cast<history_type*>(ptr);  // DELETED version
-        Transaction::rcu_delete(hd->object());
     }
 
     void flatten(T &v) {
@@ -361,7 +356,7 @@ private:
     std::atomic<type> rtid_;  // Read TID
     type wtid_;  // Write TID
     void *index_ptr;
-    void (*delete_cb) (void*, void (*) (void*), void*, void*);
+    void (*delete_cb) (void*, void*, void*);
     void *delete_param;
 
     friend class MvObject<T>;
@@ -436,6 +431,10 @@ public:
     */
 
     class InvalidState {};
+
+    inline history_type* object_head() const {
+        return h_.load();
+    }
 
     // Aborts currently-pending head version; returns true if the head version
     // is pending and false otherwise.
