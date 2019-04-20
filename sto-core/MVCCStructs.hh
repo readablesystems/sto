@@ -274,6 +274,8 @@ private:
             if (h->status_is(COMMITTED)) {
                 break;
             }
+
+            h = h->prev();
         }
     }
 
@@ -433,10 +435,6 @@ public:
     */
 
     class InvalidState {};
-
-    inline history_type* object_head() const {
-        return h_.load();
-    }
 
     // Aborts currently-pending head version; returns true if the head version
     // is pending and false otherwise.
@@ -606,6 +604,10 @@ public:
         assert(h);
 
         return h;
+    }
+
+    inline bool is_head(history_type * const h) const {
+        return h == h_;
     }
 
     // Returns whether the given history element is the inlined version
