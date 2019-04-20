@@ -413,7 +413,7 @@ public:
 
         auto cell_accesses = column_to_cell_accesses<value_container_type>(accesses);
 
-        auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret) {
+        auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
             TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
                                                       : Sto::fresh_item(this, item_key_t::row_item_key(e));
 
@@ -424,6 +424,7 @@ public:
             if (index_read_my_write) {
                 if (has_delete(row_item)) {
                     ret = true;
+                    count = false;
                     return true;
                 }
                 if (any_has_write) {
@@ -448,6 +449,7 @@ public:
             // skip invalid (inserted but yet committed) values, but do not abort
             if (!e->valid()) {
                 ret = true;
+                count = false;
                 return true;
             }
 
@@ -456,11 +458,11 @@ public:
         };
 
         range_scanner<decltype(node_callback), decltype(value_callback), Reverse>
-            scanner(end, node_callback, value_callback);
+            scanner(end, node_callback, value_callback, limit);
         if (Reverse)
-            table_.rscan(begin, true, scanner, limit, *ti);
+            table_.rscan(begin, true, scanner, *ti);
         else
-            table_.scan(begin, true, scanner, limit, *ti);
+            table_.scan(begin, true, scanner, *ti);
         return scanner.scan_succeeded_;
     }
 
@@ -473,13 +475,14 @@ public:
             return ((!phantom_protection) || register_internode_version(node, version));
         };
 
-        auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret) {
+        auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
             TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
                                                       : Sto::fresh_item(this, item_key_t::row_item_key(e));
 
             if (index_read_my_write) {
                 if (has_delete(row_item)) {
                     ret = true;
+                    count = false;
                     return true;
                 }
                 if (has_row_update(row_item)) {
@@ -510,6 +513,7 @@ public:
             // skip invalid (inserted but yet committed) values, but do not abort
             if (!e->valid()) {
                 ret = true;
+                count = false;
                 return true;
             }
 
@@ -518,11 +522,11 @@ public:
         };
 
         range_scanner<decltype(node_callback), decltype(value_callback), Reverse>
-                scanner(end, node_callback, value_callback);
+                scanner(end, node_callback, value_callback, limit);
         if (Reverse)
-            table_.rscan(begin, true, scanner, limit, *ti);
+            table_.rscan(begin, true, scanner, *ti);
         else
-            table_.scan(begin, true, scanner, limit, *ti);
+            table_.scan(begin, true, scanner, *ti);
         return scanner.scan_succeeded_;
     }
 
@@ -676,8 +680,8 @@ protected:
     template <typename NodeCallback, typename ValueCallback, bool Reverse>
     class range_scanner {
     public:
-        range_scanner(const Str upper, NodeCallback ncb, ValueCallback vcb) :
-            boundary_(upper), boundary_compar_(false), scan_succeeded_(true),
+        range_scanner(const Str upper, NodeCallback ncb, ValueCallback vcb, int limit) :
+            boundary_(upper), boundary_compar_(false), scan_succeeded_(true), limit_(limit), scancount_(0),
             node_callback_(ncb), value_callback_(vcb) {}
 
         template <typename ITER, typename KEY>
@@ -716,12 +720,18 @@ protected:
                     return false;
             }
             bool visited = false;
-            if (!value_callback_(key.full_string(), e, visited)) {
+            bool count = true;
+            if (!value_callback_(key.full_string(), e, visited, count)) {
                 scan_succeeded_ = false;
+                if (count) {++scancount_;}
                 return false;
             } else {
                 if (!visited)
                     scan_succeeded_ = false;
+                if (count) {++scancount_;}
+                if (limit_ > 0 && scancount_ >= limit_) {
+                    return false;
+                }
                 return visited;
             }
         }
@@ -729,6 +739,8 @@ protected:
         Str boundary_;
         bool boundary_compar_;
         bool scan_succeeded_;
+        int limit_;
+        int scancount_;
 
         NodeCallback node_callback_;
         ValueCallback value_callback_;
@@ -1186,13 +1198,14 @@ public:
             return ((!phantom_protection) || register_internode_version(node, version));
         };
 
-        auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret) {
+        auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
             TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
                                                       : Sto::fresh_item(this, item_key_t::row_item_key(e));
 
             if (index_read_my_write) {
                 if (has_delete(row_item)) {
                     ret = true;
+                    count = false;
                     return true;
                 }
                 if (has_row_update(row_item)) {
@@ -1207,6 +1220,7 @@ public:
             // skip invalid (inserted but yet committed) and/or deleted values, but do not abort
             if (h->status_is(DELETED)) {
                 ret = true;
+                count = false;
                 return true;
             }
 #if SAFE_FLATTEN
@@ -1223,11 +1237,11 @@ public:
         };
 
         range_scanner<decltype(node_callback), decltype(value_callback), Reverse>
-                scanner(end, node_callback, value_callback);
+                scanner(end, node_callback, value_callback, limit);
         if (Reverse)
-            table_.rscan(begin, true, scanner, limit, *ti);
+            table_.rscan(begin, true, scanner, *ti);
         else
-            table_.scan(begin, true, scanner, limit, *ti);
+            table_.scan(begin, true, scanner, *ti);
         return scanner.scan_succeeded_;
     }
 
@@ -1350,8 +1364,8 @@ protected:
     template <typename NodeCallback, typename ValueCallback, bool Reverse>
     class range_scanner {
     public:
-        range_scanner(const Str upper, NodeCallback ncb, ValueCallback vcb) :
-            boundary_(upper), boundary_compar_(false), scan_succeeded_(true),
+        range_scanner(const Str upper, NodeCallback ncb, ValueCallback vcb, int limit) :
+            boundary_(upper), boundary_compar_(false), scan_succeeded_(true), limit_(limit), scancount_(0),
             node_callback_(ncb), value_callback_(vcb) {}
 
         template <typename ITER, typename KEY>
@@ -1390,12 +1404,18 @@ protected:
                     return false;
             }
             bool visited = false;
-            if (!value_callback_(key.full_string(), e, visited)) {
+            bool count = true;
+            if (!value_callback_(key.full_string(), e, visited, count)) {
                 scan_succeeded_ = false;
+                if (count) {++scancount_;}
                 return false;
             } else {
                 if (!visited)
                     scan_succeeded_ = false;
+                if (count) {++scancount_;}
+                if (limit_ > 0 && scancount_ >= limit_) {
+                    return false;
+                }
                 return visited;
             }
         }
@@ -1403,6 +1423,8 @@ protected:
         Str boundary_;
         bool boundary_compar_;
         bool scan_succeeded_;
+        int limit_;
+        int scancount_;
 
         NodeCallback node_callback_;
         ValueCallback value_callback_;
