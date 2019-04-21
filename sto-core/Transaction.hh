@@ -526,22 +526,22 @@ public:
     static void rcu_delete(T* x) {
         auto& thr = tinfo[TThread::id()];
         txp_account<txp_rcu_del_req>(1);
-        thr.rcu_set.add(thr.epoch, rcu_delete_cb<T>, x);
+        thr.rcu_set.add(thr.write_snapshot_epoch, rcu_delete_cb<T>, x);
     }
     template <typename T>
     static void rcu_delete_array(T* x) {
         auto& thr = tinfo[TThread::id()];
         txp_account<txp_rcu_delarr_req>(1);
-        thr.rcu_set.add(thr.epoch, rcu_delete_array_cb<T>, x);
+        thr.rcu_set.add(thr.write_snapshot_epoch, rcu_delete_array_cb<T>, x);
     }
     static void rcu_free(void* ptr) {
         auto& thr = tinfo[TThread::id()];
         txp_account<txp_rcu_free_req>(1);
-        thr.rcu_set.add(thr.epoch, rcu_free_cb, ptr);
+        thr.rcu_set.add(thr.write_snapshot_epoch, rcu_free_cb, ptr);
     }
     static void rcu_call(void (*function)(void*), void* argument) {
         auto& thr = tinfo[TThread::id()];
-        thr.rcu_set.add(thr.epoch, function, argument);
+        thr.rcu_set.add(thr.write_snapshot_epoch, function, argument);
     }
     static void rcu_quiesce() {
         tinfo[TThread::id()].epoch = 0;
