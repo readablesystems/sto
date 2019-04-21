@@ -1201,6 +1201,14 @@ public:
         };
 
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
+            auto h = e->row.find(txn_read_tid());
+            // skip invalid (inserted but yet committed) and/or deleted values, but do not abort
+            if (h->status_is(DELETED)) {
+                ret = true;
+                count = false;
+                return true;
+            }
+
             TransProxy row_item = index_read_my_write ? Sto::item(this, item_key_t::row_item_key(e))
                                                       : Sto::fresh_item(this, item_key_t::row_item_key(e));
 
@@ -1216,15 +1224,8 @@ public:
                 }
             }
 
-            auto h = e->row.find(txn_read_tid());
             MvAccess::template read<value_type>(row_item, h);
 
-            // skip invalid (inserted but yet committed) and/or deleted values, but do not abort
-            if (h->status_is(DELETED)) {
-                ret = true;
-                count = false;
-                return true;
-            }
 #if SAFE_FLATTEN
             auto vptr = h->vp_safe_flatten();
             if (vptr == nullptr) {

@@ -1453,6 +1453,10 @@ public:
     static inline T* tx_alloc() {
         return TThread::txn->tx_alloc<T>();
     }
+
+    static void print_read_set_size(const char* stage_name) {
+        printf("stage-%s: tset_size=%u\n", stage_name, TThread::txn->tset_size_);
+    }
 };
 
 class TestTransaction {

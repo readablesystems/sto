@@ -924,12 +924,15 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
 
     for (uint64_t q_d_id = 1; q_d_id <= 10; ++q_d_id) {
         order_id = 0;
+        //printf("district %lu\n", q_d_id);
+        //Sto::print_read_set_size("0");
 
         order_key k0(q_w_id, q_d_id, 0);
         order_key k1(q_w_id, q_d_id, std::numeric_limits<uint64_t>::max());
         success = db.tbl_neworders(q_w_id)
                 .template range_scan<decltype(no_scan_callback), false/*reverse*/>(k0, k1, no_scan_callback, RowAccess::ObserveValue, true, 1);
         TXN_DO(success);
+        //Sto::print_read_set_size("1");
 
         TXP_INCREMENT(txp_tpcc_dl_stage2);
 

@@ -1144,7 +1144,7 @@ public:
         prof.finish(num_trans);
 
         size_t remaining_deliveries = 0;
-        for (size_t wh = 0; wh < db.delivery_queue().max_whs; wh++) {
+        for (int wh = 1; wh <= db.num_warehouses(); wh++) {
             remaining_deliveries += db.delivery_queue().read(wh);
         }
         std::cout << "Remaining unresolved deliveries: " << remaining_deliveries << std::endl;
