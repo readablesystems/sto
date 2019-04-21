@@ -71,7 +71,6 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     std::tie(abort, result, row, value) = db.tbl_warehouses_const().select_row(wk, RowAccess::ObserveValue);
     TXN_DO(abort);
     assert(result);
-    wh_tax_rate = reinterpret_cast<const warehouse_const_value*>(value)->w_tax;
 #else
     std::tie(abort, result, row, value) = db.tbl_warehouses().select_row(wk,
 #if TABLE_FINE_GRAINED
@@ -92,8 +91,8 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     TXP_INCREMENT(txp_tpcc_no_stage1);
 
-    auto dv = reinterpret_cast<const district_const_value*>(value);
-    dt_tax_rate = dv->d_tax;
+    //auto dv = reinterpret_cast<const district_const_value*>(value);
+    //dt_tax_rate = dv->d_tax;
     dt_next_oid = db.oid_generator().next(q_w_id, q_d_id);
     //dt_next_oid = new_dv->d_next_o_id ++;
     //db.tbl_districts(q_w_id).update_row(row, new_dv);
@@ -105,11 +104,8 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     TXP_INCREMENT(txp_tpcc_no_stage2);
 
-    auto ccv = reinterpret_cast<const customer_const_value*>(value);
-
-    auto cus_discount = ccv->c_discount;
-    out_cus_last = ccv->c_last;
-    out_cus_credit = ccv->c_credit;
+    //out_cus_last = ccv->c_last;
+    //out_cus_credit = ccv->c_credit;
 #else
     district_key dk(q_w_id, q_d_id);
     std::tie(abort, result, row, value) = db.tbl_districts(q_w_id).select_row(dk,
@@ -207,12 +203,6 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         assert(result);
         auto scv = reinterpret_cast<const stock_const_value*>(value);
         auto s_dist = scv->s_dists[q_d_id - 1];
-        auto s_data = scv->s_data;
-
-        if (i_data.contains("ORIGINAL") && s_data.contains("ORIGINAL"))
-            out_brand_generic[i] = 'B';
-        else
-            out_brand_generic[i] = 'G';
 
         std::tie(abort, result, row, value) = db.tbl_stocks_comm(wid).select_row(stock_key(wid, iid),
             Commute ? RowAccess::None : RowAccess::ObserveValue);
@@ -374,11 +364,6 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     auto wv = reinterpret_cast<const warehouse_const_value*>(value);
 
     out_w_name = wv->w_name;
-    out_w_street_1 = wv->w_street_1;
-    out_w_street_2 = wv->w_street_2;
-    out_w_city = wv->w_city;
-    out_w_state = wv->w_state;
-    out_w_zip = wv->w_zip;
 
     std::tie(success, result, row, value) = db.tbl_warehouses_comm().select_row(wk,
             Commute ? RowAccess::None : RowAccess::UpdateValue);
@@ -433,11 +418,6 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     assert(result);
     auto dv = reinterpret_cast<const district_const_value *>(value);
     out_d_name = dv->d_name;
-    out_d_street_1 = dv->d_street_1;
-    out_d_street_2 = dv->d_street_2;
-    out_d_city = dv->d_city;
-    out_d_state = dv->d_state;
-    out_d_zip = dv->d_zip;
 
     std::tie(success, result, row, value) = db.tbl_districts_comm(q_w_id).select_row(dk,
             Commute ? RowAccess::None : RowAccess::UpdateValue);
@@ -518,18 +498,12 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     assert(result);
 
     TXP_INCREMENT(txp_tpcc_pm_stage4);
-
     auto ccv = reinterpret_cast<const customer_const_value*>(value);
-    out_c_since = ccv->c_since;
-    out_c_credit_lim = ccv->c_credit_lim;
-    out_c_discount = ccv->c_discount;
 
 #if TPCC_OBSERVE_C_BALANCE
     std::tie(success, result, row, value) = db.tbl_customers_comm(q_c_w_id).select_row(ck, RowAccess::UpdateValue);
     TXN_DO(success);
     assert(result);
-    auto cmv = reinterpret_cast<const customer_comm_value*>(value);
-    out_c_balance = cmv->c_balance;
 #else
     std::tie(success, result, row, value) = db.tbl_customers_comm(q_c_w_id).select_row(ck,
             Commute ? RowAccess::None : RowAccess::UpdateValue);
@@ -682,19 +656,10 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     TXN_DO(success);
     assert(result);
 
-    auto ccv = reinterpret_cast<const customer_const_value*>(value);
-
-    // simulate retrieving customer info
-    out_c_first = ccv->c_first;
-    out_c_last = ccv->c_last;
-    out_c_middle = ccv->c_middle;
-
 #if TPCC_OBSERVE_C_BALANCE
     std::tie(success, result, row, value) = db.tbl_customers_comm(q_w_id).select_row(ck, RowAccess::ObserveValue);
     TXN_DO(success);
     assert(result);
-    auto cmv = reinterpret_cast<const customer_comm_value*>(value);
-    out_c_balance = cmv->c_balance;
 #endif
 #else
     customer_key ck(q_w_id, q_d_id, q_c_id);
@@ -732,24 +697,15 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         std::tie(success, result, std::ignore, value) = db.tbl_orders_const(q_w_id).select_row(ok, RowAccess::ObserveValue);
         TXN_DO(success);
         assert(result);
-        auto ocv = reinterpret_cast<const order_const_value*>(value);
-        out_o_entry_date = ocv->o_entry_d;
 
         std::tie(success, result, std::ignore, value) = db.tbl_orders_comm(q_w_id).select_row(ok, RowAccess::ObserveValue);
         TXN_DO(success);
         assert(result);
-        auto omv = reinterpret_cast<const order_comm_value*>(value);
-        out_o_carrier_id = omv->o_carrier_id;
 
-        auto lc_scan_callback = [&] (const orderline_key&, const orderline_const_value& lcv) -> bool {
-            out_ol_i_id = lcv.ol_i_id;
-            out_ol_supply_w_id = lcv.ol_supply_w_id;
-            out_ol_quantity = lcv.ol_quantity;
-            out_ol_amount = lcv.ol_amount;
+        auto lc_scan_callback = [&] (const orderline_key&, const orderline_const_value&) -> bool {
             return true;
         };
-        auto lm_scan_callback = [&] (const orderline_key&, const orderline_comm_value& lmv) -> bool {
-            out_ol_delivery_d = lmv.ol_delivery_d;
+        auto lm_scan_callback = [&] (const orderline_key&, const orderline_comm_value&) -> bool {
             return true;
         };
 
