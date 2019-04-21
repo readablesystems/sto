@@ -69,7 +69,7 @@ void* Transaction::epoch_advancer(void*) {
         std::cerr << "WARNING: more than one epoch_advancer thread\n";
 
     // don't bother epoch'ing til things have picked up
-    usleep(100000);
+    usleep(us_per_epoch);
     while (global_epochs.run) {
         epoch_type g = global_epochs.global_epoch.load();
         epoch_type e = g;
@@ -85,7 +85,7 @@ void* Transaction::epoch_advancer(void*) {
         if (epoch_advance_callback)
             epoch_advance_callback(global_epochs.global_epoch);
 
-        usleep(100000);
+        usleep(us_per_epoch);
     }
 
     fetch_and_add(&num_epoch_advancers, -1);
