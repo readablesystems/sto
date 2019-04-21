@@ -18,22 +18,22 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     typedef stock_value::NamedColumn st_nc;
 #endif
 
-    uint64_t q_w_id  = ig.random(w_id_start, w_id_end);
-    uint64_t q_d_id = ig.random(1, 10);
-    uint64_t q_c_id = ig.gen_customer_id();
-    uint64_t num_items = ig.random(5, 15);
+    uint32_t q_w_id  = ig.random(w_id_start, w_id_end);
+    uint32_t q_d_id = ig.random(1, 10);
+    uint32_t q_c_id = ig.gen_customer_id();
+    uint32_t num_items = ig.random(5, 15);
     //uint64_t rbk = ig.random(1, 100); //XXX no rollbacks
 
-    uint64_t ol_i_ids[15];
-    uint64_t ol_supply_w_ids[15];
-    uint64_t ol_quantities[15];
+    uint32_t ol_i_ids[15];
+    uint32_t ol_supply_w_ids[15];
+    uint32_t ol_quantities[15];
 
     uint32_t o_entry_d = ig.gen_date();
 
     bool all_local = true;
 
-    for (uint64_t i = 0; i < num_items; ++i) {
-        uint64_t ol_i_id = ig.gen_item_id();
+    for (uint32_t i = 0; i < num_items; ++i) {
+        uint32_t ol_i_id = ig.gen_item_id();
         //XXX no rollbacks
         //if ((i == (num_items - 1)) && rbk == 1)
         //    ol_i_ids[i] = 0;
@@ -41,7 +41,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         ol_i_ids[i] = ol_i_id;
 
         bool supply_from_remote = (ig.num_warehouses() > 1) && (ig.random(1, 100) == 1);
-        uint64_t ol_s_w_id = q_w_id;
+        uint32_t ol_s_w_id = q_w_id;
         if (supply_from_remote) {
             do {
                 ol_s_w_id = ig.random(1, ig.num_warehouses());
@@ -52,14 +52,6 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
         ol_quantities[i] = ig.random(1, 10);
     }
-
-    // holding outputs of the transaction
-    volatile var_string<16> out_cus_last;
-    volatile fix_string<2> out_cus_credit;
-    volatile var_string<24> out_item_names[15];
-    volatile double out_total_amount = 0.0;
-    volatile char out_brand_generic[15];
-    (void) out_brand_generic;
 
     size_t starts = 0;
 
@@ -72,8 +64,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     uintptr_t row;
     const void *value;
 
-    int64_t wh_tax_rate, dt_tax_rate;
-    uint64_t dt_next_oid;
+    uint32_t dt_next_oid;
 
     warehouse_key wk(q_w_id);
 #if TPCC_SPLIT_TABLE
@@ -91,7 +82,6 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     );
     TXN_DO(abort);
     assert(result);
-    wh_tax_rate = reinterpret_cast<const warehouse_value*>(value)->w_tax;
 #endif
 
 #if TPCC_SPLIT_TABLE
@@ -134,8 +124,8 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     TXP_INCREMENT(txp_tpcc_no_stage1);
 
-    auto dv = reinterpret_cast<const district_value*>(value);
-    dt_tax_rate = dv->d_tax;
+    //auto dv = reinterpret_cast<const district_value*>(value);
+    //dt_tax_rate = dv->d_tax;
     dt_next_oid = db.oid_generator().next(q_w_id, q_d_id);
     //dt_next_oid = new_dv->d_next_o_id ++;
     //db.tbl_districts(q_w_id).update_row(row, new_dv);
@@ -155,11 +145,6 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     TXP_INCREMENT(txp_tpcc_no_stage2);
 
-    auto cv = reinterpret_cast<const customer_value*>(value);
-
-    auto cus_discount = cv->c_discount;
-    out_cus_last = cv->c_last;
-    out_cus_credit = cv->c_credit;
 #endif
 
     order_key ok(q_w_id, q_d_id, dt_next_oid);
@@ -204,19 +189,17 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     TXP_ACCOUNT(txp_tpcc_no_stage4, num_items);
 
-    for (uint64_t i = 0; i < num_items; ++i) {
-        uint64_t iid = ol_i_ids[i];
-        uint64_t wid = ol_supply_w_ids[i];
-        uint64_t qty = ol_quantities[i];
+    for (uint32_t i = 0; i < num_items; ++i) {
+        uint32_t iid = ol_i_ids[i];
+        uint32_t wid = ol_supply_w_ids[i];
+        uint32_t qty = ol_quantities[i];
 
         std::tie(abort, result, std::ignore, value) = db.tbl_items().select_row(item_key(iid), RowAccess::ObserveValue);
         TXN_DO(abort);
         assert(result);
-        uint64_t oid = reinterpret_cast<const item_value *>(value)->i_im_id;
+        uint32_t oid = reinterpret_cast<const item_value *>(value)->i_im_id;
         TXN_DO(oid != 0);
         uint32_t i_price = reinterpret_cast<const item_value *>(value)->i_price;
-        out_item_names[i] = reinterpret_cast<const item_value *>(value)->i_name;
-        auto i_data = reinterpret_cast<const item_value *>(value)->i_data;
 
 #if TPCC_SPLIT_TABLE
         std::tie(abort, result, row, value) = db.tbl_stocks_const(wid).select_row(stock_key(wid, iid), RowAccess::ObserveValue);
@@ -268,12 +251,6 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         stock_value *new_sv = Sto::tx_alloc(reinterpret_cast<const stock_value *>(value));
         int32_t s_quantity = new_sv->s_quantity;
         auto s_dist = new_sv->s_dists[q_d_id - 1];
-        auto s_data = new_sv->s_data;
-
-        if (i_data.contains("ORIGINAL") && s_data.contains("ORIGINAL"))
-            out_brand_generic[i] = 'B';
-        else
-            out_brand_generic[i] = 'G';
 
         if (Commute) {
             commutators::Commutator<stock_value> comm(qty, wid != q_w_id);
@@ -325,8 +302,6 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         assert(!result);
 #endif
 
-        out_total_amount += ol_amount * (1.0 - cus_discount/100.0) * (1.0 + (wh_tax_rate + dt_tax_rate)/100.0);
-
         TXP_INCREMENT(txp_tpcc_no_stage5);
     }
 
@@ -346,10 +321,10 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     typedef customer_value::NamedColumn cu_nc;
 #endif
 
-    uint64_t q_w_id = ig.random(w_id_start, w_id_end);
-    uint64_t q_d_id = ig.random(1, 10);
+    uint32_t q_w_id = ig.random(w_id_start, w_id_end);
+    uint32_t q_d_id = ig.random(1, 10);
 
-    uint64_t q_c_w_id, q_c_d_id, q_c_id;
+    uint32_t q_c_w_id, q_c_d_id, q_c_id;
     std::string last_name;
     auto x = ig.random(1, 100);
     auto y = ig.random(1, 100);
@@ -374,30 +349,11 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         q_c_id = ig.gen_customer_id();
     }
 
-    int64_t h_amount = ig.random(100, 500000);
+    int32_t h_amount = ig.random(100, 500000);
     uint32_t h_date = ig.gen_date();
 
     // holding outputs of the transaction
     volatile var_string<10> out_w_name, out_d_name;
-    volatile var_string<20> out_w_street_1, out_w_street_2, out_w_city;
-    volatile var_string<20> out_d_street_1, out_d_street_2, out_d_city;
-    volatile fix_string<2> out_w_state, out_d_state;
-    volatile fix_string<9> out_w_zip, out_d_zip;
-    volatile var_string<16> out_c_first, out_c_last;
-    volatile fix_string<2> out_c_middle;
-    volatile var_string<20> out_c_street_1, out_c_street_2, out_c_city;
-    volatile fix_string<2> out_c_state;
-    volatile fix_string<9> out_c_zip;
-    volatile fix_string<16> out_c_phone;
-    volatile fix_string<2> out_c_credit;
-    volatile uint32_t out_c_since;
-    volatile int64_t out_c_credit_lim;
-    volatile int64_t out_c_discount;
-    volatile int64_t out_c_balance;
-    (void)out_c_since;
-    (void)out_c_credit_lim;
-    (void)out_c_discount;
-    (void)out_c_balance;
 
     size_t starts = 0;
 
@@ -457,11 +413,6 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     assert(result);
     auto wv = reinterpret_cast<const warehouse_value*>(value);
     out_w_name = wv->w_name;
-    out_w_street_1 = wv->w_street_1;
-    out_w_street_2 = wv->w_street_2;
-    out_w_city = wv->w_city;
-    out_w_state = wv->w_state;
-    out_w_zip = wv->w_zip;
 
     // update warehouse ytd
     if (Commute) {
@@ -524,11 +475,6 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     assert(result);
     auto dv = reinterpret_cast<const district_value *>(value);
     out_d_name = dv->d_name;
-    out_d_street_1 = dv->d_street_1;
-    out_d_street_2 = dv->d_street_2;
-    out_d_city = dv->d_city;
-    out_d_state = dv->d_state;
-    out_d_zip = dv->d_zip;
 
     TXP_INCREMENT(txp_tpcc_pm_stage1);
 
@@ -553,7 +499,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         TXN_DO(success);
         assert(result);
         auto& c_id_list = reinterpret_cast<const customer_idx_value*>(value)->c_ids;
-        uint64_t rows[100];
+        uint32_t rows[100];
         int cnt = 0;
         for (auto it = c_id_list.begin(); cnt < 100 && it != c_id_list.end(); ++it, ++cnt) {
             rows[cnt] = *it;
@@ -633,10 +579,6 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     TXP_INCREMENT(txp_tpcc_pm_stage4);
 
     auto cv = reinterpret_cast<const customer_value*>(value);
-    out_c_since = cv->c_since;
-    out_c_credit_lim = cv->c_credit_lim;
-    out_c_discount = cv->c_discount;
-    out_c_balance = cv->c_balance;
 
     if (Commute) {
         if (cv->c_credit == "BC") {
@@ -694,11 +636,11 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     typedef customer_value::NamedColumn cu_nc;
     typedef orderline_value::NamedColumn ol_nc;
 #endif
-    uint64_t q_w_id = ig.random(w_id_start, w_id_end);
-    uint64_t q_d_id = ig.random(1, 10);
+    uint32_t q_w_id = ig.random(w_id_start, w_id_end);
+    uint32_t q_d_id = ig.random(1, 10);
 
     std::string last_name;
-    uint64_t q_c_id;
+    uint32_t q_c_id;
 
     auto x = ig.random(1, 100);
     bool by_name = (x <= 60);
@@ -708,21 +650,6 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     } else {
         q_c_id = ig.gen_customer_id();
     }
-
-    // holding outputs of the transaction
-    volatile var_string<16> out_c_first, out_c_last;
-    volatile fix_string<2> out_c_middle;
-    volatile int64_t out_c_balance;
-    volatile uint64_t out_o_carrier_id;
-    volatile uint32_t out_o_entry_date;
-    volatile uint64_t out_ol_i_id;
-    volatile uint64_t out_ol_supply_w_id;
-    volatile uint32_t out_ol_quantity;
-    volatile uint32_t out_ol_delivery_d;
-    volatile int32_t out_ol_amount;
-    (void)out_c_balance;
-    (void)out_o_carrier_id;
-    (void)out_o_entry_date;
 
     size_t starts = 0;
 
@@ -739,7 +666,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         TXN_DO(success);
         assert(result);
         auto& c_id_list = reinterpret_cast<const customer_idx_value*>(value)->c_ids;
-        uint64_t rows[100];
+        uint32_t rows[100];
         int cnt = 0;
         for (auto it = c_id_list.begin(); cnt < 100 && it != c_id_list.end(); ++it, ++cnt) {
             rows[cnt] = *it;
@@ -783,25 +710,17 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     );
     TXN_DO(success);
     assert(result);
-
-    auto cv = reinterpret_cast<const customer_value*>(value);
-
-    // simulate retrieving customer info
-    out_c_first = cv->c_first;
-    out_c_last = cv->c_last;
-    out_c_middle = cv->c_middle;
-    out_c_balance = cv->c_balance;
 #endif
 
     // find the highest order placed by customer q_c_id
-    uint64_t cus_o_id = 0;
+    uint32_t cus_o_id = 0;
     auto scan_callback = [&] (const order_cidx_key& key, const bench::dummy_row&) -> bool {
         cus_o_id = bswap(key.o_id);
         return true;
     };
 
     order_cidx_key k0(q_w_id, q_d_id, q_c_id, 0);
-    order_cidx_key k1(q_w_id, q_d_id, q_c_id, std::numeric_limits<uint64_t>::max());
+    order_cidx_key k1(q_w_id, q_d_id, q_c_id, std::numeric_limits<uint32_t>::max());
 
     success = db.tbl_order_customer_index(q_w_id)
             .template range_scan<decltype(scan_callback), true/*reverse*/>(k1, k0, scan_callback, RowAccess::ObserveExists, true, 1/*reverse scan for only 1 item*/);
@@ -835,7 +754,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         };
 
         orderline_key olk0(q_w_id, q_d_id, cus_o_id, 0);
-        orderline_key olk1(q_w_id, q_d_id, cus_o_id, std::numeric_limits<uint64_t>::max());
+        orderline_key olk1(q_w_id, q_d_id, cus_o_id, std::numeric_limits<uint32_t>::max());
 
         success = db.tbl_orderlines_const(q_w_id)
                 .template range_scan<decltype(lc_scan_callback), false/*reverse*/>(olk0, olk1, lc_scan_callback, RowAccess::ObserveValue);
@@ -848,22 +767,13 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         TXN_DO(success);
         assert(result);
 
-        auto ov = reinterpret_cast<const order_value *>(value);
-        out_o_entry_date = ov->o_entry_d;
-        out_o_carrier_id = ov->o_carrier_id;
-
-        auto ol_scan_callback = [&] (const orderline_key& olk, const orderline_value& olv) -> bool {
+        auto ol_scan_callback = [&] (const orderline_key& olk, const orderline_value&) -> bool {
             (void)olk;
-            out_ol_i_id = olv.ol_i_id;
-            out_ol_supply_w_id = olv.ol_supply_w_id;
-            out_ol_quantity = olv.ol_quantity;
-            out_ol_amount = olv.ol_amount;
-            out_ol_delivery_d = olv.ol_delivery_d;
             return true;
         };
 
         orderline_key olk0(q_w_id, q_d_id, cus_o_id, 0);
-        orderline_key olk1(q_w_id, q_d_id, cus_o_id, std::numeric_limits<uint64_t>::max());
+        orderline_key olk1(q_w_id, q_d_id, cus_o_id, std::numeric_limits<uint32_t>::max());
 
         success = db.tbl_orderlines(q_w_id)
                 .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk0, olk1, ol_scan_callback,
@@ -892,22 +802,22 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 }
 
 template <typename DBParams>
-void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
+void tpcc_runner<DBParams>::run_txn_delivery(uint32_t q_w_id) {
 #if TABLE_FINE_GRAINED
     typedef order_value::NamedColumn od_nc;
     typedef orderline_value::NamedColumn ol_nc;
     typedef customer_value::NamedColumn cu_nc;
 #endif
 
-    uint64_t carrier_id = ig.random(1, 10);
+    uint32_t carrier_id = ig.random(1, 10);
     uint32_t delivery_date = ig.gen_date();
 
     bool success, result;
     uintptr_t row;
     const void *value;
 
-    uint64_t order_id;
-    std::vector<uint64_t> ol_nums;
+    uint32_t order_id;
+    std::vector<uint32_t> ol_nums;
     int32_t ol_amount_sum;
 
     auto no_scan_callback = [&order_id] (const order_key& ok, const bench::dummy_row&) -> bool {
@@ -922,15 +832,15 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
     RWTRANSACTION {
     ++starts;
 
-    for (uint64_t q_d_id = 1; q_d_id <= 10; ++q_d_id) {
+    for (uint32_t q_d_id = 1; q_d_id <= 10; ++q_d_id) {
         order_id = 0;
         //printf("district %lu\n", q_d_id);
         //Sto::print_read_set_size("0");
 
         order_key k0(q_w_id, q_d_id, 0);
-        order_key k1(q_w_id, q_d_id, std::numeric_limits<uint64_t>::max());
+        order_key k1(q_w_id, q_d_id, std::numeric_limits<uint32_t>::max());
         success = db.tbl_neworders(q_w_id)
-                .template range_scan<decltype(no_scan_callback), false/*reverse*/>(k0, k1, no_scan_callback, RowAccess::ObserveValue, true, 1);
+                .template range_scan<decltype(no_scan_callback), false/*reverse*/>(k0, k1, no_scan_callback, RowAccess::ObserveValue, false, 1);
         TXN_DO(success);
         //Sto::print_read_set_size("1");
 
@@ -951,7 +861,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
         assert(result);
 
         auto ocv = reinterpret_cast<const order_const_value *>(value);
-        uint64_t q_c_id = ocv->o_c_id;
+        uint32_t q_c_id = ocv->o_c_id;
         auto ol_cnt = ocv->o_ol_cnt;
 
         std::tie(success, result, row, value) = db.tbl_orders_comm(q_w_id).select_row(ok,
@@ -986,7 +896,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
         TXP_INCREMENT(txp_tpcc_dl_stage4);
 
         auto ov = reinterpret_cast<const order_value *>(value);
-        uint64_t q_c_id = ov->o_c_id;
+        uint32_t q_c_id = ov->o_c_id;
         assert(q_c_id != 0);
         auto ol_cnt = ov->o_ol_cnt;
 
@@ -1069,12 +979,12 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
         TXP_INCREMENT(txp_tpcc_dl_stage5);
 
         if (Commute) {
-            commutators::Commutator<customer_comm_value> commutator((int64_t)ol_amount_sum);
+            commutators::Commutator<customer_comm_value> commutator((int32_t)ol_amount_sum);
             db.tbl_customers_comm(q_w_id).update_row(row, commutator);
         } else {
             auto cmv = reinterpret_cast<const customer_comm_value*>(value);
             auto new_cmv = Sto::tx_alloc(cmv);
-            new_cmv->c_balance += (int64_t)ol_amount_sum;
+            new_cmv->c_balance += (int32_t)ol_amount_sum;
             new_cmv->c_delivery_cnt += 1;
             db.tbl_customers_comm(q_w_id).update_row(row, new_cmv);
         }
@@ -1094,12 +1004,12 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
         TXP_INCREMENT(txp_tpcc_dl_stage5);
 
         if (Commute) {
-            commutators::Commutator<customer_value> commutator((int64_t)ol_amount_sum);
+            commutators::Commutator<customer_value> commutator((int32_t)ol_amount_sum);
             db.tbl_customers(q_w_id).update_row(row, commutator);
         } else {
             auto cv = reinterpret_cast<const customer_value*>(value);
             auto new_cv = Sto::tx_alloc(cv);
-            new_cv->c_balance += (int64_t)ol_amount_sum;
+            new_cv->c_balance += (int32_t)ol_amount_sum;
             new_cv->c_delivery_cnt += 1;
             db.tbl_customers(q_w_id).update_row(row, new_cv);
         }
@@ -1119,11 +1029,11 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     typedef stock_value::NamedColumn st_nc;
 #endif
 
-    uint64_t q_w_id = ig.random(w_id_start, w_id_end);
-    uint64_t q_d_id = ig.random(1, 10);
+    uint32_t q_w_id = ig.random(w_id_start, w_id_end);
+    uint32_t q_d_id = ig.random(1, 10);
     auto threshold = (int32_t)ig.random(10, 20);
 
-    std::set<uint64_t> ol_iids;
+    std::set<uint32_t> ol_iids;
 
     volatile int out_count = 0;
     (void)out_count;
@@ -1151,7 +1061,7 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
     ol_iids.clear();
     auto d_next_oid = db.oid_generator().get(q_w_id, q_d_id);
 
-    uint64_t oid_lower = (d_next_oid > 20) ? d_next_oid - 20 : 0;
+    uint32_t oid_lower = (d_next_oid > 20) ? d_next_oid - 20 : 0;
     orderline_key olk0(q_w_id, q_d_id, oid_lower, 0);
     orderline_key olk1(q_w_id, q_d_id, d_next_oid, 0);
 
