@@ -573,7 +573,7 @@ public:
     history_type* find(const type tid, const bool wait=true) const {
         history_type *h;
 #if MVCC_INLINING
-        if ((((ih_.status() & LOCKED_COMMITTED) == COMMITTED) ||
+        if (((ih_.status_is(LOCKED_COMMITTED, COMMITTED) ||
                     ih_.status_is(ABORTED)) &&
                 tid < itid_) {
             h = (history_type*)&ih_;
