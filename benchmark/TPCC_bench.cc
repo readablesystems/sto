@@ -85,6 +85,28 @@ int main(int argc, const char *const *argv) {
 
     db_params_id dbid = db_params_id::Default;
     int ret_code = 0;
+
+    std::cout << "TPCC_HASH_INDEX: " <<
+        #if TPCC_HASH_INDEX
+        1
+        #else
+        0
+        #endif
+    << std::endl;
+    std::cout << "TPCC_OBSERVE_C_BALANCE: " <<
+        #if TPCC_OBSERVE_C_BALANCE
+        1
+        #else
+        0
+        #endif
+    << std::endl;
+    std::cout << "MALLOC: " <<
+        #ifdef MALLOC
+        MALLOC
+        #else
+        "undefined."
+        #endif
+    << std::endl;
    
     Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
 
