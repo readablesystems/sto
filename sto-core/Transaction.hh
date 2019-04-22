@@ -606,8 +606,7 @@ private:
 
     void callCMstart();
 
-    static epoch_type compute_min_epoch() {
-        epoch_type e = global_epochs.global_epoch.load();
+    static epoch_type compute_min_epoch(epoch_type e) {
         for (int i = 0; i < MAX_THREADS; ++i) {
             auto& thr = tinfo[i];
             auto wse = thr.write_snapshot_epoch.load();
@@ -629,8 +628,9 @@ private:
 #endif
         special_txp = false;
         //thr.epoch = global_epochs.global_epoch;
-        thr.write_snapshot_epoch = global_epochs.global_epoch.load();
-        thr.epoch = compute_min_epoch();
+        epoch_type ge = global_epochs.global_epoch.load();
+        thr.write_snapshot_epoch = ge;
+        thr.epoch = compute_min_epoch(ge);
         thr.rcu_set.clean_until(global_epochs.active_epoch.load());
         thr.rtid = thr.wtid = 0;
         if (thr.trans_start_callback)
@@ -1014,21 +1014,30 @@ public:
         if (!read_tid_) {
             TXP_INCREMENT(txp_rtid_atomic);
             fence();
-            epoch_advance_once();
+            //epoch_advance_once();
             threadinfo_t& thr = tinfo[TThread::id()];
 #if SAFE_FLATTEN
-            thr.rtid = read_tid_ = (mvcc_rw ? std::max(_RTID.load(), prev_commit_tid_) : _RTID.load());
+            if (mvcc_rw) {
+                thr.rtid = read_tid_ = _TID;
+            } else {
+                epoch_advance_once();
+                thr.rtid = read_tid_ = _RTID.load();
+            }
+            // Can't we just get the most recent tid (_TID?)
 #else
             if (!Commute) {
                 if (mvcc_rw) {
-                    thr.rtid = read_tid_ = std::max(_RTID.load(), prev_commit_tid_);
+                    //thr.rtid = read_tid_ = std::max(_RTID.load(), prev_commit_tid_);
+                    thr.rtid = read_tid_ = _TID;
                 } else {
+                    epoch_advance_once();
                     thr.rtid = read_tid_ = _RTID;
                 }
             } else {
                 // When we use CU we can't do the timestamp hack above because
                 // flattening delta versions require the invariant that all
                 // reads never observe information based on pending versions
+                epoch_advance_once();
                 thr.rtid = read_tid_ = _RTID;
             }
 #endif
