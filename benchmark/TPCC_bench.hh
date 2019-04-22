@@ -135,6 +135,10 @@ private:
 template <typename DBParams>
 class tpcc_access;
 
+#ifndef TPCC_HASH_INDEX
+#define TPCC_HASH_INDEX 1
+#endif
+
 template <typename DBParams>
 class tpcc_db {
 public:
