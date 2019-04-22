@@ -459,6 +459,7 @@ public:
     static threadinfo_t tinfo[MAX_THREADS];
     static struct epoch_state {
         std::atomic<epoch_type> global_epoch; // != 0
+        std::atomic<epoch_type> read_epoch;   // minimum global_epoch
         std::atomic<epoch_type> active_epoch; // no thread is before this epoch
         tid_type recent_tid;
         bool run;
@@ -606,17 +607,6 @@ private:
 
     void callCMstart();
 
-    static epoch_type compute_min_epoch(epoch_type e) {
-        for (int i = 0; i < MAX_THREADS; ++i) {
-            auto& thr = tinfo[i];
-            auto wse = thr.write_snapshot_epoch.load();
-            if (wse != 0 && signed_epoch_type(wse - e) < 0) {
-                e = wse;
-            }
-        }
-        return e;
-    }
-
     // reset data so we can be reused for another transaction
     void start() {
         threadinfo_t& thr = tinfo[TThread::id()];
@@ -628,9 +618,8 @@ private:
 #endif
         special_txp = false;
         //thr.epoch = global_epochs.global_epoch;
-        epoch_type ge = global_epochs.global_epoch.load();
-        thr.write_snapshot_epoch = ge;
-        thr.epoch = compute_min_epoch(ge);
+        thr.write_snapshot_epoch = global_epochs.global_epoch.load();
+        thr.epoch = global_epochs.global_epoch.load();
         thr.rcu_set.clean_until(global_epochs.active_epoch.load());
         thr.rtid = thr.wtid = 0;
         if (thr.trans_start_callback)

@@ -14,7 +14,7 @@ __thread int TThread::the_id;
 PercentGen TThread::gen[MAX_THREADS];
 
 Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epochs = {
-    {1}, {0}, TransactionTid::increment_value, true
+    {2}, {1}, {0}, TransactionTid::increment_value, true
 };
 __thread Transaction *TThread::txn = nullptr;
 std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callback;
@@ -71,15 +71,22 @@ void* Transaction::epoch_advancer(void*) {
     // don't bother epoch'ing til things have picked up
     usleep(us_per_epoch);
     while (global_epochs.run) {
-        epoch_type g = global_epochs.global_epoch.load();
-        epoch_type e = g;
+        epoch_type ge = global_epochs.global_epoch.load();
+        epoch_type re = global_epochs.global_epoch.load();
+        epoch_type ae = global_epochs.read_epoch.load();
         for (auto& t : tinfo) {
-            auto tepoch = t.epoch.load();
-            if (tepoch != 0 && signed_epoch_type(tepoch - e) < 0)
-                e = tepoch;
+            auto twepoch = t.write_snapshot_epoch.load();
+            auto trepoch = t.epoch.load();
+            if (twepoch != 0 && signed_epoch_type(twepoch - re) < 0) {
+                re = twepoch;
+            }
+            if (trepoch != 0 && signed_epoch_type(trepoch - ae) < 0) {
+                ae = trepoch;
+            }
         }
-        global_epochs.global_epoch = std::max(g + 1, epoch_type(1));
-        global_epochs.active_epoch = e;
+        global_epochs.global_epoch = std::max(ge + 1, epoch_type(1));
+        global_epochs.read_epoch = re;
+        global_epochs.active_epoch = ae;
         global_epochs.recent_tid = _TID;
 
         if (epoch_advance_callback)
@@ -540,11 +547,17 @@ void Transaction::print_stats() {
                 100.0 * (double) out.p(txp_tpcc_dl_aborts) / (out.p(txp_tpcc_dl_commits) + out.p(txp_tpcc_dl_aborts)));
         fprintf(stderr, "$   Stock-Level: %llu(%llu), %.3f%%\n", out.p(txp_tpcc_st_commits), out.p(txp_tpcc_st_aborts),
                 100.0 * (double) out.p(txp_tpcc_st_aborts) / (out.p(txp_tpcc_st_commits) + out.p(txp_tpcc_st_aborts)));
+//        fprintf(stderr, "$ NewOrder (stage 1): %llu\n", out.p(txp_tpcc_no_stage1));
+//        fprintf(stderr, "$ NewOrder (stage 2): %llu\n", out.p(txp_tpcc_no_stage2));
+//        fprintf(stderr, "$ NewOrder (stage 3): %llu\n", out.p(txp_tpcc_no_stage3));
+//        fprintf(stderr, "$ NewOrder (stage 4): %llu\n", out.p(txp_tpcc_no_stage4));
+//        fprintf(stderr, "$ NewOrder (stage 5): %llu\n", out.p(txp_tpcc_no_stage5));
 //        fprintf(stderr, "$ Payment  (stage 1): %llu\n", out.p(txp_tpcc_pm_stage1));
 //        fprintf(stderr, "$ Payment  (stage 2): %llu\n", out.p(txp_tpcc_pm_stage2));
 //        fprintf(stderr, "$ Payment  (stage 3): %llu\n", out.p(txp_tpcc_pm_stage3));
 //        fprintf(stderr, "$ Payment  (stage 4): %llu\n", out.p(txp_tpcc_pm_stage4));
 //        fprintf(stderr, "$ Payment  (stage 5): %llu\n", out.p(txp_tpcc_pm_stage5));
+//        fprintf(stderr, "$ Payment  (stage 6): %llu\n", out.p(txp_tpcc_pm_stage6));
 //        fprintf(stderr, "$ Delivery (stage 1): %llu\n", out.p(txp_tpcc_dl_stage1));
 //        fprintf(stderr, "$ Delivery (stage 2): %llu\n", out.p(txp_tpcc_dl_stage2));
 //        fprintf(stderr, "$ Delivery (stage 3): %llu\n", out.p(txp_tpcc_dl_stage3));

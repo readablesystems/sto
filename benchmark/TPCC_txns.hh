@@ -65,7 +65,6 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     // begin txn
     RWTRANSACTION {
-    Sto::transaction()->special_txp = true;
     ++starts;
 
     bool abort, result;
@@ -402,6 +401,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     // begin txn
     RWTRANSACTION {
+    Sto::transaction()->special_txp = true;
     ++starts;
 
     bool success, result;
