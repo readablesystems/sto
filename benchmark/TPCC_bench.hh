@@ -67,26 +67,26 @@ public:
     static const char * last_names[];
 
     tpcc_input_generator(int id, int num_whs)
-            : gen(id), num_whs_(uint32_t(num_whs)) {}
+            : gen(id), num_whs_(uint64_t(num_whs)) {}
     explicit tpcc_input_generator(int num_whs)
-            : gen(0), num_whs_(uint32_t(num_whs)) {}
+            : gen(0), num_whs_(uint64_t(num_whs)) {}
 
-    uint32_t nurand(uint32_t a, uint32_t c, uint32_t x, uint32_t y) {
-        uint32_t r1 = (random(0, a) | random(x, y)) + c;
+    uint64_t nurand(uint64_t a, uint64_t c, uint64_t x, uint64_t y) {
+        uint64_t r1 = (random(0, a) | random(x, y)) + c;
         return (r1 % (y - x + 1)) + x;
     }
-    uint32_t random(uint32_t x, uint32_t y) {
-        std::uniform_int_distribution<uint32_t> dist(x, y);
+    uint64_t random(uint64_t x, uint64_t y) {
+        std::uniform_int_distribution<uint64_t> dist(x, y);
         return dist(gen);
     }
-    uint32_t num_warehouses() const {
+    uint64_t num_warehouses() const {
         return num_whs_;
     }
 
-    uint32_t gen_warehouse_id() {
+    uint64_t gen_warehouse_id() {
         return random(1, num_whs_);
     }
-    uint32_t gen_customer_id() {
+    uint64_t gen_customer_id() {
         return nurand(A_GEN_CUSTOMER_ID, C_GEN_CUSTOMER_ID, 1, NUM_CUSTOMERS_PER_DISTRICT);
     }
 
@@ -117,7 +117,7 @@ public:
         return to_last_name(gen_customer_last_name_num(true));
     }
 
-    uint32_t gen_item_id() {
+    uint64_t gen_item_id() {
         return nurand(A_GEN_ITEM_ID, C_GEN_ITEM_ID, 1, NUM_ITEMS);
     }
     uint32_t gen_date() {
@@ -129,7 +129,7 @@ public:
 
 private:
     std::mt19937 gen;
-    uint32_t num_whs_;
+    uint64_t num_whs_;
 };
 
 template <typename DBParams>
@@ -200,69 +200,69 @@ public:
     wm_table_type& tbl_warehouses_comm() {
         return tbl_whs_comm_;
     }
-    dc_table_type& tbl_districts_const(uint32_t w_id) {
+    dc_table_type& tbl_districts_const(uint64_t w_id) {
         return tbl_dts_const_[w_id - 1];
     }
-    dm_table_type& tbl_districts_comm(uint32_t w_id) {
+    dm_table_type& tbl_districts_comm(uint64_t w_id) {
         return tbl_dts_comm_[w_id - 1];
     }
-    cc_table_type& tbl_customers_const(uint32_t w_id) {
+    cc_table_type& tbl_customers_const(uint64_t w_id) {
         return tbl_cus_const_[w_id - 1];
     }
-    cm_table_type& tbl_customers_comm(uint32_t w_id) {
+    cm_table_type& tbl_customers_comm(uint64_t w_id) {
         return tbl_cus_comm_[w_id - 1];
     }
-    oc_table_type& tbl_orders_const(uint32_t w_id) {
+    oc_table_type& tbl_orders_const(uint64_t w_id) {
         return tbl_ods_const_[w_id - 1];
     }
-    om_table_type& tbl_orders_comm(uint32_t w_id) {
+    om_table_type& tbl_orders_comm(uint64_t w_id) {
         return tbl_ods_comm_[w_id - 1];
     }
-    lc_table_type& tbl_orderlines_const(uint32_t w_id) {
+    lc_table_type& tbl_orderlines_const(uint64_t w_id) {
         return tbl_ols_const_[w_id - 1];
     }
-    lm_table_type& tbl_orderlines_comm(uint32_t w_id) {
+    lm_table_type& tbl_orderlines_comm(uint64_t w_id) {
         return tbl_ols_comm_[w_id - 1];
     }
-    sc_table_type& tbl_stocks_const(uint32_t w_id) {
+    sc_table_type& tbl_stocks_const(uint64_t w_id) {
         return tbl_sts_const_[w_id - 1];
     }
-    sm_table_type& tbl_stocks_comm(uint32_t w_id) {
+    sm_table_type& tbl_stocks_comm(uint64_t w_id) {
         return tbl_sts_comm_[w_id - 1];
     }
 #else
     wh_table_type& tbl_warehouses() {
         return tbl_whs_;
     }
-    dt_table_type& tbl_districts(uint32_t w_id) {
+    dt_table_type& tbl_districts(uint64_t w_id) {
         return tbl_dts_[w_id - 1];
     }
-    cu_table_type& tbl_customers(uint32_t w_id) {
+    cu_table_type& tbl_customers(uint64_t w_id) {
         return tbl_cus_[w_id - 1];
     }
-    od_table_type& tbl_orders(uint32_t w_id) {
+    od_table_type& tbl_orders(uint64_t w_id) {
         return tbl_ods_[w_id - 1];
     }
-    ol_table_type& tbl_orderlines(uint32_t w_id) {
+    ol_table_type& tbl_orderlines(uint64_t w_id) {
         return tbl_ols_[w_id - 1];
     }
-    st_table_type& tbl_stocks(uint32_t w_id) {
+    st_table_type& tbl_stocks(uint64_t w_id) {
         return tbl_sts_[w_id - 1];
     }
 #endif
-    ci_table_type& tbl_customer_index(uint32_t w_id) {
+    ci_table_type& tbl_customer_index(uint64_t w_id) {
         return tbl_cni_[w_id - 1];
     }
-    oi_table_type& tbl_order_customer_index(uint32_t w_id) {
+    oi_table_type& tbl_order_customer_index(uint64_t w_id) {
         return tbl_oci_[w_id - 1];
     }
-    no_table_type& tbl_neworders(uint32_t w_id) {
+    no_table_type& tbl_neworders(uint64_t w_id) {
         return tbl_nos_[w_id - 1];
     }
     it_table_type& tbl_items() {
         return *tbl_its_;
     }
-    ht_table_type& tbl_histories(uint32_t w_id) {
+    ht_table_type& tbl_histories(uint64_t w_id) {
         return tbl_hts_[w_id - 1];
     }
     tpcc_oid_generator& oid_generator() {
@@ -321,12 +321,12 @@ public:
         stock_level
     };
 
-    tpcc_runner(int id, tpcc_db<DBParams>& database, uint32_t w_start, uint32_t w_end, uint32_t w_own, int mix)
+    tpcc_runner(int id, tpcc_db<DBParams>& database, uint64_t w_start, uint64_t w_end, uint64_t w_own, int mix)
         : ig(id, database.num_warehouses()), db(database), mix(mix), runner_id(id),
           w_id_start(w_start), w_id_end(w_end), w_id_owned(w_own) {}
 
     inline txn_type next_transaction() {
-        uint32_t x = ig.random(1, 100);
+        uint64_t x = ig.random(1, 100);
         if (mix == 0) {
             if (x <= 45)
                 return txn_type::new_order;
@@ -351,10 +351,10 @@ public:
     inline void run_txn_neworder();
     inline void run_txn_payment();
     inline void run_txn_orderstatus();
-    inline void run_txn_delivery(uint32_t wid);
+    inline void run_txn_delivery(uint64_t wid);
     inline void run_txn_stocklevel();
 
-    inline uint32_t owned_warehouse() const {
+    inline uint64_t owned_warehouse() const {
         return w_id_owned;
     }
 
@@ -363,9 +363,9 @@ private:
     tpcc_db<DBParams>& db;
     int mix;
     int runner_id;
-    uint32_t w_id_start;
-    uint32_t w_id_end;
-    uint32_t w_id_owned;
+    uint64_t w_id_start;
+    uint64_t w_id_end;
+    uint64_t w_id_owned;
 
     friend class tpcc_access<DBParams>;
 };
@@ -378,11 +378,11 @@ public:
     tpcc_prepopulator(int id, tpcc_db<DBParams>& database)
         : ig(id, database.num_warehouses()), db(database), worker_id(id) {}
 
-    inline void fill_items(uint32_t iid_begin, uint32_t iid_xend);
+    inline void fill_items(uint64_t iid_begin, uint64_t iid_xend);
     inline void fill_warehouses();
-    inline void expand_warehouse(uint32_t wid);
-    inline void expand_districts(uint32_t wid);
-    inline void expand_customers(uint32_t wid);
+    inline void expand_warehouse(uint64_t wid);
+    inline void expand_districts(uint64_t wid);
+    inline void expand_customers(uint64_t wid);
 
     inline void run();
 
@@ -391,7 +391,7 @@ private:
     inline std::string random_n_string(int x, int y);
     inline std::string random_state_name();
     inline std::string random_zip_code();
-    inline void random_shuffle(std::vector<uint32_t>& v);
+    inline void random_shuffle(std::vector<uint64_t>& v);
 
     tpcc_input_generator ig;
     tpcc_db<DBParams>& db;
@@ -498,7 +498,7 @@ void tpcc_db<DBParams>::thread_init_all() {
 
 // @section: db prepopulation functions
 template<typename DBParams>
-void tpcc_prepopulator<DBParams>::fill_items(uint32_t iid_begin, uint32_t iid_xend) {
+void tpcc_prepopulator<DBParams>::fill_items(uint64_t iid_begin, uint64_t iid_xend) {
     for (auto iid = iid_begin; iid < iid_xend; ++iid) {
         item_key ik(iid);
         item_value iv;
@@ -520,7 +520,7 @@ void tpcc_prepopulator<DBParams>::fill_items(uint32_t iid_begin, uint32_t iid_xe
 
 template<typename DBParams>
 void tpcc_prepopulator<DBParams>::fill_warehouses() {
-    for (uint32_t wid = 1; wid <= ig.num_warehouses(); ++wid) {
+    for (uint64_t wid = 1; wid <= ig.num_warehouses(); ++wid) {
         warehouse_key wk(wid);
 #if TPCC_SPLIT_TABLE
         warehouse_const_value wcv {};
@@ -553,8 +553,8 @@ void tpcc_prepopulator<DBParams>::fill_warehouses() {
 }
 
 template<typename DBParams>
-void tpcc_prepopulator<DBParams>::expand_warehouse(uint32_t wid) {
-    for (uint32_t iid = 1; iid <= NUM_ITEMS; ++iid) {
+void tpcc_prepopulator<DBParams>::expand_warehouse(uint64_t wid) {
+    for (uint64_t iid = 1; iid <= NUM_ITEMS; ++iid) {
         stock_key sk(wid, iid);
 #if TPCC_SPLIT_TABLE
         stock_const_value scv {};
@@ -597,7 +597,7 @@ void tpcc_prepopulator<DBParams>::expand_warehouse(uint32_t wid) {
 #endif
     }
 
-    for (uint32_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
+    for (uint64_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
         district_key dk(wid, did);
 #if TPCC_SPLIT_TABLE
         district_const_value dcv;
@@ -635,9 +635,9 @@ void tpcc_prepopulator<DBParams>::expand_warehouse(uint32_t wid) {
 }
 
 template<typename DBParams>
-void tpcc_prepopulator<DBParams>::expand_districts(uint32_t wid) {
-    for (uint32_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
-        for (uint32_t cid = 1; cid <= NUM_CUSTOMERS_PER_DISTRICT; ++cid) {
+void tpcc_prepopulator<DBParams>::expand_districts(uint64_t wid) {
+    for (uint64_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
+        for (uint64_t cid = 1; cid <= NUM_CUSTOMERS_PER_DISTRICT; ++cid) {
             int last_name_num = (cid <= 1000) ? int(cid - 1)
                                               : ig.gen_customer_last_name_num(false/*run time*/);
             customer_key ck(wid, did, cid);
@@ -704,9 +704,9 @@ void tpcc_prepopulator<DBParams>::expand_districts(uint32_t wid) {
 }
 
 template<typename DBParams>
-void tpcc_prepopulator<DBParams>::expand_customers(uint32_t wid) {
-    for (uint32_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
-        for (uint32_t cid = 1; cid <= NUM_CUSTOMERS_PER_DISTRICT; ++cid) {
+void tpcc_prepopulator<DBParams>::expand_customers(uint64_t wid) {
+    for (uint64_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
+        for (uint64_t cid = 1; cid <= NUM_CUSTOMERS_PER_DISTRICT; ++cid) {
             history_value hv;
 
             hv.h_c_id = cid;
@@ -721,14 +721,14 @@ void tpcc_prepopulator<DBParams>::expand_customers(uint32_t wid) {
         }
     }
 
-    for (uint32_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
-        std::vector<uint32_t> cid_perm;
-        for (uint32_t n = 1; n <= NUM_CUSTOMERS_PER_DISTRICT; ++n)
+    for (uint64_t did = 1; did <= NUM_DISTRICTS_PER_WAREHOUSE; ++did) {
+        std::vector<uint64_t> cid_perm;
+        for (uint64_t n = 1; n <= NUM_CUSTOMERS_PER_DISTRICT; ++n)
             cid_perm.push_back(n);
         random_shuffle(cid_perm);
 
-        for (uint32_t i = 1; i <= NUM_CUSTOMERS_PER_DISTRICT; ++i) {
-            uint32_t oid = i;
+        for (uint64_t i = 1; i <= NUM_CUSTOMERS_PER_DISTRICT; ++i) {
+            uint64_t oid = i;
             order_key ok(wid, did, oid);
             auto ol_count = (uint32_t) ig.random(5, 15);
             auto entry_date = ig.gen_date();
@@ -762,7 +762,7 @@ void tpcc_prepopulator<DBParams>::expand_customers(uint32_t wid) {
 #endif
             db.tbl_order_customer_index(wid).nontrans_put(ock, {});
 
-            for (uint32_t on = 1; on <= ol_count; ++on) {
+            for (uint64_t on = 1; on <= ol_count; ++on) {
                 orderline_key olk(wid, did, oid, on);
 #if TPCC_SPLIT_TABLE
                 orderline_const_value lcv;
@@ -817,19 +817,19 @@ void tpcc_prepopulator<DBParams>::run() {
     r = pthread_barrier_wait(&sync_barrier);
     always_assert(r == PTHREAD_BARRIER_SERIAL_THREAD || r == 0, "pthread_barrier_wait");
 
-    expand_warehouse((uint32_t) worker_id);
+    expand_warehouse((uint64_t) worker_id);
 
     // barrier
     r = pthread_barrier_wait(&sync_barrier);
     always_assert(r == PTHREAD_BARRIER_SERIAL_THREAD || r == 0, "pthread_barrier_wait");
 
-    expand_districts((uint32_t) worker_id);
+    expand_districts((uint64_t) worker_id);
 
     // barrier
     r = pthread_barrier_wait(&sync_barrier);
     always_assert(r == PTHREAD_BARRIER_SERIAL_THREAD || r == 0, "pthread_barrier_wait");
 
-    expand_customers((uint32_t) worker_id);
+    expand_customers((uint64_t) worker_id);
 }
 
 // @section: prepopulation string generators
@@ -877,7 +877,7 @@ std::string tpcc_prepopulator<DBParams>::random_zip_code() {
 }
 
 template<typename DBParams>
-void tpcc_prepopulator<DBParams>::random_shuffle(std::vector<uint32_t> &v) {
+void tpcc_prepopulator<DBParams>::random_shuffle(std::vector<uint64_t> &v) {
     std::shuffle(v.begin(), v.end(), ig.random_generator());
 }
 // @endsection: prepopulation string generators
@@ -906,8 +906,8 @@ public:
         always_assert(r == 0, "pthread_barrier_destroy failed");
     }
 
-    static void tpcc_runner_thread(tpcc_db<DBParams>& db, db_profiler& prof, int runner_id, uint32_t w_start,
-                                   uint32_t w_end, uint32_t w_own, double time_limit, int mix, uint64_t& txn_cnt) {
+    static void tpcc_runner_thread(tpcc_db<DBParams>& db, db_profiler& prof, int runner_id, uint64_t w_start,
+                                   uint64_t w_end, uint64_t w_own, double time_limit, int mix, uint64_t& txn_cnt) {
         tpcc_runner<DBParams> runner(runner_id, db, w_start, w_end, w_own, mix);
         typedef typename tpcc_runner<DBParams>::txn_type txn_type;
 
@@ -961,7 +961,7 @@ public:
                     runner.run_txn_orderstatus();
                     break;
                 case txn_type::delivery: {
-                    uint32_t q_w_id = runner.ig.random(w_start, w_end);
+                    uint64_t q_w_id = runner.ig.random(w_start, w_end);
                     // All warehouse delivery transactions are delegated to
                     // its "owner" thread. This is in line with the actual
                     // TPC-C spec with regard to deferred execution.

@@ -142,7 +142,7 @@ struct warehouse_value {
 // DISTRICT
 
 struct district_key {
-    district_key(uint32_t wid, uint32_t did) {
+    district_key(uint64_t wid, uint64_t did) {
         d_w_id = bswap(wid);
         d_id = bswap(did);
     }
@@ -156,8 +156,8 @@ struct district_key {
         return lcdf::Str((const char *)this, sizeof(*this));
     }
 
-    uint32_t d_w_id;
-    uint32_t d_id;
+    uint64_t d_w_id;
+    uint64_t d_id;
 };
 
 #if TPCC_SPLIT_TABLE
@@ -215,13 +215,13 @@ struct district_value {
 
 // customer name index hack <-- the true source of performance
 struct customer_idx_key {
-    customer_idx_key(uint32_t wid, uint32_t did, const var_string<16>& last) {
+    customer_idx_key(uint64_t wid, uint64_t did, const var_string<16>& last) {
         c_w_id = bswap(wid);
         c_d_id = bswap(did);
         memcpy(c_last, last.c_str(), sizeof(c_last));
     }
 
-    customer_idx_key(uint32_t wid, uint32_t did, const std::string& last) {
+    customer_idx_key(uint64_t wid, uint64_t did, const std::string& last) {
         c_w_id = bswap(wid);
         c_d_id = bswap(did);
         memset(c_last, 0x00, sizeof(c_last));
@@ -243,8 +243,8 @@ struct customer_idx_key {
         return lcdf::Str((const char *)this, sizeof(*this));
     }
 
-    uint32_t c_w_id;
-    uint32_t c_d_id;
+    uint64_t c_w_id;
+    uint64_t c_d_id;
     char c_last[16];
 };
 
@@ -255,11 +255,11 @@ struct customer_idx_value {
     // compiles happy with MVCC history element construction
     customer_idx_value() = default;
 
-    std::list<uint32_t> c_ids;
+    std::list<uint64_t> c_ids;
 };
 
 struct customer_key {
-    customer_key(uint32_t wid, uint32_t did, uint32_t cid) {
+    customer_key(uint64_t wid, uint64_t did, uint64_t cid) {
         c_w_id = bswap(wid);
         c_d_id = bswap(did);
         c_id = bswap(cid);
@@ -283,9 +283,9 @@ struct customer_key {
         return bswap(c_id);
     }
 
-    uint32_t c_w_id;
-    uint32_t c_d_id;
-    uint32_t c_id;
+    uint64_t c_w_id;
+    uint64_t c_d_id;
+    uint64_t c_id;
 };
 
 #if TPCC_SPLIT_TABLE
@@ -367,10 +367,10 @@ struct customer_value {
     fix_string<16>  c_phone;
     uint32_t        c_since;
     fix_string<2>   c_credit;
-    int32_t         c_credit_lim;
-    int32_t         c_discount;
-    int32_t         c_balance;
-    int32_t         c_ytd_payment;
+    int64_t         c_credit_lim;
+    int64_t         c_discount;
+    int64_t         c_balance;
+    int64_t         c_ytd_payment;
     uint16_t        c_payment_cnt;
     uint16_t        c_delivery_cnt;
     fix_string<500> c_data;
@@ -379,17 +379,17 @@ struct customer_value {
 
 struct c_data_info {
     c_data_info() = default;
-    c_data_info (uint32_t c, uint32_t cd, uint32_t cw, uint32_t d, uint32_t w, int32_t hm)
+    c_data_info (uint64_t c, uint64_t cd, uint64_t cw, uint64_t d, uint64_t w, int64_t hm)
             : cid(c), cdid(cd), cwid(cw), did(d), wid(w), h_amount(hm) {}
     const char *buf() const {
         return reinterpret_cast<const char *>(&cid);
     }
 
-    static constexpr size_t len = sizeof(uint32_t)*6;
+    static constexpr size_t len = sizeof(uint64_t)*6;
 
-    uint32_t cid, cdid, cwid;
-    uint32_t did, wid;
-    int32_t h_amount;
+    uint64_t cid, cdid, cwid;
+    uint64_t did, wid;
+    int64_t h_amount;
 };
 
 // HISTORY
@@ -419,20 +419,20 @@ struct history_value {
                                    h_amount,
                                    h_data };
 
-    uint32_t       h_c_id;
-    uint32_t       h_c_d_id;
-    uint32_t       h_c_w_id;
-    uint32_t       h_d_id;
-    uint32_t       h_w_id;
+    uint64_t       h_c_id;
+    uint64_t       h_c_d_id;
+    uint64_t       h_c_w_id;
+    uint64_t       h_d_id;
+    uint64_t       h_w_id;
     uint32_t       h_date;
-    int32_t        h_amount;
+    int64_t        h_amount;
     var_string<24> h_data;
 };
 
 // ORDER
 
 struct order_cidx_key {
-    order_cidx_key(uint32_t wid, uint32_t did, uint32_t cid, uint32_t oid) {
+    order_cidx_key(uint64_t wid, uint64_t did, uint64_t cid, uint64_t oid) {
         o_w_id = bswap(wid);
         o_d_id = bswap(did);
         o_c_id = bswap(cid);
@@ -455,14 +455,14 @@ struct order_cidx_key {
         return lcdf::Str((const char *)this, sizeof(*this));
     }
 
-    uint32_t o_w_id;
-    uint32_t o_d_id;
-    uint32_t o_c_id;
-    uint32_t o_id;
+    uint64_t o_w_id;
+    uint64_t o_d_id;
+    uint64_t o_c_id;
+    uint64_t o_id;
 };
 
 struct order_key {
-    order_key(uint32_t wid, uint32_t did, uint32_t oid) {
+    order_key(uint64_t wid, uint64_t did, uint64_t oid) {
         o_w_id = bswap(wid);
         o_d_id = bswap(did);
         o_id = bswap(oid);
@@ -482,9 +482,9 @@ struct order_key {
         return lcdf::Str((const char *)this, sizeof(*this));
     }
 
-    uint32_t o_w_id;
-    uint32_t o_d_id;
-    uint32_t o_id;
+    uint64_t o_w_id;
+    uint64_t o_d_id;
+    uint64_t o_id;
 };
 
 #if TPCC_SPLIT_TABLE
@@ -494,7 +494,7 @@ struct order_const_value{
                                    o_ol_cnt,
                                    o_all_local };
 
-    uint32_t o_c_id;
+    uint64_t o_c_id;
     uint32_t o_entry_d;
     uint32_t o_ol_cnt;
     uint32_t o_all_local;
@@ -503,7 +503,7 @@ struct order_const_value{
 struct order_comm_value {
     enum class NamedColumn : int { o_carrier_id = 0 };
 
-    uint32_t o_carrier_id;
+    uint64_t o_carrier_id;
 };
 #else
 struct order_value{
@@ -513,8 +513,8 @@ struct order_value{
                                    o_ol_cnt,
                                    o_all_local };
 
-    uint32_t o_c_id;
-    uint32_t o_carrier_id;
+    uint64_t o_c_id;
+    uint64_t o_carrier_id;
     uint32_t o_entry_d;
     uint32_t o_ol_cnt;
     uint32_t o_all_local;
@@ -524,7 +524,7 @@ struct order_value{
 // ORDER-LINE
 
 struct orderline_key {
-    orderline_key(uint32_t w, uint32_t d, uint32_t o, uint32_t n) {
+    orderline_key(uint64_t w, uint64_t d, uint64_t o, uint64_t n) {
         ol_w_id = bswap(w);
         ol_d_id = bswap(d);
         ol_o_id = bswap(o);
@@ -546,10 +546,10 @@ struct orderline_key {
         return lcdf::Str((const char *)this, sizeof(*this));
     }
 
-    uint32_t ol_w_id;
-    uint32_t ol_d_id;
-    uint32_t ol_o_id;
-    uint32_t ol_number;
+    uint64_t ol_w_id;
+    uint64_t ol_d_id;
+    uint64_t ol_o_id;
+    uint64_t ol_number;
 };
 
 #if TPCC_SPLIT_TABLE
@@ -560,8 +560,8 @@ struct orderline_const_value {
                                    ol_amount,
                                    ol_dist_info };
 
-    uint32_t       ol_i_id;
-    uint32_t       ol_supply_w_id;
+    uint64_t       ol_i_id;
+    uint64_t       ol_supply_w_id;
     uint32_t       ol_quantity;
     int32_t        ol_amount;
     fix_string<24> ol_dist_info;
@@ -581,8 +581,8 @@ struct orderline_value {
                                    ol_amount,
                                    ol_dist_info };
 
-    uint32_t       ol_i_id;
-    uint32_t       ol_supply_w_id;
+    uint64_t       ol_i_id;
+    uint64_t       ol_supply_w_id;
     uint32_t       ol_delivery_d;
     uint32_t       ol_quantity;
     int32_t        ol_amount;
@@ -593,7 +593,7 @@ struct orderline_value {
 // ITEM
 
 struct item_key {
-    item_key(uint32_t id) {
+    item_key(uint64_t id) {
         i_id = bswap(id);
     }
 
@@ -611,7 +611,7 @@ struct item_key {
         return lcdf::Str((const char *)this, sizeof(*this));
     }
 
-    uint32_t i_id;
+    uint64_t i_id;
 };
 
 struct item_value {
@@ -620,7 +620,7 @@ struct item_value {
                                    i_name,
                                    i_data };
 
-    uint32_t       i_im_id;
+    uint64_t       i_im_id;
     uint32_t       i_price;
     var_string<24> i_name;
     var_string<50> i_data;
@@ -629,7 +629,7 @@ struct item_value {
 // STOCK
 
 struct stock_key {
-    stock_key(uint32_t w, uint32_t i) {
+    stock_key(uint64_t w, uint64_t i) {
         s_w_id = bswap(w);
         s_i_id = bswap(i);
     }
@@ -648,8 +648,8 @@ struct stock_key {
         return lcdf::Str((const char *)this, sizeof(*this));
     }
 
-    uint32_t s_w_id;
-    uint32_t s_i_id;
+    uint64_t s_w_id;
+    uint64_t s_i_id;
 };
 
 #if TPCC_SPLIT_TABLE
