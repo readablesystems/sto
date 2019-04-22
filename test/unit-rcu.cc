@@ -3,6 +3,7 @@
 #include "clp.h"
 #include <stdlib.h>
 #include <inttypes.h>
+#include <thread>
 
 uint64_t nallocated;
 uint64_t nfreed;
@@ -74,13 +75,13 @@ int main(int argc, char* argv[]) {
     pthread_t tids[nthreads];
     for (uintptr_t i = 0; i < nthreads; ++i)
         pthread_create(&tids[i], NULL, tracker_run, reinterpret_cast<void*>(i));
-    pthread_t advancer;
-    pthread_create(&advancer, NULL, Transaction::epoch_advancer, NULL);
-    pthread_detach(advancer);
+    Transaction::set_epoch_cycle(1000);
+    auto advancer = std::thread(&Transaction::epoch_advancer, nullptr);
 
     while (Transaction::global_epochs.global_epoch < nepochs + 1)
         usleep(useconds_t(delay * 1e6));
     stop = true;
+    Transaction::global_epochs.run = false;
 
     for (unsigned i = 0; i < nthreads; ++i)
         pthread_join(tids[i], NULL);
@@ -92,6 +93,7 @@ int main(int argc, char* argv[]) {
     always_assert(nallocated == nfreed, "rcu check");
     always_assert(nfreed_before > 0, "rcu check");
     printf("created %" PRIu64 ", deleted %" PRIu64 ", finally deleted %" PRIu64 "\n", nallocated, nfreed_before, nfreed);
+    advancer.join();
     printf("Test pass.\n");
     return 0;
 }
