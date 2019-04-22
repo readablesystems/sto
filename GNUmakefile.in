@@ -26,6 +26,10 @@ LIBOBJS += $(LIBRPMALLOC)
 endif
 endif
 
+ifeq ($(ASAN),1)
+LIBS += -lasan
+endif
+
 OBJ = obj
 
 XXHASH_DIR = third-party/xxHash
@@ -117,6 +121,10 @@ endif
 
 # OPTFLAGS can change without rebuild
 OPTFLAGS := -W -Wall -Wextra
+
+ifeq ($(ASAN),1)
+OPTFLAGS += -fsanitize=address
+endif
 
 ifndef OPT
 OPTFLAGS += -O3
