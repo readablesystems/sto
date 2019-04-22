@@ -619,7 +619,7 @@ private:
         special_txp = false;
         //thr.epoch = global_epochs.global_epoch;
         thr.write_snapshot_epoch = global_epochs.global_epoch.load();
-        thr.epoch = global_epochs.global_epoch.load();
+        thr.epoch = global_epochs.read_epoch.load();
         thr.rcu_set.clean_until(global_epochs.active_epoch.load());
         thr.rtid = thr.wtid = 0;
         if (thr.trans_start_callback)
