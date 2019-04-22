@@ -216,7 +216,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         TXN_DO(oid != 0);
         uint32_t i_price = reinterpret_cast<const item_value *>(value)->i_price;
         out_item_names[i] = reinterpret_cast<const item_value *>(value)->i_name;
-        auto i_data = reinterpret_cast<const item_value *>(value)->i_data;
+        //auto i_data = reinterpret_cast<const item_value *>(value)->i_data;
 
 #if TPCC_SPLIT_TABLE
         std::tie(abort, result, row, value) = db.tbl_stocks_const(wid).select_row(stock_key(wid, iid), RowAccess::ObserveValue);
@@ -224,12 +224,11 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         assert(result);
         auto scv = reinterpret_cast<const stock_const_value*>(value);
         auto s_dist = scv->s_dists[q_d_id - 1];
-        auto s_data = scv->s_data;
-
-        if (i_data.contains("ORIGINAL") && s_data.contains("ORIGINAL"))
-            out_brand_generic[i] = 'B';
-        else
-            out_brand_generic[i] = 'G';
+        //auto s_data = scv->s_data;
+        //if (i_data.contains("ORIGINAL") && s_data.contains("ORIGINAL"))
+        //    out_brand_generic[i] = 'B';
+        //else
+        //    out_brand_generic[i] = 'G';
 
         std::tie(abort, result, row, value) = db.tbl_stocks_comm(wid).select_row(stock_key(wid, iid),
             Commute ? RowAccess::None : RowAccess::ObserveValue);
@@ -265,20 +264,20 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         );
         TXN_DO(abort);
         assert(result);
-        stock_value *new_sv = Sto::tx_alloc(reinterpret_cast<const stock_value *>(value));
-        int32_t s_quantity = new_sv->s_quantity;
-        auto s_dist = new_sv->s_dists[q_d_id - 1];
-        auto s_data = new_sv->s_data;
-
-        if (i_data.contains("ORIGINAL") && s_data.contains("ORIGINAL"))
-            out_brand_generic[i] = 'B';
-        else
-            out_brand_generic[i] = 'G';
+        auto sv = reinterpret_cast<const stock_value*>(value);
+        int32_t s_quantity = sv->s_quantity;
+        auto s_dist = sv->s_dists[q_d_id - 1];
+        //auto s_data = sv->s_data;
+        //if (i_data.contains("ORIGINAL") && s_data.contains("ORIGINAL"))
+        //    out_brand_generic[i] = 'B';
+        //else
+        //    out_brand_generic[i] = 'G';
 
         if (Commute) {
             commutators::Commutator<stock_value> comm(qty, wid != q_w_id);
             db.tbl_stocks(wid).update_row(row, comm);
         } else {
+            stock_value *new_sv = Sto::tx_alloc(sv);
             if ((s_quantity - 10) >= (int32_t) qty)
                 new_sv->s_quantity -= qty;
             else
