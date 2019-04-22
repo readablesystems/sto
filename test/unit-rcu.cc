@@ -45,7 +45,7 @@ static const Clp_Option options[] = {
 
 int main(int argc, char* argv[]) {
     unsigned nthreads = 4;
-    TRcuSet::epoch_type nepochs = 10;
+    TRcuSet::epoch_type nepochs = 1000;
     delay = 0.000001;
 
     Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
