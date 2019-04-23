@@ -107,6 +107,13 @@ int main(int argc, const char *const *argv) {
         "undefined."
         #endif
     << std::endl;
+    std::cout << "STO_USE_EXCEPTION: " <<
+        #if STO_USE_EXCEPTION
+        1
+        #else
+        0
+        #endif
+    << std::endl;
    
     Clp_Parser *clp = Clp_NewParser(argc, argv, arraysize(options), options);
 
