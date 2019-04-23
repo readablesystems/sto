@@ -917,12 +917,17 @@ public:
                 Sto::commit_tid(), &e->row, std::move(wval), hprev);
         } else {
             auto wval = item.template raw_write_value<value_type*>();
-            h = e->row.new_history(
-                Sto::commit_tid(), &e->row, wval, hprev);
+            if (has_delete(item)) {
+                h = e->row.new_history(
+                    Sto::commit_tid(), &e->row, nullptr, hprev);
+                h->status_delete();
+                h->set_delete_cb(this, _delete_cb, e);
+            } else {
+                h = e->row.new_history(
+                    Sto::commit_tid(), &e->row, wval, hprev);
+            }
         }
-        if (has_delete(item)) {
-            h->status_delete();
-        }
+        assert(h);
         bool result = e->row.cp_lock(Sto::commit_tid(), h);
         if (!result && !h->status_is(MvStatus::ABORTED)) {  
             e->row.delete_history(h);
@@ -1014,6 +1019,33 @@ private:
         delete curr;
         return true;
     }
+
+    static void _delete_cb(
+            void *index_ptr, void *ele_ptr, void *history_ptr) {
+        auto ip = reinterpret_cast<mvcc_unordered_index<K, V, DBParams>*>(index_ptr);
+        auto el = reinterpret_cast<internal_elem*>(ele_ptr);
+        auto hp = reinterpret_cast<history_type*>(history_ptr);
+        bucket_entry& buck = ip->map_[ip->find_bucket_idx(el->key)];
+        buck.version.lock_exclusive();
+        internal_elem *prev = nullptr;
+        internal_elem *curr = buck.head;
+        while (curr != nullptr && curr != el) {
+            prev = curr;
+            curr = curr->next;
+        }
+        assert(curr);
+        if (prev != nullptr)
+            prev->next = curr->next;
+        else
+            buck.head = curr->next;
+        if (el->row.is_head(hp)) {
+            buck.version.unlock_exclusive();
+            Transaction::rcu_delete(el);
+        } else {
+            buck.version.unlock_exclusive();
+        }
+    }
+
     // insert a k-v node to a bucket
     void insert_in_bucket(bucket_entry& buck, const key_type& k) {
         assert(buck.version.is_locked());
