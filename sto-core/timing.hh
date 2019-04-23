@@ -27,6 +27,6 @@ inline void wait_cycles(uint64_t cycles) {
 		if(end - start > cycles) {
 			break;
 		}
-        __asm__ volatile("pause" : : : "memory");
+		__asm__ volatile("pause" : : : "memory");
 	}
 }

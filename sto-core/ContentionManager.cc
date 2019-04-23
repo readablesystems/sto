@@ -11,6 +11,7 @@ void ContentionManager::init() {
     std::uniform_int_distribution<uint32_t> dis(1);
     for (int i = 0; i < MAX_THREADS; ++i) {
         cm_info[i].seed = dis(gen);
+        cm_info[i].abort_backoff = INIT_BACKOFF_CYCLES;
     }
 }
 
