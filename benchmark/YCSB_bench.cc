@@ -334,10 +334,13 @@ int main(int argc, const char *const *argv) {
     case db_params_id::Swiss:
         ret_code = ycsb_access<db_swiss_params>::execute(argc, argv);
         break;
+    */
     case db_params_id::TicToc:
+        if (node_tracking || enable_commute) {
+            std::cerr << "Warning: node tracking and commute options ignored." << std::endl;
+        }
         ret_code = ycsb_access<db_tictoc_params>::execute(argc, argv);
         break;
-    */
     case db_params_id::MVCC:
         if (node_tracking && enable_commute) {
             ret_code = ycsb_access<db_mvcc_commute_node_params>::execute(argc, argv);

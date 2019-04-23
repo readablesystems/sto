@@ -681,7 +681,7 @@ protected:
     void wait_if_pending(const history_type *h) const {
         while (h->status_is(MvStatus::PENDING)) {
             // TODO: implement a backoff or something
-            fence();
+            relax_fence();
         }
     }
 
