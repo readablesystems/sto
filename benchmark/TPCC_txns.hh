@@ -64,7 +64,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     size_t starts = 0;
 
     // begin txn
-    RWTRANSACTION {
+    RWTXN {
     ++starts;
 
     bool abort, result;
@@ -77,7 +77,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     warehouse_key wk(q_w_id);
 #if TPCC_SPLIT_TABLE
     std::tie(abort, result, row, value) = db.tbl_warehouses_const().select_row(wk, RowAccess::ObserveValue);
-    TXN_DO(abort);
+    CHK(abort);
     assert(result);
     wh_tax_rate = reinterpret_cast<const warehouse_const_value*>(value)->w_tax;
 #else
@@ -88,7 +88,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         RowAccess::ObserveValue
 #endif
     );
-    TXN_DO(abort);
+    CHK(abort);
     assert(result);
     wh_tax_rate = reinterpret_cast<const warehouse_value*>(value)->w_tax;
 #endif
@@ -96,7 +96,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 #if TPCC_SPLIT_TABLE
     district_key dk(q_w_id, q_d_id);
     std::tie(abort, result, row, value) = db.tbl_districts_const(q_w_id).select_row(dk, RowAccess::ObserveValue);
-    TXN_DO(abort);
+    CHK(abort);
     assert(result);
 
     TXP_INCREMENT(txp_tpcc_no_stage1);
@@ -109,7 +109,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     customer_key ck(q_w_id, q_d_id, q_c_id);
     std::tie(abort, result, std::ignore, value) = db.tbl_customers_const(q_w_id).select_row(ck, RowAccess::ObserveValue);
-    TXN_DO(abort);
+    CHK(abort);
     assert(result);
 
     TXP_INCREMENT(txp_tpcc_no_stage2);
@@ -128,7 +128,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         RowAccess::ObserveValue
 #endif
     );
-    TXN_DO(abort);
+    CHK(abort);
     assert(result);
 
     TXP_INCREMENT(txp_tpcc_no_stage1);
@@ -149,7 +149,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         RowAccess::ObserveValue
 #endif
     );
-    TXN_DO(abort);
+    CHK(abort);
     assert(result);
 
     TXP_INCREMENT(txp_tpcc_no_stage2);
@@ -173,11 +173,11 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     ocv->o_ol_cnt = num_items;
 
     std::tie(abort, result) = db.tbl_orders_const(q_w_id).insert_row(ok, ocv, false);
-    TXN_DO(abort);
+    CHK(abort);
     assert(!result);
 
     std::tie(abort, result) = db.tbl_orders_comm(q_w_id).insert_row(ok, omv, false);
-    TXN_DO(abort);
+    CHK(abort);
     assert(!result);
 #else
     order_value* ov = Sto::tx_alloc<order_value>();
@@ -188,15 +188,15 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
     ov->o_ol_cnt = num_items;
 
     std::tie(abort, result) = db.tbl_orders(q_w_id).insert_row(ok, ov, false);
-    TXN_DO(abort);
+    CHK(abort);
     assert(!result);
 #endif
 
     std::tie(abort, result) = db.tbl_neworders(q_w_id).insert_row(ok, &bench::dummy_row::row, false);
-    TXN_DO(abort);
+    CHK(abort);
     assert(!result);
     std::tie(abort, result) = db.tbl_order_customer_index(q_w_id).insert_row(ock, &bench::dummy_row::row, false);
-    TXN_DO(abort);
+    CHK(abort);
     assert(!result);
 
     TXP_INCREMENT(txp_tpcc_no_stage3);
@@ -209,17 +209,17 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         uint64_t qty = ol_quantities[i];
 
         std::tie(abort, result, std::ignore, value) = db.tbl_items().select_row(item_key(iid), RowAccess::ObserveValue);
-        TXN_DO(abort);
+        CHK(abort);
         assert(result);
         uint64_t oid = reinterpret_cast<const item_value *>(value)->i_im_id;
-        TXN_DO(oid != 0);
+        CHK(oid != 0);
         uint32_t i_price = reinterpret_cast<const item_value *>(value)->i_price;
         out_item_names[i] = reinterpret_cast<const item_value *>(value)->i_name;
         //auto i_data = reinterpret_cast<const item_value *>(value)->i_data;
 
 #if TPCC_SPLIT_TABLE
         std::tie(abort, result, row, value) = db.tbl_stocks_const(wid).select_row(stock_key(wid, iid), RowAccess::ObserveValue);
-        TXN_DO(abort);
+        CHK(abort);
         assert(result);
         auto scv = reinterpret_cast<const stock_const_value*>(value);
         auto s_dist = scv->s_dists[q_d_id - 1];
@@ -231,7 +231,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
         std::tie(abort, result, row, value) = db.tbl_stocks_comm(wid).select_row(stock_key(wid, iid),
             Commute ? RowAccess::None : RowAccess::ObserveValue);
-        TXN_DO(abort);
+        CHK(abort);
         assert(result);
         if (Commute) {
             commutators::Commutator<stock_comm_value> comm(qty, wid != q_w_id);
@@ -261,7 +261,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
             RowAccess::ObserveValue
 #endif
         );
-        TXN_DO(abort);
+        CHK(abort);
         assert(result);
         auto sv = reinterpret_cast<const stock_value*>(value);
         int32_t s_quantity = sv->s_quantity;
@@ -303,11 +303,11 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         lcv->ol_dist_info = s_dist;
 
         std::tie(abort, result) = db.tbl_orderlines_const(q_w_id).insert_row(olk, lcv, false);
-        TXN_DO(abort);
+        CHK(abort);
         assert(!result);
 
         std::tie(abort, result) = db.tbl_orderlines_comm(q_w_id).insert_row(olk, lmv, false);
-        TXN_DO(abort);
+        CHK(abort);
         assert(!result);
 #else
         orderline_value *olv = Sto::tx_alloc<orderline_value>();
@@ -319,7 +319,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
         olv->ol_dist_info = s_dist;
 
         std::tie(abort, result) = db.tbl_orderlines(q_w_id).insert_row(olk, olv, false);
-        TXN_DO(abort);
+        CHK(abort);
         assert(!result);
 #endif
 
@@ -330,7 +330,7 @@ void tpcc_runner<DBParams>::run_txn_neworder() {
 
     // commit txn
     // retry until commits
-    } RETRY(true);
+    } TEND(true);
 
     TXP_INCREMENT(txp_tpcc_no_commits);
     TXP_ACCOUNT(txp_tpcc_no_aborts, starts - 1);
@@ -400,7 +400,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     size_t starts = 0;
 
     // begin txn
-    RWTRANSACTION {
+    RWTXN {
     Sto::transaction()->special_txp = true;
     ++starts;
 
@@ -412,7 +412,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 #if TPCC_SPLIT_TABLE
     warehouse_key wk(q_w_id);
     std::tie(success, result, row, value) = db.tbl_warehouses_const().select_row(wk, RowAccess::ObserveValue);
-    TXN_DO(success);
+    CHK(success);
     assert(result);
     auto wv = reinterpret_cast<const warehouse_const_value*>(value);
 
@@ -425,7 +425,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     std::tie(success, result, row, value) = db.tbl_warehouses_comm().select_row(wk,
             Commute ? RowAccess::None : RowAccess::UpdateValue);
-    TXN_DO(success);
+    CHK(success);
     assert(result);
 
     if (Commute) {
@@ -452,7 +452,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         RowAccess::ObserveValue
 #endif
     );
-    TXN_DO(success);
+    CHK(success);
     assert(result);
     auto wv = reinterpret_cast<const warehouse_value*>(value);
     out_w_name = wv->w_name;
@@ -477,7 +477,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     district_key dk(q_w_id, q_d_id);
 #if TPCC_SPLIT_TABLE
     std::tie(success, result, row, value) = db.tbl_districts_const(q_w_id).select_row(dk, RowAccess::ObserveValue);
-    TXN_DO(success);
+    CHK(success);
     assert(result);
     auto dv = reinterpret_cast<const district_const_value *>(value);
     out_d_name = dv->d_name;
@@ -489,7 +489,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     std::tie(success, result, row, value) = db.tbl_districts_comm(q_w_id).select_row(dk,
             Commute ? RowAccess::None : RowAccess::UpdateValue);
-    TXN_DO(success);
+    CHK(success);
     assert(result);
 
     TXP_INCREMENT(txp_tpcc_pm_stage1);
@@ -519,7 +519,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         RowAccess::ObserveValue
 #endif
     );
-    TXN_DO(success);
+    CHK(success);
     assert(result);
     auto dv = reinterpret_cast<const district_value *>(value);
     out_d_name = dv->d_name;
@@ -549,7 +549,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
     if (by_name) {
         customer_idx_key ck(q_c_w_id, q_c_d_id, last_name);
         std::tie(success, result, row, value) = db.tbl_customer_index(q_c_w_id).select_row(ck, RowAccess::ObserveValue);
-        TXN_DO(success);
+        CHK(success);
         assert(result);
         auto& c_id_list = reinterpret_cast<const customer_idx_value*>(value)->c_ids;
         uint64_t rows[100];
@@ -567,7 +567,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 #if TPCC_SPLIT_TABLE
     customer_key ck(q_c_w_id, q_c_d_id, q_c_id);
     std::tie(success, result, row, value) = db.tbl_customers_const(q_c_w_id).select_row(ck, RowAccess::ObserveValue);
-    TXN_DO(success);
+    CHK(success);
     assert(result);
 
     TXP_INCREMENT(txp_tpcc_pm_stage4);
@@ -579,14 +579,14 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
 #if TPCC_OBSERVE_C_BALANCE
     std::tie(success, result, row, value) = db.tbl_customers_comm(q_c_w_id).select_row(ck, RowAccess::UpdateValue);
-    TXN_DO(success);
+    CHK(success);
     assert(result);
     auto cmv = reinterpret_cast<const customer_comm_value*>(value);
     out_c_balance = cmv->c_balance;
 #else
     std::tie(success, result, row, value) = db.tbl_customers_comm(q_c_w_id).select_row(ck,
             Commute ? RowAccess::None : RowAccess::UpdateValue);
-    TXN_DO(success);
+    CHK(success);
     assert(result);
 #endif
 
@@ -626,7 +626,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
         RowAccess::ObserveValue
 #endif
     );
-    TXN_DO(success);
+    CHK(success);
     assert(result);
 
     TXP_INCREMENT(txp_tpcc_pm_stage4);
@@ -681,7 +681,7 @@ void tpcc_runner<DBParams>::run_txn_payment() {
 
     // commit txn
     // retry until commits
-    } RETRY(true);
+    } TEND(true);
 
     TXP_INCREMENT(txp_tpcc_pm_commits);
     TXP_ACCOUNT(txp_tpcc_pm_aborts, starts - 1);
@@ -725,7 +725,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
     size_t starts = 0;
 
-    TRANSACTION {
+    TXN {
     ++starts;
 
     bool success, result;
@@ -735,7 +735,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
     if (by_name) {
         customer_idx_key ck(q_w_id, q_d_id, last_name);
         std::tie(success, result, row, value) = db.tbl_customer_index(q_w_id).select_row(ck, RowAccess::ObserveValue);
-        TXN_DO(success);
+        CHK(success);
         assert(result);
         auto& c_id_list = reinterpret_cast<const customer_idx_value*>(value)->c_ids;
         uint64_t rows[100];
@@ -751,7 +751,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 #if TPCC_SPLIT_TABLE
     customer_key ck(q_w_id, q_d_id, q_c_id);
     std::tie(success, result, row, value) = db.tbl_customers_const(q_w_id).select_row(ck, RowAccess::ObserveValue);
-    TXN_DO(success);
+    CHK(success);
     assert(result);
 
     auto ccv = reinterpret_cast<const customer_const_value*>(value);
@@ -763,7 +763,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
 #if TPCC_OBSERVE_C_BALANCE
     std::tie(success, result, row, value) = db.tbl_customers_comm(q_w_id).select_row(ck, RowAccess::ObserveValue);
-    TXN_DO(success);
+    CHK(success);
     assert(result);
     auto cmv = reinterpret_cast<const customer_comm_value*>(value);
     out_c_balance = cmv->c_balance;
@@ -780,7 +780,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
         RowAccess::ObserveValue
 #endif
     );
-    TXN_DO(success);
+    CHK(success);
     assert(result);
 
     auto cv = reinterpret_cast<const customer_value*>(value);
@@ -804,19 +804,19 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
     success = db.tbl_order_customer_index(q_w_id)
             .template range_scan<decltype(scan_callback), true/*reverse*/>(k1, k0, scan_callback, RowAccess::ObserveExists, true, 1/*reverse scan for only 1 item*/);
-    TXN_DO(success);
+    CHK(success);
 
     if (cus_o_id > 0) {
         order_key ok(q_w_id, q_d_id, cus_o_id);
 #if TPCC_SPLIT_TABLE
         std::tie(success, result, std::ignore, value) = db.tbl_orders_const(q_w_id).select_row(ok, RowAccess::ObserveValue);
-        TXN_DO(success);
+        CHK(success);
         assert(result);
         auto ocv = reinterpret_cast<const order_const_value*>(value);
         out_o_entry_date = ocv->o_entry_d;
 
         std::tie(success, result, std::ignore, value) = db.tbl_orders_comm(q_w_id).select_row(ok, RowAccess::ObserveValue);
-        TXN_DO(success);
+        CHK(success);
         assert(result);
         auto omv = reinterpret_cast<const order_comm_value*>(value);
         out_o_carrier_id = omv->o_carrier_id;
@@ -838,13 +838,13 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
         success = db.tbl_orderlines_const(q_w_id)
                 .template range_scan<decltype(lc_scan_callback), false/*reverse*/>(olk0, olk1, lc_scan_callback, RowAccess::ObserveValue);
-        TXN_DO(success);
+        CHK(success);
         success = db.tbl_orderlines_comm(q_w_id)
                 .template range_scan<decltype(lm_scan_callback), false/*reverse*/>(olk0, olk1, lm_scan_callback, RowAccess::ObserveValue);
-        TXN_DO(success);
+        CHK(success);
 #else
         std::tie(success, result, row, value) = db.tbl_orders(q_w_id).select_row(ok, RowAccess::ObserveValue);
-        TXN_DO(success);
+        CHK(success);
         assert(result);
 
         auto ov = reinterpret_cast<const order_value *>(value);
@@ -876,7 +876,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
                         RowAccess::ObserveValue
 #endif
                 );
-        TXN_DO(success);
+        CHK(success);
 #endif
     } else {
         // order doesn't exist, simply commit the transaction
@@ -884,7 +884,7 @@ void tpcc_runner<DBParams>::run_txn_orderstatus() {
 
     // commit txn
     // retry until commits
-    } RETRY(true);
+    } TEND(true);
 
     TXP_INCREMENT(txp_tpcc_os_commits);
     TXP_ACCOUNT(txp_tpcc_os_aborts, starts - 1);
@@ -918,7 +918,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
 
     TXP_INCREMENT(txp_tpcc_dl_stage1);
 
-    RWTRANSACTION {
+    RWTXN {
     ++starts;
 
     for (uint64_t q_d_id = 1; q_d_id <= 10; ++q_d_id) {
@@ -930,7 +930,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
         order_key k1(q_w_id, q_d_id, std::numeric_limits<uint64_t>::max());
         success = db.tbl_neworders(q_w_id)
                 .template range_scan<decltype(no_scan_callback), false/*reverse*/>(k0, k1, no_scan_callback, RowAccess::ObserveValue, true, 1);
-        TXN_DO(success);
+        CHK(success);
         //Sto::print_read_set_size("1");
 
         TXP_INCREMENT(txp_tpcc_dl_stage2);
@@ -940,13 +940,13 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
 
         order_key ok(q_w_id, q_d_id, order_id);
         std::tie(success, result) = db.tbl_neworders(q_w_id).delete_row(ok);
-        TXN_DO(success);
-        TXN_DO(result);
+        CHK(success);
+        CHK(result);
         assert(result);
 
 #if TPCC_SPLIT_TABLE
         std::tie(success, result, std::ignore, value) = db.tbl_orders_const(q_w_id).select_row(ok, RowAccess::ObserveValue);
-        TXN_DO(success);
+        CHK(success);
         assert(result);
 
         auto ocv = reinterpret_cast<const order_const_value *>(value);
@@ -955,7 +955,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
 
         std::tie(success, result, row, value) = db.tbl_orders_comm(q_w_id).select_row(ok,
                 Commute ? RowAccess::None : RowAccess::UpdateValue);
-        TXN_DO(success);
+        CHK(success);
         assert(result);
 
         TXP_INCREMENT(txp_tpcc_dl_stage4);
@@ -979,7 +979,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
             RowAccess::ObserveValue
 #endif
         );
-        TXN_DO(success);
+        CHK(success);
         assert(result);
 
         TXP_INCREMENT(txp_tpcc_dl_stage4);
@@ -1006,7 +1006,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
             orderline_key olk(q_w_id, q_d_id, order_id, ol_num);
 #if TPCC_SPLIT_TABLE
             std::tie(success, result, row, value) = db.tbl_orderlines_const(q_w_id).select_row(olk, RowAccess::ObserveValue);
-            TXN_DO(success);
+            CHK(success);
             assert(result);
 
             auto lcv = reinterpret_cast<const orderline_const_value *>(value);
@@ -1014,7 +1014,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
 
             std::tie(success, result, row, value) = db.tbl_orderlines_comm(q_w_id).select_row(olk,
                     Commute ? RowAccess::None : RowAccess::UpdateValue);
-            TXN_DO(success);
+            CHK(success);
             assert(result);
 
             TXP_INCREMENT(txp_tpcc_dl_stage3);
@@ -1037,7 +1037,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
                 RowAccess::UpdateValue
 #endif
             );
-            TXN_DO(success);
+            CHK(success);
 
             assert(result);
 
@@ -1062,7 +1062,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
         customer_key ck(q_w_id, q_d_id, q_c_id);
         std::tie(success, result, row, value) = db.tbl_customers_comm(q_w_id).select_row(ck,
                 Commute ? RowAccess::None : RowAccess::UpdateValue);
-        TXN_DO(success);
+        CHK(success);
         assert(result);
 
         TXP_INCREMENT(txp_tpcc_dl_stage5);
@@ -1087,7 +1087,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
             RowAccess::ObserveValue
 #endif
         );
-        TXN_DO(success);
+        CHK(success);
         assert(result);
 
         TXP_INCREMENT(txp_tpcc_dl_stage5);
@@ -1105,7 +1105,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
 #endif
     }
 
-    } RETRY(true);
+    } TEND(true);
 
     TXP_INCREMENT(txp_tpcc_dl_commits);
     TXP_ACCOUNT(txp_tpcc_dl_aborts, starts - 1);
@@ -1144,7 +1144,7 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
 
     size_t starts = 0;
 
-    TRANSACTION {
+    TXN {
     ++starts;
 
     ol_iids.clear();
@@ -1157,7 +1157,7 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
 #if TPCC_SPLIT_TABLE
     success = db.tbl_orderlines_const(q_w_id)
             .template range_scan<decltype(lc_scan_callback), false/*reverse*/>(olk1, olk0, lc_scan_callback, RowAccess::ObserveValue);
-    TXN_DO(success);
+    CHK(success);
 #else
     success = db.tbl_orderlines(q_w_id)
             .template range_scan<decltype(ol_scan_callback), false/*reverse*/>(olk1, olk0, ol_scan_callback,
@@ -1167,14 +1167,14 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
                     RowAccess::ObserveValue
 #endif
             );
-    TXN_DO(success);
+    CHK(success);
 #endif
 
     for (auto iid : ol_iids) {
         stock_key sk(q_w_id, iid);
 #if TPCC_SPLIT_TABLE
         std::tie(success, result, std::ignore, value) = db.tbl_stocks_comm(q_w_id).select_row(sk, RowAccess::ObserveValue);
-        TXN_DO(success);
+        CHK(success);
         assert(result);
         auto sv = reinterpret_cast<const stock_comm_value*>(value);
 #else
@@ -1185,7 +1185,7 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
             RowAccess::ObserveValue
 #endif
         );
-        TXN_DO(success);
+        CHK(success);
         assert(result);
         auto sv = reinterpret_cast<const stock_value*>(value);
 #endif
@@ -1194,7 +1194,7 @@ void tpcc_runner<DBParams>::run_txn_stocklevel(){
         }
     }
 
-    } RETRY(true);
+    } TEND(true);
 
     TXP_INCREMENT(txp_tpcc_st_commits);
     TXP_ACCOUNT(txp_tpcc_st_aborts, starts - 1);

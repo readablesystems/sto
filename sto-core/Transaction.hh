@@ -170,6 +170,8 @@ if (!(trans_op))             \
 #define RETRY_E(retry)                            \
                 if (__txn_guard.try_commit())     \
                     break;                        \
+                else                              \
+                    throw Transaction::Abort();   \
             } catch (Transaction::Abort e) {      \
                 __txn_guard.silent_abort();       \
             }                                     \
@@ -177,6 +179,26 @@ if (!(trans_op))             \
                 throw Transaction::Abort();       \
         }                                         \
     } while (false)
+
+#define TXN_DO_E(trans_op)      \
+if (!(trans_op)) {throw Transaction::Abort();}
+
+
+#if STO_USE_EXCEPTION
+
+#define TXN   TRANSACTION_E
+#define RWTXN RWTRANSACTION_E
+#define CHK   TXN_DO_E
+#define TEND  RETRY_E
+
+#else
+
+#define TXN   TRANSACTION
+#define RWTXN RWTRANSACTION
+#define CHK   TXN_DO
+#define TEND  RETRY
+
+#endif
 
 // transaction performance counters
 enum txp {

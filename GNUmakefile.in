@@ -57,6 +57,10 @@ ifeq ($(NDEBUG),1)
 CXXFLAGS += -DNDEBUG
 endif
 
+ifeq ($(USE_EXCEPTION),1)
+CXXFLAGS += -DSTO_USE_EXCEPTION=1
+endif
+
 ifeq ($(DEBUG_ABORTS),1)
 CXXFLAGS += -DSTO_DEBUG_ABORTS=1
 endif
