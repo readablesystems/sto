@@ -8,6 +8,7 @@
 #include "sampling.hh"
 #include "SystemProfiler.hh"
 #include "YCSB_structs.hh"
+#include "YCSB_commutators.hh"
 #include "DB_index.hh"
 #include "DB_params.hh"
 
@@ -32,22 +33,43 @@ public:
         mvcc_unordered_index<K, V, DBParams>,
         unordered_index<K, V, DBParams>>::type;
 
-    typedef UIndex<ycsb_key, ycsb_value<DBParams>> ycsb_table_type;
+    typedef UIndex<ycsb_key, ycsb_value> ycsb_table_type;
+    typedef UIndex<ycsb_key, ycsb_half_value> ycsb_half_table_type;
 
+#if TPCC_SPLIT_TABLE
+    explicit ycsb_db()
+        : ycsb_odd_table_(ycsb_table_size),
+          ycsb_even_table_(ycsb_table_size) {}
+
+    ycsb_half_table_type& ycsb_half_tables(bool parity) {
+        return parity ? ycsb_odd_table_ : ycsb_even_table_;
+    }
+#else
     explicit ycsb_db() : ycsb_table_(ycsb_table_size) {}
 
     ycsb_table_type& ycsb_table() {
         return ycsb_table_;
     }
+#endif
 
     void table_thread_init() {
+#if TPCC_SPLIT_TABLE
+        ycsb_odd_table_.thread_init();
+        ycsb_even_table_.thread_init();
+#else
         ycsb_table_.thread_init();
+#endif
     }
 
     void prepopulate();
 
 private:
+#if TPCC_SPLIT_TABLE
+    ycsb_half_table_type ycsb_odd_table_;
+    ycsb_half_table_type ycsb_even_table_;
+#else
     ycsb_table_type ycsb_table_;
+#endif
 };
 
 struct ycsb_op_t {
@@ -56,14 +78,21 @@ struct ycsb_op_t {
             : is_write(w), key(k), col_n(c) {}
     bool is_write;
     uint32_t key;
-    int32_t col_n;
+    int16_t col_n;
+    ycsb_value::col_type write_value;
+};
+
+struct ycsb_txn_t {
+    ycsb_txn_t() : rw_txn(false), ops() {}
+
+    bool rw_txn;
+    std::vector<ycsb_op_t> ops;
 };
 
 template <typename DBParams>
 class ycsb_runner {
 public:
-    typedef std::vector<ycsb_op_t> ycsb_txn_t;
-
+    static constexpr bool Commute = DBParams::Commute;
     ycsb_runner(int tid, ycsb_db<DBParams>& database, mode_id mid)
         : db(database), ig(tid), runner_id(tid), mode(mid),
           ud(), dd(), write_threshold() {}
@@ -80,7 +109,7 @@ public:
                 write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max()/20);
                 break;
             case mode_id::HighContention:
-                dd = new sampling::StoZipfDistribution<>(ig.generator(), 0, ycsb_table_size - 1, 0.9);
+                dd = new sampling::StoZipfDistribution<>(ig.generator(), 0, ycsb_table_size - 1, 0.99);
                 write_threshold = (uint32_t) (std::numeric_limits<uint32_t>::max()/2);
                 break;
             default:
@@ -100,7 +129,7 @@ public:
 
 private:
     ycsb_db<DBParams>& db;
-    ycsb_input_generator<DBParams> ig;
+    ycsb_input_generator ig;
     int runner_id;
     mode_id mode;
 

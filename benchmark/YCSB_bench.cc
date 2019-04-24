@@ -58,10 +58,15 @@ static inline void print_usage(const char *argv_0) {
 template <typename DBParams>
 void ycsb_prepopulation_thread(int thread_id, ycsb_db<DBParams>& db, uint64_t key_begin, uint64_t key_end) {
     set_affinity(thread_id);
-    ycsb_input_generator<DBParams> ig(thread_id);
+    ycsb_input_generator ig(thread_id);
     db.table_thread_init();
     for (uint64_t i = key_begin; i < key_end; ++i) {
-        db.ycsb_table().nontrans_put(ycsb_key(i), ig.random_ycsb_value());
+#if TPCC_SPLIT_TABLE
+        db.ycsb_half_tables(true).nontrans_put(ycsb_key(i), ig.random_ycsb_value<ycsb_half_value>());
+        db.ycsb_half_tables(false).nontrans_put(ycsb_key(i), ig.random_ycsb_value<ycsb_half_value>());
+#else
+        db.ycsb_table().nontrans_put(ycsb_key(i), ig.random_ycsb_value<ycsb_value>());
+#endif
     }
 }
 
@@ -245,6 +250,7 @@ public:
         workload_generation(runners, mode);
         std::cout << "Done." << std::endl;
         if (enable_gc) {
+            Transaction::set_epoch_cycle(1000);
             advancer = std::thread(&Transaction::epoch_advancer, nullptr);
             advancer.detach();
         }
