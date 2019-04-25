@@ -9,6 +9,9 @@
 #include "SystemProfiler.hh"
 #include "YCSB_structs.hh"
 #include "YCSB_commutators.hh"
+#if TABLE_FINE_GRAINED
+#include "YCSB_selectors.hh"
+#endif
 #include "DB_index.hh"
 #include "DB_params.hh"
 
