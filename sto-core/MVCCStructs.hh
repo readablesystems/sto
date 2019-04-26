@@ -104,7 +104,11 @@ public:
     inline void hard_gc_push(const bool inlined) {
         assert(gc_enqueued_.load());
         if (inlined) {
+#if MVCC_INLINING
             Transaction::rcu_call(gc_inlined_cb, this);
+#else
+            assert(false);
+#endif
         } else {
             Transaction::rcu_delete(this);
         }
