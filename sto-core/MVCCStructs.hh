@@ -166,14 +166,14 @@ public:
 
     // Returns the status
     inline MvStatus status() const {
-        return status_;
+        return status_.load();
     }
 
     // Sets and returns the status
     // NOT THREADSAFE
     inline MvStatus status(MvStatus s) {
-        status_ = s;
-        return status_;
+        status_.store(s, std::memory_order_relaxed);
+        return status_.load(std::memory_order_relaxed);
     }
     inline MvStatus status(unsigned long long s) {
         return status((MvStatus)s);
@@ -326,7 +326,9 @@ private:
 
     static void gc_inlined_cb(void *ptr) {
         history_type *h = static_cast<history_type*>(ptr);
-        h->object()->delete_history(h);
+        assert(h->gc_enqueued_.load());
+        h->object()->itid_.store(0, std::memory_order_relaxed);
+        h->object()->ih_.status_unused();
     }
 
     // Returns true if the given prev pointer would be a valid prev element
@@ -380,23 +382,23 @@ public:
             ih_.status_delete();
         }
         ih_.status_commit();
-        itid_ = ih_.rtid();
+        itid_.store(ih_.rtid(), std::memory_order_relaxed);
     }
     explicit MvObject(const T& value)
             : h_(&ih_), ih_(0, this, value) {
         ih_.status_commit();
-        itid_ = ih_.rtid();
+        itid_.store(ih_.rtid(), std::memory_order_relaxed);
     }
     explicit MvObject(T&& value)
             : h_(&ih_), ih_(0, this, value) {
         ih_.status_commit();
-        itid_ = ih_.rtid();
+        itid_.store(ih_.rtid(), std::memory_order_relaxed);
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
             : h_(&ih_), ih_(0, this, T(std::forward<Args>(args)...)) {
         ih_.status_commit();
-        itid_ = ih_.rtid();
+        itid_.store(ih_.rtid(), std::memory_order_relaxed);
     }
 #else
     MvObject() : h_(new history_type(this)) {
@@ -483,7 +485,7 @@ public:
         h->status_commit();
 #if MVCC_INLINING
         if (h->prev() == &ih_) {
-            itid_ = h->wtid();
+            itid_.store(h->wtid(), std::memory_order_relaxed);
         }
 #endif
 
@@ -526,7 +528,7 @@ public:
             }
 
             // Discover target atomic on which to do CAS
-            std::atomic<history_type*> *target = &h_;
+            std::atomic<history_type*>* target = &h_;
             history_type* t = *target;
             while (t->wtid() > tid) {
                 target = &t->prev_;
@@ -534,12 +536,25 @@ public:
             }
 
             // Properly link h's prev_
-            h->prev_ = t;
+            h->prev_.store(t, std::memory_order_relaxed);
 
             // Attempt to CAS onto the target
             if (target->compare_exchange_strong(t, h)) {
-                if (t->is_gc_enqueued()) {
-                    h->gc_push(is_inlined(h));
+                // Looping is necessary because between (1) we load
+                // the prev_ pointer and (2) we check the gc_enqueued
+                // bit stored in the prev_ object new pending versions
+                // could get installed in between.
+                while (true) {
+                    auto p = h->prev_.load();
+                    bool prev_gc_enqueued = p->is_gc_enqueued();
+                    auto pp = h->prev_.load();
+                    if (p == pp) {
+                        if (prev_gc_enqueued) {
+                            assert(h != h_.load());
+                            h->gc_push(is_inlined(h));
+                        }
+                        break;
+                    }
                 }
                 break;
             }
@@ -553,7 +568,7 @@ public:
 
 #if MVCC_INLINING
         if (is_inlined(h)) {
-            itid_ = h->rtid();
+            itid_.store(h->rtid(), std::memory_order_relaxed);
         }
 #endif
 
@@ -562,10 +577,13 @@ public:
 
     // Deletes the history element if it was new'ed, or set it as UNUSED if it
     // is the inlined version
+    // !!! IMPORTANT !!!
+    // This function should only be used to free history nodes that have NOT been
+    // hooked into the version chain
     void delete_history(history_type *h) {
 #if MVCC_INLINING
         if (&ih_ == h) {
-            itid_ = 0;
+            assert(itid_.load() == 0);
             ih_.status_unused();
             return;
         }
@@ -636,6 +654,7 @@ public:
         if (status == UNUSED &&
                 ih_.status_.compare_exchange_strong(status, PENDING)) {
             // Use inlined history element
+            assert(itid_.load(std::memory_order_relaxed) == 0);
             new (&ih_) history_type(std::forward<Args>(args)...);
             return &ih_;
         }
