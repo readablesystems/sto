@@ -373,7 +373,6 @@ public:
 
 #if MVCC_INLINING
     MvObject() : h_(&ih_), ih_(this) {
-        itid_ = ih_.rtid();
         if (std::is_trivial<T>::value) {
             ih_.v_ = T();
             ih_.status_delete();
@@ -381,6 +380,7 @@ public:
             ih_.status_delete();
         }
         ih_.status_commit();
+        itid_ = ih_.rtid();
     }
     explicit MvObject(const T& value)
             : h_(&ih_), ih_(0, this, value) {
@@ -551,6 +551,12 @@ public:
             return false;
         }
 
+#if MVCC_INLINING
+        if (is_inlined(h)) {
+            itid_ = h->rtid();
+        }
+#endif
+
         return true;
     }
 
@@ -631,7 +637,6 @@ public:
                 ih_.status_.compare_exchange_strong(status, PENDING)) {
             // Use inlined history element
             new (&ih_) history_type(std::forward<Args>(args)...);
-            itid_ = ih_.rtid();
             return &ih_;
         }
 #endif
