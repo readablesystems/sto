@@ -176,7 +176,7 @@ public:
     // Sets and returns the status
     // NOT THREADSAFE
     inline MvStatus status(MvStatus s) {
-        status_.store(s, std::memory_order_relaxed);
+        status_.store(s, std::memory_order_release);
         return status_.load(std::memory_order_relaxed);
     }
     inline MvStatus status(unsigned long long s) {
@@ -331,7 +331,7 @@ private:
     static void gc_inlined_cb(void *ptr) {
         history_type *h = static_cast<history_type*>(ptr);
         assert(h->gc_enqueued_.load());
-        h->object()->itid_.store(0, std::memory_order_relaxed);
+        h->object()->itid_.store(0, std::memory_order_release);
         h->object()->ih_.status_unused();
     }
 
@@ -386,23 +386,23 @@ public:
             ih_.status_delete();
         }
         ih_.status_commit();
-        itid_.store(ih_.rtid(), std::memory_order_relaxed);
+        itid_.store(ih_.rtid(), std::memory_order_release);
     }
     explicit MvObject(const T& value)
             : h_(&ih_), ih_(0, this, value) {
         ih_.status_commit();
-        itid_.store(ih_.rtid(), std::memory_order_relaxed);
+        itid_.store(ih_.rtid(), std::memory_order_release);
     }
     explicit MvObject(T&& value)
             : h_(&ih_), ih_(0, this, value) {
         ih_.status_commit();
-        itid_.store(ih_.rtid(), std::memory_order_relaxed);
+        itid_.store(ih_.rtid(), std::memory_order_release);
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
             : h_(&ih_), ih_(0, this, T(std::forward<Args>(args)...)) {
         ih_.status_commit();
-        itid_.store(ih_.rtid(), std::memory_order_relaxed);
+        itid_.store(ih_.rtid(), std::memory_order_release);
     }
 #else
     MvObject() : h_(new history_type(this)) {
@@ -489,7 +489,7 @@ public:
         h->status_commit();
 #if MVCC_INLINING
         if (h->prev() == &ih_) {
-            itid_.store(h->wtid(), std::memory_order_relaxed);
+            itid_.store(h->wtid(), std::memory_order_release);
         }
 #endif
 
@@ -572,7 +572,7 @@ public:
 
 #if MVCC_INLINING
         if (is_inlined(h)) {
-            itid_.store(h->rtid(), std::memory_order_relaxed);
+            itid_.store(h->rtid(), std::memory_order_release);
         }
 #endif
 
@@ -658,7 +658,7 @@ public:
         if (status == UNUSED &&
                 ih_.status_.compare_exchange_strong(status, PENDING)) {
             // Use inlined history element
-            assert(itid_.load(std::memory_order_relaxed) == 0);
+            assert(itid_.load() == 0);
             new (&ih_) history_type(std::forward<Args>(args)...);
             return &ih_;
         }
