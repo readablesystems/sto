@@ -177,7 +177,7 @@ public:
     // NOT THREADSAFE
     inline MvStatus status(MvStatus s) {
         status_.store(s, std::memory_order_release);
-        return status_.load(std::memory_order_relaxed);
+        return status_.load(std::memory_order_acquire);
     }
     inline MvStatus status(unsigned long long s) {
         return status((MvStatus)s);
@@ -331,7 +331,6 @@ private:
     static void gc_inlined_cb(void *ptr) {
         history_type *h = static_cast<history_type*>(ptr);
         assert(h->gc_enqueued_.load());
-        h->object()->itid_.store(0, std::memory_order_release);
         h->object()->ih_.status_unused();
     }
 
@@ -386,23 +385,19 @@ public:
             ih_.status_delete();
         }
         ih_.status_commit();
-        itid_.store(ih_.rtid(), std::memory_order_release);
     }
     explicit MvObject(const T& value)
             : h_(&ih_), ih_(0, this, value) {
         ih_.status_commit();
-        itid_.store(ih_.rtid(), std::memory_order_release);
     }
     explicit MvObject(T&& value)
             : h_(&ih_), ih_(0, this, value) {
         ih_.status_commit();
-        itid_.store(ih_.rtid(), std::memory_order_release);
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
             : h_(&ih_), ih_(0, this, T(std::forward<Args>(args)...)) {
         ih_.status_commit();
-        itid_.store(ih_.rtid(), std::memory_order_release);
     }
 #else
     MvObject() : h_(new history_type(this)) {
@@ -487,11 +482,6 @@ public:
         }
 
         h->status_commit();
-#if MVCC_INLINING
-        if (h->prev() == &ih_) {
-            itid_.store(h->wtid(), std::memory_order_release);
-        }
-#endif
 
         if (h->status_is(COMMITTED_DELTA, COMMITTED)) {
             // Put predecessors in the RCU list, but only if they aren't already
@@ -570,12 +560,6 @@ public:
             return false;
         }
 
-#if MVCC_INLINING
-        if (is_inlined(h)) {
-            itid_.store(h->rtid(), std::memory_order_release);
-        }
-#endif
-
         return true;
     }
 
@@ -587,7 +571,6 @@ public:
     void delete_history(history_type *h) {
 #if MVCC_INLINING
         if (&ih_ == h) {
-            assert(itid_.load() == 0);
             ih_.status_unused();
             return;
         }
@@ -599,18 +582,8 @@ public:
     // pending versions, but if toggled off, will simply return first version,
     // regardless of status
     history_type* find(const type tid, const bool wait=true) const {
-        history_type *h;
-#if MVCC_INLINING
-        if ((ih_.status_is(LOCKED_COMMITTED, COMMITTED) ||
-                    ih_.status_is(ABORTED)) &&
-                tid < itid_) {
-            h = (history_type*)&ih_;
-        } else {
-            h = h_;
-        }
-#else
-        h = h_;
-#endif
+        history_type *h = h_.load(std::memory_order_acquire);
+
         /* TODO: use something smarter than a linear scan */
         while (h) {
             assert(h->status() & (PENDING | ABORTED | COMMITTED));
@@ -658,7 +631,6 @@ public:
         if (status == UNUSED &&
                 ih_.status_.compare_exchange_strong(status, PENDING)) {
             // Use inlined history element
-            assert(itid_.load() == 0);
             new (&ih_) history_type(std::forward<Args>(args)...);
             return &ih_;
         }
@@ -716,7 +688,6 @@ protected:
     std::atomic<history_type*> h_;
 #if MVCC_INLINING
     history_type ih_;  // Inlined version
-    std::atomic<type> itid_;  // TID representing until when the inlined version is correct
 #endif
 
     friend class MvHistory<T>;
