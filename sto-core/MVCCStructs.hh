@@ -93,12 +93,15 @@ public:
     }
 
     // Pushes the current element onto the GC list if it isn't already, along
-    // with a boolean for whether it is the inlined version
-    inline void gc_push(const bool inlined) {
+    // with a boolean for whether it is the inlined version.
+    // Returns whether the push succeeded (fails if already on queue)
+    inline bool gc_push(const bool inlined) {
         bool expected = false;
         if (gc_enqueued_.compare_exchange_strong(expected, true)) {
             hard_gc_push(inlined);
+            return true;
         }
+        return false;
     }
 
     inline void hard_gc_push(const bool inlined) {
@@ -524,8 +527,10 @@ public:
             // Discover target atomic on which to do CAS
             std::atomic<history_type*>* target = &h_;
             history_type* t = *target;
+            history_type* next = nullptr;
             while (t->wtid() > tid) {
                 target = &t->prev_;
+                next = t;
                 t = *target;
             }
 
@@ -534,20 +539,13 @@ public:
 
             // Attempt to CAS onto the target
             if (target->compare_exchange_strong(t, h)) {
-                // Looping is necessary because between (1) we load
-                // the prev_ pointer and (2) we check the gc_enqueued
-                // bit stored in the prev_ object new pending versions
-                // could get installed in between.
-                while (true) {
-                    auto p = h->prev_.load();
-                    bool prev_gc_enqueued = p->is_gc_enqueued();
-                    auto pp = h->prev_.load();
-                    if (p == pp) {
-                        if (prev_gc_enqueued) {
-                            assert(h != h_.load());
-                            h->gc_push(is_inlined(h));
+                if (next && next->is_gc_enqueued()) {
+                    history_type* v = h;
+                    while (v && !v->is_gc_enqueued()) {
+                        if (!v->gc_push(is_inlined(v))) {
+                            break;
                         }
-                        break;
+                        v = v->prev();
                     }
                 }
                 break;
