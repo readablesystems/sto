@@ -767,7 +767,8 @@ private:
     uint64_t key_gen_;
 
     static bool
-    access_all(std::array<access_t, value_container_type::num_versions>& cell_accesses, std::array<TransItem*, value_container_type::num_versions>& cell_items, value_container_type& row_container) {
+    access_all(std::array<access_t, value_container_type::num_versions>& cell_accesses, std::array<TransItem*,
+               value_container_type::num_versions>& cell_items, value_container_type& row_container) {
         for (size_t idx = 0; idx < cell_accesses.size(); ++idx) {
             auto& access = cell_accesses[idx];
             auto proxy = TransProxy(*Sto::transaction(), *cell_items[idx]);
@@ -938,6 +939,8 @@ public:
     typedef typename object_type::history_type history_type;
     typedef commutators::Commutator<value_type> comm_type;
 
+    static constexpr bool Commute = DBParams::Commute;
+
     static constexpr TransItem::flags_type insert_bit = TransItem::user0_bit;
     static constexpr TransItem::flags_type delete_bit = TransItem::user0_bit << 1u;
     static constexpr TransItem::flags_type row_update_bit = TransItem::user0_bit << 2u;
@@ -950,13 +953,19 @@ public:
 
     struct internal_elem {
         static constexpr size_t num_versions = 1;
+        typedef typename SplitParams<value_type>::layout_type split_layout_type;
         key_type key;
-        object_type row;
+        split_layout_type split_row;
+        //object_type row;
 
-        internal_elem(const key_type& k)
-            : key(k), row() {}
-        internal_elem(const key_type& k, const value_type& val)
-            : key(k), row(val) {}
+        template <typename... Args>
+        internal_elem(const key_type& k, Args... args)
+            : key(k), split_row(std::forward<Args>(args)...) {}
+
+        template <int I>
+        void* chain_at() {
+            return &std::get<I>(split_row);
+        }
 
         constexpr static int map(int col_n) {
             (void)col_n;  // TODO(column-splitting)
@@ -982,14 +991,18 @@ public:
     typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
     typedef std::tuple<bool, bool>                               ins_return_type;
     typedef std::tuple<bool, bool>                               del_return_type;
+    typedef std::tuple<bool, bool, uintptr_t,
+                       std::array<void*, SplitParams<value_type>::num_splits>> sel_split_return_type;
 
     using index_t = mvcc_ordered_index<K, V, DBParams>;
     using column_access_t = typename split_version_helpers<index_t>::column_access_t;
     using item_key_t = typename split_version_helpers<index_t>::item_key_t;
-    template <typename T> static constexpr auto column_to_cell_accesses =
-        split_version_helpers<index_t>::template column_to_cell_accesses<T>;
+    template <typename T> static constexpr auto mvcc_column_to_cell_accesses =
+        split_version_helpers<index_t>::template mvcc_column_to_cell_accesses<T>;
     template <typename T> static constexpr auto extract_item_list =
         split_version_helpers<index_t>::template extract_item_list<T>;
+    template <typename SParams>
+    using MvSplitAccessAll = typename split_version_helpers<index_t>::template MvSplitAccessAll<SParams>;
 
     static __thread typename table_params::threadinfo_type *ti;
 
@@ -1057,6 +1070,25 @@ public:
         return sel_return_type(false, false, 0, nullptr);
     }
 
+    // Split version select row
+    sel_split_return_type
+    select_split_row(const key_type& key, std::initializer_list<column_access_t> accesses) {
+        unlocked_cursor_type lp(table_, key);
+        bool found = lp.find_unlocked(*ti);
+        internal_elem *e = lp.value();
+        if (found) {
+            return select_splits(reinterpret_cast<uintptr_t>(e), accesses);
+        } else {
+            return {
+                register_internode_version(lp.node(), lp.full_version_value()),
+                false,
+                0,
+                { nullptr }
+            };
+        }
+    }
+
+
     sel_return_type
     select_row(uintptr_t rid, RowAccess access) {
         auto e = reinterpret_cast<internal_elem *>(rid);
@@ -1113,6 +1145,15 @@ public:
     select_row(uintptr_t, std::initializer_list<column_access_t>) {
         always_assert(false, "Not implemented in MVCC, use split table instead.");
         return { false, false, 0, nullptr };
+    }
+
+    sel_split_return_type
+    select_splits(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
+        using split_params = SplitParams<value_type>;
+        auto e = reinterpret_cast<internal_elem*>(rid);
+        auto cell_accesses = mvcc_column_to_cell_accesses<split_params>(accesses);
+        auto result = MvSplitAccessAll<split_params>::run(cell_accesses, this, e);
+        return {true, true, rid, result};
     }
 
     void update_row(uintptr_t rid, value_type* new_row) {
@@ -1428,7 +1469,7 @@ public:
         }
     }
 
-protected:
+//protected:
     template <typename NodeCallback, typename ValueCallback, bool Reverse>
     class range_scanner {
     public:
@@ -1498,7 +1539,7 @@ protected:
         ValueCallback value_callback_;
     };
 
-private:
+//private:
     table_type table_;
     uint64_t key_gen_;
 
@@ -1524,7 +1565,8 @@ private:
     static bool has_row_cell(const TransItem& item) {
         return (item.flags() & row_cell_bit) != 0;
     }
-    static bool is_phantom(const history_type *h, const TransItem& item) {
+    template <typename T>
+    static bool is_phantom(const MvHistory<T>* h, const TransItem& item) {
         return (h->status_is(DELETED) && !has_insert(item));
     }
 

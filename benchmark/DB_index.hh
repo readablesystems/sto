@@ -222,6 +222,20 @@ public:
     }
 
     template <typename T>
+    constexpr static std::array<access_t, T::num_splits>
+    mvcc_column_to_cell_accesses(std::initializer_list<column_access_t> accesses) {
+        constexpr size_t num_splits = T::num_splits;
+        std::array<access_t, num_splits> cell_accesses { access_t::none };
+
+        for (auto it = accesses.begin(); it != accesses.end(); ++it) {
+            int cell_id = T::map(it->col_id);
+            cell_accesses[cell_id]  = static_cast<access_t>(
+                    static_cast<uint8_t>(cell_accesses[cell_id]) | static_cast<uint8_t>(it->access));
+        }
+        return cell_accesses;
+    }
+
+    template <typename T>
     static std::pair<bool, std::array<TransItem*, T::num_versions>>
     extract_item_list(const std::array<access_t, T::num_versions>& cell_accesses, TObject *tobj, internal_elem *e) {
         bool any_has_write = false;
@@ -237,6 +251,89 @@ public:
         return { any_has_write, cell_items };
     }
 
+    // Template parameters:
+    // C: size of split (should be constant throughout this recursive instantiation)
+    // I: Split index (for iteration)
+    // First: Type of the first split column
+    // Rest...: Type(s) of the rest of the split columns (could be empty)
+    // Return value: success (false == abort)
+    template <int C, int I, typename First, typename... Rest>
+    static bool
+    mvcc_find_all(const std::array<access_t, C>& cell_accesses,
+                  std::array<void*, C>& value_ptrs,
+                  TObject* tobj, internal_elem* e) {
+        auto obj = static_cast<MvObject<First>*>(e->template chain_at<I>());
+        if (cell_accesses[I] != access_t::none) {
+            auto item = Sto::item(tobj, item_key_t(e, I));
+            auto h = obj->find(Sto::read_tid<IndexType::Commute>());
+            if (!h->status_is(UNUSED) && !IndexType::template is_phantom<First>(h, item)) {
+                // XXX No read-my-write stuff for now.
+                MvAccess::template read<First>(item, h);
+#if SAFE_FLATTEN
+                auto vp = h->vp_safe_flatten();
+                if (vp == nullptr)
+                    return false;
+                value_ptrs[I] = vp;
+#else
+                auto vp = h->vp();
+                assert(vp);
+                value_ptrs[I] = vp;
+#endif
+            }
+        }
+        return mvcc_find_all<C, I + 1, Rest...>(cell_accesses, value_ptrs, tobj, e);
+    }
+
+    template <int C, int I>
+    static bool
+    mvcc_find_all(const std::array<access_t, C>&, std::array<void*, C>&, TObject*, internal_elem*) {
+        static_assert(I == C, "Index invalid.");
+        return true;
+    }
+    template <typename P, typename Tuple = typename P::split_type_list>
+    struct MvSplitAccessAll;
+
+    template <typename P, typename... SplitTypes>
+    struct MvSplitAccessAll<P, std::tuple<SplitTypes...>> {
+        static std::array<void*, P::num_splits> run(
+                const std::array<access_t, P::num_splits>& cell_accesses,
+                TObject* tobj,
+                internal_elem* e) {
+            bool any_has_write = false;
+            std::array<void*, P::num_splits> value_ptrs = { nullptr };
+            mvcc_find_all<P::num_splits, 0, SplitTypes...>(cell_accesses, value_ptrs, tobj, e);
+            return value_ptrs;
+        }
+    };
+};
+
+// MVCC split version!
+
+// Helper class that turns a tuple<A, B, ...> into
+// tuple<MvObject<A>, MvObject<B>, ...>
+template <typename Tuple>
+struct SplitMvObjectBuilder;
+template <class... T>
+struct SplitMvObjectBuilder<std::tuple<T...>> {
+    using type = std::tuple<MvObject<T>...>;
+};
+
+// MVCC default split parameters
+template <typename RowType>
+struct SplitParams {
+    // These are auto-generated or user-specified.
+    using split_type_list = std::tuple<RowType>;
+    static constexpr auto split_builder = std::make_tuple(
+        [](RowType* out, RowType* in) -> void {*out = *in;}
+    );
+    static constexpr auto split_merger = std::make_tuple(
+        [](RowType* out, RowType* in) -> void {*out = *in;}
+    );
+    static constexpr auto map = [](int) -> int {return 0;};
+
+    // These need not change.
+    using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
+    static constexpr size_t num_splits = std::tuple_size<layout_type>::value;
 };
 
 template <typename K, typename V, typename DBParams>

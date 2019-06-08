@@ -5,6 +5,7 @@ add_executable(unit-tarray unit-tarray.cc)
 add_executable(unit-tmvbox unit-tmvbox.cc)
 add_executable(unit-tbox unit-tbox.cc)
 add_executable(unit-dboindex unit-dboindex.cc)
+add_executable(unit-mvcc-access-all unit-mvcc-access-all.cc)
 
 target_link_libraries(unit-swisstarray sto dprint)
 target_link_libraries(unit-tflexarray sto dprint)
