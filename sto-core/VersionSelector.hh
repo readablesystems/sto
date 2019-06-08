@@ -69,7 +69,7 @@ private:
     version_type vers_;
 };
 
-}; // namespace ver_sel
+}  // namespace ver_sel
 
 // This is the actual "value type" to be put into the index
 template <typename RowType, typename VersImpl>
@@ -170,7 +170,7 @@ private:
     version_type vers_[num_versions];
 };
 
-}; // namespace ver_sel
+}  // namespace ver_sel
 
 // And in our DB index we can simply use the following type as value type:
 // (assuming we use bench::ordered_index<K, V, DBParams>)
