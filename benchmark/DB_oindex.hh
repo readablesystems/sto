@@ -879,7 +879,7 @@ public:
             : key(k), split_row(std::forward<Args>(args)...) {}
 
         template <int I>
-        void* chain_at() {
+        std::tuple_element_t<I, split_layout_type>* chain_at() {
             return &std::get<I>(split_row);
         }
 
@@ -936,8 +936,7 @@ public:
         split_version_helpers<index_t>::template mvcc_column_to_cell_accesses<T>;
     template <typename T> static constexpr auto extract_item_list =
         split_version_helpers<index_t>::template extract_item_list<T>;
-    template <typename SParams>
-    using MvSplitAccessAll = typename split_version_helpers<index_t>::template MvSplitAccessAll<SParams>;
+    using MvSplitAccessAll = typename split_version_helpers<index_t>::template MvSplitAccessAll<SplitParams<value_type>>;
 
     static __thread typename table_params::threadinfo_type *ti;
 
@@ -1087,7 +1086,7 @@ public:
         using split_params = SplitParams<value_type>;
         auto e = reinterpret_cast<internal_elem*>(rid);
         auto cell_accesses = mvcc_column_to_cell_accesses<split_params>(accesses);
-        auto result = MvSplitAccessAll<split_params>::run(cell_accesses, this, e);
+        auto result = MvSplitAccessAll::run(cell_accesses, this, e);
         return {true, true, rid, result};
     }
 
@@ -1314,76 +1313,36 @@ public:
         }
     }
 
+    template <typename TSplit>
+    bool lock_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain);
+    template <typename TSplit>
+    bool check_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain);
+    template <typename TSplit>
+    void install_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain);
+    template <typename TSplit>
+    void cleanup_impl_per_chain(TransItem& item, bool committed, MvObject<TSplit>* chain);
+
     // TObject interface methods
     bool lock(TransItem& item, Transaction& txn) override {
         assert(!is_internode(item));
         auto key = item.key<item_key_t>();
-        auto e = key.internal_elem_ptr();
-
-        history_type *hprev = nullptr;
-        if (item.has_read()) {
-            hprev = item.read_value<history_type*>();
-            if (Sto::commit_tid() < hprev->rtid()) {
-                TransProxy(txn, item).add_write(nullptr);
-                TXP_ACCOUNT(txp_tpcc_lock_abort1, txn.special_txp);
-                return false;
-            }
-        }
-        history_type *h = nullptr;
-        if (item.has_commute()) {
-            auto wval = item.template write_value<comm_type>();
-            h = e->row.new_history(
-                Sto::commit_tid(), &e->row, std::move(wval), hprev);
-        } else {
-            auto wval = item.template raw_write_value<value_type*>();
-            if (has_delete(item)) {
-                h = e->row.new_history(
-                    Sto::commit_tid(), &e->row, nullptr, hprev);
-                h->status_delete();
-                h->set_delete_cb(this, _delete_cb, e);
-            } else {
-                h = e->row.new_history(
-                    Sto::commit_tid(), &e->row, wval, hprev);
-            }
-        }
-        assert(h);
-        bool result = e->row.cp_lock(Sto::commit_tid(), h);
-        if (!result && !h->status_is(MvStatus::ABORTED)) {
-            e->row.delete_history(h);
-            TransProxy(txn, item).add_mvhistory(nullptr);
-            TXP_ACCOUNT(txp_tpcc_lock_abort2, txn.special_txp);
-        } else {
-            TransProxy(txn, item).add_mvhistory(h);
-            TXP_ACCOUNT(txp_tpcc_lock_abort3, txn.special_txp && !result);
-        }
-        return result;
+        return MvSplitAccessAll::run_lock(key.cell_num(), txn, item, this);
     }
 
     bool check(TransItem& item, Transaction& txn) override {
+        int cell_id;
         if (is_internode(item)) {
-            node_type *n = get_internode_address(item);
-            auto curr_nv = static_cast<leaf_type *>(n)->full_version_value();
-            auto read_nv = item.template read_value<decltype(curr_nv)>();
-            auto result = (curr_nv == read_nv);
-            TXP_ACCOUNT(txp_tpcc_check_abort1, txn.special_txp && !result);
-            return result;
+            cell_id = 0;
         } else {
-            auto key = item.key<item_key_t>();
-            auto e = key.internal_elem_ptr();
-            auto h = item.template read_value<history_type*>();
-            auto result = e->row.cp_check(txn_read_tid(), h);
-            TXP_ACCOUNT(txp_tpcc_check_abort2, txn.special_txp && !result);
-            return result;
+            cell_id = item.key<item_key_t>().cell_num();
         }
+        return MvSplitAccessAll::run_check(cell_id, txn, item, this);
     }
 
-    void install(TransItem& item, Transaction&) override {
+    void install(TransItem& item, Transaction& txn) override {
         assert(!is_internode(item));
         auto key = item.key<item_key_t>();
-        auto e = key.internal_elem_ptr();
-        auto h = item.template write_value<history_type*>();
-
-        e->row.cp_install(h);
+        MvSplitAccessAll::run_install(key.cell_num(), txn, item, this);
     }
 
     void unlock(TransItem& item) override {
@@ -1392,16 +1351,9 @@ public:
     }
 
     void cleanup(TransItem& item, bool committed) override {
-        if (!committed) {
-            auto key = item.key<item_key_t>();
-            auto e = key.internal_elem_ptr();
-            if (item.has_mvhistory()) {
-                auto h = item.template write_value<history_type*>();
-                if (h) {
-                    e->row.abort(h);
-                }
-            }
-        }
+        assert(!is_internode(item));
+        auto key = item.key<item_key_t>();
+        MvSplitAccessAll::run_cleanup(key.cell_num(), item, committed, this);
     }
 
 //protected:
@@ -1569,5 +1521,100 @@ public:
 template <typename K, typename V, typename DBParams>
 __thread typename mvcc_ordered_index<K, V, DBParams>::table_params::threadinfo_type
 *mvcc_ordered_index<K, V, DBParams>::ti;
+
+
+template <typename K, typename V, typename DBParams>
+template <typename TSplit>
+bool mvcc_ordered_index<K, V, DBParams>::lock_impl_per_chain(
+        TransItem& item, Transaction& txn, MvObject<TSplit>* chain) {
+    auto e = item.key<item_key_t>().internal_elem_ptr();
+    using history_type = typename MvObject<TSplit>::history_type;
+    using comm_type = typename commutators::Commutator<TSplit>;
+
+    history_type *hprev = nullptr;
+    if (item.has_read()) {
+        hprev = item.read_value<history_type*>();
+        if (Sto::commit_tid() < hprev->rtid()) {
+            TransProxy(txn, item).add_write(nullptr);
+            TXP_ACCOUNT(txp_tpcc_lock_abort1, txn.special_txp);
+            return false;
+        }
+    }
+    history_type *h = nullptr;
+    if (item.has_commute()) {
+        auto wval = item.template write_value<comm_type>();
+        h = chain->new_history(
+                Sto::commit_tid(), chain, std::move(wval), hprev);
+    } else {
+        auto wval = item.template raw_write_value<TSplit*>();
+        if (has_delete(item)) {
+            h = chain->new_history(
+                    Sto::commit_tid(), chain, nullptr, hprev);
+            h->status_delete();
+            h->set_delete_cb(this, _delete_cb, e);
+        } else {
+            h = chain->new_history(
+                    Sto::commit_tid(), chain, wval, hprev);
+        }
+    }
+    assert(h);
+    bool result = chain->cp_lock(Sto::commit_tid(), h);
+    if (!result && !h->status_is(MvStatus::ABORTED)) {
+        chain->delete_history(h);
+        TransProxy(txn, item).add_mvhistory(nullptr);
+        TXP_ACCOUNT(txp_tpcc_lock_abort2, txn.special_txp);
+    } else {
+        TransProxy(txn, item).add_mvhistory(h);
+        TXP_ACCOUNT(txp_tpcc_lock_abort3, txn.special_txp && !result);
+    }
+    return result;
+}
+
+template <typename K, typename V, typename DBParams>
+template <typename TSplit>
+bool mvcc_ordered_index<K, V, DBParams>::check_impl_per_chain(TransItem &item, Transaction &txn,
+                                                              MvObject<TSplit> *chain) {
+    using history_type = typename MvObject<TSplit>::history_type;
+    if (is_internode(item)) {
+        node_type *n = get_internode_address(item);
+        auto curr_nv = static_cast<leaf_type *>(n)->full_version_value();
+        auto read_nv = item.template read_value<decltype(curr_nv)>();
+        auto result = (curr_nv == read_nv);
+        TXP_ACCOUNT(txp_tpcc_check_abort1, txn.special_txp && !result);
+        return result;
+    } else {
+        auto key = item.key<item_key_t>();
+        auto h = item.template read_value<history_type*>();
+        auto result = chain->cp_check(txn_read_tid(), h);
+        TXP_ACCOUNT(txp_tpcc_check_abort2, txn.special_txp && !result);
+        return result;
+    }
+}
+
+template <typename K, typename V, typename DBParams>
+template <typename TSplit>
+void mvcc_ordered_index<K, V, DBParams>::install_impl_per_chain(TransItem &item, Transaction &txn,
+                                                                MvObject<TSplit> *chain) {
+    using history_type = typename MvObject<TSplit>::history_type;
+    assert(!is_internode(item));
+    auto h = item.template write_value<history_type*>();
+    chain->cp_install(h);
+}
+
+template <typename K, typename V, typename DBParams>
+template <typename TSplit>
+void mvcc_ordered_index<K, V, DBParams>::cleanup_impl_per_chain(TransItem &item, bool committed,
+                                                                MvObject<TSplit> *chain) {
+    using history_type = typename MvObject<TSplit>::history_type;
+    if (!committed) {
+        auto key = item.key<item_key_t>();
+        if (item.has_mvhistory()) {
+            auto h = item.template write_value<history_type*>();
+            if (h) {
+                chain->abort(h);
+            }
+        }
+    }
+}
 
 } // namespace bench

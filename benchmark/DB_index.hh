@@ -262,10 +262,10 @@ public:
     mvcc_find_all(const std::array<access_t, C>& cell_accesses,
                   std::array<void*, C>& value_ptrs,
                   TObject* tobj, internal_elem* e) {
-        auto obj = static_cast<MvObject<First>*>(e->template chain_at<I>());
+        auto mvobj = e->template chain_at<I>();
         if (cell_accesses[I] != access_t::none) {
             auto item = Sto::item(tobj, item_key_t(e, I));
-            auto h = obj->find(Sto::read_tid<IndexType::Commute>());
+            auto h = mvobj->find(Sto::read_tid<IndexType::Commute>());
             if (!h->status_is(UNUSED) && !IndexType::template is_phantom<First>(h, item)) {
                 // XXX No read-my-write stuff for now.
                 MvAccess::template read<First>(item, h);
@@ -290,19 +290,92 @@ public:
         static_assert(I == C, "Index invalid.");
         return true;
     }
+
+    // Static looping for TObject::lock
+    template <int C, int I, typename First, typename... Rest>
+    static bool mvcc_lock_loop(int cell_id, Transaction& txn, TransItem& item, IndexType* idx) {
+        if (cell_id == I) {
+            auto e = item.key<item_key_t>().internal_elem_ptr();
+            return idx->lock_impl_per_chain(item, txn, e->template chain_at<I>());
+        }
+        return mvcc_lock_loop<C, I+1, Rest...>(cell_id, txn, item, idx);
+    }
+    template<int C, int I>
+    static bool mvcc_lock_loop(int, Transaction&, TransItem&, IndexType*) {
+        static_assert(C == I, "Index invalid");
+        always_assert(false, "One past last iteration should never execute.");
+        return false;
+    }
+    // Static looping for TObject::check
+    template <int C, int I, typename First, typename... Rest>
+    static bool mvcc_check_loop(int cell_id, Transaction& txn, TransItem& item, IndexType* idx) {
+        if (cell_id == I) {
+            auto e = item.key<item_key_t>().internal_elem_ptr();
+            return idx->check_impl_per_chain(item, txn, e->template chain_at<I>());
+        }
+        return mvcc_check_loop<C, I+1, Rest...>(cell_id, txn, item, idx);
+    }
+    template<int C, int I>
+    static bool mvcc_check_loop(int, Transaction&, TransItem&, IndexType*) {
+        static_assert(C == I, "Index invalid");
+        always_assert(false, "One past last iteration should never execute.");
+        return false;
+    }
+    // Static looping for TObject::install
+    template <int C, int I, typename First, typename... Rest>
+    static void mvcc_install_loop(int cell_id, Transaction& txn, TransItem& item, IndexType* idx) {
+        if (cell_id == I) {
+            auto e = item.key<item_key_t>().internal_elem_ptr();
+            idx->install_impl_per_chain(item, txn, e->template chain_at<I>());
+            return;
+        }
+        mvcc_install_loop<C, I+1, Rest...>(cell_id, txn, item, idx);
+    }
+    template<int C, int I>
+    static void mvcc_install_loop(int, Transaction&, TransItem&, IndexType*) {
+        static_assert(C == I, "Index invalid");
+        always_assert(false, "One past last iteration should never execute.");
+    }
+    // Static looping for TObject::cleanup
+    template <int C, int I, typename First, typename... Rest>
+    static void mvcc_cleanup_loop(int cell_id, TransItem& item, bool committed, IndexType* idx) {
+        if (cell_id == I) {
+            auto e = item.key<item_key_t>().internal_elem_ptr();
+            idx->cleanup_impl_per_chain(item, committed, e->template chain_at<I>());
+            return;
+        }
+        mvcc_cleanup_loop<C, I+1, Rest...>(cell_id, item, committed, idx);
+    }
+    template<int C, int I>
+    static void mvcc_cleanup_loop(int, TransItem&, bool, IndexType*) {
+        static_assert(C == I, "Index invalid");
+        always_assert(false, "One past last iteration should never execute.");
+    }
+
+    // Helper struct unwrapping tuples into template parameter packs.
     template <typename P, typename Tuple = typename P::split_type_list>
     struct MvSplitAccessAll;
-
     template <typename P, typename... SplitTypes>
     struct MvSplitAccessAll<P, std::tuple<SplitTypes...>> {
         static std::array<void*, P::num_splits> run(
                 const std::array<access_t, P::num_splits>& cell_accesses,
                 TObject* tobj,
                 internal_elem* e) {
-            bool any_has_write = false;
             std::array<void*, P::num_splits> value_ptrs = { nullptr };
             mvcc_find_all<P::num_splits, 0, SplitTypes...>(cell_accesses, value_ptrs, tobj, e);
             return value_ptrs;
+        }
+        static bool run_lock(int cell_id, Transaction& txn, TransItem& item, IndexType* idx) {
+            return mvcc_lock_loop<P::num_splits, 0, SplitTypes...>(cell_id, txn, item, idx);
+        }
+        static bool run_check(int cell_id, Transaction& txn, TransItem& item, IndexType* idx) {
+            return mvcc_check_loop<P::num_splits, 0, SplitTypes...>(cell_id, txn, item, idx);
+        }
+        static void run_install(int cell_id, Transaction& txn, TransItem& item, IndexType* idx) {
+            mvcc_install_loop<P::num_splits, 0, SplitTypes...>(cell_id, txn, item, idx);
+        }
+        static void run_cleanup(int cell_id, TransItem& item, bool committed, IndexType* idx) {
+            mvcc_cleanup_loop<P::num_splits, 0, SplitTypes...>(cell_id, item, committed, idx);
         }
     };
 };
