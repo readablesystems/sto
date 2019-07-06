@@ -160,6 +160,7 @@ class split_version_helpers {
 public:
     typedef typename IndexType::NamedColumn NamedColumn;
     typedef typename IndexType::internal_elem internal_elem;
+    typedef typename IndexType::value_type value_type;
 
     struct column_access_t {
         int col_id;
@@ -251,15 +252,16 @@ public:
         return { any_has_write, cell_items };
     }
 
+    // mvcc_*_loop() methods: Template meta-programs that iterates through all version "splits" at compile time.
     // Template parameters:
-    // C: size of split (should be constant throughout this recursive instantiation)
+    // C: size of split (should be constant throughout the recursive instantiation)
     // I: Split index (for iteration)
     // First: Type of the first split column
     // Rest...: Type(s) of the rest of the split columns (could be empty)
     // Return value: success (false == abort)
     template <int C, int I, typename First, typename... Rest>
     static bool
-    mvcc_find_all(const std::array<access_t, C>& cell_accesses,
+    mvcc_select_loop(const std::array<access_t, C>& cell_accesses,
                   std::array<void*, C>& value_ptrs,
                   TObject* tobj, internal_elem* e) {
         auto mvobj = e->template chain_at<I>();
@@ -281,14 +283,39 @@ public:
 #endif
             }
         }
-        return mvcc_find_all<C, I + 1, Rest...>(cell_accesses, value_ptrs, tobj, e);
+        return mvcc_select_loop<C, I + 1, Rest...>(cell_accesses, value_ptrs, tobj, e);
     }
 
     template <int C, int I>
     static bool
-    mvcc_find_all(const std::array<access_t, C>&, std::array<void*, C>&, TObject*, internal_elem*) {
+    mvcc_select_loop(const std::array<access_t, C>&, std::array<void*, C>&, TObject*, internal_elem*) {
         static_assert(I == C, "Index invalid.");
         return true;
+    }
+
+    // Generate loops for non-trans access. P is SplitParams.
+    template <int C, int I, typename P, typename First, typename... Rest>
+    static void
+    mvcc_nontrans_put_loop(const value_type& whole_value, internal_elem* e) {
+        e->template chain_at<I>()->nontrans_access() = std::get<I>(P::split_builder)(whole_value);
+        return mvcc_nontrans_put_loop<C, I+1, P, Rest...>(whole_value, e);
+    }
+    template <int C, int I, typename P>
+    static void
+    mvcc_nontrans_put_loop(const value_type&, internal_elem*) {
+        static_assert(I == C, "Index invalid.");
+    }
+    template <int C, int I, typename P, typename First, typename... Rest>
+    static void
+    mvcc_nontrans_get_loop(value_type* whole_value_out, internal_elem* e) {
+        const First* chain_val = &(e->template chain_at<I>()->nontrans_access());
+        std::get<I>(P::split_merger)(whole_value_out, chain_val);
+        return mvcc_nontrans_get_loop<C, I+1, P, Rest...>(whole_value_out, e);
+    }
+    template <int C, int I, typename P>
+    static void
+    mvcc_nontrans_get_loop(value_type*, internal_elem*) {
+        static_assert(I == C, "Index invalid.");
     }
 
     // Static looping for TObject::lock
@@ -357,13 +384,19 @@ public:
     struct MvSplitAccessAll;
     template <typename P, typename... SplitTypes>
     struct MvSplitAccessAll<P, std::tuple<SplitTypes...>> {
-        static std::array<void*, P::num_splits> run(
+        static std::array<void*, P::num_splits> run_select(
                 const std::array<access_t, P::num_splits>& cell_accesses,
                 TObject* tobj,
                 internal_elem* e) {
             std::array<void*, P::num_splits> value_ptrs = { nullptr };
-            mvcc_find_all<P::num_splits, 0, SplitTypes...>(cell_accesses, value_ptrs, tobj, e);
+            mvcc_select_loop<P::num_splits, 0, SplitTypes...>(cell_accesses, value_ptrs, tobj, e);
             return value_ptrs;
+        }
+        static void run_nontrans_put(const value_type& whole_value, internal_elem* e) {
+            mvcc_nontrans_put_loop<P::num_splits, 0, P, SplitTypes...>(whole_value, e);
+        }
+        static void run_nontrans_get(value_type* whole_value_out, internal_elem* e) {
+            mvcc_nontrans_get_loop<P::num_splits, 0, P, SplitTypes...>(whole_value_out, e);
         }
         static bool run_lock(int cell_id, Transaction& txn, TransItem& item, IndexType* idx) {
             return mvcc_lock_loop<P::num_splits, 0, SplitTypes...>(cell_id, txn, item, idx);
@@ -397,10 +430,10 @@ struct SplitParams {
     // These are auto-generated or user-specified.
     using split_type_list = std::tuple<RowType>;
     static constexpr auto split_builder = std::make_tuple(
-        [](RowType* out, RowType* in) -> void {*out = *in;}
+        [](const RowType& in) -> RowType {return in;}
     );
     static constexpr auto split_merger = std::make_tuple(
-        [](RowType* out, RowType* in) -> void {*out = *in;}
+        [](RowType* out, const RowType* in) -> void {*out = *in;}
     );
     static constexpr auto map = [](int) -> int {return 0;};
 
