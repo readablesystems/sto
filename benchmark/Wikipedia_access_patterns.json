@@ -1,0 +1,51 @@
+{
+  "add_watch_list": {
+    "useracct": { "user_touched": "c-update" }
+  },
+  "remove_watch_list": {
+    "useracct": { "user_touched": "c-update" }
+  },
+  "get_page_anon": {
+    "page_idx": { "page_id": "read" },
+    "page": {
+      "page_title": "read",
+      "page_namespace": "read",
+      "page_latest": "read"
+    },
+    "revision": { "rev_text_id": "read" },
+    "text": {
+      "old_text": "read",
+      "old_flags": "read"
+    }
+  },
+  "get_page_auth": {
+    "useracct": { "user_name": "read" },
+    "page_idx": { "page_id": "read" },
+    "page": { "page_latest": "read" },
+    "revision": { "rev_text_id": "read" },
+    "text": {
+      "old_text": "read",
+      "old_flags": "read"
+    }
+  },
+  "list_page_namespace": {
+    "page_idx": { "page_id": "read" },
+    "page": { "page_title": "read" }
+  },
+  "update_page": {
+    "page": {
+      "page_latest": "c-update",
+      "page_touched": "c-update",
+      "page_is_new": "c-update",
+      "page_is_redirect": "c-update",
+      "page_len": "c-update"
+    },
+    "watchlist": {
+      "notificationtimestamp": "c-update"
+    },
+    "useracct": {
+      "user_editcount": "c-update",
+      "user_touched": "c-update"
+    }
+  }
+}

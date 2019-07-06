@@ -1086,7 +1086,7 @@ public:
         using split_params = SplitParams<value_type>;
         auto e = reinterpret_cast<internal_elem*>(rid);
         auto cell_accesses = mvcc_column_to_cell_accesses<split_params>(accesses);
-        auto result = MvSplitAccessAll::run(cell_accesses, this, e);
+        auto result = MvSplitAccessAll::run_select(cell_accesses, this, e);
         return {true, true, rid, result};
     }
 
@@ -1288,14 +1288,16 @@ public:
         return scanner.scan_succeeded_;
     }
 
-    value_type *nontrans_get(const key_type& k) {
+    bool nontrans_get(const key_type& k, value_type* value_out) {
         unlocked_cursor_type lp(table_, k);
         bool found = lp.find_unlocked(*ti);
         if (found) {
             internal_elem *e = lp.value();
-            return &(e->row.nontrans_access());
-        } else
-            return nullptr;
+            MvSplitAccessAll::run_nontrans_get(value_out, e);
+            return true;
+        } else {
+            return false;
+        }
     }
 
     void nontrans_put(const key_type& k, const value_type& v) {
@@ -1303,11 +1305,11 @@ public:
         bool found = lp.find_insert(*ti);
         if (found) {
             internal_elem *e = lp.value();
-            e->row.nontrans_access() = v;
+            MvSplitAccessAll::run_nontrans_put(v, e);
             lp.finish(0, *ti);
         } else {
-            internal_elem *e = new internal_elem(k, v);
-            e->row.nontrans_access() = v;
+            internal_elem *e = new internal_elem(k);
+            MvSplitAccessAll::run_nontrans_put(v, e);
             lp.value() = e;
             lp.finish(1, *ti);
         }
@@ -1522,7 +1524,6 @@ template <typename K, typename V, typename DBParams>
 __thread typename mvcc_ordered_index<K, V, DBParams>::table_params::threadinfo_type
 *mvcc_ordered_index<K, V, DBParams>::ti;
 
-
 template <typename K, typename V, typename DBParams>
 template <typename TSplit>
 bool mvcc_ordered_index<K, V, DBParams>::lock_impl_per_chain(
@@ -1551,7 +1552,8 @@ bool mvcc_ordered_index<K, V, DBParams>::lock_impl_per_chain(
             h = chain->new_history(
                     Sto::commit_tid(), chain, nullptr, hprev);
             h->status_delete();
-            h->set_delete_cb(this, _delete_cb, e);
+            // TODO: Figure out what to do with this.
+            //h->set_delete_cb(this, _delete_cb, e);
         } else {
             h = chain->new_history(
                     Sto::commit_tid(), chain, wval, hprev);

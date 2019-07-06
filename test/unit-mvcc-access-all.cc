@@ -43,21 +43,25 @@ struct index_value_part2 {
 
 template <>
 struct bench::SplitParams<index_value> {
-    using split_type_list = std::tuple<index_value_part2, index_value_part2>;
+    using split_type_list = std::tuple<index_value_part1, index_value_part2>;
     static constexpr auto split_builder = std::make_tuple(
-        [](index_value_part1* out, index_value* in) -> void {
-            out->value_1 = in->value_1;
+        [](const index_value& in) -> index_value_part1 {
+            index_value_part1 p1;
+            p1.value_1 = in.value_1;
+            return p1;
         },
-        [](index_value_part2* out, index_value* in) -> void {
-            out->value_2a = in->value_2a;
-            out->value_2b = in->value_2b;
+        [](const index_value& in) -> index_value_part2 {
+            index_value_part2 p2;
+            p2.value_2a = in.value_2a;
+            p2.value_2b = in.value_2b;
+            return p2;
         }
     );
     static constexpr auto split_merger = std::make_tuple(
-        [](index_value* out, index_value_part1* in1) -> void {
+        [](index_value* out, const index_value_part1* in1) -> void {
             out->value_1 = in1->value_1;
         },
-        [](index_value* out, index_value_part2* in2) -> void {
+        [](index_value* out, const index_value_part2* in2) -> void {
             out->value_2a = in2->value_2a;
             out->value_2b = in2->value_2b;
         }
@@ -81,8 +85,7 @@ void TestMVCCOrderedIndexSplit() {
 
     key_type key {0, 1};
     index_value val { 4, 5, 6 };
-    // XXX Need to implement a new nontrans_split_put()
-    //idx.nontrans_put(key, val);
+    idx.nontrans_put(key, val);
 
     bool success, result;
     uintptr_t row = 0;
