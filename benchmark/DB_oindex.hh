@@ -1528,7 +1528,6 @@ template <typename K, typename V, typename DBParams>
 template <typename TSplit>
 bool mvcc_ordered_index<K, V, DBParams>::lock_impl_per_chain(
         TransItem& item, Transaction& txn, MvObject<TSplit>* chain) {
-    auto e = item.key<item_key_t>().internal_elem_ptr();
     using history_type = typename MvObject<TSplit>::history_type;
     using comm_type = typename commutators::Commutator<TSplit>;
 
@@ -1585,7 +1584,6 @@ bool mvcc_ordered_index<K, V, DBParams>::check_impl_per_chain(TransItem &item, T
         TXP_ACCOUNT(txp_tpcc_check_abort1, txn.special_txp && !result);
         return result;
     } else {
-        auto key = item.key<item_key_t>();
         auto h = item.template read_value<history_type*>();
         auto result = chain->cp_check(txn_read_tid(), h);
         TXP_ACCOUNT(txp_tpcc_check_abort2, txn.special_txp && !result);
@@ -1597,6 +1595,7 @@ template <typename K, typename V, typename DBParams>
 template <typename TSplit>
 void mvcc_ordered_index<K, V, DBParams>::install_impl_per_chain(TransItem &item, Transaction &txn,
                                                                 MvObject<TSplit> *chain) {
+    (void)txn;
     using history_type = typename MvObject<TSplit>::history_type;
     assert(!is_internode(item));
     auto h = item.template write_value<history_type*>();
@@ -1609,7 +1608,6 @@ void mvcc_ordered_index<K, V, DBParams>::cleanup_impl_per_chain(TransItem &item,
                                                                 MvObject<TSplit> *chain) {
     using history_type = typename MvObject<TSplit>::history_type;
     if (!committed) {
-        auto key = item.key<item_key_t>();
         if (item.has_mvhistory()) {
             auto h = item.template write_value<history_type*>();
             if (h) {
