@@ -184,7 +184,8 @@ UNIT_PROGRAMS = \
 	unit-masstree \
 	unit-tmvbox \
 	unit-tmvarray \
-	unit-dboindex
+	unit-dboindex \
+	unit-mvcc-access-all
 
 ACT_UNIT_PROGRAMS = \
 	unit-tarray \
@@ -202,7 +203,8 @@ ACT_UNIT_PROGRAMS = \
 	unit-masstree \
 	unit-tmvbox \
 	unit-tmvarray \
-	unit-dboindex
+	unit-dboindex \
+	unit-mvcc-access-all
 
 PROGRAMS = \
 	concurrent \
@@ -356,6 +358,9 @@ unit-tmvbox: $(OBJ)/unit-tmvbox.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
 
 unit-dboindex: $(OBJ)/unit-dboindex.o $(INDEX_DEPS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(LDFLAGS) $(LIBS)
+
+unit-mvcc-access-all: $(OBJ)/unit-mvcc-access-all.o $(INDEX_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(INDEX_DEPS) $(LDFLAGS) $(LIBS)
 
 list1: $(OBJ)/list1.o $(STO_DEPS)
