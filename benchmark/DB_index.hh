@@ -442,6 +442,15 @@ struct SplitParams {
     static constexpr size_t num_splits = std::tuple_size<layout_type>::value;
 };
 
+template <typename A, typename V>
+class RecordAccessor;
+
+template <typename V>
+class UniRecordAccessor;
+
+template <typename V>
+class SplitRecordAccessor;
+
 template <typename K, typename V, typename DBParams>
 class index_common {
 public:
