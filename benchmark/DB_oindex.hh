@@ -926,8 +926,7 @@ public:
     typedef std::tuple<bool, bool, uintptr_t, const value_type*> sel_return_type;
     typedef std::tuple<bool, bool>                               ins_return_type;
     typedef std::tuple<bool, bool>                               del_return_type;
-    typedef std::tuple<bool, bool, uintptr_t,
-                       std::array<void*, SplitParams<value_type>::num_splits>> sel_split_return_type;
+    typedef std::tuple<bool, bool, uintptr_t, SplitRecordAccessor<V>> sel_split_return_type;
 
     using index_t = mvcc_ordered_index<K, V, DBParams>;
     using column_access_t = typename split_version_helpers<index_t>::column_access_t;
@@ -1017,7 +1016,7 @@ public:
                 register_internode_version(lp.node(), lp.full_version_value()),
                 false,
                 0,
-                { nullptr }
+                SplitRecordAccessor<V>({ nullptr })
             };
         }
     }
@@ -1087,7 +1086,7 @@ public:
         auto e = reinterpret_cast<internal_elem*>(rid);
         auto cell_accesses = mvcc_column_to_cell_accesses<split_params>(accesses);
         auto result = MvSplitAccessAll::run_select(cell_accesses, this, e);
-        return {true, true, rid, result};
+        return {true, true, rid, SplitRecordAccessor<V>(result)};
     }
 
     void update_row(uintptr_t rid, value_type* new_row) {
