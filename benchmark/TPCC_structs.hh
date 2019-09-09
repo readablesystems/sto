@@ -467,7 +467,7 @@ struct order_key {
 #else
     typedef uint16_t key_part_type;
 #endif
-    order_key(key_part_type wid, key_part_type did, key_part_type oid) {
+    order_key(key_part_type wid, key_part_type did, uint32_t oid) {
         o_w_id = bswap(wid);
         o_d_id = bswap(did);
         o_id = bswap(oid);
@@ -489,7 +489,7 @@ struct order_key {
 
     key_part_type o_w_id;
     key_part_type o_d_id;
-    key_part_type o_id;
+    uint32_t o_id;
 };
 
 #if TPCC_SPLIT_TABLE
