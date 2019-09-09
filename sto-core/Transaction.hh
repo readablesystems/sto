@@ -90,6 +90,10 @@
 #define CONTENTION_REGULATION 1
 #endif
 
+#ifndef CONTENTION_AWARE_IDX
+#define CONTENTION_AWARE_IDX 1
+#endif
+
 #if TPCC_SPLIT_TABLE
 #if TABLE_FINE_GRAINED
 #error "Split table and fine-grained table can't be enabled at the same time!"

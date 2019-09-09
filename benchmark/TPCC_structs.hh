@@ -462,7 +462,12 @@ struct order_cidx_key {
 };
 
 struct order_key {
-    order_key(uint64_t wid, uint64_t did, uint64_t oid) {
+#if CONTENTION_AWARE_IDX
+    typedef uint64_t key_part_type;
+#else
+    typedef uint16_t key_part_type;
+#endif
+    order_key(key_part_type wid, key_part_type did, key_part_type oid) {
         o_w_id = bswap(wid);
         o_d_id = bswap(did);
         o_id = bswap(oid);
@@ -482,9 +487,9 @@ struct order_key {
         return lcdf::Str((const char *)this, sizeof(*this));
     }
 
-    uint64_t o_w_id;
-    uint64_t o_d_id;
-    uint64_t o_id;
+    key_part_type o_w_id;
+    key_part_type o_d_id;
+    key_part_type o_id;
 };
 
 #if TPCC_SPLIT_TABLE
