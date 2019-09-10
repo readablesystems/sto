@@ -30,7 +30,7 @@ using namespace bench;
 
 class tpcc_oid_generator {
 public:
-    static constexpr size_t max_whs = 32;
+    static constexpr size_t max_whs = 64;
     static constexpr size_t max_dts = 16;
 
     tpcc_oid_generator() {
@@ -55,7 +55,7 @@ private:
 
 class tpcc_delivery_queue {
 public:
-    static constexpr size_t max_whs = 32;
+    static constexpr size_t max_whs = 64;
 
     tpcc_delivery_queue() {
         bzero(num_enqueued, sizeof(num_enqueued));
