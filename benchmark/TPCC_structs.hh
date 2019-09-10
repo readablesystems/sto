@@ -16,6 +16,10 @@
 #define TABLE_FINE_GRAINED 0
 #endif
 
+#ifndef CONTENTION_AWARE_IDX
+#define CONTENTION_AWARE_IDX 1
+#endif
+
 namespace tpcc {
 
 // singleton class used for fast oid generation
@@ -463,11 +467,13 @@ struct order_cidx_key {
 
 struct order_key {
 #if CONTENTION_AWARE_IDX
-    typedef uint64_t key_part_type;
+    typedef uint64_t wdid_type;
+    typedef uint64_t oid_type;
 #else
-    typedef uint16_t key_part_type;
+    typedef uint16_t wdid_type;
+    typedef uint32_t oid_type;
 #endif
-    order_key(key_part_type wid, key_part_type did, uint32_t oid) {
+    order_key(wdid_type wid, wdid_type did, oid_type oid) {
         o_w_id = bswap(wid);
         o_d_id = bswap(did);
         o_id = bswap(oid);
@@ -487,9 +493,9 @@ struct order_key {
         return lcdf::Str((const char *)this, sizeof(*this));
     }
 
-    key_part_type o_w_id;
-    key_part_type o_d_id;
-    uint32_t o_id;
+    wdid_type o_w_id;
+    wdid_type o_d_id;
+    oid_type o_id;
 };
 
 #if TPCC_SPLIT_TABLE

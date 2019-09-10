@@ -927,7 +927,7 @@ void tpcc_runner<DBParams>::run_txn_delivery(uint64_t q_w_id) {
         //Sto::print_read_set_size("0");
 
         order_key k0(q_w_id, q_d_id, 0);
-        order_key k1(q_w_id, q_d_id, std::numeric_limits<uint32_t>::max());
+        order_key k1(q_w_id, q_d_id, std::numeric_limits<order_key::oid_type>::max());
         success = db.tbl_neworders(q_w_id)
                 .template range_scan<decltype(no_scan_callback), false/*reverse*/>(k0, k1, no_scan_callback, RowAccess::ObserveValue, true, 1);
         CHK(success);
