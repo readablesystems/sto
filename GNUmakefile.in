@@ -282,7 +282,7 @@ INDEX_DEPS = $(INDEX_OBJS) $(MASSTREEDIR)/libjson.a
 
 TPCC_TMPLS = $(OBJ)/tpcc_d.o $(OBJ)/tpcc_dc.o $(OBJ)/tpcc_dn.o $(OBJ)/tpcc_dcn.o \
 	$(OBJ)/tpcc_m.o $(OBJ)/tpcc_mc.o $(OBJ)/tpcc_mn.o $(OBJ)/tpcc_mcn.o \
-	$(OBJ)/tpcc_s.o $(OBJ)/tpcc_t.o $(OBJ)/tpcc_o.o $(OBJ)/tpcc_oc.o
+	$(OBJ)/tpcc_s.o $(OBJ)/tpcc_t.o $(OBJ)/tpcc_tc.o $(OBJ)/tpcc_o.o $(OBJ)/tpcc_oc.o
 
 concurrent: $(OBJ)/concurrent.o $(STO_DEPS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $@ $< $(STO_OBJS) $(LDFLAGS) $(LIBS)
