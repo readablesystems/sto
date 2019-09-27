@@ -342,10 +342,14 @@ int main(int argc, const char *const *argv) {
         break;
     */
     case db_params_id::TicToc:
-        if (node_tracking || enable_commute) {
+        if (node_tracking) {
             std::cerr << "Warning: node tracking and commute options ignored." << std::endl;
         }
-        ret_code = ycsb_access<db_tictoc_params>::execute(argc, argv);
+        if (enable_commute) {
+            ret_code = ycsb_access<db_tictoc_commute_params>::execute(argc, argv);
+        } else {
+            ret_code = ycsb_access<db_tictoc_params>::execute(argc, argv);
+        }
         break;
     case db_params_id::MVCC:
         if (node_tracking && enable_commute) {

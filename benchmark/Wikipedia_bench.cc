@@ -11,6 +11,8 @@ using db_params::constants;
 using db_params::db_params_id;
 using db_params::db_default_params;
 using db_params::db_default_commute_params;
+using db_params::db_tictoc_params;
+using db_params::db_tictoc_commute_params;
 using db_params::db_mvcc_params;
 using db_params::db_mvcc_commute_params;
 using db_params::parse_dbid;
@@ -248,6 +250,11 @@ int main(int argc, const char * const *argv) {
                     bench_access<db_default_commute_params>::execute(params) :
                     bench_access<db_default_params>::execute(params);
             break;
+        case db_params_id::TicToc:
+            ret_code = params.enable_comm ?
+                    bench_access<db_tictoc_commute_params>::execute(params) :
+                    bench_access<db_tictoc_params>::execute(params);
+            break;
 #if 0
         case db_params_id::Opaque:
             ret_code = bench_access<db_opaque_params>::execute(params);
@@ -260,9 +267,6 @@ int main(int argc, const char * const *argv) {
             break;
         case db_params_id::Swiss:
             ret_code = bench_access<db_swiss_params>::execute(params);
-            break;
-        case db_params_id::TicToc:
-            ret_code = bench_access<db_tictoc_params>::execute(params);
             break;
 #endif
         case db_params_id::MVCC:
