@@ -12,7 +12,7 @@ endif
 AR = ar
 CC = @CC@
 CXX = @CXX@
-CPPFLAGS := -std=c++14
+CPPFLAGS := -std=c++17
 DEPSDIR := .deps
 DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
 LIBS = @LIBS@ $(MASSTREEDIR)/libjson.a $(LIBMALLOC) -lpthread -lm -lnuma
