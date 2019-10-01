@@ -1,5 +1,7 @@
 #include "TRcu.hh"
 
+#include <limits>
+
 TRcuSet::TRcuSet()
     : clean_epoch_(0) {
     unsigned capacity = (4080 - sizeof(TRcuGroup)) / sizeof(TRcuGroup::TRcuElement);
@@ -83,4 +85,8 @@ void TRcuSet::hard_clean_until(epoch_type max_epoch) {
         empty_tail->next_ = current_->next_;
         current_->next_ = empty_head;
     }
+}
+
+void TRcuSet::release_all() {
+    hard_clean_until(std::numeric_limits<epoch_type>::max());
 }

@@ -83,6 +83,8 @@ public:
         return clean_epoch_;
     }
 
+    // Clean up all RcuSet items (equivalent to calling destructor).
+    void release_all();
 private:
     TRcuGroup* current_;
     TRcuGroup* first_;

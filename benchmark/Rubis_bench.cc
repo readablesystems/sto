@@ -154,6 +154,11 @@ public:
 
         profiler.finish(total_commit_txns);
 
+        // Clean up all RCU set items left.
+        for (int i = 0; i < p.num_threads; ++i) {
+            Transaction::tinfo[i].rcu_set.release_all();
+        }
+
         delete (&db);
         return 0;
     }

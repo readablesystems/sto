@@ -1162,6 +1162,11 @@ public:
             advancer.join();
         }
 
+        // Clean up all remnant RCU set items.
+        for (int i = 0; i < num_threads; ++i) {
+            Transaction::tinfo[i].rcu_set.release_all();
+        }
+
         return 0;
     }
 }; // class tpcc_access
