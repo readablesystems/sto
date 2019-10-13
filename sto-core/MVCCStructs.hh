@@ -368,6 +368,7 @@ private:
                 h->status_is(COMMITTED_DELTA) && !h->is_gc_enqueued()) {
             h->enflatten();
         }
+        delete location;
     }
 
     // Returns true if the given prev pointer would be a valid prev element
@@ -413,7 +414,7 @@ public:
     typedef TransactionTid::type type;
 
     // How many consecutive DELTA versions will be allowed before flattening
-    static constexpr uint64_t gc_flattening_length = 1ULL << 7;
+    static constexpr uint64_t gc_flattening_length = 257;
 
 #if MVCC_INLINING
     MvObject() : h_(&ih_), ih_(this) {
