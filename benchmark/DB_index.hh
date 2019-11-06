@@ -320,15 +320,15 @@ public:
 
     // Static looping for TObject::lock
     template <int C, int I, typename First, typename... Rest>
-    static bool mvcc_lock_loop(int cell_id, Transaction& txn, TransItem& item, IndexType* idx) {
+    static bool mvcc_lock_loop(int cell_id, Transaction& txn, TransItem& item, IndexType* idx, internal_elem* e) {
         if (cell_id == I) {
             auto e = item.key<item_key_t>().internal_elem_ptr();
-            return idx->lock_impl_per_chain(item, txn, e->template chain_at<I>());
+            return idx->lock_impl_per_chain(item, txn, e->template chain_at<I>(), e);
         }
-        return mvcc_lock_loop<C, I+1, Rest...>(cell_id, txn, item, idx);
+        return mvcc_lock_loop<C, I+1, Rest...>(cell_id, txn, item, idx, e);
     }
     template<int C, int I>
-    static bool mvcc_lock_loop(int, Transaction&, TransItem&, IndexType*) {
+    static bool mvcc_lock_loop(int, Transaction&, TransItem&, IndexType*, internal_elem*) {
         static_assert(C == I, "Index invalid");
         always_assert(false, "One past last iteration should never execute.");
         return false;
@@ -398,8 +398,8 @@ public:
         static void run_nontrans_get(value_type* whole_value_out, internal_elem* e) {
             mvcc_nontrans_get_loop<P::num_splits, 0, P, SplitTypes...>(whole_value_out, e);
         }
-        static bool run_lock(int cell_id, Transaction& txn, TransItem& item, IndexType* idx) {
-            return mvcc_lock_loop<P::num_splits, 0, SplitTypes...>(cell_id, txn, item, idx);
+        static bool run_lock(int cell_id, Transaction& txn, TransItem& item, IndexType* idx, internal_elem* e) {
+            return mvcc_lock_loop<P::num_splits, 0, SplitTypes...>(cell_id, txn, item, idx, e);
         }
         static bool run_check(int cell_id, Transaction& txn, TransItem& item, IndexType* idx) {
             return mvcc_check_loop<P::num_splits, 0, SplitTypes...>(cell_id, txn, item, idx);
