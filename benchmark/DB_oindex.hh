@@ -1259,7 +1259,7 @@ public:
             internal_elem *e = lp.value();
             TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
 
-            auto h = e->row.find(txn_read_tid());
+            auto h = e->template chain_at<0>()->find(txn_read_tid());
 
             if (is_phantom(h, row_item))
                 return del_return_type(true, false);
@@ -1273,7 +1273,7 @@ public:
                 }
             }
 
-            MvAccess::template read<value_type>(row_item, h);
+            MvAccess::template read<typename std::tuple_element<0, typename SplitParams<V>::split_type_list>::type>(row_item, h);
             if (h->status_is(DELETED))
                 return del_return_type(true, false);
             row_item.add_write(0);
