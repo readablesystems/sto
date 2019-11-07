@@ -161,6 +161,7 @@ public:
     typedef typename IndexType::NamedColumn NamedColumn;
     typedef typename IndexType::internal_elem internal_elem;
     typedef typename IndexType::value_type value_type;
+    typedef typename commutators::Commutator<value_type> value_comm_type;
 
     struct column_access_t {
         int col_id;
@@ -379,15 +380,25 @@ public:
         always_assert(false, "One past last iteration should never execute.");
     }
     // Static looping for update_row operations.
+    // For value updates (non-commutative)
     template <typename P, int C, int I, typename First, typename... Rest>
     static void mvcc_update_loop(IndexType* idx, internal_elem* e, value_type* whole_value_in) {
         Sto::item(idx, item_key_t(e, I)).add_write(std::get<I>(P::split_builder)(*whole_value_in));
         mvcc_update_loop<P, C, I+1, Rest...>(idx, e, whole_value_in);
     }
-    template <int C, int I>
-    static void mvcc_update_loop(IndexType*, internal_elem* e, value_type*) {
+    template <typename P, int C, int I>
+    static void mvcc_update_loop(IndexType*, internal_elem*, value_type*) {
         static_assert(C == I, "Index invalid");
-        always_assert(false, "One past last iteration should never execute.");
+    }
+    // For commutative updates
+    template <int C, int I, typename First, typename... Rest>
+    static void mvcc_update_loop(IndexType* idx, internal_elem* e, const value_comm_type& comm) {
+        Sto::item(idx, item_key_t(e, I)).add_commute(static_cast<commutators::Commutator<First>>(comm));
+        mvcc_update_loop<C, I+1, Rest...>(idx, e, comm);
+    }
+    template <int C, int I>
+    static void mvcc_update_loop(IndexType*, internal_elem*, const value_comm_type&) {
+        static_assert(C == I, "Index invalid");
     }
 
     // Helper struct unwrapping tuples into template parameter packs.
@@ -423,6 +434,9 @@ public:
         }
         static void run_update(IndexType* idx, internal_elem* e, value_type* whole_value_in) {
             mvcc_update_loop<P, P::num_splits, 0, SplitTypes...>(idx, e, whole_value_in);
+        }
+        static void run_update(IndexType* idx, internal_elem* e, const value_comm_type& comm) {
+            mvcc_update_loop<P::num_splits, 0, SplitTypes...>(idx, e, comm);
         }
     };
 };

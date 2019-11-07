@@ -1092,20 +1092,19 @@ public:
     }
 
     void update_row(uintptr_t rid, value_type* new_row) {
-        //auto row_item = Sto::item(this, item_key_t::row_item_key(reinterpret_cast<internal_elem *>(rid)));
-        // TODO: address this extra copying issue
-        //row_item.add_write(new_row);
-        // Just update the pointer, don't set the actual write flag
-        // we don't want to confuse installs at commit time
-        //row_item.clear_write();
-
-        MvSplitAccessAll::run_update(this, reinterpret_cast<internal_elem *>(rid), new_row);
+        // Update entire row using overwrite.
+        // In timestamp-split tables, this will add a write set item to each "cell item".
+        MvSplitAccessAll::run_update(this, reinterpret_cast<internal_elem*>(rid), new_row);
     }
 
     void update_row(uintptr_t rid, const comm_type &comm) {
-        auto row_item = Sto::item(this, item_key_t::row_item_key(reinterpret_cast<internal_elem *>(rid)));
-        // TODO: address this extra copying issue
-        row_item.add_commute(comm);
+        // Update row using commutatively.
+        // In timestamp-split tables, this will add a commutator to each "cell item". The
+        // per-cell commutators should be supplied by the user (defined for each split) and
+        // they should be subclasses of the row commutator.
+        // Internally this run_update() implementation below uses a down-cast to convert
+        // row commutators to cell commutators.
+        MvSplitAccessAll::run_update(this, reinterpret_cast<internal_elem*>(rid), comm);
     }
 
     // insert assumes common case where the row doesn't exist in the table
