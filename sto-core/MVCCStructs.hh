@@ -273,7 +273,9 @@ private:
         history_type *h = hd->object()->h_;
         while (h) {
             if (h == hd) {
-                hd->delete_cb(hd->index_ptr, hd->delete_param, ptr);
+                if (hd->delete_cb) {
+                    hd->delete_cb(hd->index_ptr, hd->delete_param, ptr);
+                }
                 break;
             }
 

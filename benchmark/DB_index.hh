@@ -259,7 +259,7 @@ public:
     // I: Split index (for iteration)
     // First: Type of the first split column
     // Rest...: Type(s) of the rest of the split columns (could be empty)
-    // Return value: success (false == abort)
+    // Return value: success (false == not found)
     template <int C, int I, typename First, typename... Rest>
     static bool
     mvcc_select_loop(const std::array<access_t, C>& cell_accesses,
@@ -269,9 +269,12 @@ public:
         if (cell_accesses[I] != access_t::none) {
             auto item = Sto::item(tobj, item_key_t(e, I));
             auto h = mvobj->find(Sto::read_tid<IndexType::Commute>());
-            if (!h->status_is(UNUSED) && !IndexType::template is_phantom<First>(h, item)) {
+            if (h->status_is(COMMITTED_DELETED)) {
+                return false;
+            } else if (!h->status_is(UNUSED) && !IndexType::template is_phantom<First>(h, item)) {
                 // XXX No read-my-write stuff for now.
                 MvAccess::template read<First>(item, h);
+
 #if SAFE_FLATTEN
                 auto vp = h->vp_safe_flatten();
                 if (vp == nullptr)
@@ -329,10 +332,10 @@ public:
         return mvcc_lock_loop<C, I+1, Rest...>(cell_id, txn, item, idx, e);
     }
     template<int C, int I>
-    static bool mvcc_lock_loop(int, Transaction&, TransItem&, IndexType*, internal_elem*) {
+    static bool mvcc_lock_loop(int cell_id, Transaction&, TransItem&, IndexType*, internal_elem*) {
         static_assert(C == I, "Index invalid");
-        always_assert(false, "One past last iteration should never execute.");
-        return false;
+        always_assert(!cell_id, "One past last iteration should never execute.");
+        return true;
     }
     // Static looping for TObject::check
     template <int C, int I, typename First, typename... Rest>
@@ -344,15 +347,15 @@ public:
         return mvcc_check_loop<C, I+1, Rest...>(cell_id, txn, item, idx);
     }
     template<int C, int I>
-    static bool mvcc_check_loop(int, Transaction&, TransItem&, IndexType*) {
+    static bool mvcc_check_loop(int cell_id, Transaction&, TransItem&, IndexType*) {
         static_assert(C == I, "Index invalid");
-        always_assert(false, "One past last iteration should never execute.");
-        return false;
+        always_assert(!cell_id, "One past last iteration should never execute.");
+        return true;
     }
     // Static looping for TObject::install
     template <int C, int I, typename First, typename... Rest>
     static void mvcc_install_loop(int cell_id, Transaction& txn, TransItem& item, IndexType* idx) {
-        if (cell_id == I) {
+        if (cell_id == I) {  // cell_id is 1-indexed
             auto e = item.key<item_key_t>().internal_elem_ptr();
             idx->install_impl_per_chain(item, txn, e->template chain_at<I>());
             return;
@@ -360,14 +363,14 @@ public:
         mvcc_install_loop<C, I+1, Rest...>(cell_id, txn, item, idx);
     }
     template<int C, int I>
-    static void mvcc_install_loop(int, Transaction&, TransItem&, IndexType*) {
+    static void mvcc_install_loop(int cell_id, Transaction&, TransItem&, IndexType*) {
         static_assert(C == I, "Index invalid");
-        always_assert(false, "One past last iteration should never execute.");
+        always_assert(!cell_id, "One past last iteration should never execute.");
     }
     // Static looping for TObject::cleanup
     template <int C, int I, typename First, typename... Rest>
     static void mvcc_cleanup_loop(int cell_id, TransItem& item, bool committed, IndexType* idx) {
-        if (cell_id == I) {
+        if (cell_id == I) {  // cell_id is 1-indexed
             auto e = item.key<item_key_t>().internal_elem_ptr();
             idx->cleanup_impl_per_chain(item, committed, e->template chain_at<I>());
             return;
@@ -375,9 +378,9 @@ public:
         mvcc_cleanup_loop<C, I+1, Rest...>(cell_id, item, committed, idx);
     }
     template<int C, int I>
-    static void mvcc_cleanup_loop(int, TransItem&, bool, IndexType*) {
+    static void mvcc_cleanup_loop(int cell_id, TransItem&, bool, IndexType*) {
         static_assert(C == I, "Index invalid");
-        always_assert(false, "One past last iteration should never execute.");
+        always_assert(!cell_id, "One past last iteration should never execute.");
     }
     // Static looping for update_row operations.
     // For value updates (non-commutative)
@@ -407,11 +410,12 @@ public:
     template <typename P, typename... SplitTypes>
     struct MvSplitAccessAll<P, std::tuple<SplitTypes...>> {
         static std::array<void*, P::num_splits> run_select(
+                bool* found,
                 const std::array<access_t, P::num_splits>& cell_accesses,
                 TObject* tobj,
                 internal_elem* e) {
             std::array<void*, P::num_splits> value_ptrs = { nullptr };
-            mvcc_select_loop<P::num_splits, 0, SplitTypes...>(cell_accesses, value_ptrs, tobj, e);
+            *found = mvcc_select_loop<P::num_splits, 0, SplitTypes...>(cell_accesses, value_ptrs, tobj, e);
             return value_ptrs;
         }
         static void run_nontrans_put(const value_type& whole_value, internal_elem* e) {
