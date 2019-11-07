@@ -1152,8 +1152,9 @@ public:
         using split_params = SplitParams<value_type>;
         auto e = reinterpret_cast<internal_elem*>(rid);
         auto cell_accesses = mvcc_column_to_cell_accesses<split_params>(accesses);
-        auto result = MvSplitAccessAll::run_select(cell_accesses, this, e);
-        return {true, true, rid, SplitRecordAccessor<V>(result)};
+        bool found;
+        auto result = MvSplitAccessAll::run_select(&found, cell_accesses, this, e);
+        return {true, found, rid, SplitRecordAccessor<V>(result)};
     }
 
     void update_row(uintptr_t rid, value_type* new_row) {
@@ -1191,7 +1192,7 @@ public:
             internal_elem *e = lp.value();
             lp.finish(0, *ti);
 
-            TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+            auto row_item = Sto::item(this, item_key_t(e, 0));  // A fake row item
 
             auto h = e->row.find(txn_read_tid());
             if (is_phantom(h, row_item))
@@ -1258,7 +1259,7 @@ public:
         bool found = lp.find_unlocked(*ti);
         if (found) {
             internal_elem *e = lp.value();
-            TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
+            auto row_item = Sto::item(this, item_key_t(e, 0));  // A fake row item
 
             auto h = e->template chain_at<0>()->find(txn_read_tid());
 
@@ -1269,7 +1270,10 @@ public:
                 if (has_delete(row_item))
                     return del_return_type(true, false);
                 if (h->status_is(DELETED) && has_insert(row_item)) {
-                    row_item.add_flags(delete_bit);
+                    for (size_t i = 0; i < SplitParams<V>::num_splits; i++) {
+                        auto item = Sto::item(this, item_key_t(e, i));
+                        item.add_flags(delete_bit);
+                    }
                     return del_return_type(true, true);
                 }
             }
@@ -1277,8 +1281,11 @@ public:
             MvAccess::template read<typename std::tuple_element<0, typename SplitParams<V>::split_type_list>::type>(row_item, h);
             if (h->status_is(DELETED))
                 return del_return_type(true, false);
-            row_item.add_write(0);
-            row_item.add_flags(delete_bit);
+            for (size_t i = 0; i < SplitParams<V>::num_splits; i++) {
+                auto item = Sto::item(this, item_key_t(e, i));
+                item.add_write(0);
+                item.add_flags(delete_bit);
+            }
         } else {
             if (!register_internode_version(lp.node(), lp.full_version_value()))
                 goto abort;

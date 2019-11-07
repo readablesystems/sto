@@ -300,7 +300,9 @@ private:
         history_type* h = location->obj->h_;
         while (h) {
             if (h == hd) {
-                hd->delete_cb(hd->index_ptr, hd->delete_param, hd);
+                if (hd->delete_cb) {
+                    hd->delete_cb(hd->index_ptr, hd->delete_param, ptr);
+                }
                 break;
             }
 

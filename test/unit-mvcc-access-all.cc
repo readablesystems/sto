@@ -210,21 +210,7 @@ void TestMVCCOrderedIndexDelete() {
                                    {{nc::value_1,access_t::read},
                                     {nc::value_2b,access_t::read}});
         assert(success);
-        assert(result);
-
-        assert(t.try_commit());
-    }
-
-    Transaction::epoch_advance_once();
-
-    {
-        TestTransaction t(0);
-        auto[success, result, row, accessor]
-            = idx.select_split_row(key,
-                                   {{nc::value_1,access_t::read},
-                                    {nc::value_2b,access_t::read}});
-        assert(success);
-        assert(result);
+        assert(!result);
 
         assert(t.try_commit());
     }
