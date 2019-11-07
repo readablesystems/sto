@@ -378,6 +378,17 @@ public:
         static_assert(C == I, "Index invalid");
         always_assert(false, "One past last iteration should never execute.");
     }
+    // Static looping for update_row operations.
+    template <typename P, int C, int I, typename First, typename... Rest>
+    static void mvcc_update_loop(IndexType* idx, internal_elem* e, value_type* whole_value_in) {
+        Sto::item(idx, item_key_t(e, I)).add_write(std::get<I>(P::split_builder)(*whole_value_in));
+        mvcc_update_loop<P, C, I+1, Rest...>(idx, e, whole_value_in);
+    }
+    template <int C, int I>
+    static void mvcc_update_loop(IndexType*, internal_elem* e, value_type*) {
+        static_assert(C == I, "Index invalid");
+        always_assert(false, "One past last iteration should never execute.");
+    }
 
     // Helper struct unwrapping tuples into template parameter packs.
     template <typename P, typename Tuple = typename P::split_type_list>
@@ -409,6 +420,9 @@ public:
         }
         static void run_cleanup(int cell_id, TransItem& item, bool committed, IndexType* idx) {
             mvcc_cleanup_loop<P::num_splits, 0, SplitTypes...>(cell_id, item, committed, idx);
+        }
+        static void run_update(IndexType* idx, internal_elem* e, value_type* whole_value_in) {
+            mvcc_update_loop<P, P::num_splits, 0, SplitTypes...>(idx, e, whole_value_in);
         }
     };
 };
