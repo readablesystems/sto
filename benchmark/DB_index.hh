@@ -449,8 +449,7 @@ struct SplitParams {
     static constexpr auto split_merger = std::make_tuple(
         [](RowType* out, const RowType* in) -> void {*out = *in;}
     );
-    // MVCC split IDs are 1-indexed (we don't do the major/minor version thing in OCC here.)
-    static constexpr auto map = [](int) -> int {return 1;};
+    static constexpr auto map = [](int) -> int {return 0;};
 
     // These need not change.
     using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
