@@ -39,30 +39,30 @@ struct bench::SplitParams<index_value> {
     using split_type_list = std::tuple<index_value_part1, index_value_part2>;
     static constexpr auto split_builder = std::make_tuple(
         [](const index_value &in) -> index_value_part1 {
-          index_value_part1 p1;
-          p1.value_1 = in.value_1;
-          return p1;
+            index_value_part1 p1;
+            p1.value_1 = in.value_1;
+            return p1;
         },
         [](const index_value &in) -> index_value_part2 {
-          index_value_part2 p2;
-          p2.value_2a = in.value_2a;
-          p2.value_2b = in.value_2b;
-          return p2;
+            index_value_part2 p2;
+            p2.value_2a = in.value_2a;
+            p2.value_2b = in.value_2b;
+            return p2;
         }
     );
     static constexpr auto split_merger = std::make_tuple(
         [](index_value *out, const index_value_part1 *in1) -> void {
-          out->value_1 = in1->value_1;
+            out->value_1 = in1->value_1;
         },
         [](index_value *out, const index_value_part2 *in2) -> void {
-          out->value_2a = in2->value_2a;
-          out->value_2b = in2->value_2b;
+            out->value_2a = in2->value_2a;
+            out->value_2b = in2->value_2b;
         }
     );
     static constexpr auto map = [](int col_n) -> int {
         if (col_n == 0)
-            return 0;
-        return 1;
+            return 1;
+        return 2;
     };
 
     using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
