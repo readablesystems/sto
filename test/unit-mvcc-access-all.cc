@@ -194,21 +194,43 @@ void TestMVCCOrderedIndexDelete() {
     idx.nontrans_put(key, val);
 
     {
-        TestTransaction t(0);
-        auto[success, found] = idx.delete_row(key);
+        TestTransaction t1(0);
+        TestTransaction t2(1);
 
-        assert(success);
-        assert(found);
+        {
+            t1.use();
 
-        assert(t.try_commit());
+            auto[success, found] = idx.delete_row(key);
+
+            assert(success);
+            assert(found);
+        }
+
+        // Concurrent observation should not observe delete
+        {
+            t2.use();
+            auto[success, result, row, accessor]
+                = idx.select_split_row(key,
+                                       {{nc::value_1,access_t::read},
+                                        {nc::value_2b,access_t::read}});
+
+            assert(success);
+            assert(result);
+        }
+
+        assert(t1.try_commit());
+
+        assert(t2.try_commit());
     }
 
+    // Serialized observation should observe delete
     {
         TestTransaction t(0);
         auto[success, result, row, accessor]
             = idx.select_split_row(key,
                                    {{nc::value_1,access_t::read},
                                     {nc::value_2b,access_t::read}});
+
         assert(success);
         assert(!result);
 
