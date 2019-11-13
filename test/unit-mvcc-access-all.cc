@@ -170,7 +170,7 @@ public:
         return value;
     }
 
-private:
+protected:
     int64_t delta_value_1;
     int64_t delta_value_2a;
     int64_t delta_value_2b;
@@ -179,42 +179,28 @@ private:
 };
 
 template <>
-class Commutator<index_value_part1> {
+class Commutator<index_value_part1> : Commutator<index_value> {
 public:
-    Commutator() = default;
-    Commutator(const Commutator<index_value>& value)
-        : delta_value_1(value.delta_value_1) {}
-
-    explicit Commutator(int64_t delta_value_1) : delta_value_1(delta_value_1) {}
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<index_value>(std::forward<Args>(args)...) {}
 
     index_value_part1& operate(index_value_part1 &value) const {
         value.value_1 += delta_value_1;
         return value;
     }
-
-private:
-    int64_t delta_value_1;
 };
 
 template <>
-class Commutator<index_value_part2> {
+class Commutator<index_value_part2> : Commutator<index_value> {
 public:
-    Commutator() = default;
-    Commutator(const Commutator<index_value>& value)
-        : delta_value_2a(value.delta_value_2a), delta_value_2b(value.delta_value_2b) {}
-
-    explicit Commutator(int64_t delta_value_2a, int64_t delta_value_2b)
-        : delta_value_2a(delta_value_2a), delta_value_2b(delta_value_2b) {}
+    template <typename... Args>
+    Commutator(Args&&... args) : Commutator<index_value>(std::forward<Args>(args)...) {}
 
     index_value_part2& operate(index_value_part2 &value) const {
         value.value_2a += delta_value_2a;
         value.value_2b += delta_value_2b;
         return value;
     }
-
-private:
-    int64_t delta_value_2a;
-    int64_t delta_value_2b;
 };
 }  // namespace commutators
 
