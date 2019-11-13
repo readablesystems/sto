@@ -320,7 +320,7 @@ void TestMVCCOrderedIndexCommute() {
     index_value val{4, 5, 6};
     idx.nontrans_put(key, val);
 
-    {
+    for (int64_t i = 0; i < 10; i++) {
         TestTransaction t(0);
         auto[success, result, row, accessor]
             = idx.select_split_row(key,
@@ -330,7 +330,7 @@ void TestMVCCOrderedIndexCommute() {
         assert(result);
 
         {
-            commutators::Commutator<index_value> comm(10);
+            commutators::Commutator<index_value> comm(10 + i);
             idx.update_row(row, comm);
         }
 
@@ -346,7 +346,7 @@ void TestMVCCOrderedIndexCommute() {
         assert(success);
         assert(result);
 
-        assert(accessor.value_1() == 14);
+        assert(accessor.value_1() == 149);
         assert(accessor.value_2a() == 5);
         assert(accessor.value_2b() == 6);
     }
