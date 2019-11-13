@@ -75,16 +75,16 @@ namespace bench {
 template<typename A>
 class RecordAccessor<A, index_value> {
  public:
-    int32_t value_1() const {
+    int64_t value_1() const {
         return impl().value_1_impl();
     }
 
-    int32_t value_2a() const {
+    int64_t value_2a() const {
         return impl().value_2a_impl();
 
     }
 
-    int32_t value_2b() const {
+    int64_t value_2b() const {
         return impl().value_2b_impl();
     }
 
@@ -102,15 +102,15 @@ class UniRecordAccessor<index_value>
     UniRecordAccessor(const index_value *const vptr) : vptr_(vptr) {}
 
  private:
-    int32_t value_1_impl() const {
+    int64_t value_1_impl() const {
         return vptr_->value_1;
     }
 
-    int32_t value_2a_impl() const {
+    int64_t value_2a_impl() const {
         return vptr_->value_2a;
     }
 
-    int32_t value_2b_impl() const {
+    int64_t value_2b_impl() const {
         return vptr_->value_2b;
     }
 
@@ -132,15 +132,15 @@ class SplitRecordAccessor<index_value>
           vptr_2_(reinterpret_cast<index_value_part2 *>(vptrs[1])) {}
 
  private:
-    int32_t value_1_impl() const {
+    int64_t value_1_impl() const {
         return vptr_1_->value_1;
     }
 
-    int32_t value_2a_impl() const {
+    int64_t value_2a_impl() const {
         return vptr_2_->value_2a;
     }
 
-    int32_t value_2b_impl() const {
+    int64_t value_2b_impl() const {
         return vptr_2_->value_2b;
     }
 
@@ -150,6 +150,73 @@ class SplitRecordAccessor<index_value>
     friend RecordAccessor<SplitRecordAccessor<index_value>, index_value>;
 };
 }  // namespace bench
+
+namespace commutators {
+template <>
+class Commutator<index_value> {
+public:
+    Commutator() = default;
+
+    explicit Commutator(int64_t delta_value_1)
+        : delta_value_1(delta_value_1), delta_value_2a(0), delta_value_2b(0) {}
+    explicit Commutator(int64_t delta_value_2a, int64_t delta_value_2b)
+        : delta_value_1(0), delta_value_2a(delta_value_2a),
+          delta_value_2b(delta_value_2b) {}
+
+    index_value& operate(index_value &value) const {
+        value.value_1 += delta_value_1;
+        value.value_2a += delta_value_2a;
+        value.value_2b += delta_value_2b;
+        return value;
+    }
+
+private:
+    int64_t delta_value_1;
+    int64_t delta_value_2a;
+    int64_t delta_value_2b;
+    friend Commutator<index_value_part1>;
+    friend Commutator<index_value_part2>;
+};
+
+template <>
+class Commutator<index_value_part1> {
+public:
+    Commutator() = default;
+    Commutator(const Commutator<index_value>& value)
+        : delta_value_1(value.delta_value_1) {}
+
+    explicit Commutator(int64_t delta_value_1) : delta_value_1(delta_value_1) {}
+
+    index_value_part1& operate(index_value_part1 &value) const {
+        value.value_1 += delta_value_1;
+        return value;
+    }
+
+private:
+    int64_t delta_value_1;
+};
+
+template <>
+class Commutator<index_value_part2> {
+public:
+    Commutator() = default;
+    Commutator(const Commutator<index_value>& value)
+        : delta_value_2a(value.delta_value_2a), delta_value_2b(value.delta_value_2b) {}
+
+    explicit Commutator(int64_t delta_value_2a, int64_t delta_value_2b)
+        : delta_value_2a(delta_value_2a), delta_value_2b(delta_value_2b) {}
+
+    index_value_part2& operate(index_value_part2 &value) const {
+        value.value_2a += delta_value_2a;
+        value.value_2b += delta_value_2b;
+        return value;
+    }
+
+private:
+    int64_t delta_value_2a;
+    int64_t delta_value_2b;
+};
+}  // namespace commutators
 
 void TestMVCCOrderedIndexSplit() {
     using key_type = bench::masstree_key_adapter<index_key>;
@@ -240,8 +307,57 @@ void TestMVCCOrderedIndexDelete() {
     printf("Test pass: %s\n", __FUNCTION__);
 }
 
+void TestMVCCOrderedIndexCommute() {
+    using key_type = bench::masstree_key_adapter<index_key>;
+    using index_type = mvcc_ordered_index<key_type,
+                                          index_value,
+                                          db_params::db_mvcc_params>;
+    typedef index_value::NamedColumn nc;
+    index_type idx;
+    idx.thread_init();
+
+    key_type key{0, 1};
+    index_value val{4, 5, 6};
+    idx.nontrans_put(key, val);
+
+    {
+        TestTransaction t(0);
+        auto[success, result, row, accessor]
+            = idx.select_split_row(key,
+                                   {{nc::value_1,access_t::none},
+                                    {nc::value_2b,access_t::none}});
+        assert(success);
+        assert(result);
+
+        {
+            commutators::Commutator<index_value> comm(10);
+            idx.update_row(row, comm);
+        }
+
+        assert(t.try_commit());
+    }
+
+    {
+        TestTransaction t(0);
+        auto[success, result, row, accessor]
+            = idx.select_split_row(key,
+                                   {{nc::value_1,access_t::read},
+                                    {nc::value_2b,access_t::read}});
+        assert(success);
+        assert(result);
+
+        assert(accessor.value_1() == 14);
+        assert(accessor.value_2a() == 5);
+        assert(accessor.value_2b() == 6);
+    }
+
+
+    printf("Test pass: %s\n", __FUNCTION__);
+}
+
 int main() {
     TestMVCCOrderedIndexSplit();
     TestMVCCOrderedIndexDelete();
+    TestMVCCOrderedIndexCommute();
     return 0;
 }
