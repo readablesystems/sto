@@ -297,6 +297,63 @@ public:
         return true;
     }
 
+    template <int C, int I, typename Callback, typename First, typename... Rest>
+    static bool
+    mvcc_scan_loop(bool& ret, bool& count,
+                   const std::array<access_t, C>& cell_accesses,
+                   const lcdf::Str& key,
+                   TObject* tobj, internal_elem* e,
+                   Callback callback) {
+        auto mvobj = e->template chain_at<I>();
+
+        auto h = mvobj->find(Sto::read_tid<IndexType::Commute>());
+
+        if (I == 0) {
+            // skip invalid (inserted but yet committed) and/or deleted values, but do not abort
+            if (h->status_is(DELETED)) {
+                ret &= true;
+                count &= false;
+                return true;
+            }
+        }
+
+        TransProxy row_item =
+            IndexType::index_read_my_write
+                ? Sto::item(tobj, item_key_t(e, I))
+                : Sto::fresh_item(tobj, item_key_t(e, I));
+        if (I == 0) {
+            if (IndexType::index_read_my_write) {
+                if (IndexType::has_delete(row_item)) {
+                    ret &= true;
+                    count &= false;
+                    return true;
+                }
+                if (IndexType::has_row_update(row_item)) {
+                    ret &= callback(
+                            IndexType::key_type(key),
+                            *(row_item.template raw_write_value<value_type *>()));
+                    return true;
+                }
+            }
+        }
+
+        if (cell_accesses[I] != access_t::none) {
+            MvAccess::template read<value_type>(row_item, h);
+
+#if SAFE_FLATTEN
+            auto vptr = h->vp_safe_flatten();
+            if (vptr == nullptr) {
+                ret &= false;
+                return false;
+            }
+#else
+            auto vptr = h->vp();
+#endif
+            ret &= callback(IndexType::key_type(key), *vptr);
+        }
+        return mvcc_scan_loop<C, I + 1, Callback, Rest...>(count, cell_accesses, tobj, e, callback);
+    }
+
     // Generate loops for non-trans access. P is SplitParams.
     template <int C, int I, typename P, typename First, typename... Rest>
     static void
@@ -417,6 +474,20 @@ public:
             std::array<void*, P::num_splits> value_ptrs = { nullptr };
             *found = mvcc_select_loop<P::num_splits, 0, SplitTypes...>(cell_accesses, value_ptrs, tobj, e);
             return value_ptrs;
+        }
+        template <typename Callback>
+        static bool run_scan_callback(
+                bool& ret,
+                bool& count,
+                const std::array<access_t, P::num_splits>& cell_accesses,
+                const lcdf::Str& key,
+                TObject* tobj,
+                internal_elem* e,
+                Callback callback) {
+            ret = true;
+            count = true;
+            return mvcc_scan_loop<P::num_splits, 0, Callback, SplitTypes...>(
+                    ret, count, cell_accesses, key, tobj, e, callback);
         }
         static void run_nontrans_put(const value_type& whole_value, internal_elem* e) {
             mvcc_nontrans_put_loop<P::num_splits, 0, P, SplitTypes...>(whole_value, e);
