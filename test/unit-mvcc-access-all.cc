@@ -8,8 +8,16 @@ using bench::RowAccess;
 using bench::access_t;
 
 struct index_key {
+    index_key() = default;
     index_key(int32_t k1, int32_t k2)
         : key_1(bench::bswap(k1)), key_2(bench::bswap(k2)) {}
+    bool operator==(const index_key& other) const {
+        return (key_1 == other.key_1) && (key_2 == other.key_2);
+    }
+    bool operator!=(const index_key& other) const {
+        return !(*this == other);
+    }
+
     int32_t key_1;
     int32_t key_2;
 };
@@ -341,9 +349,63 @@ void TestMVCCOrderedIndexCommute() {
     printf("Test pass: %s\n", __FUNCTION__);
 }
 
+void TestMVCCOrderedIndexScan() {
+    using key_type = bench::masstree_key_adapter<index_key>;
+    using index_type = mvcc_ordered_index<key_type,
+                                          index_value,
+                                          db_params::db_mvcc_params>;
+    using accessor_t = bench::SplitRecordAccessor<index_value>;
+    using split_value_t = std::array<void*, bench::SplitParams<index_value>::num_splits>;
+    typedef index_value::NamedColumn nc;
+    index_type idx;
+    idx.thread_init();
+
+    {
+        key_type key{0, 1};
+        index_value val{4, 5, 6};
+        idx.nontrans_put(key, val);
+    }
+    {
+        key_type key{0, 2};
+        index_value val{7, 8, 9};
+        idx.nontrans_put(key, val);
+    }
+    {
+        key_type key{0, 3};
+        index_value val{10, 11, 12};
+        idx.nontrans_put(key, val);
+    }
+
+    {
+        TestTransaction t(0);
+
+        auto scan_callback = [&] (const key_type& key, const split_value_t& split_values) -> bool {
+            accessor_t accessor(split_values);
+            std::cout << "Visiting key: {" << key.key_1 << ", " << key.key_2 << "}, value parts:" << std::endl;
+            std::cout << "    " << accessor.value_1() << std::endl;
+            std::cout << "    " << accessor.value_2a() << std::endl;
+            std::cout << "    " << accessor.value_2b() << std::endl;
+            return true;
+        };
+
+        key_type k0{0, 0};
+        key_type k1{1, 0};
+
+        bool success = idx.range_scan<decltype(scan_callback), false>(k0, k1,
+                                                                      scan_callback,
+                                                                      {{nc::value_1,access_t::read},
+                                                                       {nc::value_2b,access_t::read}}, true);
+        assert(success);
+        assert(t.try_commit());
+    }
+
+    printf("Test pass: %s\n", __FUNCTION__);
+}
+
 int main() {
     TestMVCCOrderedIndexSplit();
     TestMVCCOrderedIndexDelete();
     TestMVCCOrderedIndexCommute();
+    TestMVCCOrderedIndexScan();
     return 0;
 }

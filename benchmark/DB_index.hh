@@ -297,13 +297,14 @@ public:
         return true;
     }
 
-    template <int C, int I, typename Callback, typename First, typename... Rest>
-    static bool
+    // Generate loops for range scan's "value callback". The user-supplied callback for the range scan
+    // operates on accessor objects.
+    template <int C, int I, typename First, typename... Rest>
+    static void
     mvcc_scan_loop(bool& ret, bool& count,
                    const std::array<access_t, C>& cell_accesses,
-                   const lcdf::Str& key,
                    TObject* tobj, internal_elem* e,
-                   Callback callback) {
+                   std::array<void*, C>& split_values) {
         auto mvobj = e->template chain_at<I>();
 
         auto h = mvobj->find(Sto::read_tid<IndexType::Commute>());
@@ -311,9 +312,8 @@ public:
         if (I == 0) {
             // skip invalid (inserted but yet committed) and/or deleted values, but do not abort
             if (h->status_is(DELETED)) {
-                ret &= true;
-                count &= false;
-                return true;
+                count = false;
+                return;
             }
         }
 
@@ -321,37 +321,44 @@ public:
             IndexType::index_read_my_write
                 ? Sto::item(tobj, item_key_t(e, I))
                 : Sto::fresh_item(tobj, item_key_t(e, I));
+
         if (I == 0) {
             if (IndexType::index_read_my_write) {
                 if (IndexType::has_delete(row_item)) {
-                    ret &= true;
-                    count &= false;
-                    return true;
+                    count = false;
+                    return;
                 }
                 if (IndexType::has_row_update(row_item)) {
-                    ret &= callback(
-                            IndexType::key_type(key),
-                            *(row_item.template raw_write_value<value_type *>()));
-                    return true;
+                    split_values[I] = row_item.template raw_write_value<First*>();
+                    mvcc_scan_loop<C, I + 1, Rest...>(ret, count, cell_accesses, tobj, e, split_values);
+                    return;
                 }
             }
         }
 
         if (cell_accesses[I] != access_t::none) {
-            MvAccess::template read<value_type>(row_item, h);
+            MvAccess::template read<First>(row_item, h);
 
 #if SAFE_FLATTEN
             auto vptr = h->vp_safe_flatten();
             if (vptr == nullptr) {
-                ret &= false;
+                ret = false;
                 return false;
             }
 #else
             auto vptr = h->vp();
 #endif
-            ret &= callback(IndexType::key_type(key), *vptr);
+            //ret &= callback(IndexType::key_type(key), *vptr);
+            split_values[I] = vptr;
         }
-        return mvcc_scan_loop<C, I + 1, Callback, Rest...>(count, cell_accesses, tobj, e, callback);
+        mvcc_scan_loop<C, I + 1, Rest...>(ret, count, cell_accesses, tobj, e, split_values);
+    }
+
+    template <int C, int I>
+    static bool
+    mvcc_scan_loop(bool&, bool&, const std::array<access_t, C>&, TObject*, internal_elem*, std::array<void*, C>&) {
+        static_assert(I == C, "Index invalid.");
+        return true;
     }
 
     // Generate loops for non-trans access. P is SplitParams.
@@ -486,8 +493,14 @@ public:
                 Callback callback) {
             ret = true;
             count = true;
-            return mvcc_scan_loop<P::num_splits, 0, Callback, SplitTypes...>(
-                    ret, count, cell_accesses, key, tobj, e, callback);
+            std::array<void*, P::num_splits> split_values = { nullptr };
+            mvcc_scan_loop<P::num_splits, 0, SplitTypes...>(ret, count, cell_accesses, tobj, e, split_values);
+
+            if (ret && count) {
+                return callback((typename IndexType::key_type)(key), split_values);
+            } else {
+                return ret;
+            }
         }
         static void run_nontrans_put(const value_type& whole_value, internal_elem* e) {
             mvcc_nontrans_put_loop<P::num_splits, 0, P, SplitTypes...>(whole_value, e);
