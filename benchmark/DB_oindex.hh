@@ -1236,16 +1236,14 @@ public:
     bool range_scan(const key_type& begin, const key_type& end, Callback callback,
                     std::initializer_list<column_access_t> accesses,
                     bool phantom_protection = true, int limit = -1) {
-        (void)access;  // TODO: Scan ignores writes right now
         assert((limit == -1) || (limit > 0));
+        auto cell_accesses = mvcc_column_to_cell_accesses<SplitParams<value_type>>(accesses);
         auto node_callback = [&] (leaf_type* node,
                                   typename unlocked_cursor_type::nodeversion_value_type version) {
             return ((!phantom_protection) || register_internode_version(node, version));
         };
 
         auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
-            using split_params = SplitParams<value_type>;
-            auto cell_accesses = mvcc_column_to_cell_accesses<split_params>(accesses);
             return MvSplitAccessAll::template run_scan_callback<Callback>(
                     ret, count, cell_accesses, key, this, e, callback);
         };
