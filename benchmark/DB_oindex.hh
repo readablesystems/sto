@@ -1233,10 +1233,30 @@ public:
     }
 
     template <typename Callback, bool Reverse>
-    bool range_scan(const key_type&, const key_type&, Callback,
-                    std::initializer_list<column_access_t>, bool phantom_protection = true, int limit = -1) {
-        (void)phantom_protection; (void)limit;
-        always_assert(false, "Not implemented in MVCC, use split table instead.");
+    bool range_scan(const key_type& begin, const key_type& end, Callback callback,
+                    std::initializer_list<column_access_t> accesses,
+                    bool phantom_protection = true, int limit = -1) {
+        (void)access;  // TODO: Scan ignores writes right now
+        assert((limit == -1) || (limit > 0));
+        auto node_callback = [&] (leaf_type* node,
+                                  typename unlocked_cursor_type::nodeversion_value_type version) {
+            return ((!phantom_protection) || register_internode_version(node, version));
+        };
+
+        auto value_callback = [&] (const lcdf::Str& key, internal_elem *e, bool& ret, bool& count) {
+            using split_params = SplitParams<value_type>;
+            auto cell_accesses = mvcc_column_to_cell_accesses<split_params>(accesses);
+            return MvSplitAccessAll::template run_scan_callback<Callback>(
+                    ret, count, cell_accesses, key, this, e, callback);
+        };
+
+        range_scanner<decltype(node_callback), decltype(value_callback), Reverse>
+                scanner(end, node_callback, value_callback, limit);
+        if (Reverse)
+            table_.rscan(begin, true, scanner, *ti);
+        else
+            table_.scan(begin, true, scanner, *ti);
+        return scanner.scan_succeeded_;
     }
 
     template <typename Callback, bool Reverse>
