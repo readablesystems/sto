@@ -581,7 +581,6 @@ void Transaction::print_stats() {
     ss << "   time_abort: " << out_tcs.to_realtime(tc_abort) << std::endl;
     ss << "   time_cleanup: " << out_tcs.to_realtime(tc_cleanup) << std::endl;
     ss << "   time_opacity: " << out_tcs.to_realtime(tc_opacity) << std::endl;
-    ss << "   time_mvcc_find: " << out_tcs.to_realtime(tc_mvcc_find) << std::endl;
 
     fprintf(stderr, "%s\n", ss.str().c_str());
 #endif

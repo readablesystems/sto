@@ -6,7 +6,6 @@
 
 #include "MVCCTypes.hh"
 #include "TRcu.hh"
-#include "Transaction.hh"
 
 // Status types of MvHistory elements
 enum MvStatus {
@@ -46,7 +45,7 @@ public:
     explicit MvHistory(object_type *obj) : MvHistory(0, obj, nullptr) {}
     explicit MvHistory(
             type ntid, object_type *obj, const T& nv, history_type *nprev = nullptr)
-            : obj_(obj), v_(nv), impassable_(false), gc_enqueued_(false), prev_(nprev),
+            : obj_(obj), v_(nv), gc_enqueued_(false), prev_(nprev),
               status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
         if (prev_) {
             always_assert(
@@ -56,7 +55,7 @@ public:
     }
     explicit MvHistory(
             type ntid, object_type *obj, T&& nv, history_type *nprev = nullptr)
-            : obj_(obj), v_(std::move(nv)), impassable_(false), gc_enqueued_(false), prev_(nprev),
+            : obj_(obj), v_(std::move(nv)), gc_enqueued_(false), prev_(nprev),
               status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
         if (prev_) {
             always_assert(
@@ -66,7 +65,7 @@ public:
     }
     explicit MvHistory(
             type ntid, object_type *obj, T *nvp, history_type *nprev = nullptr)
-            : obj_(obj), impassable_(false), gc_enqueued_(false), prev_(nprev), status_(PENDING),
+            : obj_(obj), gc_enqueued_(false), prev_(nprev), status_(PENDING),
               rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
         if (prev_) {
             always_assert(
@@ -80,7 +79,7 @@ public:
     }
     explicit MvHistory(
             type ntid, object_type *obj, comm_type &&c, history_type *nprev = nullptr)
-            : obj_(obj), c_(c), v_(), impassable_(false), gc_enqueued_(false), prev_(nprev),
+            : obj_(obj), c_(c), v_(), gc_enqueued_(false), prev_(nprev),
               status_(PENDING), rtid_(ntid), wtid_(ntid), delete_cb(nullptr) {
         if (prev_) {
             always_assert(
@@ -307,8 +306,6 @@ private:
     // Initializes the flattening process
     inline void enflatten() {
         T v{};
-        bool expected_impassable = false;
-        impassable_.compare_exchange_strong(expected_impassable, true);
         if (status_is(COMMITTED_DELTA)) {
             assert(prev());
             TXP_INCREMENT(txp_mvcc_flat_runs);
@@ -333,10 +330,6 @@ private:
         trace.push(curr);
         TXP_INCREMENT(txp_mvcc_flat_versions);
         while (!curr->status_is(COMMITTED_DELTA, COMMITTED)) {
-            // Wait for any pending versions to be resolved
-            while (curr->status_is(MvStatus::PENDING)) {
-                relax_fence();
-            }
             curr = curr->prev();
             trace.push(curr);
             TXP_INCREMENT(txp_mvcc_flat_versions);
@@ -401,7 +394,6 @@ private:
     comm_type c_;
     T v_;
 
-    std::atomic<bool> impassable_;   // Impassable "bit" indicating that a CU reader has started a flattening
     std::atomic<bool> gc_enqueued_;  // Whether this element is on the GC queue
     std::atomic<history_type*> prev_;
     std::atomic<MvStatus> status_;  // Status of this element
@@ -583,10 +575,6 @@ public:
             history_type* t = *target;
             history_type* next = nullptr;
             while (t->wtid() > tid) {
-                if (t->impassable_.load()) {
-                    // Forbit installation before impassable history version
-                    return false;
-                }
                 target = &t->prev_;
                 next = t;
                 t = *target;
@@ -638,9 +626,6 @@ public:
     // pending versions, but if toggled off, will simply return first version,
     // regardless of status
     history_type* find(const type tid, const bool wait=true) const {
-#if STO_TSC_PROFILE
-        TimeKeeper<tc_mvcc_find> tk;
-#endif
         history_type* h = head();
 
         /* TODO: use something smarter than a linear scan */
