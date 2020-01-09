@@ -338,6 +338,7 @@ enum TimingCounters {
     tc_abort,
     tc_cleanup,
     tc_opacity,
+    tc_mvcc_find,
     tc_count
 };
 
@@ -1036,21 +1037,22 @@ public:
             }
             // Can't we just get the most recent tid (_TID?)
 #else
-            if (!Commute) {
-                if (mvcc_rw) {
-                    //thr.rtid = read_tid_ = std::max(_RTID.load(), prev_commit_tid_);
-                    thr.rtid = read_tid_ = _TID;
-                } else {
-                    epoch_advance_once();
-                    thr.rtid = read_tid_ = _RTID;
-                }
-            } else {
-                // When we use CU we can't do the timestamp hack above because
-                // flattening delta versions require the invariant that all
-                // reads never observe information based on pending versions
-                epoch_advance_once();
-                thr.rtid = read_tid_ = _RTID;
-            }
+            thr.rtid = read_tid_ = _TID;
+            //if (!Commute) {
+            //    if (mvcc_rw) {
+            //        //thr.rtid = read_tid_ = std::max(_RTID.load(), prev_commit_tid_);
+            //        thr.rtid = read_tid_ = _TID;
+            //    } else {
+            //        epoch_advance_once();
+            //        thr.rtid = read_tid_ = _RTID;
+            //    }
+            //} else {
+            //    // When we use CU we can't do the timestamp hack above because
+            //    // flattening delta versions require the invariant that all
+            //    // reads never observe information based on pending versions
+            //    epoch_advance_once();
+            //    thr.rtid = read_tid_ = _RTID;
+            //}
 #endif
         }
         return read_tid_;
