@@ -307,6 +307,11 @@ private:
     inline void enflatten() {
         T v{};
         if (status_is(COMMITTED_DELTA)) {
+            while (true) {
+                type expected_its = object()->impassable_.load();
+                if (expected_its >= wtid_) break;
+                if (object()->impassable_.compare_exchange_strong(expected_its, wtid_)) break;
+            }
             assert(prev());
             TXP_INCREMENT(txp_mvcc_flat_runs);
             prev()->flatten(v);
@@ -329,7 +334,12 @@ private:
         history_type* curr = this;
         trace.push(curr);
         TXP_INCREMENT(txp_mvcc_flat_versions);
-        while (!curr->status_is(COMMITTED_DELTA, COMMITTED)) {
+        while (true) {
+            // Wait for pending versions to resolve.
+            while (curr->status_is(PENDING)) { relax_fence(); }
+            // Means we have reached the "base" committed version.
+            if (curr->status_is(COMMITTED_DELTA, COMMITTED)) { break; }
+
             curr = curr->prev();
             trace.push(curr);
             TXP_INCREMENT(txp_mvcc_flat_versions);
@@ -417,7 +427,7 @@ public:
     static constexpr uint64_t gc_flattening_length = 257;
 
 #if MVCC_INLINING
-    MvObject() : h_(&ih_), ih_(this) {
+    MvObject() : h_(&ih_), impassable_(0), ih_(this) {
         if (std::is_trivial<T>::value) {
             ih_.v_ = T();
             ih_.status_delete();
@@ -427,20 +437,20 @@ public:
         ih_.status_commit();
     }
     explicit MvObject(const T& value)
-            : h_(&ih_), ih_(0, this, value) {
+            : h_(&ih_), impassable_(0), ih_(0, this, value) {
         ih_.status_commit();
     }
     explicit MvObject(T&& value)
-            : h_(&ih_), ih_(0, this, value) {
+            : h_(&ih_), impassable_(0), ih_(0, this, value) {
         ih_.status_commit();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(&ih_), ih_(0, this, T(std::forward<Args>(args)...)) {
+            : h_(&ih_), impassable_(0), ih_(0, this, T(std::forward<Args>(args)...)) {
         ih_.status_commit();
     }
 #else
-    MvObject() : h_(new history_type(this)) {
+    MvObject() : h_(new history_type(this)), impassable_(0) {
         if (std::is_trivial<T>::value) {
             h_.load()->v_ = T();
             h_.load()->status_delete();
@@ -450,16 +460,16 @@ public:
         h_.load()->status_commit();
     }
     explicit MvObject(const T& value)
-            : h_(new history_type(0, this, value)) {
+            : h_(new history_type(0, this, value)), impassable_(0) {
         h_.load()->status_commit();
     }
     explicit MvObject(T&& value)
-            : h_(new history_type(0, this, value)) {
+            : h_(new history_type(0, this, value)), impassable_(0) {
         h_.load()->status_commit();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(new history_type(0, this, T(std::forward<Args>(args)...))) {
+            : h_(new history_type(0, this, T(std::forward<Args>(args)...))), impassable_(0) {
         h_.load()->status_commit();
     }
 #endif
@@ -570,6 +580,10 @@ public:
                 return false;
             }
 
+            if (tid < impassable_.load()) {
+                return false;
+            }
+
             // Discover target atomic on which to do CAS
             std::atomic<history_type*>* target = &h_;
             history_type* t = *target;
@@ -599,7 +613,7 @@ public:
         } while (true);
 
         // Version consistency verification
-        if (h->prev()->rtid() > tid) {
+        if (h->prev()->rtid() > tid || impassable_.load() > tid) {
             h->status_abort();
             return false;
         }
@@ -735,6 +749,8 @@ protected:
 
     std::atomic<uint64_t> delta_counter;  // For gc-time flattening
     std::atomic<history_type*> h_;
+    std::atomic<type> impassable_;     // Impassability timestamp
+
 #if MVCC_INLINING
     history_type ih_;  // Inlined version
 #endif

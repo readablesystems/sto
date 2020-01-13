@@ -1036,6 +1036,14 @@ public:
             }
             // Can't we just get the most recent tid (_TID?)
 #else
+            // Experimental: always read at the present for mvcc r/w transactions.
+            if (mvcc_rw) {
+                thr.rtid = read_tid_ = _TID;
+            } else {
+                epoch_advance_once();
+                thr.rtid = read_tid_ = _RTID;
+            }
+#if 0
             if (!Commute) {
                 if (mvcc_rw) {
                     //thr.rtid = read_tid_ = std::max(_RTID.load(), prev_commit_tid_);
@@ -1051,6 +1059,7 @@ public:
                 epoch_advance_once();
                 thr.rtid = read_tid_ = _RTID;
             }
+#endif
 #endif
         }
         return read_tid_;
