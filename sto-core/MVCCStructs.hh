@@ -307,16 +307,9 @@ private:
     inline void enflatten() {
         T v{};
         if (status_is(COMMITTED_DELTA)) {
-#if 0
-            while (true) {
-                type expected_its = object()->impassable_.load();
-                if (expected_its >= wtid_) break;
-                if (object()->impassable_.compare_exchange_strong(expected_its, wtid_)) break;
-            }
-#endif
             assert(prev());
             TXP_INCREMENT(txp_mvcc_flat_runs);
-            prev()->flatten(v);
+            prev()->flatten(v, wtid_);
             v = c_.operate(v);
         }
         MvStatus expected = COMMITTED_DELTA;
@@ -331,13 +324,13 @@ private:
         }
     }
 
-    void flatten(T &v) {
+    void flatten(T &v, type next_wtid) {
         std::stack<history_type*> trace;
         history_type* curr = this;
         while (true) {
             type ets = curr->rtid();
-            if (ets >= wtid_) break;
-            if (curr->rtid(ets, wtid_)) break;
+            if (ets >= next_wtid) break;
+            if (curr->rtid(ets, next_wtid)) break;
         }
         trace.push(curr);
         TXP_INCREMENT(txp_mvcc_flat_versions);
@@ -351,8 +344,8 @@ private:
 
             while (true) {
                 type ets = curr->rtid();
-                if (ets >= wtid_) break;
-                if (curr->rtid(ets, wtid_)) break;
+                if (ets >= next_wtid) break;
+                if (curr->rtid(ets, next_wtid)) break;
             }
 
             trace.push(curr);
