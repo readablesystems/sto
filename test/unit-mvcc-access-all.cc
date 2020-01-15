@@ -230,6 +230,7 @@ void TestMVCCOrderedIndexSplit() {
         = idx.select_split_row(key,
                                {{nc::value_1,access_t::read},
                                 {nc::value_2b,access_t::read}});
+    (void)row;
     assert(success);
     assert(result);
 
@@ -274,7 +275,7 @@ void TestMVCCOrderedIndexDelete() {
                 = idx.select_split_row(key,
                                        {{nc::value_1,access_t::read},
                                         {nc::value_2b,access_t::read}});
-
+            (void)row; (void)accessor;
             assert(success);
             assert(result);
         }
@@ -291,7 +292,7 @@ void TestMVCCOrderedIndexDelete() {
             = idx.select_split_row(key,
                                    {{nc::value_1,access_t::read},
                                     {nc::value_2b,access_t::read}});
-
+        (void)row; (void)accessor;
         assert(success);
         assert(!result);
 
@@ -320,6 +321,7 @@ void TestMVCCOrderedIndexCommute() {
             = idx.select_split_row(key,
                                    {{nc::value_1,access_t::none},
                                     {nc::value_2b,access_t::none}});
+        (void)row; (void)accessor;
         assert(success);
         assert(result);
 
@@ -337,6 +339,7 @@ void TestMVCCOrderedIndexCommute() {
             = idx.select_split_row(key,
                                    {{nc::value_1,access_t::read},
                                     {nc::value_2b,access_t::read}});
+        (void)row;
         assert(success);
         assert(result);
 
