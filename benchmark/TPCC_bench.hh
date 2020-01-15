@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <iomanip>
 #include <random>
 #include <string>
 #include <thread>
@@ -56,6 +57,7 @@ extern int tpcc_mcn(int, char const* const*);
 
 extern int tpcc_s(int, char const* const*);
 extern int tpcc_t(int, char const* const*);
+extern int tpcc_tc(int, char const* const*);
 
 namespace tpcc {
 
@@ -1044,6 +1046,8 @@ public:
     }
 
     static int execute(int argc, const char *const *argv) {
+        std::cout << "*** DBParams::Id = " << DBParams::Id << std::endl;
+        std::cout << "*** DBParams::Commute = " << std::boolalpha << DBParams::Commute << std::endl;
         int ret = 0;
 
         bool spawn_perf = false;
@@ -1156,6 +1160,11 @@ public:
         if (enable_gc) {
             Transaction::global_epochs.run = false;
             advancer.join();
+        }
+
+        // Clean up all remnant RCU set items.
+        for (int i = 0; i < num_threads; ++i) {
+            Transaction::tinfo[i].rcu_set.release_all();
         }
 
         return 0;

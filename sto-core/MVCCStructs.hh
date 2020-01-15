@@ -25,6 +25,12 @@ enum MvStatus {
     LOCKED_COMMITTED_DELTA  = 0b0011100,  // Converting from delta to flattened
 };
 
+// An (object, tid) reference for when version pointers are unreliable
+template <typename T>
+struct MvLocation {
+    MvObject<T>* obj;
+    TransactionTid::type tid;
+};
 
 template <typename T>
 class MvHistory {
@@ -92,6 +98,17 @@ public:
         Transaction::rcu_call(delete_prep_cb, this);
     }
 
+    // Enqueues the delta version for future forced flattening
+    inline void enqueue_for_flattening() {
+        if (!status_is(DELTA)) {
+            return;
+        }
+        auto location = new MvLocation<T>();
+        location->obj = object();
+        location->tid = wtid();
+        Transaction::rcu_call(gc_time_flattening_cb, location);
+    }
+
     // Pushes the current element onto the GC list if it isn't already, along
     // with a boolean for whether it is the inlined version.
     // Returns whether the push succeeded (fails if already on queue)
@@ -132,7 +149,7 @@ public:
     }
 
     // Attempt to set the pointer to prev; returns true on success
-    inline bool prev(history_type *prev) {
+    inline bool prev(history_type* prev) {
         if (is_valid_prev(prev)) {
             prev_ = prev;
             return true;
@@ -269,8 +286,8 @@ public:
 
 private:
     static void delete_prep_cb(void *ptr) {
-        history_type *hd = static_cast<history_type*>(ptr);  // DELETED version
-        history_type *h = hd->object()->h_;
+        history_type* hd = static_cast<history_type*>(ptr);  // DELETED version
+        history_type* h = hd->object()->h_;
         while (h) {
             if (h == hd) {
                 if (hd->delete_cb) {
@@ -291,10 +308,12 @@ private:
     // Initializes the flattening process
     inline void enflatten() {
         T v{};
-        assert(prev());
-        TXP_INCREMENT(txp_mvcc_flat_runs);
-        prev()->flatten(v);
-        v = c_.operate(v);
+        if (status_is(COMMITTED_DELTA)) {
+            assert(prev());
+            TXP_INCREMENT(txp_mvcc_flat_runs);
+            prev()->flatten(v, wtid_);
+            v = c_.operate(v);
+        }
         MvStatus expected = COMMITTED_DELTA;
         if (status_.compare_exchange_strong(expected, LOCKED_COMMITTED_DELTA)) {
             TXP_INCREMENT(txp_mvcc_flat_commits);
@@ -307,13 +326,30 @@ private:
         }
     }
 
-    void flatten(T &v) {
+    void flatten(T &v, type next_wtid) {
         std::stack<history_type*> trace;
-        history_type *curr = this;
+        history_type* curr = this;
+        while (true) {
+            type ets = curr->rtid();
+            if (ets >= next_wtid) break;
+            if (curr->rtid(ets, next_wtid)) break;
+        }
         trace.push(curr);
         TXP_INCREMENT(txp_mvcc_flat_versions);
-        while (curr->status() != COMMITTED) {
+        while (true) {
+            // Wait for pending versions to resolve.
+            while (curr->status_is(PENDING)) { relax_fence(); }
+            // Means we have reached the "base" committed version.
+            if (curr->status_is(COMMITTED_DELTA, COMMITTED)) { break; }
+
             curr = curr->prev();
+
+            while (true) {
+                type ets = curr->rtid();
+                if (ets >= next_wtid) break;
+                if (curr->rtid(ets, next_wtid)) break;
+            }
+
             trace.push(curr);
             TXP_INCREMENT(txp_mvcc_flat_versions);
             curr->gc_push(object()->is_inlined(curr));
@@ -325,7 +361,7 @@ private:
             if (h->status_is(COMMITTED)) {
                 if (h->status_is(DELTA)) {
                     v = h->c_.operate(v);
-                } else {
+                } else if (!h->status_is(COMMITTED_DELETED)) {
                     v = h->v_;
                 }
             }
@@ -334,13 +370,28 @@ private:
     }
 
     static void gc_inlined_cb(void *ptr) {
-        history_type *h = static_cast<history_type*>(ptr);
+        history_type* h = static_cast<history_type*>(ptr);
         assert(h->gc_enqueued_.load());
         h->object()->ih_.status_unused();
     }
 
+    static void gc_time_flattening_cb(void *ptr) {
+        auto location = static_cast<MvLocation<T>*>(ptr);
+        history_type* h = location->obj->head();
+        while (h && !h->status_is(COMMITTED_DELTA, COMMITTED) &&
+                (h->wtid() > location->tid)) {
+            h = h->prev();
+        }
+
+        if (h && (h->wtid() == location->tid) &&
+                h->status_is(COMMITTED_DELTA) && !h->is_gc_enqueued()) {
+            h->enflatten();
+        }
+        delete location;
+    }
+
     // Returns true if the given prev pointer would be a valid prev element
-    inline bool is_valid_prev(const history_type *prev) const {
+    inline bool is_valid_prev(const history_type* prev) const {
         return prev->wtid_ <= wtid_;
     }
 
@@ -348,7 +399,7 @@ private:
     // mask. Optionally increments a counter.
     inline history_type* with(const MvStatus mask, const MvStatus expect,
                         size_t * const visited=nullptr) const {
-        history_type *ele = (history_type*)this;
+        history_type* ele = (history_type*)this;
         while (ele && !ele->status_is(mask, expect)) {
             ele = ele->prev_;
             if (visited) {
@@ -381,8 +432,11 @@ public:
     typedef const T& read_type;
     typedef TransactionTid::type type;
 
+    // How many consecutive DELTA versions will be allowed before flattening
+    static constexpr uint64_t gc_flattening_length = 257;
+
 #if MVCC_INLINING
-    MvObject() : h_(&ih_), ih_(this) {
+    MvObject() : h_(&ih_), /*impassable_(0),*/ ih_(this) {
         if (std::is_trivial<T>::value) {
             ih_.v_ = T();
             ih_.status_delete();
@@ -392,20 +446,20 @@ public:
         ih_.status_commit();
     }
     explicit MvObject(const T& value)
-            : h_(&ih_), ih_(0, this, value) {
+            : h_(&ih_), /*impassable_(0),*/ ih_(0, this, value) {
         ih_.status_commit();
     }
     explicit MvObject(T&& value)
-            : h_(&ih_), ih_(0, this, value) {
+            : h_(&ih_), /*impassable_(0),*/ ih_(0, this, value) {
         ih_.status_commit();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(&ih_), ih_(0, this, T(std::forward<Args>(args)...)) {
+            : h_(&ih_), /*impassable_(0),*/ ih_(0, this, T(std::forward<Args>(args)...)) {
         ih_.status_commit();
     }
 #else
-    MvObject() : h_(new history_type(this)) {
+    MvObject() : h_(new history_type(this))/*, impassable_(0)*/ {
         if (std::is_trivial<T>::value) {
             h_.load()->v_ = T();
             h_.load()->status_delete();
@@ -415,25 +469,25 @@ public:
         h_.load()->status_commit();
     }
     explicit MvObject(const T& value)
-            : h_(new history_type(0, this, value)) {
+            : h_(new history_type(0, this, value))/*, impassable_(0)*/ {
         h_.load()->status_commit();
     }
     explicit MvObject(T&& value)
-            : h_(new history_type(0, this, value)) {
+            : h_(new history_type(0, this, value))/*, impassable_(0)*/ {
         h_.load()->status_commit();
     }
     template <typename... Args>
     explicit MvObject(Args&&... args)
-            : h_(new history_type(0, this, T(std::forward<Args>(args)...))) {
+            : h_(new history_type(0, this, T(std::forward<Args>(args)...)))/*, impassable_(0)*/ {
         h_.load()->status_commit();
     }
 #endif
 
     /*
     ~MvObject() {
-        history_type *h = h_;
+        history_type* h = h_;
         while (h && !h->is_gc_enqueued()) {
-            history_type *prev = h->prev();
+            history_type* prev = h->prev();
             h->gc_push(is_inlined(h));
             h = prev;
         }
@@ -444,7 +498,7 @@ public:
 
     // Aborts currently-pending head version; returns true if the head version
     // is pending and false otherwise.
-    bool abort(history_type *h) {
+    bool abort(history_type* h) {
         if (h) {
             if (!h->status_is(MvStatus::PENDING)) {
                 return false;
@@ -464,7 +518,7 @@ public:
 
     // "Check" step: read timestamp updates and version consistency check;
     //               returns true if successful, false is aborted
-    bool cp_check(const type tid, history_type *h /* read item */) {
+    bool cp_check(const type tid, history_type* h /* read item */) {
         // rtid update
         type prev_rtid;
         while ((prev_rtid = h->rtid()) < tid) {
@@ -481,7 +535,7 @@ public:
 
     // "Install" step: set status to committed if head element is pending; fails
     //                 otherwise
-    bool cp_install(history_type *h) {
+    bool cp_install(history_type* h) {
         if (!h->status_is(MvStatus::PENDING)) {
             return false;
         }
@@ -490,7 +544,7 @@ public:
 
         if (h->status_is(COMMITTED_DELTA, COMMITTED)) {
             // Put predecessors in the RCU list, but only if they aren't already
-            history_type *prev = h->prev();
+            history_type* prev = h->prev();
             bool stop = prev->is_gc_enqueued();
             do {
                 stop = prev->status_is(COMMITTED_DELTA, COMMITTED) ||
@@ -498,11 +552,20 @@ public:
                 history_type* ele = prev;
                 prev = prev->prev();
                 ele->gc_push(is_inlined(ele));
-            } while(prev != nullptr && !stop);
+            } while (prev != nullptr && !stop);
 
             // And for DELETED versions, enqueue the callback
             if (h->status_is(COMMITTED_DELETED)) {
                 h->enqueue_for_delete();
+            }
+        } else if (h->status_is(COMMITTED_DELTA)) {
+            // Counter update from nearest COMMITTED version
+            history_type* prev = h->prev();
+            while (!prev->status_is(COMMITTED)) {
+                prev = prev->prev();
+            }
+            if (!(delta_counter++ % gc_flattening_length)) {
+                h->enqueue_for_flattening();
             }
         }
 
@@ -511,20 +574,26 @@ public:
 
     // "Lock" step: pending version installation & version consistency check;
     //              returns true if successful, false if aborted
-    bool cp_lock(const type tid, history_type *h) {
+    bool cp_lock(const type tid, history_type* h) {
         // Can only install pending versions
         if (!h->status_is(MvStatus::PENDING)) {
             return false;
         }
 
         // The previously-visible version for h
-        history_type *hvis = h->prev();
+        history_type* hvis = h->prev();
 
         do {
             // Can only install onto the latest-visible version
             if (hvis && hvis != find(tid)) {
                 return false;
             }
+
+#if 0
+            if (tid < impassable_.load()) {
+                return false;
+            }
+#endif
 
             // Discover target atomic on which to do CAS
             std::atomic<history_type*>* target = &h_;
@@ -555,6 +624,9 @@ public:
         } while (true);
 
         // Version consistency verification
+#if 0
+        if (h->prev()->rtid() > tid || impassable_.load() > tid) {
+#endif
         if (h->prev()->rtid() > tid) {
             h->status_abort();
             return false;
@@ -568,7 +640,7 @@ public:
     // !!! IMPORTANT !!!
     // This function should only be used to free history nodes that have NOT been
     // hooked into the version chain
-    void delete_history(history_type *h) {
+    void delete_history(history_type* h) {
 #if MVCC_INLINING
         if (&ih_ == h) {
             ih_.status_unused();
@@ -582,7 +654,7 @@ public:
     // pending versions, but if toggled off, will simply return first version,
     // regardless of status
     history_type* find(const type tid, const bool wait=true) const {
-        history_type *h = h_.load(std::memory_order_acquire);
+        history_type* h = head();
 
         /* TODO: use something smarter than a linear scan */
         while (h) {
@@ -607,12 +679,16 @@ public:
         return h;
     }
 
-    inline bool is_head(history_type * const h) const {
+    history_type* head() const {
+        return h_.load(std::memory_order_acquire);
+    }
+
+    inline bool is_head(history_type*  const h) const {
         return h == h_;
     }
 
     // Returns whether the given history element is the inlined version
-    inline bool is_inlined(history_type * const h) const {
+    inline bool is_inlined(history_type*  const h) const {
 #if MVCC_INLINING
         return h == &ih_;
 #else
@@ -640,8 +716,8 @@ public:
 
     // Read-only
     const T& nontrans_access() const {
-        history_type *h = h_;
-        history_type *next = nullptr;
+        history_type* h = h_;
+        history_type* next = nullptr;
         /* TODO: head version caching */
         while (h) {
             if (h->status_is(COMMITTED)) {
@@ -658,8 +734,8 @@ public:
     }
     // Writable version
     T& nontrans_access() {
-        history_type *h = h_;
-        history_type *next = nullptr;
+        history_type* h = h_;
+        history_type* next = nullptr;
         /* TODO: head version caching */
         while (h) {
             if (h->status_is(COMMITTED)) {
@@ -678,14 +754,17 @@ public:
 
 protected:
     // Spin-wait on interested item
-    void wait_if_pending(const history_type *h) const {
+    void wait_if_pending(const history_type* h) const {
         while (h->status_is(MvStatus::PENDING)) {
             // TODO: implement a backoff or something
             relax_fence();
         }
     }
 
+    std::atomic<uint64_t> delta_counter;  // For gc-time flattening
     std::atomic<history_type*> h_;
+    //std::atomic<type> impassable_;     // Impassability timestamp
+
 #if MVCC_INLINING
     history_type ih_;  // Inlined version
 #endif

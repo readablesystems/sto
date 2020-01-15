@@ -16,6 +16,10 @@
 #define TABLE_FINE_GRAINED 0
 #endif
 
+#ifndef CONTENTION_AWARE_IDX
+#define CONTENTION_AWARE_IDX 1
+#endif
+
 namespace tpcc {
 
 // singleton class used for fast oid generation
@@ -26,7 +30,7 @@ using namespace bench;
 
 class tpcc_oid_generator {
 public:
-    static constexpr size_t max_whs = 32;
+    static constexpr size_t max_whs = 64;
     static constexpr size_t max_dts = 16;
 
     tpcc_oid_generator() {
@@ -51,7 +55,7 @@ private:
 
 class tpcc_delivery_queue {
 public:
-    static constexpr size_t max_whs = 32;
+    static constexpr size_t max_whs = 64;
 
     tpcc_delivery_queue() {
         bzero(num_enqueued, sizeof(num_enqueued));
@@ -462,7 +466,14 @@ struct order_cidx_key {
 };
 
 struct order_key {
-    order_key(uint64_t wid, uint64_t did, uint64_t oid) {
+#if CONTENTION_AWARE_IDX
+    typedef uint64_t wdid_type;
+    typedef uint64_t oid_type;
+#else
+    typedef uint16_t wdid_type;
+    typedef uint32_t oid_type;
+#endif
+    order_key(wdid_type wid, wdid_type did, oid_type oid) {
         o_w_id = bswap(wid);
         o_d_id = bswap(did);
         o_id = bswap(oid);
@@ -482,9 +493,9 @@ struct order_key {
         return lcdf::Str((const char *)this, sizeof(*this));
     }
 
-    uint64_t o_w_id;
-    uint64_t o_d_id;
-    uint64_t o_id;
+    wdid_type o_w_id;
+    wdid_type o_d_id;
+    oid_type o_id;
 };
 
 #if TPCC_SPLIT_TABLE
