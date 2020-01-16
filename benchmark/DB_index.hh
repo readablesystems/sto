@@ -275,16 +275,9 @@ public:
                 // XXX No read-my-write stuff for now.
                 MvAccess::template read<First>(item, h);
 
-#if SAFE_FLATTEN
-                auto vp = h->vp_safe_flatten();
-                if (vp == nullptr)
-                    return false;
-                value_ptrs[I] = vp;
-#else
                 auto vp = h->vp();
                 assert(vp);
                 value_ptrs[I] = vp;
-#endif
             }
         }
         return mvcc_select_loop<C, I + 1, Rest...>(cell_accesses, value_ptrs, tobj, e);
@@ -419,7 +412,7 @@ public:
     // Static looping for TObject::install
     template <int C, int I, typename First, typename... Rest>
     static void mvcc_install_loop(int cell_id, Transaction& txn, TransItem& item, IndexType* idx) {
-        if (cell_id == I) {  // cell_id is 1-indexed
+        if (cell_id == I) {
             auto e = item.key<item_key_t>().internal_elem_ptr();
             idx->install_impl_per_chain(item, txn, e->template chain_at<I>());
             return;
@@ -434,7 +427,7 @@ public:
     // Static looping for TObject::cleanup
     template <int C, int I, typename First, typename... Rest>
     static void mvcc_cleanup_loop(int cell_id, TransItem& item, bool committed, IndexType* idx) {
-        if (cell_id == I) {  // cell_id is 1-indexed
+        if (cell_id == I) {
             auto e = item.key<item_key_t>().internal_elem_ptr();
             idx->cleanup_impl_per_chain(item, committed, e->template chain_at<I>());
             return;
@@ -557,6 +550,29 @@ struct SplitParams {
     using layout_type = typename SplitMvObjectBuilder<split_type_list>::type;
     static constexpr size_t num_splits = std::tuple_size<layout_type>::value;
 };
+
+// Helper method, turning a user-provided row into split row representation (array of pointers)
+// allocated in the transactional scratch space.
+template <size_t C, size_t I, typename RowType>
+void TxSplitIntoHelper(std::array<void*, C>& value_ptrs, const RowType* whole_row) {
+    if constexpr (I == C) {
+        (void)whole_row;
+        return;
+    } else {
+        auto p = Sto::tx_alloc<std::tuple_element_t<I, typename SplitParams<RowType>::split_type_list>>();
+        *p = std::get<I>(SplitParams<RowType>::split_builder)(*whole_row);
+        value_ptrs[I] = p;
+
+        TxSplitIntoHelper<C, I+1, RowType>(value_ptrs, whole_row);
+    }
+}
+
+template<typename RowType>
+std::array<void*, SplitParams<RowType>::num_splits> TxSplitInto(const RowType* whole_row) {
+    std::array<void*, SplitParams<RowType>::num_splits> value_ptrs;
+    TxSplitIntoHelper<SplitParams<RowType>::num_splits, 0, RowType>(value_ptrs, whole_row);
+    return value_ptrs;
+}
 
 template <typename A, typename V>
 class RecordAccessor;

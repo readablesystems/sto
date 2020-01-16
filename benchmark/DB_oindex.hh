@@ -1093,6 +1093,7 @@ public:
     // if a row already exists, then use select (FOR UPDATE) instead
     ins_return_type
     insert_row(const key_type& key, value_type *vptr, bool overwrite = false) {
+        static constexpr size_t num_cells = SplitParams<value_type>::num_splits;
         cursor_type lp(table_, key);
         bool found = lp.find_insert(*ti);
         if (found) {
@@ -1108,7 +1109,7 @@ public:
             internal_elem *e = lp.value();
             lp.finish(0, *ti);
 
-            auto row_item = Sto::item(this, item_key_t(e, 0));  // A fake row item
+            auto row_item = Sto::item(this, item_key_t(e, 0));  // Use cell-id 0 to represent row item
 
             auto h = e->template chain_at<0>()->find(txn_read_tid());
             if (is_phantom(h, row_item))
@@ -1123,12 +1124,13 @@ public:
             }
 
             if (overwrite) {
-                row_item.add_write(*vptr);
+                always_assert(false, "Row-level overwrite currently not supported.");
+                //row_item.add_write(*vptr);
             } else {
                 // TODO: This now acts like a full read of the value
                 // at rtid. Once we add predicates we can change it to
                 // something else.
-                MvAccess::template read<value_type>(row_item, h);
+                MvAccess::read(row_item, h);
             }
 
         } else {
@@ -1154,9 +1156,12 @@ public:
             lp.finish(1, *ti);
             //fence();
 
-            TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
-            row_item.add_write(vptr);
-            row_item.add_flags(insert_bit);
+            auto val_ptrs = TxSplitInto<value_type>(vptr);
+            for (size_t cell_id = 0; cell_id < num_cells; ++cell_id) {
+                TransProxy cell_item = Sto::item(this, item_key_t(e, cell_id));
+                cell_item.add_write(val_ptrs[cell_id]);
+                cell_item.add_flags(insert_bit);
+            }
 
             // update the node version already in the read set and modified by split
             if (!update_internode_version(node, orig_nv, new_nv))
