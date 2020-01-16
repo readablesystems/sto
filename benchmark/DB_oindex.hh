@@ -843,16 +843,13 @@ private:
 };
 
 template <typename K, typename V, typename DBParams>
-__thread typename ordered_index<K, V, DBParams>::table_params::threadinfo_type
-*ordered_index<K, V, DBParams>::ti;
+__thread typename ordered_index<K, V, DBParams>::table_params::threadinfo_type* ordered_index<K, V, DBParams>::ti;
 
 template <typename K, typename V, typename DBParams>
 class mvcc_ordered_index : public TObject {
 public:
     typedef K key_type;
     typedef V value_type;
-    // typedef MvObject<value_type> object_type;
-    // typedef typename object_type::history_type history_type;
     typedef commutators::Commutator<value_type> comm_type;
 
     static constexpr bool Commute = DBParams::Commute;
@@ -867,27 +864,7 @@ public:
 
     static constexpr bool index_read_my_write = DBParams::RdMyWr;
 
-    struct internal_elem {
-        static constexpr size_t num_versions = 1;
-        typedef typename SplitParams<value_type>::layout_type split_layout_type;
-        key_type key;
-        split_layout_type split_row;
-        //object_type row;
-
-        template <typename... Args>
-        internal_elem(const key_type& k, Args... args)
-            : key(k), split_row(std::forward<Args>(args)...) {}
-
-        template <int I>
-        std::tuple_element_t<I, split_layout_type>* chain_at() {
-            return &std::get<I>(split_row);
-        }
-
-        constexpr static int map(int col_n) {
-            (void)col_n;  // TODO(column-splitting)
-            return 0;
-        }
-    };
+    typedef typename index_common<K, V, DBParams>::MvInternalElement internal_elem;
 
     struct table_params : public Masstree::nodeparams<15,15> {
         typedef internal_elem* value_type;
@@ -1021,67 +998,6 @@ public:
         }
     }
 
-
-    sel_return_type
-    select_row(uintptr_t rid, RowAccess access) {
-        always_assert(false, "Not implemented in MVCC, use split table instead.");
-        return { false, false, 0, nullptr };
-//         auto e = reinterpret_cast<internal_elem *>(rid);
-//         TransProxy row_item = Sto::item(this, item_key_t::row_item_key(e));
-
-//         history_type *h = e->row.find(txn_read_tid());
-
-//         if (h->status_is(UNUSED)) {
-//             return sel_return_type(true, false, 0, nullptr);
-//         }
-
-//         if (is_phantom(h, row_item))
-//             return sel_return_type(true, false, 0, nullptr);
-
-//         if (index_read_my_write) {
-//             if (has_delete(row_item)) {
-//                 return sel_return_type(true, false, 0, nullptr);
-//             }
-//             if (has_row_update(row_item)) {
-//                 value_type *vptr;
-//                 if (has_insert(row_item)) {
-// #if SAFE_FLATTEN
-//                     vptr = h->vp_safe_flatten();
-//                     if (vptr == nullptr)
-//                         return { false, false, 0, nullptr };
-// #else
-//                     vptr = h->vp();
-// #endif
-//                 } else {
-//                     vptr = row_item.template raw_write_value<value_type *>();
-//                 }
-//                 assert(vptr);
-//                 return sel_return_type(true, true, rid, vptr);
-//             }
-//         }
-
-//         if (access != RowAccess::None) {
-//             MvAccess::template read<value_type>(row_item, h);
-// #if SAFE_FLATTEN
-//             auto vp = h->vp_safe_flatten();
-//             if (vp == nullptr)
-//                 return { false, false, 0, nullptr };
-// #else
-//             auto vp = h->vp();
-//             assert(vp);
-// #endif
-//             return sel_return_type(true, true, rid, vp);
-//         } else {
-//             return sel_return_type(true, true, rid, nullptr);
-//         }
-    }
-
-    sel_return_type
-    select_row(uintptr_t, std::initializer_list<column_access_t>) {
-        always_assert(false, "Not implemented in MVCC, use split table instead.");
-        return { false, false, 0, nullptr };
-    }
-
     sel_split_return_type
     select_splits(uintptr_t rid, std::initializer_list<column_access_t> accesses) {
         using split_params = SplitParams<value_type>;
@@ -1129,7 +1045,7 @@ public:
 
             auto row_item = Sto::item(this, item_key_t(e, 0));  // A fake row item
 
-            auto h = e->row.find(txn_read_tid());
+            auto h = e->template chain_at<0>()->find(txn_read_tid());
             if (is_phantom(h, row_item))
                 return ins_return_type(true, false);
 
@@ -1343,13 +1259,21 @@ public:
     }
 
     template <typename TSplit>
-    bool lock_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain, internal_elem* e);
+    bool lock_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain, internal_elem* e) {
+        return mvcc_chain_operations<K, V, DBParams>::lock_impl_per_chain(item, txn, chain, e, this, _delete_cb);
+    }
     template <typename TSplit>
-    bool check_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain);
+    bool check_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain) {
+        return mvcc_chain_operations<K, V, DBParams>::check_impl_per_chain(item, txn, chain);
+    }
     template <typename TSplit>
-    void install_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain);
+    void install_impl_per_chain(TransItem& item, Transaction& txn, MvObject<TSplit>* chain) {
+        mvcc_chain_operations<K, V, DBParams>::install_impl_per_chain(item, txn, chain);
+    }
     template <typename TSplit>
-    void cleanup_impl_per_chain(TransItem& item, bool committed, MvObject<TSplit>* chain);
+    void cleanup_impl_per_chain(TransItem& item, bool committed, MvObject<TSplit>* chain) {
+        mvcc_chain_operations<K, V, DBParams>::cleanup_impl_per_chain(item, committed, chain);
+    }
 
     // TObject interface methods
     bool lock(TransItem& item, Transaction& txn) override {
@@ -1359,13 +1283,17 @@ public:
     }
 
     bool check(TransItem& item, Transaction& txn) override {
-        int cell_id;
         if (is_internode(item)) {
-            cell_id = 0;
+            node_type *n = get_internode_address(item);
+            auto curr_nv = static_cast<leaf_type *>(n)->full_version_value();
+            auto read_nv = item.template read_value<decltype(curr_nv)>();
+            auto result = (curr_nv == read_nv);
+            TXP_ACCOUNT(txp_tpcc_check_abort1, txn.special_txp && !result);
+            return result;
         } else {
-            cell_id = item.key<item_key_t>().cell_num();
+            int cell_id = item.key<item_key_t>().cell_num();
+            return MvSplitAccessAll::run_check(cell_id, txn, item, this);
         }
-        return MvSplitAccessAll::run_check(cell_id, txn, item, this);
     }
 
     void install(TransItem& item, Transaction& txn) override {
@@ -1459,11 +1387,11 @@ public:
     table_type table_;
     uint64_t key_gen_;
 
-    static bool
-    access_all(std::array<access_t, internal_elem::num_versions>&, std::array<TransItem*, internal_elem::num_versions>&, internal_elem*) {
-        always_assert(false, "Not implemented.");
-        return true;
-    }
+    //static bool
+    //access_all(std::array<access_t, internal_elem::num_versions>&, std::array<TransItem*, internal_elem::num_versions>&, internal_elem*) {
+    //    always_assert(false, "Not implemented.");
+    //    return true;
+    //}
 
     static TransactionTid::type txn_read_tid() {
         return Sto::read_tid<DBParams::Commute>();
@@ -1549,102 +1477,6 @@ public:
 };
 
 template <typename K, typename V, typename DBParams>
-__thread typename mvcc_ordered_index<K, V, DBParams>::table_params::threadinfo_type
-*mvcc_ordered_index<K, V, DBParams>::ti;
-
-template <typename K, typename V, typename DBParams>
-template <typename TSplit>
-bool mvcc_ordered_index<K, V, DBParams>::lock_impl_per_chain(
-        TransItem& item, Transaction& txn, MvObject<TSplit>* chain, internal_elem* e) {
-    using history_type = typename MvObject<TSplit>::history_type;
-    using comm_type = typename commutators::Commutator<TSplit>;
-
-    history_type *hprev = nullptr;
-    if (item.has_read()) {
-        hprev = item.read_value<history_type*>();
-        if (Sto::commit_tid() < hprev->rtid()) {
-            TransProxy(txn, item).add_write(nullptr);
-            TXP_ACCOUNT(txp_tpcc_lock_abort1, txn.special_txp);
-            return false;
-        }
-    }
-    history_type *h = nullptr;
-    if (item.has_commute()) {
-        auto wval = item.template write_value<comm_type>();
-        h = chain->new_history(
-                Sto::commit_tid(), chain, std::move(wval), hprev);
-    } else {
-        auto wval = item.template raw_write_value<TSplit*>();
-        if (has_delete(item)) {
-            h = chain->new_history(
-                    Sto::commit_tid(), chain, nullptr, hprev);
-            h->status_delete();
-            // TODO: Figure out what to do with this.
-            if (std::is_same<TSplit, typename std::tuple_element<0, typename SplitParams<V>::split_type_list>::type>::value) {
-                h->set_delete_cb(this, _delete_cb, e);
-            }
-        } else {
-            h = chain->new_history(
-                    Sto::commit_tid(), chain, wval, hprev);
-        }
-    }
-    assert(h);
-    bool result = chain->cp_lock(Sto::commit_tid(), h);
-    if (!result && !h->status_is(MvStatus::ABORTED)) {
-        chain->delete_history(h);
-        TransProxy(txn, item).add_mvhistory(nullptr);
-        TXP_ACCOUNT(txp_tpcc_lock_abort2, txn.special_txp);
-    } else {
-        TransProxy(txn, item).add_mvhistory(h);
-        TXP_ACCOUNT(txp_tpcc_lock_abort3, txn.special_txp && !result);
-    }
-    return result;
-}
-
-template <typename K, typename V, typename DBParams>
-template <typename TSplit>
-bool mvcc_ordered_index<K, V, DBParams>::check_impl_per_chain(TransItem &item, Transaction &txn,
-                                                              MvObject<TSplit> *chain) {
-    using history_type = typename MvObject<TSplit>::history_type;
-    if (is_internode(item)) {
-        node_type *n = get_internode_address(item);
-        auto curr_nv = static_cast<leaf_type *>(n)->full_version_value();
-        auto read_nv = item.template read_value<decltype(curr_nv)>();
-        auto result = (curr_nv == read_nv);
-        TXP_ACCOUNT(txp_tpcc_check_abort1, txn.special_txp && !result);
-        return result;
-    } else {
-        auto h = item.template read_value<history_type*>();
-        auto result = chain->cp_check(txn_read_tid(), h);
-        TXP_ACCOUNT(txp_tpcc_check_abort2, txn.special_txp && !result);
-        return result;
-    }
-}
-
-template <typename K, typename V, typename DBParams>
-template <typename TSplit>
-void mvcc_ordered_index<K, V, DBParams>::install_impl_per_chain(TransItem &item, Transaction &txn,
-                                                                MvObject<TSplit> *chain) {
-    (void)txn;
-    using history_type = typename MvObject<TSplit>::history_type;
-    assert(!is_internode(item));
-    auto h = item.template write_value<history_type*>();
-    chain->cp_install(h);
-}
-
-template <typename K, typename V, typename DBParams>
-template <typename TSplit>
-void mvcc_ordered_index<K, V, DBParams>::cleanup_impl_per_chain(TransItem &item, bool committed,
-                                                                MvObject<TSplit> *chain) {
-    using history_type = typename MvObject<TSplit>::history_type;
-    if (!committed) {
-        if (item.has_mvhistory()) {
-            auto h = item.template write_value<history_type*>();
-            if (h) {
-                chain->abort(h);
-            }
-        }
-    }
-}
+__thread typename mvcc_ordered_index<K, V, DBParams>::table_params::threadinfo_type* mvcc_ordered_index<K, V, DBParams>::ti;
 
 } // namespace bench
